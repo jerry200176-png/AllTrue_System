@@ -19,27 +19,40 @@
       <form class="login-form" @submit.prevent="handleLogin">
         <div class="form-group">
           <label id="login-role-label">登入身分</label>
-          <div class="login-role-switch" role="radiogroup" aria-labelledby="login-role-label">
-            <button
-              type="button"
+          <div
+            class="login-role-switch"
+            role="radiogroup"
+            aria-labelledby="login-role-label"
+            @keydown="onRoleKeydown"
+          >
+            <label
               class="role-btn"
               :class="{ active: selectedRole === 'teacher' }"
-              :aria-pressed="selectedRole === 'teacher'"
-              @click="selectedRole = 'teacher'"
             >
+              <input
+                class="role-input"
+                type="radio"
+                name="login-role"
+                value="teacher"
+                v-model="selectedRole"
+              />
               <span class="role-title">老師</span>
               <span class="role-subtitle">課表與評量</span>
-            </button>
-            <button
-              type="button"
+            </label>
+            <label
               class="role-btn"
               :class="{ active: selectedRole === 'director' }"
-              :aria-pressed="selectedRole === 'director'"
-              @click="selectedRole = 'director'"
             >
+              <input
+                class="role-input"
+                type="radio"
+                name="login-role"
+                value="director"
+                v-model="selectedRole"
+              />
               <span class="role-title">主任/櫃台</span>
               <span class="role-subtitle">含管理員 · 同入口</span>
-            </button>
+            </label>
           </div>
         </div>
         <div class="form-group">
@@ -202,6 +215,30 @@ const openForgotPassword = () => {
   forgotError.value = '';
   forgotSuccess.value = '';
   mode.value = 'forgot-password';
+};
+
+const ROLE_ORDER = ['teacher', 'director'];
+const onRoleKeydown = (event) => {
+  if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) {
+    return;
+  }
+  event.preventDefault();
+  const idx = Math.max(0, ROLE_ORDER.indexOf(selectedRole.value));
+  let next = idx;
+  if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+    next = (idx + 1) % ROLE_ORDER.length;
+  } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+    next = (idx - 1 + ROLE_ORDER.length) % ROLE_ORDER.length;
+  } else if (event.key === 'Home') {
+    next = 0;
+  } else if (event.key === 'End') {
+    next = ROLE_ORDER.length - 1;
+  }
+  selectedRole.value = ROLE_ORDER[next];
+  const input = event.currentTarget?.querySelector?.(
+    `input.role-input[value="${ROLE_ORDER[next]}"]`,
+  );
+  input?.focus?.();
 };
 
 const handleLogin = async () => {
@@ -431,6 +468,7 @@ onBeforeUnmount(() => {
 }
 
 .role-btn {
+  position: relative;
   border: 1px solid var(--ds-hairline);
   background: var(--ds-canvas);
   border-radius: 8px;
@@ -440,7 +478,16 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 2px;
   cursor: pointer;
-  transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.role-input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  pointer-events: none;
 }
 
 .role-btn:hover {
@@ -448,13 +495,14 @@ onBeforeUnmount(() => {
   background: var(--ds-primary-wash);
 }
 
+/* Selected ≠ focus: active uses border/wash only; ring only on :focus-visible */
 .role-btn.active {
   border-color: var(--ds-primary);
   background: var(--ds-primary-wash);
-  box-shadow: 0 0 0 3px var(--ds-focus-ring);
+  box-shadow: none;
 }
 
-.role-btn:focus-visible {
+.role-btn:has(.role-input:focus-visible) {
   outline: none;
   box-shadow: 0 0 0 3px var(--ds-focus-ring);
 }
@@ -533,23 +581,23 @@ onBeforeUnmount(() => {
   padding: 12px 16px;
   font-size: 1rem;
   font-weight: 700;
-  color: var(--ds-on-primary);
-  background: var(--ds-brand-gradient);
+  color: var(--ds-on-cta);
+  background: var(--ds-cta);
   border: none;
   border-radius: 999px;
   cursor: pointer;
   box-shadow: var(--ds-shadow-1);
-  transition: background-color 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
   letter-spacing: 0.01em;
 }
 
 .login-btn:hover:not(:disabled) {
-  filter: brightness(0.97);
+  background: var(--ds-cta-hover);
   box-shadow: var(--ds-shadow-2);
 }
 
 .login-btn:active:not(:disabled) {
-  filter: brightness(0.94);
+  background: var(--ds-cta-press);
 }
 
 .login-btn:disabled {
@@ -557,7 +605,6 @@ onBeforeUnmount(() => {
   color: var(--ds-ink-mute);
   box-shadow: none;
   cursor: not-allowed;
-  filter: none;
 }
 
 .login-footer {

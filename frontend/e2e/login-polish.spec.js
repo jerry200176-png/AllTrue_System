@@ -3,8 +3,7 @@ import { test, expect } from '@playwright/test';
 
 /**
  * Login.vue DS polish smoke（Epic #687 Login pilot）
- * 不需帳密：只驗 DOM 契約、錯誤態、忘記密碼、focus-visible、reduced-motion。
- * 登入行為／API 不變；完整業務 smoke 仍見 smoke.spec.js。
+ * 不需帳密：DOM 契約、radio 語意、錯誤態、忘記密碼、focus-visible、reduced-motion。
  */
 
 const BASE = process.env.SMOKE_BASE_URL || process.env.LOGIN_POLISH_BASE_URL || 'http://127.0.0.1:5173';
@@ -27,8 +26,26 @@ test.describe('Login polish smoke', () => {
     await expect(page.locator('#login-account')).toBeVisible();
     await expect(page.locator('#login-password')).toBeVisible();
     await expect(page.locator('button.login-btn')).toBeVisible();
-    // 去 emoji：角色鈕不應再含 emoji 圖示節點
     await expect(page.locator('.role-icon')).toHaveCount(0);
+  });
+
+  test('role radios expose checked state and arrow-key move', async ({ page }) => {
+    const teacher = page.locator('input.role-input[value="teacher"]');
+    const director = page.locator('input.role-input[value="director"]');
+    await expect(director).toBeChecked();
+    await expect(teacher).not.toBeChecked();
+
+    await director.focus();
+    await page.keyboard.press('ArrowLeft');
+    await expect(teacher).toBeChecked();
+    await expect(director).not.toBeChecked();
+    await expect(page.locator('.role-btn.active', { hasText: '老師' })).toBeVisible();
+
+    // Selected must not keep a persistent focus ring after blur
+    await page.locator('#login-account').click();
+    const activeBox = page.locator('.role-btn.active');
+    const shadow = await activeBox.evaluate((el) => getComputedStyle(el).boxShadow);
+    expect(shadow === 'none' || shadow === '').toBeTruthy();
   });
 
   test('empty submit shows client error without leaving login', async ({ page }) => {
@@ -59,10 +76,14 @@ test.describe('Login polish smoke', () => {
     throw new Error('Tab did not reach #login-account');
   });
 
-  test('prefers-reduced-motion still renders login', async ({ page }) => {
+  test('prefers-reduced-motion zeros interactive transitions', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.reload({ waitUntil: 'networkidle' });
     await expect(page.locator('.login-wrap')).toBeVisible();
-    await expect(page.locator('button.login-btn')).toBeVisible();
+    const btn = page.locator('button.login-btn');
+    await expect(btn).toBeVisible();
+    const duration = await btn.evaluate((el) => getComputedStyle(el).transitionDuration);
+    // "0s" or "0s, 0s" depending on multi-property shorthand
+    expect(duration.split(',').every((part) => part.trim() === '0s' || part.trim() === '0ms')).toBeTruthy();
   });
 });

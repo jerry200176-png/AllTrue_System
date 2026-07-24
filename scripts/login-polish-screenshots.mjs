@@ -1,13 +1,20 @@
 #!/usr/bin/env node
 /**
  * Login.vue visual evidence: 390 / 768 / 1440 screenshots.
- * Usage (from repo root, Vite already running):
- *   node scripts/login-polish-screenshots.mjs before http://127.0.0.1:5173/
- *   node scripts/login-polish-screenshots.mjs after http://127.0.0.1:5173/
+ *
+ * Usage (Vite already running):
+ *   node scripts/login-polish-screenshots.mjs before
+ *   node scripts/login-polish-screenshots.mjs after
+ *   LOGIN_POLISH_OUT=/abs/path node scripts/login-polish-screenshots.mjs after
+ *   node scripts/login-polish-screenshots.mjs after http://127.0.0.1:5173/ ./docs/reviews/login-polish-1386
+ *
+ * Args: <before|after> [baseUrl] [outRoot]
+ * Env:  LOGIN_POLISH_BASE_URL, LOGIN_POLISH_OUT
+ * Default outRoot: <repo>/artifacts/login-polish/<phase> (gitignored)
  */
 import { createRequire } from 'node:module';
 import { mkdirSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -16,8 +23,12 @@ const require = createRequire(join(root, 'frontend/package.json'));
 const { chromium } = require('playwright');
 
 const phase = process.argv[2] === 'after' ? 'after' : 'before';
-const baseUrl = process.argv[3] || 'http://127.0.0.1:5173/';
-const outRoot = join('/opt/cursor/artifacts/login-polish', phase);
+const baseUrl = process.argv[3] || process.env.LOGIN_POLISH_BASE_URL || 'http://127.0.0.1:5173/';
+const outRoot = resolve(
+  process.argv[4]
+    || process.env.LOGIN_POLISH_OUT
+    || join(root, 'artifacts', 'login-polish', phase),
+);
 mkdirSync(outRoot, { recursive: true });
 
 const widths = [390, 768, 1440];
