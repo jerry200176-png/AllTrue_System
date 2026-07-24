@@ -1,0 +1,7 @@
+{
+  "schema_version": "1.0",
+  "provenance_type": "human-authored",
+  "declared_at": "2026-07-24T12:10:00Z",
+  "author": "repository-maintainer",
+  "note": "Mainline baseline; task-specific agent manifests remain branch-local."
+}
