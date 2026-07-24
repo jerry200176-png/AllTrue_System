@@ -1,3 +1,11 @@
+## 2026-07-24 — feat: Course Continuity 群組 API MVP（#1382）
+
+- 新增 `course_contract_groups`／`course_contract_group_members`（空表；不物理 merge 合約）。
+- 主任 API：列表／建立群組／加入成員／解除關聯；拒絕跨學生／跨校／package。
+- 解除關聯不刪 `StudentClass`；財務／堂次／評量維持原合約。
+
+開發備註：RFC 方案 A。不含自動 backfill、#1130 repair、群組 UI。回歸 `CourseContinuityGroupApiTest`。
+
 ## 2026-07-24 — docs: RFC 依 starred repos 做平台大改版規劃（無業務碼）
 
 - 新增 `docs/architecture/RFC_PLATFORM_OPTIMIZATION_FROM_STARS_2026.md`：每項優化標明參考 repo、要學／不要學、落地位置。
