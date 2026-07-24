@@ -79,9 +79,9 @@ const rescheduleDesc = RESCHEDULE_ACTION_DESC;
   margin: 0 0 12px;
   padding: 10px 12px;
   border-radius: 8px;
-  border: 1px solid color-mix(in srgb, var(--ds-danger, #c62828) 35%, transparent);
-  background: color-mix(in srgb, var(--ds-danger, #c62828) 10%, var(--ds-canvas, #fff));
-  color: var(--ds-danger, #c62828);
+  border: 1px solid var(--ds-danger);
+  background: var(--ds-canvas-soft);
+  color: var(--ds-danger);
   font-size: 13px;
   line-height: 1.45;
 }
