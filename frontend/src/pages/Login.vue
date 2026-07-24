@@ -1,12 +1,14 @@
 <template>
   <div v-if="mode === 'login'" class="login-wrap">
     <div class="login-card">
+      <div class="login-brand-bar" aria-hidden="true" />
       <div class="login-header">
         <div class="logo-wrapper">
           <img :src="logoUrl" alt="全真一對一 Logo" class="login-logo" onerror="this.style.display='none'" />
         </div>
         <h1 class="login-title">台北全真一對一</h1>
         <p class="login-subtitle">教務管理系統</p>
+        <p class="login-trust">教務專用 · 請使用校方核發帳號登入</p>
       </div>
 
       <div v-if="error" class="login-error" role="alert">
@@ -16,33 +18,41 @@
 
       <form class="login-form" @submit.prevent="handleLogin">
         <div class="form-group">
-          <label>登入身分</label>
-          <div class="login-role-switch" role="radiogroup" aria-label="登入身分">
-            <button
-              type="button"
+          <label id="login-role-label">登入身分</label>
+          <div
+            class="login-role-switch"
+            role="radiogroup"
+            aria-labelledby="login-role-label"
+            @keydown="onRoleKeydown"
+          >
+            <label
               class="role-btn"
               :class="{ active: selectedRole === 'teacher' }"
-              :aria-pressed="selectedRole === 'teacher'"
-              @click="selectedRole = 'teacher'"
             >
-              <span class="role-icon">👩‍🏫</span>
+              <input
+                class="role-input"
+                type="radio"
+                name="login-role"
+                value="teacher"
+                v-model="selectedRole"
+              />
               <span class="role-title">老師</span>
               <span class="role-subtitle">課表與評量</span>
-            </button>
-            <button
-              type="button"
+            </label>
+            <label
               class="role-btn"
               :class="{ active: selectedRole === 'director' }"
-              :aria-pressed="selectedRole === 'director'"
-              @click="selectedRole = 'director'"
             >
-              <span class="role-icon role-icon-dual" aria-hidden="true">
-                <span class="role-icon-part">🧑‍💼</span>
-                <span class="role-icon-part">🖥️</span>
-              </span>
+              <input
+                class="role-input"
+                type="radio"
+                name="login-role"
+                value="director"
+                v-model="selectedRole"
+              />
               <span class="role-title">主任/櫃台</span>
               <span class="role-subtitle">含管理員 · 同入口</span>
-            </button>
+            </label>
           </div>
         </div>
         <div class="form-group">
@@ -82,12 +92,14 @@
   <DirectorRegister v-else-if="mode === 'director-register'" @switch-mode="mode = $event" />
   <div v-else-if="mode === 'forgot-password'" class="login-wrap">
     <div class="login-card">
+      <div class="login-brand-bar" aria-hidden="true" />
       <div class="login-header">
         <div class="logo-wrapper">
           <img :src="logoUrl" alt="全真一對一 Logo" class="login-logo" onerror="this.style.display='none'" />
         </div>
         <h1 class="login-title">忘記密碼</h1>
         <p class="login-subtitle">送出申請後請由主任或管理員協助重設</p>
+        <p class="login-trust">申請送出後不會自動改密碼，需管理端協助</p>
       </div>
 
       <div v-if="forgotError" class="login-error" role="alert">
@@ -205,6 +217,30 @@ const openForgotPassword = () => {
   mode.value = 'forgot-password';
 };
 
+const ROLE_ORDER = ['teacher', 'director'];
+const onRoleKeydown = (event) => {
+  if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) {
+    return;
+  }
+  event.preventDefault();
+  const idx = Math.max(0, ROLE_ORDER.indexOf(selectedRole.value));
+  let next = idx;
+  if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+    next = (idx + 1) % ROLE_ORDER.length;
+  } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+    next = (idx - 1 + ROLE_ORDER.length) % ROLE_ORDER.length;
+  } else if (event.key === 'Home') {
+    next = 0;
+  } else if (event.key === 'End') {
+    next = ROLE_ORDER.length - 1;
+  }
+  selectedRole.value = ROLE_ORDER[next];
+  const input = event.currentTarget?.querySelector?.(
+    `input.role-input[value="${ROLE_ORDER[next]}"]`,
+  );
+  input?.focus?.();
+};
+
 const handleLogin = async () => {
   if (lockSeconds.value > 0) return;
 
@@ -298,236 +334,240 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-/* 品牌專屬：高質感金桔/暖黃色彩漸層背景 */
+/* Login pilot — brand wash + DS tokens only (Epic #687). No glass / mesh / landing motion. */
 .login-wrap {
   min-height: 100vh;
   min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 32px 24px;
-  background: linear-gradient(-45deg, #FFD54F, #FFB300, #F57C00, #EF6C00);
-  background-size: 400% 400%;
-  animation: gradientBG 15s ease infinite;
-}
-@media (pointer: coarse) {
-  .login-wrap {
-    animation: none;
-    background-size: 100% 100%;
-  }
+  padding: 24px 16px;
+  background-color: var(--ds-canvas-soft);
+  background-image: linear-gradient(
+    180deg,
+    var(--ds-primary-wash) 0%,
+    var(--ds-canvas-soft) 38%,
+    var(--ds-canvas-soft) 100%
+  );
 }
 
-@keyframes gradientBG {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
-}
-
-/* 玻璃擬態 (Glassmorphism) 卡片設計 */
 .login-card {
-  background: rgba(255, 255, 255, 0.95);
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  border-radius: 20px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.2) inset;
+  position: relative;
+  background: var(--ds-canvas);
+  border: 1px solid var(--ds-hairline);
+  border-radius: 12px;
+  box-shadow: var(--ds-shadow-2);
   width: 100%;
   max-width: 420px;
   overflow: hidden;
-  animation: floatUp 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-}
-@media (min-width: 641px) {
-  .login-card {
-    background: rgba(255, 255, 255, 0.9);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-  }
 }
 
-@keyframes floatUp {
-  0% { transform: translateY(30px); opacity: 0; }
-  100% { transform: translateY(0); opacity: 1; }
+.login-brand-bar {
+  height: 4px;
+  width: 100%;
+  background: var(--ds-brand-gradient);
 }
 
-/* 頂部區域與 Logo */
 .login-header {
-  padding: 36px 32px 24px;
+  padding: 28px 24px 16px;
   text-align: center;
-  background: transparent;
   display: flex;
   flex-direction: column;
   align-items: center;
 }
 
 .logo-wrapper {
-  width: 140px;
-  height: 140px;
-  margin-bottom: 20px;
+  width: 112px;
+  height: 112px;
+  margin-bottom: 16px;
   border-radius: 50%;
-  background: #fff;
-  padding: 0px; /* 移除白邊 */
-  box-shadow: 0 6px 16px rgba(245, 124, 0, 0.25);
+  background: var(--ds-canvas);
+  border: 1px solid var(--ds-hairline);
+  box-shadow: var(--ds-shadow-1);
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden; /* 確保圖片不超出圓角 */
+  overflow: hidden;
 }
 
 .login-logo {
   width: 100%;
   height: 100%;
-  object-fit: cover; /* 讓 Logo 填滿整個圓形區塊，消除透明留白 */
-  transform: scale(1.15); /* 微微放大抵消圖片自帶的留白 */
+  object-fit: cover;
+  transform: scale(1.15);
 }
 
 .login-title {
-  font-size: 1.5rem;
-  font-weight: 800;
-  color: #37474f;
-  margin: 0 0 6px;
-  letter-spacing: 0.03em;
+  font-size: 1.375rem;
+  font-weight: 700;
+  color: var(--ds-ink);
+  margin: 0 0 4px;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
 }
 
 .login-subtitle {
-  font-size: 0.85rem;
+  font-size: 0.8125rem;
   font-weight: 500;
-  color: #78909c;
+  color: var(--ds-ink-mute);
   margin: 0;
-  letter-spacing: 0.01em;
+}
+
+.login-trust {
+  margin: 10px 0 0;
+  max-width: 28ch;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--ds-ink-secondary);
+  text-wrap: pretty;
 }
 
 .login-error {
   margin: 0 24px;
-  padding: 12px 16px;
-  background: rgba(255, 235, 238, 0.9);
-  color: #d32f2f;
-  border-radius: 12px;
-  border-left: 4px solid #d32f2f;
+  padding: 12px 14px;
+  background: var(--ds-danger-wash);
+  color: var(--ds-danger);
+  border-radius: 8px;
+  border-left: 3px solid var(--ds-danger);
   font-size: 0.875rem;
   line-height: 1.4;
   font-weight: 500;
 }
-.login-error-hint { display: block; margin-top: 8px; }
-.login-error-hint a { color: #b71c1c; text-decoration: underline; font-weight: 600; }
+.login-error-hint {
+  display: block;
+  margin-top: 8px;
+  color: var(--ds-ink-secondary);
+  font-weight: 500;
+}
 
 .login-first-time {
-  margin: 16px 24px 0;
-  padding: 12px 16px;
-  background: rgba(255, 243, 224, 0.9);
-  border-radius: 12px;
-  border-left: 4px solid #ff9800;
+  margin: 12px 24px 0;
+  padding: 12px 14px;
+  background: var(--ds-warning-wash);
+  color: var(--ds-warning);
+  border-radius: 8px;
+  border-left: 3px solid var(--ds-warning);
   font-size: 0.8125rem;
   text-align: center;
   font-weight: 600;
 }
-.login-first-time a {
-  color: #e65100;
-  text-decoration: none;
-}
-.login-first-time a:hover { text-decoration: underline; }
 
 .login-form {
-  padding: 24px 28px 32px;
+  padding: 16px 24px 24px;
 }
 
 .login-form .form-group {
-  margin-bottom: 22px;
+  margin-bottom: 16px;
 }
+
 .login-role-switch {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 8px;
 }
+
 .role-btn {
-  border: 2px solid rgba(120, 144, 156, 0.25);
-  background: rgba(255, 255, 255, 0.85);
-  border-radius: 14px;
+  position: relative;
+  border: 1px solid var(--ds-hairline);
+  background: var(--ds-canvas);
+  border-radius: 8px;
   padding: 12px 10px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  cursor: pointer;
-  transition: all 0.22s ease;
-}
-.role-btn:hover {
-  transform: translateY(-1px);
-  border-color: rgba(245, 124, 0, 0.55);
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.08);
-}
-.role-btn.active {
-  border-color: #F57C00;
-  background: linear-gradient(180deg, #FFF8E1 0%, #FFFFFF 100%);
-  box-shadow: 0 0 0 4px rgba(245, 124, 0, 0.14);
-}
-.role-btn:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 4px rgba(245, 124, 0, 0.2);
-}
-.role-icon {
-  font-size: 1.35rem;
-  line-height: 1;
-}
-.role-icon-dual {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   gap: 2px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
 }
-.role-icon-dual .role-icon-part {
-  font-size: 1.1rem;
-  line-height: 1;
+
+.role-input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  pointer-events: none;
 }
+
+.role-btn:hover {
+  border-color: var(--ds-brand-orange);
+  background: var(--ds-primary-wash);
+}
+
+/* Selected ≠ focus: active uses border/wash only; ring only on :focus-visible */
+.role-btn.active {
+  border-color: var(--ds-primary);
+  background: var(--ds-primary-wash);
+  box-shadow: none;
+}
+
+.role-btn:has(.role-input:focus-visible) {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ds-focus-ring);
+}
+
 .role-title {
-  font-size: 0.95rem;
-  font-weight: 800;
-  color: #37474f;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--ds-ink);
 }
+
 .role-subtitle {
-  font-size: 0.74rem;
-  color: #78909c;
+  font-size: 0.75rem;
+  color: var(--ds-ink-mute);
 }
 
 .login-form .form-group label {
   display: block;
-  font-size: 0.85rem;
+  font-size: 0.8125rem;
   font-weight: 600;
-  color: #455a64;
-  margin-bottom: 8px;
-  margin-left: 4px;
+  color: var(--ds-ink-secondary);
+  margin-bottom: 6px;
 }
 
 .login-form .form-group input,
 .login-form .form-group select,
 .login-form .form-group textarea {
   width: 100%;
-  padding: 14px 16px;
-  border: 2px solid transparent;
-  border-radius: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--ds-hairline-input);
+  border-radius: 8px;
   font-size: 1rem;
-  background: rgba(55, 71, 79, 0.04);
-  color: #263238;
+  background: var(--ds-canvas-soft);
+  color: var(--ds-ink);
   font-weight: 500;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .login-form .form-group input::placeholder,
 .login-form .form-group textarea::placeholder {
-  color: #90a4ae;
+  color: var(--ds-ink-mute);
   font-weight: 400;
 }
 
 .login-form .form-group input:hover,
 .login-form .form-group select:hover,
 .login-form .form-group textarea:hover {
-  background: rgba(55, 71, 79, 0.08);
+  border-color: var(--ds-brand-orange);
 }
 
 .login-form .form-group input:focus,
 .login-form .form-group select:focus,
 .login-form .form-group textarea:focus {
   outline: none;
-  background: #fff;
-  border-color: #F57C00;
-  box-shadow: 0 0 0 4px rgba(245, 124, 0, 0.15);
+  background: var(--ds-canvas);
+  border-color: var(--ds-primary);
+  box-shadow: 0 0 0 3px var(--ds-focus-ring);
+}
+
+.login-form .form-group input:focus-visible,
+.login-form .form-group select:focus-visible,
+.login-form .form-group textarea:focus-visible,
+.login-btn:focus-visible,
+.login-footer-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ds-focus-ring);
 }
 
 .login-form .form-group textarea {
@@ -537,79 +577,84 @@ onBeforeUnmount(() => {
 
 .login-btn {
   width: 100%;
-  margin-top: 12px;
-  padding: 14px;
-  font-size: 1.05rem;
+  margin-top: 4px;
+  padding: 12px 16px;
+  font-size: 1rem;
   font-weight: 700;
-  color: #fff;
-  background: linear-gradient(135deg, #FFB300 0%, #F57C00 100%);
+  color: var(--ds-on-cta);
+  background: var(--ds-cta);
   border: none;
-  border-radius: 12px;
+  border-radius: 999px;
   cursor: pointer;
-  box-shadow: 0 4px 15px rgba(245, 124, 0, 0.3);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  letter-spacing: 0.02em;
+  box-shadow: var(--ds-shadow-1);
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+  letter-spacing: 0.01em;
 }
 
 .login-btn:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(245, 124, 0, 0.4);
-  background: linear-gradient(135deg, #FFCA28 0%, #EF6C00 100%);
+  background: var(--ds-cta-hover);
+  box-shadow: var(--ds-shadow-2);
 }
 
 .login-btn:active:not(:disabled) {
-  transform: translateY(1px);
-  box-shadow: 0 2px 10px rgba(245, 124, 0, 0.3);
+  background: var(--ds-cta-press);
 }
 
 .login-btn:disabled {
-  background: #cfd8dc;
-  color: #90a4ae;
+  background: var(--ds-hairline);
+  color: var(--ds-ink-mute);
   box-shadow: none;
   cursor: not-allowed;
-  transform: none;
 }
 
 .login-footer {
-  padding: 20px 28px 28px;
+  padding: 16px 24px 20px;
   display: flex;
-  gap: 16px;
+  gap: 8px;
   justify-content: center;
   flex-wrap: wrap;
-  border-top: 1px solid rgba(0, 0, 0, 0.06);
-  background: rgba(255, 255, 255, 0.4);
-}
-.login-parent-hint {
-  width: 100%;
-  margin: 0;
-  font-size: 0.85rem;
-  color: #546e7a;
-  text-align: center;
+  border-top: 1px solid var(--ds-hairline);
+  background: var(--ds-canvas-soft);
 }
 
 .login-footer-btn {
-  padding: 10px 20px;
-  font-size: 0.85rem;
+  padding: 8px 14px;
+  font-size: 0.8125rem;
   font-weight: 600;
-  color: #F57C00;
-  background: #fff;
-  border: 1px solid rgba(245, 124, 0, 0.3);
-  border-radius: 10px;
+  color: var(--ds-primary);
+  background: var(--ds-canvas);
+  border: 1px solid var(--ds-hairline);
+  border-radius: 999px;
   cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.02);
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 .login-footer-btn:hover {
-  background: #FFF8E1;
-  border-color: #FFB300;
-  color: #EF6C00;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 10px rgba(245, 124, 0, 0.1);
+  background: var(--ds-primary-wash);
+  border-color: var(--ds-brand-orange);
+  color: var(--ds-primary-deep);
 }
+
 @media (max-width: 560px) {
   .login-role-switch {
     grid-template-columns: 1fr;
+  }
+  .login-header {
+    padding: 24px 20px 12px;
+  }
+  .login-form {
+    padding: 12px 20px 20px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .role-btn,
+  .login-form .form-group input,
+  .login-form .form-group select,
+  .login-form .form-group textarea,
+  .login-btn,
+  .login-footer-btn {
+    transition: none;
   }
 }
 </style>

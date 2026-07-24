@@ -146,6 +146,7 @@ __pycache__/
 
 # Local session artifacts
 /ci-artifacts/
+/artifacts/
 
 # Production repair snapshots may contain student data — never commit
 backend/storage/app/repair-snapshots/

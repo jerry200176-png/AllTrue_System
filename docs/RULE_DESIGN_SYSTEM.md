@@ -38,14 +38,20 @@ AllTrue 的視覺方向是 **淺色優先、專業可信、為「資料與金流
 
 | DS Token | 值（light） | 用途 | 對應既有變數 |
 |---|---|---|---|
-| `--ds-primary` | `#EF6C00` | 主 CTA、連結、焦點（logo 橘黃暖色）| `--primary` `--accent` |
-| `--ds-primary-deep` | `#E65100` | gradient 中段、hover | `--accent-hover` |
-| `--ds-primary-press` | `#D84315` | 按下狀態 | — |
+| `--ds-primary` | `#EF6C00` | 連結、焦點、選中強調（logo 橘黃）；**不可**單獨當白字 CTA 底 | `--primary` `--accent` |
+| `--ds-primary-deep` | `#E65100` | hover 加深、次要強調 | `--accent-hover` |
+| `--ds-primary-press` | `#D84315` | press（非白字大段文字） | — |
 | `--ds-primary-soft` | `#FFB300` | 圖表/UI 點綴（amber）| `--primary-light` |
 | `--ds-primary-wash` | `#FFF8E1` | 淡奶油暖底（tag/選中底）| `--primary-bg` |
-| `--ds-brand-amber` | `#FFB300` | 品牌 amber（hero gradient 起點）| — |
+| `--ds-cta` | `#C2410C` | **實心主 CTA 底**（白字 ≥4.5:1 AA） | — |
+| `--ds-cta-hover` | `#9A3412` | CTA hover | — |
+| `--ds-cta-press` | `#7C2D12` | CTA press | — |
+| `--ds-on-cta` | `#ffffff` | CTA 上的字／圖示 | — |
+| `--ds-on-brand` | `#0d253d` | 暖色品牌底（amber/orange/wash）上的字 | — |
+| `--ds-on-primary` | `#ffffff` | 僅用於大色塊圖示等；**文字 CTA 請用 `--ds-on-cta`** | — |
+| `--ds-brand-amber` | `#FFB300` | 品牌 amber（hero／頂條，非文字 CTA）| — |
 | `--ds-brand-orange` | `#F57C00` | 品牌 orange（kicker/強調）| — |
-| `--ds-brand-gradient` | `linear-gradient(135deg,#FFB300,#F57C00)` | hero/header 品牌暖色條 | — |
+| `--ds-brand-gradient` | `linear-gradient(135deg,#FFB300,#F57C00)` | **裝飾**頂條／header；禁止白字疊在此上當 CTA | — |
 | `--ds-ink` | `#0d253d` | 內文主色（navy，非純黑）| `--text` `--porsche-ink` |
 | `--ds-ink-secondary` | `#273951` | 次要文字 | — |
 | `--ds-ink-mute` | `#64748d` | 輔助文字、表頭、說明 | `--text-light` `--porsche-ink-soft` |
@@ -87,7 +93,7 @@ AllTrue 的視覺方向是 **淺色優先、專業可信、為「資料與金流
 
 | 元件 | 規格 |
 |---|---|
-| **Button / Primary** | 藥丸；底 `--ds-primary`，字白；padding 8–16；hover→`--ds-primary-deep`，press→`--ds-primary-press`。一區塊一顆。 |
+| **Button / Primary** | 藥丸；底 `--ds-cta`，字 `--ds-on-cta`（AA ≥4.5:1）；hover→`--ds-cta-hover`，press→`--ds-cta-press`。一區塊一顆。**禁止**白字疊 `--ds-brand-gradient`／`--ds-primary-soft`。 |
 | **Button / Secondary** | 藥丸；白底、`--ds-primary` 字與 1px 邊。 |
 | **Button / Ghost** | 透明底、`--ds-ink` 字、`--ds-hairline` 邊。 |
 | **Button / Danger** | 藥丸；底 `--ds-danger`，字白。 |
@@ -101,7 +107,8 @@ AllTrue 的視覺方向是 **淺色優先、專業可信、為「資料與金流
 ## 7. Forbidden Patterns（禁止）
 
 - 純黑 `#000` 內文（用 navy `--ds-ink`）。
-- 用 navy/indigo 等冷色當主 CTA（主色一律 `--ds-primary` 品牌橘黃）。
+- 用 navy/indigo 等冷色當主 CTA（主 CTA 用 `--ds-cta` 暖色深橘）。
+- 白字疊在 `--ds-brand-gradient`／`--ds-primary`／`--ds-primary-soft` 當可讀 CTA（對比不足 AA）。
 - 行銷頁彩色 gradient mesh 進後台。
 - 一個元件超過兩個 accent 色。
 - 金額/數字不套 tabular。
@@ -152,6 +159,7 @@ Epic：[#687](https://github.com/jerry200176-png/AllTrue_System/issues/687)
 | Wave 2 頁面 | 金流三頁（TuitionCollection/Report/PayReport）| [#694](https://github.com/jerry200176-png/AllTrue_System/issues/694) | Open |
 | Wave 2 頁面 | AttendancePage | [#695](https://github.com/jerry200176-png/AllTrue_System/issues/695) | Open |
 | Wave 3 頁面 | ParentPortal / ParttimePayroll / BugReports 等 | [#696](https://github.com/jerry200176-png/AllTrue_System/issues/696) | Open |
+| Wave 3 頁面 | **Login.vue DS polish（pilot）** | [#1386](https://github.com/jerry200176-png/AllTrue_System/pull/1386) | Open（驗收中） |
 | 元件 | 橫切 components（modal/Select/排課器）母單 | [#701](https://github.com/jerry200176-png/AllTrue_System/issues/701) | Open |
 | UX | 導覽教學去 emoji + Popover DS | [#703](https://github.com/jerry200176-png/AllTrue_System/issues/703) | Open |
 | 產品決策 | EngagementRank/SystemTrust/AmbientMusic 收斂 | [#704](https://github.com/jerry200176-png/AllTrue_System/issues/704) | **待 CEO 決策** |
