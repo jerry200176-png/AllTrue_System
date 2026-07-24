@@ -1,0 +1,51 @@
+---
+description: >-
+  品牌／登入／首屏 UI 品味閘門。防止再犯 #1386：為 hex KPI 拆掉氣氛後變醜。
+  觸碰 Login、auth、landing、hero 時必讀。
+globs: "frontend/src/pages/Login.vue,frontend/src/**/*{Login,Auth,Hero,Landing}*,frontend/src/styles.css"
+alwaysApply: false
+---
+
+# 品牌表面品味閘門（#1386 → #1412）
+
+## 教訓
+
+Cursor Agent 的 #1386 把 Login 的 glass / 暖橘 mesh 拆掉換 DS flat，Founder 當場退回（#1412）。
+**Token 化 ≠ 扁平化。** Hex KPI 綠 ≠ 好看。
+
+## 表面分類（先判再改）
+
+| 表面 | 例子 | 目標 | 禁止 |
+|---|---|---|---|
+| **Brand / Auth** | `Login.vue`、忘記密碼、公開 landing | 品牌信任、氣氛、一屏一 CTA | 為 hex／「去 AI」拆既有視覺 |
+| **Product / Ops** | 課表、金流、點名、列表 | 淺色、密、可掃 | 行銷 mesh 灌進表格後台 |
+
+## 硬規則
+
+```
+❌ 未獲 Founder 視覺 GO，改寫 Login / 品牌首屏整體 look
+❌ 以「RULE 禁 mesh」「hex KPI」「去 AI 化」拆掉 Login 氣氛
+❌ 只看 CI / hex / a11y 就宣稱 UI polish 完成
+✅ raw hex 收進 --ds-*，但 before/after 必須一樣好看或更好
+✅ AA、focus-visible、reduced-motion：疊在既有視覺上，不換皮
+```
+
+Brand/Auth PR checklist：before/after 截圖（桌面+手機）→ 保留 mesh/glass/motion 寫進 PR → Founder GO 再 merge。
+
+## Founder star 品味基準
+
+實作前對齊（jerry200176-png stars），**學方向不照抄元件**：
+
+| Repo | 學什麼 |
+|---|---|
+| `Leonxlnx/taste-skill` | 反 slop；先 brief；VARIANCE/MOTION/DENSITY |
+| `pbakaus/impeccable` | brand vs product 分流；critique 再 ship |
+| `VoltAgent/awesome-design-md` | 真品牌 DESIGN.md，禁 AI 紫漸層模板 |
+| `shadcn-ui/ui` + `radix-ui/primitives` | 可及性與品質，不是「扁平才專業」 |
+| `carbon` / `fluentui` / `primer` | **Ops** denser 語言，勿拿去換 Login 皮 |
+| `vue-vben-admin` / `filament` | 營運後台密度 |
+| `pacifio/ui` | 高密度多表面；Login 勿做成空卡片 |
+| `open-props` | token 服務設計，不是刪設計 |
+| `ui-ux-pro-max-skill` | 專業 UI 判斷 |
+
+衝突時：**Founder 眼睛 > hex KPI > 字面禁令**。細節見 `docs/RULE_DESIGN_SYSTEM.md` §1.1 / §7。

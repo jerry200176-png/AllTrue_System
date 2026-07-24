@@ -1,3 +1,11 @@
+## 2026-07-24 — docs: 品牌表面品味閘門（防再犯 #1386）
+
+- 新增 `.cursor/rules/frontend-brand-taste.mdc`：Brand/Auth vs Ops 分流；Founder star 品味基準。
+- `RULE_DESIGN_SYSTEM.md` §1.1 / §7：Login 可保留 glass/mesh；禁為 hex KPI 拆氣氛。
+- `module-frontend.mdc` 指向該閘門。
+
+開發備註：#1386 Agent 拆光 Login → #1412 還原；下次 UI 對齊 taste-skill / impeccable / awesome-design-md 等 star。
+
 ## 2026-07-24 — revert: 登入頁恢復 #1386 前視覺
 
 - `Login.vue` 退回 DS polish pilot 之前的介面（玻璃／品牌 mesh 等）。
