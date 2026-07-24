@@ -566,6 +566,8 @@
       :day-label="dayLabel"
       :day-of-week-from-date="dayOfWeekFromDate"
       :compute-end-time="computeEndTime"
+      :error="rescheduleError"
+      :submitting="rescheduleSubmitting"
       @close="showRescheduleModal = false"
       @submit="submitReschedule"
       @query-makeup="fetchMakeupSlots"
@@ -2813,6 +2815,7 @@ const loadCourses = async (page = 1) => {
 
 const {
   showRescheduleModal, rescheduleCourse, rescheduleForm, rescheduleSessionOptions,
+  rescheduleSubmitting, rescheduleError,
   openReschedule, onRescheduleNewStartChange, submitReschedule,
   showMakeupSlotsModal, makeupLoading, makeupDateRange, availableMakeupSlots,
   makeupSlotsGrouped, fetchMakeupSlots, selectMakeupSlot,
@@ -3990,34 +3993,34 @@ onUnmounted(() => {
   font-size: 1em;
 }
 
-/* ----- Filters ----- */
+/* ----- Filters (Epic D denser ops) ----- */
 .filter-bar {
-  margin-top: 16px;
-  padding: 14px;
+  margin-top: 12px;
+  padding: 10px 12px;
   border: 1px solid var(--ds-hairline);
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--ds-canvas-soft);
   position: relative;
   z-index: 1;
 }
 
 .filter-bar.grid {
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px 10px;
 }
 
 .filter-field label {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--ds-ink-mute);
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
 .filter-field input,
 .filter-field select {
-  padding: 9px 12px;
-  border-radius: 8px;
-  font-size: 14px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 13px;
   border: 1px solid var(--ds-hairline-input);
   background: var(--ds-canvas);
   color: var(--ds-ink);
@@ -4378,9 +4381,10 @@ onUnmounted(() => {
   width: 100%;
   min-width: 540px;
   border-collapse: separate;
-  border-spacing: 0 8px;
-  font-size: 13.5px;
-  padding: 0 10px 10px;
+  border-spacing: 0 4px;
+  font-size: 13px;
+  padding: 0 8px 8px;
+  font-variant-numeric: tabular-nums;
 }
 
 .course-table thead {
@@ -4398,7 +4402,7 @@ onUnmounted(() => {
 }
 
 .course-table th {
-  padding: 12px 10px 6px;
+  padding: 8px 8px 4px;
   text-align: left;
   font-weight: 700;
   color: var(--ds-ink-secondary);
@@ -4406,22 +4410,22 @@ onUnmounted(() => {
 }
 
 .course-table td {
-  padding: 12px 10px;
+  padding: 8px;
   border-top: 1px solid var(--ds-hairline);
   border-bottom: 1px solid var(--ds-hairline);
   background: var(--ds-canvas);
   vertical-align: middle;
   word-break: keep-all;
-  line-height: 1.4;
+  line-height: 1.35;
 }
 .course-table .course-row td:first-child {
   border-left: 1px solid var(--ds-hairline);
-  border-radius: 16px 0 0 16px;
-  box-shadow: inset 4px 0 0 var(--ds-primary);
+  border-radius: 10px 0 0 10px;
+  box-shadow: inset 3px 0 0 var(--ds-primary);
 }
 .course-table .course-row td:last-child {
   border-right: 1px solid rgba(226, 232, 240, 0.82);
-  border-radius: 0 16px 16px 0;
+  border-radius: 0 10px 10px 0;
 }
 
 .course-row:hover {

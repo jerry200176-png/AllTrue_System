@@ -1,3 +1,11 @@
+## 2026-07-24 — fix: Epic A/D Phase 1 — 有效堂次共用過濾 + 調課 dialog 內錯誤
+
+- 課程管理與行事曆共用 `sessionOccurrenceFilter`（有效堂次／幽靈取消／額度例外）。
+- 調課失敗（含衝堂名單）改顯示在 dialog 內；提交中 disable，拿掉多餘 `confirm()`。
+- 課程管理篩選列與表格改 denser（Epic D 逐步掃讀密度）。
+
+開發備註：承接 #1402；對齊 RFC Platform Opt Phase 1（Epic A 收尾 + Epic D 噪音／確認 UX）。
+
 ## 2026-07-24 — fix: 調課後課表穩定（系列契約 vs 單堂例外）
 
 - 課程管理預設只顯示有效堂次；已取消／內部調課 bookkeeping 改為可展開摘要，不再幽靈搶版面。
