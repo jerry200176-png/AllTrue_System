@@ -232,7 +232,6 @@ export function useCourseSessionsDisplay({
 
   const rowOccupiesPurchasedQuota = (row) => {
     if (row?.isProjected) return false;
-    if (row?.isContractException) return false;
     const status = String(row?.status || '').toLowerCase();
     return !SESSION_NOT_OCCUPYING_QUOTA.has(status);
   };

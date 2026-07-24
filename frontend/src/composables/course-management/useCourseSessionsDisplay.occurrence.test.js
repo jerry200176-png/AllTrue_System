@@ -20,7 +20,6 @@ function primaryUnits(rows) {
 
 function occupiesQuota(row) {
   if (row?.isProjected) return false;
-  if (row?.isContractException) return false;
   const status = String(row?.status || '').toLowerCase();
   return !['cancelled', 'leave', 'leave_adjusted', 'excused'].includes(status);
 }
@@ -36,8 +35,8 @@ if (primary.map((r) => r.id).join(',') !== '1,4') {
   process.exit(1);
 }
 
-if (occupiesQuota({ status: 'scheduled', isContractException: true }) !== false) {
-  console.error('FAIL exception should not occupy quota');
+if (occupiesQuota({ status: 'scheduled', isContractException: true }) !== true) {
+  console.error('FAIL a rescheduled occurrence must still occupy purchased quota');
   process.exit(1);
 }
 if (occupiesQuota({ status: 'scheduled', isContractException: false }) !== true) {
