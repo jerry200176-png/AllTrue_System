@@ -1,4 +1,10 @@
 ## 2026-07-22 — fix: 課程備註可正確儲存 emoji 與完整中文
+## 2026-07-22 — fix: 建課衝突改為明確決策（試聽／加購／續報／獨立）
+
+- 遇到同科進行中課程時，主任可選「建立試聽」「加購」「下一期續報」或「建立獨立課程」，不再只有含糊的強制建立。
+- 建立獨立課程須填寫原因，系統會留下操作者與既有合約紀錄。
+
+開發備註：#1379 follow-up。`EnrollmentConflictDecisionModal` + `force_reason` 審計（`create_trial`／`renewal_next_term`／`independent_parallel`）。尚非 Course Continuity 最終設計。
 ## 2026-07-22 — fix: 試聽建課不再被「同科同師日期重疊」擋死；行事曆快速排課補上強制建立
 
 - 新建「試聽」課程時，不再套用續報用的 `overlapping_active_course` 攔截（試聽本意是旁聽正式課堂）；同科重複試聽仍會提示。
