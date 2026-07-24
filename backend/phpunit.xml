@@ -26,7 +26,7 @@
         <env name="DB_PORT" value="3306" force="true"/>
         <env name="DB_DATABASE" value="AllTrue_test" force="true"/>
         <env name="DB_USERNAME" value="admin" force="true"/>
-        <env name="DB_PASSWORD" value="fLcLUu3Imi7RuFhT1jfwIH1" force="true"/>
+        <!-- CI/local runners must provide DB_PASSWORD; never commit credentials. -->
         <env name="MAIL_MAILER" value="array" force="true"/>
         <env name="QUEUE_CONNECTION" value="sync" force="true"/>
         <env name="SESSION_DRIVER" value="array" force="true"/>
