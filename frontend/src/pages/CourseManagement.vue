@@ -492,39 +492,16 @@
       @submit="submitRenewMonthly"
     />
 
-    <!-- Duplicate Course Intercept Modal -->
-    <div v-if="showDuplicateInterceptModal" class="modal-overlay" @click.self="showDuplicateInterceptModal = false">
-      <div class="modal" style="width: 480px;">
-        <h3 style="color: #e65100;">⚠️ 此學生已有進行中的課程</h3>
-        <p style="margin-bottom: 12px;">
-          此學生目前有以下進行中的課程，通常續報應使用「加購堂數」延續原課程，而非新增：
-        </p>
-        <div style="max-height: 200px; overflow-y: auto; margin-bottom: 16px;">
-          <table class="course-table" style="font-size: 13px;">
-            <thead>
-              <tr>
-                <th>科目</th>
-                <th>類型</th>
-                <th>剩餘堂數</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="c in duplicateConflicts" :key="c.existing_course_id">
-                <td>{{ getSubjectLabel(c.subject_name) || c.subject_name }}</td>
-                <td>{{ { one_on_one: '一對一', one_on_two: '一對二', one_on_three: '一對三', tutoring: '輔導' }[c.class_type] || c.class_type }}</td>
-                <td :style="{ color: (c.remaining_sessions ?? 0) <= 2 ? '#c62828' : 'inherit', fontWeight: 600 }">{{ c.remaining_sessions ?? 0 }} 堂</td>
-                <td><button class="small btn-renew-warn" @click="interceptGoToPurchaseCM(c)">去加購</button></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <div class="modal-actions" style="gap: 8px;">
-          <button class="ghost" @click="showDuplicateInterceptModal = false" :disabled="forceSubmitting">取消</button>
-          <button class="ghost" @click="forceCreateCourse()" :disabled="forceSubmitting">{{ forceSubmitting ? '建立中...' : '我知道，仍要新增課程' }}</button>
-        </div>
-      </div>
-    </div>
+    <EnrollmentConflictDecisionModal
+      :show="showDuplicateInterceptModal"
+      :conflicts="duplicateConflicts"
+      :class-type="interceptPendingClassType"
+      :submitting="forceSubmitting"
+      :subject-label-fn="getSubjectLabel"
+      @cancel="showDuplicateInterceptModal = false"
+      @purchase="interceptGoToPurchaseCM"
+      @decision="onEnrollmentConflictDecision"
+    />
 
     <QuickAddSessionModal
       :show="showQuickAddSessionModal"
@@ -866,6 +843,8 @@ import { useRescheduleAndMakeup } from '../composables/course-management/useResc
 import { useSessionEditFlow } from '../composables/course-management/useSessionEditFlow';
 import CourseEditForm from '../components/CourseEditForm.vue';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
+import EnrollmentConflictDecisionModal from '../components/EnrollmentConflictDecisionModal.vue';
+import { buildForceOverrideFields } from '../lib/enrollmentConflictDecision';
 import PurchaseSessionsModal from '../components/course-management/PurchaseSessionsModal.vue';
 import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal.vue';
 import QuickAddSessionModal from '../components/course-management/QuickAddSessionModal.vue';
@@ -1369,6 +1348,7 @@ const showDuplicateInterceptModal = ref(false);
 const duplicateConflicts = ref([]);
 const interceptPendingGroup = ref(null);
 const interceptOriginalPayload = ref(null);
+const interceptPendingClassType = ref('');
 const forceSubmitting = ref(false);
 
 async function openBackfillModalForGroup(group) {
@@ -1409,7 +1389,7 @@ function proceedOpenBackfillForGroup(group) {
   loadRoomsForBranch();
 }
 
-async function forceCreateCourse() {
+async function onEnrollmentConflictDecision(decision) {
   const payload = interceptOriginalPayload.value;
   if (!payload) {
     interceptPendingGroup.value
@@ -1419,14 +1399,22 @@ async function forceCreateCourse() {
   }
   forceSubmitting.value = true;
   try {
-    const result = await createUniversalClassSchedule({ ...payload, force: true });
+    const result = await createUniversalClassSchedule({
+      ...payload,
+      ...buildForceOverrideFields(decision),
+    });
     showDuplicateInterceptModal.value = false;
     interceptOriginalPayload.value = null;
     const created = Number(result?.created_confirmed_sessions ?? 0) + Number(result?.created_future_sessions ?? 0);
-    alert(`已強制建立 ${created} 堂課`);
+    const label = decision?.force_reason === 'create_trial'
+      ? '已建立試聽'
+      : decision?.force_reason === 'renewal_next_term'
+        ? '已建立下一期續報'
+        : '已建立獨立課程';
+    alert(`${label}（${created} 堂）`);
     await loadCourses();
   } catch (err) {
-    alert(err?.message || '強制建立失敗，請稍後再試');
+    alert(err?.message || '建立失敗，請稍後再試');
   } finally {
     forceSubmitting.value = false;
   }
@@ -1471,6 +1459,7 @@ function handleSchedulerDuplicateCM(evt) {
     class_type: c.class_type || '',
   }));
   interceptOriginalPayload.value = evt?.originalPayload || null;
+  interceptPendingClassType.value = String(evt?.originalPayload?.class_type || '');
   showDuplicateInterceptModal.value = true;
 }
 

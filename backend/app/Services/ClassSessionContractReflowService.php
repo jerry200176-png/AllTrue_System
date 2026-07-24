@@ -57,7 +57,9 @@ class ClassSessionContractReflowService
             // old date, causing that same schedule to cascade forward twice.
             $scheduleIdsByMove = [];
             foreach ($moves as $index => $move) {
-                if ($move['oldDate'] === null || $move['oldDate'] === $move['newDate']) {
+                // Same-date time shifts still need schedule anchors retargeted
+                // (uq_class_session_slot is date+start; schedules mirror StartTime).
+                if ($move['oldDate'] === null || $move['oldDate'] === '') {
                     continue;
                 }
                 $scheduleQuery = Schedule::query()

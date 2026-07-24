@@ -3,6 +3,25 @@
 - `Login.vue` 移除 glassmorphism／動態 gradient mesh／裝飾 emoji；表單與狀態改用 `--ds-*`。
 - 新增 AA CTA tokens（`--ds-cta`／`--ds-on-cta`）；角色改 native radio card；raw hex 35→0。
 - 長期截圖：`docs/reviews/login-polish-1386/`。
+## 2026-07-22 — fix: 課程備註可正確儲存 emoji 與完整中文
+## 2026-07-22 — fix: 建課衝突改為明確決策（試聽／加購／續報／獨立）
+
+- 遇到同科進行中課程時，主任可選「建立試聽」「加購」「下一期續報」或「建立獨立課程」，不再只有含糊的強制建立。
+- 建立獨立課程須填寫原因，系統會留下操作者與既有合約紀錄。
+
+開發備註：#1379 follow-up。`EnrollmentConflictDecisionModal` + `force_reason` 審計（`create_trial`／`renewal_next_term`／`independent_parallel`）。尚非 Course Continuity 最終設計。
+## 2026-07-22 — fix: 試聽建課不再被「同科同師日期重疊」擋死；行事曆快速排課補上強制建立
+
+- 新建「試聽」課程時，不再套用續報用的 `overlapping_active_course` 攔截（試聽本意是旁聽正式課堂）；同科重複試聽仍會提示。
+- 智慧行事曆「快速排課」遇到重複／重疊課程時，改跳出「仍要新增課程」視窗，不再靜默失敗。
+
+開發備註：`EnrollmentService` 對 `class_type=trial` 跳過 #805 重疊守衛；`SmartCalendar` 補 `@duplicate-course` + force modal（對齊課程管理／學生管理）。回歸 `OverlappingCourseGuardTest::test_trial_course_is_not_blocked_by_overlapping_active_course`。
+## 2026-07-24 — chore: 安裝 taste-skill（設計品味 Agent 技能）
+
+- 建課備註可含 emoji、中文、換行與標點，不再因資料庫字元集錯誤整筆失敗。
+- 若字元集尚未升級，系統回傳明確錯誤且不會留下半成品課程／堂次（不會默默刪除 emoji）。
+
+開發備註：Refs #1378／F6。migration `2026_07_22_130000_convert_student_class_free_text_to_utf8mb4`；過渡 422 `memo_charset_incompatible`。Production migrate 需 Founder GO：`docs/runbooks/1378-memo-utf8mb4-execution-package.md`。回歸 `StudentClassMemoUtf8mb4Test`。
 
 ## 2026-07-22 — ops: in-app bug closure queue exhausted (active engineering)
 
@@ -657,3 +676,4 @@ Fixed：班級行事曆若週次篩選暫時隱藏某課程，已實際存在的
 ## 2026-06-01 — chore(deps): composer 鎖定 PHP 8.2 平台 + 月初帳務測試健全化
 
 開發備註：(1) `backend/composer.json` 設 `config.platform.php=8.2.30`，避免 dependabot/`composer update` 解析出需 PHP 8.3/8.4 的相依（如 `symfony/css-selector` v8、`zipstream` 3.2.2）而在 8.2 runtime 裝不起來（dependabot PR #643 即此症）。順帶安全升版：`symfony/routing` v5.4.48→v5.4.53、`symfony/polyfill-intl-idn` v1.33.0→v1.38.1（清掉 2 筆 OSV 發現，TD-061）、`guzzle` 7.10.5、`maatwebsite/excel` 3.1.69，並把 `laravel/framework` 由 dev 分支 pin 至穩定 `v8.83.29`。(2) `CoursePackageMonthlyBillingTest` 月結堂數測試夾住堂次日期 ≤ 今天，修正每月 1 號（月內未來日期被 `alerts/tuition` 正確排除）造成的時間敏感失敗。
+

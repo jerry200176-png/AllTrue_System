@@ -1,7 +1,0 @@
-{
-  "schema_version": "1.0",
-  "provenance_type": "human-authored",
-  "declared_at": "2026-07-20T02:10:00Z",
-  "author": "cursor-cloud-agent",
-  "note": "Cloud Agent sandbox (/workspace): agent-preflight allowlist is WSL task worktree only; Issues API 403. Delivery via feature branch + PR. Task: #1078 voided-LR nightly backfill restore."
-}
