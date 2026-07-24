@@ -72,12 +72,58 @@ class OverlappingCourseGuardTest extends TestCase
             ->postJson('/api/v1/class-sessions/batch', $this->batchPayload($student->id, $teacherId, $second, 'one_on_two'));
         $res2->assertStatus(409)->assertJson(['code' => 'overlapping_active_course']);
 
-        // 勾選強制建立 → 放行
+        // 勾選強制建立 → 須帶審計原因（獨立平行課）
         $forced = $this->batchPayload($student->id, $teacherId, $second, 'one_on_two');
         $forced['force'] = true;
+        $forced['force_reason'] = 'independent_parallel';
+        $forced['force_note'] = '測試：同科不同班型平行';
+        $forced['existing_contract_ids'] = [(int) $res1->json('student_class_id')];
         $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
             ->postJson('/api/v1/class-sessions/batch', $forced)
             ->assertCreated();
+
+        // force 但未帶 reason → 422
+        $forcedNoReason = $this->batchPayload($student->id, $teacherId, $second, 'one_on_three');
+        $forcedNoReason['force'] = true;
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson('/api/v1/class-sessions/batch', $forcedNoReason)
+            ->assertStatus(422)
+            ->assertJson(['code' => 'force_reason_required']);
+    }
+
+    /**
+     * 試聽是旁聽正式課堂的加掛，不可被 overlapping_active_course 擋死。
+     * 同型試聽重複則仍走 duplicate_active_course。
+     */
+    public function test_trial_course_is_not_blocked_by_overlapping_active_course(): void
+    {
+        $token = $this->createUserToken('A', [1], 'dir-ovl-trial@example.com');
+        $teacherId = $this->createTeacher(1, 'teach-ovl-trial@example.com');
+        $student = $this->createStudent(1, '試聽重疊測試生');
+
+        $base = Carbon::now()->addWeeks(8)->next(Carbon::WEDNESDAY);
+        $first = [];
+        $cur = $base->copy();
+        for ($i = 0; $i < 4; $i++) {
+            $first[] = $cur->toDateString();
+            $cur->addWeek();
+        }
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson('/api/v1/class-sessions/batch', $this->batchPayload($student->id, $teacherId, $first, 'one_on_three'))
+            ->assertCreated();
+
+        $trialDate = $first[1];
+        $trialPayload = $this->batchPayload($student->id, $teacherId, [$trialDate], 'trial');
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson('/api/v1/class-sessions/batch', $trialPayload)
+            ->assertCreated();
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson('/api/v1/class-sessions/batch', $trialPayload)
+            ->assertStatus(409)
+            ->assertJson(['code' => 'duplicate_active_course']);
     }
 
     public function test_non_overlapping_renewal_after_first_ends_is_allowed(): void

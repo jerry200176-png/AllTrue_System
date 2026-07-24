@@ -166,6 +166,8 @@ class DuplicateCourseGuardTest extends TestCase
             'price_per_session' => 500,
             'payment_type' => 'session',
             'force' => true,
+            'force_reason' => 'independent_parallel',
+            'force_note' => '測試：同科獨立合約',
         ]);
 
         $forced->assertCreated();

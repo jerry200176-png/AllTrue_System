@@ -75,6 +75,10 @@ class ClassSessionController extends Controller
             'branch_id' => 'nullable|integer|min:1',
             'mode' => 'nullable|in:create,backfill',
             'force' => 'nullable|boolean',
+            'force_reason' => 'nullable|string|in:create_trial,renewal_next_term,independent_parallel',
+            'force_note' => 'nullable|string|max:200',
+            'existing_contract_ids' => 'nullable|array|max:50',
+            'existing_contract_ids.*' => 'integer|min:1',
             'course_start_date' => 'nullable|date',
             'end_date' => 'nullable|date',
         ]);

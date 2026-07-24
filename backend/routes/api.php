@@ -32,6 +32,7 @@ use App\Http\Controllers\BackfillController;
 use App\Http\Controllers\LineWebhookController;
 use App\Http\Controllers\TelegramWebhookController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\ActionInboxController;
 use App\Http\Controllers\PasswordResetRequestController;
 use App\Http\Controllers\RoomController;
 use App\Http\Controllers\ClassSessionController;
@@ -364,6 +365,11 @@ Route::prefix('v1')->group(function () {
         Route::post('notifications/{notificationId}/read', [NotificationController::class, 'markRead']);
         Route::post('notifications/{notificationId}/tuition-paid', [NotificationController::class, 'markTuitionPaid']);
         Route::get('notifications/unread-count', [NotificationController::class, 'unreadCount']);
+
+        // Action Inbox (B-lite + D): read-model only — aggregates Notifications + open leave workflows.
+        Route::get('action-inbox', [ActionInboxController::class, 'index']);
+        Route::get('action-inbox/count', [ActionInboxController::class, 'count']);
+        Route::get('action-inbox/cases/{id}', [ActionInboxController::class, 'showCase'])->whereNumber('id');
 
         Route::get('exception-workflows', [ExceptionWorkflowController::class, 'index']);
         Route::get('exception-workflows/{id}', [ExceptionWorkflowController::class, 'show'])->whereNumber('id');

@@ -103,6 +103,9 @@ jobs:
     if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.ci_config == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Non-sensitive password for the ephemeral CI-only MySQL service.
+    env:
+      DB_PASSWORD: ci-ephemeral
 
     services:
       mysql:
@@ -111,7 +114,8 @@ jobs:
           MYSQL_ROOT_PASSWORD: root
           MYSQL_DATABASE: AllTrue_test
           MYSQL_USER: admin
-          MYSQL_PASSWORD: fLcLUu3Imi7RuFhT1jfwIH1
+          # Deliberately non-sensitive and CI-only; never reuse outside ephemeral tests.
+          MYSQL_PASSWORD: ci-ephemeral
         ports:
           - 3306:3306
         options: >-
@@ -144,19 +148,7 @@ jobs:
             }
           '
 
-      - name: Load PHPUnit database password
-        run: |
-          php -r '
-            $xml = simplexml_load_file("backend/phpunit.xml");
-            foreach ($xml->php->env as $env) {
-              if ((string) $env["name"] === "DB_PASSWORD") {
-                echo "DB_PASSWORD=" . (string) $env["value"] . PHP_EOL;
-                exit(0);
-              }
-            }
-            fwrite(STDERR, "DB_PASSWORD not found in backend/phpunit.xml" . PHP_EOL);
-            exit(1);
-          ' >> "$GITHUB_ENV"
+      # DB_PASSWORD is provided by the job-level CI-only environment above.
 
       - name: Cache Composer packages
         uses: actions/cache@v6
@@ -522,4 +514,14 @@ jobs:
 
       - name: npm audit (security)
         working-directory: frontend
-        run: npm audit --audit-level=high --omit=dev
+        run: |
+          for attempt in 1 2 3; do
+            if npm audit --audit-level=high --omit=dev; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              sleep $((attempt * 15))
+            fi
+          done
+          echo "npm audit failed after 3 attempts"
+          exit 1

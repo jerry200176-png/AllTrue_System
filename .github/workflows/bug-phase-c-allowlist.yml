@@ -67,6 +67,11 @@ jobs:
           $svc = \App\Services\BugReportService::class;
           // Allowlist: in-app id => [public reply, production_revision, deploy_run_id optional]
           $items = [
+            207 => [
+              "reply" => "已修好：之後在課程管理改「正班老師」時，已經上過的課會保留原本的老師，不會整批變成新老師；未來的課才會跟著新老師。請重新整理行事曆確認。若過去某幾堂仍顯示錯的老師，請回覆此單，我們再幫您校正那幾堂。",
+              "rev" => "7acb5803ccafb6ce5bffae8a2a86c5bf54049382",
+              "deploy" => "29890459105",
+            ],
             205 => [
               "reply" => "已修好：換代課老師時，系統會正確排除「這位學生自己」的既有時段，不再把還有名額的一對二老師誤標成已滿或衝堂。請在課程管理再開一次「換代課老師」確認；若仍有問題請回覆此單。",
               "rev" => "8d08ca72da42a1455f7d4502bb97b309778adf20",

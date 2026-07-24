@@ -77,4 +77,5 @@
 | Teacher leave-slot cascade + longer makeup | Code + prod verified 2026-07-19; historical batch execute **rejected** |
 | TD-059 schema | NO-GO; monitor only (#1343) |
 | #1262 SignIn orphans | Closed after overnight evidence |
-| #205 / #198 Phase C | Allowlist workflow in this PR (idempotent) |
+| #205 / #198 Phase C | Allowlist workflow idempotent (skip if closed) |
+| #207 teacher history | Code merged #1374 + deployed `7acb5803` / run `29890459105`; Phase C allowlist next. Optional one-shot historical pin for already-rewritten past sessions if reporter confirms residual wrong teacher |
