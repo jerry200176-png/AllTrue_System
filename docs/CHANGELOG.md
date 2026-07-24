@@ -1,3 +1,12 @@
+## 2026-07-26 — fix(parent): 家長更新卡改為顯式 PARENT_UPDATES 投影（B+）
+
+- 家長入口「與您有關的更新」不再從教職員 CHANGELOG 以關鍵字自動標 `audience:parent`。
+- 新增 `docs/PARENT_UPDATES.yml` 為家長公告唯一來源；title／summary／details 獨立，禁止 fallback 到 staff summary。
+- 無家長更新或已過期時首頁隱藏該區塊；普通更新預設 30 天效期、最多兩則。
+- 同步腳本一併產生 `parentUpdates.generated.js`；CI 檢查 generated 檔不得漂移。
+
+開發備註：Founder Decision 2026-07-26 B+／§R45。行動型通知（重新綁定等）不在本卡範圍。首則家長文案：請假後未來日期不移動、尾端補課。
+
 ## 2026-07-26 — fix: 堂數制請假改為保留未來日期、只補尾堂
 
 - 一般請假不再把後續堂次整排往後推（不再出現 silent vacated week）。
