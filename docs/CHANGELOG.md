@@ -4,6 +4,12 @@
 - 若字元集尚未升級，系統回傳明確錯誤且不會留下半成品課程／堂次（不會默默刪除 emoji）。
 
 開發備註：Refs #1378／F6。migration `2026_07_22_130000_convert_student_class_free_text_to_utf8mb4`；過渡 422 `memo_charset_incompatible`。Production migrate 需 Founder GO：`docs/runbooks/1378-memo-utf8mb4-execution-package.md`。回歸 `StudentClassMemoUtf8mb4Test`。
+## 2026-07-22 — docs: Course Continuity RFC + PII-free cohort SQL（#1382）
+
+- 新增課程延續（Course Continuity）架構 RFC：推薦 group＋members，拒絕實體合併 StudentClass。
+- 附唯讀 cohort 發現 SQL 與結果模板（無 PII）；數字待 production 唯讀執行後回填。
+
+開發備註：與 #1130／#1134 歷史修復分離；實作 PR 序列見 RFC §10／issue #1382。
 
 ## 2026-07-22 — ops: in-app bug closure queue exhausted (active engineering)
 
