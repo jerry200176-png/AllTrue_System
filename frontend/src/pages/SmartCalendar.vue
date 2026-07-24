@@ -325,7 +325,41 @@
       mode="create"
       @cancel="showModal = false"
       @success="handleUniversalSchedulerSuccess"
+      @duplicate-course="handleSchedulerDuplicate"
     />
+
+    <!-- Duplicate / overlap intercept（與課程管理／學生管理對齊；避免行事曆快速排課 409 靜默失敗） -->
+    <div v-if="showDuplicateInterceptModal" class="modal-overlay" @click.self="showDuplicateInterceptModal = false">
+      <div class="modal" style="width: 480px;">
+        <h3 class="duplicate-course-heading">此學生已有進行中的課程</h3>
+        <p style="margin-bottom: 12px;">
+          系統偵測到相同科目的進行中課程或日期重疊。試聽／確定要另開一筆時，可按「仍要新增課程」；續報請改用加購堂數。
+        </p>
+        <div style="max-height: 200px; overflow-y: auto; margin-bottom: 16px;">
+          <table class="course-inner-table" style="font-size: 13px; width: 100%;">
+            <thead>
+              <tr>
+                <th>科目</th>
+                <th>類型</th>
+                <th>剩餘堂數</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="c in duplicateConflicts" :key="c.existing_course_id || c.id">
+                <td>{{ getSubjectLabel(c.subject_name || c.subject) || c.subject_name || c.subject }}</td>
+                <td>{{ { one_on_one: '一對一', one_on_two: '一對二', one_on_three: '一對三', tutoring: '輔導', trial: '試聽' }[c.class_type] || c.class_type || '—' }}</td>
+                <td>{{ c.remaining_sessions ?? 0 }} 堂</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="actions" style="gap: 8px; display: flex; justify-content: flex-end;">
+          <button class="ghost" type="button" @click="showDuplicateInterceptModal = false" :disabled="forceSubmitting">取消</button>
+          <button class="ghost" type="button" @click="forceCreateCourse()" :disabled="forceSubmitting">{{ forceSubmitting ? '建立中...' : '我知道，仍要新增課程' }}</button>
+        </div>
+      </div>
+    </div>
+
 
     <!-- #740 Modals：單堂檢視（SessionEdit） -->
     <CalendarSessionEditModal
@@ -447,7 +481,9 @@ import {
   isRangeWithinFetchedBounds,
 } from '../lib/calendarLoadPerformance';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
+import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
 import SubstituteTeacherPickerModal from '../components/substitute/SubstituteTeacherPickerModal.vue';
+
 import TeacherLeaveBatchModal from '../components/substitute/TeacherLeaveBatchModal.vue';
 import ToastWithUndo from '../components/substitute/ToastWithUndo.vue';
 import TeacherColumnHeader from '../components/calendar/TeacherColumnHeader.vue';
@@ -1804,6 +1840,45 @@ const handleUniversalSchedulerSuccess = async () => {
   showModal.value = false;
   await loadCourses();
 };
+
+const showDuplicateInterceptModal = ref(false);
+const duplicateConflicts = ref([]);
+const interceptOriginalPayload = ref(null);
+const forceSubmitting = ref(false);
+
+function handleSchedulerDuplicate(evt) {
+  duplicateConflicts.value = (evt?.conflicts || []).map((c) => ({
+    existing_course_id: c.existing_course_id ?? c.id,
+    subject: c.subject,
+    subject_name: c.subject_name || c.subject,
+    class_type: c.class_type,
+    remaining_sessions: c.remaining_sessions,
+  }));
+  interceptOriginalPayload.value = evt?.originalPayload || null;
+  showDuplicateInterceptModal.value = true;
+}
+
+async function forceCreateCourse() {
+  const payload = interceptOriginalPayload.value;
+  if (!payload) {
+    showDuplicateInterceptModal.value = false;
+    return;
+  }
+  forceSubmitting.value = true;
+  try {
+    const result = await createUniversalClassSchedule({ ...payload, force: true });
+    showDuplicateInterceptModal.value = false;
+    interceptOriginalPayload.value = null;
+    showModal.value = false;
+    const created = Number(result?.created_confirmed_sessions ?? 0) + Number(result?.created_future_sessions ?? 0);
+    alert(`已強制建立 ${created} 堂課`);
+    await loadCourses();
+  } catch (err) {
+    alert(err?.message || '強制建立失敗，請稍後再試');
+  } finally {
+    forceSubmitting.value = false;
+  }
+}
 
 // --- Modal Actions ---
 const openQuickAdd = () => {

@@ -43,6 +43,8 @@ docs/（權威業務規則）
 | 上線發布 | [`.cursor/skills/alltrue-release/SKILL.md`](../.cursor/skills/alltrue-release/SKILL.md) | P0 |
 | 安全審查 | [`.cursor/skills/alltrue-security/SKILL.md`](../.cursor/skills/alltrue-security/SKILL.md) | T3 |
 | Code Review | [`.cursor/skills/alltrue-code-review/SKILL.md`](../.cursor/skills/alltrue-code-review/SKILL.md) | 每 PR |
+| UI 品味（外部） | [`.cursor/skills/design-taste-frontend/SKILL.md`](../.cursor/skills/design-taste-frontend/SKILL.md) | 登入／landing 向；見 `GUIDE_AGENT_SKILLS.md` §taste-skill |
+| UI 既有站打磨（外部） | [`.cursor/skills/redesign-existing-projects/SKILL.md`](../.cursor/skills/redesign-existing-projects/SKILL.md) | 「網站變好看」優先；須服從 `RULE_DESIGN_SYSTEM.md` |
 
 ### 與既有 Cursor skills 的關係
 
@@ -64,6 +66,7 @@ docs/（權威業務規則）
 | PR merge / 上線 | `alltrue-release` | `auto-frontend-deploy.mdc` |
 | auth / PII / RFID | `alltrue-security` | `module-security.mdc` |
 | PR 準備 merge | `alltrue-code-review` | FR 對照 + 多校區隔離 |
+| 網站變好看／UI 打磨 | `redesign-existing-projects`（± `design-taste-frontend`） | `RULE_DESIGN_SYSTEM.md`；一次一頁 |
 
 ---
 
