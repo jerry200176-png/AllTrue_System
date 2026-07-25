@@ -14,4 +14,11 @@ jobs:
         with:
           fetch-depth: 0
       - name: Verify provenance manifest
+        env:
+          # Only used by the founder-exception path to verify a pre-existing
+          # approval comment via the GitHub API (read-only: issues/comments,
+          # pulls). The agent-session and human-authored paths never touch
+          # the network and are unaffected by this.
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
         run: bash scripts/check-agent-provenance.sh
