@@ -22,6 +22,16 @@ PATTERNS = {
         re.compile(rb"(?i)Bearer(?:\\?[\"']|\s)+([A-Za-z0-9._~+/=-]{20,})"),
         re.compile(rb"(?i)Authorization(?:\\?[\"']|\s)*[:=](?:\\?[\"']|\s)*(?:Bearer(?:\\?[\"']|\s)+)?([A-Za-z0-9._~+/=-]{20,})"),
     ),
+    # Added for issue #1387 (AllTrue_System) — a hard-coded MySQL/CI database
+    # password. Covers the two known real shapes (YAML `MYSQL_PASSWORD:` /
+    # `DB_PASSWORD:`, and the XML `<env name="DB_PASSWORD" ... value="...">`
+    # attribute pair used in phpunit.xml) plus a generic `.env`-style
+    # `DB_PASSWORD=value` fallback.
+    "DB_PASSWORD": (
+        re.compile(rb"(?i)(?:DB_PASSWORD|MYSQL_PASSWORD)(?:\\?[\"']|\s)*:(?:\\?[\"']|\s)*([^\s\"'\\]{4,})"),
+        re.compile(rb'(?i)name\s*=\s*"DB_PASSWORD"[^>]*?\bvalue\s*=\s*"([^"]{4,})"'),
+        re.compile(rb"(?i)\bDB_PASSWORD(?:\\?[\"']|\s)*=(?:\\?[\"']|\s)*([^\s\"']{4,})"),
+    ),
 }
 
 MAX_FILE_BYTES = 25 * 1024 * 1024

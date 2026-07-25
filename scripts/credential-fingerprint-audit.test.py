@@ -54,6 +54,38 @@ class CredentialFingerprintAuditTest(unittest.TestCase):
         self.assertIn("MATCH_ROTATION_REQUIRED", output.getvalue())
         self.assertNotIn(digest, output.getvalue())
 
+    def test_extracts_db_password_shapes_without_returning_raw_values(self):
+        yaml_pw = "sw0rdfish-ci-only-1234"
+        xml_pw = "another-fake-pw-5678"
+        env_pw = "third-fake-pw-9012"
+        with tempfile.TemporaryDirectory() as directory:
+            (Path(directory) / "ci.yml").write_text(
+                f"      MYSQL_PASSWORD: {yaml_pw}\n", encoding="utf-8"
+            )
+            (Path(directory) / "phpunit.xml").write_text(
+                f'<env name="DB_PASSWORD" value="{xml_pw}" force="true"/>\n',
+                encoding="utf-8",
+            )
+            (Path(directory) / ".env").write_text(
+                f"DB_PASSWORD={env_pw}\n", encoding="utf-8"
+            )
+            findings = AUDIT.extract([Path(directory)])
+
+        kinds = {kind for kind, _ in findings}
+        self.assertIn("DB_PASSWORD", kinds)
+        self.assertEqual(
+            {digest for kind, digest in findings if kind == "DB_PASSWORD"},
+            {
+                hashlib.sha256(yaml_pw.encode()).hexdigest(),
+                hashlib.sha256(xml_pw.encode()).hexdigest(),
+                hashlib.sha256(env_pw.encode()).hexdigest(),
+            },
+        )
+        serialized = repr(findings)
+        self.assertNotIn(yaml_pw, serialized)
+        self.assertNotIn(xml_pw, serialized)
+        self.assertNotIn(env_pw, serialized)
+
     def test_selects_only_gitguardian_linked_blobs(self):
         linked = ".cursor/projects/example/transcript.jsonl"
         anchor = hashlib.sha256(linked.encode("utf-8")).hexdigest()
