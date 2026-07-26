@@ -38,4 +38,4 @@ ALLOW_PROD_REPAIR=1 php artisan repair:leave-vacated-weeks --apply --force --act
 
 ## Evidence
 
-Log each apply under `repair.leave_vacated_weeks.applied` (PII: student name may appear in CLI JSON — redact before external share).
+Log apply under `repair.leave_vacated_weeks.applied` (redact student name before external share).
