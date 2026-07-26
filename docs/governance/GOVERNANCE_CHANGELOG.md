@@ -1,5 +1,12 @@
 # Governance changelog
 
+## 2026-07-26 — Repository hygiene pass (metadata + docs)
+
+- Docs/status sync after Parent Binding ADR (#1434) + PB-00 (#1446): PB-00 = **IMPLEMENTED / DEPLOYED — PRODUCTION ACTIVATION PENDING** (code merged/deployed; #1436 closed by merge; Pi ops activation / `effective=true` / 7-day baseline pending). Not full operational completion.
+- Branch hygiene in `OPERATIONS_RUNBOOK.md` §B1: every delete records tip SHA; `archive/<branch>` tags are **not** default (only unique unmerged keep-value). Session-created blanket archive tags removed after audit.
+- Broken relative links fixed in `INCIDENT_POLICY_ENGINE.md` and `RFC_PLATFORM_OPTIMIZATION_FROM_STARS_2026.md`.
+- No production code; no deploy; PB-01–PB-09 not started. GitHub PR/Issue write actions may require Founder token (see cleanup PR body).
+
 ## 2026-07-18 — Risk-Based Merge Policy + Service Catalog + #173 Repair Manifest
 
 - Constitution (same 0.1.0 pin): R0–R3 merge policy; R3 data-repair gate hard ban.

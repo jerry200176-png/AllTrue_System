@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| Status | **ADR Accepted**; PB-00 observability implemented |
+| Status | **ADR Accepted**; PB-00 **IMPLEMENTED / DEPLOYED — PRODUCTION ACTIVATION PENDING** (code merged #1446; activation / `effective=true` / 7-day baseline pending privileged Pi ops) |
 | OTP | **Not in Phase 0–2** |
 
 Success = KPIs, not “shipped”. Expand-contract; flags+rollback; CI→PR→merge→deploy; no schedule/billing/leave mix-in.
