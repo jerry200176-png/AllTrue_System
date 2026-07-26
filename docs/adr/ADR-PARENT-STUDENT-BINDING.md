@@ -5,7 +5,7 @@
 | Status | **Accepted** |
 | Date / Founder approval | 2026-07-26 |
 | Related | Benchmark · Architecture · Threat · UX · Rollout · PR #1434 |
-| Implementation | **PB-00 completed** (#1446); **PB-01–PB-09 not started** — no further DEV without Founder schedule |
+| Implementation | **PB-00 = IMPLEMENTED / DEPLOYED — PRODUCTION ACTIVATION PENDING** (#1446 merged; #1436 closed by implementation merge). Production activation / runtime verification pending privileged Pi ops session; observability not confirmed `effective=true`; 7-day baseline not started. **PB-01–PB-09 not started**. |
 
 ## Context
 

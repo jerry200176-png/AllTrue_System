@@ -2,17 +2,17 @@
 
 | Field | Value |
 |-------|-------|
-| Status | ADR Accepted; PB-00 shipped (#1446); **PB-01–PB-09 not started** |
+| Status | ADR Accepted; PB-00 **IMPLEMENTED / DEPLOYED — PRODUCTION ACTIVATION PENDING** (#1446); **PB-01–PB-09 not started** |
 | Date | 2026-07-26 |
 | ADR | [`ADR-PARENT-STUDENT-BINDING.md`](../../adr/ADR-PARENT-STUDENT-BINDING.md) **Accepted** |
 | Design PR | https://github.com/jerry200176-png/AllTrue_System/pull/1434 |
 | PB-00 PR | https://github.com/jerry200176-png/AllTrue_System/pull/1446 |
 
-Global non-scope: schedule/billing/leave/RFID/learning-approval; **OTP not Phase 0–2**; no full Portal rewrite. Do not start PB-01–09 without Founder schedule.
+Global non-scope: schedule/billing/leave/RFID/learning-approval; **OTP not Phase 0–2**; no full Portal rewrite. Do not start PB-01–09 without Founder schedule. Do not treat PB-00 as operationally complete until privileged Pi ops activation + `effective=true` + 7-day baseline.
 
 | ID | GH | Title | Phase | Risk | Depends | Board |
 |----|----|-------|-------|------|---------|-------|
-| [PB-00](./PB-00-observability.md) | [#1436](https://github.com/jerry200176-png/AllTrue_System/issues/1436) | Observability & reason codes | 0 | T1 | — | **completed** (#1446) |
+| [PB-00](./PB-00-observability.md) | [#1436](https://github.com/jerry200176-png/AllTrue_System/issues/1436) | Observability & reason codes | 0 | T1 | — | **IMPLEMENTED / DEPLOYED — PRODUCTION ACTIVATION PENDING** (#1446; #1436 closed by merge) |
 | [PB-01](./PB-01-safe-copy.md) | [#1437](https://github.com/jerry200176-png/AllTrue_System/issues/1437) | Safe copy & reason mapping | 1 | T1 | PB-00 | backlog |
 | [PB-02](./PB-02-completeness-ui.md) | [#1438](https://github.com/jerry200176-png/AllTrue_System/issues/1438) | Completeness UI | 1 | T1 | PB-00 | backlog |
 | [PB-03](./PB-03-inbox-cases.md) | [#1439](https://github.com/jerry200176-png/AllTrue_System/issues/1439) | Inbox binding cases | 1 | T2 | PB-00,02 | backlog |

@@ -2,8 +2,8 @@
 
 ## 2026-07-26 — Repository hygiene pass (metadata + docs)
 
-- Docs/status sync after Parent Binding ADR (#1434) + PB-00 (#1446): INDEX / ADR / PB issue board no longer say “DESIGN ONLY / implementation not started” for PB-00.
-- Branch hygiene policy clarified in `OPERATIONS_RUNBOOK.md` §B1: superseded closed branches require tip SHA + `archive/<branch>` tag before delete; open-PR / stacked / incident evidence branches kept.
+- Docs/status sync after Parent Binding ADR (#1434) + PB-00 (#1446): PB-00 = **IMPLEMENTED / DEPLOYED — PRODUCTION ACTIVATION PENDING** (code merged/deployed; #1436 closed by merge; Pi ops activation / `effective=true` / 7-day baseline pending). Not full operational completion.
+- Branch hygiene in `OPERATIONS_RUNBOOK.md` §B1: every delete records tip SHA; `archive/<branch>` tags are **not** default (only unique unmerged keep-value). Session-created blanket archive tags removed after audit.
 - Broken relative links fixed in `INCIDENT_POLICY_ENGINE.md` and `RFC_PLATFORM_OPTIMIZATION_FROM_STARS_2026.md`.
 - No production code; no deploy; PB-01–PB-09 not started. GitHub PR/Issue write actions may require Founder token (see cleanup PR body).
 

@@ -1,6 +1,7 @@
 ## 2026-07-26 — chore(repo): PR／Issue／branch／docs hygiene
 
-- 同步 Parent Binding 文件狀態（ADR Accepted、PB-00=#1446 completed；PB-01～09 仍未開始）；修非 archive 壞連結；補 branch hygiene：superseded 分支刪前 tip SHA + `archive/<branch>` tag。
+- 同步 Parent Binding 文件狀態：PB-00 = **IMPLEMENTED / DEPLOYED — PRODUCTION ACTIVATION PENDING**（#1446 merged；#1436 closed by merge；Pi ops activation／`effective=true`／7-day baseline 未完成；PB-01～09 未開始）。
+- 修非 archive 壞連結；branch hygiene：刪支必記 tip SHA；`archive/<branch>` tag **非預設**（僅 unique unmerged keep-value）。
 - 無 production code、無 deploy、未合併產品 PR。
 
 ## 2026-07-26 — feat(parent): PB-00 家長綁定 PII-safe observability（#1436）
