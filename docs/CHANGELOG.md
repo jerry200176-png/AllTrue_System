@@ -1,3 +1,11 @@
+## 2026-07-26 — docs: 家長帳號／學生綁定重新設計（evidence-based design review）
+
+- 新增研究／架構／ADR／UX／威脅模型／rollout 與實作 issue 拆解（docs-only，無 production code）。
+- 推薦 Hybrid：Parent Pairing Code（主）＋主任審核（備）＋姓名＋手機降級並設 sunset。
+- INDEX 登記導航；待 Founder 批准 ADR 後才可進 implementation。
+
+開發備註：DESIGN REVIEW ONLY — NO PRODUCTION CODE。
+
 ## 2026-07-26 — fix(parent): 家長更新卡改為顯式 PARENT_UPDATES 投影（B+）
 
 - 家長入口「與您有關的更新」不再從教職員 CHANGELOG 以關鍵字自動標 `audience:parent`。
