@@ -1,3 +1,7 @@
+## 2026-07-26 — feat(parent): PB-00 家長綁定 PII-safe observability（#1436）
+
+- Stable internal `reason_code` + append-only `parent_binding_attempts`（fail-open）；flag `PARENT_BINDING_OBSERVABILITY` **default-off**；dedicated `PARENT_BINDING_PHONE_HMAC_KEY`（no APP_KEY）；ops `parent-binding:report --format=json`。不改外部文案／成功路徑；PB-01～09 未開始。
+
 ## 2026-07-26 — docs: 家長綁定 ADR Accepted（Hybrid；PR #1434）
 
 - Founder Accepted：max_uses=1；TTL 7d（24h/72h/7d）；cap 4；read_only 365d→suspended；revoke→session；BindingRequest 自助；sunset ≥80%/30d/support&lt;10%（無硬日期）；OTP∉P0–2。Docs-only；implementation 未開始。
