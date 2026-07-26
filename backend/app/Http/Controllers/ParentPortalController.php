@@ -26,7 +26,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
-use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\Validator;
 
 class ParentPortalController extends Controller
 {
@@ -36,16 +36,16 @@ class ParentPortalController extends Controller
     {
         $obs = app(ParentBindingObservability::class);
         $cid = $obs->newCorrelationId($request->headers->get('X-Request-Id') ?? $request->headers->get('X-Correlation-Id'));
-        try {
-            $data = $request->validate([
-                'StudentID' => 'nullable|integer',
-                'Name' => 'nullable|string|max:64',
-                'Phone' => 'required|string|max:20',
-            ]);
-        } catch (ValidationException $e) {
+        $validator = Validator::make($request->all(), [
+            'StudentID' => 'nullable|integer',
+            'Name' => 'nullable|string|max:64',
+            'Phone' => 'required|string|max:20',
+        ]);
+        if ($validator->fails()) {
             $obs->observe($cid, ParentBindingCodes::CHANNEL_PORTAL, ParentBindingCodes::METHOD_UNKNOWN, $obs->classifier()->invalidInput());
-            throw $e;
+            throw new \Illuminate\Validation\ValidationException($validator);
         }
+        $data = $validator->validated();
 
         $phoneNorm = $this->normalizePhone($data['Phone']);
         if ($phoneNorm === '') {
@@ -66,6 +66,8 @@ class ParentPortalController extends Controller
         }
 
         $student = null;
+        $candidate = null;
+        $allByName = collect();
         $method = $hasStudentId ? ParentBindingCodes::METHOD_STUDENT_ID : ParentBindingCodes::METHOD_NAME;
 
         if ($hasStudentId) {
@@ -119,8 +121,8 @@ class ParentPortalController extends Controller
 
         if (!$student) {
             $c = $hasStudentId
-                ? $obs->classifier()->classifyPortalStudentId(Student::find((int) $data['StudentID']), $phoneNorm, $rawName)
-                : $obs->classifier()->classifyPortalName(Student::whereRaw('TRIM(name) = ?', [$rawName])->get(), $phoneNorm);
+                ? $obs->classifier()->classifyPortalStudentId($candidate, $phoneNorm, $rawName)
+                : $obs->classifier()->classifyPortalName($allByName, $phoneNorm);
             $obs->observe($cid, ParentBindingCodes::CHANNEL_PORTAL, $method, $c, $phoneNorm);
             return response()->json(['message' => '查無此學生或手機號碼不符，請確認姓名與手機是否正確'], 404);
         }

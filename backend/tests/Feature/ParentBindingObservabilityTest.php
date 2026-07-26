@@ -25,7 +25,6 @@ class ParentBindingObservabilityTest extends TestCase
     {
         parent::setUp();
         config(['parent_binding.observability_enabled' => true, 'parent_binding.timezone' => 'Asia/Taipei']);
-        // Portal login uses App\Http\Middleware\ThrottleRequestsByIp (alias throttle).
         $this->withoutMiddleware(\App\Http\Middleware\ThrottleRequestsByIp::class);
     }
 
@@ -116,7 +115,6 @@ class ParentBindingObservabilityTest extends TestCase
             $this->assertStringNotContainsString($raw, $blob);
         }
 
-        // Portal
         $ok = $this->student($campus->id, '入口', null, '0944444444');
         $res = $this->postJson('/api/v1/parent/login', ['Name' => '入口', 'Phone' => '0944444444'])->assertOk();
         $this->assertSame($ok->id, $res->json('student.id'));

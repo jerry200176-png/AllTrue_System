@@ -1,9 +1,6 @@
 ## 2026-07-26 — feat(parent): PB-00 家長綁定 PII-safe observability（#1436）
 
-- LINE 姓名／代號綁定與 Parent Portal 登入失敗路徑寫入穩定 internal `reason_code`（不改外部文案／HTTP status／成功 DTO）。
-- 新增 append-only `parent_binding_attempts`（fail-open）；flag `PARENT_BINDING_OBSERVABILITY`；correlation id。
-- Ops：`parent-binding:report --days=7`、`parent-binding:missing-contact`（僅聚合、無 raw PII）。
-- 成功路徑行為不變；PB-01～PB-09 未開始。身份安全問題**未**宣告完成。
+- Stable internal `reason_code` + append-only `parent_binding_attempts`（fail-open）；flag `PARENT_BINDING_OBSERVABILITY`；ops `parent-binding:report`。不改外部文案／成功路徑；PB-01～09 未開始。
 
 ## 2026-07-26 — docs: 家長綁定 ADR Accepted（Hybrid；PR #1434）
 

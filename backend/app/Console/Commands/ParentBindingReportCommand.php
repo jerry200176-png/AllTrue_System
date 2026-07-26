@@ -77,9 +77,9 @@ class ParentBindingReportCommand extends Command
             'status' => $enabled ? 'ok' : 'observability_disabled',
             'total_attempts' => $rows->count(), 'success_count' => $success, 'failure_count' => $failure, 'noop_count' => $noop,
             'success_rate' => $denom > 0 ? round($success / $denom, 4) : null,
-            'by_reason_code' => $rows->groupBy(fn ($r) => $r->reason_code ?? '(none)')->map->count()->sortDesc()->all(),
-            'by_channel' => $rows->groupBy('channel')->map->count()->sortDesc()->all(),
-            'by_campus_id' => $rows->groupBy(fn ($r) => $r->campus_id === null ? '(null)' : (string) $r->campus_id)->map->count()->sortDesc()->all(),
+            'by_reason_code' => $rows->groupBy(fn ($r) => $r->reason_code ?? '(none)')->map(fn ($g) => $g->count())->sortDesc()->all(),
+            'by_channel' => $rows->groupBy('channel')->map(fn ($g) => $g->count())->sortDesc()->all(),
+            'by_campus_id' => $rows->groupBy(fn ($r) => $r->campus_id === null ? '(null)' : (string) $r->campus_id)->map(fn ($g) => $g->count())->sortDesc()->all(),
         ];
     }
 
