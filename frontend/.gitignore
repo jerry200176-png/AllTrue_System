@@ -1,4 +1,6 @@
 dist_build/
+.vite_cache/
+.vite_cache_ui_foundation/
 
 # Playwright (#547 UI smoke)
 test-results/
