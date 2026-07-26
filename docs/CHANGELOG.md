@@ -1,3 +1,7 @@
+## 2026-07-26 — docs: 家長綁定 ADR Accepted（Hybrid；PR #1434）
+
+- Founder Accepted：max_uses=1；TTL 7d（24h/72h/7d）；cap 4；read_only 365d→suspended；revoke→session；BindingRequest 自助；sunset ≥80%/30d/support&lt;10%（無硬日期）；OTP∉P0–2。Docs-only；implementation 未開始。
+
 ## 2026-07-26 — fix(parent): 家長更新卡改為顯式 PARENT_UPDATES 投影（B+）
 
 - 家長入口「與您有關的更新」不再從教職員 CHANGELOG 以關鍵字自動標 `audience:parent`。
