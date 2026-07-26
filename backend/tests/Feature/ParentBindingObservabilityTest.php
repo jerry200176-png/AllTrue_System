@@ -13,7 +13,6 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 /** PB-00 (#1436): contract, defaults, LINE/Portal observation, parity, fail-open, PII, ops. */
@@ -57,7 +56,7 @@ class ParentBindingObservabilityTest extends TestCase
             'STUDENT_NOT_FOUND', 'CONTACT_PHONE_MISSING', 'PHONE_MISMATCH', 'AMBIGUOUS_MATCH',
             'CAMPUS_MISMATCH', 'ALREADY_BOUND', 'INVALID_INPUT', 'AUTHORIZATION_DENIED', 'INTERNAL_ERROR',
         ]);
-        $this->assertTrue(Schema::hasTable('parent_binding_attempts'));
+        $this->assertTrue(\Illuminate\Support\Facades\Schema::hasTable('parent_binding_attempts'));
         $cfg = file_get_contents(config_path('parent_binding.php'));
         $this->assertMatchesRegularExpression("/PARENT_BINDING_OBSERVABILITY'\\s*,\\s*false/", $cfg);
         $this->assertMatchesRegularExpression("/PARENT_BINDING_PHONE_HMAC_KEY'\\s*,\\s*''/", $cfg);
@@ -169,11 +168,12 @@ class ParentBindingObservabilityTest extends TestCase
         $this->assertSame('parent_phone → Phone (StudentContactPhone)', $miss['authoritative_rule']);
         $this->assertGreaterThanOrEqual(1, $miss['campuses'][0]['missing_contact_count']);
         $this->assertStringNotContainsString('缺', Artisan::output());
-        Schema::rename('parent_binding_attempts', '_pba_bak');
+        // missing table ⇒ same fail-open catch as write failure (no Schema::rename under RefreshDatabase)
+        ParentBindingAttempt::creating(fn () => throw new \RuntimeException('SQLSTATE table missing'));
+        $this->postJson('/api/v1/parent/login', ['Name' => '入口', 'Phone' => '0944444444'])->assertOk();
         $this->student($campus->id, '無表', null, '0977777777');
         $this->line($campus, 'U' . str_repeat('h', 32), '綁定 無表 0977777777')->assertOk();
         $this->assertTrue(StudentLineBinding::where('line_user_id', 'U' . str_repeat('h', 32))->exists());
-        $this->postJson('/api/v1/parent/login', ['Name' => '入口', 'Phone' => '0944444444'])->assertOk();
-        Schema::rename('_pba_bak', 'parent_binding_attempts');
+        ParentBindingAttempt::flushEventListeners();
     }
 }
