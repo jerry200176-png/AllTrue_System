@@ -5,6 +5,10 @@
 - Visual fixtures 僅在 `frontend/e2e/fixtures/`；production `public/` / `dist_build` 不含 mount harness。
 - Merge evidence：真實 Vue inbox Playwright + mocked API（390／768／1440）。
 
+## 2026-07-26 — ci(governance): failure taxonomy + fast preflight（G1）
+
+- 開發備註：新增 `npm run ci:preflight` / `sync:generated`、failure taxonomy、branch policy（含 `sec/`）；見 `docs/governance/CI_GOVERNANCE.md`。不改 production 業務邏輯。
+
 ## 2026-07-26 — chore(repo): PR／Issue／branch／docs hygiene
 
 - 同步 Parent Binding 文件狀態：PB-00 = **IMPLEMENTED / DEPLOYED — PRODUCTION ACTIVATION PENDING**（#1446 merged；#1436 closed by merge；Pi ops activation／`effective=true`／7-day baseline 未完成；PB-01～09 未開始）。
