@@ -3,7 +3,6 @@
 **Command:** `php artisan repair:leave-vacated-weeks`  
 **Policy:** Founder Decision 2026-07-26 / AI_REGRESSION §R82  
 **Default:** dry-run (no writes)
-
 ## Purpose
 
 Find count-based courses where ordinary leave used the legacy **SHIFT** cascade
