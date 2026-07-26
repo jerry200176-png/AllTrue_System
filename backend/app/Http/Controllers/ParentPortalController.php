@@ -2,8 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Enums\ParentBindingChannel;
-use App\Enums\ParentBindingMethod;
+use App\Support\ParentBinding\ParentBindingCodes;
 use App\Models\LearningRecord;
 use App\Models\LearningRecordFeedback;
 use App\Models\ParentSession;
@@ -49,8 +48,8 @@ class ParentPortalController extends Controller
         } catch (ValidationException $e) {
             $obs->observe(
                 $correlationId,
-                ParentBindingChannel::ParentPortal,
-                ParentBindingMethod::Unknown,
+                ParentBindingCodes::CHANNEL_PORTAL,
+                ParentBindingCodes::METHOD_UNKNOWN,
                 $obs->classifier()->invalidInput(),
             );
             throw $e;
@@ -60,8 +59,8 @@ class ParentPortalController extends Controller
         if ($phoneNorm === '') {
             $obs->observe(
                 $correlationId,
-                ParentBindingChannel::ParentPortal,
-                ParentBindingMethod::Unknown,
+                ParentBindingCodes::CHANNEL_PORTAL,
+                ParentBindingCodes::METHOD_UNKNOWN,
                 $obs->classifier()->invalidInput(),
                 null,
             );
@@ -70,7 +69,7 @@ class ParentPortalController extends Controller
 
         $rawName = trim((string) ($data['Name'] ?? ''));
         $hasStudentId = !empty($data['StudentID']) && (int) $data['StudentID'] > 0;
-        $method = $hasStudentId ? ParentBindingMethod::StudentId : ParentBindingMethod::Name;
+        $method = $hasStudentId ? ParentBindingCodes::METHOD_STUDENT_ID : ParentBindingCodes::METHOD_NAME;
 
         // PRD-B FR-B-001: require precise single-row match. Either:
         //   (a) StudentID + Phone (exact match), or
@@ -79,8 +78,8 @@ class ParentPortalController extends Controller
         if (!$hasStudentId && $rawName === '') {
             $obs->observe(
                 $correlationId,
-                ParentBindingChannel::ParentPortal,
-                ParentBindingMethod::Unknown,
+                ParentBindingCodes::CHANNEL_PORTAL,
+                ParentBindingCodes::METHOD_UNKNOWN,
                 $obs->classifier()->invalidInput(),
                 $phoneNorm,
             );
@@ -95,16 +94,16 @@ class ParentPortalController extends Controller
             $classification = $obs->classifier()->classifyPortalStudentId($candidate, $phoneNorm, $rawName);
             $obs->observe(
                 $correlationId,
-                ParentBindingChannel::ParentPortal,
+                ParentBindingCodes::CHANNEL_PORTAL,
                 $method,
                 $classification,
                 $phoneNorm,
             );
 
-            if ($classification->reasonCode?->value === 'CONTACT_PHONE_MISSING') {
+            if ($classification->reasonCode === ParentBindingCodes::CONTACT_PHONE_MISSING) {
                 return response()->json(['message' => '此學生尚未設定聯絡手機，請聯繫分校補登後再登入'], 401);
             }
-            if ($classification->outcome->value === 'success' && $candidate) {
+            if ($classification->outcome === ParentBindingCodes::OUTCOME_SUCCESS && $candidate) {
                 $student = $candidate;
             }
         } else {
@@ -121,21 +120,21 @@ class ParentPortalController extends Controller
             $classification = $obs->classifier()->classifyPortalName($allByName, $phoneNorm);
             $obs->observe(
                 $correlationId,
-                ParentBindingChannel::ParentPortal,
+                ParentBindingCodes::CHANNEL_PORTAL,
                 $method,
                 $classification,
                 $phoneNorm,
             );
 
-            if ($classification->reasonCode?->value === 'AMBIGUOUS_MATCH') {
+            if ($classification->reasonCode === ParentBindingCodes::AMBIGUOUS_MATCH) {
                 return response()->json([
                     'message' => '找到多筆相符資料，請改以 LINE 綁定或提供學生代號登入',
                 ], 409);
             }
-            if ($classification->reasonCode?->value === 'CONTACT_PHONE_MISSING') {
+            if ($classification->reasonCode === ParentBindingCodes::CONTACT_PHONE_MISSING) {
                 return response()->json(['message' => '此學生尚未設定聯絡手機，請聯繫分校補登後再登入'], 401);
             }
-            if ($classification->outcome->value === 'success' && $classification->studentId) {
+            if ($classification->outcome === ParentBindingCodes::OUTCOME_SUCCESS && $classification->studentId) {
                 $student = $allByName->firstWhere('id', $classification->studentId)
                     ?? Student::find($classification->studentId);
             }

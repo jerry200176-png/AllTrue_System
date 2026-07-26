@@ -2,8 +2,6 @@
 
 namespace App\Services\ParentBinding;
 
-use App\Enums\ParentBindingChannel;
-use App\Enums\ParentBindingMethod;
 use App\Models\ParentBindingAttempt;
 use App\Support\ParentBinding\ParentBindingPhonePrivacy;
 use Illuminate\Support\Facades\Log;
@@ -17,51 +15,29 @@ final class ParentBindingAttemptRecorder
         return (bool) config('parent_binding.observability_enabled', false);
     }
 
-    public function record(
-        string $correlationId,
-        ParentBindingChannel $channel,
-        ParentBindingMethod $method,
-        ParentBindingClassification $classification,
-        ?string $normalizedPhone = null,
-    ): void {
+    public function record(string $correlationId, string $channel, string $method, ParentBindingClassification $c, ?string $normalizedPhone = null): void
+    {
         if (!$this->enabled()) {
             return;
         }
         try {
-            $fp = null;
-            if ((bool) config('parent_binding.store_phone_fingerprint', false) && $normalizedPhone !== null) {
-                $fp = ParentBindingPhonePrivacy::fingerprint($normalizedPhone);
-            }
+            $fp = ((bool) config('parent_binding.store_phone_fingerprint', false) && $normalizedPhone !== null)
+                ? ParentBindingPhonePrivacy::fingerprint($normalizedPhone) : null;
             ParentBindingAttempt::query()->create([
-                'correlation_id' => $correlationId,
-                'occurred_at' => now(),
-                'channel' => $channel->value,
-                'method' => $method->value,
-                'outcome' => $classification->outcome->value,
-                'reason_code' => $classification->reasonCode?->value,
-                'campus_id' => $classification->campusId,
-                'student_id' => $classification->studentId,
-                'phone_fingerprint' => $fp,
-                'candidate_count' => $classification->candidateCount,
-                'phone_match_count' => $classification->phoneMatchCount,
+                'correlation_id' => $correlationId, 'occurred_at' => now(),
+                'channel' => $channel, 'method' => $method, 'outcome' => $c->outcome,
+                'reason_code' => $c->reasonCode, 'campus_id' => $c->campusId, 'student_id' => $c->studentId,
+                'phone_fingerprint' => $fp, 'candidate_count' => $c->candidateCount, 'phone_match_count' => $c->phoneMatchCount,
             ]);
             Log::info('parent_binding.attempt', [
-                'correlation_id' => $correlationId,
-                'channel' => $channel->value,
-                'method' => $method->value,
-                'outcome' => $classification->outcome->value,
-                'reason_code' => $classification->reasonCode?->value,
-                'campus_id' => $classification->campusId,
-                'student_id' => $classification->studentId,
-                'candidate_count' => $classification->candidateCount,
-                'phone_match_count' => $classification->phoneMatchCount,
+                'correlation_id' => $correlationId, 'channel' => $channel, 'method' => $method,
+                'outcome' => $c->outcome, 'reason_code' => $c->reasonCode,
+                'campus_id' => $c->campusId, 'student_id' => $c->studentId,
+                'candidate_count' => $c->candidateCount, 'phone_match_count' => $c->phoneMatchCount,
             ]);
         } catch (Throwable $e) {
             Log::warning('parent_binding.observation_write_failed', [
-                'correlation_id' => $correlationId,
-                'channel' => $channel->value,
-                'method' => $method->value,
-                'error_class' => $e::class,
+                'correlation_id' => $correlationId, 'channel' => $channel, 'method' => $method, 'error_class' => $e::class,
             ]);
         }
     }

@@ -220,9 +220,18 @@ class ParentBindingObservabilityTest extends TestCase
         Artisan::call('parent-binding:report', ['--days' => 7, '--campus' => $a->id, '--format' => 'json']);
         $this->assertSame(2, json_decode(Artisan::output(), true)['total_attempts']);
 
-        $this->student($a->id, '有手機', null, '0912345678')->forceFill(['status' => 'active'])->save();
-        $this->student($a->id, '缺手機', '', '')->forceFill(['status' => 'active'])->save();
-        $this->student($a->id, '畢業', '', '')->forceFill(['status' => 'graduated'])->save();
+        Student::create([
+            'name' => '有手機', 'CampusID' => $a->id, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(),
+            'Notify_Token' => '', 'Phone' => '', 'parent_phone' => '0912345678', 'status' => 'active',
+        ]);
+        Student::create([
+            'name' => '缺手機', 'CampusID' => $a->id, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(),
+            'Notify_Token' => '', 'Phone' => '', 'parent_phone' => '', 'status' => 'active',
+        ]);
+        Student::create([
+            'name' => '畢業', 'CampusID' => $a->id, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(),
+            'Notify_Token' => '', 'Phone' => '', 'parent_phone' => '', 'status' => 'graduated',
+        ]);
         $this->assertSame(0, Artisan::call('parent-binding:report', ['--missing-contact' => true, '--campus' => $a->id, '--format' => 'json']));
         $miss = json_decode(Artisan::output(), true);
         $this->assertSame('parent_phone → Phone (StudentContactPhone)', $miss['authoritative_rule']);

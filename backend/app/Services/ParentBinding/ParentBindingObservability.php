@@ -2,13 +2,10 @@
 
 namespace App\Services\ParentBinding;
 
-use App\Enums\ParentBindingChannel;
-use App\Enums\ParentBindingMethod;
 use App\Support\ParentBinding\ParentBindingCorrelationId;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
-/** Classify + record orchestrator for LINE/Portal parent binding. */
 final class ParentBindingObservability
 {
     public function __construct(
@@ -27,21 +24,13 @@ final class ParentBindingObservability
         return ParentBindingCorrelationId::fromRequest($inbound);
     }
 
-    public function observe(
-        string $correlationId,
-        ParentBindingChannel $channel,
-        ParentBindingMethod $method,
-        ParentBindingClassification $classification,
-        ?string $normalizedPhone = null,
-    ): void {
+    public function observe(string $correlationId, string $channel, string $method, ParentBindingClassification $c, ?string $normalizedPhone = null): void
+    {
         try {
-            $this->recorder->record($correlationId, $channel, $method, $classification, $normalizedPhone);
+            $this->recorder->record($correlationId, $channel, $method, $c, $normalizedPhone);
         } catch (Throwable $e) {
             Log::warning('parent_binding.observation_write_failed', [
-                'correlation_id' => $correlationId,
-                'channel' => $channel->value,
-                'method' => $method->value,
-                'error_class' => $e::class,
+                'correlation_id' => $correlationId, 'channel' => $channel, 'method' => $method, 'error_class' => $e::class,
             ]);
         }
     }
