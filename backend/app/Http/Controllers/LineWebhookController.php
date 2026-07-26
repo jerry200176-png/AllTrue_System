@@ -187,7 +187,6 @@ class LineWebhookController extends Controller
         $candidates = Student::whereRaw('TRIM(name) = ?', [$name])->where('CampusID', $campus->id)->get();
         $c = $obs->classifier()->classifyLineNameCandidates($candidates, $normalized, (int) $campus->id, fn (int $sid) => $this->isAlreadyBound($sid, $lineUserId));
         $obs->observe($cid, ParentBindingCodes::CHANNEL_LINE, ParentBindingCodes::METHOD_NAME, $c, $normalized !== '' ? $normalized : null);
-
         if ($c['outcome'] === ParentBindingCodes::OUTCOME_FAILURE) {
             $this->replyMessage($replyToken, $c['reasonCode'] === ParentBindingCodes::INVALID_INPUT ? "請輸入正確的手機號碼。" : "在 {$campus->name} 找不到「{$name}」與此手機號碼的學生，請確認姓名與手機是否正確。", $campus);
             return;
@@ -222,7 +221,6 @@ class LineWebhookController extends Controller
         $student = Student::where('id', $studentId)->where('CampusID', $campus->id)->first();
         $c = $obs->classifier()->classifyLineStudentId($student, $normalized, (int) $campus->id, fn (int $sid) => $this->isAlreadyBound($sid, $lineUserId));
         $obs->observe($cid, ParentBindingCodes::CHANNEL_LINE, ParentBindingCodes::METHOD_STUDENT_ID, $c, $normalized !== '' ? $normalized : null);
-
         if (in_array($c['reasonCode'], [ParentBindingCodes::STUDENT_NOT_FOUND, ParentBindingCodes::CAMPUS_MISMATCH], true)) {
             $this->replyMessage($replyToken, "在 {$campus->name} 找不到學生代號 {$studentId}，請確認後重試。", $campus);
             return;

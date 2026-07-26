@@ -3,5 +3,5 @@
   "provenance_type": "human-authored",
   "declared_at": "2026-07-26T15:10:00Z",
   "author": "founder-directed-cursor-cloud-pb00",
-  "note": "Founder-approved PB-00 (#1436) implementation on Cursor Cloud Agent. Environment lacks agent-start gateway (/workspace not on task worktree allowlist; agent-start binary unavailable), so this PR uses the repository official human-authored provenance path instead of forging an agent-session UUID. Scope: parent binding observability only."
+  "note": "Cursor Cloud lacks agent-start; human-authored provenance for PB-00 (#1436)."
 }

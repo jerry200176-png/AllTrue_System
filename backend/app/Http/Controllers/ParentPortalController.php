@@ -55,7 +55,6 @@ class ParentPortalController extends Controller
 
         $rawName = trim((string) ($data['Name'] ?? ''));
         $hasStudentId = !empty($data['StudentID']) && (int) $data['StudentID'] > 0;
-        $method = $hasStudentId ? ParentBindingCodes::METHOD_STUDENT_ID : ParentBindingCodes::METHOD_NAME;
 
         // PRD-B FR-B-001: require precise single-row match. Either:
         //   (a) StudentID + Phone (exact match), or
@@ -67,41 +66,74 @@ class ParentPortalController extends Controller
         }
 
         $student = null;
+        $method = $hasStudentId ? ParentBindingCodes::METHOD_STUDENT_ID : ParentBindingCodes::METHOD_NAME;
 
         if ($hasStudentId) {
             $candidate = Student::find((int) $data['StudentID']);
-            $c = $obs->classifier()->classifyPortalStudentId($candidate, $phoneNorm, $rawName);
-            $obs->observe($cid, ParentBindingCodes::CHANNEL_PORTAL, $method, $c, $phoneNorm);
-            if ($c['reasonCode'] === ParentBindingCodes::CONTACT_PHONE_MISSING) {
+            if ($candidate && empty(trim($this->resolveContactPhone($candidate)))) {
+                $obs->observe($cid, ParentBindingCodes::CHANNEL_PORTAL, $method, $obs->classifier()->classifyPortalStudentId($candidate, $phoneNorm, $rawName), $phoneNorm);
                 return response()->json(['message' => '此學生尚未設定聯絡手機，請聯繫分校補登後再登入'], 401);
             }
-            if ($c['outcome'] === ParentBindingCodes::OUTCOME_SUCCESS) {
+            $contactPhone = $candidate ? $this->resolveContactPhone($candidate) : '';
+            if ($candidate
+                && !empty($contactPhone)
+                && $this->normalizePhone($contactPhone) === $phoneNorm
+                && ($rawName === '' || trim((string) $candidate->name) === $rawName)) {
                 $student = $candidate;
             }
         } else {
             $allByName = Student::whereRaw('TRIM(name) = ?', [$rawName])->get();
-            // SEC-AUDIT-003 (#972): PII-free count only.
+            // SEC-AUDIT-003 (#972): this branch previously logged student names and
+            // phone numbers (Phone / parent_phone / resolved) on every name-based
+            // login attempt, ungated. Log a PII-free count only — preserves the
+            // "ambiguous name lookup" signal without leaking PII to the log.
             \Illuminate\Support\Facades\Log::info('parent.login.name_lookup', [
                 'name_match_count' => $allByName->count(),
                 'correlation_id' => $cid,
             ]);
-            $c = $obs->classifier()->classifyPortalName($allByName, $phoneNorm);
-            $obs->observe($cid, ParentBindingCodes::CHANNEL_PORTAL, $method, $c, $phoneNorm);
-            if ($c['reasonCode'] === ParentBindingCodes::AMBIGUOUS_MATCH) {
-                return response()->json(['message' => '找到多筆相符資料，請改以 LINE 綁定或提供學生代號登入'], 409);
-            }
-            if ($c['reasonCode'] === ParentBindingCodes::CONTACT_PHONE_MISSING) {
-                return response()->json(['message' => '此學生尚未設定聯絡手機，請聯繫分校補登後再登入'], 401);
-            }
-            if ($c['outcome'] === ParentBindingCodes::OUTCOME_SUCCESS && $c['studentId']) {
-                $student = $allByName->firstWhere('id', $c['studentId']) ?? Student::find($c['studentId']);
+            $candidates = $allByName
+                ->filter(function ($s) use ($phoneNorm) {
+                    $contact = $this->resolveContactPhone($s);
+                    return !empty($contact) && $this->normalizePhone($contact) === $phoneNorm;
+                })
+                ->values();
+
+            if ($candidates->count() === 1) {
+                $student = $candidates->first();
+            } elseif ($candidates->count() > 1) {
+                // 極罕見：姓名 + 手機完全相同但不同 Student 記錄。業界作法為不自動登入，
+                // 要求使用者改以 LINE 綁定或 StudentID 精確登入，避免誤選他家庭學生。
+                $obs->observe($cid, ParentBindingCodes::CHANNEL_PORTAL, $method, $obs->classifier()->classifyPortalName($allByName, $phoneNorm), $phoneNorm);
+                return response()->json([
+                    'message' => '找到多筆相符資料，請改以 LINE 綁定或提供學生代號登入',
+                ], 409);
+            } else {
+                // Hint to front desk if name matched but phone didn't for any row with empty phone
+                $nameOnly = Student::whereRaw('TRIM(name) = ?', [$rawName])->get();
+                if ($nameOnly->isNotEmpty() && $nameOnly->contains(fn ($s) => empty(trim($this->resolveContactPhone($s))))) {
+                    $obs->observe($cid, ParentBindingCodes::CHANNEL_PORTAL, $method, $obs->classifier()->classifyPortalName($allByName, $phoneNorm), $phoneNorm);
+                    return response()->json(['message' => '此學生尚未設定聯絡手機，請聯繫分校補登後再登入'], 401);
+                }
             }
         }
 
         if (!$student) {
+            $c = $hasStudentId
+                ? $obs->classifier()->classifyPortalStudentId(Student::find((int) $data['StudentID']), $phoneNorm, $rawName)
+                : $obs->classifier()->classifyPortalName(Student::whereRaw('TRIM(name) = ?', [$rawName])->get(), $phoneNorm);
+            $obs->observe($cid, ParentBindingCodes::CHANNEL_PORTAL, $method, $c, $phoneNorm);
             return response()->json(['message' => '查無此學生或手機號碼不符，請確認姓名與手機是否正確'], 404);
         }
 
+        $obs->observe(
+            $cid,
+            ParentBindingCodes::CHANNEL_PORTAL,
+            $method,
+            $hasStudentId
+                ? $obs->classifier()->classifyPortalStudentId($student, $phoneNorm, $rawName)
+                : $obs->classifier()->classifyPortalName(collect([$student]), $phoneNorm),
+            $phoneNorm,
+        );
         \Illuminate\Support\Facades\Log::info('parent.login.success', [
             'student_id' => $student->id,
             'ip' => $request->ip(),
