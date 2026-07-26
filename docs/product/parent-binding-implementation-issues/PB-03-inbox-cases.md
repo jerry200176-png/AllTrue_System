@@ -4,6 +4,8 @@
 |-------|-------|
 | Phase | 1 |
 | Risk class | T2 |
+| ADR | https://github.com/jerry200176-png/AllTrue_System/pull/1434 |
+| GitHub status | see issue after creation |
 | Dependencies | PB-00, PB-02 |
 | Blocks | PB-06 (SLA reuse) |
 

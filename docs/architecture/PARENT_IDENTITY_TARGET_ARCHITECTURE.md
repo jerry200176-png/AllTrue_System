@@ -2,10 +2,10 @@
 
 | Field | Value |
 |-------|-------|
-| Status | Design review only — **NO PRODUCTION CODE** |
+| Status | **ADR Accepted** (Founder 2026-07-26) — design docs only; **NO PRODUCTION CODE** |
 | Date | 2026-07-26 |
 | Base | `origin/main` audited 2026-07-26 |
-| ADR | [`ADR-PARENT-STUDENT-BINDING.md`](../adr/ADR-PARENT-STUDENT-BINDING.md) |
+| ADR | [`ADR-PARENT-STUDENT-BINDING.md`](../adr/ADR-PARENT-STUDENT-BINDING.md)（Accepted） |
 
 ---
 
@@ -254,7 +254,7 @@ erDiagram
 |--------|--------------------------|
 | ParentIdentity | 1 per `line_user_id`（LINE 主鍵）；未來可擴 email |
 | GuardianStudentRelationship | 0..n per parent；0..n per student；**UNIQUE** `(parent_identity_id, student_id)` where `status IN ('pending','active')`（應用層 partial unique） |
-| PairingCredential | 多筆歷史；同時 **active** 建議每學生最多 1（regenerate = revoke previous） |
+| PairingCredential | 多筆歷史；同一 `student+campus` 最多 **4** 組 **active 且未使用** credentials（Founder）；default `max_uses=1`（每監護人獨立碼）；regenerate 可 revoke 指定碼或發新碼直至 cap |
 | BindingRequest | UNIQUE `dedupe_key`（例：`campus|parent|normalized_name|day`） |
 | StudentLineBinding | 保留 UNIQUE `(student_id, line_user_id)` 作為 channel projection |
 
@@ -271,8 +271,8 @@ erDiagram
 ### 3.4 Soft delete / revocation
 
 - 不硬刪關係；`status=revoked` + `revoked_at` + `revoked_by`。  
-- Credential：`revoked_at` 或 `consumed`（use_count>=max_uses）。  
-- ParentSession：relationship revoke → 刪除／過期該 parent 對該 student 的 sessions。
+- Credential：`revoked_at` 或 `consumed`（use_count>=max_uses）；**禁止延長** `expires_at`。  
+- ParentSession：relationship **revoke → 立即失效**該 parent 對該 student 的 sessions（強制）。
 
 ### 3.5 Tenant isolation
 
@@ -339,7 +339,18 @@ submitted → approved | rejected | expired | cancelled
 pending → active → suspended → active
 active → revoked
 pending → revoked
+active → read_only → suspended
+read_only → active   (staff extend / student re-activated)
 ```
+
+| Student status | Relationship behaviour（Founder） |
+|----------------|----------------------------------|
+| `paused` | 維持 normal `active` access |
+| `graduated` / `inactive` | relationship → **`read_only` for 365 days** |
+| After 365 days | → **`suspended`**（staff 可人工延長 read_only；須 audit） |
+| Relationship `revoked` | **立即失效**該 parent+student 的所有 `ParentSession` |
+
+`read_only`：可查看歷史／帳務摘要（產品允許範圍），不可建立新綁定副作用；精確可讀 API 清單於實作 PR 定。
 
 ---
 
@@ -377,12 +388,12 @@ Auth：既有 Bearer；staff + `role:director|admin|super_admin` + `require_camp
 |-------|------|
 | Method / path | `POST /api/v1/parent-binding/students/{studentId}/pairing-credentials` |
 | AuthZ | director+；student.CampusID in scope |
-| Body | `{ "ttl_hours"?: 24|72|168, "max_uses"?: 1..4, "purpose": "guardian_link" }` |
-| Response | `{ "credential_id", "expires_at", "max_uses", "code"?, "deep_link"?, "qr_payload"? }` — **raw 僅此一次** |
+| Body | `{ "ttl_hours": 24\|72\|168, "purpose": "guardian_link" }` — default TTL **168h (7d)**；`max_uses` 固定 **1**（Founder；API 不開放提高） |
+| Response | `{ "credential_id", "expires_at", "max_uses": 1, "code"?, "deep_link"?, "qr_payload"? }` — **raw 僅此一次** |
 | Idempotency | `Idempotency-Key` optional；同 key 重放同結果 |
 | Rate limit | `30/hour/staff` |
 | Audit | `PAIRING_ISSUED` |
-| Side effect | revoke previous active credential for student（policy） |
+| Side effect | 若該 student+campus 已有 **4** 組 active unused → `400`／`ACTIVE_CREDENTIAL_CAP`；否則新增；不自動延長舊碼；過期碼不可 revive |
 
 ### 6.2 Inspect safe credential status
 
@@ -407,15 +418,18 @@ Auth：既有 Bearer；staff + `role:director|admin|super_admin` + `require_camp
 | Audit | `PAIRING_CONSUMED` / failure attempt |
 | Idempotency | 同一 parent 重送已綁 → `ALREADY_BOUND` success-equivalent |
 
-### 6.4 Submit binding request
+### 6.4 Submit binding request（家長自助 — Founder）
 
 | Field | Spec |
 |-------|------|
 | Method | `POST /api/v1/parent/binding-requests` |
+| Auth | **必須** authenticated `ParentIdentity`（LINE）；匿名禁止 |
 | Body | `{ "campus_id", "claimed_student_name", "note"? }` — **無完整手機必填** |
+| External response | Safe generic only；**不透露**學生是否存在 |
 | Dedupe | `dedupe_key` |
-| Response | `{ "request_id", "state": "submitted" }` |
+| Response | `{ "request_id", "state": "submitted" }`（成功與「已受理」語意對家長一致） |
 | Rate limit | `5/day/parent/campus` |
+| Staff | 可代建；Inbox 僅 masked evidence |
 | Inbox | create case if policy matches |
 
 ### 6.5 Approve / reject request

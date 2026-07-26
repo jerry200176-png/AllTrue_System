@@ -4,6 +4,8 @@
 |-------|-------|
 | Phase | 0 |
 | Risk class | T1 |
+| ADR | https://github.com/jerry200176-png/AllTrue_System/pull/1434 |
+| GitHub status | **ready / next** |
 | Dependencies | None |
 | Blocks | PB-01, PB-02, PB-03 |
 
@@ -17,6 +19,7 @@
 
 ## Non-scope
 
+- OTP / SMS provider（Founder：本期不做；非 Phase 0 dependency）。
 - Changing success bind path behavior or user-facing success copy.
 - Pairing credentials, Inbox UI, schema for relationships.
 - Throttling changes beyond adding counters（throttle can land in PB-01）.

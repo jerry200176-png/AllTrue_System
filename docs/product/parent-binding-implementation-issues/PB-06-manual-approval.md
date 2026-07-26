@@ -1,4 +1,4 @@
-# PB-06 — Manual approval（BindingRequest）
+# PB-06 — Manual approval（BindingRequest）+ parent self-serve
 
 | Field | Value |
 |-------|-------|
@@ -6,31 +6,34 @@
 | Risk class | T2 |
 | Dependencies | PB-04, PB-03 |
 | Blocks | PB-08 |
+| ADR | https://github.com/jerry200176-png/AllTrue_System/pull/1434 |
+| Status | backlog / blocked on PB-04 |
 
 ## Scope
 
 - `binding_requests` table + state machine.
-- Parent submit（campus + claimed name； minimal PII）.
+- **Parent self-serve submit**（Founder）：requires authenticated LINE `ParentIdentity`； campus + claimed name； minimal PII.
+- Safe generic external response； never reveal student existence.
+- Rate limit + dedupe； staff masked evidence； staff may create on behalf of parent.
 - Staff approve/reject/expire job； approve atomically creates relationship（no dupes）.
 - Inbox integration for pending + SLA.
-- Dedupe key + rate limit.
 
 ## Non-scope
 
-- Making approval the primary path for all binds； auto-approve heuristics； OTP.
+- Making approval the primary path for all binds； auto-approve heuristics； OTP； anonymous submits.
 
 ## Acceptance criteria
 
-1. Submit does not reveal whether student exists.
-2. Approve twice is idempotent（one relationship）.
-3. Reject/expire parent-visible pending clears appropriately.
-4. SLA breach elevates Inbox priority.
-5. Campus isolation on review APIs.
+1. Unauthenticated submit rejected.
+2. Submit does not reveal whether student exists.
+3. Approve twice is idempotent（one relationship）.
+4. Reject/expire clears pending appropriately for parent.
+5. SLA breach elevates Inbox priority； campus isolation on review APIs.
 
 ## Tests
 
-- Feature：submit/dedupe/approve/reject/expire； IDOR； double approve.
-- Inbox case created once per dedupe key.
+- Feature：auth required； submit/dedupe/approve/reject/expire； IDOR； double approve； enumeration resistance.
+- Inbox case created once per dedupe key； payload has no full phone.
 
 ## Rollback
 

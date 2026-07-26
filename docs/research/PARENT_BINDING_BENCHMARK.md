@@ -382,15 +382,17 @@
 
 ---
 
-## 7. Unresolved / cannot confirm
+## 7. Unresolved / cannot confirm（保留 — 不得改寫為已證實）
 
 | 項目 | 狀態 |
 |------|------|
-| ClassDojo code 是否 server-side hash | 無法從 Help Center 確認實作細節 |
-| PowerSchool Access Password entropy／儲存 | 官方 docs 未公開演算法 |
-| Infinite Campus Activation Key 全域是否一律 single-use | 僅見學區文件；不以全球規格宣稱 |
-| Canvas API 頁面 2026-07-26 部分 CDN 維護頁 | 以 GitHub source + 既有 API mirror／搜尋快取為準；source `expires_at: 7.days` 已直接驗證 |
-| 台灣補習班家長對「紙本／LINE 傳配對碼」接受度 | 需 Founder／現場驗證（產品假設，非外部證據） |
+| ClassDojo code 是否 server-side hash | **無法確認**（Help Center 無實作細節） |
+| PowerSchool Access Password／credential 是否 server-side hash | **無法確認**（官方 docs 未公開演算法） |
+| Infinite Campus Activation Key 是否全球一律 single-use | **無法確認**（僅見學區操作文件） |
+| Canvas API 頁面 2026-07-26 部分 CDN 維護頁 | 以 GitHub source 為準；`expires_at: 7.days` 已直接驗證 |
+| 現場「臨櫃／LINE 發碼」接受度 | **尚未驗證**（產品假設；Phase 2 後以 KPI／客服率觀測） |
+
+> Founder 已批准 Hybrid 架構參數（見 ADR Accepted），**不**因此把上表未確認項改為已證實。
 
 ---
 

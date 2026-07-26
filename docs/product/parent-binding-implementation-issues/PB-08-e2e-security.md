@@ -4,6 +4,8 @@
 |-------|-------|
 | Phase | 2–3 |
 | Risk class | T2 |
+| ADR | https://github.com/jerry200176-png/AllTrue_System/pull/1434 |
+| GitHub status | see issue after creation |
 | Dependencies | PB-05, PB-06, PB-07 |
 | Blocks | PB-09 |
 

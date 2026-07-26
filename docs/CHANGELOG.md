@@ -1,3 +1,11 @@
+## 2026-07-26 — docs: 家長綁定 ADR Accepted（Founder closeout）
+
+- ADR Status → **Accepted**；落地 max_uses=1、TTL 7d（可選 24h/72h/7d）、active cap 4、read-only 365d→suspended、revoke 即失效 ParentSession、BindingRequest 自助、KPI sunset gate（≥80%/30d/support&lt;10%；無硬日期）。
+- 同步 architecture／UX／threat／rollout／PB-00…09；OTP 明確排除於 Phase 0–2。
+- Implementation **尚未開始**（docs/governance only）。
+
+開發備註：PR #1434 DESIGN REVIEW ONLY — NO PRODUCTION CODE。
+
 ## 2026-07-26 — docs: 家長帳號／學生綁定重新設計（evidence-based design review）
 
 - 新增研究／架構／ADR／UX／威脅模型／rollout 與實作 issue 拆解（docs-only，無 production code）。

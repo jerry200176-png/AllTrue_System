@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| Status | Design review only |
+| Status | **ADR Accepted**（Founder 2026-07-26）— design only |
 | Date | 2026-07-26 |
 | Audience | Founder / Director / Implementation |
 | Related | ADR · Target Architecture · Threat Model |
@@ -90,8 +90,17 @@
 | Screen | Content |
 |--------|---------|
 | Login hub | LINE 登入主 CTA；次要「我有綁定碼」 |
-| Manage children | 已連結孩子列表；「新增孩子」→ 輸入碼 |
-| Request form（若開啟） | 選分校 + 孩子姓名 + 送出；成功後 pending |
+| Manage children | 已連結孩子列表；**每列明示「學生姓名 · 分校」**；「新增孩子」→ 輸入碼 |
+| Request form（自助開啟） | 須已 LINE 登入；選分校 + 孩子姓名 + 送出；成功後 pending（安全文案，不確認是否存在） |
+| Read-only child | `graduated`/`inactive` 365 天內：標示「唯讀」；超過後「已暫停，請聯繫分校」 |
+
+### 3.3 BindingRequest 自助流程（Founder）
+
+1. 家長完成 LINE／ParentIdentity 驗證。  
+2. 選擇「沒有綁定碼／申請連結」。  
+3. 選分校、填寫孩子姓名（可選備註）。  
+4. 送出 → 一律顯示「已收到申請，分校確認後會完成綁定」（不透露命中與否）。  
+5. 主任 Inbox 見 masked 案件；approve 後家長列表出現 **學生 · 分校**。
 
 ---
 
@@ -116,12 +125,13 @@
 - 綁定失敗需處理（聚合）  
 - 多次錯誤嘗試  
 
-### 4.3 Issue code interaction
+### 4.3 Issue code interaction（Founder）
 
-1. 點「產生綁定碼」→ 確認 TTL／可用次數（預設值來自設定）。  
-2. 顯示 **一次** plaintext + 複製 + QR。  
-3. 關閉後無法再看 plaintext（只能重發）。  
-4. 文案提示：「請以私訊或紙本交給監護人，勿貼到班級群。」
+1. 點「產生綁定碼」→ 選擇 TTL：**24 小時／72 小時／7 天**（預設 **7 天**）；**無永久碼**。  
+2. **每位監護人一碼**（`max_uses=1`）；多監護人請分別產生；同一學生＋分校最多 **4** 組有效未使用碼。  
+3. 顯示 **一次** plaintext + 複製 + QR；關閉後無法再看 plaintext（只能重發／撤銷後新發）。  
+4. 文案提示：「請以私訊或紙本交給該位監護人，勿貼到班級群；勿轉傳。」  
+5. 過期後只能「重新發碼」，UI 不提供「延長舊碼」。
 
 ### 4.4 Revoke
 

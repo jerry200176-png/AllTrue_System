@@ -2,9 +2,10 @@
 
 | Field | Value |
 |-------|-------|
-| Status | Design review only — **no production code this round** |
+| Status | **ADR Accepted**（Founder 2026-07-26）— rollout plan only; **no production code this round** |
 | Date | 2026-07-26 |
 | Related | ADR · Target Architecture · Threat Model |
+| OTP | **Phase 0–2 不含 OTP**；僅未來選項 |
 
 > 成功標準是 KPI（§5），不是「功能已上線」。
 
@@ -79,19 +80,29 @@
 
 ---
 
-## 5. Phase 3 — Legacy sunset
+## 5. Phase 3 — Legacy sunset（KPI gate；無自動硬日期）
 
 **Goal**：姓名+手機不再是預設；關係與撤銷完備。
 
+### Sunset gate（須**同時**符合才可向 Founder 提案）
+
+1. pairing code + BindingRequest 占新綁定 **≥ 80%**  
+2. 連續 **30 天**  
+3. legacy 相關客服／人工補救率 **< 10%**  
+4. 無未解決 **P0／P1** identity、PII、跨校區事件  
+5. **Evidence**：revoke → ParentSession 立即失效；migration rollback 演練通過  
+6. **Founder 再次明確批准**  
+7. **不**預設自動生效日期  
+
 | Item | Spec |
 |------|------|
-| Feature flag | `parent_binding_legacy_bind=false`（可 per-campus） |
+| Feature flag | `parent_binding_legacy_bind=false`（可 per-campus；僅 gate 通過後） |
 | DB | 可加 check：legacy attempts only via staff override |
 | Migration | 確認所有 active SLB 有 relationship；orphan cleanup job |
-| Rollback | 重新開啟 legacy flag（緊急） |
-| Prod verification | legacy 指令回「請使用綁定碼」；既有 relationship 不受影響 |
-| Metrics | legacy attempts → 0；wrong-bind/revoke 穩定；無法歸因失敗 <5% |
-| Exit criteria | Founder 簽字 sunset；文件與 LineIntegration UI 更新 |
+| Rollback | 重新開啟 legacy flag（緊急）；rollback runbook 須先於提案前驗證 |
+| Prod verification | legacy 指令回「請使用綁定碼」；既有 relationship 不受影響；session invalidation 抽樣 |
+| Metrics | pairing+request share；legacy support rate；unattributable failures |
+| Exit criteria | KPI gate + Founder re-approval；文件與 LineIntegration UI 更新 |
 | Support playbook | 僅人工臨櫃驗證後由主任代 approve request 或發碼 |
 
 ---

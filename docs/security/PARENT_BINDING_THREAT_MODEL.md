@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| Status | Design review only — **no production code** |
+| Status | **ADR Accepted**（Founder 2026-07-26）— threat model only; **no production code** |
 | Date | 2026-07-26 |
 | Scope | LINE OA binding, Parent Portal login, guardian relationship lifecycle, staff pairing ops |
 | Related | [`PARENT_BINDING_BENCHMARK.md`](../research/PARENT_BINDING_BENCHMARK.md), [`ADR-PARENT-STUDENT-BINDING.md`](../adr/ADR-PARENT-STUDENT-BINDING.md) |
@@ -128,8 +128,17 @@ Contact phone SSOT：`StudentContactPhone`（`parent_phone` → legacy `Phone`�
 | Impact | 4 |
 | Detectability | 4 |
 | Existing | N/A（尚未實作） |
-| Proposed | Short TTL（建議 24–72h，可配）；max_uses；consume audit；staff regenerate；optional bind-to-first LINE user claim；顯示「勿轉傳」文案 |
-| Residual | Med（實體轉傳無法消滅；靠 TTL+uses+revoke） |
+| Proposed | **Rejected default：shared multi-use code**（Founder：`max_uses=1`，每監護人獨立碼）。TTL 預設 **7d**（staff 可選 24h/72h/7d）；consume audit；staff revoke/regenerate；active unused cap **4**/student+campus；顯示「勿轉傳」 |
+| Residual | Med（實體轉傳無法消滅；靠 TTL+single-use+revoke+cap） |
+
+### T6b — Active credential cap exhaustion / staff spam issue
+
+| Field | Value |
+|-------|-------|
+| Likelihood | 2 |
+| Impact | 2 |
+| Proposed | Enforce max 4 active unused credentials per student+campus；issue fails closed with `ACTIVE_CREDENTIAL_CAP` |
+| Residual | Low |
 
 ### T7 — Token replay
 
@@ -178,7 +187,7 @@ Contact phone SSOT：`StudentContactPhone`（`parent_phone` → legacy `Phone`�
 | Proposed | Issue/revoke pairing 僅 campus scope；audit `created_by`；敏感操作二次確認；super_admin 跨校另權 |
 | Residual | Low–Med |
 
-### T12 — Multi-guardian revoke gaps
+### T12 — Multi-guardian revoke gaps / session revocation
 
 | Field | Value |
 |-------|-------|
@@ -186,8 +195,17 @@ Contact phone SSOT：`StudentContactPhone`（`parent_phone` → legacy `Phone`�
 | Impact | 4 |
 | Existing | Staff can delete one `StudentLineBinding` |
 | Gaps | 不失效 ParentSession；無「撤銷所有監護人」批次；無通知其他監護人 |
-| Proposed | Revoke relationship → expire sessions for that parent+student；audit；optional notify |
-| Residual | Low |
+| Proposed | **Founder 強制**：Revoke relationship → **立即失效**該 parent+student 的 ParentSession；audit；optional notify |
+| Residual | Low with enforced invalidation tests |
+
+### T12b — Self-serve BindingRequest enumeration / spam
+
+| Field | Value |
+|-------|-------|
+| Likelihood | 3 |
+| Impact | 3 |
+| Proposed | Require authenticated LINE identity；safe generic response（永不確認學生存在）；rate limit；dedupe；staff masked evidence only；Inbox cooldown |
+| Residual | Low–Med |
 
 ### T13 — Alumni / transferred student still accessible
 
