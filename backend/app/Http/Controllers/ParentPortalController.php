@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\ParentBindingChannel;
+use App\Enums\ParentBindingMethod;
 use App\Models\LearningRecord;
 use App\Models\LearningRecordFeedback;
 use App\Models\ParentSession;
@@ -18,12 +20,14 @@ use App\Models\Subject;
 use App\Models\User;
 use App\Http\Controllers\LearningRecordController;
 use App\Services\ExceptionWorkflowService;
+use App\Services\ParentBinding\ParentBindingObservability;
 use App\Services\SessionDeductionService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class ParentPortalController extends Controller
 {
@@ -31,40 +35,76 @@ class ParentPortalController extends Controller
 
     public function login(Request $request)
     {
-        $data = $request->validate([
-            'StudentID' => 'nullable|integer',
-            'Name' => 'nullable|string|max:64',
-            'Phone' => 'required|string|max:20',
-        ]);
+        $obs = app(ParentBindingObservability::class);
+        $correlationId = $obs->newCorrelationId(
+            $request->headers->get('X-Request-Id') ?? $request->headers->get('X-Correlation-Id')
+        );
+
+        try {
+            $data = $request->validate([
+                'StudentID' => 'nullable|integer',
+                'Name' => 'nullable|string|max:64',
+                'Phone' => 'required|string|max:20',
+            ]);
+        } catch (ValidationException $e) {
+            $obs->observe(
+                $correlationId,
+                ParentBindingChannel::ParentPortal,
+                ParentBindingMethod::Unknown,
+                $obs->classifier()->invalidInput(),
+            );
+            throw $e;
+        }
 
         $phoneNorm = $this->normalizePhone($data['Phone']);
         if ($phoneNorm === '') {
+            $obs->observe(
+                $correlationId,
+                ParentBindingChannel::ParentPortal,
+                ParentBindingMethod::Unknown,
+                $obs->classifier()->invalidInput(),
+                null,
+            );
             return response()->json(['message' => '請輸入手機號碼'], 422);
         }
 
         $rawName = trim((string) ($data['Name'] ?? ''));
         $hasStudentId = !empty($data['StudentID']) && (int) $data['StudentID'] > 0;
+        $method = $hasStudentId ? ParentBindingMethod::StudentId : ParentBindingMethod::Name;
 
         // PRD-B FR-B-001: require precise single-row match. Either:
         //   (a) StudentID + Phone (exact match), or
         //   (b) Name + Phone (must return exactly one matching Student).
         // 「相同 Phone 的所有學生均列出」邏輯已於 2026-04-18 移除以避免跨家庭 PII 洩漏。
         if (!$hasStudentId && $rawName === '') {
+            $obs->observe(
+                $correlationId,
+                ParentBindingChannel::ParentPortal,
+                ParentBindingMethod::Unknown,
+                $obs->classifier()->invalidInput(),
+                $phoneNorm,
+            );
             return response()->json(['message' => '請輸入學生姓名與手機號碼'], 422);
         }
 
         $student = null;
+        $classification = null;
 
         if ($hasStudentId) {
             $candidate = Student::find((int) $data['StudentID']);
-            if ($candidate && empty(trim($this->resolveContactPhone($candidate)))) {
+            $classification = $obs->classifier()->classifyPortalStudentId($candidate, $phoneNorm, $rawName);
+            $obs->observe(
+                $correlationId,
+                ParentBindingChannel::ParentPortal,
+                $method,
+                $classification,
+                $phoneNorm,
+            );
+
+            if ($classification->reasonCode?->value === 'CONTACT_PHONE_MISSING') {
                 return response()->json(['message' => '此學生尚未設定聯絡手機，請聯繫分校補登後再登入'], 401);
             }
-            $contactPhone = $candidate ? $this->resolveContactPhone($candidate) : '';
-            if ($candidate
-                && !empty($contactPhone)
-                && $this->normalizePhone($contactPhone) === $phoneNorm
-                && ($rawName === '' || trim((string) $candidate->name) === $rawName)) {
+            if ($classification->outcome->value === 'success' && $candidate) {
                 $student = $candidate;
             }
         } else {
@@ -75,38 +115,41 @@ class ParentPortalController extends Controller
             // "ambiguous name lookup" signal without leaking PII to the log.
             \Illuminate\Support\Facades\Log::info('parent.login.name_lookup', [
                 'name_match_count' => $allByName->count(),
+                'correlation_id' => $correlationId,
             ]);
-            $candidates = $allByName
-                ->filter(function ($s) use ($phoneNorm) {
-                    $contact = $this->resolveContactPhone($s);
-                    return !empty($contact) && $this->normalizePhone($contact) === $phoneNorm;
-                })
-                ->values();
 
-            if ($candidates->count() === 1) {
-                $student = $candidates->first();
-            } elseif ($candidates->count() > 1) {
-                // 極罕見：姓名 + 手機完全相同但不同 Student 記錄。業界作法為不自動登入，
-                // 要求使用者改以 LINE 綁定或 StudentID 精確登入，避免誤選他家庭學生。
+            $classification = $obs->classifier()->classifyPortalName($allByName, $phoneNorm);
+            $obs->observe(
+                $correlationId,
+                ParentBindingChannel::ParentPortal,
+                $method,
+                $classification,
+                $phoneNorm,
+            );
+
+            if ($classification->reasonCode?->value === 'AMBIGUOUS_MATCH') {
                 return response()->json([
                     'message' => '找到多筆相符資料，請改以 LINE 綁定或提供學生代號登入',
                 ], 409);
-            } else {
-                // Hint to front desk if name matched but phone didn't for any row with empty phone
-                $nameOnly = Student::whereRaw('TRIM(name) = ?', [$rawName])->get();
-                if ($nameOnly->isNotEmpty() && $nameOnly->contains(fn ($s) => empty(trim($this->resolveContactPhone($s))))) {
-                    return response()->json(['message' => '此學生尚未設定聯絡手機，請聯繫分校補登後再登入'], 401);
-                }
+            }
+            if ($classification->reasonCode?->value === 'CONTACT_PHONE_MISSING') {
+                return response()->json(['message' => '此學生尚未設定聯絡手機，請聯繫分校補登後再登入'], 401);
+            }
+            if ($classification->outcome->value === 'success' && $classification->studentId) {
+                $student = $allByName->firstWhere('id', $classification->studentId)
+                    ?? Student::find($classification->studentId);
             }
         }
 
         if (!$student) {
+            // STUDENT_NOT_FOUND / PHONE_MISMATCH keep the same 404 copy (PB-01 will split).
             return response()->json(['message' => '查無此學生或手機號碼不符，請確認姓名與手機是否正確'], 404);
         }
 
         \Illuminate\Support\Facades\Log::info('parent.login.success', [
             'student_id' => $student->id,
             'ip' => $request->ip(),
+            'correlation_id' => $correlationId,
         ]);
 
         $result = $this->createSession($student);
