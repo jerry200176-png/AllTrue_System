@@ -2,7 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Models\AuthToken;
 use App\Models\ClassSession;
+use App\Models\Student;
+use App\Models\User;
+use App\Models\UserCampus;
 use App\Services\CourseLeaveCascadeService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -164,6 +168,90 @@ class LeaveKeepDatesAppendTailTest extends TestCase
         $this->assertSame($before, $after);
     }
 
+    /** @param  array<int>  $campusIds */
+    private function createDirectorToken(array $campusIds, string $loginName): string
+    {
+        $user = User::create([
+            'LoginName' => $loginName,
+            'Name' => '主任測試',
+            'PSW' => 'secret',
+            'type' => 'A',
+            'phone' => '0912345678',
+            'MustChangePassword' => false,
+        ]);
+        foreach ($campusIds as $campusId) {
+            UserCampus::create([
+                'CampusID' => $campusId,
+                'UserID' => $user->id,
+                'Admin' => 1,
+                'Approved' => 1,
+            ]);
+        }
+        $token = bin2hex(random_bytes(16));
+        AuthToken::create([
+            'user_id' => $user->id,
+            'token' => $token,
+            'expires_at' => now()->addDay(),
+        ]);
+        return $token;
+    }
+
+    private function createTeacher(int $campusId, string $loginName): int
+    {
+        $teacher = User::create([
+            'LoginName' => $loginName,
+            'Name' => '老師測試',
+            'PSW' => 'secret',
+            'type' => 'T',
+            'phone' => '0922000000',
+            'MustChangePassword' => false,
+        ]);
+        UserCampus::create([
+            'CampusID' => $campusId,
+            'UserID' => $teacher->id,
+            'Admin' => 0,
+            'Approved' => 1,
+        ]);
+        return (int) $teacher->id;
+    }
+
+    private function createStudent(int $campusId, string $name): Student
+    {
+        return Student::create([
+            'name' => $name,
+            'CampusID' => $campusId,
+            'ClassID' => 1,
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+        ]);
+    }
+
+    /** @param  array<string, mixed>  $overrides */
+    private function createCourseViaBatchApi(string $token, int $studentId, int $teacherId, array $overrides = []): \Illuminate\Testing\TestResponse
+    {
+        $payload = array_merge([
+            'branch_id' => 1,
+            'student_id' => $studentId,
+            'teacher_id' => $teacherId,
+            'subject' => 'Math',
+            'class_type' => 'one_on_one',
+            'total_classes' => 8,
+            'confirmed_dates' => [],
+            'future_dates' => [],
+            'days_of_week' => [3],
+            'duration_minutes' => 120,
+            'price_per_session' => 500,
+            'payment_type' => 'session',
+            'start_time' => '16:00',
+        ], $overrides);
+
+        return $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/class-sessions/batch', $payload);
+    }
+
     private function seedLegacyShiftCourse(): int
     {
         DB::table('Student')->insert([
@@ -198,7 +286,6 @@ class LeaveKeepDatesAppendTailTest extends TestCase
             'time' => '19:00:00',
         ]);
 
-        // Legacy SHIFT layout after leave on 2026-08-04: 08/11 vacated, sessions on 08/18+.
         DB::table('ClassSession')->insert([
             [
                 'StudentClassID' => $courseId,
@@ -246,13 +333,12 @@ class LeaveKeepDatesAppendTailTest extends TestCase
                 'StartTime' => '19:00:00',
                 'EndTime' => '21:00:00',
                 'Status' => 'scheduled',
-                'Note' => CourseLeaveCascadeService::buildAutoExtendedNote('2026-08-04', 0) . '; leave-policy-shift',
+                'Note' => 'auto-extended-after-leave',
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
         ]);
 
-        // Fix leave session id in append note provenance after insert.
         $leaveId = (int) DB::table('ClassSession')
             ->where('StudentClassID', $courseId)
             ->whereDate('SessionDate', '2026-08-04')

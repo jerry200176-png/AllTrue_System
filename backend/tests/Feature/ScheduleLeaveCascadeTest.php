@@ -508,13 +508,20 @@ class ScheduleLeaveCascadeTest extends TestCase
             'class_session_id' => (int) $leaveSession->id,
         ])->assertOk();
 
-        $this->assertSame('2026-06-09', (string) $res->json('extended_end_date'));
+        // KEEP policy: last existing date 05/26 → append next Tue 06/02 (no vacated shift).
+        $this->assertSame('2026-06-02', (string) $res->json('extended_end_date'));
         $this->assertSame(8, ClassSession::where('StudentClassID', $courseId)
             ->whereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted', 'excused'])
             ->count());
         $this->assertDatabaseHas('ClassSession', [
             'StudentClassID' => $courseId,
-            'SessionDate' => '2026-06-09',
+            'SessionDate' => '2026-06-02',
+            'Status' => 'scheduled',
+        ]);
+        // Future dates after leave must remain (e.g. 05/05 not vacated).
+        $this->assertDatabaseHas('ClassSession', [
+            'StudentClassID' => $courseId,
+            'SessionDate' => '2026-05-05',
             'Status' => 'scheduled',
         ]);
 
@@ -526,7 +533,7 @@ class ScheduleLeaveCascadeTest extends TestCase
         ])->assertStatus(422);
 
         $this->assertSame(1, ClassSession::where('StudentClassID', $courseId)
-            ->whereDate('SessionDate', '2026-06-09')
+            ->whereDate('SessionDate', '2026-06-02')
             ->count());
     }
 
