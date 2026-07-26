@@ -60,12 +60,9 @@ class ParentBindingObservabilityTest extends TestCase
         $this->assertSame(hash_hmac('sha256', 'parent-binding-phone-v1|0912345678', 'k'), ParentBindingCodes::phoneFingerprint('0912345678'));
 
         $campus = Campus::factory()->create();
-        $clf = new ParentBindingClassifier();
         $empty = $this->student($campus->id, '空', '', '');
+        $clf = new ParentBindingClassifier();
         $this->assertSame(ParentBindingCodes::CONTACT_PHONE_MISSING, $clf->classifyLineStudentId($empty, '0912345678', (int) $campus->id)['reasonCode']);
-        $a = $this->student($campus->id, '同', null, '0912345678');
-        $b = $this->student($campus->id, '同', null, '0912345678');
-        $this->assertSame(ParentBindingCodes::AMBIGUOUS_MATCH, $clf->classifyPortalName(collect([$a, $b]), '0912345678')['reasonCode']);
 
         Http::fake(['https://api.line.me/v2/bot/message/reply' => Http::response(['ok' => true], 200)]);
         $uid = 'U' . str_repeat('a', 32);

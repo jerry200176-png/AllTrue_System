@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| Status | **ADR Accepted** (Founder 2026-07-26); **PB-00 observability implemented** (code) |
+| Status | **ADR Accepted**; PB-00 observability implemented |
 | OTP | **Not in Phase 0–2** |
 
 Success = KPIs, not “shipped”. Expand-contract; flags+rollback; CI→PR→merge→deploy; no schedule/billing/leave mix-in.
@@ -11,7 +11,7 @@ Success = KPIs, not “shipped”. Expand-contract; flags+rollback; CI→PR→me
 
 | Phase | Goal | Flags | Changes | Exit |
 |-------|------|-------|---------|------|
-| **0 Observability** | Baseline failures; **no** success-path change | `PARENT_BINDING_OBSERVABILITY=true` | `parent_binding_attempts` + reason_code + PII-safe logs; artisan reports | ≥7d baseline; Founder sees missing % |
+| **0 Observability** | Baseline failures; **no** success-path change | `observability=on` | reason_code + masked attempts/logs; missing-phone report | ≥7d baseline; Founder sees missing % |
 | **1 Safe UX + completeness** | Less enum; staff tools; success still name+phone | `safe_copy`, `completeness_ui`, `inbox_v1` | Safe fail copy; fix Portal empty-phone leak; filters; Import/Wizard `parent_phone`; high-signal Inbox | Support misdiagnosis↓ 14d; UI used |
 | **2 Pairing + request + GSR** | Primary credential; legacy fallback | `pairing`, `requests`, `legacy_bind=on` | Migrations+backfill; issue/consume/approve; dual-write SLB | Pairing ≥50% new (or Founder); no P0 wrong-bind; revoke kills session |
 | **3 Legacy sunset** | Name+phone not default | `legacy_bind=false` **only after gate** | Guide to code; orphan cleanup | Gate + Founder re-approval |
@@ -29,20 +29,12 @@ Success = KPIs, not “shipped”. Expand-contract; flags+rollback; CI→PR→me
 
 | Flag | P0 | P1 | P2 | P3 |
 |------|----|----|----|-----|
-| observability (`PARENT_BINDING_OBSERVABILITY`) | on | on | on | on |
+| observability | on | on | on | on |
 | safe_copy / completeness / inbox | off | on | on | on |
 | pairing / requests | off | off | on | on |
 | legacy_bind | on | on | on | **off** |
 
-### PB-00 ops (read-only)
-
-```bash
-php artisan parent-binding:report --days=7 --format=json
-php artisan parent-binding:report --missing-contact --format=json
-php artisan parent-binding:report --missing-contact --campus=<id> --format=json
-```
-
-**Rollback:** `PARENT_BINDING_OBSERVABILITY=false` (do not drop table first-line). PB-00 ≠ safe copy / completeness / Inbox / pairing.
+PB-00 ops: `php artisan parent-binding:report --days=7|--missing-contact --format=json`. Flag `PARENT_BINDING_OBSERVABILITY`. Rollback=flag off (not drop table).
 
 ## Verify / support / KPI
 
