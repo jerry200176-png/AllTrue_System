@@ -1,7 +1,14 @@
 {
   "schema_version": "1.0",
   "provenance_type": "human-authored",
+<<<<<<< HEAD
   "declared_at": "2026-07-26T18:00:00Z",
   "author": "founder-directed-cursor-cloud-ui-foundation",
   "note": "Cursor Cloud lacks agent-start allowlisted path; human-authored provenance for AllTrue UI Foundation Pilot closeout on feat/ui-foundation-pilot (#1448)."
 }
+=======
+  "declared_at": "2026-07-26T17:55:00Z",
+  "author": "founder-directed-cursor-cloud-repo-hygiene",
+  "note": "Cursor Cloud lacks agent-start path allowlist; human-authored provenance for repository hygiene closeout (#1447 REQUEST CHANGES): PB-00 activation-pending status, archive-tag policy fix, remove session blanket archive tags. Docs/metadata only."
+}
+>>>>>>> origin/main

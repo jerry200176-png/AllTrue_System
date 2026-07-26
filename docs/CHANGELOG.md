@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 ## 2026-07-26 — design(ui): AllTrue UI Foundation + inbox/students pilot
 
 - 新增 ops UI Foundation：tokens、pilot-used `At*` primitives、`docs/design/ALLTRUE_UI_FOUNDATION.md`。
@@ -5,6 +6,13 @@
 - 主參考 GitLab Pajamas；Carbon 僅互動／表格／a11y；未引入大型 UI library。
 - Visual fixtures 僅在 `frontend/e2e/fixtures/`；production `public/` / `dist_build` 不含 harness。
 - Merge evidence：真實 Vue page Playwright + mocked API（非 static HTML）。
+=======
+## 2026-07-26 — chore(repo): PR／Issue／branch／docs hygiene
+
+- 同步 Parent Binding 文件狀態：PB-00 = **IMPLEMENTED / DEPLOYED — PRODUCTION ACTIVATION PENDING**（#1446 merged；#1436 closed by merge；Pi ops activation／`effective=true`／7-day baseline 未完成；PB-01～09 未開始）。
+- 修非 archive 壞連結；branch hygiene：刪支必記 tip SHA；`archive/<branch>` tag **非預設**（僅 unique unmerged keep-value）。
+- 無 production code、無 deploy、未合併產品 PR。
+>>>>>>> origin/main
 
 ## 2026-07-26 — feat(parent): PB-00 家長綁定 PII-safe observability（#1436）
 
@@ -12,7 +20,7 @@
 
 ## 2026-07-26 — docs: 家長綁定 ADR Accepted（Hybrid；PR #1434）
 
-- Founder Accepted：max_uses=1；TTL 7d（24h/72h/7d）；cap 4；read_only 365d→suspended；revoke→session；BindingRequest 自助；sunset ≥80%/30d/support&lt;10%（無硬日期）；OTP∉P0–2。Docs-only；implementation 未開始。
+- Founder Accepted：max_uses=1；TTL 7d（24h/72h/7d）；cap 4；read_only 365d→suspended；revoke→session；BindingRequest 自助；sunset ≥80%/30d/support&lt;10%（無硬日期）；OTP∉P0–2。Docs-only at merge；PB-00 後續由 #1446 實作 observability。
 
 ## 2026-07-26 — fix(parent): 家長更新卡改為顯式 PARENT_UPDATES 投影（B+）
 

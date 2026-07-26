@@ -122,7 +122,7 @@
 
 - **目標**：續報／加購／試聽／平行課可群組檢視，不合併財務實體。  
 - **參考**：Gibbon（學校合約關係）、ERPNext（文件關聯不亂 merge）。  
-- **權威**：[#1382 RFC_COURSE_CONTINUITY](docs/architecture/RFC_COURSE_CONTINUITY.md) 方案 A。  
+- **權威**：[RFC_COURSE_CONTINUITY](./RFC_COURSE_CONTINUITY.md)（epic [#1382](https://github.com/jerry200176-png/AllTrue_System/issues/1382)）方案 A。  
 - **不參考**：物理 merge StudentClass。
 
 ### Epic C — Billing Trust & Settlement
