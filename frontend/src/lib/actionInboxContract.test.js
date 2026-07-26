@@ -1,14 +1,8 @@
 import assert from 'node:assert/strict';
 import {
-  caseCtaLabel,
-  extractCaseItems,
-  extractCasePageMeta,
-  inboxScopeKey,
-  isInboxBadgeDanger,
-  mergeInboxCountState,
-  parseInboxCount,
-  resolveDefaultLane,
-  shouldShowCachedCases,
+  caseCtaLabel, extractCaseItems, extractCasePageMeta, inboxScopeKey, isInboxBadgeDanger,
+  mergeInboxCountState, parseInboxCount, parseInboxDeepLinkSearch, resolveAuthorizedBranchId,
+  resolveDefaultLane, shouldShowCachedCases,
 } from './actionInboxContract.js';
 
 const c = parseInboxCount({
@@ -33,5 +27,7 @@ assert.equal(inboxScopeKey(2), 'branch:2');
 const json = { cases: { data: [{ id: 'workflow:51' }], total: 51, current_page: 3, last_page: 3, per_page: 20, has_more: false } };
 assert.equal(extractCaseItems(json).length, 1);
 assert.deepEqual(extractCasePageMeta(json), { total: 51, currentPage: 3, lastPage: 3, perPage: 20, hasMore: false });
+assert.equal(resolveAuthorizedBranchId(9, [1, 2]), null);
+assert.equal(parseInboxDeepLinkSearch('?workflow_id=-3').workflowId, null);
 
 console.log('actionInboxContract.test.js: ok');

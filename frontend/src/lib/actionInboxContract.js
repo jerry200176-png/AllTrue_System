@@ -80,12 +80,22 @@ export function buildInboxDeepLinkQuery({ branchId, workflowId, page = 'director
 
 export function parseInboxDeepLinkSearch(search) {
   const params = new URLSearchParams(typeof search === 'string' ? search : '');
+  const wf = Number(params.get('workflow_id') || 0);
+  const bid = Number(params.get('branch_id') || 0);
   return {
     page: params.get('page') || '',
     section: params.get('section') || '',
-    workflowId: Number(params.get('workflow_id') || 0) || null,
-    branchId: Number(params.get('branch_id') || 0) || null,
+    workflowId: Number.isFinite(wf) && wf > 0 ? wf : null,
+    branchId: Number.isFinite(bid) && bid > 0 ? bid : null,
   };
+}
+
+/** Clamp URL branch_id to authorized campuses (non-super_admin). */
+export function resolveAuthorizedBranchId(requestedId, authorizedIds = [], { allowAny = false } = {}) {
+  const id = Number(requestedId || 0);
+  if (!(id > 0)) return null;
+  if (allowAny) return id;
+  return new Set((authorizedIds || []).map(Number)).has(id) ? id : null;
 }
 
 export function mergeInboxCountState(prev, next, { failed = false, scopeKey = null, prevScopeKey = null } = {}) {

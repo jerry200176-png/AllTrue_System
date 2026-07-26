@@ -365,8 +365,8 @@
                 <h3>補課案件</h3>
                 <span v-if="exceptionWorkflowCount" class="wp__badge wp__badge--warn">{{ exceptionWorkflowCount }}</span>
               </header>
+              <div v-if="workflowFocusError" class="ew-error" role="alert">{{ workflowFocusError }}</div>
               <div v-if="exceptionWorkflowLoading" class="wp__empty enterprise-empty enterprise-loading">補課案件載入中...</div>
-              <div v-else-if="workflowFocusError" class="ew-error" role="alert">{{ workflowFocusError }}</div>
               <div v-else-if="exceptionWorkflowError" class="ew-error">{{ exceptionWorkflowError }}</div>
               <div v-else-if="!exceptionWorkflows.length" class="wp__empty enterprise-empty">目前沒有家長請假待安排</div>
               <div v-else class="ew-list">
@@ -1372,6 +1372,7 @@ const confirmCandidate = async (workflow, candidate) => {
     setWorkflowCandidates(workflow.id, []);
     await loadExceptionWorkflows();
     loadData();
+    window.dispatchEvent(new CustomEvent('alltrue-refresh-badges'));
   } catch (e) {
     exceptionWorkflowError.value = e?.message || '確認補課失敗';
   } finally {
@@ -1391,6 +1392,7 @@ const waiveWorkflow = async (workflow) => {
     setWorkflowCandidates(workflow.id, []);
     await loadExceptionWorkflows();
     loadData();
+    window.dispatchEvent(new CustomEvent('alltrue-refresh-badges'));
   } catch (e) {
     exceptionWorkflowError.value = e?.message || '標記不補課失敗';
   } finally {

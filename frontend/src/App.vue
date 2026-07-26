@@ -480,7 +480,7 @@ import BugReportLauncher from './components/BugReportLauncher.vue';
 import PinLockModal from './components/PinLockModal.vue';
 import AtToast from './components/AtToast.vue';
 import { fetchChatUnreadCount } from './lib/chatApi';
-import { buildInboxDeepLinkQuery, parseInboxCount, parseInboxDeepLinkSearch } from './lib/actionInboxContract.js';
+import { buildInboxDeepLinkQuery, inboxScopeKey, mergeInboxCountState, parseInboxCount, parseInboxDeepLinkSearch, resolveAuthorizedBranchId } from './lib/actionInboxContract.js';
 import perfFlags from './lib/perfFlags';
 import { playTeacherUiSfx } from './lib/teacherUiSfx';
 import { recordTeacherVisitToday } from './lib/teacherLoginStreak';
@@ -889,6 +889,7 @@ const unreadNotificationCount = ref(0);
 const urgentNotificationCount = ref(0);
 const inboxNeedsAttentionCount = ref(0);
 const inboxUrgentTotal = ref(0);
+const inboxCountScopeKey = ref('');
 const directorFocusWorkflowId = ref(null);
 const directorFocusSection = ref(null);
 const badgeByType = ref({});
@@ -985,7 +986,10 @@ function onNavigateToSchedule({ teacherId, target }) {
 function applyDeepLinkFromUrl() {
   try {
     const { page, section, workflowId, branchId } = parseInboxDeepLinkSearch(window.location.search);
-    if (branchId) currentBranch.value = branchId;
+    if (branchId) {
+      const safe = resolveAuthorizedBranchId(branchId, branches.value.map((b) => b.id), { allowAny: role.value === 'super_admin' });
+      if (safe) currentBranch.value = safe;
+    }
     if (page === 'notifications' || page === 'director') active.value = page;
     if (page === 'director' || workflowId) {
       directorFocusSection.value = section || (workflowId ? 'exception-workflows' : null);
@@ -1611,8 +1615,15 @@ watch(showMoreMenu, (open) => {
   else unlockScroll();
 });
 
-watch(currentBranch, (value) => {
+watch(currentBranch, (value, previous) => {
   localStorage.setItem('app_branch', value);
+  if (previous != null && value !== previous) {
+    unreadNotificationCount.value = 0;
+    urgentNotificationCount.value = 0;
+    inboxNeedsAttentionCount.value = 0;
+    inboxUrgentTotal.value = 0;
+    inboxCountScopeKey.value = '';
+  }
   refreshUnreadNotifications();
 });
 
@@ -1748,6 +1759,7 @@ async function refreshUnreadNotifications() {
   }
 
   if (isDirector.value) {
+    const scope = inboxScopeKey(currentBranch.value);
     try {
       const baseUrl = import.meta.env.VITE_API_BASE || '/api';
       const params = new URLSearchParams({ branch_id: String(currentBranch.value) });
@@ -1769,13 +1781,20 @@ async function refreshUnreadNotifications() {
       urgentNotificationCount.value = Number(json.urgent_unread_count || 0);
       badgeByType.value = json.by_type || {};
 
-      if (inboxRes.ok) {
-        const c = parseInboxCount(await inboxRes.json());
-        unreadNotificationCount.value = c.notificationsUnread || unreadNotificationCount.value;
-        inboxNeedsAttentionCount.value = c.badgeTotal;
-        inboxUrgentTotal.value = c.urgentTotal;
-      }
-    } catch { /* keep last successful badge counts */ }
+      if (!inboxRes.ok) throw new Error('action-inbox count failed');
+      const c = parseInboxCount(await inboxRes.json());
+      unreadNotificationCount.value = Number(c.notificationsUnread || 0);
+      inboxNeedsAttentionCount.value = Number(c.badgeTotal || 0);
+      inboxUrgentTotal.value = Number(c.urgentTotal || 0);
+      inboxCountScopeKey.value = scope;
+    } catch {
+      const prev = { notificationsUnread: unreadNotificationCount.value, casesUnresolved: 0, casesOverdue: 0, casesDueSoon: 0, casesCandidateReady: 0, urgentTotal: inboxUrgentTotal.value, badgeTotal: inboxNeedsAttentionCount.value };
+      const merged = mergeInboxCountState(prev, null, { failed: true, scopeKey: scope, prevScopeKey: inboxCountScopeKey.value || null });
+      unreadNotificationCount.value = merged.notificationsUnread;
+      inboxNeedsAttentionCount.value = merged.badgeTotal;
+      inboxUrgentTotal.value = merged.urgentTotal;
+      if (merged.scopeInvalidated) inboxCountScopeKey.value = scope;
+    }
   } else {
     unreadNotificationCount.value = 0;
     urgentNotificationCount.value = 0;
