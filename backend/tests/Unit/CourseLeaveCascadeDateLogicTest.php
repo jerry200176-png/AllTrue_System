@@ -73,9 +73,29 @@ class CourseLeaveCascadeDateLogicTest extends TestCase
         CourseLeaveCascadeService::prevRecurringDate(Carbon::parse('2026-07-31'), [5], [], '2026-07-24');
     }
 
-    public function test_compute_shift_plan_vacates_next_weekday_after_leave(): void
+
+    public function test_count_based_leave_keeps_existing_future_session_dates(): void
     {
-        // in-app #204: Saturday course; leave on 06/27 vacates 07/04 (sessions shift +1 week).
+        $sessions = [
+            ['id' => 1, 'date' => '2026-06-16', 'status' => 'attended'],
+            ['id' => 2, 'date' => '2026-07-14', 'status' => 'attended'],
+            ['id' => 3, 'date' => '2026-07-21', 'status' => 'scheduled'],
+            ['id' => 4, 'date' => '2026-07-28', 'status' => 'scheduled'],
+            ['id' => 5, 'date' => '2026-08-04', 'status' => 'scheduled'],
+            ['id' => 6, 'date' => '2026-08-11', 'status' => 'scheduled'],
+            ['id' => 7, 'date' => '2026-08-18', 'status' => 'scheduled'],
+            ['id' => 8, 'date' => '2026-08-25', 'status' => 'scheduled'],
+        ];
+        $plan = CourseLeaveCascadeService::computeAppendOnlyPlan($sessions, '2026-07-21', [2], 3, 8);
+        $this->assertSame([], $plan['vacated']);
+        $this->assertSame([], $plan['moves']);
+        $this->assertSame('2026-09-01', $plan['append']);
+        $this->assertSame(1, $plan['append_count']);
+    }
+
+    public function test_explicit_course_pause_shifts_future_sessions_and_vacates_next_recurrence(): void
+    {
+        // Explicit SHIFT/pause policy only — not ordinary leave (Founder Decision 2026-07-26 / §R82).
         $sessions = [
             ['id' => 1, 'date' => '2026-05-30', 'status' => 'attended'],
             ['id' => 2, 'date' => '2026-06-06', 'status' => 'attended'],
@@ -101,7 +121,7 @@ class CourseLeaveCascadeDateLogicTest extends TestCase
         $this->assertSame('2026-08-01', $plan['extended_end_date']);
     }
 
-    public function test_compute_shift_plan_second_leave_vacates_following_saturday(): void
+    public function test_explicit_pause_second_shift_vacates_following_saturday(): void
     {
         // After first leave on 06/27, layout is leave + shifted Saturdays; second leave on 07/11 vacates 07/18.
         $sessions = [

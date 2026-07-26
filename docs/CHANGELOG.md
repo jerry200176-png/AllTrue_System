@@ -1,3 +1,12 @@
+## 2026-07-26 — fix: 堂數制請假改為保留未來日期、只補尾堂
+
+- 一般請假不再把後續堂次整排往後推（不再出現 silent vacated week）。
+- 請假堂不佔堂號；下一個既有上課日承接下一堂；尾端最多補一堂。
+- 整體順延改為明確 pause 能力，不作為一般請假預設。
+- 請假預覽與課程管理／出缺勤文案同步；新增 vacated-week 掃描修復指令。
+
+開發備註：Founder Decision 2026-07-26 / §R82。權威路徑 `CourseLeaveCascadeService`；repair：`repair:leave-vacated-weeks`。
+
 ## 2026-07-24 — docs: 品牌表面品味閘門（防再犯 #1386）
 
 - 新增 `.cursor/rules/frontend-brand-taste.mdc`：Brand/Auth vs Ops 分流；Founder star 品味基準。
