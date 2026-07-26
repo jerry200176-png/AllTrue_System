@@ -25,8 +25,8 @@ class ParentBindingObservabilityTest extends TestCase
     {
         parent::setUp();
         config(['parent_binding.observability_enabled' => true, 'parent_binding.timezone' => 'Asia/Taipei']);
-        // Portal login is throttled; this suite exercises many failure branches.
-        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
+        // Portal login uses App\Http\Middleware\ThrottleRequestsByIp (alias throttle).
+        $this->withoutMiddleware(\App\Http\Middleware\ThrottleRequestsByIp::class);
     }
 
     private function student(int $cid, string $name, ?string $phone, ?string $parent = null, string $status = 'active'): Student
