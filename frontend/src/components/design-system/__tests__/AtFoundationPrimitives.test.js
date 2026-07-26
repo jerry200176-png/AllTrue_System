@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import AtPageHeader from '../AtPageHeader.vue';
 import AtBadge from '../AtBadge.vue';
@@ -8,15 +8,10 @@ import AtIconButton from '../AtIconButton.vue';
 import AtButton from '../AtButton.vue';
 import AtFilterBar from '../AtFilterBar.vue';
 import AtToolbar from '../AtToolbar.vue';
-import AtDataTableShell from '../AtDataTableShell.vue';
-import AtModal from '../AtModal.vue';
+import AtSection from '../AtSection.vue';
+import AtEmpty from '../AtEmpty.vue';
 
-describe('At foundation primitives', () => {
-  afterEach(() => {
-    document.body.style.position = '';
-    document.body.style.overflow = '';
-  });
-
+describe('At foundation primitives (pilot-used)', () => {
   it('AtPageHeader renders title, description, meta and actions', () => {
     const wrapper = mount(AtPageHeader, {
       props: { title: '主任收件匣', description: '說明', icon: 'inbox' },
@@ -61,7 +56,7 @@ describe('At foundation primitives', () => {
     expect(wrapper.attributes('title')).toBe('編輯');
   });
 
-  it('AtButton supports rect shape and loading disabled state', () => {
+  it('AtButton supports rect shape and loading disabled state', async () => {
     const wrapper = mount(AtButton, {
       props: { shape: 'rect', loading: true },
       slots: { default: '儲存' },
@@ -69,6 +64,11 @@ describe('At foundation primitives', () => {
     expect(wrapper.classes()).toContain('at-btn--rect');
     expect(wrapper.attributes('disabled')).toBeDefined();
     expect(wrapper.attributes('aria-busy')).toBe('true');
+  });
+
+  it('AtButton defaults to pill for legacy compatibility', () => {
+    const wrapper = mount(AtButton, { slots: { default: 'OK' } });
+    expect(wrapper.classes()).toContain('at-btn--pill');
   });
 
   it('AtFilterBar and AtToolbar expose landmarks', () => {
@@ -79,24 +79,11 @@ describe('At foundation primitives', () => {
     expect(toolbar.attributes('role')).toBe('toolbar');
   });
 
-  it('AtDataTableShell wraps dense table markup', () => {
-    const wrapper = mount(AtDataTableShell, {
-      props: { caption: '學生列表', dense: true },
-      slots: { default: '<thead><tr><th>姓名</th></tr></thead><tbody><tr><td>Amy</td></tr></tbody>' },
-    });
-    expect(wrapper.find('table').exists()).toBe(true);
-    expect(wrapper.classes()).toContain('at-data-table-shell--dense');
-    expect(wrapper.find('caption').text()).toBe('學生列表');
-  });
-
-  it('AtModal traps dialog semantics and closes on Escape', async () => {
-    const wrapper = mount(AtModal, {
-      props: { open: true, title: '核帳登記', description: '請確認' },
-      attachTo: document.body,
-    });
-    expect(wrapper.find('[role="dialog"]').exists()).toBe(true);
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
-    expect(wrapper.emitted('close')).toBeTruthy();
-    wrapper.unmount();
+  it('AtSection and AtEmpty render pilot states', () => {
+    const section = mount(AtSection, { props: { title: '區塊' }, slots: { default: '內容' } });
+    expect(section.text()).toContain('區塊');
+    expect(section.text()).toContain('內容');
+    const empty = mount(AtEmpty, { props: { title: '目前沒有待辦案件', description: '下一步' } });
+    expect(empty.text()).toContain('目前沒有待辦案件');
   });
 });

@@ -68,20 +68,22 @@ Existing + foundation set under `frontend/src/components/design-system/`:
 
 | Component | Role |
 |---|---|
-| `AtPageHeader` | Title, description, meta, actions |
-| `AtSection` | Quiet content region (optional border) |
-| `AtToolbar` | Action row |
-| `AtFilterBar` | Search/filter grid |
-| `AtButton` | `shape=pill|rect`, loading, variants |
-| `AtIconButton` | Accessible icon-only control |
-| `AtBadge` | Status with text + tone (+ dot) |
-| `AtDataTableShell` | Dense table chrome |
-| `AtEmpty` | Compact empty state |
-| `AtInlineAlert` | Inline error/warning/info |
-| `AtSkeleton` | Loading placeholder |
-| `AtModal` | Dialog shell (Escape, scroll lock) |
+| `AtPageHeader` | Title, description, meta, actions — **pilot** |
+| `AtSection` | Quiet content region — **pilot** |
+| `AtToolbar` | Action row — **pilot** |
+| `AtFilterBar` | Search/filter grid — **pilot** |
+| `AtButton` | `shape=pill` legacy default / `shape=rect` ops; loading — **pilot** |
+| `AtIconButton` | Accessible icon-only control — **pilot** |
+| `AtBadge` | Status with text + tone (+ dot) — **pilot** |
+| `AtEmpty` | Compact empty state — **pilot** |
+| `AtInlineAlert` | Inline error/warning/info — **pilot** |
+| `AtSkeleton` | Loading placeholder — **pilot** |
 | `AtField` / `AtInput` / `AtSelect` / `AtTextarea` | Forms (existing) |
 | `AtCard` / `AtMetric` | Existing; avoid card-wrapping every block on ops pages |
+
+**Deferred（no unused abstraction in this PR）：** `AtModal`, `AtDataTableShell` — add only when a real page adopts them.
+
+**AtButton shape policy：** legacy default remains `pill`; ops foundation pages must pass `shape="rect"` explicitly; do not flip the global default.
 
 ## 7. AI Slop ban list
 

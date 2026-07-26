@@ -1,8 +1,10 @@
 ## 2026-07-26 — design(ui): AllTrue UI Foundation + inbox/students pilot
 
-- 新增 ops UI Foundation：tokens、`At*` primitives、`docs/design/ALLTRUE_UI_FOUNDATION.md`。
+- 新增 ops UI Foundation：tokens、pilot-used `At*` primitives、`docs/design/ALLTRUE_UI_FOUNDATION.md`。
 - Pilot：主任收件匣、學生列表（結構／狀態／密度；業務邏輯與 API 不變）。
 - 主參考 GitLab Pajamas；Carbon 僅互動／表格／a11y；未引入大型 UI library。
+- Visual fixtures 僅在 `frontend/e2e/fixtures/`；production `public/` / `dist_build` 不含 harness。
+- Merge evidence：真實 Vue page Playwright + mocked API（非 static HTML）。
 
 ## 2026-07-26 — feat(parent): PB-00 家長綁定 PII-safe observability（#1436）
 

@@ -498,6 +498,30 @@ jobs:
           test -f dist_build/index.html || (echo "❌ index.html missing from dist_build" && exit 1)
           echo "✅ dist_build/index.html exists"
           ls -lh dist_build/
+          # Production bundle must never ship UI foundation fixtures
+          npm run lint:ui-fixtures
+          ! test -f dist_build/ui-foundation-harness.html
+          ! test -f dist_build/ui-foundation-harness-before.html
+          ! test -f dist_build/pilot-mount.html
+
+      - name: Install Playwright Chromium (UI foundation page evidence)
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: UI foundation page-level Playwright (real Vue + mocked API)
+        working-directory: frontend
+        env:
+          UI_FOUNDATION_SHOT_DIR: ${{ github.workspace }}/docs/design/evidence/raw
+        run: npm run test:e2e:ui-foundation
+
+      - name: Upload UI foundation visual evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ui-foundation-page-evidence
+          path: docs/design/evidence/
+          if-no-files-found: warn
+          retention-days: 30
 
       - name: Bundle size budget
         # #1273: route-aware — reports/budgets initial vs. largest-lazy-route
