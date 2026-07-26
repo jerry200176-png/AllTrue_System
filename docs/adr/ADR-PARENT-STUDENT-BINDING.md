@@ -5,7 +5,7 @@
 | Status | **Accepted** |
 | Date / Founder approval | 2026-07-26 |
 | Related | Benchmark · Architecture · Threat · UX · Rollout · PR #1434 |
-| Implementation | **Not started** — docs only until PB issues scheduled |
+| Implementation | **PB-00 completed** (#1446); **PB-01–PB-09 not started** — no further DEV without Founder schedule |
 
 ## Context
 

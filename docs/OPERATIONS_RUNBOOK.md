@@ -93,6 +93,7 @@ gh auth refresh -h github.com -s workflow
 - Branch lifetime target: 1-3 days。
 - `backup-*` 分支：**只用於還原，不合併，不主動清除**（max 1-2 個）。
 - Protect `main`（required checks + admin enforcement + no force-push/delete；單人 repo 暫不強制 approval，有第二位 maintainer 後再升級為 1 approval）。
+- **Superseded / closed-unmerged** remote branches may be deleted only with verifiable evidence (replacement merged PR, Founder rejection, or tip already on `main`). Before delete: record `branch_name` + tip SHA and prefer permanent tag `archive/<branch>` (see stale-unmerged procedure below). Never delete `main`, protected branches, open-PR head/base, stacked-chain bases, or unresolved incident/security evidence branches.
 
 **Stale unmerged branch（無 open PR 的廢棄/WIP 分支）**——對齊大廠 GitHub Flow 做法：
 - 門檻：最後 commit ≥ 30 天且無 open PR → 視為 stale；排除 `main` / `dependabot/*` / `backup-*` / `archive/*`。

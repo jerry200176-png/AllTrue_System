@@ -1,10 +1,15 @@
+## 2026-07-26 — chore(repo): PR／Issue／branch／docs hygiene
+
+- 同步 Parent Binding 文件狀態（ADR Accepted、PB-00=#1446 completed；PB-01～09 仍未開始）；修非 archive 壞連結；補 branch hygiene：superseded 分支刪前 tip SHA + `archive/<branch>` tag。
+- 無 production code、無 deploy、未合併產品 PR。
+
 ## 2026-07-26 — feat(parent): PB-00 家長綁定 PII-safe observability（#1436）
 
 - Stable internal `reason_code` + append-only `parent_binding_attempts`（fail-open）；flag `PARENT_BINDING_OBSERVABILITY` **default-off**；dedicated `PARENT_BINDING_PHONE_HMAC_KEY`（no APP_KEY）；ops `parent-binding:report --format=json`。不改外部文案／成功路徑；PB-01～09 未開始。
 
 ## 2026-07-26 — docs: 家長綁定 ADR Accepted（Hybrid；PR #1434）
 
-- Founder Accepted：max_uses=1；TTL 7d（24h/72h/7d）；cap 4；read_only 365d→suspended；revoke→session；BindingRequest 自助；sunset ≥80%/30d/support&lt;10%（無硬日期）；OTP∉P0–2。Docs-only；implementation 未開始。
+- Founder Accepted：max_uses=1；TTL 7d（24h/72h/7d）；cap 4；read_only 365d→suspended；revoke→session；BindingRequest 自助；sunset ≥80%/30d/support&lt;10%（無硬日期）；OTP∉P0–2。Docs-only at merge；PB-00 後續由 #1446 實作 observability。
 
 ## 2026-07-26 — fix(parent): 家長更新卡改為顯式 PARENT_UPDATES 投影（B+）
 
