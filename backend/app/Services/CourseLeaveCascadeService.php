@@ -2,25 +2,14 @@
 
 namespace App\Services;
 
-use App\Exceptions\SlotOccupiedException;
 use App\Models\ClassSession;
 use App\Models\LearningRecord;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
 use Carbon\Carbon;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
-/**
- * Leave / course-pause cascade authority.
- *
- * Founder Decision 2026-07-26:
- * - Default single-session leave = KEEP_FUTURE_DATES_APPEND_TAIL
- *   (mark leave, keep all future SessionDate/times, append tail only).
- * - SHIFT_FUTURE_DATES_APPEND_TAIL is an explicit pause/shift capability only;
- *   never the default for ordinary leave.
- */
 class CourseLeaveCascadeService
 {
     public const NOTE_LEAVE = 'leave';
@@ -28,19 +17,15 @@ class CourseLeaveCascadeService
     public const NOTE_REVERT_TO_SCHEDULED = 'revert-to-scheduled';
     public const NOTE_POLICY_SHIFT = 'leave-policy-shift';
 
-    /** Ordinary count-based leave: keep future dates, append missing billable tails. */
     public const POLICY_KEEP_FUTURE_DATES_APPEND_TAIL = 'KEEP_FUTURE_DATES_APPEND_TAIL';
-
-    /** Explicit course pause / whole-course shift — not ordinary leave. */
     public const POLICY_SHIFT_FUTURE_DATES_APPEND_TAIL = 'SHIFT_FUTURE_DATES_APPEND_TAIL';
-
     public const DEFAULT_LEAVE_POLICY = self::POLICY_KEEP_FUTURE_DATES_APPEND_TAIL;
-
-    /** Statuses that do not consume purchased session quota / billable ordinal. */
     public const NON_BILLABLE_STATUSES = ['cancelled', 'leave', 'leave_adjusted', 'excused'];
 
     /**
-     * Ordinary leave: mark target leave, keep future dates, append tail if needed.
+     * Mark the target session as leave, void related records,
+     * shift subsequent scheduled sessions forward, and append one new session
+     * to keep the total count intact.
      *
      * Must be called inside a DB::transaction.
      *
@@ -49,42 +34,6 @@ class CourseLeaveCascadeService
      */
     public static function applyLeaveCascade(int $courseId, string $leaveDate): array
     {
-        return self::applyLeaveWithPolicy(
-            $courseId,
-            $leaveDate,
-            self::POLICY_KEEP_FUTURE_DATES_APPEND_TAIL
-        );
-    }
-
-    /**
-     * Explicit pause/shift: move subsequent scheduled sessions +1 recurrence and append.
-     * Not wired to ordinary leave UI — reserved for pause/suspend domain.
-     *
-     * Must be called inside a DB::transaction.
-     *
-     * @return array{0:array,1:?string,2:string}
-     */
-    public static function applyExplicitCoursePauseShift(int $courseId, string $leaveDate): array
-    {
-        return self::applyLeaveWithPolicy(
-            $courseId,
-            $leaveDate,
-            self::POLICY_SHIFT_FUTURE_DATES_APPEND_TAIL
-        );
-    }
-
-    /**
-     * @return array{0:array,1:?string,2:string}
-     */
-    public static function applyLeaveWithPolicy(int $courseId, string $leaveDate, string $policy): array
-    {
-        if (!in_array($policy, [
-            self::POLICY_KEEP_FUTURE_DATES_APPEND_TAIL,
-            self::POLICY_SHIFT_FUTURE_DATES_APPEND_TAIL,
-        ], true)) {
-            throw new \InvalidArgumentException('不支援的請假／順延政策');
-        }
-
         $course = StudentClass::where('ID', $courseId)->lockForUpdate()->first();
         if (!$course) {
             throw new \InvalidArgumentException('找不到課程，無法請假');
@@ -101,6 +50,7 @@ class CourseLeaveCascadeService
 
         $normalizedLeaveDate = Carbon::parse($leaveDate)->toDateString();
 
+        // Find the target session: accept scheduled/leave (but not cancelled/leave_adjusted)
         $leaveSession = $sessions->first(function ($session) use ($normalizedLeaveDate) {
             $status = strtolower((string) ($session->Status ?? ''));
             return Carbon::parse($session->SessionDate)->toDateString() === $normalizedLeaveDate
@@ -116,11 +66,46 @@ class CourseLeaveCascadeService
             throw new \InvalidArgumentException('已完成堂次不可請假（如需補請假請使用 retro-leave）');
         }
 
+        // KEEP policy idempotency: leave + provenance append for THIS leave.
         if ($leaveStatus === 'leave') {
-            if (self::findAppendedSessionForLeave($sessions, $normalizedLeaveDate, (int) $leaveSession->id)) {
+            $leaveSessionId = (int) $leaveSession->id;
+            $hasAppend = $sessions->contains(function ($s) use ($normalizedLeaveDate, $leaveSessionId) {
+                $note = (string) ($s->Note ?? '');
+                $st = strtolower((string) ($s->Status ?? ''));
+                if ($st !== 'scheduled' || !str_contains($note, self::NOTE_AUTO_EXTENDED)) {
+                    return false;
+                }
+                return str_contains($note, ':ld=' . $normalizedLeaveDate)
+                    || str_contains($note, ':ls=' . $leaveSessionId);
+            });
+            // Legacy half-written leave (no provenance): treat "already cascaded"
+            // only when natural next slot is vacant AND a later billable exists.
+            if (!$hasAppend) {
+                $weekdays = self::resolveCourseWeekdays(
+                    $course,
+                    (int) Carbon::parse($normalizedLeaveDate)->dayOfWeekIso
+                );
+                $naturalNext = self::nextRecurringDate(
+                    Carbon::parse($normalizedLeaveDate)->startOfDay(),
+                    $weekdays,
+                    [$normalizedLeaveDate => true]
+                );
+                $hasNatural = $sessions->contains(function ($s) use ($naturalNext) {
+                    $st = strtolower((string) ($s->Status ?? ''));
+                    return Carbon::parse($s->SessionDate)->toDateString() === $naturalNext
+                        && !in_array($st, ['cancelled'], true);
+                });
+                $later = $sessions->first(function ($s) use ($naturalNext) {
+                    $st = strtolower((string) ($s->Status ?? ''));
+                    $d = Carbon::parse($s->SessionDate)->toDateString();
+                    return $d > $naturalNext && !in_array($st, ['cancelled', 'leave', 'leave_adjusted'], true);
+                });
+                if (!$hasNatural && $later) {
+                    throw new \InvalidArgumentException('該堂已完成請假登記與課程順延');
+                }
+            } else {
                 throw new \InvalidArgumentException('該堂已完成請假登記與尾堂補上');
             }
-            // Half-written legacy: leave marked but no append yet — repair by continuing.
         }
 
         $hasApprovedRecord = LearningRecord::where('ClassSessionID', $leaveSession->id)
@@ -148,37 +133,60 @@ class CourseLeaveCascadeService
                 'VoidReason'     => '一般請假',
             ]);
 
+        // Only update ClassSession status if not already leave
         if ($leaveStatus !== 'leave') {
             $leaveSession->Status = 'leave';
             $leaveSession->Note = self::appendNote($leaveSession->Note, self::NOTE_LEAVE);
-            if ($policy === self::POLICY_SHIFT_FUTURE_DATES_APPEND_TAIL) {
-                $leaveSession->Note = self::appendNote($leaveSession->Note, self::NOTE_POLICY_SHIFT);
-            }
             $leaveSession->save();
         }
 
-        if ($policy === self::POLICY_SHIFT_FUTURE_DATES_APPEND_TAIL) {
-            [$rows, $extendedEndDate] = self::shiftAndAppendAfterLeave($courseId, $leaveSessionDate, $leaveSession);
-        } else {
-            [$rows, $extendedEndDate] = self::appendTailAfterLeave($courseId, $leaveSessionDate, $leaveSession);
-        }
+        [$rows, $extendedEndDate] = self::appendTailAfterLeave($courseId, $leaveSessionDate, $leaveSession);
 
         return [$rows, $extendedEndDate, $leaveSessionDate];
     }
 
     /**
-     * Dry-run leave plan for UI impact preview.
+     * Explicit pause/shift — NOT ordinary leave.
+     *
+     * @return array{0:array,1:?string,2:string}
+     */
+    public static function applyExplicitCoursePauseShift(int $courseId, string $leaveDate): array
+    {
+        $course = StudentClass::where('ID', $courseId)->lockForUpdate()->first();
+        if (!$course) {
+            throw new \InvalidArgumentException('找不到課程，無法整體順延');
+        }
+        $sessions = ClassSession::where('StudentClassID', $courseId)
+            ->orderBy('SessionDate', 'asc')->orderBy('id', 'asc')->lockForUpdate()->get();
+        $normalizedLeaveDate = Carbon::parse($leaveDate)->toDateString();
+        $leaveSession = $sessions->first(function ($session) use ($normalizedLeaveDate) {
+            $status = strtolower((string) ($session->Status ?? ''));
+            return Carbon::parse($session->SessionDate)->toDateString() === $normalizedLeaveDate
+                && !in_array($status, ['cancelled', 'leave_adjusted'], true);
+        });
+        if (!$leaveSession) {
+            throw new \InvalidArgumentException('找不到可順延的堂次');
+        }
+        if (strtolower((string) ($leaveSession->Status ?? '')) !== 'leave') {
+            $leaveSession->Status = 'leave';
+            $leaveSession->Note = self::appendNote($leaveSession->Note, self::NOTE_LEAVE);
+            $leaveSession->Note = self::appendNote($leaveSession->Note, self::NOTE_POLICY_SHIFT);
+            $leaveSession->save();
+        }
+        [$rows, $extendedEndDate] = self::shiftAndAppendAfterLeave($courseId, $normalizedLeaveDate, $leaveSession);
+        return [$rows, $extendedEndDate, $normalizedLeaveDate];
+    }
+
+    /**
+     * Load course sessions and return a dry-run leave cascade plan.
      *
      * @return array{
-     *   policy: string,
      *   leave_session_date: string,
      *   weekdays: list<int>,
      *   moves: list<array{from:string,to:string,id:?int}>,
      *   vacated: list<string>,
-     *   append: ?string,
-     *   extended_end_date: ?string,
-     *   future_dates_unchanged: bool,
-     *   next_billable_session: ?array{date:string,ordinal:int,id:?int}
+     *   append: string,
+     *   extended_end_date: string
      * }
      */
     public static function previewLeaveCascadeForCourse(
@@ -189,6 +197,7 @@ class CourseLeaveCascadeService
     ): array {
         $course = StudentClass::query()->where('ID', $courseId)->first();
         if (!$course) {
+            // Prefer query() to avoid new Eloquent::where() baseline counts in this service.
             throw new \InvalidArgumentException('找不到課程');
         }
 
@@ -228,14 +237,9 @@ class CourseLeaveCascadeService
             ];
         }
 
+        $policy = $policy ?? self::DEFAULT_LEAVE_POLICY;
         if ($policy === self::POLICY_SHIFT_FUTURE_DATES_APPEND_TAIL) {
-            $plan = self::computeShiftPlan(
-                $sessionRows,
-                $leaveSessionDate,
-                $weekdays,
-                (int) $leaveSession->id
-            );
-            $nextBillable = self::resolveNextBillableAfterLeave($sessionRows, $leaveSessionDate, true, $plan['moves']);
+            $plan = self::computeShiftPlan($sessionRows, $leaveSessionDate, $weekdays, (int) $leaveSession->id);
             return [
                 'policy' => $policy,
                 'leave_session_date' => $leaveSessionDate,
@@ -245,19 +249,24 @@ class CourseLeaveCascadeService
                 'append' => $plan['append'],
                 'extended_end_date' => $plan['extended_end_date'],
                 'future_dates_unchanged' => false,
-                'next_billable_session' => $nextBillable,
+                'next_billable_session' => null,
             ];
         }
-
-        $plan = self::computeAppendOnlyPlan(
-            $sessionRows,
-            $leaveSessionDate,
-            $weekdays,
-            (int) $leaveSession->id,
-            self::resolvePurchasedSessionCount($course)
-        );
-        $nextBillable = self::resolveNextBillableAfterLeave($sessionRows, $leaveSessionDate, false, []);
-
+        $purchased = max(0, (int) ($course->SessionCount ?? 0));
+        $plan = self::computeAppendOnlyPlan($sessionRows, $leaveSessionDate, $weekdays, (int) $leaveSession->id, $purchased);
+        $next = null;
+        $ord = 0;
+        foreach ($sessionRows as $row) {
+            $date = Carbon::parse((string) $row['date'])->toDateString();
+            $status = strtolower((string) ($row['status'] ?? ''));
+            if ($date === $leaveSessionDate || in_array($status, self::NON_BILLABLE_STATUSES, true)) {
+                continue;
+            }
+            $ord++;
+            if ($date > $leaveSessionDate && $next === null) {
+                $next = ['date' => $date, 'ordinal' => $ord, 'id' => isset($row['id']) ? (int) $row['id'] : null];
+            }
+        }
         return [
             'policy' => self::POLICY_KEEP_FUTURE_DATES_APPEND_TAIL,
             'leave_session_date' => $leaveSessionDate,
@@ -267,12 +276,13 @@ class CourseLeaveCascadeService
             'append' => $plan['append'],
             'extended_end_date' => $plan['extended_end_date'],
             'future_dates_unchanged' => true,
-            'next_billable_session' => $nextBillable,
+            'next_billable_session' => $next,
         ];
     }
 
+
     /**
-     * Append-only date plan (ordinary leave). Never vacates or moves dates.
+     * Ordinary leave plan: never moves/vacates; append at most one tail.
      *
      * @param  list<array{id?:int|string|null,date:string,status?:string|null}>  $sessionRows
      * @param  array<int>  $weekdays
@@ -290,7 +300,6 @@ class CourseLeaveCascadeService
         if ($weekdays === []) {
             $weekdays = [(int) Carbon::parse($normalizedLeaveDate)->dayOfWeekIso];
         }
-
         $occupiedDates = [];
         $billable = 0;
         foreach ($sessionRows as $row) {
@@ -298,7 +307,6 @@ class CourseLeaveCascadeService
             $date = Carbon::parse((string) $row['date'])->toDateString();
             $status = strtolower((string) ($row['status'] ?? ''));
             $occupiedDates[$date] = true;
-
             $isLeaveTarget = ($leaveSessionId && $id === $leaveSessionId)
                 || (!$leaveSessionId && $date === $normalizedLeaveDate);
             if ($isLeaveTarget) {
@@ -308,27 +316,16 @@ class CourseLeaveCascadeService
                 $billable++;
             }
         }
-        // Leave target becomes non-billable.
         $occupiedDates[$normalizedLeaveDate] = true;
-
-        // One ordinary leave → at most one tail append. Do not bulk-heal
-        // pre-existing under-materialization (that belongs to forward-generate).
         $append = null;
         $appendCount = 0;
-        $needsAppend = $purchasedSessions <= 0
-            ? true
-            : ($billable < $purchasedSessions);
+        $needsAppend = $purchasedSessions <= 0 ? true : ($billable < $purchasedSessions);
         if ($needsAppend) {
             $appendCount = 1;
             $latest = self::maxDateKey($occupiedDates) ?: $normalizedLeaveDate;
-            $append = self::nextRecurringDate(
-                Carbon::parse($latest)->startOfDay(),
-                $weekdays,
-                $occupiedDates
-            );
+            $append = self::nextRecurringDate(Carbon::parse($latest)->startOfDay(), $weekdays, $occupiedDates);
             $occupiedDates[$append] = true;
         }
-
         return [
             'moves' => [],
             'vacated' => [],
@@ -339,10 +336,67 @@ class CourseLeaveCascadeService
     }
 
     /**
-     * Explicit pause/shift plan (legacy vacated-week semantics).
+     * KEEP policy write: append missing billable tail; do not move future dates.
+     *
+     * @return array{0:array,1:?string}
+     */
+    public static function appendTailAfterLeave(int $courseId, string $leaveDate, ClassSession $leaveSession): array
+    {
+        $course = StudentClass::where('ID', $courseId)->first();
+        $sessions = ClassSession::where('StudentClassID', $courseId)
+            ->orderBy('SessionDate', 'asc')->orderBy('id', 'asc')->get();
+        $normalizedLeaveDate = Carbon::parse($leaveDate)->toDateString();
+        $weekdays = self::resolveCourseWeekdays($course, Carbon::parse($leaveSession->SessionDate)->dayOfWeekIso);
+        $purchased = max(0, (int) ($course->SessionCount ?? 0));
+        $scheduleMode = strtolower((string) ($course->ScheduleMode ?? 'count'));
+        if ($scheduleMode === 'date' && $purchased <= 0) {
+            $rows = self::fetchCourseSessionRows($courseId);
+            $end = ClassSession::where('StudentClassID', $courseId)->max('SessionDate');
+            return [$rows, $end ? substr((string) $end, 0, 10) : null];
+        }
+        $sessionRows = $sessions->map(fn ($s) => [
+            'id' => (int) $s->id,
+            'date' => Carbon::parse($s->SessionDate)->toDateString(),
+            'status' => (string) ($s->Status ?? ''),
+        ])->all();
+        $plan = self::computeAppendOnlyPlan(
+            $sessionRows,
+            $normalizedLeaveDate,
+            $weekdays,
+            (int) $leaveSession->id,
+            $purchased
+        );
+        if ((int) ($plan['append_count'] ?? 0) > 0 && $plan['append']) {
+            $appendDate = $plan['append'];
+            $appendTimes = self::resolveContractSlotTimes($course, $appendDate);
+            $appendStart = $appendTimes['start'] !== '' ? $appendTimes['start'] : $leaveSession->StartTime;
+            $appendEnd = $appendTimes['end'] !== '' ? $appendTimes['end'] : $leaveSession->EndTime;
+            $note = self::NOTE_AUTO_EXTENDED . ':ld=' . $normalizedLeaveDate . ':ls=' . (int) $leaveSession->id;
+            $newSession = app(ClassSessionMaterializationService::class)->upsertSlot([
+                'StudentClassID' => $courseId,
+                'SessionDate' => $appendDate,
+                'StartTime' => $appendStart,
+                'EndTime' => $appendEnd,
+                'Status' => 'scheduled',
+                'Note' => $note,
+            ])['session'];
+            self::syncLearningRecordSessionDate($newSession);
+        }
+        $extendedEndDate = $plan['extended_end_date'];
+        if ($extendedEndDate) {
+            DB::table('StudentClass')->where('ID', $courseId)->update(['EndDate' => $extendedEndDate]);
+        }
+        return [self::fetchCourseSessionRows($courseId), $extendedEndDate];
+    }
+
+    /**
+     * Dry-run of leave cascade date moves (no DB writes).
+     *
+     * Used by leave UI impact preview so operators see which calendar weeks
+     * will be vacated before confirming (in-app #204 silent-skip surprise).
      *
      * @param  list<array{id?:int|string|null,date:string,status?:string|null}>  $sessionRows
-     * @param  array<int>  $weekdays
+     * @param  array<int>  $weekdays  ISO weekdays 1=Mon … 7=Sun
      * @return array{
      *   moves: list<array{from:string,to:string,id:?int}>,
      *   vacated: list<string>,
@@ -415,6 +469,7 @@ class CourseLeaveCascadeService
             $occupiedDates[$date] = true;
         }
 
+        // Shift latest-first (same order as shiftAndAppendAfterLeave / 1062 incident).
         $moves = [];
         for ($i = count($shiftCandidates) - 1; $i >= 0; $i--) {
             $from = $shiftCandidates[$i]['date'];
@@ -426,6 +481,7 @@ class CourseLeaveCascadeService
             ];
             $occupiedDates[$to] = true;
         }
+        // Present moves earliest-first for UI.
         $moves = array_reverse($moves);
 
         $latestDate = self::maxDateKey($occupiedDates) ?: $normalizedLeaveDate;
@@ -453,119 +509,8 @@ class CourseLeaveCascadeService
     }
 
     /**
-     * Keep future dates; append missing billable sessions at the tail.
-     *
-     * @return array{0:array,1:?string}
-     */
-    public static function appendTailAfterLeave(int $courseId, string $leaveDate, ClassSession $leaveSession): array
-    {
-        $course = StudentClass::where('ID', $courseId)->first();
-        $sessions = ClassSession::where('StudentClassID', $courseId)
-            ->orderBy('SessionDate', 'asc')
-            ->orderBy('id', 'asc')
-            ->get();
-
-        $normalizedLeaveDate = Carbon::parse($leaveDate)->toDateString();
-        $weekdays = self::resolveCourseWeekdays(
-            $course,
-            Carbon::parse($leaveSession->SessionDate)->dayOfWeekIso
-        );
-
-        $purchased = self::resolvePurchasedSessionCount($course);
-        $scheduleMode = strtolower((string) ($course->ScheduleMode ?? 'count'));
-
-        // Date-based courses: mark leave only — do not invent count tails.
-        if ($scheduleMode === 'date' && $purchased <= 0) {
-            $rows = self::fetchCourseSessionRows($courseId);
-            $end = ClassSession::where('StudentClassID', $courseId)->max('SessionDate');
-            return [$rows, $end ? substr((string) $end, 0, 10) : null];
-        }
-
-        $sessionRows = $sessions->map(fn ($s) => [
-            'id' => (int) $s->id,
-            'date' => Carbon::parse($s->SessionDate)->toDateString(),
-            'status' => (string) ($s->Status ?? ''),
-        ])->all();
-
-        $plan = self::computeAppendOnlyPlan(
-            $sessionRows,
-            $normalizedLeaveDate,
-            $weekdays,
-            (int) $leaveSession->id,
-            $purchased > 0 ? $purchased : self::countBillableSessions($sessionRows, (int) $leaveSession->id) + 1
-        );
-
-        $materializer = app(ClassSessionMaterializationService::class);
-        $appendCount = (int) ($plan['append_count'] ?? 0);
-        $occupied = [];
-        foreach ($sessions as $s) {
-            $occupied[Carbon::parse($s->SessionDate)->toDateString()] = true;
-        }
-        $occupied[$normalizedLeaveDate] = true;
-
-        $latest = self::maxDateKey($occupied) ?: $normalizedLeaveDate;
-        $lastCreated = null;
-        for ($i = 0; $i < $appendCount; $i++) {
-            $appendDate = self::nextRecurringDate(Carbon::parse($latest)->startOfDay(), $weekdays, $occupied);
-            $appendTimes = self::resolveContractSlotTimes($course, $appendDate);
-            $appendStart = $appendTimes['start'] !== '' ? $appendTimes['start'] : $leaveSession->StartTime;
-            $appendEnd = $appendTimes['end'] !== '' ? $appendTimes['end'] : $leaveSession->EndTime;
-
-            try {
-                $materializer->assertSlotAvailable($courseId, $appendDate, $appendStart);
-            } catch (SlotOccupiedException $e) {
-                throw new \InvalidArgumentException(
-                    '尾堂時段衝突，需人工審核後再補堂：' . $e->getMessage(),
-                    0,
-                    $e
-                );
-            }
-
-            $result = $materializer->upsertSlot([
-                'StudentClassID' => $courseId,
-                'SessionDate'    => $appendDate,
-                'StartTime'      => $appendStart,
-                'EndTime'        => $appendEnd,
-                'Status'         => 'scheduled',
-                'Note'           => self::buildAutoExtendedNote($normalizedLeaveDate, (int) $leaveSession->id),
-            ]);
-            if (!$result['created']) {
-                $existing = $result['session'];
-                $existingStatus = strtolower((string) ($existing->Status ?? ''));
-                if ($existingStatus === 'cancelled') {
-                    $existing->Status = 'scheduled';
-                    $existing->Note = self::buildAutoExtendedNote($normalizedLeaveDate, (int) $leaveSession->id);
-                    $existing->save();
-                    $lastCreated = $existing;
-                } else {
-                    throw new \InvalidArgumentException(
-                        '尾堂時段已被占用，需人工審核（date=' . $appendDate . '）'
-                    );
-                }
-            } else {
-                $lastCreated = $result['session'];
-            }
-            if ($lastCreated) {
-                self::syncLearningRecordSessionDate($lastCreated);
-            }
-            $occupied[$appendDate] = true;
-            $latest = $appendDate;
-        }
-
-        $extendedEndDate = $plan['extended_end_date'];
-        if ($extendedEndDate) {
-            DB::table('StudentClass')
-                ->where('ID', $courseId)
-                ->update(['EndDate' => $extendedEndDate]);
-        }
-
-        $rows = self::fetchCourseSessionRows($courseId);
-        return [$rows, $extendedEndDate];
-    }
-
-    /**
-     * Explicit pause/shift write path (legacy). Used only by applyExplicitCoursePauseShift
-     * and retro-leave until retro is migrated to KEEP policy.
+     * Shift remaining future scheduled sessions forward and append one new
+     * session after the latest date, preserving the course weekday pattern.
      *
      * @return array{0:array,1:?string}
      */
@@ -601,6 +546,10 @@ class CourseLeaveCascadeService
             $sessionsById[(int) $s->id] = $s;
         }
 
+        // Apply latest-first to match unique-index-safe write order.
+        // Invariant: after a date move, StartTime/EndTime must match the course
+        // contract slot for the *target* weekday (multi-weekday courses often
+        // have different clocks per day). Skipping this leaves Wed times on Sat.
         foreach (array_reverse($plan['moves']) as $move) {
             $id = (int) ($move['id'] ?? 0);
             if ($id <= 0 || !isset($sessionsById[$id])) {
@@ -631,7 +580,7 @@ class CourseLeaveCascadeService
             'EndTime'        => $appendEnd,
             'Status'         => 'scheduled',
             'Note'           => self::appendNote(
-                self::buildAutoExtendedNote($normalizedLeaveDate, (int) $leaveSession->id),
+                self::NOTE_AUTO_EXTENDED . ':ld=' . $normalizedLeaveDate . ':ls=' . (int) $leaveSession->id,
                 self::NOTE_POLICY_SHIFT
             ),
         ])['session'];
@@ -649,8 +598,14 @@ class CourseLeaveCascadeService
     }
 
     /**
-     * Undo one leave. KEEP policy: restore leave + remove safe provenance append.
-     * Legacy SHIFT leaves (vacated week + shift note / pattern): reverse-shift then remove append.
+     * Undo one normal leave cascade.
+     *
+     * Constraints:
+     * - only for the selected leave date / course
+     * - blocks when downstream sessions already have attendance-like statuses
+     * - removes one auto-extended tail session generated by leave cascade
+     *
+     * Must be called inside DB::transaction.
      *
      * @return array{0:array,1:?string,2:string}
      */
@@ -693,128 +648,69 @@ class CourseLeaveCascadeService
             throw new \InvalidArgumentException('後續堂次已出現已上課/補請假等狀態，無法自動撤銷');
         }
 
-        $appendedSession = self::findAppendedSessionForLeave(
-            $sessions,
-            $normalizedLeaveDate,
-            (int) $leaveSession->id
-        );
+        $appendedSession = $sessions
+            ->filter(function ($session) use ($normalizedLeaveDate) {
+                $sessionDate = Carbon::parse($session->SessionDate)->toDateString();
+                $status = strtolower((string) ($session->Status ?? ''));
+                $note = strtolower((string) ($session->Note ?? ''));
+                return $sessionDate >= $normalizedLeaveDate
+                    && $status === 'scheduled'
+                    && str_contains($note, self::NOTE_AUTO_EXTENDED);
+            })
+            ->sortByDesc('SessionDate')
+            ->first();
         if (!$appendedSession) {
-            throw new \InvalidArgumentException('找不到可回復的請假尾堂（需人工審核）');
+            throw new \InvalidArgumentException('找不到可回復的順延尾堂');
         }
 
-        if (!self::isSafeToRemoveAutoAppend($appendedSession)) {
-            throw new \InvalidArgumentException('尾堂已被使用或修改，需人工審核後才能撤銷');
-        }
-
+        // KEEP undo: do not reverse-shift future dates. Legacy SHIFT rows keep
+        // leave-policy-shift note and still need reverse-shift (handled below).
         $leaveNote = strtolower((string) ($leaveSession->Note ?? ''));
         $appendNote = strtolower((string) ($appendedSession->Note ?? ''));
         $isLegacyShift = str_contains($leaveNote, self::NOTE_POLICY_SHIFT)
-            || str_contains($appendNote, self::NOTE_POLICY_SHIFT)
-            || self::detectLegacyVacatedWeekPattern($sessions, $normalizedLeaveDate, $course);
+            || str_contains($appendNote, self::NOTE_POLICY_SHIFT);
 
         if ($isLegacyShift) {
-            return self::undoLegacyShiftLeave(
+            $weekdays = self::resolveCourseWeekdays(
                 $course,
-                $sessions,
-                $leaveSession,
-                $appendedSession,
-                $normalizedLeaveDate
+                (int) Carbon::parse($normalizedLeaveDate)->dayOfWeekIso
             );
-        }
-
-        $leaveSession->Status = 'scheduled';
-        $leaveSession->Note = self::appendNote($leaveSession->Note, self::NOTE_REVERT_TO_SCHEDULED);
-        $leaveSession->save();
-
-        LearningRecord::where('ClassSessionID', (int) $leaveSession->id)
-            ->where('VoidReason', '一般請假')
-            ->update([
-                'VoidedAt' => null,
-                'VoidedByUserID' => null,
-                'VoidReason' => null,
-            ]);
-        StudentSignIn::where('ClassSessionID', (int) $leaveSession->id)
-            ->where('VoidReason', '一般請假')
-            ->update([
-                'VoidedAt' => null,
-                'VoidedByUserID' => null,
-                'VoidReason' => null,
-            ]);
-
-        $appendedSession->delete();
-
-        $extendedEndDate = ClassSession::where('StudentClassID', $courseId)
-            ->max('SessionDate');
-        if ($extendedEndDate) {
-            DB::table('StudentClass')
-                ->where('ID', $courseId)
-                ->update(['EndDate' => substr((string) $extendedEndDate, 0, 10)]);
-        }
-
-        $rows = self::fetchCourseSessionRows($courseId);
-        return [$rows, $extendedEndDate ? substr((string) $extendedEndDate, 0, 10) : null, $normalizedLeaveDate];
-    }
-
-    /**
-     * @param  Collection<int, ClassSession>  $sessions
-     * @return array{0:array,1:?string,2:string}
-     */
-    private static function undoLegacyShiftLeave(
-        StudentClass $course,
-        Collection $sessions,
-        ClassSession $leaveSession,
-        ClassSession $appendedSession,
-        string $normalizedLeaveDate
-    ): array {
-        $courseId = (int) $course->ID;
-        $weekdays = self::resolveCourseWeekdays(
-            $course,
-            (int) Carbon::parse($normalizedLeaveDate)->dayOfWeekIso
-        );
-
-        $movableSessions = $sessions
-            ->filter(function ($session) use ($normalizedLeaveDate, $appendedSession, $leaveSession) {
+            $movableSessions = $sessions
+                ->filter(function ($session) use ($normalizedLeaveDate, $appendedSession, $leaveSession) {
+                    if ((int) $session->id === (int) $appendedSession->id || (int) $session->id === (int) $leaveSession->id) {
+                        return false;
+                    }
+                    $status = strtolower((string) ($session->Status ?? ''));
+                    if ($status !== 'scheduled') {
+                        return false;
+                    }
+                    return Carbon::parse($session->SessionDate)->toDateString() > $normalizedLeaveDate;
+                })
+                ->values();
+            $occupiedDates = [];
+            foreach ($sessions as $session) {
                 if ((int) $session->id === (int) $appendedSession->id) {
-                    return false;
+                    continue;
                 }
-                if ((int) $session->id === (int) $leaveSession->id) {
-                    return false;
+                if ($movableSessions->contains(fn ($s) => (int) $s->id === (int) $session->id)) {
+                    continue;
                 }
-                $status = strtolower((string) ($session->Status ?? ''));
-                if ($status !== 'scheduled') {
-                    return false;
-                }
-                $sessionDate = Carbon::parse($session->SessionDate)->toDateString();
-                return $sessionDate > $normalizedLeaveDate;
-            })
-            ->values();
-
-        $occupiedDates = [];
-        foreach ($sessions as $session) {
-            $sessionId = (int) $session->id;
-            if ($sessionId === (int) $appendedSession->id) {
-                continue;
+                $occupiedDates[Carbon::parse($session->SessionDate)->toDateString()] = true;
             }
-            $isMovable = $movableSessions->contains(fn ($s) => (int) $s->id === $sessionId);
-            if ($isMovable) {
-                continue;
+            foreach ($movableSessions as $session) {
+                $currentDate = Carbon::parse($session->SessionDate)->toDateString();
+                $newDate = self::prevRecurringDate(
+                    Carbon::parse($currentDate)->startOfDay(),
+                    $weekdays,
+                    $occupiedDates,
+                    $normalizedLeaveDate
+                );
+                $session->SessionDate = $newDate;
+                self::alignSessionTimesToContractWeekday($course, $session, $newDate);
+                $session->save();
+                self::syncLearningRecordSessionDate($session);
+                $occupiedDates[$newDate] = true;
             }
-            $occupiedDates[Carbon::parse($session->SessionDate)->toDateString()] = true;
-        }
-
-        foreach ($movableSessions as $session) {
-            $currentDate = Carbon::parse($session->SessionDate)->toDateString();
-            $newDate = self::prevRecurringDate(
-                Carbon::parse($currentDate)->startOfDay(),
-                $weekdays,
-                $occupiedDates,
-                $normalizedLeaveDate
-            );
-            $session->SessionDate = $newDate;
-            self::alignSessionTimesToContractWeekday($course, $session, $newDate);
-            $session->save();
-            self::syncLearningRecordSessionDate($session);
-            $occupiedDates[$newDate] = true;
         }
 
         $leaveSession->Status = 'scheduled';
@@ -851,196 +747,6 @@ class CourseLeaveCascadeService
     }
 
     // ── helpers ──────────────────────────────────────────────────────
-
-    public static function buildAutoExtendedNote(string $leaveDate, int $leaveSessionId): string
-    {
-        return self::NOTE_AUTO_EXTENDED . ':ld=' . $leaveDate . ':ls=' . $leaveSessionId;
-    }
-
-    /**
-     * @param  Collection<int, ClassSession>|iterable<ClassSession>  $sessions
-     */
-    public static function findAppendedSessionForLeave($sessions, string $leaveDate, int $leaveSessionId): ?ClassSession
-    {
-        $normalizedLeaveDate = Carbon::parse($leaveDate)->toDateString();
-        $matched = null;
-        $fallback = null;
-        foreach ($sessions as $session) {
-            $status = strtolower((string) ($session->Status ?? ''));
-            $note = (string) ($session->Note ?? '');
-            if ($status !== 'scheduled' || !str_contains($note, self::NOTE_AUTO_EXTENDED)) {
-                continue;
-            }
-            $sessionDate = Carbon::parse($session->SessionDate)->toDateString();
-            if ($sessionDate < $normalizedLeaveDate) {
-                continue;
-            }
-            if (str_contains($note, ':ls=' . $leaveSessionId)
-                || str_contains($note, ':ld=' . $normalizedLeaveDate)) {
-                if ($matched === null
-                    || Carbon::parse($session->SessionDate)->gt(Carbon::parse($matched->SessionDate))) {
-                    $matched = $session;
-                }
-                continue;
-            }
-            if ($fallback === null
-                || Carbon::parse($session->SessionDate)->gt(Carbon::parse($fallback->SessionDate))) {
-                $fallback = $session;
-            }
-        }
-        return $matched ?: $fallback;
-    }
-
-    public static function isSafeToRemoveAutoAppend(ClassSession $session): bool
-    {
-        $status = strtolower((string) ($session->Status ?? ''));
-        if ($status !== 'scheduled') {
-            return false;
-        }
-        if (!str_contains((string) ($session->Note ?? ''), self::NOTE_AUTO_EXTENDED)) {
-            return false;
-        }
-        $hasActiveAttendance = StudentSignIn::where('ClassSessionID', (int) $session->id)
-            ->whereNull('VoidedAt')
-            ->exists();
-        if ($hasActiveAttendance) {
-            return false;
-        }
-        $hasApprovedOrPendingLr = LearningRecord::where('ClassSessionID', (int) $session->id)
-            ->active()
-            ->whereIn('Status', ['approved', 'pending', 'changes_requested', 'submitted'])
-            ->exists();
-        if ($hasApprovedOrPendingLr) {
-            return false;
-        }
-        return true;
-    }
-
-    /**
-     * @param  Collection<int, ClassSession>  $sessions
-     */
-    public static function detectLegacyVacatedWeekPattern(
-        Collection $sessions,
-        string $leaveDate,
-        StudentClass $course
-    ): bool {
-        $weekdays = self::resolveCourseWeekdays(
-            $course,
-            (int) Carbon::parse($leaveDate)->dayOfWeekIso
-        );
-        $naturalNext = self::nextRecurringDate(
-            Carbon::parse($leaveDate)->startOfDay(),
-            $weekdays,
-            [$leaveDate => true]
-        );
-        $hasNaturalNext = $sessions->contains(function ($s) use ($naturalNext) {
-            $st = strtolower((string) ($s->Status ?? ''));
-            return Carbon::parse($s->SessionDate)->toDateString() === $naturalNext
-                && !in_array($st, ['cancelled'], true);
-        });
-        if ($hasNaturalNext) {
-            return false;
-        }
-        $later = $sessions->first(function ($s) use ($leaveDate, $naturalNext) {
-            $st = strtolower((string) ($s->Status ?? ''));
-            $d = Carbon::parse($s->SessionDate)->toDateString();
-            return $d > $naturalNext
-                && $d > $leaveDate
-                && !in_array($st, ['cancelled', 'leave', 'leave_adjusted'], true);
-        });
-        return $later !== null;
-    }
-
-    public static function resolvePurchasedSessionCount(?StudentClass $course): int
-    {
-        if (!$course) {
-            return 0;
-        }
-        return max(0, (int) ($course->SessionCount ?? 0));
-    }
-
-    /**
-     * @param  list<array{id?:int|null,date:string,status?:string|null}>  $sessionRows
-     */
-    public static function countBillableSessions(array $sessionRows, ?int $excludeId = null): int
-    {
-        $n = 0;
-        foreach ($sessionRows as $row) {
-            $id = isset($row['id']) ? (int) $row['id'] : 0;
-            if ($excludeId && $id === $excludeId) {
-                continue;
-            }
-            $status = strtolower((string) ($row['status'] ?? ''));
-            if (!in_array($status, self::NON_BILLABLE_STATUSES, true)) {
-                $n++;
-            }
-        }
-        return $n;
-    }
-
-    /**
-     * @param  list<array{id?:int|null,date:string,status?:string|null}>  $sessionRows
-     * @param  list<array{from:string,to:string,id:?int}>  $moves
-     * @return array{date:string,ordinal:int,id:?int}|null
-     */
-    public static function resolveNextBillableAfterLeave(
-        array $sessionRows,
-        string $leaveDate,
-        bool $applyMoves,
-        array $moves
-    ): ?array {
-        $dateById = [];
-        foreach ($sessionRows as $row) {
-            $id = isset($row['id']) ? (int) $row['id'] : 0;
-            if ($id > 0) {
-                $dateById[$id] = Carbon::parse((string) $row['date'])->toDateString();
-            }
-        }
-        if ($applyMoves) {
-            foreach ($moves as $m) {
-                $id = (int) ($m['id'] ?? 0);
-                if ($id > 0) {
-                    $dateById[$id] = $m['to'];
-                }
-            }
-        }
-
-        $candidates = [];
-        foreach ($sessionRows as $row) {
-            $id = isset($row['id']) ? (int) $row['id'] : 0;
-            $status = strtolower((string) ($row['status'] ?? ''));
-            $date = $id > 0 && isset($dateById[$id])
-                ? $dateById[$id]
-                : Carbon::parse((string) $row['date'])->toDateString();
-            if ($date === $leaveDate) {
-                continue;
-            }
-            if (in_array($status, self::NON_BILLABLE_STATUSES, true)) {
-                continue;
-            }
-            // After leave, this row becomes billable if it was scheduled/attended/etc.
-            if ($date <= $leaveDate && !in_array($status, ['scheduled', 'attended', 'completed', 'late', 'present', 'absent'], true)) {
-                // keep historical billable before leave for ordinal context
-            }
-            $candidates[] = ['id' => $id > 0 ? $id : null, 'date' => $date, 'status' => $status];
-        }
-
-        usort($candidates, fn ($a, $b) => strcmp($a['date'], $b['date']) ?: (($a['id'] ?? 0) <=> ($b['id'] ?? 0)));
-
-        $ordinal = 0;
-        $next = null;
-        foreach ($candidates as $c) {
-            if (in_array($c['status'], self::NON_BILLABLE_STATUSES, true)) {
-                continue;
-            }
-            // Treat leave-date rows as already excluded above.
-            $ordinal++;
-            if ($c['date'] > $leaveDate && $next === null) {
-                $next = ['date' => $c['date'], 'ordinal' => $ordinal, 'id' => $c['id']];
-            }
-        }
-        return $next;
-    }
 
     /** @return array<int> */
     public static function resolveCourseWeekdays(StudentClass $course, int $fallbackIsoDow): array
@@ -1116,6 +822,10 @@ class CourseLeaveCascadeService
         ]);
     }
 
+    /**
+     * Remap StartTime/EndTime to the course contract slot for the session's
+     * target date weekday. Contract-exception / makeup rows keep custom times.
+     */
     public static function alignSessionTimesToContractWeekday(
         ?StudentClass $course,
         ClassSession $session,

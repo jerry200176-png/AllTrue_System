@@ -990,30 +990,16 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
   - R72 stale 過濾仍必須保留；本規則解決「非 stale、但是同一學生」的假衝堂。
 - **測試必補**：`SameStudentExcludeBusyTest` — exclude 後 13:00 不 busy；substitute 成功；其他學生佔用仍 busy。
 
-### R75. 請假順延必須在送出前顯示會被空出的原定上課日（in-app #204） — SUPERSEDED 2026-07-26
+### R75. 請假順延 vacated 預覽（in-app #204）— SUPERSEDED 2026-07-26 by §R82
 
-- **歷史行為（已廢止作為一般請假語意）**：堂數制 leave 會把後續堂次整體 +1 週（vacated week），預覽必須列出 vacated／moves。
-- **觸發情境（歷史）**：2026-07-18 campus 16 許廷寬（SC#1953）；2026-07-26 使用者回報 7/21 請假後 7/28 被「吃掉」。
-- **問題**：操作者與教學營運一致認為 silent vacated week 錯誤；舊測試／文件證明「符合舊規格」≠「產品規格正確」。
-- **Superseded by**：§R82 + Founder Decision 2026-07-26（`docs/product/DISCOVERY_LEAVE_APPEND_VS_SHIFT.md`）。
-- **仍有效的殘留規則**：
-  - Preview 與 apply 必須同源；不得只改 UI。
-  - **Explicit pause**（`SHIFT_FUTURE_DATES_APPEND_TAIL` / `applyExplicitCoursePauseShift`）仍可 vacate；測試改名為 `test_explicit_course_pause_shifts_future_sessions_and_vacates_next_recurrence`。
-  - 歷史 vacated weeks 用 `repair:leave-vacated-weeks` 掃描／修復，禁止手改 prod DB。
+- 舊一般 leave SHIFT/vacated week 語意已廢止；vacated 僅剩 explicit pause。
+- Preview/apply 仍須同源。歷史 vacated → PR2 `repair:leave-vacated-weeks`。
 
-### R82. 堂數制一般請假必須保留未來日期、只補尾堂（Founder Decision 2026-07-26）
+### R82. 堂數制一般請假保留未來日期、只補尾堂（Founder Decision 2026-07-26）
 
-- **觸發情境**：7/21 單堂請假後 7/28 消失、第 6 堂跳到 8/04 — 舊 SHIFT cascade 的 vacated week。
-- **新規則（一般 leave 唯一預設）**：
-  1. 目標堂標 `leave`（不佔 billable ordinal）。
-  2. **禁止**移動任何既有未來 `SessionDate`／時段／老師／教室。
-  3. 下一個既有 scheduled session 直接承接下一個堂號。
-  4. 尾端 **最多 append 一堂**（`auto-extended-after-leave:ld=…:ls=…` provenance）。
-  5. Preview：`policy=KEEP_FUTURE_DATES_APPEND_TAIL`，`vacated=[]`，`moves=[]`，`future_dates_unchanged=true`。
-- **Explicit pause**：僅 `applyExplicitCoursePauseShift` / preview `policy=SHIFT_FUTURE_DATES_APPEND_TAIL` 可整體順延；一般 leave UI／attendance／retro-leave／bulk-leave **不得**觸發。
-- **Undo**：KEEP 路徑只還原 leave + 安全回收 provenance 尾堂；不得猜刪。Legacy SHIFT 列可偵測 vacated pattern 後走 reverse-shift。
-- **防再犯 meta**：測試與文件只能證明系統符合既有規格，不能證明產品規格本身正確；營運一致反對時必須升級 Founder Decision，不得用舊測試關閉問題。
-- **測試必補**：`test_count_based_leave_keeps_existing_future_session_dates`、`test_count_based_leave_appends_exactly_one_tail_session`、`test_count_based_leave_does_not_create_vacated_week`、`ScheduleLeaveCascadeTest::test_count_based_leave_keeps_future_dates_and_appends_tail`、`test_leave_cascade_preview_keeps_dates_and_lists_append_without_writing`。
+- 一般 leave：標 leave、不移未來日期、尾端最多 append 一堂；`vacated=[]`。
+- Explicit pause：`applyExplicitCoursePauseShift` / preview `policy=SHIFT_FUTURE_DATES_APPEND_TAIL`。
+- 測試：`test_count_based_leave_keeps_*`；feature `test_count_based_leave_keeps_future_dates_and_appends_tail`。
 
 ### R80. 排課摘要「補登已上（堂）」不可用 dates.length
 
@@ -1040,7 +1026,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | 繳費 / 學收 | §繳費狀態 paid_at、§歷史課程漏算、§催繳名單六狀態、§幽靈課程、§R30（帳務入口共用 AR ledger）、**§R76（session／hour 費用文案與 Charge 寫入）**、**§R79（收據前端不得超前後端 contract；合法路徑=payment-reports/{id}/receipt）** |
 | 薪資 / 併堂 | §兼職薪資 concurrency、§同層級併堂 v1.4、§契約時長為準 |
 | 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession）、§R39（代課評量權限需匹配時段）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R52（代課 scheduled 例外不可缺 original_schedule_id anchor）、§R71（調課單一交易＋前端 committed gate）、§R72（cancelled ClassSession 不得讓 scheduled 例外佔用代課老師）、§R73（跨老師 gesture 必走 atomic substitute；legacy 兩階段精準補償）、§R74（代課衝突排除同一學生續約佔用） |
-| 請假 / 順延 | §R29（請假不可 fallback 只寫 schedules）、**§R82（一般 leave=KEEP dates+append tail；禁止 silent vacated week）**、§R75（SUPERSEDED：vacated 僅剩 explicit pause）、**§R77（多星期不同鐘點：SHIFT/改期後必須對齊目標星期契約時段）**、**§R81（家長請假不可雙寫 Notifications；Action Inbox 唯讀聚合）** |
+| 請假 / 順延 | §R29、**§R82（KEEP dates+append）**、§R75（SUPERSEDED）、§R77、§R81 |
 | 評量 / 家長回饋 | §同天多堂課 buildEvents、§請假後不填評量、§R17（ownership 先於狀態判斷）、§R19（mark-read 不可更新 updated_at）、§R32（停用課程已上課評量不可消失）、§R39（代課評量權限需匹配時段）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R65（新增 session 狀態值必須同步全部消費端；leave 家族用集合判斷）、**§R78（nightly backfill 須 in-place restore 作廢評量，不可把 voided 當已有）** |
 | 家長入口 UI / `releaseNotes` | §R10、§R11、§R18、§R38、§R45（版本卡僅 `audience` 含 `parent` + `sync-release-notes`） |
 | 課表回報 | §2026-04-17 回報系統（14 條禁止項） |
