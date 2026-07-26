@@ -8,16 +8,15 @@ use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 
 /**
- * #991: pure-logic unit coverage for the recurrence-date helpers that underpin
- * the leave-cascade (#1160) and contract-realign (#1163) reflows. No DB / app
- * bootstrap — just Carbon + arrays — so these run in the Unit layer and pin the
- * exact "next/prev free recurring slot" semantics the vacate-ahead moves rely on.
+ * Pure-logic coverage for leave date plans.
+ *
+ * Founder Decision 2026-07-26: ordinary leave = KEEP_FUTURE_DATES_APPEND_TAIL
+ * (no vacated week). SHIFT plan remains for explicit pause only.
  */
 class CourseLeaveCascadeDateLogicTest extends TestCase
 {
     public function test_next_recurring_date_single_weekday(): void
     {
-        // 2026-07-17 is a Friday (ISO 5).
         $this->assertSame(
             '2026-07-24',
             CourseLeaveCascadeService::nextRecurringDate(Carbon::parse('2026-07-17'), [5], [])
@@ -38,7 +37,6 @@ class CourseLeaveCascadeDateLogicTest extends TestCase
 
     public function test_next_recurring_date_multiple_weekdays_picks_earliest(): void
     {
-        // After Mon 2026-07-13, weekdays Tue(2)+Thu(4) -> next is Tue 07-14, then Thu 07-16.
         $this->assertSame(
             '2026-07-14',
             CourseLeaveCascadeService::nextRecurringDate(Carbon::parse('2026-07-13'), [2, 4], [])
@@ -68,14 +66,80 @@ class CourseLeaveCascadeDateLogicTest extends TestCase
 
     public function test_prev_recurring_date_throws_when_blocked_by_min_exclusive(): void
     {
-        // Only candidate (07-24) is at/under the exclusive floor -> no valid earlier slot.
         $this->expectException(InvalidArgumentException::class);
         CourseLeaveCascadeService::prevRecurringDate(Carbon::parse('2026-07-31'), [5], [], '2026-07-24');
     }
 
-    public function test_compute_shift_plan_vacates_next_weekday_after_leave(): void
+    public function test_count_based_leave_keeps_existing_future_session_dates(): void
     {
-        // in-app #204: Saturday course; leave on 06/27 vacates 07/04 (sessions shift +1 week).
+        // User case: Tue leave 07/21 must NOT vacate 07/28.
+        $sessions = [
+            ['id' => 1, 'date' => '2026-06-16', 'status' => 'attended'],
+            ['id' => 2, 'date' => '2026-06-23', 'status' => 'attended'],
+            ['id' => 3, 'date' => '2026-07-07', 'status' => 'attended'],
+            ['id' => 4, 'date' => '2026-07-14', 'status' => 'attended'],
+            ['id' => 5, 'date' => '2026-07-21', 'status' => 'scheduled'],
+            ['id' => 6, 'date' => '2026-07-28', 'status' => 'scheduled'],
+            ['id' => 7, 'date' => '2026-08-04', 'status' => 'scheduled'],
+            ['id' => 8, 'date' => '2026-08-11', 'status' => 'scheduled'],
+        ];
+        $plan = CourseLeaveCascadeService::computeAppendOnlyPlan($sessions, '2026-07-21', [2], 5, 8);
+
+        $this->assertSame([], $plan['vacated']);
+        $this->assertSame([], $plan['moves']);
+        $this->assertSame('2026-08-18', $plan['append']);
+        $this->assertSame(1, $plan['append_count']);
+    }
+
+    public function test_count_based_leave_does_not_create_vacated_week(): void
+    {
+        $sessions = [
+            ['id' => 1, 'date' => '2026-05-30', 'status' => 'attended'],
+            ['id' => 2, 'date' => '2026-06-06', 'status' => 'attended'],
+            ['id' => 3, 'date' => '2026-06-13', 'status' => 'attended'],
+            ['id' => 4, 'date' => '2026-06-20', 'status' => 'attended'],
+            ['id' => 5, 'date' => '2026-06-27', 'status' => 'scheduled'],
+            ['id' => 6, 'date' => '2026-07-04', 'status' => 'scheduled'],
+            ['id' => 7, 'date' => '2026-07-11', 'status' => 'scheduled'],
+            ['id' => 8, 'date' => '2026-07-18', 'status' => 'scheduled'],
+        ];
+        $plan = CourseLeaveCascadeService::computeAppendOnlyPlan($sessions, '2026-06-27', [6], 5, 8);
+        $this->assertSame([], $plan['vacated']);
+        $this->assertSame('2026-07-25', $plan['append']);
+    }
+
+    public function test_count_based_leave_appends_exactly_one_tail_session(): void
+    {
+        $sessions = [
+            ['id' => 1, 'date' => '2026-07-01', 'status' => 'attended'],
+            ['id' => 2, 'date' => '2026-07-08', 'status' => 'scheduled'],
+            ['id' => 3, 'date' => '2026-07-15', 'status' => 'scheduled'],
+            ['id' => 4, 'date' => '2026-07-22', 'status' => 'scheduled'],
+        ];
+        $plan = CourseLeaveCascadeService::computeAppendOnlyPlan($sessions, '2026-07-08', [3], 2, 4);
+        $this->assertSame(1, $plan['append_count']);
+        $this->assertSame('2026-07-29', $plan['append']);
+    }
+
+    public function test_count_based_leave_reassigns_billable_ordinals(): void
+    {
+        $sessions = [
+            ['id' => 1, 'date' => '2026-07-07', 'status' => 'attended'],
+            ['id' => 2, 'date' => '2026-07-14', 'status' => 'attended'],
+            ['id' => 3, 'date' => '2026-07-21', 'status' => 'scheduled'],
+            ['id' => 4, 'date' => '2026-07-28', 'status' => 'scheduled'],
+            ['id' => 5, 'date' => '2026-08-04', 'status' => 'scheduled'],
+        ];
+        $next = CourseLeaveCascadeService::resolveNextBillableAfterLeave($sessions, '2026-07-21', false, []);
+        $this->assertNotNull($next);
+        $this->assertSame('2026-07-28', $next['date']);
+        // attended×2 remain ordinals 1–2; 07/28 becomes ordinal 3
+        $this->assertSame(3, $next['ordinal']);
+    }
+
+    public function test_explicit_course_pause_shifts_future_sessions_and_vacates_next_recurrence(): void
+    {
+        // Explicit SHIFT policy (pause) — NOT ordinary leave.
         $sessions = [
             ['id' => 1, 'date' => '2026-05-30', 'status' => 'attended'],
             ['id' => 2, 'date' => '2026-06-06', 'status' => 'attended'],
@@ -101,9 +165,8 @@ class CourseLeaveCascadeDateLogicTest extends TestCase
         $this->assertSame('2026-08-01', $plan['extended_end_date']);
     }
 
-    public function test_compute_shift_plan_second_leave_vacates_following_saturday(): void
+    public function test_explicit_pause_second_shift_vacates_following_saturday(): void
     {
-        // After first leave on 06/27, layout is leave + shifted Saturdays; second leave on 07/11 vacates 07/18.
         $sessions = [
             ['id' => 1, 'date' => '2026-05-30', 'status' => 'attended'],
             ['id' => 2, 'date' => '2026-06-06', 'status' => 'attended'],
@@ -139,7 +202,14 @@ class CourseLeaveCascadeDateLogicTest extends TestCase
         $this->assertSame('leave', CourseLeaveCascadeService::appendNote('', 'leave'));
         $this->assertSame('leave', CourseLeaveCascadeService::appendNote(null, 'leave'));
         $this->assertSame('foo; leave', CourseLeaveCascadeService::appendNote('foo', 'leave'));
-        // Idempotent: a suffix already present is not appended again.
         $this->assertSame('foo; leave', CourseLeaveCascadeService::appendNote('foo; leave', 'leave'));
+    }
+
+    public function test_build_auto_extended_note_includes_leave_provenance(): void
+    {
+        $note = CourseLeaveCascadeService::buildAutoExtendedNote('2026-07-21', 42);
+        $this->assertStringContainsString('auto-extended-after-leave', $note);
+        $this->assertStringContainsString('ld=2026-07-21', $note);
+        $this->assertStringContainsString('ls=42', $note);
     }
 }

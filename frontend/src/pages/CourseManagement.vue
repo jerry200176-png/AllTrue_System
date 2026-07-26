@@ -1034,7 +1034,7 @@ const bulkLeaveImpactPreview = computed(() => {
     title: '批次請假送出前確認',
     summary: `將掃描 ${start} 至 ${end}（共 ${days} 天）的可請假堂次。`,
     items: [
-      '系統會逐堂執行請假與順延，無法只靠前端一次復原',
+      '系統會逐堂標記請假並於尾端補堂（未來既有日期不變），無法只靠前端一次復原',
       '已有核准評量、已取消、已請假的堂次會被略過',
       '送出後請查看略過清單，必要時改用單堂補請假處理',
     ],
@@ -2029,14 +2029,23 @@ function formatLeavePreviewDate(ymd) {
 function buildLeaveCascadeImpactItems(baseItems, plan) {
   const items = [...baseItems];
   if (!plan) return items;
+  const policy = String(plan.policy || 'KEEP_FUTURE_DATES_APPEND_TAIL');
+  if (policy === 'KEEP_FUTURE_DATES_APPEND_TAIL' || plan.future_dates_unchanged) {
+    items.push('未來既有上課日期與時間維持不變');
+  }
+  const next = plan.next_billable_session;
+  if (next && next.date) {
+    const ord = next.ordinal != null ? `第 ${next.ordinal} 堂` : '下一堂';
+    items.push(`下一堂：${formatLeavePreviewDate(next.date)}（${ord}）`);
+  }
   const vacated = Array.isArray(plan.vacated) ? plan.vacated : [];
-  if (vacated.length) {
+  if (vacated.length && policy === 'SHIFT_FUTURE_DATES_APPEND_TAIL') {
     items.push(
-      `原定上課日將被空出（不再排課）：${vacated.map(formatLeavePreviewDate).join('、')}`,
+      `（整體順延）原定上課日將被空出：${vacated.map(formatLeavePreviewDate).join('、')}`,
     );
   }
   const moves = Array.isArray(plan.moves) ? plan.moves : [];
-  if (moves.length) {
+  if (moves.length && policy === 'SHIFT_FUTURE_DATES_APPEND_TAIL') {
     const sample = moves
       .slice(0, 4)
       .map((m) => `${formatLeavePreviewDate(m.from)}→${formatLeavePreviewDate(m.to)}`)
@@ -2060,16 +2069,16 @@ const leaveImpactPreview = computed(() => {
     ? [
         '會沖回該堂已扣堂數，並重新計算課程剩餘堂數',
         '會作廢該堂出缺勤與學習評量紀錄',
-        '後續課程會依請假規則重新順延',
+        '未來既有上課日不變，僅於尾端補上堂次',
       ]
     : [
         '本堂會標記為請假，不扣堂數',
-        '後續課程會自動順延並補上尾堂',
+        '未來既有上課日不變，僅於尾端補上堂次',
         '該堂不需要填寫學習評量',
       ];
   const items = buildLeaveCascadeImpactItems(baseItems, leaveCascadePlan.value);
   if (leaveCascadePlanLoading.value) {
-    items.push('正在計算會被空出的日期…');
+    items.push('正在計算尾堂補上日期…');
   }
   return {
     title: retro ? '補請假高風險影響預覽' : '請假送出前影響預覽',
@@ -2235,10 +2244,10 @@ async function submitLeave() {
       if (canUndo) {
         toastRef.value?.show?.({
           title: '請假已送出',
-          description: `本堂已請假並順延，${undoWindowSec} 秒內可復原`,
+          description: `本堂已請假（未來日期不變，已補尾堂），${undoWindowSec} 秒內可復原`,
           variant: 'success',
           durationMs: undoWindowSec * 1000,
-          undoDescription: '已撤銷請假，堂次順延已回復',
+          undoDescription: '已撤銷請假，尾堂已回復',
           onUndo: async () => {
             const undoRes = await fetch(`/api/v1/schedules/${undoScheduleId}/undo-leave`, {
               method: 'POST',
@@ -2255,7 +2264,7 @@ async function submitLeave() {
       } else {
         toastRef.value?.show?.({
           title: '請假已送出',
-          description: '本堂已請假並順延',
+          description: '本堂已請假（未來日期不變，已補尾堂）',
           variant: 'success',
           durationMs: 4000,
         });
@@ -2480,7 +2489,8 @@ const toggleSessionNotes = () => {
 // 系統自動產生的 Note 片段 pattern，符合的不算使用者備註
 const SYSTEM_NOTE_PATTERNS = [
   /^系統/,                        // 系統重建堂次、系統判定補登、系統調整堂次…
-  /^auto-extended-after-leave$/,
+  /^auto-extended-after-leave/,
+  /^leave-policy-shift$/,
   /^leave$/,
   /^retro-leave$/,
   /^cancelled-after-attended$/,

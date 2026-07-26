@@ -1,33 +1,52 @@
-# Product Discovery — Leave semantics: 順延 vs append-only
+# Product Decision — Leave semantics: KEEP dates + append tail
 
-**Status:** Discovery only — **do not implement**  
-**Opened:** 2026-07-18 (Founder Decision 2)  
-**Related:** in-app #204 (preview fixed; 順延 retained); GitHub [#1100](https://github.com/jerry200176-png/AllTrue_System/issues/1100) (A/B boundary after leave extend)  
+**Status:** Decided (Founder Decision 2026-07-26) — **implemented**  
+**Opened:** 2026-07-18 (Discovery)  
+**Decided:** 2026-07-26  
+**Related:** in-app #204 (preview); GitHub [#1100](https://github.com/jerry200176-png/AllTrue_System/issues/1100) (A/B boundary after leave extend)  
 **Owner:** Product / Founder  
 
 ## Current policy (locked)
 
-Leave continues to **shift subsequent sessions forward** and append a tail session (`CourseLeaveCascadeService`).  
-Operators must see vacated / moved / append dates **before confirm** (R75 / leave-cascade-preview).
+Ordinary count-based leave uses **`KEEP_FUTURE_DATES_APPEND_TAIL`**:
 
-## Not a bug
+1. Mark the target `ClassSession` as `leave` (does not consume purchased ordinal).
+2. **Do not move** any existing future session dates/times/teachers/classrooms.
+3. Append **at most one** tail session to preserve purchased count.
+4. Preview (`POST /api/v1/schedules/leave-cascade-preview`) must show `vacated=[]`, `moves=[]`, `future_dates_unchanged=true`, and the append date.
 
-“只補尾、不推移既有日期” is an alternate product policy, not a defect in current cascade.
+Authority: `CourseLeaveCascadeService::applyLeaveCascade` / `appendTailAfterLeave` / `computeAppendOnlyPlan`.
 
-## Research questions (must answer with real user evidence)
+## Explicit pause / whole-course shift (not ordinary leave)
 
-1. Do directors expect **whole-course shift** or **keep existing calendar dates**?  
-2. Do different leave types (normal / retro / bulk holiday / teacher leave) need different semantics?  
-3. Can auto-moving sessions that parents were already notified about be acceptable?  
-4. What conflict / notification / admin cost does shifting create vs append-only?  
-5. Which mode minimizes risk to billing, attendance, prepaid sessions, and teacher calendars?  
-6. Should directors explicitly choose a mode per campus or per course?
+**`SHIFT_FUTURE_DATES_APPEND_TAIL`** remains available as an explicit capability:
 
-## Exit criteria for implementation
+- `CourseLeaveCascadeService::applyExplicitCoursePauseShift`
+- Preview with `policy=SHIFT_FUTURE_DATES_APPEND_TAIL`
+- Produces vacated weeks by design
 
-- Written product decision with campus evidence  
-- Conflict with #1100 resolved or jointly designed  
-- Migration plan for in-flight courses  
-- Explicit Founder Decision to change semantics  
+There is **no** ordinary leave UI that triggers SHIFT. A dedicated pause/suspend product surface may wire to it later.
 
-Until then: **keep 順延 + preview**.  
+## Supersedes
+
+- Prior discovery conclusion that ordinary leave must shift future sessions (2026-07-18 lock).
+- AI_REGRESSION_LESSONS §R75 wording that treated vacated weeks as correct ordinary-leave behaviour (see superseded note in that section).
+
+## Historical repairs
+
+Legacy SHIFT leaves that already created silent vacated weeks:
+
+```bash
+php artisan repair:leave-vacated-weeks --dry-run
+# future-safe apply (prod): ALLOW_PROD_REPAIR=1 php artisan repair:leave-vacated-weeks --apply --force --actor=...
+```
+
+See `docs/runbooks/REPAIR_LEAVE_VACATED_WEEKS.md`.
+
+## Exit criteria (done when)
+
+- [x] Written Founder Decision
+- [x] Ordinary leave KEEP + append implemented
+- [x] SHIFT isolated as explicit capability
+- [x] Preview/API/UI copy aligned
+- [x] Regression tests + repair scanner

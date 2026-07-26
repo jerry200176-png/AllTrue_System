@@ -49,8 +49,9 @@ class LeaveCascadeShiftCollisionTest extends TestCase
             $this->insertSession($courseId, $date);
         }
 
+        // Explicit pause/shift capability (NOT ordinary leave default).
         DB::transaction(function () use ($courseId) {
-            CourseLeaveCascadeService::applyLeaveCascade($courseId, '2026-07-17');
+            CourseLeaveCascadeService::applyExplicitCoursePauseShift($courseId, '2026-07-17');
         });
 
         $active = ClassSession::where('StudentClassID', $courseId)
@@ -70,6 +71,30 @@ class LeaveCascadeShiftCollisionTest extends TestCase
         $dates = $active->map(fn ($s) => substr((string) $s->SessionDate, 0, 10))->sort()->values()->all();
         $this->assertSame(
             ['2026-07-17', '2026-07-31', '2026-08-07', '2026-08-14', '2026-08-21'],
+            $dates
+        );
+    }
+
+    public function test_ordinary_leave_keeps_future_slots_under_unique_index(): void
+    {
+        $this->enableUniqueIndex();
+        $courseId = $this->createCourse();
+        foreach (['2026-07-17', '2026-07-24', '2026-07-31', '2026-08-07'] as $date) {
+            $this->insertSession($courseId, $date);
+        }
+
+        DB::transaction(function () use ($courseId) {
+            CourseLeaveCascadeService::applyLeaveCascade($courseId, '2026-07-17');
+        });
+
+        $active = ClassSession::where('StudentClassID', $courseId)
+            ->whereRaw("LOWER(Status) NOT IN ('cancelled', 'voided')")
+            ->get();
+        $this->assertSame(5, $active->count());
+        $dates = $active->map(fn ($s) => substr((string) $s->SessionDate, 0, 10))->sort()->values()->all();
+        // 07/24 kept (not vacated); append 08/14.
+        $this->assertSame(
+            ['2026-07-17', '2026-07-24', '2026-07-31', '2026-08-07', '2026-08-14'],
             $dates
         );
     }
