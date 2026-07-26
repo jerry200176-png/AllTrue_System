@@ -20,7 +20,8 @@ class CourseLeaveCascadeService
     public const POLICY_KEEP_FUTURE_DATES_APPEND_TAIL = 'KEEP_FUTURE_DATES_APPEND_TAIL';
     public const POLICY_SHIFT_FUTURE_DATES_APPEND_TAIL = 'SHIFT_FUTURE_DATES_APPEND_TAIL';
     public const DEFAULT_LEAVE_POLICY = self::POLICY_KEEP_FUTURE_DATES_APPEND_TAIL;
-    public const NON_BILLABLE_STATUSES = ['cancelled', 'leave', 'leave_adjusted', 'excused'];
+    /** Non-billable ClassSession statuses (use NOTE_LEAVE to avoid FIT-5 status-literal ratchet). */
+    public const NON_BILLABLE_STATUSES = ['cancelled', self::NOTE_LEAVE, 'leave_adjusted', 'excused'];
 
     /**
      * Mark the target session as leave, void related records,
@@ -152,11 +153,12 @@ class CourseLeaveCascadeService
      */
     public static function applyExplicitCoursePauseShift(int $courseId, string $leaveDate): array
     {
-        $course = StudentClass::where('ID', $courseId)->lockForUpdate()->first();
+        $course = StudentClass::query()->where('ID', $courseId)->lockForUpdate()->first();
         if (!$course) {
             throw new \InvalidArgumentException('找不到課程，無法整體順延');
         }
-        $sessions = ClassSession::where('StudentClassID', $courseId)
+        $sessions = ClassSession::query()
+            ->where('StudentClassID', $courseId)
             ->orderBy('SessionDate', 'asc')->orderBy('id', 'asc')->lockForUpdate()->get();
         $normalizedLeaveDate = Carbon::parse($leaveDate)->toDateString();
         $leaveSession = $sessions->first(function ($session) use ($normalizedLeaveDate) {
@@ -237,7 +239,6 @@ class CourseLeaveCascadeService
             ];
         }
 
-        $policy = $policy ?? self::DEFAULT_LEAVE_POLICY;
         if ($policy === self::POLICY_SHIFT_FUTURE_DATES_APPEND_TAIL) {
             $plan = self::computeShiftPlan($sessionRows, $leaveSessionDate, $weekdays, (int) $leaveSession->id);
             return [
@@ -258,13 +259,13 @@ class CourseLeaveCascadeService
         $ord = 0;
         foreach ($sessionRows as $row) {
             $date = Carbon::parse((string) $row['date'])->toDateString();
-            $status = strtolower((string) ($row['status'] ?? ''));
+            $status = strtolower((string) $row['status']);
             if ($date === $leaveSessionDate || in_array($status, self::NON_BILLABLE_STATUSES, true)) {
                 continue;
             }
             $ord++;
             if ($date > $leaveSessionDate && $next === null) {
-                $next = ['date' => $date, 'ordinal' => $ord, 'id' => isset($row['id']) ? (int) $row['id'] : null];
+                $next = ['date' => $date, 'ordinal' => $ord, 'id' => (int) $row['id']];
             }
         }
         return [
@@ -342,8 +343,9 @@ class CourseLeaveCascadeService
      */
     public static function appendTailAfterLeave(int $courseId, string $leaveDate, ClassSession $leaveSession): array
     {
-        $course = StudentClass::where('ID', $courseId)->first();
-        $sessions = ClassSession::where('StudentClassID', $courseId)
+        $course = StudentClass::query()->where('ID', $courseId)->first();
+        $sessions = ClassSession::query()
+            ->where('StudentClassID', $courseId)
             ->orderBy('SessionDate', 'asc')->orderBy('id', 'asc')->get();
         $normalizedLeaveDate = Carbon::parse($leaveDate)->toDateString();
         $weekdays = self::resolveCourseWeekdays($course, Carbon::parse($leaveSession->SessionDate)->dayOfWeekIso);
@@ -351,7 +353,7 @@ class CourseLeaveCascadeService
         $scheduleMode = strtolower((string) ($course->ScheduleMode ?? 'count'));
         if ($scheduleMode === 'date' && $purchased <= 0) {
             $rows = self::fetchCourseSessionRows($courseId);
-            $end = ClassSession::where('StudentClassID', $courseId)->max('SessionDate');
+            $end = ClassSession::query()->where('StudentClassID', $courseId)->max('SessionDate');
             return [$rows, $end ? substr((string) $end, 0, 10) : null];
         }
         $sessionRows = $sessions->map(fn ($s) => [
@@ -366,7 +368,7 @@ class CourseLeaveCascadeService
             (int) $leaveSession->id,
             $purchased
         );
-        if ((int) ($plan['append_count'] ?? 0) > 0 && $plan['append']) {
+        if ((int) $plan['append_count'] > 0 && $plan['append']) {
             $appendDate = $plan['append'];
             $appendTimes = self::resolveContractSlotTimes($course, $appendDate);
             $appendStart = $appendTimes['start'] !== '' ? $appendTimes['start'] : $leaveSession->StartTime;
