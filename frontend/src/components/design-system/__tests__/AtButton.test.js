@@ -20,6 +20,13 @@ describe('AtButton', () => {
     expect(wrapper.classes()).toContain('at-btn--sm');
   });
 
+  it('defaults to pill shape and can switch to rect for ops', () => {
+    const pill = mount(AtButton, { slots: { default: 'OK' } });
+    expect(pill.classes()).toContain('at-btn--pill');
+    const rect = mount(AtButton, { props: { shape: 'rect' }, slots: { default: 'OK' } });
+    expect(rect.classes()).toContain('at-btn--rect');
+  });
+
   it('adds block modifier only when block is true', () => {
     const block = mount(AtButton, { props: { block: true } });
     expect(block.classes()).toContain('at-btn--block');
