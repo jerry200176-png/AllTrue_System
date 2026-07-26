@@ -26,6 +26,11 @@ on:
 permissions:
   contents: read
 
+# Cancel superseded PR runs only — never cancel schedule/dispatch production smoke mid-flight.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   ui-smoke:
     name: UI Smoke (Playwright)

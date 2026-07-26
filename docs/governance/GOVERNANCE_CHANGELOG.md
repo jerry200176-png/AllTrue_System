@@ -1,5 +1,14 @@
 # Governance changelog
 
+## 2026-07-26 — Risk-based reviewability + Presubmit aggregate (G2)
+
+- Replace raw ≤700 hard fail with `scripts/ci/diff-classifier.mjs` + `check-reviewability.mjs`
+- Stacked PRs use `GITHUB_BASE_SHA` / `PR_BASE_SHA`
+- Presubmit: continue-on-error collection + fail-closed aggregator (no fake green)
+- Founder exception ledger on `origin/main` only (`.github/founder-exceptions/`)
+- UI Smoke PR concurrency; historical replay fixtures; `npm run ci:report`
+- Does **not** modify `ci.yml` (avoids #1450/#1451 conflict)
+
 ## 2026-07-26 — CI failure intelligence + fast preflight (G1)
 
 - Canonical docs: `docs/governance/CI_GOVERNANCE.md`

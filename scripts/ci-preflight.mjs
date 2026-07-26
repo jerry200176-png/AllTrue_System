@@ -118,7 +118,7 @@ function checkGenerated(errors) {
   }
 }
 
-function checkLegacySize(errors, warnings) {
+function checkReviewability(errors, warnings) {
   const base = resolveBase();
   try { git(['rev-parse', '--verify', base]); }
   catch {
@@ -128,29 +128,20 @@ function checkLegacySize(errors, warnings) {
     }));
     return;
   }
-  const out = execFileSync('git', [
-    'diff', '--numstat', `${base}...HEAD`, '--',
-    ':!*.lock', ':!**/package-lock.json', ':!package-lock.json',
-    ':!**/composer.lock', ':!composer.lock', ':!*.sql', ':!*.sql.gz',
-    ':!*.min.js', ':!*.min.css', ':!*.log', ':!**/*.log',
-    ':!*phpstan-baseline.neon', ':!**/*.generated.js', ':!.cursor/skills/**',
-  ], { cwd: ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 });
-  let total = 0;
-  for (const line of out.split('\n')) {
-    const [a, d] = line.split('\t');
-    if (!a || a === '-') continue;
-    total += (Number(a) || 0) + (Number(d) || 0);
-  }
-  if (total > 700) {
+  const r = spawnSync(process.execPath, [path.join(ROOT, 'scripts/ci/check-reviewability.mjs')], {
+    cwd: ROOT, encoding: 'utf8', env: { ...process.env, PR_BASE_SHA: base },
+  });
+  if (r.status !== 0) {
     errors.push(formatGovError({
-      code: GOV_CODES.SIZE, message: `Legacy PR size ${total} > 700`,
-      actual: JSON.stringify({ total, base }), policy: 'presubmit.yml CHECK 2',
-      fix: 'Split PR. Stacked: export PR_BASE_SHA=<base>. Risk-based gate = G2.',
+      code: GOV_CODES.SIZE,
+      message: (r.stderr || r.stdout || 'reviewability failed').trim().slice(0, 500),
+      actual: base, policy: 'scripts/ci/check-reviewability.mjs',
+      fix: 'Split PR or set PR_BASE_SHA for stacked base. Founder exception only via origin/main ledger.',
     }));
-  } else if (total > 400) {
+  } else if (/::warning/.test(r.stdout || '')) {
     warnings.push(formatGovError({
-      code: GOV_CODES.SIZE, message: `PR size ${total} > 400 (recommended)`,
-      actual: String(total), policy: 'presubmit CHECK 2', fix: 'Consider splitting', blocking: false,
+      code: GOV_CODES.SIZE, message: 'Reviewability warning (see check output)',
+      actual: 'warn', policy: 'check-reviewability.mjs', fix: 'Consider splitting', blocking: false,
     }));
   }
 }
@@ -201,7 +192,7 @@ async function main() {
   checkGenerated(errors);
   checkWorkflowYaml(errors);
   checkSecrets(errors);
-  checkLegacySize(errors, warnings);
+  checkReviewability(errors, warnings);
   const result = { ok: errors.length === 0, errors, warnings };
   if (jsonOut) console.log(JSON.stringify(result, null, 2));
   else {

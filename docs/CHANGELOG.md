@@ -1,3 +1,7 @@
+## 2026-07-26 — ci(governance): risk-based reviewability + Presubmit aggregate（G2）
+
+- 開發備註：以 base-aware reviewability 取代一刀切 700 行；Presubmit 一次回報全部快速 blocking；Founder exception ledger；見 `docs/governance/CI_GOVERNANCE.md`。不改 production 業務邏輯、不改 `ci.yml`。
+
 ## 2026-07-26 — ci(governance): failure taxonomy + fast preflight（G1）
 
 - 開發備註：新增 `npm run ci:preflight` / `sync:generated`、failure taxonomy、branch policy（含 `sec/`）；見 `docs/governance/CI_GOVERNANCE.md`。不改 production 業務邏輯。
