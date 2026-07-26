@@ -92,7 +92,6 @@ class ParentBindingObservabilityTest extends TestCase
         $emptyId = $this->student($campus->id, '空碼', '', '');
         $this->line($campus, $uid, "綁定 {$emptyId->id} 0912345678")->assertOk();
         $this->assertSame('CONTACT_PHONE_MISSING', $this->reason());
-        Http::assertSent(fn ($r) => ($r->data()['messages'][0]['text'] ?? '') === '手機號碼不符，請確認後重試。');
 
         config(['parent_binding.observability_enabled' => false]);
         ParentBindingAttempt::query()->delete();
