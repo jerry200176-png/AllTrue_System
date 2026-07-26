@@ -999,7 +999,9 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 - 一般 leave：標 leave、不移未來日期、尾端最多 append 一堂；`vacated=[]`。
 - Explicit pause：`applyExplicitCoursePauseShift` / preview `policy=SHIFT_FUTURE_DATES_APPEND_TAIL`。
-- 測試：`test_count_based_leave_keeps_*`；feature `test_count_based_leave_keeps_future_dates_and_appends_tail`。
+- 歷史 silent vacated week：`php artisan repair:leave-vacated-weeks`（預設 dry-run；runbook `docs/runbooks/REPAIR_LEAVE_VACATED_WEEKS.md`）。
+- 測試：`test_count_based_leave_keeps_*`；`LeaveKeepDatesAppendTailTest`（repair dry-run／apply idempotent）。
+- **產品規格教訓**：測試與文件只能證明符合既有規格，不能證明規格正確；營運一致反對時必須升級 Founder Decision，不可用舊測試關閉問題。
 
 ### R80. 排課摘要「補登已上（堂）」不可用 dates.length
 

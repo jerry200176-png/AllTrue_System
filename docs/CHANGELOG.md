@@ -3,9 +3,10 @@
 - 一般請假不再把後續堂次整排往後推（不再出現 silent vacated week）。
 - 請假堂不佔堂號；下一個既有上課日承接下一堂；尾端最多補一堂。
 - 整體順延改為明確 pause 能力，不作為一般請假預設。
-- 請假預覽與課程管理／出缺勤文案同步；新增 vacated-week 掃描修復指令。
+- 請假預覽與課程管理／出缺勤文案同步。
+- 歷史 vacated week：`repair:leave-vacated-weeks`（預設 dry-run；見 runbook）。
 
-開發備註：Founder Decision 2026-07-26 / §R82。權威路徑 `CourseLeaveCascadeService`；repair：`repair:leave-vacated-weeks`。
+開發備註：Founder Decision 2026-07-26 / §R82。權威路徑 `CourseLeaveCascadeService`；runbook `docs/runbooks/REPAIR_LEAVE_VACATED_WEEKS.md`。
 
 ## 2026-07-24 — docs: 品牌表面品味閘門（防再犯 #1386）
 

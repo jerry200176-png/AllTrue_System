@@ -893,6 +893,81 @@ class CourseLeaveCascadeService
         return $base . '; ' . $suffix;
     }
 
+    public static function buildAutoExtendedNote(string $leaveDate, int $leaveSessionId): string
+    {
+        return self::NOTE_AUTO_EXTENDED
+            . ':ld=' . Carbon::parse($leaveDate)->toDateString()
+            . ':ls=' . $leaveSessionId;
+    }
+
+    /**
+     * Legacy SHIFT fingerprint: next natural recurrence after leave is empty,
+     * but a later non-cancelled billable session exists (silent vacated week).
+     *
+     * @param  \Illuminate\Support\Collection<int, ClassSession>  $sessions
+     */
+    public static function detectLegacyVacatedWeekPattern($sessions, string $leaveDate, StudentClass $course): bool
+    {
+        $normalizedLeaveDate = Carbon::parse($leaveDate)->toDateString();
+        $weekdays = self::resolveCourseWeekdays(
+            $course,
+            (int) Carbon::parse($normalizedLeaveDate)->dayOfWeekIso
+        );
+        $naturalNext = self::nextRecurringDate(
+            Carbon::parse($normalizedLeaveDate)->startOfDay(),
+            $weekdays,
+            [$normalizedLeaveDate => true]
+        );
+        $hasNatural = $sessions->contains(function ($s) use ($naturalNext) {
+            $st = strtolower((string) ($s->Status ?? ''));
+            return Carbon::parse($s->SessionDate)->toDateString() === $naturalNext
+                && $st !== 'cancelled';
+        });
+        if ($hasNatural) {
+            return false;
+        }
+        return (bool) $sessions->first(function ($s) use ($naturalNext) {
+            $st = strtolower((string) ($s->Status ?? ''));
+            $d = Carbon::parse($s->SessionDate)->toDateString();
+            return $d > $naturalNext && !in_array($st, self::NON_BILLABLE_STATUSES, true);
+        });
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, ClassSession>  $sessions
+     */
+    public static function findAppendedSessionForLeave($sessions, string $leaveDate, int $leaveSessionId): ?ClassSession
+    {
+        $normalizedLeaveDate = Carbon::parse($leaveDate)->toDateString();
+        $match = $sessions->first(function ($s) use ($normalizedLeaveDate, $leaveSessionId) {
+            $note = (string) ($s->Note ?? '');
+            $st = strtolower((string) ($s->Status ?? ''));
+            if ($st !== 'scheduled' || !str_contains($note, self::NOTE_AUTO_EXTENDED)) {
+                return false;
+            }
+            return str_contains($note, ':ld=' . $normalizedLeaveDate)
+                || str_contains($note, ':ls=' . $leaveSessionId)
+                || trim($note) === self::NOTE_AUTO_EXTENDED;
+        });
+        return $match instanceof ClassSession ? $match : null;
+    }
+
+    public static function isSafeToRemoveAutoAppend(ClassSession $session): bool
+    {
+        $st = strtolower((string) ($session->Status ?? ''));
+        $note = (string) ($session->Note ?? '');
+        if ($st !== 'scheduled' || !str_contains($note, self::NOTE_AUTO_EXTENDED)) {
+            return false;
+        }
+        if (LearningRecord::query()->where('ClassSessionID', (int) $session->id)->active()->exists()) {
+            return false;
+        }
+        if (StudentSignIn::query()->where('ClassSessionID', (int) $session->id)->active()->exists()) {
+            return false;
+        }
+        return true;
+    }
+
     public static function fetchCourseSessionRows(int $courseId): array
     {
         return DB::table('ClassSession as cs')
