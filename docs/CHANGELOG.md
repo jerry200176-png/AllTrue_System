@@ -5,6 +5,12 @@
 - Visual fixtures 僅在 `frontend/e2e/fixtures/`；production `public/` / `dist_build` 不含 mount harness。
 - Merge evidence：真實 Vue inbox Playwright + mocked API（390／768／1440）。
 
+## 2026-07-26 — design(ui): 學生列表 UI Foundation pilot (PR B)
+
+- Stacked on inbox foundation PR：`StudentsList` 接入 `At*`（含 `AtIconButton`）、unit/a11y、真實 Vue Playwright、durable evidence。
+- 補齊 UI audit + migration sequencing；CI 上傳 `ui-foundation-page-evidence` artifact。
+- 業務邏輯／API／DB／權限不變；supersedes monolithic #1449 students half。
+
 ## 2026-07-26 — chore(repo): PR／Issue／branch／docs hygiene
 
 - 同步 Parent Binding 文件狀態：PB-00 = **IMPLEMENTED / DEPLOYED — PRODUCTION ACTIVATION PENDING**（#1446 merged；#1436 closed by merge；Pi ops activation／`effective=true`／7-day baseline 未完成；PB-01～09 未開始）。

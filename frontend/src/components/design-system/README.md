@@ -125,6 +125,6 @@
 
 見 [`docs/design/ALLTRUE_UI_FOUNDATION.md`](../../../../docs/design/ALLTRUE_UI_FOUNDATION.md)。
 
-Inbox pilot 已驗證：`AtPageHeader` `AtSection` `AtToolbar` `AtFilterBar` `AtBadge` `AtInlineAlert` `AtSkeleton` `AtEmpty` + `AtButton(shape/loading)`。
+Pilot 已驗證：`AtPageHeader` `AtSection` `AtToolbar` `AtFilterBar` `AtBadge` `AtInlineAlert` `AtSkeleton` `AtIconButton` `AtEmpty` + `AtButton(shape/loading)`。
 
-未在本 PR 真實接入的抽象（如 `AtIconButton` / `AtModal` / `AtDataTableShell`）**不進本 PR**；等有使用頁面再建立。
+未在 pilot 真實接入的抽象（如 `AtModal` / `AtDataTableShell`）**不進本 PR**；等有使用頁面再建立。

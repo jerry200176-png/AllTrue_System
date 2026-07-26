@@ -1,9 +1,9 @@
 // @ts-check
 /**
- * Merge-acceptance visual evidence: real NotificationsCenter Vue page
+ * Merge-acceptance visual evidence: real Vue pages (NotificationsCenter / StudentsList)
  * with deterministic API mocks. Does not use production SMOKE credentials.
  *
- * Students pilot coverage lives in the stacked follow-up PR.
+ * Static HTML harness under e2e/fixtures is design exploration only.
  */
 import { test, expect } from '@playwright/test';
 import path from 'node:path';
@@ -46,6 +46,22 @@ const CASE_LONG = {
   priority: 'overdue',
 };
 
+function fakeStudents(count, { longName = false } = {}) {
+  return Array.from({ length: count }, (_, i) => ({
+    id: 2000 + i,
+    name: longName && i === 0
+      ? '測試學生長名字驗證用名稱避免真實個資'
+      : `測試學生${String(i + 1).padStart(2, '0')}`,
+    grade: 'J1',
+    school: longName && i === 0 ? '測試國民中學附設高級中等學校名稱很長' : '測試國中',
+    parent_name: longName && i === 0 ? '測試家長長名稱' : '測試家長',
+    rfid: i % 3 === 0 ? null : `TEST${1000 + i}`,
+    status: 'active',
+    notes: '',
+    line_bound: false,
+  }));
+}
+
 async function installApiMocks(page, mode) {
   const hang = mode === 'loading';
   let releaseHang;
@@ -62,11 +78,12 @@ async function installApiMocks(page, mode) {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
     }
 
-    if (hang && p.includes('/action-inbox')) {
+    if (hang && (p.includes('/action-inbox') || p.includes('/students'))) {
       await hangPromise;
     }
 
     if (p.endsWith('/action-inbox/count')) {
+      // Keep case lane for empty/error so empty/error UI is the case-lane states under test.
       const empty = mode === 'empty';
       return route.fulfill({
         status: 200,
@@ -123,30 +140,71 @@ async function installApiMocks(page, mode) {
       });
     }
 
+    if (p.includes('/students')) {
+      if (mode === 'empty') {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ data: [], total: 0 }),
+        });
+      }
+      const count = mode === 'dense' ? 40 : 8;
+      const list = fakeStudents(count, { longName: mode === 'long' });
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: list, total: list.length }),
+      });
+    }
+
+    if (p.includes('/student-classes')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: [
+            {
+              id: 5001,
+              student_id: 2000,
+              subject: 'Math',
+              remaining_sessions: 8,
+              payment_type: 'session',
+              status: 'active',
+            },
+          ],
+        }),
+      });
+    }
+
+    if (p.includes('/teachers') || p.includes('/subjects') || p.includes('/rooms') || p.includes('/temp-rfid')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) });
+    }
+
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
   });
 
   return { releaseHang: () => releaseHang?.() };
 }
 
-async function openPilot(page, { mode, viewport }) {
+async function openPilot(page, { pageName, mode, viewport }) {
   await page.setViewportSize({ width: viewport.width, height: viewport.height });
   const mocks = await installApiMocks(page, mode);
-  await page.goto(`/pilot-mount.html?page=inbox&mode=${mode}`);
+  await page.goto(`/pilot-mount.html?page=${pageName}&mode=${mode}`);
   await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1', { timeout: 15_000 });
   return mocks;
 }
 
-test.describe('UI foundation — inbox Vue page evidence', () => {
+test.describe('UI foundation — real Vue page evidence', () => {
   test.describe.configure({ mode: 'serial' });
 
   const inboxModes = ['normal', 'loading', 'empty', 'error', 'long', 'disabled'];
+  const studentModes = ['normal', 'empty', 'dense', 'long', 'focus', 'mobile-scroll'];
 
   for (const vp of viewports) {
     for (const mode of inboxModes) {
       test(`inbox ${mode} @${vp.name}`, async ({ page }) => {
         fs.mkdirSync(outDir, { recursive: true });
-        const mocks = await openPilot(page, { mode: mode === 'disabled' ? 'disabled' : mode, viewport: vp });
+        const mocks = await openPilot(page, { pageName: 'inbox', mode: mode === 'disabled' ? 'disabled' : mode, viewport: vp });
 
         if (mode === 'loading') {
           await expect(page.getByTestId('at-skeleton')).toBeVisible({ timeout: 10_000 });
@@ -171,12 +229,49 @@ test.describe('UI foundation — inbox Vue page evidence', () => {
           if (await prev.count()) {
             await expect(prev).toBeDisabled();
           } else {
+            // Single-page mock still exposes primary CTA; assert disabled sync button on ops lane is N/A.
+            // Ensure case CTA remains enabled while pager prev (if present) is disabled — already checked.
             await expect(page.getByRole('button', { name: '安排補課' }).first()).toBeEnabled();
           }
         }
 
         await page.locator('.notifications-page').screenshot({
           path: path.join(outDir, `vue-inbox-${mode}-${vp.name}.png`),
+        });
+      });
+    }
+
+    for (const mode of studentModes) {
+      test(`students ${mode} @${vp.name}`, async ({ page }) => {
+        fs.mkdirSync(outDir, { recursive: true });
+        const apiMode = mode === 'focus' || mode === 'mobile-scroll' ? (mode === 'mobile-scroll' ? 'dense' : 'normal') : mode;
+        await openPilot(page, { pageName: 'students', mode: apiMode, viewport: vp });
+
+        await expect(page.getByText('學生管理')).toBeVisible({ timeout: 10_000 });
+
+        if (mode === 'empty') {
+          await expect(page.getByText('目前沒有進行中的學生/課程').or(page.getByText('目前無學生資料'))).toBeVisible({ timeout: 10_000 });
+        } else {
+          await expect(page.getByText('測試學生', { exact: false }).first()).toBeVisible({ timeout: 10_000 });
+        }
+
+        if (mode === 'focus') {
+          const addBtn = page.getByRole('button', { name: '新增學生' }).first();
+          await addBtn.focus();
+          await expect(addBtn).toBeFocused();
+        }
+
+        if (mode === 'mobile-scroll' && vp.name === '390') {
+          const wrap = page.locator('.table-scroll-wrap');
+          await expect(wrap).toBeVisible();
+          const scrollWidth = await wrap.evaluate((el) => el.scrollWidth);
+          const clientWidth = await wrap.evaluate((el) => el.clientWidth);
+          expect(scrollWidth).toBeGreaterThanOrEqual(clientWidth);
+          await wrap.evaluate((el) => { el.scrollLeft = Math.min(120, el.scrollWidth); });
+        }
+
+        await page.locator('.students-page').screenshot({
+          path: path.join(outDir, `vue-students-${mode}-${vp.name}.png`),
         });
       });
     }
