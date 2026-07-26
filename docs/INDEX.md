@@ -148,7 +148,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | 行事曆 ClassSession 投影完整性 | `docs/GUIDE_PROJECTION_INTEGRITY.md`（list vs projection API；CI `ClassSessionProjectionTest`）|
 | **SmartCalendar 受控拆分（#740）** | `docs/GUIDE_SMARTCALENDAR_REFACTOR.md`（元件清單、API、CSS 解耦決策）|
 | 行事曆回歸測試 | `npm run test:calendar`（修改任何 calendar merge 邏輯前必跑）|
-| 家長入口 UX、分眾版本公告 | `docs/ROLE_PLAYBOOK.md` §4、`docs/AI_REGRESSION_LESSONS.md` §R45；`npm run test:release-notes`（改 `releaseNotes.js` / changelog 產生器時） |
+| 家長入口 UX、分眾版本公告 | `docs/PARENT_UPDATES.yml`（家長唯一來源）、`docs/ROLE_PLAYBOOK.md` §4、`docs/AI_REGRESSION_LESSONS.md` §R45；`npm run test:release-notes`（改 YAML / `releaseNotes.js` / 產生器時） |
 | `assume-unchanged` 藏檔導致 PR 漏 diff | `AI_REGRESSION_LESSONS.md` §R58 |
 
 ### 部署 / 維運

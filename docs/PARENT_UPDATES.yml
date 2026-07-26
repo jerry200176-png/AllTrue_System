@@ -1,0 +1,18 @@
+# Parent-facing product updates (explicit copy only).
+# Source of truth for ParentPortal「與您有關的更新」.
+# NOT derived from docs/CHANGELOG.md — staff changelog and parent communication are separate products.
+#
+# kind: improvement | policy | resolved_issue
+# action_required items must NOT live here — use notification center / persistent banner.
+#
+# After editing: cd frontend && npm run sync-release-notes
+# Then commit frontend/src/lib/parentUpdates.generated.js (CI checks drift).
+
+updates:
+  - id: parent-update-2026-07-26-leave
+    published_at: "2026-07-26"
+    expires_at: "2026-08-25"
+    kind: policy
+    title: 請假後的課程安排調整
+    summary: 請假後，已排定的未來課程日期不會移動；需要補上的課程會安排在課程尾端。
+    details: 您不需要重新操作；實際補課日期仍由班主任協助確認。

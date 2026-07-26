@@ -417,9 +417,16 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Sync in-app release notes from CHANGELOG
+      - name: Sync in-app release notes from CHANGELOG + PARENT_UPDATES
         working-directory: frontend
         run: npm run sync-release-notes
+
+      - name: Generated in-app updates must match committed artifacts
+        working-directory: frontend
+        run: |
+          git diff --exit-code -- \
+            src/lib/releaseNotes.generated.js \
+            src/lib/parentUpdates.generated.js
 
       - name: Calendar occurrence regression tests
         working-directory: frontend
