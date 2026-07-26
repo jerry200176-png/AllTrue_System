@@ -1019,7 +1019,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 ### R81. 家長請假不可雙寫 Notifications（Action Inbox B-lite + D）
 
-- **強制**：請假真相=`exception_workflows`；唯讀 ActionInbox；禁雙寫 Notification。Badge=`badge_total`；紅燈僅 `urgent_total`；空 campus_ids 對非 super_admin **fail-closed**。
+- **強制**：請假真相=`exception_workflows`；唯讀 ActionInbox；禁雙寫 Notification。Badge=`badge_total`；紅燈僅 `urgent_total`；空 campus_ids 對非 super_admin **fail-closed**。 Fail-soft 僅同 authorization scope。
 - **測試**：`ActionInboxApiTest`（零校區/未授權 403、pagination 51+、DTO、結案消失、老師 403、count）。
 - **決策**：`.cursor/plans/action-inbox-b-lite-d_2026-07-22.md`
 
