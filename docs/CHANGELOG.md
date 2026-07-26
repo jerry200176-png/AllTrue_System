@@ -1,18 +1,6 @@
-## 2026-07-26 — docs: 家長綁定 ADR Accepted（Founder closeout）
+## 2026-07-26 — docs: 家長綁定 ADR Accepted（Hybrid；PR #1434）
 
-- ADR Status → **Accepted**；落地 max_uses=1、TTL 7d（可選 24h/72h/7d）、active cap 4、read-only 365d→suspended、revoke 即失效 ParentSession、BindingRequest 自助、KPI sunset gate（≥80%/30d/support&lt;10%；無硬日期）。
-- 同步 architecture／UX／threat／rollout／PB-00…09；OTP 明確排除於 Phase 0–2。
-- Implementation **尚未開始**（docs/governance only）。
-
-開發備註：PR #1434 DESIGN REVIEW ONLY — NO PRODUCTION CODE。
-
-## 2026-07-26 — docs: 家長帳號／學生綁定重新設計（evidence-based design review）
-
-- 新增研究／架構／ADR／UX／威脅模型／rollout 與實作 issue 拆解（docs-only，無 production code）。
-- 推薦 Hybrid：Parent Pairing Code（主）＋主任審核（備）＋姓名＋手機降級並設 sunset。
-- INDEX 登記導航；待 Founder 批准 ADR 後才可進 implementation。
-
-開發備註：DESIGN REVIEW ONLY — NO PRODUCTION CODE。
+- Founder Accepted：max_uses=1；TTL 7d（24h/72h/7d）；cap 4；read_only 365d→suspended；revoke→session；BindingRequest 自助；sunset ≥80%/30d/support&lt;10%（無硬日期）；OTP∉P0–2。Docs-only；implementation 未開始。
 
 ## 2026-07-26 — fix(parent): 家長更新卡改為顯式 PARENT_UPDATES 投影（B+）
 

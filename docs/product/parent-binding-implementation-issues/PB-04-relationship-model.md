@@ -1,45 +1,15 @@
-# PB-04 — Relationship model（ParentIdentity + GuardianStudentRelationship）
+# PB-04 — Relationship model
 
 | Field | Value |
 |-------|-------|
-| Phase | 2 |
-| Risk class | T3 |
-| Dependencies | PB-00 |
-| Blocks | PB-05, PB-06, PB-07 |
-| ADR | https://github.com/jerry200176-png/AllTrue_System/pull/1434 |
-| Status | backlog / blocked on PB-00 |
+| Phase / Risk | 2 / T3 |
+| Issue | [#1440](https://github.com/jerry200176-png/AllTrue_System/issues/1440) |
+| Depends / Blocks | PB-00 / PB-05,06,07 |
+| Board | backlog / blocked |
 
-## Scope
+**Scope:** Migrations ParentIdentity + GSR; create/revoke/list; session auth via GSR when flag on; states pending/active/read_only/suspended/revoked; paused=keep access; graduated/inactive→read_only **365d**→suspended; **revoke→immediate ParentSession invalidate**; campus-scoped; UI student+campus; SLB remains projection.  
+**Non-scope:** Pairing UI; OTP; OpenFGA; drop SLB; phone auto-merge.
 
-- Migrations for `parent_identities`、`guardian_student_relationships`（indexes、uniqueness）。
-- Services：create/revoke relationship； list guardians； session authorization reads relationship when flag on.
-- State machine：`pending` / `active` / `read_only` / `suspended` / `revoked`（Founder）。
-- Student status policy：
-  - `paused` → keep normal active access
-  - `graduated` / `inactive` → `read_only` for **365 days**
-  - after 365 days → `suspended`；staff may extend（audited）
-- **Revoke → immediately invalidate** ParentSessions for that parent+student.
-- Campus-scoped relationships； UI contract：always show student + campus.
-- Keep `student_line_bindings` as projection target（dual-write in PB-07）.
-
-## Non-scope
-
-- Pairing consume UI； OTP； OpenFGA； dropping StudentLineBinding； auto-merge by phone.
-
-## Acceptance criteria
-
-1. Active／read_only relationship required for portal access when flag enabled（dual-read fallback documented）.
-2. Unique active/pending/read_only pair parent↔student enforced under concurrency.
-3. Revoke → parent cannot dashboard/switch that student； sessions gone **immediately**.
-4. Graduated/inactive transitions schedule read_only→suspended per policy.
-5. Campus_id on relationship； staff list scoped； URL campus cannot bypass authZ.
-6. No billing/leave files touched.
-
-## Tests
-
-- Feature：create/revoke/concurrent； cross-campus denial； multi-guardian； multi-child； session invalidation on revoke； read_only/suspended transitions.
-- Migration tests on CI.
-
-## Rollback
-
-- Flag off → auth falls back to verified StudentLineBinding； new tables retained.
+**AC:** Access needs active/read_only when flag on; unique under concurrency; revoke kills sessions; status transitions; campus authZ; no billing/leave files.  
+**Tests:** create/revoke/concurrent/cross-campus/multi/session/read_only; CI migrations.  
+**Rollback:** flag off → verified SLB auth; keep tables.
