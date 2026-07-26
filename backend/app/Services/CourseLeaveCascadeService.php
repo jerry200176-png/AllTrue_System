@@ -919,7 +919,7 @@ class CourseLeaveCascadeService
             [$normalizedLeaveDate => true]
         );
         $hasNatural = $sessions->contains(function ($s) use ($naturalNext) {
-            $st = strtolower((string) ($s->Status ?? ''));
+            $st = strtolower((string) ($s->getAttribute('Status') ?? ''));
             return Carbon::parse($s->SessionDate)->toDateString() === $naturalNext
                 && $st !== 'cancelled';
         });
@@ -927,7 +927,7 @@ class CourseLeaveCascadeService
             return false;
         }
         return (bool) $sessions->first(function ($s) use ($naturalNext) {
-            $st = strtolower((string) ($s->Status ?? ''));
+            $st = strtolower((string) ($s->getAttribute('Status') ?? ''));
             $d = Carbon::parse($s->SessionDate)->toDateString();
             return $d > $naturalNext && !in_array($st, self::NON_BILLABLE_STATUSES, true);
         });
@@ -940,8 +940,8 @@ class CourseLeaveCascadeService
     {
         $normalizedLeaveDate = Carbon::parse($leaveDate)->toDateString();
         $match = $sessions->first(function ($s) use ($normalizedLeaveDate, $leaveSessionId) {
-            $note = (string) ($s->Note ?? '');
-            $st = strtolower((string) ($s->Status ?? ''));
+            $note = (string) ($s->getAttribute('Note') ?? '');
+            $st = strtolower((string) ($s->getAttribute('Status') ?? ''));
             if ($st !== 'scheduled' || !str_contains($note, self::NOTE_AUTO_EXTENDED)) {
                 return false;
             }
@@ -954,15 +954,21 @@ class CourseLeaveCascadeService
 
     public static function isSafeToRemoveAutoAppend(ClassSession $session): bool
     {
-        $st = strtolower((string) ($session->Status ?? ''));
-        $note = (string) ($session->Note ?? '');
+        $st = strtolower((string) ($session->getAttribute('Status') ?? ''));
+        $note = (string) ($session->getAttribute('Note') ?? '');
         if ($st !== 'scheduled' || !str_contains($note, self::NOTE_AUTO_EXTENDED)) {
             return false;
         }
-        if (LearningRecord::query()->where('ClassSessionID', (int) $session->id)->active()->exists()) {
+        if (LearningRecord::query()
+            ->where('ClassSessionID', (int) $session->id)
+            ->whereNull('VoidedAt')
+            ->exists()) {
             return false;
         }
-        if (StudentSignIn::query()->where('ClassSessionID', (int) $session->id)->active()->exists()) {
+        if (StudentSignIn::query()
+            ->where('ClassSessionID', (int) $session->id)
+            ->whereNull('VoidedAt')
+            ->exists()) {
             return false;
         }
         return true;
