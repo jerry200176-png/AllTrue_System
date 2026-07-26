@@ -78,16 +78,16 @@ const classes = computed(() => [
   box-shadow: 0 0 0 3px var(--ds-focus-ring);
 }
 
-/* Primary: 實心主色，hover 加深（無 gradient） */
+/* Primary: AA CTA fill (≥4.5:1 with --ds-on-cta); not brand amber gradient */
 .at-btn--primary {
-  background: var(--ds-primary);
-  color: var(--ds-on-primary);
+  background: var(--ds-cta);
+  color: var(--ds-on-cta);
 }
 .at-btn--primary:hover:not(:disabled) {
-  background: var(--ds-primary-deep);
+  background: var(--ds-cta-hover);
 }
 .at-btn--primary:active:not(:disabled) {
-  background: var(--ds-primary-press);
+  background: var(--ds-cta-press);
 }
 
 /* Secondary: 白底 + 主色字與邊框 */

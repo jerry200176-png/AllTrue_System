@@ -510,7 +510,7 @@ class AttendanceController extends Controller
                 $status = 'leave';
             }
 
-            // ── leave + 既有堂次 → 走課程請假順延（同課程管理 POST schedules leave）
+            // ── leave + 既有堂次 → KEEP dates + append tail（同課程管理 POST schedules leave）
             if ($status === 'leave' && !empty($data['ClassSessionID'])) {
                 try {
                     $leaveDate = Carbon::parse($classSession->SessionDate)->toDateString();
@@ -547,7 +547,8 @@ class AttendanceController extends Controller
                     );
 
                     return response()->json([
-                        'message'            => '已請假並順延後續課程',
+                        'message'            => '已請假：未來既有上課日不變，並於尾端補上堂次',
+                        'policy'             => CourseLeaveCascadeService::POLICY_KEEP_FUTURE_DATES_APPEND_TAIL,
                         'status_label'       => '請假',
                         'person_name'        => $student->name ?? '',
                         'person_type_label'  => '學生',
@@ -561,7 +562,7 @@ class AttendanceController extends Controller
             }
 
             // ── 一般出缺勤；無輸入 ClassSessionID 的 leave 仍須走同一個
-            // closed-interval producer，但不觸發上方的課程順延流程。
+            // closed-interval producer，但不觸發上方的課程請假 cascade。
             if ($status === 'leave') {
                 try {
                     $signIn = $this->leaveAttendanceService->createClosedForSession(

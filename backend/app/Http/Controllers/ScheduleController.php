@@ -381,7 +381,8 @@ class ScheduleController extends Controller
                     }
 
                     return response()->json([
-                        'message' => '請假登記完成，該堂已標記請假且後續課程已順延',
+                        'message' => '請假登記完成：本堂已標記請假，未來既有上課日不變，並於尾端補上堂次',
+                        'policy' => CourseLeaveCascadeService::POLICY_KEEP_FUTURE_DATES_APPEND_TAIL,
                         'schedule' => $schedule,
                         'leave_session_date' => $leaveSessionDate,
                         'extended_end_date' => $extendedEndDate,
@@ -688,7 +689,8 @@ class ScheduleController extends Controller
                 if (!$isAttended && $status === 'scheduled') {
                     [$rows, $extendedEndDate, $leaveSessionDate] = CourseLeaveCascadeService::applyLeaveCascade($courseId, $sessionDate);
                     return response()->json([
-                        'message'             => '請假登記完成，該堂已標記請假且後續課程已順延',
+                        'message'             => '請假登記完成：本堂已標記請假，未來既有上課日不變，並於尾端補上堂次',
+                        'policy'              => CourseLeaveCascadeService::POLICY_KEEP_FUTURE_DATES_APPEND_TAIL,
                         'leave_session_date'  => $leaveSessionDate,
                         'extended_end_date'   => $extendedEndDate,
                         'class_sessions'      => $rows,
@@ -737,7 +739,8 @@ class ScheduleController extends Controller
                 $session->Note = CourseLeaveCascadeService::appendNote($session->Note, 'retro-leave');
                 $session->save();
 
-                [$rows, $extendedEndDate] = CourseLeaveCascadeService::shiftAndAppendAfterLeave($courseId, $sessionDate, $session);
+                // Founder Decision 2026-07-26: retro-leave also keeps future dates + append tail.
+                [$rows, $extendedEndDate] = CourseLeaveCascadeService::appendTailAfterLeave($courseId, $sessionDate, $session);
 
                 // ── Recompute counters from ledger ──
                 SessionDeductionService::recomputeCounters($courseId);
@@ -757,7 +760,8 @@ class ScheduleController extends Controller
                 }
 
                 return response()->json([
-                    'message'             => '補請假完成：堂數已沖回、堂次標記請假、後續課程已順延',
+                    'message'             => '補請假完成：堂數已沖回、本堂標記請假；未來既有上課日不變，並於尾端補上堂次',
+                    'policy'              => CourseLeaveCascadeService::POLICY_KEEP_FUTURE_DATES_APPEND_TAIL,
                     'leave_session_date'  => $sessionDate,
                     'extended_end_date'   => $extendedEndDate,
                     'class_sessions'      => $rows,
@@ -769,7 +773,8 @@ class ScheduleController extends Controller
     }
 
     /**
-     * Dry-run leave cascade date plan for UI impact preview (in-app #204).
+     * Dry-run leave plan for UI impact preview.
+     * Ordinary leave uses KEEP_FUTURE_DATES_APPEND_TAIL (vacated/moves empty).
      * Does not write ClassSession / schedules.
      */
     public function leaveCascadePreview(Request $request)
@@ -778,11 +783,13 @@ class ScheduleController extends Controller
             'student_course_id' => 'required|integer',
             'schedule_date' => 'required|date',
             'class_session_id' => 'nullable|integer',
+            'policy' => 'nullable|string|in:KEEP_FUTURE_DATES_APPEND_TAIL,SHIFT_FUTURE_DATES_APPEND_TAIL',
         ]);
 
         $courseId = (int) $data['student_course_id'];
         $leaveDate = Carbon::parse($data['schedule_date'])->toDateString();
         $sessionId = isset($data['class_session_id']) ? (int) $data['class_session_id'] : 0;
+        $policy = (string) ($data['policy'] ?? CourseLeaveCascadeService::DEFAULT_LEAVE_POLICY);
 
         $courseRow = DB::table('StudentClass')->where('ID', $courseId)->first();
         if (!$courseRow) {
@@ -800,7 +807,8 @@ class ScheduleController extends Controller
             $plan = CourseLeaveCascadeService::previewLeaveCascadeForCourse(
                 $courseId,
                 $leaveDate,
-                $sessionId > 0 ? $sessionId : null
+                $sessionId > 0 ? $sessionId : null,
+                $policy
             );
         } catch (\InvalidArgumentException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
@@ -881,7 +889,8 @@ class ScheduleController extends Controller
                 );
 
                 return response()->json([
-                    'message'            => '已請假並順延後續課程',
+                    'message'            => '已請假：未來既有上課日不變，並於尾端補上堂次',
+                    'policy'             => CourseLeaveCascadeService::POLICY_KEEP_FUTURE_DATES_APPEND_TAIL,
                     'leave_session_date' => $leaveSessionDate,
                     'extended_end_date'  => $extendedEndDate,
                     'class_sessions'     => $rows,
@@ -894,7 +903,7 @@ class ScheduleController extends Controller
 
     /**
      * Bulk leave for a holiday period: mark all eligible sessions in the
-     * given branch + date range as leave, with the same cascade logic.
+     * given branch + date range as leave, with the same KEEP-dates + append logic.
      */
     public function bulkHolidayLeave(Request $request)
     {

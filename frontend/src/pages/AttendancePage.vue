@@ -752,8 +752,8 @@
       </div>
       <p class="att-hint">
         {{ isTeacher
-          ? '你過去尚未點名的已結束堂次。選擇日期範圍查詢，補登後會依狀態自動扣堂或請假順延。'
-          : '過去尚未點名的已結束堂次。可選擇日期範圍查詢，補登後會依狀態自動扣堂或請假順延。' }}
+          ? '你過去尚未點名的已結束堂次。選擇日期範圍查詢，補登後會依狀態自動扣堂；請假時未來日期不變、僅補尾堂。'
+          : '過去尚未點名的已結束堂次。可選擇日期範圍查詢，補登後會依狀態自動扣堂；請假時未來日期不變、僅補尾堂。' }}
       </p>
       <div class="att-makeup-filters">
         <div class="form-group">
@@ -2069,8 +2069,8 @@ const saveStatusEdit = async (record) => {
     if (record._newStatus === 'leave') {
       const isAttended = ['present', 'late'].includes(String(record.Status || '').toLowerCase());
       const confirmMsg = isAttended
-        ? `此堂已登記到班，確定要補請假？\n（將作廢出缺勤記錄與評量記錄、沖回堂數，並補回一堂）`
-        : `確定要將此堂標記為「請假」？\n系統將自動順延後續課程並補回一堂。`;
+        ? `此堂已登記到班，確定要補請假？\n（將作廢出缺勤記錄與評量記錄、沖回堂數；未來既有上課日不變，僅於尾端補回一堂）`
+        : `確定要將此堂標記為「請假」？\n未來既有上課日不變，系統僅於尾端補回一堂。`;
       if (!confirm(confirmMsg)) {
         record._saving = false;
         return;
@@ -2105,7 +2105,7 @@ const saveStatusEdit = async (record) => {
         const endDate = json.extended_end_date ? `，課程延至 ${json.extended_end_date}` : '';
         pendingMarkMsg.value = isAttended
           ? `補請假完成，堂數已沖回${endDate}`
-          : `已請假並順延後續課程${endDate}`;
+          : `已請假（未來日期不變，已補尾堂）${endDate}`;
         pendingMarkMsgType.value = 'success';
         await Promise.all([fetchPendingSessions(), fetchRecords()]);
       } else {

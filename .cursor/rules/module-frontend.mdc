@@ -7,6 +7,11 @@ alwaysApply: false
 
 # 🏠 前端房間
 
+## ⛔ 品牌／登入 UI（#1386 教訓）
+
+改 `Login.vue` / auth / landing 前必讀 `.cursor/rules/frontend-brand-taste.mdc`。
+Token 化可以；拆 glass/mesh 變醜不行。Founder star 品味 > hex KPI。
+
 ## ⛔ 最重要：deploy 時機（§P0-005，已犯多次）
 
 ```

@@ -1,0 +1,125 @@
+name: Leave vacated-weeks scan (read-only)
+
+# Production closeout for KEEP-dates leave (§R82).
+# Dry-run only — never pass --apply. Uses same SSH pattern as 1401-impact-audit.
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: Max leave rows to scan
+        required: true
+        default: '500'
+        type: string
+      course_id:
+        description: Optional StudentClass ID filter
+        required: false
+        default: ''
+        type: string
+      campus_id:
+        description: Optional CampusID filter
+        required: false
+        default: ''
+        type: string
+      from:
+        description: Optional leave date from (YYYY-MM-DD)
+        required: false
+        default: ''
+        type: string
+      to:
+        description: Optional leave date to (YYYY-MM-DD)
+        required: false
+        default: ''
+        type: string
+      actor:
+        description: Audit label
+        required: true
+        default: 'gha:leave-vacated-scan'
+        type: string
+
+concurrency:
+  group: leave-vacated-weeks-scan
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup pinned SSH identity
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_HOST_KEY: ${{ secrets.PI_HOST_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$PI_SSH_KEY"
+          test -n "$PI_HOST_KEY"
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          printf '%s\n' "$PI_HOST_KEY" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/deploy_key ~/.ssh/known_hosts
+
+      - name: Identity + dry-run scan on production
+        env:
+          PI_HOST: ${{ secrets.PI_HOST }}
+          PI_USER: ${{ secrets.PI_USER }}
+          LIMIT: ${{ inputs.limit }}
+          COURSE_ID: ${{ inputs.course_id }}
+          CAMPUS_ID: ${{ inputs.campus_id }}
+          FROM: ${{ inputs.from }}
+          TO: ${{ inputs.to }}
+          ACTOR: ${{ inputs.actor }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key \
+            -o BatchMode=yes \
+            -o ConnectTimeout=20 \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${PI_USER}@${PI_HOST}" \
+            env LIMIT="$LIMIT" COURSE_ID="$COURSE_ID" CAMPUS_ID="$CAMPUS_ID" FROM="$FROM" TO="$TO" ACTOR="$ACTOR" \
+            bash <<'REMOTE'
+          set -euo pipefail
+          cd /home/admin/backend
+          echo "=== CLOSEOUT META ==="
+          echo "utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "cwd=$PWD"
+          echo "head=$(git rev-parse HEAD)"
+          echo "head_short=$(git rev-parse --short=8 HEAD)"
+          echo "git_status=$(git status --short | wc -l) dirty_paths"
+          git status --short | head -50 || true
+          echo "=== COMMAND PRESENT ==="
+          php artisan list 2>/dev/null | grep -F 'repair:leave-vacated-weeks' || {
+            echo "ERROR: repair:leave-vacated-weeks not installed"
+            exit 2
+          }
+          ARGS=(repair:leave-vacated-weeks --dry-run "--limit=${LIMIT}" "--actor=${ACTOR}")
+          if [[ -n "${COURSE_ID}" ]]; then ARGS+=("--course-id=${COURSE_ID}"); fi
+          if [[ -n "${CAMPUS_ID}" ]]; then ARGS+=("--campus-id=${CAMPUS_ID}"); fi
+          if [[ -n "${FROM}" ]]; then ARGS+=("--from=${FROM}"); fi
+          if [[ -n "${TO}" ]]; then ARGS+=("--to=${TO}"); fi
+          echo "=== CMD ==="
+          printf 'php artisan'; printf ' %q' "${ARGS[@]}"; echo
+          set +e
+          php artisan "${ARGS[@]}" 2>&1 | python3 - <<'PY'
+          import re, sys
+          # Redact student names from JSON lines while keeping IDs/dates.
+          name_re = re.compile(r'("student_name"\s*:\s*")([^"]*)(")')
+          for line in sys.stdin:
+              sys.stdout.write(name_re.sub(r'\1[REDACTED]\3', line))
+          PY
+          RC=${PIPESTATUS[0]}
+          set -e
+          echo "=== EXIT ${RC} ==="
+          exit "$RC"
+          REMOTE
+
+      - name: Remove SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

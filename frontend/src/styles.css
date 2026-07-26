@@ -23,6 +23,13 @@
   --ds-primary-soft: #FFB300;
   --ds-primary-wash: #FFF8E1;
   --ds-on-primary: #ffffff;
+  /* Solid CTA fill: white text must meet WCAG AA ≥4.5:1 (brand amber/orange + white fails). */
+  --ds-cta: #C2410C;
+  --ds-cta-hover: #9A3412;
+  --ds-cta-press: #7C2D12;
+  --ds-on-cta: #ffffff;
+  /* Text/icons on warm brand fills (amber/orange/wash) when you keep the fill light. */
+  --ds-on-brand: #0d253d;
   --ds-brand-amber: #FFB300;
   --ds-brand-orange: #F57C00;
   --ds-brand-gradient: linear-gradient(135deg, #FFB300 0%, #F57C00 100%);
@@ -103,6 +110,11 @@
   --ds-primary-press: #FB8C00;
   --ds-primary-soft: #FFCC80;
   --ds-primary-wash: rgba(255, 167, 38, 0.16);
+  --ds-cta: #FB923C;
+  --ds-cta-hover: #FDBA74;
+  --ds-cta-press: #F97316;
+  --ds-on-cta: #0f172a;
+  --ds-on-brand: #0f172a;
   --ds-brand-amber: #FFCA28;
   --ds-brand-orange: #FFB74D;
   --ds-brand-gradient: linear-gradient(135deg, #FFCA28 0%, #FB8C00 100%);

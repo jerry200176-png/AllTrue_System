@@ -1,7 +1,7 @@
 ---
 owner: jerry (CEO)
 review_cycle: quarterly
-last_reviewed: 2026-06-06
+last_reviewed: 2026-07-24
 ---
 
 # AllTrue Design System
@@ -9,6 +9,7 @@ last_reviewed: 2026-06-06
 > **單一真相來源（Single Source of Truth）。** 所有前端頁面、元件、新功能 UI 一律照本文件生成，確保介面統一協調。
 > 取代 `docs/archive/PORSCHE_VISUAL_SYSTEM.md`（已 superseded，移入 archive）。
 > 風格來源：`VoltAgent/awesome-design-md` 的 Stripe `DESIGN.md`，改寫為 AllTrue 補習班管理系統可落地的版本。
+> 品味閘門：`.cursor/rules/frontend-brand-taste.mdc`（#1386 教訓 → #1412 還原）。
 
 ## 1. Intent（設計意圖）
 
@@ -21,7 +22,16 @@ AllTrue 的視覺方向是 **淺色優先、專業可信、為「資料與金流
 - **品牌主色採 logo 的橘黃暖色（amber→orange，與登入頁一致）**，作為唯一主行動色，克制使用；
 - **金額／堂數／日期一律等寬數字（tabular）**，這是金流產品的隱性信任訊號；
 - 圓角藥丸按鈕、細邊框卡片、輕陰影；
-- 行銷頁那種彩色 gradient mesh **不採用**（那是 Stripe 官網行銷用，後台不需要）。
+- 行銷頁那種彩色 gradient mesh **不採用於後台 ops 頁**（Stripe 官網行銷用；表格／儀表板不需要）。
+
+### 1.1 Brand / Auth 例外（登入首屏）
+
+`Login.vue`、忘記密碼、公開 landing 是 **品牌表面**，不是 denser ops 頁。
+
+- **允許**（且應保留）：暖橘品牌漸層／輕 mesh、glassmorphism 卡片、克制入場 motion。
+- **Token 化**＝色值進 `--ds-*`；**不是**拆掉氣氛換成扁平後台框。
+- **禁止**：以 hex KPI、「去 AI 化」、或本文件 §7「禁 mesh」字面理由，未獲 Founder 視覺 GO 就重寫 Login look。
+- 反例：PR #1386（Agent 拆光 → Founder 退回 #1412）。正向參考：Founder star 的 `taste-skill` / `impeccable` / `awesome-design-md` / shadcn / Carbon（ops）等（見 `.cursor/rules/frontend-brand-taste.mdc`）。
 
 ## 2. Design Principles（設計原則）
 
@@ -38,14 +48,20 @@ AllTrue 的視覺方向是 **淺色優先、專業可信、為「資料與金流
 
 | DS Token | 值（light） | 用途 | 對應既有變數 |
 |---|---|---|---|
-| `--ds-primary` | `#EF6C00` | 主 CTA、連結、焦點（logo 橘黃暖色）| `--primary` `--accent` |
-| `--ds-primary-deep` | `#E65100` | gradient 中段、hover | `--accent-hover` |
-| `--ds-primary-press` | `#D84315` | 按下狀態 | — |
+| `--ds-primary` | `#EF6C00` | 連結、焦點、選中強調（logo 橘黃）；**不可**單獨當白字 CTA 底 | `--primary` `--accent` |
+| `--ds-primary-deep` | `#E65100` | hover 加深、次要強調 | `--accent-hover` |
+| `--ds-primary-press` | `#D84315` | press（非白字大段文字） | — |
 | `--ds-primary-soft` | `#FFB300` | 圖表/UI 點綴（amber）| `--primary-light` |
 | `--ds-primary-wash` | `#FFF8E1` | 淡奶油暖底（tag/選中底）| `--primary-bg` |
-| `--ds-brand-amber` | `#FFB300` | 品牌 amber（hero gradient 起點）| — |
+| `--ds-cta` | `#C2410C` | **實心主 CTA 底**（白字 ≥4.5:1 AA） | — |
+| `--ds-cta-hover` | `#9A3412` | CTA hover | — |
+| `--ds-cta-press` | `#7C2D12` | CTA press | — |
+| `--ds-on-cta` | `#ffffff` | CTA 上的字／圖示 | — |
+| `--ds-on-brand` | `#0d253d` | 暖色品牌底（amber/orange/wash）上的字 | — |
+| `--ds-on-primary` | `#ffffff` | 僅用於大色塊圖示等；**文字 CTA 請用 `--ds-on-cta`** | — |
+| `--ds-brand-amber` | `#FFB300` | 品牌 amber（hero／頂條，非文字 CTA）| — |
 | `--ds-brand-orange` | `#F57C00` | 品牌 orange（kicker/強調）| — |
-| `--ds-brand-gradient` | `linear-gradient(135deg,#FFB300,#F57C00)` | hero/header 品牌暖色條 | — |
+| `--ds-brand-gradient` | `linear-gradient(135deg,#FFB300,#F57C00)` | **裝飾**頂條／header；禁止白字疊在此上當 CTA | — |
 | `--ds-ink` | `#0d253d` | 內文主色（navy，非純黑）| `--text` `--porsche-ink` |
 | `--ds-ink-secondary` | `#273951` | 次要文字 | — |
 | `--ds-ink-mute` | `#64748d` | 輔助文字、表頭、說明 | `--text-light` `--porsche-ink-soft` |
@@ -87,7 +103,7 @@ AllTrue 的視覺方向是 **淺色優先、專業可信、為「資料與金流
 
 | 元件 | 規格 |
 |---|---|
-| **Button / Primary** | 藥丸；底 `--ds-primary`，字白；padding 8–16；hover→`--ds-primary-deep`，press→`--ds-primary-press`。一區塊一顆。 |
+| **Button / Primary** | 藥丸；底 `--ds-cta`，字 `--ds-on-cta`（AA ≥4.5:1）；hover→`--ds-cta-hover`，press→`--ds-cta-press`。一區塊一顆。**禁止**白字疊 `--ds-brand-gradient`／`--ds-primary-soft`。 |
 | **Button / Secondary** | 藥丸；白底、`--ds-primary` 字與 1px 邊。 |
 | **Button / Ghost** | 透明底、`--ds-ink` 字、`--ds-hairline` 邊。 |
 | **Button / Danger** | 藥丸；底 `--ds-danger`，字白。 |
@@ -101,12 +117,14 @@ AllTrue 的視覺方向是 **淺色優先、專業可信、為「資料與金流
 ## 7. Forbidden Patterns（禁止）
 
 - 純黑 `#000` 內文（用 navy `--ds-ink`）。
-- 用 navy/indigo 等冷色當主 CTA（主色一律 `--ds-primary` 品牌橘黃）。
-- 行銷頁彩色 gradient mesh 進後台。
+- 用 navy/indigo 等冷色當主 CTA（主 CTA 用 `--ds-cta` 暖色深橘）。
+- 白字疊在 `--ds-brand-gradient`／`--ds-primary`／`--ds-primary-soft` 當可讀 CTA（對比不足 AA）。
+- 行銷頁彩色 gradient mesh **灌進後台 ops／表格／儀表板**（Login / Auth 品牌首屏除外，見 §1.1）。
+- 為 hex baseline 下降而刪除既有品牌氣氛（glass / mesh / motion），導致視覺變醜。
 - 一個元件超過兩個 accent 色。
 - 金額/數字不套 tabular。
 - 硬寫新色票（已有 `--ds-*` token 就用 token）。
-- 頁面自創、無法對回本文件的視覺實驗。
+- 頁面自創、無法對回本文件的視覺實驗（Brand/Auth refinement 須 Founder GO）。
 
 ## 8. Token-level Rebrand 策略（為何能全站統一）
 
@@ -152,6 +170,8 @@ Epic：[#687](https://github.com/jerry200176-png/AllTrue_System/issues/687)
 | Wave 2 頁面 | 金流三頁（TuitionCollection/Report/PayReport）| [#694](https://github.com/jerry200176-png/AllTrue_System/issues/694) | Open |
 | Wave 2 頁面 | AttendancePage | [#695](https://github.com/jerry200176-png/AllTrue_System/issues/695) | Open |
 | Wave 3 頁面 | ParentPortal / ParttimePayroll / BugReports 等 | [#696](https://github.com/jerry200176-png/AllTrue_System/issues/696) | Open |
+| Wave 3 頁面 | Login.vue DS polish（pilot） | [#1386](https://github.com/jerry200176-png/AllTrue_System/pull/1386) | **Reverted** by [#1412](https://github.com/jerry200176-png/AllTrue_System/pull/1412)（氣氛不可為 hex 犧牲） |
+| 流程 | 品牌表面品味閘門（Login/Auth） | `.cursor/rules/frontend-brand-taste.mdc` | **Done** 2026-07-24 |
 | 元件 | 橫切 components（modal/Select/排課器）母單 | [#701](https://github.com/jerry200176-png/AllTrue_System/issues/701) | Open |
 | UX | 導覽教學去 emoji + Popover DS | [#703](https://github.com/jerry200176-png/AllTrue_System/issues/703) | Open |
 | 產品決策 | EngagementRank/SystemTrust/AmbientMusic 收斂 | [#704](https://github.com/jerry200176-png/AllTrue_System/issues/704) | **待 CEO 決策** |

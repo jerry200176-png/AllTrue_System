@@ -29,8 +29,8 @@ export async function getParentDashboard(token, { lrPage = 1, lrPerPage = 10 } =
   return data;
 }
 
-export async function parentLoginLine(lineUserId, campusId = null) {
-  const payload = { line_user_id: lineUserId };
+export async function parentLoginLine(accessToken, campusId = null) {
+  const payload = { access_token: accessToken };
   if (campusId) payload.campus_id = Number(campusId);
   const res = await fetch(`${API_BASE}/parent/login-line`, {
     method: 'POST',

@@ -1,3 +1,59 @@
+## 2026-07-26 — fix(parent): 家長更新卡改為顯式 PARENT_UPDATES 投影（B+）
+
+- 家長入口「與您有關的更新」不再從教職員 CHANGELOG 以關鍵字自動標 `audience:parent`。
+- 新增 `docs/PARENT_UPDATES.yml` 為家長公告唯一來源；title／summary／details 獨立，禁止 fallback 到 staff summary。
+- 無家長更新或已過期時首頁隱藏該區塊；普通更新預設 30 天效期、最多兩則。
+- 同步腳本一併產生 `parentUpdates.generated.js`；CI 檢查 generated 檔不得漂移。
+
+開發備註：Founder Decision 2026-07-26 B+／§R45。行動型通知（重新綁定等）不在本卡範圍。首則家長文案：請假後未來日期不移動、尾端補課。
+
+## 2026-07-26 — fix: 堂數制請假改為保留未來日期、只補尾堂
+
+- 一般請假不再把後續堂次整排往後推（不再出現 silent vacated week）。
+- 請假堂不佔堂號；下一個既有上課日承接下一堂；尾端最多補一堂。
+- 整體順延改為明確 pause 能力，不作為一般請假預設。
+- 請假預覽與課程管理／出缺勤文案同步；新增 vacated-week 掃描修復指令。
+
+開發備註：Founder Decision 2026-07-26 / §R82。權威路徑 `CourseLeaveCascadeService`；repair：`repair:leave-vacated-weeks`。
+
+## 2026-07-24 — docs: 品牌表面品味閘門（防再犯 #1386）
+
+- 新增 `.cursor/rules/frontend-brand-taste.mdc`：Brand/Auth vs Ops 分流；Founder star 品味基準。
+- `RULE_DESIGN_SYSTEM.md` §1.1 / §7：Login 可保留 glass/mesh；禁為 hex KPI 拆氣氛。
+- `module-frontend.mdc` 指向該閘門。
+
+開發備註：#1386 Agent 拆光 Login → #1412 還原；下次 UI 對齊 taste-skill / impeccable / awesome-design-md 等 star。
+
+## 2026-07-24 — revert: 登入頁恢復 #1386 前視覺
+
+- `Login.vue` 退回 DS polish pilot 之前的介面（玻璃／品牌 mesh 等）。
+- 移除僅服務該 pilot 的 `login-polish` e2e；更新 design-hex baseline。
+- 全局 `--ds-cta`／`AtButton` AA tokens 保留（不影響本次登入外觀還原）。
+
+開發備註：Founder 要求退回 #1386 Login 視覺；行為（帳密／忘記密碼）不變。
+
+## 2026-07-24 — docs: RFC 依 starred repos 做平台大改版規劃（無業務碼）
+
+- 新增 `docs/architecture/RFC_PLATFORM_OPTIMIZATION_FROM_STARS_2026.md`：每項優化標明參考 repo、要學／不要學、落地位置。
+- INDEX 登記為規劃件；不改應用程式行為。
+
+開發備註：對齊 Founder star 清單（排程／帳務／UX／LINE／通知）；Companion #1382 與既有 maturity／AI-native roadmap。
+
+## 2026-07-24 — security: 家長入口跨學生資料隔離（P0）
+
+- LINE 綁定現在必須同時驗證學生姓名／學號與家長聯絡手機；不再接受只憑姓名或學號的綁定。
+- LINE 自動登入改由後端向 LINE Profile API 驗證 access token，不再信任瀏覽器提供的 user ID。
+- 既有無驗證證據的 LINE binding 暫停授權與推播，既有家長 session 到期；家長需透過安全流程重新綁定。
+- Dashboard、切換學生、通知偏好與家長推播只採用已驗證 binding。
+
+開發備註：P0 privacy containment。新增 `verified_at`／`verification_method`，回歸涵蓋偽造登入、舊 binding、無手機綁定與跨學生切換。
+
+## 2026-07-24 — polish: Login 頁改吃 DS tokens（Epic #687 pilot）
+
+- `Login.vue` 移除 glassmorphism／動態 gradient mesh／裝飾 emoji；表單與狀態改用 `--ds-*`。
+- 新增 AA CTA tokens（`--ds-cta`／`--ds-on-cta`）；角色改 native radio card；raw hex 35→0。
+- 長期截圖：`docs/reviews/login-polish-1386/`。
+
 ## 2026-07-22 — fix: 課程備註可正確儲存 emoji 與完整中文
 ## 2026-07-22 — fix: 建課衝突改為明確決策（試聽／加購／續報／獨立）
 

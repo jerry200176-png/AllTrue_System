@@ -206,6 +206,7 @@
           <button type="button" class="pp-link-btn" @click="selectedReleaseNote = null">關閉</button>
         </div>
         <p class="pp-release-detail-summary">{{ selectedReleaseNote.summary }}</p>
+        <p v-if="selectedReleaseNote.details" class="pp-release-detail-body">{{ selectedReleaseNote.details }}</p>
       </div>
 
       <!-- ═══ Tab Bar ═══ -->
@@ -1428,8 +1429,11 @@ const loginWithLine = async () => {
       window.liff.login();
       return;
     }
-    const profile = await window.liff.getProfile();
-    const result = await parentLoginLine(profile.userId, urlCampusId || null);
+    const accessToken = window.liff.getAccessToken();
+    if (!accessToken) {
+      throw new Error('LINE 登入憑證無效，請重新登入');
+    }
+    const result = await parentLoginLine(accessToken, urlCampusId || null);
     token.value = result.token;
     localStorage.setItem(tokenKey, result.token);
     setStudents(result.students || null);
@@ -1935,6 +1939,7 @@ onMounted(async () => {
   gap: 8px;
 }
 .pp-release-detail-summary { margin: 8px 0 0; color: var(--ds-ink); font-size: 13px; line-height: 1.5; }
+.pp-release-detail-body { margin: 8px 0 0; color: var(--ds-ink-soft, var(--ds-ink)); font-size: 13px; line-height: 1.5; }
 .pp-empty--inline { padding: 10px 0 0; min-height: 0; }
 
 @media (max-width: 480px) {

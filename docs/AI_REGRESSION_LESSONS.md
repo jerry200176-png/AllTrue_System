@@ -878,18 +878,25 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 ---
 
-### R45. 家長入口版本公告必須分眾（不可套用教職員全量 CHANGELOG 卡）
+### R45. 家長入口版本公告必須分眾（不可套用教職員 CHANGELOG／關鍵字推導）
 
-**觸發情境**：2026-05-10 家長反映「版本更新太長、與家長無關」，且進度中心出現內部向文案。
+**觸發情境**：2026-05-10 家長反映「版本更新太長、與家長無關」；2026-07-26 Founder 核准 B+：關鍵字自動標 `audience:parent` 仍會把主任／代課／帳務內部卡洗進家長首頁。
 
-**根因**：`notesForRole('parent')` 曾用「只要 `audience` 含 director/teacher 就給家長」，等於把教職員向產品說明全部洗到家長手機畫面。
+**根因（演進）**：
+1. 早期：`notesForRole('parent')` 複製 director/teacher 全集。
+2. 中期：以「請假|評量|帳務|課表…」關鍵字替日卡加 `parent` → false positive（日卡粒度 + 寬關鍵字）。
+3. 詳情曾用 staff `summary`，與 teaser 不同源。
 
-**強制規則**：
+**強制規則（B+，2026-07-26）**：
 
-- `frontend/src/lib/releaseNotes.js`：`role === 'parent'` 時**只允許** `note.audience?.includes('parent')`；禁止改回「複製 director/teacher 全集」。
-- `scripts/changelog-to-release-notes.mjs`：依當日卡片內**白話條目**關鍵字（家長、繳費、課表、請假…等）決定是否把 `parent` 加進該卡的 `audience`；調整規則後跑 `npm run test:release-notes`。
-- `docs/CHANGELOG.md` 異動後必須重新產生 `frontend/src/lib/releaseNotes.generated.js`（`cd frontend && npm run sync-release-notes`；`vite build` / CI 亦會觸發）。
-- `ParentPortal.vue`：家長端最多兩則、用 `parentReleaseNoteTeaser()` 做短摘要；**不要**把 `interaction_statuses`／內部待辦用語當作家長首屏資訊。
+- **家長更新唯一來源**：`docs/PARENT_UPDATES.yml` → `frontend/src/lib/parentUpdates.generated.js`（`npm run sync-release-notes`）。
+- **禁止**從 `docs/CHANGELOG.md` 以關鍵字／bullet 推導家長內容；staff 卡 `audience` 僅 `teacher`/`director`。
+- `notesForRole('parent')` 只回傳未過期的 explicit projection（`title`/`summary`/`details`）；**不得** fallback 到 staff summary／sections／items。
+- 無家長更新時 `[]` 合法；`ParentPortal` 隱藏整塊「與您有關的更新」。
+- 普通更新建議 `expires_at` = 發布後 30 天；首頁最多兩則。
+- **需家長行動**（重新綁定／登入／付款／資料可見性）→ 通知中心／持續 Banner，不放更新卡，也不受 `slice(0,2)`／過期排序影響。
+- 改 YAML 或產生器後：`cd frontend && npm run sync-release-notes`，**提交** generated 檔；CI `git diff --exit-code` 防漂移。
+- 測試：`npm run test:release-notes`（空清單合法；禁 staff jargon 進 parent projection）。
 
 ### R59. 扣堂改分鐘制權威後，`RemainingSessions` 是 ROUND_HALF_UP 衍生顯示值（#613）
 
@@ -990,15 +997,18 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
   - R72 stale 過濾仍必須保留；本規則解決「非 stale、但是同一學生」的假衝堂。
 - **測試必補**：`SameStudentExcludeBusyTest` — exclude 後 13:00 不 busy；substitute 成功；其他學生佔用仍 busy。
 
-### R75. 請假順延必須在送出前顯示會被空出的原定上課日（in-app #204）
+### R75. 請假順延 vacated 預覽（in-app #204）— SUPERSEDED 2026-07-26 by §R82
 
-- **觸發情境**：2026-07-18 campus 16 許廷寬（SC#1953）請假後畫面跳過 07/04、07/18；操作者以為是排課 bug，實為 `CourseLeaveCascadeService` 順延把後續堂次 +1 週。
-- **根因**：影響預覽只寫「會自動順延」，未列出 **vacated** 日期；Silent surprise → 誤報／手動「系統調整堂次」回填。
-- **強制規則**：
-  - 請假確認前必須呼叫（或等價）`POST /api/v1/schedules/leave-cascade-preview`，顯示 vacated／moves／append。
-  - `computeShiftPlan` 與 `shiftAndAppendAfterLeave` 必須共用同一日期計畫，禁止預覽與寫入漂移。
-  - 不得把「順延空週」誤修成刪堂或只改 UI；若產品要改成「只補尾、不推移既有日」屬 Founder Decision（與 GitHub #1100 請假邊界同類）。
-- **測試必補**：`CourseLeaveCascadeDateLogicTest` vacated 案例；`ScheduleLeaveCascadeTest::test_leave_cascade_preview_lists_vacated_dates_without_writing`。
+- 舊一般 leave SHIFT/vacated week 語意已廢止；vacated 僅剩 explicit pause。
+- Preview/apply 仍須同源。歷史 vacated → PR2 `repair:leave-vacated-weeks`。
+
+### R82. 堂數制一般請假保留未來日期、只補尾堂（Founder Decision 2026-07-26）
+
+- 一般 leave：標 leave、不移未來日期、尾端最多 append 一堂；`vacated=[]`。
+- Explicit pause：`applyExplicitCoursePauseShift` / preview `policy=SHIFT_FUTURE_DATES_APPEND_TAIL`。
+- 歷史 silent vacated week：`php artisan repair:leave-vacated-weeks`（預設 dry-run；runbook `docs/runbooks/REPAIR_LEAVE_VACATED_WEEKS.md`）。
+- 測試：`test_count_based_leave_keeps_*`；`LeaveKeepDatesAppendTailTest`（repair dry-run／apply idempotent）。
+- **產品規格教訓**：測試與文件只能證明符合既有規格，不能證明規格正確；營運一致反對時必須升級 Founder Decision，不可用舊測試關閉問題。
 
 ### R80. 排課摘要「補登已上（堂）」不可用 dates.length
 
@@ -1025,9 +1035,9 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | 繳費 / 學收 | §繳費狀態 paid_at、§歷史課程漏算、§催繳名單六狀態、§幽靈課程、§R30（帳務入口共用 AR ledger）、**§R76（session／hour 費用文案與 Charge 寫入）**、**§R79（收據前端不得超前後端 contract；合法路徑=payment-reports/{id}/receipt）** |
 | 薪資 / 併堂 | §兼職薪資 concurrency、§同層級併堂 v1.4、§契約時長為準 |
 | 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession）、§R39（代課評量權限需匹配時段）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R52（代課 scheduled 例外不可缺 original_schedule_id anchor）、§R71（調課單一交易＋前端 committed gate）、§R72（cancelled ClassSession 不得讓 scheduled 例外佔用代課老師）、§R73（跨老師 gesture 必走 atomic substitute；legacy 兩階段精準補償）、§R74（代課衝突排除同一學生續約佔用） |
-| 請假 / 順延 | §R29（請假不可 fallback 只寫 schedules）、§R75（送出前必須預覽 vacated 日期；preview 與 cascade 共用 computeShiftPlan）、**§R77（多星期不同鐘點：順延後必須對齊目標星期契約時段）**、**§R81（家長請假不可雙寫 Notifications；Action Inbox 唯讀聚合）** |
+| 請假 / 順延 | §R29、**§R82（KEEP dates+append）**、§R75（SUPERSEDED）、§R77、§R81 |
 | 評量 / 家長回饋 | §同天多堂課 buildEvents、§請假後不填評量、§R17（ownership 先於狀態判斷）、§R19（mark-read 不可更新 updated_at）、§R32（停用課程已上課評量不可消失）、§R39（代課評量權限需匹配時段）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R65（新增 session 狀態值必須同步全部消費端；leave 家族用集合判斷）、**§R78（nightly backfill 須 in-place restore 作廢評量，不可把 voided 當已有）** |
-| 家長入口 UI / `releaseNotes` | §R10、§R11、§R18、§R38、§R45（版本卡僅 `audience` 含 `parent` + `sync-release-notes`） |
+| 家長入口 UI / `releaseNotes` | §R10、§R11、§R18、§R38、§R45（家長卡僅 `PARENT_UPDATES.yml` 顯式投影 + `sync-release-notes`） |
 | 課表回報 | §2026-04-17 回報系統（14 條禁止項） |
 | 排課 | §start_time 格式、§智慧排課誤標取消、§R25（請假優先於 scheduled 例外）、§R29（請假不可 fallback 只寫 schedules）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R47（rescheduled 幽靈不可蓋掉同日 ClassSession）、§R49（同學生同時段去重不可用 StudentClassID 當唯一 key）、§R50（行事曆載入不可 REST 成功後再跑 fallback）、§R69（bulk reflow 先 snapshot schedule IDs，禁止 mutable natural key 連鎖更新）、§R71（mutation contract／slot idempotency／兩階段補償）、**§R80（排課摘要補登堂數≠天數；須與 session_plan 同源 expand）** |
 | 出缺勤 / 分校隔離 | §SEC-001、§分校隔離後端強制、§R12（查詢日期寫死今天）、§R14（submitQuickAttend 缺 StudentID）、§R15（出勤頁預設只顯示今天，歷史到班紀錄不可見）、§R16（`script setup` const TDZ 初始化順序 → 整頁空白）、§R33（老師每分校 RFID 優先）、§R36（個別資料有課但老師今日名單缺漏）、§R40（點名扣堂不可只用 ClassSessionID 防重）、§R41（補請假不可只用課程+日期找堂次）、§R42（行事曆堂次顯示老師不可被舊評量老師覆蓋）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R71（請假寫入即封閉 interval；禁止留待隔夜 repair）|

@@ -49,6 +49,9 @@ jobs:
       - name: Test credential fingerprint audit
         run: python3 scripts/credential-fingerprint-audit.test.py
 
+      - name: Test bundle budget chunk classification (#1273)
+        run: node --test scripts/bundle-budget.test.mjs
+
   changes:
     name: Detect changed areas
     needs: control_plane
@@ -417,9 +420,16 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Sync in-app release notes from CHANGELOG
+      - name: Sync in-app release notes from CHANGELOG + PARENT_UPDATES
         working-directory: frontend
         run: npm run sync-release-notes
+
+      - name: Generated in-app updates must match committed artifacts
+        working-directory: frontend
+        run: |
+          git diff --exit-code -- \
+            src/lib/releaseNotes.generated.js \
+            src/lib/parentUpdates.generated.js
 
       - name: Calendar occurrence regression tests
         working-directory: frontend
@@ -490,27 +500,10 @@ jobs:
           ls -lh dist_build/
 
       - name: Bundle size budget
-        working-directory: frontend
-        run: |
-          # Initial chunk = index-*.js (entry point, 初始載入)
-          INIT_JS=$(find dist_build/assets -name "index-*.js" ! -name "*.map" -exec wc -c {} + 2>/dev/null | tail -1 | awk '{print $1}')
-          TOTAL_JS=$(find dist_build/assets -name "*.js" ! -name "*.map" -exec wc -c {} + 2>/dev/null | tail -1 | awk '{print $1}')
-          CSS_SIZE=$(find dist_build/assets -name "*.css" -exec wc -c {} + 2>/dev/null | tail -1 | awk '{print $1}')
-          INIT_KB=$(( (INIT_JS + 1023) / 1024 ))
-          TOTAL_KB=$(( (TOTAL_JS + 1023) / 1024 ))
-          CSS_KB=$(( (CSS_SIZE + 1023) / 1024 ))
-          CHUNKS=$(find dist_build/assets -name "*.js" ! -name "*.map" | wc -l)
-          echo "### 📦 Bundle Size" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Asset | Size |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| JS initial chunk | ${INIT_KB} KB |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| JS total (all chunks) | ${TOTAL_KB} KB (${CHUNKS} chunks) |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| CSS | ${CSS_KB} KB |" >> "$GITHUB_STEP_SUMMARY"
-          echo "JS initial: ${INIT_KB} KB, total: ${TOTAL_KB} KB (${CHUNKS} chunks), CSS: ${CSS_KB} KB"
-          # 預算針對 initial chunk（使用者第一次載入的大小）
-          [ "$INIT_KB" -gt 500 ] && echo "::warning::Initial JS chunk ${INIT_KB} KB 超過 500 KB 預算"
-          [ "$CSS_KB" -gt 200 ] && echo "::warning::CSS ${CSS_KB} KB 超過 200 KB 預算"
-          exit 0
+        # #1273: route-aware — reports/budgets initial vs. largest-lazy-route
+        # vs. total separately instead of comparing the noisy all-routes CSS
+        # aggregate against an initial-load budget. See scripts/bundle-budget.mjs.
+        run: node scripts/bundle-budget.mjs frontend/dist_build/assets
 
       - name: npm audit (security)
         working-directory: frontend

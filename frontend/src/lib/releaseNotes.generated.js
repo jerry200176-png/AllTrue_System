@@ -4,15 +4,67 @@
  */
 export const changelogReleaseNotes = [
   {
-    "version": "2026.07.22",
-    "date": "2026-07-22",
-    "title": "2026.07.22 版本更新",
-    "summary": "課程備註可正確儲存 emoji 與完整中文；建課衝突改為明確決策（試聽／加購／續報／獨立）；試聽不再受既有正式課重疊守衛阻擋；行事曆快速排課遇重疊可強制建立；課程改老師不再改寫已上堂次的授課老師",
+    "version": "2026.07.26",
+    "date": "2026-07-26",
+    "title": "2026.07.26 版本更新",
+    "summary": "家長更新卡改為顯式 PARENT_UPDATES 投影（B+）；堂數制請假改為保留未來日期、只補尾堂",
     "audience": [
       "teacher",
       "director"
     ],
     "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "家長更新卡改為顯式 PARENT_UPDATES 投影（B+）",
+          "堂數制請假改為保留未來日期、只補尾堂"
+        ]
+      }
+    ],
+    "items": [
+      "家長更新卡改為顯式 PARENT_UPDATES 投影（B+）",
+      "堂數制請假改為保留未來日期、只補尾堂"
+    ]
+  },
+  {
+    "version": "2026.07.24",
+    "date": "2026-07-24",
+    "title": "2026.07.24 版本更新",
+    "summary": "登入頁恢復 前視覺；頁改吃 DS tokens",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "sections": [
+      {
+        "title": "其他改善",
+        "items": [
+          "登入頁恢復 前視覺",
+          "頁改吃 DS tokens"
+        ]
+      }
+    ],
+    "items": [
+      "登入頁恢復 前視覺",
+      "頁改吃 DS tokens"
+    ]
+  },
+  {
+    "version": "2026.07.22",
+    "date": "2026-07-22",
+    "title": "2026.07.22 版本更新",
+    "summary": "待辦匣 P0（fail-closed／分頁／DTO）；課程備註可正確儲存 emoji 與完整中文",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "待辦匣 P0（fail-closed／分頁／DTO）"
+        ]
+      },
       {
         "title": "修正內容",
         "items": [
@@ -25,6 +77,7 @@ export const changelogReleaseNotes = [
       }
     ],
     "items": [
+      "待辦匣 P0（fail-closed／分頁／DTO）",
       "課程備註可正確儲存 emoji 與完整中文",
       "建課衝突改為明確決策（試聽／加購／續報／獨立）",
       "試聽建課不再被「同科同師日期重疊」擋死；行事曆快速排課補上強制建立",
@@ -39,8 +92,7 @@ export const changelogReleaseNotes = [
     "summary": "帳務中心收據改回既有 payment-report",
     "audience": [
       "teacher",
-      "director",
-      "parent"
+      "director"
     ],
     "sections": [
       {
@@ -61,8 +113,7 @@ export const changelogReleaseNotes = [
     "summary": "補課加長按實際分鐘扣堂；請假順延不再錯置其他星期時段",
     "audience": [
       "teacher",
-      "director",
-      "parent"
+      "director"
     ],
     "sections": [
       {
@@ -89,8 +140,7 @@ export const changelogReleaseNotes = [
     "summary": "代課挑選排除同一學生續約佔用；跨老師拖曳會完整轉移代課與時段",
     "audience": [
       "teacher",
-      "director",
-      "parent"
+      "director"
     ],
     "sections": [
       {
@@ -153,8 +203,7 @@ export const changelogReleaseNotes = [
     "summary": "Phase 1 catalog / policy / invariant / interfaces；主任信任決策中心進入量測閉環（名單＋遙測）",
     "audience": [
       "teacher",
-      "director",
-      "parent"
+      "director"
     ],
     "sections": [
       {
@@ -194,8 +243,7 @@ export const changelogReleaseNotes = [
     "summary": "主任在「已核准／全部」列表可一鍵只看「還沒寫內容」的評量，數字也會跟著對齊，比較不會漏追。",
     "audience": [
       "teacher",
-      "director",
-      "parent"
+      "director"
     ],
     "sections": [
       {
@@ -244,8 +292,7 @@ export const changelogReleaseNotes = [
     "summary": "每日商業智能摘要（AI-native ops phase 0）；評量「無法填寫」缺口回填 + 夜間自動任務正式啟用",
     "audience": [
       "teacher",
-      "director",
-      "parent"
+      "director"
     ],
     "sections": [
       {
@@ -296,8 +343,7 @@ export const changelogReleaseNotes = [
     "summary": "請假後課程詳情不再多畫出不存在的 16-18 堂次；家長請假「審核中」的堂次，出缺勤與課表顯示不再互相矛盾",
     "audience": [
       "teacher",
-      "director",
-      "parent"
+      "director"
     ],
     "sections": [
       {
@@ -326,8 +372,7 @@ export const changelogReleaseNotes = [
     "summary": "ojection — calendar completeness-safe (no pagination)；智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。",
     "audience": [
       "teacher",
-      "director",
-      "parent"
+      "director"
     ],
     "sections": [
       {
@@ -350,8 +395,7 @@ export const changelogReleaseNotes = [
     "summary": "班級行事曆漏顯已調課堂次 + LINE 綁定讀家長手機",
     "audience": [
       "teacher",
-      "director",
-      "parent"
+      "director"
     ],
     "sections": [
       {
@@ -393,8 +437,7 @@ export const changelogReleaseNotes = [
     "summary": "家長 LINE 自動登入（共用網域分校）＋ 共用方案堂數顯示",
     "audience": [
       "teacher",
-      "director",
-      "parent"
+      "director"
     ],
     "sections": [
       {
@@ -437,74 +480,5 @@ export const changelogReleaseNotes = [
       "改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
       "全站 Toast 統一 + UI 去 AI 化逐頁/元件治理"
     ]
-  },
-  {
-    "version": "2026.06.13",
-    "date": "2026-06-13",
-    "title": "2026.06.13 版本更新",
-    "summary": "建課偵測「同生同科同師日期重疊」防重複排課；行事曆載入大幅加速",
-    "audience": [
-      "teacher",
-      "director",
-      "parent"
-    ],
-    "sections": [
-      {
-        "title": "修正內容",
-        "items": [
-          "建課偵測「同生同科同師日期重疊」防重複排課",
-          "行事曆載入大幅加速",
-          "排課稽核日誌實際生效",
-          "課程總費用不再被錯誤舊差額卡死",
-          "改「未繳費」遇收款紀錄改為明確提示",
-          "老師底部「評量」紅點與評量頁未填數一致"
-        ]
-      }
-    ],
-    "items": [
-      "建課偵測「同生同科同師日期重疊」防重複排課",
-      "行事曆載入大幅加速",
-      "排課稽核日誌實際生效",
-      "課程總費用不再被錯誤舊差額卡死",
-      "改「未繳費」遇收款紀錄改為明確提示",
-      "老師底部「評量」紅點與評量頁未填數一致"
-    ]
-  },
-  {
-    "version": "2026.06.07",
-    "date": "2026-06-07",
-    "title": "2026.06.07 版本更新",
-    "summary": "composables 剝離完成；audit_logs + ClassSessionObserver",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "sections": [
-      {
-        "title": "新增內容",
-        "items": [
-          "composables 剝離完成",
-          "audit_logs + ClassSessionObserver"
-        ]
-      },
-      {
-        "title": "其他改善",
-        "items": [
-          "平行化 student-classes ∥ schedules",
-          "Modals 群拆分",
-          "受控拆分暫時收尾",
-          "導入 Vitest 元件測試基礎建設"
-        ]
-      }
-    ],
-    "items": [
-      "composables 剝離完成",
-      "audit_logs + ClassSessionObserver",
-      "平行化 student-classes ∥ schedules",
-      "Modals 群拆分",
-      "受控拆分暫時收尾",
-      "導入 Vitest 元件測試基礎建設"
-    ]
   }
 ];
-// #1384 ci-trigger 202607241128

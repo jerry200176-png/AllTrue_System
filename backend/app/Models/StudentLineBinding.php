@@ -15,12 +15,21 @@ class StudentLineBinding extends Model
         'line_user_id',
         'campus_id',
         'bound_at',
+        'verified_at',
+        'verification_method',
         'notify_learning_feedback',
     ];
 
     protected $casts = [
+        'bound_at' => 'datetime',
+        'verified_at' => 'datetime',
         'notify_learning_feedback' => 'boolean',
     ];
+
+    public function scopeVerified($query)
+    {
+        return $query->whereNotNull('verified_at');
+    }
 
     public function student()
     {
