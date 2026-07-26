@@ -100,10 +100,10 @@ class ParentPortalController extends Controller
                 $phoneNorm,
             );
 
-            if ($classification->reasonCode === ParentBindingCodes::CONTACT_PHONE_MISSING) {
+            if ($classification['reasonCode'] === ParentBindingCodes::CONTACT_PHONE_MISSING) {
                 return response()->json(['message' => '此學生尚未設定聯絡手機，請聯繫分校補登後再登入'], 401);
             }
-            if ($classification->outcome === ParentBindingCodes::OUTCOME_SUCCESS && $candidate) {
+            if ($classification['outcome'] === ParentBindingCodes::OUTCOME_SUCCESS && $candidate) {
                 $student = $candidate;
             }
         } else {
@@ -126,17 +126,17 @@ class ParentPortalController extends Controller
                 $phoneNorm,
             );
 
-            if ($classification->reasonCode === ParentBindingCodes::AMBIGUOUS_MATCH) {
+            if ($classification['reasonCode'] === ParentBindingCodes::AMBIGUOUS_MATCH) {
                 return response()->json([
                     'message' => '找到多筆相符資料，請改以 LINE 綁定或提供學生代號登入',
                 ], 409);
             }
-            if ($classification->reasonCode === ParentBindingCodes::CONTACT_PHONE_MISSING) {
+            if ($classification['reasonCode'] === ParentBindingCodes::CONTACT_PHONE_MISSING) {
                 return response()->json(['message' => '此學生尚未設定聯絡手機，請聯繫分校補登後再登入'], 401);
             }
-            if ($classification->outcome === ParentBindingCodes::OUTCOME_SUCCESS && $classification->studentId) {
-                $student = $allByName->firstWhere('id', $classification->studentId)
-                    ?? Student::find($classification->studentId);
+            if ($classification['outcome'] === ParentBindingCodes::OUTCOME_SUCCESS && $classification['studentId']) {
+                $student = $allByName->firstWhere('id', $classification['studentId'])
+                    ?? Student::find($classification['studentId']);
             }
         }
 

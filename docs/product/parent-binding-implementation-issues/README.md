@@ -2,17 +2,16 @@
 
 | Field | Value |
 |-------|-------|
-| Status | PB-00 implementation in progress; PB-01+ still backlog |
+| Status | Planning only — do not start DEV from closeout |
 | Date | 2026-07-26 |
 | ADR | [`ADR-PARENT-STUDENT-BINDING.md`](../../adr/ADR-PARENT-STUDENT-BINDING.md) **Accepted** |
-| Design PR | https://github.com/jerry200176-png/AllTrue_System/pull/1434 |
-| Reason codes | [`../PARENT_BINDING_REASON_CODES.md`](../PARENT_BINDING_REASON_CODES.md) |
+| PR | https://github.com/jerry200176-png/AllTrue_System/pull/1434 |
 
 Global non-scope: schedule/billing/leave/RFID/learning-approval; **OTP not Phase 0–2**; no full Portal rewrite.
 
 | ID | GH | Title | Phase | Risk | Depends | Board |
 |----|----|-------|-------|------|---------|-------|
-| [PB-00](./PB-00-observability.md) | [#1436](https://github.com/jerry200176-png/AllTrue_System/issues/1436) | Observability & reason codes | 0 | T1 | — | **in progress / PR** |
+| [PB-00](./PB-00-observability.md) | [#1436](https://github.com/jerry200176-png/AllTrue_System/issues/1436) | Observability & reason codes | 0 | T1 | — | **ready/next** |
 | [PB-01](./PB-01-safe-copy.md) | [#1437](https://github.com/jerry200176-png/AllTrue_System/issues/1437) | Safe copy & reason mapping | 1 | T1 | PB-00 | backlog |
 | [PB-02](./PB-02-completeness-ui.md) | [#1438](https://github.com/jerry200176-png/AllTrue_System/issues/1438) | Completeness UI | 1 | T1 | PB-00 | backlog |
 | [PB-03](./PB-03-inbox-cases.md) | [#1439](https://github.com/jerry200176-png/AllTrue_System/issues/1439) | Inbox binding cases | 1 | T2 | PB-00,02 | backlog |

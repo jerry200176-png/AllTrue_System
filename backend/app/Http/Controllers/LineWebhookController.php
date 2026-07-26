@@ -203,8 +203,8 @@ class LineWebhookController extends Controller
             $normalized !== '' ? $normalized : null,
         );
 
-        if ($classification->outcome === ParentBindingCodes::OUTCOME_FAILURE) {
-            if ($classification->reasonCode === ParentBindingCodes::INVALID_INPUT) {
+        if ($classification['outcome'] === ParentBindingCodes::OUTCOME_FAILURE) {
+            if ($classification['reasonCode'] === ParentBindingCodes::INVALID_INPUT) {
                 $this->replyMessage($replyToken, "請輸入正確的手機號碼。", $campus);
                 return;
             }
@@ -222,7 +222,7 @@ class LineWebhookController extends Controller
             return;
         }
 
-        if ($classification->outcome === ParentBindingCodes::OUTCOME_NOOP) {
+        if ($classification['outcome'] === ParentBindingCodes::OUTCOME_NOOP) {
             $this->replyMessage($replyToken, "「{$student->name}」已經綁定過了喔！如需綁定其他孩子，請輸入「綁定 學生姓名 家長手機」。", $campus);
             return;
         }
@@ -263,12 +263,12 @@ class LineWebhookController extends Controller
             $normalized !== '' ? $normalized : null,
         );
 
-        if (in_array($classification->reasonCode, [ParentBindingCodes::STUDENT_NOT_FOUND, ParentBindingCodes::CAMPUS_MISMATCH], true)) {
+        if (in_array($classification['reasonCode'], [ParentBindingCodes::STUDENT_NOT_FOUND, ParentBindingCodes::CAMPUS_MISMATCH], true)) {
             $this->replyMessage($replyToken, "在 {$campus->name} 找不到學生代號 {$studentId}，請確認後重試。", $campus);
             return;
         }
 
-        if ($classification->outcome === ParentBindingCodes::OUTCOME_FAILURE) {
+        if ($classification['outcome'] === ParentBindingCodes::OUTCOME_FAILURE) {
             // CONTACT_PHONE_MISSING and PHONE_MISMATCH keep the same parent-facing copy.
             $this->replyMessage($replyToken, "手機號碼不符，請確認後重試。", $campus);
             return;
@@ -279,7 +279,7 @@ class LineWebhookController extends Controller
             return;
         }
 
-        if ($classification->outcome === ParentBindingCodes::OUTCOME_NOOP) {
+        if ($classification['outcome'] === ParentBindingCodes::OUTCOME_NOOP) {
             $this->replyMessage($replyToken, "「{$student->name}」已經綁定過了喔！如需綁定其他孩子，請輸入「綁定 學生姓名 家長手機」。", $campus);
             return;
         }

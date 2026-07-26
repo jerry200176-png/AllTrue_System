@@ -2,7 +2,7 @@
 
 namespace App\Services\ParentBinding;
 
-use App\Support\ParentBinding\ParentBindingCorrelationId;
+use App\Support\ParentBinding\ParentBindingCodes;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -21,10 +21,10 @@ final class ParentBindingObservability
 
     public function newCorrelationId(?string $inbound = null): string
     {
-        return ParentBindingCorrelationId::fromRequest($inbound);
+        return ParentBindingCodes::correlationId($inbound);
     }
 
-    public function observe(string $correlationId, string $channel, string $method, ParentBindingClassification $c, ?string $normalizedPhone = null): void
+    public function observe(string $correlationId, string $channel, string $method, array $c, ?string $normalizedPhone = null): void
     {
         try {
             $this->recorder->record($correlationId, $channel, $method, $c, $normalizedPhone);

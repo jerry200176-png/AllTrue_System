@@ -149,7 +149,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | **SmartCalendar 受控拆分（#740）** | `docs/GUIDE_SMARTCALENDAR_REFACTOR.md`（元件清單、API、CSS 解耦決策）|
 | 行事曆回歸測試 | `npm run test:calendar`（修改任何 calendar merge 邏輯前必跑）|
 | 家長入口 UX、分眾版本公告 | `docs/PARENT_UPDATES.yml`（家長唯一來源）、`docs/ROLE_PLAYBOOK.md` §4、`docs/AI_REGRESSION_LESSONS.md` §R45；`npm run test:release-notes`（改 YAML / `releaseNotes.js` / 產生器時） |
-| **家長帳號／學生綁定** | ADR [`adr/ADR-PARENT-STUDENT-BINDING.md`](adr/ADR-PARENT-STUDENT-BINDING.md) **Accepted** · Reason codes [`product/PARENT_BINDING_REASON_CODES.md`](product/PARENT_BINDING_REASON_CODES.md) · Rollout [`operations/PARENT_BINDING_ROLLOUT.md`](operations/PARENT_BINDING_ROLLOUT.md) · Issues [`product/parent-binding-implementation-issues/`](product/parent-binding-implementation-issues/) · **PB-00 observability in code**; PB-01+ not started; pairing/GSR not started |
+| **家長帳號／學生綁定重新設計（DESIGN ONLY）** | Benchmark [`research/PARENT_BINDING_BENCHMARK.md`](research/PARENT_BINDING_BENCHMARK.md) · Architecture [`architecture/PARENT_IDENTITY_TARGET_ARCHITECTURE.md`](architecture/PARENT_IDENTITY_TARGET_ARCHITECTURE.md) · ADR [`adr/ADR-PARENT-STUDENT-BINDING.md`](adr/ADR-PARENT-STUDENT-BINDING.md) · UX [`product/PARENT_BINDING_UX_SPEC.md`](product/PARENT_BINDING_UX_SPEC.md) · Threat [`security/PARENT_BINDING_THREAT_MODEL.md`](security/PARENT_BINDING_THREAT_MODEL.md) · Rollout [`operations/PARENT_BINDING_ROLLOUT.md`](operations/PARENT_BINDING_ROLLOUT.md) · Issues [`product/parent-binding-implementation-issues/`](product/parent-binding-implementation-issues/) — **禁止本輪實作 production code** |
 | `assume-unchanged` 藏檔導致 PR 漏 diff | `AI_REGRESSION_LESSONS.md` §R58 |
 
 ### 部署 / 維運
