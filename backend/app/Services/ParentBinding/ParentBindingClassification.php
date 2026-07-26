@@ -5,9 +5,7 @@ namespace App\Services\ParentBinding;
 use App\Enums\ParentBindingOutcome;
 use App\Enums\ParentBindingReasonCode;
 
-/**
- * Immutable classifier result for one attempt.
- */
+/** Immutable classifier result for one parent bind/login attempt. */
 final class ParentBindingClassification
 {
     public function __construct(
@@ -20,49 +18,18 @@ final class ParentBindingClassification
     ) {
     }
 
-    public static function success(?int $campusId, ?int $studentId, ?int $candidateCount = null, ?int $phoneMatchCount = null): self
+    public static function success(?int $campusId, ?int $studentId, ?int $candidates = null, ?int $matches = null): self
     {
-        return new self(
-            ParentBindingOutcome::Success,
-            null,
-            $campusId,
-            $studentId,
-            $candidateCount,
-            $phoneMatchCount,
-        );
+        return new self(ParentBindingOutcome::Success, null, $campusId, $studentId, $candidates, $matches);
     }
 
-    public static function failure(
-        ParentBindingReasonCode $reason,
-        ?int $campusId = null,
-        ?int $studentId = null,
-        ?int $candidateCount = null,
-        ?int $phoneMatchCount = null,
-    ): self {
-        return new self(
-            ParentBindingOutcome::Failure,
-            $reason,
-            $campusId,
-            $studentId,
-            $candidateCount,
-            $phoneMatchCount,
-        );
+    public static function failure(ParentBindingReasonCode $reason, ?int $campusId = null, ?int $studentId = null, ?int $candidates = null, ?int $matches = null): self
+    {
+        return new self(ParentBindingOutcome::Failure, $reason, $campusId, $studentId, $candidates, $matches);
     }
 
-    public static function noop(
-        ParentBindingReasonCode $reason,
-        ?int $campusId = null,
-        ?int $studentId = null,
-        ?int $candidateCount = null,
-        ?int $phoneMatchCount = null,
-    ): self {
-        return new self(
-            ParentBindingOutcome::Noop,
-            $reason,
-            $campusId,
-            $studentId,
-            $candidateCount,
-            $phoneMatchCount,
-        );
+    public static function noop(ParentBindingReasonCode $reason, ?int $campusId = null, ?int $studentId = null, ?int $candidates = null, ?int $matches = null): self
+    {
+        return new self(ParentBindingOutcome::Noop, $reason, $campusId, $studentId, $candidates, $matches);
     }
 }

@@ -9,9 +9,7 @@ use App\Support\ParentBinding\ParentBindingPhonePrivacy;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
-/**
- * Fail-open observation writer. Telemetry DB failures never change HTTP/LINE responses.
- */
+/** Fail-open observation writer — never alters HTTP/LINE responses. */
 final class ParentBindingAttemptRecorder
 {
     public function enabled(): bool
@@ -29,13 +27,11 @@ final class ParentBindingAttemptRecorder
         if (!$this->enabled()) {
             return;
         }
-
         try {
-            $fingerprint = null;
+            $fp = null;
             if ((bool) config('parent_binding.store_phone_fingerprint', false) && $normalizedPhone !== null) {
-                $fingerprint = ParentBindingPhonePrivacy::fingerprint($normalizedPhone);
+                $fp = ParentBindingPhonePrivacy::fingerprint($normalizedPhone);
             }
-
             ParentBindingAttempt::query()->create([
                 'correlation_id' => $correlationId,
                 'occurred_at' => now(),
@@ -45,11 +41,10 @@ final class ParentBindingAttemptRecorder
                 'reason_code' => $classification->reasonCode?->value,
                 'campus_id' => $classification->campusId,
                 'student_id' => $classification->studentId,
-                'phone_fingerprint' => $fingerprint,
+                'phone_fingerprint' => $fp,
                 'candidate_count' => $classification->candidateCount,
                 'phone_match_count' => $classification->phoneMatchCount,
             ]);
-
             Log::info('parent_binding.attempt', [
                 'correlation_id' => $correlationId,
                 'channel' => $channel->value,
@@ -62,7 +57,6 @@ final class ParentBindingAttemptRecorder
                 'phone_match_count' => $classification->phoneMatchCount,
             ]);
         } catch (Throwable $e) {
-            // PII-safe technical warning only — no exception message (may contain SQL/bindings).
             Log::warning('parent_binding.observation_write_failed', [
                 'correlation_id' => $correlationId,
                 'channel' => $channel->value,

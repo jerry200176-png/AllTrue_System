@@ -5,10 +5,10 @@ namespace App\Services\ParentBinding;
 use App\Enums\ParentBindingChannel;
 use App\Enums\ParentBindingMethod;
 use App\Support\ParentBinding\ParentBindingCorrelationId;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
-/**
- * Thin orchestrator: classify + record. Controllers stay free of duplicated reason logic.
- */
+/** Classify + record orchestrator for LINE/Portal parent binding. */
 final class ParentBindingObservability
 {
     public function __construct(
@@ -20,11 +20,6 @@ final class ParentBindingObservability
     public function classifier(): ParentBindingClassifier
     {
         return $this->classifier;
-    }
-
-    public function recorder(): ParentBindingAttemptRecorder
-    {
-        return $this->recorder;
     }
 
     public function newCorrelationId(?string $inbound = null): string
@@ -41,9 +36,8 @@ final class ParentBindingObservability
     ): void {
         try {
             $this->recorder->record($correlationId, $channel, $method, $classification, $normalizedPhone);
-        } catch (\Throwable $e) {
-            // Defense-in-depth: recorder is already fail-open; never alter bind/login.
-            \Illuminate\Support\Facades\Log::warning('parent_binding.observation_write_failed', [
+        } catch (Throwable $e) {
+            Log::warning('parent_binding.observation_write_failed', [
                 'correlation_id' => $correlationId,
                 'channel' => $channel->value,
                 'method' => $method->value,

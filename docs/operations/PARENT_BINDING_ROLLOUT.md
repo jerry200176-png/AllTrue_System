@@ -37,17 +37,12 @@ Success = KPIs, not “shipped”. Expand-contract; flags+rollback; CI→PR→me
 ### PB-00 ops (read-only)
 
 ```bash
-# Last 7 days: totals, success rate, reason/channel/campus distribution
 php artisan parent-binding:report --days=7 --format=json
-
-# Active students missing authoritative contact (parent_phone → Phone); aggregates only
-php artisan parent-binding:missing-contact --format=json
-php artisan parent-binding:missing-contact --campus=<id> --format=json
+php artisan parent-binding:report --missing-contact --format=json
+php artisan parent-binding:report --missing-contact --campus=<id> --format=json
 ```
 
-**Rollback (first line):** set `PARENT_BINDING_OBSERVABILITY=false` and rebuild config cache on deploy — stops observation writes; bind/login unchanged. Do **not** drop `parent_binding_attempts` unless table is empty and unused by later phases.
-
-**Not claimed by PB-00:** safe copy (PB-01), completeness UI (PB-02), Inbox (PB-03), pairing/GSR.
+**Rollback:** `PARENT_BINDING_OBSERVABILITY=false` (do not drop table first-line). PB-00 ≠ safe copy / completeness / Inbox / pairing.
 
 ## Verify / support / KPI
 
