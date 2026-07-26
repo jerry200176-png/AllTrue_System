@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AllTrue UI Before (slop baseline)</title>
+  <style>
+    :root { --c:#EF6C00; --soft:#f6f9fc; --ink:#0d253d; --mute:#64748d; --bd:#e3e8ee; --danger:#e11d48; }
+    body { margin:0; padding:16px; font-family: Inter, "Noto Sans TC", system-ui, sans-serif; background: linear-gradient(180deg,#fff7ed,#eef2ff); color: var(--ink); }
+    .card { background: rgba(255,255,255,.75); backdrop-filter: blur(10px); border-radius: 20px; box-shadow: 0 12px 40px rgba(99,102,241,.18); padding: 24px; margin: 0 auto 24px; max-width: 1100px; border:1px solid rgba(255,255,255,.6); }
+    .pill { display:inline-flex; padding:4px 14px; border-radius:999px; background:#fff; border:1px solid var(--bd); font-size:12px; margin:4px; }
+    .pill.on { background: linear-gradient(135deg,#8b5cf6,#6366f1); color:#fff; border:0; }
+    .stat { display:inline-flex; padding:6px 14px; border-radius:999px; background:#fff7ed; color:#c2410c; font-weight:700; margin-right:8px; }
+    .btn { border-radius:999px; padding:10px 18px; border:0; background:linear-gradient(135deg,#f59e0b,#ef4444); color:#fff; font-weight:700; box-shadow:0 8px 20px rgba(239,68,68,.25); }
+    .item { border-radius:18px; padding:18px; margin-top:12px; background:#fff; box-shadow:0 8px 24px rgba(15,23,42,.08); }
+    .empty { text-align:center; padding:48px 16px; }
+    .empty .giant { font-size:64px; }
+    table { width:100%; border-collapse:separate; border-spacing:0 10px; }
+    th { font-size:11px; text-transform:uppercase; color:var(--mute); }
+    td { background:#fff; padding:16px; border-radius:14px; box-shadow:0 4px 14px rgba(15,23,42,.06); }
+    .glow { box-shadow:0 0 0 3px rgba(139,92,246,.35), 0 0 24px rgba(99,102,241,.35); }
+  </style>
+</head>
+<body>
+  <section class="card" data-scene="inbox-normal">
+    <h1 style="font-size:32px;margin:0 0 8px">👋 歡迎回來 · 主任收件匣</h1>
+    <p style="color:var(--mute)">今天也要加油喔！以下是你的 KPI 與待辦。</p>
+    <div><span class="stat">已逾期 3</span><span class="stat">即將到期 5</span><span class="stat">完成率 92%</span></div>
+    <div style="margin-top:16px">
+      <span class="pill on">待辦案件</span><span class="pill">營運通知</span><span class="pill">全部</span>
+    </div>
+    <div class="item glow">
+      <span class="pill on">請假</span><span class="pill">高</span><span class="pill">急件</span>
+      <h3>王小明</h3>
+      <button class="btn">安排補課</button>
+    </div>
+  </section>
+  <section class="card" data-scene="inbox-empty">
+    <div class="empty"><div class="giant">📭</div><h2>目前沒有資料</h2><p>試試看別的篩選吧</p></div>
+  </section>
+  <section class="card" data-scene="students-normal">
+    <h1 style="font-size:30px">學生管理</h1>
+    <div><span class="stat">本分校 128 人</span><span class="stat">列表 40 人</span></div>
+    <div style="margin:16px 0"><span class="pill">搜尋</span><span class="pill">年級</span><span class="pill">狀態</span><button class="btn">新增學生</button></div>
+    <table>
+      <thead><tr><th>姓名</th><th>年級</th><th>科目</th></tr></thead>
+      <tbody>
+        <tr><td>陳小華</td><td>國一</td><td><span class="pill on">數學 8堂</span></td></tr>
+        <tr><td>林大偉</td><td>小六</td><td><span class="pill on">英文 2堂</span></td></tr>
+      </tbody>
+    </table>
+  </section>
+</body>
+</html>

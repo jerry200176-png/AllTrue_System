@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AllTrue UI Foundation Harness</title>
+  <style>
+    :root {
+      --ds-primary: #EF6C00;
+      --ds-primary-deep: #E65100;
+      --ds-primary-wash: #FFF8E1;
+      --ds-cta: #C2410C;
+      --ds-on-cta: #ffffff;
+      --ds-ink: #0d253d;
+      --ds-ink-mute: #64748d;
+      --ds-canvas: #ffffff;
+      --ds-canvas-soft: #f6f9fc;
+      --ds-hairline: #e3e8ee;
+      --ds-hairline-input: #a8c3de;
+      --ds-warning: #b54708;
+      --ds-warning-wash: #fdf0e6;
+      --ds-danger: #e11d48;
+      --ds-danger-wash: #fdeaef;
+      --ds-focus-ring: rgba(245, 124, 0, 0.22);
+      --font-sans: Inter, "Noto Sans TC", system-ui, sans-serif;
+    }
+    body { margin: 0; padding: 16px; background: var(--ds-canvas-soft); font-family: var(--font-sans); color: var(--ds-ink); }
+    .scene { max-width: 1100px; margin: 0 auto 24px; background: var(--ds-canvas); border: 1px solid var(--ds-hairline); border-radius: 8px; padding: 16px; }
+    .scene h1 { font-size: 18px; margin: 0 0 8px; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+    .case { border: 1px solid var(--ds-hairline); border-left: 3px solid var(--ds-warning); border-radius: 6px; padding: 10px 12px; margin-top: 8px; }
+    .meta { color: var(--ds-ink-mute); font-size: 12px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+    th, td { border-bottom: 1px solid var(--ds-hairline); padding: 8px 10px; text-align: left; }
+    th { font-size: 12px; color: var(--ds-ink-mute); background: var(--ds-canvas-soft); }
+    .btn { min-height: 32px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--ds-hairline); background: var(--ds-canvas); font-weight: 600; }
+    .btn.primary { background: var(--ds-cta); color: var(--ds-on-cta); border-color: transparent; }
+    .btn:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ds-focus-ring); }
+    .btn:disabled { opacity: 0.55; }
+    .badge { display: inline-flex; align-items: center; gap: 5px; padding: 0 7px; min-height: 20px; border-radius: 4px; font-size: 11px; font-weight: 600; background: var(--ds-warning-wash); color: var(--ds-warning); }
+    .badge .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+    .tabs { display: flex; border-bottom: 1px solid var(--ds-hairline); margin-bottom: 12px; }
+    .tab { border: 0; background: transparent; padding: 8px 14px; font-weight: 600; color: var(--ds-ink-mute); border-bottom: 2px solid transparent; }
+    .tab.active { color: var(--ds-primary-deep); border-bottom-color: var(--ds-primary); }
+    .empty { border: 1px dashed var(--ds-hairline); border-radius: 6px; padding: 24px 16px; background: var(--ds-canvas-soft); }
+    .sk { height: 14px; border-radius: 4px; margin: 8px 0; background: var(--ds-hairline); }
+    .alert { padding: 12px; border-radius: 6px; background: var(--ds-danger-wash); color: var(--ds-danger); }
+    .long { max-width: 100%; overflow-wrap: anywhere; }
+  </style>
+</head>
+<body>
+  <section class="scene" data-scene="inbox-normal">
+    <h1>主任收件匣</h1>
+    <p class="meta">集中查看待辦案件與營運通知，優先處理即將到期或已逾期項目。</p>
+    <p class="meta">已逾期 <strong>3</strong> · 即將到期 5 · 方案待確認 1 · 新通知 12</p>
+    <div class="tabs">
+      <button class="tab active">待辦案件</button>
+      <button class="tab">營運通知</button>
+    </div>
+    <div class="case">
+      <div class="row">
+        <span class="badge"><span class="dot"></span>請假申請</span>
+        <span class="badge"><span class="dot"></span>已逾期</span>
+        <span class="meta">待確認補課</span>
+      </div>
+      <strong>王小明</strong>
+      <div class="meta">期限：2026-07-20 18:00</div>
+      <div class="row"><button class="btn primary">安排補課</button></div>
+    </div>
+  </section>
+
+  <section class="scene" data-scene="inbox-loading">
+    <h1>主任收件匣 · Loading</h1>
+    <div class="sk" style="width:90%"></div>
+    <div class="sk" style="width:80%"></div>
+    <div class="sk" style="width:70%"></div>
+  </section>
+
+  <section class="scene" data-scene="inbox-empty">
+    <h1>主任收件匣 · Empty</h1>
+    <div class="empty">
+      <strong>目前沒有待辦案件</strong>
+      <p class="meta">新的請假／補課案件會出現在這裡。</p>
+    </div>
+  </section>
+
+  <section class="scene" data-scene="inbox-error">
+    <h1>主任收件匣 · Error</h1>
+    <div class="alert" role="alert">案件狀態暫時無法更新 <button class="btn">重試</button></div>
+  </section>
+
+  <section class="scene" data-scene="inbox-long">
+    <h1>主任收件匣 · Long text</h1>
+    <div class="case long">
+      <strong>這位學生的請假事由非常非常長，用來驗證折行與資訊層級是否仍然清楚，不應把版面撐爆或水平捲動。</strong>
+      <p class="meta">家長來電說明臨時身體不適，希望改到下週同一時段，並請老師協助補齊當週進度與作業說明。</p>
+      <div class="row">
+        <button class="btn primary">安排補課</button>
+        <button class="btn" disabled>已處理</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="scene" data-scene="students-normal">
+    <h1>學生管理</h1>
+    <p class="meta">本分校 <strong>128</strong> 人 · 目前列表 40 人</p>
+    <div class="row">
+      <input placeholder="輸入姓名..." style="min-height:32px;border:1px solid var(--ds-hairline-input);border-radius:6px;padding:0 8px;" />
+      <select style="min-height:32px;border-radius:6px;"><option>全部年級</option></select>
+      <button class="btn primary" id="focus-primary">新增學生</button>
+    </div>
+    <table>
+      <thead><tr><th></th><th>姓名</th><th>年級</th><th>學校</th><th>家長</th><th>RFID</th><th>科目/堂數</th><th>操作</th></tr></thead>
+      <tbody>
+        <tr><td>☐</td><td>陳小華</td><td>國一</td><td>大安國中</td><td>陳媽媽</td><td>未綁定</td><td>數學 8堂</td><td><button class="btn">編輯</button></td></tr>
+        <tr><td>☐</td><td>林大偉</td><td>小六</td><td>新生小學</td><td>林爸爸</td><td>A12F</td><td>英文 2堂</td><td><button class="btn">編輯</button></td></tr>
+        <tr><td>☐</td><td>黃長名字測試用學生名稱</td><td>高三</td><td>超長校名測試國民中學附設高級中等學校</td><td>黃家長名稱也很長</td><td>未綁定</td><td>理化 12堂 · 數學 4堂</td><td><button class="btn">編輯</button></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="scene" data-scene="students-empty">
+    <h1>學生管理 · Empty</h1>
+    <div class="empty">
+      <strong>目前無學生資料</strong>
+      <p class="meta">請點擊「新增學生」或匯入 CSV。</p>
+      <button class="btn primary">新增學生</button>
+    </div>
+  </section>
+
+  <section class="scene" data-scene="students-error">
+    <h1>學生管理 · Error</h1>
+    <div class="alert" role="alert">無法載入學生列表，請稍後再試。</div>
+  </section>
+
+  <section class="scene" data-scene="students-dense">
+    <h1>學生管理 · High row count</h1>
+    <table>
+      <thead><tr><th>姓名</th><th>年級</th><th>RFID</th><th>科目</th></tr></thead>
+      <tbody id="dense-body"></tbody>
+    </table>
+  </section>
+
+  <script>
+    const body = document.getElementById('dense-body');
+    for (let i = 1; i <= 40; i++) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>學生 ${i}</td><td>國一</td><td>${i % 3 ? '未綁定' : 'RFID' + i}</td><td>數學 ${i % 8}堂</td>`;
+      body.appendChild(tr);
+    }
+  </script>
+</body>
+</html>

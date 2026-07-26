@@ -1,3 +1,9 @@
+## 2026-07-26 — design(ui): AllTrue UI Foundation + inbox/students pilot
+
+- 新增 ops UI Foundation：tokens、`At*` primitives、`docs/design/ALLTRUE_UI_FOUNDATION.md`。
+- Pilot：主任收件匣、學生列表（結構／狀態／密度；業務邏輯與 API 不變）。
+- 主參考 GitLab Pajamas；Carbon 僅互動／表格／a11y；未引入大型 UI library。
+
 ## 2026-07-26 — feat(parent): PB-00 家長綁定 PII-safe observability（#1436）
 
 - Stable internal `reason_code` + append-only `parent_binding_attempts`（fail-open）；flag `PARENT_BINDING_OBSERVABILITY` **default-off**；dedicated `PARENT_BINDING_PHONE_HMAC_KEY`（no APP_KEY）；ops `parent-binding:report --format=json`。不改外部文案／成功路徑；PB-01～09 未開始。

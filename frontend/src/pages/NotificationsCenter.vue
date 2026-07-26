@@ -1,20 +1,36 @@
 <template>
-  <div class="notifications-page">
-    <div class="page-header" data-guide="notifications-header">
-      <h2><span class="material-symbols-outlined" aria-hidden="true">inbox</span> 主任收件匣</h2>
-      <div class="page-desc">集中查看待辦案件與營運通知，優先處理即將到期或已逾期項目。</div>
-      <div class="inbox-count-row" v-if="branchId != null" aria-live="polite">
-        <span>已逾期 <strong>{{ casesOverdueCount }}</strong></span>
-        <span class="inbox-count-sep">即將到期 {{ casesDueSoonCount }}</span>
-        <span class="inbox-count-sep">方案待確認 {{ casesCandidateReadyCount }}</span>
-        <span class="inbox-count-sep">新通知 {{ unreadCount }}</span>
-      </div>
-      <p v-if="countsStale" class="inbox-stale" role="status">案件狀態暫時無法更新，仍顯示上次成功資料。<button type="button" class="small" @click="retryLoad">重試</button></p>
-    </div>
+  <div class="notifications-page at-ops-page">
+    <AtPageHeader
+      title="主任收件匣"
+      description="集中查看待辦案件與營運通知，優先處理即將到期或已逾期項目。"
+      icon="inbox"
+      data-guide="notifications-header"
+    >
+      <template v-if="branchId != null" #meta>
+        <span aria-live="polite">已逾期 <strong>{{ casesOverdueCount }}</strong></span>
+        <span>即將到期 {{ casesDueSoonCount }}</span>
+        <span>方案待確認 {{ casesCandidateReadyCount }}</span>
+        <span>新通知 {{ unreadCount }}</span>
+      </template>
+    </AtPageHeader>
 
-    <div v-if="branchId == null" class="card empty-card">
-      請先選擇分校後再查看通知。
-    </div>
+    <AtInlineAlert
+      v-if="countsStale"
+      tone="warning"
+      title="案件狀態暫時無法更新"
+    >
+      仍顯示上次成功資料。
+      <template #action>
+        <AtButton shape="rect" size="sm" variant="ghost" @click="retryLoad">重試</AtButton>
+      </template>
+    </AtInlineAlert>
+
+    <AtEmpty
+      v-if="branchId == null"
+      icon="domain"
+      title="請先選擇分校"
+      description="選擇分校後即可查看待辦案件與營運通知。"
+    />
 
     <template v-else>
       <!-- 核帳確認 Modal -->
@@ -74,16 +90,16 @@
             <div v-if="tuitionModal.error" class="modal-error">{{ tuitionModal.error }}</div>
 
             <div class="modal-actions">
-              <button type="button" class="small ghost" @click="tuitionModal.visible = false">取消</button>
-              <button type="submit" class="small primary" :disabled="tuitionModal.processing">
+              <AtButton shape="rect" size="sm" variant="ghost" type="button" @click="tuitionModal.visible = false">取消</AtButton>
+              <AtButton shape="rect" size="sm" variant="primary" type="submit" :loading="tuitionModal.processing" :disabled="tuitionModal.processing">
                 {{ tuitionModal.processing ? '處理中...' : '確認已繳費' }}
-              </button>
+              </AtButton>
             </div>
           </form>
         </div>
       </div>
 
-      <div class="card controls-card" data-guide="notifications-controls">
+      <AtSection class="controls-card" data-guide="notifications-controls">
         <!-- 主 tabs：待辦案件 / 營運通知（全部僅次要 overview，不作為預設） -->
         <div class="type-tabs" role="tablist" aria-label="收件匣分類">
           <button
@@ -96,11 +112,11 @@
             @click="onTabClick(tab.value)"
           >
             {{ tab.label }}
-            <span v-if="tab.count > 0" class="tab-badge">{{ tab.count }}</span>
+            <span v-if="tab.count > 0" class="tab-badge" aria-label="數量">{{ tab.count }}</span>
           </button>
         </div>
 
-        <div v-if="laneFilter !== 'case'" class="controls-row">
+        <AtFilterBar v-if="laneFilter !== 'case'" label="通知篩選">
           <label>
             企業視圖
             <select v-model="focusMode">
@@ -139,32 +155,54 @@
             未讀 <strong>{{ unreadCount }}</strong>
             <span class="urgent-stat">急件 <strong>{{ urgentUnreadCount }}</strong></span>
           </div>
-        </div>
+        </AtFilterBar>
 
-        <div v-if="laneFilter !== 'case'" class="actions-row">
-          <button class="small ghost" :disabled="syncing" @click="syncNotifications(true)">
-            {{ syncing ? '同步中...' : '同步通知' }}
-          </button>
-          <button class="small ghost" :disabled="clearingResolved" @click="clearResolved">
-            {{ clearingResolved ? '清除中...' : '清除已解除' }}
-          </button>
-          <button class="small primary" :disabled="markingAllRead || notifications.length === 0" @click="markAllRead">
-            {{ markingAllRead ? '處理中...' : '全部標記已讀' }}
-          </button>
-        </div>
-      </div>
+        <AtToolbar v-if="laneFilter !== 'case'" label="通知動作">
+          <template #end>
+            <AtButton shape="rect" size="sm" variant="ghost" :disabled="syncing" :loading="syncing" @click="syncNotifications(true)">
+              {{ syncing ? '同步中...' : '同步通知' }}
+            </AtButton>
+            <AtButton shape="rect" size="sm" variant="ghost" :disabled="clearingResolved" :loading="clearingResolved" @click="clearResolved">
+              {{ clearingResolved ? '清除中...' : '清除已解除' }}
+            </AtButton>
+            <AtButton shape="rect" size="sm" variant="primary" :disabled="markingAllRead || notifications.length === 0" :loading="markingAllRead" @click="markAllRead">
+              {{ markingAllRead ? '處理中...' : '全部標記已讀' }}
+            </AtButton>
+          </template>
+        </AtToolbar>
+      </AtSection>
 
-      <div v-if="caseLaneError" class="card error-card" role="alert" aria-live="assertive">
-        案件狀態暫時無法更新
-        <button type="button" class="small" @click="retryLoad">重試</button>
-      </div>
-      <div v-else-if="errorMessage" class="card error-card">{{ errorMessage }}</div>
+      <AtInlineAlert
+        v-if="caseLaneError"
+        tone="danger"
+        title="案件狀態暫時無法更新"
+      >
+        <template #action>
+          <AtButton shape="rect" size="sm" variant="ghost" @click="retryLoad">重試</AtButton>
+        </template>
+      </AtInlineAlert>
+      <AtInlineAlert v-else-if="errorMessage" tone="danger">{{ errorMessage }}</AtInlineAlert>
 
-      <div class="card list-card" data-guide="notifications-list">
-        <div v-if="loading && visibleCaseItems.length === 0 && notifications.length === 0" class="empty" aria-live="polite">載入收件匣中...</div>
-        <div v-else-if="laneFilter === 'case' && caseLaneError && visibleCaseItems.length === 0" class="empty" role="alert">案件狀態暫時無法更新</div>
-        <div v-else-if="laneFilter === 'case' && !caseLaneError && visibleCaseItems.length === 0" class="empty">目前沒有待辦案件</div>
-        <div v-else-if="laneFilter !== 'case' && displayNotifications.length === 0" class="empty">目前沒有符合條件的通知</div>
+      <AtSection flush class="list-card" data-guide="notifications-list">
+        <AtSkeleton v-if="loading && visibleCaseItems.length === 0 && notifications.length === 0" :rows="4" />
+        <AtEmpty
+          v-else-if="laneFilter === 'case' && caseLaneError && visibleCaseItems.length === 0"
+          icon="error"
+          title="案件狀態暫時無法更新"
+          description="請稍後重試，或先切換分校後再回來。"
+        />
+        <AtEmpty
+          v-else-if="laneFilter === 'case' && !caseLaneError && visibleCaseItems.length === 0"
+          icon="task_alt"
+          title="目前沒有待辦案件"
+          description="新的請假／補課案件會出現在這裡。"
+        />
+        <AtEmpty
+          v-else-if="laneFilter !== 'case' && displayNotifications.length === 0"
+          icon="notifications_off"
+          title="目前沒有符合條件的通知"
+          description="可調整篩選條件，或同步通知後再查看。"
+        />
 
         <div v-else>
           <!-- 請假／補課案件 -->
@@ -178,10 +216,11 @@
                 :class="{ 'severity-high-item': item.overdue, 'priority-due-soon': item.priority === 'due_soon' && !item.overdue }"
               >
                 <div class="title-row">
-                  <span class="type-tag type-student_leave">請假申請</span>
-                  <span class="severity-tag" :class="item.overdue ? 'severity-high' : (item.priority === 'due_soon' ? 'severity-medium' : 'severity-low')">
-                    {{ casePriorityLabel(item) }}
-                    </span>
+                  <AtBadge tone="warning" label="請假申請" />
+                  <AtBadge
+                    :tone="item.overdue ? 'danger' : (item.priority === 'due_soon' ? 'warning' : 'neutral')"
+                    :label="casePriorityLabel(item)"
+                  />
                   <span class="status-chip">{{ item.status_label }}</span>
                 </div>
                 <div class="main-title">{{ item.student_name || item.title }}</div>
@@ -192,13 +231,13 @@
                   <span v-if="item.due_at">期限：{{ formatDateTime(item.due_at) }}</span>
                 </div>
                 <div class="item-actions">
-                  <button class="small primary case-cta" @click="goToLeaveCase(item)">{{ caseCtaLabel(item) }}</button>
+                  <AtButton shape="rect" size="sm" variant="primary" class="case-cta" @click="goToLeaveCase(item)">{{ caseCtaLabel(item) }}</AtButton>
                 </div>
               </div>
               <div v-if="casesLastPage > 1" class="pager-row" data-testid="case-pager">
-                <button type="button" class="small case-cta" :disabled="casesPage <= 1 || loading" @click="loadCasePage(casesPage - 1)">上一頁</button>
+                <AtButton shape="rect" size="sm" variant="ghost" class="case-cta" :disabled="casesPage <= 1 || loading" @click="loadCasePage(casesPage - 1)">上一頁</AtButton>
                 <span aria-live="polite">第 {{ casesPage }} / {{ casesLastPage }} 頁（共 {{ casesOpenCount }}）</span>
-                <button type="button" class="small case-cta" :disabled="!casesHasMore || loading" @click="loadCasePage(casesPage + 1)">下一頁</button>
+                <AtButton shape="rect" size="sm" variant="ghost" class="case-cta" :disabled="!casesHasMore || loading" @click="loadCasePage(casesPage + 1)">下一頁</AtButton>
               </div>
             </div>
           </template>
@@ -272,11 +311,11 @@
         </div>
 
         <div v-if="lastPage > 1" class="pagination-row">
-          <button class="small ghost" :disabled="currentPage <= 1 || loading" @click="loadNotifications(currentPage - 1)">上一頁</button>
+          <AtButton shape="rect" size="sm" variant="ghost" :disabled="currentPage <= 1 || loading" @click="loadNotifications(currentPage - 1)">上一頁</AtButton>
           <span>第 {{ currentPage }} / {{ lastPage }} 頁</span>
-          <button class="small ghost" :disabled="currentPage >= lastPage || loading" @click="loadNotifications(currentPage + 1)">下一頁</button>
+          <AtButton shape="rect" size="sm" variant="ghost" :disabled="currentPage >= lastPage || loading" @click="loadNotifications(currentPage + 1)">下一頁</AtButton>
         </div>
-      </div>
+      </AtSection>
     </template>
   </div>
 </template>
@@ -295,6 +334,15 @@ import {
   resolveDefaultLane,
   shouldShowCachedCases,
 } from '../lib/actionInboxContract.js';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
+import AtSection from '../components/design-system/AtSection.vue';
+import AtFilterBar from '../components/design-system/AtFilterBar.vue';
+import AtToolbar from '../components/design-system/AtToolbar.vue';
+import AtButton from '../components/design-system/AtButton.vue';
+import AtBadge from '../components/design-system/AtBadge.vue';
+import AtEmpty from '../components/design-system/AtEmpty.vue';
+import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
+import AtSkeleton from '../components/design-system/AtSkeleton.vue';
 
 const props = defineProps({
   branchId: [String, Number],
@@ -1205,52 +1253,64 @@ onUnmounted(() => {
   gap: 10px;
 }
 
-/* ── 分類 Tab ── */
+/* ── 分類 Tab（Pajamas-style underline, not pills）── */
 .type-tabs {
   display: flex;
-  gap: 6px;
+  gap: 0;
   flex-wrap: wrap;
-  border-bottom: 1px solid var(--border);
-  padding-bottom: 10px;
+  border-bottom: 1px solid var(--ds-hairline);
+  margin-bottom: var(--ds-space-3, 12px);
 }
 
 .type-tab {
-  padding: 5px 14px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--ds-canvas-soft);
-  color: var(--text-light);
+  padding: 8px 14px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ds-text-tertiary, var(--text-light));
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--ds-font-size-base, 14px);
+  font-weight: 600;
   display: flex;
   align-items: center;
-  gap: 5px;
-  transition: all 0.15s;
+  gap: 6px;
+  margin-bottom: -1px;
+  transition: color var(--ds-motion-fast, 120ms) var(--ds-ease-standard, ease),
+    border-color var(--ds-motion-fast, 120ms) var(--ds-ease-standard, ease);
 }
 
 .type-tab:hover {
-  background: var(--ds-canvas-soft);
+  color: var(--ds-text-primary, var(--ds-ink));
+  background: transparent;
+}
+
+.type-tab:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ds-focus-ring);
 }
 
 .type-tab.active {
-  background: var(--primary);
-  color: var(--ds-canvas);
-  border-color: var(--primary);
+  background: transparent;
+  color: var(--ds-primary-deep);
+  border-bottom-color: var(--ds-primary);
 }
 
 .tab-badge {
-  background: var(--ds-danger);
-  color: var(--ds-canvas);
-  border-radius: 999px;
-  font-size: 10px;
+  background: var(--ds-surface-2, var(--ds-canvas-soft));
+  color: var(--ds-text-secondary, var(--ds-ink-secondary));
+  border-radius: var(--ds-radius-sm, 4px);
+  font-size: 11px;
   padding: 1px 6px;
   font-weight: 700;
   min-width: 18px;
   text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 .type-tab.active .tab-badge {
-  background: rgba(255, 255, 255, 0.35);
+  background: var(--ds-primary-wash);
+  color: var(--ds-primary-deep);
 }
 
 /* ── Controls ── */
@@ -1308,11 +1368,10 @@ onUnmounted(() => {
 
 .urgent-panel {
   border: 1px solid var(--ds-danger);
-  border-radius: 10px;
+  border-radius: var(--ds-radius-md, 6px);
   background: var(--ds-danger-wash);
   padding: 10px;
   margin-bottom: 10px;
-  animation: urgentPulse 1.8s ease-in-out infinite;
 }
 
 .urgent-panel h4 {
@@ -1358,32 +1417,14 @@ onUnmounted(() => {
   flex-wrap: wrap;
 }
 
-@keyframes urgentPulse {
-  0% {
-    box-shadow: 0 0 0 0 rgba(244, 67, 54, 0.25);
-  }
-  70% {
-    box-shadow: 0 0 0 10px rgba(244, 67, 54, 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(244, 67, 54, 0);
-  }
-}
-
-.empty {
-  text-align: center;
-  color: var(--text-light);
-  padding: 18px 0;
-}
-
 .notification-item {
-  border: 1px solid var(--border);
-  border-left: 4px solid transparent;
-  border-radius: 10px;
-  padding: 12px;
-  margin-bottom: 10px;
-  background: var(--ds-canvas);
-  transition: background 0.15s;
+  border: 1px solid var(--ds-hairline);
+  border-left: 3px solid transparent;
+  border-radius: var(--ds-radius-md, 6px);
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  background: var(--ds-surface-1, var(--ds-canvas));
+  transition: background var(--ds-motion-fast, 120ms) var(--ds-ease-standard, ease);
 }
 
 .notification-item.unread {
@@ -1464,7 +1505,12 @@ onUnmounted(() => {
 .inbox-count-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; font-size: 13px; color: var(--text-light); }
 .inbox-count-sep::before { content: '·'; margin-right: 10px; color: var(--border); }
 .inbox-stale { margin: 8px 0 0; color: var(--ds-warning); font-size: 13px; }
-.case-cta { min-width: 44px; min-height: 44px; }
+.case-cta { min-width: 44px; min-height: var(--ds-control-height-md, 32px); }
+.at-ops-page { display: flex; flex-direction: column; gap: var(--ds-space-3, 12px); }
+.controls-card { margin: 0; }
+.list-card { margin: 0; }
+.checkbox-wrap { flex-direction: row !important; align-items: center; margin-bottom: 0; }
+.stats-box { margin-bottom: 0; font-variant-numeric: tabular-nums; }
 .case-reason { opacity: 0.75; font-size: 13px; }
 .pager-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
 .case-item { border-left-color: var(--ds-warning); }

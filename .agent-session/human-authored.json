@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "provenance_type": "human-authored",
-  "declared_at": "2026-07-26T15:10:00Z",
-  "author": "founder-directed-cursor-cloud-pb00",
-  "note": "Cursor Cloud lacks agent-start; human-authored provenance for PB-00 (#1436)."
+  "declared_at": "2026-07-26T17:45:00Z",
+  "author": "founder-directed-cursor-cloud-ui-foundation",
+  "note": "Cursor Cloud lacks agent-start allowlisted path; human-authored provenance for AllTrue UI Foundation Pilot. agent-preflight FAIL on /workspace path allowlist is expected in this environment."
 }

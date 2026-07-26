@@ -110,3 +110,14 @@
 - gradient mesh、純黑 `#000`、裝飾 emoji
 - 一張卡堆多層 `box-shadow`
 - 金額/堂數不套 `tabular-nums`
+
+
+---
+
+## Foundation primitives（2026-07-26）
+
+見 [`docs/design/ALLTRUE_UI_FOUNDATION.md`](../../../../docs/design/ALLTRUE_UI_FOUNDATION.md)。
+
+新增：`AtPageHeader` `AtSection` `AtToolbar` `AtFilterBar` `AtBadge` `AtInlineAlert` `AtSkeleton` `AtDataTableShell` `AtIconButton` `AtModal`。
+
+`AtButton` 新增 `shape`（`pill` 預設相容／`rect` 給 ops）與 `loading`。

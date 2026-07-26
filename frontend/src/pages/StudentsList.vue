@@ -1,32 +1,25 @@
 <template>
-  <div>
-    <div class="card">
-      <div class="header-actions" data-guide="students-header">
-        <div class="header-title-area">
-          <h2>
-            <span class="material-symbols-outlined header-icon">school</span>
-            學生管理
-          </h2>
-          <div class="header-stats">
-            <span class="stat-badge">
-              <span class="material-symbols-outlined" style="font-size:15px;">groups</span>
-              本分校 <strong>{{ branchStudentTotal }}</strong> 人
-            </span>
-            <span class="stat-badge stat-badge-light">目前列表 {{ displayStudents.length }} 人</span>
-          </div>
-        </div>
-        <div class="header-buttons">
+  <div class="students-page at-ops-page">
+    <div class="students-shell">
+      <AtPageHeader
+        title="學生管理"
+        description="搜尋、篩選與管理本分校學生資料與課程安排。"
+        icon="school"
+        data-guide="students-header"
+      >
+        <template #meta>
+          <span>本分校 <strong>{{ branchStudentTotal }}</strong> 人</span>
+          <span>目前列表 {{ displayStudents.length }} 人</span>
+        </template>
+        <template #actions>
           <label class="button-outline">
-            <span class="material-symbols-outlined btn-icon">upload_file</span>
+            <span class="material-symbols-outlined btn-icon" aria-hidden="true">upload_file</span>
             匯入名單
             <input type="file" @change="importStudents" accept=".csv,.xlsx" style="display: none;" />
           </label>
-          <button class="primary" @click="openAddStudent">
-            <span class="material-symbols-outlined btn-icon">add</span>
-            新增學生
-          </button>
-        </div>
-      </div>
+          <AtButton shape="rect" variant="primary" icon="add" @click="openAddStudent">新增學生</AtButton>
+        </template>
+      </AtPageHeader>
 
       <!-- Bulk Action Toolbar (appears when students selected) -->
       <div v-if="hasSelectedStudents" class="bulk-toolbar">
@@ -35,19 +28,16 @@
           已選 {{ selectedStudentCount }} 位
         </span>
         <div class="bulk-btns">
-          <button class="small ghost" @click="clearSelectedStudents">清除勾選</button>
-          <button class="small danger" @click="deleteSelectedStudents">
-            <span class="material-symbols-outlined btn-icon">delete</span>
-            批量刪除
-          </button>
+          <AtButton shape="rect" size="sm" variant="ghost" @click="clearSelectedStudents">清除勾選</AtButton>
+          <AtButton shape="rect" size="sm" variant="danger" icon="delete" @click="deleteSelectedStudents">批量刪除</AtButton>
         </div>
       </div>
 
-      <div class="grid filter-bar" data-guide="students-filters">
+      <AtFilterBar label="學生篩選" data-guide="students-filters">
         <div class="filter-search">
           <label>搜尋姓名</label>
           <div class="search-input-wrap">
-            <span class="material-symbols-outlined search-icon">search</span>
+            <span class="material-symbols-outlined search-icon" aria-hidden="true">search</span>
             <input v-model="filters.name" placeholder="輸入姓名..." @input="debouncedLoad" />
           </div>
         </div>
@@ -69,15 +59,17 @@
           </select>
         </div>
         <div class="filter-toggles">
-          <button class="small ghost" @click="showGradePromotion = true" style="white-space: nowrap;">
-            <span class="material-symbols-outlined btn-icon">school</span>
-            年級升級
-          </button>
-          <button class="small" :class="showHistoricalCourses ? 'primary' : 'ghost'" @click="toggleHistoricalCourses">
+          <AtButton shape="rect" size="sm" variant="ghost" icon="school" @click="showGradePromotion = true">年級升級</AtButton>
+          <AtButton
+            shape="rect"
+            size="sm"
+            :variant="showHistoricalCourses ? 'primary' : 'ghost'"
+            @click="toggleHistoricalCourses"
+          >
             {{ showHistoricalCourses ? '隱藏已結業/歷史課程' : '顯示已結業/歷史課程' }}
-          </button>
+          </AtButton>
         </div>
-      </div>
+      </AtFilterBar>
 
       <!-- Student Table -->
       <div v-if="displayStudents.length" class="table-scroll-wrap">
@@ -175,12 +167,8 @@
             </td>
             <td @click.stop class="action-cell">
               <div class="action-cell-buttons">
-                <button class="small ghost icon-btn" @click="editStudent(student)" title="編輯">
-                  <span class="material-symbols-outlined">edit</span>
-                </button>
-                <button class="small danger icon-btn" @click="deleteStudent(student)" title="刪除">
-                  <span class="material-symbols-outlined">delete</span>
-                </button>
+                <AtIconButton icon="edit" label="編輯" @click="editStudent(student)" />
+                <AtIconButton icon="delete" label="刪除" variant="danger" @click="deleteStudent(student)" />
               </div>
             </td>
           </tr>
@@ -361,9 +349,16 @@
         </tbody>
       </table>
       </div>
-      <div v-else class="empty-text">
-        {{ showHistoricalCourses ? '目前無學生資料，請點擊「+ 新增學生」或匯入 CSV' : '目前沒有進行中的學生/課程，可切換「顯示已結業/歷史課程」查看歷史資料' }}
-      </div>
+      <AtEmpty
+        v-else
+        icon="school"
+        :title="showHistoricalCourses ? '目前無學生資料' : '目前沒有進行中的學生/課程'"
+        :description="showHistoricalCourses ? '請點擊「新增學生」或匯入 CSV。' : '可切換「顯示已結業/歷史課程」查看歷史資料。'"
+      >
+        <template #action>
+          <AtButton shape="rect" variant="primary" icon="add" @click="openAddStudent">新增學生</AtButton>
+        </template>
+      </AtEmpty>
     </div>
 
     <!-- Add/Edit Student Modal -->
@@ -679,6 +674,11 @@ import QuickAddSessionModal from '../components/course-management/QuickAddSessio
 import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal.vue';
 import ToastWithUndo from '../components/substitute/ToastWithUndo.vue';
 import PaymentEntryModal from '../components/PaymentEntryModal.vue';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
+import AtFilterBar from '../components/design-system/AtFilterBar.vue';
+import AtButton from '../components/design-system/AtButton.vue';
+import AtIconButton from '../components/design-system/AtIconButton.vue';
+import AtEmpty from '../components/design-system/AtEmpty.vue';
 
 const props = defineProps({ branchId: [String, Number] });
 const emit = defineEmits(['navigate']);
@@ -2675,69 +2675,41 @@ table th { font-size: 12.5px; }
 }
 @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
-/* ═══ Header ═══ */
-.header-actions {
+/* ═══ Ops page shell ═══ */
+.students-page.at-ops-page {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 20px;
+  flex-direction: column;
+  gap: var(--ds-space-3, 12px);
 }
-.header-title-area h2 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0;
-}
-.header-icon {
-  font-size: 26px;
-  color: var(--ds-primary);
-}
-.header-stats {
-  display: flex;
-  gap: 8px;
-  margin-top: 8px;
-  flex-wrap: wrap;
-}
-.stat-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 10px;
-  border-radius: 6px;
-  font-size: 13px;
-  background: var(--ds-primary-wash);
-  color: var(--ds-primary-deep);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-.stat-badge-light {
-  background: var(--ds-canvas-soft);
-  color: var(--ds-ink-mute);
-  font-weight: 500;
-}
-.header-buttons {
-  display: flex;
-  gap: 8px;
-  align-items: center;
+.students-shell {
+  background: var(--ds-surface-1, var(--ds-canvas));
+  border: 1px solid var(--ds-hairline);
+  border-radius: var(--ds-radius-lg, 8px);
+  padding: var(--ds-space-4, 16px);
 }
 .button-outline {
   border: 1px solid var(--ds-hairline);
-  padding: 8px 14px;
-  border-radius: 8px;
+  padding: 0 12px;
+  min-height: var(--ds-control-height-md, 32px);
+  border-radius: var(--ds-radius-md, 6px);
   cursor: pointer;
   background: var(--ds-canvas);
   color: var(--ds-ink-secondary);
   font-size: 13px;
   font-weight: 600;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 4px;
-  transition: var(--transition);
+  transition: background-color var(--ds-motion-fast, 120ms) var(--ds-ease-standard, ease);
 }
 .button-outline:hover {
   background: var(--ds-canvas-soft);
   border-color: var(--ds-hairline-input);
   color: var(--ds-ink);
+}
+.button-outline:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ds-focus-ring);
 }
 .btn-icon {
   font-size: 18px;
@@ -2894,20 +2866,40 @@ table th { font-size: 12.5px; }
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  padding: 3px 9px;
-  border-radius: 12px;
-  font-size: 12.5px;
+  padding: 2px 7px;
+  border-radius: var(--ds-radius-sm, 4px);
+  font-size: 12px;
   background: var(--ds-success-wash);
   color: var(--ds-success);
   white-space: nowrap;
+  border: 1px solid transparent;
 }
 .subject-pill strong {
-  font-weight: 800;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 .subject-pill.low {
   background: var(--ds-danger-wash);
   color: var(--ds-danger);
+}
+.table-scroll-wrap {
+  border: 1px solid var(--ds-hairline);
+  border-radius: var(--ds-radius-md, 6px);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.table-scroll-wrap th {
+  font-size: 12px;
+  color: var(--ds-text-tertiary, var(--ds-ink-mute));
+  background: var(--ds-surface-0, var(--ds-canvas-soft));
+}
+.table-scroll-wrap td {
+  font-size: 13.5px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+.student-status-badge {
+  border-radius: var(--ds-radius-sm, 4px) !important;
 }
 
 .note-icon {
