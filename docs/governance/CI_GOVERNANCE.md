@@ -1,6 +1,6 @@
 # CI Governance (G1+G2)
 
-**Commands:** `npm run ci:preflight` · `sync:generated` · `test:gov` · `ci:report`
+**Commands:** `npm run ci:preflight` · `sync:generated` · `test:gov` · `ci:report` (`scripts/ci-actions-report.mjs`)
 
 | Gate | Behavior |
 |------|----------|

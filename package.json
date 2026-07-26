@@ -8,6 +8,7 @@
     "ci:preflight:self-test": "node scripts/ci-preflight.mjs --self-test",
     "sync:generated": "node scripts/sync-generated.mjs",
     "sync:generated:check": "node scripts/sync-generated.mjs --check",
+    "ci:report": "node scripts/ci-actions-report.mjs",
     "test:gov": "node --test scripts/ci/gov.test.mjs scripts/ci/reviewability.test.mjs && node scripts/ci-preflight.mjs --self-test"
   }
 }
