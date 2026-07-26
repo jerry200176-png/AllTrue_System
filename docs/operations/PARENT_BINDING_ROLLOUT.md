@@ -11,7 +11,7 @@ Success = KPIs, not “shipped”. Expand-contract; flags+rollback; CI→PR→me
 
 | Phase | Goal | Flags | Changes | Exit |
 |-------|------|-------|---------|------|
-| **0 Observability** | Baseline failures; **no** success-path change | `observability=on` | reason_code + masked attempts/logs; missing-phone report | ≥7d baseline; Founder sees missing % |
+| **0 Observability** | Baseline failures; **no** success-path change | `observability` **default-off** → Founder on | reason_code + masked attempts/logs; missing-phone report | ≥7d baseline; Founder sees missing % |
 | **1 Safe UX + completeness** | Less enum; staff tools; success still name+phone | `safe_copy`, `completeness_ui`, `inbox_v1` | Safe fail copy; fix Portal empty-phone leak; filters; Import/Wizard `parent_phone`; high-signal Inbox | Support misdiagnosis↓ 14d; UI used |
 | **2 Pairing + request + GSR** | Primary credential; legacy fallback | `pairing`, `requests`, `legacy_bind=on` | Migrations+backfill; issue/consume/approve; dual-write SLB | Pairing ≥50% new (or Founder); no P0 wrong-bind; revoke kills session |
 | **3 Legacy sunset** | Name+phone not default | `legacy_bind=false` **only after gate** | Guide to code; orphan cleanup | Gate + Founder re-approval |
@@ -29,12 +29,13 @@ Success = KPIs, not “shipped”. Expand-contract; flags+rollback; CI→PR→me
 
 | Flag | P0 | P1 | P2 | P3 |
 |------|----|----|----|-----|
-| observability | on | on | on | on |
+| observability | off→on* | on | on | on |
 | safe_copy / completeness / inbox | off | on | on | on |
 | pairing / requests | off | off | on | on |
 | legacy_bind | on | on | on | **off** |
 
-PB-00 ops: `php artisan parent-binding:report --days=7|--missing-contact --format=json`. Flag `PARENT_BINDING_OBSERVABILITY`. Rollback=flag off (not drop table).
+PB-00: `--format=json` only; flag **default-off**; HMAC key `PARENT_BINDING_PHONE_HMAC_KEY` (never `APP_KEY`); store fingerprint default false; rollback=flag off (not drop table).  
+**Activate:** merge→deploy→migration→health→report shows `observability_enabled=false`→Founder sets `PARENT_BINDING_OBSERVABILITY=true`→reload config cache/restart→safe test attempt writes→`parent-binding:report --days=1 --format=json`. On anomaly set false immediately. Merge/deploy/migration do **not** auto-enable.
 
 ## Verify / support / KPI
 

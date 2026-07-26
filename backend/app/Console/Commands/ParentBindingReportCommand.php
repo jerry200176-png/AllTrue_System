@@ -17,8 +17,8 @@ class ParentBindingReportCommand extends Command
     public function handle(): int
     {
         $format = strtolower((string) $this->option('format'));
-        if (!in_array($format, ['json', 'table'], true)) {
-            $this->error('Invalid --format');
+        if ($format !== 'json') {
+            $this->error('Invalid --format (only json)');
 
             return self::FAILURE;
         }
@@ -37,7 +37,7 @@ class ParentBindingReportCommand extends Command
         if ($report === null) {
             return self::FAILURE;
         }
-        $this->line(json_encode($report, ($format === 'json' ? JSON_PRETTY_PRINT : 0) | JSON_UNESCAPED_UNICODE));
+        $this->line(json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
 
         return self::SUCCESS;
     }
@@ -86,9 +86,8 @@ class ParentBindingReportCommand extends Command
     private function missingContact(?int $campusId): array
     {
         $tz = (string) config('parent_binding.timezone', 'Asia/Taipei');
-        $campuses = DB::table('Campus')->when($campusId !== null, fn ($q) => $q->where('id', $campusId))->orderBy('id')->get(['id', 'name']);
         $rows = [];
-        foreach ($campuses as $campus) {
+        foreach (DB::table('Campus')->when($campusId !== null, fn ($q) => $q->where('id', $campusId))->orderBy('id')->get(['id', 'name']) as $campus) {
             $students = DB::table('Student')->where('CampusID', $campus->id)->where('enable', 1)
                 ->where(fn ($q) => $q->whereNull('status')->orWhere('status', '')->orWhereIn('status', ['active', 'paused']))
                 ->get(['parent_phone', 'Phone']);

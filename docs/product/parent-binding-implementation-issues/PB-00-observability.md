@@ -8,5 +8,5 @@
 | Status | Code landed — observability only; identity security **not** complete |
 
 **Scope:** stable `reason_code`; PII-safe `parent_binding_attempts`; correlation id; flag; KPI + missing-contact. Non-scope: OTP; copy/success-path; pairing/Inbox/GSR; PB-01～09.  
-**Rollback:** `PARENT_BINDING_OBSERVABILITY=false` (do not drop table first-line).  
-**Codes:** `STUDENT_NOT_FOUND`·`CONTACT_PHONE_MISSING`·`PHONE_MISMATCH`·`AMBIGUOUS_MATCH`·`CAMPUS_MISMATCH`·`ALREADY_BOUND`·`INVALID_INPUT`·`AUTHORIZATION_DENIED`·`INTERNAL_ERROR` (`success`/`failure`/`noop`). Ops: `php artisan parent-binding:report --days=7|--missing-contact --format=json`. Pending: PB-01 copy · PB-02 UI · PB-03 Inbox.
+**Flag:** `PARENT_BINDING_OBSERVABILITY` **default-off**; production Founder/ops 明確 `true` 後才寫入。Fingerprint: dedicated `PARENT_BINDING_PHONE_HMAC_KEY` only（no `APP_KEY`）；store default false.  
+**Rollback:** set flag `false` (do not drop table first-line). Ops: `parent-binding:report --format=json` only. Pending: PB-01 copy · PB-02 UI · PB-03 Inbox.

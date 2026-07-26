@@ -13,8 +13,5 @@ class ParentBindingAttempt extends Model
         'correlation_id', 'occurred_at', 'channel', 'method', 'outcome', 'reason_code',
         'campus_id', 'student_id', 'phone_fingerprint', 'candidate_count', 'phone_match_count',
     ];
-    protected $casts = [
-        'occurred_at' => 'datetime', 'campus_id' => 'integer', 'student_id' => 'integer',
-        'candidate_count' => 'integer', 'phone_match_count' => 'integer',
-    ];
+    protected $casts = ['occurred_at' => 'datetime', 'campus_id' => 'integer', 'student_id' => 'integer', 'candidate_count' => 'integer', 'phone_match_count' => 'integer'];
 }

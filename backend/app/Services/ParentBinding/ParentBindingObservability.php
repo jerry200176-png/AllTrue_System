@@ -10,14 +10,9 @@ use Throwable;
 /** PB-00 classify + fail-open observation writer. */
 final class ParentBindingObservability
 {
-    public function __construct(private readonly ParentBindingClassifier $classifier)
-    {
-    }
+    public function __construct(private readonly ParentBindingClassifier $classifier) {}
 
-    public function classifier(): ParentBindingClassifier
-    {
-        return $this->classifier;
-    }
+    public function classifier(): ParentBindingClassifier { return $this->classifier; }
 
     public function newCorrelationId(?string $inbound = null): string
     {
