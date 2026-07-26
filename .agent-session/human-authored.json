@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "provenance_type": "human-authored",
-  "declared_at": "2026-07-26T18:20:00Z",
+  "declared_at": "2026-07-26T18:35:00Z",
   "author": "founder-directed-cursor-cloud-ui-foundation",
-  "note": "Cursor Cloud lacks agent-start allowlisted path; human-authored provenance for UI Foundation PR A (inbox pilot). Split from #1449; stacked students pilot is a follow-up PR. Presubmit size gate unchanged."
+  "note": "Cursor Cloud lacks agent-start allowlisted path; human-authored provenance for UI Foundation PR A (#1450). Path-scoped UI Foundation Playwright via dorny/paths-filter ui_foundation. One-time Founder size-gate exception for #1450 only; gate/allowlist unchanged."
 }

@@ -61,6 +61,7 @@ jobs:
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
       ci_config: ${{ steps.filter.outputs.ci_config }}
+      ui_foundation: ${{ steps.filter.outputs.ui_foundation }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -76,6 +77,16 @@ jobs:
               - 'frontend/**'
             ci_config:
               - '.github/workflows/**'
+            ui_foundation:
+              - 'frontend/src/components/design-system/**'
+              - 'frontend/src/pages/NotificationsCenter.vue'
+              - 'frontend/src/pages/StudentsList.vue'
+              - 'frontend/src/styles.css'
+              - 'frontend/e2e/fixtures/ui-foundation/**'
+              - 'frontend/e2e/ui-foundation-*.spec.js'
+              - 'frontend/playwright.ui-foundation.config.js'
+              - 'frontend/vite.ui-foundation.config.js'
+              - 'scripts/check-no-public-ui-fixtures.sh'
 
   # PR diff → Golden § 對照表（全自動；取代人工勾選 QA_GOLDEN_SCENARIOS）
   golden_scenarios:
@@ -502,11 +513,16 @@ jobs:
           npm run lint:ui-fixtures
           ! test -f dist_build/pilot-mount.html
 
-      - name: Install Playwright Chromium (UI foundation inbox evidence)
+      # Path-scoped: Chromium + real Vue page evidence only when UI foundation
+      # surfaces/fixtures/config change. Still blocking when the filter matches
+      # (no || true / continue-on-error / permanent opt-in skip).
+      - name: Install Playwright Chromium (UI foundation page evidence)
+        if: needs.changes.outputs.ui_foundation == 'true'
         working-directory: frontend
         run: npx playwright install --with-deps chromium
 
-      - name: UI foundation inbox Playwright (real Vue + mocked API)
+      - name: UI foundation page-level Playwright (real Vue + mocked API)
+        if: needs.changes.outputs.ui_foundation == 'true'
         working-directory: frontend
         env:
           UI_FOUNDATION_SHOT_DIR: ${{ github.workspace }}/docs/design/evidence/raw
