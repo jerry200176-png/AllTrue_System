@@ -38,6 +38,7 @@ final class SchedulerEvidence
         'learning-records-backfill-missing' => ['command' => 'learning-records:backfill-missing', 'time' => '03:50'],
         'bugs-verify-reproductions' => ['command' => 'bugs:verify-reproductions --json', 'time' => '04:00'],
         'ops-business-digest' => ['command' => 'ops:business-digest', 'time' => '04:10'],
+        'bindings-cleanup-orphans' => ['command' => 'bindings:cleanup-orphans', 'time' => '04:30'],
     ];
 
     /** @return array<string,array{command:string,time:string}> */

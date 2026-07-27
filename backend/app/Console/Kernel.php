@@ -45,6 +45,9 @@ class Kernel extends ConsoleKernel
         // digest — revenue at risk, retention risk, data-quality anomalies, forward
         // coverage — logged each morning so business health is quantified, not discovered.
         $this->scheduleObservedCommand($schedule, 'ops-business-digest');
+        // ADR-004 Phase 1-3: nightly orphan binding cleanup — remove bindings for
+        // deleted/disabled students, report students with >3 LINE user bindings.
+        $this->scheduleObservedCommand($schedule, 'bindings-cleanup-orphans');
     }
 
     private function scheduleObservedCommand(Schedule $schedule, string $job): void
