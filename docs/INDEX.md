@@ -141,7 +141,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 |----------|---------|
 | 頁面清單 + active key | `CLAUDE.md` §前端頁面 |
 | **設計系統 / 視覺規格（色票/按鈕/金額）** | `docs/RULE_DESIGN_SYSTEM.md`（色票 SSOT，改 UI 前必讀）|
-| **UI Foundation（ops 結構/primitives/pilot）** | [`docs/design/ALLTRUE_UI_FOUNDATION.md`](design/ALLTRUE_UI_FOUNDATION.md) · evidence [`docs/design/evidence/`](design/evidence/) |
+| **UI Foundation（ops 結構/primitives/pilot）** | [`docs/design/ALLTRUE_UI_FOUNDATION.md`](design/ALLTRUE_UI_FOUNDATION.md) · audit [`UI_AUDIT_2026-07-26.md`](design/UI_AUDIT_2026-07-26.md) · sequencing [`UI_FOUNDATION_MIGRATION_SEQUENCING.md`](design/UI_FOUNDATION_MIGRATION_SEQUENCING.md) · evidence [`docs/design/evidence/`](design/evidence/) |
 | **UI 文案 / 空狀態 / Loading 規範** | `docs/GUIDE_UI_COPY.md` |
 | **前端 PR 設計驗收清單** | `docs/GUIDE_DESIGN_QA_SMOKE.md` |
 | Deploy SOP | `.cursor/rules/auto-frontend-deploy.mdc` |

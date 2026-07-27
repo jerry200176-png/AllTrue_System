@@ -29,7 +29,8 @@ export const changelogReleaseNotes = [
       {
         "title": "體驗調整",
         "items": [
-          "Foundation + 主任收件匣 pilot"
+          "Foundation + 主任收件匣 pilot",
+          "學生列表 UI Foundation pilot (B)"
         ]
       }
     ],
@@ -37,7 +38,8 @@ export const changelogReleaseNotes = [
       "00 家長綁定 PII-safe observability",
       "家長更新卡改為顯式 PARENT_UPDATES 投影（B+）",
       "堂數制請假改為保留未來日期、只補尾堂",
-      "Foundation + 主任收件匣 pilot"
+      "Foundation + 主任收件匣 pilot",
+      "學生列表 UI Foundation pilot (B)"
     ]
   },
   {

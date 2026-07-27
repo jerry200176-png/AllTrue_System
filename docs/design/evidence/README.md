@@ -1,8 +1,8 @@
-# UI Foundation visual evidence (inbox pilot)
+# UI Foundation visual evidence
 
 | File | Role |
 |---|---|
-| `inbox-before-*.webp` | Exploration baseline contrast |
-| `inbox-after-390.webp` / `inbox-after-768.webp` / `inbox-after-1440.webp` | **Merge acceptance** — real Vue inbox via Playwright mocks |
+| `*-before-*.webp` | Design exploration baseline (static harness anti-slop contrast) |
+| `inbox-after-*.webp` / `students-after-*.webp` | **Merge acceptance** — real Vue pages via Playwright mocks (390 / 768 / 1440) |
 
-Full state matrix (loading/empty/error/…) is produced in CI under `raw/` when page Playwright runs.
+Full state matrix (loading/empty/error/…) is produced in CI artifact `ui-foundation-page-evidence` (`raw/`).

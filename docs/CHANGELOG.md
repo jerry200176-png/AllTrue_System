@@ -5,6 +5,12 @@
 - Visual fixtures 僅在 `frontend/e2e/fixtures/`；production `public/` / `dist_build` 不含 mount harness。
 - Merge evidence：真實 Vue inbox Playwright + mocked API（390／768／1440）。
 
+## 2026-07-26 — design(ui): 學生列表 UI Foundation pilot (PR B)
+
+- Stacked on inbox foundation PR：`StudentsList` 接入 `At*`（含 `AtIconButton`）、unit/a11y、真實 Vue Playwright、durable evidence。
+- 補齊 UI audit + migration sequencing；CI 上傳 `ui-foundation-page-evidence` artifact。
+- 業務邏輯／API／DB／權限不變；supersedes monolithic #1449 students half。**No size-gate exception**（不沿用 #1450）。
+
 ## 2026-07-26 — ci(governance): failure taxonomy + fast preflight（G1）
 
 - 開發備註：新增 `npm run ci:preflight` / `sync:generated`、failure taxonomy、branch policy（含 `sec/`）；見 `docs/governance/CI_GOVERNANCE.md`。不改 production 業務邏輯。

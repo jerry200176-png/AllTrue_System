@@ -4,13 +4,14 @@ import AtPageHeader from '../AtPageHeader.vue';
 import AtBadge from '../AtBadge.vue';
 import AtInlineAlert from '../AtInlineAlert.vue';
 import AtSkeleton from '../AtSkeleton.vue';
+import AtIconButton from '../AtIconButton.vue';
 import AtButton from '../AtButton.vue';
 import AtFilterBar from '../AtFilterBar.vue';
 import AtToolbar from '../AtToolbar.vue';
 import AtSection from '../AtSection.vue';
 import AtEmpty from '../AtEmpty.vue';
 
-describe('At foundation primitives (inbox pilot-used)', () => {
+describe('At foundation primitives (pilot-used)', () => {
   it('AtPageHeader renders title, description, meta and actions', () => {
     const wrapper = mount(AtPageHeader, {
       props: { title: '主任收件匣', description: '說明', icon: 'inbox' },
@@ -47,6 +48,12 @@ describe('At foundation primitives (inbox pilot-used)', () => {
     expect(wrapper.attributes('aria-busy')).toBe('true');
     expect(wrapper.text()).toContain('載入中');
     expect(wrapper.findAll('.at-skeleton__row')).toHaveLength(2);
+  });
+
+  it('AtIconButton requires accessible name', () => {
+    const wrapper = mount(AtIconButton, { props: { icon: 'edit', label: '編輯' } });
+    expect(wrapper.attributes('aria-label')).toBe('編輯');
+    expect(wrapper.attributes('title')).toBe('編輯');
   });
 
   it('AtButton supports rect shape and loading disabled state', async () => {

@@ -72,15 +72,16 @@ Existing + foundation set under `frontend/src/components/design-system/`:
 | `AtSection` | Quiet content region — **pilot** |
 | `AtToolbar` | Action row — **pilot** |
 | `AtFilterBar` | Search/filter grid — **pilot** |
-| `AtButton` | `shape=pill` legacy default / `shape=rect` ops; loading — **inbox pilot** |
-| `AtBadge` | Status with text + tone (+ dot) — **inbox pilot** |
-| `AtEmpty` | Compact empty state — **inbox pilot** |
+| `AtButton` | `shape=pill` legacy default / `shape=rect` ops; loading — **pilot** |
+| `AtIconButton` | Accessible icon-only control — **students pilot** |
+| `AtBadge` | Status with text + tone (+ dot) — **pilot** |
+| `AtEmpty` | Compact empty state — **pilot** |
 | `AtInlineAlert` | Inline error/warning/info — **inbox pilot** |
 | `AtSkeleton` | Loading placeholder — **inbox pilot** |
 | `AtField` / `AtInput` / `AtSelect` / `AtTextarea` | Forms (existing) |
 | `AtCard` / `AtMetric` | Existing; avoid card-wrapping every block on ops pages |
 
-**Deferred（no unused abstraction in this PR）：** `AtIconButton` (students stacked PR), `AtModal`, `AtDataTableShell` — add only when a real page adopts them.
+**Deferred（no unused abstraction）：** `AtModal`, `AtDataTableShell` — add only when a real page adopts them.
 
 **AtButton shape policy：** legacy default remains `pill`; ops foundation pages must pass `shape="rect"` explicitly; do not flip the global default.
 
@@ -109,14 +110,16 @@ Existing + foundation set under `frontend/src/components/design-system/`:
 
 ## 9. Migration strategy
 
-1. **Tokens first** (this PR).
-2. **Pilot A**: 主任收件匣 (`NotificationsCenter.vue`) — this PR.
-3. **Pilot B** (stacked): 學生列表 (`StudentsList.vue`) + audit/migration sequencing docs.
-4. Next waves (structure only, no business logic changes): TeachersList → CourseManagement chrome → Billing/Tuition tables → Attendance.
-5. Keep `AtButton shape="pill"` default for backward compatibility; new ops surfaces use `shape="rect"`.
-6. Do **not** install `@gitlab/ui` / Carbon packages for full-app swap (bundle + Vue API mismatch risk).
+1. **Tokens first** (PR A).
+2. **Pilot A**: 主任收件匣 (`NotificationsCenter.vue`) — merged/stacked base.
+3. **Pilot B** (this PR): 學生列表 (`StudentsList.vue`) + audit (`UI_AUDIT_2026-07-26.md`).
+4. **Wave 1** (structure only): TeachersList → CourseManagement chrome (filters/toolbar/header only).
+5. **Wave 2**: Billing/Tuition table density + filter placement (Carbon table anatomy; no charge logic).
+6. **Wave 3**: Attendance list chrome; leave SmartCalendar visual alone (G-007).
+7. Keep `AtButton shape="pill"` default; new ops surfaces use `shape="rect"`.
+8. Do **not** install `@gitlab/ui` / Carbon packages for full-app swap.
 
-Rollback: revert the feature branch / PR; tokens and primitives are additive and page-scoped.
+Rollback: revert the stacked PR; page-scoped + additive primitives. See audit table for severity ordering.
 
 ## 10. Source / license register
 
