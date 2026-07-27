@@ -3,7 +3,7 @@
 > **Status:** Proposed（Founder-approved direction 2026-07-27；effective after merge to `main`）.  
 > **Date:** 2026-07-27  
 > **Scope:** 排課／代課／調課／恢復正班／合約老師變更的 **write boundary** 與多入口治理。  
-> **Related:** `ADR_004_atomic_reschedule_boundary.md`（調課原子交易）、`docs/AI_REGRESSION_LESSONS.md` §R73／§R74／§R83、incident `docs/incidents/2026-07-27-xindian-youliangjun-coco-transfer.md`（若已合入）。
+> **Related:** `ADR_004_atomic_reschedule_boundary.md`（調課原子交易）、`docs/AI_REGRESSION_LESSONS.md` §R73／§R74。
 
 ## Context
 
