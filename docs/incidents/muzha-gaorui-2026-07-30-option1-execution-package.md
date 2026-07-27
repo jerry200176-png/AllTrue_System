@@ -338,9 +338,7 @@ try {
 '
 ```
 
-> 註：腳本內 `Schema::hasTable("Subject")` 若 tinker 未 import，改為 `\Illuminate\Support\Facades\Schema::hasTable(...)`。下面「精簡修正版」已用完整 facade。
-
-若上面因 `Schema` 未 import 失敗，用此替代開頭 import 區塊並把兩處 `Schema::` 改成 `\Illuminate\Support\Facades\Schema::`（建議直接用完整名）。
+> 註：科目 ID 優先從 `BaseData`（Name=課程）解析「數學／Math」；若空再試 `Subject` model。老師以 `User.Name` 對應 `StudentClass.TeacherID`（G-001）。
 
 ---
 
