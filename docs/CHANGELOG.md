@@ -1,7 +1,8 @@
 ## 2026-07-27 — fix(ux): 共用方案堂次區狀態語意與預排 chip 分流
 
 - 共用方案「排程列數與購買堂數不一致」改為中性「目前只排定部分堂次」；請假待補／真超排仍分級警告。
-- 堂數制預排 chip 不再呼叫 `ensure-projected`（避免 422）；改開可行動 dialog → 補排預填。
+- 共用方案成員課程不顯示方案池剩餘堂數；在 package-level scheduled allocation aggregate 建立前，不推導成員課程尚可排或未排 N 堂。
+- 堂數制預排 chip 不再呼叫 `ensure-projected`（避免 422）；改開可行動 dialog → 補排預填。物化 capability 嚴格限 `ScheduleMode=date`。
 - 堂次 cache miss 改 actionable dialog（再試一次），不再只靠原生 alert。不動扣堂／方案池 SSOT。
 
 ## 2026-07-27 — docs(adr): ADR-005 排課多入口 × 具名 command 邊界

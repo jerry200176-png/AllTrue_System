@@ -1,7 +1,8 @@
 /**
  * Course-management session planning status (F4 UX).
  * Separates package pool entitlement from per-course schedule rows.
- * Does NOT compute package "還可排 N" without allocation aggregate.
+ * Without package-level scheduled allocation aggregate: never surface
+ * package_remaining / pool leftover as member-course scheduling capacity.
  */
 
 export function isSessionModeCourse(course) {
@@ -14,17 +15,15 @@ export function getCoursePurchasedSessions(course) {
   return Math.max(0, Number(course?.sessions_purchased ?? course?.SessionCount ?? 0) || 0);
 }
 
-/** Mirrors ClassSessionController::ensureProjected (ScheduleMode=date only). */
+/**
+ * Strict mirror of ClassSessionController::ensureProjected:
+ * only ScheduleMode=date. Missing/unknown mode → false (no monthly fallback).
+ */
 export function canMaterializeProjectedSession(course) {
   if (!course) return false;
   if (Number(course?.Stop ?? course?.stop ?? 0) === 1) return false;
   const mode = String(course?.ScheduleMode ?? course?.schedule_mode ?? '').trim().toLowerCase();
-  if (mode === 'count') return false;
-  if (mode === 'date') return true;
-  const pay = String(course?.payment_type || '').trim().toLowerCase();
-  if (pay === 'monthly') return true;
-  if (pay === 'session') return false;
-  return false;
+  return mode === 'date';
 }
 
 export function buildSessionPlanningStatus({
@@ -65,7 +64,7 @@ export function buildSessionPlanningStatus({
       severity: 'info',
       title: '此科尚未排入堂次',
       message: isPackage
-        ? `方案池仍有 ${poolRemaining} 堂未使用。新增排課後，日期會顯示在這裡。`
+        ? '這是共用方案中的成員課程；新增排課後，日期會顯示在這裡。'
         : `購買 ${purchased} 堂；新增排課後，日期會顯示在這裡。`,
       action: 'quick_add',
       counts,
@@ -106,7 +105,7 @@ export function buildSessionPlanningStatus({
       code: 'package_partially_scheduled',
       severity: 'info',
       title: '目前只排定部分堂次',
-      message: `方案尚有 ${poolRemaining} 堂未使用；未排滿不代表資料異常。`,
+      message: '共用方案由多個成員課程共同使用堂數；此處只顯示本課程已排定的堂次，未排滿不代表資料異常。',
       action: 'quick_add',
       counts,
     };
