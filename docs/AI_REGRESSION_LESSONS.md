@@ -1025,10 +1025,9 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 ### R83. 恢復正班老師必須走 RestoreContractTeacher（ADR-005，2026-07-27）
 
-- **觸發**：行事曆週卡把 effective（代課）寫進 `teacher_id` 後，若把該值當 `original_teacher_id`，「回正班老師」按鈕消失；課程管理因分開傳 contract／current 仍可用。
-- **強制**：`POST .../restore-contract-teacher`；目標只讀 `StudentClass.TeacherID`；禁止 request 帶 teacher identity；Calendar／CM 共用 `schedulingCommands.restoreContractTeacher`；legacy `/substitute` 傳正班 id **不可**再當 restore。
-- **UI**：Calendar open 路徑必須分 `original_*`（合約）與 `current_*`（effective）；picker emit `restore` 而非帶 `substitute_teacher_id` 的 `submit`。
-- **測試**：`RestoreContractTeacherTest`；`useCalendarSubstitute.test.js`；`schedulingCommands.test.js`；`restoreContractTeacher.conformance.test.js`。
+- **強制**：新前端只打 `POST .../restore-contract-teacher`；目標只讀 `StudentClass.TeacherID`；禁止 teacher identity。Calendar／CM 共用 `schedulingCommands.restoreContractTeacher`；picker emit `restore`。
+- **Temporary shim**：舊客戶端 `/substitute` 傳正班 id 時委派同一 `executeRestoreContractTeacher`（`deprecated_entrypoint`）；新前端禁止 fallback。移除 shim 另開 PR。
+- **測試**：`RestoreContractTeacherTest`；calendar contract/effective；schedulingCommands／conformance。
 
 ---
 

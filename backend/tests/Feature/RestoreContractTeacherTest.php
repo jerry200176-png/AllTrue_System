@@ -13,115 +13,101 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
-/** ADR-005 RestoreContractTeacher named command boundary. */
+/** ADR-005 RestoreContractTeacher + temporary legacy shim. */
 class RestoreContractTeacherTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_restore_happy_path_and_rejects_teacher_identity(): void
+    public function test_named_rejects_teacher_identity_and_restores_from_contract(): void
     {
-        [$dirToken, $regularId, $subId, $session, $lr] = $this->seedScenario();
-
-        $this->auth($dirToken)->postJson("/api/v1/class-sessions/{$session->id}/substitute", [
-            'substitute_teacher_id' => $subId,
+        [$tok, $reg, $sub, $session, $lr] = $this->seedScenario();
+        $this->auth($tok)->postJson("/api/v1/class-sessions/{$session->id}/substitute", [
+            'substitute_teacher_id' => $sub,
         ])->assertOk();
 
-        $this->auth($dirToken)->postJson(
-            "/api/v1/class-sessions/{$session->id}/restore-contract-teacher",
-            ['substitute_teacher_id' => 99999]
-        )->assertStatus(422)->assertJsonFragment(['code' => 'teacher_identity_not_accepted']);
+        $this->auth($tok)->postJson("/api/v1/class-sessions/{$session->id}/restore-contract-teacher", [
+            'substitute_teacher_id' => 99999,
+        ])->assertStatus(422)->assertJsonFragment(['code' => 'teacher_identity_not_accepted']);
 
-        $this->auth($dirToken)->postJson(
-            "/api/v1/class-sessions/{$session->id}/restore-contract-teacher",
-            ['reason' => '回復正班老師']
-        )->assertOk()->assertJsonFragment([
-            'restored_teacher_id' => $regularId,
+        $this->auth($tok)->postJson("/api/v1/class-sessions/{$session->id}/restore-contract-teacher", [
+            'reason' => '回復正班老師',
+        ])->assertOk()->assertJsonFragment([
+            'restored_teacher_id' => $reg,
             'substitute_cleared' => true,
             'code' => 'restore_contract_teacher',
-        ]);
+        ])->assertJsonMissing(['deprecated_entrypoint' => true]);
 
         $this->assertDatabaseMissing('schedules', [
             'student_course_id' => $session->StudentClassID,
             'schedule_date' => '2026-04-19',
             'status' => 'scheduled',
-            'teacher_id' => $subId,
+            'teacher_id' => $sub,
         ]);
         $lr->refresh();
-        $this->assertSame($regularId, (int) $lr->TeacherID);
-
+        $this->assertSame($reg, (int) $lr->TeacherID);
         if (Schema::hasTable('learning_record_teacher_changes')) {
             $this->assertDatabaseHas('learning_record_teacher_changes', [
                 'learning_record_id' => $lr->id,
-                'old_teacher_id' => $subId,
-                'new_teacher_id' => $regularId,
+                'old_teacher_id' => $sub,
+                'new_teacher_id' => $reg,
             ]);
         }
     }
 
-    public function test_not_found_missing_contract_forbidden_and_legacy_unreachable(): void
+    public function test_legacy_shim_uses_db_contract_teacher_and_shares_semantics(): void
     {
-        [$dirToken, $regularId, $subId, $session] = $this->seedScenario();
-        $this->auth($dirToken)->postJson("/api/v1/class-sessions/{$session->id}/substitute", [
-            'substitute_teacher_id' => $subId,
-        ])->assertOk();
-
-        $this->auth($dirToken)->postJson('/api/v1/class-sessions/999999/restore-contract-teacher', [])
-            ->assertStatus(404)->assertJsonFragment(['code' => 'session_not_found']);
-
-        StudentClass::where('ID', $session->StudentClassID)->update(['TeacherID' => 0]);
-        $this->auth($dirToken)->postJson("/api/v1/class-sessions/{$session->id}/restore-contract-teacher", [])
-            ->assertStatus(422)->assertJsonFragment(['code' => 'contract_teacher_missing']);
-        StudentClass::where('ID', $session->StudentClassID)->update(['TeacherID' => $regularId]);
-
-        $teacherToken = $this->tokenFor($regularId);
-        $this->auth($teacherToken)->postJson("/api/v1/class-sessions/{$session->id}/restore-contract-teacher", [])
-            ->assertStatus(403);
-
-        $other = User::create([
-            'LoginName' => 'dir-x@example.com', 'Name' => '他校', 'PSW' => 'x',
-            'type' => 'A', 'phone' => '0911222333', 'MustChangePassword' => false,
-        ]);
-        UserCampus::create(['CampusID' => 99, 'UserID' => $other->id, 'Admin' => 1, 'Approved' => 1]);
-        $otherTok = $this->tokenFor($other->id);
-        $this->auth($otherTok)->postJson("/api/v1/class-sessions/{$session->id}/restore-contract-teacher", [])
-            ->assertStatus(403);
-
-        $this->auth($dirToken)->postJson("/api/v1/class-sessions/{$session->id}/substitute", [
-            'substitute_teacher_id' => $regularId,
-        ])->assertStatus(422)->assertJsonFragment(['code' => 'use_restore_contract_teacher']);
-
-        $this->assertDatabaseHas('schedules', [
-            'student_course_id' => $session->StudentClassID,
-            'schedule_date' => '2026-04-19',
-            'status' => 'scheduled',
-            'teacher_id' => $subId,
-        ]);
-    }
-
-    public function test_uses_current_contract_teacher_after_contract_change(): void
-    {
-        [$dirToken, $oldId, $subId, $session, $lr, $campusId] = $this->seedScenario(true);
-        $this->auth($dirToken)->postJson("/api/v1/class-sessions/{$session->id}/substitute", [
-            'substitute_teacher_id' => $subId,
+        [$tok, $old, $sub, $session, $lr, $campusId] = $this->seedScenario(true);
+        $this->auth($tok)->postJson("/api/v1/class-sessions/{$session->id}/substitute", [
+            'substitute_teacher_id' => $sub,
         ])->assertOk();
 
         $new = User::create([
-            'LoginName' => 'coco-rct@example.com', 'Name' => 'Coco', 'PSW' => 'x',
-            'type' => 'T', 'phone' => '0900000999', 'MustChangePassword' => false,
+            'LoginName' => 'coco-shim@example.com', 'Name' => 'Coco', 'PSW' => 'x',
+            'type' => 'T', 'phone' => '0900000888', 'MustChangePassword' => false,
         ]);
         UserCampus::create(['CampusID' => $campusId, 'UserID' => $new->id, 'Admin' => 0, 'Approved' => 1]);
         StudentClass::where('ID', $session->StudentClassID)->update(['TeacherID' => $new->id]);
 
-        \App\Models\Schedule::where('student_course_id', $session->StudentClassID)
-            ->whereDate('schedule_date', '2026-04-19')
-            ->where('status', 'scheduled')
-            ->whereNotNull('original_schedule_id')
-            ->update(['teacher_id' => $oldId]);
+        $legacy = $this->auth($tok)->postJson("/api/v1/class-sessions/{$session->id}/substitute", [
+            'substitute_teacher_id' => (int) $new->id,
+            'reason' => 'legacy restore',
+        ])->assertOk()->assertJsonFragment([
+            'restored_teacher_id' => (int) $new->id,
+            'code' => 'restore_contract_teacher',
+            'deprecated_entrypoint' => true,
+            'replacement_command' => 'restore_contract_teacher',
+        ])->json();
 
-        $this->auth($dirToken)->postJson("/api/v1/class-sessions/{$session->id}/restore-contract-teacher", [])
-            ->assertOk()->assertJsonFragment(['restored_teacher_id' => (int) $new->id, 'substitute_cleared' => true]);
         $lr->refresh();
         $this->assertSame((int) $new->id, (int) $lr->TeacherID);
+        $this->assertNotSame($old, (int) $lr->TeacherID);
+
+        // Re-substitute then named restore — same mutation envelope (sans deprecated).
+        $this->auth($tok)->postJson("/api/v1/class-sessions/{$session->id}/substitute", [
+            'substitute_teacher_id' => $sub,
+        ])->assertOk();
+        $named = $this->auth($tok)->postJson(
+            "/api/v1/class-sessions/{$session->id}/restore-contract-teacher",
+            ['reason' => 'named']
+        )->assertOk()->json();
+        $this->assertSame($named['restored_teacher_id'], $legacy['restored_teacher_id']);
+        $this->assertSame($named['code'], $legacy['code']);
+        $this->assertArrayNotHasKey('deprecated_entrypoint', $named);
+    }
+
+    public function test_forbidden_and_assign_substitute_unaffected(): void
+    {
+        [$tok, $reg, $sub, $session] = $this->seedScenario();
+        $this->auth($tok)->postJson("/api/v1/class-sessions/{$session->id}/substitute", [
+            'substitute_teacher_id' => $sub, 'reason' => '請假',
+        ])->assertOk()->assertJsonFragment(['substitute_teacher_id' => $sub]);
+
+        $this->auth($this->tokenFor($reg))
+            ->postJson("/api/v1/class-sessions/{$session->id}/restore-contract-teacher", [])
+            ->assertStatus(403);
+
+        $this->auth($tok)->postJson('/api/v1/class-sessions/999999/restore-contract-teacher', [])
+            ->assertStatus(404)->assertJsonFragment(['code' => 'session_not_found']);
     }
 
     private function auth(string $token)
@@ -149,7 +135,6 @@ class RestoreContractTeacherTest extends TestCase
         ]);
         UserCampus::create(['CampusID' => $campusId, 'UserID' => $director->id, 'Admin' => 1, 'Approved' => 1]);
         $dirToken = $this->tokenFor($director->id);
-
         $regular = User::create([
             'LoginName' => 'reg-rct-' . bin2hex(random_bytes(3)) . '@example.com',
             'Name' => '正班老師', 'PSW' => 'x', 'type' => 'T',
@@ -162,7 +147,6 @@ class RestoreContractTeacherTest extends TestCase
             'phone' => '0900' . random_int(100000, 999999), 'MustChangePassword' => false,
         ]);
         UserCampus::create(['CampusID' => $campusId, 'UserID' => $sub->id, 'Admin' => 0, 'Approved' => 1]);
-
         $student = Student::create([
             'name' => '恢復正班測試生', 'CampusID' => $campusId, 'ClassID' => 1,
             'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
@@ -184,7 +168,6 @@ class RestoreContractTeacherTest extends TestCase
             'TeacherID' => $regular->id, 'Status' => 'pending', 'Content' => '',
             'SessionDate' => '2026-04-19', 'StartTime' => '13:00', 'EndTime' => '15:00',
         ]);
-
         $out = [$dirToken, (int) $regular->id, (int) $sub->id, $session, $lr];
         if ($withCampus) {
             $out[] = $campusId;

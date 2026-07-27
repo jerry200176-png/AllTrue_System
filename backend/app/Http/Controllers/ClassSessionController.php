@@ -1984,13 +1984,14 @@ class ClassSessionController extends Controller
             }
         }
 
-        // ADR-005: restore must use RestoreContractTeacher named endpoint.
-        // Passing contract TeacherID via /substitute is no longer a restore path.
+        // Temporary legacy shim: /substitute with contract TeacherID → RestoreContractTeacher.
+        // Client teacher id is never the restore target (re-read StudentClass.TeacherID).
         if ($newTeacherId === $oldTeacherId) {
-            return response()->json([
-                'message' => '恢復正班老師請使用 POST /api/v1/class-sessions/{id}/restore-contract-teacher',
-                'code' => 'use_restore_contract_teacher',
-            ], 422);
+            return $this->executeRestoreContractTeacher(
+                $request, $session, $studentClass,
+                ['reason' => $data['reason'] ?? '回復正班老師'],
+                true
+            );
         }
 
         // PRD FR-003：候選池為 operator 管理分校的聯集（managed_campus_ids）。
@@ -2648,7 +2649,25 @@ class ClassSessionController extends Controller
             return response()->json(['message' => 'Forbidden', 'code' => 'forbidden_campus'], 403);
         }
 
-        $contractTeacherId = (int) ($studentClass->TeacherID ?? 0);
+        return $this->executeRestoreContractTeacher($request, $session, $studentClass, $data, false);
+    }
+
+    /**
+     * Single authoritative RestoreContractTeacher executor (named + legacy shim).
+     * Always re-reads StudentClass.TeacherID; never trusts client teacher identity.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function executeRestoreContractTeacher(
+        Request $request,
+        ClassSession $session,
+        StudentClass $studentClass,
+        array $data,
+        bool $legacyEntrypoint
+    ) {
+        // Authoritative contract teacher from current DB row (ignore request teacher ids).
+        $freshCourse = StudentClass::query()->whereKey($studentClass->ID)->first() ?: $studentClass;
+        $contractTeacherId = (int) ($freshCourse->TeacherID ?? 0);
         if ($contractTeacherId <= 0) {
             return response()->json(['message' => '課程未設定正班老師，無法恢復', 'code' => 'contract_teacher_missing'], 422);
         }
@@ -2663,10 +2682,21 @@ class ClassSessionController extends Controller
             return response()->json(['message' => '堂次起迄時間不完整，無法恢復正班老師', 'code' => 'invalid_session_time'], 422);
         }
 
+        if ($legacyEntrypoint) {
+            $authUser = $request->attributes->get('auth_user');
+            Log::warning('[restore_contract_teacher_legacy_shim]', [
+                'class_session_id' => (int) $session->id,
+                'student_class_id' => (int) $freshCourse->ID,
+                'operator_id' => (int) ($authUser->id ?? 0) ?: null,
+                'legacy_endpoint' => 'POST /api/v1/class-sessions/{id}/substitute',
+                'replacement_command' => 'restore_contract_teacher',
+            ]);
+        }
+
         $response = $this->restoreOriginalTeacherFromSubstitute(
             $request,
             $session,
-            $studentClass,
+            $freshCourse,
             null,
             null,
             $sessionDate,
@@ -2675,7 +2705,6 @@ class ClassSessionController extends Controller
             $data
         );
 
-        // Stabilize named-command envelope without changing mutation semantics.
         if ($response->getStatusCode() === 200) {
             $payload = $response->getData(true);
             if (is_array($payload)) {
@@ -2684,6 +2713,10 @@ class ClassSessionController extends Controller
                 if (!isset($payload['restored_teacher_name'])) {
                     $name = TeacherProfileDirectory::nameFor($contractTeacherId, '');
                     $payload['restored_teacher_name'] = $this->scrubSubstituteUtf8($name) ?: '未指派';
+                }
+                if ($legacyEntrypoint) {
+                    $payload['deprecated_entrypoint'] = true;
+                    $payload['replacement_command'] = 'restore_contract_teacher';
                 }
                 $response->setData($payload);
             }
