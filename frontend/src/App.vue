@@ -334,6 +334,7 @@
       />
       <ParentPortal v-if="!isPasswordChangeLocked && active === 'parent'" />
       <LineIntegration v-if="!isPasswordChangeLocked && isDirector && active === 'line-integration'" :branch-id="currentBranch" />
+      <BindingManagement v-if="!isPasswordChangeLocked && isDirector && active === 'binding-mgmt'" :branch-id="currentBranch" :branches="branches" />
       <DirectorAccountsPage v-if="!isPasswordChangeLocked && role === 'super_admin' && active === 'director-accounts'" :token="session?.access_token ?? ''" />
       <BranchManagementPage v-if="!isPasswordChangeLocked && role === 'super_admin' && active === 'branch-management'" :token="session?.access_token ?? ''" />
       <NightlyReconcilePanel v-if="!isPasswordChangeLocked && role === 'super_admin' && active === 'nightly-reconcile'" :token="session?.access_token ?? ''" />
@@ -475,6 +476,7 @@ const ScheduleDiscrepancyPage = defineAsyncComponent(() => import('./pages/Sched
 const ReleaseNotesPage      = defineAsyncComponent(() => import('./pages/ReleaseNotesPage.vue'));
 const NightlyReconcilePanel  = defineAsyncComponent(() => import('./pages/NightlyReconcilePanel.vue'));
 const DuplicateSessionReviewPage = defineAsyncComponent(() => import('./pages/DuplicateSessionReviewPage.vue'));
+const BindingManagement = defineAsyncComponent(() => import('./pages/BindingManagement.vue'));
 import AmbientMusicPlayer from './components/AmbientMusicPlayer.vue';
 import BugReportLauncher from './components/BugReportLauncher.vue';
 import PinLockModal from './components/PinLockModal.vue';
@@ -1255,6 +1257,7 @@ const sidebarNavGroups = computed(() => {
   if (isDirector.value) {
     const systemItems = [
       { page: 'line-integration', label: '家長 LINE 通知', icon: 'chat' },
+      { page: 'binding-mgmt', label: 'LINE 綁定管理', icon: 'link' },
     ];
     if (role.value === 'super_admin') {
       systemItems.push({
