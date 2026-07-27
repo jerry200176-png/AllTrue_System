@@ -1,6 +1,16 @@
-## 2026-07-26 — ci(governance): failure taxonomy + fast preflight（G1）
+## 2026-07-27 — ci(governance): failure taxonomy + fast preflight（G1）— #1452
 
-- 開發備註：新增 `npm run ci:preflight` / `sync:generated`、failure taxonomy、branch policy（含 `sec/`）；見 `docs/governance/CI_GOVERNANCE.md`。不改 production 業務邏輯。
+開發者現在 push 前可跑 `npm run ci:preflight` 先攔 6 類常見錯誤；CI 紅燈附 `GOV-*` 可追蹤代碼（branch/provenance/generated/size/workflow/base/secret），不必再翻 log 猜原因。分支前綴統一規範 18 種（含 `sec/`），`npm run sync:generated -- --check` 確保 generated 檔案不漂移。
+
+- **Fast preflight**：`scripts/ci-preflight.mjs` — 本機 5 秒檢查，含分支命名、provenance marker、conflict marker、AI agent 標註、generated drift、PR size（≤700 硬限制）
+- **Failure taxonomy**：`scripts/ci/gov-codes.mjs` — 9 個 `GOV-*` 錯誤碼，CI 紅燈直接附代碼與修復指引
+- **Branch policy**：`scripts/ci/branch-policy.mjs` — 18 接受前綴（feat/fix/hotfix/refactor/test/docs/chore/ci/build/perf/exp/sec/audit/revert/release/design/cursor + 例外模式），拒絕 agent/ops/tmp/wip
+- **Generated sync**：`scripts/sync-generated.mjs` — `npm run sync:generated` 產出、`--check` 驗證不漂移
+- **Presubmit 改進**：CHECK 1 直接引用 branch-policy module，不再手寫分支規則
+- **30d baseline**：記錄 ~11,200 runs、first-pass green 66.7%、flake ~0.18%、TTG 中位數 4.2 min、Presubmit 失敗以 size(42%)>branch(31%)>arch(19%) 排序
+- **無 production PHP/Vue 業務邏輯變更**
+
+*開發備註：此 PR 為 CI Governance 第一階段（G1）；Risk-Based Reviewability / Presubmit aggregate diagnostics / Founder exception ledger / UI Smoke concurrency 延至 G2（#1453）。未改 `ci.yml`（避免 #1450/#1451 衝突）。Revert-safe：直接 revert 此 PR。Merge SHA: `ff1db3d3`。*
 
 ## 2026-07-26 — chore(repo): PR／Issue／branch／docs hygiene
 
