@@ -2666,7 +2666,8 @@ class ClassSessionController extends Controller
         bool $legacyEntrypoint
     ) {
         // Authoritative contract teacher from current DB row (ignore request teacher ids).
-        $freshCourse = StudentClass::query()->whereKey($studentClass->ID)->first() ?: $studentClass;
+        $courseId = (int) $session->StudentClassID;
+        $freshCourse = StudentClass::query()->whereKey($courseId)->first() ?: $studentClass;
         $contractTeacherId = (int) ($freshCourse->TeacherID ?? 0);
         if ($contractTeacherId <= 0) {
             return response()->json(['message' => '課程未設定正班老師，無法恢復', 'code' => 'contract_teacher_missing'], 422);
@@ -2686,7 +2687,7 @@ class ClassSessionController extends Controller
             $authUser = $request->attributes->get('auth_user');
             Log::warning('[restore_contract_teacher_legacy_shim]', [
                 'class_session_id' => (int) $session->id,
-                'student_class_id' => (int) $freshCourse->ID,
+                'student_class_id' => $courseId,
                 'operator_id' => (int) ($authUser->id ?? 0) ?: null,
                 'legacy_endpoint' => 'POST /api/v1/class-sessions/{id}/substitute',
                 'replacement_command' => 'restore_contract_teacher',
