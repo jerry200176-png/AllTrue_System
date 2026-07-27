@@ -1,14 +1,8 @@
-/**
- * schedulingCommands — typed named domain commands for scheduling writes (ADR-005).
- *
- * Surfaces (SmartCalendar / CourseManagement) must call these helpers instead of
- * assembling restore payloads with teacher ids.
- */
+/** Typed scheduling write commands (ADR-005). */
 
 function token() {
   try {
-    const s = JSON.parse(localStorage.getItem('alltrue_session') || '{}');
-    return s?.access_token || '';
+    return JSON.parse(localStorage.getItem('alltrue_session') || '{}')?.access_token || '';
   } catch (e) {
     return '';
   }
@@ -20,10 +14,7 @@ async function call(method, path, payload) {
   const opts = {
     method,
     credentials: 'include',
-    headers: {
-      Accept: 'application/json',
-      Authorization: `Bearer ${t}`,
-    },
+    headers: { Accept: 'application/json', Authorization: `Bearer ${t}` },
   };
   if (payload !== undefined && payload !== null) {
     opts.headers['Content-Type'] = 'application/json';
@@ -41,13 +32,7 @@ async function call(method, path, payload) {
   return json;
 }
 
-/**
- * RestoreContractTeacher — session_id only; optional reason.
- * Must not send teacher_id / contract_teacher_id / effective_teacher_id.
- *
- * @param {number|string} sessionId
- * @param {{ reason?: string|null }} [options]
- */
+/** RestoreContractTeacher — session id only; optional reason. No teacher identity. */
 export function restoreContractTeacher(sessionId, options = {}) {
   const body = {};
   if (options.reason != null && String(options.reason).trim() !== '') {
@@ -60,8 +45,5 @@ export function restoreContractTeacher(sessionId, options = {}) {
   );
 }
 
-export const schedulingCommands = {
-  restoreContractTeacher,
-};
-
+export const schedulingCommands = { restoreContractTeacher };
 export default schedulingCommands;

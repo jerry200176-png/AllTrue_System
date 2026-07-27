@@ -4,7 +4,7 @@
 > **Date:** 2026-07-27  
 > **Scope:** 排課／代課／調課／恢復正班／合約老師變更的 **write boundary** 與多入口治理。  
 > **Related:** `ADR_004_atomic_reschedule_boundary.md`（調課原子交易）、`docs/AI_REGRESSION_LESSONS.md` §R73／§R74／§R83。  
-> **Implementation:** `RestoreContractTeacher` — `RestoreContractTeacherService` + `POST /api/v1/class-sessions/{id}/restore-contract-teacher` + `frontend/src/lib/schedulingCommands.js`（首 slice）。
+> **Implementation:** `RestoreContractTeacher` — `ClassSessionController::restoreContractTeacher` + `POST /api/v1/class-sessions/{id}/restore-contract-teacher` + `frontend/src/lib/schedulingCommands.js`（首 slice）。
 
 ## Context
 

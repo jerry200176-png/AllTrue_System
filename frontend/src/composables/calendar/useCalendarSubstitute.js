@@ -30,11 +30,7 @@ export function useCalendarSubstitute({
     return t?.name || t?.username || '—';
   };
 
-  /**
-   * Calendar week cards overlay effective (substitute) teacher onto teacher_id.
-   * Contract teacher must come from the base StudentClass course — same split as
-   * CourseManagement openSubstituteV2FromEdit (current vs original).
-   */
+  /** Contract teacher from base StudentClass; week cards may show effective substitute. */
   const resolveContractTeacher = (course) => {
     const baseId = course?.is_exception ? course.student_course_id : course?.id;
     const list = courses?.value ?? courses ?? [];
@@ -95,7 +91,7 @@ export function useCalendarSubstitute({
         session_date: dateStr,
         start_time: (course.start_time || '').toString().slice(0, 5),
         end_time: (course.end_time || '').toString().slice(0, 5),
-        // Contract vs effective — mirrors CourseManagement (游喨鈞→Coco calendar bug)
+        // Contract vs effective (CM parity)
         original_teacher_id: contractId || null,
         original_teacher_name: contractName || teacherDisplayName(contractId),
         current_teacher_id: effectiveId,
@@ -313,7 +309,7 @@ export function useCalendarSubstitute({
     }
   };
 
-  /** ADR-005 RestoreContractTeacher — no teacher_id in payload. */
+  /** ADR-005 RestoreContractTeacher. */
   const onRestoreContractTeacher = async (payload = {}) => {
     if (substituteV2Submitting.value) return;
     const sessionId = substituteV2SessionId.value;
