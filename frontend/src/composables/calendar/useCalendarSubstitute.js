@@ -15,6 +15,8 @@ export function useCalendarSubstitute({
   sessionDatesByCourseId,
   allStudents,
   getSubjectLabel,
+  /** Raw StudentClass-backed courses (contract teacher lives here). */
+  courses,
 }) {
   const getStudentName = (sid) => {
     const s = allStudents.value.find((x) => x.id === sid);
@@ -27,6 +29,24 @@ export function useCalendarSubstitute({
     return t?.name || t?.username || '—';
   };
 
+  /**
+   * Calendar week cards overlay effective (substitute) teacher onto teacher_id.
+   * Contract teacher must come from the base StudentClass course — same split as
+   * CourseManagement openSubstituteV2FromEdit (current vs original).
+   */
+  const resolveContractTeacher = (course) => {
+    const baseId = course?.is_exception ? course.student_course_id : course?.id;
+    const list = courses?.value ?? courses ?? [];
+    const base = Array.isArray(list)
+      ? list.find((c) => String(c?.id) === String(baseId))
+      : null;
+    const contractId = base?.teacher_id ?? course?.contract_teacher_id ?? null;
+    const contractName = base
+      ? (base.teacher_name || teacherDisplayName(contractId))
+      : (course?.contract_teacher_name || teacherDisplayName(contractId));
+    return { baseId, contractId, contractName };
+  };
+
   const showSubstituteModal = ref(false);
   const substituteSubmitting = ref(false);
   const substituteForm = ref({
@@ -37,7 +57,8 @@ export function useCalendarSubstitute({
   });
 
   const openSubstituteFromDrag = (course, dateStr, dropTeacherId, targetSlot = null) => {
-    const baseId = course.is_exception ? course.student_course_id : course.id;
+    const { baseId, contractId, contractName } = resolveContractTeacher(course);
+    const effectiveId = course.teacher_id || null;
     const targetDate = targetSlot?.date || null;
     const targetStart = targetSlot?.startTime || null;
     const targetEnd = targetSlot?.endTime || null;
@@ -47,7 +68,7 @@ export function useCalendarSubstitute({
       session_date: dateStr,
       start_time: course.start_time || '',
       end_time: course.end_time || '',
-      original_teacher_name: teacherDisplayName(course.teacher_id),
+      original_teacher_name: contractName || teacherDisplayName(contractId),
       substitute_teacher_id: dropTeacherId != null && dropTeacherId !== '' ? String(dropTeacherId) : '',
       reason: '行事曆拖曳至代課老師',
       session_id: null,
@@ -73,9 +94,11 @@ export function useCalendarSubstitute({
         session_date: dateStr,
         start_time: (course.start_time || '').toString().slice(0, 5),
         end_time: (course.end_time || '').toString().slice(0, 5),
-        original_teacher_id: course.teacher_id || null,
-        original_teacher_name: teacherDisplayName(course.teacher_id),
-        current_teacher_id: course.teacher_id || null,
+        // Contract vs effective — mirrors CourseManagement (游喨鈞→Coco calendar bug)
+        original_teacher_id: contractId || null,
+        original_teacher_name: contractName || teacherDisplayName(contractId),
+        current_teacher_id: effectiveId,
+        current_teacher_name: course.teacher_name || teacherDisplayName(effectiveId),
         session_campus_id: Number(branchId.value ?? branchId ?? 0) || null,
         prefill_substitute_teacher_id: dropTeacherId || null,
         prefill_new_date: targetDate,
@@ -197,6 +220,11 @@ export function useCalendarSubstitute({
       alert('找不到該堂次 ClassSession，無法設定代課。\n（可能此日期尚未有 ClassSession 紀錄）');
       return;
     }
+    const contractId = modalForm.value.teacher_id;
+    // Occurrence effective teacher (set in onCourseClick); fall back to contract when absent.
+    const effectiveId = modalForm.value.current_teacher_id ?? contractId;
+    const effectiveName = modalForm.value.current_teacher_name
+      || teacherDisplayName(effectiveId);
     substituteV2SessionId.value = sessionId;
     substituteV2Context.value = {
       // in-app #205 / #203: required for availability exclude_student_id
@@ -207,8 +235,10 @@ export function useCalendarSubstitute({
       session_date: exactDate,
       start_time: (modalForm.value.start_time || '').toString().slice(0, 5),
       end_time: (modalForm.value.end_time || '').toString().slice(0, 5),
-      original_teacher_id: modalForm.value.teacher_id,
-      original_teacher_name: teacherDisplayName(modalForm.value.teacher_id),
+      original_teacher_id: contractId,
+      original_teacher_name: teacherDisplayName(contractId),
+      current_teacher_id: effectiveId,
+      current_teacher_name: effectiveName,
       session_campus_id: Number(branchId.value ?? branchId ?? 0) || null,
     };
     showModal.value = false;

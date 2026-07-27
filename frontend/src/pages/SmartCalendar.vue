@@ -892,6 +892,7 @@ const {
   sessionDatesByCourseId,
   allStudents,
   getSubjectLabel,
+  courses,
 });
 
 const {
@@ -1936,6 +1937,9 @@ const onCourseClick = (course, fullDateStr) => {
     student_id: baseCourse.student_id || course.student_id,
     subject: baseCourse.subject || course.subject,
     teacher_id: baseCourse.teacher_id || course.teacher_id || '',
+    // Occurrence effective teacher (may be substitute); contract stays in teacher_id.
+    current_teacher_id: course.teacher_id || baseCourse.teacher_id || '',
+    current_teacher_name: course.teacher_name || baseCourse.teacher_name || '',
     class_type: baseCourse.class_type || course.class_type,
     weeks: baseCourse.weeks || [1, 2, 3, 4, 5],
     day_of_week: course.day_of_week,

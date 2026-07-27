@@ -1,3 +1,9 @@
+## 2026-07-27 — fix(calendar): 行事曆代課「回正班老師」對齊課程管理
+
+Fixed：已代課的堂次在智慧行事曆開啟代課挑選器時，會正確顯示正班老師並出現「回正班老師」；不再把畫面上的代課老師誤標成正班。課程管理原本就正常，行為已對齊。
+
+開發備註：`useCalendarSubstitute` 從 raw `courses` 取合約老師、點堂寫入 `current_teacher_*`（游喨鈞／Coco 新店案例）。回歸：`useCalendarSubstitute.test.js`。
+
 ## 2026-07-26 — design(ui): UI Foundation + 主任收件匣 pilot
 
 - 新增 ops UI Foundation tokens 與 inbox 實際使用的 `At*` primitives；文件見 `docs/design/ALLTRUE_UI_FOUNDATION.md`。
