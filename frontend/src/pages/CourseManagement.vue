@@ -293,36 +293,28 @@
                         <div class="dates-panel">
                           <div class="dates-panel-heading">
                             <strong class="dates-panel-title">上課日期（{{ packageMemberSessionSummary(c, { completed: getCompletedSessionCount(c), cancelled: cancelledSessionCount(c) }).text }}）</strong>
-                            <div
+                            <span
                               v-if="sessionDataLoadFailed || planningStatusVisible(c)"
-                              :class="['session-planning-msg', `session-planning-msg--${sessionDataLoadFailed ? 'danger' : planningStatusFor(c).severity}`]"
                               role="status"
+                              :class="[
+                                'drift-hint',
+                                sessionDataLoadFailed || planningStatusFor(c)?.severity === 'danger' ? 'session-load-error-hint' : null,
+                                !sessionDataLoadFailed && planningStatusFor(c)?.severity === 'info' ? 'drift-hint-info' : null,
+                              ]"
                             >
-                              <div class="session-planning-msg__body">
-                                <strong class="session-planning-msg__title">{{ sessionDataLoadFailed ? '堂次載入失敗' : planningStatusFor(c).title }}</strong>
-                                <span class="session-planning-msg__text">{{ sessionDataLoadFailed ? '目前無法確認這門課的最新堂次狀態，尚未進行任何變更。' : planningStatusFor(c).message }}</span>
-                              </div>
-                              <div class="session-planning-msg__actions">
-                                <button
-                                  v-if="sessionDataLoadFailed"
-                                  type="button"
-                                  class="small primary"
-                                  @click.stop="retryLoadCourseSessions(c)"
-                                >重新載入堂次</button>
-                                <button
-                                  v-else-if="planningStatusFor(c)?.action === 'quick_add' && canQuickAddSession(c)"
-                                  type="button"
-                                  class="small primary"
-                                  @click.stop="openQuickAddSessionModal(c)"
-                                >補排堂次</button>
-                                <button
-                                  v-else-if="planningStatusFor(c)?.action === 'arrange_makeup' && canQuickAddSession(c)"
-                                  type="button"
-                                  class="small primary"
-                                  @click.stop="openQuickAddSessionModal(c)"
-                                >安排補課</button>
-                              </div>
-                            </div>
+                              <strong>{{ sessionDataLoadFailed ? '堂次載入失敗' : planningStatusFor(c).title }}</strong>
+                              — {{ sessionDataLoadFailed ? '目前無法確認最新堂次狀態，尚未變更。' : planningStatusFor(c).message }}
+                              <button
+                                v-if="sessionDataLoadFailed"
+                                type="button" class="small primary" style="margin-left:6px"
+                                @click.stop="retryLoadCourseSessions(c)"
+                              >重新載入</button>
+                              <button
+                                v-else-if="['quick_add','arrange_makeup'].includes(planningStatusFor(c)?.action) && canQuickAddSession(c)"
+                                type="button" class="small primary" style="margin-left:6px"
+                                @click.stop="openQuickAddSessionModal(c)"
+                              >{{ planningStatusFor(c)?.action === 'arrange_makeup' ? '安排補課' : '補排堂次' }}</button>
+                            </span>
                             <button class="notes-toggle-btn" @click.stop="toggleSessionNotes" :title="showSessionNotes ? '隱藏備註' : '顯示備註'">
                               {{ showSessionNotes ? '備註 ▲' : '備註 ▼' }}
                             </button>
@@ -619,50 +611,19 @@
       @do-edit-note-time="doEditNoteTime"
     />
 
-    <!-- Count-mode projected chip: manual quick-add instead of ensure-projected -->
     <div
-      v-if="showProjectedActionDialog"
-      class="modal-overlay"
-      role="dialog"
-      aria-modal="true"
-      :aria-labelledby="'projected-action-title'"
-      @click.self="closeProjectedActionDialog"
-      @keydown.esc.prevent="closeProjectedActionDialog"
+      v-if="chipActionDialog"
+      class="modal-overlay" role="dialog" aria-modal="true"
+      @click.self="closeChipActionDialog" @keydown.esc.prevent="closeChipActionDialog"
     >
       <div class="modal course-modal" style="max-width: 420px;">
-        <h3 id="projected-action-title" class="modal-title">這是預排日期，尚未建立正式堂次</h3>
-        <p class="modal-desc">
-          堂數制不會自動產生可編輯堂次。請確認日期與時段後手動補排。直接推算建立僅適用月結固定時段。
-        </p>
-        <p v-if="projectedActionContext?.dateYmd" class="modal-hint">
-          {{ projectedActionContext.dateYmd }}
-          <template v-if="projectedActionContext.startTime">
-            {{ projectedActionContext.startTime }}<template v-if="projectedActionContext.endTime">–{{ projectedActionContext.endTime }}</template>
-          </template>
-        </p>
+        <h3 class="modal-title">{{ chipActionDialog.title }}</h3>
+        <p class="modal-desc">{{ chipActionDialog.message }}</p>
+        <p v-if="chipActionDialog.meta" class="modal-hint">{{ chipActionDialog.meta }}</p>
         <div class="actions">
-          <button type="button" class="ghost" @click="closeProjectedActionDialog">返回</button>
-          <button type="button" class="primary" @click="confirmProjectedQuickAdd">補排此堂</button>
-        </div>
-      </div>
-    </div>
-
-    <div
-      v-if="showSessionResolveDialog"
-      class="modal-overlay"
-      role="dialog"
-      aria-modal="true"
-      :aria-labelledby="'session-resolve-title'"
-      @click.self="closeSessionResolveDialog"
-      @keydown.esc.prevent="closeSessionResolveDialog"
-    >
-      <div class="modal course-modal" style="max-width: 420px;">
-        <h3 id="session-resolve-title" class="modal-title">{{ sessionResolveContext?.title || '暫時找不到這堂課的最新資料' }}</h3>
-        <p class="modal-desc">{{ sessionResolveContext?.message || '課表可能剛更新。尚未進行任何變更。' }}</p>
-        <div class="actions">
-          <button type="button" class="ghost" @click="closeSessionResolveDialog">關閉</button>
-          <button type="button" class="primary" :disabled="sessionResolveRetrying" @click="retrySessionResolve">
-            {{ sessionResolveRetrying ? '載入中…' : '再試一次' }}
+          <button type="button" class="ghost" @click="closeChipActionDialog">{{ chipActionDialog.secondaryLabel || '關閉' }}</button>
+          <button type="button" class="primary" :disabled="chipActionDialog.busy" @click="confirmChipActionDialog">
+            {{ chipActionDialog.busy ? '載入中…' : (chipActionDialog.primaryLabel || '確定') }}
           </button>
         </div>
       </div>
@@ -2915,10 +2876,7 @@ const {
   startSessionReschedule, fetchMakeupSlotsForEdit, doSessionReschedule,
   startSubstitute, doSubstitute,
   startEditNoteTime, doEditNoteTime,
-  showProjectedActionDialog, projectedActionContext,
-  closeProjectedActionDialog, confirmProjectedQuickAdd,
-  showSessionResolveDialog, sessionResolveContext, sessionResolveRetrying,
-  closeSessionResolveDialog, retrySessionResolve,
+  chipActionDialog, closeChipActionDialog, confirmChipActionDialog,
 } = useSessionEditFlow({
   supabase,
   branchId: computed(() => props.branchId),
@@ -5431,9 +5389,6 @@ button.danger:disabled {
   align-items: baseline;
   gap: 8px 12px;
 }
-.dates-panel-heading .session-planning-msg {
-  flex: 1 1 100%;
-}
 .dates-panel-title {
   font-size: 13px;
   font-weight: 700;
@@ -5457,55 +5412,6 @@ button.danger:disabled {
 .session-load-error-hint {
   color: #991b1b;
   background: #fee2e2;
-}
-.session-planning-msg {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px 12px;
-  width: 100%;
-  margin: 6px 0 4px;
-  padding: 8px 10px;
-  border-radius: 6px;
-  font-size: 12px;
-  line-height: 1.45;
-  font-variant-numeric: tabular-nums;
-}
-.session-planning-msg__body {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  flex: 1;
-}
-.session-planning-msg__title {
-  font-weight: 700;
-  font-size: 12px;
-}
-.session-planning-msg__text {
-  font-weight: 500;
-  opacity: 0.92;
-}
-.session-planning-msg__actions {
-  display: flex;
-  gap: 6px;
-  flex-shrink: 0;
-}
-.session-planning-msg--info {
-  color: var(--ds-ink-secondary);
-  background: var(--ds-info-wash);
-  border: 1px solid var(--ds-hairline);
-}
-.session-planning-msg--warning {
-  color: var(--ds-warning);
-  background: var(--ds-warning-wash);
-  border: 1px solid var(--ds-warning);
-}
-.session-planning-msg--danger {
-  color: var(--ds-danger);
-  background: var(--ds-danger-wash);
-  border: 1px solid var(--ds-danger);
 }
 .dates-chip-grid {
   display: flex;

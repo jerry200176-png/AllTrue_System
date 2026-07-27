@@ -1,8 +1,7 @@
 /**
  * Course-management session planning status (F4 UX).
- *
  * Separates package pool entitlement from per-course schedule rows.
- * Does NOT compute "還可排 N 堂" for packages without package-level allocation.
+ * Does NOT compute package "還可排 N" without allocation aggregate.
  */
 
 export function isSessionModeCourse(course) {
@@ -15,37 +14,19 @@ export function getCoursePurchasedSessions(course) {
   return Math.max(0, Number(course?.sessions_purchased ?? course?.SessionCount ?? 0) || 0);
 }
 
-/**
- * Backend ClassSessionController::ensureProjected only allows ScheduleMode=date
- * (monthly fixed-slot). Mirror that gate so count-mode chips never call the API.
- */
+/** Mirrors ClassSessionController::ensureProjected (ScheduleMode=date only). */
 export function canMaterializeProjectedSession(course) {
   if (!course) return false;
-  const stop = Number(course?.Stop ?? course?.stop ?? 0);
-  if (stop === 1) return false;
-
-  const scheduleMode = String(course?.ScheduleMode ?? course?.schedule_mode ?? '').trim().toLowerCase();
-  if (scheduleMode === 'count') return false;
-  if (scheduleMode === 'date') return true;
-
-  // Fallback when ScheduleMode missing: monthly payment_type implies date-mode.
-  const paymentType = String(course?.payment_type || '').trim().toLowerCase();
-  if (paymentType === 'monthly') return true;
-  if (paymentType === 'session') return false;
-
-  // Legacy: SessionCount>0 without payment_type → treat as count (session) mode.
+  if (Number(course?.Stop ?? course?.stop ?? 0) === 1) return false;
+  const mode = String(course?.ScheduleMode ?? course?.schedule_mode ?? '').trim().toLowerCase();
+  if (mode === 'count') return false;
+  if (mode === 'date') return true;
+  const pay = String(course?.payment_type || '').trim().toLowerCase();
+  if (pay === 'monthly') return true;
+  if (pay === 'session') return false;
   return false;
 }
 
-/**
- * @param {object} input
- * @param {object} input.course
- * @param {number} input.effectiveCount - quota-occupying materialized rows for this course
- * @param {number} input.leaveCount
- * @param {boolean} [input.sessionLoadFailed]
- * @param {boolean} [input.hasAnySessionRows] - any rows including projected/cancelled
- * @returns {null|{code:string,severity:string,title:string,message:string,action:?string,counts:object}}
- */
 export function buildSessionPlanningStatus({
   course,
   effectiveCount = 0,
@@ -63,50 +44,29 @@ export function buildSessionPlanningStatus({
       counts: {},
     };
   }
-
   if (!isSessionModeCourse(course)) return null;
 
   const isPackage = !!course?.PackageID;
-  const poolTotal = isPackage
-    ? Math.max(0, Number(course?.package_total_sessions ?? 0) || 0)
-    : 0;
-  const poolRemaining = isPackage
-    ? Math.max(0, Number(course?.package_remaining_sessions ?? 0) || 0)
-    : 0;
-  const poolUsed = isPackage
-    ? Math.max(0, poolTotal - poolRemaining)
-    : 0;
+  const poolTotal = isPackage ? Math.max(0, Number(course?.package_total_sessions ?? 0) || 0) : 0;
+  const poolRemaining = isPackage ? Math.max(0, Number(course?.package_remaining_sessions ?? 0) || 0) : 0;
+  const poolUsed = isPackage ? Math.max(0, poolTotal - poolRemaining) : 0;
   const purchased = isPackage ? poolTotal : getCoursePurchasedSessions(course);
   const effective = Math.max(0, Number(effectiveCount) || 0);
   const leaves = Math.max(0, Number(leaveCount) || 0);
-
   if (purchased <= 0) return null;
 
   const counts = {
-    poolTotal,
-    poolUsed,
-    poolRemaining,
-    courseScheduled: effective,
-    purchased,
-    pendingMakeups: leaves,
+    poolTotal, poolUsed, poolRemaining, courseScheduled: effective, purchased, pendingMakeups: leaves,
   };
 
   if (!hasAnySessionRows && effective === 0) {
-    if (isPackage) {
-      return {
-        code: 'empty_schedule',
-        severity: 'info',
-        title: '此科尚未排入堂次',
-        message: `方案池仍有 ${poolRemaining} 堂未使用。新增排課後，日期會顯示在這裡。`,
-        action: 'quick_add',
-        counts,
-      };
-    }
     return {
       code: 'empty_schedule',
       severity: 'info',
       title: '此科尚未排入堂次',
-      message: `購買 ${purchased} 堂；新增排課後，日期會顯示在這裡。`,
+      message: isPackage
+        ? `方案池仍有 ${poolRemaining} 堂未使用。新增排課後，日期會顯示在這裡。`
+        : `購買 ${purchased} 堂；新增排課後，日期會顯示在這裡。`,
       action: 'quick_add',
       counts,
     };
@@ -138,17 +98,9 @@ export function buildSessionPlanningStatus({
   }
 
   if (effective === purchased) {
-    return {
-      code: 'healthy',
-      severity: 'none',
-      title: '',
-      message: '',
-      action: null,
-      counts,
-    };
+    return { code: 'healthy', severity: 'none', title: '', message: '', action: null, counts };
   }
 
-  // effective < purchased, no leave backlog
   if (isPackage) {
     return {
       code: 'package_partially_scheduled',
@@ -171,7 +123,7 @@ export function buildSessionPlanningStatus({
   };
 }
 
-/** @deprecated Prefer buildSessionPlanningStatus; kept for transitional callers. */
+/** @deprecated Prefer buildSessionPlanningStatus. */
 export function planningStatusToLegacyWarning(status) {
   if (!status || status.code === 'healthy' || status.severity === 'none') return null;
   if (status.code === 'session_load_failed') return null;

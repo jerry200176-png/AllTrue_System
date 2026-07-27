@@ -70,62 +70,59 @@ export function useSessionEditFlow({
     return allowed.filter((s) => !hiddenPrimary.has(s));
   });
 
-  // Actionable dialogs replace native alert() dead-ends (package / projected UX).
-  const showProjectedActionDialog = ref(false);
-  const projectedActionContext = ref(null);
-  const showSessionResolveDialog = ref(false);
-  const sessionResolveContext = ref(null);
-  const sessionResolveRetrying = ref(false);
+  // Unified actionable dialog (replaces native alert dead-ends).
+  const chipActionDialog = ref(null);
 
-  function closeProjectedActionDialog() {
-    showProjectedActionDialog.value = false;
-    projectedActionContext.value = null;
-  }
-
-  function closeSessionResolveDialog() {
-    showSessionResolveDialog.value = false;
-    sessionResolveContext.value = null;
-    sessionResolveRetrying.value = false;
+  function closeChipActionDialog() {
+    chipActionDialog.value = null;
   }
 
   function openProjectedActionDialog(course, dateYmd, unit) {
-    projectedActionContext.value = {
+    const dateYmdNorm = String(dateYmd || '').slice(0, 10);
+    const startTime = unit?.startTime || '';
+    const endTime = unit?.endTime || '';
+    chipActionDialog.value = {
+      kind: 'projected_quick_add',
+      title: '這是預排日期，尚未建立正式堂次',
+      message: '堂數制不會自動產生可編輯堂次。請確認後手動補排；直接推算建立僅適用月結固定時段。',
+      meta: [dateYmdNorm, startTime && (endTime ? `${startTime}–${endTime}` : startTime)].filter(Boolean).join(' '),
+      primaryLabel: '補排此堂',
+      secondaryLabel: '返回',
       course,
-      dateYmd: String(dateYmd || '').slice(0, 10),
-      startTime: unit?.startTime || '',
-      endTime: unit?.endTime || '',
+      dateYmd: dateYmdNorm,
+      startTime,
+      endTime,
+      busy: false,
     };
-    showProjectedActionDialog.value = true;
   }
 
-  function confirmProjectedQuickAdd() {
-    const ctx = projectedActionContext.value;
-    if (!ctx?.course) {
-      closeProjectedActionDialog();
-      return;
-    }
-    const course = ctx.course;
-    closeProjectedActionDialog();
-    if (typeof openQuickAddSessionModal === 'function') {
-      openQuickAddSessionModal(course, {
-        date: ctx.dateYmd,
-        startTime: ctx.startTime,
-        endTime: ctx.endTime,
-        source: 'projected_count_chip',
-      });
-    }
-  }
-
-  function openSessionResolveDialog(course, dateYmd, sessionId, unit) {
-    sessionResolveContext.value = {
+  function openSessionResolveDialog(course, dateYmd, sessionId, unit, title, message) {
+    chipActionDialog.value = {
+      kind: 'resolve_retry',
+      title: title || '暫時找不到這堂課的最新資料',
+      message: message || '課表可能剛更新。尚未進行任何變更。',
+      primaryLabel: '再試一次',
+      secondaryLabel: '關閉',
       course,
       dateYmd: String(dateYmd || '').slice(0, 10),
       sessionId,
       unit,
-      title: '暫時找不到這堂課的最新資料',
-      message: '課表可能剛更新，系統可以重新載入這門課的堂次。尚未進行任何變更。',
+      busy: false,
     };
-    showSessionResolveDialog.value = true;
+  }
+
+  async function confirmChipActionDialog() {
+    const dlg = chipActionDialog.value;
+    if (!dlg) return;
+    if (dlg.kind === 'projected_quick_add') {
+      const { course, dateYmd, startTime, endTime } = dlg;
+      closeChipActionDialog();
+      if (course && typeof openQuickAddSessionModal === 'function') {
+        openQuickAddSessionModal(course, { date: dateYmd, startTime, endTime, source: 'projected_count_chip' });
+      }
+      return;
+    }
+    if (dlg.kind === 'resolve_retry') await retrySessionResolve();
   }
 
   function sessionStatusLabel(status) {
@@ -221,34 +218,31 @@ export function useSessionEditFlow({
   }
 
   async function retrySessionResolve() {
-    const ctx = sessionResolveContext.value;
-    if (!ctx?.course) return;
-    sessionResolveRetrying.value = true;
+    const dlg = chipActionDialog.value;
+    if (!dlg?.course || dlg.kind !== 'resolve_retry') return;
+    dlg.busy = true;
     try {
-      const { course, dateYmd, sessionId, unit } = ctx;
+      const { course, dateYmd, sessionId, unit } = dlg;
       let row = null;
-      if (typeof reloadCourseSessions === 'function') {
-        const reloaded = await reloadCourseSessions(course);
-        if (reloaded) {
-          row = getSessionDisplayRow(course, dateYmd, sessionId)
-            || resolveRowByStartTime(course, dateYmd, unit);
-        }
+      if (typeof reloadCourseSessions === 'function' && await reloadCourseSessions(course)) {
+        row = getSessionDisplayRow(course, dateYmd, sessionId) || resolveRowByStartTime(course, dateYmd, unit);
       }
       if (!row && unit?.isProjected && canMaterializeProjectedSession(course)) {
         row = await materializeProjectedSession(course, dateYmd, unit);
       }
       if (row) {
-        closeSessionResolveDialog();
+        closeChipActionDialog();
         populateSessionEditForm(course, dateYmd, row);
         return;
       }
-      sessionResolveContext.value = {
-        ...ctx,
+      chipActionDialog.value = {
+        ...dlg,
         title: '堂次載入失敗',
         message: '目前無法確認這堂課的最新狀態，尚未進行任何變更。',
+        busy: false,
       };
     } finally {
-      sessionResolveRetrying.value = false;
+      if (chipActionDialog.value) chipActionDialog.value.busy = false;
     }
   }
 
@@ -263,25 +257,17 @@ export function useSessionEditFlow({
       const { data: { session: sess } } = await supabase.auth.getSession();
       const token = sess?.access_token;
       if (!token) {
-        openSessionResolveDialog(course, dateYmd, unit?.id, unit);
-        if (sessionResolveContext.value) {
-          sessionResolveContext.value = {
-            ...sessionResolveContext.value,
-            title: '請重新登入',
-            message: '登入狀態已失效，請重新登入後再試。尚未進行任何變更。',
-          };
-        }
+        openSessionResolveDialog(course, dateYmd, unit?.id, unit, '請重新登入', '登入狀態已失效，請重新登入後再試。尚未進行任何變更。');
         return null;
       }
-
       const bid = Number(typeof branchId === 'object' ? branchId.value : branchId) || 0;
       const res = await fetch('/api/v1/class-sessions/ensure-projected', {
         method: 'POST',
         credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'Authorization': `Bearer ${token}`,
+          Accept: 'application/json',
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           student_class_id: Number(course?.id || course?.ID || 0),
@@ -292,14 +278,7 @@ export function useSessionEditFlow({
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.session) {
-        openSessionResolveDialog(course, dateYmd, unit?.id, unit);
-        if (sessionResolveContext.value) {
-          sessionResolveContext.value = {
-            ...sessionResolveContext.value,
-            title: '無法建立可編輯堂次',
-            message: '固定時段推算建立失敗。尚未進行任何變更，可以再試一次。',
-          };
-        }
+        openSessionResolveDialog(course, dateYmd, unit?.id, unit, '無法建立可編輯堂次', '固定時段推算建立失敗。尚未進行任何變更，可以再試一次。');
         return null;
       }
       const vm = sessionViewModelFromEnsureProjected(json.session);
@@ -632,10 +611,7 @@ export function useSessionEditFlow({
     startSessionReschedule, fetchMakeupSlotsForEdit, doSessionReschedule,
     startSubstitute, doSubstitute,
     startEditNoteTime, doEditNoteTime,
-    showProjectedActionDialog, projectedActionContext,
-    closeProjectedActionDialog, confirmProjectedQuickAdd,
-    showSessionResolveDialog, sessionResolveContext, sessionResolveRetrying,
-    closeSessionResolveDialog, retrySessionResolve,
+    chipActionDialog, closeChipActionDialog, confirmChipActionDialog,
     canMaterializeProjectedSession,
   };
 }
