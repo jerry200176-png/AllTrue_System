@@ -9,6 +9,7 @@ import {
 } from '../../lib/scheduleDisplay';
 import { getSubjectLabel } from '../../lib/constants';
 import { commitReschedule } from '../../lib/rescheduleApi';
+import { canMaterializeProjectedSession } from '../../lib/sessionPlanningStatus';
 
 const SESSION_STATUS_TRANSITIONS = {
   scheduled:      ['attended', 'late', 'absent', 'leave', 'cancelled'],
@@ -69,6 +70,64 @@ export function useSessionEditFlow({
     return allowed.filter((s) => !hiddenPrimary.has(s));
   });
 
+  // Actionable dialogs replace native alert() dead-ends (package / projected UX).
+  const showProjectedActionDialog = ref(false);
+  const projectedActionContext = ref(null);
+  const showSessionResolveDialog = ref(false);
+  const sessionResolveContext = ref(null);
+  const sessionResolveRetrying = ref(false);
+
+  function closeProjectedActionDialog() {
+    showProjectedActionDialog.value = false;
+    projectedActionContext.value = null;
+  }
+
+  function closeSessionResolveDialog() {
+    showSessionResolveDialog.value = false;
+    sessionResolveContext.value = null;
+    sessionResolveRetrying.value = false;
+  }
+
+  function openProjectedActionDialog(course, dateYmd, unit) {
+    projectedActionContext.value = {
+      course,
+      dateYmd: String(dateYmd || '').slice(0, 10),
+      startTime: unit?.startTime || '',
+      endTime: unit?.endTime || '',
+    };
+    showProjectedActionDialog.value = true;
+  }
+
+  function confirmProjectedQuickAdd() {
+    const ctx = projectedActionContext.value;
+    if (!ctx?.course) {
+      closeProjectedActionDialog();
+      return;
+    }
+    const course = ctx.course;
+    closeProjectedActionDialog();
+    if (typeof openQuickAddSessionModal === 'function') {
+      openQuickAddSessionModal(course, {
+        date: ctx.dateYmd,
+        startTime: ctx.startTime,
+        endTime: ctx.endTime,
+        source: 'projected_count_chip',
+      });
+    }
+  }
+
+  function openSessionResolveDialog(course, dateYmd, sessionId, unit) {
+    sessionResolveContext.value = {
+      course,
+      dateYmd: String(dateYmd || '').slice(0, 10),
+      sessionId,
+      unit,
+      title: '暫時找不到這堂課的最新資料',
+      message: '課表可能剛更新，系統可以重新載入這門課的堂次。尚未進行任何變更。',
+    };
+    showSessionResolveDialog.value = true;
+  }
+
   function sessionStatusLabel(status) {
     return SESSION_STATUS_LABELS[status] || status || '—';
   }
@@ -95,31 +154,7 @@ export function useSessionEditFlow({
     return rows.find((r) => String(r?.startTime || '').slice(0, 5) === wanted) || null;
   }
 
-  async function openSessionEdit(course, dateYmd, sessionId, unit = null) {
-    let row = getSessionDisplayRow(course, dateYmd, sessionId);
-    // Miss: the chip points at a real session that is not in the local cache yet
-    // (duplicate/overlap sessions, or a stale load). Reload this course's sessions
-    // and retry — matching by start_time when several rows share the date — before
-    // falling back to materialize/alert. See #942 (in-app #177).
-    if (!row && typeof reloadCourseSessions === 'function') {
-      const reloaded = await reloadCourseSessions(course);
-      if (reloaded) {
-        row = getSessionDisplayRow(course, dateYmd, sessionId)
-          || resolveRowByStartTime(course, dateYmd, unit);
-      }
-    }
-    if (!row && unit?.isProjected) {
-      row = await materializeProjectedSession(course, dateYmd, unit);
-    }
-    if (!row) {
-      // Synthetic chips (rendered from schedule before ClassSession loads) or
-      // any other code path that supplies an unresolvable sessionId used to
-      // fall through silently — the modal simply never opened and the user
-      // (a 主任) was stuck with "button does nothing". Show an explicit
-      // message so the user knows to refresh. See PRD §FR-006.
-      alert('此堂次資料尚未載入，請重新整理頁面後再試。');
-      return;
-    }
+  function populateSessionEditForm(course, dateYmd, row) {
     sessionEditForm.value = {
       session_id: row.id,
       student_class_id: row.studentClassId || course.id,
@@ -154,13 +189,88 @@ export function useSessionEditFlow({
     showSessionEditModal.value = true;
   }
 
+  async function openSessionEdit(course, dateYmd, sessionId, unit = null) {
+    // Count-mode projected chips: never call ensure-projected (backend 422).
+    // Offer quick-add prefill instead. Monthly date-mode still materializes.
+    if (unit?.isProjected && !canMaterializeProjectedSession(course)) {
+      openProjectedActionDialog(course, dateYmd, unit);
+      return;
+    }
+
+    let row = getSessionDisplayRow(course, dateYmd, sessionId);
+    // Miss: the chip points at a real session that is not in the local cache yet
+    // (duplicate/overlap sessions, or a stale load). Reload this course's sessions
+    // and retry — matching by start_time when several rows share the date — before
+    // falling back to materialize/actionable dialog. See #942 (in-app #177).
+    if (!row && typeof reloadCourseSessions === 'function') {
+      const reloaded = await reloadCourseSessions(course);
+      if (reloaded) {
+        row = getSessionDisplayRow(course, dateYmd, sessionId)
+          || resolveRowByStartTime(course, dateYmd, unit);
+      }
+    }
+    if (!row && unit?.isProjected && canMaterializeProjectedSession(course)) {
+      row = await materializeProjectedSession(course, dateYmd, unit);
+      if (!row) return; // materialize shows its own resolve dialog on failure
+    }
+    if (!row) {
+      openSessionResolveDialog(course, dateYmd, sessionId, unit);
+      return;
+    }
+    populateSessionEditForm(course, dateYmd, row);
+  }
+
+  async function retrySessionResolve() {
+    const ctx = sessionResolveContext.value;
+    if (!ctx?.course) return;
+    sessionResolveRetrying.value = true;
+    try {
+      const { course, dateYmd, sessionId, unit } = ctx;
+      let row = null;
+      if (typeof reloadCourseSessions === 'function') {
+        const reloaded = await reloadCourseSessions(course);
+        if (reloaded) {
+          row = getSessionDisplayRow(course, dateYmd, sessionId)
+            || resolveRowByStartTime(course, dateYmd, unit);
+        }
+      }
+      if (!row && unit?.isProjected && canMaterializeProjectedSession(course)) {
+        row = await materializeProjectedSession(course, dateYmd, unit);
+      }
+      if (row) {
+        closeSessionResolveDialog();
+        populateSessionEditForm(course, dateYmd, row);
+        return;
+      }
+      sessionResolveContext.value = {
+        ...ctx,
+        title: '堂次載入失敗',
+        message: '目前無法確認這堂課的最新狀態，尚未進行任何變更。',
+      };
+    } finally {
+      sessionResolveRetrying.value = false;
+    }
+  }
+
   async function materializeProjectedSession(course, dateYmd, unit) {
+    if (!canMaterializeProjectedSession(course)) {
+      openProjectedActionDialog(course, dateYmd, unit);
+      return null;
+    }
+    if (sessionEditSubmitting.value) return null;
     sessionEditSubmitting.value = true;
     try {
       const { data: { session: sess } } = await supabase.auth.getSession();
       const token = sess?.access_token;
       if (!token) {
-        alert('請重新登入');
+        openSessionResolveDialog(course, dateYmd, unit?.id, unit);
+        if (sessionResolveContext.value) {
+          sessionResolveContext.value = {
+            ...sessionResolveContext.value,
+            title: '請重新登入',
+            message: '登入狀態已失效，請重新登入後再試。尚未進行任何變更。',
+          };
+        }
         return null;
       }
 
@@ -181,23 +291,26 @@ export function useSessionEditFlow({
         }),
       });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        alert('建立可編輯堂次失敗：' + (json.message || res.statusText));
-        return null;
-      }
-      if (!json.session) {
-        alert('建立可編輯堂次失敗：伺服器未回傳堂次資料');
+      if (!res.ok || !json.session) {
+        openSessionResolveDialog(course, dateYmd, unit?.id, unit);
+        if (sessionResolveContext.value) {
+          sessionResolveContext.value = {
+            ...sessionResolveContext.value,
+            title: '無法建立可編輯堂次',
+            message: '固定時段推算建立失敗。尚未進行任何變更，可以再試一次。',
+          };
+        }
         return null;
       }
       const vm = sessionViewModelFromEnsureProjected(json.session);
       if (!vm) {
-        alert('建立可編輯堂次失敗：伺服器未回傳堂次資料');
+        openSessionResolveDialog(course, dateYmd, unit?.id, unit);
         return null;
       }
       updateLocalSessionRow(course?.id || course?.ID, vm);
       return vm;
-    } catch (e) {
-      alert('建立可編輯堂次失敗：' + (e?.message || '請稍後再試'));
+    } catch (_) {
+      openSessionResolveDialog(course, dateYmd, unit?.id, unit);
       return null;
     } finally {
       sessionEditSubmitting.value = false;
@@ -519,5 +632,10 @@ export function useSessionEditFlow({
     startSessionReschedule, fetchMakeupSlotsForEdit, doSessionReschedule,
     startSubstitute, doSubstitute,
     startEditNoteTime, doEditNoteTime,
+    showProjectedActionDialog, projectedActionContext,
+    closeProjectedActionDialog, confirmProjectedQuickAdd,
+    showSessionResolveDialog, sessionResolveContext, sessionResolveRetrying,
+    closeSessionResolveDialog, retrySessionResolve,
+    canMaterializeProjectedSession,
   };
 }
