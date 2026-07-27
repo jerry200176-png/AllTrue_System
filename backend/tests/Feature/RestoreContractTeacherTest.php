@@ -20,7 +20,7 @@ class RestoreContractTeacherTest extends TestCase
 
     public function test_restore_happy_path_and_rejects_teacher_identity(): void
     {
-        [$dirToken, $regularId, $subId, $session, $lr] = $this->seed();
+        [$dirToken, $regularId, $subId, $session, $lr] = $this->seedScenario();
 
         $this->auth($dirToken)->postJson("/api/v1/class-sessions/{$session->id}/substitute", [
             'substitute_teacher_id' => $subId,
@@ -60,7 +60,7 @@ class RestoreContractTeacherTest extends TestCase
 
     public function test_not_found_missing_contract_forbidden_and_legacy_unreachable(): void
     {
-        [$dirToken, $regularId, $subId, $session] = $this->seed();
+        [$dirToken, $regularId, $subId, $session] = $this->seedScenario();
         $this->auth($dirToken)->postJson("/api/v1/class-sessions/{$session->id}/substitute", [
             'substitute_teacher_id' => $subId,
         ])->assertOk();
@@ -100,7 +100,7 @@ class RestoreContractTeacherTest extends TestCase
 
     public function test_uses_current_contract_teacher_after_contract_change(): void
     {
-        [$dirToken, $oldId, $subId, $session, $lr, $campusId] = $this->seed(true);
+        [$dirToken, $oldId, $subId, $session, $lr, $campusId] = $this->seedScenario(true);
         $this->auth($dirToken)->postJson("/api/v1/class-sessions/{$session->id}/substitute", [
             'substitute_teacher_id' => $subId,
         ])->assertOk();
@@ -139,7 +139,7 @@ class RestoreContractTeacherTest extends TestCase
         return $token;
     }
 
-    private function seed(bool $withCampus = false): array
+    private function seedScenario(bool $withCampus = false): array
     {
         $campusId = 1;
         $director = User::create([

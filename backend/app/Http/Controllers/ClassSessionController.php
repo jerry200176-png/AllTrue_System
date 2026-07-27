@@ -2627,15 +2627,15 @@ class ClassSessionController extends Controller
             return response()->json(['message' => 'Forbidden', 'code' => 'forbidden'], 403);
         }
 
-        $session = ClassSession::find($id);
+        $session = ClassSession::query()->whereKey($id)->first();
         if (!$session) {
             return response()->json(['message' => '找不到該堂次', 'code' => 'session_not_found'], 404);
         }
-        $studentClass = StudentClass::find($session->StudentClassID);
+        $studentClass = StudentClass::query()->whereKey($session->StudentClassID)->first();
         if (!$studentClass) {
             return response()->json(['message' => '找不到對應課程', 'code' => 'course_not_found'], 404);
         }
-        $student = Student::find($studentClass->StudentID);
+        $student = Student::query()->whereKey($studentClass->StudentID)->first();
         if (!$student) {
             return response()->json(['message' => '找不到該課程的學生資料', 'code' => 'student_not_found'], 422);
         }

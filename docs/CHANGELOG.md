@@ -1,4 +1,4 @@
-## 2026-07-27 — fix(scheduling): unify RestoreContractTeacher command boundary
+## 2026-07-27 — docs(scheduling): RestoreContractTeacher 命令邊界（對內）
 
 - ADR-005 首 slice：`POST /api/v1/class-sessions/{id}/restore-contract-teacher`；合約正班老師僅由後端 `StudentClass.TeacherID` 決定，請求不得帶 teacher identity。
 - SmartCalendar／CourseManagement 共用 `schedulingCommands.restoreContractTeacher`；代課選擇器改 emit `restore`；legacy `/substitute` 傳正班 teacher_id 不再可恢復。
