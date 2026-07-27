@@ -98,4 +98,33 @@ describe('SubstituteTeacherPickerModal drag prefill', () => {
     expect(call[2]).toMatchObject({ excludeStudentId: 7 });
     expect(wrapper.get('.stp-card').classes()).not.toContain('stp-card--conflict');
   });
+
+  it('restore emits restore intent without teacher_id (ADR-005)', async () => {
+    const wrapper = mount(SubstituteTeacherPickerModal, {
+      props: {
+        modelValue: true,
+        context: {
+          student_name: '游喨鈞',
+          subject_label: '英文',
+          session_date: '2026-07-28',
+          start_time: '14:00',
+          end_time: '16:00',
+          original_teacher_id: 70,
+          original_teacher_name: 'Coco',
+          current_teacher_id: 202,
+          current_teacher_name: '鄒宇旻',
+          session_campus_id: 9,
+        },
+        teachers: [{ id: 202, name: '鄒宇旻', branch_ids: [9] }],
+        branchNameMap: { 9: '新店' },
+        fetchAvailability: vi.fn(async () => ({ busy_slots: [] })),
+      },
+    });
+
+    await flushPromises();
+    expect(wrapper.find('.stp-restore__btn').exists()).toBe(true);
+    await wrapper.get('.stp-restore__btn').trigger('click');
+    expect(wrapper.emitted('restore')?.[0]?.[0]).toEqual({ reason: '回復正班老師' });
+    expect(wrapper.emitted('submit')).toBeUndefined();
+  });
 });

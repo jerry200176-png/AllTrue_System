@@ -1,3 +1,8 @@
+## 2026-07-27 — fix(scheduling): unify RestoreContractTeacher command boundary
+
+- ADR-005 首 slice：`POST /api/v1/class-sessions/{id}/restore-contract-teacher`；合約正班老師僅由後端 `StudentClass.TeacherID` 決定，請求不得帶 teacher identity。
+- SmartCalendar／CourseManagement 共用 `schedulingCommands.restoreContractTeacher`；代課選擇器改 emit `restore`；legacy `/substitute` 傳正班 teacher_id 不再可恢復。
+
 ## 2026-07-27 — docs(adr): ADR-005 排課多入口 × 具名 command 邊界
 
 Accepted direction（文件）：保留 StudentsList／SmartCalendar／CourseManagement 三 task surface；每個 mutation 對應具名 command；command 只收完成意圖必要的 target values，不接受前端回傳可推導的 current／derived domain truth。首實作 slice（另 PR）：`RestoreContractTeacher`。見 `docs/ADR_005_scheduling_named_command_boundaries.md`。

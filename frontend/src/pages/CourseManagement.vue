@@ -601,6 +601,7 @@
       :branch-name-map="branchNameMap"
       :fetch-availability="fetchTeacherAvailability"
       @submit="onSubstituteV2Submit"
+      @restore="onRestoreContractTeacher"
     />
     <ToastWithUndo ref="toastRef" />
 
@@ -858,6 +859,7 @@ import PaymentEntryModal from '../components/PaymentEntryModal.vue';
 import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
 import ToastWithUndo from '../components/substitute/ToastWithUndo.vue';
 import { fetchTeacherAvailability, undoSubstitute } from '../lib/substituteApi.js';
+import { restoreContractTeacher } from '../lib/schedulingCommands.js';
 
 // PRD 9c058f19 — 代課流程 UX 優化旗標；env 為字串，需解析。
 // 與 SmartCalendar.vue 對齊：預設開啟（'1'），設為 '0' 回退舊版 <select> 模式。
@@ -2964,6 +2966,49 @@ const onSubstituteV2Submit = async (submitPayload) => {
     substituteV2PickerRef.value?.setError?.(e?.message || '代課設定失敗');
     // Expected validation/business rejection should stay in form state, not global error channel.
     console.warn('[CourseManagement] substitute submit failed', e);
+  }
+};
+
+/** ADR-005 RestoreContractTeacher — same client as SmartCalendar. */
+const onRestoreContractTeacher = async (payload = {}) => {
+  const sessionId = substituteV2SessionId.value;
+  if (!sessionId) {
+    substituteV2PickerRef.value?.setError?.('找不到該堂次，無法回復正班老師');
+    return;
+  }
+  try {
+    const json = await restoreContractTeacher(sessionId, {
+      reason: payload.reason || '回復正班老師',
+    });
+    showSubstituteV2Modal.value = false;
+
+    const ctx = substituteV2Context.value || {};
+    const courseKey = sessionEditForm.value?.student_class_id || sessionEditForm.value?.course?.id;
+    const teacherName =
+      json.restored_teacher_name ||
+      ctx.original_teacher_name ||
+      (teachers.value || []).find((t) => Number(t.id) === Number(json.restored_teacher_id))?.username ||
+      `#${json.restored_teacher_id}`;
+
+    const patch = sessionViewModelPatchFromApi({
+      id: sessionId,
+      teacher_id: json.restored_teacher_id,
+      teacher_name: teacherName,
+    });
+    if (patch) updateLocalSessionRow(courseKey, patch);
+
+    toastRef.value?.show?.({
+      title: `已回復 ${teacherName}`,
+      description: ctx.student_name
+        ? `${ctx.student_name} · ${ctx.session_date || ''} ${ctx.start_time || ''}`
+        : '',
+      variant: 'success',
+      durationMs: 4000,
+    });
+    await loadCourses();
+  } catch (e) {
+    substituteV2PickerRef.value?.setError?.(e?.message || '回復正班老師失敗');
+    console.warn('[CourseManagement] restore contract teacher failed', e);
   }
 };
 

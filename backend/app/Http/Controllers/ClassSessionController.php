@@ -11,8 +11,10 @@ use App\Models\StudentClass;
 use App\Models\StudentSignIn;
 use App\Models\User;
 use App\Models\UserCampus;
+use App\Exceptions\RestoreContractTeacherException;
 use App\Services\ClassSessionMaterializationService;
 use App\Services\EnrollmentService;
+use App\Services\RestoreContractTeacherService;
 use App\Services\ScheduleGuardService;
 use App\Services\SessionDeductionService;
 use App\Services\SessionProjectionReadService;
@@ -1984,18 +1986,13 @@ class ClassSessionController extends Controller
             }
         }
 
+        // ADR-005: restore must use RestoreContractTeacher named endpoint.
+        // Passing contract TeacherID via /substitute is no longer a restore path.
         if ($newTeacherId === $oldTeacherId) {
-            return $this->restoreOriginalTeacherFromSubstitute(
-                $request,
-                $session,
-                $studentClass,
-                $existingRescheduled,
-                $existingScheduled,
-                $sessionDate,
-                $startTime,
-                $oldTeacherId,
-                $data
-            );
+            return response()->json([
+                'message' => '恢復正班老師請使用 POST /api/v1/class-sessions/{id}/restore-contract-teacher',
+                'code' => 'use_restore_contract_teacher',
+            ], 422);
         }
 
         // PRD FR-003：候選池為 operator 管理分校的聯集（managed_campus_ids）。
@@ -2607,187 +2604,59 @@ class ClassSessionController extends Controller
     }
 
     /**
-     * Revert a single-session substitute back to the contract teacher.
+     * ADR-005 named command: RestoreContractTeacher.
      *
-     * This is intentionally not the time-limited "Undo" flow: directors need a
-     * durable correction path when a session was assigned to the wrong teacher.
+     * Durable correction path (not time-limited Undo). Contract teacher is read
+     * only from StudentClass.TeacherID — request must not supply teacher identity.
      */
-    private function restoreOriginalTeacherFromSubstitute(
-        Request $request,
-        ClassSession $session,
-        StudentClass $studentClass,
-        $existingRescheduled,
-        $existingScheduled,
-        string $sessionDate,
-        string $startTime,
-        int $originalTeacherId,
-        array $data
-    ) {
-        return DB::transaction(function () use (
-            $request,
-            $session,
-            $studentClass,
-            $existingRescheduled,
-            $existingScheduled,
-            $sessionDate,
-            $startTime,
-            $originalTeacherId,
-            $data
-        ) {
-            $courseId = (int) $studentClass->ID;
-            $authUser = $request->attributes->get('auth_user');
-            $changedBy = (int) ($authUser->id ?? 0);
+    public function restoreContractTeacher(Request $request, int $id)
+    {
+        $data = $request->validate([
+            'reason' => 'nullable|string|max:255',
+        ]);
 
-            $rescheduled = $existingRescheduled ?: Schedule::where('student_course_id', $courseId)
-                ->whereDate('schedule_date', $sessionDate)
-                ->where('status', 'rescheduled')
-                ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$startTime])
-                ->first();
+        // Reject teacher-identity keys even if validation rules omit them (extra JSON).
+        foreach (RestoreContractTeacherService::FORBIDDEN_TEACHER_KEYS as $key) {
+            if ($request->exists($key)) {
+                return response()->json([
+                    'message' => '恢復正班老師不可傳入老師身分欄位；目標由後端合約老師決定',
+                    'code' => 'teacher_identity_not_accepted',
+                    'rejected_key' => $key,
+                ], 422);
+            }
+        }
 
-            $scheduled = $existingScheduled;
-            if (!$scheduled && $rescheduled) {
-                $scheduled = Schedule::where('student_course_id', $courseId)
-                    ->whereDate('schedule_date', $sessionDate)
-                    ->where('status', 'scheduled')
-                    ->where('original_schedule_id', (int) $rescheduled->id)
-                    ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$startTime])
-                    ->first();
+        $role = (string) $request->attributes->get('auth_role');
+        $campusIds = $role === 'super_admin' ? [] : ($request->attributes->get('auth_campus_ids', []) ?: []);
+        $authUser = $request->attributes->get('auth_user');
+        $authUserId = (int) ($authUser->id ?? 0);
+
+        try {
+            $result = app(RestoreContractTeacherService::class)->execute(
+                $id,
+                $data,
+                $role,
+                is_array($campusIds) ? $campusIds : [],
+                $authUserId
+            );
+        } catch (RestoreContractTeacherException $e) {
+            $payload = ['message' => $e->getMessage()];
+            if ($e->errorCode()) {
+                $payload['code'] = $e->errorCode();
+            }
+            if ($e->context()) {
+                $payload = array_merge($payload, $e->context());
             }
 
-            $scheduledDeleted = 0;
-            $anchorIds = [];
-            if ($rescheduled) {
-                $anchorIds[] = (int) $rescheduled->id;
-            }
-            if ($scheduled && (int) ($scheduled->original_schedule_id ?? 0) > 0) {
-                $anchorIds[] = (int) $scheduled->original_schedule_id;
-            }
-            // Defensive recovery for historical data: contract teacher may already change,
-            // but stale substitute rows (teacher_id != current contract teacher) still remain.
-            $fallbackAnchors = Schedule::where('student_course_id', $courseId)
-                ->whereDate('schedule_date', $sessionDate)
-                ->where('status', 'scheduled')
-                ->whereNotNull('original_schedule_id')
-                ->where('teacher_id', '!=', $originalTeacherId)
-                ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$startTime])
-                ->pluck('original_schedule_id')
-                ->filter(fn ($id) => (int) $id > 0)
-                ->map(fn ($id) => (int) $id)
-                ->all();
-            $anchorIds = array_values(array_unique(array_merge($anchorIds, $fallbackAnchors)));
+            return response()->json($payload, $e->httpStatus());
+        }
 
-            if (!empty($anchorIds)) {
-                $scheduledDeleted += Schedule::where('student_course_id', $courseId)
-                    ->whereDate('schedule_date', $sessionDate)
-                    ->where('status', 'scheduled')
-                    ->whereIn('original_schedule_id', $anchorIds)
-                    ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$startTime])
-                    ->delete();
-            } elseif ($scheduled) {
-                $scheduledDeleted += Schedule::where('id', (int) $scheduled->id)->delete();
-            }
+        $jsonFlags = JSON_UNESCAPED_UNICODE;
+        if (defined('JSON_INVALID_UTF8_SUBSTITUTE')) {
+            $jsonFlags |= JSON_INVALID_UTF8_SUBSTITUTE;
+        }
 
-            $rescheduledDeleted = 0;
-            if (!empty($anchorIds)) {
-                // MySQL/MariaDB reject DELETE with subquery on same table (error 1093).
-                $stillLinked = DB::table('schedules')
-                    ->where('status', 'scheduled')
-                    ->whereIn('original_schedule_id', $anchorIds)
-                    ->pluck('original_schedule_id')
-                    ->map(fn ($id) => (int) $id)
-                    ->all();
-                $safeAnchorIds = array_values(array_diff($anchorIds, $stillLinked));
-                if (!empty($safeAnchorIds)) {
-                    $rescheduledDeleted = Schedule::where('student_course_id', $courseId)
-                        ->whereDate('schedule_date', $sessionDate)
-                        ->where('status', 'rescheduled')
-                        ->whereIn('id', $safeAnchorIds)
-                        ->delete();
-                }
-            } elseif ($rescheduled) {
-                $rescheduledDeleted = Schedule::where('id', (int) $rescheduled->id)->delete();
-            }
-
-            $lrId = null;
-            $lrTable = (new LearningRecord())->getTable();
-            $lrRowQuery = DB::table($lrTable)->where('ClassSessionID', $session->id);
-            if (Schema::hasColumn($lrTable, 'VoidedAt')) {
-                $lrRowQuery->whereNull('VoidedAt');
-            }
-            $lrRow = $lrRowQuery->first();
-            if ($lrRow) {
-                $lrId = (int) $lrRow->id;
-                $lrOldTeacher = (int) ($lrRow->TeacherID ?? 0);
-                if ($lrOldTeacher !== $originalTeacherId) {
-                    $lrUpdate = ['TeacherID' => $originalTeacherId];
-                    if (Schema::hasColumn($lrTable, 'updated_at')) {
-                        $lrUpdate['updated_at'] = now();
-                    }
-                    DB::table($lrTable)->where('id', $lrId)->update($lrUpdate);
-
-                    if (Schema::hasTable('learning_record_teacher_changes')) {
-                        try {
-                            $auditReason = $this->scrubSubstituteUtf8($data['reason'] ?? '回復正班老師') ?: '回復正班老師';
-                            LearningRecordTeacherChange::create([
-                                'learning_record_id' => $lrId,
-                                'old_teacher_id' => $lrOldTeacher > 0 ? $lrOldTeacher : null,
-                                'new_teacher_id' => $originalTeacherId,
-                                'changed_by' => $changedBy > 0 ? $changedBy : null,
-                                'reason' => $auditReason,
-                            ]);
-                        } catch (\Throwable $auditEx) {
-                            Log::warning('substitute_restore: learning_record_teacher_changes insert skipped', [
-                                'learning_record_id' => $lrId,
-                                'message' => $auditEx->getMessage(),
-                            ]);
-                        }
-                    }
-
-                    if (($lrRow->Status ?? '') === 'approved' && Schema::hasColumn('User', 'TeachingSessionCount')) {
-                        try {
-                            if ($lrOldTeacher > 0) {
-                                User::where('id', $lrOldTeacher)
-                                    ->where('TeachingSessionCount', '>', 0)
-                                    ->decrement('TeachingSessionCount');
-                            }
-                            User::where('id', $originalTeacherId)->increment('TeachingSessionCount');
-                        } catch (\Throwable $kpiEx) {
-                            Log::warning('substitute_restore: TeachingSessionCount update skipped', [
-                                'message' => $kpiEx->getMessage(),
-                            ]);
-                        }
-                    }
-                }
-            }
-
-            if (Schema::hasTable('Notifications') && Schema::hasColumn('Notifications', 'ResolvedAt')) {
-                DB::table('Notifications')
-                    ->where('Type', 'substitute')
-                    ->where('SourceType', 'ClassSession')
-                    ->where('SourceID', $session->id)
-                    ->whereNull('ResolvedAt')
-                    ->update(['ResolvedAt' => now()]);
-            }
-
-            Log::info('[substitute_restore_original]', [
-                'class_session_id' => $session->id,
-                'student_class_id' => $courseId,
-                'restored_teacher_id' => $originalTeacherId,
-                'scheduled_deleted' => $scheduledDeleted,
-                'rescheduled_deleted' => $rescheduledDeleted,
-                'operator_id' => $changedBy ?: null,
-            ]);
-
-            return response()->json([
-                'message' => '已回復正班老師',
-                'class_session_id' => (int) $session->id,
-                'restored_teacher_id' => $originalTeacherId,
-                'substitute_cleared' => ($scheduledDeleted + $rescheduledDeleted) > 0,
-                'deleted_scheduled_count' => $scheduledDeleted,
-                'deleted_rescheduled_count' => $rescheduledDeleted,
-                'learning_record_id' => $lrId,
-            ]);
-        });
+        return response()->json($result, 200, [], $jsonFlags);
     }
 
     /**

@@ -276,7 +276,7 @@ const props = defineProps({
   teachesSubjectFn: { type: Function, default: null },
 });
 
-const emit = defineEmits(['update:modelValue', 'submit']);
+const emit = defineEmits(['update:modelValue', 'submit', 'restore']);
 
 const search = ref('');
 const reason = ref('');
@@ -623,8 +623,8 @@ async function restoreOriginalTeacher() {
   inlineError.value = '';
   submitting.value = true;
   try {
-    await Promise.resolve(emit('submit', {
-      substitute_teacher_id: originalTeacherId.value,
+    // ADR-005: emit restore intent only — never send teacher_id as restore target.
+    await Promise.resolve(emit('restore', {
       reason: reason.value.trim() || '回復正班老師',
     }));
   } catch (e) {

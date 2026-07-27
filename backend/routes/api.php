@@ -489,6 +489,8 @@ Route::prefix('v1')->group(function () {
         Route::get('schedule-audit', [ScheduleAuditController::class, 'index']);
         Route::patch('class-sessions/{id}', [ClassSessionController::class, 'update']);
         Route::post('class-sessions/{id}/substitute', [ClassSessionController::class, 'substitute']);
+        // ADR-005 — RestoreContractTeacher named command
+        Route::post('class-sessions/{id}/restore-contract-teacher', [ClassSessionController::class, 'restoreContractTeacher']);
         // PRD 9c058f19 — 代課流程 UX 優化
         Route::post('class-sessions/{id}/substitute/undo', [SubstituteController::class, 'undo']);
         Route::get('teachers/{id}/availability', [SubstituteController::class, 'availability']);

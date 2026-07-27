@@ -1023,6 +1023,13 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **測試**：`ActionInboxApiTest`（零校區/未授權 403、pagination 51+、DTO、結案消失、老師 403、count）。
 - **決策**：`.cursor/plans/action-inbox-b-lite-d_2026-07-22.md`
 
+### R83. 恢復正班老師必須走 RestoreContractTeacher（ADR-005，2026-07-27）
+
+- **觸發**：行事曆週卡把 effective（代課）寫進 `teacher_id` 後，若把該值當 `original_teacher_id`，「回正班老師」按鈕消失；課程管理因分開傳 contract／current 仍可用。
+- **強制**：`POST .../restore-contract-teacher`；目標只讀 `StudentClass.TeacherID`；禁止 request 帶 teacher identity；Calendar／CM 共用 `schedulingCommands.restoreContractTeacher`；legacy `/substitute` 傳正班 id **不可**再當 restore。
+- **UI**：Calendar open 路徑必須分 `original_*`（合約）與 `current_*`（effective）；picker emit `restore` 而非帶 `substitute_teacher_id` 的 `submit`。
+- **測試**：`RestoreContractTeacherTest`；`useCalendarSubstitute.test.js`；`schedulingCommands.test.js`；`restoreContractTeacher.conformance.test.js`。
+
 ---
 
 ## 模組對照索引（改特定模組前讀 Archive 對應條目）
@@ -1034,7 +1041,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | 堂數 / 扣堂 | §2026-04-17 繳費日期、§單堂費用固定、**§R59（分鐘制權威：RemainingSessions 為 ROUND_HALF_UP 衍生值，讀取端勿用 count 覆寫 fractional）**、§R70（對帳面板唯讀＋真實 API contract test）、**§R76（單堂改時段費用前後端必須一致）** |
 | 繳費 / 學收 | §繳費狀態 paid_at、§歷史課程漏算、§催繳名單六狀態、§幽靈課程、§R30（帳務入口共用 AR ledger）、**§R76（session／hour 費用文案與 Charge 寫入）**、**§R79（收據前端不得超前後端 contract；合法路徑=payment-reports/{id}/receipt）** |
 | 薪資 / 併堂 | §兼職薪資 concurrency、§同層級併堂 v1.4、§契約時長為準 |
-| 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession）、§R39（代課評量權限需匹配時段）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R52（代課 scheduled 例外不可缺 original_schedule_id anchor）、§R71（調課單一交易＋前端 committed gate）、§R72（cancelled ClassSession 不得讓 scheduled 例外佔用代課老師）、§R73（跨老師 gesture 必走 atomic substitute；legacy 兩階段精準補償）、§R74（代課衝突排除同一學生續約佔用） |
+| 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession）、§R39（代課評量權限需匹配時段）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R52（代課 scheduled 例外不可缺 original_schedule_id anchor）、§R71（調課單一交易＋前端 committed gate）、§R72（cancelled ClassSession 不得讓 scheduled 例外佔用代課老師）、§R73（跨老師 gesture 必走 atomic substitute；legacy 兩階段精準補償）、§R74（代課衝突排除同一學生續約佔用）、**§R83（RestoreContractTeacher；Calendar 不可把 effective 當 contract）** |
 | 請假 / 順延 | §R29、**§R82（KEEP dates+append）**、§R75（SUPERSEDED）、§R77、§R81 |
 | 評量 / 家長回饋 | §同天多堂課 buildEvents、§請假後不填評量、§R17（ownership 先於狀態判斷）、§R19（mark-read 不可更新 updated_at）、§R32（停用課程已上課評量不可消失）、§R39（代課評量權限需匹配時段）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R65（新增 session 狀態值必須同步全部消費端；leave 家族用集合判斷）、**§R78（nightly backfill 須 in-place restore 作廢評量，不可把 voided 當已有）** |
 | 家長入口 UI / `releaseNotes` | §R10、§R11、§R18、§R38、§R45（家長卡僅 `PARENT_UPDATES.yml` 顯式投影 + `sync-release-notes`） |

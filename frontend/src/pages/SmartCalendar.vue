@@ -403,6 +403,7 @@
       :branch-name-map="branchNameMap"
       :fetch-availability="fetchTeacherAvailability"
       @submit="onSubstituteV2Submit"
+      @restore="onRestoreContractTeacher"
     />
     <TeacherLeaveBatchModal
       v-if="featureSubstituteV2 && !isTeacher"
@@ -880,7 +881,7 @@ const {
   openSubstituteModal, openSubstituteFromDrag, submitSubstitute,
   showSubstituteV2Modal, substituteV2PickerRef, toastRef, substituteV2Context,
   substituteV2SessionId, substituteV2Submitting, branchNameMap,
-  openSubstituteV2Modal, onSubstituteV2Submit, showTeacherLeaveBatchModal,
+  openSubstituteV2Modal, onSubstituteV2Submit, onRestoreContractTeacher, showTeacherLeaveBatchModal,
   openTeacherLeaveBatch, onBatchSubstituteSubmitted,
 } = useCalendarSubstitute({
   branchId: computed(() => props.branchId),
@@ -892,6 +893,7 @@ const {
   sessionDatesByCourseId,
   allStudents,
   getSubjectLabel,
+  courses,
 });
 
 const {
@@ -1936,6 +1938,9 @@ const onCourseClick = (course, fullDateStr) => {
     student_id: baseCourse.student_id || course.student_id,
     subject: baseCourse.subject || course.subject,
     teacher_id: baseCourse.teacher_id || course.teacher_id || '',
+    // Occurrence effective teacher (may be substitute); contract stays in teacher_id.
+    current_teacher_id: course.teacher_id || baseCourse.teacher_id || '',
+    current_teacher_name: course.teacher_name || baseCourse.teacher_name || '',
     class_type: baseCourse.class_type || course.class_type,
     weeks: baseCourse.weeks || [1, 2, 3, 4, 5],
     day_of_week: course.day_of_week,

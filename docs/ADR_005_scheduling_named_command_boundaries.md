@@ -1,9 +1,10 @@
 # ADR-005 — Scheduling Uses Multiple Task Surfaces with Named Command Boundaries
 
-> **Status:** Proposed（Founder-approved direction 2026-07-27；effective after merge to `main`）.  
+> **Status:** Accepted（Founder-approved 2026-07-27；merged via #1461）。  
 > **Date:** 2026-07-27  
 > **Scope:** 排課／代課／調課／恢復正班／合約老師變更的 **write boundary** 與多入口治理。  
-> **Related:** `ADR_004_atomic_reschedule_boundary.md`（調課原子交易）、`docs/AI_REGRESSION_LESSONS.md` §R73／§R74。
+> **Related:** `ADR_004_atomic_reschedule_boundary.md`（調課原子交易）、`docs/AI_REGRESSION_LESSONS.md` §R73／§R74／§R83。  
+> **Implementation:** `RestoreContractTeacher` — `RestoreContractTeacherService` + `POST /api/v1/class-sessions/{id}/restore-contract-teacher` + `frontend/src/lib/schedulingCommands.js`（首 slice）。
 
 ## Context
 

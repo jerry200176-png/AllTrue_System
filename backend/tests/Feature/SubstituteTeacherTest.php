@@ -138,8 +138,7 @@ class SubstituteTeacherTest extends TestCase
         $res = $this->withHeaders([
             'Authorization' => "Bearer {$dirToken}",
             'Accept' => 'application/json',
-        ])->postJson("/api/v1/class-sessions/{$session->id}/substitute", [
-            'substitute_teacher_id' => $regularTeacherId,
+        ])->postJson("/api/v1/class-sessions/{$session->id}/restore-contract-teacher", [
             'reason' => '回復正班老師',
         ]);
 

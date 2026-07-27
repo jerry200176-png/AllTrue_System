@@ -277,8 +277,7 @@ class SubstituteUxV2Test extends TestCase
             ->whereNotNull('original_schedule_id')
             ->update(['teacher_id' => $oldTeacherId]);
 
-        $res = $this->withAuth($dirToken)->postJson("/api/v1/class-sessions/{$session->id}/substitute", [
-            'substitute_teacher_id' => (int) $newContractTeacher->id,
+        $res = $this->withAuth($dirToken)->postJson("/api/v1/class-sessions/{$session->id}/restore-contract-teacher", [
             'reason' => '回正班老師',
         ]);
 
