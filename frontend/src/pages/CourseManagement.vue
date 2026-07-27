@@ -5493,19 +5493,19 @@ button.danger:disabled {
   flex-shrink: 0;
 }
 .session-planning-msg--info {
-  color: #1e3a8a;
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
+  color: var(--ds-ink-secondary);
+  background: var(--ds-info-wash);
+  border: 1px solid var(--ds-hairline);
 }
 .session-planning-msg--warning {
-  color: #92400e;
-  background: #fffbeb;
-  border: 1px solid #fcd34d;
+  color: var(--ds-warning);
+  background: var(--ds-warning-wash);
+  border: 1px solid var(--ds-warning);
 }
 .session-planning-msg--danger {
-  color: #991b1b;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
+  color: var(--ds-danger);
+  background: var(--ds-danger-wash);
+  border: 1px solid var(--ds-danger);
 }
 .dates-chip-grid {
   display: flex;
@@ -5537,15 +5537,15 @@ button.danger:disabled {
 .date-chip.date-chip--projected {
   opacity: 0.85;
   border-style: dashed;
-  background: #f8fafc;
-  color: #475569;
+  background: var(--ds-canvas-soft);
+  color: var(--ds-ink-mute);
 }
 .date-chip.date-chip--projected .chip-date {
-  color: #475569;
+  color: var(--ds-ink-mute);
 }
 .chip-state--projected {
-  color: #334155 !important;
-  background: #e2e8f0 !important;
+  color: var(--ds-ink-secondary) !important;
+  background: var(--ds-canvas-soft) !important;
 }
 .chip-seq {
   font-weight: 700;
