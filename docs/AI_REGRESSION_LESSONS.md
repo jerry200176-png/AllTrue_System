@@ -239,7 +239,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | **F1 狀態收尾缺口** | 主檔狀態變更（`Stop=1` / 老師 `suspended` / 月結結算）後，**未對齊未來 `ClassSession.scheduled` / `schedules` / 老師名額**，殘留堂次續顯示 | #151、#427、#99、行290、§R32、§R59 | 停用/結算課程或老師後，未來 scheduled 堂次不得再出現在行事曆/名額；已上堂次須保留 |
 | **F2 月結續期語意** | 續期未依**當期實際堂數**重算金額/堂次；收據未綁 `billing_period` | #149、§R22、§R26、#554、#594 | 續期＝新一期+結算舊期；收據金額=當期堂數×費率、含結算月 |
 | **F3 排課堂次生成** | 建課後未依 `week/time` 契約**推算/補齊完整未來堂次**（只生成片段） | #148、#497、#539、#424、§R22、§R23、§R64（週日 slot 全滅→0 元月結） | 建課後即依契約生成完整未來 ClassSession；預排日不得反白/dead-end；weekday 比對先 `isoWeekday()` 正規化 |
-| **F4 共用堂數（一對三）** | `Charge` 未計算（=0）；**購買堂數 vs 實體 ClassSession 數**呈現混淆 | #147、#553、#430、#448、#440、§R21 | 共用堂數金額/堂數有單一權威來源，購買 vs 已用 vs 課表數一致 |
+| **F4 共用堂數（一對三）** | `Charge` 未計算（=0）；**購買堂數 vs 實體 ClassSession 數**呈現混淆；把方案池總堂數當成員課程應物化列數 → 假「不一致」警告；堂數制 projected chip 誤呼叫 ensure-projected；把方案池剩餘數當成員可排能力 | #147、#553、#430、#448、#440、§R21、§R24、#1465 | 池／成員排課／已用分欄；package under→info 且**成員課程 UI 不顯示方案池剩餘**；無 allocation aggregate 前不推導尚可排／未排 N；count projected 不呼叫 ensure-projected；物化 affordance 僅 `ScheduleMode=date` |
 | **F5 行事曆合併** | week 檢視 merge/去重/過濾**排除有效堂次**（含歷史已上） | #152、§R47、§R49、§R50、行544、§G-007 | 唯一走 `calendarOccurrenceMerge.js`；`npm run test:calendar`；歷史已上堂次仍顯示 |
 | **F7 繳費金額/狀態雙真相** | `Charge` 與 `Rate×數量` 的差額、`StudentClass.Paid` 與 Invoice/Payment 各有兩套真相；點修單邊會「改了又跳回」 | #112、#425、#509、#798、#799、§G-009 | Charge 差額必須可追溯到 `session_charge` 調整；有效收款紀錄存在時課程不得被改為未繳費（解鈴走帳單作廢），任何降級路徑都要明確回饋不得靜默 |
 | **F6 輸入邊界 collation** | utf8mb3 文字欄遇 **4-byte 字元（emoji）** → `like` collation 1267 crash；**寫入**同根因 → `Incorrect string value` 1366（`StudentClass.Memo`） | #657、**#1378** | 搜尋：先濾 4-byte；**寫入**：canonical 修 charset→utf8mb4（禁默默刪 emoji）；過渡期回 422 `memo_charset_incompatible` 且 transaction 回滾 |
