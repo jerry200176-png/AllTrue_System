@@ -1,3 +1,7 @@
+## 2026-07-27 — docs(adr): ADR-005 排課多入口 × 具名 command 邊界
+
+Accepted direction（文件）：保留 StudentsList／SmartCalendar／CourseManagement 三 task surface；每個 mutation 對應具名 command；command 只收完成意圖必要的 target values，不接受前端回傳可推導的 current／derived domain truth。首實作 slice（另 PR）：`RestoreContractTeacher`。見 `docs/ADR_005_scheduling_named_command_boundaries.md`。
+
 ## 2026-07-26 — design(ui): UI Foundation + 主任收件匣 pilot
 
 - 新增 ops UI Foundation tokens 與 inbox 實際使用的 `At*` primitives；文件見 `docs/design/ALLTRUE_UI_FOUNDATION.md`。
