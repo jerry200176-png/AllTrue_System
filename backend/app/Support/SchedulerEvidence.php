@@ -39,6 +39,7 @@ final class SchedulerEvidence
         'learning-records-void-stale-leave' => ['command' => 'learning-records:void-stale-leave', 'time' => '03:55'],
         'bugs-verify-reproductions' => ['command' => 'bugs:verify-reproductions --json', 'time' => '04:00'],
         'ops-business-digest' => ['command' => 'ops:business-digest', 'time' => '04:10'],
+        'bindings-cleanup-orphans' => ['command' => 'bindings:cleanup-orphans', 'time' => '04:30'],
     ];
 
     /** @return array<string,array{command:string,time:string}> */
