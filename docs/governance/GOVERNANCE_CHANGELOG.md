@@ -1,5 +1,13 @@
 # Governance changelog
 
+## 2026-07-26 — CI failure intelligence + fast preflight (G1)
+
+- Canonical docs: `docs/governance/CI_GOVERNANCE.md`
+- Scripts: `scripts/ci-preflight.mjs`, `scripts/ci/gov-codes.mjs`, `scripts/ci/branch-policy.mjs`, `scripts/sync-generated.mjs`
+- Presubmit CHECK 1 uses shared branch policy (`sec`/`design`/`revert`/…; reject `agent`/`ops`)
+- Legacy ≤700 size gate unchanged (risk-based reviewability + report workflow = G2)
+- Root `package.json`: `ci:preflight`, `sync:generated`, `test:gov`
+
 ## 2026-07-26 — Repository hygiene pass (metadata + docs)
 
 - Docs/status sync after Parent Binding ADR (#1434) + PB-00 (#1446): PB-00 = **IMPLEMENTED / DEPLOYED — PRODUCTION ACTIVATION PENDING** (code merged/deployed; #1436 closed by merge; Pi ops activation / `effective=true` / 7-day baseline pending). Not full operational completion.

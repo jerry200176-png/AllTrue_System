@@ -7,12 +7,18 @@ export const changelogReleaseNotes = [
     "version": "2026.07.26",
     "date": "2026-07-26",
     "title": "2026.07.26 版本更新",
-    "summary": "家長更新卡改為顯式 PARENT_UPDATES 投影（B+）；堂數制請假改為保留未來日期、只補尾堂",
+    "summary": "00 家長綁定 PII-safe observability；家長更新卡改為顯式 PARENT_UPDATES 投影（B+）",
     "audience": [
       "teacher",
       "director"
     ],
     "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "00 家長綁定 PII-safe observability"
+        ]
+      },
       {
         "title": "修正內容",
         "items": [
@@ -22,6 +28,7 @@ export const changelogReleaseNotes = [
       }
     ],
     "items": [
+      "00 家長綁定 PII-safe observability",
       "家長更新卡改為顯式 PARENT_UPDATES 投影（B+）",
       "堂數制請假改為保留未來日期、只補尾堂"
     ]
