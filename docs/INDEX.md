@@ -198,6 +198,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | 清償流程 | `.cursor/rules/tech-debt.mdc` |
 | **分層規則 + controller `DB::` ratchet** | `docs/ADR_003_layering_and_controller_db_ban.md`（新 DB:: 不得超基線；`node scripts/controller-db-ratchet.mjs`）|
 | **調課原子寫入邊界** | `docs/ADR_004_atomic_reschedule_boundary.md`（schedule chain／ClassSession／評量同交易，前端 committed gate）|
+| **排課多入口 × 具名 command 邊界** | `docs/ADR_005_scheduling_named_command_boundaries.md`（三 task surface；禁止 generic mutation；command 只收 intent target，不收回推導 domain truth）|
 
 ### 測試帳號 / 登入
 - `.cursor/.local/test-credentials.md` — 各角色帳密 + Browser MCP 踩坑 SOP
