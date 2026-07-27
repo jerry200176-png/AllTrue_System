@@ -35,27 +35,25 @@ jobs:
         run: AGENT_PREFLIGHT_MODE=ci bash scripts/agent-preflight.sh
 
       - name: "[CHECK 1] Branch naming convention"
+        env:
+          BRANCH: ${{ github.head_ref }}
         run: |
-          BRANCH="${GITHUB_HEAD_REF}"
-          echo "Branch: $BRANCH"
-
-          if echo "$BRANCH" | grep -qE '^(feat|fix|hotfix|chore|exp|perf|test|refactor|docs|build|ci)/.' \
-            || echo "$BRANCH" | grep -qE '^td-batch[0-9]+-.' \
-            || echo "$BRANCH" | grep -qE '^dependabot/' \
-            || echo "$BRANCH" | grep -qE '^cursor/.' \
-            || echo "$BRANCH" | grep -qE '^cubelv-cli-' ; then
-            echo "✅ Branch name OK: $BRANCH"
-          else
-            echo "❌ Invalid branch name: $BRANCH"
-            echo ""
-            echo "Allowed formats (Conventional-Commits prefixes):"
-            echo "  feat/ fix/ perf/ refactor/ test/ docs/ build/ ci/ chore/ exp/ <slug>"
-            echo "  hotfix/<date>-<slug>  緊急修復"
-            echo "  td-batch<N>-<slug>    技術債清償"
-            echo "  cubelv-cli-<slug>    CubeLV AI 自動生成"
-            echo "  dependabot/*         Dependabot 自動 PR"
-            exit 1
-          fi
+          # Canonical policy: scripts/ci/branch-policy.mjs (shared with npm run ci:preflight)
+          node --input-type=module <<'EOF'
+          import { validateBranchName } from './scripts/ci/branch-policy.mjs';
+          const branch = process.env.BRANCH || '';
+          console.log('Branch:', branch);
+          const v = validateBranchName(branch);
+          if (!v.ok) {
+            console.error('❌ GOV-BRANCH-001:', v.message);
+            console.error('actual:', branch);
+            console.error('fix:', v.fix);
+            console.error('policy: scripts/ci/branch-policy.mjs + docs/governance/CI_GOVERNANCE.md');
+            process.exit(1);
+          }
+          console.log('✅', v.message);
+          if (v.alias) console.log('note: alias', v.alias, '→', v.canonicalPrefix);
+          EOF
 
       # ─────────────────────────────────────────────
       # CHECK 2：PR 大小（推薦 ≤ 400 行，強制 ≤ 700 行）

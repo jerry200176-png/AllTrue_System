@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "provenance_type": "human-authored",
-  "declared_at": "2026-07-26T18:45:00Z",
+  "declared_at": "2026-07-27T03:10:00Z",
   "author": "founder-directed-cursor-cloud-ui-foundation",
-  "note": "Cursor Cloud lacks agent-start allowlisted path; human-authored provenance for UI Foundation PR B (#1451 students pilot) stacked on #1450. Path-scoped Playwright/upload via ui_foundation filter. No size-gate exception for #1451."
+  "note": "Cursor Cloud lacks agent-start allowlisted path; human-authored provenance for UI Foundation PR B (#1451 students pilot) retargeted onto main after #1450 merge. Path-scoped Playwright/upload via ui_foundation filter. No size-gate exception for #1451 (does not inherit #1450 Founder size exception)."
 }

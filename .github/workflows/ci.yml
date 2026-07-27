@@ -412,7 +412,7 @@ jobs:
   vite-build:
     name: Vite Frontend Build
     needs: changes
-    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.ci_config == 'true'
+    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.ci_config == 'true' || needs.changes.outputs.ui_foundation == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
