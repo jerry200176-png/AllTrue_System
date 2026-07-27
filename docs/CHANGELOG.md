@@ -1,3 +1,10 @@
+## 2026-07-26 — design(ui): UI Foundation + 主任收件匣 pilot
+
+- 新增 ops UI Foundation tokens 與 inbox 實際使用的 `At*` primitives；文件見 `docs/design/ALLTRUE_UI_FOUNDATION.md`。
+- Pilot：主任收件匣（結構／狀態／密度；業務邏輯與 API 不變）。學生列表見 stacked follow-up PR。
+- Visual fixtures 僅在 `frontend/e2e/fixtures/`；production `public/` / `dist_build` 不含 mount harness。
+- Merge evidence：真實 Vue inbox Playwright + mocked API（390／768／1440）。
+
 ## 2026-07-26 — ci(governance): failure taxonomy + fast preflight（G1）
 
 - 開發備註：新增 `npm run ci:preflight` / `sync:generated`、failure taxonomy、branch policy（含 `sec/`）；見 `docs/governance/CI_GOVERNANCE.md`。不改 production 業務邏輯。

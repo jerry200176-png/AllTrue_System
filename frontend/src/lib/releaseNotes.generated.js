@@ -25,12 +25,19 @@ export const changelogReleaseNotes = [
           "家長更新卡改為顯式 PARENT_UPDATES 投影（B+）",
           "堂數制請假改為保留未來日期、只補尾堂"
         ]
+      },
+      {
+        "title": "體驗調整",
+        "items": [
+          "Foundation + 主任收件匣 pilot"
+        ]
       }
     ],
     "items": [
       "00 家長綁定 PII-safe observability",
       "家長更新卡改為顯式 PARENT_UPDATES 投影（B+）",
-      "堂數制請假改為保留未來日期、只補尾堂"
+      "堂數制請假改為保留未來日期、只補尾堂",
+      "Foundation + 主任收件匣 pilot"
     ]
   },
   {

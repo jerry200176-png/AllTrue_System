@@ -1,5 +1,7 @@
 {
   "schema_version": "1.0",
   "provenance_type": "human-authored",
-  "declared_at": "2026-07-26T18:45:00Z"
+  "declared_at": "2026-07-27T01:30:00Z",
+  "author": "founder-directed-cursor-cloud-ui-foundation",
+  "note": "Cursor Cloud lacks agent-start allowlisted path; human-authored provenance for UI Foundation PR A (#1450). vite-build job if now includes ui_foundation so guard-script-only changes still run Playwright. One-time Founder size exception applies to final head SHA only; gate unchanged."
 }

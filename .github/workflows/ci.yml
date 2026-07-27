@@ -61,6 +61,7 @@ jobs:
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
       ci_config: ${{ steps.filter.outputs.ci_config }}
+      ui_foundation: ${{ steps.filter.outputs.ui_foundation }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -76,6 +77,16 @@ jobs:
               - 'frontend/**'
             ci_config:
               - '.github/workflows/**'
+            ui_foundation:
+              - 'frontend/src/components/design-system/**'
+              - 'frontend/src/pages/NotificationsCenter.vue'
+              - 'frontend/src/pages/StudentsList.vue'
+              - 'frontend/src/styles.css'
+              - 'frontend/e2e/fixtures/ui-foundation/**'
+              - 'frontend/e2e/ui-foundation-*.spec.js'
+              - 'frontend/playwright.ui-foundation.config.js'
+              - 'frontend/vite.ui-foundation.config.js'
+              - 'scripts/check-no-public-ui-fixtures.sh'
 
   # PR diff → Golden § 對照表（全自動；取代人工勾選 QA_GOLDEN_SCENARIOS）
   golden_scenarios:
@@ -401,7 +412,7 @@ jobs:
   vite-build:
     name: Vite Frontend Build
     needs: changes
-    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.ci_config == 'true'
+    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.ci_config == 'true' || needs.changes.outputs.ui_foundation == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -498,6 +509,24 @@ jobs:
           test -f dist_build/index.html || (echo "❌ index.html missing from dist_build" && exit 1)
           echo "✅ dist_build/index.html exists"
           ls -lh dist_build/
+          # Production bundle must never ship UI foundation fixtures
+          npm run lint:ui-fixtures
+          ! test -f dist_build/pilot-mount.html
+
+      # Path-scoped: Chromium + real Vue page evidence only when UI foundation
+      # surfaces/fixtures/config change. Still blocking when the filter matches
+      # (no || true / continue-on-error / permanent opt-in skip).
+      - name: Install Playwright Chromium (UI foundation page evidence)
+        if: needs.changes.outputs.ui_foundation == 'true'
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: UI foundation page-level Playwright (real Vue + mocked API)
+        if: needs.changes.outputs.ui_foundation == 'true'
+        working-directory: frontend
+        env:
+          UI_FOUNDATION_SHOT_DIR: ${{ github.workspace }}/docs/design/evidence/raw
+        run: npm run test:e2e:ui-foundation
 
       - name: Bundle size budget
         # #1273: route-aware — reports/budgets initial vs. largest-lazy-route

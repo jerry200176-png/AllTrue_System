@@ -10,6 +10,7 @@ last_reviewed: 2026-07-24
 > 取代 `docs/archive/PORSCHE_VISUAL_SYSTEM.md`（已 superseded，移入 archive）。
 > 風格來源：`VoltAgent/awesome-design-md` 的 Stripe `DESIGN.md`，改寫為 AllTrue 補習班管理系統可落地的版本。
 > 品味閘門：`.cursor/rules/frontend-brand-taste.mdc`（#1386 教訓 → #1412 還原）。
+> Ops 結構／primitives／pilot：[`docs/design/ALLTRUE_UI_FOUNDATION.md`](design/ALLTRUE_UI_FOUNDATION.md)（Pajamas-led；本檔仍是色票 SSOT）。
 
 ## 1. Intent（設計意圖）
 
