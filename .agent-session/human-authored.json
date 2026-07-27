@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "provenance_type": "human-authored",
-  "declared_at": "2026-07-27T03:10:00Z",
-  "author": "founder-directed-cursor-cloud-ui-foundation",
-  "note": "Cursor Cloud lacks agent-start allowlisted path; human-authored provenance for UI Foundation PR B (#1451 students pilot) retargeted onto main after #1450 merge. Path-scoped Playwright/upload via ui_foundation filter. No size-gate exception for #1451 (does not inherit #1450 Founder size exception)."
+  "declared_at": "2026-07-27T03:50:00Z",
+  "author": "jerry-github-operator-audit",
+  "note": "Low-risk CI hygiene from 2026-07 GitHub platform governance audit Phase 9: add concurrency/cancel-in-progress and contents:read permissions to agent-provenance.yml. No production business logic; no deploy trigger change."
 }
