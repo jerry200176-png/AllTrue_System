@@ -9,6 +9,7 @@ use App\Models\ParentSession;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Services\FeedbackPushNotifier;
+use App\Services\ParentFeedbackAwaitingService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -128,7 +129,8 @@ class LearningRecordFeedbackController extends Controller
         $auth = $this->authorizeParentRecord($session, $learningRecord);
         if ($auth !== true) return $auth;
 
-        $content = trim((string) $request->input('content', ''));
+        $awaiting = app(ParentFeedbackAwaitingService::class);
+        $content = $awaiting->normalizeContent((string) $request->input('content', ''));
         if ($content === '' || mb_strlen($content) > 500) {
             return response()->json(['message' => '回饋內容需為 1-500 字'], 422);
         }
@@ -136,9 +138,23 @@ class LearningRecordFeedbackController extends Controller
         $ctx = $this->recordContext($learningRecord);
         if (!$ctx) return response()->json(['message' => 'Learning record context missing'], 409);
 
-        $feedback = LearningRecordFeedback::updateOrCreate(
-            ['learning_record_id' => $learningRecord->id],
-            [
+        $existing = LearningRecordFeedback::where('learning_record_id', $learningRecord->id)->first();
+
+        // E4: identical normalized content → idempotent no-op (no unread reset, no notify, no event time bump).
+        if ($existing && $awaiting->normalizeContent((string) $existing->content) === $content) {
+            return response()->json([
+                'feedback' => $this->formatParentFeedback($existing),
+                'message' => '已送出給老師',
+                'idempotent' => true,
+            ]);
+        }
+
+        $isCreate = !$existing;
+        $isContentChange = $existing && !$isCreate;
+
+        if ($isCreate) {
+            $feedback = LearningRecordFeedback::create([
+                'learning_record_id' => $learningRecord->id,
                 'student_id' => $ctx['student_id'],
                 'student_class_id' => $ctx['student_class_id'],
                 'class_session_id' => $ctx['class_session_id'],
@@ -148,14 +164,33 @@ class LearningRecordFeedbackController extends Controller
                 'parent_session_id' => $session->id,
                 'last_read_by_teacher_at' => null,
                 'last_read_by_director_at' => null,
-            ]
-        );
+            ]);
+        } else {
+            // E2: real content change — update body, clear staff unread, append parent reply for stable ordering.
+            DB::table($existing->getTable())->where('id', $existing->id)->update([
+                'content' => $content,
+                'parent_session_id' => $session->id,
+                'last_read_by_teacher_at' => null,
+                'last_read_by_director_at' => null,
+                'updated_at' => now(),
+            ]);
+            LearningRecordFeedbackReply::create([
+                'feedback_id' => $existing->id,
+                'author_user_id' => null,
+                'author_role' => 'parent',
+                'parent_session_id' => $session->id,
+                'content' => $content,
+            ]);
+            $feedback = $existing->fresh();
+        }
 
         app(FeedbackPushNotifier::class)->notifyParentSubmitted($feedback);
 
         return response()->json([
             'feedback' => $this->formatParentFeedback($feedback),
             'message' => '已送出給老師',
+            'idempotent' => false,
+            'content_changed' => (bool) $isContentChange,
         ]);
     }
 
@@ -261,6 +296,64 @@ class LearningRecordFeedbackController extends Controller
             ->count();
 
         return response()->json(['count' => (int) $count]);
+    }
+
+    /**
+     * Authoritative awaiting_reply_count (PRD). Scope matches inbox defaults:
+     * teacher = all campuses for that teacher; director = current branch unless scope=all_authorized.
+     * Does not reuse analytics.unreplied_records. P0 roles: teacher / director only (route group).
+     */
+    public function awaitingReplyCount(Request $request)
+    {
+        $role = (string) $request->attributes->get('auth_role');
+        $service = app(ParentFeedbackAwaitingService::class);
+
+        if ($role === 'teacher') {
+            $teacherId = (int) $request->attributes->get('auth_teacher_id');
+            if ($teacherId <= 0) {
+                return response()->json(['message' => 'Teacher not linked'], 403);
+            }
+            $count = $service->countAwaitingForStaff('teacher', $teacherId);
+
+            return response()->json([
+                'awaiting_reply_count' => $count,
+                'meta' => ['scope' => 'teacher_all_campuses', 'role' => 'teacher'],
+            ]);
+        }
+
+        if ($role !== 'director') {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $campusIds = array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
+        $branchId = (int) ($request->input('branch_id') ?: $request->input('campus_id'));
+        $allAuthorized = $request->input('scope') === 'all_authorized'
+            || $request->boolean('all_authorized_campuses');
+
+        if ($allAuthorized) {
+            if (empty($campusIds)) {
+                return response()->json(['message' => 'Campus required'], 403);
+            }
+            $count = $service->countAwaitingForStaff('director', 0, $campusIds, 0, true);
+
+            return response()->json([
+                'awaiting_reply_count' => $count,
+                'meta' => ['scope' => 'all_authorized_campuses', 'role' => 'director'],
+            ]);
+        }
+
+        if ($branchId <= 0) {
+            return response()->json(['message' => 'branch_id required'], 422);
+        }
+        if (!in_array($branchId, $campusIds, true)) {
+            return response()->json(['message' => 'Forbidden: branch not accessible'], 403);
+        }
+        $count = $service->countAwaitingForStaff('director', 0, $campusIds, $branchId, false);
+
+        return response()->json([
+            'awaiting_reply_count' => $count,
+            'meta' => ['scope' => 'current_campus', 'branch_id' => $branchId, 'role' => 'director'],
+        ]);
     }
 
     public function analytics(Request $request)
@@ -551,6 +644,7 @@ class LearningRecordFeedbackController extends Controller
             'updated_at' => optional($f->updated_at)->toIso8601String(),
             'replies' => $replies,
             'has_unread_reply' => $this->hasUnreadReplyForParent($f, $replies),
+            'awaiting_staff_reply' => app(ParentFeedbackAwaitingService::class)->isAwaitingStaffReply($f),
         ];
     }
 
@@ -574,6 +668,7 @@ class LearningRecordFeedbackController extends Controller
             'updated_at' => optional($f->updated_at)->toIso8601String(),
             'unread_for_teacher' => !$f->last_read_by_teacher_at || $f->last_read_by_teacher_at->lt($f->updated_at),
             'unread_for_director' => !$f->last_read_by_director_at || $f->last_read_by_director_at->lt($f->updated_at),
+            'awaiting_staff_reply' => app(ParentFeedbackAwaitingService::class)->isAwaitingStaffReply($f),
         ];
     }
 }

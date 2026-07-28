@@ -1171,12 +1171,6 @@ parameters:
 			path: app/Http/Controllers/ChatController.php
 
 		-
-			message: '#^Access to an undefined property App\\Models\\ClassSession\:\:\$IsContractException\.$#'
-			identifier: property.notFound
-			count: 2
-			path: app/Http/Controllers/ClassSessionController.php
-
-		-
 			message: '#^Access to an undefined property App\\Models\\ClassSession\:\:\$Note\.$#'
 			identifier: property.notFound
 			count: 4
@@ -1185,37 +1179,13 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\ClassSession\:\:\$Status\.$#'
 			identifier: property.notFound
-			count: 1
+			count: 2
 			path: app/Http/Controllers/ClassSessionController.php
 
 		-
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$ID\.$#'
 			identifier: property.notFound
-			count: 11
-			path: app/Http/Controllers/ClassSessionController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$RemainingSessions\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/ClassSessionController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$SessionDuration\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/ClassSessionController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$Stop\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/ClassSessionController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$UsedSessions\.$#'
-			identifier: property.notFound
-			count: 1
+			count: 9
 			path: app/Http/Controllers/ClassSessionController.php
 
 		-
@@ -1311,7 +1281,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 4
+			count: 3
 			path: app/Http/Controllers/ClassSessionController.php
 
 		-
@@ -1363,12 +1333,6 @@ parameters:
 			path: app/Http/Controllers/ClassSessionController.php
 
 		-
-			message: '#^Method App\\Http\\Controllers\\ClassSessionController\:\:recalculateSessionCounters\(\) is unused\.$#'
-			identifier: method.unused
-			count: 1
-			path: app/Http/Controllers/ClassSessionController.php
-
-		-
 			message: '#^Method App\\Http\\Controllers\\ClassSessionController\:\:resolveStudentGradeId\(\) is unused\.$#'
 			identifier: method.unused
 			count: 1
@@ -1394,12 +1358,6 @@ parameters:
 
 		-
 			message: '#^Offset ''start_time'' on array\{start_time\: string, end_time\: string\} on left side of \?\? always exists and is not nullable\.$#'
-			identifier: nullCoalesce.offset
-			count: 1
-			path: app/Http/Controllers/ClassSessionController.php
-
-		-
-			message: '#^Offset 0\|1\|2\|3\|4\|5\|6 on array\{''time'', ''time1'', ''time2'', ''time3'', ''time4'', ''time5'', ''time6''\} on left side of \?\? always exists and is not nullable\.$#'
 			identifier: nullCoalesce.offset
 			count: 1
 			path: app/Http/Controllers/ClassSessionController.php
@@ -2595,7 +2553,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\LearningRecord\:\:\$id\.$#'
 			identifier: property.notFound
-			count: 1
+			count: 2
 			path: app/Http/Controllers/LearningRecordFeedbackController.php
 
 		-
@@ -2715,7 +2673,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\ParentSession\:\:\$id\.$#'
 			identifier: property.notFound
-			count: 2
+			count: 4
 			path: app/Http/Controllers/LearningRecordFeedbackController.php
 
 		-
@@ -2725,7 +2683,13 @@ parameters:
 			path: app/Http/Controllers/LearningRecordFeedbackController.php
 
 		-
-			message: '#^Call to an undefined static method App\\Models\\LearningRecordFeedback\:\:updateOrCreate\(\)\.$#'
+			message: '#^Call to an undefined static method App\\Models\\LearningRecordFeedback\:\:where\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Http/Controllers/LearningRecordFeedbackController.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\LearningRecordFeedback\:\:create\(\)\.$#'
 			identifier: staticMethod.notFound
 			count: 1
 			path: app/Http/Controllers/LearningRecordFeedbackController.php
@@ -2733,7 +2697,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\LearningRecordFeedbackReply\:\:create\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 2
+			count: 3
 			path: app/Http/Controllers/LearningRecordFeedbackController.php
 
 		-
@@ -4069,12 +4033,6 @@ parameters:
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
-			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$SessionDuration\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/StudentClassController.php
-
-		-
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$StartDate\.$#'
 			identifier: property.notFound
 			count: 4
@@ -4353,7 +4311,7 @@ parameters:
 		-
 			message: '#^Offset 0\|1\|2\|3\|4\|5\|6 on array\{''time'', ''time1'', ''time2'', ''time3'', ''time4'', ''time5'', ''time6''\} on left side of \?\? always exists and is not nullable\.$#'
 			identifier: nullCoalesce.offset
-			count: 2
+			count: 1
 			path: app/Http/Controllers/StudentClassController.php
 
 		-

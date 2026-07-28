@@ -458,12 +458,13 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
+| 狀態 | **Done**（2026-07-28，架構稽核備忘 Pattern A follow-up）|
 | 優先級 | P3 |
 | 發現日期 | 2026-05-31 |
 | 發現來源 | [REVIEW] #613 調查 |
-| 影響模組 | `ClassSessionController::recalculateSessionCounters`（private）|
+| 影響模組 | `ClassSessionController::recalculateSessionCounters`（private，已刪除）|
 | 描述 | 此方法以 count-based（completed+attended）重算 `RemainingSessions`，與權威引擎 `SessionDeductionService::recomputeCounters` 並存。調查確認目前**無任何 caller**（死碼），故不會覆寫 #613 的分鐘衍生值；但保留會誤導，且若日後被誤用會與分鐘制分歧。|
+| 清償紀錄 | 直接刪除該方法（採建議做法的「移除」選項，而非薄包裝委派——委派到一個沒有 caller 的方法沒有意義）。確認 `SessionDeductionService::recomputeCounters` 已涵蓋同等的 legacy `attended` 相容性（`whereIn('Status', ['completed','attended','late'])`），且更完整（含 `StudentSignIn`/ledger/orphan LearningRecord 訊號、分鐘制衍生）。原本透過 Reflection 呼叫此死碼的測試 `ClassSessionBatchApiTest::test_recalculate_session_counters_counts_legacy_attended_for_compatibility` 已改為直接呼叫 `SessionDeductionService::recomputeCounters()`，斷言不變。同時清掉 `phpstan-baseline.neon` 對應的「unused method」豁免項。與 R83/R84 同一類根因：衍生欄位的重算邏輯有第二份未接線的複製，是還沒發作的地雷。|
 | 建議做法 | 移除該方法，或改為薄包裝委派 `SessionDeductionService::recomputeCounters`，統一單一扣堂權威路徑。|
 | 清償成本估計 | 低（< 1hr）|
 | 不做的代價 | 死碼誤導後續開發者；潛在被誤用導致與分鐘制不一致 |
@@ -579,3 +580,19 @@
 | 建議做法 | 先寫 T3 PLAN/ARCH/SEC；批准後再 DEV。長期加 backend contract test + typed client／OpenAPI + deploy 後 authenticated synthetic。 |
 | 清償成本估計 | 高 |
 | 不做的代價 | 無法提供法定完整收據／PDF／作廢；但查看路徑已可用，不阻塞日常核帳 |
+
+---
+
+### TD-069：`ScheduleController::retroLeave()` 與 `ClassSessionController::handleRetroLeaveTransition()` 補請假邏輯重複，且尾端補課策略不一致
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P2 |
+| 發現日期 | 2026-07-28 |
+| 發現來源 | [REVIEW] R55 資源復活政策稽核時順手發現（架構稽核備忘 Pattern A/B 交界） |
+| 影響模組 | `ScheduleController::retroLeave()`、`ClassSessionController::handleRetroLeaveTransition()`、`ClassSessionController::voidAttendanceArtifacts()` |
+| 描述 | 兩個獨立 endpoint 都實作「已上課堂次補登請假」：作廢 `StudentSignIn`/`LearningRecord`（`VoidReason='補請假：已上課改請假'`）、`SessionDeductionService::reverseForSession(...,'retro_leave',...)` 沖回、`Status='leave_adjusted'`。**不是逐字複製**——經比對後尾端補課策略實際不同：`ClassSessionController` 呼叫 `tryExtendOnLeave()`（count-based，只在「有效堂次數 < SessionCount」時補一堂）；`ScheduleController::retroLeave()` 呼叫 `CourseLeaveCascadeService::appendTailAfterLeave()`（Founder Decision 2026-07-26 的 keep-future-dates-append-tail 政策），且額外在無任何簽到記錄時建立一筆 closed leave `StudentSignIn`（`ClassSessionController` 沒有這步）。與 R83/R84、TD-060、R55 同一類根因（同一決策兩處各自維護），但**consolidation 本身有實質風險**：不是單純刪重複，需先確認兩個尾端補課策略哪個才是現行正確政策（或本來就該依呼叫情境不同），貿然合併可能改變請假/補課的實際行為。 |
+| 建議做法 | 不建議直接合併。先確認：(1) 這兩個 endpoint 目前分別被哪些前端流程呼叫、是否有重疊 (2) `tryExtendOnLeave` 是否為舊政策的殘留（`appendTailAfterLeave` 明確引用較新的 Founder Decision），若是則评估汰換 `ClassSessionController` 那份改呼叫 `CourseLeaveCascadeService`。voidAttendanceArtifacts 的部分（作廢 sign-in/LR + reverseForSession）可以先安全抽成共用 helper，這段兩處確實一致。 |
+| 清償成本估計 | 中～高（半天以上，需先做行為盤點，不可只看程式碼相似度） |
+| 不做的代價 | 兩處補請假邏輯持續各自演進，未來若只改一邊（例如尾端補課規則再變），另一邊會悄悄落後，重演 R55 那種「兩處判斷各自維護、其中一份沒跟上」的缺口 |
