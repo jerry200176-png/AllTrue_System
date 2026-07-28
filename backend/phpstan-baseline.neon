@@ -2595,7 +2595,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\LearningRecord\:\:\$id\.$#'
 			identifier: property.notFound
-			count: 1
+			count: 2
 			path: app/Http/Controllers/LearningRecordFeedbackController.php
 
 		-
@@ -2715,7 +2715,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\ParentSession\:\:\$id\.$#'
 			identifier: property.notFound
-			count: 2
+			count: 4
 			path: app/Http/Controllers/LearningRecordFeedbackController.php
 
 		-
@@ -2725,7 +2725,13 @@ parameters:
 			path: app/Http/Controllers/LearningRecordFeedbackController.php
 
 		-
-			message: '#^Call to an undefined static method App\\Models\\LearningRecordFeedback\:\:updateOrCreate\(\)\.$#'
+			message: '#^Call to an undefined static method App\\Models\\LearningRecordFeedback\:\:where\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Http/Controllers/LearningRecordFeedbackController.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\LearningRecordFeedback\:\:create\(\)\.$#'
 			identifier: staticMethod.notFound
 			count: 1
 			path: app/Http/Controllers/LearningRecordFeedbackController.php
@@ -2733,7 +2739,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\LearningRecordFeedbackReply\:\:create\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 2
+			count: 3
 			path: app/Http/Controllers/LearningRecordFeedbackController.php
 
 		-
