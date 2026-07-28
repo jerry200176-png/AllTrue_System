@@ -1,6 +1,4 @@
-## 2026-07-28 — ops(incidents): 木柵高瑞樸 7/30 containment GHA lane
-
-- Dedicated `workflow_dispatch` + versioned one-shot PHP（checksum／dry-run／backup／transaction／post-verify）；不塞入 Deploy to Pi；successor to #1466
+## 2026-07-28 — ops(incidents): 木柵高瑞樸 7/30 GHA containment lane（successor #1466）
 
 ## 2026-07-28 — feat(scheduling): ADR-006 Phase 2 shadow horizon（read-only）
 
