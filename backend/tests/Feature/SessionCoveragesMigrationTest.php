@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
@@ -27,6 +28,6 @@ class SessionCoveragesMigrationTest extends TestCase
         }
 
         // No silent historical ClassSession marking — table starts empty.
-        $this->assertSame(0, \DB::table('session_coverages')->count());
+        $this->assertSame(0, DB::table('session_coverages')->count());
     }
 }
