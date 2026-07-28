@@ -1351,12 +1351,6 @@ parameters:
 			path: app/Http/Controllers/ClassSessionController.php
 
 		-
-			message: '#^Method App\\Http\\Controllers\\ClassSessionController\:\:recalculateSessionCounters\(\) is unused\.$#'
-			identifier: method.unused
-			count: 1
-			path: app/Http/Controllers/ClassSessionController.php
-
-		-
 			message: '#^Method App\\Http\\Controllers\\ClassSessionController\:\:resolveStudentGradeId\(\) is unused\.$#'
 			identifier: method.unused
 			count: 1
