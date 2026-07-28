@@ -531,10 +531,17 @@ Founder 批准 **28 天**為 v1 **server-side default**，**不是**永久 domai
 |---|---|---|
 | 2 | A：rolling materializer shadow → 自動寫入 | Phase 0 證據 + Preview／Ensure 實作綠 + GO |
 | 3 | Pool-level coverage lifecycle | 不重寫 consumption；只標記 |
-
-**Phase 2 shadow tool（read-only；非自動寫入）：** `php artisan sessions:shadow-horizon` → `ShadowSessionHorizonService`（Preview vs Ensure dry-run metrics；`writes=false`）。自動寫入仍需 Founder GO。
 | 4 | B：點名 fallback（嚴格唯一性條件） | 否則升級主任 |
 | 5 | 高風險整合（attendance orchestration、hold→consume、leave transfer） | 另 SEC／owner gate |
+
+**Phase 2 shadow tool（read-only）：** `sessions:shadow-horizon`。
+
+**Phase 3A planner（read-only／default-off；無 coverage DB 寫入）：**
+
+- States：`none` → `held` → `consumed`｜`released`（`SessionCoverageStateMachine`）
+- Plan：`AllocateSessionCoveragePlanner`／`ReleaseSessionCoveragePlanner`／`PoolCoveragePlanService`
+- Command：`php artisan sessions:plan-coverage {package_id}`
+- **仍需 Founder GO：** coverage 持久化 migration merge／execute、coverage 寫入、consumption 整合、Kernel 啟用
 
 ---
 

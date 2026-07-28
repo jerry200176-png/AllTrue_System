@@ -6,6 +6,11 @@
 - 前端：TeacherHome 固定「家長留言」卡、評量頁一級「家長留言」Tab、modal 回覆模式。
 - 無 migration／backfill。Implementation PR 不自動 merge／deploy。
 
+## 2026-07-28 — feat(scheduling): ADR-006 Phase 3A pool coverage planner（read-only）
+
+- 新增 coverage state machine（`none/held/consumed/released`）與 `AllocateSessionCoverage`／`ReleaseSessionCoverage` dry-run planner；`sessions:plan-coverage`。
+- **不**寫 coverage 表、不扣堂、不 merge migration（持久化另 PR + Founder GO）。
+
 ## 2026-07-28 — feat(scheduling): ADR-006 Phase 2 shadow horizon（read-only）
 
 - 新增 `sessions:shadow-horizon` + `ShadowSessionHorizonService`：Preview vs Ensure dry-run 對照、drift／shortage 指標；**永遠唯讀**。

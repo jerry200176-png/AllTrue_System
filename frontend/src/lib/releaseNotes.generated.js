@@ -7,7 +7,7 @@ export const changelogReleaseNotes = [
     "version": "2026.07.28",
     "date": "2026-07-28",
     "title": "2026.07.28 版本更新",
-    "summary": "修正超級管理員看不到版本更新內容的問題；006 Phase 2 shadow horizon（read-only）",
+    "summary": "修正超級管理員看不到版本更新內容的問題；006 Phase 3A pool coverage planner（read-only）",
     "audience": [
       "teacher",
       "director"
@@ -17,21 +17,21 @@ export const changelogReleaseNotes = [
         "title": "新增內容",
         "items": [
           "修正超級管理員看不到版本更新內容的問題",
+          "006 Phase 3A pool coverage planner（read-only）",
           "006 Phase 2 shadow horizon（read-only）",
           "006 Phase 1B EnsureSessionHorizon（default-off）",
           "006 Phase 1A eviewSessionHorizon（read-only）",
-          "006 Phase 0 唯讀 epaid horizon 報告（slice 2/2）",
-          "006 Commitment classifier helpers (Phase 0 slice 1/2)"
+          "006 Phase 0 唯讀 epaid horizon 報告（slice 2/2）"
         ]
       }
     ],
     "items": [
       "修正超級管理員看不到版本更新內容的問題",
+      "006 Phase 3A pool coverage planner（read-only）",
       "006 Phase 2 shadow horizon（read-only）",
       "006 Phase 1B EnsureSessionHorizon（default-off）",
       "006 Phase 1A eviewSessionHorizon（read-only）",
-      "006 Phase 0 唯讀 epaid horizon 報告（slice 2/2）",
-      "006 Commitment classifier helpers (Phase 0 slice 1/2)"
+      "006 Phase 0 唯讀 epaid horizon 報告（slice 2/2）"
     ]
   },
   {
