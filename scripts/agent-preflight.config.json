@@ -20,7 +20,7 @@
   "allowed_path_prefixes": [
     "/home/jerry/workspace/tasks/alltrue/"
   ],
-  "branch_prefix_regex": "^(feat|fix|hotfix|chore|exp|perf|test|refactor|docs|build|ci)/.+",
+  "branch_prefix_regex": "^(feat|fix|hotfix|chore|exp|perf|test|refactor|docs|build|ci|sec|security|audit|revert|release|design|cursor)/.+",
   "production_mutation_env": "ALLTRUE_PRODUCTION_MUTATION",
   "require_clean_worktree": true,
   "require_base_equals_origin_main": true,

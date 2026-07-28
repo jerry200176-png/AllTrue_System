@@ -17,8 +17,7 @@ class RescheduleSessionService
 {
     public function __construct(
         private ClassSessionMaterializationService $materializationService,
-        private ScheduleGuardService $scheduleGuardService,
-        private ContractScheduleMatcher $contractScheduleMatcher
+        private ScheduleGuardService $scheduleGuardService
     ) {
     }
 
@@ -129,8 +128,11 @@ class RescheduleSessionService
                 $session->SessionDate = $newDate;
                 $session->StartTime = $startTime;
                 $session->EndTime = $endTime;
+                // R84: ClassSessionObserver::saving() recomputes IsContractException
+                // automatically here (SessionDate/StartTime/EndTime are dirty), so
+                // force_partial_rebuild / syncFutureScheduledSessionTimes cannot
+                // snap the occurrence back to StudentClass week/time.
                 $session->save();
-                $this->contractScheduleMatcher->syncExceptionFlag($session, $studentClass);
 
                 $resetApplied = false;
                 if ($this->shouldResetToScheduled($session)) {
@@ -188,6 +190,14 @@ class RescheduleSessionService
                 'EndTime' => $endTime,
                 'Status' => 'scheduled',
             ])['session'];
+
+            // R84: ClassSessionObserver::updating() only fires for already-persisted
+            // rows; this branch just created a brand-new one, so it needs one
+            // explicit recompute (same reasoning as StudentClassController::addSession).
+            app(ContractScheduleMatcher::class)->applyExceptionFlag($newSession, $studentClass);
+            if ($newSession->isDirty('IsContractException')) {
+                $newSession->save();
+            }
 
             return [
                 'message' => '已建立課堂紀錄',

@@ -141,13 +141,6 @@ function buildSummary(sections) {
   return firstItems.join('；');
 }
 
-/** Bullets that mention parent-facing topics → tag card for Parent Portal (see releaseNotes.js). */
-function parentAudienceFromItems(itemLines) {
-  const hint =
-    /家長|家長端|家長入口|Parent\s*[Pp]ortal|parent\s*portal|請假|繳費|帳務|課表|學習評量|評量|留言|互動|回饋|LINE|通知|出缺勤|月結|帳單|刷卡/i;
-  return itemLines.some((line) => hint.test(String(line || '')));
-}
-
 function parseChangelog(md) {
   const lines = md.split('\n');
   /** @type {Map<string, Map<string, string[]>>} */
@@ -200,10 +193,8 @@ function parseChangelog(md) {
       .filter((section) => section.items.length > 0);
 
     const flatItems = sections.flatMap((section) => section.items);
+    // Staff-only. Parent Portal reads docs/PARENT_UPDATES.yml (never keyword-derived).
     const audience = ['teacher', 'director'];
-    if (parentAudienceFromItems(flatItems)) {
-      audience.push('parent');
-    }
 
     notes.push({
       version,

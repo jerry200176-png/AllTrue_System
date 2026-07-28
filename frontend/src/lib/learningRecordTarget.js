@@ -44,26 +44,25 @@ export function shouldLiftDefaultWindowForDate({ savedDate, windowStart } = {}) 
 }
 
 /**
- * 主任／老師從「家長回饋待看」CTA 導進評量頁時，要套用的篩選狀態。
+ * 主任／老師從「家長留言」CTA 導進評量頁時，要套用的篩選狀態。
  *
- * 問題（in-app #138，與 #54/#105 同類）：CTA 的未讀回饋計數來自「server 通知 badge」，
- * 但評量列表預設用「待審分頁 + 近 90 天視窗」載入，而家長回饋多發生在「已核准」且可能較舊的
- * 課次 → 那些有回饋的紀錄根本不在列表內 → 導過去切「未讀回饋」也是空的。
+ * 問題（in-app #138，與 #54/#105 同類）：CTA 計數來自 server，但評量列表預設用
+ * 「待審分頁 + 近 90 天視窗」會把較舊留言藏掉。
  *
- * 解法：導入時把資料集放到最大（reviewTab=all、不只看未填、解除近 90 天視窗），
- * 並把回饋篩選設為「未讀」，讓有回饋的紀錄一定被載入並列出。
+ * PRD 2026-07-28：預設切到 authoritative「尚未回覆」(awaiting_reply)，並進家長留言 inbox mode。
  *
  * @param {Object} args
  * @param {boolean} [args.isTeacher]
- * @returns {{ feedbackFilter:'unread', reviewTab:'all', teacherFilterTab:'all', onlyUnfilled:false, liftWindow:true }}
+ * @returns {{ feedbackFilter:'awaiting_reply', reviewTab:'all', teacherFilterTab:'all', onlyUnfilled:false, liftWindow:true, pageMode:'parent_messages' }}
  */
 export function feedbackFocusState({ isTeacher = false } = {}) {
   return {
-    feedbackFilter: 'unread',
+    feedbackFilter: 'awaiting_reply',
     reviewTab: 'all',
     teacherFilterTab: 'all',
     onlyUnfilled: false,
     liftWindow: true,
+    pageMode: 'parent_messages',
     isTeacher: Boolean(isTeacher),
   };
 }

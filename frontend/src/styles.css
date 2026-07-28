@@ -52,6 +52,68 @@
   --ds-shadow-1: 0 1px 3px rgba(0, 55, 112, 0.08);
   --ds-shadow-2: 0 8px 24px rgba(0, 55, 112, 0.08), 0 2px 6px rgba(0, 55, 112, 0.04);
 
+  /* ============================================================
+     UI Foundation (ops surfaces) — Pajamas-led structure tokens.
+     Canonical: docs/design/ALLTRUE_UI_FOUNDATION.md
+     Brand colors stay AllTrue amber; do NOT copy GitLab/IBM brand.
+     ============================================================ */
+  --ds-space-1: 4px;
+  --ds-space-2: 8px;
+  --ds-space-3: 12px;
+  --ds-space-4: 16px;
+  --ds-space-5: 24px;
+  --ds-space-6: 32px;
+  --ds-space-7: 48px;
+  --ds-space-8: 64px;
+
+  --ds-font-size-xs: 11px;
+  --ds-font-size-sm: 12px;
+  --ds-font-size-md: 13px;
+  --ds-font-size-base: 14px;
+  --ds-font-size-lg: 16px;
+  --ds-font-size-xl: 18px;
+  --ds-font-size-2xl: 20px;
+  --ds-line-tight: 1.25;
+  --ds-line-base: 1.45;
+  --ds-line-loose: 1.6;
+  --ds-font-weight-regular: 400;
+  --ds-font-weight-medium: 500;
+  --ds-font-weight-semibold: 600;
+  --ds-font-weight-bold: 700;
+
+  /* Ops radius: max 3 levels (sm/md/lg). Pill reserved for brand/auth + rare chips. */
+  --ds-radius-sm: 4px;
+  --ds-radius-md: 6px;
+  --ds-radius-lg: 8px;
+  --ds-radius-pill: 9999px;
+
+  --ds-control-height-sm: 28px;
+  --ds-control-height-md: 32px;
+  --ds-control-height-lg: 36px;
+  --ds-border-width: 1px;
+
+  --ds-surface-0: var(--ds-canvas-soft);
+  --ds-surface-1: var(--ds-canvas);
+  --ds-surface-2: #eef2f6;
+  --ds-text-primary: var(--ds-ink);
+  --ds-text-secondary: var(--ds-ink-secondary);
+  --ds-text-tertiary: var(--ds-ink-mute);
+
+  --ds-z-dropdown: 1000;
+  --ds-z-sticky: 1100;
+  --ds-z-overlay: 1200;
+  --ds-z-modal: 1300;
+  --ds-z-toast: 1400;
+
+  --ds-motion-fast: 120ms;
+  --ds-motion-base: 180ms;
+  --ds-motion-slow: 240ms;
+  --ds-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+
+  --ds-bp-sm: 390px;
+  --ds-bp-md: 768px;
+  --ds-bp-lg: 1440px;
+
   /* Legacy tokens — aliased to the design system above. */
   --primary: var(--ds-primary);
   --primary-light: var(--ds-primary-soft);

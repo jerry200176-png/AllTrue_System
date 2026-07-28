@@ -365,11 +365,12 @@
                 <h3>補課案件</h3>
                 <span v-if="exceptionWorkflowCount" class="wp__badge wp__badge--warn">{{ exceptionWorkflowCount }}</span>
               </header>
+              <div v-if="workflowFocusError" class="ew-error" role="alert">{{ workflowFocusError }}</div>
               <div v-if="exceptionWorkflowLoading" class="wp__empty enterprise-empty enterprise-loading">補課案件載入中...</div>
               <div v-else-if="exceptionWorkflowError" class="ew-error">{{ exceptionWorkflowError }}</div>
               <div v-else-if="!exceptionWorkflows.length" class="wp__empty enterprise-empty">目前沒有家長請假待安排</div>
               <div v-else class="ew-list">
-                <article v-for="workflow in exceptionWorkflows" :key="workflow.id" class="ew-row">
+                <article v-for="workflow in exceptionWorkflows" :key="workflow.id" class="ew-row" :data-workflow-id="workflow.id" :id="`exception-workflow-${workflow.id}`">
                   <div class="ew-main">
                     <div class="ew-title">
                       {{ workflow.student?.name || '學生' }}
@@ -714,8 +715,11 @@ const props = defineProps({
   branchId: [String, Number],
   unreadFeedbackCount: { type: Number, default: 0 },
   initialEngagement: { type: Object, default: null },
+  focusWorkflowId: { type: [Number, String], default: null },
+  focusSection: { type: String, default: null },
 });
 const emit = defineEmits(['navigate']);
+const workflowFocusError = ref('');
 
 const engagementSnapshot = ref(null);
 const engagementDisplayOn = ref(true);
@@ -1368,6 +1372,7 @@ const confirmCandidate = async (workflow, candidate) => {
     setWorkflowCandidates(workflow.id, []);
     await loadExceptionWorkflows();
     loadData();
+    window.dispatchEvent(new CustomEvent('alltrue-refresh-badges'));
   } catch (e) {
     exceptionWorkflowError.value = e?.message || '確認補課失敗';
   } finally {
@@ -1387,6 +1392,7 @@ const waiveWorkflow = async (workflow) => {
     setWorkflowCandidates(workflow.id, []);
     await loadExceptionWorkflows();
     loadData();
+    window.dispatchEvent(new CustomEvent('alltrue-refresh-badges'));
   } catch (e) {
     exceptionWorkflowError.value = e?.message || '標記不補課失敗';
   } finally {
@@ -1797,6 +1803,42 @@ const scrollTo = (section) => {
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 };
 
+const applyFocusFromInbox = async () => {
+  const section = props.focusSection || (props.focusWorkflowId ? 'exception-workflows' : null);
+  const wfId = Number(props.focusWorkflowId || 0);
+  if (!section && wfId <= 0) return;
+  await nextTick();
+  if (section) scrollTo(section);
+  if (wfId <= 0) return;
+  workflowFocusError.value = '';
+  let match = exceptionWorkflows.value.find((w) => Number(w.id) === wfId);
+  if (!match) {
+    try {
+      match = await getExceptionWorkflow(getToken(), wfId);
+      if (match && !exceptionWorkflows.value.some((w) => Number(w.id) === wfId)) {
+        exceptionWorkflows.value = [match, ...exceptionWorkflows.value];
+      }
+      if (!match) { workflowFocusError.value = '找不到此案件或沒有權限'; return; }
+    } catch (err) {
+      workflowFocusError.value = err?.message || '無法載入指定案件';
+      return;
+    }
+  }
+  await nextTick();
+  const row = document.getElementById(`exception-workflow-${wfId}`);
+  if (row) {
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const title = row.querySelector('h3, .ew-title, button, a') || row;
+    if (title?.focus) { title.setAttribute('tabindex', '-1'); title.focus({ preventScroll: true }); }
+  }
+  if (match) {
+    try { await loadWorkflowDetail(match); }
+    catch (err) { workflowFocusError.value = err?.message || '案件詳情載入失敗'; }
+  }
+};
+
+watch(() => [props.focusWorkflowId, props.focusSection, exceptionWorkflows.value.length], () => { applyFocusFromInbox(); });
+
 watch(() => props.branchId, () => {
   teardownTrustImpressions();
   loadData();
@@ -1814,6 +1856,7 @@ onMounted(() => {
   window.addEventListener(USER_ENGAGEMENT_DISPLAY_REFRESH_EVENT, onEngagementDisplayRefreshEvent);
   loadData();
   loadScheduleDiscrepancySummary();
+  applyFocusFromInbox();
 });
 
 onBeforeUnmount(() => {
