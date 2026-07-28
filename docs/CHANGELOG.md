@@ -3,6 +3,15 @@
 - 評量列表點擊「家長回饋」chip 開啟的預覽原本只有內容/時間，找不到回覆處；新增 `FeedbackInlinePreview` 元件內建回覆按鈕，直接開啟評量詳情完成回覆。
 - 純前端變更，沿用既有 `LearningRecordFeedbackController::staffReply()` 權限與資料，無 migration、無後端改動。
 
+## 2026-07-28 — feat(scheduling): ADR-006 Phase 2 shadow horizon（read-only）
+
+- 新增 `sessions:shadow-horizon` + `ShadowSessionHorizonService`：Preview vs Ensure dry-run 對照、drift／shortage 指標；**永遠唯讀**。
+
+## 2026-07-28 — feat(scheduling): ADR-006 Phase 1B EnsureSessionHorizon（default-off）
+
+- 新增 `sessions:ensure-horizon` + `EnsureSessionHorizonService`：dry-run 預設；`FEATURE_ENSURE_SESSION_HORIZON` 關閉；production `--execute` 硬擋；ES → `BLOCK_POOL_SHORTAGE` 整批 no-write；物化僅走 `upsertSlot`。
+- **未**啟用 Kernel／production activation／真實 backfill。
+
 ## 2026-07-28 — feat(scheduling): ADR-006 Phase 1A PreviewSessionHorizon（read-only）
 
 - 新增 `sessions:preview-horizon` + `PreviewSessionHorizonService`：Commitment 分類、28 天 occurrence covered／uncovered、pool_projection（不含成員 pool 剩餘）、分校 fail-closed。
