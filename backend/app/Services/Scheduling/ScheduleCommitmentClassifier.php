@@ -4,6 +4,9 @@ namespace App\Services\Scheduling;
 
 use Carbon\Carbon;
 
+/**
+ * ADR-006 Phase 0 / 1A — classify StudentClass commitment readiness (pure, read-only).
+ */
 final class ScheduleCommitmentClassifier
 {
     public function __construct(
@@ -14,7 +17,12 @@ final class ScheduleCommitmentClassifier
         $this->cadenceInferrer = $cadenceInferrer ?? new HistoryCadenceInferrer();
     }
 
-        public function classify(object|array $course, array $recentSessions, ?Carbon $today = null): array
+    /**
+     * @param  object|array<string,mixed>  $course  StudentClass-shaped row
+     * @param  array<int,object|array<string,mixed>>  $recentSessions
+     * @return array<string,mixed>
+     */
+    public function classify(object|array $course, array $recentSessions, ?Carbon $today = null): array
     {
         $today = ($today ?? Carbon::today('Asia/Taipei'))->copy()->startOfDay();
         $get = static function (object|array $c, string $key): mixed {
@@ -52,7 +60,7 @@ final class ScheduleCommitmentClassifier
                 'classification' => CommitmentReasonCodes::CLASS_SKIPPED,
                 'primary_reason' => CommitmentReasonCodes::SKIP_STOPPED,
                 'bucket' => 'skipped_stopped',
-            ];
+            ]);
         }
 
         if ($scheduleMode !== 'count') {
@@ -60,7 +68,7 @@ final class ScheduleCommitmentClassifier
                 'classification' => CommitmentReasonCodes::CLASS_SKIPPED,
                 'primary_reason' => CommitmentReasonCodes::SKIP_NOT_COUNT_MODE,
                 'bucket' => 'skipped_not_count',
-            ];
+            ]);
         }
 
         $parsed = $this->slotParser->parse($course);
@@ -88,7 +96,7 @@ final class ScheduleCommitmentClassifier
                 'bucket' => 'commitment_conflict',
                 'guess_required' => true,
                 'detail' => 'contract_weekday_time_self_conflict',
-            ], $course, $parsed['slots']);
+            ]), $course, $parsed['slots']);
         }
 
         $hasCompleteSlots = $parsed['unique'] && count($parsed['slots']) >= 1 && !$parsed['partial'];
@@ -110,7 +118,7 @@ final class ScheduleCommitmentClassifier
                     'bucket' => 'commitment_incomplete',
                     'guess_required' => true,
                     'detail' => $reason,
-                ], $course, $parsed['slots']);
+                ]), $course, $parsed['slots']);
             }
 
             if ($this->cadenceInferrer->conflictsWithContract($parsed['slots'], $history)) {
@@ -120,10 +128,9 @@ final class ScheduleCommitmentClassifier
                     'bucket' => 'commitment_conflict',
                     'guess_required' => true,
                     'detail' => 'contract_vs_history_mismatch',
-                ], $course, $parsed['slots']);
+                ]), $course, $parsed['slots']);
             }
 
-            // Start/End/Stop consistency: EndDate before StartDate → incomplete
             if ($startDate && $endDate) {
                 try {
                     if (Carbon::parse((string) $endDate)->lt(Carbon::parse((string) $startDate))) {
@@ -133,10 +140,10 @@ final class ScheduleCommitmentClassifier
                             'bucket' => 'commitment_incomplete',
                             'guess_required' => true,
                             'detail' => 'end_before_start',
-                        ], $course, $parsed['slots']);
+                        ]), $course, $parsed['slots']);
                     }
                 } catch (\Throwable) {
-                    // ignore parse errors — treat as incomplete below if needed
+                    // ignore parse errors
                 }
             }
 
@@ -147,12 +154,11 @@ final class ScheduleCommitmentClassifier
                 'guess_required' => false,
                 'auto_ensure_eligible' => true,
                 'dormant_signal' => $dormant,
-            ];
+            ]);
 
             return $this->withFingerprint($result, $course, $parsed['slots']);
         }
 
-        // No complete contract slots.
         if ($parsed['partial']) {
             return $this->withFingerprint(array_merge($base, [
                 'classification' => CommitmentReasonCodes::CLASS_INCOMPLETE,
@@ -160,7 +166,7 @@ final class ScheduleCommitmentClassifier
                 'bucket' => 'commitment_incomplete',
                 'guess_required' => true,
                 'detail' => CommitmentReasonCodes::SKIP_MISSING_SLOT,
-            ], $course, $parsed['slots']);
+            ]), $course, $parsed['slots']);
         }
 
         if ($history['confirmed']) {
@@ -171,10 +177,9 @@ final class ScheduleCommitmentClassifier
                 'guess_required' => true,
                 'auto_ensure_eligible' => false,
                 'dormant_signal' => $dormant,
-            ], $course, []);
+            ]), $course, []);
         }
 
-        // No contract slots, no confirmed history → legitimate flexible prepaid.
         return $this->withFingerprint(array_merge($base, [
             'classification' => CommitmentReasonCodes::CLASS_FLEXIBLE,
             'primary_reason' => CommitmentReasonCodes::INFO_FLEXIBLE_NO_COMMITMENT,
@@ -182,10 +187,16 @@ final class ScheduleCommitmentClassifier
             'guess_required' => false,
             'auto_ensure_eligible' => false,
             'dormant_signal' => $dormant,
-        ], $course, []);
+        ]), $course, []);
     }
 
-        private function withFingerprint(array $result, object|array $course, array $slots): array
+    /**
+     * @param  array<string,mixed>  $result
+     * @param  object|array<string,mixed>  $course
+     * @param  list<array{iso_weekday:int,start_hm:string,end_hm:?string}>  $slots
+     * @return array<string,mixed>
+     */
+    private function withFingerprint(array $result, object|array $course, array $slots): array
     {
         $get = static function (object|array $c, string $key): mixed {
             return is_array($c) ? ($c[$key] ?? null) : ($c->{$key} ?? null);
