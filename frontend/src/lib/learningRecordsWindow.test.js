@@ -85,6 +85,18 @@ assert.equal(
 assert.equal(
   shouldApplyLearningRecordsDefaultWindow({
     days: 90,
+    isTeacher: true,
+    teacherFilterTab: 'approved',
+    teacherPriorityFilter: 'all',
+    feedbackFilter: 'awaiting_reply',
+  }),
+  false,
+  'awaiting_reply filter must not apply the default window'
+);
+
+assert.equal(
+  shouldApplyLearningRecordsDefaultWindow({
+    days: 90,
     isTeacher: false,
     reviewTab: 'approved',
     feedbackFilter: 'all',

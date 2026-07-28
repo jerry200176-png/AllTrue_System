@@ -6,6 +6,194 @@
 
 開發備註：RFC 方案 A。不含自動 backfill、#1130 repair、群組 UI。回歸 `CourseContinuityGroupApiTest`。
 
+## 2026-07-24 — fix: Epic A/D Phase 1 — 有效堂次共用過濾 + 調課 dialog 內錯誤
+
+- 課程管理與行事曆共用 `sessionOccurrenceFilter`（有效堂次／幽靈取消／額度例外）。
+- 調課失敗（含衝堂名單）改顯示在 dialog 內；提交中 disable，拿掉多餘 `confirm()`。
+- 課程管理篩選列與表格改 denser（Epic D 逐步掃讀密度）。
+
+開發備註：承接 #1402；對齊 RFC Platform Opt Phase 1（Epic A 收尾 + Epic D 噪音／確認 UX）。
+
+## 2026-07-24 — fix: 調課後課表穩定（系列契約 vs 單堂例外）
+
+- 課程管理預設只顯示有效堂次；已取消／內部調課 bookkeeping 改為可展開摘要，不再幽靈搶版面。
+- 單堂調課會標記契約例外，且不再回寫固定 `week/time`；月結續約維持契約時段並在預覽警告未對齊的例外堂。
+- 暫停課程可勾選是否取消剩餘排課（預設勾選）。
+
+開發備註：對齊 Google Calendar／Tutorbase「this occurrence only」。`ContractScheduleMatcher`、`reconcile` 排除 `IsContractException`、`cancel_remaining`、renewal preview `open_contract_exceptions`。回歸 `ScheduleOccurrenceStabilityTest`。
+
+## 2026-07-28 — fix(learning-records): R55 復活判斷收斂為單一共用政策
+
+- 新增 `LearningRecordResurrectionPolicy`：`SYSTEM_RESURRECTABLE_VOID_REASONS` 白名單與「是否可自動復活」判斷收斂到單一位置。
+- 修正 `ClassSessionController::restoreVoidedLearningRecord()`（leave→attended 自動復活路徑）從未檢查 `VoidReason` 的缺口——人工作廢的評量若剛好掛在曾經 `leave` 的堂次上，先前會被無條件復活；現在與 `LearningRecordController::store()` 共用同一份白名單判斷。
+- `CourseLeaveCascadeService` 的請假撤銷復原刻意不動（只認 `VoidReason='一般請假'`，範圍本來就該窄）。
+- 回歸：新增 `ClassSessionRestoreVoidedLearningRecordTest`（系統 cascade 原因仍自動復活；人工作廢原因不再被復活）；既有 `LearningRecordVoidedResurrectTest` 全數維持通過。
+- 無 migration、無行為變更（reactive 路徑邏輯不變，只是搬了位置；proactive 路徑修正的是先前未覆蓋的邊界情況）。
+
+## 2026-07-28 — chore(billing): 清償 TD-060 — 刪除 RemainingSessions 死碼重算路徑
+
+- 刪除 `ClassSessionController::recalculateSessionCounters`（無 caller 死碼，count-based，與權威引擎 `SessionDeductionService::recomputeCounters` 並存、非分鐘感知）。
+- 確認權威引擎已涵蓋 legacy `attended` 狀態相容性且更完整（含 `StudentSignIn`/ledger/orphan LearningRecord、分鐘制衍生）。
+- 回歸測試改為直接驗證 `SessionDeductionService::recomputeCounters()`，斷言不變；同步清掉 `phpstan-baseline.neon` 對應豁免項。
+- 架構稽核備忘 Pattern A 的第一項行動：衍生欄位（`RemainingSessions`）在復發前先排除掉一份未接線的重複實作。無 migration、無行為變更（死碼本來就無 caller）。
+
+## 2026-07-28 — docs(architecture): 新增架構性不變式登記本（Pattern A-E）
+
+- 新增 `docs/RULE_ARCHITECTURAL_INVARIANTS.md`：追蹤「同一種形狀會反覆出現」的架構級根因（區別於 `TECH_DEBT.md` 的單點技術債），收錄本次架構稽核備忘的五種模式（衍生欄位單一寫入、主檔狀態轉換 cascade、多畫面單一投影、前後端契約、授權集中化）與目前已知實例。
+- 收錄本次 session 的具體案例作為登記起點：`IsContractException`（R83/R84）、`RemainingSessions`（TD-060）、`LearningRecord` 復活政策（R55）、`ScheduleController` 補請假重複（TD-069）、前後端路由契約檢查。
+- 無 migration、無程式碼變更。
+
+## 2026-07-28 — fix(learning-records): 家長留言預覽增加「回覆家長」入口（in-app #210）
+
+- 評量列表點擊「家長留言」chip 開啟的預覽原本只有內容/時間，找不到回覆處；新增 `FeedbackInlinePreview` 元件內建回覆按鈕，直接開啟評量詳情完成回覆。
+- 純前端變更，沿用既有 `LearningRecordFeedbackController::staffReply()` 權限與資料，無 migration、無後端改動。
+
+## 2026-07-28 — feat(learning): 家長留言 awaiting_staff_reply inbox（P0）
+
+- 新增 authoritative `awaiting_staff_reply`（與 unread 分離；**不**沿用 `analytics.unreplied_records`）。
+- Parent upsert：相同內容 idempotent no-op；實際修改內容會 append parent reply 以同表 `(created_at, id)` 穩定排序。
+- API：`GET me/awaiting-reply-count`、`learning-records?feedback=awaiting_reply`（teacher／director；不擴 super_admin）。
+- 前端：TeacherHome 固定「家長留言」卡、評量頁一級「家長留言」Tab、modal 回覆模式。
+- 無 migration／backfill。Implementation PR 不自動 merge／deploy。
+
+## 2026-07-28 — refactor(scheduling): IsContractException 搬進 ClassSessionObserver（R83 結構性根治）
+
+- `ClassSessionObserver::saving()` 在任何 `ClassSession->save()` 時，只要時間欄位有變動且該次寫入未明確指定 flag，自動用 `ContractScheduleMatcher::applyExceptionFlag()` 重算 `IsContractException`；明確指定時尊重呼叫者意圖不覆蓋。
+- 刪除 3 處重複實作（`ClassSessionController`、`StudentClassController` 加課、`RescheduleSessionService`）；新寫入路徑（如 `SubstituteController` 代課復原、`ClassSessionContractReflowService`）現在自動獲得正確行為，不需個別接線。
+- 回歸：新增 `ClassSessionObserverContractExceptionTest`；既有 `StudentClassScheduleDriftExceptionTest`／`RescheduleMarksContractExceptionTest` 全數維持通過。
+- 無 migration／無行為變更，純內部結構重構。
+
+## 2026-07-28 — fix(scheduling): atomic 調課標記 IsContractException（防 realign 還原）
+
+- `RescheduleSessionService` 調課後同步 `IsContractException`（與 PATCH class-sessions / #556 對齊）。
+- 避免單堂調到非契約時段後，被 `force_partial_rebuild`／堂次偏移同步拉回固定排課時間（症狀：重整／儲存後課表回原時段）。
+- 回歸：`RescheduleMarksContractExceptionTest`。
+
+## 2026-07-28 — fix(scheduling): ADR-006 acceptance amendments（dormant／Ensure gates／ADR status）
+
+- explicit + dormant → `auto_ensure_eligible=false`（`SKIP_DORMANT`）；禁止自動 Ensure。
+- Ensure `--execute`：production reason 優先於 flag；blocked execute → non-zero exit。
+- ADR-006／INDEX 狀態改為「工具已 merge；production 未啟用」。
+
+## 2026-07-28 — docs(adr): ADR-006 Phase 3B session_coverages migration proposal（awaiting GO）
+
+- 新增空表 migration 提案 `session_coverages` + `docs/proposals/ADR006_PHASE3B_SESSION_COVERAGES_MIGRATION.md`。
+- **未 merge／未 migrate／未啟用 coverage 寫入** — 需 Founder GO。
+
+## 2026-07-28 — feat(scheduling): ADR-006 Phase 3A pool coverage planner（read-only）
+
+- 新增 coverage state machine（`none/held/consumed/released`）與 `AllocateSessionCoverage`／`ReleaseSessionCoverage` dry-run planner；`sessions:plan-coverage`。
+- **不**寫 coverage 表、不扣堂、不 merge migration（持久化另 PR + Founder GO）。
+
+## 2026-07-28 — feat(scheduling): ADR-006 Phase 2 shadow horizon（read-only）
+
+- 新增 `sessions:shadow-horizon` + `ShadowSessionHorizonService`：Preview vs Ensure dry-run 對照、drift／shortage 指標；**永遠唯讀**。
+
+## 2026-07-28 — feat(scheduling): ADR-006 Phase 1B EnsureSessionHorizon（default-off）
+
+- 新增 `sessions:ensure-horizon` + `EnsureSessionHorizonService`：dry-run 預設；`FEATURE_ENSURE_SESSION_HORIZON` 關閉；production `--execute` 硬擋；ES → `BLOCK_POOL_SHORTAGE` 整批 no-write；物化僅走 `upsertSlot`。
+- **未**啟用 Kernel／production activation／真實 backfill。
+
+## 2026-07-28 — feat(scheduling): ADR-006 Phase 1A PreviewSessionHorizon（read-only）
+
+- 新增 `sessions:preview-horizon` + `PreviewSessionHorizonService`：Commitment 分類、28 天 occurrence covered／uncovered、pool_projection（不含成員 pool 剩餘）、分校 fail-closed。
+- **不**建立 ClassSession、不扣堂、不啟用 Ensure。
+
+## 2026-07-28 — feat(scheduling): ADR-006 Phase 0 唯讀 prepaid horizon 報告（slice 2/2）
+
+- 新增 `sessions:report-prepaid-horizon-phase0`（**read-only**）：explicit MF 7／28d、Q2 reason 拆分、pool shortage、FSG 對照、人工補排近似、StudentClass adapter 評估。
+- `PrepaidHorizonPhase0Reporter` + Feature 回歸；synthetic sample `docs/artifacts/adr006-phase0-sample-report.json`。**不**寫 ClassSession、不 activate generator。
+
+## 2026-07-28 — feat(scheduling): ADR-006 Commitment classifier helpers (Phase 0 slice 1/2)
+
+## 2026-07-28 — docs(adr): ADR-006 預付堂次 horizon × Schedule Commitment 決策包
+
+- 新增並修訂 `docs/ADR_006_prepaid_session_horizon_and_commitment.md`：**Accepted — Phase 0 evidence collection authorized**（仍 not implemented／not production-ready）。
+- Founder ACCEPT WITH AMENDMENTS：Commitment 三類（explicit／legacy_inferred／conflict）；28 天 v1 server default；Preview 可顯示 uncovered、Ensure 遇 ES → `BLOCK_POOL_SHORTAGE` 整批 no-write；`StudentClass` 條件式 v1 adapter + fingerprint（非永久 SSOT）。
+- Reason codes 拆分 `INFO_FLEXIBLE_NO_COMMITMENT`／`BLOCK_COMMITMENT_*`／`LEGACY_INFERRED_CANDIDATE`；廢止含糊的 `SKIP_NO_COMMITMENT`／`SKIP_POOL_SHORTAGE`。
+- 對齊 #1062 Track A、ADR-005、G-010、F4／#1465。本 PR docs-only；下一獲准範圍僅 Phase 0 唯讀報告。
+
+## 2026-07-28 — fix(ops): post-merge smoke 重試 director schedules 403
+
+- `#1465` merge 後 health／version 已過，但 `director GET /schedules` 偶發 403 觸發 rollback。
+- `post-merge-smoke.sh`：優先取有 Approved 分校的 director token；`403`／`500` 重試並附 body 片段，避免誤 rollback 前端-only 部署。
+
+## 2026-07-27 — fix(ux): 共用方案堂次區狀態語意與預排 chip 分流
+
+- 共用方案「排程列數與購買堂數不一致」改為中性「目前只排定部分堂次」；請假待補／真超排仍分級警告。
+- 共用方案成員課程不顯示方案池剩餘堂數；在 package-level scheduled allocation aggregate 建立前，不推導成員課程尚可排或未排 N 堂。
+- 堂數制預排 chip 不再呼叫 `ensure-projected`（避免 422）；改開可行動 dialog → 補排預填。物化 capability 嚴格限 `ScheduleMode=date`。
+- 堂次 cache miss 改 actionable dialog（再試一次），不再只靠原生 alert。不動扣堂／方案池 SSOT。
+
+## 2026-07-27 — docs(adr): ADR-005 排課多入口 × 具名 command 邊界
+
+Accepted direction（文件）：保留 StudentsList／SmartCalendar／CourseManagement 三 task surface；每個 mutation 對應具名 command；command 只收完成意圖必要的 target values，不接受前端回傳可推導的 current／derived domain truth。首實作 slice（另 PR）：`RestoreContractTeacher`。見 `docs/ADR_005_scheduling_named_command_boundaries.md`。
+
+## 2026-07-26 — design(ui): UI Foundation + 主任收件匣 pilot
+
+- 新增 ops UI Foundation tokens 與 inbox 實際使用的 `At*` primitives；文件見 `docs/design/ALLTRUE_UI_FOUNDATION.md`。
+- Pilot：主任收件匣（結構／狀態／密度；業務邏輯與 API 不變）。學生列表見 stacked follow-up PR。
+- Visual fixtures 僅在 `frontend/e2e/fixtures/`；production `public/` / `dist_build` 不含 mount harness。
+- Merge evidence：真實 Vue inbox Playwright + mocked API（390／768／1440）。
+
+## 2026-07-26 — design(ui): 學生列表 UI Foundation pilot (PR B)
+
+- Stacked on inbox foundation PR：`StudentsList` 接入 `At*`（含 `AtIconButton`）、unit/a11y、真實 Vue Playwright、durable evidence。
+- 補齊 UI audit + migration sequencing；CI 上傳 `ui-foundation-page-evidence` artifact。
+- 業務邏輯／API／DB／權限不變；supersedes monolithic #1449 students half。**No size-gate exception**（不沿用 #1450）。
+
+## 2026-07-26 — ci(governance): failure taxonomy + fast preflight（G1）
+
+- 開發備註：新增 `npm run ci:preflight` / `sync:generated`、failure taxonomy、branch policy（含 `sec/`）；見 `docs/governance/CI_GOVERNANCE.md`。不改 production 業務邏輯。
+
+## 2026-07-26 — chore(repo): PR／Issue／branch／docs hygiene
+
+- 同步 Parent Binding 文件狀態：PB-00 = **IMPLEMENTED / DEPLOYED — PRODUCTION ACTIVATION PENDING**（#1446 merged；#1436 closed by merge；Pi ops activation／`effective=true`／7-day baseline 未完成；PB-01～09 未開始）。
+- 修非 archive 壞連結；branch hygiene：刪支必記 tip SHA；`archive/<branch>` tag **非預設**（僅 unique unmerged keep-value）。
+- 無 production code、無 deploy、未合併產品 PR。
+
+## 2026-07-26 — feat(parent): PB-00 家長綁定 PII-safe observability（#1436）
+
+- Stable internal `reason_code` + append-only `parent_binding_attempts`（fail-open）；flag `PARENT_BINDING_OBSERVABILITY` **default-off**；dedicated `PARENT_BINDING_PHONE_HMAC_KEY`（no APP_KEY）；ops `parent-binding:report --format=json`。不改外部文案／成功路徑；PB-01～09 未開始。
+
+## 2026-07-26 — docs: 家長綁定 ADR Accepted（Hybrid；PR #1434）
+
+- Founder Accepted：max_uses=1；TTL 7d（24h/72h/7d）；cap 4；read_only 365d→suspended；revoke→session；BindingRequest 自助；sunset ≥80%/30d/support&lt;10%（無硬日期）；OTP∉P0–2。Docs-only at merge；PB-00 後續由 #1446 實作 observability。
+
+## 2026-07-26 — fix(parent): 家長更新卡改為顯式 PARENT_UPDATES 投影（B+）
+
+- 家長入口「與您有關的更新」不再從教職員 CHANGELOG 以關鍵字自動標 `audience:parent`。
+- 新增 `docs/PARENT_UPDATES.yml` 為家長公告唯一來源；title／summary／details 獨立，禁止 fallback 到 staff summary。
+- 無家長更新或已過期時首頁隱藏該區塊；普通更新預設 30 天效期、最多兩則。
+- 同步腳本一併產生 `parentUpdates.generated.js`；CI 檢查 generated 檔不得漂移。
+
+開發備註：Founder Decision 2026-07-26 B+／§R45。行動型通知（重新綁定等）不在本卡範圍。首則家長文案：請假後未來日期不移動、尾端補課。
+
+## 2026-07-26 — fix: 堂數制請假改為保留未來日期、只補尾堂
+
+- 一般請假不再把後續堂次整排往後推（不再出現 silent vacated week）。
+- 請假堂不佔堂號；下一個既有上課日承接下一堂；尾端最多補一堂。
+- 整體順延改為明確 pause 能力，不作為一般請假預設。
+- 請假預覽與課程管理／出缺勤文案同步；新增 vacated-week 掃描修復指令。
+
+開發備註：Founder Decision 2026-07-26 / §R82。權威路徑 `CourseLeaveCascadeService`；repair：`repair:leave-vacated-weeks`。
+
+## 2026-07-24 — docs: 品牌表面品味閘門（防再犯 #1386）
+
+- 新增 `.cursor/rules/frontend-brand-taste.mdc`：Brand/Auth vs Ops 分流；Founder star 品味基準。
+- `RULE_DESIGN_SYSTEM.md` §1.1 / §7：Login 可保留 glass/mesh；禁為 hex KPI 拆氣氛。
+- `module-frontend.mdc` 指向該閘門。
+
+開發備註：#1386 Agent 拆光 Login → #1412 還原；下次 UI 對齊 taste-skill / impeccable / awesome-design-md 等 star。
+
+## 2026-07-24 — revert: 登入頁恢復 #1386 前視覺
+
+- `Login.vue` 退回 DS polish pilot 之前的介面（玻璃／品牌 mesh 等）。
+- 移除僅服務該 pilot 的 `login-polish` e2e；更新 design-hex baseline。
+- 全局 `--ds-cta`／`AtButton` AA tokens 保留（不影響本次登入外觀還原）。
+
+開發備註：Founder 要求退回 #1386 Login 視覺；行為（帳密／忘記密碼）不變。
+
 ## 2026-07-24 — docs: RFC 依 starred repos 做平台大改版規劃（無業務碼）
 
 - 新增 `docs/architecture/RFC_PLATFORM_OPTIMIZATION_FROM_STARS_2026.md`：每項優化標明參考 repo、要學／不要學、落地位置。

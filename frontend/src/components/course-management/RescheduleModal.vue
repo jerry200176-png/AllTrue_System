@@ -1,15 +1,15 @@
 <template>
-  <div v-if="show" class="modal-overlay" @click.self="$emit('close')">
-    <div class="modal course-modal" style="max-width: 420px;">
-      <h3 class="modal-title">調課</h3>
+  <div v-if="show" class="modal-overlay" @click.self="!submitting && $emit('close')">
+    <div class="modal course-modal" style="max-width: 420px;" role="dialog" aria-modal="true" aria-labelledby="cm-reschedule-title">
+      <h3 id="cm-reschedule-title" class="modal-title">調課</h3>
       <p class="modal-desc">{{ rescheduleDesc }}</p>
       <div v-if="sessionOptions.length === 0" class="form-group">
         <p class="hint">此課程無可調課堂次（請確認開課日與排課設定）。</p>
       </div>
       <template v-else>
         <div class="form-group">
-          <label>選擇要調動的堂次</label>
-          <select v-model="form.original_date">
+          <label for="cm-reschedule-session">選擇要調動的堂次</label>
+          <select id="cm-reschedule-session" v-model="form.original_date" :disabled="submitting">
             <option value="">請選擇</option>
             <option v-for="opt in sessionOptions" :key="opt.date" :value="opt.date">
               第{{ opt.index }}堂 {{ opt.date }} {{ dayLabel(dayOfWeekFromDate(opt.date)) }}
@@ -31,17 +31,17 @@
           </div>
           <hr style="border: none; border-top: 1px solid var(--border); margin: 12px 0;" />
           <div style="margin-bottom: 12px;">
-            <button class="small ghost btn-makeup-query" @click="$emit('query-makeup')" :disabled="makeupLoading">
+            <button class="small ghost btn-makeup-query" type="button" :disabled="makeupLoading || submitting" @click="$emit('query-makeup')">
               {{ makeupLoading ? '查詢中…' : makeupQueryLabel }}
             </button>
           </div>
           <div class="form-group">
-            <label>新日期</label>
-            <input v-model="form.new_date" type="date" />
+            <label for="cm-reschedule-date">新日期</label>
+            <input id="cm-reschedule-date" v-model="form.new_date" type="date" :disabled="submitting" />
           </div>
           <div class="form-group">
-            <label>新開始時間</label>
-            <select v-model="form.new_start">
+            <label for="cm-reschedule-start">新開始時間</label>
+            <select id="cm-reschedule-start" v-model="form.new_start" :disabled="submitting">
               <option v-for="t in timeOptions" :key="t" :value="t">{{ t }}</option>
             </select>
           </div>
@@ -50,9 +50,12 @@
             <p class="computed-end-time">{{ computedEndTime || '—' }}</p>
           </div>
         </template>
+        <div v-if="error" class="dialog-error" role="alert">{{ error }}</div>
         <div class="actions">
-          <button class="ghost" @click="$emit('close')">取消</button>
-          <button class="primary" @click="$emit('submit')" :disabled="!form.new_date">確認調課</button>
+          <button class="ghost" type="button" :disabled="submitting" @click="$emit('close')">取消</button>
+          <button class="primary" type="button" :disabled="submitting || !form.new_date" @click="$emit('submit')">
+            {{ submitting ? '調課中…' : '確認調課' }}
+          </button>
         </div>
       </template>
     </div>
@@ -73,6 +76,8 @@ const props = defineProps({
   dayLabel: Function,
   dayOfWeekFromDate: Function,
   computeEndTime: Function,
+  error: { type: String, default: '' },
+  submitting: { type: Boolean, default: false },
 });
 defineEmits(['close', 'submit', 'query-makeup']);
 const makeupQueryLabel = MAKEUP_SLOT_QUERY_LABEL;
@@ -93,4 +98,14 @@ const computedEndTime = computed(() => props.computeEndTime?.(props.form?.new_st
 }
 .btn-makeup-query:hover:not(:disabled) { background: var(--primary-bg) !important; }
 .btn-makeup-query:disabled { opacity: 0.6; cursor: not-allowed; }
+.dialog-error {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--ds-danger);
+  background: var(--ds-canvas-soft);
+  color: var(--ds-danger);
+  font-size: 13px;
+  line-height: 1.45;
+}
 </style>

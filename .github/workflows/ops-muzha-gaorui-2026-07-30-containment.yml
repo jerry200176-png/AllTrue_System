@@ -1,0 +1,155 @@
+name: Muzha Gaorui 2026-07-30 Containment (manual)
+
+# Dedicated lane for 木柵・高瑞樸・楊智超・數學・2026-07-30 19:00–21:00.
+# Not Deploy to Pi. Successor to docs PR #1466. Owner-approved Option 1.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "dry-run | apply | verify"
+        required: true
+        default: dry-run
+        type: choice
+        options: [dry-run, apply, verify]
+      confirm:
+        description: "For apply only: I_APPROVE_MUZHA_GAORUI_2026_07_30_CONTAINMENT"
+        required: false
+        type: string
+      actor:
+        description: "Audit actor label"
+        required: false
+        default: "gha:muzha-gaorui-2026-07-30"
+        type: string
+
+concurrency:
+  group: ops-muzha-gaorui-2026-07-30-containment
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  contain:
+    name: Run hardcoded muzha-gaorui containment
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Validate inputs
+        env:
+          MODE: ${{ inputs.mode }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          case "$MODE" in dry-run|apply|verify) ;; *) echo "::error::invalid mode"; exit 1 ;; esac
+          if [ "$MODE" = "apply" ]; then
+            [ "$CONFIRM" = "I_APPROVE_MUZHA_GAORUI_2026_07_30_CONTAINMENT" ] || {
+              echo "::error::apply requires exact confirmation string"; exit 1; }
+          fi
+
+      - name: Checkout reviewed script
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Compute script checksum
+        id: checksum
+        run: |
+          set -euo pipefail
+          SCRIPT=".github/ops/muzha-gaorui-2026-07-30-containment.php"
+          test -f "$SCRIPT"
+          echo "script_sha256=$(sha256sum "$SCRIPT" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Transfer script, verify checksum, run, cleanup
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          MODE: ${{ inputs.mode }}
+          CONFIRM: ${{ inputs.confirm }}
+          ACTOR: ${{ inputs.actor }}
+          SCRIPT_SHA256: ${{ steps.checksum.outputs.script_sha256 }}
+          WORKFLOW_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          LOCAL_SCRIPT=".github/ops/muzha-gaorui-2026-07-30-containment.php"
+          SSH=(ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes -o UserKnownHostsFile=~/.ssh/known_hosts)
+          SCP=(scp -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes -o UserKnownHostsFile=~/.ssh/known_hosts)
+          REMOTE_DIR=$("${SSH[@]}" "${PI_SSH_USER}@${PI_SSH_HOST}" 'mktemp -d /tmp/muzha-gaorui-730-XXXXXXXX')
+          REMOTE_SCRIPT="${REMOTE_DIR}/muzha-gaorui-2026-07-30-containment.php"
+          cleanup() { "${SSH[@]}" "${PI_SSH_USER}@${PI_SSH_HOST}" "rm -rf $(printf %q "$REMOTE_DIR")" || true; }
+          trap cleanup EXIT
+          "${SCP[@]}" "$LOCAL_SCRIPT" "${PI_SSH_USER}@${PI_SSH_HOST}:${REMOTE_SCRIPT}"
+          mkdir -p out
+          set +e
+          "${SSH[@]}" "${PI_SSH_USER}@${PI_SSH_HOST}" \
+            MODE="$MODE" CONFIRM="$CONFIRM" ACTOR="$ACTOR" \
+            SCRIPT_SHA256="$SCRIPT_SHA256" WORKFLOW_SHA="$WORKFLOW_SHA" \
+            REMOTE_SCRIPT="$REMOTE_SCRIPT" 'bash -s' <<'ENDSSH' | tee out/evidence.json
+          set -euo pipefail
+          REMOTE_SHA=$(sha256sum "$REMOTE_SCRIPT" | awk '{print $1}')
+          if [ "$REMOTE_SHA" != "$SCRIPT_SHA256" ]; then
+            echo '{"case":"muzha-gaorui-2026-07-30","phase":"ABORTED","aborts":["ABORT_SCRIPT_CHECKSUM_MISMATCH"]}'
+            exit 1
+          fi
+          cd /home/admin/backend
+          ARGS=(php "$REMOTE_SCRIPT" --mode="$MODE" --actor="$ACTOR" --workflow-sha="$WORKFLOW_SHA" --script-sha256="$SCRIPT_SHA256" --backend-root=/home/admin/backend)
+          if [ "$MODE" = "apply" ]; then
+            ARGS+=(--confirm="$CONFIRM")
+            export ALLOW_PROD_REPAIR=1
+          fi
+          set +e
+          "${ARGS[@]}"
+          EC=$?
+          unset ALLOW_PROD_REPAIR || true
+          exit "$EC"
+          ENDSSH
+          EC=${PIPESTATUS[0]}
+          set -e
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          raw = Path("out/evidence.json").read_text(errors="replace").strip()
+          data = None
+          for chunk in reversed(raw.split("\n{")):
+              text = chunk if chunk.startswith("{") else "{" + chunk
+              try:
+                  data = json.loads(text); break
+              except Exception:
+                  continue
+          meta = {
+              "workflow": "ops-muzha-gaorui-2026-07-30-containment",
+              "github_run_id": os.environ.get("GITHUB_RUN_ID"),
+              "github_sha": os.environ.get("WORKFLOW_SHA") or os.environ.get("GITHUB_SHA"),
+              "mode": os.environ.get("MODE"),
+              "actor": os.environ.get("ACTOR"),
+              "script_sha256": os.environ.get("SCRIPT_SHA256"),
+          }
+          Path("out/workflow-meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2) + "\n")
+          if data is not None:
+              Path("out/evidence.parsed.json").write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+              print("PHASE=" + str(data.get("phase")))
+              if data.get("phase") == "APPLIED_POSTVERIFY_FAILED":
+                  print("DO NOT RERUN APPLY BLINDLY")
+          PY
+          exit "$EC"
+
+      - name: Upload evidence artifact (no DB backup)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: muzha-gaorui-2026-07-30-evidence
+          path: out/
+          retention-days: 90
+          if-no-files-found: warn

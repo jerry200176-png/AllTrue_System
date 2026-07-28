@@ -22,4 +22,19 @@ describe('CalendarRescheduleModal', () => {
     await w.find('select').trigger('change');
     expect(w.emitted('new-start-change')).toHaveLength(1);
   });
+
+  it('shows in-dialog error and disables submit while submitting', () => {
+    const w = mount(CalendarRescheduleModal, {
+      props: {
+        show: true,
+        form,
+        timeOptions: ['16:00', '17:00'],
+        error: '此時段已有：小華',
+        submitting: true,
+      },
+    });
+    expect(w.find('[role="alert"]').text()).toContain('此時段已有：小華');
+    expect(w.find('button.primary').attributes('disabled')).toBeDefined();
+    expect(w.find('button.primary').text()).toContain('調課中');
+  });
 });

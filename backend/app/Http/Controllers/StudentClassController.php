@@ -16,6 +16,7 @@ use App\Models\UserCampus;
 use App\Models\CoursePackage;
 use App\Support\Utf8mb3SearchSanitizer;
 use App\Services\ClassSessionMaterializationService;
+use App\Services\ContractScheduleMatcher;
 use App\Services\ClassSessionContractReflowService;
 use App\Services\FrontendSubjectIdResolver;
 use App\Services\SessionDeductionService;
@@ -2671,11 +2672,14 @@ class StudentClassController extends Controller
                 }
             }
 
-            $isException = !$this->sessionMatchesContract(
-                $sessionDate, $startTime, $endTime, $studentClass
-            );
-            if ((bool) $classSession->IsContractException !== $isException) {
-                $classSession->IsContractException = $isException;
+            // R84: ClassSessionObserver::updating() auto-recomputes this for the
+            // $existing/$movableSession branches above (already-persisted rows).
+            // It deliberately does NOT fire on create (ambiguous intent — see
+            // observer docblock), so the upsertSlot() branch's brand-new row
+            // needs one explicit recompute here; harmless no-op for the other
+            // two branches since the observer already set the correct value.
+            app(ContractScheduleMatcher::class)->applyExceptionFlag($classSession);
+            if ($classSession->isDirty('IsContractException')) {
                 $classSession->save();
             }
 
@@ -3148,6 +3152,23 @@ class StudentClassController extends Controller
             );
             if ($amount <= 0) {
                 $amount = max(0, (int) ($studentClass->Charge ?? 0));
+            }
+
+            $openExceptions = 0;
+            if (Schema::hasColumn('ClassSession', 'IsContractException')) {
+                $openExceptions = (int) ClassSession::query()
+                    ->where('StudentClassID', $studentClass->getKey())
+                    ->where('Status', 'scheduled')
+                    ->where('IsContractException', 1)
+                    ->whereDate('SessionDate', '>=', Carbon::today()->toDateString())
+                    ->count();
+            }
+            if ($openExceptions > 0) {
+                $warnings[] = [
+                    'code' => 'open_contract_exceptions',
+                    'message' => "本期尚有 {$openExceptions} 堂調課／例外排課；新期將依契約固定時段展開，這些單堂調整不會帶過去。若要整期改時段，請先編輯固定排課。",
+                    'exception_count' => $openExceptions,
+                ];
             }
 
             $proposedCourse = [
@@ -3781,12 +3802,20 @@ class StudentClassController extends Controller
     {
         $classId = (int) $studentClass->ID;
         $today = Carbon::today()->toDateString();
-        $activeSessions = ClassSession::where('StudentClassID', $classId)
+        $activeSessionsQuery = ClassSession::where('StudentClassID', $classId)
             ->where('Status', 'scheduled')
             ->whereDate('SessionDate', '>=', $today)
             ->orderBy('SessionDate')
-            ->orderBy('StartTime')
-            ->get(['SessionDate', 'StartTime', 'EndTime']);
+            ->orderBy('StartTime');
+
+        // One-off 調課／補課 must not rewrite series week/time (SaaS: this occurrence only).
+        if (Schema::hasColumn('ClassSession', 'IsContractException')) {
+            $activeSessionsQuery->where(function ($q) {
+                $q->whereNull('IsContractException')->orWhere('IsContractException', 0);
+            });
+        }
+
+        $activeSessions = $activeSessionsQuery->get(['SessionDate', 'StartTime', 'EndTime']);
 
         if ($activeSessions->isEmpty()) {
             return;
@@ -4943,48 +4972,6 @@ class StudentClassController extends Controller
     /**
      * Check if a session's (date, startTime, duration) falls within the contract slots.
      */
-    private function sessionMatchesContract(string $sessionDate, string $startTime, ?string $endTime, StudentClass $studentClass): bool
-    {
-        $isoDow = (int) Carbon::parse($sessionDate)->dayOfWeekIso;
-        $startHm = substr($startTime, 0, 5);
-        $globalDurHours = $studentClass->SessionDuration
-            ? round((int) $studentClass->SessionDuration / 60, 1)
-            : 2;
-
-        $weekFields = ['week', 'week1', 'week2', 'week3', 'week4', 'week5', 'week6'];
-        $timeFields = ['time', 'time1', 'time2', 'time3', 'time4', 'time5', 'time6'];
-        $durationFields = [null, 'duration1', 'duration2', 'duration3', 'duration4', 'duration5', 'duration6'];
-
-        foreach ($weekFields as $index => $wf) {
-            $day = (int) ($studentClass->{$wf} ?? 0);
-            if ($day < 1 || $day > 7) {
-                continue;
-            }
-            $tf = $timeFields[$index] ?? 'time';
-            $rawTime = (string) ($studentClass->{$tf} ?? $studentClass->time ?? '');
-            $slotStart = $rawTime ? substr($rawTime, 0, 5) : '';
-            if ($slotStart === '') {
-                continue;
-            }
-            $df = $durationFields[$index] ?? null;
-            $perDayMin = $df ? (int) ($studentClass->{$df} ?? 0) : 0;
-            $slotDurHours = $perDayMin > 0 ? round($perDayMin / 60, 1) : $globalDurHours;
-
-            $sessDurHours = $globalDurHours;
-            if ($endTime) {
-                $startM = ((int) substr($startHm, 0, 2)) * 60 + (int) substr($startHm, 3, 2);
-                $endM = ((int) substr($endTime, 0, 2)) * 60 + (int) substr($endTime, 3, 2);
-                $sessDurHours = max(0, $endM - $startM) > 0 ? round(($endM - $startM) / 60, 1) : $globalDurHours;
-            }
-
-            if ($day === $isoDow && $slotStart === $startHm && $slotDurHours === $sessDurHours) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     private function hasImmutableSessionHistory(int $studentClassId): bool
     {
         if ($studentClassId <= 0) {
@@ -5395,6 +5382,7 @@ class StudentClassController extends Controller
         $today = Carbon::today()->toDateString();
 
         $reason = $request->input('reason'); // 'completed' or null
+        $cancelRemaining = $request->boolean('cancel_remaining', true);
 
         if (!$reason
             && (string) ($sc->ScheduleMode ?? '') === 'count'
@@ -5423,14 +5411,19 @@ class StudentClassController extends Controller
                 }
                 $sc->save();
 
-                $cancelled = $this->cancelFutureScheduledSessions($sc, $reason);
+                $cancelled = $cancelRemaining
+                    ? $this->cancelFutureScheduledSessions($sc, $reason)
+                    : 0;
 
                 $labels = ['completed' => '已完課', 'settled' => '已結案'];
                 $label = $labels[$reason] ?? '已暫停';
                 DB::commit();
                 return response()->json([
-                    'message' => "課程{$label}，已取消 {$cancelled} 堂未來排課。",
+                    'message' => $cancelRemaining
+                        ? "課程{$label}，已取消 {$cancelled} 堂未來排課。"
+                        : "課程{$label}（未取消剩餘排課）。",
                     'cancelled_count' => $cancelled,
+                    'cancel_remaining' => $cancelRemaining,
                 ]);
             } else {
                 if ($sc->isUsageSettlementLocked()) {

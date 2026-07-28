@@ -293,7 +293,7 @@
         @skip="onPinSkip"
         @dismiss="onPinDismiss"
       />
-      <DirectorDashboard v-if="!isPasswordChangeLocked && isDirector && active === 'director'" :branch-id="currentBranch" :unread-feedback-count="unreadFeedbackCount" :initial-engagement="userProfile?.engagement ?? null" @navigate="onNavigateFromNotifications" />
+      <DirectorDashboard v-if="!isPasswordChangeLocked && isDirector && active === 'director'" :branch-id="currentBranch" :unread-feedback-count="unreadFeedbackCount" :initial-engagement="userProfile?.engagement ?? null" :focus-workflow-id="directorFocusWorkflowId" :focus-section="directorFocusSection" @navigate="onNavigateFromNotifications" />
       <NotificationsCenter
         v-if="!isPasswordChangeLocked && isDirector && active === 'notifications'"
         :branch-id="currentBranch"
@@ -480,6 +480,7 @@ import BugReportLauncher from './components/BugReportLauncher.vue';
 import PinLockModal from './components/PinLockModal.vue';
 import AtToast from './components/AtToast.vue';
 import { fetchChatUnreadCount } from './lib/chatApi';
+import { buildInboxDeepLinkQuery, inboxScopeKey, mergeInboxCountState, parseInboxCount, parseInboxDeepLinkSearch, resolveAuthorizedBranchId } from './lib/actionInboxContract.js';
 import perfFlags from './lib/perfFlags';
 import { playTeacherUiSfx } from './lib/teacherUiSfx';
 import { recordTeacherVisitToday } from './lib/teacherLoginStreak';
@@ -886,6 +887,11 @@ const initialTeacherIdForNav = ref(null);
 const calendarResetToken = ref(0);
 const unreadNotificationCount = ref(0);
 const urgentNotificationCount = ref(0);
+const inboxNeedsAttentionCount = ref(0);
+const inboxUrgentTotal = ref(0);
+const inboxCountScopeKey = ref('');
+const directorFocusWorkflowId = ref(null);
+const directorFocusSection = ref(null);
 const badgeByType = ref({});
 let unreadPollingTimer = null;
 let chatBadgePollingTimer = null;
@@ -937,14 +943,21 @@ function _onVisibilityChangeForPolling() {
 }
 
 
-const unreadNotificationLabel = computed(() => (unreadNotificationCount.value > 99 ? '99+' : String(unreadNotificationCount.value)));
+const unreadNotificationLabel = computed(() => {
+  const n = inboxNeedsAttentionCount.value > 0 ? inboxNeedsAttentionCount.value : unreadNotificationCount.value;
+  return n > 99 ? '99+' : String(n);
+});
 const unreadFeedbackCount = computed(() => Number(badgeByType.value.parent_feedback?.total || 0));
 
 function getItemBadgeCount(item) {
+  if (item?.page === 'notifications') {
+    return inboxNeedsAttentionCount.value > 0 ? inboxNeedsAttentionCount.value : unreadNotificationCount.value;
+  }
   if (!item?.badgeTypes?.length) return 0;
   return item.badgeTypes.reduce((sum, t) => sum + (badgeByType.value[t]?.total || 0), 0);
 }
 function isItemBadgeUrgent(item) {
+  if (item?.page === 'notifications') return inboxUrgentTotal.value > 0; // red only for urgent_total
   if (!item?.badgeTypes?.length) return false;
   return item.badgeTypes.some((t) => (badgeByType.value[t]?.urgent || 0) > 0);
 }
@@ -970,7 +983,27 @@ function onNavigateToSchedule({ teacherId, target }) {
   else active.value = 'course-mgmt';
 }
 
-function onNavigateFromNotifications({ target, recordId, focus }) {
+function applyDeepLinkFromUrl() {
+  try {
+    const { page, section, workflowId, branchId } = parseInboxDeepLinkSearch(window.location.search);
+    if (branchId) {
+      const safe = resolveAuthorizedBranchId(branchId, branches.value.map((b) => b.id), { allowAny: role.value === 'super_admin' });
+      if (safe) currentBranch.value = safe;
+    }
+    if (page === 'notifications' || page === 'director') active.value = page;
+    if (page === 'director' || workflowId) {
+      directorFocusSection.value = section || (workflowId ? 'exception-workflows' : null);
+      directorFocusWorkflowId.value = workflowId;
+      if (workflowId) active.value = 'director';
+    }
+  } catch { /* ignore */ }
+}
+
+function onPopStateDeepLink() {
+  applyDeepLinkFromUrl();
+}
+
+function onNavigateFromNotifications({ target, recordId, focus, section, workflowId }) {
   if (isPasswordChangeLocked.value) {
     active.value = 'profile';
     return;
@@ -984,9 +1017,28 @@ function onNavigateFromNotifications({ target, recordId, focus }) {
   } else {
     learningTargetRecordId.value = null;
   }
-  // 「家長回饋待看」CTA：請評量頁切到回饋篩選並放大資料集，否則導過去看不到回饋。(#138)
   if (target === 'learning' && focus === 'feedback') {
     learningFeedbackFocusToken.value += 1;
+  }
+  if (target === 'director') {
+    directorFocusSection.value = section || 'exception-workflows';
+    directorFocusWorkflowId.value = workflowId ? Number(workflowId) : null;
+    try {
+      const q = buildInboxDeepLinkQuery({
+        page: 'director',
+        section: directorFocusSection.value,
+        workflowId: directorFocusWorkflowId.value,
+        branchId: currentBranch.value,
+      });
+      // Preserve unrelated query keys.
+      const cur = new URLSearchParams(window.location.search);
+      for (const [k, v] of q.entries()) cur.set(k, v);
+      if (!directorFocusWorkflowId.value) cur.delete('workflow_id');
+      window.history.pushState({ page: 'director', workflowId: directorFocusWorkflowId.value }, '', `${window.location.pathname}?${cur}${window.location.hash || ''}`);
+    } catch { /* ignore */ }
+  } else {
+    directorFocusSection.value = null;
+    directorFocusWorkflowId.value = null;
   }
   active.value = target;
 }
@@ -1012,6 +1064,9 @@ function onNavigateLearningFromTeacherHome(payload = {}) {
           branchId: targetBranchId > 0 ? targetBranchId : null,
         }
       : null;
+  }
+  if (payload?.focus === 'awaiting_reply' || payload?.focus === 'feedback') {
+    learningFeedbackFocusToken.value += 1;
   }
   const isTaskJump = isTeacher.value
     && !payload?.listOnly
@@ -1069,14 +1124,16 @@ function isNavItemDisabled(page) {
 }
 
 function onUnreadChange(count) {
-  if (typeof count === 'number') {
-    unreadNotificationCount.value = Number(count || 0);
-    urgentNotificationCount.value = 0;
-    return;
-  }
+  if (typeof count === 'number') { unreadNotificationCount.value = Number(count || 0); return; }
   if (count && typeof count === 'object') {
     unreadNotificationCount.value = Number(count.unread ?? 0);
-    urgentNotificationCount.value = Number(count.urgent ?? 0);
+    if (count.urgentTotal != null) {
+      inboxUrgentTotal.value = Number(count.urgentTotal || 0);
+      urgentNotificationCount.value = inboxUrgentTotal.value;
+    } else {
+      urgentNotificationCount.value = Number(count.urgent ?? 0);
+    }
+    if (count.needsAttention != null) inboxNeedsAttentionCount.value = Number(count.needsAttention || 0);
   }
 }
 
@@ -1227,7 +1284,7 @@ const sidebarNavGroups = computed(() => {
         defaultOpen: true,
         items: [
           { page: 'director', label: '總覽儀表板', icon: 'dashboard' },
-          { page: 'notifications', label: '通知中心', icon: 'notifications' },
+          { page: 'notifications', label: '主任收件匣', icon: 'inbox' },
           { page: 'chat', label: '內部聊天', icon: 'forum', badgeTypes: ['chat'] },
           // GH-943 (in-app 179): moved out of the collapsed「系統設定」group so
           // 主任 can find Bug 回報 without expanding settings.
@@ -1302,16 +1359,13 @@ const sidebarNavGroups = computed(() => {
   return [];
 });
 
-/** 底欄「更多」：加總未固定在底欄的選項之未讀（含通知中心）。 */
+/** 底欄「更多」：加總未固定在底欄的選項之未讀（含主任收件匣）。 */
 const moreMenuBadgeCount = computed(() => {
   let sum = 0;
   for (const group of sidebarNavGroups.value) {
     for (const item of group.items) {
       if (!mobileTabPages.value.has(item.page)) {
         sum += getItemBadgeCount(item);
-        if (item.page === 'notifications') {
-          sum += unreadNotificationCount.value;
-        }
       }
     }
   }
@@ -1323,11 +1377,9 @@ function getMobileTabBadgeCount(tab) {
   return getItemBadgeCount(tab);
 }
 
-/** 「更多」抽屜內單一列的未讀數（通知中心用全域未讀）。 */
+/** 「更多」抽屜內單一列的 badge（收件匣用 needs_attention，非單純未讀）。 */
 function getMoreSheetItemBadgeCount(item) {
-  let n = getItemBadgeCount(item);
-  if (item?.page === 'notifications') n += unreadNotificationCount.value;
-  return n;
+  return getItemBadgeCount(item);
 }
 
 const teacherBranches = computed(() => {
@@ -1386,6 +1438,7 @@ async function ensureDirectorBranches() {
 onMounted(async () => {
     // 系統主題監聽
     systemThemeMq?.addEventListener('change', onSystemThemeChange);
+    window.addEventListener('popstate', onPopStateDeepLink);
 
     // Load branches from API (public endpoint, no auth needed)
     await loadBranches();
@@ -1426,6 +1479,7 @@ onMounted(async () => {
     _startBadgePolling();
     document.addEventListener('visibilitychange', _onVisibilityChangeForPolling);
     await refreshUnreadNotifications();
+    if (session.value && isDirector.value) applyDeepLinkFromUrl();
 
     window.addEventListener('resize', onWindowResizeGuideFab);
     window.addEventListener('alltrue-refresh-badges', onRefreshBadgesEvent);
@@ -1493,6 +1547,7 @@ const fetchProfile = async (_uid) => {
             ensureTeacherBranch();
         } else if (me.role === 'director' || me.role === 'super_admin') {
             active.value = 'director';
+            applyDeepLinkFromUrl();
         }
     } catch {
         userProfile.value = null;
@@ -1513,7 +1568,9 @@ const handleLoginSuccess = async ({ user, profile }) => {
 
     if (mustChangePassword) active.value = 'profile';
     else if ((profile?.role ?? session.value?.user?.role) === 'teacher') active.value = 'teacher-home';
-    else if ((profile?.role ?? session.value?.user?.role) === 'director' || session.value?.user?.role === 'super_admin') active.value = 'director';
+    else if ((profile?.role ?? session.value?.user?.role) === 'director' || session.value?.user?.role === 'super_admin') {
+      active.value = 'director'; applyDeepLinkFromUrl();
+    }
     await ensureDirectorBranches();
     ensureTeacherBranch();
     triggerBrandIntroOncePerSessionToken();
@@ -1561,8 +1618,15 @@ watch(showMoreMenu, (open) => {
   else unlockScroll();
 });
 
-watch(currentBranch, (value) => {
+watch(currentBranch, (value, previous) => {
   localStorage.setItem('app_branch', value);
+  if (previous != null && value !== previous) {
+    unreadNotificationCount.value = 0;
+    urgentNotificationCount.value = 0;
+    inboxNeedsAttentionCount.value = 0;
+    inboxUrgentTotal.value = 0;
+    inboxCountScopeKey.value = '';
+  }
   refreshUnreadNotifications();
 });
 
@@ -1640,6 +1704,7 @@ function onRefreshBadgesEvent() {
 
 onBeforeUnmount(() => {
   systemThemeMq?.removeEventListener('change', onSystemThemeChange);
+  window.removeEventListener('popstate', onPopStateDeepLink);
   guideTour.closeTour();
   _stopBadgePolling();
   document.removeEventListener('visibilitychange', _onVisibilityChangeForPolling);
@@ -1688,6 +1753,7 @@ async function refreshUnreadNotifications() {
   if (!session.value?.access_token || !currentBranch.value) {
     unreadNotificationCount.value = 0;
     urgentNotificationCount.value = 0;
+    inboxNeedsAttentionCount.value = 0;
     badgeByType.value = {};
     await mergeBugUnreadBadge();
     await mergeChatUnreadBadge();
@@ -1696,31 +1762,41 @@ async function refreshUnreadNotifications() {
   }
 
   if (isDirector.value) {
+    const scope = inboxScopeKey(currentBranch.value);
     try {
       const baseUrl = import.meta.env.VITE_API_BASE || '/api';
       const params = new URLSearchParams({ branch_id: String(currentBranch.value) });
-      const res = await fetch(`${baseUrl}/v1/notifications/unread-count?${params}`, {
-        headers: {
-          Authorization: `Bearer ${session.value.access_token}`,
-          Accept: 'application/json',
-        },
-      });
-      if (res.status === 401) {
+      const hdrs = { Authorization: `Bearer ${session.value.access_token}`, Accept: 'application/json' };
+      const [notifRes, inboxRes] = await Promise.all([
+        fetch(`${baseUrl}/v1/notifications/unread-count?${params}`, { headers: hdrs }),
+        fetch(`${baseUrl}/v1/action-inbox/count?${params}`, { headers: hdrs }),
+      ]);
+      if (notifRes.status === 401 || inboxRes.status === 401) {
         await supabase.auth.signOut();
         session.value = null;
         await mergeBugUnreadBadge();
         await mergeChatUnreadBadge();
         return;
       }
-      if (!res.ok) throw new Error('unread-count request failed');
-      const json = await res.json();
+      if (!notifRes.ok) throw new Error('unread-count request failed');
+      const json = await notifRes.json();
       unreadNotificationCount.value = Number(json.unread_count || 0);
       urgentNotificationCount.value = Number(json.urgent_unread_count || 0);
       badgeByType.value = json.by_type || {};
+
+      if (!inboxRes.ok) throw new Error('action-inbox count failed');
+      const c = parseInboxCount(await inboxRes.json());
+      unreadNotificationCount.value = Number(c.notificationsUnread || 0);
+      inboxNeedsAttentionCount.value = Number(c.badgeTotal || 0);
+      inboxUrgentTotal.value = Number(c.urgentTotal || 0);
+      inboxCountScopeKey.value = scope;
     } catch {
-      unreadNotificationCount.value = 0;
-      urgentNotificationCount.value = 0;
-      badgeByType.value = {};
+      const prev = { notificationsUnread: unreadNotificationCount.value, casesUnresolved: 0, casesOverdue: 0, casesDueSoon: 0, casesCandidateReady: 0, urgentTotal: inboxUrgentTotal.value, badgeTotal: inboxNeedsAttentionCount.value };
+      const merged = mergeInboxCountState(prev, null, { failed: true, scopeKey: scope, prevScopeKey: inboxCountScopeKey.value || null });
+      unreadNotificationCount.value = merged.notificationsUnread;
+      inboxNeedsAttentionCount.value = merged.badgeTotal;
+      inboxUrgentTotal.value = merged.urgentTotal;
+      if (merged.scopeInvalidated) inboxCountScopeKey.value = scope;
     }
   } else {
     unreadNotificationCount.value = 0;

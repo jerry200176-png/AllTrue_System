@@ -25,7 +25,8 @@
 | 文件是否仍有效？ | Prefer `last_verified` / Constitution Version / radar latest run; stale = archive or re-verify |
 
 **Worktree ban:** never edit `/home/jerry/alltrue` — [`governance/WORKTREE_POLICY.md`](governance/WORKTREE_POLICY.md).  
-**Merge risk:** [`governance/RISK_BASED_MERGE_POLICY.md`](governance/RISK_BASED_MERGE_POLICY.md) (R0–R3).
+**Merge risk:** [`governance/RISK_BASED_MERGE_POLICY.md`](governance/RISK_BASED_MERGE_POLICY.md) (R0–R3).  
+**CI governance / preflight:** [`governance/CI_GOVERNANCE.md`](governance/CI_GOVERNANCE.md) · `npm run ci:preflight`
 
 ---
 
@@ -95,9 +96,9 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 1. 做事前先查：先讀 [`docs/governance/COMPANY_CONSTITUTION.md`](governance/COMPANY_CONSTITUTION.md) 與本 INDEX，再按任務查 Docs / MemPalace / 對應 rules。
 2. 做完要記錄：功能進 `CHANGELOG`，事故進 `AI_REGRESSION_LESSONS`，技術債進 `TECH_DEBT`，複雜架構進 `SYSTEM_TECH_GUIDE`；高風險修補進 [`docs/knowledge/KNOWLEDGE_GRAPH.md`](knowledge/KNOWLEDGE_GRAPH.md)。
 3. Company Core 目錄：[`docs/governance/`](governance/README.md)、[`WORKTREE_POLICY.md`](governance/WORKTREE_POLICY.md)、[`docs/sop/AGENT_PREFLIGHT.md`](sop/AGENT_PREFLIGHT.md)、[`docs/governance/EVIDENCE_CONTRACT.md`](governance/EVIDENCE_CONTRACT.md)。
-3. 規則單一出處：頂層文件只導航，不複製長 SOP；避免文件互相打架。
-4. 任何 AI 不靠記憶硬猜；先查資料，再動手。
-5. `.cursor/plans/**`、`*_ARCHIVE*` 與長篇歷史文件只供 `rg` / MemPalace 搜尋，不通讀；**runtime 衝突時**以 [`CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md) 為準。
+4. 規則單一出處：頂層文件只導航，不複製長 SOP；避免文件互相打架。
+5. 任何 AI 不靠記憶硬猜；先查資料，再動手。
+6. `.cursor/plans/**`、`*_ARCHIVE*` 與長篇歷史文件只供 `rg` / MemPalace 搜尋，不通讀；**runtime 衝突時**以 [`CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md) 為準。
 
 ---
 
@@ -119,7 +120,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 4. **In-app Bug 回報**（分診／上線後回寫）：`docs/CHAT_BUG_SYSTEM.md` §3.6–§3.7、`AI_REGRESSION_LESSONS.md` §R51／§R53；**關閉閘門** → `docs/GUIDE_BUG_CLOSURE_GATE.md`；**內部 ID 外洩盤點** → [`docs/GUIDE_UX_INTERNAL_IDENTIFIER_AUDIT.md`](GUIDE_UX_INTERNAL_IDENTIFIER_AUDIT.md)
 5. **In-app Bug 公開回覆白話範本**：`docs/GUIDE_SUPPORT_REPLY_MACROS.md`（10 個 macro，對應狀態機；送出前跑禁用詞檢查）
 6. **外部工程技能包（選用）**：[`docs/GUIDE_AGENT_SKILLS.md`](GUIDE_AGENT_SKILLS.md) — addyosmani/agent-skills ＋ [Leonxlnx/taste-skill](https://github.com/Leonxlnx/taste-skill) 本地化（§taste-skill）；[`docs/GUIDE_ALLTRUE_AGENT_SYSTEM_V1.md`](GUIDE_ALLTRUE_AGENT_SYSTEM_V1.md) — AllTrue 本地化 `.cursor/skills/alltrue-*`
-7. **資料修復／事故 execution package（需核准）**：[`docs/incidents/189-191-data-repair-plan.md`](incidents/189-191-data-repair-plan.md)、[`docs/incidents/189-191-execution-package.md`](incidents/189-191-execution-package.md)、[`docs/incidents/190-historical-billing-repair-plan.md`](incidents/190-historical-billing-repair-plan.md)、[`docs/incidents/190-reconciliation-report.md`](incidents/190-reconciliation-report.md)、[`docs/incidents/190-billing-technical-options.md`](incidents/190-billing-technical-options.md)、[`docs/incidents/189-191-dryrun-report.md`](incidents/189-191-dryrun-report.md)、[#1127 scheduler output evidence](incidents/1127-scheduler-evidence-execution-package.md)、[2026-07-18 新店出缺勤雙列](incidents/2026-07-18-xindian-duplicate-attendance-slots.md)、[scheduled-cross-sc execution](incidents/2026-07-18-scheduled-cross-sc-execution-package.md)
+7. **資料修復／事故 execution package（需核准）**：[`docs/incidents/189-191-data-repair-plan.md`](incidents/189-191-data-repair-plan.md)、[`docs/incidents/189-191-execution-package.md`](incidents/189-191-execution-package.md)、[`docs/incidents/190-historical-billing-repair-plan.md`](incidents/190-historical-billing-repair-plan.md)、[`docs/incidents/190-reconciliation-report.md`](incidents/190-reconciliation-report.md)、[`docs/incidents/190-billing-technical-options.md`](incidents/190-billing-technical-options.md)、[`docs/incidents/189-191-dryrun-report.md`](incidents/189-191-dryrun-report.md)、[#1127 scheduler output evidence](incidents/1127-scheduler-evidence-execution-package.md)、[2026-07-18 新店出缺勤雙列](incidents/2026-07-18-xindian-duplicate-attendance-slots.md)、[scheduled-cross-sc execution](incidents/2026-07-18-scheduled-cross-sc-execution-package.md)、[木柵高瑞樸 7/30 GHA containment](incidents/muzha-gaorui-2026-07-30-option1-execution-package.md)（[#1466](https://github.com/jerry200176-png/AllTrue_System/pull/1466)）
 8. **Bug 關閉閘門**：[`docs/GUIDE_BUG_CLOSURE_GATE.md`](GUIDE_BUG_CLOSURE_GATE.md) — 根因/測試/驗證/回覆/文件/回滾六項必填
 9. **Release Execution Package**：[`docs/GUIDE_RELEASE_EXECUTION_PACKAGE.md`](GUIDE_RELEASE_EXECUTION_PACKAGE.md) — production 變更標準模板
 10. **#957 D1 Sprint**：[`docs/refactor/957-d1-sprint-design.md`](refactor/957-d1-sprint-design.md)、[`docs/runbooks/957-d1-deploy-runbook.md`](runbooks/957-d1-deploy-runbook.md)、[`docs/runbooks/957-d1-production-readiness-report.md`](runbooks/957-d1-production-readiness-report.md)、[`docs/runbooks/957-d1-pcr.md`](runbooks/957-d1-pcr.md)
@@ -139,7 +140,8 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | 需要什麼 | 去哪裡找 |
 |----------|---------|
 | 頁面清單 + active key | `CLAUDE.md` §前端頁面 |
-| **設計系統 / 視覺規格（色票/按鈕/金額）** | `docs/RULE_DESIGN_SYSTEM.md`（唯一真相來源，改 UI 前必讀）|
+| **設計系統 / 視覺規格（色票/按鈕/金額）** | `docs/RULE_DESIGN_SYSTEM.md`（色票 SSOT，改 UI 前必讀）|
+| **UI Foundation（ops 結構/primitives/pilot）** | [`docs/design/ALLTRUE_UI_FOUNDATION.md`](design/ALLTRUE_UI_FOUNDATION.md) · audit [`UI_AUDIT_2026-07-26.md`](design/UI_AUDIT_2026-07-26.md) · sequencing [`UI_FOUNDATION_MIGRATION_SEQUENCING.md`](design/UI_FOUNDATION_MIGRATION_SEQUENCING.md) · evidence [`docs/design/evidence/`](design/evidence/) |
 | **UI 文案 / 空狀態 / Loading 規範** | `docs/GUIDE_UI_COPY.md` |
 | **前端 PR 設計驗收清單** | `docs/GUIDE_DESIGN_QA_SMOKE.md` |
 | Deploy SOP | `.cursor/rules/auto-frontend-deploy.mdc` |
@@ -148,7 +150,8 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | 行事曆 ClassSession 投影完整性 | `docs/GUIDE_PROJECTION_INTEGRITY.md`（list vs projection API；CI `ClassSessionProjectionTest`）|
 | **SmartCalendar 受控拆分（#740）** | `docs/GUIDE_SMARTCALENDAR_REFACTOR.md`（元件清單、API、CSS 解耦決策）|
 | 行事曆回歸測試 | `npm run test:calendar`（修改任何 calendar merge 邏輯前必跑）|
-| 家長入口 UX、分眾版本公告 | `docs/ROLE_PLAYBOOK.md` §4、`docs/AI_REGRESSION_LESSONS.md` §R45；`npm run test:release-notes`（改 `releaseNotes.js` / changelog 產生器時） |
+| 家長入口 UX、分眾版本公告 | `docs/PARENT_UPDATES.yml`（家長唯一來源）、`docs/ROLE_PLAYBOOK.md` §4、`docs/AI_REGRESSION_LESSONS.md` §R45；`npm run test:release-notes`（改 YAML / `releaseNotes.js` / 產生器時） |
+| **家長帳號／學生綁定（ADR Accepted；PB-00 activation pending）** | Benchmark [`research/PARENT_BINDING_BENCHMARK.md`](research/PARENT_BINDING_BENCHMARK.md) · Architecture [`architecture/PARENT_IDENTITY_TARGET_ARCHITECTURE.md`](architecture/PARENT_IDENTITY_TARGET_ARCHITECTURE.md) · ADR [`adr/ADR-PARENT-STUDENT-BINDING.md`](adr/ADR-PARENT-STUDENT-BINDING.md) · UX [`product/PARENT_BINDING_UX_SPEC.md`](product/PARENT_BINDING_UX_SPEC.md) · Threat [`security/PARENT_BINDING_THREAT_MODEL.md`](security/PARENT_BINDING_THREAT_MODEL.md) · Rollout [`operations/PARENT_BINDING_ROLLOUT.md`](operations/PARENT_BINDING_ROLLOUT.md) · Issues [`product/parent-binding-implementation-issues/`](product/parent-binding-implementation-issues/) — **PB-00 = IMPLEMENTED / DEPLOYED — PRODUCTION ACTIVATION PENDING**（#1446 merged；#1436 closed by merge；Pi ops activation／`effective=true`／7-day baseline 未完成；PB-01–PB-09 未開始） |
 | `assume-unchanged` 藏檔導致 PR 漏 diff | `AI_REGRESSION_LESSONS.md` §R58 |
 
 ### 部署 / 維運
@@ -184,6 +187,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | STRIDE 速查 | `.cursor/rules/module-security.mdc` |
 | 已知安全漏洞 | `docs/SECURITY.md` |
 | 家長入口安全規則 | `docs/AI_REGRESSION_LESSONS.md §R18` |
+| 家長綁定威脅模型（設計） | [`security/PARENT_BINDING_THREAT_MODEL.md`](security/PARENT_BINDING_THREAT_MODEL.md) |
 | OWASP ASVS L1 自查（年度） | `docs/security/ASVS_L1_2026.md` |
 | Audit log 政策（敏感 admin 行為） | `docs/security/AUDIT_LOG_POLICY.md` |
 
@@ -194,6 +198,8 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | 清償流程 | `.cursor/rules/tech-debt.mdc` |
 | **分層規則 + controller `DB::` ratchet** | `docs/ADR_003_layering_and_controller_db_ban.md`（新 DB:: 不得超基線；`node scripts/controller-db-ratchet.mjs`）|
 | **調課原子寫入邊界** | `docs/ADR_004_atomic_reschedule_boundary.md`（schedule chain／ClassSession／評量同交易，前端 committed gate）|
+| **排課多入口 × 具名 command 邊界** | `docs/ADR_005_scheduling_named_command_boundaries.md`（三 task surface；禁止 generic mutation；command 只收 intent target，不收回推導 domain truth）|
+| **預付堂次 horizon × Commitment（決策包）** | `docs/ADR_006_prepaid_session_horizon_and_commitment.md`（Accepted；Phase 0–3A **工具已 merge**；production／Ensure／coverage／#1483 migration **未啟用**）|
 
 ### 測試帳號 / 登入
 - `.cursor/.local/test-credentials.md` — 各角色帳密 + Browser MCP 踩坑 SOP

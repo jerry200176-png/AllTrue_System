@@ -21,11 +21,18 @@
 |---|---|---|
 | `variant` | `primary` / `secondary` / `ghost` / `danger` | `primary` |
 | `size` | `sm` / `md` | `md` |
+| `shape` | `pill`（legacy 預設）/ `rect`（ops foundation） | `pill` |
+| `loading` | 載入中並 disabled | `false` |
 | `icon` | Material Symbols 名稱 | — |
 | `block` | 滿版 | `false` |
 | `disabled` | — | `false` |
 
 **規則**：一個區塊只放一顆 `primary`（§2 主色稀有）。
+
+**shape 政策**：
+- Legacy surfaces：保留預設 `pill`，避免全站無差別切換造成視覺回歸。
+- Ops foundation 新頁／pilot：明確傳 `shape="rect"`。
+- 禁止一次把全站 AtButton 預設改成 `rect`。
 
 ---
 
@@ -110,3 +117,14 @@
 - gradient mesh、純黑 `#000`、裝飾 emoji
 - 一張卡堆多層 `box-shadow`
 - 金額/堂數不套 `tabular-nums`
+
+
+---
+
+## Foundation primitives（2026-07-26）
+
+見 [`docs/design/ALLTRUE_UI_FOUNDATION.md`](../../../../docs/design/ALLTRUE_UI_FOUNDATION.md)。
+
+Pilot 已驗證：`AtPageHeader` `AtSection` `AtToolbar` `AtFilterBar` `AtBadge` `AtInlineAlert` `AtSkeleton` `AtIconButton` `AtEmpty` + `AtButton(shape/loading)`。
+
+未在 pilot 真實接入的抽象（如 `AtModal` / `AtDataTableShell`）**不進本 PR**；等有使用頁面再建立。

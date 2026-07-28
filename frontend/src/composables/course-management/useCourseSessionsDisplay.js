@@ -13,11 +13,21 @@ import {
   sortSessionViewModels,
 } from '../../lib/classSessionsApi';
 import { describeSessionAttendanceSource } from '../../lib/attendanceSourceDisplay';
+import {
+  filterDisplayableSessions,
+  filterEffectiveSessions,
+  filterVisibleCancelledSessions,
+  rowOccupiesPurchasedQuota as rowOccupiesPurchasedQuotaShared,
+} from '../../lib/sessionOccurrenceFilter';
+import {
+  buildSessionPlanningStatus,
+  canMaterializeProjectedSession,
+  planningStatusToLegacyWarning,
+} from '../../lib/sessionPlanningStatus';
 
 const LEAVE_STATUSES = new Set(['leave', 'leave_adjusted', 'excused']);
 const ATTENDED_SESSION_STATUSES = new Set(['completed', 'attended', 'late']);
 const SESSION_DISPLAY_CONSUMED = new Set(['completed', 'absent']);
-const SESSION_NOT_OCCUPYING_QUOTA = new Set(['cancelled', 'leave', 'leave_adjusted', 'excused']);
 
 export function useCourseSessionsDisplay({
   sessionsByCourse,
@@ -179,13 +189,22 @@ export function useCourseSessionsDisplay({
 
   const sessionUnits = (course) => {
     const rows = getCourseSessions(course);
-    return sortSessionViewModels(rows.filter((row) => String(row?.status || '').toLowerCase() !== 'cancelled'));
+    return sortSessionViewModels(filterEffectiveSessions(rows));
   };
 
-  const allSessionUnits = (course) => sortSessionViewModels(getCourseSessions(course));
+  /** Default chip grid: effective sessions only (no cancelled / internal placeholders). */
+  const primarySessionUnits = (course) => sessionUnits(course);
+
+  const allSessionUnits = (course) => sortSessionViewModels(
+    filterDisplayableSessions(getCourseSessions(course))
+  );
 
   const cancelledSessionCount = (course) =>
-    getCourseSessionRows(course).filter((row) => String(row?.status || '').toLowerCase() === 'cancelled').length;
+    filterVisibleCancelledSessions(getCourseSessionRows(course)).length;
+
+  const movedOrCancelledUnits = (course) => sortSessionViewModels(
+    filterVisibleCancelledSessions(getCourseSessionRows(course))
+  );
 
   const sessions = (course) => sessionDatesFromViewModels(sessionUnits(course));
 
@@ -203,11 +222,8 @@ export function useCourseSessionsDisplay({
 
   const isContractException = (row) => !!row?.isContractException;
 
-  const rowOccupiesPurchasedQuota = (row) => {
-    if (row?.isProjected) return false;
-    const status = String(row?.status || '').toLowerCase();
-    return !SESSION_NOT_OCCUPYING_QUOTA.has(status);
-  };
+  // Exceptions still occupy purchased quota (see schedule-occurrence: charge rescheduled against quota).
+  const rowOccupiesPurchasedQuota = (row) => rowOccupiesPurchasedQuotaShared(row, { exceptionsOccupyQuota: true });
 
   const isOverQuotaSession = (course, row) => {
     if (!row || course?.PackageID) return false;
@@ -343,22 +359,21 @@ export function useCourseSessionsDisplay({
   const leaveSessionCount = (course) =>
     getCourseSessionRows(course).filter((row) => LEAVE_STATUSES.has(String(row?.status || '').toLowerCase())).length;
 
+  const getSessionPlanningStatus = (course, { sessionLoadFailed = false } = {}) => {
+    const rows = getCourseSessionRows(course);
+    return buildSessionPlanningStatus({
+      course,
+      effectiveCount: effectiveSessionCount(course),
+      leaveCount: leaveSessionCount(course),
+      sessionLoadFailed,
+      hasAnySessionRows: rows.length > 0,
+    });
+  };
+
+  /** @deprecated Prefer getSessionPlanningStatus — kept for transitional callers. */
   const sessionCountWarning = (course) => {
-    if (!isSessionMode(course)) return null;
-    const purchased = course?.PackageID
-      ? Math.max(0, Number(course?.package_total_sessions ?? 0) || 0)
-      : getPurchasedSessions(course);
-    if (purchased <= 0) return null;
-    const effective = effectiveSessionCount(course);
-    if (effective === purchased) return null;
-    const leaves = leaveSessionCount(course);
-    if (effective > purchased) {
-      return { show: true, type: 'over', message: '已超出購買堂數，請取消、改為例外堂，或建立新批次' };
-    }
-    if (leaves > 0) {
-      return { show: true, type: 'under_leave', message: '有請假堂次尚未補課' };
-    }
-    return { show: true, type: 'under_other', message: '排程列數與購買堂數不一致' };
+    const status = getSessionPlanningStatus(course);
+    return planningStatusToLegacyWarning(status);
   };
 
   const countUpcomingNonLeaveSessions = (course) => {
@@ -505,14 +520,18 @@ export function useCourseSessionsDisplay({
     toggleDates,
     sessions,
     sessionUnits,
+    primarySessionUnits,
     allSessionUnits,
     cancelledSessionCount,
+    movedOrCancelledUnits,
     sessionRowKey,
     getSessionNumber,
     countNonLeaveSessions,
     effectiveSessionCount,
     leaveSessionCount,
+    getSessionPlanningStatus,
     sessionCountWarning,
+    canMaterializeProjectedSession,
     getCourseSessionRows,
     getSessionRowsForDate,
     getSessionRowById,
