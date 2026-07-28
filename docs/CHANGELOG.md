@@ -1,3 +1,11 @@
+## 2026-07-24 — fix: 調課後課表穩定（系列契約 vs 單堂例外）
+
+- 課程管理預設只顯示有效堂次；已取消／內部調課 bookkeeping 改為可展開摘要，不再幽靈搶版面。
+- 單堂調課會標記契約例外，且不再回寫固定 `week/time`；月結續約維持契約時段並在預覽警告未對齊的例外堂。
+- 暫停課程可勾選是否取消剩餘排課（預設勾選）。
+
+開發備註：對齊 Google Calendar／Tutorbase「this occurrence only」。`ContractScheduleMatcher`、`reconcile` 排除 `IsContractException`、`cancel_remaining`、renewal preview `open_contract_exceptions`。回歸 `ScheduleOccurrenceStabilityTest`。
+
 ## 2026-07-28 — fix(learning-records): R55 復活判斷收斂為單一共用政策
 
 - 新增 `LearningRecordResurrectionPolicy`：`SYSTEM_RESURRECTABLE_VOID_REASONS` 白名單與「是否可自動復活」判斷收斂到單一位置。

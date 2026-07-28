@@ -3154,6 +3154,23 @@ class StudentClassController extends Controller
                 $amount = max(0, (int) ($studentClass->Charge ?? 0));
             }
 
+            $openExceptions = 0;
+            if (Schema::hasColumn('ClassSession', 'IsContractException')) {
+                $openExceptions = (int) ClassSession::query()
+                    ->where('StudentClassID', $studentClass->getKey())
+                    ->where('Status', 'scheduled')
+                    ->where('IsContractException', 1)
+                    ->whereDate('SessionDate', '>=', Carbon::today()->toDateString())
+                    ->count();
+            }
+            if ($openExceptions > 0) {
+                $warnings[] = [
+                    'code' => 'open_contract_exceptions',
+                    'message' => "本期尚有 {$openExceptions} 堂調課／例外排課；新期將依契約固定時段展開，這些單堂調整不會帶過去。若要整期改時段，請先編輯固定排課。",
+                    'exception_count' => $openExceptions,
+                ];
+            }
+
             $proposedCourse = [
                 'schedule_mode' => 'date',
                 'start_date' => $this->normalizeDateString($studentClass->StartDate ?? null),
@@ -3785,12 +3802,20 @@ class StudentClassController extends Controller
     {
         $classId = (int) $studentClass->ID;
         $today = Carbon::today()->toDateString();
-        $activeSessions = ClassSession::where('StudentClassID', $classId)
+        $activeSessionsQuery = ClassSession::where('StudentClassID', $classId)
             ->where('Status', 'scheduled')
             ->whereDate('SessionDate', '>=', $today)
             ->orderBy('SessionDate')
-            ->orderBy('StartTime')
-            ->get(['SessionDate', 'StartTime', 'EndTime']);
+            ->orderBy('StartTime');
+
+        // One-off 調課／補課 must not rewrite series week/time (SaaS: this occurrence only).
+        if (Schema::hasColumn('ClassSession', 'IsContractException')) {
+            $activeSessionsQuery->where(function ($q) {
+                $q->whereNull('IsContractException')->orWhere('IsContractException', 0);
+            });
+        }
+
+        $activeSessions = $activeSessionsQuery->get(['SessionDate', 'StartTime', 'EndTime']);
 
         if ($activeSessions->isEmpty()) {
             return;
@@ -5357,6 +5382,7 @@ class StudentClassController extends Controller
         $today = Carbon::today()->toDateString();
 
         $reason = $request->input('reason'); // 'completed' or null
+        $cancelRemaining = $request->boolean('cancel_remaining', true);
 
         if (!$reason
             && (string) ($sc->ScheduleMode ?? '') === 'count'
@@ -5385,14 +5411,19 @@ class StudentClassController extends Controller
                 }
                 $sc->save();
 
-                $cancelled = $this->cancelFutureScheduledSessions($sc, $reason);
+                $cancelled = $cancelRemaining
+                    ? $this->cancelFutureScheduledSessions($sc, $reason)
+                    : 0;
 
                 $labels = ['completed' => '已完課', 'settled' => '已結案'];
                 $label = $labels[$reason] ?? '已暫停';
                 DB::commit();
                 return response()->json([
-                    'message' => "課程{$label}，已取消 {$cancelled} 堂未來排課。",
+                    'message' => $cancelRemaining
+                        ? "課程{$label}，已取消 {$cancelled} 堂未來排課。"
+                        : "課程{$label}（未取消剩餘排課）。",
                     'cancelled_count' => $cancelled,
+                    'cancel_remaining' => $cancelRemaining,
                 ]);
             } else {
                 if ($sc->isUsageSettlementLocked()) {
