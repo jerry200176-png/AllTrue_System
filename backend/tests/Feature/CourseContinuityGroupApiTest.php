@@ -124,11 +124,13 @@ class CourseContinuityGroupApiTest extends TestCase
     {
         $sc = new StudentClass();
         $sc->StudentID = $studentId;
+        $sc->GradeID = 1;
         $sc->TeacherID = 1;
         $sc->SubjectID = $subjectId;
         $sc->by1 = $campusId;
         $sc->ClassType = 'one_on_one';
         $sc->StartDate = '2026-07-01';
+        $sc->TotalHours = 20;
         $sc->Stop = 0;
         $sc->Paid = 0;
         $sc->Charge = 0;
