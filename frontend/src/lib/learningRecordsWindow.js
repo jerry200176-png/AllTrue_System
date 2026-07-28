@@ -12,8 +12,8 @@ export function shouldApplyLearningRecordsDefaultWindow({
   if (startDate) return false;
   if (defaultWindowDisabled) return false;
 
-  // 篩選家長留言時不套時間窗口：留言常落在較舊、已核准的紀錄，套窗口會把它們藏掉（#138/#139／awaiting_reply）。
-  if (['has', 'unread', 'awaiting_reply'].includes(String(feedbackFilter || ''))) return false;
+  // 篩選家長回饋時不套時間窗口：回饋常落在較舊、已核准的紀錄，套窗口會把它們藏掉（#138/#139）。
+  if (['has', 'unread'].includes(String(feedbackFilter || ''))) return false;
 
   if (isTeacher) {
     return ![

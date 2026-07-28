@@ -7,19 +7,9 @@ use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Parent-message awaiting_staff_reply semantics (PRD 2026-07-28).
- *
- * Stable ordering proof (no migration):
- * - Parent follow-ups and content-change events are stored as rows in
- *   learning_record_feedback_replies with author_role=parent.
- * - Staff public replies use the same table with author_role in (teacher, director).
- * - Latest event comparison uses (created_at, id) **within that single table** —
- *   auto-increment id is a total order; same-second ties are resolved by id.
- * - Body-only threads (feedback row, zero parent replies): awaiting iff no staff reply.
- * - Historical content edits that only bumped feedback.updated_at (pre-fix) are not
- *   reconstructed without G3 backfill; forward path writes a parent reply on real edits.
- *
- * Must NOT reuse analytics.unreplied_records.
+ * awaiting_staff_reply (PRD 2026-07-28). Same-table order: replies (created_at, id).
+ * Body-only ⇒ awaiting until first staff public reply. Must NOT reuse unreplied_records.
+ * Pre-fix content edits that only bumped updated_at need G3 backfill; forward path appends parent reply.
  */
 class ParentFeedbackAwaitingService
 {
@@ -63,7 +53,6 @@ class ParentFeedbackAwaitingService
         }
 
         if ($parentLatest === null) {
-            // Body-only: awaiting until first staff public reply.
             return $staffLatest === null;
         }
 
@@ -75,8 +64,6 @@ class ParentFeedbackAwaitingService
     }
 
     /**
-     * Restrict a LearningRecord query to rows whose parent feedback is awaiting staff reply.
-     *
      * @param  EloquentBuilder|QueryBuilder  $query
      */
     public function constrainLearningRecordsAwaitingReply($query, string $learningRecordIdColumn): void
@@ -84,54 +71,13 @@ class ParentFeedbackAwaitingService
         $query->whereExists(function ($sub) use ($learningRecordIdColumn) {
             $sub->select(DB::raw(1))
                 ->from('learning_record_feedbacks as lrf_await')
-                ->whereColumn('lrf_await.learning_record_id', $learningRecordIdColumn)
-                ->where(function ($outer) {
-                    // A) No staff public reply at all → awaiting (body-only or unanswered).
-                    $outer->whereNotExists(function ($noStaff) {
-                        $noStaff->select(DB::raw(1))
-                            ->from('learning_record_feedback_replies as r_staff0')
-                            ->whereColumn('r_staff0.feedback_id', 'lrf_await.id')
-                            ->whereIn('r_staff0.author_role', self::STAFF_PUBLIC_ROLES);
-                    })->orWhere(function ($parentBeatsStaff) {
-                        // B) Latest parent reply strictly after latest staff reply (same-table order).
-                        $parentBeatsStaff->whereExists(function ($hasParent) {
-                            $hasParent->select(DB::raw(1))
-                                ->from('learning_record_feedback_replies as r_parent')
-                                ->whereColumn('r_parent.feedback_id', 'lrf_await.id')
-                                ->where('r_parent.author_role', 'parent')
-                                ->whereRaw(
-                                    "NOT EXISTS (
-                                        SELECT 1 FROM learning_record_feedback_replies AS r_staff
-                                        WHERE r_staff.feedback_id = lrf_await.id
-                                          AND r_staff.author_role IN ('teacher', 'director')
-                                          AND (
-                                            r_staff.created_at > r_parent.created_at
-                                            OR (
-                                              r_staff.created_at = r_parent.created_at
-                                              AND r_staff.id >= r_parent.id
-                                            )
-                                          )
-                                      )"
-                                )
-                                ->whereRaw(
-                                    "r_parent.id = (
-                                        SELECT p2.id FROM learning_record_feedback_replies AS p2
-                                        WHERE p2.feedback_id = lrf_await.id
-                                          AND p2.author_role = 'parent'
-                                        ORDER BY p2.created_at DESC, p2.id DESC
-                                        LIMIT 1
-                                    )"
-                                );
-                        });
-                    });
-                });
+                ->whereColumn('lrf_await.learning_record_id', $learningRecordIdColumn);
+            $this->constrainFeedbackRowsAwaiting($sub, 'lrf_await.id');
         });
     }
 
     /**
-     * Count feedback threads awaiting staff reply under role scope.
-     * Teacher: all campuses for that teacher_id.
-     * Director: single campus (branchId) unless $allAuthorizedCampuses with campusIds.
+     * Teacher: all campuses for teacher_id. Director: branchId, or campusIds when $allAuthorizedCampuses.
      */
     public function countAwaitingForStaff(
         string $role,
@@ -148,7 +94,6 @@ class ParentFeedbackAwaitingService
             }
             $q->where('lrf.teacher_id', $teacherId);
         } else {
-            // director path only for P0 (no super_admin expansion).
             if ($allAuthorizedCampuses) {
                 if (empty($campusIds)) {
                     return 0;
@@ -162,21 +107,34 @@ class ParentFeedbackAwaitingService
             }
         }
 
-        $q->where(function ($outer) {
-            $outer->whereNotExists(function ($noStaff) {
+        $this->constrainFeedbackRowsAwaiting($q, 'lrf.id');
+
+        return (int) $q->count();
+    }
+
+    /** @param EloquentBuilder|QueryBuilder $query */
+    private function constrainFeedbackRowsAwaiting($query, string $feedbackIdColumn): void
+    {
+        // Identifier only (never user input).
+        if (!in_array($feedbackIdColumn, ['lrf.id', 'lrf_await.id'], true)) {
+            throw new \InvalidArgumentException('Invalid feedback id column');
+        }
+
+        $query->where(function ($outer) use ($feedbackIdColumn) {
+            $outer->whereNotExists(function ($noStaff) use ($feedbackIdColumn) {
                 $noStaff->select(DB::raw(1))
                     ->from('learning_record_feedback_replies as r_staff0')
-                    ->whereColumn('r_staff0.feedback_id', 'lrf.id')
+                    ->whereColumn('r_staff0.feedback_id', $feedbackIdColumn)
                     ->whereIn('r_staff0.author_role', self::STAFF_PUBLIC_ROLES);
-            })->orWhereExists(function ($hasParent) {
+            })->orWhereExists(function ($hasParent) use ($feedbackIdColumn) {
                 $hasParent->select(DB::raw(1))
                     ->from('learning_record_feedback_replies as r_parent')
-                    ->whereColumn('r_parent.feedback_id', 'lrf.id')
+                    ->whereColumn('r_parent.feedback_id', $feedbackIdColumn)
                     ->where('r_parent.author_role', 'parent')
                     ->whereRaw(
                         "NOT EXISTS (
                             SELECT 1 FROM learning_record_feedback_replies AS r_staff
-                            WHERE r_staff.feedback_id = lrf.id
+                            WHERE r_staff.feedback_id = {$feedbackIdColumn}
                               AND r_staff.author_role IN ('teacher', 'director')
                               AND (
                                 r_staff.created_at > r_parent.created_at
@@ -190,7 +148,7 @@ class ParentFeedbackAwaitingService
                     ->whereRaw(
                         "r_parent.id = (
                             SELECT p2.id FROM learning_record_feedback_replies AS p2
-                            WHERE p2.feedback_id = lrf.id
+                            WHERE p2.feedback_id = {$feedbackIdColumn}
                               AND p2.author_role = 'parent'
                             ORDER BY p2.created_at DESC, p2.id DESC
                             LIMIT 1
@@ -198,13 +156,9 @@ class ParentFeedbackAwaitingService
                     );
             });
         });
-
-        return (int) $q->count();
     }
 
-    /**
-     * @return array{0:string,1:int} [datetime string, id]
-     */
+    /** @return array{0:string,1:int} */
     private function eventSortKey($createdAt, int $id): array
     {
         if ($createdAt instanceof \DateTimeInterface) {

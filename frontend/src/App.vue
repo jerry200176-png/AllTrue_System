@@ -1065,9 +1065,6 @@ function onNavigateLearningFromTeacherHome(payload = {}) {
         }
       : null;
   }
-  if (payload?.focus === 'awaiting_reply' || payload?.focus === 'feedback') {
-    learningFeedbackFocusToken.value += 1;
-  }
   const isTaskJump = isTeacher.value
     && !payload?.listOnly
     && Boolean(payload?.classSessionId || payload?.recordId);
