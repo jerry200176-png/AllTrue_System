@@ -4,6 +4,42 @@
  */
 export const changelogReleaseNotes = [
   {
+    "version": "2026.07.28",
+    "date": "2026-07-28",
+    "title": "2026.07.28 版本更新",
+    "summary": "006 Phase 2 shadow horizon（read-only）；006 Phase 1B EnsureSessionHorizon（default-off）",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "006 Phase 2 shadow horizon（read-only）",
+          "006 Phase 1B EnsureSessionHorizon（default-off）",
+          "006 Phase 1A eviewSessionHorizon（read-only）",
+          "006 Phase 0 唯讀 epaid horizon 報告（slice 2/2）",
+          "006 Commitment classifier helpers (Phase 0 slice 1/2)"
+        ]
+      },
+      {
+        "title": "修正內容",
+        "items": [
+          "家長回饋預覽增加「回覆家長」入口"
+        ]
+      }
+    ],
+    "items": [
+      "006 Phase 2 shadow horizon（read-only）",
+      "006 Phase 1B EnsureSessionHorizon（default-off）",
+      "006 Phase 1A eviewSessionHorizon（read-only）",
+      "006 Phase 0 唯讀 epaid horizon 報告（slice 2/2）",
+      "006 Commitment classifier helpers (Phase 0 slice 1/2)",
+      "家長回饋預覽增加「回覆家長」入口"
+    ]
+  },
+  {
     "version": "2026.07.27",
     "date": "2026-07-27",
     "title": "2026.07.27 版本更新",
@@ -465,27 +501,6 @@ export const changelogReleaseNotes = [
     ],
     "items": [
       "課程重疊建立改走 強制建立視窗，不再卡死路"
-    ]
-  },
-  {
-    "version": "2026.06.21",
-    "date": "2026-06-21",
-    "title": "2026.06.21 版本更新",
-    "summary": "家長 LINE 自動登入（共用網域分校）＋ 共用方案堂數顯示",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "sections": [
-      {
-        "title": "修正內容",
-        "items": [
-          "家長 LINE 自動登入（共用網域分校）＋ 共用方案堂數顯示"
-        ]
-      }
-    ],
-    "items": [
-      "家長 LINE 自動登入（共用網域分校）＋ 共用方案堂數顯示"
     ]
   }
 ];
