@@ -31,7 +31,7 @@ final class ReleaseSessionCoveragePlanner
         $blocked = 0;
 
         foreach ($rows as $r) {
-            $from = (string) ($r['current_state'] ?? CoverageStates::NONE);
+            $from = (string) $r['current_state'];
             $assert = $this->machine->assertTransition($from, CoverageStates::RELEASED);
             $item = [
                 'student_class_id' => (int) $r['student_class_id'],
