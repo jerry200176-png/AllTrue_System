@@ -176,19 +176,26 @@
         </button>
 
         <button
-          v-if="unreadFeedbackCount > 0"
           class="th-action-btn th-action-feedback"
-          @click="goLearning"
+          type="button"
+          @click="goParentMessages"
         >
           <div class="th-action-icon-wrap">
-            <span class="material-symbols-outlined">mark_unread_chat_alt</span>
+            <span class="material-symbols-outlined">mark_chat_unread</span>
           </div>
           <div class="th-action-body">
-            <div class="th-action-label">
-              家長回饋待看 <strong>{{ unreadFeedbackCount }}</strong> 筆
+            <div class="th-action-label">家長留言</div>
+            <div class="th-action-hint" v-if="awaitingReplyCount > 0">
+              <template v-if="Number(unreadFeedbackCount) > 0">
+                {{ Number(unreadFeedbackCount) }} 則新留言 · 共 {{ awaitingReplyCount }} 則尚未回覆
+              </template>
+              <template v-else>
+                還有 {{ awaitingReplyCount }} 則尚未回覆 · 目前沒有新留言
+              </template>
             </div>
-            <div class="th-action-hint">點此查看並直接回覆家長（含家長新追問）</div>
+            <div class="th-action-hint" v-else>目前沒有尚未回覆的留言</div>
           </div>
+          <span class="th-action-cta">{{ awaitingReplyCount > 0 ? (Number(unreadFeedbackCount) > 0 ? '查看並回覆' : '繼續回覆') : '查看歷史留言' }}</span>
           <span class="material-symbols-outlined th-action-arrow">chevron_right</span>
         </button>
       </div>
@@ -663,6 +670,8 @@ const missionTasks = ref([]);
 const missionSummary = ref({ remaining_total: 0, breached_total: 0, completion_hint: 'action_required' });
 const feedbackAnalytics = ref(null);
 const feedbackAnalyticsLoading = ref(false);
+const awaitingReplyCount = ref(0);
+const awaitingReplyLoading = ref(false);
 
 // ── Chat unread count ──
 const chatUnreadCount   = ref(0);
@@ -757,6 +766,27 @@ async function fetchFeedbackAnalytics() {
     feedbackAnalytics.value = null;
   } finally {
     feedbackAnalyticsLoading.value = false;
+  }
+}
+
+async function fetchAwaitingReplyCount() {
+  awaitingReplyLoading.value = true;
+  try {
+    const token = await getToken();
+    if (!token) return;
+    const res = await fetch('/api/v1/me/awaiting-reply-count', {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    });
+    if (!res.ok) {
+      awaitingReplyCount.value = 0;
+      return;
+    }
+    const json = await res.json().catch(() => ({}));
+    awaitingReplyCount.value = Number(json?.awaiting_reply_count || 0);
+  } catch {
+    awaitingReplyCount.value = 0;
+  } finally {
+    awaitingReplyLoading.value = false;
   }
 }
 
@@ -1132,6 +1162,10 @@ function goLearning() {
   emit('navigate-learning', { listOnly: true });
 }
 
+function goParentMessages() {
+  emit('navigate-learning', { listOnly: true, focus: 'awaiting_reply' });
+}
+
 /** 過往優先於今日待填；無明確堂次時只開評量列表（不帶錨點）。 */
 function fillNextPendingLearning() {
   const o = overdueRecords.value[0];
@@ -1266,6 +1300,7 @@ async function refreshAll() {
     fetchPendingAttendance(),
     fetchMissionCenter(),
     fetchFeedbackAnalytics(),
+    fetchAwaitingReplyCount(),
     fetchOverdueLearning(),
     fetchPendingLearningSummary(),
     loadWeekSchedule(),
@@ -1304,6 +1339,7 @@ function onVisibilityChange() {
     fetchPendingAttendance();
     fetchMissionCenter();
     fetchFeedbackAnalytics();
+    fetchAwaitingReplyCount();
     fetchOverdueLearning();
     fetchPendingLearningSummary();
     fetchLearningProgress();
@@ -1686,6 +1722,13 @@ onBeforeUnmount(() => {
 .th-action-learning .th-action-icon-wrap { background: var(--ds-canvas-soft); color: var(--ds-ink-mute); }
 [data-theme="dark"] .th-action-learning .th-action-icon-wrap { background: var(--ds-ink); color: var(--ds-ink-mute); }
 .th-action-feedback .th-action-icon-wrap { background: var(--ds-primary-wash); color: var(--ds-primary-deep); }
+.th-action-cta {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ds-primary-deep);
+  white-space: nowrap;
+  margin-right: 4px;
+}
 .th-done .th-action-icon-wrap { background: var(--success-bg); color: var(--success); }
 
 .th-action-body { flex: 1; min-width: 0; }

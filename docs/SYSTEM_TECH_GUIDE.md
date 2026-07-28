@@ -237,7 +237,8 @@ SessionDeductionService::deductOnAttendance($studentClass, $signIn)
 - **比例扣堂範圍**：只對 `schedules.type='extra'` 補課且實際時長 ≠ 每堂分鐘（chokepoint `deductOnAttendance` → `resolvePartialMakeupMinutes`；剛好完整時長傳 `null`）。短於或長於契約的補課皆記實際分鐘；正常課堂一律整堂。禁止 clamp 回 perSession。
 - **reverse 一致性**：`reverseForSession` 未指定 minutes 時，沖回對應 `deduct` 列的 `minutes`，避免淨值漂移。
 - **讀取端守門**：`StudentClassController::index` 對 fractional 餘額不可用 count-based observed 覆寫（`hasFractionalBalance`），並回傳精確 `remaining_minutes`。
-- **已知限制**：`PackageDeductionService` 池鏡像仍 `delta=±1` 整堂（TD-059）；`ClassSessionController::recalculateSessionCounters` 為死碼（TD-060）。
+- **已知限制**：`PackageDeductionService` 池鏡像仍 `delta=±1` 整堂（TD-059）。
+- **TD-060（已清償 2026-07-28）**：`ClassSessionController::recalculateSessionCounters` 曾是與 `SessionDeductionService::recomputeCounters` 並存的死碼（無 caller），已直接刪除；legacy `attended` 相容性已確認由權威引擎涵蓋。
 
 詳見 `docs/AI_REGRESSION_LESSONS.md §R59`。
 

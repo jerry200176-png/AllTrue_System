@@ -239,7 +239,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | **F1 狀態收尾缺口** | 主檔狀態變更（`Stop=1` / 老師 `suspended` / 月結結算）後，**未對齊未來 `ClassSession.scheduled` / `schedules` / 老師名額**，殘留堂次續顯示 | #151、#427、#99、行290、§R32、§R59 | 停用/結算課程或老師後，未來 scheduled 堂次不得再出現在行事曆/名額；已上堂次須保留 |
 | **F2 月結續期語意** | 續期未依**當期實際堂數**重算金額/堂次；收據未綁 `billing_period` | #149、§R22、§R26、#554、#594 | 續期＝新一期+結算舊期；收據金額=當期堂數×費率、含結算月 |
 | **F3 排課堂次生成** | 建課後未依 `week/time` 契約**推算/補齊完整未來堂次**（只生成片段） | #148、#497、#539、#424、§R22、§R23、§R64（週日 slot 全滅→0 元月結） | 建課後即依契約生成完整未來 ClassSession；預排日不得反白/dead-end；weekday 比對先 `isoWeekday()` 正規化 |
-| **F4 共用堂數（一對三）** | `Charge` 未計算（=0）；**購買堂數 vs 實體 ClassSession 數**呈現混淆 | #147、#553、#430、#448、#440、§R21 | 共用堂數金額/堂數有單一權威來源，購買 vs 已用 vs 課表數一致 |
+| **F4 共用堂數（一對三）** | `Charge` 未計算（=0）；**購買堂數 vs 實體 ClassSession 數**呈現混淆；把方案池總堂數當成員課程應物化列數 → 假「不一致」警告；堂數制 projected chip 誤呼叫 ensure-projected；把方案池剩餘數當成員可排能力 | #147、#553、#430、#448、#440、§R21、§R24、#1465；架構後續見 **ADR-006**（Commitment→materialize→pool coverage；非餘額猜堂） | 池／成員排課／已用分欄；package under→info 且**成員課程 UI 不顯示方案池剩餘**；無 allocation aggregate 前不推導尚可排／未排 N；count projected 不呼叫 ensure-projected；物化 affordance 僅 `ScheduleMode=date` |
 | **F5 行事曆合併** | week 檢視 merge/去重/過濾**排除有效堂次**（含歷史已上） | #152、§R47、§R49、§R50、行544、§G-007 | 唯一走 `calendarOccurrenceMerge.js`；`npm run test:calendar`；歷史已上堂次仍顯示 |
 | **F7 繳費金額/狀態雙真相** | `Charge` 與 `Rate×數量` 的差額、`StudentClass.Paid` 與 Invoice/Payment 各有兩套真相；點修單邊會「改了又跳回」 | #112、#425、#509、#798、#799、§G-009 | Charge 差額必須可追溯到 `session_charge` 調整；有效收款紀錄存在時課程不得被改為未繳費（解鈴走帳單作廢），任何降級路徑都要明確回饋不得靜默 |
 | **F6 輸入邊界 collation** | utf8mb3 文字欄遇 **4-byte 字元（emoji）** → `like` collation 1267 crash；**寫入**同根因 → `Incorrect string value` 1366（`StudentClass.Memo`） | #657、**#1378** | 搜尋：先濾 4-byte；**寫入**：canonical 修 charset→utf8mb4（禁默默刪 emoji）；過渡期回 422 `memo_charset_incompatible` 且 transaction 回滾 |
@@ -845,6 +845,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **強制規則**：`LearningRecordController::store()` 遇到既有 LR `VoidedAt!=NULL` 時，必須檢查 `VoidReason` 屬 **`SYSTEM_RESURRECTABLE_VOID_REASONS` 白名單**（`一般請假`/`由已上調整狀態`/`補請假：已上課改請假`/`單堂標記請假`，皆為系統 cascade 作廢且作廢當下已沖回堂數或該堂未扣堂）且 `ClassSession.Status` 屬於 fillable（`attended/scheduled/completed/late`）→ 自動 resurrect（清 void 欄位、轉 `pending`、用新 payload 覆寫）；其他情境（手動作廢、真實取消 / leave）維持 409 拒絕。**新增系統作廢原因時，務必同步加入此白名單**（用 `in_array` 不要再寫死單一字串）。
 - **測試必補**：`LearningRecordVoidedResurrectTest`：(1) cascade voided（一般請假）+ 堂次 attended → 200 + LR 復活 (2) 手動作廢（VoidReason 非白名單）仍 409 (3) 堂次仍 leave/cancelled 仍 409 (4) #146：`由已上調整狀態` + 堂次 attended → 200 + 復活 + `SessionDeducted=false`。
 - **副作用提醒**：resurrect 後不可自動再扣 `RemainingSessions`（扣堂仍走 `LearningRecord approved → AttendanceEffectsService` 路徑）；本規則只是把卡關打開，不改業務語意。白名單原因在作廢時都已沖回堂數，resurrect→pending→核准會 net-correct 扣 1 堂。
+- **2026-07-28 結構性補強**：架構稽核複查發現 `ClassSessionController::restoreVoidedLearningRecord()`（leave→attended 自動復活路徑）從未檢查 `VoidReason`，只要 session 曾經是 `leave` 現在轉回 attended-like，就無條件復活該堂任何已作廢 LR——與 `LearningRecordController::store()` 的白名單判斷各自維護，兩者可能漂移（同一類根因見 R83/R84、TD-060）。已抽出共用 `LearningRecordResurrectionPolicy::isEligibleForResurrect()`，兩處都改呼叫同一份判斷；`CourseLeaveCascadeService` 的請假撤銷復原（只認 `VoidReason='一般請假'`）維持原樣不動，因為那是刻意窄範圍（只復原「這次請假」本身作廢的記錄，非任意系統白名單原因）。
 
 ---
 
@@ -1010,6 +1011,24 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - 測試：`test_count_based_leave_keeps_*`；`LeaveKeepDatesAppendTailTest`（repair dry-run／apply idempotent）。
 - **產品規格教訓**：測試與文件只能證明符合既有規格，不能證明規格正確；營運一致反對時必須升級 Founder Decision，不可用舊測試關閉問題。
 
+### R83. 原子調課必須標記 IsContractException（否則 realign 拉回契約時段）
+
+- **觸發情境**：智慧行事曆／課程管理「調課」把單堂從契約時段（例週五 20:00）改到非契約時段（15:00），畫面曾正確；重整或課程「編輯→儲存／同步堂次偏移」後又回到 20:00。截圖常見同日同時出現 15:00 例外卡與 20:00 實體堂。
+- **根因（F1 / #556 缺口）**：`PATCH class-sessions` 改時間會設 `IsContractException=1`，但 `RescheduleSessionService`（`ensure_schedule_exception` 原子調課）只移動 `ClassSession` 時段、**未**標記例外 → `schedule_drift` 誤判 → `force_partial_rebuild`／`syncFutureScheduledSessionTimes` 把堂次 realign 回 `StudentClass.week/time`。
+- **強制規則**：任何把 occurrence 移出契約 weekday+clock 的寫入路徑（含 `reschedule-session`）必須呼叫同一套 contract matcher 設／清 `IsContractException`；改回契約時段則清 0。禁止只靠前端 schedules 例外撐顯示。
+- **資料修復**：已遭 realign 的個案需對照 `schedule_audit_logs`／`schedules`（rescheduled→scheduled chain）確認目標時段後，再以批准的 repair 把 `ClassSession` 移回並設 flag；不可盲目整批。
+- **測試必補**：`RescheduleMarksContractExceptionTest` — 原子同日 20:00→15:00 後 flag=1，且 `force_partial_rebuild` 後仍為 15:00。
+- **後續結構性修復見 §R84**：本條的「強制規則」當時只能靠每個寫入路徑自己記得呼叫 matcher，事後 grep 全庫發現至少 3 個既有重複實作（`ClassSessionController`／`StudentClassController` 加課／`RescheduleSessionService`）與 2 個完全沒接的缺口（`SubstituteController` 代課復原、`ClassSessionContractReflowService`）。R84 把這個不變量搬進 `ClassSessionObserver`，不再依賴人（或 AI）記得。
+
+### R84. IsContractException 不再靠呼叫者記得——搬進 ClassSessionObserver 結構性保證（R83 根治）
+
+- **觸發情境**：R83 修完 `reschedule-session` 這一個路徑後，複查全庫發現同一個 bug class（「移動 ClassSession 時間卻忘記同步 IsContractException」）在寫這個 PR 之前已經以 3 種略有差異的複製貼上形式存在（PATCH class-sessions、加課 add-session、原子調課），而且另外兩處會動到 ClassSession 時間的寫入路徑（`SubstituteController` 代課撤銷還原時間、`ClassSessionContractReflowService::move()` 本身）完全沒設這個 flag，只是「目前唯一呼叫者剛好有先篩掉」才沒出事——換句話說，下一個新寫入路徑（含 AI 新增功能時）只要忘記呼叫，同一個症狀會用新的樣貌回來，而且舊測試不會發現，因為舊測試只覆蓋既有路徑。
+- **根因**：這個不變量（「ClassSession 時間吻不吻合契約」）被當成「每個呼叫者自己記得算」，而不是「model 層自動保證」——衍生欄位（derived column）的一致性不該依賴呼叫端紀律。
+- **修復**：把計算搬進 `ClassSessionObserver::saving()`（`ClassSession::observe()` 已註冊、原本就用來寫 `ScheduleAuditLog`）。任何 `ClassSession->save()`，只要 `SessionDate/StartTime/EndTime` 有變動、且該次寫入沒有明確指定 `IsContractException`，就自動用 `ContractScheduleMatcher::applyExceptionFlag()` 重算並覆蓋；若呼叫者在同一次寫入明確指定了 `IsContractException`（例如 `ExceptionWorkflowController` 確認候補時段時強制標記例外），尊重明確意圖、不覆蓋。
+- **同時刪除的重複實作**：`ClassSessionController::syncContractExceptionFlag/sessionMatchesContract`、`StudentClassController::sessionMatchesContract`（含 add-session 的手動重算區塊）、`RescheduleSessionService` 對 `ContractScheduleMatcher::syncExceptionFlag` 的顯式呼叫——全部改由 Observer 自動處理，`ContractScheduleMatcher` 只剩一份 `matchesContract()`／`applyExceptionFlag()`。
+- **強制規則**：未來任何會改到 `ClassSession.SessionDate/StartTime/EndTime` 的新程式碼，**不需要、也不應該**自己呼叫 contract matcher——只要走 Eloquent `->save()`，Observer 會自動處理。唯一要小心的是若用 `DB::table('ClassSession')->update(...)` 繞過 Eloquent（例如某些 repair command 的批次更新），Observer 不會觸發，仍需手動確認契約吻合狀態。
+- **測試**：`ClassSessionObserverContractExceptionTest` —— 直接對 model 做 plain attribute assignment + save()（刻意不經過任何 controller/service），驗證 flag 自動設起/清除；驗證明確指定值不被覆蓋；驗證非時間欄位變動不誤觸發。既有 `StudentClassScheduleDriftExceptionTest`／`RescheduleMarksContractExceptionTest` 全數維持通過（行為不變，只是計算的地方換了）。
+
 ### R80. 排課摘要「補登已上（堂）」不可用 dates.length
 
 - **觸發情境**：新建課程 modal 同日兩個固定時段；補登 3 天其中兩天雙時段時，摘要顯示 3、實際應為 5；未排／總堂數仍正確。
@@ -1034,12 +1053,12 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | 堂數 / 扣堂 | §2026-04-17 繳費日期、§單堂費用固定、**§R59（分鐘制權威：RemainingSessions 為 ROUND_HALF_UP 衍生值，讀取端勿用 count 覆寫 fractional）**、§R70（對帳面板唯讀＋真實 API contract test）、**§R76（單堂改時段費用前後端必須一致）** |
 | 繳費 / 學收 | §繳費狀態 paid_at、§歷史課程漏算、§催繳名單六狀態、§幽靈課程、§R30（帳務入口共用 AR ledger）、**§R76（session／hour 費用文案與 Charge 寫入）**、**§R79（收據前端不得超前後端 contract；合法路徑=payment-reports/{id}/receipt）** |
 | 薪資 / 併堂 | §兼職薪資 concurrency、§同層級併堂 v1.4、§契約時長為準 |
-| 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession）、§R39（代課評量權限需匹配時段）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R52（代課 scheduled 例外不可缺 original_schedule_id anchor）、§R71（調課單一交易＋前端 committed gate）、§R72（cancelled ClassSession 不得讓 scheduled 例外佔用代課老師）、§R73（跨老師 gesture 必走 atomic substitute；legacy 兩階段精準補償）、§R74（代課衝突排除同一學生續約佔用） |
+| 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession）、§R39（代課評量權限需匹配時段）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R52（代課 scheduled 例外不可缺 original_schedule_id anchor）、§R71（調課單一交易＋前端 committed gate）、§R83（原子調課必須標記 IsContractException）、**§R84（IsContractException 搬進 ClassSessionObserver 結構性保證）**、§R72（cancelled ClassSession 不得讓 scheduled 例外佔用代課老師）、§R73（跨老師 gesture 必走 atomic substitute；legacy 兩階段精準補償）、§R74（代課衝突排除同一學生續約佔用） |
 | 請假 / 順延 | §R29、**§R82（KEEP dates+append）**、§R75（SUPERSEDED）、§R77、§R81 |
 | 評量 / 家長回饋 | §同天多堂課 buildEvents、§請假後不填評量、§R17（ownership 先於狀態判斷）、§R19（mark-read 不可更新 updated_at）、§R32（停用課程已上課評量不可消失）、§R39（代課評量權限需匹配時段）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R65（新增 session 狀態值必須同步全部消費端；leave 家族用集合判斷）、**§R78（nightly backfill 須 in-place restore 作廢評量，不可把 voided 當已有）** |
 | 家長入口 UI / `releaseNotes` | §R10、§R11、§R18、§R38、§R45（家長卡僅 `PARENT_UPDATES.yml` 顯式投影 + `sync-release-notes`） |
 | 課表回報 | §2026-04-17 回報系統（14 條禁止項） |
-| 排課 | §start_time 格式、§智慧排課誤標取消、§R25（請假優先於 scheduled 例外）、§R29（請假不可 fallback 只寫 schedules）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R47（rescheduled 幽靈不可蓋掉同日 ClassSession）、§R49（同學生同時段去重不可用 StudentClassID 當唯一 key）、§R50（行事曆載入不可 REST 成功後再跑 fallback）、§R69（bulk reflow 先 snapshot schedule IDs，禁止 mutable natural key 連鎖更新）、§R71（mutation contract／slot idempotency／兩階段補償）、**§R80（排課摘要補登堂數≠天數；須與 session_plan 同源 expand）** |
+| 排課 | §start_time 格式、§智慧排課誤標取消、§R25（請假優先於 scheduled 例外）、§R29（請假不可 fallback 只寫 schedules）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R47（rescheduled 幽靈不可蓋掉同日 ClassSession）、§R49（同學生同時段去重不可用 StudentClassID 當唯一 key）、§R50（行事曆載入不可 REST 成功後再跑 fallback）、§R69（bulk reflow 先 snapshot schedule IDs，禁止 mutable natural key 連鎖更新）、§R71（mutation contract／slot idempotency／兩階段補償）、**§R80（排課摘要補登堂數≠天數；須與 session_plan 同源 expand）**、§R83（調課後 IsContractException 防 realign）、**§R84（IsContractException 結構性保證，不再靠呼叫者記得）** |
 | 出缺勤 / 分校隔離 | §SEC-001、§分校隔離後端強制、§R12（查詢日期寫死今天）、§R14（submitQuickAttend 缺 StudentID）、§R15（出勤頁預設只顯示今天，歷史到班紀錄不可見）、§R16（`script setup` const TDZ 初始化順序 → 整頁空白）、§R33（老師每分校 RFID 優先）、§R36（個別資料有課但老師今日名單缺漏）、§R40（點名扣堂不可只用 ClassSessionID 防重）、§R41（補請假不可只用課程+日期找堂次）、§R42（行事曆堂次顯示老師不可被舊評量老師覆蓋）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R71（請假寫入即封閉 interval；禁止留待隔夜 repair）|
 | 月結制 / 加購 / 多科固定時段 | §b3 inactive 歷史、§b4 加購分流、§R21（堂數制加購是新批次）、§R22（月結詳情不可只依賴 ClassSession）、§R23（推算日期不可成為 dead-end chip）、§R24（多科固定時段優先走一般課程）、§R26（月結續報與堂數額度不可混在同一語意）、§R38（家長端繳費提醒不可套主任續課提醒） |
 | routes/api.php | §AI 靜默回退路由（改前必讀完整檔案 + route:list） |

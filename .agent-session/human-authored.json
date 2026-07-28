@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "provenance_type": "human-authored",
-  "declared_at": "2026-07-27T03:50:00Z",
-  "author": "jerry-github-operator-audit",
-  "note": "Low-risk CI hygiene from 2026-07 GitHub platform governance audit Phase 9: add concurrency/cancel-in-progress and contents:read permissions to agent-provenance.yml. No production business logic; no deploy trigger change."
+  "declared_at": "2026-07-28T10:40:00Z",
+  "author": "cursor-cloud-agent",
+  "note": "B1/B2: atomic reschedule-session must set IsContractException so force_partial_rebuild cannot snap one-off 調課 back to contract week/time (F1/#556 gap; symptom 新莊 巫宗育 20:00→15:00). Related open PR #1402 covers broader series/occurrence stability."
 }

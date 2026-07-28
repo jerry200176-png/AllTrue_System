@@ -4,6 +4,74 @@
  */
 export const changelogReleaseNotes = [
   {
+    "version": "2026.07.28",
+    "date": "2026-07-28",
+    "title": "2026.07.28 版本更新",
+    "summary": "修正超級管理員看不到版本更新內容的問題；006 Phase 3A pool coverage planner（read-only）",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "修正超級管理員看不到版本更新內容的問題",
+          "006 Phase 3A pool coverage planner（read-only）",
+          "006 Phase 2 shadow horizon（read-only）",
+          "006 Phase 1B EnsureSessionHorizon（default-off）",
+          "006 Phase 1A eviewSessionHorizon（read-only）",
+          "006 Phase 0 唯讀 epaid horizon 報告（slice 2/2）"
+        ]
+      },
+      {
+        "title": "修正內容",
+        "items": [
+          "家長留言預覽增加「回覆家長」入口",
+          "調課標記 IsContractException（防 realign 還原）",
+          "006 acceptance amendments（dormant／Ensure gates／ADR status）"
+        ]
+      },
+      {
+        "title": "其他改善",
+        "items": [
+          "搬進 ClassSessionObserver（R83 結構性根治）"
+        ]
+      }
+    ],
+    "items": [
+      "修正超級管理員看不到版本更新內容的問題",
+      "006 Phase 3A pool coverage planner（read-only）",
+      "006 Phase 2 shadow horizon（read-only）",
+      "006 Phase 1B EnsureSessionHorizon（default-off）",
+      "006 Phase 1A eviewSessionHorizon（read-only）",
+      "006 Phase 0 唯讀 epaid horizon 報告（slice 2/2）",
+      "家長留言預覽增加「回覆家長」入口",
+      "調課標記 IsContractException（防 realign 還原）"
+    ]
+  },
+  {
+    "version": "2026.07.27",
+    "date": "2026-07-27",
+    "title": "2026.07.27 版本更新",
+    "summary": "共用方案堂次區狀態語意與預排 chip 分流",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "共用方案堂次區狀態語意與預排 chip 分流"
+        ]
+      }
+    ],
+    "items": [
+      "共用方案堂次區狀態語意與預排 chip 分流"
+    ]
+  },
+  {
     "version": "2026.07.26",
     "date": "2026-07-26",
     "title": "2026.07.26 版本更新",
@@ -444,57 +512,6 @@ export const changelogReleaseNotes = [
     ],
     "items": [
       "課程重疊建立改走 強制建立視窗，不再卡死路"
-    ]
-  },
-  {
-    "version": "2026.06.21",
-    "date": "2026-06-21",
-    "title": "2026.06.21 版本更新",
-    "summary": "家長 LINE 自動登入（共用網域分校）＋ 共用方案堂數顯示",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "sections": [
-      {
-        "title": "修正內容",
-        "items": [
-          "家長 LINE 自動登入（共用網域分校）＋ 共用方案堂數顯示"
-        ]
-      }
-    ],
-    "items": [
-      "家長 LINE 自動登入（共用網域分校）＋ 共用方案堂數顯示"
-    ]
-  },
-  {
-    "version": "2026.06.14",
-    "date": "2026-06-14",
-    "title": "2026.06.14 版本更新",
-    "summary": "出缺席新增試聽/輔導/值班/補課/停課狀態；改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "sections": [
-      {
-        "title": "新增內容",
-        "items": [
-          "出缺席新增試聽/輔導/值班/補課/停課狀態",
-          "改善學生名冊匯入，表格格式比較不容易造成匯入失敗"
-        ]
-      },
-      {
-        "title": "體驗調整",
-        "items": [
-          "全站 Toast 統一 + UI 去 AI 化逐頁/元件治理"
-        ]
-      }
-    ],
-    "items": [
-      "出缺席新增試聽/輔導/值班/補課/停課狀態",
-      "改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
-      "全站 Toast 統一 + UI 去 AI 化逐頁/元件治理"
     ]
   }
 ];
