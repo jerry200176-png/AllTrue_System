@@ -104,7 +104,14 @@ fi
 
 fetch_pi_token() {
   local user_type="$1"
-  pi_mysql "SELECT t.token FROM auth_tokens t JOIN User u ON u.id=t.user_id WHERE u.type='${user_type}' AND t.expires_at > NOW() ORDER BY t.expires_at DESC LIMIT 1;" | head -1
+  # Prefer tokens whose user has at least one Approved campus (require_campus).
+  # Fall back to any valid token of that type if none match (legacy accounts).
+  local token=""
+  token="$(pi_mysql "SELECT t.token FROM auth_tokens t JOIN User u ON u.id=t.user_id JOIN UserCampus uc ON uc.UserID=u.id AND (uc.Approved=1 OR uc.Approved IS NULL) WHERE u.type='${user_type}' AND t.expires_at > NOW() ORDER BY t.expires_at DESC LIMIT 1;" | head -1 || true)"
+  if [[ -z "$token" ]]; then
+    token="$(pi_mysql "SELECT t.token FROM auth_tokens t JOIN User u ON u.id=t.user_id WHERE u.type='${user_type}' AND t.expires_at > NOW() ORDER BY t.expires_at DESC LIMIT 1;" | head -1 || true)"
+  fi
+  printf '%s' "$token"
 }
 
 fetch_pi_campus() {
@@ -168,15 +175,25 @@ if [[ -n "$director_token" ]]; then
     if [[ "$code" == "200" ]]; then
       break
     fi
-    if [[ "$code" == "500" && "$attempt" -lt "$max_attempts" ]]; then
-      warn "director GET /schedules attempt $attempt -> 500 (post-cache warmup?)"
+    # 500: post route:cache / opcache warmup (#1040). 403: transient campus/token
+    # race after deploy (seen on #1465 merge — same SHA later OK on prior deploys).
+    if [[ "$code" == "500" || "$code" == "403" ]] && [[ "$attempt" -lt "$max_attempts" ]]; then
+      warn "director GET /schedules attempt $attempt -> $code (retry; refetch director token)"
+      refreshed="$(fetch_pi_token D || true)"
+      [[ -n "$refreshed" ]] && director_token="$refreshed"
       sleep 2
       continue
     fi
     break
   done
-  [[ "$code" == "200" ]] && pass "director GET /schedules (pending makeup list) -> 200 after ${attempt} attempt(s)" \
-    || fail "director GET /schedules -> $code after ${attempt} attempt(s)"
+  if [[ "$code" == "200" ]]; then
+    pass "director GET /schedules (pending makeup list) -> 200 after ${attempt} attempt(s)"
+  else
+    body_snip="$(curl -skL -X GET "$schedules_url" \
+      -H "Authorization: Bearer $director_token" \
+      -H 'Accept: application/json' 2>/dev/null | head -c 200 | tr '\n' ' ')"
+    fail "director GET /schedules -> $code after ${attempt} attempt(s) body=${body_snip:-<empty>}"
+  fi
 
   # Probe a non-existent ID; 404/422 = auth OK. Retry 500s before failing deploy.
   probe_url="$API_BASE/schedules/999999999/cancel-makeup"
