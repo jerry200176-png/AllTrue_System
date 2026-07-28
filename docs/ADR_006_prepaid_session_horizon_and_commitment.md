@@ -1,10 +1,10 @@
 # ADR-006 — Prepaid Session Horizon：Schedule Commitment × Materialization × Pool Coverage
 
-> **Status:** **Accepted — Phase 0 evidence collection authorized**  
-> （仍：**Not implemented / not fixed / not production-ready**）  
-> **Founder review:** ACCEPT WITH AMENDMENTS（2026-07-28；PR #1468）  
+> **Status:** **Accepted — tools implemented / merged through Phase 3A; production not activated**  
+> （**Not production-ready / not runtime-enabled / not operationally accepted**）  
+> **Founder review:** ACCEPT WITH AMENDMENTS（2026-07-28；PR #1468）；runtime acceptance AMENDMENTS 2026-07-28  
 > **Date:** 2026-07-28  
-> **Type:** Architecture + product decision package（文件決策；本 PR **零 runtime／零 production DB 寫入**）  
+> **Type:** Architecture + product decision package + implementation pointers  
 > **Related:** #1062 Track A（`docs/runbooks/1062-track-a-pcr.md`）、`ADR_005_scheduling_named_command_boundaries.md`、G-010、F4／#1465、`ForwardSessionGenerator`、`ClassSessionMaterializationService`
 
 ---
@@ -13,11 +13,11 @@
 
 | 可宣稱 | 不可宣稱 |
 |---|---|
-| Accepted — Phase 0 evidence collection authorized | Implemented / fixed / production-ready |
-| Phase 0／Phase 1 **定義**完成；Founder 四題已拍板（§16） | Phase 0 報告已產出數字 |
-| 與 #1062／ADR-005／G-010／F4 對齊的邊界已寫清 | Phase 1 runtime、CEO GO、production activation、Kernel 排程已啟用 |
-| Schedule Commitment **語意**已定義；`StudentClass` = **v1 adapter（條件式）**，非永久 SSOT | 已決定永久 domain table／已寫 migration |
-| 下一獲准範圍 = Phase 0 **唯讀**報告 PR | production DB write、generator execute、扣堂、繳費、coverage mutation |
+| Accepted；Phase 0–3A **工具已實作並 merge**（report／preview／ensure default-off／shadow／coverage planner） | Production-ready／runtime enabled／operationally accepted |
+| Founder 四題已拍板（§16）；dormant ≠ auto Ensure | Phase 0 production 數字已產出並 ops 驗收 |
+| Ensure production hard-block + feature flag default off | Ensure／coverage／Kernel 已 production 啟用 |
+| `StudentClass` = **v1 adapter（條件式）**，非永久 SSOT | `session_coverages` migration 已 merge／已 migrate（見 #1483，需 GO） |
+| 下一技術範圍 = 驗收修正 + Phase 3B merge-ready（仍需 GO） | production DB write、扣堂、繳費、coverage mutation、migrate --force |
 
 ---
 
@@ -592,14 +592,14 @@ Founder 批准 **28 天**為 v1 **server-side default**，**不是**永久 domai
 **Verification**
 
 - [ ] 本檔合入 `main` 後 INDEX 可發現  
-- [ ] 狀態列為「Accepted — Phase 0 evidence collection authorized」且仍標 not implemented／not production-ready  
-- [ ] 無 deployable runtime 行為變更（docs-only）  
+- [ ] 狀態列區分「工具已 merge」vs「production 未啟用／未 ops 驗收」  
+- [ ] 無 Ensure／coverage／Kernel production activation 被誤標為完成  
 - [ ] §16 Founder decisions 與正文一致  
 - [ ] 與 #1062 PCR、ADR-005、G-010、F4 連結可點  
 
 **Rollback**
 
-- revert 本 ADR commit + 還原 INDEX／CHANGELOG 一行；無 schema／runtime
+- revert 相關 implementation commits；migration 未進 main 前無 schema 回滾需求
 
 ---
 
@@ -610,10 +610,10 @@ Founder 批准 **28 天**為 v1 **server-side default**，**不是**永久 domai
 | 1 | Commitment 判定 | **批准並修正分類**：合約欄 = authoritative candidate；history = 驗證／legacy signal；衝突 fail closed。三類 = `explicit_commitment`／`legacy_inferred_candidate`／`commitment_conflict`。Legacy **不得**計入「有明確 Commitment 的 MF」，也不得直接 Ensure／rolling。 |
 | 2 | Rolling horizon 28 天 | **批准為 v1 server-side default**（Asia/Taipei today+28 inclusive）；非永久 invariant；不寫入每筆 `StudentClass`；client 可傳 through_date，不得自定 recurrence truth。Phase 0 產出 7／28 天缺口即可。 |
 | 3 | Shared pool ES | **Preview 必須可顯示 uncovered**；**Ensure 不得建立 uncovered session**。ES 時 Ensure 對 pool scope **整批 no-write**，回傳 **`BLOCK_POOL_SHORTAGE`**（command-level，非 occurrence skip）。Covered-prefix 留 Phase 3+。 |
-| 4 | `StudentClass` 載體 | **條件式批准 v1 adapter**，**不批准**永久 SSOT；現不新增欄位。Ensure 僅 `explicit_commitment` + §6.4 條件。必算 `commitment_snapshot`／`commitment_fingerprint`。觸發新表條件見 §6.5。 |
+| 4 | `StudentClass` 載體 | **條件式批准 v1 adapter**，**不批准**永久 SSOT；現不新增欄位。Ensure 僅 `explicit_commitment` + §6.4 條件（**含非 dormant**）。必算 `commitment_snapshot`／`commitment_fingerprint`。觸發新表條件見 §6.5。 |
 
-**下一獲准範圍：** 僅 Phase 0 **唯讀**報告 PR。  
-**仍不包含：** production DB write、generator execute、扣堂、繳費、coverage mutation、production activation、Phase 1 Ensure runtime。
+**實作進度（2026-07-28）：** Phase 0–3A 工具已 merge；Ensure／coverage／migration **production 未啟用**。  
+**仍需 Founder GO：** #1483 migration merge／migrate、coverage 寫入、Ensure production flag、Kernel。
 
 ---
 
@@ -627,6 +627,7 @@ AllTrue 預付／共用方案的合理目標架構是：
 
 **Entitlement balance → 猜測未來課程 → 直接扣堂**
 
-本文件狀態：**Accepted — Phase 0 evidence collection authorized**。  
-仍：**Not implemented / not fixed / not production-ready**。  
-Phase 0 唯讀報告與後續 Phase 1 runtime 均需另 PR。
+本文件狀態：**Accepted — tools implemented/merged through Phase 3A; production not activated**。  
+仍：**not production-ready / not runtime-enabled / not operationally accepted**。
+
+Phase 3B `session_coverages` 與任何 production activation 另需 Founder GO。

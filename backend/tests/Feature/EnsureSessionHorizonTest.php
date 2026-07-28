@@ -57,6 +57,56 @@ class EnsureSessionHorizonTest extends TestCase
         $this->assertSame($before, DB::table('ClassSession')->count());
     }
 
+    public function test_execute_in_production_returns_requires_go_even_if_flag_off(): void
+    {
+        $prev = $this->app['env'];
+        $this->app['env'] = 'production';
+        try {
+            $sc = $this->explicitCourse(remaining: 8);
+            $before = DB::table('ClassSession')->count();
+            $dto = app(EnsureSessionHorizonService::class)->ensure(
+                $sc, null, $this->today, null, EnsureSessionHorizonService::MODE_EXECUTE
+            );
+            $this->assertSame('PRODUCTION_EXECUTE_REQUIRES_GO', $dto['ensure']['primary_reason']);
+            $this->assertTrue($dto['ensure']['blocked']);
+            $this->assertSame($before, DB::table('ClassSession')->count());
+        } finally {
+            $this->app['env'] = $prev;
+        }
+    }
+
+    public function test_command_execute_exits_nonzero_when_blocked(): void
+    {
+        $sc = $this->explicitCourse(remaining: 4);
+        Carbon::setTestNow($this->today);
+        try {
+            $code = Artisan::call('sessions:ensure-horizon', [
+                'student_class_id' => $sc,
+                '--as-of' => '2026-07-13',
+                '--execute' => true,
+                '--summary' => true,
+            ]);
+        } finally {
+            Carbon::setTestNow();
+        }
+        $this->assertSame(1, $code);
+        $this->assertStringContainsString('FEATURE_FLAG_OFF', Artisan::output());
+    }
+
+    public function test_dormant_explicit_is_blocked_from_ensure(): void
+    {
+        $sc = $this->course(['week' => 1, 'time' => '16:00', 'RemainingSessions' => 8]);
+        foreach (['2026-06-01', '2026-06-08'] as $d) {
+            $this->sess($sc, $d, '16:00:00', '18:00:00');
+        }
+        $dto = app(EnsureSessionHorizonService::class)->ensure(
+            $sc, null, $this->today, null, EnsureSessionHorizonService::MODE_DRY_RUN
+        );
+        $this->assertTrue($dto['ensure']['blocked']);
+        $this->assertSame(CommitmentReasonCodes::SKIP_DORMANT, $dto['ensure']['primary_reason']);
+        $this->assertFalse($dto['preview']['auto_ensure_eligible']);
+    }
+
     public function test_execute_creates_sessions_when_flag_on_non_production(): void
     {
         putenv('FEATURE_ENSURE_SESSION_HORIZON=true');

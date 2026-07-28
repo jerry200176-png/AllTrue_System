@@ -134,13 +134,14 @@ final class EnsureSessionHorizonService
         }
 
         // Execute path gates (fail closed).
-        if (!$flagOn) {
-            $result['ensure']['primary_reason'] = 'FEATURE_FLAG_OFF';
+        // Production hard-block is checked first so reason is stable even when flag is off.
+        if (app()->environment('production')) {
+            $result['ensure']['primary_reason'] = 'PRODUCTION_EXECUTE_REQUIRES_GO';
 
             return $result;
         }
-        if (app()->environment('production')) {
-            $result['ensure']['primary_reason'] = 'PRODUCTION_EXECUTE_REQUIRES_GO';
+        if (!$flagOn) {
+            $result['ensure']['primary_reason'] = 'FEATURE_FLAG_OFF';
 
             return $result;
         }

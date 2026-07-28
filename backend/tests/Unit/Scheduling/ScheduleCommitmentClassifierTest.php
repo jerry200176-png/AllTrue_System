@@ -97,6 +97,27 @@ class ScheduleCommitmentClassifierTest extends TestCase
         $this->assertSame(CommitmentReasonCodes::BLOCK_COMMITMENT_INCOMPLETE, $r['primary_reason']);
     }
 
+    public function test_explicit_dormant_is_not_auto_ensure_eligible(): void
+    {
+        $course = $this->course([
+            'week' => 1,
+            'time' => '16:00',
+            'TeacherID' => 10,
+            'SubjectID' => 2,
+            'CampusID' => 22,
+        ]);
+        // Last session > 3 weeks before 2026-07-13 → dormant
+        $history = [
+            ['SessionDate' => '2026-06-08', 'StartTime' => '16:00:00', 'EndTime' => '18:00:00'],
+            ['SessionDate' => '2026-06-01', 'StartTime' => '16:00:00', 'EndTime' => '18:00:00'],
+        ];
+        $r = $this->classifier->classify($course, $history, $this->today);
+        $this->assertSame(CommitmentReasonCodes::CLASS_EXPLICIT, $r['classification']);
+        $this->assertTrue($r['dormant_signal']);
+        $this->assertFalse($r['auto_ensure_eligible']);
+        $this->assertSame(CommitmentReasonCodes::SKIP_DORMANT, $r['primary_reason']);
+    }
+
     /** @param array<string,mixed> $over */
     private function course(array $over): array
     {
