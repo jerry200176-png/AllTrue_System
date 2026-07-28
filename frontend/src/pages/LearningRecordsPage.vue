@@ -3,22 +3,27 @@
     <!-- Page Header -->
     <div class="page-header lr-header enterprise-page-header" data-guide="learning-header">
       <div>
-        <h2>{{ isTeacher ? '我的課表 & 評量' : '學習評量表' }}</h2>
-        <p class="page-desc">{{ isTeacher ? '查看本週課表，填寫學習評量' : '查看、新增與審核學生每堂課的學習評量' }}</p>
+        <h2>{{ pageMode === 'parent_messages' ? '家長留言' : (isTeacher ? '我的課表 & 評量' : '學習評量表') }}</h2>
+        <p class="page-desc">{{ pageMode === 'parent_messages' ? (isTeacher ? '查看範圍：我的所有分校' : '查看範圍：目前分校（可改）') : (isTeacher ? '查看本週課表，填寫學習評量' : '查看、新增與審核學生每堂課的學習評量') }}</p>
       </div>
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
-        <button v-if="isTeacher" class="ghost lr-draft-list-btn enterprise-touch-target" @click="openDraftPanel">
+        <button v-if="isTeacher && pageMode !== 'parent_messages'" class="ghost lr-draft-list-btn enterprise-touch-target" @click="openDraftPanel">
           <span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px">drafts</span>
           草稿
           <span v-if="draftList.length > 0" class="lr-draft-badge">{{ draftList.length }}</span>
         </button>
-        <button class="ghost enterprise-touch-target" @click="openExportModal">匯出評量圖</button>
-        <button v-if="isTeacher" class="primary enterprise-touch-target" @click="focusTeacherSchedule">從課表填寫</button>
+        <button v-if="pageMode !== 'parent_messages'" class="ghost enterprise-touch-target" @click="openExportModal">匯出評量圖</button>
+        <button v-if="isTeacher && pageMode !== 'parent_messages'" class="primary enterprise-touch-target" @click="focusTeacherSchedule">從課表填寫</button>
       </div>
     </div>
 
+    <div v-if="isTeacher || isDirectorRole" class="lr-mode-tabs card" role="tablist" aria-label="學習評量與家長留言">
+      <button type="button" role="tab" :class="['lr-tab', { active: pageMode === 'records' }]" :aria-selected="pageMode === 'records'" @click="setPageMode('records')">學習評量</button>
+      <button type="button" role="tab" :class="['lr-tab', { active: pageMode === 'parent_messages' }]" :aria-selected="pageMode === 'parent_messages'" @click="setPageMode('parent_messages')">家長留言</button>
+    </div>
+
     <!-- Teacher quick-filter tabs -->
-    <div v-if="isTeacher" class="lr-review-tabs card" data-guide="learning-teacher-tabs">
+    <div v-if="isTeacher && pageMode === 'records'" class="lr-review-tabs card" data-guide="learning-teacher-tabs">
       <div class="lr-tabs-row">
         <button :class="['lr-tab', { active: teacherFilterTab === 'all' }]" @click="teacherFilterTab = 'all'">
           全部 <span class="lr-tab-count">{{ (records || []).length }}</span>
@@ -37,7 +42,7 @@
     </div>
 
     <!-- Director review queue tabs -->
-    <div v-if="isDirectorRole" class="lr-review-tabs card" data-guide="learning-director-review-tabs">
+    <div v-if="isDirectorRole && pageMode === 'records'" class="lr-review-tabs card" data-guide="learning-director-review-tabs">
       <div class="lr-tabs-row">
         <button :class="['lr-tab', { active: reviewTab === 'pending' }]" @click="reviewTab = 'pending'; selectedRecordIds = new Set()">
           待審佇列 <span v-if="serverPendingBadge > 0" class="lr-tab-count warn">{{ serverPendingBadge }}</span>
@@ -84,33 +89,53 @@
 
     <div v-if="isTeacher || isDirectorRole" class="lr-filters-bar card">
       <div class="lr-filters-quick">
-        <button
-          v-if="(isTeacher ? weekTotalMissingCount : kpiUnfilledCount) > 0"
-          :class="['lr-feedback-filter-chip', 'lr-unfilled-shortcut', { active: isTeacher ? teacherPriorityFilter === 'unfilled' : onlyUnfilled }]"
-          @click="toggleUnfilledShortcut()"
-        >
-          未填 <span class="lr-tab-count warn">{{ isTeacher ? weekTotalMissingCount : kpiUnfilledCount }}</span>
-        </button>
-        <button
-          v-if="unreadParentFeedbackCount > 0"
-          :class="['lr-feedback-filter-chip', 'lr-unread-shortcut', { active: feedbackFilter === 'unread' }]"
-          @click="feedbackFilter = feedbackFilter === 'unread' ? 'all' : 'unread'; showMoreFilters = true"
-        >
-          未讀回饋 <span class="lr-tab-count warn">{{ unreadParentFeedbackCount }}</span>
-        </button>
-        <button
-          type="button"
-          class="lr-more-filters-toggle"
-          :class="{ active: showMoreFilters || activeSecondaryFilterCount > 0 }"
-          :aria-expanded="showMoreFilters ? 'true' : 'false'"
-          @click="showMoreFilters = !showMoreFilters"
-        >
-          篩選<span v-if="activeSecondaryFilterCount > 0" class="lr-tab-count">{{ activeSecondaryFilterCount }}</span>
-          <svg class="lr-more-filters-chev" :class="{ open: showMoreFilters }" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
-        </button>
+        <template v-if="pageMode === 'parent_messages'">
+          <button
+            type="button"
+            :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'awaiting_reply' }]"
+            @click="feedbackFilter = 'awaiting_reply'"
+          >尚未回覆</button>
+          <button
+            type="button"
+            :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'unread' }]"
+            @click="feedbackFilter = 'unread'"
+          >新留言 <span v-if="unreadParentFeedbackCount > 0" class="lr-tab-count warn">{{ unreadParentFeedbackCount }}</span></button>
+          <button
+            type="button"
+            :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'has' }]"
+            @click="feedbackFilter = 'has'"
+          >全部留言</button>
+          <span class="lr-feedback-filter-label">{{ isTeacher ? '查看範圍：我的所有分校' : '查看範圍：目前分校' }}</span>
+        </template>
+        <template v-else>
+          <button
+            v-if="(isTeacher ? weekTotalMissingCount : kpiUnfilledCount) > 0"
+            :class="['lr-feedback-filter-chip', 'lr-unfilled-shortcut', { active: isTeacher ? teacherPriorityFilter === 'unfilled' : onlyUnfilled }]"
+            @click="toggleUnfilledShortcut()"
+          >
+            未填 <span class="lr-tab-count warn">{{ isTeacher ? weekTotalMissingCount : kpiUnfilledCount }}</span>
+          </button>
+          <button
+            v-if="unreadParentFeedbackCount > 0"
+            :class="['lr-feedback-filter-chip', 'lr-unread-shortcut', { active: feedbackFilter === 'unread' }]"
+            @click="feedbackFilter = feedbackFilter === 'unread' ? 'all' : 'unread'; showMoreFilters = true"
+          >
+            新留言 <span class="lr-tab-count warn">{{ unreadParentFeedbackCount }}</span>
+          </button>
+          <button
+            type="button"
+            class="lr-more-filters-toggle"
+            :class="{ active: showMoreFilters || activeSecondaryFilterCount > 0 }"
+            :aria-expanded="showMoreFilters ? 'true' : 'false'"
+            @click="showMoreFilters = !showMoreFilters"
+          >
+            篩選<span v-if="activeSecondaryFilterCount > 0" class="lr-tab-count">{{ activeSecondaryFilterCount }}</span>
+            <svg class="lr-more-filters-chev" :class="{ open: showMoreFilters }" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </button>
+        </template>
       </div>
 
-      <div v-show="showMoreFilters" class="lr-filters-panel">
+      <div v-show="pageMode === 'records' && showMoreFilters" class="lr-filters-panel">
         <div v-if="isTeacher" class="lr-filter-group">
           <span class="lr-feedback-filter-label">優先</span>
           <button :class="['lr-feedback-filter-chip', { active: teacherPriorityFilter === 'all' }]" @click="teacherPriorityFilter = 'all'">全部</button>
@@ -119,14 +144,15 @@
           <button :class="['lr-feedback-filter-chip', { active: teacherPriorityFilter === 'overdue' }]" @click="teacherPriorityFilter = 'overdue'">逾期</button>
         </div>
         <div class="lr-filter-group">
-          <span class="lr-feedback-filter-label">家長回饋</span>
+          <span class="lr-feedback-filter-label">家長留言</span>
           <button :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'all' }]" @click="feedbackFilter = 'all'">全部</button>
           <button :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'has' }]" @click="feedbackFilter = 'has'">
-            有回饋 <span v-if="parentFeedbackCount > 0" class="lr-tab-count">{{ parentFeedbackCount }}</span>
+            有留言 <span v-if="parentFeedbackCount > 0" class="lr-tab-count">{{ parentFeedbackCount }}</span>
           </button>
           <button :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'unread' }]" @click="feedbackFilter = 'unread'">
-            未讀回饋 <span v-if="unreadParentFeedbackCount > 0" class="lr-tab-count warn">{{ unreadParentFeedbackCount }}</span>
+            新留言 <span v-if="unreadParentFeedbackCount > 0" class="lr-tab-count warn">{{ unreadParentFeedbackCount }}</span>
           </button>
+          <button :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'awaiting_reply' }]" @click="feedbackFilter = 'awaiting_reply'">尚未回覆</button>
         </div>
       </div>
     </div>
@@ -140,7 +166,7 @@
     </div>
 
     <!-- ===== TEACHER: Week Schedule Widget ===== -->
-    <div v-if="isTeacher" class="teacher-schedule card" data-guide="learning-teacher-schedule">
+    <div v-if="isTeacher && pageMode === 'records'" class="teacher-schedule card" data-guide="learning-teacher-schedule">
       <div class="ts-header">
         <h3>課表</h3>
         <div class="ts-tabs ts-tabs--ios">
@@ -522,9 +548,9 @@
                   v-if="record.parent_feedback"
                   :class="['lr-parent-feedback-chip', parentFeedbackUnread(record) ? 'unread' : 'read']"
                   @click.stop="toggleFeedbackPreview(record)"
-                  :title="parentFeedbackUnread(record) ? '有新家長回饋（點擊預覽）' : '家長回饋（點擊預覽）'"
+                  :title="parentFeedbackUnread(record) ? '有新家長留言（點擊預覽）' : '家長留言（點擊預覽）'"
                 >
-                  💬 {{ parentFeedbackUnread(record) ? '未讀回饋' : '家長回饋' }}
+                  💬 {{ parentFeedbackUnread(record) ? '新留言' : (record.parent_feedback?.awaiting_staff_reply ? '尚未回覆' : '家長留言') }}
                 </span>
                 <span
                   v-if="record.teacher_comment"
@@ -675,7 +701,7 @@
                           :class="['lr-parent-feedback-chip', parentFeedbackUnread(record) ? 'unread' : 'read']"
                           @click.stop="toggleFeedbackPreview(record)"
                           :title="record.parent_feedback.content?.slice(0,60)"
-                        >💬 {{ parentFeedbackUnread(record) ? '未讀回饋' : '家長回饋' }}</span>
+                        >💬 {{ parentFeedbackUnread(record) ? '新留言' : (record.parent_feedback?.awaiting_staff_reply ? '尚未回覆' : '家長留言') }}</span>
                         <span
                           v-if="record.teacher_comment"
                           :class="['lr-teacher-comment-chip', teacherCommentUnread(record) ? 'unread' : 'read']"
@@ -1049,8 +1075,8 @@
                 </button>
               </div>
             </div>
-            <div v-if="_activeRecordRef?.parent_feedback" class="lr-parent-feedback-box">
-              <div class="lr-parent-feedback-title">家長回饋</div>
+            <div v-if="_activeRecordRef?.parent_feedback" class="lr-parent-feedback-box" :class="{ 'lr-parent-feedback-box--reply-mode': replyMode }">
+              <div class="lr-parent-feedback-title">{{ replyMode ? '回覆家長' : '家長留言' }}</div>
               <div class="lr-parent-feedback-content">{{ _activeRecordRef.parent_feedback.content }}</div>
               <div class="lr-parent-feedback-time">更新：{{ formatParentFeedbackTime(_activeRecordRef.parent_feedback.updated_at) }}</div>
 
@@ -1071,24 +1097,26 @@
 
               <!-- 回覆家長輸入（老師與主任皆可，家長可見）-->
               <div class="lr-feedback-reply-form">
-                <label class="lr-feedback-reply-label">回覆家長（這則訊息家長會看到）</label>
+                <label class="lr-feedback-reply-label">回覆家長（家長看得到）</label>
                 <textarea
+                  ref="feedbackReplyTextareaEl"
                   v-model="feedbackReplyDraft"
                   rows="2"
                   maxlength="1000"
-                  placeholder="例如：謝謝家長的回饋，我們這週會加強單字默寫，下次小考再觀察。"
+                  placeholder="例如：謝謝家長的留言，我們這週會加強單字默寫，下次小考再觀察。"
                 ></textarea>
                 <div class="lr-teacher-comment-actions">
                   <span v-if="feedbackReplyError" class="lr-teacher-comment-error">{{ feedbackReplyError }}</span>
                   <button type="button" class="primary small" :disabled="feedbackReplySaving || !feedbackReplyDraft.trim()" @click="submitFeedbackReply">
-                    {{ feedbackReplySaving ? '送出中...' : '回覆家長' }}
+                    {{ feedbackReplySaving ? '送出中...' : '送出回覆' }}
                   </button>
                 </div>
               </div>
             </div>
             <div v-if="form.id && (isDirectorRole || _activeRecordRef?.teacher_comment)" class="lr-teacher-comment-box">
               <div class="lr-teacher-comment-title">
-                主任給老師評語
+                主任內部評語
+                <span class="lr-teacher-comment-author">僅教職員看得到，家長不會看到</span>
                 <span v-if="_activeRecordRef?.teacher_comment?.author_name" class="lr-teacher-comment-author">
                   {{ _activeRecordRef.teacher_comment.author_name }}
                 </span>
@@ -1476,6 +1504,9 @@ const reviewTab = ref('pending');
 const teacherFilterTab = ref('all');
 const teacherPriorityFilter = ref('all');
 const feedbackFilter = ref('all');
+const pageMode = ref('records'); // 'records' | 'parent_messages'
+const replyMode = ref(false);
+const feedbackReplyTextareaEl = ref(null);
 const onlyUnfilled = ref(false);
 // #199: symmetric "only filled" lens so directors/super-admins can review completed
 // assessments — every other filter here is unfilled/to-do oriented. Client-side display
@@ -1907,6 +1938,9 @@ const submitFeedbackReply = async () => {
     _activeRecordRef.value = { ..._activeRecordRef.value, parent_feedback: newFb };
     records.value = (records.value || []).map(r => Number(r?.id || 0) === rid ? { ...r, parent_feedback: newFb } : r);
     feedbackReplyDraft.value = '';
+    if (pageMode.value === 'parent_messages' && feedbackFilter.value === 'awaiting_reply') {
+      await fetchRecords();
+    }
   } catch (e) {
     feedbackReplyError.value = e?.message || '回覆失敗';
   } finally {
@@ -3073,8 +3107,8 @@ const _buildRecordsParams = (page = 1, { beforeId = null } = {}) => {
     }
     if (filters.end_date) params.set('end_date', filters.end_date);
   }
-  // 家長回饋篩選改走伺服器端，確保跨頁/跨日期的回饋紀錄都撈得到（#138/#139）。
-  if (feedbackFilter.value === 'has' || feedbackFilter.value === 'unread') {
+  // 家長留言篩選改走伺服器端，確保跨頁/跨日期的留言紀錄都撈得到（#138/#139／awaiting_reply）。
+  if (feedbackFilter.value === 'has' || feedbackFilter.value === 'unread' || feedbackFilter.value === 'awaiting_reply') {
     params.set('feedback', feedbackFilter.value);
   }
   // 主任審核分頁改走伺服器端 status 篩選，讓列表＝該狀態全量（分頁載入），與 badge/總覽一致（#139/#595）。
@@ -3402,16 +3436,25 @@ const openModal = (record = null) => {
 const viewRecord = (record) => {
   showAllCommentPhrases.value = false;
   forceReadOnly.value = true;
+  replyMode.value = pageMode.value === 'parent_messages' || Boolean(record?.parent_feedback);
   _fillForm(record);
   showModal.value = true;
   markParentFeedbackRead(record);
   markTeacherCommentRead(record);
   _attachTextareaResize();
+  if (replyMode.value && record?.parent_feedback) {
+    nextTick(() => {
+      const box = document.querySelector('.lr-parent-feedback-box');
+      if (box) box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      feedbackReplyTextareaEl.value?.focus?.();
+    });
+  }
 };
 
 const editRecord = (record) => {
   showAllCommentPhrases.value = false;
   forceReadOnly.value = false;
+  replyMode.value = false;
   _fillForm(record);
   showModal.value = true;
   markTeacherCommentRead(record);
@@ -3430,6 +3473,7 @@ const closeModal = () => {
   draftStatusText.value = '';
   draftSaveError.value = false;
   showAllCommentPhrases.value = false;
+  replyMode.value = false;
   showModal.value = false;
   resetPreviousSummaryState();
   _openedFromScheduleSession.value = 0;
@@ -4279,19 +4323,20 @@ async function applyFeedbackFocus() {
   const s = feedbackFocusState({ isTeacher: isTeacher.value });
   _suppressFeedbackRefetch = true;
   try {
+    pageMode.value = s.pageMode || 'parent_messages';
     onlyUnfilled.value = s.onlyUnfilled;
     defaultWindowDisabled.value = s.liftWindow;
-    showMoreFilters.value = true;
+    showMoreFilters.value = pageMode.value === 'records';
     if (isTeacher.value) {
       teacherFilterTab.value = s.teacherFilterTab;
       teacherPriorityFilter.value = 'all';
     } else {
       reviewTab.value = s.reviewTab;
     }
-    feedbackFilter.value = s.feedbackFilter; // 'unread'
+    feedbackFilter.value = s.feedbackFilter; // awaiting_reply
     await fetchRecords();
-    // 伺服器已按 unread 篩選；若沒有未讀（可能都讀過了），退回「有回饋」讓使用者仍看得到全部回饋。
-    if (feedbackFilter.value === 'unread' && (records.value || []).length === 0) {
+    // 若尚無待回覆，退回「全部留言」讓使用者仍看得到歷史。
+    if (feedbackFilter.value === 'awaiting_reply' && (records.value || []).length === 0) {
       feedbackFilter.value = 'has';
       await fetchRecords();
     }
@@ -4302,6 +4347,25 @@ async function applyFeedbackFocus() {
     const el = document.querySelector('.lr-filters-bar');
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
+}
+
+function setPageMode(mode) {
+  pageMode.value = mode === 'parent_messages' ? 'parent_messages' : 'records';
+  if (pageMode.value === 'parent_messages') {
+    defaultWindowDisabled.value = true;
+    feedbackFilter.value = 'awaiting_reply';
+    if (isTeacher.value) {
+      teacherFilterTab.value = 'all';
+      teacherPriorityFilter.value = 'all';
+    } else {
+      reviewTab.value = 'all';
+    }
+    onlyUnfilled.value = false;
+  } else {
+    feedbackFilter.value = 'all';
+    defaultWindowDisabled.value = false;
+  }
+  fetchRecords();
 }
 
 watch(() => props.feedbackFocusToken, (t) => {
@@ -4756,6 +4820,18 @@ watch([reviewTab, resolvedDefaultWindowStart], ([rt, win], [prt, pwin]) => {
 .lr-filters-bar {
   margin-bottom: 12px;
   padding: 10px 16px;
+}
+
+.lr-mode-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+}
+
+.lr-parent-feedback-box--reply-mode {
+  outline: 2px solid var(--ds-primary, #e67e22);
+  outline-offset: 2px;
 }
 
 .lr-filters-quick {

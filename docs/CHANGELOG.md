@@ -1,3 +1,11 @@
+## 2026-07-28 — feat(learning): 家長留言 awaiting_staff_reply inbox（P0）
+
+- 新增 authoritative `awaiting_staff_reply`（與 unread 分離；**不**沿用 `analytics.unreplied_records`）。
+- Parent upsert：相同內容 idempotent no-op；實際修改內容會 append parent reply 以同表 `(created_at, id)` 穩定排序。
+- API：`GET me/awaiting-reply-count`、`learning-records?feedback=awaiting_reply`（teacher／director；不擴 super_admin）。
+- 前端：TeacherHome 固定「家長留言」卡、評量頁一級「家長留言」Tab、modal 回覆模式。
+- 無 migration／backfill。Implementation PR 不自動 merge／deploy。
+
 ## 2026-07-28 — feat(scheduling): ADR-006 Phase 2 shadow horizon（read-only）
 
 - 新增 `sessions:shadow-horizon` + `ShadowSessionHorizonService`：Preview vs Ensure dry-run 對照、drift／shortage 指標；**永遠唯讀**。
