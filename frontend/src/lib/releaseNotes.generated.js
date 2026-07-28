@@ -7,7 +7,7 @@ export const changelogReleaseNotes = [
     "version": "2026.07.28",
     "date": "2026-07-28",
     "title": "2026.07.28 版本更新",
-    "summary": "006 Phase 2 shadow horizon（read-only）；006 Phase 1B EnsureSessionHorizon（default-off）",
+    "summary": "006 Phase 3A pool coverage planner（read-only）；006 Phase 2 shadow horizon（read-only）",
     "audience": [
       "teacher",
       "director"
@@ -16,6 +16,7 @@ export const changelogReleaseNotes = [
       {
         "title": "新增內容",
         "items": [
+          "006 Phase 3A pool coverage planner（read-only）",
           "006 Phase 2 shadow horizon（read-only）",
           "006 Phase 1B EnsureSessionHorizon（default-off）",
           "006 Phase 1A eviewSessionHorizon（read-only）",
@@ -31,6 +32,7 @@ export const changelogReleaseNotes = [
       }
     ],
     "items": [
+      "006 Phase 3A pool coverage planner（read-only）",
       "006 Phase 2 shadow horizon（read-only）",
       "006 Phase 1B EnsureSessionHorizon（default-off）",
       "006 Phase 1A eviewSessionHorizon（read-only）",
