@@ -1,8 +1,7 @@
 name: Muzha Gaorui 2026-07-30 Containment (manual)
 
-# Dedicated production containment lane for 木柵・高瑞樸・楊智超・數學・2026-07-30 19:00–21:00.
-# Does NOT hook into Deploy to Pi. Does NOT auto-run on merge.
-# Successor to docs investigation PR #1466 — Owner-approved Option 1.
+# Dedicated lane for 木柵・高瑞樸・楊智超・數學・2026-07-30 19:00–21:00.
+# Not Deploy to Pi. Successor to docs PR #1466. Owner-approved Option 1.
 
 on:
   workflow_dispatch:
@@ -12,10 +11,7 @@ on:
         required: true
         default: dry-run
         type: choice
-        options:
-          - dry-run
-          - apply
-          - verify
+        options: [dry-run, apply, verify]
       confirm:
         description: "For apply only: I_APPROVE_MUZHA_GAORUI_2026_07_30_CONTAINMENT"
         required: false
@@ -38,9 +34,7 @@ jobs:
     name: Run hardcoded muzha-gaorui containment
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # Fail-closed: only dispatch from main (workflow available after merge).
     if: github.ref == 'refs/heads/main'
-
     steps:
       - name: Validate inputs
         env:
@@ -48,15 +42,10 @@ jobs:
           CONFIRM: ${{ inputs.confirm }}
         run: |
           set -euo pipefail
-          case "$MODE" in
-            dry-run|apply|verify) ;;
-            *) echo "::error::invalid mode"; exit 1 ;;
-          esac
+          case "$MODE" in dry-run|apply|verify) ;; *) echo "::error::invalid mode"; exit 1 ;; esac
           if [ "$MODE" = "apply" ]; then
             [ "$CONFIRM" = "I_APPROVE_MUZHA_GAORUI_2026_07_30_CONTAINMENT" ] || {
-              echo "::error::apply requires exact confirmation string I_APPROVE_MUZHA_GAORUI_2026_07_30_CONTAINMENT"
-              exit 1
-            }
+              echo "::error::apply requires exact confirmation string"; exit 1; }
           fi
 
       - name: Checkout reviewed script
@@ -71,10 +60,7 @@ jobs:
           set -euo pipefail
           SCRIPT=".github/ops/muzha-gaorui-2026-07-30-containment.php"
           test -f "$SCRIPT"
-          SHA=$(sha256sum "$SCRIPT" | awk '{print $1}')
-          echo "script_sha256=$SHA" >> "$GITHUB_OUTPUT"
-          echo "SCRIPT_SHA256=$SHA"
-          echo "WORKFLOW_SHA=${{ github.sha }}"
+          echo "script_sha256=$(sha256sum "$SCRIPT" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
 
       - name: Setup SSH
         env:
@@ -87,7 +73,6 @@ jobs:
           ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
 
       - name: Transfer script, verify checksum, run, cleanup
-        id: run
         env:
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
@@ -99,56 +84,31 @@ jobs:
         run: |
           set -euo pipefail
           LOCAL_SCRIPT=".github/ops/muzha-gaorui-2026-07-30-containment.php"
-          REMOTE_DIR=$(ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
-            -o UserKnownHostsFile=~/.ssh/known_hosts \
-            "${PI_SSH_USER}@${PI_SSH_HOST}" \
-            'mktemp -d /tmp/muzha-gaorui-730-XXXXXXXX')
+          SSH=(ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes -o UserKnownHostsFile=~/.ssh/known_hosts)
+          SCP=(scp -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes -o UserKnownHostsFile=~/.ssh/known_hosts)
+          REMOTE_DIR=$("${SSH[@]}" "${PI_SSH_USER}@${PI_SSH_HOST}" 'mktemp -d /tmp/muzha-gaorui-730-XXXXXXXX')
           REMOTE_SCRIPT="${REMOTE_DIR}/muzha-gaorui-2026-07-30-containment.php"
-          echo "REMOTE_DIR=$REMOTE_DIR"
-
-          cleanup() {
-            ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
-              -o UserKnownHostsFile=~/.ssh/known_hosts \
-              "${PI_SSH_USER}@${PI_SSH_HOST}" \
-              "rm -rf $(printf %q "$REMOTE_DIR")" || true
-          }
+          cleanup() { "${SSH[@]}" "${PI_SSH_USER}@${PI_SSH_HOST}" "rm -rf $(printf %q "$REMOTE_DIR")" || true; }
           trap cleanup EXIT
-
-          scp -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
-            -o UserKnownHostsFile=~/.ssh/known_hosts \
-            "$LOCAL_SCRIPT" "${PI_SSH_USER}@${PI_SSH_HOST}:${REMOTE_SCRIPT}"
-
+          "${SCP[@]}" "$LOCAL_SCRIPT" "${PI_SSH_USER}@${PI_SSH_HOST}:${REMOTE_SCRIPT}"
           mkdir -p out
           set +e
-          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
-            -o UserKnownHostsFile=~/.ssh/known_hosts \
-            "${PI_SSH_USER}@${PI_SSH_HOST}" \
+          "${SSH[@]}" "${PI_SSH_USER}@${PI_SSH_HOST}" \
             MODE="$MODE" CONFIRM="$CONFIRM" ACTOR="$ACTOR" \
             SCRIPT_SHA256="$SCRIPT_SHA256" WORKFLOW_SHA="$WORKFLOW_SHA" \
-            REMOTE_SCRIPT="$REMOTE_SCRIPT" REMOTE_DIR="$REMOTE_DIR" \
-            'bash -s' <<'ENDSSH' | tee out/evidence.json
+            REMOTE_SCRIPT="$REMOTE_SCRIPT" 'bash -s' <<'ENDSSH' | tee out/evidence.json
           set -euo pipefail
-          # Never touch /home/admin git working tree.
           REMOTE_SHA=$(sha256sum "$REMOTE_SCRIPT" | awk '{print $1}')
           if [ "$REMOTE_SHA" != "$SCRIPT_SHA256" ]; then
-            echo "{\"case\":\"muzha-gaorui-2026-07-30\",\"phase\":\"ABORTED\",\"aborts\":[\"ABORT_SCRIPT_CHECKSUM_MISMATCH\"]}"
+            echo '{"case":"muzha-gaorui-2026-07-30","phase":"ABORTED","aborts":["ABORT_SCRIPT_CHECKSUM_MISMATCH"]}'
             exit 1
           fi
-
           cd /home/admin/backend
-          ARGS=(
-            php "$REMOTE_SCRIPT"
-            --mode="$MODE"
-            --actor="$ACTOR"
-            --workflow-sha="$WORKFLOW_SHA"
-            --script-sha256="$SCRIPT_SHA256"
-            --backend-root=/home/admin/backend
-          )
+          ARGS=(php "$REMOTE_SCRIPT" --mode="$MODE" --actor="$ACTOR" --workflow-sha="$WORKFLOW_SHA" --script-sha256="$SCRIPT_SHA256" --backend-root=/home/admin/backend)
           if [ "$MODE" = "apply" ]; then
             ARGS+=(--confirm="$CONFIRM")
             export ALLOW_PROD_REPAIR=1
           fi
-
           set +e
           "${ARGS[@]}"
           EC=$?
@@ -157,20 +117,15 @@ jobs:
           ENDSSH
           EC=${PIPESTATUS[0]}
           set -e
-
-          # Attach workflow metadata sidecar (no DB backup).
           python3 - <<'PY'
           import json, os
           from pathlib import Path
-          p = Path("out/evidence.json")
-          raw = p.read_text(errors="replace").strip()
-          # Prefer last JSON object if mixed noise
+          raw = Path("out/evidence.json").read_text(errors="replace").strip()
           data = None
           for chunk in reversed(raw.split("\n{")):
               text = chunk if chunk.startswith("{") else "{" + chunk
               try:
-                  data = json.loads(text)
-                  break
+                  data = json.loads(text); break
               except Exception:
                   continue
           meta = {
@@ -184,9 +139,8 @@ jobs:
           Path("out/workflow-meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2) + "\n")
           if data is not None:
               Path("out/evidence.parsed.json").write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n")
-              phase = data.get("phase")
-              print(f"PHASE={phase}")
-              if phase == "APPLIED_POSTVERIFY_FAILED":
+              print("PHASE=" + str(data.get("phase")))
+              if data.get("phase") == "APPLIED_POSTVERIFY_FAILED":
                   print("DO NOT RERUN APPLY BLINDLY")
           PY
           exit "$EC"
