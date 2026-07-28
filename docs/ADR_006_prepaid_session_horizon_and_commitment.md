@@ -472,7 +472,13 @@ Founder 批准 **28 天**為 v1 **server-side default**，**不是**永久 domai
 - **不**在成員課程顯示 pool 剩餘 N 堂  
 - 宣告：**不會建立 session、不會扣堂**
 
-**Output：** dry-run DTO；本包不實作 endpoint。
+**Output：** dry-run DTO；HTTP endpoint 非本階段必要。
+
+**Implementation pointer（Phase 1A；read-only）：**
+
+- Service：`App\Services\Scheduling\PreviewSessionHorizonService`
+- Command：`php artisan sessions:preview-horizon {student_class_id} {--through=} {--as-of=} {--branch_id=} {--summary}`
+- **不**寫 ClassSession；Ensure／production activation 另 PR + GO
 
 ### 10.2 `EnsureSessionHorizon`（行為契約；本包／下一 PR 皆不啟用 production 寫入）
 
