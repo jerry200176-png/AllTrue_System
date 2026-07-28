@@ -1,3 +1,10 @@
+## 2026-07-28 — docs(adr): ADR-006 預付堂次 horizon × Schedule Commitment 決策包
+
+- 新增並修訂 `docs/ADR_006_prepaid_session_horizon_and_commitment.md`：**Accepted — Phase 0 evidence collection authorized**（仍 not implemented／not production-ready）。
+- Founder ACCEPT WITH AMENDMENTS：Commitment 三類（explicit／legacy_inferred／conflict）；28 天 v1 server default；Preview 可顯示 uncovered、Ensure 遇 ES → `BLOCK_POOL_SHORTAGE` 整批 no-write；`StudentClass` 條件式 v1 adapter + fingerprint（非永久 SSOT）。
+- Reason codes 拆分 `INFO_FLEXIBLE_NO_COMMITMENT`／`BLOCK_COMMITMENT_*`／`LEGACY_INFERRED_CANDIDATE`；廢止含糊的 `SKIP_NO_COMMITMENT`／`SKIP_POOL_SHORTAGE`。
+- 對齊 #1062 Track A、ADR-005、G-010、F4／#1465。本 PR docs-only；下一獲准範圍僅 Phase 0 唯讀報告。
+
 ## 2026-07-28 — fix(ops): post-merge smoke 重試 director schedules 403
 
 - `#1465` merge 後 health／version 已過，但 `director GET /schedules` 偶發 403 觸發 rollback。
