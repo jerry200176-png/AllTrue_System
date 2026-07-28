@@ -1,3 +1,6 @@
+## 2026-07-28 — feat(scheduling): ADR-006 Commitment classifier helpers
+- Read-only classifier + slot/cadence/expander helpers + unit tests (Phase 0 slice 1/2).
+
 ## 2026-07-28 — docs(adr): ADR-006 預付堂次 horizon × Schedule Commitment 決策包
 
 - 新增並修訂 `docs/ADR_006_prepaid_session_horizon_and_commitment.md`：**Accepted — Phase 0 evidence collection authorized**（仍 not implemented／not production-ready）。
