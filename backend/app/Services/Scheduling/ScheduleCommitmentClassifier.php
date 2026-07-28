@@ -57,7 +57,7 @@ final class ScheduleCommitmentClassifier
         ];
 
         if ($stop === 1) {
-            return $base + [
+            return array_merge($base, [
                 'classification' => CommitmentReasonCodes::CLASS_SKIPPED,
                 'primary_reason' => CommitmentReasonCodes::SKIP_STOPPED,
                 'bucket' => 'skipped_stopped',
@@ -65,7 +65,7 @@ final class ScheduleCommitmentClassifier
         }
 
         if ($scheduleMode !== 'count') {
-            return $base + [
+            return array_merge($base, [
                 'classification' => CommitmentReasonCodes::CLASS_SKIPPED,
                 'primary_reason' => CommitmentReasonCodes::SKIP_NOT_COUNT_MODE,
                 'bucket' => 'skipped_not_count',
@@ -91,7 +91,7 @@ final class ScheduleCommitmentClassifier
         }
 
         if ($parsed['conflicting']) {
-            return $this->withFingerprint($base + [
+            return $this->withFingerprint(array_merge($base, [
                 'classification' => CommitmentReasonCodes::CLASS_CONFLICT,
                 'primary_reason' => CommitmentReasonCodes::BLOCK_COMMITMENT_CONFLICT,
                 'bucket' => 'commitment_conflict',
@@ -113,7 +113,7 @@ final class ScheduleCommitmentClassifier
                         ? CommitmentReasonCodes::SKIP_MISSING_SUBJECT
                         : CommitmentReasonCodes::SKIP_MISSING_BRANCH);
 
-                return $this->withFingerprint($base + [
+                return $this->withFingerprint(array_merge($base, [
                     'classification' => CommitmentReasonCodes::CLASS_INCOMPLETE,
                     'primary_reason' => CommitmentReasonCodes::BLOCK_COMMITMENT_INCOMPLETE,
                     'bucket' => 'commitment_incomplete',
@@ -123,7 +123,7 @@ final class ScheduleCommitmentClassifier
             }
 
             if ($this->cadenceInferrer->conflictsWithContract($parsed['slots'], $history)) {
-                return $this->withFingerprint($base + [
+                return $this->withFingerprint(array_merge($base, [
                     'classification' => CommitmentReasonCodes::CLASS_CONFLICT,
                     'primary_reason' => CommitmentReasonCodes::BLOCK_COMMITMENT_CONFLICT,
                     'bucket' => 'commitment_conflict',
@@ -136,7 +136,7 @@ final class ScheduleCommitmentClassifier
             if ($startDate && $endDate) {
                 try {
                     if (Carbon::parse((string) $endDate)->lt(Carbon::parse((string) $startDate))) {
-                        return $this->withFingerprint($base + [
+                        return $this->withFingerprint(array_merge($base, [
                             'classification' => CommitmentReasonCodes::CLASS_INCOMPLETE,
                             'primary_reason' => CommitmentReasonCodes::BLOCK_COMMITMENT_INCOMPLETE,
                             'bucket' => 'commitment_incomplete',
@@ -149,7 +149,7 @@ final class ScheduleCommitmentClassifier
                 }
             }
 
-            $result = $base + [
+            $result = array_merge($base, [
                 'classification' => CommitmentReasonCodes::CLASS_EXPLICIT,
                 'primary_reason' => CommitmentReasonCodes::OK_PLAN,
                 'bucket' => 'explicit_commitment',
@@ -163,7 +163,7 @@ final class ScheduleCommitmentClassifier
 
         // No complete contract slots.
         if ($parsed['partial']) {
-            return $this->withFingerprint($base + [
+            return $this->withFingerprint(array_merge($base, [
                 'classification' => CommitmentReasonCodes::CLASS_INCOMPLETE,
                 'primary_reason' => CommitmentReasonCodes::BLOCK_COMMITMENT_INCOMPLETE,
                 'bucket' => 'commitment_incomplete',
@@ -173,7 +173,7 @@ final class ScheduleCommitmentClassifier
         }
 
         if ($history['confirmed']) {
-            return $this->withFingerprint($base + [
+            return $this->withFingerprint(array_merge($base, [
                 'classification' => CommitmentReasonCodes::CLASS_LEGACY,
                 'primary_reason' => CommitmentReasonCodes::LEGACY_INFERRED_CANDIDATE,
                 'bucket' => 'legacy_inferred_candidate',
@@ -184,7 +184,7 @@ final class ScheduleCommitmentClassifier
         }
 
         // No contract slots, no confirmed history → legitimate flexible prepaid.
-        return $this->withFingerprint($base + [
+        return $this->withFingerprint(array_merge($base, [
             'classification' => CommitmentReasonCodes::CLASS_FLEXIBLE,
             'primary_reason' => CommitmentReasonCodes::INFO_FLEXIBLE_NO_COMMITMENT,
             'bucket' => 'flexible_no_commitment',

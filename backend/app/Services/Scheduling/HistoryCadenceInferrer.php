@@ -14,9 +14,9 @@ final class HistoryCadenceInferrer
 {
     /**
      * @param  list<object|array<string,mixed>>  $recentSessions  newest-first preferred
-     * @return array{confirmed:bool,dow:?int,start_hm:?string,end_hm:?string,confidence:string,iso_weekday:?int}|null
+     * @return array{confirmed:bool,dow:?int,start_hm:?string,end_hm:?string,confidence:string,iso_weekday:?int}
      */
-    public function infer(array $recentSessions): ?array
+    public function infer(array $recentSessions): array
     {
         if (count($recentSessions) < 2) {
             return [
