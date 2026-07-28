@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "provenance_type": "human-authored",
-  "declared_at": "2026-07-27T03:50:00Z",
-  "author": "jerry-github-operator-audit",
-  "note": "Low-risk CI hygiene from 2026-07 GitHub platform governance audit Phase 9: add concurrency/cancel-in-progress and contents:read permissions to agent-provenance.yml. No production business logic; no deploy trigger change."
+  "declared_at": "2026-07-28T02:40:00Z",
+  "author": "cursor-cloud-agent",
+  "note": "Successor to PR #1466: dedicated workflow_dispatch containment lane for muzha-gaorui-2026-07-30 (versioned one-shot PHP + checksum/SSH/dry-run/backup/apply/verify). No production apply in this PR; no deploy.yml change."
 }
