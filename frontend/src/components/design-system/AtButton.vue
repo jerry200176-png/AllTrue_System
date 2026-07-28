@@ -12,8 +12,15 @@ const props = defineProps({
     default: 'md',
     validator: (v) => ['sm', 'md'].includes(v),
   },
+  /** pill = legacy brand; rect = ops foundation default for new surfaces */
+  shape: {
+    type: String,
+    default: 'pill',
+    validator: (v) => ['pill', 'rect'].includes(v),
+  },
   type: { type: String, default: 'button' },
   disabled: { type: Boolean, default: false },
+  loading: { type: Boolean, default: false },
   block: { type: Boolean, default: false },
   icon: { type: String, default: '' },
 });
@@ -22,13 +29,30 @@ const classes = computed(() => [
   'at-btn',
   `at-btn--${props.variant}`,
   `at-btn--${props.size}`,
-  { 'at-btn--block': props.block },
+  `at-btn--${props.shape}`,
+  { 'at-btn--block': props.block, 'at-btn--loading': props.loading },
 ]);
+
+const isDisabled = computed(() => props.disabled || props.loading);
 </script>
 
 <template>
-  <button :class="classes" :type="type" :disabled="disabled">
-    <span v-if="icon" class="material-symbols-outlined at-btn__icon" aria-hidden="true">{{ icon }}</span>
+  <button
+    :class="classes"
+    :type="type"
+    :disabled="isDisabled"
+    :aria-busy="loading ? 'true' : undefined"
+  >
+    <span
+      v-if="loading"
+      class="material-symbols-outlined at-btn__icon at-btn__spinner"
+      aria-hidden="true"
+    >progress_activity</span>
+    <span
+      v-else-if="icon"
+      class="material-symbols-outlined at-btn__icon"
+      aria-hidden="true"
+    >{{ icon }}</span>
     <span class="at-btn__label"><slot /></span>
   </button>
 </template>
@@ -41,21 +65,33 @@ const classes = computed(() => [
   gap: 6px;
   font-family: inherit;
   font-weight: 600;
-  border-radius: 999px;
   border: 1px solid transparent;
   cursor: pointer;
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  transition: background-color var(--ds-motion-fast, 120ms) var(--ds-ease-standard, ease),
+    border-color var(--ds-motion-fast, 120ms) var(--ds-ease-standard, ease),
+    color var(--ds-motion-fast, 120ms) var(--ds-ease-standard, ease);
   white-space: nowrap;
+  min-height: var(--ds-control-height-md, 32px);
+}
+
+.at-btn--pill {
+  border-radius: var(--ds-radius-pill, 9999px);
+}
+
+.at-btn--rect {
+  border-radius: var(--ds-radius-md, 6px);
 }
 
 .at-btn--md {
-  padding: 8px 16px;
+  padding: 0 14px;
   font-size: 14px;
+  min-height: var(--ds-control-height-md, 32px);
 }
 
 .at-btn--sm {
-  padding: 5px 12px;
+  padding: 0 10px;
   font-size: 12.5px;
+  min-height: var(--ds-control-height-sm, 28px);
 }
 
 .at-btn--block {
@@ -66,6 +102,18 @@ const classes = computed(() => [
 .at-btn__icon {
   font-size: 18px;
   line-height: 1;
+}
+
+.at-btn__spinner {
+  animation: at-btn-spin 0.8s linear infinite;
+}
+
+@keyframes at-btn-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .at-btn__spinner { animation: none; }
 }
 
 .at-btn:disabled {

@@ -27,11 +27,12 @@ class ScheduleLeaveCascadeTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_leave_marks_target_session_and_cascades_future_sessions_with_end_date_extension(): void
+    public function test_count_based_leave_keeps_future_dates_and_appends_tail(): void
     {
+        // Founder Decision 2026-07-26: ordinary leave must NOT vacate the next week.
         $token = $this->createDirectorToken([1], 'director-leave-cascade@example.com');
         $teacherId = $this->createTeacher(1, 'teacher-leave-cascade@example.com');
-        $student = $this->createStudent(1, '請假遞延測試');
+        $student = $this->createStudent(1, '請假保留日期測試');
 
         $confirmedDates = [Carbon::now()->previous(Carbon::WEDNESDAY)->toDateString()];
         $firstWednesday = Carbon::now()->next(Carbon::WEDNESDAY);
@@ -66,8 +67,12 @@ class ScheduleLeaveCascadeTest extends TestCase
         $targetLeaveDate = Carbon::parse($targetLeave->SessionDate)->toDateString();
         $nextSession = $sessions[7];
         $nextSessionOriginalDate = Carbon::parse($nextSession->SessionDate)->toDateString();
-        $expectedShiftedDate = Carbon::parse($nextSessionOriginalDate)->addWeek()->toDateString();
-        $expectedExtendedDate = Carbon::parse($expectedShiftedDate)->addWeek()->toDateString();
+        $expectedAppendDate = Carbon::parse($nextSessionOriginalDate)->addWeek()->toDateString();
+
+        $snapshotBefore = $sessions
+            ->filter(fn ($s) => (int) $s->id !== (int) $targetLeave->id)
+            ->mapWithKeys(fn ($s) => [(int) $s->id => Carbon::parse($s->SessionDate)->toDateString()])
+            ->all();
 
         $res = $this->withHeaders([
             'Authorization' => "Bearer {$token}",
@@ -92,38 +97,36 @@ class ScheduleLeaveCascadeTest extends TestCase
         $targetLeave->refresh();
         $nextSession->refresh();
 
-        // Session is preserved but marked as leave (not deleted)
         $this->assertDatabaseHas('ClassSession', [
             'id' => (int) $targetLeave->id,
             'Status' => 'leave',
         ]);
-        $this->assertSame($expectedShiftedDate, Carbon::parse($nextSession->SessionDate)->toDateString());
+        // Future session date must NOT move.
+        $this->assertSame($nextSessionOriginalDate, Carbon::parse($nextSession->SessionDate)->toDateString());
+
+        foreach ($snapshotBefore as $id => $date) {
+            $row = ClassSession::findOrFail($id);
+            $this->assertSame($date, Carbon::parse($row->SessionDate)->toDateString(), "session {$id} date must stay");
+        }
 
         $this->assertDatabaseHas('ClassSession', [
             'StudentClassID' => $courseId,
-            'SessionDate' => $expectedExtendedDate,
+            'SessionDate' => $expectedAppendDate,
             'Status' => 'scheduled',
         ]);
 
-        // 8 original + 1 appended = 9 total (leave session kept)
         $totalSessions = ClassSession::where('StudentClassID', $courseId)->count();
         $this->assertSame(9, $totalSessions);
 
         $course = StudentClass::findOrFail($courseId);
-        $this->assertSame($expectedExtendedDate, Carbon::parse($course->EndDate)->toDateString());
+        $this->assertSame($expectedAppendDate, Carbon::parse($course->EndDate)->toDateString());
 
-        $res->assertJsonStructure([
-            'schedule' => ['id'],
-            'leave_session_date',
-            'extended_end_date',
-            'class_sessions',
-        ]);
+        $res->assertJsonPath('policy', 'KEEP_FUTURE_DATES_APPEND_TAIL');
         $this->assertSame(
             $targetLeaveDate,
             (string) ($res->json('leave_session_date') ?? '')
         );
-        $this->assertSame($expectedExtendedDate, (string) ($res->json('extended_end_date') ?? ''));
-        // 9 sessions returned (leave session included)
+        $this->assertSame($expectedAppendDate, (string) ($res->json('extended_end_date') ?? ''));
         $this->assertCount(9, $res->json('class_sessions') ?? []);
 
         $leaveAttendance = StudentSignIn::where('ClassSessionID', $targetLeave->id)
@@ -204,7 +207,7 @@ class ScheduleLeaveCascadeTest extends TestCase
             ->count());
     }
 
-    public function test_leave_cascade_preview_lists_vacated_dates_without_writing(): void
+    public function test_leave_cascade_preview_keeps_dates_and_lists_append_without_writing(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-05-20 10:00:00'));
         $token = $this->createDirectorToken([1], 'director-leave-preview@example.com');
@@ -248,8 +251,12 @@ class ScheduleLeaveCascadeTest extends TestCase
             'schedule_date' => $leaveDate,
         ])->assertOk();
 
-        $preview->assertJsonPath('vacated', ['2026-07-04']);
-        $preview->assertJsonPath('append', '2026-08-01');
+        $preview->assertJsonPath('policy', 'KEEP_FUTURE_DATES_APPEND_TAIL');
+        $preview->assertJsonPath('vacated', []);
+        $preview->assertJsonPath('moves', []);
+        $preview->assertJsonPath('future_dates_unchanged', true);
+        $preview->assertJsonPath('append', '2026-07-25');
+        $preview->assertJsonPath('next_billable_session.date', '2026-07-04');
 
         $after = ClassSession::where('StudentClassID', $courseId)
             ->orderBy('SessionDate')
@@ -257,6 +264,46 @@ class ScheduleLeaveCascadeTest extends TestCase
             ->map(fn ($s) => Carbon::parse($s->SessionDate)->toDateString() . ':' . $s->Status)
             ->all();
         $this->assertSame($before, $after, 'preview must not mutate ClassSession rows');
+    }
+
+    public function test_explicit_shift_preview_still_lists_vacated_dates(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-05-20 10:00:00'));
+        $token = $this->createDirectorToken([1], 'director-leave-shift-preview@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-leave-shift-preview@example.com');
+        $student = $this->createStudent(1, '整體順延預覽');
+
+        $firstSat = Carbon::parse('2026-05-30');
+        $futureDates = [];
+        for ($i = 0; $i < 8; $i++) {
+            $futureDates[] = $firstSat->copy()->addWeeks($i)->toDateString();
+        }
+        $courseRes = $this->createCourseViaBatchApi($token, $student->id, $teacherId, [
+            'total_classes' => 8,
+            'confirmed_dates' => [],
+            'future_dates' => $futureDates,
+            'days_of_week' => [6],
+            'start_time' => '13:00',
+        ])->assertCreated();
+        $courseId = (int) ($courseRes->json('ID') ?? $courseRes->json('id') ?? 0);
+        if ($courseId <= 0) {
+            $courseId = (int) (DB::table('StudentClass')
+                ->where('StudentID', $student->id)
+                ->where('TeacherID', $teacherId)
+                ->max('ID') ?? 0);
+        }
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/schedules/leave-cascade-preview', [
+            'student_course_id' => $courseId,
+            'schedule_date' => '2026-06-27',
+            'policy' => 'SHIFT_FUTURE_DATES_APPEND_TAIL',
+        ])->assertOk()
+            ->assertJsonPath('policy', 'SHIFT_FUTURE_DATES_APPEND_TAIL')
+            ->assertJsonPath('vacated', ['2026-07-04'])
+            ->assertJsonPath('append', '2026-08-01');
     }
 
     public function test_bulk_holiday_leave_marks_all_eligible_sessions_in_date_range(): void
@@ -461,13 +508,20 @@ class ScheduleLeaveCascadeTest extends TestCase
             'class_session_id' => (int) $leaveSession->id,
         ])->assertOk();
 
-        $this->assertSame('2026-06-09', (string) $res->json('extended_end_date'));
+        // KEEP policy: last existing date 05/26 → append next Tue 06/02 (no vacated shift).
+        $this->assertSame('2026-06-02', (string) $res->json('extended_end_date'));
         $this->assertSame(8, ClassSession::where('StudentClassID', $courseId)
             ->whereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted', 'excused'])
             ->count());
         $this->assertDatabaseHas('ClassSession', [
             'StudentClassID' => $courseId,
-            'SessionDate' => '2026-06-09',
+            'SessionDate' => '2026-06-02',
+            'Status' => 'scheduled',
+        ]);
+        // Future dates after leave must remain (e.g. 05/05 not vacated).
+        $this->assertDatabaseHas('ClassSession', [
+            'StudentClassID' => $courseId,
+            'SessionDate' => '2026-05-05',
             'Status' => 'scheduled',
         ]);
 
@@ -479,7 +533,7 @@ class ScheduleLeaveCascadeTest extends TestCase
         ])->assertStatus(422);
 
         $this->assertSame(1, ClassSession::where('StudentClassID', $courseId)
-            ->whereDate('SessionDate', '2026-06-09')
+            ->whereDate('SessionDate', '2026-06-02')
             ->count());
     }
 

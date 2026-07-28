@@ -17,6 +17,7 @@ use App\Exceptions\RescheduleSessionException;
 use App\Services\ApprovalSessionSyncService;
 use App\Services\ClassSessionMaterializationService;
 use App\Services\LearningRecordBackfillService;
+use App\Services\LearningRecordResurrectionPolicy;
 use App\Services\UserEngagementXpAwardService;
 use App\Services\SessionDeductionService;
 use App\Services\RescheduleSessionService;
@@ -30,25 +31,6 @@ use Carbon\Carbon;
 
 class LearningRecordController extends Controller
 {
-    /**
-     * 系統自動作廢（非人工作廢）的 LearningRecord VoidReason 白名單。
-     * 這些都是「請假 / 狀態調整」cascade 產生的副作用，且在作廢當下已對應沖回堂數
-     * （或該堂從未扣堂）。當對應 ClassSession 後續回到 fillable 狀態時，老師重新填寫
-     * 應 resurrect 舊列、避免被 409 永久擋住。人工作廢（其他 VoidReason）維持 409，
-     * 不覆寫管理員決策。
-     *
-     *  - '一般請假'            CourseLeaveCascadeService（整門/批次請假，#125/#495）
-     *  - '由已上調整狀態'      ClassSessionController attended→scheduled/cancelled（已 reverseForSession 沖回，#146）
-     *  - '補請假：已上課改請假' ClassSessionController::handleRetroLeaveTransition（已沖回）
-     *  - '單堂標記請假'        ClassSessionController scheduled→leave（scheduled 未扣堂）
-     */
-    private const SYSTEM_RESURRECTABLE_VOID_REASONS = [
-        '一般請假',
-        '由已上調整狀態',
-        '補請假：已上課改請假',
-        '單堂標記請假',
-    ];
-
     private function hasLearningRecordSessionDeductedColumn(): bool
     {
         static $hasColumn = null;
@@ -84,9 +66,7 @@ class LearningRecordController extends Controller
     /**
      * Bug #495 / in-app #125：cascade-void 復原 helper。
      *
-     * 條件已在呼叫端確認：
-     *   1) `$voided->VoidReason` 屬 SYSTEM_RESURRECTABLE_VOID_REASONS（系統 cascade 作廢）
-     *   2) `$classSession->Status` 屬 fillable 集合
+     * 條件已在呼叫端經 LearningRecordResurrectionPolicy::isEligibleForResurrect() 確認。
      * 此處只負責 in-place 更新欄位，保留 LR id 與審計時間戳。
      */
     private function resurrectVoidedLearningRecord(
@@ -224,25 +204,31 @@ class LearningRecordController extends Controller
         // The director "家長回饋待看" CTA needs the records WITH feedback regardless of the
         // default 90-day window or pagination page — counts/lists are otherwise derived from a
         // single client page and silently hide older feedback. `feedback=unread` narrows to the
-        // viewer's unread state; `feedback=has` returns any record that has parent feedback.
+        // viewer's unread state; `feedback=has` returns any record that has parent feedback;
+        // `feedback=awaiting_reply` is authoritative awaiting_staff_reply (PRD 2026-07-28).
         if ($request->filled('feedback')) {
             $fbMode = (string) $request->input('feedback');
-            if (in_array($fbMode, ['has', 'unread'], true)) {
+            if (in_array($fbMode, ['has', 'unread', 'awaiting_reply'], true)) {
                 $lrTbl = (new LearningRecord())->getTable();
-                $query->whereExists(function ($sub) use ($lrTbl, $fbMode, $role) {
-                    $sub->select(DB::raw(1))
-                        ->from('learning_record_feedbacks as lrf')
-                        ->whereColumn('lrf.learning_record_id', "{$lrTbl}.id");
-                    if ($fbMode === 'unread') {
-                        $col = $role === 'teacher'
-                            ? 'lrf.last_read_by_teacher_at'
-                            : 'lrf.last_read_by_director_at';
-                        $sub->where(function ($q) use ($col) {
-                            $q->whereNull($col)
-                                ->orWhereColumn($col, '<', 'lrf.updated_at');
-                        });
-                    }
-                });
+                if ($fbMode === 'awaiting_reply') {
+                    app(\App\Services\ParentFeedbackAwaitingService::class)
+                        ->constrainLearningRecordsAwaitingReply($query, "{$lrTbl}.id");
+                } else {
+                    $query->whereExists(function ($sub) use ($lrTbl, $fbMode, $role) {
+                        $sub->select(DB::raw(1))
+                            ->from('learning_record_feedbacks as lrf')
+                            ->whereColumn('lrf.learning_record_id', "{$lrTbl}.id");
+                        if ($fbMode === 'unread') {
+                            $col = $role === 'teacher'
+                                ? 'lrf.last_read_by_teacher_at'
+                                : 'lrf.last_read_by_director_at';
+                            $sub->where(function ($q) use ($col) {
+                                $q->whereNull($col)
+                                    ->orWhereColumn($col, '<', 'lrf.updated_at');
+                            });
+                        }
+                    });
+                }
             }
         }
 
@@ -881,12 +867,16 @@ class LearningRecordController extends Controller
             $record->session_number = $sessionNumbers[(int) $record->id] ?? null;
             $fb = $feedbacks->get((int) $record->id);
             $fbReplies = $fb ? ($repliesByFeedback->get((int) $fb->id) ?? collect()) : collect();
+            $awaiting = $fb
+                ? app(\App\Services\ParentFeedbackAwaitingService::class)->isAwaitingStaffReply($fb, $fbReplies)
+                : false;
             $record->parent_feedback = $fb ? [
                 'id' => (int) $fb->id,
                 'content' => $fb->content,
                 'updated_at' => optional($fb->updated_at)->toIso8601String(),
                 'unread_for_teacher' => !$fb->last_read_by_teacher_at || $fb->last_read_by_teacher_at->lt($fb->updated_at),
                 'unread_for_director' => !$fb->last_read_by_director_at || $fb->last_read_by_director_at->lt($fb->updated_at),
+                'awaiting_staff_reply' => (bool) $awaiting,
                 'reply_count' => $fbReplies->count(),
                 'replies' => $fbReplies->map(fn ($r) => [
                     'id' => (int) $r->id,
@@ -1032,17 +1022,13 @@ class LearningRecordController extends Controller
                     // Bug #495 / in-app #125 / #146：系統 cascade（請假 / 狀態調整）作廢的 LR，
                     // 若該 ClassSession 已被回復為 fillable 狀態 (attended/scheduled/completed/late)，
                     // 自動 resurrect 舊 LR，避免老師被永久 409 擋住。人工作廢（其他 VoidReason）維持原
-                    // 409，不覆寫管理員決策。#146：attended→scheduled→attended 會以 '由已上調整狀態'
-                    // 作廢且已沖回堂數，原本只認 '一般請假' → 老師無法重填，故改用系統白名單。
-                    $fillableStatuses = ['attended', 'scheduled', 'completed', 'late'];
-                    $csStatus = strtolower((string) ($classSession->Status ?? ''));
-                    $isCascadeVoid = in_array(
-                        (string) ($rowForSession->VoidReason ?? ''),
-                        self::SYSTEM_RESURRECTABLE_VOID_REASONS,
-                        true
-                    );
-
-                    if ($isCascadeVoid && in_array($csStatus, $fillableStatuses, true)) {
+                    // 409，不覆寫管理員決策。R84/TD-060 同款教訓：判斷邏輯收在
+                    // LearningRecordResurrectionPolicy，restoreVoidedLearningRecord()（leave→attended
+                    // 自動復活路徑）也共用同一份判斷，避免兩處各自維護、各自漂移。
+                    if (LearningRecordResurrectionPolicy::isEligibleForResurrect(
+                        $rowForSession->VoidReason,
+                        $classSession->Status
+                    )) {
                         $resurrected = $this->resurrectVoidedLearningRecord(
                             $rowForSession,
                             $studentClass,
