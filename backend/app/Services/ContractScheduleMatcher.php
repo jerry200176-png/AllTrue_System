@@ -11,12 +11,19 @@ use Illuminate\Support\Facades\Schema;
  * Series (StudentClass week/time) vs occurrence (ClassSession) contract matching.
  * One-off 調課／補課 must set IsContractException and must not rewrite series slots.
  *
- * Mirrors ClassSessionController::sessionMatchesContract / syncContractExceptionFlag
- * so atomic reschedule-session and PATCH class-sessions stay aligned (#556 / F1).
+ * R84: the single writer of this flag is ClassSessionObserver::saving(), which
+ * calls applyExceptionFlag() on every save where the time fields are dirty.
+ * Do not call this from individual controllers/services — that's exactly the
+ * per-call-site discipline that let #556's atomic-reschedule gap happen. New
+ * write paths get the flag for free as long as they save() through Eloquent.
  */
 class ContractScheduleMatcher
 {
-    public function syncExceptionFlag(ClassSession $session, ?StudentClass $studentClass = null): void
+    /**
+     * Recompute IsContractException on the in-memory model. Does not save —
+     * the caller (ClassSessionObserver::saving) is already mid-persist.
+     */
+    public function applyExceptionFlag(ClassSession $session, ?StudentClass $studentClass = null): void
     {
         if (!Schema::hasColumn('ClassSession', 'IsContractException')) {
             return;
@@ -37,10 +44,7 @@ class ContractScheduleMatcher
         $startHm = substr((string) $session->StartTime, 0, 5);
         $endHm = $session->EndTime ? substr((string) $session->EndTime, 0, 5) : null;
         $isException = !$this->matchesContract($sessionDate, $startHm, $endHm, $studentClass);
-        if ((bool) $session->getAttribute('IsContractException') !== $isException) {
-            $session->setAttribute('IsContractException', $isException ? 1 : 0);
-            $session->save();
-        }
+        $session->setAttribute('IsContractException', $isException ? 1 : 0);
     }
 
     public function matchesContract(string $sessionDate, string $startTime, ?string $endTime, StudentClass $studentClass): bool

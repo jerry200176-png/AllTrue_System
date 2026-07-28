@@ -11,6 +11,13 @@
 - 前端：TeacherHome 固定「家長留言」卡、評量頁一級「家長留言」Tab、modal 回覆模式。
 - 無 migration／backfill。Implementation PR 不自動 merge／deploy。
 
+## 2026-07-28 — refactor(scheduling): IsContractException 搬進 ClassSessionObserver（R83 結構性根治）
+
+- `ClassSessionObserver::saving()` 在任何 `ClassSession->save()` 時，只要時間欄位有變動且該次寫入未明確指定 flag，自動用 `ContractScheduleMatcher::applyExceptionFlag()` 重算 `IsContractException`；明確指定時尊重呼叫者意圖不覆蓋。
+- 刪除 3 處重複實作（`ClassSessionController`、`StudentClassController` 加課、`RescheduleSessionService`）；新寫入路徑（如 `SubstituteController` 代課復原、`ClassSessionContractReflowService`）現在自動獲得正確行為，不需個別接線。
+- 回歸：新增 `ClassSessionObserverContractExceptionTest`；既有 `StudentClassScheduleDriftExceptionTest`／`RescheduleMarksContractExceptionTest` 全數維持通過。
+- 無 migration／無行為變更，純內部結構重構。
+
 ## 2026-07-28 — fix(scheduling): atomic 調課標記 IsContractException（防 realign 還原）
 
 - `RescheduleSessionService` 調課後同步 `IsContractException`（與 PATCH class-sessions / #556 對齊）。

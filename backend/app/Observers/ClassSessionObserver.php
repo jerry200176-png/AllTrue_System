@@ -4,9 +4,14 @@ namespace App\Observers;
 
 use App\Models\ClassSession;
 use App\Models\ScheduleAuditLog;
+use App\Services\ContractScheduleMatcher;
 
 class ClassSessionObserver
 {
+    public function __construct(private ContractScheduleMatcher $contractScheduleMatcher)
+    {
+    }
+
     /** @var array<int|string, array<string, mixed>> */
     private static array $oldSnapshots = [];
 
@@ -66,6 +71,31 @@ class ClassSessionObserver
         } catch (\Throwable) {
             return null;
         }
+    }
+
+    /**
+     * R84 (F1/#556 structural fix): recompute IsContractException on every save
+     * that moves a session's date/time, regardless of which controller/service
+     * initiated it. Previously this depended on each write path remembering to
+     * call a matcher explicitly — the atomic reschedule path forgot to, and the
+     * bug came back the same way in at least two other places (substitute-undo
+     * time restore, contract reflow) that were only "safe" because their current
+     * caller happened to pre-filter. Centralizing it here removes that
+     * per-call-site memory requirement entirely.
+     *
+     * Skipped when the caller explicitly assigned IsContractException in the
+     * same write (e.g. ExceptionWorkflowController's makeup-slot confirmation
+     * forces true regardless of contract match) — explicit intent wins.
+     */
+    public function saving(ClassSession $session): void
+    {
+        if ($session->isDirty('IsContractException')) {
+            return;
+        }
+        if (!$session->isDirty(['SessionDate', 'StartTime', 'EndTime'])) {
+            return;
+        }
+        $this->contractScheduleMatcher->applyExceptionFlag($session);
     }
 
     public function created(ClassSession $session): void

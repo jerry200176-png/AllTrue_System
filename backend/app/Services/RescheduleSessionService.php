@@ -17,8 +17,7 @@ class RescheduleSessionService
 {
     public function __construct(
         private ClassSessionMaterializationService $materializationService,
-        private ScheduleGuardService $scheduleGuardService,
-        private ContractScheduleMatcher $contractScheduleMatcher
+        private ScheduleGuardService $scheduleGuardService
     ) {
     }
 
@@ -129,11 +128,11 @@ class RescheduleSessionService
                 $session->SessionDate = $newDate;
                 $session->StartTime = $startTime;
                 $session->EndTime = $endTime;
-                $session->save();
-                // #556 / F1: one-off 調課 must mark contract exceptions so
+                // R84: ClassSessionObserver::saving() recomputes IsContractException
+                // automatically here (SessionDate/StartTime/EndTime are dirty), so
                 // force_partial_rebuild / syncFutureScheduledSessionTimes cannot
                 // snap the occurrence back to StudentClass week/time.
-                $this->contractScheduleMatcher->syncExceptionFlag($session, $studentClass);
+                $session->save();
 
                 $resetApplied = false;
                 if ($this->shouldResetToScheduled($session)) {

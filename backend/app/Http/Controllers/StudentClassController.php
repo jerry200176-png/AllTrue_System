@@ -2671,13 +2671,9 @@ class StudentClassController extends Controller
                 }
             }
 
-            $isException = !$this->sessionMatchesContract(
-                $sessionDate, $startTime, $endTime, $studentClass
-            );
-            if ((bool) $classSession->IsContractException !== $isException) {
-                $classSession->IsContractException = $isException;
-                $classSession->save();
-            }
+            // R84: IsContractException is recomputed by ClassSessionObserver::saving()
+            // whenever SessionDate/StartTime/EndTime is dirty, which the save() calls
+            // above already trigger — no per-call-site recompute needed here.
 
             $record = LearningRecord::where('ClassSessionID', (int) $classSession->id)->active()->first();
             $approved = false;
@@ -4943,48 +4939,6 @@ class StudentClassController extends Controller
     /**
      * Check if a session's (date, startTime, duration) falls within the contract slots.
      */
-    private function sessionMatchesContract(string $sessionDate, string $startTime, ?string $endTime, StudentClass $studentClass): bool
-    {
-        $isoDow = (int) Carbon::parse($sessionDate)->dayOfWeekIso;
-        $startHm = substr($startTime, 0, 5);
-        $globalDurHours = $studentClass->SessionDuration
-            ? round((int) $studentClass->SessionDuration / 60, 1)
-            : 2;
-
-        $weekFields = ['week', 'week1', 'week2', 'week3', 'week4', 'week5', 'week6'];
-        $timeFields = ['time', 'time1', 'time2', 'time3', 'time4', 'time5', 'time6'];
-        $durationFields = [null, 'duration1', 'duration2', 'duration3', 'duration4', 'duration5', 'duration6'];
-
-        foreach ($weekFields as $index => $wf) {
-            $day = (int) ($studentClass->{$wf} ?? 0);
-            if ($day < 1 || $day > 7) {
-                continue;
-            }
-            $tf = $timeFields[$index] ?? 'time';
-            $rawTime = (string) ($studentClass->{$tf} ?? $studentClass->time ?? '');
-            $slotStart = $rawTime ? substr($rawTime, 0, 5) : '';
-            if ($slotStart === '') {
-                continue;
-            }
-            $df = $durationFields[$index] ?? null;
-            $perDayMin = $df ? (int) ($studentClass->{$df} ?? 0) : 0;
-            $slotDurHours = $perDayMin > 0 ? round($perDayMin / 60, 1) : $globalDurHours;
-
-            $sessDurHours = $globalDurHours;
-            if ($endTime) {
-                $startM = ((int) substr($startHm, 0, 2)) * 60 + (int) substr($startHm, 3, 2);
-                $endM = ((int) substr($endTime, 0, 2)) * 60 + (int) substr($endTime, 3, 2);
-                $sessDurHours = max(0, $endM - $startM) > 0 ? round(($endM - $startM) / 60, 1) : $globalDurHours;
-            }
-
-            if ($day === $isoDow && $slotStart === $startHm && $slotDurHours === $sessDurHours) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     private function hasImmutableSessionHistory(int $studentClassId): bool
     {
         if ($studentClassId <= 0) {
