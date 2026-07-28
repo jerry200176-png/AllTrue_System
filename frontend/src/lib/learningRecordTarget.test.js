@@ -62,11 +62,12 @@ import { resolveDeepLinkBranchId, shouldLiftDefaultWindowForDate, feedbackFocusS
   assert.equal(shouldLiftDefaultWindowForDate({ savedDate: '2026-01-10T19:00:00', windowStart: '2026-03-01' }), true);
 }
 
-// feedbackFocusState (#138)
-// 從「家長回饋待看」CTA 進入：必須把資料集放到最大並切到未讀回饋，否則因 tab/視窗限制看不到回饋
+// feedbackFocusState (#138 / PRD awaiting_reply inbox)
+// 從「家長留言」CTA 進入：必須把資料集放到最大並切到尚未回覆
 {
   const d = feedbackFocusState({ isTeacher: false });
-  assert.equal(d.feedbackFilter, 'unread', '應切到未讀回饋');
+  assert.equal(d.feedbackFilter, 'awaiting_reply', '應切到尚未回覆');
+  assert.equal(d.pageMode, 'parent_messages');
   assert.equal(d.reviewTab, 'all', '主任端應切到全部分頁，避免待審分頁濾掉已核准的回饋紀錄');
   assert.equal(d.onlyUnfilled, false, '不可只看未填，否則濾掉有回饋的已填紀錄');
   assert.equal(d.liftWindow, true, '需解除近 90 天視窗，較舊的回饋紀錄才會被載入');
@@ -75,14 +76,14 @@ import { resolveDeepLinkBranchId, shouldLiftDefaultWindowForDate, feedbackFocusS
 {
   const t = feedbackFocusState({ isTeacher: true });
   assert.equal(t.teacherFilterTab, 'all', '老師端應切到全部分頁');
-  assert.equal(t.feedbackFilter, 'unread');
+  assert.equal(t.feedbackFilter, 'awaiting_reply');
   assert.equal(t.liftWindow, true);
   assert.equal(t.isTeacher, true);
 }
 {
   // 預設參數安全
   const z = feedbackFocusState();
-  assert.equal(z.feedbackFilter, 'unread');
+  assert.equal(z.feedbackFilter, 'awaiting_reply');
   assert.equal(z.isTeacher, false);
 }
 
