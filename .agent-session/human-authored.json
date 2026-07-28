@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "provenance_type": "human-authored",
-  "declared_at": "2026-07-28T02:40:00Z",
+  "declared_at": "2026-07-28T10:40:00Z",
   "author": "cursor-cloud-agent",
-  "note": "Successor to PR #1466: dedicated workflow_dispatch containment lane for muzha-gaorui-2026-07-30 (versioned one-shot PHP + checksum/SSH/dry-run/backup/apply/verify). No production apply in this PR; no deploy.yml change."
+  "note": "B1/B2: atomic reschedule-session must set IsContractException so force_partial_rebuild cannot snap one-off 調課 back to contract week/time (F1/#556 gap; symptom 新莊 巫宗育 20:00→15:00). Related open PR #1402 covers broader series/occurrence stability."
 }
