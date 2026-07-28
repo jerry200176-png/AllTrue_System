@@ -1,3 +1,11 @@
+## 2026-07-28 — fix(learning-records): R55 復活判斷收斂為單一共用政策
+
+- 新增 `LearningRecordResurrectionPolicy`：`SYSTEM_RESURRECTABLE_VOID_REASONS` 白名單與「是否可自動復活」判斷收斂到單一位置。
+- 修正 `ClassSessionController::restoreVoidedLearningRecord()`（leave→attended 自動復活路徑）從未檢查 `VoidReason` 的缺口——人工作廢的評量若剛好掛在曾經 `leave` 的堂次上，先前會被無條件復活；現在與 `LearningRecordController::store()` 共用同一份白名單判斷。
+- `CourseLeaveCascadeService` 的請假撤銷復原刻意不動（只認 `VoidReason='一般請假'`，範圍本來就該窄）。
+- 回歸：新增 `ClassSessionRestoreVoidedLearningRecordTest`（系統 cascade 原因仍自動復活；人工作廢原因不再被復活）；既有 `LearningRecordVoidedResurrectTest` 全數維持通過。
+- 無 migration、無行為變更（reactive 路徑邏輯不變，只是搬了位置；proactive 路徑修正的是先前未覆蓋的邊界情況）。
+
 ## 2026-07-28 — fix(learning-records): 家長留言預覽增加「回覆家長」入口（in-app #210）
 
 - 評量列表點擊「家長留言」chip 開啟的預覽原本只有內容/時間，找不到回覆處；新增 `FeedbackInlinePreview` 元件內建回覆按鈕，直接開啟評量詳情完成回覆。

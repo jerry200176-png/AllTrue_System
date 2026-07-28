@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Models\UserCampus;
 use App\Services\ClassSessionMaterializationService;
 use App\Services\EnrollmentService;
+use App\Services\LearningRecordResurrectionPolicy;
 use App\Services\ScheduleGuardService;
 use App\Services\SessionDeductionService;
 use App\Services\SessionProjectionReadService;
@@ -1064,11 +1065,22 @@ class ClassSessionController extends Controller
     /**
      * When a session transitions from leave back to an attended-like status,
      * restore any previously voided LearningRecord so teachers can fill it in.
+     *
+     * R55 fix: this used to resurrect unconditionally on any leave->attended-like
+     * transition, without checking WHY the LR was voided — a manually-voided
+     * record (director decision, non-cascade VoidReason) sitting on a session
+     * that happened to be 'leave' would have been silently brought back too.
+     * Now shares the same eligibility check as LearningRecordController::store()'s
+     * reactive resurrect path (LearningRecordResurrectionPolicy), so both places
+     * agree on what counts as a safe-to-auto-restore system cascade void.
      */
     private function restoreVoidedLearningRecord(ClassSession $session): void
     {
         $lr = LearningRecord::where('ClassSessionID', $session->id)->first();
         if (!$lr || !$lr->isVoided()) {
+            return;
+        }
+        if (!LearningRecordResurrectionPolicy::isEligibleForResurrect($lr->VoidReason, $session->Status)) {
             return;
         }
         $lr->VoidedAt       = null;
