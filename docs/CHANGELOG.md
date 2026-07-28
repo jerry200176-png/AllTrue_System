@@ -1,3 +1,8 @@
+## 2026-07-28 — fix(ops): post-merge smoke 重試 director schedules 403
+
+- `#1465` merge 後 health／version 已過，但 `director GET /schedules` 偶發 403 觸發 rollback。
+- `post-merge-smoke.sh`：優先取有 Approved 分校的 director token；`403`／`500` 重試並附 body 片段，避免誤 rollback 前端-only 部署。
+
 ## 2026-07-27 — fix(ux): 共用方案堂次區狀態語意與預排 chip 分流
 
 - 共用方案「排程列數與購買堂數不一致」改為中性「目前只排定部分堂次」；請假待補／真超排仍分級警告。
