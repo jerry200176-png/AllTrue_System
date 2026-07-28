@@ -1,5 +1,3 @@
-## 2026-07-28 — ops(incidents): 木柵高瑞樸 7/30 GHA containment lane（successor #1466）
-
 ## 2026-07-28 — feat(scheduling): ADR-006 Phase 2 shadow horizon（read-only）
 
 - 新增 `sessions:shadow-horizon` + `ShadowSessionHorizonService`：Preview vs Ensure dry-run 對照、drift／shortage 指標；**永遠唯讀**。
