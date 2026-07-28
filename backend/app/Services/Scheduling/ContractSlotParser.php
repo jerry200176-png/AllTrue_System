@@ -80,7 +80,6 @@ final class ContractSlotParser
                     'partial' => $partial,
                 ];
             }
-            unset($key);
         }
 
         // Deduplicate identical weekday+start.
