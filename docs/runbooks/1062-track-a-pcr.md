@@ -3,6 +3,7 @@
 > **狀態**：READY — **未核准執行**（revenue-affecting production write → 需 CEO GO）
 > **Epic**：#1062 · Engine：`ForwardSessionGenerator` + `sessions:generate-forward`
 > **Companion**：#1152（dormant 主任決策，本 PCR 範圍**外**）
+> **產品／架構決策包（未實作）**：[`docs/ADR_006_prepaid_session_horizon_and_commitment.md`](../ADR_006_prepaid_session_horizon_and_commitment.md) — Schedule Commitment × rolling horizon × pool coverage；重框本 Track，不取代本 PCR 的 GO 閘門
 
 ## Scope
 **In**：僅「**活躍** stranded」count-mode 合約(最後一堂 ≤3 週、remaining>0、無未來堂次、**且有確認的每週 cadence**)。2026-07-10 範圍：**101 合約**（敦化 35 / 東湖 28 / 大直 14 / 石牌 10 / 大同 7 / 其餘 7）。

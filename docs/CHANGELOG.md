@@ -1,3 +1,9 @@
+## 2026-07-28 — docs(adr): ADR-006 預付堂次 horizon × Schedule Commitment 決策包
+
+- 新增 `docs/ADR_006_prepaid_session_horizon_and_commitment.md`（**ready for review**）：四層 domain、FRP／FLP／SPM／MF／ES／SC 分流、`ForwardSessionGenerator` 可重用／缺口／不得擴張假設、Phase 0 七題唯讀指標、Phase 1 `PreviewSessionHorizon`／`EnsureSessionHorizon` 契約。
+- 明確 non-scope：不改扣堂／繳費／ledger、不寫 production DB、不 activate、不以 projected 當第二套 truth、成員課程不顯示 pool balance；不預先承諾新 domain table。
+- 對齊 #1062 Track A、ADR-005、G-010、F4／#1465。本 PR docs-only。
+
 ## 2026-07-28 — fix(ops): post-merge smoke 重試 director schedules 403
 
 - `#1465` merge 後 health／version 已過，但 `director GET /schedules` 偶發 403 觸發 rollback。
