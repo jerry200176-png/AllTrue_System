@@ -7,7 +7,7 @@ export const changelogReleaseNotes = [
     "version": "2026.07.24",
     "date": "2026-07-24",
     "title": "2026.07.24 版本更新",
-    "summary": "調課後課表穩定（系列契約 vs 單堂例外）；登入頁恢復 前視覺",
+    "summary": "修正行事曆課程合併邏輯，避免課程重複出現或突然消失；調課後課表穩定（系列契約 vs 單堂例外）",
     "audience": [
       "teacher",
       "director"
@@ -16,6 +16,7 @@ export const changelogReleaseNotes = [
       {
         "title": "修正內容",
         "items": [
+          "修正行事曆課程合併邏輯，避免課程重複出現或突然消失",
           "調課後課表穩定（系列契約 vs 單堂例外）"
         ]
       },
@@ -28,6 +29,7 @@ export const changelogReleaseNotes = [
       }
     ],
     "items": [
+      "修正行事曆課程合併邏輯，避免課程重複出現或突然消失",
       "調課後課表穩定（系列契約 vs 單堂例外）",
       "登入頁恢復 前視覺",
       "頁改吃 DS tokens"
