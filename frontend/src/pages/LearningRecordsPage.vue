@@ -4830,7 +4830,7 @@ watch([reviewTab, resolvedDefaultWindowStart], ([rt, win], [prt, pwin]) => {
 }
 
 .lr-parent-feedback-box--reply-mode {
-  outline: 2px solid var(--ds-primary, #e67e22);
+  outline: 2px solid var(--ds-primary);
   outline-offset: 2px;
 }
 
