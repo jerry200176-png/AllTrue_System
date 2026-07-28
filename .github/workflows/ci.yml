@@ -398,6 +398,10 @@ jobs:
           print(f"✅ Generated API docs: {count} routes")
           PYEOF
 
+      - name: Frontend/backend API route contract (advisory)
+        if: always()
+        run: node scripts/ci/check-frontend-api-routes.mjs
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v7
