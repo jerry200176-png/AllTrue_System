@@ -1179,7 +1179,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\ClassSession\:\:\$Status\.$#'
 			identifier: property.notFound
-			count: 1
+			count: 2
 			path: app/Http/Controllers/ClassSessionController.php
 
 		-
