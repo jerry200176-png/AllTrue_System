@@ -149,10 +149,13 @@ final class ScheduleCommitmentClassifier
 
             $result = array_merge($base, [
                 'classification' => CommitmentReasonCodes::CLASS_EXPLICIT,
-                'primary_reason' => CommitmentReasonCodes::OK_PLAN,
+                'primary_reason' => $dormant
+                    ? CommitmentReasonCodes::SKIP_DORMANT
+                    : CommitmentReasonCodes::OK_PLAN,
                 'bucket' => 'explicit_commitment',
                 'guess_required' => false,
-                'auto_ensure_eligible' => true,
+                // ADR #1152 / ADR-006: dormant must not auto Ensure / rolling
+                'auto_ensure_eligible' => !$dormant,
                 'dormant_signal' => $dormant,
             ]);
 

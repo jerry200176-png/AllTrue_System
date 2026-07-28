@@ -39,6 +39,13 @@ class EnsureSessionHorizonCommand extends Command
 
         $dto = $ensure->ensure($scId, $through, $asOf, $branchId, $mode);
 
+        $blocked = (bool) ($dto['ensure']['blocked'] ?? true);
+        $ok = (bool) ($dto['ensure']['ok'] ?? false);
+        // Machine-readable exit: execute mode must be non-zero when blocked/not ok.
+        $exit = ($mode === EnsureSessionHorizonService::MODE_EXECUTE && (!$ok || $blocked))
+            ? self::FAILURE
+            : self::SUCCESS;
+
         if ($this->option('summary')) {
             $e = $dto['ensure'];
             $this->info('EnsureSessionHorizon mode='.$dto['meta']['mode']
@@ -50,11 +57,11 @@ class EnsureSessionHorizonCommand extends Command
                 .' created='.($e['created_count'] ?? 0)
                 .' skipped='.($e['skipped_count'] ?? 0));
 
-            return self::SUCCESS;
+            return $exit;
         }
 
         $this->line(json_encode($dto, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
 
-        return self::SUCCESS;
+        return $exit;
     }
 }
