@@ -3,6 +3,11 @@
 - 評量列表點擊「家長回饋」chip 開啟的預覽原本只有內容/時間，找不到回覆處；新增 `FeedbackInlinePreview` 元件內建回覆按鈕，直接開啟評量詳情完成回覆。
 - 純前端變更，沿用既有 `LearningRecordFeedbackController::staffReply()` 權限與資料，無 migration、無後端改動。
 
+## 2026-07-28 — feat(scheduling): ADR-006 Phase 3A pool coverage planner（read-only）
+
+- 新增 coverage state machine（`none/held/consumed/released`）與 `AllocateSessionCoverage`／`ReleaseSessionCoverage` dry-run planner；`sessions:plan-coverage`。
+- **不**寫 coverage 表、不扣堂、不 merge migration（持久化另 PR + Founder GO）。
+
 ## 2026-07-28 — feat(scheduling): ADR-006 Phase 2 shadow horizon（read-only）
 
 - 新增 `sessions:shadow-horizon` + `ShadowSessionHorizonService`：Preview vs Ensure dry-run 對照、drift／shortage 指標；**永遠唯讀**。
