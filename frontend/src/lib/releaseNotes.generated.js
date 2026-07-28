@@ -23,6 +23,12 @@ export const changelogReleaseNotes = [
           "006 Phase 1A eviewSessionHorizon（read-only）",
           "006 Phase 0 唯讀 epaid horizon 報告（slice 2/2）"
         ]
+      },
+      {
+        "title": "修正內容",
+        "items": [
+          "家長留言預覽增加「回覆家長」入口"
+        ]
       }
     ],
     "items": [
@@ -31,7 +37,8 @@ export const changelogReleaseNotes = [
       "006 Phase 2 shadow horizon（read-only）",
       "006 Phase 1B EnsureSessionHorizon（default-off）",
       "006 Phase 1A eviewSessionHorizon（read-only）",
-      "006 Phase 0 唯讀 epaid horizon 報告（slice 2/2）"
+      "006 Phase 0 唯讀 epaid horizon 報告（slice 2/2）",
+      "家長留言預覽增加「回覆家長」入口"
     ]
   },
   {

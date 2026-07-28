@@ -562,14 +562,12 @@
                 <span v-if="fillLabel(record)" :class="['fill-badge', fillLabelClass(record)]">{{ fillLabel(record) }}</span>
                 <span v-if="!isTeacher" class="lr-record-card__teacher">{{ record.teacher_name || '未指派' }}</span>
               </div>
-              <div
-                v-if="record.parent_feedback && feedbackPreviewOpen.has(record.id)"
-                class="lr-feedback-inline-preview"
-                @click.stop
-              >
-                <div class="lr-feedback-inline-preview__content">{{ record.parent_feedback.content?.slice(0, 100) }}{{ (record.parent_feedback.content?.length || 0) > 100 ? '…' : '' }}</div>
-                <div class="lr-feedback-inline-preview__time">{{ formatParentFeedbackTime(record.parent_feedback.updated_at) }}</div>
-              </div>
+              <FeedbackInlinePreview
+                v-if="record.parent_feedback"
+                :record="record"
+                :open="feedbackPreviewOpen.has(record.id)"
+                @reply="openRecordAction"
+              />
               <div class="lr-record-card__actions" @click.stop>
                 <button class="ghost xs" @click="openRecordAction(record)">{{ primaryActionLabel(record) }}</button>
                 <button v-if="isDirectorRole && record.id" class="ghost xs lr-btn-director-note" @click="openDirectorNoteModal(record)">主任評語</button>
@@ -707,14 +705,12 @@
                           :class="['lr-teacher-comment-chip', teacherCommentUnread(record) ? 'unread' : 'read']"
                           :title="record.teacher_comment.content?.slice(0,60)"
                         >📝 {{ teacherCommentUnread(record) ? '新主任評語' : '主任評語' }}</span>
-                        <div
-                          v-if="record.parent_feedback && feedbackPreviewOpen.has(record.id)"
-                          class="lr-feedback-inline-preview"
-                          @click.stop
-                        >
-                          <div class="lr-feedback-inline-preview__content">{{ record.parent_feedback.content?.slice(0, 100) }}{{ (record.parent_feedback.content?.length || 0) > 100 ? '…' : '' }}</div>
-                          <div class="lr-feedback-inline-preview__time">{{ formatParentFeedbackTime(record.parent_feedback.updated_at) }}</div>
-                        </div>
+                        <FeedbackInlinePreview
+                          v-if="record.parent_feedback"
+                          :record="record"
+                          :open="feedbackPreviewOpen.has(record.id)"
+                          @reply="openRecordAction"
+                        />
                       </td>
                       <td>
                         <span class="tag">{{ record.student_class_label || record.Subject }}</span>
@@ -1300,6 +1296,8 @@ import { ref, onMounted, reactive, computed, watch, nextTick } from 'vue';
 import { supabase } from '../supabase';
 import SearchableSelect from '../components/SearchableSelect.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
+import FeedbackInlinePreview from '../components/learning-records/FeedbackInlinePreview.vue';
+import { formatParentFeedbackTime } from '../lib/parentFeedbackFormat';
 import {
   fetchClassSessions,
   fetchSessionDates,
@@ -1819,11 +1817,6 @@ const parentFeedbackUnread = (record) => {
 const teacherCommentUnread = (record) => {
   const comment = record?.teacher_comment;
   return isTeacher.value ? !!comment?.unread_for_teacher : false;
-};
-const formatParentFeedbackTime = (value) => {
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return '';
-  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 };
 const markParentFeedbackRead = async (record) => {
   const feedback = record?.parent_feedback;
@@ -6479,10 +6472,6 @@ select.lr-input {
 .lr-teacher-comment-chip { display:inline-flex; align-items:center; gap:3px; margin-top:4px; padding:3px 10px; border-radius:10px; font-size:12px; user-select:none; }
 .lr-teacher-comment-chip.unread { background:var(--ds-canvas-soft); color:var(--ds-ink-mute); font-weight:700; border:1px solid var(--ds-canvas-soft); }
 .lr-teacher-comment-chip.read { background:var(--ds-canvas-soft); color:var(--ds-ink-mute); border:1px solid var(--ds-canvas-soft); }
-
-.lr-feedback-inline-preview { margin-top:8px; padding:8px 10px; background:var(--ds-warning-wash); border:1px solid var(--ds-warning-wash); border-radius:8px; font-size:12px; }
-.lr-feedback-inline-preview__content { color:var(--ds-ink); line-height:1.5; white-space:pre-wrap; }
-.lr-feedback-inline-preview__time { margin-top:4px; color:var(--ds-ink-mute); font-size:11px; }
 
 /* 列表視圖 row 高亮 */
 tr.lr-row-has-feedback { border-left: 3px solid var(--ds-hairline); }

@@ -1,3 +1,8 @@
+## 2026-07-28 — fix(learning-records): 家長留言預覽增加「回覆家長」入口（in-app #210）
+
+- 評量列表點擊「家長留言」chip 開啟的預覽原本只有內容/時間，找不到回覆處；新增 `FeedbackInlinePreview` 元件內建回覆按鈕，直接開啟評量詳情完成回覆。
+- 純前端變更，沿用既有 `LearningRecordFeedbackController::staffReply()` 權限與資料，無 migration、無後端改動。
+
 ## 2026-07-28 — feat(learning): 家長留言 awaiting_staff_reply inbox（P0）
 
 - 新增 authoritative `awaiting_staff_reply`（與 unread 分離；**不**沿用 `analytics.unreplied_records`）。
