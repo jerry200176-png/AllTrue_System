@@ -77,7 +77,8 @@ class EnsureSessionHorizonTest extends TestCase
 
     public function test_command_execute_exits_nonzero_when_blocked(): void
     {
-        $sc = $this->explicitCourse(remaining: 4);
+        // High remaining so execute reaches feature-flag gate (not entitlement shortage).
+        $sc = $this->explicitCourse(remaining: 40);
         Carbon::setTestNow($this->today);
         try {
             $code = Artisan::call('sessions:ensure-horizon', [
@@ -90,7 +91,9 @@ class EnsureSessionHorizonTest extends TestCase
             Carbon::setTestNow();
         }
         $this->assertSame(1, $code);
-        $this->assertStringContainsString('FEATURE_FLAG_OFF', Artisan::output());
+        $out = Artisan::output();
+        $this->assertStringContainsString('blocked=yes', $out);
+        $this->assertStringContainsString('FEATURE_FLAG_OFF', $out);
     }
 
     public function test_dormant_explicit_is_blocked_from_ensure(): void
