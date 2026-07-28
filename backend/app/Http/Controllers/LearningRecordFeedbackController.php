@@ -668,6 +668,7 @@ class LearningRecordFeedbackController extends Controller
             'updated_at' => optional($f->updated_at)->toIso8601String(),
             'unread_for_teacher' => !$f->last_read_by_teacher_at || $f->last_read_by_teacher_at->lt($f->updated_at),
             'unread_for_director' => !$f->last_read_by_director_at || $f->last_read_by_director_at->lt($f->updated_at),
+            'awaiting_staff_reply' => app(ParentFeedbackAwaitingService::class)->isAwaitingStaffReply($f),
         ];
     }
 }
