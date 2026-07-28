@@ -4,6 +4,36 @@
  */
 export const changelogReleaseNotes = [
   {
+    "version": "2026.07.24",
+    "date": "2026-07-24",
+    "title": "2026.07.24 版本更新",
+    "summary": "調課後課表穩定（系列契約 vs 單堂例外）；登入頁恢復 前視覺",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "調課後課表穩定（系列契約 vs 單堂例外）"
+        ]
+      },
+      {
+        "title": "其他改善",
+        "items": [
+          "登入頁恢復 前視覺",
+          "頁改吃 DS tokens"
+        ]
+      }
+    ],
+    "items": [
+      "調課後課表穩定（系列契約 vs 單堂例外）",
+      "登入頁恢復 前視覺",
+      "頁改吃 DS tokens"
+    ]
+  },
+  {
     "version": "2026.07.28",
     "date": "2026-07-28",
     "title": "2026.07.28 版本更新",
@@ -109,29 +139,6 @@ export const changelogReleaseNotes = [
       "堂數制請假改為保留未來日期、只補尾堂",
       "Foundation + 主任收件匣 pilot",
       "學生列表 UI Foundation pilot (B)"
-    ]
-  },
-  {
-    "version": "2026.07.24",
-    "date": "2026-07-24",
-    "title": "2026.07.24 版本更新",
-    "summary": "登入頁恢復 前視覺；頁改吃 DS tokens",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "sections": [
-      {
-        "title": "其他改善",
-        "items": [
-          "登入頁恢復 前視覺",
-          "頁改吃 DS tokens"
-        ]
-      }
-    ],
-    "items": [
-      "登入頁恢復 前視覺",
-      "頁改吃 DS tokens"
     ]
   },
   {
