@@ -11,18 +11,22 @@
 - 前端：TeacherHome 固定「家長留言」卡、評量頁一級「家長留言」Tab、modal 回覆模式。
 - 無 migration／backfill。Implementation PR 不自動 merge／deploy。
 
-<<<<<<< HEAD
+## 2026-07-28 — fix(scheduling): atomic 調課標記 IsContractException（防 realign 還原）
+
+- `RescheduleSessionService` 調課後同步 `IsContractException`（與 PATCH class-sessions / #556 對齊）。
+- 避免單堂調到非契約時段後，被 `force_partial_rebuild`／堂次偏移同步拉回固定排課時間（症狀：重整／儲存後課表回原時段）。
+- 回歸：`RescheduleMarksContractExceptionTest`。
+
 ## 2026-07-28 — fix(scheduling): ADR-006 acceptance amendments（dormant／Ensure gates／ADR status）
 
 - explicit + dormant → `auto_ensure_eligible=false`（`SKIP_DORMANT`）；禁止自動 Ensure。
 - Ensure `--execute`：production reason 優先於 flag；blocked execute → non-zero exit。
 - ADR-006／INDEX 狀態改為「工具已 merge；production 未啟用」。
-=======
+
 ## 2026-07-28 — docs(adr): ADR-006 Phase 3B session_coverages migration proposal（awaiting GO）
 
 - 新增空表 migration 提案 `session_coverages` + `docs/proposals/ADR006_PHASE3B_SESSION_COVERAGES_MIGRATION.md`。
 - **未 merge／未 migrate／未啟用 coverage 寫入** — 需 Founder GO。
->>>>>>> 70242e90 (docs(migration): ADR-006 Phase 3B session_coverages proposal (awaiting GO))
 
 ## 2026-07-28 — feat(scheduling): ADR-006 Phase 3A pool coverage planner（read-only）
 
