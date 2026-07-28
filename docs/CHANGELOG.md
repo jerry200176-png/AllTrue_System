@@ -1,3 +1,9 @@
+## 2026-07-28 — feat(scheduling): ADR-006 Phase 0 唯讀 prepaid horizon 報告
+
+- 新增 `sessions:report-prepaid-horizon-phase0`（**read-only**）：Commitment 三類分類、7／28 天 explicit MF、Q2 reason 拆分、shared pool shortage、FSG 對照、人工補排近似、StudentClass adapter 評估。
+- 核心：`ScheduleCommitmentClassifier`／`CommitmentOccurrenceExpander`／`PrepaidHorizonPhase0Reporter`；單元＋Feature 回歸；synthetic sample `docs/artifacts/adr006-phase0-sample-report.json`。
+- **不**寫 ClassSession、不改扣堂／繳費、不 activate generator。
+
 ## 2026-07-28 — docs(adr): ADR-006 預付堂次 horizon × Schedule Commitment 決策包
 
 - 新增並修訂 `docs/ADR_006_prepaid_session_horizon_and_commitment.md`：**Accepted — Phase 0 evidence collection authorized**（仍 not implemented／not production-ready）。
