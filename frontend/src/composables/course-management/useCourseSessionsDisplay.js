@@ -14,6 +14,12 @@ import {
 } from '../../lib/classSessionsApi';
 import { describeSessionAttendanceSource } from '../../lib/attendanceSourceDisplay';
 import {
+  filterDisplayableSessions,
+  filterEffectiveSessions,
+  filterVisibleCancelledSessions,
+  rowOccupiesPurchasedQuota as rowOccupiesPurchasedQuotaShared,
+} from '../../lib/sessionOccurrenceFilter';
+import {
   buildSessionPlanningStatus,
   canMaterializeProjectedSession,
   planningStatusToLegacyWarning,
@@ -22,7 +28,6 @@ import {
 const LEAVE_STATUSES = new Set(['leave', 'leave_adjusted', 'excused']);
 const ATTENDED_SESSION_STATUSES = new Set(['completed', 'attended', 'late']);
 const SESSION_DISPLAY_CONSUMED = new Set(['completed', 'absent']);
-const SESSION_NOT_OCCUPYING_QUOTA = new Set(['cancelled', 'leave', 'leave_adjusted', 'excused']);
 
 export function useCourseSessionsDisplay({
   sessionsByCourse,
@@ -182,41 +187,23 @@ export function useCourseSessionsDisplay({
 
   const getCourseSessionRows = (course) => materializedSessionsOnly(getCourseSessions(course));
 
-  const INTERNAL_CANCEL_NOTE = 'cancelled-duplicate-reschedule-placeholder';
-
-  const isInternalCancelPlaceholder = (row) => {
-    const status = String(row?.status || '').toLowerCase();
-    if (status !== 'cancelled') return false;
-    return String(row?.note || '').includes(INTERNAL_CANCEL_NOTE);
-  };
-
-  const isVisibleCancelledSession = (row) => {
-    const status = String(row?.status || '').toLowerCase();
-    return status === 'cancelled' && !isInternalCancelPlaceholder(row);
-  };
-
   const sessionUnits = (course) => {
     const rows = getCourseSessions(course);
-    return sortSessionViewModels(rows.filter((row) => {
-      const status = String(row?.status || '').toLowerCase();
-      if (status === 'cancelled') return false;
-      if (isInternalCancelPlaceholder(row)) return false;
-      return true;
-    }));
+    return sortSessionViewModels(filterEffectiveSessions(rows));
   };
 
   /** Default chip grid: effective sessions only (no cancelled / internal placeholders). */
   const primarySessionUnits = (course) => sessionUnits(course);
 
   const allSessionUnits = (course) => sortSessionViewModels(
-    getCourseSessions(course).filter((row) => !isInternalCancelPlaceholder(row))
+    filterDisplayableSessions(getCourseSessions(course))
   );
 
   const cancelledSessionCount = (course) =>
-    getCourseSessionRows(course).filter((row) => isVisibleCancelledSession(row)).length;
+    filterVisibleCancelledSessions(getCourseSessionRows(course)).length;
 
   const movedOrCancelledUnits = (course) => sortSessionViewModels(
-    getCourseSessionRows(course).filter((row) => isVisibleCancelledSession(row))
+    filterVisibleCancelledSessions(getCourseSessionRows(course))
   );
 
   const sessions = (course) => sessionDatesFromViewModels(sessionUnits(course));
@@ -235,11 +222,8 @@ export function useCourseSessionsDisplay({
 
   const isContractException = (row) => !!row?.isContractException;
 
-  const rowOccupiesPurchasedQuota = (row) => {
-    if (row?.isProjected) return false;
-    const status = String(row?.status || '').toLowerCase();
-    return !SESSION_NOT_OCCUPYING_QUOTA.has(status);
-  };
+  // Exceptions still occupy purchased quota (see schedule-occurrence: charge rescheduled against quota).
+  const rowOccupiesPurchasedQuota = (row) => rowOccupiesPurchasedQuotaShared(row, { exceptionsOccupyQuota: true });
 
   const isOverQuotaSession = (course, row) => {
     if (!row || course?.PackageID) return false;

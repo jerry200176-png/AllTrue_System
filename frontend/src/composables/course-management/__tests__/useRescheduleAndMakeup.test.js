@@ -56,7 +56,6 @@ function seedForm(rescheduleForm) {
 
 describe('useRescheduleAndMakeup atomic write safety (R71)', () => {
   beforeEach(() => {
-    vi.stubGlobal('confirm', vi.fn(() => true));
     vi.stubGlobal('alert', vi.fn());
     vi.stubGlobal('fetch', vi.fn());
     commitReschedule.mockReset();
@@ -76,11 +75,11 @@ describe('useRescheduleAndMakeup atomic write safety (R71)', () => {
     expect(deps.supabase.from).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
     expect(commitReschedule).not.toHaveBeenCalled();
-    expect(alert).toHaveBeenCalledWith('調課失敗：請重新登入');
+    expect(flow.rescheduleError.value).toContain('重新登入');
     expect(deps.loadCourses).not.toHaveBeenCalled();
   });
 
-  it('does not claim success when atomic commitReschedule returns 422', async () => {
+  it('keeps modal open and shows in-dialog error when atomic commitReschedule returns 422', async () => {
     const deps = makeDeps({
       supabase: {
         auth: { getSession: vi.fn(async () => ({ data: { session: { access_token: 'tok' } } })) },
@@ -109,7 +108,28 @@ describe('useRescheduleAndMakeup atomic write safety (R71)', () => {
     });
     expect(flow.showRescheduleModal.value).toBe(true);
     expect(deps.loadCourses).not.toHaveBeenCalled();
-    expect(alert).toHaveBeenCalledWith(expect.stringContaining('調課失敗'));
-    expect(alert).toHaveBeenCalledWith(expect.stringContaining('找不到指定堂次'));
+    expect(flow.rescheduleError.value).toContain('找不到指定堂次');
+    expect(alert).not.toHaveBeenCalled();
+  });
+
+  it('surfaces conflict students inside the dialog error', async () => {
+    const deps = makeDeps({
+      supabase: {
+        auth: { getSession: vi.fn(async () => ({ data: { session: { access_token: 'tok' } } })) },
+        from: vi.fn(),
+      },
+    });
+    const err = new RescheduleApiError('衝堂', {
+      status: 409,
+      code: 'schedule_conflict',
+      conflicts: [{ overlap_details: [{ student_name: '小華' }] }],
+    });
+    commitReschedule.mockRejectedValue(err);
+
+    const flow = useRescheduleAndMakeup(deps);
+    seedForm(flow.rescheduleForm);
+    await flow.submitReschedule();
+
+    expect(flow.rescheduleError.value).toContain('此時段已有：小華');
   });
 });
