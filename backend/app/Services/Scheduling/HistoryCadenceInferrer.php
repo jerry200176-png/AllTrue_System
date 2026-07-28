@@ -4,19 +4,9 @@ namespace App\Services\Scheduling;
 
 use Carbon\Carbon;
 
-/**
- * FSG-compatible history cadence: ≥2 of last ≤6 non-cancelled sessions share
- * Carbon dayOfWeek (0=Sun..6=Sat) + start/end HH:MM.
- *
- * Used only as legacy signal / conflict check — never as explicit Commitment SSOT (ADR-006).
- */
 final class HistoryCadenceInferrer
 {
-    /**
-     * @param  list<object|array<string,mixed>>  $recentSessions  newest-first preferred
-     * @return array{confirmed:bool,dow:?int,start_hm:?string,end_hm:?string,confidence:string,iso_weekday:?int}
-     */
-    public function infer(array $recentSessions): array
+        public function infer(array $recentSessions): array
     {
         if (count($recentSessions) < 2) {
             return [
@@ -73,13 +63,7 @@ final class HistoryCadenceInferrer
         ];
     }
 
-    /**
-     * Whether contract slot conflicts with confirmed history cadence.
-     *
-     * @param  list<array{iso_weekday:int,start_hm:string}>  $contractSlots
-     * @param  array{confirmed:bool,iso_weekday:?int,start_hm:?string}  $history
-     */
-    public function conflictsWithContract(array $contractSlots, array $history): bool
+        public function conflictsWithContract(array $contractSlots, array $history): bool
     {
         if (!$history['confirmed'] || $history['iso_weekday'] === null || $history['start_hm'] === null) {
             return false;

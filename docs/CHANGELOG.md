@@ -1,9 +1,3 @@
-## 2026-07-28 — feat(scheduling): ADR-006 Commitment classifier + occurrence expander
-
-- 新增 `ScheduleCommitmentClassifier`／`ContractSlotParser`／`HistoryCadenceInferrer`／`CommitmentOccurrenceExpander`（read-only domain helpers）。
-- 三類 Commitment：explicit／legacy_inferred／conflict；FLP／incomplete reason 拆分；單元測試鎖定。
-- Reporter command 另 PR；本 PR **不**寫 ClassSession、不改扣堂／繳費。
-
 ## 2026-07-28 — docs(adr): ADR-006 預付堂次 horizon × Schedule Commitment 決策包
 
 - 新增並修訂 `docs/ADR_006_prepaid_session_horizon_and_commitment.md`：**Accepted — Phase 0 evidence collection authorized**（仍 not implemented／not production-ready）。

@@ -4,10 +4,6 @@ namespace App\Services\Scheduling;
 
 use Carbon\Carbon;
 
-/**
- * ADR-006 §9.4 three-way (+ incomplete/flexible) commitment classification.
- * Read-only; no DB writes.
- */
 final class ScheduleCommitmentClassifier
 {
     public function __construct(
@@ -18,12 +14,7 @@ final class ScheduleCommitmentClassifier
         $this->cadenceInferrer = $cadenceInferrer ?? new HistoryCadenceInferrer();
     }
 
-    /**
-     * @param  object|array<string,mixed>  $course  StudentClass-like
-     * @param  list<object|array<string,mixed>>  $recentSessions  newest-first
-     * @return array<string,mixed>
-     */
-    public function classify(object|array $course, array $recentSessions, ?Carbon $today = null): array
+        public function classify(object|array $course, array $recentSessions, ?Carbon $today = null): array
     {
         $today = ($today ?? Carbon::today('Asia/Taipei'))->copy()->startOfDay();
         $get = static function (object|array $c, string $key): mixed {
@@ -194,13 +185,7 @@ final class ScheduleCommitmentClassifier
         ], $course, []);
     }
 
-    /**
-     * @param  array<string,mixed>  $result
-     * @param  object|array<string,mixed>  $course
-     * @param  list<array<string,mixed>>  $slots
-     * @return array<string,mixed>
-     */
-    private function withFingerprint(array $result, object|array $course, array $slots): array
+        private function withFingerprint(array $result, object|array $course, array $slots): array
     {
         $get = static function (object|array $c, string $key): mixed {
             return is_array($c) ? ($c[$key] ?? null) : ($c->{$key} ?? null);

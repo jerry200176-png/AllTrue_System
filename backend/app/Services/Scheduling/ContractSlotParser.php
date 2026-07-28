@@ -2,14 +2,9 @@
 
 namespace App\Services\Scheduling;
 
-/**
- * Parse StudentClass week/time fields into unique ISO weekday + HH:MM slots.
- * Mirrors StudentClassController session-date expansion candidates (week + week1–6).
- */
 final class ContractSlotParser
 {
-    /** @var list<array{0:string,1:string}> */
-    private const PAIRS = [
+        private const PAIRS = [
         ['week', 'time'],
         ['week1', 'time1'],
         ['week2', 'time2'],
@@ -19,16 +14,7 @@ final class ContractSlotParser
         ['week6', 'time6'],
     ];
 
-    /**
-     * @param  object|array<string,mixed>  $course
-     * @return array{
-     *   slots: list<array{iso_weekday:int,start_hm:string,end_hm:?string,source:string}>,
-     *   unique: bool,
-     *   conflicting: bool,
-     *   partial: bool
-     * }
-     */
-    public function parse(object|array $course): array
+        public function parse(object|array $course): array
     {
         $get = static function (object|array $c, string $key): mixed {
             if (is_array($c)) {

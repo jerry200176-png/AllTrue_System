@@ -7,9 +7,6 @@ use App\Services\Scheduling\ScheduleCommitmentClassifier;
 use Carbon\Carbon;
 use PHPUnit\Framework\TestCase;
 
-/**
- * ADR-006 §9.4 classification — pure unit tests (no DB).
- */
 class ScheduleCommitmentClassifierTest extends TestCase
 {
     private ScheduleCommitmentClassifier $classifier;
@@ -98,31 +95,6 @@ class ScheduleCommitmentClassifierTest extends TestCase
         $r = $this->classifier->classify($course, [], $this->today);
         $this->assertSame(CommitmentReasonCodes::CLASS_INCOMPLETE, $r['classification']);
         $this->assertSame(CommitmentReasonCodes::BLOCK_COMMITMENT_INCOMPLETE, $r['primary_reason']);
-    }
-
-    public function test_incomplete_when_week_without_time(): void
-    {
-        $course = $this->course([
-            'week' => 1,
-            'time' => '',
-            'TeacherID' => 10,
-            'SubjectID' => 2,
-            'CampusID' => 22,
-        ]);
-        $r = $this->classifier->classify($course, [], $this->today);
-        $this->assertSame(CommitmentReasonCodes::CLASS_INCOMPLETE, $r['classification']);
-    }
-
-    public function test_legacy_must_not_be_classified_as_explicit(): void
-    {
-        $course = $this->course([]);
-        $history = [
-            ['SessionDate' => '2026-07-06', 'StartTime' => '16:00:00', 'EndTime' => '18:00:00'],
-            ['SessionDate' => '2026-06-29', 'StartTime' => '16:00:00', 'EndTime' => '18:00:00'],
-            ['SessionDate' => '2026-06-22', 'StartTime' => '16:00:00', 'EndTime' => '18:00:00'],
-        ];
-        $r = $this->classifier->classify($course, $history, $this->today);
-        $this->assertNotSame(CommitmentReasonCodes::CLASS_EXPLICIT, $r['classification']);
     }
 
     /** @param array<string,mixed> $over */

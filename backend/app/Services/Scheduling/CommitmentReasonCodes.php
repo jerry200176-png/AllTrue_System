@@ -2,9 +2,6 @@
 
 namespace App\Services\Scheduling;
 
-/**
- * ADR-006 §8.5 stable reason codes (Phase 0 / Phase 1 shared).
- */
 final class CommitmentReasonCodes
 {
     public const RULE_VERSION = 'adr006-phase0-v1';

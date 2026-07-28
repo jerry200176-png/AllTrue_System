@@ -4,17 +4,9 @@ namespace App\Services\Scheduling;
 
 use Carbon\Carbon;
 
-/**
- * Expand contract ISO weekday+start slots into occurrence dates within [from, through] inclusive.
- * Pure function — no DB. Used by Phase 0 gap counts and Phase 1 Preview.
- */
 final class CommitmentOccurrenceExpander
 {
-    /**
-     * @param  list<array{iso_weekday:int,start_hm:string,end_hm?:?string}>  $slots
-     * @return list<array{date:string,start_hm:string,end_hm:?string,iso_weekday:int}>
-     */
-    public function expand(
+        public function expand(
         array $slots,
         Carbon $from,
         Carbon $through,
