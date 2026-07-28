@@ -1,6 +1,8 @@
 # ADR-006 — Prepaid Session Horizon：Schedule Commitment × Materialization × Pool Coverage
 
-> **Status:** Decision package **ready for review**（非 Accepted／非 implemented／非 production-ready）  
+> **Status:** **Accepted — Phase 0 evidence collection authorized**  
+> （仍：**Not implemented / not fixed / not production-ready**）  
+> **Founder review:** ACCEPT WITH AMENDMENTS（2026-07-28；PR #1468）  
 > **Date:** 2026-07-28  
 > **Type:** Architecture + product decision package（文件決策；本 PR **零 runtime／零 production DB 寫入**）  
 > **Related:** #1062 Track A（`docs/runbooks/1062-track-a-pcr.md`）、`ADR_005_scheduling_named_command_boundaries.md`、G-010、F4／#1465、`ForwardSessionGenerator`、`ClassSessionMaterializationService`
@@ -11,10 +13,11 @@
 
 | 可宣稱 | 不可宣稱 |
 |---|---|
-| Decision package ready for review | Implemented / fixed / production-ready |
-| Phase 0／Phase 1 **定義**完成 | Phase 0 報告已產出數字 |
-| 與 #1062／ADR-005／G-010／F4 對齊的邊界已寫清 | CEO GO、production activation、Kernel 排程已啟用 |
-| Schedule Commitment **語意**已定義；是否新表 **待 Phase 0 結論** | 已決定新增 domain table／已寫 migration |
+| Accepted — Phase 0 evidence collection authorized | Implemented / fixed / production-ready |
+| Phase 0／Phase 1 **定義**完成；Founder 四題已拍板（§16） | Phase 0 報告已產出數字 |
+| 與 #1062／ADR-005／G-010／F4 對齊的邊界已寫清 | Phase 1 runtime、CEO GO、production activation、Kernel 排程已啟用 |
+| Schedule Commitment **語意**已定義；`StudentClass` = **v1 adapter（條件式）**，非永久 SSOT | 已決定永久 domain table／已寫 migration |
+| 下一獲准範圍 = Phase 0 **唯讀**報告 PR | production DB write、generator execute、扣堂、繳費、coverage mutation |
 
 ---
 
@@ -132,16 +135,16 @@ Schedule Commitment → ClassSession materialization（rolling horizon）
 
 | 代號 | 名稱 | 定義 | 正確反應 |
 |---|---|---|---|
-| **FRP** | Fixed recurring prepaid | `ScheduleMode=count`（或等價預付）+ 有效固定時段 Commitment + remaining／pool>0 | Rolling materialize（目標 A）；缺堂 = materialization failure |
-| **FLP** | Flexible prepaid | 有餘額／pool，但無固定 Commitment、亦無下一次 booking | 快速 booking／開堂；**不是**異常 |
+| **FRP** | Fixed recurring prepaid | 預付 + **`explicit_commitment`** + remaining／pool>0 | Rolling materialize（目標 A）；缺堂 = MF |
+| **FLP** | Flexible prepaid | 有餘額／pool，刻意無固定 Commitment（`INFO_FLEXIBLE_NO_COMMITMENT`） | 快速 booking／開堂；**不是**異常 |
 | **SPM** | Shared-pool member course | `PackageID` 成員；消耗走 pool | Pool-level coverage；成員 UI 不顯示 pool balance |
-| **MF** | Materialization failure | 有 Commitment，未來 7／28 天應有 occurrence 但無非取消 `ClassSession` | Reconcile／EnsureSessionHorizon；屬系統债 |
-| **ES** | Entitlement shortage | 未來已排／應排堂次數 > pool available | 續課／分配決策；不是「缺 session」文案 |
+| **MF** | Materialization failure | **`explicit_commitment`** 且未來 7／28 天應有 occurrence 但無非取消 `ClassSession` | Ensure／reconcile；**不含** legacy_inferred |
+| **ES** | Entitlement shortage | 未來應排堂次數 > pool available | Preview 顯示 uncovered；Ensure → `BLOCK_POOL_SHORTAGE` |
 | **SC** | Schedule conflict | 應建立但撞老師／學生同時段或其他合約 | reason code + exception queue；fail closed，不猜 |
 
 另保留既有 #1062／#1152 語意：
 
-- **Active stranded**：近期有上課史、remaining>0、無未來堂、且 cadence 可確認 → Track A 候選  
+- **Active stranded（FSG）**：可能落在 `explicit_commitment` **或** `legacy_inferred_candidate`——Phase 0 必須切開；僅前者可進自動 Ensure  
 - **Dormant**：超過活躍窗 → 主任決策（#1152），**禁止**自動生成
 
 ---
@@ -176,13 +179,15 @@ Schedule Commitment → ClassSession materialization（rolling horizon）
 
 ### 5.3 不得直接擴張的假設（紅線）
 
-1. **不得**把「近 6 堂多數決 cadence」升級成永久 Schedule Commitment SSOT，卻不經 Phase 0 驗證其與合約欄位一致性。  
+1. **不得**把「近 6 堂多數決 cadence」升格為 `explicit_commitment` 或永久 SSOT；最多標為 `legacy_inferred_candidate`。  
 2. **不得**在 generator 內呼叫扣堂／改 `RemainingSessions`／改 payment。  
-3. **不得**對 dormant（#1152）或 cadence 不確認的課 `best-effort` 猜時段。  
+3. **不得**對 dormant（#1152）、`commitment_conflict`、或欄位不完整的課 `best-effort` 猜時段。  
 4. **不得**按「pool 剩 N → 每個 member 各排 N」。  
 5. **不得**為了讓 rolling 滿水位，在衝突時改寫已存在的 leave／substitute／調課 instance。  
-6. **不得**在本決策包階段把 `--execute` 排進 Kernel 或對 production 啟用。  
-7. **不得**另開第二條 insert 路徑繞過 `upsertSlot`。
+6. **不得**在本決策包／Phase 0 階段把 `--execute` 排進 Kernel 或對 production 啟用。  
+7. **不得**另開第二條 insert 路徑繞過 `upsertSlot`。  
+8. **不得**在 Phase 1 Ensure 建立 **uncovered** scheduled `ClassSession`（coverage lifecycle 尚未存在）。  
+9. **不得**在 shared-pool entitlement shortage 時 partial write。
 
 ---
 
@@ -192,24 +197,66 @@ Schedule Commitment → ClassSession materialization（rolling horizon）
 
 | 候選 | 現況 | 可承擔 Commitment？ |
 |---|---|---|
-| **A. `StudentClass` 契約欄**（`week`/`time`、`week1–6`/`time1–6`、`TeacherID`、`ScheduleMode`、`PackageID`、`Stop`…） | 合約／排課意圖主要落點；月結與部分 count 課使用 | **可能**作為 FRP commitment 主載體，若 Phase 0 證明欄位完整率足夠、且與真實上課 cadence 一致 |
-| **B. `schedules` 表** | 多用於例外：leave／substitute／extra 補課等；與 snake_case 新表並存 | **不適**當 recurring commitment SSOT；可當 exception／單次 booking 補充 |
-| **C. History-inferred cadence**（FSG 現況） | 從 `ClassSession` 統計 | 只宜作 **fallback signal** 或 Phase 0 對帳，不宜當長期 SSOT |
-| **D. 新 domain table**（例如 `schedule_commitments`） | 無 | **僅當** A+B 無法表達 pause、horizon policy、pool 綁定、多段 recurrence 時，才提最小 schema |
+| **A. `StudentClass` 契約欄**（`StartDate`/`EndDate`、`week`/`time`、`week1–6`/`time1–6`、`TeacherID`、`SubjectID`、`ScheduleMode`、`PackageID`、`Stop`、`RemainingSessions`…） | 合約／排課意圖主要落點 | **Founder：條件式批准作 v1 Commitment adapter**；**不是**永久 SSOT；僅 `explicit_commitment` 子集可進 Phase 1 Ensure |
+| **B. `schedules` 表** | 多用於例外：leave／substitute／extra 補課等 | **不適**當 recurring commitment SSOT；可當 exception／單次 booking 補充 |
+| **C. History-inferred cadence**（FSG 現況） | 近 ≤6 堂多數決 weekday+start+end | **僅** `legacy_inferred_candidate` signal；Phase 0 統計、Phase 1 供主任確認；**不得**直接 rolling／Ensure |
+| **D. 新 domain table**（例如 `schedule_commitments`） | 無 | 見 §6.5 觸發條件；本包不寫 migration |
 
 ### 6.2 Phase 0 對載體的裁決問題（必須回答）
 
-1. 活躍預付課中，`week/time` 或 `week1–6` 完整且與近 6 堂實際 cadence 一致的比例？  
-2. 不一致時，以合約欄還是 history 為準會傷害現場？（預設：**fail closed → 人工／主任**，不自動選邊）  
-3. Shared package 成員是否共享同一 recurrence，或各有各的 Commitment？  
-4. Flexible prepaid 是否應允許「只有 pool、沒有 Commitment」長期存在？（本決策：**允許**，屬 FLP）  
-5. 若 A 可覆蓋 ≥ 目標族群（建議：活躍 FRP 的可機器生成子集），則 **不新增表**，以 read-model／command 把 `StudentClass` 契約欄 **詮釋為** Commitment。  
-6. 若 A 無法表達必要語意（例如多段有效期、explicit `auto_maintain_horizon`、pool 綁定歧義），再提 **最小** schema 增量 + `down()` 風險（另 DBA gate；本包不寫 migration）。
+1. 活躍預付課中，屬 `explicit_commitment`／`legacy_inferred_candidate`／`commitment_conflict` 的比例？  
+2. `explicit_commitment` 子集是否足以支撐 Phase 1 Ensure 試點？  
+3. Shared package 成員是否各有獨立 recurrence，或需 pool-level expansion？  
+4. Flexible prepaid（`INFO_FLEXIBLE_NO_COMMITMENT`）數量——確認屬合法狀態而非資料缺陷  
+5. 是否已觸發 §6.5 任一「必須新表」條件？若否，Phase 1 維持 StudentClass adapter  
 
-### 6.3 本包結論（刻意不鎖死）
+### 6.3 Founder 載體結論（2026-07-28）
 
-> **不預先承諾新增 domain table。**  
-> Schedule Commitment 先是 **必備語意**；實體載體由 Phase 0 證據在 A／D 之間選擇（B／C 不得單獨當 SSOT）。
+> **條件式批准** Phase 1 使用 `StudentClass` 作 **v1 Commitment adapter**。  
+> **不批准**其為永久 Commitment SSOT；**現在不新增欄位／表**。  
+> History cadence **不得**升格為正式 Commitment。
+
+### 6.4 v1 adapter：`commitment_snapshot`／`commitment_fingerprint`（必做）
+
+即使不新增表，每次 `PreviewSessionHorizon`／`EnsureSessionHorizon` **必須**計算並寫入 provenance（Ensure 成功建立之 session；Preview 回傳 DTO）：
+
+| 欄位 | 用途 |
+|---|---|
+| `commitment_snapshot` | 當次解析後的規範化契約內容（供審計閱讀） |
+| `commitment_fingerprint` | 穩定 hash，回答「這筆 session 依哪一版契約產生」 |
+
+Fingerprint **至少**涵蓋（含 normalization／schema version）：
+
+- `StudentClassID`
+- relevant `week`/`time` 與 `week1–6`/`time1–6` pairs
+- `StartDate`／`EndDate`
+- teacher、subject、campus
+- `ScheduleMode`、`PackageID`、`Stop`
+- `schema_version`／normalization version
+
+目的：主任日後改 `week/time` 後，仍能證明舊 session 當初依據的 Commitment 內容——**不是**第二套 SSOT。
+
+**Phase 1 Ensure 允許條件**（皆須成立，否則不得自動寫入）：
+
+- 時段可唯一解析  
+- 老師、科目、分校完整  
+- `StartDate`／`EndDate`／`Stop` 語意一致  
+- 合約欄未與近期 history 衝突（= `explicit_commitment`）  
+- shared pool 關係可唯一解析（否則 `SKIP_AMBIGUOUS_POOL`／`BLOCK_*`）  
+- 不需要 effective-dated 多版本 recurrence  
+- 不需要獨立 per-commitment horizon policy（horizon 走 server policy，§8.7）
+
+### 6.5 觸發最小 `schedule_commitments` schema 的條件
+
+Phase 0 或 Phase 1 若需要以下**任一**能力，再另提最小 schema + DBA gate（本包不寫）：
+
+- effective-dated schedule versions  
+- 未來某日才生效的換時段  
+- 多段 pause／resume  
+- 與 `StudentClass` lifecycle 不同的 commitment lifecycle  
+- 每個 commitment 獨立 horizon policy  
+- pool binding 歧義無法在 adapter 內唯一解析  
+- 同一課程存在多個不能由 `week1–6` 安全表達的承諾
 
 ---
 
@@ -270,43 +317,72 @@ Schedule Commitment → ClassSession materialization（rolling horizon）
 
 - `generation_source`：`preview_apply`｜`ensure_horizon`｜`forward_generator_1062`｜`manual_add`｜…  
 - `actor`：user id 或 `system:reconcile`  
-- `commitment_ref`  
+- `commitment_ref`（v1 = `StudentClassID` + adapter class）  
+- `commitment_snapshot`／`commitment_fingerprint`（§6.4；**必填**）  
 - `occurrence_key`  
 - `branch_id`／campus  
 - `pool_id`（若有；可空）  
+- `coverage_intent`：Preview 可標 `covered`｜`uncovered`；Ensure Phase 1 **僅**寫入原標 `covered` 且通過 pool gate 者  
 - `command` + 時間戳  
 
-### 8.5 Reason codes（穩定字串；Phase 0 報告與 Phase 1 preview 共用）
+### 8.5 Reason codes（穩定字串；Phase 0 報告與 Phase 1 共用）
+
+**層級約定**
+
+| 前綴 | 含義 |
+|---|---|
+| `OK_*` | occurrence 可建立或已存在 |
+| `INFO_*` | 合法狀態資訊（非錯誤） |
+| `LEGACY_*` | 需主任確認的 legacy 候選；不得自動 Ensure／rolling |
+| `SKIP_*` | 單一 occurrence 跳過（其餘 occurrence 仍可繼續評估） |
+| `BLOCK_*` | **command-level** 安全阻擋：整批 no-write，禁止 partial write |
+| `FAIL_*` | 權限／隔離失敗 |
 
 | Code | 含義 |
 |---|---|
-| `OK_PLAN` | 將建立／可建立 |
+| `OK_PLAN` | 將建立／可建立（且 Preview 標 covered；Ensure 才可寫） |
 | `OK_EXISTS` | 已有非取消 ClassSession（idempotent no-op） |
-| `SKIP_NO_COMMITMENT` | 有餘額但無可用 Commitment（FLP 或資料不足） |
+| `OK_PREVIEW_UNCOVERED` | Preview 專用：occurrence 在 horizon 內但 pool 無法覆蓋（**不**表示可 Ensure） |
+| `INFO_FLEXIBLE_NO_COMMITMENT` | 合法 FLP：有餘額／pool、刻意無固定 Commitment |
+| `BLOCK_COMMITMENT_INCOMPLETE` | 本應可解析固定課，但合約欄缺老師／科目／分校／時段等 |
+| `BLOCK_COMMITMENT_CONFLICT` | 合約欄與 history 不一致，或多組合約欄互相矛盾 |
+| `LEGACY_INFERRED_CANDIDATE` | 合約欄缺失，但近期 history 有穩定 cadence；僅統計／主任確認 |
 | `SKIP_NOT_COUNT_MODE` | 非預付 count 路徑 |
 | `SKIP_STOPPED` | 合約 Stop／終止 |
 | `SKIP_DORMANT` | 活躍窗外（#1152） |
-| `SKIP_NO_CADENCE` | 無法確認 weekday+time（現 FSG） |
-| `SKIP_INSUFFICIENT_HISTORY` | 歷史不足以推導（若仍用 history fallback） |
 | `SKIP_MISSING_TEACHER` | 無法唯一確定老師 |
 | `SKIP_MISSING_SUBJECT` | 缺科目 |
 | `SKIP_MISSING_BRANCH` | 缺分校／campus |
 | `SKIP_MISSING_SLOT` | 缺時段 |
 | `SKIP_AMBIGUOUS_POOL` | 多個 eligible pool，禁止自動選 |
-| `SKIP_POOL_SHORTAGE` | ES：可建 session 但 coverage 不足（preview 可標 uncovered，不假裝有餘額） |
+| `BLOCK_POOL_SHORTAGE` | Shared-pool ES：**command-level**；Ensure 對該 pool scope 整批 no-write（見 §10.2） |
 | `SKIP_CROSS_SC_CONFLICT` | 同學生他約同時段 |
 | `SKIP_TEACHER_CONFLICT` | 老師同時段衝突（若檢測） |
 | `SKIP_OUT_OF_HORIZON` | 超出 through_date |
-| `SKIP_REMAINING_CAP` | 受單課 remaining 或政策 cap（過渡期；shared 應升 pool 規則） |
+| `SKIP_PAST_END_DATE` | 超過合約 `EndDate` |
+| `SKIP_REMAINING_CAP` | 非 shared 過渡 cap（單課 remaining）；shared 路徑改走 pool gate |
 | `FAIL_BRANCH_ISOLATION` | 呼叫者無權該校 |
 
-每個 skipped occurrence **必須**有 code；禁止只回「成功建立 N 堂」而吞掉 skip。
+**已廢止（不得再使用）：** `SKIP_NO_COMMITMENT`、`SKIP_POOL_SHORTAGE`（改由上表拆分／升級）。
+
+每個 skipped／blocked／info 項 **必須**有 code；禁止只回「成功建立 N 堂」而吞掉 skip。`BLOCK_*` 不得降級成普通 `SKIP_*`。
 
 ### 8.6 Branch isolation
 
 - 所有讀寫以課程所屬學生 `CampusID`（或等價）為準。  
 - Preview／Ensure 的 `branch_id` filter 與 #1062 command 一致。  
 - 跨校 commitment／pool：**403／FAIL_BRANCH_ISOLATION**，不得降級為 skip 後仍部分寫入他校。
+
+### 8.7 Rolling horizon policy（v1）
+
+Founder 批准 **28 天**為 v1 **server-side default**，**不是**永久 domain invariant，也**不**寫入每筆 `StudentClass`。
+
+| 規則 | 定義 |
+|---|---|
+| Default | `through_date = Asia/Taipei today + 28 days`（**inclusive**） |
+| Command intent | client 可傳「補齊至某日」；**不得**自定 recurrence truth |
+| Server 仍受 | `EndDate`、`Stop`、branch permission、commitment validity（僅 `explicit_commitment` 可 Ensure）、entitlement／pool coverage gate、collision checks |
+| Phase 0 指標 | 產出 **7 天與 28 天**缺口即可；暫不引入 14／60／90 多組政策 |
 
 ---
 
@@ -321,43 +397,55 @@ Schedule Commitment → ClassSession materialization（rolling horizon）
 
 ### 9.2 報告必須回答的七題
 
-1. **有正餘額且有明確 Commitment，但未來 7／28 天缺 ClassSession 的數量**（MF；按分校／是否 package 切）  
-2. **有正餘額但沒有可用 Commitment 的數量**（FLP 或資料不足；與 MF 分開）  
-3. **Shared pool 下「未來排課需求」與「pool coverage」差額**（ES；pool 層彙總，不拆成假 member balance）  
-4. **無法生成的原因分布**（§8.5 reason codes）  
-5. **目前 `ForwardSessionGenerator` 能處理與不能處理的案例**（對照 §5）  
-6. **哪些案例若自動生成會涉及猜測**老師、科目、分校、時段或 pool（列出禁止自動集合）  
+1. **有正餘額且屬 `explicit_commitment`，但未來 7／28 天缺 ClassSession 的數量**（MF；**不得**把 `legacy_inferred_candidate` 算進此題）  
+2. **有正餘額但無可用 explicit commitment 的拆分數量**：`INFO_FLEXIBLE_NO_COMMITMENT` vs `BLOCK_COMMITMENT_INCOMPLETE` vs `LEGACY_INFERRED_CANDIDATE` vs `BLOCK_COMMITMENT_CONFLICT`（禁止再合併成單一「沒有 Commitment」）  
+3. **Shared pool 下「未來排課需求」與「pool coverage」差額**（ES；**pool 層**彙總；列出若 Ensure 會觸發 `BLOCK_POOL_SHORTAGE` 的 pool 數）  
+4. **無法生成／阻擋的原因分布**（§8.5；含 `BLOCK_*`／`INFO_*`／`LEGACY_*`）  
+5. **目前 `ForwardSessionGenerator` 能處理與不能處理的案例**（對照 §5；並標出 FSG plan 集合落在三類 Commitment 的哪一類）  
+6. **哪些案例若自動生成會涉及猜測**老師、科目、分校、時段或 pool（= 禁止自動集合：`commitment_conflict`、incomplete、ambiguous pool、legacy-only 等）  
 7. **最近人工補排頻率與距離上課時間**（近似：未來窗內新建 `ClassSession` 且非 `#1062` Note／非系統來源的建立時間 vs `SessionDate`+`StartTime`；定義寫進報告 header）
 
-### 9.3 建議分類桶（與 §4 對齊）
+### 9.3 建議分類桶（與 §4／§9.4 對齊）
 
 | Bucket | 對應 |
 |---|---|
-| `frp_healthy` | FRP + 7／28 天內 session 充足 |
-| `frp_materialization_gap` | FRP + MF |
-| `flp_no_commitment` | 正餘額 + 無 Commitment |
-| `shared_pool_shortage` | SPM + ES |
+| `explicit_healthy` | `explicit_commitment` + 7／28 天 session 充足 |
+| `explicit_materialization_gap` | `explicit_commitment` + MF（**唯一**可進 Phase 1 Ensure 候選的缺口桶） |
+| `legacy_inferred_candidate` | 合約欄缺失 + history 穩定 cadence |
+| `commitment_conflict` | 合約↔history 或欄位自相矛盾 |
+| `commitment_incomplete` | 固定課語意不足（缺老師／科目／分校／時段等） |
+| `flexible_no_commitment` | 合法 FLP（`INFO_FLEXIBLE_NO_COMMITMENT`） |
+| `shared_pool_shortage` | SPM + ES（Ensure 將 `BLOCK_POOL_SHORTAGE`） |
 | `conflict_blocked` | SC |
-| `ambiguous_or_guess_required` | 缺老師／科目／分校／時段／多 pool |
-| `fsg_eligible_active_stranded` | 現行 Track A 會 `plan` 的集合 |
+| `fsg_eligible_active_stranded` | 現行 Track A 會 `plan` 的集合（需再切三類） |
 | `fsg_skipped_*` | 現行 skip reason 映射到 §8.5 |
 | `dormant_1152` | #1152 |
 
-### 9.4 Commitment 判定（Phase 0 操作定義；可修訂）
+### 9.4 Commitment 判定（Founder 修正後操作定義）
 
-**明確 Commitment（暫訂，需在報告中公佈命中規則版本）：**
+**原則：** 顯式合約欄是 **authoritative candidate**；history 只負責 **驗證**與提供 **legacy signal**；兩者衝突 → **fail closed**，人工裁決。  
+**禁止：** 「合約欄 **或** FSG history 任一成立 ⇒ 明確 Commitment」（舊 §9.4 已廢止）。
 
-- 合約未 Stop，且  
-- （合約 `week/time` 或任一 `weekN/timeN` 可解析出唯一 weekday+start）**或**（FSG 同款 confirmed cadence：近 6 堂 ≥2 同 weekday+HH:MM），且  
-- TeacherID、StudentID→CampusID、科目可解析  
+報告須公佈規則版本號。三類如下：
 
-若合約欄與 history cadence **衝突** → 歸 `ambiguous_or_guess_required`，不得算入可自動生成。
+| 類別 | 判定 | Phase 0 | Phase 1 Ensure | Rolling automation（≥Phase 2） |
+|---|---|---|---|---|
+| **`explicit_commitment`** | 合約欄完整且唯一可解析（weekday+start 等）；Teacher／Subject／Campus 完整；`StartDate`/`EndDate`/`Stop` 一致；**未**與近期 history 衝突 | 計入 MF 題 1 | **可**（另受 pool gate） | **可**（另 GO） |
+| **`legacy_inferred_candidate`** | 合約欄缺失／不可唯一解析，但近期 history 有穩定 cadence（FSG 同款：近 ≤6 堂 ≥2 同 weekday+start+end） | 統計；對應 `LEGACY_INFERRED_CANDIDATE` | **不可**自動；僅供主任確認後的人工／確認流（另設計） | **不可** |
+| **`commitment_conflict`** | 合約欄與 history 不一致，或多組合約欄互相矛盾 | 統計；對應 `BLOCK_COMMITMENT_CONFLICT` | **不可** | **不可** |
+
+補充：
+
+- 合法彈性包堂 → `INFO_FLEXIBLE_NO_COMMITMENT`／bucket `flexible_no_commitment`（**不是** conflict，也**不是** MF）。  
+- 本應固定卻缺欄 → `BLOCK_COMMITMENT_INCOMPLETE`（**不是** FLP）。  
+- **不得**把 `legacy_inferred_candidate` 算進「有明確 Commitment 的 MF」，以免高估可自動修復範圍。
 
 ### 9.5 Phase 0 Exit
 
 - 七題皆有數字或「無法量測 + 原因」  
-- 載體裁決建議：A 足夠／需 D 最小 schema／需先修資料  
-- **仍不**寫 production、不實作 Phase 1 UI
+- 三類 Commitment 計數齊備；MF 僅含 `explicit_commitment`  
+- 載體建議：v1 adapter 試點範圍 vs 觸發 §6.5 新表  
+- **仍不**寫 production、不實作 Phase 1 UI／Ensure runtime
 
 ---
 
@@ -365,38 +453,55 @@ Schedule Commitment → ClassSession materialization（rolling horizon）
 
 ### 10.1 `PreviewSessionHorizon`
 
-**Input（intent only）：** `student_class_id`（或 commitment_ref）、`through_date`  
+**Input（intent only）：** `student_class_id`（v1 adapter）、可選 `through_date`（預設 §8.7）  
 **Behavior：**
 
-- 解析 Commitment；失敗 → 結構化錯誤（FLP vs missing fields）  
-- 展開 occurrences → 逐筆 reason code  
-- 彙總：will_create／already_exists／skipped_by_code  
-- Shared pool：在 **pool 層**附 coverage 預估（covered／uncovered）；**不**在成員上顯示「剩餘 N 堂」  
-- 宣告：**不會扣堂**
+- 分類 Commitment（§9.4）；回傳 `commitment_snapshot`／`commitment_fingerprint`  
+- `explicit_commitment`：展開 occurrences → 逐筆 code（含 covered／uncovered）  
+- `legacy_inferred_candidate`：回傳 `LEGACY_INFERRED_CANDIDATE` + 建議 cadence（**不**假裝可 Ensure）  
+- `commitment_conflict`／incomplete：`BLOCK_COMMITMENT_*`  
+- 合法 FLP：`INFO_FLEXIBLE_NO_COMMITMENT`  
+- Shared pool：**必須**在 pool 層顯示例如「未來 28 天預計 8 堂／可覆蓋 6／尚未覆蓋 2」；uncovered 用 `OK_PREVIEW_UNCOVERED`  
+- **不**在成員課程顯示 pool 剩餘 N 堂  
+- 宣告：**不會建立 session、不會扣堂**
 
-**Output：** dry-run DTO（供未來主任 UI／artisan）；本包不實作 endpoint。
+**Output：** dry-run DTO；本包不實作 endpoint。
 
-### 10.2 `EnsureSessionHorizon`（行為契約；本包不啟用寫入）
+### 10.2 `EnsureSessionHorizon`（行為契約；本包／下一 PR 皆不啟用 production 寫入）
 
-- 與 Preview **同一 expansion／同一 reason 規則**  
-- 僅對 `OK_PLAN` 呼叫 `upsertSlot`  
-- 重跑 → 0 新增  
-- 衝突／歧義 → skip + code，不以 best-effort 猜  
-- Provenance 必填  
-- Production 啟用另需：測試 + CEO／owner GO（延續 #1062 PCR 精神）
+前置：僅 `explicit_commitment` + §6.4 允許條件。
+
+**Shared-pool entitlement shortage（ES）— Founder 拍板：**
+
+| 動作 | 行為 |
+|---|---|
+| Preview | **允許且要求**顯示全部 covered／uncovered 明細 |
+| Ensure | 對該 **pool scope** command **整批 no-write**；回傳 **`BLOCK_POOL_SHORTAGE`** |
+| 禁止 | partial write；把 ES 當成普通 occurrence `SKIP_*`；以單一 member 各自估算池餘額；建立 uncovered scheduled `ClassSession` |
+
+**為何不做 covered-prefix（先建前 N 堂）：** Phase 1 尚無 pool-level expansion + deterministic ordering + transaction／locking + hold lifecycle + concurrency tests；兩 member 並行 Ensure 可能搶同一批餘額。Covered-prefix **留到 Phase 3+**。
+
+**其他 Ensure 規則：**
+
+- 與 Preview 同一 expansion 函數；Ensure 僅物化 Preview 標為 **covered** 且非 block 的 `OK_PLAN`  
+- 經 `upsertSlot`；重跑 → 0 新增  
+- Provenance 必含 fingerprint／snapshot  
+- 衝突／歧義 → skip／block + code，不猜  
+- Production 啟用另需：實作 PR + 測試 + owner／CEO GO（延續 #1062 PCR）
 
 ### 10.3 UI 文案方向（非實作）
 
-> 未來 28 天預計 4 堂，已建立 1 堂，缺 3 堂。  
-> ［預覽並補齊］→ 列出將建立／跳過原因 → 確認後才 Ensure。
+> 未來 28 天預計 8 堂，可由方案覆蓋 6 堂，尚未覆蓋 2 堂。  
+> ［預覽］→ 若 Ensure 將因池不足阻擋，明確告知「無法補齊（方案堂數不足）」，不得默默只建 6 堂。
 
 成員課程：**「本課程已排 N；其中 M 由共用方案覆蓋」**；禁止「本課程剩餘 pool N 堂」。
 
 ### 10.4 Phase 1 Exit（定義完成標準）
 
-- Command 輸入／輸出／error／reason codes 已寫進本 ADR  
+- Command 輸入／輸出／error／reason codes／ES atomic block 已寫進本 ADR  
 - 與 ADR-005 client 邊界相容  
 - **無** production code／migration／UI 在本決策包 PR 內落地  
+ 
 
 ---
 
@@ -458,8 +563,9 @@ Schedule Commitment → ClassSession materialization（rolling horizon）
 **Verification**
 
 - [ ] 本檔合入 `main` 後 INDEX 可發現  
-- [ ] 狀態列僅「ready for review」  
+- [ ] 狀態列為「Accepted — Phase 0 evidence collection authorized」且仍標 not implemented／not production-ready  
 - [ ] 無 deployable runtime 行為變更（docs-only）  
+- [ ] §16 Founder decisions 與正文一致  
 - [ ] 與 #1062 PCR、ADR-005、G-010、F4 連結可點  
 
 **Rollback**
@@ -468,12 +574,17 @@ Schedule Commitment → ClassSession materialization（rolling horizon）
 
 ---
 
-## 16. Review 時請 Founder／Reviewer 拍板的問題
+## 16. Founder decisions（2026-07-28 — ACCEPT WITH AMENDMENTS）
 
-1. Phase 0 Commitment 操作定義（§9.4）是否接受「合約欄優先、與 history 衝突則人工」？  
-2. Rolling horizon 預設 28 天是否鎖定？  
-3. Shared pool 在 Preview 階段是否允許建立 `uncovered` ClassSession，或 ES 時整批停止？  
-4. Phase 0 通過後，是否允許 **不新增表** 直接把 `StudentClass` 契約欄當 Commitment 載體進入 Phase 1 實作？  
+| # | 題目 | 決策 |
+|---|---|---|
+| 1 | Commitment 判定 | **批准並修正分類**：合約欄 = authoritative candidate；history = 驗證／legacy signal；衝突 fail closed。三類 = `explicit_commitment`／`legacy_inferred_candidate`／`commitment_conflict`。Legacy **不得**計入「有明確 Commitment 的 MF」，也不得直接 Ensure／rolling。 |
+| 2 | Rolling horizon 28 天 | **批准為 v1 server-side default**（Asia/Taipei today+28 inclusive）；非永久 invariant；不寫入每筆 `StudentClass`；client 可傳 through_date，不得自定 recurrence truth。Phase 0 產出 7／28 天缺口即可。 |
+| 3 | Shared pool ES | **Preview 必須可顯示 uncovered**；**Ensure 不得建立 uncovered session**。ES 時 Ensure 對 pool scope **整批 no-write**，回傳 **`BLOCK_POOL_SHORTAGE`**（command-level，非 occurrence skip）。Covered-prefix 留 Phase 3+。 |
+| 4 | `StudentClass` 載體 | **條件式批准 v1 adapter**，**不批准**永久 SSOT；現不新增欄位。Ensure 僅 `explicit_commitment` + §6.4 條件。必算 `commitment_snapshot`／`commitment_fingerprint`。觸發新表條件見 §6.5。 |
+
+**下一獲准範圍：** 僅 Phase 0 **唯讀**報告 PR。  
+**仍不包含：** production DB write、generator execute、扣堂、繳費、coverage mutation、production activation、Phase 1 Ensure runtime。
 
 ---
 
@@ -487,5 +598,6 @@ AllTrue 預付／共用方案的合理目標架構是：
 
 **Entitlement balance → 猜測未來課程 → 直接扣堂**
 
-本文件是 **decision package ready for review**。  
-Phase 0 唯讀報告與 Phase 1 command 實作均需另 PR；皆不在本包宣告完成。
+本文件狀態：**Accepted — Phase 0 evidence collection authorized**。  
+仍：**Not implemented / not fixed / not production-ready**。  
+Phase 0 唯讀報告與後續 Phase 1 runtime 均需另 PR。
