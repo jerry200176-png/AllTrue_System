@@ -27,6 +27,7 @@ export const changelogReleaseNotes = [
       {
         "title": "修正內容",
         "items": [
+          "55 復活判斷收斂為單一共用政策",
           "家長留言預覽增加「回覆家長」入口",
           "調課標記 IsContractException（防 realign 還原）",
           "006 acceptance amendments（dormant／Ensure gates／ADR status）"
@@ -46,8 +47,8 @@ export const changelogReleaseNotes = [
       "006 Phase 1B EnsureSessionHorizon（default-off）",
       "006 Phase 1A eviewSessionHorizon（read-only）",
       "006 Phase 0 唯讀 epaid horizon 報告（slice 2/2）",
-      "家長留言預覽增加「回覆家長」入口",
-      "調課標記 IsContractException（防 realign 還原）"
+      "55 復活判斷收斂為單一共用政策",
+      "家長留言預覽增加「回覆家長」入口"
     ]
   },
   {
