@@ -445,7 +445,14 @@ Founder 批准 **28 天**為 v1 **server-side default**，**不是**永久 domai
 - 七題皆有數字或「無法量測 + 原因」  
 - 三類 Commitment 計數齊備；MF 僅含 `explicit_commitment`  
 - 載體建議：v1 adapter 試點範圍 vs 觸發 §6.5 新表  
-- **仍不**寫 production、不實作 Phase 1 UI／Ensure runtime
+- **仍不**寫 production、不實作 Phase 1 Ensure runtime  
+
+**Implementation pointer（code；非 production evidence）：**
+
+- Command：`php artisan sessions:report-prepaid-horizon-phase0 {--branch_id=} {--as-of=} {--json|--summary}`  
+- Services：`App\Services\Scheduling\*`（classifier／expander／reporter）  
+- Synthetic sample：`docs/artifacts/adr006-phase0-sample-report.json`  
+- Production 數字 artifact 需在唯讀環境執行 command 後另存；**預設只交付可跑的 read-only 工具與 CI 測試。**
 
 ---
 
