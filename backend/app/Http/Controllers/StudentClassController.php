@@ -16,6 +16,7 @@ use App\Models\UserCampus;
 use App\Models\CoursePackage;
 use App\Support\Utf8mb3SearchSanitizer;
 use App\Services\ClassSessionMaterializationService;
+use App\Services\ContractScheduleMatcher;
 use App\Services\ClassSessionContractReflowService;
 use App\Services\FrontendSubjectIdResolver;
 use App\Services\SessionDeductionService;
@@ -2671,9 +2672,16 @@ class StudentClassController extends Controller
                 }
             }
 
-            // R84: IsContractException is recomputed by ClassSessionObserver::saving()
-            // whenever SessionDate/StartTime/EndTime is dirty, which the save() calls
-            // above already trigger — no per-call-site recompute needed here.
+            // R84: ClassSessionObserver::updating() auto-recomputes this for the
+            // $existing/$movableSession branches above (already-persisted rows).
+            // It deliberately does NOT fire on create (ambiguous intent — see
+            // observer docblock), so the upsertSlot() branch's brand-new row
+            // needs one explicit recompute here; harmless no-op for the other
+            // two branches since the observer already set the correct value.
+            app(ContractScheduleMatcher::class)->applyExceptionFlag($classSession);
+            if ($classSession->isDirty('IsContractException')) {
+                $classSession->save();
+            }
 
             $record = LearningRecord::where('ClassSessionID', (int) $classSession->id)->active()->first();
             $approved = false;
