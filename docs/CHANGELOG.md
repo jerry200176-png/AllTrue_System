@@ -1,3 +1,9 @@
+## 2026-07-28 — fix(course-management): RenewMonthlyModal 防呆 current_end_date 無效日期
+
+- Sentry PHP-LARAVEL-26（#1486）：`computedEndDate` 對 `props.form.current_end_date` 直接 `new Date(...)` 再呼叫 `toISOString()`，若該字串無法解析會產出 Invalid Date，`toISOString()` 對 Invalid Date 會丟 `RangeError: Invalid Date`。
+- 修正為先檢查 `Number.isNaN(parsed.getTime())`，解析失敗時退回 `new Date()`（今天）當基準，不再讓整個月結續約 modal 崩潰。
+- 純前端防呆，無 migration、無後端行為變更。
+
 ## 2026-07-28 — fix(learning-records): R55 復活判斷收斂為單一共用政策
 
 - 新增 `LearningRecordResurrectionPolicy`：`SYSTEM_RESURRECTABLE_VOID_REASONS` 白名單與「是否可自動復活」判斷收斂到單一位置。
