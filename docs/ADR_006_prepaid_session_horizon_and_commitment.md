@@ -502,6 +502,13 @@ Founder 批准 **28 天**為 v1 **server-side default**，**不是**永久 domai
 - 衝突／歧義 → skip／block + code，不猜  
 - Production 啟用另需：實作 PR + 測試 + owner／CEO GO（延續 #1062 PCR）
 
+**Implementation pointer（Phase 1B；default-off）：**
+
+- Service：`App\Services\Scheduling\EnsureSessionHorizonService`
+- Command：`php artisan sessions:ensure-horizon {student_class_id} {--through=} {--as-of=} {--branch_id=} {--execute} {--summary}`
+- Feature flag：`FEATURE_ENSURE_SESSION_HORIZON`（default **false**）；`--execute` 在 **production 硬擋**（`PRODUCTION_EXECUTE_REQUIRES_GO`）
+- Dry-run 為預設；ES → `BLOCK_POOL_SHORTAGE` 整批 no-write；寫入僅經 `ClassSessionMaterializationService::upsertSlot`
+
 ### 10.3 UI 文案方向（非實作）
 
 > 未來 28 天預計 8 堂，可由方案覆蓋 6 堂，尚未覆蓋 2 堂。  
