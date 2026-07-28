@@ -580,3 +580,19 @@
 | 建議做法 | 先寫 T3 PLAN/ARCH/SEC；批准後再 DEV。長期加 backend contract test + typed client／OpenAPI + deploy 後 authenticated synthetic。 |
 | 清償成本估計 | 高 |
 | 不做的代價 | 無法提供法定完整收據／PDF／作廢；但查看路徑已可用，不阻塞日常核帳 |
+
+---
+
+### TD-069：`ScheduleController::retroLeave()` 與 `ClassSessionController::handleRetroLeaveTransition()` 補請假邏輯重複，且尾端補課策略不一致
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P2 |
+| 發現日期 | 2026-07-28 |
+| 發現來源 | [REVIEW] R55 資源復活政策稽核時順手發現（架構稽核備忘 Pattern A/B 交界） |
+| 影響模組 | `ScheduleController::retroLeave()`、`ClassSessionController::handleRetroLeaveTransition()`、`ClassSessionController::voidAttendanceArtifacts()` |
+| 描述 | 兩個獨立 endpoint 都實作「已上課堂次補登請假」：作廢 `StudentSignIn`/`LearningRecord`（`VoidReason='補請假：已上課改請假'`）、`SessionDeductionService::reverseForSession(...,'retro_leave',...)` 沖回、`Status='leave_adjusted'`。**不是逐字複製**——經比對後尾端補課策略實際不同：`ClassSessionController` 呼叫 `tryExtendOnLeave()`（count-based，只在「有效堂次數 < SessionCount」時補一堂）；`ScheduleController::retroLeave()` 呼叫 `CourseLeaveCascadeService::appendTailAfterLeave()`（Founder Decision 2026-07-26 的 keep-future-dates-append-tail 政策），且額外在無任何簽到記錄時建立一筆 closed leave `StudentSignIn`（`ClassSessionController` 沒有這步）。與 R83/R84、TD-060、R55 同一類根因（同一決策兩處各自維護），但**consolidation 本身有實質風險**：不是單純刪重複，需先確認兩個尾端補課策略哪個才是現行正確政策（或本來就該依呼叫情境不同），貿然合併可能改變請假/補課的實際行為。 |
+| 建議做法 | 不建議直接合併。先確認：(1) 這兩個 endpoint 目前分別被哪些前端流程呼叫、是否有重疊 (2) `tryExtendOnLeave` 是否為舊政策的殘留（`appendTailAfterLeave` 明確引用較新的 Founder Decision），若是則评估汰換 `ClassSessionController` 那份改呼叫 `CourseLeaveCascadeService`。voidAttendanceArtifacts 的部分（作廢 sign-in/LR + reverseForSession）可以先安全抽成共用 helper，這段兩處確實一致。 |
+| 清償成本估計 | 中～高（半天以上，需先做行為盤點，不可只看程式碼相似度） |
+| 不做的代價 | 兩處補請假邏輯持續各自演進，未來若只改一邊（例如尾端補課規則再變），另一邊會悄悄落後，重演 R55 那種「兩處判斷各自維護、其中一份沒跟上」的缺口 |
