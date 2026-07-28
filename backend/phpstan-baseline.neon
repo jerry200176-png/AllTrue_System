@@ -1185,25 +1185,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$ID\.$#'
 			identifier: property.notFound
-			count: 11
-			path: app/Http/Controllers/ClassSessionController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$RemainingSessions\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/ClassSessionController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$Stop\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/ClassSessionController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$UsedSessions\.$#'
-			identifier: property.notFound
-			count: 1
+			count: 9
 			path: app/Http/Controllers/ClassSessionController.php
 
 		-
@@ -1346,12 +1328,6 @@ parameters:
 
 		-
 			message: '#^Method App\\Http\\Controllers\\ClassSessionController\:\:normalizeWeekdayArray\(\) is unused\.$#'
-			identifier: method.unused
-			count: 1
-			path: app/Http/Controllers/ClassSessionController.php
-
-		-
-			message: '#^Method App\\Http\\Controllers\\ClassSessionController\:\:recalculateSessionCounters\(\) is unused\.$#'
 			identifier: method.unused
 			count: 1
 			path: app/Http/Controllers/ClassSessionController.php

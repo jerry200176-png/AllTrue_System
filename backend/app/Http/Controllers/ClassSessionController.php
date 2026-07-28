@@ -1703,39 +1703,6 @@ class ClassSessionController extends Controller
         );
     }
 
-    private function recalculateSessionCounters(StudentClass $studentClass): void
-    {
-        if ((string) ($studentClass->ScheduleMode ?? 'count') !== 'count') {
-            $studentClass->Stop = 0;
-            $studentClass->save();
-            return;
-        }
-
-        $sessionCount = max(0, (int) ($studentClass->SessionCount ?? 0));
-        if ($sessionCount <= 0) {
-            return;
-        }
-
-        $completedCount = ClassSession::query()
-            ->where('StudentClassID', $studentClass->ID)
-            ->where('Status', 'completed')
-            ->count();
-
-        // Backward compatibility: some historical records were written as "attended".
-        $legacyAttendedCount = ClassSession::query()
-            ->where('StudentClassID', $studentClass->ID)
-            ->where('Status', 'attended')
-            ->count();
-
-        $usedSessions = min($sessionCount, $completedCount + $legacyAttendedCount);
-        $remainingSessions = max(0, $sessionCount - $usedSessions);
-
-        $studentClass->UsedSessions = $usedSessions;
-        $studentClass->RemainingSessions = $remainingSessions;
-        // Remaining 0 does not imply Stop; director pauses explicitly.
-        $studentClass->save();
-    }
-
     /**
      * POST /api/v1/class-sessions/{id}/substitute
      *

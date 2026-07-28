@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Http\Controllers\ClassSessionController;
 use App\Models\AuthToken;
 use App\Models\LearningRecord;
 use App\Models\Student;
@@ -188,7 +187,15 @@ class ClassSessionBatchApiTest extends TestCase
         $this->assertSame(3, $completedCount);
     }
 
-    public function test_recalculate_session_counters_counts_legacy_attended_for_compatibility(): void
+    /**
+     * TD-060 cleanup: this used to invoke ClassSessionController::recalculateSessionCounters()
+     * (dead code, zero callers, confirmed unused by PHPStan) via reflection. That method
+     * duplicated a simpler, count-only version of this same "legacy attended status counts
+     * toward used sessions" rule outside the authoritative SessionDeductionService — exactly
+     * the kind of orphaned duplicate that let R83's IsContractException gap happen. Deleted
+     * the dead method; this test now asserts the real behavior through the actual authority.
+     */
+    public function test_recompute_counters_counts_legacy_attended_for_compatibility(): void
     {
         $token = $this->createUserToken('A', [1], 'director-batch-compat-a@example.com');
         $teacherId = $this->createTeacher(1, 'teacher-batch-compat-a@example.com');
@@ -262,11 +269,7 @@ class ClassSessionBatchApiTest extends TestCase
             ->where('id', (int) $legacySession->id)
             ->update(['Status' => 'attended']);
 
-        $studentClass = \App\Models\StudentClass::findOrFail($studentClassId);
-        $controller = app(ClassSessionController::class);
-        $method = new \ReflectionMethod($controller, 'recalculateSessionCounters');
-        $method->setAccessible(true);
-        $method->invoke($controller, $studentClass);
+        \App\Services\SessionDeductionService::recomputeCounters($studentClassId);
 
         $this->assertDatabaseHas('StudentClass', [
             'ID' => $studentClassId,

@@ -458,12 +458,13 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
+| 狀態 | **Done**（2026-07-28，架構稽核備忘 Pattern A follow-up）|
 | 優先級 | P3 |
 | 發現日期 | 2026-05-31 |
 | 發現來源 | [REVIEW] #613 調查 |
-| 影響模組 | `ClassSessionController::recalculateSessionCounters`（private）|
+| 影響模組 | `ClassSessionController::recalculateSessionCounters`（private，已刪除）|
 | 描述 | 此方法以 count-based（completed+attended）重算 `RemainingSessions`，與權威引擎 `SessionDeductionService::recomputeCounters` 並存。調查確認目前**無任何 caller**（死碼），故不會覆寫 #613 的分鐘衍生值；但保留會誤導，且若日後被誤用會與分鐘制分歧。|
+| 清償紀錄 | 直接刪除該方法（採建議做法的「移除」選項，而非薄包裝委派——委派到一個沒有 caller 的方法沒有意義）。確認 `SessionDeductionService::recomputeCounters` 已涵蓋同等的 legacy `attended` 相容性（`whereIn('Status', ['completed','attended','late'])`），且更完整（含 `StudentSignIn`/ledger/orphan LearningRecord 訊號、分鐘制衍生）。原本透過 Reflection 呼叫此死碼的測試 `ClassSessionBatchApiTest::test_recalculate_session_counters_counts_legacy_attended_for_compatibility` 已改為直接呼叫 `SessionDeductionService::recomputeCounters()`，斷言不變。同時清掉 `phpstan-baseline.neon` 對應的「unused method」豁免項。與 R83/R84 同一類根因：衍生欄位的重算邏輯有第二份未接線的複製，是還沒發作的地雷。|
 | 建議做法 | 移除該方法，或改為薄包裝委派 `SessionDeductionService::recomputeCounters`，統一單一扣堂權威路徑。|
 | 清償成本估計 | 低（< 1hr）|
 | 不做的代價 | 死碼誤導後續開發者；潛在被誤用導致與分鐘制不一致 |

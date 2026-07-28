@@ -6,6 +6,13 @@
 - 回歸：新增 `ClassSessionRestoreVoidedLearningRecordTest`（系統 cascade 原因仍自動復活；人工作廢原因不再被復活）；既有 `LearningRecordVoidedResurrectTest` 全數維持通過。
 - 無 migration、無行為變更（reactive 路徑邏輯不變，只是搬了位置；proactive 路徑修正的是先前未覆蓋的邊界情況）。
 
+## 2026-07-28 — chore(billing): 清償 TD-060 — 刪除 RemainingSessions 死碼重算路徑
+
+- 刪除 `ClassSessionController::recalculateSessionCounters`（無 caller 死碼，count-based，與權威引擎 `SessionDeductionService::recomputeCounters` 並存、非分鐘感知）。
+- 確認權威引擎已涵蓋 legacy `attended` 狀態相容性且更完整（含 `StudentSignIn`/ledger/orphan LearningRecord、分鐘制衍生）。
+- 回歸測試改為直接驗證 `SessionDeductionService::recomputeCounters()`，斷言不變；同步清掉 `phpstan-baseline.neon` 對應豁免項。
+- 架構稽核備忘 Pattern A 的第一項行動：衍生欄位（`RemainingSessions`）在復發前先排除掉一份未接線的重複實作。無 migration、無行為變更（死碼本來就無 caller）。
+
 ## 2026-07-28 — docs(architecture): 新增架構性不變式登記本（Pattern A-E）
 
 - 新增 `docs/RULE_ARCHITECTURAL_INVARIANTS.md`：追蹤「同一種形狀會反覆出現」的架構級根因（區別於 `TECH_DEBT.md` 的單點技術債），收錄本次架構稽核備忘的五種模式（衍生欄位單一寫入、主檔狀態轉換 cascade、多畫面單一投影、前後端契約、授權集中化）與目前已知實例。
