@@ -1,6 +1,6 @@
 ## 2026-07-28 — docs(architecture): 新增架構性不變式登記本（Pattern A-E）
 
-- 新增 `docs/ARCHITECTURAL_INVARIANTS.md`：追蹤「同一種形狀會反覆出現」的架構級根因（區別於 `TECH_DEBT.md` 的單點技術債），收錄本次架構稽核備忘的五種模式（衍生欄位單一寫入、主檔狀態轉換 cascade、多畫面單一投影、前後端契約、授權集中化）與目前已知實例。
+- 新增 `docs/RULE_ARCHITECTURAL_INVARIANTS.md`：追蹤「同一種形狀會反覆出現」的架構級根因（區別於 `TECH_DEBT.md` 的單點技術債），收錄本次架構稽核備忘的五種模式（衍生欄位單一寫入、主檔狀態轉換 cascade、多畫面單一投影、前後端契約、授權集中化）與目前已知實例。
 - 收錄本次 session 的具體案例作為登記起點：`IsContractException`（R83/R84）、`RemainingSessions`（TD-060）、`LearningRecord` 復活政策（R55）、`ScheduleController` 補請假重複（TD-069）、前後端路由契約檢查。
 - 無 migration、無程式碼變更。
 
