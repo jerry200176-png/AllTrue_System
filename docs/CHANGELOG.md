@@ -1,3 +1,7 @@
+## 2026-07-28 — feat(scheduling): ADR-006 Phase 2 shadow horizon（read-only）
+
+- 新增 `sessions:shadow-horizon` + `ShadowSessionHorizonService`：Preview vs Ensure dry-run 對照、drift／shortage 指標；**永遠唯讀**。
+
 ## 2026-07-28 — feat(scheduling): ADR-006 Phase 1B EnsureSessionHorizon（default-off）
 
 - 新增 `sessions:ensure-horizon` + `EnsureSessionHorizonService`：dry-run 預設；`FEATURE_ENSURE_SESSION_HORIZON` 關閉；production `--execute` 硬擋；ES → `BLOCK_POOL_SHORTAGE` 整批 no-write；物化僅走 `upsertSlot`。
