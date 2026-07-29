@@ -1,0 +1,101 @@
+# Read-only Pi diagnose: who scheduled a given student's ClassSession and who marked attendance.
+# Manual dispatch only. No writes — SELECT-only queries via scripts/diagnose-student-session.sh.
+name: Student Session Diagnose (read-only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      student_name:
+        description: "Student name (exact match)"
+        required: true
+        type: string
+      teacher_name:
+        description: "Teacher name (optional)"
+        required: false
+        type: string
+        default: ""
+      date:
+        description: "Target session date YYYY-MM-DD"
+        required: true
+        type: string
+      campus_id:
+        description: "Campus id"
+        required: true
+        type: string
+        default: "9"
+
+concurrency:
+  group: student-session-diagnose
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    name: Production read-only student session scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Run diagnose on Pi
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          STUDENT_NAME: ${{ inputs.student_name }}
+          TEACHER_NAME: ${{ inputs.teacher_name }}
+          DATE: ${{ inputs.date }}
+          CAMPUS_ID: ${{ inputs.campus_id }}
+        run: |
+          set -euo pipefail
+          SCRIPT_B64=$(base64 -w0 scripts/diagnose-student-session.sh)
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" \
+            SCRIPT_B64="$SCRIPT_B64" STUDENT_NAME="$STUDENT_NAME" TEACHER_NAME="$TEACHER_NAME" DATE="$DATE" CAMPUS_ID="$CAMPUS_ID" \
+            'bash -s' <<'ENDSSH'
+          set -euo pipefail
+          echo "$SCRIPT_B64" | base64 -d > /tmp/diagnose-student-session.sh
+          chmod +x /tmp/diagnose-student-session.sh
+          STUDENT_NAME="$STUDENT_NAME" TEACHER_NAME="$TEACHER_NAME" DATE="$DATE" CAMPUS_ID="$CAMPUS_ID" \
+            bash /tmp/diagnose-student-session.sh | tee /tmp/student-session-diagnose.txt
+          rm -f /tmp/diagnose-student-session.sh
+          ENDSSH
+
+      - name: Capture remote output to artifact
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/diag-out
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" \
+            'cat /tmp/student-session-diagnose.txt' > /tmp/diag-out/diagnose.txt
+          cat /tmp/diag-out/diagnose.txt
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: student-session-diagnose
+          path: /tmp/diag-out/diagnose.txt
+          retention-days: 14
+
+      - name: Job summary
+        run: |
+          {
+            echo '### Student session diagnose'
+            echo '```'
+            cat /tmp/diag-out/diagnose.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
