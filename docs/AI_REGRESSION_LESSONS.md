@@ -946,6 +946,8 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 **追加教訓（同日）**：PR #1516 merge、deploy 綠燈、正式站 `curl` 也回 200 之後，使用者手機 PWA 實測**仍然**顯示英文。根因是 `/fonts/material-symbols-outlined.woff2` 這個路徑**沒有內容雜湊**（不像 `assets/` 下所有 JS/CSS 都是 Vite 自動加雜湊檔名）——同一個 URL 在 bug 存在期間可能已被使用者裝置或 CDN 邊緣節點快取過失敗回應，事後把伺服器端修好，不保證所有已快取的用戶端會重新抓取；PWA「加到主畫面」在 iOS/Android 上更有獨立於一般瀏覽器分頁的快取分區，一般「強制重新整理」不保證清得到。**正確修法不是說服使用者清快取，是讓 URL 本身在內容改變時自動改變**：把字型檔搬進 `frontend/src/assets/fonts/`、`@font-face` 改用相對路徑讓 Vite 建置自動雜湊檔名（`material-symbols-outlined-D6tU34w1.woff2`），使其與其餘所有 bundle 資產享有同一套天然免疫快取的機制，同時也不再需要 `copy-to-backend.cjs` 的白名單特殊處理。**強制規則追加**：任何會被使用者裝置快取、且未來可能改內容的靜態資產（字型／圖示／PWA icon 等），一律透過 Vite 資產管線（`src/` 內以相對路徑 `import`／CSS `url()` 引用）取得自動內容雜湊，不要放進 `frontend/public/` 用固定檔名直通——`public/` 只留給内容本來就不會變、或本來就需要固定檔名的資源（`manifest.json`、`favicon` 等瀏覽器規範要求固定路徑者）。**修復**：同日追加 commit（`frontend/src/assets/fonts/`＋`styles.css` 相對路徑），已用真實 headless 瀏覽器驗證 `document.fonts` 狀態為 `loaded`。
 
+**追加教訓 2（同日，同一個錯誤犯了兩次）**：squash-merge 的 PR（如 #1516）merge 後，continuation branch 若沒有先 `git fetch origin main && git checkout -B <branch> origin/main` 就繼續在同一個本機分支上疊加新 commit，本機分支祖先仍是「squash 前」的多筆原始 commit，跟 origin/main 上「squash 後」的單一 commit 內容相同但**物件不同**——GitHub 會回報 `mergeable_state: dirty`（假衝突：diff 內容其實一致，git 只是認不出兩段不同 commit 歷史代表同一份改動）。這件事在 #1517 開 PR 時發生過一次、已排除故障；**同一個 session 裡緊接著開 #1518 時又犯了一次**，因為在完成 #1517 的除錯後，沒有把「PR merge 後先重啟分支」這個動作變成每次的固定反射，而是回頭直接在舊的（尚未重啟的）本機分支上繼續加下一個 commit。**強制規則**：每次某個 PR 被 squash-merge、且還要在同一個 designated branch 上繼續做下一項工作時，**開新 commit 之前**一律先跑 `git fetch origin main && git checkout -B <branch> origin/main`（若有未推送的本機 commit，先 `git cherry-pick` 疊上去，勿用 `git merge` 硬併兩段歷史）。不是「遇到 dirty 才修」，是「每次 merge 後都預防性重啟」，才不會靠事後補救。
+
 ### R59. 扣堂改分鐘制權威後，`RemainingSessions` 是 ROUND_HALF_UP 衍生顯示值（#613）
 
 **觸發情境**：2026-05-31 #613 落地「補課非標準時長按實際分鐘扣堂」；2026-07-19 延伸涵蓋**加長**補課（契約 2h、補課 3h）。
@@ -1111,7 +1113,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | routes/api.php | §AI 靜默回退路由（改前必讀完整檔案 + route:list） |
 | 備份 / nightly | §nightly 覆蓋修正、§備份還原演練、§R34（備份新鮮度不可只看 mtime）、§R71（repair 與 producer prevention 分離；同日全日期 health aggregate） |
 | Bug 回報 / 附件存檔 | §R11 storage symlink（Archive）、§R51（分診前必查 attachments + reporter 歷史 + 跨分校）、§R53（上線後必回 in-app）、`docs/CHAT_BUG_SYSTEM.md` §3.6–§3.7 |
-| Git / PR 工作流 | §R58（禁止 assume-unchanged 藏檔）、`scripts/git-index-audit.sh`、Epic #535 Phase 0 |
+| Git / PR 工作流 | §R58（禁止 assume-unchanged 藏檔）、`scripts/git-index-audit.sh`、Epic #535 Phase 0、**§R87 追加教訓 2（squash-merge 後繼續在同一 designated branch 開下一個 commit 前，一律先 `git fetch + checkout -B <branch> origin/main` 重啟，勿等 `mergeable_state: dirty` 才修）** |
 | Migration / schema drift | §R63（未合併分支的 migration 禁上 production；drift 修復＝port 回 main＋drift 測試） |
 | 部署 pipeline | §R62（deploy 必須 fetch fail-fast + reset 到 CI `head_sha` 並校驗 HEAD；禁止 `reset --hard origin/main` 靠 stale tracking ref 靜默出貨舊版；Pi repo config 出現 `http.sslbackend=schannel` = 已被 Windows 工具污染，先 unset）、§R67（SSH script 關鍵步驟失敗必須標紅；migration 失敗不得吞成綠燈）、§R68（排程任務上線必須驗證 schedule:run driver 存在；證據=執行 log 而非 schedule:list）、**§R87（`copy-to-backend.cjs` 是獨立白名單；新增 `frontend/public/` 子目錄必須同步加進 `PUBLIC_DIRS`，且驗證需實際跑複製腳本＋正式站 curl，不能只看 `vite build`／dev-server 截圖）** |
 
