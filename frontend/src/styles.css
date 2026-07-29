@@ -2,13 +2,17 @@
 /* Self-hosted (not linked live from fonts.googleapis.com): if this font fails to load,
    every .material-symbols-outlined icon falls back to rendering its raw ligature name
    ("event", "view_list", "search", ...) as literal English text — self-hosting removes
-   the dependency on a third-party CDN succeeding at render time for a UI-critical asset. */
+   the dependency on a third-party CDN succeeding at render time for a UI-critical asset.
+   Imported from src/assets/ (not public/) so Vite content-hashes the filename like every
+   other bundled asset: a content change always produces a brand-new URL, so a client that
+   cached a broken response for the old unhashed /fonts/... path can never get stuck on it
+   again (R87 follow-up — see docs/AI_REGRESSION_LESSONS.md). */
 @font-face {
   font-family: 'Material Symbols Outlined';
   font-style: normal;
   font-weight: 400;
   font-display: block;
-  src: url('/fonts/material-symbols-outlined.woff2') format('woff2');
+  src: url('./assets/fonts/material-symbols-outlined.woff2') format('woff2');
 }
 
 * {
