@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.07.29",
     "date": "2026-07-29",
     "title": "2026.07.29 草稿（未發布）",
-    "summary": "版本更新頁的版號改為西元年月日格式；公告文字與工程細節分開，版面較不會洗技術詞。；評量批次核准在手機上找不到（card view 缺選取框）",
+    "summary": "順延重疊下一期警示；版本更新頁的版號改為西元年月日格式；公告文字與工程細節分開，版面較不會洗技術詞。",
     "audience": [
       "teacher",
       "director"
@@ -18,6 +18,7 @@ export const changelogDraftNotes = [
       {
         "title": "新增內容",
         "items": [
+          "順延重疊下一期警示",
           "版本更新頁的版號改為西元年月日格式；公告文字與工程細節分開，版面較不會洗技術詞。"
         ]
       },
@@ -32,6 +33,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "順延重疊下一期警示",
       "版本更新頁的版號改為西元年月日格式；公告文字與工程細節分開，版面較不會洗技術詞。",
       "評量批次核准在手機上找不到（card view 缺選取框）",
       "補上分校/老師授權檢查 [P0 IDOR]",
