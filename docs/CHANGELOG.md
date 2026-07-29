@@ -1,3 +1,8 @@
+## 2026-07-29 — fix(course-packages): 總堂數修改後同步課程剩餘堂數（in-app #208）
+
+- 主任把方案總堂數往下修改後，方案本身的剩餘堂數立即正確，但同方案內每堂課各自的剩餘堂數欄位不會跟著更新，主任優先風險清單因此顯示舊的（過高的）剩餘堂數。
+- 修法：總堂數變動後自動呼叫既有的方案重新結算工具，讓每堂課的剩餘堂數與方案同步，不需要再手動觸發重新結算。純讀寫同步，無新增結算邏輯、無 migration。
+
 ## 2026-07-28 — fix(course-management): RenewMonthlyModal 防呆 current_end_date 無效日期
 
 - Sentry PHP-LARAVEL-26（#1486）：`computedEndDate` 對 `props.form.current_end_date` 直接 `new Date(...)` 再呼叫 `toISOString()`，若該字串無法解析會產出 Invalid Date，`toISOString()` 對 Invalid Date 會丟 `RangeError: Invalid Date`。
