@@ -21,7 +21,7 @@ const RULES = [
   [/branch naming|invalid branch name|gov-branch-001/, 'BRANCH_NAMING_POLICY'],
   [/pr size|too large|hard limit|gov-size-001|reviewability/, 'PR_SIZE_POLICY'],
   [/conflict marker|<<<<<<<|>>>>>>>/, 'MERGE_CONFLICT_MARKERS'],
-  [/generated in-app updates|sync-release-notes|releaseNotes\.generated|parentUpdates\.generated/, 'GENERATED_ARTIFACT_DRIFT'],
+  [/generated in-app updates|sync-release-notes|staffUpdates\.generated|parentUpdates\.generated|changelogDraft\.generated/, 'GENERATED_ARTIFACT_DRIFT'],
   [/changelog.*(?:missing|not updated)/, 'CHANGELOG_POLICY'],
   [/yaml|workflow syntax|unable to parse|invalid workflow/, 'WORKFLOW_SYNTAX'],
   [/econnreset|etimedout|socket hang up|registry.*503|502/, 'NETWORK_OR_REGISTRY'],

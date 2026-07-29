@@ -1,3 +1,13 @@
+## 2026-07-29 — feat(release-notes): 教職員版本更新改為顯式 STAFF_UPDATES（與 CHANGELOG 拆分）
+
+- 新增 `docs/STAFF_UPDATES.yml` 為教職員「版本更新」唯一權威；`notesForRole` 不再自動發布 CHANGELOG 投影。
+- CHANGELOG 僅產生 `changelogDraft.generated.js`（AI 起草用），並強制依日期降冪排序。
+- 新增使用者文案閘門 `userFacingCopyGate`（擋內部 ID／class／Phase 等；失敗即停，不刮字改寫）。
+- 家長仍只讀 `PARENT_UPDATES.yml`（R45）；STAFF 檔禁止 `parent` audience（R85）。
+- 操作指南：`docs/GUIDE_STAFF_UPDATES.md`。
+
+開發備註：UI 標示改「最新更新」；分類改「你現在可以／我們修好了／操作更順手／需要你注意」。回歸 `npm run test:release-notes`。
+
 ## 2026-07-24 — feat: Course Continuity 群組 API MVP（#1382）
 
 - 新增 `course_contract_groups`／`course_contract_group_members`（空表；不物理 merge 合約）。
@@ -397,7 +407,8 @@ Ops：所有直接執行的 workflow jobs 明確固定為 GitHub-hosted `ubuntu-
 
 > 格式：每條一行，分類 Added / Fixed / Changed / Security / Ops  
 > 細節查 PR 說明或 `.cursor/plans/`  
-> **版本公告（給老師／主任看的短卡）**：同一版建議 **第一條寫使用者白話**；技術細節請另起一行並以 **`開發備註：`** 開頭（`npm run sync-release-notes` 會略過不進 `releaseNotes.generated.js`）。  
+> **版本公告（給老師／主任看的短卡）**：請寫入 `docs/STAFF_UPDATES.yml`（見 `GUIDE_STAFF_UPDATES.md`）。CHANGELOG 本檔是工程紀錄；`開發備註：` 行不會進草稿。  
+
 > **閱讀**：依日期標題搜尋；**勿逐行通讀**。
 >
 > **滾動歸檔策略**（對齊 Keep a Changelog / 大型 repo 慣例）：主檔只保留**當月**，月初把上月移入 `archive/`。更早紀錄：
