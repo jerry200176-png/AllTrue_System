@@ -29,13 +29,13 @@ const props = defineProps({
 .at-card {
   background: var(--ds-canvas);
   border: 1px solid var(--ds-hairline);
-  border-radius: 12px;
+  border-radius: var(--ds-radius-lg);
   padding: 24px;
 }
 
 .at-card--inset {
   background: var(--ds-canvas-soft);
-  border-radius: 8px;
+  border-radius: var(--ds-radius-lg);
   padding: 16px;
 }
 

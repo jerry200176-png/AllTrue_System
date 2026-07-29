@@ -235,11 +235,11 @@
             <div class="pb__bar"><div class="pb__fill" :style="{ width: attendancePct + '%' }"></div></div>
           </div>
           <AtMetric label="待審評量" :value="`${pendingEvaluations.length} 筆`" />
-          <AtMetric label="今日應處理" :value="workflowDailySummary.due_total" />
-          <AtMetric label="今日已完成" :value="workflowDailySummary.done_total" />
           <AtMetric
-            label="已逾期"
-            :value="workflowDailySummary.breached_total"
+            label="今日工作量"
+            :value="`${workflowDailySummary.due_total} 件`"
+            :delta="`已完成 ${workflowDailySummary.done_total}・逾期 ${workflowDailySummary.breached_total}`"
+            :deltaTone="workflowDailySummary.breached_total > 0 ? 'negative' : 'positive'"
             :accent="workflowDailySummary.breached_total > 0 ? 'var(--ds-danger)' : ''"
           />
           <AtMetric label="未讀通知" :value="unreadNotificationCount" />
@@ -2239,11 +2239,11 @@ onBeforeUnmount(() => {
 /* ===== Progress Board ===== */
 .progress-board {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
   background: var(--ds-canvas-soft);
   border: 1px solid var(--ds-hairline);
-  border-radius: 16px;
+  border-radius: var(--ds-radius-lg);
   padding: 12px;
 }
 
@@ -2846,18 +2846,10 @@ onBeforeUnmount(() => {
     font-size: 24px;
   }
   .dash.dash--desktop-dense .progress-board {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 8px;
     padding: 10px;
-    border-radius: 22px;
-  }
-  .dash.dash--desktop-dense .pb {
-    min-height: 72px;
-    padding: 10px 12px;
-    border-radius: 16px;
-  }
-  .dash.dash--desktop-dense .pb__val strong {
-    font-size: 24px;
+    border-radius: var(--ds-radius-lg);
   }
   .dash.dash--desktop-dense .work-grid {
     gap: 14px;

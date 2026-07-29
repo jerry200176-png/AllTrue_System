@@ -948,6 +948,20 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 **追加教訓 2（同日，同一個錯誤犯了兩次）**：squash-merge 的 PR（如 #1516）merge 後，continuation branch 若沒有先 `git fetch origin main && git checkout -B <branch> origin/main` 就繼續在同一個本機分支上疊加新 commit，本機分支祖先仍是「squash 前」的多筆原始 commit，跟 origin/main 上「squash 後」的單一 commit 內容相同但**物件不同**——GitHub 會回報 `mergeable_state: dirty`（假衝突：diff 內容其實一致，git 只是認不出兩段不同 commit 歷史代表同一份改動）。這件事在 #1517 開 PR 時發生過一次、已排除故障；**同一個 session 裡緊接著開 #1518 時又犯了一次**，因為在完成 #1517 的除錯後，沒有把「PR merge 後先重啟分支」這個動作變成每次的固定反射，而是回頭直接在舊的（尚未重啟的）本機分支上繼續加下一個 commit。**強制規則**：每次某個 PR 被 squash-merge、且還要在同一個 designated branch 上繼續做下一項工作時，**開新 commit 之前**一律先跑 `git fetch origin main && git checkout -B <branch> origin/main`（若有未推送的本機 commit，先 `git cherry-pick` 疊上去，勿用 `git merge` 硬併兩段歷史）。不是「遇到 dirty 才修」，是「每次 merge 後都預防性重啟」，才不會靠事後補救。
 
+### R88. 「參考 star 的 repo」指真的去讀原始碼，`RFC_PLATFORM_OPTIMIZATION_FROM_STARS_2026.md` 只是索引不是替代品
+
+**觸發情境**：2026-07-29 DirectorDashboard Wave A/B/C 全數依 `RFC_PLATFORM_OPTIMIZATION_FROM_STARS_2026.md` 的參考表（一行摘要，如「pacifio/ui → Dense ops UI：多表面、資訊密度」）產出設計方向，未實際讀過任何一個參考 repo 的原始碼。使用者事後追問兩次「你知道我叫你參考 star 的 repo 是什麼意思嗎」，才澄清：意思是真的去讀那些 repo 的實際內容，不是憑 RFC 文件裡別人（或前一個 agent）彙整過的摘要句子做設計判斷。
+
+**根因**：RFC 文件本身承認自己是二手彙整（文件末 `Document control`：「Authors: Agent（Composer）依 Founder star 清單與既有 RFC/roadmap 彙整」），但先前的工作流程把它當一手事實使用——只讀一行「要學什麼」欄位就直接套用，從未驗證彙整是否準確、是否夠具體到能落地成程式碼層級的決策（例如圓角該用幾 px、一個 dashboard 該放幾個統計格）。
+
+**強制規則**：當任務指示「參考 X repo」或指向一份「已彙整參考清單」的文件時：
+- 不可只讀彙整文件的摘要句子就動手；必須 `git clone --depth 1`（大型 monorepo 用 `--filter=blob:none --sparse` 只 checkout 需要的子目錄，見下方指令）把 repo 的**真實原始碼／設計 token／規則文件**（如 `lessons.md`、`patterns.md`、實際 `.scss`／`.vue`／`.tsx` 元件）讀進來，用真實內容找出具體、可比對的落差（例如「這個 repo 的圓角只有 3/4/6/9999px 四種，我們寫死了 16px」），而不是憑一行摘要腦補設計判斷。
+- GitHub MCP tool（`search_code`／`get_file_contents` 等）的 repo scope 綁定在本 session 的授權清單，讀取清單外的 repo（例如 star 清單裡的第三方開源專案）一律走 `git clone`（純 git 走 proxy 不受此限），不要嘗試用 `add_repo` 跨 owner 加（v1 不支援 cross-tier add）；直接打 `api.github.com` REST 也會被 proxy policy 擋（403），不是 GitHub 端問題。
+- 找到的落差要能具體引用來源（哪個 repo、哪個檔案、哪一行規則），寫進 commit/PR/CHANGELOG，讓「參考了什麼」可稽核，而不是只寫「參考大公司軟體」這種無法驗證的空話。
+- 讀完不代表照搬：仍要對照 `RULE_DESIGN_SYSTEM.md`／AllTrue 既有 token／既有互動語意（例如某清單是「點擊導頁」而非「打勾完成」，即使參考 repo 有現成的打勾 UI 也不該硬套，語意不同）。
+
+**修復／落地案例**：Wave D（DirectorDashboard）——實際 clone `pacifio/ui`／`primer/css`／`carbon-design-system/carbon`（sparse）／`microsoft/fluentui`（sparse）／`vbenjs/vue-vben-admin`，用其中 `pacifio/ui` 的 `kitchen-sink/app/patterns/dashboard/page.tsx`（4 metrics max 規則）與 `skills/atlas/references/lessons.md` #16（圓角只能 3/4/6/9999px）兩項具體、可引用的真實規則，對照出 `progress-board` 6 格過多、`AtCard`/`AtMetric` 圓角寫死 12px 未接 AllTrue 自己既有 token 兩項落差並修正。
+
 ### R59. 扣堂改分鐘制權威後，`RemainingSessions` 是 ROUND_HALF_UP 衍生顯示值（#613）
 
 **觸發情境**：2026-05-31 #613 落地「補課非標準時長按實際分鐘扣堂」；2026-07-19 延伸涵蓋**加長**補課（契約 2h、補課 3h）。
@@ -1115,6 +1129,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | Bug 回報 / 附件存檔 | §R11 storage symlink（Archive）、§R51（分診前必查 attachments + reporter 歷史 + 跨分校）、§R53（上線後必回 in-app）、`docs/CHAT_BUG_SYSTEM.md` §3.6–§3.7 |
 | Git / PR 工作流 | §R58（禁止 assume-unchanged 藏檔）、`scripts/git-index-audit.sh`、Epic #535 Phase 0、**§R87 追加教訓 2（squash-merge 後繼續在同一 designated branch 開下一個 commit 前，一律先 `git fetch + checkout -B <branch> origin/main` 重啟，勿等 `mergeable_state: dirty` 才修）** |
 | Migration / schema drift | §R63（未合併分支的 migration 禁上 production；drift 修復＝port 回 main＋drift 測試） |
+| 前端 UI 參考 star repo / RFC 落地 | **§R88（「參考 star 的 repo」＝真的 `git clone` 讀原始碼，`RFC_PLATFORM_OPTIMIZATION_FROM_STARS_2026.md` 的一行摘要只是索引不是替代品；落差要能具體引用來源檔案/規則）** |
 | 部署 pipeline | §R62（deploy 必須 fetch fail-fast + reset 到 CI `head_sha` 並校驗 HEAD；禁止 `reset --hard origin/main` 靠 stale tracking ref 靜默出貨舊版；Pi repo config 出現 `http.sslbackend=schannel` = 已被 Windows 工具污染，先 unset）、§R67（SSH script 關鍵步驟失敗必須標紅；migration 失敗不得吞成綠燈）、§R68（排程任務上線必須驗證 schedule:run driver 存在；證據=執行 log 而非 schedule:list）、**§R87（`copy-to-backend.cjs` 是獨立白名單；新增 `frontend/public/` 子目錄必須同步加進 `PUBLIC_DIRS`，且驗證需實際跑複製腳本＋正式站 curl，不能只看 `vite build`／dev-server 截圖）** |
 
 ---
