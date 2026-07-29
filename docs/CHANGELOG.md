@@ -1,3 +1,12 @@
+## 2026-07-29 — fix(dashboard): 主任總覽頁面 Wave D —— 對照真實參考 repo 原始碼修正資訊密度與圓角一致性
+
+- Wave A/B/C 完成後，實際 clone `RFC_PLATFORM_OPTIMIZATION_FROM_STARS_2026.md` 引用的 Epic D 參考 repo 原始碼（`pacifio/ui`、`primer/css`、`carbon-design-system/carbon`、`microsoft/fluentui`、`vbenjs/vue-vben-admin`），逐一讀真實檔案而非文件摘要，找出兩項可對照修正的落差：
+  1. `pacifio/ui` 的 `kitchen-sink/app/patterns/dashboard/page.tsx`（真實 dashboard pattern 頁）明文規則「Lead with 4 key metrics max — any more dilutes attention」；`progress-board` 原本擺 6 個 `AtMetric`（今日到班／待審評量／今日應處理／今日已完成／已逾期／未讀通知）。改法：把「今日應處理／今日已完成／已逾期」三個同屬 workflow 彙總的數字合併成一個「今日工作量」`AtMetric`（`value`=應處理數，`delta`="已完成 N・逾期 N"），不砍任何資訊，只砍視覺格數，降到 4 格。
+  2. `AtCard.vue`／`AtMetric.vue` 的 `border-radius: 12px` 是硬寫死值，未接上 AllTrue 自己在 `styles.css` 早就定義好的 `--ds-radius-sm/md/lg/pill`（4/6/8/9999px）token；`progress-board` 外框也是硬寫 `16px`（桌面密集模式甚至是 `22px`，比一般模式的圓角還大，違反「密集模式該更緊湊」的直覺）。`pacifio/ui` 的 `skills/atlas/references/lessons.md` 第 16 條「Radius is sparse on purpose」明確列出合法圓角只有 3／4／6／9999px，「Don't invent 8, 10, 12, 16px radii」——與 AllTrue 自己既有的 token 規模高度吻合，兩邊互相印證。改法：`AtCard`／`AtMetric`／`progress-board`（含桌面密集模式覆寫）全部改接 `var(--ds-radius-lg)`（8px），不新增 token。
+  - 順手清掉 `dash--desktop-dense` 底下對應 Wave B 轉換後已無模板引用的 `.pb`／`.pb__val` 死 CSS（`.pb-cell` 是現用類別，`.pb` 不是）。
+  - `AtCard`／`AtMetric` 目前僅 `DirectorDashboard.vue` 使用（已確認站內無其他頁面引用），圓角改動影響範圍受控，不需要額外頁面回歸。
+  - 已用真實 Vue 元件（`pilot-mount.js` `page=director`）在 390／768／1440px 截圖驗證新版 4 格 progress-board 排版與圓角觀感；`vite build` 全綠。純樣式與資訊呈現調整，未改任何 API、繳費／審核／排課邏輯。
+
 ## 2026-07-29 — feat(dashboard): 主任總覽頁面 Wave C —— 版面明確分組「今日必辦」與「本週趨勢與紀錄」
 
 - 延續 Wave A/B，處理改善計劃最後一項：work-grid 兩欄式版面原本沒有明確的資訊層級——右欄把永遠顯示的卡片（課表回報、流程追蹤、通知摘要）跟只有「完整檢視」才出現的卡片（近 7 天代課、近期操作履歷、老師評量填寫率）交錯排列，使用者切換核心/完整檢視時，卡片是「無聲」冒出來，看不出彼此的分類邏輯。
