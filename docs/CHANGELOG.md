@@ -8,6 +8,18 @@
   4. 「還出現英文」的根因：全站圖示字型（Material Symbols）原本即時連 Google Fonts CDN，一旦字型連線失敗，圖示會退回顯示英文 ligature 名稱（如 `event`、`view_list`）。改為自架字型檔（`frontend/public/fonts/`），不再依賴外部 CDN 在渲染當下成功，比對照大公司做法（不依賴第三方 CDN 撐介面關鍵資源）。
 - 純前端調整，未變更任何 API 或審核規則。已用真實 Vue 元件（非重繪版）搭配 mocked API、並刻意封鎖外部字型網域，在 390px／1440px 視窗實際截圖驗證圖示正確渲染、版面不再換行，全流程無 console 錯誤、`vite build` 全綠。
 
+## 2026-07-29 — fix(course-packages): 總堂數修改後同步課程剩餘堂數（in-app #208）
+
+- 主任把方案總堂數往下修改後，方案本身的剩餘堂數立即正確，但同方案內每堂課各自的剩餘堂數欄位不會跟著更新，主任優先風險清單因此顯示舊的（過高的）剩餘堂數。
+- 修法：總堂數變動後自動呼叫既有的方案重新結算工具，讓每堂課的剩餘堂數與方案同步，不需要再手動觸發重新結算。純讀寫同步，無新增結算邏輯、無 migration。
+
+## 2026-07-29 — feat(tuition): 順延重疊下一期警示（#1100, FD-3）
+
+- `AlertController` 新增 read-only `newer_course_overlap` 欄位：當本期（A）`EndDate` 因請假順延而觸及或超過已預購下一期（B）`StartDate` 時，於主任繳費頁面標示重疊，不自動變更任何日期。
+- 前端新增 `formatNewerCourseOverlapWarning()`（`studentClassDisplay.js`）與繳費頁不分繳費狀態顯示的「期間重疊」badge。
+- 對齊 FD-3（順延語意維持 append-only，B 期起始日絕不被靜默位移；任何位移需明確、可稽核、對使用者可見）。純顯示層，不寫入任何 session／billing 資料。
+- 回歸：`TuitionAlertsApiTest`（重疊 true/false 兩情境，並斷言 A/B 日期未被寫入變動）、`studentClassDisplay.test.js`。
+
 ## 2026-07-28 — fix(course-management): RenewMonthlyModal 防呆 current_end_date 無效日期
 
 - Sentry PHP-LARAVEL-26（#1486）：`computedEndDate` 對 `props.form.current_end_date` 直接 `new Date(...)` 再呼叫 `toISOString()`，若該字串無法解析會產出 Invalid Date，`toISOString()` 對 Invalid Date 會丟 `RangeError: Invalid Date`。

@@ -246,6 +246,13 @@
                       對帳
                     </button>
 
+                    <!-- #1100/FD-3: 本期順延與下一期重疊 — director-facing only, never auto-shifts dates -->
+                    <span
+                      v-if="r.newer_course_overlap"
+                      class="tc-overlap-badge"
+                      :title="overlapWarningTitle(r)"
+                    >{{ overlapWarningLabel(r) }}</span>
+
                     <!-- unpaid / partial: slip + 核帳登記 -->
                     <template v-if="r.payment_status === 'unpaid' || r.payment_status === 'partial'">
                       <button class="tc-btn tc-btn--slip" @click="openSlip(r)" title="產生繳費通知單">
@@ -729,6 +736,7 @@ import OverdueBucketsPanel from '../components/OverdueBucketsPanel.vue';
 import {
   formatTuitionSettleSummary,
   formatTuitionNewerCourseHint,
+  formatNewerCourseOverlapWarning,
 } from '../lib/studentClassDisplay.js';
 
 const props = defineProps({
@@ -1501,6 +1509,14 @@ function newerCourseBadgeLabel(row) {
   return formatTuitionNewerCourseHint(row).shortBadge;
 }
 
+function overlapWarningTitle(row) {
+  return formatNewerCourseOverlapWarning(row).primary;
+}
+
+function overlapWarningLabel(row) {
+  return formatNewerCourseOverlapWarning(row).shortBadge;
+}
+
 async function confirmSettle() {
   if (!settleTarget.value) return;
   const row = settleTarget.value;
@@ -2190,6 +2206,19 @@ loadAlerts();
   font-weight: 600;
   background: var(--ds-success-wash);
   color: var(--ds-success);
+  cursor: help;
+  white-space: nowrap;
+}
+
+.tc-overlap-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--ds-warning-wash);
+  color: var(--ds-warning);
   cursor: help;
   white-space: nowrap;
 }

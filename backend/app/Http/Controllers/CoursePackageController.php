@@ -892,6 +892,15 @@ class CoursePackageController extends Controller
                 $pkg->save();
             });
 
+            // in-app #208: the bulk update above only cascades SessionCount /
+            // PackageTotalSessions to members (RISK-002 guard — never blind-write
+            // RemainingSessions there). Without this, each member's RemainingSessions
+            // silently keeps its pre-edit value until someone separately calls
+            // /recompute. Reuse the existing ledger-based reconciliation instead of
+            // writing new remaining-session logic.
+            PackageDeductionService::fullRecompute($pkg->id);
+            $pkg->refresh();
+
             Log::info('CoursePackage totalSessions changed', [
                 'package_id'       => $pkg->id,
                 'campus_id'        => $pkg->campus_id,
