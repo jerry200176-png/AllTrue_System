@@ -17,9 +17,9 @@
 
 | 優先層 | Issue | 現況 |
 |---|---|---|
-| **P0 合規/資料** | #889 PII data inventory | 🔄 背景 agent 產出中，完成後落地為 `docs/PRIVACY_DATA_INVENTORY.md` |
-| **P0 合規/資料** | #888 IAM/access review（code-level 部分） | 🔄 背景 agent 產出中；**僅涵蓋程式碼可驗證的角色/權限邏輯，不含真實 production 帳號盤點**（需要人工登入各系統才能完成，見下方 blocked） |
-| **P0 合規/資料** | #892 third-party/vendor risk register | ✅ 本輪完成：`docs/VENDOR_RISK_REGISTER.md` |
+| **P0 合規/資料** | #889 PII data inventory | ✅ 本輪完成：`docs/REF_PRIVACY_DATA_INVENTORY.md` |
+| **P0 合規/資料** | #888 IAM/access review（code-level 部分） | ✅ 稽核完成，**發現真實 P0 資安漏洞並已修復**（`confirmPayment()` 缺分校/老師歸屬檢查，見 #1504 + PR #1506）；**僅涵蓋程式碼可驗證的角色/權限邏輯，不含真實 production 帳號盤點**（需要人工登入各系統才能完成，見下方 blocked），該部分尚未落成獨立文件 |
+| **P0 合規/資料** | #892 third-party/vendor risk register | ✅ 本輪完成：`docs/REF_VENDOR_RISK_REGISTER.md` |
 | **P0 合規/資料** | #890 sensitive action audit log coverage、#902 security exception register、#903 privacy request SOP | ⏳ 待接續（下個 batch） |
 | **P1 可靠性護欄** | #878 Release/Deploy/In-app traceability | ✅ 本 session 稍早已實作核心（PR #1496：`deploy-meta.json` + `/health/detailed`），待 review/merge |
 | **P1 可靠性護欄** | #872 DORA 四指標儀表板 | ⏳ 可從既有 git/CI 歷史直接算出，待接續 |
