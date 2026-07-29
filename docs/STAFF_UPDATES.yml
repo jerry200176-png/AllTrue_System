@@ -1,15 +1,6 @@
-# Staff-facing product updates (explicit copy only).
-# Source of truth for in-app「版本更新」page (teacher / director / elevated campus roles).
-# NOT derived from docs/CHANGELOG.md — engineering changelog and staff communication are separate products.
-#
-# importance: digest | major | action_required
-# category: added | fixed | improved | action_required
-# audiences: director | teacher  (parent is FORBIDDEN here — use docs/PARENT_UPDATES.yml)
-#
-# After editing: cd frontend && npm run sync-release-notes
-# Then commit frontend/src/lib/staffUpdates.generated.js (CI checks drift).
-#
-# AI may draft candidates from CHANGELOG; only human-approved rows belong in this file.
+# Staff in-app「版本更新」唯一來源（≠ CHANGELOG）。家長用 PARENT_UPDATES.yml。
+# importance: digest|major|action_required · category: added|fixed|improved|action_required
+# audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
   - id: staff-2026-07-week-30

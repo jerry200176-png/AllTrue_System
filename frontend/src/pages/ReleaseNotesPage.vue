@@ -16,14 +16,17 @@
     <div v-if="latestNote" class="rn-featured">
       <span class="rn-version rn-version--large">{{ latestNote.version }}</span>
       <div>
-        <div class="rn-featured-meta">
+        <div class="rn-title-row">
           <span v-if="latestNote.importance" class="rn-importance" :data-importance="latestNote.importance">
             {{ importanceLabel(latestNote.importance) }}
           </span>
           <h3>{{ latestNote.title }}</h3>
         </div>
         <p>{{ latestNote.summary }}</p>
-        <small v-if="latestNote.effectiveAt && latestNote.effectiveAt !== latestNote.publishedAt" class="rn-effective">
+        <small
+          v-if="latestNote.effectiveAt && latestNote.effectiveAt !== latestNote.publishedAt"
+          class="rn-effective"
+        >
           已於 {{ latestNote.effectiveAt }} 生效
         </small>
       </div>
@@ -36,7 +39,7 @@
       <div class="rn-item-head">
         <span class="rn-version">{{ note.version }}</span>
         <div>
-          <div class="rn-item-title-row">
+          <div class="rn-title-row">
             <span v-if="note.importance" class="rn-importance" :data-importance="note.importance">
               {{ importanceLabel(note.importance) }}
             </span>
@@ -47,7 +50,11 @@
       </div>
       <p v-if="note.summary" class="rn-summary">{{ note.summary }}</p>
       <div class="rn-sections">
-        <section v-for="section in normalizedSections(note)" :key="`${note.id || note.version}-${section.title}`" class="rn-section">
+        <section
+          v-for="section in normalizedSections(note)"
+          :key="`${note.id || note.version}-${section.title}`"
+          class="rn-section"
+        >
           <h4>{{ section.title }}</h4>
           <ul class="rn-list">
             <li v-for="row in section.items" :key="row">{{ row }}</li>
@@ -166,8 +173,7 @@ function importanceLabel(importance) {
   background: #fffbeb;
 }
 
-.rn-featured-meta,
-.rn-item-title-row {
+.rn-title-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -195,7 +201,7 @@ function importanceLabel(importance) {
 .rn-effective {
   display: block;
   margin-top: 6px;
-  color: #a16207;
+  color: var(--warning);
   font-size: 12px;
 }
 
@@ -204,21 +210,20 @@ function importanceLabel(importance) {
   align-items: center;
   font-size: 11px;
   font-weight: 800;
-  letter-spacing: 0.02em;
   border-radius: 999px;
   padding: 2px 8px;
-  background: #e2e8f0;
-  color: #334155;
+  background: var(--ds-canvas-soft);
+  color: var(--ds-ink-secondary);
 }
 
 .rn-importance[data-importance='major'] {
-  background: #ffedd5;
-  color: #9a3412;
+  background: var(--warning-bg);
+  color: var(--warning);
 }
 
 .rn-importance[data-importance='action_required'] {
-  background: #fee2e2;
-  color: #991b1b;
+  background: var(--danger-bg);
+  color: var(--danger);
 }
 
 .rn-item {
