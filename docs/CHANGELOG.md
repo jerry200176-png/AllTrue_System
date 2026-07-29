@@ -1,3 +1,11 @@
+## 2026-07-29 — feat(dashboard): 主任總覽頁面 Wave B —— 工作區卡片統一改用 At* 設計系統元件
+
+- 延續 Wave A 的收斂整理，這次處理 `docs/design/UI_AUDIT_2026-07-26.md` 標記的「Metric/card density uneven」：work-grid 內 7 張卡片（今日課表、繳費／續課提醒、待審核評量、流程追蹤、近期操作履歷、老師評量填寫率、通知摘要）原本各自手刻 header／empty／loading 標記，密度與樣式略有差異。改為統一套用 `AtCard`（卡片殼＋header/actions slot）、`AtEmpty`（空狀態）、`AtSkeleton`（loading 骨架屏），`progress-board` 的 6 個統計 pill 改用 `AtMetric`。
+- `AtCard`／`AtMetric` 先前只有元件層級單元測試，尚未在任何真實頁面接入；本次是它們第一次進正式頁面，已用真實 Vue 元件（`pilot-mount.js` `page=director`）＋mocked API 在 390/768/1440px、含資料/空狀態/loading 骨架屏/完整檢視四種情境下截圖驗證。
+- 徽章數字曾一度改用 `AtBadge`（dot+label），但比對 `NotificationsCenter.vue` 既有用法後發現 `AtBadge` 全站慣例只用於文字類別標籤（如「請假申請」），從未用於純數字計數；改回沿用既有 `.wp__badge` 數字圓標樣式，避免創造新的不一致慣例。
+- 課表回報（`sd-card`，整卡可點擊導頁）與補課案件（`exception-workflows-sec`，含多重 loading/error 狀態與候選時段巢狀 UI）因互動行為與其他卡片明顯不同，本波刻意不強制套殼，留待後續 wave 個別處理。
+- 純前端結構調整，未改任何 API、繳費／審核／排課邏輯。`vite build` 全綠，`AtCard`/`AtEmpty`/`AtMetric` 既有單元測試全過。
+
 ## 2026-07-29 — fix(dashboard): 主任總覽頁面 Wave A —— 收斂重複資訊源 + 修正文字換行 bug
 
 - 主任反映總覽頁面「很亂」。盤點後發現同一份「今天要做什麼」被拆成三套機制各自呈現：E-OPS-TRUST 決策中心、「今日優先處理」風險卡、以及最上方待辦小卡（action-lane）——待審核評量數甚至同時出現在三處。程式碼裡已有註解證實這是已知重疊（`// Trust decisions ... avoid duplicate prompts`），但「今日優先處理」與 action-lane 仍完整重複同一組訊號（待到班／催繳／補點名／補課／待審核／家長回饋）。
