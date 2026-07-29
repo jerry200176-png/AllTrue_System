@@ -5,6 +5,12 @@
 - 對齊 FD-3（順延語意維持 append-only，B 期起始日絕不被靜默位移；任何位移需明確、可稽核、對使用者可見）。純顯示層，不寫入任何 session／billing 資料。
 - 回歸：`TuitionAlertsApiTest`（重疊 true/false 兩情境，並斷言 A/B 日期未被寫入變動）、`studentClassDisplay.test.js`。
 
+## 2026-07-28 — fix(course-management): RenewMonthlyModal 防呆 current_end_date 無效日期
+
+- Sentry PHP-LARAVEL-26（#1486）：`computedEndDate` 對 `props.form.current_end_date` 直接 `new Date(...)` 再呼叫 `toISOString()`，若該字串無法解析會產出 Invalid Date，`toISOString()` 對 Invalid Date 會丟 `RangeError: Invalid Date`。
+- 修正為先檢查 `Number.isNaN(parsed.getTime())`，解析失敗時退回 `new Date()`（今天）當基準，不再讓整個月結續約 modal 崩潰。
+- 純前端防呆，無 migration、無後端行為變更。
+
 ## 2026-07-29 — fix(learning): 評量批次核准在手機上找不到（card view 缺選取框）
 
 - 學習評量表在寬度 < 760px 時預設切到卡片檢視（`viewMode='card'`），但批次核准／需修改／退回只做在桌機的表格檢視裡，卡片檢視完全沒有選取框，導致手機上永遠選不到任何一筆、批次列永遠不會出現——issue #1131 先前的程式碼稽核只看了桌機表格，沒發現這個落差。
