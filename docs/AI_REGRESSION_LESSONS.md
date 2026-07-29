@@ -927,6 +927,23 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - Code review／PR 自查：composable 的 `return {…}` 物件裡每個識別字都要能在檔案內找到宣告或 import；`grep -n "^import\|^const\|^function"` 對照 return list 是最低成本的手動檢查。
 - 已修復：刪除未使用、未宣告的殘留引用；新增 `useCourseSessionsDisplay.test.js`（CI `test:unit:cov` 既有 glob `src/composables/**/__tests__/**/*.test.js` 自動涵蓋，無需另外接線）。
 
+### R87. `vite build` / dev-server 測試綠燈 ≠ 正式站真的部署到——`copy-to-backend.cjs` 是另一份獨立白名單
+
+**觸發情境**：2026-07-29 #1512 把 Material Symbols Outlined 圖示字型從即時連 Google Fonts CDN 改為自架（新增 `frontend/public/fonts/material-symbols-outlined.woff2` + `@font-face` 指向 `/fonts/...`）。#1512／#1514／#1515 三個 PR 都用「真實 Vue 元件 + mocked API + 390/768/1440px 截圖」驗證過圖示正確渲染，`vite build` 也全綠，但正式站部署後全站圖示仍然顯示英文原名（`event`、`calendar_today`、`warning`…）。使用者反映「到處都是英文」才被發現——已經連續 3 次部署都受影響。
+
+**根因**：正式站部署（`deploy.yml` SSH 到 Pi 後執行 `npm run deploy` = `vite build && node scripts/copy-to-backend.cjs`）用的是 `frontend/scripts/copy-to-backend.cjs` 這支獨立腳本，把 `dist_build/` 選擇性複製到 `backend/public/`——只複製寫死的 `ROOT_ASSETS` 清單（`manifest.json`／`logo.png`／icon 圖／`version.json`）+ `PUBLIC_DIRS`（原本只有 `['audio']`）+ `assets/`（hash 檔名的 JS/CSS）+ `index.html`。新增的 `fonts/` 目錄從未被列入任何白名單，`vite build` 本身雖然把 `frontend/public/` 完整複製進 `dist_build/`（含 `fonts/`），但這份完整輸出**從來沒有整個被部署**——只有白名單內的子集會被複製到 `backend/public/`。
+
+**為何 CI／測試都沒攔住**：`vite.ui-foundation.config.js`（Playwright 視覺驗證用）與一般 `vite build` 都是直接讀 `frontend/public/` 或建置到 `dist_build/`，從來不經過 `copy-to-backend.cjs` 這個「部署時才跑」的第二層過濾。也就是說，全部驗證路徑測的都是「build 出來的東西對不對」，沒有一個測過「build 出來的東西是否真的會被複製到正式站 serve 的目錄」。這兩者是**兩份獨立的真相來源**，改 A 不代表 B 會同步更新。
+
+**強制規則（未來在 `frontend/public/` 下新增任何目錄、且會被 CSS/JS 用絕對路徑 `url('/xxx/...')` 引用時必讀）**：
+
+- 新增 `frontend/public/<newdir>/` 且有程式碼用絕對路徑引用（`@font-face` `src`、`<img src="/...">`、`fetch('/...')` 等）→ **同一個 PR 必須**把 `<newdir>` 加進 `frontend/scripts/copy-to-backend.cjs` 的 `PUBLIC_DIRS`。
+- 驗證方式**不能只看** `vite build` 綠燈或 Playwright 截圖——這兩者都不經過部署腳本。必須額外執行 `node scripts/copy-to-backend.cjs`（對照已存在的 `dist_build/` 輸出）並確認 `backend/public/<newdir>/` 真的產生了對應檔案。
+- merge 後除了看 CI／`deploy.yml` 綠燈，**必須額外對正式站該資源路徑 `curl` 確認回 200**（例如 `curl -I https://<prod-domain>/fonts/xxx.woff2`），不可只憑「deploy job 顯示成功」就當作驗證完成——deploy 綠燈只代表 SSH script 沒有 non-zero exit，不代表新資源真的到位。
+- 一般原則：任何「本地/CI 建置產物」與「正式站實際部署產物」之間存在額外複製/過濾腳本的專案，該腳本本身就是一個需要被納入變更檢查清單的「白名單型設定檔」，跟 `.env`／`routes/api.php` 一樣，新增資源時要主動想到它可能漏收，而不是等使用者回報才發現。
+
+**修復**：PR #1516（`PUBLIC_DIRS` 加入 `'fonts'`）。
+
 ### R59. 扣堂改分鐘制權威後，`RemainingSessions` 是 ROUND_HALF_UP 衍生顯示值（#613）
 
 **觸發情境**：2026-05-31 #613 落地「補課非標準時長按實際分鐘扣堂」；2026-07-19 延伸涵蓋**加長**補課（契約 2h、補課 3h）。
@@ -1094,7 +1111,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | Bug 回報 / 附件存檔 | §R11 storage symlink（Archive）、§R51（分診前必查 attachments + reporter 歷史 + 跨分校）、§R53（上線後必回 in-app）、`docs/CHAT_BUG_SYSTEM.md` §3.6–§3.7 |
 | Git / PR 工作流 | §R58（禁止 assume-unchanged 藏檔）、`scripts/git-index-audit.sh`、Epic #535 Phase 0 |
 | Migration / schema drift | §R63（未合併分支的 migration 禁上 production；drift 修復＝port 回 main＋drift 測試） |
-| 部署 pipeline | §R62（deploy 必須 fetch fail-fast + reset 到 CI `head_sha` 並校驗 HEAD；禁止 `reset --hard origin/main` 靠 stale tracking ref 靜默出貨舊版；Pi repo config 出現 `http.sslbackend=schannel` = 已被 Windows 工具污染，先 unset）、§R67（SSH script 關鍵步驟失敗必須標紅；migration 失敗不得吞成綠燈）、§R68（排程任務上線必須驗證 schedule:run driver 存在；證據=執行 log 而非 schedule:list） |
+| 部署 pipeline | §R62（deploy 必須 fetch fail-fast + reset 到 CI `head_sha` 並校驗 HEAD；禁止 `reset --hard origin/main` 靠 stale tracking ref 靜默出貨舊版；Pi repo config 出現 `http.sslbackend=schannel` = 已被 Windows 工具污染，先 unset）、§R67（SSH script 關鍵步驟失敗必須標紅；migration 失敗不得吞成綠燈）、§R68（排程任務上線必須驗證 schedule:run driver 存在；證據=執行 log 而非 schedule:list）、**§R87（`copy-to-backend.cjs` 是獨立白名單；新增 `frontend/public/` 子目錄必須同步加進 `PUBLIC_DIRS`，且驗證需實際跑複製腳本＋正式站 curl，不能只看 `vite build`／dev-server 截圖）** |
 
 ---
 
