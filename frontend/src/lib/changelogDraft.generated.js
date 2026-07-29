@@ -25,6 +25,7 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "評量批次核准在手機上找不到（card view 缺選取框）",
           "補上分校/老師授權檢查 [P0 IDOR]",
           "補課／補登過去時段前加確認，避免靜默自動核准評量",
           "0 課程管理頁整頁空白（ReferenceError）"
@@ -34,6 +35,7 @@ export const changelogDraftNotes = [
     "items": [
       "順延重疊下一期警示",
       "版本更新頁的版號改為西元年月日格式；公告文字與工程細節分開，版面較不會洗技術詞。",
+      "評量批次核准在手機上找不到（card view 缺選取框）",
       "補上分校/老師授權檢查 [P0 IDOR]",
       "補課／補登過去時段前加確認，避免靜默自動核准評量",
       "0 課程管理頁整頁空白（ReferenceError）"
