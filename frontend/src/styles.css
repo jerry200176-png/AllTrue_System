@@ -1,5 +1,15 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;600;700;800&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0');
+/* Self-hosted (not linked live from fonts.googleapis.com): if this font fails to load,
+   every .material-symbols-outlined icon falls back to rendering its raw ligature name
+   ("event", "view_list", "search", ...) as literal English text — self-hosting removes
+   the dependency on a third-party CDN succeeding at render time for a UI-critical asset. */
+@font-face {
+  font-family: 'Material Symbols Outlined';
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url('/fonts/material-symbols-outlined.woff2') format('woff2');
+}
 
 * {
   box-sizing: border-box;

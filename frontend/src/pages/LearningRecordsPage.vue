@@ -89,15 +89,21 @@
         >{{ selectionMode ? '取消選取' : '批次操作' }}</button>
       </div>
 
-      <!-- Selection toolbar: select-all + batch actions, only visible in selection mode -->
+      <!-- Selection toolbar: select-all + batch actions, only visible in selection mode.
+           Two deliberate rows (meta / actions) instead of a single flex-wrap row, so it
+           never breaks into an uneven 3-then-2 wrap on narrow viewports. -->
       <div v-if="selectionMode" class="lr-batch-bar">
-        <button type="button" class="ghost xs lr-select-all-btn" @click="toggleSelectAll">
-          {{ allSelected ? '取消全選' : '全選本頁' }}
-        </button>
-        <span class="lr-batch-count">已選 {{ selectedRecordIds.size }} 筆</span>
-        <button class="primary xs" :disabled="batchOperating || selectedRecordIds.size === 0" @click="batchApproveSelected">批次核准</button>
-        <button class="ghost xs" :disabled="batchOperating || selectedRecordIds.size === 0" @click="batchRequestChangesSelected">批次需修改</button>
-        <button class="danger xs" :disabled="batchOperating || selectedRecordIds.size === 0" @click="batchRejectSelected">批次退回</button>
+        <div class="lr-batch-bar__meta">
+          <button type="button" class="ghost xs lr-select-all-btn" @click="toggleSelectAll">
+            {{ allSelected ? '取消全選' : '全選本頁' }}
+          </button>
+          <span class="lr-batch-count">已選 {{ selectedRecordIds.size }} 筆</span>
+        </div>
+        <div class="lr-batch-bar__actions">
+          <button class="primary xs" :disabled="batchOperating || selectedRecordIds.size === 0" @click="batchApproveSelected">批次核准</button>
+          <button class="ghost xs" :disabled="batchOperating || selectedRecordIds.size === 0" @click="batchRequestChangesSelected">批次需修改</button>
+          <button class="danger xs" :disabled="batchOperating || selectedRecordIds.size === 0" @click="batchRejectSelected">批次退回</button>
+        </div>
       </div>
     </div>
 
@@ -5013,20 +5019,49 @@ watch([reviewTab, resolvedDefaultWindowStart], ([rt, win], [prt, pwin]) => {
 .lr-batch-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
   margin-top: 10px;
-  padding: 8px 12px;
+  padding: 10px 12px;
   background: var(--ds-primary-wash);
   border: 1px solid var(--ds-hairline);
   border-radius: 8px;
+}
+.lr-batch-bar__meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.lr-batch-bar__actions {
+  display: flex;
+  gap: 8px;
   flex-wrap: wrap;
+}
+/* Below the point where 3 text buttons + meta row fit on one line, stack into two
+   deliberate rows (meta on top, actions as an evenly-spaced full-width row) instead
+   of letting flex-wrap break the buttons unevenly (3-then-2). */
+@media (max-width: 640px) {
+  .lr-batch-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .lr-batch-bar__meta {
+    justify-content: space-between;
+  }
+  .lr-batch-bar__actions {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .lr-batch-bar__actions button {
+    width: 100%;
+  }
 }
 
 .lr-batch-count {
   font-size: 13px;
   font-weight: 600;
   color: var(--ds-primary-deep);
-  margin-right: 4px;
   font-variant-numeric: tabular-nums;
 }
 
