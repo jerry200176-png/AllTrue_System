@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "provenance_type": "human-authored",
-  "declared_at": "2026-07-28T10:40:00Z",
+  "declared_at": "2026-07-29T01:00:00Z",
   "author": "cursor-cloud-agent",
-  "note": "B1/B2: atomic reschedule-session must set IsContractException so force_partial_rebuild cannot snap one-off 調課 back to contract week/time (F1/#556 gap; symptom 新莊 巫宗育 20:00→15:00). Related open PR #1402 covers broader series/occurrence stability."
+  "note": "Split engineering CHANGELOG from staff in-app release notes: STAFF_UPDATES.yml is sole publish source; CHANGELOG → changelogDraft only; userFacingCopyGate; R85. Founder decision 2026-07-29."
 }

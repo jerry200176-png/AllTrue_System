@@ -8,7 +8,8 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const check = process.argv.includes('--check');
 const STEPS = [
-  { source: 'docs/CHANGELOG.md', artifacts: ['frontend/src/lib/releaseNotes.generated.js'], run: ['node', 'scripts/changelog-to-release-notes.mjs'] },
+  { source: 'docs/CHANGELOG.md', artifacts: ['frontend/src/lib/changelogDraft.generated.js'], run: ['node', 'scripts/changelog-to-release-notes.mjs'] },
+  { source: 'docs/STAFF_UPDATES.yml', artifacts: ['frontend/src/lib/staffUpdates.generated.js'], run: ['node', 'scripts/staff-updates-to-js.mjs'] },
   { source: 'docs/PARENT_UPDATES.yml', artifacts: ['frontend/src/lib/parentUpdates.generated.js'], run: ['node', 'scripts/parent-updates-to-js.mjs'] },
 ];
 

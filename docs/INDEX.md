@@ -151,6 +151,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | **SmartCalendar 受控拆分（#740）** | `docs/GUIDE_SMARTCALENDAR_REFACTOR.md`（元件清單、API、CSS 解耦決策）|
 | 行事曆回歸測試 | `npm run test:calendar`（修改任何 calendar merge 邏輯前必跑）|
 | 家長入口 UX、分眾版本公告 | `docs/PARENT_UPDATES.yml`（家長唯一來源）、`docs/ROLE_PLAYBOOK.md` §4、`docs/AI_REGRESSION_LESSONS.md` §R45；`npm run test:release-notes`（改 YAML / `releaseNotes.js` / 產生器時） |
+| 教職員版本更新（Staff Updates） | `docs/STAFF_UPDATES.yml`（教職員唯一來源）、`docs/GUIDE_STAFF_UPDATES.md`、`docs/AI_REGRESSION_LESSONS.md` §R85；CHANGELOG 只產草稿不自動發布 |
 | **家長帳號／學生綁定（ADR Accepted；PB-00 activation pending）** | Benchmark [`research/PARENT_BINDING_BENCHMARK.md`](research/PARENT_BINDING_BENCHMARK.md) · Architecture [`architecture/PARENT_IDENTITY_TARGET_ARCHITECTURE.md`](architecture/PARENT_IDENTITY_TARGET_ARCHITECTURE.md) · ADR [`adr/ADR-PARENT-STUDENT-BINDING.md`](adr/ADR-PARENT-STUDENT-BINDING.md) · UX [`product/PARENT_BINDING_UX_SPEC.md`](product/PARENT_BINDING_UX_SPEC.md) · Threat [`security/PARENT_BINDING_THREAT_MODEL.md`](security/PARENT_BINDING_THREAT_MODEL.md) · Rollout [`operations/PARENT_BINDING_ROLLOUT.md`](operations/PARENT_BINDING_ROLLOUT.md) · Issues [`product/parent-binding-implementation-issues/`](product/parent-binding-implementation-issues/) — **PB-00 = IMPLEMENTED / DEPLOYED — PRODUCTION ACTIVATION PENDING**（#1446 merged；#1436 closed by merge；Pi ops activation／`effective=true`／7-day baseline 未完成；PB-01–PB-09 未開始） |
 | `assume-unchanged` 藏檔導致 PR 漏 diff | `AI_REGRESSION_LESSONS.md` §R58 |
 
@@ -430,7 +431,8 @@ Wings：`alltrue-sessions`（對話）、`alltrue-docs`（文件）、`alltrue-c
 | `DIRECTOR_PAYMENT_ALERT_RULES.md` | 繳費提醒邏輯 | **擅改前必問使用者**；用 `rg` 找條件 |
 | `SYSTEM_TECH_GUIDE.md` | 架構深度 | **只讀目錄對應章節**；預設不全讀 |
 | `CHANGELOG.md` | 近期上線事實 | 從最新日期往回；配合 `rg` |
-| `CHANGELOG → 公告卡` | 版本公告 | `npm run sync-release-notes`（改 CHANGELOG 後）|
+| `STAFF_UPDATES.yml → 教職員公告卡` | 版本更新頁 | `npm run sync-release-notes`（改 STAFF／PARENT YAML 後必跑）|
+| `CHANGELOG → changelogDraft` | AI 起草用草稿（不進 UI） | 同上；正式卡勿直接從 CHANGELOG 發布 |
 | `docs/archive/*.md` | 歷史草稿（已移入 archive）| **禁止通讀**；`rg` / MemPalace |
 
 ---

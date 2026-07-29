@@ -96,7 +96,7 @@ Palace：`~/.mempalace/palace`（local-first）。權威文件仍在 git markdow
 違反會導致課程消失或同一堂掛兩位老師。回歸測試：`npm run test:calendar`。
 
 ### G-008：家長入口更新卡只吃 `docs/PARENT_UPDATES.yml`（禁止 CHANGELOG 關鍵字推導）
-教職員卡仍由 CHANGELOG 衍生；家長卡必須有 explicit projection（title/summary/details/效期）。改 YAML 或 CHANGELOG 後都跑 `npm run sync-release-notes` 並提交 generated 檔。詳見 §R45。
+教職員卡唯一來源 `docs/STAFF_UPDATES.yml`（§R85）；家長卡唯一來源 `docs/PARENT_UPDATES.yml`（§R45）。CHANGELOG 只產草稿、不得自動發布。改 YAML 後跑 `npm run sync-release-notes` 並提交 generated 檔。
 
 ### G-009：課程「繳費狀態」是雙真相 OR 邏輯，`StudentClass.Paid` 壓不過帳單付款
 `payment_status = Paid=1 或 Invoice 有效付款`（`StudentClassController.php` summary 段）。只要帳單有未作廢的 Payment，課程管理切「未繳費」會被靜默蓋回「已繳費」；要先到帳務作廢誤登款項。另：`update()` 的 preservedDelta 會把 `Charge − Rate×數量` 的差額當手動微調永久保留——若差額來自錯誤舊資料，UI 怎麼改都改不回（GitHub #798/#799，in-app #158/#159）。
