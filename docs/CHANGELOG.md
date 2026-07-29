@@ -1,3 +1,11 @@
+## 2026-07-29 — fix(learning): 學習評量表工具列大瘦身 + 批次核准改為「選取模式」
+
+- 使用者實測回報：手機上批次核准的勾選框「很怪」，整頁架構也很亂。實測後發現進入評量表要先滑過 6～7 排堆疊的控制列（分頁籤、篩選 chip、篩選條件卡、顯示模式切換）才看得到第一筆記錄；先前 #1510 加的勾選框又是每張卡片永遠顯示，就算只想單筆審核也擺脫不掉。
+- 修法（參考 Gmail／Files app 的清單批次操作慣例）：
+  1. 「篩選條件」進階篩選卡片改為預設收合，只有已有啟用篩選時才自動展開（原本永遠展開，佔用整排）。
+  2. 批次核准改成「選取模式」：新增「批次操作」按鈕，未點擊前不顯示任何勾選框；點擊後才出現勾選框 + 全選本頁 + 批次核准／需修改／退回工具列，選取中的卡片/列會反白標示；完成批次操作或切換分頁會自動退出選取模式。
+- 純前端調整，未變更任何 API 或審核規則。已用真實 Vue 元件（非重繪版）搭配 mocked API 在 390px／1440px 視窗實際截圖驗證，並確認全流程無 console 錯誤、`vite build` 全綠。
+
 ## 2026-07-28 — fix(course-management): RenewMonthlyModal 防呆 current_end_date 無效日期
 
 - Sentry PHP-LARAVEL-26（#1486）：`computedEndDate` 對 `props.form.current_end_date` 直接 `new Date(...)` 再呼叫 `toISOString()`，若該字串無法解析會產出 Invalid Date，`toISOString()` 對 Invalid Date 會丟 `RangeError: Invalid Date`。
