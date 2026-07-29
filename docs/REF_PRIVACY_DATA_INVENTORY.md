@@ -2,7 +2,7 @@
 
 > 目的：盤點系統實際儲存哪些學生/家長/老師個資、存在哪張表、目前有沒有保存期限或刪除機制，對標 GDPR/PDPA 的 data inventory / data minimization 要求。
 > 方法：唯讀盤點 `backend/database/migrations/*.php`（168 個檔案）+ 交叉比對 `app/Http/Controllers`、`app/Services`、`app/Console/Commands`、`config/filesystems.php`。**不涉及任何寫入、刪除、或帳號變更**。
-> 這是程式碼可驗證的部分；供應商合約層（LINE/Sentry 等資料處理協議）不在此範圍，見 `docs/VENDOR_RISK_REGISTER.md`（#892）。
+> 這是程式碼可驗證的部分；供應商合約層（LINE/Sentry 等資料處理協議）不在此範圍，見 `docs/REF_VENDOR_RISK_REGISTER.md`（#892）。
 
 ## 1. 直接識別資料（學生／家長／老師／職員）
 
