@@ -12,8 +12,12 @@ SN=$(printf "%s" "$STUDENT_NAME" | sed "s/'/\\\\'/g")
 
 echo "=== diagnose STUDENT=$STUDENT_NAME DATE=$DATE CAMPUS=$CAMPUS_ID generated=$(date -Iseconds) ==="
 
-echo "--- student ---"
+echo "--- student (exact) ---"
 "${M[@]}" -e "SELECT id,name,CampusID FROM Student WHERE name='$SN' AND CampusID=$CAMPUS_ID;"
+
+echo "--- student (fuzzy, any campus, in case of name/campus mismatch) ---"
+LIKE_PART=$(printf "%s" "$STUDENT_NAME" | cut -c1-3)
+"${M[@]}" -e "SELECT id,name,CampusID FROM Student WHERE name LIKE CONCAT('%','$LIKE_PART','%') LIMIT 20;"
 
 echo "--- teacher (if provided) ---"
 if [ -n "$TEACHER_NAME" ]; then
@@ -22,7 +26,7 @@ if [ -n "$TEACHER_NAME" ]; then
 fi
 
 echo "--- StudentClass rows for this student (all active courses) ---"
-"${M[@]}" -e "SELECT CONCAT_WS('|',sc.ID,sc.TeacherID,sc.Stop,sc.ScheduleMode,sc.SessionCount,IFNULL(sc.RemainingSessions,'null'),sc.CampusID)
+"${M[@]}" -e "SELECT CONCAT_WS('|',sc.ID,sc.TeacherID,sc.Stop,sc.ScheduleMode,sc.SessionCount,IFNULL(sc.RemainingSessions,'null'),s.CampusID)
 FROM StudentClass sc JOIN Student s ON s.id=sc.StudentID
 WHERE s.name='$SN' AND s.CampusID=$CAMPUS_ID;"
 
