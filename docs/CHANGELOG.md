@@ -1,3 +1,10 @@
+## 2026-07-29 — feat(tuition): 順延重疊下一期警示（#1100, FD-3）
+
+- `AlertController` 新增 read-only `newer_course_overlap` 欄位：當本期（A）`EndDate` 因請假順延而觸及或超過已預購下一期（B）`StartDate` 時，於主任繳費頁面標示重疊，不自動變更任何日期。
+- 前端新增 `formatNewerCourseOverlapWarning()`（`studentClassDisplay.js`）與繳費頁不分繳費狀態顯示的「期間重疊」badge。
+- 對齊 FD-3（順延語意維持 append-only，B 期起始日絕不被靜默位移；任何位移需明確、可稽核、對使用者可見）。純顯示層，不寫入任何 session／billing 資料。
+- 回歸：`TuitionAlertsApiTest`（重疊 true/false 兩情境，並斷言 A/B 日期未被寫入變動）、`studentClassDisplay.test.js`。
+
 ## 2026-07-24 — feat: Course Continuity 群組 API MVP（#1382）
 
 - 新增 `course_contract_groups`／`course_contract_group_members`（空表；不物理 merge 合約）。

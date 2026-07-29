@@ -4,6 +4,27 @@
  */
 export const changelogReleaseNotes = [
   {
+    "version": "2026.07.29",
+    "date": "2026-07-29",
+    "title": "2026.07.29 版本更新",
+    "summary": "順延重疊下一期警示",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "順延重疊下一期警示"
+        ]
+      }
+    ],
+    "items": [
+      "順延重疊下一期警示"
+    ]
+  },
+  {
     "version": "2026.07.24",
     "date": "2026-07-24",
     "title": "2026.07.24 版本更新",
@@ -508,27 +529,6 @@ export const changelogReleaseNotes = [
     ],
     "items": [
       "班級行事曆漏顯已調課堂次 + LINE 綁定讀家長手機"
-    ]
-  },
-  {
-    "version": "2026.06.27",
-    "date": "2026-06-27",
-    "title": "2026.06.27 版本更新",
-    "summary": "課程重疊建立改走 強制建立視窗，不再卡死路",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "sections": [
-      {
-        "title": "修正內容",
-        "items": [
-          "課程重疊建立改走 強制建立視窗，不再卡死路"
-        ]
-      }
-    ],
-    "items": [
-      "課程重疊建立改走 強制建立視窗，不再卡死路"
     ]
   }
 ];

@@ -586,6 +586,65 @@ class TuitionAlertsApiTest extends TestCase
         $this->assertNull($row['newer_course_id']);
     }
 
+    // #1100/FD-3: leave-cascade extension of A's EndDate must never silently shift B's
+    // StartDate — this only asserts the read-only overlap flag exists and is correct;
+    // it does not (and must not) mutate either course's dates.
+    public function test_newer_course_overlap_true_when_extended_end_date_reaches_newer_course_start(): void
+    {
+        $token = $this->createDirectorToken([1], 'overlap-true@example.com');
+        $student = Student::create([
+            'name' => 'A期順延重疊B期', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $courseA = $this->createCountModeClass($student->id, [
+            'Paid' => 1, 'RemainingSessions' => 0, 'Charge' => 8000, 'SubjectID' => 88,
+            'EndDate' => '2026-08-08',
+        ]);
+        $courseB = $this->createCountModeClass($student->id, [
+            'Paid' => 0, 'RemainingSessions' => 8, 'Charge' => 8000, 'SubjectID' => 88,
+            'StartDate' => '2026-08-05',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->getJson('/api/v1/alerts/tuition?branch_id=1');
+
+        $res->assertOk();
+        $row = collect($res->json())->firstWhere('id', $courseA->ID);
+        $this->assertNotNull($row);
+        $this->assertTrue($row['has_newer_course']);
+        $this->assertTrue($row['newer_course_overlap']);
+        $this->assertSame('2026-08-08', $row['current_course_end_date']);
+
+        $this->assertSame('2026-08-08', substr((string) StudentClass::find($courseA->ID)->EndDate, 0, 10), 'read-only flag must not mutate A EndDate');
+        $this->assertSame('2026-08-05', substr((string) StudentClass::find($courseB->ID)->StartDate, 0, 10), 'read-only flag must not mutate B StartDate');
+    }
+
+    public function test_newer_course_overlap_false_when_end_date_precedes_newer_course_start(): void
+    {
+        $token = $this->createDirectorToken([1], 'overlap-false@example.com');
+        $student = Student::create([
+            'name' => 'A期不重疊B期', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $courseA = $this->createCountModeClass($student->id, [
+            'Paid' => 1, 'RemainingSessions' => 0, 'Charge' => 8000, 'SubjectID' => 89,
+            'EndDate' => '2026-08-01',
+        ]);
+        $this->createCountModeClass($student->id, [
+            'Paid' => 0, 'RemainingSessions' => 8, 'Charge' => 8000, 'SubjectID' => 89,
+            'StartDate' => '2026-08-05',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->getJson('/api/v1/alerts/tuition?branch_id=1');
+
+        $res->assertOk();
+        $row = collect($res->json())->firstWhere('id', $courseA->ID);
+        $this->assertNotNull($row);
+        $this->assertTrue($row['has_newer_course']);
+        $this->assertFalse($row['newer_course_overlap']);
+    }
+
     public function test_settle_closes_course_and_removes_from_alerts(): void
     {
         $token = $this->createDirectorToken([1], 'settle@example.com');
