@@ -602,8 +602,12 @@ class TuitionAlertsApiTest extends TestCase
             'Paid' => 0, 'RemainingSessions' => 0, 'Charge' => 8000, 'SubjectID' => 88,
             'EndDate' => '2026-08-08',
         ]);
+        // Paid=1 + RemainingSessions>2 so B falls OUTSIDE the tuition-alert base
+        // query filter entirely — newerCourseByStudentClassIds() excludes any
+        // candidate whose ID is already in the alert result set, so B must not
+        // be part of that set to be detected as A's "newer course".
         $courseB = $this->createCountModeClass($student->id, [
-            'Paid' => 0, 'RemainingSessions' => 8, 'Charge' => 8000, 'SubjectID' => 88,
+            'Paid' => 1, 'RemainingSessions' => 8, 'Charge' => 8000, 'SubjectID' => 88,
             'StartDate' => '2026-08-05',
         ]);
 
@@ -633,7 +637,7 @@ class TuitionAlertsApiTest extends TestCase
             'EndDate' => '2026-08-01',
         ]);
         $this->createCountModeClass($student->id, [
-            'Paid' => 0, 'RemainingSessions' => 8, 'Charge' => 8000, 'SubjectID' => 89,
+            'Paid' => 1, 'RemainingSessions' => 8, 'Charge' => 8000, 'SubjectID' => 89,
             'StartDate' => '2026-08-05',
         ]);
 
