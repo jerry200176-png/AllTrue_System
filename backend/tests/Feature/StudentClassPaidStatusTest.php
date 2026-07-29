@@ -704,6 +704,79 @@ class StudentClassPaidStatusTest extends TestCase
         $this->assertNull($sc->PayDate, 'PayDate must be NULL when no paid_at is provided');
     }
 
+    /**
+     * Security: confirmPayment() previously had NO authorization check at all —
+     * any authenticated director/teacher could mark ANY other campus's
+     * StudentClass as paid by guessing/enumerating IDs (IDOR). Discovered via
+     * code-level IAM audit for #888; confirmPayment() must use the same
+     * authorizeStudentClassAccess() gate every sibling mutator already uses.
+     */
+    public function test_confirm_payment_forbidden_for_director_outside_course_campus(): void
+    {
+        $token = $this->createDirectorToken([2]); // director only scoped to campus 2
+        $student = $this->createStudent(); // CampusID 1
+        $sc = $this->createStudentClass($student->id, [
+            'Paid' => 0,
+            'PayDate' => null,
+        ]);
+
+        $res = $this->postJson(
+            "/api/v1/student-classes/{$sc->ID}/confirm-payment",
+            [],
+            ['Authorization' => "Bearer {$token}"]
+        );
+
+        $res->assertStatus(403);
+        $sc->refresh();
+        $this->assertSame(0, (int) $sc->Paid, 'Cross-campus confirm-payment must not flip Paid');
+        $this->assertNull($sc->PayDate);
+    }
+
+    public function test_confirm_payment_forbidden_for_teacher_not_owning_course(): void
+    {
+        $ownerTeacherId = $this->createTeacher(1);
+        $otherTeacherId = $this->createTeacher(1);
+        $student = $this->createStudent();
+        $sc = $this->createStudentClass($student->id, [
+            'TeacherID' => $ownerTeacherId,
+            'Paid' => 0,
+            'PayDate' => null,
+        ]);
+
+        $token = $this->createTeacherToken($otherTeacherId);
+
+        $res = $this->postJson(
+            "/api/v1/student-classes/{$sc->ID}/confirm-payment",
+            [],
+            ['Authorization' => "Bearer {$token}"]
+        );
+
+        $res->assertStatus(403);
+        $sc->refresh();
+        $this->assertSame(0, (int) $sc->Paid, "Confirm-payment must not flip Paid for a teacher who doesn't own the course");
+    }
+
+    public function test_confirm_payment_succeeds_for_director_in_course_campus(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(); // CampusID 1
+        $sc = $this->createStudentClass($student->id, [
+            'Paid' => 0,
+            'PayDate' => null,
+        ]);
+
+        $res = $this->postJson(
+            "/api/v1/student-classes/{$sc->ID}/confirm-payment",
+            [],
+            ['Authorization' => "Bearer {$token}"]
+        );
+
+        $res->assertOk();
+        $sc->refresh();
+        $this->assertSame(1, (int) $sc->Paid);
+        $this->assertNotNull($sc->PayDate);
+    }
+
     // ── Helpers ──
 
     private function createDirectorToken(array $campusIds): string
@@ -792,5 +865,17 @@ class StudentClassPaidStatusTest extends TestCase
         ]);
 
         return (int) $teacher->id;
+    }
+
+    private function createTeacherToken(int $teacherUserId): string
+    {
+        $token = bin2hex(random_bytes(16));
+        AuthToken::create([
+            'user_id' => $teacherUserId,
+            'token' => $token,
+            'expires_at' => now()->addDay(),
+        ]);
+
+        return $token;
     }
 }

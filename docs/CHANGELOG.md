@@ -1,3 +1,9 @@
+## 2026-07-29 — fix(security): confirmPayment 補齊分校/老師歸屬授權檢查（#1504）
+
+- `StudentClassController::confirmPayment()` 原本完全沒有權限檢查（同 controller 其他 mutator 都會呼叫既有的 `authorizeStudentClassAccess()`，唯獨這支漏掉），任何已登入的主任/老師只要猜到其他分校的 `StudentClass.ID`，就能把該課程標記為已繳費——跨分校帳務竄改 IDOR。
+- 修法：`confirmPayment()` 開頭補上與其他 mutator 相同的 `authorizeStudentClassAccess()` 呼叫。回歸測試涵蓋跨分校主任、非本人老師兩種 403 情境，以及本分校合法呼叫仍成功的正向測試。
+- 發現方式：本輪 #888 IAM code-level access review 背景 agent 稽核發現，人工核實後直接修復並開 R2 PR。
+
 ## 2026-07-29 — chore(ci): 前端補 ESLint `no-undef` 阻斷式檢查 + `ui-smoke.yml` 缺 secret 時可見警告
 
 - 課程管理頁 P0 事故（見下方）的完整事後補強：前端過去完全沒有 TypeScript 或 ESLint，`vite build` 不會攔「引用未宣告變數」這類錯誤。新增 `frontend/eslint.config.js`，只開 `no-undef`（用今天的真實 bug 反向驗證過會攔住），接進 `npm run build` 第一步（CI「Vite build」步驟即會執行）。
