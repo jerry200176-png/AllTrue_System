@@ -595,8 +595,11 @@ class TuitionAlertsApiTest extends TestCase
         $student = Student::create([
             'name' => 'A期順延重疊B期', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
         ]);
+        // Paid=0 so this row survives suppressRenewedLowSessionAlerts(), which only
+        // hides alert_type='low_sessions' rows once a same-subject renewal exists —
+        // it does not suppress 'unpaid' rows, so this stays a realistic director-visible case.
         $courseA = $this->createCountModeClass($student->id, [
-            'Paid' => 1, 'RemainingSessions' => 0, 'Charge' => 8000, 'SubjectID' => 88,
+            'Paid' => 0, 'RemainingSessions' => 0, 'Charge' => 8000, 'SubjectID' => 88,
             'EndDate' => '2026-08-08',
         ]);
         $courseB = $this->createCountModeClass($student->id, [
@@ -626,7 +629,7 @@ class TuitionAlertsApiTest extends TestCase
             'name' => 'A期不重疊B期', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
         ]);
         $courseA = $this->createCountModeClass($student->id, [
-            'Paid' => 1, 'RemainingSessions' => 0, 'Charge' => 8000, 'SubjectID' => 89,
+            'Paid' => 0, 'RemainingSessions' => 0, 'Charge' => 8000, 'SubjectID' => 89,
             'EndDate' => '2026-08-01',
         ]);
         $this->createCountModeClass($student->id, [
