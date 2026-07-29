@@ -1,3 +1,9 @@
+## 2026-07-29 — fix(security): confirmPayment() 補上分校/老師授權檢查 [P0 IDOR]
+
+- `StudentClassController::confirmPayment()` 先前沒有任何授權檢查，任何已登入的主任或老師只要知道／猜到別分校的 `StudentClassID`，就能把該課程標記為已繳費——同 controller 其他寫入方法（`update`／`destroy`／`renewalPreview`）都有做的分校/老師歸屬檢查，唯獨這支漏掉。
+- 修法：補上與其他方法一致的 `authorizeStudentClassAccess()` 檢查，並新增跨分校/跨老師 403 與同分校成功案例的回歸測試。
+- 追蹤：#1504。
+
 ## 2026-07-29 — fix(course-management): 補課／補登過去時段前加確認，避免靜默自動核准評量
 
 - 新店黃奕暟 7/28 誤加課事件根因：補課／補登（Quick Add Session）選到已過去的時段時，`auto_approve` 預設勾選會讓系統直接把該堂標記已上課＋自動核准評量，全程無任何確認，事後才由主任發現並手動取消。

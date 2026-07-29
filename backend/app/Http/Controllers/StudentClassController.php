@@ -1844,6 +1844,11 @@ class StudentClassController extends Controller
 
     public function confirmPayment(StudentClass $studentClass)
     {
+        $auth = $this->authorizeStudentClassAccess($studentClass);
+        if ($auth !== null) {
+            return $auth;
+        }
+
         $studentClass->Paid = 1;
         $studentClass->PayDate = now()->toDateString();
         $studentClass->save();
