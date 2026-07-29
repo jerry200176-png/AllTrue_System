@@ -1,3 +1,9 @@
+## 2026-07-29 — fix(course-management): 補課／補登過去時段前加確認，避免靜默自動核准評量
+
+- 新店黃奕暟 7/28 誤加課事件根因：補課／補登（Quick Add Session）選到已過去的時段時，`auto_approve` 預設勾選會讓系統直接把該堂標記已上課＋自動核准評量，全程無任何確認，事後才由主任發現並手動取消。
+- 修法：`checkAddSession` API 新增 `is_ended` 欄位；前端偵測到「已過去時段 + 自動核准」時顯示明確警告文案，送出前跳二次確認，取消即不送出。Checkbox 文案補上「評量同時自動核准」。
+- 追蹤：#1507。
+
 ## 2026-07-29 — chore(ci): 前端補 ESLint `no-undef` 阻斷式檢查 + `ui-smoke.yml` 缺 secret 時可見警告
 
 - 課程管理頁 P0 事故（見下方）的完整事後補強：前端過去完全沒有 TypeScript 或 ESLint，`vite build` 不會攔「引用未宣告變數」這類錯誤。新增 `frontend/eslint.config.js`，只開 `no-undef`（用今天的真實 bug 反向驗證過會攔住），接進 `npm run build` 第一步（CI「Vite build」步驟即會執行）。
