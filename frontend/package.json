@@ -38,7 +38,8 @@
     "metrics:design-hex": "bash ../scripts/design-hex-count.sh",
     "lint:design": "bash ../scripts/check-no-raw-hex.sh",
     "lint:ui-fixtures": "bash ../scripts/check-no-public-ui-fixtures.sh",
-    "build": "npm run sync-release-notes && npm run test:session-consistency && npm run test:session-occurrence-filter && npm run test:package-sessions && npm run test:session-planning-status && npm run test:course-teacher-options && npm run test:universal-scheduler-api && npm run test:enrollment-conflict-decision && npm run test:schedule-display && npm run test:attendance-source-display && npm run test:director-facing-id-leak && npm run test:learning-records-window && npm run test:learning-record-target && npm run test:learning-record-sort && npm run test:trust-decision-display && npm run test:student-class-display && npm run test:parent-notification-preferences && npm run test:scroll-lock && npm run test:course-pricing && npm run test:scheduler-session-expand && npm run test:pin-gate && vite build && npm run lint:ui-fixtures",
+    "lint:no-undef": "eslint src --no-warn-ignored",
+    "build": "npm run lint:no-undef && npm run sync-release-notes && npm run test:session-consistency && npm run test:session-occurrence-filter && npm run test:package-sessions && npm run test:session-planning-status && npm run test:course-teacher-options && npm run test:universal-scheduler-api && npm run test:enrollment-conflict-decision && npm run test:schedule-display && npm run test:attendance-source-display && npm run test:director-facing-id-leak && npm run test:learning-records-window && npm run test:learning-record-target && npm run test:learning-record-sort && npm run test:trust-decision-display && npm run test:student-class-display && npm run test:parent-notification-preferences && npm run test:scroll-lock && npm run test:course-pricing && npm run test:scheduler-session-expand && npm run test:pin-gate && vite build && npm run lint:ui-fixtures",
     "preview": "vite preview",
     "deploy": "npm run build && node scripts/copy-to-backend.cjs",
     "deploy:pack": "npm run build && node scripts/pack-deploy.cjs",
@@ -54,11 +55,15 @@
     "@vitejs/plugin-vue": "^6.0.8",
     "@vitest/coverage-v8": "^4.1.10",
     "@vue/test-utils": "^2.4.11",
+    "eslint": "^9.39.5",
+    "eslint-plugin-vue": "^9.33.0",
+    "globals": "^15.15.0",
     "husky": "^9.1.7",
     "jsdom": "^29.1.1",
     "lint-staged": "^16.4.0",
     "vite": "^6.4.3",
-    "vitest": "^4.1.8"
+    "vitest": "^4.1.8",
+    "vue-eslint-parser": "^9.4.3"
   },
   "optionalDependencies": {
     "@rollup/rollup-linux-arm64-gnu": "^4.62.3"

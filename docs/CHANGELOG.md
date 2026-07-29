@@ -1,3 +1,9 @@
+## 2026-07-29 — chore(ci): 前端補 ESLint `no-undef` 阻斷式檢查 + `ui-smoke.yml` 缺 secret 時可見警告
+
+- 課程管理頁 P0 事故（見下方）的完整事後補強：前端過去完全沒有 TypeScript 或 ESLint，`vite build` 不會攔「引用未宣告變數」這類錯誤。新增 `frontend/eslint.config.js`，只開 `no-undef`（用今天的真實 bug 反向驗證過會攔住），接進 `npm run build` 第一步（CI「Vite build」步驟即會執行）。
+- `.github/workflows/ui-smoke.yml` 新增「Warn if smoke secrets are missing」步驟：`SMOKE_DIRECTOR_USER`/`SMOKE_TEACHER_USER`/`SMOKE_BASE_URL` 任一缺少時印出 `::warning::`，讓「這條 E2E 防線目前被跳過」在每次 CI run 都可見，不用翻 log 才發現（TD-070）。
+- 追蹤：TD-070（director smoke 帳密尚待補）、TD-071（`no-unused-vars`／完整 ESLint ruleset 尚待 baseline-gate 後開啟）。
+
 ## 2026-07-29 — fix(course-management): P0 課程管理頁整頁空白（ReferenceError）
 
 - 課程管理頁自 07:39 部署（#1409）起，任何角色打開都整頁空白（外層 topbar／分校選單仍在，內容區完全沒渲染）。

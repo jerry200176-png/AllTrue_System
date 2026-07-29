@@ -601,7 +601,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
+| 狀態 | Open（建議做法 (2) 已完成——`ui-smoke.yml` 新增「Warn if smoke secrets are missing」步驟，缺 secret 時印出 `::warning::` annotation，讓「這條防線目前是空的」在每次 CI run 都可見；(1) 補真正的測試帳密、(3) 部署後 synthetic check 仍待處理，見下方） |
 | 優先級 | P1 |
 | 發現日期 | 2026-07-29 |
 | 發現來源 | 課程管理頁 P0 整頁空白事故（主任回報，見 CHANGELOG 2026-07-29 fix(course-management)）事後根因鏈追查 |
@@ -610,3 +610,17 @@
 | 建議做法 | (1) 由 repo owner 在 GitHub repo Settings → Secrets 補上一組**測試用**主任帳密（不要用真人 production 帳號；建議建立一個獨立、無敏感資料存取範圍的「主任角色 QA 帳號」）。(2) 更嚴格的修法：把「因缺 secret 而 skip」與「因程式碼問題而 skip」分開——目前 `test.skip()` 讓兩者外觀一致（都是灰色 skipped），建議 CI 另外加一個 assertion（例如 workflow 層印出 `::warning::SMOKE_DIRECTOR_* not set — director smoke path is not exercised`），讓「這條防線目前是空的」這件事在每次 CI run 都可見，而不是要翻 log 才看得到。(3) 中期可比照大型組織做法：對「頁面完全無法渲染」這類 P0 症狀，不應只靠 PR-time smoke test，應該在 `deploy.yml` 部署後跑一次最小 synthetic check（curl 或無頭瀏覽器打開 3–5 個高流量頁、確認無 JS exception）才把這次 deploy 視為成功，不成功則自動标记/通知，而非等使用者回報。 |
 | 清償成本估計 | 低（申請/建立測試帳號 + 補 GitHub secret，約 30 分鐘；CI 層的「可見 skip」改進約 1 小時） |
 | 不做的代價 | 這類「整頁完全空白」的 P0 前端 crash 會持續只能靠使用者主動回報才發現（本次事故從部署到主任回報間隔 4 小時以上），而 CI 頁面會持續顯示綠勾造成團隊誤以為有 E2E 防線，形成比「完全沒有測試」更危險的假安全感 |
+
+### TD-071：前端 ESLint 目前只開 `no-undef`，`no-unused-vars`／完整 recommended ruleset 尚未啟用
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P2 |
+| 發現日期 | 2026-07-29 |
+| 發現來源 | 課程管理頁 P0 事故修復時，順手加了 `frontend/eslint.config.js`（`no-undef` only, blocking, 已接進 `npm run build` 第一步） |
+| 影響模組 | `frontend/eslint.config.js`、`frontend/package.json`（`lint:no-undef` script） |
+| 描述 | `no-undef` 已驗證能攔住今天這類「引用未宣告變數」的 bug（用今天的實際 diff 反向驗證過：加回壞的那行會被抓到，`git stash` 復原）。但 `no-unused-vars` 試跑時在既有程式碼上噴了 134 個 false positive——原因是這批 `<script setup>` 裡宣告的 function/變數大多是給 `<template>` 用的，而目前 config 沒接 `eslint-plugin-vue` 的 template 分析（需要 `vue/setup-compiler-macros` 或走它的 recommended flat config + `vue-eslint-parser` 完整串接，而不是只用 parser 而已），單純開 `no-unused-vars` 會大量誤判既有程式碼有問題。 |
+| 建議做法 | 分階段：(1) 先接上 `eslint-plugin-vue` 的 `flat/recommended`（或至少讓 template 內的識別字使用能正確標記為「已使用」），跑一次看 false positive 是否消失。(2) 若跑出來是「真的未使用」的 dead code（不是 false positive），比照 `phpstan-baseline.neon`／`docs/design-hex-baseline-2026-06-06.json` 的既有模式做 baseline-gate（只擋新增，不強制清歷史債），避免一次性巨大 diff。(3) 之後再視情況評估是否導入完整 `eslint:recommended` 或 TypeScript（後者成本高很多，需要另外立案）。 |
+| 清償成本估計 | 中（vue-eslint-parser + eslint-plugin-vue 完整串接約半天；baseline 產生腳本仿造既有 hex/phpstan 模式再半天） |
+| 不做的代價 | 目前只防得住「引用未宣告變數」這一種錯誤；同一類「宣告了但沒接上」的殘留變數（例如 import 進來卻沒用、重構後留下的 dead helper）仍然只能靠 code review 肉眼抓 |
