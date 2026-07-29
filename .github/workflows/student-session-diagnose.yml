@@ -3,6 +3,9 @@
 name: Student Session Diagnose (read-only)
 
 on:
+  push:
+    branches:
+      - 'cursor/diag-student-session-**'
   workflow_dispatch:
     inputs:
       student_name:
@@ -53,10 +56,10 @@ jobs:
         env:
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
-          STUDENT_NAME: ${{ inputs.student_name }}
-          TEACHER_NAME: ${{ inputs.teacher_name }}
-          DATE: ${{ inputs.date }}
-          CAMPUS_ID: ${{ inputs.campus_id }}
+          STUDENT_NAME: ${{ inputs.student_name || '黃奕凱' }}
+          TEACHER_NAME: ${{ inputs.teacher_name || '張翔' }}
+          DATE: ${{ inputs.date || '2026-07-28' }}
+          CAMPUS_ID: ${{ inputs.campus_id || '9' }}
         run: |
           set -euo pipefail
           SCRIPT_B64=$(base64 -w0 scripts/diagnose-student-session.sh)
