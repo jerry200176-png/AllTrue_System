@@ -77,6 +77,14 @@
         <input type="checkbox" v-model="onlyFilled"> 只看已填
       </label>
 
+      <!-- Select-all: same control regardless of table/card view -->
+      <button
+        v-if="viewMode === 'card' && (reviewTab === 'pending' || reviewTab === 'changes_requested')"
+        type="button"
+        class="ghost xs lr-select-all-btn"
+        @click="toggleSelectAll"
+      >{{ allSelected ? '取消全選' : '全選待審' }}</button>
+
       <!-- Batch action bar -->
       <div v-if="selectedRecordIds.size > 0" class="lr-batch-bar">
         <span class="lr-batch-count">已選 {{ selectedRecordIds.size }} 筆</span>
@@ -529,11 +537,22 @@
               @click="viewRecord(record)"
             >
               <div class="lr-record-card__top">
-                <div>
-                  <div class="lr-record-card__student">{{ record.student_name }}</div>
-                  <div class="lr-record-card__meta">
-                    {{ record.student_class_label || record.Subject || '未分類' }}
-                    <span v-if="record.StudentClassID" class="lr-contract-id">#{{ record.StudentClassID }}</span>
+                <div class="lr-record-card__title-row">
+                  <input
+                    v-if="isDirectorRole && (reviewTab === 'pending' || reviewTab === 'changes_requested') && (record.Status === 'pending' || record.Status === 'changes_requested')"
+                    type="checkbox"
+                    class="lr-record-card__select"
+                    :checked="selectedRecordIds.has(record.id)"
+                    @click.stop
+                    @change="toggleRecordSelection(record.id)"
+                    title="選取以批次核准"
+                  >
+                  <div>
+                    <div class="lr-record-card__student">{{ record.student_name }}</div>
+                    <div class="lr-record-card__meta">
+                      {{ record.student_class_label || record.Subject || '未分類' }}
+                      <span v-if="record.StudentClassID" class="lr-contract-id">#{{ record.StudentClassID }}</span>
+                    </div>
                   </div>
                 </div>
                 <span :class="statusTagClass(record.Status)" class="status-tag">{{ statusLabel(record.Status) }}</span>
@@ -5794,6 +5813,23 @@ select.lr-input {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+}
+
+.lr-record-card__title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.lr-record-card__select {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.lr-select-all-btn {
+  margin-top: 8px;
 }
 
 .lr-record-card__student {
