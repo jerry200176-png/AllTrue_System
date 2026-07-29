@@ -625,6 +625,48 @@ class CoursePackageTest extends TestCase
         $this->assertTrue($pkg->paid);
     }
 
+    /**
+     * Regression guard for in-app bug #208: a director lowering a package's
+     * total_sessions (e.g. 96 -> 56) must leave every member StudentClass's
+     * RemainingSessions in sync with the package's new remaining count.
+     * Before this fix, updating total_sessions only cascaded SessionCount /
+     * PackageTotalSessions to members (RISK-002 guard deliberately skips
+     * RemainingSessions there); a member's RemainingSessions stayed stuck at
+     * its pre-edit value until someone separately called /recompute.
+     */
+    public function test_updating_total_sessions_syncs_member_remaining_sessions(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->makeStudent(1);
+        $teacher1 = $this->makeTeacher();
+        $teacher2 = $this->makeTeacher();
+        $pkg = $this->makePackage($student->id, 1, 96);
+        $sc1 = $this->makePackageMember($pkg, $student->id, $teacher1->id, 1);
+        $sc2 = $this->makePackageMember($pkg, $student->id, $teacher2->id, 2);
+
+        $session = $this->makeSession($sc1->ID, '2026-04-16', 'attended');
+        PackageDeductionService::deductForSession($pkg->id, $sc1->ID, $session->id, 'attendance');
+        PackageDeductionService::recomputeCounters($pkg->id);
+        $pkg->refresh();
+        $this->assertEquals(95, $pkg->remaining_sessions);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept'        => 'application/json',
+        ])->putJson("/api/v1/course-packages/{$pkg->id}", [
+            'total_sessions' => 56,
+        ]);
+        $res->assertOk();
+
+        $pkg->refresh();
+        $sc1->refresh();
+        $sc2->refresh();
+
+        $this->assertEquals(55, $pkg->remaining_sessions);
+        $this->assertEquals(55, (int) $sc1->RemainingSessions);
+        $this->assertEquals(55, (int) $sc2->RemainingSessions);
+    }
+
     // ─── Test: subject_name string resolution ──────────────
 
     public function test_create_multi_subject_with_subject_name_string(): void
