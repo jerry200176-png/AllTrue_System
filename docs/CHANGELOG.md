@@ -1,3 +1,9 @@
+## 2026-07-29 — fix(deploy): 圖示字型改走 Vite 資產管線自動雜湊（徹底解決快取殘留 + 部署白名單問題）
+
+- 上一版 `PUBLIC_DIRS` 補 `fonts` 的修法（見下一則）部署後，使用者實測手機 PWA 仍持續顯示英文；伺服端直接 `curl` 驗證 `/fonts/material-symbols-outlined.woff2` 確實回 200 且內容正確，但用戶端仍壞——根因是這個路徑**沒有內容雜湊**，任何用戶端／CDN 邊緣節點若曾快取過舊的失敗回應（404 或載入失敗狀態），修復後同一個 URL 無法自動讓已快取的用戶端重新抓取，尤其手機「加到主畫面」的 PWA 有獨立於一般瀏覽器分頁的快取分區，一般「強制重新整理」也不保證清除。
+- 修法：把字型檔從 `frontend/public/fonts/`（未經處理的靜態直通）搬進 `frontend/src/assets/fonts/`，`@font-face` 改用相對路徑 `url('./assets/fonts/...')` 讓 Vite 建置時自動產生內容雜湊檔名（如 `material-symbols-outlined-D6tU34w1.woff2`），跟其餘所有 JS/CSS bundle 一樣天然免疫快取——內容不變網址就不變，內容一變網址自動換新，不需要仰賴任何人記得加白名單或事後清 CDN 快取。連帶好處：不再需要 `copy-to-backend.cjs` 的 `PUBLIC_DIRS` 特殊處理，直接搭已存在、可靠的 `assets/` 複製流程。
+- 已用真實 Vue 元件 + headless 瀏覽器驗證 `document.fonts` 狀態為 `loaded`、實際截圖確認圖示正確渲染；`npx vitest run` 全數 172 個測試通過；`vite build` 全綠。
+
 ## 2026-07-29 — fix(deploy): 修正正式站從未部署自架圖示字型（全站圖示曾顯示英文）
 
 - 使用者反映「到處都是英文」。根因：#1512 把 Material Symbols Outlined 圖示字型改為自架（`frontend/public/fonts/`），但正式站部署實際執行的 `frontend/scripts/copy-to-backend.cjs`（`deploy.yml` SSH 到 Pi 後 `npm run deploy` 呼叫）的 `PUBLIC_DIRS` 白名單只有 `['audio']`，從未包含 `fonts`。導致 `/fonts/material-symbols-outlined.woff2` 從 #1512 合併後每次部署都在正式站 404，全站圖示靜默退回顯示英文原名。

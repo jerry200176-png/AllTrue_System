@@ -944,6 +944,8 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 **修復**：PR #1516（`PUBLIC_DIRS` 加入 `'fonts'`）。
 
+**追加教訓（同日）**：PR #1516 merge、deploy 綠燈、正式站 `curl` 也回 200 之後，使用者手機 PWA 實測**仍然**顯示英文。根因是 `/fonts/material-symbols-outlined.woff2` 這個路徑**沒有內容雜湊**（不像 `assets/` 下所有 JS/CSS 都是 Vite 自動加雜湊檔名）——同一個 URL 在 bug 存在期間可能已被使用者裝置或 CDN 邊緣節點快取過失敗回應，事後把伺服器端修好，不保證所有已快取的用戶端會重新抓取；PWA「加到主畫面」在 iOS/Android 上更有獨立於一般瀏覽器分頁的快取分區，一般「強制重新整理」不保證清得到。**正確修法不是說服使用者清快取，是讓 URL 本身在內容改變時自動改變**：把字型檔搬進 `frontend/src/assets/fonts/`、`@font-face` 改用相對路徑讓 Vite 建置自動雜湊檔名（`material-symbols-outlined-D6tU34w1.woff2`），使其與其餘所有 bundle 資產享有同一套天然免疫快取的機制，同時也不再需要 `copy-to-backend.cjs` 的白名單特殊處理。**強制規則追加**：任何會被使用者裝置快取、且未來可能改內容的靜態資產（字型／圖示／PWA icon 等），一律透過 Vite 資產管線（`src/` 內以相對路徑 `import`／CSS `url()` 引用）取得自動內容雜湊，不要放進 `frontend/public/` 用固定檔名直通——`public/` 只留給内容本來就不會變、或本來就需要固定檔名的資源（`manifest.json`、`favicon` 等瀏覽器規範要求固定路徑者）。**修復**：同日追加 commit（`frontend/src/assets/fonts/`＋`styles.css` 相對路徑），已用真實 headless 瀏覽器驗證 `document.fonts` 狀態為 `loaded`。
+
 ### R59. 扣堂改分鐘制權威後，`RemainingSessions` 是 ROUND_HALF_UP 衍生顯示值（#613）
 
 **觸發情境**：2026-05-31 #613 落地「補課非標準時長按實際分鐘扣堂」；2026-07-19 延伸涵蓋**加長**補課（契約 2h、補課 3h）。
