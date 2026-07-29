@@ -412,6 +412,34 @@ class SecurityHardeningTest extends TestCase
         $this->withHeaders(['Authorization' => "Bearer {$token}"])
             ->getJson('/api/v1/health/detailed')
             ->assertStatus(200)
-            ->assertJsonStructure(['status', 'timestamp', 'perf_flags', 'log_pipeline', 'sentry', 'security']);
+            ->assertJsonStructure(['status', 'timestamp', 'perf_flags', 'log_pipeline', 'sentry', 'security', 'deploy']);
+    }
+
+    /** @test */
+    public function health_detailed_reports_backend_deploy_manifest_when_present(): void
+    {
+        [$token] = $this->makeDirectorToken();
+        $manifestPath = storage_path('app/deploy-meta.json');
+        $existed = is_file($manifestPath);
+        $original = $existed ? file_get_contents($manifestPath) : null;
+
+        file_put_contents($manifestPath, json_encode([
+            'backend_sha' => 'abc1234',
+            'deployed_at' => '2026-07-28T12:00:00Z',
+        ]));
+
+        try {
+            $this->withHeaders(['Authorization' => "Bearer {$token}"])
+                ->getJson('/api/v1/health/detailed')
+                ->assertStatus(200)
+                ->assertJsonPath('deploy.backend_sha', 'abc1234')
+                ->assertJsonPath('deploy.deployed_at', '2026-07-28T12:00:00Z');
+        } finally {
+            if ($existed) {
+                file_put_contents($manifestPath, $original);
+            } else {
+                @unlink($manifestPath);
+            }
+        }
     }
 }

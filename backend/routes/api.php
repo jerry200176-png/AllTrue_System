@@ -193,6 +193,20 @@ Route::prefix('v1')->group(function () {
             $logPipeline['tmpfs_healthy']   = $logPipeline['tmpfs_usage_pct'] < 80;
         }
         $sentryDsn = config('sentry.dsn') ?: env('SENTRY_LARAVEL_DSN');
+
+        // #1428: version.json only reflects the frontend build SHA (Vite-generated,
+        // skipped on backend-only deploys). Surface the backend runtime SHA too so
+        // operators can confirm actual deployed commit without SSH.
+        $deployManifestPath = storage_path('app/deploy-meta.json');
+        $deploy = ['backend_sha' => null, 'deployed_at' => null];
+        if (is_file($deployManifestPath)) {
+            $manifest = json_decode((string) @file_get_contents($deployManifestPath), true);
+            if (is_array($manifest)) {
+                $deploy['backend_sha'] = $manifest['backend_sha'] ?? null;
+                $deploy['deployed_at'] = $manifest['deployed_at'] ?? null;
+            }
+        }
+
         return response()->json([
             'status'    => 'ok',
             'timestamp' => now()->toIso8601String(),
@@ -205,6 +219,7 @@ Route::prefix('v1')->group(function () {
             'log_pipeline' => $logPipeline,
             'sentry' => ['configured' => !empty($sentryDsn), 'sdk_bound' => app()->bound('sentry')],
             'security' => ['debug_mode' => config('app.debug')],
+            'deploy' => $deploy,
         ]);
     });
 

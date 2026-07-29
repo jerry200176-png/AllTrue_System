@@ -119,6 +119,16 @@ jobs:
           fi
           echo "✅ production HEAD == CI 驗證版本（$TARGET_SHA）"
 
+          # #1428: version.json (Vite-generated) only updates on frontend rebuilds,
+          # so backend-only deploys leave it pointing at a stale frontend build SHA.
+          # Write the actual deployed backend SHA separately so /health/detailed
+          # can report real runtime identity without SSH.
+          mkdir -p /home/admin/backend/storage/app
+          printf '{"backend_sha":"%s","deployed_at":"%s"}\n' \
+            "$TARGET_SHA" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+            > /home/admin/backend/storage/app/deploy-meta.json
+          echo "✅ deploy-meta.json 已寫入（backend_sha=$TARGET_SHA）"
+
           echo "=== [2/7] Composer dependencies ==="
           cd /home/admin/backend && composer install --no-interaction --prefer-dist --optimize-autoloader
           echo "✅ Composer 完成"
@@ -244,6 +254,12 @@ jobs:
 
           cd /home/admin
           git reset --hard "$PREV_COMMIT" || echo "⚠️ git reset 失敗"
+
+          # #1428: reflect the rolled-back SHA, not the failed TARGET_SHA, so
+          # /health/detailed never reports a commit that isn't actually live.
+          printf '{"backend_sha":"%s","deployed_at":"%s"}\n' \
+            "$PREV_COMMIT" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+            > /home/admin/backend/storage/app/deploy-meta.json
 
           if [ "$FRONTEND_CHANGED" -gt 0 ]; then
             cd /home/admin/frontend && npm run deploy || echo "⚠️ 前端 rollback build 失敗"

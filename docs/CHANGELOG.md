@@ -1,3 +1,11 @@
+## 2026-07-29 — fix(ops): `/health/detailed` 回報 backend 實際部署 SHA（#1428）
+
+- `deploy.yml` 在驗證過 `git reset --hard $TARGET_SHA` 後，寫入 `backend/storage/app/deploy-meta.json`（`backend_sha` + `deployed_at`）；rollback 分支寫回 `PREV_COMMIT`，確保永遠反映實際存活版本。
+- `health/detailed`（auth-required）新增 `deploy` 欄位讀取該 manifest。
+- 動機：`version.json` 只在前端有重 build 時由 Vite 產生，backend-only 部署後仍顯示舊的前端 build SHA，維運者無法在不 SSH 的情況下確認 backend 實際版本。
+
+開發備註：不改變既有 health-check / rollback 流程，純附加寫檔 + 讀檔；回歸 `SecurityHardeningTest::health_detailed_reports_backend_deploy_manifest_when_present`。
+
 ## 2026-07-24 — fix: Epic A/D Phase 1 — 有效堂次共用過濾 + 調課 dialog 內錯誤
 
 - 課程管理與行事曆共用 `sessionOccurrenceFilter`（有效堂次／幽靈取消／額度例外）。
