@@ -86,9 +86,8 @@ const minDate = computed(() => {
 const computedEndDate = computed(() => {
   const months = Number(props.form?.months ?? 1);
   if (!months || months <= 0) return '—';
-  const base = props.form?.current_end_date
-    ? new Date(props.form.current_end_date)
-    : new Date();
+  const parsed = props.form?.current_end_date ? new Date(props.form.current_end_date) : null;
+  const base = parsed && !Number.isNaN(parsed.getTime()) ? parsed : new Date();
   base.setMonth(base.getMonth() + months);
   return base.toISOString().slice(0, 10);
 });

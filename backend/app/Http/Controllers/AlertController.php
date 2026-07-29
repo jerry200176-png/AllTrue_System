@@ -257,6 +257,16 @@ class AlertController extends Controller
 
                 $newerInfo = $newerCourseMap[$classId] ?? null;
 
+                // #1100 (FD-3): leave-cascade extension of this (A) course's EndDate must
+                // never silently shift a pre-purchased (B) course's StartDate — surface an
+                // explicit, director-facing overlap flag instead. Read-only: no date is
+                // changed here, and no session/billing row is touched.
+                $currentEndDate = $sc && $sc->EndDate ? substr((string) $sc->EndDate, 0, 10) : null;
+                $newerCourseOverlap = $newerInfo
+                    && !empty($newerInfo['start_date'])
+                    && $currentEndDate !== null
+                    && $currentEndDate >= $newerInfo['start_date'];
+
                 return $row + [
                     'paid_at'                  => $directPaidAt,
                     'last_paid_at'             => $directPaidAt ?? $invoicePaidAt,
@@ -269,6 +279,8 @@ class AlertController extends Controller
                     'newer_course_id'          => $newerInfo['newer_id'] ?? null,
                     'newer_course_remaining'   => $newerInfo['remaining'] ?? null,
                     'newer_course_start_date'  => $newerInfo['start_date'] ?? null,
+                    'current_course_end_date'  => $currentEndDate,
+                    'newer_course_overlap'     => $newerCourseOverlap,
                 ];
             })
             ->filter(fn ($row) => ($row['charge'] ?? 0) > 0)

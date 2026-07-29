@@ -1,3 +1,45 @@
+## 2026-07-29 — fix(dashboard): 主任總覽頁面 Wave A —— 收斂重複資訊源 + 修正文字換行 bug
+
+- 主任反映總覽頁面「很亂」。盤點後發現同一份「今天要做什麼」被拆成三套機制各自呈現：E-OPS-TRUST 決策中心、「今日優先處理」風險卡、以及最上方待辦小卡（action-lane）——待審核評量數甚至同時出現在三處。程式碼裡已有註解證實這是已知重疊（`// Trust decisions ... avoid duplicate prompts`），但「今日優先處理」與 action-lane 仍完整重複同一組訊號（待到班／催繳／補點名／補課／待審核／家長回饋）。
+- 移除「今日優先處理」（`priority-risks`）整段：其資料完全是 action-lane 既有訊號的重新包裝，刪除後不影響任何業務邏輯（`directorPriorityRisks` computed、`handleDirectorPriorityRisk`、專用的 bypass 追蹤函式與 CSS 皆隨之移除；`lib/directorPriorityRisks.js` 與其獨立單元測試維持不動，未來若需要保留可再接回）。
+- 修正真的 CSS bug：「查看範例格式」按鈕（`.ac__format-link`）缺少 `white-space: nowrap`（同層 `.ac__label` 有），可用寬度被壓縮時中文文字會逐字換行；已補上。
+- 頁首英文 kicker `"Campus Operations Command"` 改為中文「今日營運總覽」，並將 letter-spacing 對齊站內既有中文 label（`.section-label`）慣例，不再套用為英文設計的寬字距。
+- 純前端結構調整，未變更任何 API、繳費／審核／排課邏輯。已用真實 Vue 元件（非重繪版）搭配 mocked API，在 390px／768px／1440px 實際截圖驗證，`vite build` 全綠。後續 Wave（At* primitives 統一卡片殼、版面密度分組）另案處理，詳見改善計劃。
+
+## 2026-07-29 — fix(learning): 學習評量表工具列大瘦身 + 批次核准改為「選取模式」+ 圖示字型自架
+
+- 使用者實測回報：手機上批次核准的勾選框「很怪」、位置醜、還看得到英文字，整頁架構也很亂。實測後發現進入評量表要先滑過 6～7 排堆疊的控制列（分頁籤、篩選 chip、篩選條件卡、顯示模式切換）才看得到第一筆記錄；先前 #1510 加的勾選框又是每張卡片永遠顯示，就算只想單筆審核也擺脫不掉。
+- 修法（參考 Gmail／Files app 的清單批次操作慣例、Carbon／Fluent 等資料密集後台的批次工具列模式）：
+  1. 「篩選條件」進階篩選卡片改為預設收合，只有已有啟用篩選時才自動展開（原本永遠展開，佔用整排）。
+  2. 批次核准改成「選取模式」：新增「批次操作」按鈕，未點擊前不顯示任何勾選框；點擊後才出現勾選框 + 全選本頁 + 批次核准／需修改／退回工具列，選取中的卡片/列會反白標示；完成批次操作或切換分頁會自動退出選取模式。
+  3. 批次工具列改成「上：全選＋已選筆數／下：三顆等寬操作鈕」兩排固定版面，取代原本 flex-wrap 在窄螢幕擠成「3 顆＋孤伶伶 2 顆」的不對稱換行。
+  4. 「還出現英文」的根因：全站圖示字型（Material Symbols）原本即時連 Google Fonts CDN，一旦字型連線失敗，圖示會退回顯示英文 ligature 名稱（如 `event`、`view_list`）。改為自架字型檔（`frontend/public/fonts/`），不再依賴外部 CDN 在渲染當下成功，比對照大公司做法（不依賴第三方 CDN 撐介面關鍵資源）。
+- 純前端調整，未變更任何 API 或審核規則。已用真實 Vue 元件（非重繪版）搭配 mocked API、並刻意封鎖外部字型網域，在 390px／1440px 視窗實際截圖驗證圖示正確渲染、版面不再換行，全流程無 console 錯誤、`vite build` 全綠。
+
+## 2026-07-29 — fix(course-packages): 總堂數修改後同步課程剩餘堂數（in-app #208）
+
+- 主任把方案總堂數往下修改後，方案本身的剩餘堂數立即正確，但同方案內每堂課各自的剩餘堂數欄位不會跟著更新，主任優先風險清單因此顯示舊的（過高的）剩餘堂數。
+- 修法：總堂數變動後自動呼叫既有的方案重新結算工具，讓每堂課的剩餘堂數與方案同步，不需要再手動觸發重新結算。純讀寫同步，無新增結算邏輯、無 migration。
+
+## 2026-07-29 — feat(tuition): 順延重疊下一期警示（#1100, FD-3）
+
+- `AlertController` 新增 read-only `newer_course_overlap` 欄位：當本期（A）`EndDate` 因請假順延而觸及或超過已預購下一期（B）`StartDate` 時，於主任繳費頁面標示重疊，不自動變更任何日期。
+- 前端新增 `formatNewerCourseOverlapWarning()`（`studentClassDisplay.js`）與繳費頁不分繳費狀態顯示的「期間重疊」badge。
+- 對齊 FD-3（順延語意維持 append-only，B 期起始日絕不被靜默位移；任何位移需明確、可稽核、對使用者可見）。純顯示層，不寫入任何 session／billing 資料。
+- 回歸：`TuitionAlertsApiTest`（重疊 true/false 兩情境，並斷言 A/B 日期未被寫入變動）、`studentClassDisplay.test.js`。
+
+## 2026-07-28 — fix(course-management): RenewMonthlyModal 防呆 current_end_date 無效日期
+
+- Sentry PHP-LARAVEL-26（#1486）：`computedEndDate` 對 `props.form.current_end_date` 直接 `new Date(...)` 再呼叫 `toISOString()`，若該字串無法解析會產出 Invalid Date，`toISOString()` 對 Invalid Date 會丟 `RangeError: Invalid Date`。
+- 修正為先檢查 `Number.isNaN(parsed.getTime())`，解析失敗時退回 `new Date()`（今天）當基準，不再讓整個月結續約 modal 崩潰。
+- 純前端防呆，無 migration、無後端行為變更。
+
+## 2026-07-29 — fix(learning): 評量批次核准在手機上找不到（card view 缺選取框）
+
+- 學習評量表在寬度 < 760px 時預設切到卡片檢視（`viewMode='card'`），但批次核准／需修改／退回只做在桌機的表格檢視裡，卡片檢視完全沒有選取框，導致手機上永遠選不到任何一筆、批次列永遠不會出現——issue #1131 先前的程式碼稽核只看了桌機表格，沒發現這個落差。
+- 修法：卡片檢視每張卡加上選取框，並加「全選待審／取消全選」按鈕，共用既有的批次核准邏輯，後端無需改動。
+- 追蹤：#1131（重開）。
+
 ## 2026-07-29 — fix(security): confirmPayment() 補上分校/老師授權檢查 [P0 IDOR]
 
 - `StudentClassController::confirmPayment()` 先前沒有任何授權檢查，任何已登入的主任或老師只要知道／猜到別分校的 `StudentClassID`，就能把該課程標記為已繳費——同 controller 其他寫入方法（`update`／`destroy`／`renewalPreview`）都有做的分校/老師歸屬檢查，唯獨這支漏掉。

@@ -44,46 +44,66 @@
     <!-- Director review queue tabs -->
     <div v-if="isDirectorRole && pageMode === 'records'" class="lr-review-tabs card" data-guide="learning-director-review-tabs">
       <div class="lr-tabs-row">
-        <button :class="['lr-tab', { active: reviewTab === 'pending' }]" @click="reviewTab = 'pending'; selectedRecordIds = new Set()">
+        <button :class="['lr-tab', { active: reviewTab === 'pending' }]" @click="reviewTab = 'pending'; exitSelectionMode()">
           待審佇列 <span v-if="serverPendingBadge > 0" class="lr-tab-count warn">{{ serverPendingBadge }}</span>
         </button>
-        <button :class="['lr-tab', { active: reviewTab === 'changes_requested' }]" @click="reviewTab = 'changes_requested'; selectedRecordIds = new Set()">
+        <button :class="['lr-tab', { active: reviewTab === 'changes_requested' }]" @click="reviewTab = 'changes_requested'; exitSelectionMode()">
           需修改追蹤 <span v-if="serverChangesBadge > 0" class="lr-tab-count warn">{{ serverChangesBadge }}</span>
         </button>
-        <button :class="['lr-tab', { active: reviewTab === 'approved' }]" @click="reviewTab = 'approved'; selectedRecordIds = new Set()">
+        <button :class="['lr-tab', { active: reviewTab === 'approved' }]" @click="reviewTab = 'approved'; exitSelectionMode()">
           已核准 <span class="lr-tab-count ok">{{ serverApprovedBadge }}</span>
         </button>
-        <button :class="['lr-tab', { active: reviewTab === 'rejected' }]" @click="reviewTab = 'rejected'; selectedRecordIds = new Set()">
+        <button :class="['lr-tab', { active: reviewTab === 'rejected' }]" @click="reviewTab = 'rejected'; exitSelectionMode()">
           已退回
         </button>
-        <button :class="['lr-tab', { active: reviewTab === 'all' }]" @click="reviewTab = 'all'; selectedRecordIds = new Set()">
+        <button :class="['lr-tab', { active: reviewTab === 'all' }]" @click="reviewTab = 'all'; exitSelectionMode()">
           全部
         </button>
       </div>
 
-      <label
-        v-if="reviewTab === 'pending' || reviewTab === 'changes_requested' || reviewTab === 'approved' || reviewTab === 'all'"
-        class="lr-unfilled-toggle"
-        title="待審／需修改且正文未填；已核准但正文仍空白者僅在「已核准」或「全部」分頁會被篩出"
-      >
-        <input type="checkbox" v-model="onlyUnfilled"> 只看未填
-      </label>
+      <div class="lr-toolbar-row">
+        <label
+          v-if="reviewTab === 'pending' || reviewTab === 'changes_requested' || reviewTab === 'approved' || reviewTab === 'all'"
+          class="lr-unfilled-toggle"
+          title="待審／需修改且正文未填；已核准但正文仍空白者僅在「已核准」或「全部」分頁會被篩出"
+        >
+          <input type="checkbox" v-model="onlyUnfilled"> 只看未填
+        </label>
 
-      <label
-        v-if="reviewTab === 'pending' || reviewTab === 'changes_requested' || reviewTab === 'approved' || reviewTab === 'all'"
-        class="lr-unfilled-toggle"
-        title="只顯示評量正文已填寫的紀錄（供檢視已完成的評量內容）"
-      >
-        <input type="checkbox" v-model="onlyFilled"> 只看已填
-      </label>
+        <label
+          v-if="reviewTab === 'pending' || reviewTab === 'changes_requested' || reviewTab === 'approved' || reviewTab === 'all'"
+          class="lr-unfilled-toggle"
+          title="只顯示評量正文已填寫的紀錄（供檢視已完成的評量內容）"
+        >
+          <input type="checkbox" v-model="onlyFilled"> 只看已填
+        </label>
 
-      <!-- Batch action bar -->
-      <div v-if="selectedRecordIds.size > 0" class="lr-batch-bar">
-        <span class="lr-batch-count">已選 {{ selectedRecordIds.size }} 筆</span>
-        <button class="primary xs" :disabled="batchOperating" @click="batchApproveSelected">批次核准</button>
-        <button class="ghost xs" :disabled="batchOperating" @click="batchRequestChangesSelected">批次需修改</button>
-        <button class="danger xs" :disabled="batchOperating" @click="batchRejectSelected">批次退回</button>
-        <button class="ghost xs" @click="selectedRecordIds = new Set()">取消選取</button>
+        <!-- Selection mode toggle: checkboxes/batch bar only appear once this is on
+             (Gmail/Files-app pattern) instead of cluttering every row by default. -->
+        <button
+          v-if="reviewTab === 'pending' || reviewTab === 'changes_requested'"
+          type="button"
+          class="ghost xs lr-select-mode-btn"
+          :class="{ active: selectionMode }"
+          @click="toggleSelectionMode"
+        >{{ selectionMode ? '取消選取' : '批次操作' }}</button>
+      </div>
+
+      <!-- Selection toolbar: select-all + batch actions, only visible in selection mode.
+           Two deliberate rows (meta / actions) instead of a single flex-wrap row, so it
+           never breaks into an uneven 3-then-2 wrap on narrow viewports. -->
+      <div v-if="selectionMode" class="lr-batch-bar">
+        <div class="lr-batch-bar__meta">
+          <button type="button" class="ghost xs lr-select-all-btn" @click="toggleSelectAll">
+            {{ allSelected ? '取消全選' : '全選本頁' }}
+          </button>
+          <span class="lr-batch-count">已選 {{ selectedRecordIds.size }} 筆</span>
+        </div>
+        <div class="lr-batch-bar__actions">
+          <button class="primary xs" :disabled="batchOperating || selectedRecordIds.size === 0" @click="batchApproveSelected">批次核准</button>
+          <button class="ghost xs" :disabled="batchOperating || selectedRecordIds.size === 0" @click="batchRequestChangesSelected">批次需修改</button>
+          <button class="danger xs" :disabled="batchOperating || selectedRecordIds.size === 0" @click="batchRejectSelected">批次退回</button>
+        </div>
       </div>
     </div>
 
@@ -306,9 +326,14 @@
       </div>
     </div>
 
-    <!-- Filters -->
+    <!-- Filters: collapsed by default (expands automatically if a filter is already active) -->
     <div class="card lr-filters" data-guide="learning-filters">
-      <div class="lr-filters-header">
+      <button
+        type="button"
+        class="lr-filters-header lr-filters-header-toggle"
+        :aria-expanded="showAdvancedFilters ? 'true' : 'false'"
+        @click="showAdvancedFilters = !showAdvancedFilters"
+      >
         <div class="lr-filters-title">
           <svg class="lr-filters-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
@@ -316,15 +341,20 @@
           <span>篩選條件</span>
           <span v-if="activeFilterCount > 0" class="lr-filters-badge" :title="`共 ${activeFilterCount} 個篩選條件已啟用`">{{ activeFilterCount }}</span>
         </div>
-        <button
-          v-if="hasActiveFilters"
-          type="button"
-          class="lr-filters-clear-link"
-          @click="clearAllFilters"
-        >清除全部</button>
-      </div>
+        <div class="lr-filters-header-right">
+          <span
+            v-if="hasActiveFilters"
+            role="button"
+            tabindex="0"
+            class="lr-filters-clear-link"
+            @click.stop="clearAllFilters"
+            @keyup.enter.stop="clearAllFilters"
+          >清除全部</span>
+          <svg class="lr-more-filters-chev" :class="{ open: showAdvancedFilters }" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </div>
+      </button>
 
-      <div class="lr-filters-grid">
+      <div v-show="showAdvancedFilters" class="lr-filters-grid">
         <div class="form-group lr-field">
           <label>搜尋學生</label>
           <input
@@ -374,7 +404,7 @@
         </div>
       </div>
 
-      <div class="lr-filters-actions">
+      <div v-show="showAdvancedFilters" class="lr-filters-actions">
         <button
           class="primary lr-filters-search"
           type="button"
@@ -524,16 +554,28 @@
               :class="{
                 'has-feedback': record.parent_feedback,
                 'is-unread': parentFeedbackUnread(record),
-                'has-feedback-read': record.parent_feedback && !parentFeedbackUnread(record)
+                'has-feedback-read': record.parent_feedback && !parentFeedbackUnread(record),
+                'is-selected': selectionMode && selectedRecordIds.has(record.id)
               }"
-              @click="viewRecord(record)"
+              @click="handleRecordCardClick(record)"
             >
               <div class="lr-record-card__top">
-                <div>
-                  <div class="lr-record-card__student">{{ record.student_name }}</div>
-                  <div class="lr-record-card__meta">
-                    {{ record.student_class_label || record.Subject || '未分類' }}
-                    <span v-if="record.StudentClassID" class="lr-contract-id">#{{ record.StudentClassID }}</span>
+                <div class="lr-record-card__title-row">
+                  <input
+                    v-if="selectionMode && isDirectorRole && (reviewTab === 'pending' || reviewTab === 'changes_requested') && (record.Status === 'pending' || record.Status === 'changes_requested')"
+                    type="checkbox"
+                    class="lr-record-card__select"
+                    :checked="selectedRecordIds.has(record.id)"
+                    @click.stop
+                    @change="toggleRecordSelection(record.id)"
+                    title="選取以批次核准"
+                  >
+                  <div>
+                    <div class="lr-record-card__student">{{ record.student_name }}</div>
+                    <div class="lr-record-card__meta">
+                      {{ record.student_class_label || record.Subject || '未分類' }}
+                      <span v-if="record.StudentClassID" class="lr-contract-id">#{{ record.StudentClassID }}</span>
+                    </div>
                   </div>
                 </div>
                 <span :class="statusTagClass(record.Status)" class="status-tag">{{ statusLabel(record.Status) }}</span>
@@ -661,7 +703,7 @@
                 <table>
                   <thead>
                     <tr>
-                      <th v-if="isDirectorRole && (reviewTab === 'pending' || reviewTab === 'changes_requested')" style="width:36px">
+                      <th v-if="selectionMode && isDirectorRole && (reviewTab === 'pending' || reviewTab === 'changes_requested')" style="width:36px">
                         <input type="checkbox" :checked="allSelected" @change="toggleSelectAll" title="全選">
                       </th>
                       <th>日期</th>
@@ -674,8 +716,8 @@
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-for="record in sg.records" :key="record.id" class="lr-table-row" :class="{ 'lr-row-unfilled': fillLabelClass(record) === 'fill-missing', 'lr-row-has-feedback': record.parent_feedback && !parentFeedbackUnread(record), 'lr-row-unread': parentFeedbackUnread(record), 'lr-row-urgent': isUrgentTeacherRecord(record) }" @click="viewRecord(record)">
-                      <td v-if="isDirectorRole && (reviewTab === 'pending' || reviewTab === 'changes_requested')" @click.stop>
+                    <tr v-for="record in sg.records" :key="record.id" class="lr-table-row" :class="{ 'lr-row-unfilled': fillLabelClass(record) === 'fill-missing', 'lr-row-has-feedback': record.parent_feedback && !parentFeedbackUnread(record), 'lr-row-unread': parentFeedbackUnread(record), 'lr-row-urgent': isUrgentTeacherRecord(record), 'is-selected': selectionMode && selectedRecordIds.has(record.id) }" @click="handleRecordCardClick(record)">
+                      <td v-if="selectionMode && isDirectorRole && (reviewTab === 'pending' || reviewTab === 'changes_requested')" @click.stop>
                         <input
                           v-if="record.Status === 'pending' || record.Status === 'changes_requested'"
                           type="checkbox"
@@ -1511,6 +1553,10 @@ const onlyUnfilled = ref(false);
 // only (no API/data/permission change); mutually exclusive with onlyUnfilled below.
 const onlyFilled = ref(false);
 const showMoreFilters = ref(false);
+// Advanced filter card (搜尋學生/篩選老師/日期範圍/科目) starts collapsed — it was
+// permanently expanded, adding 4+ always-visible form rows above the record list on
+// every load. Auto-expand only if a filter is already active on mount so context isn't hidden.
+const showAdvancedFilters = ref(false);
 const activeSecondaryFilterCount = computed(() => {
   let n = 0;
   if (isTeacher.value && teacherPriorityFilter.value !== 'all') n += 1;
@@ -1537,6 +1583,19 @@ watch(reviewTab, (t) => {
 watch(onlyUnfilled, (v) => { if (v) onlyFilled.value = false; });
 watch(onlyFilled, (v) => { if (v) onlyUnfilled.value = false; });
 const selectedRecordIds = ref(new Set());
+// Bulk-approve is opt-in (Gmail/Files-style "Select" mode) rather than always-on
+// checkboxes on every row/card — the checkbox only appears once the director
+// explicitly enters selection mode, so single-record review (the common case)
+// isn't cluttered with a selection affordance nobody asked for.
+const selectionMode = ref(false);
+function toggleSelectionMode() {
+  selectionMode.value = !selectionMode.value;
+  if (!selectionMode.value) selectedRecordIds.value = new Set();
+}
+function exitSelectionMode() {
+  selectionMode.value = false;
+  selectedRecordIds.value = new Set();
+}
 const batchOperating = ref(false);
 const draftAutoSaveKey = ref('');
 
@@ -2063,6 +2122,17 @@ const toggleRecordSelection = (id) => {
   const next = new Set(selectedRecordIds.value);
   if (next.has(id)) next.delete(id); else next.add(id);
   selectedRecordIds.value = next;
+};
+
+// While in selection mode, tapping the row/card toggles its checkbox instead of
+// opening the detail modal — matches the mode's own affordance (Gmail/Files pattern).
+const handleRecordCardClick = (record) => {
+  const selectable = record?.Status === 'pending' || record?.Status === 'changes_requested';
+  if (selectionMode.value && selectable) {
+    toggleRecordSelection(record.id);
+    return;
+  }
+  viewRecord(record);
 };
 
 // Teacher schedule state
@@ -3953,7 +4023,7 @@ const batchApproveSelected = async () => {
     if (res.ok) {
       const json = await res.json();
       alert(json.message || '批次核准完成');
-      selectedRecordIds.value = new Set();
+      exitSelectionMode();
       await fetchRecords();
       fetchStatusCounts();
     } else {
@@ -3980,7 +4050,7 @@ const batchRejectSelected = async () => {
     if (res.ok) {
       const json = await res.json();
       alert(json.message || '批次退回完成');
-      selectedRecordIds.value = new Set();
+      exitSelectionMode();
       await fetchRecords();
       fetchStatusCounts();
     } else {
@@ -4007,7 +4077,7 @@ const batchRequestChangesSelected = async () => {
     if (res.ok) {
       const json = await res.json();
       alert(json.message || '批次標記需修改完成');
-      selectedRecordIds.value = new Set();
+      exitSelectionMode();
       await fetchRecords();
       fetchStatusCounts();
     } else {
@@ -4651,6 +4721,7 @@ const executeExport = async () => {
 // ── Init ──
 onMounted(async () => {
   if (window.innerWidth <= 640) scheduleView.value = 'today';
+  if (hasActiveFilters.value) showAdvancedFilters.value = true;
   migrateLegacyDrafts();
   if (props.userId) pruneOldDrafts(props.userId);
 
@@ -4921,36 +4992,76 @@ watch([reviewTab, resolvedDefaultWindowStart], ([rt, win], [prt, pwin]) => {
   color: var(--ds-canvas);
 }
 
+.lr-toolbar-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 8px;
+}
 .lr-unfilled-toggle {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin: 8px 0 0 4px;
   font-size: 13px;
   cursor: pointer;
   color: var(--ds-ink-mute);
   user-select: none;
 }
 .lr-unfilled-toggle input { width: auto; margin: 0; }
+.lr-select-mode-btn.active {
+  background: var(--ds-primary-wash);
+  border-color: var(--ds-primary);
+  color: var(--ds-primary);
+}
 
 /* ── Batch Action Bar ── */
 .lr-batch-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
   margin-top: 10px;
-  padding: 8px 12px;
+  padding: 10px 12px;
   background: var(--ds-primary-wash);
   border: 1px solid var(--ds-hairline);
   border-radius: 8px;
+}
+.lr-batch-bar__meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.lr-batch-bar__actions {
+  display: flex;
+  gap: 8px;
   flex-wrap: wrap;
+}
+/* Below the point where 3 text buttons + meta row fit on one line, stack into two
+   deliberate rows (meta on top, actions as an evenly-spaced full-width row) instead
+   of letting flex-wrap break the buttons unevenly (3-then-2). */
+@media (max-width: 640px) {
+  .lr-batch-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .lr-batch-bar__meta {
+    justify-content: space-between;
+  }
+  .lr-batch-bar__actions {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .lr-batch-bar__actions button {
+    width: 100%;
+  }
 }
 
 .lr-batch-count {
   font-size: 13px;
   font-weight: 600;
   color: var(--ds-primary-deep);
-  margin-right: 4px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -5452,6 +5563,20 @@ watch([reviewTab, resolvedDefaultWindowStart], ([rt, win], [prt, pwin]) => {
   padding-bottom: 10px;
   border-bottom: 1px dashed var(--ds-canvas-soft);
 }
+.lr-filters-header-toggle {
+  width: 100%;
+  background: none;
+  border: none;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.lr-filters-header-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ds-ink-mute);
+}
 .lr-filters-title {
   display: inline-flex;
   align-items: center;
@@ -5773,6 +5898,10 @@ select.lr-input {
   cursor: pointer;
   transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
 }
+.lr-record-card.is-selected {
+  border-color: var(--ds-primary);
+  background: var(--ds-primary-wash);
+}
 
 .lr-record-card:hover {
   transform: translateY(-2px);
@@ -5795,6 +5924,20 @@ select.lr-input {
   justify-content: space-between;
   gap: 12px;
 }
+
+.lr-record-card__title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.lr-record-card__select {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
 
 .lr-record-card__student {
   font-size: 17px;
@@ -6434,6 +6577,9 @@ select.lr-input {
 .lr-table-row {
   cursor: pointer;
   transition: background 0.15s;
+}
+.lr-table-row.is-selected {
+  background: var(--ds-primary-wash);
 }
 .lr-table-row.lr-row-unfilled {
   border-left: 3px solid var(--ds-warning);

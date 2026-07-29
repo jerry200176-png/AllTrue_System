@@ -11,7 +11,31 @@
 
 ## 🔴 進行中狀態（交接區 — 完成後清空此節）
 
-更新時間：2026-06-27（Engineering Governance Audit 完成 + PR #954 prod 收斂）
+更新時間：2026-07-29（大廠對標落差排序 + 分批執行啟動）
+
+**排序原則**：比照一般工程組織的成熟度投資順序——先擋合規/資料外洩風險（一旦出事無法逆轉、且是法律責任），再補可靠性護欄（防資料遺失/停機），再補交付流程成熟度（長期複利但不急），最後才是產品體驗與儀式感。同一層內，「純程式碼/文件、我能直接驗證」優先於「需要真實基礎設施、正式權限、或組織/Founder 決策」的項目——後者標記 blocked 並附原因，不是被跳過，是**任何授權都無法讓 AI agent 憑空取得生產 SSH、真金白銀花費、或組織排班決策**。
+
+| 優先層 | Issue | 現況 |
+|---|---|---|
+| **P0 合規/資料** | #889 PII data inventory | ✅ 本輪完成：`docs/REF_PRIVACY_DATA_INVENTORY.md` |
+| **P0 合規/資料** | #888 IAM/access review（code-level 部分） | ✅ 稽核完成，**發現真實 P0 資安漏洞並已修復**（`confirmPayment()` 缺分校/老師歸屬檢查，見 #1504 + PR #1506）；**僅涵蓋程式碼可驗證的角色/權限邏輯，不含真實 production 帳號盤點**（需要人工登入各系統才能完成，見下方 blocked），該部分尚未落成獨立文件 |
+| **P0 合規/資料** | #892 third-party/vendor risk register | ✅ 本輪完成：`docs/REF_VENDOR_RISK_REGISTER.md` |
+| **P0 合規/資料** | #890 sensitive action audit log coverage、#902 security exception register、#903 privacy request SOP | ⏳ 待接續（下個 batch） |
+| **P1 可靠性護欄** | #878 Release/Deploy/In-app traceability | ✅ 本 session 稍早已實作核心（PR #1496：`deploy-meta.json` + `/health/detailed`），待 review/merge |
+| **P1 可靠性護欄** | #872 DORA 四指標儀表板 | ⏳ 可從既有 git/CI 歷史直接算出，待接續 |
+| **P1 可靠性護欄** | #884 Observability 補強 | ⏳ 先產出「現況 vs 缺口」盤點（Sentry 已接、集中 log/alert 降噪未做），待接續 |
+| **P2 交付流程** | #896 ADR/RFC process | 📌 發現：**已大量存在**（`docs/adr/`、`docs/pop/adr/`、`docs/ADR_003–006`），缺的只是把「這是我們的標準流程」寫成一頁說明，非從零建立 |
+| **P2 交付流程** | #873 postmortem 範本、#893 service catalog/RACI、#897 release train cadence、#901 data quality checks、#905 QA test matrix | ⏳ 待接續 |
+| **P2 交付流程** | #894 SOP review cadence、#900 weekly ops review、#908 quarterly roadmap review | 💡 可直接用 Routine（排程訊息）落地，不是純文件 |
+| **P3 產品體驗** | #909–#912 角色分眾文案/UX（老師/主任/家長） | ⏳ 待接續，屬於可直接出 PR 的前端文案調整 |
+| **⛔ Blocked（需要真實基礎設施/權限/組織決策，非程式碼能解）** | #868 staging 環境、#870 CI 高可用、#871 Merge Queue、#875 GitHub Environments、#877 Project automation、#879 secret rotation（真實輪替）、#880 repository ruleset、#881 MySQL PITR、#882 DR tabletop、#883 on-call、#885 即時 capacity 監控（需活 Pi 指標）、#886 status page（需外部服務）、#887 host hardening verification（需 SSH，違反 CLAUDE.md 紅線 R6）、#899 RFID 實體盤點 | 逐項原因：GitHub 帳號管理層級設定（Merge Queue/Environments/ruleset/Project automation）不在目前 MCP 工具集裡；真實密鑰輪替/SSH 稽核/DR 演練需要正式生產存取，CLAUDE.md 紅線明文禁止 AI 直接 SSH 改 Pi；staging 環境、CI 高可用、on-call 排班都是要花錢或要人力排班的組織決策，本次 `/goal` 的排序授權不能替代這些 |
+
+**尚未排進上表、下一輪納入**：#869 feature flags（其實是純程式碼模式，非基礎設施，之後應歸 P2 而非 blocked）、#891 threat modeling cadence、#895 SLA metrics（部分需要 in-app 資料庫，非本 repo 純程式碼可得）、#898 onboarding package（本文件已部分承擔此角色，需整理非重寫）、#906/#907 其他文件類缺口。此表格是每輪接續更新的活文件，不代表未列出 = 已捨棄。
+
+**下一個 Agent／下一輪第一步**：
+1. 兩個背景 agent（PII 盤點、IAM code audit）完成後，落地為正式文件並更新本節狀態。
+2. 依上表 P0→P1→P2→P3 順序接續未完成項目；每完成一批更新本節，不要整份重寫。
+3. Blocked 清單只需要在你（或 Founder）想推進特定一項時，由人工決定「花這筆錢/開這個帳號權限/排這個班」，AI 才能接手後續程式碼/文件工作。
 
 **2026-06-27 Engineering Governance Audit**
 - ✅ 全庫 10-phase 稽核完成（無 CI；靜態分析 + code review）
