@@ -230,31 +230,19 @@
 
         <!-- ===== Layer 2: Progress Board ===== -->
         <section class="progress-board">
-          <div class="pb">
-            <span class="pb__label">今日到班</span>
-            <span class="pb__val"><strong>{{ attendedCount }}</strong><small> / {{ todaySchedules.length }}</small></span>
+          <div class="pb-cell">
+            <AtMetric label="今日到班" :value="`${attendedCount} / ${todaySchedules.length}`" />
             <div class="pb__bar"><div class="pb__fill" :style="{ width: attendancePct + '%' }"></div></div>
           </div>
-          <div class="pb">
-            <span class="pb__label">待審評量</span>
-            <span class="pb__val"><strong>{{ pendingEvaluations.length }}</strong> <small>筆</small></span>
-          </div>
-          <div class="pb">
-            <span class="pb__label">今日應處理</span>
-            <span class="pb__val"><strong>{{ workflowDailySummary.due_total }}</strong></span>
-          </div>
-          <div class="pb">
-            <span class="pb__label">今日已完成</span>
-            <span class="pb__val"><strong>{{ workflowDailySummary.done_total }}</strong></span>
-          </div>
-          <div class="pb">
-            <span class="pb__label">已逾期</span>
-            <span class="pb__val"><strong>{{ workflowDailySummary.breached_total }}</strong></span>
-          </div>
-          <div class="pb">
-            <span class="pb__label">未讀通知</span>
-            <span class="pb__val"><strong>{{ unreadNotificationCount }}</strong></span>
-          </div>
+          <AtMetric label="待審評量" :value="`${pendingEvaluations.length} 筆`" />
+          <AtMetric label="今日應處理" :value="workflowDailySummary.due_total" />
+          <AtMetric label="今日已完成" :value="workflowDailySummary.done_total" />
+          <AtMetric
+            label="已逾期"
+            :value="workflowDailySummary.breached_total"
+            :accent="workflowDailySummary.breached_total > 0 ? 'var(--ds-danger)' : ''"
+          />
+          <AtMetric label="未讀通知" :value="unreadNotificationCount" />
         </section>
 
         <div class="work-toolbar">
@@ -285,13 +273,17 @@
         <div class="work-grid">
           <div class="work-col">
             <!-- Today Schedule -->
-            <section class="wp" id="schedule-sec">
-              <header class="wp__head">
-                <span class="material-symbols-outlined wp__hi">calendar_today</span>
-                <h3>今日課表</h3>
-                <span v-if="todaySchedules.length" class="wp__badge">{{ todaySchedules.length }}</span>
-              </header>
-              <div v-if="!todaySchedules.length" class="wp__empty enterprise-empty">今日無課程</div>
+            <AtCard id="schedule-sec">
+              <template #header>
+                <div class="dash-card-head-title">
+                  <span class="material-symbols-outlined wp__hi">calendar_today</span>
+                  <h3>今日課表</h3>
+                </div>
+              </template>
+              <template v-if="todaySchedules.length" #actions>
+                <span class="wp__badge">{{ todaySchedules.length }}</span>
+              </template>
+              <AtEmpty v-if="!todaySchedules.length" icon="calendar_today" title="今日無課程" />
               <div v-else class="wp-list-scroll-desktop">
                 <div v-for="s in todaySchedules" :key="s.id" class="sched-row">
                   <span class="sched-row__time">{{ formatTime(s.start_time) }}</span>
@@ -301,35 +293,41 @@
                   <span :class="['sched-row__st', 'st--' + s.status]">{{ formatScheduleStatus(s.status) }}</span>
                 </div>
               </div>
-              <footer v-if="pendingAttendanceCount > 0" class="wp__foot">
+              <footer v-if="pendingAttendanceCount > 0" class="dash-card-foot">
                 <button class="btn-p btn-sm" @click="goToAttendance">前往出缺勤處理</button>
               </footer>
-            </section>
+            </AtCard>
 
             <!-- Payment Alerts -->
-            <section class="wp wp--warn" id="payments-sec" data-guide="director-alerts">
-              <header class="wp__head">
-                <span class="material-symbols-outlined wp__hi">warning</span>
-                <h3>繳費／續課提醒</h3>
-                <span v-if="lowBalanceStudents.length" class="wp__badge wp__badge--danger">{{ lowBalanceStudents.length }}</span>
-              </header>
-              <p class="wp__hint">堂數制：已標記繳費者，若剩 0～2 堂仍會列出（方便聯繫加購）；未繳費者亦會列出。</p>
-              <div v-if="!lowBalanceStudents.length" class="wp__empty enterprise-empty">目前無待繳費、月結將届或低堂數需續課之課程</div>
-              <div v-else class="wp-list-scroll-desktop">
-                <div v-for="s in displayPaymentAlerts" :key="s.id" class="pay-row">
-                  <div class="pay-row__info">
-                    <span class="pay-row__name">{{ s.name }}</span>
-                    <span :class="paymentAlertBadgeClass(s)">{{ paymentAlertBadgeText(s) }}</span>
+            <div class="dash-card-warn" data-guide="director-alerts">
+              <AtCard id="payments-sec">
+                <template #header>
+                  <div class="dash-card-head-title">
+                    <span class="material-symbols-outlined wp__hi">warning</span>
+                    <h3>繳費／續課提醒</h3>
                   </div>
-                  <button class="btn-o btn-xs" @click="copyPaymentMessage(s)">複製通知</button>
+                </template>
+                <template v-if="lowBalanceStudents.length" #actions>
+                  <span class="wp__badge wp__badge--danger">{{ lowBalanceStudents.length }}</span>
+                </template>
+                <p class="wp__hint">堂數制：已標記繳費者，若剩 0～2 堂仍會列出（方便聯繫加購）；未繳費者亦會列出。</p>
+                <AtEmpty v-if="!lowBalanceStudents.length" icon="payments" title="目前無待繳費、月結將届或低堂數需續課之課程" />
+                <div v-else class="wp-list-scroll-desktop">
+                  <div v-for="s in displayPaymentAlerts" :key="s.id" class="pay-row">
+                    <div class="pay-row__info">
+                      <span class="pay-row__name">{{ s.name }}</span>
+                      <span :class="paymentAlertBadgeClass(s)">{{ paymentAlertBadgeText(s) }}</span>
+                    </div>
+                    <button class="btn-o btn-xs" @click="copyPaymentMessage(s)">複製通知</button>
+                  </div>
                 </div>
-              </div>
-              <footer v-if="lowBalanceStudents.length > paymentAlertLimit" class="wp__foot">
-                <button class="btn-o btn-xs" @click="showAllPayments = !showAllPayments">
-                  {{ showAllPayments ? '收合' : `顯示全部 (${lowBalanceStudents.length})` }}
-                </button>
-              </footer>
-            </section>
+                <footer v-if="lowBalanceStudents.length > paymentAlertLimit" class="dash-card-foot">
+                  <button class="btn-o btn-xs" @click="showAllPayments = !showAllPayments">
+                    {{ showAllPayments ? '收合' : `顯示全部 (${lowBalanceStudents.length})` }}
+                  </button>
+                </footer>
+              </AtCard>
+            </div>
 
             <!-- Exception Workflows -->
             <section class="wp ew-card" id="exception-workflows-sec">
@@ -384,14 +382,18 @@
             </section>
 
             <!-- Pending Evaluations -->
-            <section class="wp" id="evals-sec" data-guide="director-pending-evals">
-              <header class="wp__head">
-                <span class="material-symbols-outlined wp__hi">assignment</span>
-                <h3>待審核評量</h3>
-                <span v-if="pendingEvaluations.length" class="wp__badge">{{ pendingEvaluations.length }}</span>
-              </header>
+            <AtCard id="evals-sec" data-guide="director-pending-evals">
+              <template #header>
+                <div class="dash-card-head-title">
+                  <span class="material-symbols-outlined wp__hi">assignment</span>
+                  <h3>待審核評量</h3>
+                </div>
+              </template>
+              <template v-if="pendingEvaluations.length" #actions>
+                <span class="wp__badge">{{ pendingEvaluations.length }}</span>
+              </template>
               <p class="wp__hint">核准後老師科目數自動累計</p>
-              <div v-if="!pendingEvaluations.length" class="wp__empty enterprise-empty">無待審核評量</div>
+              <AtEmpty v-if="!pendingEvaluations.length" icon="assignment" title="無待審核評量" />
               <div v-else class="wp-list-scroll-desktop wp-list-scroll-desktop--primary">
                 <div v-for="ev in pendingEvaluations" :key="ev.id" class="eval-card">
                   <div class="eval-card__top">
@@ -411,10 +413,10 @@
                   </div>
                 </div>
               </div>
-              <footer v-if="pendingEvaluations.length" class="wp__foot">
+              <footer v-if="pendingEvaluations.length" class="dash-card-foot">
                 <button class="btn-o btn-sm" @click="emit('navigate', { target: 'learning' })">前往評量頁面</button>
               </footer>
-            </section>
+            </AtCard>
           </div>
 
           <div class="work-col work-col--side">
@@ -464,14 +466,18 @@
               :fetch-recent="fetchRecentSubstitutes"
             />
 
-            <section class="wp" id="director-task-tracker-sec">
-              <header class="wp__head">
-                <span class="material-symbols-outlined wp__hi">checklist</span>
-                <h3>流程追蹤</h3>
-                <span v-if="directorTodoCards.length" class="wp__badge wp__badge--warn">{{ directorTodoCards.length }}</span>
-              </header>
-              <div v-if="adoptionTaskLoading" class="wp__empty enterprise-empty enterprise-loading">載入追蹤中…</div>
-              <div v-else-if="!directorTodoCards.length" class="wp__empty enterprise-empty">目前沒有待追蹤項目</div>
+            <AtCard id="director-task-tracker-sec">
+              <template #header>
+                <div class="dash-card-head-title">
+                  <span class="material-symbols-outlined wp__hi">checklist</span>
+                  <h3>流程追蹤</h3>
+                </div>
+              </template>
+              <template v-if="directorTodoCards.length" #actions>
+                <span class="wp__badge wp__badge--warn">{{ directorTodoCards.length }}</span>
+              </template>
+              <AtSkeleton v-if="adoptionTaskLoading" :rows="3" />
+              <AtEmpty v-else-if="!directorTodoCards.length" icon="checklist" title="目前沒有待追蹤項目" />
               <div v-else class="wp-list-scroll-desktop">
                 <button
                   v-for="task in directorTodoCards"
@@ -488,63 +494,69 @@
                   <span class="todo-row__meta">{{ task.description }}</span>
                 </button>
               </div>
-            </section>
+            </AtCard>
 
-            <section v-if="dashboardViewMode === 'full'" class="wp" id="director-activity-log-sec">
-              <header class="wp__head">
-                <span class="material-symbols-outlined wp__hi">history</span>
-                <h3>近期操作履歷</h3>
-              </header>
-              <div v-if="adoptionActivityLoading" class="wp__empty enterprise-empty enterprise-loading">載入履歷中…</div>
-              <div v-else-if="!adoptionActivityRows.length" class="wp__empty enterprise-empty">尚無近期履歷</div>
+            <AtCard v-if="dashboardViewMode === 'full'" id="director-activity-log-sec">
+              <template #header>
+                <div class="dash-card-head-title">
+                  <span class="material-symbols-outlined wp__hi">history</span>
+                  <h3>近期操作履歷</h3>
+                </div>
+              </template>
+              <AtSkeleton v-if="adoptionActivityLoading" :rows="3" />
+              <AtEmpty v-else-if="!adoptionActivityRows.length" icon="history" title="尚無近期履歷" />
               <div v-else class="wp-list-scroll-desktop">
                 <div v-for="(log, idx) in adoptionActivityRows.slice(0, 20)" :key="`adoption-log-${idx}`" class="notif-row">
                   <span>{{ log.actor }}：{{ log.action }}</span>
                   <span class="badge-blue">{{ String(log.at || '').slice(5, 16).replace('T', ' ') }}</span>
                 </div>
               </div>
-            </section>
+            </AtCard>
 
             <!-- Teacher learning fill-rate -->
-            <section v-if="dashboardViewMode === 'full'" class="wp" id="teacher-fill-rates-sec">
-              <header class="wp__head">
-                <span class="material-symbols-outlined wp__hi">insights</span>
-                <h3>老師評量填寫率</h3>
-              </header>
+            <AtCard v-if="dashboardViewMode === 'full'" id="teacher-fill-rates-sec">
+              <template #header>
+                <div class="dash-card-head-title">
+                  <span class="material-symbols-outlined wp__hi">insights</span>
+                  <h3>老師評量填寫率</h3>
+                </div>
+              </template>
               <p class="wp__hint">
                 <template v-if="teacherFillRatesRangeLabel">{{ teacherFillRatesRangeLabel }}　</template>
                 已到班／遲到堂次之評量進度有填計入（近 {{ teacherFillRatesDays }} 天）
               </p>
-              <div v-if="teacherFillRatesLoading" class="wp__empty enterprise-empty enterprise-loading">載入中…</div>
-              <template v-else-if="!teacherFillRatesRows.length">
-                <div class="wp__empty enterprise-empty">此區間內無已到班堂次</div>
-              </template>
-              <div class="wp-list-scroll-desktop">
+              <AtSkeleton v-if="teacherFillRatesLoading" :rows="3" />
+              <AtEmpty v-else-if="!teacherFillRatesRows.length" icon="insights" title="此區間內無已到班堂次" />
+              <div v-else class="wp-list-scroll-desktop">
                 <div v-for="row in teacherFillRatesRows" :key="row.teacher_id" class="notif-row">
                   <span>{{ row.teacher_name }}　{{ row.learning_records_filled }}／{{ row.sessions_attended }} 堂</span>
                   <span class="badge-blue">{{ row.fill_rate_pct }}%</span>
                 </div>
               </div>
-            </section>
+            </AtCard>
 
             <!-- Notifications -->
-            <section class="wp">
-              <header class="wp__head">
-                <span class="material-symbols-outlined wp__hi">notifications</span>
-                <h3>通知摘要</h3>
-                <span v-if="unreadNotificationCount" class="wp__badge">{{ unreadNotificationCount }}</span>
-              </header>
-              <div v-if="!notificationSummary.length" class="wp__empty enterprise-empty">目前無未讀通知</div>
+            <AtCard>
+              <template #header>
+                <div class="dash-card-head-title">
+                  <span class="material-symbols-outlined wp__hi">notifications</span>
+                  <h3>通知摘要</h3>
+                </div>
+              </template>
+              <template v-if="unreadNotificationCount" #actions>
+                <span class="wp__badge">{{ unreadNotificationCount }}</span>
+              </template>
+              <AtEmpty v-if="!notificationSummary.length" icon="notifications" title="目前無未讀通知" />
               <div v-else class="wp-list-scroll-desktop">
                 <div v-for="n in notificationSummary" :key="n.id" class="notif-row">
                   <span>{{ n.title }}</span>
                   <span class="badge-blue">{{ n.typeLabel }}</span>
                 </div>
               </div>
-              <footer class="wp__foot">
+              <footer class="dash-card-foot">
                 <button class="btn-o btn-sm" @click="goToNotifications">前往通知中心</button>
               </footer>
-            </section>
+            </AtCard>
           </div>
         </div>
 
@@ -653,6 +665,10 @@ import { getBranchName } from '../lib/useBranches';
 import { getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchDiscrepancySummary } from '../lib/scheduleDiscrepanciesApi';
 import RecentSubstitutesCard from '../components/substitute/RecentSubstitutesCard.vue';
+import AtCard from '../components/design-system/AtCard.vue';
+import AtEmpty from '../components/design-system/AtEmpty.vue';
+import AtSkeleton from '../components/design-system/AtSkeleton.vue';
+import AtMetric from '../components/design-system/AtMetric.vue';
 import { recentSubstitutes as fetchRecentSubstitutes } from '../lib/substituteApi.js';
 import { sortTodoCards, markTodoAcknowledged, isTodoAcknowledged } from '../lib/adoptionTodo';
 import {
@@ -2221,44 +2237,19 @@ onBeforeUnmount(() => {
   padding: 12px;
 }
 
-.pb {
-  position: relative;
+.pb-cell {
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  min-height: 84px;
-  padding: 14px;
-  border-radius: 12px;
-  border: 1px solid var(--ds-hairline);
-  background: var(--ds-canvas);
-  box-shadow: 0 1px 2px rgba(0, 55, 112, 0.05);
+  gap: 8px;
 }
-.pb__label {
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--ds-ink-mute);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
+.pb-cell :deep(.at-metric) {
+  flex: 1;
 }
-.pb__val {
-  font-size: 15px;
-  color: var(--ds-ink-secondary);
-  font-variant-numeric: tabular-nums;
-}
-.pb__val strong {
-  font-weight: 700;
-  font-size: 28px;
-  color: var(--ds-ink);
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-}
-.pb__val small  { font-weight: 600; color: var(--ds-ink-mute); }
 .pb__bar {
   height: 5px;
   border-radius: 999px;
   background: var(--ds-hairline);
   overflow: hidden;
-  margin-top: auto;
 }
 .pb__fill {
   height: 100%;
@@ -2397,6 +2388,31 @@ onBeforeUnmount(() => {
   border-top: 1px solid rgba(226, 232, 240, 0.82);
   display: flex;
   justify-content: flex-end;
+}
+
+/* ===== AtCard-based work-grid cards (Wave B) ===== */
+.dash-card-head-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.dash-card-head-title h3 {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ds-ink);
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+.dash-card-foot {
+  margin: 16px -24px -24px;
+  padding: 12px 18px;
+  border-top: 1px solid rgba(226, 232, 240, 0.82);
+  display: flex;
+  justify-content: flex-end;
+}
+.dash-card-warn :deep(.at-card) {
+  border-top: 2px solid var(--ds-warning);
 }
 
 /* ===== Schedule Row ===== */
