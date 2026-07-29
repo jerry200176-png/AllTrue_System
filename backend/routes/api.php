@@ -436,6 +436,13 @@ Route::prefix('v1')->group(function () {
         Route::post('student-classes/{studentClass}/pause', [StudentClassController::class, 'togglePause']);
         Route::delete('student-classes/{studentClass}', [StudentClassController::class, 'destroy']);
 
+        // Course Continuity (#1382) — group link without physical merge
+        Route::get('course-contract-groups', [\App\Http\Controllers\CourseContractGroupController::class, 'index']);
+        Route::post('course-contract-groups', [\App\Http\Controllers\CourseContractGroupController::class, 'store']);
+        Route::post('course-contract-groups/{id}/members', [\App\Http\Controllers\CourseContractGroupController::class, 'addMember'])->whereNumber('id');
+        Route::delete('course-contract-groups/{id}/members/{memberId}', [\App\Http\Controllers\CourseContractGroupController::class, 'unlinkMember'])
+            ->whereNumber('id')->whereNumber('memberId');
+
         // Course packages (multi-subject shared session pool)
         Route::get('course-packages', [\App\Http\Controllers\CoursePackageController::class, 'index']);
         Route::post('course-packages/create-multi-subject', [\App\Http\Controllers\CoursePackageController::class, 'createMultiSubject']);

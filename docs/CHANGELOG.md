@@ -1,3 +1,11 @@
+## 2026-07-24 — feat: Course Continuity 群組 API MVP（#1382）
+
+- 新增 `course_contract_groups`／`course_contract_group_members`（空表；不物理 merge 合約）。
+- 主任 API：列表／建立群組／加入成員／解除關聯；拒絕跨學生／跨校／package。
+- 解除關聯不刪 `StudentClass`；財務／堂次／評量維持原合約。
+
+開發備註：RFC 方案 A。不含自動 backfill、#1130 repair、群組 UI。回歸 `CourseContinuityGroupApiTest`。
+
 ## 2026-07-24 — fix: Epic A/D Phase 1 — 有效堂次共用過濾 + 調課 dialog 內錯誤
 
 - 課程管理與行事曆共用 `sessionOccurrenceFilter`（有效堂次／幽靈取消／額度例外）。
