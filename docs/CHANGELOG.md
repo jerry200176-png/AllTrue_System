@@ -1,3 +1,11 @@
+## 2026-07-29 — fix(dashboard): 主任總覽頁面 Wave A —— 收斂重複資訊源 + 修正文字換行 bug
+
+- 主任反映總覽頁面「很亂」。盤點後發現同一份「今天要做什麼」被拆成三套機制各自呈現：E-OPS-TRUST 決策中心、「今日優先處理」風險卡、以及最上方待辦小卡（action-lane）——待審核評量數甚至同時出現在三處。程式碼裡已有註解證實這是已知重疊（`// Trust decisions ... avoid duplicate prompts`），但「今日優先處理」與 action-lane 仍完整重複同一組訊號（待到班／催繳／補點名／補課／待審核／家長回饋）。
+- 移除「今日優先處理」（`priority-risks`）整段：其資料完全是 action-lane 既有訊號的重新包裝，刪除後不影響任何業務邏輯（`directorPriorityRisks` computed、`handleDirectorPriorityRisk`、專用的 bypass 追蹤函式與 CSS 皆隨之移除；`lib/directorPriorityRisks.js` 與其獨立單元測試維持不動，未來若需要保留可再接回）。
+- 修正真的 CSS bug：「查看範例格式」按鈕（`.ac__format-link`）缺少 `white-space: nowrap`（同層 `.ac__label` 有），可用寬度被壓縮時中文文字會逐字換行；已補上。
+- 頁首英文 kicker `"Campus Operations Command"` 改為中文「今日營運總覽」，並將 letter-spacing 對齊站內既有中文 label（`.section-label`）慣例，不再套用為英文設計的寬字距。
+- 純前端結構調整，未變更任何 API、繳費／審核／排課邏輯。已用真實 Vue 元件（非重繪版）搭配 mocked API，在 390px／768px／1440px 實際截圖驗證，`vite build` 全綠。後續 Wave（At* primitives 統一卡片殼、版面密度分組）另案處理，詳見改善計劃。
+
 ## 2026-07-29 — fix(learning): 學習評量表工具列大瘦身 + 批次核准改為「選取模式」+ 圖示字型自架
 
 - 使用者實測回報：手機上批次核准的勾選框「很怪」、位置醜、還看得到英文字，整頁架構也很亂。實測後發現進入評量表要先滑過 6～7 排堆疊的控制列（分頁籤、篩選 chip、篩選條件卡、顯示模式切換）才看得到第一筆記錄；先前 #1510 加的勾選框又是每張卡片永遠顯示，就算只想單筆審核也擺脫不掉。

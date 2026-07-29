@@ -24,11 +24,12 @@ localStorage.setItem('notifications_sound_enabled', '0');
 
 const role = params.get('role') || 'director';
 
-const [{ createApp, h }, styles, NotificationsCenter, StudentsList, LearningRecordsPage] = await Promise.all([
+const [{ createApp, h }, styles, NotificationsCenter, StudentsList, DirectorDashboard, LearningRecordsPage] = await Promise.all([
   import('vue'),
   import('../../../src/styles.css'),
   import('../../../src/pages/NotificationsCenter.vue'),
   import('../../../src/pages/StudentsList.vue'),
+  import('../../../src/pages/DirectorDashboard.vue'),
   import('../../../src/pages/LearningRecordsPage.vue'),
 ]);
 
@@ -39,6 +40,9 @@ createApp({
   setup() {
     if (page === 'students') {
       return () => h(StudentsList.default, { branchId: 1 });
+    }
+    if (page === 'director') {
+      return () => h(DirectorDashboard.default, { branchId: 1 });
     }
     if (page === 'learning') {
       return () => h(LearningRecordsPage.default, { branchId: 1, userRole: role, userId: 9001 });
