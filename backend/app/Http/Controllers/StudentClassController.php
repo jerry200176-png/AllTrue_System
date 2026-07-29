@@ -2832,6 +2832,13 @@ class StudentClassController extends Controller
 
         $canAdd = $result['conflict_type'] === 'none';
 
+        $endTime = !empty($data['end_time'])
+            ? $this->normalizeSessionTime($data['end_time'], '18:00')
+            : Carbon::createFromFormat('H:i:s', $startTime)
+                ->addMinutes(max(30, (int) ($data['duration_minutes'] ?? 120)))
+                ->format('H:i:s');
+        $isEnded = $this->sessionEndedByEndTime($sessionDate, $endTime);
+
         return response()->json([
             'can_add' => $canAdd,
             'conflict_type' => $result['conflict_type'],
@@ -2841,6 +2848,11 @@ class StudentClassController extends Controller
             'has_approved_learning_record' => $result['has_approved_learning_record'] ?? false,
             'conflict_session_id' => $result['conflict_session_id'] ?? null,
             'suggested_actions' => $result['suggested_actions'] ?? [],
+            // R-quickadd-confirm: this slot's end time has already passed —
+            // add-session will silently mark it completed + auto-approve the
+            // evaluation when auto_approve stays true. FE must confirm explicitly
+            // (in-app #197 follow-up / 黃奕暟 7/28 mis-add incident, 2026-07-29).
+            'is_ended' => $isEnded,
         ]);
     }
 
