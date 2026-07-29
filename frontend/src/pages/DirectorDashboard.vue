@@ -270,6 +270,10 @@
         </div>
 
         <!-- ===== Work Area (detail panels) ===== -->
+        <div class="section-label-row">
+          <span class="section-label">今日必辦</span>
+          <span class="section-sublabel">需要主任處理的今日課務與提醒</span>
+        </div>
         <div class="work-grid">
           <div class="work-col">
             <!-- Today Schedule -->
@@ -459,13 +463,6 @@
               </template>
             </section>
 
-            <!-- PRD 9c058f19：近 7 天代課記錄 -->
-            <RecentSubstitutesCard
-              v-if="dashboardViewMode === 'full'"
-              :branch-id="branchId"
-              :fetch-recent="fetchRecentSubstitutes"
-            />
-
             <AtCard id="director-task-tracker-sec">
               <template #header>
                 <div class="dash-card-head-title">
@@ -495,6 +492,42 @@
                 </button>
               </div>
             </AtCard>
+
+            <!-- Notifications -->
+            <AtCard>
+              <template #header>
+                <div class="dash-card-head-title">
+                  <span class="material-symbols-outlined wp__hi">notifications</span>
+                  <h3>通知摘要</h3>
+                </div>
+              </template>
+              <template v-if="unreadNotificationCount" #actions>
+                <span class="wp__badge">{{ unreadNotificationCount }}</span>
+              </template>
+              <AtEmpty v-if="!notificationSummary.length" icon="notifications" title="目前無未讀通知" />
+              <div v-else class="wp-list-scroll-desktop">
+                <div v-for="n in notificationSummary" :key="n.id" class="notif-row">
+                  <span>{{ n.title }}</span>
+                  <span class="badge-blue">{{ n.typeLabel }}</span>
+                </div>
+              </div>
+              <footer class="dash-card-foot">
+                <button class="btn-o btn-sm" @click="goToNotifications">前往通知中心</button>
+              </footer>
+            </AtCard>
+
+            <!-- 完整檢視才顯示：近期紀錄與進階統計，跟上方「今日必辦」性質的卡片明確分開 -->
+            <div v-if="dashboardViewMode === 'full'" class="section-label-row section-label-row--sub">
+              <span class="section-label">本週趨勢與紀錄</span>
+              <span class="section-sublabel">近期操作履歷、代課動態與評量填寫統計</span>
+            </div>
+
+            <!-- PRD 9c058f19：近 7 天代課記錄 -->
+            <RecentSubstitutesCard
+              v-if="dashboardViewMode === 'full'"
+              :branch-id="branchId"
+              :fetch-recent="fetchRecentSubstitutes"
+            />
 
             <AtCard v-if="dashboardViewMode === 'full'" id="director-activity-log-sec">
               <template #header>
@@ -533,29 +566,6 @@
                   <span class="badge-blue">{{ row.fill_rate_pct }}%</span>
                 </div>
               </div>
-            </AtCard>
-
-            <!-- Notifications -->
-            <AtCard>
-              <template #header>
-                <div class="dash-card-head-title">
-                  <span class="material-symbols-outlined wp__hi">notifications</span>
-                  <h3>通知摘要</h3>
-                </div>
-              </template>
-              <template v-if="unreadNotificationCount" #actions>
-                <span class="wp__badge">{{ unreadNotificationCount }}</span>
-              </template>
-              <AtEmpty v-if="!notificationSummary.length" icon="notifications" title="目前無未讀通知" />
-              <div v-else class="wp-list-scroll-desktop">
-                <div v-for="n in notificationSummary" :key="n.id" class="notif-row">
-                  <span>{{ n.title }}</span>
-                  <span class="badge-blue">{{ n.typeLabel }}</span>
-                </div>
-              </div>
-              <footer class="dash-card-foot">
-                <button class="btn-o btn-sm" @click="goToNotifications">前往通知中心</button>
-              </footer>
             </AtCard>
           </div>
         </div>
@@ -2928,6 +2938,10 @@ onBeforeUnmount(() => {
   gap: 8px;
   margin-bottom: -4px;
   padding: 0 4px;
+}
+.section-label-row--sub {
+  margin-top: 8px;
+  margin-bottom: 4px;
 }
 .section-label {
   font-size: 12px;
