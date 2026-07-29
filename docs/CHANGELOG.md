@@ -6,6 +6,11 @@
 
 開發備註：新增 regression test `useCourseSessionsDisplay.test.js`（真的呼叫 composable 本體，斷言不拋錯）——原本唯一的 `useCourseSessionsDisplay.occurrence.test.js` 是鏡像邏輯測試，從未 import 真正的模組，CI／`vite build` 都沒有實際執行過這個 return 陳述式，故未攔住。已納入 `vitest run`（CI `test:unit:cov` 既有 glob 涵蓋，無需另外接線）。`npm run test:calendar` 全綠、`vite build` 全綠。
 
+## 2026-07-29 — chore(ci): `scripts/ci/branch-policy.mjs` 白名單補 `claude/` 前綴
+
+- Claude Code on the web / CCR session 在此 repo 自動建立的分支固定是 `claude/<slug>` 命名，但白名單只列了 `cursor/`（Cursor agent），導致本次 P0 修復的 PR 被 Presubmit CHECK 1 擋下。
+- 補上 `claude: { status: 'accepted', riskHint: 'R0+' }`（比照 `cursor` 項），並在 `scripts/ci/gov.test.mjs` 加對應斷言。
+
 ## 2026-07-29 — feat(release-notes): 教職員版本更新改為顯式 STAFF_UPDATES（與 CHANGELOG 拆分）
 
 - 新增 `docs/STAFF_UPDATES.yml` 為教職員「版本更新」唯一權威；`notesForRole` 不再自動發布 CHANGELOG 投影。
