@@ -1,8 +1,12 @@
 #!/usr/bin/env node
 /**
- * Maps docs/CHANGELOG.md → frontend/src/lib/releaseNotes.generated.js
+ * Maps docs/CHANGELOG.md → frontend/src/lib/changelogDraft.generated.js
+ *
+ * DRAFT ONLY for AI / human curation. Does NOT publish to the in-app「版本更新」page.
+ * Staff communication truth: docs/STAFF_UPDATES.yml → staffUpdates.generated.js
+ *
  * Run from repo root or via `npm run sync-release-notes` in frontend/.
- * Groups entries by date into user-facing release cards and filters internal-only headings.
+ * Groups entries by date, filters internal-only headings, sorts date DESC (never input order).
  */
 import fs from 'fs';
 import path from 'path';
@@ -11,7 +15,7 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
 const mdPath = path.join(root, 'docs', 'CHANGELOG.md');
-const outPath = path.join(root, 'frontend', 'src', 'lib', 'releaseNotes.generated.js');
+const outPath = path.join(root, 'frontend', 'src', 'lib', 'changelogDraft.generated.js');
 
 const headingRe = /^## (\d{4}-\d{2}-\d{2}) — (.+)$/;
 
@@ -184,8 +188,13 @@ function parseChangelog(md) {
     if (!bucket.includes(text)) bucket.push(text);
   }
 
+  const dates = [...grouped.keys()].sort((a, b) => String(b).localeCompare(String(a)));
   const notes = [];
-  for (const [date, sectionMap] of grouped.entries()) {
+  for (const date of dates) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      throw new Error(`changelog-to-release-notes: invalid date key ${date}`);
+    }
+    const sectionMap = grouped.get(date);
     const version = versionFromIsoDate(date);
     const sectionOrder = ['新增內容', '修正內容', '體驗調整', '其他改善'];
     const sections = sectionOrder
@@ -193,15 +202,16 @@ function parseChangelog(md) {
       .filter((section) => section.items.length > 0);
 
     const flatItems = sections.flatMap((section) => section.items);
-    // Staff-only. Parent Portal reads docs/PARENT_UPDATES.yml (never keyword-derived).
+    // Draft only — never auto-tagged parent. Publish path is STAFF_UPDATES.yml.
     const audience = ['teacher', 'director'];
 
     notes.push({
       version,
       date,
-      title: `${version} 版本更新`,
+      title: `${version} 草稿（未發布）`,
       summary: buildSummary(sections),
       audience,
+      draft: true,
       sections,
       items: flatItems.slice(0, 8),
     });
@@ -211,18 +221,6 @@ function parseChangelog(md) {
     }
   }
 
-  if (notes.length === 0) {
-    notes.push({
-      version: '1.1.1',
-      date: new Date().toISOString().slice(0, 10),
-      title: '系統更新紀錄',
-      summary: '可在這裡查看最近的系統更新。',
-      audience: ['teacher', 'director'],
-      sections: [{ title: '其他改善', items: ['可查閱完整 CHANGELOG 了解近期更新'] }],
-      items: ['可查閱技術紀錄 CHANGELOG'],
-    });
-  }
-
   return notes;
 }
 
@@ -230,9 +228,10 @@ const md = fs.readFileSync(mdPath, 'utf8');
 const data = parseChangelog(md);
 
 const banner = `/**
- * AUTO-GENERATED — source: docs/CHANGELOG.md
+ * AUTO-GENERATED DRAFT — source: docs/CHANGELOG.md
+ * NOT shown on in-app 版本更新. Staff publish source: docs/STAFF_UPDATES.yml
  * Regenerate: (cd frontend && npm run sync-release-notes)
  */\n`;
 
-fs.writeFileSync(outPath, `${banner}export const changelogReleaseNotes = ${JSON.stringify(data, null, 2)};\n`, 'utf8');
-console.error(`changelog-to-release-notes: wrote ${data.length} cards → ${outPath}`);
+fs.writeFileSync(outPath, `${banner}export const changelogDraftNotes = ${JSON.stringify(data, null, 2)};\n`, 'utf8');
+console.error(`changelog-to-release-notes: wrote ${data.length} draft cards → ${outPath}`);

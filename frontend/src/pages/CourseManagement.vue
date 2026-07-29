@@ -315,13 +315,23 @@
                                 @click.stop="openQuickAddSessionModal(c)"
                               >{{ planningStatusFor(c)?.action === 'arrange_makeup' ? '安排補課' : '補排堂次' }}</button>
                             </span>
+                            <span v-if="primarySessionUnits(c).length === 0" class="hint">無法計算（請確認排課設定）</span>
+                            <button
+                              v-if="cancelledSessionCount(c) > 0"
+                              type="button"
+                              class="notes-toggle-btn"
+                              @click.stop="toggleCancelledSessions(c.id)"
+                              :title="showCancelledSessions.has(c.id) ? '隱藏已取消／已調走' : '顯示已取消／已調走'"
+                            >
+                              {{ showCancelledSessions.has(c.id) ? '已調走／取消 ▲' : `含 ${cancelledSessionCount(c)} 堂已調走／取消 ▼` }}
+                            </button>
                             <button class="notes-toggle-btn" @click.stop="toggleSessionNotes" :title="showSessionNotes ? '隱藏備註' : '顯示備註'">
                               {{ showSessionNotes ? '備註 ▲' : '備註 ▼' }}
                             </button>
                           </div>
-                          <div v-if="allSessionUnits(c).length > 0" class="dates-chip-grid">
+                          <div v-if="primarySessionUnits(c).length > 0" class="dates-chip-grid">
                             <button
-                              v-for="u in allSessionUnits(c)"
+                              v-for="u in primarySessionUnits(c)"
                               :key="sessionRowKey(u)"
                               type="button"
                               :class="[
@@ -333,8 +343,19 @@
                               :title="projectedChipTitle(c, u)"
                               @click="openSessionEdit(c, (u.date || '').slice(0,10), u.id, u)"
                             >
-                              <template v-if="getSessionNumber(c, (u.date || '').slice(0,10), u.id)"><span class="chip-seq">第{{ getSessionNumber(c, (u.date || '').slice(0,10), u.id) }}堂</span></template><span class="chip-date">{{ formatSessionChipDate(u) }}</span><template v-if="u.isProjected"><span class="chip-state chip-state--projected">預排</span></template><template v-else-if="getSessionStateLabel(c, (u.date || '').slice(0,10), u.id)"><span class="chip-state">{{ getSessionStateLabel(c, (u.date || '').slice(0,10), u.id) }}</span></template><template v-if="showSessionNotes && isUserNote(u.note)"><span class="chip-note-text">{{ u.note }}</span></template>
+                              <template v-if="getSessionNumber(c, (u.date || '').slice(0,10), u.id)"><span class="chip-seq">第{{ getSessionNumber(c, (u.date || '').slice(0,10), u.id) }}堂</span></template><span class="chip-date">{{ formatSessionChipDate(u) }}</span><template v-if="u.isProjected"><span class="chip-state chip-state--projected">預排</span></template><template v-else-if="getSessionStateLabel(c, (u.date || '').slice(0,10), u.id)"><span class="chip-state">{{ getSessionStateLabel(c, (u.date || '').slice(0,10), u.id) }}</span></template><template v-if="u.isContractException"><span class="chip-state">例外</span></template><template v-if="showSessionNotes && isUserNote(u.note)"><span class="chip-note-text">{{ u.note }}</span></template>
                             </button>
+                          </div>
+                          <div v-if="showCancelledSessions.has(c.id) && movedOrCancelledUnits(c).length > 0" class="dates-chip-grid cancelled-sessions-grid" style="margin-top:8px">
+                            <span
+                              v-for="u in movedOrCancelledUnits(c)"
+                              :key="'cx-' + sessionRowKey(u)"
+                              class="date-chip cancelled"
+                              :title="getSessionTooltip(c, (u.date || '').slice(0,10), u.id)"
+                            >
+                              <span class="chip-date">{{ formatSessionChipDate(u) }}</span>
+                              <span class="chip-state">已取消</span>
+                            </span>
                           </div>
                         </div>
                         <!-- Pending makeup schedules (issue #527) -->
@@ -405,9 +426,9 @@
                         <div class="dates-panel-heading">
                           <strong class="dates-panel-title">上課日期（{{ packageMemberSessionSummary(hc, { completed: getCompletedSessionCount(hc), cancelled: cancelledSessionCount(hc) }).text }}）</strong>
                         </div>
-                        <div v-if="allSessionUnits(hc).length > 0" class="dates-chip-grid">
+                        <div v-if="primarySessionUnits(hc).length > 0" class="dates-chip-grid">
                           <span
-                            v-for="u in allSessionUnits(hc)"
+                            v-for="u in primarySessionUnits(hc)"
                             :key="sessionRowKey(u)"
                             :class="['date-chip', getSessionStateClass(hc, (u.date || '').slice(0,10), u.id)]"
                             :title="getSessionTooltip(hc, (u.date || '').slice(0,10), u.id)"
@@ -508,6 +529,7 @@
       :show="showRenewMonthlyModal"
       :form="renewMonthlyForm"
       :submitting="renewMonthlySubmitting"
+      :warnings="renewMonthlyWarnings"
       @close="!renewMonthlySubmitting && (showRenewMonthlyModal = false)"
       @submit="submitRenewMonthly"
     />
@@ -565,6 +587,8 @@
       :day-label="dayLabel"
       :day-of-week-from-date="dayOfWeekFromDate"
       :compute-end-time="computeEndTime"
+      :error="rescheduleError"
+      :submitting="rescheduleSubmitting"
       @close="showRescheduleModal = false"
       @submit="submitReschedule"
       @query-makeup="fetchMakeupSlots"
@@ -820,6 +844,10 @@
           <ul>
             <li v-for="item in pauseConfirmImpacts" :key="item">{{ item }}</li>
           </ul>
+          <label v-if="!pauseConfirmIsResume" style="display:flex;align-items:flex-start;gap:8px;margin-top:12px;font-size:13px;cursor:pointer">
+            <input v-model="pauseCancelRemaining" type="checkbox" style="margin-top:2px" />
+            <span>取消剩餘未上排課（建議勾選；不勾選則只暫停課程、堂次仍留在行事曆）</span>
+          </label>
         </div>
         <div class="actions">
           <button class="ghost" :disabled="pauseConfirmSubmitting" @click="pauseConfirmTarget = null">取消</button>
@@ -1025,7 +1053,7 @@ const visibleGroups = computed(() =>
 );
 
 const {
-  expandedDates, toggleDates, sessions, sessionUnits, allSessionUnits, cancelledSessionCount, sessionRowKey, getSessionNumber, countNonLeaveSessions, effectiveSessionCount, leaveSessionCount,
+  expandedDates, toggleDates, sessions, sessionUnits, primarySessionUnits, allSessionUnits, cancelledSessionCount, movedOrCancelledUnits, sessionRowKey, getSessionNumber, countNonLeaveSessions, effectiveSessionCount, leaveSessionCount,
   getSessionPlanningStatus, canMaterializeProjectedSession,
   getCourseSessionRows, getSessionRowsForDate, getSessionRowById, getSessionDisplayRow,
   getSessionState, getSessionStateLabel, getSessionStateClass, getSessionTooltip,
@@ -1578,6 +1606,7 @@ const showRenewMonthlyModal = ref(false);
 const renewMonthlyCourse = ref(null);
 const renewMonthlyForm = ref({});
 const renewMonthlySubmitting = ref(false);
+const renewMonthlyWarnings = ref([]);
 const purchaseForm = ref({
   sessions: 8,
   start_date: '',
@@ -1599,10 +1628,23 @@ const quickAddSessionForm = ref({
 });
 const pauseConfirmTarget = ref(null);
 const pauseConfirmSubmitting = ref(false);
+const pauseCancelRemaining = ref(true);
 const pauseConfirmIsResume = computed(() => pauseConfirmTarget.value?.status === 'inactive');
 const pauseConfirmImpacts = computed(() => pauseConfirmIsResume.value
   ? ['恢復後可繼續排課與補課', '後續仍依原課程設定計算堂數與提醒', '已取消的未來堂次不會自動重建，需依需要重新排課']
-  : ['取消未來尚未上課堂次', '暫停期間不排新課、不計入待辦', '可從歷史課程或暫停清單恢復']);
+  : [
+      pauseCancelRemaining.value ? '取消未來尚未上課堂次' : '不取消剩餘排課（堂次仍會留在行事曆）',
+      '暫停期間不排新課、不計入待辦',
+      '可從歷史課程或暫停清單恢復',
+    ]);
+
+const showCancelledSessions = ref(new Set());
+function toggleCancelledSessions(courseId) {
+  const next = new Set(showCancelledSessions.value);
+  if (next.has(courseId)) next.delete(courseId);
+  else next.add(courseId);
+  showCancelledSessions.value = next;
+}
 
 const activeActionMenu = ref(null);
 const toggleActionMenu = (courseId) => {
@@ -1619,6 +1661,7 @@ const localTodayYmd = () => {
 };
 
 function requestCoursePause(course) {
+  pauseCancelRemaining.value = true;
   pauseConfirmTarget.value = course;
 }
 
@@ -1634,11 +1677,14 @@ async function confirmCoursePause() {
     const token = sess?.access_token;
     if (!token) { alert('請重新登入'); return; }
 
+    const body = { action: isPaused ? 'resume' : 'pause' };
+    if (!isPaused) body.cancel_remaining = !!pauseCancelRemaining.value;
+
     const res = await fetch(`/api/v1/student-classes/${course.id}/pause`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ action: isPaused ? 'resume' : 'pause' }),
+      body: JSON.stringify(body),
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -1742,7 +1788,9 @@ function openPurchaseModal(course) {
       months: 1,
       end_date: '',
     };
+    renewMonthlyWarnings.value = [];
     showRenewMonthlyModal.value = true;
+    loadRenewMonthlyPreview(course);
     return;
   }
   purchaseCourse.value = course;
@@ -1754,6 +1802,41 @@ function openPurchaseModal(course) {
     package_op: 'add', // 'add' (加購) | 'set' (設定總堂數) — package members only (#553)
   };
   showPurchaseModal.value = true;
+}
+
+async function loadRenewMonthlyPreview(course) {
+  try {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    const token = sess?.access_token;
+    if (!token || !course?.id) return;
+    const currentEnd = course?.end_date || course?.EndDate || null;
+    let endDate = '';
+    if (currentEnd) {
+      const d = new Date(currentEnd);
+      d.setMonth(d.getMonth() + 1);
+      endDate = d.toISOString().slice(0, 10);
+    } else {
+      const d = new Date();
+      d.setMonth(d.getMonth() + 1);
+      endDate = d.toISOString().slice(0, 10);
+    }
+    const res = await fetch(`/api/v1/student-classes/${course.id}/renewal-preview`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ mode: 'renew_monthly', end_date: endDate }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (res.ok && Array.isArray(json.warnings)) {
+      renewMonthlyWarnings.value = json.warnings;
+    }
+  } catch {
+    /* preview is advisory only */
+  }
 }
 
 async function submitPurchaseSessions() {
@@ -2830,6 +2913,7 @@ const loadCourses = async (page = 1) => {
 
 const {
   showRescheduleModal, rescheduleCourse, rescheduleForm, rescheduleSessionOptions,
+  rescheduleSubmitting, rescheduleError,
   openReschedule, onRescheduleNewStartChange, submitReschedule,
   showMakeupSlotsModal, makeupLoading, makeupDateRange, availableMakeupSlots,
   makeupSlotsGrouped, fetchMakeupSlots, selectMakeupSlot,
@@ -4008,34 +4092,34 @@ onUnmounted(() => {
   font-size: 1em;
 }
 
-/* ----- Filters ----- */
+/* ----- Filters (Epic D denser ops) ----- */
 .filter-bar {
-  margin-top: 16px;
-  padding: 14px;
+  margin-top: 12px;
+  padding: 10px 12px;
   border: 1px solid var(--ds-hairline);
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--ds-canvas-soft);
   position: relative;
   z-index: 1;
 }
 
 .filter-bar.grid {
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px 10px;
 }
 
 .filter-field label {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--ds-ink-mute);
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
 .filter-field input,
 .filter-field select {
-  padding: 9px 12px;
-  border-radius: 8px;
-  font-size: 14px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 13px;
   border: 1px solid var(--ds-hairline-input);
   background: var(--ds-canvas);
   color: var(--ds-ink);
@@ -4396,9 +4480,10 @@ onUnmounted(() => {
   width: 100%;
   min-width: 540px;
   border-collapse: separate;
-  border-spacing: 0 8px;
-  font-size: 13.5px;
-  padding: 0 10px 10px;
+  border-spacing: 0 4px;
+  font-size: 13px;
+  padding: 0 8px 8px;
+  font-variant-numeric: tabular-nums;
 }
 
 .course-table thead {
@@ -4416,7 +4501,7 @@ onUnmounted(() => {
 }
 
 .course-table th {
-  padding: 12px 10px 6px;
+  padding: 8px 8px 4px;
   text-align: left;
   font-weight: 700;
   color: var(--ds-ink-secondary);
@@ -4424,22 +4509,22 @@ onUnmounted(() => {
 }
 
 .course-table td {
-  padding: 12px 10px;
+  padding: 8px;
   border-top: 1px solid var(--ds-hairline);
   border-bottom: 1px solid var(--ds-hairline);
   background: var(--ds-canvas);
   vertical-align: middle;
   word-break: keep-all;
-  line-height: 1.4;
+  line-height: 1.35;
 }
 .course-table .course-row td:first-child {
   border-left: 1px solid var(--ds-hairline);
-  border-radius: 16px 0 0 16px;
-  box-shadow: inset 4px 0 0 var(--ds-primary);
+  border-radius: 10px 0 0 10px;
+  box-shadow: inset 3px 0 0 var(--ds-primary);
 }
 .course-table .course-row td:last-child {
   border-right: 1px solid rgba(226, 232, 240, 0.82);
-  border-radius: 0 16px 16px 0;
+  border-radius: 0 10px 10px 0;
 }
 
 .course-row:hover {

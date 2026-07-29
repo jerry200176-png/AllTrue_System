@@ -6089,3 +6089,69 @@ parameters:
 			identifier: property.notFound
 			count: 1
 			path: app/Support/UserEngagementPresenter.php
+
+		-
+			message: '#^Method App\\Models\\CourseContractGroup\:\:activeMembers\(\) should return Illuminate\\Database\\Eloquent\\Relations\\HasMany but returns Illuminate\\Database\\Query\\Builder\.$#'
+			identifier: return.type
+			count: 1
+			path: app/Models/CourseContractGroup.php
+
+		-
+			message: '#^Offset ''mode'' on array\{mode\: string, campus_ids\: array\<int\>\} on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.offset
+			count: 2
+			path: app/Services/CourseContinuityService.php
+
+		-
+			message: '#^Offset ''campus_ids'' on array\{mode\: string, campus_ids\: array\<int\>\} on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.offset
+			count: 2
+			path: app/Services/CourseContinuityService.php
+
+		-
+			message: '#^Offset ''members'' on array\{student_id\: int, campus_id\: int, subject_id\?\: int\|null, label\?\: string\|null, members\: array\<int, array\{student_class_id\: int, relation_type\: string, effective_from\?\: string\|null, decision_reason\?\: string\|null\}\>\} on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: app/Services/CourseContinuityService.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\CourseContractGroup\:\:create\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Services/CourseContinuityService.php
+
+		-
+			message: '#^Offset ''student_class_id'' on array\{student_class_id\: int, relation_type\: string, effective_from\?\: string\|null, decision_reason\?\: string\|null\} on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: app/Services/CourseContinuityService.php
+
+		-
+			message: '#^Offset ''relation_type'' on array\{student_class_id\: int, relation_type\: string, effective_from\?\: string\|null, decision_reason\?\: string\|null\} on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: app/Services/CourseContinuityService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$StudentID\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/CourseContinuityService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$by1\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/CourseContinuityService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$SubjectID\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/CourseContinuityService.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\CourseContractGroupMember\:\:create\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Services/CourseContinuityService.php

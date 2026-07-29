@@ -899,6 +899,34 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - 改 YAML 或產生器後：`cd frontend && npm run sync-release-notes`，**提交** generated 檔；CI `git diff --exit-code` 防漂移。
 - 測試：`npm run test:release-notes`（空清單合法；禁 staff jargon 進 parent projection）。
 
+### R85. 教職員「版本更新」必須顯式核准（不可由 CHANGELOG 自動發布）
+
+**觸發情境**：2026-07-29 Founder 拍板：工程紀錄與使用者公告拆成兩個內容產品。既有 `changelog-to-release-notes` 自動刮字會造成日期亂序、「55 復活／IsContractException／Phase 3A」等一般人看不懂的卡。
+
+**強制規則**：
+
+- **教職員公告唯一來源**：`docs/STAFF_UPDATES.yml` → `frontend/src/lib/staffUpdates.generated.js`。
+- **禁止**把 `docs/CHANGELOG.md` 自動投影當正式發布來源；CHANGELOG 僅可產生 `changelogDraft.generated.js` 供起草。
+- `notesForRole(teacher|director|…)` 只讀 STAFF_UPDATES；排序權威＝`published_at` DESC（產生器強制 sort，不依賴 YAML／Markdown 順序）。
+- 語言閘門 `scripts/lib/userFacingCopyGate.mjs`：偵測工程黑話／殘詞 → **fail**，不得再當自動改寫器。
+- STAFF 檔 **禁止** `parent` audience；家長仍只走 R45／`PARENT_UPDATES.yml`。
+- 預設 `importance: digest`（週摘要）；重大／需行動才 `major`／`action_required`。
+- 操作指南：`docs/GUIDE_STAFF_UPDATES.md`。
+
+### R86. Composable 的「鏡像測試」不算測試——沒 import 真正模組就攔不住 ReferenceError（P0 整頁空白）
+
+**觸發情境**：2026-07-29 07:39 部署（#1409）後，主任回報課程管理頁**整頁空白**（外層 topbar／分校選單仍在，內容區完全沒渲染），所有角色、所有分校都一樣壞。
+
+**根因**：`useCourseSessionsDisplay.js` 的 `return {…}` 物件末端引用了 `SESSION_NOT_OCCUPYING_QUOTA`——這個常數在重構時被搬進 `sessionOccurrenceFilter.js`（且未 `export`），但composable 自己的 return 忘了一起清掉。`CourseManagement.vue` 每次 `setup()` 呼叫 `useCourseSessionsDisplay()` 執行到這行就丟 `ReferenceError: SESSION_NOT_OCCUPYING_QUOTA is not defined`，整個 Vue 元件掛載中斷。
+
+**CI 為何沒攔住**：唯一看似覆蓋這支 composable 的 `useCourseSessionsDisplay.occurrence.test.js`，檔頭其實寫明「Plain node assertions **mirroring** sessionOccurrenceFilter」——它是把過濾邏輯複製一份重新斷言，從未 `import` 真正的 `useCourseSessionsDisplay.js`。`vite build` 只打包不執行 composable 本體。兩者合計＝這個 return 陳述式從沒被任何自動化流程真的跑過一次。
+
+**強制規則**：
+
+- 任何 `use*.js` composable，只要有被頁面 `setup()` 直接呼叫，就必須有至少一個 vitest 測試**真的 import 並呼叫它**（如 `useRescheduleAndMakeup.test.js` 的寫法），斷言不拋錯 + 回傳 API 形狀正確。純邏輯的 node-assert 鏡像測試（`*.occurrence.test.js` 這類）只能當補充，不可視為對 composable 本體的覆蓋。
+- Code review／PR 自查：composable 的 `return {…}` 物件裡每個識別字都要能在檔案內找到宣告或 import；`grep -n "^import\|^const\|^function"` 對照 return list 是最低成本的手動檢查。
+- 已修復：刪除未使用、未宣告的殘留引用；新增 `useCourseSessionsDisplay.test.js`（CI `test:unit:cov` 既有 glob `src/composables/**/__tests__/**/*.test.js` 自動涵蓋，無需另外接線）。
+
 ### R59. 扣堂改分鐘制權威後，`RemainingSessions` 是 ROUND_HALF_UP 衍生顯示值（#613）
 
 **觸發情境**：2026-05-31 #613 落地「補課非標準時長按實際分鐘扣堂」；2026-07-19 延伸涵蓋**加長**補課（契約 2h、補課 3h）。
@@ -1056,10 +1084,10 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession）、§R39（代課評量權限需匹配時段）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R52（代課 scheduled 例外不可缺 original_schedule_id anchor）、§R71（調課單一交易＋前端 committed gate）、§R83（原子調課必須標記 IsContractException）、**§R84（IsContractException 搬進 ClassSessionObserver 結構性保證）**、§R72（cancelled ClassSession 不得讓 scheduled 例外佔用代課老師）、§R73（跨老師 gesture 必走 atomic substitute；legacy 兩階段精準補償）、§R74（代課衝突排除同一學生續約佔用） |
 | 請假 / 順延 | §R29、**§R82（KEEP dates+append）**、§R75（SUPERSEDED）、§R77、§R81 |
 | 評量 / 家長回饋 | §同天多堂課 buildEvents、§請假後不填評量、§R17（ownership 先於狀態判斷）、§R19（mark-read 不可更新 updated_at）、§R32（停用課程已上課評量不可消失）、§R39（代課評量權限需匹配時段）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R65（新增 session 狀態值必須同步全部消費端；leave 家族用集合判斷）、**§R78（nightly backfill 須 in-place restore 作廢評量，不可把 voided 當已有）** |
-| 家長入口 UI / `releaseNotes` | §R10、§R11、§R18、§R38、§R45（家長卡僅 `PARENT_UPDATES.yml` 顯式投影 + `sync-release-notes`） |
+| 家長入口 UI / `releaseNotes` | §R10、§R11、§R18、§R38、§R45（家長卡僅 `PARENT_UPDATES.yml` 顯式投影 + `sync-release-notes`）、**§R85（教職員卡僅 `STAFF_UPDATES.yml`；CHANGELOG 不得自動發布）** |
 | 課表回報 | §2026-04-17 回報系統（14 條禁止項） |
 | 排課 | §start_time 格式、§智慧排課誤標取消、§R25（請假優先於 scheduled 例外）、§R29（請假不可 fallback 只寫 schedules）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R47（rescheduled 幽靈不可蓋掉同日 ClassSession）、§R49（同學生同時段去重不可用 StudentClassID 當唯一 key）、§R50（行事曆載入不可 REST 成功後再跑 fallback）、§R69（bulk reflow 先 snapshot schedule IDs，禁止 mutable natural key 連鎖更新）、§R71（mutation contract／slot idempotency／兩階段補償）、**§R80（排課摘要補登堂數≠天數；須與 session_plan 同源 expand）**、§R83（調課後 IsContractException 防 realign）、**§R84（IsContractException 結構性保證，不再靠呼叫者記得）** |
-| 出缺勤 / 分校隔離 | §SEC-001、§分校隔離後端強制、§R12（查詢日期寫死今天）、§R14（submitQuickAttend 缺 StudentID）、§R15（出勤頁預設只顯示今天，歷史到班紀錄不可見）、§R16（`script setup` const TDZ 初始化順序 → 整頁空白）、§R33（老師每分校 RFID 優先）、§R36（個別資料有課但老師今日名單缺漏）、§R40（點名扣堂不可只用 ClassSessionID 防重）、§R41（補請假不可只用課程+日期找堂次）、§R42（行事曆堂次顯示老師不可被舊評量老師覆蓋）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R71（請假寫入即封閉 interval；禁止留待隔夜 repair）|
+| 出缺勤 / 分校隔離 | §SEC-001、§分校隔離後端強制、§R12（查詢日期寫死今天）、§R14（submitQuickAttend 缺 StudentID）、§R15（出勤頁預設只顯示今天，歷史到班紀錄不可見）、§R16（`script setup` const TDZ 初始化順序 → 整頁空白）、**§R86（composable return 引用未宣告識別字 → ReferenceError 整頁空白；鏡像測試攔不住）**、§R33（老師每分校 RFID 優先）、§R36（個別資料有課但老師今日名單缺漏）、§R40（點名扣堂不可只用 ClassSessionID 防重）、§R41（補請假不可只用課程+日期找堂次）、§R42（行事曆堂次顯示老師不可被舊評量老師覆蓋）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R71（請假寫入即封閉 interval；禁止留待隔夜 repair）|
 | 月結制 / 加購 / 多科固定時段 | §b3 inactive 歷史、§b4 加購分流、§R21（堂數制加購是新批次）、§R22（月結詳情不可只依賴 ClassSession）、§R23（推算日期不可成為 dead-end chip）、§R24（多科固定時段優先走一般課程）、§R26（月結續報與堂數額度不可混在同一語意）、§R38（家長端繳費提醒不可套主任續課提醒） |
 | routes/api.php | §AI 靜默回退路由（改前必讀完整檔案 + route:list） |
 | 備份 / nightly | §nightly 覆蓋修正、§備份還原演練、§R34（備份新鮮度不可只看 mtime）、§R71（repair 與 producer prevention 分離；同日全日期 health aggregate） |

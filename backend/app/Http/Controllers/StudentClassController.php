@@ -1844,6 +1844,11 @@ class StudentClassController extends Controller
 
     public function confirmPayment(StudentClass $studentClass)
     {
+        $auth = $this->authorizeStudentClassAccess($studentClass);
+        if ($auth !== null) {
+            return $auth;
+        }
+
         $studentClass->Paid = 1;
         $studentClass->PayDate = now()->toDateString();
         $studentClass->save();
@@ -2827,6 +2832,13 @@ class StudentClassController extends Controller
 
         $canAdd = $result['conflict_type'] === 'none';
 
+        $endTime = !empty($data['end_time'])
+            ? $this->normalizeSessionTime($data['end_time'], '18:00')
+            : Carbon::createFromFormat('H:i:s', $startTime)
+                ->addMinutes(max(30, (int) ($data['duration_minutes'] ?? 120)))
+                ->format('H:i:s');
+        $isEnded = $this->sessionEndedByEndTime($sessionDate, $endTime);
+
         return response()->json([
             'can_add' => $canAdd,
             'conflict_type' => $result['conflict_type'],
@@ -2836,6 +2848,11 @@ class StudentClassController extends Controller
             'has_approved_learning_record' => $result['has_approved_learning_record'] ?? false,
             'conflict_session_id' => $result['conflict_session_id'] ?? null,
             'suggested_actions' => $result['suggested_actions'] ?? [],
+            // R-quickadd-confirm: this slot's end time has already passed —
+            // add-session will silently mark it completed + auto-approve the
+            // evaluation when auto_approve stays true. FE must confirm explicitly
+            // (in-app #197 follow-up / 黃奕暟 7/28 mis-add incident, 2026-07-29).
+            'is_ended' => $isEnded,
         ]);
     }
 
@@ -3152,6 +3169,23 @@ class StudentClassController extends Controller
             );
             if ($amount <= 0) {
                 $amount = max(0, (int) ($studentClass->Charge ?? 0));
+            }
+
+            $openExceptions = 0;
+            if (Schema::hasColumn('ClassSession', 'IsContractException')) {
+                $openExceptions = (int) ClassSession::query()
+                    ->where('StudentClassID', $studentClass->getKey())
+                    ->where('Status', 'scheduled')
+                    ->where('IsContractException', 1)
+                    ->whereDate('SessionDate', '>=', Carbon::today()->toDateString())
+                    ->count();
+            }
+            if ($openExceptions > 0) {
+                $warnings[] = [
+                    'code' => 'open_contract_exceptions',
+                    'message' => "本期尚有 {$openExceptions} 堂調課／例外排課；新期將依契約固定時段展開，這些單堂調整不會帶過去。若要整期改時段，請先編輯固定排課。",
+                    'exception_count' => $openExceptions,
+                ];
             }
 
             $proposedCourse = [
@@ -3785,12 +3819,20 @@ class StudentClassController extends Controller
     {
         $classId = (int) $studentClass->ID;
         $today = Carbon::today()->toDateString();
-        $activeSessions = ClassSession::where('StudentClassID', $classId)
+        $activeSessionsQuery = ClassSession::where('StudentClassID', $classId)
             ->where('Status', 'scheduled')
             ->whereDate('SessionDate', '>=', $today)
             ->orderBy('SessionDate')
-            ->orderBy('StartTime')
-            ->get(['SessionDate', 'StartTime', 'EndTime']);
+            ->orderBy('StartTime');
+
+        // One-off 調課／補課 must not rewrite series week/time (SaaS: this occurrence only).
+        if (Schema::hasColumn('ClassSession', 'IsContractException')) {
+            $activeSessionsQuery->where(function ($q) {
+                $q->whereNull('IsContractException')->orWhere('IsContractException', 0);
+            });
+        }
+
+        $activeSessions = $activeSessionsQuery->get(['SessionDate', 'StartTime', 'EndTime']);
 
         if ($activeSessions->isEmpty()) {
             return;
@@ -5357,6 +5399,7 @@ class StudentClassController extends Controller
         $today = Carbon::today()->toDateString();
 
         $reason = $request->input('reason'); // 'completed' or null
+        $cancelRemaining = $request->boolean('cancel_remaining', true);
 
         if (!$reason
             && (string) ($sc->ScheduleMode ?? '') === 'count'
@@ -5385,14 +5428,19 @@ class StudentClassController extends Controller
                 }
                 $sc->save();
 
-                $cancelled = $this->cancelFutureScheduledSessions($sc, $reason);
+                $cancelled = $cancelRemaining
+                    ? $this->cancelFutureScheduledSessions($sc, $reason)
+                    : 0;
 
                 $labels = ['completed' => '已完課', 'settled' => '已結案'];
                 $label = $labels[$reason] ?? '已暫停';
                 DB::commit();
                 return response()->json([
-                    'message' => "課程{$label}，已取消 {$cancelled} 堂未來排課。",
+                    'message' => $cancelRemaining
+                        ? "課程{$label}，已取消 {$cancelled} 堂未來排課。"
+                        : "課程{$label}（未取消剩餘排課）。",
                     'cancelled_count' => $cancelled,
+                    'cancel_remaining' => $cancelRemaining,
                 ]);
             } else {
                 if ($sc->isUsageSettlementLocked()) {

@@ -19,6 +19,7 @@ export const BRANCH_PREFIXES = Object.freeze({
   release: { status: 'accepted', riskHint: 'R2' },
   design: { status: 'accepted', riskHint: 'R1' },
   cursor: { status: 'accepted', riskHint: 'R0+' },
+  claude: { status: 'accepted', riskHint: 'R0+' },
   'td-batch': { status: 'accepted', riskHint: 'R1' },
   dependabot: { status: 'accepted', riskHint: 'R1' },
   'cubelv-cli': { status: 'accepted', riskHint: 'R1' },

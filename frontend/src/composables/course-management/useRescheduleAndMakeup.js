@@ -3,11 +3,11 @@ import { getSubjectLabel } from '../../lib/constants';
 import { trackAdoptionEvent } from '../../lib/adoptionTelemetry';
 import { commitReschedule } from '../../lib/rescheduleApi';
 import {
-  formatRescheduleConfirmDialog,
   formatRescheduleSuccessMessage,
   formatRescheduleConflictStudents,
   humanizeRescheduleFailure,
 } from '../../lib/scheduleDisplay';
+import { isEffectiveSession } from '../../lib/sessionOccurrenceFilter';
 
 export function useRescheduleAndMakeup({
   supabase,
@@ -22,6 +22,8 @@ export function useRescheduleAndMakeup({
   getCapacityForClassType,
 }) {
   const showRescheduleModal = ref(false);
+  const rescheduleSubmitting = ref(false);
+  const rescheduleError = ref('');
   const rescheduleCourse = ref(null);
   const rescheduleForm = ref({
     student_id: '', student_name: '', subject: '', teacher_id: '', class_type: 'one_on_one',
@@ -38,11 +40,12 @@ export function useRescheduleAndMakeup({
     if (Array.isArray(rows) && rows.length > 0) {
       const options = [];
       rows.forEach((row, idx) => {
+        if (!isEffectiveSession(row)) return;
         const status = String(row?.status || '').toLowerCase();
-        if (['completed', 'attended', 'late', 'excused', 'absent', 'cancelled', 'leave', 'leave_adjusted'].includes(status)) return;
-        const date = String(row?.session_date || '').slice(0, 10);
+        if (['completed', 'attended', 'late', 'excused', 'absent', 'leave', 'leave_adjusted'].includes(status)) return;
+        const date = String(row?.session_date || row?.date || '').slice(0, 10);
         if (!date) return;
-        const startTime = String(row?.start_time || '').slice(0, 5);
+        const startTime = String(row?.start_time || row?.startTime || '').slice(0, 5);
         options.push({
           date,
           index: idx + 1,
@@ -64,6 +67,7 @@ export function useRescheduleAndMakeup({
       alert('此課程無可調課堂次（請確認開課日與排課設定）。');
       return;
     }
+    rescheduleError.value = '';
     rescheduleCourse.value = c;
     const first = list[0];
     rescheduleForm.value = {
@@ -89,32 +93,27 @@ export function useRescheduleAndMakeup({
     rescheduleForm.value.original_day = dayOfWeekFromDate(date);
   });
 
-  function onRescheduleNewStartChange() {}
+  function onRescheduleNewStartChange() {
+    rescheduleError.value = '';
+  }
 
   async function submitReschedule() {
     const form = rescheduleForm.value;
-    if (!form.new_date) return;
+    if (!form.new_date || rescheduleSubmitting.value) return;
     const bid = Number(typeof branchId === 'object' ? branchId.value : branchId) || 0;
-    if (!bid) { alert('請先選擇分校'); return; }
+    if (!bid) {
+      rescheduleError.value = '請先選擇分校';
+      return;
+    }
     const newEnd = computeEndTime(form.new_start, form.duration_hours);
-
-    const confirmText = formatRescheduleConfirmDialog({
-      studentName: form.student_name,
-      subject: getSubjectLabel(form.subject) || form.subject,
-      originalDate: form.original_date,
-      originalStart: form.original_start,
-      originalEnd: form.original_end,
-      newDate: form.new_date,
-      newStart: normalizeTo30Min(form.new_start),
-      newEnd,
-    });
-    if (!confirm(confirmText)) return;
+    rescheduleError.value = '';
+    rescheduleSubmitting.value = true;
 
     try {
       const { data: { session: sess } } = await supabase.auth.getSession();
       const token = sess?.access_token;
       if (!token) {
-        alert('調課失敗：請重新登入');
+        rescheduleError.value = '請重新登入後再試';
         return;
       }
 
@@ -148,8 +147,10 @@ export function useRescheduleAndMakeup({
     } catch (error) {
       let message = humanizeRescheduleFailure(error?.message || '調課未完成，資料沒有變更');
       const conflictLine = formatRescheduleConflictStudents(error?.conflicts?.[0]?.overlap_details);
-      if (conflictLine) message = `${message}\n${conflictLine}`;
-      alert('調課失敗：' + message);
+      if (conflictLine) message = `${message} ${conflictLine}`;
+      rescheduleError.value = message;
+    } finally {
+      rescheduleSubmitting.value = false;
     }
   }
 
@@ -380,6 +381,8 @@ export function useRescheduleAndMakeup({
     rescheduleCourse,
     rescheduleForm,
     rescheduleSessionOptions,
+    rescheduleSubmitting,
+    rescheduleError,
     openReschedule,
     onRescheduleNewStartChange,
     submitReschedule,

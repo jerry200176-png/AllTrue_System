@@ -4,6 +4,77 @@
 - 修正為先檢查 `Number.isNaN(parsed.getTime())`，解析失敗時退回 `new Date()`（今天）當基準，不再讓整個月結續約 modal 崩潰。
 - 純前端防呆，無 migration、無後端行為變更。
 
+## 2026-07-29 — fix(learning): 評量批次核准在手機上找不到（card view 缺選取框）
+
+- 學習評量表在寬度 < 760px 時預設切到卡片檢視（`viewMode='card'`），但批次核准／需修改／退回只做在桌機的表格檢視裡，卡片檢視完全沒有選取框，導致手機上永遠選不到任何一筆、批次列永遠不會出現——issue #1131 先前的程式碼稽核只看了桌機表格，沒發現這個落差。
+- 修法：卡片檢視每張卡加上選取框，並加「全選待審／取消全選」按鈕，共用既有的批次核准邏輯，後端無需改動。
+- 追蹤：#1131（重開）。
+
+## 2026-07-29 — fix(security): confirmPayment() 補上分校/老師授權檢查 [P0 IDOR]
+
+- `StudentClassController::confirmPayment()` 先前沒有任何授權檢查，任何已登入的主任或老師只要知道／猜到別分校的 `StudentClassID`，就能把該課程標記為已繳費——同 controller 其他寫入方法（`update`／`destroy`／`renewalPreview`）都有做的分校/老師歸屬檢查，唯獨這支漏掉。
+- 修法：補上與其他方法一致的 `authorizeStudentClassAccess()` 檢查，並新增跨分校/跨老師 403 與同分校成功案例的回歸測試。
+- 追蹤：#1504。
+
+## 2026-07-29 — fix(course-management): 補課／補登過去時段前加確認，避免靜默自動核准評量
+
+- 新店黃奕暟 7/28 誤加課事件根因：補課／補登（Quick Add Session）選到已過去的時段時，`auto_approve` 預設勾選會讓系統直接把該堂標記已上課＋自動核准評量，全程無任何確認，事後才由主任發現並手動取消。
+- 修法：`checkAddSession` API 新增 `is_ended` 欄位；前端偵測到「已過去時段 + 自動核准」時顯示明確警告文案，送出前跳二次確認，取消即不送出。Checkbox 文案補上「評量同時自動核准」。
+- 追蹤：#1507。
+
+## 2026-07-29 — chore(ci): 前端補 ESLint `no-undef` 阻斷式檢查 + `ui-smoke.yml` 缺 secret 時可見警告
+
+- 課程管理頁 P0 事故（見下方）的完整事後補強：前端過去完全沒有 TypeScript 或 ESLint，`vite build` 不會攔「引用未宣告變數」這類錯誤。新增 `frontend/eslint.config.js`，只開 `no-undef`（用今天的真實 bug 反向驗證過會攔住），接進 `npm run build` 第一步（CI「Vite build」步驟即會執行）。
+- `.github/workflows/ui-smoke.yml` 新增「Warn if smoke secrets are missing」步驟：`SMOKE_DIRECTOR_USER`/`SMOKE_TEACHER_USER`/`SMOKE_BASE_URL` 任一缺少時印出 `::warning::`，讓「這條 E2E 防線目前被跳過」在每次 CI run 都可見，不用翻 log 才發現（TD-070）。
+- 追蹤：TD-070（director smoke 帳密尚待補）、TD-071（`no-unused-vars`／完整 ESLint ruleset 尚待 baseline-gate 後開啟）。
+
+## 2026-07-29 — fix(course-management): P0 課程管理頁整頁空白（ReferenceError）
+
+- 課程管理頁自 07:39 部署（#1409）起，任何角色打開都整頁空白（外層 topbar／分校選單仍在，內容區完全沒渲染）。
+- 根因：`useCourseSessionsDisplay.js` 的 `return` 物件引用了 `SESSION_NOT_OCCUPYING_QUOTA`，但該常數只存在於 `sessionOccurrenceFilter.js`（未 export、也未被 import），元件每次 `setup()` 執行到 return 就丟出 `ReferenceError`，中斷整個 Vue 元件掛載。
+- 修法：移除該筆未使用、未宣告的殘留引用（`CourseManagement.vue` 本來就沒有消費這個值）。
+
+開發備註：新增 regression test `useCourseSessionsDisplay.test.js`（真的呼叫 composable 本體，斷言不拋錯）——原本唯一的 `useCourseSessionsDisplay.occurrence.test.js` 是鏡像邏輯測試，從未 import 真正的模組，CI／`vite build` 都沒有實際執行過這個 return 陳述式，故未攔住。已納入 `vitest run`（CI `test:unit:cov` 既有 glob 涵蓋，無需另外接線）。`npm run test:calendar` 全綠、`vite build` 全綠。
+
+## 2026-07-29 — chore(ci): `scripts/ci/branch-policy.mjs` 白名單補 `claude/` 前綴
+
+- Claude Code on the web / CCR session 在此 repo 自動建立的分支固定是 `claude/<slug>` 命名，但白名單只列了 `cursor/`（Cursor agent），導致本次 P0 修復的 PR 被 Presubmit CHECK 1 擋下。
+- 補上 `claude: { status: 'accepted', riskHint: 'R0+' }`（比照 `cursor` 項），並在 `scripts/ci/gov.test.mjs` 加對應斷言。
+
+## 2026-07-29 — feat(release-notes): 教職員版本更新改為顯式 STAFF_UPDATES（與 CHANGELOG 拆分）
+
+- 新增 `docs/STAFF_UPDATES.yml` 為教職員「版本更新」唯一權威；`notesForRole` 不再自動發布 CHANGELOG 投影。
+- CHANGELOG 僅產生 `changelogDraft.generated.js`（AI 起草用），並強制依日期降冪排序。
+- 新增使用者文案閘門 `userFacingCopyGate`（擋內部 ID／class／Phase 等；失敗即停，不刮字改寫）。
+- 家長仍只讀 `PARENT_UPDATES.yml`（R45）；STAFF 檔禁止 `parent` audience（R85）。
+- 操作指南：`docs/GUIDE_STAFF_UPDATES.md`。
+
+開發備註：UI 標示改「最新更新」；分類改「你現在可以／我們修好了／操作更順手／需要你注意」。回歸 `npm run test:release-notes`。
+
+## 2026-07-24 — feat: Course Continuity 群組 API MVP（#1382）
+
+- 新增 `course_contract_groups`／`course_contract_group_members`（空表；不物理 merge 合約）。
+- 主任 API：列表／建立群組／加入成員／解除關聯；拒絕跨學生／跨校／package。
+- 解除關聯不刪 `StudentClass`；財務／堂次／評量維持原合約。
+
+開發備註：RFC 方案 A。不含自動 backfill、#1130 repair、群組 UI。回歸 `CourseContinuityGroupApiTest`。
+
+## 2026-07-24 — fix: Epic A/D Phase 1 — 有效堂次共用過濾 + 調課 dialog 內錯誤
+
+- 課程管理與行事曆共用 `sessionOccurrenceFilter`（有效堂次／幽靈取消／額度例外）。
+- 調課失敗（含衝堂名單）改顯示在 dialog 內；提交中 disable，拿掉多餘 `confirm()`。
+- 課程管理篩選列與表格改 denser（Epic D 逐步掃讀密度）。
+
+開發備註：承接 #1402；對齊 RFC Platform Opt Phase 1（Epic A 收尾 + Epic D 噪音／確認 UX）。
+
+## 2026-07-24 — fix: 調課後課表穩定（系列契約 vs 單堂例外）
+
+- 課程管理預設只顯示有效堂次；已取消／內部調課 bookkeeping 改為可展開摘要，不再幽靈搶版面。
+- 單堂調課會標記契約例外，且不再回寫固定 `week/time`；月結續約維持契約時段並在預覽警告未對齊的例外堂。
+- 暫停課程可勾選是否取消剩餘排課（預設勾選）。
+
+開發備註：對齊 Google Calendar／Tutorbase「this occurrence only」。`ContractScheduleMatcher`、`reconcile` 排除 `IsContractException`、`cancel_remaining`、renewal preview `open_contract_exceptions`。回歸 `ScheduleOccurrenceStabilityTest`。
+
 ## 2026-07-28 — fix(learning-records): R55 復活判斷收斂為單一共用政策
 
 - 新增 `LearningRecordResurrectionPolicy`：`SYSTEM_RESURRECTABLE_VOID_REASONS` 白名單與「是否可自動復活」判斷收斂到單一位置。
@@ -379,7 +450,8 @@ Ops：所有直接執行的 workflow jobs 明確固定為 GitHub-hosted `ubuntu-
 
 > 格式：每條一行，分類 Added / Fixed / Changed / Security / Ops  
 > 細節查 PR 說明或 `.cursor/plans/`  
-> **版本公告（給老師／主任看的短卡）**：同一版建議 **第一條寫使用者白話**；技術細節請另起一行並以 **`開發備註：`** 開頭（`npm run sync-release-notes` 會略過不進 `releaseNotes.generated.js`）。  
+> **版本公告（給老師／主任看的短卡）**：請寫入 `docs/STAFF_UPDATES.yml`（見 `GUIDE_STAFF_UPDATES.md`）。CHANGELOG 本檔是工程紀錄；`開發備註：` 行不會進草稿。  
+
 > **閱讀**：依日期標題搜尋；**勿逐行通讀**。
 >
 > **滾動歸檔策略**（對齊 Keep a Changelog / 大型 repo 慣例）：主檔只保留**當月**，月初把上月移入 `archive/`。更早紀錄：
