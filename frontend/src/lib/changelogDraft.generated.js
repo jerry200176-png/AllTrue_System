@@ -1,77 +1,54 @@
 /**
- * AUTO-GENERATED — source: docs/CHANGELOG.md
+ * AUTO-GENERATED DRAFT — source: docs/CHANGELOG.md
+ * NOT shown on in-app 版本更新. Staff publish source: docs/STAFF_UPDATES.yml
  * Regenerate: (cd frontend && npm run sync-release-notes)
  */
-export const changelogReleaseNotes = [
+export const changelogDraftNotes = [
   {
     "version": "2026.07.29",
     "date": "2026-07-29",
-    "title": "2026.07.29 版本更新",
-    "summary": "順延重疊下一期警示",
+    "title": "2026.07.29 草稿（未發布）",
+    "summary": "順延重疊下一期警示；版本更新頁的版號改為西元年月日格式；公告文字與工程細節分開，版面較不會洗技術詞。",
     "audience": [
       "teacher",
       "director"
     ],
+    "draft": true,
     "sections": [
       {
         "title": "新增內容",
         "items": [
-          "順延重疊下一期警示"
-        ]
-      }
-    ],
-    "items": [
-      "順延重疊下一期警示"
-    ]
-  },
-  {
-    "version": "2026.07.24",
-    "date": "2026-07-24",
-    "title": "2026.07.24 版本更新",
-    "summary": "Continuity 群組 MVP；修正行事曆課程合併邏輯，避免課程重複出現或突然消失",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "sections": [
-      {
-        "title": "新增內容",
-        "items": [
-          "Continuity 群組 MVP"
+          "順延重疊下一期警示",
+          "版本更新頁的版號改為西元年月日格式；公告文字與工程細節分開，版面較不會洗技術詞。"
         ]
       },
       {
         "title": "修正內容",
         "items": [
-          "修正行事曆課程合併邏輯，避免課程重複出現或突然消失",
-          "調課後課表穩定（系列契約 vs 單堂例外）"
-        ]
-      },
-      {
-        "title": "其他改善",
-        "items": [
-          "登入頁恢復 前視覺",
-          "頁改吃 DS tokens"
+          "補上分校/老師授權檢查 [P0 IDOR]",
+          "補課／補登過去時段前加確認，避免靜默自動核准評量",
+          "0 課程管理頁整頁空白（ReferenceError）"
         ]
       }
     ],
     "items": [
-      "Continuity 群組 MVP",
-      "修正行事曆課程合併邏輯，避免課程重複出現或突然消失",
-      "調課後課表穩定（系列契約 vs 單堂例外）",
-      "登入頁恢復 前視覺",
-      "頁改吃 DS tokens"
+      "順延重疊下一期警示",
+      "版本更新頁的版號改為西元年月日格式；公告文字與工程細節分開，版面較不會洗技術詞。",
+      "補上分校/老師授權檢查 [P0 IDOR]",
+      "補課／補登過去時段前加確認，避免靜默自動核准評量",
+      "0 課程管理頁整頁空白（ReferenceError）"
     ]
   },
   {
     "version": "2026.07.28",
     "date": "2026-07-28",
-    "title": "2026.07.28 版本更新",
+    "title": "2026.07.28 草稿（未發布）",
     "summary": "修正超級管理員看不到版本更新內容的問題；006 Phase 3A pool coverage planner（read-only）",
     "audience": [
       "teacher",
       "director"
     ],
+    "draft": true,
     "sections": [
       {
         "title": "新增內容",
@@ -114,12 +91,13 @@ export const changelogReleaseNotes = [
   {
     "version": "2026.07.27",
     "date": "2026-07-27",
-    "title": "2026.07.27 版本更新",
+    "title": "2026.07.27 草稿（未發布）",
     "summary": "共用方案堂次區狀態語意與預排 chip 分流",
     "audience": [
       "teacher",
       "director"
     ],
+    "draft": true,
     "sections": [
       {
         "title": "修正內容",
@@ -135,12 +113,13 @@ export const changelogReleaseNotes = [
   {
     "version": "2026.07.26",
     "date": "2026-07-26",
-    "title": "2026.07.26 版本更新",
+    "title": "2026.07.26 草稿（未發布）",
     "summary": "00 家長綁定 PII-safe observability；家長更新卡改為顯式 PARENT_UPDATES 投影（B+）",
     "audience": [
       "teacher",
       "director"
     ],
+    "draft": true,
     "sections": [
       {
         "title": "新增內容",
@@ -172,14 +151,55 @@ export const changelogReleaseNotes = [
     ]
   },
   {
+    "version": "2026.07.24",
+    "date": "2026-07-24",
+    "title": "2026.07.24 草稿（未發布）",
+    "summary": "Continuity 群組 MVP；修正行事曆課程合併邏輯，避免課程重複出現或突然消失",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "Continuity 群組 MVP"
+        ]
+      },
+      {
+        "title": "修正內容",
+        "items": [
+          "修正行事曆課程合併邏輯，避免課程重複出現或突然消失",
+          "調課後課表穩定（系列契約 vs 單堂例外）"
+        ]
+      },
+      {
+        "title": "其他改善",
+        "items": [
+          "登入頁恢復 前視覺",
+          "頁改吃 DS tokens"
+        ]
+      }
+    ],
+    "items": [
+      "Continuity 群組 MVP",
+      "修正行事曆課程合併邏輯，避免課程重複出現或突然消失",
+      "調課後課表穩定（系列契約 vs 單堂例外）",
+      "登入頁恢復 前視覺",
+      "頁改吃 DS tokens"
+    ]
+  },
+  {
     "version": "2026.07.22",
     "date": "2026-07-22",
-    "title": "2026.07.22 版本更新",
+    "title": "2026.07.22 草稿（未發布）",
     "summary": "待辦匣 P0（fail-closed／分頁／DTO）；課程備註可正確儲存 emoji 與完整中文",
     "audience": [
       "teacher",
       "director"
     ],
+    "draft": true,
     "sections": [
       {
         "title": "新增內容",
@@ -210,12 +230,13 @@ export const changelogReleaseNotes = [
   {
     "version": "2026.07.21",
     "date": "2026-07-21",
-    "title": "2026.07.21 版本更新",
+    "title": "2026.07.21 草稿（未發布）",
     "summary": "帳務中心收據改回既有 payment-report",
     "audience": [
       "teacher",
       "director"
     ],
+    "draft": true,
     "sections": [
       {
         "title": "修正內容",
@@ -231,12 +252,13 @@ export const changelogReleaseNotes = [
   {
     "version": "2026.07.19",
     "date": "2026-07-19",
-    "title": "2026.07.19 版本更新",
+    "title": "2026.07.19 草稿（未發布）",
     "summary": "補課加長按實際分鐘扣堂；請假順延不再錯置其他星期時段",
     "audience": [
       "teacher",
       "director"
     ],
+    "draft": true,
     "sections": [
       {
         "title": "修正內容",
@@ -258,12 +280,13 @@ export const changelogReleaseNotes = [
   {
     "version": "2026.07.18",
     "date": "2026-07-18",
-    "title": "2026.07.18 版本更新",
+    "title": "2026.07.18 草稿（未發布）",
     "summary": "代課挑選排除同一學生續約佔用；跨老師拖曳會完整轉移代課與時段",
     "audience": [
       "teacher",
       "director"
     ],
+    "draft": true,
     "sections": [
       {
         "title": "修正內容",
@@ -289,12 +312,13 @@ export const changelogReleaseNotes = [
   {
     "version": "2026.07.17",
     "date": "2026-07-17",
-    "title": "2026.07.17 版本更新",
+    "title": "2026.07.17 草稿（未發布）",
     "summary": "learning-review notification sync no longer returns 500；surviving student sign-in orphans",
     "audience": [
       "teacher",
       "director"
     ],
+    "draft": true,
     "sections": [
       {
         "title": "修正內容",
@@ -321,12 +345,13 @@ export const changelogReleaseNotes = [
   {
     "version": "2026.07.16",
     "date": "2026-07-16",
-    "title": "2026.07.16 版本更新",
+    "title": "2026.07.16 草稿（未發布）",
     "summary": "Phase 1 catalog / policy / invariant / interfaces；主任信任決策中心進入量測閉環（名單＋遙測）",
     "audience": [
       "teacher",
       "director"
     ],
+    "draft": true,
     "sections": [
       {
         "title": "新增內容",
@@ -361,12 +386,13 @@ export const changelogReleaseNotes = [
   {
     "version": "2026.07.12",
     "date": "2026-07-12",
-    "title": "2026.07.12 版本更新",
+    "title": "2026.07.12 草稿（未發布）",
     "summary": "主任在「已核准／全部」列表可一鍵只看「還沒寫內容」的評量，數字也會跟著對齊，比較不會漏追。",
     "audience": [
       "teacher",
       "director"
     ],
+    "draft": true,
     "sections": [
       {
         "title": "新增內容",
@@ -382,12 +408,13 @@ export const changelogReleaseNotes = [
   {
     "version": "2026.07.11",
     "date": "2026-07-11",
-    "title": "2026.07.11 版本更新",
+    "title": "2026.07.11 草稿（未發布）",
     "summary": "主任總覽新增今日優先處理；課程改排時，代課／例外時段不再被連續搬移",
     "audience": [
       "teacher",
       "director"
     ],
+    "draft": true,
     "sections": [
       {
         "title": "新增內容",
@@ -410,12 +437,13 @@ export const changelogReleaseNotes = [
   {
     "version": "2026.07.10",
     "date": "2026-07-10",
-    "title": "2026.07.10 版本更新",
+    "title": "2026.07.10 草稿（未發布）",
     "summary": "每日商業智能摘要（AI-native ops phase 0）；評量「無法填寫」缺口回填 + 夜間自動任務正式啟用",
     "audience": [
       "teacher",
       "director"
     ],
+    "draft": true,
     "sections": [
       {
         "title": "新增內容",
@@ -438,12 +466,13 @@ export const changelogReleaseNotes = [
   {
     "version": "2026.07.09",
     "date": "2026-07-09",
-    "title": "2026.07.09 版本更新",
+    "title": "2026.07.09 草稿（未發布）",
     "summary": "重複堂次清理完成 + 加課/跨約重複資料修正（PCR-R2 執行）；1 cleanup scope aligned with audit (PCR-R2)",
     "audience": [
       "teacher",
       "director"
     ],
+    "draft": true,
     "sections": [
       {
         "title": "修正內容",
@@ -461,12 +490,13 @@ export const changelogReleaseNotes = [
   {
     "version": "2026.07.08",
     "date": "2026-07-08",
-    "title": "2026.07.08 版本更新",
+    "title": "2026.07.08 草稿（未發布）",
     "summary": "請假後課程詳情不再多畫出不存在的 16-18 堂次；家長請假「審核中」的堂次，出缺勤與課表顯示不再互相矛盾",
     "audience": [
       "teacher",
       "director"
     ],
+    "draft": true,
     "sections": [
       {
         "title": "修正內容",
@@ -490,12 +520,13 @@ export const changelogReleaseNotes = [
   {
     "version": "2026.06.29",
     "date": "2026-06-29",
-    "title": "2026.06.29 版本更新",
+    "title": "2026.06.29 草稿（未發布）",
     "summary": "ojection — calendar completeness-safe (no pagination)；智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。",
     "audience": [
       "teacher",
       "director"
     ],
+    "draft": true,
     "sections": [
       {
         "title": "修正內容",
@@ -513,12 +544,13 @@ export const changelogReleaseNotes = [
   {
     "version": "2026.06.28",
     "date": "2026-06-28",
-    "title": "2026.06.28 版本更新",
+    "title": "2026.06.28 草稿（未發布）",
     "summary": "班級行事曆漏顯已調課堂次 + LINE 綁定讀家長手機",
     "audience": [
       "teacher",
       "director"
     ],
+    "draft": true,
     "sections": [
       {
         "title": "修正內容",

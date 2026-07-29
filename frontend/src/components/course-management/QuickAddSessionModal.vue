@@ -27,7 +27,7 @@
       <div class="form-group">
         <label class="hint">
           <input v-model="form.auto_approve" type="checkbox" />
-          若該堂已下課，直接補登並扣堂
+          若該堂已下課，直接補登並扣堂，評量同時自動核准
         </label>
       </div>
 
@@ -38,14 +38,20 @@
         </ul>
       </div>
 
+      <div v-if="showAutoApproveWarning" class="conflict-banner auto-approve-banner">
+        <p class="conflict-msg">
+          此時段已經過去，送出後這堂會直接標記為「已上課」，評量也會自動核准，不會再進入審核清單。請確認日期／時間沒有選錯。
+        </p>
+      </div>
+
       <div class="actions">
         <button class="ghost" @click="$emit('close')">取消</button>
         <button
           class="primary"
           :disabled="submitDisabled"
-          @click="$emit('submit')"
+          @click="handleSubmit"
         >
-          {{ checking ? '檢查中…' : '確認送出' }}
+          {{ checking ? '檢查中…' : (showAutoApproveWarning ? '確認補登（已上課＋自動核准）' : '確認送出') }}
         </button>
       </div>
     </div>
@@ -63,11 +69,22 @@ const props = defineProps({
   conflict: { type: Object, default: null },
   checking: { type: Boolean, default: false },
 });
-defineEmits(['close', 'submit', 'check']);
+const emit = defineEmits(['close', 'submit', 'check']);
 const subjectLabel = computed(() => getSubjectLabel(props.form?.subject));
 const submitDisabled = computed(() =>
   props.checking || (props.conflict && props.conflict.conflict_type !== 'none')
 );
+const showAutoApproveWarning = computed(() => !!(props.conflict?.is_ended && props.form?.auto_approve));
+
+function handleSubmit() {
+  if (showAutoApproveWarning.value) {
+    const ok = window.confirm(
+      `${props.form.session_date} ${props.form.start_time} 已經過去，送出後會直接標記為已上課並自動核准評量。確定要補登嗎？`
+    );
+    if (!ok) return;
+  }
+  emit('submit');
+}
 </script>
 
 <style scoped>

@@ -1,10 +1,14 @@
-import { changelogReleaseNotes } from './releaseNotes.generated.js';
+import { staffUpdates } from './staffUpdates.generated.js';
 import { parentUpdates } from './parentUpdates.generated.js';
 
-/** Derived from docs/CHANGELOG.md (see scripts/changelog-to-release-notes.mjs). Staff only. */
-export const releaseNotes = changelogReleaseNotes;
+/**
+ * Staff in-app「版本更新」— explicit approved copy from docs/STAFF_UPDATES.yml only.
+ * Engineering CHANGELOG drafts live in changelogDraft.generated.js and are never auto-published.
+ */
+export const releaseNotes = staffUpdates;
+export const allStaffUpdates = staffUpdates;
 
-/** Explicit parent copy from docs/PARENT_UPDATES.yml — never staff CHANGELOG. */
+/** Explicit parent copy from docs/PARENT_UPDATES.yml — never staff CHANGELOG / STAFF_UPDATES. */
 export const allParentUpdates = parentUpdates;
 
 /**
@@ -15,15 +19,16 @@ function roleMatchesNoteAudience(note, role) {
   if (role === 'parent') {
     return false;
   }
-  if (!note.audience?.length) {
+  const audiences = note.audiences || note.audience || [];
+  if (!audiences?.length) {
     return true;
   }
-  if (note.audience.includes(role)) {
+  if (audiences.includes(role)) {
     return true;
   }
   const elevatedCampusStaff = ['super_admin', 'admin'];
   if (elevatedCampusStaff.includes(role)) {
-    return note.audience.some((a) => a === 'director' || a === 'teacher');
+    return audiences.some((a) => a === 'director' || a === 'teacher');
   }
   return false;
 }
@@ -52,11 +57,25 @@ export function listActiveParentUpdates(opts = {}) {
   return active.slice(0, Math.max(0, limit));
 }
 
+/**
+ * Staff notes for a role, sorted by published_at (generator already sorts; defensive re-sort).
+ */
 export function notesForRole(role) {
   if (role === 'parent') {
     return listActiveParentUpdates({ limit: 2 });
   }
-  return releaseNotes.filter((note) => roleMatchesNoteAudience(note, role));
+  const IMPORTANCE_RANK = { action_required: 3, major: 2, digest: 1 };
+  return staffUpdates
+    .filter((note) => roleMatchesNoteAudience(note, role))
+    .slice()
+    .sort((a, b) => {
+      const d = String(b.publishedAt || b.date || '').localeCompare(String(a.publishedAt || a.date || ''));
+      if (d) return d;
+      const ia = IMPORTANCE_RANK[a.importance] || 0;
+      const ib = IMPORTANCE_RANK[b.importance] || 0;
+      if (ib !== ia) return ib - ia;
+      return String(b.id || '').localeCompare(String(a.id || ''));
+    });
 }
 
 export function latestReleaseVersionForRole(role) {

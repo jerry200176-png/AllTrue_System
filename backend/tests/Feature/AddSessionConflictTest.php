@@ -235,6 +235,56 @@ class AddSessionConflictTest extends TestCase
             ->assertJsonPath('error_code', 'SESSIONS_FULL');
     }
 
+    // --- check endpoint: is_ended flag for a slot already in the past ---
+    // Regression: 黃奕暟 7/28 mis-add incident (2026-07-29) — quick-add defaulted
+    // auto_approve=true and silently auto-approved the evaluation because the
+    // picked slot had already ended. FE now needs is_ended to gate a confirm step.
+    public function test_check_endpoint_returns_is_ended_true_for_past_slot(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createStudentClass($student->id, ['SessionCount' => 4]);
+
+        $past = now()->subDay();
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/student-classes/{$sc->ID}/add-session/check", [
+            'session_date' => $past->toDateString(),
+            'start_time' => '10:00',
+            'duration_minutes' => 60,
+        ]);
+
+        $res->assertOk()
+            ->assertJsonPath('can_add', true)
+            ->assertJsonPath('is_ended', true);
+    }
+
+    // --- check endpoint: is_ended flag for a slot still in the future ---
+    public function test_check_endpoint_returns_is_ended_false_for_future_slot(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createStudentClass($student->id, ['SessionCount' => 4]);
+
+        // Y2: use a future date at 23:00 to avoid same-day isEnded ambiguity.
+        $future = now()->addDays(2);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/student-classes/{$sc->ID}/add-session/check", [
+            'session_date' => $future->toDateString(),
+            'start_time' => '23:00',
+            'duration_minutes' => 30,
+        ]);
+
+        $res->assertOk()
+            ->assertJsonPath('can_add', true)
+            ->assertJsonPath('is_ended', false);
+    }
+
     // --- API contract: 409 still has message field (backward compat) ---
     public function test_409_response_always_contains_message_field(): void
     {
