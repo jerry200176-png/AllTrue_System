@@ -7,12 +7,18 @@ export const changelogReleaseNotes = [
     "version": "2026.07.24",
     "date": "2026-07-24",
     "title": "2026.07.24 版本更新",
-    "summary": "修正行事曆課程合併邏輯，避免課程重複出現或突然消失；調課後課表穩定（系列契約 vs 單堂例外）",
+    "summary": "Continuity 群組 MVP；修正行事曆課程合併邏輯，避免課程重複出現或突然消失",
     "audience": [
       "teacher",
       "director"
     ],
     "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "Continuity 群組 MVP"
+        ]
+      },
       {
         "title": "修正內容",
         "items": [
@@ -29,6 +35,7 @@ export const changelogReleaseNotes = [
       }
     ],
     "items": [
+      "Continuity 群組 MVP",
       "修正行事曆課程合併邏輯，避免課程重複出現或突然消失",
       "調課後課表穩定（系列契約 vs 單堂例外）",
       "登入頁恢復 前視覺",
