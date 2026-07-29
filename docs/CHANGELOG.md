@@ -1,3 +1,9 @@
+## 2026-07-29 — fix(deploy): 修正正式站從未部署自架圖示字型（全站圖示曾顯示英文）
+
+- 使用者反映「到處都是英文」。根因：#1512 把 Material Symbols Outlined 圖示字型改為自架（`frontend/public/fonts/`），但正式站部署實際執行的 `frontend/scripts/copy-to-backend.cjs`（`deploy.yml` SSH 到 Pi 後 `npm run deploy` 呼叫）的 `PUBLIC_DIRS` 白名單只有 `['audio']`，從未包含 `fonts`。導致 `/fonts/material-symbols-outlined.woff2` 從 #1512 合併後每次部署都在正式站 404，全站圖示靜默退回顯示英文原名。
+- #1512／#1514／#1515 落地時的驗證路徑（Playwright ui-foundation 測試、`vite build`）都直接讀 `frontend/public/` 或 `dist_build/`，不經過這支部署時才跑的複製腳本，三次都沒抓到這個落差。
+- 修法：`PUBLIC_DIRS` 加入 `'fonts'`。已實際執行複製腳本對照 `dist_build/` 輸出，確認 `backend/public/fonts/material-symbols-outlined.woff2` 正確產生。純部署管線修正，無業務邏輯變更。
+
 ## 2026-07-29 — feat(dashboard): 主任總覽頁面 Wave B —— 工作區卡片統一改用 At* 設計系統元件
 
 - 延續 Wave A 的收斂整理，這次處理 `docs/design/UI_AUDIT_2026-07-26.md` 標記的「Metric/card density uneven」：work-grid 內 7 張卡片（今日課表、繳費／續課提醒、待審核評量、流程追蹤、近期操作履歷、老師評量填寫率、通知摘要）原本各自手刻 header／empty／loading 標記，密度與樣式略有差異。改為統一套用 `AtCard`（卡片殼＋header/actions slot）、`AtEmpty`（空狀態）、`AtSkeleton`（loading 骨架屏），`progress-board` 的 6 個統計 pill 改用 `AtMetric`。
