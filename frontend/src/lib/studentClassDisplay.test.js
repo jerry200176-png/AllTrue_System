@@ -9,6 +9,7 @@ import {
   formatStudentClassSideDisplays,
   formatTuitionSettleSummary,
   formatTuitionNewerCourseHint,
+  formatNewerCourseOverlapWarning,
   formatDirectorPersonName,
   formatRenewSuccessMessage,
   formatDuplicatePurchaseHint,
@@ -114,6 +115,23 @@ assert.equal(newer.techId, 'SC #999');
 // Director settle decision without course id:
 // 「有後續同科目、開課較新」→ 可安心結案舊課
 assert.ok(newer.primary.includes('開課 7/4') && !newer.primary.includes('#'));
+
+// --- #1100/FD-3: newer-course overlap warning (director-facing, never auto-shifts) ---
+const overlapHidden = formatNewerCourseOverlapWarning({ newer_course_overlap: false });
+assert.equal(overlapHidden.show, false);
+assert.equal(overlapHidden.primary, '');
+
+const overlapShown = formatNewerCourseOverlapWarning({
+  newer_course_overlap: true,
+  current_course_end_date: '2026-08-08',
+  newer_course_start_date: '2026-08-05',
+});
+assert.equal(overlapShown.show, true);
+assert.ok(overlapShown.primary.includes('重疊'));
+assert.ok(overlapShown.primary.includes('順延至 8/8'));
+assert.ok(overlapShown.primary.includes('開課 8/5'));
+assert.equal(overlapShown.shortBadge, '期間重疊');
+assert.equal(primaryLeaksInternalId(overlapShown.primary), false);
 
 // --- User Task: 續報完成確認 ---
 const renewMsg = formatRenewSuccessMessage({
