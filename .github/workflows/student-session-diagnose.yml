@@ -56,7 +56,7 @@ jobs:
         env:
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
-          STUDENT_NAME: ${{ inputs.student_name || '黃奕凱' }}
+          STUDENT_NAME: ${{ inputs.student_name || '黃奕暟' }}
           TEACHER_NAME: ${{ inputs.teacher_name || '張翔' }}
           DATE: ${{ inputs.date || '2026-07-28' }}
           CAMPUS_ID: ${{ inputs.campus_id || '9' }}
