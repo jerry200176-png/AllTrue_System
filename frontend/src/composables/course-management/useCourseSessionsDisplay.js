@@ -558,6 +558,5 @@ export function useCourseSessionsDisplay({
     loadEffectiveSessionDates,
     LEAVE_STATUSES,
     ATTENDED_SESSION_STATUSES,
-    SESSION_NOT_OCCUPYING_QUOTA,
   };
 }

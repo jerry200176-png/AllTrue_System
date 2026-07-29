@@ -1,3 +1,11 @@
+## 2026-07-29 — fix(course-management): P0 課程管理頁整頁空白（ReferenceError）
+
+- 課程管理頁自 07:39 部署（#1409）起，任何角色打開都整頁空白（外層 topbar／分校選單仍在，內容區完全沒渲染）。
+- 根因：`useCourseSessionsDisplay.js` 的 `return` 物件引用了 `SESSION_NOT_OCCUPYING_QUOTA`，但該常數只存在於 `sessionOccurrenceFilter.js`（未 export、也未被 import），元件每次 `setup()` 執行到 return 就丟出 `ReferenceError`，中斷整個 Vue 元件掛載。
+- 修法：移除該筆未使用、未宣告的殘留引用（`CourseManagement.vue` 本來就沒有消費這個值）。
+
+開發備註：新增 regression test `useCourseSessionsDisplay.test.js`（真的呼叫 composable 本體，斷言不拋錯）——原本唯一的 `useCourseSessionsDisplay.occurrence.test.js` 是鏡像邏輯測試，從未 import 真正的模組，CI／`vite build` 都沒有實際執行過這個 return 陳述式，故未攔住。已納入 `vitest run`（CI `test:unit:cov` 既有 glob 涵蓋，無需另外接線）。`npm run test:calendar` 全綠、`vite build` 全綠。
+
 ## 2026-07-29 — feat(release-notes): 教職員版本更新改為顯式 STAFF_UPDATES（與 CHANGELOG 拆分）
 
 - 新增 `docs/STAFF_UPDATES.yml` 為教職員「版本更新」唯一權威；`notesForRole` 不再自動發布 CHANGELOG 投影。
