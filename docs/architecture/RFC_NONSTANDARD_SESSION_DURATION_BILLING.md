@@ -1,67 +1,72 @@
 ---
 owner: jerry (CEO)
-status: Draft — investigation only, no code/schema changed
+status: Draft — RFC only, no code/schema/test changed (amendment v2)
 review_cycle: on next founder review
 last_reviewed: 2026-07-30
 ---
 
 # AllTrue 非標準課程時長調查報告
 
-> **Status:** Investigation only. No production code, migration, or billing behavior was changed to produce this report. All claims below are cited to file:line; anything not directly read in code is explicitly labeled as a documentation claim or an open assumption.
-> **Related:** `#613` A1（既有分鐘制地基）、`TD-059`、`docs/AI_REGRESSION_LESSONS.md §R59`、`docs/SYSTEM_TECH_GUIDE.md §5`、`docs/PRICING_CONTRACT.md`、`docs/ADR_006_prepaid_session_horizon_and_commitment.md`（不同問題，見 §8）
+> **Status:** RFC only. No production code, migration, test, or billing behavior was changed to produce this report or its amendment. All claims are cited to file:line; anything not directly read in code is explicitly labeled as a documentation claim or an open assumption.
+> **Amendment note (this version):** incorporates Founder decisions D1–D4 and 5 required corrections requested after the first draft was reviewed. The first draft's core investigation (§2–§8, evidence) stands; sections that assumed the first draft's proposed model was implementation-ready have been corrected. See the amendment report delivered alongside this commit for a section-by-section diff summary.
+> **Related:** `#613` A1（既有分鐘制地基）、`TD-059`、`docs/AI_REGRESSION_LESSONS.md §R59`、`docs/SYSTEM_TECH_GUIDE.md §5`、`docs/PRICING_CONTRACT.md`、`docs/ADR_006_prepaid_session_horizon_and_commitment.md`（不同問題，見 §8、§10）
 
 ---
 
 ## 1. Executive conclusion
 
-**AllTrue 已經有一半的答案，但只接到「補課」這條窄路上。**
+**AllTrue 已經有一半的答案，但只接到「補課」這條窄路上——且「購買堂數」跟「排出幾個 ClassSession」目前是同一個數字，這是比分鐘引擎更前面的一層耦合。**
 
 1. 系統目前是**兩套模型並存**：
    - **舊制（主流，所有讀取路徑的預設）**：1 `ClassSession`／1 次點名 = 1 個整數「堂」，堂數欄位（`SessionCount`/`RemainingSessions`/`UsedSessions`）全部是 DB `integer`。
-   - **新制（`#613 A1`，已 merge、有測試，但範圍極窄）**：`StudentClass.PurchasedMinutes`/`RemainingMinutes` + `session_deduction_ledger.minutes` 是一套**已經存在、可運作**的分鐘制權威餘額引擎，用整數安全的 `ROUND_HALF_UP` 把分鐘換算回「堂數顯示值」（可為 5.25 堂 → 顯示 5 堂）。
-2. **但這套分鐘引擎只在「補課」（`schedules.type='extra'`）且時長 ≠ 契約標準時才會啟動**（`SessionDeductionService::resolvePartialMakeupMinutes()`，`backend/app/Services/SessionDeductionService.php:468-499`，強制規則寫在同檔案 466 行註解：「正常課堂一律整堂」）。這一點有測試直接證明：`PartialMakeupDeductionTest::test_normal_longer_session_not_prorated`（`backend/tests/Feature/PartialMakeupDeductionTest.php:125-142`）——用 180 分鐘、非 `type='extra'` 的**正常**堂次點名，斷言 `RemainingSessions` 仍然只扣 1 堂，不是 1.5 堂。**這就是本案例（案例 2）在現有程式碼下無法自動運作的直接證據**，不是猜測。
-3. **更關鍵的根因**：契約「標準堂長」欄位 `StudentClass.SessionDuration`（分鐘引擎換算堂數用的分母）**本身在新增課程時，就是從使用者實際排的時段時長算出來的**——`EnrollmentService::store()` 把 `SessionDuration` 設為該科目所有時段中最長者（`$groupGlobalDur = max($groupGlobalDur, (int) ($rr['duration_minutes'] ?? 0))`，`backend/app/Services/EnrollmentService.php:621-626,710`），更新流程中 `StudentClassController::mapFrontendPayload()` 也會用第一個時段的 `duration_minutes` 覆寫 `SessionDuration`（`backend/app/Http/Controllers/StudentClassController.php:3542-3547`）。
-   結果是：**現在的資料模型裡，「1 堂的標準分鐘數」跟「這個學生實際排的時段分鐘數」是同一個欄位**，沒有獨立表達空間。若主任照現有 UI 幫這名學生排「每週二、六各 180 分鐘」，系統會直接把 `SessionDuration` 設成 180，而不是維持 120 並把 180 分鐘記成 1.5 堂——也就是說，本案例要的「8 堂＝16 小時的標準額度，但每次上 3 小時＝1.5 堂」這個語意，**目前無法透過新增課程 UI 表達**，只能事後用「補課」機制繞出一次性的分鐘差額。
-4. **第六次課的「跨期缺口」，現有系統目前完全偵測不到**——因為只要不是走補課路徑，扣堂永遠是「1 次點名 = 1 整堂」，系統根本不會知道「這堂其實該值 1.5 標準堂」，遑論偵測「這期只夠付 5 次半」。
-5. **退款（refund）在程式碼裡完全不存在**——全庫搜尋 `Refund`/`退費`/`退款` 只有 2 個非退款用途的檔案命中，測試 0 筆；唯一相關機制是發票作廢（`voidInvoice`/`exceptionVoidInvoice`），且 `SessionDeductionService.php:393-397` 明確註解「Paid/PayDate must NOT be touched here. Session counting is independent of payment status」——金流與堂數餘額是完全獨立、互不影響的兩套系統。
-6. **扣堂沒有單一 choke point**：權威計算邏輯集中在 `SessionDeductionService::recomputeCounters()`，但**呼叫它的入口至少有 9 處**（RFID 刷卡、手動點名、舊版刷卡端點、自習轉正式、評量核准、堂次狀態手動切換等），各自獨立判斷「這次算不算要扣堂」。這代表任何時長相關的改動，必須同時審視全部 9 個入口，否則會產生像 `TD-059`（共用課程包池未分鐘化，已有專案追蹤 `#1343`）這樣的分裂。
-7. **好消息**：排課／materialization 層（`day_time_slots[].duration_minutes`、`StudentClass.duration1..duration6`、`ClassSessionMaterializationService`）早就支援「每個星期時段可以有不同時長」，且已被 UI／驗證／測試完整覆蓋（30 分鐘至 480 分鐘皆合法）。缺的不是「能不能排出 3 小時的課」，而是「排出來的 3 小時，能不能被記成 1.5 個標準堂」。這讓最小可行方案的範圍縮小到：**扣堂引擎 + 新增課程時對「標準堂長」與「排課時長」的解耦**，而不必動排課／行事曆本身。
+   - **新制（`#613 A1`，已 merge、有測試，但範圍極窄）**：`StudentClass.PurchasedMinutes`/`RemainingMinutes` + `session_deduction_ledger.minutes` 是一套**已經存在、可運作**的分鐘制權威餘額引擎，用整數安全的 `ROUND_HALF_UP` 把分鐘換算回「堂數顯示值」。
+2. **分鐘引擎只在「補課」（`schedules.type='extra'`）且時長 ≠ 契約標準時才會啟動**（`SessionDeductionService::resolvePartialMakeupMinutes()`，`backend/app/Services/SessionDeductionService.php:468-499`）。測試直接證明：`PartialMakeupDeductionTest::test_normal_longer_session_not_prorated`（`backend/tests/Feature/PartialMakeupDeductionTest.php:125-142`）——180 分鐘、非 `type='extra'` 的**正常**堂次點名，仍斷言只扣 1 堂。
+3. **根因不只是引擎範圍，還有一層更前面的耦合，本次修訂新增確認**：`EnrollmentService::store()` 目前**強制驗證**「購買堂數」（`total_classes` → `plannedSessions`）必須**恰好等於**「要建立的 `ClassSession` 筆數」（`count($sessionRows)`），不相等會直接 422（`backend/app/Services/EnrollmentService.php:197-222`，尤其第 210-222 行的等式檢查）。也就是說，**現行系統不只是「假設」SessionCount＝要物化的堂次數，而是用驗證規則把兩者鎖死相等**——這代表就算只加 `standard_lesson_minutes` 跟修改扣堂引擎，仍無法解決「買 8 個標準單位、實際只該排出約 5.3 次 180 分鐘課」這件事，因為建課當下系統會強迫你排出剛好 8 個 `ClassSession`，而不是依額度算出的 occurrence 數。本修訂版把這個缺口獨立列為必須先解的問題（見 §2.5、§7、§11 Phase 0B）。
+4. **Founder 已就四項核心產品語意拍板**（本修訂版把決策內建進模型）：
+   - **D1**：新增 `standard_lesson_minutes`（計費標準堂長），與排課時長脫鉤；系統/分校可設預設值（例如 120），課程層級可 override；**不假設全公司永遠只有 120 分鐘**。
+   - **D2**：常態課程分鐘扣除**只能 explicit opt-in**，且**不批准**把既有正常課程整批切成分鐘扣除；opt-in 機制選用**明確的 `deduction_basis` 欄位**（`fixed_session` | `actual_duration`），理由見 §10；`R59` 改寫為「禁止未經 explicit opt-in 擴大常態課程分鐘扣除」，不刪除。
+   - **D3**：第一版**不做**自動跨期拆帳／借用下一期／負餘額自動轉移／跨發票分攤／自動 debt settlement；改採「建課時預測 coverage → 超額前 warning → 點名不中斷 → ledger 保留完整實際扣除分鐘 → 顯示/回報 derived `uncovered_minutes`」，跨期分配留給後續獨立 workflow。
+   - **D4**：第一版 `actual_duration` 課程**不得**加入 `CoursePackage`；本 RFC 的 implementation slice **不擴大** `package_session_ledger`。
+5. **退款（refund）在程式碼裡完全不存在**——全庫搜尋 0 測試命中；金流（`Invoice`/`Payment`/voidInvoice）與堂數餘額是完全獨立的兩套系統（`SessionDeductionService.php:393-397`）。與本次修訂無直接關聯，維持原結論。
+6. **扣堂沒有單一 choke point**：`SessionDeductionService::recomputeCounters()` 是唯一計算權威，但至少 9 個獨立入口觸發它。維持原結論。
+7. **超扣「無跡可尋」的敘述本次已修正**：`session_deduction_ledger` 其實**保留了每一筆完整的實際扣除分鐘**，理論上可以推導出「淨扣分鐘超過購買分鐘多少」，但目前**沒有任何地方把這個超額值持久化、暴露成 API 欄位、或觸發告警**——`recomputeCounters()` 內部算出的 uncapped `netMinutes` 是一個**用完即丟的區域變數**，從未存回資料庫或回傳給前端（`SessionDeductionService.php` 第 366-376 行一帶）。正確講法是「超額分鐘存在於 ledger aggregation 中，但被 floor/cap 隱藏，沒有 first-class uncovered balance／alert／workflow」——不是「資料真的消失」。本 RFC 定義了可從既有 ledger 推導、不需要新表的 `uncovered_minutes`（見 §10、§13 Q5）。
+8. **排課／materialization 層**（`day_time_slots[].duration_minutes`、`StudentClass.duration1..duration6`）已支援任意時段時長，這部分結論不變；缺口在「entitlement 單位 vs occurrence 數量 vs 扣堂引擎」三者的耦合，不在排課本身。
 
-**一句話結論**：AllTrue 目前的權威餘額是「堂數」（整數），`#613 A1` 已經打好分鐘制的地基，但只通到補課這個側門；本案例要的是把同一套引擎的正門也打開——這是漸進式擴充，不是重寫。
+**一句話結論（修訂版）**：AllTrue 的權威餘額是「堂數」（整數），`#613 A1` 已打好分鐘制地基但只通補課側門；本案例要打開的不只是引擎的「正門」，還有更前面「購買額度＝要排幾堂」這道目前被驗證規則鎖死的耦合。兩者都需要以 additive、opt-in、可獨立回滾的方式擴充，而不是重寫，也不是本次就把所有課程切過去。
 
 ---
 
 ## 2. Current authoritative model
 
-### 2.1 資料表與欄位（已由程式碼確認）
+### 2.1 資料表與欄位（已由程式碼確認，本次未變動）
 
 | 概念 | 表／欄位 | 型別 | 來源 |
 |---|---|---|---|
-| 購買堂數 | `StudentClass.SessionCount` | `integer`, nullable | `2026_02_07_000004_create_student_classes_table.php:51` |
+| 購買堂數（現況：同時身兼 entitlement 與 occurrence 數量，見 §2.5） | `StudentClass.SessionCount` | `integer`, nullable | `2026_02_07_000004_create_student_classes_table.php:51` |
 | 剩餘堂數（顯示值） | `StudentClass.RemainingSessions` | `integer`, nullable | `2026_02_07_000015_add_remaining_sessions_to_student_class_table.php:15` |
 | 已用堂數 | `StudentClass.UsedSessions` | `integer`, default 0 | `2026_02_13_000007_add_used_sessions_to_student_class_table.php:16` |
-| 契約標準堂長（分鐘） | `StudentClass.SessionDuration` | `integer`, nullable | 同 create 表 line 52 |
+| 契約標準堂長（分鐘，現況：同時身兼排課預設時長，見 §3） | `StudentClass.SessionDuration` | `integer`, nullable | 同 create 表 line 52 |
 | 每週各時段自訂時長 | `StudentClass.duration1..duration6` | `integer`, nullable ×6 | `2026_04_10_000001_add_per_day_duration_to_student_class.php` |
 | 計費單位 | `StudentClass.rate_unit` | `string(16)` default `'session'` | 同上 migration |
 | **購買總分鐘（權威，#613）** | `StudentClass.PurchasedMinutes` | `integer`, nullable | `2026_05_31_000001_add_minutes_balance_to_student_class.php:23` |
 | **剩餘分鐘（權威，#613）** | `StudentClass.RemainingMinutes` | `integer`, nullable | 同上 line 26 |
 | 扣堂事件帳本 | `session_deduction_ledger`（`event_type`, `minutes`, `source`, `class_session_id`） | `minutes` 為 `integer` nullable | `2026_05_31_000002_add_minutes_to_session_deduction_ledger.php` |
 | 共用課程包堂數 | `CoursePackage.total_sessions/remaining_sessions/used_sessions` | `unsignedInteger`/`integer` | `CoursePackage.php` |
-| 共用包帳本差量 | `package_session_ledger.delta` | **`tinyInteger`，硬編碼只允許 ±1** | migration `2026_04_15_300001_create_package_session_ledger.php`（見 §8 風險）|
+| 共用包帳本差量 | `package_session_ledger.delta` | **`tinyInteger`，硬編碼只允許 ±1** | migration `2026_04_15_300001_create_package_session_ledger.php`（見 §8、D4）|
 | 單次課堂 | `ClassSession.StartTime/EndTime/Status/session_charge` | `time`/`time`/`string(16)`/`integer` | `2026_02_07_000009_create_class_sessions_table.php` + `2026_04_17_100000_add_session_charge_to_class_session.php` |
 
-**`ClassSession` 沒有 `duration` 欄位，也沒有「本堂扣幾堂」欄位**——時長永遠是 `EndTime - StartTime` 現算，扣了幾堂則完全記在 `session_deduction_ledger`，`ClassSession` 本身跟扣堂邏輯無關（`SYSTEM_TECH_GUIDE.md §5.1`：「Session Deduction 與 ClassSession.Status 完全獨立」）。
+**`ClassSession` 沒有 `duration` 欄位，也沒有「本堂扣幾堂」欄位**——時長永遠是 `EndTime - StartTime` 現算，扣了幾堂完全記在 `session_deduction_ledger`。
 
-**堂數欄位是否只能是整數？** 是——`SessionCount`/`RemainingSessions`/`UsedSessions`/`CoursePackage.total_sessions` 全部是 DB `integer`／`unsignedInteger`，寫入驗證也是 `integer` 規則（`StudentClassController.php:1203`：`'SessionDuration' => 'nullable|integer|min:30'`；`ClassSessionController.php` `batchStore` 驗證 `'total_classes' => 'nullable|integer|min:1|max:500'`）。目前唯一能表現「非整堂」語意的地方是**顯示層**——`RemainingSessions` 在有分鐘制事件時，是用整數安全的 `ROUND_HALF_UP` 從 `RemainingMinutes` 算出來的衍生值（可以是任何整數，但代表的實際分鐘可能不是整堂倍數），不是資料庫真的存了 `5.5`。
+**堂數欄位是否只能是整數？** 是——維持原結論，`SessionCount`/`RemainingSessions`/`UsedSessions`/`CoursePackage.total_sessions` 全部是 DB `integer`／`unsignedInteger`。
 
 ### 2.2 兩套並行的「堂數如何算出來」邏輯
 
-**`SessionDeductionService::recomputeCounters()`**（`backend/app/Services/SessionDeductionService.php:301-408`）是唯一寫入 `RemainingSessions`/`UsedSessions`/`PurchasedMinutes`/`RemainingMinutes` 的地方，邏輯是「先看有沒有部分時數事件，再決定用哪套公式」：
+**`SessionDeductionService::recomputeCounters()`**（`backend/app/Services/SessionDeductionService.php:301-408`）是唯一寫入 `RemainingSessions`/`UsedSessions`/`PurchasedMinutes`/`RemainingMinutes` 的地方：
 
 ```php
 // SessionDeductionService.php:352-391
 if ($isSessionMode && $sessionCount > 0) {
-    $purchasedMinutes = $sessionCount * $perSession;
+    $purchasedMinutes = $sessionCount * $perSession;   // ← 每次呼叫都重新用「目前」的 SessionCount × perSessionMinutes() 算，見 §10 D-immutability
     $hasPartial = SessionDeductionLedger::query()
         ->where('student_class_id', $studentClassId)
         ->whereIn('source', ['attendance', 'retro_leave', 'status_adjust'])
@@ -70,19 +75,17 @@ if ($isSessionMode && $sessionCount > 0) {
         ->exists();
 
     if ($hasPartial) {
-        // 分鐘為權威：RemainingSessions = ROUND_HALF_UP(RemainingMinutes / perSession)
         $remainingSessions = max(0, min($sessionCount, self::roundHalfUp($remainingMinutes, $perSession)));
         $sc->RemainingSessions = $remainingSessions;
         $sc->UsedSessions      = $sessionCount - $remainingSessions;
     } else {
-        // 完全沿用舊 count-based 邏輯（byte-identical），僅補寫衍生分鐘欄
         $sc->UsedSessions      = min($sessionCount, $usedByAttendance);
         $sc->RemainingSessions = max(0, $sessionCount - $usedByAttendance);
     }
 }
 ```
 
-而「這堂到底算不算部分時數」由 `resolvePartialMakeupMinutes()` 決定（`SessionDeductionService.php:463-499`）：
+而「這堂到底算不算部分時數」由 `resolvePartialMakeupMinutes()` 決定（`SessionDeductionService.php:463-499`），目前**唯一**判斷條件是 `schedules.type='extra'`（補課）：
 
 ```php
 // 464-466 原文註解：
@@ -92,12 +95,6 @@ if ($isSessionMode && $sessionCount > 0) {
 private static function resolvePartialMakeupMinutes(StudentClass $sc, int $classSessionId): ?int
 {
     ...
-    $isMakeup = Schedule::query()
-        ->where('student_course_id', (int) $sc->getKey())
-        ->whereDate('schedule_date', $cs->SessionDate)
-        ->where('type', 'extra')
-        ->get(['start_time'])
-        ->contains(fn ($r) => substr((string) $r->start_time, 0, 5) === $csStart);
     if (!$isMakeup) {
         return null;   // ← 一般排定的堂次，即使時長不同，也回 null
     }
@@ -105,7 +102,7 @@ private static function resolvePartialMakeupMinutes(StudentClass $sc, int $class
 }
 ```
 
-**這是本案例的核心事實**：`isMakeup` 只認 `schedules` 表裡 `type='extra'` 的列。一般透過「新增課程」建立的固定週期堂次，其對應的 `ClassSession` 並不會有一列 `type='extra'` 的 `schedules` 紀錄——它們是直接由 `EnrollmentService`/`ClassSessionMaterializationService` 產生的常態排課，因此 `isMakeup` 恆為 `false`，`resolvePartialMakeupMinutes()` 恆回傳 `null`，扣堂恆為整堂。
+**本次修訂維持原結論**：一般透過「新增課程」建立的固定週期堂次沒有 `type='extra'` 的 `schedules` 紀錄，`isMakeup` 恆為 `false`，扣堂恆為整堂。§10 說明如何在**明確 opt-in** 下擴大此判斷，同時保留這條路徑給仍選擇 `fixed_session` 的課程（含既有補課機制）完全不變。
 
 ### 2.3 標準堂長從何而來（`perSessionMinutes()`）
 
@@ -119,71 +116,87 @@ public function perSessionMinutes(): int
 }
 ```
 
-- 引擎讀的是 `SessionDuration`（單一數字），fallback 是 **60 分鐘**（不是 2 小時）。
-- 但在「新增課程」的實際寫入路徑，`SessionDuration` **不是**一個獨立輸入的「契約標準堂長」，而是取自實際排課時段的最長時長（見 §3、§7）。多數控制器讀取端另外用 **120 分鐘**當 fallback（`ScheduleGuardService.php:293`、`SessionProjectionReadService.php:232/234/244/246`、`StudentClassController.php` 多處 `?? 120`）——**60（模型層）與 120（多數控制器層）是兩個不一致的 hardcoded fallback**，本身就是一個既有的技術債，只是目前尚未造成生產事故（因為多數課程建立時 `SessionDuration` 都會被明確寫入）。
+- 引擎讀的是 `SessionDuration`，fallback 60 分鐘；多數控制器讀取端另用 120 分鐘當 fallback（`ScheduleGuardService.php:293` 等）——**60（模型層）與 120（多數控制器層）兩個不一致的 hardcoded fallback**，維持原結論為既有技術債，非本次修訂範圍。
 
-### 2.4 已知限制（自己文件承認的）
+### 2.4 已知限制（自己文件承認的，維持原結論）
 
-- `TD-059`（`docs/TECH_DEBT.md:440-455`）：共用課程包（`PackageDeductionService`）尚未分鐘感知，`package_session_ledger.delta` 仍是整堂 ±1；若部分時數事件發生在共用包成員身上，池餘額會與個別課程的分鐘餘額**漂移**。目前命中數＝0（2026-07-19 稽核），但這是「尚未發作的地雷」，不是「已解決」。
-- `docs/AI_REGRESSION_LESSONS.md §R59`：明文寫「禁止擴大到非 `extra`」——這代表 `#613 A1` 的原始設計者**刻意**把分鐘制限制在補課場景，不是遺漏，而是當時範圍內的產品決策（原因未在程式碼或文件中說明，需 Founder 補充，見 §14）。
+- `TD-059`：共用課程包尚未分鐘感知，`package_session_ledger.delta` 仍是整堂 ±1。**D4 已拍板**：第一版 `actual_duration` 課程直接排除加入 `CoursePackage`，不在本 RFC 範圍內解 `TD-059`。
+- `docs/AI_REGRESSION_LESSONS.md §R59`：「禁止擴大到非 `extra`」——**本次修訂不刪除此規則**，改寫為「禁止未經 explicit opt-in（`deduction_basis='actual_duration'`）擴大常態課程分鐘扣除」，見 §10、§13。
+
+### 2.5（新增）購買額度與排課數量目前是同一個數字——術語修正
+
+**問題**：修訂前的版本只分析了「分鐘扣堂引擎的範圍」，沒有分析「一開始要排幾個 `ClassSession`，這個數字從哪裡來」。實際追查發現，這一層在建課驗證階段就已經把兩者鎖死相等，比扣堂引擎更早卡住本案例。
+
+**證據**（`backend/app/Services/EnrollmentService.php:197-222`）：
+
+```php
+$isSessionMode = ($data['payment_type'] ?? 'session') === 'session';
+$plannedSessions = $this->resolvePlannedSessions($data, count($sessionRows));   // = (int) $data['total_classes']（session 模式，L962）
+if ($plannedSessions <= 0) { /* 422：必須提供購買總堂數 */ }
+
+if ($plannedSessions !== count($sessionRows)) {          // ← 兩者被要求「恰好相等」
+    // 422：'堂數（session_plan 或日期清單總筆數）需與購買總堂數一致'
+}
+```
+
+`count($sessionRows)` 就是最終會呼叫 `ClassSessionMaterializationService::upsertSlot()` 建立的 `ClassSession` 筆數（§4）。**這代表現行 API 不只是「假設」`SessionCount = 要物化的堂次數」，而是用一條硬性驗證規則把兩者鎖成同一個數字**，使用者連嘗試「輸入 8 個標準單位、但只排 6 個 180 分鐘 occurrence」都會被 422 擋下。
+
+**本 RFC 引入四個獨立術語**，取代「SessionCount 身兼二職」的現況（**這是分析用術語，本次不建立對應的新 DB 欄位**——是否新增獨立欄位屬於 §11 Phase 1 的實作範圍，需另行評估）：
+
+| 術語 | 語意 | 目前對應 |
+|---|---|---|
+| `purchased_standard_units` | 付費者購買的「標準堂」數量（entitlement，本案例＝8） | 目前＝`StudentClass.SessionCount`（含混）|
+| `purchased_minutes` | `purchased_standard_units × standard_lesson_minutes`（entitlement 換算成分鐘） | 目前＝`StudentClass.PurchasedMinutes`，但由 `SessionCount × perSessionMinutes()` **即時重算**，見 §10 immutability |
+| `scheduled_occurrence_count` | 依週期排課樣式（weekday/time slots）在某個時間範圍內，實際要物化幾個 `ClassSession` | 目前＝`count($sessionRows)`，且被驗證規則**強制等於** `purchased_standard_units`（`EnrollmentService.php:210-222`）|
+| `scheduled_minutes` | `SUM(duration_minutes)`，實際排出的這些 occurrence 加總分鐘 | 目前無此彙總欄位，需要時可由 `ClassSession.StartTime/EndTime` 現算 |
+
+**不得再假設**：`purchased_standard_units`（entitlement）＝`scheduled_occurrence_count`（要排幾堂）。這在 `fixed_session`（現況／未 opt-in）課程可以繼續保留現行等式（因為時長固定時兩者本來就該相等，行為不變）；但 `actual_duration`（opt-in）課程必須**移除**這條等式驗證，改用 §10／§11 Phase 0B 的 coverage preview 機制，讓使用者依實際額度與實際時長決定要排多少個 occurrence，而不是繼續強迫「買 8 個標準單位＝排 8 個 180 分鐘 occurrence」。
+
+**與 ADR-006 對齊、但不擴張其 scope**：`ADR_006_prepaid_session_horizon_and_commitment.md` §1.3 已經提出「Schedule Commitment → materialization → pool coverage」的分層原則（該文件本身仍是 Accepted-but-not-activated，本 RFC 不改變其狀態）。本案例的 `scheduled_occurrence_count` 應該由「週期排課樣式（schedule commitment）+ 涵蓋範圍」決定，而**entitlement**（`purchased_standard_units`/`purchased_minutes`）只用來算出 coverage 夠不夠、在哪裡不夠（§11 Phase 0B），**不是**用來反推應該排幾堂——這與 ADR-006 §1.3 的分層精神一致，但本 RFC 只在「單一課程、建課當下的 occurrence 數量決策」這個範圍內採用同樣的分層邏輯，**不**啟用、不擴張 ADR-006 的 rolling horizon／`Ensure`／pool coverage 等既有 Phase 0–3A 機制或 command。
 
 ---
 
 ## 3. 新增課程完整資料流
 
-**元件**：`frontend/src/components/UniversalClassScheduler.vue`（唯一的新增課程精靈，`CourseManagement.vue`/`SmartCalendar.vue`/`StudentsList.vue` 都從這裡開啟）。
+**元件**：`frontend/src/components/UniversalClassScheduler.vue`（唯一的新增課程精靈）。
 
-1. **UI 輸入**（`UniversalClassScheduler.vue`）：
-   - 購買總堂數 `form.total_classes`（純數字輸入框 `min="1"`，僅 `payment_type='session'` 時顯示，第 411-414 行）。
-   - 每堂費用 `form.price_per_session`。
-   - 預設上課時長（小時）`form.duration_hours`（`type=number min=0.5 step=0.5`，第 464-468 行）——這是**全域預設值**，非每個時段強制值。
-   - 每個選定星期的時段列 `form.day_time_slots[]`，每一列**各自獨立**有：星期、開始時間、**時長**（`duration_hours`，可與全域預設不同，`updateSlotDur()` 第 1787-1795 行）、可選代課老師。
-   - 前端即時預覽（第 613-695 行）：`estimateCreateCharge({ pricePerSession, rateUnit, sessions, avgSessionMinutes })`（第 1307-1312 行），`avgSessionMinutes` 是實際各時段時長的平均值，**不是固定 2 小時**。
-   - 前端送出前的合理性檢查（`submit()` 第 2047-2059 行）：拒絕任何時段 < 30 分鐘或 > 480 分鐘（8 小時），**沒有「必須等於 120 分鐘」的檢查**。
-   - `hasPerDayDuration`（第 1281-1285 行）：偵測「各時段時長彼此不同」時，自動把 `rate_unit` 切成 `'hour'`（按時計費），**不是**切成「部分堂數」。
+1. **UI 輸入**（`UniversalClassScheduler.vue`）：購買總堂數 `form.total_classes`（第 411-414 行）、預設上課時長 `form.duration_hours`（第 464-468 行，全域預設）、每時段獨立時長 `form.day_time_slots[].duration_hours`（`updateSlotDur()` 第 1787-1795 行）。前端合理性檢查（`submit()` 第 2047-2059 行）僅拒絕 <30 或 >480 分鐘，無「必須整除」或「必須等於標準堂長」檢查。`hasPerDayDuration`（第 1281-1285 行）偵測時段時長不一致時自動切 `rate_unit='hour'`。
 
-2. **Payload**（`frontend/src/lib/universalSchedulerApi.js:22-63`）：`POST /api/v1/class-sessions/batch`，內含 `day_time_slots: [{ day, start_time, duration_minutes, subject, teacher_id? }]`、`total_classes`、`duration_minutes`（全域 fallback）、`rate_unit`。
+2. **Payload**（`frontend/src/lib/universalSchedulerApi.js:22-63`）：`POST /api/v1/class-sessions/batch`，含 `day_time_slots[]`、`total_classes`、`duration_minutes`、`rate_unit`。
 
-3. **後端驗證**（`ClassSessionController::batchStore`，`backend/app/Http/Controllers/ClassSessionController.php:40-88`，inline `$request->validate()`，無獨立 Form Request）：
-   ```php
-   'total_classes' => 'nullable|integer|min:1|max:500',
-   'day_time_slots.*.duration_minutes' => 'nullable|integer|min:30|max:480',
-   'duration_minutes' => 'required|integer|min:30|max:480',
-   'rate_unit' => 'nullable|in:session,hour',
-   ```
-   → 交給 `EnrollmentService::store()`。
+3. **後端驗證**（`ClassSessionController::batchStore`，`backend/app/Http/Controllers/ClassSessionController.php:40-88`）：`'total_classes' => 'nullable|integer|min:1|max:500'`、`'day_time_slots.*.duration_minutes' => 'nullable|integer|min:30|max:480'`。→ 交給 `EnrollmentService::store()`。
 
-4. **`EnrollmentService::store()`**（`backend/app/Services/EnrollmentService.php`）：
-   - 依科目分組（一次可能同時建立多科目），第 621-626 行：
-     ```php
-     $groupGlobalDur = 0;
-     foreach (...) { $groupGlobalDur = max($groupGlobalDur, (int) ($rr['duration_minutes'] ?? 0)); }
-     if ($groupGlobalDur <= 0) { $groupGlobalDur = $globalDuration; }
-     ```
-   - 第 692-724 行：`$studentClassPayload` 寫入 `'SessionDuration' => $groupGlobalDur`（**該科目所有時段中最長者**），並把 `week1..week6`/`time1..time6`/`duration1..duration6` 一併寫入 `StudentClass`。
-   - `StudentClass::create($studentClassPayload)`。
-   - 對每個展開後的實際堂次（依日期+時段），用**該列自己的** `duration_minutes` 算 `EndTime`，呼叫 `ClassSessionMaterializationService::upsertSlot()` 寫入 `ClassSession`。
+4. **`EnrollmentService::store()`**：
+   - 先由 `day_time_slots`/`days_of_week`/`session_plan` 展開出 `$sessionRows`（第 128-157 行）。
+   - **第 197-222 行**（本次修訂重點，見 §2.5）：`$plannedSessions = resolvePlannedSessions($data, count($sessionRows))`（＝`total_classes`），並**強制** `$plannedSessions === count($sessionRows)`，否則 422。**這是「購買額度＝排課數量」耦合的實際強制點，不是隱性假設。**
+   - 第 621-626 行：`$groupGlobalDur = max(該科目所有時段 duration_minutes)`，第 710 行寫入 `SessionDuration = $groupGlobalDur`——契約標準堂長被排課時長覆寫（原結論維持）。
+   - 第 668-671 行：`$groupSessionCount = count($rowsForSubject)`；`$sessionCount = $groupSessionCount`；`$chargeUnits = $sessionCount`——**佐證 §2.5**：`SessionCount` 與 `Charge` 都直接等於 occurrence 數量，不是獨立輸入的 entitlement。
+   - `StudentClass::create($studentClassPayload)`；對每個 row 呼叫 `ClassSessionMaterializationService::upsertSlot()`。
 
-5. **`StudentClassController::update()`（PUT，既有課程編輯）**：`mapFrontendPayload()`（第 3440-3568 行）——第 3546 行：`$mappedData['SessionDuration'] = (int) $primary['duration_minutes'];`（用**第一個** `day_time_slots` 的時長覆寫契約標準堂長）；第 3556-3557 行對其餘時段寫入對應的 `duration{n}`。
+5. **`StudentClassController::update()`**：`mapFrontendPayload()` 第 3546 行用第一個 `day_time_slots` 的時長覆寫 `SessionDuration`（原結論維持）。
 
-**結論（回答 quality gate 問題 2）**：`SessionCount`（購買堂數）與 `SessionDuration`（契約標準堂長）都是**使用者直接輸入或由排課時段推導**，沒有「上課開始/結束時間」與「標準堂長」的獨立輸入通道——排課時段的時長，會直接變成契約的標準堂長。目前系統**沒有**「總時數預覽 + 跨期缺口警示」的 UI（有「總堂數/總小時」預覽，但沒有「本期涵蓋到第幾次課、第幾次會超出」的預覽——見 §7、§10 UX 建議）。目前也**沒有**堂數必須為整數的額外校驗訊息（因為欄位本身是 `integer`，非整數輸入會被 Laravel 驗證直接拒絕為 422，而不是有意義的產品提示）。
+**結論（修訂版，回答 quality gate 問題 1、2）**：現行系統裡 `SessionCount` **同時**是「使用者輸入的購買堂數」與「要建立的 `ClassSession` 筆數」，且**這個相等關係由 API 驗證規則強制**（不是可以繞過的預設值）。因此，若使用者輸入「8 堂、180 分鐘時段」，系統不是「傾向」建立 8 個 180 分鐘 `ClassSession`，而是**只能**這樣做（不相等會 422）——這正是「不能直接建立 8 個 180 分鐘 session」的問題所在：不是不能，而是現行系統**只能**這樣做，無法排出比購買額度真正需要更少的 occurrence 數。
 
 ---
 
 ## 4. 排課與 ClassSession materialization 流程
 
-- **常態排課（新增課程當下）**：`EnrollmentService::store()` 直接展開日期，呼叫 `ClassSessionMaterializationService::upsertSlot()`（`backend/app/Services/ClassSessionMaterializationService.php:82-149`）寫入 `ClassSession`，`StartTime`/`EndTime` 完全取自呼叫端傳入的值，**沒有** 2 小時的預設，唯一 fallback 是 `EndTime` 完全缺失時用 `'18:00:00'`（第 133 行，僅防禦性，不是業務規則）。
-- **補排（手動）**：`schedules:backfill-class-sessions`（`BackfillMissingClassSessionsFromSchedules.php`）直接複製 `schedules` 表的 `start_time`/`end_time`，同樣不假設固定時長。**此指令未排入 `Kernel.php` 排程**（需人工執行），對應 CLAUDE.md G-010 的已知缺口。
-- **向前生成**：`ForwardSessionGenerator::planCourse()`（`backend/app/Services/ForwardSessionGenerator.php:36-151`）從該學生近 6 堂**實際** `ClassSession` 多數決推算星期/時段/時長，同樣不寫死時長。此機制與本案例的計費單位問題無直接關聯，屬於 `ADR_006`（预付堂次 horizon）範疇——**兩個問題不要混淆**：`ADR_006` 談「該幫這個學生生成哪些未來 `ClassSession`」，本報告談「生成出來的這一堂，該扣幾堂」。
-- **`ClassSessionMaterializationService::upsertSlot()`** 是**唯一** production 寫入 `ClassSession` 的權威路徑（`ADR_006` §5.1 明文要求維持此唯一性），一致性鍵為 `(StudentClassID, SessionDate, StartTime)`。
+（與第一版相同，維持原結論，本次修訂未發現新事實）
 
-**結論**：排課層完全支援「同一課程、不同星期不同時長」（`duration1..duration6`、`day_time_slots[].duration_minutes`），這部分不需要重建；缺口在計費／扣堂層，不在排課層。
+- **常態排課**：`EnrollmentService::store()` 呼叫 `ClassSessionMaterializationService::upsertSlot()`（`backend/app/Services/ClassSessionMaterializationService.php:82-149`），`StartTime`/`EndTime` 完全取自呼叫端傳入值，無 2 小時預設。
+- **補排（手動）**：`schedules:backfill-class-sessions`，未排入 `Kernel.php`（G-010 已知缺口，與本案例無直接關聯）。
+- **向前生成**：`ForwardSessionGenerator::planCourse()`，屬 `ADR_006` 範疇——本 RFC 不擴張、不啟用該機制（見 §2.5 對齊聲明）。
+- **`ClassSessionMaterializationService::upsertSlot()`** 是唯一 production 寫入 `ClassSession` 的權威路徑，一致性鍵 `(StudentClassID, SessionDate, StartTime)`。
+
+**結論**：排課層完全支援任意時長；缺口在 §2.5（購買額度耦合）與 §5（扣堂引擎範圍），materialization 本身不需改動。
 
 ---
 
 ## 5. 點名與扣堂 authoritative write path
 
-**單一計算權威**：`SessionDeductionService::recomputeCounters()`（見 §2.2），但**至少 9 個獨立呼叫點**觸發它（皆已逐一在程式碼中確認，非變數命名推測）：
+（與第一版相同，維持原結論）
+
+**單一計算權威**：`SessionDeductionService::recomputeCounters()`，至少 9 個獨立呼叫點觸發：
 
 | # | 呼叫點 | 情境 |
 |---|---|---|
@@ -197,284 +210,369 @@ public function perSessionMinutes(): int
 | 8 | `ClassSessionController.php:908-909` | 主任手動切堂次狀態為 attended/late |
 | 9 | `ClassSessionController.php:1699` 附近 | 另一狀態轉換路徑 |
 
-**還原（reverse）** 獨立呼叫點至少 6 處：請假回滾（`ScheduleController.php:729-736`）、調課（`RescheduleSessionService.php:546-555`）、狀態轉換撤銷（`ClassSessionController.php:931,1020`）、評量撤銷（`ApprovalSessionSyncService.php:110`）等。
+**寫入機制**：`deductForSession()` 寫一列 `session_deduction_ledger`，不是 `UPDATE ... SET RemainingSessions -= 1`。
 
-**寫入機制**：`deductForSession()`（`SessionDeductionService.php:196-232`）寫一列 `session_deduction_ledger`（`event_type='deduct'`，`minutes` 可為 `null`＝整堂），**不是** `UPDATE ... SET RemainingSessions = RemainingSessions - 1`（全庫搜尋確認沒有這種寫法）。`recomputeCounters()` 之後才把彙總結果 `save()` 回 `StudentClass`。
+**餘額歸零／負餘額行為**：`RemainingSessions` 被 `max(0, ...)` 夾住不會顯示負數；唯一硬性擋下動作的檢查是 `AttendanceController.php:1124-1126`（`convertToAttended`，剩餘堂數 ≤0 回 422），**僅此一端點**；一般點名／新增堂次都沒有餘額檢查。
 
-**`usedByAttendance` 的計算本身是 4 個訊號取 max**（`SessionDeductionService.php:309-346`）：`StudentSignIn.SessionDeducted`、`ClassSession.Status IN (completed/attended/late)`、無綁定 `ClassSessionID` 的已核准 `LearningRecord`、`session_deduction_ledger` 淨值。這代表帳本本身**不是**唯一真相來源，而是四個訊號之一——`NightlyReconcile` 指令的存在，證明這四路訊號漂移是已知風險，非理論疑慮。
-
-**餘額歸零／負餘額行為**（回答 quality gate 問題 6 的一半）：
-- `RemainingSessions` 在計算式中被 `max(0, ...)` 夾住，**不會顯示負數**，但 `UsedSessions` 若真實出席超過 `SessionCount`，只在**顯示**時被 `min($sessionCount, ...)` 封頂——實際出席仍會被記錄，只是不會讓 `RemainingSessions` 變負。
-- 唯一會**擋下**動作的硬性檢查：`AttendanceController.php:1124-1126`（`convertToAttended`）：`剩餘堂數 <= 0` 時回 422「此課程剩餘堂數不足」——**僅此一個端點**。
-- **一般點名（RFID／手動）與新增堂次都沒有餘額檢查**——刷卡點名時即使 `RemainingSessions` 已是 0，仍會成功扣堂（產生 `UsedSessions > SessionCount` 的隱性超額，靠 dashboard 提醒與 `NightlyReconcile` 事後發現，不是事前攔阻）。
-
-**請假／補課／調課／退款／終止對餘額的影響**（皆已在程式碼中逐一確認）：
-
-| 動作 | 對餘額影響 |
-|---|---|
-| 請假（一般，未來） | `ClassSession.Status → 'leave'`，`leave` 不在 `AttendanceStatus::deductibleCodes()` 內，從未寫入 `deduct`；同時在最後補一堂（tail），總堂數守恆 |
-| 補請假（已扣堂後才請假） | 明確呼叫 `reverseForSession(..., 'retro_leave', ...)` |
-| 補課建立/取消 | 只動 `Schedule.status`/`ClassSession.Status`，**不動餘額**；餘額只在補課「真的點名」時才透過同一條 `deductOnAttendance` 路徑扣（此時才可能觸發 §2 的分鐘制） |
-| 調課（reschedule） | 若原堂次已扣堂，先 `reverseForSession()` 再重設為 `scheduled` |
-| 退款 | **程式碼中不存在**。`BillingController::voidInvoice()`/`exceptionVoidInvoice()` 只動 `Invoice`/`Payment`，從未觸碰 `StudentClass.RemainingSessions`/`SessionCount`/`session_deduction_ledger`（`SessionDeductionService.php:393-397` 明確註解金流與堂數獨立） |
-| 課程終止（`togglePause`） | 取消未來 `scheduled` 堂次（本來就沒扣過堂），**不重算、不歸零** `RemainingSessions` |
+**請假／補課／調課／退款／終止對餘額的影響**：維持原表格結論，退款不存在，金流與堂數獨立。
 
 ---
 
 ## 6. 現有整數／固定兩小時假設
 
-**已由程式碼直接確認的假設／不一致**：
+（維持原結論，僅第 4 點措辭與 §2.5 對齊）
 
-1. **堂數欄位型別為整數**：`SessionCount`/`RemainingSessions`/`UsedSessions`/`CoursePackage.total_sessions`/`used_sessions` 全部 `integer`/`unsignedInteger`（§2.1）。共用包帳本 `package_session_ledger.delta` 更嚴格，是 `tinyInteger` 且只允許 ±1，**結構上不可能**記錄 1.5 或任何非整堂差量。
-2. **兩個互相衝突的「預設堂長」常數**：模型層 `StudentClass::DEFAULT_SESSION_MINUTES = 60`（`StudentClass.php:120`）vs. 至少 4 處控制器/服務層的 `?? 120`（`ScheduleGuardService.php:293`、`SessionProjectionReadService.php:232/234/244/246`、`ExceptionWorkflowCandidateGenerator.php:147`、`StudentClassController.php` 多處）。兩者從未被統一過，只是目前多數課程建立時 `SessionDuration` 都會被明確寫入，才沒有在生產環境顯現差異。
-3. **「1 lesson = 2 hours」不是寫死的常數，而是「新增課程 UI 的預設輸入值」**（`form.duration_hours` 預設 2，多處 `?? 2`/`|| 2`），使用者可自由改成 0.5–8 小時之間任意值，**每個星期時段可各自不同**（`duration1..duration6`，per-day override，已完整支援）。
-4. **`SessionDuration`（契約標準堂長）在建立/編輯時永遠等於實際排課時長**（`EnrollmentService.php:621-626,710`；`StudentClassController.php:3546`），沒有獨立於「排課時長」之外的「計費標準堂長」欄位可填——這是本報告認定的**核心資料模型缺口**，不是驗證規則的缺口。
-5. **一份文件承認的資料錯位**（G-009）：`StudentClassController::update()` 的 `preservedDelta`（`StudentClassController.php:1523,1532`）會把「舊 Charge − 舊 Rate×舊堂數」的差額當手動微調永久保留，若差額源自錯誤舊資料，UI 改不回。此問題與本案例的計費單位無直接關聯，但同樣位於 `Rate × SessionCount` 這條計費公式上，實作 Option A/B 時必須一併考慮（見 §12 相容性）。
-6. **測試層面的偏誤**：`SessionDuration => 120` 出現在 103 個測試檔（vs. `=> 60` 只有 30 個），`createStudentClassForTest()` 共用 helper 硬編碼 `'duration_hours' => 2`——代表既有測試套件對「非 2 小時」課程的覆蓋率遠低於「2 小時」課程，任何只在非標準時長才會出現的 bug，很可能對現有 103 個測試都不可見。
+1. **堂數欄位型別為整數**：`SessionCount`/`RemainingSessions`/`UsedSessions`/`CoursePackage.total_sessions` 全部整數；`package_session_ledger.delta` 是 `tinyInteger ±1`，結構上不可能記錄非整堂差量。
+2. **兩個互相衝突的預設堂長常數**：模型層 60 分鐘 vs. 控制器層多處 120 分鐘 fallback，未統一，屬既有技術債。
+3. **「1 lesson = 2 hours」是 UI 預設輸入值，不是寫死常數**——可自由改成 0.5–8 小時，且每時段可不同。
+4. **`SessionDuration`（契約標準堂長）在建立/編輯時永遠等於實際排課時長，且 `SessionCount`（entitlement）永遠等於 occurrence 數量**（§2.5、§3）——這是本報告認定的**兩個疊加的核心資料模型缺口**，不是驗證規則不足，而是驗證規則主動鎖死了本不該相等的兩組概念。
+5. **G-009 `preservedDelta`**：與本案例無直接關聯，實作時需一併注意（維持原結論）。
+6. **測試層面偏誤**：`SessionDuration => 120` 在 103 個測試檔 vs. `=> 60` 只有 30 個，維持原結論。
 
 ---
 
 ## 7. 8 堂 × 2 小時、每次上課 3 小時的實際結果
 
-以下四個案例，皆以程式碼與測試直接推演，非猜測；每個案例會標明「若照現有『新增課程』UI 直接操作」與「若刻意繞道走補課機制」兩種路徑的差異。
+以下沿用四個案例，Case 2 依修訂後的模型重新推演（含 Phase 0B coverage preview 的精確數字）。
 
-### Case 1：標準課程（8 堂 × 120 分鐘）
+### Case 1：標準課程（8 堂 × 120 分鐘）— 不變
 
-- `SessionCount=8`，`SessionDuration=120`。8 次點名，每次 `deductOnAttendance` → `resolvePartialMakeupMinutes` 回 `null`（非補課）→ `deductForSession(minutes=null)`。
-- `recomputeCounters()`：無 `minutes != perSession` 的 ledger 列 → `hasPartial=false` → 走舊制：`UsedSessions` 逐次 +1，`RemainingSessions = 8 - UsedSessions`。
-- 8 次後：`UsedSessions=8`，`RemainingSessions=0`，`PurchasedMinutes=960`（衍生欄，同步補寫），`RemainingMinutes=0`。**與預期完全一致。**
+8 次點名後 `UsedSessions=8`、`RemainingSessions=0`、`PurchasedMinutes=960`、`RemainingMinutes=0`。與預期一致，`fixed_session` 課程 byte-identical。
 
-### Case 2：本案例（8 堂、契約標準 120 分鐘、每次實際 180 分鐘）
+### Case 2：本案例（8 個標準單位、契約標準 120 分鐘、每次實際 180 分鐘）
 
-**路徑 A——照現有「新增課程」UI 直接操作（最可能發生的真實操作）**：
-- 主任在 `day_time_slots` 填「每週二、六，各 180 分鐘」，`total_classes=8`。
-- `EnrollmentService::store()` 第 621-626/710 行：`groupGlobalDur = max(180, 180) = 180` → `StudentClass.SessionDuration = 180`（**不是** 120）。
-- 之後 `perSessionMinutes() = 180`，`PurchasedMinutes = 8 × 180 = 1440`（24 小時，**不是** Founder 預期的 16 小時）。
-- 8 次點名皆非補課 → 每次整堂扣 1 → 8 次後 `RemainingSessions=0`。**系統從未偵測到「180≠120」這件事，因為契約標準本身已經被排課時長覆寫成 180。** 若 `Rate` 是照 2 小時單堂定價設定的，公司會用 2 小時的單價，換到 3 小時的教學時數，等於每堂多送 1 小時、8 堂共送 8 小時教學時數而未加價——**這是實質的營收缺口，且系統不會有任何告警**（因為堂數帳目本身「收支相符」：8 堂賣、8 堂用完）。
+**若照現有「新增課程」UI 直接操作（現況，未修訂前的唯一真實路徑）**：
+- 因 §2.5 的等式驗證，使用者只能選擇「排 8 個 180 分鐘 occurrence」（`plannedSessions=8=count($sessionRows)`），否則 422。
+- `SessionDuration` 被覆寫成 180，`PurchasedMinutes = 8×180 = 1440`（24 小時，非 Founder 預期的 16 小時）——原結論的營收缺口分析維持不變。
 
-**路徑 B——刻意繞道走補課機制（理論上可行，但違反 R59 的設計原意，且無法用於常態排課）**：
-- 若把 `SessionDuration` 手動維持在 120（例如透過 API 直接寫入，繞過 UI 的自動覆寫），且把每一次 180 分鐘的課都在 `schedules` 表建立對應 `type='extra'` 的列（如 `PartialMakeupDeductionTest::test_longer_makeup_attendance_deducts_actual_minutes` 所驗證），則**每次點名確實會扣 180 分鐘**，`recomputeCounters()` 會在偵測到 `hasPartial=true` 後切換到分鐘權威：
-  - 第 1 次後：`RemainingMinutes = 960-180=780`，`RemainingSessions = ROUND_HALF_UP(780/120) = ROUND_HALF_UP(6.5) = 7`（**注意**：ROUND_HALF_UP 是「四捨五入到最近整堂」用於**顯示**，不是題目要的「6.5 堂」精確值；精確值要看 `remaining_minutes=780`，即 6.5 堂）。
-  - 依此類推到第 5 次後：`RemainingMinutes=960-900=60`，精確值 0.5 堂，`RemainingSessions` 顯示 `ROUND_HALF_UP(60/120)=ROUND_HALF_UP(0.5)=1`（顯示值捨入為 1，但精確 `remaining_minutes=60` 才是可信數字——`StudentClassController.php:399-410` 的 `hasFractionalBalance` 守門邏輯正是為了避免這種顯示值被 count-based 邏輯覆寫）。
-  - 第 6 次需要 180 分鐘，但只剩 60 分鐘可用：**目前程式碼沒有任何地方會攔下這次點名或標記「超額」**。`deductForSession()` 只做 ledger idempotency（防重複扣同一堂），不檢查夠不夠扣；`recomputeCounters()` 的 `usedMinutes = max(0, min($purchasedMinutes, $netMinutes))`（第 376 行）把已用分鐘封頂在購買總額，`remainingMinutes` 因此**下限鎖在 0，不會出現負數**，但這代表「超扣的 120 分鐘缺口」在資料庫裡直接消失、無跡可尋——沒有「本期已透支 120 分鐘」的紀錄。**這對應到題目列出的六種可能行為之一：「餘額歸零」，且沒有任何自動使用下一期額度、也沒有阻止點名、也沒有任何告警。**
-  - 此路徑目前**沒有測試覆蓋**「連續扣款超出購買總額、且發生在同一期」的情境（`SessionDeductionMinutesEngineTest::test_partial_minutes_capped_at_purchased` 只驗證單次超扣 200 分（購買 120）會封頂在 0，沒有驗證「先扣 5 次半、第 6 次再超扣」的多堂連續案例，但由程式碼邏輯可合理外推行為一致）。
+**若採用本 RFC 提出的 opt-in 模型（`deduction_basis='actual_duration'`，`standard_lesson_minutes=120`），Phase 0B coverage preview 應算出（與 Founder 提供的範例數字一致）**：
 
-**兩條路徑的落差本身就是本報告最重要的產品發現**：系統理論上有能力做出題目要的「6.5 堂→5 堂→…→0.5 堂」序列，但**只有故意繞道補課機制**才會觸發；正常操作（路徑 A）反而會靜默地把「3 小時」變成這門課自己的新標準堂長，讓「180≠120」這個訊號永遠不會出現。
+```
+purchased_standard_units = 8
+standard_lesson_minutes  = 120
+purchased_minutes        = 8 × 120 = 960          entitlement_minutes = 960
 
-### Case 3：90 分鐘課程（0.75 標準堂）
+scheduled 時段時長（session_duration） = 180
 
-- 若走補課路徑（`PartialMakeupDeductionTest::test_partial_makeup_attendance_deducts_prorated_minutes`，90 分鐘 vs 120 分鐘契約）：扣 90 分鐘，`RemainingMinutes = 480-90=390`，`RemainingSessions` 顯示 `ROUND_HALF_UP(390/120)=ROUND_HALF_UP(3.25)=3`。**證實系統的 ROUND_HALF_UP 換算不是為 3 小時（1.5 倍）特化寫死的，而是通用的 `minutes/perSession` 整數運算**（`intdiv($minutes*2+$perSession, $perSession*2)`），任何比例都適用。
-- 若走一般（非補課）排課：`test_normal_short_session_not_prorated` 證實 30 分鐘的正常堂次一樣整堂扣 1——0.75 標準堂的語意同樣只在補課路徑上成立。
+fully_covered_occurrences        = floor(960 / 180) = 5      （5 × 180 = 900）
+remaining_after_full_occurrences = 960 − 900 = 60分鐘
+first_partially_covered_occurrence = 第 6 次
+partial_covered_minutes            = min(60, 180) = 60分鐘（第 6 次可用剩餘額度覆蓋的部分）
+uncovered_minutes                  = 180 − 60 = 120分鐘（第 6 次超出的部分，相當於 1 個標準堂）
+```
 
-### Case 4：同一課程不同時長（週二 180 分鐘、週六 120 分鐘）
+- 這組數字**逐項對應 Founder 給出的範例**（`entitlement_minutes=960`、`session_duration=180`、`fully_covered_occurrences=5`、`remaining_minutes=60`、`first_partial_occurrence=6`、`partial_covered_minutes=60`、`uncovered_minutes=120`），確認本 RFC 的公式定義正確。
+- **D3 已拍板**：第一版**不會**自動處理這 120 分鐘的缺口（不借下一期、不自動負餘額）——系統只需要：(a) 建課當下把這組數字**預覽**給操作者看（Phase 0B，見 §11），讓操作者自己決定要排 5 個、6 個還是 8 個 occurrence；(b) 若操作者選擇仍排到第 6 次以後，點名時**不中斷**，`session_deduction_ledger` 照實記錄每次的實際分鐘；(c) 系統把 `uncovered_minutes` 算出來、顯示或回報，讓後續獨立 workflow（續約／加購）處理，而不是本 RFC 的 v1 範圍。
+- **超額「無跡可尋」的敘述修正**：`session_deduction_ledger` 仍然會忠實記下第 6 次的完整 180 分鐘扣除（`minutes=180`），第 7、8 次同理；`net_deducted_minutes`（見 §10 定義）可由既有 ledger 直接 SUM 出來，因此「120 分鐘超額」**不是資料庫裡消失、無跡可尋**，而是**現有讀取端（`recomputeCounters()`）算出這個值後只拿來 floor/cap，沒有存成一個獨立、可查詢、可告警的欄位**。本 RFC §10 定義的 `uncovered_minutes` 就是把這個既有可推導但未曝光的值，正式定義成一個 derived API 欄位。
 
-- **資料模型層可以表達**：`StudentClass.duration2`（週二）＝180、`duration6`... 更精確地說 `week*/duration*` 依 ISO 星期對應（見 `StudentClass::resolveSessionDurationForWeekday()`，`StudentClass.php:97-113`），`ClassSession` 各自的 `StartTime`/`EndTime` 也會忠實反映 180／120。
-- 但 `resolveSessionDurationForWeekday()` 目前**唯二**的呼叫端是 `FinanceController.php:524` 與 `ClassSessionController.php:1220`，皆用於「單堂改時段時的費率換算」（對應 `docs/AI_REGRESSION_LESSONS.md §R76`），**完全沒有被 `SessionDeductionService` 引用**——扣堂引擎只認 `perSessionMinutes()`（單一 `SessionDuration`），不認每週各異的 `duration1..6`。也就是說：**扣堂目前綁定在「課程層級」的單一 `SessionDuration`，不是「週期排課層級」的 per-weekday duration，更不是「單一 ClassSession 層級」**——即使資料表已經有能力紀錄週二 180、週六 120，扣堂仍然只會用（建課當下取最大值算出的）同一個 `SessionDuration` 去除，導致週六 120 分鐘的課也會被當成「180 分鐘的 1 堂」處理，而非額外去區分「這天只值 1 堂、那天值 1.5 堂」。
-- 且因為兩個時段時長不同，`hasPerDayDuration` 會在前端把 `rate_unit` 切成 `'hour'`——即整個課程改成「按小時計費」，**完全繞開「堂數」概念**，Founder 若仍希望維持堂數制的直覺（家長看得懂「還剩幾堂」），這個既有自動切換行為需要重新評估（見 §14）。
+### Case 3：90 分鐘課程（0.75 標準堂）— 不變
+
+若走 `actual_duration` opt-in（或現況的補課路徑）：`RemainingMinutes = 480-90=390`，顯示值 `ROUND_HALF_UP(390/120)=3`。ROUND_HALF_UP 換算是通用整數運算，非為特定比例硬編碼。
+
+### Case 4：同一課程不同時長（週二 180 分鐘、週六 120 分鐘）— 不變
+
+資料模型層可表達（`duration1..6`），但 `resolveSessionDurationForWeekday()` 目前只用於計費／單堂改時段（`FinanceController.php:524`、`ClassSessionController.php:1220`），**未被扣堂引擎引用**。本 RFC 的 v1 vertical slice（§11）仍以「單一 `standard_lesson_minutes` + 逐 `ClassSession` 實際時長比對」處理，不需要引擎讀 per-weekday duration——因為 opt-in 之後，判斷式是「這一堂的實際分鐘 ≠ 標準堂長」，天生就能處理「週二 180（≠120，記實際分鐘）、週六 120（＝120，整堂）」混合的情況，不需要额外改動 `resolveSessionDurationForWeekday()` 的呼叫範圍。
 
 ---
 
 ## 8. 受影響功能與風險
 
-| 功能 | 目前是否受「標準堂長 vs 排課時長」耦合影響 | 證據 |
+（維持原表格結論，補充 D1-D4 已拍板的欄位標記為「已有明確方向」而非「待決」）
+
+| 功能 | 是否受影響 | 現況 |
 |---|---|---|
-| 新增課程 | 是——`SessionDuration` 在建立當下即被排課時長覆寫，無法獨立設定 | `EnrollmentService.php:621-626,710` |
-| 修改課程 | 是——`mapFrontendPayload()` 用第一個時段覆寫 `SessionDuration` | `StudentClassController.php:3542-3547` |
-| Recurring schedule | 排課層已支援 per-weekday 時長，但扣堂引擎不讀取 | `StudentClass::resolveSessionDurationForWeekday()` 只用於計費、不用於扣堂 |
-| ClassSession materialization | 不受影響（本身不假設固定時長） | `ClassSessionMaterializationService.php:82-149` |
-| 點名 | 受影響——只有補課路徑會傳真實分鐘 | `resolvePartialMakeupMinutes()` |
-| 扣堂 | 核心受影響（本報告主題） | `SessionDeductionService.php` |
-| 請假 | 不受影響（leave 從不寫 deduct） | `AttendanceStatus::deductibleCodes()` |
-| 補課 | **是現有唯一可行路徑**，但只對單次 makeup 生效，不能用於常態週期 | `PartialMakeupDeductionTest.php` |
-| 調課 | 間接受影響——調課會 reverse 再重扣，若原本是分鐘制事件需確認 reverse 沖回同一 `minutes`（已有機制，見 `reverseForSession()` 的 matched-minutes 邏輯） | `SessionDeductionService.php:255-265` |
-| 課程終止 | 不受影響（終止不重算餘額） | `togglePause()` |
-| 退款 | **不存在**，不受影響也無法受益 | 全庫搜尋 0 命中 |
-| 餘額顯示（`StudentClassController::index`） | 已有 `hasFractionalBalance` 守門，避免分鐘制精確值被 count-based 覆寫——**這部分基礎設施已就緒** | `StudentClassController.php:395-410` |
-| 家長端顯示 | 未直接調查（超出四個 agent 分工範圍），需在實作前確認家長 App/LIFF 是否讀 `remaining_sessions` 或 `remaining_minutes` |
-| 主任端報表／繳費提醒 | `AlertController::tuition` 明確用 `RemainingSessions <= 2` 判斷續課提醒（`docs/DIRECTOR_PAYMENT_ALERT_RULES.md`），**全部是整數比較**，換成分鐘權威後需確認顯示值換算不會讓提醒邏輯誤判（例如 2.4 堂 vs 2 堂的邊界） |
-| 共用課程包（`CoursePackage`） | **高風險**——`package_session_ledger.delta` 是 `tinyInteger` 硬編碼 ±1，結構上無法承載部分堂數，已知技術債 `TD-059`／`#1343` |
-| Charge／計費快照 | `preservedDelta`（G-009）與 `rate_unit='hour'` 自動切換都跟 `SessionDuration`/`SessionCount` 共用同一批欄位，Option A/B 實作時必須同 PR 檢視，避免重蹈 G-009 覆轍 |
+| 新增課程 | 是——且新增確認：購買額度與 occurrence 數量目前被 API 驗證鎖死相等（§2.5） | `EnrollmentService.php:197-222,621-626,710` |
+| 修改課程 | 是——`SessionDuration` 被第一個時段覆寫 | `StudentClassController.php:3542-3547` |
+| 扣堂 | 核心受影響，範圍由 D2 決定（explicit opt-in） | `SessionDeductionService.php` |
+| 共用課程包 | **D4 已拍板排除**，第一版不涵蓋 | `TD-059`／`#1343` |
+| 跨期處理 | **D3 已拍板不做自動化**，只做預測+警示 | 見 §10 |
+| 主任端報表／繳費提醒 | 待確認整數比較是否需連動（`RemainingSessions <=2`），本次未變動結論 | `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` |
+| 家長端顯示 | 未直接調查，維持原「待確認」標記 | — |
 
 ---
 
 ## 9. Option A／B／C 比較
 
-### Option A：分鐘作為 authoritative balance（`purchased_minutes`/`consumed_minutes`/`remaining_minutes`）
+（結論維持：建議 Option A；本次修訂補充 opt-in 機制與不可變性對 Option A 的具體要求）
 
-- **優點**：`#613 A1` 已經把地基打好——`PurchasedMinutes`/`RemainingMinutes` 欄位、`session_deduction_ledger.minutes` 欄位、`ROUND_HALF_UP` 整數換算、`hasFractionalBalance` 讀取端守門，全部已存在且有測試。真正要做的不是「新建一套系統」，而是**把觸發條件從「只認補課」放寬到「常態排課的每堂實際時長」**。
-- **Migration 成本**：**低**——欄位已存在（additive、nullable，`2026_05_31` 系列 migration 早已 merge），不需要新 migration 即可開始擴大讀取範圍；如果要讓「新增課程」時就能設定「契約標準堂長」與「排課時長」分離，需要新增一個獨立欄位（例如 `billing_unit_minutes`，與 `SessionDuration` 分開，因為 `SessionDuration` 目前身兼二職）——這是唯一必要的新 migration，且是 additive/nullable，向後相容。
-- **對既有 2 小時課程的影響**：**零**——`recomputeCounters()` 的 `hasPartial` 判斷天生具備「無分鐘制事件時 byte-identical」的安全網（`SessionDeductionMinutesEngineTest::test_whole_session_path_unchanged_and_minutes_derived` 已驗證），2 小時標準課程從未產生 `minutes != perSession` 的 ledger 列，永遠走舊制公式，行為不變。
-- **報表與 API 變更**：`AlertController::tuition`、`DirectorDashboard` 等目前吃 `RemainingSessions` 整數比較的邏輯，需要明確決定「比較顯示堂數」還是「比較剩餘分鐘」，這是 Founder 決策點（見 §14）。
-- **Rounding 規則**：沿用既有 `ROUND_HALF_UP`（`intdiv($minutes*2+$perSession, $perSession*2)`），已是整數安全實作，不需重新設計。
-- **共用包（package）風險**：`package_session_ledger.delta` 的 `tinyInteger ±1` 限制必須連動處理（`TD-059`），否則 Option A 只解決個人課程，共用包仍會漂移。
+### Option A：分鐘作為 authoritative balance（建議方向，維持）
 
-### Option B：允許 decimal lesson units（例如直接扣 1.50 堂）
+- 優點、migration 成本低、對既有課程零影響（byte-identical）等結論維持不變。
+- **本次修訂新增**：Option A 的落地**必須**搭配 D2 的 explicit opt-in 欄位（`deduction_basis`），否則會有「新增 `standard_lesson_minutes` 後，只要該欄位非空就默默改變行為」的風險（見 §10 為何不採用 null-sentinel 方案）。
+- **本次修訂新增**：Option A 的 `purchased_minutes` 若繼續用「`SessionCount × perSessionMinutes()` 每次即時重算」的現行公式，會有「事後編輯 `standard_lesson_minutes` 隱性竄改歷史購買額度」的風險——必須搭配 §10、§12 的 immutability 規則。
 
-- **Precision/Rounding**：需要把 `SessionCount`/`RemainingSessions`/`UsedSessions` 從 `integer` 改成 `decimal`，直接衝擊全部依賴這些欄位的 API 回傳型別（前端 `sessions_purchased`/`remaining_sessions` 目前都當整數處理，見 `frontend/src/lib/studentClassDisplay.test.js` 的 `'16 堂'` 字串組裝邏輯）。
-- **資料庫欄位**：需要新 migration 把三個欄位型別改掉，這是**破壞性 schema 變更**（非 additive），且會直接影響 `package_session_ledger.delta`（目前 `tinyInteger`，改 decimal 影響範圍更廣，因為多個課程共用同一個池）。
-- **前後端格式**：金額／堂數的顯示慣例（`docs/RULE_DESIGN_SYSTEM.md` 提到金額需 tabular 對齊）需要重新設計「1.5 堂」這種數字要怎麼呈現，容易產生「0.1+0.2 浮點數誤差」類 bug（題目也明確要求不可用 binary float）。
-- **報表加總**：多筆課程加總「1.5+0.75+…」若真的存 decimal，長期累積誤差風險比 Option A（先累加分鐘再一次換算）更高，因為 Option A 的加總永遠在整數分鐘域，只在最後顯示時才做一次除法。
-- **本質問題**：Option B 仍然是「把計費單位跟實際時間耦合在一起」——1.5 堂這個數字本身不帶時間單位資訊，換算規則（1 堂=幾分鐘）若日後調整（例如漲價、改堂長），舊資料的 1.5 堂無法回推當時代表幾分鐘；Option A 因為存的是分鐘，任何時候都能用當下的 `standard_lesson_minutes` 重新換算成堂數顯示，可稽核性更好。
+### Option B：allow decimal lesson units（維持結論：不建議）
 
-### Option C：只允許自訂方案堂數（例如改收 6 堂=12 小時 或 9 堂=18 小時）
+不建議，理由同第一版（binary/decimal 精度風險、schema 破壞性變更、本質仍是把計費單位與時間耦合）。
 
-- 6 堂×3 小時=18 小時、9 堂×3 小時=27 小時——題目給的例子（6 堂=12 小時，4 個 3 小時 session）之所以「剛好整除」，是因為刻意選了「總時數 ÷ 3 小時 = 整數」的堂數；本質上是**把「一堂」的定義從全公司統一的 120 分鐘，改成幫這個學生量身訂做的另一個整堂單位（180 分鐘）**。
-- **為什麼只能緩解、不能真正解決**：
-  1. **只解決「固定時長、固定堂數」的單一組合**，題目案例 4（同一課程週二 180 分鐘、週六 120 分鐘混合）用 Option C 完全無法表達——不存在一個「一堂」的定義能同時整除 180 與 120 又維持整數堂數語意（除非退化成「找最大公因數 60 分鐘＝1 堂」，那又回到 Option A 的分鐘制精神，只是換了個名字）。
-  2. **調課／請假時一旦跨到不同時長的補課，堂數單位又會錯位**——例如這學生某次請假、改約到 120 分鐘的補課時段，用「1 堂=180 分鐘」的自訂方案去扣，同樣會產生「這堂到底算不算 1 堂」的爭議，Option C 沒有解決跨堂長換算，只是把問題從「AllTrue 全公司標準」換成「這個學生的客製標準」，換算爭議依然存在。
-  3. **跨期／續期時，若下一期方案改回標準 8 堂×2 小時，兩期之間的「堂」定義不同，家長與主任的認知會斷裂**（本期 1 堂=180 分鐘，下期 1 堂=120 分鐘），對帳與續費提醒都需要額外標記「這是哪個版本的堂數定義」，複雜度並未真正降低，只是把複雜度從系統轉嫁到人工溝通。
-  4. 任意時長（例如題目要求的「不要假設一定是 3 小時」）在 Option C 下每出現一種新時長組合，就要新開一種自訂方案，長期會產生大量「for this student only」的特例邏輯，與 CLAUDE.md 明文禁止的「不應為單一學生建立硬編碼特例」精神直接衝突。
+### Option C：只允許自訂方案堂數（維持結論：僅能緩解）
 
-**建議方向**：Option A 作為長期正確模型，理由是**現有 `#613 A1` 已經是 Option A 的雛型**，遷移成本遠低於從零設計；Option B 的「本質問題」在題目本身也已點名（「不要直接使用 binary float 作為帳務真相」），不建議採用；Option C 僅適合作為「主任暫時繞道的操作建議」（見 §10 跨期處理選項 5），不建議當成產品的正式解法。
+僅能緩解、無法處理 Case 4 混合時長、無法處理跨期堂定義斷裂、易蔓延成單一學生特例，結論維持不變。
+
+**建議方向不變**：Option A，但補上 D1-D4 四項 Founder 已拍板的護欄，使其成為一個**範圍受控、可回滾、explicit opt-in** 的擴充，而不是原第一版尚未定義好邊界的方向。
 
 ---
 
-## 10. 建議產品模型
+## 10. 建議產品模型（本次修訂重點）
 
 ### Authoritative truth
 
-- 沿用並擴大 `#613 A1` 既有欄位：`StudentClass.PurchasedMinutes`/`RemainingMinutes` + `session_deduction_ledger.minutes` 作為權威。
-- **新增**一個獨立欄位（暫名 `StudentClass.standard_lesson_minutes`，語意＝「這門課的計費標準堂長」，預設沿用公司慣例 120），使其**與** `SessionDuration`（目前身兼「排課預設時長」與「計費標準」二職）**脫鉤**。這是本報告認定唯一必要的新增欄位／migration（additive、nullable，向後相容；未設定時 fallback 到現行 `SessionDuration`，行為不變）。
-- 扣堂時，`resolvePartialMakeupMinutes()` 的判斷條件從「只認 `schedules.type='extra'`」擴大為「任何 `ClassSession` 實際時長 ≠ `standard_lesson_minutes` 時都記錄真實分鐘」，不論是否為補課——常態排課的 180 分鐘課，點名時就會記 `minutes=180`，跟現在補課路徑的處理方式完全相同，只是觸發條件從「是不是補課」改成「時長是否等於標準堂長」。
+- 沿用並擴大 `#613 A1` 既有欄位：`StudentClass.PurchasedMinutes`/`RemainingMinutes` + `session_deduction_ledger.minutes` 作為分鐘制權威。
+- **D1**：新增 `StudentClass.standard_lesson_minutes`（課程層級，nullable）。**系統/分校層級**另有一個預設值（例如常數或設定檔 120 分鐘，**不假設全公司永遠只有 120**——分校可能有不同慣例），課程未設定時 fallback 到此系統/分校預設；課程層級可 override。與 `SessionDuration`（保留給排課預設時長使用）脫鉤。
+- **D2 opt-in 機制——選用 `deduction_basis` 明確欄位，而非 `standard_lesson_minutes IS NOT NULL` 當 sentinel**：
 
-### Derived values
+  | 方案 | 說明 | 問題 |
+  |---|---|---|
+  | (i) `standard_lesson_minutes = null` → legacy；`!= null` → duration-aware | 用欄位是否為空當開關 | **不建議**：D1 已批准系統/分校可以有預設值，若這個預設值被自動帶入每一門課的 `standard_lesson_minutes`（例如用於 Phase 0B 預覽），會導致「只是想顯示個標準堂長」卻**意外**打開 duration-aware 扣堂行為——欄位的「有沒有值」與「要不要改變扣堂行為」是兩件事，混在一起會製造隱性副作用，違反 D2「不批准直接把所有既有正常課程切換」的精神 |
+  | (ii) **`deduction_basis` enum：`fixed_session`（預設） \| `actual_duration`** | 獨立欄位，明確表達「這門課的扣堂行為模式」；`standard_lesson_minutes` 只負責「數值」，`deduction_basis` 只負責「要不要用這個數值去做比例扣堂」 | 需要多一個欄位／一次 migration，但語意清楚、可稽核（欄位變更本身就是一個明確、可記錄的操作事件），不會因為「順手填了一個標準堂長」而誤觸發新行為 |
 
-- `lesson_equivalent = minutes / standard_lesson_minutes`，沿用既有整數安全 `ROUND_HALF_UP`（無需重新設計）。
-- `RemainingSessions`/`UsedSessions` 維持現有「顯示用衍生欄」定位，讀取端維持現有 `hasFractionalBalance` 守門邏輯（`StudentClassController.php:399-410`），只需要把判斷來源從「有沒有補課事件」改成「有沒有任何非整堂事件」（邏輯本身不用改，因為它已經是通用的 `minutes % perSessionMin != 0` 檢查）。
+  **採用方案 (ii)**：所有既有課程與所有新課程，`deduction_basis` **預設為 `fixed_session`**（即使 `standard_lesson_minutes` 已被設定，也不影響行為）。只有課程被**明確**設為 `deduction_basis='actual_duration'` 時，扣堂引擎才會啟用實際分鐘比對。這同時滿足 D2「不批准整批切換既有正常課程」——因為預設值本身就是保持現狀，需要一個獨立、有意識的操作才會改變行為。
 
-### UX preview
+- **R59 改寫（不刪除）**：原規則「禁止擴大到非 `extra`」修訂為：
+  > 常態課程（非補課）的分鐘制扣堂，**只能在該課程 `deduction_basis` 被明確設為 `actual_duration` 時啟用**；未 opt-in 的課程（含所有既有課程、所有新課程的預設狀態）維持「正常課堂一律整堂」不變。任何工程變更**不得**跳過此欄位、直接放寬 `resolvePartialMakeupMinutes()`（或其後繼方法）對常態課程的判斷。
+- `resolvePartialMakeupMinutes()` 的擴大方式：新增一個判斷分支——若 `$sc->deduction_basis === 'actual_duration'` 且該 `ClassSession` 實際時長 ≠ `standard_lesson_minutes`，回傳實際分鐘；`fixed_session` 課程（含既有補課機制本身）完全不受影響，兩條路徑並存，不互相覆蓋。
+- **Billing-standard immutability（新增，回應本次修訂要求）**：
+  - 第一筆 `session_deduction_ledger` 產生**前**，`standard_lesson_minutes`／`deduction_basis` 可透過一般編輯課程流程正常修改。
+  - 第一筆 deduction ledger **產生後**，一般 `PUT /student-classes/{id}` 更新流程必須**拒絕**修改 `standard_lesson_minutes`（回 422，附清楚錯誤訊息），避免如 `recomputeCounters()` 現行公式（`SessionCount × perSessionMinutes()` 即時重算）在事後編輯時，**默默改寫已經發生過的歷史購買額度**。
+  - 若確有必要修正（例如契約當初設錯），**必須**透過一個具名的 command／端點（例如 `standard-lesson-minutes:correct` 或 `POST /student-classes/{id}/contract-correction`），且該操作必須寫入 audit evidence（操作者、時間、舊值、新值、原因），**不得**用改欄位的方式追溯改寫歷史購買額度——即該 command 只影響「未來」的 entitlement 計算，不得重寫過去已經記錄在 ledger 裡的扣除事件所依據的分鐘假設。
+  - **是否要把 `purchased_minutes` 從「即時重算」改成「建立時／每次加購時 snapshot 一筆 entitlement grant 事件」**（類似 `session_deduction_ledger` 已經是 event-sourced 的消費端，entitlement 端目前卻不是）——本 RFC 認為這是**更穩健的長期方向**，但**不是** v1 最小 slice 的必要項（v1 用「鎖定欄位 + 具名 command」這個較輕量的守門即可達到「不可默默改寫歷史」的目標）。列為 §14 待決事項，供 Founder 決定要不要在較後期 Phase 導入完整的 entitlement 事件溯源。
 
-新增課程頁「固定上課星期」卡片旁，新增一段即時試算文字（可用純前端計算，公式對照 §7 Case 2 的分鐘表）：
+### Derived values（本次修訂：修正「RemainingSessions 已足夠呈現精確 fractional balance」的錯誤敘述）
+
+**修正聲明**：`RemainingSessions = ROUND_HALF_UP(RemainingMinutes / standard_lesson_minutes)` **只能產生整數**，例如 6.5 堂會顯示成 7、0.5 堂會顯示成 1。**不得再把現有 `RemainingSessions` 描述為足以呈現精確 fractional balance**——它從第一版開始就只是一個「顯示用、四捨五入到最近整堂」的衍生值，第一版部分段落的措辭容易讓讀者誤以為它本身就是精確值，此處修正。
+
+**新增／明確化的 derived API 欄位**（分鐘仍是 integer authoritative truth；lesson-equivalent 一律用 decimal string 或明確 precision 表示，禁止 binary float 當帳務真相）：
+
+| 欄位 | 型別 | 定義 | 用途 |
+|---|---|---|---|
+| `remaining_minutes` | integer | `RemainingMinutes`（已存在，`#613`） | 精確剩餘分鐘，authoritative |
+| `remaining_hours` | decimal string，2 位小數（如 `"1.00"`） | `remaining_minutes / 60`，字串格式輸出，避免前端把它當 binary float 累加 | 顯示用 |
+| `remaining_lesson_equivalent` | decimal string，2 位小數（如 `"0.50"`） | `remaining_minutes / standard_lesson_minutes`，**精確值**（非 ROUND_HALF_UP 顯示值） | 精確顯示「還剩幾堂」，取代目前容易被誤讀為精確值的 `RemainingSessions` |
+| `used_lesson_equivalent` | decimal string，2 位小數 | `(purchased_minutes - remaining_minutes) / standard_lesson_minutes` | 精確顯示「已用幾堂」 |
+| `uncovered_minutes` | integer | 見下方定義 | 超額分鐘的 first-class 曝光欄位 |
+| `remaining_sessions`（既有欄位） | integer | **暫時保留**供既有前端/報表相容讀取，但**不得**再作為 fractional UX 的唯一來源；文件與 API 說明需註明其為 ROUND_HALF_UP 顯示值，非精確值 | 向後相容 |
+
+**`net_deducted_minutes` 與 `uncovered_minutes` 的推導（本次修訂新增，不新增第二套 ledger）**：
 
 ```
-每週上課 2 次，每週共 6 小時，每週消耗 3 堂（標準堂長 120 分鐘）
-本期共 16 小時（8 堂 × 120 分鐘）
-可完整涵蓋 5 次 3 小時課程；第 5 次後剩餘 1 小時
-第 6 次課程將超出本期額度 2 小時（相當於 1 堂）
+net_deducted_minutes = SUM(session_deduction_ledger.minutes WHERE event_type='deduct')
+                      − SUM(session_deduction_ledger.minutes WHERE event_type='reverse')
+                      （minutes 為 null 時以 standard_lesson_minutes 代入，沿用既有 recomputeCounters() 的既有慣例）
+
+uncovered_minutes = max(0, net_deducted_minutes − purchased_minutes)
 ```
 
-此文字純粹是「標準堂長」與「使用者輸入的排課時長」兩個數字相除後的提示，不需要等後端引擎擴大範圍就可以先做（前端已有 `avgSessionMinutes`/`estimateCreateCharge` 的計算基礎，見 §3）。
+- 兩者都是**對既有 `session_deduction_ledger` 的聚合查詢**，不需要新表、不需要新欄位存放「超額」本身——`session_deduction_ledger` 已經是完整、可重算的事件記錄。
+- `reverse`（含 retro leave、reschedule 產生的還原事件）已經是這條公式的減項，因此請假回滾、調課還原之後，`net_deducted_minutes` 與 `uncovered_minutes` 會**自動**跟著重新算對，不需要額外特殊處理——這與現行 `recomputeCounters()` 已經在用的 `netMinutes` 計算方式（`SessionDeductionService.php` 366-374 行一帶，目前只是算完就丟）在邏輯上是同一件事，本 RFC 只是把它從「用完即丟的區域變數」升格為「持久化、可查詢、可告警的 derived 欄位」。
 
-### Cross-period handling（產品決策點，不由本報告代答，見 §14）
+### UX preview（Phase 0B，本次修訂：具體化為建立課程時的 coverage 預覽規格）
 
-五個選項對應影響（依題目要求逐一列出，不替 Founder 決定）：
+新增課程頁面（僅 `deduction_basis='actual_duration'` 分支時顯示；`fixed_session` 課程沿用現有「總堂數/總小時」預覽，不變）：
 
-1. **允許本期剩餘 + 下一期額度**：教務操作簡單（系統自動跨期扣），但需要「下一期額度」這個概念在系統裡先存在（目前續約是建立全新一期 `StudentClass`，兩期之間沒有共用池，需額外設計"跨期借用"帳本，類似 `CoursePackage` 但方向相反）；對帳複雜度最高（一次點名可能同時影響兩期發票）。
-2. **下一期未繳費時允許負額度**：排課連續性最好（不中斷），但欠費風險最高（等於系統主動墊款），且與現有「金流與堂數獨立」設計哲學（`SessionDeductionService.php:393-397`）衝突——目前系統刻意讓扣堂不依賴繳費狀態，允許負額度等於進一步放大這個解耦，需要 Founder 明確承擔風險。
-3. **下一期未繳費時只顯示 warning**：家長理解成本最低（照常上課，只是提醒），但對帳仍會出現「已上但未計入任何一期發票」的堂次，需要額外報表欄位追蹤「待歸屬」堂次。
-4. **下一期未繳費時禁止完成點名或扣堂**：欠費風險最低、會計對帳最乾淨，但排課連續性最差——老師/家長會在教室現場卡住（家長認知：學生已經到校，為何不能點名，這與 `ADR_006` §1.1 描述的「有 entitlement 卻不能點名」現場痛點是同一類使用者體驗問題，需一併評估）。
-5. **建議主任改用能整除的方案（如 12 小時或 18 小時）**：教務操作最省事（不需碰引擎），但如 §9 Option C 分析，只是把問題往後延一期，且與「不應假設所有課都湊得出整除方案」的現實衝突（家長臨時決定加課/減課次數時，方案又會不整除）。
+```
+每週上課 2 次，每週共 6 小時
+標準堂長 120 分鐘；本次購買 8 個標準單位＝960 分鐘
+
+依目前排定的 180 分鐘時段：
+可完整涵蓋 5 次課（900 分鐘）
+第 5 次後剩餘 60 分鐘
+第 6 次課程需要 180 分鐘，將超出本期額度 120 分鐘（約 1 個標準單位）
+
+建議：本次只排 5 次課，待續約/加購後再排第 6 次以後
+      （或勾選「仍要排到第 X 次」，超額部分將以 warning 顯示，點名不會被阻擋）
+```
+
+此預覽所需的六個欄位（`entitlement_minutes`、`scheduled_minutes`、`fully_covered_occurrences`、`remaining_after_full_occurrences`、`first_partially_covered_occurrence`、`uncovered_minutes`）計算公式已在 §7 Case 2 驗證與 Founder 範例數字一致，可視為 Phase 0B 的規格基礎（見 §11）。
+
+### Cross-period handling（D3 已拍板，第一版明確不做的事）
+
+**第一版不實作**：
+- 一次點名同時扣兩個 `StudentClass`
+- 自動從下一期借用額度
+- 負餘額自動轉移
+- 跨發票分攤
+- 自動 debt settlement
+
+**第一版採用**：
+1. 建課時預測 coverage（Phase 0B 預覽，上方規格）。
+2. 超額前 warning（操作者在建課或後續排課時看到「即將超出額度」提示，非阻擋）。
+3. 點名不中斷（即使已知會超額，點名照常成功，`session_deduction_ledger` 照實記錄）。
+4. Ledger 保存完整實際扣除分鐘（不四捨五入、不封頂到「看起來乾淨」的整堂）。
+5. 顯示或回報 derived `uncovered_minutes`（見上方定義），供主任儀表板／dashboard 使用。
+6. 續約／加購額度分配，留給**後續獨立 workflow**處理（本 RFC 不設計此 workflow，僅確保上游資料——`uncovered_minutes`、ledger 完整記錄——足以支撐後續 workflow 開發）。
+
+原第一版列出的五個跨期選項（借下一期額度／允許負額度／only warning／禁止點名／建議整除方案）**仍然是續約/加購 workflow 階段要回答的問題**，但 D3 已經明確排除「自動化」這個大方向，因此這五個選項的討論範圍縮小為「續約/加購 workflow 要不要提供哪些手動操作」，而不是「扣堂引擎要不要自動做哪一種」——兩者不應混為一談，本 RFC v1 兩者都不實作，只確保資料備妥。
 
 ---
 
-## 11. 最小 vertical slice
+## 11. 最小 vertical slice（本次修訂：拆分為 Phase 0A/0B/1/2/3）
 
-**目標**：讓 Case 2（常態排課、非補課）也能走分鐘權威，且對現有 2 小時課程 byte-identical。
+**目標**：讓「常態排課、非補課」的課程也能在 explicit opt-in 下走分鐘權威，且對現有 `fixed_session` 課程 byte-identical；同時解決 §2.5 的「購買額度＝occurrence 數量」耦合。
 
-1. **新增欄位**（additive、nullable，不改變任何現有讀寫）：`StudentClass.standard_lesson_minutes`。未設定時，`perSessionMinutes()` fallback 到現行 `SessionDuration`（完全不影響現有課程）。
-2. **`resolvePartialMakeupMinutes()` 擴大判斷條件**：新增一個判斷分支——若 `ClassSession` 的實際時長（`durationMinutes(StartTime, EndTime)`）≠ `standard_lesson_minutes`（不論是否為補課），回傳實際分鐘；只有兩者相等時才回 `null`（整堂）。**注意**：命名需要調整（該方法現在的名字 `resolvePartialMakeupMinutes` 隱含「僅限補課」，擴大範圍後應改名或新增一個涵蓋常態排課的方法，避免誤導後續開發者，同一類根因見 `TD-060` 的「死碼未接線」教訓）。
-3. **`recomputeCounters()` 不需要改**——`hasPartial` 判斷已經是通用的 `minutes != perSession` 查詢，不管 minutes 是從補課還是常態排課寫入的。
-4. **新增課程 UI**：在「預設上課時長」旁邊新增「標準計費堂長」欄位（預設等於前者，但可分開填），寫回 `standard_lesson_minutes` 而非覆寫 `SessionDuration`。
-5. **共用課程包排除在此 slice 之外**——`package_session_ledger.delta` 的 `tinyInteger ±1` 限制（`TD-059`）需要獨立評估是否要在此 slice 一併擴大，或明確排除「非標準時長課程不可加入共用包」作為過渡期限制（建議後者，降低本次改動範圍）。
-6. **讀取端**：`StudentClassController::index` 的 `hasFractionalBalance` 守門邏輯已經通用，理論上不需要改；但需要新增測試驗證「常態排課觸發的分鐘制」也不會被 count-based self-heal 覆寫。
+### Phase 0A — production 唯讀盤點（不寫 production DB）
 
-**刻意不做**（維持題目 Non-scope）：不動 `SessionDuration` 既有語意（保留給「排課預設時長」用途，供 `EnrollmentService`/`day_time_slots` 沿用）；不改變任何既有課程的 `RemainingSessions` 計算結果；不動 `CoursePackage`/`package_session_ledger`；不動繳費提醒（`AlertController::tuition`）的整數比較邏輯。
+量化：
+- 正常課程中，`ClassSession` 實際時長與 `SessionDuration` 不一致的數量。
+- 已有 partial-minute ledger 事件的課程數（現況＝補課路徑產生的）。
+- `CoursePackage` 成員中，若日後考慮涵蓋 `actual_duration`，會命中多少既有共用包課程（僅供評估 D4 的排除範圍是否足夠，不代表本版要處理）。
+- `RemainingMinutes` 與「由 ledger 重新聚合算出的分鐘」是否已存在不一致（即 §10 定義的 `uncovered_minutes` 是否對既有資料而言已經 >0）。
+- 若擴大 `resolvePartialMakeupMinutes()` 判斷範圍，會有多少既有課程的下一次點名行為從「整堂」變成「非整堂顯示」（即使這批課程之後才會被 explicit opt-in，Phase 0A 先評估潛在影響面）。
+
+**Phase 0A 不得寫 production DB，只執行唯讀查詢／報表指令（比照既有 `sessions:report-prepaid-horizon-phase0` 的唯讀模式）。**
+
+### Phase 0B — create-time coverage preview（純預覽／validation spec，不改變扣堂結果）
+
+先只加入**純預覽**規格（前端計算或後端唯讀端點皆可，兩者都不寫入任何 entitlement/扣堂欄位）：
+
+```
+entitlement_minutes
+scheduled_minutes
+fully_covered_occurrences
+remaining_after_full_occurrences
+first_partially_covered_occurrence
+uncovered_minutes
+```
+
+本案例預期輸出（已於 §7 驗證與 Founder 範例一致）：
+
+```
+entitlement_minutes = 960
+session_duration = 180
+fully_covered_occurrences = 5
+remaining_minutes = 60
+first_partial_occurrence = 6
+partial_covered_minutes = 60
+uncovered_minutes = 120
+```
+
+此 Phase **不需要**先完成 Phase 1／2 的欄位/引擎擴充即可先做（純粹是既有數字的除法與比較），可獨立先行，讓操作者在建課當下就看得到 coverage 缺口，即使暫時還無法把「180 分鐘的一堂」真的記成 1.5 標準堂。
+
+### Phase 1 — additive contract fields（不 globally activate runtime deduction）
+
+- 新增 `StudentClass.standard_lesson_minutes`（nullable，additive）與 `StudentClass.deduction_basis`（enum，`fixed_session` 預設，additive）。
+- 新增課程/編輯課程 UI 讓 `standard_lesson_minutes` 與 `SessionDuration`（排課時長）分開設定。
+- 加入 immutability 守門（第一筆 ledger 產生後鎖定 `standard_lesson_minutes` 的一般編輯路徑；具名 command 供例外修正並留 audit）。
+- **本 Phase 不啟用**任何 runtime 扣堂行為變更——所有課程 `deduction_basis` 皆為預設 `fixed_session`，行為與 Phase 1 之前完全相同。
+
+### Phase 2 — duration-aware deduction behind feature flag，只對 explicit opt-in 課程啟用
+
+- 擴大 `resolvePartialMakeupMinutes()`（或新增平行方法）：新增分支——僅當 `deduction_basis='actual_duration'` 時，比對實際時長與 `standard_lesson_minutes`。
+- `fixed_session` 課程（含所有既有課程、所有未主動 opt-in 的新課程）**完全不受影響**。
+- 比照 `ADR_006` 的 `Ensure` 模式，先以 feature flag 預設關閉，僅在測試/沙盒環境驗證 byte-identical 安全網與新行為皆正確後，才對明確 opt-in 的課程開放。
+- 同時處理 §2.5 的耦合：`actual_duration` 課程建立時，**移除**「`plannedSessions` 必須等於 `count($sessionRows)`」的硬性等式驗證（`EnrollmentService.php:210-222`），改為依 Phase 0B 的 coverage preview，讓操作者決定 occurrence 數量；`fixed_session` 課程的既有等式驗證**維持不變**。
+- **`CoursePackage` 排除（D4）**：新增驗證——`deduction_basis='actual_duration'` 的課程不得設定 `PackageID`（或反之，已有 `PackageID` 的課程不得切換為 `actual_duration`），此 Phase 需要一個明確的守門檢查，而不只是文件建議。
+
+### Phase 3 — precise balance UX and uncovered warning
+
+- API/UI 改用 §10 定義的 `remaining_minutes`/`remaining_lesson_equivalent`/`uncovered_minutes` 等 derived 欄位，**不得只讀 integer `RemainingSessions`** 作為精確餘額顯示。
+- 主任儀表板／家長端補上「即將超出額度」告警（依 §10 UX preview 呈現）。
+- **自動跨期 allocation 仍為 non-scope**（D3），本 Phase 只做「顯示」與「警示」，不做「分配」或「借用」。
+
+**刻意不做（維持 Non-scope）**：不建立跨期 allocation ledger；不修改 `CoursePackage`／`package_session_ledger`；不降低既有 R59 測試 assertion（改寫規則本身，但既有 `fixed_session` 行為的 golden 測試斷言不變）；不將所有既有課程全域切換為 minutes deduction；不自動修復既有資料。
 
 ---
 
 ## 12. Migration 與 backward compatibility
 
-- **新增欄位** `StudentClass.standard_lesson_minutes`：`integer nullable`，additive，`down()` 直接 drop，符合 `docs/RULE_MIGRATION_COMPAT.md` 的 Expand/Contract 慣例（先 expand，行為不變，待前端全面切換後才考慮 contract 掉 `SessionDuration` 身兼二職的舊用法——但預期短中期仍會保留 `SessionDuration` 供排課使用，不會 contract）。
-- **`resolvePartialMakeupMinutes()` 擴大範圍是行為變更，不是純 additive**——任何目前「常態排課但實際時長 ≠ SessionDuration」的既有課程（例如因為 G-010/G-009 等歷史資料問題已經存在時長不一致的課程），一旦此欄位擴大生效，下一次點名就會從「整堂扣 1」變成「扣實際分鐘、顯示值可能變成非整數」——**這對既有資料是行為變更，必須先跑一次全庫掃描**，找出「`SessionDuration` 已設定，但存在 `ClassSession` 實際時長不同、且從未被標記為補課」的課程數量，評估影響範圍後才能決定要不要用 feature flag 分階段開啟（比照 `ADR_006` 的 `Ensure` 預設關閉模式）。
-- **共用包（`CoursePackage`）**：本 slice 建議明確排除，避免 `TD-059` 提前發作；若日後要涵蓋，`package_session_ledger.delta` 需要新增 `minutes` 欄位（比照 `session_deduction_ledger` 已有的做法），是額外的 migration，不在本次最小 slice 內。
-- **舊資料是否已存在小數堂數或異常餘額**：本次調查**未執行**任何 production 查詢（Non-scope 禁止），因此**無法確認**現有資料庫是否已有 `RemainingMinutes % SessionDuration != 0` 的既有課程——這是實作前必須先用**唯讀**查詢（例如比照 `docs/runbooks/1062-track-a-pcr.md`／`sessions:report-prepaid-horizon-phase0` 的唯讀報表模式）盤點的項目，若發現既有異常餘額，依 Stop condition 應立即停止並回報，不可在同一個 PR 裡順手修掉。
+- **新增欄位**：`StudentClass.standard_lesson_minutes`（`integer nullable`）、`StudentClass.deduction_basis`（`string`/enum，`default 'fixed_session'`，**not nullable**——確保任何既有資料 migrate 後立刻有明確、安全的預設值，不會出現「未設定＝不確定行為」的灰色地帶）。皆為 additive，`down()` 直接 drop，符合 `docs/RULE_MIGRATION_COMPAT.md` Expand/Contract 慣例。
+- **`resolvePartialMakeupMinutes()`（或其後繼方法）擴大範圍，只在 `deduction_basis='actual_duration'` 時生效**——由於預設值為 `fixed_session`，**這使得擴大本身對所有既有資料是零行為變更**，不需要像第一版描述的那樣「必須先跑全庫掃描才能決定要不要用 feature flag」；因為現在的擴大是**明確 opt-in 閘門**（`deduction_basis` 欄位），而不是「符合某個時長不一致條件就自動套用」。Phase 0A 的唯讀盤點仍然建議先做，但目的改為「評估未來有多少課程適合／需要被主動 opt-in」，不是「評估貿然全面套用的風險」——風險已經被 opt-in 設計本身排除。
+- **billing-standard immutability**：`standard_lesson_minutes` 在第一筆 `session_deduction_ledger` 產生後鎖定一般編輯路徑（見 §10、§11 Phase 1），需要一個 migration 之外的**應用層守門**（validation guard），不是 schema 層面的約束（DB 層無法輕易表達「這個欄位在某條件成立後唯讀」）。
+- **`purchased_minutes` 即時重算 vs. entitlement 事件溯源**：v1 維持「即時重算」但加上不可變性守門（§10），**不**在本次 slice 導入完整的 entitlement grant 事件表——這是明確排除在 v1 之外、留待後續評估的方向（§14）。
+- **共用課程包**：D4 已拍板排除，Phase 2 需要應用層驗證守門（`deduction_basis='actual_duration'` 與 `PackageID` 互斥），不在本次 slice 擴大 `package_session_ledger`。
+- **§2.5 耦合的移除（`plannedSessions === count($sessionRows)` 等式）**：僅在 `actual_duration` 分支移除此驗證，`fixed_session`（含現有所有課程與所有未 opt-in 的新課程）維持現行等式，零行為變更。
+- **舊資料是否已存在小數堂數或異常餘額**：本次調查（含本次修訂）**未執行**任何 production 查詢。此為 Phase 0A 必須先做的唯讀盤點項目，若發現既有異常餘額，依 Stop condition 應立即停止並回報，不可在同一個 PR 裡順手修掉。
 
 ---
 
 ## 13. 測試計畫
 
-沿用既有測試檔案的模式（`SessionDeductionMinutesEngineTest`、`PartialMakeupDeductionTest`），新增：
+沿用既有測試檔案模式，新增／調整：
 
-1. **`RecurringNonStandardDurationDeductionTest`**（新檔）：
-   - 常態排課（無 `schedules.type='extra'`）、`standard_lesson_minutes=120`、`ClassSession` 實際 180 分鐘 → 點名後斷言 `RemainingMinutes` 精確扣 180、`RemainingSessions` 顯示值符合 `ROUND_HALF_UP`。
-   - 連續扣款到第 6 次、購買總額不足 180 分鐘的情境（§7 Case 2 路徑 B 目前未覆蓋的多堂連續超扣案例）——斷言目前行為（`RemainingMinutes` 封頂於 0、無告警），作為「現況 golden」，供 Founder 決定要不要在此測試上改變斷言（改成擋下點名、或允許負額度時再更新此測試）。
-   - Case 3（90 分鐘＝0.75 標準堂）與 Case 4（同課程週二 180／週六 120）比照既有 `PartialMakeupDeductionTest` 命名慣例補齊。
-2. **`StandardLessonMinutesDecouplingTest`**（新檔）：驗證新增/編輯課程時，`standard_lesson_minutes` 與 `SessionDuration`（排課時長）可以分開設定且互不覆寫——防止重蹈 `EnrollmentService.php:710`／`StudentClassController.php:3546` 目前的耦合 bug。
-3. **既有 golden 測試必須全綠、斷言不變**：`SessionDeductionMinutesEngineTest`、`PartialMakeupDeductionTest`（尤其 `test_normal_short_session_not_prorated`/`test_normal_longer_session_not_prorated` 兩個舊測試的斷言需要明確更新為「新行為」或保留作為「補課路徑仍維持獨立行為」的對照組——這是需要與 Founder / 原始 `#613` 設計者確認的關鍵決策，因為這兩個測試目前的名字與註解明確主張「正常課堂一律整堂」是**刻意的設計**，不是待修的 bug，貿然翻轉斷言前必須先確認 §14 的決策）。
-4. **共用包回歸**：新增測試明確驗證「非標準時長課程若嘗試加入共用包，應如何處理」（依 §11 建議先擋下或明確標記為不支援，需相應測試）。
-5. **繳費提醒回歸**（`docs/DIRECTOR_PAYMENT_ALERT_RULES.md` 要求的既有測試 `TuitionAlertsApiTest`）：確認 `RemainingSessions <= 2` 的整數比較邏輯，在課程存在分鐘制事件、顯示值為非整堂 rounding 結果時，仍然如 Founder 決策的方式觸發提醒（此為修改 `AlertController::tuition` 前需先取得使用者明示同意的項目，見文件變更管制條款）。
+1. **`DeductionBasisOptInDefaultTest`（新檔，本次修訂新增）**：驗證所有既有課程與所有新建課程，migrate／建立後 `deduction_basis` 恆為 `'fixed_session'`，除非請求中明確指定；驗證即使 `standard_lesson_minutes` 被設定為非 null，只要 `deduction_basis` 未被明確改為 `actual_duration`，扣堂行為與 migrate 前 byte-identical（直接反駁「null-sentinel 方案」的風險，佐證方案 (ii) 較安全）。
+2. **`CoveragePreviewCalculationTest`（新檔）**：驗證 Phase 0B 六個欄位（`entitlement_minutes`/`scheduled_minutes`/`fully_covered_occurrences`/`remaining_after_full_occurrences`/`first_partially_covered_occurrence`/`uncovered_minutes`）的計算，用 §7 Case 2（960/180/5/60/6/60/120）與至少一個 Case 3（90 分鐘）組合作為斷言基準。
+3. **`RecurringActualDurationDeductionTest`（新檔）**：`deduction_basis='actual_duration'`、常態排課（無 `schedules.type='extra'`）、`standard_lesson_minutes=120`、`ClassSession` 實際 180 分鐘 → 點名後斷言 `RemainingMinutes` 精確扣 180；`fixed_session` 課程（即使實際時長也是 180）維持整堂扣 1 的對照測試。
+4. **`StandardLessonMinutesImmutabilityTest`（新檔）**：驗證第一筆 ledger 產生前可正常編輯 `standard_lesson_minutes`；產生後一般 `PUT` 更新遭拒（422）；具名 command 修正會寫入 audit 記錄且不追溯改寫既有 ledger 事件所依據的分鐘假設。
+5. **`UncoveredMinutesDerivationTest`（新檔）**：驗證 `net_deducted_minutes`/`uncovered_minutes` 對純 ledger 聚合計算正確，含 reverse／retro-leave／reschedule 後重新推導為 0 或正確扣減的情境。
+6. **`PackageActualDurationExclusionTest`（新檔）**：驗證 `deduction_basis='actual_duration'` 課程不得設定 `PackageID`，反之亦然（D4 守門）。
+7. **既有 golden 測試維持全綠、斷言不變**：`SessionDeductionMinutesEngineTest`、`PartialMakeupDeductionTest`（含 `test_normal_short_session_not_prorated`/`test_normal_longer_session_not_prorated`）——**本次修訂明確**：這兩個測試斷言的「正常課堂一律整堂」在 `fixed_session`（未 opt-in）情境下**繼續成立、不需要修改斷言**；只有在課程被明確 opt-in 為 `actual_duration` 時，新測試（第 3 項）才驗證不同的行為。這解決了第一版遺留的「是否要翻轉這兩個既有測試斷言」的疑慮——**不需要翻轉，因為新舊行為分別綁在不同的 `deduction_basis` 上，兩者並存**。
+8. **繳費提醒回歸**（`TuitionAlertsApiTest`）：確認 `RemainingSessions <= 2` 整數比較邏輯對 `actual_duration` 課程的顯示值（ROUND_HALF_UP 衍生）仍如預期觸發，維持原結論，修改 `AlertController::tuition` 前需先取得使用者明示同意。
+9. **`EnrollmentServiceOccurrenceCountDecouplingTest`（新檔）**：驗證 `actual_duration` 課程可以「購買額度 ≠ occurrence 數量」成功建立（不再 422）；`fixed_session` 課程的既有等式驗證行為不變（仍會 422）。
 
 ---
 
 ## 14. Founder 必須拍板的決策
 
-1. **是否要打開 `resolvePartialMakeupMinutes()` 的範圍到常態排課**——`docs/AI_REGRESSION_LESSONS.md §R59` 目前明文「禁止擴大到非 `extra`」，本報告建議的最小 vertical slice 正是要打破這條既有紅線，需要 Founder 明確覆核並更新該條規則（而非工程師片面決定繞過既有防再犯規則）。
-2. **「標準堂長」是否要拆成公司層級的全域常數，還是維持課程層級可個別設定**——目前 `SessionDuration` 是逐課程設定，本報告 §11 建議新增 `standard_lesson_minutes` 亦為逐課程欄位；若 Founder 希望「標準堂長＝公司唯一常數（如 120 分鐘）」，則應改為系統設定值而非逐課程欄位，影響 migration 設計方向。
-3. **跨期處理五選項**（§10 Cross-period handling）——本報告刻意不代答，需 Founder 從教務操作／家長理解／會計對帳／欠費風險／排課連續性五個面向拍板。
-4. **第 6 次課程缺口的即時行為**——是否要新增「阻止點名」或「阻止排課」的攔阻（目前完全沒有，見 §7 Case 2 路徑 B），或維持現況「餘額歸零、不告警」但補上告警（不阻擋，只提醒主任/家長）。
-5. **是否要同步涵蓋共用課程包（`CoursePackage`）**，或明確接受「非標準時長課程暫不支援共用包」作為過渡限制（本報告建議後者，但需 Founder 確認此限制對現有主任操作習慣的影響）。
-6. **既有 103 個測試檔硬編碼 `SessionDuration=120` 是否需要系統性抽樣改成多元時長**，以避免未來類似 bug 因測試套件偏誤而不可見（技術債層級決定，建議記錄進 `docs/TECH_DEBT.md`，非本次 slice 必須項）。
-7. **`preservedDelta`（G-009）與 `rate_unit='hour'` 自動切換是否要在本次一併重新檢視**——兩者都跟 `SessionDuration`/`SessionCount`/`Charge` 共用欄位，但屬於既有已知問題（G-009 已有 GitHub #798/#799 追蹤），建議明確排除在本次 slice 之外，待獨立時程處理，避免範圍蔓延。
+**已拍板（本次修訂納入模型，見上方 D1-D4）**：
+- ~~是否要打開 `resolvePartialMakeupMinutes()` 範圍到常態課程~~ → **D2**：只能透過 explicit `deduction_basis` opt-in，R59 改寫而非刪除。
+- ~~標準堂長是公司常數還是課程層級可設~~ → **D1**：系統/分校預設 + 課程層級可 override，兩者並存。
+- ~~跨期處理採用哪個選項~~ → **D3**：第一版皆不採用，改為預測＋警示，跨期分配留給後續獨立 workflow。
+- ~~是否涵蓋共用課程包~~ → **D4**：第一版明確排除。
+
+**仍待拍板（新增或延續自第一版）**：
+
+1. **第 6 次課程缺口的即時行為（延續自第一版，範圍已因 D3 縮小）**：D3 已排除自動跨期分配，但「超額前 warning 的強度」仍待定——是否要在操作者明確排課到 uncovered 範圍時，要求一個額外的確認勾選（而非只顯示文字），或維持純文字告警即可。
+2. **Phase 0B 的 occurrence 數量預設策略**：建課時，系統應該預設只排出 `fully_covered_occurrences`（本案例＝5 個），需要操作者主動勾選才能多排到超出額度的 occurrence；還是預設仍照使用者輸入的原始數字排（例如仍排 8 個），只是多顯示警示文字。本 RFC 建議前者（預設保守、超額需要明確動作），但這是 UX 決策，需 Founder 確認。
+3. **是否導入 entitlement 事件溯源（entitlement grant ledger）取代「即時重算 `purchased_minutes`」**——§10、§12 已指出這是更穩健的長期方向，但非 v1 必要項，需 Founder 決定要不要排入較後期 Phase。
+4. **既有 103 個測試檔硬編碼 `SessionDuration=120` 是否需要系統性抽樣改成多元時長**（延續自第一版，技術債層級決定，非本次 slice 必須項）。
+5. **`preservedDelta`（G-009）與 `rate_unit='hour'` 自動切換是否要一併重新檢視**（延續自第一版，建議排除在本次 slice 之外，待獨立時程處理）。
+6. **`docs/AI_REGRESSION_LESSONS.md §R59` 原始「禁止擴大到非 extra」的產品理由**——本次修訂已經知道「答案」（D2：改為 explicit opt-in），但原始設計者當初為何完全不留 opt-in 通道（而是直接寫死禁止）背後的考量仍未見於程式碼或文件，建議記錄進 `AI_REGRESSION_LESSONS.md` 的修訂歷史，避免未來又有人誤以為這條規則「已經考慮過 opt-in 但否決了」。
 
 ---
 
 ## 15. 建議 implementation sequence
 
-1. **Phase 0（唯讀盤點，本報告已完成大半）**：完成 §12 提到的「既有資料是否已存在時長不一致但未走分鐘制」的唯讀查詢，量化影響範圍；同步請 Founder 就 §14 七項決策逐一拍板。
-2. **Phase 1（地基擴充，additive-only）**：新增 `standard_lesson_minutes` 欄位；新增課程/編輯課程 UI 讓兩個時長欄位脫鉤（不影響任何既有課程，因為未設定時 fallback 到現行 `SessionDuration`）。
-3. **Phase 2（引擎擴大，feature-flag 保護）**：擴大 `resolvePartialMakeupMinutes`（或新增平行方法）判斷條件；比照 `ADR_006` 的 `Ensure` 模式，先以 feature flag 預設關閉，僅在測試/沙盒環境驗證 byte-identical 安全網與新行為皆正確後，才對特定分校/課程開放。
-4. **Phase 3（UX 預覽 + 告警）**：新增課程頁即時試算文字（§10 UX preview）；主任/家長端補上「本期即將超出額度」告警（依 §14 決策 4 的拍板結果決定告警強度）。
-5. **Phase 4（依 Founder 跨期決策拍板實作）**：實作 §10 五選項中被選中的跨期處理機制；此階段範圍完全取決於 Founder 決策，無法在拍板前預先設計。
-6. **Phase 5（共用包涵蓋，視 §14 決策 5 決定是否執行）**：若決定涵蓋 `CoursePackage`，比照 `session_deduction_ledger.minutes` 的既有做法為 `package_session_ledger` 新增 `minutes` 欄位，解決 `TD-059`。
+1. **Phase 0A**：production 唯讀盤點（§11），量化既有資料影響面；不寫 production DB。
+2. **Phase 0B**：純預覽／validation spec（§11），六個 coverage 欄位的計算與 UI 呈現，可獨立於 Phase 1/2 先行，不改變任何扣堂結果。
+3. **Phase 1**：新增 additive 欄位（`standard_lesson_minutes`、`deduction_basis`，預設 `fixed_session`）+ immutability 守門；不啟用任何 runtime 扣堂行為變更。
+4. **Phase 2**：擴大扣堂引擎判斷式（feature-flag 保護），僅對明確 opt-in 課程生效；同步移除 opt-in 課程的「購買額度＝occurrence 數量」等式驗證（`fixed_session` 課程維持現行等式）；新增 `CoursePackage` 互斥守門（D4）。
+5. **Phase 3**：precise balance UX（`remaining_minutes`/`remaining_lesson_equivalent`/`uncovered_minutes` 等 derived 欄位）+ uncovered warning；自動跨期 allocation 仍為 non-scope（D3）。
+6. **（後續、非本次 slice）**：續約/加購 workflow——依 §14 待決事項 2、3 決定範圍後另行設計；entitlement 事件溯源（若 Founder 決定要做，見 §14 待決事項 3）；共用課程包涵蓋（若 Founder 未來決定推翻 D4，需另評估 `package_session_ledger` 的 `minutes` 欄位擴充）。
 
-每個 Phase 之間都應該是可獨立回滾的（additive migration + feature flag），符合題目「本階段不要...改變現有扣堂結果」與公司既有 Expand/Contract 慣例。
+每個 Phase 皆為 additive migration + feature flag／opt-in 欄位，可獨立回滾，符合 Non-scope「不改變現有扣堂結果」的要求。
 
 ---
 
 ## 16. Evidence appendix
 
-**HEAD SHA**：`66788a8701886c110c11a339ae6eddb2099c3903`（branch `claude/alltrue-non-standard-duration-4jjfn2`，working tree clean，未做任何 production 程式碼／migration／資料變更）
+**三個不同的 SHA（本次修訂依要求分開標示，避免混為一談）**：
 
-**關鍵檔案**（皆已直接讀取或由本次調查的 Explore agent 交叉確認）：
+| 項目 | SHA / 說明 |
+|---|---|
+| **Code baseline SHA**（本報告與本次修訂調查、引用的所有 production 程式碼版本；本次修訂**未**變更任何 production 程式碼，此 SHA 依然有效） | `66788a8701886c110c11a339ae6eddb2099c3903` |
+| **原始調查報告 commit SHA**（第一版 RFC 文件本身的 commit，非程式碼 baseline） | `1aaa7f7`（`docs(architecture): investigate non-standard session duration billing`） |
+| **本次修訂前的 branch head SHA**（撰寫本次修訂前，branch 上的最新 commit） | `1aaa7f7`（與上列相同，因為第一版之後尚無其他 commit） |
+| **本次修訂的 commit SHA** | 見 `git log -1 --format=%H -- docs/architecture/RFC_NONSTANDARD_SESSION_DURATION_BILLING.md`（本次修訂 push 後產生，非自我引用；本文件不記錄自身尚未產生的 commit hash，避免循環參照） |
+
+**新增引用的關鍵檔案／行號（本次修訂新增查證）**：
+- `backend/app/Services/EnrollmentService.php:100-330`（`sessionRows` 展開、`resolvePlannedSessions()` 呼叫、第 197-222 行的等式驗證、第 668-671 行 `groupSessionCount`/`chargeUnits`）
+- `backend/app/Services/EnrollmentService.php:958-972`（`resolvePlannedSessions()` 定義，`total_classes` 直接作為 `plannedSessions`）
+- `SessionDeductionService.php` 366-376 行一帶（`netMinutes` 為區域變數、用完即丟，未持久化，佐證 uncovered_minutes 修正敘述）
+
+**第一版沿用的關鍵檔案／測試／文件引用**（維持原第一版列表，未因本次修訂而失效）：
 - `backend/app/Models/StudentClass.php`（`perSessionMinutes()` L120-126、`resolveSessionDurationForWeekday()` L97-113、`$fillable` L14-28）
 - `backend/app/Services/SessionDeductionService.php`（`recomputeCounters()` L301-408、`deductForSession()` L196-232、`reverseForSession()` L238-283、`resolvePartialMakeupMinutes()` L463-499、`roundHalfUp()` L521-527）
 - `backend/app/Services/PackageDeductionService.php`（`deductForSession()` L20-59）
 - `backend/app/Models/CoursePackage.php`（`computeRemainingFromLedger()`、`recomputeCounters()`）
-- `backend/app/Services/EnrollmentService.php`（`groupGlobalDur` L621-626,710）
-- `backend/app/Http/Controllers/StudentClassController.php`（L260-420 讀取端組裝、L1180-1330 `store()`／validation、L1490-1545 `update()` preservedDelta、L3440-3568 `mapFrontendPayload()`、L5190-5387 `mapScheduleSlots`/`buildSessionsFromWeeklySchedule`/`buildSessionsForCount`）
+- `backend/app/Http/Controllers/StudentClassController.php`（L260-420、L1180-1330、L1490-1545、L3440-3568、L5190-5387）
 - `backend/app/Http/Controllers/ClassSessionController.php`（`batchStore()` 驗證規則）
 - `backend/app/Services/ClassSessionMaterializationService.php`（`upsertSlot()`）
 - `backend/app/Console/Commands/BackfillMissingClassSessionsFromSchedules.php`
 - `backend/app/Services/ForwardSessionGenerator.php`
-- `frontend/src/components/UniversalClassScheduler.vue`（表單欄位、`submit()` L2047-2059/2199-2226、`hasPerDayDuration` L1281-1285、`updateSlotDur()` L1787-1795）
+- `frontend/src/components/UniversalClassScheduler.vue`
 - `frontend/src/lib/universalSchedulerApi.js`
-- Migrations：`2026_02_07_000004_create_student_classes_table.php`、`2026_02_07_000009_create_class_sessions_table.php`、`2026_02_07_000015_add_remaining_sessions_to_student_class_table.php`、`2026_02_13_000007_add_used_sessions_to_student_class_table.php`、`2026_04_10_000001_add_per_day_duration_to_student_class.php`、`2026_05_31_000001_add_minutes_balance_to_student_class.php`、`2026_05_31_000002_add_minutes_to_session_deduction_ledger.php`、`2026_04_15_300000_add_package_fields_to_student_class.php`、`2026_04_15_300001_create_package_session_ledger.php`
+- Migrations（第一版列出的 9 個檔案，維持不變）
 
-**測試**：
-- `backend/tests/Feature/SessionDeductionMinutesEngineTest.php`（全部 5 個測試）
-- `backend/tests/Feature/PartialMakeupDeductionTest.php`（全部 6 個測試，尤其 `test_normal_short_session_not_prorated`/`test_normal_longer_session_not_prorated`）
-- `backend/tests/Feature/MinutesBalanceFoundationTest.php`
-- `backend/tests/Feature/AttendanceRemainingSessionsRegressionTest.php`
-- `backend/tests/Feature/RateUnitChargeCalculationTest.php`
-- `backend/tests/Feature/ScheduleLeaveCascadeTest.php`
-- `backend/tests/Feature/PackageTotalSessionsSyncTest.php`
-- ADR-006 測試群（`AuditStrandedPaidSessionsTest`、`EnsureSessionHorizonTest`、`PrepaidHorizonPhase0ReportTest`、`PoolCoveragePlanTest` 等）——確認與本案例是不同問題，不重複列出全部斷言
+**測試**（第一版列出的測試檔案清單，維持不變）：
+`SessionDeductionMinutesEngineTest.php`、`PartialMakeupDeductionTest.php`、`MinutesBalanceFoundationTest.php`、`AttendanceRemainingSessionsRegressionTest.php`、`RateUnitChargeCalculationTest.php`、`ScheduleLeaveCascadeTest.php`、`PackageTotalSessionsSyncTest.php`、ADR-006 測試群。
 
-**文件**（引用其聲稱內容，非 runtime 事實，已在正文標明）：
-- `docs/PRICING_CONTRACT.md`
-- `docs/ADR_006_prepaid_session_horizon_and_commitment.md`
-- `docs/DIRECTOR_PAYMENT_ALERT_RULES.md`
-- `docs/TECH_DEBT.md`（`TD-059`、`TD-060`）
-- `docs/AI_REGRESSION_LESSONS.md`（`§R59`、`§R76`、`§R77`）
-- `docs/SYSTEM_TECH_GUIDE.md`（§5 堂次扣除系統）
-- `CLAUDE.md`（G-009、G-010）
+**文件**（維持第一版列表）：`docs/PRICING_CONTRACT.md`、`docs/ADR_006_prepaid_session_horizon_and_commitment.md`、`docs/DIRECTOR_PAYMENT_ALERT_RULES.md`、`docs/TECH_DEBT.md`（`TD-059`、`TD-060`）、`docs/AI_REGRESSION_LESSONS.md`（`§R59`、`§R76`、`§R77`）、`docs/SYSTEM_TECH_GUIDE.md`（§5）、`CLAUDE.md`（G-009、G-010）。
 
-**執行的指令**（全部唯讀，未寫入任何資料庫或 production 環境）：
-`git status`、`git rev-parse HEAD`、`git log --oneline`、多次 `Read`/`Grep`/`Glob` 對上述檔案、四個 Explore agent 的獨立程式碼搜尋（資料模型、新增課程流程、扣堂 write path、既有測試）。
+**執行的指令（本次修訂，全部唯讀）**：`git log`、`git rev-parse HEAD`、`git status`，多次 `Read`/`Grep` 對 `EnrollmentService.php`（新增查證第 100-330、958-972 行）、`SessionDeductionService.php`（複核 §7 已引用行號）；未執行任何寫入 production 環境或資料庫的指令。
 
-**尚未確認的假設 / 本次調查範圍外**：
-1. 家長端（App/LIFF）與主任端報表是否直接讀 `remaining_sessions` 或另有快取／投影邏輯，未逐一走查（§8 已標記為待確認）。
-2. 現有生產資料庫是否已存在「`RemainingMinutes` 非整堂倍數但未被標記為補課」的既有課程——本次未執行任何 production 查詢（依 Non-scope 要求），此為 Phase 0 必須先做的唯讀盤點（§12、§15）。
-3. `docs/AI_REGRESSION_LESSONS.md §R59`「禁止擴大到非 extra」背後的原始產品理由未見於程式碼或文件註解，僅能確認「這是刻意設計」，無法確認「為何刻意如此設計」——需 Founder 或原始需求提出者補充（§14 決策 1）。
-4. 共用課程包（`CoursePackage`）在「非標準時長」情境下的正確產品行為（禁止加入／需要新欄位／其他）未經 Founder 決策，本報告僅指出風險與建議排除範圍（§11、§14 決策 5）。
-5. Case 2 路徑 B「連續多堂超扣、非單次超扣」的行為，是由程式碼邏輯合理外推（`max(0, min($purchasedMinutes,...))` 的封頂算式），但**沒有直接測試驗證多堂連續案例**，建議列入 §13 測試計畫第 1 項優先補齊，作為分析結論的獨立驗證。
+**尚未確認的假設 / 本次修訂範圍外（新增/延續）**：
+1. 家長端（App/LIFF）與主任端報表是否直接讀 `remaining_sessions` 或另有快取／投影邏輯——延續自第一版，未逐一走查。
+2. 現有生產資料庫是否已存在「`RemainingMinutes` 非整堂倍數但未被標記為補課」的既有課程——延續自第一版，本次修訂**仍未**執行任何 production 查詢（Non-scope 要求），為 Phase 0A 必須先做的唯讀盤點。
+3. `§R59`「禁止擴大到非 extra」背後除了「D2 現在決定用 opt-in」之外，原始設計者當初完全不留 opt-in 通道的理由——延續自第一版，未見於程式碼或文件，列入 §14 待決事項 6。
+4. Phase 0B 的「occurrence 數量預設策略」（§14 待決事項 2）尚未拍板，本 RFC 只給出建議方向（預設保守、超額需明確動作），非最終決定。
+5. 是否導入完整 entitlement 事件溯源取代「即時重算 `purchased_minutes`」（§14 待決事項 3）——本 RFC 判斷這是更穩健的長期方向但非 v1 必要，需 Founder 決定排入哪個 Phase 或是否納入 roadmap。
+6. Case 2 路徑「連續多堂超扣、非單次超扣」的行為，在 `uncovered_minutes` 定義下的具體數值（例如第 7、8 次持續點名後 `uncovered_minutes` 會如何累加）——本次修訂已給出計算公式，但**沒有直接測試驗證**多堂連續案例下的公式輸出，建議列入 §13 測試計畫第 5 項優先補齊。
