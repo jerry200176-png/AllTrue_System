@@ -151,6 +151,55 @@ class CoursePackageTest extends TestCase
         return StudentClass::create(array_merge($defaults, $overrides));
     }
 
+    private function createSuperAdminToken(): string
+    {
+        $user = User::create([
+            'LoginName' => 'super-pkg-' . uniqid() . '@test.com',
+            'Name'      => '系統管理員',
+            'PSW'       => 'secret',
+            'type'      => 'S',
+            'phone'     => 933000000,
+        ]);
+
+        $token = bin2hex(random_bytes(16));
+        AuthToken::create([
+            'user_id'    => $user->id,
+            'token'      => $token,
+            'expires_at' => now()->addDay(),
+        ]);
+
+        return $token;
+    }
+
+    private function createTeacherToken(array $campusIds): string
+    {
+        $user = User::create([
+            'LoginName' => 'teacher-pkg-' . uniqid() . '@test.com',
+            'Name'      => '老師' . uniqid(),
+            'PSW'       => 'secret',
+            'type'      => 'T',
+            'phone'     => 944000000,
+        ]);
+
+        foreach ($campusIds as $cid) {
+            UserCampus::create([
+                'CampusID' => $cid,
+                'UserID'   => $user->id,
+                'Admin'    => 0,
+                'Approved' => 1,
+            ]);
+        }
+
+        $token = bin2hex(random_bytes(16));
+        AuthToken::create([
+            'user_id'    => $user->id,
+            'token'      => $token,
+            'expires_at' => now()->addDay(),
+        ]);
+
+        return $token;
+    }
+
     private function makeSession(int $scId, string $date, string $status = 'scheduled'): ClassSession
     {
         return ClassSession::create([
@@ -444,6 +493,91 @@ class CoursePackageTest extends TestCase
 
         $res->assertOk();
         $this->assertEquals(9, $res->json('remaining_sessions'));
+    }
+
+    public function test_recompute_cross_campus_director_returns_403_and_leaves_data_unchanged(): void
+    {
+        $token = $this->createDirectorToken([2]); // authorized only for campus 2
+        $student = $this->makeStudent(1);
+        $teacher = $this->makeTeacher();
+        $pkg = $this->makePackage($student->id, 1, 10); // package belongs to campus 1
+        $sc = $this->makePackageMember($pkg, $student->id, $teacher->id);
+        $session = $this->makeSession($sc->ID, '2026-04-16', 'attended');
+        PackageDeductionService::deductForSession($pkg->id, $sc->ID, $session->id, 'attendance');
+
+        $pkgBefore = CoursePackage::find($pkg->id)->getAttributes();
+        $scBefore = StudentClass::find($sc->ID)->getAttributes();
+        $ledgerBefore = PackageSessionLedger::where('package_id', $pkg->id)
+            ->orderBy('id')->get()->toArray();
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept'        => 'application/json',
+        ])->postJson("/api/v1/course-packages/{$pkg->id}/recompute");
+
+        $res->assertStatus(403);
+
+        $pkgAfter = CoursePackage::find($pkg->id)->getAttributes();
+        $scAfter = StudentClass::find($sc->ID)->getAttributes();
+        $ledgerAfter = PackageSessionLedger::where('package_id', $pkg->id)
+            ->orderBy('id')->get()->toArray();
+
+        $this->assertEquals($pkgBefore['remaining_sessions'], $pkgAfter['remaining_sessions']);
+        $this->assertEquals($pkgBefore['used_sessions'], $pkgAfter['used_sessions']);
+        $this->assertEquals($pkgBefore['total_sessions'], $pkgAfter['total_sessions']);
+        $this->assertEquals($scBefore['RemainingSessions'], $scAfter['RemainingSessions']);
+        $this->assertEquals($scBefore['UsedSessions'], $scAfter['UsedSessions']);
+        $this->assertEquals($ledgerBefore, $ledgerAfter);
+    }
+
+    public function test_recompute_super_admin_can_recompute_any_campus(): void
+    {
+        $token = $this->createSuperAdminToken();
+        $student = $this->makeStudent(1);
+        $teacher = $this->makeTeacher();
+        $pkg = $this->makePackage($student->id, 1, 10);
+        $sc = $this->makePackageMember($pkg, $student->id, $teacher->id);
+        $session = $this->makeSession($sc->ID, '2026-04-16', 'attended');
+        PackageDeductionService::deductForSession($pkg->id, $sc->ID, $session->id, 'attendance');
+
+        $pkg->remaining_sessions = 999;
+        $pkg->save();
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept'        => 'application/json',
+        ])->postJson("/api/v1/course-packages/{$pkg->id}/recompute");
+
+        $res->assertOk();
+        $this->assertEquals(9, $res->json('remaining_sessions'));
+    }
+
+    public function test_recompute_teacher_forbidden(): void
+    {
+        $token = $this->createTeacherToken([1]);
+        $student = $this->makeStudent(1);
+        $teacher = $this->makeTeacher();
+        $pkg = $this->makePackage($student->id, 1, 10);
+        $this->makePackageMember($pkg, $student->id, $teacher->id);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept'        => 'application/json',
+        ])->postJson("/api/v1/course-packages/{$pkg->id}/recompute");
+
+        $res->assertStatus(403);
+    }
+
+    public function test_recompute_missing_package_returns_404(): void
+    {
+        $token = $this->createDirectorToken([1]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept'        => 'application/json',
+        ])->postJson('/api/v1/course-packages/999999/recompute');
+
+        $res->assertStatus(404);
     }
 
     // ─── Test: Bind Courses with Dry-Run ─────────────────
