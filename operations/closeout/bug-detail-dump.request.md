@@ -1,8 +1,8 @@
 # Request: single bug detail dump (read-only)
 
-bug_id: 207
+bug_id: 208
 
-Purpose: triage in-app #207 teacher change report (陳宇斯 / Coco → 鄒宇旻 from 7/24).
+Purpose: confirm whether the one-time `POST /course-packages/124/recompute` ops action (needed to fix the specific already-affected record, per PR #1511) has actually run — i.e. whether member course 2825's `RemainingSessions` is still stale (96) or has been corrected (55). Blocks Phase-C resolve for #208 until confirmed.
 **No writes.**
 
-# kickoff 2026-07-22T03:30:00Z
+# kickoff 2026-07-30T04:20:00Z — #208 recompute-evidence check
