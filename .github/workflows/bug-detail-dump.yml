@@ -87,7 +87,7 @@ jobs:
           }};
           $bug = $db::table("bug_reports")->where("id", $bugId)->first();
           if (!$bug) {{ echo json_encode(["ok"=>false,"error"=>"missing"]); return; }}
-          $atts = $db::table("bug_report_attachments")->where("bug_report_id", $bugId)->get(["id","original_name","stored_path","mime_type","size_bytes"]);
+          $atts = $db::table("bug_report_attachments")->where("bug_report_id", $bugId)->get(["id","original_name","stored_path","mime_type","size"]);
           $comments = $db::table("bug_report_comments")->where("bug_report_id", $bugId)->orderBy("id")->get(["id","author_user_id","is_internal_note","body","created_at"]);
           $logs = $db::table("bug_report_status_logs")->where("bug_report_id", $bugId)->orderBy("id")->get(["id","from_status","to_status","changed_by","note","created_at"]);
           $desc = $redact($bug->description ?? "");
