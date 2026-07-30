@@ -477,6 +477,7 @@
                 <span>{{ day.label }}</span>
               </label>
             </div>
+            <p class="field-note">若上課日期不固定（例如寒暑假課表），可不勾選任何星期，改為直接在下方日曆逐一點選每次上課日期。</p>
             <div v-if="selectedDays.length > 0" class="weekday-slot-grid">
               <template v-for="day in selectedDays" :key="`day-${day}`">
                 <div
@@ -2115,7 +2116,7 @@ async function submit() {
   if (!useMonthlyRecurringPath && !useMonthlyExplicitPlan) {
     const remainingSessions = safePlannedSessions.value - manualSessionCount.value;
     if (remainingSessions > 0 && (form.days_of_week || []).length === 0) {
-      alert('尚有未排堂次，請先設定固定上課星期讓系統推算未來日期');
+      alert(`尚有 ${remainingSessions} 堂未排。請設定固定上課星期讓系統自動推算未來日期；若上課日期不固定，也可以不勾選星期，改在下方日曆逐一點選每次上課日期，直到補滿為止。`);
       return;
     }
     if (selectedDays.value.length > 0) {
