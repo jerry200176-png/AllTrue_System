@@ -2,9 +2,17 @@
 
 namespace App\Models;
 
+use App\Services\Scheduling\DeductionBasis;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 
+/**
+ * @property int|null $standard_lesson_minutes Minutes representing one standard billing
+ *           unit for THIS course (RFC non-standard duration D1). Null for legacy /
+ *           fixed-session courses; never falls back to a company-wide default.
+ * @property string $deduction_basis One of DeductionBasis::all(); always reads as
+ *           `fixed_session` when the column is null (see the accessor below).
+ */
 class StudentClass extends Model
 {
     protected $table = 'StudentClass';
@@ -22,6 +30,7 @@ class StudentClass extends Model
         'ScheduleMode', 'SessionCount', 'RemainingSessions',
         'ClassType', 'UsedSessions', 'SessionDuration',
         'PurchasedMinutes', 'RemainingMinutes',
+        'standard_lesson_minutes', 'deduction_basis',
         'duration1', 'duration2', 'duration3', 'duration4', 'duration5', 'duration6',
         'rate_unit',
         'PackageID', 'PackageTotalSessions', 'PackageName',
@@ -123,6 +132,58 @@ class StudentClass extends Model
     {
         $dur = (int) ($this->SessionDuration ?? 0);
         return $dur >= 1 ? $dur : self::DEFAULT_SESSION_MINUTES;
+    }
+
+    /**
+     * Always read a concrete basis, never null.
+     *
+     * The column has a DB-level default, but a null can still be observed: on a
+     * model instance that has not been refreshed since insert, and on any row
+     * written during a rolling deploy before the migration landed. Both must read
+     * as fixed_session — the fail-safe direction, since fixed_session is exactly
+     * today's behaviour.
+     */
+    public function getDeductionBasisAttribute(mixed $value): string
+    {
+        return ($value === null || $value === '') ? DeductionBasis::FIXED_SESSION : (string) $value;
+    }
+
+    /**
+     * RFC_NONSTANDARD_SESSION_DURATION_BILLING D2 — is this course opted in to
+     * consuming entitlement by actual clock duration?
+     */
+    public function isActualDurationBasis(): bool
+    {
+        return $this->deduction_basis === DeductionBasis::ACTUAL_DURATION;
+    }
+
+    /**
+     * This course's persisted standard billing unit, in minutes. Returns null when
+     * unset — deliberately WITHOUT falling back to SessionDuration or any house
+     * default (RFC §10 A1): the value must have been resolved and persisted at
+     * opt-in time, so a missing one means "this course was never set up for
+     * actual-duration billing" and callers must fail closed rather than guess.
+     */
+    public function resolvedStandardLessonMinutes(): ?int
+    {
+        $minutes = $this->standard_lesson_minutes;
+
+        return ($minutes !== null && (int) $minutes >= 1) ? (int) $minutes : null;
+    }
+
+    /**
+     * Has any entitlement already been consumed on this course?
+     *
+     * Once true, the billing contract (standard_lesson_minutes / deduction_basis /
+     * purchased units) is frozen: entitlement is still derived as
+     * SessionCount x standard_lesson_minutes, so changing any of them would
+     * retroactively reinterpret every deduction already recorded.
+     */
+    public function hasDeductionHistory(): bool
+    {
+        return SessionDeductionLedger::query()
+            ->where('student_class_id', $this->getKey())
+            ->exists();
     }
 
     /** Human-readable subject for UI / slips (Subject 欄位或 SubjectID 對照). */
