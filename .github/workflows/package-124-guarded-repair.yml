@@ -1,0 +1,176 @@
+name: Package 124 guarded repair (Pi)
+
+# ONE-TIME, narrowly-scoped repair for in-app bug #208.
+# Target: course_packages.id = 124, members 2824 / 2825 ONLY.
+# Checks every precondition and the authorized mutation atomically in a
+# single remote script run — if any precondition fails, NO write happens.
+# Trigger via request file (cloud agents cannot workflow_dispatch).
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'operations/closeout/package-124-guarded-repair.request.md'
+      - '.github/workflows/package-124-guarded-repair.yml'
+
+concurrency:
+  group: package-124-guarded-repair
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          PI_HOST_KEY: ${{ secrets.PI_HOST_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if ssh-keyscan -H "$PI_SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null; then
+            echo "keyscan ok"
+          elif [[ -n "${PI_HOST_KEY:-}" ]]; then
+            printf '%s\n' "$PI_HOST_KEY" > ~/.ssh/known_hosts
+          else
+            echo "::error::no host key"; exit 1
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Check preconditions and repair (atomic, single run)
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          ssh -i ~/.ssh/deploy_key \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            -o ConnectTimeout=20 \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" "RUN_ID='${RUN_ID}' bash -s" <<'REMOTE' | tee out/repair.log
+          set -euo pipefail
+          cd /home/admin/backend
+          php artisan tinker --execute='
+          $runId = getenv("RUN_ID") ?: "unknown";
+          $prodHead = trim((string)@shell_exec("git rev-parse HEAD"));
+          $requiredFixCommit = "9adc3633d41126263f0025cdadd7a99cea939f4e";
+          $fixDeployed = (bool) @shell_exec("git merge-base --is-ancestor {$requiredFixCommit} HEAD && echo yes");
+          $fixDeployed = trim((string)$fixDeployed) === "yes";
+
+          $db = \Illuminate\Support\Facades\DB::class;
+          $pkg = $db::table("course_packages")->where("id", 124)->first();
+          $members = $db::table("StudentClass")->where("PackageID", 124)->orderBy("id")->get(["id","RemainingSessions","UsedSessions"]);
+          $memberIds = $members->pluck("id")->map(fn ($v) => (int) $v)->sort()->values()->all();
+          $sc2824 = $members->firstWhere("id", 2824);
+          $sc2825 = $members->firstWhere("id", 2825);
+          $ledgerRows = $db::table("package_session_ledger")->where("package_id", 124)->get();
+          $ledgerCount = $ledgerRows->count();
+          $ledgerNet = (int) $ledgerRows->sum("delta");
+          $ledgerAllAttendanceOn2824 = $ledgerRows->every(fn ($r) => (int) $r->student_class_id === 2824);
+
+          $checks = [
+            "package_exists" => (bool) $pkg,
+            "total_sessions_56" => $pkg && (int) $pkg->total_sessions === 56,
+            "used_sessions_1" => $pkg && (int) $pkg->used_sessions === 1,
+            "remaining_sessions_55" => $pkg && (int) $pkg->remaining_sessions === 55,
+            "member_ids_exactly_2824_2825" => $memberIds === [2824, 2825],
+            "course_2824_remaining_55" => $sc2824 && (int) $sc2824->RemainingSessions === 55,
+            "course_2825_remaining_96" => $sc2825 && (int) $sc2825->RemainingSessions === 96,
+            "course_2825_used_0" => $sc2825 && (int) $sc2825->UsedSessions === 0,
+            "security_fix_deployed" => $fixDeployed,
+            "ledger_consistent_with_prior_evidence" => $ledgerCount === 1 && $ledgerNet === -1 && $ledgerAllAttendanceOn2824,
+          ];
+          $allPass = !in_array(false, $checks, true);
+
+          if (!$allPass) {
+            echo "---RESULT---", PHP_EOL;
+            echo json_encode([
+              "ok" => false,
+              "aborted" => true,
+              "reason" => "precondition_mismatch",
+              "checks" => $checks,
+              "prod_head" => $prodHead,
+              "run_id" => $runId,
+              "timestamp" => gmdate("c"),
+              "no_write_performed" => true,
+            ], JSON_UNESCAPED_UNICODE), PHP_EOL;
+            return;
+          }
+
+          $before = [
+            "package" => (array) $pkg,
+            "course_2824" => (array) $sc2824,
+            "course_2825" => (array) $sc2825,
+            "ledger_row_count" => $ledgerCount,
+            "ledger_net_delta" => $ledgerNet,
+          ];
+
+          $svcResult = \App\Services\PackageDeductionService::fullRecompute(124);
+
+          $pkgAfter = $db::table("course_packages")->where("id", 124)->first();
+          $membersAfter = $db::table("StudentClass")->where("PackageID", 124)->orderBy("id")->get(["id","RemainingSessions","UsedSessions"]);
+          $sc2824After = $membersAfter->firstWhere("id", 2824);
+          $sc2825After = $membersAfter->firstWhere("id", 2825);
+          $ledgerRowsAfter = $db::table("package_session_ledger")->where("package_id", 124)->get();
+
+          $after = [
+            "package" => (array) $pkgAfter,
+            "course_2824" => (array) $sc2824After,
+            "course_2825" => (array) $sc2825After,
+            "ledger_row_count" => $ledgerRowsAfter->count(),
+            "ledger_net_delta" => (int) $ledgerRowsAfter->sum("delta"),
+          ];
+
+          $admin = $db::table("UserCampus")->where("CampusID", 16)->where("Admin",1)->where("Approved",1)->orderBy("UserID")->value("UserID");
+          $executionIdentity = $admin ? (int) $admin : null;
+
+          echo "---RESULT---", PHP_EOL;
+          echo json_encode([
+            "ok" => true,
+            "aborted" => false,
+            "checks" => $checks,
+            "service_result" => $svcResult,
+            "before" => $before,
+            "after" => $after,
+            "execution_identity" => $executionIdentity,
+            "prod_head" => $prodHead,
+            "run_id" => $runId,
+            "timestamp" => gmdate("c"),
+          ], JSON_UNESCAPED_UNICODE), PHP_EOL;
+          '
+          REMOTE
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          text = Path("out/repair.log").read_text(encoding="utf-8", errors="replace")
+          obj = None
+          for line in text.splitlines():
+            line = line.strip()
+            if line.startswith("{") and '"ok"' in line:
+              try:
+                obj = json.loads(line)
+              except Exception:
+                pass
+          Path("out/repair-result.json").write_text(json.dumps(obj or {"ok": False, "raw_tail": text[-3000:]}, ensure_ascii=False, indent=2), encoding="utf-8")
+          print("parsed", bool(obj is not None))
+          print("ok", obj.get("ok") if obj else None)
+          print("aborted", obj.get("aborted") if obj else None)
+          PY
+
+      - name: Upload repair artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-124-guarded-repair
+          path: out/
+          retention-days: 90
