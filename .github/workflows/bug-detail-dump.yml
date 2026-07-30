@@ -75,7 +75,7 @@ jobs:
           python3 - <<'PY' > /tmp/bug207_probe.php
           import os
           bug_id = int(os.environ["BUG_ID"])
-          print(f"""
+          print(f"""<?php
           $bugId = {bug_id};
           $db = \\Illuminate\\Support\\Facades\\DB::class;
           $redact = function ($s) {{
