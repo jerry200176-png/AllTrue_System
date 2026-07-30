@@ -110,11 +110,11 @@ jobs:
             ->leftJoin("Student as s", "s.id", "=", "sc.StudentID")
             ->where("sc.PackageID", 124)
             ->orderBy("sc.id")
-            ->get(["sc.id","sc.StudentID","sc.TeacherID","u.Name as teacher_name","sc.SubjectID","sc.SessionCount","sc.RemainingSessions","sc.UsedSessions","sc.PackageTotalSessions","sc.Stop","s.CampusID as campus_id","sc.updated_at"]);
+            ->get(["sc.id","sc.StudentID","sc.TeacherID","u.Name as teacher_name","sc.SubjectID","sc.SessionCount","sc.RemainingSessions","sc.UsedSessions","sc.PackageTotalSessions","sc.Stop","s.CampusID as campus_id","sc.MDate as updated_at"]);
           $course2825 = $db::table("StudentClass as sc")
             ->leftJoin("Student as s", "s.id", "=", "sc.StudentID")
             ->where("sc.id", 2825)
-            ->first(["sc.id","sc.StudentID","sc.TeacherID","sc.SubjectID","sc.PackageID","sc.SessionCount","sc.RemainingSessions","sc.UsedSessions","sc.PackageTotalSessions","sc.Stop","s.CampusID as campus_id","sc.updated_at"]);
+            ->first(["sc.id","sc.StudentID","sc.TeacherID","sc.SubjectID","sc.PackageID","sc.SessionCount","sc.RemainingSessions","sc.UsedSessions","sc.PackageTotalSessions","sc.Stop","s.CampusID as campus_id","sc.MDate as updated_at"]);
           $recomputeLedger = $db::table("package_session_ledger")
             ->where("package_id", 124)
             ->orderByDesc("id")
