@@ -36,3 +36,17 @@ Full before/after snapshot, precondition check results, service result, executio
 **No writes if preconditions fail.**
 
 # kickoff 2026-07-30T06:14:00Z — guarded repair for #208, security fix confirmed deployed
+
+# kickoff 2026-07-30T11:43:00Z — retry after fixing security_fix_deployed check script bug
+#
+# First run (30539525798, 2026-07-30T11:41:28Z) correctly ABORTED WITH NO WRITE, but for the
+# wrong reason: `security_fix_deployed` came back false even though `prod_head` in that run's
+# own output was exactly `9adc3633d41126263f0025cdadd7a99cea939f4e` (the required fix commit
+# itself). Root cause: the check script cast the git merge-base result to `(bool)` and then
+# immediately cast that bool back to `(string)` for comparison against "yes" - PHP's bool→string
+# cast produces "1"/"" not "yes"/"", so the check was structurally incapable of ever passing.
+# All 9 other preconditions passed; production data is confirmed untouched
+# (`no_write_performed: true`). Fixed the script to compare the trimmed shell_exec output
+# directly, verified locally against a real git repo (confirmed old code always yields false,
+# new code correctly yields true when HEAD is a descendant of the fix commit). No change to any
+# precondition value, scope, or the authorized mutation itself - only the one comparison bug.

@@ -65,8 +65,8 @@ jobs:
           $runId = getenv("RUN_ID") ?: "unknown";
           $prodHead = trim((string)@shell_exec("git rev-parse HEAD"));
           $requiredFixCommit = "9adc3633d41126263f0025cdadd7a99cea939f4e";
-          $fixDeployed = (bool) @shell_exec("git merge-base --is-ancestor {$requiredFixCommit} HEAD && echo yes");
-          $fixDeployed = trim((string)$fixDeployed) === "yes";
+          $mergeBaseOutput = trim((string)@shell_exec("git merge-base --is-ancestor {$requiredFixCommit} HEAD && echo yes"));
+          $fixDeployed = $mergeBaseOutput === "yes";
 
           $db = \Illuminate\Support\Facades\DB::class;
           $pkg = $db::table("course_packages")->where("id", 124)->first();
