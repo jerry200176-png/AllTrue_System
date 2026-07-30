@@ -126,6 +126,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 10. **#957 D1 Sprint**：[`docs/refactor/957-d1-sprint-design.md`](refactor/957-d1-sprint-design.md)、[`docs/runbooks/957-d1-deploy-runbook.md`](runbooks/957-d1-deploy-runbook.md)、[`docs/runbooks/957-d1-production-readiness-report.md`](runbooks/957-d1-production-readiness-report.md)、[`docs/runbooks/957-d1-pcr.md`](runbooks/957-d1-pcr.md)
 11. **Course Continuity（#1382）**：[`docs/architecture/RFC_COURSE_CONTINUITY.md`](architecture/RFC_COURSE_CONTINUITY.md) · cohort SQL [`scripts/course-continuity-cohort-discovery.sql`](../scripts/course-continuity-cohort-discovery.sql) — **≠** #1130 歷史修復；MVP API：`/api/v1/course-contract-groups`（空表 migrate；不物理 merge）
 12. **Platform opt from stars（規劃）**：[`docs/architecture/RFC_PLATFORM_OPTIMIZATION_FROM_STARS_2026.md`](architecture/RFC_PLATFORM_OPTIMIZATION_FROM_STARS_2026.md) — 每項優化附「參考 repo／要學／不要學／落地」；**不含業務碼改動**
+13. **非標準課程時長／分鐘制扣堂調查（規劃，Draft）**：[`docs/architecture/RFC_NONSTANDARD_SESSION_DURATION_BILLING.md`](architecture/RFC_NONSTANDARD_SESSION_DURATION_BILLING.md) — 現況：`#613 A1` 分鐘制引擎僅覆蓋補課（`schedules.type='extra'`），常態排課仍整堂扣 1；Founder 決策點見文件 §14；**不含業務碼改動**
 
 ### 後端開發
 | 需要什麼 | 去哪裡找 |
