@@ -5,3 +5,5 @@ Purpose: weekly triage sweep — pull current `new`/`triaged`/`in_progress` queu
 **No writes.**
 
 # kickoff 2026-07-30T04:05:00Z — weekly triage sweep, check for new reports since 2026-07-22 / #210
+
+# kickoff 2026-07-30T05:24:00Z — final re-dump after #211 resolved (PR #1528/#1529); confirm zero remaining new/triaged/in_progress items besides the still-open, Founder-stop-blocked #208
