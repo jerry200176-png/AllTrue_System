@@ -67,6 +67,11 @@ jobs:
           $svc = \App\Services\BugReportService::class;
           // Allowlist: in-app id => [public reply, production_revision, deploy_run_id optional]
           $items = [
+            210 => [
+              "reply" => "已修好：現在評量記錄列表點開「家長回饋」預覽時，會多一個「回覆家長」按鈕，點下去就能直接打開回覆的地方，不用再另外找評量的編輯／檢視按鈕。請重新整理評量記錄頁確認；若還是找不到，請回覆此單，我們再幫您看。",
+              "rev" => "90584f06f2982568e12ff1763130e63f0f288cd4",
+              "deploy" => "30325356011",
+            ],
             207 => [
               "reply" => "已修好：之後在課程管理改「正班老師」時，已經上過的課會保留原本的老師，不會整批變成新老師；未來的課才會跟著新老師。請重新整理行事曆確認。若過去某幾堂仍顯示錯的老師，請回覆此單，我們再幫您校正那幾堂。",
               "rev" => "7acb5803ccafb6ce5bffae8a2a86c5bf54049382",
