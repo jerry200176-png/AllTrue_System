@@ -29,6 +29,28 @@ export const changelogDraftNotes = [
     ]
   },
   {
+    "version": "2026.07.30",
+    "date": "2026-07-30",
+    "title": "2026.07.30 草稿（未發布）",
+    "summary": "跨分校／跨老師授權缺失（P0 containment）",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "跨分校／跨老師授權缺失（P0 containment）"
+        ]
+      }
+    ],
+    "items": [
+      "跨分校／跨老師授權缺失（P0 containment）"
+    ]
+  },
+  {
     "version": "2026.07.29",
     "date": "2026-07-29",
     "title": "2026.07.29 草稿（未發布）",
@@ -547,30 +569,6 @@ export const changelogDraftNotes = [
       "週日課程的月結金額不再算成 0 元",
       "課程資料欄位對齊，避免課程匯出／新增課程隨機失敗",
       "同時段不同學生的堂次不再被合併吃掉（課程管理／班級行事曆）"
-    ]
-  },
-  {
-    "version": "2026.06.29",
-    "date": "2026-06-29",
-    "title": "2026.06.29 草稿（未發布）",
-    "summary": "ojection — calendar completeness-safe (no pagination)；智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "修正內容",
-        "items": [
-          "ojection — calendar completeness-safe (no pagination)",
-          "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。"
-        ]
-      }
-    ],
-    "items": [
-      "ojection — calendar completeness-safe (no pagination)",
-      "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。"
     ]
   }
 ];
