@@ -2248,7 +2248,7 @@ class StudentClassController extends Controller
         $reportsById = $reports->keyBy('id');
 
         return response()->json([
-            'invoices' => $invoices->map(function ($inv) use ($reportsByPaymentId, $reportsById) {
+            'invoices' => $invoices->map(function ($inv) use ($reportsByPaymentId, $reportsById, $canSeeAccountLast5) {
                 $effectivePayments = $inv->payments
                     ->filter(fn ($payment) => (int) ($payment->Amount ?? 0) > 0 && (string) ($payment->Method ?? '') !== 'void')
                     ->values();
