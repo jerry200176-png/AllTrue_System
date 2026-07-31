@@ -3377,6 +3377,7 @@ const editCourse = (c) => {
     settlement_day: c.settlement_day ?? null,
     monthly_sessions: c.monthly_sessions ?? null,
     first_class_date: c.first_class_date || '',
+    end_date: c.end_date || (c.EndDate ? String(c.EndDate).slice(0, 10) : ''),
     room_id: c.room_id ?? null,
     memo: c.memo ?? c.Memo ?? '',
     paid_at: c.paid_at || c.last_paid_at || '',
@@ -3422,6 +3423,7 @@ const submitEdit = async () => {
           settlement_day: form.payment_type === 'monthly' ? form.settlement_day : null,
           monthly_sessions: form.payment_type === 'monthly' ? form.monthly_sessions : null,
           first_class_date: form.first_class_date || null,
+          end_date: form.payment_type === 'monthly' ? form.end_date || null : null,
           force_rebuild_if_mismatch: true,
           room_id: form.room_id || null,
           Memo: form.memo || null
