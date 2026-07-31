@@ -1,3 +1,14 @@
+## 2026-07-31 — feat(billing): 依實際上課時長扣堂——正式環境後端＋前端旗標已啟用（經 Founder 明確授權，未有課程走完驗收）
+
+- 延續上一則（2026-07-31，功能合併但旗標關閉）。本則記錄：Founder 明確授權透過新的 Founder-gated GitHub Actions control plane（`.github/workflows/actual-duration-activation.yml`）進行受控啟用。
+- 唯讀盤點（`inventory` action，run 30629251402）：1800 門課程掃描，20 門課程（37 堂）有「排課時長與該課程自己的契約時長不符」的**歷史**落差（全部是 happened，沒有 planned），與本次啟用無關，屬既有技術債。
+- 後端旗標 `PERF_ACTUAL_DURATION_DEDUCTION`：`enable_backend`（run 30629298501）對照 production HEAD `dc88926e`，備份 `.env`（含 checksum）、單行 idempotent 修改、`optimize` 重建快取（非 `config:clear`）、**effective config 經 `php artisan tinker` 驗證為 `true`**（不只是看 `.env` 文字）、health `ok`、完整 authenticated smoke 通過、現有 1895 門課程確認仍全為 `fixed_session`。獨立 `verify_backend`（run 30629362904，非同一次執行）重新確認同一結果。
+- 前端旗標 `ACTUAL_DURATION_DEDUCTION_ENABLED`（PR #1552）：merge 後 `deploy.yml` 自動部署（run 30629708223），`version.json hash=511ab1c7` 與 Pi git HEAD 一致，health + 完整 authenticated smoke 全通過。建課表單現在會顯示「扣堂方式」選項。
+- **兩個旗標皆為 `true` 不等於「已完成驗收」**：沒有任何既有課程被動到，兩次獨立查詢皆確認全部課程仍是 `fixed_session`；只是「新建」課程時，授權角色現在可以選擇依實際時長換算，尚未有人實際走過這條路徑。
+- 正式環境驗收案例（買 8 堂標準 120 分鐘、真實走 6 次 180 分鐘課程、驗證扣堂序列 780/600/420/240/60/0、超額不擋點名、扣堂後修改契約回 422）已備妥自動化 workflow（`.github/workflows/actual-duration-acceptance.yml`），但需要 Founder 指定安全的測試學生／老師／分校身分才能執行——目前沒有可重用的既有測試帳號可用（既有 smoke 帳號依政策僅限唯讀）。
+- 回滾：`disable_backend` action（同一 workflow）為主要執行期回滾路徑，備份＋idempotent 修改＋驗證，不需要額外的 SHA 比對（避免緊急回滾被卡住）。
+- 現況、稽核紀錄、下一步見 `docs/RUNBOOK_ACTUAL_DURATION_ACTIVATION.md`。
+
 ## 2026-07-31 — feat(billing): 每門課可自訂「標準一堂 = 幾分鐘」，依實際上課時長按比例扣堂（旗標關閉，尚未啟用）
 
 - 起因：有學生每週上兩次、每次 3 小時，但課程的計價單位是 2 小時一堂。舊系統把「排幾次課」與「買了幾堂」綁死成同一個數字，導致「買 8 堂、只排 6 次 3 小時的課」這個需求在建課階段就被 422 擋掉，根本無法表達；就算硬排成 8 次，點名時每次也只會扣整整一堂，3 小時與 2 小時的課扣一樣多。
