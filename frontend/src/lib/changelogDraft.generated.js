@@ -5,6 +5,28 @@
  */
 export const changelogDraftNotes = [
   {
+    "version": "2026.07.31",
+    "date": "2026-07-31",
+    "title": "2026.07.31 草稿（未發布）",
+    "summary": "每門課可自訂「標準一堂 = 幾分鐘」，依實際上課時長按比例扣堂（旗標關閉，尚未啟用）",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "每門課可自訂「標準一堂 = 幾分鐘」，依實際上課時長按比例扣堂（旗標關閉，尚未啟用）"
+        ]
+      }
+    ],
+    "items": [
+      "每門課可自訂「標準一堂 = 幾分鐘」，依實際上課時長按比例扣堂（旗標關閉，尚未啟用）"
+    ]
+  },
+  {
     "version": "2026.07.29",
     "date": "2026-07-29",
     "title": "2026.07.29 草稿（未發布）",
@@ -547,28 +569,6 @@ export const changelogDraftNotes = [
     "items": [
       "ojection — calendar completeness-safe (no pagination)",
       "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。"
-    ]
-  },
-  {
-    "version": "2026.06.28",
-    "date": "2026-06-28",
-    "title": "2026.06.28 草稿（未發布）",
-    "summary": "班級行事曆漏顯已調課堂次 + LINE 綁定讀家長手機",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "修正內容",
-        "items": [
-          "班級行事曆漏顯已調課堂次 + LINE 綁定讀家長手機"
-        ]
-      }
-    ],
-    "items": [
-      "班級行事曆漏顯已調課堂次 + LINE 綁定讀家長手機"
     ]
   }
 ];
