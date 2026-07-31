@@ -6,7 +6,6 @@ use App\Services\UserEngagementXpAwardService;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 
-/** @property int $id */
 class LearningRecord extends Model
 {
     protected $table = 'LearningRecord';

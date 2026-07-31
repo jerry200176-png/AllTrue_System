@@ -4,13 +4,6 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-/**
- * @property int $id
- * @property int $learning_record_id
- * @property string $content
- * @method static \Illuminate\Database\Eloquent\Builder where(string $column, mixed $operator = null, mixed $value = null, string $boolean = 'and')
- * @method static static create(array $attributes = [])
- */
 class LearningRecordFeedback extends Model
 {
     protected $table = 'learning_record_feedbacks';
