@@ -51,9 +51,10 @@ class StudentClassInvoicesPaymentDetailsTest extends TestCase
         $this->assertSame('confirmed', $paymentRow['status']);
         $this->assertSame((int) $report->id, $paymentRow['report_id']);
         $this->assertNotNull($paymentRow['receipt_no']);
+        $this->assertTrue($paymentRow['can_view_receipt']);
     }
 
-    public function test_invoices_hides_account_last5_for_teacher_but_keeps_other_fields(): void
+    public function test_invoices_hides_account_last5_and_receipt_cta_for_teacher_but_keeps_other_fields(): void
     {
         $teacher = $this->createTeacherUser();
         $token = $this->createTokenFor($teacher, [1]);
@@ -78,6 +79,35 @@ class StudentClassInvoicesPaymentDetailsTest extends TestCase
         $this->assertNull($paymentRow['account_last5']);
         $this->assertSame('匯款備註測試', $paymentRow['note']);
         $this->assertSame('confirmed', $paymentRow['status']);
+        // can_view_receipt must reflect GET /payment-reports/{id}/receipt's actual
+        // role:director-only route gate — a teacher would 403 there, so the field
+        // must be false even though the report itself is confirmed.
+        $this->assertFalse($paymentRow['can_view_receipt']);
+    }
+
+    public function test_invoices_hides_receipt_cta_for_director_when_report_is_not_confirmed(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $course = $this->createCountModeClass($student->id);
+        [, , $report] = $this->createConfirmedPayment($student, $course);
+        $report->update([
+            'status' => 'voided',
+            'voided_by' => 1,
+            'voided_at' => Carbon::now(),
+            'void_reason' => '測試作廢',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/student-classes/{$course->ID}/invoices");
+
+        $res->assertOk();
+        $paymentRow = $res->json('invoices.0.payments.0');
+
+        $this->assertSame('voided', $paymentRow['status']);
+        $this->assertFalse($paymentRow['can_view_receipt'], 'voided report must not offer a receipt CTA');
     }
 
     public function test_invoices_forbidden_for_teacher_not_owning_course(): void

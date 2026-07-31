@@ -753,6 +753,7 @@ import ToastWithUndo from '../components/substitute/ToastWithUndo.vue';
 import PaymentEntryModal from '../components/PaymentEntryModal.vue';
 import ReceiptModal from '../components/ReceiptModal.vue';
 import LatestPaymentInfoModal from '../components/LatestPaymentInfoModal.vue';
+import { useReceiptFlow } from '../composables/useReceiptFlow.js';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AtFilterBar from '../components/design-system/AtFilterBar.vue';
 import AtButton from '../components/design-system/AtButton.vue';
@@ -901,13 +902,20 @@ const interceptOriginalPayload = ref(null);
 const interceptPendingClassType = ref('');
 const forceSubmitting = ref(false);
 const pendingPaymentStatusIds = ref(new Set());
-const paymentEntryOpen = ref(false);
-const paymentEntryRow = ref(null);
-const paymentEntryStudentId = ref(null);
-const receiptOpen = ref(false);
-const receiptReportId = ref(null);
-const latestPaymentOpen = ref(false);
-const latestPaymentCourse = ref(null);
+const receiptFlow = useReceiptFlow({
+  refreshCourses: (studentId) => loadStudentCourses(studentId),
+  toast: (msg) => showToast(msg),
+});
+const {
+  paymentEntryOpen,
+  paymentEntryRow,
+  receiptOpen,
+  receiptReportId,
+  latestPaymentOpen,
+  latestPaymentCourse,
+  openReceiptByReport,
+  onPaymentEntryConfirmed,
+} = receiptFlow;
 
 // Quick add session (single extra lesson within existing session count)
 const showQuickAddSession = ref(false);
@@ -2666,14 +2674,12 @@ const togglePaymentStatus = async (course, studentName = '') => {
   // 未繳費 → 已繳費：一律走核帳登記 Modal（強制填繳款日期）
   if (course.payment_status !== 'paid') {
     const subjectLabel = getSubjectLabel(course.subject).split('(')[0].trim();
-    paymentEntryRow.value = {
+    receiptFlow.openPaymentEntry({
       id: courseId,
       student_name: studentName || '此學生',
       subject: subjectLabel || course.subject || '',
       charge: course.charge ?? 0,
-    };
-    paymentEntryStudentId.value = course.student_id ?? null;
-    paymentEntryOpen.value = true;
+    }, course.student_id ?? null);
     return;
   }
 
@@ -2712,32 +2718,13 @@ const togglePaymentStatus = async (course, studentName = '') => {
   }
 };
 
-const onPaymentEntryConfirmed = async (result) => {
-  paymentEntryOpen.value = false;
-  showToast('已完成核帳登記');
-  if (paymentEntryStudentId.value) {
-    await loadStudentCourses(paymentEntryStudentId.value);
-  }
-  paymentEntryStudentId.value = null;
-
-  if (result?.report_id) {
-    openReceiptByReport(result.report_id);
-  }
-};
-
-function openReceiptByReport(reportId) {
-  receiptReportId.value = Number(reportId);
-  receiptOpen.value = true;
-}
-
 function openLatestPaymentInfo(course, studentName = '') {
   const subjectLabel = getSubjectLabel(course.subject).split('(')[0].trim();
-  latestPaymentCourse.value = {
+  receiptFlow.openLatestPaymentInfo({
     id: course.id,
     student_name: studentName || '此學生',
     subject: subjectLabel || course.subject || '',
-  };
-  latestPaymentOpen.value = true;
+  });
 }
 
 // --- CSV Import ---
