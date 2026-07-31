@@ -286,6 +286,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `docs/PRODUCT_OPS.md` | Post-release metrics review 與產品營運節奏 |
 | `docs/ADOPTION_QUALITY_METRICS.md` | 採用率與品質指標定義 |
 | `docs/RUNBOOK_ROLLBACK.md` | 回滾 SOP 與 rollback readiness 檢查 |
+| `docs/RUNBOOK_ACTUAL_DURATION_ACTIVATION.md` | 依實際時長扣堂的啟用與回滾（兩個旗標、盤點、限制）|
 | `docs/DAILY_CHECKLIST.md` | 每日例行檢查清單 |
 | `docs/SMOKE_TEST_RUNBOOK.md` | 部署後 smoke test SOP（`scripts/post-merge-smoke.sh`）|
 | `docs/DOCS_GOVERNANCE_SOP.md` | 文件治理節奏（已整合進本 INDEX §治理節奏；stub 供索引）|
