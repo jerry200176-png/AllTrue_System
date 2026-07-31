@@ -548,6 +548,18 @@ class CoursePackageController extends Controller
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
+        $pkg = CoursePackage::find($id);
+        if (!$pkg) {
+            return response()->json(['message' => 'Package not found'], 404);
+        }
+
+        if ($role !== 'super_admin') {
+            $campusIds = $request->attributes->get('auth_campus_ids', []);
+            if (!empty($campusIds) && !in_array((int) $pkg->campus_id, $campusIds, true)) {
+                return response()->json(['message' => 'Forbidden'], 403);
+            }
+        }
+
         $result = PackageDeductionService::fullRecompute($id);
         if (isset($result['error'])) {
             return response()->json(['message' => $result['error']], 404);

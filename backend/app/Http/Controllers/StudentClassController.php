@@ -17,6 +17,9 @@ use App\Models\CoursePackage;
 use App\Support\Utf8mb3SearchSanitizer;
 use App\Services\ClassSessionMaterializationService;
 use App\Services\ContractScheduleMatcher;
+use App\Services\Scheduling\BillingContractLockGuard;
+use App\Services\Scheduling\DeductionBasis;
+use App\Services\Scheduling\LessonEntitlementCoverageCalculator;
 use App\Services\ClassSessionContractReflowService;
 use App\Services\FrontendSubjectIdResolver;
 use App\Services\SessionDeductionService;
@@ -408,6 +411,7 @@ class StudentClassController extends Controller
             $class->remaining_sessions = (int) ($class->RemainingSessions ?? 0);
             // 精確剩餘分鐘（部分補課顯示用）；null = 尚未分鐘化的舊資料。
             $class->remaining_minutes = $storedRemainingMinutes !== null ? (int) $storedRemainingMinutes : null;
+            $this->attachPreciseBalanceFields($class);
 
             if ($class->isPartOfPackage() && isset($packageMap[$class->PackageID])) {
                 $pkg = $packageMap[$class->PackageID];
@@ -1455,6 +1459,11 @@ class StudentClassController extends Controller
 
         if ($studentClass->isPartOfPackage()) {
             unset($mapped['RemainingSessions']);
+        }
+
+        // RFC non-standard duration: validate + guard the billing contract fields.
+        if ($contractError = $this->guardBillingContractUpdate($studentClass, $mapped)) {
+            return $contractError;
         }
 
         if (!empty($campusIds) && !empty($mapped['room_id'])) {
@@ -3456,6 +3465,14 @@ class StudentClassController extends Controller
         if (isset($input['rate_per_30min'])) $mappedData['Rate'] = $input['rate_per_30min'];
         if (isset($input['rate_unit'])) $mappedData['rate_unit'] = $input['rate_unit'];
         if (isset($input['duration_hours'])) $mappedData['SessionDuration'] = (int) round((float) $input['duration_hours'] * 60);
+        // RFC non-standard duration D1/D2: the billing standard is its own per-course
+        // field, kept separate from SessionDuration (the scheduling default).
+        if (array_key_exists('standard_lesson_minutes', $input)) {
+            $mappedData['standard_lesson_minutes'] = ($input['standard_lesson_minutes'] === null || $input['standard_lesson_minutes'] === '')
+                ? null
+                : (int) $input['standard_lesson_minutes'];
+        }
+        if (isset($input['deduction_basis'])) $mappedData['deduction_basis'] = (string) $input['deduction_basis'];
         if (isset($input['sessions_purchased'])) $mappedData['SessionCount'] = $input['sessions_purchased'];
         if (isset($input['remaining_sessions'])) $mappedData['RemainingSessions'] = $input['remaining_sessions'];
         if (isset($input['status'])) $mappedData['Stop'] = $input['status'] === 'inactive' ? 1 : 0;
@@ -5185,6 +5202,126 @@ class StudentClassController extends Controller
         $now = $now ?: Carbon::now();
         $sessionEndAt = Carbon::parse($sessionDate . ' ' . $endTime);
         return $sessionEndAt->lte($now);
+    }
+
+    /**
+     * RFC non-standard duration — precise balance fields for the course list.
+     *
+     * Minutes stay the integer authoritative truth; lesson equivalents are emitted as
+     * fixed-precision decimal STRINGS so no binary float becomes a billing figure and
+     * so the UI is not forced to re-derive them. The legacy integer `remaining_sessions`
+     * is kept for compatibility but must not be the only thing an actual-duration
+     * course displays: rounding 0.50 lessons to "1" is exactly the confusion this RFC
+     * exists to remove.
+     *
+     * `uncovered_minutes` is derived from the ledger, not stored — it is the amount by
+     * which real consumption has outrun the purchased entitlement, which the floored
+     * `RemainingMinutes` column cannot express.
+     */
+    private function attachPreciseBalanceFields(object $class): void
+    {
+        $basis = (string) ($class->deduction_basis ?? DeductionBasis::FIXED_SESSION);
+        $class->deduction_basis = $basis === '' ? DeductionBasis::FIXED_SESSION : $basis;
+        $standard = (int) ($class->standard_lesson_minutes ?? 0);
+        $class->standard_lesson_minutes = $standard > 0 ? $standard : null;
+
+        $remainingMinutes = $class->remaining_minutes;
+        $class->remaining_hours = $remainingMinutes === null
+            ? null
+            : $this->decimalString($remainingMinutes, 60);
+
+        // Lesson equivalents need a per-course standard; without one there is nothing
+        // meaningful to divide by, so they stay null rather than assuming a default.
+        if ($standard >= 1 && $remainingMinutes !== null) {
+            $calc = new LessonEntitlementCoverageCalculator();
+            $purchasedMinutes = (int) ($class->PurchasedMinutes ?? 0);
+            $class->remaining_lesson_equivalent = $calc->lessonEquivalent((int) $remainingMinutes, $standard);
+            $class->used_lesson_equivalent = $calc->lessonEquivalent(
+                max(0, $purchasedMinutes - (int) $remainingMinutes),
+                $standard
+            );
+        } else {
+            $class->remaining_lesson_equivalent = null;
+            $class->used_lesson_equivalent = null;
+        }
+    }
+
+    /** Fixed 2dp decimal string from integer minutes — never a binary float. */
+    private function decimalString(int $minutes, int $perUnit): string
+    {
+        $whole = intdiv($minutes, $perUnit);
+        $hundredths = intdiv(($minutes % $perUnit) * 200 + $perUnit, $perUnit * 2);
+        if ($hundredths >= 100) {
+            $whole++;
+            $hundredths -= 100;
+        }
+
+        return sprintf('%d.%02d', $whole, $hundredths);
+    }
+
+    /**
+     * RFC non-standard duration D1/D2/D4 + contract lock — validate the billing
+     * contract fields on an update, and refuse changes once entitlement has been
+     * consumed.
+     *
+     * Returns a JSON error response to bail out with, or null to proceed.
+     *
+     * @param  array<string, mixed>  $mapped
+     */
+    private function guardBillingContractUpdate(StudentClass $studentClass, array $mapped): ?\Illuminate\Http\JsonResponse
+    {
+        $touchesContract = array_key_exists('standard_lesson_minutes', $mapped)
+            || array_key_exists('deduction_basis', $mapped);
+
+        if ($touchesContract) {
+            $basis = (string) ($mapped['deduction_basis'] ?? $studentClass->deduction_basis ?? DeductionBasis::FIXED_SESSION);
+            if (!DeductionBasis::isValid($basis)) {
+                return response()->json([
+                    'message' => '扣堂方式僅接受 ' . DeductionBasis::validationList(),
+                    'errors' => ['deduction_basis' => ['扣堂方式無效。']],
+                ], 422);
+            }
+
+            $minutes = array_key_exists('standard_lesson_minutes', $mapped)
+                ? $mapped['standard_lesson_minutes']
+                : $studentClass->standard_lesson_minutes;
+
+            if ($minutes !== null && ((int) $minutes < 30 || (int) $minutes > 480)) {
+                return response()->json([
+                    'message' => '標準一堂時長需介於 30 至 480 分鐘',
+                    'errors' => ['standard_lesson_minutes' => ['標準一堂時長需介於 30 至 480 分鐘。']],
+                ], 422);
+            }
+
+            // Fail closed: actual-duration billing without a persisted standard would
+            // have nothing to divide by, and must never fall back to a house default.
+            if ($basis === DeductionBasis::ACTUAL_DURATION && $minutes === null) {
+                return response()->json([
+                    'message' => '依實際時長扣堂的課程必須設定標準一堂時長',
+                    'errors' => ['standard_lesson_minutes' => ['請先設定標準一堂時長（分鐘）。']],
+                ], 422);
+            }
+
+            // D4: actual-duration courses cannot live in a shared CoursePackage, whose
+            // pool ledger can only represent whole ±1 lessons (TD-059).
+            if ($basis === DeductionBasis::ACTUAL_DURATION && $studentClass->isPartOfPackage()) {
+                return response()->json([
+                    'message' => '共用課程包內的課程不可改為依實際時長扣堂（共用池目前只支援整堂扣除）',
+                    'errors' => ['deduction_basis' => ['共用課程包不支援依實際時長扣堂。']],
+                ], 422);
+            }
+        }
+
+        $lock = app(BillingContractLockGuard::class)->inspect($studentClass, $mapped);
+        if ($lock['locked']) {
+            return response()->json([
+                'message' => $lock['message'],
+                'code' => 'billing_contract_locked',
+                'locked_fields' => $lock['attempted_fields'],
+            ], 422);
+        }
+
+        return null;
     }
 
     private function mapScheduleSlots(array $data, array $slots): array

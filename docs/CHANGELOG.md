@@ -4,6 +4,32 @@
 - 修法：比照 #1509 的模式，在方法最前面呼叫既有的 `authorizeStudentClassAccess()`（未通過即回 403，不執行任何 mutation）。未新增授權邏輯、未變更既有 campus／teacher 判定語意。
 - 新增 `backend/tests/Feature/StudentClassTogglePauseAuthzTest.php`（8 案例：跨分校 director、非本人課程 teacher 各自 pause／resume 應 403 且完全不改動資料；同分校 director、擁有該課程的 teacher 應維持原有 pause／resume 成功行為與未來排課取消語意）。修補前 4 個跨分校/跨老師案例可重現性失敗（RED），修補後全數通過（GREEN），既有 `StudentClassCloseFutureSessionsTest`／`StudentClassConfirmPaymentAuthzTest` 無回歸，全庫 PHPUnit 1580 測試全過。
 - 本次僅做 containment（單一方法補授權檢查），未建立新的 CI gate、未重構授權層、未觸碰 #1062 排程或帳務邏輯。CI 綠後仍需 Founder 過目才可 merge（R2 風險等級：授權／跨分校邊界／課程狀態變更）。
+## 2026-07-31 — feat(billing): 依實際上課時長扣堂——正式環境後端＋前端旗標已啟用（經 Founder 明確授權，未有課程走完驗收）
+
+- 延續上一則（2026-07-31，功能合併但旗標關閉）。本則記錄：Founder 明確授權透過新的 Founder-gated GitHub Actions control plane（`.github/workflows/actual-duration-activation.yml`）進行受控啟用。
+- 唯讀盤點（`inventory` action，run 30629251402）：1800 門課程掃描，20 門課程（37 堂）有「排課時長與該課程自己的契約時長不符」的**歷史**落差（全部是 happened，沒有 planned），與本次啟用無關，屬既有技術債。
+- 後端旗標 `PERF_ACTUAL_DURATION_DEDUCTION`：`enable_backend`（run 30629298501）對照 production HEAD `dc88926e`，備份 `.env`（含 checksum）、單行 idempotent 修改、`optimize` 重建快取（非 `config:clear`）、**effective config 經 `php artisan tinker` 驗證為 `true`**（不只是看 `.env` 文字）、health `ok`、完整 authenticated smoke 通過、現有 1895 門課程確認仍全為 `fixed_session`。獨立 `verify_backend`（run 30629362904，非同一次執行）重新確認同一結果。
+- 前端旗標 `ACTUAL_DURATION_DEDUCTION_ENABLED`（PR #1552）：merge 後 `deploy.yml` 自動部署（run 30629708223），`version.json hash=511ab1c7` 與 Pi git HEAD 一致，health + 完整 authenticated smoke 全通過。建課表單現在會顯示「扣堂方式」選項。
+- **兩個旗標皆為 `true` 不等於「已完成驗收」**：沒有任何既有課程被動到，兩次獨立查詢皆確認全部課程仍是 `fixed_session`；只是「新建」課程時，授權角色現在可以選擇依實際時長換算，尚未有人實際走過這條路徑。
+- 正式環境驗收案例（買 8 堂標準 120 分鐘、真實走 6 次 180 分鐘課程、驗證扣堂序列 780/600/420/240/60/0、超額不擋點名、扣堂後修改契約回 422）已備妥自動化 workflow（`.github/workflows/actual-duration-acceptance.yml`），但需要 Founder 指定安全的測試學生／老師／分校身分才能執行——目前沒有可重用的既有測試帳號可用（既有 smoke 帳號依政策僅限唯讀）。
+- 回滾：`disable_backend` action（同一 workflow）為主要執行期回滾路徑，備份＋idempotent 修改＋驗證，不需要額外的 SHA 比對（避免緊急回滾被卡住）。
+- 現況、稽核紀錄、下一步見 `docs/RUNBOOK_ACTUAL_DURATION_ACTIVATION.md`。
+
+## 2026-07-31 — feat(billing): 每門課可自訂「標準一堂 = 幾分鐘」，依實際上課時長按比例扣堂（旗標關閉，尚未啟用）
+
+- 起因：有學生每週上兩次、每次 3 小時，但課程的計價單位是 2 小時一堂。舊系統把「排幾次課」與「買了幾堂」綁死成同一個數字，導致「買 8 堂、只排 6 次 3 小時的課」這個需求在建課階段就被 422 擋掉，根本無法表達；就算硬排成 8 次，點名時每次也只會扣整整一堂，3 小時與 2 小時的課扣一樣多。
+- 修法（RFC_NONSTANDARD_SESSION_DURATION_BILLING D1–D7）：`StudentClass` 新增 `standard_lesson_minutes`（nullable）與 `deduction_basis`（`fixed_session` / `actual_duration`，預設 `fixed_session`）兩個 additive 欄位。選擇 `actual_duration` 的課程，扣堂改為 `實際上課分鐘 ÷ 該課程的標準一堂分鐘`。
+- **「一堂」是每門課自己的定義，不是全公司的規定**：同樣一次 180 分鐘的課，在標準 90 / 120 / 180 分鐘的課程裡分別扣 2.00 / 1.50 / 1.00 堂；買 8 堂分別等於 720 / 960 / 1440 分鐘。建課表單預填 120 只是輸入框的初值，授權老師／主任可自行改；後端沒有任何 fallback 到 120 的行為，也不會用這個數字重新解釋任何既有課程。
+- D6 解耦：`session_plan` 決定排幾次課，`SessionCount` 決定買了多少額度，兩者不再被強制相等。系統不會為了讓數字對齊而自動刪除、縮短或截斷任何一次排課。`fixed_session` 課程的「次數需等於購買堂數」規則一字未改。
+- D5 超額處理：排課時數超出已購額度時，建課 API 回 422 `overage_confirmation_required`，附上完整換算明細（額度分鐘、排課分鐘、可完整涵蓋幾次、第幾次會不夠、缺多少分鐘與幾堂），老師明確勾選確認後才能建立。**確認只發生在建課階段——課程建立後，超額永遠不會擋住學生被點名。**
+- 分鐘是唯一權威的計費真相（沿用 #613 A1 的 `PurchasedMinutes` / `RemainingMinutes` / `session_deduction_ledger.minutes`）；堂數一律以整數運算產生固定小數位的**字串**呈現，binary float 不會成為任何計費數字。課程列表新增 `remaining_hours` / `remaining_lesson_equivalent` / `used_lesson_equivalent`；舊的整數 `remaining_sessions` 保留相容，但它無法表達「還剩半堂」，正是本次要消除的誤解來源。
+- 第一筆扣堂 ledger 寫入後，`standard_lesson_minutes`、`deduction_basis`、`SessionCount` 由 `BillingContractLockGuard` 在**後端**鎖定（前端變灰只是 UX）。v1 刻意不提供任何扣堂後的契約修正管道——額度仍由 `SessionCount × standard_lesson_minutes` 推導，事後改標準堂長等於重新解釋歷史，宣稱「只影響未來」會是假保證；要改就結掉重開。
+- v1 範圍外：跨期借用／自動拆堂（D3 不做）、共用課程包（D4 雙向排除，422 明確拒絕）、月結制（422 拒絕）、額度授予 ledger（D7 延後）。
+- **Dark launch，兩個開關缺一不可**：`PERF_ACTUAL_DURATION_DEDUCTION`（環境）與 `StudentClass.deduction_basis`（每門課）；前端另有編譯期 `ACTUAL_DURATION_DEDUCTION_ENABLED`。三者預設皆為關。Fail-safe 而非 fail-open：環境旗標關閉時，已標記 `actual_duration` 的課程扣堂行為完全等同 `fixed_session`，因此關掉旗標就是完整回滾，沒有資料要遷移或清理。建課 API 同樣受環境旗標管制，旗標關閉時直接拒絕建立這類課程，避免出現「契約寫著按時長計費、實際卻整堂扣」的課。
+- 另附唯讀盤點指令 `php artisan sessions:report-nonstandard-duration`（不寫任何資料，輸出開頭明示 `READ_ONLY=true`），供啟用前評估現存排課時長與計價單位不一致的規模；`--details` 只帶 ID，不輸出學生姓名／電話／RFID。
+- 既有課程行為零變化：所有現存課程都是 `fixed_session`（欄位預設值），且旗標出廠即關。後端 Feature 全套 1554 測試、6581 assertions 全綠；本功能自身 100 個測試（後端 47＋純計算 53）＋前端 10 個；PHPStan 無新增錯誤、未動 baseline；migration 已實測可 rollback 再重跑。
+- 端到端驗收（`ActualDurationEndToEndAcceptanceTest`）走真實 HTTP：建課 → 點名 6 次 → 讀餘額，驗證 `PurchasedMinutes = 8 × 120 = 960`（計費標準，不是排課的 180）、只物化 6 次、剩餘分鐘依序 780/600/420/240/60/0、額度歸零後仍可點名、課程列表能顯示 `4.25` 這種整數欄位表達不了的餘額。這個測試在撰寫時抓到一個真實缺陷：`PurchasedMinutes` 曾被算成 `8 × 排課時長 180 = 1440`，正是 D1「計費長度 ≠ 排課長度」要分開的東西。
+- 上線步驟與回滾程序見 `docs/RUNBOOK_ACTUAL_DURATION_ACTIVATION.md`。**本次僅完成合併，尚未在正式環境執行任何部署、migration、旗標開啟或資料異動。**
 
 ## 2026-07-29 — fix(dashboard): 主任總覽頁面 Wave D —— 對照真實參考 repo 原始碼修正資訊密度與圓角一致性
 
@@ -1021,4 +1047,3 @@ Fixed：班級行事曆若週次篩選暫時隱藏某課程，已實際存在的
 ## 2026-06-01 — chore(deps): composer 鎖定 PHP 8.2 平台 + 月初帳務測試健全化
 
 開發備註：(1) `backend/composer.json` 設 `config.platform.php=8.2.30`，避免 dependabot/`composer update` 解析出需 PHP 8.3/8.4 的相依（如 `symfony/css-selector` v8、`zipstream` 3.2.2）而在 8.2 runtime 裝不起來（dependabot PR #643 即此症）。順帶安全升版：`symfony/routing` v5.4.48→v5.4.53、`symfony/polyfill-intl-idn` v1.33.0→v1.38.1（清掉 2 筆 OSV 發現，TD-061）、`guzzle` 7.10.5、`maatwebsite/excel` 3.1.69，並把 `laravel/framework` 由 dev 分支 pin 至穩定 `v8.83.29`。(2) `CoursePackageMonthlyBillingTest` 月結堂數測試夾住堂次日期 ≤ 今天，修正每月 1 號（月內未來日期被 `alerts/tuition` 正確排除）造成的時間敏感失敗。
-

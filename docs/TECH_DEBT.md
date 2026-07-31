@@ -624,3 +624,17 @@
 | 建議做法 | 分階段：(1) 先接上 `eslint-plugin-vue` 的 `flat/recommended`（或至少讓 template 內的識別字使用能正確標記為「已使用」），跑一次看 false positive 是否消失。(2) 若跑出來是「真的未使用」的 dead code（不是 false positive），比照 `phpstan-baseline.neon`／`docs/design-hex-baseline-2026-06-06.json` 的既有模式做 baseline-gate（只擋新增，不強制清歷史債），避免一次性巨大 diff。(3) 之後再視情況評估是否導入完整 `eslint:recommended` 或 TypeScript（後者成本高很多，需要另外立案）。 |
 | 清償成本估計 | 中（vue-eslint-parser + eslint-plugin-vue 完整串接約半天；baseline 產生腳本仿造既有 hex/phpstan 模式再半天） |
 | 不做的代價 | 目前只防得住「引用未宣告變數」這一種錯誤；同一類「宣告了但沒接上」的殘留變數（例如 import 進來卻沒用、重構後留下的 dead helper）仍然只能靠 code review 肉眼抓 |
+
+### TD-072：非標準時長 Phase 0 — coverage calculator（preview）與 inventory reporter（既有資料盤點）是兩套獨立實作，未交叉驗證會收斂到同一個 `uncovered_minutes` 定義
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P3（Phase 1 開工前建議清償，尚未有任何 production 資料受影響） |
+| 發現日期 | 2026-07-30 |
+| 發現來源 | `RFC_NONSTANDARD_SESSION_DURATION_BILLING.md` Phase 0 closeout（Phase 0B calculator + Phase 0A reporter 同時實作時發現） |
+| 影響模組 | `App\Services\Scheduling\LessonEntitlementCoverageCalculator`（建立前 occurrence-by-occurrence 序列填充）、`App\Services\Scheduling\NonstandardDurationInventoryReporter::buildExistingOverage()`（既有資料 ledger SUM 聚合） |
+| 描述 | 兩者都在回答「uncovered_minutes 是多少」，但用兩條不同的計算路徑：calculator 是「依序逐一分配 occurrence」的演算法（用於建課前 preview），reporter 是「對 `session_deduction_ledger` 做 SUM(deduct)−SUM(reverse) 再與 purchased_minutes 相減」的聚合查詢（用於既有資料盤點）。兩者在數學上*應該*對同一組資料收斂到相同數字（因為循序填充與 net-sum 在「沒有 reverse 打亂順序」的情境下是等價的），但目前沒有測試證明兩者在同一組輸入上真的算出一致的 `uncovered_minutes`，尤其是有 `reverse`／`retro_leave` 事件把「淨消耗」打亂成非單調序列時，兩種方法是否仍然一致，尚未驗證。 |
+| 建議做法 | 新增 `CalculatorReporterCrossValidationTest`：用同一組（purchased_standard_units、standard_lesson_minutes、occurrence 序列 + 任意 reverse 事件）分別餵給 calculator 與 reporter 的既有資料版本（先寫入對應的 `ClassSession`/`session_deduction_ledger` fixture，再跑 reporter），斷言兩者的 `uncovered_minutes` 一致。若跑出不一致，須在 Phase 1 之前釐清哪一個是「正確」定義，並讓另一個對齊，避免 Phase 2 上線後 preview 顯示的數字與既有資料盤點對不起來造成主任/工程互相懷疑數字有誤。 |
+| 清償成本估計 | 低（半天內可寫完交叉驗證測試；若發現真的分歧，修正成本視分歧原因而定） |
+| 不做的代價 | Phase 1/2 上線後，若某門課程同時出現在「建課 preview 顯示的 uncovered」與「Phase 0A 報表顯示的 uncovered」，兩個數字不一致會讓人誤以為系統有 bug，實際上只是兩套從未交叉驗證過的獨立實作 |
