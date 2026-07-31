@@ -5530,6 +5530,11 @@ class StudentClassController extends Controller
      */
     public function togglePause(Request $request, StudentClass $studentClass)
     {
+        $auth = $this->authorizeStudentClassAccess($studentClass);
+        if ($auth !== null) {
+            return $auth;
+        }
+
         $sc = $studentClass;
 
         $action = $request->input('action', 'pause');

@@ -1,3 +1,9 @@
+## 2026-07-30 — fix(security): StudentClassController::togglePause() 跨分校／跨老師授權缺失（P0 containment）
+
+- 治理稽核發現 `togglePause()`（`/student-classes/{id}/pause`，暫停／恢復課程）在任何 object-level authorization 之前就直接讀取並修改 `StudentClass.Stop`／`closed_reason`／`EndDate`，並連動取消未來 `ClassSession`，與 #1504/#1509（`confirmPayment()`）同一類跨分校 IDOR，尚未修補。任一分校 director／teacher 帳號可用他校 `StudentClassID` 暫停或恢復不屬於自己的課程。
+- 修法：比照 #1509 的模式，在方法最前面呼叫既有的 `authorizeStudentClassAccess()`（未通過即回 403，不執行任何 mutation）。未新增授權邏輯、未變更既有 campus／teacher 判定語意。
+- 新增 `backend/tests/Feature/StudentClassTogglePauseAuthzTest.php`（8 案例：跨分校 director、非本人課程 teacher 各自 pause／resume 應 403 且完全不改動資料；同分校 director、擁有該課程的 teacher 應維持原有 pause／resume 成功行為與未來排課取消語意）。修補前 4 個跨分校/跨老師案例可重現性失敗（RED），修補後全數通過（GREEN），既有 `StudentClassCloseFutureSessionsTest`／`StudentClassConfirmPaymentAuthzTest` 無回歸，全庫 PHPUnit 1580 測試全過。
+- 本次僅做 containment（單一方法補授權檢查），未建立新的 CI gate、未重構授權層、未觸碰 #1062 排程或帳務邏輯。CI 綠後仍需 Founder 過目才可 merge（R2 風險等級：授權／跨分校邊界／課程狀態變更）。
 ## 2026-07-31 — feat(billing): 依實際上課時長扣堂——正式環境後端＋前端旗標已啟用（經 Founder 明確授權，未有課程走完驗收）
 
 - 延續上一則（2026-07-31，功能合併但旗標關閉）。本則記錄：Founder 明確授權透過新的 Founder-gated GitHub Actions control plane（`.github/workflows/actual-duration-activation.yml`）進行受控啟用。
@@ -1041,4 +1047,3 @@ Fixed：班級行事曆若週次篩選暫時隱藏某課程，已實際存在的
 ## 2026-06-01 — chore(deps): composer 鎖定 PHP 8.2 平台 + 月初帳務測試健全化
 
 開發備註：(1) `backend/composer.json` 設 `config.platform.php=8.2.30`，避免 dependabot/`composer update` 解析出需 PHP 8.3/8.4 的相依（如 `symfony/css-selector` v8、`zipstream` 3.2.2）而在 8.2 runtime 裝不起來（dependabot PR #643 即此症）。順帶安全升版：`symfony/routing` v5.4.48→v5.4.53、`symfony/polyfill-intl-idn` v1.33.0→v1.38.1（清掉 2 筆 OSV 發現，TD-061）、`guzzle` 7.10.5、`maatwebsite/excel` 3.1.69，並把 `laravel/framework` 由 dev 分支 pin 至穩定 `v8.83.29`。(2) `CoursePackageMonthlyBillingTest` 月結堂數測試夾住堂次日期 ≤ 今天，修正每月 1 號（月內未來日期被 `alerts/tuition` 正確排除）造成的時間敏感失敗。
-
