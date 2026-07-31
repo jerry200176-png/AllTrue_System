@@ -38,6 +38,18 @@ const flags = {
 
   /** Staff-only ambient music easter egg. Compile-time rollback switch. */
   AMBIENT_MUSIC_ENABLED: true,
+
+  /**
+   * Actual-duration billing UI (RFC_NONSTANDARD_SESSION_DURATION_BILLING).
+   * DARK LAUNCH: default false — the建課 form shows no 扣堂方式 選項 and sends no new
+   * fields, so every course keeps behaving exactly as before.
+   *
+   * Mirrors the backend's `perfflags.actual_duration_deduction_enabled`. Both sides must
+   * be on for the feature to do anything: this one decides whether a teacher can choose
+   * the option, the backend one decides whether a chosen course actually deducts by
+   * clock time. Flipping this back to false is a complete UI rollback.
+   */
+  ACTUAL_DURATION_DEDUCTION_ENABLED: false,
 };
 
 export default flags;
