@@ -65,6 +65,11 @@ class ClassSessionController extends Controller
             'day_time_slots.*.teacher_id' => 'nullable|integer|exists:User,id',
             'allow_multi_teacher' => 'nullable|boolean',
             'duration_minutes' => 'required|integer|min:30|max:480',
+            // RFC non-standard duration: per-course billing contract. The UI may step in
+            // 15/30-minute increments, but any legal integer minute value is accepted.
+            'deduction_basis' => 'nullable|in:fixed_session,actual_duration',
+            'standard_lesson_minutes' => 'nullable|integer|min:30|max:480|required_if:deduction_basis,actual_duration',
+            'overage_confirmed' => 'nullable|boolean',
             'rate_unit' => 'nullable|in:session,hour',
             'price_per_session' => 'required|numeric|min:0',
             'payment_type' => 'required|in:session,monthly',
