@@ -2213,6 +2213,18 @@ class StudentClassController extends Controller
             return $auth;
         }
 
+        // account_last5 (匯款後五碼) follows the same PII-minimization precedent as
+        // PaymentReportController::index() — director/super_admin only, not teacher.
+        $role = $request->attributes->get('auth_role');
+        $canSeeAccountLast5 = $role !== 'teacher';
+
+        // GET /payment-reports/{id}/receipt lives in the role:director-only route
+        // group (routes/api.php ~line 260) — teacher is never in that group, so a
+        // teacher's receipt fetch always 403s regardless of anything computed here.
+        // Expose that as an explicit, authoritative capability instead of letting the
+        // frontend infer permission from account_last5 or any other unrelated field.
+        $canViewReceipt = $role !== 'teacher';
+
         $invoices = Invoice::where('StudentClassID', $studentClass->ID)
             ->notVoided()
             ->with(['payments' => function ($query) {
@@ -2238,12 +2250,12 @@ class StudentClassController extends Controller
                         $query->{$method}('id', $reportIds);
                     }
                 })
-                ->get(['id', 'payment_id', 'status', 'payment_date']);
+                ->get(['id', 'payment_id', 'status', 'payment_date', 'account_last5']);
         $reportsByPaymentId = $reports->whereNotNull('payment_id')->keyBy('payment_id');
         $reportsById = $reports->keyBy('id');
 
         return response()->json([
-            'invoices' => $invoices->map(function ($inv) use ($reportsByPaymentId, $reportsById) {
+            'invoices' => $invoices->map(function ($inv) use ($reportsByPaymentId, $reportsById, $canSeeAccountLast5, $canViewReceipt) {
                 $effectivePayments = $inv->payments
                     ->filter(fn ($payment) => (int) ($payment->Amount ?? 0) > 0 && (string) ($payment->Method ?? '') !== 'void')
                     ->values();
@@ -2289,21 +2301,23 @@ class StudentClassController extends Controller
                     'due_date'       => $inv->DueDate   ? substr((string) $inv->DueDate, 0, 10)   : null,
                     'paid_at'        => $paidAt,
                     'payment_count'  => $effectivePayments->count(),
-                    'payments'       => $inv->payments->map(function ($payment) use ($reportsByPaymentId, $reportsById) {
+                    'payments'       => $inv->payments->map(function ($payment) use ($reportsByPaymentId, $reportsById, $canSeeAccountLast5, $canViewReceipt) {
                         $report = $reportsByPaymentId->get((int) $payment->id)
                             ?? ($payment->payment_report_id ? $reportsById->get((int) $payment->payment_report_id) : null);
                         $isVoid = (int) ($payment->Amount ?? 0) < 0 || (string) ($payment->Method ?? '') === 'void';
 
                         return [
-                            'id'         => (int) $payment->id,
-                            'paid_at'    => $payment->PaidAt ? substr((string) $payment->PaidAt, 0, 10) : null,
-                            'amount'     => (int) $payment->Amount,
-                            'method'     => (string) ($payment->Method ?? ''),
-                            'note'       => (string) ($payment->Note ?? ''),
-                            'is_void'    => $isVoid,
-                            'report_id'  => $report ? (int) $report->id : null,
-                            'receipt_no' => $report ? 'RCPT-' . ($report->payment_date ? $report->payment_date->format('Ym') : 'LEGACY') . '-' . str_pad((string) $report->id, 6, '0', STR_PAD_LEFT) : null,
-                            'status'     => $report ? (string) $report->status : null,
+                            'id'                => (int) $payment->id,
+                            'paid_at'           => $payment->PaidAt ? substr((string) $payment->PaidAt, 0, 10) : null,
+                            'amount'            => (int) $payment->Amount,
+                            'method'            => (string) ($payment->Method ?? ''),
+                            'note'              => (string) ($payment->Note ?? ''),
+                            'is_void'           => $isVoid,
+                            'report_id'         => $report ? (int) $report->id : null,
+                            'receipt_no'        => $report ? 'RCPT-' . ($report->payment_date ? $report->payment_date->format('Ym') : 'LEGACY') . '-' . str_pad((string) $report->id, 6, '0', STR_PAD_LEFT) : null,
+                            'status'            => $report ? (string) $report->status : null,
+                            'account_last5'     => ($canSeeAccountLast5 && $report) ? $report->account_last5 : null,
+                            'can_view_receipt'  => $canViewReceipt && $report && $report->status === 'confirmed',
                         ];
                     })->values()->all(),
                     'total_amount'   => (int) $inv->TotalAmount,
