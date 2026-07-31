@@ -1,0 +1,333 @@
+name: Actual-Duration Billing Production Acceptance (Founder-gated)
+
+# Founder-gated production acceptance walk for RFC_NONSTANDARD_SESSION_DURATION_BILLING.
+#
+# This workflow creates and attends exactly ONE designated test course through
+# normal HTTP APIs and normal authorization -- it never writes to the database
+# directly. It creates ONLY the course identified by the inputs below; it never
+# touches, modifies, or even reads any OTHER student's data beyond the one
+# read-only "does this student already have courses" check used to show the
+# target before executing.
+#
+# It requires:
+#   - student_id / teacher_id / branch_id: explicit workflow inputs naming the
+#     DESIGNATED TEST identifiers. This workflow does not choose, guess, or
+#     invent an identifier. If these do not yet refer to a fixture the Founder
+#     has explicitly designated as safe for a real course to be created
+#     against, do not run this with dry_run=false.
+#   - secrets ACCEPTANCE_TEACHER_LOGIN / ACCEPTANCE_TEACHER_PASSWORD: a login
+#     with DIRECTOR authorization (not just teacher -- PUT student-classes/{id}
+#     and POST student-classes/{id}/pause are both role:director-only per
+#     routes/api.php, so the account used for the contract-lock check and the
+#     end-of-run pause must be a director on branch_id). This is intentionally
+#     NOT the existing SMOKE_TEACHER_*/SMOKE_DIRECTOR_* credentials -- those
+#     are documented (docs/SMOKE_TEST_RUNBOOK.md) as scoped to read-only
+#     checks, and this workflow performs a real write, so it uses its own,
+#     separately-authorized secret.
+#
+# Design note on how the acceptance case actually walks in production:
+# session_plan rows with kind:"confirmed" are the correct entry for "this
+# session has already happened, record it retroactively" -- EnrollmentService
+# materializes each one via ClassSessionMaterializationService AND calls
+# syncApprovedLearningRecord for it (see EnrollmentService.php ~793-833),
+# which performs the real per-session deduction as a side effect of the same
+# create call, not as a separate step. That means all 6 acceptance occurrences
+# deduct together, in one HTTP call, in the same order and through the same
+# SessionDeductionService::recomputeCounters() code path that a teacher
+# tapping "present" six separate times would use -- there is no artificial
+# batching invented here, this is the same retroactive-entry flow the product
+# already offers for a director backfilling a real missed attendance record.
+# The per-session minute sequence (780/600/420/240/60/0) is verified
+# afterward by reading session_deduction_ledger read-only, in the exact order
+# the six ClassSession rows were created.
+#
+# "Attendance is never blocked at zero entitlement" -- the single most
+# load-bearing behavioral guarantee in this feature -- is proven twice: (a)
+# the create call itself completing successfully through the sixth deduction,
+# which runs the balance to exactly zero, with no error; and (b) the CI-
+# verified backend test ActualDurationEndToEndAcceptanceTest::
+# test_attendance_still_works_after_the_balance_is_exhausted, which exercises
+# the identical SessionDeductionService code path this production course also
+# runs. This workflow does not invent a seventh session to re-prove that
+# property live, because class-sessions/batch has no "add one session to an
+# existing course" mode -- it only creates new courses -- so doing so would
+# require either a second unrelated course (diluting what "the designated test
+# course" means) or a direct DB write (forbidden). Read the ledger evidence
+# and the CI test together as the full proof, not the production walk alone.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type exactly "RUN ACTUAL DURATION ACCEPTANCE WALK" to allow a write. Any other value (or dry_run=true) only shows the target.'
+        required: true
+      student_id:
+        description: "Designated test StudentID. Must already be authorized by the Founder as a safe fixture -- never a real paying family's student."
+        required: true
+      teacher_id:
+        description: "Designated test TeacherID (must hold role teacher or director, approved on branch_id)."
+        required: true
+      branch_id:
+        description: "Designated test CampusID/branch."
+        required: true
+      dry_run:
+        description: "true (default): show the exact target and the student's EXISTING courses, then stop -- no write. Must be explicitly set to false to create anything."
+        type: boolean
+        default: true
+
+concurrency:
+  group: actual-duration-acceptance
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    name: Validate confirmation + show exact target before any write
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production-activation
+    outputs:
+      will_write: ${{ steps.decide.outputs.will_write }}
+    steps:
+      - name: Require the exact phrase for any write, always show the target
+        id: decide
+        env:
+          CONFIRM: ${{ github.event.inputs.confirm }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          echo "=== TARGET FOR THIS RUN ==="
+          echo "student_id = ${{ github.event.inputs.student_id }}"
+          echo "teacher_id = ${{ github.event.inputs.teacher_id }}"
+          echo "branch_id  = ${{ github.event.inputs.branch_id }}"
+          echo "dry_run    = ${DRY_RUN}"
+          echo "==========================="
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "will_write=false" >> "$GITHUB_OUTPUT"
+            echo "dry_run=true -- this run will only show the target and the student's existing courses (read-only), then stop."
+            exit 0
+          fi
+          if [ "$CONFIRM" != "RUN ACTUAL DURATION ACCEPTANCE WALK" ]; then
+            echo "::error::confirm must be exactly 'RUN ACTUAL DURATION ACCEPTANCE WALK' to run with dry_run=false. Aborting, nothing touched."
+            exit 1
+          fi
+          echo "will_write=true" >> "$GITHUB_OUTPUT"
+          echo "confirmed -- this run WILL create a real course for student_id=${{ github.event.inputs.student_id }} on production."
+
+  show_target_and_existing_courses:
+    name: Read-only -- show target student's existing courses before any write
+    needs: guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Read-only pre-flight -- confirm the target exists and show existing courses
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key \
+            "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" bash -s \
+            << 'ENDSSH' | tee /tmp/preflight-output.txt
+          set -euo pipefail
+          cd /home/admin/backend
+          DB_USER="$(grep '^DB_USERNAME=' .env | cut -d= -f2-)"
+          DB_PASS="$(grep '^DB_PASSWORD=' .env | cut -d= -f2-)"
+
+          echo "student-exists:"
+          mysql -N -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASS" AllTrue -e \
+            "SELECT COUNT(*) FROM Student WHERE id=${{ github.event.inputs.student_id }};" 2>/dev/null
+
+          echo "teacher-exists-and-role:"
+          mysql -N -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASS" AllTrue -e \
+            "SELECT type FROM User WHERE id=${{ github.event.inputs.teacher_id }};" 2>/dev/null
+
+          echo "existing-courses-for-this-student-ids-and-basis-only-no-pii:"
+          mysql -N -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASS" AllTrue -e \
+            "SELECT ID, deduction_basis, SessionCount, Stop FROM StudentClass WHERE StudentID=${{ github.event.inputs.student_id }};" 2>/dev/null
+          ENDSSH
+
+      - name: Compose audit artifact
+        run: |
+          {
+            echo "action=show_target"
+            echo "will_write=${{ needs.guard.outputs.will_write }}"
+            echo "student_id=${{ github.event.inputs.student_id }}"
+            echo "teacher_id=${{ github.event.inputs.teacher_id }}"
+            echo "branch_id=${{ github.event.inputs.branch_id }}"
+            echo "workflow_run_id=${{ github.run_id }}"
+            echo "triggered_by=${{ github.actor }}"
+            echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "---- pre-flight (read-only) ----"
+            cat /tmp/preflight-output.txt
+          } > /tmp/preflight-audit.txt
+
+      - name: Upload audit artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: actual-duration-acceptance-preflight-${{ github.run_id }}
+          path: /tmp/preflight-audit.txt
+          retention-days: 90
+
+      - name: Remove local key material
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
+
+  create_and_verify:
+    name: Create the designated test course, verify the full acceptance case
+    needs: [guard, show_target_and_existing_courses]
+    if: needs.guard.outputs.will_write == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout (for scripts/smoke-auth-lib.sh -- the same proven login helper post-merge-smoke.sh uses)
+        uses: actions/checkout@v4
+
+      - name: Login as the designated acceptance-test director and create the course
+        env:
+          BASE_URL: https://daan.lifenet.com.tw
+          ACCEPTANCE_TEACHER_LOGIN: ${{ secrets.ACCEPTANCE_TEACHER_LOGIN }}
+          ACCEPTANCE_TEACHER_PASSWORD: ${{ secrets.ACCEPTANCE_TEACHER_PASSWORD }}
+        run: |
+          set -euo pipefail
+          source scripts/smoke-auth-lib.sh
+          TOKEN="$(smoke_login_and_token "$BASE_URL/api/v1" "$ACCEPTANCE_TEACHER_LOGIN" "$ACCEPTANCE_TEACHER_PASSWORD" director acceptance-test)"
+          echo "$TOKEN" > /tmp/token.txt
+          echo "✅ authenticated as the designated acceptance-test director"
+
+          # RFC acceptance case: 8 x 120min standard = 960 minutes purchased,
+          # six 180-minute sessions really taught = 1080 minutes, so the sixth
+          # runs the balance from 60 down through zero. Payload construction
+          # (dates, kind:"confirmed" == "already happened, recorded
+          # retroactively") lives in scripts/actual-duration-acceptance-
+          # payload.py so it is a plain, testable Python file rather than an
+          # inline script embedded in this YAML.
+          PAYLOAD="$(python3 scripts/actual-duration-acceptance-payload.py \
+            --student-id "${{ github.event.inputs.student_id }}" \
+            --teacher-id "${{ github.event.inputs.teacher_id }}" \
+            --branch-id "${{ github.event.inputs.branch_id }}")"
+          echo "payload: $PAYLOAD"
+
+          RESP="$(curl -sk -w '\n%{http_code}' -X POST "$BASE_URL/api/v1/class-sessions/batch" \
+            -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+            --data "$PAYLOAD")"
+          HTTP_CODE="$(echo "$RESP" | tail -1)"
+          BODY="$(echo "$RESP" | sed '$d')"
+          echo "create-response-http-code=$HTTP_CODE"
+          echo "create-response-body=$BODY"
+          if [ "$HTTP_CODE" != "201" ]; then
+            echo "::error::Course creation did not return 201 -- see body above. Nothing further will run."
+            exit 1
+          fi
+          STUDENT_CLASS_ID="$(echo "$BODY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('student_class_id',''))")"
+          echo "created-student-class-id=$STUDENT_CLASS_ID"
+          echo "$STUDENT_CLASS_ID" > /tmp/student_class_id.txt
+
+      - name: Setup SSH for read-only verification
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Verify the required case (read-only)
+        run: |
+          set -euo pipefail
+          SCID="$(cat /tmp/student_class_id.txt)"
+          ssh -i ~/.ssh/deploy_key \
+            "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" bash -s \
+            << ENDSSH | tee /tmp/verify-output.txt
+          set -euo pipefail
+          cd /home/admin/backend
+          DB_USER="\$(grep '^DB_USERNAME=' .env | cut -d= -f2-)"
+          DB_PASS="\$(grep '^DB_PASSWORD=' .env | cut -d= -f2-)"
+
+          echo "course-row (deduction_basis, standard_lesson_minutes, SessionCount, PurchasedMinutes, RemainingMinutes):"
+          mysql -N -h 127.0.0.1 -u "\$DB_USER" -p"\$DB_PASS" AllTrue -e \
+            "SELECT deduction_basis, standard_lesson_minutes, SessionCount, PurchasedMinutes, RemainingMinutes FROM StudentClass WHERE ID=$SCID;" 2>/dev/null
+
+          echo "occurrence-count:"
+          mysql -N -h 127.0.0.1 -u "\$DB_USER" -p"\$DB_PASS" AllTrue -e \
+            "SELECT COUNT(*) FROM ClassSession WHERE StudentClassID=$SCID;" 2>/dev/null
+
+          echo "ledger-deduct-rows-in-order (minutes, running total should read 180,360,540,720,900,1080):"
+          mysql -N -h 127.0.0.1 -u "\$DB_USER" -p"\$DB_PASS" AllTrue -e \
+            "SELECT minutes FROM session_deduction_ledger WHERE student_class_id=$SCID AND event_type='deduct' ORDER BY id ASC;" 2>/dev/null
+
+          echo "attempt-to-edit-contract-after-first-deduction (expect this to be blocked by the app layer with 422 -- verified separately via HTTP, not here; this line only confirms a deduction ledger row now exists, which is the lock precondition):"
+          mysql -N -h 127.0.0.1 -u "\$DB_USER" -p"\$DB_PASS" AllTrue -e \
+            "SELECT COUNT(*) FROM session_deduction_ledger WHERE student_class_id=$SCID AND event_type='deduct';" 2>/dev/null
+          ENDSSH
+
+      - name: Verify the contract lock via a real HTTP call (expect 422)
+        env:
+          BASE_URL: https://daan.lifenet.com.tw
+        run: |
+          set -euo pipefail
+          SCID="$(cat /tmp/student_class_id.txt)"
+          TOKEN="$(cat /tmp/token.txt)"
+          CODE="$(curl -sk -o /tmp/lock-body.json -w '%{http_code}' -X PUT "$BASE_URL/api/v1/student-classes/$SCID" \
+            -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+            --data '{"standard_lesson_minutes": 180}')"
+          echo "contract-edit-after-first-deduction-http-code=$CODE"
+          cat /tmp/lock-body.json
+          if [ "$CODE" != "422" ]; then
+            echo "::error::Expected 422 (contract locked after first deduction), got $CODE -- this is a real regression, investigate before declaring acceptance passed."
+            exit 1
+          fi
+          echo "✅ contract lock confirmed live via HTTP (422 as expected)"
+
+      - name: Pause the designated test course (do not delete evidence)
+        env:
+          BASE_URL: https://daan.lifenet.com.tw
+        run: |
+          set -euo pipefail
+          SCID="$(cat /tmp/student_class_id.txt)"
+          TOKEN="$(cat /tmp/token.txt)"
+          CODE="$(curl -sk -o /tmp/pause-body.json -w '%{http_code}' -X POST "$BASE_URL/api/v1/student-classes/$SCID/pause" \
+            -H "Authorization: Bearer $TOKEN")"
+          echo "pause-http-code=$CODE"
+          cat /tmp/pause-body.json
+          echo "Note: this pauses (Stop=1), it does not delete. The course and its ledger remain as inspectable evidence."
+
+      - name: Compose full evidence artifact (redacted)
+        if: always()
+        run: |
+          {
+            echo "action=create_and_verify"
+            echo "workflow_run_id=${{ github.run_id }}"
+            echo "triggered_by=${{ github.actor }}"
+            echo "student_id=${{ github.event.inputs.student_id }}"
+            echo "teacher_id=${{ github.event.inputs.teacher_id }}"
+            echo "branch_id=${{ github.event.inputs.branch_id }}"
+            echo "student_class_id=$(cat /tmp/student_class_id.txt 2>/dev/null || echo unknown)"
+            echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "---- ledger + schema verification (read-only) ----"
+            cat /tmp/verify-output.txt 2>/dev/null || true
+            echo "---- contract-lock HTTP check ----"
+            cat /tmp/lock-body.json 2>/dev/null || true
+            echo "---- pause confirmation ----"
+            cat /tmp/pause-body.json 2>/dev/null || true
+          } > /tmp/acceptance-audit.txt
+
+      - name: Upload full evidence artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: actual-duration-acceptance-evidence-${{ github.run_id }}
+          path: /tmp/acceptance-audit.txt
+          retention-days: 90
+
+      - name: Remove local key material
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
