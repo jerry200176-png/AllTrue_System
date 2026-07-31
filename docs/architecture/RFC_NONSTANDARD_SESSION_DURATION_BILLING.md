@@ -34,7 +34,9 @@ last_reviewed: 2026-07-31
 2. **分鐘引擎只在「補課」（`schedules.type='extra'`）且時長 ≠ 契約標準時才會啟動**（`SessionDeductionService::resolvePartialMakeupMinutes()`，`backend/app/Services/SessionDeductionService.php:468-499`）。測試直接證明：`PartialMakeupDeductionTest::test_normal_longer_session_not_prorated`（`backend/tests/Feature/PartialMakeupDeductionTest.php:125-142`）——180 分鐘、非 `type='extra'` 的**正常**堂次點名，仍斷言只扣 1 堂。
 3. **根因不只是引擎範圍，還有一層更前面的耦合，本次修訂新增確認**：`EnrollmentService::store()` 目前**強制驗證**「購買堂數」（`total_classes` → `plannedSessions`）必須**恰好等於**「要建立的 `ClassSession` 筆數」（`count($sessionRows)`），不相等會直接 422（`backend/app/Services/EnrollmentService.php:197-222`，尤其第 210-222 行的等式檢查）。也就是說，**現行系統不只是「假設」SessionCount＝要物化的堂次數，而是用驗證規則把兩者鎖死相等**——這代表就算只加 `standard_lesson_minutes` 跟修改扣堂引擎，仍無法解決「買 8 個標準單位、實際只該排出約 5.3 次 180 分鐘課」這件事，因為建課當下系統會強迫你排出剛好 8 個 `ClassSession`，而不是依額度算出的 occurrence 數。本修訂版把這個缺口獨立列為必須先解的問題（見 §2.5、§7、§11 Phase 0B）。
 4. **Founder 已就四項核心產品語意拍板**（本修訂版把決策內建進模型）：
-   - **D1**：新增 `standard_lesson_minutes`（計費標準堂長），與排課時長脫鉤；系統/分校可設預設值（例如 120），課程層級可 override；**不假設全公司永遠只有 120 分鐘**。
+   - **D1**：新增 `standard_lesson_minutes`（計費標準堂長），與排課時長脫鉤；課程層級各自設定；**不假設全公司永遠只有 120 分鐘**。
+     - **實作狀態（2026-07-31）**：`standard_lesson_minutes` 已實作，但**刻意沒有實作任何系統/分校層級的預設值**。後端沒有任何 fallback 常數：`StudentClass::resolvedStandardLessonMinutes()` 在課程未設定時回傳 `null`，不會退回 `SessionDuration`，也不會退回 120。建課表單的 `120` 只是**輸入框初值**（`form.standard_lesson_minutes`），送出前老師／主任可任意修改，且該值一定會隨 payload 明確送出，不由後端補。
+     - 這是刻意的：一個可被繼承的「分校預設堂長」會讓「這門課的一堂是幾分鐘」重新變成一個離課程很遠、容易被誤改、且改了會回頭重新解釋既有課程的全域設定——正是本 RFC 要消除的東西。若之後仍要做，見 §14 未決事項 7。
    - **D2**：常態課程分鐘扣除**只能 explicit opt-in**，且**不批准**把既有正常課程整批切成分鐘扣除；opt-in 機制選用**明確的 `deduction_basis` 欄位**（`fixed_session` | `actual_duration`），理由見 §10；`R59` 改寫為「禁止未經 explicit opt-in 擴大常態課程分鐘扣除」，不刪除。
    - **D3**：第一版**不做**自動跨期拆帳／借用下一期／負餘額自動轉移／跨發票分攤／自動 debt settlement；改採「建課時預測 coverage → 超額前 warning → 點名不中斷 → ledger 保留完整實際扣除分鐘 → 顯示/回報 derived `uncovered_minutes`」，跨期分配留給後續獨立 workflow。
    - **D4**：第一版 `actual_duration` 課程**不得**加入 `CoursePackage`；本 RFC 的 implementation slice **不擴大** `package_session_ledger`。
