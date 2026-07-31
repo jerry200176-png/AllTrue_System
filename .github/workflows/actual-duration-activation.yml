@@ -1,0 +1,499 @@
+name: Actual-Duration Billing Activation (Founder-gated)
+
+# Founder-gated control plane for RFC_NONSTANDARD_SESSION_DURATION_BILLING.
+# Code + the additive migration are already deployed via the normal deploy.yml
+# pipeline (workflow_run on CI success). What is NOT yet true anywhere is the
+# runtime flag: PERF_ACTUAL_DURATION_DEDUCTION stays false until an authorized
+# run of THIS workflow flips it, through an audited, idempotent, reversible path.
+#
+# This workflow never edits code and never touches a StudentClass row directly.
+# It only manages one .env line on the Pi, backed up before every edit, and
+# verified — against the EFFECTIVE Laravel config, not just the .env text —
+# before it is allowed to report success.
+#
+# Gate today: only repo collaborators with write access can dispatch this
+# workflow at all (GitHub's own workflow_dispatch actor requirement), plus the
+# exact confirmation phrase per mutating action, plus (for enable_backend) a
+# match against an explicitly named approved production HEAD SHA. There is no
+# GitHub Environment protection rule configured anywhere in this repository
+# (verified: no workflow in .github/workflows references `environment:`). The
+# `environment: production-activation` reference below costs nothing and wires
+# up automatically the day a repo admin adds required reviewers to that
+# environment in Settings -> Environments; until then it adds no gate by
+# itself, and this comment says so rather than implying protection that is not
+# actually configured.
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "inventory | enable_backend | verify_backend | disable_backend"
+        required: true
+        type: choice
+        options:
+          - inventory
+          - enable_backend
+          - verify_backend
+          - disable_backend
+      confirm:
+        description: 'enable_backend: type "ENABLE ACTUAL DURATION BILLING". disable_backend: type "DISABLE ACTUAL DURATION BILLING". Ignored for inventory/verify_backend.'
+        required: false
+      expected_head_sha:
+        description: "enable_backend only: the full 40-char SHA of the approved main commit production HEAD must already equal. Refuses to run on any other HEAD."
+        required: false
+      details:
+        description: "inventory only: include --details (StudentClassID/ClassSessionID/CampusID only -- never student name/phone/RFID). Default false."
+        type: boolean
+        default: false
+
+concurrency:
+  group: actual-duration-activation
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    name: Validate action + confirmation
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    environment: production-activation
+    steps:
+      - name: Require the exact phrase for mutating actions, and required inputs
+        env:
+          ACTION: ${{ github.event.inputs.action }}
+          CONFIRM: ${{ github.event.inputs.confirm }}
+          EXPECTED_HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
+        run: |
+          set -euo pipefail
+          case "$ACTION" in
+            enable_backend)
+              if [ "$CONFIRM" != "ENABLE ACTUAL DURATION BILLING" ]; then
+                echo "::error::confirm must be exactly 'ENABLE ACTUAL DURATION BILLING'. Aborting, nothing touched."
+                exit 1
+              fi
+              if ! printf '%s' "$EXPECTED_HEAD_SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+                echo "::error::expected_head_sha must be the exact 40-char hex SHA of the approved main commit. Aborting, nothing touched."
+                exit 1
+              fi
+              ;;
+            disable_backend)
+              if [ "$CONFIRM" != "DISABLE ACTUAL DURATION BILLING" ]; then
+                echo "::error::confirm must be exactly 'DISABLE ACTUAL DURATION BILLING'. Aborting, nothing touched."
+                exit 1
+              fi
+              ;;
+            inventory|verify_backend)
+              echo "Read-only action ($ACTION) -- no confirmation phrase required."
+              ;;
+            *)
+              echo "::error::Unknown action: $ACTION"
+              exit 1
+              ;;
+          esac
+          echo "✅ guard passed for action=$ACTION"
+
+  inventory:
+    name: Read-only inventory (sessions:report-nonstandard-duration)
+    needs: guard
+    if: github.event.inputs.action == 'inventory'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Run the read-only inventory command on production
+        env:
+          DETAILS_FLAG: ${{ github.event.inputs.details == 'true' && '--details' || '' }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key \
+            "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" \
+            "cd /home/admin/backend && php artisan sessions:report-nonstandard-duration ${DETAILS_FLAG}" \
+            | tee /tmp/inventory-output.txt
+
+          if ! grep -q 'READ_ONLY=true' /tmp/inventory-output.txt; then
+            echo "::error::Command output did not carry its own READ_ONLY=true marker -- refusing to trust this run."
+            exit 1
+          fi
+          echo "✅ Command confirmed its own read-only marker."
+
+      - name: Compose audit artifact
+        run: |
+          {
+            echo "action=inventory"
+            echo "details_requested=${{ github.event.inputs.details }}"
+            echo "workflow_run_id=${{ github.run_id }}"
+            echo "triggered_by=${{ github.actor }}"
+            echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "---- command output ----"
+            cat /tmp/inventory-output.txt
+          } > /tmp/inventory-audit.txt
+
+      - name: Upload audit artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: actual-duration-inventory-${{ github.run_id }}
+          path: /tmp/inventory-audit.txt
+          retention-days: 90
+
+  enable_backend:
+    name: Enable PERF_ACTUAL_DURATION_DEDUCTION (audited, reversible)
+    needs: guard
+    if: github.event.inputs.action == 'enable_backend'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Enable, verify effective config + health/smoke, auto-rollback on any failure
+        run: |
+          set -uo pipefail
+          ssh -i ~/.ssh/deploy_key \
+            "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" bash -s \
+            << 'ENDSSH' | tee /tmp/enable-result.txt
+          export EXPECTED_HEAD_SHA="${{ github.event.inputs.expected_head_sha }}"
+          export SMOKE_BASE_URL="https://daan.lifenet.com.tw"
+          export SMOKE_ON_PI=1
+          export SMOKE_TEACHER_LOGIN="${{ secrets.SMOKE_TEACHER_LOGIN }}"
+          export SMOKE_TEACHER_PASSWORD="${{ secrets.SMOKE_TEACHER_PASSWORD }}"
+          export SMOKE_BRANCH_ID="${{ secrets.SMOKE_BRANCH_ID }}"
+
+          set -uo pipefail
+          cd /home/admin
+
+          echo "=== [1/8] Confirm production HEAD matches the approved SHA ==="
+          ACTUAL_HEAD="$(git rev-parse HEAD)"
+          if [ "$ACTUAL_HEAD" != "$EXPECTED_HEAD_SHA" ]; then
+            echo "❌ production HEAD ($ACTUAL_HEAD) != expected_head_sha ($EXPECTED_HEAD_SHA) -- refusing to touch .env"
+            echo "enable-result=REFUSED-WRONG-HEAD"
+            exit 1
+          fi
+          echo "✅ production HEAD == expected ($ACTUAL_HEAD)"
+
+          cd /home/admin/backend
+
+          echo "=== [2/8] Backup .env (timestamp + checksum) ==="
+          STAMP="$(date -u '+%Y-%m-%d_%H%M%SZ')"
+          BACKUP_DIR="/home/admin/backups/perfflag-activation"
+          mkdir -p "$BACKUP_DIR"
+          BACKUP_FILE="$BACKUP_DIR/env_pre_actual_duration_enable_${STAMP}.bak"
+          cp .env "$BACKUP_FILE"
+          chmod 600 "$BACKUP_FILE"
+          BACKUP_CHECKSUM="$(sha256sum "$BACKUP_FILE" | cut -d' ' -f1)"
+          echo "backup-file=$(basename "$BACKUP_FILE")"
+          echo "backup-checksum=$BACKUP_CHECKSUM"
+
+          echo "=== [3/8] Idempotent single-line edit (never truncate, never duplicate) ==="
+          KEY_COUNT_BEFORE="$(grep -c '^PERF_ACTUAL_DURATION_DEDUCTION=' .env || true)"
+          if [ "$KEY_COUNT_BEFORE" -gt 1 ]; then
+            echo "❌ found $KEY_COUNT_BEFORE existing PERF_ACTUAL_DURATION_DEDUCTION lines before edit -- .env is already inconsistent, refusing to proceed"
+            echo "enable-result=REFUSED-DIRTY-ENV"
+            exit 1
+          fi
+          if [ "$KEY_COUNT_BEFORE" -eq 1 ]; then
+            sed -i 's|^PERF_ACTUAL_DURATION_DEDUCTION=.*|PERF_ACTUAL_DURATION_DEDUCTION=true|' .env
+            echo "edit-action=replaced-existing-key"
+          else
+            [ -n "$(tail -c1 .env)" ] && echo >> .env
+            echo 'PERF_ACTUAL_DURATION_DEDUCTION=true' >> .env
+            echo "edit-action=appended-new-key"
+          fi
+          KEY_COUNT_AFTER="$(grep -c '^PERF_ACTUAL_DURATION_DEDUCTION=' .env || true)"
+          if [ "$KEY_COUNT_AFTER" -ne 1 ]; then
+            echo "❌ after edit, key appears $KEY_COUNT_AFTER times (expected exactly 1) -- restoring backup immediately"
+            cp "$BACKUP_FILE" .env
+            echo "enable-result=FAILED-DUPLICATE-KEY-ROLLED-BACK"
+            exit 1
+          fi
+          echo "✅ exactly one PERF_ACTUAL_DURATION_DEDUCTION line present"
+
+          rollback() {
+            echo "=== ROLLBACK: restoring $BACKUP_FILE ==="
+            cp "$BACKUP_FILE" .env
+            rm -f bootstrap/cache/packages.php bootstrap/cache/services.php
+            php artisan optimize
+            php artisan opcache:reset 2>/dev/null || true
+            HEALTH_AFTER_ROLLBACK="$(curl -sk https://daan.lifenet.com.tw/api/v1/health | python3 -c "import sys,json;print(json.load(sys.stdin).get('status','?'))" 2>/dev/null || echo error)"
+            echo "rollback-performed=true"
+            echo "post-rollback-health=$HEALTH_AFTER_ROLLBACK"
+          }
+
+          echo "=== [4/8] Rebuild cache the repo-approved way (NOT config:clear/optimize:clear) ==="
+          rm -f bootstrap/cache/packages.php bootstrap/cache/services.php
+          php artisan optimize
+          php artisan opcache:reset 2>/dev/null && echo "✅ OPcache reset" || echo "⚠️ OPcache reset failed (non-fatal, TTL will clear it)"
+
+          echo "=== [5/8] Verify the EFFECTIVE Laravel config value (not just .env text) ==="
+          EFFECTIVE="$(php artisan tinker --execute="echo config('perfflags.actual_duration_deduction_enabled') ? 'true' : 'false';" 2>/dev/null | tail -1)"
+          echo "effective-config-value=$EFFECTIVE"
+          if [ "$EFFECTIVE" != "true" ]; then
+            echo "❌ effective config did not become true after cache rebuild"
+            rollback
+            echo "enable-result=FAILED-CONFIG-NOT-EFFECTIVE-ROLLED-BACK"
+            exit 1
+          fi
+          echo "✅ effective config confirmed true"
+
+          echo "=== [6/8] Health check ==="
+          HEALTH="$(curl -sk https://daan.lifenet.com.tw/api/v1/health | python3 -c "import sys,json;print(json.load(sys.stdin).get('status','?'))" 2>/dev/null || echo error)"
+          echo "health-status=$HEALTH"
+          if [ "$HEALTH" != "ok" ]; then
+            echo "❌ health check failed after enabling flag"
+            rollback
+            echo "enable-result=FAILED-HEALTH-ROLLED-BACK"
+            exit 1
+          fi
+
+          echo "=== [7/8] Full authenticated smoke suite ==="
+          if ! bash /home/admin/scripts/post-merge-smoke.sh; then
+            echo "❌ smoke suite failed after enabling flag"
+            rollback
+            echo "enable-result=FAILED-SMOKE-ROLLED-BACK"
+            exit 1
+          fi
+          echo "✅ smoke suite passed"
+
+          echo "=== [8/8] Existing-course regression spot check (read-only) ==="
+          DB_USER="$(grep '^DB_USERNAME=' .env | cut -d= -f2-)"
+          DB_PASS="$(grep '^DB_PASSWORD=' .env | cut -d= -f2-)"
+          DIST="$(mysql -N -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASS" AllTrue -e \
+            "SELECT deduction_basis, COUNT(*) FROM StudentClass GROUP BY deduction_basis;" 2>/dev/null)"
+          echo "deduction_basis-distribution:"
+          echo "$DIST"
+          UNEXPECTED="$(echo "$DIST" | awk -F'\t' '$1!="fixed_session" && $1!="" {print}')"
+          if [ -n "$UNEXPECTED" ]; then
+            echo "⚠️ non-fixed_session courses already present (expected only if a designated test course exists):"
+            echo "$UNEXPECTED"
+          else
+            echo "✅ every existing course is still fixed_session"
+          fi
+
+          echo "enable-result=SUCCESS"
+          ENDSSH
+          RESULT=$?
+          if ! grep -q '^enable-result=SUCCESS$' /tmp/enable-result.txt; then
+            echo "::error::enable_backend did not report SUCCESS -- see log above. .env has been restored to its pre-run state."
+            exit 1
+          fi
+          exit "$RESULT"
+
+      - name: Compose audit artifact (redacted)
+        if: always()
+        run: |
+          {
+            echo "action=enable_backend"
+            echo "workflow_run_id=${{ github.run_id }}"
+            echo "triggered_by=${{ github.actor }}"
+            echo "expected_head_sha=${{ github.event.inputs.expected_head_sha }}"
+            echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "---- redacted result log ----"
+            grep -vE 'DB_PASS|SMOKE_TEACHER_PASSWORD|password' /tmp/enable-result.txt 2>/dev/null || true
+          } > /tmp/enable-audit.txt
+
+      - name: Upload audit artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: actual-duration-enable-${{ github.run_id }}
+          path: /tmp/enable-audit.txt
+          retention-days: 90
+
+      - name: Remove local key material
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
+
+  disable_backend:
+    name: Disable PERF_ACTUAL_DURATION_DEDUCTION (primary runtime rollback)
+    needs: guard
+    if: github.event.inputs.action == 'disable_backend'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Disable and verify
+        run: |
+          set -uo pipefail
+          ssh -i ~/.ssh/deploy_key \
+            "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" bash -s \
+            << 'ENDSSH' | tee /tmp/disable-result.txt
+          set -uo pipefail
+          cd /home/admin/backend
+
+          echo "=== [1/5] Backup .env (timestamp + checksum) ==="
+          STAMP="$(date -u '+%Y-%m-%d_%H%M%SZ')"
+          BACKUP_DIR="/home/admin/backups/perfflag-activation"
+          mkdir -p "$BACKUP_DIR"
+          BACKUP_FILE="$BACKUP_DIR/env_pre_actual_duration_disable_${STAMP}.bak"
+          cp .env "$BACKUP_FILE"
+          chmod 600 "$BACKUP_FILE"
+          echo "backup-file=$(basename "$BACKUP_FILE")"
+          echo "backup-checksum=$(sha256sum "$BACKUP_FILE" | cut -d' ' -f1)"
+
+          echo "=== [2/5] Idempotent single-line edit ==="
+          KEY_COUNT_BEFORE="$(grep -c '^PERF_ACTUAL_DURATION_DEDUCTION=' .env || true)"
+          if [ "$KEY_COUNT_BEFORE" -eq 1 ]; then
+            sed -i 's|^PERF_ACTUAL_DURATION_DEDUCTION=.*|PERF_ACTUAL_DURATION_DEDUCTION=false|' .env
+            echo "edit-action=replaced-existing-key"
+          else
+            [ -n "$(tail -c1 .env)" ] && echo >> .env
+            echo 'PERF_ACTUAL_DURATION_DEDUCTION=false' >> .env
+            echo "edit-action=appended-new-key (was absent, which already meant false by default)"
+          fi
+          KEY_COUNT_AFTER="$(grep -c '^PERF_ACTUAL_DURATION_DEDUCTION=' .env || true)"
+          if [ "$KEY_COUNT_AFTER" -ne 1 ]; then
+            echo "❌ after edit, key appears $KEY_COUNT_AFTER times -- restoring backup"
+            cp "$BACKUP_FILE" .env
+            echo "disable-result=FAILED-DUPLICATE-KEY-ROLLED-BACK"
+            exit 1
+          fi
+
+          echo "=== [3/5] Rebuild cache the repo-approved way ==="
+          rm -f bootstrap/cache/packages.php bootstrap/cache/services.php
+          php artisan optimize
+          php artisan opcache:reset 2>/dev/null && echo "✅ OPcache reset" || echo "⚠️ OPcache reset failed (non-fatal)"
+
+          echo "=== [4/5] Verify the EFFECTIVE Laravel config value ==="
+          EFFECTIVE="$(php artisan tinker --execute="echo config('perfflags.actual_duration_deduction_enabled') ? 'true' : 'false';" 2>/dev/null | tail -1)"
+          echo "effective-config-value=$EFFECTIVE"
+          if [ "$EFFECTIVE" != "false" ]; then
+            echo "❌ effective config did not become false -- this is the rollback path itself failing, treat as urgent"
+            echo "disable-result=FAILED-CONFIG-STILL-TRUE"
+            exit 1
+          fi
+
+          echo "=== [5/5] Health check ==="
+          HEALTH="$(curl -sk https://daan.lifenet.com.tw/api/v1/health | python3 -c "import sys,json;print(json.load(sys.stdin).get('status','?'))" 2>/dev/null || echo error)"
+          echo "health-status=$HEALTH"
+          if [ "$HEALTH" != "ok" ]; then
+            echo "❌ health check failed after disabling flag -- this is the rollback path itself failing, treat as urgent"
+            echo "disable-result=FAILED-HEALTH"
+            exit 1
+          fi
+
+          echo "disable-result=SUCCESS"
+          ENDSSH
+          RESULT=$?
+          if ! grep -q '^disable-result=SUCCESS$' /tmp/disable-result.txt; then
+            echo "::error::disable_backend did not report SUCCESS -- see log above. This is the rollback path; escalate immediately."
+            exit 1
+          fi
+          exit "$RESULT"
+
+      - name: Compose audit artifact (redacted)
+        if: always()
+        run: |
+          {
+            echo "action=disable_backend"
+            echo "workflow_run_id=${{ github.run_id }}"
+            echo "triggered_by=${{ github.actor }}"
+            echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "---- redacted result log ----"
+            grep -vE 'DB_PASS|password' /tmp/disable-result.txt 2>/dev/null || true
+          } > /tmp/disable-audit.txt
+
+      - name: Upload audit artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: actual-duration-disable-${{ github.run_id }}
+          path: /tmp/disable-audit.txt
+          retention-days: 90
+
+      - name: Remove local key material
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
+
+  verify_backend:
+    name: Verify current state (read-only)
+    needs: guard
+    if: github.event.inputs.action == 'verify_backend'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Read production HEAD, effective flag, schema, and course distribution
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key \
+            "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" bash -s \
+            << 'ENDSSH' | tee /tmp/verify-output.txt
+          set -euo pipefail
+          cd /home/admin
+          echo "production-head=$(git rev-parse HEAD)"
+
+          cd backend
+          EFFECTIVE="$(php artisan tinker --execute="echo config('perfflags.actual_duration_deduction_enabled') ? 'true' : 'false';" 2>/dev/null | tail -1)"
+          echo "effective-config-value=$EFFECTIVE"
+
+          HEALTH="$(curl -sk https://daan.lifenet.com.tw/api/v1/health | python3 -c "import sys,json;print(json.load(sys.stdin).get('status','?'))" 2>/dev/null || echo error)"
+          echo "health-status=$HEALTH"
+
+          DB_USER="$(grep '^DB_USERNAME=' .env | cut -d= -f2-)"
+          DB_PASS="$(grep '^DB_PASSWORD=' .env | cut -d= -f2-)"
+
+          echo "schema-columns:"
+          mysql -N -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASS" AllTrue -e \
+            "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='StudentClass' AND COLUMN_NAME IN ('standard_lesson_minutes','deduction_basis');" 2>/dev/null
+
+          echo "deduction_basis-distribution:"
+          mysql -N -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASS" AllTrue -e \
+            "SELECT deduction_basis, COUNT(*) FROM StudentClass GROUP BY deduction_basis;" 2>/dev/null
+
+          echo "actual_duration-course-ids-only-no-pii:"
+          mysql -N -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASS" AllTrue -e \
+            "SELECT ID FROM StudentClass WHERE deduction_basis='actual_duration';" 2>/dev/null
+          ENDSSH
+
+      - name: Compose audit artifact (redacted)
+        run: |
+          {
+            echo "action=verify_backend"
+            echo "workflow_run_id=${{ github.run_id }}"
+            echo "triggered_by=${{ github.actor }}"
+            echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "---- output ----"
+            grep -vE 'DB_PASS|password' /tmp/verify-output.txt 2>/dev/null || true
+          } > /tmp/verify-audit.txt
+
+      - name: Upload audit artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: actual-duration-verify-${{ github.run_id }}
+          path: /tmp/verify-audit.txt
+          retention-days: 90
+
+      - name: Remove local key material
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
