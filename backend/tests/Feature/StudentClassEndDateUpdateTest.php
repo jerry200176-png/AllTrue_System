@@ -33,6 +33,7 @@ class StudentClassEndDateUpdateTest extends TestCase
 
         $course = StudentClass::create([
             'StudentID' => $student->id,
+            'GradeID' => 1,
             'SubjectID' => 66,
             'TeacherID' => $teacher->id,
             'by1' => 1,
