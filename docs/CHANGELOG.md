@@ -9,7 +9,7 @@
 - 第一筆扣堂 ledger 寫入後，`standard_lesson_minutes`、`deduction_basis`、`SessionCount` 由 `BillingContractLockGuard` 在**後端**鎖定（前端變灰只是 UX）。v1 刻意不提供任何扣堂後的契約修正管道——額度仍由 `SessionCount × standard_lesson_minutes` 推導，事後改標準堂長等於重新解釋歷史，宣稱「只影響未來」會是假保證；要改就結掉重開。
 - v1 範圍外：跨期借用／自動拆堂（D3 不做）、共用課程包（D4 雙向排除，422 明確拒絕）、月結制（422 拒絕）、額度授予 ledger（D7 延後）。
 - **Dark launch，兩個開關缺一不可**：`PERF_ACTUAL_DURATION_DEDUCTION`（環境）與 `StudentClass.deduction_basis`（每門課）；前端另有編譯期 `ACTUAL_DURATION_DEDUCTION_ENABLED`。三者預設皆為關。Fail-safe 而非 fail-open：環境旗標關閉時，已標記 `actual_duration` 的課程扣堂行為完全等同 `fixed_session`，因此關掉旗標就是完整回滾，沒有資料要遷移或清理。建課 API 同樣受環境旗標管制，旗標關閉時直接拒絕建立這類課程，避免出現「契約寫著按時長計費、實際卻整堂扣」的課。
-- 另附唯讀盤點指令 `php artisan scheduling:nonstandard-duration-inventory`（不寫任何資料），供啟用前評估現存排課時長與計價單位不一致的規模。
+- 另附唯讀盤點指令 `php artisan sessions:report-nonstandard-duration`（不寫任何資料，輸出開頭明示 `READ_ONLY=true`），供啟用前評估現存排課時長與計價單位不一致的規模；`--details` 只帶 ID，不輸出學生姓名／電話／RFID。
 - 既有課程行為零變化：所有現存課程都是 `fixed_session`（欄位預設值），且旗標出廠即關。後端 Feature 全套 1530 測試、6436 assertions 全綠；PHPStan 無新增錯誤、未動 baseline。
 - 上線步驟與回滾程序見 `docs/RUNBOOK_ACTUAL_DURATION_ACTIVATION.md`。**本次僅完成合併，尚未在正式環境執行任何部署、migration、旗標開啟或資料異動。**
 

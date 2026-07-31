@@ -43,10 +43,26 @@ last_reviewed: 2026-07-31
 
 ```bash
 # 在 Pi 上唯讀執行（⛔ 不要加任何 --fix 之類的旗標，它也沒有）
-php artisan scheduling:nonstandard-duration-inventory
+php artisan sessions:report-nonstandard-duration
+
+# 常用選項
+php artisan sessions:report-nonstandard-duration --campus=1     # 限定單一分校
+php artisan sessions:report-nonstandard-duration --json         # 機器可讀輸出
+php artisan sessions:report-nonstandard-duration --details      # 附 StudentClassID／ClassSessionID／CampusID
 ```
 
-輸出會列出目前排課時長與課程計價單位不一致的課程數量、分校分布，以及已發生（happened）與尚未發生（planned）的分別。
+輸出開頭會明示 `READ_ONLY=true`。`--details` 只會帶出 ID，**不會**輸出學生姓名、電話或 RFID。
+
+實際輸出長這樣：
+
+```
+RFC non-standard-duration Phase 0A inventory (READ_ONLY=true)
+generated_at=... courses_scanned=2
+B1 mismatch vs each course own contract: courses_with_SessionDuration=2 affected_courses=0 | happened: sessions=0 courses=0 | planned: sessions=0 courses=0
+B2 ledger adoption: rows_with_minutes=0 courses_with_minutes=0 courses_partial=0 reverse_net_minutes_nonzero=0
+```
+
+B1 是「排課時長與該課程自己的契約時長不符」的規模，並且分成**已發生**（happened，已經扣過堂）與**尚未發生**（planned，還能改）。B2 是分鐘制 ledger 的採用情形。
 
 判讀：
 - 數量為 0 → 沒有現存受影響課程，啟用風險最低（只影響之後新建的課）。
