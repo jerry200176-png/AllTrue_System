@@ -1,24 +1,24 @@
 ---
 owner: jerry (CEO)
-status: Implemented in main, NOT enabled in production (flag off) — v3
+status: Backend + frontend flags live in production; no production course walked yet — v4
 review_cycle: on next founder review
 last_reviewed: 2026-07-31
 ---
 
 # AllTrue 非標準課程時長調查報告
 
-> **Status（2026-07-31 更新）：已合併進 `main`，但**尚未在正式環境啟用**。**
-> Phase 0A/0B/1/2 已實作、測試、通過 CI、merge 進 `main`（#1539 #1540 #1541 #1542 #1543 #1544 #1546 #1547）。
-> 環境旗標 `PERF_ACTUAL_DURATION_DEDUCTION` 與前端 `ACTUAL_DURATION_DEDUCTION_ENABLED` 皆為 **false**，
-> 所有既有課程仍為 `fixed_session`，因此**正式環境行為零變化**。
-> **未執行**任何正式環境部署、migration、旗標開啟、測試課程建立或資料異動——這些是 Founder 的決定。
-> 上線與回滾步驟見 [`docs/RUNBOOK_ACTUAL_DURATION_ACTIVATION.md`](../RUNBOOK_ACTUAL_DURATION_ACTIVATION.md)。
+> **Status（2026-07-31 更新，經 Founder 明確授權以 Founder-gated GitHub Actions workflow 執行）：**
+> 後端旗標 `PERF_ACTUAL_DURATION_DEDUCTION` 與前端旗標 `ACTUAL_DURATION_DEDUCTION_ENABLED` **皆已在正式環境開啟並經獨立驗證**。
+> 執行紀錄：`enable_backend`（workflow run 30629298501，對照 production HEAD `dc88926e`）→ 獨立 `verify_backend`（run 30629362904，非同一次執行）→ 前端旗標 PR #1552 merge → `deploy.yml` 自動部署（run 30629708223，`version.json hash=511ab1c7` = Pi git HEAD，health + 完整 authenticated smoke 全通過）。
+> 兩次獨立查詢皆確認：現存 1895 門課程全部仍是 `fixed_session`，沒有任何非預期的 `actual_duration` 課程。
+> **尚未完成**：正式環境的驗收案例（買 8 堂標準 120 分鐘、真實走 6 次 180 分鐘課程、驗證扣堂序列與超額不擋點名）——這一步需要 Founder 指定安全的測試學生／老師／分校身分，見隨附的整合請求。
+> 上線與回滾步驟（含目前現況表）見 [`docs/RUNBOOK_ACTUAL_DURATION_ACTIVATION.md`](../RUNBOOK_ACTUAL_DURATION_ACTIVATION.md)。
 >
 > 「已寫好程式碼」「測試通過」「已 merge」「已部署」「執行期已啟用」「正式環境已驗證」是六件不同的事。
-> 目前進度停在**已 merge**，後三者皆未發生。
+> 目前進度：前五項皆已完成並有稽核紀錄；只剩「正式環境已驗證」（走一次真實課程的完整案例）。
 >
 > §2–§8 的現況調查是在改動任何程式碼之前完成的，其 file:line 引用反映當時的 baseline；
-> §10–§15 描述的模型現在已經是 `main` 上的實作，不再只是提案。
+> §10–§15 描述的模型現在已經是 `main` 上的實作，且已在正式環境啟用。
 > **Amendment note (this version):** incorporates Founder decisions D1–D4 and 5 required corrections requested after the first draft was reviewed. The first draft's core investigation (§2–§8, evidence) stands; sections that assumed the first draft's proposed model was implementation-ready have been corrected. See the amendment report delivered alongside this commit for a section-by-section diff summary.
 > **Related:** `#613` A1（既有分鐘制地基）、`TD-059`、`docs/AI_REGRESSION_LESSONS.md §R59`、`docs/SYSTEM_TECH_GUIDE.md §5`、`docs/PRICING_CONTRACT.md`、`docs/ADR_006_prepaid_session_horizon_and_commitment.md`（不同問題，見 §8、§10）
 
