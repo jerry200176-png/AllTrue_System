@@ -19,6 +19,7 @@ use App\Services\ClassSessionMaterializationService;
 use App\Services\ContractScheduleMatcher;
 use App\Services\Scheduling\BillingContractLockGuard;
 use App\Services\Scheduling\DeductionBasis;
+use App\Services\Scheduling\LessonEntitlementCoverageCalculator;
 use App\Services\ClassSessionContractReflowService;
 use App\Services\FrontendSubjectIdResolver;
 use App\Services\SessionDeductionService;
@@ -410,6 +411,7 @@ class StudentClassController extends Controller
             $class->remaining_sessions = (int) ($class->RemainingSessions ?? 0);
             // 精確剩餘分鐘（部分補課顯示用）；null = 尚未分鐘化的舊資料。
             $class->remaining_minutes = $storedRemainingMinutes !== null ? (int) $storedRemainingMinutes : null;
+            $this->attachPreciseBalanceFields($class);
 
             if ($class->isPartOfPackage() && isset($packageMap[$class->PackageID])) {
                 $pkg = $packageMap[$class->PackageID];
@@ -5200,6 +5202,61 @@ class StudentClassController extends Controller
         $now = $now ?: Carbon::now();
         $sessionEndAt = Carbon::parse($sessionDate . ' ' . $endTime);
         return $sessionEndAt->lte($now);
+    }
+
+    /**
+     * RFC non-standard duration — precise balance fields for the course list.
+     *
+     * Minutes stay the integer authoritative truth; lesson equivalents are emitted as
+     * fixed-precision decimal STRINGS so no binary float becomes a billing figure and
+     * so the UI is not forced to re-derive them. The legacy integer `remaining_sessions`
+     * is kept for compatibility but must not be the only thing an actual-duration
+     * course displays: rounding 0.50 lessons to "1" is exactly the confusion this RFC
+     * exists to remove.
+     *
+     * `uncovered_minutes` is derived from the ledger, not stored — it is the amount by
+     * which real consumption has outrun the purchased entitlement, which the floored
+     * `RemainingMinutes` column cannot express.
+     */
+    private function attachPreciseBalanceFields(object $class): void
+    {
+        $basis = (string) ($class->deduction_basis ?? DeductionBasis::FIXED_SESSION);
+        $class->deduction_basis = $basis === '' ? DeductionBasis::FIXED_SESSION : $basis;
+        $standard = (int) ($class->standard_lesson_minutes ?? 0);
+        $class->standard_lesson_minutes = $standard > 0 ? $standard : null;
+
+        $remainingMinutes = $class->remaining_minutes;
+        $class->remaining_hours = $remainingMinutes === null
+            ? null
+            : $this->decimalString($remainingMinutes, 60);
+
+        // Lesson equivalents need a per-course standard; without one there is nothing
+        // meaningful to divide by, so they stay null rather than assuming a default.
+        if ($standard >= 1 && $remainingMinutes !== null) {
+            $calc = new LessonEntitlementCoverageCalculator();
+            $purchasedMinutes = (int) ($class->PurchasedMinutes ?? 0);
+            $class->remaining_lesson_equivalent = $calc->lessonEquivalent((int) $remainingMinutes, $standard);
+            $class->used_lesson_equivalent = $calc->lessonEquivalent(
+                max(0, $purchasedMinutes - (int) $remainingMinutes),
+                $standard
+            );
+        } else {
+            $class->remaining_lesson_equivalent = null;
+            $class->used_lesson_equivalent = null;
+        }
+    }
+
+    /** Fixed 2dp decimal string from integer minutes — never a binary float. */
+    private function decimalString(int $minutes, int $perUnit): string
+    {
+        $whole = intdiv($minutes, $perUnit);
+        $hundredths = intdiv(($minutes % $perUnit) * 200 + $perUnit, $perUnit * 2);
+        if ($hundredths >= 100) {
+            $whole++;
+            $hundredths -= 100;
+        }
+
+        return sprintf('%d.%02d', $whole, $hundredths);
     }
 
     /**
