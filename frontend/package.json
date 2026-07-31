@@ -27,7 +27,7 @@
     "test:scroll-lock": "node src/lib/useScrollLock.test.js",
     "test:course-pricing": "node src/lib/coursePricing.test.js",
     "test:scheduler-session-expand": "node src/lib/schedulerSessionExpand.test.js",
-    "test:lesson-coverage": "node src/lib/lessonCoverage.test.js",
+    "test:lesson-coverage": "node src/lib/lessonCoverage.test.js && vitest run src/components/__tests__/UniversalClassSchedulerActualDuration.test.js",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
     "test:unit:cov": "vitest run --coverage",
