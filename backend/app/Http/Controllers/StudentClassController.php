@@ -3500,6 +3500,7 @@ class StudentClassController extends Controller
         if (array_key_exists('room_id', $input)) $mappedData['room_id'] = $input['room_id'] ? (int) $input['room_id'] : null;
         if (array_key_exists('settlement_day', $input)) $mappedData['settlement_day'] = $input['settlement_day'] !== null && $input['settlement_day'] !== '' ? (int) $input['settlement_day'] : null;
         if (array_key_exists('monthly_sessions', $input)) $mappedData['monthly_sessions'] = $input['monthly_sessions'] !== null && $input['monthly_sessions'] !== '' ? (int) $input['monthly_sessions'] : null;
+        if (array_key_exists('end_date', $input)) $mappedData['EndDate'] = $input['end_date'] ?: null;
         if (array_key_exists('Memo', $input)) $mappedData['Memo'] = $input['Memo'];
         if (array_key_exists('memo', $input)) $mappedData['Memo'] = $input['memo'];
 
