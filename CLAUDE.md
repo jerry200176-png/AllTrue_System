@@ -96,7 +96,7 @@ Palace：`~/.mempalace/palace`（local-first）。權威文件仍在 git markdow
 違反會導致課程消失或同一堂掛兩位老師。回歸測試：`npm run test:calendar`。
 
 ### G-008：家長入口更新卡只吃 `docs/PARENT_UPDATES.yml`（禁止 CHANGELOG 關鍵字推導）
-教職員卡仍由 CHANGELOG 衍生；家長卡必須有 explicit projection（title/summary/details/效期）。改 YAML 或 CHANGELOG 後都跑 `npm run sync-release-notes` 並提交 generated 檔。詳見 §R45。
+教職員卡唯一來源 `docs/STAFF_UPDATES.yml`（§R85）；家長卡唯一來源 `docs/PARENT_UPDATES.yml`（§R45）。CHANGELOG 只產草稿、不得自動發布。改 YAML 後跑 `npm run sync-release-notes` 並提交 generated 檔。
 
 ### G-009：課程「繳費狀態」是雙真相 OR 邏輯，`StudentClass.Paid` 壓不過帳單付款
 `payment_status = Paid=1 或 Invoice 有效付款`（`StudentClassController.php` summary 段）。只要帳單有未作廢的 Payment，課程管理切「未繳費」會被靜默蓋回「已繳費」；要先到帳務作廢誤登款項。另：`update()` 的 preservedDelta 會把 `Charge − Rate×數量` 的差額當手動微調永久保留——若差額來自錯誤舊資料，UI 怎麼改都改不回（GitHub #798/#799，in-app #158/#159）。
@@ -105,7 +105,14 @@ Palace：`~/.mempalace/palace`（local-first）。權威文件仍在 git markdow
 行事曆/點名/評量的來源真相是**已物化的 `ClassSession`**（非 `schedules` 模板），經 `class-sessions` API（`branch_id`+`start`/`end`）→ 前端 `mergeWeekCalendarOccurrences()`。**判定「課表漏顯/數量不對」前，先查 DB**：`ClassSession JOIN StudentClass JOIN Student.CampusID` by `SessionDate`，DB 數量 = API 數量 = 真相。週日/低量日只有少數堂是**正常**（補習班週日課少），主任週檢視是依時段聚合成「堂」（例：2026-06-28 新莊分校 = 3 時段 / 12 筆 student-session，皆正確，非資料遺失）。
 **但 count 模式（預付包堂）課程目前無「向前產生 session」的排程 job**——`Kernel.php` 只跑 reconcile/close-orphans，`schedules:backfill-class-sessions` 只能從既有 `schedules` 物化、無法向前生成。導致已付堂數未物化、行事曆向前看不到 = 系統性 P0（**#1062**，全分校約 2,000 堂預付堂卡住）。每日 03:40 已排 `sessions:audit-stranded` 稽核；根因修復（向前生成 + 永不遺失已付餘額）屬 owner-gated 紅區。產品／架構決策包（**Accepted — Phase 0 evidence authorized**，非 implemented）：[`docs/ADR_006_prepaid_session_horizon_and_commitment.md`](docs/ADR_006_prepaid_session_horizon_and_commitment.md)——Schedule Commitment → materialize → pool coverage；禁止餘額猜堂。
 
-完整 Gotchas G-001 ~ G-010：見 `.cursorrules` §核心資料表 gotcha 或 `alltrue-system.mdc`。
+### G-011：「一堂 = 幾分鐘」是**每門課自己的**設定，沒有全公司統一值；契約在第一次扣堂後鎖死
+`StudentClass.standard_lesson_minutes`（計費標準堂長）與 `SessionDuration`（排課時長）是**兩件事**。同樣一次 180 分鐘的課，在標準 90 / 120 / 180 分鐘的課程裡分別扣 **2.00 / 1.50 / 1.00** 堂；買 8 堂分別 = 720 / 960 / 1440 分鐘。
+**後端沒有任何 fallback 到 120**：`resolvedStandardLessonMinutes()` 未設定時回傳 `null`，不會退回 `SessionDuration` 也不會退回 120；建課表單的 `120` 只是輸入框初值，一定會隨 payload 明確送出。任何「AllTrue 一堂固定 120 分鐘」「8 堂 = 16 小時」「3 小時課永遠扣 1.5 堂」的假設都是 bug。
+**兩個旗標缺一不可且皆預設關**：`perfflags.actual_duration_deduction_enabled`（環境）＋ `deduction_basis`（每門課）。旗標關閉時，已標記 `actual_duration` 的課行為**完全等同** `fixed_session`（fail-safe，非 fail-open），因此關旗標＝完整回滾、無資料要清。
+**第一筆扣堂 ledger 之後**，`standard_lesson_minutes`／`deduction_basis`／`SessionCount` 由 `BillingContractLockGuard` 在**後端**鎖定（回 422）；前端變灰只是 UX。v1 **不提供**任何扣堂後修正管道——額度仍由 `SessionCount × standard_lesson_minutes` 推導，事後改標準堂長等於重新解釋歷史，宣稱「只影響未來」是假保證。要改就結掉重開。
+**超額永遠不擋點名**：確認只發生在建課階段（D5）。若出現「因額度不足而無法點名」＝ bug，先關旗標。上線／回滾見 [`docs/RUNBOOK_ACTUAL_DURATION_ACTIVATION.md`](docs/RUNBOOK_ACTUAL_DURATION_ACTIVATION.md)。
+
+完整 Gotchas G-001 ~ G-011：見 `.cursorrules` §核心資料表 gotcha 或 `alltrue-system.mdc`。
 
 ---
 

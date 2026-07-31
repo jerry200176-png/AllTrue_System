@@ -120,12 +120,13 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 4. **In-app Bug 回報**（分診／上線後回寫）：`docs/CHAT_BUG_SYSTEM.md` §3.6–§3.7、`AI_REGRESSION_LESSONS.md` §R51／§R53；**關閉閘門** → `docs/GUIDE_BUG_CLOSURE_GATE.md`；**內部 ID 外洩盤點** → [`docs/GUIDE_UX_INTERNAL_IDENTIFIER_AUDIT.md`](GUIDE_UX_INTERNAL_IDENTIFIER_AUDIT.md)
 5. **In-app Bug 公開回覆白話範本**：`docs/GUIDE_SUPPORT_REPLY_MACROS.md`（10 個 macro，對應狀態機；送出前跑禁用詞檢查）
 6. **外部工程技能包（選用）**：[`docs/GUIDE_AGENT_SKILLS.md`](GUIDE_AGENT_SKILLS.md) — addyosmani/agent-skills ＋ [Leonxlnx/taste-skill](https://github.com/Leonxlnx/taste-skill) 本地化（§taste-skill）；[`docs/GUIDE_ALLTRUE_AGENT_SYSTEM_V1.md`](GUIDE_ALLTRUE_AGENT_SYSTEM_V1.md) — AllTrue 本地化 `.cursor/skills/alltrue-*`
-7. **資料修復／事故 execution package（需核准）**：[`docs/incidents/189-191-data-repair-plan.md`](incidents/189-191-data-repair-plan.md)、[`docs/incidents/189-191-execution-package.md`](incidents/189-191-execution-package.md)、[`docs/incidents/190-historical-billing-repair-plan.md`](incidents/190-historical-billing-repair-plan.md)、[`docs/incidents/190-reconciliation-report.md`](incidents/190-reconciliation-report.md)、[`docs/incidents/190-billing-technical-options.md`](incidents/190-billing-technical-options.md)、[`docs/incidents/189-191-dryrun-report.md`](incidents/189-191-dryrun-report.md)、[#1127 scheduler output evidence](incidents/1127-scheduler-evidence-execution-package.md)、[2026-07-18 新店出缺勤雙列](incidents/2026-07-18-xindian-duplicate-attendance-slots.md)、[scheduled-cross-sc execution](incidents/2026-07-18-scheduled-cross-sc-execution-package.md)
+7. **資料修復／事故 execution package（需核准）**：[`docs/incidents/189-191-data-repair-plan.md`](incidents/189-191-data-repair-plan.md)、[`docs/incidents/189-191-execution-package.md`](incidents/189-191-execution-package.md)、[`docs/incidents/190-historical-billing-repair-plan.md`](incidents/190-historical-billing-repair-plan.md)、[`docs/incidents/190-reconciliation-report.md`](incidents/190-reconciliation-report.md)、[`docs/incidents/190-billing-technical-options.md`](incidents/190-billing-technical-options.md)、[`docs/incidents/189-191-dryrun-report.md`](incidents/189-191-dryrun-report.md)、[#1127 scheduler output evidence](incidents/1127-scheduler-evidence-execution-package.md)、[2026-07-18 新店出缺勤雙列](incidents/2026-07-18-xindian-duplicate-attendance-slots.md)、[scheduled-cross-sc execution](incidents/2026-07-18-scheduled-cross-sc-execution-package.md)、[木柵高瑞樸 7/30 GHA containment](incidents/muzha-gaorui-2026-07-30-option1-execution-package.md)（[#1466](https://github.com/jerry200176-png/AllTrue_System/pull/1466)）
 8. **Bug 關閉閘門**：[`docs/GUIDE_BUG_CLOSURE_GATE.md`](GUIDE_BUG_CLOSURE_GATE.md) — 根因/測試/驗證/回覆/文件/回滾六項必填
 9. **Release Execution Package**：[`docs/GUIDE_RELEASE_EXECUTION_PACKAGE.md`](GUIDE_RELEASE_EXECUTION_PACKAGE.md) — production 變更標準模板
 10. **#957 D1 Sprint**：[`docs/refactor/957-d1-sprint-design.md`](refactor/957-d1-sprint-design.md)、[`docs/runbooks/957-d1-deploy-runbook.md`](runbooks/957-d1-deploy-runbook.md)、[`docs/runbooks/957-d1-production-readiness-report.md`](runbooks/957-d1-production-readiness-report.md)、[`docs/runbooks/957-d1-pcr.md`](runbooks/957-d1-pcr.md)
-11. **Course Continuity（#1382）**：[`docs/architecture/RFC_COURSE_CONTINUITY.md`](architecture/RFC_COURSE_CONTINUITY.md) · cohort SQL [`scripts/course-continuity-cohort-discovery.sql`](../scripts/course-continuity-cohort-discovery.sql) — **≠** #1130 歷史修復；#1378 Memo utf8mb4 REP 見 PR #1380
+11. **Course Continuity（#1382）**：[`docs/architecture/RFC_COURSE_CONTINUITY.md`](architecture/RFC_COURSE_CONTINUITY.md) · cohort SQL [`scripts/course-continuity-cohort-discovery.sql`](../scripts/course-continuity-cohort-discovery.sql) — **≠** #1130 歷史修復；MVP API：`/api/v1/course-contract-groups`（空表 migrate；不物理 merge）
 12. **Platform opt from stars（規劃）**：[`docs/architecture/RFC_PLATFORM_OPTIMIZATION_FROM_STARS_2026.md`](architecture/RFC_PLATFORM_OPTIMIZATION_FROM_STARS_2026.md) — 每項優化附「參考 repo／要學／不要學／落地」；**不含業務碼改動**
+13. **非標準課程時長／分鐘制扣堂調查（規劃，Draft，Founder D1-D7 已拍板，Phase 0A/0B 工具已 merge）**：[`docs/architecture/RFC_NONSTANDARD_SESSION_DURATION_BILLING.md`](architecture/RFC_NONSTANDARD_SESSION_DURATION_BILLING.md) — 現況：`#613 A1` 分鐘制引擎僅覆蓋補課（`schedules.type='extra'`）；購買堂數與排課 occurrence 數量目前被 `EnrollmentService.php:210-222` 硬性等式驗證鎖死（§2.5，D6 拍板以既有 `session_plan` 為 canonical occurrence source）；扣堂 opt-in 採 `deduction_basis` 欄位（D2，R59 改寫提案見 §10，未套用至規則正文）；共用課程包／自動跨期拆帳／entitlement 事件溯源第一版明確排除（D3/D4/D7）；第 6 次超額採 soft block + 明確確認（D5）。**Phase 0A**（唯讀盤點 `sessions:report-nonstandard-duration`）與**Phase 0B**（純 coverage calculator + dry-run contract，`LessonEntitlementCoverageCalculator`／`NonstandardDurationCoveragePreviewContract`）已實作並通過測試，**未啟用任何 production write 或 runtime 扣堂行為變更**；Phase 1/2 詳細計畫見文件 §15；Founder 尚待拍板事項見 §14；技術債見 `TECH_DEBT.md` `TD-072`；**不含業務碼改動**
 
 ### 後端開發
 | 需要什麼 | 去哪裡找 |
@@ -151,6 +152,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | **SmartCalendar 受控拆分（#740）** | `docs/GUIDE_SMARTCALENDAR_REFACTOR.md`（元件清單、API、CSS 解耦決策）|
 | 行事曆回歸測試 | `npm run test:calendar`（修改任何 calendar merge 邏輯前必跑）|
 | 家長入口 UX、分眾版本公告 | `docs/PARENT_UPDATES.yml`（家長唯一來源）、`docs/ROLE_PLAYBOOK.md` §4、`docs/AI_REGRESSION_LESSONS.md` §R45；`npm run test:release-notes`（改 YAML / `releaseNotes.js` / 產生器時） |
+| 教職員版本更新（Staff Updates） | `docs/STAFF_UPDATES.yml`（教職員唯一來源）、`docs/GUIDE_STAFF_UPDATES.md`、`docs/AI_REGRESSION_LESSONS.md` §R85；CHANGELOG 只產草稿不自動發布 |
 | **家長帳號／學生綁定（ADR Accepted；PB-00 activation pending）** | Benchmark [`research/PARENT_BINDING_BENCHMARK.md`](research/PARENT_BINDING_BENCHMARK.md) · Architecture [`architecture/PARENT_IDENTITY_TARGET_ARCHITECTURE.md`](architecture/PARENT_IDENTITY_TARGET_ARCHITECTURE.md) · ADR [`adr/ADR-PARENT-STUDENT-BINDING.md`](adr/ADR-PARENT-STUDENT-BINDING.md) · UX [`product/PARENT_BINDING_UX_SPEC.md`](product/PARENT_BINDING_UX_SPEC.md) · Threat [`security/PARENT_BINDING_THREAT_MODEL.md`](security/PARENT_BINDING_THREAT_MODEL.md) · Rollout [`operations/PARENT_BINDING_ROLLOUT.md`](operations/PARENT_BINDING_ROLLOUT.md) · Issues [`product/parent-binding-implementation-issues/`](product/parent-binding-implementation-issues/) — **PB-00 = IMPLEMENTED / DEPLOYED — PRODUCTION ACTIVATION PENDING**（#1446 merged；#1436 closed by merge；Pi ops activation／`effective=true`／7-day baseline 未完成；PB-01–PB-09 未開始） |
 | `assume-unchanged` 藏檔導致 PR 漏 diff | `AI_REGRESSION_LESSONS.md` §R58 |
 
@@ -199,7 +201,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | **分層規則 + controller `DB::` ratchet** | `docs/ADR_003_layering_and_controller_db_ban.md`（新 DB:: 不得超基線；`node scripts/controller-db-ratchet.mjs`）|
 | **調課原子寫入邊界** | `docs/ADR_004_atomic_reschedule_boundary.md`（schedule chain／ClassSession／評量同交易，前端 committed gate）|
 | **排課多入口 × 具名 command 邊界** | `docs/ADR_005_scheduling_named_command_boundaries.md`（三 task surface；禁止 generic mutation；command 只收 intent target，不收回推導 domain truth）|
-| **預付堂次 horizon × Commitment（決策包）** | `docs/ADR_006_prepaid_session_horizon_and_commitment.md`（Accepted；Phase 0 **工具**=`sessions:report-prepaid-horizon-phase0`；sample `docs/artifacts/adr006-phase0-sample-report.json`；Ensure／production 數字未啟用）|
+| **預付堂次 horizon × Commitment（決策包）** | `docs/ADR_006_prepaid_session_horizon_and_commitment.md`（Accepted；Phase 0–3A **工具已 merge**；production／Ensure／coverage／#1483 migration **未啟用**）|
 
 ### 測試帳號 / 登入
 - `.cursor/.local/test-credentials.md` — 各角色帳密 + Browser MCP 踩坑 SOP
@@ -284,6 +286,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `docs/PRODUCT_OPS.md` | Post-release metrics review 與產品營運節奏 |
 | `docs/ADOPTION_QUALITY_METRICS.md` | 採用率與品質指標定義 |
 | `docs/RUNBOOK_ROLLBACK.md` | 回滾 SOP 與 rollback readiness 檢查 |
+| `docs/RUNBOOK_ACTUAL_DURATION_ACTIVATION.md` | 依實際時長扣堂的啟用與回滾（兩個旗標、盤點、限制）|
 | `docs/DAILY_CHECKLIST.md` | 每日例行檢查清單 |
 | `docs/SMOKE_TEST_RUNBOOK.md` | 部署後 smoke test SOP（`scripts/post-merge-smoke.sh`）|
 | `docs/DOCS_GOVERNANCE_SOP.md` | 文件治理節奏（已整合進本 INDEX §治理節奏；stub 供索引）|
@@ -430,7 +433,8 @@ Wings：`alltrue-sessions`（對話）、`alltrue-docs`（文件）、`alltrue-c
 | `DIRECTOR_PAYMENT_ALERT_RULES.md` | 繳費提醒邏輯 | **擅改前必問使用者**；用 `rg` 找條件 |
 | `SYSTEM_TECH_GUIDE.md` | 架構深度 | **只讀目錄對應章節**；預設不全讀 |
 | `CHANGELOG.md` | 近期上線事實 | 從最新日期往回；配合 `rg` |
-| `CHANGELOG → 公告卡` | 版本公告 | `npm run sync-release-notes`（改 CHANGELOG 後）|
+| `STAFF_UPDATES.yml → 教職員公告卡` | 版本更新頁 | `npm run sync-release-notes`（改 STAFF／PARENT YAML 後必跑）|
+| `CHANGELOG → changelogDraft` | AI 起草用草稿（不進 UI） | 同上；正式卡勿直接從 CHANGELOG 發布 |
 | `docs/archive/*.md` | 歷史草稿（已移入 archive）| **禁止通讀**；`rg` / MemPalace |
 
 ---

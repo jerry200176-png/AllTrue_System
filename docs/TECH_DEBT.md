@@ -458,12 +458,13 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
+| 狀態 | **Done**（2026-07-28，架構稽核備忘 Pattern A follow-up）|
 | 優先級 | P3 |
 | 發現日期 | 2026-05-31 |
 | 發現來源 | [REVIEW] #613 調查 |
-| 影響模組 | `ClassSessionController::recalculateSessionCounters`（private）|
+| 影響模組 | `ClassSessionController::recalculateSessionCounters`（private，已刪除）|
 | 描述 | 此方法以 count-based（completed+attended）重算 `RemainingSessions`，與權威引擎 `SessionDeductionService::recomputeCounters` 並存。調查確認目前**無任何 caller**（死碼），故不會覆寫 #613 的分鐘衍生值；但保留會誤導，且若日後被誤用會與分鐘制分歧。|
+| 清償紀錄 | 直接刪除該方法（採建議做法的「移除」選項，而非薄包裝委派——委派到一個沒有 caller 的方法沒有意義）。確認 `SessionDeductionService::recomputeCounters` 已涵蓋同等的 legacy `attended` 相容性（`whereIn('Status', ['completed','attended','late'])`），且更完整（含 `StudentSignIn`/ledger/orphan LearningRecord 訊號、分鐘制衍生）。原本透過 Reflection 呼叫此死碼的測試 `ClassSessionBatchApiTest::test_recalculate_session_counters_counts_legacy_attended_for_compatibility` 已改為直接呼叫 `SessionDeductionService::recomputeCounters()`，斷言不變。同時清掉 `phpstan-baseline.neon` 對應的「unused method」豁免項。與 R83/R84 同一類根因：衍生欄位的重算邏輯有第二份未接線的複製，是還沒發作的地雷。|
 | 建議做法 | 移除該方法，或改為薄包裝委派 `SessionDeductionService::recomputeCounters`，統一單一扣堂權威路徑。|
 | 清償成本估計 | 低（< 1hr）|
 | 不做的代價 | 死碼誤導後續開發者；潛在被誤用導致與分鐘制不一致 |
@@ -579,3 +580,61 @@
 | 建議做法 | 先寫 T3 PLAN/ARCH/SEC；批准後再 DEV。長期加 backend contract test + typed client／OpenAPI + deploy 後 authenticated synthetic。 |
 | 清償成本估計 | 高 |
 | 不做的代價 | 無法提供法定完整收據／PDF／作廢；但查看路徑已可用，不阻塞日常核帳 |
+
+---
+
+### TD-069：`ScheduleController::retroLeave()` 與 `ClassSessionController::handleRetroLeaveTransition()` 補請假邏輯重複，且尾端補課策略不一致
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P2 |
+| 發現日期 | 2026-07-28 |
+| 發現來源 | [REVIEW] R55 資源復活政策稽核時順手發現（架構稽核備忘 Pattern A/B 交界） |
+| 影響模組 | `ScheduleController::retroLeave()`、`ClassSessionController::handleRetroLeaveTransition()`、`ClassSessionController::voidAttendanceArtifacts()` |
+| 描述 | 兩個獨立 endpoint 都實作「已上課堂次補登請假」：作廢 `StudentSignIn`/`LearningRecord`（`VoidReason='補請假：已上課改請假'`）、`SessionDeductionService::reverseForSession(...,'retro_leave',...)` 沖回、`Status='leave_adjusted'`。**不是逐字複製**——經比對後尾端補課策略實際不同：`ClassSessionController` 呼叫 `tryExtendOnLeave()`（count-based，只在「有效堂次數 < SessionCount」時補一堂）；`ScheduleController::retroLeave()` 呼叫 `CourseLeaveCascadeService::appendTailAfterLeave()`（Founder Decision 2026-07-26 的 keep-future-dates-append-tail 政策），且額外在無任何簽到記錄時建立一筆 closed leave `StudentSignIn`（`ClassSessionController` 沒有這步）。與 R83/R84、TD-060、R55 同一類根因（同一決策兩處各自維護），但**consolidation 本身有實質風險**：不是單純刪重複，需先確認兩個尾端補課策略哪個才是現行正確政策（或本來就該依呼叫情境不同），貿然合併可能改變請假/補課的實際行為。 |
+| 建議做法 | 不建議直接合併。先確認：(1) 這兩個 endpoint 目前分別被哪些前端流程呼叫、是否有重疊 (2) `tryExtendOnLeave` 是否為舊政策的殘留（`appendTailAfterLeave` 明確引用較新的 Founder Decision），若是則评估汰換 `ClassSessionController` 那份改呼叫 `CourseLeaveCascadeService`。voidAttendanceArtifacts 的部分（作廢 sign-in/LR + reverseForSession）可以先安全抽成共用 helper，這段兩處確實一致。 |
+| 清償成本估計 | 中～高（半天以上，需先做行為盤點，不可只看程式碼相似度） |
+| 不做的代價 | 兩處補請假邏輯持續各自演進，未來若只改一邊（例如尾端補課規則再變），另一邊會悄悄落後，重演 R55 那種「兩處判斷各自維護、其中一份沒跟上」的缺口 |
+
+### TD-070：`SMOKE_DIRECTOR_USER`/`SMOKE_DIRECTOR_PASS` 未設定，`ui-smoke.yml` 的 director 路徑（含課程管理頁）從未真正執行過
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open（建議做法 (2) 已完成——`ui-smoke.yml` 新增「Warn if smoke secrets are missing」步驟，缺 secret 時印出 `::warning::` annotation，讓「這條防線目前是空的」在每次 CI run 都可見；(1) 補真正的測試帳密、(3) 部署後 synthetic check 仍待處理，見下方） |
+| 優先級 | P1 |
+| 發現日期 | 2026-07-29 |
+| 發現來源 | 課程管理頁 P0 整頁空白事故（主任回報，見 CHANGELOG 2026-07-29 fix(course-management)）事後根因鏈追查 |
+| 影響模組 | `.github/workflows/ui-smoke.yml`、`frontend/e2e/smoke.spec.js`（`UI smoke — director` describe block） |
+| 描述 | `smoke.spec.js` 早就寫了 `director: 課程管理頁與待補課面板載入` 測試（登入主任帳號 → 切到課程管理 → 斷言 0 個 `pageerror`），理論上今早引入 bug 的 PR #1409 應該過不了這條測試。但實測：`ui-smoke.yml` 讀取的 `secrets.SMOKE_DIRECTOR_USER`/`SMOKE_DIRECTOR_PASS` 是空字串，`smoke.spec.js:70` 的 `test.skip(!BASE \|\| !DIRECTOR.account, …)` 因此把整個 `UI smoke — director` describe block 靜默跳過——不是失敗、是「skipped」，PR 頁面顯示綠勾，看起來像測試通過。已在本次修復 PR #1502 的 CI run 裡重新確認：`SMOKE_DIRECTOR_USER: `／`SMOKE_DIRECTOR_PASS: `（空白）、`2 skipped`。這是本次事故完整根因鏈的最後一環：composable 沒被真正測試（R86）+ 沒有 TypeScript/ESLint no-undef 靜態檢查 + 唯一能攔住的 E2E 防線因缺 secret 而從未執行。 |
+| 建議做法 | (1) 由 repo owner 在 GitHub repo Settings → Secrets 補上一組**測試用**主任帳密（不要用真人 production 帳號；建議建立一個獨立、無敏感資料存取範圍的「主任角色 QA 帳號」）。(2) 更嚴格的修法：把「因缺 secret 而 skip」與「因程式碼問題而 skip」分開——目前 `test.skip()` 讓兩者外觀一致（都是灰色 skipped），建議 CI 另外加一個 assertion（例如 workflow 層印出 `::warning::SMOKE_DIRECTOR_* not set — director smoke path is not exercised`），讓「這條防線目前是空的」這件事在每次 CI run 都可見，而不是要翻 log 才看得到。(3) 中期可比照大型組織做法：對「頁面完全無法渲染」這類 P0 症狀，不應只靠 PR-time smoke test，應該在 `deploy.yml` 部署後跑一次最小 synthetic check（curl 或無頭瀏覽器打開 3–5 個高流量頁、確認無 JS exception）才把這次 deploy 視為成功，不成功則自動标记/通知，而非等使用者回報。 |
+| 清償成本估計 | 低（申請/建立測試帳號 + 補 GitHub secret，約 30 分鐘；CI 層的「可見 skip」改進約 1 小時） |
+| 不做的代價 | 這類「整頁完全空白」的 P0 前端 crash 會持續只能靠使用者主動回報才發現（本次事故從部署到主任回報間隔 4 小時以上），而 CI 頁面會持續顯示綠勾造成團隊誤以為有 E2E 防線，形成比「完全沒有測試」更危險的假安全感 |
+
+### TD-071：前端 ESLint 目前只開 `no-undef`，`no-unused-vars`／完整 recommended ruleset 尚未啟用
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P2 |
+| 發現日期 | 2026-07-29 |
+| 發現來源 | 課程管理頁 P0 事故修復時，順手加了 `frontend/eslint.config.js`（`no-undef` only, blocking, 已接進 `npm run build` 第一步） |
+| 影響模組 | `frontend/eslint.config.js`、`frontend/package.json`（`lint:no-undef` script） |
+| 描述 | `no-undef` 已驗證能攔住今天這類「引用未宣告變數」的 bug（用今天的實際 diff 反向驗證過：加回壞的那行會被抓到，`git stash` 復原）。但 `no-unused-vars` 試跑時在既有程式碼上噴了 134 個 false positive——原因是這批 `<script setup>` 裡宣告的 function/變數大多是給 `<template>` 用的，而目前 config 沒接 `eslint-plugin-vue` 的 template 分析（需要 `vue/setup-compiler-macros` 或走它的 recommended flat config + `vue-eslint-parser` 完整串接，而不是只用 parser 而已），單純開 `no-unused-vars` 會大量誤判既有程式碼有問題。 |
+| 建議做法 | 分階段：(1) 先接上 `eslint-plugin-vue` 的 `flat/recommended`（或至少讓 template 內的識別字使用能正確標記為「已使用」），跑一次看 false positive 是否消失。(2) 若跑出來是「真的未使用」的 dead code（不是 false positive），比照 `phpstan-baseline.neon`／`docs/design-hex-baseline-2026-06-06.json` 的既有模式做 baseline-gate（只擋新增，不強制清歷史債），避免一次性巨大 diff。(3) 之後再視情況評估是否導入完整 `eslint:recommended` 或 TypeScript（後者成本高很多，需要另外立案）。 |
+| 清償成本估計 | 中（vue-eslint-parser + eslint-plugin-vue 完整串接約半天；baseline 產生腳本仿造既有 hex/phpstan 模式再半天） |
+| 不做的代價 | 目前只防得住「引用未宣告變數」這一種錯誤；同一類「宣告了但沒接上」的殘留變數（例如 import 進來卻沒用、重構後留下的 dead helper）仍然只能靠 code review 肉眼抓 |
+
+### TD-072：非標準時長 Phase 0 — coverage calculator（preview）與 inventory reporter（既有資料盤點）是兩套獨立實作，未交叉驗證會收斂到同一個 `uncovered_minutes` 定義
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P3（Phase 1 開工前建議清償，尚未有任何 production 資料受影響） |
+| 發現日期 | 2026-07-30 |
+| 發現來源 | `RFC_NONSTANDARD_SESSION_DURATION_BILLING.md` Phase 0 closeout（Phase 0B calculator + Phase 0A reporter 同時實作時發現） |
+| 影響模組 | `App\Services\Scheduling\LessonEntitlementCoverageCalculator`（建立前 occurrence-by-occurrence 序列填充）、`App\Services\Scheduling\NonstandardDurationInventoryReporter::buildExistingOverage()`（既有資料 ledger SUM 聚合） |
+| 描述 | 兩者都在回答「uncovered_minutes 是多少」，但用兩條不同的計算路徑：calculator 是「依序逐一分配 occurrence」的演算法（用於建課前 preview），reporter 是「對 `session_deduction_ledger` 做 SUM(deduct)−SUM(reverse) 再與 purchased_minutes 相減」的聚合查詢（用於既有資料盤點）。兩者在數學上*應該*對同一組資料收斂到相同數字（因為循序填充與 net-sum 在「沒有 reverse 打亂順序」的情境下是等價的），但目前沒有測試證明兩者在同一組輸入上真的算出一致的 `uncovered_minutes`，尤其是有 `reverse`／`retro_leave` 事件把「淨消耗」打亂成非單調序列時，兩種方法是否仍然一致，尚未驗證。 |
+| 建議做法 | 新增 `CalculatorReporterCrossValidationTest`：用同一組（purchased_standard_units、standard_lesson_minutes、occurrence 序列 + 任意 reverse 事件）分別餵給 calculator 與 reporter 的既有資料版本（先寫入對應的 `ClassSession`/`session_deduction_ledger` fixture，再跑 reporter），斷言兩者的 `uncovered_minutes` 一致。若跑出不一致，須在 Phase 1 之前釐清哪一個是「正確」定義，並讓另一個對齊，避免 Phase 2 上線後 preview 顯示的數字與既有資料盤點對不起來造成主任/工程互相懷疑數字有誤。 |
+| 清償成本估計 | 低（半天內可寫完交叉驗證測試；若發現真的分歧，修正成本視分歧原因而定） |
+| 不做的代價 | Phase 1/2 上線後，若某門課程同時出現在「建課 preview 顯示的 uncovered」與「Phase 0A 報表顯示的 uncovered」，兩個數字不一致會讓人誤以為系統有 bug，實際上只是兩套從未交叉驗證過的獨立實作 |

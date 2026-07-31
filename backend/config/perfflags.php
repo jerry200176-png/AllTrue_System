@@ -47,4 +47,15 @@ return [
     // Merge window (seconds): within this window, repeated feedback/reply events on the same
     // thread+direction are merged into a single push (anti-notification-fatigue). Default 600 = 10 min.
     'feedback_push_merge_window_seconds' => (int) env('PERF_FEEDBACK_PUSH_MERGE_WINDOW', 600),
+
+    // Actual-duration billing (RFC_NONSTANDARD_SESSION_DURATION_BILLING).
+    // DARK LAUNCH: default OFF. This is the environment-level "does this feature exist
+    // here" switch; StudentClass.deduction_basis is the per-course "does this course
+    // use it" switch. Both must be true for a session to consume minutes by its actual
+    // clock duration.
+    //
+    // Fail-safe, not fail-open: while this is false, a course already marked
+    // actual_duration still behaves exactly like fixed_session, so turning the flag
+    // back off is a complete rollback with no data migration.
+    'actual_duration_deduction_enabled' => (bool) env('PERF_ACTUAL_DURATION_DEDUCTION', false),
 ];

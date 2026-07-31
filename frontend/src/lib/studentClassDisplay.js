@@ -173,6 +173,25 @@ export function formatTuitionNewerCourseHint(row) {
   };
 }
 
+/**
+ * #1100/FD-3: director-facing warning when a leave-cascade extension of this
+ * course's end date reaches or passes a pre-purchased next course's start date.
+ * Display-only — the system never silently shifts the next course's start date.
+ */
+export function formatNewerCourseOverlapWarning(row) {
+  if (!row?.newer_course_overlap) {
+    return { show: false, primary: '', shortBadge: '' };
+  }
+  const endDate = formatStudentClassOpenDate(row?.current_course_end_date);
+  const startDate = formatStudentClassOpenDate(row?.newer_course_start_date);
+  const dates = endDate && startDate ? `（本期順延至 ${endDate}，新期開課 ${startDate}）` : '';
+  return {
+    show: true,
+    primary: `本期順延與下一期重疊，請調整${dates}`,
+    shortBadge: '期間重疊',
+  };
+}
+
 /** Trust / roster person label — never「學生 #id」. */
 export function formatDirectorPersonName(person) {
   const name = trimStr(person?.student_name || person?.name);

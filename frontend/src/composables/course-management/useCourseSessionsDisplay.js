@@ -14,6 +14,12 @@ import {
 } from '../../lib/classSessionsApi';
 import { describeSessionAttendanceSource } from '../../lib/attendanceSourceDisplay';
 import {
+  filterDisplayableSessions,
+  filterEffectiveSessions,
+  filterVisibleCancelledSessions,
+  rowOccupiesPurchasedQuota as rowOccupiesPurchasedQuotaShared,
+} from '../../lib/sessionOccurrenceFilter';
+import {
   buildSessionPlanningStatus,
   canMaterializeProjectedSession,
   planningStatusToLegacyWarning,
@@ -22,7 +28,6 @@ import {
 const LEAVE_STATUSES = new Set(['leave', 'leave_adjusted', 'excused']);
 const ATTENDED_SESSION_STATUSES = new Set(['completed', 'attended', 'late']);
 const SESSION_DISPLAY_CONSUMED = new Set(['completed', 'absent']);
-const SESSION_NOT_OCCUPYING_QUOTA = new Set(['cancelled', 'leave', 'leave_adjusted', 'excused']);
 
 export function useCourseSessionsDisplay({
   sessionsByCourse,
@@ -184,13 +189,22 @@ export function useCourseSessionsDisplay({
 
   const sessionUnits = (course) => {
     const rows = getCourseSessions(course);
-    return sortSessionViewModels(rows.filter((row) => String(row?.status || '').toLowerCase() !== 'cancelled'));
+    return sortSessionViewModels(filterEffectiveSessions(rows));
   };
 
-  const allSessionUnits = (course) => sortSessionViewModels(getCourseSessions(course));
+  /** Default chip grid: effective sessions only (no cancelled / internal placeholders). */
+  const primarySessionUnits = (course) => sessionUnits(course);
+
+  const allSessionUnits = (course) => sortSessionViewModels(
+    filterDisplayableSessions(getCourseSessions(course))
+  );
 
   const cancelledSessionCount = (course) =>
-    getCourseSessionRows(course).filter((row) => String(row?.status || '').toLowerCase() === 'cancelled').length;
+    filterVisibleCancelledSessions(getCourseSessionRows(course)).length;
+
+  const movedOrCancelledUnits = (course) => sortSessionViewModels(
+    filterVisibleCancelledSessions(getCourseSessionRows(course))
+  );
 
   const sessions = (course) => sessionDatesFromViewModels(sessionUnits(course));
 
@@ -208,11 +222,8 @@ export function useCourseSessionsDisplay({
 
   const isContractException = (row) => !!row?.isContractException;
 
-  const rowOccupiesPurchasedQuota = (row) => {
-    if (row?.isProjected) return false;
-    const status = String(row?.status || '').toLowerCase();
-    return !SESSION_NOT_OCCUPYING_QUOTA.has(status);
-  };
+  // Exceptions still occupy purchased quota (see schedule-occurrence: charge rescheduled against quota).
+  const rowOccupiesPurchasedQuota = (row) => rowOccupiesPurchasedQuotaShared(row, { exceptionsOccupyQuota: true });
 
   const isOverQuotaSession = (course, row) => {
     if (!row || course?.PackageID) return false;
@@ -509,8 +520,10 @@ export function useCourseSessionsDisplay({
     toggleDates,
     sessions,
     sessionUnits,
+    primarySessionUnits,
     allSessionUnits,
     cancelledSessionCount,
+    movedOrCancelledUnits,
     sessionRowKey,
     getSessionNumber,
     countNonLeaveSessions,
@@ -545,6 +558,5 @@ export function useCourseSessionsDisplay({
     loadEffectiveSessionDates,
     LEAVE_STATUSES,
     ATTENDED_SESSION_STATUSES,
-    SESSION_NOT_OCCUPYING_QUOTA,
   };
 }

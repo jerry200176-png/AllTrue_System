@@ -33,6 +33,8 @@
  * @property {string} [subjectName]
  */
 
+import { filterEffectiveSessions } from './sessionOccurrenceFilter.js';
+
 function hm(value) {
   return String(value || '').slice(0, 5);
 }
@@ -534,7 +536,8 @@ export function mapSessionViewModelsForCalendar(byClass = {}) {
   const out = {};
   Object.keys(byClass || {}).forEach((key) => {
     const rows = Array.isArray(byClass[key]) ? byClass[key] : [];
-    out[key] = rows.map((vm) => sessionViewModelWithLegacyFields(vm));
+    // Same effective-session filter as Course Management chips (hide ghost placeholders).
+    out[key] = filterEffectiveSessions(rows).map((vm) => sessionViewModelWithLegacyFields(vm));
   });
   return out;
 }

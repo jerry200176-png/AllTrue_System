@@ -1,12 +1,12 @@
 import { ref, computed } from 'vue';
 import {
   dayLabel,
-  dayOfWeekFromDate,
   normalizeTimeTo30,
   computeEndTime,
 } from '../../lib/calendarFormat.js';
 import {
   formatRescheduleSuccessMessage,
+  formatRescheduleConflictStudents,
   humanizeRescheduleFailure,
 } from '../../lib/scheduleDisplay.js';
 import { commitReschedule } from '../../lib/rescheduleApi.js';
@@ -38,6 +38,8 @@ export function useCalendarReschedule({
   };
 
   const showRescheduleModal = ref(false);
+  const rescheduleSubmitting = ref(false);
+  const rescheduleError = ref('');
   const rescheduleForm = ref({
     student_id: '', subject: '', course_id: '',
     original_day: 1, original_start: '', original_end: '',
@@ -46,6 +48,7 @@ export function useCalendarReschedule({
   });
 
   const onRescheduleNewStartChange = () => {
+    rescheduleError.value = '';
     rescheduleForm.value.new_start = normalizeTimeTo30(rescheduleForm.value.new_start);
     rescheduleForm.value.new_end = computeEndTime(rescheduleForm.value.new_start, rescheduleForm.value.duration_hours);
   };
@@ -57,6 +60,7 @@ export function useCalendarReschedule({
     const exactDate = modalForm.value.action_date || new Date().toISOString().split('T')[0];
     const newStart = normalizeTimeTo30(modalForm.value.start_time);
     const dur = modalForm.value.duration_hours || 2;
+    rescheduleError.value = '';
     rescheduleForm.value = {
       student_id: modalForm.value.student_id,
       subject: modalForm.value.subject,
@@ -79,10 +83,19 @@ export function useCalendarReschedule({
 
 
   const submitReschedule = async () => {
-    if (!rescheduleForm.value.new_date) { alert('請選擇新日期'); return; }
+    if (rescheduleSubmitting.value) return;
+    if (!rescheduleForm.value.new_date) {
+      rescheduleError.value = '請選擇新日期';
+      return;
+    }
     const bid = Number(branchId.value ?? branchId) || 0;
-    if (!bid) { alert('請先選擇分校'); return; }
+    if (!bid) {
+      rescheduleError.value = '請先選擇分校';
+      return;
+    }
     const newEnd = computeEndTime(rescheduleForm.value.new_start, rescheduleForm.value.duration_hours);
+    rescheduleError.value = '';
+    rescheduleSubmitting.value = true;
 
     try {
       const token = await getToken();
@@ -112,7 +125,12 @@ export function useCalendarReschedule({
         newEnd,
       }));
     } catch (error) {
-      alert('調課失敗：' + humanizeRescheduleFailure(error?.message || '調課未完成，資料沒有變更'));
+      let message = humanizeRescheduleFailure(error?.message || '調課未完成，資料沒有變更');
+      const conflictLine = formatRescheduleConflictStudents(error?.conflicts?.[0]?.overlap_details);
+      if (conflictLine) message = `${message} ${conflictLine}`;
+      rescheduleError.value = message;
+    } finally {
+      rescheduleSubmitting.value = false;
     }
   };
 
@@ -123,7 +141,14 @@ export function useCalendarReschedule({
   }));
 
   return {
-    showRescheduleModal, rescheduleForm, rescheduleDisplay, computedRescheduleNewEnd,
-    onRescheduleNewStartChange, openRescheduleModal, submitReschedule,
+    showRescheduleModal,
+    rescheduleForm,
+    rescheduleDisplay,
+    computedRescheduleNewEnd,
+    rescheduleSubmitting,
+    rescheduleError,
+    onRescheduleNewStartChange,
+    openRescheduleModal,
+    submitReschedule,
   };
 }

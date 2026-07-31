@@ -11,7 +11,7 @@
         <!-- ===== Header ===== -->
         <div class="dash-header enterprise-page-header">
           <div class="dash-title-block">
-            <p class="dash-kicker">Campus Operations Command</p>
+            <p class="dash-kicker">今日營運總覽</p>
             <h2 class="dash-title">{{ branchName }}</h2>
             <p class="dash-subtitle">即時掌握今日課務、繳費風險、評量審核與分校營運節奏</p>
             <div v-if="engagementRowVisible" class="dash-engagement-strip">
@@ -195,33 +195,6 @@
           </div>
         </section>
 
-        <section v-if="directorPriorityRisks.length" class="priority-risks" aria-labelledby="priority-risks-title">
-          <header class="priority-risks__head">
-            <div>
-              <h3 id="priority-risks-title">今日優先處理</h3>
-              <p>依逾期、收款與今日課務排序，先處理最可能影響營運的三項。</p>
-            </div>
-            <span class="priority-risks__count">優先 {{ directorPriorityRisks.length }} 項</span>
-          </header>
-          <div class="priority-risks__grid">
-            <article
-              v-for="risk in directorPriorityRisks"
-              :key="risk.key"
-              class="priority-risk"
-              :class="`priority-risk--${risk.tone}`"
-            >
-              <span class="material-symbols-outlined priority-risk__icon">{{ risk.icon }}</span>
-              <div class="priority-risk__body">
-                <strong>{{ risk.title }}</strong>
-                <p>{{ risk.reason }}</p>
-                <button type="button" class="priority-risk__action" @click="handleDirectorPriorityRisk(risk)">
-                  {{ risk.actionLabel }}
-                </button>
-              </div>
-            </article>
-          </div>
-        </section>
-
         <!-- ===== Import Result Banner ===== -->
         <div v-if="importState === 'done' || importState === 'error'"
              class="import-banner" :class="{ 'import-banner--err': importState === 'error' }">
@@ -257,31 +230,19 @@
 
         <!-- ===== Layer 2: Progress Board ===== -->
         <section class="progress-board">
-          <div class="pb">
-            <span class="pb__label">今日到班</span>
-            <span class="pb__val"><strong>{{ attendedCount }}</strong><small> / {{ todaySchedules.length }}</small></span>
+          <div class="pb-cell">
+            <AtMetric label="今日到班" :value="`${attendedCount} / ${todaySchedules.length}`" />
             <div class="pb__bar"><div class="pb__fill" :style="{ width: attendancePct + '%' }"></div></div>
           </div>
-          <div class="pb">
-            <span class="pb__label">待審評量</span>
-            <span class="pb__val"><strong>{{ pendingEvaluations.length }}</strong> <small>筆</small></span>
-          </div>
-          <div class="pb">
-            <span class="pb__label">今日應處理</span>
-            <span class="pb__val"><strong>{{ workflowDailySummary.due_total }}</strong></span>
-          </div>
-          <div class="pb">
-            <span class="pb__label">今日已完成</span>
-            <span class="pb__val"><strong>{{ workflowDailySummary.done_total }}</strong></span>
-          </div>
-          <div class="pb">
-            <span class="pb__label">已逾期</span>
-            <span class="pb__val"><strong>{{ workflowDailySummary.breached_total }}</strong></span>
-          </div>
-          <div class="pb">
-            <span class="pb__label">未讀通知</span>
-            <span class="pb__val"><strong>{{ unreadNotificationCount }}</strong></span>
-          </div>
+          <AtMetric label="待審評量" :value="`${pendingEvaluations.length} 筆`" />
+          <AtMetric
+            label="今日工作量"
+            :value="`${workflowDailySummary.due_total} 件`"
+            :delta="`已完成 ${workflowDailySummary.done_total}・逾期 ${workflowDailySummary.breached_total}`"
+            :deltaTone="workflowDailySummary.breached_total > 0 ? 'negative' : 'positive'"
+            :accent="workflowDailySummary.breached_total > 0 ? 'var(--ds-danger)' : ''"
+          />
+          <AtMetric label="未讀通知" :value="unreadNotificationCount" />
         </section>
 
         <div class="work-toolbar">
@@ -309,16 +270,24 @@
         </div>
 
         <!-- ===== Work Area (detail panels) ===== -->
+        <div class="section-label-row">
+          <span class="section-label">今日必辦</span>
+          <span class="section-sublabel">需要主任處理的今日課務與提醒</span>
+        </div>
         <div class="work-grid">
           <div class="work-col">
             <!-- Today Schedule -->
-            <section class="wp" id="schedule-sec">
-              <header class="wp__head">
-                <span class="material-symbols-outlined wp__hi">calendar_today</span>
-                <h3>今日課表</h3>
-                <span v-if="todaySchedules.length" class="wp__badge">{{ todaySchedules.length }}</span>
-              </header>
-              <div v-if="!todaySchedules.length" class="wp__empty enterprise-empty">今日無課程</div>
+            <AtCard id="schedule-sec">
+              <template #header>
+                <div class="dash-card-head-title">
+                  <span class="material-symbols-outlined wp__hi">calendar_today</span>
+                  <h3>今日課表</h3>
+                </div>
+              </template>
+              <template v-if="todaySchedules.length" #actions>
+                <span class="wp__badge">{{ todaySchedules.length }}</span>
+              </template>
+              <AtEmpty v-if="!todaySchedules.length" icon="calendar_today" title="今日無課程" />
               <div v-else class="wp-list-scroll-desktop">
                 <div v-for="s in todaySchedules" :key="s.id" class="sched-row">
                   <span class="sched-row__time">{{ formatTime(s.start_time) }}</span>
@@ -328,35 +297,41 @@
                   <span :class="['sched-row__st', 'st--' + s.status]">{{ formatScheduleStatus(s.status) }}</span>
                 </div>
               </div>
-              <footer v-if="pendingAttendanceCount > 0" class="wp__foot">
+              <footer v-if="pendingAttendanceCount > 0" class="dash-card-foot">
                 <button class="btn-p btn-sm" @click="goToAttendance">前往出缺勤處理</button>
               </footer>
-            </section>
+            </AtCard>
 
             <!-- Payment Alerts -->
-            <section class="wp wp--warn" id="payments-sec" data-guide="director-alerts">
-              <header class="wp__head">
-                <span class="material-symbols-outlined wp__hi">warning</span>
-                <h3>繳費／續課提醒</h3>
-                <span v-if="lowBalanceStudents.length" class="wp__badge wp__badge--danger">{{ lowBalanceStudents.length }}</span>
-              </header>
-              <p class="wp__hint">堂數制：已標記繳費者，若剩 0～2 堂仍會列出（方便聯繫加購）；未繳費者亦會列出。</p>
-              <div v-if="!lowBalanceStudents.length" class="wp__empty enterprise-empty">目前無待繳費、月結將届或低堂數需續課之課程</div>
-              <div v-else class="wp-list-scroll-desktop">
-                <div v-for="s in displayPaymentAlerts" :key="s.id" class="pay-row">
-                  <div class="pay-row__info">
-                    <span class="pay-row__name">{{ s.name }}</span>
-                    <span :class="paymentAlertBadgeClass(s)">{{ paymentAlertBadgeText(s) }}</span>
+            <div class="dash-card-warn" data-guide="director-alerts">
+              <AtCard id="payments-sec">
+                <template #header>
+                  <div class="dash-card-head-title">
+                    <span class="material-symbols-outlined wp__hi">warning</span>
+                    <h3>繳費／續課提醒</h3>
                   </div>
-                  <button class="btn-o btn-xs" @click="copyPaymentMessage(s)">複製通知</button>
+                </template>
+                <template v-if="lowBalanceStudents.length" #actions>
+                  <span class="wp__badge wp__badge--danger">{{ lowBalanceStudents.length }}</span>
+                </template>
+                <p class="wp__hint">堂數制：已標記繳費者，若剩 0～2 堂仍會列出（方便聯繫加購）；未繳費者亦會列出。</p>
+                <AtEmpty v-if="!lowBalanceStudents.length" icon="payments" title="目前無待繳費、月結將届或低堂數需續課之課程" />
+                <div v-else class="wp-list-scroll-desktop">
+                  <div v-for="s in displayPaymentAlerts" :key="s.id" class="pay-row">
+                    <div class="pay-row__info">
+                      <span class="pay-row__name">{{ s.name }}</span>
+                      <span :class="paymentAlertBadgeClass(s)">{{ paymentAlertBadgeText(s) }}</span>
+                    </div>
+                    <button class="btn-o btn-xs" @click="copyPaymentMessage(s)">複製通知</button>
+                  </div>
                 </div>
-              </div>
-              <footer v-if="lowBalanceStudents.length > paymentAlertLimit" class="wp__foot">
-                <button class="btn-o btn-xs" @click="showAllPayments = !showAllPayments">
-                  {{ showAllPayments ? '收合' : `顯示全部 (${lowBalanceStudents.length})` }}
-                </button>
-              </footer>
-            </section>
+                <footer v-if="lowBalanceStudents.length > paymentAlertLimit" class="dash-card-foot">
+                  <button class="btn-o btn-xs" @click="showAllPayments = !showAllPayments">
+                    {{ showAllPayments ? '收合' : `顯示全部 (${lowBalanceStudents.length})` }}
+                  </button>
+                </footer>
+              </AtCard>
+            </div>
 
             <!-- Exception Workflows -->
             <section class="wp ew-card" id="exception-workflows-sec">
@@ -411,14 +386,18 @@
             </section>
 
             <!-- Pending Evaluations -->
-            <section class="wp" id="evals-sec" data-guide="director-pending-evals">
-              <header class="wp__head">
-                <span class="material-symbols-outlined wp__hi">assignment</span>
-                <h3>待審核評量</h3>
-                <span v-if="pendingEvaluations.length" class="wp__badge">{{ pendingEvaluations.length }}</span>
-              </header>
+            <AtCard id="evals-sec" data-guide="director-pending-evals">
+              <template #header>
+                <div class="dash-card-head-title">
+                  <span class="material-symbols-outlined wp__hi">assignment</span>
+                  <h3>待審核評量</h3>
+                </div>
+              </template>
+              <template v-if="pendingEvaluations.length" #actions>
+                <span class="wp__badge">{{ pendingEvaluations.length }}</span>
+              </template>
               <p class="wp__hint">核准後老師科目數自動累計</p>
-              <div v-if="!pendingEvaluations.length" class="wp__empty enterprise-empty">無待審核評量</div>
+              <AtEmpty v-if="!pendingEvaluations.length" icon="assignment" title="無待審核評量" />
               <div v-else class="wp-list-scroll-desktop wp-list-scroll-desktop--primary">
                 <div v-for="ev in pendingEvaluations" :key="ev.id" class="eval-card">
                   <div class="eval-card__top">
@@ -438,10 +417,10 @@
                   </div>
                 </div>
               </div>
-              <footer v-if="pendingEvaluations.length" class="wp__foot">
+              <footer v-if="pendingEvaluations.length" class="dash-card-foot">
                 <button class="btn-o btn-sm" @click="emit('navigate', { target: 'learning' })">前往評量頁面</button>
               </footer>
-            </section>
+            </AtCard>
           </div>
 
           <div class="work-col work-col--side">
@@ -484,21 +463,18 @@
               </template>
             </section>
 
-            <!-- PRD 9c058f19：近 7 天代課記錄 -->
-            <RecentSubstitutesCard
-              v-if="dashboardViewMode === 'full'"
-              :branch-id="branchId"
-              :fetch-recent="fetchRecentSubstitutes"
-            />
-
-            <section class="wp" id="director-task-tracker-sec">
-              <header class="wp__head">
-                <span class="material-symbols-outlined wp__hi">checklist</span>
-                <h3>流程追蹤</h3>
-                <span v-if="directorTodoCards.length" class="wp__badge wp__badge--warn">{{ directorTodoCards.length }}</span>
-              </header>
-              <div v-if="adoptionTaskLoading" class="wp__empty enterprise-empty enterprise-loading">載入追蹤中…</div>
-              <div v-else-if="!directorTodoCards.length" class="wp__empty enterprise-empty">目前沒有待追蹤項目</div>
+            <AtCard id="director-task-tracker-sec">
+              <template #header>
+                <div class="dash-card-head-title">
+                  <span class="material-symbols-outlined wp__hi">checklist</span>
+                  <h3>流程追蹤</h3>
+                </div>
+              </template>
+              <template v-if="directorTodoCards.length" #actions>
+                <span class="wp__badge wp__badge--warn">{{ directorTodoCards.length }}</span>
+              </template>
+              <AtSkeleton v-if="adoptionTaskLoading" :rows="3" />
+              <AtEmpty v-else-if="!directorTodoCards.length" icon="checklist" title="目前沒有待追蹤項目" />
               <div v-else class="wp-list-scroll-desktop">
                 <button
                   v-for="task in directorTodoCards"
@@ -515,63 +491,82 @@
                   <span class="todo-row__meta">{{ task.description }}</span>
                 </button>
               </div>
-            </section>
-
-            <section v-if="dashboardViewMode === 'full'" class="wp" id="director-activity-log-sec">
-              <header class="wp__head">
-                <span class="material-symbols-outlined wp__hi">history</span>
-                <h3>近期操作履歷</h3>
-              </header>
-              <div v-if="adoptionActivityLoading" class="wp__empty enterprise-empty enterprise-loading">載入履歷中…</div>
-              <div v-else-if="!adoptionActivityRows.length" class="wp__empty enterprise-empty">尚無近期履歷</div>
-              <div v-else class="wp-list-scroll-desktop">
-                <div v-for="(log, idx) in adoptionActivityRows.slice(0, 20)" :key="`adoption-log-${idx}`" class="notif-row">
-                  <span>{{ log.actor }}：{{ log.action }}</span>
-                  <span class="badge-blue">{{ String(log.at || '').slice(5, 16).replace('T', ' ') }}</span>
-                </div>
-              </div>
-            </section>
-
-            <!-- Teacher learning fill-rate -->
-            <section v-if="dashboardViewMode === 'full'" class="wp" id="teacher-fill-rates-sec">
-              <header class="wp__head">
-                <span class="material-symbols-outlined wp__hi">insights</span>
-                <h3>老師評量填寫率</h3>
-              </header>
-              <p class="wp__hint">
-                <template v-if="teacherFillRatesRangeLabel">{{ teacherFillRatesRangeLabel }}　</template>
-                已到班／遲到堂次之評量進度有填計入（近 {{ teacherFillRatesDays }} 天）
-              </p>
-              <div v-if="teacherFillRatesLoading" class="wp__empty enterprise-empty enterprise-loading">載入中…</div>
-              <template v-else-if="!teacherFillRatesRows.length">
-                <div class="wp__empty enterprise-empty">此區間內無已到班堂次</div>
-              </template>
-              <div class="wp-list-scroll-desktop">
-                <div v-for="row in teacherFillRatesRows" :key="row.teacher_id" class="notif-row">
-                  <span>{{ row.teacher_name }}　{{ row.learning_records_filled }}／{{ row.sessions_attended }} 堂</span>
-                  <span class="badge-blue">{{ row.fill_rate_pct }}%</span>
-                </div>
-              </div>
-            </section>
+            </AtCard>
 
             <!-- Notifications -->
-            <section class="wp">
-              <header class="wp__head">
-                <span class="material-symbols-outlined wp__hi">notifications</span>
-                <h3>通知摘要</h3>
-                <span v-if="unreadNotificationCount" class="wp__badge">{{ unreadNotificationCount }}</span>
-              </header>
-              <div v-if="!notificationSummary.length" class="wp__empty enterprise-empty">目前無未讀通知</div>
+            <AtCard>
+              <template #header>
+                <div class="dash-card-head-title">
+                  <span class="material-symbols-outlined wp__hi">notifications</span>
+                  <h3>通知摘要</h3>
+                </div>
+              </template>
+              <template v-if="unreadNotificationCount" #actions>
+                <span class="wp__badge">{{ unreadNotificationCount }}</span>
+              </template>
+              <AtEmpty v-if="!notificationSummary.length" icon="notifications" title="目前無未讀通知" />
               <div v-else class="wp-list-scroll-desktop">
                 <div v-for="n in notificationSummary" :key="n.id" class="notif-row">
                   <span>{{ n.title }}</span>
                   <span class="badge-blue">{{ n.typeLabel }}</span>
                 </div>
               </div>
-              <footer class="wp__foot">
+              <footer class="dash-card-foot">
                 <button class="btn-o btn-sm" @click="goToNotifications">前往通知中心</button>
               </footer>
-            </section>
+            </AtCard>
+
+            <!-- 完整檢視才顯示：近期紀錄與進階統計，跟上方「今日必辦」性質的卡片明確分開 -->
+            <div v-if="dashboardViewMode === 'full'" class="section-label-row section-label-row--sub">
+              <span class="section-label">本週趨勢與紀錄</span>
+              <span class="section-sublabel">近期操作履歷、代課動態與評量填寫統計</span>
+            </div>
+
+            <!-- PRD 9c058f19：近 7 天代課記錄 -->
+            <RecentSubstitutesCard
+              v-if="dashboardViewMode === 'full'"
+              :branch-id="branchId"
+              :fetch-recent="fetchRecentSubstitutes"
+            />
+
+            <AtCard v-if="dashboardViewMode === 'full'" id="director-activity-log-sec">
+              <template #header>
+                <div class="dash-card-head-title">
+                  <span class="material-symbols-outlined wp__hi">history</span>
+                  <h3>近期操作履歷</h3>
+                </div>
+              </template>
+              <AtSkeleton v-if="adoptionActivityLoading" :rows="3" />
+              <AtEmpty v-else-if="!adoptionActivityRows.length" icon="history" title="尚無近期履歷" />
+              <div v-else class="wp-list-scroll-desktop">
+                <div v-for="(log, idx) in adoptionActivityRows.slice(0, 20)" :key="`adoption-log-${idx}`" class="notif-row">
+                  <span>{{ log.actor }}：{{ log.action }}</span>
+                  <span class="badge-blue">{{ String(log.at || '').slice(5, 16).replace('T', ' ') }}</span>
+                </div>
+              </div>
+            </AtCard>
+
+            <!-- Teacher learning fill-rate -->
+            <AtCard v-if="dashboardViewMode === 'full'" id="teacher-fill-rates-sec">
+              <template #header>
+                <div class="dash-card-head-title">
+                  <span class="material-symbols-outlined wp__hi">insights</span>
+                  <h3>老師評量填寫率</h3>
+                </div>
+              </template>
+              <p class="wp__hint">
+                <template v-if="teacherFillRatesRangeLabel">{{ teacherFillRatesRangeLabel }}　</template>
+                已到班／遲到堂次之評量進度有填計入（近 {{ teacherFillRatesDays }} 天）
+              </p>
+              <AtSkeleton v-if="teacherFillRatesLoading" :rows="3" />
+              <AtEmpty v-else-if="!teacherFillRatesRows.length" icon="insights" title="此區間內無已到班堂次" />
+              <div v-else class="wp-list-scroll-desktop">
+                <div v-for="row in teacherFillRatesRows" :key="row.teacher_id" class="notif-row">
+                  <span>{{ row.teacher_name }}　{{ row.learning_records_filled }}／{{ row.sessions_attended }} 堂</span>
+                  <span class="badge-blue">{{ row.fill_rate_pct }}%</span>
+                </div>
+              </div>
+            </AtCard>
           </div>
         </div>
 
@@ -680,6 +675,10 @@ import { getBranchName } from '../lib/useBranches';
 import { getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchDiscrepancySummary } from '../lib/scheduleDiscrepanciesApi';
 import RecentSubstitutesCard from '../components/substitute/RecentSubstitutesCard.vue';
+import AtCard from '../components/design-system/AtCard.vue';
+import AtEmpty from '../components/design-system/AtEmpty.vue';
+import AtSkeleton from '../components/design-system/AtSkeleton.vue';
+import AtMetric from '../components/design-system/AtMetric.vue';
 import { recentSubstitutes as fetchRecentSubstitutes } from '../lib/substituteApi.js';
 import { sortTodoCards, markTodoAcknowledged, isTodoAcknowledged } from '../lib/adoptionTodo';
 import {
@@ -703,7 +702,6 @@ import {
   isUserEngagementRankDisplayEnabled,
   USER_ENGAGEMENT_DISPLAY_REFRESH_EVENT,
 } from '../lib/userEngagementDisplay';
-import { buildDirectorPriorityRisks } from '../lib/directorPriorityRisks';
 import {
   trustPeopleSlice as trustPeople,
   trustPeopleSummary,
@@ -1000,25 +998,6 @@ const workflowDailySummary = computed(() => ({
   breached_total: Number(adoptionWeeklyMetrics.value?.workflow_daily?.breached_total || 0),
 }));
 
-const unpaidPaymentCount = computed(() =>
-  lowBalanceStudents.value.filter((row) => row.alert_type === 'unpaid').length
-);
-
-const renewalAttentionCount = computed(() =>
-  lowBalanceStudents.value.filter((row) => row.alert_type !== 'unpaid').length
-);
-
-const directorPriorityRisks = computed(() => buildDirectorPriorityRisks({
-  breachedTasks: workflowDailySummary.value.breached_total,
-  // Trust decisions (stranded/dormant) live in Decision Center above — avoid duplicate prompts.
-  unpaidPayments: unpaidPaymentCount.value,
-  pendingAttendance: pendingAttendanceCount.value,
-  exceptionWorkflows: exceptionWorkflowCount.value,
-  pendingEvaluations: pendingEvaluations.value.length,
-  unreadFeedback: props.unreadFeedbackCount,
-  renewalAttention: renewalAttentionCount.value,
-}));
-
 const decisionCenter = computed(() => {
   const dc = operationsTrust.value?.decision_center;
   if (dc && typeof dc.score === 'number') return dc;
@@ -1174,51 +1153,6 @@ function handleTrustPerson(item, person) {
     decisionKey: key,
   });
   navigateTrustTarget(item?.target || 'course-mgmt');
-}
-
-function trackBypassCourseMgmtSeek() {
-  const branch = Number(props.branchId) || 0;
-  // Only count bypass after cards were seen AND director did not use provided CTA/path.
-  if (!hasSeenAnyTrustDecision(branch) || usedTrustProvidedPath(branch)) return;
-  trackTrustEventOnce('director_trust_bypass_seek', branch, {
-    target: 'course-mgmt',
-    from: 'priority_risk_or_nav',
-  }, 'bypass');
-}
-
-function handleDirectorPriorityRisk(risk) {
-  if (risk.target === 'director-tasks') {
-    scrollTo('director-task-tracker');
-    return;
-  }
-  if (risk.target === 'calendar') {
-    emit('navigate', { target: 'calendar' });
-    return;
-  }
-  if (risk.target === 'course-mgmt') {
-    trackBypassCourseMgmtSeek();
-    emit('navigate', { target: 'course-mgmt' });
-    return;
-  }
-  if (risk.target === 'tuition') {
-    goToTuitionCollect();
-    return;
-  }
-  if (risk.target === 'attendance') {
-    goToAttendance();
-    return;
-  }
-  if (risk.target === 'exceptions') {
-    scrollTo('exception-workflows');
-    return;
-  }
-  if (risk.target === 'evaluations') {
-    scrollTo('evals');
-    return;
-  }
-  if (risk.target === 'feedback') {
-    emit('navigate', { target: 'learning', focus: 'feedback' });
-  }
 }
 
 const openRateDeltaLabel = (role) => {
@@ -2040,7 +1974,7 @@ onBeforeUnmount(() => {
   margin: 0 0 6px;
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--ds-brand-orange);
 }
@@ -2234,96 +2168,6 @@ onBeforeUnmount(() => {
 .ops-decision__empty-people{margin:8px 0 0;font-size:12px;color:var(--ds-ink-mute)}
 .ops-trust__policy{margin-top:12px;font-size:12px;color:var(--ds-ink-mute)}.ops-trust__policy ul{margin:6px 0 0;padding-left:1.2rem}
 
-.priority-risks {
-  padding: 16px;
-  border: 1px solid var(--ds-hairline);
-  border-radius: 16px;
-  background: var(--ds-canvas);
-  box-shadow: var(--ds-shadow-1);
-}
-.priority-risks__head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 12px;
-}
-.priority-risks__head h3 {
-  margin: 0 0 4px;
-  color: var(--ds-ink);
-  font-size: 16px;
-}
-.priority-risks__head p {
-  margin: 0;
-  color: var(--ds-ink-mute);
-  font-size: 12px;
-}
-.priority-risks__count {
-  flex: 0 0 auto;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: var(--ds-canvas-soft);
-  color: var(--ds-ink-secondary);
-  font-size: 11px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-.priority-risks__grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-.priority-risk {
-  display: flex;
-  gap: 10px;
-  min-width: 0;
-  padding: 12px;
-  border: 1px solid var(--ds-hairline);
-  border-left: 3px solid var(--ds-ink-mute);
-  border-radius: 12px;
-  background: var(--ds-canvas-soft);
-}
-.priority-risk--danger { border-left-color: var(--ds-danger); }
-.priority-risk--warning { border-left-color: var(--ds-warning); }
-.priority-risk--info { border-left-color: var(--ds-info); }
-.priority-risk__icon {
-  flex: 0 0 auto;
-  color: var(--ds-ink-mute);
-  font-size: 22px;
-}
-.priority-risk--danger .priority-risk__icon { color: var(--ds-danger); }
-.priority-risk--warning .priority-risk__icon { color: var(--ds-warning); }
-.priority-risk--info .priority-risk__icon { color: var(--ds-info); }
-.priority-risk__body {
-  min-width: 0;
-}
-.priority-risk__body strong {
-  display: block;
-  color: var(--ds-ink);
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
-}
-.priority-risk__body p {
-  margin: 4px 0 10px;
-  color: var(--ds-ink-mute);
-  font-size: 12px;
-  line-height: 1.45;
-}
-.priority-risk__action {
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--ds-primary);
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-}
-.priority-risk__action:hover { text-decoration: underline; }
-.priority-risk__action:focus-visible {
-  border-radius: 4px;
-  outline: 2px solid var(--ds-primary);
-  outline-offset: 3px;
-}
 
 /* ===== Import Banner ===== */
 .import-banner {
@@ -2395,52 +2239,27 @@ onBeforeUnmount(() => {
 /* ===== Progress Board ===== */
 .progress-board {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
   background: var(--ds-canvas-soft);
   border: 1px solid var(--ds-hairline);
-  border-radius: 16px;
+  border-radius: var(--ds-radius-lg);
   padding: 12px;
 }
 
-.pb {
-  position: relative;
+.pb-cell {
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  min-height: 84px;
-  padding: 14px;
-  border-radius: 12px;
-  border: 1px solid var(--ds-hairline);
-  background: var(--ds-canvas);
-  box-shadow: 0 1px 2px rgba(0, 55, 112, 0.05);
+  gap: 8px;
 }
-.pb__label {
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--ds-ink-mute);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
+.pb-cell :deep(.at-metric) {
+  flex: 1;
 }
-.pb__val {
-  font-size: 15px;
-  color: var(--ds-ink-secondary);
-  font-variant-numeric: tabular-nums;
-}
-.pb__val strong {
-  font-weight: 700;
-  font-size: 28px;
-  color: var(--ds-ink);
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-}
-.pb__val small  { font-weight: 600; color: var(--ds-ink-mute); }
 .pb__bar {
   height: 5px;
   border-radius: 999px;
   background: var(--ds-hairline);
   overflow: hidden;
-  margin-top: auto;
 }
 .pb__fill {
   height: 100%;
@@ -2579,6 +2398,31 @@ onBeforeUnmount(() => {
   border-top: 1px solid rgba(226, 232, 240, 0.82);
   display: flex;
   justify-content: flex-end;
+}
+
+/* ===== AtCard-based work-grid cards (Wave B) ===== */
+.dash-card-head-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.dash-card-head-title h3 {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ds-ink);
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+.dash-card-foot {
+  margin: 16px -24px -24px;
+  padding: 12px 18px;
+  border-top: 1px solid rgba(226, 232, 240, 0.82);
+  display: flex;
+  justify-content: flex-end;
+}
+.dash-card-warn :deep(.at-card) {
+  border-top: 2px solid var(--ds-warning);
 }
 
 /* ===== Schedule Row ===== */
@@ -3002,18 +2846,10 @@ onBeforeUnmount(() => {
     font-size: 24px;
   }
   .dash.dash--desktop-dense .progress-board {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 8px;
     padding: 10px;
-    border-radius: 22px;
-  }
-  .dash.dash--desktop-dense .pb {
-    min-height: 72px;
-    padding: 10px 12px;
-    border-radius: 16px;
-  }
-  .dash.dash--desktop-dense .pb__val strong {
-    font-size: 24px;
+    border-radius: var(--ds-radius-lg);
   }
   .dash.dash--desktop-dense .work-grid {
     gap: 14px;
@@ -3054,7 +2890,6 @@ onBeforeUnmount(() => {
     width: 100%;
   }
   .work-grid { grid-template-columns: 1fr; }
-  .priority-risks__grid { grid-template-columns: 1fr; }
   .progress-board { grid-template-columns: repeat(2, 1fr); }
   .work-toolbar {
     flex-direction: column;
@@ -3096,6 +2931,10 @@ onBeforeUnmount(() => {
   margin-bottom: -4px;
   padding: 0 4px;
 }
+.section-label-row--sub {
+  margin-top: 8px;
+  margin-bottom: 4px;
+}
 .section-label {
   font-size: 12px;
   font-weight: 700;
@@ -3120,6 +2959,7 @@ onBeforeUnmount(() => {
   text-decoration: underline;
   font-family: inherit;
   text-align: left;
+  white-space: nowrap;
 }
 
 /* ===== 匯入格式 Modal ===== */

@@ -29,15 +29,17 @@ test('same-SHA flake classifier', () => {
   assert.equal(classifySameShaRerun({ earlierConclusion: 'failure', laterConclusion: 'success', headShaSame: false }).kind, 'code_changed');
 });
 
-test('branch policy accepts sec/design/cursor/revert; rejects agent/ops', () => {
+test('branch policy accepts sec/design/cursor/claude/revert; rejects agent/ops', () => {
   assert.equal(validateBranchName('sec/1401-impact-audit').ok, true);
   assert.equal(validateBranchName('security/foo').canonicalPrefix, 'sec');
   assert.equal(validateBranchName('design/ui').ok, true);
   assert.equal(validateBranchName('cursor/ci-gov-1ff7').ok, true);
+  assert.equal(validateBranchName('claude/course-management-display-issue-ji5tq1').ok, true);
   assert.equal(validateBranchName('revert/x').ok, true);
   assert.equal(validateBranchName('agent/x').ok, false);
   assert.equal(validateBranchName('ops/x').ok, false);
   assert.match(slashPrefixRegexSource(), /sec/);
+  assert.match(slashPrefixRegexSource(), /claude/);
 });
 
 test('stable gov codes', () => {

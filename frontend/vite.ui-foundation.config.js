@@ -7,6 +7,10 @@ export default defineConfig({
   root: path.resolve(__dirname, 'e2e/fixtures/ui-foundation'),
   base: '/',
   cacheDir: path.resolve(__dirname, '.vite_cache_ui_foundation'),
+  // Root is the fixtures dir, so Vite would otherwise default publicDir to a
+  // nonexistent local folder and silently 404 every asset under frontend/public/
+  // (fonts, icons, manifest) — point it at the real one to match production serving.
+  publicDir: path.resolve(__dirname, 'public'),
   plugins: [vue()],
   resolve: {
     alias: {

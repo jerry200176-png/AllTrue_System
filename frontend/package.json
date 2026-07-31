@@ -5,10 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "test:calendar": "node src/lib/calendarExceptionMerge.test.js && node src/lib/calendarOccurrenceMerge.test.js && node src/lib/calendarLoadPerformance.test.js && node src/lib/calendarCourseLoad.test.js && node src/lib/classSessionPick.test.js && node src/lib/classSessionsApi.test.js && node src/lib/calendarDateUtils.test.js && node src/lib/calendarFormat.test.js && node src/lib/calendarDropRouting.test.js && node src/lib/teacherColor.test.js && npx vitest run src/composables/__tests__/supabaseMutationContract.test.js && npx vitest run src/components/substitute/__tests__/SubstituteTeacherPickerModal.test.js && npx vitest run src/composables/course-management/__tests__/useRescheduleAndMakeup.test.js && npx vitest run src/composables/calendar/__tests__/useCalendarLeaveExtra.test.js && npx vitest run src/composables/calendar/__tests__/useCalendarSubstitute.test.js && npx vitest run src/composables/calendar/__tests__/useCalendarReschedule.test.js",
+    "test:calendar": "node src/lib/sessionOccurrenceFilter.test.js && node src/lib/calendarExceptionMerge.test.js && node src/lib/calendarOccurrenceMerge.test.js && node src/lib/calendarLoadPerformance.test.js && node src/lib/calendarCourseLoad.test.js && node src/lib/classSessionPick.test.js && node src/lib/classSessionsApi.test.js && node src/lib/calendarDateUtils.test.js && node src/lib/calendarFormat.test.js && node src/lib/calendarDropRouting.test.js && node src/lib/teacherColor.test.js && npx vitest run src/composables/__tests__/supabaseMutationContract.test.js && npx vitest run src/components/substitute/__tests__/SubstituteTeacherPickerModal.test.js && npx vitest run src/composables/course-management/__tests__/useRescheduleAndMakeup.test.js && npx vitest run src/composables/calendar/__tests__/useCalendarLeaveExtra.test.js && npx vitest run src/composables/calendar/__tests__/useCalendarSubstitute.test.js && npx vitest run src/composables/calendar/__tests__/useCalendarReschedule.test.js",
     "test:teacher-streak": "node src/lib/teacherLoginStreak.test.js",
     "test:engagement-progress": "node src/lib/engagementRankProgress.test.js",
     "test:session-consistency": "node src/lib/sessionConsistency.test.js",
+    "test:session-occurrence-filter": "node src/lib/sessionOccurrenceFilter.test.js",
     "test:package-sessions": "node src/lib/packageSessions.test.js",
     "test:session-planning-status": "node src/lib/sessionPlanningStatus.test.js",
     "test:course-teacher-options": "node src/lib/courseTeacherOptions.test.js",
@@ -26,40 +27,46 @@
     "test:scroll-lock": "node src/lib/useScrollLock.test.js",
     "test:course-pricing": "node src/lib/coursePricing.test.js",
     "test:scheduler-session-expand": "node src/lib/schedulerSessionExpand.test.js",
+    "test:lesson-coverage": "node src/lib/lessonCoverage.test.js && vitest run src/components/__tests__/UniversalClassSchedulerActualDuration.test.js",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
     "test:unit:cov": "vitest run --coverage",
     "test:e2e": "playwright test",
     "test:e2e:ui-foundation": "playwright test -c playwright.ui-foundation.config.js",
-    "test:release-notes": "node src/lib/releaseNotes.test.js",
+    "test:release-notes": "node ../scripts/lib/userFacingCopyGate.test.mjs && node src/lib/releaseNotes.test.js",
     "test:pin-gate": "node src/lib/pinGate.test.js",
-    "sync-release-notes": "node ../scripts/changelog-to-release-notes.mjs && node ../scripts/parent-updates-to-js.mjs",
+    "sync-release-notes": "node ../scripts/changelog-to-release-notes.mjs && node ../scripts/staff-updates-to-js.mjs && node ../scripts/parent-updates-to-js.mjs",
     "metrics:design-hex": "bash ../scripts/design-hex-count.sh",
     "lint:design": "bash ../scripts/check-no-raw-hex.sh",
     "lint:ui-fixtures": "bash ../scripts/check-no-public-ui-fixtures.sh",
-    "build": "npm run sync-release-notes && npm run test:session-consistency && npm run test:package-sessions && npm run test:session-planning-status && npm run test:course-teacher-options && npm run test:universal-scheduler-api && npm run test:enrollment-conflict-decision && npm run test:schedule-display && npm run test:attendance-source-display && npm run test:director-facing-id-leak && npm run test:learning-records-window && npm run test:learning-record-target && npm run test:learning-record-sort && npm run test:trust-decision-display && npm run test:student-class-display && npm run test:parent-notification-preferences && npm run test:scroll-lock && npm run test:course-pricing && npm run test:scheduler-session-expand && npm run test:pin-gate && vite build && npm run lint:ui-fixtures",
+    "lint:no-undef": "eslint src --no-warn-ignored",
+    "build": "npm run lint:no-undef && npm run sync-release-notes && npm run test:session-consistency && npm run test:session-occurrence-filter && npm run test:package-sessions && npm run test:session-planning-status && npm run test:course-teacher-options && npm run test:universal-scheduler-api && npm run test:enrollment-conflict-decision && npm run test:schedule-display && npm run test:attendance-source-display && npm run test:director-facing-id-leak && npm run test:learning-records-window && npm run test:learning-record-target && npm run test:learning-record-sort && npm run test:trust-decision-display && npm run test:student-class-display && npm run test:parent-notification-preferences && npm run test:scroll-lock && npm run test:course-pricing && npm run test:scheduler-session-expand && npm run test:lesson-coverage && npm run test:pin-gate && vite build && npm run lint:ui-fixtures",
     "preview": "vite preview",
     "deploy": "npm run build && node scripts/copy-to-backend.cjs",
     "deploy:pack": "npm run build && node scripts/pack-deploy.cjs",
     "prepare": "husky"
   },
   "dependencies": {
-    "@sentry/vue": "^10.67.0",
-    "@supabase/supabase-js": "^2.110.8",
+    "@sentry/vue": "^10.68.0",
+    "@supabase/supabase-js": "^2.110.9",
     "vue": "^3.5.40"
   },
   "devDependencies": {
-    "@playwright/test": "^1.61.1",
+    "@playwright/test": "^1.62.0",
     "@vitejs/plugin-vue": "^6.0.8",
     "@vitest/coverage-v8": "^4.1.10",
     "@vue/test-utils": "^2.4.11",
+    "eslint": "^9.39.5",
+    "eslint-plugin-vue": "^9.33.0",
+    "globals": "^15.15.0",
     "husky": "^9.1.7",
     "jsdom": "^29.1.1",
     "lint-staged": "^16.4.0",
     "vite": "^6.4.3",
-    "vitest": "^4.1.8"
+    "vitest": "^4.1.8",
+    "vue-eslint-parser": "^9.4.3"
   },
   "optionalDependencies": {
-    "@rollup/rollup-linux-arm64-gnu": "^4.62.2"
+    "@rollup/rollup-linux-arm64-gnu": "^4.62.3"
   }
 }

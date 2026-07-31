@@ -38,6 +38,19 @@ const flags = {
 
   /** Staff-only ambient music easter egg. Compile-time rollback switch. */
   AMBIENT_MUSIC_ENABLED: true,
+
+  /**
+   * Actual-duration billing UI (RFC_NONSTANDARD_SESSION_DURATION_BILLING).
+   * Turned on once the backend flag (`perfflags.actual_duration_deduction_enabled`)
+   * was confirmed live in production via the Founder-gated
+   * `.github/workflows/actual-duration-activation.yml` `enable_backend` run — see
+   * `docs/RUNBOOK_ACTUAL_DURATION_ACTIVATION.md`. Both sides must be on for the
+   * feature to do anything: this one decides whether a teacher can choose the
+   * option, the backend one decides whether a chosen course actually deducts by
+   * clock time. Flipping this back to false is a complete UI rollback — the
+   * 建課 form goes back to showing no 扣堂方式 選項 and sending no new fields.
+   */
+  ACTUAL_DURATION_DEDUCTION_ENABLED: true,
 };
 
 export default flags;

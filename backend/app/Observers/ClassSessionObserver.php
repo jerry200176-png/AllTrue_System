@@ -4,9 +4,14 @@ namespace App\Observers;
 
 use App\Models\ClassSession;
 use App\Models\ScheduleAuditLog;
+use App\Services\ContractScheduleMatcher;
 
 class ClassSessionObserver
 {
+    public function __construct(private ContractScheduleMatcher $contractScheduleMatcher)
+    {
+    }
+
     /** @var array<int|string, array<string, mixed>> */
     private static array $oldSnapshots = [];
 
@@ -87,10 +92,49 @@ class ClassSessionObserver
 
     public function updating(ClassSession $session): void
     {
+        $this->syncContractExceptionFlag($session);
+
         $key = (string) $session->getKey();
         self::$oldSnapshots[$key] = $this->sessionSnapshot(
             (new ClassSession())->fill($session->getOriginal())
         );
+    }
+
+    /**
+     * R84 (F1/#556 structural fix): recompute IsContractException whenever an
+     * ALREADY-PERSISTED session's date/time is moved, regardless of which
+     * controller/service initiated the move. Previously this depended on each
+     * write path remembering to call a matcher explicitly — the atomic
+     * reschedule path forgot to, and the bug came back the same way in at
+     * least two other places (substitute-undo time restore, contract reflow)
+     * that were only "safe" because their current caller happened to
+     * pre-filter. Centralizing it here removes that per-call-site memory
+     * requirement entirely.
+     *
+     * Deliberately hooked off `updating` (fires only for rows that already
+     * `exists()`), not `creating`: a brand-new session's mismatch with
+     * contract is ambiguous — it can mean "intentionally added at a one-off
+     * slot" (StudentClassController::addSession, ExceptionWorkflowController)
+     * or "raw/stale data that should surface as schedule_drift for a director
+     * to review" (StudentClassScheduleDriftExceptionTest's whole premise).
+     * Only the caller creating the row knows which; the model can't infer
+     * intent from a create. Moving an EXISTING row's time, by contrast, is
+     * unambiguous — nobody changes a persisted ClassSession's clock by
+     * accident, so auto-recompute there is always correct.
+     *
+     * Skipped when the caller explicitly assigned IsContractException in the
+     * same write (e.g. ExceptionWorkflowController's makeup-slot confirmation
+     * forces true regardless of contract match) — explicit intent wins.
+     */
+    private function syncContractExceptionFlag(ClassSession $session): void
+    {
+        if ($session->isDirty('IsContractException')) {
+            return;
+        }
+        if (!$session->isDirty(['SessionDate', 'StartTime', 'EndTime'])) {
+            return;
+        }
+        $this->contractScheduleMatcher->applyExceptionFlag($session);
     }
 
     public function updated(ClassSession $session): void

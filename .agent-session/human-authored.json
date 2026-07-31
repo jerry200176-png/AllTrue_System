@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "provenance_type": "human-authored",
-  "declared_at": "2026-07-27T03:50:00Z",
-  "author": "jerry-github-operator-audit",
-  "note": "Low-risk CI hygiene from 2026-07 GitHub platform governance audit Phase 9: add concurrency/cancel-in-progress and contents:read permissions to agent-provenance.yml. No production business logic; no deploy trigger change."
+  "declared_at": "2026-07-29T01:00:00Z",
+  "author": "cursor-cloud-agent",
+  "note": "Split engineering CHANGELOG from staff in-app release notes: STAFF_UPDATES.yml is sole publish source; CHANGELOG → changelogDraft only; userFacingCopyGate; R85. Founder decision 2026-07-29."
 }

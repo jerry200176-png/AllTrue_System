@@ -2,9 +2,9 @@
   "_comment": "DEP-1 / 'no undocumented context' enforcement. Every backend Controller and Service must match exactly one context rule (by filename regex). FIT-10 fails on any unmapped file. Contexts mirror OWNERSHIP_REGISTRY.md.",
   "_ruleOrder": "first match wins; order specific -> general. The abstract base Controller.php is excluded by FIT-10.",
   "rules": [
-    { "context": "scheduling",     "match": "Schedule|Reschedule|ClassSession|Substitute|ScheduleGuard|CourseLeaveCascade|ExceptionWorkflow|Calendar|Backfill|SessionProjection|ForwardSession|DuplicateSession|Reconcile|Commitment|ContractSlot|HistoryCadence|PrepaidHorizon|HorizonPhase0|PreviewSessionHorizon|EnsureSessionHorizon|ShadowSessionHorizon" },
-    { "context": "enrollment",     "match": "Enrollment|StudentClass|CoursePackage|PackageDeduction|FrontendSubjectIdResolver" },
-    { "context": "billing",        "match": "Finance|Payment|Invoice|Tuition|Accounting|Bank|Dunning|SessionDeduction|SessionCharge|PaymentReport|Billing" },
+    { "context": "scheduling",     "match": "Schedule|Reschedule|ClassSession|Substitute|ScheduleGuard|CourseLeaveCascade|ExceptionWorkflow|Calendar|Backfill|SessionProjection|ForwardSession|DuplicateSession|Reconcile|Commitment|ContractSlot|HistoryCadence|PrepaidHorizon|HorizonPhase0|PreviewSessionHorizon|EnsureSessionHorizon|ShadowSessionHorizon|Coverage|AllocateSession|ReleaseSession|PoolCoverage|NonstandardDuration" },
+    { "context": "enrollment",     "match": "Enrollment|StudentClass|CoursePackage|PackageDeduction|FrontendSubjectIdResolver|CourseContract|CourseContinuity" },
+    { "context": "billing",        "match": "Finance|Payment|Invoice|Tuition|Accounting|Bank|Dunning|SessionDeduction|SessionCharge|PaymentReport|Billing|DeductionBasis" },
     { "context": "attendance",     "match": "Attendance|Swipe|SignIn|PendingSwipe|Rfid|AttendanceEffects" },
     { "context": "delivery",       "match": "LearningRecord|ApprovalSessionSync|Evaluation|TeachingLog" },
     { "context": "payroll",        "match": "Payroll|RateCard|TeacherMonthly|PartTime" },
