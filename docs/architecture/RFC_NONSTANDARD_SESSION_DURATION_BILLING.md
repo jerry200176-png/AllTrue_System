@@ -1,13 +1,24 @@
 ---
 owner: jerry (CEO)
-status: Draft — RFC only, no code/schema/test changed (amendment v2)
+status: Implemented in main, NOT enabled in production (flag off) — v3
 review_cycle: on next founder review
-last_reviewed: 2026-07-30
+last_reviewed: 2026-07-31
 ---
 
 # AllTrue 非標準課程時長調查報告
 
-> **Status:** RFC only. No production code, migration, test, or billing behavior was changed to produce this report or its amendment. All claims are cited to file:line; anything not directly read in code is explicitly labeled as a documentation claim or an open assumption.
+> **Status（2026-07-31 更新）：已合併進 `main`，但**尚未在正式環境啟用**。**
+> Phase 0A/0B/1/2 已實作、測試、通過 CI、merge 進 `main`（#1539 #1540 #1541 #1542 #1543 #1544 #1546 #1547）。
+> 環境旗標 `PERF_ACTUAL_DURATION_DEDUCTION` 與前端 `ACTUAL_DURATION_DEDUCTION_ENABLED` 皆為 **false**，
+> 所有既有課程仍為 `fixed_session`，因此**正式環境行為零變化**。
+> **未執行**任何正式環境部署、migration、旗標開啟、測試課程建立或資料異動——這些是 Founder 的決定。
+> 上線與回滾步驟見 [`docs/RUNBOOK_ACTUAL_DURATION_ACTIVATION.md`](../RUNBOOK_ACTUAL_DURATION_ACTIVATION.md)。
+>
+> 「已寫好程式碼」「測試通過」「已 merge」「已部署」「執行期已啟用」「正式環境已驗證」是六件不同的事。
+> 目前進度停在**已 merge**，後三者皆未發生。
+>
+> §2–§8 的現況調查是在改動任何程式碼之前完成的，其 file:line 引用反映當時的 baseline；
+> §10–§15 描述的模型現在已經是 `main` 上的實作，不再只是提案。
 > **Amendment note (this version):** incorporates Founder decisions D1–D4 and 5 required corrections requested after the first draft was reviewed. The first draft's core investigation (§2–§8, evidence) stands; sections that assumed the first draft's proposed model was implementation-ready have been corrected. See the amendment report delivered alongside this commit for a section-by-section diff summary.
 > **Related:** `#613` A1（既有分鐘制地基）、`TD-059`、`docs/AI_REGRESSION_LESSONS.md §R59`、`docs/SYSTEM_TECH_GUIDE.md §5`、`docs/PRICING_CONTRACT.md`、`docs/ADR_006_prepaid_session_horizon_and_commitment.md`（不同問題，見 §8、§10）
 
@@ -23,7 +34,9 @@ last_reviewed: 2026-07-30
 2. **分鐘引擎只在「補課」（`schedules.type='extra'`）且時長 ≠ 契約標準時才會啟動**（`SessionDeductionService::resolvePartialMakeupMinutes()`，`backend/app/Services/SessionDeductionService.php:468-499`）。測試直接證明：`PartialMakeupDeductionTest::test_normal_longer_session_not_prorated`（`backend/tests/Feature/PartialMakeupDeductionTest.php:125-142`）——180 分鐘、非 `type='extra'` 的**正常**堂次點名，仍斷言只扣 1 堂。
 3. **根因不只是引擎範圍，還有一層更前面的耦合，本次修訂新增確認**：`EnrollmentService::store()` 目前**強制驗證**「購買堂數」（`total_classes` → `plannedSessions`）必須**恰好等於**「要建立的 `ClassSession` 筆數」（`count($sessionRows)`），不相等會直接 422（`backend/app/Services/EnrollmentService.php:197-222`，尤其第 210-222 行的等式檢查）。也就是說，**現行系統不只是「假設」SessionCount＝要物化的堂次數，而是用驗證規則把兩者鎖死相等**——這代表就算只加 `standard_lesson_minutes` 跟修改扣堂引擎，仍無法解決「買 8 個標準單位、實際只該排出約 5.3 次 180 分鐘課」這件事，因為建課當下系統會強迫你排出剛好 8 個 `ClassSession`，而不是依額度算出的 occurrence 數。本修訂版把這個缺口獨立列為必須先解的問題（見 §2.5、§7、§11 Phase 0B）。
 4. **Founder 已就四項核心產品語意拍板**（本修訂版把決策內建進模型）：
-   - **D1**：新增 `standard_lesson_minutes`（計費標準堂長），與排課時長脫鉤；系統/分校可設預設值（例如 120），課程層級可 override；**不假設全公司永遠只有 120 分鐘**。
+   - **D1**：新增 `standard_lesson_minutes`（計費標準堂長），與排課時長脫鉤；課程層級各自設定；**不假設全公司永遠只有 120 分鐘**。
+     - **實作狀態（2026-07-31）**：`standard_lesson_minutes` 已實作，但**刻意沒有實作任何系統/分校層級的預設值**。後端沒有任何 fallback 常數：`StudentClass::resolvedStandardLessonMinutes()` 在課程未設定時回傳 `null`，不會退回 `SessionDuration`，也不會退回 120。建課表單的 `120` 只是**輸入框初值**（`form.standard_lesson_minutes`），送出前老師／主任可任意修改，且該值一定會隨 payload 明確送出，不由後端補。
+     - 這是刻意的：一個可被繼承的「分校預設堂長」會讓「這門課的一堂是幾分鐘」重新變成一個離課程很遠、容易被誤改、且改了會回頭重新解釋既有課程的全域設定——正是本 RFC 要消除的東西。若之後仍要做，見 §14 未決事項 7。
    - **D2**：常態課程分鐘扣除**只能 explicit opt-in**，且**不批准**把既有正常課程整批切成分鐘扣除；opt-in 機制選用**明確的 `deduction_basis` 欄位**（`fixed_session` | `actual_duration`），理由見 §10；`R59` 改寫為「禁止未經 explicit opt-in 擴大常態課程分鐘扣除」，不刪除。
    - **D3**：第一版**不做**自動跨期拆帳／借用下一期／負餘額自動轉移／跨發票分攤／自動 debt settlement；改採「建課時預測 coverage → 超額前 warning → 點名不中斷 → ledger 保留完整實際扣除分鐘 → 顯示/回報 derived `uncovered_minutes`」，跨期分配留給後續獨立 workflow。
    - **D4**：第一版 `actual_duration` 課程**不得**加入 `CoursePackage`；本 RFC 的 implementation slice **不擴大** `package_session_ledger`。
@@ -531,15 +544,24 @@ uncovered_minutes = max(0, net_deducted_minutes − purchased_minutes)
 - **沒有**讓 UI 顯示新語意但後端仍以舊契約寫入的情形——因為根本沒有 UI 或 controller 被接線。
 - **沒有**改變任何扣堂 runtime behavior——`SessionDeductionService` 完全未被本 PR 觸碰。
 
-### Phase 1 — additive contract fields（**計畫，本 PR 不實作**；exact plan 見 §15）
+### Phase 1 — additive contract fields（**已實作並 merge，#1541**；原規格見 §15）
 
-不 globally activate runtime deduction；只新增契約欄位與 immutability 守門。詳細 migration／model／validation／rollback 規格見 §15。
+不 globally activate runtime deduction；只新增契約欄位與 immutability 守門。
 
-### Phase 2 — duration-aware deduction behind feature flag（**計畫，本 PR 不實作**；exact plan 見 §15）
+**實作結果**：migration `2026_07_30_120000_add_actual_duration_contract_to_student_class.php` 新增 nullable `standard_lesson_minutes`（int）與 `deduction_basis`（varchar(32)，預設 `fixed_session`）；`App\Services\Scheduling\DeductionBasis` 常數類別；`App\Services\Scheduling\BillingContractLockGuard` 在**後端**鎖定 `standard_lesson_minutes`／`deduction_basis`／`SessionCount`（第一筆扣堂 ledger 之後拒絕變更，回 422；重送相同值不算變更）；`StudentClass::resolvedStandardLessonMinutes()` **不** fallback 到 `SessionDuration`，沒設標準的課程就不是 actual-duration 課程。
 
-只對 explicit opt-in 課程啟用；同時處理 §2.5／D6 的耦合解除（`session_plan` 作為 canonical occurrence source，見 §10 D6）與 `CoursePackage` 互斥守門（D4）。詳細規格見 §15。
+### Phase 2 — duration-aware deduction behind feature flag（**已實作並 merge，#1543 + #1544**；原規格見 §15）
 
-### Phase 3 — precise balance UX and uncovered warning（**計畫，本 PR 不實作**；exact plan 見 §15）
+只對 explicit opt-in 課程啟用；同時處理 §2.5／D6 的耦合解除與 `CoursePackage` 互斥守門（D4）。
+
+**實作結果**：
+- 扣堂 dispatch 只加在唯一的權威計算點 `SessionDeductionService::recomputeCounters()`／`resolvePartialDeductionMinutes()`，因此 §5 列出的 ~9 個點名入口全部自動涵蓋，一個都沒有被個別改動。既有 partial-makeup 路徑完全未動。
+- 環境旗標 `perfflags.actual_duration_deduction_enabled` 預設 false，且是 **fail-safe** 而非 fail-open：旗標關閉時，已標記 `actual_duration` 的課程行為完全等同 `fixed_session`。
+- 建課同樣受環境旗標管制：旗標關閉時 `EnrollmentService` 直接 422 拒絕建立 actual-duration 課程，避免產生「契約說按時長、實際整堂扣」的課。
+- D6 解耦落在 `EnrollmentService::store()` 的相等性檢查；`fixed_session` 的「次數需等於購買堂數」規則與錯誤訊息一字未改。
+- D5 超額確認由後端用 `LessonEntitlementCoverageCalculator` **重新計算**，不信任前端 preview。
+
+### Phase 3 — precise balance UX and uncovered warning（**部分已實作並 merge**：精確餘額欄位 #1544、建課 UX #1546；主任／家長告警仍未實作）
 
 - API/UI 改用 §10 定義的 `remaining_minutes`/`remaining_lesson_equivalent`/`uncovered_minutes` 等 derived 欄位，**不得只讀 integer `RemainingSessions`** 作為精確餘額顯示。
 - 主任儀表板／家長端補上「即將超出額度」告警（依 §10 UX specification 呈現）。
