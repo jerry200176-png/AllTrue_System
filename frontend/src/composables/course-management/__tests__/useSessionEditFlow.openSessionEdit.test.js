@@ -154,4 +154,27 @@ describe('openSessionEdit projected capability (F4)', () => {
     );
     expect(flow.showSessionEditModal.value).toBe(true);
   });
+
+  it('shows the backend rejection reason when projected-session materialization fails', async () => {
+    globalThis.fetch.mockResolvedValueOnce({
+      ok: false,
+      json: async () => ({ message: '指定日期不符合此課程固定時段' }),
+    });
+    const flow = buildFlow({
+      getSessionDisplayRow: vi.fn(() => null),
+      reloadCourseSessions: vi.fn(async () => true),
+      getSessionRowsForDate: () => [],
+    });
+
+    await flow.openSessionEdit(
+      { id: 42, payment_type: 'monthly', ScheduleMode: 'date', duration_hours: 2 },
+      '2026-08-10', 0, { isProjected: true, startTime: '18:00', endTime: '20:00' },
+    );
+
+    expect(flow.chipActionDialog.value).toMatchObject({
+      kind: 'resolve_retry',
+      title: '無法建立可編輯堂次',
+    });
+    expect(flow.chipActionDialog.value?.message).toContain('指定日期不符合此課程固定時段');
+  });
 });

@@ -278,7 +278,11 @@ export function useSessionEditFlow({
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.session) {
-        openSessionResolveDialog(course, dateYmd, unit?.id, unit, '無法建立可編輯堂次', '固定時段推算建立失敗。尚未進行任何變更，可以再試一次。');
+        const backendMessage = typeof json?.message === 'string' ? json.message.trim() : '';
+        const message = backendMessage
+          ? `固定時段推算建立失敗：${backendMessage}。尚未進行任何變更。`
+          : '固定時段推算建立失敗。尚未進行任何變更，可以再試一次。';
+        openSessionResolveDialog(course, dateYmd, unit?.id, unit, '無法建立可編輯堂次', message);
         return null;
       }
       const vm = sessionViewModelFromEnsureProjected(json.session);
