@@ -182,7 +182,7 @@ watch(() => [props.show, props.course?.id], ([visible]) => {
 
 .lpi-status-chip {
   display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
-  background: var(--ds-success-wash); color: var(--ds-success, #14532d);
+  background: var(--ds-success-wash); color: var(--ds-success);
 }
 .lpi-status-chip.pending { background: var(--ds-warning-wash); color: var(--ds-warning); }
 .lpi-status-chip.rejected,
