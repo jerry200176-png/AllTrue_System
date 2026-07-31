@@ -8,6 +8,8 @@ use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\UserCampus;
 use App\Services\FrontendSubjectIdResolver;
+use App\Services\Scheduling\DeductionBasis;
+use App\Services\Scheduling\LessonEntitlementCoverageCalculator;
 use App\Services\TeacherScopeService;
 use App\Support\MysqlCharsetRejection;
 use Carbon\Carbon;
@@ -207,7 +209,15 @@ class EnrollmentService
             ], 422);
         }
 
-        if ($plannedSessions !== count($sessionRows)) {
+        // RFC non-standard duration D6 — entitlement and occurrence count are two
+        // different numbers for actual-duration courses. `session_plan` decides how many
+        // occurrences exist; `total_classes` decides how much entitlement was bought.
+        // Forcing them equal is exactly what makes "buy 8 standard units, schedule six
+        // 3-hour sessions" impossible to express. Every other course keeps the existing
+        // equality rule byte-identical.
+        $actualDurationOptIn = $this->wantsActualDuration($data);
+
+        if (!$actualDurationOptIn && $plannedSessions !== count($sessionRows)) {
             $field = $isSessionMode ? 'total_classes' : 'monthly_sessions';
             $message = $isSessionMode
                 ? '堂數（session_plan 或日期清單總筆數）需與購買總堂數一致'
@@ -219,6 +229,17 @@ class EnrollmentService
                     $field => [$message],
                 ],
             ], 422);
+        }
+
+        if ($actualDurationOptIn) {
+            if ($contractError = $this->validateActualDurationContract($data, $isSessionMode)) {
+                return $contractError;
+            }
+            // D5 — the backend computes coverage itself and refuses an unconfirmed
+            // overage. It must never trust the frontend preview for this.
+            if ($overageError = $this->guardOverageConfirmation($data, $plannedSessions, $sessionRows)) {
+                return $overageError;
+            }
         }
 
         $rowKeys = [];
@@ -666,7 +687,16 @@ class EnrollmentService
                 }
 
                 $groupSessionCount = count($rowsForSubject);
-                $sessionCount = $isSessionMode ? $groupSessionCount : 0;
+                // RFC non-standard duration D6: for actual-duration courses the purchased
+                // entitlement is what the buyer paid for (total_classes), NOT how many
+                // occurrences happen to be scheduled — those are now two different
+                // numbers. Every other course keeps deriving it from the occurrence
+                // count exactly as before.
+                $sessionCount = $isSessionMode
+                    ? ($this->wantsActualDuration($data)
+                        ? (int) $this->resolvePlannedSessions($data, $groupSessionCount)
+                        : $groupSessionCount)
+                    : 0;
                 $monthlySessions = !$isSessionMode ? $groupSessionCount : null;
                 $chargeUnits = $isSessionMode ? $sessionCount : max(1, $monthlySessions ?: $groupSessionCount);
 
@@ -708,6 +738,16 @@ class EnrollmentService
                     'settlement_day' => !$isSessionMode ? (int) ($data['settlement_day'] ?? 0) : null,
                     'monthly_sessions' => !$isSessionMode ? $monthlySessions : null,
                     'SessionDuration' => $groupGlobalDur,
+                    // RFC non-standard duration D1/A1: the billing standard is persisted
+                    // as its own per-course value at create time and never re-resolved
+                    // from a mutable default later. Null keeps the course on
+                    // fixed_session, which is every existing course's behaviour.
+                    'standard_lesson_minutes' => $this->wantsActualDuration($data)
+                        ? (int) $data['standard_lesson_minutes']
+                        : null,
+                    'deduction_basis' => $this->wantsActualDuration($data)
+                        ? DeductionBasis::ACTUAL_DURATION
+                        : DeductionBasis::FIXED_SESSION,
                     'TotalHours' => $totalHours,
                     'StartDate' => $allDates[0],
                     'EndDate' => $endDateOverride ?? $allDates[count($allDates) - 1],
@@ -953,6 +993,119 @@ class EnrollmentService
         ]);
 
         return null;
+    }
+
+    /** Did this request explicitly ask for actual-duration billing? */
+    private function wantsActualDuration(array $data): bool
+    {
+        return (string) ($data['deduction_basis'] ?? DeductionBasis::FIXED_SESSION)
+            === DeductionBasis::ACTUAL_DURATION;
+    }
+
+    /**
+     * RFC non-standard duration D1/D2/D4 — contract validity at create time.
+     *
+     * @return \Illuminate\Http\JsonResponse|null
+     */
+    private function validateActualDurationContract(array $data, bool $isSessionMode)
+    {
+        // The environment flag is the master switch. Without this check the API could
+        // mint a course whose contract says "bill by clock time" while the deduction
+        // engine is still off — the course would then silently deduct whole lessons,
+        // which is worse than refusing to create it.
+        if (!config('perfflags.actual_duration_deduction_enabled', false)) {
+            return response()->json([
+                'message' => '依實際時長扣堂尚未在此環境啟用',
+                'errors' => ['deduction_basis' => ['此功能尚未啟用，請改用「每次上課扣一堂」。']],
+            ], 422);
+        }
+
+        if (!$isSessionMode) {
+            return response()->json([
+                'message' => '依實際時長扣堂目前僅支援堂數制課程',
+                'errors' => ['deduction_basis' => ['月結制課程尚不支援依實際時長扣堂。']],
+            ], 422);
+        }
+
+        $standard = $data['standard_lesson_minutes'] ?? null;
+        if ($standard === null || $standard === '') {
+            return response()->json([
+                'message' => '依實際時長扣堂的課程必須設定標準一堂時長',
+                'errors' => ['standard_lesson_minutes' => ['請設定標準一堂時長（分鐘）。']],
+            ], 422);
+        }
+        $standard = (int) $standard;
+        if ($standard < 30 || $standard > 480) {
+            return response()->json([
+                'message' => '標準一堂時長需介於 30 至 480 分鐘',
+                'errors' => ['standard_lesson_minutes' => ['標準一堂時長需介於 30 至 480 分鐘。']],
+            ], 422);
+        }
+
+        // D4: the shared-pool ledger can only represent whole lessons (TD-059).
+        if (!empty($data['package_id']) || !empty($data['PackageID'])) {
+            return response()->json([
+                'message' => '共用課程包不支援依實際時長扣堂',
+                'errors' => ['deduction_basis' => ['共用課程包內的課程不可使用依實際時長扣堂。']],
+            ], 422);
+        }
+
+        return null;
+    }
+
+    /**
+     * RFC non-standard duration D5 — recompute coverage server-side and refuse to
+     * create an over-scheduled course unless the operator explicitly confirmed it.
+     *
+     * Deliberately recomputed here rather than trusting `requires_overage_confirmation`
+     * from the client: the frontend preview is a convenience, not an authority.
+     *
+     * @param  list<array<string, mixed>>  $sessionRows
+     * @return \Illuminate\Http\JsonResponse|null
+     */
+    private function guardOverageConfirmation(array $data, int $plannedSessions, array $sessionRows)
+    {
+        $standard = (int) $data['standard_lesson_minutes'];
+        $occurrences = [];
+        foreach ($sessionRows as $i => $row) {
+            $occurrences[] = [
+                'duration_minutes' => (int) $row['duration_minutes'],
+                'sequence' => $i + 1,
+                'date' => $row['date'] ?? null,
+            ];
+        }
+
+        $coverage = (new LessonEntitlementCoverageCalculator())
+            ->calculate($plannedSessions, $standard, $occurrences);
+
+        if ($coverage['uncovered_minutes'] <= 0) {
+            return null;
+        }
+        if (filter_var($data['overage_confirmed'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            return null;
+        }
+
+        $calc = new LessonEntitlementCoverageCalculator();
+
+        return response()->json([
+            'message' => '目前排程超出已購額度，請先確認超額部分需要續約、加購或後續處理',
+            'code' => 'overage_confirmation_required',
+            'errors' => ['overage_confirmed' => ['請勾選確認後再建立課程。']],
+            'coverage' => [
+                'standard_lesson_minutes' => $standard,
+                'purchased_standard_units' => $plannedSessions,
+                'entitlement_minutes' => $coverage['entitlement_minutes'],
+                'scheduled_occurrence_count' => $coverage['occurrence_count'],
+                'scheduled_minutes' => $coverage['scheduled_minutes'],
+                'fully_covered_occurrences' => $coverage['fully_covered_occurrences'],
+                'first_partially_covered_occurrence' => $coverage['first_partially_covered_occurrence'],
+                'partial_covered_minutes' => $coverage['partial_covered_minutes'],
+                'partial_uncovered_minutes' => $coverage['partial_uncovered_minutes'],
+                'fully_uncovered_occurrences' => $coverage['fully_uncovered_occurrences'],
+                'uncovered_minutes' => $coverage['uncovered_minutes'],
+                'uncovered_lesson_equivalent' => $calc->lessonEquivalent($coverage['uncovered_minutes'], $standard),
+            ],
+        ], 422);
     }
 
     private function resolvePlannedSessions(array $data, int $totalDates): int
