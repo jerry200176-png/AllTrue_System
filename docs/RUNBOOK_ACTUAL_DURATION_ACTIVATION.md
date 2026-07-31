@@ -19,11 +19,11 @@ last_reviewed: 2026-07-31
 |---|---|---|
 | **deployed** | ✅ 是 | `deploy.yml` 在每次 merge 到 `main` 後自動觸發並執行；已對本功能的每個 backend/frontend 變動 PR 執行過，health + 完整 authenticated smoke 皆通過 |
 | **migrated** | ✅ 是 | `standard_lesson_minutes`／`deduction_basis` 已於 schema PR 合併時，隨同一次自動部署一併於正式環境套用（`php artisan migrate --force`，含事前 `mysqldump` 備份）|
-| **backend flag enabled** | ❌ 否（除非下方 §1.5 查出來是 true） | `PERF_ACTUAL_DURATION_DEDUCTION` 從未被設過；預設 `false` |
-| **frontend option visible** | ❌ 否 | `ACTUAL_DURATION_DEDUCTION_ENABLED` 編譯期常數仍為 `false`，尚未有啟用 PR 合併 |
-| **production course verified** | ❌ 否 | 尚未有任何 `actual_duration` 課程在正式環境被建立與走完點名流程 |
+| **backend flag enabled** | ✅ 是 | `enable_backend`（workflow run 30629298501）：production HEAD 比對通過（`dc88926e`）、`.env` 已備份＋checksum、單行 idempotent 修改、`optimize` 重建快取、**effective config 經 `php artisan tinker` 驗證為 `true`**、health `ok`、完整 authenticated smoke 通過、既有課程分布仍全為 `fixed_session`（1895 筆）。獨立 `verify_backend`（run 30629362904，非同一次執行）重新確認同一結果 |
+| **frontend option visible** | ✅ 是 | PR #1552 merge → `deploy.yml` 自動部署（run 30629708223）：`version.json hash=511ab1c7` = Pi git HEAD，health + 完整 authenticated smoke 全通過 |
+| **production course verified** | ❌ 否 | 尚未有任何 `actual_duration` 課程在正式環境被建立與走完點名流程——需要 Founder 指定安全的測試學生／老師／分校身分，見 `.github/workflows/actual-duration-acceptance.yml`（已備妥、待指定身分） |
 
-**"deployed" ≠ "production 已啟用"。** 程式碼與 migration 已經在正式環境，但這只代表引擎「已就位」，不代表任何課程或使用者行為受影響——兩個旗標仍是 `false`，所有既有課程仍是 `fixed_session`，行為零變化。
+**兩個旗標已確認在正式環境為 `true`，但這仍不等於「已完成驗收」。** 沒有任何既有課程被動到——兩次獨立查詢都確認全部 1895 門課程仍是 `fixed_session`，沒有非預期的 `actual_duration` 課程。只是現在**新建**課程時，授權角色可以選擇「依實際上課時長換算」；還沒有人實際走過這條路徑。
 
 ---
 
@@ -95,7 +95,7 @@ B1 是「排課時長與該課程自己的契約時長不符」的規模，並�
 
 1. **確認 migration 已套用。**（已完成——見上方現況表；本步驟只是留給往後從頭啟用另一個環境時參考，不是本次待辦。）
 
-2. **開啟後端旗標。**
+2. **開啟後端旗標。**（**已完成** — run 30629298501，`expected_head_sha=dc88926e`，`enable-result=SUCCESS`。以下保留原步驟說明供未來重跑／其他環境參考。）
 
    ```
    Actions → Actual-Duration Billing Activation (Founder-gated) → Run workflow
@@ -115,20 +115,11 @@ B1 是「排課時長與該課程自己的契約時長不符」的規模，並�
 
    此時：後端引擎已就緒，但沒有任何課程是 `actual_duration`，所以**行為上什麼都不會變**。這一步是為了讓引擎先在正式環境待命，而不是引擎與課程同時出現。
 
-3. **驗證什麼都沒變。**
+3. **驗證什麼都沒變。**（**已完成** — 獨立 run 30629362904：effective config = `true`、health = `ok`、`deduction_basis` 分布仍是全 `fixed_session`（1895 筆）、無非預期 `actual_duration` 課程。）
 
-   ```
-   Actions → Actual-Duration Billing Activation (Founder-gated) → Run workflow
-     action = verify_backend
-   ```
+4. **開前端旗標。**（**已完成** — PR #1552 merge → `deploy.yml` run 30629708223：`version.json hash=511ab1c7` = Pi git HEAD，health + 完整 authenticated smoke 全通過。建課表單現在會出現「扣堂方式」選項。）
 
-   確認：effective config = `true`、health = `ok`、`deduction_basis` 分布仍是全 `fixed_session`（除非已進到步驟 5 的指定測試課程階段）。
-
-4. **開前端旗標。**
-   `frontend/src/lib/perfFlags.js` 的 `ACTUAL_DURATION_DEDUCTION_ENABLED` 改為 `true` → PR → CI 全綠 → **等步驟 2 的 `enable_backend` 回報成功後才 merge** → 等 `deploy.yml` 自動部署 → 驗 `version.json`（Y3）。
-   此時建課表單才會出現「扣堂方式」選項。**在後端旗標確認開啟之前合併這個 PR，會讓老師在 UI 選了選項卻 100% 收到 422**，不是「提前上線」，是壞掉的 UX——順序不可反。
-
-5. **第一門課由 Founder 指定，並且全程有人看著。**
+5. **第一門課由 Founder 指定，並且全程有人看著。**（**尚未執行** — 見 `.github/workflows/actual-duration-acceptance.yml` 與隨附的整合請求。）
    需要 Founder 提供：學生 ID／老師 ID／分校 ID（或明確授權使用某個現成的指定測試身分）。**不得**使用一般真實付費課程的學生，也不得由 AI 自行代選一個「看起來像測試」的現有學生。
    建課後立即比對：
    - 課程列表顯示的 `remaining_lesson_equivalent` 與 `remaining_hours`
