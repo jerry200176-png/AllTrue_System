@@ -1,0 +1,88 @@
+name: Teacher availability diagnose (read-only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      teacher_id:
+        description: Production teacher user ID
+        required: true
+        type: string
+      date:
+        description: Date in YYYY-MM-DD format
+        required: true
+        type: string
+      exclude_student_id:
+        description: Optional student ID to mirror the substitute picker request
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          PI_HOST_KEY: ${{ secrets.PI_HOST_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$PI_SSH_KEY"
+          test -n "$PI_SSH_HOST"
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if ssh-keyscan -H "$PI_SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null; then
+            :
+          elif [[ -n "${PI_HOST_KEY:-}" ]]; then
+            printf '%s\n' "$PI_HOST_KEY" > ~/.ssh/known_hosts
+          else
+            echo "::error::no host key"; exit 1
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Query deployed availability path
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          TEACHER_ID: ${{ inputs.teacher_id }}
+          TARGET_DATE: ${{ inputs.date }}
+          EXCLUDE_STUDENT_ID: ${{ inputs.exclude_student_id || '' }}
+        run: |
+          set -euo pipefail
+          [[ "$TEACHER_ID" =~ ^[0-9]+$ ]] || { echo "invalid teacher_id"; exit 1; }
+          [[ "$TARGET_DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || { echo "invalid date"; exit 1; }
+          [[ -z "$EXCLUDE_STUDENT_ID" || "$EXCLUDE_STUDENT_ID" =~ ^[0-9]+$ ]] || { echo "invalid exclude_student_id"; exit 1; }
+          ssh -i ~/.ssh/deploy_key \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            -o ConnectTimeout=20 \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" \
+            "TEACHER_ID='$TEACHER_ID' TARGET_DATE='$TARGET_DATE' EXCLUDE_STUDENT_ID=\$(printf %q \"$EXCLUDE_STUDENT_ID\") bash -s" <<'REMOTE'
+          set -euo pipefail
+          cd /home/admin/backend
+          export TEACHER_ID TARGET_DATE EXCLUDE_STUDENT_ID
+          php artisan tinker --execute='
+          $teacherId = (int)getenv("TEACHER_ID");
+          $date = (string)getenv("TARGET_DATE");
+          $exclude = trim((string)getenv("EXCLUDE_STUDENT_ID"));
+          $excludeStudentId = $exclude === "" ? null : (int)$exclude;
+          $busy = app(\App\Services\SubstituteService::class)->collectTeacherBusySlotsWithCapacity($teacherId, $date, [], $excludeStudentId);
+          $response = array_map(static fn ($s) => [
+              "start_time" => $s["start_time"],
+              "end_time" => $s["end_time"],
+              "campus_id" => (int)$s["campus_id"],
+              "class_type" => (string)($s["class_type"] ?? "one_on_one"),
+              "student_count" => (int)($s["student_count"] ?? 0),
+              "remaining_capacity" => (int)($s["remaining_capacity"] ?? 0),
+          ], $busy);
+          echo json_encode(["teacher_id" => $teacherId, "date" => $date, "exclude_student_id" => $excludeStudentId, "busy_slots" => $response], JSON_UNESCAPED_UNICODE), PHP_EOL;
+          '
+          REMOTE
