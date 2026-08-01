@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\AuthToken;
 use App\Models\ClassSession;
 use App\Models\Invoice;
+use App\Models\InvoiceItem;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
@@ -82,6 +83,14 @@ class MonthlyBillingSlipTest extends TestCase
             'Status' => 'unpaid',
             'billing_period' => '2026-07',
         ]);
+        InvoiceItem::create([
+            'InvoiceID' => $invoice->id,
+            'StudentClassID' => $course->ID,
+            'Description' => '月結費用 2026年7月',
+            'Amount' => 6000,
+            'PeriodStart' => '2026-07-08',
+            'PeriodEnd' => '2026-08-06',
+        ]);
 
         $response = $this->withHeaders([
             'Authorization' => "Bearer {$token}",
@@ -118,7 +127,13 @@ class MonthlyBillingSlipTest extends TestCase
             ->assertJsonPath('computed_total_amount', 7500)
             ->assertJsonPath('amount_discrepancy', true)
             ->assertJsonPath('period_sessions', 5)
+            ->assertJsonPath('items.0.amount', 7500)
+            ->assertJsonPath('items.0.period_start', '2026-07-01')
+            ->assertJsonPath('items.0.period_end', '2026-07-31')
             ->assertJsonCount(5, 'sessions');
+
+        $item = $invoiceSlip->json('items.0');
+        $this->assertStringContainsString('月結費用 2026年7月（5堂）', (string) $item['description']);
 
         $invoiceList = $this->withHeaders([
             'Authorization' => "Bearer {$token}",
