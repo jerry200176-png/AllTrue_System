@@ -26,9 +26,9 @@
 
 | 順序 | Context | 頁面 | 狀態 |
 |---:|---|---|---|
-| 0 | 全站基準盤點 | matrix、state inventory、共用元件規格 | 進行中 |
-| 1 | 課程與家長請假 | `CourseManagement.vue`、`ParentPortal.vue`、主任入口整合 | 進行中；Issue [#1601](https://github.com/jerry200176-png/AllTrue_System/issues/1601) |
-| 2 | 行事曆與調課 | `SmartCalendar.vue`、`ScheduleDiscrepancyPage.vue` | 待處理 |
+| 0 | 全站基準盤點 | matrix、state inventory、共用元件規格 | 已建立；Epic [#1600](https://github.com/jerry200176-png/AllTrue_System/issues/1600) |
+| 1 | 課程與家長請假 | `CourseManagement.vue`、`ParentPortal.vue`、主任入口整合 | 已上線；Issue [#1601](https://github.com/jerry200176-png/AllTrue_System/issues/1601) |
+| 2 | 行事曆與調課 | `SmartCalendar.vue`、`ScheduleDiscrepancyPage.vue` | 研究與規格中；Issue [#1605](https://github.com/jerry200176-png/AllTrue_System/issues/1605) |
 | 3 | 老師每日工作流 | `TeacherHomePage.vue`、`AttendancePage.vue` | 待處理 |
 | 4 | 評量跨角色整合 | 老師／主任／家長入口 | 待處理 |
 | 5 | 繳費與財務 | `TuitionCollectionPage.vue`、`BillingList.vue` 等 | 高風險、待處理 |

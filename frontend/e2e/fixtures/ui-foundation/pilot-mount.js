@@ -24,7 +24,7 @@ localStorage.setItem('notifications_sound_enabled', '0');
 
 const role = params.get('role') || 'director';
 
-const [{ createApp, h }, styles, NotificationsCenter, StudentsList, DirectorDashboard, LearningRecordsPage, CourseManagement] = await Promise.all([
+const [{ createApp, h }, styles, NotificationsCenter, StudentsList, DirectorDashboard, LearningRecordsPage, CourseManagement, SmartCalendar, ScheduleDiscrepancyPage] = await Promise.all([
   import('vue'),
   import('../../../src/styles.css'),
   import('../../../src/pages/NotificationsCenter.vue'),
@@ -32,6 +32,8 @@ const [{ createApp, h }, styles, NotificationsCenter, StudentsList, DirectorDash
   import('../../../src/pages/DirectorDashboard.vue'),
   import('../../../src/pages/LearningRecordsPage.vue'),
   import('../../../src/pages/CourseManagement.vue'),
+  import('../../../src/pages/SmartCalendar.vue'),
+  import('../../../src/pages/ScheduleDiscrepancyPage.vue'),
 ]);
 
 void styles;
@@ -55,6 +57,12 @@ createApp({
           window.__pilotLastNavigation = payload;
         },
       });
+    }
+    if (page === 'calendar') {
+      return () => h(SmartCalendar.default, { branchId: 1, userRole: role, userId: 9001 });
+    }
+    if (page === 'discrepancy') {
+      return () => h(ScheduleDiscrepancyPage.default, { branchId: 1 });
     }
     return () => h(NotificationsCenter.default, { branchId: 1 });
   },
