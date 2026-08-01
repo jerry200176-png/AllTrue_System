@@ -193,6 +193,17 @@ jobs:
             rm -f /home/admin/frontend/.env.production.local
           fi
 
+          # Keep runtime identity separate from the frontend build artifact.
+          # version.json may intentionally remain old during backend-only deploys;
+          # deployment.json always records the backend commit actually activated.
+          write_deployment_manifest() {
+            python3 /home/admin/scripts/write-deployment-manifest.py \
+              --target-sha "$1" \
+              --version-file /home/admin/backend/public/version.json \
+              --output /home/admin/backend/public/deployment.json
+          }
+          write_deployment_manifest "$TARGET_SHA"
+
           echo "=== [5/7] 重建 Laravel 快取 + 重載 PHP-FPM ==="
           # ⛔ 禁止用 optimize:clear / config:clear（事故 B 教訓：清除會造成短暫 auth 錯亂）
           # ✅ 只清 composer package discovery 快取（--no-dev 後必須，否則找不到已移除的 dev 套件）
@@ -220,6 +231,8 @@ jobs:
             export SMOKE_TEACHER_LOGIN="${{ secrets.SMOKE_TEACHER_LOGIN }}"
             export SMOKE_TEACHER_PASSWORD="${{ secrets.SMOKE_TEACHER_PASSWORD }}"
             export SMOKE_BRANCH_ID="${{ secrets.SMOKE_BRANCH_ID }}"
+            export SMOKE_EXPECTED_BACKEND_SHA="$TARGET_SHA"
+            export SMOKE_REQUIRE_DEPLOYMENT_MANIFEST=1
             if [ "$FRONTEND_CHANGED" -gt 0 ]; then
               export SMOKE_STRICT_VERSION=1
             fi
@@ -248,6 +261,8 @@ jobs:
           if [ "$FRONTEND_CHANGED" -gt 0 ]; then
             cd /home/admin/frontend && npm run deploy || echo "⚠️ 前端 rollback build 失敗"
           fi
+
+          write_deployment_manifest "$PREV_COMMIT"
 
           cd /home/admin/backend
           php artisan optimize || echo "⚠️ optimize 失敗"
