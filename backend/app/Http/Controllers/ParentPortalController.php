@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\LearningRecord;
 use App\Models\LearningRecordFeedback;
 use App\Models\ParentSession;
+use App\Models\ParentCrossCampusAccess;
+use App\Models\StudentIdentityMember;
 use App\Support\StudentContactPhone;
 use App\Models\Student;
 use App\Models\StudentClass;
@@ -20,6 +22,7 @@ use App\Models\User;
 use App\Http\Controllers\LearningRecordController;
 use App\Services\ExceptionWorkflowService;
 use App\Services\SessionDeductionService;
+use App\Services\StudentIdentityService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -28,6 +31,11 @@ use Illuminate\Support\Str;
 
 class ParentPortalController extends Controller
 {
+    private function identityService(): StudentIdentityService
+    {
+        return app(StudentIdentityService::class);
+    }
+
     // ── Login: Student ID + Phone OR Student Name + Phone ───────────────────
 
     public function login(Request $request)
@@ -87,11 +95,18 @@ class ParentPortalController extends Controller
             if ($candidates->count() === 1) {
                 $student = $candidates->first();
             } elseif ($candidates->count() > 1) {
-                // 極罕見：姓名 + 手機完全相同但不同 Student 記錄。業界作法為不自動登入，
-                // 要求使用者改以 LINE 綁定或 StudentID 精確登入，避免誤選他家庭學生。
-                return response()->json([
-                    'message' => '找到多筆相符資料，請改以 LINE 綁定或提供學生代號登入',
-                ], 409);
+                // A director-confirmed identity group is the only exception to
+                // the legacy ambiguous-name rule. Same name/phone alone never
+                // creates or expands a parent scope.
+                $groupIds = $candidates->map(fn ($s) => $this->identityService()->groupForStudent((int) $s->id)?->id)
+                    ->filter()->unique()->values();
+                if ($groupIds->count() === 1 && $candidates->every(fn ($s) => (int) $this->identityService()->groupForStudent((int) $s->id)?->id === (int) $groupIds->first())) {
+                    $student = $candidates->first();
+                } else {
+                    return response()->json([
+                        'message' => '找到多筆相符資料，請改以 LINE 綁定或提供學生代號登入',
+                    ], 409);
+                }
             } else {
                 // Hint to front desk if name matched but phone didn't for any row with empty phone
                 $nameOnly = Student::whereRaw('TRIM(name) = ?', [$rawName])->get();
@@ -110,7 +125,7 @@ class ParentPortalController extends Controller
             'ip' => $request->ip(),
         ]);
 
-        $result = $this->createSession($student);
+        $result = $this->createSession($student, null, $phoneNorm);
 
         // Only attach additional students if they share an explicit LINE binding.
         // 不再以「相同 Phone」自動帶出 siblings，避免跨家庭 PII 洩漏。
@@ -255,8 +270,14 @@ class ParentPortalController extends Controller
         }
 
         // Create session for the first student (frontend can switch later)
-        $result = $this->createSession($students->first());
-        $result['students'] = $students->map(fn ($s) => ['id' => $s->id, 'name' => $s->name])->values();
+        $firstStudent = $students->first();
+        $result = $this->createSession($firstStudent, null, StudentContactPhone::normalizedDigits($firstStudent));
+        $result['students'] = $this->parentStudentSwitcherRows($students);
+        // Do not expose group members until this login has passed the same
+        // cross-campus phone verification used by dashboard aggregation.
+        $result['identity_groups'] = !empty($result['identity_group_id'])
+            ? $this->identityGroupRows($students)
+            : [];
         return response()->json($result);
     }
 
@@ -280,6 +301,13 @@ class ParentPortalController extends Controller
 
         $currentStudent = Student::find($session->StudentID);
         $allowed = false;
+        $targetGroup = $this->identityService()->groupForStudent((int) $targetStudent->id);
+        if ($session->identity_group_id
+            && $targetGroup
+            && (int) $targetGroup->id === (int) $session->identity_group_id
+            && $this->identityService()->accessMode((int) $session->identity_group_id) !== StudentIdentityService::MODE_OFF) {
+            $allowed = true;
+        }
 
         if ($currentStudent) {
             // Check via student_line_bindings: any shared *valid* line_user_id
@@ -300,7 +328,11 @@ class ParentPortalController extends Controller
         }
 
         // Create new session for the target student
-        return response()->json($this->createSession($targetStudent));
+        return response()->json($this->createSession(
+            $targetStudent,
+            $targetGroup?->id,
+            StudentContactPhone::normalizedDigits($targetStudent)
+        ));
     }
 
     // ── Dashboard ─────────────────────────────────────────────────────────
@@ -317,7 +349,38 @@ class ParentPortalController extends Controller
             return response()->json(['message' => 'Student not found'], 404);
         }
 
-        $classes = StudentClass::where('StudentID', $student->id)
+        [$identityGroup, $accessMode, $identityMembers] = $session->identity_group_id
+            ? $this->identityService()->parentContext((int) $student->id)
+            : [null, StudentIdentityService::MODE_OFF, collect()];
+        $crossCampusEnabled = $identityGroup
+            && $accessMode !== StudentIdentityService::MODE_OFF
+            && $identityMembers->count() > 1;
+        $requestedScope = (string) $request->query('scope', 'all');
+        $memberRows = $crossCampusEnabled ? $identityMembers : $identityMembers->filter(fn ($m) => (int) $m->student_id === (int) $student->id)->values();
+        if ($memberRows->isEmpty()) {
+            $memberRows = collect([(object) [
+                'student_id' => (int) $student->id,
+                'campus_id' => (int) $student->CampusID,
+                'student' => $student,
+            ]]);
+        }
+        if ($crossCampusEnabled && $requestedScope === 'campus') {
+            $requestedCampusId = (int) $request->query('campus_id', 0);
+            $memberRows = $identityMembers->filter(fn ($m) => (int) $m->campus_id === $requestedCampusId)->values();
+            if ($memberRows->isEmpty()) {
+                return response()->json(['message' => 'Forbidden: campus is not in the active identity group.'], 403);
+            }
+        }
+        $studentIds = $memberRows->pluck('student_id')->map(fn ($id) => (int) $id)->values()->all();
+        $campusIds = $memberRows->pluck('campus_id')->map(fn ($id) => (int) $id)->unique()->values()->all();
+        $activeScope = $crossCampusEnabled && $requestedScope === 'campus' ? 'campus' : ($crossCampusEnabled ? 'all' : 'campus');
+        $campusMap = \App\Models\Campus::whereIn('id', $campusIds)->get()->keyBy('id');
+        $studentCampusMap = $memberRows->keyBy('student_id')->map(fn ($m) => [
+            'campus_id' => (int) $m->campus_id,
+            'campus_name' => optional($campusMap->get((int) $m->campus_id))->name,
+        ]);
+
+        $classes = StudentClass::whereIn('StudentID', $studentIds)
             ->orderBy('ID', 'desc')
             ->get();
 
@@ -344,7 +407,7 @@ class ParentPortalController extends Controller
         $monthlyInvoiceRowsByClass = collect();
         if (!empty($monthlyClassIds)) {
             $monthlyInvoiceRowsByClass = Invoice::query()
-                ->where('StudentID', $student->id)
+                ->whereIn('StudentID', $studentIds)
                 ->whereIn('StudentClassID', $monthlyClassIds)
                 ->notVoided()
                 ->whereNotNull('billing_period')
@@ -452,9 +515,12 @@ class ParentPortalController extends Controller
                 ? User::query()->whereIn('id', $recordTeacherIds)->pluck('Name', 'id')
                 : collect();
 
-            $records = $recordsRaw->map(function ($rec) use ($classes, $sessionNumbers, $feedbacks, $repliesByFeedback, $replyAuthorNames, $recordTeacherNames) {
+            $records = $recordsRaw->map(function ($rec) use ($classes, $sessionNumbers, $feedbacks, $repliesByFeedback, $replyAuthorNames, $recordTeacherNames, $studentCampusMap) {
                     $rec->teacher_name = $rec->TeacherID ? ($recordTeacherNames[$rec->TeacherID] ?? null) : null;
                     $sc = $classes->firstWhere('ID', $rec->StudentClassID);
+                    $campus = $sc ? $studentCampusMap->get((int) $sc->StudentID, []) : [];
+                    $rec->campus_id = $campus['campus_id'] ?? null;
+                    $rec->campus_name = $campus['campus_name'] ?? null;
                     $fromCourse = $sc ? $this->resolveSubjectName($sc) : null;
                     $rawSubject = trim((string) ($rec->Subject ?? ''));
                     // Prefer a meaningful course-level subject name (not the generic fallback '課程').
@@ -496,7 +562,7 @@ class ParentPortalController extends Controller
         }
 
         // Attendance history — FR-B-003: date / time / subject / teacher / status
-        $signIns = StudentSignIn::where('StudentID', $student->id)
+        $signIns = StudentSignIn::whereIn('StudentID', $studentIds)
             ->orderBy('SignInDT', 'desc')
             ->limit(100)
             ->get();
@@ -509,7 +575,7 @@ class ParentPortalController extends Controller
         $courseTeacherNames = $courseTeacherIds->isNotEmpty()
             ? User::query()->whereIn('id', $courseTeacherIds)->pluck('Name', 'id')
             : collect();
-        $attendance = $signIns->map(function ($row) use ($classes, $sessionsById, $courseTeacherNames) {
+        $attendance = $signIns->map(function ($row) use ($classes, $sessionsById, $courseTeacherNames, $studentCampusMap) {
             $status = (string) ($row->Status ?? '');
             $row->status_label = match ($status) {
                 'present' => '到班',
@@ -541,6 +607,9 @@ class ParentPortalController extends Controller
             $row->date = $date;
             $row->time = $time;
             $row->subject = $studentClass ? $this->resolveSubjectName($studentClass) : null;
+            $campus = $studentClass ? $studentCampusMap->get((int) $studentClass->StudentID, []) : [];
+            $row->campus_id = $campus['campus_id'] ?? null;
+            $row->campus_name = $campus['campus_name'] ?? null;
 
             $row->teacher_name = ($studentClass && !empty($studentClass->TeacherID))
                 ? ($courseTeacherNames[$studentClass->TeacherID] ?? null)
@@ -569,7 +638,7 @@ class ParentPortalController extends Controller
                 // monthly mode：持續進行，不受 RemainingSessions 影響
                 return true;
             })
-            ->map(function ($c) use ($sessionMetrics, $attendedThisMonth, $monthlyBillingPeriods, $monthlyDisplayLabels, $paidAtMap, $packageMap) {
+            ->map(function ($c) use ($sessionMetrics, $attendedThisMonth, $monthlyBillingPeriods, $monthlyDisplayLabels, $paidAtMap, $packageMap, $studentCampusMap) {
                 $metrics   = $sessionMetrics($c);
                 $isMonthly = (string) ($c->ScheduleMode ?? 'count') !== 'count';
                 $monthlyTarget  = (int) ($c->monthly_sessions ?? 0);
@@ -584,8 +653,12 @@ class ParentPortalController extends Controller
                 $pkg     = ($pkgId > 0 && isset($packageMap[$pkgId])) ? $packageMap[$pkgId] : null;
                 $isPkg   = $pkg !== null && !$isMonthly;
 
+                $campus = $studentCampusMap->get((int) $c->StudentID, []);
                 return [
                     'id'                   => $c->ID,
+                    'student_id'           => (int) $c->StudentID,
+                    'campus_id'            => $campus['campus_id'] ?? (int) ($c->student->CampusID ?? 0),
+                    'campus_name'          => $campus['campus_name'] ?? null,
                     'subject'              => $this->resolveSubjectName($c),
                     'schedule_mode'        => $c->ScheduleMode,
                     'sessions_purchased'   => $c->SessionCount,
@@ -682,9 +755,12 @@ class ParentPortalController extends Controller
 
                 return true;
             })
-            ->map(function ($c) use ($sessionMetrics, $paidAtMap) {
+            ->map(function ($c) use ($sessionMetrics, $paidAtMap, $studentCampusMap) {
+                $campus = $studentCampusMap->get((int) $c->StudentID, []);
                 return [
                     'class_id'           => $c->ID,
+                    'campus_id'          => $campus['campus_id'] ?? null,
+                    'campus_name'        => $campus['campus_name'] ?? null,
                     'subject'            => $this->resolveSubjectName($c),
                     'remaining_sessions' => (int) $sessionMetrics($c)['remaining'],
                     'paid'               => $this->isClassPaid($c, $paidAtMap),
@@ -715,14 +791,17 @@ class ParentPortalController extends Controller
                 ->limit(20)
                 ->get()
                 ;
-            $leaveWorkflows = ExceptionWorkflow::where('student_id', (int) $student->id)
+            $leaveWorkflows = ExceptionWorkflow::whereIn('student_id', $studentIds)
                 ->where('type', 'student_leave')
                 ->whereIn('class_session_id', $upcomingSessions->pluck('id')->all())
                 ->get()
                 ->keyBy('class_session_id');
-            $upcomingSessions = $upcomingSessions->map(function ($session) use ($classes, $leaveWorkflows) {
+            $upcomingSessions = $upcomingSessions->map(function ($session) use ($classes, $leaveWorkflows, $studentCampusMap) {
                 $c = $classes->firstWhere('ID', $session->StudentClassID);
                 $session->Subject = $c ? $this->resolveSubjectName($c) : null;
+                $campus = $c ? $studentCampusMap->get((int) $c->StudentID, []) : [];
+                $session->campus_id = $campus['campus_id'] ?? null;
+                $session->campus_name = $campus['campus_name'] ?? null;
                 $session->StartTime = $this->trimToHM($session->StartTime);
                 $session->EndTime   = $this->trimToHM($session->EndTime);
                 $workflow = $leaveWorkflows->get($session->id);
@@ -738,27 +817,38 @@ class ParentPortalController extends Controller
         try {
             $invoices = !empty($visibleClassIds)
                 ? Invoice::with(['items', 'payments'])
-                    ->where('StudentID', $student->id)
+                    ->whereIn('StudentID', $studentIds)
                     ->whereIn('StudentClassID', $visibleClassIds)
                     ->notVoided()
                     ->orderBy('IssueDate', 'desc')
                     ->get()
+                    ->map(function ($invoice) use ($studentCampusMap) {
+                        $campus = $studentCampusMap->get((int) $invoice->StudentID, []);
+                        $invoice->campus_id = $campus['campus_id'] ?? null;
+                        $invoice->campus_name = $campus['campus_name'] ?? null;
+                        return $invoice;
+                    })
                 : collect();
         } catch (\Exception $e) {}
 
         $announcements = [];
         try {
             $announcements = Announcement::where('IsActive', true)
-                ->where(function ($query) use ($student) {
+                ->where(function ($query) use ($campusIds) {
                     $query->whereNull('BranchID')
-                        ->orWhere('BranchID', $student->CampusID);
+                        ->orWhereIn('BranchID', $campusIds ?: [0]);
                 })
-                ->where(function ($query) use ($student) {
+                ->where(function ($query) use ($studentIds) {
                     $query->whereNull('TargetStudentID')
-                        ->orWhere('TargetStudentID', $student->id);
+                        ->orWhereIn('TargetStudentID', $studentIds ?: [0]);
                 })
                 ->orderBy('created_at', 'desc')
-                ->get();
+                ->get()
+                ->map(function ($ann) use ($campusMap) {
+                    $ann->campus_id = $ann->BranchID ? (int) $ann->BranchID : null;
+                    $ann->campus_name = $ann->BranchID ? optional($campusMap->get((int) $ann->BranchID))->name : null;
+                    return $ann;
+                });
         } catch (\Exception $e) {}
 
         $campusName = null;
@@ -782,6 +872,7 @@ class ParentPortalController extends Controller
         $siblingStudents = $siblingIdsByLine->isNotEmpty()
             ? Student::whereIn('id', $siblingIdsByLine)->get()
             : collect();
+        $siblingStudents = $siblingStudents->reject(fn ($s) => in_array((int) $s->id, $studentIds, true));
         $allStudents = collect([['id' => $student->id, 'name' => $student->name]])
             ->concat($siblingStudents->map(fn ($s) => ['id' => $s->id, 'name' => $s->name]))
             ->values();
@@ -805,7 +896,19 @@ class ParentPortalController extends Controller
                 'campus_name' => $campusName,
                 'campus_id'   => (int) ($student->CampusID ?? 0),
                 'line_linked' => StudentLineBinding::where('student_id', $student->id)->exists(),
+                'identity_group_id' => $crossCampusEnabled ? (int) $identityGroup->id : null,
             ],
+            'identity_group_id' => $crossCampusEnabled ? (int) $identityGroup->id : null,
+            'active_scope' => $activeScope,
+            'cross_campus_access' => $crossCampusEnabled ? $accessMode : StudentIdentityService::MODE_OFF,
+            'enrollments' => $crossCampusEnabled ? $memberRows->map(function ($member) use ($campusMap) {
+                return [
+                    'student_id' => (int) $member->student_id,
+                    'campus_id' => (int) $member->campus_id,
+                    'campus_name' => optional($campusMap->get((int) $member->campus_id))->name,
+                    'name' => (string) ($member->student->name ?? ''),
+                ];
+            })->values()->all() : [],
             'students' => $allStudents->count() > 1 ? $allStudents->toArray() : null,
             'current_month_label'      => $currentMonthLabel,
             'remaining_sessions_total' => $remainingTotal,
@@ -1262,7 +1365,12 @@ class ParentPortalController extends Controller
             return response()->json(['message' => 'Course not found'], 404);
         }
 
+        $targetGroup = $this->identityService()->groupForStudent((int) $studentClass->StudentID);
+        $sessionGroupId = (int) ($session->identity_group_id ?: 0);
         $ownsClass = (int) $studentClass->StudentID === (int) $session->StudentID;
+        if (!$ownsClass && $sessionGroupId > 0 && $targetGroup && (int) $targetGroup->id === $sessionGroupId) {
+            $ownsClass = $this->identityService()->accessMode($sessionGroupId) === StudentIdentityService::MODE_ACTIONS;
+        }
 
         if (!$ownsClass) {
             return response()->json(['message' => 'Forbidden: This class does not belong to the authenticated student.'], 403);
@@ -1280,8 +1388,8 @@ class ParentPortalController extends Controller
 
             $workflow = app(ExceptionWorkflowService::class)->createOrGet([
                 'source_key' => "parent_leave:class_session:{$classSession->id}",
-                'campus_id' => (int) ($studentClass->student->CampusID ?? $this->studentCampusId($session->StudentID)),
-                'student_id' => (int) $session->StudentID,
+                'campus_id' => (int) ($studentClass->student->CampusID ?? $this->studentCampusId($studentClass->StudentID)),
+                'student_id' => (int) $studentClass->StudentID,
                 'student_class_id' => (int) $studentClass->ID,
                 'class_session_id' => (int) $classSession->id,
                 'type' => 'student_leave',
@@ -1324,13 +1432,19 @@ class ParentPortalController extends Controller
 
     // ── Helpers ───────────────────────────────────────────────────────────
 
-    private function createSession(Student $student): array
+    private function createSession(Student $student, ?int $identityGroupId = null, ?string $verifiedPhone = null): array
     {
         $token = Str::random(48);
         $hash = hash('sha256', $token);
 
+        $identityGroupId = $identityGroupId ?: $this->identityService()->groupForStudent((int) $student->id)?->id;
+        if ($identityGroupId && !$this->identityGroupPhoneVerified((int) $identityGroupId, $verifiedPhone ?: StudentContactPhone::normalizedDigits($student))) {
+            $identityGroupId = null;
+        }
+
         ParentSession::create([
             'StudentID' => $student->id,
+            'identity_group_id' => $identityGroupId,
             'TokenHash' => $hash,
             'ExpiresAt' => Carbon::now()->addDays(30),
         ]);
@@ -1341,7 +1455,60 @@ class ParentPortalController extends Controller
                 'id'   => $student->id,
                 'name' => $student->name,
             ],
+            'identity_group_id' => $identityGroupId ? (int) $identityGroupId : null,
         ];
+    }
+
+    private function identityGroupPhoneVerified(int $groupId, string $phoneNorm): bool
+    {
+        if ($phoneNorm === '') {
+            return false;
+        }
+        $members = $this->identityService()->activeMembers($groupId);
+        return $members->count() > 1
+            && $members->every(fn ($member) => StudentContactPhone::normalizedDigits($member->student) === $phoneNorm);
+    }
+
+    private function parentStudentSwitcherRows($students): array
+    {
+        $seenGroups = [];
+        return collect($students)->filter(function ($student) use (&$seenGroups) {
+            $groupId = $this->identityService()->groupForStudent((int) $student->id)?->id;
+            if (!$groupId) {
+                return true;
+            }
+            if (isset($seenGroups[(int) $groupId])) {
+                return false;
+            }
+            $seenGroups[(int) $groupId] = true;
+            return true;
+        })->map(fn ($student) => [
+            'id' => (int) $student->id,
+            'name' => (string) $student->name,
+        ])->values()->all();
+    }
+
+    private function identityGroupRows($students): array
+    {
+        return collect($students)
+            ->map(fn ($student) => $this->identityService()->groupForStudent((int) $student->id))
+            ->filter()
+            ->unique('id')
+            ->map(function ($group) {
+                $members = $this->identityService()->activeMembers((int) $group->id);
+                return [
+                    'id' => (int) $group->id,
+                    'name' => (string) ($group->display_name ?: ($members->first()?->student?->name ?? '學生')),
+                    'members' => $members->map(function ($member) {
+                        $campus = \App\Models\Campus::find($member->campus_id);
+                        return [
+                            'student_id' => (int) $member->student_id,
+                            'campus_id' => (int) $member->campus_id,
+                            'campus_name' => $campus?->name,
+                        ];
+                    })->values()->all(),
+                ];
+            })->values()->all();
     }
 
     public function billingHistory(Request $request)
@@ -1356,18 +1523,26 @@ class ParentPortalController extends Controller
             return response()->json(['message' => 'Student not found'], 404);
         }
 
-        $classes = StudentClass::where('StudentID', $student->id)
+        [$identityGroup, $accessMode, $identityMembers] = $session->identity_group_id
+            ? $this->identityService()->parentContext((int) $student->id)
+            : [null, StudentIdentityService::MODE_OFF, collect()];
+        $studentIds = $identityMembers->pluck('student_id')->map(fn ($id) => (int) $id)->values()->all() ?: [(int) $student->id];
+        $billingCampusMap = \App\Models\Campus::whereIn('id', Student::whereIn('id', $studentIds)->pluck('CampusID')->unique()->all())->get()->keyBy('id');
+        $classes = StudentClass::whereIn('StudentID', $studentIds)
             ->where('Charge', '>', 0)
             ->orderByDesc('StartDate')
             ->get();
 
-        $records = $classes->map(function ($course) {
+        $records = $classes->map(function ($course) use ($billingCampusMap) {
             $charge = (int) ($course->Charge ?? 0);
             $paid = (int) ($course->Pay ?? 0);
             $isPaid = $paid >= $charge;
+            $campusId = (int) ($course->student->CampusID ?? 0);
 
             return [
                 'student_class_id' => (int) $course->ID,
+                'campus_id' => $campusId,
+                'campus_name' => optional($billingCampusMap->get($campusId))->name,
                 'subject' => $course->displaySubjectName(),
                 'period' => $course->StartDate ? substr($course->StartDate, 0, 7) : null,
                 'charge' => $charge,
@@ -1376,7 +1551,11 @@ class ParentPortalController extends Controller
             ];
         })->values();
 
-        return response()->json(['records' => $records]);
+        return response()->json([
+            'records' => $records,
+            'identity_group_id' => $identityGroup?->id,
+            'active_scope' => $identityGroup && $accessMode !== StudentIdentityService::MODE_OFF ? 'all' : 'campus',
+        ]);
     }
 
     private function resolveSession(Request $request): ?ParentSession

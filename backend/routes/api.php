@@ -47,6 +47,7 @@ use App\Http\Controllers\ScheduleDiscrepancyController;
 use App\Http\Controllers\AccountingController;
 use App\Http\Controllers\AdoptionInsightsController;
 use App\Http\Controllers\SystemTrustController;
+use App\Http\Controllers\StudentIdentityController;
 
 
 if (app()->environment('local')) {
@@ -380,6 +381,15 @@ Route::prefix('v1')->group(function () {
         Route::post('subjects', [SubjectController::class, 'store']);
         Route::put('subjects/{id}', [SubjectController::class, 'update']);
         Route::delete('subjects/{id}', [SubjectController::class, 'destroy']);
+    });
+
+    // Cross-campus student identity bridge: explicit two-campus authorization only.
+    Route::middleware(['role:director,super_admin', 'require_campus', 'require_password_change'])->group(function () {
+        Route::get('student-identities', [StudentIdentityController::class, 'index']);
+        Route::post('student-identities/link', [StudentIdentityController::class, 'link']);
+        Route::delete('student-identities/members/{studentId}', [StudentIdentityController::class, 'unlink']);
+        Route::put('student-identities/{groupId}/access', [StudentIdentityController::class, 'access']);
+        Route::get('student-identities/{groupId}/audit', [StudentIdentityController::class, 'audit']);
     });
 
     Route::middleware(['role:director,teacher', 'require_campus', 'require_password_change'])->group(function () {

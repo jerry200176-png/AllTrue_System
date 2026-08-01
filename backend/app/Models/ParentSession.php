@@ -10,7 +10,12 @@ class ParentSession extends Model
 
     protected $fillable = [
         'StudentID',
+        'identity_group_id',
         'TokenHash',
         'ExpiresAt',
+    ];
+
+    protected $casts = [
+        'ExpiresAt' => 'datetime',
     ];
 }
