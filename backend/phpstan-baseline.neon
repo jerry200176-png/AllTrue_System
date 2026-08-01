@@ -6117,7 +6117,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$ID\.$#'
 			identifier: property.notFound
-			count: 2
+			count: 3
 			path: app/Services/ManualSessionBookingService.php
 
 		-
@@ -6183,18 +6183,6 @@ parameters:
 		-
 			message: '#^Call to an undefined method Illuminate\\Database\\Query\\Builder\:\:firstOrFail\(\)\.$#'
 			identifier: method.notFound
-			count: 1
-			path: app/Services/ManualSessionBookingService.php
-
-		-
-			message: '#^Strict comparison using !== between ''count'' and ''count'' will always evaluate to false\.$#'
-			identifier: identical.alwaysFalse
-			count: 1
-			path: app/Services/ManualSessionBookingService.php
-
-		-
-			message: '#^Strict comparison using !== between ''manual_occurrence'' and ''manual_occurrence'' will always evaluate to false\.$#'
-			identifier: identical.alwaysFalse
 			count: 1
 			path: app/Services/ManualSessionBookingService.php
 
