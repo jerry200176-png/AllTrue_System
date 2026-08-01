@@ -208,11 +208,17 @@
           <!-- 請假／補課案件 -->
           <template v-if="laneFilter === 'case' || laneFilter === ''">
             <div v-if="visibleCaseItems.length > 0" class="case-panel">
-              <h4 v-if="laneFilter === ''">待辦案件</h4>
+              <div class="leave-case-list__intro">
+                <div>
+                  <h4>家長請假待主任處理</h4>
+                  <p>先選補課時段，再核准請假；所有決策都在主任處理頁完成。</p>
+                </div>
+                <span>{{ casesOpenCount }} 筆</span>
+              </div>
               <div
                 v-for="item in visibleCaseItems"
                 :key="item.id"
-                class="notification-item case-item"
+                class="notification-item case-item leave-case-item"
                 :class="{ 'severity-high-item': item.overdue, 'priority-due-soon': item.priority === 'due_soon' && !item.overdue }"
               >
                 <div class="title-row">
@@ -230,8 +236,12 @@
                   <span>{{ formatDateTime(item.occurred_at) }}</span>
                   <span v-if="item.due_at">期限：{{ formatDateTime(item.due_at) }}</span>
                 </div>
+                <div class="leave-case-step">
+                  <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
+                  <span>開啟後可選補課、核准不補課，或填寫原因退回請假。</span>
+                </div>
                 <div class="item-actions">
-                  <AtButton shape="rect" size="sm" variant="primary" class="case-cta" @click="goToLeaveCase(item)">{{ caseCtaLabel(item) }}</AtButton>
+                  <AtButton shape="rect" size="sm" variant="primary" class="case-cta" @click="goToLeaveCase(item)">開啟主任處理頁<span aria-hidden="true">→</span></AtButton>
                 </div>
               </div>
               <div v-if="casesLastPage > 1" class="pager-row" data-testid="case-pager">
@@ -323,7 +333,6 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import {
-  caseCtaLabel,
   casePriorityLabel,
   extractCaseItems,
   extractCasePageMeta,
@@ -1499,7 +1508,10 @@ onUnmounted(() => {
 
 .type-student_leave { background: var(--ds-warning-wash); color: var(--ds-warning); }
 .case-panel { margin-bottom: 16px; }
-.case-panel h4 { margin: 0 0 10px; font-size: 14px; }
+.leave-case-list__intro { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 10px; padding: 0 2px; }
+.leave-case-list__intro h4 { margin: 0; color: var(--ds-ink); font-size: 15px; }
+.leave-case-list__intro p { margin: 3px 0 0; color: var(--ds-ink-mute); font-size: 12px; line-height: 1.45; }
+.leave-case-list__intro > span { flex: 0 0 auto; padding: 5px 9px; border: 1px solid var(--ds-warning); border-radius: 999px; background: var(--ds-warning-wash); color: var(--ds-warning); font-size: 11px; font-weight: 800; }
 .case-body { white-space: pre-line; }
 .status-chip { font-size: 12px; color: var(--text-light); }
 .inbox-count-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; font-size: 13px; color: var(--text-light); }
@@ -1514,6 +1526,13 @@ onUnmounted(() => {
 .case-reason { opacity: 0.75; font-size: 13px; }
 .pager-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
 .case-item { border-left-color: var(--ds-warning); }
+.leave-case-item { overflow: hidden; border: 1px solid var(--ds-hairline); border-left: 3px solid var(--ds-warning); border-radius: 14px; background: var(--ds-canvas); box-shadow: 0 6px 18px rgba(15, 23, 42, 0.05); }
+.leave-case-item .title-row { padding-top: 2px; }
+.leave-case-item .main-title { color: var(--ds-ink); font-size: 17px; }
+.leave-case-step { display: flex; align-items: flex-start; gap: 7px; margin-top: 12px; padding: 9px 10px; border-radius: 9px; background: var(--ds-canvas-soft); color: var(--ds-ink-secondary); font-size: 12px; line-height: 1.5; }
+.leave-case-step .material-symbols-outlined { color: var(--ds-warning); font-size: 17px; }
+.leave-case-item .item-actions { margin: 14px -16px -16px; padding: 12px 16px; border-top: 1px solid var(--ds-hairline); background: var(--ds-canvas-soft); justify-content: flex-start; }
+.leave-case-item .case-cta { min-width: 160px; }
 
 .severity-high {
   background: var(--ds-danger-wash);
@@ -1605,5 +1624,9 @@ onUnmounted(() => {
   .actions-row button {
     flex: 1;
   }
+
+  .leave-case-list__intro { align-items: flex-start; flex-direction: column; }
+  .leave-case-item .item-actions { margin-left: -14px; margin-right: -14px; padding-left: 14px; padding-right: 14px; }
+  .leave-case-item .case-cta { width: 100%; }
 }
 </style>
