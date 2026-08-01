@@ -77,7 +77,7 @@ class SendTuitionReminders extends Command
                     'campus_id' => $campusId,
                     'subject_type' => 'student',
                     'subject_id' => $student->id,
-                    'binding_id' => $binding->id,
+                    'binding_id' => $binding->getKey(),
                 ], [
                     'method' => 'line_push',
                     'notification_type' => 'tuition_reminder',

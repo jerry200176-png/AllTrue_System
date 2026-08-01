@@ -126,7 +126,7 @@ class FeedbackPushNotifier
                 'campus_id' => $campusId,
                 'subject_type' => 'student',
                 'subject_id' => $feedback->getAttribute('student_id'),
-                'binding_id' => $binding->id,
+                'binding_id' => $binding->getKey(),
             ], [
                 'method' => 'line_push',
                 'notification_type' => 'learning_feedback',

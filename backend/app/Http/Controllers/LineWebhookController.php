@@ -267,7 +267,7 @@ class LineWebhookController extends Controller
                 'campus_id' => (int) $student->getAttribute('CampusID'),
                 'subject_type' => 'student',
                 'subject_id' => $student->getKey(),
-                'binding_id' => $binding->id,
+                'binding_id' => $binding->getKey(),
             ],
             ['method' => 'line_webhook', 'verification_method' => 'contact_phone']
         );
