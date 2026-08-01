@@ -13,6 +13,7 @@ use App\Models\StudentClass;
 use App\Models\StudentLineBinding;
 use App\Models\StudentSignIn;
 use App\Models\ClassSession;
+use App\Models\ExceptionWorkflow;
 use App\Models\CoursePackage;
 use App\Models\Invoice;
 use App\Models\Announcement;
@@ -23,6 +24,7 @@ use App\Services\ExceptionWorkflowService;
 use App\Services\SessionDeductionService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -775,13 +777,24 @@ class ParentPortalController extends Controller
                 ->orderBy('StartTime', 'asc')
                 ->limit(20)
                 ->get()
-                ->map(function ($session) use ($classes) {
-                    $c = $classes->firstWhere('ID', $session->StudentClassID);
-                    $session->Subject = $c ? $this->resolveSubjectName($c) : null;
-                    $session->StartTime = $this->trimToHM($session->StartTime);
-                    $session->EndTime   = $this->trimToHM($session->EndTime);
-                    return $session;
-                });
+                ;
+            $leaveWorkflows = ExceptionWorkflow::where('student_id', (int) $student->id)
+                ->where('type', 'student_leave')
+                ->whereIn('class_session_id', $upcomingSessions->pluck('id')->all())
+                ->get()
+                ->keyBy('class_session_id');
+            $upcomingSessions = $upcomingSessions->map(function ($session) use ($classes, $leaveWorkflows) {
+                $c = $classes->firstWhere('ID', $session->StudentClassID);
+                $session->Subject = $c ? $this->resolveSubjectName($c) : null;
+                $session->StartTime = $this->trimToHM($session->StartTime);
+                $session->EndTime   = $this->trimToHM($session->EndTime);
+                $workflow = $leaveWorkflows->get($session->id);
+                $session->LeaveWorkflowStatus = $workflow?->status;
+                $session->LeaveWorkflowReason = is_array($workflow?->payload)
+                    ? ($workflow->payload['rejection_reason'] ?? null)
+                    : null;
+                return $session;
+            });
         }
 
         $invoices = [];
@@ -1326,32 +1339,41 @@ class ParentPortalController extends Controller
             return response()->json(['message' => 'Session cannot be altered.'], 422);
         }
 
-        $workflow = app(ExceptionWorkflowService::class)->createOrGet([
-            'source_key' => "parent_leave:class_session:{$classSession->id}",
-            'campus_id' => (int) ($studentClass->student->CampusID ?? $this->studentCampusId($session->StudentID)),
-            'student_id' => (int) $session->StudentID,
-            'student_class_id' => (int) $studentClass->ID,
-            'class_session_id' => (int) $classSession->id,
-            'type' => 'student_leave',
-            'status' => 'open',
-            'severity' => 'medium',
-            'source_type' => 'parent_portal',
-            'source_id' => (string) $classSession->id,
-            'parent_session_id' => (int) $session->id,
-            'due_at' => now()->addDay(),
-            'payload' => [
-                'reason' => trim((string) ($data['reason'] ?? '')),
-                'requested_at' => now()->toIso8601String(),
-                'session_date' => (string) $classSession->SessionDate,
-                'start_time' => $this->trimToHM($classSession->StartTime),
-                'end_time' => $this->trimToHM($classSession->EndTime),
-            ],
-        ]);
+        [$workflow, $classSession] = DB::transaction(function () use ($classSession, $studentClass, $session, $data) {
+            $classSession = ClassSession::whereKey($classSession->id)->lockForUpdate()->firstOrFail();
+            if (!in_array(strtolower((string) $classSession->Status), ['scheduled', 'rescheduled', 'leave_requested'], true)) {
+                throw new \InvalidArgumentException('Session cannot be altered.');
+            }
 
-        if ($classSession->Status !== 'leave_requested') {
-            $classSession->Status = 'leave_requested';
-            $classSession->save();
-        }
+            $workflow = app(ExceptionWorkflowService::class)->createOrGet([
+                'source_key' => "parent_leave:class_session:{$classSession->id}",
+                'campus_id' => (int) ($studentClass->student->CampusID ?? $this->studentCampusId($session->StudentID)),
+                'student_id' => (int) $session->StudentID,
+                'student_class_id' => (int) $studentClass->ID,
+                'class_session_id' => (int) $classSession->id,
+                'type' => 'student_leave',
+                'status' => 'open',
+                'severity' => 'medium',
+                'source_type' => 'parent_portal',
+                'source_id' => (string) $classSession->id,
+                'parent_session_id' => (int) $session->id,
+                'due_at' => now()->addDay(),
+                'payload' => [
+                    'reason' => trim((string) ($data['reason'] ?? '')),
+                    'requested_at' => now()->toIso8601String(),
+                    'session_date' => (string) $classSession->SessionDate,
+                    'start_time' => $this->trimToHM($classSession->StartTime),
+                    'end_time' => $this->trimToHM($classSession->EndTime),
+                ],
+            ]);
+
+            if ($classSession->Status !== 'leave_requested') {
+                $classSession->Status = 'leave_requested';
+                $classSession->save();
+            }
+
+            return [$workflow, $classSession];
+        });
 
         return response()->json([
             'message' => 'Leave requested successfully.',
