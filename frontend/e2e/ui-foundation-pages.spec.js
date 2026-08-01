@@ -62,7 +62,7 @@ function fakeStudents(count, { longName = false } = {}) {
   }));
 }
 
-async function installApiMocks(page, mode) {
+async function installApiMocks(page, mode, pageName = '') {
   const hang = mode === 'loading';
   let releaseHang;
   const hangPromise = hang
@@ -78,7 +78,7 @@ async function installApiMocks(page, mode) {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
     }
 
-    if (hang && (p.includes('/action-inbox') || p.includes('/students'))) {
+    if (hang && (p.includes('/action-inbox') || p.includes('/students') || (pageName === 'course' && p.includes('/student-classes')))) {
       await hangPromise;
     }
 
@@ -121,11 +121,28 @@ async function installApiMocks(page, mode) {
       });
     }
 
-    if (mode === 'dashboard' && p.includes('/exception-workflows')) {
+    if ((mode === 'dashboard' || pageName === 'course') && p.includes('/exception-workflows')) {
+      if (pageName === 'course' && mode === 'error') {
+        return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: '家長請假待辦載入失敗' }) });
+      }
+      if (pageName === 'course' && mode === 'empty') {
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [], meta: { count: 0 } }) });
+      }
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ data: [{ id: 27, status: 'open', student: { name: '測試學生甲' }, class_session: { date: '2026-08-02', start_time: '10:00', end_time: '11:00' }, payload: { reason: '身體不適' } }] }),
+        body: JSON.stringify({ data: [{ id: 27, status: 'open', student: { name: mode === 'long' ? '測試學生超長姓名用於驗證處理案件摘要折行' : '測試學生甲' }, class_session: { date: '2026-08-02', start_time: '10:00', end_time: '11:00' }, payload: { reason: mode === 'long' ? '這是一段很長的家長請假原因，用來驗證案件資訊可以折行且主要處理按鈕仍然可見。' : '身體不適' }, due_at: '2026-08-01T18:00:00+08:00' }] }),
+      });
+    }
+
+    if (pageName === 'course' && p.includes('/student-classes')) {
+      if (mode === 'empty') {
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [], total: 0 }) });
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [{ ID: 801, StudentID: 2000, student_name: '測試學生甲', SubjectID: 1, Subject: '數學', ClassType: 'one_on_one', TeacherID: 3000, teacher_name: '測試老師', Stop: 0 }], total: 1 }),
       });
     }
 
@@ -243,7 +260,7 @@ async function installApiMocks(page, mode) {
 
 async function openPilot(page, { pageName, mode, viewport }) {
   await page.setViewportSize({ width: viewport.width, height: viewport.height });
-  const mocks = await installApiMocks(page, mode);
+  const mocks = await installApiMocks(page, mode, pageName);
   await page.goto(`/pilot-mount.html?page=${pageName}&mode=${mode}`);
   await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1', { timeout: 15_000 });
   return mocks;
@@ -373,6 +390,55 @@ test.describe('UI foundation — real Vue page evidence', () => {
       await expect(page.getByText('近期紀錄與分析', { exact: true })).toBeVisible();
       await page.locator('.director-workbench-v2').screenshot({ path: path.join(outDir, `vue-director-v2-full-${vp.name}.png`) });
     });
+  }
+
+  for (const vp of [
+    { name: '390', width: 390, height: 844 },
+    { name: '412', width: 412, height: 915 },
+    { name: '768', width: 768, height: 1024 },
+    { name: '1280', width: 1280, height: 900 },
+    { name: '1440', width: 1440, height: 900 },
+  ]) {
+    for (const mode of ['normal', 'empty', 'loading', 'error', 'long']) {
+      test(`course leave workflow ${mode} @${vp.name}`, async ({ page }) => {
+        const mocks = await openPilot(page, { pageName: 'course', mode, viewport: vp });
+
+        if (mode === 'loading') {
+          await expect(page.getByRole('status', { name: '課程資料載入中' })).toBeVisible({ timeout: 10_000 });
+          mocks.releaseHang();
+          return;
+        }
+
+        if (mode === 'error') {
+          await expect(page.getByRole('alert')).toContainText('家長請假待辦載入失敗');
+        } else if (mode === 'empty') {
+          await expect(page.getByText('目前沒有待處理的家長請假')).toBeVisible({ timeout: 10_000 });
+        } else {
+          await expect(page.getByText('家長請假待處理', { exact: true })).toBeVisible({ timeout: 10_000 });
+          await expect(page.getByText('測試學生', { exact: false }).first()).toBeVisible();
+          const action = page.getByRole('button', { name: '處理這筆請假' }).first();
+          await expect(action).toBeVisible();
+          await action.click();
+          await expect.poll(() => page.evaluate(() => window.__pilotLastNavigation)).toEqual({
+            target: 'director',
+            section: 'exception-workflows',
+            workflowId: 27,
+          });
+        }
+
+        const layout = await page.evaluate(() => ({
+          scrollWidth: document.documentElement.scrollWidth,
+          clientWidth: document.documentElement.clientWidth,
+        }));
+        expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth);
+        if (mode === 'normal' || mode === 'long') {
+          fs.mkdirSync(outDir, { recursive: true });
+          await page.locator('.course-page').screenshot({
+            path: path.join(outDir, `vue-course-leave-${mode}-${vp.name}.png`),
+          });
+        }
+      });
+    }
   }
 
   for (const vp of [

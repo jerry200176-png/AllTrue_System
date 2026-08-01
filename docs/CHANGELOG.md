@@ -1,3 +1,11 @@
+## 2026-08-01 — feat(ux): 課程管理明確呈現家長請假案件與主任 deep-link
+
+- 第一個 AllTrue UX Renewal bounded context：新增全站 roadmap 與課程／家長請假 PRD，建立 Epic #1600 與模組 Issue #1601；研究企業 dashboard、Jira workflow、Primer、Filament、Chatwoot、Gibbon 與 starred repos 後，採「案件摘要 → 明確動詞 CTA → 指定案件處理」結構。
+- `CourseManagement.vue` 不再只顯示「請到主任收件匣」通知；現在列出學生、原堂次、原因、狀態與「處理這筆請假」，可直接帶 workflow ID 導向主任 `exception-workflows` 區段。保留既有安排補課／核准不補課／退回 API 與資料真相。
+- `App.vue` 新增課程管理導覽 adapter，兼容既有字串頁面導覽與 workflow deep-link；同時修正課程學生群組巢狀 button，改為可 focus、可 Enter/Space 操作的群組標頭。
+- 新增純邏輯測試與 real Vue Playwright evidence：normal、empty、loading、error、long text；390／1280px；CTA、deep-link payload 與 `scrollWidth <= clientWidth` 驗收通過。`lint:no-undef`、design token guard、Vite build 與既有回歸測試通過。
+- 本次不修改資料庫、權限規則、堂數計算或 Charge/Invoice/Payment truth；完整 production deploy evidence 仍待 PR/CI/merge 後完成。
+
 ## 2026-07-30 — fix(security): StudentClassController::togglePause() 跨分校／跨老師授權缺失（P0 containment）
 
 - 治理稽核發現 `togglePause()`（`/student-classes/{id}/pause`，暫停／恢復課程）在任何 object-level authorization 之前就直接讀取並修改 `StudentClass.Stop`／`closed_reason`／`EndDate`，並連動取消未來 `ClassSession`，與 #1504/#1509（`confirmPayment()`）同一類跨分校 IDOR，尚未修補。任一分校 director／teacher 帳號可用他校 `StudentClassID` 暫停或恢復不屬於自己的課程。
