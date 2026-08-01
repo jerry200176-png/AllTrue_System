@@ -105,6 +105,39 @@ jobs:
           $atts = $db::table("bug_report_attachments")->where("bug_report_id", $bugId)->get(["id","original_name","stored_path","mime_type","size"]);
           $comments = $db::table("bug_report_comments")->where("bug_report_id", $bugId)->orderBy("id")->get(["id","author_user_id","is_internal_note","body","created_at"]);
           $logs = $db::table("bug_report_status_logs")->where("bug_report_id", $bugId)->orderBy("id")->get(["id","from_status","to_status","changed_by","note","created_at"]);
+          $reporterBugs = $db::table("bug_reports")
+            ->where("reporter_user_id", $bug->reporter_user_id)
+            ->orderByDesc("id")
+            ->limit(100)
+            ->get(["id","status","severity","CampusID","page_key","title","created_at","updated_at"]);
+          $reporterBugIds = $reporterBugs->pluck("id")->map(fn ($id) => (int)$id)->all();
+          $reporterHistory = [];
+          foreach ($reporterBugs as $historyBug) {{
+            $historyTitle = $redact($historyBug->title ?? "");
+            if (mb_strlen($historyTitle) > 120) $historyTitle = mb_substr($historyTitle, 0, 120)."...";
+            $historyAttachments = $db::table("bug_report_attachments")
+              ->where("bug_report_id", (int)$historyBug->id)->pluck("id")
+              ->map(fn ($id) => (int)$id)->all();
+            $reporterHistory[] = [
+              "id"=>(int)$historyBug->id, "status"=>$historyBug->status,
+              "severity"=>$historyBug->severity, "campus_id"=>$historyBug->CampusID,
+              "page_key"=>$historyBug->page_key, "title"=>$historyTitle,
+              "created_at"=>$historyBug->created_at, "updated_at"=>$historyBug->updated_at,
+              "attachment_ids"=>$historyAttachments,
+            ];
+          }}
+          $reporterComments = [];
+          foreach ($db::table("bug_report_comments")->whereIn("bug_report_id", $reporterBugIds)->orderBy("id")->get(["id","bug_report_id","author_user_id","is_internal_note","body","created_at"]) as $c) {{
+            $body = $redact($c->body ?? "");
+            if (mb_strlen($body) > 1500) $body = mb_substr($body, 0, 1500)."...";
+            $reporterComments[] = ["id"=>(int)$c->id, "bug_report_id"=>(int)$c->bug_report_id, "author"=>(int)$c->author_user_id, "internal"=>(bool)$c->is_internal_note, "body"=>$body, "at"=>$c->created_at];
+          }}
+          $reporterStatusLogs = [];
+          foreach ($db::table("bug_report_status_logs")->whereIn("bug_report_id", $reporterBugIds)->orderBy("id")->get(["id","bug_report_id","from_status","to_status","changed_by","note","created_at"]) as $log) {{
+            $note = $redact($log->note ?? "");
+            if (mb_strlen($note) > 1000) $note = mb_substr($note, 0, 1000)."...";
+            $reporterStatusLogs[] = ["id"=>(int)$log->id, "bug_report_id"=>(int)$log->bug_report_id, "from_status"=>$log->from_status, "to_status"=>$log->to_status, "changed_by"=>(int)$log->changed_by, "note"=>$note, "at"=>$log->created_at];
+          }}
           $desc = $redact($bug->description ?? "");
           if (mb_strlen($desc) > 4000) $desc = mb_substr($desc, 0, 4000)."…";
           $title = $redact($bug->title ?? "");
@@ -152,6 +185,9 @@ jobs:
             "attachments" => $atts,
             "comments" => $cmtOut,
             "status_logs" => $logs,
+            "reporter_history" => $reporterHistory,
+            "reporter_history_comments" => $reporterComments,
+            "reporter_history_status_logs" => $reporterStatusLogs,
             "probe_208_package_recompute" => [
               "package_124" => $pkg,
               "package_124_members" => $pkgMembers,
