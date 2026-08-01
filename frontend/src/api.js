@@ -16,11 +16,13 @@ export async function parentLogin(credentials) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data?.message || '登入失敗');
-  return { token: data.token, student: data.student, students: data.students || null };
+  return { token: data.token, student: data.student, students: data.students || null, identityGroups: data.identity_groups || [] };
 }
 
-export async function getParentDashboard(token, { lrPage = 1, lrPerPage = 10 } = {}) {
+export async function getParentDashboard(token, { lrPage = 1, lrPerPage = 10, scope = 'all', campusId = null } = {}) {
   const params = new URLSearchParams({ lr_page: lrPage, lr_per_page: lrPerPage });
+  if (scope) params.set('scope', scope);
+  if (campusId) params.set('campus_id', campusId);
   const res = await fetch(`${API_BASE}/parent/dashboard?${params}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -39,7 +41,7 @@ export async function parentLoginLine(accessToken, campusId = null) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data?.message || 'LINE 登入失敗');
-  return { token: data.token, student: data.student, students: data.students || null };
+  return { token: data.token, student: data.student, students: data.students || null, identityGroups: data.identity_groups || [] };
 }
 
 export async function parentSwitchStudent(token, studentId) {
