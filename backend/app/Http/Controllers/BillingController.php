@@ -361,19 +361,45 @@ class BillingController extends Controller
         $singleItem = $invoice->items->first();
         $singleCourseItem = $invoice->items->count() === 1
             && $singleItem !== null
-            && (int) ($singleItem->StudentClassID ?? 0) === (int) ($invoice->StudentClassID ?? 0);
+            && ($invoice->getRelationValue('studentClass') !== null
+                || (int) ($singleItem->StudentClassID ?? 0) > 0);
+        $useReconciledItem = $singleCourseItem
+            && $projection['amount_discrepancy']
+            && $projection['amount_source'] === 'billable_sessions'
+            && $projection['period_start'] !== null
+            && $projection['period_end'] !== null;
 
-        $items = $invoice->items->map(function ($item) use ($projection, $singleCourseItem) {
+        $items = $invoice->items->map(function ($item) use ($invoice, $projection, $useReconciledItem) {
             $itemAmount = (int) $item->Amount;
-            if ($singleCourseItem && $projection['amount_discrepancy'] && $projection['amount_source'] === 'billable_sessions') {
+            $itemDescription = (string) $item->Description;
+            $itemPeriodStart = $item->PeriodStart;
+            $itemPeriodEnd = $item->PeriodEnd;
+
+            if ($useReconciledItem) {
                 $itemAmount = (int) $projection['total_amount'];
+                $itemPeriodStart = $projection['period_start'];
+                $itemPeriodEnd = $projection['period_end'];
+
+                $course = $invoice->getRelationValue('studentClass') ?? $item->getRelationValue('studentClass');
+                $subject = $course?->displaySubjectName() ?: '課程';
+                $billingPeriod = (string) ($projection['billing_period'] ?? '');
+                $periodLabel = preg_match('/^(\d{4})-(\d{2})$/', $billingPeriod, $matches)
+                    ? sprintf('%s年%d月', $matches[1], (int) $matches[2])
+                    : $billingPeriod;
+                $itemDescription = sprintf(
+                    '%s月結費用 %s（%d堂）',
+                    $subject,
+                    $periodLabel,
+                    (int) ($projection['period_sessions'] ?? 0)
+                );
             }
+
             return [
-                'description' => $item->Description,
+                'description' => $itemDescription,
                 'amount'      => $itemAmount,
                 'stored_amount' => (int) $item->Amount,
-                'period_start' => $item->PeriodStart,
-                'period_end'   => $item->PeriodEnd,
+                'period_start' => $itemPeriodStart,
+                'period_end'   => $itemPeriodEnd,
             ];
         });
 
