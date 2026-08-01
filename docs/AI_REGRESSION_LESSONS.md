@@ -1186,3 +1186,8 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - 預覽欄位必須由純函式／presentational component 統一整理，不能在 table、card 各自複製欄位映射；空內容要明確顯示尚未填寫，不能以空白或錯誤狀態代替。
 - Vue `v-for` 的同筆預覽 row 必須使用 `<template v-for="record">` 同時包住主 row 與 preview row；把 sibling 放在 loop 外會在桌面 render 讀到 undefined，手機因走另一個 render branch 可能掩蓋此錯誤。
 - 驗收必須包含 390／412／768／1280／1440px，並同時檢查真正可見的 card/table branch、內容摘要、開關狀態、`scrollWidth <= clientWidth` 與 browser page error；只驗 API 200 或單一 selector 不足以證明 preview 可用。
+
+### R93. 專用 UI foundation spec 不得混入 production smoke（2026-08-02）
+
+- 使用 pilot mount／mock API 的頁面證據測試，必須由專用 Playwright config 明確收斂；default production smoke config 必須 `testIgnore`，避免在沒有 fixture server 時把測試誤當 production smoke 執行。
+- 新增任何 foundation spec 後，必須同時驗證專用 config 會執行它、default config 不會執行它，並在 CI 的 UI Smoke 與 Vite Frontend Build gate 中各自確認結果。
