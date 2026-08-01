@@ -46,6 +46,7 @@ class EnrollmentController extends Controller
             'memo' => 'nullable|string|max:512',
             'branch_id' => 'required|integer|min:1',
             'mode' => 'nullable|in:create,backfill,enrollment',
+            'identity_group_id' => 'nullable|integer|min:1',
         ]);
 
         return $enrollmentService->store($request, $data);
