@@ -23,6 +23,19 @@ last_reviewed: 2026-08-01
 | pbakaus/impeccable | `c5e1ddd`; `plugin/skills/impeccable/reference/operate.md`, `craft-floor.md`, `DESIGN.md` | Operate mode values familiarity, restrained color, standard controls, skeleton/error/empty states, and screenshot-based bounded QA. Cards exist only when hierarchy needs them; nested cards are a failure mode. | Keep the existing shell and tokens, use flat bordered regions, reserve filled amber for decisions, and verify rendered desktop/mobile evidence. |
 | shadcn/ui | `cb2bcd8`; `apps/v4/app/(app)/(root)/cards/*`, registry and component source | Components are intentionally owned in the product and composed from simple primitives; the system is not a reason to copy a default visual skin. | No new runtime dependency. Reuse AllTrue-owned Vue primitives and change composition, not the product stack. |
 
+### Founder-star audit added during visual polish (2026-08-01)
+
+The founder's current GitHub starred repositories were queried before this polish pass. The following repos were checked out at the listed revisions and their relevant source was read:
+
+| Starred reference | Checked revision / files | Observation | AllTrue decision |
+|---|---|---|---|
+| `vbenjs/vue-vben-admin` | `9f5b1cd`; `apps/web-antd/src/views/dashboard/workspace/index.vue` | The workspace uses a quiet header, one dominant work area, and a deliberate secondary column; quick navigation and todo content are grouped by job, not repeated as KPI tiles. | Keep the dashboard's queue + summary split, but give the primary region a clearer visual anchor and row rhythm. |
+| `filamentphp/filament` | `38eb676`; `packages/panels/resources/views/components/page/index.blade.php`, `packages/tables/resources/views/index.blade.php` | Page header, table heading/actions, filters, toolbar, and records are separate responsibilities with predictable spacing. | Do not make every control another card; keep the page header, task queue, and secondary operations as distinct levels. |
+| `chatwoot/chatwoot` | `bc7ae88`; `app/javascript/dashboard/components/ui/Tabs/Tabs.vue`, `TabsItem.vue` | Tabs are a simple text row with one active underline and optional count badges; overflow is handled by the tab system rather than wrapping into a pill wall. | Use text tabs for top-level views and reserve count badges for actual state, not decoration. |
+| `GibbonEdu/core` | `42b1d2b`; `modules/Markbook/markbook_view.php`, `modules/Markbook/css/module.css` | The education workflow separates role-specific views and treats dense assessment data as a structured table, with explicit grouping and editable columns. | The upcoming Learning Records pass will separate teacher entry, director review, and parent feedback states before styling the table. |
+
+The audit confirms the current dashboard's remaining weakness is composition polish, not missing information: the production page has the right queue but too little surface contrast, task-row rhythm, and loading structure. The next change therefore stays within AllTrue tokens and adds hierarchy rather than more metrics or decoration.
+
 ## Decisions made from the audit
 
 1. The primary view contains one row per director decision. Adoption/task-tracker rows stay in the secondary view and cannot expand the daily queue into dozens of student rows.
