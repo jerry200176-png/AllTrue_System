@@ -4141,7 +4141,7 @@ onUnmounted(() => {
 }
 .pending-leave-inbox__head strong { display: block; color: var(--ds-ink); }
 .pending-leave-inbox__hint { display: block; margin-top: 3px; color: var(--ds-ink-mute); font-size: 12px; }
-.pending-leave-inbox__count { min-width: 28px; padding: 4px 9px; border-radius: 999px; background: var(--ds-warning); color: #fff; text-align: center; font-weight: 800; }
+.pending-leave-inbox__count { min-width: 28px; padding: 4px 9px; border-radius: 999px; background: var(--ds-warning); color: var(--ds-on-primary); text-align: center; font-weight: 800; }
 .pending-leave-list { display: grid; gap: 8px; margin-top: 12px; }
 .pending-leave-row { padding: 10px 0; border-top: 1px solid rgba(120, 85, 0, 0.18); }
 .pending-leave-row__main { display: grid; gap: 3px; min-width: 0; color: var(--ds-ink-secondary); font-size: 13px; }
