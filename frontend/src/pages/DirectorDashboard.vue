@@ -24,9 +24,115 @@
           </div>
         </div>
 
+        <section class="workbench" aria-labelledby="director-workbench-title">
+          <div class="workbench__intro">
+            <div>
+              <p class="workbench__eyebrow">主任作業台</p>
+              <h1 id="director-workbench-title">今天先處理什麼？</h1>
+              <p class="workbench__subtitle">把會影響學生、家長與課務的事情排在前面。</p>
+            </div>
+            <div class="workbench__controls">
+              <span class="workbench__updated" role="status">
+                {{ dashboardLoading ? '更新中…' : (dashboardLastUpdated ? `更新於 ${dashboardLastUpdated}` : '尚未更新') }}
+              </span>
+              <button type="button" class="workbench__refresh" :disabled="dashboardLoading" @click="refreshDashboard">
+                <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
+                重新整理
+              </button>
+            </div>
+          </div>
+
+          <section v-if="operationsTrust?.decision_center" class="trust-summary" aria-labelledby="trust-summary-title">
+            <div class="trust-summary__status">
+              <span class="trust-summary__dot" :class="`trust-summary__dot--${decisionCenter.status}`" aria-hidden="true"></span>
+              <div>
+                <p class="trust-summary__eyebrow">課表可信度</p>
+                <h2 id="trust-summary-title">{{ decisionCenter.headline }}</h2>
+              </div>
+            </div>
+            <div class="trust-summary__score" :class="`trust-summary__score--${decisionCenter.status}`">
+              <strong>{{ decisionCenter.score }}</strong><span>/ {{ decisionCenter.max }}</span>
+            </div>
+            <details v-if="trustDecisions.length" class="trust-summary__details">
+              <summary>查看 {{ trustDecisions.length }} 項風險</summary>
+              <div ref="trustDecisionsEl" class="trust-summary__list">
+                <article v-for="item in trustDecisions" :key="item.key" class="trust-summary__item" :data-trust-key="item.key">
+                  <div>
+                    <strong>{{ trustDecisionTitle(item) }}</strong>
+                    <p>{{ item.why }}</p>
+                  </div>
+                  <button type="button" class="trust-summary__action" @click="handleTrustDecision(item)">{{ item.action_label }}</button>
+                </article>
+              </div>
+            </details>
+          </section>
+
+          <div class="workbench__layout">
+            <section class="workbench__queue" aria-labelledby="today-tasks-title">
+              <header class="workbench__section-head">
+                <div>
+                  <p class="workbench__eyebrow">優先順序</p>
+                  <h2 id="today-tasks-title">今日待辦</h2>
+                </div>
+                <span class="workbench__count">{{ dashboardTasks.length }} 項</span>
+              </header>
+              <div v-if="dashboardLoading" class="workbench-task-list" aria-live="polite">
+                <div v-for="n in 3" :key="n" class="workbench-task workbench-task--loading" aria-hidden="true"></div>
+              </div>
+              <div v-else-if="dashboardPrimaryError" class="workbench-state workbench-state--error" role="alert">
+                <strong>今日待辦暫時載入失敗</strong>
+                <span>{{ dashboardPrimaryError }}</span>
+                <button type="button" class="workbench-state__action" @click="refreshDashboard">再試一次</button>
+              </div>
+              <div v-else-if="!dashboardTasks.length" class="workbench-state">
+                <span class="material-symbols-outlined" aria-hidden="true">task_alt</span>
+                <strong>今天沒有需要主任處理的待辦</strong>
+                <span>可切換完整營運查看課表與歷史紀錄。</span>
+              </div>
+              <div v-else class="workbench-task-list">
+                <article v-for="task in dashboardTasks" :key="task.id" class="workbench-task" :class="`workbench-task--${task.severity}`">
+                  <span class="workbench-task__status" aria-hidden="true"></span>
+                  <div class="workbench-task__body">
+                    <div class="workbench-task__heading">
+                      <h3>{{ task.title }}</h3>
+                      <span v-if="task.count" class="workbench-task__count">{{ task.count }}</span>
+                    </div>
+                    <p>{{ task.summary }}</p>
+                    <div class="workbench-task__meta">
+                      <span>負責人：{{ task.owner }}</span>
+                      <span>期限：{{ task.dueAt }}</span>
+                    </div>
+                  </div>
+                  <button type="button" class="workbench-task__cta" @click="openDashboardTask(task)">{{ task.actionLabel }}</button>
+                </article>
+              </div>
+            </section>
+
+            <aside class="workbench__snapshot" aria-labelledby="today-snapshot-title">
+              <header class="workbench__section-head">
+                <div>
+                  <p class="workbench__eyebrow">不重複計算</p>
+                  <h2 id="today-snapshot-title">今日快照</h2>
+                </div>
+              </header>
+              <div class="snapshot-grid">
+                <div class="snapshot-item"><span>今日課程</span><strong>{{ todaySchedules.length }}</strong><small>{{ attendedCount }} 堂已完成</small></div>
+                <div class="snapshot-item"><span>待審評量</span><strong>{{ pendingEvaluations.length }}</strong><small>需要確認的紀錄</small></div>
+                <div class="snapshot-item"><span>未讀通知</span><strong>{{ unreadNotificationCount }}</strong><small>通知中心待查看</small></div>
+                <div class="snapshot-item"><span>今日工作量</span><strong>{{ workflowDailySummary.due_total }}</strong><small>已完成 {{ workflowDailySummary.done_total }} 件</small></div>
+              </div>
+              <div class="workbench__view-switch" role="tablist" aria-label="總覽檢視模式">
+                <button type="button" :class="{ 'is-active': dashboardViewMode === 'focus' }" role="tab" :aria-selected="dashboardViewMode === 'focus'" @click="setDashboardViewMode('focus')">今日待辦</button>
+                <button type="button" :class="{ 'is-active': dashboardViewMode === 'full' }" role="tab" :aria-selected="dashboardViewMode === 'full'" @click="setDashboardViewMode('full')">完整營運</button>
+              </div>
+              <p class="workbench__view-hint">趨勢、操作紀錄與老師填寫率在完整營運中載入。</p>
+            </aside>
+          </div>
+        </section>
+
         <!-- E-OPS-TRUST Decision Center -->
         <section
-          v-if="operationsTrust"
+          v-if="false && operationsTrust"
           class="ops-trust"
           aria-labelledby="ops-trust-title"
         >
@@ -100,11 +206,11 @@
         </section>
 
         <!-- ===== Layer 1: Action Lane ===== -->
-        <div class="section-label-row">
+        <div v-if="false" class="section-label-row">
           <span class="section-label">每日待辦</span>
           <span class="section-sublabel">今日需要處理的事項</span>
         </div>
-        <section class="action-lane" data-guide="director-summary">
+        <section v-if="false" class="action-lane" data-guide="director-summary">
           <div v-if="pendingAttendanceCount > 0"
                class="ac ac--attend" tabindex="0"
                @click="goToAttendance" @keydown.enter="goToAttendance">
@@ -196,7 +302,7 @@
         </section>
 
         <!-- ===== Import Result Banner ===== -->
-        <div v-if="importState === 'done' || importState === 'error'"
+        <div v-if="false && (importState === 'done' || importState === 'error')"
              class="import-banner" :class="{ 'import-banner--err': importState === 'error' }">
           <div class="import-banner__head">
             <strong>{{ importState === 'error' ? '匯入失敗' : '匯入完成' }}</strong>
@@ -229,7 +335,7 @@
         </div>
 
         <!-- ===== Layer 2: Progress Board ===== -->
-        <section class="progress-board">
+        <section v-if="false" class="progress-board">
           <div class="pb-cell">
             <AtMetric label="今日到班" :value="`${attendedCount} / ${todaySchedules.length}`" />
             <div class="pb__bar"><div class="pb__fill" :style="{ width: attendancePct + '%' }"></div></div>
@@ -270,6 +376,7 @@
         </div>
 
         <!-- ===== Work Area (detail panels) ===== -->
+        <template v-if="dashboardViewMode === 'full'">
         <div class="section-label-row">
           <span class="section-label">今日必辦</span>
           <span class="section-sublabel">需要主任處理的今日課務與提醒</span>
@@ -619,7 +726,7 @@
         </div>
 
         <!-- ===== Layer 3: KPI Panel (collapsed by default) ===== -->
-        <details class="kpi" data-guide="director-teacher-stats">
+        <details v-if="dashboardViewMode === 'full'" class="kpi" data-guide="director-teacher-stats">
           <summary class="kpi__sum">
             <span class="material-symbols-outlined kpi__sum-icon">analytics</span>
             <span>經營指標 — 本月科目數統計</span>
@@ -681,13 +788,14 @@
             </div>
           </div>
         </details>
+        </template>
       </div>
     </template>
   </div>
 
-  <!-- ===== 匯入格式說明 Modal ===== -->
+  <!-- ===== 匯入格式說明 Modal（匯入入口已移至學生管理） ===== -->
   <teleport to="body">
-    <div v-if="showImportFormatModal" class="import-format-overlay" @click.self="showImportFormatModal = false">
+    <div v-if="false && showImportFormatModal" class="import-format-overlay" @click.self="showImportFormatModal = false">
       <div class="import-format-modal">
         <div class="import-format-header">
           <strong>匯入格式說明</strong>
@@ -757,6 +865,7 @@ import {
   trustDecisionTitle,
 } from '../lib/trustDecisionDisplay.js';
 import { formatDirectorPersonName } from '../lib/studentClassDisplay.js';
+import { buildDirectorDashboardTasks } from '../lib/directorDashboardTasks.js';
 
 const props = defineProps({
   branchId: [String, Number],
@@ -878,6 +987,11 @@ const adoptionActivityRows = ref([]);
 const adoptionActivityLoading = ref(false);
 const adoptionWeeklyMetrics = ref(null);
 const adoptionWeeklyMetricsLoading = ref(false);
+const dashboardLoading = ref(false);
+const dashboardPrimaryError = ref('');
+const dashboardLastUpdated = ref('');
+const secondaryLoading = ref(false);
+const secondaryLoaded = ref(false);
 const DASHBOARD_VIEW_MODE_KEY = 'alltrue.director_dashboard_view_mode.v1';
 const dashboardViewMode = ref(loadDashboardViewMode());
 
@@ -897,6 +1011,7 @@ function setDashboardViewMode(mode) {
   } catch {
     // Ignore storage errors in restricted contexts.
   }
+  if (dashboardViewMode.value === 'full' && !secondaryLoaded.value) loadSecondaryData();
 }
 
 const teacherFillRatesRangeLabel = computed(() => {
@@ -1073,7 +1188,22 @@ const directorTodoCards = computed(() =>
       target: task.target || {},
       acknowledged: isTodoAcknowledged(task.id),
     };
-  })));
+ })));
+
+const dashboardTasks = computed(() => buildDirectorDashboardTasks({
+  pendingAttendanceCount: pendingAttendanceCount.value,
+  lowBalanceCount: lowBalanceStudents.value.length,
+  paymentLabel: paymentActionLaneLabel.value,
+  pendingMakeupCount: pendingMakeupCount.value,
+  exceptionWorkflowCount: exceptionWorkflowCount.value,
+  pendingEvaluationsCount: pendingEvaluations.value.length,
+  unreadFeedbackCount: props.unreadFeedbackCount,
+  scheduleDiscrepancyCount: sdSummary.value.pending,
+  adoptionTasks: directorTodoCards.value.map((item) => ({
+    ...item,
+    actionLabel: item.target?.page === 'learning' ? '前往回饋' : '查看詳情',
+  })),
+}));
 
 const workflowDailySummary = computed(() => ({
   due_total: Number(adoptionWeeklyMetrics.value?.workflow_daily?.due_total || 0),
@@ -1481,8 +1611,11 @@ const loadData = async () => {
 
   const token = getToken();
   const baseUrl = getBaseUrl();
+  dashboardLoading.value = true;
+  dashboardPrimaryError.value = '';
 
   try {
+    try {
     const alertsParams = new URLSearchParams({ branch_id: String(props.branchId) });
     const alertsResp = await fetch(`${baseUrl}/v1/alerts/tuition?${alertsParams}`, {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
@@ -1510,9 +1643,9 @@ const loadData = async () => {
           schedule_mode: c.schedule_mode ?? 'count',
         }));
     }
-  } catch (err) {
+    } catch (err) {
     console.error('Failed to load alerts:', err);
-  }
+    }
 
   try {
     const trustParams = new URLSearchParams({ branch_id: String(props.branchId) });
@@ -1547,12 +1680,6 @@ const loadData = async () => {
 
   await loadNotificationSummary(token, baseUrl);
   await loadExceptionWorkflows();
-  await Promise.all([
-    loadAdoptionTaskTracker(token, baseUrl),
-    loadAdoptionActivityLog(token, baseUrl),
-    loadAdoptionWeeklyMetrics(token, baseUrl),
-  ]);
-
   const today = localTodayYmd();
   try {
     const params = new URLSearchParams({
@@ -1615,39 +1742,6 @@ const loadData = async () => {
     console.error('Failed to load pending evaluations:', err);
   }
 
-  teacherFillRatesLoading.value = true;
-  try {
-    const fillParams = new URLSearchParams({
-      branch_id: String(props.branchId),
-      days: String(teacherFillRatesDays),
-    });
-    const fillRes = await fetch(`${baseUrl}/v1/reports/teacher-learning-fill-rates?${fillParams}`, {
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-    });
-    if (fillRes.ok) {
-      const fj = await fillRes.json().catch(() => ({}));
-      teacherFillRatesMeta.value = {
-        start: fj.start || '',
-        end: fj.end || '',
-        days: Number(fj.days || teacherFillRatesDays),
-      };
-      const list = Array.isArray(fj.teachers) ? fj.teachers : [];
-      teacherFillRatesRows.value = list
-        .slice()
-        .sort((a, b) =>
-          Number(a.fill_rate_pct || 0) - Number(b.fill_rate_pct || 0)
-          || Number(b.sessions_attended || 0) - Number(a.sessions_attended || 0)
-        );
-    } else {
-      teacherFillRatesRows.value = [];
-    }
-  } catch (err) {
-    console.error('Failed to load teacher fill rates:', err);
-    teacherFillRatesRows.value = [];
-  } finally {
-    teacherFillRatesLoading.value = false;
-  }
-
   try {
     const makeupParams = new URLSearchParams({ branch_id: String(props.branchId), per_page: '1' });
     const makeupRes = await fetch(`${baseUrl}/v1/attendance/ended-sessions?${makeupParams}`, {
@@ -1661,7 +1755,65 @@ const loadData = async () => {
     console.error('Failed to load makeup count:', err);
   }
 
-  calculateTeacherStats();
+    dashboardLastUpdated.value = new Date().toLocaleTimeString('zh-TW', {
+      hour: '2-digit', minute: '2-digit', hour12: false,
+    });
+  } catch (err) {
+    dashboardPrimaryError.value = err?.message || '部分今日資料無法載入';
+  } finally {
+    dashboardLoading.value = false;
+  }
+};
+
+const loadSecondaryData = async () => {
+  if (!props.branchId || secondaryLoading.value || secondaryLoaded.value) return;
+  const token = getToken();
+  const baseUrl = getBaseUrl();
+  secondaryLoading.value = true;
+  await Promise.all([
+    loadAdoptionTaskTracker(token, baseUrl),
+    loadAdoptionActivityLog(token, baseUrl),
+    loadAdoptionWeeklyMetrics(token, baseUrl),
+  ]);
+
+  teacherFillRatesLoading.value = true;
+  try {
+    const fillParams = new URLSearchParams({
+      branch_id: String(props.branchId),
+      days: String(teacherFillRatesDays),
+    });
+    const fillRes = await fetch(`${baseUrl}/v1/reports/teacher-learning-fill-rates?${fillParams}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    });
+    if (fillRes.ok) {
+      const fj = await fillRes.json().catch(() => ({}));
+      teacherFillRatesMeta.value = {
+        start: fj.start || '', end: fj.end || '', days: Number(fj.days || teacherFillRatesDays),
+      };
+      teacherFillRatesRows.value = (Array.isArray(fj.teachers) ? fj.teachers : [])
+        .slice()
+        .sort((a, b) => Number(a.fill_rate_pct || 0) - Number(b.fill_rate_pct || 0)
+          || Number(b.sessions_attended || 0) - Number(a.sessions_attended || 0));
+    } else {
+      teacherFillRatesRows.value = [];
+    }
+  } catch (err) {
+    console.error('Failed to load teacher fill rates:', err);
+    teacherFillRatesRows.value = [];
+  } finally {
+    teacherFillRatesLoading.value = false;
+  }
+
+  await calculateTeacherStats();
+  secondaryLoaded.value = true;
+  secondaryLoading.value = false;
+};
+
+const refreshDashboard = async () => {
+  secondaryLoaded.value = false;
+  await loadData();
+  await loadScheduleDiscrepancySummary();
+  if (dashboardViewMode.value === 'full') await loadSecondaryData();
 };
 
 const notificationTypeLabel = (type) => {
@@ -1692,6 +1844,26 @@ const loadNotificationSummary = async (token, baseUrl) => {
 const goToNotifications = () => emit('navigate', { target: 'notifications' });
 const goToAttendance = () => emit('navigate', { target: 'attendance' });
 const goToTuitionCollect = () => emit('navigate', { target: 'tuition-collect' });
+
+const openDashboardTask = async (task) => {
+  if (!task) return;
+  if (task.source === 'adoption' && task.sourceItem) {
+    handleDirectorTodoClick(task.sourceItem);
+    return;
+  }
+  if (task.target?.page === 'learning') {
+    emit('navigate', { target: 'learning', focus: task.target.focus || null });
+    return;
+  }
+  if (task.target?.page === 'attendance') return goToAttendance();
+  if (task.target?.page === 'tuition-collect') return goToTuitionCollect();
+  if (task.target?.page === 'schedule-discrepancy') return goToScheduleDiscrepancy();
+  if (task.target?.section) {
+    if (dashboardViewMode.value !== 'full') setDashboardViewMode('full');
+    await nextTick();
+    scrollTo(task.target.section);
+  }
+};
 
 const getSubjectLabel = (val) => {
   const map = {
@@ -1917,10 +2089,15 @@ watch(() => [props.focusWorkflowId, props.focusSection, exceptionWorkflows.value
 
 watch(() => props.branchId, () => {
   teardownTrustImpressions();
+  secondaryLoaded.value = false;
+  adoptionTaskRows.value = [];
+  adoptionActivityRows.value = [];
+  adoptionWeeklyMetrics.value = null;
   loadData();
   loadScheduleDiscrepancySummary();
+  if (dashboardViewMode.value === 'full') loadSecondaryData();
 });
-onMounted(() => {
+onMounted(async () => {
   trackTrustEventOnce('dashboard_opened', Number(props.branchId) || 0, {
     role: 'director',
     page: 'director-dashboard',
@@ -1930,8 +2107,9 @@ onMounted(() => {
   loadEngagementSnapshot();
   document.addEventListener('visibilitychange', onDirectorVisibilityForEngagement);
   window.addEventListener(USER_ENGAGEMENT_DISPLAY_REFRESH_EVENT, onEngagementDisplayRefreshEvent);
-  loadData();
-  loadScheduleDiscrepancySummary();
+  await loadData();
+  await loadScheduleDiscrepancySummary();
+  if (dashboardViewMode.value === 'full') await loadSecondaryData();
   applyFocusFromInbox();
 });
 
@@ -3255,5 +3433,140 @@ onBeforeUnmount(() => {
   font-size: 12px;
   color: var(--text-light);
   margin: 6px 0 2px;
+}
+/* ===== Director workbench redesign ===== */
+.dash {
+  gap: 16px;
+  border-left: 0;
+}
+.dash-header.enterprise-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  min-height: 0;
+  padding: 18px 0 4px;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+.dash-kicker, .workbench__eyebrow {
+  margin: 0 0 5px;
+  color: var(--ds-ink-mute);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.dash-title-block { min-width: 0; }
+.dash-title { margin: 0; color: var(--ds-ink); font-size: clamp(24px, 3vw, 32px); letter-spacing: -0.025em; }
+.dash-subtitle { max-width: 42rem; margin: 6px 0 0; color: var(--ds-ink-mute); font-size: 13px; }
+.dash-date-panel { display: grid; gap: 3px; justify-items: end; padding-top: 3px; color: var(--ds-ink-mute); }
+.dash-date-label { font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+.dash-date { color: var(--ds-ink); font-size: 14px; font-variant-numeric: tabular-nums; }
+.workbench { display: grid; gap: 14px; }
+.workbench__intro { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; }
+.workbench__intro h1 { margin: 0; color: var(--ds-ink); font-size: clamp(22px, 3vw, 30px); letter-spacing: -0.025em; }
+.workbench__subtitle { margin: 5px 0 0; color: var(--ds-ink-mute); font-size: 13px; }
+.workbench__controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.workbench__updated { color: var(--ds-ink-mute); font-size: 12px; font-variant-numeric: tabular-nums; }
+.workbench__refresh, .workbench__view-switch button, .trust-summary__action, .workbench-state__action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 7px 12px;
+  border: 1px solid var(--ds-hairline-input);
+  border-radius: 8px;
+  background: var(--ds-canvas);
+  color: var(--ds-ink);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.workbench__refresh:hover, .workbench__view-switch button:hover, .trust-summary__action:hover, .workbench-state__action:hover { border-color: var(--ds-cta); color: var(--ds-cta); }
+.workbench__refresh:disabled { cursor: wait; opacity: 0.6; }
+.workbench__refresh .material-symbols-outlined { font-size: 17px; }
+.trust-summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 18px; align-items: center; padding: 14px 16px; border: 1px solid var(--ds-hairline); border-left: 4px solid var(--ds-warning); border-radius: 10px; background: var(--ds-canvas); box-shadow: var(--ds-shadow-1); }
+.trust-summary__status { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.trust-summary__dot { width: 10px; height: 10px; flex: 0 0 10px; border-radius: 50%; background: var(--ds-ink-mute); }
+.trust-summary__dot--green { background: var(--ds-success); }
+.trust-summary__dot--yellow { background: var(--ds-warning); }
+.trust-summary__dot--red { background: var(--ds-danger); }
+.trust-summary__eyebrow { margin: 0 0 2px; color: var(--ds-ink-mute); font-size: 11px; font-weight: 800; }
+.trust-summary h2 { overflow: hidden; margin: 0; color: var(--ds-ink); font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.trust-summary__score { color: var(--ds-ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.trust-summary__score strong { font-size: 24px; }
+.trust-summary__score span { color: var(--ds-ink-mute); font-size: 12px; font-weight: 700; }
+.trust-summary__score--green strong { color: var(--ds-success); }
+.trust-summary__score--yellow strong { color: var(--ds-warning); }
+.trust-summary__score--red strong { color: var(--ds-danger); }
+.trust-summary__details { grid-column: 1 / -1; border-top: 1px solid var(--ds-hairline); padding-top: 10px; }
+.trust-summary__details summary { color: var(--ds-ink-secondary); cursor: pointer; font-size: 12px; font-weight: 800; }
+.trust-summary__list { display: grid; gap: 8px; margin-top: 10px; }
+.trust-summary__item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--ds-hairline); }
+.trust-summary__item strong { color: var(--ds-ink); font-size: 13px; }
+.trust-summary__item p { margin: 3px 0 0; color: var(--ds-ink-mute); font-size: 12px; }
+.trust-summary__action { min-height: 32px; padding-inline: 10px; color: var(--ds-cta); border-color: var(--ds-cta); white-space: nowrap; }
+.workbench__layout { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(280px, 0.7fr); gap: 16px; align-items: start; }
+.workbench__queue, .workbench__snapshot { min-width: 0; padding: 16px; border: 1px solid var(--ds-hairline); border-radius: 10px; background: var(--ds-canvas); box-shadow: var(--ds-shadow-1); }
+.workbench__section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.workbench__section-head h2 { margin: 0; color: var(--ds-ink); font-size: 18px; letter-spacing: -0.015em; }
+.workbench__count { color: var(--ds-ink-mute); font-size: 12px; font-variant-numeric: tabular-nums; }
+.workbench-task-list { display: grid; gap: 8px; }
+.workbench-task { display: grid; grid-template-columns: 4px minmax(0, 1fr) auto; gap: 12px; align-items: center; min-width: 0; padding: 12px; border: 1px solid var(--ds-hairline); border-radius: 8px; background: var(--ds-canvas); }
+.workbench-task--critical, .workbench-task--danger { border-left: 4px solid var(--ds-danger); }
+.workbench-task--warning { border-left: 4px solid var(--ds-warning); }
+.workbench-task--info { border-left: 4px solid var(--ds-info); }
+.workbench-task--neutral { border-left: 4px solid var(--ds-hairline-input); }
+.workbench-task__status { width: 4px; height: 42px; border-radius: 2px; background: var(--ds-hairline); }
+.workbench-task--critical .workbench-task__status, .workbench-task--danger .workbench-task__status { background: var(--ds-danger); }
+.workbench-task--warning .workbench-task__status { background: var(--ds-warning); }
+.workbench-task--info .workbench-task__status { background: var(--ds-info); }
+.workbench-task__body { min-width: 0; }
+.workbench-task__heading { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.workbench-task__heading h3 { overflow: hidden; margin: 0; color: var(--ds-ink); font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.workbench-task__heading p, .workbench-task__body > p { margin: 4px 0 0; color: var(--ds-ink-secondary); font-size: 12px; line-height: 1.5; }
+.workbench-task__count { flex: 0 0 auto; min-width: 24px; color: var(--ds-ink); font-size: 14px; font-weight: 900; text-align: right; font-variant-numeric: tabular-nums; }
+.workbench-task__meta { display: flex; flex-wrap: wrap; gap: 5px 14px; margin-top: 6px; color: var(--ds-ink-mute); font-size: 11px; }
+.workbench-task__cta { display: inline-flex; align-items: center; justify-content: center; min-width: 92px; min-height: 44px; padding: 9px 12px; border: 1px solid var(--ds-cta); border-radius: 8px; background: var(--ds-cta); color: var(--ds-on-cta); font: inherit; font-size: 12px; font-weight: 900; cursor: pointer; white-space: nowrap; }
+.workbench-task__cta:hover { background: var(--ds-cta-hover); border-color: var(--ds-cta-hover); }
+.workbench-task__cta:focus-visible, .workbench__refresh:focus-visible, .workbench__view-switch button:focus-visible, .trust-summary__action:focus-visible, .workbench-state__action:focus-visible { outline: 3px solid var(--ds-info-wash); outline-offset: 2px; }
+.workbench-task--loading { height: 78px; background: var(--ds-canvas-soft); border-color: transparent; }
+.workbench-state { display: grid; justify-items: start; gap: 5px; padding: 24px 8px 12px; color: var(--ds-ink-mute); font-size: 12px; }
+.workbench-state .material-symbols-outlined { color: var(--ds-success); font-size: 28px; }
+.workbench-state strong { color: var(--ds-ink); font-size: 14px; }
+.workbench-state__action { margin-top: 5px; color: var(--ds-cta); border-color: var(--ds-cta); }
+.workbench-state--error strong { color: var(--ds-danger); }
+.snapshot-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: 1px solid var(--ds-hairline); border-left: 1px solid var(--ds-hairline); }
+.snapshot-item { min-width: 0; padding: 12px 10px; border-right: 1px solid var(--ds-hairline); border-bottom: 1px solid var(--ds-hairline); }
+.snapshot-item span, .snapshot-item small { display: block; color: var(--ds-ink-mute); font-size: 11px; }
+.snapshot-item strong { display: block; margin: 4px 0 2px; color: var(--ds-ink); font-size: 22px; font-variant-numeric: tabular-nums; }
+.workbench__view-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 16px; padding: 3px; border: 1px solid var(--ds-hairline); border-radius: 8px; background: var(--ds-canvas-soft); }
+.workbench__view-switch button { min-height: 36px; border-color: transparent; background: transparent; }
+.workbench__view-switch button.is-active { border-color: var(--ds-hairline); background: var(--ds-canvas); color: var(--ds-ink); box-shadow: var(--ds-shadow-1); }
+.workbench__view-hint { margin: 8px 2px 0; color: var(--ds-ink-mute); font-size: 11px; line-height: 1.5; }
+@media (max-width: 860px) {
+  .workbench__layout { grid-template-columns: 1fr; }
+  .workbench__snapshot { order: -1; }
+}
+@media (max-width: 600px) {
+  .dash-header.enterprise-page-header, .workbench__intro { align-items: flex-start; flex-direction: column; gap: 10px; }
+  .dash-date-panel { justify-items: start; }
+  .workbench__controls { width: 100%; justify-content: space-between; }
+  .workbench__queue, .workbench__snapshot { padding: 12px; }
+  .workbench-task { grid-template-columns: 4px minmax(0, 1fr); gap: 9px; align-items: start; }
+  .workbench-task__cta { grid-column: 2; width: 100%; }
+  .workbench-task__heading h3 { white-space: normal; }
+  .trust-summary { grid-template-columns: minmax(0, 1fr) auto; }
+  .trust-summary__item { align-items: flex-start; flex-direction: column; }
+  .trust-summary__action { width: 100%; }
+}
+@media (max-width: 420px) {
+  .workbench__intro h1 { font-size: 24px; }
+  .workbench-task__cta { min-height: 44px; }
+  .snapshot-grid { grid-template-columns: 1fr 1fr; }
 }
 </style>
