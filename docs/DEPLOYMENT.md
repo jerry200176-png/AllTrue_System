@@ -36,6 +36,7 @@
 ```bash
 curl -s https://daan.lifenet.com.tw/api/v1/health
 curl -s https://daan.lifenet.com.tw/api/v1/branches
+curl -s https://daan.lifenet.com.tw/deployment.json
 ```
 
 若 API 回傳 `<?php` 原始碼 → Document root 未指向 `backend/public` 或 `mod_rewrite` 未啟用。
@@ -100,7 +101,7 @@ cloudflared tunnel --url http://localhost:8080
 
 ### 前端沒更新
 
-強制重新整理（Ctrl+Shift+R），或先確認 `deploy.yml` 成功、`backend/public/version.json` 已更新。
+前端有變更時可強制重新整理（Ctrl+Shift+R），但判斷 backend 是否上線應先確認 `deploy.yml` 成功與 `deployment.json.backend_sha`；`version.json` 只代表前端 build，backend-only deploy 時可以保持舊值。
 
 ---
 
