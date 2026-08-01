@@ -10,6 +10,7 @@ use App\Models\Student;
 use App\Models\StudentClass;
 use App\Services\FeedbackPushNotifier;
 use App\Services\ParentFeedbackAwaitingService;
+use App\Services\StudentIdentityService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -40,7 +41,7 @@ class LearningRecordFeedbackController extends Controller
     {
         $session = $this->resolveParentSession($request);
         if (!$session) return response()->json(['message' => 'Unauthorized'], 401);
-        $auth = $this->authorizeParentRecord($session, $learningRecord);
+        $auth = $this->authorizeParentRecord($session, $learningRecord, true);
         if ($auth !== true) return $auth;
 
         $feedback = $learningRecord->feedback;
@@ -126,7 +127,7 @@ class LearningRecordFeedbackController extends Controller
     {
         $session = $this->resolveParentSession($request);
         if (!$session) return response()->json(['message' => 'Unauthorized'], 401);
-        $auth = $this->authorizeParentRecord($session, $learningRecord);
+        $auth = $this->authorizeParentRecord($session, $learningRecord, true);
         if ($auth !== true) return $auth;
 
         $awaiting = app(ParentFeedbackAwaitingService::class);
@@ -538,12 +539,20 @@ class LearningRecordFeedbackController extends Controller
             ->first();
     }
 
-    private function authorizeParentRecord(ParentSession $session, LearningRecord $record)
+    private function authorizeParentRecord(ParentSession $session, LearningRecord $record, bool $requireActions = false)
     {
         $ctx = $this->recordContext($record);
         if (!$ctx) return response()->json(['message' => 'Learning record context missing'], 409);
-        if ((int) $ctx['student_id'] !== (int) $session->StudentID) {
+        $identity = app(StudentIdentityService::class);
+        $group = $identity->groupForStudent((int) $ctx['student_id']);
+        $sameStudent = (int) $ctx['student_id'] === (int) $session->StudentID;
+        $sameGroup = $group && (int) ($session->identity_group_id ?: 0) === (int) $group->id;
+        $mode = $group ? $identity->accessMode((int) $group->id) : StudentIdentityService::MODE_OFF;
+        if (!$sameStudent && (!$sameGroup || $mode === StudentIdentityService::MODE_OFF)) {
             return response()->json(['message' => 'Forbidden'], 403);
+        }
+        if ($requireActions && $group && $identity->activeMembers((int) $group->id)->count() > 1 && $mode !== StudentIdentityService::MODE_ACTIONS) {
+            return response()->json(['message' => 'Cross-campus actions are not enabled for this family.'], 403);
         }
         if ($record->VoidedAt !== null || (string) $record->Status !== 'approved') {
             return response()->json(['message' => 'Only approved records can receive feedback'], 409);
