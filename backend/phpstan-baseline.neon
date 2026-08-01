@@ -999,7 +999,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\Invoice\:\:\$PaidAmount\.$#'
 			identifier: property.notFound
-			count: 4
+			count: 2
 			path: app/Http/Controllers/BillingController.php
 
 		-
@@ -1023,7 +1023,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\Invoice\:\:\$TotalAmount\.$#'
 			identifier: property.notFound
-			count: 3
+			count: 1
 			path: app/Http/Controllers/BillingController.php
 
 		-

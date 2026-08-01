@@ -22,7 +22,7 @@ use App\Services\Scheduling\DeductionBasis;
 use App\Services\Scheduling\LessonEntitlementCoverageCalculator;
 use App\Services\ClassSessionContractReflowService;
 use App\Services\FrontendSubjectIdResolver;
-use App\Services\MonthlyBillingService;
+use App\Services\InvoiceAmountReconciliationService;
 use App\Services\SessionDeductionService;
 use App\Services\ScheduleGuardService;
 use App\Services\SessionProjectionReadService;
@@ -37,7 +37,7 @@ class StudentClassController extends Controller
     public function __construct(
         private ScheduleGuardService $scheduleGuardService,
         private ClassSessionContractReflowService $contractSessionReflowService,
-        private MonthlyBillingService $monthlyBilling
+        private InvoiceAmountReconciliationService $invoiceAmounts
     )
     {
     }
@@ -2252,34 +2252,16 @@ class StudentClassController extends Controller
                 $voidPayments = $inv->payments
                     ->filter(fn ($payment) => (int) ($payment->Amount ?? 0) < 0 || (string) ($payment->Method ?? '') === 'void')
                     ->values();
-                $positiveTotal = (int) $effectivePayments->sum(fn ($payment) => (int) ($payment->Amount ?? 0));
-                $voidedTotal = abs((int) $voidPayments->sum(fn ($payment) => (int) ($payment->Amount ?? 0)));
-                $netApplied = max(0, $positiveTotal - $voidedTotal);
-                $storedTotalAmount = (int) ($inv->TotalAmount ?? 0);
-                $totalAmount = $storedTotalAmount;
-                $computedTotalAmount = null;
-                $amountSource = 'invoice_total';
-                $amountDiscrepancy = false;
-                $periodSessions = null;
-                $periodStart = null;
-                $periodEnd = null;
-                $billingPeriod = (string) ($inv->billing_period ?: substr((string) $inv->IssueDate, 0, 7));
-                if ((string) ($studentClass->ScheduleMode ?? 'count') === 'date' && preg_match('/^\d{4}-\d{2}$/', $billingPeriod)) {
-                    $billing = $this->monthlyBilling->summarizePeriod($studentClass, $billingPeriod);
-                    $computedTotalAmount = (int) $billing['charge'];
-                    $periodSessions = (int) $billing['period_sessions'];
-                    $periodStart = $billing['period_start'];
-                    $periodEnd = $billing['period_end'];
-                    $amountDiscrepancy = $billing['source'] === 'billable_sessions'
-                        && $computedTotalAmount !== $storedTotalAmount;
-                    // An unpaid legacy invoice has no settled amount to protect.
-                    // Read paths show the canonical session calculation while
-                    // retaining the persisted value for audit and repair.
-                    if ($amountDiscrepancy && (string) ($inv->Status ?? '') === 'unpaid' && $netApplied === 0) {
-                        $totalAmount = $computedTotalAmount;
-                        $amountSource = 'billable_sessions';
-                    }
-                }
+                $reconciliation = $this->invoiceAmounts->resolve($inv, $studentClass);
+                $netApplied = (int) $reconciliation['net_applied'];
+                $storedTotalAmount = (int) $reconciliation['stored_total_amount'];
+                $totalAmount = (int) $reconciliation['total_amount'];
+                $computedTotalAmount = $reconciliation['computed_total_amount'];
+                $amountSource = $reconciliation['amount_source'];
+                $amountDiscrepancy = $reconciliation['amount_discrepancy'];
+                $periodSessions = $reconciliation['period_sessions'];
+                $periodStart = $reconciliation['period_start'];
+                $periodEnd = $reconciliation['period_end'];
                 $appliedAmount = min($totalAmount, $netApplied);
                 $outstandingAmount = max(0, $totalAmount - $appliedAmount);
                 $status = (string) ($inv->Status ?? '');

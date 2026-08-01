@@ -209,7 +209,16 @@
                     {{ statusLabel(r) }}
                   </span>
                 </td>
-                <td class="tc-col-currency">{{ r.charge != null ? formatCurrency(r.charge) : '—' }}</td>
+                <td class="tc-col-currency">
+                  <div>{{ r.charge != null ? formatCurrency(r.charge) : '—' }}</div>
+                  <span
+                    v-if="r.invoice_amount_discrepancy"
+                    class="tc-amount-warning"
+                    :title="`原始帳單 ${formatCurrency(r.invoice_stored_amount)}；依 ${r.invoice_period_sessions} 堂實際上課計算 ${formatCurrency(r.invoice_computed_amount)}`"
+                  >
+                    依實際 {{ r.invoice_period_sessions }} 堂計算
+                  </span>
+                </td>
                 <td class="tc-col-currency">{{ r.paid_amount != null ? formatCurrency(r.paid_amount) : '—' }}</td>
                 <td class="tc-col-currency" :class="{ 'tc-outstanding-warn': r.outstanding > 0 }">
                   {{ r.outstanding != null ? formatCurrency(r.outstanding) : '—' }}
@@ -254,6 +263,14 @@
                     >{{ overlapWarningLabel(r) }}</span>
 
                     <!-- unpaid / partial: slip + 核帳登記 -->
+                    <span
+                      v-if="r.invoice_amount_discrepancy"
+                      class="tc-amount-warning"
+                      :title="`原始帳單 ${formatCurrency(r.invoice_stored_amount)}；依 ${r.invoice_period_sessions} 堂實際上課計算 ${formatCurrency(r.invoice_computed_amount)}`"
+                    >
+                      依實際 {{ r.invoice_period_sessions }} 堂計算
+                    </span>
+
                     <template v-if="r.payment_status === 'unpaid' || r.payment_status === 'partial'">
                       <button class="tc-btn tc-btn--slip" @click="openSlip(r)" title="產生繳費通知單">
                         <span class="material-symbols-outlined">receipt_long</span>
@@ -1048,8 +1065,8 @@ function exportCSV() {
 }
 
 function openSlip(row) {
-  slipInvoiceId.value = null;
-  slipStudentClassId.value = row.id;
+  slipInvoiceId.value = row.invoice_id || null;
+  slipStudentClassId.value = row.invoice_id ? null : row.id;
   slipOpen.value = true;
 }
 
@@ -2073,6 +2090,14 @@ loadAlerts();
 .row-paid:hover { opacity: 0.75; }
 
 .tc-outstanding-warn { color: var(--ds-danger); font-weight: 600; }
+.tc-amount-warning {
+  display: inline-block;
+  margin-top: 3px;
+  color: var(--ds-warning);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
 
 /* ─── Tags ─── */
 .mode-tag {

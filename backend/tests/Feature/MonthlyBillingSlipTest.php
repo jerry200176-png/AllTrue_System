@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\AuthToken;
 use App\Models\ClassSession;
+use App\Models\Invoice;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
@@ -71,6 +72,17 @@ class MonthlyBillingSlipTest extends TestCase
             ]);
         }
 
+        $invoice = Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $course->ID,
+            'IssueDate' => '2026-07-17',
+            'DueDate' => '2026-07-17',
+            'TotalAmount' => 6000,
+            'PaidAmount' => 0,
+            'Status' => 'unpaid',
+            'billing_period' => '2026-07',
+        ]);
+
         $response = $this->withHeaders([
             'Authorization' => "Bearer {$token}",
             'Accept' => 'application/json',
@@ -90,6 +102,33 @@ class MonthlyBillingSlipTest extends TestCase
         $row = collect($alerts->json())->firstWhere('id', (int) $course->ID);
         $this->assertNotNull($row);
         $this->assertSame(7500, (int) $row['charge']);
+        $this->assertTrue((bool) $row['invoice_amount_discrepancy']);
+        $this->assertSame(6000, (int) $row['invoice_stored_amount']);
+        $this->assertSame(7500, (int) $row['invoice_computed_amount']);
+        $this->assertSame(5, (int) $row['invoice_period_sessions']);
+
+        $invoiceSlip = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/invoices/{$invoice->id}/slip-data");
+
+        $invoiceSlip->assertOk()
+            ->assertJsonPath('total_amount', 7500)
+            ->assertJsonPath('stored_total_amount', 6000)
+            ->assertJsonPath('computed_total_amount', 7500)
+            ->assertJsonPath('amount_discrepancy', true)
+            ->assertJsonPath('period_sessions', 5)
+            ->assertJsonCount(5, 'sessions');
+
+        $invoiceList = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/invoices?branch_id=1&student_id=' . $student->id);
+
+        $invoiceList->assertOk()
+            ->assertJsonPath('data.0.TotalAmount', 7500)
+            ->assertJsonPath('data.0.stored_total_amount', 6000)
+            ->assertJsonPath('data.0.amount_discrepancy', true);
     }
 
     public function test_monthly_slip_keeps_stored_charge_when_period_has_no_billable_sessions(): void

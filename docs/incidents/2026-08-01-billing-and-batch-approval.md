@@ -2,9 +2,9 @@
 
 ## 摘要
 
-兩個 in-app 回報同時暴露了「畫面看似同一筆資料，實際使用不同真相來源」的問題：
+兩個 in-app 回報同時暴露了「畫面看似同一筆資料，實際使用不同真相來源」的問題。第一次修正後，#213 又證明只修一個畫面仍不夠：正式帳務中心仍沿用舊的 `Invoice.TotalAmount`，因此本檢討把所有 billing read surfaces 納入同一個驗收矩陣：
 
-- #213：木柵學生高瑞璞的 2026-07 國文課程，課堂顯示 5 堂 × NT$1,500 = NT$7,500，但帳單列表沿用歷史 `Invoice.TotalAmount = NT$6,000`。
+- #213：木柵學生高瑞璞的 2026-07 國文課程，課堂顯示 5 堂 × NT$1,500 = NT$7,500，但帳務中心／帳單列表曾沿用歷史 `Invoice.TotalAmount = NT$6,000`。
 - #212：使用者勾選 15 筆後，前端未把選取 ID 傳給批次核准 API；後端依頁面/分校篩選重新查詢，因而核准了 63 筆。
 
 ## 根因
@@ -17,6 +17,8 @@
 ## 已完成的修正
 
 - `MonthlyBillingService::summarizePeriod()` 明確依帳單月份計算已上課堂，不使用今天的月份。
+- 新增 `InvoiceAmountReconciliationService` 作為共用 billing read model；帳務中心、帳單 API、繳費單與對帳查詢都輸出 stored/computed/source/discrepancy/period 欄位。
+- 帳務中心金額旁顯示差異提示，繳費單依 invoice ID／billing period 取資料，避免重新以「本月」推算歷史帳單。
 - 未付款的月結帳單若發現差異，讀取 API 顯示實際堂次計算金額，同時保留 `stored_total_amount`、`computed_total_amount`、`amount_source` 與差異旗標；沒有直接覆寫歷史資料。
 - 課程管理的帳單金額顯示差異警示，讓主管能看到「實際堂次」與「原帳單」兩者。
 - 批次核准必須提供明確、去重的 `ids`；選取資料與權限/狀態不完全一致時，整批 422 且不寫入任何資料。
