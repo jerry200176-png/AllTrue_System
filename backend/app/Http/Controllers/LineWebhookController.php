@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\Student;
 use App\Models\StudentLineBinding;
 use App\Models\SystemSetting;
+use App\Services\ParentBinding\ParentBindingObservability;
+use App\Support\ParentBinding\ParentBindingCodes;
 use App\Support\StudentContactPhone;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -179,30 +181,22 @@ class LineWebhookController extends Controller
 
     private function handleBindingByName(string $lineUserId, string $name, string $phone, ?string $replyToken, object $campus): void
     {
-        $normalized = preg_replace('/[^0-9]/', '', $phone);
-        if ($normalized === '') {
-            $this->replyMessage($replyToken, "請輸入正確的手機號碼。", $campus);
+        $obs = app(ParentBindingObservability::class);
+        $cid = $obs->newCorrelationId();
+        $normalized = preg_replace('/[^0-9]/', '', $phone) ?? '';
+        $candidates = Student::whereRaw('TRIM(name) = ?', [$name])->where('CampusID', $campus->id)->get();
+        $c = $obs->classifier()->classifyLineNameCandidates($candidates, $normalized, (int) $campus->id, fn (int $sid) => $this->isAlreadyBound($sid, $lineUserId));
+        $obs->observe($cid, ParentBindingCodes::CHANNEL_LINE, ParentBindingCodes::METHOD_NAME, $c, $normalized !== '' ? $normalized : null);
+        if ($c['outcome'] === ParentBindingCodes::OUTCOME_FAILURE) {
+            $this->replyMessage($replyToken, $c['reasonCode'] === ParentBindingCodes::INVALID_INPUT ? "請輸入正確的手機號碼。" : "在 {$campus->name} 找不到「{$name}」與此手機號碼的學生，請確認姓名與手機是否正確。", $campus);
             return;
         }
-
-        $candidates = Student::whereRaw('TRIM(name) = ?', [$name])
-            ->where('CampusID', $campus->id)
-            ->get();
-
-        $student = null;
-        foreach ($candidates as $s) {
-            if (StudentContactPhone::matchesNormalizedInput($s, $normalized)) {
-                $student = $s;
-                break;
-            }
-        }
-
+        $student = $candidates->first(fn ($s) => StudentContactPhone::matchesNormalizedInput($s, $normalized));
         if (!$student) {
             $this->replyMessage($replyToken, "在 {$campus->name} 找不到「{$name}」與此手機號碼的學生，請確認姓名與手機是否正確。", $campus);
             return;
         }
-
-        if ($this->isAlreadyBound($student->id, $lineUserId)) {
+        if ($c['outcome'] === ParentBindingCodes::OUTCOME_NOOP) {
             $this->replyMessage($replyToken, "「{$student->name}」已經綁定過了喔！如需綁定其他孩子，請輸入「綁定 學生姓名 家長手機」。", $campus);
             return;
         }
@@ -221,22 +215,21 @@ class LineWebhookController extends Controller
 
     private function handleBindingById(string $lineUserId, int $studentId, string $phone, ?string $replyToken, object $campus): void
     {
-        $student = Student::where('id', $studentId)
-            ->where('CampusID', $campus->id)
-            ->first();
-
-        if (!$student) {
+        $obs = app(ParentBindingObservability::class);
+        $cid = $obs->newCorrelationId();
+        $normalized = preg_replace('/[^0-9]/', '', $phone) ?? '';
+        $student = Student::where('id', $studentId)->where('CampusID', $campus->id)->first();
+        $c = $obs->classifier()->classifyLineStudentId($student, $normalized, (int) $campus->id, fn (int $sid) => $this->isAlreadyBound($sid, $lineUserId));
+        $obs->observe($cid, ParentBindingCodes::CHANNEL_LINE, ParentBindingCodes::METHOD_STUDENT_ID, $c, $normalized !== '' ? $normalized : null);
+        if (in_array($c['reasonCode'], [ParentBindingCodes::STUDENT_NOT_FOUND, ParentBindingCodes::CAMPUS_MISMATCH], true)) {
             $this->replyMessage($replyToken, "在 {$campus->name} 找不到學生代號 {$studentId}，請確認後重試。", $campus);
             return;
         }
-
-        $normalized       = preg_replace('/[^0-9]/', '', $phone);
-        if (!StudentContactPhone::matchesNormalizedInput($student, $normalized)) {
+        if ($c['outcome'] === ParentBindingCodes::OUTCOME_FAILURE) {
             $this->replyMessage($replyToken, "手機號碼不符，請確認後重試。", $campus);
             return;
         }
-
-        if ($this->isAlreadyBound($student->id, $lineUserId)) {
+        if ($c['outcome'] === ParentBindingCodes::OUTCOME_NOOP) {
             $this->replyMessage($replyToken, "「{$student->name}」已經綁定過了喔！如需綁定其他孩子，請輸入「綁定 學生姓名 家長手機」。", $campus);
             return;
         }

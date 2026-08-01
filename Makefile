@@ -6,6 +6,13 @@
 agent-preflight:
 	bash scripts/agent-preflight.sh
 
+# Fast CI governance gate (Cloud Agent + local). See docs/governance/CI_GOVERNANCE.md
+ci-preflight:
+	node scripts/ci-preflight.mjs
+
+test-gov:
+	npm run test:gov
+
 validate-capabilities:
 	python3 scripts/governance/validate-capability-registry.py
 

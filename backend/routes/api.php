@@ -376,6 +376,7 @@ Route::prefix('v1')->group(function () {
         Route::post('exception-workflows/{id}/generate-candidates', [ExceptionWorkflowController::class, 'generateCandidates'])->whereNumber('id');
         Route::post('exception-workflows/{id}/confirm-candidate', [ExceptionWorkflowController::class, 'confirmCandidate'])->whereNumber('id');
         Route::post('exception-workflows/{id}/waive', [ExceptionWorkflowController::class, 'waive'])->whereNumber('id');
+        Route::post('exception-workflows/{id}/reject', [ExceptionWorkflowController::class, 'reject'])->whereNumber('id');
 
         Route::get('temp-rfid', [TempRfidController::class, 'show']);
         Route::post('temp-rfid/consume', [TempRfidController::class, 'consume']);
@@ -436,6 +437,13 @@ Route::prefix('v1')->group(function () {
         Route::post('student-classes/{studentClass}/pause', [StudentClassController::class, 'togglePause']);
         Route::delete('student-classes/{studentClass}', [StudentClassController::class, 'destroy']);
 
+        // Course Continuity (#1382) — group link without physical merge
+        Route::get('course-contract-groups', [\App\Http\Controllers\CourseContractGroupController::class, 'index']);
+        Route::post('course-contract-groups', [\App\Http\Controllers\CourseContractGroupController::class, 'store']);
+        Route::post('course-contract-groups/{id}/members', [\App\Http\Controllers\CourseContractGroupController::class, 'addMember'])->whereNumber('id');
+        Route::delete('course-contract-groups/{id}/members/{memberId}', [\App\Http\Controllers\CourseContractGroupController::class, 'unlinkMember'])
+            ->whereNumber('id')->whereNumber('memberId');
+
         // Course packages (multi-subject shared session pool)
         Route::get('course-packages', [\App\Http\Controllers\CoursePackageController::class, 'index']);
         Route::post('course-packages/create-multi-subject', [\App\Http\Controllers\CoursePackageController::class, 'createMultiSubject']);
@@ -471,6 +479,7 @@ Route::prefix('v1')->group(function () {
         Route::put('learning-records/{learningRecord}/teacher-comment', [LearningRecordTeacherCommentController::class, 'upsert']);
         Route::post('learning-record-teacher-comments/{comment}/read', [LearningRecordTeacherCommentController::class, 'markRead']);
         Route::get('me/unread-feedback-count', [LearningRecordFeedbackController::class, 'unreadCount']);
+        Route::get('me/awaiting-reply-count', [LearningRecordFeedbackController::class, 'awaitingReplyCount']);
         Route::get('me/learning-pending-summary', [LearningRecordController::class, 'teacherPendingBadgeSummary']);
         Route::get('me/learning-progress-summary', [LearningRecordController::class, 'teacherLearningProgressSummary']);
         Route::get('learning-record-feedbacks', [LearningRecordFeedbackController::class, 'index']);

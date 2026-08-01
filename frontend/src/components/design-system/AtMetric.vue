@@ -34,7 +34,7 @@ const accentStyle = computed(() =>
   gap: 4px;
   background: var(--ds-canvas);
   border: 1px solid var(--ds-hairline);
-  border-radius: 12px;
+  border-radius: var(--ds-radius-lg);
   padding: 16px 18px;
 }
 

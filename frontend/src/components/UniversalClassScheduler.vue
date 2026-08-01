@@ -413,7 +413,45 @@
                 <input v-model.number="form.total_classes" type="number" min="1" />
               </div>
 
-              <template v-else>
+              <div v-if="canUseActualDuration" class="form-group duration-basis-group">
+                <label>扣堂方式 *</label>
+                <div class="duration-basis-options">
+                  <label class="duration-basis-option">
+                    <input v-model="form.deduction_basis" type="radio" value="fixed_session" />
+                    <span>每次上課扣一堂</span>
+                  </label>
+                  <label class="duration-basis-option">
+                    <input v-model="form.deduction_basis" type="radio" value="actual_duration" />
+                    <span>依實際上課時長換算</span>
+                  </label>
+                </div>
+                <p class="hint-text">
+                  多數課程用「每次上課扣一堂」即可。只有當這門課每次上課的長度跟一堂的標準長度不同時，
+                  才需要改成依實際時長換算。
+                </p>
+              </div>
+
+              <template v-if="isActualDuration">
+                <div class="form-group">
+                  <label>這門課的標準一堂時長 *</label>
+                  <input v-model.number="form.standard_lesson_minutes" type="number" min="30" max="480" step="10" />
+                  <p class="hint-text">
+                    這是<strong>這門課自己</strong>的定義，不是全公司的規定；不同課程可以不一樣。
+                    購買 {{ form.total_classes || 0 }} 堂 =
+                    {{ (Number(form.total_classes) || 0) * (courseStandardLessonMinutes || 0) }} 分鐘。
+                  </p>
+                </div>
+
+                <div class="form-group">
+                  <label>預計排課次數 *</label>
+                  <input v-model.number="form.planned_occurrences" type="number" min="1" />
+                  <p class="hint-text">
+                    排幾次課與買了幾堂是兩件事。例如買 8 堂（標準 120 分）也可以只排 6 次 180 分鐘的課。
+                  </p>
+                </div>
+              </template>
+
+              <template v-else-if="form.payment_type === 'monthly'">
                 <div class="form-group">
                   <label>結算日 *</label>
                   <select v-model.number="form.settlement_day">
@@ -477,6 +515,7 @@
                 <span>{{ day.label }}</span>
               </label>
             </div>
+            <p class="field-note">若上課日期不固定（例如寒暑假課表），可不勾選任何星期，改為直接在下方日曆逐一點選每次上課日期。</p>
             <div v-if="selectedDays.length > 0" class="weekday-slot-grid">
               <template v-for="day in selectedDays" :key="`day-${day}`">
                 <div
@@ -626,6 +665,56 @@
               </div>
             </div>
 
+            <div v-if="durationCoverage" class="coverage-preview">
+              <div class="coverage-head">
+                <span class="coverage-label">時長換算</span>
+                <strong class="coverage-standard">這門課標準一堂 = {{ durationCoverage.standardLessonMinutes }} 分鐘</strong>
+              </div>
+
+              <ul class="coverage-lines">
+                <li>
+                  購買額度：<strong>{{ durationCoverage.purchasedStandardUnits }} 堂</strong>
+                  ＝ {{ durationCoverage.entitlementMinutes }} 分鐘（{{ durationCoverage.entitlementHours }} 小時）
+                </li>
+                <li>
+                  預計排課：<strong>{{ durationCoverage.scheduledOccurrenceCount }} 次</strong>
+                  ＝ {{ durationCoverage.scheduledMinutes }} 分鐘（{{ durationCoverage.scheduledHours }} 小時）
+                </li>
+                <li v-for="row in perOccurrenceLessonEquivalents" :key="row.minutes">
+                  每次上 {{ row.minutes }} 分鐘 → 扣 <strong>{{ row.lessons }}</strong> 堂
+                </li>
+                <li>可完整涵蓋：<strong>{{ durationCoverage.fullyCoveredOccurrences }}</strong> 次</li>
+                <li v-if="durationCoverage.firstPartiallyCoveredOccurrence !== null">
+                  第 {{ durationCoverage.firstPartiallyCoveredOccurrence }} 次只夠扣
+                  {{ durationCoverage.partialCoveredMinutes }} 分鐘，尚缺
+                  {{ durationCoverage.partialUncoveredMinutes }} 分鐘
+                </li>
+                <li v-if="durationCoverage.fullyUncoveredOccurrences > 0">
+                  完全沒有額度的次數：<strong>{{ durationCoverage.fullyUncoveredOccurrences }}</strong> 次
+                </li>
+                <li v-if="durationCoverage.uncoveredMinutes > 0" class="coverage-shortfall">
+                  尚缺 <strong>{{ durationCoverage.uncoveredMinutes }} 分鐘</strong>
+                  （{{ durationCoverage.uncoveredLessonEquivalent }} 堂）
+                </li>
+                <li v-else class="coverage-surplus">
+                  剩餘 <strong>{{ durationCoverage.remainingEntitlementMinutes }} 分鐘</strong>
+                  （{{ durationCoverage.remainingLessonEquivalent }} 堂）
+                </li>
+              </ul>
+
+              <label v-if="needsOverageConfirmation" class="coverage-overage">
+                <input v-model="form.overage_confirmed" type="checkbox" />
+                <span>
+                  我確認這門課的排程超出已購額度，超額部分會另行續約、加購或再處理。
+                  不勾選無法建立課程；建立後仍可正常點名，不會擋住學生上課。
+                </span>
+              </label>
+
+              <div class="coverage-note">
+                預覽僅供建課參考，實際額度以後端重新計算為準。
+              </div>
+            </div>
+
             <div v-if="previewPricePerSession > 0" class="fee-estimate">
               <div class="fee-estimate-head">
                 <span class="fee-estimate-label">計價方式</span>
@@ -700,8 +789,10 @@
         <button
           class="primary"
           type="button"
-          :disabled="submitting || (packageMode && pkgForm.subjects.length < 2)"
-          :title="(packageMode && pkgForm.subjects.length < 2) ? '多科共用方案至少需要 2 個科目' : ''"
+          :disabled="submitting || (packageMode && pkgForm.subjects.length < 2) || overageBlocksSubmit"
+          :title="(packageMode && pkgForm.subjects.length < 2)
+            ? '多科共用方案至少需要 2 個科目'
+            : (overageBlocksSubmit ? '排課時數超出已購額度，請先勾選超額確認' : '')"
           @click="packageMode ? submitPackage() : submit()"
         >
           <span v-if="submitting" class="btn-spinner material-symbols-outlined">progress_activity</span>
@@ -741,6 +832,8 @@ import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
 import { createMultiSubjectPackage } from '../lib/coursePackagesApi';
 import { checkTeacherScope } from '../lib/constants';
+import { calculateCoverage, lessonEquivalent } from '../lib/lessonCoverage';
+import perfFlags from '../lib/perfFlags';
 import { estimateCreateCharge } from '../lib/coursePricing';
 import {
   countSessionsForDates,
@@ -840,6 +933,14 @@ const form = reactive({
   confirmed_dates: [],
   excluded_dates: [],
   total_classes: 8,
+  // RFC 非標準時長：扣堂方式與「這門課的」標準一堂時長。
+  // 120 只是表單預填，不是公司規則 —— 老師／主任可依這門課實際情況改成 90、180…
+  // 後端沒有任何 fallback 到 120 的行為；未選 actual_duration 的課完全不受影響。
+  deduction_basis: 'fixed_session',
+  standard_lesson_minutes: 120,
+  // actual_duration 時，排幾次課與買了幾個標準單位是兩件事（D6），要能分開填。
+  planned_occurrences: 8,
+  overage_confirmed: false,
   settlement_day: null,
   monthly_sessions: 4,
   days_of_week: normalizeInitialDaysOfWeek(props.initialDaysOfWeek),
@@ -939,6 +1040,10 @@ function resetForm() {
   form.confirmed_dates = [];
   form.excluded_dates = [];
   form.total_classes = 8;
+  form.deduction_basis = 'fixed_session';
+  form.standard_lesson_minutes = 120;
+  form.planned_occurrences = 8;
+  form.overage_confirmed = false;
   form.settlement_day = null;
   form.monthly_sessions = 4;
   form.days_of_week = normalizeInitialDaysOfWeek(props.initialDaysOfWeek);
@@ -1193,6 +1298,31 @@ const safePlannedSessions = computed(() => (
 const selectedDays = computed(() => (
   [...new Set((form.days_of_week || []).map((d) => Number(d)).filter((d) => d >= 1 && d <= 7))].sort((a, b) => a - b)
 ));
+
+// ── RFC 非標準時長扣堂 ────────────────────────────────────────────────────────
+// 只在堂數制、非課程包時提供。未開啟時，以下全部不影響原有流程。
+const canUseActualDuration = computed(() => (
+  perfFlags.ACTUAL_DURATION_DEDUCTION_ENABLED
+  && !packageMode.value
+  && form.payment_type === 'session'
+));
+const isActualDuration = computed(() => (
+  canUseActualDuration.value && form.deduction_basis === 'actual_duration'
+));
+/** 這門課自己的標準一堂時長。沒有全公司統一值。 */
+const courseStandardLessonMinutes = computed(() => {
+  const n = Number(form.standard_lesson_minutes);
+  return Number.isFinite(n) && n >= 30 && n <= 480 ? Math.round(n) : null;
+});
+/**
+ * 要排幾次課。
+ * fixed_session：仍然等於購買堂數（維持原有規則，一個字都沒改）。
+ * actual_duration：由使用者另外指定，與購買的標準單位數脫鉤（D6）。
+ */
+const occurrenceTarget = computed(() => {
+  if (!isActualDuration.value) return safePlannedSessions.value;
+  return Math.max(1, Number(form.planned_occurrences) || 1);
+});
 /** 每個星期幾的時段列表（依開始時間排序），用於多堂／同日多時段 */
 function orderedSlotsForWeekday(day) {
   const d = Number(day);
@@ -1284,6 +1414,10 @@ const hasPerDayDuration = computed(() => {
 });
 const plannedCountLabel = computed(() => (
   form.payment_type === 'monthly' ? '本月預排堂數' : '購買總堂數'
+));
+/** 排課次數的說法。actual_duration 時「次數」與「購買堂數」是兩個不同的數字。 */
+const occurrenceCountLabel = computed(() => (
+  isActualDuration.value ? '預計排課次數' : plannedCountLabel.value
 ));
 
 // 費用試算（預估）：建課當下提示「每堂／每小時 + 預估總額」，防 rate_unit 單位混淆造成 ×2 錯帳。
@@ -1394,7 +1528,9 @@ const futureSessionOccurrences = computed(() => {
     return monthlySystemOccurrences.value;
   }
 
-  const remaining = safePlannedSessions.value - manualSessionCount.value;
+  // occurrenceTarget 對 fixed_session 就是 safePlannedSessions（行為不變）；
+  // actual_duration 才會與購買的標準單位數分開。
+  const remaining = occurrenceTarget.value - manualSessionCount.value;
   if (remaining <= 0) return [];
 
   const daySet = new Set((form.days_of_week || []).map((d) => Number(d)).filter((d) => d >= 1 && d <= 7));
@@ -1505,6 +1641,49 @@ const finalMonthlySessionPlan = computed(() => {
       if (dateCmp !== 0) return dateCmp;
       return a.start_time.localeCompare(b.start_time);
     });
+});
+
+/**
+ * 依實際排課順序列出每一次的時長，供涵蓋預覽使用。
+ * 與送出的 session_plan 同一份來源（手動已上課日期 + 系統預排），順序也一致，
+ * 所以預覽算出的「第幾次會不夠扣」跟後端重算的結果會對得起來。
+ */
+const coverageOccurrences = computed(() => {
+  if (!isActualDuration.value) return [];
+  const manual = manualDates.value.flatMap((ymd) => buildSessionEntriesForDate(ymd));
+  return [...manual, ...futureSessionOccurrences.value]
+    .sort((a, b) => {
+      const dateCmp = String(a.ymd).localeCompare(String(b.ymd));
+      if (dateCmp !== 0) return dateCmp;
+      return String(a.start_time).localeCompare(String(b.start_time));
+    })
+    .map((entry) => ({ duration_minutes: Number(entry.duration_minutes) || 0 }));
+});
+
+const durationCoverage = computed(() => {
+  if (!isActualDuration.value) return null;
+  return calculateCoverage({
+    purchasedStandardUnits: safePlannedSessions.value,
+    standardLessonMinutes: courseStandardLessonMinutes.value,
+    occurrences: coverageOccurrences.value,
+  });
+});
+
+/** 超額時必須明確勾選確認才能送出（D5）。後端會再驗一次，前端只是提早講清楚。 */
+const needsOverageConfirmation = computed(() => Boolean(durationCoverage.value?.requiresOverageConfirmation));
+const overageBlocksSubmit = computed(() => needsOverageConfirmation.value && !form.overage_confirmed);
+
+/** 單次上課換算成「這門課的」幾堂，用來說明扣堂比例。 */
+const perOccurrenceLessonEquivalents = computed(() => {
+  const standard = courseStandardLessonMinutes.value;
+  if (!standard) return [];
+  const seen = new Map();
+  for (const o of coverageOccurrences.value) {
+    if (o.duration_minutes > 0 && !seen.has(o.duration_minutes)) {
+      seen.set(o.duration_minutes, lessonEquivalent(o.duration_minutes, standard));
+    }
+  }
+  return [...seen.entries()].map(([minutes, lessons]) => ({ minutes, lessons }));
 });
 
 const monthlyHasCalendarAdjustments = computed(() => (
@@ -1925,8 +2104,8 @@ function onDateClick(cell) {
   }
 
   const addCount = sessionCountForYmd(cell.ymd);
-  if (manualSessionCount.value + addCount > safePlannedSessions.value) {
-    alert(`手動指定不可超過${plannedCountLabel.value}（${safePlannedSessions.value} 堂）；此日會佔 ${addCount} 堂。`);
+  if (manualSessionCount.value + addCount > occurrenceTarget.value) {
+    alert(`手動指定不可超過${occurrenceCountLabel.value}（${occurrenceTarget.value} 次）；此日會佔 ${addCount} 次。`);
     return;
   }
 
@@ -2096,8 +2275,8 @@ async function submit() {
   }
 
   if (!useMonthlyRecurringPath && !useMonthlyExplicitPlan) {
-    if (manualSessionCount.value > safePlannedSessions.value) {
-      alert(`手動指定堂數不可超過${plannedCountLabel.value}`);
+    if (manualSessionCount.value > occurrenceTarget.value) {
+      alert(`手動指定堂數不可超過${occurrenceCountLabel.value}`);
       return;
     }
     if (form.payment_type === 'monthly') {
@@ -2113,9 +2292,9 @@ async function submit() {
   }
 
   if (!useMonthlyRecurringPath && !useMonthlyExplicitPlan) {
-    const remainingSessions = safePlannedSessions.value - manualSessionCount.value;
+    const remainingSessions = occurrenceTarget.value - manualSessionCount.value;
     if (remainingSessions > 0 && (form.days_of_week || []).length === 0) {
-      alert('尚有未排堂次，請先設定固定上課星期讓系統推算未來日期');
+      alert(`尚有 ${remainingSessions} 堂未排。請設定固定上課星期讓系統自動推算未來日期；若上課日期不固定，也可以不勾選星期，改在下方日曆逐一點選每次上課日期，直到補滿為止。`);
       return;
     }
     if (selectedDays.value.length > 0) {
@@ -2129,10 +2308,20 @@ async function submit() {
       alert('系統預排日期不可早於今天，請調整固定上課星期');
       return;
     }
-    if ((manualSessionCount.value + futureSessionOccurrences.value.length) !== safePlannedSessions.value) {
-      alert(`系統無法補齊至${plannedCountLabel.value}，請調整固定上課星期或手動指定日期`);
+    if ((manualSessionCount.value + futureSessionOccurrences.value.length) !== occurrenceTarget.value) {
+      alert(`系統無法補齊至${occurrenceCountLabel.value}，請調整固定上課星期或手動指定日期`);
       return;
     }
+  }
+
+  // D5：超出已購額度時，必須先確認才能建立。後端會用同一套規則再驗一次。
+  if (overageBlocksSubmit.value) {
+    alert('目前排課時數超出已購額度，請先勾選下方的超額確認，再建立課程。');
+    return;
+  }
+  if (isActualDuration.value && !courseStandardLessonMinutes.value) {
+    alert('依實際上課時長換算的課程，請先設定這門課的標準一堂時長（30–480 分鐘）。');
+    return;
   }
   if (useMonthlyExplicitPlan && finalMonthlySessionPlan.value.some((o) => o.ymd < todayYmd && !isManualDateConfirmed(o.ymd))) {
     alert('月結日曆含有過去但尚未標記為補登的日期，請重新點選該日期');
@@ -2226,6 +2415,16 @@ async function submit() {
 
     if (form.payment_type === 'session') {
       payload.total_classes = safePlannedSessions.value;
+    }
+
+    // 只有明確選了「依實際上課時長換算」才送這三個欄位。
+    // 沒選的課完全不帶，後端就走原本的 fixed_session 路徑（行為零變化）。
+    if (isActualDuration.value) {
+      payload.deduction_basis = 'actual_duration';
+      payload.standard_lesson_minutes = courseStandardLessonMinutes.value;
+      if (needsOverageConfirmation.value) {
+        payload.overage_confirmed = true;
+      }
     }
 
     const result = await createUniversalClassSchedule(payload);
@@ -2616,6 +2815,78 @@ async function submit() {
 .summary-pill.future {
   background: var(--ds-canvas-soft);
   border-color: var(--ds-canvas-soft);
+  color: var(--ds-ink-mute);
+}
+
+.duration-basis-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.duration-basis-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--ds-ink);
+  cursor: pointer;
+}
+
+.coverage-preview {
+  margin: 4px 0 12px;
+  padding: 10px 12px;
+  background: var(--ds-canvas-soft);
+  border: 1px solid var(--ds-canvas-soft);
+  border-radius: 8px;
+}
+.coverage-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.coverage-label {
+  font-size: 12px;
+  color: var(--ds-ink-mute);
+}
+.coverage-standard {
+  font-size: 13px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--ds-success-wash);
+  color: var(--ds-success);
+}
+.coverage-lines {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ds-ink);
+  font-variant-numeric: tabular-nums;
+}
+.coverage-lines .coverage-shortfall {
+  color: var(--ds-warning);
+}
+.coverage-lines .coverage-surplus {
+  color: var(--ds-success);
+}
+.coverage-overage {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--ds-warning-wash);
+  color: var(--ds-warning);
+  font-size: 12px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+.coverage-note {
+  margin-top: 6px;
+  font-size: 11px;
   color: var(--ds-ink-mute);
 }
 

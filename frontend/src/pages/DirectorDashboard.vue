@@ -11,7 +11,7 @@
         <!-- ===== Header ===== -->
         <div class="dash-header enterprise-page-header">
           <div class="dash-title-block">
-            <p class="dash-kicker">Campus Operations Command</p>
+            <p class="dash-kicker">今日營運總覽</p>
             <h2 class="dash-title">{{ branchName }}</h2>
             <p class="dash-subtitle">即時掌握今日課務、繳費風險、評量審核與分校營運節奏</p>
             <div v-if="engagementRowVisible" class="dash-engagement-strip">
@@ -144,9 +144,9 @@
             <span class="material-symbols-outlined ac__icon">event_repeat</span>
             <div class="ac__body">
               <span class="ac__count">{{ exceptionWorkflowCount }}</span>
-              <span class="ac__label">筆補課案件</span>
+              <span class="ac__label">筆家長請假待處理</span>
             </div>
-            <button class="ac__cta" @click.stop="scrollTo('exception-workflows')">去安排</button>
+            <button class="ac__cta" @click.stop="scrollTo('exception-workflows')">去處理</button>
           </div>
 
           <div v-if="pendingEvaluations.length > 0"
@@ -195,33 +195,6 @@
           </div>
         </section>
 
-        <section v-if="directorPriorityRisks.length" class="priority-risks" aria-labelledby="priority-risks-title">
-          <header class="priority-risks__head">
-            <div>
-              <h3 id="priority-risks-title">今日優先處理</h3>
-              <p>依逾期、收款與今日課務排序，先處理最可能影響營運的三項。</p>
-            </div>
-            <span class="priority-risks__count">優先 {{ directorPriorityRisks.length }} 項</span>
-          </header>
-          <div class="priority-risks__grid">
-            <article
-              v-for="risk in directorPriorityRisks"
-              :key="risk.key"
-              class="priority-risk"
-              :class="`priority-risk--${risk.tone}`"
-            >
-              <span class="material-symbols-outlined priority-risk__icon">{{ risk.icon }}</span>
-              <div class="priority-risk__body">
-                <strong>{{ risk.title }}</strong>
-                <p>{{ risk.reason }}</p>
-                <button type="button" class="priority-risk__action" @click="handleDirectorPriorityRisk(risk)">
-                  {{ risk.actionLabel }}
-                </button>
-              </div>
-            </article>
-          </div>
-        </section>
-
         <!-- ===== Import Result Banner ===== -->
         <div v-if="importState === 'done' || importState === 'error'"
              class="import-banner" :class="{ 'import-banner--err': importState === 'error' }">
@@ -257,31 +230,19 @@
 
         <!-- ===== Layer 2: Progress Board ===== -->
         <section class="progress-board">
-          <div class="pb">
-            <span class="pb__label">今日到班</span>
-            <span class="pb__val"><strong>{{ attendedCount }}</strong><small> / {{ todaySchedules.length }}</small></span>
+          <div class="pb-cell">
+            <AtMetric label="今日到班" :value="`${attendedCount} / ${todaySchedules.length}`" />
             <div class="pb__bar"><div class="pb__fill" :style="{ width: attendancePct + '%' }"></div></div>
           </div>
-          <div class="pb">
-            <span class="pb__label">待審評量</span>
-            <span class="pb__val"><strong>{{ pendingEvaluations.length }}</strong> <small>筆</small></span>
-          </div>
-          <div class="pb">
-            <span class="pb__label">今日應處理</span>
-            <span class="pb__val"><strong>{{ workflowDailySummary.due_total }}</strong></span>
-          </div>
-          <div class="pb">
-            <span class="pb__label">今日已完成</span>
-            <span class="pb__val"><strong>{{ workflowDailySummary.done_total }}</strong></span>
-          </div>
-          <div class="pb">
-            <span class="pb__label">已逾期</span>
-            <span class="pb__val"><strong>{{ workflowDailySummary.breached_total }}</strong></span>
-          </div>
-          <div class="pb">
-            <span class="pb__label">未讀通知</span>
-            <span class="pb__val"><strong>{{ unreadNotificationCount }}</strong></span>
-          </div>
+          <AtMetric label="待審評量" :value="`${pendingEvaluations.length} 筆`" />
+          <AtMetric
+            label="今日工作量"
+            :value="`${workflowDailySummary.due_total} 件`"
+            :delta="`已完成 ${workflowDailySummary.done_total}・逾期 ${workflowDailySummary.breached_total}`"
+            :deltaTone="workflowDailySummary.breached_total > 0 ? 'negative' : 'positive'"
+            :accent="workflowDailySummary.breached_total > 0 ? 'var(--ds-danger)' : ''"
+          />
+          <AtMetric label="未讀通知" :value="unreadNotificationCount" />
         </section>
 
         <div class="work-toolbar">
@@ -309,16 +270,24 @@
         </div>
 
         <!-- ===== Work Area (detail panels) ===== -->
+        <div class="section-label-row">
+          <span class="section-label">今日必辦</span>
+          <span class="section-sublabel">需要主任處理的今日課務與提醒</span>
+        </div>
         <div class="work-grid">
           <div class="work-col">
             <!-- Today Schedule -->
-            <section class="wp" id="schedule-sec">
-              <header class="wp__head">
-                <span class="material-symbols-outlined wp__hi">calendar_today</span>
-                <h3>今日課表</h3>
-                <span v-if="todaySchedules.length" class="wp__badge">{{ todaySchedules.length }}</span>
-              </header>
-              <div v-if="!todaySchedules.length" class="wp__empty enterprise-empty">今日無課程</div>
+            <AtCard id="schedule-sec">
+              <template #header>
+                <div class="dash-card-head-title">
+                  <span class="material-symbols-outlined wp__hi">calendar_today</span>
+                  <h3>今日課表</h3>
+                </div>
+              </template>
+              <template v-if="todaySchedules.length" #actions>
+                <span class="wp__badge">{{ todaySchedules.length }}</span>
+              </template>
+              <AtEmpty v-if="!todaySchedules.length" icon="calendar_today" title="今日無課程" />
               <div v-else class="wp-list-scroll-desktop">
                 <div v-for="s in todaySchedules" :key="s.id" class="sched-row">
                   <span class="sched-row__time">{{ formatTime(s.start_time) }}</span>
@@ -328,96 +297,155 @@
                   <span :class="['sched-row__st', 'st--' + s.status]">{{ formatScheduleStatus(s.status) }}</span>
                 </div>
               </div>
-              <footer v-if="pendingAttendanceCount > 0" class="wp__foot">
+              <footer v-if="pendingAttendanceCount > 0" class="dash-card-foot">
                 <button class="btn-p btn-sm" @click="goToAttendance">前往出缺勤處理</button>
               </footer>
-            </section>
+            </AtCard>
 
             <!-- Payment Alerts -->
-            <section class="wp wp--warn" id="payments-sec" data-guide="director-alerts">
-              <header class="wp__head">
-                <span class="material-symbols-outlined wp__hi">warning</span>
-                <h3>繳費／續課提醒</h3>
-                <span v-if="lowBalanceStudents.length" class="wp__badge wp__badge--danger">{{ lowBalanceStudents.length }}</span>
-              </header>
-              <p class="wp__hint">堂數制：已標記繳費者，若剩 0～2 堂仍會列出（方便聯繫加購）；未繳費者亦會列出。</p>
-              <div v-if="!lowBalanceStudents.length" class="wp__empty enterprise-empty">目前無待繳費、月結將届或低堂數需續課之課程</div>
-              <div v-else class="wp-list-scroll-desktop">
-                <div v-for="s in displayPaymentAlerts" :key="s.id" class="pay-row">
-                  <div class="pay-row__info">
-                    <span class="pay-row__name">{{ s.name }}</span>
-                    <span :class="paymentAlertBadgeClass(s)">{{ paymentAlertBadgeText(s) }}</span>
+            <div class="dash-card-warn" data-guide="director-alerts">
+              <AtCard id="payments-sec">
+                <template #header>
+                  <div class="dash-card-head-title">
+                    <span class="material-symbols-outlined wp__hi">warning</span>
+                    <h3>繳費／續課提醒</h3>
                   </div>
-                  <button class="btn-o btn-xs" @click="copyPaymentMessage(s)">複製通知</button>
+                </template>
+                <template v-if="lowBalanceStudents.length" #actions>
+                  <span class="wp__badge wp__badge--danger">{{ lowBalanceStudents.length }}</span>
+                </template>
+                <p class="wp__hint">堂數制：已標記繳費者，若剩 0～2 堂仍會列出（方便聯繫加購）；未繳費者亦會列出。</p>
+                <AtEmpty v-if="!lowBalanceStudents.length" icon="payments" title="目前無待繳費、月結將届或低堂數需續課之課程" />
+                <div v-else class="wp-list-scroll-desktop">
+                  <div v-for="s in displayPaymentAlerts" :key="s.id" class="pay-row">
+                    <div class="pay-row__info">
+                      <span class="pay-row__name">{{ s.name }}</span>
+                      <span :class="paymentAlertBadgeClass(s)">{{ paymentAlertBadgeText(s) }}</span>
+                    </div>
+                    <button class="btn-o btn-xs" @click="copyPaymentMessage(s)">複製通知</button>
+                  </div>
                 </div>
-              </div>
-              <footer v-if="lowBalanceStudents.length > paymentAlertLimit" class="wp__foot">
-                <button class="btn-o btn-xs" @click="showAllPayments = !showAllPayments">
-                  {{ showAllPayments ? '收合' : `顯示全部 (${lowBalanceStudents.length})` }}
-                </button>
-              </footer>
-            </section>
+                <footer v-if="lowBalanceStudents.length > paymentAlertLimit" class="dash-card-foot">
+                  <button class="btn-o btn-xs" @click="showAllPayments = !showAllPayments">
+                    {{ showAllPayments ? '收合' : `顯示全部 (${lowBalanceStudents.length})` }}
+                  </button>
+                </footer>
+              </AtCard>
+            </div>
 
-            <!-- Exception Workflows -->
-            <section class="wp ew-card" id="exception-workflows-sec">
-              <header class="wp__head">
-                <span class="material-symbols-outlined wp__hi">event_repeat</span>
-                <h3>補課案件</h3>
-                <span v-if="exceptionWorkflowCount" class="wp__badge wp__badge--warn">{{ exceptionWorkflowCount }}</span>
+            <!-- Parent leave inbox: the single place where directors make a decision. -->
+            <section class="leave-inbox" id="exception-workflows-sec" aria-labelledby="leave-inbox-title">
+              <header class="leave-inbox__header">
+                <div class="leave-inbox__heading">
+                  <span class="leave-inbox__icon material-symbols-outlined" aria-hidden="true">event_repeat</span>
+                  <div>
+                    <p class="leave-inbox__eyebrow">主任待辦收件匣</p>
+                    <h3 id="leave-inbox-title">家長請假</h3>
+                    <p class="leave-inbox__description">先處理補課安排，再完成請假核准；每筆案件只在這裡做決策。</p>
+                  </div>
+                </div>
+                <div class="leave-inbox__count" aria-label="待處理案件數">
+                  <strong>{{ exceptionWorkflowCount }}</strong>
+                  <span>筆待處理</span>
+                </div>
               </header>
-              <div v-if="exceptionWorkflowLoading" class="wp__empty enterprise-empty enterprise-loading">補課案件載入中...</div>
-              <div v-else-if="exceptionWorkflowError" class="ew-error">{{ exceptionWorkflowError }}</div>
-              <div v-else-if="!exceptionWorkflows.length" class="wp__empty enterprise-empty">目前沒有家長請假待安排</div>
-              <div v-else class="ew-list">
-                <article v-for="workflow in exceptionWorkflows" :key="workflow.id" class="ew-row">
-                  <div class="ew-main">
-                    <div class="ew-title">
-                      {{ workflow.student?.name || '學生' }}
-                      <span class="ew-status">{{ workflowStatusLabel(workflow.status) }}</span>
+              <div v-if="workflowFocusError" class="leave-inbox__error" role="alert">{{ workflowFocusError }}</div>
+              <div v-if="exceptionWorkflowLoading" class="leave-inbox__state" role="status">家長請假載入中…</div>
+              <div v-else-if="exceptionWorkflowError" class="leave-inbox__error" role="alert">{{ exceptionWorkflowError }}</div>
+              <div v-else-if="!exceptionWorkflows.length" class="leave-inbox__empty">
+                <span class="material-symbols-outlined" aria-hidden="true">task_alt</span>
+                <div><strong>目前沒有待處理請假</strong><span>新的家長申請會出現在這裡。</span></div>
+              </div>
+              <div v-else class="leave-inbox__list">
+                <article v-for="workflow in exceptionWorkflows" :key="workflow.id" class="leave-case" :data-workflow-id="workflow.id" :id="`exception-workflow-${workflow.id}`">
+                  <div class="leave-case__topline">
+                    <div class="leave-case__identity">
+                      <span class="leave-case__dot" aria-hidden="true"></span>
+                      <strong>{{ workflow.student?.name || '學生' }}</strong>
+                      <span class="leave-case__status">{{ workflowStatusLabel(workflow.status) }}</span>
                     </div>
-                    <div class="ew-meta">
-                      {{ workflow.class_session?.date || '未指定日期' }}
-                      {{ workflow.class_session?.start_time || '' }}-{{ workflow.class_session?.end_time || '' }}
+                    <span class="leave-case__id">案件 #{{ workflow.id }}</span>
+                  </div>
+
+                  <dl class="leave-case__details">
+                    <div><dt>原堂次</dt><dd>{{ workflow.class_session?.date || '未指定日期' }} {{ workflow.class_session?.start_time || '' }}–{{ workflow.class_session?.end_time || '' }}</dd></div>
+                    <div><dt>請假原因</dt><dd>{{ workflow.payload?.reason || '未填寫原因' }}</dd></div>
+                  </dl>
+
+                  <div v-if="workflowCandidates[workflow.id]?.length" class="leave-case__candidate-panel">
+                    <div class="leave-case__candidate-heading">
+                      <div><strong>選擇補課時段</strong><span>{{ workflowCandidates[workflow.id].length }} 個可選時段，請選一個再確認</span></div>
+                      <button class="leave-case__text-button" type="button" :disabled="workflowActionId === workflow.id" @click="generateCandidates(workflow)">重新尋找</button>
                     </div>
-                    <div v-if="workflow.payload?.reason" class="ew-reason">原因：{{ workflow.payload.reason }}</div>
+                    <div class="leave-case__candidate-list" role="radiogroup" :aria-label="`${workflow.student?.name || '學生'}補課時段`">
+                      <label v-for="candidate in workflowCandidates[workflow.id]" :key="candidate.id" class="leave-candidate" :class="{ 'leave-candidate--selected': selectedWorkflowCandidates[workflow.id] === candidate.id }">
+                        <input v-model="selectedWorkflowCandidates[workflow.id]" type="radio" :name="`leave-candidate-${workflow.id}`" :value="candidate.id" :disabled="workflowActionId === workflow.id" />
+                        <span class="leave-candidate__radio" aria-hidden="true"></span>
+                        <span class="leave-candidate__body"><strong>{{ candidate.candidate_date }}</strong><span>{{ candidate.start_time }}–{{ candidate.end_time }}</span></span>
+                        <span class="leave-candidate__rank">候選 {{ candidate.rank }}</span>
+                      </label>
+                    </div>
                   </div>
-                  <div class="ew-actions">
-                    <button class="btn-o btn-xs" type="button" :disabled="workflowActionId === workflow.id" @click="loadWorkflowDetail(workflow)">
-                      查看候選
-                    </button>
-                    <button class="btn-p btn-xs" type="button" :disabled="workflowActionId === workflow.id" @click="generateCandidates(workflow)">
-                      {{ workflowActionId === workflow.id ? '處理中...' : '產生候選' }}
-                    </button>
-                    <button class="btn-o btn-xs" type="button" :disabled="workflowActionId === workflow.id" @click="waiveWorkflow(workflow)">
-                      不補課
-                    </button>
+
+                  <div v-else class="leave-case__next-step">
+                    <span class="material-symbols-outlined" aria-hidden="true">lightbulb</span>
+                    <span>還沒有補課候選時段。先搜尋未衝堂的可用時段，或直接核准不補課。</span>
                   </div>
-                  <div v-if="workflowCandidates[workflow.id]?.length" class="ew-candidates">
-                    <button
-                      v-for="candidate in workflowCandidates[workflow.id]"
-                      :key="candidate.id"
-                      type="button"
-                      class="ew-candidate"
-                      :disabled="workflowActionId === workflow.id"
-                      @click="confirmCandidate(workflow, candidate)"
-                    >
-                      <span>候選 {{ candidate.rank }}：{{ candidate.candidate_date }} {{ candidate.start_time }}-{{ candidate.end_time }}</span>
-                      <strong>確認</strong>
+
+                  <div class="leave-case__actions">
+                    <button v-if="!workflowCandidates[workflow.id]?.length" class="leave-button leave-button--primary" type="button" :disabled="workflowActionId === workflow.id" @click="generateCandidates(workflow)">
+                      <span class="material-symbols-outlined" aria-hidden="true">search</span>
+                      {{ workflowActionId === workflow.id ? '搜尋中…' : '尋找補課時段' }}
                     </button>
+                    <button v-else class="leave-button leave-button--primary" type="button" :disabled="workflowActionId === workflow.id || !selectedWorkflowCandidates[workflow.id]" @click="openWorkflowDecision('candidate', workflow)">
+                      <span class="material-symbols-outlined" aria-hidden="true">event_available</span>
+                      確認安排補課
+                    </button>
+                    <button v-if="workflowCandidates[workflow.id]?.length" class="leave-button leave-button--secondary" type="button" :disabled="workflowActionId === workflow.id" @click="openWorkflowDecision('waive', workflow)">同意不補課</button>
+                    <button class="leave-button leave-button--danger" type="button" :disabled="workflowActionId === workflow.id" @click="openWorkflowDecision('reject', workflow)">退回請假</button>
                   </div>
                 </article>
               </div>
             </section>
 
+            <div v-if="workflowDecisionModal" class="leave-modal-backdrop" role="presentation" @click.self="closeWorkflowDecision">
+              <section class="leave-modal" role="dialog" aria-modal="true" aria-labelledby="leave-modal-title">
+                <button class="leave-modal__close" type="button" aria-label="關閉" @click="closeWorkflowDecision">×</button>
+                <p class="leave-modal__eyebrow">確認操作</p>
+                <h3 id="leave-modal-title">{{ workflowDecisionTitle }}</h3>
+                <p class="leave-modal__description">{{ workflowDecisionDescription }}</p>
+                <div v-if="workflowDecisionModal.kind === 'candidate'" class="leave-modal__selection">
+                  <span>補課時段</span>
+                  <strong>{{ selectedWorkflowCandidate?.candidate_date }} {{ selectedWorkflowCandidate?.start_time }}–{{ selectedWorkflowCandidate?.end_time }}</strong>
+                </div>
+                <label v-if="workflowDecisionModal.kind !== 'candidate'" class="leave-modal__field">
+                  <span>{{ workflowDecisionModal.kind === 'reject' ? '退回原因（必填）' : '核准備註（選填）' }}</span>
+                  <textarea v-model="workflowDecisionReason" rows="3" :placeholder="workflowDecisionModal.kind === 'reject' ? '例如：請重新確認請假日期' : '例如：家長表示不需補課'" />
+                </label>
+                <p v-if="workflowDecisionError" class="leave-modal__error" role="alert">{{ workflowDecisionError }}</p>
+                <div class="leave-modal__actions">
+                  <button class="leave-button leave-button--secondary" type="button" :disabled="workflowActionId === workflowDecisionModal.workflow.id" @click="closeWorkflowDecision">取消</button>
+                  <button class="leave-button" :class="workflowDecisionModal.kind === 'reject' ? 'leave-button--danger' : 'leave-button--primary'" type="button" :disabled="workflowActionId === workflowDecisionModal.workflow.id" @click="submitWorkflowDecision">
+                    {{ workflowDecisionModal.kind === 'candidate' ? '確認安排' : workflowDecisionModal.kind === 'reject' ? '確認退回' : '確認核准' }}
+                  </button>
+                </div>
+              </section>
+            </div>
+            <div v-if="workflowToast" class="leave-toast" role="status">{{ workflowToast }}</div>
+
             <!-- Pending Evaluations -->
-            <section class="wp" id="evals-sec" data-guide="director-pending-evals">
-              <header class="wp__head">
-                <span class="material-symbols-outlined wp__hi">assignment</span>
-                <h3>待審核評量</h3>
-                <span v-if="pendingEvaluations.length" class="wp__badge">{{ pendingEvaluations.length }}</span>
-              </header>
+            <AtCard id="evals-sec" data-guide="director-pending-evals">
+              <template #header>
+                <div class="dash-card-head-title">
+                  <span class="material-symbols-outlined wp__hi">assignment</span>
+                  <h3>待審核評量</h3>
+                </div>
+              </template>
+              <template v-if="pendingEvaluations.length" #actions>
+                <span class="wp__badge">{{ pendingEvaluations.length }}</span>
+              </template>
               <p class="wp__hint">核准後老師科目數自動累計</p>
-              <div v-if="!pendingEvaluations.length" class="wp__empty enterprise-empty">無待審核評量</div>
+              <AtEmpty v-if="!pendingEvaluations.length" icon="assignment" title="無待審核評量" />
               <div v-else class="wp-list-scroll-desktop wp-list-scroll-desktop--primary">
                 <div v-for="ev in pendingEvaluations" :key="ev.id" class="eval-card">
                   <div class="eval-card__top">
@@ -437,10 +465,10 @@
                   </div>
                 </div>
               </div>
-              <footer v-if="pendingEvaluations.length" class="wp__foot">
+              <footer v-if="pendingEvaluations.length" class="dash-card-foot">
                 <button class="btn-o btn-sm" @click="emit('navigate', { target: 'learning' })">前往評量頁面</button>
               </footer>
-            </section>
+            </AtCard>
           </div>
 
           <div class="work-col work-col--side">
@@ -483,21 +511,18 @@
               </template>
             </section>
 
-            <!-- PRD 9c058f19：近 7 天代課記錄 -->
-            <RecentSubstitutesCard
-              v-if="dashboardViewMode === 'full'"
-              :branch-id="branchId"
-              :fetch-recent="fetchRecentSubstitutes"
-            />
-
-            <section class="wp" id="director-task-tracker-sec">
-              <header class="wp__head">
-                <span class="material-symbols-outlined wp__hi">checklist</span>
-                <h3>流程追蹤</h3>
-                <span v-if="directorTodoCards.length" class="wp__badge wp__badge--warn">{{ directorTodoCards.length }}</span>
-              </header>
-              <div v-if="adoptionTaskLoading" class="wp__empty enterprise-empty enterprise-loading">載入追蹤中…</div>
-              <div v-else-if="!directorTodoCards.length" class="wp__empty enterprise-empty">目前沒有待追蹤項目</div>
+            <AtCard id="director-task-tracker-sec">
+              <template #header>
+                <div class="dash-card-head-title">
+                  <span class="material-symbols-outlined wp__hi">checklist</span>
+                  <h3>流程追蹤</h3>
+                </div>
+              </template>
+              <template v-if="directorTodoCards.length" #actions>
+                <span class="wp__badge wp__badge--warn">{{ directorTodoCards.length }}</span>
+              </template>
+              <AtSkeleton v-if="adoptionTaskLoading" :rows="3" />
+              <AtEmpty v-else-if="!directorTodoCards.length" icon="checklist" title="目前沒有待追蹤項目" />
               <div v-else class="wp-list-scroll-desktop">
                 <button
                   v-for="task in directorTodoCards"
@@ -514,63 +539,82 @@
                   <span class="todo-row__meta">{{ task.description }}</span>
                 </button>
               </div>
-            </section>
-
-            <section v-if="dashboardViewMode === 'full'" class="wp" id="director-activity-log-sec">
-              <header class="wp__head">
-                <span class="material-symbols-outlined wp__hi">history</span>
-                <h3>近期操作履歷</h3>
-              </header>
-              <div v-if="adoptionActivityLoading" class="wp__empty enterprise-empty enterprise-loading">載入履歷中…</div>
-              <div v-else-if="!adoptionActivityRows.length" class="wp__empty enterprise-empty">尚無近期履歷</div>
-              <div v-else class="wp-list-scroll-desktop">
-                <div v-for="(log, idx) in adoptionActivityRows.slice(0, 20)" :key="`adoption-log-${idx}`" class="notif-row">
-                  <span>{{ log.actor }}：{{ log.action }}</span>
-                  <span class="badge-blue">{{ String(log.at || '').slice(5, 16).replace('T', ' ') }}</span>
-                </div>
-              </div>
-            </section>
-
-            <!-- Teacher learning fill-rate -->
-            <section v-if="dashboardViewMode === 'full'" class="wp" id="teacher-fill-rates-sec">
-              <header class="wp__head">
-                <span class="material-symbols-outlined wp__hi">insights</span>
-                <h3>老師評量填寫率</h3>
-              </header>
-              <p class="wp__hint">
-                <template v-if="teacherFillRatesRangeLabel">{{ teacherFillRatesRangeLabel }}　</template>
-                已到班／遲到堂次之評量進度有填計入（近 {{ teacherFillRatesDays }} 天）
-              </p>
-              <div v-if="teacherFillRatesLoading" class="wp__empty enterprise-empty enterprise-loading">載入中…</div>
-              <template v-else-if="!teacherFillRatesRows.length">
-                <div class="wp__empty enterprise-empty">此區間內無已到班堂次</div>
-              </template>
-              <div class="wp-list-scroll-desktop">
-                <div v-for="row in teacherFillRatesRows" :key="row.teacher_id" class="notif-row">
-                  <span>{{ row.teacher_name }}　{{ row.learning_records_filled }}／{{ row.sessions_attended }} 堂</span>
-                  <span class="badge-blue">{{ row.fill_rate_pct }}%</span>
-                </div>
-              </div>
-            </section>
+            </AtCard>
 
             <!-- Notifications -->
-            <section class="wp">
-              <header class="wp__head">
-                <span class="material-symbols-outlined wp__hi">notifications</span>
-                <h3>通知摘要</h3>
-                <span v-if="unreadNotificationCount" class="wp__badge">{{ unreadNotificationCount }}</span>
-              </header>
-              <div v-if="!notificationSummary.length" class="wp__empty enterprise-empty">目前無未讀通知</div>
+            <AtCard>
+              <template #header>
+                <div class="dash-card-head-title">
+                  <span class="material-symbols-outlined wp__hi">notifications</span>
+                  <h3>通知摘要</h3>
+                </div>
+              </template>
+              <template v-if="unreadNotificationCount" #actions>
+                <span class="wp__badge">{{ unreadNotificationCount }}</span>
+              </template>
+              <AtEmpty v-if="!notificationSummary.length" icon="notifications" title="目前無未讀通知" />
               <div v-else class="wp-list-scroll-desktop">
                 <div v-for="n in notificationSummary" :key="n.id" class="notif-row">
                   <span>{{ n.title }}</span>
                   <span class="badge-blue">{{ n.typeLabel }}</span>
                 </div>
               </div>
-              <footer class="wp__foot">
+              <footer class="dash-card-foot">
                 <button class="btn-o btn-sm" @click="goToNotifications">前往通知中心</button>
               </footer>
-            </section>
+            </AtCard>
+
+            <!-- 完整檢視才顯示：近期紀錄與進階統計，跟上方「今日必辦」性質的卡片明確分開 -->
+            <div v-if="dashboardViewMode === 'full'" class="section-label-row section-label-row--sub">
+              <span class="section-label">本週趨勢與紀錄</span>
+              <span class="section-sublabel">近期操作履歷、代課動態與評量填寫統計</span>
+            </div>
+
+            <!-- PRD 9c058f19：近 7 天代課記錄 -->
+            <RecentSubstitutesCard
+              v-if="dashboardViewMode === 'full'"
+              :branch-id="branchId"
+              :fetch-recent="fetchRecentSubstitutes"
+            />
+
+            <AtCard v-if="dashboardViewMode === 'full'" id="director-activity-log-sec">
+              <template #header>
+                <div class="dash-card-head-title">
+                  <span class="material-symbols-outlined wp__hi">history</span>
+                  <h3>近期操作履歷</h3>
+                </div>
+              </template>
+              <AtSkeleton v-if="adoptionActivityLoading" :rows="3" />
+              <AtEmpty v-else-if="!adoptionActivityRows.length" icon="history" title="尚無近期履歷" />
+              <div v-else class="wp-list-scroll-desktop">
+                <div v-for="(log, idx) in adoptionActivityRows.slice(0, 20)" :key="`adoption-log-${idx}`" class="notif-row">
+                  <span>{{ log.actor }}：{{ log.action }}</span>
+                  <span class="badge-blue">{{ String(log.at || '').slice(5, 16).replace('T', ' ') }}</span>
+                </div>
+              </div>
+            </AtCard>
+
+            <!-- Teacher learning fill-rate -->
+            <AtCard v-if="dashboardViewMode === 'full'" id="teacher-fill-rates-sec">
+              <template #header>
+                <div class="dash-card-head-title">
+                  <span class="material-symbols-outlined wp__hi">insights</span>
+                  <h3>老師評量填寫率</h3>
+                </div>
+              </template>
+              <p class="wp__hint">
+                <template v-if="teacherFillRatesRangeLabel">{{ teacherFillRatesRangeLabel }}　</template>
+                已到班／遲到堂次之評量進度有填計入（近 {{ teacherFillRatesDays }} 天）
+              </p>
+              <AtSkeleton v-if="teacherFillRatesLoading" :rows="3" />
+              <AtEmpty v-else-if="!teacherFillRatesRows.length" icon="insights" title="此區間內無已到班堂次" />
+              <div v-else class="wp-list-scroll-desktop">
+                <div v-for="row in teacherFillRatesRows" :key="row.teacher_id" class="notif-row">
+                  <span>{{ row.teacher_name }}　{{ row.learning_records_filled }}／{{ row.sessions_attended }} 堂</span>
+                  <span class="badge-blue">{{ row.fill_rate_pct }}%</span>
+                </div>
+              </div>
+            </AtCard>
           </div>
         </div>
 
@@ -679,6 +723,10 @@ import { getBranchName } from '../lib/useBranches';
 import { getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchDiscrepancySummary } from '../lib/scheduleDiscrepanciesApi';
 import RecentSubstitutesCard from '../components/substitute/RecentSubstitutesCard.vue';
+import AtCard from '../components/design-system/AtCard.vue';
+import AtEmpty from '../components/design-system/AtEmpty.vue';
+import AtSkeleton from '../components/design-system/AtSkeleton.vue';
+import AtMetric from '../components/design-system/AtMetric.vue';
 import { recentSubstitutes as fetchRecentSubstitutes } from '../lib/substituteApi.js';
 import { sortTodoCards, markTodoAcknowledged, isTodoAcknowledged } from '../lib/adoptionTodo';
 import {
@@ -695,6 +743,7 @@ import {
   generateExceptionWorkflowCandidates,
   confirmExceptionWorkflowCandidate,
   waiveExceptionWorkflow,
+  rejectExceptionWorkflow,
 } from '../api';
 import EngagementRankStrip from '../components/EngagementRankStrip.vue';
 import { fetchMe } from '../lib/meClient';
@@ -702,7 +751,6 @@ import {
   isUserEngagementRankDisplayEnabled,
   USER_ENGAGEMENT_DISPLAY_REFRESH_EVENT,
 } from '../lib/userEngagementDisplay';
-import { buildDirectorPriorityRisks } from '../lib/directorPriorityRisks';
 import {
   trustPeopleSlice as trustPeople,
   trustPeopleSummary,
@@ -714,8 +762,11 @@ const props = defineProps({
   branchId: [String, Number],
   unreadFeedbackCount: { type: Number, default: 0 },
   initialEngagement: { type: Object, default: null },
+  focusWorkflowId: { type: [Number, String], default: null },
+  focusSection: { type: String, default: null },
 });
 const emit = defineEmits(['navigate']);
+const workflowFocusError = ref('');
 
 const engagementSnapshot = ref(null);
 const engagementDisplayOn = ref(true);
@@ -777,7 +828,41 @@ const exceptionWorkflows = ref([]);
 const exceptionWorkflowError = ref('');
 const exceptionWorkflowLoading = ref(false);
 const workflowCandidates = ref({});
+const selectedWorkflowCandidates = ref({});
 const workflowActionId = ref(null);
+const workflowDecisionModal = ref(null);
+const workflowDecisionReason = ref('');
+const workflowDecisionError = ref('');
+const workflowToast = ref('');
+let workflowToastTimer = null;
+
+const showWorkflowToast = (message) => {
+  workflowToast.value = message;
+  if (workflowToastTimer) clearTimeout(workflowToastTimer);
+  workflowToastTimer = setTimeout(() => { workflowToast.value = ''; }, 4200);
+};
+
+const selectedWorkflowCandidate = computed(() => {
+  const modal = workflowDecisionModal.value;
+  if (!modal || modal.kind !== 'candidate') return null;
+  return (workflowCandidates.value[modal.workflow.id] || [])
+    .find((candidate) => Number(candidate.id) === Number(selectedWorkflowCandidates.value[modal.workflow.id])) || null;
+});
+const workflowDecisionTitle = computed(() => {
+  const modal = workflowDecisionModal.value;
+  if (!modal) return '';
+  const studentName = modal.workflow?.student?.name || '此學生';
+  if (modal.kind === 'candidate') return `確認安排「${studentName}」補課`;
+  if (modal.kind === 'reject') return `退回「${studentName}」請假`;
+  return `核准「${studentName}」請假`;
+});
+const workflowDecisionDescription = computed(() => {
+  const modal = workflowDecisionModal.value;
+  if (!modal) return '';
+  if (modal.kind === 'candidate') return '確認後原堂次會標記為已核准請假，並建立補課堂次。';
+  if (modal.kind === 'reject') return '退回後原堂次會恢復排課，家長可依原因重新提出申請。';
+  return '核准後原堂次會標記為已核准請假，不會建立補課堂次。';
+});
 
 // Schedule-discrepancy summary card
 const sdSummary = ref({ pending: 0, acknowledged: 0, resolved: 0, withdrawn: 0 });
@@ -996,25 +1081,6 @@ const workflowDailySummary = computed(() => ({
   breached_total: Number(adoptionWeeklyMetrics.value?.workflow_daily?.breached_total || 0),
 }));
 
-const unpaidPaymentCount = computed(() =>
-  lowBalanceStudents.value.filter((row) => row.alert_type === 'unpaid').length
-);
-
-const renewalAttentionCount = computed(() =>
-  lowBalanceStudents.value.filter((row) => row.alert_type !== 'unpaid').length
-);
-
-const directorPriorityRisks = computed(() => buildDirectorPriorityRisks({
-  breachedTasks: workflowDailySummary.value.breached_total,
-  // Trust decisions (stranded/dormant) live in Decision Center above — avoid duplicate prompts.
-  unpaidPayments: unpaidPaymentCount.value,
-  pendingAttendance: pendingAttendanceCount.value,
-  exceptionWorkflows: exceptionWorkflowCount.value,
-  pendingEvaluations: pendingEvaluations.value.length,
-  unreadFeedback: props.unreadFeedbackCount,
-  renewalAttention: renewalAttentionCount.value,
-}));
-
 const decisionCenter = computed(() => {
   const dc = operationsTrust.value?.decision_center;
   if (dc && typeof dc.score === 'number') return dc;
@@ -1172,51 +1238,6 @@ function handleTrustPerson(item, person) {
   navigateTrustTarget(item?.target || 'course-mgmt');
 }
 
-function trackBypassCourseMgmtSeek() {
-  const branch = Number(props.branchId) || 0;
-  // Only count bypass after cards were seen AND director did not use provided CTA/path.
-  if (!hasSeenAnyTrustDecision(branch) || usedTrustProvidedPath(branch)) return;
-  trackTrustEventOnce('director_trust_bypass_seek', branch, {
-    target: 'course-mgmt',
-    from: 'priority_risk_or_nav',
-  }, 'bypass');
-}
-
-function handleDirectorPriorityRisk(risk) {
-  if (risk.target === 'director-tasks') {
-    scrollTo('director-task-tracker');
-    return;
-  }
-  if (risk.target === 'calendar') {
-    emit('navigate', { target: 'calendar' });
-    return;
-  }
-  if (risk.target === 'course-mgmt') {
-    trackBypassCourseMgmtSeek();
-    emit('navigate', { target: 'course-mgmt' });
-    return;
-  }
-  if (risk.target === 'tuition') {
-    goToTuitionCollect();
-    return;
-  }
-  if (risk.target === 'attendance') {
-    goToAttendance();
-    return;
-  }
-  if (risk.target === 'exceptions') {
-    scrollTo('exception-workflows');
-    return;
-  }
-  if (risk.target === 'evaluations') {
-    scrollTo('evals');
-    return;
-  }
-  if (risk.target === 'feedback') {
-    emit('navigate', { target: 'learning', focus: 'feedback' });
-  }
-}
-
 const openRateDeltaLabel = (role) => {
   const delta = role === 'teacher'
     ? Number(adoptionWeeklyMetrics.value?.comparison?.delta_teacher_open_rate_pct || 0)
@@ -1285,8 +1306,8 @@ const getToken = () => {
 const getBaseUrl = () => import.meta.env.VITE_API_BASE || '/api';
 
 const workflowStatusLabel = (status) => ({
-  open: '待產生候選',
-  candidate_ready: '候選已產生',
+  open: '待主任處理',
+  candidate_ready: '候選已產生，待確認',
   confirmed: '已確認',
   closed: '已關閉',
 }[String(status || '')] || String(status || '—'));
@@ -1306,12 +1327,12 @@ const loadExceptionWorkflows = async () => {
   exceptionWorkflowLoading.value = true;
   exceptionWorkflowError.value = '';
   try {
-    const rows = await listExceptionWorkflows(token, { branchId: props.branchId });
+    const rows = await listExceptionWorkflows(token, { branchId: props.branchId, type: 'student_leave' });
     exceptionWorkflows.value = rows
       .filter(row => ['open', 'candidate_ready'].includes(String(row.status || '')))
       .sort((a, b) => String(a.due_at || a.created_at || '').localeCompare(String(b.due_at || b.created_at || '')));
   } catch (e) {
-    exceptionWorkflowError.value = e?.message || '補課案件載入失敗';
+    exceptionWorkflowError.value = e?.message || '家長請假載入失敗';
     exceptionWorkflows.value = [];
   } finally {
     exceptionWorkflowLoading.value = false;
@@ -1323,6 +1344,23 @@ const setWorkflowCandidates = (workflowId, candidates) => {
     ...workflowCandidates.value,
     [workflowId]: Array.isArray(candidates) ? candidates : [],
   };
+  selectedWorkflowCandidates.value = {
+    ...selectedWorkflowCandidates.value,
+    [workflowId]: null,
+  };
+};
+
+const openWorkflowDecision = (kind, workflow) => {
+  workflowDecisionReason.value = '';
+  workflowDecisionError.value = '';
+  workflowDecisionModal.value = { kind, workflow };
+};
+
+const closeWorkflowDecision = () => {
+  if (workflowActionId.value) return;
+  workflowDecisionModal.value = null;
+  workflowDecisionReason.value = '';
+  workflowDecisionError.value = '';
 };
 
 const loadWorkflowDetail = async (workflow) => {
@@ -1359,7 +1397,6 @@ const generateCandidates = async (workflow) => {
 };
 
 const confirmCandidate = async (workflow, candidate) => {
-  if (!confirm(`確認安排 ${candidate.candidate_date} ${candidate.start_time}-${candidate.end_time} 補課？`)) return;
   const token = getToken();
   workflowActionId.value = workflow.id;
   exceptionWorkflowError.value = '';
@@ -1368,17 +1405,18 @@ const confirmCandidate = async (workflow, candidate) => {
     setWorkflowCandidates(workflow.id, []);
     await loadExceptionWorkflows();
     loadData();
+    workflowDecisionModal.value = null;
+    showWorkflowToast('補課已安排，原請假案件已結案');
+    window.dispatchEvent(new CustomEvent('alltrue-refresh-badges'));
   } catch (e) {
-    exceptionWorkflowError.value = e?.message || '確認補課失敗';
+    workflowDecisionError.value = e?.message || '確認補課失敗';
   } finally {
     workflowActionId.value = null;
   }
 };
 
 const waiveWorkflow = async (workflow) => {
-  const studentName = workflow.student?.name || '此學生';
-  if (!confirm(`確認「${studentName}」這次不補課並結案？\n\n結案後此案件會從待安排清單移除，且不會額外增減堂數。`)) return;
-  const reason = (window.prompt('結案原因（選填，例如：家長表示不需補課）', '') || '').trim();
+  const reason = workflowDecisionReason.value.trim();
   const token = getToken();
   workflowActionId.value = workflow.id;
   exceptionWorkflowError.value = '';
@@ -1387,11 +1425,55 @@ const waiveWorkflow = async (workflow) => {
     setWorkflowCandidates(workflow.id, []);
     await loadExceptionWorkflows();
     loadData();
+    workflowDecisionModal.value = null;
+    showWorkflowToast('請假已核准，案件已結案');
+    window.dispatchEvent(new CustomEvent('alltrue-refresh-badges'));
   } catch (e) {
-    exceptionWorkflowError.value = e?.message || '標記不補課失敗';
+    workflowDecisionError.value = e?.message || '標記不補課失敗';
   } finally {
     workflowActionId.value = null;
   }
+};
+
+const rejectWorkflow = async (workflow) => {
+  const reason = workflowDecisionReason.value.trim();
+  if (!reason) {
+    workflowDecisionError.value = '請填寫退回原因';
+    return;
+  }
+  const token = getToken();
+  workflowActionId.value = workflow.id;
+  exceptionWorkflowError.value = '';
+  try {
+    await rejectExceptionWorkflow(token, workflow.id, { reason });
+    setWorkflowCandidates(workflow.id, []);
+    await loadExceptionWorkflows();
+    loadData();
+    workflowDecisionModal.value = null;
+    showWorkflowToast('請假已退回，原堂次已恢復排課');
+  } catch (e) {
+    workflowDecisionError.value = e?.message || '退回請假失敗';
+  } finally {
+    workflowActionId.value = null;
+  }
+};
+
+const submitWorkflowDecision = async () => {
+  const modal = workflowDecisionModal.value;
+  if (!modal) return;
+  if (modal.kind === 'candidate') {
+    if (!selectedWorkflowCandidate.value) {
+      workflowDecisionError.value = '請先選擇一個補課時段';
+      return;
+    }
+    await confirmCandidate(modal.workflow, selectedWorkflowCandidate.value);
+    return;
+  }
+  if (modal.kind === 'reject') {
+    await rejectWorkflow(modal.workflow);
+    return;
+  }
+  await waiveWorkflow(modal.workflow);
 };
 
 const loadData = async () => {
@@ -1797,6 +1879,42 @@ const scrollTo = (section) => {
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 };
 
+const applyFocusFromInbox = async () => {
+  const section = props.focusSection || (props.focusWorkflowId ? 'exception-workflows' : null);
+  const wfId = Number(props.focusWorkflowId || 0);
+  if (!section && wfId <= 0) return;
+  await nextTick();
+  if (section) scrollTo(section);
+  if (wfId <= 0) return;
+  workflowFocusError.value = '';
+  let match = exceptionWorkflows.value.find((w) => Number(w.id) === wfId);
+  if (!match) {
+    try {
+      match = await getExceptionWorkflow(getToken(), wfId);
+      if (match && !exceptionWorkflows.value.some((w) => Number(w.id) === wfId)) {
+        exceptionWorkflows.value = [match, ...exceptionWorkflows.value];
+      }
+      if (!match) { workflowFocusError.value = '找不到此案件或沒有權限'; return; }
+    } catch (err) {
+      workflowFocusError.value = err?.message || '無法載入指定案件';
+      return;
+    }
+  }
+  await nextTick();
+  const row = document.getElementById(`exception-workflow-${wfId}`);
+  if (row) {
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const title = row.querySelector('h3, .ew-title, button, a') || row;
+    if (title?.focus) { title.setAttribute('tabindex', '-1'); title.focus({ preventScroll: true }); }
+  }
+  if (match) {
+    try { await loadWorkflowDetail(match); }
+    catch (err) { workflowFocusError.value = err?.message || '案件詳情載入失敗'; }
+  }
+};
+
+watch(() => [props.focusWorkflowId, props.focusSection, exceptionWorkflows.value.length], () => { applyFocusFromInbox(); });
+
 watch(() => props.branchId, () => {
   teardownTrustImpressions();
   loadData();
@@ -1814,10 +1932,12 @@ onMounted(() => {
   window.addEventListener(USER_ENGAGEMENT_DISPLAY_REFRESH_EVENT, onEngagementDisplayRefreshEvent);
   loadData();
   loadScheduleDiscrepancySummary();
+  applyFocusFromInbox();
 });
 
 onBeforeUnmount(() => {
   teardownTrustImpressions();
+  if (workflowToastTimer) clearTimeout(workflowToastTimer);
   document.removeEventListener('visibilitychange', onDirectorVisibilityForEngagement);
   window.removeEventListener(USER_ENGAGEMENT_DISPLAY_REFRESH_EVENT, onEngagementDisplayRefreshEvent);
 });
@@ -1887,61 +2007,138 @@ onBeforeUnmount(() => {
   100% { background-position: -200% 0; }
 }
 
-/* ===== Exception workflows ===== */
-.ew-card { border-left: 4px solid var(--ds-success); }
-.ew-error {
-  margin: 0 14px 14px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: var(--ds-danger-wash);
-  color: var(--ds-danger);
-  font-size: 13px;
+/* ===== Parent leave inbox ===== */
+.leave-inbox {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--ds-hairline);
+  border-top: 3px solid var(--ds-warning);
+  border-radius: 16px;
+  background: var(--ds-canvas);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
 }
-.ew-list { display: flex; flex-direction: column; gap: 10px; padding: 0 14px 14px; }
-.ew-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 12px;
-  padding: 12px;
-  border: 1px solid rgba(20, 184, 166, 0.22);
-  border-radius: 14px;
-  background: linear-gradient(180deg, var(--ds-canvas), var(--ds-success-wash));
-}
-.ew-main { min-width: 0; }
-.ew-title { font-weight: 800; color: var(--ds-ink); display: flex; align-items: center; gap: 8px; }
-.ew-status {
-  padding: 2px 7px;
-  border-radius: 999px;
-  background: var(--ds-canvas-soft);
-  color: var(--ds-ink);
-  border: 1px solid var(--ds-success);
-  font-size: 11px;
-  font-weight: 700;
-}
-.ew-meta, .ew-reason { margin-top: 4px; color: var(--ds-ink-mute); font-size: 12px; }
-.ew-actions { display: flex; gap: 6px; align-items: flex-start; }
-.ew-candidates {
-  grid-column: 1 / -1;
+.leave-inbox__header {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.ew-candidate {
-  display: flex;
+  align-items: flex-start;
   justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  border: 1px solid var(--ds-canvas-soft);
-  border-radius: 10px;
-  background: var(--ds-canvas-soft);
-  color: var(--ds-ink);
-  padding: 8px 10px;
-  cursor: pointer;
-  text-align: left;
+  gap: 18px;
+  padding: 18px 20px;
+  background: var(--ds-warning-wash);
+  border-bottom: 1px solid var(--ds-hairline);
 }
-.ew-candidate:hover { background: var(--ds-canvas-soft); }
-.ew-candidate:disabled { opacity: 0.55; cursor: not-allowed; }
+.leave-inbox__heading { display: flex; align-items: flex-start; gap: 12px; min-width: 0; }
+.leave-inbox__icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  border-radius: 10px;
+  background: var(--ds-warning);
+  color: var(--ds-on-primary);
+  font-size: 20px;
+}
+.leave-inbox__eyebrow, .leave-modal__eyebrow {
+  margin: 0 0 3px;
+  color: var(--ds-warning);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.leave-inbox h3, .leave-modal h3 { margin: 0; color: var(--ds-ink); font-size: 18px; }
+.leave-inbox__description { margin: 4px 0 0; color: var(--ds-ink-mute); font-size: 13px; }
+.leave-inbox__count {
+  display: grid;
+  justify-items: center;
+  min-width: 78px;
+  padding: 8px 12px;
+  border: 1px solid var(--ds-warning);
+  border-radius: 12px;
+  background: var(--ds-canvas);
+  color: var(--ds-warning);
+}
+.leave-inbox__count strong { font-size: 22px; line-height: 1; }
+.leave-inbox__count span { margin-top: 4px; font-size: 11px; font-weight: 700; }
+.leave-inbox__state, .leave-inbox__empty { padding: 22px 20px; color: var(--ds-ink-mute); font-size: 13px; }
+.leave-inbox__empty { display: flex; align-items: center; gap: 10px; }
+.leave-inbox__empty .material-symbols-outlined { color: var(--ds-success); font-size: 24px; }
+.leave-inbox__empty strong, .leave-inbox__empty span { display: block; }
+.leave-inbox__empty strong { color: var(--ds-ink); }
+.leave-inbox__empty span { margin-top: 2px; }
+.leave-inbox__error { margin: 14px 20px 0; padding: 10px 12px; border: 1px solid var(--ds-danger); border-radius: 10px; background: var(--ds-danger-wash); color: var(--ds-danger); font-size: 13px; }
+.leave-inbox__list { display: grid; gap: 12px; padding: 16px 20px 20px; }
+.leave-case { overflow: hidden; border: 1px solid var(--ds-hairline); border-radius: 14px; background: var(--ds-canvas); }
+.leave-case__topline { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px 10px; }
+.leave-case__identity { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; color: var(--ds-ink); }
+.leave-case__dot { width: 8px; height: 8px; flex: 0 0 8px; border-radius: 50%; background: var(--ds-warning); box-shadow: 0 0 0 4px var(--ds-warning-wash); }
+.leave-case__status { padding: 4px 8px; border-radius: 6px; background: var(--ds-warning-wash); color: var(--ds-warning); font-size: 11px; font-weight: 800; }
+.leave-case__id { color: var(--ds-ink-mute); font-size: 11px; white-space: nowrap; }
+.leave-case__details { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; margin: 0; padding: 0 16px 14px; }
+.leave-case__details div { min-width: 0; }
+.leave-case__details dt { color: var(--ds-ink-mute); font-size: 11px; font-weight: 700; }
+.leave-case__details dd { margin: 3px 0 0; color: var(--ds-ink); font-size: 13px; overflow-wrap: anywhere; }
+.leave-case__next-step { display: flex; align-items: flex-start; gap: 8px; margin: 0 16px 14px; padding: 10px 12px; border-radius: 9px; background: var(--ds-canvas-soft); color: var(--ds-ink-secondary); font-size: 12px; line-height: 1.5; }
+.leave-case__next-step .material-symbols-outlined { color: var(--ds-warning); font-size: 18px; }
+.leave-case__candidate-panel { margin: 0 16px 14px; padding: 12px; border: 1px solid var(--ds-hairline); border-radius: 10px; background: var(--ds-canvas-soft); }
+.leave-case__candidate-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 9px; }
+.leave-case__candidate-heading strong, .leave-case__candidate-heading span { display: block; }
+.leave-case__candidate-heading strong { color: var(--ds-ink); font-size: 13px; }
+.leave-case__candidate-heading span { margin-top: 2px; color: var(--ds-ink-mute); font-size: 11px; }
+.leave-case__text-button { border: 0; background: transparent; color: var(--ds-primary-deep); font-size: 12px; font-weight: 700; cursor: pointer; }
+.leave-case__text-button:disabled { opacity: 0.5; cursor: not-allowed; }
+.leave-case__candidate-list { display: grid; gap: 6px; }
+.leave-candidate { position: relative; display: flex; align-items: center; gap: 9px; min-height: 46px; padding: 8px 10px; border: 1px solid var(--ds-hairline); border-radius: 9px; background: var(--ds-canvas); cursor: pointer; }
+.leave-candidate:hover, .leave-candidate:focus-within { border-color: var(--ds-primary); }
+.leave-candidate--selected { border-color: var(--ds-primary); background: var(--ds-primary-wash); box-shadow: 0 0 0 2px var(--ds-primary-wash); }
+.leave-candidate input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.leave-candidate__radio { width: 16px; height: 16px; flex: 0 0 16px; border: 2px solid var(--ds-ink-mute); border-radius: 50%; }
+.leave-candidate--selected .leave-candidate__radio { border: 5px solid var(--ds-primary); }
+.leave-candidate__body { display: flex; align-items: baseline; gap: 8px; min-width: 0; color: var(--ds-ink); }
+.leave-candidate__body strong { font-size: 13px; }
+.leave-candidate__body span { color: var(--ds-ink-secondary); font-size: 13px; }
+.leave-candidate__rank { margin-left: auto; color: var(--ds-ink-mute); font-size: 11px; white-space: nowrap; }
+.leave-case__actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--ds-hairline); background: var(--ds-canvas-soft); }
+.leave-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; padding: 7px 12px; border: 1px solid transparent; border-radius: 8px; font-size: 12px; font-weight: 800; cursor: pointer; }
+.leave-button .material-symbols-outlined { font-size: 17px; }
+.leave-button--primary { background: var(--ds-cta); color: var(--ds-on-cta); }
+.leave-button--primary:hover { background: var(--ds-cta-hover); }
+.leave-button--secondary { border-color: var(--ds-hairline-input); background: var(--ds-canvas); color: var(--ds-ink); }
+.leave-button--secondary:hover { border-color: var(--ds-primary); }
+.leave-button--danger { border-color: var(--ds-danger); background: transparent; color: var(--ds-danger); }
+.leave-button--danger:hover { background: var(--ds-danger-wash); }
+.leave-button:disabled { opacity: 0.5; cursor: not-allowed; }
+.leave-modal-backdrop { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 20px; background: rgba(15, 23, 42, 0.42); }
+.leave-modal { position: relative; width: min(100%, 460px); padding: 24px; border: 1px solid var(--ds-hairline); border-radius: 16px; background: var(--ds-canvas); box-shadow: 0 24px 64px rgba(15, 23, 42, 0.22); }
+.leave-modal__close { position: absolute; top: 10px; right: 12px; width: 30px; height: 30px; border: 0; border-radius: 50%; background: transparent; color: var(--ds-ink-mute); font-size: 24px; cursor: pointer; }
+.leave-modal__description { margin: 8px 0 16px; color: var(--ds-ink-secondary); font-size: 13px; line-height: 1.6; }
+.leave-modal__selection { display: grid; gap: 4px; margin-bottom: 16px; padding: 12px; border-radius: 10px; background: var(--ds-primary-wash); color: var(--ds-ink); }
+.leave-modal__selection span { color: var(--ds-ink-mute); font-size: 11px; }
+.leave-modal__selection strong { font-size: 14px; }
+.leave-modal__field { display: grid; gap: 6px; margin-bottom: 16px; color: var(--ds-ink); font-size: 12px; font-weight: 700; }
+.leave-modal__field textarea { width: 100%; box-sizing: border-box; resize: vertical; border: 1px solid var(--ds-hairline-input); border-radius: 8px; padding: 9px 10px; background: var(--ds-canvas); color: var(--ds-ink); font: inherit; font-weight: 400; }
+.leave-modal__field textarea:focus { outline: 2px solid var(--ds-primary-wash); border-color: var(--ds-primary); }
+.leave-modal__error { margin: 0 0 12px; color: var(--ds-danger); font-size: 12px; }
+.leave-modal__actions { display: flex; justify-content: flex-end; gap: 8px; }
+.leave-toast { position: fixed; right: 24px; bottom: 24px; z-index: 1010; max-width: min(360px, calc(100vw - 48px)); padding: 12px 16px; border: 1px solid var(--ds-success); border-radius: 10px; background: var(--ds-canvas); color: var(--ds-ink); box-shadow: 0 12px 30px rgba(15, 23, 42, 0.16); font-size: 13px; font-weight: 700; }
+@media (max-width: 860px) {
+  .leave-inbox__header { padding: 16px; }
+  .leave-inbox__list { padding: 12px 14px 14px; }
+  .leave-case__details { grid-template-columns: 1fr; gap: 8px; }
+  .leave-case__actions { align-items: stretch; }
+  .leave-button { flex: 1 1 auto; }
+}
+@media (max-width: 520px) {
+  .leave-inbox__header, .leave-case__topline { align-items: flex-start; }
+  .leave-inbox__header { flex-direction: column; }
+  .leave-inbox__count { align-self: flex-start; }
+  .leave-case__topline { flex-direction: column; gap: 8px; }
+  .leave-case__id { align-self: flex-start; }
+  .leave-case__actions, .leave-modal__actions { flex-direction: column; }
+  .leave-button { width: 100%; }
+  .leave-candidate__body { display: grid; gap: 2px; }
+  .leave-candidate__rank { font-size: 10px; }
+}
 
 /* ===== Layout ===== */
 .dash {
@@ -1997,7 +2194,7 @@ onBeforeUnmount(() => {
   margin: 0 0 6px;
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--ds-brand-orange);
 }
@@ -2191,96 +2388,6 @@ onBeforeUnmount(() => {
 .ops-decision__empty-people{margin:8px 0 0;font-size:12px;color:var(--ds-ink-mute)}
 .ops-trust__policy{margin-top:12px;font-size:12px;color:var(--ds-ink-mute)}.ops-trust__policy ul{margin:6px 0 0;padding-left:1.2rem}
 
-.priority-risks {
-  padding: 16px;
-  border: 1px solid var(--ds-hairline);
-  border-radius: 16px;
-  background: var(--ds-canvas);
-  box-shadow: var(--ds-shadow-1);
-}
-.priority-risks__head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 12px;
-}
-.priority-risks__head h3 {
-  margin: 0 0 4px;
-  color: var(--ds-ink);
-  font-size: 16px;
-}
-.priority-risks__head p {
-  margin: 0;
-  color: var(--ds-ink-mute);
-  font-size: 12px;
-}
-.priority-risks__count {
-  flex: 0 0 auto;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: var(--ds-canvas-soft);
-  color: var(--ds-ink-secondary);
-  font-size: 11px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-.priority-risks__grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-.priority-risk {
-  display: flex;
-  gap: 10px;
-  min-width: 0;
-  padding: 12px;
-  border: 1px solid var(--ds-hairline);
-  border-left: 3px solid var(--ds-ink-mute);
-  border-radius: 12px;
-  background: var(--ds-canvas-soft);
-}
-.priority-risk--danger { border-left-color: var(--ds-danger); }
-.priority-risk--warning { border-left-color: var(--ds-warning); }
-.priority-risk--info { border-left-color: var(--ds-info); }
-.priority-risk__icon {
-  flex: 0 0 auto;
-  color: var(--ds-ink-mute);
-  font-size: 22px;
-}
-.priority-risk--danger .priority-risk__icon { color: var(--ds-danger); }
-.priority-risk--warning .priority-risk__icon { color: var(--ds-warning); }
-.priority-risk--info .priority-risk__icon { color: var(--ds-info); }
-.priority-risk__body {
-  min-width: 0;
-}
-.priority-risk__body strong {
-  display: block;
-  color: var(--ds-ink);
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
-}
-.priority-risk__body p {
-  margin: 4px 0 10px;
-  color: var(--ds-ink-mute);
-  font-size: 12px;
-  line-height: 1.45;
-}
-.priority-risk__action {
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--ds-primary);
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-}
-.priority-risk__action:hover { text-decoration: underline; }
-.priority-risk__action:focus-visible {
-  border-radius: 4px;
-  outline: 2px solid var(--ds-primary);
-  outline-offset: 3px;
-}
 
 /* ===== Import Banner ===== */
 .import-banner {
@@ -2352,52 +2459,27 @@ onBeforeUnmount(() => {
 /* ===== Progress Board ===== */
 .progress-board {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
   background: var(--ds-canvas-soft);
   border: 1px solid var(--ds-hairline);
-  border-radius: 16px;
+  border-radius: var(--ds-radius-lg);
   padding: 12px;
 }
 
-.pb {
-  position: relative;
+.pb-cell {
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  min-height: 84px;
-  padding: 14px;
-  border-radius: 12px;
-  border: 1px solid var(--ds-hairline);
-  background: var(--ds-canvas);
-  box-shadow: 0 1px 2px rgba(0, 55, 112, 0.05);
+  gap: 8px;
 }
-.pb__label {
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--ds-ink-mute);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
+.pb-cell :deep(.at-metric) {
+  flex: 1;
 }
-.pb__val {
-  font-size: 15px;
-  color: var(--ds-ink-secondary);
-  font-variant-numeric: tabular-nums;
-}
-.pb__val strong {
-  font-weight: 700;
-  font-size: 28px;
-  color: var(--ds-ink);
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-}
-.pb__val small  { font-weight: 600; color: var(--ds-ink-mute); }
 .pb__bar {
   height: 5px;
   border-radius: 999px;
   background: var(--ds-hairline);
   overflow: hidden;
-  margin-top: auto;
 }
 .pb__fill {
   height: 100%;
@@ -2536,6 +2618,31 @@ onBeforeUnmount(() => {
   border-top: 1px solid rgba(226, 232, 240, 0.82);
   display: flex;
   justify-content: flex-end;
+}
+
+/* ===== AtCard-based work-grid cards (Wave B) ===== */
+.dash-card-head-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.dash-card-head-title h3 {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ds-ink);
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+.dash-card-foot {
+  margin: 16px -24px -24px;
+  padding: 12px 18px;
+  border-top: 1px solid rgba(226, 232, 240, 0.82);
+  display: flex;
+  justify-content: flex-end;
+}
+.dash-card-warn :deep(.at-card) {
+  border-top: 2px solid var(--ds-warning);
 }
 
 /* ===== Schedule Row ===== */
@@ -2959,18 +3066,10 @@ onBeforeUnmount(() => {
     font-size: 24px;
   }
   .dash.dash--desktop-dense .progress-board {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 8px;
     padding: 10px;
-    border-radius: 22px;
-  }
-  .dash.dash--desktop-dense .pb {
-    min-height: 72px;
-    padding: 10px 12px;
-    border-radius: 16px;
-  }
-  .dash.dash--desktop-dense .pb__val strong {
-    font-size: 24px;
+    border-radius: var(--ds-radius-lg);
   }
   .dash.dash--desktop-dense .work-grid {
     gap: 14px;
@@ -3011,7 +3110,6 @@ onBeforeUnmount(() => {
     width: 100%;
   }
   .work-grid { grid-template-columns: 1fr; }
-  .priority-risks__grid { grid-template-columns: 1fr; }
   .progress-board { grid-template-columns: repeat(2, 1fr); }
   .work-toolbar {
     flex-direction: column;
@@ -3053,6 +3151,10 @@ onBeforeUnmount(() => {
   margin-bottom: -4px;
   padding: 0 4px;
 }
+.section-label-row--sub {
+  margin-top: 8px;
+  margin-bottom: 4px;
+}
 .section-label {
   font-size: 12px;
   font-weight: 700;
@@ -3077,6 +3179,7 @@ onBeforeUnmount(() => {
   text-decoration: underline;
   font-family: inherit;
   text-align: left;
+  white-space: nowrap;
 }
 
 /* ===== 匯入格式 Modal ===== */

@@ -548,6 +548,18 @@ class CoursePackageController extends Controller
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
+        $pkg = CoursePackage::find($id);
+        if (!$pkg) {
+            return response()->json(['message' => 'Package not found'], 404);
+        }
+
+        if ($role !== 'super_admin') {
+            $campusIds = $request->attributes->get('auth_campus_ids', []);
+            if (!empty($campusIds) && !in_array((int) $pkg->campus_id, $campusIds, true)) {
+                return response()->json(['message' => 'Forbidden'], 403);
+            }
+        }
+
         $result = PackageDeductionService::fullRecompute($id);
         if (isset($result['error'])) {
             return response()->json(['message' => $result['error']], 404);
@@ -891,6 +903,15 @@ class CoursePackageController extends Controller
                 $pkg->remaining_sessions = max(0, $newTotal - (int) $pkg->used_sessions);
                 $pkg->save();
             });
+
+            // in-app #208: the bulk update above only cascades SessionCount /
+            // PackageTotalSessions to members (RISK-002 guard — never blind-write
+            // RemainingSessions there). Without this, each member's RemainingSessions
+            // silently keeps its pre-edit value until someone separately calls
+            // /recompute. Reuse the existing ledger-based reconciliation instead of
+            // writing new remaining-session logic.
+            PackageDeductionService::fullRecompute($pkg->id);
+            $pkg->refresh();
 
             Log::info('CoursePackage totalSessions changed', [
                 'package_id'       => $pkg->id,

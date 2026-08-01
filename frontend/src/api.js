@@ -88,9 +88,11 @@ export async function setParentNotificationPreferences(token, { learningFeedback
   return data;
 }
 
-export async function listExceptionWorkflows(token, { branchId } = {}) {
+export async function listExceptionWorkflows(token, { branchId, type, status } = {}) {
   const params = new URLSearchParams();
   if (branchId) params.set('branch_id', String(branchId));
+  if (type) params.set('type', String(type));
+  if (status) params.set('status', String(status));
   const res = await fetch(`${API_BASE}/exception-workflows?${params}`, {
     headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
   });
@@ -138,6 +140,17 @@ export async function waiveExceptionWorkflow(token, workflowId, { reason = '' } 
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data?.message || '標記不補課失敗');
+  return data?.data || {};
+}
+
+export async function rejectExceptionWorkflow(token, workflowId, { reason }) {
+  const res = await fetch(`${API_BASE}/exception-workflows/${workflowId}/reject`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ reason }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.message || '退回請假申請失敗');
   return data?.data || {};
 }
 

@@ -4,10 +4,10 @@
       <div>
         <span class="rn-kicker">AllTrue 更新公告</span>
         <h2>版本更新</h2>
-        <p>這裡用白話整理每一版多了什麼、修了什麼。技術細節仍保留在完整 CHANGELOG。</p>
+        <p>這裡用白話整理近期會影響你工作的改變。完整工程紀錄仍保留在 CHANGELOG。</p>
       </div>
       <div v-if="latestNote" class="rn-latest">
-        <span>最新版本</span>
+        <span>最新更新</span>
         <strong>{{ latestNote.version }}</strong>
         <small>{{ latestNote.date }}</small>
       </div>
@@ -16,25 +16,45 @@
     <div v-if="latestNote" class="rn-featured">
       <span class="rn-version rn-version--large">{{ latestNote.version }}</span>
       <div>
-        <h3>{{ latestNote.title }}</h3>
+        <div class="rn-title-row">
+          <span v-if="latestNote.importance" class="rn-importance" :data-importance="latestNote.importance">
+            {{ importanceLabel(latestNote.importance) }}
+          </span>
+          <h3>{{ latestNote.title }}</h3>
+        </div>
         <p>{{ latestNote.summary }}</p>
+        <small
+          v-if="latestNote.effectiveAt && latestNote.effectiveAt !== latestNote.publishedAt"
+          class="rn-effective"
+        >
+          已於 {{ latestNote.effectiveAt }} 生效
+        </small>
       </div>
       <a :href="changelogUrl" target="_blank" rel="noopener noreferrer">完整 CHANGELOG</a>
     </div>
 
     <div v-if="notes.length === 0" class="rn-empty">目前尚無可顯示的更新內容。</div>
 
-    <section v-for="note in notes" :key="`${note.version}-${note.title}`" class="rn-item">
+    <section v-for="note in notes" :key="note.id || `${note.version}-${note.title}`" class="rn-item">
       <div class="rn-item-head">
         <span class="rn-version">{{ note.version }}</span>
         <div>
-          <strong>{{ note.title }}</strong>
+          <div class="rn-title-row">
+            <span v-if="note.importance" class="rn-importance" :data-importance="note.importance">
+              {{ importanceLabel(note.importance) }}
+            </span>
+            <strong>{{ note.title }}</strong>
+          </div>
           <small v-if="note.date">{{ note.date }}</small>
         </div>
       </div>
       <p v-if="note.summary" class="rn-summary">{{ note.summary }}</p>
       <div class="rn-sections">
-        <section v-for="section in normalizedSections(note)" :key="`${note.version}-${section.title}`" class="rn-section">
+        <section
+          v-for="section in normalizedSections(note)"
+          :key="`${note.id || note.version}-${section.title}`"
+          class="rn-section"
+        >
           <h4>{{ section.title }}</h4>
           <ul class="rn-list">
             <li v-for="row in section.items" :key="row">{{ row }}</li>
@@ -63,7 +83,13 @@ function normalizedSections(note) {
   if (Array.isArray(note.sections) && note.sections.length > 0) {
     return note.sections;
   }
-  return [{ title: '更新內容', items: note.items || [] }];
+  return [{ title: '你現在可以', items: note.items || [] }];
+}
+
+function importanceLabel(importance) {
+  if (importance === 'action_required') return '需要注意';
+  if (importance === 'major') return '重要更新';
+  return '本週更新';
 }
 </script>
 
@@ -147,6 +173,13 @@ function normalizedSections(note) {
   background: #fffbeb;
 }
 
+.rn-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
 .rn-featured h3 {
   margin: 0 0 4px;
   color: var(--text);
@@ -163,6 +196,34 @@ function normalizedSections(note) {
   color: #b45309;
   font-weight: 800;
   white-space: nowrap;
+}
+
+.rn-effective {
+  display: block;
+  margin-top: 6px;
+  color: var(--warning);
+  font-size: 12px;
+}
+
+.rn-importance {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 800;
+  border-radius: 999px;
+  padding: 2px 8px;
+  background: var(--ds-canvas-soft);
+  color: var(--ds-ink-secondary);
+}
+
+.rn-importance[data-importance='major'] {
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+
+.rn-importance[data-importance='action_required'] {
+  background: var(--danger-bg);
+  color: var(--danger);
 }
 
 .rn-item {
@@ -269,4 +330,3 @@ function normalizedSections(note) {
   }
 }
 </style>
-

@@ -1,9 +1,8 @@
+import { FINAL_LEAVE_STATUSES, LEAVE_STATUSES } from './sessionStatus.js';
+
 export const NON_FILLABLE_LEARNING_STATUSES = new Set([
   'absent',
-  'leave',
-  'leave_requested',
-  'leave_adjusted',
-  'excused',
+  ...LEAVE_STATUSES,
   'cancelled',
 ]);
 
@@ -21,7 +20,7 @@ export function learningSessionStatusLabel(status) {
   if (s === 'changes_requested') return '待修改';
   if (s === 'rejected') return '已退回';
   if (s === 'absent') return '缺席';
-  if (s === 'leave' || s === 'leave_adjusted' || s === 'excused') return '請假';
+  if (LEAVE_STATUSES.has(s) && s !== 'leave_requested') return '請假';
   if (s === 'leave_requested') return '請假(待審)';
   if (s === 'cancelled') return '取消';
   if (s === 'substituted') return '代課';
@@ -40,7 +39,7 @@ export function resolveLearningSessionState({
   let formStatus = baseStatus;
 
   if (normalizedSessionStatus === 'absent') formStatus = 'absent';
-  if (['leave', 'leave_adjusted', 'excused'].includes(normalizedSessionStatus)) formStatus = 'leave';
+  if (LEAVE_STATUSES.has(normalizedSessionStatus) && normalizedSessionStatus !== 'leave_requested') formStatus = 'leave';
   // 請假申請待審核（in-app #194 / GitHub #1099）：出缺勤管理與課表與評量必須同一認定
   // ——顯示「請假(待審)」、暫不需填評量；若審核退回，堂次回 scheduled 後自動恢復未填。
   if (normalizedSessionStatus === 'leave_requested') formStatus = 'leave_requested';
@@ -74,7 +73,7 @@ export function attendanceSessionStatusLabel(status) {
   if (s === 'attended' || s === 'present') return '到班';
   if (s === 'late') return '遲到';
   if (s === 'absent') return '缺席';
-  if (s === 'leave' || s === 'leave_adjusted' || s === 'excused') return '請假';
+  if (LEAVE_STATUSES.has(s) && s !== 'leave_requested') return '請假';
   if (s === 'leave_requested') return '請假(待審)';
   if (s === 'cancelled') return '取消';
   return '已處理';
@@ -146,7 +145,7 @@ export function classifyAttendanceSessionRows(rows = []) {
 
   for (const row of rows) {
     const status = String(row?.status || row?.Status || '').toLowerCase();
-    if (['cancelled', 'leave', 'leave_adjusted'].includes(status)) continue;
+    if (['cancelled', ...FINAL_LEAVE_STATUSES].includes(status)) continue;
     const key = studentSlotKey(row);
     if (!key) continue;
     keepPreferredSlot(totalBest, key, normalizeSessionRow(row));
@@ -165,7 +164,7 @@ export function classifyAttendanceSessionRows(rows = []) {
     }
     // leave_requested（請假待審）必須顯示在狀態列表，否則學生會從出缺勤管理整個消失，
     // 與課表與評量認定不一致（in-app #194 / GitHub #1099）。
-    if (['absent', 'attended', 'late', 'present', 'leave', 'leave_requested', 'leave_adjusted', 'excused'].includes(normalized.status)) {
+    if (['absent', 'attended', 'late', 'present', ...LEAVE_STATUSES].includes(normalized.status)) {
       keepPreferredSlot(statusBest, key, normalized);
     }
   }

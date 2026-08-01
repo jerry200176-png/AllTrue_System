@@ -133,6 +133,11 @@
         </div>
 
         <template v-if="form.payment_type === 'monthly'">
+          <div class="form-group">
+            <label>課程結束日 *</label>
+            <input v-model="form.end_date" type="date" :min="form.first_class_date || undefined" />
+            <span v-if="fieldErrors.end_date" class="field-error">{{ fieldErrors.end_date }}</span>
+          </div>
           <div class="form-group" :class="{ 'field-has-warning': fieldWarnings.settlement_day }">
             <label>結算日（每月幾號）</label>
             <select v-model.number="form.settlement_day">
@@ -280,6 +285,7 @@ const defaultForm = {
   start_time: '16:00',
   end_time: '18:00',
   first_class_date: '',
+  end_date: '',
   room_id: null,
   memo: '',
   remaining_sessions: 0,
@@ -345,6 +351,10 @@ const fieldErrors = computed(() => {
   const errors = {};
   if (!form.subject) errors.subject = '科目為必填';
   if (!form.teacher_id) errors.teacher_id = '老師為必填';
+  if (form.payment_type === 'monthly' && !form.end_date) errors.end_date = '月結課程必須設定課程結束日';
+  if (form.payment_type === 'monthly' && form.end_date && form.first_class_date && form.end_date < form.first_class_date) {
+    errors.end_date = '結束日不可早於開課日';
+  }
   return errors;
 });
 

@@ -89,8 +89,8 @@ describe('openSessionEdit reload-on-miss (#177)', () => {
     expect(flow.sessionEditForm.value.session_id).toBe(901);
   });
 
-  it('still alerts when reload cannot resolve and the slot is not projectable', async () => {
-    const course = { id: 42, duration_hours: 2 };
+  it('opens resolve dialog instead of alert when reload cannot resolve', async () => {
+    const course = { id: 42, duration_hours: 2, payment_type: 'session' };
     const flow = buildFlow({
       getSessionDisplayRow: vi.fn(() => null),
       reloadCourseSessions: vi.fn(async () => true),
@@ -99,7 +99,82 @@ describe('openSessionEdit reload-on-miss (#177)', () => {
 
     await flow.openSessionEdit(course, '2026-06-27', 555, { id: 555, startTime: '16:00', isProjected: false });
 
-    expect(globalThis.alert).toHaveBeenCalledTimes(1);
+    expect(globalThis.alert).not.toHaveBeenCalled();
     expect(flow.showSessionEditModal.value).toBe(false);
+    expect(flow.chipActionDialog.value?.kind).toBe('resolve_retry');
+  });
+});
+
+describe('openSessionEdit projected capability (F4)', () => {
+  beforeEach(() => {
+    vi.spyOn(globalThis, 'alert').mockImplementation(() => {});
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        session: {
+          id: 999, student_class_id: 42, session_date: '2026-08-10',
+          start_time: '18:00', end_time: '20:00', status: 'scheduled',
+        },
+      }),
+    });
+  });
+
+  it('count-mode projected chip does not call ensure-projected', async () => {
+    const openQuickAddSessionModal = vi.fn();
+    const course = { id: 42, payment_type: 'session', ScheduleMode: 'count', PackageID: 115, duration_hours: 2 };
+    const flow = buildFlow({
+      openQuickAddSessionModal,
+      getSessionDisplayRow: vi.fn(() => null),
+      reloadCourseSessions: vi.fn(async () => true),
+      getSessionRowsForDate: () => [],
+    });
+    await flow.openSessionEdit(course, '2026-08-10', 0, { isProjected: true, startTime: '18:00', endTime: '20:00' });
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(flow.chipActionDialog.value?.kind).toBe('projected_quick_add');
+    await flow.confirmChipActionDialog();
+    expect(openQuickAddSessionModal).toHaveBeenCalledWith(course, expect.objectContaining({
+      date: '2026-08-10', startTime: '18:00', source: 'projected_count_chip',
+    }));
+  });
+
+  it('monthly date-mode projected chip still materializes', async () => {
+    const flow = buildFlow({
+      getSessionDisplayRow: vi.fn(() => null),
+      reloadCourseSessions: vi.fn(async () => true),
+      getSessionRowsForDate: () => [],
+      updateLocalSessionRow: vi.fn(),
+    });
+    await flow.openSessionEdit(
+      { id: 42, payment_type: 'monthly', ScheduleMode: 'date', duration_hours: 2 },
+      '2026-08-10', 0, { isProjected: true, startTime: '18:00', endTime: '20:00' },
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/v1/class-sessions/ensure-projected',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(flow.showSessionEditModal.value).toBe(true);
+  });
+
+  it('shows the backend rejection reason when projected-session materialization fails', async () => {
+    globalThis.fetch.mockResolvedValueOnce({
+      ok: false,
+      json: async () => ({ message: '指定日期不符合此課程固定時段' }),
+    });
+    const flow = buildFlow({
+      getSessionDisplayRow: vi.fn(() => null),
+      reloadCourseSessions: vi.fn(async () => true),
+      getSessionRowsForDate: () => [],
+    });
+
+    await flow.openSessionEdit(
+      { id: 42, payment_type: 'monthly', ScheduleMode: 'date', duration_hours: 2 },
+      '2026-08-10', 0, { isProjected: true, startTime: '18:00', endTime: '20:00' },
+    );
+
+    expect(flow.chipActionDialog.value).toMatchObject({
+      kind: 'resolve_retry',
+      title: '無法建立可編輯堂次',
+    });
+    expect(flow.chipActionDialog.value?.message).toContain('指定日期不符合此課程固定時段');
   });
 });

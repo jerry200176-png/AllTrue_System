@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "provenance_type": "human-authored",
-  "declared_at": "2026-07-24T12:10:00Z",
-  "author": "repository-maintainer",
-  "note": "Mainline baseline; task-specific agent manifests remain branch-local."
+  "declared_at": "2026-07-29T01:00:00Z",
+  "author": "cursor-cloud-agent",
+  "note": "Split engineering CHANGELOG from staff in-app release notes: STAFF_UPDATES.yml is sole publish source; CHANGELOG → changelogDraft only; userFacingCopyGate; R85. Founder decision 2026-07-29."
 }

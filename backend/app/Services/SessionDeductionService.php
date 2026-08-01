@@ -347,7 +347,7 @@ class SessionDeductionService
 
             $isSessionMode = (string) ($sc->ScheduleMode ?? 'count') === 'count';
             $sessionCount  = max(0, (int) ($sc->SessionCount ?? 0));
-            $perSession    = max(1, $sc->perSessionMinutes());
+            $perSession    = self::billingStandardMinutes($sc);
 
             if ($isSessionMode && $sessionCount > 0) {
                 $purchasedMinutes = $sessionCount * $perSession;
@@ -432,7 +432,8 @@ class SessionDeductionService
             }
 
             // #613 A1：補課只覆蓋部分時數時，扣除該補課實際分鐘（否則 null＝整堂）。
-            $partialMinutes = self::resolvePartialMakeupMinutes($sc, $resolvedClassSessionId);
+            // RFC 非標準時長：actual_duration 課程則每堂都依實際時長扣分鐘。
+            $partialMinutes = self::resolvePartialDeductionMinutes($sc, $resolvedClassSessionId);
 
             $deducted = false;
             DB::transaction(function () use ($sc, $signIn, $resolvedClassSessionId, $partialMinutes, &$deducted) {
@@ -461,15 +462,104 @@ class SessionDeductionService
     }
 
     /**
+     * How many minutes this attendance consumes, or null for "one whole session".
+     *
+     * Two independent paths, in priority order:
+     *
+     * 1. Actual-duration courses (RFC non-standard duration D2) — the course has
+     *    explicitly opted in AND the environment flag is on. EVERY session consumes
+     *    its real clock duration, not just makeups.
+     * 2. Everything else — the pre-existing #613 behaviour, unchanged: only a makeup
+     *    (schedules.type='extra') whose length differs from the contract is prorated;
+     *    ordinary sessions always consume one whole lesson.
+     *
+     * Path 2 is byte-identical to before, which is what keeps every existing course
+     * behaving exactly as it does today.
+     */
+    private static function resolvePartialDeductionMinutes(StudentClass $sc, int $classSessionId): ?int
+    {
+        if ($classSessionId <= 0) {
+            return null;
+        }
+
+        if (self::isActualDurationActive($sc)) {
+            return self::resolveActualDurationMinutes($sc, $classSessionId);
+        }
+
+        return self::resolvePartialMakeupMinutes($sc, $classSessionId);
+    }
+
+    /**
+     * Is minute-proportional billing live for this course? Requires BOTH the
+     * environment flag and the course's own opt-in. Fail-safe: with the flag off, an
+     * opted-in course still behaves as fixed_session.
+     */
+    private static function isActualDurationActive(StudentClass $sc): bool
+    {
+        return (bool) config('perfflags.actual_duration_deduction_enabled', false)
+            && $sc->isActualDurationBasis();
+    }
+
+    /**
+     * Minutes in ONE standard billing unit for this course — the divisor that turns
+     * minutes into lesson-equivalents, and the multiplier that turns purchased units
+     * into purchased minutes.
+     *
+     * For an active actual-duration course that is its own `standard_lesson_minutes`.
+     * For everything else it stays `perSessionMinutes()` (SessionDuration, or the
+     * legacy 60 fallback), so existing courses keep the exact divisor they have today.
+     *
+     * Falls back to perSessionMinutes() if an opted-in course somehow has no persisted
+     * standard: the deduction path already refuses to prorate in that state, so the
+     * two stay consistent rather than dividing by a different number than was charged.
+     */
+    public static function billingStandardMinutes(StudentClass $sc): int
+    {
+        if (self::isActualDurationActive($sc)) {
+            $standard = $sc->resolvedStandardLessonMinutes();
+            if ($standard !== null) {
+                return max(1, $standard);
+            }
+        }
+
+        return max(1, $sc->perSessionMinutes());
+    }
+
+    /**
+     * Actual clock duration of this session, or null to fall back to a whole session.
+     *
+     * Returns null (whole session) when the standard is missing — fail closed rather
+     * than inventing a divisor. Also returns null when the session runs exactly one
+     * standard length, so the whole-session ledger encoding is preserved and the
+     * result stays identical to the fixed-session path for well-formed schedules.
+     */
+    private static function resolveActualDurationMinutes(StudentClass $sc, int $classSessionId): ?int
+    {
+        $standard = $sc->resolvedStandardLessonMinutes();
+        if ($standard === null) {
+            return null;
+        }
+
+        $cs = ClassSession::query()->find($classSessionId);
+        if (!$cs || empty($cs->StartTime) || empty($cs->EndTime)) {
+            return null;
+        }
+
+        $mins = self::durationMinutes($cs->StartTime, $cs->EndTime);
+        if ($mins <= 0 || $mins === $standard) {
+            return null;
+        }
+
+        return $mins;
+    }
+
+    /**
      * #613 A1 + 補課加長：補課（schedules.type='extra'）時長 ≠ 契約每堂分鐘時，
      * 回傳實際分鐘（可短於或長於 perSession）。非補課、剛好完整時長、或時間不足
      * → null（＝整堂）。正常課堂一律整堂。禁止 clamp 回 perSession。
      */
     private static function resolvePartialMakeupMinutes(StudentClass $sc, int $classSessionId): ?int
     {
-        if ($classSessionId <= 0) {
-            return null;
-        }
         $cs = ClassSession::query()->find($classSessionId);
         if (!$cs || empty($cs->StartTime) || empty($cs->EndTime) || empty($cs->SessionDate)) {
             return null;

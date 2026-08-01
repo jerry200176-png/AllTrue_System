@@ -10,3 +10,5 @@ This file exists only so tools and agents that look for `design.md` at the repo 
 - Any parallel or `-v2` design documents — **do not create**
 
 Companion: [`docs/GUIDE_UI_COPY.md`](docs/GUIDE_UI_COPY.md) · Components: `frontend/src/components/design-system/` · Tokens: `frontend/src/styles.css`
+
+**Ops UI Foundation (structure/primitives):** [`docs/design/ALLTRUE_UI_FOUNDATION.md`](docs/design/ALLTRUE_UI_FOUNDATION.md)

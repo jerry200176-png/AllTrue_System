@@ -209,7 +209,16 @@
                     {{ statusLabel(r) }}
                   </span>
                 </td>
-                <td class="tc-col-currency">{{ r.charge != null ? formatCurrency(r.charge) : '—' }}</td>
+                <td class="tc-col-currency">
+                  <div>{{ r.charge != null ? formatCurrency(r.charge) : '—' }}</div>
+                  <span
+                    v-if="r.invoice_amount_discrepancy"
+                    class="tc-amount-warning"
+                    :title="`原始帳單 ${formatCurrency(r.invoice_stored_amount)}；依 ${r.invoice_period_sessions} 堂實際上課計算 ${formatCurrency(r.invoice_computed_amount)}`"
+                  >
+                    依實際 {{ r.invoice_period_sessions }} 堂計算
+                  </span>
+                </td>
                 <td class="tc-col-currency">{{ r.paid_amount != null ? formatCurrency(r.paid_amount) : '—' }}</td>
                 <td class="tc-col-currency" :class="{ 'tc-outstanding-warn': r.outstanding > 0 }">
                   {{ r.outstanding != null ? formatCurrency(r.outstanding) : '—' }}
@@ -246,7 +255,22 @@
                       對帳
                     </button>
 
+                    <!-- #1100/FD-3: 本期順延與下一期重疊 — director-facing only, never auto-shifts dates -->
+                    <span
+                      v-if="r.newer_course_overlap"
+                      class="tc-overlap-badge"
+                      :title="overlapWarningTitle(r)"
+                    >{{ overlapWarningLabel(r) }}</span>
+
                     <!-- unpaid / partial: slip + 核帳登記 -->
+                    <span
+                      v-if="r.invoice_amount_discrepancy"
+                      class="tc-amount-warning"
+                      :title="`原始帳單 ${formatCurrency(r.invoice_stored_amount)}；依 ${r.invoice_period_sessions} 堂實際上課計算 ${formatCurrency(r.invoice_computed_amount)}`"
+                    >
+                      依實際 {{ r.invoice_period_sessions }} 堂計算
+                    </span>
+
                     <template v-if="r.payment_status === 'unpaid' || r.payment_status === 'partial'">
                       <button class="tc-btn tc-btn--slip" @click="openSlip(r)" title="產生繳費通知單">
                         <span class="material-symbols-outlined">receipt_long</span>
@@ -729,6 +753,7 @@ import OverdueBucketsPanel from '../components/OverdueBucketsPanel.vue';
 import {
   formatTuitionSettleSummary,
   formatTuitionNewerCourseHint,
+  formatNewerCourseOverlapWarning,
 } from '../lib/studentClassDisplay.js';
 
 const props = defineProps({
@@ -1040,8 +1065,8 @@ function exportCSV() {
 }
 
 function openSlip(row) {
-  slipInvoiceId.value = null;
-  slipStudentClassId.value = row.id;
+  slipInvoiceId.value = row.invoice_id || null;
+  slipStudentClassId.value = row.invoice_id ? null : row.id;
   slipOpen.value = true;
 }
 
@@ -1499,6 +1524,14 @@ function newerCourseBadgeTitle(row) {
 
 function newerCourseBadgeLabel(row) {
   return formatTuitionNewerCourseHint(row).shortBadge;
+}
+
+function overlapWarningTitle(row) {
+  return formatNewerCourseOverlapWarning(row).primary;
+}
+
+function overlapWarningLabel(row) {
+  return formatNewerCourseOverlapWarning(row).shortBadge;
 }
 
 async function confirmSettle() {
@@ -2057,6 +2090,14 @@ loadAlerts();
 .row-paid:hover { opacity: 0.75; }
 
 .tc-outstanding-warn { color: var(--ds-danger); font-weight: 600; }
+.tc-amount-warning {
+  display: inline-block;
+  margin-top: 3px;
+  color: var(--ds-warning);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
 
 /* ─── Tags ─── */
 .mode-tag {
@@ -2190,6 +2231,19 @@ loadAlerts();
   font-weight: 600;
   background: var(--ds-success-wash);
   color: var(--ds-success);
+  cursor: help;
+  white-space: nowrap;
+}
+
+.tc-overlap-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--ds-warning-wash);
+  color: var(--ds-warning);
   cursor: help;
   white-space: nowrap;
 }

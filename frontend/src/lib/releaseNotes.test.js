@@ -1,29 +1,80 @@
 /**
- * Mirrors calendar tests: runnable with plain Node (npm run test:release-notes).
+ * Staff = STAFF_UPDATES.yml; parent = PARENT_UPDATES.yml (R45).
+ * CHANGELOG drafts must never auto-publish via notesForRole.
  */
 import assert from 'assert';
-import { latestReleaseVersionForRole, notesForRole, parentReleaseNoteTeaser } from './releaseNotes.js';
+import { changelogDraftNotes } from './changelogDraft.generated.js';
+import { staffUpdates } from './staffUpdates.generated.js';
+import {
+  latestReleaseVersionForRole,
+  listActiveParentUpdates,
+  notesForRole,
+  parentReleaseNoteTeaser,
+  allParentUpdates,
+  allStaffUpdates,
+} from './releaseNotes.js';
+import { findUserFacingCopyIssues } from '../../../scripts/lib/userFacingCopyGate.mjs';
 
-// 門檻 ≥1：自 PR #726 起 CHANGELOG 採月度滾動歸檔（主檔只留當月），月初當月仍空時生成卡片可能僅 1 張。
-// 至少 1 張 + 後面斷言（有 version / sections / 不含技術詞）即可確認 release notes pipeline 正常。
-assert.ok(notesForRole('director').length >= 1, 'director should see at least one CHANGELOG-derived entry');
-assert.ok(notesForRole('teacher').length > 0, 'teacher should see release entries');
-assert.ok(notesForRole('parent').length > 0, 'parent should see parent-tagged release entries');
-const p0 = notesForRole('parent')[0];
-assert.ok(
-  parentReleaseNoteTeaser(p0).length > 0 && parentReleaseNoteTeaser(p0).length <= 200,
-  'parent teaser should be a short non-empty line',
-);
-
-const directorCount = notesForRole('director').length;
-assert.strictEqual(notesForRole('super_admin').length, directorCount, 'super_admin should match director-facing notes');
-assert.strictEqual(notesForRole('admin').length, directorCount, 'admin should match director-facing notes');
-
-assert.ok(latestReleaseVersionForRole('super_admin').length > 0, 'version nudge needs a stable version key');
+assert.strictEqual(allStaffUpdates, staffUpdates);
+assert.ok(notesForRole('director').length >= 1);
+assert.ok(notesForRole('teacher').length > 0);
+assert.strictEqual(notesForRole('super_admin').length, notesForRole('director').length);
+assert.strictEqual(notesForRole('admin').length, notesForRole('director').length);
+assert.ok(latestReleaseVersionForRole('super_admin'));
 
 const latest = notesForRole('director')[0];
-assert.ok(/^\d+\.\d+\.\d+$/.test(latest.version), 'release notes should use three-part continuous version labels');
-assert.ok(Array.isArray(latest.sections) && latest.sections.length > 0, 'release cards should have grouped sections');
+assert.ok(/^\d+\.\d+\.\d+$/.test(latest.version));
+assert.ok(latest.id && latest.publishedAt && latest.sections?.length);
+assert.ok(['digest', 'major', 'action_required'].includes(latest.importance));
+assert.strictEqual(latest.publishedAt, '2026-07-29');
 
-const userFacingText = JSON.stringify(latest);
-assert.ok(!/Controller|Service|\.vue|\.php|GET\s+\/|POST\s+\/|::/.test(userFacingText), 'release notes should avoid technical implementation terms');
+const directorNotes = notesForRole('director');
+for (let i = 1; i < directorNotes.length; i++) {
+  assert.ok(directorNotes[i - 1].publishedAt >= directorNotes[i].publishedAt);
+}
+
+const blob = JSON.stringify(latest);
+assert.ok(!/Controller|Service|IsContractException|Phase\s*\d|pool coverage|DS tokens?/i.test(blob));
+
+for (const note of staffUpdates) {
+  assert.ok(!(note.audiences || []).includes('parent'), note.id);
+}
+
+assert.ok(Array.isArray(changelogDraftNotes));
+assert.ok(!directorNotes.some((n) => n.draft || String(n.title || '').includes('草稿')));
+if (changelogDraftNotes.length >= 2) {
+  assert.ok(changelogDraftNotes[0].date >= changelogDraftNotes[1].date);
+}
+
+for (const phrase of [
+  '55 復活判斷收斂為單一共用政策',
+  '006 Phase 3A pool coverage planner',
+  '調課標記 IsContractException',
+  '頁改吃 DS tokens',
+  'Continuity 群組 MVP',
+]) {
+  assert.ok(findUserFacingCopyIssues(phrase).length > 0, phrase);
+}
+
+assert.strictEqual(listActiveParentUpdates({ now: new Date('2099-01-01T12:00:00'), limit: 2 }).length, 0);
+
+const parentNotes = listActiveParentUpdates({ now: new Date('2026-07-27T12:00:00'), limit: 2 });
+assert.ok(parentNotes.length >= 1);
+const p0 = parentNotes[0];
+assert.ok(p0.id && p0.title && p0.summary && p0.details && p0.publishedAt && p0.expiresAt);
+assert.ok(['improvement', 'policy', 'resolved_issue'].includes(p0.kind));
+assert.ok(parentReleaseNoteTeaser(p0));
+assert.ok(!parentReleaseNoteTeaser({ summary: '', items: ['staff only'], title: 'x' }));
+assert.ok(!/staff-2026-07-week-30|調課後課表不再跳回/.test(JSON.stringify(parentNotes)));
+
+for (const n of notesForRole('parent')) {
+  assert.ok(n.summary && !n.sections && !n.importance);
+}
+
+assert.ok(Array.isArray(allParentUpdates));
+assert.ok(
+  !listActiveParentUpdates({ now: new Date('2026-08-26T12:00:00'), limit: 10 })
+    .some((u) => u.id === 'parent-update-2026-07-26-leave'),
+);
+
+console.log('releaseNotes.test.js: ok');

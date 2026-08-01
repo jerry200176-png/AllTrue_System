@@ -230,6 +230,11 @@ class ExceptionWorkflowApiTest extends TestCase
             ->assertJsonPath('data.schedule.status', 'scheduled')
             ->assertJsonPath('data.class_session.status', 'scheduled');
 
+        $this->assertDatabaseHas('ClassSession', [
+            'id' => $session->id,
+            'Status' => 'leave',
+        ]);
+
         $this->assertDatabaseHas('schedules', [
             'student_id' => $student->id,
             'teacher_id' => 1,
@@ -324,6 +329,11 @@ class ExceptionWorkflowApiTest extends TestCase
 
         $res->assertOk()->assertJsonPath('data.workflow.status', 'waived');
 
+        $this->assertDatabaseHas('ClassSession', [
+            'id' => $session->id,
+            'Status' => 'leave',
+        ]);
+
         $this->assertDatabaseHas('exception_workflows', [
             'id' => $workflow->id,
             'status' => 'waived',
@@ -334,6 +344,40 @@ class ExceptionWorkflowApiTest extends TestCase
         $this->assertSame($sessionCountBefore, ClassSession::where('StudentClassID', $course->ID)->count());
         // 不額外扣堂：RemainingSessions 不變。
         $this->assertSame($remainingBefore, (int) StudentClass::where('ID', $course->ID)->value('RemainingSessions'));
+    }
+
+    public function test_director_can_reject_pending_parent_leave_and_restore_session(): void
+    {
+        [$student, $course, $session] = $this->makeStudentCourseSession(1, '退回請假學生', '0912000014');
+        $parentToken = $this->parentLogin('退回請假學生', '0912000014');
+        $this->postJson("/api/v1/parent/sessions/{$session->id}/leave", [
+            'reason' => '臨時請假',
+        ], ['Authorization' => "Bearer {$parentToken}"])->assertOk();
+
+        $workflow = ExceptionWorkflow::where('class_session_id', $session->id)->firstOrFail();
+        $directorToken = $this->createDirectorToken([1], 'director-reject@example.com');
+        $response = $this->postJson("/api/v1/exception-workflows/{$workflow->id}/reject", [
+            'reason' => '當日仍需到課，請與櫃台聯繫',
+        ], [
+            'Authorization' => "Bearer {$directorToken}",
+            'Accept' => 'application/json',
+        ]);
+
+        $response->assertOk()->assertJsonPath('data.workflow.status', 'rejected');
+        $this->assertDatabaseHas('ClassSession', ['id' => $session->id, 'Status' => 'scheduled']);
+        $this->assertDatabaseHas('exception_workflows', [
+            'id' => $workflow->id,
+            'status' => 'rejected',
+            'closed_reason' => 'parent_leave_rejected',
+        ]);
+        $this->assertSame('當日仍需到課，請與櫃台聯繫', ExceptionWorkflow::find($workflow->id)->payload['rejection_reason']);
+
+        $this->getJson('/api/v1/parent/dashboard', [
+            'Authorization' => "Bearer {$parentToken}",
+            'Accept' => 'application/json',
+        ])->assertOk()
+            ->assertJsonPath('upcoming_sessions.0.LeaveWorkflowStatus', 'rejected')
+            ->assertJsonPath('upcoming_sessions.0.LeaveWorkflowReason', '當日仍需到課，請與櫃台聯繫');
     }
 
     public function test_waive_rejects_already_closed_workflow(): void

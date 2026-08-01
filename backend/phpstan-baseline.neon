@@ -999,7 +999,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\Invoice\:\:\$PaidAmount\.$#'
 			identifier: property.notFound
-			count: 4
+			count: 2
 			path: app/Http/Controllers/BillingController.php
 
 		-
@@ -1023,7 +1023,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\Invoice\:\:\$TotalAmount\.$#'
 			identifier: property.notFound
-			count: 3
+			count: 1
 			path: app/Http/Controllers/BillingController.php
 
 		-
@@ -1171,12 +1171,6 @@ parameters:
 			path: app/Http/Controllers/ChatController.php
 
 		-
-			message: '#^Access to an undefined property App\\Models\\ClassSession\:\:\$IsContractException\.$#'
-			identifier: property.notFound
-			count: 2
-			path: app/Http/Controllers/ClassSessionController.php
-
-		-
 			message: '#^Access to an undefined property App\\Models\\ClassSession\:\:\$Note\.$#'
 			identifier: property.notFound
 			count: 4
@@ -1185,37 +1179,13 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\ClassSession\:\:\$Status\.$#'
 			identifier: property.notFound
-			count: 1
+			count: 2
 			path: app/Http/Controllers/ClassSessionController.php
 
 		-
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$ID\.$#'
 			identifier: property.notFound
-			count: 11
-			path: app/Http/Controllers/ClassSessionController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$RemainingSessions\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/ClassSessionController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$SessionDuration\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/ClassSessionController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$Stop\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/ClassSessionController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$UsedSessions\.$#'
-			identifier: property.notFound
-			count: 1
+			count: 9
 			path: app/Http/Controllers/ClassSessionController.php
 
 		-
@@ -1311,7 +1281,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 4
+			count: 3
 			path: app/Http/Controllers/ClassSessionController.php
 
 		-
@@ -1363,12 +1333,6 @@ parameters:
 			path: app/Http/Controllers/ClassSessionController.php
 
 		-
-			message: '#^Method App\\Http\\Controllers\\ClassSessionController\:\:recalculateSessionCounters\(\) is unused\.$#'
-			identifier: method.unused
-			count: 1
-			path: app/Http/Controllers/ClassSessionController.php
-
-		-
 			message: '#^Method App\\Http\\Controllers\\ClassSessionController\:\:resolveStudentGradeId\(\) is unused\.$#'
 			identifier: method.unused
 			count: 1
@@ -1394,12 +1358,6 @@ parameters:
 
 		-
 			message: '#^Offset ''start_time'' on array\{start_time\: string, end_time\: string\} on left side of \?\? always exists and is not nullable\.$#'
-			identifier: nullCoalesce.offset
-			count: 1
-			path: app/Http/Controllers/ClassSessionController.php
-
-		-
-			message: '#^Offset 0\|1\|2\|3\|4\|5\|6 on array\{''time'', ''time1'', ''time2'', ''time3'', ''time4'', ''time5'', ''time6''\} on left side of \?\? always exists and is not nullable\.$#'
 			identifier: nullCoalesce.offset
 			count: 1
 			path: app/Http/Controllers/ClassSessionController.php
@@ -1545,7 +1503,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\CoursePackage\:\:find\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 4
+			count: 5
 			path: app/Http/Controllers/CoursePackageController.php
 
 		-
@@ -1821,19 +1779,19 @@ parameters:
 		-
 			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model\:\:\$closed_reason\.$#'
 			identifier: property.notFound
-			count: 2
+			count: 1
 			path: app/Http/Controllers/ExceptionWorkflowController.php
 
 		-
 			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
 			identifier: property.notFound
-			count: 3
+			count: 2
 			path: app/Http/Controllers/ExceptionWorkflowController.php
 
 		-
 			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model\:\:\$payload\.$#'
 			identifier: property.notFound
-			count: 2
+			count: 1
 			path: app/Http/Controllers/ExceptionWorkflowController.php
 
 		-
@@ -1899,7 +1857,7 @@ parameters:
 		-
 			message: '#^Parameter \#1 \$workflow of method App\\Http\\Controllers\\ExceptionWorkflowController\:\:serialize\(\) expects App\\Models\\ExceptionWorkflow, Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model given\.$#'
 			identifier: argument.type
-			count: 4
+			count: 3
 			path: app/Http/Controllers/ExceptionWorkflowController.php
 
 		-
@@ -2595,7 +2553,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\LearningRecord\:\:\$id\.$#'
 			identifier: property.notFound
-			count: 1
+			count: 2
 			path: app/Http/Controllers/LearningRecordFeedbackController.php
 
 		-
@@ -2715,7 +2673,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\ParentSession\:\:\$id\.$#'
 			identifier: property.notFound
-			count: 2
+			count: 4
 			path: app/Http/Controllers/LearningRecordFeedbackController.php
 
 		-
@@ -2725,7 +2683,13 @@ parameters:
 			path: app/Http/Controllers/LearningRecordFeedbackController.php
 
 		-
-			message: '#^Call to an undefined static method App\\Models\\LearningRecordFeedback\:\:updateOrCreate\(\)\.$#'
+			message: '#^Call to an undefined static method App\\Models\\LearningRecordFeedback\:\:where\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Http/Controllers/LearningRecordFeedbackController.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\LearningRecordFeedback\:\:create\(\)\.$#'
 			identifier: staticMethod.notFound
 			count: 1
 			path: app/Http/Controllers/LearningRecordFeedbackController.php
@@ -2733,7 +2697,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\LearningRecordFeedbackReply\:\:create\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 2
+			count: 3
 			path: app/Http/Controllers/LearningRecordFeedbackController.php
 
 		-
@@ -3091,33 +3055,9 @@ parameters:
 			path: app/Http/Controllers/ParentPortalController.php
 
 		-
-			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model\:\:\$EndTime\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/ParentPortalController.php
-
-		-
-			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model\:\:\$SessionDate\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/ParentPortalController.php
-
-		-
-			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model\:\:\$StartTime\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/ParentPortalController.php
-
-		-
 			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model\:\:\$Status\.$#'
 			identifier: property.notFound
 			count: 1
-			path: app/Http/Controllers/ParentPortalController.php
-
-		-
-			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
-			identifier: property.notFound
-			count: 4
 			path: app/Http/Controllers/ParentPortalController.php
 
 		-
@@ -4069,12 +4009,6 @@ parameters:
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
-			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$SessionDuration\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/StudentClassController.php
-
-		-
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$StartDate\.$#'
 			identifier: property.notFound
 			count: 4
@@ -4353,7 +4287,7 @@ parameters:
 		-
 			message: '#^Offset 0\|1\|2\|3\|4\|5\|6 on array\{''time'', ''time1'', ''time2'', ''time3'', ''time4'', ''time5'', ''time6''\} on left side of \?\? always exists and is not nullable\.$#'
 			identifier: nullCoalesce.offset
-			count: 2
+			count: 1
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
@@ -4893,12 +4827,6 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\ClassSession\:\:\$studentClass\.$#'
 			identifier: property.notFound
-			count: 1
-			path: app/Models/ClassSession.php
-
-		-
-			message: '#^Call to an undefined method Illuminate\\Database\\Query\\Builder\:\:with\(\)\.$#'
-			identifier: method.notFound
 			count: 1
 			path: app/Models/ClassSession.php
 
@@ -6131,3 +6059,69 @@ parameters:
 			identifier: property.notFound
 			count: 1
 			path: app/Support/UserEngagementPresenter.php
+
+		-
+			message: '#^Method App\\Models\\CourseContractGroup\:\:activeMembers\(\) should return Illuminate\\Database\\Eloquent\\Relations\\HasMany but returns Illuminate\\Database\\Query\\Builder\.$#'
+			identifier: return.type
+			count: 1
+			path: app/Models/CourseContractGroup.php
+
+		-
+			message: '#^Offset ''mode'' on array\{mode\: string, campus_ids\: array\<int\>\} on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.offset
+			count: 2
+			path: app/Services/CourseContinuityService.php
+
+		-
+			message: '#^Offset ''campus_ids'' on array\{mode\: string, campus_ids\: array\<int\>\} on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.offset
+			count: 2
+			path: app/Services/CourseContinuityService.php
+
+		-
+			message: '#^Offset ''members'' on array\{student_id\: int, campus_id\: int, subject_id\?\: int\|null, label\?\: string\|null, members\: array\<int, array\{student_class_id\: int, relation_type\: string, effective_from\?\: string\|null, decision_reason\?\: string\|null\}\>\} on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: app/Services/CourseContinuityService.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\CourseContractGroup\:\:create\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Services/CourseContinuityService.php
+
+		-
+			message: '#^Offset ''student_class_id'' on array\{student_class_id\: int, relation_type\: string, effective_from\?\: string\|null, decision_reason\?\: string\|null\} on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: app/Services/CourseContinuityService.php
+
+		-
+			message: '#^Offset ''relation_type'' on array\{student_class_id\: int, relation_type\: string, effective_from\?\: string\|null, decision_reason\?\: string\|null\} on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: app/Services/CourseContinuityService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$StudentID\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/CourseContinuityService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$by1\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/CourseContinuityService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$SubjectID\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/CourseContinuityService.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\CourseContractGroupMember\:\:create\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Services/CourseContinuityService.php

@@ -78,6 +78,7 @@ bash scripts/post-merge-smoke.sh
 
 - Smoke failure in `deploy.yml` triggers existing rollback branch.
 - After rollback, deployment exits failed for operator follow-up.
+- Director `GET /schedules`：`500`／`403` 會重試並重新抓取有 Approved 分校的 director token（部署後偶發 campus/token race）；仍失敗時 log 會附簡短 response body。
 
 ## Security Notes
 

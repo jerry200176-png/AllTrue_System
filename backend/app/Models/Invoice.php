@@ -43,4 +43,9 @@ class Invoice extends Model
     {
         return $this->hasMany(Payment::class, 'InvoiceID', 'id');
     }
+
+    public function studentClass()
+    {
+        return $this->belongsTo(StudentClass::class, 'StudentClassID', 'ID');
+    }
 }

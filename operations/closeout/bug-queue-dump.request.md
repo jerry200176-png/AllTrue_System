@@ -1,7 +1,11 @@
 # Request: in-app bug queue dump (read-only)
 
 Trigger: `bug-queue-dump.yml`  
-Purpose: post-closure verification dump — expect **zero** `new`/`triaged`/`in_progress` after #207 Phase C.  
+Purpose: weekly triage sweep — pull current `new`/`triaged`/`in_progress` queue to check for reports submitted since the 2026-07-22 closeout (#207/#205/#198) and since #208/#210 (this PR's Phase C).  
 **No writes.**
 
-# kickoff 2026-07-22T04:28:00Z — final report verification after #207 resolved
+# kickoff 2026-07-30T04:05:00Z — weekly triage sweep, check for new reports since 2026-07-22 / #210
+
+# kickoff 2026-07-30T05:24:00Z — final re-dump after #211 resolved (PR #1528/#1529); confirm zero remaining new/triaged/in_progress items besides the still-open, Founder-stop-blocked #208
+
+# kickoff 2026-07-30T12:06:00Z — final authoritative re-dump after #208 resolved (PR #1535, Phase-C write-back run 30541032938); confirm queue is fully empty (new=0, triaged=0, in_progress=0)

@@ -5,12 +5,15 @@ namespace App\Http\Controllers;
 use App\Models\LearningRecord;
 use App\Models\LearningRecordFeedback;
 use App\Models\ParentSession;
+use App\Services\ParentBinding\ParentBindingObservability;
+use App\Support\ParentBinding\ParentBindingCodes;
 use App\Support\StudentContactPhone;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentLineBinding;
 use App\Models\StudentSignIn;
 use App\Models\ClassSession;
+use App\Models\ExceptionWorkflow;
 use App\Models\CoursePackage;
 use App\Models\Invoice;
 use App\Models\Announcement;
@@ -21,9 +24,11 @@ use App\Services\ExceptionWorkflowService;
 use App\Services\SessionDeductionService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Validator;
 
 class ParentPortalController extends Controller
 {
@@ -31,14 +36,22 @@ class ParentPortalController extends Controller
 
     public function login(Request $request)
     {
-        $data = $request->validate([
+        $obs = app(ParentBindingObservability::class);
+        $cid = $obs->newCorrelationId($request->headers->get('X-Request-Id') ?? $request->headers->get('X-Correlation-Id'));
+        $validator = Validator::make($request->all(), [
             'StudentID' => 'nullable|integer',
             'Name' => 'nullable|string|max:64',
             'Phone' => 'required|string|max:20',
         ]);
+        if ($validator->fails()) {
+            $obs->observe($cid, ParentBindingCodes::CHANNEL_PORTAL, ParentBindingCodes::METHOD_UNKNOWN, $obs->classifier()->invalidInput());
+            throw new \Illuminate\Validation\ValidationException($validator);
+        }
+        $data = $validator->validated();
 
         $phoneNorm = $this->normalizePhone($data['Phone']);
         if ($phoneNorm === '') {
+            $obs->observe($cid, ParentBindingCodes::CHANNEL_PORTAL, ParentBindingCodes::METHOD_UNKNOWN, $obs->classifier()->invalidInput());
             return response()->json(['message' => '請輸入手機號碼'], 422);
         }
 
@@ -50,14 +63,19 @@ class ParentPortalController extends Controller
         //   (b) Name + Phone (must return exactly one matching Student).
         // 「相同 Phone 的所有學生均列出」邏輯已於 2026-04-18 移除以避免跨家庭 PII 洩漏。
         if (!$hasStudentId && $rawName === '') {
+            $obs->observe($cid, ParentBindingCodes::CHANNEL_PORTAL, ParentBindingCodes::METHOD_UNKNOWN, $obs->classifier()->invalidInput(), $phoneNorm);
             return response()->json(['message' => '請輸入學生姓名與手機號碼'], 422);
         }
 
         $student = null;
+        $candidate = null;
+        $allByName = collect();
+        $method = $hasStudentId ? ParentBindingCodes::METHOD_STUDENT_ID : ParentBindingCodes::METHOD_NAME;
 
         if ($hasStudentId) {
             $candidate = Student::find((int) $data['StudentID']);
             if ($candidate && empty(trim($this->resolveContactPhone($candidate)))) {
+                $obs->observe($cid, ParentBindingCodes::CHANNEL_PORTAL, $method, $obs->classifier()->classifyPortalStudentId($candidate, $phoneNorm, $rawName), $phoneNorm);
                 return response()->json(['message' => '此學生尚未設定聯絡手機，請聯繫分校補登後再登入'], 401);
             }
             $contactPhone = $candidate ? $this->resolveContactPhone($candidate) : '';
@@ -75,6 +93,7 @@ class ParentPortalController extends Controller
             // "ambiguous name lookup" signal without leaking PII to the log.
             \Illuminate\Support\Facades\Log::info('parent.login.name_lookup', [
                 'name_match_count' => $allByName->count(),
+                'correlation_id' => $cid,
             ]);
             $candidates = $allByName
                 ->filter(function ($s) use ($phoneNorm) {
@@ -88,6 +107,7 @@ class ParentPortalController extends Controller
             } elseif ($candidates->count() > 1) {
                 // 極罕見：姓名 + 手機完全相同但不同 Student 記錄。業界作法為不自動登入，
                 // 要求使用者改以 LINE 綁定或 StudentID 精確登入，避免誤選他家庭學生。
+                $obs->observe($cid, ParentBindingCodes::CHANNEL_PORTAL, $method, $obs->classifier()->classifyPortalName($allByName, $phoneNorm), $phoneNorm);
                 return response()->json([
                     'message' => '找到多筆相符資料，請改以 LINE 綁定或提供學生代號登入',
                 ], 409);
@@ -95,18 +115,33 @@ class ParentPortalController extends Controller
                 // Hint to front desk if name matched but phone didn't for any row with empty phone
                 $nameOnly = Student::whereRaw('TRIM(name) = ?', [$rawName])->get();
                 if ($nameOnly->isNotEmpty() && $nameOnly->contains(fn ($s) => empty(trim($this->resolveContactPhone($s))))) {
+                    $obs->observe($cid, ParentBindingCodes::CHANNEL_PORTAL, $method, $obs->classifier()->classifyPortalName($allByName, $phoneNorm), $phoneNorm);
                     return response()->json(['message' => '此學生尚未設定聯絡手機，請聯繫分校補登後再登入'], 401);
                 }
             }
         }
 
         if (!$student) {
+            $c = $hasStudentId
+                ? $obs->classifier()->classifyPortalStudentId($candidate, $phoneNorm, $rawName)
+                : $obs->classifier()->classifyPortalName($allByName, $phoneNorm);
+            $obs->observe($cid, ParentBindingCodes::CHANNEL_PORTAL, $method, $c, $phoneNorm);
             return response()->json(['message' => '查無此學生或手機號碼不符，請確認姓名與手機是否正確'], 404);
         }
 
+        $obs->observe(
+            $cid,
+            ParentBindingCodes::CHANNEL_PORTAL,
+            $method,
+            $hasStudentId
+                ? $obs->classifier()->classifyPortalStudentId($student, $phoneNorm, $rawName)
+                : $obs->classifier()->classifyPortalName(collect([$student]), $phoneNorm),
+            $phoneNorm,
+        );
         \Illuminate\Support\Facades\Log::info('parent.login.success', [
             'student_id' => $student->id,
             'ip' => $request->ip(),
+            'correlation_id' => $cid,
         ]);
 
         $result = $this->createSession($student);
@@ -742,13 +777,24 @@ class ParentPortalController extends Controller
                 ->orderBy('StartTime', 'asc')
                 ->limit(20)
                 ->get()
-                ->map(function ($session) use ($classes) {
-                    $c = $classes->firstWhere('ID', $session->StudentClassID);
-                    $session->Subject = $c ? $this->resolveSubjectName($c) : null;
-                    $session->StartTime = $this->trimToHM($session->StartTime);
-                    $session->EndTime   = $this->trimToHM($session->EndTime);
-                    return $session;
-                });
+                ;
+            $leaveWorkflows = ExceptionWorkflow::query()->where('student_id', (int) $student->id)
+                ->where('type', 'student_leave')
+                ->whereIn('class_session_id', $upcomingSessions->pluck('id')->all())
+                ->get()
+                ->keyBy('class_session_id');
+            $upcomingSessions = $upcomingSessions->map(function ($session) use ($classes, $leaveWorkflows) {
+                $c = $classes->firstWhere('ID', $session->StudentClassID);
+                $session->Subject = $c ? $this->resolveSubjectName($c) : null;
+                $session->StartTime = $this->trimToHM($session->StartTime);
+                $session->EndTime   = $this->trimToHM($session->EndTime);
+                $workflow = $leaveWorkflows->get($session->id);
+                $session->LeaveWorkflowStatus = $workflow?->status;
+                $session->LeaveWorkflowReason = is_array($workflow?->payload)
+                    ? ($workflow->payload['rejection_reason'] ?? null)
+                    : null;
+                return $session;
+            });
         }
 
         $invoices = [];
@@ -1293,32 +1339,48 @@ class ParentPortalController extends Controller
             return response()->json(['message' => 'Session cannot be altered.'], 422);
         }
 
-        $workflow = app(ExceptionWorkflowService::class)->createOrGet([
-            'source_key' => "parent_leave:class_session:{$classSession->id}",
-            'campus_id' => (int) ($studentClass->student->CampusID ?? $this->studentCampusId($session->StudentID)),
-            'student_id' => (int) $session->StudentID,
-            'student_class_id' => (int) $studentClass->ID,
-            'class_session_id' => (int) $classSession->id,
-            'type' => 'student_leave',
-            'status' => 'open',
-            'severity' => 'medium',
-            'source_type' => 'parent_portal',
-            'source_id' => (string) $classSession->id,
-            'parent_session_id' => (int) $session->id,
-            'due_at' => now()->addDay(),
-            'payload' => [
-                'reason' => trim((string) ($data['reason'] ?? '')),
-                'requested_at' => now()->toIso8601String(),
-                'session_date' => (string) $classSession->SessionDate,
-                'start_time' => $this->trimToHM($classSession->StartTime),
-                'end_time' => $this->trimToHM($classSession->EndTime),
-            ],
-        ]);
+        [$workflow, $classSession] = DB::transaction(function () use ($classSession, $studentClass, $session, $data) {
+            /** @var ClassSession|null $classSession */
+            $classSession = ClassSession::query()
+                ->where('id', (int) $classSession->getKey())
+                ->lockForUpdate()
+                ->first();
+            if (!$classSession) {
+                throw new \Illuminate\Database\Eloquent\ModelNotFoundException();
+            }
+            if (!in_array(strtolower((string) $classSession->getAttribute('Status')), ['scheduled', 'rescheduled', 'leave_requested'], true)) {
+                throw new \InvalidArgumentException('Session cannot be altered.');
+            }
 
-        if ($classSession->Status !== 'leave_requested') {
-            $classSession->Status = 'leave_requested';
-            $classSession->save();
-        }
+            $workflow = app(ExceptionWorkflowService::class)->createOrGet([
+                'source_key' => "parent_leave:class_session:{$classSession->id}",
+                'campus_id' => (int) ($studentClass->student->CampusID ?? $this->studentCampusId($session->StudentID)),
+                'student_id' => (int) $session->StudentID,
+                'student_class_id' => (int) $studentClass->ID,
+                'class_session_id' => (int) $classSession->id,
+                'type' => 'student_leave',
+                'status' => 'open',
+                'severity' => 'medium',
+                'source_type' => 'parent_portal',
+                'source_id' => (string) $classSession->id,
+                'parent_session_id' => (int) $session->id,
+                'due_at' => now()->addDay(),
+                'payload' => [
+                    'reason' => trim((string) ($data['reason'] ?? '')),
+                    'requested_at' => now()->toIso8601String(),
+                    'session_date' => (string) $classSession->SessionDate,
+                    'start_time' => $this->trimToHM($classSession->StartTime),
+                    'end_time' => $this->trimToHM($classSession->EndTime),
+                ],
+            ]);
+
+            if ($classSession->getAttribute('Status') !== 'leave_requested') {
+                $classSession->setAttribute('Status', 'leave_requested');
+                $classSession->save();
+            }
+
+            return [$workflow, $classSession];
+        });
 
         return response()->json([
             'message' => 'Leave requested successfully.',

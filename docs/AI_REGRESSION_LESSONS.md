@@ -239,7 +239,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | **F1 狀態收尾缺口** | 主檔狀態變更（`Stop=1` / 老師 `suspended` / 月結結算）後，**未對齊未來 `ClassSession.scheduled` / `schedules` / 老師名額**，殘留堂次續顯示 | #151、#427、#99、行290、§R32、§R59 | 停用/結算課程或老師後，未來 scheduled 堂次不得再出現在行事曆/名額；已上堂次須保留 |
 | **F2 月結續期語意** | 續期未依**當期實際堂數**重算金額/堂次；收據未綁 `billing_period` | #149、§R22、§R26、#554、#594 | 續期＝新一期+結算舊期；收據金額=當期堂數×費率、含結算月 |
 | **F3 排課堂次生成** | 建課後未依 `week/time` 契約**推算/補齊完整未來堂次**（只生成片段） | #148、#497、#539、#424、§R22、§R23、§R64（週日 slot 全滅→0 元月結） | 建課後即依契約生成完整未來 ClassSession；預排日不得反白/dead-end；weekday 比對先 `isoWeekday()` 正規化 |
-| **F4 共用堂數（一對三）** | `Charge` 未計算（=0）；**購買堂數 vs 實體 ClassSession 數**呈現混淆 | #147、#553、#430、#448、#440、§R21 | 共用堂數金額/堂數有單一權威來源，購買 vs 已用 vs 課表數一致 |
+| **F4 共用堂數（一對三）** | `Charge` 未計算（=0）；**購買堂數 vs 實體 ClassSession 數**呈現混淆；把方案池總堂數當成員課程應物化列數 → 假「不一致」警告；堂數制 projected chip 誤呼叫 ensure-projected；把方案池剩餘數當成員可排能力 | #147、#553、#430、#448、#440、§R21、§R24、#1465；架構後續見 **ADR-006**（Commitment→materialize→pool coverage；非餘額猜堂） | 池／成員排課／已用分欄；package under→info 且**成員課程 UI 不顯示方案池剩餘**；無 allocation aggregate 前不推導尚可排／未排 N；count projected 不呼叫 ensure-projected；物化 affordance 僅 `ScheduleMode=date` |
 | **F5 行事曆合併** | week 檢視 merge/去重/過濾**排除有效堂次**（含歷史已上） | #152、§R47、§R49、§R50、行544、§G-007 | 唯一走 `calendarOccurrenceMerge.js`；`npm run test:calendar`；歷史已上堂次仍顯示 |
 | **F7 繳費金額/狀態雙真相** | `Charge` 與 `Rate×數量` 的差額、`StudentClass.Paid` 與 Invoice/Payment 各有兩套真相；點修單邊會「改了又跳回」 | #112、#425、#509、#798、#799、§G-009 | Charge 差額必須可追溯到 `session_charge` 調整；有效收款紀錄存在時課程不得被改為未繳費（解鈴走帳單作廢），任何降級路徑都要明確回饋不得靜默 |
 | **F6 輸入邊界 collation** | utf8mb3 文字欄遇 **4-byte 字元（emoji）** → `like` collation 1267 crash；**寫入**同根因 → `Incorrect string value` 1366（`StudentClass.Memo`） | #657、**#1378** | 搜尋：先濾 4-byte；**寫入**：canonical 修 charset→utf8mb4（禁默默刪 emoji）；過渡期回 422 `memo_charset_incompatible` 且 transaction 回滾 |
@@ -845,6 +845,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **強制規則**：`LearningRecordController::store()` 遇到既有 LR `VoidedAt!=NULL` 時，必須檢查 `VoidReason` 屬 **`SYSTEM_RESURRECTABLE_VOID_REASONS` 白名單**（`一般請假`/`由已上調整狀態`/`補請假：已上課改請假`/`單堂標記請假`，皆為系統 cascade 作廢且作廢當下已沖回堂數或該堂未扣堂）且 `ClassSession.Status` 屬於 fillable（`attended/scheduled/completed/late`）→ 自動 resurrect（清 void 欄位、轉 `pending`、用新 payload 覆寫）；其他情境（手動作廢、真實取消 / leave）維持 409 拒絕。**新增系統作廢原因時，務必同步加入此白名單**（用 `in_array` 不要再寫死單一字串）。
 - **測試必補**：`LearningRecordVoidedResurrectTest`：(1) cascade voided（一般請假）+ 堂次 attended → 200 + LR 復活 (2) 手動作廢（VoidReason 非白名單）仍 409 (3) 堂次仍 leave/cancelled 仍 409 (4) #146：`由已上調整狀態` + 堂次 attended → 200 + 復活 + `SessionDeducted=false`。
 - **副作用提醒**：resurrect 後不可自動再扣 `RemainingSessions`（扣堂仍走 `LearningRecord approved → AttendanceEffectsService` 路徑）；本規則只是把卡關打開，不改業務語意。白名單原因在作廢時都已沖回堂數，resurrect→pending→核准會 net-correct 扣 1 堂。
+- **2026-07-28 結構性補強**：架構稽核複查發現 `ClassSessionController::restoreVoidedLearningRecord()`（leave→attended 自動復活路徑）從未檢查 `VoidReason`，只要 session 曾經是 `leave` 現在轉回 attended-like，就無條件復活該堂任何已作廢 LR——與 `LearningRecordController::store()` 的白名單判斷各自維護，兩者可能漂移（同一類根因見 R83/R84、TD-060）。已抽出共用 `LearningRecordResurrectionPolicy::isEligibleForResurrect()`，兩處都改呼叫同一份判斷；`CourseLeaveCascadeService` 的請假撤銷復原（只認 `VoidReason='一般請假'`）維持原樣不動，因為那是刻意窄範圍（只復原「這次請假」本身作廢的記錄，非任意系統白名單原因）。
 
 ---
 
@@ -878,18 +879,88 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 ---
 
-### R45. 家長入口版本公告必須分眾（不可套用教職員全量 CHANGELOG 卡）
+### R45. 家長入口版本公告必須分眾（不可套用教職員 CHANGELOG／關鍵字推導）
 
-**觸發情境**：2026-05-10 家長反映「版本更新太長、與家長無關」，且進度中心出現內部向文案。
+**觸發情境**：2026-05-10 家長反映「版本更新太長、與家長無關」；2026-07-26 Founder 核准 B+：關鍵字自動標 `audience:parent` 仍會把主任／代課／帳務內部卡洗進家長首頁。
 
-**根因**：`notesForRole('parent')` 曾用「只要 `audience` 含 director/teacher 就給家長」，等於把教職員向產品說明全部洗到家長手機畫面。
+**根因（演進）**：
+1. 早期：`notesForRole('parent')` 複製 director/teacher 全集。
+2. 中期：以「請假|評量|帳務|課表…」關鍵字替日卡加 `parent` → false positive（日卡粒度 + 寬關鍵字）。
+3. 詳情曾用 staff `summary`，與 teaser 不同源。
+
+**強制規則（B+，2026-07-26）**：
+
+- **家長更新唯一來源**：`docs/PARENT_UPDATES.yml` → `frontend/src/lib/parentUpdates.generated.js`（`npm run sync-release-notes`）。
+- **禁止**從 `docs/CHANGELOG.md` 以關鍵字／bullet 推導家長內容；staff 卡 `audience` 僅 `teacher`/`director`。
+- `notesForRole('parent')` 只回傳未過期的 explicit projection（`title`/`summary`/`details`）；**不得** fallback 到 staff summary／sections／items。
+- 無家長更新時 `[]` 合法；`ParentPortal` 隱藏整塊「與您有關的更新」。
+- 普通更新建議 `expires_at` = 發布後 30 天；首頁最多兩則。
+- **需家長行動**（重新綁定／登入／付款／資料可見性）→ 通知中心／持續 Banner，不放更新卡，也不受 `slice(0,2)`／過期排序影響。
+- 改 YAML 或產生器後：`cd frontend && npm run sync-release-notes`，**提交** generated 檔；CI `git diff --exit-code` 防漂移。
+- 測試：`npm run test:release-notes`（空清單合法；禁 staff jargon 進 parent projection）。
+
+### R85. 教職員「版本更新」必須顯式核准（不可由 CHANGELOG 自動發布）
+
+**觸發情境**：2026-07-29 Founder 拍板：工程紀錄與使用者公告拆成兩個內容產品。既有 `changelog-to-release-notes` 自動刮字會造成日期亂序、「55 復活／IsContractException／Phase 3A」等一般人看不懂的卡。
 
 **強制規則**：
 
-- `frontend/src/lib/releaseNotes.js`：`role === 'parent'` 時**只允許** `note.audience?.includes('parent')`；禁止改回「複製 director/teacher 全集」。
-- `scripts/changelog-to-release-notes.mjs`：依當日卡片內**白話條目**關鍵字（家長、繳費、課表、請假…等）決定是否把 `parent` 加進該卡的 `audience`；調整規則後跑 `npm run test:release-notes`。
-- `docs/CHANGELOG.md` 異動後必須重新產生 `frontend/src/lib/releaseNotes.generated.js`（`cd frontend && npm run sync-release-notes`；`vite build` / CI 亦會觸發）。
-- `ParentPortal.vue`：家長端最多兩則、用 `parentReleaseNoteTeaser()` 做短摘要；**不要**把 `interaction_statuses`／內部待辦用語當作家長首屏資訊。
+- **教職員公告唯一來源**：`docs/STAFF_UPDATES.yml` → `frontend/src/lib/staffUpdates.generated.js`。
+- **禁止**把 `docs/CHANGELOG.md` 自動投影當正式發布來源；CHANGELOG 僅可產生 `changelogDraft.generated.js` 供起草。
+- `notesForRole(teacher|director|…)` 只讀 STAFF_UPDATES；排序權威＝`published_at` DESC（產生器強制 sort，不依賴 YAML／Markdown 順序）。
+- 語言閘門 `scripts/lib/userFacingCopyGate.mjs`：偵測工程黑話／殘詞 → **fail**，不得再當自動改寫器。
+- STAFF 檔 **禁止** `parent` audience；家長仍只走 R45／`PARENT_UPDATES.yml`。
+- 預設 `importance: digest`（週摘要）；重大／需行動才 `major`／`action_required`。
+- 操作指南：`docs/GUIDE_STAFF_UPDATES.md`。
+
+### R86. Composable 的「鏡像測試」不算測試——沒 import 真正模組就攔不住 ReferenceError（P0 整頁空白）
+
+**觸發情境**：2026-07-29 07:39 部署（#1409）後，主任回報課程管理頁**整頁空白**（外層 topbar／分校選單仍在，內容區完全沒渲染），所有角色、所有分校都一樣壞。
+
+**根因**：`useCourseSessionsDisplay.js` 的 `return {…}` 物件末端引用了 `SESSION_NOT_OCCUPYING_QUOTA`——這個常數在重構時被搬進 `sessionOccurrenceFilter.js`（且未 `export`），但composable 自己的 return 忘了一起清掉。`CourseManagement.vue` 每次 `setup()` 呼叫 `useCourseSessionsDisplay()` 執行到這行就丟 `ReferenceError: SESSION_NOT_OCCUPYING_QUOTA is not defined`，整個 Vue 元件掛載中斷。
+
+**CI 為何沒攔住**：唯一看似覆蓋這支 composable 的 `useCourseSessionsDisplay.occurrence.test.js`，檔頭其實寫明「Plain node assertions **mirroring** sessionOccurrenceFilter」——它是把過濾邏輯複製一份重新斷言，從未 `import` 真正的 `useCourseSessionsDisplay.js`。`vite build` 只打包不執行 composable 本體。兩者合計＝這個 return 陳述式從沒被任何自動化流程真的跑過一次。
+
+**強制規則**：
+
+- 任何 `use*.js` composable，只要有被頁面 `setup()` 直接呼叫，就必須有至少一個 vitest 測試**真的 import 並呼叫它**（如 `useRescheduleAndMakeup.test.js` 的寫法），斷言不拋錯 + 回傳 API 形狀正確。純邏輯的 node-assert 鏡像測試（`*.occurrence.test.js` 這類）只能當補充，不可視為對 composable 本體的覆蓋。
+- Code review／PR 自查：composable 的 `return {…}` 物件裡每個識別字都要能在檔案內找到宣告或 import；`grep -n "^import\|^const\|^function"` 對照 return list 是最低成本的手動檢查。
+- 已修復：刪除未使用、未宣告的殘留引用；新增 `useCourseSessionsDisplay.test.js`（CI `test:unit:cov` 既有 glob `src/composables/**/__tests__/**/*.test.js` 自動涵蓋，無需另外接線）。
+
+### R87. `vite build` / dev-server 測試綠燈 ≠ 正式站真的部署到——`copy-to-backend.cjs` 是另一份獨立白名單
+
+**觸發情境**：2026-07-29 #1512 把 Material Symbols Outlined 圖示字型從即時連 Google Fonts CDN 改為自架（新增 `frontend/public/fonts/material-symbols-outlined.woff2` + `@font-face` 指向 `/fonts/...`）。#1512／#1514／#1515 三個 PR 都用「真實 Vue 元件 + mocked API + 390/768/1440px 截圖」驗證過圖示正確渲染，`vite build` 也全綠，但正式站部署後全站圖示仍然顯示英文原名（`event`、`calendar_today`、`warning`…）。使用者反映「到處都是英文」才被發現——已經連續 3 次部署都受影響。
+
+**根因**：正式站部署（`deploy.yml` SSH 到 Pi 後執行 `npm run deploy` = `vite build && node scripts/copy-to-backend.cjs`）用的是 `frontend/scripts/copy-to-backend.cjs` 這支獨立腳本，把 `dist_build/` 選擇性複製到 `backend/public/`——只複製寫死的 `ROOT_ASSETS` 清單（`manifest.json`／`logo.png`／icon 圖／`version.json`）+ `PUBLIC_DIRS`（原本只有 `['audio']`）+ `assets/`（hash 檔名的 JS/CSS）+ `index.html`。新增的 `fonts/` 目錄從未被列入任何白名單，`vite build` 本身雖然把 `frontend/public/` 完整複製進 `dist_build/`（含 `fonts/`），但這份完整輸出**從來沒有整個被部署**——只有白名單內的子集會被複製到 `backend/public/`。
+
+**為何 CI／測試都沒攔住**：`vite.ui-foundation.config.js`（Playwright 視覺驗證用）與一般 `vite build` 都是直接讀 `frontend/public/` 或建置到 `dist_build/`，從來不經過 `copy-to-backend.cjs` 這個「部署時才跑」的第二層過濾。也就是說，全部驗證路徑測的都是「build 出來的東西對不對」，沒有一個測過「build 出來的東西是否真的會被複製到正式站 serve 的目錄」。這兩者是**兩份獨立的真相來源**，改 A 不代表 B 會同步更新。
+
+**強制規則（未來在 `frontend/public/` 下新增任何目錄、且會被 CSS/JS 用絕對路徑 `url('/xxx/...')` 引用時必讀）**：
+
+- 新增 `frontend/public/<newdir>/` 且有程式碼用絕對路徑引用（`@font-face` `src`、`<img src="/...">`、`fetch('/...')` 等）→ **同一個 PR 必須**把 `<newdir>` 加進 `frontend/scripts/copy-to-backend.cjs` 的 `PUBLIC_DIRS`。
+- 驗證方式**不能只看** `vite build` 綠燈或 Playwright 截圖——這兩者都不經過部署腳本。必須額外執行 `node scripts/copy-to-backend.cjs`（對照已存在的 `dist_build/` 輸出）並確認 `backend/public/<newdir>/` 真的產生了對應檔案。
+- merge 後除了看 CI／`deploy.yml` 綠燈，**必須額外對正式站該資源路徑 `curl` 確認回 200**（例如 `curl -I https://<prod-domain>/fonts/xxx.woff2`），不可只憑「deploy job 顯示成功」就當作驗證完成——deploy 綠燈只代表 SSH script 沒有 non-zero exit，不代表新資源真的到位。
+- 一般原則：任何「本地/CI 建置產物」與「正式站實際部署產物」之間存在額外複製/過濾腳本的專案，該腳本本身就是一個需要被納入變更檢查清單的「白名單型設定檔」，跟 `.env`／`routes/api.php` 一樣，新增資源時要主動想到它可能漏收，而不是等使用者回報才發現。
+
+**修復**：PR #1516（`PUBLIC_DIRS` 加入 `'fonts'`）。
+
+**追加教訓（同日）**：PR #1516 merge、deploy 綠燈、正式站 `curl` 也回 200 之後，使用者手機 PWA 實測**仍然**顯示英文。根因是 `/fonts/material-symbols-outlined.woff2` 這個路徑**沒有內容雜湊**（不像 `assets/` 下所有 JS/CSS 都是 Vite 自動加雜湊檔名）——同一個 URL 在 bug 存在期間可能已被使用者裝置或 CDN 邊緣節點快取過失敗回應，事後把伺服器端修好，不保證所有已快取的用戶端會重新抓取；PWA「加到主畫面」在 iOS/Android 上更有獨立於一般瀏覽器分頁的快取分區，一般「強制重新整理」不保證清得到。**正確修法不是說服使用者清快取，是讓 URL 本身在內容改變時自動改變**：把字型檔搬進 `frontend/src/assets/fonts/`、`@font-face` 改用相對路徑讓 Vite 建置自動雜湊檔名（`material-symbols-outlined-D6tU34w1.woff2`），使其與其餘所有 bundle 資產享有同一套天然免疫快取的機制，同時也不再需要 `copy-to-backend.cjs` 的白名單特殊處理。**強制規則追加**：任何會被使用者裝置快取、且未來可能改內容的靜態資產（字型／圖示／PWA icon 等），一律透過 Vite 資產管線（`src/` 內以相對路徑 `import`／CSS `url()` 引用）取得自動內容雜湊，不要放進 `frontend/public/` 用固定檔名直通——`public/` 只留給内容本來就不會變、或本來就需要固定檔名的資源（`manifest.json`、`favicon` 等瀏覽器規範要求固定路徑者）。**修復**：同日追加 commit（`frontend/src/assets/fonts/`＋`styles.css` 相對路徑），已用真實 headless 瀏覽器驗證 `document.fonts` 狀態為 `loaded`。
+
+**追加教訓 2（同日，同一個錯誤犯了兩次）**：squash-merge 的 PR（如 #1516）merge 後，continuation branch 若沒有先 `git fetch origin main && git checkout -B <branch> origin/main` 就繼續在同一個本機分支上疊加新 commit，本機分支祖先仍是「squash 前」的多筆原始 commit，跟 origin/main 上「squash 後」的單一 commit 內容相同但**物件不同**——GitHub 會回報 `mergeable_state: dirty`（假衝突：diff 內容其實一致，git 只是認不出兩段不同 commit 歷史代表同一份改動）。這件事在 #1517 開 PR 時發生過一次、已排除故障；**同一個 session 裡緊接著開 #1518 時又犯了一次**，因為在完成 #1517 的除錯後，沒有把「PR merge 後先重啟分支」這個動作變成每次的固定反射，而是回頭直接在舊的（尚未重啟的）本機分支上繼續加下一個 commit。**強制規則**：每次某個 PR 被 squash-merge、且還要在同一個 designated branch 上繼續做下一項工作時，**開新 commit 之前**一律先跑 `git fetch origin main && git checkout -B <branch> origin/main`（若有未推送的本機 commit，先 `git cherry-pick` 疊上去，勿用 `git merge` 硬併兩段歷史）。不是「遇到 dirty 才修」，是「每次 merge 後都預防性重啟」，才不會靠事後補救。
+
+### R88. 「參考 star 的 repo」指真的去讀原始碼，`RFC_PLATFORM_OPTIMIZATION_FROM_STARS_2026.md` 只是索引不是替代品
+
+**觸發情境**：2026-07-29 DirectorDashboard Wave A/B/C 全數依 `RFC_PLATFORM_OPTIMIZATION_FROM_STARS_2026.md` 的參考表（一行摘要，如「pacifio/ui → Dense ops UI：多表面、資訊密度」）產出設計方向，未實際讀過任何一個參考 repo 的原始碼。使用者事後追問兩次「你知道我叫你參考 star 的 repo 是什麼意思嗎」，才澄清：意思是真的去讀那些 repo 的實際內容，不是憑 RFC 文件裡別人（或前一個 agent）彙整過的摘要句子做設計判斷。
+
+**根因**：RFC 文件本身承認自己是二手彙整（文件末 `Document control`：「Authors: Agent（Composer）依 Founder star 清單與既有 RFC/roadmap 彙整」），但先前的工作流程把它當一手事實使用——只讀一行「要學什麼」欄位就直接套用，從未驗證彙整是否準確、是否夠具體到能落地成程式碼層級的決策（例如圓角該用幾 px、一個 dashboard 該放幾個統計格）。
+
+**強制規則**：當任務指示「參考 X repo」或指向一份「已彙整參考清單」的文件時：
+- 不可只讀彙整文件的摘要句子就動手；必須 `git clone --depth 1`（大型 monorepo 用 `--filter=blob:none --sparse` 只 checkout 需要的子目錄，見下方指令）把 repo 的**真實原始碼／設計 token／規則文件**（如 `lessons.md`、`patterns.md`、實際 `.scss`／`.vue`／`.tsx` 元件）讀進來，用真實內容找出具體、可比對的落差（例如「這個 repo 的圓角只有 3/4/6/9999px 四種，我們寫死了 16px」），而不是憑一行摘要腦補設計判斷。
+- GitHub MCP tool（`search_code`／`get_file_contents` 等）的 repo scope 綁定在本 session 的授權清單，讀取清單外的 repo（例如 star 清單裡的第三方開源專案）一律走 `git clone`（純 git 走 proxy 不受此限），不要嘗試用 `add_repo` 跨 owner 加（v1 不支援 cross-tier add）；直接打 `api.github.com` REST 也會被 proxy policy 擋（403），不是 GitHub 端問題。
+- 找到的落差要能具體引用來源（哪個 repo、哪個檔案、哪一行規則），寫進 commit/PR/CHANGELOG，讓「參考了什麼」可稽核，而不是只寫「參考大公司軟體」這種無法驗證的空話。
+- 讀完不代表照搬：仍要對照 `RULE_DESIGN_SYSTEM.md`／AllTrue 既有 token／既有互動語意（例如某清單是「點擊導頁」而非「打勾完成」，即使參考 repo 有現成的打勾 UI 也不該硬套，語意不同）。
+
+**修復／落地案例**：Wave D（DirectorDashboard）——實際 clone `pacifio/ui`／`primer/css`／`carbon-design-system/carbon`（sparse）／`microsoft/fluentui`（sparse）／`vbenjs/vue-vben-admin`，用其中 `pacifio/ui` 的 `kitchen-sink/app/patterns/dashboard/page.tsx`（4 metrics max 規則）與 `skills/atlas/references/lessons.md` #16（圓角只能 3/4/6/9999px）兩項具體、可引用的真實規則，對照出 `progress-board` 6 格過多、`AtCard`/`AtMetric` 圓角寫死 12px 未接 AllTrue 自己既有 token 兩項落差並修正。
 
 ### R59. 扣堂改分鐘制權威後，`RemainingSessions` 是 ROUND_HALF_UP 衍生顯示值（#613）
 
@@ -1003,6 +1074,24 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - 測試：`test_count_based_leave_keeps_*`；`LeaveKeepDatesAppendTailTest`（repair dry-run／apply idempotent）。
 - **產品規格教訓**：測試與文件只能證明符合既有規格，不能證明規格正確；營運一致反對時必須升級 Founder Decision，不可用舊測試關閉問題。
 
+### R83. 原子調課必須標記 IsContractException（否則 realign 拉回契約時段）
+
+- **觸發情境**：智慧行事曆／課程管理「調課」把單堂從契約時段（例週五 20:00）改到非契約時段（15:00），畫面曾正確；重整或課程「編輯→儲存／同步堂次偏移」後又回到 20:00。截圖常見同日同時出現 15:00 例外卡與 20:00 實體堂。
+- **根因（F1 / #556 缺口）**：`PATCH class-sessions` 改時間會設 `IsContractException=1`，但 `RescheduleSessionService`（`ensure_schedule_exception` 原子調課）只移動 `ClassSession` 時段、**未**標記例外 → `schedule_drift` 誤判 → `force_partial_rebuild`／`syncFutureScheduledSessionTimes` 把堂次 realign 回 `StudentClass.week/time`。
+- **強制規則**：任何把 occurrence 移出契約 weekday+clock 的寫入路徑（含 `reschedule-session`）必須呼叫同一套 contract matcher 設／清 `IsContractException`；改回契約時段則清 0。禁止只靠前端 schedules 例外撐顯示。
+- **資料修復**：已遭 realign 的個案需對照 `schedule_audit_logs`／`schedules`（rescheduled→scheduled chain）確認目標時段後，再以批准的 repair 把 `ClassSession` 移回並設 flag；不可盲目整批。
+- **測試必補**：`RescheduleMarksContractExceptionTest` — 原子同日 20:00→15:00 後 flag=1，且 `force_partial_rebuild` 後仍為 15:00。
+- **後續結構性修復見 §R84**：本條的「強制規則」當時只能靠每個寫入路徑自己記得呼叫 matcher，事後 grep 全庫發現至少 3 個既有重複實作（`ClassSessionController`／`StudentClassController` 加課／`RescheduleSessionService`）與 2 個完全沒接的缺口（`SubstituteController` 代課復原、`ClassSessionContractReflowService`）。R84 把這個不變量搬進 `ClassSessionObserver`，不再依賴人（或 AI）記得。
+
+### R84. IsContractException 不再靠呼叫者記得——搬進 ClassSessionObserver 結構性保證（R83 根治）
+
+- **觸發情境**：R83 修完 `reschedule-session` 這一個路徑後，複查全庫發現同一個 bug class（「移動 ClassSession 時間卻忘記同步 IsContractException」）在寫這個 PR 之前已經以 3 種略有差異的複製貼上形式存在（PATCH class-sessions、加課 add-session、原子調課），而且另外兩處會動到 ClassSession 時間的寫入路徑（`SubstituteController` 代課撤銷還原時間、`ClassSessionContractReflowService::move()` 本身）完全沒設這個 flag，只是「目前唯一呼叫者剛好有先篩掉」才沒出事——換句話說，下一個新寫入路徑（含 AI 新增功能時）只要忘記呼叫，同一個症狀會用新的樣貌回來，而且舊測試不會發現，因為舊測試只覆蓋既有路徑。
+- **根因**：這個不變量（「ClassSession 時間吻不吻合契約」）被當成「每個呼叫者自己記得算」，而不是「model 層自動保證」——衍生欄位（derived column）的一致性不該依賴呼叫端紀律。
+- **修復**：把計算搬進 `ClassSessionObserver::saving()`（`ClassSession::observe()` 已註冊、原本就用來寫 `ScheduleAuditLog`）。任何 `ClassSession->save()`，只要 `SessionDate/StartTime/EndTime` 有變動、且該次寫入沒有明確指定 `IsContractException`，就自動用 `ContractScheduleMatcher::applyExceptionFlag()` 重算並覆蓋；若呼叫者在同一次寫入明確指定了 `IsContractException`（例如 `ExceptionWorkflowController` 確認候補時段時強制標記例外），尊重明確意圖、不覆蓋。
+- **同時刪除的重複實作**：`ClassSessionController::syncContractExceptionFlag/sessionMatchesContract`、`StudentClassController::sessionMatchesContract`（含 add-session 的手動重算區塊）、`RescheduleSessionService` 對 `ContractScheduleMatcher::syncExceptionFlag` 的顯式呼叫——全部改由 Observer 自動處理，`ContractScheduleMatcher` 只剩一份 `matchesContract()`／`applyExceptionFlag()`。
+- **強制規則**：未來任何會改到 `ClassSession.SessionDate/StartTime/EndTime` 的新程式碼，**不需要、也不應該**自己呼叫 contract matcher——只要走 Eloquent `->save()`，Observer 會自動處理。唯一要小心的是若用 `DB::table('ClassSession')->update(...)` 繞過 Eloquent（例如某些 repair command 的批次更新），Observer 不會觸發，仍需手動確認契約吻合狀態。
+- **測試**：`ClassSessionObserverContractExceptionTest` —— 直接對 model 做 plain attribute assignment + save()（刻意不經過任何 controller/service），驗證 flag 自動設起/清除；驗證明確指定值不被覆蓋；驗證非時間欄位變動不誤觸發。既有 `StudentClassScheduleDriftExceptionTest`／`RescheduleMarksContractExceptionTest` 全數維持通過（行為不變，只是計算的地方換了）。
+
 ### R80. 排課摘要「補登已上（堂）」不可用 dates.length
 
 - **觸發情境**：新建課程 modal 同日兩個固定時段；補登 3 天其中兩天雙時段時，摘要顯示 3、實際應為 5；未排／總堂數仍正確。
@@ -1012,7 +1101,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 ### R81. 家長請假不可雙寫 Notifications（Action Inbox B-lite + D）
 
-- **強制**：請假真相=`exception_workflows`；唯讀 ActionInbox；禁雙寫 Notification。Badge=`badge_total`；紅燈僅 `urgent_total`；空 campus_ids 對非 super_admin **fail-closed**。
+- **強制**：請假真相=`exception_workflows`；唯讀 ActionInbox；禁雙寫 Notification。Badge=`badge_total`；紅燈僅 `urgent_total`；空 campus_ids 對非 super_admin **fail-closed**。 Fail-soft 僅同 authorization scope。
 - **測試**：`ActionInboxApiTest`（零校區/未授權 403、pagination 51+、DTO、結案消失、老師 403、count）。
 - **決策**：`.cursor/plans/action-inbox-b-lite-d_2026-07-22.md`
 
@@ -1027,20 +1116,21 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | 堂數 / 扣堂 | §2026-04-17 繳費日期、§單堂費用固定、**§R59（分鐘制權威：RemainingSessions 為 ROUND_HALF_UP 衍生值，讀取端勿用 count 覆寫 fractional）**、§R70（對帳面板唯讀＋真實 API contract test）、**§R76（單堂改時段費用前後端必須一致）** |
 | 繳費 / 學收 | §繳費狀態 paid_at、§歷史課程漏算、§催繳名單六狀態、§幽靈課程、§R30（帳務入口共用 AR ledger）、**§R76（session／hour 費用文案與 Charge 寫入）**、**§R79（收據前端不得超前後端 contract；合法路徑=payment-reports/{id}/receipt）** |
 | 薪資 / 併堂 | §兼職薪資 concurrency、§同層級併堂 v1.4、§契約時長為準 |
-| 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession）、§R39（代課評量權限需匹配時段）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R52（代課 scheduled 例外不可缺 original_schedule_id anchor）、§R71（調課單一交易＋前端 committed gate）、§R72（cancelled ClassSession 不得讓 scheduled 例外佔用代課老師）、§R73（跨老師 gesture 必走 atomic substitute；legacy 兩階段精準補償）、§R74（代課衝突排除同一學生續約佔用） |
+| 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession）、§R39（代課評量權限需匹配時段）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R52（代課 scheduled 例外不可缺 original_schedule_id anchor）、§R71（調課單一交易＋前端 committed gate）、§R83（原子調課必須標記 IsContractException）、**§R84（IsContractException 搬進 ClassSessionObserver 結構性保證）**、§R72（cancelled ClassSession 不得讓 scheduled 例外佔用代課老師）、§R73（跨老師 gesture 必走 atomic substitute；legacy 兩階段精準補償）、§R74（代課衝突排除同一學生續約佔用） |
 | 請假 / 順延 | §R29、**§R82（KEEP dates+append）**、§R75（SUPERSEDED）、§R77、§R81 |
 | 評量 / 家長回饋 | §同天多堂課 buildEvents、§請假後不填評量、§R17（ownership 先於狀態判斷）、§R19（mark-read 不可更新 updated_at）、§R32（停用課程已上課評量不可消失）、§R39（代課評量權限需匹配時段）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R65（新增 session 狀態值必須同步全部消費端；leave 家族用集合判斷）、**§R78（nightly backfill 須 in-place restore 作廢評量，不可把 voided 當已有）** |
-| 家長入口 UI / `releaseNotes` | §R10、§R11、§R18、§R38、§R45（版本卡僅 `audience` 含 `parent` + `sync-release-notes`） |
+| 家長入口 UI / `releaseNotes` | §R10、§R11、§R18、§R38、§R45（家長卡僅 `PARENT_UPDATES.yml` 顯式投影 + `sync-release-notes`）、**§R85（教職員卡僅 `STAFF_UPDATES.yml`；CHANGELOG 不得自動發布）** |
 | 課表回報 | §2026-04-17 回報系統（14 條禁止項） |
-| 排課 | §start_time 格式、§智慧排課誤標取消、§R25（請假優先於 scheduled 例外）、§R29（請假不可 fallback 只寫 schedules）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R47（rescheduled 幽靈不可蓋掉同日 ClassSession）、§R49（同學生同時段去重不可用 StudentClassID 當唯一 key）、§R50（行事曆載入不可 REST 成功後再跑 fallback）、§R69（bulk reflow 先 snapshot schedule IDs，禁止 mutable natural key 連鎖更新）、§R71（mutation contract／slot idempotency／兩階段補償）、**§R80（排課摘要補登堂數≠天數；須與 session_plan 同源 expand）** |
-| 出缺勤 / 分校隔離 | §SEC-001、§分校隔離後端強制、§R12（查詢日期寫死今天）、§R14（submitQuickAttend 缺 StudentID）、§R15（出勤頁預設只顯示今天，歷史到班紀錄不可見）、§R16（`script setup` const TDZ 初始化順序 → 整頁空白）、§R33（老師每分校 RFID 優先）、§R36（個別資料有課但老師今日名單缺漏）、§R40（點名扣堂不可只用 ClassSessionID 防重）、§R41（補請假不可只用課程+日期找堂次）、§R42（行事曆堂次顯示老師不可被舊評量老師覆蓋）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R71（請假寫入即封閉 interval；禁止留待隔夜 repair）|
+| 排課 | §start_time 格式、§智慧排課誤標取消、§R25（請假優先於 scheduled 例外）、§R29（請假不可 fallback 只寫 schedules）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R47（rescheduled 幽靈不可蓋掉同日 ClassSession）、§R49（同學生同時段去重不可用 StudentClassID 當唯一 key）、§R50（行事曆載入不可 REST 成功後再跑 fallback）、§R69（bulk reflow 先 snapshot schedule IDs，禁止 mutable natural key 連鎖更新）、§R71（mutation contract／slot idempotency／兩階段補償）、**§R80（排課摘要補登堂數≠天數；須與 session_plan 同源 expand）**、§R83（調課後 IsContractException 防 realign）、**§R84（IsContractException 結構性保證，不再靠呼叫者記得）** |
+| 出缺勤 / 分校隔離 | §SEC-001、§分校隔離後端強制、§R12（查詢日期寫死今天）、§R14（submitQuickAttend 缺 StudentID）、§R15（出勤頁預設只顯示今天，歷史到班紀錄不可見）、§R16（`script setup` const TDZ 初始化順序 → 整頁空白）、**§R86（composable return 引用未宣告識別字 → ReferenceError 整頁空白；鏡像測試攔不住）**、§R33（老師每分校 RFID 優先）、§R36（個別資料有課但老師今日名單缺漏）、§R40（點名扣堂不可只用 ClassSessionID 防重）、§R41（補請假不可只用課程+日期找堂次）、§R42（行事曆堂次顯示老師不可被舊評量老師覆蓋）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R71（請假寫入即封閉 interval；禁止留待隔夜 repair）|
 | 月結制 / 加購 / 多科固定時段 | §b3 inactive 歷史、§b4 加購分流、§R21（堂數制加購是新批次）、§R22（月結詳情不可只依賴 ClassSession）、§R23（推算日期不可成為 dead-end chip）、§R24（多科固定時段優先走一般課程）、§R26（月結續報與堂數額度不可混在同一語意）、§R38（家長端繳費提醒不可套主任續課提醒） |
 | routes/api.php | §AI 靜默回退路由（改前必讀完整檔案 + route:list） |
 | 備份 / nightly | §nightly 覆蓋修正、§備份還原演練、§R34（備份新鮮度不可只看 mtime）、§R71（repair 與 producer prevention 分離；同日全日期 health aggregate） |
 | Bug 回報 / 附件存檔 | §R11 storage symlink（Archive）、§R51（分診前必查 attachments + reporter 歷史 + 跨分校）、§R53（上線後必回 in-app）、`docs/CHAT_BUG_SYSTEM.md` §3.6–§3.7 |
-| Git / PR 工作流 | §R58（禁止 assume-unchanged 藏檔）、`scripts/git-index-audit.sh`、Epic #535 Phase 0 |
+| Git / PR 工作流 | §R58（禁止 assume-unchanged 藏檔）、`scripts/git-index-audit.sh`、Epic #535 Phase 0、**§R87 追加教訓 2（squash-merge 後繼續在同一 designated branch 開下一個 commit 前，一律先 `git fetch + checkout -B <branch> origin/main` 重啟，勿等 `mergeable_state: dirty` 才修）** |
 | Migration / schema drift | §R63（未合併分支的 migration 禁上 production；drift 修復＝port 回 main＋drift 測試） |
-| 部署 pipeline | §R62（deploy 必須 fetch fail-fast + reset 到 CI `head_sha` 並校驗 HEAD；禁止 `reset --hard origin/main` 靠 stale tracking ref 靜默出貨舊版；Pi repo config 出現 `http.sslbackend=schannel` = 已被 Windows 工具污染，先 unset）、§R67（SSH script 關鍵步驟失敗必須標紅；migration 失敗不得吞成綠燈）、§R68（排程任務上線必須驗證 schedule:run driver 存在；證據=執行 log 而非 schedule:list） |
+| 前端 UI 參考 star repo / RFC 落地 | **§R88（「參考 star 的 repo」＝真的 `git clone` 讀原始碼，`RFC_PLATFORM_OPTIMIZATION_FROM_STARS_2026.md` 的一行摘要只是索引不是替代品；落差要能具體引用來源檔案/規則）** |
+| 部署 pipeline | §R62（deploy 必須 fetch fail-fast + reset 到 CI `head_sha` 並校驗 HEAD；禁止 `reset --hard origin/main` 靠 stale tracking ref 靜默出貨舊版；Pi repo config 出現 `http.sslbackend=schannel` = 已被 Windows 工具污染，先 unset）、§R67（SSH script 關鍵步驟失敗必須標紅；migration 失敗不得吞成綠燈）、§R68（排程任務上線必須驗證 schedule:run driver 存在；證據=執行 log 而非 schedule:list）、**§R87（`copy-to-backend.cjs` 是獨立白名單；新增 `frontend/public/` 子目錄必須同步加進 `PUBLIC_DIRS`，且驗證需實際跑複製腳本＋正式站 curl，不能只看 `vite build`／dev-server 截圖）** |
 
 ---
 
@@ -1060,3 +1150,17 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - 同一 `line_user_id` 出現在多個不同 `CampusID` 的學生 = 資料錯誤，不得作為 sibling 群組
 
 **修復**：PR #74 (code guard) + PR #75 (data cleanup migration)
+### R89. Billing read model 與批次 mutation 必須使用同一個 explicit selection contract
+
+- **事件**：2026-08-01 in-app #212/#213。帳單列表沿用 `Invoice.TotalAmount`，課堂頁卻依 `ClassSession` 顯示實際堂次；批次核准則遺漏 `ids`，後端依篩選條件核准整批資料。
+- **根因**：同一個業務動作由多個 controller/UI 自行推導數字或範圍，缺少 canonical read DTO 與 fail-closed mutation contract。
+- **規則**：月結帳單讀取必須帶 `billing_period`，回傳 stored/computed/source/discrepancy；批次 mutation 必須要求 distinct explicit IDs，server-side 完整比對後才進 transaction。
+- **驗收**：所有 batch response 的實際變更數量必須與 request IDs 相等；帳單畫面必須能呈現「堂數 × 單價 = 金額」及差異原因；production evidence 必須保留 API 回應與 UI 證據。
+- **參考**：`docs/incidents/2026-08-01-billing-and-batch-approval.md`、`docs/PRICING_CONTRACT.md`、`docs/ADR_003_layering_and_controller_db_ban.md`。
+
+### R90. Billing 修正必須逐一驗證所有 production read surfaces
+
+- **事件**：#213 的課程管理明細已顯示 NT$7,500，但正式帳務中心仍顯示歷史 `Invoice.TotalAmount = NT$6,000`。
+- **根因**：修正只覆蓋一個 controller/UI surface；帳務中心、繳費單、發票列表與對帳查詢仍各自讀取不同來源。
+- **強制規則**：任何 billing 修正必須列出 route/API/UI surface matrix，所有 surface 共用同一個 read model；驗收必須逐一以同一案例驗證，不能以單一畫面或單一測試代表全站。
+- **停止條件**：任一 surface 的 stored/computed/source/discrepancy 欄位缺失、金額不一致或 production smoke 未覆蓋，禁止標記 resolved 或上線結案。

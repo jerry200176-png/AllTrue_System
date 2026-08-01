@@ -1,3 +1,326 @@
+## 2026-07-30 — fix(security): StudentClassController::togglePause() 跨分校／跨老師授權缺失（P0 containment）
+
+- 治理稽核發現 `togglePause()`（`/student-classes/{id}/pause`，暫停／恢復課程）在任何 object-level authorization 之前就直接讀取並修改 `StudentClass.Stop`／`closed_reason`／`EndDate`，並連動取消未來 `ClassSession`，與 #1504/#1509（`confirmPayment()`）同一類跨分校 IDOR，尚未修補。任一分校 director／teacher 帳號可用他校 `StudentClassID` 暫停或恢復不屬於自己的課程。
+- 修法：比照 #1509 的模式，在方法最前面呼叫既有的 `authorizeStudentClassAccess()`（未通過即回 403，不執行任何 mutation）。未新增授權邏輯、未變更既有 campus／teacher 判定語意。
+- 新增 `backend/tests/Feature/StudentClassTogglePauseAuthzTest.php`（8 案例：跨分校 director、非本人課程 teacher 各自 pause／resume 應 403 且完全不改動資料；同分校 director、擁有該課程的 teacher 應維持原有 pause／resume 成功行為與未來排課取消語意）。修補前 4 個跨分校/跨老師案例可重現性失敗（RED），修補後全數通過（GREEN），既有 `StudentClassCloseFutureSessionsTest`／`StudentClassConfirmPaymentAuthzTest` 無回歸，全庫 PHPUnit 1580 測試全過。
+- 本次僅做 containment（單一方法補授權檢查），未建立新的 CI gate、未重構授權層、未觸碰 #1062 排程或帳務邏輯。CI 綠後仍需 Founder 過目才可 merge（R2 風險等級：授權／跨分校邊界／課程狀態變更）。
+## 2026-07-31 — feat(billing): 依實際上課時長扣堂——正式環境後端＋前端旗標已啟用（經 Founder 明確授權，未有課程走完驗收）
+
+- 延續上一則（2026-07-31，功能合併但旗標關閉）。本則記錄：Founder 明確授權透過新的 Founder-gated GitHub Actions control plane（`.github/workflows/actual-duration-activation.yml`）進行受控啟用。
+- 唯讀盤點（`inventory` action，run 30629251402）：1800 門課程掃描，20 門課程（37 堂）有「排課時長與該課程自己的契約時長不符」的**歷史**落差（全部是 happened，沒有 planned），與本次啟用無關，屬既有技術債。
+- 後端旗標 `PERF_ACTUAL_DURATION_DEDUCTION`：`enable_backend`（run 30629298501）對照 production HEAD `dc88926e`，備份 `.env`（含 checksum）、單行 idempotent 修改、`optimize` 重建快取（非 `config:clear`）、**effective config 經 `php artisan tinker` 驗證為 `true`**（不只是看 `.env` 文字）、health `ok`、完整 authenticated smoke 通過、現有 1895 門課程確認仍全為 `fixed_session`。獨立 `verify_backend`（run 30629362904，非同一次執行）重新確認同一結果。
+- 前端旗標 `ACTUAL_DURATION_DEDUCTION_ENABLED`（PR #1552）：merge 後 `deploy.yml` 自動部署（run 30629708223），`version.json hash=511ab1c7` 與 Pi git HEAD 一致，health + 完整 authenticated smoke 全通過。建課表單現在會顯示「扣堂方式」選項。
+- **兩個旗標皆為 `true` 不等於「已完成驗收」**：沒有任何既有課程被動到，兩次獨立查詢皆確認全部課程仍是 `fixed_session`；只是「新建」課程時，授權角色現在可以選擇依實際時長換算，尚未有人實際走過這條路徑。
+- 正式環境驗收案例（買 8 堂標準 120 分鐘、真實走 6 次 180 分鐘課程、驗證扣堂序列 780/600/420/240/60/0、超額不擋點名、扣堂後修改契約回 422）已備妥自動化 workflow（`.github/workflows/actual-duration-acceptance.yml`），但需要 Founder 指定安全的測試學生／老師／分校身分才能執行——目前沒有可重用的既有測試帳號可用（既有 smoke 帳號依政策僅限唯讀）。
+- 回滾：`disable_backend` action（同一 workflow）為主要執行期回滾路徑，備份＋idempotent 修改＋驗證，不需要額外的 SHA 比對（避免緊急回滾被卡住）。
+- 現況、稽核紀錄、下一步見 `docs/RUNBOOK_ACTUAL_DURATION_ACTIVATION.md`。
+
+## 2026-07-31 — feat(billing): 每門課可自訂「標準一堂 = 幾分鐘」，依實際上課時長按比例扣堂（旗標關閉，尚未啟用）
+
+- 起因：有學生每週上兩次、每次 3 小時，但課程的計價單位是 2 小時一堂。舊系統把「排幾次課」與「買了幾堂」綁死成同一個數字，導致「買 8 堂、只排 6 次 3 小時的課」這個需求在建課階段就被 422 擋掉，根本無法表達；就算硬排成 8 次，點名時每次也只會扣整整一堂，3 小時與 2 小時的課扣一樣多。
+- 修法（RFC_NONSTANDARD_SESSION_DURATION_BILLING D1–D7）：`StudentClass` 新增 `standard_lesson_minutes`（nullable）與 `deduction_basis`（`fixed_session` / `actual_duration`，預設 `fixed_session`）兩個 additive 欄位。選擇 `actual_duration` 的課程，扣堂改為 `實際上課分鐘 ÷ 該課程的標準一堂分鐘`。
+- **「一堂」是每門課自己的定義，不是全公司的規定**：同樣一次 180 分鐘的課，在標準 90 / 120 / 180 分鐘的課程裡分別扣 2.00 / 1.50 / 1.00 堂；買 8 堂分別等於 720 / 960 / 1440 分鐘。建課表單預填 120 只是輸入框的初值，授權老師／主任可自行改；後端沒有任何 fallback 到 120 的行為，也不會用這個數字重新解釋任何既有課程。
+- D6 解耦：`session_plan` 決定排幾次課，`SessionCount` 決定買了多少額度，兩者不再被強制相等。系統不會為了讓數字對齊而自動刪除、縮短或截斷任何一次排課。`fixed_session` 課程的「次數需等於購買堂數」規則一字未改。
+- D5 超額處理：排課時數超出已購額度時，建課 API 回 422 `overage_confirmation_required`，附上完整換算明細（額度分鐘、排課分鐘、可完整涵蓋幾次、第幾次會不夠、缺多少分鐘與幾堂），老師明確勾選確認後才能建立。**確認只發生在建課階段——課程建立後，超額永遠不會擋住學生被點名。**
+- 分鐘是唯一權威的計費真相（沿用 #613 A1 的 `PurchasedMinutes` / `RemainingMinutes` / `session_deduction_ledger.minutes`）；堂數一律以整數運算產生固定小數位的**字串**呈現，binary float 不會成為任何計費數字。課程列表新增 `remaining_hours` / `remaining_lesson_equivalent` / `used_lesson_equivalent`；舊的整數 `remaining_sessions` 保留相容，但它無法表達「還剩半堂」，正是本次要消除的誤解來源。
+- 第一筆扣堂 ledger 寫入後，`standard_lesson_minutes`、`deduction_basis`、`SessionCount` 由 `BillingContractLockGuard` 在**後端**鎖定（前端變灰只是 UX）。v1 刻意不提供任何扣堂後的契約修正管道——額度仍由 `SessionCount × standard_lesson_minutes` 推導，事後改標準堂長等於重新解釋歷史，宣稱「只影響未來」會是假保證；要改就結掉重開。
+- v1 範圍外：跨期借用／自動拆堂（D3 不做）、共用課程包（D4 雙向排除，422 明確拒絕）、月結制（422 拒絕）、額度授予 ledger（D7 延後）。
+- **Dark launch，兩個開關缺一不可**：`PERF_ACTUAL_DURATION_DEDUCTION`（環境）與 `StudentClass.deduction_basis`（每門課）；前端另有編譯期 `ACTUAL_DURATION_DEDUCTION_ENABLED`。三者預設皆為關。Fail-safe 而非 fail-open：環境旗標關閉時，已標記 `actual_duration` 的課程扣堂行為完全等同 `fixed_session`，因此關掉旗標就是完整回滾，沒有資料要遷移或清理。建課 API 同樣受環境旗標管制，旗標關閉時直接拒絕建立這類課程，避免出現「契約寫著按時長計費、實際卻整堂扣」的課。
+- 另附唯讀盤點指令 `php artisan sessions:report-nonstandard-duration`（不寫任何資料，輸出開頭明示 `READ_ONLY=true`），供啟用前評估現存排課時長與計價單位不一致的規模；`--details` 只帶 ID，不輸出學生姓名／電話／RFID。
+- 既有課程行為零變化：所有現存課程都是 `fixed_session`（欄位預設值），且旗標出廠即關。後端 Feature 全套 1554 測試、6581 assertions 全綠；本功能自身 100 個測試（後端 47＋純計算 53）＋前端 10 個；PHPStan 無新增錯誤、未動 baseline；migration 已實測可 rollback 再重跑。
+- 端到端驗收（`ActualDurationEndToEndAcceptanceTest`）走真實 HTTP：建課 → 點名 6 次 → 讀餘額，驗證 `PurchasedMinutes = 8 × 120 = 960`（計費標準，不是排課的 180）、只物化 6 次、剩餘分鐘依序 780/600/420/240/60/0、額度歸零後仍可點名、課程列表能顯示 `4.25` 這種整數欄位表達不了的餘額。這個測試在撰寫時抓到一個真實缺陷：`PurchasedMinutes` 曾被算成 `8 × 排課時長 180 = 1440`，正是 D1「計費長度 ≠ 排課長度」要分開的東西。
+- 上線步驟與回滾程序見 `docs/RUNBOOK_ACTUAL_DURATION_ACTIVATION.md`。**本次僅完成合併，尚未在正式環境執行任何部署、migration、旗標開啟或資料異動。**
+
+## 2026-07-29 — fix(dashboard): 主任總覽頁面 Wave D —— 對照真實參考 repo 原始碼修正資訊密度與圓角一致性
+
+- Wave A/B/C 完成後，實際 clone `RFC_PLATFORM_OPTIMIZATION_FROM_STARS_2026.md` 引用的 Epic D 參考 repo 原始碼（`pacifio/ui`、`primer/css`、`carbon-design-system/carbon`、`microsoft/fluentui`、`vbenjs/vue-vben-admin`），逐一讀真實檔案而非文件摘要，找出兩項可對照修正的落差：
+  1. `pacifio/ui` 的 `kitchen-sink/app/patterns/dashboard/page.tsx`（真實 dashboard pattern 頁）明文規則「Lead with 4 key metrics max — any more dilutes attention」；`progress-board` 原本擺 6 個 `AtMetric`（今日到班／待審評量／今日應處理／今日已完成／已逾期／未讀通知）。改法：把「今日應處理／今日已完成／已逾期」三個同屬 workflow 彙總的數字合併成一個「今日工作量」`AtMetric`（`value`=應處理數，`delta`="已完成 N・逾期 N"），不砍任何資訊，只砍視覺格數，降到 4 格。
+  2. `AtCard.vue`／`AtMetric.vue` 的 `border-radius: 12px` 是硬寫死值，未接上 AllTrue 自己在 `styles.css` 早就定義好的 `--ds-radius-sm/md/lg/pill`（4/6/8/9999px）token；`progress-board` 外框也是硬寫 `16px`（桌面密集模式甚至是 `22px`，比一般模式的圓角還大，違反「密集模式該更緊湊」的直覺）。`pacifio/ui` 的 `skills/atlas/references/lessons.md` 第 16 條「Radius is sparse on purpose」明確列出合法圓角只有 3／4／6／9999px，「Don't invent 8, 10, 12, 16px radii」——與 AllTrue 自己既有的 token 規模高度吻合，兩邊互相印證。改法：`AtCard`／`AtMetric`／`progress-board`（含桌面密集模式覆寫）全部改接 `var(--ds-radius-lg)`（8px），不新增 token。
+  - 順手清掉 `dash--desktop-dense` 底下對應 Wave B 轉換後已無模板引用的 `.pb`／`.pb__val` 死 CSS（`.pb-cell` 是現用類別，`.pb` 不是）。
+  - `AtCard`／`AtMetric` 目前僅 `DirectorDashboard.vue` 使用（已確認站內無其他頁面引用），圓角改動影響範圍受控，不需要額外頁面回歸。
+  - 已用真實 Vue 元件（`pilot-mount.js` `page=director`）在 390／768／1440px 截圖驗證新版 4 格 progress-board 排版與圓角觀感；`vite build` 全綠。純樣式與資訊呈現調整，未改任何 API、繳費／審核／排課邏輯。
+
+## 2026-07-29 — feat(dashboard): 主任總覽頁面 Wave C —— 版面明確分組「今日必辦」與「本週趨勢與紀錄」
+
+- 延續 Wave A/B，處理改善計劃最後一項：work-grid 兩欄式版面原本沒有明確的資訊層級——右欄把永遠顯示的卡片（課表回報、流程追蹤、通知摘要）跟只有「完整檢視」才出現的卡片（近 7 天代課、近期操作履歷、老師評量填寫率）交錯排列，使用者切換核心/完整檢視時，卡片是「無聲」冒出來，看不出彼此的分類邏輯。
+- 修法：在 work-grid 上方加「今日必辦」區塊標題（沿用「每日待辦」既有樣式），並把右欄重新排序——先群組所有永遠顯示的卡片，中間插入「本週趨勢與紀錄」分隔標題（只在完整檢視顯示），再放三張完整檢視限定卡片。純樣式與 DOM 順序調整，未改任何 v-if 條件、資料邏輯或互動行為。
+- 已用真實 Vue 元件（`pilot-mount.js` `page=director`）＋mocked API，核心檢視／完整檢視兩種模式在 390／1440px 截圖驗證；`npx vitest run` 172 個測試全過；`vite build` 全綠。
+- 至此 DirectorDashboard 改善計劃三個 wave（收斂重複資訊源、At* 元件統一卡片殼、版面分組）全數完成。
+
+## 2026-07-29 — fix(deploy): 圖示字型改走 Vite 資產管線自動雜湊（徹底解決快取殘留 + 部署白名單問題）
+
+- 上一版 `PUBLIC_DIRS` 補 `fonts` 的修法（見下一則）部署後，使用者實測手機 PWA 仍持續顯示英文；伺服端直接 `curl` 驗證 `/fonts/material-symbols-outlined.woff2` 確實回 200 且內容正確，但用戶端仍壞——根因是這個路徑**沒有內容雜湊**，任何用戶端／CDN 邊緣節點若曾快取過舊的失敗回應（404 或載入失敗狀態），修復後同一個 URL 無法自動讓已快取的用戶端重新抓取，尤其手機「加到主畫面」的 PWA 有獨立於一般瀏覽器分頁的快取分區，一般「強制重新整理」也不保證清除。
+- 修法：把字型檔從 `frontend/public/fonts/`（未經處理的靜態直通）搬進 `frontend/src/assets/fonts/`，`@font-face` 改用相對路徑 `url('./assets/fonts/...')` 讓 Vite 建置時自動產生內容雜湊檔名（如 `material-symbols-outlined-D6tU34w1.woff2`），跟其餘所有 JS/CSS bundle 一樣天然免疫快取——內容不變網址就不變，內容一變網址自動換新，不需要仰賴任何人記得加白名單或事後清 CDN 快取。連帶好處：不再需要 `copy-to-backend.cjs` 的 `PUBLIC_DIRS` 特殊處理，直接搭已存在、可靠的 `assets/` 複製流程。
+- 已用真實 Vue 元件 + headless 瀏覽器驗證 `document.fonts` 狀態為 `loaded`、實際截圖確認圖示正確渲染；`npx vitest run` 全數 172 個測試通過；`vite build` 全綠。
+
+## 2026-07-29 — fix(deploy): 修正正式站從未部署自架圖示字型（全站圖示曾顯示英文）
+
+- 使用者反映「到處都是英文」。根因：#1512 把 Material Symbols Outlined 圖示字型改為自架（`frontend/public/fonts/`），但正式站部署實際執行的 `frontend/scripts/copy-to-backend.cjs`（`deploy.yml` SSH 到 Pi 後 `npm run deploy` 呼叫）的 `PUBLIC_DIRS` 白名單只有 `['audio']`，從未包含 `fonts`。導致 `/fonts/material-symbols-outlined.woff2` 從 #1512 合併後每次部署都在正式站 404，全站圖示靜默退回顯示英文原名。
+- #1512／#1514／#1515 落地時的驗證路徑（Playwright ui-foundation 測試、`vite build`）都直接讀 `frontend/public/` 或 `dist_build/`，不經過這支部署時才跑的複製腳本，三次都沒抓到這個落差。
+- 修法：`PUBLIC_DIRS` 加入 `'fonts'`。已實際執行複製腳本對照 `dist_build/` 輸出，確認 `backend/public/fonts/material-symbols-outlined.woff2` 正確產生。純部署管線修正，無業務邏輯變更。
+
+## 2026-07-29 — feat(dashboard): 主任總覽頁面 Wave B —— 工作區卡片統一改用 At* 設計系統元件
+
+- 延續 Wave A 的收斂整理，這次處理 `docs/design/UI_AUDIT_2026-07-26.md` 標記的「Metric/card density uneven」：work-grid 內 7 張卡片（今日課表、繳費／續課提醒、待審核評量、流程追蹤、近期操作履歷、老師評量填寫率、通知摘要）原本各自手刻 header／empty／loading 標記，密度與樣式略有差異。改為統一套用 `AtCard`（卡片殼＋header/actions slot）、`AtEmpty`（空狀態）、`AtSkeleton`（loading 骨架屏），`progress-board` 的 6 個統計 pill 改用 `AtMetric`。
+- `AtCard`／`AtMetric` 先前只有元件層級單元測試，尚未在任何真實頁面接入；本次是它們第一次進正式頁面，已用真實 Vue 元件（`pilot-mount.js` `page=director`）＋mocked API 在 390/768/1440px、含資料/空狀態/loading 骨架屏/完整檢視四種情境下截圖驗證。
+- 徽章數字曾一度改用 `AtBadge`（dot+label），但比對 `NotificationsCenter.vue` 既有用法後發現 `AtBadge` 全站慣例只用於文字類別標籤（如「請假申請」），從未用於純數字計數；改回沿用既有 `.wp__badge` 數字圓標樣式，避免創造新的不一致慣例。
+- 課表回報（`sd-card`，整卡可點擊導頁）與補課案件（`exception-workflows-sec`，含多重 loading/error 狀態與候選時段巢狀 UI）因互動行為與其他卡片明顯不同，本波刻意不強制套殼，留待後續 wave 個別處理。
+- 純前端結構調整，未改任何 API、繳費／審核／排課邏輯。`vite build` 全綠，`AtCard`/`AtEmpty`/`AtMetric` 既有單元測試全過。
+
+## 2026-07-29 — fix(dashboard): 主任總覽頁面 Wave A —— 收斂重複資訊源 + 修正文字換行 bug
+
+- 主任反映總覽頁面「很亂」。盤點後發現同一份「今天要做什麼」被拆成三套機制各自呈現：E-OPS-TRUST 決策中心、「今日優先處理」風險卡、以及最上方待辦小卡（action-lane）——待審核評量數甚至同時出現在三處。程式碼裡已有註解證實這是已知重疊（`// Trust decisions ... avoid duplicate prompts`），但「今日優先處理」與 action-lane 仍完整重複同一組訊號（待到班／催繳／補點名／補課／待審核／家長回饋）。
+- 移除「今日優先處理」（`priority-risks`）整段：其資料完全是 action-lane 既有訊號的重新包裝，刪除後不影響任何業務邏輯（`directorPriorityRisks` computed、`handleDirectorPriorityRisk`、專用的 bypass 追蹤函式與 CSS 皆隨之移除；`lib/directorPriorityRisks.js` 與其獨立單元測試維持不動，未來若需要保留可再接回）。
+- 修正真的 CSS bug：「查看範例格式」按鈕（`.ac__format-link`）缺少 `white-space: nowrap`（同層 `.ac__label` 有），可用寬度被壓縮時中文文字會逐字換行；已補上。
+- 頁首英文 kicker `"Campus Operations Command"` 改為中文「今日營運總覽」，並將 letter-spacing 對齊站內既有中文 label（`.section-label`）慣例，不再套用為英文設計的寬字距。
+- 純前端結構調整，未變更任何 API、繳費／審核／排課邏輯。已用真實 Vue 元件（非重繪版）搭配 mocked API，在 390px／768px／1440px 實際截圖驗證，`vite build` 全綠。後續 Wave（At* primitives 統一卡片殼、版面密度分組）另案處理，詳見改善計劃。
+
+## 2026-07-29 — fix(learning): 學習評量表工具列大瘦身 + 批次核准改為「選取模式」+ 圖示字型自架
+
+- 使用者實測回報：手機上批次核准的勾選框「很怪」、位置醜、還看得到英文字，整頁架構也很亂。實測後發現進入評量表要先滑過 6～7 排堆疊的控制列（分頁籤、篩選 chip、篩選條件卡、顯示模式切換）才看得到第一筆記錄；先前 #1510 加的勾選框又是每張卡片永遠顯示，就算只想單筆審核也擺脫不掉。
+- 修法（參考 Gmail／Files app 的清單批次操作慣例、Carbon／Fluent 等資料密集後台的批次工具列模式）：
+  1. 「篩選條件」進階篩選卡片改為預設收合，只有已有啟用篩選時才自動展開（原本永遠展開，佔用整排）。
+  2. 批次核准改成「選取模式」：新增「批次操作」按鈕，未點擊前不顯示任何勾選框；點擊後才出現勾選框 + 全選本頁 + 批次核准／需修改／退回工具列，選取中的卡片/列會反白標示；完成批次操作或切換分頁會自動退出選取模式。
+  3. 批次工具列改成「上：全選＋已選筆數／下：三顆等寬操作鈕」兩排固定版面，取代原本 flex-wrap 在窄螢幕擠成「3 顆＋孤伶伶 2 顆」的不對稱換行。
+  4. 「還出現英文」的根因：全站圖示字型（Material Symbols）原本即時連 Google Fonts CDN，一旦字型連線失敗，圖示會退回顯示英文 ligature 名稱（如 `event`、`view_list`）。改為自架字型檔（`frontend/public/fonts/`），不再依賴外部 CDN 在渲染當下成功，比對照大公司做法（不依賴第三方 CDN 撐介面關鍵資源）。
+- 純前端調整，未變更任何 API 或審核規則。已用真實 Vue 元件（非重繪版）搭配 mocked API、並刻意封鎖外部字型網域，在 390px／1440px 視窗實際截圖驗證圖示正確渲染、版面不再換行，全流程無 console 錯誤、`vite build` 全綠。
+
+## 2026-07-29 — fix(course-packages): 總堂數修改後同步課程剩餘堂數（in-app #208）
+
+- 主任把方案總堂數往下修改後，方案本身的剩餘堂數立即正確，但同方案內每堂課各自的剩餘堂數欄位不會跟著更新，主任優先風險清單因此顯示舊的（過高的）剩餘堂數。
+- 修法：總堂數變動後自動呼叫既有的方案重新結算工具，讓每堂課的剩餘堂數與方案同步，不需要再手動觸發重新結算。純讀寫同步，無新增結算邏輯、無 migration。
+
+## 2026-07-29 — feat(tuition): 順延重疊下一期警示（#1100, FD-3）
+
+- `AlertController` 新增 read-only `newer_course_overlap` 欄位：當本期（A）`EndDate` 因請假順延而觸及或超過已預購下一期（B）`StartDate` 時，於主任繳費頁面標示重疊，不自動變更任何日期。
+- 前端新增 `formatNewerCourseOverlapWarning()`（`studentClassDisplay.js`）與繳費頁不分繳費狀態顯示的「期間重疊」badge。
+- 對齊 FD-3（順延語意維持 append-only，B 期起始日絕不被靜默位移；任何位移需明確、可稽核、對使用者可見）。純顯示層，不寫入任何 session／billing 資料。
+- 回歸：`TuitionAlertsApiTest`（重疊 true/false 兩情境，並斷言 A/B 日期未被寫入變動）、`studentClassDisplay.test.js`。
+
+## 2026-07-28 — fix(course-management): RenewMonthlyModal 防呆 current_end_date 無效日期
+
+- Sentry PHP-LARAVEL-26（#1486）：`computedEndDate` 對 `props.form.current_end_date` 直接 `new Date(...)` 再呼叫 `toISOString()`，若該字串無法解析會產出 Invalid Date，`toISOString()` 對 Invalid Date 會丟 `RangeError: Invalid Date`。
+- 修正為先檢查 `Number.isNaN(parsed.getTime())`，解析失敗時退回 `new Date()`（今天）當基準，不再讓整個月結續約 modal 崩潰。
+- 純前端防呆，無 migration、無後端行為變更。
+
+## 2026-07-29 — fix(learning): 評量批次核准在手機上找不到（card view 缺選取框）
+
+- 學習評量表在寬度 < 760px 時預設切到卡片檢視（`viewMode='card'`），但批次核准／需修改／退回只做在桌機的表格檢視裡，卡片檢視完全沒有選取框，導致手機上永遠選不到任何一筆、批次列永遠不會出現——issue #1131 先前的程式碼稽核只看了桌機表格，沒發現這個落差。
+- 修法：卡片檢視每張卡加上選取框，並加「全選待審／取消全選」按鈕，共用既有的批次核准邏輯，後端無需改動。
+- 追蹤：#1131（重開）。
+
+## 2026-07-29 — fix(security): confirmPayment() 補上分校/老師授權檢查 [P0 IDOR]
+
+- `StudentClassController::confirmPayment()` 先前沒有任何授權檢查，任何已登入的主任或老師只要知道／猜到別分校的 `StudentClassID`，就能把該課程標記為已繳費——同 controller 其他寫入方法（`update`／`destroy`／`renewalPreview`）都有做的分校/老師歸屬檢查，唯獨這支漏掉。
+- 修法：補上與其他方法一致的 `authorizeStudentClassAccess()` 檢查，並新增跨分校/跨老師 403 與同分校成功案例的回歸測試。
+- 追蹤：#1504。
+
+## 2026-07-29 — fix(course-management): 補課／補登過去時段前加確認，避免靜默自動核准評量
+
+- 新店黃奕暟 7/28 誤加課事件根因：補課／補登（Quick Add Session）選到已過去的時段時，`auto_approve` 預設勾選會讓系統直接把該堂標記已上課＋自動核准評量，全程無任何確認，事後才由主任發現並手動取消。
+- 修法：`checkAddSession` API 新增 `is_ended` 欄位；前端偵測到「已過去時段 + 自動核准」時顯示明確警告文案，送出前跳二次確認，取消即不送出。Checkbox 文案補上「評量同時自動核准」。
+- 追蹤：#1507。
+
+## 2026-07-29 — chore(ci): 前端補 ESLint `no-undef` 阻斷式檢查 + `ui-smoke.yml` 缺 secret 時可見警告
+
+- 課程管理頁 P0 事故（見下方）的完整事後補強：前端過去完全沒有 TypeScript 或 ESLint，`vite build` 不會攔「引用未宣告變數」這類錯誤。新增 `frontend/eslint.config.js`，只開 `no-undef`（用今天的真實 bug 反向驗證過會攔住），接進 `npm run build` 第一步（CI「Vite build」步驟即會執行）。
+- `.github/workflows/ui-smoke.yml` 新增「Warn if smoke secrets are missing」步驟：`SMOKE_DIRECTOR_USER`/`SMOKE_TEACHER_USER`/`SMOKE_BASE_URL` 任一缺少時印出 `::warning::`，讓「這條 E2E 防線目前被跳過」在每次 CI run 都可見，不用翻 log 才發現（TD-070）。
+- 追蹤：TD-070（director smoke 帳密尚待補）、TD-071（`no-unused-vars`／完整 ESLint ruleset 尚待 baseline-gate 後開啟）。
+
+## 2026-07-29 — fix(course-management): P0 課程管理頁整頁空白（ReferenceError）
+
+- 課程管理頁自 07:39 部署（#1409）起，任何角色打開都整頁空白（外層 topbar／分校選單仍在，內容區完全沒渲染）。
+- 根因：`useCourseSessionsDisplay.js` 的 `return` 物件引用了 `SESSION_NOT_OCCUPYING_QUOTA`，但該常數只存在於 `sessionOccurrenceFilter.js`（未 export、也未被 import），元件每次 `setup()` 執行到 return 就丟出 `ReferenceError`，中斷整個 Vue 元件掛載。
+- 修法：移除該筆未使用、未宣告的殘留引用（`CourseManagement.vue` 本來就沒有消費這個值）。
+
+開發備註：新增 regression test `useCourseSessionsDisplay.test.js`（真的呼叫 composable 本體，斷言不拋錯）——原本唯一的 `useCourseSessionsDisplay.occurrence.test.js` 是鏡像邏輯測試，從未 import 真正的模組，CI／`vite build` 都沒有實際執行過這個 return 陳述式，故未攔住。已納入 `vitest run`（CI `test:unit:cov` 既有 glob 涵蓋，無需另外接線）。`npm run test:calendar` 全綠、`vite build` 全綠。
+
+## 2026-07-29 — chore(ci): `scripts/ci/branch-policy.mjs` 白名單補 `claude/` 前綴
+
+- Claude Code on the web / CCR session 在此 repo 自動建立的分支固定是 `claude/<slug>` 命名，但白名單只列了 `cursor/`（Cursor agent），導致本次 P0 修復的 PR 被 Presubmit CHECK 1 擋下。
+- 補上 `claude: { status: 'accepted', riskHint: 'R0+' }`（比照 `cursor` 項），並在 `scripts/ci/gov.test.mjs` 加對應斷言。
+
+## 2026-07-29 — feat(release-notes): 教職員版本更新改為顯式 STAFF_UPDATES（與 CHANGELOG 拆分）
+
+- 新增 `docs/STAFF_UPDATES.yml` 為教職員「版本更新」唯一權威；`notesForRole` 不再自動發布 CHANGELOG 投影。
+- CHANGELOG 僅產生 `changelogDraft.generated.js`（AI 起草用），並強制依日期降冪排序。
+- 新增使用者文案閘門 `userFacingCopyGate`（擋內部 ID／class／Phase 等；失敗即停，不刮字改寫）。
+- 家長仍只讀 `PARENT_UPDATES.yml`（R45）；STAFF 檔禁止 `parent` audience（R85）。
+- 操作指南：`docs/GUIDE_STAFF_UPDATES.md`。
+
+開發備註：UI 標示改「最新更新」；分類改「你現在可以／我們修好了／操作更順手／需要你注意」。回歸 `npm run test:release-notes`。
+
+## 2026-07-24 — feat: Course Continuity 群組 API MVP（#1382）
+
+- 新增 `course_contract_groups`／`course_contract_group_members`（空表；不物理 merge 合約）。
+- 主任 API：列表／建立群組／加入成員／解除關聯；拒絕跨學生／跨校／package。
+- 解除關聯不刪 `StudentClass`；財務／堂次／評量維持原合約。
+
+開發備註：RFC 方案 A。不含自動 backfill、#1130 repair、群組 UI。回歸 `CourseContinuityGroupApiTest`。
+
+## 2026-07-24 — fix: Epic A/D Phase 1 — 有效堂次共用過濾 + 調課 dialog 內錯誤
+
+- 課程管理與行事曆共用 `sessionOccurrenceFilter`（有效堂次／幽靈取消／額度例外）。
+- 調課失敗（含衝堂名單）改顯示在 dialog 內；提交中 disable，拿掉多餘 `confirm()`。
+- 課程管理篩選列與表格改 denser（Epic D 逐步掃讀密度）。
+
+開發備註：承接 #1402；對齊 RFC Platform Opt Phase 1（Epic A 收尾 + Epic D 噪音／確認 UX）。
+
+## 2026-07-24 — fix: 調課後課表穩定（系列契約 vs 單堂例外）
+
+- 課程管理預設只顯示有效堂次；已取消／內部調課 bookkeeping 改為可展開摘要，不再幽靈搶版面。
+- 單堂調課會標記契約例外，且不再回寫固定 `week/time`；月結續約維持契約時段並在預覽警告未對齊的例外堂。
+- 暫停課程可勾選是否取消剩餘排課（預設勾選）。
+
+開發備註：對齊 Google Calendar／Tutorbase「this occurrence only」。`ContractScheduleMatcher`、`reconcile` 排除 `IsContractException`、`cancel_remaining`、renewal preview `open_contract_exceptions`。回歸 `ScheduleOccurrenceStabilityTest`。
+
+## 2026-07-28 — fix(learning-records): R55 復活判斷收斂為單一共用政策
+
+- 新增 `LearningRecordResurrectionPolicy`：`SYSTEM_RESURRECTABLE_VOID_REASONS` 白名單與「是否可自動復活」判斷收斂到單一位置。
+- 修正 `ClassSessionController::restoreVoidedLearningRecord()`（leave→attended 自動復活路徑）從未檢查 `VoidReason` 的缺口——人工作廢的評量若剛好掛在曾經 `leave` 的堂次上，先前會被無條件復活；現在與 `LearningRecordController::store()` 共用同一份白名單判斷。
+- `CourseLeaveCascadeService` 的請假撤銷復原刻意不動（只認 `VoidReason='一般請假'`，範圍本來就該窄）。
+- 回歸：新增 `ClassSessionRestoreVoidedLearningRecordTest`（系統 cascade 原因仍自動復活；人工作廢原因不再被復活）；既有 `LearningRecordVoidedResurrectTest` 全數維持通過。
+- 無 migration、無行為變更（reactive 路徑邏輯不變，只是搬了位置；proactive 路徑修正的是先前未覆蓋的邊界情況）。
+
+## 2026-07-28 — chore(billing): 清償 TD-060 — 刪除 RemainingSessions 死碼重算路徑
+
+- 刪除 `ClassSessionController::recalculateSessionCounters`（無 caller 死碼，count-based，與權威引擎 `SessionDeductionService::recomputeCounters` 並存、非分鐘感知）。
+- 確認權威引擎已涵蓋 legacy `attended` 狀態相容性且更完整（含 `StudentSignIn`/ledger/orphan LearningRecord、分鐘制衍生）。
+- 回歸測試改為直接驗證 `SessionDeductionService::recomputeCounters()`，斷言不變；同步清掉 `phpstan-baseline.neon` 對應豁免項。
+- 架構稽核備忘 Pattern A 的第一項行動：衍生欄位（`RemainingSessions`）在復發前先排除掉一份未接線的重複實作。無 migration、無行為變更（死碼本來就無 caller）。
+
+## 2026-07-28 — docs(architecture): 新增架構性不變式登記本（Pattern A-E）
+
+- 新增 `docs/RULE_ARCHITECTURAL_INVARIANTS.md`：追蹤「同一種形狀會反覆出現」的架構級根因（區別於 `TECH_DEBT.md` 的單點技術債），收錄本次架構稽核備忘的五種模式（衍生欄位單一寫入、主檔狀態轉換 cascade、多畫面單一投影、前後端契約、授權集中化）與目前已知實例。
+- 收錄本次 session 的具體案例作為登記起點：`IsContractException`（R83/R84）、`RemainingSessions`（TD-060）、`LearningRecord` 復活政策（R55）、`ScheduleController` 補請假重複（TD-069）、前後端路由契約檢查。
+- 無 migration、無程式碼變更。
+
+## 2026-07-28 — fix(learning-records): 家長留言預覽增加「回覆家長」入口（in-app #210）
+
+- 評量列表點擊「家長留言」chip 開啟的預覽原本只有內容/時間，找不到回覆處；新增 `FeedbackInlinePreview` 元件內建回覆按鈕，直接開啟評量詳情完成回覆。
+- 純前端變更，沿用既有 `LearningRecordFeedbackController::staffReply()` 權限與資料，無 migration、無後端改動。
+
+## 2026-07-28 — feat(learning): 家長留言 awaiting_staff_reply inbox（P0）
+
+- 新增 authoritative `awaiting_staff_reply`（與 unread 分離；**不**沿用 `analytics.unreplied_records`）。
+- Parent upsert：相同內容 idempotent no-op；實際修改內容會 append parent reply 以同表 `(created_at, id)` 穩定排序。
+- API：`GET me/awaiting-reply-count`、`learning-records?feedback=awaiting_reply`（teacher／director；不擴 super_admin）。
+- 前端：TeacherHome 固定「家長留言」卡、評量頁一級「家長留言」Tab、modal 回覆模式。
+- 無 migration／backfill。Implementation PR 不自動 merge／deploy。
+
+## 2026-07-28 — refactor(scheduling): IsContractException 搬進 ClassSessionObserver（R83 結構性根治）
+
+- `ClassSessionObserver::saving()` 在任何 `ClassSession->save()` 時，只要時間欄位有變動且該次寫入未明確指定 flag，自動用 `ContractScheduleMatcher::applyExceptionFlag()` 重算 `IsContractException`；明確指定時尊重呼叫者意圖不覆蓋。
+- 刪除 3 處重複實作（`ClassSessionController`、`StudentClassController` 加課、`RescheduleSessionService`）；新寫入路徑（如 `SubstituteController` 代課復原、`ClassSessionContractReflowService`）現在自動獲得正確行為，不需個別接線。
+- 回歸：新增 `ClassSessionObserverContractExceptionTest`；既有 `StudentClassScheduleDriftExceptionTest`／`RescheduleMarksContractExceptionTest` 全數維持通過。
+- 無 migration／無行為變更，純內部結構重構。
+
+## 2026-07-28 — fix(scheduling): atomic 調課標記 IsContractException（防 realign 還原）
+
+- `RescheduleSessionService` 調課後同步 `IsContractException`（與 PATCH class-sessions / #556 對齊）。
+- 避免單堂調到非契約時段後，被 `force_partial_rebuild`／堂次偏移同步拉回固定排課時間（症狀：重整／儲存後課表回原時段）。
+- 回歸：`RescheduleMarksContractExceptionTest`。
+
+## 2026-07-28 — fix(scheduling): ADR-006 acceptance amendments（dormant／Ensure gates／ADR status）
+
+- explicit + dormant → `auto_ensure_eligible=false`（`SKIP_DORMANT`）；禁止自動 Ensure。
+- Ensure `--execute`：production reason 優先於 flag；blocked execute → non-zero exit。
+- ADR-006／INDEX 狀態改為「工具已 merge；production 未啟用」。
+
+## 2026-07-28 — docs(adr): ADR-006 Phase 3B session_coverages migration proposal（awaiting GO）
+
+- 新增空表 migration 提案 `session_coverages` + `docs/proposals/ADR006_PHASE3B_SESSION_COVERAGES_MIGRATION.md`。
+- **未 merge／未 migrate／未啟用 coverage 寫入** — 需 Founder GO。
+
+## 2026-07-28 — feat(scheduling): ADR-006 Phase 3A pool coverage planner（read-only）
+
+- 新增 coverage state machine（`none/held/consumed/released`）與 `AllocateSessionCoverage`／`ReleaseSessionCoverage` dry-run planner；`sessions:plan-coverage`。
+- **不**寫 coverage 表、不扣堂、不 merge migration（持久化另 PR + Founder GO）。
+
+## 2026-07-28 — feat(scheduling): ADR-006 Phase 2 shadow horizon（read-only）
+
+- 新增 `sessions:shadow-horizon` + `ShadowSessionHorizonService`：Preview vs Ensure dry-run 對照、drift／shortage 指標；**永遠唯讀**。
+
+## 2026-07-28 — feat(scheduling): ADR-006 Phase 1B EnsureSessionHorizon（default-off）
+
+- 新增 `sessions:ensure-horizon` + `EnsureSessionHorizonService`：dry-run 預設；`FEATURE_ENSURE_SESSION_HORIZON` 關閉；production `--execute` 硬擋；ES → `BLOCK_POOL_SHORTAGE` 整批 no-write；物化僅走 `upsertSlot`。
+- **未**啟用 Kernel／production activation／真實 backfill。
+
+## 2026-07-28 — feat(scheduling): ADR-006 Phase 1A PreviewSessionHorizon（read-only）
+
+- 新增 `sessions:preview-horizon` + `PreviewSessionHorizonService`：Commitment 分類、28 天 occurrence covered／uncovered、pool_projection（不含成員 pool 剩餘）、分校 fail-closed。
+- **不**建立 ClassSession、不扣堂、不啟用 Ensure。
+
+## 2026-07-28 — feat(scheduling): ADR-006 Phase 0 唯讀 prepaid horizon 報告（slice 2/2）
+
+- 新增 `sessions:report-prepaid-horizon-phase0`（**read-only**）：explicit MF 7／28d、Q2 reason 拆分、pool shortage、FSG 對照、人工補排近似、StudentClass adapter 評估。
+- `PrepaidHorizonPhase0Reporter` + Feature 回歸；synthetic sample `docs/artifacts/adr006-phase0-sample-report.json`。**不**寫 ClassSession、不 activate generator。
+
+## 2026-07-28 — feat(scheduling): ADR-006 Commitment classifier helpers (Phase 0 slice 1/2)
+
+## 2026-07-28 — docs(adr): ADR-006 預付堂次 horizon × Schedule Commitment 決策包
+
+- 新增並修訂 `docs/ADR_006_prepaid_session_horizon_and_commitment.md`：**Accepted — Phase 0 evidence collection authorized**（仍 not implemented／not production-ready）。
+- Founder ACCEPT WITH AMENDMENTS：Commitment 三類（explicit／legacy_inferred／conflict）；28 天 v1 server default；Preview 可顯示 uncovered、Ensure 遇 ES → `BLOCK_POOL_SHORTAGE` 整批 no-write；`StudentClass` 條件式 v1 adapter + fingerprint（非永久 SSOT）。
+- Reason codes 拆分 `INFO_FLEXIBLE_NO_COMMITMENT`／`BLOCK_COMMITMENT_*`／`LEGACY_INFERRED_CANDIDATE`；廢止含糊的 `SKIP_NO_COMMITMENT`／`SKIP_POOL_SHORTAGE`。
+- 對齊 #1062 Track A、ADR-005、G-010、F4／#1465。本 PR docs-only；下一獲准範圍僅 Phase 0 唯讀報告。
+
+## 2026-07-28 — fix(ops): post-merge smoke 重試 director schedules 403
+
+- `#1465` merge 後 health／version 已過，但 `director GET /schedules` 偶發 403 觸發 rollback。
+- `post-merge-smoke.sh`：優先取有 Approved 分校的 director token；`403`／`500` 重試並附 body 片段，避免誤 rollback 前端-only 部署。
+
+## 2026-07-27 — fix(ux): 共用方案堂次區狀態語意與預排 chip 分流
+
+- 共用方案「排程列數與購買堂數不一致」改為中性「目前只排定部分堂次」；請假待補／真超排仍分級警告。
+- 共用方案成員課程不顯示方案池剩餘堂數；在 package-level scheduled allocation aggregate 建立前，不推導成員課程尚可排或未排 N 堂。
+- 堂數制預排 chip 不再呼叫 `ensure-projected`（避免 422）；改開可行動 dialog → 補排預填。物化 capability 嚴格限 `ScheduleMode=date`。
+- 堂次 cache miss 改 actionable dialog（再試一次），不再只靠原生 alert。不動扣堂／方案池 SSOT。
+
+## 2026-07-27 — docs(adr): ADR-005 排課多入口 × 具名 command 邊界
+
+Accepted direction（文件）：保留 StudentsList／SmartCalendar／CourseManagement 三 task surface；每個 mutation 對應具名 command；command 只收完成意圖必要的 target values，不接受前端回傳可推導的 current／derived domain truth。首實作 slice（另 PR）：`RestoreContractTeacher`。見 `docs/ADR_005_scheduling_named_command_boundaries.md`。
+
+## 2026-07-26 — design(ui): UI Foundation + 主任收件匣 pilot
+
+- 新增 ops UI Foundation tokens 與 inbox 實際使用的 `At*` primitives；文件見 `docs/design/ALLTRUE_UI_FOUNDATION.md`。
+- Pilot：主任收件匣（結構／狀態／密度；業務邏輯與 API 不變）。學生列表見 stacked follow-up PR。
+- Visual fixtures 僅在 `frontend/e2e/fixtures/`；production `public/` / `dist_build` 不含 mount harness。
+- Merge evidence：真實 Vue inbox Playwright + mocked API（390／768／1440）。
+
+## 2026-07-26 — design(ui): 學生列表 UI Foundation pilot (PR B)
+
+- Stacked on inbox foundation PR：`StudentsList` 接入 `At*`（含 `AtIconButton`）、unit/a11y、真實 Vue Playwright、durable evidence。
+- 補齊 UI audit + migration sequencing；CI 上傳 `ui-foundation-page-evidence` artifact。
+- 業務邏輯／API／DB／權限不變；supersedes monolithic #1449 students half。**No size-gate exception**（不沿用 #1450）。
+
+## 2026-07-26 — ci(governance): failure taxonomy + fast preflight（G1）
+
+- 開發備註：新增 `npm run ci:preflight` / `sync:generated`、failure taxonomy、branch policy（含 `sec/`）；見 `docs/governance/CI_GOVERNANCE.md`。不改 production 業務邏輯。
+
+## 2026-07-26 — chore(repo): PR／Issue／branch／docs hygiene
+
+- 同步 Parent Binding 文件狀態：PB-00 = **IMPLEMENTED / DEPLOYED — PRODUCTION ACTIVATION PENDING**（#1446 merged；#1436 closed by merge；Pi ops activation／`effective=true`／7-day baseline 未完成；PB-01～09 未開始）。
+- 修非 archive 壞連結；branch hygiene：刪支必記 tip SHA；`archive/<branch>` tag **非預設**（僅 unique unmerged keep-value）。
+- 無 production code、無 deploy、未合併產品 PR。
+
+## 2026-07-26 — feat(parent): PB-00 家長綁定 PII-safe observability（#1436）
+
+- Stable internal `reason_code` + append-only `parent_binding_attempts`（fail-open）；flag `PARENT_BINDING_OBSERVABILITY` **default-off**；dedicated `PARENT_BINDING_PHONE_HMAC_KEY`（no APP_KEY）；ops `parent-binding:report --format=json`。不改外部文案／成功路徑；PB-01～09 未開始。
+
+## 2026-07-26 — docs: 家長綁定 ADR Accepted（Hybrid；PR #1434）
+
+- Founder Accepted：max_uses=1；TTL 7d（24h/72h/7d）；cap 4；read_only 365d→suspended；revoke→session；BindingRequest 自助；sunset ≥80%/30d/support&lt;10%（無硬日期）；OTP∉P0–2。Docs-only at merge；PB-00 後續由 #1446 實作 observability。
+
+## 2026-07-26 — fix(parent): 家長更新卡改為顯式 PARENT_UPDATES 投影（B+）
+
+- 家長入口「與您有關的更新」不再從教職員 CHANGELOG 以關鍵字自動標 `audience:parent`。
+- 新增 `docs/PARENT_UPDATES.yml` 為家長公告唯一來源；title／summary／details 獨立，禁止 fallback 到 staff summary。
+- 無家長更新或已過期時首頁隱藏該區塊；普通更新預設 30 天效期、最多兩則。
+- 同步腳本一併產生 `parentUpdates.generated.js`；CI 檢查 generated 檔不得漂移。
+
+開發備註：Founder Decision 2026-07-26 B+／§R45。行動型通知（重新綁定等）不在本卡範圍。首則家長文案：請假後未來日期不移動、尾端補課。
+
 ## 2026-07-26 — fix: 堂數制請假改為保留未來日期、只補尾堂
 
 - 一般請假不再把後續堂次整排往後推（不再出現 silent vacated week）。
@@ -226,7 +549,8 @@ Ops：所有直接執行的 workflow jobs 明確固定為 GitHub-hosted `ubuntu-
 
 > 格式：每條一行，分類 Added / Fixed / Changed / Security / Ops  
 > 細節查 PR 說明或 `.cursor/plans/`  
-> **版本公告（給老師／主任看的短卡）**：同一版建議 **第一條寫使用者白話**；技術細節請另起一行並以 **`開發備註：`** 開頭（`npm run sync-release-notes` 會略過不進 `releaseNotes.generated.js`）。  
+> **版本公告（給老師／主任看的短卡）**：請寫入 `docs/STAFF_UPDATES.yml`（見 `GUIDE_STAFF_UPDATES.md`）。CHANGELOG 本檔是工程紀錄；`開發備註：` 行不會進草稿。  
+
 > **閱讀**：依日期標題搜尋；**勿逐行通讀**。
 >
 > **滾動歸檔策略**（對齊 Keep a Changelog / 大型 repo 慣例）：主檔只保留**當月**，月初把上月移入 `archive/`。更早紀錄：
@@ -723,4 +1047,8 @@ Fixed：班級行事曆若週次篩選暫時隱藏某課程，已實際存在的
 ## 2026-06-01 — chore(deps): composer 鎖定 PHP 8.2 平台 + 月初帳務測試健全化
 
 開發備註：(1) `backend/composer.json` 設 `config.platform.php=8.2.30`，避免 dependabot/`composer update` 解析出需 PHP 8.3/8.4 的相依（如 `symfony/css-selector` v8、`zipstream` 3.2.2）而在 8.2 runtime 裝不起來（dependabot PR #643 即此症）。順帶安全升版：`symfony/routing` v5.4.48→v5.4.53、`symfony/polyfill-intl-idn` v1.33.0→v1.38.1（清掉 2 筆 OSV 發現，TD-061）、`guzzle` 7.10.5、`maatwebsite/excel` 3.1.69，並把 `laravel/framework` 由 dev 分支 pin 至穩定 `v8.83.29`。(2) `CoursePackageMonthlyBillingTest` 月結堂數測試夾住堂次日期 ≤ 今天，修正每月 1 號（月內未來日期被 `alerts/tuition` 正確排除）造成的時間敏感失敗。
+## 2026-08-01 fix: billing reconciliation and explicit batch approval
 
+- 所有 billing read surfaces（帳務中心、帳單列表、繳費單、對帳查詢）依帳單月份的實際已上課堂計算，顯示原始金額與差異警示；不再默默沿用過期的預存金額。
+- 批次核准只會處理前端明確勾選的評量；選取範圍與目前權限/狀態不一致時整批停止，不會擴大核准範圍。
+- 新增事件檢討與回歸測試：`docs/incidents/2026-08-01-billing-and-batch-approval.md`。

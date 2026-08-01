@@ -81,6 +81,24 @@ jobs:
         working-directory: frontend
         run: npx playwright install --with-deps chromium
 
+      - name: Warn if smoke secrets are missing (TD-070)
+        if: steps.detect.outputs.run == 'true'
+        env:
+          SMOKE_BASE_URL: ${{ secrets.SMOKE_BASE_URL }}
+          SMOKE_DIRECTOR_USER: ${{ secrets.SMOKE_DIRECTOR_USER }}
+          SMOKE_TEACHER_USER: ${{ secrets.SMOKE_TEACHER_USER }}
+        run: |
+          # A missing secret makes smoke.spec.js silently `test.skip()` its whole
+          # describe block — the job still reports green, so without this
+          # annotation "the smoke path isn't exercised" is invisible unless
+          # someone opens the raw Playwright log. See docs/TECH_DEBT.md TD-070
+          # (director path was unset for an unknown period; the exact page/bug
+          # class it exists to catch shipped to production undetected).
+          [ -z "$SMOKE_BASE_URL" ] && echo "::warning title=UI Smoke — no BASE_URL::SMOKE_BASE_URL not set — the ENTIRE UI smoke suite (director + teacher) is skipped this run, not just failing to find issues."
+          [ -n "$SMOKE_BASE_URL" ] && [ -z "$SMOKE_DIRECTOR_USER" ] && echo "::warning title=UI Smoke — director path skipped::SMOKE_DIRECTOR_USER/PASS not set — the 'director: 課程管理頁與待補課面板載入' test (and any other director-path smoke test) is skipped, not passing. This check going green does NOT mean the director path was verified."
+          [ -n "$SMOKE_BASE_URL" ] && [ -z "$SMOKE_TEACHER_USER" ] && echo "::warning title=UI Smoke — teacher path skipped::SMOKE_TEACHER_USER/PASS not set — the teacher-path smoke tests are skipped, not passing."
+          exit 0
+
       - name: Run UI smoke
         if: steps.detect.outputs.run == 'true'
         working-directory: frontend

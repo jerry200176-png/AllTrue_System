@@ -3,22 +3,27 @@
     <!-- Page Header -->
     <div class="page-header lr-header enterprise-page-header" data-guide="learning-header">
       <div>
-        <h2>{{ isTeacher ? '我的課表 & 評量' : '學習評量表' }}</h2>
-        <p class="page-desc">{{ isTeacher ? '查看本週課表，填寫學習評量' : '查看、新增與審核學生每堂課的學習評量' }}</p>
+        <h2>{{ pageMode === 'parent_messages' ? '家長留言' : (isTeacher ? '我的課表 & 評量' : '學習評量表') }}</h2>
+        <p class="page-desc">{{ pageMode === 'parent_messages' ? (isTeacher ? '查看範圍：我的所有分校' : '查看範圍：目前分校（可改）') : (isTeacher ? '查看本週課表，填寫學習評量' : '查看、新增與審核學生每堂課的學習評量') }}</p>
       </div>
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
-        <button v-if="isTeacher" class="ghost lr-draft-list-btn enterprise-touch-target" @click="openDraftPanel">
+        <button v-if="isTeacher && pageMode !== 'parent_messages'" class="ghost lr-draft-list-btn enterprise-touch-target" @click="openDraftPanel">
           <span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px">drafts</span>
           草稿
           <span v-if="draftList.length > 0" class="lr-draft-badge">{{ draftList.length }}</span>
         </button>
-        <button class="ghost enterprise-touch-target" @click="openExportModal">匯出評量圖</button>
-        <button v-if="isTeacher" class="primary enterprise-touch-target" @click="focusTeacherSchedule">從課表填寫</button>
+        <button v-if="pageMode !== 'parent_messages'" class="ghost enterprise-touch-target" @click="openExportModal">匯出評量圖</button>
+        <button v-if="isTeacher && pageMode !== 'parent_messages'" class="primary enterprise-touch-target" @click="focusTeacherSchedule">從課表填寫</button>
       </div>
     </div>
 
+    <div v-if="isTeacher || isDirectorRole" class="lr-mode-tabs card" role="tablist" aria-label="學習評量與家長留言">
+      <button type="button" role="tab" :class="['lr-tab', { active: pageMode === 'records' }]" :aria-selected="pageMode === 'records'" @click="setPageMode('records')">學習評量</button>
+      <button type="button" role="tab" :class="['lr-tab', { active: pageMode === 'parent_messages' }]" :aria-selected="pageMode === 'parent_messages'" @click="setPageMode('parent_messages')">家長留言</button>
+    </div>
+
     <!-- Teacher quick-filter tabs -->
-    <div v-if="isTeacher" class="lr-review-tabs card" data-guide="learning-teacher-tabs">
+    <div v-if="isTeacher && pageMode === 'records'" class="lr-review-tabs card" data-guide="learning-teacher-tabs">
       <div class="lr-tabs-row">
         <button :class="['lr-tab', { active: teacherFilterTab === 'all' }]" @click="teacherFilterTab = 'all'">
           全部 <span class="lr-tab-count">{{ (records || []).length }}</span>
@@ -37,80 +42,120 @@
     </div>
 
     <!-- Director review queue tabs -->
-    <div v-if="isDirectorRole" class="lr-review-tabs card" data-guide="learning-director-review-tabs">
+    <div v-if="isDirectorRole && pageMode === 'records'" class="lr-review-tabs card" data-guide="learning-director-review-tabs">
       <div class="lr-tabs-row">
-        <button :class="['lr-tab', { active: reviewTab === 'pending' }]" @click="reviewTab = 'pending'; selectedRecordIds = new Set()">
+        <button :class="['lr-tab', { active: reviewTab === 'pending' }]" @click="reviewTab = 'pending'; exitSelectionMode()">
           待審佇列 <span v-if="serverPendingBadge > 0" class="lr-tab-count warn">{{ serverPendingBadge }}</span>
         </button>
-        <button :class="['lr-tab', { active: reviewTab === 'changes_requested' }]" @click="reviewTab = 'changes_requested'; selectedRecordIds = new Set()">
+        <button :class="['lr-tab', { active: reviewTab === 'changes_requested' }]" @click="reviewTab = 'changes_requested'; exitSelectionMode()">
           需修改追蹤 <span v-if="serverChangesBadge > 0" class="lr-tab-count warn">{{ serverChangesBadge }}</span>
         </button>
-        <button :class="['lr-tab', { active: reviewTab === 'approved' }]" @click="reviewTab = 'approved'; selectedRecordIds = new Set()">
+        <button :class="['lr-tab', { active: reviewTab === 'approved' }]" @click="reviewTab = 'approved'; exitSelectionMode()">
           已核准 <span class="lr-tab-count ok">{{ serverApprovedBadge }}</span>
         </button>
-        <button :class="['lr-tab', { active: reviewTab === 'rejected' }]" @click="reviewTab = 'rejected'; selectedRecordIds = new Set()">
+        <button :class="['lr-tab', { active: reviewTab === 'rejected' }]" @click="reviewTab = 'rejected'; exitSelectionMode()">
           已退回
         </button>
-        <button :class="['lr-tab', { active: reviewTab === 'all' }]" @click="reviewTab = 'all'; selectedRecordIds = new Set()">
+        <button :class="['lr-tab', { active: reviewTab === 'all' }]" @click="reviewTab = 'all'; exitSelectionMode()">
           全部
         </button>
       </div>
 
-      <label
-        v-if="reviewTab === 'pending' || reviewTab === 'changes_requested' || reviewTab === 'approved' || reviewTab === 'all'"
-        class="lr-unfilled-toggle"
-        title="待審／需修改且正文未填；已核准但正文仍空白者僅在「已核准」或「全部」分頁會被篩出"
-      >
-        <input type="checkbox" v-model="onlyUnfilled"> 只看未填
-      </label>
+      <div class="lr-toolbar-row">
+        <label
+          v-if="reviewTab === 'pending' || reviewTab === 'changes_requested' || reviewTab === 'approved' || reviewTab === 'all'"
+          class="lr-unfilled-toggle"
+          title="待審／需修改且正文未填；已核准但正文仍空白者僅在「已核准」或「全部」分頁會被篩出"
+        >
+          <input type="checkbox" v-model="onlyUnfilled"> 只看未填
+        </label>
 
-      <label
-        v-if="reviewTab === 'pending' || reviewTab === 'changes_requested' || reviewTab === 'approved' || reviewTab === 'all'"
-        class="lr-unfilled-toggle"
-        title="只顯示評量正文已填寫的紀錄（供檢視已完成的評量內容）"
-      >
-        <input type="checkbox" v-model="onlyFilled"> 只看已填
-      </label>
+        <label
+          v-if="reviewTab === 'pending' || reviewTab === 'changes_requested' || reviewTab === 'approved' || reviewTab === 'all'"
+          class="lr-unfilled-toggle"
+          title="只顯示評量正文已填寫的紀錄（供檢視已完成的評量內容）"
+        >
+          <input type="checkbox" v-model="onlyFilled"> 只看已填
+        </label>
 
-      <!-- Batch action bar -->
-      <div v-if="selectedRecordIds.size > 0" class="lr-batch-bar">
-        <span class="lr-batch-count">已選 {{ selectedRecordIds.size }} 筆</span>
-        <button class="primary xs" :disabled="batchOperating" @click="batchApproveSelected">批次核准</button>
-        <button class="ghost xs" :disabled="batchOperating" @click="batchRequestChangesSelected">批次需修改</button>
-        <button class="danger xs" :disabled="batchOperating" @click="batchRejectSelected">批次退回</button>
-        <button class="ghost xs" @click="selectedRecordIds = new Set()">取消選取</button>
+        <!-- Selection mode toggle: checkboxes/batch bar only appear once this is on
+             (Gmail/Files-app pattern) instead of cluttering every row by default. -->
+        <button
+          v-if="reviewTab === 'pending' || reviewTab === 'changes_requested'"
+          type="button"
+          class="ghost xs lr-select-mode-btn"
+          :class="{ active: selectionMode }"
+          @click="toggleSelectionMode"
+        >{{ selectionMode ? '取消選取' : '批次操作' }}</button>
+      </div>
+
+      <!-- Selection toolbar: select-all + batch actions, only visible in selection mode.
+           Two deliberate rows (meta / actions) instead of a single flex-wrap row, so it
+           never breaks into an uneven 3-then-2 wrap on narrow viewports. -->
+      <div v-if="selectionMode" class="lr-batch-bar">
+        <div class="lr-batch-bar__meta">
+          <button type="button" class="ghost xs lr-select-all-btn" @click="toggleSelectAll">
+            {{ allSelected ? '取消全選' : '全選本頁' }}
+          </button>
+          <span class="lr-batch-count">已選 {{ selectedRecordIds.size }} 筆</span>
+        </div>
+        <div class="lr-batch-bar__actions">
+          <button class="primary xs" :disabled="batchOperating || selectedRecordIds.size === 0" @click="batchApproveSelected">批次核准</button>
+          <button class="ghost xs" :disabled="batchOperating || selectedRecordIds.size === 0" @click="batchRequestChangesSelected">批次需修改</button>
+          <button class="danger xs" :disabled="batchOperating || selectedRecordIds.size === 0" @click="batchRejectSelected">批次退回</button>
+        </div>
       </div>
     </div>
 
     <div v-if="isTeacher || isDirectorRole" class="lr-filters-bar card">
       <div class="lr-filters-quick">
-        <button
-          v-if="(isTeacher ? weekTotalMissingCount : kpiUnfilledCount) > 0"
-          :class="['lr-feedback-filter-chip', 'lr-unfilled-shortcut', { active: isTeacher ? teacherPriorityFilter === 'unfilled' : onlyUnfilled }]"
-          @click="toggleUnfilledShortcut()"
-        >
-          未填 <span class="lr-tab-count warn">{{ isTeacher ? weekTotalMissingCount : kpiUnfilledCount }}</span>
-        </button>
-        <button
-          v-if="unreadParentFeedbackCount > 0"
-          :class="['lr-feedback-filter-chip', 'lr-unread-shortcut', { active: feedbackFilter === 'unread' }]"
-          @click="feedbackFilter = feedbackFilter === 'unread' ? 'all' : 'unread'; showMoreFilters = true"
-        >
-          未讀回饋 <span class="lr-tab-count warn">{{ unreadParentFeedbackCount }}</span>
-        </button>
-        <button
-          type="button"
-          class="lr-more-filters-toggle"
-          :class="{ active: showMoreFilters || activeSecondaryFilterCount > 0 }"
-          :aria-expanded="showMoreFilters ? 'true' : 'false'"
-          @click="showMoreFilters = !showMoreFilters"
-        >
-          篩選<span v-if="activeSecondaryFilterCount > 0" class="lr-tab-count">{{ activeSecondaryFilterCount }}</span>
-          <svg class="lr-more-filters-chev" :class="{ open: showMoreFilters }" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
-        </button>
+        <template v-if="pageMode === 'parent_messages'">
+          <button
+            type="button"
+            :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'awaiting_reply' }]"
+            @click="feedbackFilter = 'awaiting_reply'"
+          >尚未回覆</button>
+          <button
+            type="button"
+            :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'unread' }]"
+            @click="feedbackFilter = 'unread'"
+          >新留言 <span v-if="unreadParentFeedbackCount > 0" class="lr-tab-count warn">{{ unreadParentFeedbackCount }}</span></button>
+          <button
+            type="button"
+            :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'has' }]"
+            @click="feedbackFilter = 'has'"
+          >全部留言</button>
+          <span class="lr-feedback-filter-label">{{ isTeacher ? '查看範圍：我的所有分校' : '查看範圍：目前分校' }}</span>
+        </template>
+        <template v-else>
+          <button
+            v-if="(isTeacher ? weekTotalMissingCount : kpiUnfilledCount) > 0"
+            :class="['lr-feedback-filter-chip', 'lr-unfilled-shortcut', { active: isTeacher ? teacherPriorityFilter === 'unfilled' : onlyUnfilled }]"
+            @click="toggleUnfilledShortcut()"
+          >
+            未填 <span class="lr-tab-count warn">{{ isTeacher ? weekTotalMissingCount : kpiUnfilledCount }}</span>
+          </button>
+          <button
+            v-if="unreadParentFeedbackCount > 0"
+            :class="['lr-feedback-filter-chip', 'lr-unread-shortcut', { active: feedbackFilter === 'unread' }]"
+            @click="feedbackFilter = feedbackFilter === 'unread' ? 'all' : 'unread'; showMoreFilters = true"
+          >
+            新留言 <span class="lr-tab-count warn">{{ unreadParentFeedbackCount }}</span>
+          </button>
+          <button
+            type="button"
+            class="lr-more-filters-toggle"
+            :class="{ active: showMoreFilters || activeSecondaryFilterCount > 0 }"
+            :aria-expanded="showMoreFilters ? 'true' : 'false'"
+            @click="showMoreFilters = !showMoreFilters"
+          >
+            篩選<span v-if="activeSecondaryFilterCount > 0" class="lr-tab-count">{{ activeSecondaryFilterCount }}</span>
+            <svg class="lr-more-filters-chev" :class="{ open: showMoreFilters }" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </button>
+        </template>
       </div>
 
-      <div v-show="showMoreFilters" class="lr-filters-panel">
+      <div v-show="pageMode === 'records' && showMoreFilters" class="lr-filters-panel">
         <div v-if="isTeacher" class="lr-filter-group">
           <span class="lr-feedback-filter-label">優先</span>
           <button :class="['lr-feedback-filter-chip', { active: teacherPriorityFilter === 'all' }]" @click="teacherPriorityFilter = 'all'">全部</button>
@@ -119,14 +164,15 @@
           <button :class="['lr-feedback-filter-chip', { active: teacherPriorityFilter === 'overdue' }]" @click="teacherPriorityFilter = 'overdue'">逾期</button>
         </div>
         <div class="lr-filter-group">
-          <span class="lr-feedback-filter-label">家長回饋</span>
+          <span class="lr-feedback-filter-label">家長留言</span>
           <button :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'all' }]" @click="feedbackFilter = 'all'">全部</button>
           <button :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'has' }]" @click="feedbackFilter = 'has'">
-            有回饋 <span v-if="parentFeedbackCount > 0" class="lr-tab-count">{{ parentFeedbackCount }}</span>
+            有留言 <span v-if="parentFeedbackCount > 0" class="lr-tab-count">{{ parentFeedbackCount }}</span>
           </button>
           <button :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'unread' }]" @click="feedbackFilter = 'unread'">
-            未讀回饋 <span v-if="unreadParentFeedbackCount > 0" class="lr-tab-count warn">{{ unreadParentFeedbackCount }}</span>
+            新留言 <span v-if="unreadParentFeedbackCount > 0" class="lr-tab-count warn">{{ unreadParentFeedbackCount }}</span>
           </button>
+          <button :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'awaiting_reply' }]" @click="feedbackFilter = 'awaiting_reply'">尚未回覆</button>
         </div>
       </div>
     </div>
@@ -140,7 +186,7 @@
     </div>
 
     <!-- ===== TEACHER: Week Schedule Widget ===== -->
-    <div v-if="isTeacher" class="teacher-schedule card" data-guide="learning-teacher-schedule">
+    <div v-if="isTeacher && pageMode === 'records'" class="teacher-schedule card" data-guide="learning-teacher-schedule">
       <div class="ts-header">
         <h3>課表</h3>
         <div class="ts-tabs ts-tabs--ios">
@@ -280,9 +326,14 @@
       </div>
     </div>
 
-    <!-- Filters -->
+    <!-- Filters: collapsed by default (expands automatically if a filter is already active) -->
     <div class="card lr-filters" data-guide="learning-filters">
-      <div class="lr-filters-header">
+      <button
+        type="button"
+        class="lr-filters-header lr-filters-header-toggle"
+        :aria-expanded="showAdvancedFilters ? 'true' : 'false'"
+        @click="showAdvancedFilters = !showAdvancedFilters"
+      >
         <div class="lr-filters-title">
           <svg class="lr-filters-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
@@ -290,15 +341,20 @@
           <span>篩選條件</span>
           <span v-if="activeFilterCount > 0" class="lr-filters-badge" :title="`共 ${activeFilterCount} 個篩選條件已啟用`">{{ activeFilterCount }}</span>
         </div>
-        <button
-          v-if="hasActiveFilters"
-          type="button"
-          class="lr-filters-clear-link"
-          @click="clearAllFilters"
-        >清除全部</button>
-      </div>
+        <div class="lr-filters-header-right">
+          <span
+            v-if="hasActiveFilters"
+            role="button"
+            tabindex="0"
+            class="lr-filters-clear-link"
+            @click.stop="clearAllFilters"
+            @keyup.enter.stop="clearAllFilters"
+          >清除全部</span>
+          <svg class="lr-more-filters-chev" :class="{ open: showAdvancedFilters }" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </div>
+      </button>
 
-      <div class="lr-filters-grid">
+      <div v-show="showAdvancedFilters" class="lr-filters-grid">
         <div class="form-group lr-field">
           <label>搜尋學生</label>
           <input
@@ -348,7 +404,7 @@
         </div>
       </div>
 
-      <div class="lr-filters-actions">
+      <div v-show="showAdvancedFilters" class="lr-filters-actions">
         <button
           class="primary lr-filters-search"
           type="button"
@@ -498,16 +554,28 @@
               :class="{
                 'has-feedback': record.parent_feedback,
                 'is-unread': parentFeedbackUnread(record),
-                'has-feedback-read': record.parent_feedback && !parentFeedbackUnread(record)
+                'has-feedback-read': record.parent_feedback && !parentFeedbackUnread(record),
+                'is-selected': selectionMode && selectedRecordIds.has(record.id)
               }"
-              @click="viewRecord(record)"
+              @click="handleRecordCardClick(record)"
             >
               <div class="lr-record-card__top">
-                <div>
-                  <div class="lr-record-card__student">{{ record.student_name }}</div>
-                  <div class="lr-record-card__meta">
-                    {{ record.student_class_label || record.Subject || '未分類' }}
-                    <span v-if="record.StudentClassID" class="lr-contract-id">#{{ record.StudentClassID }}</span>
+                <div class="lr-record-card__title-row">
+                  <input
+                    v-if="selectionMode && isDirectorRole && (reviewTab === 'pending' || reviewTab === 'changes_requested') && (record.Status === 'pending' || record.Status === 'changes_requested')"
+                    type="checkbox"
+                    class="lr-record-card__select"
+                    :checked="selectedRecordIds.has(record.id)"
+                    @click.stop
+                    @change="toggleRecordSelection(record.id)"
+                    title="選取以批次核准"
+                  >
+                  <div>
+                    <div class="lr-record-card__student">{{ record.student_name }}</div>
+                    <div class="lr-record-card__meta">
+                      {{ record.student_class_label || record.Subject || '未分類' }}
+                      <span v-if="record.StudentClassID" class="lr-contract-id">#{{ record.StudentClassID }}</span>
+                    </div>
                   </div>
                 </div>
                 <span :class="statusTagClass(record.Status)" class="status-tag">{{ statusLabel(record.Status) }}</span>
@@ -522,9 +590,9 @@
                   v-if="record.parent_feedback"
                   :class="['lr-parent-feedback-chip', parentFeedbackUnread(record) ? 'unread' : 'read']"
                   @click.stop="toggleFeedbackPreview(record)"
-                  :title="parentFeedbackUnread(record) ? '有新家長回饋（點擊預覽）' : '家長回饋（點擊預覽）'"
+                  :title="parentFeedbackUnread(record) ? '有新家長留言（點擊預覽）' : '家長留言（點擊預覽）'"
                 >
-                  💬 {{ parentFeedbackUnread(record) ? '未讀回饋' : '家長回饋' }}
+                  💬 {{ parentFeedbackUnread(record) ? '新留言' : (record.parent_feedback?.awaiting_staff_reply ? '尚未回覆' : '家長留言') }}
                 </span>
                 <span
                   v-if="record.teacher_comment"
@@ -536,14 +604,12 @@
                 <span v-if="fillLabel(record)" :class="['fill-badge', fillLabelClass(record)]">{{ fillLabel(record) }}</span>
                 <span v-if="!isTeacher" class="lr-record-card__teacher">{{ record.teacher_name || '未指派' }}</span>
               </div>
-              <div
-                v-if="record.parent_feedback && feedbackPreviewOpen.has(record.id)"
-                class="lr-feedback-inline-preview"
-                @click.stop
-              >
-                <div class="lr-feedback-inline-preview__content">{{ record.parent_feedback.content?.slice(0, 100) }}{{ (record.parent_feedback.content?.length || 0) > 100 ? '…' : '' }}</div>
-                <div class="lr-feedback-inline-preview__time">{{ formatParentFeedbackTime(record.parent_feedback.updated_at) }}</div>
-              </div>
+              <FeedbackInlinePreview
+                v-if="record.parent_feedback"
+                :record="record"
+                :open="feedbackPreviewOpen.has(record.id)"
+                @reply="openRecordAction"
+              />
               <div class="lr-record-card__actions" @click.stop>
                 <button class="ghost xs" @click="openRecordAction(record)">{{ primaryActionLabel(record) }}</button>
                 <button v-if="isDirectorRole && record.id" class="ghost xs lr-btn-director-note" @click="openDirectorNoteModal(record)">主任評語</button>
@@ -637,7 +703,7 @@
                 <table>
                   <thead>
                     <tr>
-                      <th v-if="isDirectorRole && (reviewTab === 'pending' || reviewTab === 'changes_requested')" style="width:36px">
+                      <th v-if="selectionMode && isDirectorRole && (reviewTab === 'pending' || reviewTab === 'changes_requested')" style="width:36px">
                         <input type="checkbox" :checked="allSelected" @change="toggleSelectAll" title="全選">
                       </th>
                       <th>日期</th>
@@ -650,8 +716,8 @@
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-for="record in sg.records" :key="record.id" class="lr-table-row" :class="{ 'lr-row-unfilled': fillLabelClass(record) === 'fill-missing', 'lr-row-has-feedback': record.parent_feedback && !parentFeedbackUnread(record), 'lr-row-unread': parentFeedbackUnread(record), 'lr-row-urgent': isUrgentTeacherRecord(record) }" @click="viewRecord(record)">
-                      <td v-if="isDirectorRole && (reviewTab === 'pending' || reviewTab === 'changes_requested')" @click.stop>
+                    <tr v-for="record in sg.records" :key="record.id" class="lr-table-row" :class="{ 'lr-row-unfilled': fillLabelClass(record) === 'fill-missing', 'lr-row-has-feedback': record.parent_feedback && !parentFeedbackUnread(record), 'lr-row-unread': parentFeedbackUnread(record), 'lr-row-urgent': isUrgentTeacherRecord(record), 'is-selected': selectionMode && selectedRecordIds.has(record.id) }" @click="handleRecordCardClick(record)">
+                      <td v-if="selectionMode && isDirectorRole && (reviewTab === 'pending' || reviewTab === 'changes_requested')" @click.stop>
                         <input
                           v-if="record.Status === 'pending' || record.Status === 'changes_requested'"
                           type="checkbox"
@@ -675,20 +741,18 @@
                           :class="['lr-parent-feedback-chip', parentFeedbackUnread(record) ? 'unread' : 'read']"
                           @click.stop="toggleFeedbackPreview(record)"
                           :title="record.parent_feedback.content?.slice(0,60)"
-                        >💬 {{ parentFeedbackUnread(record) ? '未讀回饋' : '家長回饋' }}</span>
+                        >💬 {{ parentFeedbackUnread(record) ? '新留言' : (record.parent_feedback?.awaiting_staff_reply ? '尚未回覆' : '家長留言') }}</span>
                         <span
                           v-if="record.teacher_comment"
                           :class="['lr-teacher-comment-chip', teacherCommentUnread(record) ? 'unread' : 'read']"
                           :title="record.teacher_comment.content?.slice(0,60)"
                         >📝 {{ teacherCommentUnread(record) ? '新主任評語' : '主任評語' }}</span>
-                        <div
-                          v-if="record.parent_feedback && feedbackPreviewOpen.has(record.id)"
-                          class="lr-feedback-inline-preview"
-                          @click.stop
-                        >
-                          <div class="lr-feedback-inline-preview__content">{{ record.parent_feedback.content?.slice(0, 100) }}{{ (record.parent_feedback.content?.length || 0) > 100 ? '…' : '' }}</div>
-                          <div class="lr-feedback-inline-preview__time">{{ formatParentFeedbackTime(record.parent_feedback.updated_at) }}</div>
-                        </div>
+                        <FeedbackInlinePreview
+                          v-if="record.parent_feedback"
+                          :record="record"
+                          :open="feedbackPreviewOpen.has(record.id)"
+                          @reply="openRecordAction"
+                        />
                       </td>
                       <td>
                         <span class="tag">{{ record.student_class_label || record.Subject }}</span>
@@ -1049,8 +1113,8 @@
                 </button>
               </div>
             </div>
-            <div v-if="_activeRecordRef?.parent_feedback" class="lr-parent-feedback-box">
-              <div class="lr-parent-feedback-title">家長回饋</div>
+            <div v-if="_activeRecordRef?.parent_feedback" class="lr-parent-feedback-box" :class="{ 'lr-parent-feedback-box--reply-mode': replyMode }">
+              <div class="lr-parent-feedback-title">{{ replyMode ? '回覆家長' : '家長留言' }}</div>
               <div class="lr-parent-feedback-content">{{ _activeRecordRef.parent_feedback.content }}</div>
               <div class="lr-parent-feedback-time">更新：{{ formatParentFeedbackTime(_activeRecordRef.parent_feedback.updated_at) }}</div>
 
@@ -1071,24 +1135,26 @@
 
               <!-- 回覆家長輸入（老師與主任皆可，家長可見）-->
               <div class="lr-feedback-reply-form">
-                <label class="lr-feedback-reply-label">回覆家長（這則訊息家長會看到）</label>
+                <label class="lr-feedback-reply-label">回覆家長（家長看得到）</label>
                 <textarea
+                  ref="feedbackReplyTextareaEl"
                   v-model="feedbackReplyDraft"
                   rows="2"
                   maxlength="1000"
-                  placeholder="例如：謝謝家長的回饋，我們這週會加強單字默寫，下次小考再觀察。"
+                  placeholder="例如：謝謝家長的留言，我們這週會加強單字默寫，下次小考再觀察。"
                 ></textarea>
                 <div class="lr-teacher-comment-actions">
                   <span v-if="feedbackReplyError" class="lr-teacher-comment-error">{{ feedbackReplyError }}</span>
                   <button type="button" class="primary small" :disabled="feedbackReplySaving || !feedbackReplyDraft.trim()" @click="submitFeedbackReply">
-                    {{ feedbackReplySaving ? '送出中...' : '回覆家長' }}
+                    {{ feedbackReplySaving ? '送出中...' : '送出回覆' }}
                   </button>
                 </div>
               </div>
             </div>
             <div v-if="form.id && (isDirectorRole || _activeRecordRef?.teacher_comment)" class="lr-teacher-comment-box">
               <div class="lr-teacher-comment-title">
-                主任給老師評語
+                主任內部評語
+                <span class="lr-teacher-comment-author">僅教職員看得到，家長不會看到</span>
                 <span v-if="_activeRecordRef?.teacher_comment?.author_name" class="lr-teacher-comment-author">
                   {{ _activeRecordRef.teacher_comment.author_name }}
                 </span>
@@ -1272,6 +1338,8 @@ import { ref, onMounted, reactive, computed, watch, nextTick } from 'vue';
 import { supabase } from '../supabase';
 import SearchableSelect from '../components/SearchableSelect.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
+import FeedbackInlinePreview from '../components/learning-records/FeedbackInlinePreview.vue';
+import { formatParentFeedbackTime } from '../lib/parentFeedbackFormat';
 import {
   fetchClassSessions,
   fetchSessionDates,
@@ -1476,12 +1544,19 @@ const reviewTab = ref('pending');
 const teacherFilterTab = ref('all');
 const teacherPriorityFilter = ref('all');
 const feedbackFilter = ref('all');
+const pageMode = ref('records'); // 'records' | 'parent_messages'
+const replyMode = ref(false);
+const feedbackReplyTextareaEl = ref(null);
 const onlyUnfilled = ref(false);
 // #199: symmetric "only filled" lens so directors/super-admins can review completed
 // assessments — every other filter here is unfilled/to-do oriented. Client-side display
 // only (no API/data/permission change); mutually exclusive with onlyUnfilled below.
 const onlyFilled = ref(false);
 const showMoreFilters = ref(false);
+// Advanced filter card (搜尋學生/篩選老師/日期範圍/科目) starts collapsed — it was
+// permanently expanded, adding 4+ always-visible form rows above the record list on
+// every load. Auto-expand only if a filter is already active on mount so context isn't hidden.
+const showAdvancedFilters = ref(false);
 const activeSecondaryFilterCount = computed(() => {
   let n = 0;
   if (isTeacher.value && teacherPriorityFilter.value !== 'all') n += 1;
@@ -1508,6 +1583,19 @@ watch(reviewTab, (t) => {
 watch(onlyUnfilled, (v) => { if (v) onlyFilled.value = false; });
 watch(onlyFilled, (v) => { if (v) onlyUnfilled.value = false; });
 const selectedRecordIds = ref(new Set());
+// Bulk-approve is opt-in (Gmail/Files-style "Select" mode) rather than always-on
+// checkboxes on every row/card — the checkbox only appears once the director
+// explicitly enters selection mode, so single-record review (the common case)
+// isn't cluttered with a selection affordance nobody asked for.
+const selectionMode = ref(false);
+function toggleSelectionMode() {
+  selectionMode.value = !selectionMode.value;
+  if (!selectionMode.value) selectedRecordIds.value = new Set();
+}
+function exitSelectionMode() {
+  selectionMode.value = false;
+  selectedRecordIds.value = new Set();
+}
 const batchOperating = ref(false);
 const draftAutoSaveKey = ref('');
 
@@ -1789,11 +1877,6 @@ const teacherCommentUnread = (record) => {
   const comment = record?.teacher_comment;
   return isTeacher.value ? !!comment?.unread_for_teacher : false;
 };
-const formatParentFeedbackTime = (value) => {
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return '';
-  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-};
 const markParentFeedbackRead = async (record) => {
   const feedback = record?.parent_feedback;
   if (!feedback?.id || !parentFeedbackUnread(record)) return;
@@ -1907,6 +1990,9 @@ const submitFeedbackReply = async () => {
     _activeRecordRef.value = { ..._activeRecordRef.value, parent_feedback: newFb };
     records.value = (records.value || []).map(r => Number(r?.id || 0) === rid ? { ...r, parent_feedback: newFb } : r);
     feedbackReplyDraft.value = '';
+    if (pageMode.value === 'parent_messages' && feedbackFilter.value === 'awaiting_reply') {
+      await fetchRecords();
+    }
   } catch (e) {
     feedbackReplyError.value = e?.message || '回覆失敗';
   } finally {
@@ -2036,6 +2122,17 @@ const toggleRecordSelection = (id) => {
   const next = new Set(selectedRecordIds.value);
   if (next.has(id)) next.delete(id); else next.add(id);
   selectedRecordIds.value = next;
+};
+
+// While in selection mode, tapping the row/card toggles its checkbox instead of
+// opening the detail modal — matches the mode's own affordance (Gmail/Files pattern).
+const handleRecordCardClick = (record) => {
+  const selectable = record?.Status === 'pending' || record?.Status === 'changes_requested';
+  if (selectionMode.value && selectable) {
+    toggleRecordSelection(record.id);
+    return;
+  }
+  viewRecord(record);
 };
 
 // Teacher schedule state
@@ -3073,8 +3170,8 @@ const _buildRecordsParams = (page = 1, { beforeId = null } = {}) => {
     }
     if (filters.end_date) params.set('end_date', filters.end_date);
   }
-  // 家長回饋篩選改走伺服器端，確保跨頁/跨日期的回饋紀錄都撈得到（#138/#139）。
-  if (feedbackFilter.value === 'has' || feedbackFilter.value === 'unread') {
+  // 家長留言篩選改走伺服器端，確保跨頁/跨日期的留言紀錄都撈得到（#138/#139／awaiting_reply）。
+  if (feedbackFilter.value === 'has' || feedbackFilter.value === 'unread' || feedbackFilter.value === 'awaiting_reply') {
     params.set('feedback', feedbackFilter.value);
   }
   // 主任審核分頁改走伺服器端 status 篩選，讓列表＝該狀態全量（分頁載入），與 badge/總覽一致（#139/#595）。
@@ -3402,16 +3499,25 @@ const openModal = (record = null) => {
 const viewRecord = (record) => {
   showAllCommentPhrases.value = false;
   forceReadOnly.value = true;
+  replyMode.value = pageMode.value === 'parent_messages' || Boolean(record?.parent_feedback);
   _fillForm(record);
   showModal.value = true;
   markParentFeedbackRead(record);
   markTeacherCommentRead(record);
   _attachTextareaResize();
+  if (replyMode.value && record?.parent_feedback) {
+    nextTick(() => {
+      const box = document.querySelector('.lr-parent-feedback-box');
+      if (box) box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      feedbackReplyTextareaEl.value?.focus?.();
+    });
+  }
 };
 
 const editRecord = (record) => {
   showAllCommentPhrases.value = false;
   forceReadOnly.value = false;
+  replyMode.value = false;
   _fillForm(record);
   showModal.value = true;
   markTeacherCommentRead(record);
@@ -3430,6 +3536,7 @@ const closeModal = () => {
   draftStatusText.value = '';
   draftSaveError.value = false;
   showAllCommentPhrases.value = false;
+  replyMode.value = false;
   showModal.value = false;
   resetPreviousSummaryState();
   _openedFromScheduleSession.value = 0;
@@ -3911,12 +4018,12 @@ const batchApproveSelected = async () => {
     const res = await fetch('/api/v1/learning-records/batch-approve', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ DirectorID: props.userId, branch_id: props.branchId })
+      body: JSON.stringify({ ids, DirectorID: props.userId, branch_id: props.branchId })
     });
     if (res.ok) {
       const json = await res.json();
       alert(json.message || '批次核准完成');
-      selectedRecordIds.value = new Set();
+      exitSelectionMode();
       await fetchRecords();
       fetchStatusCounts();
     } else {
@@ -3943,7 +4050,7 @@ const batchRejectSelected = async () => {
     if (res.ok) {
       const json = await res.json();
       alert(json.message || '批次退回完成');
-      selectedRecordIds.value = new Set();
+      exitSelectionMode();
       await fetchRecords();
       fetchStatusCounts();
     } else {
@@ -3970,7 +4077,7 @@ const batchRequestChangesSelected = async () => {
     if (res.ok) {
       const json = await res.json();
       alert(json.message || '批次標記需修改完成');
-      selectedRecordIds.value = new Set();
+      exitSelectionMode();
       await fetchRecords();
       fetchStatusCounts();
     } else {
@@ -4279,19 +4386,20 @@ async function applyFeedbackFocus() {
   const s = feedbackFocusState({ isTeacher: isTeacher.value });
   _suppressFeedbackRefetch = true;
   try {
+    pageMode.value = s.pageMode || 'parent_messages';
     onlyUnfilled.value = s.onlyUnfilled;
     defaultWindowDisabled.value = s.liftWindow;
-    showMoreFilters.value = true;
+    showMoreFilters.value = pageMode.value === 'records';
     if (isTeacher.value) {
       teacherFilterTab.value = s.teacherFilterTab;
       teacherPriorityFilter.value = 'all';
     } else {
       reviewTab.value = s.reviewTab;
     }
-    feedbackFilter.value = s.feedbackFilter; // 'unread'
+    feedbackFilter.value = s.feedbackFilter; // awaiting_reply
     await fetchRecords();
-    // 伺服器已按 unread 篩選；若沒有未讀（可能都讀過了），退回「有回饋」讓使用者仍看得到全部回饋。
-    if (feedbackFilter.value === 'unread' && (records.value || []).length === 0) {
+    // 若尚無待回覆，退回「全部留言」讓使用者仍看得到歷史。
+    if (feedbackFilter.value === 'awaiting_reply' && (records.value || []).length === 0) {
       feedbackFilter.value = 'has';
       await fetchRecords();
     }
@@ -4302,6 +4410,25 @@ async function applyFeedbackFocus() {
     const el = document.querySelector('.lr-filters-bar');
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
+}
+
+function setPageMode(mode) {
+  pageMode.value = mode === 'parent_messages' ? 'parent_messages' : 'records';
+  if (pageMode.value === 'parent_messages') {
+    defaultWindowDisabled.value = true;
+    feedbackFilter.value = 'awaiting_reply';
+    if (isTeacher.value) {
+      teacherFilterTab.value = 'all';
+      teacherPriorityFilter.value = 'all';
+    } else {
+      reviewTab.value = 'all';
+    }
+    onlyUnfilled.value = false;
+  } else {
+    feedbackFilter.value = 'all';
+    defaultWindowDisabled.value = false;
+  }
+  fetchRecords();
 }
 
 watch(() => props.feedbackFocusToken, (t) => {
@@ -4594,6 +4721,7 @@ const executeExport = async () => {
 // ── Init ──
 onMounted(async () => {
   if (window.innerWidth <= 640) scheduleView.value = 'today';
+  if (hasActiveFilters.value) showAdvancedFilters.value = true;
   migrateLegacyDrafts();
   if (props.userId) pruneOldDrafts(props.userId);
 
@@ -4758,6 +4886,18 @@ watch([reviewTab, resolvedDefaultWindowStart], ([rt, win], [prt, pwin]) => {
   padding: 10px 16px;
 }
 
+.lr-mode-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+}
+
+.lr-parent-feedback-box--reply-mode {
+  outline: 2px solid var(--ds-primary);
+  outline-offset: 2px;
+}
+
 .lr-filters-quick {
   display: flex;
   flex-wrap: wrap;
@@ -4852,36 +4992,76 @@ watch([reviewTab, resolvedDefaultWindowStart], ([rt, win], [prt, pwin]) => {
   color: var(--ds-canvas);
 }
 
+.lr-toolbar-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 8px;
+}
 .lr-unfilled-toggle {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin: 8px 0 0 4px;
   font-size: 13px;
   cursor: pointer;
   color: var(--ds-ink-mute);
   user-select: none;
 }
 .lr-unfilled-toggle input { width: auto; margin: 0; }
+.lr-select-mode-btn.active {
+  background: var(--ds-primary-wash);
+  border-color: var(--ds-primary);
+  color: var(--ds-primary);
+}
 
 /* ── Batch Action Bar ── */
 .lr-batch-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
   margin-top: 10px;
-  padding: 8px 12px;
+  padding: 10px 12px;
   background: var(--ds-primary-wash);
   border: 1px solid var(--ds-hairline);
   border-radius: 8px;
+}
+.lr-batch-bar__meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.lr-batch-bar__actions {
+  display: flex;
+  gap: 8px;
   flex-wrap: wrap;
+}
+/* Below the point where 3 text buttons + meta row fit on one line, stack into two
+   deliberate rows (meta on top, actions as an evenly-spaced full-width row) instead
+   of letting flex-wrap break the buttons unevenly (3-then-2). */
+@media (max-width: 640px) {
+  .lr-batch-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .lr-batch-bar__meta {
+    justify-content: space-between;
+  }
+  .lr-batch-bar__actions {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .lr-batch-bar__actions button {
+    width: 100%;
+  }
 }
 
 .lr-batch-count {
   font-size: 13px;
   font-weight: 600;
   color: var(--ds-primary-deep);
-  margin-right: 4px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -5383,6 +5563,20 @@ watch([reviewTab, resolvedDefaultWindowStart], ([rt, win], [prt, pwin]) => {
   padding-bottom: 10px;
   border-bottom: 1px dashed var(--ds-canvas-soft);
 }
+.lr-filters-header-toggle {
+  width: 100%;
+  background: none;
+  border: none;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.lr-filters-header-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ds-ink-mute);
+}
 .lr-filters-title {
   display: inline-flex;
   align-items: center;
@@ -5704,6 +5898,10 @@ select.lr-input {
   cursor: pointer;
   transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
 }
+.lr-record-card.is-selected {
+  border-color: var(--ds-primary);
+  background: var(--ds-primary-wash);
+}
 
 .lr-record-card:hover {
   transform: translateY(-2px);
@@ -5726,6 +5924,20 @@ select.lr-input {
   justify-content: space-between;
   gap: 12px;
 }
+
+.lr-record-card__title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.lr-record-card__select {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
 
 .lr-record-card__student {
   font-size: 17px;
@@ -6366,6 +6578,9 @@ select.lr-input {
   cursor: pointer;
   transition: background 0.15s;
 }
+.lr-table-row.is-selected {
+  background: var(--ds-primary-wash);
+}
 .lr-table-row.lr-row-unfilled {
   border-left: 3px solid var(--ds-warning);
 }
@@ -6403,10 +6618,6 @@ select.lr-input {
 .lr-teacher-comment-chip { display:inline-flex; align-items:center; gap:3px; margin-top:4px; padding:3px 10px; border-radius:10px; font-size:12px; user-select:none; }
 .lr-teacher-comment-chip.unread { background:var(--ds-canvas-soft); color:var(--ds-ink-mute); font-weight:700; border:1px solid var(--ds-canvas-soft); }
 .lr-teacher-comment-chip.read { background:var(--ds-canvas-soft); color:var(--ds-ink-mute); border:1px solid var(--ds-canvas-soft); }
-
-.lr-feedback-inline-preview { margin-top:8px; padding:8px 10px; background:var(--ds-warning-wash); border:1px solid var(--ds-warning-wash); border-radius:8px; font-size:12px; }
-.lr-feedback-inline-preview__content { color:var(--ds-ink); line-height:1.5; white-space:pre-wrap; }
-.lr-feedback-inline-preview__time { margin-top:4px; color:var(--ds-ink-mute); font-size:11px; }
 
 /* 列表視圖 row 高亮 */
 tr.lr-row-has-feedback { border-left: 3px solid var(--ds-hairline); }
