@@ -9,6 +9,7 @@
     "test:teacher-streak": "node src/lib/teacherLoginStreak.test.js",
     "test:engagement-progress": "node src/lib/engagementRankProgress.test.js",
     "test:session-consistency": "node src/lib/sessionConsistency.test.js",
+    "test:teacher-daily-workflow": "node src/lib/teacherDailyWorkflow.test.js",
     "test:session-occurrence-filter": "node src/lib/sessionOccurrenceFilter.test.js",
     "test:package-sessions": "node src/lib/packageSessions.test.js",
     "test:session-planning-status": "node src/lib/sessionPlanningStatus.test.js",

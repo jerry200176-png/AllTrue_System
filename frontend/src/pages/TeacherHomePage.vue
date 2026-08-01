@@ -73,6 +73,46 @@
       </div>
     </div>
 
+    <!-- Single source of truth for today's work. Secondary metrics stay below the fold. -->
+    <section class="th-work-queue card" data-guide="teacher-home-work-queue" aria-labelledby="teacher-work-queue-title">
+      <div class="th-work-queue__header">
+        <div>
+          <p class="th-work-queue__eyebrow">今天</p>
+          <h3 id="teacher-work-queue-title">今天要完成</h3>
+          <p class="th-work-queue__description">依照期限與影響排序；完成後會從清單移除。</p>
+        </div>
+        <span class="th-work-queue__count" aria-live="polite">{{ teacherTasks.length }} 項</span>
+      </div>
+
+      <div v-if="teacherTasksLoading" class="th-work-queue__list" aria-label="今日工作載入中">
+        <div v-for="i in 3" :key="i" class="th-work-task th-work-task--skeleton"></div>
+      </div>
+      <div v-else-if="teacherTasks.length === 0" class="th-work-queue__empty">
+        <span class="material-symbols-outlined" aria-hidden="true">task_alt</span>
+        <div>
+          <strong>今天沒有待完成工作</strong>
+          <p>可以查看本週課表，先準備下一堂課。</p>
+        </div>
+        <button type="button" class="ghost small" @click="scrollToWeekSchedule">查看本週課表</button>
+      </div>
+      <div v-else class="th-work-queue__list">
+        <article v-for="task in teacherTasks" :key="task.id" class="th-work-task">
+          <div class="th-work-task__main">
+            <div class="th-work-task__title-row">
+              <span class="th-work-task__type">{{ teacherTaskTypeLabel(task.type) }}</span>
+              <strong>{{ task.title }}</strong>
+            </div>
+            <p>{{ task.summary }}</p>
+            <small>期限：{{ task.dueAt || '今天' }}</small>
+          </div>
+          <button type="button" class="primary small th-work-task__cta" @click="openTeacherTask(task)">
+            {{ task.actionLabel }}
+          </button>
+        </article>
+      </div>
+    </section>
+
+    <div v-if="false" class="th-legacy-workflow">
     <!-- A. Today's Actions -->
     <div class="th-today card" data-guide="teacher-home-today">
       <div class="th-section-head-row">
@@ -301,6 +341,7 @@
         <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle">arrow_forward</span>
       </button>
     </div>
+    </div>
 
     <!-- B. Weekly Schedule (merged across all branches) -->
     <div class="th-week card" data-guide="teacher-home-week">
@@ -389,6 +430,59 @@
       </div>
     </div>
 
+    <details class="th-secondary" @toggle="handleSecondaryToggle">
+      <summary class="th-secondary__summary">
+        <span>
+          <strong>更多工作資訊</strong>
+          <small>進度、家長回饋與系統狀態</small>
+        </span>
+        <span class="material-symbols-outlined" aria-hidden="true">expand_more</span>
+      </summary>
+      <div class="th-secondary__body">
+        <div v-if="secondaryLoading" class="th-secondary__loading" role="status">載入其他資訊中…</div>
+        <div v-else-if="secondaryError" class="th-secondary__error" role="alert">
+          {{ secondaryError }}
+          <button type="button" class="ghost small" @click="loadSecondaryData">重試</button>
+        </div>
+        <div v-else class="th-secondary__grid">
+          <section class="th-secondary__metric">
+            <span class="th-secondary__label">本週評量進度</span>
+            <strong>{{ progressSummary.completed_sessions }} / {{ progressSummary.expected_sessions }}</strong>
+            <small>{{ progressSummary.completion_rate_pct }}% 完成</small>
+          </section>
+          <section class="th-secondary__metric">
+            <span class="th-secondary__label">家長回饋追蹤</span>
+            <strong v-if="feedbackAnalytics">{{ feedbackAnalytics.summary.reply_rate_pct }}%</strong>
+            <strong v-else>—</strong>
+            <small v-if="feedbackAnalytics">{{ feedbackAnalytics.summary.unreplied_records }} 筆待回覆</small>
+            <small v-else>目前無回饋指標</small>
+          </section>
+        </div>
+        <div v-if="colleagueRanks.length" class="th-colleagues th-colleagues--secondary card">
+          <div class="th-colleagues-head">
+            <span class="material-symbols-outlined" style="font-size:16px">military_tech</span>
+            <strong>同事軍階</strong>
+            <span class="th-colleagues-count">{{ colleagueRanks.length }} 位</span>
+          </div>
+          <ul class="th-colleagues-list">
+            <li v-for="c in colleagueRanks" :key="'secondary-col-' + c.user_id" class="th-colleague" :title="`${c.name}：${c.rank_label}`">
+              <RocRankBadge :rank-key="c.rank_key" :size="22" />
+              <span class="th-colleague-name">{{ c.name }}</span>
+              <span class="th-colleague-rank">{{ c.rank_label }}</span>
+            </li>
+          </ul>
+        </div>
+        <SystemTrustPanel
+          v-if="secondaryLoaded"
+          :branch-id="branchId"
+          :token="trustToken"
+          compact
+          teacher-mode
+          @report-problem="$emit('navigate', 'bugs')"
+        />
+      </div>
+    </details>
+
     <!-- C. Quick Links -->
     <div class="th-links card" data-guide="teacher-home-links">
       <!-- Chat entry card -->
@@ -410,29 +504,6 @@
       </button>
     </div>
 
-    <!-- 同事軍階（老師互看）：徽章展示，無位次/XP -->
-    <div v-if="colleagueRanks.length" class="th-colleagues card">
-      <div class="th-colleagues-head">
-        <span class="material-symbols-outlined" style="font-size:16px">military_tech</span>
-        <strong>同事軍階</strong>
-        <span class="th-colleagues-count">{{ colleagueRanks.length }} 位</span>
-      </div>
-      <ul class="th-colleagues-list">
-        <li v-for="c in colleagueRanks" :key="'col-' + c.user_id" class="th-colleague" :title="`${c.name}：${c.rank_label}`">
-          <RocRankBadge :rank-key="c.rank_key" :size="22" />
-          <span class="th-colleague-name">{{ c.name }}</span>
-          <span class="th-colleague-rank">{{ c.rank_label }}</span>
-        </li>
-      </ul>
-    </div>
-
-    <SystemTrustPanel
-      :branch-id="branchId"
-      :token="trustToken"
-      compact
-      teacher-mode
-      @report-problem="$emit('navigate', 'bugs')"
-    />
   </div>
 
   <ReportDiscrepancyModal
@@ -465,6 +536,7 @@ import {
 } from '../lib/userEngagementDisplay';
 import { fetchActiveForSession } from '../lib/scheduleDiscrepanciesApi.js';
 import { trackAdoptionEvent } from '../lib/adoptionTelemetry';
+import { buildTeacherTasks } from '../lib/teacherDailyWorkflow.js';
 import {
   readTeacherStreak,
   isTeacherStreakDisplayEnabled,
@@ -676,6 +748,36 @@ const awaitingReplyLoading = ref(false);
 // ── Chat unread count ──
 const chatUnreadCount   = ref(0);
 const chatUnreadLoading = ref(false);
+
+const secondaryOpen = ref(false);
+const secondaryLoaded = ref(false);
+const secondaryLoading = ref(false);
+const secondaryError = ref('');
+
+async function loadSecondaryData() {
+  if (secondaryLoading.value) return;
+  secondaryLoading.value = true;
+  secondaryError.value = '';
+  const results = await Promise.allSettled([
+    fetchMissionCenter(),
+    fetchFeedbackAnalytics(),
+    fetchLearningProgress(),
+    fetchColleagueRanks(),
+    refreshTrustToken(),
+    loadEngagementSnapshot(),
+    fetchChatUnread(),
+  ]);
+  secondaryLoaded.value = true;
+  if (results.every((result) => result.status === 'rejected')) {
+    secondaryError.value = '其他資訊暫時無法載入，請稍後重試。';
+  }
+  secondaryLoading.value = false;
+}
+
+function handleSecondaryToggle(event) {
+  secondaryOpen.value = event.currentTarget?.open === true;
+  if (secondaryOpen.value) loadSecondaryData();
+}
 
 async function fetchChatUnread() {
   chatUnreadLoading.value = true;
@@ -1097,7 +1199,7 @@ const weekDays = computed(() => {
           id: s.id,
           studentClassId: s.student_class_id,
           studentName: s.student_name || '—',
-          subject: s.teacher_name ? `${s.teacher_name}` : '—',
+          subject: s.subject_name || s.subjectName || s.subject || (s.teacher_name ? `${s.teacher_name}` : '—'),
           date: s.session_date || dateStr,
           startTime: s.start_time || '—',
           endTime: s.end_time || '',
@@ -1125,6 +1227,46 @@ const todayPendingEvents = computed(() => {
     .filter(ev => ev.formStatus === 'missing' || ev.formStatus === 'changes_requested')
     .sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
 });
+
+const teacherTasks = computed(() => buildTeacherTasks({
+  pendingAttendance: todayAllSessions.value.filter((row) => String(row?.status || '').toLowerCase() === 'scheduled'),
+  pendingLearning: todayPendingEvents.value,
+  overdueLearning: overdueRecords.value,
+  awaitingReplies: [{ count: Math.max(Number(props.unreadFeedbackCount || 0), Number(awaitingReplyCount.value || 0)) }],
+}));
+
+const teacherTasksLoading = computed(() => (
+  loadingAttendance.value || loadingOverdue.value || loadingWeek.value || awaitingReplyLoading.value
+));
+
+function teacherTaskTypeLabel(type) {
+  return ({ attendance: '出缺勤', learning: '學習評量', feedback: '家長回饋' }[type] || '待辦');
+}
+
+function openTeacherTask(task) {
+  if (!task) return;
+  if (task.type === 'attendance') {
+    goAttendance();
+    return;
+  }
+  if (task.type === 'feedback') {
+    goParentMessages();
+    return;
+  }
+  if (task.type === 'learning') {
+    const row = task.source || {};
+    goFillRecord({
+      branchId: row.branch_id ?? row.branchId,
+      recordId: row.learning_record_id ?? row.record_id ?? row.recordId ?? null,
+      classSessionId: row.class_session_id ?? row.session_id ?? row.id,
+      sessionDate: row.session_date ?? row.date,
+    });
+  }
+}
+
+function scrollToWeekSchedule() {
+  document.querySelector('[data-guide="teacher-home-week"]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
 
 // ── Branch colors and short names ──
 const BRANCH_COLORS = [
@@ -1296,19 +1438,14 @@ function snoozePendingSoundToday() {
 async function refreshAll() {
   refreshing.value = true;
   await Promise.all([
-    refreshTrustToken(),
     fetchPendingAttendance(),
-    fetchMissionCenter(),
-    fetchFeedbackAnalytics(),
     fetchAwaitingReplyCount(),
     fetchOverdueLearning(),
     fetchPendingLearningSummary(),
     loadWeekSchedule(),
     fetchClockinStatus(),
-    fetchLearningProgress(),
-    loadEngagementSnapshot(),
-    fetchColleagueRanks(),
   ]);
+  if (secondaryLoaded.value || secondaryOpen.value) await loadSecondaryData();
   refreshing.value = false;
 }
 
@@ -1322,7 +1459,7 @@ function startPolling() {
       fetchPendingAttendance();
       fetchOverdueLearning();
       fetchPendingLearningSummary();
-      fetchLearningProgress();
+      if (secondaryLoaded.value) fetchLearningProgress();
     }
   }, POLL_INTERVAL);
 }
@@ -1335,19 +1472,16 @@ function onVisibilityChange() {
   if (document.visibilityState === 'visible') {
     refreshTeacherStreakUi();
     refreshEngagementUi();
-    loadEngagementSnapshot();
     fetchPendingAttendance();
-    fetchMissionCenter();
-    fetchFeedbackAnalytics();
     fetchAwaitingReplyCount();
     fetchOverdueLearning();
     fetchPendingLearningSummary();
-    fetchLearningProgress();
+    if (secondaryLoaded.value) loadSecondaryData();
   }
 }
 
 function onLearningProgressRefreshEvent() {
-  fetchLearningProgress();
+  if (secondaryLoaded.value) fetchLearningProgress();
 }
 
 // ── Report discrepancy helpers ──
@@ -1413,9 +1547,8 @@ onMounted(() => {
   refreshTeacherStreakUi();
   refreshEngagementUi();
   setupEngagementReducedMotion();
-  loadEngagementSnapshot();
   trackAdoptionEvent('dashboard_opened', props.branchId, { role: 'teacher', page: 'teacher-home' });
-  Promise.all([fetchPendingAttendance(), fetchOverdueLearning(), fetchPendingLearningSummary(), loadWeekSchedule(), fetchChatUnread(), fetchClockinStatus(), fetchLearningProgress(), refreshTrustToken(), fetchColleagueRanks()]);
+  Promise.all([fetchPendingAttendance(), fetchOverdueLearning(), fetchPendingLearningSummary(), loadWeekSchedule(), fetchAwaitingReplyCount(), fetchClockinStatus()]);
   startPolling();
   document.addEventListener('visibilitychange', onVisibilityChange);
   window.addEventListener('alltrue-teacher-learning-progress-refresh', onLearningProgressRefreshEvent);
@@ -1430,8 +1563,7 @@ watch(() => props.branchId, () => {
   fetchPendingAttendance();
   fetchOverdueLearning();
   fetchPendingLearningSummary();
-  fetchLearningProgress();
-  fetchColleagueRanks();
+  if (secondaryLoaded.value) loadSecondaryData();
 });
 watch(() => props.teacherBranchIds, () => loadWeekSchedule(), { deep: true });
 watch(
@@ -1451,6 +1583,78 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.th-work-queue {
+  margin-top: 14px;
+  padding: 20px;
+  border: 1px solid var(--ds-hairline);
+  background: var(--ds-canvas);
+}
+
+.th-work-queue__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--ds-hairline);
+}
+
+.th-work-queue__eyebrow {
+  margin: 0 0 4px;
+  color: var(--ds-primary-deep);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.th-work-queue h3 { margin: 0; color: var(--ds-ink); font-size: 20px; }
+.th-work-queue__description { margin: 5px 0 0; color: var(--ds-ink-mute); font-size: 13px; }
+.th-work-queue__count { flex: 0 0 auto; color: var(--ds-ink); font-size: 18px; font-variant-numeric: tabular-nums; font-weight: 700; white-space: nowrap; }
+.th-work-queue__list { display: grid; gap: 8px; padding-top: 12px; }
+.th-work-task { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-width: 0; padding: 14px 0; border-bottom: 1px solid var(--ds-hairline); }
+.th-work-task:last-child { border-bottom: 0; }
+.th-work-task__main { min-width: 0; }
+.th-work-task__title-row { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; }
+.th-work-task__title-row strong { color: var(--ds-ink); font-size: 15px; }
+.th-work-task__type { color: var(--ds-ink-mute); font-size: 12px; font-weight: 700; }
+.th-work-task__main p { margin: 5px 0 0; color: var(--ds-ink-secondary); font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
+.th-work-task__main small { display: block; margin-top: 5px; color: var(--ds-ink-mute); font-size: 12px; font-variant-numeric: tabular-nums; }
+.th-work-task__cta { flex: 0 0 auto; min-width: 104px; }
+.th-work-queue__empty { display: flex; align-items: center; gap: 12px; padding-top: 16px; color: var(--ds-ink-secondary); }
+.th-work-queue__empty > .material-symbols-outlined { color: var(--ds-success); font-size: 26px; }
+.th-work-queue__empty strong { color: var(--ds-ink); }
+.th-work-queue__empty p { margin: 4px 0 0; font-size: 13px; }
+.th-work-queue__empty button { margin-left: auto; }
+.th-work-task--skeleton { height: 72px; border-radius: 8px; background: var(--ds-canvas-soft); animation: th-work-skeleton 1.2s ease-in-out infinite alternate; }
+@keyframes th-work-skeleton { to { opacity: 0.55; } }
+.th-secondary { margin-top: 14px; border: 1px solid var(--ds-hairline); border-radius: 12px; background: var(--ds-canvas); }
+.th-secondary__summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; padding: 10px 16px; color: var(--ds-ink); cursor: pointer; list-style: none; }
+.th-secondary__summary::-webkit-details-marker { display: none; }
+.th-secondary__summary strong, .th-secondary__summary small { display: block; }
+.th-secondary__summary strong { font-size: 14px; }
+.th-secondary__summary small { margin-top: 2px; color: var(--ds-ink-mute); font-size: 12px; }
+.th-secondary[open] .th-secondary__summary { border-bottom: 1px solid var(--ds-hairline); }
+.th-secondary[open] .th-secondary__summary > .material-symbols-outlined { transform: rotate(180deg); }
+.th-secondary__summary > .material-symbols-outlined { color: var(--ds-ink-mute); transition: transform 160ms ease; }
+.th-secondary__body { padding: 14px 16px 16px; }
+.th-secondary__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.th-secondary__metric { min-width: 0; padding: 12px; border: 1px solid var(--ds-hairline); border-radius: 10px; background: var(--ds-canvas-soft); }
+.th-secondary__label, .th-secondary__metric small { display: block; color: var(--ds-ink-mute); font-size: 12px; }
+.th-secondary__metric strong { display: block; margin: 6px 0 2px; color: var(--ds-ink); font-size: 20px; font-variant-numeric: tabular-nums; }
+.th-secondary__loading, .th-secondary__error { padding: 10px 0; color: var(--ds-ink-secondary); font-size: 13px; }
+.th-secondary__error { display: flex; align-items: center; gap: 10px; color: var(--ds-danger); }
+.th-colleagues--secondary { margin-top: 12px; }
+@media (max-width: 640px) {
+  .th-work-queue { padding: 16px; }
+  .th-work-queue__header { gap: 10px; }
+  .th-work-queue__description { max-width: 260px; }
+  .th-work-task { align-items: stretch; flex-direction: column; gap: 10px; }
+  .th-work-task__cta { width: 100%; }
+  .th-work-queue__empty { align-items: flex-start; flex-wrap: wrap; }
+  .th-work-queue__empty button { width: 100%; margin-left: 38px; }
+  .th-secondary__grid { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) { .th-work-task--skeleton { animation: none; } }
+
 /* ──────── Page Layout ──────── */
 .th-page { max-width: 720px; margin: 0 auto; padding-bottom: 80px; }
 
