@@ -99,6 +99,8 @@ Existing + foundation set under `frontend/src/components/design-system/`:
 
 ## 6.1 Dashboard workbench pattern
 
+The current Director Dashboard implementation and first-hand reference evidence are recorded in [`DASHBOARD_VISUAL_RESEARCH_2026-08-01.md`](./DASHBOARD_VISUAL_RESEARCH_2026-08-01.md). Any future dashboard change must update that evidence or link a newer audit before implementation.
+
 The director dashboard is an operations workbench, not a marketing hero or a collection of equal-weight cards.
 
 - The first viewport answers: **what must the director do next?**

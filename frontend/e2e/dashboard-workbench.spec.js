@@ -33,26 +33,29 @@ for (const viewport of VIEWPORTS) {
     page.on('pageerror', (error) => errors.push(String(error)));
 
     await login(page);
-    await expect(page.getByText('今日待辦', { exact: true }).first()).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText('今日快照', { exact: true })).toBeVisible();
+    await expect(page.getByText('主任總覽', { exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('今日摘要', { exact: true })).toBeVisible();
 
     const layout = await page.evaluate(() => ({
       scrollWidth: document.documentElement.scrollWidth,
       clientWidth: document.documentElement.clientWidth,
-      taskCount: document.querySelectorAll('.workbench-task__cta').length,
-      importVisible: Boolean(document.querySelector('.ac--import')),
+      taskCount: document.querySelectorAll('.director-task__action').length,
+      primaryDecisionCount: document.querySelectorAll('.director-task').length,
+      legacyWorkbenchVisible: Boolean(document.querySelector('.workbench')),
     }));
     expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth);
-    expect(layout.importVisible).toBe(false);
+    expect(layout.legacyWorkbenchVisible).toBe(false);
+    expect(layout.primaryDecisionCount).toBeLessThanOrEqual(7);
+    await expect(page.getByRole('tab', { name: '今天', exact: true })).toHaveAttribute('aria-selected', 'true');
     if (layout.taskCount > 0) {
-      await expect(page.locator('.workbench-task__cta').first()).toBeVisible();
+      await expect(page.locator('.director-task__action').first()).toBeVisible();
     }
 
     const fullView = page.getByRole('tab', { name: '完整營運', exact: true });
     await fullView.click();
     await expect.poll(() => secondaryRequests.length, { timeout: 10_000 }).toBeGreaterThan(0);
-    await expect(page.locator('.work-grid')).toBeVisible();
-    await expect(page.getByText('趨勢、操作紀錄與老師填寫率在完整營運中載入。', { exact: true })).toBeVisible();
+    await expect(page.locator('.director-workbench-v2__full')).toBeVisible();
+    await expect(page.getByText('近期紀錄與分析', { exact: true })).toBeVisible();
 
     expect(errors, `頁面 JS 錯誤：\n${errors.join('\n')}`).toEqual([]);
   });

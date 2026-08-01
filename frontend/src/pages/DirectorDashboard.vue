@@ -1,12 +1,235 @@
 <template>
   <div>
-    <div v-if="branchId == null" class="card no-branch-card enterprise-empty">
+    <template v-if="branchId == null">
+      <div class="card no-branch-card enterprise-empty">
+        <h2>尚無分校資料</h2>
+        <p>系統尚未載入您的分校權限，或您尚未被指派到任何分校。</p>
+        <p class="hint">請聯繫系統管理員設定您的分校權限後重新整理頁面。</p>
+      </div>
+    </template>
+
+    <template v-else>
+      <main class="director-workbench-v2" aria-labelledby="director-workbench-v2-title">
+        <header class="director-workbench-v2__header">
+          <div class="director-workbench-v2__heading">
+            <h1 id="director-workbench-v2-title">主任總覽</h1>
+            <p>{{ branchName }} <span aria-hidden="true">·</span> {{ todayDisplay }}</p>
+          </div>
+          <div class="director-workbench-v2__header-actions">
+            <span class="director-workbench-v2__updated" role="status">
+              {{ dashboardLoading ? '更新中…' : (dashboardLastUpdated ? `更新於 ${dashboardLastUpdated}` : '尚未更新') }}
+            </span>
+            <button
+              type="button"
+              class="director-workbench-v2__refresh"
+              :disabled="dashboardLoading"
+              @click="refreshDashboard"
+            >
+              <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
+              重新整理
+            </button>
+          </div>
+        </header>
+
+        <nav class="director-workbench-v2__nav" role="tablist" aria-label="總覽檢視模式">
+          <button
+            type="button"
+            role="tab"
+            :aria-selected="dashboardViewMode === 'focus'"
+            :class="{ 'is-active': dashboardViewMode === 'focus' }"
+            @click="setDashboardViewMode('focus')"
+          >
+            今天
+          </button>
+          <button
+            type="button"
+            role="tab"
+            :aria-selected="dashboardViewMode === 'full'"
+            :class="{ 'is-active': dashboardViewMode === 'full' }"
+            @click="setDashboardViewMode('full')"
+          >
+            完整營運
+          </button>
+        </nav>
+
+        <section v-if="dashboardViewMode === 'focus'" class="director-workbench-v2__focus" aria-label="今天的主任工作">
+          <section class="director-workbench-v2__primary surface-panel" aria-labelledby="director-focus-title">
+            <header class="surface-panel__header">
+              <div>
+                <h2 id="director-focus-title">今天要處理的事</h2>
+                <p>依影響、期限與主任責任排序</p>
+              </div>
+              <span class="surface-panel__count">{{ dashboardPrimaryTasks.length }} 項</span>
+            </header>
+
+            <div v-if="dashboardLoading" class="director-task-list" aria-live="polite" aria-label="正在載入今日待辦">
+              <div v-for="n in 3" :key="n" class="director-task director-task--loading" aria-hidden="true"></div>
+            </div>
+            <div v-else-if="dashboardPrimaryError" class="director-state director-state--error" role="alert">
+              <strong>今日資料暫時無法載入</strong>
+              <span>{{ dashboardPrimaryError }}</span>
+              <button type="button" class="text-action" @click="refreshDashboard">再試一次</button>
+            </div>
+            <div v-else-if="!dashboardPrimaryTasks.length" class="director-state">
+              <span class="material-symbols-outlined" aria-hidden="true">task_alt</span>
+              <strong>今天沒有需要主任處理的事</strong>
+              <span>課務與待辦都已經有明確狀態。</span>
+            </div>
+            <ol v-else class="director-task-list">
+              <li
+                v-for="(task, index) in dashboardPrimaryTasks"
+                :key="task.id"
+                class="director-task"
+                :class="`director-task--${task.severity}`"
+              >
+                <span class="director-task__index" aria-hidden="true">{{ String(index + 1).padStart(2, '0') }}</span>
+                <div class="director-task__body">
+                  <div class="director-task__title-row">
+                    <h3>{{ task.title }}</h3>
+                    <strong v-if="task.count" class="director-task__count">{{ task.count }}</strong>
+                  </div>
+                  <p>{{ task.summary }}</p>
+                  <div class="director-task__meta">
+                    <span>{{ task.owner }}</span>
+                    <span>{{ task.dueAt }}</span>
+                  </div>
+                </div>
+                <button type="button" class="director-task__action" @click="openDashboardTask(task)">
+                  {{ task.actionLabel }}
+                </button>
+              </li>
+            </ol>
+
+            <button
+              v-if="dashboardAdditionalTaskCount"
+              type="button"
+              class="director-workbench-v2__more"
+              @click="setDashboardViewMode('full')"
+            >
+              查看其他 {{ dashboardAdditionalTaskCount }} 項營運工作
+              <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
+            </button>
+          </section>
+
+          <aside class="director-workbench-v2__aside" aria-label="今日摘要">
+            <section class="surface-panel surface-panel--summary" aria-labelledby="director-summary-title">
+              <header class="surface-panel__header">
+                <div>
+                  <h2 id="director-summary-title">今日摘要</h2>
+                  <p>只保留幫助判斷下一步的數字</p>
+                </div>
+              </header>
+              <dl class="director-summary-list">
+                <div><dt>今日課程</dt><dd>{{ todaySchedules.length }}</dd><small>{{ attendedCount }} 堂已完成</small></div>
+                <div><dt>待審評量</dt><dd>{{ pendingEvaluations.length }}</dd><small>需要確認的紀錄</small></div>
+                <div><dt>未讀通知</dt><dd>{{ unreadNotificationCount }}</dd><small>通知中心待查看</small></div>
+                <div><dt>今日工作量</dt><dd>{{ workflowDailySummary.due_total }}</dd><small>已完成 {{ workflowDailySummary.done_total }} 件</small></div>
+              </dl>
+            </section>
+
+            <details v-if="operationsTrust?.decision_center" class="director-trust-note">
+              <summary>
+                <span>課表可信度</span>
+                <strong :class="`director-trust-note__score--${decisionCenter.status}`">{{ decisionCenter.score }}/{{ decisionCenter.max }}</strong>
+              </summary>
+              <p>{{ decisionCenter.headline }}</p>
+              <div v-if="trustDecisions.length" ref="trustDecisionsEl" class="director-trust-note__list">
+                <article v-for="item in trustDecisions" :key="item.key" class="director-trust-note__item">
+                  <div><strong>{{ trustDecisionTitle(item) }}</strong><p>{{ item.why }}</p></div>
+                  <button type="button" class="text-action" @click="handleTrustDecision(item)">{{ item.action_label }}</button>
+                </article>
+              </div>
+            </details>
+          </aside>
+        </section>
+
+        <section v-else class="director-workbench-v2__full" aria-labelledby="director-full-title">
+          <header class="director-workbench-v2__subheader">
+            <div><h2 id="director-full-title">完整營運</h2><p>課表、待處理案件與近期紀錄集中在這裡。</p></div>
+            <span v-if="secondaryLoading" class="director-workbench-v2__updated" role="status">載入營運資料中…</span>
+          </header>
+
+          <div class="director-workbench-v2__full-grid">
+            <div class="director-workbench-v2__full-main">
+              <section id="schedule-sec" class="surface-panel" aria-labelledby="director-schedule-title">
+                <header class="surface-panel__header"><div><h3 id="director-schedule-title">今日課表</h3><p>先看今天的課務節奏與未完成點名。</p></div><span class="surface-panel__count">{{ todaySchedules.length }} 堂</span></header>
+                <div v-if="!todaySchedules.length" class="director-state director-state--compact"><span class="material-symbols-outlined" aria-hidden="true">calendar_today</span><span>今天沒有課程。</span></div>
+                <div v-else class="director-schedule-list">
+                  <div v-for="schedule in todaySchedules.slice(0, 12)" :key="schedule.id" class="director-schedule-row">
+                    <time>{{ formatTime(schedule.start_time) }}</time>
+                    <strong>{{ schedule.student_name || '未命名學生' }}</strong>
+                    <span>{{ schedule.subject || schedule.subject_name || '—' }}</span>
+                    <span>{{ schedule.teacher_name || '—' }}</span>
+                    <span :class="`director-schedule-row__status director-schedule-row__status--${schedule.status}`">{{ formatScheduleStatus(schedule.status) }}</span>
+                  </div>
+                </div>
+                <footer v-if="pendingAttendanceCount" class="surface-panel__footer"><span>{{ pendingAttendanceCount }} 堂尚未完成點名</span><button type="button" class="text-action" @click="goToAttendance">前往點名</button></footer>
+              </section>
+
+              <section id="exception-workflows-sec" class="surface-panel director-inbox" aria-labelledby="director-leave-title">
+                <header class="surface-panel__header"><div><h3 id="director-leave-title">家長請假</h3><p>每筆案件只在這裡做決策：安排補課、核准不補課，或退回。</p></div><span class="surface-panel__count">{{ exceptionWorkflowCount }} 筆</span></header>
+                <div v-if="workflowFocusError" class="director-inline-error" role="alert">{{ workflowFocusError }}</div>
+                <div v-if="exceptionWorkflowLoading" class="director-state director-state--compact" role="status">案件載入中…</div>
+                <div v-else-if="exceptionWorkflowError" class="director-inline-error" role="alert">{{ exceptionWorkflowError }}</div>
+                <div v-else-if="!exceptionWorkflows.length" class="director-state director-state--compact"><span class="material-symbols-outlined" aria-hidden="true">task_alt</span><span>目前沒有待處理的家長請假。</span></div>
+                <div v-else class="director-leave-list">
+                  <article v-for="workflow in exceptionWorkflows" :key="workflow.id" :id="`exception-workflow-${workflow.id}`" class="director-leave-case">
+                    <header class="director-leave-case__header"><div><strong>{{ workflow.student?.name || '未命名學生' }}</strong><span>{{ workflowStatusLabel(workflow.status) }}</span></div><span>案件 #{{ workflow.id }}</span></header>
+                    <dl class="director-leave-case__details"><div><dt>原堂次</dt><dd>{{ workflow.class_session?.date || '未提供日期' }} {{ workflow.class_session?.start_time || '' }}–{{ workflow.class_session?.end_time || '' }}</dd></div><div><dt>原因</dt><dd>{{ workflow.payload?.reason || '未提供原因' }}</dd></div></dl>
+                    <div v-if="workflowCandidates[workflow.id]?.length" class="director-candidate-list" role="radiogroup" :aria-label="`${workflow.student?.name || '學生'}補課候選`">
+                      <label v-for="candidate in workflowCandidates[workflow.id]" :key="candidate.id" class="director-candidate" :class="{ 'is-selected': selectedWorkflowCandidates[workflow.id] === candidate.id }"><input v-model="selectedWorkflowCandidates[workflow.id]" type="radio" :name="`leave-candidate-${workflow.id}`" :value="candidate.id" :disabled="workflowActionId === workflow.id" /><span><strong>{{ candidate.candidate_date }}</strong> {{ candidate.start_time }}–{{ candidate.end_time }}</span></label>
+                    </div>
+                    <p v-else class="director-leave-case__hint"><span class="material-symbols-outlined" aria-hidden="true">lightbulb</span>先搜尋沒有衝堂的可用時段，也可以直接核准不補課。</p>
+                    <div class="director-leave-case__actions">
+                      <button v-if="!workflowCandidates[workflow.id]?.length" type="button" class="button button--primary" :disabled="workflowActionId === workflow.id" @click="generateCandidates(workflow)"><span class="material-symbols-outlined" aria-hidden="true">search</span>{{ workflowActionId === workflow.id ? '搜尋中…' : '尋找補課時段' }}</button>
+                      <button v-else type="button" class="button button--primary" :disabled="workflowActionId === workflow.id || !selectedWorkflowCandidates[workflow.id]" @click="openWorkflowDecision('candidate', workflow)">確認補課</button>
+                      <button v-if="workflowCandidates[workflow.id]?.length" type="button" class="button button--quiet" :disabled="workflowActionId === workflow.id" @click="openWorkflowDecision('waive', workflow)">核准不補課</button>
+                      <button type="button" class="button button--danger" :disabled="workflowActionId === workflow.id" @click="openWorkflowDecision('reject', workflow)">退回</button>
+                    </div>
+                  </article>
+                </div>
+              </section>
+
+              <section id="evals-sec" class="surface-panel" aria-labelledby="director-evals-title">
+                <header class="surface-panel__header"><div><h3 id="director-evals-title">評量待審核</h3><p>確認後，家長才能看到完整回饋。</p></div><span class="surface-panel__count">{{ pendingEvaluations.length }} 筆</span></header>
+                <div v-if="!pendingEvaluations.length" class="director-state director-state--compact"><span class="material-symbols-outlined" aria-hidden="true">task_alt</span><span>目前沒有待審核評量。</span></div>
+                <div v-else class="director-evaluation-list"><article v-for="evaluation in pendingEvaluations.slice(0, 8)" :key="evaluation.id" class="director-evaluation-row"><div><strong>{{ evaluation.student_name }}</strong><span>{{ evaluation.student_class_label || evaluation.Subject || '—' }} · {{ evaluation.SessionDate || '未提供日期' }}</span></div><div><button type="button" class="button button--quiet" @click="emit('navigate', { target: 'learning', recordId: evaluation.id })">查看</button><button type="button" class="button button--primary" @click="approveEvaluation(evaluation)">核准</button><button type="button" class="button button--danger" @click="rejectEvaluation(evaluation)">退回</button></div></article></div>
+                <footer v-if="pendingEvaluations.length > 8" class="surface-panel__footer"><span>還有 {{ pendingEvaluations.length - 8 }} 筆</span><button type="button" class="text-action" @click="emit('navigate', { target: 'learning' })">查看全部</button></footer>
+              </section>
+            </div>
+
+            <aside class="director-workbench-v2__full-side">
+              <section id="payments-sec" class="surface-panel" aria-labelledby="director-payments-title"><header class="surface-panel__header"><div><h3 id="director-payments-title">繳費與續課</h3><p>{{ paymentActionLaneLabel }}</p></div><span class="surface-panel__count">{{ lowBalanceStudents.length }}</span></header><div v-if="!lowBalanceStudents.length" class="director-state director-state--compact"><span>目前沒有需要跟進的繳費提醒。</span></div><div v-else class="director-payment-list"><div v-for="student in displayPaymentAlerts" :key="student.id" class="director-payment-row"><div><strong>{{ student.name }}</strong><span :class="paymentAlertBadgeClass(student)">{{ paymentAlertBadgeText(student) }}</span></div><button type="button" class="text-action" @click="copyPaymentMessage(student)">複製通知</button></div></div><footer v-if="lowBalanceStudents.length > paymentAlertLimit" class="surface-panel__footer"><button type="button" class="text-action" @click="showAllPayments = !showAllPayments">{{ showAllPayments ? '收起' : `顯示全部 ${lowBalanceStudents.length} 筆` }}</button></footer></section>
+              <section class="surface-panel" aria-labelledby="director-discrepancy-title"><header class="surface-panel__header"><div><h3 id="director-discrepancy-title">課表回報</h3><p>老師回報的差異需要主任留下處理結果。</p></div><span class="surface-panel__count">{{ sdSummary.pending }}</span></header><div v-if="sdLoading" class="director-state director-state--compact" role="status">載入中…</div><div v-else-if="sdSummary.pending" class="director-state director-state--compact"><span>{{ sdSummary.pending }} 筆待確認</span><button type="button" class="text-action" @click="goToScheduleDiscrepancy">查看回報</button></div><div v-else class="director-state director-state--compact"><span class="material-symbols-outlined" aria-hidden="true">task_alt</span><span>目前沒有待確認的課表回報。</span></div></section>
+              <section id="notifications-sec" class="surface-panel" aria-labelledby="director-notifications-title"><header class="surface-panel__header"><div><h3 id="director-notifications-title">通知摘要</h3><p>只顯示未讀通知的最新幾筆。</p></div><span class="surface-panel__count">{{ unreadNotificationCount }}</span></header><div v-if="!notificationSummary.length" class="director-state director-state--compact"><span>目前沒有未讀通知。</span></div><div v-else class="director-notification-list"><div v-for="notification in notificationSummary" :key="notification.id"><strong>{{ notification.title }}</strong><span>{{ notification.typeLabel }}</span></div></div><footer class="surface-panel__footer"><button type="button" class="text-action" @click="goToNotifications">前往通知中心</button></footer></section>
+              <section v-if="directorTodoCards.length" class="surface-panel" aria-labelledby="director-other-work-title"><header class="surface-panel__header"><div><h3 id="director-other-work-title">其他營運工作</h3><p>需要追蹤的項目，不佔用今天的主佇列。</p></div><span class="surface-panel__count">{{ directorTodoCards.length }}</span></header><div v-if="adoptionTaskLoading" class="director-state director-state--compact" role="status">載入中…</div><div v-else class="director-other-work-list"><button v-for="work in directorTodoCards.slice(0, 6)" :key="work.id" type="button" @click="handleDirectorTodoClick(work)"><span>{{ work.title }}</span><small>{{ work.description }}</small><span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span></button></div></section>
+              <details class="director-analysis"><summary>近期紀錄與分析</summary><div class="director-analysis__body"><RecentSubstitutesCard :branch-id="branchId" :fetch-recent="fetchRecentSubstitutes" /><p>老師填寫率、操作履歷與科目統計已在完整營運中延遲載入。</p></div></details>
+            </aside>
+          </div>
+        </section>
+
+        <div v-if="workflowDecisionModal" class="director-modal-backdrop" role="presentation" @click.self="closeWorkflowDecision">
+          <section class="director-modal" role="dialog" aria-modal="true" aria-labelledby="director-modal-title">
+            <button type="button" class="director-modal__close" aria-label="關閉" @click="closeWorkflowDecision">×</button>
+            <h3 id="director-modal-title">{{ workflowDecisionTitle }}</h3>
+            <p>{{ workflowDecisionDescription }}</p>
+            <div v-if="workflowDecisionModal.kind === 'candidate'" class="director-modal__selection"><span>補課時段</span><strong>{{ selectedWorkflowCandidate?.candidate_date }} {{ selectedWorkflowCandidate?.start_time }}–{{ selectedWorkflowCandidate?.end_time }}</strong></div>
+            <label v-else class="director-modal__field"><span>{{ workflowDecisionModal.kind === 'reject' ? '退回原因' : '備註（選填）' }}</span><textarea v-model="workflowDecisionReason" rows="3" :placeholder="workflowDecisionModal.kind === 'reject' ? '請說明退回原因' : '可補充處理備註'" /></label>
+            <p v-if="workflowDecisionError" class="director-inline-error" role="alert">{{ workflowDecisionError }}</p>
+            <div class="director-modal__actions"><button type="button" class="button button--quiet" :disabled="workflowActionId === workflowDecisionModal.workflow.id" @click="closeWorkflowDecision">取消</button><button type="button" class="button" :class="workflowDecisionModal.kind === 'reject' ? 'button--danger' : 'button--primary'" :disabled="workflowActionId === workflowDecisionModal.workflow.id" @click="submitWorkflowDecision">{{ workflowDecisionModal.kind === 'candidate' ? '確認補課' : workflowDecisionModal.kind === 'reject' ? '確認退回' : '確認核准' }}</button></div>
+          </section>
+        </div>
+        <div v-if="workflowToast" class="director-toast" role="status">{{ workflowToast }}</div>
+      </main>
+    </template>
+
+    <div v-if="false && branchId == null" class="card no-branch-card enterprise-empty">
       <h2>尚無分校資料</h2>
       <p>系統尚未載入您的分校權限，或您尚未被指派到任何分校。</p>
       <p class="hint">請聯繫系統管理員設定您的分校權限後重新整理頁面。</p>
     </div>
 
-    <template v-else>
+    <template v-if="false">
       <div class="dash dash--desktop-dense">
         <!-- ===== Header ===== -->
         <div class="dash-header enterprise-page-header">
@@ -992,25 +1215,13 @@ const dashboardPrimaryError = ref('');
 const dashboardLastUpdated = ref('');
 const secondaryLoading = ref(false);
 const secondaryLoaded = ref(false);
-const DASHBOARD_VIEW_MODE_KEY = 'alltrue.director_dashboard_view_mode.v1';
-const dashboardViewMode = ref(loadDashboardViewMode());
-
-function loadDashboardViewMode() {
-  try {
-    const saved = localStorage.getItem(DASHBOARD_VIEW_MODE_KEY);
-    return saved === 'full' ? 'full' : 'focus';
-  } catch {
-    return 'focus';
-  }
-}
+// Returning to the dashboard always starts at today's work. Full operations is
+// an intentional, in-session drill-down and should never become the next
+// session's default just because it was opened once.
+const dashboardViewMode = ref('focus');
 
 function setDashboardViewMode(mode) {
   dashboardViewMode.value = mode === 'full' ? 'full' : 'focus';
-  try {
-    localStorage.setItem(DASHBOARD_VIEW_MODE_KEY, dashboardViewMode.value);
-  } catch {
-    // Ignore storage errors in restricted contexts.
-  }
   if (dashboardViewMode.value === 'full' && !secondaryLoaded.value) loadSecondaryData();
 }
 
@@ -1204,6 +1415,12 @@ const dashboardTasks = computed(() => buildDirectorDashboardTasks({
     actionLabel: item.target?.page === 'learning' ? '前往回饋' : '查看詳情',
   })),
 }));
+
+// The daily view intentionally excludes granular adoption rows. Those rows remain
+// available in the secondary operations view, while the primary queue stays at
+// one row per director decision instead of expanding into a student-by-student feed.
+const dashboardPrimaryTasks = computed(() => dashboardTasks.value.filter((item) => item.source !== 'adoption'));
+const dashboardAdditionalTaskCount = computed(() => dashboardTasks.value.filter((item) => item.source === 'adoption').length);
 
 const workflowDailySummary = computed(() => ({
   due_total: Number(adoptionWeeklyMetrics.value?.workflow_daily?.due_total || 0),
@@ -3548,6 +3765,210 @@ onBeforeUnmount(() => {
 .workbench__view-switch button { min-height: 36px; border-color: transparent; background: transparent; }
 .workbench__view-switch button.is-active { border-color: var(--ds-hairline); background: var(--ds-canvas); color: var(--ds-ink); box-shadow: var(--ds-shadow-1); }
 .workbench__view-hint { margin: 8px 2px 0; color: var(--ds-ink-mute); font-size: 11px; line-height: 1.5; }
+
+/* Director workbench v2: one surface, one hierarchy, one action language. */
+.director-workbench-v2 {
+  max-width: 1360px;
+  margin: 0 auto;
+  padding: 30px 36px 64px;
+  color: var(--ds-ink);
+}
+.director-workbench-v2__header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  padding-bottom: 22px;
+  border-bottom: 1px solid var(--ds-hairline);
+}
+.director-workbench-v2__heading h1,
+.director-workbench-v2__subheader h2,
+.surface-panel__header h2,
+.surface-panel__header h3 { margin: 0; color: var(--ds-ink); letter-spacing: -0.018em; }
+.director-workbench-v2__heading h1 { font-size: 28px; font-weight: 800; }
+.director-workbench-v2__heading p,
+.director-workbench-v2__subheader p,
+.surface-panel__header p { margin: 7px 0 0; color: var(--ds-ink-mute); font-size: 13px; line-height: 1.5; }
+.director-workbench-v2__header-actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; justify-content: flex-end; }
+.director-workbench-v2__updated { color: var(--ds-ink-mute); font-size: 12px; font-variant-numeric: tabular-nums; }
+.director-workbench-v2__refresh,
+.director-workbench-v2__nav button,
+.text-action,
+.button { font: inherit; cursor: pointer; }
+.director-workbench-v2__refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 7px 12px;
+  border: 1px solid var(--ds-hairline-input);
+  border-radius: 7px;
+  background: var(--ds-canvas);
+  color: var(--ds-ink-secondary);
+  font-size: 12px;
+  font-weight: 700;
+}
+.director-workbench-v2__refresh:hover { border-color: var(--ds-cta); color: var(--ds-cta); }
+.director-workbench-v2__refresh:disabled { cursor: wait; opacity: 0.6; }
+.director-workbench-v2__refresh:focus-visible,
+.director-workbench-v2__nav button:focus-visible,
+.text-action:focus-visible,
+.button:focus-visible,
+.director-task__action:focus-visible,
+.director-other-work-list button:focus-visible,
+.director-candidate input:focus-visible + span,
+.director-modal__close:focus-visible { outline: 3px solid var(--ds-info-wash); outline-offset: 2px; }
+.director-workbench-v2__nav { display: flex; gap: 22px; min-height: 52px; border-bottom: 1px solid var(--ds-hairline); }
+.director-workbench-v2__nav button { min-height: 52px; padding: 0 2px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--ds-ink-mute); font-size: 13px; font-weight: 800; }
+.director-workbench-v2__nav button:hover { color: var(--ds-ink); }
+.director-workbench-v2__nav button.is-active { border-bottom-color: var(--ds-cta); color: var(--ds-ink); }
+.director-workbench-v2__focus { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(260px, 0.72fr); gap: 24px; align-items: start; padding-top: 24px; }
+.director-workbench-v2__primary { min-width: 0; }
+.director-workbench-v2__aside { display: grid; gap: 18px; min-width: 0; }
+.surface-panel { min-width: 0; border: 1px solid var(--ds-hairline); border-radius: 10px; background: var(--ds-canvas); }
+.surface-panel__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px 22px 16px; }
+.surface-panel__header h2 { font-size: 20px; font-weight: 800; }
+.surface-panel__header h3 { font-size: 17px; font-weight: 800; }
+.surface-panel__count { flex: 0 0 auto; color: var(--ds-ink-mute); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.director-task-list { margin: 0; padding: 0 22px; list-style: none; }
+.director-task { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 14px; align-items: center; min-width: 0; padding: 17px 0; border-top: 1px solid var(--ds-hairline); }
+.director-task__index { align-self: start; padding-top: 2px; color: var(--ds-ink-mute); font-size: 11px; font-variant-numeric: tabular-nums; }
+.director-task--critical .director-task__index,
+.director-task--danger .director-task__index { color: var(--ds-danger); font-weight: 900; }
+.director-task--warning .director-task__index { color: var(--ds-warning); font-weight: 900; }
+.director-task__body { min-width: 0; }
+.director-task__title-row { display: flex; align-items: baseline; gap: 9px; min-width: 0; }
+.director-task__title-row h3 { overflow: hidden; margin: 0; color: var(--ds-ink); font-size: 14px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.director-task__count { flex: 0 0 auto; color: var(--ds-ink); font-size: 15px; font-variant-numeric: tabular-nums; }
+.director-task__body > p { margin: 5px 0 0; color: var(--ds-ink-secondary); font-size: 12px; line-height: 1.55; }
+.director-task__meta { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 7px; color: var(--ds-ink-mute); font-size: 11px; }
+.director-task__action { min-height: 34px; padding: 5px 0; border: 0; border-bottom: 1px solid transparent; background: transparent; color: var(--ds-cta); font-size: 12px; font-weight: 800; white-space: nowrap; }
+.director-task__action:hover { border-bottom-color: currentColor; }
+.director-task--loading { min-height: 92px; border-radius: 4px; background: linear-gradient(90deg, var(--ds-canvas-soft), var(--ds-canvas), var(--ds-canvas-soft)); background-size: 220% 100%; animation: director-workbench-loading 1.4s ease-in-out infinite; }
+.director-task--loading::after { content: ''; grid-column: 2 / -1; display: block; height: 12px; border-radius: 3px; background: var(--ds-canvas-soft); }
+@keyframes director-workbench-loading { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+.director-state { display: grid; justify-items: start; gap: 6px; padding: 34px 22px; color: var(--ds-ink-mute); font-size: 12px; }
+.director-state strong { color: var(--ds-ink); font-size: 14px; }
+.director-state .material-symbols-outlined { color: var(--ds-success); font-size: 25px; }
+.director-state--compact { display: flex; align-items: center; gap: 9px; min-height: 52px; padding: 18px 22px; }
+.director-state--error strong, .director-inline-error { color: var(--ds-danger); }
+.director-inline-error { margin: 0 22px 16px; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--ds-danger) 35%, var(--ds-hairline)); border-radius: 6px; background: var(--ds-danger-wash); font-size: 12px; }
+.text-action { display: inline-flex; align-items: center; min-height: 32px; padding: 4px 0; border: 0; border-bottom: 1px solid transparent; background: transparent; color: var(--ds-cta); font-size: 12px; font-weight: 800; }
+.text-action:hover { border-bottom-color: currentColor; }
+.director-workbench-v2__more { display: inline-flex; align-items: center; gap: 7px; margin: 2px 22px 19px 70px; padding: 8px 0; border: 0; border-bottom: 1px solid var(--ds-hairline-input); background: transparent; color: var(--ds-ink-secondary); font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; }
+.director-workbench-v2__more:hover { border-bottom-color: var(--ds-cta); color: var(--ds-cta); }
+.director-summary-list { margin: 0; padding: 0 22px; }
+.director-summary-list > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 14px 0; border-top: 1px solid var(--ds-hairline); }
+.director-summary-list dt { color: var(--ds-ink-secondary); font-size: 12px; }
+.director-summary-list dd { margin: 0; color: var(--ds-ink); font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.director-summary-list small { grid-column: 1 / -1; color: var(--ds-ink-mute); font-size: 11px; }
+.director-trust-note { border-top: 1px solid var(--ds-hairline); border-bottom: 1px solid var(--ds-hairline); }
+.director-trust-note summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 0 2px; color: var(--ds-ink-secondary); font-size: 12px; font-weight: 800; cursor: pointer; list-style: none; }
+.director-trust-note summary::-webkit-details-marker { display: none; }
+.director-trust-note summary::after { content: '＋'; color: var(--ds-ink-mute); font-size: 15px; }
+.director-trust-note[open] summary::after { content: '−'; }
+.director-trust-note > p { margin: 0 0 10px; color: var(--ds-ink-mute); font-size: 12px; line-height: 1.5; }
+.director-trust-note__score--green { color: var(--ds-success); }
+.director-trust-note__score--yellow { color: var(--ds-warning); }
+.director-trust-note__score--red { color: var(--ds-danger); }
+.director-trust-note__list { display: grid; gap: 10px; padding-bottom: 12px; }
+.director-trust-note__item { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-top: 10px; border-top: 1px solid var(--ds-hairline); }
+.director-trust-note__item strong { font-size: 12px; }
+.director-trust-note__item p { margin: 3px 0 0; color: var(--ds-ink-mute); font-size: 11px; line-height: 1.5; }
+.director-workbench-v2__full { padding-top: 24px; }
+.director-workbench-v2__subheader { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; margin-bottom: 18px; }
+.director-workbench-v2__subheader h2 { font-size: 22px; font-weight: 800; }
+.director-workbench-v2__full-grid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.75fr); gap: 20px; align-items: start; }
+.director-workbench-v2__full-main, .director-workbench-v2__full-side { display: grid; gap: 18px; min-width: 0; }
+.director-schedule-list { padding: 0 22px; }
+.director-schedule-row { display: grid; grid-template-columns: 54px minmax(130px, 1fr) minmax(80px, 0.7fr) minmax(80px, 0.7fr) auto; gap: 12px; align-items: center; min-width: 0; padding: 12px 0; border-top: 1px solid var(--ds-hairline); font-size: 12px; }
+.director-schedule-row time { color: var(--ds-ink-mute); font-variant-numeric: tabular-nums; }
+.director-schedule-row strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.director-schedule-row > span { overflow: hidden; color: var(--ds-ink-secondary); text-overflow: ellipsis; white-space: nowrap; }
+.director-schedule-row__status { color: var(--ds-ink-mute) !important; font-size: 11px; }
+.director-schedule-row__status--attended { color: var(--ds-success) !important; }
+.director-schedule-row__status--scheduled { color: var(--ds-warning) !important; }
+.surface-panel__footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 22px; padding: 13px 0 16px; border-top: 1px solid var(--ds-hairline); color: var(--ds-ink-mute); font-size: 11px; }
+.director-leave-list { display: grid; gap: 14px; padding: 0 22px 20px; }
+.director-leave-case { padding: 16px; border: 1px solid var(--ds-hairline); border-radius: 8px; background: var(--ds-canvas-soft); }
+.director-leave-case__header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.director-leave-case__header > div { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.director-leave-case__header strong { font-size: 14px; }
+.director-leave-case__header span { color: var(--ds-ink-mute); font-size: 11px; }
+.director-leave-case__header > span { color: var(--ds-ink-mute); font-size: 11px; font-variant-numeric: tabular-nums; }
+.director-leave-case__details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 14px 0 0; }
+.director-leave-case__details div { min-width: 0; }
+.director-leave-case__details dt { color: var(--ds-ink-mute); font-size: 11px; }
+.director-leave-case__details dd { margin: 4px 0 0; color: var(--ds-ink-secondary); font-size: 12px; }
+.director-leave-case__hint { display: flex; align-items: flex-start; gap: 7px; margin: 14px 0 0; color: var(--ds-ink-mute); font-size: 11px; line-height: 1.5; }
+.director-leave-case__hint .material-symbols-outlined { color: var(--ds-warning); font-size: 17px; }
+.director-leave-case__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; padding: 7px 11px; border: 1px solid var(--ds-hairline-input); border-radius: 6px; background: var(--ds-canvas); color: var(--ds-ink-secondary); font-size: 12px; font-weight: 800; }
+.button:hover { border-color: var(--ds-ink-secondary); color: var(--ds-ink); }
+.button--primary { border-color: var(--ds-cta); background: var(--ds-cta); color: var(--ds-on-cta); }
+.button--primary:hover { border-color: var(--ds-cta-hover); background: var(--ds-cta-hover); color: var(--ds-on-cta); }
+.button--quiet { background: transparent; }
+.button--danger { border-color: var(--ds-danger); color: var(--ds-danger); }
+.button--danger:hover { background: var(--ds-danger-wash); }
+.director-candidate-list { display: grid; gap: 7px; margin-top: 14px; }
+.director-candidate { display: flex; align-items: center; gap: 9px; padding: 9px 10px; border: 1px solid var(--ds-hairline); border-radius: 6px; background: var(--ds-canvas); color: var(--ds-ink-secondary); font-size: 12px; cursor: pointer; }
+.director-candidate.is-selected { border-color: var(--ds-cta); }
+.director-candidate input { accent-color: var(--ds-cta); }
+.director-candidate strong { color: var(--ds-ink); }
+.director-evaluation-list, .director-payment-list, .director-notification-list { padding: 0 22px; }
+.director-evaluation-row, .director-payment-row, .director-notification-list > div { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 0; border-top: 1px solid var(--ds-hairline); }
+.director-evaluation-row > div:first-child, .director-payment-row > div { display: grid; gap: 3px; min-width: 0; }
+.director-evaluation-row strong, .director-payment-row strong, .director-notification-list strong { overflow: hidden; color: var(--ds-ink); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.director-evaluation-row span, .director-payment-row span, .director-notification-list span { color: var(--ds-ink-mute); font-size: 11px; }
+.director-evaluation-row > div:last-child { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.director-payment-row span { display: inline-block; margin-top: 2px; }
+.director-other-work-list { padding: 0 22px 8px; }
+.director-other-work-list button { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 10px; width: 100%; padding: 12px 0; border: 0; border-top: 1px solid var(--ds-hairline); background: transparent; color: var(--ds-ink); text-align: left; cursor: pointer; }
+.director-other-work-list button span:first-child { overflow: hidden; font-size: 12px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.director-other-work-list button small { grid-column: 1; overflow: hidden; color: var(--ds-ink-mute); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.director-other-work-list button .material-symbols-outlined { grid-column: 2; grid-row: 1 / span 2; align-self: center; color: var(--ds-ink-mute); font-size: 17px; }
+.director-analysis { border: 1px solid var(--ds-hairline); border-radius: 10px; background: var(--ds-canvas); }
+.director-analysis summary { padding: 16px 18px; color: var(--ds-ink); font-size: 13px; font-weight: 800; cursor: pointer; }
+.director-analysis__body { display: grid; gap: 12px; padding: 0 18px 18px; color: var(--ds-ink-mute); font-size: 11px; line-height: 1.5; }
+.director-modal-backdrop { position: fixed; inset: 0; z-index: var(--ds-z-modal, 1000); display: grid; place-items: center; padding: 20px; background: rgb(11 24 43 / 42%); }
+.director-modal { position: relative; width: min(100%, 520px); padding: 24px; border: 1px solid var(--ds-hairline); border-radius: 10px; background: var(--ds-canvas); box-shadow: var(--ds-shadow-2); }
+.director-modal h3 { margin: 0; color: var(--ds-ink); font-size: 18px; }
+.director-modal > p { margin: 8px 0 0; color: var(--ds-ink-secondary); font-size: 13px; line-height: 1.55; }
+.director-modal__close { position: absolute; top: 12px; right: 14px; border: 0; background: transparent; color: var(--ds-ink-mute); font-size: 24px; cursor: pointer; }
+.director-modal__selection, .director-modal__field { display: grid; gap: 6px; margin-top: 18px; color: var(--ds-ink-mute); font-size: 11px; }
+.director-modal__selection strong { color: var(--ds-ink); font-size: 13px; }
+.director-modal__field textarea { width: 100%; box-sizing: border-box; resize: vertical; padding: 10px; border: 1px solid var(--ds-hairline-input); border-radius: 6px; background: var(--ds-canvas); color: var(--ds-ink); font: inherit; font-size: 13px; }
+.director-modal__actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+.director-toast { position: fixed; right: 24px; bottom: 24px; z-index: var(--ds-z-toast, 1100); max-width: min(360px, calc(100vw - 48px)); padding: 12px 14px; border: 1px solid var(--ds-hairline); border-radius: 7px; background: var(--ds-ink); color: var(--ds-canvas); font-size: 12px; box-shadow: var(--ds-shadow-2); }
+@media (prefers-reduced-motion: reduce) { .director-task--loading { animation: none; } }
+@media (max-width: 960px) { .director-workbench-v2__focus, .director-workbench-v2__full-grid { grid-template-columns: 1fr; } .director-workbench-v2__aside { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; } .director-trust-note { grid-column: 1 / -1; } }
+@media (max-width: 680px) {
+  .director-workbench-v2 { padding: 22px 16px 44px; }
+  .director-workbench-v2__header { align-items: flex-start; flex-direction: column; gap: 14px; }
+  .director-workbench-v2__header-actions { width: 100%; justify-content: space-between; }
+  .director-workbench-v2__focus, .director-workbench-v2__full { padding-top: 16px; }
+  .director-workbench-v2__aside { grid-template-columns: 1fr; gap: 12px; }
+  .surface-panel__header { padding: 17px 16px 14px; }
+  .director-task-list, .director-schedule-list, .director-evaluation-list, .director-payment-list, .director-notification-list, .director-other-work-list { padding-inline: 16px; }
+  .director-task { grid-template-columns: 28px minmax(0, 1fr); gap: 10px; align-items: start; padding: 15px 0; }
+  .director-task__title-row h3 { white-space: normal; }
+  .director-task__action { grid-column: 2; justify-self: start; margin-top: 3px; }
+  .director-workbench-v2__more { margin-left: 54px; margin-right: 16px; }
+  .director-summary-list { padding-inline: 16px; }
+  .director-schedule-row { grid-template-columns: 48px minmax(0, 1fr) auto; gap: 7px; }
+  .director-schedule-row > span:nth-of-type(1), .director-schedule-row > span:nth-of-type(2) { grid-column: 2; }
+  .director-schedule-row__status { grid-column: 3; grid-row: 1 / span 2; }
+  .surface-panel__footer { margin-inline: 16px; }
+  .director-leave-list { padding-inline: 16px; }
+  .director-leave-case { padding: 13px; }
+  .director-leave-case__details { grid-template-columns: 1fr; gap: 8px; }
+  .director-leave-case__actions, .director-evaluation-row > div:last-child { align-items: stretch; flex-direction: column; }
+  .director-leave-case__actions .button, .director-evaluation-row > div:last-child .button { width: 100%; }
+  .director-evaluation-row { align-items: flex-start; flex-direction: column; }
+  .director-evaluation-row > div:last-child { width: 100%; }
+  .director-modal-backdrop { padding: 12px; }
+  .director-modal { padding: 21px 18px; }
+}
 @media (max-width: 860px) {
   .workbench__layout { grid-template-columns: 1fr; }
   .workbench__snapshot { order: -1; }
