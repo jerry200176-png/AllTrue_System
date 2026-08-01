@@ -4,6 +4,11 @@ name: Bug detail dump (read-only)
 # Trigger via request file; no writes.
 on:
   workflow_dispatch:
+    inputs:
+      bug_id:
+        description: "In-app bug report ID to dump (read-only)"
+        required: true
+        type: string
   push:
     branches: [main]
     paths:
@@ -31,18 +36,28 @@ jobs:
 
       - name: Parse bug id
         id: cfg
+        env:
+          DISPATCH_BUG_ID: ${{ inputs.bug_id || '' }}
         run: |
           set -euo pipefail
-          ID=$(python3 - <<'PY'
+          if [[ -n "${DISPATCH_BUG_ID}" ]]; then
+            ID="${DISPATCH_BUG_ID}"
+          else
+            ID=$(python3 - <<'PY'
           import re
           from pathlib import Path
           text = Path("operations/closeout/bug-detail-dump.request.md").read_text(encoding="utf-8")
           m = re.search(r"(?m)^bug_id:\s*(\d+)\s*$", text)
           if not m:
-            raise SystemExit("bug_id missing")
+              raise SystemExit("bug_id missing")
           print(m.group(1))
           PY
-          )
+            )
+          fi
+          if [[ ! "${ID}" =~ ^[0-9]+$ ]]; then
+            echo "bug_id must be numeric" >&2
+            exit 1
+          fi
           echo "bug_id=$ID" >> "$GITHUB_OUTPUT"
 
       - name: Setup SSH
