@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\Campus;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class CampusController extends Controller
@@ -48,7 +47,7 @@ class CampusController extends Controller
 
             return response()->json($query->orderBy('id', 'asc')->get());
         } catch (\Throwable $e) {
-            Log::error('[CampusController::listPublic] ' . $e->getMessage());
+            \Log::error('[CampusController::listPublic] ' . $e->getMessage());
             return response()->json([]);
         }
     }

@@ -546,7 +546,7 @@ class LearningRecordFeedbackController extends Controller
         $identity = app(StudentIdentityService::class);
         $group = $identity->groupForStudent((int) $ctx['student_id']);
         $sameStudent = (int) $ctx['student_id'] === (int) $session->StudentID;
-        $sameGroup = $group && (int) ($session->identity_group_id ?: 0) === (int) $group->id;
+        $sameGroup = $group && (int) ($session->getAttribute('identity_group_id') ?: 0) === (int) $group->id;
         $mode = $group ? $identity->accessMode((int) $group->id) : StudentIdentityService::MODE_OFF;
         if (!$sameStudent && (!$sameGroup || $mode === StudentIdentityService::MODE_OFF)) {
             return response()->json(['message' => 'Forbidden'], 403);

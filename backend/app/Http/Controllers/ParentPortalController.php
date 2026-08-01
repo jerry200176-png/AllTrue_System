@@ -388,10 +388,10 @@ class ParentPortalController extends Controller
         $currentStudent = Student::find($session->StudentID);
         $allowed = false;
         $targetGroup = $this->identityService()->groupForStudent((int) $targetStudent->id);
-        if ($session->identity_group_id
+        if ($session->getAttribute('identity_group_id')
             && $targetGroup
-            && (int) $targetGroup->id === (int) $session->identity_group_id
-            && $this->identityService()->accessMode((int) $session->identity_group_id) !== StudentIdentityService::MODE_OFF) {
+            && (int) $targetGroup->id === (int) $session->getAttribute('identity_group_id')
+            && $this->identityService()->accessMode((int) $session->getAttribute('identity_group_id')) !== StudentIdentityService::MODE_OFF) {
             $allowed = true;
         }
 
@@ -446,7 +446,7 @@ class ParentPortalController extends Controller
             return response()->json(['message' => 'Student not found'], 404);
         }
 
-        [$identityGroup, $accessMode, $identityMembers] = $session->identity_group_id
+        [$identityGroup, $accessMode, $identityMembers] = $session->getAttribute('identity_group_id')
             ? $this->identityService()->parentContext((int) $student->id)
             : [null, StudentIdentityService::MODE_OFF, collect()];
         $crossCampusEnabled = $identityGroup
@@ -462,7 +462,7 @@ class ParentPortalController extends Controller
             ]]);
         }
         if ($crossCampusEnabled && $requestedScope === 'campus') {
-            $requestedCampusId = (int) $request->query('campus_id', 0);
+            $requestedCampusId = (int) ($request->query('campus_id') ?: 0);
             $memberRows = $identityMembers->filter(fn ($m) => (int) $m->campus_id === $requestedCampusId)->values();
             if ($memberRows->isEmpty()) {
                 return response()->json(['message' => 'Forbidden: campus is not in the active identity group.'], 403);
@@ -471,13 +471,13 @@ class ParentPortalController extends Controller
         $studentIds = $memberRows->pluck('student_id')->map(fn ($id) => (int) $id)->values()->all();
         $campusIds = $memberRows->pluck('campus_id')->map(fn ($id) => (int) $id)->unique()->values()->all();
         $activeScope = $crossCampusEnabled && $requestedScope === 'campus' ? 'campus' : ($crossCampusEnabled ? 'all' : 'campus');
-        $campusMap = \App\Models\Campus::whereIn('id', $campusIds)->get()->keyBy('id');
+        $campusMap = \App\Models\Campus::query()->whereIn('id', $campusIds)->get()->keyBy('id');
         $studentCampusMap = $memberRows->keyBy('student_id')->map(fn ($m) => [
             'campus_id' => (int) $m->campus_id,
-            'campus_name' => optional($campusMap->get((int) $m->campus_id))->name,
+            'campus_name' => optional($campusMap->get((int) $m->campus_id))->getAttribute('name'),
         ]);
 
-        $classes = StudentClass::whereIn('StudentID', $studentIds)
+        $classes = StudentClass::query()->whereIn('StudentID', $studentIds)
             ->orderBy('ID', 'desc')
             ->get();
 
@@ -659,7 +659,7 @@ class ParentPortalController extends Controller
         }
 
         // Attendance history — FR-B-003: date / time / subject / teacher / status
-        $signIns = StudentSignIn::whereIn('StudentID', $studentIds)
+        $signIns = StudentSignIn::query()->whereIn('StudentID', $studentIds)
             ->orderBy('SignInDT', 'desc')
             ->limit(100)
             ->get();
@@ -888,7 +888,7 @@ class ParentPortalController extends Controller
                 ->limit(20)
                 ->get()
                 ;
-            $leaveWorkflows = ExceptionWorkflow::whereIn('student_id', $studentIds)
+            $leaveWorkflows = ExceptionWorkflow::query()->whereIn('student_id', $studentIds)
                 ->where('type', 'student_leave')
                 ->whereIn('class_session_id', $upcomingSessions->pluck('id')->all())
                 ->get()
@@ -951,7 +951,7 @@ class ParentPortalController extends Controller
         $campusName = null;
         try {
             $campus = \App\Models\Campus::find($student->CampusID);
-            $campusName = $campus ? $campus->name : null;
+            $campusName = $campus ? $campus->getAttribute('name') : null;
         } catch (\Exception $e) {}
 
         // PRD-B FR-B-001: Siblings 僅透過 LINE 綁定解析，不再以相同 Phone 自動帶出。
@@ -1005,7 +1005,7 @@ class ParentPortalController extends Controller
                 return [
                     'student_id' => (int) $member->student_id,
                     'campus_id' => (int) $member->campus_id,
-                    'campus_name' => optional($campusMap->get((int) $member->campus_id))->name,
+                    'campus_name' => optional($campusMap->get((int) $member->campus_id))->getAttribute('name'),
                     'name' => (string) ($member->student->name ?? ''),
                 ];
             })->values()->all() : [],
@@ -1467,7 +1467,7 @@ class ParentPortalController extends Controller
         }
 
         $targetGroup = $this->identityService()->groupForStudent((int) $studentClass->StudentID);
-        $sessionGroupId = (int) ($session->identity_group_id ?: 0);
+        $sessionGroupId = (int) ($session->getAttribute('identity_group_id') ?: 0);
         $ownsClass = (int) $studentClass->StudentID === (int) $session->StudentID;
         if (!$ownsClass && $sessionGroupId > 0 && $targetGroup && (int) $targetGroup->id === $sessionGroupId) {
             $ownsClass = $this->identityService()->accessMode($sessionGroupId) === StudentIdentityService::MODE_ACTIONS;
@@ -1496,7 +1496,7 @@ class ParentPortalController extends Controller
 
             $workflow = app(ExceptionWorkflowService::class)->createOrGet([
                 'source_key' => "parent_leave:class_session:{$classSession->id}",
-                'campus_id' => (int) ($studentClass->student->CampusID ?? $this->studentCampusId($studentClass->StudentID)),
+                'campus_id' => (int) ($studentClass->student->CampusID ?? $this->studentCampusId($session->StudentID)),
                 'student_id' => (int) $studentClass->StudentID,
                 'student_class_id' => (int) $studentClass->ID,
                 'class_session_id' => (int) $classSession->id,
@@ -1508,6 +1508,7 @@ class ParentPortalController extends Controller
                 'parent_session_id' => (int) $session->id,
                 'due_at' => now()->addDay(),
                 'payload' => [
+                    'parent_student_id' => (int) $session->StudentID,
                     'reason' => trim((string) ($data['reason'] ?? '')),
                     'requested_at' => now()->toIso8601String(),
                     'session_date' => (string) $classSession->SessionDate,
@@ -1545,7 +1546,7 @@ class ParentPortalController extends Controller
         $token = Str::random(48);
         $hash = hash('sha256', $token);
 
-        $identityGroupId = $identityGroupId ?: $this->identityService()->groupForStudent((int) $student->id)?->id;
+        $identityGroupId = $identityGroupId ?: $this->identityService()->groupForStudent((int) $student->getAttribute('id'))?->id;
         if ($identityGroupId && !$this->identityGroupPhoneVerified((int) $identityGroupId, $verifiedPhone ?: StudentContactPhone::normalizedDigits($student))) {
             $identityGroupId = null;
         }
@@ -1606,13 +1607,13 @@ class ParentPortalController extends Controller
                 $members = $this->identityService()->activeMembers((int) $group->id);
                 return [
                     'id' => (int) $group->id,
-                    'name' => (string) ($group->display_name ?: ($members->first()?->student?->name ?? '學生')),
+                    'name' => (string) ($group->display_name ?: ($members->first()?->student?->getAttribute('name') ?? '學生')),
                     'members' => $members->map(function ($member) {
-                        $campus = \App\Models\Campus::find($member->campus_id);
+                        $campus = \App\Models\Campus::query()->find($member->campus_id);
                         return [
                             'student_id' => (int) $member->student_id,
                             'campus_id' => (int) $member->campus_id,
-                            'campus_name' => $campus?->name,
+                            'campus_name' => $campus?->getAttribute('name'),
                         ];
                     })->values()->all(),
                 ];
@@ -1631,12 +1632,12 @@ class ParentPortalController extends Controller
             return response()->json(['message' => 'Student not found'], 404);
         }
 
-        [$identityGroup, $accessMode, $identityMembers] = $session->identity_group_id
+        [$identityGroup, $accessMode, $identityMembers] = $session->getAttribute('identity_group_id')
             ? $this->identityService()->parentContext((int) $student->id)
             : [null, StudentIdentityService::MODE_OFF, collect()];
         $studentIds = $identityMembers->pluck('student_id')->map(fn ($id) => (int) $id)->values()->all() ?: [(int) $student->id];
-        $billingCampusMap = \App\Models\Campus::whereIn('id', Student::whereIn('id', $studentIds)->pluck('CampusID')->unique()->all())->get()->keyBy('id');
-        $classes = StudentClass::whereIn('StudentID', $studentIds)
+        $billingCampusMap = \App\Models\Campus::query()->whereIn('id', Student::query()->whereIn('id', $studentIds)->pluck('CampusID')->unique()->all())->get()->keyBy('id');
+        $classes = StudentClass::query()->whereIn('StudentID', $studentIds)
             ->where('Charge', '>', 0)
             ->orderByDesc('StartDate')
             ->get();
@@ -1650,7 +1651,7 @@ class ParentPortalController extends Controller
             return [
                 'student_class_id' => (int) $course->ID,
                 'campus_id' => $campusId,
-                'campus_name' => optional($billingCampusMap->get($campusId))->name,
+                'campus_name' => optional($billingCampusMap->get($campusId))->getAttribute('name'),
                 'subject' => $course->displaySubjectName(),
                 'period' => $course->StartDate ? substr($course->StartDate, 0, 7) : null,
                 'charge' => $charge,
