@@ -82,6 +82,61 @@ async function installApiMocks(page, mode) {
       await hangPromise;
     }
 
+    if (mode === 'dashboard' && p.endsWith('/alerts/tuition')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([{ id: 801, class_id: 801, student_id: 2001, student_name: '測試學生甲', subject: '數學', remaining_sessions: 1, alert_type: 'unpaid' }]),
+      });
+    }
+
+    if (mode === 'dashboard' && p.includes('/director/operations-trust')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { decision_center: {
+          score: 82,
+          max: 100,
+          status: 'yellow',
+          headline: '有 1 項課務風險需要確認',
+          decisions: [{ key: 'demo-risk', severity: 'warning', why: '測試課表需要主任確認。', next_step: '查看課表', action_label: '查看風險', target: 'course-mgmt', people_total: 0 }],
+          policy_notes: [],
+        }, generated_at: '2026-08-01T04:00:00Z' } }),
+      });
+    }
+
+    if (mode === 'dashboard' && p.includes('/class-sessions')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [{ id: 901, student_class_id: 801, student_name: '測試學生甲', teacher_name: '測試老師', start_time: '10:00', end_time: '11:00', status: 'scheduled', subject: '數學' }] }),
+      });
+    }
+
+    if (mode === 'dashboard' && p.includes('/learning-records')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [{ id: 1001, status: 'pending', student_name: '測試學生甲' }] }),
+      });
+    }
+
+    if (mode === 'dashboard' && p.includes('/exception-workflows')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [{ id: 27, status: 'open', student: { name: '測試學生甲' }, class_session: { date: '2026-08-02', start_time: '10:00', end_time: '11:00' }, payload: { reason: '身體不適' } }] }),
+      });
+    }
+
+    if (mode === 'dashboard' && p.includes('/schedule-discrepancies/summary')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ pending: 1, acknowledged: 0, resolved: 0, withdrawn: 0 }),
+      });
+    }
+
     if (p.endsWith('/action-inbox/count')) {
       // Keep case lane for empty/error so empty/error UI is the case-lane states under test.
       const empty = mode === 'empty';
@@ -136,7 +191,7 @@ async function installApiMocks(page, mode) {
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ data: [], current_page: 1, last_page: 1, total: 0 }),
+        body: JSON.stringify({ data: [], unread_count: mode === 'dashboard' ? 2 : 0, current_page: 1, last_page: 1, total: 0 }),
       });
     }
 
@@ -275,5 +330,55 @@ test.describe('UI foundation — real Vue page evidence', () => {
         });
       });
     }
+  }
+
+  for (const vp of [
+    { name: '390', width: 390, height: 844 },
+    { name: '412', width: 412, height: 915 },
+    { name: '768', width: 768, height: 1024 },
+    { name: '1280', width: 1280, height: 900 },
+    { name: '1440', width: 1440, height: 900 },
+  ]) {
+    test(`director workbench @${vp.name}`, async ({ page }) => {
+      const secondaryRequests = [];
+      page.on('request', (request) => {
+        if (/\/v1\/adoption\/(task-tracker|activity-log|weekly-metrics)/.test(request.url())) secondaryRequests.push(request.url());
+      });
+      await openPilot(page, { pageName: 'director', mode: 'normal', viewport: vp });
+
+      await expect(page.getByText('今天先處理什麼？')).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByText('今日快照', { exact: true })).toBeVisible();
+      const layout = await page.evaluate(() => ({
+        scrollWidth: document.documentElement.scrollWidth,
+        clientWidth: document.documentElement.clientWidth,
+        importVisible: Boolean(document.querySelector('.ac--import')),
+      }));
+      expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth);
+      expect(layout.importVisible).toBe(false);
+      expect(secondaryRequests).toEqual([]);
+
+      const fullView = page.getByRole('tab', { name: '完整營運', exact: true });
+      await fullView.click();
+      await expect(page.locator('.work-grid')).toBeVisible();
+      await expect.poll(() => secondaryRequests.length).toBeGreaterThan(0);
+    });
+  }
+
+  for (const vp of [
+    { name: '390', width: 390, height: 844 },
+    { name: '1440', width: 1440, height: 900 },
+  ]) {
+    test(`director workbench with urgent tasks @${vp.name}`, async ({ page }) => {
+      await openPilot(page, { pageName: 'director', mode: 'dashboard', viewport: vp });
+      await expect(page.getByText('今天先處理什麼？')).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByText('家長請假待主任處理')).toBeVisible();
+      const ctas = page.locator('.workbench-task__cta');
+      expect(await ctas.count()).toBeGreaterThan(0);
+      await expect(ctas.first()).toBeVisible();
+      const leaveTask = page.getByRole('button', { name: '開始處理', exact: true });
+      await leaveTask.click();
+      await expect(page.getByText('主任待辦收件匣')).toBeVisible();
+      await expect(page.getByRole('button', { name: '尋找補課時段', exact: true })).toBeVisible();
+    });
   }
 });
