@@ -21,6 +21,7 @@ export function getCoursePurchasedSessions(course) {
  */
 export function canMaterializeProjectedSession(course) {
   if (!course) return false;
+  if (String(course?.scheduling_policy || 'auto_recurrence') === 'manual_occurrence') return false;
   if (Number(course?.Stop ?? course?.stop ?? 0) === 1) return false;
   const mode = String(course?.ScheduleMode ?? course?.schedule_mode ?? '').trim().toLowerCase();
   return mode === 'date';
@@ -44,6 +45,7 @@ export function buildSessionPlanningStatus({
     };
   }
   if (!isSessionModeCourse(course)) return null;
+  if (String(course?.scheduling_policy || 'auto_recurrence') === 'manual_occurrence') return null;
 
   const isPackage = !!course?.PackageID;
   const poolTotal = isPackage ? Math.max(0, Number(course?.package_total_sessions ?? 0) || 0) : 0;

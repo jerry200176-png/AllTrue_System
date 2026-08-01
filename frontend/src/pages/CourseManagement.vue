@@ -244,7 +244,12 @@
                     <td class="cell-actions">
                       <div class="action-btns-row">
                         <button
-                          v-if="isSessionMode(c)"
+                          v-if="isManualOccurrenceCourse(c)"
+                          class="small btn-add-session manual-occurrence-action"
+                          @click="openManualSessionModal(c)"
+                        >＋新增下一堂</button>
+                        <button
+                          v-if="isSessionMode(c) && !isManualOccurrenceCourse(c)"
                           class="small btn-add-session"
                           :class="{ disabled: !canQuickAddSession(c) }"
                           :disabled="!canQuickAddSession(c)"
@@ -261,7 +266,12 @@
                             <p class="action-section-label">日常操作</p>
                             <button class="action-dropdown-item" @click="editCourse(c); closeActionMenu()"><span class="action-icon">✏️</span> 編輯</button>
                             <button
-                              v-if="isSessionMode(c)"
+                              v-if="isManualOccurrenceCourse(c)"
+                              class="action-dropdown-item"
+                              @click="openManualSessionModal(c); closeActionMenu()"
+                            ><span class="action-icon">＋</span> 新增下一堂</button>
+                            <button
+                              v-if="isSessionMode(c) && !isManualOccurrenceCourse(c)"
                               class="action-dropdown-item action-dropdown-add-session-mobile"
                               :class="{ 'action-dropdown-item--disabled': !canQuickAddSession(c) }"
                               :disabled="!canQuickAddSession(c)"
@@ -565,6 +575,18 @@
       @close="showQuickAddSessionModal = false"
       @submit="submitQuickAddSession"
       @check="runQuickAddCheck"
+    />
+
+    <ManualSessionModal
+      :show="showManualSessionModal"
+      :form="manualSessionForm"
+      :result="manualSessionCheck"
+      :checking="manualSessionChecking"
+      :submitting="manualSessionSubmitting"
+      :today="todayYmd"
+      @close="showManualSessionModal = false"
+      @check="runManualSessionCheck"
+      @submit="submitManualSession"
     />
 
     <LeaveModal
@@ -930,6 +952,7 @@ import { buildForceOverrideFields } from '../lib/enrollmentConflictDecision';
 import PurchaseSessionsModal from '../components/course-management/PurchaseSessionsModal.vue';
 import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal.vue';
 import QuickAddSessionModal from '../components/course-management/QuickAddSessionModal.vue';
+import ManualSessionModal from '../components/course-management/ManualSessionModal.vue';
 import LeaveModal from '../components/course-management/LeaveModal.vue';
 import BulkLeaveModal from '../components/course-management/BulkLeaveModal.vue';
 import RescheduleModal from '../components/course-management/RescheduleModal.vue';
@@ -1664,6 +1687,13 @@ const quickAddSessionForm = ref({
   student_name: '',
   subject: 'Math',
 });
+const showManualSessionModal = ref(false);
+const manualSessionCourse = ref(null);
+const manualSessionCheck = ref(null);
+const manualSessionChecking = ref(false);
+const manualSessionSubmitting = ref(false);
+const manualSessionForm = ref({ session_date: '', start_time: '16:00' });
+const isManualOccurrenceCourse = (course) => String(course?.scheduling_policy || 'auto_recurrence') === 'manual_occurrence';
 const pauseConfirmTarget = ref(null);
 const pauseConfirmSubmitting = ref(false);
 const pauseCancelRemaining = ref(true);
@@ -2167,6 +2197,69 @@ async function submitQuickAddSession() {
   }
 }
 // ----- Leave (請假) -----
+function openManualSessionModal(course) {
+  if (!course?.id || !isManualOccurrenceCourse(course)) return;
+  manualSessionCourse.value = course;
+  manualSessionCheck.value = null;
+  manualSessionForm.value = {
+    session_date: localTodayYmd(),
+    start_time: String(course.start_time || '16:00').slice(0, 5),
+  };
+  showManualSessionModal.value = true;
+  runManualSessionCheck();
+}
+
+async function runManualSessionCheck() {
+  const course = manualSessionCourse.value;
+  const form = manualSessionForm.value;
+  if (!course?.id || !form.session_date || !form.start_time) return;
+  manualSessionChecking.value = true;
+  try {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    const token = sess?.access_token;
+    if (!token) throw new Error('請先登入');
+    const res = await fetch(`/api/v1/student-classes/${course.id}/manual-sessions/check`, {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ session_date: form.session_date, start_time: form.start_time }),
+    });
+    manualSessionCheck.value = await res.json().catch(() => ({ can_add: false, message: '檢查失敗' }));
+  } catch (e) {
+    manualSessionCheck.value = { can_add: false, message: e?.message || '檢查失敗' };
+  } finally {
+    manualSessionChecking.value = false;
+  }
+}
+
+async function submitManualSession() {
+  const course = manualSessionCourse.value;
+  const form = manualSessionForm.value;
+  if (!course?.id || !manualSessionCheck.value?.can_add) return;
+  manualSessionSubmitting.value = true;
+  try {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    const token = sess?.access_token;
+    if (!token) throw new Error('請先登入');
+    const res = await fetch(`/api/v1/student-classes/${course.id}/manual-sessions`, {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ session_date: form.session_date, start_time: form.start_time }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      manualSessionCheck.value = json;
+      return;
+    }
+    showManualSessionModal.value = false;
+    alert(json.created === false ? '這一堂已存在，未重複建立。' : '下一堂已建立，已加入課表。');
+    await loadCourses();
+  } catch (e) {
+    alert(e?.message || '建立手動排課失敗');
+  } finally {
+    manualSessionSubmitting.value = false;
+  }
+}
+
 const showLeaveModal = ref(false);
 const leaveCourse = ref(null);
 const leaveForm = ref({
@@ -3417,6 +3510,7 @@ const editCourse = (c) => {
     monthly_sessions: c.monthly_sessions ?? null,
     first_class_date: c.first_class_date || '',
     end_date: c.end_date || (c.EndDate ? String(c.EndDate).slice(0, 10) : ''),
+    scheduling_policy: c.scheduling_policy || 'auto_recurrence',
     room_id: c.room_id ?? null,
     memo: c.memo ?? c.Memo ?? '',
     paid_at: c.paid_at || c.last_paid_at || '',
@@ -3459,6 +3553,7 @@ const submitEdit = async () => {
             .filter((slot) => slot.day >= 1 && slot.day <= 7),
           end_time: endTime,
           payment_type: form.payment_type,
+          scheduling_policy: form.scheduling_policy || 'auto_recurrence',
           settlement_day: form.payment_type === 'monthly' ? form.settlement_day : null,
           monthly_sessions: form.payment_type === 'monthly' ? form.monthly_sessions : null,
           first_class_date: form.first_class_date || null,

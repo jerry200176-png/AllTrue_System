@@ -42,7 +42,11 @@ class ForwardSessionGenerator
             return ['student_class_id' => $studentClassId, 'status' => 'skip', 'reason' => 'course not found', 'slots' => []];
         }
         $remaining = (int) ($sc->RemainingSessions ?? 0);
-        if ((int) ($sc->Stop ?? 0) === 1 || strtolower((string) $sc->ScheduleMode) !== 'count' || $remaining <= 0) {
+        if ((int) ($sc->Stop ?? 0) === 1
+            || strtolower((string) $sc->ScheduleMode) !== 'count'
+            || strtolower((string) ($sc->scheduling_policy ?? 'auto_recurrence')) === 'manual_occurrence'
+            || $remaining <= 0
+        ) {
             return ['student_class_id' => $studentClassId, 'status' => 'skip', 'reason' => 'not an active count-mode course with remaining sessions', 'slots' => []];
         }
 

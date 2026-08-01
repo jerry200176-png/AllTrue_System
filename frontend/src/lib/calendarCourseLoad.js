@@ -29,6 +29,7 @@ export function mapCalendarCourse(c) {
     stop: c.stop ?? c.Stop ?? 0,
     payment_type: c.payment_type || (c.ScheduleMode === 'count' ? 'session' : 'monthly'),
     sessions_purchased: c.sessions_purchased ?? c.SessionCount ?? 0,
+    scheduling_policy: c.scheduling_policy || 'auto_recurrence',
     room_id: c.RoomID || c.room_id || '',
   };
 }
