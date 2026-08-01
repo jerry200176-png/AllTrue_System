@@ -567,6 +567,13 @@ Ops：所有直接執行的 workflow jobs 明確固定為 GitHub-hosted `ubuntu-
 
 ---
 
+## 2026-08-01 — feat: 跨分校學生／家長入口 pilot bridge
+
+- **Added**：主任可人工確認學生身份關聯；家長可在同一入口切換「全部分校／指定分校」查看課表、評量、出缺勤、公告與帳務總覽，每筆資料標示來源分校。
+- **Security**：關聯預設 `off`，依序支援 `readonly`／`actions`；姓名、手機與舊 LINE binding 不會自動合併，Invoice／Payment／收據／對帳仍維持分校邊界。
+- **Fixed**：家長入口載入公開分校清單時，例外紀錄改用正式 Log facade，避免後端錯誤被二次轉成 500。
+- **開發備註**：Expand-only bridge；保留 legacy `StudentID` 外鍵。詳見 [`MODULE_CROSS_CAMPUS_PARENT_PORTAL.md`](MODULE_CROSS_CAMPUS_PARENT_PORTAL.md)。
+
 ## 2026-07-17 — fix: 夜間對帳面板可讀、可分類，且不再假裝能一鍵改堂數
 
 Fixed：系統管理員現在能在夜間對帳面板看到學生、科目、分校與異常原因摘要；修正 API 回傳包裝未拆開而導致整頁看似零資料的問題。移除實際不存在、也不符合資料修復核准流程的「重算」按鈕，面板明確維持唯讀。
