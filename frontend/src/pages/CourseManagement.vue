@@ -92,30 +92,15 @@
       </div>
     </transition>
 
-    <section v-if="pendingLeaveLoading || pendingLeaveError || pendingLeaveWorkflows.length" class="card pending-leave-inbox" aria-live="polite">
-      <div class="pending-leave-inbox__head">
-        <div>
-          <strong>家長請假待主任處理</strong>
-          <span class="pending-leave-inbox__hint">請先決定安排補課、同意不補課或退回，原堂次才會結案</span>
-        </div>
-        <span class="pending-leave-inbox__count">{{ pendingLeaveWorkflows.length }}</span>
+    <section v-if="pendingLeaveLoading || pendingLeaveError || pendingLeaveWorkflows.length" class="pending-leave-summary" aria-live="polite">
+      <div class="pending-leave-summary__icon material-symbols-outlined" aria-hidden="true">inbox</div>
+      <div class="pending-leave-summary__body">
+        <strong>主任收件匣有家長請假待處理</strong>
+        <span v-if="pendingLeaveLoading">正在同步待辦案件…</span>
+        <span v-else-if="pendingLeaveError" class="pending-leave-summary__error">{{ pendingLeaveError }}</span>
+        <span v-else>{{ pendingLeaveWorkflows.length }} 筆案件需要決定補課、核准不補課或退回。請到主任收件匣完成決策。</span>
       </div>
-      <div v-if="pendingLeaveLoading" class="pending-leave-inbox__state">載入待辦中…</div>
-      <div v-else-if="pendingLeaveError" class="pending-leave-inbox__state pending-leave-inbox__state--error">{{ pendingLeaveError }}</div>
-      <div v-else class="pending-leave-list">
-        <article v-for="workflow in pendingLeaveWorkflows" :key="workflow.id" class="pending-leave-row">
-          <div class="pending-leave-row__main">
-            <strong>{{ workflow.student?.name || '學生' }}</strong>
-            <span>{{ workflow.class_session?.date || '未指定日期' }} {{ workflow.class_session?.start_time || '' }}–{{ workflow.class_session?.end_time || '' }}</span>
-            <small v-if="workflow.payload?.reason">原因：{{ workflow.payload.reason }}</small>
-          </div>
-          <div class="pending-leave-row__actions">
-            <button class="btn-soft btn-soft--small" :disabled="pendingLeaveActionId === workflow.id" @click="emit('navigate', 'director')">安排補課</button>
-            <button class="btn-soft btn-soft--small" :disabled="pendingLeaveActionId === workflow.id" @click="resolvePendingLeave(workflow, 'approve')">同意請假，不補課</button>
-            <button class="btn-soft btn-soft--small btn-soft--danger" :disabled="pendingLeaveActionId === workflow.id" @click="resolvePendingLeave(workflow, 'reject')">退回</button>
-          </div>
-        </article>
-      </div>
+      <button class="pending-leave-summary__cta" type="button" @click="emit('navigate', 'director')">開啟主任收件匣<span aria-hidden="true">→</span></button>
     </section>
 
     <!-- Course Table -->
@@ -955,7 +940,7 @@ import PaymentEntryModal from '../components/PaymentEntryModal.vue';
 import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
 import ToastWithUndo from '../components/substitute/ToastWithUndo.vue';
 import { fetchTeacherAvailability, undoSubstitute } from '../lib/substituteApi.js';
-import { listExceptionWorkflows, waiveExceptionWorkflow, rejectExceptionWorkflow } from '../api';
+import { listExceptionWorkflows } from '../api';
 
 // PRD 9c058f19 — 代課流程 UX 優化旗標；env 為字串，需解析。
 // 與 SmartCalendar.vue 對齊：預設開啟（'1'），設為 '0' 回退舊版 <select> 模式。
@@ -1060,7 +1045,6 @@ function showCreationBanner(msg) {
 const pendingLeaveWorkflows = ref([]);
 const pendingLeaveLoading = ref(false);
 const pendingLeaveError = ref('');
-const pendingLeaveActionId = ref(null);
 
 async function loadPendingLeaveWorkflows(token) {
   if (!props.branchId || !token) return;
@@ -1079,31 +1063,6 @@ async function loadPendingLeaveWorkflows(token) {
   }
 }
 
-async function resolvePendingLeave(workflow, action) {
-  const studentName = workflow?.student?.name || '此學生';
-  if (action === 'approve' && !confirm(`確認同意「${studentName}」請假，且不安排補課？`)) return;
-  let reason = '';
-  if (action === 'reject') {
-    reason = (window.prompt(`退回「${studentName}」請假的原因（必填）`, '') || '').trim();
-    if (!reason) return;
-  }
-  const token = (await supabase.auth.getSession()).data?.session?.access_token;
-  if (!token) { alert('請重新登入'); return; }
-  pendingLeaveActionId.value = workflow.id;
-  try {
-    if (action === 'approve') {
-      await waiveExceptionWorkflow(token, workflow.id, { reason: '課程管理同意請假，不補課' });
-    } else {
-      await rejectExceptionWorkflow(token, workflow.id, { reason });
-    }
-    await loadPendingLeaveWorkflows(token);
-    await loadCourses();
-  } catch (e) {
-    alert(e?.message || '請假案件處理失敗');
-  } finally {
-    pendingLeaveActionId.value = null;
-  }
-}
 const completedSessionDatesByCourse = ref({});
 const sessionsByCourse = ref({});
 const classSessionsByCourse = sessionsByCourse;
@@ -4125,32 +4084,57 @@ onUnmounted(() => {
   border: 1px solid var(--ds-hairline);
 }
 
-.pending-leave-inbox {
-  margin-top: 14px;
+.pending-leave-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 14px 0;
   padding: 14px 16px;
   border: 1px solid var(--ds-warning);
   border-left: 4px solid var(--ds-warning);
+  border-radius: 12px;
   background: var(--ds-warning-wash);
 }
-.pending-leave-inbox__head,
-.pending-leave-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+.pending-leave-summary__icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  border-radius: 10px;
+  background: var(--ds-canvas);
+  color: var(--ds-warning);
 }
-.pending-leave-inbox__head strong { display: block; color: var(--ds-ink); }
-.pending-leave-inbox__hint { display: block; margin-top: 3px; color: var(--ds-ink-mute); font-size: 12px; }
-.pending-leave-inbox__count { min-width: 28px; padding: 4px 9px; border-radius: 999px; background: var(--ds-warning); color: var(--ds-on-primary); text-align: center; font-weight: 800; }
-.pending-leave-list { display: grid; gap: 8px; margin-top: 12px; }
-.pending-leave-row { padding: 10px 0; border-top: 1px solid rgba(120, 85, 0, 0.18); }
-.pending-leave-row__main { display: grid; gap: 3px; min-width: 0; color: var(--ds-ink-secondary); font-size: 13px; }
-.pending-leave-row__main small { color: var(--ds-ink-mute); }
-.pending-leave-row__actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
-.btn-soft--small { padding: 6px 10px; font-size: 12px; }
-.btn-soft--danger { color: var(--ds-danger); border-color: var(--ds-danger); }
-.pending-leave-inbox__state { margin-top: 10px; color: var(--ds-ink-mute); font-size: 13px; }
-.pending-leave-inbox__state--error { color: var(--ds-danger); }
+.pending-leave-summary__body {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+.pending-leave-summary__body strong { color: var(--ds-ink); }
+.pending-leave-summary__body span { color: var(--ds-ink-secondary); font-size: 13px; line-height: 1.4; }
+.pending-leave-summary__error { color: var(--ds-danger) !important; }
+.pending-leave-summary__cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 9px 14px;
+  border: 1px solid var(--ds-primary);
+  border-radius: 10px;
+  background: var(--ds-primary);
+  color: var(--ds-on-primary);
+  font-weight: 700;
+  cursor: pointer;
+  transition: var(--transition);
+}
+.pending-leave-summary__cta:hover { background: var(--ds-primary-deep); border-color: var(--ds-primary-deep); }
+@media (max-width: 700px) {
+  .pending-leave-summary { align-items: stretch; flex-direction: column; }
+  .pending-leave-summary__cta { width: 100%; }
+}
 
 .header-buttons {
   display: flex;
