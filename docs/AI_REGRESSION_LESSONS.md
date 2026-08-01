@@ -1157,3 +1157,10 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **規則**：月結帳單讀取必須帶 `billing_period`，回傳 stored/computed/source/discrepancy；批次 mutation 必須要求 distinct explicit IDs，server-side 完整比對後才進 transaction。
 - **驗收**：所有 batch response 的實際變更數量必須與 request IDs 相等；帳單畫面必須能呈現「堂數 × 單價 = 金額」及差異原因；production evidence 必須保留 API 回應與 UI 證據。
 - **參考**：`docs/incidents/2026-08-01-billing-and-batch-approval.md`、`docs/PRICING_CONTRACT.md`、`docs/ADR_003_layering_and_controller_db_ban.md`。
+
+### R90. Billing 修正必須逐一驗證所有 production read surfaces
+
+- **事件**：#213 的課程管理明細已顯示 NT$7,500，但正式帳務中心仍顯示歷史 `Invoice.TotalAmount = NT$6,000`。
+- **根因**：修正只覆蓋一個 controller/UI surface；帳務中心、繳費單、發票列表與對帳查詢仍各自讀取不同來源。
+- **強制規則**：任何 billing 修正必須列出 route/API/UI surface matrix，所有 surface 共用同一個 read model；驗收必須逐一以同一案例驗證，不能以單一畫面或單一測試代表全站。
+- **停止條件**：任一 surface 的 stored/computed/source/discrepancy 欄位缺失、金額不一致或 production smoke 未覆蓋，禁止標記 resolved 或上線結案。

@@ -9,6 +9,7 @@ use App\Models\Invoice;
 use App\Models\PaymentReport;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Services\InvoiceAmountReconciliationService;
 use App\Services\MonthlyBillingService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -17,7 +18,10 @@ use Illuminate\Support\Facades\Log;
 
 class AlertController extends Controller
 {
-    public function __construct(private MonthlyBillingService $monthlyBilling)
+    public function __construct(
+        private MonthlyBillingService $monthlyBilling,
+        private InvoiceAmountReconciliationService $invoiceAmounts
+    )
     {
     }
 
@@ -103,7 +107,7 @@ class AlertController extends Controller
             ->all();
         $paidAtMap = self::lastPaidAtByStudentClassIds($allClassIds);
         $invoiceAggMap = self::invoiceAggregateByStudentClassIds($allClassIds);
-        $openMonthlyInvoiceMap = self::openInvoiceByStudentClassIds($dateResults->pluck('ID')->unique()->values()->all());
+        $openMonthlyInvoiceMap = $this->openInvoiceByStudentClassIds($dateResults->pluck('ID')->unique()->values()->all());
         $pendingReportMap = self::latestPendingReportByStudentClassIds($allClassIds);
         $newerCourseMap = self::newerCourseByStudentClassIds($allClassIds);
 
@@ -250,9 +254,14 @@ class AlertController extends Controller
                 $directPaidAt = ($sc && $sc->PayDate) ? substr($sc->PayDate, 0, 10) : null;
                 $invoicePaidAt = $paidAtMap[$classId] ?? null;
 
-                $hasOpenMonthlyInvoice = isset($openMonthlyInvoiceMap[$classId]);
-                $charge = $sc && ($sc->ScheduleMode ?? 'count') === 'date' && !$hasOpenMonthlyInvoice
-                    ? (int) $this->monthlyBilling->summarize($sc, $today)['charge']
+                $openInvoice = $openMonthlyInvoiceMap[$classId] ?? null;
+                $invoiceProjection = $openInvoice && isset($openInvoice['invoice'])
+                    ? $this->invoiceAmounts->resolve($openInvoice['invoice'], $sc)
+                    : null;
+                $charge = $sc && ($sc->ScheduleMode ?? 'count') === 'date'
+                    ? ($invoiceProjection
+                        ? (int) $invoiceProjection['total_amount']
+                        : (int) $this->monthlyBilling->summarize($sc, $today)['charge'])
                     : (int) ($sc->Charge ?? 0);
                 $invoiceAgg = $invoiceAggMap[$classId] ?? null;
                 $paidAmount = $invoiceAgg ? (int) $invoiceAgg['paid_amount'] : 0;
@@ -289,6 +298,11 @@ class AlertController extends Controller
                     'newer_course_start_date'  => $newerInfo['start_date'] ?? null,
                     'current_course_end_date'  => $currentEndDate,
                     'newer_course_overlap'     => $newerCourseOverlap,
+                    'invoice_stored_amount'    => $invoiceProjection['stored_total_amount'] ?? null,
+                    'invoice_computed_amount'  => $invoiceProjection['computed_total_amount'] ?? null,
+                    'invoice_amount_source'    => $invoiceProjection['amount_source'] ?? null,
+                    'invoice_amount_discrepancy' => $invoiceProjection['amount_discrepancy'] ?? false,
+                    'invoice_period_sessions' => $invoiceProjection['period_sessions'] ?? null,
                 ];
             })
             ->filter(fn ($row) => ($row['charge'] ?? 0) > 0)
@@ -443,31 +457,34 @@ class AlertController extends Controller
         return Carbon::createFromDate($year, $month, $d)->startOfDay();
     }
 
-    private static function openInvoiceByStudentClassIds(array $studentClassIds): array
+    private function openInvoiceByStudentClassIds(array $studentClassIds): array
     {
         $ids = array_values(array_unique(array_map('intval', $studentClassIds)));
         if (empty($ids)) {
             return [];
         }
 
-        $rows = Invoice::query()
+        $rows = Invoice::with(['payments' => function ($query) {
+                $query->select(['id', 'InvoiceID', 'Amount', 'Method']);
+            }])
             ->whereIn('StudentClassID', $ids)
             ->whereIn('Status', ['unpaid', 'partial'])
             ->orderBy('DueDate')
             ->orderBy('id')
-            ->get(['id', 'StudentClassID', 'DueDate', 'billing_period', 'Status']);
+            ->get(['id', 'StudentClassID', 'DueDate', 'billing_period', 'IssueDate', 'TotalAmount', 'Status']);
 
         $map = [];
         foreach ($rows as $invoice) {
             $classId = (int) $invoice->StudentClassID;
-            if (isset($map[$classId]) || !$invoice->DueDate) {
+            if (isset($map[$classId])) {
                 continue;
             }
             $map[$classId] = [
                 'id' => (int) $invoice->id,
-                'due_date' => substr((string) $invoice->DueDate, 0, 10),
+                'due_date' => $invoice->DueDate ? substr((string) $invoice->DueDate, 0, 10) : null,
                 'billing_period' => $invoice->billing_period,
                 'status' => $invoice->Status,
+                'invoice' => $invoice,
             ];
         }
 
