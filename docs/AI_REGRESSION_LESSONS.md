@@ -1179,3 +1179,15 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - 任何日期型工作台都要在第一眼顯示目前檢視、可見日期範圍與回到今天；只顯示「週／日」而不顯示實際日期，會讓使用者無法確認自己正在處理哪一週。
 - Playwright 的 mobile 驗收不可只用全頁第一個 selector：桌面表格與行動卡片可能同時存在於 DOM，測試必須依 viewport scope 到實際可見的 `.sdp-mcard`／明細，否則會出現測試看似點了 CTA 卻驗證到隱藏桌面內容的假綠燈。
 - 狀態型案件的主要動作要使用下一步動詞（接手處理、繼續處理、查看處理結果），不是所有狀態都顯示模糊的「展開」；動作標籤、`aria-expanded`、tabpanel 關係與實際可見區塊必須同時維護。
+
+### R92. 多筆內容預覽必須是 read-only projection，且 row preview 要跟同一筆資料綁定（2026-08-01）
+
+- 老師要快速比較多堂學習評量時，不能要求逐筆開啟編輯 modal；列表應先提供可掃讀的內容 projection，編輯、核准與退回仍維持原本的高風險操作邊界。
+- 預覽欄位必須由純函式／presentational component 統一整理，不能在 table、card 各自複製欄位映射；空內容要明確顯示尚未填寫，不能以空白或錯誤狀態代替。
+- Vue `v-for` 的同筆預覽 row 必須使用 `<template v-for="record">` 同時包住主 row 與 preview row；把 sibling 放在 loop 外會在桌面 render 讀到 undefined，手機因走另一個 render branch 可能掩蓋此錯誤。
+- 驗收必須包含 390／412／768／1280／1440px，並同時檢查真正可見的 card/table branch、內容摘要、開關狀態、`scrollWidth <= clientWidth` 與 browser page error；只驗 API 200 或單一 selector 不足以證明 preview 可用。
+
+### R93. 專用 UI foundation spec 不得混入 production smoke（2026-08-02）
+
+- 使用 pilot mount／mock API 的頁面證據測試，必須由專用 Playwright config 明確收斂；default production smoke config 必須 `testIgnore`，避免在沒有 fixture server 時把測試誤當 production smoke 執行。
+- 新增任何 foundation spec 後，必須同時驗證專用 config 會執行它、default config 不會執行它，並在 CI 的 UI Smoke 與 Vite Frontend Build gate 中各自確認結果。

@@ -1,3 +1,10 @@
+## 2026-08-01 — feat(learning): 學習評量表新增多筆內容預覽
+
+- 老師預設可在列表／卡片直接掃讀作業狀態、週考、上課狀況、授課進度、作業範圍與家長溝通，不需逐筆開啟編輯表單。
+- 桌面採資料列下方 full-width read-only preview；390／412px 手機強制使用卡片預覽，主要 CTA 不藏在水平捲動表格後面。
+- 主任可用「預覽內容」開關查看同一份只讀摘要；編輯、核准、需修改、退回與既有 API／權限契約不變。
+- 新增 preview projection 單元測試、real Vue Playwright 五寬度驗收與設計研究紀錄 `docs/MODULE_LEARNING_RECORDS_UX.md`。
+
 ## 2026-08-01 — feat(ux): 行事曆與調課工作流明確化
 
 - 第二個 AllTrue UX Renewal bounded context：建立 `MODULE_CALENDAR_SCHEDULE_UX.md`，以 Google Calendar 的日期範圍／Today、Outlook Scheduling Assistant 的衝突導向與 FullCalendar 的事件互動模型為研究基準，Issue #1605 追蹤交付。

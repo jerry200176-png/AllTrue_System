@@ -24,6 +24,7 @@ export function useCalendarDataLoad({
   const exceptions = ref([]);
   const calendarLoading = ref(false);
   const calendarLoadProgress = ref('');
+  const calendarLoadError = ref('');
   const sessionDatesByCourseId = ref({});
   const allStudents = ref([]);
   const teachers = ref([]);
@@ -56,11 +57,13 @@ export function useCalendarDataLoad({
       sessionDatesByCourseId.value = {};
       calendarLoading.value = false;
       calendarLoadProgress.value = '';
+      calendarLoadError.value = '';
       lastCalendarFetch.value = null;
       return;
     }
 
     calendarLoading.value = true;
+    calendarLoadError.value = '';
     calendarLoadProgress.value = '載入課程與排程中…';
     const { schedStart, schedEnd } = getCalendarDataFetchBoundsYmd();
 
@@ -100,6 +103,9 @@ export function useCalendarDataLoad({
       courseApiSucceeded = coursesResult.apiSucceeded;
       excData = schedules.list;
       exceptionsApiSucceeded = schedules.apiSucceeded;
+      if (!courseApiSucceeded || !exceptionsApiSucceeded) {
+        calendarLoadError.value = '課表資料暫時無法載入，請重試。';
+      }
     }
 
     let supabaseList = [];
@@ -305,6 +311,7 @@ export function useCalendarDataLoad({
     exceptions,
     calendarLoading,
     calendarLoadProgress,
+    calendarLoadError,
     sessionDatesByCourseId,
     allStudents,
     teachers,

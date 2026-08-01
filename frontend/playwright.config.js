@@ -22,6 +22,7 @@ export default defineConfig({
   testIgnore: [
     /ui-foundation-pages\.spec\.js$/,
     /learning-records-polish\.spec\.js$/,
+    /learning-records-preview\.spec\.js$/,
   ],
   timeout: 45_000,
   expect: { timeout: 10_000 },
