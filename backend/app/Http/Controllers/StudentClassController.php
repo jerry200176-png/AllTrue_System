@@ -22,6 +22,7 @@ use App\Services\Scheduling\DeductionBasis;
 use App\Services\Scheduling\LessonEntitlementCoverageCalculator;
 use App\Services\ClassSessionContractReflowService;
 use App\Services\FrontendSubjectIdResolver;
+use App\Services\MonthlyBillingService;
 use App\Services\SessionDeductionService;
 use App\Services\ScheduleGuardService;
 use App\Services\SessionProjectionReadService;
@@ -35,7 +36,8 @@ class StudentClassController extends Controller
 {
     public function __construct(
         private ScheduleGuardService $scheduleGuardService,
-        private ClassSessionContractReflowService $contractSessionReflowService
+        private ClassSessionContractReflowService $contractSessionReflowService,
+        private MonthlyBillingService $monthlyBilling
     )
     {
     }
@@ -2243,7 +2245,7 @@ class StudentClassController extends Controller
         $reportsById = $reports->keyBy('id');
 
         return response()->json([
-            'invoices' => $invoices->map(function ($inv) use ($reportsByPaymentId, $reportsById) {
+            'invoices' => $invoices->map(function ($inv) use ($reportsByPaymentId, $reportsById, $studentClass) {
                 $effectivePayments = $inv->payments
                     ->filter(fn ($payment) => (int) ($payment->Amount ?? 0) > 0 && (string) ($payment->Method ?? '') !== 'void')
                     ->values();
@@ -2253,7 +2255,31 @@ class StudentClassController extends Controller
                 $positiveTotal = (int) $effectivePayments->sum(fn ($payment) => (int) ($payment->Amount ?? 0));
                 $voidedTotal = abs((int) $voidPayments->sum(fn ($payment) => (int) ($payment->Amount ?? 0)));
                 $netApplied = max(0, $positiveTotal - $voidedTotal);
-                $totalAmount = (int) ($inv->TotalAmount ?? 0);
+                $storedTotalAmount = (int) ($inv->TotalAmount ?? 0);
+                $totalAmount = $storedTotalAmount;
+                $computedTotalAmount = null;
+                $amountSource = 'invoice_total';
+                $amountDiscrepancy = false;
+                $periodSessions = null;
+                $periodStart = null;
+                $periodEnd = null;
+                $billingPeriod = (string) ($inv->billing_period ?: substr((string) $inv->IssueDate, 0, 7));
+                if ((string) ($studentClass->ScheduleMode ?? 'count') === 'date' && preg_match('/^\d{4}-\d{2}$/', $billingPeriod)) {
+                    $billing = $this->monthlyBilling->summarizePeriod($studentClass, $billingPeriod);
+                    $computedTotalAmount = (int) $billing['charge'];
+                    $periodSessions = (int) $billing['period_sessions'];
+                    $periodStart = $billing['period_start'];
+                    $periodEnd = $billing['period_end'];
+                    $amountDiscrepancy = $billing['source'] === 'billable_sessions'
+                        && $computedTotalAmount !== $storedTotalAmount;
+                    // An unpaid legacy invoice has no settled amount to protect.
+                    // Read paths show the canonical session calculation while
+                    // retaining the persisted value for audit and repair.
+                    if ($amountDiscrepancy && (string) ($inv->Status ?? '') === 'unpaid' && $netApplied === 0) {
+                        $totalAmount = $computedTotalAmount;
+                        $amountSource = 'billable_sessions';
+                    }
+                }
                 $appliedAmount = min($totalAmount, $netApplied);
                 $outstandingAmount = max(0, $totalAmount - $appliedAmount);
                 $status = (string) ($inv->Status ?? '');
@@ -2306,7 +2332,14 @@ class StudentClassController extends Controller
                             'status'     => $report ? (string) $report->status : null,
                         ];
                     })->values()->all(),
-                    'total_amount'   => (int) $inv->TotalAmount,
+                    'total_amount'   => $totalAmount,
+                    'stored_total_amount' => $storedTotalAmount,
+                    'computed_total_amount' => $computedTotalAmount,
+                    'amount_source' => $amountSource,
+                    'amount_discrepancy' => $amountDiscrepancy,
+                    'period_sessions' => $periodSessions,
+                    'period_start' => $periodStart,
+                    'period_end' => $periodEnd,
                     'paid_amount'    => (int) $inv->PaidAmount,
                     'status'         => $inv->Status,
                     'ledger_status'  => $ledgerStatus,

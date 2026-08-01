@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\AuthToken;
+use App\Models\ClassSession;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\Student;
@@ -109,6 +110,50 @@ class MonthlyInvoiceListTest extends TestCase
         ])->getJson("/api/v1/student-classes/{$course->ID}/invoices");
 
         $res->assertStatus(403);
+    }
+
+    public function test_unpaid_monthly_invoice_uses_actual_billable_sessions_and_exposes_audit_fields(): void
+    {
+        $token = $this->createDirectorToken([1], 'dir-invoice-reconcile@test.com');
+        $student = $this->createStudent();
+        $course = $this->createMonthlyCourse($student->id);
+        $course->update(['Charge' => 6000, 'Rate' => 1500]);
+
+        foreach (range(1, 5) as $day) {
+            ClassSession::create([
+                'StudentClassID' => $course->ID,
+                'SessionDate' => sprintf('2026-07-%02d', $day),
+                'StartTime' => '18:00',
+                'EndTime' => '20:00',
+                'Status' => 'attended',
+                'Note' => '',
+            ]);
+        }
+
+        Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $course->ID,
+            'IssueDate' => '2026-07-17',
+            'DueDate' => '2026-07-17',
+            'TotalAmount' => 6000,
+            'PaidAmount' => 0,
+            'Status' => 'unpaid',
+            'Note' => '',
+            'billing_period' => '2026-07',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/student-classes/{$course->ID}/invoices");
+
+        $res->assertOk()
+            ->assertJsonPath('invoices.0.total_amount', 7500)
+            ->assertJsonPath('invoices.0.stored_total_amount', 6000)
+            ->assertJsonPath('invoices.0.computed_total_amount', 7500)
+            ->assertJsonPath('invoices.0.amount_source', 'billable_sessions')
+            ->assertJsonPath('invoices.0.amount_discrepancy', true)
+            ->assertJsonPath('invoices.0.period_sessions', 5);
     }
 
     private function createDirectorToken(array $campusIds, string $loginName = 'dir-invoice@test.com'): string

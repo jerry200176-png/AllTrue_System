@@ -31,6 +31,30 @@ class MonthlyBillingService
     public function summarize(Model $course, ?Carbon $anchor = null): array
     {
         $anchor = ($anchor ?? Carbon::today())->copy();
+        return $this->summarizePeriod($course, $anchor->format('Y-m'));
+    }
+
+    /**
+     * Calculate one explicit billing period. Invoice readers must use the
+     * invoice period, not today's month, otherwise a historical invoice can
+     * display a different month's session count.
+     *
+     * @return array{
+     *   charge:int,
+     *   period_sessions:int,
+     *   period_start:string,
+     *   period_end:string,
+     *   source:string
+     * }
+     */
+    public function summarizePeriod(Model $course, string $billingPeriod): array
+    {
+        try {
+            $anchor = Carbon::createFromFormat('!Y-m', $billingPeriod);
+        } catch (\Throwable) {
+            $anchor = Carbon::today();
+        }
+
         $periodStart = $anchor->copy()->startOfMonth()->toDateString();
         $periodEnd = $anchor->copy()->endOfMonth()->toDateString();
         $storedCharge = max(0, (int) ($course->getAttribute('Charge') ?? 0));
