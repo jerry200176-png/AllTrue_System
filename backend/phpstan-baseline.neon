@@ -6116,5 +6116,7 @@ parameters:
 			path: app/Services/CourseContinuityService.php
 
 		-
-			message: '#^.*$#'
+			message: '#^Call to an undefined static method App\\Models\\Student\:\:where\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 2
 			path: app/Services/ManualSessionBookingService.php
