@@ -84,7 +84,7 @@ class ExceptionWorkflowController extends Controller
 
         return response()->json([
             'data' => [
-                'workflow_id' => (int) $workflow->id,
+                'workflow_id' => (int) $workflow->getKey(),
                 'generated_count' => count($candidates),
                 'workflow' => $this->serialize($workflow),
                 'candidates' => $workflow->candidates()
@@ -180,8 +180,9 @@ class ExceptionWorkflowController extends Controller
 
             // A makeup confirmation also resolves the original parent request.
             // Keep the original and extra session in this transaction.
-            if ($workflow->class_session_id) {
-                $original = ClassSession::whereKey($workflow->class_session_id)->lockForUpdate()->first();
+            $originalSessionId = (int) $workflow->getAttribute('class_session_id');
+            if ($originalSessionId > 0) {
+                $original = ClassSession::query()->whereKey($originalSessionId)->lockForUpdate()->first();
                 if ($original && in_array(strtolower((string) $original->Status), ['leave_requested', 'scheduled', 'rescheduled'], true)) {
                     $original->Status = 'leave';
                     $original->Note = $this->appendNote($original->Note, 'parent-leave-approved');
@@ -269,7 +270,7 @@ class ExceptionWorkflowController extends Controller
     {
         $workflow = ExceptionWorkflow::with(['studentClass', 'classSession'])->findOrFail($id);
 
-        if (!$this->canAccessCampus($request, (int) $workflow->campus_id)) {
+        if (!$this->canAccessCampus($request, (int) $workflow->getAttribute('campus_id'))) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
 

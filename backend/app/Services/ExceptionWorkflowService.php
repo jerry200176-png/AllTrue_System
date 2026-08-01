@@ -111,23 +111,32 @@ class ExceptionWorkflowService
     public function approveLeave(ExceptionWorkflow $workflow, string $closedReason, array $payload = []): ExceptionWorkflow
     {
         return DB::transaction(function () use ($workflow, $closedReason, $payload) {
-            $locked = ExceptionWorkflow::whereKey($workflow->id)->lockForUpdate()->firstOrFail();
-            $session = $locked->class_session_id
-                ? ClassSession::whereKey($locked->class_session_id)->lockForUpdate()->first()
+            /** @var ExceptionWorkflow|null $locked */
+            $locked = ExceptionWorkflow::query()
+                ->where('id', (int) $workflow->getAttribute('id'))
+                ->lockForUpdate()
+                ->first();
+            if (!$locked) {
+                throw new \Illuminate\Database\Eloquent\ModelNotFoundException();
+            }
+            $classSessionId = (int) $locked->getAttribute('class_session_id');
+            /** @var ClassSession|null $session */
+            $session = $classSessionId > 0
+                ? ClassSession::query()->where('id', $classSessionId)->lockForUpdate()->first()
                 : null;
 
-            if ($session && in_array(strtolower((string) $session->Status), [SessionStatus::LEAVE_REQUESTED, SessionStatus::SCHEDULED, 'rescheduled'], true)) {
-                $session->Status = SessionStatus::LEAVE;
-                $session->Note = $this->appendNote($session->Note, 'parent-leave-approved');
+            if ($session && in_array(strtolower((string) $session->getAttribute('Status')), [SessionStatus::LEAVE_REQUESTED, SessionStatus::SCHEDULED, 'rescheduled'], true)) {
+                $session->setAttribute('Status', SessionStatus::LEAVE);
+                $session->setAttribute('Note', $this->appendNote($session->getAttribute('Note'), 'parent-leave-approved'));
                 $session->save();
             }
 
-            $locked->status = $closedReason === 'candidate_confirmed' ? 'confirmed' : 'waived';
-            $locked->closed_at = now();
-            $locked->closed_reason = $closedReason;
-            $locked->payload = array_merge($locked->payload ?? [], $payload, [
+            $locked->setAttribute('status', $closedReason === 'candidate_confirmed' ? 'confirmed' : 'waived');
+            $locked->setAttribute('closed_at', now());
+            $locked->setAttribute('closed_reason', $closedReason);
+            $locked->setAttribute('payload', array_merge($locked->getAttribute('payload') ?? [], $payload, [
                 'approved_at' => now()->toIso8601String(),
-            ]);
+            ]));
             $locked->save();
 
             return $locked;
@@ -138,32 +147,41 @@ class ExceptionWorkflowService
     public function rejectLeave(ExceptionWorkflow $workflow, string $reason, int $operatorId = 0): ExceptionWorkflow
     {
         return DB::transaction(function () use ($workflow, $reason, $operatorId) {
-            $locked = ExceptionWorkflow::whereKey($workflow->id)->lockForUpdate()->firstOrFail();
-            if ($locked->closed_at || in_array($locked->status, ['confirmed', 'waived', 'rejected', 'closed'], true)) {
+            /** @var ExceptionWorkflow|null $locked */
+            $locked = ExceptionWorkflow::query()
+                ->where('id', (int) $workflow->getAttribute('id'))
+                ->lockForUpdate()
+                ->first();
+            if (!$locked) {
+                throw new \Illuminate\Database\Eloquent\ModelNotFoundException();
+            }
+            if ($locked->getAttribute('closed_at') || in_array($locked->getAttribute('status'), ['confirmed', 'waived', 'rejected', 'closed'], true)) {
                 throw new \InvalidArgumentException('此請假案件已結案，無法退回');
             }
 
-            $session = $locked->class_session_id
-                ? ClassSession::whereKey($locked->class_session_id)->lockForUpdate()->first()
+            $classSessionId = (int) $locked->getAttribute('class_session_id');
+            /** @var ClassSession|null $session */
+            $session = $classSessionId > 0
+                ? ClassSession::query()->where('id', $classSessionId)->lockForUpdate()->first()
                 : null;
-            if ($session && strtolower((string) $session->Status) !== SessionStatus::LEAVE_REQUESTED) {
+            if ($session && strtolower((string) $session->getAttribute('Status')) !== SessionStatus::LEAVE_REQUESTED) {
                 throw new \InvalidArgumentException('原堂次已不是待審核請假狀態，無法退回');
             }
 
             if ($session) {
-                $session->Status = SessionStatus::SCHEDULED;
-                $session->Note = $this->appendNote($session->Note, 'parent-leave-rejected');
+                $session->setAttribute('Status', SessionStatus::SCHEDULED);
+                $session->setAttribute('Note', $this->appendNote($session->getAttribute('Note'), 'parent-leave-rejected'));
                 $session->save();
             }
 
-            $locked->status = 'rejected';
-            $locked->closed_at = now();
-            $locked->closed_reason = 'parent_leave_rejected';
-            $locked->payload = array_merge($locked->payload ?? [], [
+            $locked->setAttribute('status', 'rejected');
+            $locked->setAttribute('closed_at', now());
+            $locked->setAttribute('closed_reason', 'parent_leave_rejected');
+            $locked->setAttribute('payload', array_merge($locked->getAttribute('payload') ?? [], [
                 'rejected_at' => now()->toIso8601String(),
                 'rejected_by_user_id' => $operatorId ?: null,
                 'rejection_reason' => trim($reason),
-            ]);
+            ]));
             $locked->save();
 
             return $locked;

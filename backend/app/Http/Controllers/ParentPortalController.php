@@ -778,7 +778,7 @@ class ParentPortalController extends Controller
                 ->limit(20)
                 ->get()
                 ;
-            $leaveWorkflows = ExceptionWorkflow::where('student_id', (int) $student->id)
+            $leaveWorkflows = ExceptionWorkflow::query()->where('student_id', (int) $student->id)
                 ->where('type', 'student_leave')
                 ->whereIn('class_session_id', $upcomingSessions->pluck('id')->all())
                 ->get()
@@ -1340,8 +1340,15 @@ class ParentPortalController extends Controller
         }
 
         [$workflow, $classSession] = DB::transaction(function () use ($classSession, $studentClass, $session, $data) {
-            $classSession = ClassSession::whereKey($classSession->id)->lockForUpdate()->firstOrFail();
-            if (!in_array(strtolower((string) $classSession->Status), ['scheduled', 'rescheduled', 'leave_requested'], true)) {
+            /** @var ClassSession|null $classSession */
+            $classSession = ClassSession::query()
+                ->where('id', (int) $classSession->getKey())
+                ->lockForUpdate()
+                ->first();
+            if (!$classSession) {
+                throw new \Illuminate\Database\Eloquent\ModelNotFoundException();
+            }
+            if (!in_array(strtolower((string) $classSession->getAttribute('Status')), ['scheduled', 'rescheduled', 'leave_requested'], true)) {
                 throw new \InvalidArgumentException('Session cannot be altered.');
             }
 
@@ -1367,8 +1374,8 @@ class ParentPortalController extends Controller
                 ],
             ]);
 
-            if ($classSession->Status !== 'leave_requested') {
-                $classSession->Status = 'leave_requested';
+            if ($classSession->getAttribute('Status') !== 'leave_requested') {
+                $classSession->setAttribute('Status', 'leave_requested');
                 $classSession->save();
             }
 
