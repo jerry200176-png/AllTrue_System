@@ -120,6 +120,17 @@
           </select>
         </div>
 
+        <div class="form-group">
+          <label>排課方式</label>
+          <select v-model="form.scheduling_policy">
+            <option value="auto_recurrence">自動固定排課</option>
+            <option value="manual_occurrence">逐堂手動排課</option>
+          </select>
+          <span v-if="form.scheduling_policy === 'manual_occurrence'" class="field-hint field-hint--info">
+            既有堂次會保留；之後每次只新增一堂，取消／請假後不會自動補尾堂。
+          </span>
+        </div>
+
         <div v-if="form.payment_type === 'session'" class="form-group">
           <label>購買堂數</label>
           <input
@@ -276,6 +287,7 @@ const defaultForm = {
   rate_unit: 'session',
   duration_hours: 2,
   payment_type: 'session',
+  scheduling_policy: 'auto_recurrence',
   sessions_purchased: 8,
   settlement_day: null,
   monthly_sessions: null,

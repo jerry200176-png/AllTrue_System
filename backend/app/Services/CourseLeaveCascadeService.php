@@ -344,6 +344,9 @@ class CourseLeaveCascadeService
     public static function appendTailAfterLeave(int $courseId, string $leaveDate, ClassSession $leaveSession): array
     {
         $course = StudentClass::query()->where('ID', $courseId)->first();
+        if ($course && (string) ($course->scheduling_policy ?? 'auto_recurrence') === 'manual_occurrence') {
+            return [self::fetchCourseSessionRows($courseId), $course->EndDate ? Carbon::parse($course->EndDate)->toDateString() : null];
+        }
         $sessions = ClassSession::query()
             ->where('StudentClassID', $courseId)
             ->orderBy('SessionDate', 'asc')->orderBy('id', 'asc')->get();
@@ -519,6 +522,10 @@ class CourseLeaveCascadeService
     public static function shiftAndAppendAfterLeave(int $courseId, string $leaveDate, ClassSession $leaveSession): array
     {
         $course = StudentClass::where('ID', $courseId)->first();
+        if ($course && (string) ($course->scheduling_policy ?? 'auto_recurrence') === 'manual_occurrence') {
+            $end = ClassSession::where('StudentClassID', $courseId)->max('SessionDate');
+            return [self::fetchCourseSessionRows($courseId), $end ? Carbon::parse($end)->toDateString() : null];
+        }
         $sessions = ClassSession::where('StudentClassID', $courseId)
             ->orderBy('SessionDate', 'asc')
             ->orderBy('id', 'asc')
@@ -635,6 +642,20 @@ class CourseLeaveCascadeService
         });
         if (!$leaveSession) {
             throw new \InvalidArgumentException('找不到可撤銷的請假堂次');
+        }
+
+        if ((string) ($course->scheduling_policy ?? 'auto_recurrence') === 'manual_occurrence') {
+            $leaveSession->Status = 'scheduled';
+            $leaveSession->Note = self::appendNote($leaveSession->Note, self::NOTE_REVERT_TO_SCHEDULED);
+            $leaveSession->save();
+            LearningRecord::where('ClassSessionID', (int) $leaveSession->id)
+                ->where('VoidReason', '銝?祈???')
+                ->update(['VoidedAt' => null, 'VoidedByUserID' => null, 'VoidReason' => null]);
+            StudentSignIn::where('ClassSessionID', (int) $leaveSession->id)
+                ->where('VoidReason', '銝?祈???')
+                ->update(['VoidedAt' => null, 'VoidedByUserID' => null, 'VoidReason' => null]);
+            $end = ClassSession::where('StudentClassID', $courseId)->max('SessionDate');
+            return [self::fetchCourseSessionRows($courseId), $end ? Carbon::parse($end)->toDateString() : null, $normalizedLeaveDate];
         }
 
         $blockedStatusSet = ['attended', 'completed', 'late', 'present', 'absent', 'leave_adjusted'];
