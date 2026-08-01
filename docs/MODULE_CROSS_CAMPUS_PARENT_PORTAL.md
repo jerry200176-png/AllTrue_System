@@ -42,4 +42,5 @@ dashboard 的 `classes`、`learning_records`、`attendance_history`、`upcoming_
 
 - Backend：`CrossCampusParentPortalTest`、既有 `ParentPortalLoginIsolationTest`、migration `--pretend`／rollback `--pretend`。
 - Frontend：既有 Vite build 與 parent portal scope／campus label smoke。
+- Browser QA：桌面與 390px mobile viewport 的家長入口均完成 DOM／視覺檢查；空白表單、無效家長登入與前端 console error 檢查均通過。
 - 上線前 PR 必須附授權威脅模型、rollback、pilot metrics 與 post-deploy smoke evidence；不可在 production Pi 執行 PHPUnit、migration、cache clear 或手動部署。
