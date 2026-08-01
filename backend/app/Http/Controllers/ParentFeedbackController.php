@@ -8,6 +8,7 @@ use App\Models\ParentFeedbackReply;
 use App\Models\ParentSession;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Services\StudentIdentityService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -35,6 +36,13 @@ class ParentFeedbackController extends Controller
         $student = Student::find($session->StudentID);
         if (!$student) {
             return response()->json(['message' => '找不到學生資料'], 404);
+        }
+
+        $identity = app(StudentIdentityService::class);
+        $group = $identity->groupForStudent((int) $student->id);
+        if ($group && $identity->activeMembers((int) $group->id)->count() > 1
+            && $identity->accessMode((int) $group->id) !== StudentIdentityService::MODE_ACTIONS) {
+            return response()->json(['message' => '跨分校家長操作尚未開放，目前僅能查看資料。'], 403);
         }
 
         ParentFeedback::create([

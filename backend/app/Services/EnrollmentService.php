@@ -12,6 +12,7 @@ use App\Services\Scheduling\DeductionBasis;
 use App\Services\Scheduling\LessonEntitlementCoverageCalculator;
 use App\Services\TeacherScopeService;
 use App\Support\MysqlCharsetRejection;
+use App\Services\StudentIdentityService;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
@@ -389,6 +390,8 @@ class EnrollmentService
         }
 
         $studentId = !empty($data['student_id']) ? (int) $data['student_id'] : 0;
+        $identityGroupId = !empty($data['identity_group_id']) ? (int) $data['identity_group_id'] : 0;
+        $identitySourceStudentId = $studentId;
         $studentCampusId = 0;
         if ($studentId > 0) {
             $studentCampusId = (int) (Student::where('id', $studentId)->value('CampusID') ?? 0);
@@ -397,9 +400,11 @@ class EnrollmentService
             }
         }
 
-        $targetCampusId = $studentCampusId > 0
+        $targetCampusId = $identityGroupId > 0
+            ? (int) ($data['branch_id'] ?? 0)
+            : ($studentCampusId > 0
             ? (int) ($data['branch_id'] ?? $studentCampusId)
-            : (int) ($data['branch_id'] ?? ($campusIds[0] ?? 0));
+            : (int) ($data['branch_id'] ?? ($campusIds[0] ?? 0)));
 
         if ($targetCampusId <= 0) {
             return response()->json([
@@ -410,8 +415,24 @@ class EnrollmentService
             ], 422);
         }
 
-        if ($studentCampusId > 0 && $targetCampusId !== $studentCampusId) {
+        if ($studentCampusId > 0 && $targetCampusId !== $studentCampusId && $identityGroupId <= 0) {
             return response()->json(['message' => 'branch_id 與學生所屬分校不一致'], 422);
+        }
+
+        if ($identityGroupId > 0) {
+            if (!in_array($role, ['director', 'super_admin'], true)) {
+                return response()->json(['message' => '只有主任或 super_admin 可使用跨分校身份報名'], 403);
+            }
+            $group = app(StudentIdentityService::class)->groupForStudent($identitySourceStudentId);
+            if (!$group || (int) $group->id !== $identityGroupId) {
+                return response()->json(['message' => 'identity_group_id 與來源學生不一致'], 422);
+            }
+            $member = app(StudentIdentityService::class)->activeMembers($identityGroupId)
+                ->firstWhere('campus_id', $targetCampusId);
+            if ($member) {
+                $studentId = (int) $member->student_id;
+                $studentCampusId = $targetCampusId;
+            }
         }
 
         if (!empty($campusIds) && !in_array($targetCampusId, $campusIds, true)) {
@@ -590,11 +611,26 @@ class EnrollmentService
             $subjectMeta,
             $globalTeacherId,
             $allowMultiTeacher,
-            $endDateOverride
+            $endDateOverride,
+            $identityGroupId,
+            $identitySourceStudentId,
+            $role,
+            $campusIds
         ) {
             $student = $studentId > 0
                 ? Student::find($studentId)
                 : $this->createStudentInline((array) ($data['student'] ?? []), $targetCampusId);
+
+            if ($identityGroupId > 0 && $student && (int) $student->CampusID !== $targetCampusId) {
+                $student = app(StudentIdentityService::class)->createBranchMember(
+                    $identityGroupId,
+                    $identitySourceStudentId,
+                    $targetCampusId,
+                    (int) ($request->attributes->get('auth_user')->id ?? 0) ?: null,
+                    (string) $role,
+                    (array) $campusIds
+                );
+            }
 
             if (!$student) {
                 return response()->json(['message' => '無法建立學生'], 422);
