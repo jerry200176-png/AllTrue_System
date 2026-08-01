@@ -260,6 +260,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `docs/SYSTEM_TECH_GUIDE.md` | 架構深度文件（延伸閱讀，非必讀）|
 | `docs/SOP_MATURITY.md` | SOP 成熟度、M4–M9 roadmap、Actions freeze 接手地圖 |
 | `docs/MODULE_PRODUCT_ENGINEERING_MATURITY_ROADMAP.md` | Product maturity → engineering maturity 的 7/1 後 AI 接手總圖 |
+| `docs/MODULE_CROSS_CAMPUS_PARENT_PORTAL.md` | 跨分校學生身份 bridge、家長 scope、pilot gate 與 rollback |
 | `docs/CHANGELOG.md` | 最近上線功能記錄 |
 | `docs/archive/CHANGELOG_ARCHIVE_2026-05.md` | 2026-05 CHANGELOG（滾動歸檔，只搜尋不通讀） |
 | `docs/archive/CHANGELOG_ARCHIVE_2026-04.md` | 2026-04（含更早）CHANGELOG（archive，只搜尋不通讀） |
