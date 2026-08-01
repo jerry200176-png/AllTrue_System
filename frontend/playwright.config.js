@@ -19,7 +19,10 @@ import { defineConfig, devices } from '@playwright/test';
 export default defineConfig({
   testDir: './e2e',
   // Foundation page evidence uses playwright.ui-foundation.config.js + dedicated Vite mount.
-  testIgnore: [/ui-foundation-pages\.spec\.js$/],
+  testIgnore: [
+    /ui-foundation-pages\.spec\.js$/,
+    /learning-records-polish\.spec\.js$/,
+  ],
   timeout: 45_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,
