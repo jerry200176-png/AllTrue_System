@@ -3,7 +3,7 @@
 namespace Tests\Unit;
 
 use App\Models\SecurityAuditEvent;
-use PHPUnit\Framework\TestCase;
+use Tests\TestCase;
 
 class SecurityAuditEventTest extends TestCase
 {
