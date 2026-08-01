@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const outDir = process.env.UI_FOUNDATION_SHOT_DIR
-  || path.resolve(__dirname, '../../../docs/design/evidence/raw');
+  || path.resolve(__dirname, '../../docs/design/evidence/raw');
 
 const viewports = [
   { name: '390', width: 390, height: 844 },
@@ -346,21 +346,32 @@ test.describe('UI foundation — real Vue page evidence', () => {
       });
       await openPilot(page, { pageName: 'director', mode: 'normal', viewport: vp });
 
-      await expect(page.getByText('今天先處理什麼？')).toBeVisible({ timeout: 10_000 });
-      await expect(page.getByText('今日快照', { exact: true })).toBeVisible();
+      await expect(page.getByText('主任總覽', { exact: true })).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByText('今日摘要', { exact: true })).toBeVisible();
       const layout = await page.evaluate(() => ({
         scrollWidth: document.documentElement.scrollWidth,
         clientWidth: document.documentElement.clientWidth,
-        importVisible: Boolean(document.querySelector('.ac--import')),
+        primaryCtaCount: document.querySelectorAll('.director-task__action').length,
+        primaryDecisionCount: document.querySelectorAll('.director-task').length,
+        hiddenLegacyWorkbench: Boolean(document.querySelector('.workbench')),
       }));
       expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth);
-      expect(layout.importVisible).toBe(false);
+      expect(layout.hiddenLegacyWorkbench).toBe(false);
+      expect(layout.primaryDecisionCount).toBeLessThanOrEqual(7);
+      await expect(page.getByRole('tab', { name: '今天', exact: true })).toHaveAttribute('aria-selected', 'true');
+      if (layout.primaryCtaCount > 0) {
+        await expect(page.locator('.director-task__action').first()).toBeVisible();
+      }
       expect(secondaryRequests).toEqual([]);
+      fs.mkdirSync(outDir, { recursive: true });
+      await page.locator('.director-workbench-v2').screenshot({ path: path.join(outDir, `vue-director-v2-focus-${vp.name}.png`) });
 
       const fullView = page.getByRole('tab', { name: '完整營運', exact: true });
       await fullView.click();
-      await expect(page.locator('.work-grid')).toBeVisible();
+      await expect(page.locator('.director-workbench-v2__full')).toBeVisible();
       await expect.poll(() => secondaryRequests.length).toBeGreaterThan(0);
+      await expect(page.getByText('近期紀錄與分析', { exact: true })).toBeVisible();
+      await page.locator('.director-workbench-v2').screenshot({ path: path.join(outDir, `vue-director-v2-full-${vp.name}.png`) });
     });
   }
 
@@ -370,15 +381,18 @@ test.describe('UI foundation — real Vue page evidence', () => {
   ]) {
     test(`director workbench with urgent tasks @${vp.name}`, async ({ page }) => {
       await openPilot(page, { pageName: 'director', mode: 'dashboard', viewport: vp });
-      await expect(page.getByText('今天先處理什麼？')).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByText('主任總覽', { exact: true })).toBeVisible({ timeout: 10_000 });
       await expect(page.getByText('家長請假待主任處理')).toBeVisible();
-      const ctas = page.locator('.workbench-task__cta');
+      const ctas = page.locator('.director-task__action');
       expect(await ctas.count()).toBeGreaterThan(0);
       await expect(ctas.first()).toBeVisible();
+      fs.mkdirSync(outDir, { recursive: true });
+      await page.locator('.director-workbench-v2').screenshot({ path: path.join(outDir, `vue-director-v2-urgent-focus-${vp.name}.png`) });
       const leaveTask = page.getByRole('button', { name: '開始處理', exact: true });
       await leaveTask.click();
-      await expect(page.getByText('主任待辦收件匣')).toBeVisible();
+      await expect(page.getByText('家長請假', { exact: true })).toBeVisible();
       await expect(page.getByRole('button', { name: '尋找補課時段', exact: true })).toBeVisible();
+      await page.locator('.director-workbench-v2').screenshot({ path: path.join(outDir, `vue-director-v2-urgent-${vp.name}.png`) });
     });
   }
 });
