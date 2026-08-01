@@ -747,7 +747,12 @@
                   </div>
                   <span v-else class="hint">—</span>
                 </td>
-                <td class="invoice-amount-cell">${{ formatMoney(inv.total_amount) }}</td>
+                <td class="invoice-amount-cell">
+                  <strong>${{ formatMoney(inv.total_amount) }}</strong>
+                  <div v-if="inv.amount_discrepancy" class="invoice-amount-warning" role="status">
+                    依實際 {{ inv.period_sessions }} 堂計算；原帳單 ${{ formatMoney(inv.stored_total_amount) }}
+                  </div>
+                </td>
                 <td class="invoice-amount-cell">${{ formatMoney(inv.paid_amount) }}</td>
                 <td class="invoice-status-cell">
                   <span :class="['invoice-status-chip', invoiceStatusClass(inv)]">
@@ -4728,7 +4733,7 @@ onUnmounted(() => {
   margin-top: 3px;
   font-size: 11px;
   font-weight: 600;
-  color: #b45309;
+  color: var(--ds-warning);
   background: #fef3c7;
   border: 1px solid #fcd34d;
   border-radius: 4px;
@@ -6087,6 +6092,14 @@ button.danger:disabled {
 .invoice-status-cell {
   text-align: right !important;
   white-space: nowrap;
+}
+.invoice-amount-warning {
+  margin-top: 3px;
+  color: #b45309;
+  font-size: 11px;
+  line-height: 1.35;
+  white-space: normal;
+  min-width: 150px;
 }
 .invoice-status-chip {
   display: inline-flex;

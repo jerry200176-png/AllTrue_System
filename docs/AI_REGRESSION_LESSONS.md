@@ -1150,3 +1150,10 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - 同一 `line_user_id` 出現在多個不同 `CampusID` 的學生 = 資料錯誤，不得作為 sibling 群組
 
 **修復**：PR #74 (code guard) + PR #75 (data cleanup migration)
+### R89. Billing read model 與批次 mutation 必須使用同一個 explicit selection contract
+
+- **事件**：2026-08-01 in-app #212/#213。帳單列表沿用 `Invoice.TotalAmount`，課堂頁卻依 `ClassSession` 顯示實際堂次；批次核准則遺漏 `ids`，後端依篩選條件核准整批資料。
+- **根因**：同一個業務動作由多個 controller/UI 自行推導數字或範圍，缺少 canonical read DTO 與 fail-closed mutation contract。
+- **規則**：月結帳單讀取必須帶 `billing_period`，回傳 stored/computed/source/discrepancy；批次 mutation 必須要求 distinct explicit IDs，server-side 完整比對後才進 transaction。
+- **驗收**：所有 batch response 的實際變更數量必須與 request IDs 相等；帳單畫面必須能呈現「堂數 × 單價 = 金額」及差異原因；production evidence 必須保留 API 回應與 UI 證據。
+- **參考**：`docs/incidents/2026-08-01-billing-and-batch-approval.md`、`docs/PRICING_CONTRACT.md`、`docs/ADR_003_layering_and_controller_db_ban.md`。

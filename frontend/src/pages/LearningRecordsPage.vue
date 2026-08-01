@@ -4018,7 +4018,7 @@ const batchApproveSelected = async () => {
     const res = await fetch('/api/v1/learning-records/batch-approve', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ DirectorID: props.userId, branch_id: props.branchId })
+      body: JSON.stringify({ ids, DirectorID: props.userId, branch_id: props.branchId })
     });
     if (res.ok) {
       const json = await res.json();
