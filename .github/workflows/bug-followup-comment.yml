@@ -89,7 +89,8 @@ jobs:
           $already = \App\Models\BugReportComment::query()->where("bug_report_id", $bugId)
               ->where("body", "like", "%".$issueUrl."%")->exists();
           $comment = $already ? ["ok" => true, "skipped" => true] : \App\Services\BugReportService::addComment($bugId, $actor, $reply, false);
-          if (!($comment["ok"] ?? false)) { throw new \RuntimeException(json_encode($comment)); }
+          $commentSucceeded = ($comment["ok"] ?? false) || isset($comment["id"]) || ($comment["skipped"] ?? false);
+          if (!$commentSucceeded) { throw new \RuntimeException(json_encode($comment)); }
           echo json_encode(["bug_id" => $bugId, "status" => (string)$bug->status, "comment" => $comment, "issue" => $issueUrl], JSON_UNESCAPED_UNICODE), PHP_EOL;
           '
           REMOTE
