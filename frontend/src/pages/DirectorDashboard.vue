@@ -63,7 +63,15 @@
             </header>
 
             <div v-if="dashboardLoading" class="director-task-list" aria-live="polite" aria-label="正在載入今日待辦">
-              <div v-for="n in 3" :key="n" class="director-task director-task--loading" aria-hidden="true"></div>
+              <div v-for="n in 3" :key="n" class="director-task director-task--loading" aria-hidden="true">
+                <span class="director-skeleton__index"></span>
+                <span class="director-skeleton__body">
+                  <span class="director-skeleton__title"></span>
+                  <span class="director-skeleton__copy"></span>
+                  <span class="director-skeleton__meta"></span>
+                </span>
+                <span class="director-skeleton__action"></span>
+              </div>
             </div>
             <div v-else-if="dashboardPrimaryError" class="director-state director-state--error" role="alert">
               <strong>今日資料暫時無法載入</strong>
@@ -96,6 +104,7 @@
                 </div>
                 <button type="button" class="director-task__action" @click="openDashboardTask(task)">
                   {{ task.actionLabel }}
+                  <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
                 </button>
               </li>
             </ol>
@@ -3785,7 +3794,7 @@ onBeforeUnmount(() => {
 .director-workbench-v2__subheader h2,
 .surface-panel__header h2,
 .surface-panel__header h3 { margin: 0; color: var(--ds-ink); letter-spacing: -0.018em; }
-.director-workbench-v2__heading h1 { font-size: 28px; font-weight: 800; }
+.director-workbench-v2__heading h1 { font-size: 30px; font-weight: 800; letter-spacing: -0.035em; }
 .director-workbench-v2__heading p,
 .director-workbench-v2__subheader p,
 .surface-panel__header p { margin: 7px 0 0; color: var(--ds-ink-mute); font-size: 13px; line-height: 1.5; }
@@ -3819,19 +3828,25 @@ onBeforeUnmount(() => {
 .director-candidate input:focus-visible + span,
 .director-modal__close:focus-visible { outline: 3px solid var(--ds-info-wash); outline-offset: 2px; }
 .director-workbench-v2__nav { display: flex; gap: 22px; min-height: 52px; border-bottom: 1px solid var(--ds-hairline); }
-.director-workbench-v2__nav button { min-height: 52px; padding: 0 2px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--ds-ink-mute); font-size: 13px; font-weight: 800; }
+.director-workbench-v2__nav button { min-height: 52px; padding: 0 2px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--ds-ink-mute); font-size: 14px; font-weight: 800; }
 .director-workbench-v2__nav button:hover { color: var(--ds-ink); }
 .director-workbench-v2__nav button.is-active { border-bottom-color: var(--ds-cta); color: var(--ds-ink); }
 .director-workbench-v2__focus { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(260px, 0.72fr); gap: 24px; align-items: start; padding-top: 24px; }
 .director-workbench-v2__primary { min-width: 0; }
 .director-workbench-v2__aside { display: grid; gap: 18px; min-width: 0; }
-.surface-panel { min-width: 0; border: 1px solid var(--ds-hairline); border-radius: 10px; background: var(--ds-canvas); }
+.surface-panel { min-width: 0; border: 1px solid var(--ds-hairline); border-radius: 12px; background: var(--ds-canvas); box-shadow: var(--ds-shadow-1); }
 .surface-panel__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px 22px 16px; }
 .surface-panel__header h2 { font-size: 20px; font-weight: 800; }
 .surface-panel__header h3 { font-size: 17px; font-weight: 800; }
 .surface-panel__count { flex: 0 0 auto; color: var(--ds-ink-mute); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .director-task-list { margin: 0; padding: 0 22px; list-style: none; }
-.director-task { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 14px; align-items: center; min-width: 0; padding: 17px 0; border-top: 1px solid var(--ds-hairline); }
+.director-workbench-v2__primary > .surface-panel__header { position: relative; padding-left: 28px; }
+.director-workbench-v2__primary > .surface-panel__header::before { content: ''; position: absolute; top: 20px; bottom: 16px; left: 16px; width: 3px; border-radius: 3px; background: var(--ds-brand-orange); }
+.surface-panel--summary { border-top: 2px solid var(--ds-ink); }
+.director-task { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 14px; align-items: center; min-width: 0; margin-inline: -10px; padding: 17px 10px; border-top: 1px solid var(--ds-hairline); border-radius: 8px; transition: background-color 160ms ease, box-shadow 160ms ease; }
+.director-task:hover { background: var(--ds-canvas-soft); box-shadow: inset 3px 0 0 var(--ds-hairline-input); }
+.director-task--critical:hover, .director-task--danger:hover { box-shadow: inset 3px 0 0 var(--ds-danger); }
+.director-task--warning:hover { box-shadow: inset 3px 0 0 var(--ds-warning); }
 .director-task__index { align-self: start; padding-top: 2px; color: var(--ds-ink-mute); font-size: 11px; font-variant-numeric: tabular-nums; }
 .director-task--critical .director-task__index,
 .director-task--danger .director-task__index { color: var(--ds-danger); font-weight: 900; }
@@ -3842,10 +3857,18 @@ onBeforeUnmount(() => {
 .director-task__count { flex: 0 0 auto; color: var(--ds-ink); font-size: 15px; font-variant-numeric: tabular-nums; }
 .director-task__body > p { margin: 5px 0 0; color: var(--ds-ink-secondary); font-size: 12px; line-height: 1.55; }
 .director-task__meta { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 7px; color: var(--ds-ink-mute); font-size: 11px; }
-.director-task__action { min-height: 34px; padding: 5px 0; border: 0; border-bottom: 1px solid transparent; background: transparent; color: var(--ds-cta); font-size: 12px; font-weight: 800; white-space: nowrap; }
+.director-task__action { display: inline-flex; align-items: center; gap: 5px; min-height: 34px; padding: 5px 0; border: 0; border-bottom: 1px solid transparent; background: transparent; color: var(--ds-cta); font-size: 12px; font-weight: 800; white-space: nowrap; }
+.director-task__action .material-symbols-outlined { font-size: 16px; transition: transform 160ms ease; }
+.director-task__action:hover .material-symbols-outlined { transform: translateX(2px); }
 .director-task__action:hover { border-bottom-color: currentColor; }
-.director-task--loading { min-height: 92px; border-radius: 4px; background: linear-gradient(90deg, var(--ds-canvas-soft), var(--ds-canvas), var(--ds-canvas-soft)); background-size: 220% 100%; animation: director-workbench-loading 1.4s ease-in-out infinite; }
-.director-task--loading::after { content: ''; grid-column: 2 / -1; display: block; height: 12px; border-radius: 3px; background: var(--ds-canvas-soft); }
+.director-task--loading { min-height: 92px; background: transparent; }
+.director-task--loading > span { display: block; background: var(--ds-canvas-soft); animation: director-workbench-loading 1.4s ease-in-out infinite; }
+.director-skeleton__index { width: 20px; height: 12px; border-radius: 3px; }
+.director-skeleton__body { display: grid; gap: 9px; }
+.director-skeleton__title { width: min(42%, 180px); height: 14px; border-radius: 3px; }
+.director-skeleton__copy { width: min(76%, 310px); height: 10px; border-radius: 3px; }
+.director-skeleton__meta { width: 30%; height: 9px; border-radius: 3px; }
+.director-skeleton__action { width: 56px; height: 12px; border-radius: 3px; }
 @keyframes director-workbench-loading { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
 .director-state { display: grid; justify-items: start; gap: 6px; padding: 34px 22px; color: var(--ds-ink-mute); font-size: 12px; }
 .director-state strong { color: var(--ds-ink); font-size: 14px; }
@@ -3950,7 +3973,9 @@ onBeforeUnmount(() => {
   .director-workbench-v2__aside { grid-template-columns: 1fr; gap: 12px; }
   .surface-panel__header { padding: 17px 16px 14px; }
   .director-task-list, .director-schedule-list, .director-evaluation-list, .director-payment-list, .director-notification-list, .director-other-work-list { padding-inline: 16px; }
-  .director-task { grid-template-columns: 28px minmax(0, 1fr); gap: 10px; align-items: start; padding: 15px 0; }
+  .director-workbench-v2__primary > .surface-panel__header { padding-left: 24px; }
+  .director-workbench-v2__primary > .surface-panel__header::before { left: 12px; top: 17px; bottom: 14px; }
+  .director-task { grid-template-columns: 28px minmax(0, 1fr); gap: 10px; align-items: start; margin-inline: -6px; padding: 15px 6px; }
   .director-task__title-row h3 { white-space: normal; }
   .director-task__action { grid-column: 2; justify-self: start; margin-top: 3px; }
   .director-workbench-v2__more { margin-left: 54px; margin-right: 16px; }
