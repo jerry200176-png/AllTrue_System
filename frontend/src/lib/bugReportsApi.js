@@ -87,11 +87,17 @@ export async function addBugComment(bugId, body, isInternalNote = false) {
   return json(res);
 }
 
-export async function updateBugStatus(bugId, status, note = null) {
+export async function updateBugStatus(bugId, status, note = null, evidence = {}) {
   const res = await fetch(`${API}/bugs/${bugId}/status`, {
     method: 'POST',
     headers: headers(),
-    body: JSON.stringify({ status, note }),
+    body: JSON.stringify({
+      status,
+      note,
+      production_revision: evidence.production_revision || undefined,
+      deploy_run_id: evidence.deploy_run_id || undefined,
+      evidence_exception_reason: evidence.evidence_exception_reason || undefined,
+    }),
   });
   return json(res);
 }
@@ -118,4 +124,3 @@ export async function reporterVerifyBug(bugId, verdict, note = '', branchId = nu
   });
   return json(res);
 }
-
