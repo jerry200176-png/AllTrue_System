@@ -21,10 +21,13 @@ Without credentials:
 - `GET /api/v1/health`
 - `GET /api/v1/branches`
 - `POST /api/v1/auth/login` with empty payload (route liveness, non-5xx)
+- `GET /deployment.json` — backend SHA, frontend build SHA, and deployment timestamp.
 
 `post-merge-smoke.sh` 額外（Layer 2–3）：
 
-- `version.json` hash 與 Pi `git HEAD` 一致
+- `deployment.json` backend SHA 與 Pi `git HEAD` 一致
+- `deployment.json` frontend build SHA（若存在）與 `version.json.build_sha` 對應
+- `version.json` 可在 backend-only deploy 時落後；不得單獨作為 backend runtime identity
 - 部署 bundle 含 `cancelMakeupSchedule` / `trust-summary` 等關鍵字
 - Teacher `GET /system/trust-summary` → 200（#529 驗證路徑）
 - Director `GET /schedules?type=extra&status=scheduled` → 200
@@ -85,3 +88,4 @@ bash scripts/post-merge-smoke.sh
 - Never print passwords.
 - Use repo/org secrets for credentials, not plaintext in workflow files.
 - Keep smoke account scoped to minimum read permissions.
+- Treat `deployment.json` as the runtime identity source; `version.json` remains the frontend artifact source.

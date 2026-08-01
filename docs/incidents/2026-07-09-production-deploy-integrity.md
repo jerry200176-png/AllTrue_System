@@ -70,23 +70,27 @@ CI merge (head_sha = X)
 | Deploy contract CI lint (`scripts/lib/deploy-integrity-contract.mjs`) | ⏳ salvage branch — #1122 |
 | Nightly Pi HEAD vs last green deploy SHA (`deploy-drift-check`) | ⏳ salvage branch — #1122 |
 | External asset smoke (Layer 2b) | ⏳ salvage branch — #1122 |
-| `version.json` v2 schema (`build_sha`/`deploy_sha`) + update-checker hash compare | ⏳ salvage branch — #1122（production 仍為 v1 `{t, hash}`） |
+| `version.json` frontend build identity + `deployment.json` backend/frontend/deployed_at manifest | ✅ implemented in the current follow-up; production activation still requires normal merge/deploy gates |
 
 ---
 
-## 7. `version.json` v2 schema (design — not yet shipped)
+## 7. Runtime identity manifest
 
 ```json
 {
-  "t": "…", "hash": "…",
-  "build_sha": "<vite build commit>", "built_at": "…",
-  "deploy_sha": "<last CI-verified deploy>", "deployed_at": "…"
+  "schema": 1,
+  "backend_sha": "<CI-verified deploy commit>",
+  "frontend_build_sha": "<vite build commit or legacy short hash>",
+  "frontend_built_at": "…",
+  "deployed_at": "…",
+  "source": "github-actions:deploy.yml"
 }
 ```
 
 | Field | Owner | Meaning |
 |-------|-------|---------|
-| `build_sha` / `built_at` / `hash` / `t` | Vite build | Frontend bundle identity (L1) |
+| `build_sha` / `built_at` / `hash` / `t` | Vite build / `version.json` | Frontend bundle identity (L1) |
+| `backend_sha` / `deployed_at` | `deploy.yml` / `deployment.json` | Backend runtime identity and activation time |
 | `deploy_sha` / `deployed_at` | deploy-time patcher on Pi | Last CI-verified deploy that reached origin (L2) |
 
 **Backend-only deploy:** `build_sha` unchanged; `deploy_sha` advances — expected, not drift.
