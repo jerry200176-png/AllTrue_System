@@ -601,6 +601,7 @@
               <div class="pp-session-action">
                 <span :class="['pp-status-dot', s.Status]"></span>
                 <span class="pp-status-text">{{ statusLabel(s.Status) }}</span>
+                <small v-if="s.LeaveWorkflowStatus === 'rejected'" class="pp-leave-rejected">上次請假已退回{{ s.LeaveWorkflowReason ? `：${s.LeaveWorkflowReason}` : '' }}</small>
                 <button
                   v-if="canRequestLeave(s)"
                   type="button"
@@ -1136,7 +1137,7 @@ const inviteParentFeedbackFromHub = async () => {
 };
 
 const statusLabel = (s) => {
-  const map = { scheduled: '排定', rescheduled: '已調課', leave_requested: '已請假', cancelled: '已取消', completed: '已完成' };
+  const map = { scheduled: '排定', rescheduled: '已調課', leave_requested: '請假審核中', leave: '已核准請假', cancelled: '已取消', completed: '已完成' };
   return map[s] || s;
 };
 
@@ -1163,6 +1164,8 @@ const submitLeaveRequest = async (session) => {
   try {
     const result = await parentRequestLeave(token.value, session.id, { reason: leaveReason.value });
     session.Status = result?.session?.status || 'leave_requested';
+    session.LeaveWorkflowStatus = 'open';
+    session.LeaveWorkflowReason = null;
     leaveSuccess.value = '請假申請已送出，補習班會安排補課時段。';
     trackParentPortalEvent(token.value, 'parent.leave_submitted', {
       session_id: session.id,
@@ -2234,6 +2237,7 @@ onMounted(async () => {
 .pp-status-dot.rescheduled { background: var(--ds-warning); }
 .pp-status-dot.leave_requested { background: var(--ds-ink-mute); }
 .pp-status-text { font-size: 0.78em; color: var(--ds-ink-mute); }
+.pp-leave-rejected { flex-basis: 100%; color: var(--ds-danger); font-size: 0.72em; }
 .pp-leave-box {
   flex: 1 0 100%;
   margin-left: 56px;

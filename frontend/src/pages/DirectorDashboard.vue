@@ -69,9 +69,9 @@
             <span class="material-symbols-outlined ac__icon">event_repeat</span>
             <div class="ac__body">
               <span class="ac__count">{{ exceptionWorkflowCount }}</span>
-              <span class="ac__label">筆補課案件</span>
+              <span class="ac__label">筆家長請假待處理</span>
             </div>
-            <button class="ac__cta" @click.stop="scrollTo('exception-workflows')">去安排</button>
+            <button class="ac__cta" @click.stop="scrollTo('exception-workflows')">去處理</button>
           </div>
 
           <div v-if="pendingEvaluations.length > 0"
@@ -260,12 +260,12 @@
             <section class="wp ew-card" id="exception-workflows-sec">
               <header class="wp__head">
                 <span class="material-symbols-outlined wp__hi">event_repeat</span>
-                <h3>補課案件</h3>
+                <h3>家長請假待主任處理</h3>
                 <span v-if="exceptionWorkflowCount" class="wp__badge wp__badge--warn">{{ exceptionWorkflowCount }}</span>
               </header>
-              <div v-if="exceptionWorkflowLoading" class="wp__empty enterprise-empty enterprise-loading">補課案件載入中...</div>
+              <div v-if="exceptionWorkflowLoading" class="wp__empty enterprise-empty enterprise-loading">家長請假載入中...</div>
               <div v-else-if="exceptionWorkflowError" class="ew-error">{{ exceptionWorkflowError }}</div>
-              <div v-else-if="!exceptionWorkflows.length" class="wp__empty enterprise-empty">目前沒有家長請假待安排</div>
+              <div v-else-if="!exceptionWorkflows.length" class="wp__empty enterprise-empty">目前沒有待主任處理的家長請假</div>
               <div v-else class="ew-list">
                 <article v-for="workflow in exceptionWorkflows" :key="workflow.id" class="ew-row">
                   <div class="ew-main">
@@ -281,13 +281,16 @@
                   </div>
                   <div class="ew-actions">
                     <button class="btn-o btn-xs" type="button" :disabled="workflowActionId === workflow.id" @click="loadWorkflowDetail(workflow)">
-                      查看候選
+                      查看補課候選
                     </button>
                     <button class="btn-p btn-xs" type="button" :disabled="workflowActionId === workflow.id" @click="generateCandidates(workflow)">
-                      {{ workflowActionId === workflow.id ? '處理中...' : '產生候選' }}
+                      {{ workflowActionId === workflow.id ? '處理中...' : '產生補課候選' }}
                     </button>
                     <button class="btn-o btn-xs" type="button" :disabled="workflowActionId === workflow.id" @click="waiveWorkflow(workflow)">
-                      不補課
+                      同意請假，不補課
+                    </button>
+                    <button class="btn-o btn-xs ew-reject" type="button" :disabled="workflowActionId === workflow.id" @click="rejectWorkflow(workflow)">
+                      退回請假
                     </button>
                   </div>
                   <div v-if="workflowCandidates[workflow.id]?.length" class="ew-candidates">
@@ -586,6 +589,7 @@ import {
   generateExceptionWorkflowCandidates,
   confirmExceptionWorkflowCandidate,
   waiveExceptionWorkflow,
+  rejectExceptionWorkflow,
 } from '../api';
 import EngagementRankStrip from '../components/EngagementRankStrip.vue';
 import { fetchMe } from '../lib/meClient';
@@ -947,8 +951,8 @@ const getToken = () => {
 const getBaseUrl = () => import.meta.env.VITE_API_BASE || '/api';
 
 const workflowStatusLabel = (status) => ({
-  open: '待產生候選',
-  candidate_ready: '候選已產生',
+  open: '待主任處理',
+  candidate_ready: '候選已產生，待確認',
   confirmed: '已確認',
   closed: '已關閉',
 }[String(status || '')] || String(status || '—'));
@@ -968,12 +972,12 @@ const loadExceptionWorkflows = async () => {
   exceptionWorkflowLoading.value = true;
   exceptionWorkflowError.value = '';
   try {
-    const rows = await listExceptionWorkflows(token, { branchId: props.branchId });
+    const rows = await listExceptionWorkflows(token, { branchId: props.branchId, type: 'student_leave' });
     exceptionWorkflows.value = rows
       .filter(row => ['open', 'candidate_ready'].includes(String(row.status || '')))
       .sort((a, b) => String(a.due_at || a.created_at || '').localeCompare(String(b.due_at || b.created_at || '')));
   } catch (e) {
-    exceptionWorkflowError.value = e?.message || '補課案件載入失敗';
+    exceptionWorkflowError.value = e?.message || '家長請假載入失敗';
     exceptionWorkflows.value = [];
   } finally {
     exceptionWorkflowLoading.value = false;
@@ -1039,7 +1043,7 @@ const confirmCandidate = async (workflow, candidate) => {
 
 const waiveWorkflow = async (workflow) => {
   const studentName = workflow.student?.name || '此學生';
-  if (!confirm(`確認「${studentName}」這次不補課並結案？\n\n結案後此案件會從待安排清單移除，且不會額外增減堂數。`)) return;
+  if (!confirm(`確認同意「${studentName}」請假，且不安排補課？\n\n結案後此案件會從待處理清單移除，原堂次會標記為已核准請假。`)) return;
   const reason = (window.prompt('結案原因（選填，例如：家長表示不需補課）', '') || '').trim();
   const token = getToken();
   workflowActionId.value = workflow.id;
@@ -1051,6 +1055,25 @@ const waiveWorkflow = async (workflow) => {
     loadData();
   } catch (e) {
     exceptionWorkflowError.value = e?.message || '標記不補課失敗';
+  } finally {
+    workflowActionId.value = null;
+  }
+};
+
+const rejectWorkflow = async (workflow) => {
+  const studentName = workflow.student?.name || '此學生';
+  const reason = (window.prompt(`退回「${studentName}」的請假原因（必填）`, '') || '').trim();
+  if (!reason) return;
+  const token = getToken();
+  workflowActionId.value = workflow.id;
+  exceptionWorkflowError.value = '';
+  try {
+    await rejectExceptionWorkflow(token, workflow.id, { reason });
+    setWorkflowCandidates(workflow.id, []);
+    await loadExceptionWorkflows();
+    loadData();
+  } catch (e) {
+    exceptionWorkflowError.value = e?.message || '退回請假失敗';
   } finally {
     workflowActionId.value = null;
   }
