@@ -6200,7 +6200,7 @@ parameters:
 			path: app/Services/ManualSessionBookingService.php
 
 		-
-			message: '#^Comparison operation ">" between int\<min, 0\> and 0 is always false\.$#'
+			message: '#^Comparison operation .* between int\<min, 0\> and 0 is always false\.$#'
 			identifier: greater.alwaysFalse
 			count: 1
 			path: app/Services/ManualSessionBookingService.php
@@ -6212,7 +6212,7 @@ parameters:
 			path: app/Services/ManualSessionBookingService.php
 
 		-
-			message: '#^Comparison operation "<=" between int\<1, max\> and 0 is always false\.$#'
+			message: '#^Comparison operation .* between int\<1, max\> and 0 is always false\.$#'
 			identifier: smallerOrEqual.alwaysFalse
 			count: 1
 			path: app/Services/ManualSessionBookingService.php
