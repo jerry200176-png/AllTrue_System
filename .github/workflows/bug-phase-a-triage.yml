@@ -1,0 +1,106 @@
+name: Bug Phase-A triage write-back
+
+# Narrow, auditable write-back for a freshly verified in-app bug.
+# This workflow never resolves or closes a bug.
+on:
+  workflow_dispatch:
+    inputs:
+      bug_id:
+        description: In-app bug ID
+        required: true
+        type: string
+      github_issue_url:
+        description: GitHub issue URL, required in the public reply
+        required: true
+        type: string
+      public_reply:
+        description: Public reply to post on the in-app bug
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          PI_HOST_KEY: ${{ secrets.PI_HOST_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$PI_SSH_KEY"
+          test -n "$PI_SSH_HOST"
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if ssh-keyscan -H "$PI_SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null; then
+            :
+          elif [[ -n "${PI_HOST_KEY:-}" ]]; then
+            printf '%s\n' "$PI_HOST_KEY" > ~/.ssh/known_hosts
+          else
+            echo "::error::no host key"; exit 1
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Write triage and public reply
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          BUG_ID: ${{ inputs.bug_id }}
+          GITHUB_ISSUE_URL: ${{ inputs.github_issue_url }}
+          PUBLIC_REPLY: ${{ inputs.public_reply }}
+        run: |
+          set -euo pipefail
+          [[ "$BUG_ID" =~ ^[0-9]+$ ]] || { echo "invalid bug_id"; exit 1; }
+          [[ "$GITHUB_ISSUE_URL" == https://github.com/*/issues/* ]] || { echo "invalid github_issue_url"; exit 1; }
+          [[ "$PUBLIC_REPLY" == *"$GITHUB_ISSUE_URL"* ]] || { echo "public reply must contain github_issue_url"; exit 1; }
+          ssh -i ~/.ssh/deploy_key \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            -o ConnectTimeout=20 \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" \
+            "BUG_ID='$BUG_ID' GITHUB_ISSUE_URL='$GITHUB_ISSUE_URL' PUBLIC_REPLY=\$(printf %q \"$PUBLIC_REPLY\") bash -s" <<'REMOTE'
+          set -euo pipefail
+          cd /home/admin/backend
+          export BUG_ID GITHUB_ISSUE_URL PUBLIC_REPLY
+          php artisan tinker --execute='
+          $bugId = (int)getenv("BUG_ID");
+          $issueUrl = (string)getenv("GITHUB_ISSUE_URL");
+          $reply = (string)getenv("PUBLIC_REPLY");
+          $bug = \App\Models\BugReport::find($bugId);
+          if (!$bug) { throw new \RuntimeException("bug not found: ".$bugId); }
+          $status = (string)$bug->status;
+          if (!in_array($status, ["new", "triaged"], true)) {
+              throw new \RuntimeException("refusing status: ".$status);
+          }
+          $admin = \Illuminate\Support\Facades\DB::table("UserCampus")
+              ->where("Admin", 1)->where("Approved", 1)->orderBy("UserID")->value("UserID");
+          $actor = $admin ? (int)$admin : 1;
+          $svc = \App\Services\BugReportService::class;
+          $transition = null;
+          if ($status === "new") {
+              $transition = $svc::changeStatus($bugId, $actor, "triaged", "phase-a verified intake; GitHub issue=".$issueUrl);
+              if (!($transition["ok"] ?? false)) { throw new \RuntimeException(json_encode($transition)); }
+          }
+          $already = \App\Models\BugReportComment::query()->where("bug_report_id", $bugId)
+              ->where("body", "like", "%".$issueUrl."%")->exists();
+          $comment = $already ? ["ok" => true, "skipped" => true] : $svc::addComment($bugId, $actor, $reply, false);
+          if (!($comment["ok"] ?? false)) { throw new \RuntimeException(json_encode($comment)); }
+          $fresh = \App\Models\BugReport::find($bugId);
+          echo json_encode([
+              "bug_id" => $bugId,
+              "from" => $status,
+              "final" => $fresh ? (string)$fresh->status : "missing",
+              "transition" => $transition,
+              "comment" => $comment,
+              "issue" => $issueUrl,
+          ], JSON_UNESCAPED_UNICODE), PHP_EOL;
+          '
+          REMOTE
