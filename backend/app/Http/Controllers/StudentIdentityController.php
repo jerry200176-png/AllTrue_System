@@ -32,17 +32,19 @@ class StudentIdentityController extends Controller
             $students = Student::query()
                 ->where('name', 'like', "%{$query}%")
                 ->get()
-                ->filter(fn ($student) => $this->canManageCampus($request, (int) $student->CampusID))
+                ->filter(fn ($student) => $this->canManageCampus($request, (int) $student->getAttribute('CampusID')))
                 ->map(function ($student) {
-                    $campus = Campus::find($student->CampusID);
-                    $member = StudentIdentityMember::where('student_id', $student->id)->first();
+                    $campusId = (int) $student->getAttribute('CampusID');
+                    $studentId = (int) $student->getAttribute('id');
+                    $campus = Campus::query()->find($campusId);
+                    $member = StudentIdentityMember::query()->where('student_id', $studentId)->first();
                     return [
-                        'student_id' => (int) $student->id,
-                        'name' => (string) $student->name,
-                        'campus_id' => (int) $student->CampusID,
-                        'campus_name' => $campus?->name,
-                        'identity_group_id' => $member?->identity_group_id,
-                        'identity_status' => $member?->status,
+                        'student_id' => $studentId,
+                        'name' => (string) $student->getAttribute('name'),
+                        'campus_id' => $campusId,
+                        'campus_name' => $campus?->getAttribute('name'),
+                        'identity_group_id' => $member?->getAttribute('identity_group_id'),
+                        'identity_status' => $member?->getAttribute('status'),
                     ];
                 })->values();
         }
@@ -71,7 +73,8 @@ class StudentIdentityController extends Controller
     public function unlink(Request $request, int $studentId)
     {
         $member = StudentIdentityMember::query()->where('student_id', $studentId)->firstOrFail();
-        $group = StudentIdentityGroup::query()->findOrFail($member->identity_group_id);
+        /** @var StudentIdentityGroup $group */
+        $group = StudentIdentityGroup::query()->findOrFail((int) $member->getAttribute('identity_group_id'));
         if (!$this->canManageGroup($request, $group)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
@@ -83,6 +86,7 @@ class StudentIdentityController extends Controller
 
     public function access(Request $request, int $groupId)
     {
+        /** @var StudentIdentityGroup $group */
         $group = StudentIdentityGroup::query()->with('members')->findOrFail($groupId);
         if (!$this->canManageGroup($request, $group)) {
             return response()->json(['message' => 'Forbidden'], 403);
@@ -94,6 +98,7 @@ class StudentIdentityController extends Controller
 
     public function audit(Request $request, int $groupId)
     {
+        /** @var StudentIdentityGroup $group */
         $group = StudentIdentityGroup::query()->with('members')->findOrFail($groupId);
         if (!$this->canManageGroup($request, $group)) {
             return response()->json(['message' => 'Forbidden'], 403);
@@ -106,15 +111,15 @@ class StudentIdentityController extends Controller
         return [
             'id' => (int) $group->id,
             'display_name' => $group->display_name,
-            'mode' => $group->access?->mode ?: StudentIdentityService::MODE_OFF,
+            'mode' => $group->access?->getAttribute('mode') ?: StudentIdentityService::MODE_OFF,
             'members' => $group->members->map(function ($member) {
-                $campus = Campus::find($member->campus_id);
+                $campus = Campus::query()->find((int) $member->getAttribute('campus_id'));
                 return [
-                    'student_id' => (int) $member->student_id,
-                    'name' => (string) ($member->student->name ?? ''),
-                    'campus_id' => (int) $member->campus_id,
-                    'campus_name' => $campus?->name,
-                    'status' => $member->status,
+                    'student_id' => (int) $member->getAttribute('student_id'),
+                    'name' => (string) ($member->student?->getAttribute('name') ?? ''),
+                    'campus_id' => (int) $member->getAttribute('campus_id'),
+                    'campus_name' => $campus?->getAttribute('name'),
+                    'status' => $member->getAttribute('status'),
                 ];
             })->values()->all(),
         ];
@@ -126,7 +131,7 @@ class StudentIdentityController extends Controller
             return true;
         }
         $allowed = $this->campusIds($request);
-        return $group->members->every(fn ($member) => in_array((int) $member->campus_id, $allowed, true));
+        return $group->members->every(fn ($member) => in_array((int) $member->getAttribute('campus_id'), $allowed, true));
     }
 
     private function canManageCampus(Request $request, int $campusId): bool

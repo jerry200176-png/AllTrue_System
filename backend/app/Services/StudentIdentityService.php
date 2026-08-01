@@ -78,13 +78,15 @@ class StudentIdentityService
             throw ValidationException::withMessages(['student_id' => '請選擇兩筆不同的學生資料。']);
         }
 
+        /** @var Student|null $first */
         $first = Student::query()->find($firstStudentId);
+        /** @var Student|null $second */
         $second = Student::query()->find($secondStudentId);
         if (!$first || !$second) {
             throw ValidationException::withMessages(['student_id' => '找不到指定學生資料。']);
         }
 
-        $campuses = [(int) $first->CampusID, (int) $second->CampusID];
+        $campuses = [(int) $first->getAttribute('CampusID'), (int) $second->getAttribute('CampusID')];
         if (count(array_unique($campuses)) < 2) {
             throw ValidationException::withMessages(['student_id' => '身份關聯需來自不同分校；同分校資料請先處理重複資料。']);
         }
@@ -93,8 +95,10 @@ class StudentIdentityService
         }
 
         return DB::transaction(function () use ($first, $second, $actorUserId, $actorRole) {
-            $firstMember = StudentIdentityMember::query()->where('student_id', $first->id)->first();
-            $secondMember = StudentIdentityMember::query()->where('student_id', $second->id)->first();
+            $firstId = (int) $first->getAttribute('id');
+            $secondId = (int) $second->getAttribute('id');
+            $firstMember = StudentIdentityMember::query()->where('student_id', $firstId)->first();
+            $secondMember = StudentIdentityMember::query()->where('student_id', $secondId)->first();
 
             if ($firstMember && $firstMember->status === 'active' && $secondMember
                 && $secondMember->status === 'active'
@@ -103,37 +107,43 @@ class StudentIdentityService
             }
 
             $groupId = (int) ($firstMember?->identity_group_id ?: $secondMember?->identity_group_id ?: 0);
-            $group = $groupId > 0
-                ? StudentIdentityGroup::query()->lockForUpdate()->findOrFail($groupId)
-                : StudentIdentityGroup::query()->create([
-                    'display_name' => trim((string) $first->name) ?: trim((string) $second->name),
+            if ($groupId > 0) {
+                /** @var StudentIdentityGroup $group */
+                $group = StudentIdentityGroup::query()->findOrFail($groupId);
+            } else {
+                /** @var StudentIdentityGroup $group */
+                $group = StudentIdentityGroup::query()->create([
+                    'display_name' => trim((string) $first->getAttribute('name')) ?: trim((string) $second->getAttribute('name')),
                     'status' => 'active',
                     'created_by_user_id' => $actorUserId,
                 ]);
+            }
 
             foreach ([$first, $second] as $student) {
-                $member = StudentIdentityMember::query()->where('student_id', $student->id)->first();
-                if ($member && (int) $member->identity_group_id !== (int) $group->id) {
+                $studentId = (int) $student->getAttribute('id');
+                $campusId = (int) $student->getAttribute('CampusID');
+                $member = StudentIdentityMember::query()->where('student_id', $studentId)->first();
+                if ($member && (int) $member->getAttribute('identity_group_id') !== (int) $group->getAttribute('id')) {
                     throw ValidationException::withMessages(['student_id' => '學生已被其他身份群組佔用，請先解除原關聯。']);
                 }
                 if (!$member) {
                     StudentIdentityMember::query()->create([
-                        'identity_group_id' => $group->id,
-                        'student_id' => $student->id,
-                        'campus_id' => (int) $student->CampusID,
+                        'identity_group_id' => $group->getAttribute('id'),
+                        'student_id' => $studentId,
+                        'campus_id' => $campusId,
                         'status' => 'active',
                         'created_by_user_id' => $actorUserId,
                     ]);
-                    $this->audit($group->id, $student->id, (int) $student->CampusID, $actorUserId, 'link', [
+                    $this->audit((int) $group->getAttribute('id'), $studentId, $campusId, $actorUserId, 'link', [
                         'actor_role' => $actorRole,
-                        'source_student_id' => $first->id,
-                        'target_student_id' => $second->id,
+                        'source_student_id' => $firstId,
+                        'target_student_id' => $secondId,
                     ]);
                 }
             }
 
             ParentCrossCampusAccess::query()->firstOrCreate(
-                ['identity_group_id' => $group->id],
+                ['identity_group_id' => $group->getAttribute('id')],
                 ['mode' => self::MODE_OFF, 'updated_by_user_id' => $actorUserId]
             );
 
@@ -147,12 +157,14 @@ class StudentIdentityService
             throw ValidationException::withMessages(['mode' => 'mode 必須是 off、readonly 或 actions。']);
         }
 
+        /** @var StudentIdentityGroup $group */
         $group = StudentIdentityGroup::query()->findOrFail($groupId);
+        /** @var ParentCrossCampusAccess $access */
         $access = ParentCrossCampusAccess::query()->updateOrCreate(
-            ['identity_group_id' => $group->id],
+            ['identity_group_id' => $group->getAttribute('id')],
             ['mode' => $mode, 'updated_by_user_id' => $actorUserId]
         );
-        $this->audit($group->id, null, null, $actorUserId, 'access_mode_changed', ['mode' => $mode]);
+        $this->audit((int) $group->getAttribute('id'), null, null, $actorUserId, 'access_mode_changed', ['mode' => $mode]);
 
         return $access;
     }
@@ -165,7 +177,9 @@ class StudentIdentityService
         string $actorRole,
         array $authorizedCampusIds
     ): Student {
+        /** @var StudentIdentityGroup $group */
         $group = StudentIdentityGroup::query()->findOrFail($groupId);
+        /** @var Student $source */
         $source = Student::query()->findOrFail($sourceStudentId);
         $sourceMember = StudentIdentityMember::query()
             ->where('identity_group_id', $groupId)
@@ -195,22 +209,23 @@ class StudentIdentityService
         }
 
         return DB::transaction(function () use ($group, $source, $targetCampusId, $actorUserId, $actorRole) {
+            /** @var Student $branchStudent */
             $branchStudent = $source->replicate();
-            $branchStudent->CampusID = $targetCampusId;
+            $branchStudent->setAttribute('CampusID', $targetCampusId);
             // LINE authorization is explicitly re-established at the identity
             // level; do not duplicate legacy LINE IDs into the new branch row.
-            $branchStudent->LineID = null;
+            $branchStudent->setAttribute('LineID', null);
             $branchStudent->save();
 
             StudentIdentityMember::query()->create([
-                'identity_group_id' => $group->id,
-                'student_id' => $branchStudent->id,
+                'identity_group_id' => $group->getAttribute('id'),
+                'student_id' => $branchStudent->getAttribute('id'),
                 'campus_id' => $targetCampusId,
                 'status' => 'active',
                 'created_by_user_id' => $actorUserId,
             ]);
-            $this->audit($group->id, $branchStudent->id, $targetCampusId, $actorUserId, 'enrollment_member_created', [
-                'source_student_id' => $source->id,
+            $this->audit((int) $group->getAttribute('id'), (int) $branchStudent->getAttribute('id'), $targetCampusId, $actorUserId, 'enrollment_member_created', [
+                'source_student_id' => $source->getAttribute('id'),
                 'actor_role' => $actorRole,
             ]);
             return $branchStudent;
@@ -220,8 +235,9 @@ class StudentIdentityService
     public function unlinkStudent(int $studentId, ?int $actorUserId, string $reason = ''): StudentIdentityMember
     {
         return DB::transaction(function () use ($studentId, $actorUserId, $reason) {
-            $member = StudentIdentityMember::query()->lockForUpdate()->where('student_id', $studentId)->firstOrFail();
-            if ($member->status !== 'active') {
+            /** @var StudentIdentityMember $member */
+            $member = StudentIdentityMember::query()->where('student_id', $studentId)->firstOrFail();
+            if ($member->getAttribute('status') !== 'active') {
                 return $member;
             }
             $member->update([
@@ -230,7 +246,7 @@ class StudentIdentityService
                 'revoked_by_user_id' => $actorUserId,
                 'revoked_reason' => trim($reason) ?: null,
             ]);
-            $this->audit($member->identity_group_id, $member->student_id, $member->campus_id, $actorUserId, 'unlink', [
+            $this->audit((int) $member->getAttribute('identity_group_id'), (int) $member->getAttribute('student_id'), (int) $member->getAttribute('campus_id'), $actorUserId, 'unlink', [
                 'reason' => trim($reason),
             ]);
 

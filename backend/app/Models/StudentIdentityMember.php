@@ -3,7 +3,18 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * @property int $id
+ * @property int $identity_group_id
+ * @property int $student_id
+ * @property int $campus_id
+ * @property string $status
+ * @property-read StudentIdentityGroup|null $group
+ * @property-read Student|null $student
+ * @method static \Illuminate\Database\Eloquent\Builder query()
+ */
 class StudentIdentityMember extends Model
 {
     protected $table = 'student_identity_members';
@@ -23,12 +34,12 @@ class StudentIdentityMember extends Model
         'revoked_at' => 'datetime',
     ];
 
-    public function group()
+    public function group(): BelongsTo
     {
         return $this->belongsTo(StudentIdentityGroup::class, 'identity_group_id');
     }
 
-    public function student()
+    public function student(): BelongsTo
     {
         return $this->belongsTo(Student::class, 'student_id');
     }
