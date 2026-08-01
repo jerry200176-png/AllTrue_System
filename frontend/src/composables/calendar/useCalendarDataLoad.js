@@ -24,7 +24,6 @@ export function useCalendarDataLoad({
   const exceptions = ref([]);
   const calendarLoading = ref(false);
   const calendarLoadProgress = ref('');
-  const calendarLoadError = ref('');
   const sessionDatesByCourseId = ref({});
   const allStudents = ref([]);
   const teachers = ref([]);
@@ -57,14 +56,12 @@ export function useCalendarDataLoad({
       sessionDatesByCourseId.value = {};
       calendarLoading.value = false;
       calendarLoadProgress.value = '';
-      calendarLoadError.value = '';
       lastCalendarFetch.value = null;
       return;
     }
 
     calendarLoading.value = true;
     calendarLoadProgress.value = '載入課程與排程中…';
-    calendarLoadError.value = '';
     const { schedStart, schedEnd } = getCalendarDataFetchBoundsYmd();
 
     let courseList = [];
@@ -126,11 +123,8 @@ export function useCalendarDataLoad({
         stop: c.stop ?? c.Stop ?? 0,
         payment_type: c.payment_type || (c.ScheduleMode === 'count' ? 'session' : 'monthly'),
         sessions_purchased: c.sessions_purchased ?? c.SessionCount ?? 0,
+        scheduling_policy: c.scheduling_policy || 'auto_recurrence',
       }));
-    }
-
-    if (token && !courseApiSucceeded && supabaseList.length === 0) {
-      calendarLoadError.value = '課表資料暫時無法載入，請重新整理後再試。';
     }
 
     if (courseList.length > 0) {
@@ -311,7 +305,6 @@ export function useCalendarDataLoad({
     exceptions,
     calendarLoading,
     calendarLoadProgress,
-    calendarLoadError,
     sessionDatesByCourseId,
     allStudents,
     teachers,
