@@ -11,6 +11,7 @@ use App\Support\StudentContactPhone;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentLineBinding;
+use App\Models\SecurityAuditEvent;
 use App\Models\StudentSignIn;
 use App\Models\ClassSession;
 use App\Models\ExceptionWorkflow;
@@ -283,15 +284,24 @@ class ParentPortalController extends Controller
             Log::warning('parent.line_login.profile_unavailable', [
                 'campus_id' => (int) ($data['campus_id'] ?? 0),
             ]);
+            SecurityAuditEvent::append('parent.auth', 'failure', [
+                'campus_id' => (int) ($data['campus_id'] ?? 0),
+            ], ['method' => 'line', 'reason_code' => 'profile_unavailable']);
             return response()->json(['message' => 'LINE authentication unavailable'], 503);
         }
 
         if (!$profileResponse->successful()) {
+            SecurityAuditEvent::append('parent.auth', 'failure', [
+                'campus_id' => (int) ($data['campus_id'] ?? 0),
+            ], ['method' => 'line', 'reason_code' => 'profile_rejected', 'http_status' => $profileResponse->status()]);
             return response()->json(['message' => 'Invalid LINE authentication'], 401);
         }
 
         $lineUserId = (string) $profileResponse->json('userId', '');
         if (!$this->isValidLineUserId($lineUserId)) {
+            SecurityAuditEvent::append('parent.auth', 'failure', [
+                'campus_id' => (int) ($data['campus_id'] ?? 0),
+            ], ['method' => 'line', 'reason_code' => 'invalid_subject']);
             return response()->json(['message' => 'Invalid LINE authentication'], 401);
         }
 
@@ -303,6 +313,9 @@ class ParentPortalController extends Controller
             ? Student::whereIn('id', $studentIds)->get()
             : collect();
         if ($students->isEmpty()) {
+            SecurityAuditEvent::append('parent.auth', 'failure', [
+                'campus_id' => (int) ($data['campus_id'] ?? 0),
+            ], ['method' => 'line', 'reason_code' => 'binding_not_found']);
             return response()->json(['message' => '尚未綁定學生帳號（此入口僅供家長/學生）。請透過 LINE 官方帳號輸入「綁定 學生姓名 手機號碼」完成綁定'], 404);
         }
 
@@ -316,6 +329,11 @@ class ParentPortalController extends Controller
 
         // Create session for the first student (frontend can switch later)
         $result = $this->createSession($students->first());
+        SecurityAuditEvent::append('parent.auth', 'success', [
+            'campus_id' => (int) ($students->first()->CampusID ?? 0),
+            'subject_type' => 'student',
+            'subject_id' => $students->first()->id,
+        ], ['method' => 'line', 'student_count' => $students->count()]);
         $result['students'] = $students->map(fn ($s) => ['id' => $s->id, 'name' => $s->name])->values();
         return response()->json($result);
     }
@@ -326,6 +344,9 @@ class ParentPortalController extends Controller
     {
         $session = $this->resolveSession($request);
         if (!$session) {
+            SecurityAuditEvent::append('parent.sibling_switch', 'failure', [], [
+                'method' => 'parent_session', 'reason_code' => 'session_missing', 'allowed' => false,
+            ]);
             return response()->json(['message' => 'Unauthorized'], 401);
         }
 
@@ -335,6 +356,9 @@ class ParentPortalController extends Controller
 
         $targetStudent = Student::find($data['student_id']);
         if (!$targetStudent) {
+            SecurityAuditEvent::append('parent.sibling_switch', 'failure', [
+                'subject_type' => 'student', 'subject_id' => $data['student_id'],
+            ], ['method' => 'parent_session', 'reason_code' => 'target_not_found', 'allowed' => false]);
             return response()->json(['message' => 'Student not found'], 404);
         }
 
@@ -359,10 +383,18 @@ class ParentPortalController extends Controller
         }
 
         if (!$allowed) {
+            SecurityAuditEvent::append('parent.sibling_switch', 'failure', [
+                'campus_id' => (int) ($targetStudent->CampusID ?? 0),
+                'subject_type' => 'student', 'subject_id' => $targetStudent->id,
+            ], ['method' => 'parent_session', 'reason_code' => 'shared_verified_binding_missing', 'allowed' => false]);
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
         // Create new session for the target student
+        SecurityAuditEvent::append('parent.sibling_switch', 'success', [
+            'campus_id' => (int) ($targetStudent->CampusID ?? 0),
+            'subject_type' => 'student', 'subject_id' => $targetStudent->id,
+        ], ['method' => 'parent_session', 'reason_code' => 'shared_verified_binding', 'allowed' => true]);
         return response()->json($this->createSession($targetStudent));
     }
 
