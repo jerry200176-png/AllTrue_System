@@ -414,6 +414,11 @@ Route::prefix('v1')->group(function () {
         Route::get('student-identities/{groupId}/audit', [StudentIdentityController::class, 'audit']);
     });
 
+    Route::middleware(['role:director,admin,super_admin', 'require_campus', 'require_password_change'])->group(function () {
+        Route::post('student-classes/{studentClass}/manual-sessions/check', [StudentClassController::class, 'checkManualSession']);
+        Route::post('student-classes/{studentClass}/manual-sessions', [StudentClassController::class, 'createManualSession']);
+    });
+
     Route::middleware(['role:director,teacher', 'require_campus', 'require_password_change'])->group(function () {
         // #768 教學日誌漏交追蹤（主任看本校各老師、老師看自己）。
         Route::get('teaching-logs/missing', [\App\Http\Controllers\TeachingLogController::class, 'missing']);

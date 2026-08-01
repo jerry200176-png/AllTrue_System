@@ -4017,7 +4017,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$StudentID\.$#'
 			identifier: property.notFound
-			count: 11
+			count: 12
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
@@ -4173,7 +4173,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\Student\:\:whereIn\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 4
+			count: 5
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
@@ -5485,12 +5485,6 @@ parameters:
 			path: app/Services/EnrollmentService.php
 
 		-
-			message: '#^Variable \$allDatesForMonthly in empty\(\) always exists and is not falsy\.$#'
-			identifier: empty.variable
-			count: 1
-			path: app/Services/EnrollmentService.php
-
-		-
 			message: '#^Access to an undefined property App\\Models\\ExceptionWorkflow\:\:\$campus_id\.$#'
 			identifier: property.notFound
 			count: 1
@@ -6119,3 +6113,93 @@ parameters:
 			identifier: staticMethod.notFound
 			count: 1
 			path: app/Services/CourseContinuityService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$ID\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Services/ManualSessionBookingService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$StudentID\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Services/ManualSessionBookingService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$TeacherID\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Services/ManualSessionBookingService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$StartDate\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/ManualSessionBookingService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$EndDate\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/ManualSessionBookingService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$ClassType\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/ManualSessionBookingService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$room_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/ManualSessionBookingService.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\Student\:\:where\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 2
+			path: app/Services/ManualSessionBookingService.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:find\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Services/ManualSessionBookingService.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\ScheduleAuditLog\:\:create\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Services/ManualSessionBookingService.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\UserCampus\:\:where\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Services/ManualSessionBookingService.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Query\\Builder\:\:firstOrFail\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Services/ManualSessionBookingService.php
+
+		-
+			message: '#^Comparison operation "\>" between int\<min, 0\> and 0 is always false\.$#'
+			identifier: greater.alwaysFalse
+			count: 1
+			path: app/Services/ManualSessionBookingService.php
+
+		-
+			message: '#^Strict comparison using === between int\<min, 0\>\|int\<2, max\> and 1 will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Services/ManualSessionBookingService.php
+
+		-
+			message: '#^Comparison operation "\<=" between int\<1, max\> and 0 is always false\.$#'
+			identifier: smallerOrEqual.alwaysFalse
+			count: 1
+			path: app/Services/ManualSessionBookingService.php
