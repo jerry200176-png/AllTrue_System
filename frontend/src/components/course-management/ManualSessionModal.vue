@@ -48,9 +48,9 @@ defineEmits(['close', 'check', 'submit']);
 .manual-session-modal { max-width: 460px; }
 .manual-session-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .manual-session-grid .form-group { display: flex; flex-direction: column; gap: 6px; }
-.manual-session-grid span { font-size: .86rem; font-weight: 600; color: #475569; }
+.manual-session-grid span { font-size: .86rem; font-weight: 600; color: var(--ds-text-secondary); }
 .manual-session-state, .manual-session-result { margin-top: 14px; padding: 12px; border-radius: 10px; display: grid; gap: 4px; font-size: .88rem; }
-.manual-session-result.ok { background: #ecfdf5; color: #166534; }
-.manual-session-result.error { background: #fff1f2; color: #9f1239; }
+.manual-session-result.ok { background: var(--ds-success-wash); color: var(--ds-success); }
+.manual-session-result.error { background: var(--ds-danger-wash); color: var(--ds-danger); }
 @media (max-width: 560px) { .manual-session-grid { grid-template-columns: 1fr; } }
 </style>
