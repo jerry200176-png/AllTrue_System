@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\ClassSession;
 use App\Models\ExceptionWorkflow;
+use App\Support\SessionStatus;
 use App\Models\StudentClass;
 use Carbon\Carbon;
 
@@ -109,7 +110,7 @@ class ExceptionWorkflowCandidateGenerator
             ->where('sc.TeacherID', $teacherId)
             ->where('st.CampusID', (int) $workflow->campus_id)
             ->whereBetween('ClassSession.SessionDate', [$start->toDateString(), $end->toDateString()])
-            ->whereNotIn('ClassSession.Status', ['cancelled', 'leave', 'leave_requested'])
+            ->whereNotIn('ClassSession.Status', array_merge(['cancelled'], SessionStatus::leaveFamily()))
             ->where('ClassSession.id', '!=', (int) $workflow->class_session_id)
             ->select([
                 'ClassSession.SessionDate',

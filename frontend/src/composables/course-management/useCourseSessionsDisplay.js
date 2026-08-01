@@ -24,8 +24,7 @@ import {
   canMaterializeProjectedSession,
   planningStatusToLegacyWarning,
 } from '../../lib/sessionPlanningStatus';
-
-const LEAVE_STATUSES = new Set(['leave', 'leave_adjusted', 'excused']);
+import { FINAL_LEAVE_STATUSES, LEAVE_STATUSES } from '../../lib/sessionStatus';
 const ATTENDED_SESSION_STATUSES = new Set(['completed', 'attended', 'late']);
 const SESSION_DISPLAY_CONSUMED = new Set(['completed', 'absent']);
 
@@ -317,6 +316,7 @@ export function useCourseSessionsDisplay({
     if ([...statuses].some((status) => ATTENDED_SESSION_STATUSES.has(status))) return { label: '已上', className: 'completed' };
     if (statuses.has('absent')) return { label: '缺席', className: 'absent' };
     if (statuses.has('leave_adjusted')) return { label: '補請假', className: 'leave' };
+    if (statuses.has('leave_requested')) return { label: '請假待審', className: 'leave-requested' };
     if (statuses.has('excused') || statuses.has('leave')) return { label: '請假', className: 'leave' };
     if (statuses.has('cancelled')) return { label: '取消', className: 'cancelled' };
     if (rows.some((row) => isContractException(row))) return { label: '例外堂', className: 'exception' };

@@ -159,11 +159,8 @@
 import { computed } from 'vue';
 import { getSubjectLabel } from '../../lib/constants';
 import { MAKEUP_SLOT_QUERY_LABEL } from '../../lib/scheduleDisplay';
+import { SESSION_STATUS_LABELS } from '../../lib/sessionStatus';
 
-const SESSION_STATUS_LABELS = {
-  scheduled: '排課中', attended: '已上', completed: '已上', late: '遲到', absent: '缺席',
-  excused: '請假', leave: '請假', leave_adjusted: '請假', cancelled: '已取消',
-};
 const SESSION_STATUS_TRANSITIONS = {
   scheduled:      ['attended', 'late', 'absent', 'leave', 'cancelled'],
   attended:       ['leave', 'leave_adjusted', 'scheduled', 'absent', 'late', 'cancelled'],

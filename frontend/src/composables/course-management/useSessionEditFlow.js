@@ -10,6 +10,7 @@ import {
 import { getSubjectLabel } from '../../lib/constants';
 import { commitReschedule } from '../../lib/rescheduleApi';
 import { canMaterializeProjectedSession } from '../../lib/sessionPlanningStatus';
+import { SESSION_STATUS_LABELS } from '../../lib/sessionStatus';
 
 const SESSION_STATUS_TRANSITIONS = {
   scheduled:      ['attended', 'late', 'absent', 'leave', 'cancelled'],
@@ -22,11 +23,6 @@ const SESSION_STATUS_TRANSITIONS = {
   cancelled:      ['scheduled'],
 };
 
-const SESSION_STATUS_LABELS = {
-  scheduled: '排課中', attended: '已上', completed: '已上', late: '遲到', absent: '缺席',
-  excused: '請假', leave: '請假', leave_adjusted: '請假',
-  cancelled: '已取消',
-};
 
 export function useSessionEditFlow({
   supabase,
