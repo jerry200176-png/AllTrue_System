@@ -25,6 +25,7 @@ use App\Services\FrontendSubjectIdResolver;
 use App\Services\InvoiceAmountReconciliationService;
 use App\Services\SessionDeductionService;
 use App\Services\ScheduleGuardService;
+use App\Services\ManualSessionBookingService;
 use App\Services\SessionProjectionReadService;
 use App\Services\TeacherScopeService;
 use Carbon\Carbon;
@@ -742,6 +743,7 @@ class StudentClassController extends Controller
                     'ID',
                     'StudentID',
                     'PackageID',
+                    'scheduling_policy',
                     'StartDate',
                     'EndDate',
                     'SessionCount',
@@ -810,7 +812,10 @@ class StudentClassController extends Controller
                 if (isset($result[(string) $id]) && (!$class || ($class->ScheduleMode ?? '') !== 'date')) {
                     continue;
                 }
-                $isSessionMode = $class && ($class->ScheduleMode ?? '') === 'count' && (int) ($class->SessionCount ?? 0) > 0;
+                $isSessionMode = $class
+                    && ($class->ScheduleMode ?? '') === 'count'
+                    && (int) ($class->SessionCount ?? 0) > 0
+                    && (string) ($class->scheduling_policy ?? 'auto_recurrence') !== ManualSessionBookingService::POLICY;
                 $startDate = $class && $class->StartDate ? Carbon::parse($class->StartDate)->toDateString() : null;
 
                 $weekFields = ['week', 'week1', 'week2', 'week3', 'week4', 'week5', 'week6'];
@@ -1454,6 +1459,22 @@ class StudentClassController extends Controller
         }
 
         $mapped = $this->mapFrontendPayload($request);
+        if (array_key_exists('scheduling_policy', $mapped)
+            && !in_array($mapped['scheduling_policy'], ['auto_recurrence', ManualSessionBookingService::POLICY], true)
+        ) {
+            return response()->json(['message' => 'Invalid scheduling policy'], 422);
+        }
+        $effectivePolicy = (string) ($mapped['scheduling_policy'] ?? ($studentClass->scheduling_policy ?? 'auto_recurrence'));
+        $effectiveScheduleMode = (string) ($mapped['ScheduleMode'] ?? ($studentClass->ScheduleMode ?? 'count'));
+        if ($effectivePolicy === ManualSessionBookingService::POLICY
+            && ($effectiveScheduleMode !== 'count' || (int) ($studentClass->PackageID ?? 0) > 0)
+        ) {
+            return response()->json([
+                'message' => $effectiveScheduleMode !== 'count'
+                    ? 'Manual occurrence scheduling requires an independent session course'
+                    : 'Shared package manual occurrence booking is not supported yet',
+            ], 422);
+        }
         $scheduleSlotsForRebuild = is_array($mapped['ScheduleSlots'] ?? null) ? $mapped['ScheduleSlots'] : [];
 
         // Remove ScheduleSlots and ID references to prevent overwriting critical relationships
@@ -1558,13 +1579,23 @@ class StudentClassController extends Controller
                 $sessionCountChanged = $newCount !== $oldSessionCountSnapshot;
                 if ($sessionCountChanged || !$scheduleFieldsPresent) {
                     $this->cancelExcessScheduledSessions((int) $studentClass->ID, $newCount);
-                    $this->extendSessionsIfNeeded($studentClass, $newCount);
+                    if ((string) ($studentClass->scheduling_policy ?? 'auto_recurrence') !== ManualSessionBookingService::POLICY) {
+                        $this->extendSessionsIfNeeded($studentClass, $newCount);
+                    }
                 }
             }
         }
 
         // 主任「強制重建未上堂次」：直接執行安全部分重建，不走完整重建流程
         if ($request->boolean('force_partial_rebuild', false)) {
+            if ((string) ($studentClass->scheduling_policy ?? 'auto_recurrence') === ManualSessionBookingService::POLICY) {
+                return response()->json(array_merge($studentClass->fresh()->toArray(), [
+                    'session_sync' => [
+                        'rebuilt' => false,
+                        'reason' => 'manual_occurrence_policy',
+                    ],
+                ]));
+            }
             $slots = $this->resolveScheduleSlotsForRebuild($studentClass, $scheduleSlotsForRebuild);
             if (!empty($slots)) {
                 $durationMinutes = max(30, (int) ($studentClass->SessionDuration ?? 120));
@@ -1606,7 +1637,7 @@ class StudentClassController extends Controller
                 $sessionSync['reconcile_skipped'] = true;
                 $sessionSync['warning'] = '未來堂次因狀態鎖定未更新時間，課程主檔已儲存新時段但堂次仍為舊時段，請檢查堂次狀態。';
             }
-        } else {
+        } elseif ((string) ($studentClass->scheduling_policy ?? 'auto_recurrence') !== ManualSessionBookingService::POLICY) {
             $this->reconcileWeekTimeFieldsFromSessions($studentClass);
         }
 
@@ -2881,6 +2912,93 @@ class StudentClassController extends Controller
     }
 
     /**
+     * Dry-run check for the formal one-occurrence-at-a-time scheduling flow.
+     * POST /api/v1/student-classes/{studentClass}/manual-sessions/check
+     */
+    public function checkManualSession(Request $request, StudentClass $studentClass)
+    {
+        if ($auth = $this->authorizeManualSessionAccess($studentClass)) {
+            return $auth;
+        }
+
+        $data = $request->validate([
+            'session_date' => 'required|date',
+            'start_time' => 'required|date_format:H:i',
+        ]);
+
+        $result = app(ManualSessionBookingService::class)->check(
+            $studentClass,
+            Carbon::parse($data['session_date'])->toDateString(),
+            $data['start_time']
+        );
+
+        return response()->json($result, $result['can_add'] ? 200 : 422);
+    }
+
+    /**
+     * Create exactly one future occurrence. Repeated requests for the same
+     * course/date/start slot are idempotent.
+     * POST /api/v1/student-classes/{studentClass}/manual-sessions
+     */
+    public function createManualSession(Request $request, StudentClass $studentClass)
+    {
+        if ($auth = $this->authorizeManualSessionAccess($studentClass)) {
+            return $auth;
+        }
+
+        $data = $request->validate([
+            'session_date' => 'required|date',
+            'start_time' => 'required|date_format:H:i',
+        ]);
+
+        $authUser = $request->attributes->get('auth_user');
+        $operatorId = is_object($authUser) ? (int) ($authUser->id ?? 0) : null;
+        $result = app(ManualSessionBookingService::class)->create(
+            $studentClass,
+            Carbon::parse($data['session_date'])->toDateString(),
+            $data['start_time'],
+            null,
+            $operatorId ?: null,
+            $request->header('Idempotency-Key')
+        );
+
+        if (!$result['can_add']) {
+            $status = in_array($result['conflict_type'] ?? null, ['student_conflict', 'schedule_conflict'], true)
+                ? 409
+                : 422;
+            return response()->json($result, $status);
+        }
+
+        $session = $result['session'] ?? null;
+        return response()->json(array_merge($result, [
+            'session' => $session ? [
+                'id' => (int) $session->id,
+                'student_class_id' => (int) $session->StudentClassID,
+                'session_date' => Carbon::parse($session->SessionDate)->toDateString(),
+                'start_time' => substr((string) $session->StartTime, 0, 5),
+                'end_time' => substr((string) $session->EndTime, 0, 5),
+                'status' => (string) $session->Status,
+            ] : null,
+        ]), $result['created'] ?? false ? 201 : 200);
+    }
+
+    private function authorizeManualSessionAccess(StudentClass $studentClass): ?\Illuminate\Http\JsonResponse
+    {
+        $role = request()->attributes->get('auth_role');
+        if (!in_array($role, ['director', 'admin', 'super_admin'], true)) {
+            return response()->json(['message' => 'Only directors and administrators may book manual occurrences'], 403);
+        }
+
+        $campusIds = $role === 'super_admin' ? [] : request()->attributes->get('auth_campus_ids', []);
+        if (!empty($campusIds) && !Student::whereIn('CampusID', $campusIds)
+            ->where('id', $studentClass->StudentID)->exists()) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        return null;
+    }
+
+    /**
      * Shared conflict detection for add-session and its check endpoint.
      * Returns a structured array; when conflict_type === 'none' the caller
      * may proceed with the write. Internal keys prefixed with '_' are
@@ -3477,6 +3595,9 @@ class StudentClassController extends Controller
         if (isset($input['subject'])) $mappedData['SubjectID'] = $subjectId;
         if (isset($input['class_type'])) $mappedData['ClassType'] = $input['class_type'];
         if (isset($input['payment_type'])) $mappedData['ScheduleMode'] = ($input['payment_type'] === 'session') ? 'count' : 'date';
+        if (array_key_exists('scheduling_policy', $input)) {
+            $mappedData['scheduling_policy'] = (string) $input['scheduling_policy'];
+        }
         if (isset($input['rate_per_30min'])) $mappedData['Rate'] = $input['rate_per_30min'];
         if (isset($input['rate_unit'])) $mappedData['rate_unit'] = $input['rate_unit'];
         if (isset($input['duration_hours'])) $mappedData['SessionDuration'] = (int) round((float) $input['duration_hours'] * 60);
@@ -4463,6 +4584,9 @@ class StudentClassController extends Controller
      */
     public function extendSessionsIfNeeded(StudentClass $studentClass, int $newCount): void
     {
+        if ((string) ($studentClass->scheduling_policy ?? 'auto_recurrence') === ManualSessionBookingService::POLICY) {
+            return;
+        }
         $classId = (int) $studentClass->ID;
         $nonQuotaStatuses = ['cancelled', 'leave', 'leave_adjusted', 'excused'];
 

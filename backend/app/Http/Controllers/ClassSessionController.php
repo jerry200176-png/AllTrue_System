@@ -73,6 +73,7 @@ class ClassSessionController extends Controller
             'rate_unit' => 'nullable|in:session,hour',
             'price_per_session' => 'required|numeric|min:0',
             'payment_type' => 'required|in:session,monthly',
+            'scheduling_policy' => 'nullable|in:auto_recurrence,manual_occurrence',
             'settlement_day' => 'nullable|integer|min:1|max:31',
             'monthly_sessions' => 'nullable|integer|min:1|max:500',
             'room_id' => 'nullable|integer|exists:rooms,id',
@@ -585,6 +586,10 @@ class ClassSessionController extends Controller
         $classes = StudentClass::query()
             ->join('Student as st', 'st.id', '=', 'StudentClass.StudentID')
             ->where('StudentClass.ScheduleMode', 'count')
+            ->where(function ($q) {
+                $q->whereNull('StudentClass.scheduling_policy')
+                    ->orWhere('StudentClass.scheduling_policy', '!=', 'manual_occurrence');
+            })
             ->where('StudentClass.SessionCount', '>', 0)
             ->where(function ($q) {
                 $q->whereNull('StudentClass.PackageID')
@@ -741,6 +746,13 @@ class ClassSessionController extends Controller
         $studentClass = StudentClass::where('ID', (int) $data['student_class_id'])->first();
         if (!$studentClass) {
             return response()->json(['message' => '找不到對應課程'], 404);
+        }
+
+        if ((string) ($studentClass->scheduling_policy ?? 'auto_recurrence') === 'manual_occurrence') {
+            return response()->json([
+                'message' => 'Manual occurrence courses only accept the manual-sessions API.',
+                'code' => 'MANUAL_OCCURRENCE_API_REQUIRED',
+            ], 422);
         }
 
         if ((int) ($studentClass->Stop ?? 0) === 1) {
@@ -1302,6 +1314,9 @@ class ClassSessionController extends Controller
 
     private function tryExtendOnLeave(StudentClass $studentClass, ClassSession $leaveSession): ?ClassSession
     {
+        if ((string) ($studentClass->scheduling_policy ?? 'auto_recurrence') === 'manual_occurrence') {
+            return null;
+        }
         // 暫停中的課程（Stop=1）不補建堂次，避免「取消了又補回」症狀
         if ((int) ($studentClass->Stop ?? 0) === 1) {
             return null;

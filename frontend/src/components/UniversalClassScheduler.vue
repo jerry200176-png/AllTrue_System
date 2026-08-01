@@ -408,6 +408,17 @@
                 </select>
               </div>
 
+              <div class="form-group">
+                <label>排課方式 *</label>
+                <select v-model="form.scheduling_policy" :disabled="packageMode">
+                  <option value="auto_recurrence">自動固定排課</option>
+                  <option value="manual_occurrence" :disabled="packageMode">逐堂手動排課</option>
+                </select>
+                <p v-if="form.scheduling_policy === 'manual_occurrence'" class="field-note">
+                  建立課程時不預先產生堂次，之後每次只新增下一堂；v1 不支援共用方案。
+                </p>
+              </div>
+
               <div v-if="form.payment_type === 'session'" class="form-group">
                 <label>購買總堂數 *</label>
                 <input v-model.number="form.total_classes" type="number" min="1" />
@@ -949,6 +960,7 @@ const form = reactive({
   duration_hours: 2,
   price_per_session: 1000,
   payment_type: 'session',
+  scheduling_policy: 'auto_recurrence',
   room_id: '',
   memo: '',
   paid_at: '',
@@ -2237,6 +2249,62 @@ async function submit() {
   }
   const durationMinutes = maxSlotM;
 
+  if (form.scheduling_policy === 'manual_occurrence') {
+    if (form.payment_type !== 'session') {
+      alert('逐堂手動排課目前只支援獨立堂數課程。');
+      return;
+    }
+    const manualTotal = Number(form.total_classes || 0);
+    if (!Number.isInteger(manualTotal) || manualTotal < 1) {
+      alert('請輸入至少 1 堂的購買堂數。');
+      return;
+    }
+    submitting.value = true;
+    try {
+      const payload = {
+        branch_id: branchId,
+        student_id: Number(form.student_id),
+        teacher_id: Number(form.teacher_id),
+        subject: form.subject,
+        class_type: form.class_type,
+        confirmed_dates: [],
+        future_dates: [],
+        session_plan: [],
+        days_of_week: [],
+        day_time_slots: [],
+        start_time: normalizeHalfHourTime(form.start_time || '16:00'),
+        duration_minutes: durationMinutes,
+        rate_unit: 'session',
+        price_per_session: Math.max(0, Number(form.price_per_session) || 0),
+        payment_type: 'session',
+        scheduling_policy: 'manual_occurrence',
+        total_classes: manualTotal,
+        room_id: form.room_id ? Number(form.room_id) : null,
+        memo: form.memo || null,
+        paid_at: form.paid_at || null,
+        course_start_date: form.course_start_date || null,
+        ...(form.end_date ? { end_date: form.end_date } : {}),
+        mode: props.mode,
+      };
+      const result = await createUniversalClassSchedule(payload);
+      alert(`課程已建立，可從課程卡的「新增下一堂」開始排課（共 ${manualTotal} 堂）。`);
+      emit('success', result);
+    } catch (err) {
+      if (err?.isDuplicateCourse) {
+        emit('duplicate-course', {
+          conflicts: err.conflicts,
+          originalPayload: err.originalPayload,
+          message: err.message,
+        });
+        return;
+      }
+      alert(err?.message || '建立逐堂手動排課課程失敗');
+    } finally {
+      submitting.value = false;
+    }
+    return;
+  }
+
   if (form.payment_type === 'monthly' && !form.settlement_day) {
     alert('月結課請先選擇結算日');
     return;
@@ -2400,6 +2468,7 @@ async function submit() {
       rate_unit: hasPerDayDuration.value ? 'hour' : 'session',
       price_per_session: Math.max(0, Number(form.price_per_session) || 0),
       payment_type: form.payment_type || 'session',
+      scheduling_policy: form.scheduling_policy || 'auto_recurrence',
       settlement_day: form.payment_type === 'monthly' ? Number(form.settlement_day) || null : null,
       monthly_sessions: form.payment_type === 'monthly'
         ? (useMonthlyExplicitPlan ? sessionPlan.length : safePlannedSessions.value)
