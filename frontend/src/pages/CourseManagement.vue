@@ -4,7 +4,7 @@
     <div class="card course-header-card" data-guide="course-mgmt-header">
       <div class="header-actions">
         <div class="page-title-block">
-          <p class="command-kicker">AllTrue Operations Command</p>
+          <p class="command-kicker">課務營運</p>
           <h2 class="page-title">課程管理</h2>
           <p class="ref-hint">即時掌握學生課程、續報風險、排課狀態與營運節奏</p>
           <div class="meta-pills">
@@ -13,16 +13,16 @@
           </div>
         </div>
         <div class="header-buttons">
-          <button class="btn-soft" @click="expandAllGroups">全部展開</button>
-          <button class="btn-soft" @click="collapseAllGroups">全部收合</button>
+          <button class="btn-soft" @click="expandAllGroups"><span class="material-symbols-outlined btn-icon" aria-hidden="true">unfold_more</span>全部展開</button>
+          <button class="btn-soft" @click="collapseAllGroups"><span class="material-symbols-outlined btn-icon" aria-hidden="true">unfold_less</span>全部收合</button>
           <button class="btn-soft" @click="showBulkLeaveModal = true">
-            <span class="btn-icon">🏖️</span> 連假批次請假
+            <span class="material-symbols-outlined btn-icon" aria-hidden="true">event_busy</span> 連假批次請假
           </button>
           <button class="btn-soft" @click="emit('navigate', 'subject-settings')">
-            <span class="btn-icon">📚</span> 管理科目
+            <span class="material-symbols-outlined btn-icon" aria-hidden="true">library_books</span> 管理科目
           </button>
           <button class="btn-accent" @click="openBackfillModal">
-            <span class="btn-icon">📥</span> 新增課程
+            <span class="material-symbols-outlined btn-icon" aria-hidden="true">add</span> 新增課程
           </button>
         </div>
       </div>
@@ -92,15 +92,38 @@
       </div>
     </transition>
 
-    <section v-if="pendingLeaveLoading || pendingLeaveError || pendingLeaveWorkflows.length" class="pending-leave-summary" aria-live="polite">
-      <div class="pending-leave-summary__icon material-symbols-outlined" aria-hidden="true">inbox</div>
-      <div class="pending-leave-summary__body">
-        <strong>主任收件匣有家長請假待處理</strong>
-        <span v-if="pendingLeaveLoading">正在同步待辦案件…</span>
-        <span v-else-if="pendingLeaveError" class="pending-leave-summary__error">{{ pendingLeaveError }}</span>
-        <span v-else>{{ pendingLeaveWorkflows.length }} 筆案件需要決定補課、核准不補課或退回。請到主任收件匣完成決策。</span>
+    <section v-if="pendingLeaveLoaded || pendingLeaveLoading || pendingLeaveError" class="pending-leave-summary" aria-live="polite">
+      <div class="pending-leave-summary__header">
+        <div class="pending-leave-summary__icon material-symbols-outlined" aria-hidden="true">inbox</div>
+        <div class="pending-leave-summary__body">
+          <strong>家長請假待處理</strong>
+          <span v-if="pendingLeaveLoading">正在同步待辦案件…</span>
+          <span v-else-if="pendingLeaveError" class="pending-leave-summary__error" role="alert">{{ pendingLeaveError }}</span>
+          <span v-else-if="pendingLeaveWorkflows.length">先確認案件摘要，再進入主任收件匣完成決策。</span>
+          <span v-else>目前沒有待處理的家長請假。</span>
+        </div>
+        <button v-if="pendingLeaveWorkflows.length" class="pending-leave-summary__cta pending-leave-summary__cta--all" type="button" @click="emit('navigate', { target: 'director', section: 'exception-workflows' })">查看全部請假<span aria-hidden="true">→</span></button>
       </div>
-      <button class="pending-leave-summary__cta" type="button" @click="emit('navigate', 'director')">開啟主任收件匣<span aria-hidden="true">→</span></button>
+      <div v-if="pendingLeaveLoading" class="pending-leave-case-list" aria-hidden="true">
+        <div v-for="idx in 2" :key="idx" class="pending-leave-case pending-leave-case--skeleton"></div>
+      </div>
+      <div v-else-if="pendingLeaveError" class="pending-leave-summary__error-actions">
+        <button class="pending-leave-summary__cta" type="button" @click="loadCourses(pagination.page)">再試一次</button>
+      </div>
+      <div v-else-if="pendingLeaveWorkflows.length" class="pending-leave-case-list">
+        <article v-for="workflow in pendingLeavePreview" :key="workflow.id" class="pending-leave-case" data-testid="pending-leave-case">
+          <div class="pending-leave-case__content">
+            <div class="pending-leave-case__title-row">
+              <strong>{{ workflow.student?.name || '未命名學生' }}</strong>
+              <span class="pending-leave-case__status">{{ pendingLeaveStatusLabel(workflow.status) }}</span>
+            </div>
+            <p>{{ pendingLeaveSessionLabel(workflow) }}</p>
+            <p class="pending-leave-case__reason">原因：{{ workflow.payload?.reason || '家長未提供原因' }}</p>
+          </div>
+          <button class="pending-leave-case__cta" type="button" :aria-label="`處理這筆請假：${workflow.student?.name || '未命名學生'}`" @click="openPendingLeaveWorkflow(workflow)">處理這筆請假<span aria-hidden="true">→</span></button>
+        </article>
+        <button v-if="pendingLeaveWorkflows.length > pendingLeavePreview.length" class="pending-leave-summary__more" type="button" @click="emit('navigate', { target: 'director', section: 'exception-workflows' })">還有 {{ pendingLeaveWorkflows.length - pendingLeavePreview.length }} 筆，查看全部</button>
+      </div>
     </section>
 
     <!-- Course Table -->
@@ -123,7 +146,15 @@
           class="student-group-card"
           :class="{ 'student-group-has-paused': groupHasPausedCourse(group) }"
         >
-          <button class="student-group-header" @click="toggleStudentGroup(group.key)">
+          <div
+            class="student-group-header"
+            role="button"
+            tabindex="0"
+            :aria-expanded="expandedStudentGroups.has(group.key)"
+            @click="toggleStudentGroup(group.key)"
+            @keydown.enter.prevent="toggleStudentGroup(group.key)"
+            @keydown.space.prevent="toggleStudentGroup(group.key)"
+          >
             <span class="student-group-left">
               <span class="expand-indicator">{{ expandedStudentGroups.has(group.key) ? '▼' : '▶' }}</span>
               <span class="cell-student">{{ group.student_name }}</span>
@@ -137,9 +168,10 @@
               class="focus-btn"
               :class="{ active: focusedStudentKey === group.key }"
               @click="focusStudent(group, $event)"
+              @keydown.stop
               :title="focusedStudentKey === group.key ? '取消專注' : '專注此學生'"
             >⊙</button>
-          </button>
+          </div>
           <div v-if="expandedStudentGroups.has(group.key)" class="student-group-add-row">
             <button type="button" class="btn-soft student-group-add-btn" @click="openBackfillModalForGroup(group)">
               <span class="btn-icon" aria-hidden="true">＋</span>
@@ -941,6 +973,11 @@ import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
 import ToastWithUndo from '../components/substitute/ToastWithUndo.vue';
 import { fetchTeacherAvailability, undoSubstitute } from '../lib/substituteApi.js';
 import { listExceptionWorkflows } from '../api';
+import {
+  buildCourseLeaveDeepLink,
+  pendingLeaveSessionLabel,
+  pendingLeaveStatusLabel,
+} from '../lib/courseLeaveWorkflowDisplay.js';
 
 // PRD 9c058f19 — 代課流程 UX 優化旗標；env 為字串，需解析。
 // 與 SmartCalendar.vue 對齊：預設開啟（'1'），設為 '0' 回退舊版 <select> 模式。
@@ -1045,9 +1082,18 @@ function showCreationBanner(msg) {
 const pendingLeaveWorkflows = ref([]);
 const pendingLeaveLoading = ref(false);
 const pendingLeaveError = ref('');
+const pendingLeaveLoaded = ref(false);
+const pendingLeavePreview = computed(() => pendingLeaveWorkflows.value.slice(0, 3));
+
+function openPendingLeaveWorkflow(workflow) {
+  emit('navigate', buildCourseLeaveDeepLink(workflow));
+}
 
 async function loadPendingLeaveWorkflows(token) {
-  if (!props.branchId || !token) return;
+  if (!props.branchId || !token) {
+    pendingLeaveLoaded.value = true;
+    return;
+  }
   pendingLeaveLoading.value = true;
   pendingLeaveError.value = '';
   try {
@@ -1060,6 +1106,7 @@ async function loadPendingLeaveWorkflows(token) {
     pendingLeaveError.value = e?.message || '家長請假待辦載入失敗';
   } finally {
     pendingLeaveLoading.value = false;
+    pendingLeaveLoaded.value = true;
   }
 }
 
@@ -2852,7 +2899,12 @@ const loadCourses = async (page = 1) => {
   sessionsByCourse.value = {};
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    let token = sess?.access_token;
+    if (!token) {
+      try {
+        token = JSON.parse(localStorage.getItem('alltrue_session') || '{}')?.access_token || '';
+      } catch { token = ''; }
+    }
     loadPendingLeaveWorkflows(token);
     if (token) {
       const params = new URLSearchParams({
@@ -4085,15 +4137,20 @@ onUnmounted(() => {
 }
 
 .pending-leave-summary {
-  display: flex;
-  align-items: center;
+  display: grid;
   gap: 12px;
   margin: 14px 0;
   padding: 14px 16px;
-  border: 1px solid var(--ds-warning);
-  border-left: 4px solid var(--ds-warning);
-  border-radius: 12px;
-  background: var(--ds-warning-wash);
+  border: 1px solid var(--ds-hairline);
+  border-left: 4px solid var(--ds-primary);
+  border-radius: 14px;
+  background: var(--ds-canvas);
+  box-shadow: 0 4px 16px rgba(15, 35, 64, 0.05);
+}
+.pending-leave-summary__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 .pending-leave-summary__icon {
   display: grid;
@@ -4103,7 +4160,7 @@ onUnmounted(() => {
   flex: 0 0 36px;
   border-radius: 10px;
   background: var(--ds-canvas);
-  color: var(--ds-warning);
+  color: var(--ds-primary-deep);
 }
 .pending-leave-summary__body {
   display: grid;
@@ -4131,9 +4188,49 @@ onUnmounted(() => {
   transition: var(--transition);
 }
 .pending-leave-summary__cta:hover { background: var(--ds-primary-deep); border-color: var(--ds-primary-deep); }
+.pending-leave-summary__cta--all { margin-left: auto; }
+.pending-leave-case-list { display: grid; gap: 8px; }
+.pending-leave-case {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--ds-hairline);
+  border-radius: 10px;
+  background: var(--ds-canvas-soft);
+}
+.pending-leave-case__content { min-width: 0; flex: 1; }
+.pending-leave-case__title-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pending-leave-case__title-row strong { color: var(--ds-ink); }
+.pending-leave-case__status { color: var(--ds-primary-deep); font-size: 12px; font-weight: 700; }
+.pending-leave-case p { margin: 4px 0 0; color: var(--ds-ink-secondary); font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
+.pending-leave-case__reason { color: var(--ds-ink-mute) !important; }
+.pending-leave-case__cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  gap: 6px;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--ds-primary);
+  border-radius: 9px;
+  background: var(--ds-primary);
+  color: var(--ds-on-primary);
+  font-weight: 700;
+  cursor: pointer;
+}
+.pending-leave-case__cta:hover { background: var(--ds-primary-deep); }
+.pending-leave-summary__more { justify-self: start; border: 0; padding: 2px 0; background: transparent; color: var(--ds-primary-deep); font-weight: 700; cursor: pointer; }
+.pending-leave-summary__error-actions { display: flex; }
+.pending-leave-case--skeleton { height: 66px; background: linear-gradient(90deg, var(--ds-canvas-soft) 25%, var(--ds-canvas) 50%, var(--ds-canvas-soft) 75%); background-size: 200% 100%; animation: pending-leave-shimmer 1.2s infinite; }
+@keyframes pending-leave-shimmer { to { background-position: -200% 0; } }
 @media (max-width: 700px) {
-  .pending-leave-summary { align-items: stretch; flex-direction: column; }
-  .pending-leave-summary__cta { width: 100%; }
+  .pending-leave-summary__header { align-items: flex-start; flex-wrap: wrap; }
+  .pending-leave-summary__cta--all { width: 100%; margin-left: 0; }
+  .pending-leave-case { align-items: stretch; flex-direction: column; gap: 10px; }
+  .pending-leave-case__cta { width: 100%; }
 }
 
 .header-buttons {
@@ -4460,6 +4557,10 @@ onUnmounted(() => {
 
 .student-group-header:hover {
   background: var(--ds-canvas-soft);
+}
+.student-group-header:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--ds-primary) 28%, transparent);
+  outline-offset: -3px;
 }
 
 .student-group-left {

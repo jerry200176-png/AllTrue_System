@@ -588,6 +588,15 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 - 拖曳移動課表時，前端會先寫 `schedules.status='rescheduled'` 原堂 marker，再寫 `scheduled` 目標堂；若同一 anchor 因重試、同日改時段或 stale POST 留下多筆 `scheduled`，行事曆會多畫一堂。
 - **強制規則**：同步 `reschedule-session` 時，同一 `student_course_id + original_schedule_id` 在目標日期只能保留一筆 `scheduled`；跨日期與同日改時段都要清除 stale duplicates。
+
+---
+
+### R44. 工作流入口不可只顯示通知，必須保留可定位的下一步
+
+- 家長請假已存在 `ExceptionWorkflow` 與主任決策 API，但課程管理若只顯示「請到主任收件匣」，使用者仍會不知道在哪裡按 approve／退回；這是 workflow discoverability 與跨頁 navigation contract 缺口，不是再新增一套業務流程。
+- **強制規則**：任何跨頁待辦摘要必須至少顯示對象、原事件、狀態、下一步與明確動詞 CTA；CTA 必須攜帶可驗證的 entity/workflow ID，導向目標頁的指定區段/案件。字串頁面導覽與 object deep-link 必須由 adapter 統一處理，不能直接把 object 塞進 active page state。
+- **可及性規則**：主要 CTA 不可藏在水平滑動區；手機可見、可鍵盤 focus；不可產生巢狀 interactive element（例如 button 裡再放 button）。
+- **測試必補**：每個跨頁 workflow 至少覆蓋 normal／empty／loading／API error／long text、390／412／768／1280／1440、無水平 overflow、deep-link payload 與返回/重試路徑。
 - **前端規則**：`SmartCalendar` 渲染 scheduled exceptions 時，必須以 `student_course_id + schedule_date + start_time + original_schedule_id` 做顯示去重，避免歷史髒資料直接放大成畫面 bug。
 - **測試必補**：修改拖曳調課、`syncSchedulesAfterReschedule` 或行事曆例外合併時，必須覆蓋「同日改時段已有重複 scheduled row，修正後只剩一筆且保留代課老師」。
 
