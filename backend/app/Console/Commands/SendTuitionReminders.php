@@ -6,6 +6,7 @@ use App\Models\Notification;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentLineBinding;
+use App\Models\SecurityAuditEvent;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -71,7 +72,18 @@ class SendTuitionReminders extends Command
             if ($dryRun) {
                 $this->line("[dry-run] Would send LINE to {$binding->line_user_id} ({$student->name}): {$msg}");
             } else {
-                $this->pushLine($binding->line_user_id, $msg, $campus->messaging_channel_token, $campus->name ?? '');
+                $delivered = $this->pushLine($binding->line_user_id, $msg, $campus->messaging_channel_token, $campus->name ?? '');
+                SecurityAuditEvent::append('notification.delivery', $delivered ? 'success' : 'failure', [
+                    'campus_id' => $campusId,
+                    'subject_type' => 'student',
+                    'subject_id' => $student->id,
+                    'binding_id' => $binding->id,
+                ], [
+                    'method' => 'line_push',
+                    'notification_type' => 'tuition_reminder',
+                    'delivery_status' => $delivered ? 'delivered' : 'failed',
+                    'binding_verified' => true,
+                ]);
             }
         }
 
@@ -118,15 +130,16 @@ class SendTuitionReminders extends Command
         return self::SUCCESS;
     }
 
-    private function pushLine(string $lineUserId, string $text, string $token, string $campusName): void
+    private function pushLine(string $lineUserId, string $text, string $token, string $campusName): bool
     {
         try {
-            Http::withToken($token)->post('https://api.line.me/v2/bot/message/push', [
+            return Http::withToken($token)->post('https://api.line.me/v2/bot/message/push', [
                 'to'       => $lineUserId,
                 'messages' => [['type' => 'text', 'text' => $text]],
-            ]);
+            ])->successful();
         } catch (\Exception $e) {
             Log::error("tuition_reminder_line_push [{$campusName}]: " . $e->getMessage());
+            return false;
         }
     }
 
