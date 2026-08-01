@@ -9,6 +9,7 @@ use App\Models\Invoice;
 use App\Models\PaymentReport;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Services\MonthlyBillingService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -16,6 +17,10 @@ use Illuminate\Support\Facades\Log;
 
 class AlertController extends Controller
 {
+    public function __construct(private MonthlyBillingService $monthlyBilling)
+    {
+    }
+
     /**
      * GET /api/v1/alerts/tuition
      * 主任儀表板「繳費提醒」資料源。規則見 docs/DIRECTOR_PAYMENT_ALERT_RULES.md
@@ -239,13 +244,16 @@ class AlertController extends Controller
                 $dateResults->filter(fn ($c) => !$monthlyPkgMemberIds->contains($c->ID))
                     ->map(fn ($c) => $this->mapMonthlyAlert($c, $today, $openMonthlyInvoiceMap[(int) $c->ID] ?? null))->filter()
             )
-            ->map(function ($row) use ($paidAtMap, $allResults, $invoiceAggMap, $pendingReportMap, $newerCourseMap) {
+            ->map(function ($row) use ($paidAtMap, $allResults, $invoiceAggMap, $pendingReportMap, $newerCourseMap, $today, $openMonthlyInvoiceMap) {
                 $classId = (int) $row['id'];
                 $sc = $allResults->get($classId);
                 $directPaidAt = ($sc && $sc->PayDate) ? substr($sc->PayDate, 0, 10) : null;
                 $invoicePaidAt = $paidAtMap[$classId] ?? null;
 
-                $charge = (int) ($sc->Charge ?? 0);
+                $hasOpenMonthlyInvoice = isset($openMonthlyInvoiceMap[$classId]);
+                $charge = $sc && ($sc->ScheduleMode ?? 'count') === 'date' && !$hasOpenMonthlyInvoice
+                    ? (int) $this->monthlyBilling->summarize($sc, $today)['charge']
+                    : (int) ($sc->Charge ?? 0);
                 $invoiceAgg = $invoiceAggMap[$classId] ?? null;
                 $paidAmount = $invoiceAgg ? (int) $invoiceAgg['paid_amount'] : 0;
                 $scIsPaid = (int) ($sc->Paid ?? 0) === 1;
@@ -511,10 +519,19 @@ class AlertController extends Controller
         $campus = Campus::find((int) $student->CampusID);
         $subject = $this->subjectLabel($sc);
         $remaining = max(0, (int) ($sc->RemainingSessions ?? 0));
-        $charge = (int) ($sc->Charge ?? 0);
         $mode = $sc->ScheduleMode ?? 'count';
-
         $today = Carbon::today();
+        $billing = $mode === 'date'
+            ? $this->monthlyBilling->summarize($sc, $today)
+            : [
+                'charge' => max(0, (int) ($sc->Charge ?? 0)),
+                'period_sessions' => null,
+                'period_start' => null,
+                'period_end' => null,
+                'source' => 'stored_charge_count_mode',
+            ];
+        $charge = (int) $billing['charge'];
+
         $dueDate = null;
         $daysUntilSettlement = null;
 
@@ -547,11 +564,18 @@ class AlertController extends Controller
             'subject'          => $subject,
             'schedule_mode'    => $mode,
             'remaining_sessions' => $remaining,
+            'period_sessions' => $billing['period_sessions'],
+            'billing_period_start' => $billing['period_start'],
+            'billing_period_end' => $billing['period_end'],
             'charge'           => $charge,
             'due_date'         => $dueDate,
             'days_until_settlement' => $daysUntilSettlement,
             'note'             => $sc->Memo ?? '',
-            'sessions' => ClassSession::sessionsForPaymentSlip([(int) $sc->ID]),
+            'sessions' => ClassSession::sessionsForPaymentSlip(
+                [(int) $sc->ID],
+                $billing['period_start'],
+                $billing['period_end']
+            ),
         ]);
     }
 
