@@ -1,3 +1,11 @@
+## 2026-08-01 — feat(ux): 行事曆與調課工作流明確化
+
+- 第二個 AllTrue UX Renewal bounded context：建立 `MODULE_CALENDAR_SCHEDULE_UX.md`，以 Google Calendar 的日期範圍／Today、Outlook Scheduling Assistant 的衝突導向與 FullCalendar 的事件互動模型為研究基準，Issue #1605 追蹤交付。
+- `SmartCalendar.vue` 現在固定呈現目前檢視、可見日期範圍、堂數與「回到今天」；保留既有 `calendarOccurrenceMerge.js`、日期語意與拖曳／調課寫入契約，不改 API、權限或資料真相。
+- 課表回報頁的案件動作改成依狀態表達「接手處理／繼續處理／查看處理結果」，補上 tabpanel、展開狀態與行動版明細 ARIA；回報類型由超大型膠囊改為低裝飾標籤，降低 pill 堆疊與 AI 生成感。
+- 課表 API 空回應與失敗分開呈現，補上錯誤提示與重試；行事曆與課表回報均以真實 Vue page 驗收 normal、empty、loading、error、long text，390／412／768／1280／1440px，所有情境 `scrollWidth <= clientWidth`。
+- 純邏輯、既有 calendar 回歸、lint、design token guard、Vite build 與 Playwright 全部通過；本次不修改資料庫、堂數、請假／調課 atomic boundary 或既有權限規則。
+
 ## 2026-08-01 — feat(ux): 課程管理明確呈現家長請假案件與主任 deep-link
 
 - 第一個 AllTrue UX Renewal bounded context：新增全站 roadmap 與課程／家長請假 PRD，建立 Epic #1600 與模組 Issue #1601；研究企業 dashboard、Jira workflow、Primer、Filament、Chatwoot、Gibbon 與 starred repos 後，採「案件摘要 → 明確動詞 CTA → 指定案件處理」結構。

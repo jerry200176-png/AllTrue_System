@@ -1173,3 +1173,9 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **根因**：修正只覆蓋一個 controller/UI surface；帳務中心、繳費單、發票列表與對帳查詢仍各自讀取不同來源。
 - **強制規則**：任何 billing 修正必須列出 route/API/UI surface matrix，所有 surface 共用同一個 read model；驗收必須逐一以同一案例驗證，不能以單一畫面或單一測試代表全站。
 - **停止條件**：任一 surface 的 stored/computed/source/discrepancy 欄位缺失、金額不一致或 production smoke 未覆蓋，禁止標記 resolved 或上線結案。
+### R91. 行事曆必須區分載入、錯誤與空資料，並在行動版驗證實際可見的案件明細（2026-08-01）
+
+- 行事曆 API 失敗後若只繼續渲染「目前沒有資料」，使用者會把系統錯誤誤判成真的空課表；資料載入狀態、API error、empty state 必須是互斥且可重新整理的 UI 狀態。
+- 任何日期型工作台都要在第一眼顯示目前檢視、可見日期範圍與回到今天；只顯示「週／日」而不顯示實際日期，會讓使用者無法確認自己正在處理哪一週。
+- Playwright 的 mobile 驗收不可只用全頁第一個 selector：桌面表格與行動卡片可能同時存在於 DOM，測試必須依 viewport scope 到實際可見的 `.sdp-mcard`／明細，否則會出現測試看似點了 CTA 卻驗證到隱藏桌面內容的假綠燈。
+- 狀態型案件的主要動作要使用下一步動詞（接手處理、繼續處理、查看處理結果），不是所有狀態都顯示模糊的「展開」；動作標籤、`aria-expanded`、tabpanel 關係與實際可見區塊必須同時維護。

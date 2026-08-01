@@ -78,8 +78,45 @@ async function installApiMocks(page, mode, pageName = '') {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
     }
 
-    if (hang && (p.includes('/action-inbox') || p.includes('/students') || (pageName === 'course' && p.includes('/student-classes')))) {
+    if (hang && (p.includes('/action-inbox') || p.includes('/students') || (pageName === 'course' && p.includes('/student-classes')) || pageName === 'calendar' || pageName === 'discrepancy')) {
       await hangPromise;
+    }
+
+    if (pageName === 'calendar' && p.includes('/student-classes')) {
+      if (mode === 'error') return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: '課表資料暫時無法載入' }) });
+      if (mode === 'empty') {
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [], total: 0 }) });
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [{ id: 5101, student_id: 2000, student_name: mode === 'long' ? '測試學生超長姓名驗證行事曆卡片折行' : '測試學生甲', subject: 'Math', class_type: 'one_on_one', teacher_id: 3000, teacher_name: '測試老師', day_of_week: 1, start_time: '10:00', end_time: '12:00', duration_hours: 2, status: 'active', stop: 0 }], total: 1 }),
+      });
+    }
+
+    if (pageName === 'calendar' && p.includes('/teachers')) {
+      if (mode === 'empty') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [{ id: 3000, username: '測試老師', name: '測試老師', branch_id: 1, branch_ids: [1] }] }) });
+    }
+
+    if (pageName === 'calendar' && p.includes('/schedules')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
+    }
+
+    if (pageName === 'discrepancy' && p.includes('/schedule-discrepancies/summary')) {
+      const total = mode === 'empty' ? 0 : 1;
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ pending: total, acknowledged: 0, resolved: 0, withdrawn: 0 }) });
+    }
+
+    if (pageName === 'discrepancy' && p.includes('/schedule-discrepancies')) {
+      if (mode === 'error') return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: '課表回報暫時無法載入' }) });
+      if (mode === 'empty') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
+      const studentName = mode === 'long' ? '測試學生超長姓名驗證回報卡片折行' : '測試學生甲';
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [{ id: 6101, reporter_name: '測試老師', branch_name: '測試分校', student_name: studentName, session_date: '2026-08-03', time_range: '10:00–12:00', corrected_time_range: '11:00–13:00', discrepancy_type_label: '時段不符', status: 'pending', notes: mode === 'long' ? '這是一段很長的老師回報備註，用來確認卡片會自然折行，不會把處理動作推到畫面外。'.repeat(2) : '請確認調課後的時段。' }] }),
+      });
     }
 
     if (mode === 'dashboard' && p.endsWith('/alerts/tuition')) {
@@ -436,6 +473,91 @@ test.describe('UI foundation — real Vue page evidence', () => {
           await page.locator('.course-page').screenshot({
             path: path.join(outDir, `vue-course-leave-${mode}-${vp.name}.png`),
           });
+        }
+      });
+    }
+  }
+
+  for (const vp of [
+    { name: '390', width: 390, height: 844 },
+    { name: '412', width: 412, height: 915 },
+    { name: '768', width: 768, height: 1024 },
+    { name: '1280', width: 1280, height: 900 },
+    { name: '1440', width: 1440, height: 900 },
+  ]) {
+    for (const mode of ['normal', 'empty', 'loading', 'error', 'long']) {
+      test(`calendar view ${mode} @${vp.name}`, async ({ page }) => {
+        const mocks = await openPilot(page, { pageName: 'calendar', mode, viewport: vp });
+
+        if (mode === 'loading') {
+          await expect(page.locator('.calendar-loading-bar')).toBeVisible({ timeout: 10_000 });
+          mocks.releaseHang();
+        } else if (mode === 'error') {
+          await expect(page.getByRole('alert')).toContainText('課表資料暫時無法載入', { timeout: 10_000 });
+        } else {
+          await expect(page.getByText('排課與調課', { exact: true })).toBeVisible({ timeout: 10_000 });
+          await expect(page.getByRole('button', { name: '回到今天的課表' })).toBeVisible();
+          if (mode === 'empty') {
+            await expect(page.getByText('目前無老師資料', { exact: false })).toBeVisible();
+          } else {
+            await expect(page.getByText('測試老師', { exact: false }).first()).toBeVisible();
+          }
+        }
+
+        const layout = await page.evaluate(() => ({
+          scrollWidth: document.documentElement.scrollWidth,
+          clientWidth: document.documentElement.clientWidth,
+        }));
+        expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth);
+        if (mode === 'normal' || mode === 'long') {
+          fs.mkdirSync(outDir, { recursive: true });
+          await page.locator('.smart-cal-top').screenshot({ path: path.join(outDir, `vue-calendar-${mode}-${vp.name}.png`) });
+        }
+      });
+    }
+  }
+
+  for (const vp of [
+    { name: '390', width: 390, height: 844 },
+    { name: '412', width: 412, height: 915 },
+    { name: '768', width: 768, height: 1024 },
+    { name: '1280', width: 1280, height: 900 },
+    { name: '1440', width: 1440, height: 900 },
+  ]) {
+    for (const mode of ['normal', 'empty', 'loading', 'error', 'long']) {
+      test(`schedule discrepancy ${mode} @${vp.name}`, async ({ page }) => {
+        const mocks = await openPilot(page, { pageName: 'discrepancy', mode, viewport: vp });
+
+        if (mode === 'loading') {
+          await expect(page.locator('.sdp-state-loading')).toBeVisible({ timeout: 10_000 });
+          mocks.releaseHang();
+        } else if (mode === 'error') {
+          await expect(page.locator('.sdp-state-error')).toContainText('課表回報暫時無法載入', { timeout: 10_000 });
+        } else {
+          await expect(page.getByText('課表回報管理', { exact: true })).toBeVisible({ timeout: 10_000 });
+          if (mode === 'empty') {
+            await expect(page.getByText('目前沒有待處理的回報', { exact: true })).toBeVisible();
+          } else {
+            const action = vp.width <= 768
+              ? page.locator('.sdp-mcard').first().getByRole('button', { name: '接手處理', exact: true })
+              : page.getByRole('button', { name: '接手處理', exact: true }).first();
+            await expect(action).toBeVisible();
+            await action.click();
+            const detail = vp.width <= 768
+              ? page.locator('.sdp-mcard').first().locator('.sdp-resolve-form')
+              : page.locator('.sdp-detail').first();
+            await expect(detail).toBeVisible();
+          }
+        }
+
+        const layout = await page.evaluate(() => ({
+          scrollWidth: document.documentElement.scrollWidth,
+          clientWidth: document.documentElement.clientWidth,
+        }));
+        expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth);
+        if (mode === 'normal' || mode === 'long') {
+          fs.mkdirSync(outDir, { recursive: true });
+          await page.locator('.sdp-page').screenshot({ path: path.join(outDir, `vue-discrepancy-${mode}-${vp.name}.png`) });
         }
       });
     }
