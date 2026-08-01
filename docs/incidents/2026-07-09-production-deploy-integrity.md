@@ -116,15 +116,6 @@ curl -sI https://daan.lifenet.com.tw/assets/index-D8q1Tg6g.js | grep -iE 'HTTP/|
 
 ---
 
-## 11. #1420 auditability follow-up
-
-The parent-portal incident also exposed a separate evidence gap: auth results,
-sibling switches, binding lifecycle, and notification delivery could not be
-correlated without PII-heavy application logs. The prepared follow-up adds a
-PII-minimized `security_audit_events` table and an allow-listed writer. It is
-covered by unit/feature tests and remains Draft PR work until the Founder-gated
-production migration and restricted-access review are completed.
-
 ## 10. Related
 
 - `docs/SMOKE_TEST_RUNBOOK.md`

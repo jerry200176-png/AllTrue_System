@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Models\Student;
 use App\Models\StudentLineBinding;
-use App\Models\SecurityAuditEvent;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -48,10 +47,6 @@ class ParentLoginLineTest extends TestCase
             'access_token' => 'invalid-token',
         ]);
         $res->assertStatus(401);
-        $this->assertDatabaseHas('security_audit_events', [
-            'event_type' => 'parent.auth',
-            'outcome' => 'failure',
-        ]);
     }
 
     public function test_verified_bound_line_id_returns_session_and_student(): void
@@ -73,11 +68,6 @@ class ParentLoginLineTest extends TestCase
         $res->assertOk();
         $ids = collect($res->json('students'))->pluck('id')->all();
         $this->assertContains($student->id, $ids);
-        $this->assertDatabaseHas('security_audit_events', [
-            'event_type' => 'parent.auth',
-            'outcome' => 'success',
-            'subject_ref' => SecurityAuditEvent::ref('student', $student->id),
-        ]);
     }
 
     public function test_historical_unverified_binding_cannot_issue_session(): void

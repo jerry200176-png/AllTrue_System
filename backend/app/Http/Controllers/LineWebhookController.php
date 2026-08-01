@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\Student;
 use App\Models\StudentLineBinding;
-use App\Models\SecurityAuditEvent;
 use App\Models\SystemSetting;
 use App\Services\ParentBinding\ParentBindingObservability;
 use App\Support\ParentBinding\ParentBindingCodes;
@@ -260,17 +259,6 @@ class LineWebhookController extends Controller
             'verification_method' => 'contact_phone',
         ]);
         $binding->save();
-        SecurityAuditEvent::append(
-            $binding->wasRecentlyCreated ? 'line.binding.created' : 'line.binding.validated',
-            'success',
-            [
-                'campus_id' => (int) $student->CampusID,
-                'subject_type' => 'student',
-                'subject_id' => $student->id,
-                'binding_id' => $binding->id,
-            ],
-            ['method' => 'line_webhook', 'verification_method' => 'contact_phone']
-        );
         // Keep Student.LineID in sync for backward compatibility
         $student->update(['LineID' => $lineUserId]);
     }

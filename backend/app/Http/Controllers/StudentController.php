@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentLineBinding;
-use App\Models\SecurityAuditEvent;
 use App\Models\UserCampus;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -495,15 +494,6 @@ class StudentController extends Controller
 
         $lineUserId = $binding->line_user_id;
         $binding->delete();
-
-        SecurityAuditEvent::append('line.binding.revoked', 'success', [
-            'campus_id' => (int) $student->CampusID,
-            'subject_type' => 'student',
-            'subject_id' => $student->id,
-            'binding_id' => $bindingId,
-            'actor_type' => 'user',
-            'actor_id' => $request->attributes->get('auth_user_id'),
-        ], ['method' => 'director_api', 'reason_code' => 'manual_revocation']);
 
         if ($student->LineID === $lineUserId) {
             $student->update(['LineID' => null]);
