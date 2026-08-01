@@ -125,7 +125,7 @@ class FeedbackPushNotifier
             SecurityAuditEvent::append('notification.delivery', $delivered ? 'success' : 'failure', [
                 'campus_id' => $campusId,
                 'subject_type' => 'student',
-                'subject_id' => $feedback->student_id,
+                'subject_id' => $feedback->getAttribute('student_id'),
                 'binding_id' => $binding->id,
             ], [
                 'method' => 'line_push',

@@ -264,9 +264,9 @@ class LineWebhookController extends Controller
             $binding->wasRecentlyCreated ? 'line.binding.created' : 'line.binding.validated',
             'success',
             [
-                'campus_id' => (int) $student->CampusID,
+                'campus_id' => (int) $student->getAttribute('CampusID'),
                 'subject_type' => 'student',
-                'subject_id' => $student->id,
+                'subject_id' => $student->getKey(),
                 'binding_id' => $binding->id,
             ],
             ['method' => 'line_webhook', 'verification_method' => 'contact_phone']

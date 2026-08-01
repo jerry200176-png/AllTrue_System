@@ -497,9 +497,9 @@ class StudentController extends Controller
         $binding->delete();
 
         SecurityAuditEvent::append('line.binding.revoked', 'success', [
-            'campus_id' => (int) $student->CampusID,
+            'campus_id' => (int) $student->getAttribute('CampusID'),
             'subject_type' => 'student',
-            'subject_id' => $student->id,
+            'subject_id' => $student->getKey(),
             'binding_id' => $bindingId,
             'actor_type' => 'user',
             'actor_id' => $request->attributes->get('auth_user_id'),
