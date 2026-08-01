@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.08.01",
     "date": "2026-08-01",
     "title": "2026.08.01 草稿（未發布）",
-    "summary": "課程管理明確呈現家長請假案件與主任 deep-link",
+    "summary": "課程管理明確呈現家長請假案件與主任 deep-link；跨分校學生／家長入口 pilot bridge",
     "audience": [
       "teacher",
       "director"
@@ -18,12 +18,14 @@ export const changelogDraftNotes = [
       {
         "title": "新增內容",
         "items": [
-          "課程管理明確呈現家長請假案件與主任 deep-link"
+          "課程管理明確呈現家長請假案件與主任 deep-link",
+          "跨分校學生／家長入口 pilot bridge"
         ]
       }
     ],
     "items": [
-      "課程管理明確呈現家長請假案件與主任 deep-link"
+      "課程管理明確呈現家長請假案件與主任 deep-link",
+      "跨分校學生／家長入口 pilot bridge"
     ]
   },
   {
