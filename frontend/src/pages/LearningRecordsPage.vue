@@ -627,7 +627,7 @@
           v-for="(group, groupIndex) in filteredGroupedRecords"
           :key="group.key"
           class="lr-group"
-          :open="filteredGroupedRecords.length === 1"
+          :open="groupIndex === 0 || filteredGroupedRecords.length === 1"
         >
           <summary class="lr-group-summary">
             <div class="lr-group-title">
@@ -8376,5 +8376,172 @@ tr.lr-row-unread { border-left: 3px solid var(--ds-warning); background: rgba(24
   padding: 3px 9px;
   border-radius: 10px;
   letter-spacing: 0.2px;
+}
+
+/* ── Director review polish ──
+ * One control level per job: mode → review queue → filters → records.
+ * The existing teacher surface keeps its iOS schedule language; this pass is
+ * intentionally scoped to the director review surface.
+ */
+.lr-page:not(.lr-page--teacher) {
+  padding-bottom: 48px;
+}
+.lr-page:not(.lr-page--teacher) .lr-mode-tabs,
+.lr-page:not(.lr-page--teacher) .lr-review-tabs,
+.lr-page:not(.lr-page--teacher) .lr-filters-bar {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+.lr-page:not(.lr-page--teacher) .lr-mode-tabs {
+  gap: 22px;
+  margin: 0 0 2px;
+  padding: 0;
+  border-bottom: 1px solid var(--ds-hairline);
+}
+.lr-page:not(.lr-page--teacher) .lr-mode-tabs .lr-tab {
+  min-height: 44px;
+  padding: 10px 2px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ds-ink-mute);
+  font-weight: 800;
+}
+.lr-page:not(.lr-page--teacher) .lr-mode-tabs .lr-tab.active {
+  border-bottom-color: var(--ds-cta);
+  background: transparent;
+  color: var(--ds-ink);
+}
+.lr-page:not(.lr-page--teacher) .lr-review-tabs {
+  margin: 0;
+  padding: 0 0 10px;
+  border-bottom: 1px solid var(--ds-hairline);
+}
+.lr-page:not(.lr-page--teacher) .lr-review-tabs .lr-tabs-row {
+  gap: 18px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.lr-page:not(.lr-page--teacher) .lr-review-tabs .lr-tabs-row::-webkit-scrollbar { display: none; }
+.lr-page:not(.lr-page--teacher) .lr-review-tabs .lr-tab {
+  min-height: 42px;
+  padding: 9px 2px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ds-ink-mute);
+  font-weight: 800;
+  white-space: nowrap;
+}
+.lr-page:not(.lr-page--teacher) .lr-review-tabs .lr-tab.active {
+  border-bottom-color: var(--ds-cta);
+  background: transparent;
+  color: var(--ds-ink);
+}
+.lr-page:not(.lr-page--teacher) .lr-review-tabs .lr-tab-count {
+  min-width: 20px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--ds-canvas-soft);
+  color: var(--ds-ink-mute);
+}
+.lr-page:not(.lr-page--teacher) .lr-review-tabs .lr-tab.active .lr-tab-count {
+  background: var(--ds-primary-wash);
+  color: var(--ds-cta);
+}
+.lr-page:not(.lr-page--teacher) .lr-review-tabs .lr-toolbar-row {
+  gap: 10px 16px;
+  margin-top: 8px;
+  color: var(--ds-ink-mute);
+}
+.lr-page:not(.lr-page--teacher) .lr-filters-bar {
+  margin: 0;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--ds-hairline);
+}
+.lr-page:not(.lr-page--teacher) .lr-feedback-filter-chip,
+.lr-page:not(.lr-page--teacher) .lr-more-filters-toggle {
+  min-height: 34px;
+  padding: 7px 11px;
+  border-radius: 7px;
+  font-weight: 700;
+}
+.lr-page:not(.lr-page--teacher) .lr-feedback-filter-chip.active,
+.lr-page:not(.lr-page--teacher) .lr-more-filters-toggle.active {
+  border-color: var(--ds-cta);
+  background: var(--ds-primary-wash);
+  color: var(--ds-cta);
+}
+.lr-page:not(.lr-page--teacher) .lr-filters {
+  gap: 0;
+  margin: 14px 0 10px;
+  padding: 0;
+  border: 1px solid var(--ds-hairline);
+  border-radius: 10px;
+  background: var(--ds-canvas);
+  box-shadow: var(--ds-shadow-1);
+  overflow: hidden;
+}
+.lr-page:not(.lr-page--teacher) .lr-filters-header {
+  min-height: 50px;
+  padding: 0 16px;
+  border: 0;
+}
+.lr-page:not(.lr-page--teacher) .lr-filters-grid,
+.lr-page:not(.lr-page--teacher) .lr-filters-actions {
+  padding: 16px;
+}
+.lr-page:not(.lr-page--teacher) .lr-filters-grid {
+  border-top: 1px solid var(--ds-hairline);
+}
+.lr-page:not(.lr-page--teacher) .lr-filters-actions {
+  padding-top: 0;
+}
+.lr-page:not(.lr-page--teacher) .lr-view-toolbar {
+  margin: 12px 0 8px;
+}
+.lr-page:not(.lr-page--teacher) .lr-groups {
+  gap: 12px;
+  padding: 0;
+}
+.lr-page:not(.lr-page--teacher) .lr-group {
+  border-color: var(--ds-hairline);
+  border-radius: 12px;
+  box-shadow: var(--ds-shadow-1);
+}
+.lr-page:not(.lr-page--teacher) .lr-group-summary,
+.lr-page:not(.lr-page--teacher) .lr-group[open] .lr-group-summary {
+  padding: 14px 16px;
+  background: var(--ds-canvas);
+}
+.lr-page:not(.lr-page--teacher) .lr-group-summary {
+  border-bottom-color: var(--ds-hairline);
+}
+.lr-page:not(.lr-page--teacher) .lr-subject-subgroups {
+  padding: 10px 12px 14px;
+  background: var(--ds-canvas-soft);
+}
+.lr-page:not(.lr-page--teacher) .lr-subject-subgroup {
+  border-color: var(--ds-hairline);
+  background: var(--ds-canvas);
+}
+.lr-page:not(.lr-page--teacher) .lr-subject-header {
+  padding: 11px 14px;
+}
+.lr-page:not(.lr-page--teacher) .lr-table-row:hover {
+  background: var(--ds-canvas-soft);
+}
+@media (prefers-reduced-motion: reduce) {
+  .lr-page:not(.lr-page--teacher) * { transition-duration: 0.01ms !important; }
+}
+@media (max-width: 680px) {
+  .lr-page:not(.lr-page--teacher) .lr-review-tabs .lr-tabs-row { gap: 14px; }
+  .lr-page:not(.lr-page--teacher) .lr-review-tabs .lr-tab { padding-inline: 1px; }
+  .lr-page:not(.lr-page--teacher) .lr-filters { margin-top: 10px; }
 }
 </style>
