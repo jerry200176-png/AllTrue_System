@@ -1379,7 +1379,11 @@ const loadDashboard = async ({ resetRecords = true } = {}) => {
     lrTotal.value = meta.total || 0;
     await loadNotificationPreferences();
   } catch (e) {
-    console.error('Dashboard load failed:', e);
+    // An expired parent token is an expected path for a public entry URL;
+    // clear it quietly and let the login screen render without a console error.
+    const status = Number(e?.status || e?.response?.status || 0);
+    const isUnauthorized = status === 401 || /unauthorized/i.test(String(e?.message || ''));
+    if (!isUnauthorized) console.error('Dashboard load failed:', e);
     token.value = '';
     localStorage.removeItem(tokenKey);
   }
