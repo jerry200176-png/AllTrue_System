@@ -169,6 +169,8 @@ class SubstituteService
             ->select(
                 'cs.StartTime as start_time',
                 'cs.EndTime as end_time',
+                'cs.id as class_session_id',
+                'sc.StudentID as student_id',
                 'sc.ClassType as class_type',
                 'st.CampusID as campus_id'
             )
@@ -187,7 +189,7 @@ class SubstituteService
                 'schedules.end_time',
                 'schedules.branch_id',
                 'schedules.student_course_id',
-                'schedules.student_id',
+                DB::raw('COALESCE(schedules.student_id, sc2.StudentID) as student_id'),
                 DB::raw("COALESCE(sc2.ClassType, 'one_on_one') as class_type")
             );
         if (!empty($excludeScheduleIds)) {
@@ -216,6 +218,8 @@ class SubstituteService
                 'end_time'   => $end,
                 'campus_id'  => (int) ($row->campus_id ?? 0),
                 'class_type' => (string) ($row->class_type ?: 'one_on_one'),
+                'student_id' => (int) ($row->student_id ?? 0),
+                'occupancy_key' => 'class_session:' . (int) ($row->class_session_id ?? 0),
             ];
         }
         foreach ($scheduleRows as $row) {
@@ -229,6 +233,8 @@ class SubstituteService
                 'end_time'   => $end,
                 'campus_id'  => (int) ($row->branch_id ?? 0),
                 'class_type' => (string) ($row->class_type ?: 'one_on_one'),
+                'student_id' => (int) ($row->student_id ?? 0),
+                'occupancy_key' => 'schedule:' . (int) ($row->id ?? 0),
             ];
         }
 
@@ -240,12 +246,16 @@ class SubstituteService
         // 並以該 slot 的 class_type 容量計算 remaining_capacity。
         $result = [];
         foreach ($rawSlots as $slot) {
-            $studentCount = 0;
+            $occupants = [];
             foreach ($rawSlots as $other) {
                 if ($this->overlaps($slot['start_time'], $slot['end_time'], $other['start_time'], $other['end_time'])) {
-                    $studentCount++;
+                    $studentId = (int) $other['student_id'];
+                    $occupants[$studentId > 0
+                        ? 'student:' . $studentId
+                        : 'row:' . (string) $other['occupancy_key']] = true;
                 }
             }
+            $studentCount = count($occupants);
             $capacity          = $this->capacityForClassType($slot['class_type']);
             $remainingCapacity = max(0, $capacity - $studentCount);
             $result[] = [
