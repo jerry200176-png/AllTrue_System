@@ -54,10 +54,10 @@ class ManualSessionBookingService
 
         // Validate the course contract before idempotency. A stale matching row
         // must not let an auto-recurrence, stopped, or package course use this API.
-        if (strcmp((string) ($course->ScheduleMode ?? 'count'), 'count') !== 0) {
+        if (!in_array((string) ($course->ScheduleMode ?? 'count'), ['count'], true)) {
             return $this->blocked($base, 'not_count_course', 'Manual occurrence scheduling requires a session course');
         }
-        if (strcmp((string) ($course->scheduling_policy ?? 'auto_recurrence'), self::POLICY) !== 0) {
+        if (!in_array((string) ($course->scheduling_policy ?? 'auto_recurrence'), [self::POLICY], true)) {
             return $this->blocked($base, 'manual_policy_required', 'Course is not configured for manual occurrence scheduling');
         }
         if ((int) ($course->PackageID ?? 0) > 0) {
@@ -86,10 +86,10 @@ class ManualSessionBookingService
             ]);
         }
 
-        if (strcmp((string) ($course->ScheduleMode ?? 'count'), 'count') !== 0) {
+        if (!in_array((string) ($course->ScheduleMode ?? 'count'), ['count'], true)) {
             return $this->blocked($base, 'not_count_course', '逐堂手動排課目前只適用堂數制課程');
         }
-        if (strcmp((string) ($course->scheduling_policy ?? 'auto_recurrence'), self::POLICY) !== 0) {
+        if (!in_array((string) ($course->scheduling_policy ?? 'auto_recurrence'), [self::POLICY], true)) {
             return $this->blocked($base, 'manual_policy_required', '請先將課程切換為逐堂手動排課');
         }
         if ((int) ($course->PackageID ?? 0) > 0) {
