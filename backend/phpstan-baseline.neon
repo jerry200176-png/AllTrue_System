@@ -1885,48 +1885,6 @@ parameters:
 			path: app/Http/Controllers/FinanceController.php
 
 		-
-			message: '#^Access to an undefined property App\\Models\\LearningRecord\:\:\$EndTime\.$#'
-			identifier: property.notFound
-			count: 2
-			path: app/Http/Controllers/FinanceController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\LearningRecord\:\:\$SessionDate\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/FinanceController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\LearningRecord\:\:\$StartTime\.$#'
-			identifier: property.notFound
-			count: 2
-			path: app/Http/Controllers/FinanceController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\LearningRecord\:\:\$Subject\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/FinanceController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\LearningRecord\:\:\$TeacherID\.$#'
-			identifier: property.notFound
-			count: 2
-			path: app/Http/Controllers/FinanceController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\LearningRecord\:\:\$id\.$#'
-			identifier: property.notFound
-			count: 2
-			path: app/Http/Controllers/FinanceController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\LearningRecord\:\:\$studentClass\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/FinanceController.php
-
-		-
 			message: '#^Access to an undefined property App\\Models\\PayrollBranchRule\:\:\$base_rates\.$#'
 			identifier: property.notFound
 			count: 4
@@ -1953,7 +1911,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\PayrollBranchRule\:\:\$id\.$#'
 			identifier: property.notFound
-			count: 2
+			count: 3
 			path: app/Http/Controllers/FinanceController.php
 
 		-
@@ -1965,7 +1923,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\PayrollMonthStatus\:\:\$status\.$#'
 			identifier: property.notFound
-			count: 1
+			count: 2
 			path: app/Http/Controllers/FinanceController.php
 
 		-
@@ -2005,12 +1963,6 @@ parameters:
 			path: app/Http/Controllers/FinanceController.php
 
 		-
-			message: '#^Call to an undefined method Illuminate\\Database\\Query\\Builder\:\:active\(\)\.$#'
-			identifier: method.notFound
-			count: 1
-			path: app/Http/Controllers/FinanceController.php
-
-		-
 			message: '#^Call to an undefined method Illuminate\\Database\\Query\\Builder\:\:whereHas\(\)\.$#'
 			identifier: method.notFound
 			count: 1
@@ -2019,19 +1971,13 @@ parameters:
 		-
 			message: '#^Call to an undefined method Illuminate\\Database\\Query\\Builder\:\:with\(\)\.$#'
 			identifier: method.notFound
-			count: 2
+			count: 3
 			path: app/Http/Controllers/FinanceController.php
 
 		-
 			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:whereIn\(\)\.$#'
 			identifier: staticMethod.notFound
 			count: 1
-			path: app/Http/Controllers/FinanceController.php
-
-		-
-			message: '#^Call to an undefined static method App\\Models\\LearningRecord\:\:active\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 3
 			path: app/Http/Controllers/FinanceController.php
 
 		-
@@ -2091,7 +2037,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\Student\:\:whereIn\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 9
+			count: 10
 			path: app/Http/Controllers/FinanceController.php
 
 		-
@@ -2104,6 +2050,54 @@ parameters:
 			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:whereIn\(\)\.$#'
 			identifier: staticMethod.notFound
 			count: 7
+			path: app/Http/Controllers/FinanceController.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\PayrollRun\:\:create\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Http/Controllers/FinanceController.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\PayrollRunLine\:\:create\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Http/Controllers/FinanceController.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\PayrollRun\:\:whereKey\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Http/Controllers/FinanceController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\PayrollMonthStatus\:\:\$current_run_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/FinanceController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\PayrollRun\:\:\$lines\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Http/Controllers/FinanceController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\ClassSession\:\:\$studentClass\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/FinanceController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\ClassSession\:\:\$TeacherID\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Http/Controllers/FinanceController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\ClassSession\:\:\$Subject\.$#'
+			identifier: property.notFound
+			count: 1
 			path: app/Http/Controllers/FinanceController.php
 
 		-
@@ -2122,6 +2116,12 @@ parameters:
 			message: '#^Offset ''teacher_id'' on array\{teacher_id\: \(int\|string\), teacher_name\: string, one_on_one_hours\: float, one_on_two_hours\: float, one_on_three_hours\: float, tutoring_hours\: float, total_hours\: float, subject_count_with\: string, \.\.\.\} on left side of \?\? always exists and is not nullable\.$#'
 			identifier: nullCoalesce.offset
 			count: 1
+			path: app/Http/Controllers/FinanceController.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\LearningRecord\:\:active\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 3
 			path: app/Http/Controllers/FinanceController.php
 
 		-
