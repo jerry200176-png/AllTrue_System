@@ -859,6 +859,7 @@ class ParttimePayrollTest extends TestCase
             'ClassSessionID' => $session->id,
             'Status' => $status,
             'SignInDT' => "{$date} {$start}:00",
+            'SignOutDT' => $status === 'leave' ? "{$date} {$start}:00" : null,
         ]);
     }
 
