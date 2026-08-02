@@ -23,6 +23,7 @@ export default defineConfig({
     /ui-foundation-pages\.spec\.js$/,
     /learning-records-polish\.spec\.js$/,
     /learning-records-preview\.spec\.js$/,
+    /teacher-daily-workflow\.spec\.js$/,
   ],
   timeout: 45_000,
   expect: { timeout: 10_000 },
