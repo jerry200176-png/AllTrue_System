@@ -1085,6 +1085,7 @@ import {
   waiveExceptionWorkflow,
   rejectExceptionWorkflow,
 } from '../api';
+import { isPendingWorkflowStatus, reconcileFocusedWorkflowList } from '../lib/exceptionWorkflowFocus.js';
 import EngagementRankStrip from '../components/EngagementRankStrip.vue';
 import { fetchMe } from '../lib/meClient';
 import {
@@ -1685,7 +1686,7 @@ const loadExceptionWorkflows = async () => {
   try {
     const rows = await listExceptionWorkflows(token, { branchId: props.branchId, type: 'student_leave' });
     exceptionWorkflows.value = rows
-      .filter(row => ['open', 'candidate_ready'].includes(String(row.status || '')))
+      .filter(row => isPendingWorkflowStatus(row.status))
       .sort((a, b) => String(a.due_at || a.created_at || '').localeCompare(String(b.due_at || b.created_at || '')));
   } catch (e) {
     exceptionWorkflowError.value = e?.message || '家長請假載入失敗';
@@ -2289,10 +2290,14 @@ const applyFocusFromInbox = async () => {
   if (!match) {
     try {
       match = await getExceptionWorkflow(getToken(), wfId);
-      if (match && !exceptionWorkflows.value.some((w) => Number(w.id) === wfId)) {
-        exceptionWorkflows.value = [match, ...exceptionWorkflows.value];
-      }
       if (!match) { workflowFocusError.value = '找不到此案件或沒有權限'; return; }
+      exceptionWorkflows.value = reconcileFocusedWorkflowList(exceptionWorkflows.value, match);
+      if (!isPendingWorkflowStatus(match.status)) {
+        // Already handled (waived/confirmed/rejected) — do not resurrect it into the
+        // actionable queue. See GitHub #1625 / in-app #215.
+        workflowFocusError.value = '此案件已於稍早處理完畢';
+        return;
+      }
     } catch (err) {
       workflowFocusError.value = err?.message || '無法載入指定案件';
       return;

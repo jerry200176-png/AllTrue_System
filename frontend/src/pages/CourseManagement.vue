@@ -981,6 +981,7 @@ import CourseEditForm from '../components/CourseEditForm.vue';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
 import EnrollmentConflictDecisionModal from '../components/EnrollmentConflictDecisionModal.vue';
 import { buildForceOverrideFields } from '../lib/enrollmentConflictDecision';
+import { isPendingWorkflowStatus } from '../lib/exceptionWorkflowFocus.js';
 import PurchaseSessionsModal from '../components/course-management/PurchaseSessionsModal.vue';
 import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal.vue';
 import QuickAddSessionModal from '../components/course-management/QuickAddSessionModal.vue';
@@ -1122,7 +1123,7 @@ async function loadPendingLeaveWorkflows(token) {
   try {
     const rows = await listExceptionWorkflows(token, { branchId: props.branchId, type: 'student_leave' });
     pendingLeaveWorkflows.value = rows
-      .filter((row) => ['open', 'candidate_ready'].includes(String(row?.status || '')))
+      .filter((row) => isPendingWorkflowStatus(row?.status))
       .sort((a, b) => String(a?.due_at || a?.created_at || '').localeCompare(String(b?.due_at || b?.created_at || '')));
   } catch (e) {
     pendingLeaveWorkflows.value = [];

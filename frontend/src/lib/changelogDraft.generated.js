@@ -5,6 +5,28 @@
  */
 export const changelogDraftNotes = [
   {
+    "version": "2026.08.02",
+    "date": "2026-08-02",
+    "title": "2026.08.02 草稿（未發布）",
+    "summary": "主任已核准/退回的請假案件不再因深連結重新出現於待處理佇列",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "主任已核准/退回的請假案件不再因深連結重新出現於待處理佇列"
+        ]
+      }
+    ],
+    "items": [
+      "主任已核准/退回的請假案件不再因深連結重新出現於待處理佇列"
+    ]
+  },
+  {
     "version": "2026.08.01",
     "date": "2026-08-01",
     "title": "2026.08.01 草稿（未發布）",
@@ -543,30 +565,6 @@ export const changelogDraftNotes = [
     "items": [
       "每日商業智能摘要（AI-native ops phase 0）",
       "評量「無法填寫」缺口回填 + 夜間自動任務正式啟用"
-    ]
-  },
-  {
-    "version": "2026.07.09",
-    "date": "2026-07-09",
-    "title": "2026.07.09 草稿（未發布）",
-    "summary": "重複堂次清理完成 + 加課/跨約重複資料修正（PCR-R2 執行）；1 cleanup scope aligned with audit (PCR-R2)",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "修正內容",
-        "items": [
-          "重複堂次清理完成 + 加課/跨約重複資料修正（PCR-R2 執行）",
-          "1 cleanup scope aligned with audit (PCR-R2)"
-        ]
-      }
-    ],
-    "items": [
-      "重複堂次清理完成 + 加課/跨約重複資料修正（PCR-R2 執行）",
-      "1 cleanup scope aligned with audit (PCR-R2)"
     ]
   }
 ];
