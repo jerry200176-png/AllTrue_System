@@ -6,8 +6,11 @@ use App\Models\AuthToken;
 use App\Models\ClassSession;
 use App\Models\LearningRecord;
 use App\Models\PayrollMonthStatus;
+use App\Models\PayrollRun;
+use App\Models\PayrollRunLine;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Models\StudentSignIn;
 use App\Models\User;
 use App\Models\UserCampus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -133,9 +136,9 @@ class ParttimePayrollTest extends TestCase
     }
 
     // ──────────────────────────────────────────
-    // Only approved + active records count
+    // Attendance, rather than learning-record approval, determines payroll.
     // ──────────────────────────────────────────
-    public function test_excludes_pending_and_voided_records(): void
+    public function test_counts_attended_sessions_regardless_of_evaluation_status(): void
     {
         $dir = $this->createDirector('dir-payroll-6@test.com', [1]);
         $tid = $this->createPartTimeTeacher(1, 'pt6@test.com', '兼職戊');
@@ -143,11 +146,11 @@ class ParttimePayrollTest extends TestCase
 
         $sc = $this->makeStudentClass($stu, $tid, 7, 'one_on_one');
 
-        // Approved
+        // All three sessions have valid attendance; evaluation state must not affect payroll.
         $this->makeApprovedLR($sc, $tid, '2026-04-10', '10:00', '12:00');
-        // Pending — should be excluded
+        // Pending evaluation — included
         $this->makeLR($sc, $tid, '2026-04-11', '10:00', '12:00', 'pending');
-        // Voided — should be excluded
+        // Voided evaluation — included
         $voided = $this->makeLR($sc, $tid, '2026-04-12', '10:00', '12:00', 'approved');
         $voided->update(['VoidedAt' => now()]);
 
@@ -155,7 +158,89 @@ class ParttimePayrollTest extends TestCase
             ->getJson('/api/v1/finance/parttime-payroll?month=2026-04&branch_id=1');
 
         $res->assertOk();
-        $this->assertEquals(1, $res->json('teachers.0.session_count'));
+        $this->assertEquals(3, $res->json('teachers.0.session_count'));
+    }
+
+    public function test_counts_attendance_without_any_learning_record_and_excludes_voided_or_non_payable_attendance(): void
+    {
+        $dir = $this->createDirector('dir-payroll-attendance@test.com', [1]);
+        $tid = $this->createPartTimeTeacher(1, 'pt-attendance@test.com', '兼職點名');
+        $stu = $this->createStudent(1, '點名學生');
+        $sc = $this->makeStudentClass($stu, $tid, 7, 'one_on_one');
+
+        $this->makeAttendance($sc, $tid, '2026-04-10', '10:00', '12:00', 'present');
+        $this->makeAttendance($sc, $tid, '2026-04-11', '10:00', '12:00', 'leave');
+        $voided = $this->makeAttendance($sc, $tid, '2026-04-12', '10:00', '12:00', 'present');
+        $voided->update(['VoidedAt' => now()]);
+
+        $res = $this->withHeaders($this->authHeaders($dir['token']))
+            ->getJson('/api/v1/finance/parttime-payroll?month=2026-04&branch_id=1');
+
+        $res->assertOk();
+        $this->assertSame(1, $res->json('teachers.0.session_count'));
+        $this->assertSame(2, $res->json('teachers.0.total_hours'));
+    }
+
+    public function test_attendance_anomaly_is_visible_in_draft_and_blocks_lock(): void
+    {
+        $dir = $this->createDirector('dir-payroll-anomaly@test.com', [1]);
+        $tid = $this->createPartTimeTeacher(1, 'pt-anomaly@test.com', '兼職異常');
+        $stu = $this->createStudent(1, '異常學生');
+        $sc = $this->makeStudentClass($stu, $tid, 7, 'one_on_one');
+        // makeAttendance intentionally leaves ClassSession.Status=scheduled while the sign-in is present.
+        $this->makeAttendance($sc, $tid, '2026-04-10', '10:00', '12:00', 'present');
+
+        $headers = $this->authHeaders($dir['token']);
+        $summary = $this->withHeaders($headers)->getJson('/api/v1/finance/parttime-payroll?month=2026-04&branch_id=1');
+        $summary->assertOk();
+        $this->assertGreaterThan(0, $summary->json('summary.anomaly_count'));
+        $this->assertContains('status_mismatch', array_column($summary->json('summary.anomalies'), 'code'));
+
+        $this->withHeaders($headers)
+            ->postJson('/api/v1/finance/parttime-payroll/lock', ['month' => '2026-04', 'branch_id' => 1])
+            ->assertStatus(422)
+            ->assertJsonStructure(['anomaly_count', 'anomalies']);
+    }
+
+    public function test_locked_payroll_reads_immutable_snapshot_until_reopen(): void
+    {
+        $dir = $this->createDirector('dir-payroll-snapshot@test.com', [1]);
+        $tid = $this->createPartTimeTeacher(1, 'pt-snapshot@test.com', '兼職快照');
+        $stu = $this->createStudent(1, '快照學生');
+        $sc = $this->makeStudentClass($stu, $tid, 10, 'one_on_one');
+        $session = ClassSession::create([
+            'StudentClassID' => $sc->ID, 'SessionDate' => '2026-04-10',
+            'StartTime' => '10:00:00', 'EndTime' => '12:00:00',
+            'Status' => 'attended', 'Note' => '',
+        ]);
+        $signIn = StudentSignIn::create([
+            'StudentClassID' => $sc->ID, 'StudentID' => $stu->id, 'TeacherID' => $tid,
+            'ClassSessionID' => $session->id, 'Status' => 'present', 'SignInDT' => '2026-04-10 10:00:00',
+        ]);
+
+        $headers = $this->authHeaders($dir['token']);
+        $this->withHeaders($headers)
+            ->postJson('/api/v1/finance/parttime-payroll/lock', ['month' => '2026-04', 'branch_id' => 1])
+            ->assertOk();
+
+        $run = PayrollRun::where('branch_id', 1)->where('month', '2026-04')->where('status', 'locked')->latest('id')->first();
+        $this->assertNotNull($run);
+        $this->assertSame(1, PayrollRunLine::where('run_id', $run->id)->count());
+        $lockedSalary = $this->withHeaders($headers)->getJson('/api/v1/finance/parttime-payroll?month=2026-04&branch_id=1')->json('teachers.0.total_salary');
+        $lockedDetail = $this->withHeaders($headers)->getJson("/api/v1/finance/parttime-payroll/{$tid}/sessions?month=2026-04&branch_id=1");
+        $lockedDetail->assertOk()->assertJsonPath('sessions.0.session_salary', $lockedSalary);
+
+        $session->update(['EndTime' => '14:00:00']);
+        $sc->update(['SessionDuration' => 180]);
+        $stillLockedSalary = $this->withHeaders($headers)->getJson('/api/v1/finance/parttime-payroll?month=2026-04&branch_id=1')->json('teachers.0.total_salary');
+        $this->assertSame($lockedSalary, $stillLockedSalary);
+
+        $this->withHeaders($this->authHeaders($this->createSuperAdmin('sa-payroll-snapshot@test.com', [1])['token']))
+            ->postJson('/api/v1/finance/parttime-payroll/reopen', ['month' => '2026-04', 'branch_id' => 1, 'reason' => '修正堂次時間'])
+            ->assertOk();
+        $draftSalary = $this->withHeaders($headers)->getJson('/api/v1/finance/parttime-payroll?month=2026-04&branch_id=1')->json('teachers.0.total_salary');
+        $this->assertGreaterThan($lockedSalary, $draftSalary);
+        $this->assertSame('reopened', $run->fresh()->status);
     }
 
     // ──────────────────────────────────────────
@@ -464,9 +549,9 @@ class ParttimePayrollTest extends TestCase
     }
 
     // ──────────────────────────────────────────
-    // LR missing StartTime → excluded from concurrency, bonus = 0
+    // Payroll uses attendance-session times, not evaluation times.
     // ──────────────────────────────────────────
-    public function test_concurrency_bonus_missing_time_excluded(): void
+    public function test_concurrency_uses_attendance_session_times_not_evaluation_times(): void
     {
         $dir = $this->createDirector('dir-cb8@test.com', [1]);
         $tid = $this->createPartTimeTeacher(1, 'ptcb8@test.com', '併堂辛');
@@ -485,10 +570,9 @@ class ParttimePayrollTest extends TestCase
 
         $res->assertOk();
         $teacher = $res->json('teachers.0');
-        // A: 400*2h = 800, no valid overlap partner → bonus 0
-        // B: 400 * fallback 2h = 800, no bonus (excluded)
-        // total = 1600
-        $this->assertEquals(1600, $teacher['total_salary']);
+        // 點名堂次仍為 17:00–19:00 / 18:00–20:00，故依其重疊時段計薪。
+        // 評量表時間被清空不應改變薪資。
+        $this->assertEquals(1250, $teacher['total_salary']);
     }
 
     // ──────────────────────────────────────────
@@ -742,7 +826,7 @@ class ParttimePayrollTest extends TestCase
             'StartTime' => "{$start}:00", 'EndTime' => "{$end}:00",
             'Status' => 'completed', 'Note' => '',
         ]);
-        return LearningRecord::create([
+        $record = LearningRecord::create([
             'StudentClassID' => $sc->ID, 'ClassSessionID' => $cs->id,
             'TeacherID' => $teacherId, 'Content' => 'test', 'Subject' => 'Math',
             'Status' => $status, 'SessionDate' => $date,
@@ -750,6 +834,31 @@ class ParttimePayrollTest extends TestCase
             'SessionDeducted' => $status === 'approved',
             'ApprovedBy' => $status === 'approved' ? $teacherId : null,
             'ApprovedAt' => $status === 'approved' ? now() : null,
+        ]);
+        $this->makeAttendanceForSession($sc, $teacherId, $cs, $date, $start, 'present');
+        return $record;
+    }
+
+    private function makeAttendance(StudentClass $sc, int $teacherId, string $date, string $start, string $end, string $status): StudentSignIn
+    {
+        $session = ClassSession::create([
+            'StudentClassID' => $sc->ID, 'SessionDate' => $date,
+            'StartTime' => "{$start}:00", 'EndTime' => "{$end}:00",
+            'Status' => 'scheduled', 'Note' => '',
+        ]);
+
+        return $this->makeAttendanceForSession($sc, $teacherId, $session, $date, $start, $status);
+    }
+
+    private function makeAttendanceForSession(StudentClass $sc, int $teacherId, ClassSession $session, string $date, string $start, string $status): StudentSignIn
+    {
+        return StudentSignIn::create([
+            'StudentClassID' => $sc->ID,
+            'StudentID' => $sc->StudentID,
+            'TeacherID' => $teacherId,
+            'ClassSessionID' => $session->id,
+            'Status' => $status,
+            'SignInDT' => "{$date} {$start}:00",
         ]);
     }
 

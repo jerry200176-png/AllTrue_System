@@ -7,6 +7,7 @@ use App\Models\ClassSession;
 use App\Models\LearningRecord;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Models\StudentSignIn;
 use App\Models\User;
 use App\Models\UserCampus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -181,12 +182,18 @@ class PayrollRateConsistencyTest extends TestCase
             'StartTime' => "{$start}:00", 'EndTime' => "{$end}:00",
             'Status' => 'completed', 'Note' => '',
         ]);
-        return LearningRecord::create([
+        $record = LearningRecord::create([
             'StudentClassID' => $sc->ID, 'ClassSessionID' => $cs->id,
             'TeacherID' => $teacherId, 'Content' => 'test', 'Subject' => 'Math',
             'Status' => 'approved', 'SessionDate' => $date,
             'StartTime' => "{$start}:00", 'EndTime' => "{$end}:00",
             'Hours' => 2, 'Note' => '',
         ]);
+        StudentSignIn::create([
+            'StudentClassID' => $sc->ID, 'StudentID' => $sc->StudentID,
+            'TeacherID' => $teacherId, 'ClassSessionID' => $cs->id,
+            'Status' => 'present', 'SignInDT' => "{$date} {$start}:00",
+        ]);
+        return $record;
     }
 }
