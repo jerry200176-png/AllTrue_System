@@ -9,6 +9,8 @@ use App\Support\AttendanceStatus;
 use App\Models\PayrollAuditLog;
 use App\Models\PayrollBranchRule;
 use App\Models\PayrollMonthStatus;
+use App\Models\PayrollRun;
+use App\Models\PayrollRunLine;
 use App\Models\PayrollTeacherBranchRule;
 use App\Models\Student;
 use App\Models\StudentClass;
@@ -863,7 +865,11 @@ class FinanceController extends Controller
         $lockRow  = $branchId ? PayrollMonthStatus::where('branch_id', $branchId)->where('month', $month)->first() : null;
         $ruleCtx  = $this->resolvePayrollRule($branchId, $lockRow, $month);
 
-        $rows = $this->buildParttimePayrollData($month, $campusIds, $ruleCtx);
+        $lockedRun = $this->lockedPayrollRun($lockRow);
+        $anomalies = $lockedRun ? ($lockedRun->anomalies ?? []) : $this->parttimePayrollAnomalies($campusIds, $month . '-01', date('Y-m-t', strtotime($month . '-01')));
+        $rows = $lockedRun
+            ? $this->buildParttimePayrollRowsFromSnapshot($lockedRun)
+            : $this->buildParttimePayrollData($month, $campusIds, $ruleCtx);
 
         if ($request->filled('search')) {
             $q = mb_strtolower($request->input('search'));
@@ -898,6 +904,9 @@ class FinanceController extends Controller
                 'locked_at'       => $lockRow->locked_at ?? null,
                 'locked_by'       => $lockRow->locked_by ?? null,
                 'rule_version_id' => $ruleCtx['rule_id'] ?? null,
+                'payroll_basis'   => 'attendance',
+                'anomaly_count'   => count($anomalies),
+                'anomalies'       => array_values($anomalies),
             ],
             'teachers' => $rows,
         ]);
@@ -928,20 +937,25 @@ class FinanceController extends Controller
         $lockRow  = $branchId ? PayrollMonthStatus::where('branch_id', $branchId)->where('month', $month)->first() : null;
         $ruleCtx  = $this->resolvePayrollRule($branchId, $lockRow, $month);
 
+        $lockedRun = $this->lockedPayrollRun($lockRow);
+        if ($lockedRun) {
+            return $this->parttimePayrollSnapshotSessions($lockedRun, $teacherId, $perPage, $page);
+        }
+
         $query = $this->parttimeBaseQuery($campusIds, $startDate, $endDate)
-            ->where('LearningRecord.TeacherID', $teacherId);
+            ->where('StudentSingIn.TeacherID', $teacherId);
 
         $total    = (clone $query)->count();
         $lastPage = max(1, (int) ceil($total / $perPage));
 
         $allTeacherRecords = (clone $this->parttimeBaseQuery($campusIds, $startDate, $endDate))
-            ->where('LearningRecord.TeacherID', $teacherId)
+            ->where('StudentSingIn.TeacherID', $teacherId)
             ->get();
         $rateMap  = $this->buildRateMap($allTeacherRecords, $ruleCtx);
         $segmentsMap = [];
         $bonusMap = $this->buildConcurrencyBonusMap($allTeacherRecords, $rateMap, $ruleCtx, $segmentsMap);
 
-        $records = $query->orderBy('LearningRecord.SessionDate')
+        $records = $query->orderBy('ClassSession.SessionDate')
             ->offset(($page - 1) * $perPage)
             ->limit($perPage)
             ->get();
@@ -1010,6 +1024,11 @@ class FinanceController extends Controller
         $lockRow   = $branchId ? PayrollMonthStatus::where('branch_id', $branchId)->where('month', $month)->first() : null;
         $ruleCtx   = $this->resolvePayrollRule($branchId, $lockRow, $month);
 
+        $lockedRun = $this->lockedPayrollRun($lockRow);
+        if ($lockedRun) {
+            return $this->exportPayrollSnapshot($lockedRun, $branchName, $month);
+        }
+
         $totalRows = $this->parttimeBaseQuery($campusIds, $startDate, $endDate)->count();
         $maxExport = config('payroll.max_export_rows', 5000);
         if ($totalRows > $maxExport) {
@@ -1042,7 +1061,7 @@ class FinanceController extends Controller
             fputcsv($out, ['日期', '老師', '學生', '科目', '學段', '課型', '時數', '基礎時薪', '人數加成', '併堂加給', '實際時薪', '堂次薪資', '費率來源']);
 
             $this->parttimeBaseQuery($campusIds, $startDate, $endDate)
-                ->orderBy('LearningRecord.id')
+                ->orderBy('ClassSession.id')
                 ->chunk(200, function ($records) use ($out, $ruleCtx, $bonusMap) {
                     foreach ($records as $r) {
                         $row = $this->buildSessionRow($r, $ruleCtx, $bonusMap);
@@ -1083,7 +1102,19 @@ class FinanceController extends Controller
         $authUser = $request->attributes->get('auth_user');
         $userId   = $authUser ? (int) $authUser->id : null;
 
-        DB::transaction(function () use ($row, $branchId, $month, $userId) {
+        $campusIds = $this->getCampusIds($request);
+        $startDate = $month . '-01';
+        $endDate = date('Y-m-t', strtotime($startDate));
+        $anomalies = $this->parttimePayrollAnomalies($campusIds, $startDate, $endDate);
+        if (!empty($anomalies)) {
+            return response()->json([
+                'error' => 'Payroll contains attendance anomalies; resolve them before locking.',
+                'anomaly_count' => count($anomalies),
+                'anomalies' => array_values($anomalies),
+            ], 422);
+        }
+
+        DB::transaction(function () use ($row, $branchId, $month, $userId, $campusIds) {
             $currentRule = PayrollBranchRule::latestForBranch($branchId);
             $asOfDate    = date('Y-m-t', strtotime($month . '-01'));
             $teacherMap  = PayrollTeacherBranchRule::latestMapForBranch($branchId, $asOfDate);
@@ -1093,12 +1124,52 @@ class FinanceController extends Controller
                 $teacherSnapshots[(string) $tid] = $rule->id;
             }
 
+            $ruleCtx = $this->resolvePayrollRule($branchId, $row, $month);
+            $records = $this->parttimeBaseQuery($campusIds, $month . '-01', $asOfDate)->get();
+            $rateMap = $this->buildRateMap($records, $ruleCtx);
+            $segments = [];
+            $bonusMap = $this->buildConcurrencyBonusMap($records, $rateMap, $ruleCtx, $segments);
+
+            $run = PayrollRun::create([
+                'branch_id' => $branchId,
+                'month' => $month,
+                'status' => 'locked',
+                'locked_by' => $userId,
+                'locked_at' => now(),
+                'rule_version_id' => $currentRule?->id,
+                'teacher_rule_snapshots' => !empty($teacherSnapshots) ? $teacherSnapshots : null,
+                'anomalies' => [],
+                'anomaly_count' => 0,
+            ]);
+
+            foreach ($records as $record) {
+                $payload = $this->buildSessionRow($record, $ruleCtx, $bonusMap);
+                $payload['concurrency_segments'] = $segments[$record->id] ?? [];
+                PayrollRunLine::create([
+                    'run_id' => $run->id,
+                    'class_session_id' => (int) $record->id,
+                    'student_sign_in_id' => isset($record->StudentSignInID) ? (int) $record->StudentSignInID : null,
+                    'teacher_id' => (int) $record->TeacherID,
+                    'session_date' => $payload['session_date'] ?: null,
+                    'hours' => $payload['hours'],
+                    'base_rate' => $payload['base_rate'],
+                    'headcount_bonus' => $payload['headcount_bonus'],
+                    'concurrency_bonus_amount' => $payload['concurrency_bonus_amount'],
+                    'effective_rate' => $payload['effective_rate'],
+                    'session_salary' => $payload['session_salary'],
+                    'attendance_status' => $record->AttendanceStatus ?? null,
+                    'rule_source' => $payload['rule_source'] ?? null,
+                    'payload' => $payload,
+                ]);
+            }
+
             $row->update([
                 'status'                 => 'locked',
                 'locked_by'              => $userId,
                 'locked_at'              => now(),
                 'rule_version_id'        => $currentRule?->id,
                 'teacher_rule_snapshots' => !empty($teacherSnapshots) ? $teacherSnapshots : null,
+                'current_run_id'         => $run->id,
             ]);
 
             PayrollAuditLog::create([
@@ -1126,8 +1197,8 @@ class FinanceController extends Controller
         $month    = $request->input('month');
         $branchId = (int) $request->input('branch_id');
         $reason   = $request->input('reason', '');
-        if (!$month || !$branchId) {
-            return response()->json(['error' => 'month and branch_id required'], 422);
+        if (!$month || !$branchId || trim((string) $reason) === '') {
+            return response()->json(['error' => 'month, branch_id and reason required'], 422);
         }
 
         $row = PayrollMonthStatus::where('branch_id', $branchId)->where('month', $month)->first();
@@ -1137,7 +1208,13 @@ class FinanceController extends Controller
 
         $authUser = $request->attributes->get('auth_user');
         $userId   = $authUser ? (int) $authUser->id : null;
-        $row->update(['status' => 'draft', 'locked_by' => null, 'locked_at' => null, 'rule_version_id' => null, 'teacher_rule_snapshots' => null]);
+        if ($row->current_run_id) {
+            PayrollRun::whereKey($row->current_run_id)->update([
+                'status' => 'reopened', 'reopened_by' => $userId,
+                'reopened_at' => now(), 'reopen_reason' => $reason,
+            ]);
+        }
+        $row->update(['status' => 'draft', 'locked_by' => null, 'locked_at' => null, 'rule_version_id' => null, 'teacher_rule_snapshots' => null, 'current_run_id' => null]);
 
         PayrollAuditLog::create([
             'branch_id'  => $branchId,
@@ -1164,18 +1241,22 @@ class FinanceController extends Controller
             ->whereIn('type', ['T', 'D'])
             ->pluck('id')->all();
 
-        $query = LearningRecord::query()
-            ->select('LearningRecord.*')
-            ->active()
-            ->where('LearningRecord.Status', 'approved')
-            ->whereBetween('LearningRecord.SessionDate', [$startDate, $endDate])
-            ->whereIn('LearningRecord.TeacherID', $partTimeTeacherIds)
+        // 薪資以「有效到班點名」為準，不再依賴評量表是否填寫或核准。
+        // StudentSingIn 對 ClassSession 有唯一約束，因此每個已點名堂次只會計一次。
+        $query = ClassSession::query()
+            ->select('ClassSession.*', 'StudentSingIn.id as StudentSignInID', 'StudentSingIn.Status as AttendanceStatus', 'StudentSingIn.TeacherID as TeacherID')
+            ->join('StudentSingIn', 'StudentSingIn.ClassSessionID', '=', 'ClassSession.id')
+            ->whereNull('StudentSingIn.VoidedAt')
+            ->whereIn('StudentSingIn.Status', AttendanceStatus::payableCodes())
+            ->where('ClassSession.Status', '!=', 'cancelled')
+            ->whereBetween('ClassSession.SessionDate', [$startDate, $endDate])
+            ->whereIn('StudentSingIn.TeacherID', $partTimeTeacherIds)
             ->with('studentClass');
 
         if ($branchFiltered && empty($classIds)) {
             $query->whereRaw('1=0');
         } elseif (!empty($classIds)) {
-            $query->whereIn('LearningRecord.StudentClassID', $classIds);
+            $query->whereIn('ClassSession.StudentClassID', $classIds);
         }
 
         $query->whereHas('studentClass', function ($q) {
@@ -1185,6 +1266,176 @@ class FinanceController extends Controller
         });
 
         return $query;
+    }
+
+    private function lockedPayrollRun(?PayrollMonthStatus $status): ?PayrollRun
+    {
+        if (!$status || $status->status !== 'locked' || !$status->current_run_id) {
+            return null;
+        }
+
+        return PayrollRun::with('lines')
+            ->whereKey($status->current_run_id)
+            ->where('status', 'locked')
+            ->first();
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    private function parttimePayrollAnomalies(array $campusIds, string $startDate, string $endDate): array
+    {
+        $studentIds = !empty($campusIds)
+            ? Student::whereIn('CampusID', $campusIds)->pluck('id')->all()
+            : [];
+
+        $partTimeIds = DB::table('User')->where('employment_type', 'part_time')->whereIn('type', ['T', 'D'])->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $query = DB::table('ClassSession as cs')
+            ->join('StudentSingIn as si', 'si.ClassSessionID', '=', 'cs.id')
+            ->leftJoin('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+            ->whereNull('si.VoidedAt')
+            ->whereBetween('cs.SessionDate', [$startDate, $endDate])
+            ->select([
+                'cs.id as class_session_id', 'cs.SessionDate', 'cs.StartTime', 'cs.EndTime', 'cs.Status as session_status',
+                'si.id as student_sign_in_id', 'si.Status as attendance_status', 'si.TeacherID', 'sc.StudentID', 'sc.ClassType',
+            ]);
+
+        if (!empty($studentIds)) {
+            $query->whereIn('sc.StudentID', $studentIds);
+        }
+        $query->where(function ($q) use ($partTimeIds) {
+            $q->whereNull('si.TeacherID')->orWhereIn('si.TeacherID', $partTimeIds);
+        });
+
+        $rows = $query->get();
+        $anomalies = [];
+        $seen = [];
+
+        foreach ($rows as $row) {
+            if (($row->ClassType ?? null) === 'trial') {
+                continue;
+            }
+
+            $key = (int) $row->class_session_id;
+            $seen[$key][] = (int) $row->student_sign_in_id;
+            $add = function (string $code, string $message) use (&$anomalies, $row, $key): void {
+                $anomalies[] = [
+                    'code' => $code,
+                    'message' => $message,
+                    'class_session_id' => $key,
+                    'student_sign_in_id' => (int) $row->student_sign_in_id,
+                    'session_date' => $row->SessionDate ? substr((string) $row->SessionDate, 0, 10) : null,
+                ];
+            };
+
+            if (!$row->TeacherID) {
+                $add('teacher_missing', '點名沒有有效的兼職老師');
+            }
+            if (!$row->StartTime || !$row->EndTime) {
+                $add('missing_time', '堂次缺少開始或結束時間');
+            }
+            if ((string) $row->session_status === 'cancelled') {
+                $add('cancelled_session', '已取消堂次仍有有效點名');
+            }
+
+            $expected = AttendanceStatus::sessionStatus((string) $row->attendance_status);
+            $actual = (string) ($row->session_status ?? '');
+            $statusMatches = $actual === $expected || ($expected === 'attended' && $actual === 'completed');
+            if ($actual !== '' && !$statusMatches) {
+                $add('status_mismatch', '點名狀態與堂次狀態不一致');
+            }
+        }
+
+        foreach ($seen as $sessionId => $signInIds) {
+            if (count($signInIds) > 1) {
+                $anomalies[] = [
+                    'code' => 'duplicate_attendance',
+                    'message' => '同一堂存在多筆有效點名',
+                    'class_session_id' => (int) $sessionId,
+                    'student_sign_in_id' => null,
+                    'session_date' => null,
+                ];
+            }
+        }
+
+        return $anomalies;
+    }
+
+    private function buildParttimePayrollRowsFromSnapshot(PayrollRun $run): array
+    {
+        $buckets = [];
+        foreach ($run->lines as $line) {
+            $payload = $line->payload ?: [];
+            $tid = (int) $line->teacher_id;
+            if (!isset($buckets[$tid])) {
+                $buckets[$tid] = [
+                    'teacher_id' => $tid,
+                    'teacher_name' => $payload['teacher_name'] ?? TeacherProfileDirectory::nameFor($tid, 'Unknown'),
+                    'high_hours' => 0, 'junior_hours' => 0, 'elementary_hours' => 0, 'tutoring_hours' => 0,
+                    'total_hours' => 0, 'total_salary' => 0, 'session_count' => 0,
+                    'rule_source' => $payload['rule_source'] ?? 'branch_default',
+                ];
+            }
+            $level = $payload['level'] ?? 'elementary';
+            $levelKey = match ($level) {
+                'high' => 'high_hours', 'junior' => 'junior_hours', 'tutoring' => 'tutoring_hours', default => 'elementary_hours',
+            };
+            $hours = (float) ($payload['hours'] ?? 0);
+            $buckets[$tid][$levelKey] += $hours;
+            $buckets[$tid]['total_hours'] += $hours;
+            $buckets[$tid]['total_salary'] += (float) ($payload['session_salary'] ?? 0);
+            $buckets[$tid]['session_count']++;
+        }
+        foreach ($buckets as &$bucket) {
+            foreach (['high_hours', 'junior_hours', 'elementary_hours', 'tutoring_hours', 'total_hours'] as $field) {
+                $bucket[$field] = round($bucket[$field], 2);
+            }
+            $bucket['total_salary'] = (int) round($bucket['total_salary']);
+        }
+        unset($bucket);
+        return array_values($buckets);
+    }
+
+    private function parttimePayrollSnapshotSessions(PayrollRun $run, int $teacherId, int $perPage, int $page)
+    {
+        $lines = $run->lines->where('teacher_id', $teacherId)->values();
+        $total = $lines->count();
+        $paged = $lines->slice(($page - 1) * $perPage, $perPage)->values();
+        $teacher = collect($this->buildParttimePayrollRowsFromSnapshot($run))->firstWhere('teacher_id', $teacherId);
+        $teacher = $teacher ?: [
+            'teacher_id' => $teacherId, 'teacher_name' => TeacherProfileDirectory::nameFor($teacherId, 'Unknown'),
+            'total_salary' => 0, 'total_hours' => 0, 'session_count' => 0,
+        ];
+
+        return response()->json([
+            'teacher' => [
+                'teacher_id' => $teacherId, 'teacher_name' => $teacher['teacher_name'],
+                'total_salary' => $teacher['total_salary'], 'total_hours' => $teacher['total_hours'], 'session_count' => $total,
+            ],
+            'sessions' => $paged->map(fn ($line) => $line->payload ?: [])->values()->all(),
+            'meta' => ['current_page' => $page, 'last_page' => max(1, (int) ceil($total / $perPage)), 'per_page' => $perPage, 'total' => $total],
+        ]);
+    }
+
+    private function exportPayrollSnapshot(PayrollRun $run, string $branchName, string $month): StreamedResponse
+    {
+        $teacherRows = $this->buildParttimePayrollRowsFromSnapshot($run);
+        $lines = $run->lines->sortBy('id');
+        $filename = "兼職薪資_{$branchName}_{$month}.csv";
+
+        return response()->streamDownload(function () use ($teacherRows, $lines) {
+            $out = fopen('php://output', 'w');
+            fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
+            fputcsv($out, ['老師姓名', '總時數', '高中時數', '國中時數', '國小時數', '輔導時數', '應付薪資', '堂次數', '費率來源']);
+            foreach ($teacherRows as $t) {
+                fputcsv($out, [$t['teacher_name'], $t['total_hours'], $t['high_hours'], $t['junior_hours'], $t['elementary_hours'], $t['tutoring_hours'], $t['total_salary'], $t['session_count'], ($t['rule_source'] ?? 'branch_default') === 'teacher_override' ? '個別費率' : '分校預設']);
+            }
+            fputcsv($out, []);
+            fputcsv($out, ['日期', '老師', '學生', '科目', '學段', '課型', '時數', '基礎時薪', '人數加成', '併堂加給', '實際時薪', '堂次薪資', '費率來源']);
+            foreach ($lines as $line) {
+                $row = $line->payload ?: [];
+                fputcsv($out, [$row['session_date'] ?? '', $row['teacher_name'] ?? '', $row['student_name'] ?? '', $row['subject'] ?? '', $row['level_label'] ?? '', $row['class_type'] ?? '', $row['hours'] ?? 0, $row['base_rate'] ?? 0, $row['headcount_bonus'] ?? 0, $row['concurrency_bonus_amount'] ?? 0, $row['effective_rate'] ?? 0, $row['session_salary'] ?? 0, ($row['rule_source'] ?? 'branch_default') === 'teacher_override' ? '個別費率' : '分校預設']);
+            }
+            fclose($out);
+        }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
     private function buildParttimePayrollData(string $month, array $campusIds, array $ruleCtx = []): array
@@ -1249,7 +1500,7 @@ class FinanceController extends Controller
         return array_values($buckets);
     }
 
-    private function buildSessionRow(LearningRecord $r, array $ruleCtx = [], array $bonusMap = []): array
+    private function buildSessionRow(ClassSession $r, array $ruleCtx = [], array $bonusMap = []): array
     {
         $sc        = $r->studentClass;
         $classType = $sc->ClassType ?? 'one_on_one';
@@ -1288,6 +1539,7 @@ class FinanceController extends Controller
         $studentName = $sc->student->name ?? 'Unknown';
 
         return [
+            // 保留既有 API 欄位名稱，值改為薪資來源的堂次 ID。
             'learning_record_id'       => $r->id,
             'session_date'             => $r->SessionDate ? substr((string) $r->SessionDate, 0, 10) : '',
             'student_name'             => $studentName,
