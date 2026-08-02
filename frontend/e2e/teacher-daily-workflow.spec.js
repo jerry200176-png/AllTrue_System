@@ -8,6 +8,10 @@ const session = {
 };
 
 async function installTeacherMocks(page, mode = 'normal') {
+  const localToday = await page.evaluate(() => {
+    const date = new Date();
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  });
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request();
     if (request.method() !== 'GET') {
@@ -19,14 +23,14 @@ async function installTeacherMocks(page, mode = 'normal') {
     }
     if (path.includes('/class-sessions')) {
       const rows = mode === 'empty' ? [] : [
-        { id: 101, class_session_id: 101, student_id: 401, student_class_id: 201, branch_id: 1, session_date: '2026-08-02', start_time: '09:00', end_time: '10:00', student_name: '測試學生甲', subject_name: '數學', status: 'scheduled', learning_record_status: 'changes_requested', learning_record_id: 301 },
-        { id: 102, class_session_id: 102, student_id: 402, student_class_id: 202, branch_id: 1, session_date: '2026-08-02', start_time: '10:30', end_time: '11:30', student_name: '測試學生乙', subject_name: '英文', status: 'scheduled', learning_record_status: 'missing' },
-        { id: 103, class_session_id: 103, student_id: 403, student_class_id: 203, branch_id: 1, session_date: '2026-08-02', start_time: '13:00', end_time: '14:00', student_name: '請假學生', subject_name: '自然', status: 'leave_requested', learning_record_status: 'missing' },
+        { id: 101, class_session_id: 101, student_id: 401, student_class_id: 201, branch_id: 1, session_date: localToday, start_time: '09:00', end_time: '10:00', student_name: '測試學生甲', subject_name: '數學', status: 'scheduled', learning_record_status: 'changes_requested', learning_record_id: 301 },
+        { id: 102, class_session_id: 102, student_id: 402, student_class_id: 202, branch_id: 1, session_date: localToday, start_time: '10:30', end_time: '11:30', student_name: '測試學生乙', subject_name: '英文', status: 'scheduled', learning_record_status: 'missing' },
+        { id: 103, class_session_id: 103, student_id: 403, student_class_id: 203, branch_id: 1, session_date: localToday, start_time: '13:00', end_time: '14:00', student_name: '請假學生', subject_name: '自然', status: 'leave_requested', learning_record_status: 'missing' },
       ];
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: rows }) });
     }
     if (path.includes('/teacher-attendance/today')) {
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'normal', sign_in_dt: '2026-08-02 08:40:00', first_class_start_time: '09:00' }) });
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'normal', sign_in_dt: `${localToday} 08:40:00`, first_class_start_time: '09:00' }) });
     }
     if (path.includes('/me/learning-pending-summary')) {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ total: 2, changes_requested_learning_records: 1 }) });
