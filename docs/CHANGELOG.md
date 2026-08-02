@@ -7,6 +7,15 @@
 - **測試**：PR 內 focused PHPUnit 66 個測試、212 個 assertions，涵蓋既有 `PayrollConcurrencyTest`／`PayrollRateConsistencyTest`／`PayrollRulesTest`／`PayrollTeacherOverrideTest`／`ParttimePayrollTest` 回歸與新的鎖定／重開流程；前端 build 通過。本則補記錄時另以正式環境唯讀 SQL 確認 `payroll_runs`／`payroll_run_lines`／`payroll_month_status.current_run_id` 已建立且與 migration 定義一致。
 - **風險**：PR 自評為 High Risk（薪資金額與月結鎖定），涉及教師實際收入計算方式變更；本則補記錄不代表已完成獨立覆核，僅還原「改了什麼、為何改、怎麼驗證」，供後續稽核與變更追蹤使用。
 
+## 2026-08-02 — feat: 老師每日工作流精簡為單一待完成佇列（補記錄，PR #1619/#1620 合併時漏寫）
+
+- **本則為事後補寫**：PR #1619（`feat/ux-teacher-daily-v2`）已合併並部署，後續 PR #1620 只補了 `docs/MODULE_TEACHER_DAILY_WORKFLOW_UX.md` 設計規格文件，兩者都未依專案慣例更新本檔案；本則依該規格文件、實際 diff（`git show 19ebf7cd`）補上，未變更任何程式碼。Issue #1618。
+- **問題**：`TeacherHomePage` 原本同時顯示多個工作中心、KPI 卡片、分析、進度、排名與導覽區塊，老師要比對好幾份重疊清單才知道下一步；`AttendancePage` 也是先看統計數字而非「現在該做什麼」。重複計數、多個主要 CTA 互相競爭，且有請假狀態被誤放進工作清單的風險。
+- **設計**：老師工作台第一眼改成單一待完成佇列「今天要完成」，每個項目固定有類型、狀態、對象（學生／課程／時間）、期限與**恰好一個**主要動作（待點名→開始點名、缺評量→填寫評量、需修改→修改評量、家長回覆→查看並回覆）。排序為「需修改／逾期 → 今日未完成 → 回饋」，同一評量記錄／堂次去重。`leave`／`leave_requested`／`leave_adjusted`／`excused` 這組請假狀態一律不進入點名或評量待辦佇列。進度、回饋分析、排名、SystemTrust、聊天未讀移到次要區塊，不擋主佇列；`AttendancePage` 首屏改成「先完成今日點名」單一入口。
+- **邊界**：未動資料庫、API、權限、出勤或請假／評量資料契約；純畫面工作佇列與請假排除邏輯集中在新檔 `frontend/src/lib/teacherDailyWorkflow.js`（含純邏輯回歸測試）。
+- **測試**：純邏輯測試涵蓋排序、去重、CTA 對應、空清單、請假排除；real Vue Playwright 涵蓋 390／412／1280px 的 normal、empty、行事曆 API error、手機出勤 CTA、次要分析延遲載入、無非預期水平溢出；測試用日期改用瀏覽器本地時間推算，避免 CI 時區飄移。`lint:no-undef`、design token guard、Vite build 與既有回歸全部通過。
+- **回滾**：revert PR #1619 合併 commit 即可；無 schema migration 或資料回填。
+
 ## 2026-08-02 — fix: 主任已核准/退回的請假案件不再因深連結重新出現於待處理佇列
 
 - in-app #215／GitHub #1625：主任經通知深連結核准或退回請假案件後，畫面會把已結案的案件重新插回待處理清單，造成「處理完卻卡住沒消失」，再按一次核准則被系統擋下「已結案」。
