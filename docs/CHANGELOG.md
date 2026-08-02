@@ -1,3 +1,12 @@
+## 2026-08-02 — feat(payroll): 兼職薪資改依實際到班點名計算，鎖定後產生不可變快照（補記錄，PR #1624 合併時漏寫）
+
+- **本則為事後補寫**：PR #1624（`feat/parent-leave-approval` 分支，實際內容為兼職薪資重構，分支命名與內容不符）已於合併並自動部署到正式環境，但當時未依專案慣例更新本檔案；本則依實際 diff／PR 說明／正式環境資料庫驗證後補上，事後未變更任何程式碼。
+- **核心改變**：兼職薪資計算來源從「已核准的學習評量（LearningRecord）」改為「有效到班點名（`ClassSession` + `StudentSingIn`，經 `AttendanceStatus::payableCodes()` 判斷可計薪狀態）」。評量是否核准或作廢不再影響該堂課是否計入薪資；計算工時與併班加給所用的時段，也改用點名時段而非評量清空時的時間。
+- **鎖定＝不可變快照**：主任「鎖定」某月薪資時，後端先驗證出勤異常（缺老師／缺時段、已取消但仍有點名、狀態不一致、重複點名等），任一異常存在即回 422 並拒絕鎖定；驗證通過才寫入 `payroll_runs`／`payroll_run_lines`（新表，migration `2026_08_02_000300_create_payroll_runs_and_lines.php`）快照，並把 `payroll_month_status.current_run_id` 指向該次快照。鎖定期間，薪資總表、老師明細與 CSV 匯出一律讀快照；「重新開啟」須填原因，快照標記 `reopened`，月份退回草稿。
+- **API／畫面**：薪資總表回應新增 `payroll_basis: attendance`、`anomaly_count`、`anomalies`；`ParttimePayrollPage.vue` 說明改用出勤計薪、列出異常清單、異常未清空前鎖定鈕停用、鎖定後顯示快照橫幅；`parttimePayrollApi.js` 的鎖定錯誤處理會帶出異常明細。
+- **測試**：PR 內 focused PHPUnit 66 個測試、212 個 assertions，涵蓋既有 `PayrollConcurrencyTest`／`PayrollRateConsistencyTest`／`PayrollRulesTest`／`PayrollTeacherOverrideTest`／`ParttimePayrollTest` 回歸與新的鎖定／重開流程；前端 build 通過。本則補記錄時另以正式環境唯讀 SQL 確認 `payroll_runs`／`payroll_run_lines`／`payroll_month_status.current_run_id` 已建立且與 migration 定義一致。
+- **風險**：PR 自評為 High Risk（薪資金額與月結鎖定），涉及教師實際收入計算方式變更；本則補記錄不代表已完成獨立覆核，僅還原「改了什麼、為何改、怎麼驗證」，供後續稽核與變更追蹤使用。
+
 ## 2026-08-02 — fix: 主任已核准/退回的請假案件不再因深連結重新出現於待處理佇列
 
 - in-app #215／GitHub #1625：主任經通知深連結核准或退回請假案件後，畫面會把已結案的案件重新插回待處理清單，造成「處理完卻卡住沒消失」，再按一次核准則被系統擋下「已結案」。
