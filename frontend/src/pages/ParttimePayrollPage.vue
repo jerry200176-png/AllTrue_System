@@ -909,8 +909,8 @@ onMounted(loadData);
   font-size: 0.82rem;
 }
 .payroll-basis-banner.locked {
-  color: var(--ds-success, #166534);
-  background: var(--ds-success-soft, #f0fdf4);
+  color: var(--ds-success);
+  background: var(--ds-success-wash);
 }
 .payroll-basis-banner .material-symbols-outlined,
 .payroll-anomaly-title .material-symbols-outlined {
@@ -920,10 +920,10 @@ onMounted(loadData);
 .payroll-anomaly-panel {
   margin: 12px 0 0;
   padding: 12px;
-  border: 1px solid #f0c36d;
+  border: 1px solid var(--ds-warning);
   border-radius: 9px;
-  background: #fffaf0;
-  color: #7a4b00;
+  background: var(--ds-warning-wash);
+  color: var(--ds-warning);
   font-size: 0.82rem;
 }
 .payroll-anomaly-title {
@@ -937,7 +937,7 @@ onMounted(loadData);
   grid-template-columns: 100px 1fr auto;
   gap: 10px;
   padding: 5px 0;
-  border-top: 1px solid rgba(240, 195, 109, 0.45);
+  border-top: 1px solid color-mix(in srgb, var(--ds-warning) 45%, transparent);
 }
 @media (max-width: 640px) {
   .payroll-anomaly-row { grid-template-columns: 1fr; gap: 2px; }
