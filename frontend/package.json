@@ -20,6 +20,7 @@
     "test:learning-records-window": "node src/lib/learningRecordsWindow.test.js",
     "test:learning-record-target": "node src/lib/learningRecordTarget.test.js",
     "test:learning-record-sort": "node src/lib/learningRecordSort.test.js",
+    "test:learning-review-queue": "node src/lib/learningReviewQueue.test.js",
     "test:learning-record-preview": "node src/lib/learningRecordPreview.test.js",
     "test:trust-decision-display": "node src/lib/trustDecisionDisplay.test.js",
     "test:student-class-display": "node src/lib/studentClassDisplay.test.js",
