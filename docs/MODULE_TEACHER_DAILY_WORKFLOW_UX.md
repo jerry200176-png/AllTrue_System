@@ -3,6 +3,7 @@
 Issue: #1618
 Bounded context: teacher home and attendance
 Status: implemented in PR #1619; this document records the design, constraints, and evidence.
+Evidence source: PR #1619, merge commit `19ebf7cd`.
 
 ## Problem and root cause
 
