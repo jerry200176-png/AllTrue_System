@@ -8,13 +8,19 @@ export const changelogDraftNotes = [
     "version": "2026.08.02",
     "date": "2026-08-02",
     "title": "2026.08.02 草稿（未發布）",
-    "summary": "主任已核准/退回的請假案件不再因深連結重新出現於待處理佇列",
+    "summary": "改善學生名冊匯入，表格格式比較不容易造成匯入失敗；主任已核准/退回的請假案件不再因深連結重新出現於待處理佇列",
     "audience": [
       "teacher",
       "director"
     ],
     "draft": true,
     "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "改善學生名冊匯入，表格格式比較不容易造成匯入失敗"
+        ]
+      },
       {
         "title": "修正內容",
         "items": [
@@ -23,6 +29,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
       "主任已核准/退回的請假案件不再因深連結重新出現於待處理佇列"
     ]
   },
