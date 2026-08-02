@@ -68,6 +68,12 @@ final class AttendanceStatus
         return (bool) (self::META[$code]['payable'] ?? false);
     }
 
+    /** StudentSingIn.Status 代碼中，已點名且應計入老師鐘點的集合。 */
+    public static function payableCodes(): array
+    {
+        return array_keys(array_filter(self::META, fn ($m) => $m['payable']));
+    }
+
     public static function requiresLog(string $code): bool
     {
         return (bool) (self::META[$code]['requires_log'] ?? false);
@@ -96,10 +102,8 @@ final class AttendanceStatus
     public static function payableSessionStatuses(): array
     {
         $out = [];
-        foreach (self::META as $m) {
-            if ($m['payable']) {
-                $out[$m['session_status']] = true;
-            }
+        foreach (self::payableCodes() as $code) {
+            $out[self::META[$code]['session_status']] = true;
         }
         // 'completed' 為歷史寫法（=attended 的同義），payroll 既有集合含之。
         $out['completed'] = true;

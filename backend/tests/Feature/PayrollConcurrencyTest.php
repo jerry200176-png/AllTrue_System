@@ -7,6 +7,7 @@ use App\Models\ClassSession;
 use App\Models\LearningRecord;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Models\StudentSignIn;
 use App\Models\User;
 use App\Models\UserCampus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -288,9 +289,9 @@ class PayrollConcurrencyTest extends TestCase
     }
 
     // ──────────────────────────────────────────
-    // LR 無 StartTime → 排除於重疊計算外
+    // 評量無 StartTime 不影響以點名堂次進行的重疊計算
     // ──────────────────────────────────────────
-    public function test_missing_time_excluded_from_tie_break(): void
+    public function test_missing_evaluation_time_does_not_affect_attendance_based_tie_break(): void
     {
         $dir = $this->createDirector('dir-mt@test.com', [1]);
         $tid = $this->createPartTimeTeacher(1, 'pt-mt@test.com', '無時間');
@@ -306,10 +307,9 @@ class PayrollConcurrencyTest extends TestCase
 
         $teacher = $this->fetchPayroll($dir['token']);
 
-        // A 無 overlap partner → 350*2h = 700
-        // B 無時間 fallback SessionDuration 120min → 350*2h = 700
-        // total = 1400
-        $this->assertEquals(1400, $teacher['total_salary']);
+        // 兩筆有效點名皆為 14:00–16:00，完整重疊後僅一筆歸屬薪資：
+        // (350 + 50) × 2h = 800。評量時間為空不應影響結果。
+        $this->assertEquals(800, $teacher['total_salary']);
     }
 
     // ──────────────────────────────────────────────────────────
@@ -442,12 +442,18 @@ class PayrollConcurrencyTest extends TestCase
             'StartTime' => "{$start}:00", 'EndTime' => "{$end}:00",
             'Status' => 'completed', 'Note' => '',
         ]);
-        return LearningRecord::create([
+        $record = LearningRecord::create([
             'StudentClassID' => $sc->ID, 'ClassSessionID' => $cs->id,
             'TeacherID' => $teacherId, 'Content' => 'test', 'Subject' => 'Math',
             'Status' => 'approved', 'SessionDate' => $date,
             'StartTime' => "{$start}:00", 'EndTime' => "{$end}:00",
             'Hours' => 2, 'Note' => '',
         ]);
+        StudentSignIn::create([
+            'StudentClassID' => $sc->ID, 'StudentID' => $sc->StudentID,
+            'TeacherID' => $teacherId, 'ClassSessionID' => $cs->id,
+            'Status' => 'present', 'SignInDT' => "{$date} {$start}:00",
+        ]);
+        return $record;
     }
 }
