@@ -189,7 +189,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout (for scripts/smoke-auth-lib.sh -- the same proven login helper post-merge-smoke.sh uses)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Login as the designated acceptance-test director and create the course
         env:

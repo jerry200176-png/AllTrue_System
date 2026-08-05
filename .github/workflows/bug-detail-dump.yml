@@ -28,7 +28,7 @@ jobs:
     timeout-minutes: 12
     steps:
       - name: Checkout request
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           sparse-checkout: |
             operations/closeout/bug-detail-dump.request.md
