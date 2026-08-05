@@ -232,380 +232,9 @@
       </main>
     </template>
 
-    <div v-if="false && branchId == null" class="card no-branch-card enterprise-empty">
-      <h2>尚無分校資料</h2>
-      <p>系統尚未載入您的分校權限，或您尚未被指派到任何分校。</p>
-      <p class="hint">請聯繫系統管理員設定您的分校權限後重新整理頁面。</p>
-    </div>
 
     <template v-if="false">
       <div class="dash dash--desktop-dense">
-        <!-- ===== Header ===== -->
-        <div class="dash-header enterprise-page-header">
-          <div class="dash-title-block">
-            <p class="dash-kicker">今日營運總覽</p>
-            <h2 class="dash-title">{{ branchName }}</h2>
-            <p class="dash-subtitle">即時掌握今日課務、繳費風險、評量審核與分校營運節奏</p>
-            <div v-if="engagementRowVisible" class="dash-engagement-strip">
-              <EngagementRankStrip :engagement="effectiveEngagement" :reduced-motion="engagementReducedMotion" />
-            </div>
-          </div>
-          <div class="dash-date-panel">
-            <span class="dash-date-label">Today</span>
-            <span class="dash-date">{{ todayDisplay }}</span>
-          </div>
-        </div>
-
-        <section class="workbench" aria-labelledby="director-workbench-title">
-          <div class="workbench__intro">
-            <div>
-              <p class="workbench__eyebrow">主任作業台</p>
-              <h1 id="director-workbench-title">今天先處理什麼？</h1>
-              <p class="workbench__subtitle">把會影響學生、家長與課務的事情排在前面。</p>
-            </div>
-            <div class="workbench__controls">
-              <span class="workbench__updated" role="status">
-                {{ dashboardLoading ? '更新中…' : (dashboardLastUpdated ? `更新於 ${dashboardLastUpdated}` : '尚未更新') }}
-              </span>
-              <button type="button" class="workbench__refresh" :disabled="dashboardLoading" @click="refreshDashboard">
-                <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
-                重新整理
-              </button>
-            </div>
-          </div>
-
-          <section v-if="operationsTrust?.decision_center" class="trust-summary" aria-labelledby="trust-summary-title">
-            <div class="trust-summary__status">
-              <span class="trust-summary__dot" :class="`trust-summary__dot--${decisionCenter.status}`" aria-hidden="true"></span>
-              <div>
-                <p class="trust-summary__eyebrow">課表可信度</p>
-                <h2 id="trust-summary-title">{{ decisionCenter.headline }}</h2>
-              </div>
-            </div>
-            <div class="trust-summary__score" :class="`trust-summary__score--${decisionCenter.status}`">
-              <strong>{{ decisionCenter.score }}</strong><span>/ {{ decisionCenter.max }}</span>
-            </div>
-            <details v-if="trustDecisions.length" class="trust-summary__details">
-              <summary>查看 {{ trustDecisions.length }} 項風險</summary>
-              <div ref="trustDecisionsEl" class="trust-summary__list">
-                <article v-for="item in trustDecisions" :key="item.key" class="trust-summary__item" :data-trust-key="item.key">
-                  <div>
-                    <strong>{{ trustDecisionTitle(item) }}</strong>
-                    <p>{{ item.why }}</p>
-                  </div>
-                  <button type="button" class="trust-summary__action" @click="handleTrustDecision(item)">{{ item.action_label }}</button>
-                </article>
-              </div>
-            </details>
-          </section>
-
-          <div class="workbench__layout">
-            <section class="workbench__queue" aria-labelledby="today-tasks-title">
-              <header class="workbench__section-head">
-                <div>
-                  <p class="workbench__eyebrow">優先順序</p>
-                  <h2 id="today-tasks-title">今日待辦</h2>
-                </div>
-                <span class="workbench__count">{{ dashboardTasks.length }} 項</span>
-              </header>
-              <div v-if="dashboardLoading" class="workbench-task-list" aria-live="polite">
-                <div v-for="n in 3" :key="n" class="workbench-task workbench-task--loading" aria-hidden="true"></div>
-              </div>
-              <div v-else-if="dashboardPrimaryError" class="workbench-state workbench-state--error" role="alert">
-                <strong>今日待辦暫時載入失敗</strong>
-                <span>{{ dashboardPrimaryError }}</span>
-                <button type="button" class="workbench-state__action" @click="refreshDashboard">再試一次</button>
-              </div>
-              <div v-else-if="!dashboardTasks.length" class="workbench-state">
-                <span class="material-symbols-outlined" aria-hidden="true">task_alt</span>
-                <strong>今天沒有需要主任處理的待辦</strong>
-                <span>可切換完整營運查看課表與歷史紀錄。</span>
-              </div>
-              <div v-else class="workbench-task-list">
-                <article v-for="task in dashboardTasks" :key="task.id" class="workbench-task" :class="`workbench-task--${task.severity}`">
-                  <span class="workbench-task__status" aria-hidden="true"></span>
-                  <div class="workbench-task__body">
-                    <div class="workbench-task__heading">
-                      <h3>{{ task.title }}</h3>
-                      <span v-if="task.count" class="workbench-task__count">{{ task.count }}</span>
-                    </div>
-                    <p>{{ task.summary }}</p>
-                    <div class="workbench-task__meta">
-                      <span>負責人：{{ task.owner }}</span>
-                      <span>期限：{{ task.dueAt }}</span>
-                    </div>
-                  </div>
-                  <button type="button" class="workbench-task__cta" @click="openDashboardTask(task)">{{ task.actionLabel }}</button>
-                </article>
-              </div>
-            </section>
-
-            <aside class="workbench__snapshot" aria-labelledby="today-snapshot-title">
-              <header class="workbench__section-head">
-                <div>
-                  <p class="workbench__eyebrow">不重複計算</p>
-                  <h2 id="today-snapshot-title">今日快照</h2>
-                </div>
-              </header>
-              <div class="snapshot-grid">
-                <div class="snapshot-item"><span>今日課程</span><strong>{{ todaySchedules.length }}</strong><small>{{ attendedCount }} 堂已完成</small></div>
-                <div class="snapshot-item"><span>待審評量</span><strong>{{ pendingEvaluations.length }}</strong><small>需要確認的紀錄</small></div>
-                <div class="snapshot-item"><span>未讀通知</span><strong>{{ unreadNotificationCount }}</strong><small>通知中心待查看</small></div>
-                <div class="snapshot-item"><span>今日工作量</span><strong>{{ workflowDailySummary.due_total }}</strong><small>已完成 {{ workflowDailySummary.done_total }} 件</small></div>
-              </div>
-              <div class="workbench__view-switch" role="tablist" aria-label="總覽檢視模式">
-                <button type="button" :class="{ 'is-active': dashboardViewMode === 'focus' }" role="tab" :aria-selected="dashboardViewMode === 'focus'" @click="setDashboardViewMode('focus')">今日待辦</button>
-                <button type="button" :class="{ 'is-active': dashboardViewMode === 'full' }" role="tab" :aria-selected="dashboardViewMode === 'full'" @click="setDashboardViewMode('full')">完整營運</button>
-              </div>
-              <p class="workbench__view-hint">趨勢、操作紀錄與老師填寫率在完整營運中載入。</p>
-            </aside>
-          </div>
-        </section>
-
-        <!-- E-OPS-TRUST Decision Center -->
-        <section
-          v-if="false && operationsTrust"
-          class="ops-trust"
-          aria-labelledby="ops-trust-title"
-        >
-          <header class="ops-trust__head">
-            <div class="ops-trust__score-wrap">
-              <p class="ops-trust__kicker">今天課表／剩課可信嗎</p>
-              <h3 id="ops-trust-title" class="ops-trust__score" :class="`ops-trust__score--${decisionCenter.status}`">
-                <span class="ops-trust__score-num">{{ decisionCenter.score }}</span>
-                <span class="ops-trust__score-max">/ {{ decisionCenter.max }}</span>
-              </h3>
-              <p class="ops-trust__headline">{{ decisionCenter.headline }}</p>
-            </div>
-            <span v-if="operationsTrust.generated_at" class="ops-trust__stamp">
-              更新 {{ formatTrustStamp(operationsTrust.generated_at) }}
-            </span>
-          </header>
-
-          <div v-if="trustDecisions.length" ref="trustDecisionsEl" class="ops-trust__decisions">
-            <article
-              v-for="item in trustDecisions"
-              :key="item.key"
-              class="ops-decision"
-              :class="`ops-decision--${item.severity}`"
-              :data-trust-key="item.key"
-            >
-              <div class="ops-decision__body">
-                <strong>{{ trustDecisionTitle(item) }}</strong>
-                <p v-if="trustPeopleSummary(item)" class="ops-decision__involved">
-                  涉及學生：{{ trustPeopleSummary(item) }}
-                </p>
-                <p class="ops-decision__why">{{ item.why }}</p>
-                <p class="ops-decision__next">下一步：{{ item.next_step }}</p>
-                <span v-if="item.detail" class="ops-decision__detail">{{ item.detail }}</span>
-                <span class="ops-decision__owner">負責：主任</span>
-                <ul v-if="item.has_drilldown && trustPeople(item).length" class="ops-decision__people">
-                  <li v-for="p in trustPeople(item)" :key="`${item.key}-${p.student_class_id}`">
-                    <button type="button" class="ops-person" @click="handleTrustPerson(item, p)">
-                      <span class="ops-person__who">{{ formatDirectorPersonName(p) }}</span>
-                      <span class="ops-person__meta">
-                        剩 {{ p.remaining_sessions }} 堂
-                        <template v-if="p.approx_amount"> · 約 NT${{ formatTrustAmount(p.approx_amount) }}</template>
-                      </span>
-                      <span class="ops-person__why">{{ p.why }}</span>
-                      <span class="ops-person__next">→ {{ p.next_step }}</span>
-                    </button>
-                  </li>
-                </ul>
-                <p
-                  v-else-if="item.has_drilldown && Number(item.people_total || 0) === 0"
-                  class="ops-decision__empty-people"
-                >
-                  名單暫無可點選項目；請用右側按鈕到處理頁再篩選。
-                </p>
-              </div>
-              <button
-                type="button"
-                class="ops-decision__cta"
-                @click="handleTrustDecision(item)"
-              >
-                {{ item.action_label }}
-              </button>
-            </article>
-          </div>
-
-          <details v-if="decisionCenter.policy_notes?.length" class="ops-trust__policy">
-            <summary>政策備註</summary>
-            <ul>
-              <li v-for="(note, idx) in decisionCenter.policy_notes" :key="idx">{{ note }}</li>
-            </ul>
-          </details>
-        </section>
-
-        <!-- ===== Layer 1: Action Lane ===== -->
-        <div v-if="false" class="section-label-row">
-          <span class="section-label">每日待辦</span>
-          <span class="section-sublabel">今日需要處理的事項</span>
-        </div>
-        <section v-if="false" class="action-lane" data-guide="director-summary">
-          <div v-if="pendingAttendanceCount > 0"
-               class="ac ac--attend" tabindex="0"
-               @click="goToAttendance" @keydown.enter="goToAttendance">
-            <span class="material-symbols-outlined ac__icon">schedule</span>
-            <div class="ac__body">
-              <span class="ac__count">{{ pendingAttendanceCount }}</span>
-              <span class="ac__label">堂待到班</span>
-            </div>
-            <button class="ac__cta" @click.stop="goToAttendance">前往點名</button>
-          </div>
-
-          <div v-if="lowBalanceStudents.length > 0"
-               class="ac ac--pay" tabindex="0"
-               @click="goToTuitionCollect" @keydown.enter="goToTuitionCollect">
-            <span class="material-symbols-outlined ac__icon">payments</span>
-            <div class="ac__body">
-              <span class="ac__count">{{ lowBalanceStudents.length }}</span>
-              <span class="ac__label">{{ paymentActionLaneLabel }}</span>
-            </div>
-            <button class="ac__cta" @click.stop="goToTuitionCollect">前往催繳</button>
-          </div>
-
-          <div v-if="pendingMakeupCount > 0"
-               class="ac ac--makeup" tabindex="0"
-               @click="goToAttendance" @keydown.enter="goToAttendance">
-            <span class="material-symbols-outlined ac__icon">edit_note</span>
-            <div class="ac__body">
-              <span class="ac__count">{{ pendingMakeupCount }}</span>
-              <span class="ac__label">堂待補點名</span>
-            </div>
-            <button class="ac__cta" @click.stop="goToAttendance">補點名</button>
-          </div>
-
-          <div v-if="exceptionWorkflowCount > 0"
-               class="ac ac--workflow" tabindex="0"
-               @click="scrollTo('exception-workflows')" @keydown.enter="scrollTo('exception-workflows')">
-            <span class="material-symbols-outlined ac__icon">event_repeat</span>
-            <div class="ac__body">
-              <span class="ac__count">{{ exceptionWorkflowCount }}</span>
-              <span class="ac__label">筆家長請假待處理</span>
-            </div>
-            <button class="ac__cta" @click.stop="scrollTo('exception-workflows')">去處理</button>
-          </div>
-
-          <div v-if="pendingEvaluations.length > 0"
-               class="ac ac--eval" tabindex="0"
-               @click="scrollTo('evals')" @keydown.enter="scrollTo('evals')">
-            <span class="material-symbols-outlined ac__icon">rate_review</span>
-            <div class="ac__body">
-              <span class="ac__count">{{ pendingEvaluations.length }}</span>
-              <span class="ac__label">筆待審核</span>
-            </div>
-            <button class="ac__cta" @click.stop="scrollTo('evals')">去審核</button>
-          </div>
-
-          <div v-if="unreadFeedbackCount > 0"
-               class="ac ac--feedback" tabindex="0"
-               @click="emit('navigate', { target: 'learning', focus: 'feedback' })"
-               @keydown.enter="emit('navigate', { target: 'learning', focus: 'feedback' })">
-            <span class="material-symbols-outlined ac__icon">mark_unread_chat_alt</span>
-            <div class="ac__body">
-              <span class="ac__count">{{ unreadFeedbackCount }}</span>
-              <span class="ac__label">筆家長回饋待看（可直接回覆）</span>
-            </div>
-            <button class="ac__cta" @click.stop="emit('navigate', { target: 'learning', focus: 'feedback' })">去查看</button>
-          </div>
-
-          <div class="ac ac--import" tabindex="0"
-               @click="triggerImport" @keydown.enter="triggerImport">
-            <span class="material-symbols-outlined ac__icon">upload_file</span>
-            <div class="ac__body">
-              <span class="ac__label">匯入學生</span>
-              <span class="ac__sub">CSV / Excel</span>
-              <button class="ac__format-link" type="button" @click.stop="showImportFormatModal = true">查看範例格式</button>
-            </div>
-            <button class="ac__cta" :disabled="importState === 'uploading'" @click.stop="triggerImport">
-              {{ importState === 'uploading' ? '上傳中...' : '選擇檔案' }}
-            </button>
-            <input ref="importFileInput" type="file" accept=".csv,.xlsx,.txt"
-                   style="display:none" @change="handleImportFile" />
-          </div>
-
-          <div v-if="allClearActionLane" class="ac ac--clear">
-            <span class="material-symbols-outlined ac__icon">check_circle</span>
-            <div class="ac__body">
-              <span class="ac__label">今日待辦已處理完畢</span>
-            </div>
-          </div>
-        </section>
-
-        <!-- ===== Import Result Banner ===== -->
-        <div v-if="false && (importState === 'done' || importState === 'error')"
-             class="import-banner" :class="{ 'import-banner--err': importState === 'error' }">
-          <div class="import-banner__head">
-            <strong>{{ importState === 'error' ? '匯入失敗' : '匯入完成' }}</strong>
-            <button class="import-banner__x" @click="dismissImport">&times;</button>
-          </div>
-          <div v-if="importState === 'done'" class="import-banner__stats">
-            <span class="ib-chip ib-chip--ok">新增 {{ importResult.created }}</span>
-            <span class="ib-chip ib-chip--info">更新 {{ importResult.updated }}</span>
-            <span class="ib-chip">略過 {{ importResult.skipped }}</span>
-            <span v-if="importResult.low_confidence" class="ib-chip ib-chip--warn">
-              低信心 {{ importResult.low_confidence }}
-            </span>
-            <span v-if="importResult.errors.length" class="ib-chip ib-chip--err">
-              錯誤 {{ importResult.errors.length }}
-            </span>
-          </div>
-          <div v-if="importResult.errors.length" class="import-banner__list">
-            <div v-for="(e, i) in importResult.errors.slice(0, 5)" :key="i">{{ e }}</div>
-          </div>
-          <div v-if="importResult.warnings.length" class="import-banner__list import-banner__list--warn">
-            <div v-for="(w, i) in importResult.warnings.slice(0, 3)" :key="'w'+i">{{ w }}</div>
-          </div>
-          <div v-if="importState === 'error'" class="import-banner__list import-banner__list--err">
-            {{ importErrorMsg }}
-          </div>
-          <div class="import-banner__foot">
-            <button class="btn-o btn-xs" @click="triggerImport">重新匯入</button>
-            <button class="btn-o btn-xs" @click="dismissImport">關閉</button>
-          </div>
-        </div>
-
-        <!-- ===== Layer 2: Progress Board ===== -->
-        <section v-if="false" class="progress-board">
-          <div class="pb-cell">
-            <AtMetric label="今日到班" :value="`${attendedCount} / ${todaySchedules.length}`" />
-            <div class="pb__bar"><div class="pb__fill" :style="{ width: attendancePct + '%' }"></div></div>
-          </div>
-          <AtMetric label="待審評量" :value="`${pendingEvaluations.length} 筆`" />
-          <AtMetric
-            label="今日工作量"
-            :value="`${workflowDailySummary.due_total} 件`"
-            :delta="`已完成 ${workflowDailySummary.done_total}・逾期 ${workflowDailySummary.breached_total}`"
-            :deltaTone="workflowDailySummary.breached_total > 0 ? 'negative' : 'positive'"
-            :accent="workflowDailySummary.breached_total > 0 ? 'var(--ds-danger)' : ''"
-          />
-          <AtMetric label="未讀通知" :value="unreadNotificationCount" />
-        </section>
-
-        <div class="work-toolbar">
-          <div class="view-switch" role="tablist" aria-label="總覽檢視模式">
-            <button
-              type="button"
-              class="view-switch__btn"
-              :class="{ 'view-switch__btn--active': dashboardViewMode === 'focus' }"
-              @click="setDashboardViewMode('focus')"
-            >
-              核心檢視
-            </button>
-            <button
-              type="button"
-              class="view-switch__btn"
-              :class="{ 'view-switch__btn--active': dashboardViewMode === 'full' }"
-              @click="setDashboardViewMode('full')"
-            >
-              完整檢視
-            </button>
-          </div>
-          <p class="work-toolbar__hint">
-            核心檢視先顯示今日必處理項目；完整檢視包含近期履歷與進階統計。
-          </p>
-        </div>
 
         <!-- ===== Work Area (detail panels) ===== -->
         <template v-if="dashboardViewMode === 'full'">
@@ -1026,34 +655,6 @@
   </div>
 
   <!-- ===== 匯入格式說明 Modal（匯入入口已移至學生管理） ===== -->
-  <teleport to="body">
-    <div v-if="false && showImportFormatModal" class="import-format-overlay" @click.self="showImportFormatModal = false">
-      <div class="import-format-modal">
-        <div class="import-format-header">
-          <strong>匯入格式說明</strong>
-          <button class="import-format-close" @click="showImportFormatModal = false">&times;</button>
-        </div>
-        <p class="import-format-desc">第一列為標題列，欄位名稱（中英文皆可）：</p>
-        <table class="import-format-table">
-          <thead>
-            <tr><th>欄位</th><th>接受名稱</th><th>必填</th></tr>
-          </thead>
-          <tbody>
-            <tr><td>學生姓名</td><td>學生 / 姓名 / name / student</td><td>✓ 必填</td></tr>
-            <tr><td>年級</td><td>年級學校 / 年級 / grade</td><td>選填</td></tr>
-            <tr><td>學校</td><td>學校 / school</td><td>選填</td></tr>
-            <tr><td>家長手機</td><td>手機 / 電話 / phone / 家長手機</td><td>選填</td></tr>
-          </tbody>
-        </table>
-        <p class="import-format-note">範例：</p>
-        <pre class="import-format-example">姓名,年級,學校,手機
-王小明,國中一年級,中正國中,0912345678
-李小花,高中二年級,建國高中,
-陳大雄,小學四年級,,0987654321</pre>
-        <p class="import-format-note">※ 手機可留空，但填寫可提升重複比對準確度。</p>
-      </div>
-    </div>
-  </teleport>
 </template>
 
 <script setup>
@@ -1086,18 +687,10 @@ import {
   rejectExceptionWorkflow,
 } from '../api';
 import { isPendingWorkflowStatus, reconcileFocusedWorkflowList } from '../lib/exceptionWorkflowFocus.js';
-import EngagementRankStrip from '../components/EngagementRankStrip.vue';
-import { fetchMe } from '../lib/meClient';
-import {
-  isUserEngagementRankDisplayEnabled,
-  USER_ENGAGEMENT_DISPLAY_REFRESH_EVENT,
-} from '../lib/userEngagementDisplay';
 import {
   trustPeopleSlice as trustPeople,
-  trustPeopleSummary,
   trustDecisionTitle,
 } from '../lib/trustDecisionDisplay.js';
-import { formatDirectorPersonName } from '../lib/studentClassDisplay.js';
 import { buildDirectorDashboardTasks } from '../lib/directorDashboardTasks.js';
 
 const props = defineProps({
@@ -1109,50 +702,6 @@ const props = defineProps({
 });
 const emit = defineEmits(['navigate']);
 const workflowFocusError = ref('');
-
-const engagementSnapshot = ref(null);
-const engagementDisplayOn = ref(true);
-const engagementReducedMotion = ref(false);
-
-const effectiveEngagement = computed(() => engagementSnapshot.value ?? props.initialEngagement ?? null);
-
-function refreshEngagementUi() {
-  engagementDisplayOn.value = isUserEngagementRankDisplayEnabled();
-}
-
-const engagementRowVisible = computed(
-  () => Boolean(effectiveEngagement.value) && engagementDisplayOn.value,
-);
-
-async function loadEngagementSnapshot() {
-  const token = getToken();
-  if (!token) return;
-  const me = await fetchMe(token);
-  engagementSnapshot.value = me?.engagement ?? null;
-}
-
-function setupEngagementReducedMotion() {
-  try {
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-    engagementReducedMotion.value = mq.matches;
-    mq.addEventListener?.('change', () => {
-      engagementReducedMotion.value = mq.matches;
-    });
-  } catch {
-    /* ignore */
-  }
-}
-
-function onEngagementDisplayRefreshEvent() {
-  refreshEngagementUi();
-}
-
-function onDirectorVisibilityForEngagement() {
-  if (document.visibilityState === 'visible') {
-    refreshEngagementUi();
-    loadEngagementSnapshot();
-  }
-}
 
 const todaySchedules = ref([]);
 const pendingEvaluations = ref([]);
@@ -1335,12 +884,6 @@ function handleDirectorTodoClick(task) {
   }
 }
 
-const importFileInput = ref(null);
-const importState = ref('idle');
-const importResult = ref({ created: 0, updated: 0, skipped: 0, errors: [], warnings: [], low_confidence: 0 });
-const importErrorMsg = ref('');
-const showImportFormatModal = ref(false);
-
 const branchName = computed(() => getBranchName(props.branchId));
 
 const todayDisplay = computed(() => {
@@ -1360,11 +903,6 @@ const attendedCount = computed(() =>
   todaySchedules.value.filter(s => s.status === 'attended').length
 );
 
-const attendancePct = computed(() => {
-  const total = todaySchedules.value.length;
-  return total ? Math.round((attendedCount.value / total) * 100) : 0;
-});
-
 const monthlySubjectCountWith = computed(() =>
   Number(subjectTotals.value.subjectCountWith || 0).toFixed(2)
 );
@@ -1372,15 +910,6 @@ const monthlySubjectCountWithout = computed(() =>
   Number(subjectTotals.value.subjectCountWithout || 0).toFixed(2)
 );
 const exceptionWorkflowCount = computed(() => exceptionWorkflows.value.length);
-
-const allClearActionLane = computed(() =>
-  pendingAttendanceCount.value === 0
-  && lowBalanceStudents.value.length === 0
-  && pendingEvaluations.value.length === 0
-  && pendingMakeupCount.value === 0
-  && exceptionWorkflowCount.value === 0
-  && props.unreadFeedbackCount === 0
-);
 
 const displayPaymentAlerts = computed(() =>
   showAllPayments.value
@@ -1457,20 +986,6 @@ const trustDecisions = computed(() =>
 
 const trustDecisionsEl = ref(null);
 let trustImpressionObserver = null;
-
-function formatTrustAmount(n) {
-  return Number(n || 0).toLocaleString('zh-TW');
-}
-
-function formatTrustStamp(iso) {
-  try {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return '';
-    return d.toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-  } catch {
-    return '';
-  }
-}
 
 function teardownTrustImpressions() {
   if (trustImpressionObserver) {
@@ -1565,34 +1080,6 @@ function handleTrustDecision(item) {
     return;
   }
   navigateTrustTarget(item?.target);
-}
-
-function handleTrustPerson(item, person) {
-  const branch = Number(props.branchId) || 0;
-  const key = item?.key || '';
-  // No student_id / student_class_id in telemetry (linkable). Click once per decision instance.
-  trackTrustEventOnce('director_trust_decision_click', branch, {
-    key,
-    target: item?.target || 'course-mgmt',
-    severity: item?.severity || '',
-    from: 'person_row',
-  }, key);
-  markTrustProvidedPathUsed(branch, key);
-  if ((item?.target || '') === 'duplicate-review') {
-    setOpsTrustFocus({
-      studentName: person?.student_name || '',
-      studentId: person?.student_id,
-      decisionKey: key,
-    });
-    navigateTrustTarget('duplicate-review');
-    return;
-  }
-  setOpsTrustFocus({
-    studentName: person?.student_name || '',
-    studentId: person?.student_id,
-    decisionKey: key,
-  });
-  navigateTrustTarget(item?.target || 'course-mgmt');
 }
 
 const openRateDeltaLabel = (role) => {
@@ -2226,53 +1713,6 @@ const copyPaymentMessage = async (student) => {
   }
 };
 
-const triggerImport = () => {
-  if (importState.value === 'uploading') return;
-  importFileInput.value?.click();
-};
-
-const handleImportFile = async (event) => {
-  const file = event.target.files[0];
-  if (!file) return;
-  if (!props.branchId) { alert('請先選擇分校'); event.target.value = ''; return; }
-
-  importState.value = 'uploading';
-  importErrorMsg.value = '';
-  const token = getToken();
-  const baseUrl = getBaseUrl();
-
-  try {
-    const fd = new FormData();
-    fd.append('file', file);
-    fd.append('branch_id', String(props.branchId));
-    const res = await fetch(`${baseUrl}/v1/students/import`, {
-      method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd,
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      importState.value = 'error';
-      importErrorMsg.value = json?.message || json?.error || '匯入失敗';
-      return;
-    }
-    const r = json?.result || {};
-    importResult.value = {
-      created: Number(r.created || 0), updated: Number(r.updated || 0),
-      skipped: Number(r.skipped || 0),
-      errors: Array.isArray(r.errors) ? r.errors : [],
-      warnings: Array.isArray(r.warnings) ? r.warnings : [],
-      low_confidence: Number(r.low_confidence_matches || 0),
-    };
-    importState.value = 'done';
-  } catch (e) {
-    importState.value = 'error';
-    importErrorMsg.value = e?.message || '匯入失敗';
-  } finally {
-    event.target.value = '';
-  }
-};
-
-const dismissImport = () => { importState.value = 'idle'; };
-
 const scrollTo = (section) => {
   const el = document.getElementById(section + '-sec');
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -2333,11 +1773,6 @@ onMounted(async () => {
     role: 'director',
     page: 'director-dashboard',
   }, 'open');
-  refreshEngagementUi();
-  setupEngagementReducedMotion();
-  loadEngagementSnapshot();
-  document.addEventListener('visibilitychange', onDirectorVisibilityForEngagement);
-  window.addEventListener(USER_ENGAGEMENT_DISPLAY_REFRESH_EVENT, onEngagementDisplayRefreshEvent);
   await loadData();
   await loadScheduleDiscrepancySummary();
   if (dashboardViewMode.value === 'full') await loadSecondaryData();
@@ -2347,8 +1782,6 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   teardownTrustImpressions();
   if (workflowToastTimer) clearTimeout(workflowToastTimer);
-  document.removeEventListener('visibilitychange', onDirectorVisibilityForEngagement);
-  window.removeEventListener(USER_ENGAGEMENT_DISPLAY_REFRESH_EVENT, onEngagementDisplayRefreshEvent);
 });
 </script>
 
