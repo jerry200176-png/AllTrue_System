@@ -162,6 +162,41 @@ class AddSessionConflictTest extends TestCase
             ->assertJsonPath('moved_from_date', '2026-12-30');
     }
 
+    // --- add-session: repeated moves must not exceed Note varchar(255) ---
+    // Regression: Sentry PHP-LARAVEL-29 — repeated 系統調整堂次（原 ...） appends
+    // with no cap overflowed ClassSession.Note (varchar(255)) and threw
+    // "Data too long for column 'Note'" on production (daan, StudentClass 2905).
+    public function test_add_session_repeated_moves_keep_note_within_column_limit(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createStudentClass($student->id, ['SessionCount' => 2]);
+
+        $cs = ClassSession::create([
+            'StudentClassID' => $sc->ID,
+            'SessionDate' => '2026-09-01',
+            'StartTime' => '19:00:00',
+            'EndTime' => '21:00:00',
+            'Status' => 'scheduled',
+        ]);
+
+        $headers = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+
+        for ($i = 0; $i < 15; $i++) {
+            $res = $this->withHeaders($headers)
+                ->postJson("/api/v1/student-classes/{$sc->ID}/add-session", [
+                    'session_date' => now()->addDays(30 + $i)->toDateString(),
+                    'start_time' => '19:00',
+                    'duration_minutes' => 120,
+                    'auto_approve' => false,
+                ]);
+            $res->assertStatus(201);
+        }
+
+        $cs->refresh();
+        $this->assertLessThanOrEqual(255, mb_strlen((string) $cs->Note));
+    }
+
     // --- check endpoint: locked ---
     public function test_check_endpoint_returns_can_add_false_for_locked(): void
     {

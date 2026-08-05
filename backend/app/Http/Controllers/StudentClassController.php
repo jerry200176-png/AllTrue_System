@@ -2717,7 +2717,11 @@ class StudentClassController extends Controller
                     } else {
                         $suffix = $movedFromDate ? ("系統調整堂次（原 {$movedFromDate}）") : '系統調整堂次';
                         $baseNote = trim((string) ($classSession->Note ?? ''));
-                        $classSession->Note = $baseNote === '' ? $suffix : ($baseNote . '; ' . $suffix);
+                        $combinedNote = $baseNote === '' ? $suffix : ($baseNote . '; ' . $suffix);
+                        // Note is varchar(255); repeated moves would otherwise grow this
+                        // unbounded and trip a DB truncation error (Sentry PHP-LARAVEL-29).
+                        // Keep the tail so the most recent adjustments survive truncation.
+                        $classSession->Note = mb_strlen($combinedNote) > 255 ? mb_substr($combinedNote, -255) : $combinedNote;
                     }
                     $classSession->save();
                 } else {
