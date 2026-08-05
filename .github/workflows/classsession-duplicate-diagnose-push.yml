@@ -46,7 +46,7 @@ jobs:
         env:
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
-          DATE: ${{ inputs.date || '2026-07-22' }}
+          DATE: ${{ inputs.date || '2026-05-30' }}
           CAMPUS_ID: ${{ inputs.campus_id || '9' }}
         run: |
           set -euo pipefail
@@ -55,32 +55,35 @@ jobs:
             DATE="$DATE" CAMPUS_ID="$CAMPUS_ID" \
             'bash -s' <<'ENDSSH'
           set -euo pipefail
-          DATE="${DATE:-2026-07-22}"
+          DATE="${DATE:-2026-05-30}"
           CAMPUS_ID="${CAMPUS_ID:-9}"
           TEACHER_NAME="_none_"
-          STUDENT_NAMES="張妍耣"
+          STUDENT_NAME_LIKE="妍耣"
           ENV_FILE=/home/admin/backend/.env
           DB_PASS=$(grep '^DB_PASSWORD=' "$ENV_FILE" | cut -d= -f2-)
           DB_NAME=$(grep '^DB_DATABASE=' "$ENV_FILE" | cut -d= -f2-)
           M=(mysql -h 127.0.0.1 -u admin -p"${DB_PASS}" "$DB_NAME" -N -B)
-          IFS=',' read -r -a NAMES <<< "$STUDENT_NAMES"; IN=""
-          for n in "${NAMES[@]}"; do
-            n=$(echo "$n" | xargs); [ -z "$n" ] && continue
-            esc=$(printf "%s" "$n" | sed "s/'/\\\\'/g"); IN="${IN:+$IN,}'$esc'"
-          done
+          NAME_ESC=$(printf "%s" "$STUDENT_NAME_LIKE" | sed "s/'/\\\\'/g")
+          IN=$("${M[@]}" -e "SELECT GROUP_CONCAT(CONCAT(\"'\",id,\"'\") SEPARATOR ',') FROM Student WHERE name LIKE CONCAT('%','$NAME_ESC','%');")
+          IN="${IN:-'-1'}"
           {
             echo "=== diagnose DATE=$DATE CAMPUS=$CAMPUS_ID generated=$(date -Iseconds) ==="
             echo "--- teacher ---"
             "${M[@]}" -e "SELECT id,Name,LoginName FROM User WHERE Name LIKE CONCAT('%','$TEACHER_NAME','%') LIMIT 5;"
-            echo "--- students ---"
-            "${M[@]}" -e "SELECT id,name,CampusID FROM Student WHERE name IN ($IN) AND CampusID=$CAMPUS_ID;"
-            echo "--- case sessions ±7d non-cancelled ---"
-            "${M[@]}" -e "SELECT CONCAT_WS('|',s.name,cs.id,cs.StudentClassID,sc.Stop,sc.SessionCount,IFNULL(sc.RemainingSessions,'null'),sc.TeacherID,cs.SessionDate,SUBSTRING(cs.StartTime,1,5),SUBSTRING(cs.EndTime,1,5),cs.Status,LEFT(IFNULL(cs.Note,''),80),IFNULL(cs.created_at,''),IFNULL(cs.updated_at,''))
+            echo "--- students (all campuses, LIKE match on name) ---"
+            "${M[@]}" -e "SELECT id,name,CampusID FROM Student WHERE name LIKE CONCAT('%','$NAME_ESC','%');"
+            echo "--- students matched ids: $IN ---"
+            echo "--- case sessions ±14d ALL statuses (any campus, matched student ids) ---"
+            "${M[@]}" -e "SELECT CONCAT_WS('|',s.name,s.CampusID,cs.id,cs.StudentClassID,sc.Stop,sc.SessionCount,IFNULL(sc.RemainingSessions,'null'),sc.TeacherID,cs.SessionDate,SUBSTRING(cs.StartTime,1,5),SUBSTRING(cs.EndTime,1,5),cs.Status,LEFT(IFNULL(cs.Note,''),80),IFNULL(cs.created_at,''),IFNULL(cs.updated_at,''))
           FROM ClassSession cs JOIN StudentClass sc ON sc.ID=cs.StudentClassID JOIN Student s ON s.id=sc.StudentID
-          WHERE s.name IN ($IN) AND s.CampusID=$CAMPUS_ID
-           AND cs.SessionDate BETWEEN DATE_SUB('$DATE', INTERVAL 7 DAY) AND DATE_ADD('$DATE', INTERVAL 7 DAY)
-           AND LOWER(cs.Status)<>'cancelled'
+          WHERE s.id IN ($IN)
+           AND cs.SessionDate BETWEEN DATE_SUB('$DATE', INTERVAL 14 DAY) AND DATE_ADD('$DATE', INTERVAL 14 DAY)
           ORDER BY s.name,cs.SessionDate,cs.StartTime,cs.StudentClassID,cs.id;"
+            echo "--- her StudentClass rows (any campus, matched student ids) ---"
+            "${M[@]}" -e "SELECT CONCAT_WS('|',sc.ID,s.name,s.CampusID,sc.TeacherID,sc.SubjectID,sc.Stop,sc.ScheduleMode,sc.SessionCount,IFNULL(sc.RemainingSessions,'null'),sc.UsedSessions,sc.StartDate,sc.CDate,sc.MDate)
+          FROM StudentClass sc JOIN Student s ON s.id=sc.StudentID
+          WHERE s.id IN ($IN)
+          ORDER BY sc.CDate;"
             echo "--- campus9 scheduled cross-SC from date ---"
             "${M[@]}" -e "SELECT CONCAT_WS('|',st.name,sc.TeacherID,cs.SessionDate,SUBSTRING(cs.StartTime,1,5),GROUP_CONCAT(DISTINCT cs.StudentClassID ORDER BY cs.StudentClassID),GROUP_CONCAT(cs.id ORDER BY cs.id),GROUP_CONCAT(CONCAT(sc.Stop,':',cs.Status) ORDER BY cs.id),COUNT(DISTINCT cs.StudentClassID))
           FROM ClassSession cs JOIN StudentClass sc ON sc.ID=cs.StudentClassID JOIN Student st ON st.id=sc.StudentID
