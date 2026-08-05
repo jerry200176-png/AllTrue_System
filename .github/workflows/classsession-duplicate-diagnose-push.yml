@@ -57,8 +57,8 @@ jobs:
           set -euo pipefail
           DATE="${DATE:-2026-07-22}"
           CAMPUS_ID="${CAMPUS_ID:-9}"
-          TEACHER_NAME="黃芝琳"
-          STUDENT_NAMES="王品方,陳品承"
+          TEACHER_NAME="_none_"
+          STUDENT_NAMES="張妍耣"
           ENV_FILE=/home/admin/backend/.env
           DB_PASS=$(grep '^DB_PASSWORD=' "$ENV_FILE" | cut -d= -f2-)
           DB_NAME=$(grep '^DB_DATABASE=' "$ENV_FILE" | cut -d= -f2-)
