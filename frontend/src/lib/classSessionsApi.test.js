@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import {
   mergeSessionViewModels,
+  mergeSessionsByCourse,
   normalizeClassSessionsPayload,
   createSessionViewModel,
 } from './classSessionsApi.js';
@@ -51,6 +52,24 @@ function materialized(over) {
   const y = createSessionViewModel({ studentClassId: 0, date: '2026-06-28', startTime: '10:00', isProjected: false });
   const merged = mergeSessionViewModels([x], [y]);
   assert.equal(merged.length, 2, 'unkeyable 列不得互相吞噬');
+}
+
+// 5. 跨週 fetch 不得吃掉其他課程已載入的堂次（in-app #220/#221）：使用者停留在 7 月週
+//    編輯課程 2711 的堂次時，該次 fetch 的 byClass 只涵蓋 7 月窗口、根本不包含課程
+//    1123（一個沒有 7 月堂次的舊合約）。若照舊「整包覆蓋」cache，課程 1123 五月已
+//    出席的堂次就會被平白清空；改成逐課程合併後，未出現在這次 patch 裡的課程必須
+//    完全維持原狀。
+{
+  const mayCache = {
+    1123: [materialized({ id: 9432, studentClassId: 1123, date: '2026-05-30', startTime: '17:00', endTime: '19:00', status: 'attended' })],
+  };
+  const julyPatch = {
+    2711: [materialized({ id: 24528, studentClassId: 2711, date: '2026-07-25', startTime: '15:00', endTime: '17:00', status: 'leave_adjusted' })],
+  };
+  const merged = mergeSessionsByCourse(mayCache, julyPatch);
+  assert.equal((merged['1123'] || []).length, 1, '未被本次 fetch 觸及的課程必須保留原本的堂次');
+  assert.equal(merged['1123'][0].status, 'attended');
+  assert.equal((merged['2711'] || []).length, 1, '本次 fetch 涵蓋的課程要拿到新資料');
 }
 
 console.log('classSessionsApi.test.js ✅ all assertions passed');
