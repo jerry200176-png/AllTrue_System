@@ -73,6 +73,59 @@ class AdminDuplicateSessionControllerTest extends TestCase
         $this->assertSame('completed', DB::table('ClassSession')->where('id', $dropCs)->value('Status'));
     }
 
+    // in-app #216: super_admin's campus dropdown sent ?campus_id= but the controller
+    // never read it, so picking a campus silently did nothing.
+    public function test_p2_review_honors_campus_id_filter_for_super_admin(): void
+    {
+        $campusA = Campus::factory()->create();
+        $campusB = Campus::factory()->create();
+        $token = $this->superAdminToken();
+
+        $this->seedDuplicatePair(studentId: 91031, campusId: $campusA->id);
+        $this->seedDuplicatePair(studentId: 91032, campusId: $campusB->id);
+
+        $all = $this->withToken($token)->getJson('/api/v1/admin/duplicate-sessions/p2-review');
+        $all->assertOk();
+        $this->assertCount(2, $all->json('data.groups'));
+
+        $filtered = $this->withToken($token)->getJson("/api/v1/admin/duplicate-sessions/p2-review?campus_id={$campusA->id}");
+        $filtered->assertOk();
+        $groups = $filtered->json('data.groups');
+        $this->assertCount(1, $groups);
+        $this->assertSame(91031, $groups[0]['student_id']);
+    }
+
+    // Non-super_admin cannot use campus_id to escape their own campus scope.
+    public function test_p2_review_campus_id_cannot_escape_director_scope(): void
+    {
+        $ownCampus = Campus::factory()->create();
+        $otherCampus = Campus::factory()->create();
+        $token = $this->directorToken($ownCampus->id);
+
+        $this->seedDuplicatePair(studentId: 91041, campusId: $ownCampus->id);
+        $this->seedDuplicatePair(studentId: 91042, campusId: $otherCampus->id);
+
+        $res = $this->withToken($token)->getJson("/api/v1/admin/duplicate-sessions/p2-review?campus_id={$otherCampus->id}");
+        $res->assertOk();
+        $groups = $res->json('data.groups');
+        $this->assertCount(1, $groups);
+        $this->assertSame(91041, $groups[0]['student_id']);
+    }
+
+    private function superAdminToken(): string
+    {
+        $user = User::create([
+            'LoginName' => 'dup-super-' . uniqid() . '@test.com',
+            'Name' => 'Duplicate Super Admin',
+            'PSW' => 'secret',
+            'type' => 'S',
+            'phone' => 912000333,
+        ]);
+        $raw = bin2hex(random_bytes(16));
+        AuthToken::create(['user_id' => $user->id, 'token' => $raw, 'expires_at' => now()->addDay()]);
+        return $raw;
+    }
+
     public function test_legacy_post_decide_and_execute_routes_are_removed(): void
     {
         $campus = Campus::factory()->create();
