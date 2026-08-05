@@ -128,28 +128,31 @@ jobs:
           import os
           date = os.environ["DATE"]
           print(f"""<?php
-          $date = '{date}';
-          $name = '妍耣';
           $db = \\Illuminate\\Support\\Facades\\DB::class;
-          $students = $db::table('Student')->where('name', 'like', '%'.$name.'%')->get(['id','name','CampusID']);
-          $ids = $students->pluck('id')->map(fn ($v) => (int)$v)->all();
-          $scRows = $ids === [] ? [] : $db::table('StudentClass as sc')
-            ->join('Student as s', 's.id', '=', 'sc.StudentID')
-            ->whereIn('sc.StudentID', $ids)
-            ->orderBy('sc.ID')
-            ->get(['sc.ID','s.name','s.CampusID','sc.TeacherID','sc.SubjectID','sc.Stop','sc.ScheduleMode','sc.SessionCount','sc.RemainingSessions','sc.UsedSessions','sc.StartDate']);
-          $csRows = $ids === [] ? [] : $db::table('ClassSession as cs')
+          // Exact-name LIKE match returned zero rows even via the app's own DB facade
+          // (rules out a mysql-CLI charset issue -- likely the retyped Chinese name
+          // doesn't byte-match what's actually stored). Pivot to a name-independent
+          // query: bug #220/#221 says the reporter just changed ANOTHER contract's
+          // 7/25 session to leave (請假) today, and the 5/30 attended session on an
+          // OLDER contract vanished right after. Find what was actually touched.
+          $recent725 = $db::table('ClassSession as cs')
             ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
             ->join('Student as s', 's.id', '=', 'sc.StudentID')
-            ->whereIn('sc.StudentID', $ids)
-            ->whereBetween('cs.SessionDate', [date('Y-m-d', strtotime($date.' -14 days')), date('Y-m-d', strtotime($date.' +14 days'))])
-            ->orderBy('s.name')->orderBy('cs.SessionDate')->orderBy('cs.StartTime')
-            ->get(['cs.id','s.name','s.CampusID','cs.StudentClassID','sc.Stop','sc.SessionCount','sc.RemainingSessions','sc.TeacherID','cs.SessionDate','cs.StartTime','cs.EndTime','cs.Status','cs.Note','cs.created_at','cs.updated_at']);
+            ->where('s.CampusID', 9)
+            ->where('cs.SessionDate', '2026-07-25')
+            ->where('cs.updated_at', '>=', now()->subHours(6))
+            ->get(['cs.id','s.id as student_id','s.name','cs.StudentClassID','sc.Stop','cs.Status','cs.updated_at']);
+          $anyRecent = $db::table('ClassSession as cs')
+            ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+            ->join('Student as s', 's.id', '=', 'sc.StudentID')
+            ->where('s.CampusID', 9)
+            ->where('cs.updated_at', '>=', now()->subHours(6))
+            ->orderBy('cs.updated_at')
+            ->get(['cs.id','s.id as student_id','s.name','cs.StudentClassID','sc.Stop','cs.SessionDate','cs.Status','cs.updated_at']);
           echo json_encode([
             'ok' => true,
-            'students' => $students,
-            'student_class_rows' => $scRows,
-            'class_session_rows' => $csRows,
+            'recent_725_leave_campus9' => $recent725,
+            'any_recent_campus9' => $anyRecent,
           ], JSON_UNESCAPED_UNICODE), PHP_EOL;
           """)
           PY
