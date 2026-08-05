@@ -71,6 +71,38 @@ class LearningRecordBackfillMissingTest extends TestCase
     }
 
     /**
+     * Regression: the nightly full run (no --branch_id, as run by Kernel's
+     * learning-records-backfill-missing job) enumerated campuses from the `Campus` table.
+     * Any Student.CampusID with no matching Campus row was silently skipped forever, so its
+     * attended sessions kept tripping the enforced bugs:verify-reproductions metric every
+     * night (Sentry/Pi Health: past_attended_sessions_without_learning_record never reached 0).
+     */
+    public function test_backfill_all_branches_covers_student_with_orphaned_campus_id(): void
+    {
+        $orphanCampusId = 999999;
+        $this->assertSame(0, DB::table('Campus')->where('id', $orphanCampusId)->count());
+
+        $student = Student::create([
+            'name' => '孤兒分校測試生', 'CampusID' => $orphanCampusId, 'ClassID' => 1,
+            'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $scId = DB::table('StudentClass')->insertGetId($this->scRow((int) $student->id));
+
+        $attended = DB::table('ClassSession')->insertGetId([
+            'StudentClassID' => $scId, 'SessionDate' => '2020-03-01', 'StartTime' => '10:00',
+            'EndTime' => '12:00', 'Status' => 'attended',
+        ]);
+
+        Artisan::call('learning-records:backfill-missing');
+
+        $this->assertSame(
+            1,
+            DB::table('LearningRecord')->where('ClassSessionID', $attended)->where('Status', 'pending')->count(),
+            'nightly full-branch run must cover students whose CampusID has no Campus row'
+        );
+    }
+
+    /**
      * Production digest dq_attended_no_LR / bugs:verify-reproductions count only active LRs
      * (VoidedAt IS NULL). A voided-only row must be restored in place — not skipped — or the
      * nightly backfill can never clear the enforced #1078 integrity metric.
