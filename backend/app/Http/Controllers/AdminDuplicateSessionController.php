@@ -15,6 +15,26 @@ class AdminDuplicateSessionController extends Controller
             : array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
     }
 
+    /**
+     * allowedCampusIds() plus the optional ?campus_id= filter (in-app #216: the
+     * dropdown sent this param but no caller ever read it, so picking a campus
+     * silently did nothing for super_admin, who has no other restriction).
+     * Non-super_admin can only narrow within their own allowed campuses, never escape it.
+     */
+    private function effectiveCampusIds(Request $request): array
+    {
+        $allowed = $this->allowedCampusIds($request);
+        $requested = (int) $request->query('campus_id', 0);
+        if ($requested <= 0) {
+            return $allowed;
+        }
+        if ($request->attributes->get('auth_role') === 'super_admin') {
+            return [$requested];
+        }
+
+        return in_array($requested, $allowed, true) ? [$requested] : $allowed;
+    }
+
     private function encodeGroupId(int $studentId, string $date, string $time): string
     {
         return rtrim(strtr(base64_encode("{$studentId}:{$date}:{$time}"), '+/', '-_'), '=');
@@ -39,7 +59,7 @@ class AdminDuplicateSessionController extends Controller
      */
     public function p2Review(Request $request)
     {
-        $groups = $this->crossScDuplicateGroups($this->allowedCampusIds($request));
+        $groups = $this->crossScDuplicateGroups($this->effectiveCampusIds($request));
         $p2Groups = [];
 
         foreach ($groups as $g) {
