@@ -1,6 +1,6 @@
 import { ref } from 'vue';
 import { supabase } from '../../supabase';
-import { fetchClassSessionsProjection, mapSessionViewModelsForCalendar } from '../../lib/classSessionsApi';
+import { fetchClassSessionsProjection, mapSessionViewModelsForCalendar, mergeSessionsByCourse } from '../../lib/classSessionsApi';
 import { fetchAllPages } from '../../lib/pagedFetchAll';
 import { shouldUseLegacyCalendarFallback } from '../../lib/calendarLoadPerformance';
 import {
@@ -178,7 +178,6 @@ export function useCalendarDataLoad({
     courses.value = courseList;
     exceptions.value = excData;
 
-    sessionDatesByCourseId.value = {};
     if (token && (bid || teacherMode)) {
       const uid = typeof userId === 'function' ? userId() : (userId?.value ?? userId);
       try {
@@ -193,7 +192,16 @@ export function useCalendarDataLoad({
           fetchOpts.branchId = bid;
         }
         const { byClass } = await fetchClassSessionsProjection(fetchOpts);
-        sessionDatesByCourseId.value = mapSessionViewModelsForCalendar(byClass || {});
+        // #220/#221: this fetch is windowed to the currently-viewed week (±buffer), so it
+        // only ever knows about a slice of each course's sessions. Wholesale-replacing the
+        // shared cache here evicted every other week's already-loaded sessions (e.g. editing
+        // a July session while the calendar was on the July week silently dropped a
+        // completed May session for an unrelated, untouched contract). Merge per course-id
+        // instead so a fetch can only add/update the sessions it actually queried.
+        sessionDatesByCourseId.value = mergeSessionsByCourse(
+          sessionDatesByCourseId.value,
+          mapSessionViewModelsForCalendar(byClass || {}),
+        );
         const knownCourseIds = new Set(
           preFilterCourseList.map((c) => Number(c?.id)).filter((id) => id > 0),
         );
@@ -218,7 +226,8 @@ export function useCalendarDataLoad({
           allCoursesUnfiltered.value = [...preFilterCourseList, ...sessionOnlyCourses];
         }
       } catch (_) {
-        sessionDatesByCourseId.value = {};
+        // Keep whatever was already cached -- a failed fetch for this window must not
+        // wipe out sessions previously loaded for other weeks.
       }
     }
 
