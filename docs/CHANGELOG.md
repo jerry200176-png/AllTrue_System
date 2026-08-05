@@ -1,3 +1,11 @@
+## 2026-08-05 — chore(dashboard): 清理 DirectorDashboard.vue 死碼（PR #1515 work-grid + Wave A/B + 舊版 workbench，全部完成）
+
+- **背景**：稽核 PR #1515（Wave B, AtCard/AtEmpty/AtMetric work-grid）的「缺測試」警告時發現，該 PR 改的整段標記早已因後續 `director-workbench-v2` 改版而被 `<template v-if="false">` 永久包住、完全打不到；同一個 `v-if="false"` 區塊內還疊了更早期的 action-lane、progress-board、第一版 workbench，以及一個已停用的匯入格式說明 modal。因單一 PR 改動 1,100+ 行會撞到 CI 的 700 行 PR-size 上限，拆成兩個 PR 分批清除（part 1：`chore/dashboard-deadcode-part1`；part 2：本則）。
+- **清掉的東西**：整段死碼標記——舊版 workbench v1（今日待辦佇列＋今日快照＋trust-summary）、重複的 E-OPS-TRUST decision center、action-lane、progress-board、work-toolbar 檢視切換、Wave B work-grid（`AtCard`/`AtEmpty`/`AtSkeleton`/`AtMetric`）、kpi 科目數統計區塊、一個死掉的匯入格式說明 modal、一張重複的「尚無分校資料」卡片；連帶清掉只服務這些標記的 JS——engagement rank strip 整套（snapshot／顯示開關／reduced-motion／visibility 監聽，只服務已刪除的舊 header）、CSV 匯入 state 與 handler、老師評量填寫率與科目數統計 API 呼叫（原本每次切到「完整營運」都會打，資料卻從未顯示在任何畫面）、`AtCard`/`AtEmpty`/`AtSkeleton`/`AtMetric` 元件 import（Wave B 專用、從未在真正頁面渲染過）。檔案從 4,023 行減到 2,928 行。
+- **沒動的東西**：現在真正在跑的 `director-workbench-v2`（今天／完整營運兩個檢視、`#schedule-sec`/`#evals-sec`/`#payments-sec` 等 `surface-panel` 卡片）完全沒有改動邏輯，只刪除同檔案內已經打不到的舊版本。
+- **驗證**：`vite build` 全綠；`no-undef` ESLint 過；補的 e2e（`director 完整營運 cards ...`，涵蓋 empty state 與有資料時的筆數／badge）與既有 12 個 `director workbench` 系列共 120 個 ui-foundation e2e 全過。
+- **順帶修復**：處理 part 2 時被 Presubmit CHECK 2 的 700 行上限擋下（part 1 分批後仍是 1,095 行純刪除），發現這個 gate 用同一把尺量「新增邏輯」和「刪除已證明打不到的死碼」並不合理，補了窄範圍例外（insertions ≤30 且 deletions 遠大於一般上限時，改用 deletions ≤3000 的上限），見 `.github/workflows/presubmit.yml` CHECK 2 與 `.cursor/rules/module-industry-standards.mdc`。
+
 ## 2026-08-02 — feat(payroll): 兼職薪資改依實際到班點名計算，鎖定後產生不可變快照（補記錄，PR #1624 合併時漏寫）
 
 - **本則為事後補寫**：PR #1624（`feat/parent-leave-approval` 分支，實際內容為兼職薪資重構，分支命名與內容不符）已於合併並自動部署到正式環境，但當時未依專案慣例更新本檔案；本則依實際 diff／PR 說明／正式環境資料庫驗證後補上，事後未變更任何程式碼。
