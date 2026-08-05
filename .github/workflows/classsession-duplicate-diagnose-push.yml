@@ -80,10 +80,10 @@ jobs:
            AND cs.SessionDate BETWEEN DATE_SUB('$DATE', INTERVAL 14 DAY) AND DATE_ADD('$DATE', INTERVAL 14 DAY)
           ORDER BY s.name,cs.SessionDate,cs.StartTime,cs.StudentClassID,cs.id;"
             echo "--- her StudentClass rows (any campus, matched student ids) ---"
-            "${M[@]}" -e "SELECT CONCAT_WS('|',sc.ID,s.name,s.CampusID,sc.TeacherID,sc.SubjectID,sc.Stop,sc.ScheduleMode,sc.SessionCount,IFNULL(sc.RemainingSessions,'null'),sc.UsedSessions,sc.StartDate,sc.CDate,sc.MDate)
+            "${M[@]}" -e "SELECT CONCAT_WS('|',sc.ID,s.name,s.CampusID,sc.TeacherID,sc.SubjectID,sc.Stop,sc.ScheduleMode,sc.SessionCount,IFNULL(sc.RemainingSessions,'null'),sc.UsedSessions,sc.StartDate)
           FROM StudentClass sc JOIN Student s ON s.id=sc.StudentID
           WHERE s.id IN ($IN)
-          ORDER BY sc.CDate;"
+          ORDER BY sc.ID;"
             echo "--- campus9 scheduled cross-SC from date ---"
             "${M[@]}" -e "SELECT CONCAT_WS('|',st.name,sc.TeacherID,cs.SessionDate,SUBSTRING(cs.StartTime,1,5),GROUP_CONCAT(DISTINCT cs.StudentClassID ORDER BY cs.StudentClassID),GROUP_CONCAT(cs.id ORDER BY cs.id),GROUP_CONCAT(CONCAT(sc.Stop,':',cs.Status) ORDER BY cs.id),COUNT(DISTINCT cs.StudentClassID))
           FROM ClassSession cs JOIN StudentClass sc ON sc.ID=cs.StudentClassID JOIN Student st ON st.id=sc.StudentID
