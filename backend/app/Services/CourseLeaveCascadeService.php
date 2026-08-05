@@ -649,10 +649,10 @@ class CourseLeaveCascadeService
             $leaveSession->Note = self::appendNote($leaveSession->Note, self::NOTE_REVERT_TO_SCHEDULED);
             $leaveSession->save();
             LearningRecord::where('ClassSessionID', (int) $leaveSession->id)
-                ->where('VoidReason', '銝?祈???')
+                ->where('VoidReason', '一般請假')
                 ->update(['VoidedAt' => null, 'VoidedByUserID' => null, 'VoidReason' => null]);
             StudentSignIn::where('ClassSessionID', (int) $leaveSession->id)
-                ->where('VoidReason', '銝?祈???')
+                ->where('VoidReason', '一般請假')
                 ->update(['VoidedAt' => null, 'VoidedByUserID' => null, 'VoidReason' => null]);
             $end = ClassSession::where('StudentClassID', $courseId)->max('SessionDate');
             return [self::fetchCourseSessionRows($courseId), $end ? Carbon::parse($end)->toDateString() : null, $normalizedLeaveDate];
