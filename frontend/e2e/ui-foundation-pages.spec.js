@@ -583,4 +583,41 @@ test.describe('UI foundation — real Vue page evidence', () => {
       await page.locator('.director-workbench-v2').screenshot({ path: path.join(outDir, `vue-director-v2-urgent-${vp.name}.png`) });
     });
   }
+
+  // director-workbench-v2's 完整營運 view renders #schedule-sec/#evals-sec/#payments-sec
+  // (surface-panel cards) with zero prior test coverage of their empty-state and count
+  // wiring. (Note: PR #1515's AtCard/AtEmpty work-grid markup at the same IDs, further
+  // down this file, is dead — permanently wrapped in `<template v-if="false">` since a
+  // later redesign introduced director-workbench-v2; it never renders.)
+  test('director 完整營運 cards show empty state with zero counts', async ({ page }) => {
+    await openPilot(page, { pageName: 'director', mode: 'empty', viewport: { width: 1440, height: 900 } });
+    await expect(page.getByText('主任總覽', { exact: true })).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('tab', { name: '完整營運', exact: true }).click();
+    await expect(page.locator('.director-workbench-v2__full')).toBeVisible();
+
+    await expect(page.locator('#schedule-sec .surface-panel__count')).toHaveText('0 堂');
+    await expect(page.locator('#schedule-sec')).toContainText('今天沒有課程。');
+
+    await expect(page.locator('#evals-sec .surface-panel__count')).toHaveText('0 筆');
+    await expect(page.locator('#evals-sec')).toContainText('目前沒有待審核評量。');
+
+    await expect(page.locator('#payments-sec .surface-panel__count')).toHaveText('0');
+    await expect(page.locator('#payments-sec')).toContainText('目前沒有需要跟進的繳費提醒。');
+  });
+
+  test('director 完整營運 cards show counts and rows with data', async ({ page }) => {
+    await openPilot(page, { pageName: 'director', mode: 'dashboard', viewport: { width: 1440, height: 900 } });
+    await expect(page.getByText('主任總覽', { exact: true })).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('tab', { name: '完整營運', exact: true }).click();
+    await expect(page.locator('.director-workbench-v2__full')).toBeVisible();
+
+    await expect(page.locator('#schedule-sec .surface-panel__count')).toHaveText('1 堂');
+    await expect(page.locator('#schedule-sec .director-schedule-row')).toHaveCount(1);
+
+    await expect(page.locator('#evals-sec .surface-panel__count')).toHaveText('1 筆');
+    await expect(page.locator('#evals-sec .director-evaluation-row')).toHaveCount(1);
+
+    await expect(page.locator('#payments-sec .surface-panel__count')).toHaveText('1');
+    await expect(page.locator('#payments-sec .director-payment-row')).toHaveCount(1);
+  });
 });
