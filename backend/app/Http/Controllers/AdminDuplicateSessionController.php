@@ -24,7 +24,7 @@ class AdminDuplicateSessionController extends Controller
     private function effectiveCampusIds(Request $request): array
     {
         $allowed = $this->allowedCampusIds($request);
-        $requested = (int) $request->query('campus_id', 0);
+        $requested = (int) $request->query('campus_id', '0');
         if ($requested <= 0) {
             return $allowed;
         }
