@@ -117,6 +117,53 @@ jobs:
           } | tee /tmp/classsession-dup-diagnose.txt
           ENDSSH
 
+      - name: PHP tinker lookup (charset-safe, bypasses mysql-CLI raw string pitfalls)
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          DATE: ${{ inputs.date || '2026-05-30' }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' > /tmp/student_probe.php
+          import os
+          date = os.environ["DATE"]
+          print(f"""<?php
+          $date = '{date}';
+          $name = '妍耣';
+          $db = \\Illuminate\\Support\\Facades\\DB::class;
+          $students = $db::table('Student')->where('name', 'like', '%'.$name.'%')->get(['id','name','CampusID']);
+          $ids = $students->pluck('id')->map(fn ($v) => (int)$v)->all();
+          $scRows = $ids === [] ? [] : $db::table('StudentClass as sc')
+            ->join('Student as s', 's.id', '=', 'sc.StudentID')
+            ->whereIn('sc.StudentID', $ids)
+            ->orderBy('sc.ID')
+            ->get(['sc.ID','s.name','s.CampusID','sc.TeacherID','sc.SubjectID','sc.Stop','sc.ScheduleMode','sc.SessionCount','sc.RemainingSessions','sc.UsedSessions','sc.StartDate']);
+          $csRows = $ids === [] ? [] : $db::table('ClassSession as cs')
+            ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+            ->join('Student as s', 's.id', '=', 'sc.StudentID')
+            ->whereIn('sc.StudentID', $ids)
+            ->whereBetween('cs.SessionDate', [date('Y-m-d', strtotime($date.' -14 days')), date('Y-m-d', strtotime($date.' +14 days'))])
+            ->orderBy('s.name')->orderBy('cs.SessionDate')->orderBy('cs.StartTime')
+            ->get(['cs.id','s.name','s.CampusID','cs.StudentClassID','sc.Stop','sc.SessionCount','sc.RemainingSessions','sc.TeacherID','cs.SessionDate','cs.StartTime','cs.EndTime','cs.Status','cs.Note','cs.created_at','cs.updated_at']);
+          echo json_encode([
+            'ok' => true,
+            'students' => $students,
+            'student_class_rows' => $scRows,
+            'class_session_rows' => $csRows,
+          ], JSON_UNESCAPED_UNICODE), PHP_EOL;
+          """)
+          PY
+          B64=$(base64 -w0 /tmp/student_probe.php)
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" \
+            "B64='${B64}' bash -s" <<'REMOTE' | tee /tmp/student-probe.log
+          set -euo pipefail
+          cd /home/admin/backend
+          php -r 'file_put_contents("/tmp/student_probe.php", base64_decode(getenv("B64")));'
+          php artisan tinker --execute='require "/tmp/student_probe.php";'
+          rm -f /tmp/student_probe.php
+          REMOTE
+
       - name: Capture remote output to artifact
         env:
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
@@ -127,6 +174,7 @@ jobs:
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
             "${PI_SSH_USER}@${PI_SSH_HOST}" \
             'cat /tmp/classsession-dup-diagnose.txt' > /tmp/diag-out/diagnose.txt
+          cp /tmp/student-probe.log /tmp/diag-out/student-probe.log
           wc -l /tmp/diag-out/diagnose.txt
           head -80 /tmp/diag-out/diagnose.txt
           echo '...'
@@ -136,7 +184,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: classsession-dup-diagnose
-          path: /tmp/diag-out/diagnose.txt
+          path: /tmp/diag-out/
           retention-days: 14
 
       - name: Job summary
@@ -145,5 +193,9 @@ jobs:
             echo '### ClassSession duplicate diagnose'
             echo '```'
             cat /tmp/diag-out/diagnose.txt
+            echo '```'
+            echo '### Student tinker probe (charset-safe)'
+            echo '```'
+            cat /tmp/diag-out/student-probe.log
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
