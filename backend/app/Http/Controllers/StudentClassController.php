@@ -5739,9 +5739,14 @@ class StudentClassController extends Controller
                 $sc->closed_reason = null;
                 $sc->save();
 
+                $restored = $this->restorePauseCancelledSessions($sc);
+
                 DB::commit();
                 return response()->json([
-                    'message' => '課程已恢復，可重新排課。',
+                    'message' => $restored > 0
+                        ? "課程已恢復，可重新排課。已恢復 {$restored} 堂先前暫停時取消的堂次。"
+                        : '課程已恢復，可重新排課。',
+                    'restored_count' => $restored,
                 ]);
             }
         } catch (\Throwable $e) {
@@ -5761,6 +5766,29 @@ class StudentClassController extends Controller
             ->update([
                 'Status' => 'cancelled',
                 'Note' => DB::raw("CONCAT(COALESCE(Note,''), ' {$noteTag}')"),
+                'updated_at' => now(),
+            ]);
+    }
+
+    /**
+     * Undo exactly what cancelFutureScheduledSessions() (or the FixOrphanScheduledSessions
+     * companion job, tag [孤兒停用取消]) did on pause: restore sessions it cancelled back to
+     * scheduled, scoped to our own note tags so a director's unrelated manual cancellation is
+     * never touched (in-app #219: resume only reset Stop/closed_reason, never the sessions the
+     * pause itself cancelled, so they silently stayed invisible on the calendar).
+     */
+    private function restorePauseCancelledSessions(StudentClass $studentClass): int
+    {
+        return ClassSession::where('StudentClassID', $studentClass->ID)
+            ->where('Status', 'cancelled')
+            ->where(function ($q) {
+                $q->where('Note', 'like', '%[暫停取消]%')
+                    ->orWhere('Note', 'like', '%[結案取消]%')
+                    ->orWhere('Note', 'like', '%[孤兒停用取消]%');
+            })
+            ->update([
+                'Status' => 'scheduled',
+                'Note' => DB::raw("TRIM(REPLACE(REPLACE(REPLACE(COALESCE(Note,''), ' [暫停取消]', ''), ' [結案取消]', ''), ' [孤兒停用取消]', ''))"),
                 'updated_at' => now(),
             ]);
     }
