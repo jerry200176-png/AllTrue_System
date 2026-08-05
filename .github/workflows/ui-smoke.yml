@@ -64,7 +64,7 @@ jobs:
         if: steps.detect.outputs.run != 'true'
         run: echo "✅ 無前端 diff，UI smoke 略過（gate 視為通過）。"
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         if: steps.detect.outputs.run == 'true'
         with:
           node-version: '22'
