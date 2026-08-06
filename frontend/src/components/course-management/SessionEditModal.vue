@@ -25,13 +25,22 @@
           <button v-if="canTransition('absent')" class="se-action-btn se-btn-absent" @click="$emit('status-change', 'absent')">缺席</button>
           <button v-if="canTransition('late')" class="se-action-btn se-btn-late" @click="$emit('status-change', 'late')">遲到</button>
           <button v-if="canTransition('cancelled')" class="se-action-btn se-btn-cancelled" @click="$emit('status-change', 'cancelled')">取消</button>
-          <button class="se-action-btn se-btn-reschedule" @click="$emit('start-reschedule')">調課</button>
+          <button
+            class="se-action-btn se-btn-reschedule"
+            title="搬到不同日期／時段上課（例如星期六改星期四），原堂次紀錄會保留"
+            @click="$emit('start-reschedule')"
+          >🔄 調課（換日期）</button>
           <button
             class="se-action-btn se-btn-substitute"
             @click="featureSubstituteV2 ? $emit('open-substitute-v2') : $emit('start-substitute')"
           >換代課老師</button>
-          <button class="se-action-btn se-btn-edit-note" @click="$emit('start-edit-note-time')">備註 / 時段</button>
+          <button
+            class="se-action-btn se-btn-edit-note"
+            title="只調整同一天的上課時間或加備註，無法換到別的日期——換日期請用「調課」"
+            @click="$emit('start-edit-note-time')"
+          >備註 / 當天時段</button>
         </div>
+        <p class="se-action-hint">要換到別天上課請按「調課」；只是同一天時間微調或加備註請按「備註 / 當天時段」。</p>
       </div>
 
       <div v-if="mode === 'retro-leave'" class="session-edit-retro">
@@ -321,9 +330,10 @@ function onSaveClick() {
 .se-action-btn:hover { transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
 .se-btn-leave { border-color: var(--ds-warning); color: var(--ds-warning); } .se-btn-leave:hover { background: var(--ds-warning-wash); }
 .se-btn-scheduled { border-color: var(--ds-ink-mute); color: var(--ds-ink-mute); } .se-btn-scheduled:hover { background: var(--ds-canvas-soft); }
-.se-btn-reschedule { border-color: var(--ds-ink-mute); color: var(--ds-ink-mute); } .se-btn-reschedule:hover { background: var(--ds-canvas-soft); }
+.se-btn-reschedule { border-color: var(--primary); color: var(--primary); font-weight: 600; } .se-btn-reschedule:hover { background: var(--primary-bg); }
 .se-btn-substitute { border-color: var(--ds-ink-mute); color: var(--ds-ink); } .se-btn-substitute:hover { background: var(--ds-canvas-soft); }
 .se-sub-hint { font-size: 0.85em; color: var(--ds-ink-mute); margin: 0 0 12px; }
+.se-action-hint { font-size: 0.82em; color: var(--ds-ink-mute); margin: 10px 0 0; }
 .se-loading { text-align: center; color: var(--ds-ink-mute); padding: 8px 0; font-size: 0.9em; }
 .session-edit-reschedule .se-reschedule-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .session-edit-reschedule .se-reschedule-grid .form-group:last-child { grid-column: 1 / -1; }
