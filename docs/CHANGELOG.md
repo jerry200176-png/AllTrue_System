@@ -1,3 +1,10 @@
+## 2026-08-06 — docs+chore(billing): 「已繳費」判斷全專案盤點，收斂 AlertController 內部重複，TD-073 調升 P1
+
+- **背景**：使用者要求何昀佳繳費狀態案不能只點修，還要對照大公司軟體看核心問題、從根本解決。
+- **盤點結果**：`backend/app` 至少 8 個檔案（`StudentClassController`、`AlertController` 內部另兩處、`NotificationSyncService`、`DunningService`、`PaymentReportController`、`ParentPortalController`、`NotificationController`、`AccountingController`、`SendTuitionReminders`）各自獨立重新判斷「這筆課程是否已繳費」，至少 4 種互不相同的變體並存；`StudentClass`／`Invoice` model 完全沒有集中的 `isPaid()` 存取器。這是 `TD-073`（重複業務邏輯無自動偵測）論點同一天第三次驗證。
+- **本次收斂範圍**：`AlertController.php` 內部原本重複兩次的同一組條件（`computePaymentStatus()`、`computePackageCountPaymentStatus()`）抽成單一私有方法 `isFullyPaid()`；**未**跨檔案大改其餘 8 處——那需要逐一取得產品方核准（`DunningService.php` 已被明文凍結），列為 TD-073 子項待後續分批清償。
+- **文件**：`docs/SYSTEM_TECH_GUIDE.md` §12.5（新增，業界對照：Stripe `Invoice.status`／Shopify `Order.financial_status` 單一權威實作模式）、`docs/TECH_DEBT.md` TD-073（P2→P1）、`docs/AI_REGRESSION_LESSONS.md` R95（新增）。
+
 ## 2026-08-06 — fix(billing): 帳務中心繳費狀態未計入帳單足額收款（F7 復發）
 
 - **背景**：主任回報某學生課程已用帳單收款紀錄結清，課程管理頁面正確顯示「已繳費」，帳務中心卻仍列「未繳費」。已取得產品方（`docs/DIRECTOR_PAYMENT_ALERT_RULES.md` 明文要求的核准）同意修改後動手。

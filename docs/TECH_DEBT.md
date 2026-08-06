@@ -644,10 +644,10 @@
 | 欄位 | 內容 |
 |---|---|
 | 狀態 | Open |
-| 優先級 | P2 |
+| 優先級 | P1（原 P2，2026-08-06 因第三個實例落在金流顯示邏輯而調升，見下） |
 | 發現日期 | 2026-08-06 |
-| 發現來源 | 陳禹慈堂數超排案（主任直接回報）根因調查：`CourseLeaveCascadeService::appendTailAfterLeave()` 與 `ClassSessionController::tryExtendOnLeave()` 是同一條業務規則的兩份獨立實作，各自對「已計入堂數」的定義不同步，交替呼叫時會讓已排堂次數悄悄超過購買堂數（PR #1644 修正）；同一批調查也發現 `一般請假` VoidReason 字面值在 `CourseLeaveCascadeService.php` 被重複打了 6 次、`LearningRecordResurrectionPolicy.php` 又獨立抄一份，其中一份被打壞正是 #217/#218 server error 的根因（PR #1645 修正）。詳見 `docs/SYSTEM_TECH_GUIDE.md` §12.4 根因分析。 |
-| 影響模組 | 全 `backend/app/` — 這是 CI pipeline 缺口，不是特定模組的問題；歷史上已知至少 2 處實例（本節描述的兩處），推測還有未發現的其他實例 |
+| 發現來源 | 陳禹慈堂數超排案（主任直接回報）根因調查：`CourseLeaveCascadeService::appendTailAfterLeave()` 與 `ClassSessionController::tryExtendOnLeave()` 是同一條業務規則的兩份獨立實作，各自對「已計入堂數」的定義不同步，交替呼叫時會讓已排堂次數悄悄超過購買堂數（PR #1644 修正）；同一批調查也發現 `一般請假` VoidReason 字面值在 `CourseLeaveCascadeService.php` 被重複打了 6 次、`LearningRecordResurrectionPolicy.php` 又獨立抄一份，其中一份被打壞正是 #217/#218 server error 的根因（PR #1645 修正）。詳見 `docs/SYSTEM_TECH_GUIDE.md` §12.4 根因分析。**第三個實例（同日）**：何昀佳帳務中心繳費狀態不一致案（主任直接回報）——`AlertController::computePaymentStatus()` 只認 `StudentClass.Paid` 旗標，沒把「帳單足額收款」算進已繳費判斷，跟課程管理頁面的邏輯不同步（PR #1648 修正，R94）。修復後的盤點掃出這不是單一巧合：`backend/app` 至少 **8 個檔案**（`StudentClassController`、`AlertController` 自身另外兩處、`NotificationSyncService`、`DunningService`、`PaymentReportController`、`ParentPortalController`、`NotificationController`、`AccountingController`、`SendTuitionReminders`）各自獨立重新實作「這筆課程是否已繳費」，且彼此條件互不相同（`Paid` 旗標單一判斷 / `Paid` 或任一筆收款 / `Paid` 或足額收款 / 舊制 `Pay>=Charge` 欄位比較，四種變體並存），`StudentClass`／`Invoice` model 完全沒有任何集中的 `isPaid()`／`isFullyPaid()` 存取器——每個呼叫點都是從零重寫。詳見 `docs/SYSTEM_TECH_GUIDE.md` §12.5。 |
+| 影響模組 | 全 `backend/app/` — 這是 CI pipeline 缺口，不是特定模組的問題；歷史上已知至少 **3 類** 實例（本節描述的兩處 + 繳費狀態判斷），其中繳費狀態判斷單一概念就橫跨至少 8 個檔案、4 種互不相同的變體，推測還有未發現的其他實例。`DunningService.php` 中的重複實例已被 `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` 明文凍結、需產品方核准才能改動，尚未一併清償。 |
 | 描述 | 目前 CI 的 `PHPStan Advisory` 只抓型別/明顯錯誤，抓不到「兩支函式語意重複」或「同一個業務字串被複製貼上多份」這類問題；這類問題目前完全仰賴 code review 肉眼發現，而本專案是單人 repo（見 `.github/pull_request_template.md` 的「單人 repo Review Gate」說明），沒有第二位人類 reviewer 天然扮演「這是不是已經做過」的守門角色。根因分析（§12.4）認為成熟工程組織能避免這類 bug，關鍵在於把「找找看是不是已經有人做過」從仰賴個人記性的文件建議，變成合併前機器會擋下來的門檻。 |
 | 建議做法 | 分階段：(1) 導入 `phpcpd`（PHP Copy/Paste Detector）或等效工具掃 `backend/app/`，先以 advisory 模式跑一輪盤點既有重複，比照 `phpstan-baseline.neon` 模式建 baseline（只擋新增，不強制清歷史債）。(2) 針對「業務字面值被多處比對」這類更窄但更常見的模式（如 `->where('VoidReason', '...')`、`->where('Status', '...')` 等字串比對），寫一個輕量 grep-based presubmit 檢查，偵測同一個中文/業務字面值在 `>=2` 個檔案或 `>=3` 個位置被直接使用（而非引用常數），達門檻即警告或擋下。(3) 中長期評估是否比照 SonarQube/CodeClimate 等重複程式碼偵測服務。 |
 | 清償成本估計 | 中（`phpcpd` 導入 + baseline 產生腳本約 1 天；grep-based magic-string presubmit 檢查約半天；SonarQube 等級整合需另外評估） |
