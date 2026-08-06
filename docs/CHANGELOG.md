@@ -1,3 +1,11 @@
+## 2026-08-06 — fix(billing): 帳務中心繳費狀態未計入帳單足額收款（F7 復發）
+
+- **背景**：主任回報某學生課程已用帳單收款紀錄結清，課程管理頁面正確顯示「已繳費」，帳務中心卻仍列「未繳費」。已取得產品方（`docs/DIRECTOR_PAYMENT_ALERT_RULES.md` 明文要求的核准）同意修改後動手。
+- **根因**：`AlertController::computePaymentStatus()` 只看 `StudentClass.Paid` 欄位，沒有把帳單足額收款（`paid_amount >= charge`）算進「已繳費」判斷，跟課程管理頁面的邏輯不同步——`docs/AI_REGRESSION_LESSONS.md` **F7「繳費金額/狀態雙真相」** 家族的又一個成員。
+- **修法**：`$isPaid = Paid=1 或 (charge > 0 且 paid_amount >= charge)`；刻意用「足額」而非「有任一筆收款」判斷，避免連帶把 `partial`（部分付款）狀態也誤判為已繳。
+- **測試**：新增 2 個回歸測試涵蓋「帳單足額結清但未切 Paid 旗標」情境（含剩餘 0 堂的續課提醒分支）；既有 `TuitionAlertsApiTest`／`LargeBranchDataHandlingTest` 全數維持綠燈。
+- **文件**：`docs/DIRECTOR_PAYMENT_ALERT_RULES.md`、`docs/AI_REGRESSION_LESSONS.md` R94 已同步更新，依規則要求。
+
 ## 2026-08-06 — docs: 補當天 6 個 bug 的更深層根因分析，登記 TD-073
 
 - **背景**：使用者要求不只記「修了什麼」，還要對照大公司軟體工程作法，回答「為什麼這類問題在成熟組織比較少見」這個更根本的問題。
