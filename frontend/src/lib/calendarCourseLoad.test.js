@@ -50,11 +50,34 @@ assert.match(
     schedStart: '2026-04-01',
     schedEnd: '2026-05-31',
     branchId: 1,
-    isTeacher: false,
+    isTeacher: true,
     userId: 5,
   }),
-  /start=2026-04-01.*end=2026-05-31.*branch_id=1.*teacher_id=5/,
-  'schedules URL should include date window and filters',
+  /start=2026-04-01.*end=2026-05-31.*teacher_id=5/,
+  'schedules URL should include date window and teacher_id for teacher view',
+);
+
+// Regression guard for a real production bug: director/admin (非 teacher) 帳號的
+// schedules 請求絕不能帶上自己的 userId 當 teacher_id — ScheduleController::index()
+// 對 teacher_id 是無條件套用 where()，帶了等於永遠查不到任何真正老師的排程，
+// 整個 schedules 層在「主任視角」下永遠回傳空陣列（in-app #219 根因之一）。
+const directorSchedulesUrl = buildSchedulesApiUrl({
+  baseUrl: '/api',
+  schedStart: '2026-04-01',
+  schedEnd: '2026-05-31',
+  branchId: 1,
+  isTeacher: false,
+  userId: 280,
+});
+assert.match(
+  directorSchedulesUrl,
+  /branch_id=1/,
+  'schedules URL should include branch_id for director/admin view',
+);
+assert.doesNotMatch(
+  directorSchedulesUrl,
+  /teacher_id/,
+  'schedules URL must NOT include teacher_id for director/admin view — backend applies it unconditionally and would zero out results',
 );
 
 // Parallel orchestration: total wall time ≈ max(individual), not sum

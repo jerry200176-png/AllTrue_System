@@ -1,3 +1,11 @@
+## 2026-08-06 — fix(calendar): 主任／管理員角色的行事曆「schedules」層永遠回傳空陣列
+
+- **背景**：in-app #219（鄭宇志回報試聽課不顯示）修復後，回報者反映問題仍存在。用真實主任帳號（非 Super Admin）實測發現：週檢視整週 0 堂課，即使載入進度顯示「112/112」項目都抓到了。
+- **根因**：`frontend/src/lib/calendarCourseLoad.js` 的 `buildSchedulesApiUrl()` 條件寫反——非老師角色（主任／管理員）呼叫 `/api/v1/schedules` 時，把自己的登入者 ID 當成 `teacher_id` 帶進去（`!isTeacher && userId` 應該是 `isTeacher && userId`，比對同檔案 `buildStudentClassesApiUrl()` 的正確寫法）。後端 `ScheduleController::index()` 對 `teacher_id` 是無條件套用 `where()`，不分角色；主任自己的 user ID 不可能等於任何老師的 ID，於是 schedules 這層永遠查到空陣列。行事曆週檢視需要 `schedules`（模板／例外層）+ `class-sessions`（已物化層）合併才是完整資料（G-007），只要某筆課程當週只活在 schedules 模板還沒物化，主任視角就會直接看不到——這正是「主任改不過去、CEO 改得過去」的根本原因，也比 in-app #219 原本回報的單一個案範圍更大。
+- **修法**：`calendarCourseLoad.js` 與 `useCalendarDataLoad.js`（legacy fallback 路徑同一個 bug）的 `teacher_id` 判斷條件改為 `isTeacher && userId`，與 `student-classes` 端點的既有正確邏輯一致。
+- **測試**：`calendarCourseLoad.test.js` 新增回歸測試，鎖住「主任/管理員視角的 schedules URL 絕不能帶 teacher_id」；`npm run test:calendar` 全綠。
+- **記錄**：`docs/AI_REGRESSION_LESSONS.md`（新增條目）。
+
 ## 2026-08-06 — fix(ux): 課程單堂操作「調課」與「備註 / 時段」按鈕文案釐清
 
 - **背景**：主任回報（興隆分校）學生課程「星期六改星期四」改不過去，CEO 自己操作卻成功。查證後發現後端行為一致，差異在使用者點了哪個按鈕——「調課」可換日期，「備註 / 時段」物理上不能換日期（PATCH 驗證規則沒有 `session_date` 欄位），但兩個按鈕視覺相近、命名都圍繞「時間／時段」，沒有任何線索區分。

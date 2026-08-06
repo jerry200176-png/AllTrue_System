@@ -1227,3 +1227,12 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **修法**：按鈕文字明確化（「調課」→「🔄 調課（換日期）」；「備註 / 時段」→「備註 / 當天時段」）、各自加 `title` tooltip 講清楚能不能換日期、選單下方加一行指引、「調課」改用品牌主色系避免視覺上輸給「備註 / 時段」。純文案／視覺調整，不改後端行為。
 - **測試**：`SessionEditModal.test.js`——鎖住兩按鈕文字互斥（其中一個含「換日期」，另一個不含）、各自的 tooltip 內容、選單提示文字存在。
 - **防再犯**：新增任何「能力有限縮」的操作入口（例如「只能同一天」「只能單筆」），一律要求：(1) 按鈕文字本身要排除掉最直覺的誤讀，(2) 加 tooltip 明講限制，(3) 若旁邊有能力更完整的入口，要讓使用者看得出兩者差異，不能只靠使用者自己試錯發現。
+
+### R98. 主任／管理員角色的行事曆整週看起來全空：schedules 端點被自己的 user ID 誤當 teacher_id 過濾（in-app #219 追加根因，2026-08-06）
+
+- in-app #219（鄭宇志回報試聽課不顯示）第一輪修復（補齊 `ClassSessionController` 的預排候選清單、修正課程 3153 損毀的 `StartDate`）上線後，回報者反映問題仍存在。用 Super Admin 測試看起來資料正確，但這是**假陰性**——Super Admin 是最不可靠的角色測試代理，因為它不受 `CampusID`／`TeacherID` 任何範圍限制。改用真實建立（測完即刪）的主任帳號實測後，發現整週（非僅回報的那一天）0 堂課，即使載入進度顯示所有項目都抓到了。
+- 根因：`frontend/src/lib/calendarCourseLoad.js` 的 `buildSchedulesApiUrl()`（以及 `useCalendarDataLoad.js` 內同邏輯的 legacy fallback 分支）條件寫反——非老師角色（主任／管理員）呼叫 `/api/v1/schedules` 時，把**自己的登入者 user ID** 當成 `teacher_id` 帶進查詢字串（`!isTeacher && userId` 應為 `isTeacher && userId`；同檔案 `buildStudentClassesApiUrl()` 的對應邏輯是對的，可比對）。後端 `ScheduleController::index()` 對 `teacher_id` 參數是無條件 `where()`，不分角色、不檢查這個 ID 是否真的是老師。主任的 user ID 不可能等於任何老師的 ID，於是 schedules 這層對主任／管理員角色永遠回傳空陣列。
+- 行事曆週檢視的真相來源是「schedules 模板／例外層」+「class-sessions 已物化層」合併（見 G-007），只要某筆課程當週只活在還沒物化的 schedules 模板裡，主任視角就會直接看不到整筆——這解釋了「主任改不過去、CEO（Super Admin）改得過去」的根本原因，範圍比 in-app #219 原始回報的單一學生個案大得多。
+- **修法**：兩處 `teacher_id` 判斷條件改為 `isTeacher && userId`，與 `student-classes` 端點的既有正確邏輯一致。
+- **測試**：`calendarCourseLoad.test.js` 新增回歸測試，鎖住「主任/管理員視角的 schedules URL 絕不能帶 teacher_id」。
+- **防再犯**：(1) 同一份程式碼裡，兩個平行端點（`student-classes` vs `schedules`）的「依角色決定要不要帶某個過濾參數」邏輯必須用同一套條件寫法抽出來共用或至少互相對照測試，不能各自複製一份、其中一份手滑寫反卻沒有測試守住；(2) 驗證角色限定的可見性 bug，Super Admin 不能作為任何角色的替身測試——它是唯一不受範圍限制的角色，「Super Admin 測試通過」只能證明資料本身存在，不能證明目標角色真的看得到；務必用該角色真實帳號（測完即刪）驗證。

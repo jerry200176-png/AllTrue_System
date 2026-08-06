@@ -63,7 +63,7 @@ export function buildSchedulesApiUrl({
 }) {
   const excParams = new URLSearchParams({ per_page: '2000', start: schedStart, end: schedEnd });
   if (!isTeacher && branchId) excParams.set('branch_id', String(branchId));
-  if (!isTeacher && userId) excParams.set('teacher_id', String(userId));
+  if (isTeacher && userId) excParams.set('teacher_id', String(userId));
   return `${baseUrl}/v1/schedules?${excParams.toString()}`;
 }
 
