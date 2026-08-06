@@ -117,7 +117,14 @@ class ClassSessionController extends Controller
 
         $rangeStart = $request->filled('start') ? (string) $request->input('start') : null;
         $rangeEnd = $request->filled('end') ? (string) $request->input('end') : null;
-        $projectedByClass = $this->buildProjectedByClassForIndex($byClass, $rangeStart, $rangeEnd);
+        $requestedClassIds = [];
+        if ($request->filled('student_class_id')) {
+            $requestedClassIds[] = (int) $request->input('student_class_id');
+        }
+        if ($request->filled('student_class_ids')) {
+            $requestedClassIds = array_merge($requestedClassIds, $this->normalizeIds($request->input('student_class_ids')));
+        }
+        $projectedByClass = $this->buildProjectedByClassForIndex($byClass, $rangeStart, $rangeEnd, $requestedClassIds);
 
         return response()->json([
             'materialized' => [
@@ -462,15 +469,25 @@ class ClassSessionController extends Controller
 
     /**
      * @param  array<string, list<object>>  $materializedByClass
+     * @param  list<int>  $requestedClassIds  Explicitly requested course IDs (student_class_id(s)
+     *         query params) that must still be considered for projection even when they have zero
+     *         materialized ClassSession rows inside [rangeStart, rangeEnd] -- e.g. a brand-new
+     *         recurring course whose first occurrence hasn't happened yet. Without this, a course
+     *         is only ever a projection candidate when array_keys($materializedByClass) happens to
+     *         include it, silently dropping every future occurrence for courses with no history in
+     *         range (in-app #222).
      * @return array<string, list<array<string, mixed>>>
      */
-    private function buildProjectedByClassForIndex(array $materializedByClass, ?string $rangeStart, ?string $rangeEnd): array
+    private function buildProjectedByClassForIndex(array $materializedByClass, ?string $rangeStart, ?string $rangeEnd, array $requestedClassIds = []): array
     {
-        if (!$rangeStart || !$rangeEnd || empty($materializedByClass)) {
+        if (!$rangeStart || !$rangeEnd) {
             return [];
         }
 
-        $classIds = array_values(array_filter(array_map('intval', array_keys($materializedByClass))));
+        $classIds = array_values(array_unique(array_filter(array_merge(
+            array_map('intval', array_keys($materializedByClass)),
+            array_map('intval', $requestedClassIds)
+        ), fn ($id) => $id > 0)));
         if ($classIds === []) {
             return [];
         }
@@ -503,12 +520,18 @@ class ClassSessionController extends Controller
         /** @var array<string, list<array<string, mixed>>> $projectedByClass */
         $projectedByClass = [];
 
-        foreach ($materializedByClass as $classKey => $rows) {
-            $classId = (int) $classKey;
+        /** @var array<int, list<object>> $rowsByClassId */
+        $rowsByClassId = [];
+        foreach ($materializedByClass as $classKey => $classRows) {
+            $rowsByClassId[(int) $classKey] = $classRows;
+        }
+
+        foreach ($classIds as $classId) {
             $class = $classes->get($classId);
             if (!$class) {
                 continue;
             }
+            $rows = $rowsByClassId[$classId] ?? [];
 
             $materialized = [];
             foreach ($rows as $row) {
