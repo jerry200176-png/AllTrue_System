@@ -1,3 +1,10 @@
+## 2026-08-06 — fix(scheduling): 課程管理頁面「預排」日期在無歷史堂次的課程完全不顯示
+
+- **背景**：主任回報（in-app #222，陳依娟／興隆分校）「為何預排只能打一個」——課程列表裡大多數課程完全沒有「預排」日期，只有剛好有堂次紀錄的那一門有。
+- **根因**：`ClassSessionController::buildProjectedByClassForIndex()` 把「已計算的預排候選課程清單」直接等於「目前查詢範圍內已有實體堂次紀錄的課程」，沒有歷史堂次紀錄的課程（例如剛排好、第一堂還沒到的新課程）完全不會被納入預排計算，不論排課星期/時段本該投影出幾筆未來日期。
+- **修法**：候選課程清單改為「已有歷史堂次的課程」聯集「請求明確帶入的 `student_class_id`/`student_class_ids`」（課程管理頁面批次載入時一定會帶入畫面顯示的所有課程 ID）。
+- **測試**：新增 `SessionProjectionSplitTest::test_class_sessions_index_projects_course_with_no_materialized_rows_in_range`，修復前 RED、修復後 GREEN；`Course|Session|Materiali` 廣義掃描（565 tests）維持綠燈。
+
 ## 2026-08-06 — fix(billing): 帳務中心繳費狀態未計入帳單足額收款（F7 復發）
 
 - **背景**：主任回報某學生課程已用帳單收款紀錄結清，課程管理頁面正確顯示「已繳費」，帳務中心卻仍列「未繳費」。已取得產品方（`docs/DIRECTOR_PAYMENT_ALERT_RULES.md` 明文要求的核准）同意修改後動手。
