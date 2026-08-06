@@ -1209,3 +1209,12 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - 這不是巧合，是 `TD-073`（重複業務邏輯無自動偵測機制）論點在同一天第三次被驗證——已將 TD-073 優先級由 P2 調升為 P1，並記錄於 `docs/SYSTEM_TECH_GUIDE.md` §12.5。
 - **本次範圍**：只收斂了 `AlertController.php` 內部的兩處重複（同一檔案、同一 PR #1648，風險可控）。**沒有**跨檔案把其餘 8 處也改成呼叫單一 model 方法——那會是一次橫跨通知/催繳/帳單/家長入口/報表的大範圍金流邏輯變更，其中 `DunningService.php` 又被 `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` 明文凍結需產品方核准，未經明確授權不得一次性大改。
 - **防再犯**：日後若要清償 TD-073 這個具體子項，先跟產品方逐一確認要收斂的檔案範圍與驗收方式，分批進行並各自補齊回歸測試，不要一次全部重寫。
+
+### R96. 課程管理「預排」日期：把「查詢範圍內剛好有歷史堂次」當成「該不該投影未來日期」的資格判斷（in-app #222，2026-08-06）
+
+- 主任回報（陳依娟／興隆分校）：「為何預排只能打一個」——課程列表裡大多數課程完全沒有「預排」日期，只有剛好有堂次紀錄的那一門有。
+- 根因：`ClassSessionController::buildProjectedByClassForIndex()` 用 `array_keys($materializedByClass)` 當作「要不要幫這門課算預排」的候選清單，而 `$materializedByClass` 只包含這次查詢範圍內**已經有實體堂次紀錄**的課程。一門沒有歷史紀錄的課程（剛排好、第一堂還沒到）連候選資格都沒有，跟它的排課星期/時段本該投影幾筆未來日期完全無關。
+- 這是「把資料可得性當成業務資格」的反模式：「這門課有沒有歷史堂次」只是這次剛好查到什麼的技術副產物，跟「這門課排課上該不該有預排日期」是兩個獨立問題，見 `docs/SYSTEM_TECH_GUIDE.md` §12.6。
+- **修法**：候選課程清單改為「已有歷史堂次的課程」聯集「請求明確帶入的 `student_class_id`/`student_class_ids`」。
+- **測試**：`SessionProjectionSplitTest::test_class_sessions_index_projects_course_with_no_materialized_rows_in_range`（revert 後 fail）。
+- **防再犯**：任何「候選清單」／「該不該處理這筆」的判斷，先問清楚「這是業務規則決定的資格，還是剛好這次查詢有沒有抓到資料」——不要把後者直接拿來當前者用；尤其是分頁/範圍查詢場景，資料存在與否很容易受查詢範圍影響，跟業務資格無關。
