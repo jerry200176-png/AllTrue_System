@@ -1,3 +1,9 @@
+## 2026-08-06 — chore(hardening): 請假 VoidReason 業務字串收斂成單一常數，並補業界作法對照文件
+
+- **背景**：回顧當天修的 6 個 in-app bug 與陳禹慈堂數超排案，發現全部落在同一組業界有名字的反模式下（授權範圍判斷分散、業務字串未收斂、狀態機不對稱、集合資料整包覆蓋、同一規則重複實作）。詳見 `docs/SYSTEM_TECH_GUIDE.md` 第 12 節逐一對照與加固守則。
+- **本則實際變更**：`一般請假`（撤銷請假比對用的 VoidReason 字面值，#217/#218 就是這個字串的其中一份被打壞才炸掉）在 `CourseLeaveCascadeService.php` 裡以字面值重複寫了 6 次，`LearningRecordResurrectionPolicy.php` 的系統可復活白名單又各自抄了一份。新增 `CourseLeaveCascadeService::VOID_REASON_LEAVE` 常數，7 處使用點全部改成引用同一個常數，未來只可能改壞一份、也只需要改一處。
+- **測試**：leave/session/attendance/schedule/learning-record 相關 572 個測試、2415 個 assertions 全綠；PHPStan 對兩個變更檔案無新增錯誤。
+
 ## 2026-08-06 — fix(scheduling): 請假/取消自動補堂改為單一權威實作，避免堂次數超過已購堂數
 
 - **背景**：新店分校主任回報，一名學生（英文課）明明購買 8 堂，繳費單卻顯示 12 堂、日期不連貫，系統回報「超排」，老師已先手動取消部分堂次暫時排除。
