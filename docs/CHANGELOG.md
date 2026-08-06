@@ -1,3 +1,11 @@
+## 2026-08-06 — fix(calendar): 同一位老師掛兩個帳號時，「輸家」帳號的課程在日檢視消失
+
+- **背景**：schedules teacher_id 洩漏 bug 修復並上線後，回報者（鄭宇志）新提交 in-app #223（含截圖），確認 6/17、6/18 高為澎老師的試聽學生（吳宥萱）依然沒有顯示在課表上——但同一天同一位老師底下其他學生的課程都正常顯示。這代表問題不是「整層資料消失」，而是更精準地卡在某一筆特定課程。
+- **根因**：查詢 `/api/v1/student-classes` 確認該筆課程（ID 3153）本身資料正確、後端也正確回傳；問題出在前端 `SmartCalendar.vue`——「高為澎」在系統裡其實掛了兩個帳號（ID 73，實際上課用的主帳號；ID 260，幾乎沒用過的重複帳號），`filterTeacherOptions` 會把顯示名稱相同的帳號合併成一欄（`alias_ids`），欄位代表 ID 取課程數較多的那個（73）。但日檢視實際渲染課程的 `getCoursesForTeacherAt()` / `getSlotOccupancy()` 只比對 `course.teacher_id === 合併後代表 ID`，從未比對別名帳號集合——課程 3153 的 `teacher_id` 是 260（輸家帳號），永遠比對不到欄位代表 ID 73，於是直接消失，即使欄位本身確實叫「高為澎」也一樣。同一支檔案裡週檢視篩選老師 chip 用的 `weekViewExpandedTeacherIdSet` 其實已經正確處理別名展開，只是日檢視這兩處被遺漏。
+- **修法**：抽出 `frontend/src/lib/teacherAliasMatch.js`（`resolveTeacherAliasIds` / `courseBelongsToTeacherAlias`），`getCoursesForTeacherAt()`、`getSlotOccupancy()`、`visibleTeachers` 內的排序用 `teacherHasCourseToday()` 都改為比對別名帳號集合，與週檢視既有的正確邏輯一致。
+- **測試**：新增 `teacherAliasMatch.test.js`，鎖住「課程掛在合併後的輸家帳號仍要能命中該欄位」；`npm run test:calendar` 全綠。
+- **記錄**：`docs/AI_REGRESSION_LESSONS.md`（新增條目）。
+
 ## 2026-08-06 — fix(calendar): 主任／管理員角色的行事曆「schedules」層永遠回傳空陣列
 
 - **背景**：in-app #219（鄭宇志回報試聽課不顯示）修復後，回報者反映問題仍存在。用真實主任帳號（非 Super Admin）實測發現：週檢視整週 0 堂課，即使載入進度顯示「112/112」項目都抓到了。
