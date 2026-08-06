@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\AuthToken;
+use App\Models\CoursePackage;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\PaymentReport;
@@ -516,6 +517,94 @@ class TuitionAlertsApiTest extends TestCase
         $this->assertSame('renew_needed', $row['payment_status']);
         $this->assertNotSame('unpaid', $row['payment_status']);
         $this->assertSame(0, $row['outstanding']);
+    }
+
+    /**
+     * Count-mode CoursePackage (multi-subject shared session pool) equivalent of
+     * test_payment_status_paid_when_invoice_fully_paid_without_paid_flag — this path
+     * (AlertController::computePackageCountPaymentStatus() + the $countPkgAlerts row's
+     * own 'paid'/'outstanding' fields) had no regression coverage at all before this
+     * PR's AlertController::isFullyPaid() consolidation, despite reimplementing the
+     * exact same "Paid OR fully-covering invoice payment" predicate independently.
+     */
+    public function test_package_count_mode_payment_status_paid_when_invoice_fully_paid_without_paid_flag(): void
+    {
+        $token = $this->createDirectorToken([1], 'ps-pkg-invoice-settled@example.com');
+        $student = Student::create([
+            'name' => '方案帳單結清未切旗標',
+            'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $pkg = CoursePackage::create([
+            'student_id' => $student->id, 'campus_id' => 1, 'name' => '方案結清測試',
+            'total_sessions' => 8, 'remaining_sessions' => 5, 'used_sessions' => 3,
+            'rate' => 1000, 'rate_unit' => 'session', 'class_type' => 'one_on_one',
+            'paid' => false, 'stop' => false, 'enabled' => true,
+        ]);
+        $anchor = $this->createCountModeClass($student->id, [
+            'Paid' => 0, 'RemainingSessions' => 5, 'SessionCount' => 8,
+            'PackageID' => $pkg->id, 'PackageTotalSessions' => 8, 'PackageName' => $pkg->name,
+        ]);
+        $invoice = Invoice::create([
+            'StudentID' => $student->id, 'StudentClassID' => $anchor->ID,
+            'IssueDate' => '2026-06-01', 'TotalAmount' => 8000, 'PaidAmount' => 8000, 'Status' => 'paid',
+        ]);
+        Payment::create([
+            'InvoiceID' => $invoice->id, 'Amount' => 8000, 'PaidAt' => '2026-06-02', 'Method' => 'cash',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->getJson('/api/v1/alerts/tuition?branch_id=1');
+
+        $res->assertOk();
+        $row = collect($res->json())->firstWhere('package_id', $pkg->id);
+        $this->assertNotNull($row);
+        $this->assertSame('paid', $row['payment_status']);
+        $this->assertTrue($row['paid']);
+        $this->assertSame(0, $row['outstanding']);
+    }
+
+    /**
+     * Same package path, but the invoice covers only part of the charge — must
+     * stay 'partial' (both in payment_status and the row's own 'paid'/'outstanding'
+     * fields), not be misclassified as fully paid by the "any payment exists" trap
+     * this codebase's other payment-status implementations fall into (F7 family).
+     */
+    public function test_package_count_mode_payment_status_partial_when_invoice_partially_paid(): void
+    {
+        $token = $this->createDirectorToken([1], 'ps-pkg-invoice-partial@example.com');
+        $student = Student::create([
+            'name' => '方案部分付款',
+            'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $pkg = CoursePackage::create([
+            'student_id' => $student->id, 'campus_id' => 1, 'name' => '方案部分付款測試',
+            'total_sessions' => 8, 'remaining_sessions' => 5, 'used_sessions' => 3,
+            'rate' => 1000, 'rate_unit' => 'session', 'class_type' => 'one_on_one',
+            'paid' => false, 'stop' => false, 'enabled' => true,
+        ]);
+        $anchor = $this->createCountModeClass($student->id, [
+            'Paid' => 0, 'RemainingSessions' => 5, 'SessionCount' => 8,
+            'PackageID' => $pkg->id, 'PackageTotalSessions' => 8, 'PackageName' => $pkg->name,
+        ]);
+        $invoice = Invoice::create([
+            'StudentID' => $student->id, 'StudentClassID' => $anchor->ID,
+            'IssueDate' => '2026-06-01', 'TotalAmount' => 8000, 'PaidAmount' => 3000, 'Status' => 'partial',
+        ]);
+        Payment::create([
+            'InvoiceID' => $invoice->id, 'Amount' => 3000, 'PaidAt' => '2026-06-02', 'Method' => 'cash',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->getJson('/api/v1/alerts/tuition?branch_id=1');
+
+        $res->assertOk();
+        $row = collect($res->json())->firstWhere('package_id', $pkg->id);
+        $this->assertNotNull($row);
+        $this->assertSame('partial', $row['payment_status']);
+        $this->assertFalse($row['paid']);
+        $this->assertSame(5000, $row['outstanding']);
     }
 
     public function test_payment_status_pending_report_when_has_pending_report(): void
