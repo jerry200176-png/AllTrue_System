@@ -1236,3 +1236,12 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **修法**：兩處 `teacher_id` 判斷條件改為 `isTeacher && userId`，與 `student-classes` 端點的既有正確邏輯一致。
 - **測試**：`calendarCourseLoad.test.js` 新增回歸測試，鎖住「主任/管理員視角的 schedules URL 絕不能帶 teacher_id」。
 - **防再犯**：(1) 同一份程式碼裡，兩個平行端點（`student-classes` vs `schedules`）的「依角色決定要不要帶某個過濾參數」邏輯必須用同一套條件寫法抽出來共用或至少互相對照測試，不能各自複製一份、其中一份手滑寫反卻沒有測試守住；(2) 驗證角色限定的可見性 bug，Super Admin 不能作為任何角色的替身測試——它是唯一不受範圍限制的角色，「Super Admin 測試通過」只能證明資料本身存在，不能證明目標角色真的看得到；務必用該角色真實帳號（測完即刪）驗證。
+
+### R99. 同一位老師掛兩個帳號、UI 合併顯示成一欄時，「輸家」帳號的課程在日檢視消失（in-app #219/#223，2026-08-06）
+
+- R98 上線後，回報者（鄭宇志）用附截圖的方式再次確認：6/17、6/18 高為澎老師的試聽學生（吳宥萱）仍未顯示在課表，但**同一天同一位老師欄位底下其他學生的課程都正常顯示**——這個細節是關鍵，代表問題範圍已經跟 R98（整層資料消失）不同，是精準卡在單一課程。
+- 查證發現：系統裡「高為澎」其實掛了兩個獨立帳號（ID 73，account `Xizhi01`，`teaching_session_count` 268，實際在用的主帳號；ID 260，account `Kao`，`teaching_session_count` 0，幾乎沒用過的重複帳號）。吳宥萱的試聽課程（`StudentClass.ID` 3153）`TeacherID` 是 260。
+- 根因：`SmartCalendar.vue` 的 `filterTeacherOptions`（週/日檢視共用的老師欄位清單）刻意把顯示名稱相同的帳號合併成一欄（`alias_ids`），欄位代表 ID 取「目前載入範圍內課程數較多」的那個帳號（73）——這個合併機制本身是為了解決「同一人多帳號、UI 不要出現兩個一樣的老師欄」而設計，行為正確。但日檢視實際渲染課程用的 `getCoursesForTeacherAt()` 與計算容量徽章的 `getSlotOccupancy()`，比對的是 `course.teacher_id === 合併後的代表 ID`（單一 ID 嚴格比對），從未展開別名帳號集合。課程 3153 的 `teacher_id` 是 260（輸家帳號），欄位代表 ID 是 73，兩者永遠對不上，課程就直接消失——即使畫面上那一欄明明白白寫著「高為澎」。同一支檔案裡，週檢視「選老師 chip」篩選用的 `weekViewExpandedTeacherIdSet` 其實已經正確展開別名集合（`courses.value.filter(... aliasSet.has(...))`），只是日檢視這兩處被遺漏，沒有跟著套用同一套邏輯。
+- **修法**：抽出共用的 `frontend/src/lib/teacherAliasMatch.js`（`resolveTeacherAliasIds` 取得某老師欄位的完整別名 ID 集合、`courseBelongsToTeacherAlias` 判斷課程是否屬於該集合），`getCoursesForTeacherAt()`、`getSlotOccupancy()`、`visibleTeachers` 排序用的 `teacherHasCourseToday()` 三處都改為比對別名集合而非單一 ID。
+- **測試**：新增 `teacherAliasMatch.test.js`，鎖住「課程掛在合併後的輸家帳號仍要能命中該欄位」的核心案例。
+- **防再犯**：(1) 「同一份資料在 UI 上被合併展示（多對一）」的功能，任何後續依這份合併結果做篩選/比對的程式碼，都必須走同一套展開邏輯，不能各自用合併後的單一代表值直接比對原始欄位——這是典型的「合併轉換做了，但下游比對忘記跟著改」；寫這類合併邏輯時，最好直接抽成共用函式讓所有比對點都吃同一份輸入，而不是分散在多個函式裡各自 inline。(2) 「同一顯示名稱、不同帳號 ID」本身也是一個值得盤點的資料品質問題——找找系統裡還有沒有其他重複帳號（例如 bulk onboarding 造成的），確認是否該直接停用/合併，而不是永遠指望前端 alias 合併機制兜底。
