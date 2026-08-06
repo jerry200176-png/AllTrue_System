@@ -1,3 +1,16 @@
+## 2026-08-06 — chore(hardening): R98/R99 根本解決＋防再犯（大公司作法對照）
+
+- **背景**：R98（主任視角 schedules 永遠回傳空陣列）與 R99（同名重複老師帳號讓課程消失）修復上線後，CEO 要求不能只是修好眼前的 bug，必須參考大公司軟體從根本解決、避免同類問題再發生。這是針對兩者的「防再犯」加固，本身不改變任何使用者可見行為。
+- **R98 防再犯**：`buildStudentClassesApiUrl()` 與 `buildSchedulesApiUrl()` 原本各自 inline 一份「依角色決定要不要帶某個過濾參數」的判斷，這正是為什麼其中一份會被手滑寫反而沒被發現。抽出單一函式 `resolveCalendarRoleScopeParams()` 作為兩個端點共用的唯一真相來源——這是業界處理「同一份授權/範圍邏輯不能有兩份互相對照的拷貝」的標準作法（類比 Django REST Framework 的 `get_queryset()`、Rails Pundit/CanCanCan 的集中式 authorization scope：範圍邏輯只能有一個出處，不能讓每個呼叫端各自决定）。
+- **R99 根本解決（不只是防禦性修法）**：前一版修法（`teacherAliasMatch.js`）是前端防禦——即使有重複帳號，UI 也不會再讓課程憑空消失。但真正的根因是「系統裡允許存在兩個帳號、同一個顯示名稱」，這本身就是資料品質問題，光靠前端補洞治標不治本。參考大公司作法（Salesforce「合併帳戶/聯絡人」、HubSpot 聯絡人去重、Stripe customer merge：偵測到後直接把兩筆記錄合而為一，所有關聯 FK 一次改點到正確的那筆，不是讓每個消費端各自兼容兩個 ID）：
+  - 新增 `GET /api/v1/admin/teachers/duplicates`（super_admin）：掃描所有老師帳號，列出顯示名稱重複的群組，附上各自的堂數/課程數，方便主動盤點。
+  - 新增 `POST /api/v1/admin/teachers/merge-preview` 與 `POST /api/v1/admin/teachers/merge`（super_admin，需帶 `confirm: true`）：把既有、已測試過的 `TeacherUserMergeService`（原本只能透過 `php artisan teachers:merge-users` 在伺服器上執行）包成 HTTP 端點——不需要 SSH 進 Pi 就能安全執行帳號合併，所有寫入仍然走同一套經審查、有測試的 service。
+  - 新增建立老師帳號時的重複姓名檢查（`ProfileController::store()`）：偵測到同名的既有在職老師帳號時預設擋下（409 `DUPLICATE_TEACHER_NAME`），需明確帶 `allow_duplicate_name=true` 才能建立第二個帳號——把「這是刻意的」變成一個明確的選擇，而不是資料輸入意外。
+- **另一個發現：我自己這次資料修復造成的評量記錄遺失，其實系統已經有審計基礎設施，只是被繞過了**——`maybeRebuildSessionsAfterUpdate()` 的整批重建路徑用 `Model::where(...)->delete()`（query builder 批次刪除），這種寫法不會觸發 Eloquent model events，導致既有的 `ScheduleAuditLog`／`ClassSessionObserver::deleted()` 完全沒有記錄到刪除，資料一旦被覆蓋就真的無跡可尋（這正是稍早試聽課評量內容遺失、無法還原的原因）。修法：`LearningRecord` 在刪除前先寫入 `ScheduleAuditLog` 快照；`ClassSession` 改成逐筆 `->delete()`（讓既有 observer 正常觸發），而不是新增一套獨立機制——重用系統既有的、已經在其他地方運作的審計基礎設施，而不是每次遇到問題就發明一套新的。
+- **測試**：`teacherAliasMatch` 相關單元測試維持；新增 `TeacherDuplicateControllerTest`（duplicates 列表、merge-preview、merge 需 confirm、拒絕非老師帳號）、`RebuildDestructiveDeleteAuditTest`（驗證整批重建前會先把被刪除的評量內容寫進審計記錄，且刪除堂次本身也會留下記錄）、`ProfileStoreTeacherTest` 新增重複姓名擋下與明確覆蓋兩種情境；`calendarCourseLoad.test.js` 新增 `resolveCalendarRoleScopeParams` 單元測試。`--filter='Course|Session|Materiali'`（588 tests）、`--filter='Teacher|Merge|Schedule|Rebuild'`（482 tests）、`--filter='Profile|Teacher'`（257 tests）皆綠燈。
+- **後續**：上線後將透過新的 `merge` 端點，把「高為澎」的重複帳號（ID 260，此次 in-app #219/#223 的根因）正式合併進主帳號（ID 73），從資料層徹底解決，而不是只靠前端 alias 邏輯兜底。
+- **關於稍早遺失的評量內容（吳宥萱 6/18 試聽）**：確認系統對 `LearningRecord` 內容沒有任何備份或歷史版本機制，且無法聯繫到當事老師本人核實，CEO 已核准結案不再追查——這筆內容視為不可挽回，堂數與收費不受影響。
+
 ## 2026-08-06 — fix(calendar): 同一位老師掛兩個帳號時，「輸家」帳號的課程在日檢視消失
 
 - **背景**：schedules teacher_id 洩漏 bug 修復並上線後，回報者（鄭宇志）新提交 in-app #223（含截圖），確認 6/17、6/18 高為澎老師的試聽學生（吳宥萱）依然沒有顯示在課表上——但同一天同一位老師底下其他學生的課程都正常顯示。這代表問題不是「整層資料消失」，而是更精準地卡在某一筆特定課程。

@@ -1245,3 +1245,13 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **修法**：抽出共用的 `frontend/src/lib/teacherAliasMatch.js`（`resolveTeacherAliasIds` 取得某老師欄位的完整別名 ID 集合、`courseBelongsToTeacherAlias` 判斷課程是否屬於該集合），`getCoursesForTeacherAt()`、`getSlotOccupancy()`、`visibleTeachers` 排序用的 `teacherHasCourseToday()` 三處都改為比對別名集合而非單一 ID。
 - **測試**：新增 `teacherAliasMatch.test.js`，鎖住「課程掛在合併後的輸家帳號仍要能命中該欄位」的核心案例。
 - **防再犯**：(1) 「同一份資料在 UI 上被合併展示（多對一）」的功能，任何後續依這份合併結果做篩選/比對的程式碼，都必須走同一套展開邏輯，不能各自用合併後的單一代表值直接比對原始欄位——這是典型的「合併轉換做了，但下游比對忘記跟著改」；寫這類合併邏輯時，最好直接抽成共用函式讓所有比對點都吃同一份輸入，而不是分散在多個函式裡各自 inline。(2) 「同一顯示名稱、不同帳號 ID」本身也是一個值得盤點的資料品質問題——找找系統裡還有沒有其他重複帳號（例如 bulk onboarding 造成的），確認是否該直接停用/合併，而不是永遠指望前端 alias 合併機制兜底。
+
+### R100. 批次 `Model::where(...)->delete()` 繞過 Eloquent model events，既有審計基礎設施形同虛設（自我檢討，2026-08-06）
+
+- 稍早修復 in-app #219 時，我對課程 3153 執行了一次已徵得使用者同意的資料修正（改回正確的開課日），結果意外觸發 `maybeRebuildSessionsAfterUpdate()` 的整批重建路徑，刪除並重建了該課程的 `ClassSession` 與 `LearningRecord`。事後想找回被刪除的評量記錄內容時才發現：系統其實已經有 `ScheduleAuditLog`／`ClassSessionObserver::deleted()` 這套審計機制，理論上任何 `ClassSession` 被刪除都該留下 `old_data` 快照——但這次刪除完全沒有留下任何記錄。
+- 根因：整批重建路徑用的是 `ClassSession::where('StudentClassID', ...)->delete()` 與 `LearningRecord::whereIn(...)->delete()` 這種 query builder 批次刪除，Laravel/Eloquent 的批次刪除**不會**觸發 model events（`deleting`/`deleted`），所以掛在 `deleted` 事件上的審計記錄完全沒被呼叫到。這不是審計機制本身有 bug，是呼叫方式繞過了它。
+- 影響：不只是這一次事件——任何走這條整批重建路徑的刪除都沒有審計記錄，一旦刪錯，完全無法追溯或還原，這是系統性缺口，不是單一事故。
+- **修法**：`LearningRecord` 在刪除前先手動寫一筆 `ScheduleAuditLog` 快照（`old_data` = 完整內容）；`ClassSession::where(...)->delete()` 改成 `ClassSession::where(...)->get()->each->delete()`（逐筆刪除），讓既有 `ClassSessionObserver::deleted()` 正常觸發，不需要另外重寫一套邏輯。
+- **測試**：`RebuildDestructiveDeleteAuditTest`——驗證整批重建刪除 `ClassSession`／`LearningRecord` 前，`schedule_audit_logs` 都留下可還原的快照。
+- **防再犯**：(1) 任何要刪除「有價值內容」（使用者填寫的文字、審核紀錄等）的 Model 時，先確認是走 `->delete()`（觸發 events，既有 observer 可攔截）還是 `Model::where(...)->delete()`（query builder，繞過所有 events）——後者只適合「純粹衍生、可重算」的資料，不適合任何帶內容的紀錄。(2) 做任何有風險的 production 資料修正前，先確認「如果這個修正觸發了非預期的連鎖反應，有沒有辦法事後查到發生了什麼」——這次剛好系統已經有審計機制，只是被繞過，算是運氣好；下次不能只靠運氣，修正前應該先確認目標資料表有沒有審計/備份機制、機制實際上會不會被觸發。(3) `LearningRecord` 本身完全沒有任何審計/歷史版本機制（不像 `ClassSession` 有 `ScheduleAuditLog`），這次事件確認了一旦內容被覆蓋或刪除就無法還原——這是後續可評估是否要補上的技術債，記在 `docs/TECH_DEBT.md`。
+- **這次遺失的評量內容如何結案**：吳宥萱 6/18 試聽課的評量記錄已確認無法還原（無備份、無法聯繫到當事老師 高為澎 核實），CEO 已核准直接結案，不再追查；堂數與收費不受影響，純粹是這一筆評量文字內容遺失。
