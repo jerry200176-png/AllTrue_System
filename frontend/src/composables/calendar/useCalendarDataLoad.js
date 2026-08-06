@@ -155,7 +155,7 @@ export function useCalendarDataLoad({
     if (shouldUseLegacyCalendarFallback({ apiSucceeded: exceptionsApiSucceeded })) {
       let excQuery = supabase.from('schedules').select('*');
       if (!teacherMode && bid) excQuery = excQuery.eq('branch_id', bid);
-      if (!teacherMode && uid) excQuery = excQuery.eq('teacher_id', uid);
+      if (teacherMode && uid) excQuery = excQuery.eq('teacher_id', uid);
       const { data: excRaw } = await excQuery;
       excData = Array.isArray(excRaw) ? excRaw : (excRaw?.data || []);
     }
