@@ -508,6 +508,22 @@ backfill 補建的 StudentSingIn `SignInDT` 設為 session.StartTime（非實際
 
 **結論**：不是要「寫得更小心」——這句話對任何工程師、任何 AI agent 都成立但沒有操作性。真正能防住這一整類 bug 復發的，是把「找找看是不是已經有人做過」從*仰賴個人記性*的建議，變成*機器會擋下來*的門檻。已記錄為 `TD-073`（見 `docs/TECH_DEBT.md`），供後續排入清償。
 
+### 12.5 同一天第三個實例：「已繳費」判斷沒有單一權威實作（R94）
+
+12.4 寫完當天，同一組反模式又出現一次——這次落在金流顯示邏輯，比前兩次更能說明問題的規模。
+
+**這次的 bug**：主任回報何昀佳的課程在課程管理頁面正確顯示「已繳費」，帳務中心卻仍列「未繳費」——課程已用帳單收款紀錄結清（`paid_amount === charge`），但 `AlertController::computePaymentStatus()` 只看 `StudentClass.Paid` 這個旗標，沒把「帳單足額收款」算進去。修好之後（PR #1648）盤點了一次「這個判斷到底在幾個地方被重寫」，結果比預期嚴重：
+
+- `backend/app/Models/StudentClass.php`、`Invoice.php` 完全沒有 `isPaid()`／`isFullyPaid()` 這類集中的存取器或方法。
+- 至少 **8 個檔案**各自獨立判斷「這筆課程是否已繳費」：`StudentClassController`（課程管理，`Paid==1` 或**任一筆**收款存在）、`AlertController` 自己內部另外兩處（`mapCountModeAlert`／`monthlyAlertRow`，只認 `Paid==1`，但這兩處是刻意保留給「列入提醒條件」用、依 `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` 明文規定不可與顯示用的 `payment_status` 混為一談）、`NotificationSyncService`、`DunningService`（明文凍結，需核准才能改）、`PaymentReportController`、`ParentPortalController`（同一個檔案內部就有三種寫法）、`NotificationController`、`AccountingController`、`SendTuitionReminders`。
+- 光是「已繳費」這一個概念，至少存在 **4 種互不相同的變體**：`Paid` 旗標單一判斷／`Paid` 或任一筆收款（不論金額）／`Paid` 或足額收款／舊制 `Pay >= Charge` 欄位直接比較。四種聽起來都「合理」，但拿去互相比對就會像這次一樣互相打架。
+
+**為什麼這正是大公司會有「單一權威實作」的地方**：Stripe 的 `Invoice.status`、Shopify 的 `Order.financial_status` 都是同一個模式——「這筆錢收了沒」是整個系統裡最常被查詢、也最常被拿來做決策（要不要發提醒、要不要允許續約、要不要擋点名）的欄位，所以絕不允許每個消費端各自從 raw 資料重新推導。做法通常是：這個判斷只活在 aggregate root（Invoice／Order 這個 model 本身）的一個方法或 computed 欄位上，其他任何 controller、service、報表，一律呼叫這個方法，不得自己重新拼一次條件。這不是「多此一舉的抽象」，而是**把一個金流正確性攸關的決策，鎖進唯一一個可以被單獨測試、單獨審查、單獨修正的地方**——出錯只可能錯一次，不會有「這裡改了那裡忘記改」的空間。
+
+這個專案目前完全相反：8 個檔案各自從 `StudentClass.Paid`／`Invoice.PaidAmount`／`Charge` 這些原始欄位重新推導，等於同一個決策被獨立寫了 8 次、還各自加了不同的假設。這正是 TD-073 的論點在**同一天、第三次**得到驗證：不是特定一次 AI session 或特定一位工程師的疏漏，而是這個 codebase 目前沒有任何東西——不論人工 review 還是自動化門檻——會在合併前指出「這個判斷是不是已經在別的地方寫過」。
+
+**本次已落地的收斂（範圍刻意限定）**：`AlertController.php` 內部原本也重複了兩次同一組條件（`computePaymentStatus()` 與 `computePackageCountPaymentStatus()`），本次一併抽成單一私有方法 `isFullyPaid()`，兩處呼叫同一份實作（同一 PR #1648）。**沒有**跨檔案把其餘 6+ 處也收斂成單一 model 方法——那是一次會橫跨通知、催繳、帳單、家長入口、報表等多個業務流程的變更，其中 `DunningService.php` 又被明文凍結需要產品方核准，貿然一次性大範圍改動金流判斷邏輯風險與變更範圍都超出本次回報的問題本身，故列為 TD-073 的具體子項，待明確排入清償時再由產品方逐一核准範圍後分批進行，而非未經確認一次全部重寫。
+
 ---
 
 ## 修訂記錄
@@ -519,3 +535,4 @@ backfill 補建的 StudentSingIn `SignInDT` 設為 session.StartTime（非實際
 | 2026-05-09 | 主任雙檢視（focus/full）+ 家長 Progress Hub 與 `progress_summary` 摘要 | - |
 | 2026-08-06 | 新增第 12 節：6 個 in-app bug + 陳禹慈堂數超排案的業界作法對照與加固守則 | PR #1638/#1639/#1640/#1641/#1644 |
 | 2026-08-06 | 第 12 節新增 12.4 更深層根因分析（為什麼是這裡、大公司靠什麼機制避免），並登記 TD-073 | PR #1646 |
+| 2026-08-06 | 第 12 節新增 12.5：同一天第三個「重複實作」實例（帳務中心繳費狀態 R94），盤點出 8 個檔案、4 種變體重複判斷「已繳費」，TD-073 調升為 P1 | PR #1648 |

@@ -1201,3 +1201,11 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **修法**：`$isPaid = Paid=1 或 (charge > 0 且 paid_amount >= charge)`。刻意用「足額」而非「有任一筆收款」判斷——後者會把只付一部分的 `partial` 狀態也誤判為已繳，見 `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` §「堂數制單科課程的 payment_status 未計入帳單收款」。
 - **測試**：`TuitionAlertsApiTest::test_payment_status_paid_when_invoice_fully_paid_without_paid_flag`、`test_payment_status_renew_needed_not_unpaid_when_invoice_fully_paid_and_zero_remaining`（revert 後兩者皆 fail）。
 - **防再犯**：任何新增「這筆是否已繳費」的判斷邏輯，一律先查 F7 家族既有的 `Paid OR 足額收款` 規則是否已在別處實作，不要重新發明；`AlertController::tuition` 屬 `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` 明文列管的檔案，改動前需先取得產品方同意（本次已取得）。
+- **後續盤點**：修好後掃了一次「已繳費」判斷在全 `backend/app` 被重寫幾次，結果是至少 8 個檔案、4 種互不相同的變體（見 R95）；`AlertController.php` 內部自己就重複了兩次（`computePaymentStatus()` 與 `computePackageCountPaymentStatus()`），已在同一 PR 抽成單一私有方法 `isFullyPaid()`。
+
+### R95. 「已繳費」判斷全專案盤點：至少 8 個檔案、4 種變體，沒有任何集中實作（2026-08-06）
+
+- 承 R94 修復後的盤點：`backend/app/Models/StudentClass.php`、`Invoice.php` 都沒有 `isPaid()`／`isFullyPaid()` 這類集中存取器；`StudentClassController`（`Paid==1` 或任一筆收款）、`AlertController` 內部另兩處（`mapCountModeAlert`／`monthlyAlertRow`，僅 `Paid==1`——但這兩處是刻意保留給列入提醒條件用，依規則不可與顯示用 `payment_status` 混改）、`NotificationSyncService`、`DunningService`（明文凍結）、`PaymentReportController`、`ParentPortalController`（同檔案內三種寫法）、`NotificationController`、`AccountingController`、`SendTuitionReminders` 各自獨立重新推導「已繳費」，條件互不相同。
+- 這不是巧合，是 `TD-073`（重複業務邏輯無自動偵測機制）論點在同一天第三次被驗證——已將 TD-073 優先級由 P2 調升為 P1，並記錄於 `docs/SYSTEM_TECH_GUIDE.md` §12.5。
+- **本次範圍**：只收斂了 `AlertController.php` 內部的兩處重複（同一檔案、同一 PR #1648，風險可控）。**沒有**跨檔案把其餘 8 處也改成呼叫單一 model 方法——那會是一次橫跨通知/催繳/帳單/家長入口/報表的大範圍金流邏輯變更，其中 `DunningService.php` 又被 `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` 明文凍結需產品方核准，未經明確授權不得一次性大改。
+- **防再犯**：日後若要清償 TD-073 這個具體子項，先跟產品方逐一確認要收斂的檔案範圍與驗收方式，分批進行並各自補齊回歸測試，不要一次全部重寫。
