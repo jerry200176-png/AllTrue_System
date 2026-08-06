@@ -5,6 +5,28 @@
  */
 export const changelogDraftNotes = [
   {
+    "version": "2026.08.06",
+    "date": "2026-08-06",
+    "title": "2026.08.06 草稿（未發布）",
+    "summary": "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。"
+        ]
+      }
+    ],
+    "items": [
+      "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。"
+    ]
+  },
+  {
     "version": "2026.08.02",
     "date": "2026-08-02",
     "title": "2026.08.02 草稿（未發布）",
@@ -545,35 +567,6 @@ export const changelogDraftNotes = [
     "items": [
       "主任總覽新增今日優先處理",
       "課程改排時，代課／例外時段不再被連續搬移"
-    ]
-  },
-  {
-    "version": "2026.07.10",
-    "date": "2026-07-10",
-    "title": "2026.07.10 草稿（未發布）",
-    "summary": "每日商業智能摘要（AI-native ops phase 0）；評量「無法填寫」缺口回填 + 夜間自動任務正式啟用",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "新增內容",
-        "items": [
-          "每日商業智能摘要（AI-native ops phase 0）"
-        ]
-      },
-      {
-        "title": "修正內容",
-        "items": [
-          "評量「無法填寫」缺口回填 + 夜間自動任務正式啟用"
-        ]
-      }
-    ],
-    "items": [
-      "每日商業智能摘要（AI-native ops phase 0）",
-      "評量「無法填寫」缺口回填 + 夜間自動任務正式啟用"
     ]
   }
 ];
