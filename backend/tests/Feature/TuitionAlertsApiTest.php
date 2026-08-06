@@ -445,6 +445,79 @@ class TuitionAlertsApiTest extends TestCase
         $this->assertSame(7000, $row['outstanding']);
     }
 
+    /**
+     * Director-reported live discrepancy (2026-08-06): a course settled via a
+     * recorded invoice payment (paid_amount === charge) but whose raw Paid
+     * flag was never manually flipped showed "已繳費" in course management
+     * (Paid=1 OR has invoice payment) but "未繳費" here (Paid flag only).
+     */
+    public function test_payment_status_paid_when_invoice_fully_paid_without_paid_flag(): void
+    {
+        $token = $this->createDirectorToken([1], 'ps-invoice-settled@example.com');
+        $student = Student::create([
+            'name' => '帳單結清未切旗標',
+            'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $course = $this->createCountModeClass($student->id, [
+            'Paid' => 0, 'RemainingSessions' => 5, 'Charge' => 8000,
+        ]);
+        $invoice = Invoice::create([
+            'StudentID' => $student->id, 'StudentClassID' => $course->ID,
+            'IssueDate' => '2026-06-01', 'TotalAmount' => 8000, 'PaidAmount' => 8000, 'Status' => 'paid',
+        ]);
+        Payment::create([
+            'InvoiceID' => $invoice->id, 'Amount' => 8000, 'PaidAt' => '2026-06-02', 'Method' => 'cash',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->getJson('/api/v1/alerts/tuition?branch_id=1');
+
+        $res->assertOk();
+        $row = collect($res->json())->firstWhere('id', $course->ID);
+        $this->assertNotNull($row);
+        $this->assertSame('paid', $row['payment_status']);
+        $this->assertSame(8000, $row['charge']);
+        $this->assertSame(8000, $row['paid_amount']);
+        $this->assertSame(0, $row['outstanding']);
+    }
+
+    /**
+     * Same scenario as above but with 0 remaining sessions (the exact shape
+     * of the reported course): must resolve to the renewal-reminder state,
+     * never plain "unpaid" — a fully-settled, exhausted course is still due
+     * for a renewal nudge, but it must not read as if nothing was paid.
+     */
+    public function test_payment_status_renew_needed_not_unpaid_when_invoice_fully_paid_and_zero_remaining(): void
+    {
+        $token = $this->createDirectorToken([1], 'ps-invoice-settled-zero@example.com');
+        $student = Student::create([
+            'name' => '帳單結清零堂數',
+            'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $course = $this->createCountModeClass($student->id, [
+            'Paid' => 0, 'RemainingSessions' => 0, 'Charge' => 8000,
+        ]);
+        $invoice = Invoice::create([
+            'StudentID' => $student->id, 'StudentClassID' => $course->ID,
+            'IssueDate' => '2026-06-01', 'TotalAmount' => 8000, 'PaidAmount' => 8000, 'Status' => 'paid',
+        ]);
+        Payment::create([
+            'InvoiceID' => $invoice->id, 'Amount' => 8000, 'PaidAt' => '2026-06-02', 'Method' => 'cash',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->getJson('/api/v1/alerts/tuition?branch_id=1');
+
+        $res->assertOk();
+        $row = collect($res->json())->firstWhere('id', $course->ID);
+        $this->assertNotNull($row);
+        $this->assertSame('renew_needed', $row['payment_status']);
+        $this->assertNotSame('unpaid', $row['payment_status']);
+        $this->assertSame(0, $row['outstanding']);
+    }
+
     public function test_payment_status_pending_report_when_has_pending_report(): void
     {
         $token = $this->createDirectorToken([1], 'ps-pending@example.com');

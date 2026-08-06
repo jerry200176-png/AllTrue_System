@@ -1191,3 +1191,13 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 - 使用 pilot mount／mock API 的頁面證據測試，必須由專用 Playwright config 明確收斂；default production smoke config 必須 `testIgnore`，避免在沒有 fixture server 時把測試誤當 production smoke 執行。
 - 新增任何 foundation spec 後，必須同時驗證專用 config 會執行它、default config 不會執行它，並在 CI 的 UI Smoke 與 Vite Frontend Build gate 中各自確認結果。
+
+---
+
+### R94. `AlertController::computePaymentStatus()` 只認 `StudentClass.Paid`，漏了帳單足額收款（F7 新成員，2026-08-06）
+
+- 主任回報：一名學生的堂數制課程已用帳單收款紀錄結清（`charge === paid_amount`、`outstanding = 0`），課程管理頁面正確顯示「已繳費」，帳務中心卻仍列為「未繳費」——同一課程、同一頁面群組，兩套真相互相矛盾，正是 **F7「繳費金額/狀態雙真相」** 家族的又一個成員。
+- 根因：`computePaymentStatus()` 判斷 `$isPaid` 時只看 `StudentClass.Paid` 這個欄位；`StudentClassController` 的對應邏輯早就是「`Paid=1` **或** 有記錄帳單收款」，但這條 OR 規則從未同步搬進 `AlertController`。
+- **修法**：`$isPaid = Paid=1 或 (charge > 0 且 paid_amount >= charge)`。刻意用「足額」而非「有任一筆收款」判斷——後者會把只付一部分的 `partial` 狀態也誤判為已繳，見 `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` §「堂數制單科課程的 payment_status 未計入帳單收款」。
+- **測試**：`TuitionAlertsApiTest::test_payment_status_paid_when_invoice_fully_paid_without_paid_flag`、`test_payment_status_renew_needed_not_unpaid_when_invoice_fully_paid_and_zero_remaining`（revert 後兩者皆 fail）。
+- **防再犯**：任何新增「這筆是否已繳費」的判斷邏輯，一律先查 F7 家族既有的 `Paid OR 足額收款` 規則是否已在別處實作，不要重新發明；`AlertController::tuition` 屬 `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` 明文列管的檔案，改動前需先取得產品方同意（本次已取得）。
