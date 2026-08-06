@@ -9,6 +9,7 @@ use App\Models\LearningRecord;
 use App\Models\Payment;
 use App\Models\PaymentReport;
 use App\Models\Schedule;
+use App\Models\ScheduleAuditLog;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
@@ -4347,14 +4348,35 @@ class StudentClassController extends Controller
             );
         }
 
+        // R99 follow-up (in-app #219): mass ::delete() query builder calls bypass Eloquent
+        // model events entirely, so ClassSessionObserver::deleted() never fires and the
+        // existing schedule_audit_logs trail is silently skipped — this is exactly why an
+        // earlier production repair on this same rebuild path left no recoverable trace of
+        // the deleted session or its evaluation record. Snapshot LearningRecord content here
+        // (it has no observer of its own) and delete ClassSession rows one at a time so the
+        // established audit-log infrastructure actually captures what's being destroyed.
+        $operatorId = (int) (optional(request()->attributes->get('auth_user'))->id ?: 0) ?: null;
+        $branchId = (int) (optional($studentClass->student)->CampusID ?: 0) ?: null;
         $sessionIds = ClassSession::where('StudentClassID', (int) $studentClass->ID)->pluck('id')->all();
         if (!empty($sessionIds)) {
+            $recordsToDelete = LearningRecord::whereIn('ClassSessionID', $sessionIds)->get();
+            foreach ($recordsToDelete as $record) {
+                ScheduleAuditLog::create([
+                    'session_id'  => $record->ClassSessionID,
+                    'action_type' => 'delete',
+                    'description' => "開課日/排課調整重建：刪除評量記錄 #{$record->id}（StudentClassID {$studentClass->ID}，learning_record_id={$record->id}）",
+                    'operator_id' => $operatorId,
+                    'branch_id'   => $branchId,
+                    'old_data'    => $record->toArray(),
+                    'new_data'    => null,
+                ]);
+            }
             LearningRecord::whereIn('ClassSessionID', $sessionIds)->delete();
         }
         LearningRecord::where('StudentClassID', (int) $studentClass->ID)
             ->whereNull('ClassSessionID')
             ->delete();
-        ClassSession::where('StudentClassID', (int) $studentClass->ID)->delete();
+        ClassSession::where('StudentClassID', (int) $studentClass->ID)->get()->each->delete();
 
         $createdSessions = 0;
         $createdPendingRecords = 0;

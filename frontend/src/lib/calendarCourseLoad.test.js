@@ -3,9 +3,29 @@ import {
   mapCalendarCourse,
   buildStudentClassesApiUrl,
   buildSchedulesApiUrl,
+  resolveCalendarRoleScopeParams,
   fetchCalendarCoursesAndSchedulesParallel,
   estimateParallelLoadSavingsMs,
 } from './calendarCourseLoad.js';
+
+// R98 root-cause guard: this is the ONE place both endpoint builders must derive their
+// role-scope params from — a future edit here is what both builders will inherit,
+// instead of two independently hand-edited if/if pairs drifting apart again.
+assert.deepEqual(
+  resolveCalendarRoleScopeParams({ isTeacher: true, userId: 99, branchId: 4 }),
+  { teacherId: '99', branchId: null },
+  'teacher role scopes by teacher_id only',
+);
+assert.deepEqual(
+  resolveCalendarRoleScopeParams({ isTeacher: false, userId: 280, branchId: 4 }),
+  { teacherId: null, branchId: '4' },
+  'non-teacher (director/admin) role scopes by branch_id only — never its own user id as teacher_id',
+);
+assert.deepEqual(
+  resolveCalendarRoleScopeParams({ isTeacher: false, userId: null, branchId: null }),
+  { teacherId: null, branchId: null },
+  'no branch selected yet → no scope params',
+);
 
 assert.equal(
   mapCalendarCourse({ id: 1, day_of_week: '3', rate_unit: null }).day_of_week,
@@ -109,4 +129,4 @@ assert.equal(savings.serialMs, 1550, 'serial total is sum');
 assert.equal(savings.parallelMs, 1200, 'parallel total is max');
 assert.equal(savings.savedMs, 350, 'saved ms equals shorter leg');
 
-console.log('calendarCourseLoad.test.js — 10 passed ✅');
+console.log('calendarCourseLoad.test.js — 19 passed ✅');

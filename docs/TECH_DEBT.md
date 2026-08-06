@@ -652,3 +652,17 @@
 | 建議做法 | 分階段：(1) 導入 `phpcpd`（PHP Copy/Paste Detector）或等效工具掃 `backend/app/`，先以 advisory 模式跑一輪盤點既有重複，比照 `phpstan-baseline.neon` 模式建 baseline（只擋新增，不強制清歷史債）。(2) 針對「業務字面值被多處比對」這類更窄但更常見的模式（如 `->where('VoidReason', '...')`、`->where('Status', '...')` 等字串比對），寫一個輕量 grep-based presubmit 檢查，偵測同一個中文/業務字面值在 `>=2` 個檔案或 `>=3` 個位置被直接使用（而非引用常數），達門檻即警告或擋下。(3) 中長期評估是否比照 SonarQube/CodeClimate 等重複程式碼偵測服務。 |
 | 清償成本估計 | 中（`phpcpd` 導入 + baseline 產生腳本約 1 天；grep-based magic-string presubmit 檢查約半天；SonarQube 等級整合需另外評估） |
 | 不做的代價 | 同一類「兩份獨立實作互不知情，各自正確但合起來錯」或「業務字串被複製後其中一份損毀」的 bug，會持續只能等使用者（家長帳單異常、老師操作卡住）回報才發現，且每次都要重新做一次根因調查才找得到，而非在 PR 合併前就被機器攔下來 |
+
+### TD-074：`LearningRecord`（評量記錄）完全沒有審計/歷史版本機制，內容一旦覆蓋或刪除無法還原
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P2 |
+| 發現日期 | 2026-08-06 |
+| 發現來源 | in-app #219 修復過程中的自我檢討（R100）——一次已徵得使用者同意的資料修正意外觸發 `maybeRebuildSessionsAfterUpdate()` 整批重建，刪除並重建了課程 3153 的 `ClassSession`/`LearningRecord`。事後想找回評量記錄內容才發現：`ClassSession` 有 `ScheduleAuditLog`/`ClassSessionObserver` 這套審計機制（雖然這次因批次刪除繞過而沒發揮作用，已在同一批修復補上），但 `LearningRecord`（老師實際填寫的評量文字）本身完全沒有對應的審計或版本歷史，內容一旦被覆蓋或刪除就是真的、永久地消失，沒有任何補救管道。 |
+| 影響模組 | `backend/app/Models/LearningRecord.php`、所有會修改/刪除 `LearningRecord` 的路徑（`StudentClassController::maybeRebuildSessionsAfterUpdate()`、`LearningRecordController` 各更新端點等） |
+| 描述 | `ClassSession` 已有前例（`ScheduleAuditLog` + `ClassSessionObserver`）可以直接參考同一套 pattern：`created`/`updating`/`updated`/`deleted` 各自寫一筆快照。`LearningRecord` 承載的是老師手動輸入、無法自動重新產生的內容，遺失後果比 `ClassSession`（結構化欄位，理論上可從排課規則重建）更嚴重，卻是目前唯一沒有任何保護的核心業務資料表。 |
+| 建議做法 | 比照 `ClassSessionObserver` 的作法，新增 `LearningRecordObserver`，掛 `updating`/`updated`/`deleted` 三個事件，寫入既有的 `schedule_audit_logs`（或新開一張同構的 `learning_record_audit_logs`，視是否需要跟 `ClassSession` 的審計記錄分開查詢而定）。同時盤點專案裡是否還有其他會呼叫 `LearningRecord::where(...)->delete()`／`->update(...)` 批次操作的地方，確認都會被 Observer 涵蓋到（批次操作一樣要小心繞過 model events 的問題，見 R100）。 |
+| 清償成本估計 | 小～中（新增一個 Observer + 註冊 + 補測試，比照既有 `ClassSessionObserver` 模式，約半天到一天） |
+| 不做的代價 | 任何未來的資料修正、bug 修復、甚至老師自己手滑覆蓋，只要動到 `LearningRecord`，內容遺失就是無法逆轉的，且無法事後判斷「原本是不是真的有內容」——這次吳宥萱 6/18 試聽課的評量內容遺失就是因為沒有這層保護，最終只能結案放棄追查。 |

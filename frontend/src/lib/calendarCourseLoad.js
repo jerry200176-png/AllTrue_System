@@ -34,6 +34,20 @@ export function mapCalendarCourse(c) {
   };
 }
 
+/**
+ * R98 (in-app #219): single source of truth for "which role-scope params does this
+ * request get." Two independent copies of this same if/if pair (one per endpoint
+ * builder below) is exactly how a hand-edit once flipped one of them without the
+ * other — teacher-role requests must scope by their own teacher_id, everyone else
+ * (director/admin) scopes by branch_id only. Never re-inline this logic per builder.
+ */
+export function resolveCalendarRoleScopeParams({ isTeacher, userId, branchId }) {
+  return {
+    teacherId: isTeacher && userId ? String(userId) : null,
+    branchId: !isTeacher && branchId ? String(branchId) : null,
+  };
+}
+
 export function buildStudentClassesApiUrl({
   baseUrl,
   branchId,
@@ -42,9 +56,10 @@ export function buildStudentClassesApiUrl({
   schedStart,
   schedEnd,
 }) {
+  const scope = resolveCalendarRoleScopeParams({ isTeacher, userId, branchId });
   const scParams = new URLSearchParams();
-  if (!isTeacher && branchId) scParams.set('branch_id', String(branchId));
-  if (isTeacher && userId) scParams.set('teacher_id', String(userId));
+  if (scope.branchId) scParams.set('branch_id', scope.branchId);
+  if (scope.teacherId) scParams.set('teacher_id', scope.teacherId);
   if (schedStart && schedEnd) {
     scParams.set('start', schedStart);
     scParams.set('end', schedEnd);
@@ -61,9 +76,10 @@ export function buildSchedulesApiUrl({
   isTeacher,
   userId,
 }) {
+  const scope = resolveCalendarRoleScopeParams({ isTeacher, userId, branchId });
   const excParams = new URLSearchParams({ per_page: '2000', start: schedStart, end: schedEnd });
-  if (!isTeacher && branchId) excParams.set('branch_id', String(branchId));
-  if (isTeacher && userId) excParams.set('teacher_id', String(userId));
+  if (scope.branchId) excParams.set('branch_id', scope.branchId);
+  if (scope.teacherId) excParams.set('teacher_id', scope.teacherId);
   return `${baseUrl}/v1/schedules?${excParams.toString()}`;
 }
 

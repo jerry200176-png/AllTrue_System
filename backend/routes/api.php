@@ -41,6 +41,7 @@ use App\Http\Controllers\TeacherLeaveController;
 use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\BugReportController;
+use App\Http\Controllers\TeacherDuplicateController;
 use App\Http\Controllers\SubjectController;
 use App\Http\Controllers\PaymentReportController;
 use App\Http\Controllers\ScheduleAuditController;
@@ -251,6 +252,11 @@ Route::prefix('v1')->group(function () {
 
         // ── Bug Reports (admin) ──
         Route::get('admin/bug-reports', [BugReportController::class, 'index']);
+
+        // ── R99 (in-app #219/#223) root-cause prevention: duplicate teacher accounts ──
+        Route::get('admin/teachers/duplicates', [TeacherDuplicateController::class, 'index']);
+        Route::post('admin/teachers/merge-preview', [TeacherDuplicateController::class, 'preview']);
+        Route::post('admin/teachers/merge', [TeacherDuplicateController::class, 'merge']);
     });
 
     // ── GitHub Issues (director + super_admin) ──

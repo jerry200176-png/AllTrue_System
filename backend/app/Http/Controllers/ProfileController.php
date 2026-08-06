@@ -392,6 +392,7 @@ class ProfileController extends Controller
             'subject_level_scopes' => 'nullable|array',
             'subject_level_scopes.*.subject_id' => 'required_with:subject_level_scopes|integer|min:1',
             'subject_level_scopes.*.level' => 'required_with:subject_level_scopes|string|in:elementary,junior,high',
+            'allow_duplicate_name' => 'nullable|boolean',
         ]);
         $loginName = trim((string) ($data['account'] ?? $data['email'] ?? ''));
         if ($loginName === '') {
@@ -400,6 +401,26 @@ class ProfileController extends Controller
         $normalizedPhone = preg_replace('/\D+/', '', (string) ($data['phone'] ?? ''));
         if ($normalizedPhone === '') {
             $normalizedPhone = null;
+        }
+
+        // R99 (in-app #219/#223) root-cause prevention: two teacher accounts sharing a
+        // display name is exactly what let a course silently disappear from the calendar
+        // (SmartCalendar merges same-name accounts into one visible column, but a course
+        // tagged to the "losing" duplicate falls out of it). Block silent creation of a
+        // second active teacher with the same name; require an explicit override so this
+        // stays a deliberate choice, not an onboarding accident.
+        if (($data['role'] ?? 'teacher') === 'teacher' && empty($data['allow_duplicate_name'])) {
+            $duplicateName = trim((string) $data['name']);
+            $existingSameName = $duplicateName !== ''
+                ? User::where('type', 'T')->where('status', '!=', 'inactive')->where('Name', $duplicateName)->first()
+                : null;
+            if ($existingSameName) {
+                return response()->json([
+                    'message' => "已有同名老師帳號（帳號：{$existingSameName->LoginName}），可能是同一人重複建立。若確定要建立另一個獨立帳號，請再次送出並加上 allow_duplicate_name=true。",
+                    'code' => 'DUPLICATE_TEACHER_NAME',
+                    'existing_teacher_id' => $existingSameName->id,
+                ], 409);
+            }
         }
 
         $type = match ($data['role'] ?? 'teacher') {
