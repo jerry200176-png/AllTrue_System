@@ -1,3 +1,10 @@
+## 2026-08-06 — fix(scheduling): 請假/取消自動補堂改為單一權威實作，避免堂次數超過已購堂數
+
+- **背景**：新店分校主任回報，一名學生（英文課）明明購買 8 堂，繳費單卻顯示 12 堂、日期不連貫，系統回報「超排」，老師已先手動取消部分堂次暫時排除。
+- **根因**：「請假/取消後自動於課表尾端補一堂」這件事，程式碼裡各自獨立寫了兩份——`CourseLeaveCascadeService::appendTailAfterLeave()`（`/schedules/leave-by-session`、`/schedules/retro-leave` 用）與 `ClassSessionController::tryExtendOnLeave()`（`PATCH /class-sessions/{id}` 用）。兩份對「已計入堂數」的認定不完全一致，且互不知道對方存在，交替經由不同入口對同一堂課操作請假/取消，會讓非取消堂次數悄悄超過實際購買堂數，最終撞上系統自己的超排防呆。
+- **修法**：刪掉 `ClassSessionController` 那份重複實作，改為呼叫唯一權威的 `CourseLeaveCascadeService::appendTailAfterLeave()`；順手把原本只存在於 Controller 那份的「暫停中課程（Stop=1）不補堂」防呆，一併搬進共用服務，讓所有入口都受到保護。
+- **測試**：新增 `LeaveCascadeSingleAuthorityTest`，模擬同一堂課交替經由兩個入口請假/取消，斷言非取消堂次數全程不超過已購堂數；另補暫停課程不補堂的回歸測試。既有 leave-cascade 相關測試（`ScheduleLeaveCascadeTest`、`LeaveKeepDatesAppendTailTest` 等）全數維持綠燈，PHPStan 全域無新增錯誤。
+
 ## 2026-08-05 — chore(dashboard): 清理 DirectorDashboard.vue 死碼（PR #1515 work-grid + Wave A/B + 舊版 workbench，全部完成）
 
 - **背景**：稽核 PR #1515（Wave B, AtCard/AtEmpty/AtMetric work-grid）的「缺測試」警告時發現，該 PR 改的整段標記早已因後續 `director-workbench-v2` 改版而被 `<template v-if="false">` 永久包住、完全打不到；同一個 `v-if="false"` 區塊內還疊了更早期的 action-lane、progress-board、第一版 workbench，以及一個已停用的匯入格式說明 modal。因單一 PR 改動 1,100+ 行會撞到 CI 的 700 行 PR-size 上限，拆成兩個 PR 分批清除（part 1：`chore/dashboard-deadcode-part1`；part 2：本則）。
