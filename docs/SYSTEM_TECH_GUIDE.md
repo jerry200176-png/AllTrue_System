@@ -18,6 +18,7 @@
 9. [核心 Services 職責](#9-核心-services-職責)
 10. [資料庫 ID 對應關係](#10-資料庫-id-對應關係)
 11. [採用率與流程治理（Adoption v1.1）](#11-採用率與流程治理adoption-v11)
+12. [2026-08-06 bug 群回顧：業界作法對照與已落地的架構加固](#12-2026-08-06-bug-群回顧業界作法對照與已落地的架構加固)
 
 ---
 
@@ -467,6 +468,34 @@ backfill 補建的 StudentSingIn `SignInDT` 設為 session.StartTime（非實際
 
 ---
 
+## 12. 2026-08-06 bug 群回顧：業界作法對照與已落地的架構加固
+
+2026-08-06 一天內修的 6 個 in-app bug（#216–#221）＋ 1 個主任直接回報的架構問題（陳禹慈案，堂數超排），逐一對照後發現全部落在同一組、業界成熟工程團隊有明確對策的反模式（anti-pattern）之下。本節記錄對照結果與**已經落地**的加固，供之後改動這幾塊程式碼時參考，避免重蹈覆轍。
+
+### 12.1 逐一對照
+
+| Bug | 反模式 | 業界對策（做法名稱） | 本次落地 |
+|---|---|---|---|
+| #216 分校篩選失效 | 授權/多租戶範圍判斷寫死在單一 controller 分支，漏了 super_admin 帶 `campus_id` 的情境 | **集中式租戶範圍收斂**（single scoping choke point）——大型 SaaS（如 Salesforce 的 sharing rules、GitHub 的 org-scoped policy middleware）把「這個請求能看哪些租戶資料」收斂成單一、可測試的函式，禁止每個 endpoint 各自土法重寫 | `AdminDuplicateSessionController::effectiveCampusIds()`（PR #1638），把「有沒有帶 campus_id、是不是 super_admin」的判斷收斂成一個函式 |
+| #217/#218 VoidReason 亂碼比對 | 業務關鍵字串（'一般請假'）在同一份程式碼裡被重複打了 6 次字面值，其中一份被手殘/編碼問題打壞就永久失配 | **消滅 magic string**（Google styleguide、Stripe 工程部落格都明確要求：跨檔案比對用的業務常數只能定義一次）——本專案自己在 `NON_BILLABLE_STATUSES` 已經示範過這個做法，但 VoidReason 字串沒跟上 | 新增 `CourseLeaveCascadeService::VOID_REASON_LEAVE` 常數，6 處使用點與 `LearningRecordResurrectionPolicy`（本身就在文件裡警告過「同一個決策被複製兩份，一份可能悄悄比較寬鬆」）全部改成引用同一個常數（本次） |
+| #219 暫停/恢復未還原 | 狀態機只寫了「取消」半邊，沒對稱補「恢復」半邊 | **對稱狀態轉移**（symmetric state transitions）——凡是設計「A→B」的動作，狀態機設計規範要求同時交付「B→A」並各自測試，不能假設使用者不會走回頭路 | `StudentClassController::restorePauseCancelledSessions()`（PR #1639），resume 動作明確找回 pause 動作打的標記並還原 |
+| #220/#221 行事曆快取整包覆蓋 | 前端把「切換週次抓到的新資料」直接覆蓋整個快取物件，而不是按 key 合併 | **正規化狀態存放 + 按 key 合併**（normalized store，Redux/Vuex 系官方文件的核心建議：集合類資料要用 id 當 key 存放，新資料進來是 merge 不是 replace） | `mergeSessionsByCourse()`（PR #1641，本來就是専案裡現成、之前沒被用到的函式，此次接上） |
+| 陳禹慈案（堂數超排） | 同一條業務規則（「請假/取消後自動補一堂」）被兩支程式各自獨立重寫一份，兩份對「已計入堂數」的定義不同步 | **單一權威實作 / DRY**（Don't Repeat Yourself；金流/計費系統尤其嚴格——Stripe 的 idempotency + ledger 設計核心精神就是「任何會影響餘額的操作只能有一個入口」，不允許兩條路徑各自算一次） | `ClassSessionController::tryExtendOnLeave()` 改為純委派 `CourseLeaveCascadeService::appendTailAfterLeave()`，並把原本只存在其中一份的 Stop=1 防呆搬進共用服務（PR #1644） |
+
+### 12.2 共通結論
+
+六個 bug 沒有一個是「單純打錯字」層級的意外——每一個底下都對應到一個有名字、業界公認的反模式：**授權判斷分散**、**業務字串未收斂成常數**、**狀態機不對稱**、**集合資料整包覆蓋而非按 key 合併**、**同一條規則重複實作**。這組 bug 之所以能同一天集中冒出來，是因為這套系統早期為求快速迭代，同一類決策常常「先在 A 處理，需要時在 B 再抄一份」，而不是一開始就收斂成共用函式；只要新增功能繼續延用這個習慣，同一組反模式會不斷復發。
+
+### 12.3 給之後改這幾塊的守則
+
+- 新增任何「跨校區資料範圍判斷」，一律呼叫既有的 scoping 函式（如 `effectiveCampusIds()`／`allowedCampusIds()`），不要在 controller 裡另起一段。
+- 任何會被**多處比對**的業務字串（狀態、原因代碼、note 標記），一律先定義成 class const，不寫第二次字面值。
+- 設計任何「A 動作」時，先問「B（回復）動作要怎麼寫、誰負責測」，不要等使用者回報才補。
+- 前端集合類資料（列表、月曆、快取）優先用「按 id/key 合併」，只有明確要清空重抓時才整包 replace。
+- 同一條業務規則如果發現在兩支 controller/service 裡都有實作，**先合併成一份再繼續改**，不要兩邊分別修。
+
+---
+
 ## 修訂記錄
 
 | 日期 | 變更 | 相關 PR |
@@ -474,3 +503,4 @@ backfill 補建的 StudentSingIn `SignInDT` 設為 session.StartTime（非實際
 | 2026-04-23 | 初版建立：Identity、Attendance、ClassSession、Swipe Flow、Gotchas | PR #23 |
 | 2026-05-09 | 新增 Adoption v1.1：SLA 分級、每日摘要與週對比口徑 | - |
 | 2026-05-09 | 主任雙檢視（focus/full）+ 家長 Progress Hub 與 `progress_summary` 摘要 | - |
+| 2026-08-06 | 新增第 12 節：6 個 in-app bug + 陳禹慈堂數超排案的業界作法對照與加固守則 | PR #1638/#1639/#1640/#1641/#1644 |
