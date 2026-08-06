@@ -1185,7 +1185,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$ID\.$#'
 			identifier: property.notFound
-			count: 9
+			count: 6
 			path: app/Http/Controllers/ClassSessionController.php
 
 		-
@@ -1209,7 +1209,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 4
+			count: 1
 			path: app/Http/Controllers/ClassSessionController.php
 
 		-

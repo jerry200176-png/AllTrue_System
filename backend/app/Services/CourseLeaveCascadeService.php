@@ -339,13 +339,28 @@ class CourseLeaveCascadeService
     /**
      * KEEP policy write: append missing billable tail; do not move future dates.
      *
-     * @return array{0:array,1:?string}
+     * Single authoritative entry point for "auto-extend after leave/cancel" — every
+     * caller (ordinary leave, retro-leave, and single-session status updates) MUST
+     * route through this method rather than reimplementing the billable-vs-purchased
+     * check locally. Two independent copies of this logic previously existed
+     * (here and in ClassSessionController::tryExtendOnLeave), and since neither knew
+     * about the other, a course could accumulate more non-cancelled dated sessions
+     * than it actually purchased (in-app director report, 2026-08-06: 8 purchased,
+     * 11+ live rows, blocked by the system's own overbooking guard).
+     *
+     * @return array{0:array,1:?string,2:?ClassSession}
      */
     public static function appendTailAfterLeave(int $courseId, string $leaveDate, ClassSession $leaveSession): array
     {
         $course = StudentClass::query()->where('ID', $courseId)->first();
         if ($course && (string) ($course->scheduling_policy ?? 'auto_recurrence') === 'manual_occurrence') {
-            return [self::fetchCourseSessionRows($courseId), $course->EndDate ? Carbon::parse($course->EndDate)->toDateString() : null];
+            return [self::fetchCourseSessionRows($courseId), $course->EndDate ? Carbon::parse($course->EndDate)->toDateString() : null, null];
+        }
+        // Paused courses must not get sessions auto-generated back in — that would
+        // reproduce the exact "cancelled it then it came back" symptom pause/resume
+        // is meant to prevent (in-app #219).
+        if ($course && (int) ($course->Stop ?? 0) === 1) {
+            return [self::fetchCourseSessionRows($courseId), $course->EndDate ? Carbon::parse($course->EndDate)->toDateString() : null, null];
         }
         $sessions = ClassSession::query()
             ->where('StudentClassID', $courseId)
@@ -357,7 +372,7 @@ class CourseLeaveCascadeService
         if ($scheduleMode === 'date' && $purchased <= 0) {
             $rows = self::fetchCourseSessionRows($courseId);
             $end = ClassSession::query()->where('StudentClassID', $courseId)->max('SessionDate');
-            return [$rows, $end ? substr((string) $end, 0, 10) : null];
+            return [$rows, $end ? substr((string) $end, 0, 10) : null, null];
         }
         $sessionRows = $sessions->map(fn ($s) => [
             'id' => (int) $s->id,
@@ -371,6 +386,7 @@ class CourseLeaveCascadeService
             (int) $leaveSession->id,
             $purchased
         );
+        $newSession = null;
         if ((int) $plan['append_count'] > 0 && $plan['append']) {
             $appendDate = $plan['append'];
             $appendTimes = self::resolveContractSlotTimes($course, $appendDate);
@@ -391,7 +407,7 @@ class CourseLeaveCascadeService
         if ($extendedEndDate) {
             DB::table('StudentClass')->where('ID', $courseId)->update(['EndDate' => $extendedEndDate]);
         }
-        return [self::fetchCourseSessionRows($courseId), $extendedEndDate];
+        return [self::fetchCourseSessionRows($courseId), $extendedEndDate, $newSession];
     }
 
     /**
