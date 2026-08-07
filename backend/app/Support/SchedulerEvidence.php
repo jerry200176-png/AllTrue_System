@@ -36,6 +36,7 @@ final class SchedulerEvidence
         'sessions-audit-stranded' => ['command' => 'sessions:audit-stranded --json', 'time' => '03:40'],
         'sessions-generate-forward' => ['command' => 'sessions:generate-forward --execute --scheduled --horizon-weeks=4', 'time' => '03:45'],
         'learning-records-backfill-missing' => ['command' => 'learning-records:backfill-missing', 'time' => '03:50'],
+        'learning-records-void-stale-leave' => ['command' => 'learning-records:void-stale-leave', 'time' => '03:55'],
         'bugs-verify-reproductions' => ['command' => 'bugs:verify-reproductions --json', 'time' => '04:00'],
         'ops-business-digest' => ['command' => 'ops:business-digest', 'time' => '04:10'],
     ];
@@ -395,6 +396,7 @@ final class SchedulerEvidence
             'teacher-signin-close-orphans' => '/Closed\s+(\d+) orphan TeacherSingIn record/',
             'rfid-prune-pending' => '/Deleted\s+(\d+) pending swipes/',
             'learning-records-backfill-missing' => '/total created:\s*(\d+)/',
+            'learning-records-void-stale-leave' => '/total voided:\s*(\d+)/',
         ];
         if (isset($countPatterns[$job]) && preg_match($countPatterns[$job], $output, $matches)) {
             return ['affected_rows' => (int) $matches[1]];

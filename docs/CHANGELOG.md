@@ -1,3 +1,40 @@
+## 2026-08-08 — fix(scheduling): #170 修復上線後生產資料仍卡住，補上夜間自我修復掃描
+
+- **背景**：稍早的 #170 修復（`voidLiveArtifactsForLeave()` 抽出共用作廢邏輯，接到 `ExceptionWorkflowController::confirmCandidate()`）上線後，用新增的唯讀診斷 workflow 重新查詢，發現 `bugs:verify-reproductions` 的 `leave_session_with_live_learning_record` 條件當晚（8/8 04:00）**仍然 REGRESSED**——同一筆 `ClassSession #15635` / `LearningRecord #11828` 依然存在。
+- **根因**：程式碼修復只能防止「未來」呼叫 `confirmCandidate()` 時發生同樣問題，對「修復上線前就已經被寫壞」的既有資料完全無感——這是修 code path 與修「已經髒掉的資料」是兩件不同的事，只做前者不代表後者會自動消失。
+- **修法**：仿照既有 `learning-records:backfill-missing`（處理「缺 LearningRecord」的鏡像問題）的夜間自我修復掃描模式，新增 `learning-records:void-stale-leave`：每晚 03:55（`bugs:verify-reproductions` 04:00 之前）掃描所有 `leave`/`leave_adjusted` 堂次，凡是還掛著未作廢 `LearningRecord`／`StudentSingIn` 的，一律透過既有共用邏輯 `CourseLeaveCascadeService::voidLiveArtifactsForLeave()` 作廢——不管是哪個尚未發現的程式路徑造成的，都會被這道每日掃描自動清掉，而不必每次都靠人工一筆一筆 SSH 進生產環境修資料。冪等、唯讀性質（只作廢已經該被作廢的資料，不新增/不刪除任何堂次或核准評量以外的內容）。
+- **測試**：新增 `LearningRecordVoidStaleLeaveTest`（作廢 LearningRecord/StudentSingIn、冪等重跑、不誤觸非請假堂次的正常評量）。
+- **記錄**：`ops/critical-job-registry.json` 同步登記新排程任務。
+- **驗證**：部署後手動觸發（`.github/workflows/learning-records-void-stale-leave-manual.yml`）跑了一次，`total voided: 1`，即時重跑 `bugs:verify-reproductions --json` 確認 `leave_session_with_live_learning_record` 轉為 `count: 0, state: FIXED-OK`——ClassSession #15635 / LearningRecord #11828 這筆卡了 5 天（8/3–8/8）的資料已在生產環境實際清除，非僅程式邏輯測試通過。
+
+## 2026-08-07 — fix(billing): 繳費提醒金額計算 N+1，量大時效能劣化（#984）
+
+- **背景**：#984 一開始只看程式碼判斷「查詢已經批次過，沒有活躍 bug」，實際上還有一層沒發現——回歸測試才抓到真正的 N+1。
+- **根因**：`AlertController::subjectLabel()` 呼叫 `StudentClass::displaySubjectName()`，當 `StudentClass.Subject` 欄位是空字串時，會逐筆查 `Subject`/`BaseData` 表。CI 顯示 5 筆未繳費課程要跑 24 條查詢，40 筆要跑 94 條（每筆多跑約 2 條）。
+- **修法**：`tuition()` 呼叫時一次性批次解析 `SubjectID → name`，不再逐筆查表。純效能修正，未改變任何金額計算邏輯。
+- **詳見**：PR #1667。
+
+## 2026-08-05 — fix(calendar): 編輯不相關的續約合約後，舊合約已完成的堂次從行事曆消失（in-app #220/#221）
+
+- **背景**：學生張姸耣較舊、已結束合約的 5/30 已上堂次，在主任編輯另一筆完全無關的續約合約（同科目同老師、不同日期）後，從行事曆上消失。直接查 DB 確認 `ClassSession` 資料列從未被動過——純前端快取問題，不是資料遺失。
+- **根因**：`useCalendarDataLoad.js` 的 `loadCourses()` 依目前畫面週次（含預抓緩衝）撈 `class-sessions`，用回傳結果整批覆蓋共用的 `sessionDatesByCourseId` 快取，導致其他課程原本已載入、但這次查詢視窗外的堂次被覆蓋清空。
+- **修法**：改成依課程分別合併快取，而不是整批覆蓋。
+- **詳見**：PR #1641。
+
+## 2026-08-05 — fix(duplicate-review): 重複堂審核頁的分校篩選對 super_admin 沒作用（in-app #216）
+
+- **背景**：super_admin 在重複堂審核頁選分校下拉選單，清單內容不會變。
+- **根因**：`p2-review` 從未讀取 `?campus_id=` 查詢參數；一般角色靠 `auth_campus_ids` 天生限制分校範圍，但 super_admin 沒有這個限制，所以少了這段就完全篩不動。
+- **修法**：新增 `effectiveCampusIds()`，在既有 `allowedCampusIds()` 範圍上疊加可選的 `campus_id` 參數——super_admin 可篩到任一分校；非 super_admin 仍只能在自己原本可見範圍內再縮小，不能跳出權限範圍。
+- **詳見**：PR #1638。
+
+## 2026-08-05 — fix(course-mgmt): 暫停課程恢復後，被取消的堂次沒有一起復原（in-app #219）
+
+- **背景**：學生侯思圻 7/29 的試聽課被排入，課程因故自動歸類為「history」（暫停，`Stop=1`），主任按「恢復課程」後，這堂課仍然沒有回到行事曆上。
+- **根因**：`togglePause()` 的暫停分支會取消該課程未來所有 `scheduled` 狀態的 `ClassSession`（標記 `[暫停取消]`／`[結案取消]`；孤兒停用課程則由 `FixOrphanScheduledSessions` 標記 `[孤兒停用取消]`）。但恢復分支只重設了 `Stop`／`closed_reason`，從未把這些被取消的堂次復原。
+- **修法**：恢復課程時一併復原暫停/孤兒停用取消的堂次。
+- **詳見**：PR #1639。
+
 ## 2026-08-07 — fix(calendar): 逐堂手動排課的堂次若時段偏離課程預設時段，取消/角標會找不到對應堂次（in-app #224）
 
 - **背景**：主任回報 8/8 一堂課「無法移動或刪除」。查證發現該類堂次是透過 #211（逐堂手動排課，2026-08-02 上線）新增，開始時間由使用者自由輸入、不必等於課程契約預設時段。
