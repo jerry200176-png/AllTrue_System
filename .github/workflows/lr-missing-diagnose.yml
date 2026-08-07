@@ -42,6 +42,7 @@ jobs:
           set -euo pipefail
           cat > /tmp/lr_missing_probe.php <<'PHP'
           <?php
+          // 1) Live check of the exact enforced condition (may be empty if it self-cleared).
           $rows = \Illuminate\Support\Facades\DB::select("
             SELECT cs.id AS session_id, cs.StudentClassID, cs.SessionDate, cs.StartTime, cs.Status,
                    sc.StudentID, sc.TeacherID, sc.Stop AS course_stop, sc.ScheduleMode,
@@ -57,7 +58,51 @@ jobs:
               AND CONCAT(cs.SessionDate, ' ', COALESCE(cs.StartTime, '00:00:00')) <= NOW()
               AND NOT EXISTS (SELECT 1 FROM LearningRecord lr WHERE lr.ClassSessionID = cs.id AND lr.VoidedAt IS NULL)
           ");
-          echo json_encode(["ok" => true, "rows" => $rows, "generated_at" => gmdate("c")], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), PHP_EOL;
+
+          // 2) Same condition but WITHOUT the Student join, to catch rows whose StudentID
+          //    doesn't resolve to any Student row at all (invisible to backfillAllBranches(),
+          //    which enumerates branches strictly via Student::CampusID).
+          $orphaned = \Illuminate\Support\Facades\DB::select("
+            SELECT cs.id AS session_id, cs.StudentClassID, cs.SessionDate, cs.StartTime, cs.Status,
+                   sc.StudentID, sc.Stop AS course_stop
+            FROM ClassSession cs
+            JOIN StudentClass sc ON sc.ID = cs.StudentClassID
+            WHERE LOWER(cs.Status) IN ('attended','late','absent')
+              AND CONCAT(cs.SessionDate, ' ', COALESCE(cs.StartTime, '00:00:00')) <= NOW()
+              AND NOT EXISTS (SELECT 1 FROM LearningRecord lr WHERE lr.ClassSessionID = cs.id AND lr.VoidedAt IS NULL)
+              AND NOT EXISTS (SELECT 1 FROM Student s WHERE s.id = sc.StudentID)
+          ");
+
+          // 3) Any LearningRecord that is currently voided but whose session is fillable —
+          //    these should have been restored by the last backfillBranch() run.
+          $stillVoided = \Illuminate\Support\Facades\DB::select("
+            SELECT cs.id AS session_id, cs.StudentClassID, cs.SessionDate, cs.StartTime, cs.Status AS session_status,
+                   sc.Stop AS course_stop, lr.id AS lr_id, lr.Status AS lr_status, lr.VoidedAt AS voided_at, lr.VoidReason AS void_reason
+            FROM ClassSession cs
+            JOIN StudentClass sc ON sc.ID = cs.StudentClassID
+            JOIN LearningRecord lr ON lr.ClassSessionID = cs.id
+            WHERE LOWER(cs.Status) IN ('attended','completed','late','absent')
+              AND lr.VoidedAt IS NOT NULL
+              AND CONCAT(cs.SessionDate, ' ', COALESCE(cs.StartTime, '00:00:00')) <= NOW()
+            ORDER BY lr.VoidedAt DESC
+            LIMIT 20
+          ");
+
+          // 4) Scheduler evidence ledger tail for the last 5 days, if still on disk, so we can
+          //    see whether the same session_id recurred across nights (the JSON payload for
+          //    bugs-verify-reproductions only has counts, not row ids, but worth confirming).
+          $ledgerFiles = glob(storage_path("logs/scheduler-evidence/*.jsonl"));
+          sort($ledgerFiles);
+          $ledgerTail = array_slice($ledgerFiles, -5);
+
+          echo json_encode([
+            "ok" => true,
+            "live_condition_rows" => $rows,
+            "orphaned_student_rows" => $orphaned,
+            "still_voided_fillable" => $stillVoided,
+            "ledger_files_tail" => $ledgerTail,
+            "generated_at" => gmdate("c"),
+          ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), PHP_EOL;
           PHP
           B64=$(base64 -w0 /tmp/lr_missing_probe.php)
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
