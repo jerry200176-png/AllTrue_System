@@ -311,6 +311,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `docs/security/AUDIT_LOG_POLICY.md` | 敏感 admin 行為 audit log 政策 |
 | `docs/security/PII_DATA_INVENTORY.md` | PII 資料地圖／分類（#889），欄位級盤點 + 保存政策待辦 |
 | `docs/security/IAM_ACCESS_REVIEW.md` | GitHub／Pi／第三方平台權限季度盤點（#888）|
+| `docs/security/AUDIT_LOG_COVERAGE_MATRIX.md` | 敏感操作 audit log 覆蓋矩陣，含 PIN reset 無稽核紀錄的具體缺口（#890）|
 | `docs/security/RUNBOOK_HOST_HARDENING_VERIFICATION.md` | Production host（UFW/SSH/fail2ban/服務暴露）稽核（#887）|
 | `docs/sop/PRIVACY_REQUEST_SOP.md` | 資料查詢／匯出／刪除／封存請求處理流程（#903）|
 
