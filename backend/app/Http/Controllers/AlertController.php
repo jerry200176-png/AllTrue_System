@@ -110,6 +110,7 @@ class AlertController extends Controller
         $openMonthlyInvoiceMap = $this->openInvoiceByStudentClassIds($dateResults->pluck('ID')->unique()->values()->all());
         $pendingReportMap = self::latestPendingReportByStudentClassIds($allClassIds);
         $newerCourseMap = self::newerCourseByStudentClassIds($allClassIds);
+        $subjectNameMap = $this->subjectNameMapForCourses($countResults->merge($dateResults));
 
         $allResults = $countResults->merge($dateResults)->keyBy('ID');
 
@@ -241,12 +242,12 @@ class AlertController extends Controller
             ->merge(
                 $countResults
                     ->filter(fn ($c) => !$countPkgMemberIds->contains($c->ID))
-                    ->map(fn ($c) => $this->mapCountModeAlert($c))->filter()
+                    ->map(fn ($c) => $this->mapCountModeAlert($c, $subjectNameMap))->filter()
             )
             ->merge(
                 // Exclude monthly-package members from individual date-mode alerts
                 $dateResults->filter(fn ($c) => !$monthlyPkgMemberIds->contains($c->ID))
-                    ->map(fn ($c) => $this->mapMonthlyAlert($c, $today, $openMonthlyInvoiceMap[(int) $c->ID] ?? null))->filter()
+                    ->map(fn ($c) => $this->mapMonthlyAlert($c, $today, $openMonthlyInvoiceMap[(int) $c->ID] ?? null, $subjectNameMap))->filter()
             )
             ->map(function ($row) use ($paidAtMap, $allResults, $invoiceAggMap, $pendingReportMap, $newerCourseMap, $today, $openMonthlyInvoiceMap) {
                 $classId = (int) $row['id'];
@@ -316,7 +317,7 @@ class AlertController extends Controller
         return response()->json($rows);
     }
 
-    private function mapCountModeAlert(StudentClass $c): ?array
+    private function mapCountModeAlert(StudentClass $c, array $subjectNameMap = []): ?array
     {
         $remaining = max(0, (int) ($c->RemainingSessions ?? 0));
         $isPaid = (int) ($c->Paid ?? 0) === 1;
@@ -332,7 +333,7 @@ class AlertController extends Controller
             'student_id'         => (int) $c->StudentID,
             'student_name'       => $c->student->name ?? 'Unknown',
             'campus_id'          => (int) ($c->student->CampusID ?? 0),
-            'subject'            => $this->subjectLabel($c),
+            'subject'            => $this->subjectLabel($c, $subjectNameMap),
             'schedule_mode'      => 'count',
             'remaining_sessions' => $remaining,
             'sessions_purchased' => (int) ($c->SessionCount ?? 0),
@@ -366,7 +367,7 @@ class AlertController extends Controller
         return (int) ($pkg->remaining_sessions ?? 0) <= 2 ? 'renew_needed' : 'paid';
     }
 
-    private function mapMonthlyAlert(StudentClass $c, Carbon $today, ?array $openInvoice = null): ?array
+    private function mapMonthlyAlert(StudentClass $c, Carbon $today, ?array $openInvoice = null, array $subjectNameMap = []): ?array
     {
         $settlementDay = (int) ($c->settlement_day ?? 0);
         if ($settlementDay < 1 || $settlementDay > 31) {
@@ -380,7 +381,7 @@ class AlertController extends Controller
                 return null;
             }
 
-            return $this->monthlyAlertRow($c, $invoiceDue, $daysUntilDue, $openInvoice);
+            return $this->monthlyAlertRow($c, $invoiceDue, $daysUntilDue, $openInvoice, $subjectNameMap);
         }
 
         $isPaid = (int) ($c->Paid ?? 0) === 1;
@@ -393,11 +394,11 @@ class AlertController extends Controller
                     return null;
                 }
 
-                return $this->monthlyAlertRow($c, $thisDue, $daysLeft);
+                return $this->monthlyAlertRow($c, $thisDue, $daysLeft, null, $subjectNameMap);
             }
             $daysLate = (int) $thisDue->copy()->startOfDay()->diffInDays($today->copy()->startOfDay(), false);
 
-            return $this->monthlyAlertRow($c, $thisDue, -$daysLate);
+            return $this->monthlyAlertRow($c, $thisDue, -$daysLate, null, $subjectNameMap);
         }
 
         // 已繳費：若尚未過「本月」繳費日，下一個截止日仍為本月；否則為下月同日（遇短月則取月底）
@@ -407,7 +408,7 @@ class AlertController extends Controller
                 return null;
             }
 
-            return $this->monthlyAlertRow($c, $thisDue, $daysLeft);
+            return $this->monthlyAlertRow($c, $thisDue, $daysLeft, null, $subjectNameMap);
         }
 
         $nextMonth = $today->copy()->startOfMonth()->addMonthNoOverflow();
@@ -417,10 +418,10 @@ class AlertController extends Controller
             return null;
         }
 
-        return $this->monthlyAlertRow($c, $nextDue, $daysLeft);
+        return $this->monthlyAlertRow($c, $nextDue, $daysLeft, null, $subjectNameMap);
     }
 
-    private function monthlyAlertRow(StudentClass $c, Carbon $dueDate, int $daysUntilSettlement, ?array $invoice = null): array
+    private function monthlyAlertRow(StudentClass $c, Carbon $dueDate, int $daysUntilSettlement, ?array $invoice = null, array $subjectNameMap = []): array
     {
         $isPaid = (int) ($c->Paid ?? 0) === 1;
 
@@ -429,7 +430,7 @@ class AlertController extends Controller
             'student_id'         => (int) $c->StudentID,
             'student_name'       => $c->student->name ?? 'Unknown',
             'campus_id'          => (int) ($c->student->CampusID ?? 0),
-            'subject'            => $this->subjectLabel($c),
+            'subject'            => $this->subjectLabel($c, $subjectNameMap),
             'schedule_mode'      => 'date',
             'remaining_sessions' => max(0, (int) ($c->RemainingSessions ?? 0)),
             'sessions_purchased' => (int) ($c->SessionCount ?? 0),
@@ -630,9 +631,65 @@ class AlertController extends Controller
         return $rows->filter(fn ($r) => !isset($renewedIds[$r['id']]))->values();
     }
 
-    private function subjectLabel(StudentClass $c): string
+    /**
+     * @param  array<int, string>|null  $subjectNameMap  SubjectID => name, pre-batched by
+     *                                                    subjectNameMapForCourses() to avoid
+     *                                                    StudentClass::displaySubjectName()'s
+     *                                                    per-row Subject/BaseData fallback
+     *                                                    query (#984). Pass null (the single-
+     *                                                    course call sites' default) to allow
+     *                                                    the one-off per-row query; pass a map
+     *                                                    (even an empty one, from the bulk
+     *                                                    tuition() path) to force '課程' instead
+     *                                                    of re-querying for an id the batch
+     *                                                    lookup already tried and found nothing.
+     */
+    private function subjectLabel(StudentClass $c, ?array $subjectNameMap = null): string
     {
-        return $c->displaySubjectName();
+        $subject = $c->getAttribute('Subject');
+        if ($subject !== null && $subject !== '') {
+            return (string) $subject;
+        }
+        $id = (int) ($c->SubjectID ?? 0);
+        if ($id <= 0) {
+            return '課程';
+        }
+        if ($subjectNameMap === null) {
+            return $c->displaySubjectName();
+        }
+
+        return $subjectNameMap[$id] ?? '課程';
+    }
+
+    /**
+     * Batch-resolve subject display names for a set of courses in at most two
+     * queries total, instead of StudentClass::displaySubjectName()'s per-row
+     * Subject/BaseData fallback (#984 — was ~2 extra queries per unpaid course
+     * whenever the StudentClass.Subject string column was empty).
+     *
+     * @param  \Illuminate\Support\Collection  $courses  Collection of StudentClass
+     * @return array<int, string>  SubjectID => name
+     */
+    private function subjectNameMapForCourses(\Illuminate\Support\Collection $courses): array
+    {
+        $ids = $courses
+            ->filter(fn ($c) => empty($c->getAttribute('Subject')))
+            ->pluck('SubjectID')
+            ->filter(fn ($id) => (int) $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+        if (empty($ids)) {
+            return [];
+        }
+
+        $fromSubject = DB::table('Subject')->whereIn('id', $ids)->pluck('Subject_Name', 'id')->all();
+        $missing = array_diff($ids, array_keys($fromSubject));
+        $fromBase = empty($missing)
+            ? []
+            : DB::table('BaseData')->where('Name', '課程')->whereIn('id', $missing)->pluck('Val', 'id')->all();
+
+        return $fromSubject + $fromBase;
     }
 
     /**

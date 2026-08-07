@@ -1,3 +1,18 @@
+## 2026-08-07 — docs: INDEX §III.10 補上 #957 被取代 runbook 的 SUPERSEDED 導覽指標（#1560）
+
+- **背景**：`docs/runbooks/957-d1-pcr.md` 頂部已自我標示 `SUPERSEDED — 見 957-d1-pcr-r2.md`，但 `docs/INDEX.md` §III.10（#957 D1 Sprint）仍只連結舊檔——讀者從 INDEX 進入會拿到已被取代的 PCR 指引。
+- **修法**：在 INDEX 該連結後補上 `（SUPERSEDED，見 957-d1-pcr-r2.md）` 並加上取代文件連結。純 docs 導覽修正，無任何 runbook 內容或 production code 變更。
+- **影響**：文件讀者不再被導向已被取代的 runbook，INDEX 與 runbook 自我標示恢復一致。
+
+開發備註：R0 docs、快速合併（squash `92fe364599`）。詳細變更見 PR #1560。
+
+## 2026-08-07 — fix(scheduling): 家長請假補課確認時，原堂次遺留的待審評量未作廢（#170 nightly 回歸）
+
+- **背景**：巡查 Gmail 系統通知時發現 `Pi Health Monitor` GitHub Actions 連續多天紅燈（8/3–8/7）。追查發現根因是每晚 04:00 執行的 `bugs:verify-reproductions`（#1080 bug 終結閘門）持續 `exit 1`——透過新增的唯讀診斷 workflow（`.github/workflows/lr-missing-diagnose.yml`，SELECT-only，不寫入任何資料）對生產資料庫做即時查詢，找到當天實際觸發的條件是 `leave_session_with_live_learning_record`（#170）：`ClassSession #15635`（2026-07-04，Status=`leave`）身上仍掛著一筆未作廢的 `pending` `LearningRecord`（#11828）。
+- **根因**：`ExceptionWorkflowController::confirmCandidate()`（家長請假 exception workflow 由主任確認補課候選時）直接把原堂次 `Status` 改成 `leave`，但沒有作廢該堂次既有的 `LearningRecord`／`StudentSignIn`——與 `CourseLeaveCascadeService` 既有的互動式請假路徑（會正確作廢）不一致。若 exception workflow 處理延遲、原堂次日期已過，夜間 `learning-records:backfill-missing` 會先幫還是 `scheduled` 狀態的堂次建立一筆 `pending` 評量佔位，之後才被 `confirmCandidate()` 改成 `leave`，殘留的評量就沒人清。`LearningRecord::scopeExcludeLeaveSessionPendingReview()` 這個既有的查詢層過濾器只是把症狀（待審清單顯示錯誤）擋掉，底層資料本身仍是錯的——這正是 `bugs:verify-reproductions` 這道「防止症狀被治標掩蓋」閘門存在的意義。
+- **修法**：把 `CourseLeaveCascadeService` 原本 inline 的「作廢 LearningRecord/StudentSignIn」邏輯抽成共用的 `voidLiveArtifactsForLeave()`，作為「堂次轉為請假」唯一的作廢邏輯出處，`ExceptionWorkflowController::confirmCandidate()` 在把原堂次改成 `leave` 前呼叫同一個方法。
+- **測試**：`ExceptionWorkflowApiTest::test_director_confirming_candidate_voids_stale_pending_learning_record_on_original_session` 重現「原堂次已有 pending 評量」情境，確認 confirm-candidate 後該筆評量被正確作廢（`VoidReason` = `CourseLeaveCascadeService::VOID_REASON_LEAVE`）。
+
 ## 2026-08-06 — chore(hardening): R98/R99 根本解決＋防再犯（大公司作法對照）
 
 - **背景**：R98（主任視角 schedules 永遠回傳空陣列）與 R99（同名重複老師帳號讓課程消失）修復上線後，CEO 要求不能只是修好眼前的 bug，必須參考大公司軟體從根本解決、避免同類問題再發生。這是針對兩者的「防再犯」加固，本身不改變任何使用者可見行為。

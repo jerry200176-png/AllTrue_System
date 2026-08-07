@@ -34,6 +34,34 @@ class CourseLeaveCascadeService
     public const NON_BILLABLE_STATUSES = ['cancelled', self::NOTE_LEAVE, 'leave_adjusted', 'excused'];
 
     /**
+     * Void any live LearningRecord/StudentSignIn for a session that is becoming (or already
+     * is) leave. Single source of truth — every code path that transitions a ClassSession to
+     * leave/leave_adjusted must call this, or a pre-existing LR (e.g. one the nightly
+     * learning-records:backfill-missing job created while the session was still 'scheduled'
+     * and already past) is left live and orphaned. That's exactly what bugs:verify-reproductions'
+     * enforced `leave_session_with_live_learning_record` condition (#170) catches nightly —
+     * a query-level UI filter (LearningRecord::scopeExcludeLeaveSessionPendingReview) already
+     * hides the symptom from the pending-review list, but does not fix the underlying row.
+     */
+    public static function voidLiveArtifactsForLeave(int $classSessionId): void
+    {
+        LearningRecord::where('ClassSessionID', $classSessionId)
+            ->active()
+            ->update([
+                'VoidedAt'       => now(),
+                'VoidedByUserID' => null,
+                'VoidReason'     => self::VOID_REASON_LEAVE,
+            ]);
+        StudentSignIn::where('ClassSessionID', $classSessionId)
+            ->active()
+            ->update([
+                'VoidedAt'       => now(),
+                'VoidedByUserID' => null,
+                'VoidReason'     => self::VOID_REASON_LEAVE,
+            ]);
+    }
+
+    /**
      * Mark the target session as leave, void related records,
      * shift subsequent scheduled sessions forward, and append one new session
      * to keep the total count intact.
@@ -129,20 +157,7 @@ class CourseLeaveCascadeService
 
         $leaveSessionDate = Carbon::parse($leaveSession->SessionDate)->toDateString();
 
-        LearningRecord::where('ClassSessionID', (int) $leaveSession->id)
-            ->active()
-            ->update([
-                'VoidedAt'       => now(),
-                'VoidedByUserID' => null,
-                'VoidReason'     => self::VOID_REASON_LEAVE,
-            ]);
-        StudentSignIn::where('ClassSessionID', (int) $leaveSession->id)
-            ->active()
-            ->update([
-                'VoidedAt'       => now(),
-                'VoidedByUserID' => null,
-                'VoidReason'     => self::VOID_REASON_LEAVE,
-            ]);
+        self::voidLiveArtifactsForLeave((int) $leaveSession->id);
 
         // Only update ClassSession status if not already leave
         if ($leaveStatus !== 'leave') {

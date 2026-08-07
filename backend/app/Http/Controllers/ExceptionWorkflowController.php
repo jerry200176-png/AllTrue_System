@@ -6,6 +6,7 @@ use App\Models\ClassSession;
 use App\Models\ExceptionWorkflow;
 use App\Models\ExceptionWorkflowCandidate;
 use App\Models\Schedule;
+use App\Services\CourseLeaveCascadeService;
 use App\Services\ExceptionWorkflowCandidateGenerator;
 use App\Services\ExceptionWorkflowService;
 use App\Support\SessionStatus;
@@ -184,6 +185,10 @@ class ExceptionWorkflowController extends Controller
             if ($originalSessionId > 0) {
                 $original = ClassSession::query()->whereKey($originalSessionId)->lockForUpdate()->first();
                 if ($original && in_array(strtolower((string) $original->Status), ['leave_requested', 'scheduled', 'rescheduled'], true)) {
+                    // #170: a nightly backfill can have already created a `pending` LearningRecord
+                    // for $original while it was still 'scheduled' and already past. Void it here
+                    // (same as the interactive leave path) or it's left live on a leave session.
+                    CourseLeaveCascadeService::voidLiveArtifactsForLeave((int) $original->id);
                     $original->Status = 'leave';
                     $original->Note = $this->appendNote($original->Note, 'parent-leave-approved');
                     $original->save();

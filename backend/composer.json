@@ -38,7 +38,11 @@
     },
     "audit": {
       "ignore": {
-        "GHSA-5vg9-5847-vvmq": "Reachability reviewed 2026-07-12: no Laravel email validation rule or outbound mail to user-supplied addresses; Laravel 8 uses SwiftMailer. Framework EOL migration remains tracked in #977."
+        "GHSA-5vg9-5847-vvmq": "Reachability reviewed 2026-07-12: no Laravel email validation rule or outbound mail to user-supplied addresses; Laravel 8 uses SwiftMailer. Framework EOL migration remains tracked in #977.",
+        "GHSA-mh25-x5hq-wrqp": "Reachability reviewed 2026-08-07: league/commonmark is an optional transitive dependency of laravel/framework's built-in Markdown mail-message rendering (Illuminate Mail Markdown). AllTrue never uses that feature (no mail::message Blade templates, no MailMessage::markdown() calls) and never instantiates the CommonMarkConverter class anywhere in backend/app — no code path in this application parses any Markdown, crafted or otherwise, through this library. This entry has no expiry mechanism of its own; re-review tracked as TD-075, tied to the framework EOL migration (#977).",
+        "GHSA-jfm3-95jq-q3rf": "Same reachability review as GHSA-mh25-x5hq-wrqp (2026-08-07) — league/commonmark is unused dead weight pulled in transitively; this app never parses Markdown through it. Re-review tracked as TD-075 / #977.",
+        "GHSA-g2gp-3wwq-f4ph": "Same reachability review as GHSA-mh25-x5hq-wrqp (2026-08-07) — league/commonmark is unused dead weight pulled in transitively; this app never parses Markdown through it. Re-review tracked as TD-075 / #977.",
+        "GHSA-2q4p-g7hv-5rgv": "Same reachability review as GHSA-mh25-x5hq-wrqp (2026-08-07) — league/commonmark is unused dead weight pulled in transitively; this app never parses Markdown through it. Re-review tracked as TD-075 / #977."
       }
     }
   },
