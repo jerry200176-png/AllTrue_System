@@ -13,7 +13,13 @@
         <span>新通知 {{ unreadCount }}</span>
       </template>
       <template #actions>
-        <AtButton shape="rect" size="sm" variant="ghost" @click="goToNotificationSettings">
+        <AtButton
+          shape="rect"
+          size="sm"
+          variant="ghost"
+          data-guide="notifications-settings-button"
+          @click="goToNotificationSettings"
+        >
           通知設定
         </AtButton>
       </template>
