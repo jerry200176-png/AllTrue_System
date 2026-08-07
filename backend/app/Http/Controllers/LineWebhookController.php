@@ -189,16 +189,20 @@ class LineWebhookController extends Controller
         $c = $obs->classifier()->classifyLineNameCandidates($candidates, $normalized, (int) $campus->id, fn (int $sid) => $this->isAlreadyBound($sid, $lineUserId));
         $obs->observe($cid, ParentBindingCodes::CHANNEL_LINE, ParentBindingCodes::METHOD_NAME, $c, $normalized !== '' ? $normalized : null);
         if ($c['outcome'] === ParentBindingCodes::OUTCOME_FAILURE) {
-            $this->replyMessage($replyToken, $c['reasonCode'] === ParentBindingCodes::INVALID_INPUT ? "請輸入正確的手機號碼。" : "在 {$campus->name} 找不到「{$name}」與此手機號碼的學生，請確認姓名與手機是否正確。", $campus);
+            $this->replyMessage($replyToken, $this->bindingFailureText($c['reasonCode'], $name, null), $campus);
             return;
         }
         $student = $candidates->first(fn ($s) => StudentContactPhone::matchesNormalizedInput($s, $normalized));
         if (!$student) {
-            $this->replyMessage($replyToken, "在 {$campus->name} 找不到「{$name}」與此手機號碼的學生，請確認姓名與手機是否正確。", $campus);
+            $this->replyMessage($replyToken, $this->bindingFailureText(ParentBindingCodes::STUDENT_NOT_FOUND, $name, null), $campus);
             return;
         }
         if ($c['outcome'] === ParentBindingCodes::OUTCOME_NOOP) {
             $this->replyMessage($replyToken, "「{$student->name}」已經綁定過了喔！如需綁定其他孩子，請輸入「綁定 學生姓名 家長手機」。", $campus);
+            return;
+        }
+        if ($this->isCrossCampusBound($student, (int) $campus->id)) {
+            $this->replyMessage($replyToken, $this->bindingFailureText(ParentBindingCodes::CAMPUS_MISMATCH, $name, $student->id), $campus);
             return;
         }
 
@@ -222,16 +226,16 @@ class LineWebhookController extends Controller
         $student = Student::where('id', $studentId)->where('CampusID', $campus->id)->first();
         $c = $obs->classifier()->classifyLineStudentId($student, $normalized, (int) $campus->id, fn (int $sid) => $this->isAlreadyBound($sid, $lineUserId));
         $obs->observe($cid, ParentBindingCodes::CHANNEL_LINE, ParentBindingCodes::METHOD_STUDENT_ID, $c, $normalized !== '' ? $normalized : null);
-        if (in_array($c['reasonCode'], [ParentBindingCodes::STUDENT_NOT_FOUND, ParentBindingCodes::CAMPUS_MISMATCH], true)) {
-            $this->replyMessage($replyToken, "在 {$campus->name} 找不到學生代號 {$studentId}，請確認後重試。", $campus);
-            return;
-        }
         if ($c['outcome'] === ParentBindingCodes::OUTCOME_FAILURE) {
-            $this->replyMessage($replyToken, "手機號碼不符，請確認後重試。", $campus);
+            $this->replyMessage($replyToken, $this->bindingFailureText($c['reasonCode'], '', $studentId), $campus);
             return;
         }
         if ($c['outcome'] === ParentBindingCodes::OUTCOME_NOOP) {
             $this->replyMessage($replyToken, "「{$student->name}」已經綁定過了喔！如需綁定其他孩子，請輸入「綁定 學生姓名 家長手機」。", $campus);
+            return;
+        }
+        if ($this->isCrossCampusBound($student, (int) $campus->id)) {
+            $this->replyMessage($replyToken, $this->bindingFailureText(ParentBindingCodes::CAMPUS_MISMATCH, '', $studentId), $campus);
             return;
         }
 
@@ -281,6 +285,46 @@ class LineWebhookController extends Controller
             ->where('line_user_id', $lineUserId)
             ->verified()
             ->exists();
+    }
+
+    /**
+     * Cross-campus conflict guard: the student already has a verified binding
+     * in another campus. Multi-campus LINE bindings are not allowed (see the
+     * 2026-04-25 security cleanup migration), so refuse with a clear message.
+     */
+    private function isCrossCampusBound(Student $student, int $campusId): bool
+    {
+        return StudentLineBinding::where('student_id', $student->getKey())
+            ->where('campus_id', '!=', $campusId)
+            ->verified()
+            ->exists();
+    }
+
+    /**
+     * Map a PB-00 classifier reason code to the user-facing LINE reply, so each
+     * binding failure category gets a specific, actionable message.
+     *
+     * @param int|string|null $studentId identifier to include when binding by student ID
+     */
+    private function bindingFailureText(?string $reasonCode, string $name, int|string|null $studentId): string
+    {
+        switch ($reasonCode) {
+            case ParentBindingCodes::INVALID_INPUT:
+                return "綁定格式錯誤。請輸入「綁定 學生姓名 手機號碼」，例如「綁定 王小明 0912345678」。";
+            case ParentBindingCodes::CONTACT_PHONE_MISSING:
+                return $name !== ''
+                    ? "找不到「{$name}」可驗證的手機號碼，請先與分校確認聯絡資料。"
+                    : "找不到學生代號 {$studentId} 可驗證的手機號碼，請先與分校確認聯絡資料。";
+            case ParentBindingCodes::PHONE_MISMATCH:
+                return "手機號碼不符，請確認。";
+            case ParentBindingCodes::CAMPUS_MISMATCH:
+                return "此學生已在其他分校綁定，請聯繫主任。";
+            case ParentBindingCodes::STUDENT_NOT_FOUND:
+            default:
+                return $name !== ''
+                    ? "找不到「{$name}」的學生，請確認後重試。"
+                    : "找不到學生代號 {$studentId}，請確認後重試。";
+        }
     }
 
     private function boundCount(string $lineUserId, int $campusId): int

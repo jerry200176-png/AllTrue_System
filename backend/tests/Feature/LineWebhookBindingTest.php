@@ -156,4 +156,103 @@ class LineWebhookBindingTest extends TestCase
 
         $this->assertFalse(StudentLineBinding::where('line_user_id', $lineUserId)->exists());
     }
+
+    // ── [W31][P2-3] 綁定失敗分類 ─────────────────────────────────────────────
+
+    private function replyTexts(): array
+    {
+        return collect(Http::recorded())
+            ->filter(fn (array $pair) => isset($pair[0]) && str_starts_with((string) $pair[0]->url(), 'https://api.line.me/v2/bot/message/reply'))
+            ->map(fn (array $pair) => data_get($pair[0]->data(), 'messages.0.text', ''))
+            ->all();
+    }
+
+    public function test_binding_failure_student_not_found_by_name(): void
+    {
+        Http::fake(['https://api.line.me/v2/bot/message/reply' => Http::response(['ok' => true], 200)]);
+
+        $campus = Campus::factory()->create();
+        $lineUserId = 'U' . str_repeat('e', 32);
+
+        $this->postBindingMessage($campus, $lineUserId, '綁定 不存在的學生 0912345678')
+            ->assertOk();
+
+        $this->assertStringContainsString('找不到「不存在的學生」的學生', $this->replyTexts()[0] ?? '');
+        $this->assertFalse(StudentLineBinding::where('line_user_id', $lineUserId)->exists());
+    }
+
+    public function test_binding_failure_phone_mismatch_by_name(): void
+    {
+        Http::fake(['https://api.line.me/v2/bot/message/reply' => Http::response(['ok' => true], 200)]);
+
+        $campus = Campus::factory()->create();
+        $lineUserId = 'U' . str_repeat('f', 32);
+        Student::create([
+            'name' => '手機不符生',
+            'CampusID' => $campus->id,
+            'ClassID' => 1,
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+            'parent_phone' => '0912345678',
+        ]);
+
+        $this->postBindingMessage($campus, $lineUserId, '綁定 手機不符生 0987654321')
+            ->assertOk();
+
+        $this->assertStringContainsString('手機號碼不符，請確認', $this->replyTexts()[0] ?? '');
+        $this->assertFalse(StudentLineBinding::where('line_user_id', $lineUserId)->exists());
+    }
+
+    public function test_binding_failure_student_not_found_by_id(): void
+    {
+        Http::fake(['https://api.line.me/v2/bot/message/reply' => Http::response(['ok' => true], 200)]);
+
+        $campus = Campus::factory()->create();
+        $lineUserId = 'U' . str_repeat('a0', 16);
+
+        $this->postBindingMessage($campus, $lineUserId, '綁定 999999 0912345678')
+            ->assertOk();
+
+        $this->assertStringContainsString('找不到學生代號 999999，請確認後重試', $this->replyTexts()[0] ?? '');
+        $this->assertFalse(StudentLineBinding::where('line_user_id', $lineUserId)->exists());
+    }
+
+    public function test_binding_failure_cross_campus_conflict(): void
+    {
+        Http::fake(['https://api.line.me/v2/bot/message/reply' => Http::response(['ok' => true], 200)]);
+
+        $campusA = Campus::factory()->create();
+        $campusB = Campus::factory()->create();
+        $lineUserId = 'U' . str_repeat('b0', 16);
+        $student = Student::create([
+            'name' => '跨校綁定生',
+            'CampusID' => $campusA->id,
+            'ClassID' => 1,
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+            'parent_phone' => '0912345678',
+        ]);
+        // 學生已在另一分校建立 verified binding
+        StudentLineBinding::create([
+            'student_id' => $student->id,
+            'line_user_id' => 'U' . str_repeat('c0', 16),
+            'campus_id' => $campusB->id,
+            'bound_at' => now(),
+            'verified_at' => now(),
+            'verification_method' => 'contact_phone',
+        ]);
+
+        $this->postBindingMessage($campusA, $lineUserId, '綁定 跨校綁定生 0912345678')
+            ->assertOk();
+
+        $this->assertStringContainsString('此學生已在其他分校綁定，請聯繫主任', $this->replyTexts()[0] ?? '');
+        $this->assertFalse(
+            StudentLineBinding::where('student_id', $student->id)
+                ->where('line_user_id', $lineUserId)
+                ->exists(),
+            'Cross-campus binding must be rejected'
+        );
+    }
 }
