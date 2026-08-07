@@ -119,8 +119,7 @@ jobs:
           $leaveWithLiveLr = \Illuminate\Support\Facades\DB::select("
             SELECT cs.id AS session_id, cs.StudentClassID, cs.SessionDate, cs.StartTime, cs.Status AS session_status,
                    sc.StudentID, sc.TeacherID, sc.Stop AS course_stop,
-                   lr.id AS lr_id, lr.Status AS lr_status, lr.VoidedAt AS voided_at, lr.VoidReason AS void_reason,
-                   lr.CreatedAt AS lr_created_at, lr.UpdatedAt AS lr_updated_at
+                   lr.id AS lr_id, lr.Status AS lr_status, lr.VoidedAt AS voided_at, lr.VoidReason AS void_reason
             FROM ClassSession cs
             JOIN StudentClass sc ON sc.ID = cs.StudentClassID
             JOIN LearningRecord lr ON lr.ClassSessionID = cs.id
