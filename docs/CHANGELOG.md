@@ -1,3 +1,11 @@
+## 2026-08-07 — docs: INDEX §III.10 補上 #957 被取代 runbook 的 SUPERSEDED 導覽指標（#1560）
+
+- **背景**：`docs/runbooks/957-d1-pcr.md` 頂部已自我標示 `SUPERSEDED — 見 957-d1-pcr-r2.md`，但 `docs/INDEX.md` §III.10（#957 D1 Sprint）仍只連結舊檔——讀者從 INDEX 進入會拿到已被取代的 PCR 指引。
+- **修法**：在 INDEX 該連結後補上 `（SUPERSEDED，見 957-d1-pcr-r2.md）` 並加上取代文件連結。純 docs 導覽修正，無任何 runbook 內容或 production code 變更。
+- **影響**：文件讀者不再被導向已被取代的 runbook，INDEX 與 runbook 自我標示恢復一致。
+
+開發備註：R0 docs、快速合併（squash `92fe364599`）。詳細變更見 PR #1560。
+
 ## 2026-08-07 — fix(scheduling): 家長請假補課確認時，原堂次遺留的待審評量未作廢（#170 nightly 回歸）
 
 - **背景**：巡查 Gmail 系統通知時發現 `Pi Health Monitor` GitHub Actions 連續多天紅燈（8/3–8/7）。追查發現根因是每晚 04:00 執行的 `bugs:verify-reproductions`（#1080 bug 終結閘門）持續 `exit 1`——透過新增的唯讀診斷 workflow（`.github/workflows/lr-missing-diagnose.yml`，SELECT-only，不寫入任何資料）對生產資料庫做即時查詢，找到當天實際觸發的條件是 `leave_session_with_live_learning_record`（#170）：`ClassSession #15635`（2026-07-04，Status=`leave`）身上仍掛著一筆未作廢的 `pending` `LearningRecord`（#11828）。
