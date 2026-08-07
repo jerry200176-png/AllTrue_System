@@ -632,12 +632,19 @@ class AlertController extends Controller
     }
 
     /**
-     * @param  array<int, string>  $subjectNameMap  SubjectID => name, pre-batched by
-     *                                               subjectNameMapForCourses() to avoid
-     *                                               StudentClass::displaySubjectName()'s
-     *                                               per-row Subject/BaseData fallback query (#984).
+     * @param  array<int, string>|null  $subjectNameMap  SubjectID => name, pre-batched by
+     *                                                    subjectNameMapForCourses() to avoid
+     *                                                    StudentClass::displaySubjectName()'s
+     *                                                    per-row Subject/BaseData fallback
+     *                                                    query (#984). Pass null (the single-
+     *                                                    course call sites' default) to allow
+     *                                                    the one-off per-row query; pass a map
+     *                                                    (even an empty one, from the bulk
+     *                                                    tuition() path) to force '課程' instead
+     *                                                    of re-querying for an id the batch
+     *                                                    lookup already tried and found nothing.
      */
-    private function subjectLabel(StudentClass $c, array $subjectNameMap = []): string
+    private function subjectLabel(StudentClass $c, ?array $subjectNameMap = null): string
     {
         $subject = $c->getAttribute('Subject');
         if ($subject !== null && $subject !== '') {
@@ -647,11 +654,11 @@ class AlertController extends Controller
         if ($id <= 0) {
             return '課程';
         }
-        if (array_key_exists($id, $subjectNameMap)) {
-            return $subjectNameMap[$id];
+        if ($subjectNameMap === null) {
+            return $c->displaySubjectName();
         }
 
-        return $c->displaySubjectName();
+        return $subjectNameMap[$id] ?? '課程';
     }
 
     /**

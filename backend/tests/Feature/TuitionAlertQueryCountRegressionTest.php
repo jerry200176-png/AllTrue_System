@@ -19,8 +19,17 @@ use Tests\TestCase;
  * of querying per row. But this test caught a real N+1 hiding one layer deeper:
  * `subjectLabel()` called `StudentClass::displaySubjectName()`, which falls back
  * to a `Subject`/`BaseData` table lookup *per course* whenever the StudentClass
- * `Subject` string column is empty — ~2 extra queries per unpaid course. Fixed
- * by batch-resolving subject names once via `subjectNameMapForCourses()`.
+ * `Subject` string column is empty — ~2 extra queries per unpaid course.
+ *
+ * Fixed by batch-resolving subject names once via `subjectNameMapForCourses()`
+ * — plus a second bug that first fix introduced and this test also caught:
+ * `subjectLabel()` was still falling through to the per-row query whenever a
+ * course's SubjectID had no match in the batch map (e.g. no such Subject row
+ * exists), because it couldn't tell "no map given" from "map given but empty
+ * for this id." Fixed by making the map parameter nullable: null means no
+ * batch was attempted (single-course endpoints may still do the one-off
+ * query), a non-null map — even with a miss — means trust it and default to
+ * '課程' instead of re-querying.
  */
 class TuitionAlertQueryCountRegressionTest extends TestCase
 {
