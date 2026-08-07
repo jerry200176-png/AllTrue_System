@@ -148,6 +148,44 @@ class AvailabilityCapacityTest extends TestCase
         ]);
     }
 
+    /**
+     * Regression: in-app #214 — duplicate course rows for one student must not
+     * consume two seats in an otherwise available one-on-three slot.
+     */
+    public function test_one_on_three_counts_distinct_students_not_course_rows(): void
+    {
+        $teacher = $this->createTeacher('teacher-avail214@example.com');
+        $studentA = $this->createStudent('student-avail214-a');
+        $studentB = $this->createStudent('student-avail214-b');
+
+        foreach ([
+            [$studentA, '2026-05-18'],
+            [$studentA, '2026-05-18'],
+            [$studentB, '2026-05-18'],
+        ] as [$student, $date]) {
+            $sc = $this->createStudentClass($student->id, $teacher->id, 'one_on_three');
+            ClassSession::create([
+                'StudentClassID' => $sc->ID,
+                'SessionDate'    => $date,
+                'StartTime'      => '18:00:00',
+                'EndTime'        => '20:00:00',
+                'Status'         => 'scheduled',
+            ]);
+        }
+
+        $response = $this->withHeaders([
+            'Authorization' => "Bearer {$this->dirToken}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/teachers/{$teacher->id}/availability?date=2026-05-18");
+
+        $response->assertOk();
+        $slots = collect($response->json('busy_slots'))
+            ->filter(fn ($slot) => $slot['start_time'] === '18:00' && $slot['end_time'] === '20:00');
+
+        $this->assertCount(3, $slots);
+        $this->assertSame([1], $slots->pluck('remaining_capacity')->unique()->values()->all());
+    }
+
     private function createTeacher(string $loginName): User
     {
         $teacher = User::create([

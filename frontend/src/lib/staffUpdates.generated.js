@@ -4,6 +4,74 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-06-scheduling-fixes",
+    "publishedAt": "2026-08-06",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "major",
+    "title": "課表與繳費頁面修復",
+    "summary": "重複課程審核、請假撤銷、暫停恢復、行事曆換週都修好了。",
+    "items": [
+      "重複課程審核頁面選分校後，只會顯示該分校資料。",
+      "請假撤銷後可以正常填寫評量，不再跳出錯誤訊息。",
+      "行事曆換週不會弄丟已上堂次；課程暫停後恢復，取消的堂次會一併還原。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "重複課程審核頁面選分校後，只會顯示該分校資料。",
+          "請假撤銷後可以正常填寫評量，不再跳出錯誤訊息。",
+          "行事曆換週不會弄丟已上堂次；課程暫停後恢復，取消的堂次會一併還原。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "2026-08-06"
+    ],
+    "date": "2026-08-06",
+    "version": "2026.08.06"
+  },
+  {
+    "id": "staff-2026-08-06-leave-makeup-count-fix",
+    "publishedAt": "2026-08-06",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "major",
+    "title": "請假補堂不再超額",
+    "summary": "請假或取消後自動補的堂次，會正確對齊已購買堂數，不會越補越多。",
+    "items": [
+      "請假或取消課程後，系統自動補的堂次會正確對齊已購買堂數，不會超過實際購買的堂數。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "請假或取消課程後，系統自動補的堂次會正確對齊已購買堂數，不會超過實際購買的堂數。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "2026-08-06"
+    ],
+    "date": "2026-08-06",
+    "version": "2026.08.06"
+  },
+  {
     "id": "staff-2026-07-week-30",
     "publishedAt": "2026-07-29",
     "effectiveAt": "2026-07-28",

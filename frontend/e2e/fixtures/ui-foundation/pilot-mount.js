@@ -5,6 +5,8 @@
  */
 const params = new URLSearchParams(window.location.search);
 const page = params.get('page') || 'inbox';
+const mode = params.get('mode') || 'normal';
+const role = params.get('role') || (page === 'teacher' ? 'teacher' : 'director');
 
 localStorage.setItem(
   'alltrue_session',
@@ -13,8 +15,8 @@ localStorage.setItem(
     token: 'e2e-foundation-token',
     user: {
       id: 9001,
-      role: 'director',
-      name: 'E2E Director',
+      role,
+      name: role === 'teacher' ? 'E2E Teacher' : 'E2E Director',
       must_change_password: false,
     },
   }),
@@ -22,16 +24,24 @@ localStorage.setItem(
 localStorage.setItem('app_branch', '1');
 localStorage.setItem('notifications_sound_enabled', '0');
 
-const role = params.get('role') || 'director';
-
-const [{ createApp, h }, styles, NotificationsCenter, StudentsList, DirectorDashboard, LearningRecordsPage] = await Promise.all([
+const [{ createApp, h }, styles] = await Promise.all([
   import('vue'),
   import('../../../src/styles.css'),
-  import('../../../src/pages/NotificationsCenter.vue'),
-  import('../../../src/pages/StudentsList.vue'),
-  import('../../../src/pages/DirectorDashboard.vue'),
-  import('../../../src/pages/LearningRecordsPage.vue'),
 ]);
+
+const pageModules = {
+  inbox: () => import('../../../src/pages/NotificationsCenter.vue'),
+  students: () => import('../../../src/pages/StudentsList.vue'),
+  director: () => import('../../../src/pages/DirectorDashboard.vue'),
+  learning: () => import('../../../src/pages/LearningRecordsPage.vue'),
+  course: () => import('../../../src/pages/CourseManagement.vue'),
+  calendar: () => import('../../../src/pages/SmartCalendar.vue'),
+  discrepancy: () => import('../../../src/pages/ScheduleDiscrepancyPage.vue'),
+  teacher: () => import('../../../src/pages/TeacherHomePage.vue'),
+  attendance: () => import('../../../src/pages/AttendancePage.vue'),
+};
+const loadPage = pageModules[page] || pageModules.inbox;
+const PageComponent = (await loadPage()).default;
 
 void styles;
 
@@ -39,15 +49,45 @@ createApp({
   name: 'UiFoundationPilotMount',
   setup() {
     if (page === 'students') {
-      return () => h(StudentsList.default, { branchId: 1 });
+      return () => h(PageComponent, { branchId: 1 });
     }
     if (page === 'director') {
-      return () => h(DirectorDashboard.default, { branchId: 1 });
+      return () => h(PageComponent, { branchId: 1 });
     }
     if (page === 'learning') {
-      return () => h(LearningRecordsPage.default, { branchId: 1, userRole: role, userId: 9001 });
+      return () => h(PageComponent, { branchId: 1, userRole: role, userId: 9001 });
     }
-    return () => h(NotificationsCenter.default, { branchId: 1 });
+    if (page === 'course') {
+      return () => h(PageComponent, {
+        branchId: 1,
+        onNavigate: (payload) => {
+          window.__pilotLastNavigation = payload;
+        },
+      });
+    }
+    if (page === 'calendar') {
+      return () => h(PageComponent, { branchId: 1, userRole: role, userId: 9001 });
+    }
+    if (page === 'discrepancy') {
+      return () => h(PageComponent, { branchId: 1 });
+    }
+    if (page === 'teacher') {
+      return () => h(PageComponent, {
+        branchId: 1,
+        userId: 9001,
+        userRole: 'teacher',
+        teacherBranchIds: [1],
+        unreadFeedbackCount: mode === 'empty' ? 0 : 1,
+      });
+    }
+    if (page === 'attendance') {
+      return () => h(PageComponent, {
+        branchId: 1,
+        userId: 9001,
+        userRole: 'teacher',
+      });
+    }
+    return () => h(PageComponent, { branchId: 1 });
   },
 }).mount('#app');
 

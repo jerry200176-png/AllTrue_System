@@ -588,6 +588,15 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 - 拖曳移動課表時，前端會先寫 `schedules.status='rescheduled'` 原堂 marker，再寫 `scheduled` 目標堂；若同一 anchor 因重試、同日改時段或 stale POST 留下多筆 `scheduled`，行事曆會多畫一堂。
 - **強制規則**：同步 `reschedule-session` 時，同一 `student_course_id + original_schedule_id` 在目標日期只能保留一筆 `scheduled`；跨日期與同日改時段都要清除 stale duplicates。
+
+---
+
+### R44. 工作流入口不可只顯示通知，必須保留可定位的下一步
+
+- 家長請假已存在 `ExceptionWorkflow` 與主任決策 API，但課程管理若只顯示「請到主任收件匣」，使用者仍會不知道在哪裡按 approve／退回；這是 workflow discoverability 與跨頁 navigation contract 缺口，不是再新增一套業務流程。
+- **強制規則**：任何跨頁待辦摘要必須至少顯示對象、原事件、狀態、下一步與明確動詞 CTA；CTA 必須攜帶可驗證的 entity/workflow ID，導向目標頁的指定區段/案件。字串頁面導覽與 object deep-link 必須由 adapter 統一處理，不能直接把 object 塞進 active page state。
+- **可及性規則**：主要 CTA 不可藏在水平滑動區；手機可見、可鍵盤 focus；不可產生巢狀 interactive element（例如 button 裡再放 button）。
+- **測試必補**：每個跨頁 workflow 至少覆蓋 normal／empty／loading／API error／long text、390／412／768／1280／1440、無水平 overflow、deep-link payload 與返回/重試路徑。
 - **前端規則**：`SmartCalendar` 渲染 scheduled exceptions 時，必須以 `student_course_id + schedule_date + start_time + original_schedule_id` 做顯示去重，避免歷史髒資料直接放大成畫面 bug。
 - **測試必補**：修改拖曳調課、`syncSchedulesAfterReschedule` 或行事曆例外合併時，必須覆蓋「同日改時段已有重複 scheduled row，修正後只剩一筆且保留代課老師」。
 
@@ -1150,3 +1159,99 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - 同一 `line_user_id` 出現在多個不同 `CampusID` 的學生 = 資料錯誤，不得作為 sibling 群組
 
 **修復**：PR #74 (code guard) + PR #75 (data cleanup migration)
+### R89. Billing read model 與批次 mutation 必須使用同一個 explicit selection contract
+
+- **事件**：2026-08-01 in-app #212/#213。帳單列表沿用 `Invoice.TotalAmount`，課堂頁卻依 `ClassSession` 顯示實際堂次；批次核准則遺漏 `ids`，後端依篩選條件核准整批資料。
+- **根因**：同一個業務動作由多個 controller/UI 自行推導數字或範圍，缺少 canonical read DTO 與 fail-closed mutation contract。
+- **規則**：月結帳單讀取必須帶 `billing_period`，回傳 stored/computed/source/discrepancy；批次 mutation 必須要求 distinct explicit IDs，server-side 完整比對後才進 transaction。
+- **驗收**：所有 batch response 的實際變更數量必須與 request IDs 相等；帳單畫面必須能呈現「堂數 × 單價 = 金額」及差異原因；production evidence 必須保留 API 回應與 UI 證據。
+- **參考**：`docs/incidents/2026-08-01-billing-and-batch-approval.md`、`docs/PRICING_CONTRACT.md`、`docs/ADR_003_layering_and_controller_db_ban.md`。
+
+### R90. Billing 修正必須逐一驗證所有 production read surfaces
+
+- **事件**：#213 的課程管理明細已顯示 NT$7,500，但正式帳務中心仍顯示歷史 `Invoice.TotalAmount = NT$6,000`。
+- **根因**：修正只覆蓋一個 controller/UI surface；帳務中心、繳費單、發票列表與對帳查詢仍各自讀取不同來源。
+- **強制規則**：任何 billing 修正必須列出 route/API/UI surface matrix，所有 surface 共用同一個 read model；驗收必須逐一以同一案例驗證，不能以單一畫面或單一測試代表全站。
+- **停止條件**：任一 surface 的 stored/computed/source/discrepancy 欄位缺失、金額不一致或 production smoke 未覆蓋，禁止標記 resolved 或上線結案。
+### R91. 行事曆必須區分載入、錯誤與空資料，並在行動版驗證實際可見的案件明細（2026-08-01）
+
+- 行事曆 API 失敗後若只繼續渲染「目前沒有資料」，使用者會把系統錯誤誤判成真的空課表；資料載入狀態、API error、empty state 必須是互斥且可重新整理的 UI 狀態。
+- 任何日期型工作台都要在第一眼顯示目前檢視、可見日期範圍與回到今天；只顯示「週／日」而不顯示實際日期，會讓使用者無法確認自己正在處理哪一週。
+- Playwright 的 mobile 驗收不可只用全頁第一個 selector：桌面表格與行動卡片可能同時存在於 DOM，測試必須依 viewport scope 到實際可見的 `.sdp-mcard`／明細，否則會出現測試看似點了 CTA 卻驗證到隱藏桌面內容的假綠燈。
+- 狀態型案件的主要動作要使用下一步動詞（接手處理、繼續處理、查看處理結果），不是所有狀態都顯示模糊的「展開」；動作標籤、`aria-expanded`、tabpanel 關係與實際可見區塊必須同時維護。
+
+### R92. 多筆內容預覽必須是 read-only projection，且 row preview 要跟同一筆資料綁定（2026-08-01）
+
+- 老師要快速比較多堂學習評量時，不能要求逐筆開啟編輯 modal；列表應先提供可掃讀的內容 projection，編輯、核准與退回仍維持原本的高風險操作邊界。
+- 預覽欄位必須由純函式／presentational component 統一整理，不能在 table、card 各自複製欄位映射；空內容要明確顯示尚未填寫，不能以空白或錯誤狀態代替。
+- Vue `v-for` 的同筆預覽 row 必須使用 `<template v-for="record">` 同時包住主 row 與 preview row；把 sibling 放在 loop 外會在桌面 render 讀到 undefined，手機因走另一個 render branch 可能掩蓋此錯誤。
+- 驗收必須包含 390／412／768／1280／1440px，並同時檢查真正可見的 card/table branch、內容摘要、開關狀態、`scrollWidth <= clientWidth` 與 browser page error；只驗 API 200 或單一 selector 不足以證明 preview 可用。
+
+### R93. 專用 UI foundation spec 不得混入 production smoke（2026-08-02）
+
+- 使用 pilot mount／mock API 的頁面證據測試，必須由專用 Playwright config 明確收斂；default production smoke config 必須 `testIgnore`，避免在沒有 fixture server 時把測試誤當 production smoke 執行。
+- 新增任何 foundation spec 後，必須同時驗證專用 config 會執行它、default config 不會執行它，並在 CI 的 UI Smoke 與 Vite Frontend Build gate 中各自確認結果。
+
+---
+
+### R94. `AlertController::computePaymentStatus()` 只認 `StudentClass.Paid`，漏了帳單足額收款（F7 新成員，2026-08-06）
+
+- 主任回報：一名學生的堂數制課程已用帳單收款紀錄結清（`charge === paid_amount`、`outstanding = 0`），課程管理頁面正確顯示「已繳費」，帳務中心卻仍列為「未繳費」——同一課程、同一頁面群組，兩套真相互相矛盾，正是 **F7「繳費金額/狀態雙真相」** 家族的又一個成員。
+- 根因：`computePaymentStatus()` 判斷 `$isPaid` 時只看 `StudentClass.Paid` 這個欄位；`StudentClassController` 的對應邏輯早就是「`Paid=1` **或** 有記錄帳單收款」，但這條 OR 規則從未同步搬進 `AlertController`。
+- **修法**：`$isPaid = Paid=1 或 (charge > 0 且 paid_amount >= charge)`。刻意用「足額」而非「有任一筆收款」判斷——後者會把只付一部分的 `partial` 狀態也誤判為已繳，見 `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` §「堂數制單科課程的 payment_status 未計入帳單收款」。
+- **測試**：`TuitionAlertsApiTest::test_payment_status_paid_when_invoice_fully_paid_without_paid_flag`、`test_payment_status_renew_needed_not_unpaid_when_invoice_fully_paid_and_zero_remaining`（revert 後兩者皆 fail）。
+- **防再犯**：任何新增「這筆是否已繳費」的判斷邏輯，一律先查 F7 家族既有的 `Paid OR 足額收款` 規則是否已在別處實作，不要重新發明；`AlertController::tuition` 屬 `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` 明文列管的檔案，改動前需先取得產品方同意（本次已取得）。
+- **後續盤點**：修好後掃了一次「已繳費」判斷在全 `backend/app` 被重寫幾次，結果是至少 8 個檔案、4 種互不相同的變體（見 R95）；`AlertController.php` 內部自己就重複了兩次（`computePaymentStatus()` 與 `computePackageCountPaymentStatus()`），已在同一 PR 抽成單一私有方法 `isFullyPaid()`。
+
+### R95. 「已繳費」判斷全專案盤點：至少 8 個檔案、4 種變體，沒有任何集中實作（2026-08-06）
+
+- 承 R94 修復後的盤點：`backend/app/Models/StudentClass.php`、`Invoice.php` 都沒有 `isPaid()`／`isFullyPaid()` 這類集中存取器；`StudentClassController`（`Paid==1` 或任一筆收款）、`AlertController` 內部另兩處（`mapCountModeAlert`／`monthlyAlertRow`，僅 `Paid==1`——但這兩處是刻意保留給列入提醒條件用，依規則不可與顯示用 `payment_status` 混改）、`NotificationSyncService`、`DunningService`（明文凍結）、`PaymentReportController`、`ParentPortalController`（同檔案內三種寫法）、`NotificationController`、`AccountingController`、`SendTuitionReminders` 各自獨立重新推導「已繳費」，條件互不相同。
+- 這不是巧合，是 `TD-073`（重複業務邏輯無自動偵測機制）論點在同一天第三次被驗證——已將 TD-073 優先級由 P2 調升為 P1，並記錄於 `docs/SYSTEM_TECH_GUIDE.md` §12.5。
+- **本次範圍**：只收斂了 `AlertController.php` 內部的兩處重複（同一檔案、同一 PR #1648，風險可控）。**沒有**跨檔案把其餘 8 處也改成呼叫單一 model 方法——那會是一次橫跨通知/催繳/帳單/家長入口/報表的大範圍金流邏輯變更，其中 `DunningService.php` 又被 `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` 明文凍結需產品方核准，未經明確授權不得一次性大改。
+- **防再犯**：日後若要清償 TD-073 這個具體子項，先跟產品方逐一確認要收斂的檔案範圍與驗收方式，分批進行並各自補齊回歸測試，不要一次全部重寫。
+
+### R96. 課程管理「預排」日期：把「查詢範圍內剛好有歷史堂次」當成「該不該投影未來日期」的資格判斷（in-app #222，2026-08-06）
+
+- 主任回報（陳依娟／興隆分校）：「為何預排只能打一個」——課程列表裡大多數課程完全沒有「預排」日期，只有剛好有堂次紀錄的那一門有。
+- 根因：`ClassSessionController::buildProjectedByClassForIndex()` 用 `array_keys($materializedByClass)` 當作「要不要幫這門課算預排」的候選清單，而 `$materializedByClass` 只包含這次查詢範圍內**已經有實體堂次紀錄**的課程。一門沒有歷史紀錄的課程（剛排好、第一堂還沒到）連候選資格都沒有，跟它的排課星期/時段本該投影幾筆未來日期完全無關。
+- 這是「把資料可得性當成業務資格」的反模式：「這門課有沒有歷史堂次」只是這次剛好查到什麼的技術副產物，跟「這門課排課上該不該有預排日期」是兩個獨立問題，見 `docs/SYSTEM_TECH_GUIDE.md` §12.6。
+- **修法**：候選課程清單改為「已有歷史堂次的課程」聯集「請求明確帶入的 `student_class_id`/`student_class_ids`」。
+- **測試**：`SessionProjectionSplitTest::test_class_sessions_index_projects_course_with_no_materialized_rows_in_range`（revert 後 fail）。
+- **防再犯**：任何「候選清單」／「該不該處理這筆」的判斷，先問清楚「這是業務規則決定的資格，還是剛好這次查詢有沒有抓到資料」——不要把後者直接拿來當前者用；尤其是分頁/範圍查詢場景，資料存在與否很容易受查詢範圍影響，跟業務資格無關。
+
+### R97. 「調課」與「備註 / 時段」按鈕命名／視覺無法區分「能不能換日期」（2026-08-06）
+
+- 主任回報（興隆分校，非 in-app 工單）：某學生課程從星期六 13:00–15:00 改星期四 15:30–17:30「改不過去」，CEO 自己操作卻成功。後端 API 行為一致，差異在使用者點了哪個按鈕。
+- 根因：`SessionEditModal.vue` 的單堂操作選單裡，「調課」（可換任何日期＋時段）與「備註 / 時段」（`PATCH /class-sessions/{id}`，驗證規則完全沒有 `session_date` 欄位，物理上不能換日期）視覺樣式相近、命名都圍繞「時間／時段」，沒有任何提示區分兩者能力差異。使用者若誤點「備註 / 時段」，會打開一個沒有日期欄位的表單，連嘗試都無從嘗試。
+- 詳細根因分析（含業界對照：Google Calendar/Calendly 一律用單一入口同時處理日期+時間、Nielsen Norman「Recognition rather than recall」原則）：`docs/SYSTEM_TECH_GUIDE.md` §13。
+- **修法**：按鈕文字明確化（「調課」→「🔄 調課（換日期）」；「備註 / 時段」→「備註 / 當天時段」）、各自加 `title` tooltip 講清楚能不能換日期、選單下方加一行指引、「調課」改用品牌主色系避免視覺上輸給「備註 / 時段」。純文案／視覺調整，不改後端行為。
+- **測試**：`SessionEditModal.test.js`——鎖住兩按鈕文字互斥（其中一個含「換日期」，另一個不含）、各自的 tooltip 內容、選單提示文字存在。
+- **防再犯**：新增任何「能力有限縮」的操作入口（例如「只能同一天」「只能單筆」），一律要求：(1) 按鈕文字本身要排除掉最直覺的誤讀，(2) 加 tooltip 明講限制，(3) 若旁邊有能力更完整的入口，要讓使用者看得出兩者差異，不能只靠使用者自己試錯發現。
+
+### R98. 主任／管理員角色的行事曆整週看起來全空：schedules 端點被自己的 user ID 誤當 teacher_id 過濾（in-app #219 追加根因，2026-08-06）
+
+- in-app #219（鄭宇志回報試聽課不顯示）第一輪修復（補齊 `ClassSessionController` 的預排候選清單、修正課程 3153 損毀的 `StartDate`）上線後，回報者反映問題仍存在。用 Super Admin 測試看起來資料正確，但這是**假陰性**——Super Admin 是最不可靠的角色測試代理，因為它不受 `CampusID`／`TeacherID` 任何範圍限制。改用真實建立（測完即刪）的主任帳號實測後，發現整週（非僅回報的那一天）0 堂課，即使載入進度顯示所有項目都抓到了。
+- 根因：`frontend/src/lib/calendarCourseLoad.js` 的 `buildSchedulesApiUrl()`（以及 `useCalendarDataLoad.js` 內同邏輯的 legacy fallback 分支）條件寫反——非老師角色（主任／管理員）呼叫 `/api/v1/schedules` 時，把**自己的登入者 user ID** 當成 `teacher_id` 帶進查詢字串（`!isTeacher && userId` 應為 `isTeacher && userId`；同檔案 `buildStudentClassesApiUrl()` 的對應邏輯是對的，可比對）。後端 `ScheduleController::index()` 對 `teacher_id` 參數是無條件 `where()`，不分角色、不檢查這個 ID 是否真的是老師。主任的 user ID 不可能等於任何老師的 ID，於是 schedules 這層對主任／管理員角色永遠回傳空陣列。
+- 行事曆週檢視的真相來源是「schedules 模板／例外層」+「class-sessions 已物化層」合併（見 G-007），只要某筆課程當週只活在還沒物化的 schedules 模板裡，主任視角就會直接看不到整筆——這解釋了「主任改不過去、CEO（Super Admin）改得過去」的根本原因，範圍比 in-app #219 原始回報的單一學生個案大得多。
+- **修法**：兩處 `teacher_id` 判斷條件改為 `isTeacher && userId`，與 `student-classes` 端點的既有正確邏輯一致。
+- **測試**：`calendarCourseLoad.test.js` 新增回歸測試，鎖住「主任/管理員視角的 schedules URL 絕不能帶 teacher_id」。
+- **防再犯**：(1) 同一份程式碼裡，兩個平行端點（`student-classes` vs `schedules`）的「依角色決定要不要帶某個過濾參數」邏輯必須用同一套條件寫法抽出來共用或至少互相對照測試，不能各自複製一份、其中一份手滑寫反卻沒有測試守住；(2) 驗證角色限定的可見性 bug，Super Admin 不能作為任何角色的替身測試——它是唯一不受範圍限制的角色，「Super Admin 測試通過」只能證明資料本身存在，不能證明目標角色真的看得到；務必用該角色真實帳號（測完即刪）驗證。
+
+### R99. 同一位老師掛兩個帳號、UI 合併顯示成一欄時，「輸家」帳號的課程在日檢視消失（in-app #219/#223，2026-08-06）
+
+- R98 上線後，回報者（鄭宇志）用附截圖的方式再次確認：6/17、6/18 高為澎老師的試聽學生（吳宥萱）仍未顯示在課表，但**同一天同一位老師欄位底下其他學生的課程都正常顯示**——這個細節是關鍵，代表問題範圍已經跟 R98（整層資料消失）不同，是精準卡在單一課程。
+- 查證發現：系統裡「高為澎」其實掛了兩個獨立帳號（ID 73，account `Xizhi01`，`teaching_session_count` 268，實際在用的主帳號；ID 260，account `Kao`，`teaching_session_count` 0，幾乎沒用過的重複帳號）。吳宥萱的試聽課程（`StudentClass.ID` 3153）`TeacherID` 是 260。
+- 根因：`SmartCalendar.vue` 的 `filterTeacherOptions`（週/日檢視共用的老師欄位清單）刻意把顯示名稱相同的帳號合併成一欄（`alias_ids`），欄位代表 ID 取「目前載入範圍內課程數較多」的那個帳號（73）——這個合併機制本身是為了解決「同一人多帳號、UI 不要出現兩個一樣的老師欄」而設計，行為正確。但日檢視實際渲染課程用的 `getCoursesForTeacherAt()` 與計算容量徽章的 `getSlotOccupancy()`，比對的是 `course.teacher_id === 合併後的代表 ID`（單一 ID 嚴格比對），從未展開別名帳號集合。課程 3153 的 `teacher_id` 是 260（輸家帳號），欄位代表 ID 是 73，兩者永遠對不上，課程就直接消失——即使畫面上那一欄明明白白寫著「高為澎」。同一支檔案裡，週檢視「選老師 chip」篩選用的 `weekViewExpandedTeacherIdSet` 其實已經正確展開別名集合（`courses.value.filter(... aliasSet.has(...))`），只是日檢視這兩處被遺漏，沒有跟著套用同一套邏輯。
+- **修法**：抽出共用的 `frontend/src/lib/teacherAliasMatch.js`（`resolveTeacherAliasIds` 取得某老師欄位的完整別名 ID 集合、`courseBelongsToTeacherAlias` 判斷課程是否屬於該集合），`getCoursesForTeacherAt()`、`getSlotOccupancy()`、`visibleTeachers` 排序用的 `teacherHasCourseToday()` 三處都改為比對別名集合而非單一 ID。
+- **測試**：新增 `teacherAliasMatch.test.js`，鎖住「課程掛在合併後的輸家帳號仍要能命中該欄位」的核心案例。
+- **防再犯**：(1) 「同一份資料在 UI 上被合併展示（多對一）」的功能，任何後續依這份合併結果做篩選/比對的程式碼，都必須走同一套展開邏輯，不能各自用合併後的單一代表值直接比對原始欄位——這是典型的「合併轉換做了，但下游比對忘記跟著改」；寫這類合併邏輯時，最好直接抽成共用函式讓所有比對點都吃同一份輸入，而不是分散在多個函式裡各自 inline。(2) 「同一顯示名稱、不同帳號 ID」本身也是一個值得盤點的資料品質問題——找找系統裡還有沒有其他重複帳號（例如 bulk onboarding 造成的），確認是否該直接停用/合併，而不是永遠指望前端 alias 合併機制兜底。
+
+### R100. 批次 `Model::where(...)->delete()` 繞過 Eloquent model events，既有審計基礎設施形同虛設（自我檢討，2026-08-06）
+
+- 稍早修復 in-app #219 時，我對課程 3153 執行了一次已徵得使用者同意的資料修正（改回正確的開課日），結果意外觸發 `maybeRebuildSessionsAfterUpdate()` 的整批重建路徑，刪除並重建了該課程的 `ClassSession` 與 `LearningRecord`。事後想找回被刪除的評量記錄內容時才發現：系統其實已經有 `ScheduleAuditLog`／`ClassSessionObserver::deleted()` 這套審計機制，理論上任何 `ClassSession` 被刪除都該留下 `old_data` 快照——但這次刪除完全沒有留下任何記錄。
+- 根因：整批重建路徑用的是 `ClassSession::where('StudentClassID', ...)->delete()` 與 `LearningRecord::whereIn(...)->delete()` 這種 query builder 批次刪除，Laravel/Eloquent 的批次刪除**不會**觸發 model events（`deleting`/`deleted`），所以掛在 `deleted` 事件上的審計記錄完全沒被呼叫到。這不是審計機制本身有 bug，是呼叫方式繞過了它。
+- 影響：不只是這一次事件——任何走這條整批重建路徑的刪除都沒有審計記錄，一旦刪錯，完全無法追溯或還原，這是系統性缺口，不是單一事故。
+- **修法**：`LearningRecord` 在刪除前先手動寫一筆 `ScheduleAuditLog` 快照（`old_data` = 完整內容）；`ClassSession::where(...)->delete()` 改成 `ClassSession::where(...)->get()->each->delete()`（逐筆刪除），讓既有 `ClassSessionObserver::deleted()` 正常觸發，不需要另外重寫一套邏輯。
+- **測試**：`RebuildDestructiveDeleteAuditTest`——驗證整批重建刪除 `ClassSession`／`LearningRecord` 前，`schedule_audit_logs` 都留下可還原的快照。
+- **防再犯**：(1) 任何要刪除「有價值內容」（使用者填寫的文字、審核紀錄等）的 Model 時，先確認是走 `->delete()`（觸發 events，既有 observer 可攔截）還是 `Model::where(...)->delete()`（query builder，繞過所有 events）——後者只適合「純粹衍生、可重算」的資料，不適合任何帶內容的紀錄。(2) 做任何有風險的 production 資料修正前，先確認「如果這個修正觸發了非預期的連鎖反應，有沒有辦法事後查到發生了什麼」——這次剛好系統已經有審計機制，只是被繞過，算是運氣好；下次不能只靠運氣，修正前應該先確認目標資料表有沒有審計/備份機制、機制實際上會不會被觸發。(3) `LearningRecord` 本身完全沒有任何審計/歷史版本機制（不像 `ClassSession` 有 `ScheduleAuditLog`），這次事件確認了一旦內容被覆蓋或刪除就無法還原——這是後續可評估是否要補上的技術債，記在 `docs/TECH_DEBT.md`。
+- **這次遺失的評量內容如何結案**：吳宥萱 6/18 試聽課的評量記錄已確認無法還原（無備份、無法聯繫到當事老師 高為澎 核實），CEO 已核准直接結案，不再追查；堂數與收費不受影響，純粹是這一筆評量文字內容遺失。

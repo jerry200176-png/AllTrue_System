@@ -4,6 +4,12 @@ name: Bug Queue Dump (read-only)
 # Cloud agents cannot workflow_dispatch (403) — trigger via request file push.
 on:
   workflow_dispatch:
+    inputs:
+      target_bug_id:
+        description: "Optional bug ID; fail if it is not in the fresh open queue"
+        required: false
+        type: string
+        default: ""
   push:
     branches: [main]
     paths:
@@ -46,6 +52,7 @@ jobs:
         env:
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          TARGET_BUG_ID: ${{ inputs.target_bug_id || '' }}
         run: |
           set -euo pipefail
           mkdir -p out
@@ -124,13 +131,14 @@ jobs:
               "created_at" => $newest->created_at,
               "title" => mb_substr($nt, 0, 120),
             ] : null,
+            "dump_generated_at" => gmdate("c"),
             "prod_head" => trim((string)@shell_exec("git rev-parse HEAD")),
           ], JSON_UNESCAPED_UNICODE), PHP_EOL;
           '
           REMOTE
           python3 <<'PY'
           from pathlib import Path
-          import json, re
+          import json, os, re
           text = Path("out/bug-queue-dump.log").read_text(encoding="utf-8", errors="replace")
           open_rows = []
           meta = None
@@ -148,6 +156,20 @@ jobs:
                   elif "id" in obj and "status" in obj:
                       open_rows.append(obj)
           Path("out/open-bugs.json").write_text(json.dumps(open_rows, ensure_ascii=False, indent=2), encoding="utf-8")
+          target_id = os.environ.get("TARGET_BUG_ID", "").strip()
+          if target_id:
+              if not target_id.isdigit():
+                  raise SystemExit("target_bug_id must be numeric")
+              target_rows = [r for r in open_rows if int(r.get("id", -1)) == int(target_id)]
+              if len(target_rows) != 1 or target_rows[0].get("status") not in {"new", "triaged", "in_progress"}:
+                  raise SystemExit(f"target bug #{target_id} is not uniquely present in the fresh open queue")
+          if meta:
+              meta["queue_dump_run_id"] = os.environ.get("GITHUB_RUN_ID")
+              meta["queue_dump_attempt"] = os.environ.get("GITHUB_RUN_ATTEMPT")
+              meta["target_bug_id"] = int(target_id) if target_id else None
+              print("counts=", json.dumps(meta.get("counts"), ensure_ascii=False))
+              print("max_id=", meta.get("max_id"))
+              print("prod_head=", meta.get("prod_head"))
           Path("out/meta.json").write_text(json.dumps(meta or {}, ensure_ascii=False, indent=2), encoding="utf-8")
           print(f"open_rows={len(open_rows)}")
           if meta:

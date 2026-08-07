@@ -227,6 +227,66 @@ class PurchaseBatchClosesSourceTest extends TestCase
         $this->assertNull($course->closed_reason);
     }
 
+    public function test_resume_restores_sessions_cancelled_by_pause(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = Student::create([
+            'name' => '恢復堂次測試生',
+            'CampusID' => 1,
+            'ClassID' => 1,
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+        ]);
+        $course = $this->createCountModeClass($student->id, [
+            'Paid' => 1,
+            'RemainingSessions' => 5,
+        ]);
+
+        \App\Models\ClassSession::create([
+            'StudentClassID' => $course->ID,
+            'SessionDate' => now()->addDays(3)->toDateString(),
+            'StartTime' => '18:00:00',
+            'EndTime' => '20:00:00',
+            'Status' => 'scheduled',
+        ]);
+        $unrelated = \App\Models\ClassSession::create([
+            'StudentClassID' => $course->ID,
+            'SessionDate' => now()->addDays(10)->toDateString(),
+            'StartTime' => '18:00:00',
+            'EndTime' => '20:00:00',
+            'Status' => 'cancelled',
+            'Note' => '家長臨時請假，主任手動取消',
+        ]);
+
+        $pauseRes = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/student-classes/{$course->ID}/pause", [
+            'action' => 'pause',
+        ]);
+        $pauseRes->assertOk();
+        $this->assertSame(1, $pauseRes->json('cancelled_count'));
+
+        $resumeRes = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/student-classes/{$course->ID}/pause", [
+            'action' => 'resume',
+        ]);
+        $resumeRes->assertOk();
+        $this->assertSame(1, $resumeRes->json('restored_count'));
+
+        $restored = \App\Models\ClassSession::where('StudentClassID', $course->ID)
+            ->where('SessionDate', now()->addDays(3)->toDateString())
+            ->first();
+        $this->assertSame('scheduled', $restored->Status);
+        $this->assertStringNotContainsString('[暫停取消]', (string) $restored->Note);
+
+        $unrelated->refresh();
+        $this->assertSame('cancelled', $unrelated->Status, 'A manually-cancelled session must not be restored by resume');
+    }
+
     private function createDirectorToken(array $campusIds): string
     {
         $user = User::create([

@@ -83,6 +83,9 @@ class GenerateForwardSessions extends Command
             ->join('Student as s', 's.id', '=', 'sc.StudentID')
             ->where(fn ($w) => $w->where('sc.Stop', 0)->orWhereNull('sc.Stop'))
             ->where('sc.ScheduleMode', 'count')
+            ->where(function ($q) {
+                $q->whereNull('sc.scheduling_policy')->orWhere('sc.scheduling_policy', '!=', 'manual_occurrence');
+            })
             ->where('sc.RemainingSessions', '>', 0)
             ->whereNotExists(function ($e) {
                 $e->select(DB::raw(1))->from('ClassSession as cs')

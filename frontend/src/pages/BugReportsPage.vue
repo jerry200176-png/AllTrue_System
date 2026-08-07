@@ -419,7 +419,14 @@
                 <option v-for="s in allowedTransitions" :key="s" :value="s">{{ statusLabel(s) }}</option>
               </select>
               <input v-model="statusNote" placeholder="備註（選填）" class="action-input" />
+              <template v-if="newStatus === 'resolved'">
+                <input v-model="productionRevision" placeholder="Production SHA（必填）" class="action-input action-input-evidence" />
+                <input v-model="deployRunId" placeholder="Deploy run ID（選填）" class="action-input action-input-evidence" />
+              </template>
               <button class="btn-sm btn-primary" :disabled="!newStatus" @click="doUpdateStatus">更新</button>
+            </div>
+            <div v-if="newStatus === 'resolved'" class="evidence-hint">
+              已解決必須附上正式站版本 SHA；這會寫入狀態歷程，供回報者驗收與稽核。
             </div>
           </div>
 
@@ -486,6 +493,8 @@ const total = ref(0);
 
 const newStatus = ref('');
 const statusNote = ref('');
+const productionRevision = ref('');
+const deployRunId = ref('');
 const newComment = ref('');
 const commentIsInternal = ref(false);
 const updatingCommentVisibilityIds = ref(new Set());
@@ -797,6 +806,8 @@ async function selectBug(bug) {
   detailError.value = '';
   newStatus.value = '';
   statusNote.value = '';
+  productionRevision.value = '';
+  deployRunId.value = '';
   newComment.value = '';
   // 手機單欄時 detail 排在長列表之後，選取後要滑過整個列表才看到詳情（in-app 166）。
   // 窄螢幕選取後把詳情捲入視野；桌面（list/detail 並排）不干擾。
@@ -821,7 +832,10 @@ async function selectBug(bug) {
 async function doUpdateStatus() {
   if (!newStatus.value || !activeBug.value) return;
   try {
-    await updateBugStatus(activeBug.value.id, newStatus.value, statusNote.value || null);
+    await updateBugStatus(activeBug.value.id, newStatus.value, statusNote.value || null, {
+      production_revision: productionRevision.value.trim() || null,
+      deploy_run_id: deployRunId.value.trim() || null,
+    });
     await selectBug(activeBug.value);
     loadBugs();
   } catch (e) {
@@ -1313,6 +1327,8 @@ function formatDate(iso) {
 .action-row label { font-size: 13px; font-weight: 600; min-width: 60px; }
 .action-row select, .action-input { padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; }
 .action-input { flex: 1; min-width: 120px; }
+.action-input-evidence { min-width: 170px; }
+.evidence-hint { color: var(--ds-text-secondary); font-size: 12px; line-height: 1.5; }
 
 .btn-sm { padding: 6px 14px; border: none; border-radius: 6px; font-size: 13px; cursor: pointer; }
 .btn-sm.btn-primary { background: var(--primary); color: var(--ds-canvas); }

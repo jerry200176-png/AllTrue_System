@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const outDir = process.env.UI_FOUNDATION_SHOT_DIR
-  || path.resolve(__dirname, '../../../docs/design/evidence/raw');
+  || path.resolve(__dirname, '../../docs/design/evidence/raw');
 
 const viewports = [
   { name: '390', width: 390, height: 844 },
@@ -62,7 +62,7 @@ function fakeStudents(count, { longName = false } = {}) {
   }));
 }
 
-async function installApiMocks(page, mode) {
+async function installApiMocks(page, mode, pageName = '') {
   const hang = mode === 'loading';
   let releaseHang;
   const hangPromise = hang
@@ -78,8 +78,117 @@ async function installApiMocks(page, mode) {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
     }
 
-    if (hang && (p.includes('/action-inbox') || p.includes('/students'))) {
+    if (hang && (p.includes('/action-inbox') || p.includes('/students') || (pageName === 'course' && p.includes('/student-classes')) || pageName === 'calendar' || pageName === 'discrepancy')) {
       await hangPromise;
+    }
+
+    if (pageName === 'calendar' && p.includes('/student-classes')) {
+      if (mode === 'error') return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: '課表資料暫時無法載入' }) });
+      if (mode === 'empty') {
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [], total: 0 }) });
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [{ id: 5101, student_id: 2000, student_name: mode === 'long' ? '測試學生超長姓名驗證行事曆卡片折行' : '測試學生甲', subject: 'Math', class_type: 'one_on_one', teacher_id: 3000, teacher_name: '測試老師', day_of_week: 1, start_time: '10:00', end_time: '12:00', duration_hours: 2, status: 'active', stop: 0 }], total: 1 }),
+      });
+    }
+
+    if (pageName === 'calendar' && p.includes('/teachers')) {
+      if (mode === 'empty') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [{ id: 3000, username: '測試老師', name: '測試老師', branch_id: 1, branch_ids: [1] }] }) });
+    }
+
+    if (pageName === 'calendar' && p.includes('/schedules')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
+    }
+
+    if (pageName === 'discrepancy' && p.includes('/schedule-discrepancies/summary')) {
+      const total = mode === 'empty' ? 0 : 1;
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ pending: total, acknowledged: 0, resolved: 0, withdrawn: 0 }) });
+    }
+
+    if (pageName === 'discrepancy' && p.includes('/schedule-discrepancies')) {
+      if (mode === 'error') return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: '課表回報暫時無法載入' }) });
+      if (mode === 'empty') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
+      const studentName = mode === 'long' ? '測試學生超長姓名驗證回報卡片折行' : '測試學生甲';
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [{ id: 6101, reporter_name: '測試老師', branch_name: '測試分校', student_name: studentName, session_date: '2026-08-03', time_range: '10:00–12:00', corrected_time_range: '11:00–13:00', discrepancy_type_label: '時段不符', status: 'pending', notes: mode === 'long' ? '這是一段很長的老師回報備註，用來確認卡片會自然折行，不會把處理動作推到畫面外。'.repeat(2) : '請確認調課後的時段。' }] }),
+      });
+    }
+
+    if (mode === 'dashboard' && p.endsWith('/alerts/tuition')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([{ id: 801, class_id: 801, student_id: 2001, student_name: '測試學生甲', subject: '數學', remaining_sessions: 1, alert_type: 'unpaid' }]),
+      });
+    }
+
+    if (mode === 'dashboard' && p.includes('/director/operations-trust')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: { decision_center: {
+          score: 82,
+          max: 100,
+          status: 'yellow',
+          headline: '有 1 項課務風險需要確認',
+          decisions: [{ key: 'demo-risk', severity: 'warning', why: '測試課表需要主任確認。', next_step: '查看課表', action_label: '查看風險', target: 'course-mgmt', people_total: 0 }],
+          policy_notes: [],
+        }, generated_at: '2026-08-01T04:00:00Z' } }),
+      });
+    }
+
+    if (mode === 'dashboard' && p.includes('/class-sessions')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [{ id: 901, student_class_id: 801, student_name: '測試學生甲', teacher_name: '測試老師', start_time: '10:00', end_time: '11:00', status: 'scheduled', subject: '數學' }] }),
+      });
+    }
+
+    if (mode === 'dashboard' && p.includes('/learning-records')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [{ id: 1001, status: 'pending', student_name: '測試學生甲' }] }),
+      });
+    }
+
+    if ((mode === 'dashboard' || pageName === 'course') && p.includes('/exception-workflows')) {
+      if (pageName === 'course' && mode === 'error') {
+        return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: '家長請假待辦載入失敗' }) });
+      }
+      if (pageName === 'course' && mode === 'empty') {
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [], meta: { count: 0 } }) });
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [{ id: 27, status: 'open', student: { name: mode === 'long' ? '測試學生超長姓名用於驗證處理案件摘要折行' : '測試學生甲' }, class_session: { date: '2026-08-02', start_time: '10:00', end_time: '11:00' }, payload: { reason: mode === 'long' ? '這是一段很長的家長請假原因，用來驗證案件資訊可以折行且主要處理按鈕仍然可見。' : '身體不適' }, due_at: '2026-08-01T18:00:00+08:00' }] }),
+      });
+    }
+
+    if (pageName === 'course' && p.includes('/student-classes')) {
+      if (mode === 'empty') {
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [], total: 0 }) });
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [{ ID: 801, StudentID: 2000, student_name: '測試學生甲', SubjectID: 1, Subject: '數學', ClassType: 'one_on_one', TeacherID: 3000, teacher_name: '測試老師', Stop: 0 }], total: 1 }),
+      });
+    }
+
+    if (mode === 'dashboard' && p.includes('/schedule-discrepancies/summary')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ pending: 1, acknowledged: 0, resolved: 0, withdrawn: 0 }),
+      });
     }
 
     if (p.endsWith('/action-inbox/count')) {
@@ -136,7 +245,7 @@ async function installApiMocks(page, mode) {
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ data: [], current_page: 1, last_page: 1, total: 0 }),
+        body: JSON.stringify({ data: [], unread_count: mode === 'dashboard' ? 2 : 0, current_page: 1, last_page: 1, total: 0 }),
       });
     }
 
@@ -188,7 +297,7 @@ async function installApiMocks(page, mode) {
 
 async function openPilot(page, { pageName, mode, viewport }) {
   await page.setViewportSize({ width: viewport.width, height: viewport.height });
-  const mocks = await installApiMocks(page, mode);
+  const mocks = await installApiMocks(page, mode, pageName);
   await page.goto(`/pilot-mount.html?page=${pageName}&mode=${mode}`);
   await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1', { timeout: 15_000 });
   return mocks;
@@ -276,4 +385,239 @@ test.describe('UI foundation — real Vue page evidence', () => {
       });
     }
   }
+
+  for (const vp of [
+    { name: '390', width: 390, height: 844 },
+    { name: '412', width: 412, height: 915 },
+    { name: '768', width: 768, height: 1024 },
+    { name: '1280', width: 1280, height: 900 },
+    { name: '1440', width: 1440, height: 900 },
+  ]) {
+    test(`director workbench @${vp.name}`, async ({ page }) => {
+      const secondaryRequests = [];
+      page.on('request', (request) => {
+        if (/\/v1\/adoption\/(task-tracker|activity-log|weekly-metrics)/.test(request.url())) secondaryRequests.push(request.url());
+      });
+      await openPilot(page, { pageName: 'director', mode: 'normal', viewport: vp });
+
+      await expect(page.getByText('主任總覽', { exact: true })).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByText('今日摘要', { exact: true })).toBeVisible();
+      const layout = await page.evaluate(() => ({
+        scrollWidth: document.documentElement.scrollWidth,
+        clientWidth: document.documentElement.clientWidth,
+        primaryCtaCount: document.querySelectorAll('.director-task__action').length,
+        primaryDecisionCount: document.querySelectorAll('.director-task').length,
+        hiddenLegacyWorkbench: Boolean(document.querySelector('.workbench')),
+      }));
+      expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth);
+      expect(layout.hiddenLegacyWorkbench).toBe(false);
+      expect(layout.primaryDecisionCount).toBeLessThanOrEqual(7);
+      await expect(page.getByRole('tab', { name: '今天', exact: true })).toHaveAttribute('aria-selected', 'true');
+      if (layout.primaryCtaCount > 0) {
+        await expect(page.locator('.director-task__action').first()).toBeVisible();
+      }
+      expect(secondaryRequests).toEqual([]);
+      fs.mkdirSync(outDir, { recursive: true });
+      await page.locator('.director-workbench-v2').screenshot({ path: path.join(outDir, `vue-director-v2-focus-${vp.name}.png`) });
+
+      const fullView = page.getByRole('tab', { name: '完整營運', exact: true });
+      await fullView.click();
+      await expect(page.locator('.director-workbench-v2__full')).toBeVisible();
+      await expect.poll(() => secondaryRequests.length).toBeGreaterThan(0);
+      await expect(page.getByText('近期紀錄與分析', { exact: true })).toBeVisible();
+      await page.locator('.director-workbench-v2').screenshot({ path: path.join(outDir, `vue-director-v2-full-${vp.name}.png`) });
+    });
+  }
+
+  for (const vp of [
+    { name: '390', width: 390, height: 844 },
+    { name: '412', width: 412, height: 915 },
+    { name: '768', width: 768, height: 1024 },
+    { name: '1280', width: 1280, height: 900 },
+    { name: '1440', width: 1440, height: 900 },
+  ]) {
+    for (const mode of ['normal', 'empty', 'loading', 'error', 'long']) {
+      test(`course leave workflow ${mode} @${vp.name}`, async ({ page }) => {
+        const mocks = await openPilot(page, { pageName: 'course', mode, viewport: vp });
+
+        if (mode === 'loading') {
+          await expect(page.getByRole('status', { name: '課程資料載入中' })).toBeVisible({ timeout: 10_000 });
+          mocks.releaseHang();
+          return;
+        }
+
+        if (mode === 'error') {
+          await expect(page.getByRole('alert')).toContainText('家長請假待辦載入失敗');
+        } else if (mode === 'empty') {
+          await expect(page.getByText('目前沒有待處理的家長請假')).toBeVisible({ timeout: 10_000 });
+        } else {
+          await expect(page.getByText('家長請假待處理', { exact: true })).toBeVisible({ timeout: 10_000 });
+          await expect(page.getByText('測試學生', { exact: false }).first()).toBeVisible();
+          const action = page.getByRole('button', { name: '處理這筆請假' }).first();
+          await expect(action).toBeVisible();
+          await action.click();
+          await expect.poll(() => page.evaluate(() => window.__pilotLastNavigation)).toEqual({
+            target: 'director',
+            section: 'exception-workflows',
+            workflowId: 27,
+          });
+        }
+
+        const layout = await page.evaluate(() => ({
+          scrollWidth: document.documentElement.scrollWidth,
+          clientWidth: document.documentElement.clientWidth,
+        }));
+        expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth);
+        if (mode === 'normal' || mode === 'long') {
+          fs.mkdirSync(outDir, { recursive: true });
+          await page.locator('.course-page').screenshot({
+            path: path.join(outDir, `vue-course-leave-${mode}-${vp.name}.png`),
+          });
+        }
+      });
+    }
+  }
+
+  for (const vp of [
+    { name: '390', width: 390, height: 844 },
+    { name: '412', width: 412, height: 915 },
+    { name: '768', width: 768, height: 1024 },
+    { name: '1280', width: 1280, height: 900 },
+    { name: '1440', width: 1440, height: 900 },
+  ]) {
+    for (const mode of ['normal', 'empty', 'loading', 'error', 'long']) {
+      test(`calendar view ${mode} @${vp.name}`, async ({ page }) => {
+        const mocks = await openPilot(page, { pageName: 'calendar', mode, viewport: vp });
+
+        if (mode === 'loading') {
+          await expect(page.locator('.calendar-loading-bar')).toBeVisible({ timeout: 10_000 });
+          mocks.releaseHang();
+        } else if (mode === 'error') {
+          await expect(page.getByRole('alert')).toContainText('課表資料暫時無法載入', { timeout: 10_000 });
+        } else {
+          await expect(page.getByText('排課與調課', { exact: true })).toBeVisible({ timeout: 10_000 });
+          await expect(page.getByRole('button', { name: '回到今天的課表' })).toBeVisible();
+          if (mode === 'empty') {
+            await expect(page.getByText('目前無老師資料', { exact: false })).toBeVisible();
+          } else {
+            await expect(page.getByText('測試老師', { exact: false }).first()).toBeVisible();
+          }
+        }
+
+        const layout = await page.evaluate(() => ({
+          scrollWidth: document.documentElement.scrollWidth,
+          clientWidth: document.documentElement.clientWidth,
+        }));
+        expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth);
+        if (mode === 'normal' || mode === 'long') {
+          fs.mkdirSync(outDir, { recursive: true });
+          await page.locator('.smart-cal-top').screenshot({ path: path.join(outDir, `vue-calendar-${mode}-${vp.name}.png`) });
+        }
+      });
+    }
+  }
+
+  for (const vp of [
+    { name: '390', width: 390, height: 844 },
+    { name: '412', width: 412, height: 915 },
+    { name: '768', width: 768, height: 1024 },
+    { name: '1280', width: 1280, height: 900 },
+    { name: '1440', width: 1440, height: 900 },
+  ]) {
+    for (const mode of ['normal', 'empty', 'loading', 'error', 'long']) {
+      test(`schedule discrepancy ${mode} @${vp.name}`, async ({ page }) => {
+        const mocks = await openPilot(page, { pageName: 'discrepancy', mode, viewport: vp });
+
+        if (mode === 'loading') {
+          await expect(page.locator('.sdp-state-loading')).toBeVisible({ timeout: 10_000 });
+          mocks.releaseHang();
+        } else if (mode === 'error') {
+          await expect(page.locator('.sdp-state-error')).toContainText('課表回報暫時無法載入', { timeout: 10_000 });
+        } else {
+          await expect(page.getByText('課表回報管理', { exact: true })).toBeVisible({ timeout: 10_000 });
+          if (mode === 'empty') {
+            await expect(page.getByText('目前沒有待處理的回報', { exact: true })).toBeVisible();
+          } else {
+            const action = vp.width <= 768
+              ? page.locator('.sdp-mcard').first().getByRole('button', { name: '接手處理', exact: true })
+              : page.getByRole('button', { name: '接手處理', exact: true }).first();
+            await expect(action).toBeVisible();
+            await action.click();
+            const detail = vp.width <= 768
+              ? page.locator('.sdp-mcard').first().locator('.sdp-resolve-form')
+              : page.locator('.sdp-detail').first();
+            await expect(detail).toBeVisible();
+          }
+        }
+
+        const layout = await page.evaluate(() => ({
+          scrollWidth: document.documentElement.scrollWidth,
+          clientWidth: document.documentElement.clientWidth,
+        }));
+        expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth);
+        if (mode === 'normal' || mode === 'long') {
+          fs.mkdirSync(outDir, { recursive: true });
+          await page.locator('.sdp-page').screenshot({ path: path.join(outDir, `vue-discrepancy-${mode}-${vp.name}.png`) });
+        }
+      });
+    }
+  }
+
+  for (const vp of [
+    { name: '390', width: 390, height: 844 },
+    { name: '1440', width: 1440, height: 900 },
+  ]) {
+    test(`director workbench with urgent tasks @${vp.name}`, async ({ page }) => {
+      await openPilot(page, { pageName: 'director', mode: 'dashboard', viewport: vp });
+      await expect(page.getByText('主任總覽', { exact: true })).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByText('家長請假待主任處理')).toBeVisible();
+      const ctas = page.locator('.director-task__action');
+      expect(await ctas.count()).toBeGreaterThan(0);
+      await expect(ctas.first()).toBeVisible();
+      fs.mkdirSync(outDir, { recursive: true });
+      await page.locator('.director-workbench-v2').screenshot({ path: path.join(outDir, `vue-director-v2-urgent-focus-${vp.name}.png`) });
+      const leaveTask = page.getByRole('button', { name: '開始處理', exact: true });
+      await leaveTask.click();
+      await expect(page.getByText('家長請假', { exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: '尋找補課時段', exact: true })).toBeVisible();
+      await page.locator('.director-workbench-v2').screenshot({ path: path.join(outDir, `vue-director-v2-urgent-${vp.name}.png`) });
+    });
+  }
+
+  // director-workbench-v2's 完整營運 view renders #schedule-sec/#evals-sec/#payments-sec
+  // (surface-panel cards) with zero prior test coverage of their empty-state and count
+  // wiring. (Note: PR #1515's AtCard/AtEmpty work-grid markup at the same IDs, further
+  // down this file, is dead — permanently wrapped in `<template v-if="false">` since a
+  // later redesign introduced director-workbench-v2; it never renders.)
+  test('director 完整營運 cards show empty state with zero counts', async ({ page }) => {
+    await openPilot(page, { pageName: 'director', mode: 'empty', viewport: { width: 1440, height: 900 } });
+    await expect(page.getByText('主任總覽', { exact: true })).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('tab', { name: '完整營運', exact: true }).click();
+    await expect(page.locator('.director-workbench-v2__full')).toBeVisible();
+
+    await expect(page.locator('#schedule-sec .surface-panel__count')).toHaveText('0 堂');
+    await expect(page.locator('#schedule-sec')).toContainText('今天沒有課程。');
+
+    await expect(page.locator('#evals-sec .surface-panel__count')).toHaveText('0 筆');
+    await expect(page.locator('#evals-sec')).toContainText('目前沒有待審核評量。');
+
+    await expect(page.locator('#payments-sec .surface-panel__count')).toHaveText('0');
+    await expect(page.locator('#payments-sec')).toContainText('目前沒有需要跟進的繳費提醒。');
+  });
+
+  test('director 完整營運 cards show counts and rows with data', async ({ page }) => {
+    await openPilot(page, { pageName: 'director', mode: 'dashboard', viewport: { width: 1440, height: 900 } });
+    await expect(page.getByText('主任總覽', { exact: true })).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('tab', { name: '完整營運', exact: true }).click();
+    await expect(page.locator('.director-workbench-v2__full')).toBeVisible();
+
+    await expect(page.locator('#schedule-sec .surface-panel__count')).toHaveText('1 堂');
+    await expect(page.locator('#schedule-sec .director-schedule-row')).toHaveCount(1);
+
+    await expect(page.locator('#evals-sec .surface-panel__count')).toHaveText('1 筆');
+    await expect(page.locator('#evals-sec .director-evaluation-row')).toHaveCount(1);
+
+    await expect(page.locator('#payments-sec .surface-panel__count')).toHaveText('1');
+    await expect(page.locator('#payments-sec .director-payment-row')).toHaveCount(1);
+  });
 });

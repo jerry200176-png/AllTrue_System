@@ -117,3 +117,11 @@ last_reviewed: 2026-05-24
 
 **曾犯錯誤**：`payment_status` 被硬編碼為 `'unpaid'`，導致已繳費方案仍顯示在「未繳費」tab（`paid = true` 但 `payment_status = 'unpaid'` 衝突）。  
 **測試**：`CoursePackageMonthlyBillingTest::test_paid_monthly_package_shows_monthly_due_soon_not_unpaid`。
+
+## 堂數制單科課程的 payment_status 未計入帳單收款（2026-08-06 Bug Fix，使用者/產品方已核准修改）
+
+`computePaymentStatus()` 原本只看 `StudentClass.Paid` 這一個欄位判斷是否已繳費，沒有把「帳單已有收款且金額足額（`paid_amount >= charge`）」納入考量——即使課程管理頁面（`StudentClassController` 的對應邏輯，`Paid=1` **或** 有記錄帳單收款即視為已繳）已正確顯示「已繳費」，`alerts/tuition` 仍會回傳 `payment_status = 'unpaid'`，兩處顯示互相矛盾。主任回報：一名學生的課程已用收款紀錄結清（`charge` = `paid_amount`、`outstanding = 0`），但帳務中心「未繳費」名單仍列出該課程。
+
+**修法**：`$isPaid = Paid=1 或 (charge > 0 且 paid_amount >= charge)`，僅在「足額收款」時才視為已繳，**不可**用「有任何收款紀錄」（`paid_at !== null`）判斷——後者連部分付款也會誤判為已繳，破壞既有 `partial` 狀態判斷（見上方 §payment_status 補充欄位）。
+
+**測試**：`TuitionAlertsApiTest::test_payment_status_paid_when_invoice_fully_paid_without_paid_flag`、`TuitionAlertsApiTest::test_payment_status_renew_needed_not_unpaid_when_invoice_fully_paid_and_zero_remaining`。

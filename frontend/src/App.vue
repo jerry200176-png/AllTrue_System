@@ -306,7 +306,7 @@
       <TuitionReportPage v-if="!isPasswordChangeLocked && isDirector && active === 'tuition-report' && !pinModalActive" :branch-id="currentBranch" />
       <ParttimePayrollPage v-if="!isPasswordChangeLocked && isDirector && active === 'parttime-payroll' && !pinModalActive" :branch-id="currentBranch" :user-role="role" />
       <TeachersList v-if="!isPasswordChangeLocked && isDirector && active === 'teachers' && !pinModalActive" :branch-id="currentBranch" @navigate-to-schedule="onNavigateToSchedule" />
-      <CourseManagement v-if="!isPasswordChangeLocked && isDirector && active === 'course-mgmt'" :branch-id="currentBranch" :initial-teacher-id="initialTeacherIdForNav" @clear-initial-teacher="initialTeacherIdForNav = null" @navigate="active = $event" />
+      <CourseManagement v-if="!isPasswordChangeLocked && isDirector && active === 'course-mgmt'" :branch-id="currentBranch" :initial-teacher-id="initialTeacherIdForNav" @clear-initial-teacher="initialTeacherIdForNav = null" @navigate="onNavigateFromCourseManagement" />
       <ClassroomManagement v-if="!isPasswordChangeLocked && isDirector && active === 'classroom'" :branch-id="currentBranch" />
       <SubjectSettingsPage v-if="!isPasswordChangeLocked && isDirector && active === 'subject-settings'" :branch-id="currentBranch" :user-role="role" />
       <SubjectUnitsPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'subject-units'" :branch-id="currentBranch" :user-role="role" />
@@ -1041,6 +1041,14 @@ function onNavigateFromNotifications({ target, recordId, focus, section, workflo
     directorFocusWorkflowId.value = null;
   }
   active.value = target;
+}
+
+function onNavigateFromCourseManagement(payload) {
+  if (typeof payload === 'string') {
+    active.value = payload;
+    return;
+  }
+  onNavigateFromNotifications(payload || {});
 }
 
 let skipTeacherNavSfxOnce = false;

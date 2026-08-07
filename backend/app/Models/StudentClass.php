@@ -27,7 +27,7 @@ class StudentClass extends Model
         'TotalHours', 'Memo', 'Charge', 'Pay', 'PayDate', 'Paid', 'Disconunt',
         'Rate', 'LearnTimeID', 'room_id', 'settlement_day', 'monthly_sessions', 'MDate', 'Stop', 'closed_reason',
         'settlement_locked_at', 'settlement_snapshot',
-        'ScheduleMode', 'SessionCount', 'RemainingSessions',
+        'ScheduleMode', 'scheduling_policy', 'SessionCount', 'RemainingSessions',
         'ClassType', 'UsedSessions', 'SessionDuration',
         'PurchasedMinutes', 'RemainingMinutes',
         'standard_lesson_minutes', 'deduction_basis',

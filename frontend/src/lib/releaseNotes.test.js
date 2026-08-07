@@ -26,7 +26,7 @@ const latest = notesForRole('director')[0];
 assert.ok(/^\d+\.\d+\.\d+$/.test(latest.version));
 assert.ok(latest.id && latest.publishedAt && latest.sections?.length);
 assert.ok(['digest', 'major', 'action_required'].includes(latest.importance));
-assert.strictEqual(latest.publishedAt, '2026-07-29');
+assert.strictEqual(latest.publishedAt, '2026-08-06');
 
 const directorNotes = notesForRole('director');
 for (let i = 1; i < directorNotes.length; i++) {
