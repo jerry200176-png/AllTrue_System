@@ -108,6 +108,7 @@ class SchedulerEvidenceTest extends TestCase
             'sessions-audit-stranded' => "{\"as_of\":\"2037-01-02\",\"stranded_courses\":0,\"stranded_sessions\":0}\n",
             'sessions-generate-forward' => "=== EXECUTE sessions:generate-forward (horizon=4w, courses=2) ===\n---\ncourses_planned=1 courses_skipped=1 slots_planned=3 sessions_created=3\n",
             'learning-records-backfill-missing' => "learning-records:backfill-missing — total created: 0.\n",
+            'learning-records-void-stale-leave' => "learning-records:void-stale-leave — total voided: 0.\n",
             'bugs-verify-reproductions' => "{\"regressed\":0,\"conditions\":[{\"key\":\"fixed-condition\",\"count\":0,\"state\":\"FIXED-OK\"}]}\n",
             'ops-business-digest' => <<<'OUTPUT'
                 === AllTrue Business Digest — 2037-01-02 04:10:00 ===

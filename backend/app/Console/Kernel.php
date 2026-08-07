@@ -40,6 +40,13 @@ class Kernel extends ConsoleKernel
         // excluded (director decision, #1152). Runs after the stranded audit (03:40).
         $this->scheduleObservedCommand($schedule, 'sessions-generate-forward');
         $this->scheduleObservedCommand($schedule, 'learning-records-backfill-missing');
+        // #170 self-healing guard: void any live LearningRecord/StudentSignIn still sitting on a
+        // leave/leave_adjusted session. voidLiveArtifactsForLeave() only guards leave-transition
+        // code paths going forward; this sweep clears rows a pre-fix call (or any future code
+        // path nobody has found yet) already left in a bad state, so bugs:verify-reproductions'
+        // leave_session_with_live_learning_record condition self-heals instead of requiring a
+        // manual data repair every time it's caught. Runs before the 04:00 verify gate.
+        $this->scheduleObservedCommand($schedule, 'learning-records-void-stale-leave');
         $this->scheduleObservedCommand($schedule, 'bugs-verify-reproductions');
         // AI-native ops (docs/POLICY_AI_NATIVE_ROADMAP.md phase 0): read-only daily business
         // digest — revenue at risk, retention risk, data-quality anomalies, forward
