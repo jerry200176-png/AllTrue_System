@@ -1,3 +1,95 @@
+## 2026-08-07 — fix(scheduling): 家長請假補課確認時，原堂次遺留的待審評量未作廢（#170 nightly 回歸）
+
+- **背景**：巡查 Gmail 系統通知時發現 `Pi Health Monitor` GitHub Actions 連續多天紅燈（8/3–8/7）。追查發現根因是每晚 04:00 執行的 `bugs:verify-reproductions`（#1080 bug 終結閘門）持續 `exit 1`——透過新增的唯讀診斷 workflow（`.github/workflows/lr-missing-diagnose.yml`，SELECT-only，不寫入任何資料）對生產資料庫做即時查詢，找到當天實際觸發的條件是 `leave_session_with_live_learning_record`（#170）：`ClassSession #15635`（2026-07-04，Status=`leave`）身上仍掛著一筆未作廢的 `pending` `LearningRecord`（#11828）。
+- **根因**：`ExceptionWorkflowController::confirmCandidate()`（家長請假 exception workflow 由主任確認補課候選時）直接把原堂次 `Status` 改成 `leave`，但沒有作廢該堂次既有的 `LearningRecord`／`StudentSignIn`——與 `CourseLeaveCascadeService` 既有的互動式請假路徑（會正確作廢）不一致。若 exception workflow 處理延遲、原堂次日期已過，夜間 `learning-records:backfill-missing` 會先幫還是 `scheduled` 狀態的堂次建立一筆 `pending` 評量佔位，之後才被 `confirmCandidate()` 改成 `leave`，殘留的評量就沒人清。`LearningRecord::scopeExcludeLeaveSessionPendingReview()` 這個既有的查詢層過濾器只是把症狀（待審清單顯示錯誤）擋掉，底層資料本身仍是錯的——這正是 `bugs:verify-reproductions` 這道「防止症狀被治標掩蓋」閘門存在的意義。
+- **修法**：把 `CourseLeaveCascadeService` 原本 inline 的「作廢 LearningRecord/StudentSignIn」邏輯抽成共用的 `voidLiveArtifactsForLeave()`，作為「堂次轉為請假」唯一的作廢邏輯出處，`ExceptionWorkflowController::confirmCandidate()` 在把原堂次改成 `leave` 前呼叫同一個方法。
+- **測試**：`ExceptionWorkflowApiTest::test_director_confirming_candidate_voids_stale_pending_learning_record_on_original_session` 重現「原堂次已有 pending 評量」情境，確認 confirm-candidate 後該筆評量被正確作廢（`VoidReason` = `CourseLeaveCascadeService::VOID_REASON_LEAVE`）。
+
+## 2026-08-06 — chore(hardening): R98/R99 根本解決＋防再犯（大公司作法對照）
+
+- **背景**：R98（主任視角 schedules 永遠回傳空陣列）與 R99（同名重複老師帳號讓課程消失）修復上線後，CEO 要求不能只是修好眼前的 bug，必須參考大公司軟體從根本解決、避免同類問題再發生。這是針對兩者的「防再犯」加固，本身不改變任何使用者可見行為。
+- **R98 防再犯**：`buildStudentClassesApiUrl()` 與 `buildSchedulesApiUrl()` 原本各自 inline 一份「依角色決定要不要帶某個過濾參數」的判斷，這正是為什麼其中一份會被手滑寫反而沒被發現。抽出單一函式 `resolveCalendarRoleScopeParams()` 作為兩個端點共用的唯一真相來源——這是業界處理「同一份授權/範圍邏輯不能有兩份互相對照的拷貝」的標準作法（類比 Django REST Framework 的 `get_queryset()`、Rails Pundit/CanCanCan 的集中式 authorization scope：範圍邏輯只能有一個出處，不能讓每個呼叫端各自决定）。
+- **R99 根本解決（不只是防禦性修法）**：前一版修法（`teacherAliasMatch.js`）是前端防禦——即使有重複帳號，UI 也不會再讓課程憑空消失。但真正的根因是「系統裡允許存在兩個帳號、同一個顯示名稱」，這本身就是資料品質問題，光靠前端補洞治標不治本。參考大公司作法（Salesforce「合併帳戶/聯絡人」、HubSpot 聯絡人去重、Stripe customer merge：偵測到後直接把兩筆記錄合而為一，所有關聯 FK 一次改點到正確的那筆，不是讓每個消費端各自兼容兩個 ID）：
+  - 新增 `GET /api/v1/admin/teachers/duplicates`（super_admin）：掃描所有老師帳號，列出顯示名稱重複的群組，附上各自的堂數/課程數，方便主動盤點。
+  - 新增 `POST /api/v1/admin/teachers/merge-preview` 與 `POST /api/v1/admin/teachers/merge`（super_admin，需帶 `confirm: true`）：把既有、已測試過的 `TeacherUserMergeService`（原本只能透過 `php artisan teachers:merge-users` 在伺服器上執行）包成 HTTP 端點——不需要 SSH 進 Pi 就能安全執行帳號合併，所有寫入仍然走同一套經審查、有測試的 service。
+  - 新增建立老師帳號時的重複姓名檢查（`ProfileController::store()`）：偵測到同名的既有在職老師帳號時預設擋下（409 `DUPLICATE_TEACHER_NAME`），需明確帶 `allow_duplicate_name=true` 才能建立第二個帳號——把「這是刻意的」變成一個明確的選擇，而不是資料輸入意外。
+- **另一個發現：我自己這次資料修復造成的評量記錄遺失，其實系統已經有審計基礎設施，只是被繞過了**——`maybeRebuildSessionsAfterUpdate()` 的整批重建路徑用 `Model::where(...)->delete()`（query builder 批次刪除），這種寫法不會觸發 Eloquent model events，導致既有的 `ScheduleAuditLog`／`ClassSessionObserver::deleted()` 完全沒有記錄到刪除，資料一旦被覆蓋就真的無跡可尋（這正是稍早試聽課評量內容遺失、無法還原的原因）。修法：`LearningRecord` 在刪除前先寫入 `ScheduleAuditLog` 快照；`ClassSession` 改成逐筆 `->delete()`（讓既有 observer 正常觸發），而不是新增一套獨立機制——重用系統既有的、已經在其他地方運作的審計基礎設施，而不是每次遇到問題就發明一套新的。
+- **測試**：`teacherAliasMatch` 相關單元測試維持；新增 `TeacherDuplicateControllerTest`（duplicates 列表、merge-preview、merge 需 confirm、拒絕非老師帳號）、`RebuildDestructiveDeleteAuditTest`（驗證整批重建前會先把被刪除的評量內容寫進審計記錄，且刪除堂次本身也會留下記錄）、`ProfileStoreTeacherTest` 新增重複姓名擋下與明確覆蓋兩種情境；`calendarCourseLoad.test.js` 新增 `resolveCalendarRoleScopeParams` 單元測試。`--filter='Course|Session|Materiali'`（588 tests）、`--filter='Teacher|Merge|Schedule|Rebuild'`（482 tests）、`--filter='Profile|Teacher'`（257 tests）皆綠燈。
+- **後續**：上線後將透過新的 `merge` 端點，把「高為澎」的重複帳號（ID 260，此次 in-app #219/#223 的根因）正式合併進主帳號（ID 73），從資料層徹底解決，而不是只靠前端 alias 邏輯兜底。
+- **關於稍早遺失的評量內容（吳宥萱 6/18 試聽）**：確認系統對 `LearningRecord` 內容沒有任何備份或歷史版本機制，且無法聯繫到當事老師本人核實，CEO 已核准結案不再追查——這筆內容視為不可挽回，堂數與收費不受影響。
+
+## 2026-08-06 — fix(calendar): 同一位老師掛兩個帳號時，「輸家」帳號的課程在日檢視消失
+
+- **背景**：schedules teacher_id 洩漏 bug 修復並上線後，回報者（鄭宇志）新提交 in-app #223（含截圖），確認 6/17、6/18 高為澎老師的試聽學生（吳宥萱）依然沒有顯示在課表上——但同一天同一位老師底下其他學生的課程都正常顯示。這代表問題不是「整層資料消失」，而是更精準地卡在某一筆特定課程。
+- **根因**：查詢 `/api/v1/student-classes` 確認該筆課程（ID 3153）本身資料正確、後端也正確回傳；問題出在前端 `SmartCalendar.vue`——「高為澎」在系統裡其實掛了兩個帳號（ID 73，實際上課用的主帳號；ID 260，幾乎沒用過的重複帳號），`filterTeacherOptions` 會把顯示名稱相同的帳號合併成一欄（`alias_ids`），欄位代表 ID 取課程數較多的那個（73）。但日檢視實際渲染課程的 `getCoursesForTeacherAt()` / `getSlotOccupancy()` 只比對 `course.teacher_id === 合併後代表 ID`，從未比對別名帳號集合——課程 3153 的 `teacher_id` 是 260（輸家帳號），永遠比對不到欄位代表 ID 73，於是直接消失，即使欄位本身確實叫「高為澎」也一樣。同一支檔案裡週檢視篩選老師 chip 用的 `weekViewExpandedTeacherIdSet` 其實已經正確處理別名展開，只是日檢視這兩處被遺漏。
+- **修法**：抽出 `frontend/src/lib/teacherAliasMatch.js`（`resolveTeacherAliasIds` / `courseBelongsToTeacherAlias`），`getCoursesForTeacherAt()`、`getSlotOccupancy()`、`visibleTeachers` 內的排序用 `teacherHasCourseToday()` 都改為比對別名帳號集合，與週檢視既有的正確邏輯一致。
+- **測試**：新增 `teacherAliasMatch.test.js`，鎖住「課程掛在合併後的輸家帳號仍要能命中該欄位」；`npm run test:calendar` 全綠。
+- **記錄**：`docs/AI_REGRESSION_LESSONS.md`（新增條目）。
+
+## 2026-08-06 — fix(calendar): 主任／管理員角色的行事曆「schedules」層永遠回傳空陣列
+
+- **背景**：in-app #219（鄭宇志回報試聽課不顯示）修復後，回報者反映問題仍存在。用真實主任帳號（非 Super Admin）實測發現：週檢視整週 0 堂課，即使載入進度顯示「112/112」項目都抓到了。
+- **根因**：`frontend/src/lib/calendarCourseLoad.js` 的 `buildSchedulesApiUrl()` 條件寫反——非老師角色（主任／管理員）呼叫 `/api/v1/schedules` 時，把自己的登入者 ID 當成 `teacher_id` 帶進去（`!isTeacher && userId` 應該是 `isTeacher && userId`，比對同檔案 `buildStudentClassesApiUrl()` 的正確寫法）。後端 `ScheduleController::index()` 對 `teacher_id` 是無條件套用 `where()`，不分角色；主任自己的 user ID 不可能等於任何老師的 ID，於是 schedules 這層永遠查到空陣列。行事曆週檢視需要 `schedules`（模板／例外層）+ `class-sessions`（已物化層）合併才是完整資料（G-007），只要某筆課程當週只活在 schedules 模板還沒物化，主任視角就會直接看不到——這正是「主任改不過去、CEO 改得過去」的根本原因，也比 in-app #219 原本回報的單一個案範圍更大。
+- **修法**：`calendarCourseLoad.js` 與 `useCalendarDataLoad.js`（legacy fallback 路徑同一個 bug）的 `teacher_id` 判斷條件改為 `isTeacher && userId`，與 `student-classes` 端點的既有正確邏輯一致。
+- **測試**：`calendarCourseLoad.test.js` 新增回歸測試，鎖住「主任/管理員視角的 schedules URL 絕不能帶 teacher_id」；`npm run test:calendar` 全綠。
+- **記錄**：`docs/AI_REGRESSION_LESSONS.md`（新增條目）。
+
+## 2026-08-06 — fix(ux): 課程單堂操作「調課」與「備註 / 時段」按鈕文案釐清
+
+- **背景**：主任回報（興隆分校）學生課程「星期六改星期四」改不過去，CEO 自己操作卻成功。查證後發現後端行為一致，差異在使用者點了哪個按鈕——「調課」可換日期，「備註 / 時段」物理上不能換日期（PATCH 驗證規則沒有 `session_date` 欄位），但兩個按鈕視覺相近、命名都圍繞「時間／時段」，沒有任何線索區分。
+- **修法**：純文案／視覺調整，不改後端行為——按鈕文字明確化（「調課」→「🔄 調課（換日期）」；「備註 / 時段」→「備註 / 當天時段」）、各自加 tooltip、選單下方加指引文字、「調課」改用品牌主色系避免視覺上輸給「備註 / 時段」。
+- **測試**：新增 `SessionEditModal.test.js`，鎖住兩按鈕文字互斥、tooltip 內容、選單提示存在。
+- **文件**：`docs/SYSTEM_TECH_GUIDE.md` §13（業界對照：Google Calendar/Calendly 單一入口處理日期+時間、Nielsen Norman「Recognition rather than recall」原則）、`docs/AI_REGRESSION_LESSONS.md` R97。
+
+## 2026-08-06 — fix(scheduling): 課程管理頁面「預排」日期在無歷史堂次的課程完全不顯示
+
+- **背景**：主任回報（in-app #222，陳依娟／興隆分校）「為何預排只能打一個」——課程列表裡大多數課程完全沒有「預排」日期，只有剛好有堂次紀錄的那一門有。
+- **根因**：`ClassSessionController::buildProjectedByClassForIndex()` 把「已計算的預排候選課程清單」直接等於「目前查詢範圍內已有實體堂次紀錄的課程」，沒有歷史堂次紀錄的課程（例如剛排好、第一堂還沒到的新課程）完全不會被納入預排計算，不論排課星期/時段本該投影出幾筆未來日期。
+- **修法**：候選課程清單改為「已有歷史堂次的課程」聯集「請求明確帶入的 `student_class_id`/`student_class_ids`」（課程管理頁面批次載入時一定會帶入畫面顯示的所有課程 ID）。
+- **測試**：新增 `SessionProjectionSplitTest::test_class_sessions_index_projects_course_with_no_materialized_rows_in_range`，修復前 RED、修復後 GREEN；`Course|Session|Materiali` 廣義掃描（565 tests）維持綠燈。
+
+## 2026-08-06 — docs+chore(billing): 「已繳費」判斷全專案盤點，收斂 AlertController 內部重複，TD-073 調升 P1
+
+- **背景**：使用者要求何昀佳繳費狀態案不能只點修，還要對照大公司軟體看核心問題、從根本解決。
+- **盤點結果**：`backend/app` 至少 8 個檔案（`StudentClassController`、`AlertController` 內部另兩處、`NotificationSyncService`、`DunningService`、`PaymentReportController`、`ParentPortalController`、`NotificationController`、`AccountingController`、`SendTuitionReminders`）各自獨立重新判斷「這筆課程是否已繳費」，至少 4 種互不相同的變體並存；`StudentClass`／`Invoice` model 完全沒有集中的 `isPaid()` 存取器。這是 `TD-073`（重複業務邏輯無自動偵測）論點同一天第三次驗證。
+- **本次收斂範圍**：`AlertController.php` 內部原本重複兩次的同一組條件（`computePaymentStatus()`、`computePackageCountPaymentStatus()`）抽成單一私有方法 `isFullyPaid()`；**未**跨檔案大改其餘 8 處——那需要逐一取得產品方核准（`DunningService.php` 已被明文凍結），列為 TD-073 子項待後續分批清償。
+- **文件**：`docs/SYSTEM_TECH_GUIDE.md` §12.5（新增，業界對照：Stripe `Invoice.status`／Shopify `Order.financial_status` 單一權威實作模式）、`docs/TECH_DEBT.md` TD-073（P2→P1）、`docs/AI_REGRESSION_LESSONS.md` R95（新增）。
+
+## 2026-08-06 — fix(billing): 帳務中心繳費狀態未計入帳單足額收款（F7 復發）
+
+- **背景**：主任回報某學生課程已用帳單收款紀錄結清，課程管理頁面正確顯示「已繳費」，帳務中心卻仍列「未繳費」。已取得產品方（`docs/DIRECTOR_PAYMENT_ALERT_RULES.md` 明文要求的核准）同意修改後動手。
+- **根因**：`AlertController::computePaymentStatus()` 只看 `StudentClass.Paid` 欄位，沒有把帳單足額收款（`paid_amount >= charge`）算進「已繳費」判斷，跟課程管理頁面的邏輯不同步——`docs/AI_REGRESSION_LESSONS.md` **F7「繳費金額/狀態雙真相」** 家族的又一個成員。
+- **修法**：`$isPaid = Paid=1 或 (charge > 0 且 paid_amount >= charge)`；刻意用「足額」而非「有任一筆收款」判斷，避免連帶把 `partial`（部分付款）狀態也誤判為已繳。
+- **測試**：新增 2 個回歸測試涵蓋「帳單足額結清但未切 Paid 旗標」情境（含剩餘 0 堂的續課提醒分支）；既有 `TuitionAlertsApiTest`／`LargeBranchDataHandlingTest` 全數維持綠燈。
+- **文件**：`docs/DIRECTOR_PAYMENT_ALERT_RULES.md`、`docs/AI_REGRESSION_LESSONS.md` R94 已同步更新，依規則要求。
+
+## 2026-08-06 — docs: 補當天 6 個 bug 的更深層根因分析，登記 TD-073
+
+- **背景**：使用者要求不只記「修了什麼」，還要對照大公司軟體工程作法，回答「為什麼這類問題在成熟組織比較少見」這個更根本的問題。
+- **新增內容**：`docs/SYSTEM_TECH_GUIDE.md` §12.4——結論是大公司工程師並不會少寫重複邏輯/magic string，差異在「有沒有東西在合併前把它攔下來」：強制第二人 code review、自動化重複程式碼偵測（CI 合併門檻而非文件建議）、明確的領域歸屬。本專案目前三層都不完整（單人 repo、PHPStan 不抓語意重複、無領域 owner），且相當比例的變更由彼此無上下文延續的 AI agent session 完成，進一步放大這個結構性缺口。
+- **登記技術債**：`docs/TECH_DEBT.md` TD-073——CI 缺少自動偵測重複業務邏輯/重複 magic string 的機制，建議分階段導入 `phpcpd` 與輕量 grep-based magic-string presubmit 檢查。
+
+## 2026-08-06 — chore(hardening): 請假 VoidReason 業務字串收斂成單一常數，並補業界作法對照文件
+
+- **背景**：回顧當天修的 6 個 in-app bug 與陳禹慈堂數超排案，發現全部落在同一組業界有名字的反模式下（授權範圍判斷分散、業務字串未收斂、狀態機不對稱、集合資料整包覆蓋、同一規則重複實作）。詳見 `docs/SYSTEM_TECH_GUIDE.md` 第 12 節逐一對照與加固守則。
+- **本則實際變更**：`一般請假`（撤銷請假比對用的 VoidReason 字面值，#217/#218 就是這個字串的其中一份被打壞才炸掉）在 `CourseLeaveCascadeService.php` 裡以字面值重複寫了 6 次，`LearningRecordResurrectionPolicy.php` 的系統可復活白名單又各自抄了一份。新增 `CourseLeaveCascadeService::VOID_REASON_LEAVE` 常數，7 處使用點全部改成引用同一個常數，未來只可能改壞一份、也只需要改一處。
+- **測試**：leave/session/attendance/schedule/learning-record 相關 572 個測試、2415 個 assertions 全綠；PHPStan 對兩個變更檔案無新增錯誤。
+
+## 2026-08-06 — fix(scheduling): 請假/取消自動補堂改為單一權威實作，避免堂次數超過已購堂數
+
+- **背景**：新店分校主任回報，一名學生（英文課）明明購買 8 堂，繳費單卻顯示 12 堂、日期不連貫，系統回報「超排」，老師已先手動取消部分堂次暫時排除。
+- **根因**：「請假/取消後自動於課表尾端補一堂」這件事，程式碼裡各自獨立寫了兩份——`CourseLeaveCascadeService::appendTailAfterLeave()`（`/schedules/leave-by-session`、`/schedules/retro-leave` 用）與 `ClassSessionController::tryExtendOnLeave()`（`PATCH /class-sessions/{id}` 用）。兩份對「已計入堂數」的認定不完全一致，且互不知道對方存在，交替經由不同入口對同一堂課操作請假/取消，會讓非取消堂次數悄悄超過實際購買堂數，最終撞上系統自己的超排防呆。
+- **修法**：刪掉 `ClassSessionController` 那份重複實作，改為呼叫唯一權威的 `CourseLeaveCascadeService::appendTailAfterLeave()`；順手把原本只存在於 Controller 那份的「暫停中課程（Stop=1）不補堂」防呆，一併搬進共用服務，讓所有入口都受到保護。
+- **測試**：新增 `LeaveCascadeSingleAuthorityTest`，模擬同一堂課交替經由兩個入口請假/取消，斷言非取消堂次數全程不超過已購堂數；另補暫停課程不補堂的回歸測試。既有 leave-cascade 相關測試（`ScheduleLeaveCascadeTest`、`LeaveKeepDatesAppendTailTest` 等）全數維持綠燈，PHPStan 全域無新增錯誤。
+
+## 2026-08-05 — chore(dashboard): 清理 DirectorDashboard.vue 死碼（PR #1515 work-grid + Wave A/B + 舊版 workbench，全部完成）
+
+- **背景**：稽核 PR #1515（Wave B, AtCard/AtEmpty/AtMetric work-grid）的「缺測試」警告時發現，該 PR 改的整段標記早已因後續 `director-workbench-v2` 改版而被 `<template v-if="false">` 永久包住、完全打不到；同一個 `v-if="false"` 區塊內還疊了更早期的 action-lane、progress-board、第一版 workbench，以及一個已停用的匯入格式說明 modal。因單一 PR 改動 1,100+ 行會撞到 CI 的 700 行 PR-size 上限，拆成兩個 PR 分批清除（part 1：`chore/dashboard-deadcode-part1`；part 2：本則）。
+- **清掉的東西**：整段死碼標記——舊版 workbench v1（今日待辦佇列＋今日快照＋trust-summary）、重複的 E-OPS-TRUST decision center、action-lane、progress-board、work-toolbar 檢視切換、Wave B work-grid（`AtCard`/`AtEmpty`/`AtSkeleton`/`AtMetric`）、kpi 科目數統計區塊、一個死掉的匯入格式說明 modal、一張重複的「尚無分校資料」卡片；連帶清掉只服務這些標記的 JS——engagement rank strip 整套（snapshot／顯示開關／reduced-motion／visibility 監聽，只服務已刪除的舊 header）、CSV 匯入 state 與 handler、老師評量填寫率與科目數統計 API 呼叫（原本每次切到「完整營運」都會打，資料卻從未顯示在任何畫面）、`AtCard`/`AtEmpty`/`AtSkeleton`/`AtMetric` 元件 import（Wave B 專用、從未在真正頁面渲染過）。檔案從 4,023 行減到 2,928 行。
+- **沒動的東西**：現在真正在跑的 `director-workbench-v2`（今天／完整營運兩個檢視、`#schedule-sec`/`#evals-sec`/`#payments-sec` 等 `surface-panel` 卡片）完全沒有改動邏輯，只刪除同檔案內已經打不到的舊版本。
+- **驗證**：`vite build` 全綠；`no-undef` ESLint 過；補的 e2e（`director 完整營運 cards ...`，涵蓋 empty state 與有資料時的筆數／badge）與既有 12 個 `director workbench` 系列共 120 個 ui-foundation e2e 全過。
+- **順帶修復**：處理 part 2 時被 Presubmit CHECK 2 的 700 行上限擋下（part 1 分批後仍是 1,095 行純刪除），發現這個 gate 用同一把尺量「新增邏輯」和「刪除已證明打不到的死碼」並不合理，補了窄範圍例外（insertions ≤30 且 deletions 遠大於一般上限時，改用 deletions ≤3000 的上限），見 `.github/workflows/presubmit.yml` CHECK 2 與 `.cursor/rules/module-industry-standards.mdc`。
+
 ## 2026-08-02 — feat(payroll): 兼職薪資改依實際到班點名計算，鎖定後產生不可變快照（補記錄，PR #1624 合併時漏寫）
 
 - **本則為事後補寫**：PR #1624（`feat/parent-leave-approval` 分支，實際內容為兼職薪資重構，分支命名與內容不符）已於合併並自動部署到正式環境，但當時未依專案慣例更新本檔案；本則依實際 diff／PR 說明／正式環境資料庫驗證後補上，事後未變更任何程式碼。

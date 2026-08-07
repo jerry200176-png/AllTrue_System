@@ -3,9 +3,29 @@ import {
   mapCalendarCourse,
   buildStudentClassesApiUrl,
   buildSchedulesApiUrl,
+  resolveCalendarRoleScopeParams,
   fetchCalendarCoursesAndSchedulesParallel,
   estimateParallelLoadSavingsMs,
 } from './calendarCourseLoad.js';
+
+// R98 root-cause guard: this is the ONE place both endpoint builders must derive their
+// role-scope params from — a future edit here is what both builders will inherit,
+// instead of two independently hand-edited if/if pairs drifting apart again.
+assert.deepEqual(
+  resolveCalendarRoleScopeParams({ isTeacher: true, userId: 99, branchId: 4 }),
+  { teacherId: '99', branchId: null },
+  'teacher role scopes by teacher_id only',
+);
+assert.deepEqual(
+  resolveCalendarRoleScopeParams({ isTeacher: false, userId: 280, branchId: 4 }),
+  { teacherId: null, branchId: '4' },
+  'non-teacher (director/admin) role scopes by branch_id only — never its own user id as teacher_id',
+);
+assert.deepEqual(
+  resolveCalendarRoleScopeParams({ isTeacher: false, userId: null, branchId: null }),
+  { teacherId: null, branchId: null },
+  'no branch selected yet → no scope params',
+);
 
 assert.equal(
   mapCalendarCourse({ id: 1, day_of_week: '3', rate_unit: null }).day_of_week,
@@ -50,11 +70,34 @@ assert.match(
     schedStart: '2026-04-01',
     schedEnd: '2026-05-31',
     branchId: 1,
-    isTeacher: false,
+    isTeacher: true,
     userId: 5,
   }),
-  /start=2026-04-01.*end=2026-05-31.*branch_id=1.*teacher_id=5/,
-  'schedules URL should include date window and filters',
+  /start=2026-04-01.*end=2026-05-31.*teacher_id=5/,
+  'schedules URL should include date window and teacher_id for teacher view',
+);
+
+// Regression guard for a real production bug: director/admin (非 teacher) 帳號的
+// schedules 請求絕不能帶上自己的 userId 當 teacher_id — ScheduleController::index()
+// 對 teacher_id 是無條件套用 where()，帶了等於永遠查不到任何真正老師的排程，
+// 整個 schedules 層在「主任視角」下永遠回傳空陣列（in-app #219 根因之一）。
+const directorSchedulesUrl = buildSchedulesApiUrl({
+  baseUrl: '/api',
+  schedStart: '2026-04-01',
+  schedEnd: '2026-05-31',
+  branchId: 1,
+  isTeacher: false,
+  userId: 280,
+});
+assert.match(
+  directorSchedulesUrl,
+  /branch_id=1/,
+  'schedules URL should include branch_id for director/admin view',
+);
+assert.doesNotMatch(
+  directorSchedulesUrl,
+  /teacher_id/,
+  'schedules URL must NOT include teacher_id for director/admin view — backend applies it unconditionally and would zero out results',
 );
 
 // Parallel orchestration: total wall time ≈ max(individual), not sum
@@ -86,4 +129,4 @@ assert.equal(savings.serialMs, 1550, 'serial total is sum');
 assert.equal(savings.parallelMs, 1200, 'parallel total is max');
 assert.equal(savings.savedMs, 350, 'saved ms equals shorter leg');
 
-console.log('calendarCourseLoad.test.js — 10 passed ✅');
+console.log('calendarCourseLoad.test.js — 19 passed ✅');

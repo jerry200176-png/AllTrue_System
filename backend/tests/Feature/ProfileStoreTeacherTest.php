@@ -76,6 +76,65 @@ class ProfileStoreTeacherTest extends TestCase
         ]);
     }
 
+    /**
+     * R99 (in-app #219/#223) root-cause prevention: creating a second active teacher
+     * with the same display name as an existing one is exactly what let a course
+     * silently vanish from the calendar (SmartCalendar merges same-name accounts into
+     * one visible column, but the course itself stays tagged to whichever account was
+     * used). Block it by default; the endpoint must not silently create the duplicate.
+     */
+    public function test_creating_teacher_with_duplicate_name_is_blocked_by_default(): void
+    {
+        $director = User::create([
+            'LoginName' => 'director-dup-name',
+            'Name' => 'Director',
+            'PSW' => password_hash('secret-123', PASSWORD_DEFAULT),
+            'type' => 'A',
+            'phone' => '0900000002',
+        ]);
+        UserCampus::create(['CampusID' => 1, 'UserID' => $director->id, 'Admin' => 1, 'Approved' => 1]);
+        $token = $this->issueToken($director->id);
+
+        User::create([
+            'LoginName' => 'existing-teacher-account',
+            'Name' => '高為澎',
+            'PSW' => password_hash('secret-123', PASSWORD_DEFAULT),
+            'type' => 'T',
+            'status' => 'active',
+            'phone' => '0900000003',
+        ]);
+
+        $blocked = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/profiles', [
+            'name' => '高為澎',
+            'account' => 'duplicate-teacher-account',
+            'password' => 'teacher123',
+            'role' => 'teacher',
+            'campus_id' => 1,
+        ]);
+
+        $blocked->assertStatus(409)->assertJsonPath('code', 'DUPLICATE_TEACHER_NAME');
+        $this->assertDatabaseMissing('User', ['LoginName' => 'duplicate-teacher-account']);
+
+        // Explicit override must still allow it — this is a warning, not a hard block.
+        $allowed = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/profiles', [
+            'name' => '高為澎',
+            'account' => 'duplicate-teacher-account',
+            'password' => 'teacher123',
+            'role' => 'teacher',
+            'campus_id' => 1,
+            'allow_duplicate_name' => true,
+        ]);
+
+        $allowed->assertStatus(201);
+        $this->assertDatabaseHas('User', ['LoginName' => 'duplicate-teacher-account', 'Name' => '高為澎']);
+    }
+
     public function test_subjects_endpoint_bootstraps_default_subjects_when_empty(): void
     {
         DB::table('Subject')->delete();

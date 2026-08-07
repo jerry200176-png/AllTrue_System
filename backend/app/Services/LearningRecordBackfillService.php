@@ -149,14 +149,23 @@ class LearningRecordBackfillService
     }
 
     /**
-     * Backfill all active campuses. Returns [branchId => createdCount].
+     * Backfill every campus that actually has students. Returns [branchId => createdCount].
+     *
+     * Enumerates distinct Student.CampusID rather than the `Campus` table: a student whose
+     * CampusID has no matching Campus row would otherwise be skipped forever, leaving its
+     * attended sessions permanently without a LearningRecord (regression behind the nightly
+     * bugs:verify-reproductions failures on past_attended_sessions_without_learning_record).
      *
      * @return array<int,int>
      */
     public function backfillAllBranches(): array
     {
         $out = [];
-        $branchIds = DB::table('Campus')->orderBy('id')->pluck('id');
+        $branchIds = Student::query()
+            ->whereNotNull('CampusID')
+            ->distinct()
+            ->orderBy('CampusID')
+            ->pluck('CampusID');
         foreach ($branchIds as $bid) {
             $out[(int) $bid] = $this->backfillBranch((int) $bid);
         }
