@@ -1,0 +1,57 @@
+name: LR Void Stale Leave (manual)
+
+# Manual on-demand trigger for the nightly learning-records:void-stale-leave sweep (#170).
+# The command is idempotent and narrowly scoped (only leave/leave_adjusted ClassSession rows
+# still carrying a live LearningRecord/StudentSingIn — see CourseLeaveCascadeService::
+# sweepStaleLiveArtifactsForLeave() + LearningRecordVoidStaleLeaveTest). Runs nightly at 03:55
+# via Kernel.php; this lets it be run on demand instead of waiting for the next cron cycle.
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: learning-records-void-stale-leave-manual
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    name: Run learning-records:void-stale-leave on production
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Run sweep on Pi
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" \
+            'bash -s' <<'REMOTE' | tee /tmp/void-stale-leave.txt
+          set -euo pipefail
+          cd /home/admin/backend
+          php artisan learning-records:void-stale-leave
+          echo "--- live re-check ---"
+          php artisan bugs:verify-reproductions --json
+          REMOTE
+
+      - name: Job summary
+        run: |
+          {
+            echo '### LR void-stale-leave manual run'
+            echo '```'
+            cat /tmp/void-stale-leave.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
