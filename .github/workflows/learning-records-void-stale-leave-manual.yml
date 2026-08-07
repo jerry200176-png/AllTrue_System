@@ -6,10 +6,6 @@ name: LR Void Stale Leave (manual)
 # sweepStaleLiveArtifactsForLeave() + LearningRecordVoidStaleLeaveTest). Runs nightly at 03:55
 # via Kernel.php; this lets it be run on demand instead of waiting for the next cron cycle.
 on:
-  push:
-    branches: [claude/void-stale-leave-manual-run]
-    paths:
-      - '.github/workflows/learning-records-void-stale-leave-manual.yml'
   workflow_dispatch: {}
 
 concurrency:
