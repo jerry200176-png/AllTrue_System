@@ -106,6 +106,12 @@
 | [cloudflare/security-audit-skill](https://github.com/cloudflare/security-audit-skill) | 分階段安全稽核、可機器讀 findings | 當滲透工具亂打 production | 發佈前 audit skill |
 | [anthropics/skills](https://github.com/anthropics/skills) + [VoltAgent/awesome-agent-skills](https://github.com/VoltAgent/awesome-agent-skills) | Skill 包裝、可發現性、官方範式 | 無篩選整包安裝 | `docs/GUIDE_AGENT_SKILLS.md` 擴充 |
 | [supabase/supabase](https://github.com/supabase/supabase) | Auth／RLS／Realtime 模式 | AllTrue 遷到 Supabase | Sunrise；AllTrue 僅對照 RLS 思維 |
+| [spatie/laravel-health](https://github.com/spatie/laravel-health) + [spatie/laravel-schedule-monitor](https://github.com/spatie/laravel-schedule-monitor) | 可組合健康檢查＋排程指令漏跑/超時偵測 | 取代既有 `pi-health.yml`／`sessions:audit-stranded` 監控 | 補齊排程 job（`schedules:backfill-class-sessions` 等）的漏跑告警 |
+| [spatie/laravel-activitylog](https://github.com/spatie/laravel-activitylog) | Model-level audit trail 慣例（who／what／when diff） | 重寫既有 `bug_report_status_logs` 類手刻 log | `docs/security/AUDIT_LOG_POLICY.md` 缺口補強 |
+| [larastan/larastan](https://github.com/larastan/larastan) | Laravel 專用 PHPStan 規則集 | 一次性拉高 level 造成既有 baseline 大量破口 | 補強既有 PHPStan baseline-gate（`codeql.yml`） |
+| [ossf/scorecard](https://github.com/ossf/scorecard) + [step-security/harden-runner](https://github.com/step-security/harden-runner) | 供應鏈健康評分、CI runner egress/完整性稽核 | 無評估直接卡死既有 CI（先 advisory 模式） | `osv-scanner.yml`／`dependency-review.yml` 同一批供應鏈強化 |
+| [open-telemetry/opentelemetry-php](https://github.com/open-telemetry/opentelemetry-php) | Vendor中立 trace／metric 標準 | 取代既有 Sentry | 未來若需要跨服務 trace 時的選項，非近期優先 |
+| [HKUDS/DeepTutor](https://github.com/HKUDS/DeepTutor) | 產品概念參考：個人化終身學習追蹤的資訊架構 | 當底層架構／技術棧參考 | 純產品發想，供 Product Gap Review 而非工程落地 |
 
 ---
 
@@ -219,5 +225,6 @@ Phase 6           Epic G AI-native（digest → anomaly → retention）
 - **Authors**: Agent（Composer）依 Founder star 清單與既有 RFC／roadmap 彙整  
 - **Review**: delegated owner workflow；§7 為可覆寫執行預設
 - **Promotion**: 本檔保持 Draft 直到對應 Epic 開工；變更參考表或 §7 需更新日期  
+- **Last updated**: 2026-08-07 — §2.5 新增 6 個工程平台 star repo 參考（health/schedule-monitor、activitylog、larastan、scorecard/harden-runner、opentelemetry-php）＋ HKUDS/DeepTutor 產品概念參考
 
 **本 PR／Issue 僅規劃，不含應用程式行為變更。**
