@@ -660,10 +660,10 @@ class AlertController extends Controller
      * Subject/BaseData fallback (#984 — was ~2 extra queries per unpaid course
      * whenever the StudentClass.Subject string column was empty).
      *
-     * @param  \Illuminate\Support\Collection<int, StudentClass>  $courses
+     * @param  \Illuminate\Support\Collection  $courses  Collection of StudentClass
      * @return array<int, string>  SubjectID => name
      */
-    private function subjectNameMapForCourses($courses): array
+    private function subjectNameMapForCourses(\Illuminate\Support\Collection $courses): array
     {
         $ids = $courses
             ->filter(fn ($c) => empty($c->getAttribute('Subject')))
