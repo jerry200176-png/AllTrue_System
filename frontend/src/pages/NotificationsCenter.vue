@@ -12,6 +12,11 @@
         <span>方案待確認 {{ casesCandidateReadyCount }}</span>
         <span>新通知 {{ unreadCount }}</span>
       </template>
+      <template #actions>
+        <AtButton shape="rect" size="sm" variant="ghost" @click="goToNotificationSettings">
+          通知設定
+        </AtButton>
+      </template>
     </AtPageHeader>
 
     <AtInlineAlert
@@ -492,6 +497,10 @@ const goToTarget = (type, item) => {
   const recordId = type === 'learning_review' ? (payload.record_id || null) : null;
   const studentId = payload.student_id || null;
   emit('navigate', { target, recordId, studentId });
+};
+
+const goToNotificationSettings = () => {
+  emit('navigate', { target: 'profile', section: 'notifications' });
 };
 
 const goToLeaveCase = (item) => {
