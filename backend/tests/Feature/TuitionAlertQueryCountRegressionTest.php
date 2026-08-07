@@ -13,12 +13,14 @@ use Tests\TestCase;
 /**
  * #984 — AlertController::tuition unbounded full-table reads.
  *
- * As of this test, `tuition()` already narrows count-mode/date-mode courses with
- * SQL WHERE clauses and batches the payment/invoice lookups by StudentClassID
+ * `tuition()` itself already narrows count-mode/date-mode courses with SQL WHERE
+ * clauses and batches the payment/invoice lookups by StudentClassID
  * (lastPaidAtByStudentClassIds, invoiceAggregateByStudentClassIds, etc.) instead
- * of querying per row — no N+1 was found on inspection (2026-08-07). This test
- * locks that in as a regression guard: query count must stay roughly flat as
- * the number of unpaid count-mode courses grows, not scale linearly (N+1).
+ * of querying per row. But this test caught a real N+1 hiding one layer deeper:
+ * `subjectLabel()` called `StudentClass::displaySubjectName()`, which falls back
+ * to a `Subject`/`BaseData` table lookup *per course* whenever the StudentClass
+ * `Subject` string column is empty — ~2 extra queries per unpaid course. Fixed
+ * by batch-resolving subject names once via `subjectNameMapForCourses()`.
  */
 class TuitionAlertQueryCountRegressionTest extends TestCase
 {
