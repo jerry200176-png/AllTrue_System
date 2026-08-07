@@ -204,7 +204,7 @@ class AlertController extends Controller
             $charge = $this->packageCountModeCharge($pkg);
             $invoiceAgg = $invoiceAggMap[$anchorId] ?? null;
             $paidAmount = $invoiceAgg ? (int) $invoiceAgg['paid_amount'] : 0;
-            $isPaid = (bool) $pkg->paid || ($charge > 0 && $paidAmount >= $charge);
+            $isPaid = $this->isFullyPaid((bool) $pkg->paid, $paidAmount, $charge);
             $pendingReportId = $pendingReportMap[$anchorId] ?? null;
             $remaining = max(0, (int) ($pkg->remaining_sessions ?? 0));
 
@@ -356,7 +356,7 @@ class AlertController extends Controller
         if ($hasPendingReport) {
             return 'pending_report';
         }
-        $isPaid = (bool) $pkg->paid || ($charge > 0 && $paidAmount >= $charge);
+        $isPaid = $this->isFullyPaid((bool) $pkg->paid, $paidAmount, $charge);
         if (!$isPaid && $paidAmount > 0 && $charge > 0 && $paidAmount < $charge) {
             return 'partial';
         }
@@ -636,6 +636,21 @@ class AlertController extends Controller
     }
 
     /**
+     * Single canonical "is this fully paid" predicate for payment_status display
+     * (both single-course and package-level). Paid=1 (or pkg->paid) OR a fully-
+     * covering invoice payment counts as paid; a partial payment does not, so
+     * callers can still distinguish 'partial' from 'paid'. computePaymentStatus(),
+     * computePackageCountPaymentStatus(), and the count-mode package alert row
+     * builder (tuition()'s $countPkgAlerts map) previously each reimplemented
+     * this independently and had drifted (F7/R94) — this is the one place it
+     * should live.
+     */
+    private function isFullyPaid(bool $rawPaidFlag, int $paidAmount, int $charge): bool
+    {
+        return $rawPaidFlag || ($charge > 0 && $paidAmount >= $charge);
+    }
+
+    /**
      * Compute the six-value payment_status for a StudentClass row in alerts/tuition.
      * Priority order (first match wins):
      *   1. pending_report — has an unconfirmed PaymentReport
@@ -644,6 +659,11 @@ class AlertController extends Controller
      *   4. renew_needed — Paid=1, count-mode, RemainingSessions <= 2
      *   5. monthly_due_soon — date-mode and Paid=1
      *   6. paid — Paid=1 and none of the above
+     *
+     * "Paid" (for step 3/4 purposes) also counts a fully-covered invoice
+     * (paid_amount >= charge) even when the raw Paid flag was never flipped,
+     * matching StudentClassController's own paid rule. Deliberately amount-based
+     * rather than "any payment exists" so partial payments still hit step 2.
      */
     private function computePaymentStatus(?StudentClass $sc, int $paidAmount, int $charge, bool $hasPendingReport): string
     {
@@ -655,7 +675,7 @@ class AlertController extends Controller
             return 'pending_report';
         }
 
-        $isPaid = (int) ($sc->Paid ?? 0) === 1;
+        $isPaid = $this->isFullyPaid((int) ($sc->Paid ?? 0) === 1, $paidAmount, $charge);
 
         if (!$isPaid && $paidAmount > 0 && $charge > 0 && $paidAmount < $charge) {
             return 'partial';

@@ -117,7 +117,14 @@ class ClassSessionController extends Controller
 
         $rangeStart = $request->filled('start') ? (string) $request->input('start') : null;
         $rangeEnd = $request->filled('end') ? (string) $request->input('end') : null;
-        $projectedByClass = $this->buildProjectedByClassForIndex($byClass, $rangeStart, $rangeEnd);
+        $requestedClassIds = [];
+        if ($request->filled('student_class_id')) {
+            $requestedClassIds[] = (int) $request->input('student_class_id');
+        }
+        if ($request->filled('student_class_ids')) {
+            $requestedClassIds = array_merge($requestedClassIds, $this->normalizeIds($request->input('student_class_ids')));
+        }
+        $projectedByClass = $this->buildProjectedByClassForIndex($byClass, $rangeStart, $rangeEnd, $requestedClassIds);
 
         return response()->json([
             'materialized' => [
@@ -462,15 +469,25 @@ class ClassSessionController extends Controller
 
     /**
      * @param  array<string, list<object>>  $materializedByClass
+     * @param  list<int>  $requestedClassIds  Explicitly requested course IDs (student_class_id(s)
+     *         query params) that must still be considered for projection even when they have zero
+     *         materialized ClassSession rows inside [rangeStart, rangeEnd] -- e.g. a brand-new
+     *         recurring course whose first occurrence hasn't happened yet. Without this, a course
+     *         is only ever a projection candidate when array_keys($materializedByClass) happens to
+     *         include it, silently dropping every future occurrence for courses with no history in
+     *         range (in-app #222).
      * @return array<string, list<array<string, mixed>>>
      */
-    private function buildProjectedByClassForIndex(array $materializedByClass, ?string $rangeStart, ?string $rangeEnd): array
+    private function buildProjectedByClassForIndex(array $materializedByClass, ?string $rangeStart, ?string $rangeEnd, array $requestedClassIds = []): array
     {
-        if (!$rangeStart || !$rangeEnd || empty($materializedByClass)) {
+        if (!$rangeStart || !$rangeEnd) {
             return [];
         }
 
-        $classIds = array_values(array_filter(array_map('intval', array_keys($materializedByClass))));
+        $classIds = array_values(array_unique(array_filter(array_merge(
+            array_map('intval', array_keys($materializedByClass)),
+            array_map('intval', $requestedClassIds)
+        ), fn ($id) => $id > 0)));
         if ($classIds === []) {
             return [];
         }
@@ -503,12 +520,18 @@ class ClassSessionController extends Controller
         /** @var array<string, list<array<string, mixed>>> $projectedByClass */
         $projectedByClass = [];
 
-        foreach ($materializedByClass as $classKey => $rows) {
-            $classId = (int) $classKey;
+        /** @var array<int, list<object>> $rowsByClassId */
+        $rowsByClassId = [];
+        foreach ($materializedByClass as $classKey => $classRows) {
+            $rowsByClassId[(int) $classKey] = $classRows;
+        }
+
+        foreach ($classIds as $classId) {
             $class = $classes->get($classId);
             if (!$class) {
                 continue;
             }
+            $rows = $rowsByClassId[$classId] ?? [];
 
             $materialized = [];
             foreach ($rows as $row) {
@@ -1312,74 +1335,28 @@ class ClassSessionController extends Controller
             ->update(['EndTime' => $newEndTime]);
     }
 
+    /**
+     * Delegates to CourseLeaveCascadeService::appendTailAfterLeave() — the single
+     * authoritative "auto-extend after leave/cancel" writer. This method used to
+     * reimplement the same billable-vs-purchased check independently; since that
+     * copy didn't know about the other one (used by /schedules/leave-by-session and
+     * /schedules/retro-leave), a course could accumulate more non-cancelled dated
+     * sessions than it actually purchased when leave/retro-leave/cancel actions were
+     * mixed across both entry points (in-app director report, 2026-08-06).
+     */
     private function tryExtendOnLeave(StudentClass $studentClass, ClassSession $leaveSession): ?ClassSession
     {
-        if ((string) ($studentClass->scheduling_policy ?? 'auto_recurrence') === 'manual_occurrence') {
+        $leaveDate = $leaveSession->SessionDate ? substr((string) $leaveSession->SessionDate, 0, 10) : null;
+        if (!$leaveDate) {
             return null;
         }
-        // 暫停中的課程（Stop=1）不補建堂次，避免「取消了又補回」症狀
-        if ((int) ($studentClass->Stop ?? 0) === 1) {
-            return null;
-        }
-
-        $mode = strtolower(trim((string) ($studentClass->ScheduleMode ?? '')));
-        if ($mode === 'date') {
-            return null;
-        }
-
-        // 只在「有效堂次數不足」時才順延。
-        // 有效堂次 = 非 leave/leave_adjusted/cancelled 的 session（這些堂次仍會被上課或待上）。
-        // 若有效堂次 >= SessionCount，代表課程已有足夠堂次，不需再補建，
-        // 防止同一堂次反覆 absent→leave_adjusted→cancelled→scheduled 產生無限累加。
-        $sessionCount = (int) ($studentClass->SessionCount ?? 0);
-        if ($sessionCount > 0) {
-            $effectiveCount = ClassSession::where('StudentClassID', $studentClass->ID)
-                ->whereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted'])
-                ->count();
-            if ($effectiveCount >= $sessionCount) {
-                return null;
-            }
-        }
-
-        $lastSession = ClassSession::where('StudentClassID', $studentClass->ID)
-            ->whereNotIn('Status', ['cancelled'])
-            ->orderByDesc('SessionDate')
-            ->orderByDesc('StartTime')
-            ->first();
-
-        if (!$lastSession) {
-            return null;
-        }
-
-        // 使用 CourseLeaveCascadeService 的多星期解析邏輯，支援週一+週四等雙日課程
-        $weekdays = \App\Services\CourseLeaveCascadeService::resolveCourseWeekdays(
-            $studentClass,
-            (int) Carbon::parse($lastSession->SessionDate)->dayOfWeekIso
+        [, , $newSession] = \App\Services\CourseLeaveCascadeService::appendTailAfterLeave(
+            (int) $studentClass->ID,
+            $leaveDate,
+            $leaveSession
         );
 
-        // 收集所有現有 session 日期作為 occupied，避免撞期
-        $occupiedDates = ClassSession::where('StudentClassID', $studentClass->ID)
-            ->whereNotIn('Status', ['cancelled'])
-            ->pluck('SessionDate')
-            ->map(fn($d) => substr((string) $d, 0, 10))
-            ->flip()
-            ->map(fn() => true)
-            ->all();
-
-        $appendDate = \App\Services\CourseLeaveCascadeService::nextRecurringDate(
-            Carbon::parse($lastSession->SessionDate)->startOfDay(),
-            $weekdays,
-            $occupiedDates
-        );
-
-        return app(ClassSessionMaterializationService::class)->upsertSlot([
-            'StudentClassID' => $studentClass->ID,
-            'SessionDate'    => $appendDate,
-            'StartTime'      => $leaveSession->StartTime,
-            'EndTime'        => $leaveSession->EndTime,
-            'Status'         => 'scheduled',
-            'Note'           => '請假自動順延',
-        ])['session'];
+        return $newSession;
     }
 
     /**

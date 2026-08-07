@@ -16,12 +16,50 @@ class CourseLeaveCascadeService
     public const NOTE_AUTO_EXTENDED = 'auto-extended-after-leave';
     public const NOTE_REVERT_TO_SCHEDULED = 'revert-to-scheduled';
     public const NOTE_POLICY_SHIFT = 'leave-policy-shift';
+    /**
+     * Single source of truth for the "ordinary leave" VoidReason literal.
+     * A retyped/mis-encoded copy of this exact string once broke undo-leave
+     * matching in production (in-app #217/#218: undoLeaveCascade's manual_occurrence
+     * branch compared against a corrupted duplicate of this literal, so it never
+     * matched and VoidedAt/VoidReason never cleared). Every write AND every
+     * read/compare of this reason must go through this constant — never retype
+     * the literal.
+     */
+    public const VOID_REASON_LEAVE = '一般請假';
 
     public const POLICY_KEEP_FUTURE_DATES_APPEND_TAIL = 'KEEP_FUTURE_DATES_APPEND_TAIL';
     public const POLICY_SHIFT_FUTURE_DATES_APPEND_TAIL = 'SHIFT_FUTURE_DATES_APPEND_TAIL';
     public const DEFAULT_LEAVE_POLICY = self::POLICY_KEEP_FUTURE_DATES_APPEND_TAIL;
     /** Non-billable ClassSession statuses (use NOTE_LEAVE to avoid FIT-5 status-literal ratchet). */
     public const NON_BILLABLE_STATUSES = ['cancelled', self::NOTE_LEAVE, 'leave_adjusted', 'excused'];
+
+    /**
+     * Void any live LearningRecord/StudentSignIn for a session that is becoming (or already
+     * is) leave. Single source of truth — every code path that transitions a ClassSession to
+     * leave/leave_adjusted must call this, or a pre-existing LR (e.g. one the nightly
+     * learning-records:backfill-missing job created while the session was still 'scheduled'
+     * and already past) is left live and orphaned. That's exactly what bugs:verify-reproductions'
+     * enforced `leave_session_with_live_learning_record` condition (#170) catches nightly —
+     * a query-level UI filter (LearningRecord::scopeExcludeLeaveSessionPendingReview) already
+     * hides the symptom from the pending-review list, but does not fix the underlying row.
+     */
+    public static function voidLiveArtifactsForLeave(int $classSessionId): void
+    {
+        LearningRecord::where('ClassSessionID', $classSessionId)
+            ->active()
+            ->update([
+                'VoidedAt'       => now(),
+                'VoidedByUserID' => null,
+                'VoidReason'     => self::VOID_REASON_LEAVE,
+            ]);
+        StudentSignIn::where('ClassSessionID', $classSessionId)
+            ->active()
+            ->update([
+                'VoidedAt'       => now(),
+                'VoidedByUserID' => null,
+                'VoidReason'     => self::VOID_REASON_LEAVE,
+            ]);
+    }
 
     /**
      * Mark the target session as leave, void related records,
@@ -119,20 +157,7 @@ class CourseLeaveCascadeService
 
         $leaveSessionDate = Carbon::parse($leaveSession->SessionDate)->toDateString();
 
-        LearningRecord::where('ClassSessionID', (int) $leaveSession->id)
-            ->active()
-            ->update([
-                'VoidedAt'       => now(),
-                'VoidedByUserID' => null,
-                'VoidReason'     => '一般請假',
-            ]);
-        StudentSignIn::where('ClassSessionID', (int) $leaveSession->id)
-            ->active()
-            ->update([
-                'VoidedAt'       => now(),
-                'VoidedByUserID' => null,
-                'VoidReason'     => '一般請假',
-            ]);
+        self::voidLiveArtifactsForLeave((int) $leaveSession->id);
 
         // Only update ClassSession status if not already leave
         if ($leaveStatus !== 'leave') {
@@ -339,13 +364,28 @@ class CourseLeaveCascadeService
     /**
      * KEEP policy write: append missing billable tail; do not move future dates.
      *
-     * @return array{0:array,1:?string}
+     * Single authoritative entry point for "auto-extend after leave/cancel" — every
+     * caller (ordinary leave, retro-leave, and single-session status updates) MUST
+     * route through this method rather than reimplementing the billable-vs-purchased
+     * check locally. Two independent copies of this logic previously existed
+     * (here and in ClassSessionController::tryExtendOnLeave), and since neither knew
+     * about the other, a course could accumulate more non-cancelled dated sessions
+     * than it actually purchased (in-app director report, 2026-08-06: 8 purchased,
+     * 11+ live rows, blocked by the system's own overbooking guard).
+     *
+     * @return array{0:array,1:?string,2:?ClassSession}
      */
     public static function appendTailAfterLeave(int $courseId, string $leaveDate, ClassSession $leaveSession): array
     {
         $course = StudentClass::query()->where('ID', $courseId)->first();
         if ($course && (string) ($course->scheduling_policy ?? 'auto_recurrence') === 'manual_occurrence') {
-            return [self::fetchCourseSessionRows($courseId), $course->EndDate ? Carbon::parse($course->EndDate)->toDateString() : null];
+            return [self::fetchCourseSessionRows($courseId), $course->EndDate ? Carbon::parse($course->EndDate)->toDateString() : null, null];
+        }
+        // Paused courses must not get sessions auto-generated back in — that would
+        // reproduce the exact "cancelled it then it came back" symptom pause/resume
+        // is meant to prevent (in-app #219).
+        if ($course && (int) ($course->Stop ?? 0) === 1) {
+            return [self::fetchCourseSessionRows($courseId), $course->EndDate ? Carbon::parse($course->EndDate)->toDateString() : null, null];
         }
         $sessions = ClassSession::query()
             ->where('StudentClassID', $courseId)
@@ -357,7 +397,7 @@ class CourseLeaveCascadeService
         if ($scheduleMode === 'date' && $purchased <= 0) {
             $rows = self::fetchCourseSessionRows($courseId);
             $end = ClassSession::query()->where('StudentClassID', $courseId)->max('SessionDate');
-            return [$rows, $end ? substr((string) $end, 0, 10) : null];
+            return [$rows, $end ? substr((string) $end, 0, 10) : null, null];
         }
         $sessionRows = $sessions->map(fn ($s) => [
             'id' => (int) $s->id,
@@ -371,6 +411,7 @@ class CourseLeaveCascadeService
             (int) $leaveSession->id,
             $purchased
         );
+        $newSession = null;
         if ((int) $plan['append_count'] > 0 && $plan['append']) {
             $appendDate = $plan['append'];
             $appendTimes = self::resolveContractSlotTimes($course, $appendDate);
@@ -391,7 +432,7 @@ class CourseLeaveCascadeService
         if ($extendedEndDate) {
             DB::table('StudentClass')->where('ID', $courseId)->update(['EndDate' => $extendedEndDate]);
         }
-        return [self::fetchCourseSessionRows($courseId), $extendedEndDate];
+        return [self::fetchCourseSessionRows($courseId), $extendedEndDate, $newSession];
     }
 
     /**
@@ -649,10 +690,10 @@ class CourseLeaveCascadeService
             $leaveSession->Note = self::appendNote($leaveSession->Note, self::NOTE_REVERT_TO_SCHEDULED);
             $leaveSession->save();
             LearningRecord::where('ClassSessionID', (int) $leaveSession->id)
-                ->where('VoidReason', '銝?祈???')
+                ->where('VoidReason', self::VOID_REASON_LEAVE)
                 ->update(['VoidedAt' => null, 'VoidedByUserID' => null, 'VoidReason' => null]);
             StudentSignIn::where('ClassSessionID', (int) $leaveSession->id)
-                ->where('VoidReason', '銝?祈???')
+                ->where('VoidReason', self::VOID_REASON_LEAVE)
                 ->update(['VoidedAt' => null, 'VoidedByUserID' => null, 'VoidReason' => null]);
             $end = ClassSession::where('StudentClassID', $courseId)->max('SessionDate');
             return [self::fetchCourseSessionRows($courseId), $end ? Carbon::parse($end)->toDateString() : null, $normalizedLeaveDate];
@@ -741,14 +782,14 @@ class CourseLeaveCascadeService
         $leaveSession->save();
 
         LearningRecord::where('ClassSessionID', (int) $leaveSession->id)
-            ->where('VoidReason', '一般請假')
+            ->where('VoidReason', self::VOID_REASON_LEAVE)
             ->update([
                 'VoidedAt' => null,
                 'VoidedByUserID' => null,
                 'VoidReason' => null,
             ]);
         StudentSignIn::where('ClassSessionID', (int) $leaveSession->id)
-            ->where('VoidReason', '一般請假')
+            ->where('VoidReason', self::VOID_REASON_LEAVE)
             ->update([
                 'VoidedAt' => null,
                 'VoidedByUserID' => null,
