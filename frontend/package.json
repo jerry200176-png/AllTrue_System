@@ -50,12 +50,12 @@
     "prepare": "husky"
   },
   "dependencies": {
-    "@sentry/vue": "^10.68.0",
-    "@supabase/supabase-js": "^2.110.9",
+    "@sentry/vue": "^10.69.0",
+    "@supabase/supabase-js": "^2.111.0",
     "vue": "^3.5.40"
   },
   "devDependencies": {
-    "@playwright/test": "^1.62.0",
+    "@playwright/test": "^1.62.1",
     "@vitejs/plugin-vue": "^6.0.8",
     "@vitest/coverage-v8": "^4.1.10",
     "@vue/test-utils": "^2.4.11",
