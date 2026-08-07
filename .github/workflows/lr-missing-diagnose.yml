@@ -1,0 +1,83 @@
+name: LR Missing Diagnose (read-only)
+
+# One-off read-only probe for the bugs:verify-reproductions enforced condition
+# `attended_session_without_learning_record` (#1078/#188), which has regressed
+# nightly on the Pi Health Monitor since 2026-08-03 with a steady count of 1.
+# SELECT-only via artisan tinker. No writes.
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: lr-missing-diagnose
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    name: Production read-only missing-LearningRecord scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Run diagnose on Pi
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+        run: |
+          set -euo pipefail
+          cat > /tmp/lr_missing_probe.php <<'PHP'
+          <?php
+          $rows = \Illuminate\Support\Facades\DB::select("
+            SELECT cs.id AS session_id, cs.StudentClassID, cs.SessionDate, cs.StartTime, cs.Status,
+                   sc.StudentID, sc.TeacherID, sc.Stop AS course_stop, sc.ScheduleMode,
+                   s.CampusID AS student_campus_id,
+                   (SELECT COUNT(*) FROM Campus c WHERE c.id = s.CampusID) AS campus_row_exists,
+                   (SELECT lr.id FROM LearningRecord lr WHERE lr.ClassSessionID = cs.id ORDER BY lr.id DESC LIMIT 1) AS any_lr_id,
+                   (SELECT lr.VoidedAt FROM LearningRecord lr WHERE lr.ClassSessionID = cs.id ORDER BY lr.id DESC LIMIT 1) AS any_lr_voided_at,
+                   (SELECT lr.Status FROM LearningRecord lr WHERE lr.ClassSessionID = cs.id ORDER BY lr.id DESC LIMIT 1) AS any_lr_status
+            FROM ClassSession cs
+            JOIN StudentClass sc ON sc.ID = cs.StudentClassID
+            JOIN Student s ON s.id = sc.StudentID
+            WHERE LOWER(cs.Status) IN ('attended','late','absent')
+              AND CONCAT(cs.SessionDate, ' ', COALESCE(cs.StartTime, '00:00:00')) <= NOW()
+              AND NOT EXISTS (SELECT 1 FROM LearningRecord lr WHERE lr.ClassSessionID = cs.id AND lr.VoidedAt IS NULL)
+          ");
+          echo json_encode(["ok" => true, "rows" => $rows, "generated_at" => gmdate("c")], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), PHP_EOL;
+          PHP
+          B64=$(base64 -w0 /tmp/lr_missing_probe.php)
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" \
+            "B64='${B64}' bash -s" <<'REMOTE' | tee /tmp/lr-missing-diagnose.txt
+          set -euo pipefail
+          cd /home/admin/backend
+          php -r 'file_put_contents("/tmp/lr_missing_probe.php", base64_decode(getenv("B64")));'
+          php artisan tinker --execute='require "/tmp/lr_missing_probe.php";'
+          rm -f /tmp/lr_missing_probe.php
+          REMOTE
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lr-missing-diagnose
+          path: /tmp/lr-missing-diagnose.txt
+          retention-days: 14
+
+      - name: Job summary
+        run: |
+          {
+            echo '### LR missing diagnose'
+            echo '```'
+            cat /tmp/lr-missing-diagnose.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
