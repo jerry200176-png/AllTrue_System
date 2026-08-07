@@ -15,6 +15,7 @@ use App\Http\Controllers\PendingSwipeController;
 use App\Http\Controllers\ApiClientController;
 use App\Http\Controllers\CampusController;
 use App\Http\Controllers\AdminCampusController;
+use App\Http\Controllers\BusinessDigestController;
 use App\Http\Controllers\AdminRoutingRuleController;
 use App\Http\Controllers\ExceptionWorkflowController;
 use App\Http\Controllers\ParentFeedbackController;
@@ -235,6 +236,7 @@ Route::prefix('v1')->group(function () {
 
     // ── Super Admin: 分校管理 CRUD ───────────────────────────────────────────────
     Route::middleware(['role:super_admin'])->group(function () {
+        Route::get('admin/business-digest', [BusinessDigestController::class, 'index']);
         Route::get('admin/campuses', [AdminCampusController::class, 'index']);
         Route::post('admin/campuses', [AdminCampusController::class, 'store']);
         Route::put('admin/campuses/{id}', [AdminCampusController::class, 'update'])->whereNumber('id');
