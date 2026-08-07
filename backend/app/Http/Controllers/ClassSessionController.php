@@ -108,7 +108,6 @@ class ClassSessionController extends Controller
             ->paginate($perPage);
 
         $rows->getCollection()->transform(fn ($row) => $this->transformClassSessionIndexRow($row));
-        $rows->setCollection(collect($this->dedupeIdenticalStatusDuplicateRows($rows->items())));
 
         $byClass = $this->buildByClassMapFromItems($rows->items());
 
@@ -347,37 +346,6 @@ class ClassSessionController extends Controller
             });
 
         return $items;
-    }
-
-    /**
-     * Collapse rows that are exact (StudentClassID, SessionDate, StartTime, status)
-     * duplicates — legacy pre-#957 data written before ClassSessionMaterializationService
-     * became the sole write path (#1043). Keeps the highest-id row (most recent write).
-     *
-     * Deliberately narrower than #1041's frontend dedupeSessionsByStudentSlot: rows that
-     * legitimately coexist with *different* statuses (cancelled+scheduled, leave+scheduled —
-     * see ClassSessionDuplicateStatusTest) are never collapsed here.
-     *
-     * @param  list<object>  $items
-     * @return list<object>
-     */
-    private function dedupeIdenticalStatusDuplicateRows(array $items): array
-    {
-        $bestByKey = [];
-        $order = [];
-        foreach ($items as $item) {
-            $key = $item->student_class_id . '|' . $item->session_date . '|' . $item->start_time . '|' . strtolower((string) $item->status);
-            if (!isset($bestByKey[$key])) {
-                $bestByKey[$key] = $item;
-                $order[] = $key;
-                continue;
-            }
-            if ((int) $item->id > (int) $bestByKey[$key]->id) {
-                $bestByKey[$key] = $item;
-            }
-        }
-
-        return array_map(fn ($key) => $bestByKey[$key], $order);
     }
 
     private function buildByClassMapFromItems(iterable $items): array
