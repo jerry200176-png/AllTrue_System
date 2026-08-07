@@ -328,7 +328,7 @@
         v-if="(isTeacher || isDirector) && active === 'profile'"
         :token="session?.access_token ?? ''"
         :force-password-change="isPasswordChangeLocked"
-        :initial-tab="isPasswordChangeLocked ? 'security' : 'profile'"
+        :initial-tab="isPasswordChangeLocked ? 'security' : (profileFocusTab || 'profile')"
         @profile-updated="onProfileUpdated"
         @password-change-complete="onPasswordChangeComplete"
       />
@@ -892,6 +892,7 @@ const inboxUrgentTotal = ref(0);
 const inboxCountScopeKey = ref('');
 const directorFocusWorkflowId = ref(null);
 const directorFocusSection = ref(null);
+const profileFocusTab = ref(null);
 const badgeByType = ref({});
 let unreadPollingTimer = null;
 let chatBadgePollingTimer = null;
@@ -1040,6 +1041,7 @@ function onNavigateFromNotifications({ target, recordId, focus, section, workflo
     directorFocusSection.value = null;
     directorFocusWorkflowId.value = null;
   }
+  profileFocusTab.value = (target === 'profile' && section === 'notifications') ? 'notifications' : null;
   active.value = target;
 }
 
