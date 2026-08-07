@@ -5,10 +5,12 @@ namespace Tests\Feature;
 use App\Models\AuthToken;
 use App\Models\ClassSession;
 use App\Models\ExceptionWorkflow;
+use App\Models\LearningRecord;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
 use App\Models\UserCampus;
+use App\Services\CourseLeaveCascadeService;
 use App\Services\ExceptionWorkflowService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -254,6 +256,66 @@ class ExceptionWorkflowApiTest extends TestCase
             'id' => $workflow->id,
             'status' => 'confirmed',
         ]);
+    }
+
+    /**
+     * #170 regression: if the original session already picked up a `pending`
+     * LearningRecord before the parent's leave request was confirmed (e.g. the
+     * nightly learning-records:backfill-missing swept it while it was still
+     * 'scheduled' and already past), confirmCandidate() must void it — same as
+     * CourseLeaveCascadeService's interactive leave path — or bugs:verify-reproductions'
+     * enforced `leave_session_with_live_learning_record` (#170) condition regresses
+     * nightly with a stale pending evaluation stuck on a leave session.
+     */
+    public function test_director_confirming_candidate_voids_stale_pending_learning_record_on_original_session(): void
+    {
+        [$student, $course, $session] = $this->makeStudentCourseSession(1, '確認補課學生留評量', '0912000011');
+        $record = LearningRecord::create([
+            'StudentClassID' => $course->ID,
+            'ClassSessionID' => $session->id,
+            'TeacherID' => 1,
+            'Content' => '',
+            'Subject' => '測試科目',
+            'SessionDate' => $session->SessionDate,
+            'StartTime' => $session->StartTime,
+            'EndTime' => $session->EndTime,
+            'Status' => 'pending',
+        ]);
+
+        $workflow = app(ExceptionWorkflowService::class)->createOrGet([
+            'source_key' => "parent_leave:class_session:{$session->id}",
+            'campus_id' => 1,
+            'student_id' => $student->id,
+            'student_class_id' => $course->ID,
+            'class_session_id' => $session->id,
+            'type' => 'student_leave',
+            'status' => 'open',
+        ]);
+        $token = $this->createDirectorToken([1]);
+        $candidateId = (int) $this->postJson("/api/v1/exception-workflows/{$workflow->id}/generate-candidates", [
+            'start_date' => '2026-05-07',
+            'end_date' => '2026-05-07',
+            'limit' => 1,
+        ], [
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->assertOk()->json('data.candidates.0.id');
+
+        $this->postJson("/api/v1/exception-workflows/{$workflow->id}/confirm-candidate", [
+            'candidate_id' => $candidateId,
+        ], [
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->assertOk();
+
+        $this->assertDatabaseHas('ClassSession', [
+            'id' => $session->id,
+            'Status' => 'leave',
+        ]);
+
+        $record->refresh();
+        $this->assertNotNull($record->VoidedAt, 'stale pending LearningRecord on the original leave session must be voided');
+        $this->assertSame(CourseLeaveCascadeService::VOID_REASON_LEAVE, $record->VoidReason);
     }
 
     public function test_confirm_candidate_is_idempotent_and_rejects_cross_campus(): void
