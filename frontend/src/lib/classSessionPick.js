@@ -41,12 +41,19 @@ export function pickBestSessionRow(candidates) {
 }
 
 /**
+ * Resolve which ClassSession row a given (date, optional time hint) refers to.
+ * Same-date exact-time match wins; otherwise falls back to the best same-date
+ * row so a session whose actual time deviates from a course's default/contract
+ * start_time (e.g. #211 逐堂手動排課 with a user-chosen time) is still found —
+ * mirrors how Google Calendar keys an instance's identity off its date/series
+ * position rather than its current displayed time, so a moved/off-template
+ * occurrence doesn't become unresolvable (see #224 / #1041).
  * @param {Array<{id:number, session_date?:string, SessionDate?:string, start_time?:string, status?:string}>} sessions
  * @param {string} dateYmd
  * @param {string} [startTimeHint] HH:mm from the calendar cell / modal
- * @returns {number|null}
+ * @returns {object|null} the matched session row, or null
  */
-export function resolveSessionIdForSubstitute(sessions, dateYmd, startTimeHint) {
+export function resolveSessionRowForCell(sessions, dateYmd, startTimeHint) {
   const targetYmd = String(dateYmd || '').slice(0, 10);
   if (!targetYmd || !Array.isArray(sessions) || !sessions.length) return null;
 
@@ -61,13 +68,20 @@ export function resolveSessionIdForSubstitute(sessions, dateYmd, startTimeHint) 
     const exact = sameDateRows.filter(
       (r) => normalizeTimeTo30(r.start_time || r.StartTime || '') === hint
     );
-    if (exact.length) {
-      const hit = pickBestSessionRow(exact);
-      return hit?.id != null ? Number(hit.id) : null;
-    }
+    if (exact.length) return pickBestSessionRow(exact);
   }
 
-  const hit = pickBestSessionRow(sameDateRows);
+  return pickBestSessionRow(sameDateRows);
+}
+
+/**
+ * @param {Array<{id:number, session_date?:string, SessionDate?:string, start_time?:string, status?:string}>} sessions
+ * @param {string} dateYmd
+ * @param {string} [startTimeHint] HH:mm from the calendar cell / modal
+ * @returns {number|null}
+ */
+export function resolveSessionIdForSubstitute(sessions, dateYmd, startTimeHint) {
+  const hit = resolveSessionRowForCell(sessions, dateYmd, startTimeHint);
   return hit?.id != null ? Number(hit.id) : null;
 }
 

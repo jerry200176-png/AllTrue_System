@@ -1,5 +1,10 @@
 import assert from 'node:assert/strict';
-import { dedupeSessionsByStudentSlot, pickBestSessionRow, resolveSessionIdForSubstitute } from './classSessionPick.js';
+import {
+  dedupeSessionsByStudentSlot,
+  pickBestSessionRow,
+  resolveSessionIdForSubstitute,
+  resolveSessionRowForCell,
+} from './classSessionPick.js';
 
 const rows = [
   { id: 9421, session_date: '2026-05-17', start_time: '10:00', status: 'attended' },
@@ -38,6 +43,47 @@ assert.equal(
   ]).id,
   20,
   'pickBestSessionRow prefers attended when no time hint'
+);
+
+// in-app #224: a manually-booked session (逐堂手動排課, #211) can have a
+// start_time that differs from the course's default/contract start_time.
+// findSessionRowForCell() in SmartCalendar.vue must still find it (via this
+// resolver) so 取消本堂/roll-call/eval badges stay available — not just the
+// grid-render path, which never had this restriction.
+assert.equal(
+  resolveSessionRowForCell(
+    [{ id: 5001, session_date: '2026-08-08', start_time: '17:00', status: 'scheduled' }],
+    '2026-08-08',
+    '18:00' // course.start_time — the course's usual slot, different from this row's actual time
+  )?.id,
+  5001,
+  'off-template session (time differs from course default) must still resolve via same-date fallback'
+);
+
+assert.equal(
+  resolveSessionRowForCell(
+    [{ id: 5002, session_date: '2026-08-08', start_time: '18:00', status: 'scheduled' }],
+    '2026-08-08',
+    '18:00'
+  )?.id,
+  5002,
+  'exact-time match still wins when the row matches the course default (no regression)'
+);
+
+assert.equal(
+  resolveSessionRowForCell([], '2026-08-08', '18:00'),
+  null,
+  'no rows for the date resolves to null'
+);
+
+assert.equal(
+  resolveSessionRowForCell(
+    [{ id: 5003, session_date: '2026-08-09', start_time: '18:00', status: 'scheduled' }],
+    '2026-08-08',
+    '18:00'
+  ),
+  null,
+  'rows on a different date must not match'
 );
 
 const deduped = dedupeSessionsByStudentSlot([

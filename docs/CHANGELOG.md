@@ -1,3 +1,11 @@
+## 2026-08-07 — fix(calendar): 逐堂手動排課的堂次若時段偏離課程預設時段，取消/角標會找不到對應堂次（in-app #224）
+
+- **背景**：主任回報 8/8 一堂課「無法移動或刪除」。查證發現該類堂次是透過 #211（逐堂手動排課，2026-08-02 上線）新增，開始時間由使用者自由輸入、不必等於課程契約預設時段。
+- **根因**：`SmartCalendar.vue::findSessionRowForCell()` 比對「這個格子對應哪一筆 ClassSession」時，先要求 row 時間完全等於課程預設時段，只有調課例外才會退回同日任一筆；負責畫方塊的 `resolveAllCourseGridTimesForDate()` 沒有這個限制，方塊看得到，但點開後「取消本堂」按鈕與點名/評量角標卻找不到對應資料而消失，且無任何錯誤提示。屬架構缺口：專案裡已有一套正確、有測試的同類實作（`classSessionPick.js::resolveSessionIdForSubstitute()`），`findSessionRowForCell()` 是另一份沒有共用它的 page-local 副本（對應既有技術債 GitHub #1041）。
+- **修法**：`classSessionPick.js` 新增可回傳完整 row 的共用函式 `resolveSessionRowForCell()`，`findSessionRowForCell()` 改為呼叫它，移除只有調課例外才退回同日任一筆的限制。純前端顯示/互動修正，不涉及後端扣堂或資料寫入路徑。
+- **測試**：`classSessionPick.test.js` 新增偏離時段仍可比對、exact match 不回歸、跨日期不誤命中等 case；`npm run test:calendar` 全綠。
+- **詳見**：`docs/AI_REGRESSION_LESSONS.md` §R101、GitHub #1671（分診）。
+
 ## 2026-08-07 — docs: INDEX §III.10 補上 #957 被取代 runbook 的 SUPERSEDED 導覽指標（#1560）
 
 - **背景**：`docs/runbooks/957-d1-pcr.md` 頂部已自我標示 `SUPERSEDED — 見 957-d1-pcr-r2.md`，但 `docs/INDEX.md` §III.10（#957 D1 Sprint）仍只連結舊檔——讀者從 INDEX 進入會拿到已被取代的 PCR 指引。
