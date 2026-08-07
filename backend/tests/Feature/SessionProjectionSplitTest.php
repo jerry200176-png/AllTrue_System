@@ -107,6 +107,48 @@ class SessionProjectionSplitTest extends TestCase
         }
     }
 
+    /**
+     * A course with zero materialized ClassSession rows anywhere in the query
+     * window (brand-new recurring course, first occurrence still in the future)
+     * must still get its weekly occurrences projected. Before the fix,
+     * buildProjectedByClassForIndex() derived its candidate class list from
+     * array_keys($materializedByClass) -- i.e. only courses that already had
+     * at least one materialized row *within this exact date range* were ever
+     * considered for projection. A course with none was silently dropped
+     * entirely, showing zero "預排" (projected) chips even though it should
+     * have several. In-app bug #222 ("為何預排只能打一個" -- across several
+     * courses on the course-management page, only the ones that happened to
+     * already have a materialized session showed any projected chips at all).
+     */
+    public function test_class_sessions_index_projects_course_with_no_materialized_rows_in_range(): void
+    {
+        $token = $this->makeToken([1]);
+        $student = Student::create([
+            'name' => 'No Materialized Yet', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1,
+        ]);
+        $courseId = $this->makeCourse($student->id, [
+            'ScheduleMode' => 'date',
+            'week' => 5,
+            'time' => '15:00',
+            'StartDate' => '2026-08-21 00:00:00',
+            'EndDate' => '2026-12-31 00:00:00',
+        ]);
+        // Deliberately no ClassSession rows created -- this course has never
+        // had a single session materialized yet.
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/class-sessions?branch_id=1&student_class_ids={$courseId}&start=2026-08-01&end=2026-10-31");
+
+        $res->assertOk();
+        $projected = $res->json('projected.by_class.' . $courseId) ?? [];
+        $this->assertNotEmpty($projected, 'course with zero materialized rows in range must still get projected occurrences');
+        $dates = array_column($projected, 'session_date');
+        $this->assertContains('2026-08-21', $dates);
+        $this->assertContains('2026-08-28', $dates);
+    }
+
     private function makeToken(array $campusIds): string
     {
         $user = User::create([

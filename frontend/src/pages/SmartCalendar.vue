@@ -492,6 +492,7 @@ import { supabase } from '../supabase';
 import { SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
 import { mergeWeekCalendarOccurrences } from '../lib/calendarOccurrenceMerge';
+import { resolveTeacherAliasIds, courseBelongsToTeacherAlias } from '../lib/teacherAliasMatch';
 import {
   resolveCalendarDataFetchBoundsYmd,
   isRangeWithinFetchedBounds,
@@ -1273,9 +1274,19 @@ const isSessionOnLeaveOnDate = (course, ymd) => {
   );
 };
 
+// 同一位老師掛兩個帳號、顯示名稱相同時，dayViewTeacherColumns/visibleTeachers 只會合併顯示一欄
+// （代表 ID 為課程數較多的那個帳號），但課程本身的 teacher_id 仍是原本各自的帳號 ID。
+// 這裡務必比對「別名帳號集合」而非單一 teacherId，否則掛在另一個別名帳號下的課程會直接消失
+// （in-app #219/#223 根因：吳宥萱試聽掛在「高為澎」的第二個帳號，欄位被合併後課程再也比對不到）。
+const getTeacherAliasIdSet = (teacherId) => {
+  const entry = visibleTeachers.value.find((t) => String(t.id) === String(teacherId));
+  return new Set(resolveTeacherAliasIds(entry, teacherId));
+};
+
 const getCoursesForTeacherAt = (teacherId, hour) => {
+  const aliasSet = getTeacherAliasIdSet(teacherId);
   return filteredCourses.value.filter(c => {
-    if (c.teacher_id !== teacherId) return false;
+    if (!courseBelongsToTeacherAlias(c, aliasSet)) return false;
     if (parseHour(c.start_time) !== hour) return false;
     if (c.day_of_week !== selectedDow.value) return false;
     if (!courseMatchesStudentSearch(c)) return false;
@@ -1460,10 +1471,11 @@ const visibleTeachers = computed(() => {
   // 日檢視：當日有排課的老師優先置左，無課老師排後方，減少橫向捲動
   const dowForSort = !isWeekOverview.value ? selectedDow.value : null;
   const ymdForSort = !isWeekOverview.value ? selectedDateStr.value : null;
-  const teacherHasCourseToday = (tid) => {
+  const teacherHasCourseToday = (aliasIds) => {
     if (dowForSort == null) return false;
+    const aliasSet = new Set(aliasIds);
     return filteredCourses.value.some((c) => {
-      if (c.teacher_id !== tid) return false;
+      if (!courseBelongsToTeacherAlias(c, aliasSet)) return false;
       if (c.day_of_week !== dowForSort) return false;
       if (ymdForSort && isSessionCancelledOnDate(c, ymdForSort)) return false;
       return true;
@@ -1471,7 +1483,7 @@ const visibleTeachers = computed(() => {
   };
   const withBusyFlag = filtered.map((t) => ({
     ...t,
-    _hasCourseToday: teacherHasCourseToday(t.id),
+    _hasCourseToday: teacherHasCourseToday(resolveTeacherAliasIds(t, t.id)),
   }));
   if (hideEmptyTeacherColumns.value && !isWeekOverview.value) {
     return withBusyFlag
@@ -1717,8 +1729,9 @@ const CAPACITY_MAP = { 'one_on_one': 1, 'one_on_two': 2, 'one_on_three': 3, 'tut
 
 const TEACHER_SLOT_ABSOLUTE_MAX = 3;
 const getSlotOccupancy = (teacherId, dow, hour) => {
+  const aliasSet = getTeacherAliasIdSet(teacherId);
   const coursesAtSlot = filteredCourses.value.filter(c => {
-    if (c.teacher_id !== teacherId) return false;
+    if (!courseBelongsToTeacherAlias(c, aliasSet)) return false;
     if (c.day_of_week !== dow) return false;
     if (parseHour(c.start_time) !== hour) return false;
     if (!courseMatchesStudentSearch(c)) return false;

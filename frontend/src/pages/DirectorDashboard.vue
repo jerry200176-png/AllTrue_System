@@ -231,430 +231,7 @@
         <div v-if="workflowToast" class="director-toast" role="status">{{ workflowToast }}</div>
       </main>
     </template>
-
-
-    <template v-if="false">
-      <div class="dash dash--desktop-dense">
-
-        <!-- ===== Work Area (detail panels) ===== -->
-        <template v-if="dashboardViewMode === 'full'">
-        <div class="section-label-row">
-          <span class="section-label">今日必辦</span>
-          <span class="section-sublabel">需要主任處理的今日課務與提醒</span>
-        </div>
-        <div class="work-grid">
-          <div class="work-col">
-            <!-- Today Schedule -->
-            <AtCard id="schedule-sec">
-              <template #header>
-                <div class="dash-card-head-title">
-                  <span class="material-symbols-outlined wp__hi">calendar_today</span>
-                  <h3>今日課表</h3>
-                </div>
-              </template>
-              <template v-if="todaySchedules.length" #actions>
-                <span class="wp__badge">{{ todaySchedules.length }}</span>
-              </template>
-              <AtEmpty v-if="!todaySchedules.length" icon="calendar_today" title="今日無課程" />
-              <div v-else class="wp-list-scroll-desktop">
-                <div v-for="s in todaySchedules" :key="s.id" class="sched-row">
-                  <span class="sched-row__time">{{ formatTime(s.start_time) }}</span>
-                  <span class="sched-row__name">{{ s.student_name || '—' }}</span>
-                  <span class="sched-row__subj">{{ s.subject || s.subject_name || '' }}</span>
-                  <span class="sched-row__tchr">{{ s.teacher_name || '' }}</span>
-                  <span :class="['sched-row__st', 'st--' + s.status]">{{ formatScheduleStatus(s.status) }}</span>
-                </div>
-              </div>
-              <footer v-if="pendingAttendanceCount > 0" class="dash-card-foot">
-                <button class="btn-p btn-sm" @click="goToAttendance">前往出缺勤處理</button>
-              </footer>
-            </AtCard>
-
-            <!-- Payment Alerts -->
-            <div class="dash-card-warn" data-guide="director-alerts">
-              <AtCard id="payments-sec">
-                <template #header>
-                  <div class="dash-card-head-title">
-                    <span class="material-symbols-outlined wp__hi">warning</span>
-                    <h3>繳費／續課提醒</h3>
-                  </div>
-                </template>
-                <template v-if="lowBalanceStudents.length" #actions>
-                  <span class="wp__badge wp__badge--danger">{{ lowBalanceStudents.length }}</span>
-                </template>
-                <p class="wp__hint">堂數制：已標記繳費者，若剩 0～2 堂仍會列出（方便聯繫加購）；未繳費者亦會列出。</p>
-                <AtEmpty v-if="!lowBalanceStudents.length" icon="payments" title="目前無待繳費、月結將届或低堂數需續課之課程" />
-                <div v-else class="wp-list-scroll-desktop">
-                  <div v-for="s in displayPaymentAlerts" :key="s.id" class="pay-row">
-                    <div class="pay-row__info">
-                      <span class="pay-row__name">{{ s.name }}</span>
-                      <span :class="paymentAlertBadgeClass(s)">{{ paymentAlertBadgeText(s) }}</span>
-                    </div>
-                    <button class="btn-o btn-xs" @click="copyPaymentMessage(s)">複製通知</button>
-                  </div>
-                </div>
-                <footer v-if="lowBalanceStudents.length > paymentAlertLimit" class="dash-card-foot">
-                  <button class="btn-o btn-xs" @click="showAllPayments = !showAllPayments">
-                    {{ showAllPayments ? '收合' : `顯示全部 (${lowBalanceStudents.length})` }}
-                  </button>
-                </footer>
-              </AtCard>
-            </div>
-
-            <!-- Parent leave inbox: the single place where directors make a decision. -->
-            <section class="leave-inbox" id="exception-workflows-sec" aria-labelledby="leave-inbox-title">
-              <header class="leave-inbox__header">
-                <div class="leave-inbox__heading">
-                  <span class="leave-inbox__icon material-symbols-outlined" aria-hidden="true">event_repeat</span>
-                  <div>
-                    <p class="leave-inbox__eyebrow">主任待辦收件匣</p>
-                    <h3 id="leave-inbox-title">家長請假</h3>
-                    <p class="leave-inbox__description">先處理補課安排，再完成請假核准；每筆案件只在這裡做決策。</p>
-                  </div>
-                </div>
-                <div class="leave-inbox__count" aria-label="待處理案件數">
-                  <strong>{{ exceptionWorkflowCount }}</strong>
-                  <span>筆待處理</span>
-                </div>
-              </header>
-              <div v-if="workflowFocusError" class="leave-inbox__error" role="alert">{{ workflowFocusError }}</div>
-              <div v-if="exceptionWorkflowLoading" class="leave-inbox__state" role="status">家長請假載入中…</div>
-              <div v-else-if="exceptionWorkflowError" class="leave-inbox__error" role="alert">{{ exceptionWorkflowError }}</div>
-              <div v-else-if="!exceptionWorkflows.length" class="leave-inbox__empty">
-                <span class="material-symbols-outlined" aria-hidden="true">task_alt</span>
-                <div><strong>目前沒有待處理請假</strong><span>新的家長申請會出現在這裡。</span></div>
-              </div>
-              <div v-else class="leave-inbox__list">
-                <article v-for="workflow in exceptionWorkflows" :key="workflow.id" class="leave-case" :data-workflow-id="workflow.id" :id="`exception-workflow-${workflow.id}`">
-                  <div class="leave-case__topline">
-                    <div class="leave-case__identity">
-                      <span class="leave-case__dot" aria-hidden="true"></span>
-                      <strong>{{ workflow.student?.name || '學生' }}</strong>
-                      <span class="leave-case__status">{{ workflowStatusLabel(workflow.status) }}</span>
-                    </div>
-                    <span class="leave-case__id">案件 #{{ workflow.id }}</span>
-                  </div>
-
-                  <dl class="leave-case__details">
-                    <div><dt>原堂次</dt><dd>{{ workflow.class_session?.date || '未指定日期' }} {{ workflow.class_session?.start_time || '' }}–{{ workflow.class_session?.end_time || '' }}</dd></div>
-                    <div><dt>請假原因</dt><dd>{{ workflow.payload?.reason || '未填寫原因' }}</dd></div>
-                  </dl>
-
-                  <div v-if="workflowCandidates[workflow.id]?.length" class="leave-case__candidate-panel">
-                    <div class="leave-case__candidate-heading">
-                      <div><strong>選擇補課時段</strong><span>{{ workflowCandidates[workflow.id].length }} 個可選時段，請選一個再確認</span></div>
-                      <button class="leave-case__text-button" type="button" :disabled="workflowActionId === workflow.id" @click="generateCandidates(workflow)">重新尋找</button>
-                    </div>
-                    <div class="leave-case__candidate-list" role="radiogroup" :aria-label="`${workflow.student?.name || '學生'}補課時段`">
-                      <label v-for="candidate in workflowCandidates[workflow.id]" :key="candidate.id" class="leave-candidate" :class="{ 'leave-candidate--selected': selectedWorkflowCandidates[workflow.id] === candidate.id }">
-                        <input v-model="selectedWorkflowCandidates[workflow.id]" type="radio" :name="`leave-candidate-${workflow.id}`" :value="candidate.id" :disabled="workflowActionId === workflow.id" />
-                        <span class="leave-candidate__radio" aria-hidden="true"></span>
-                        <span class="leave-candidate__body"><strong>{{ candidate.candidate_date }}</strong><span>{{ candidate.start_time }}–{{ candidate.end_time }}</span></span>
-                        <span class="leave-candidate__rank">候選 {{ candidate.rank }}</span>
-                      </label>
-                    </div>
-                  </div>
-
-                  <div v-else class="leave-case__next-step">
-                    <span class="material-symbols-outlined" aria-hidden="true">lightbulb</span>
-                    <span>還沒有補課候選時段。先搜尋未衝堂的可用時段，或直接核准不補課。</span>
-                  </div>
-
-                  <div class="leave-case__actions">
-                    <button v-if="!workflowCandidates[workflow.id]?.length" class="leave-button leave-button--primary" type="button" :disabled="workflowActionId === workflow.id" @click="generateCandidates(workflow)">
-                      <span class="material-symbols-outlined" aria-hidden="true">search</span>
-                      {{ workflowActionId === workflow.id ? '搜尋中…' : '尋找補課時段' }}
-                    </button>
-                    <button v-else class="leave-button leave-button--primary" type="button" :disabled="workflowActionId === workflow.id || !selectedWorkflowCandidates[workflow.id]" @click="openWorkflowDecision('candidate', workflow)">
-                      <span class="material-symbols-outlined" aria-hidden="true">event_available</span>
-                      確認安排補課
-                    </button>
-                    <button v-if="workflowCandidates[workflow.id]?.length" class="leave-button leave-button--secondary" type="button" :disabled="workflowActionId === workflow.id" @click="openWorkflowDecision('waive', workflow)">同意不補課</button>
-                    <button class="leave-button leave-button--danger" type="button" :disabled="workflowActionId === workflow.id" @click="openWorkflowDecision('reject', workflow)">退回請假</button>
-                  </div>
-                </article>
-              </div>
-            </section>
-
-            <div v-if="workflowDecisionModal" class="leave-modal-backdrop" role="presentation" @click.self="closeWorkflowDecision">
-              <section class="leave-modal" role="dialog" aria-modal="true" aria-labelledby="leave-modal-title">
-                <button class="leave-modal__close" type="button" aria-label="關閉" @click="closeWorkflowDecision">×</button>
-                <p class="leave-modal__eyebrow">確認操作</p>
-                <h3 id="leave-modal-title">{{ workflowDecisionTitle }}</h3>
-                <p class="leave-modal__description">{{ workflowDecisionDescription }}</p>
-                <div v-if="workflowDecisionModal.kind === 'candidate'" class="leave-modal__selection">
-                  <span>補課時段</span>
-                  <strong>{{ selectedWorkflowCandidate?.candidate_date }} {{ selectedWorkflowCandidate?.start_time }}–{{ selectedWorkflowCandidate?.end_time }}</strong>
-                </div>
-                <label v-if="workflowDecisionModal.kind !== 'candidate'" class="leave-modal__field">
-                  <span>{{ workflowDecisionModal.kind === 'reject' ? '退回原因（必填）' : '核准備註（選填）' }}</span>
-                  <textarea v-model="workflowDecisionReason" rows="3" :placeholder="workflowDecisionModal.kind === 'reject' ? '例如：請重新確認請假日期' : '例如：家長表示不需補課'" />
-                </label>
-                <p v-if="workflowDecisionError" class="leave-modal__error" role="alert">{{ workflowDecisionError }}</p>
-                <div class="leave-modal__actions">
-                  <button class="leave-button leave-button--secondary" type="button" :disabled="workflowActionId === workflowDecisionModal.workflow.id" @click="closeWorkflowDecision">取消</button>
-                  <button class="leave-button" :class="workflowDecisionModal.kind === 'reject' ? 'leave-button--danger' : 'leave-button--primary'" type="button" :disabled="workflowActionId === workflowDecisionModal.workflow.id" @click="submitWorkflowDecision">
-                    {{ workflowDecisionModal.kind === 'candidate' ? '確認安排' : workflowDecisionModal.kind === 'reject' ? '確認退回' : '確認核准' }}
-                  </button>
-                </div>
-              </section>
-            </div>
-            <div v-if="workflowToast" class="leave-toast" role="status">{{ workflowToast }}</div>
-
-            <!-- Pending Evaluations -->
-            <AtCard id="evals-sec" data-guide="director-pending-evals">
-              <template #header>
-                <div class="dash-card-head-title">
-                  <span class="material-symbols-outlined wp__hi">assignment</span>
-                  <h3>待審核評量</h3>
-                </div>
-              </template>
-              <template v-if="pendingEvaluations.length" #actions>
-                <span class="wp__badge">{{ pendingEvaluations.length }}</span>
-              </template>
-              <p class="wp__hint">核准後老師科目數自動累計</p>
-              <AtEmpty v-if="!pendingEvaluations.length" icon="assignment" title="無待審核評量" />
-              <div v-else class="wp-list-scroll-desktop wp-list-scroll-desktop--primary">
-                <div v-for="ev in pendingEvaluations" :key="ev.id" class="eval-card">
-                  <div class="eval-card__top">
-                    <strong>{{ ev.student_name }}</strong>
-                    <span class="eval-card__tag">{{ ev.student_class_label || ev.Subject }}</span>
-                    <span class="eval-card__tchr">{{ ev.teacher_name }}</span>
-                  </div>
-                  <div class="eval-card__mid">
-                    <span>{{ ev.SessionDate }}</span>
-                    <span v-if="ev.Progress"> &middot; {{ ev.Progress }}</span>
-                  </div>
-                  <div v-if="ev.Comment" class="eval-card__comment">{{ ev.Comment }}</div>
-                  <div class="eval-card__acts">
-                    <button class="btn-o btn-sm" @click="emit('navigate', { target: 'learning', recordId: ev.id })">檢視</button>
-                    <button class="btn-p btn-sm" @click="approveEvaluation(ev)">核准</button>
-                    <button class="btn-d btn-sm" @click="rejectEvaluation(ev)">退回</button>
-                  </div>
-                </div>
-              </div>
-              <footer v-if="pendingEvaluations.length" class="dash-card-foot">
-                <button class="btn-o btn-sm" @click="emit('navigate', { target: 'learning' })">前往評量頁面</button>
-              </footer>
-            </AtCard>
-          </div>
-
-          <div class="work-col work-col--side">
-            <!-- Schedule Discrepancy Reports -->
-            <section
-              class="wp sd-card"
-              :class="{ 'sd-card--alert': sdSummary.pending > 0 }"
-              @click="goToScheduleDiscrepancy"
-              @keydown.enter="goToScheduleDiscrepancy"
-              tabindex="0"
-              role="button"
-            >
-              <header class="wp__head">
-                <span class="material-symbols-outlined wp__hi">flag</span>
-                <h3>課表回報</h3>
-                <span v-if="sdSummary.pending > 0" class="wp__badge wp__badge--warn">{{ sdSummary.pending }}</span>
-              </header>
-              <div v-if="sdLoading" class="sd-skel-wrap" aria-hidden="true">
-                <div class="sd-skel-num"></div>
-                <div class="sd-skel-line"></div>
-              </div>
-              <template v-else>
-                <div v-if="sdSummary.pending > 0" class="sd-dash-body">
-                  <div class="sd-dash-num">{{ sdSummary.pending }}</div>
-                  <div class="sd-dash-text">
-                    <div class="sd-dash-title">筆待處理課表回報</div>
-                    <div class="sd-dash-sub">
-                      處理中 {{ sdSummary.acknowledged }} · 已解決 {{ sdSummary.resolved }}
-                    </div>
-                  </div>
-                  <button class="btn-o btn-sm sd-dash-cta" type="button" @click.stop="goToScheduleDiscrepancy">前往處理</button>
-                </div>
-                <div v-else class="sd-dash-empty">
-                  <span class="material-symbols-outlined" aria-hidden="true">task_alt</span>
-                  <div>
-                    <div class="sd-dash-title">目前課表無回報</div>
-                    <div class="sd-dash-sub">老師沒有回報任何出入，一切正常</div>
-                  </div>
-                </div>
-              </template>
-            </section>
-
-            <AtCard id="director-task-tracker-sec">
-              <template #header>
-                <div class="dash-card-head-title">
-                  <span class="material-symbols-outlined wp__hi">checklist</span>
-                  <h3>流程追蹤</h3>
-                </div>
-              </template>
-              <template v-if="directorTodoCards.length" #actions>
-                <span class="wp__badge wp__badge--warn">{{ directorTodoCards.length }}</span>
-              </template>
-              <AtSkeleton v-if="adoptionTaskLoading" :rows="3" />
-              <AtEmpty v-else-if="!directorTodoCards.length" icon="checklist" title="目前沒有待追蹤項目" />
-              <div v-else class="wp-list-scroll-desktop">
-                <button
-                  v-for="task in directorTodoCards"
-                  :key="task.id"
-                  type="button"
-                  class="todo-row"
-                  :class="{
-                    'todo-row--breached': task.slaLevel === 'breached',
-                    'todo-row--warning': task.slaLevel === 'warning',
-                  }"
-                  @click="handleDirectorTodoClick(task)"
-                >
-                  <span class="todo-row__title">{{ task.title }}</span>
-                  <span class="todo-row__meta">{{ task.description }}</span>
-                </button>
-              </div>
-            </AtCard>
-
-            <!-- Notifications -->
-            <AtCard>
-              <template #header>
-                <div class="dash-card-head-title">
-                  <span class="material-symbols-outlined wp__hi">notifications</span>
-                  <h3>通知摘要</h3>
-                </div>
-              </template>
-              <template v-if="unreadNotificationCount" #actions>
-                <span class="wp__badge">{{ unreadNotificationCount }}</span>
-              </template>
-              <AtEmpty v-if="!notificationSummary.length" icon="notifications" title="目前無未讀通知" />
-              <div v-else class="wp-list-scroll-desktop">
-                <div v-for="n in notificationSummary" :key="n.id" class="notif-row">
-                  <span>{{ n.title }}</span>
-                  <span class="badge-blue">{{ n.typeLabel }}</span>
-                </div>
-              </div>
-              <footer class="dash-card-foot">
-                <button class="btn-o btn-sm" @click="goToNotifications">前往通知中心</button>
-              </footer>
-            </AtCard>
-
-            <!-- 完整檢視才顯示：近期紀錄與進階統計，跟上方「今日必辦」性質的卡片明確分開 -->
-            <div v-if="dashboardViewMode === 'full'" class="section-label-row section-label-row--sub">
-              <span class="section-label">本週趨勢與紀錄</span>
-              <span class="section-sublabel">近期操作履歷、代課動態與評量填寫統計</span>
-            </div>
-
-            <!-- PRD 9c058f19：近 7 天代課記錄 -->
-            <RecentSubstitutesCard
-              v-if="dashboardViewMode === 'full'"
-              :branch-id="branchId"
-              :fetch-recent="fetchRecentSubstitutes"
-            />
-
-            <AtCard v-if="dashboardViewMode === 'full'" id="director-activity-log-sec">
-              <template #header>
-                <div class="dash-card-head-title">
-                  <span class="material-symbols-outlined wp__hi">history</span>
-                  <h3>近期操作履歷</h3>
-                </div>
-              </template>
-              <AtSkeleton v-if="adoptionActivityLoading" :rows="3" />
-              <AtEmpty v-else-if="!adoptionActivityRows.length" icon="history" title="尚無近期履歷" />
-              <div v-else class="wp-list-scroll-desktop">
-                <div v-for="(log, idx) in adoptionActivityRows.slice(0, 20)" :key="`adoption-log-${idx}`" class="notif-row">
-                  <span>{{ log.actor }}：{{ log.action }}</span>
-                  <span class="badge-blue">{{ String(log.at || '').slice(5, 16).replace('T', ' ') }}</span>
-                </div>
-              </div>
-            </AtCard>
-
-            <!-- Teacher learning fill-rate -->
-            <AtCard v-if="dashboardViewMode === 'full'" id="teacher-fill-rates-sec">
-              <template #header>
-                <div class="dash-card-head-title">
-                  <span class="material-symbols-outlined wp__hi">insights</span>
-                  <h3>老師評量填寫率</h3>
-                </div>
-              </template>
-              <p class="wp__hint">
-                <template v-if="teacherFillRatesRangeLabel">{{ teacherFillRatesRangeLabel }}　</template>
-                已到班／遲到堂次之評量進度有填計入（近 {{ teacherFillRatesDays }} 天）
-              </p>
-              <AtSkeleton v-if="teacherFillRatesLoading" :rows="3" />
-              <AtEmpty v-else-if="!teacherFillRatesRows.length" icon="insights" title="此區間內無已到班堂次" />
-              <div v-else class="wp-list-scroll-desktop">
-                <div v-for="row in teacherFillRatesRows" :key="row.teacher_id" class="notif-row">
-                  <span>{{ row.teacher_name }}　{{ row.learning_records_filled }}／{{ row.sessions_attended }} 堂</span>
-                  <span class="badge-blue">{{ row.fill_rate_pct }}%</span>
-                </div>
-              </div>
-            </AtCard>
-          </div>
-        </div>
-
-        <!-- ===== Layer 3: KPI Panel (collapsed by default) ===== -->
-        <details v-if="dashboardViewMode === 'full'" class="kpi" data-guide="director-teacher-stats">
-          <summary class="kpi__sum">
-            <span class="material-symbols-outlined kpi__sum-icon">analytics</span>
-            <span>經營指標 — 本月科目數統計</span>
-            <span class="kpi__sum-hint">{{ monthlySubjectCountWith }} 科目數</span>
-            <span class="kpi__chev">&#x25BE;</span>
-          </summary>
-          <div class="kpi__body">
-            <div class="kpi-totals kpi-totals--adoption">
-              <div class="kpi-t">
-                <div class="kpi-t__label">老師開啟率（7天）</div>
-                <div class="kpi-t__val">{{ adoptionWeeklyMetricsLoading ? '…' : `${adoptionWeeklyMetrics?.teacher_open_rate_pct ?? 0}%` }}</div>
-                <div class="kpi-t__delta" v-if="!adoptionWeeklyMetricsLoading">{{ openRateDeltaLabel('teacher') }}</div>
-              </div>
-              <div class="kpi-t">
-                <div class="kpi-t__label">主任開啟率（7天）</div>
-                <div class="kpi-t__val">{{ adoptionWeeklyMetricsLoading ? '…' : `${adoptionWeeklyMetrics?.director_open_rate_pct ?? 0}%` }}</div>
-                <div class="kpi-t__delta" v-if="!adoptionWeeklyMetricsLoading">{{ openRateDeltaLabel('director') }}</div>
-              </div>
-              <div class="kpi-t">
-                <div class="kpi-t__label">系統內完成率（7天）</div>
-                <div class="kpi-t__val">{{ adoptionWeeklyMetricsLoading ? '…' : `${adoptionWeeklyMetrics?.system_completion_rate_pct ?? 0}%` }}</div>
-              </div>
-            </div>
-            <div class="kpi-totals">
-              <div class="kpi-t">
-                <div class="kpi-t__label">含輔導科目數</div>
-                <div class="kpi-t__val">{{ monthlySubjectCountWith }}</div>
-              </div>
-              <div class="kpi-t">
-                <div class="kpi-t__label">不含輔導</div>
-                <div class="kpi-t__val">{{ monthlySubjectCountWithout }}</div>
-              </div>
-            </div>
-
-            <table v-if="teacherStats.length" class="kpi-table">
-              <thead>
-                <tr><th>老師</th><th>含輔導</th><th>不含輔導</th><th>時數</th></tr>
-              </thead>
-              <tbody>
-                <tr v-for="t in teacherStats" :key="t.id">
-                  <td>{{ t.name }}</td>
-                  <td><strong>{{ t.subjectCountWith }}</strong></td>
-                  <td>{{ t.subjectCountWithout }}</td>
-                  <td>{{ t.totalHours }}h</td>
-                </tr>
-              </tbody>
-            </table>
-
-            <div v-if="levelBreakdownTotals.length" class="level-chips">
-              <span v-for="lb in levelBreakdownTotals" :key="'lv-'+lb.level" class="level-chip">
-                {{ lb.levelLabel }}：{{ lb.totalHours }}h / {{ lb.unitsWith }} 科目數
-              </span>
-            </div>
-
-            <div class="kpi__link">
-              <button class="btn-o btn-sm" @click="emit('navigate', { target: 'subject-units' })">
-                前往科目數統計頁面
-              </button>
-            </div>
-          </div>
-        </details>
-        </template>
-      </div>
-    </template>
   </div>
-
-  <!-- ===== 匯入格式說明 Modal（匯入入口已移至學生管理） ===== -->
 </template>
 
 <script setup>
@@ -664,10 +241,6 @@ import { getBranchName } from '../lib/useBranches';
 import { getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchDiscrepancySummary } from '../lib/scheduleDiscrepanciesApi';
 import RecentSubstitutesCard from '../components/substitute/RecentSubstitutesCard.vue';
-import AtCard from '../components/design-system/AtCard.vue';
-import AtEmpty from '../components/design-system/AtEmpty.vue';
-import AtSkeleton from '../components/design-system/AtSkeleton.vue';
-import AtMetric from '../components/design-system/AtMetric.vue';
 import { recentSubstitutes as fetchRecentSubstitutes } from '../lib/substituteApi.js';
 import { sortTodoCards, markTodoAcknowledged, isTodoAcknowledged } from '../lib/adoptionTodo';
 import {
@@ -675,8 +248,6 @@ import {
   trackTrustEventOnce,
   markTrustSeen,
   markTrustProvidedPathUsed,
-  hasSeenAnyTrustDecision,
-  usedTrustProvidedPath,
 } from '../lib/adoptionTelemetry';
 import {
   listExceptionWorkflows,
@@ -706,9 +277,6 @@ const workflowFocusError = ref('');
 const todaySchedules = ref([]);
 const pendingEvaluations = ref([]);
 const operationsTrust = ref(null);
-const teacherStats = ref([]);
-const subjectTotals = ref({ subjectCountWith: 0, subjectCountWithout: 0 });
-const levelBreakdownTotals = ref([]);
 const lowBalanceStudents = ref([]);
 const unreadNotificationCount = ref(0);
 const notificationSummary = ref([]);
@@ -759,10 +327,6 @@ const workflowDecisionDescription = computed(() => {
 const sdSummary = ref({ pending: 0, acknowledged: 0, resolved: 0, withdrawn: 0 });
 const sdLoading = ref(true);
 
-const teacherFillRatesDays = 14;
-const teacherFillRatesRows = ref([]);
-const teacherFillRatesMeta = ref({ start: '', end: '', days: teacherFillRatesDays });
-const teacherFillRatesLoading = ref(false);
 const adoptionTaskRows = ref([]);
 const adoptionTaskLoading = ref(false);
 const adoptionActivityRows = ref([]);
@@ -783,13 +347,6 @@ function setDashboardViewMode(mode) {
   dashboardViewMode.value = mode === 'full' ? 'full' : 'focus';
   if (dashboardViewMode.value === 'full' && !secondaryLoaded.value) loadSecondaryData();
 }
-
-const teacherFillRatesRangeLabel = computed(() => {
-  const s = teacherFillRatesMeta.value?.start || '';
-  const e = teacherFillRatesMeta.value?.end || '';
-  if (!s || !e) return '';
-  return `${s}～${e}`;
-});
 
 async function loadScheduleDiscrepancySummary() {
   if (props.branchId == null) return;
@@ -903,12 +460,6 @@ const attendedCount = computed(() =>
   todaySchedules.value.filter(s => s.status === 'attended').length
 );
 
-const monthlySubjectCountWith = computed(() =>
-  Number(subjectTotals.value.subjectCountWith || 0).toFixed(2)
-);
-const monthlySubjectCountWithout = computed(() =>
-  Number(subjectTotals.value.subjectCountWithout || 0).toFixed(2)
-);
 const exceptionWorkflowCount = computed(() => exceptionWorkflows.value.length);
 
 const displayPaymentAlerts = computed(() =>
@@ -1081,14 +632,6 @@ function handleTrustDecision(item) {
   }
   navigateTrustTarget(item?.target);
 }
-
-const openRateDeltaLabel = (role) => {
-  const delta = role === 'teacher'
-    ? Number(adoptionWeeklyMetrics.value?.comparison?.delta_teacher_open_rate_pct || 0)
-    : Number(adoptionWeeklyMetrics.value?.comparison?.delta_director_open_rate_pct || 0);
-  const sign = delta > 0 ? '+' : '';
-  return `較上週 ${sign}${delta.toFixed(1)}%`;
-};
 
 /** 上方快捷列用：區分「真的未繳」與「已繳但低堂數／月結」避免誤以為催繳失敗 */
 const paymentActionLaneLabel = computed(() => {
@@ -1490,35 +1033,6 @@ const loadSecondaryData = async () => {
     loadAdoptionWeeklyMetrics(token, baseUrl),
   ]);
 
-  teacherFillRatesLoading.value = true;
-  try {
-    const fillParams = new URLSearchParams({
-      branch_id: String(props.branchId),
-      days: String(teacherFillRatesDays),
-    });
-    const fillRes = await fetch(`${baseUrl}/v1/reports/teacher-learning-fill-rates?${fillParams}`, {
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-    });
-    if (fillRes.ok) {
-      const fj = await fillRes.json().catch(() => ({}));
-      teacherFillRatesMeta.value = {
-        start: fj.start || '', end: fj.end || '', days: Number(fj.days || teacherFillRatesDays),
-      };
-      teacherFillRatesRows.value = (Array.isArray(fj.teachers) ? fj.teachers : [])
-        .slice()
-        .sort((a, b) => Number(a.fill_rate_pct || 0) - Number(b.fill_rate_pct || 0)
-          || Number(b.sessions_attended || 0) - Number(a.sessions_attended || 0));
-    } else {
-      teacherFillRatesRows.value = [];
-    }
-  } catch (err) {
-    console.error('Failed to load teacher fill rates:', err);
-    teacherFillRatesRows.value = [];
-  } finally {
-    teacherFillRatesLoading.value = false;
-  }
-
-  await calculateTeacherStats();
   secondaryLoaded.value = true;
   secondaryLoading.value = false;
 };
@@ -1586,48 +1100,6 @@ const getSubjectLabel = (val) => {
     Science: '理化', Physics: '物理', Chemistry: '化學', Biology: '生物', Social: '社會',
   };
   return map[val] || getSubjectText(val);
-};
-
-const calculateTeacherStats = async () => {
-  try {
-    const now = new Date();
-    const startDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    const endDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-    const token = getToken();
-    const baseUrl = getBaseUrl();
-    const params = new URLSearchParams({
-      start: startDate, end: endDate, branch_id: String(props.branchId), include_level: '1',
-    });
-    const res = await fetch(`${baseUrl}/v1/finance/subject-units?${params}`, {
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
-    });
-    if (!res.ok) {
-      teacherStats.value = [];
-      subjectTotals.value = { subjectCountWith: 0, subjectCountWithout: 0 };
-      return;
-    }
-    const json = await res.json();
-    subjectTotals.value = {
-      subjectCountWith: Number(json?.totals?.subject_count_with || 0),
-      subjectCountWithout: Number(json?.totals?.subject_count_without || 0),
-    };
-    teacherStats.value = (json.teachers || []).map(t => ({
-      id: t.teacher_id, name: t.teacher_name,
-      subjectCountWith: Number(t.subject_count_with || 0).toFixed(2),
-      subjectCountWithout: Number(t.subject_count_without || 0).toFixed(2),
-      totalHours: Number(t.total_hours || 0),
-    })).sort((a, b) => Number(b.subjectCountWith) - Number(a.subjectCountWith));
-    levelBreakdownTotals.value = (json.level_breakdown_totals || []).map(lb => ({
-      level: lb.level, levelLabel: lb.level_label,
-      totalHours: lb.total_hours, unitsWith: lb.subject_count_with,
-    }));
-  } catch (e) {
-    console.error('Failed to load teacher stats:', e);
-    teacherStats.value = [];
-    subjectTotals.value = { subjectCountWith: 0, subjectCountWithout: 0 };
-    levelBreakdownTotals.value = [];
-  }
 };
 
 const approveEvaluation = async (evalItem) => {

@@ -1185,7 +1185,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$ID\.$#'
 			identifier: property.notFound
-			count: 9
+			count: 6
 			path: app/Http/Controllers/ClassSessionController.php
 
 		-
@@ -1209,7 +1209,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 4
+			count: 1
 			path: app/Http/Controllers/ClassSessionController.php
 
 		-
@@ -3645,7 +3645,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\User\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 2
+			count: 3
 			path: app/Http/Controllers/ProfileController.php
 
 		-
@@ -3969,7 +3969,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$ID\.$#'
 			identifier: property.notFound
-			count: 45
+			count: 47
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
@@ -4083,7 +4083,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$student\.$#'
 			identifier: property.notFound
-			count: 1
+			count: 2
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
@@ -4101,7 +4101,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 18
+			count: 19
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
@@ -4149,7 +4149,13 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\LearningRecord\:\:whereIn\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 2
+			count: 3
+			path: app/Http/Controllers/StudentClassController.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\ScheduleAuditLog\:\:create\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
