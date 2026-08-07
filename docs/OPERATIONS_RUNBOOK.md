@@ -1290,10 +1290,11 @@ CalVer（`vYYYY.MM.DD`）與既有 dated CHANGELOG 1:1 對應、無需人工判�
 | 來源 | 內容 | 何時更新 |
 |---|---|---|
 | `backend/public/version.json` | 前端 build 時間戳（Vite `deploy.yml`）| **只在前端有重 build 時** |
+| `backend/public/deployment.json` | 實際啟用的 backend SHA、frontend build SHA、部署時間 | 每次 deploy／rollback |
 | Git tag `vYYYY.MM.DD[.N]` | 該次 notable merge（CHANGELOG 有變更）| CHANGELOG 變更合併進 main 時 |
 | GitHub Release | tag + CHANGELOG 該節全文 | 同上 |
 
-排查「線上是哪一版」：先看 `version.json` 時間戳對應到最接近、且早於它的 tag/Release；backend-only deploy 不更新 `version.json`，以 tag 時間為準。
+排查「線上是哪一版」：先看 `deployment.json.backend_sha` 確認 backend runtime，再看 `deployment.json.frontend_build_sha`／`version.json.build_sha` 確認前端 bundle；backend-only deploy 不更新 `version.json`，不得以 frontend hash 代替 backend identity。
 
 ### X4. 注意
 

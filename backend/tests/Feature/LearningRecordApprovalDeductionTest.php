@@ -744,12 +744,62 @@ class LearningRecordApprovalDeductionTest extends TestCase
             ->postJson('/api/v1/learning-records/batch-approve', [
                 'DirectorID' => 1,
                 'branch_id' => 1,
+                'ids' => [(int) $voided->id],
             ]);
-        $batchRes->assertOk();
+        $batchRes->assertStatus(422);
         $this->assertSame(0, (int) $batchRes->json('approved'), 'batch-approve must skip voided records');
 
         $voided->refresh();
         $this->assertSame('pending', $voided->Status, 'voided record status must remain unchanged');
+    }
+
+    public function test_batch_approve_changes_only_explicitly_selected_records(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-batch-explicit@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-batch-explicit@example.com');
+        $student = $this->createStudent(1, 'batch explicit student');
+        $course = $this->createStudentClassForTest($student->id, $teacherId, [
+            'sessions_purchased' => 4,
+            'remaining_sessions' => 4,
+            'sessions_used' => 0,
+            'first_class_date' => '2026-03-01',
+            'days_of_week' => [1],
+            'start_time' => '16:00',
+        ]);
+
+        $records = collect(range(1, 2))->map(function (int $day) use ($course, $teacherId) {
+            $session = ClassSession::create([
+                'StudentClassID' => $course->ID,
+                'SessionDate' => now()->subDays($day)->toDateString(),
+                'StartTime' => '16:00',
+                'EndTime' => '18:00',
+                'Status' => 'scheduled',
+                'Note' => '',
+            ]);
+
+            return LearningRecord::create([
+                'StudentClassID' => $course->ID,
+                'ClassSessionID' => $session->id,
+                'TeacherID' => $teacherId,
+                'Content' => 'pending batch record',
+                'Status' => 'pending',
+                'SessionDate' => $session->SessionDate,
+                'StartTime' => $session->StartTime,
+                'EndTime' => $session->EndTime,
+            ]);
+        });
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/learning-records/batch-approve', [
+            'DirectorID' => 1,
+            'branch_id' => 1,
+            'ids' => [(int) $records[0]->id],
+        ])->assertOk()->assertJsonPath('approved', 1);
+
+        $this->assertDatabaseHas('LearningRecord', ['id' => $records[0]->id, 'Status' => 'approved']);
+        $this->assertDatabaseHas('LearningRecord', ['id' => $records[1]->id, 'Status' => 'pending']);
     }
 
     public function test_batch_reject_sets_status_and_review_note(): void

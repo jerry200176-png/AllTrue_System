@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-07-18",
+  "updated_at": "2026-08-02",
   "capabilities": [
     {
       "id": "read_git_worktrees",
@@ -19,12 +19,12 @@
       "name": "gh PR/issue (repo,workflow)",
       "status": "Proven",
       "risk": "high",
-      "last_verified_at": "2026-07-18",
-      "review_after": "2026-08-01",
-      "verification_method": "gh pr merge #1299",
+      "last_verified_at": "2026-08-02",
+      "review_after": "2026-09-02",
+      "verification_method": "gh issue create + gh pr create/ready/checks",
       "environment": "github",
       "verifier": "cursor-agent",
-      "evidence": "PR #1298/#1299"
+      "evidence": "Issue #1618; PR #1619/#1620"
     },
     {
       "id": "push_feature_branch",
@@ -43,24 +43,24 @@
       "name": "Merge PR via gh",
       "status": "Proven",
       "risk": "high",
-      "last_verified_at": "2026-07-18",
-      "review_after": "2026-08-01",
-      "verification_method": "gh pr merge after CI green",
+      "last_verified_at": "2026-08-02",
+      "review_after": "2026-09-02",
+      "verification_method": "gh pr merge after required CI green",
       "environment": "github",
       "verifier": "cursor-agent",
-      "evidence": "PR #1299"
+      "evidence": "PR #1619 merge SHA 19ebf7cd"
     },
     {
       "id": "alltrue_deploy_pi",
       "name": "AllTrue Deploy to Pi",
       "status": "Proven",
       "risk": "high",
-      "last_verified_at": "2026-07-18",
-      "review_after": "2026-08-01",
-      "verification_method": "Actions Deploy to Pi success + version.json",
+      "last_verified_at": "2026-08-02",
+      "review_after": "2026-09-02",
+      "verification_method": "Actions Deploy to Pi success + production health/version.json",
       "environment": "prod-pi",
       "verifier": "cursor-agent",
-      "evidence": "run 29630243852 hash 662960e5"
+      "evidence": "run 30725926233; version 19ebf7cd; health 2026-08-02"
     },
     {
       "id": "prod_read_version_json",
@@ -80,7 +80,7 @@
       "status": "Proven",
       "risk": "medium",
       "last_verified_at": "2026-07-18",
-      "review_after": "2026-08-01",
+      "review_after": "2026-09-02",
       "verification_method": "GET /api/v1/bugs/{id}",
       "environment": "prod",
       "verifier": "cursor-agent",
@@ -89,14 +89,14 @@
     {
       "id": "inapp_bug_post",
       "name": "In-app bug POST comment/status",
-      "status": "Proven",
+      "status": "Partial",
       "risk": "high",
       "last_verified_at": "2026-07-18",
-      "review_after": "2026-08-01",
+      "review_after": "2026-09-02",
       "verification_method": "POST comments+status with token",
       "environment": "prod",
       "verifier": "cursor-agent",
-      "evidence": "#201/#202/#203"
+      "evidence": "Not re-verified in this session; requires a deliberate authenticated write verification before restoring Proven"
     },
     {
       "id": "phpunit_isolated",
@@ -125,14 +125,14 @@
     {
       "id": "sunrise_verify_production",
       "name": "sunrise verify-production",
-      "status": "Proven",
+      "status": "Partial",
       "risk": "high",
       "last_verified_at": "2026-07-18",
-      "review_after": "2026-08-01",
+      "review_after": "2026-09-02",
       "verification_method": "verify-production.yml SHA poll",
       "environment": "vercel",
       "verifier": "cursor-agent",
-      "evidence": "workflow docs"
+      "evidence": "Not re-verified in this session; requires a verify-production.yml SHA poll before restoring Proven"
     },
     {
       "id": "sunrise_autonomous_loop",

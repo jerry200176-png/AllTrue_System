@@ -1381,6 +1381,8 @@ class LearningRecordController extends Controller
     public function batchApprove(Request $request)
     {
         $data = $request->validate([
+            'ids' => 'required|array|min:1',
+            'ids.*' => 'integer|distinct',
             'DirectorID' => 'required|integer',
             'branch_id' => 'nullable|integer',
             'teacher_id' => 'nullable|integer',
@@ -1406,6 +1408,7 @@ class LearningRecordController extends Controller
         })->pluck('ID');
 
         $query = LearningRecord::active()
+            ->whereIn('id', $data['ids'])
             ->whereIn('StudentClassID', $classIds)
             ->whereIn('Status', ['pending', 'changes_requested'])
             ->excludeLeaveSessionPendingReview();
@@ -1431,6 +1434,19 @@ class LearningRecordController extends Controller
         }
 
         $records = $query->get();
+        $requestedIds = collect($data['ids'])->map(fn ($id) => (int) $id)->values();
+        $eligibleIds = $records->pluck('id')->map(fn ($id) => (int) $id)->values();
+
+        // Batch mutations must fail closed. The client explicitly selected these
+        // records; never silently broaden the query or partially approve them.
+        if ($requestedIds->count() !== $eligibleIds->count() || $requestedIds->diff($eligibleIds)->isNotEmpty()) {
+            return response()->json([
+                'message' => '部分勾選資料已不存在、無權限或不可核准，未執行任何變更。請重新整理後再試。',
+                'requested' => $requestedIds->count(),
+                'eligible' => $eligibleIds->count(),
+                'approved' => 0,
+            ], 422);
+        }
         $directorId = (int) $data['DirectorID'];
         $approved = 0;
 

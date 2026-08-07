@@ -12,6 +12,7 @@ use App\Services\Scheduling\DeductionBasis;
 use App\Services\Scheduling\LessonEntitlementCoverageCalculator;
 use App\Services\TeacherScopeService;
 use App\Support\MysqlCharsetRejection;
+use App\Services\StudentIdentityService;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
@@ -39,6 +40,14 @@ class EnrollmentService
         $daysOfWeekRaw = $data['days_of_week'] ?? [];
         $sessionPlanRaw = $data['session_plan'] ?? null;
         $hasExplicitSessionPlan = !empty($sessionPlanRaw) && is_array($sessionPlanRaw);
+        $isManualOccurrence = (string) ($data['scheduling_policy'] ?? 'auto_recurrence') === 'manual_occurrence';
+
+        if ($isManualOccurrence && $paymentType !== 'session') {
+            return response()->json([
+                'message' => 'Manual occurrence scheduling requires an independent session course.',
+                'errors' => ['scheduling_policy' => ['Only session-based independent courses support manual occurrences.']],
+            ], 422);
+        }
 
         if ($paymentType === 'monthly' && !empty($endDateRaw)) {
             $courseStart = $data['course_start_date'] ?? Carbon::today()->toDateString();
@@ -128,7 +137,11 @@ class EnrollmentService
             : $this->normalizeTime((string) ($data['start_time'] ?? '16:00'));
 
         $sessionRows = [];
-        if (!$isMonthlyRecurring && !empty($sessionPlanRaw) && is_array($sessionPlanRaw)) {
+        if ($isManualOccurrence) {
+            // Manual courses start with no projected/recurring rows. Each future
+            // occurrence is materialized later by ManualSessionBookingService.
+            $sessionRows = [];
+        } elseif (!$isMonthlyRecurring && !empty($sessionPlanRaw) && is_array($sessionPlanRaw)) {
             $sessionRows = $this->buildRowsFromSessionPlan(
                 $sessionPlanRaw,
                 $dayTimeSlotGroups,
@@ -158,7 +171,7 @@ class EnrollmentService
             );
         }
 
-        if (count($sessionRows) <= 0) {
+        if (!$isManualOccurrence && count($sessionRows) <= 0) {
             return response()->json([
                 'message' => '請至少提供 1 筆已上課或未來預排日期',
                 'errors' => [
@@ -173,7 +186,7 @@ class EnrollmentService
         } elseif (!empty($data['days_of_week'])) {
             $allowedWeekdays = $this->normalizeWeekdayArray((array) $data['days_of_week']);
         }
-        if (!empty($allowedWeekdays) && !($paymentType === 'monthly' && $hasExplicitSessionPlan)) {
+        if (!$isManualOccurrence && !empty($allowedWeekdays) && !($paymentType === 'monthly' && $hasExplicitSessionPlan)) {
             $allowedSet = array_fill_keys($allowedWeekdays, true);
             $weekCn = ['', '一', '二', '三', '四', '五', '六', '日'];
             $today = Carbon::today()->toDateString();
@@ -197,7 +210,9 @@ class EnrollmentService
         }
 
         $isSessionMode = ($data['payment_type'] ?? 'session') === 'session';
-        $plannedSessions = $this->resolvePlannedSessions($data, count($sessionRows));
+        $plannedSessions = $isManualOccurrence
+            ? (int) ($data['total_classes'] ?? 0)
+            : $this->resolvePlannedSessions($data, count($sessionRows));
         if ($plannedSessions <= 0) {
             return response()->json([
                 'message' => $isSessionMode ? '堂數制必須提供購買總堂數' : '月結課程必須提供本月預排堂數',
@@ -217,7 +232,7 @@ class EnrollmentService
         // equality rule byte-identical.
         $actualDurationOptIn = $this->wantsActualDuration($data);
 
-        if (!$actualDurationOptIn && $plannedSessions !== count($sessionRows)) {
+        if (!$isManualOccurrence && !$actualDurationOptIn && $plannedSessions !== count($sessionRows)) {
             $field = $isSessionMode ? 'total_classes' : 'monthly_sessions';
             $message = $isSessionMode
                 ? '堂數（session_plan 或日期清單總筆數）需與購買總堂數一致'
@@ -246,7 +261,7 @@ class EnrollmentService
         foreach ($sessionRows as $row) {
             $rowKeys[] = $row['date'] . '|' . $row['start_time'];
         }
-        if (count($rowKeys) !== count(array_unique($rowKeys))) {
+        if (!$isManualOccurrence && count($rowKeys) !== count(array_unique($rowKeys))) {
             return response()->json([
                 'message' => '排課清單含有重複的日期與開始時間',
                 'errors' => [
@@ -265,7 +280,7 @@ class EnrollmentService
             }
         }
         $overlapDates = array_values(array_intersect(array_keys($confirmedDateSet), array_keys($futureDateSet)));
-        if (!empty($overlapDates)) {
+        if (!$isManualOccurrence && !empty($overlapDates)) {
             return response()->json([
                 'message' => '已上課與未來預排不可使用同一日曆日（請拆成不同開始時間或調整種類）',
                 'errors' => [
@@ -389,6 +404,8 @@ class EnrollmentService
         }
 
         $studentId = !empty($data['student_id']) ? (int) $data['student_id'] : 0;
+        $identityGroupId = !empty($data['identity_group_id']) ? (int) $data['identity_group_id'] : 0;
+        $identitySourceStudentId = $studentId;
         $studentCampusId = 0;
         if ($studentId > 0) {
             $studentCampusId = (int) (Student::where('id', $studentId)->value('CampusID') ?? 0);
@@ -397,9 +414,11 @@ class EnrollmentService
             }
         }
 
-        $targetCampusId = $studentCampusId > 0
+        $targetCampusId = $identityGroupId > 0
+            ? (int) ($data['branch_id'] ?? 0)
+            : ($studentCampusId > 0
             ? (int) ($data['branch_id'] ?? $studentCampusId)
-            : (int) ($data['branch_id'] ?? ($campusIds[0] ?? 0));
+            : (int) ($data['branch_id'] ?? ($campusIds[0] ?? 0)));
 
         if ($targetCampusId <= 0) {
             return response()->json([
@@ -410,8 +429,24 @@ class EnrollmentService
             ], 422);
         }
 
-        if ($studentCampusId > 0 && $targetCampusId !== $studentCampusId) {
+        if ($studentCampusId > 0 && $targetCampusId !== $studentCampusId && $identityGroupId <= 0) {
             return response()->json(['message' => 'branch_id 與學生所屬分校不一致'], 422);
+        }
+
+        if ($identityGroupId > 0) {
+            if (!in_array($role, ['director', 'super_admin'], true)) {
+                return response()->json(['message' => '只有主任或 super_admin 可使用跨分校身份報名'], 403);
+            }
+            $group = app(StudentIdentityService::class)->groupForStudent($identitySourceStudentId);
+            if (!$group || (int) $group->id !== $identityGroupId) {
+                return response()->json(['message' => 'identity_group_id 與來源學生不一致'], 422);
+            }
+            $member = app(StudentIdentityService::class)->activeMembers($identityGroupId)
+                ->firstWhere('campus_id', $targetCampusId);
+            if ($member) {
+                $studentId = (int) $member->student_id;
+                $studentCampusId = $targetCampusId;
+            }
         }
 
         if (!empty($campusIds) && !in_array($targetCampusId, $campusIds, true)) {
@@ -440,6 +475,23 @@ class EnrollmentService
         $globalTeacherId = (int) $data['teacher_id'];
         $allowMultiTeacher = !empty($data['allow_multi_teacher']);
         $subjectGroups = $this->groupSessionRowsBySubjectAndTeacher($sessionRows, $globalTeacherId);
+        if ($isManualOccurrence && empty($subjectGroups)) {
+            $manualSubject = trim((string) ($data['subject'] ?? 'Math')) ?: 'Math';
+            $manualSubjectId = FrontendSubjectIdResolver::resolve($manualSubject);
+            if ($manualSubjectId === null) {
+                return response()->json([
+                    'message' => 'Subject not found for manual occurrence course.',
+                    'errors' => ['subject' => ['Please select a valid subject.']],
+                ], 422);
+            }
+            $manualGroupKey = $manualSubject . '::' . $globalTeacherId;
+            $subjectGroups[$manualGroupKey] = [];
+            $subjectMeta[$manualGroupKey] = [
+                'id' => $manualSubjectId,
+                'name' => FrontendSubjectIdResolver::resolveName($manualSubjectId, $manualSubject),
+                'subject' => $manualSubject,
+            ];
+        }
         // subjectMeta keyed by group key (subject::teacherId); subject extracted for resolver
         $subjectMeta = [];
         foreach (array_keys($subjectGroups) as $groupKey) {
@@ -582,6 +634,8 @@ class EnrollmentService
             $targetCampusId,
             $startTime,
             $isSessionMode,
+            $isManualOccurrence,
+            $plannedSessions,
             $studentId,
             $scopeWarnings,
             $globalDuration,
@@ -590,11 +644,26 @@ class EnrollmentService
             $subjectMeta,
             $globalTeacherId,
             $allowMultiTeacher,
-            $endDateOverride
+            $endDateOverride,
+            $identityGroupId,
+            $identitySourceStudentId,
+            $role,
+            $campusIds
         ) {
             $student = $studentId > 0
                 ? Student::find($studentId)
                 : $this->createStudentInline((array) ($data['student'] ?? []), $targetCampusId);
+
+            if ($identityGroupId > 0 && $student && (int) $student->CampusID !== $targetCampusId) {
+                $student = app(StudentIdentityService::class)->createBranchMember(
+                    $identityGroupId,
+                    $identitySourceStudentId,
+                    $targetCampusId,
+                    (int) ($request->attributes->get('auth_user')->id ?? 0) ?: null,
+                    (string) $role,
+                    (array) $campusIds
+                );
+            }
 
             if (!$student) {
                 return response()->json(['message' => '無法建立學生'], 422);
@@ -652,6 +721,9 @@ class EnrollmentService
                     : $startTime;
 
                 $allDates = array_values(array_unique(array_column($rowsForSubject, 'date')));
+                if ($isManualOccurrence) {
+                    $allDates = [Carbon::parse($data['course_start_date'] ?? Carbon::today())->toDateString()];
+                }
                 sort($allDates);
 
                 if (!empty($dayTimeSlotMapForGroup)) {
@@ -670,9 +742,9 @@ class EnrollmentService
                         }
                     }
                 }
-                $primaryWeekday = !empty($weekdays)
+                $primaryWeekday = $isManualOccurrence ? null : (!empty($weekdays)
                     ? (int) $weekdays[0]
-                    : (int) Carbon::parse($allDates[0])->dayOfWeekIso;
+                    : (int) Carbon::parse($allDates[0])->dayOfWeekIso);
 
                 $weekFields = [];
                 for ($idx = 0; $idx < 6; $idx++) {
@@ -692,24 +764,31 @@ class EnrollmentService
                 // occurrences happen to be scheduled — those are now two different
                 // numbers. Every other course keeps deriving it from the occurrence
                 // count exactly as before.
-                $sessionCount = $isSessionMode
+                $sessionCount = $isManualOccurrence
+                    ? $plannedSessions
+                    : ($isSessionMode
                     ? ($this->wantsActualDuration($data)
                         ? (int) $this->resolvePlannedSessions($data, $groupSessionCount)
                         : $groupSessionCount)
-                    : 0;
+                    : 0);
                 $monthlySessions = !$isSessionMode ? $groupSessionCount : null;
                 $chargeUnits = $isSessionMode ? $sessionCount : max(1, $monthlySessions ?: $groupSessionCount);
 
                 $totalHours = 0;
                 $charge = 0;
                 if ($rateUnit === 'hour') {
-                    foreach ($rowsForSubject as $row) {
-                        $dur = (int) $row['duration_minutes'];
-                        $totalHours += $dur / 60.0;
-                        $charge += $price * ($dur / 60.0);
+                    if ($isManualOccurrence) {
+                        $totalHours = (int) round(($plannedSessions * $groupGlobalDur) / 60);
+                        $charge = (int) round($price * $totalHours);
+                    } else {
+                        foreach ($rowsForSubject as $row) {
+                            $dur = (int) $row['duration_minutes'];
+                            $totalHours += $dur / 60.0;
+                            $charge += $price * ($dur / 60.0);
+                        }
+                        $totalHours = (int) round($totalHours);
+                        $charge = (int) round($charge);
                     }
-                    $totalHours = (int) round($totalHours);
-                    $charge = (int) round($charge);
                 } else {
                     $sumMinutes = 0;
                     foreach ($rowsForSubject as $row) {
@@ -732,7 +811,7 @@ class EnrollmentService
                     'Paid' => 0,
                     'Period' => 4,
                     'ScheduleMode' => $isSessionMode ? 'count' : 'date',
-                    'SessionCount' => $sessionCount,
+                    'SessionCount' => $isManualOccurrence ? $plannedSessions : $sessionCount,
                     'RemainingSessions' => $isSessionMode ? $sessionCount : 0,
                     'UsedSessions' => 0,
                     'settlement_day' => !$isSessionMode ? (int) ($data['settlement_day'] ?? 0) : null,
@@ -750,7 +829,8 @@ class EnrollmentService
                         : DeductionBasis::FIXED_SESSION,
                     'TotalHours' => $totalHours,
                     'StartDate' => $allDates[0],
-                    'EndDate' => $endDateOverride ?? $allDates[count($allDates) - 1],
+                    'EndDate' => $isManualOccurrence ? ($endDateOverride ?? ($data['end_date'] ?? null)) : ($endDateOverride ?? $allDates[count($allDates) - 1]),
+                    'scheduling_policy' => $isManualOccurrence ? 'manual_occurrence' : 'auto_recurrence',
                     'week' => $primaryWeekday,
                     'time' => $startTimeForGroup,
                     'Memo' => $data['memo'] ?? null,

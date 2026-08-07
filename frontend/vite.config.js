@@ -19,6 +19,14 @@ const gitHash = (() => {
     return 'unknown';
   }
 })();
+const gitFullHash = (() => {
+  try {
+    return execSync('git rev-parse HEAD').toString().trim();
+  } catch {
+    return 'unknown';
+  }
+})();
+const builtAt = new Date().toISOString();
 
 export default defineConfig({
   base: './',
@@ -40,7 +48,12 @@ export default defineConfig({
         this.emitFile({
           type: 'asset',
           fileName: 'version.json',
-          source: JSON.stringify({ t: buildDate, hash: gitHash }),
+          source: JSON.stringify({
+            t: buildDate,
+            hash: gitHash,
+            build_sha: gitFullHash,
+            built_at: builtAt,
+          }),
         });
       },
     },

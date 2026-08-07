@@ -16,14 +16,15 @@ need_cmd git
 REMOTE_MAIN="$(git ls-remote "https://github.com/${REPO}.git" refs/heads/main | awk '{print $1}')"
 HEALTH_RAW="$(curl -sk --max-time 20 "${PROD_URL}/api/v1/health" || true)"
 VERSION_RAW="$(curl -sk --max-time 20 "${PROD_URL}/version.json" || true)"
+DEPLOYMENT_RAW="$(curl -sk --max-time 20 "${PROD_URL}/deployment.json" || true)"
 HEALTH_CODE="$(curl -sk -o /dev/null -w '%{http_code}' --max-time 20 "${PROD_URL}/api/v1/health" || echo 000)"
 
 DEPLOY_JSON="$(gh run list -R "$REPO" --workflow=deploy.yml --limit 1 --json databaseId,conclusion,status,headSha,createdAt,url,displayTitle 2>/dev/null || echo '[]')"
 PI_HEALTH_JSON="$(gh run list -R "$REPO" --workflow=pi-health.yml --limit 1 --json databaseId,conclusion,status,createdAt,url,displayTitle 2>/dev/null || echo '[]')"
 
-python3 - "$REMOTE_MAIN" "$HEALTH_RAW" "$VERSION_RAW" "$HEALTH_CODE" "$DEPLOY_JSON" "$PI_HEALTH_JSON" "$PROD_URL" "$REPO" <<'PY'
+python3 - "$REMOTE_MAIN" "$HEALTH_RAW" "$VERSION_RAW" "$DEPLOYMENT_RAW" "$HEALTH_CODE" "$DEPLOY_JSON" "$PI_HEALTH_JSON" "$PROD_URL" "$REPO" <<'PY'
 import json,sys,datetime
-remote_main, health_raw, version_raw, health_code, deploy_json, pi_json, prod_url, repo = sys.argv[1:9]
+remote_main, health_raw, version_raw, deployment_raw, health_code, deploy_json, pi_json, prod_url, repo = sys.argv[1:10]
 
 def parse(raw, default=None):
     try:
@@ -33,11 +34,15 @@ def parse(raw, default=None):
 
 health = parse(health_raw, {})
 version = parse(version_raw, {})
+deployment = parse(deployment_raw, {})
 deploy = (parse(deploy_json, []) or [None])[0]
 pi = (parse(pi_json, []) or [None])[0]
 
 frontend_hash = (version or {}).get('hash')
 frontend_time = (version or {}).get('t')
+frontend_build_sha = (version or {}).get('build_sha') or (deployment or {}).get('frontend_build_sha')
+deployment_backend_sha = (deployment or {}).get('backend_sha')
+deployment_deployed_at = (deployment or {}).get('deployed_at')
 health_status = (health or {}).get('status')
 health_ok = health_code == '200' and health_status == 'ok'
 
@@ -53,10 +58,14 @@ if not remote_main:
     red.append('remote_main_unknown')
 if not deploy_sha:
     red.append('deployed_backend_sha_unknown')
+if not deployment_backend_sha:
+    red.append('deployment_manifest_unknown')
 if deploy_conclusion != 'success':
     red.append('last_deploy_not_success')
 if remote_main and deploy_sha and remote_main != deploy_sha:
     red.append('remote_main_ne_last_deploy_sha')
+if deploy_sha and deployment_backend_sha and deploy_sha != deployment_backend_sha:
+    red.append('manifest_ne_last_deploy_sha')
 if not frontend_hash:
     red.append('frontend_asset_sha_unknown')
 if pi_conclusion != 'success':
@@ -74,6 +83,11 @@ identity = {
   'remote_main_full_sha': remote_main or None,
   'deployed_backend_full_sha': deploy_sha or None,
   'deployed_frontend_asset_sha': frontend_hash or None,
+  'deployed_frontend_build_sha': frontend_build_sha or None,
+  'deployment_manifest_backend_sha': deployment_backend_sha or None,
+  'deployment_manifest_frontend_sha': (deployment or {}).get('frontend_build_sha'),
+  'deployment_manifest_deployed_at': deployment_deployed_at,
+  'deployment_manifest': deployment or None,
   'frontend_asset_built_at_local': frontend_time,
   'frontend_sha_is_full_git_sha': False,
   'last_deploy_workflow_run': deploy,

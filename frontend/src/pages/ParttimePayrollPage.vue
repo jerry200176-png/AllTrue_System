@@ -8,7 +8,7 @@
         </div>
         <div class="title-group">
           <h2>兼職老師薪資</h2>
-          <p class="title-sub">查詢兼職老師月薪資總額與堂次明細</p>
+          <p class="title-sub">依有效到班點名計薪；評量表不影響薪資計算</p>
         </div>
       </div>
       <div class="header-btns">
@@ -116,7 +116,8 @@
           <button
             v-if="summary.lock_status !== 'locked'"
             class="btn-primary small"
-            :disabled="locking"
+            :disabled="locking || Number(summary.anomaly_count || 0) > 0"
+            :title="Number(summary.anomaly_count || 0) > 0 ? '請先處理點名異常' : ''"
             @click="doLock"
           >
             <span class="material-symbols-outlined">lock</span>
@@ -130,6 +131,27 @@
             <span class="material-symbols-outlined">lock_open</span>
             重開
           </button>
+        </div>
+      </div>
+
+      <div v-if="!loading && !error && summary.lock_status === 'locked'" class="payroll-basis-banner locked">
+        <span class="material-symbols-outlined">verified</span>
+        <span>本月薪資已鎖定，以下資料來自逐堂薪資快照；後續點名或費率異動不會改變本次結果。</span>
+      </div>
+      <div v-else-if="!loading && !error" class="payroll-basis-banner">
+        <span class="material-symbols-outlined">how_to_reg</span>
+        <span>計薪來源：有效到班點名。評量表可稍後補填，不會阻擋薪資草稿。</span>
+      </div>
+
+      <div v-if="!loading && !error && Number(summary.anomaly_count || 0) > 0" class="payroll-anomaly-panel">
+        <div class="payroll-anomaly-title">
+          <span class="material-symbols-outlined">warning</span>
+          <strong>有 {{ summary.anomaly_count }} 筆點名異常，處理後才能鎖帳</strong>
+        </div>
+        <div v-for="(item, index) in (summary.anomalies || [])" :key="`${item.code}-${item.class_session_id}-${index}`" class="payroll-anomaly-row">
+          <span>{{ item.session_date || '日期未定' }}</span>
+          <span>{{ item.message }}</span>
+          <span v-if="item.class_session_id">堂次 #{{ item.class_session_id }}</span>
         </div>
       </div>
 
@@ -597,13 +619,18 @@ async function doExport() {
 }
 
 async function doLock() {
+  if (Number(summary.value.anomaly_count || 0) > 0) {
+    alert('請先處理點名異常，再進行鎖帳。');
+    return;
+  }
   if (!confirm(`確定要鎖帳 ${selectedMonth.value} 嗎？鎖帳後不可修改。`)) return;
   locking.value = true;
   try {
     await lockPayroll({ month: selectedMonth.value, branchId: props.branchId });
     await loadData();
   } catch (e) {
-    alert('鎖帳失敗：' + (e.message || ''));
+    alert('鎖帳失敗：' + (e.message || '') + (e.anomaly_count ? `\n共有 ${e.anomaly_count} 筆異常。` : ''));
+    if (e.anomalies?.length) await loadData();
   } finally {
     locking.value = false;
   }
@@ -868,6 +895,52 @@ onMounted(loadData);
   border: 1px solid var(--ds-canvas-soft);
   padding: 24px;
   box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+}
+
+.payroll-basis-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border-radius: 9px;
+  color: var(--ds-ink-mute);
+  background: var(--ds-canvas-soft);
+  font-size: 0.82rem;
+}
+.payroll-basis-banner.locked {
+  color: var(--ds-success);
+  background: var(--ds-success-wash);
+}
+.payroll-basis-banner .material-symbols-outlined,
+.payroll-anomaly-title .material-symbols-outlined {
+  font-size: 1.05rem;
+  flex-shrink: 0;
+}
+.payroll-anomaly-panel {
+  margin: 12px 0 0;
+  padding: 12px;
+  border: 1px solid var(--ds-warning);
+  border-radius: 9px;
+  background: var(--ds-warning-wash);
+  color: var(--ds-warning);
+  font-size: 0.82rem;
+}
+.payroll-anomaly-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 7px;
+}
+.payroll-anomaly-row {
+  display: grid;
+  grid-template-columns: 100px 1fr auto;
+  gap: 10px;
+  padding: 5px 0;
+  border-top: 1px solid color-mix(in srgb, var(--ds-warning) 45%, transparent);
+}
+@media (max-width: 640px) {
+  .payroll-anomaly-row { grid-template-columns: 1fr; gap: 2px; }
 }
 
 /* ─── Buttons ────────────────────────────── */

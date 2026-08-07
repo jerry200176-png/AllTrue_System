@@ -16,6 +16,8 @@
         v-for="tab in tabs"
         :key="tab.value"
         role="tab"
+        :id="`sdp-tab-${tab.value}`"
+        :aria-controls="`sdp-panel-${tab.value}`"
         :aria-selected="activeTab === tab.value"
         :class="['sdp-tab', { active: activeTab === tab.value }]"
         type="button"
@@ -35,7 +37,7 @@
       </ol>
     </section>
 
-    <section class="sdp-list-wrap">
+    <section :id="`sdp-panel-${activeTab}`" class="sdp-list-wrap" role="tabpanel" :aria-labelledby="`sdp-tab-${activeTab}`" :aria-busy="loading">
       <div v-if="!hasBranch" class="sdp-state sdp-state-empty sdp-state-no-branch">
         <span class="material-symbols-outlined sdp-empty-icon sdp-empty-icon-info" aria-hidden="true">location_city</span>
         <div class="sdp-empty-title">請先選擇要管理的分校</div>
@@ -100,8 +102,8 @@
               </td>
               <td style="text-align:right">
                 <div class="sdp-row-ops">
-                  <button class="ghost xs" type="button" @click="toggleExpand(row)">
-                    {{ expandedId === row.id ? '收合' : '展開' }}
+                  <button class="ghost xs" type="button" :aria-expanded="expandedId === row.id" :aria-controls="`sdp-detail-${row.id}`" @click="toggleExpand(row)">
+                    {{ expandedId === row.id ? '收合' : scheduleDiscrepancyActionLabel(row.status) }}
                   </button>
                   <button
                     v-if="row.status === 'pending'"
@@ -117,7 +119,7 @@
             </tr>
             <tr v-if="expandedId === row.id" class="sdp-detail-row">
               <td colspan="6">
-                <div class="sdp-detail">
+                <div :id="`sdp-detail-${row.id}`" class="sdp-detail">
                   <div class="sdp-detail-grid">
                     <div>
                       <div class="sdp-detail-label">備註</div>
@@ -238,11 +240,11 @@
             <button v-if="row.status === 'pending'" class="primary xs" type="button" :disabled="busyId === row.id" @click="acknowledge(row)">
               {{ busyId === row.id && busyAction === 'ack' ? '…' : '已確認' }}
             </button>
-            <button class="ghost xs" type="button" @click="toggleExpand(row)">
-              {{ expandedId === row.id ? '收合' : '處理' }}
+            <button class="ghost xs" type="button" :aria-expanded="expandedId === row.id" :aria-controls="`sdp-mobile-detail-${row.id}`" @click="toggleExpand(row)">
+              {{ expandedId === row.id ? '收合' : scheduleDiscrepancyActionLabel(row.status) }}
             </button>
           </div>
-          <div v-if="expandedId === row.id && row.status !== 'resolved' && row.status !== 'withdrawn'" class="sdp-resolve-form">
+          <div v-if="expandedId === row.id && row.status !== 'resolved' && row.status !== 'withdrawn'" :id="`sdp-mobile-detail-${row.id}`" class="sdp-resolve-form">
             <label class="sdp-detail-label">處理說明 <span class="sdp-required">*</span></label>
             <textarea class="sdp-textarea" rows="3" maxlength="500" v-model="resolutionDrafts[row.id]" placeholder="至少 10 字"></textarea>
             <div class="sdp-template-row">
@@ -287,6 +289,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { fetchDiscrepancies, fetchDiscrepancySummary, updateDiscrepancyStatus, STATUS_LABELS } from '../lib/scheduleDiscrepanciesApi';
+import { scheduleDiscrepancyActionLabel } from '../lib/calendarViewDisplay.js';
 
 const props = defineProps({
   branchId: { type: [Number, String], default: null },
@@ -732,7 +735,7 @@ onBeforeUnmount(() => {
 .sdp-type-pill {
   display: inline-block;
   padding: 3px 8px;
-  border-radius: 999px;
+  border-radius: 6px;
   font-size: 12px;
   font-weight: 600;
   background: var(--warning-soft, #fffbeb);

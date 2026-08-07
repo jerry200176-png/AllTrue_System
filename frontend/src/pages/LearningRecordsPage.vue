@@ -4,7 +4,7 @@
     <div class="page-header lr-header enterprise-page-header" data-guide="learning-header">
       <div>
         <h2>{{ pageMode === 'parent_messages' ? '家長留言' : (isTeacher ? '我的課表 & 評量' : '學習評量表') }}</h2>
-        <p class="page-desc">{{ pageMode === 'parent_messages' ? (isTeacher ? '查看範圍：我的所有分校' : '查看範圍：目前分校（可改）') : (isTeacher ? '查看本週課表，填寫學習評量' : '查看、新增與審核學生每堂課的學習評量') }}</p>
+        <p class="page-desc">{{ pageMode === 'parent_messages' ? (isTeacher ? '查看範圍：我的所有分校' : '查看範圍：目前分校（可改）') : (isTeacher ? '先處理本週未填與需修改的評量；已核准僅供檢視' : '先處理待審與需修改的評量；已核准僅供查閱') }}</p>
       </div>
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
         <button v-if="isTeacher && pageMode !== 'parent_messages'" class="ghost lr-draft-list-btn enterprise-touch-target" @click="openDraftPanel">
@@ -89,6 +89,11 @@
         >{{ selectionMode ? '取消選取' : '批次操作' }}</button>
       </div>
 
+      <div class="lr-status-explainer" role="note">
+        <span><strong>填寫狀態</strong>：未填／已填</span>
+        <span><strong>審核狀態</strong>：待審／需修改／已核准／已退回</span>
+      </div>
+
       <!-- Selection toolbar: select-all + batch actions, only visible in selection mode.
            Two deliberate rows (meta / actions) instead of a single flex-wrap row, so it
            never breaks into an uneven 3-then-2 wrap on narrow viewports. -->
@@ -143,6 +148,7 @@
             新留言 <span class="lr-tab-count warn">{{ unreadParentFeedbackCount }}</span>
           </button>
           <button
+            v-if="pageMode === 'parent_messages'"
             type="button"
             class="lr-more-filters-toggle"
             :class="{ active: showMoreFilters || activeSecondaryFilterCount > 0 }"
@@ -469,12 +475,13 @@
     </div>
 
     <!-- ===== Records Grouped By Student ===== -->
-    <div class="lr-view-toolbar" aria-label="評量顯示模式">
-      <div class="lr-view-toolbar__label">顯示模式</div>
-      <div class="lr-view-toggle" role="group" aria-label="切換列表或卡片">
+      <div class="lr-view-toolbar" aria-label="評量顯示模式">
+        <div class="lr-view-toolbar__label">顯示模式</div>
+        <div class="lr-view-toggle" role="group" aria-label="切換列表或卡片">
         <button
           type="button"
-          :class="['lr-view-btn', { active: viewMode === 'table' }]"
+          v-if="!isNarrowViewport"
+          :class="['lr-view-btn', { active: effectiveViewMode === 'table' }]"
           @click="viewMode = 'table'"
         >
           <span class="material-symbols-outlined" aria-hidden="true">view_list</span>
@@ -482,14 +489,24 @@
         </button>
         <button
           type="button"
-          :class="['lr-view-btn', { active: viewMode === 'card' }]"
+          :class="['lr-view-btn', { active: effectiveViewMode === 'card' }]"
           @click="viewMode = 'card'"
         >
           <span class="material-symbols-outlined" aria-hidden="true">grid_view</span>
           卡片
         </button>
+        </div>
+        <button
+          type="button"
+          class="ghost xs lr-preview-toggle"
+          :aria-pressed="showContentPreview ? 'true' : 'false'"
+          @click="showContentPreview = !showContentPreview"
+        >
+          <span class="material-symbols-outlined" aria-hidden="true">visibility</span>
+          {{ showContentPreview ? '隱藏內容預覽' : '預覽內容' }}
+        </button>
+        <span v-if="isNarrowViewport" class="lr-mobile-view-hint">手機版自動使用卡片</span>
       </div>
-    </div>
 
     <div class="card lr-table-card" data-guide="learning-table">
       <div v-if="recordsPagination.loading && records.length === 0" class="lr-record-skeleton-grid" aria-hidden="true">
@@ -498,6 +515,13 @@
           <div class="lr-skel-line"></div>
           <div class="lr-skel-line short"></div>
         </div>
+      </div>
+
+      <div v-else-if="recordsLoadError && records.length === 0" class="lr-error-state" role="alert">
+        <span class="material-symbols-outlined" aria-hidden="true">error</span>
+        <strong>評量資料載入失敗</strong>
+        <p>{{ recordsLoadError }}</p>
+        <button type="button" class="primary" @click="fetchRecords">重新載入</button>
       </div>
 
       <div v-else-if="filteredGroupedRecords.length === 0" class="lr-empty-state enterprise-empty">
@@ -531,7 +555,7 @@
         <button v-else-if="isUsingDefaultWindow" class="primary lr-empty-cta" @click="clearDefaultWindow">查看全部歷史</button>
       </div>
 
-      <div v-else-if="viewMode === 'card'" class="lr-card-view">
+      <div v-else-if="effectiveViewMode === 'card'" class="lr-card-view">
         <section
           v-for="group in filteredGroupedRecords"
           :key="group.key"
@@ -610,6 +634,7 @@
                 :open="feedbackPreviewOpen.has(record.id)"
                 @reply="openRecordAction"
               />
+              <LearningRecordPreview v-if="showContentPreview" :record="record" />
               <div class="lr-record-card__actions" @click.stop>
                 <button class="ghost xs" @click="openRecordAction(record)">{{ primaryActionLabel(record) }}</button>
                 <button v-if="isDirectorRole && record.id" class="ghost xs lr-btn-director-note" @click="openDirectorNoteModal(record)">主任評語</button>
@@ -627,7 +652,7 @@
           v-for="(group, groupIndex) in filteredGroupedRecords"
           :key="group.key"
           class="lr-group"
-          :open="filteredGroupedRecords.length === 1"
+          :open="groupIndex === 0 || filteredGroupedRecords.length === 1"
         >
           <summary class="lr-group-summary">
             <div class="lr-group-title">
@@ -716,7 +741,8 @@
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-for="record in sg.records" :key="record.id" class="lr-table-row" :class="{ 'lr-row-unfilled': fillLabelClass(record) === 'fill-missing', 'lr-row-has-feedback': record.parent_feedback && !parentFeedbackUnread(record), 'lr-row-unread': parentFeedbackUnread(record), 'lr-row-urgent': isUrgentTeacherRecord(record), 'is-selected': selectionMode && selectedRecordIds.has(record.id) }" @click="handleRecordCardClick(record)">
+                    <template v-for="record in sg.records" :key="record.id">
+                    <tr class="lr-table-row" :class="{ 'lr-row-unfilled': fillLabelClass(record) === 'fill-missing', 'lr-row-has-feedback': record.parent_feedback && !parentFeedbackUnread(record), 'lr-row-unread': parentFeedbackUnread(record), 'lr-row-urgent': isUrgentTeacherRecord(record), 'is-selected': selectionMode && selectedRecordIds.has(record.id) }" @click="handleRecordCardClick(record)">
                       <td v-if="selectionMode && isDirectorRole && (reviewTab === 'pending' || reviewTab === 'changes_requested')" @click.stop>
                         <input
                           v-if="record.Status === 'pending' || record.Status === 'changes_requested'"
@@ -781,6 +807,12 @@
                         </div>
                       </td>
                     </tr>
+                    <tr v-if="showContentPreview" :key="`${record.id}-preview`" class="lr-preview-row">
+                      <td :colspan="previewColspan">
+                        <LearningRecordPreview :record="record" />
+                      </td>
+                    </tr>
+                    </template>
                   </tbody>
                 </table>
               </div>
@@ -1334,11 +1366,12 @@
 </template>
 
 <script setup>
-import { ref, onMounted, reactive, computed, watch, nextTick } from 'vue';
+import { ref, onMounted, onBeforeUnmount, reactive, computed, watch, nextTick } from 'vue';
 import { supabase } from '../supabase';
 import SearchableSelect from '../components/SearchableSelect.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
 import FeedbackInlinePreview from '../components/learning-records/FeedbackInlinePreview.vue';
+import LearningRecordPreview from '../components/learning-records/LearningRecordPreview.vue';
 import { formatParentFeedbackTime } from '../lib/parentFeedbackFormat';
 import {
   fetchClassSessions,
@@ -1414,14 +1447,21 @@ const addMinutesToTime = (timeStr, minutes) => {
 
 const isTeacher = computed(() => props.userRole === 'teacher');
 const isDirectorRole = computed(() => ['director', 'admin', 'super_admin'].includes(String(props.userRole || '')));
+const showContentPreview = ref(isTeacher.value);
 
 const records = ref([]);
 const recordsPagination = ref({ currentPage: 1, lastPage: 1, total: 0, loading: false });
 const defaultViewMode = typeof window !== 'undefined' && window.innerWidth < 760 ? 'card' : 'table';
 const viewMode = ref(localStorage.getItem('lr_view_mode') || defaultViewMode);
 watch(viewMode, (mode) => localStorage.setItem('lr_view_mode', mode));
+const isNarrowViewport = ref(typeof window !== 'undefined' && window.innerWidth <= 640);
+const effectiveViewMode = computed(() => (isNarrowViewport.value ? 'card' : viewMode.value));
+const updateViewportMode = () => {
+  isNarrowViewport.value = window.innerWidth <= 640;
+};
 /** 是否正在執行「載入全部」的自動多頁輪詢。 */
 const loadingAll = ref(false);
+const recordsLoadError = ref('');
 const showModal = ref(false);
 const isEditing = ref(false);
 // 從課表點選堂次開啟評量表時設為該 ClassSessionID（無 csId 則為 -1），用於阻擋 form watch 的 applyTeacherFormDefaults 覆蓋（Bug fix 2026-04-18）
@@ -1588,6 +1628,7 @@ const selectedRecordIds = ref(new Set());
 // explicitly enters selection mode, so single-record review (the common case)
 // isn't cluttered with a selection affordance nobody asked for.
 const selectionMode = ref(false);
+const previewColspan = computed(() => (isTeacher.value ? 6 : 7) + (selectionMode.value ? 1 : 0));
 function toggleSelectionMode() {
   selectionMode.value = !selectionMode.value;
   if (!selectionMode.value) selectedRecordIds.value = new Set();
@@ -3237,6 +3278,7 @@ const fetchRecords = async () => {
   try {
     const token = await getToken();
     if (!token) return;
+    recordsLoadError.value = '';
     recordsPagination.value = { ...recordsPagination.value, loading: true };
 
     const params = _buildRecordsParams(1);
@@ -3256,6 +3298,7 @@ const fetchRecords = async () => {
     };
   } catch (e) {
     console.error(e);
+    recordsLoadError.value = '請檢查網路連線後再試一次。原有資料仍會保留。';
     recordsPagination.value = { ...recordsPagination.value, loading: false };
   }
 };
@@ -4018,7 +4061,7 @@ const batchApproveSelected = async () => {
     const res = await fetch('/api/v1/learning-records/batch-approve', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ DirectorID: props.userId, branch_id: props.branchId })
+      body: JSON.stringify({ ids, DirectorID: props.userId, branch_id: props.branchId })
     });
     if (res.ok) {
       const json = await res.json();
@@ -4720,6 +4763,8 @@ const executeExport = async () => {
 
 // ── Init ──
 onMounted(async () => {
+  updateViewportMode();
+  window.addEventListener('resize', updateViewportMode);
   if (window.innerWidth <= 640) scheduleView.value = 'today';
   if (hasActiveFilters.value) showAdvancedFilters.value = true;
   migrateLegacyDrafts();
@@ -4760,6 +4805,10 @@ onMounted(async () => {
   nextTick(() => openTargetRecord());
   // 首次掛載即帶有回饋 focus（從其他頁點 CTA 切過來）→ 套用回饋篩選。(#138)
   if (props.feedbackFocusToken) nextTick(() => applyFeedbackFocus());
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', updateViewportMode);
 });
 
 watch(() => props.branchId, () => {
@@ -4998,6 +5047,20 @@ watch([reviewTab, resolvedDefaultWindowStart], ([rt, win], [prt, pwin]) => {
   flex-wrap: wrap;
   gap: 4px 14px;
   margin-top: 8px;
+}
+
+.lr-status-explainer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin-top: 8px;
+  color: var(--ds-ink-mute);
+  font-size: 12px;
+}
+
+.lr-status-explainer strong {
+  color: var(--ds-ink-secondary);
+  font-weight: 700;
 }
 .lr-unfilled-toggle {
   display: inline-flex;
@@ -5786,8 +5849,9 @@ select.lr-input {
 /* ── Table ── */
 .lr-view-toolbar {
   display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
   margin: 10px 0;
 }
@@ -5828,6 +5892,46 @@ select.lr-input {
   background: var(--primary);
   color: var(--ds-canvas);
   box-shadow: 0 2px 8px rgba(59, 130, 246, .22);
+}
+
+.lr-preview-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.lr-preview-toggle .material-symbols-outlined {
+  font-size: 16px;
+}
+
+.lr-mobile-view-hint {
+  color: var(--ds-ink-mute);
+  font-size: 12px;
+}
+
+.lr-error-state {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 48px 20px;
+  color: var(--ds-ink-secondary);
+  text-align: center;
+}
+
+.lr-error-state .material-symbols-outlined {
+  color: var(--ds-danger);
+  font-size: 32px;
+}
+
+.lr-error-state strong {
+  color: var(--ds-ink);
+  font-size: 16px;
+}
+
+.lr-error-state p {
+  margin: 0;
+  color: var(--ds-ink-mute);
+  font-size: 13px;
 }
 
 .lr-table-card {
@@ -6572,6 +6676,15 @@ select.lr-input {
 
 .lr-table-scroll {
   overflow-x: auto;
+}
+
+.lr-preview-row td {
+  padding: 0 12px 12px;
+  border-top: 0;
+}
+
+.lr-preview-row .learning-record-preview {
+  margin-top: 0;
 }
 
 .lr-table-row {
@@ -8376,5 +8489,172 @@ tr.lr-row-unread { border-left: 3px solid var(--ds-warning); background: rgba(24
   padding: 3px 9px;
   border-radius: 10px;
   letter-spacing: 0.2px;
+}
+
+/* ── Director review polish ──
+ * One control level per job: mode → review queue → filters → records.
+ * The existing teacher surface keeps its iOS schedule language; this pass is
+ * intentionally scoped to the director review surface.
+ */
+.lr-page:not(.lr-page--teacher) {
+  padding-bottom: 48px;
+}
+.lr-page:not(.lr-page--teacher) .lr-mode-tabs,
+.lr-page:not(.lr-page--teacher) .lr-review-tabs,
+.lr-page:not(.lr-page--teacher) .lr-filters-bar {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+.lr-page:not(.lr-page--teacher) .lr-mode-tabs {
+  gap: 22px;
+  margin: 0 0 2px;
+  padding: 0;
+  border-bottom: 1px solid var(--ds-hairline);
+}
+.lr-page:not(.lr-page--teacher) .lr-mode-tabs .lr-tab {
+  min-height: 44px;
+  padding: 10px 2px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ds-ink-mute);
+  font-weight: 800;
+}
+.lr-page:not(.lr-page--teacher) .lr-mode-tabs .lr-tab.active {
+  border-bottom-color: var(--ds-cta);
+  background: transparent;
+  color: var(--ds-ink);
+}
+.lr-page:not(.lr-page--teacher) .lr-review-tabs {
+  margin: 0;
+  padding: 0 0 10px;
+  border-bottom: 1px solid var(--ds-hairline);
+}
+.lr-page:not(.lr-page--teacher) .lr-review-tabs .lr-tabs-row {
+  gap: 18px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.lr-page:not(.lr-page--teacher) .lr-review-tabs .lr-tabs-row::-webkit-scrollbar { display: none; }
+.lr-page:not(.lr-page--teacher) .lr-review-tabs .lr-tab {
+  min-height: 42px;
+  padding: 9px 2px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ds-ink-mute);
+  font-weight: 800;
+  white-space: nowrap;
+}
+.lr-page:not(.lr-page--teacher) .lr-review-tabs .lr-tab.active {
+  border-bottom-color: var(--ds-cta);
+  background: transparent;
+  color: var(--ds-ink);
+}
+.lr-page:not(.lr-page--teacher) .lr-review-tabs .lr-tab-count {
+  min-width: 20px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--ds-canvas-soft);
+  color: var(--ds-ink-mute);
+}
+.lr-page:not(.lr-page--teacher) .lr-review-tabs .lr-tab.active .lr-tab-count {
+  background: var(--ds-primary-wash);
+  color: var(--ds-cta);
+}
+.lr-page:not(.lr-page--teacher) .lr-review-tabs .lr-toolbar-row {
+  gap: 10px 16px;
+  margin-top: 8px;
+  color: var(--ds-ink-mute);
+}
+.lr-page:not(.lr-page--teacher) .lr-filters-bar {
+  margin: 0;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--ds-hairline);
+}
+.lr-page:not(.lr-page--teacher) .lr-feedback-filter-chip,
+.lr-page:not(.lr-page--teacher) .lr-more-filters-toggle {
+  min-height: 34px;
+  padding: 7px 11px;
+  border-radius: 7px;
+  font-weight: 700;
+}
+.lr-page:not(.lr-page--teacher) .lr-feedback-filter-chip.active,
+.lr-page:not(.lr-page--teacher) .lr-more-filters-toggle.active {
+  border-color: var(--ds-cta);
+  background: var(--ds-primary-wash);
+  color: var(--ds-cta);
+}
+.lr-page:not(.lr-page--teacher) .lr-filters {
+  gap: 0;
+  margin: 14px 0 10px;
+  padding: 0;
+  border: 1px solid var(--ds-hairline);
+  border-radius: 10px;
+  background: var(--ds-canvas);
+  box-shadow: var(--ds-shadow-1);
+  overflow: hidden;
+}
+.lr-page:not(.lr-page--teacher) .lr-filters-header {
+  min-height: 50px;
+  padding: 0 16px;
+  border: 0;
+}
+.lr-page:not(.lr-page--teacher) .lr-filters-grid,
+.lr-page:not(.lr-page--teacher) .lr-filters-actions {
+  padding: 16px;
+}
+.lr-page:not(.lr-page--teacher) .lr-filters-grid {
+  border-top: 1px solid var(--ds-hairline);
+}
+.lr-page:not(.lr-page--teacher) .lr-filters-actions {
+  padding-top: 0;
+}
+.lr-page:not(.lr-page--teacher) .lr-view-toolbar {
+  margin: 12px 0 8px;
+}
+.lr-page:not(.lr-page--teacher) .lr-groups {
+  gap: 12px;
+  padding: 0;
+}
+.lr-page:not(.lr-page--teacher) .lr-group {
+  border-color: var(--ds-hairline);
+  border-radius: 12px;
+  box-shadow: var(--ds-shadow-1);
+}
+.lr-page:not(.lr-page--teacher) .lr-group-summary,
+.lr-page:not(.lr-page--teacher) .lr-group[open] .lr-group-summary {
+  padding: 14px 16px;
+  background: var(--ds-canvas);
+}
+.lr-page:not(.lr-page--teacher) .lr-group-summary {
+  border-bottom-color: var(--ds-hairline);
+}
+.lr-page:not(.lr-page--teacher) .lr-subject-subgroups {
+  padding: 10px 12px 14px;
+  background: var(--ds-canvas-soft);
+}
+.lr-page:not(.lr-page--teacher) .lr-subject-subgroup {
+  border-color: var(--ds-hairline);
+  background: var(--ds-canvas);
+}
+.lr-page:not(.lr-page--teacher) .lr-subject-header {
+  padding: 11px 14px;
+}
+.lr-page:not(.lr-page--teacher) .lr-table-row:hover {
+  background: var(--ds-canvas-soft);
+}
+@media (prefers-reduced-motion: reduce) {
+  .lr-page:not(.lr-page--teacher) * { transition-duration: 0.01ms !important; }
+}
+@media (max-width: 680px) {
+  .lr-page:not(.lr-page--teacher) .lr-review-tabs .lr-tabs-row { gap: 14px; }
+  .lr-page:not(.lr-page--teacher) .lr-review-tabs .lr-tab { padding-inline: 1px; }
+  .lr-page:not(.lr-page--teacher) .lr-filters { margin-top: 10px; }
 }
 </style>

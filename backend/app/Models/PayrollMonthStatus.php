@@ -16,10 +16,12 @@ class PayrollMonthStatus extends Model
         'locked_at',
         'rule_version_id',
         'teacher_rule_snapshots',
+        'current_run_id',
     ];
 
     protected $casts = [
         'locked_at'              => 'datetime',
         'teacher_rule_snapshots' => 'array',
+        'current_run_id'       => 'integer',
     ];
 }

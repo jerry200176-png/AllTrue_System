@@ -1,13 +1,27 @@
 <template>
   <div>
     <div v-if="calendarLoading" class="calendar-loading-bar">{{ calendarLoadProgress || '載入中…' }}</div>
+    <div v-if="calendarLoadError && !calendarLoading" class="calendar-state-error" role="alert">
+      <span class="material-symbols-outlined" aria-hidden="true">error</span>
+      <span>{{ calendarLoadError }}</span>
+      <button type="button" class="calendar-retry-btn" @click="reloadCalendarData">重試</button>
+    </div>
     <!-- Top Bar -->
     <div class="smart-cal-top" data-guide="calendar-header">
       <div class="smart-cal-header">
-        <h1 class="smart-cal-title">{{ isTeacher ? '我的課表' : '班級行事曆 / 課表' }}</h1>
-        <div class="view-tabs">
-          <button type="button" :class="{ active: viewMode === 'week' }" @click="viewMode = 'week'">排課表</button>
-          <button v-if="!isTeacher" type="button" :class="{ active: viewMode === 'teacher' }" @click="viewMode = 'teacher'">老師清單</button>
+        <div class="smart-cal-heading-copy">
+          <p class="smart-cal-kicker">排課與調課</p>
+          <h1 class="smart-cal-title">{{ isTeacher ? '我的課表' : '班級行事曆 / 課表' }}</h1>
+          <p class="smart-cal-context" aria-live="polite">
+            {{ currentCalendarViewLabel }} · {{ visibleWeekRangeLabel }} · {{ weekCourseCount }} 堂
+          </p>
+        </div>
+        <div class="smart-cal-header-actions">
+          <button type="button" class="calendar-today-btn" @click="focusCalendarToday" aria-label="回到今天的課表">今天</button>
+          <div class="view-tabs" role="tablist" aria-label="課表檢視方式">
+            <button type="button" role="tab" :aria-selected="viewMode === 'week'" :class="{ active: viewMode === 'week' }" @click="viewMode = 'week'">課表</button>
+            <button v-if="!isTeacher" type="button" role="tab" :aria-selected="viewMode === 'teacher'" :class="{ active: viewMode === 'teacher' }" @click="viewMode = 'teacher'">老師清單</button>
+          </div>
         </div>
       </div>
       <div v-if="viewMode === 'week'" class="smart-cal-toolbar" data-guide="calendar-toolbar">
@@ -478,6 +492,7 @@ import { supabase } from '../supabase';
 import { SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
 import { mergeWeekCalendarOccurrences } from '../lib/calendarOccurrenceMerge';
+import { resolveTeacherAliasIds, courseBelongsToTeacherAlias } from '../lib/teacherAliasMatch';
 import {
   resolveCalendarDataFetchBoundsYmd,
   isRangeWithinFetchedBounds,
@@ -526,6 +541,7 @@ import {
 import { resolveCalendarDropAction } from '../lib/calendarDropRouting.js';
 // #740 Step 3：教師配色（有狀態 memo）
 import { getTeacherColor } from '../lib/teacherColor.js';
+import { calendarViewLabel, formatCalendarRange } from '../lib/calendarViewDisplay.js';
 import { useCalendarDataLoad } from '../composables/calendar/useCalendarDataLoad.js';
 import { useCalendarLeaveExtra } from '../composables/calendar/useCalendarLeaveExtra.js';
 import { useCalendarSubstitute } from '../composables/calendar/useCalendarSubstitute.js';
@@ -844,6 +860,7 @@ const {
   exceptions,
   calendarLoading,
   calendarLoadProgress,
+  calendarLoadError,
   sessionDatesByCourseId,
   allStudents,
   teachers,
@@ -951,6 +968,14 @@ const getDisplayDateString = (dayOfWeek) => {
   const [, m, d] = full.split('-');
   return `${parseInt(m)}/${parseInt(d)}`;
 };
+
+const visibleWeekRangeLabel = computed(() => (
+  formatCalendarRange(getDisplayDateFull(1), getDisplayDateFull(7))
+));
+const currentCalendarViewLabel = computed(() => calendarViewLabel({
+  viewMode: viewMode.value,
+  isWeekOverview: isWeekOverview.value,
+}));
 
 /**
  * 每門課的最後一堂日期，使用共用工具計算（與課程管理一致）。null 代表無限制（月結課程）。
@@ -1249,9 +1274,19 @@ const isSessionOnLeaveOnDate = (course, ymd) => {
   );
 };
 
+// 同一位老師掛兩個帳號、顯示名稱相同時，dayViewTeacherColumns/visibleTeachers 只會合併顯示一欄
+// （代表 ID 為課程數較多的那個帳號），但課程本身的 teacher_id 仍是原本各自的帳號 ID。
+// 這裡務必比對「別名帳號集合」而非單一 teacherId，否則掛在另一個別名帳號下的課程會直接消失
+// （in-app #219/#223 根因：吳宥萱試聽掛在「高為澎」的第二個帳號，欄位被合併後課程再也比對不到）。
+const getTeacherAliasIdSet = (teacherId) => {
+  const entry = visibleTeachers.value.find((t) => String(t.id) === String(teacherId));
+  return new Set(resolveTeacherAliasIds(entry, teacherId));
+};
+
 const getCoursesForTeacherAt = (teacherId, hour) => {
+  const aliasSet = getTeacherAliasIdSet(teacherId);
   return filteredCourses.value.filter(c => {
-    if (c.teacher_id !== teacherId) return false;
+    if (!courseBelongsToTeacherAlias(c, aliasSet)) return false;
     if (parseHour(c.start_time) !== hour) return false;
     if (c.day_of_week !== selectedDow.value) return false;
     if (!courseMatchesStudentSearch(c)) return false;
@@ -1436,10 +1471,11 @@ const visibleTeachers = computed(() => {
   // 日檢視：當日有排課的老師優先置左，無課老師排後方，減少橫向捲動
   const dowForSort = !isWeekOverview.value ? selectedDow.value : null;
   const ymdForSort = !isWeekOverview.value ? selectedDateStr.value : null;
-  const teacherHasCourseToday = (tid) => {
+  const teacherHasCourseToday = (aliasIds) => {
     if (dowForSort == null) return false;
+    const aliasSet = new Set(aliasIds);
     return filteredCourses.value.some((c) => {
-      if (c.teacher_id !== tid) return false;
+      if (!courseBelongsToTeacherAlias(c, aliasSet)) return false;
       if (c.day_of_week !== dowForSort) return false;
       if (ymdForSort && isSessionCancelledOnDate(c, ymdForSort)) return false;
       return true;
@@ -1447,7 +1483,7 @@ const visibleTeachers = computed(() => {
   };
   const withBusyFlag = filtered.map((t) => ({
     ...t,
-    _hasCourseToday: teacherHasCourseToday(t.id),
+    _hasCourseToday: teacherHasCourseToday(resolveTeacherAliasIds(t, t.id)),
   }));
   if (hideEmptyTeacherColumns.value && !isWeekOverview.value) {
     return withBusyFlag
@@ -1693,8 +1729,9 @@ const CAPACITY_MAP = { 'one_on_one': 1, 'one_on_two': 2, 'one_on_three': 3, 'tut
 
 const TEACHER_SLOT_ABSOLUTE_MAX = 3;
 const getSlotOccupancy = (teacherId, dow, hour) => {
+  const aliasSet = getTeacherAliasIdSet(teacherId);
   const coursesAtSlot = filteredCourses.value.filter(c => {
-    if (c.teacher_id !== teacherId) return false;
+    if (!courseBelongsToTeacherAlias(c, aliasSet)) return false;
     if (c.day_of_week !== dow) return false;
     if (parseHour(c.start_time) !== hour) return false;
     if (!courseMatchesStudentSearch(c)) return false;
@@ -2372,6 +2409,29 @@ onMounted(() => {
   margin-bottom: 8px;
   animation: pulse 1.5s ease-in-out infinite;
 }
+.calendar-state-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--ds-danger-border, var(--border-color, var(--ds-canvas-soft)));
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-danger-wash, var(--ds-canvas-soft));
+  color: var(--ds-danger, var(--ds-ink));
+  font-size: 13px;
+}
+.calendar-retry-btn {
+  margin-left: auto;
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 1px solid currentColor;
+  border-radius: var(--ds-radius-sm);
+  background: transparent;
+  color: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.6} }
 .smart-cal-top,
 .week-view,
@@ -2394,9 +2454,19 @@ onMounted(() => {
 }
 .smart-cal-header {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
+  justify-content: space-between;
   gap: 24px;
   margin-bottom: 16px;
+}
+.smart-cal-heading-copy { min-width: 0; }
+.smart-cal-kicker {
+  margin: 0 0 4px;
+  color: var(--ds-primary-deep, var(--ds-primary));
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 .smart-cal-title {
   margin: 0;
@@ -2405,6 +2475,34 @@ onMounted(() => {
   line-height: 1.3;
   color: var(--text-color, var(--ds-ink));
   letter-spacing: -0.02em;
+}
+.smart-cal-context {
+  margin: 5px 0 0;
+  color: var(--text-light, var(--ds-ink-mute));
+  font-size: 13px;
+  line-height: 1.4;
+}
+.smart-cal-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.calendar-today-btn {
+  min-height: 36px;
+  padding: 7px 13px;
+  border: 1px solid var(--border-color, var(--ds-canvas-soft));
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-canvas);
+  color: var(--text-color, var(--ds-ink));
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.calendar-today-btn:hover,
+.calendar-today-btn:focus-visible {
+  border-color: var(--ds-primary, var(--ds-ink-mute));
+  background: var(--ds-primary-wash, var(--ds-canvas-soft));
 }
 .view-tabs {
   display: inline-flex;
@@ -3066,9 +3164,10 @@ onMounted(() => {
 @media (max-width: 768px) {
   .smart-cal-header {
     flex-direction: column;
-    align-items: flex-start;
+    align-items: stretch;
     gap: 10px;
   }
+  .smart-cal-header-actions { justify-content: space-between; }
   .view-tabs button {
     padding: 6px 12px;
     font-size: 12px;
@@ -3096,8 +3195,11 @@ onMounted(() => {
     gap: 8px;
     padding: 0;
   }
-  .smart-cal-title { font-size: 1rem; text-align: center; }
-  .view-tabs { justify-content: center; }
+  .smart-cal-title { font-size: 1rem; }
+  .smart-cal-context { font-size: 12px; }
+  .smart-cal-header-actions { gap: 8px; }
+  .calendar-today-btn { min-height: 40px; }
+  .view-tabs { justify-content: center; flex: 1; }
   .view-tabs button { padding: 6px 10px; font-size: 11px; }
   .toolbar-filters {
     width: 100%;

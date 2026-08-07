@@ -638,3 +638,45 @@
 | 建議做法 | 新增 `CalculatorReporterCrossValidationTest`：用同一組（purchased_standard_units、standard_lesson_minutes、occurrence 序列 + 任意 reverse 事件）分別餵給 calculator 與 reporter 的既有資料版本（先寫入對應的 `ClassSession`/`session_deduction_ledger` fixture，再跑 reporter），斷言兩者的 `uncovered_minutes` 一致。若跑出不一致，須在 Phase 1 之前釐清哪一個是「正確」定義，並讓另一個對齊，避免 Phase 2 上線後 preview 顯示的數字與既有資料盤點對不起來造成主任/工程互相懷疑數字有誤。 |
 | 清償成本估計 | 低（半天內可寫完交叉驗證測試；若發現真的分歧，修正成本視分歧原因而定） |
 | 不做的代價 | Phase 1/2 上線後，若某門課程同時出現在「建課 preview 顯示的 uncovered」與「Phase 0A 報表顯示的 uncovered」，兩個數字不一致會讓人誤以為系統有 bug，實際上只是兩套從未交叉驗證過的獨立實作 |
+
+### TD-073：CI 沒有自動偵測「重複業務邏輯／重複 magic string」的機制
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P1（原 P2，2026-08-06 因第三個實例落在金流顯示邏輯而調升，見下） |
+| 發現日期 | 2026-08-06 |
+| 發現來源 | 陳禹慈堂數超排案（主任直接回報）根因調查：`CourseLeaveCascadeService::appendTailAfterLeave()` 與 `ClassSessionController::tryExtendOnLeave()` 是同一條業務規則的兩份獨立實作，各自對「已計入堂數」的定義不同步，交替呼叫時會讓已排堂次數悄悄超過購買堂數（PR #1644 修正）；同一批調查也發現 `一般請假` VoidReason 字面值在 `CourseLeaveCascadeService.php` 被重複打了 6 次、`LearningRecordResurrectionPolicy.php` 又獨立抄一份，其中一份被打壞正是 #217/#218 server error 的根因（PR #1645 修正）。詳見 `docs/SYSTEM_TECH_GUIDE.md` §12.4 根因分析。**第三個實例（同日）**：何昀佳帳務中心繳費狀態不一致案（主任直接回報）——`AlertController::computePaymentStatus()` 只認 `StudentClass.Paid` 旗標，沒把「帳單足額收款」算進已繳費判斷，跟課程管理頁面的邏輯不同步（PR #1648 修正，R94）。修復後的盤點掃出這不是單一巧合：`backend/app` 至少 **8 個檔案**（`StudentClassController`、`AlertController` 自身另外兩處、`NotificationSyncService`、`DunningService`、`PaymentReportController`、`ParentPortalController`、`NotificationController`、`AccountingController`、`SendTuitionReminders`）各自獨立重新實作「這筆課程是否已繳費」，且彼此條件互不相同（`Paid` 旗標單一判斷 / `Paid` 或任一筆收款 / `Paid` 或足額收款 / 舊制 `Pay>=Charge` 欄位比較，四種變體並存），`StudentClass`／`Invoice` model 完全沒有任何集中的 `isPaid()`／`isFullyPaid()` 存取器——每個呼叫點都是從零重寫。詳見 `docs/SYSTEM_TECH_GUIDE.md` §12.5。 |
+| 影響模組 | 全 `backend/app/` — 這是 CI pipeline 缺口，不是特定模組的問題；歷史上已知至少 **3 類** 實例（本節描述的兩處 + 繳費狀態判斷），其中繳費狀態判斷單一概念就橫跨至少 8 個檔案、4 種互不相同的變體，推測還有未發現的其他實例。`DunningService.php` 中的重複實例已被 `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` 明文凍結、需產品方核准才能改動，尚未一併清償。 |
+| 描述 | 目前 CI 的 `PHPStan Advisory` 只抓型別/明顯錯誤，抓不到「兩支函式語意重複」或「同一個業務字串被複製貼上多份」這類問題；這類問題目前完全仰賴 code review 肉眼發現，而本專案是單人 repo（見 `.github/pull_request_template.md` 的「單人 repo Review Gate」說明），沒有第二位人類 reviewer 天然扮演「這是不是已經做過」的守門角色。根因分析（§12.4）認為成熟工程組織能避免這類 bug，關鍵在於把「找找看是不是已經有人做過」從仰賴個人記性的文件建議，變成合併前機器會擋下來的門檻。 |
+| 建議做法 | 分階段：(1) 導入 `phpcpd`（PHP Copy/Paste Detector）或等效工具掃 `backend/app/`，先以 advisory 模式跑一輪盤點既有重複，比照 `phpstan-baseline.neon` 模式建 baseline（只擋新增，不強制清歷史債）。(2) 針對「業務字面值被多處比對」這類更窄但更常見的模式（如 `->where('VoidReason', '...')`、`->where('Status', '...')` 等字串比對），寫一個輕量 grep-based presubmit 檢查，偵測同一個中文/業務字面值在 `>=2` 個檔案或 `>=3` 個位置被直接使用（而非引用常數），達門檻即警告或擋下。(3) 中長期評估是否比照 SonarQube/CodeClimate 等重複程式碼偵測服務。 |
+| 清償成本估計 | 中（`phpcpd` 導入 + baseline 產生腳本約 1 天；grep-based magic-string presubmit 檢查約半天；SonarQube 等級整合需另外評估） |
+| 不做的代價 | 同一類「兩份獨立實作互不知情，各自正確但合起來錯」或「業務字串被複製後其中一份損毀」的 bug，會持續只能等使用者（家長帳單異常、老師操作卡住）回報才發現，且每次都要重新做一次根因調查才找得到，而非在 PR 合併前就被機器攔下來 |
+
+### TD-074：`LearningRecord`（評量記錄）完全沒有審計/歷史版本機制，內容一旦覆蓋或刪除無法還原
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P2 |
+| 發現日期 | 2026-08-06 |
+| 發現來源 | in-app #219 修復過程中的自我檢討（R100）——一次已徵得使用者同意的資料修正意外觸發 `maybeRebuildSessionsAfterUpdate()` 整批重建，刪除並重建了課程 3153 的 `ClassSession`/`LearningRecord`。事後想找回評量記錄內容才發現：`ClassSession` 有 `ScheduleAuditLog`/`ClassSessionObserver` 這套審計機制（雖然這次因批次刪除繞過而沒發揮作用，已在同一批修復補上），但 `LearningRecord`（老師實際填寫的評量文字）本身完全沒有對應的審計或版本歷史，內容一旦被覆蓋或刪除就是真的、永久地消失，沒有任何補救管道。 |
+| 影響模組 | `backend/app/Models/LearningRecord.php`、所有會修改/刪除 `LearningRecord` 的路徑（`StudentClassController::maybeRebuildSessionsAfterUpdate()`、`LearningRecordController` 各更新端點等） |
+| 描述 | `ClassSession` 已有前例（`ScheduleAuditLog` + `ClassSessionObserver`）可以直接參考同一套 pattern：`created`/`updating`/`updated`/`deleted` 各自寫一筆快照。`LearningRecord` 承載的是老師手動輸入、無法自動重新產生的內容，遺失後果比 `ClassSession`（結構化欄位，理論上可從排課規則重建）更嚴重，卻是目前唯一沒有任何保護的核心業務資料表。 |
+| 建議做法 | 比照 `ClassSessionObserver` 的作法，新增 `LearningRecordObserver`，掛 `updating`/`updated`/`deleted` 三個事件，寫入既有的 `schedule_audit_logs`（或新開一張同構的 `learning_record_audit_logs`，視是否需要跟 `ClassSession` 的審計記錄分開查詢而定）。同時盤點專案裡是否還有其他會呼叫 `LearningRecord::where(...)->delete()`／`->update(...)` 批次操作的地方，確認都會被 Observer 涵蓋到（批次操作一樣要小心繞過 model events 的問題，見 R100）。 |
+| 清償成本估計 | 小～中（新增一個 Observer + 註冊 + 補測試，比照既有 `ClassSessionObserver` 模式，約半天到一天） |
+| 不做的代價 | 任何未來的資料修正、bug 修復、甚至老師自己手滑覆蓋，只要動到 `LearningRecord`，內容遺失就是無法逆轉的，且無法事後判斷「原本是不是真的有內容」——這次吳宥萱 6/18 試聽課的評量內容遺失就是因為沒有這層保護，最終只能結案放棄追查。 |
+
+### TD-075：`composer.json` 的 `audit.ignore`（accepted-risk 清單）沒有到期/複查機制
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P3 |
+| 發現日期 | 2026-08-07 |
+| 發現來源 | 追查 `Pi Health Monitor`／`bugs:verify-reproductions` 連續紅燈（#170）過程中，CI 的 `Composer audit (security)` 步驟被 4 個新公開的 `league/commonmark` HIGH 嚴重度 DoS advisory（GHSA-mh25-x5hq-wrqp 等）擋下，經 reachability review 確認本專案完全不觸發該套件（僅為 `laravel/framework` 內建 Markdown 郵件功能的可選 transitive dependency，本專案未使用該功能），比照既有的 `GHSA-5vg9-5847-vvmq` accepted-risk 先例加入 `composer.json` 的 `audit.ignore`。 |
+| 影響模組 | `backend/composer.json` 的 `config.audit.ignore` 清單（目前共 5 條：`GHSA-5vg9-5847-vvmq` + 本次新增 4 條 commonmark advisory） |
+| 描述 | `audit.ignore` 是「當下判斷不可達、暫時接受」的風險，不是「永久解決」——但目前這份清單沒有任何複查機制：一旦加進去，除非有人手動想起來去看，否則會無限期留著，即使日後情境變了（例如真的加了 Markdown mail 功能，或 `league/commonmark` 因為是 `laravel/framework` 綁定帶入而無法用 `composer remove` 直接移除，只能等框架升級或改版才可能連帶消失）。大公司的漏洞管理平台（如 Snyk／Dependabot 的 waiver 機制）通常強制每條 accepted-risk 要有 owner 與到期日／複查觸發點，而不是靜默的黑名單。目前本專案唯一的先例（`GHSA-5vg9-5847-vvmq`）綁定了 `#977`（Laravel 8 EOL 遷移）作為複查時機，但這是巧合式的，不是制度化的做法。 |
+| 建議做法 | (1) 短期：`league/commonmark` 的 4 條新 ignore 比照 `GHSA-5vg9-5847-vvmq` 的模式，同樣綁定 `#977`（Laravel 8 EOL 遷移）——升級/更換框架時一併重新評估是否仍不可達、是否該套件仍被帶入。(2) 中期：`docs-integrity-check.mjs` 或另開一個輕量 CI 腳本，每次 `composer audit` 有新的 ignore 被新增時，強制 commit message／PR body 要包含 reachability review 日期與理由（目前是慣例，非強制）。(3) 長期：評估是否比照 `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` 的模式，開一份 `SECURITY_ACCEPTED_RISK.md` 集中列出所有 accepted-risk 條目 + 複查頻率，而不是分散在各個 `composer.json`／未來可能出現的 `package.json` audit-ignore 裡各自為政。 |
+| 清償成本估計 | 低（短期作法本身已在本次一併完成；中長期作法各約半天） |
+| 不做的代價 | Accepted-risk 清單只增不減，幾個月後沒人記得當初為什麼要 ignore、是否還成立，新加入的工程師（或未來的 AI agent）看到一長串 ignore 只能照單全收，逐漸變成「反正 CI 會過」的安全放行章，而非真的持續被驗證的風險判斷 |

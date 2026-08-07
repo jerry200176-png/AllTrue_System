@@ -41,6 +41,7 @@ use App\Http\Controllers\TeacherLeaveController;
 use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\BugReportController;
+use App\Http\Controllers\TeacherDuplicateController;
 use App\Http\Controllers\SubjectController;
 use App\Http\Controllers\PaymentReportController;
 use App\Http\Controllers\ScheduleAuditController;
@@ -52,6 +53,7 @@ use App\Http\Controllers\DirectorOperationsTrustController;
 use App\Http\Controllers\AdminReconcileController;
 use App\Http\Controllers\AdminDuplicateSessionController;
 use App\Http\Controllers\GitHubIssueController;
+use App\Http\Controllers\StudentIdentityController;
 
 
 if (app()->environment('local')) {
@@ -250,6 +252,11 @@ Route::prefix('v1')->group(function () {
 
         // ── Bug Reports (admin) ──
         Route::get('admin/bug-reports', [BugReportController::class, 'index']);
+
+        // ── R99 (in-app #219/#223) root-cause prevention: duplicate teacher accounts ──
+        Route::get('admin/teachers/duplicates', [TeacherDuplicateController::class, 'index']);
+        Route::post('admin/teachers/merge-preview', [TeacherDuplicateController::class, 'preview']);
+        Route::post('admin/teachers/merge', [TeacherDuplicateController::class, 'merge']);
     });
 
     // ── GitHub Issues (director + super_admin) ──
@@ -376,6 +383,7 @@ Route::prefix('v1')->group(function () {
         Route::post('exception-workflows/{id}/generate-candidates', [ExceptionWorkflowController::class, 'generateCandidates'])->whereNumber('id');
         Route::post('exception-workflows/{id}/confirm-candidate', [ExceptionWorkflowController::class, 'confirmCandidate'])->whereNumber('id');
         Route::post('exception-workflows/{id}/waive', [ExceptionWorkflowController::class, 'waive'])->whereNumber('id');
+        Route::post('exception-workflows/{id}/reject', [ExceptionWorkflowController::class, 'reject'])->whereNumber('id');
 
         Route::get('temp-rfid', [TempRfidController::class, 'show']);
         Route::post('temp-rfid/consume', [TempRfidController::class, 'consume']);
@@ -401,6 +409,20 @@ Route::prefix('v1')->group(function () {
         Route::post('subjects', [SubjectController::class, 'store']);
         Route::put('subjects/{id}', [SubjectController::class, 'update']);
         Route::delete('subjects/{id}', [SubjectController::class, 'destroy']);
+    });
+
+    // Cross-campus student identity bridge: explicit two-campus authorization only.
+    Route::middleware(['role:director,super_admin', 'require_campus', 'require_password_change'])->group(function () {
+        Route::get('student-identities', [StudentIdentityController::class, 'index']);
+        Route::post('student-identities/link', [StudentIdentityController::class, 'link']);
+        Route::delete('student-identities/members/{studentId}', [StudentIdentityController::class, 'unlink']);
+        Route::put('student-identities/{groupId}/access', [StudentIdentityController::class, 'access']);
+        Route::get('student-identities/{groupId}/audit', [StudentIdentityController::class, 'audit']);
+    });
+
+    Route::middleware(['role:director,admin,super_admin', 'require_campus', 'require_password_change'])->group(function () {
+        Route::post('student-classes/{studentClass}/manual-sessions/check', [StudentClassController::class, 'checkManualSession']);
+        Route::post('student-classes/{studentClass}/manual-sessions', [StudentClassController::class, 'createManualSession']);
     });
 
     Route::middleware(['role:director,teacher', 'require_campus', 'require_password_change'])->group(function () {

@@ -8,6 +8,7 @@ use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\Payment;
 use App\Models\StudentClass;
+use App\Services\InvoiceAmountReconciliationService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -15,6 +16,10 @@ use Illuminate\Support\Facades\Log;
 
 class BillingController extends Controller
 {
+    public function __construct(private InvoiceAmountReconciliationService $invoiceAmounts)
+    {
+    }
+
     public function index(Request $request)
     {
         $role = $request->attributes->get('auth_role');
@@ -47,7 +52,28 @@ class BillingController extends Controller
             $query->notVoided();
         }
 
-        $invoices = $query->with(['student', 'items', 'items.studentClass'])->orderBy('id', 'desc')->paginate(20);
+        $invoices = $query
+            ->with([
+                'student',
+                'studentClass',
+                'payments' => fn ($payment) => $payment->select(['id', 'InvoiceID', 'Amount', 'Method']),
+                'items',
+                'items.studentClass',
+            ])
+            ->orderBy('id', 'desc')
+            ->paginate(20);
+
+        /** @var \Illuminate\Pagination\LengthAwarePaginator $invoices */
+        $invoices->getCollection()->transform(function (Invoice $invoice) {
+            $projection = $this->invoiceAmounts->resolve($invoice, $invoice->getRelationValue('studentClass'));
+            $invoice->setAttribute('TotalAmount', $projection['total_amount']);
+            $invoice->setAttribute('stored_total_amount', $projection['stored_total_amount']);
+            $invoice->setAttribute('computed_total_amount', $projection['computed_total_amount']);
+            $invoice->setAttribute('amount_source', $projection['amount_source']);
+            $invoice->setAttribute('amount_discrepancy', $projection['amount_discrepancy']);
+            $invoice->setAttribute('period_sessions', $projection['period_sessions']);
+            return $invoice;
+        });
 
         return response()->json($invoices);
     }
@@ -309,7 +335,13 @@ class BillingController extends Controller
 
     public function slipData(Invoice $invoice, Request $request)
     {
-        $invoice->load(['student', 'items', 'items.studentClass']);
+        $invoice->load([
+            'student',
+            'studentClass',
+            'payments' => fn ($payment) => $payment->select(['id', 'InvoiceID', 'Amount', 'Method']),
+            'items',
+            'items.studentClass',
+        ]);
 
         if (!$invoice->student) {
             return response()->json(['message' => 'Invoice has no linked student'], 404);
@@ -321,18 +353,57 @@ class BillingController extends Controller
             $campus = Campus::find($invoice->student->CampusID);
         }
 
-        $remaining = max(0, (int) $invoice->TotalAmount - (int) $invoice->PaidAmount);
+        $projection = $this->invoiceAmounts->resolve($invoice, $invoice->getRelationValue('studentClass'));
+        $totalAmount = $projection['total_amount'];
+        $paidAmount = $projection['net_applied'];
+        $remaining = max(0, $totalAmount - min($totalAmount, $paidAmount));
 
-        $items = $invoice->items->map(function ($item) {
+        $singleItem = $invoice->items->first();
+        $singleCourseItem = $invoice->items->count() === 1
+            && $singleItem !== null
+            && ($invoice->getRelationValue('studentClass') !== null
+                || (int) ($singleItem->StudentClassID ?? 0) > 0);
+        $useReconciledItem = $singleCourseItem
+            && $projection['amount_discrepancy']
+            && $projection['amount_source'] === 'billable_sessions'
+            && $projection['period_start'] !== null
+            && $projection['period_end'] !== null;
+
+        $items = $invoice->items->map(function ($item) use ($invoice, $projection, $useReconciledItem) {
+            $itemAmount = (int) $item->Amount;
+            $itemDescription = (string) $item->Description;
+            $itemPeriodStart = $item->PeriodStart;
+            $itemPeriodEnd = $item->PeriodEnd;
+
+            if ($useReconciledItem) {
+                $itemAmount = (int) $projection['total_amount'];
+                $itemPeriodStart = $projection['period_start'];
+                $itemPeriodEnd = $projection['period_end'];
+
+                $course = $invoice->getRelationValue('studentClass') ?? $item->getRelationValue('studentClass');
+                $subject = $course?->displaySubjectName() ?: '課程';
+                $billingPeriod = (string) ($projection['billing_period'] ?? '');
+                $periodLabel = preg_match('/^(\d{4})-(\d{2})$/', $billingPeriod, $matches)
+                    ? sprintf('%s年%d月', $matches[1], (int) $matches[2])
+                    : $billingPeriod;
+                $itemDescription = sprintf(
+                    '%s月結費用 %s（%d堂）',
+                    $subject,
+                    $periodLabel,
+                    (int) ($projection['period_sessions'] ?? 0)
+                );
+            }
+
             return [
-                'description' => $item->Description,
-                'amount'      => (int) $item->Amount,
-                'period_start' => $item->PeriodStart,
-                'period_end'   => $item->PeriodEnd,
+                'description' => $itemDescription,
+                'amount'      => $itemAmount,
+                'stored_amount' => (int) $item->Amount,
+                'period_start' => $itemPeriodStart,
+                'period_end'   => $itemPeriodEnd,
             ];
         });
 
-        $studentClassIds = $invoice->items
+        $studentClassIds = $invoice->getRelationValue('items')
             ->pluck('StudentClassID')
             ->map(fn ($id) => (int) $id)
             ->filter(fn ($id) => $id > 0)
@@ -343,7 +414,11 @@ class BillingController extends Controller
             $studentClassIds[] = (int) $invoice->StudentClassID;
             $studentClassIds = array_values(array_unique($studentClassIds));
         }
-        $sessions = ClassSession::sessionsForPaymentSlip($studentClassIds);
+        $sessions = ClassSession::sessionsForPaymentSlip(
+            $studentClassIds,
+            $projection['period_start'],
+            $projection['period_end']
+        );
 
         $authUser = $request->attributes->get('auth_user');
         Log::info('[InvoiceSlip] generated', [
@@ -359,8 +434,13 @@ class BillingController extends Controller
             'campus_name'  => $campus->name ?? '',
             'issue_date'   => $invoice->IssueDate,
             'due_date'     => $invoice->DueDate,
-            'total_amount' => (int) $invoice->TotalAmount,
-            'paid_amount'  => (int) $invoice->PaidAmount,
+            'total_amount' => $totalAmount,
+            'stored_total_amount' => $projection['stored_total_amount'],
+            'computed_total_amount' => $projection['computed_total_amount'],
+            'amount_source' => $projection['amount_source'],
+            'amount_discrepancy' => $projection['amount_discrepancy'],
+            'period_sessions' => $projection['period_sessions'],
+            'paid_amount'  => $paidAmount,
             'remaining'    => $remaining,
             'status'       => $invoice->Status,
             'note'         => $invoice->Note,
@@ -424,7 +504,7 @@ class BillingController extends Controller
             $ids[] = (int) $invoice->StudentClassID;
         }
         $invoice->loadMissing('items');
-        foreach ($invoice->items as $item) {
+        foreach ($invoice->getRelationValue('items') as $item) {
             $itemClassId = (int) ($item->StudentClassID ?? 0);
             if ($itemClassId > 0) {
                 $ids[] = $itemClassId;

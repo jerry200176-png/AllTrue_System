@@ -178,8 +178,22 @@
     <!-- ═══ Student Attendance Tab（原有內容） ═══ -->
     <template v-if="activeTab === 'student' || isTeacher">
 
+    <!-- Teacher first-run summary: one decision, one next action. -->
+    <section v-if="isTeacher" class="att-teacher-snapshot card" aria-labelledby="att-teacher-snapshot-title">
+      <div>
+        <p class="att-snapshot-eyebrow">今天</p>
+        <h3 id="att-teacher-snapshot-title">先完成今日點名</h3>
+        <p v-if="pendingLoading" class="att-snapshot-copy">正在整理今天的課表…</p>
+        <p v-else-if="pendingSessions.length" class="att-snapshot-copy">
+          還有 <strong>{{ pendingSessions.length }}</strong> 堂待處理；選擇每堂狀態後再確認送出。
+        </p>
+        <p v-else class="att-snapshot-copy">今日點名已完成，沒有需要處理的堂次。</p>
+      </div>
+      <button v-if="pendingSessions.length" type="button" class="primary" @click="focusPendingList">開始點名</button>
+    </section>
+
     <!-- Stats Summary -->
-    <div class="att-stats">
+    <div v-else class="att-stats">
       <div class="att-stat-card">
         <div class="att-stat-num">{{ markedSessionsCount }}</div>
         <div class="att-stat-label">已點名 / 今日課表 {{ todaySessionTotal }}</div>
@@ -201,7 +215,7 @@
     <div v-if="fetchError" class="att-msg error" style="margin-bottom:12px">{{ fetchError }}</div>
 
     <!-- Unified Check-in Panel -->
-    <div class="card att-checkin-card">
+    <div class="card att-checkin-card" data-guide="attendance-pending-list">
       <div class="att-checkin-header">
         <div class="att-section-title">今日待點名堂次</div>
         <span v-if="pendingSessions.length > 0" class="att-badge">{{ pendingSessions.length }}</span>
@@ -1690,6 +1704,10 @@ function setStatus(sessionId, status) {
   pendingMarkStatus.value = { ...pendingMarkStatus.value, [sessionId]: status };
 }
 
+function focusPendingList() {
+  document.querySelector('[data-guide="attendance-pending-list"]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 // --- API calls ---
 const recordsDate = ref(localTodayYmd());
 // Admin/Director default to today; recent 7 days remains available for review.
@@ -2419,6 +2437,25 @@ watch(() => props.branchId, () => {
 
 <style scoped>
 .att-page { max-width: 1200px; }
+
+.att-teacher-snapshot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 16px;
+  padding: 18px 20px;
+  border: 1px solid var(--ds-hairline);
+  background: var(--ds-canvas);
+}
+.att-snapshot-eyebrow { margin: 0 0 3px; color: var(--ds-primary-deep); font-size: 12px; font-weight: 700; }
+.att-teacher-snapshot h3 { margin: 0; color: var(--ds-ink); font-size: 18px; }
+.att-snapshot-copy { margin: 5px 0 0; color: var(--ds-ink-secondary); font-size: 13px; line-height: 1.5; }
+.att-snapshot-copy strong { color: var(--ds-ink); font-variant-numeric: tabular-nums; }
+@media (max-width: 640px) {
+  .att-teacher-snapshot { align-items: stretch; flex-direction: column; gap: 12px; padding: 16px; }
+  .att-teacher-snapshot .primary { width: 100%; }
+}
 
 .att-header {
   display: flex; justify-content: space-between; align-items: flex-start;

@@ -35,7 +35,7 @@ class LearningRecordResurrectionPolicy
      * 新增系統作廢原因時，務必同步加入此白名單。
      */
     public const SYSTEM_RESURRECTABLE_VOID_REASONS = [
-        '一般請假',
+        CourseLeaveCascadeService::VOID_REASON_LEAVE,
         '由已上調整狀態',
         '補請假：已上課改請假',
         '單堂標記請假',

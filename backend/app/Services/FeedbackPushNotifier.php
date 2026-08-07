@@ -7,6 +7,7 @@ use App\Models\LearningRecordFeedback;
 use App\Models\Notification;
 use App\Models\Student;
 use App\Models\StudentLineBinding;
+use App\Models\SecurityAuditEvent;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -120,7 +121,19 @@ class FeedbackPushNotifier
 
         $sent = 0;
         foreach ($bindings as $binding) {
-            if ($this->pushLine((string) $binding->line_user_id, $msg, (string) $campus->messaging_channel_token)) {
+            $delivered = $this->pushLine((string) $binding->line_user_id, $msg, (string) $campus->messaging_channel_token);
+            SecurityAuditEvent::append('notification.delivery', $delivered ? 'success' : 'failure', [
+                'campus_id' => $campusId,
+                'subject_type' => 'student',
+                'subject_id' => $feedback->getAttribute('student_id'),
+                'binding_id' => $binding->getKey(),
+            ], [
+                'method' => 'line_push',
+                'notification_type' => 'learning_feedback',
+                'delivery_status' => $delivered ? 'delivered' : 'failed',
+                'binding_verified' => true,
+            ]);
+            if ($delivered) {
                 $sent++;
             }
         }
