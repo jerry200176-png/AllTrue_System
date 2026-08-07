@@ -1,14 +1,12 @@
 name: LR Missing Diagnose (read-only)
 
-# One-off read-only probe for the bugs:verify-reproductions enforced condition
-# `attended_session_without_learning_record` (#1078/#188), which has regressed
-# nightly on the Pi Health Monitor since 2026-08-03 with a steady count of 1.
+# Read-only probe used to root-cause the 2026-08-03..08-07 Pi Health Monitor
+# regression on bugs:verify-reproductions' enforced conditions
+# (attended_session_without_learning_record #1078/#188 and
+# leave_session_with_live_learning_record #170 — fixed in this same PR).
+# Kept for reuse if either condition (or a sibling one) regresses again.
 # SELECT-only via artisan tinker. No writes.
 on:
-  push:
-    branches: [claude/gmail-system-tasks-d01acd]
-    paths:
-      - '.github/workflows/lr-missing-diagnose.yml'
   workflow_dispatch: {}
 
 concurrency:
