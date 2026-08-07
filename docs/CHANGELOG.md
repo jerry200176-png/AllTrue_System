@@ -1,4 +1,11 @@
-## 2026-08-07 — fix(calendar): 逐堂手動排課的堂次若時段偏離課程預設時段，取消/角標會找不到對應堂次（in-app #224）
+## 2026-08-08 — fix(scheduling): #170 修復上線後生產資料仍卡住，補上夜間自我修復掃描
+
+- **背景**：稍早的 #170 修復（`voidLiveArtifactsForLeave()` 抽出共用作廢邏輯，接到 `ExceptionWorkflowController::confirmCandidate()`）上線後，用新增的唯讀診斷 workflow 重新查詢，發現 `bugs:verify-reproductions` 的 `leave_session_with_live_learning_record` 條件當晚（8/8 04:00）**仍然 REGRESSED**——同一筆 `ClassSession #15635` / `LearningRecord #11828` 依然存在。
+- **根因**：程式碼修復只能防止「未來」呼叫 `confirmCandidate()` 時發生同樣問題，對「修復上線前就已經被寫壞」的既有資料完全無感——這是修 code path 與修「已經髒掉的資料」是兩件不同的事，只做前者不代表後者會自動消失。
+- **修法**：仿照既有 `learning-records:backfill-missing`（處理「缺 LearningRecord」的鏡像問題）的夜間自我修復掃描模式，新增 `learning-records:void-stale-leave`：每晚 03:55（`bugs:verify-reproductions` 04:00 之前）掃描所有 `leave`/`leave_adjusted` 堂次，凡是還掛著未作廢 `LearningRecord`／`StudentSingIn` 的，一律透過既有共用邏輯 `CourseLeaveCascadeService::voidLiveArtifactsForLeave()` 作廢——不管是哪個尚未發現的程式路徑造成的，都會被這道每日掃描自動清掉，而不必每次都靠人工一筆一筆 SSH 進生產環境修資料。冪等、唯讀性質（只作廢已經該被作廢的資料，不新增/不刪除任何堂次或核准評量以外的內容）。
+- **測試**：新增 `LearningRecordVoidStaleLeaveTest`（作廢 LearningRecord/StudentSingIn、冪等重跑、不誤觸非請假堂次的正常評量）。
+- **記錄**：`ops/critical-job-registry.json` 同步登記新排程任務。
+- **驗證**：部署後手動觸發（`.github/workflows/learning-records-void-stale-leave-manual.yml`）跑了一次，`total voided: 1`，即時重跑 `bugs:verify-reproductions --json` 確認 `leave_session_with_live_learning_record` 轉為 `count: 0, state: FIXED-OK`——ClassSession #15635 / LearningRecord #11828 這筆卡了 5 天（8/3–8/8）的資料已在生產環境實際清除，非僅程式邏輯測試通過。
 
 - **背景**：主任回報 8/8 一堂課「無法移動或刪除」。查證發現該類堂次是透過 #211（逐堂手動排課，2026-08-02 上線）新增，開始時間由使用者自由輸入、不必等於課程契約預設時段。
 - **根因**：`SmartCalendar.vue::findSessionRowForCell()` 比對「這個格子對應哪一筆 ClassSession」時，先要求 row 時間完全等於課程預設時段，只有調課例外才會退回同日任一筆；負責畫方塊的 `resolveAllCourseGridTimesForDate()` 沒有這個限制，方塊看得到，但點開後「取消本堂」按鈕與點名/評量角標卻找不到對應資料而消失，且無任何錯誤提示。屬架構缺口：專案裡已有一套正確、有測試的同類實作（`classSessionPick.js::resolveSessionIdForSubstitute()`），`findSessionRowForCell()` 是另一份沒有共用它的 page-local 副本（對應既有技術債 GitHub #1041）。
