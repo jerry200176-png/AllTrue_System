@@ -84,6 +84,16 @@
         <span class="th-work-queue__count" aria-live="polite">{{ teacherTasks.length }} 項</span>
       </div>
 
+      <section v-if="!teacherTasksLoading && teacherTopPriorities.length" class="th-top-priorities" aria-labelledby="th-top-priorities-title">
+        <h4 id="th-top-priorities-title">今天最重要的事</h4>
+        <ol>
+          <li v-for="task in teacherTopPriorities" :key="`top-${task.id}`" :class="`th-top-priorities__item th-top-priorities__item--${task.severity}`">
+            <strong>{{ task.title }}</strong>
+            <span>{{ task.summary }}</span>
+          </li>
+        </ol>
+      </section>
+
       <div v-if="teacherTasksLoading" class="th-work-queue__list" aria-label="今日工作載入中">
         <div v-for="i in 3" :key="i" class="th-work-task th-work-task--skeleton"></div>
       </div>
@@ -1235,6 +1245,15 @@ const teacherTasks = computed(() => buildTeacherTasks({
   awaitingReplies: [{ count: Math.max(Number(props.unreadFeedbackCount || 0), Number(awaitingReplyCount.value || 0)) }],
 }));
 
+// Top 3 things to look at first: urgent-severity tasks take priority, falling
+// back to the first 3 of the already-priority-sorted full list so an all-normal
+// day still shows something. Answers "what matters most in the next 5 seconds"
+// without requiring the teacher to scan the full queue.
+const teacherTopPriorities = computed(() => {
+  const urgent = teacherTasks.value.filter((task) => task.severity === 'urgent');
+  return (urgent.length > 0 ? urgent : teacherTasks.value).slice(0, 3);
+});
+
 const teacherTasksLoading = computed(() => (
   loadingAttendance.value || loadingOverdue.value || loadingWeek.value || awaitingReplyLoading.value
 ));
@@ -1609,6 +1628,13 @@ onBeforeUnmount(() => {
 .th-work-queue h3 { margin: 0; color: var(--ds-ink); font-size: 20px; }
 .th-work-queue__description { margin: 5px 0 0; color: var(--ds-ink-mute); font-size: 13px; }
 .th-work-queue__count { flex: 0 0 auto; color: var(--ds-ink); font-size: 18px; font-variant-numeric: tabular-nums; font-weight: 700; white-space: nowrap; }
+.th-top-priorities { margin: 12px 0 4px; padding: 14px 16px; border: 1px solid var(--ds-hairline); border-radius: 12px; background: var(--ds-canvas-soft); }
+.th-top-priorities h4 { margin: 0 0 8px; color: var(--ds-ink-secondary); font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.02em; }
+.th-top-priorities ol { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.th-top-priorities__item { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 8px; background: var(--ds-canvas); border-left: 3px solid var(--ds-ink-mute); }
+.th-top-priorities__item strong { color: var(--ds-ink); font-size: 13px; font-weight: 700; }
+.th-top-priorities__item span { color: var(--ds-ink-mute); font-size: 12px; }
+.th-top-priorities__item--urgent { border-left-color: var(--ds-danger); }
 .th-work-queue__list { display: grid; gap: 8px; padding-top: 12px; }
 .th-work-task { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-width: 0; padding: 14px 0; border-bottom: 1px solid var(--ds-hairline); }
 .th-work-task:last-child { border-bottom: 0; }
