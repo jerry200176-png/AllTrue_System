@@ -113,6 +113,13 @@ const pageGuideConfig = {
       description: '急件會置頂顯示（紅色標籤）。點通知可展開詳情；部分通知提供「跳轉」按鈕，可直接前往對應功能頁面處理。',
       placement: 'top',
     },
+    {
+      target: '[data-guide="notifications-settings-button"]',
+      icon: 'tune',
+      title: '通知太多？在這裡調整',
+      description: '按「通知設定」可以針對每一種通知類型（繳費、評量、出缺勤…）分別選擇要不要接收，也能設定站內／Email／LINE 的接收方式與免打擾時段。不用照單全收。',
+      placement: 'bottom',
+    },
   ],
 
   calendar: ({ role }) => {

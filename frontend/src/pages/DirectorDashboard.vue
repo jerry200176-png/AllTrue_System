@@ -62,6 +62,16 @@
               <span class="surface-panel__count">{{ dashboardPrimaryTasks.length }} 項</span>
             </header>
 
+            <section v-if="!dashboardLoading && dashboardTopRisks.length" class="director-top-risks" aria-labelledby="director-top-risks-title">
+              <h3 id="director-top-risks-title">今日營運風險 Top {{ dashboardTopRisks.length }}</h3>
+              <ol>
+                <li v-for="risk in dashboardTopRisks" :key="`risk-${risk.id}`" :class="`director-top-risks__item director-top-risks__item--${risk.severity}`">
+                  <strong>{{ risk.title }}</strong>
+                  <span>{{ risk.summary }}</span>
+                </li>
+              </ol>
+            </section>
+
             <div v-if="dashboardLoading" class="director-task-list" aria-live="polite" aria-label="正在載入今日待辦">
               <div v-for="n in 3" :key="n" class="director-task director-task--loading" aria-hidden="true">
                 <span class="director-skeleton__index"></span>
@@ -129,10 +139,10 @@
                 </div>
               </header>
               <dl class="director-summary-list">
-                <div><dt>今日課程</dt><dd>{{ todaySchedules.length }}</dd><small>{{ attendedCount }} 堂已完成</small></div>
-                <div><dt>待審評量</dt><dd>{{ pendingEvaluations.length }}</dd><small>需要確認的紀錄</small></div>
-                <div><dt>未讀通知</dt><dd>{{ unreadNotificationCount }}</dd><small>通知中心待查看</small></div>
-                <div><dt>今日工作量</dt><dd>{{ workflowDailySummary.due_total }}</dd><small>已完成 {{ workflowDailySummary.done_total }} 件</small></div>
+                <div><dt :title="DASHBOARD_SUMMARY_DEFINITIONS.todaySchedules">今日課程<span class="material-symbols-outlined director-summary-list__info" aria-hidden="true">info</span></dt><dd>{{ todaySchedules.length }}</dd><small>{{ attendedCount }} 堂已完成</small></div>
+                <div><dt :title="DASHBOARD_SUMMARY_DEFINITIONS.pendingEvaluations">待審評量<span class="material-symbols-outlined director-summary-list__info" aria-hidden="true">info</span></dt><dd>{{ pendingEvaluations.length }}</dd><small>需要確認的紀錄</small></div>
+                <div><dt :title="DASHBOARD_SUMMARY_DEFINITIONS.unreadNotifications">未讀通知<span class="material-symbols-outlined director-summary-list__info" aria-hidden="true">info</span></dt><dd>{{ unreadNotificationCount }}</dd><small>通知中心待查看</small></div>
+                <div><dt :title="DASHBOARD_SUMMARY_DEFINITIONS.workflowDaily">今日工作量<span class="material-symbols-outlined director-summary-list__info" aria-hidden="true">info</span></dt><dd>{{ workflowDailySummary.due_total }}</dd><small>已完成 {{ workflowDailySummary.done_total }} 件</small></div>
               </dl>
             </section>
 
@@ -511,6 +521,20 @@ const dashboardTasks = computed(() => buildDirectorDashboardTasks({
 // one row per director decision instead of expanding into a student-by-student feed.
 const dashboardPrimaryTasks = computed(() => dashboardTasks.value.filter((item) => item.source !== 'adoption'));
 const dashboardAdditionalTaskCount = computed(() => dashboardTasks.value.filter((item) => item.source === 'adoption').length);
+
+// Top 3 today's operating risks: highest-severity primary tasks, excluding pure
+// info-level items (those are queue work, not risk). Reuses the already-sorted
+// dashboardPrimaryTasks order (severity, then due date) rather than re-sorting.
+const dashboardTopRisks = computed(() => dashboardPrimaryTasks.value
+  .filter((item) => item.severity === 'critical' || item.severity === 'danger' || item.severity === 'warning')
+  .slice(0, 3));
+
+const DASHBOARD_SUMMARY_DEFINITIONS = Object.freeze({
+  todaySchedules: '今天已排定的所有課程堂數，含已完成與未開始的。',
+  pendingEvaluations: '已上課但主任尚未核准或退回的評量紀錄；核准後家長才看得到。',
+  unreadNotifications: '通知中心裡尚未標記已讀的系統通知，例如繳費提醒、課表異動。',
+  workflowDaily: '今天需要主任處理並完成的營運工作總數，例如請假案件、補課登記。',
+});
 
 const workflowDailySummary = computed(() => ({
   due_total: Number(adoptionWeeklyMetrics.value?.workflow_daily?.due_total || 0),
@@ -2792,9 +2816,19 @@ onBeforeUnmount(() => {
 .director-workbench-v2__more:hover { border-bottom-color: var(--ds-cta); color: var(--ds-cta); }
 .director-summary-list { margin: 0; padding: 0 22px; }
 .director-summary-list > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 14px 0; border-top: 1px solid var(--ds-hairline); }
-.director-summary-list dt { color: var(--ds-ink-secondary); font-size: 12px; }
+.director-summary-list dt { display: inline-flex; align-items: center; gap: 4px; color: var(--ds-ink-secondary); font-size: 12px; cursor: help; }
 .director-summary-list dd { margin: 0; color: var(--ds-ink); font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .director-summary-list small { grid-column: 1 / -1; color: var(--ds-ink-mute); font-size: 11px; }
+.director-summary-list__info { font-size: 14px; color: var(--ds-ink-mute); }
+
+.director-top-risks { margin: 0 22px 16px; padding: 14px 16px; border: 1px solid var(--ds-hairline); border-radius: 12px; background: var(--ds-canvas-soft); }
+.director-top-risks h3 { margin: 0 0 8px; color: var(--ds-ink-secondary); font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.02em; }
+.director-top-risks ol { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.director-top-risks__item { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 8px; background: var(--ds-canvas); border-left: 3px solid var(--ds-ink-mute); }
+.director-top-risks__item strong { color: var(--ds-ink); font-size: 13px; font-weight: 700; }
+.director-top-risks__item span { color: var(--ds-ink-mute); font-size: 12px; }
+.director-top-risks__item--critical, .director-top-risks__item--danger { border-left-color: var(--ds-danger); }
+.director-top-risks__item--warning { border-left-color: var(--ds-warning); }
 .director-trust-note { border-top: 1px solid var(--ds-hairline); border-bottom: 1px solid var(--ds-hairline); }
 .director-trust-note summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 0 2px; color: var(--ds-ink-secondary); font-size: 12px; font-weight: 800; cursor: pointer; list-style: none; }
 .director-trust-note summary::-webkit-details-marker { display: none; }
