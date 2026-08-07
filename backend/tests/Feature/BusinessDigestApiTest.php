@@ -2,9 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Models\AuthToken;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -17,11 +17,24 @@ class BusinessDigestApiTest extends TestCase
 {
     use RefreshDatabase;
 
+    private function tokenFor(string $type): string
+    {
+        $user = User::create([
+            'LoginName' => strtolower($type) . '-' . uniqid() . '@test.com',
+            'Name'      => 'Test User',
+            'PSW'       => bcrypt('pw'),
+            'type'      => $type,
+            'status'    => 'active',
+        ]);
+        $raw = bin2hex(random_bytes(16));
+        AuthToken::create(['user_id' => $user->id, 'token' => $raw, 'expires_at' => now()->addDay()]);
+
+        return $raw;
+    }
+
     public function test_super_admin_can_read_digest(): void
     {
-        $admin = User::factory()->create(['type' => 'S']);
-
-        $response = $this->actingAs($admin)->getJson('/api/v1/admin/business-digest');
+        $response = $this->withToken($this->tokenFor('S'))->getJson('/api/v1/admin/business-digest');
 
         $response->assertOk();
         $response->assertJsonStructure(['generated_at', 'revenue', 'retention', 'data_quality']);
@@ -29,9 +42,7 @@ class BusinessDigestApiTest extends TestCase
 
     public function test_super_admin_can_scope_to_a_campus(): void
     {
-        $admin = User::factory()->create(['type' => 'S']);
-
-        $response = $this->actingAs($admin)->getJson('/api/v1/admin/business-digest?campus_id=1');
+        $response = $this->withToken($this->tokenFor('S'))->getJson('/api/v1/admin/business-digest?campus_id=1');
 
         $response->assertOk();
         $response->assertJson(['campus_id' => 1]);
@@ -39,9 +50,7 @@ class BusinessDigestApiTest extends TestCase
 
     public function test_non_super_admin_is_forbidden(): void
     {
-        $director = User::factory()->create(['type' => 'D']);
-
-        $response = $this->actingAs($director)->getJson('/api/v1/admin/business-digest');
+        $response = $this->withToken($this->tokenFor('A'))->getJson('/api/v1/admin/business-digest');
 
         $response->assertForbidden();
     }
