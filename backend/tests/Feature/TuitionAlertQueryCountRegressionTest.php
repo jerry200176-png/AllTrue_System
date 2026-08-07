@@ -28,19 +28,20 @@ class TuitionAlertQueryCountRegressionTest extends TestCase
 
     public function test_query_count_does_not_scale_linearly_with_course_count(): void
     {
-        $countSmall = $this->tuitionQueryCountForCourses(5);
-        $countLarge = $this->tuitionQueryCountForCourses(40);
+        [$countSmall, ] = $this->tuitionQueryCountForCourses(5);
+        [$countLarge, $dumpLarge] = $this->tuitionQueryCountForCourses(40);
 
         // A per-row N+1 over 35 extra courses would add ~35+ queries. Batched
         // aggregate lookups add at most a small constant overhead per call.
         $this->assertLessThanOrEqual(
             5,
             $countLarge - $countSmall,
-            "Query count grew with course count (suspected N+1): 5 courses={$countSmall}, 40 courses={$countLarge}"
+            "Query count grew with course count (suspected N+1): 5 courses={$countSmall}, 40 courses={$countLarge}\n{$dumpLarge}"
         );
     }
 
-    private function tuitionQueryCountForCourses(int $n): int
+    /** @return array{0:int, 1:string} [query count, query-frequency dump text] */
+    private function tuitionQueryCountForCourses(int $n): array
     {
         DB::table('StudentClass')->delete();
         DB::table('Student')->where('CampusID', 1)->delete();
@@ -82,11 +83,22 @@ class TuitionAlertQueryCountRegressionTest extends TestCase
             'Authorization' => "Bearer {$token}",
             'Accept' => 'application/json',
         ])->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk();
-        $queryCount = count(DB::getQueryLog());
+        $log = DB::getQueryLog();
+        $queryCount = count($log);
         DB::disableQueryLog();
+        $counts = [];
+        foreach ($log as $entry) {
+            $sql = (string) $entry['query'];
+            $counts[$sql] = ($counts[$sql] ?? 0) + 1;
+        }
+        arsort($counts);
+        $dumpLines = [];
+        foreach ($counts as $sql => $c) {
+            $dumpLines[] = "{$c}x  {$sql}";
+        }
         DB::flushQueryLog();
 
-        return $queryCount;
+        return [$queryCount, implode("\n", $dumpLines)];
     }
 
     private function createUserToken(string $email): string
