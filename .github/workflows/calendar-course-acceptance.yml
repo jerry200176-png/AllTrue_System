@@ -82,13 +82,23 @@ jobs:
           $row = \\Illuminate\\Support\\Facades\\DB::table("auth_tokens as t")
             ->join("User as u", "u.id", "=", "t.user_id")
             ->join("UserCampus as uc", "uc.UserID", "=", "u.id")
-            ->whereIn("u.type", ["D", "S"])
+            ->where("u.type", "D")
             ->where("uc.CampusID", $branch)
             ->where(function ($q) { $q->where("uc.Approved", 1)->orWhereNull("uc.Approved"); })
             ->where("t.expires_at", ">", now())
             ->orderByDesc("t.expires_at")
             ->select("t.token", "u.id", "u.type", "u.Name", "u.LoginName", "u.MustChangePassword")
             ->first();
+          if (!$row) {
+            // A super admin may administer a branch without a UserCampus row.
+            $row = \\Illuminate\\Support\\Facades\\DB::table("auth_tokens as t")
+              ->join("User as u", "u.id", "=", "t.user_id")
+              ->where("u.type", "S")
+              ->where("t.expires_at", ">", now())
+              ->orderByDesc("t.expires_at")
+              ->select("t.token", "u.id", "u.type", "u.Name", "u.LoginName", "u.MustChangePassword")
+              ->first();
+          }
           if (!$row) { throw new \\RuntimeException("no valid director smoke session"); }
           $campuses = \\Illuminate\\Support\\Facades\\DB::table("UserCampus")
             ->where("UserID", $row->id)
