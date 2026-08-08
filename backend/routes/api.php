@@ -55,6 +55,7 @@ use App\Http\Controllers\AdminReconcileController;
 use App\Http\Controllers\AdminDuplicateSessionController;
 use App\Http\Controllers\GitHubIssueController;
 use App\Http\Controllers\StudentIdentityController;
+use App\Http\Controllers\TeacherEligibilityController;
 
 
 if (app()->environment('local')) {
@@ -309,6 +310,7 @@ Route::prefix('v1')->group(function () {
         Route::get('finance/revenue', [FinanceController::class, 'revenue']);
         Route::get('finance/outstanding', [FinanceController::class, 'outstanding']);
         Route::get('finance/teacher-payroll', [FinanceController::class, 'teacherPayroll'])->middleware('require_pin'); // #769 Phase C：薪資敏感
+        Route::get('finance/teacher-eligibility', [TeacherEligibilityController::class, 'index'])->middleware('require_pin');
         Route::get('finance/ar-aging', [FinanceController::class, 'arAging']);
         Route::get('finance/gl-export', [FinanceController::class, 'glExport']);
         Route::get('finance/consolidated-summary', [FinanceController::class, 'consolidatedSummary']);
