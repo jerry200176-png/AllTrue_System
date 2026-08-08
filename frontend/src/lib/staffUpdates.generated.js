@@ -4,6 +4,45 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-08-makeup-candidate-date-fix",
+    "publishedAt": "2026-08-08",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "major",
+    "title": "請假補課日期更合理",
+    "summary": "原堂是 8/20 時，補課候選會從原堂之後開始，不會出現 8/9 這類錯誤日期。",
+    "items": [
+      "補課候選會參考原堂日期，原堂 8/20 的案件只會提供 8/21 之後的時段。",
+      "主任畫面會顯示補課候選範圍，確認日期依據更清楚。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "補課候選會參考原堂日期，原堂 8/20 的案件只會提供 8/21 之後的時段。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "主任畫面會顯示補課候選範圍，確認日期依據更清楚。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "2026-08-08"
+    ],
+    "date": "2026-08-08",
+    "version": "2026.08.08"
+  },
+  {
     "id": "staff-2026-08-06-scheduling-fixes",
     "publishedAt": "2026-08-06",
     "effectiveAt": null,

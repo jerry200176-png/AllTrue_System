@@ -32,6 +32,12 @@ class ExceptionWorkflowCandidateGenerator
             throw new \InvalidArgumentException('end_date must be after start_date.');
         }
 
+        // A makeup lesson replaces the missed lesson; it cannot be offered
+        // before that lesson happened. Enforce this server-side as well as in
+        // the dashboard so old clients cannot reintroduce an earlier date.
+        $sourceDate = Carbon::parse($sourceSession->SessionDate)->startOfDay();
+        $start = $start->max($sourceDate->copy()->addDay());
+
         $durationMinutes = $this->durationMinutes($sourceSession, $course);
         $durationSlots = max(1, (int) ceil($durationMinutes / 30));
         $teacherId = (int) ($course->TeacherID ?? 0);

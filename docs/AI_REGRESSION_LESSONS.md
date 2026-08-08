@@ -1300,3 +1300,10 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **修法**：把 `ALTER USER '${DB_USER}'@'localhost' IDENTIFIED BY ...` 改成 `ALTER USER CURRENT_USER() IDENTIFIED BY ...`——`CURRENT_USER()` 一定解析成「這個連線實際驗證通過的那個帳號」，不管它的 host pattern 是 `%`、`127.0.0.1` 還是 `localhost`，從根本上消除這種「連線用一個身分、改密碼卻寫死另一個身分」的錯位可能性。
 - **範圍**：只修了 workflow 腳本本身的 bug，**沒有觸發這個 workflow**——實際的密碼輪替仍是 Founder-only 動作，AI agent 不應該也沒有執行它。
 - **測試**：`python3 -c "import yaml; yaml.safe_load(...)"` 確認 YAML 語法合法；`ALTER USER CURRENT_USER() IDENTIFIED BY '...'` 是 MySQL 官方文件記載的標準寫法（自我改密碼不需要知道自己帳號的 host pattern），無法在不觸發真正 production 輪替的前提下端對端測試，這點是本次修復的已知限制，留給 Founder 下次觸發時驗證。
+
+### R105. 補課候選日期必須晚於原堂，不能只從今天起算
+
+- **觸發情境**：今天是 8/8、學生請假原堂是 8/20，主任的補課候選卻從 8/9 開始，容易安排成原堂前的錯誤時序。
+- **根因**：主任儀表板原本固定用「今天 +1～+14 天」呼叫候選 API，候選產生器也沒有以 `class_session.SessionDate` 做日期邊界驗證。
+- **強制規則**：補課候選查詢起點必須是 `max(今天+1、原堂日+1)`；前端只負責提供正確視窗，後端候選產生器必須再次夾限，避免舊客戶端或手動 request 繞過規則。
+- **測試必補**：原堂 8/20、request window 8/9～8/23 時，第一個候選為 8/21，且所有候選日期都大於 8/20。

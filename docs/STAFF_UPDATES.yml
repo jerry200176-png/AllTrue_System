@@ -3,6 +3,22 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-08-makeup-candidate-date-fix
+    published_at: "2026-08-08"
+    audiences:
+      - director
+      - teacher
+    importance: major
+    title: 請假補課日期更合理
+    summary: 原堂是 8/20 時，補課候選會從原堂之後開始，不會出現 8/9 這類錯誤日期。
+    items:
+      - category: fixed
+        text: 補課候選會參考原堂日期，原堂 8/20 的案件只會提供 8/21 之後的時段。
+      - category: improved
+        text: 主任畫面會顯示補課候選範圍，確認日期依據更清楚。
+    source_refs:
+      - "2026-08-08"
+
   - id: staff-2026-08-06-leave-makeup-count-fix
     published_at: "2026-08-06"
     audiences:
