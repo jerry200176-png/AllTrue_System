@@ -13,6 +13,7 @@ const BASE = process.env.SMOKE_BASE_URL;
 const BRANCH_ID = Number(process.env.SMOKE_BRANCH_ID || 16);
 const START = process.env.SMOKE_START_DATE || '2026-08-05';
 const END = process.env.SMOKE_END_DATE || '2026-08-07';
+const CURRENT_STAFF_RELEASE = '2026.08.06';
 
 function readSession() {
   const encoded = process.env.SMOKE_DIRECTOR_SESSION_B64 || '';
@@ -151,15 +152,19 @@ test.describe('production acceptance — calendar/course parity', () => {
         ));
       });
 
-      await page.addInitScript(({ session, branch }) => {
+      await page.addInitScript(({ session, branch, releaseVersion }) => {
         localStorage.setItem('alltrue_session', JSON.stringify(session));
         localStorage.setItem('app_branch', String(branch));
+        // The controlled account is also a returning user who has already
+        // acknowledged the current staff release. This keeps an unrelated
+        // release prompt from covering the acceptance target.
+        localStorage.setItem('alltrue_release_notes_seen', releaseVersion);
         // This is an existing-user state: the intro is already seen. Keeping
         // the acceptance focused on the reported pages avoids the first-login
         // animation racing the sidebar click while still exercising production
         // auth, routing, data loading, and responsive layout.
         sessionStorage.setItem('alltrue_brand_intro_seen_token', String(session.access_token || ''));
-      }, { session: SESSION, branch: BRANCH_ID });
+      }, { session: SESSION, branch: BRANCH_ID, releaseVersion: CURRENT_STAFF_RELEASE });
 
       const pageErrors = [];
       page.on('pageerror', (error) => pageErrors.push(String(error)));
