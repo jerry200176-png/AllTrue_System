@@ -68,6 +68,18 @@ MemPalace issues use **MP-*** IDs below — never page CEO for MemPalace alone.
 
 ---
 
+## Security alert incidents (Dependabot / advisories / secret scanning) — #879
+
+| ID | Symptom | Sev | Action |
+|----|---------|-----|--------|
+| SEC-01 | Secret leak confirmed (gitleaks / manual discovery) | P0 | `OPERATIONS_RUNBOOK.md` §O「外洩應急」— rotate same day, no waiting for schedule |
+| SEC-02 | Dependabot/`osv-scanner` HIGH+ advisory, package reachable | P1 | Patch same week; if no fix available, document reachability + mitigation in the PR/issue |
+| SEC-03 | Dependabot/`osv-scanner` HIGH+ advisory, package unreachable (dead code path) | P2 | `composer.json`/`package.json` `audit.ignore` with reachability review note (see TD-075 precedent) — not urgent, but must be tracked, not silently dismissed |
+| SEC-04 | Routine 90-day secret rotation reminder (automated, see §O) | P2 | Rotate on next convenient maintenance window, not same-day |
+| SEC-05 | GitHub Security Advisory filed against this repo (private vulnerability report received) | P0 | Immediate triage — private reporting is enabled (#879); treat as PROD-equivalent until scoped |
+
+---
+
 ## MemPalace incidents (best-effort — NOT production)
 
 Local WSL2 only. **Do not use for production health inference.**

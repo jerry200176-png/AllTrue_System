@@ -875,7 +875,7 @@ DB password 輪換屬高風險操作。執行前需先讀 `docs/DANGEROUS_OPERAT
 
 ### 4. 提醒機制
 
-每 90 天在 GitHub Issues 手動建立「Secret rotation reminder」milestone issue，指派給 `jerry200176-png`。
+每 90 天自動觸發（`.github/workflows/secret-rotation-reminder.yml`，`cron: '0 16 1 */3 *'`）開一則提醒 issue（`area:security,priority:p2`），列出完整 secret 清單；也可 `workflow_dispatch` 手動觸發。P2／排到下個方便的維運窗口，非當天急件（急件走上面「外洩應急」）。SLA 對照見 `docs/SEVERITY_MATRIX.md` SEC-04。
 
 ## P. 工程成熟度現況（2026-04-25 評估）
 
