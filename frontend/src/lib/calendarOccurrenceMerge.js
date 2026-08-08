@@ -257,6 +257,10 @@ export function mergeWeekCalendarOccurrences({
         continue;
       }
 
+      // A reschedule target is only displayable when course management can corroborate it
+      // with a materialized ClassSession for the same course/date/start slot.
+      if (statusOf(ex) === 'scheduled' && ex.original_schedule_id && scid && !sessionRow) continue;
+
       if (scid && !visibleCourseIds.has(scid) && filterTeacherId && String(ex.teacher_id ?? '') !== String(filterTeacherId)) {
         continue;
       }
