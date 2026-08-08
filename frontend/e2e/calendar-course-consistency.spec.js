@@ -83,7 +83,9 @@ async function navigate(page, label) {
   const isMobile = (page.viewportSize()?.width || 0) <= 640;
   if (isMobile && label === '班級行事曆 / 課表') {
     const bottomNav = page.locator('.mobile-bottom-nav');
-    const bottomTab = bottomNav.getByRole('button', { name: /行事曆/ }).first();
+    await expect(bottomNav).toBeVisible({ timeout: 15_000 });
+    const bottomTab = bottomNav.locator('.mob-tab').filter({ hasText: '行事曆' }).first();
+    await bottomTab.waitFor({ state: 'attached', timeout: 5_000 }).catch(() => {});
     if (await bottomTab.count()) {
       await expect(bottomTab).toBeVisible({ timeout: 15_000 });
       await bottomTab.click();
