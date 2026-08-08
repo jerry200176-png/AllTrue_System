@@ -1,5 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
+import { latestReleaseVersionForRole } from '../src/lib/releaseNotes.js';
 
 /**
  * Authenticated, read-only acceptance for the calendar/course-management parity
@@ -13,7 +14,10 @@ const BASE = process.env.SMOKE_BASE_URL;
 const BRANCH_ID = Number(process.env.SMOKE_BRANCH_ID || 16);
 const START = process.env.SMOKE_START_DATE || '2026-08-05';
 const END = process.env.SMOKE_END_DATE || '2026-08-07';
-const CURRENT_STAFF_RELEASE = '2026.08.06';
+// Keep the returning-user fixture aligned with the same STAFF_UPDATES source
+// that drives the production release nudge. A hard-coded version makes this
+// read-only acceptance fail as soon as a newer staff update is published.
+const CURRENT_STAFF_RELEASE = latestReleaseVersionForRole('director');
 
 function readSession() {
   const encoded = process.env.SMOKE_DIRECTOR_SESSION_B64 || '';

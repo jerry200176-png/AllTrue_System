@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "db16f2e049994ade81061cf87d80a5a0",
+  "session_id": "6b4211c168384d7db6ea09ec158ac2e5",
   "project": "alltrue",
-  "task_id": "1387-rotation-hardening",
+  "task_id": "1724-acceptance-release-nudge",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "b5e5df2574f24e574f2807c5f0b448e1912c81db",
-  "branch": "chore/task-1387-rotation-hardening",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/1387-rotation-hardening",
-  "started_at": "2026-08-08T22:10:00Z",
+  "base_sha": "0d228072f5f0d64bf72c609c38b88c9fa53586b0",
+  "branch": "chore/task-1724-acceptance-release-nudge",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/1724-acceptance-release-nudge",
+  "started_at": "2026-08-08T22:31:06Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": null,
+  "agent_cli": "codex",
   "gateway_version": "0.5.0"
 }
