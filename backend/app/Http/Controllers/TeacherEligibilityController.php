@@ -491,16 +491,67 @@ class TeacherEligibilityController extends Controller
 
     private function weekdayHours($schedules, Carbon $start, Carbon $end): array
     {
-        $hours = [];
+        $intervalsByDate = [];
+        $fallbackHoursByDate = [];
         foreach ($schedules as $row) {
             if (!$this->isRegularAssignable($row)) continue;
             $date = (string) $row->schedule_date;
             if (!$date || $date < $start->toDateString() || $date > $end->toDateString()) continue;
             $day = Carbon::parse($date)->dayOfWeekIso;
             if ($day >= 6) continue;
-            $hours[$date] = ($hours[$date] ?? 0) + $this->durationHours($row);
+
+            $startMinutes = $this->clockMinutes($row->start_time ?? null);
+            $endMinutes = $this->clockMinutes($row->end_time ?? null);
+            if ($startMinutes !== null && $endMinutes !== null && $endMinutes > $startMinutes) {
+                $intervalsByDate[$date][] = [$startMinutes, $endMinutes];
+                continue;
+            }
+
+            // Preserve the previous duration fallback when a legacy schedule
+            // row has no parseable clock window; it remains reviewable data,
+            // but must not make valid overlapping windows double-count.
+            $fallbackHoursByDate[$date] = ($fallbackHoursByDate[$date] ?? 0) + $this->durationHours($row);
         }
+
+        $hours = [];
+        foreach (array_unique(array_merge(array_keys($intervalsByDate), array_keys($fallbackHoursByDate))) as $date) {
+            $coverageMinutes = 0;
+            $mergedEnd = null;
+            $mergedStart = null;
+            $intervals = $intervalsByDate[$date] ?? [];
+            usort($intervals, fn ($left, $right) => $left[0] <=> $right[0] ?: $left[1] <=> $right[1]);
+            foreach ($intervals as [$intervalStart, $intervalEnd]) {
+                if ($mergedStart === null) {
+                    $mergedStart = $intervalStart;
+                    $mergedEnd = $intervalEnd;
+                    continue;
+                }
+                if ($intervalStart <= $mergedEnd) {
+                    $mergedEnd = max($mergedEnd, $intervalEnd);
+                    continue;
+                }
+                $coverageMinutes += $mergedEnd - $mergedStart;
+                $mergedStart = $intervalStart;
+                $mergedEnd = $intervalEnd;
+            }
+            if ($mergedStart !== null) {
+                $coverageMinutes += $mergedEnd - $mergedStart;
+            }
+            $hours[$date] = round(($coverageMinutes / 60) + ($fallbackHoursByDate[$date] ?? 0), 2);
+        }
+
         return array_map(fn ($value) => round($value, 2), $hours);
+    }
+
+    private function clockMinutes($value): ?int
+    {
+        if ($value === null || $value === '') return null;
+        try {
+            $parsed = Carbon::parse((string) $value);
+            return ($parsed->hour * 60) + $parsed->minute;
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     private function isRegularAssignable($row): bool

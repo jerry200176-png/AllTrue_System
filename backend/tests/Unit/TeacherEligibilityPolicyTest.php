@@ -80,6 +80,15 @@ class TeacherEligibilityPolicyTest extends TestCase
         $this->assertSame(5.0, $result['rate']);
     }
 
+    public function test_weekday_afternoon_examples_keep_half_quarter_and_full_segment_values(): void
+    {
+        foreach ([[4.0, 0.0], [5.0, 0.5], [5.5, 0.75], [6.0, 1.0]] as [$hours, $expectedSegments]) {
+            $result = $this->policy->weekdayAfternoon(['2026-08-03' => $hours]);
+            $this->assertSame($expectedSegments, $result['metrics']['extra_segments']);
+            $this->assertSame($expectedSegments, $result['rate']);
+        }
+    }
+
     public function test_unverified_achievement_is_review_and_verified_achievement_adds_five_percent(): void
     {
         $review = $this->policy->specialPerformance([

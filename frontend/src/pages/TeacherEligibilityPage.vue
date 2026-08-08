@@ -157,7 +157,8 @@ function detail(key, component) {
     const attendanceSessions = weeks.reduce((total, week) => total + Number(week.attendance_sessions || 0), 0);
     return `${component.amount ?? 0}元｜學生點名 ${attendanceSessions} 堂`;
   }
-  if (key === 'holiday_16_hours' || key === 'weekday_afternoon' || key === 'special_performance') return `${component.rate ?? 0}%`;
+  if (key === 'holiday_16_hours' || key === 'special_performance') return `${component.rate ?? 0}%`;
+  if (key === 'weekday_afternoon') return `${component.rate ?? 0}%｜有效${component.metrics?.extra_segments ?? 0}段`;
   if (key === 'deductions') return `${component.rate ?? 0}%`;
   return component.metrics?.subject_count == null ? '—' : `${component.metrics.subject_count}科`;
 }

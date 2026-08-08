@@ -171,7 +171,11 @@ class TeacherEligibilityPolicy
         return $this->result(
             self::QUALIFIES,
             $rate > 0 ? '平日每日4小時低消後有可計算課段。' : '平日未超過每日4小時低消。',
-            ['extra_segments' => round($extraSegments, 2), 'rate_cap' => 5],
+            [
+                'extra_segments' => round($extraSegments, 2),
+                'rate_cap' => 5,
+                'daily_coverage_hours' => array_map(fn ($hours) => round((float) $hours, 2), $weekdayHours),
+            ],
             0,
             round($rate, 2)
         );
