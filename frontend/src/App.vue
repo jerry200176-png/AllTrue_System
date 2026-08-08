@@ -2650,6 +2650,16 @@ function formatBuildTime(rawIso) {
   transition: none;
 }
 
+/* Keep the draggable guide control clear of the fixed mobile bottom nav. */
+@media (max-width: 640px) {
+  .global-guide-btn {
+    top: auto !important;
+    right: 8px !important;
+    bottom: calc(56px + env(safe-area-inset-bottom, 0px) + 8px) !important;
+    left: auto !important;
+  }
+}
+
 .guide-tour-popover-layer {
   position: fixed;
   inset: 0;
