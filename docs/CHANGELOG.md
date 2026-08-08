@@ -1,3 +1,11 @@
+## 2026-08-08 — fix(calendar): 行事曆會畫出課程管理否認存在的孤兒改期堂次（in-app #225/#226/#227）
+
+- **背景**：三筆同分校回報（#225 10:03、#226 10:39、#227 11:00）文字幾乎一樣：「行事曆有，課程管理沒有」。#225 早於當天任何部署，是既有問題；查證後發現這跟同一天稍早修的「鬼影方框」（in-app #225 原本被誤標成這個，已更正見 R103）是不同症狀。
+- **根因**：行事曆合併邏輯會把沒有對應已物化 `ClassSession` 的 `scheduled` 改期例外仍然畫成一堂課；課程管理只讀已物化列，看不到這種孤兒例外。
+- **修法**：`calendarOccurrenceMerge.js` 新增守衛，改期目的地例外若找不到對應 `ClassSession` 就不合成 occurrence。純前端顯示層修正。
+- **測試**：`calendarOccurrenceMerge.js` 新增合成回歸案例（無 production DB 存取權限，標註為 synthetic），revert-proof 已人工驗證。
+- **詳見**：`docs/AI_REGRESSION_LESSONS.md` R103、GitHub #1690。
+
 ## 2026-08-08 — chore: GitHub governance 收尾（#876/#879/#880）— Solo/Multi 審查切換文件、tag 保護、secret 輪換自動提醒
 
 - **#876**：`RISK_BASED_MERGE_POLICY.md` 新增「Solo vs Multi-maintainer」切換表——目前單人模式維持 0 approval（既有 Founder Decision），新增第二位維護者時要改哪些設定（`required_approving_review_count`、`require_code_owner_review` 等）已明確列出。

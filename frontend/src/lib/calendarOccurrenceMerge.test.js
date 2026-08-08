@@ -460,3 +460,49 @@ assert.equal(
   '木柵吳艾潼 SC#2688 2026-08-08: stale superseded scheduled marker (7584) must not render a second ghost box next to the real occurrence (7589/24169)',
 );
 assert.equal(muzhaAug8Rows[0].class_session_id, 24169);
+
+// In-app #226/#227 regression shape: these schedule and course IDs are synthetic because the
+// production row IDs were not available without DB access, unlike the real #1685/#1686 fixtures.
+// The scheduled reschedule target has no matching materialized ClassSession, so it must not become
+// a calendar-only occurrence that course management cannot corroborate.
+const syntheticOrphanCourse = {
+  ...baseCourse,
+  id: 22601,
+  student_id: 226001,
+  student_name: 'synthetic #226/#227 student',
+  days_of_week: [6],
+  day_time_slots: [{ day: 6, start_time: '11:00', duration_hours: 2 }],
+};
+const syntheticOrphanMerge = merge({
+  courses: [syntheticOrphanCourse],
+  allCourses: [syntheticOrphanCourse],
+  weekDatesByDow: { 6: '2026-08-08' },
+  sessionDatesByCourseId: { 22601: [] },
+  courseLastSessionDate: { 22601: '2026-08-08' },
+  exceptions: [
+    {
+      id: 2261001,
+      status: 'rescheduled',
+      schedule_date: '2026-08-08',
+      student_course_id: 22601,
+      student_id: 226001,
+      start_time: '10:00',
+    },
+    {
+      id: 2261002,
+      status: 'scheduled',
+      schedule_date: '2026-08-08',
+      student_course_id: 22601,
+      student_id: 226001,
+      start_time: '11:00',
+      end_time: '13:00',
+      teacher_id: 17,
+      original_schedule_id: 2261001,
+    },
+  ],
+});
+assert.equal(
+  syntheticOrphanMerge.filter((row) => Number(row.student_course_id) === 22601).length,
+  0,
+  'synthetic #226/#227: orphan scheduled reschedule target without a matching ClassSession must not render as a calendar ghost',
+);
