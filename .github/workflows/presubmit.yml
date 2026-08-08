@@ -183,6 +183,15 @@ jobs:
           fi
 
       # ─────────────────────────────────────────────
+      # CHECK 4A：版本更新覆蓋閘門
+      # CHANGELOG 每一筆近期產品變更都必須標記 STAFF_UPDATE 或 SILENT_SHIP。
+      # ─────────────────────────────────────────────
+      - name: "[CHECK 4A] Release-notes coverage"
+        run: |
+          node scripts/check-release-notes-coverage.mjs --self-test
+          node scripts/check-release-notes-coverage.mjs --base origin/main --head HEAD
+
+      # ─────────────────────────────────────────────
       # CHECK 5：禁止 CI workflow 內含 ssh/rsync/deploy 指令
       # 防止意外新增自動部署到生產環境的步驟
       # ─────────────────────────────────────────────
