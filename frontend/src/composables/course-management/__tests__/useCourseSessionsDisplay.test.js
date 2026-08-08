@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
 import { useCourseSessionsDisplay } from '../useCourseSessionsDisplay.js';
+import { sessionViewModelFromClassSessionsRow } from '../../../lib/classSessionsApi.js';
 
 /**
  * Regression for 2026-07-29: useCourseSessionsDisplay() referenced an
@@ -26,5 +27,47 @@ describe('useCourseSessionsDisplay', () => {
     expect(typeof display.sessionUnits).toBe('function');
     expect(typeof display.primarySessionUnits).toBe('function');
     expect(display.primarySessionUnits({ id: 1 })).toEqual([]);
+  });
+
+  /**
+   * Production incident 2026-08-08, 木柵吳艾潼 SC#2688 (月結/monthly billing):
+   * StudentClassController always sets `sessions_purchased = SessionCount`
+   * regardless of billing mode, so a monthly course with SessionCount=4 still
+   * looks "over quota" once more than 4 non-leave ClassSession rows exist —
+   * which monthly courses have no cap on. isOverQuotaSession() only excluded
+   * PackageID courses, not monthly (payment_type !== 'session') ones.
+   */
+  it('does not flag a 月結 (monthly) course as over-quota even though sessions_purchased is set', () => {
+    const monthlyCourse = {
+      id: 2688,
+      ScheduleMode: 'date',
+      payment_type: 'monthly',
+      sessions_purchased: 4,
+      SessionCount: 4,
+    };
+    const rawRows = [
+      { id: 24001, student_class_id: 2688, session_date: '2026-07-05', start_time: '10:00', end_time: '12:00', status: 'attended' },
+      { id: 24002, student_class_id: 2688, session_date: '2026-07-12', start_time: '10:00', end_time: '12:00', status: 'attended' },
+      { id: 24003, student_class_id: 2688, session_date: '2026-07-19', start_time: '10:00', end_time: '12:00', status: 'attended' },
+      { id: 26045, student_class_id: 2688, session_date: '2026-08-02', start_time: '10:00', end_time: '12:00', status: 'leave' },
+      { id: 24169, student_class_id: 2688, session_date: '2026-08-08', start_time: '14:30', end_time: '16:30', status: 'scheduled', is_contract_exception: true },
+      { id: 27920, student_class_id: 2688, session_date: '2026-08-09', start_time: '10:00', end_time: '12:00', status: 'scheduled' },
+    ];
+
+    const display = useCourseSessionsDisplay({
+      sessionsByCourse: ref({ 2688: rawRows.map(sessionViewModelFromClassSessionsRow) }),
+      completedSessionDatesByCourse: ref({}),
+      fetchClassSessionsFn: vi.fn(),
+      supabase: { auth: { getSession: vi.fn() } },
+      branchId: ref(16),
+    });
+
+    expect(display.isSessionMode(monthlyCourse)).toBe(false);
+
+    // The 5th non-leave row (08-09) is the one that would push quotaIndex (5) past
+    // purchased (4) under the old code — this is exactly the row that must NOT be
+    // labeled 超排 for a monthly course.
+    const state = display.getSessionState(monthlyCourse, '2026-08-09');
+    expect(state?.label).not.toBe('超排');
   });
 });

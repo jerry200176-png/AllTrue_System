@@ -1265,3 +1265,13 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **修法**：`classSessionPick.js` 新增 `resolveSessionRowForCell()`（回傳完整 row，供 `resolveSessionIdForSubstitute()` 內部共用），`SmartCalendar.vue::findSessionRowForCell()` 改為直接呼叫它，移除「只有 `is_exception` 才退回」的限制，讓一般（非例外）逐堂手動排課堂次也能走到同日退回比對。純前端顯示/互動修正，未觸碰任何後端扣堂/寫入路徑。
 - **測試**：`classSessionPick.test.js` 新增「時段偏離課程預設仍能找到 row」「exact match 不受影響」「跨日期不誤命中」等 case；`npm run test:calendar` 全綠。
 - **防再犯**：(1) 同一個概念（「這個格子對應哪一筆 row」）在同一份檔案裡出現第二套獨立比對邏輯時，應該立刻懷疑而非視為正常——尤其該概念已經有共用實作存在的情況下；(2) 任何新增「使用者可自由輸入時間、不受課程契約時段限制」的功能（如 #211）上線前，應該搜尋所有假設「同一課程同一天只會有一個固定時段」的既有比對邏輯（`grep course.start_time`／`grep courseStart` 一類），逐一確認是否也需要跟著放寬；(3) GitHub #1041 這類「已知但尚未收斂」的技術債，一旦某個 page-local 副本開始造成使用者可見的回報，應優先收斂那一份，而不是就地加 patch 再產生第三份重複邏輯。
+
+### R102. 連續調課（調課的調課）在原始時間重新提交時，後端精確時段比對的防重複刪除抓不到舊紀錄；月結課被誤套「購買堂數」上限（木柵吳艾潼 SC#2688，2026-08-08）
+
+- 現象：主任回報「課程管理只有一堂，行事曆卻出現兩個時段」，且這門月結課被標成「超排」。
+- **根因 1（重複時段）**：`schedules` 表這門課 8/8 當晚被連續調課兩次；第二次調課的目的地時間跟第一次相同（都是 14:30），`ScheduleController::store()` 建立 `status=rescheduled` 標記時的防重複刪除（`where('status','scheduled')->whereRaw('SUBSTRING(start_time,1,5)=?', [$startHm])->delete()`）是照「這個 rescheduled 標記自己的時間」去比對要刪掉哪筆舊的 `scheduled` 紀錄——正常情況下這個時間就是被取代掉的舊時段，能抓到；但當使用者把同一堂課「重新調到同一個時間」時，這個比對邏輯理論上仍應該匹配（新舊時間相同），卻沒有生效，確切觸發條件（race / lock 順序）未完全查明，不排除是併發或交易時序的邊界情況。結果是舊的 `scheduled` 紀錄（id 7584）沒被刪除，跟最新的（id 7589）並存，`shouldRenderScheduledException()` 沒有處理「同課程同日多筆 scheduled」的情況，兩筆都被畫成行事曆方塊。
+- **根因 2（月結誤判超排）**：`StudentClassController` 不分課程類型，一律把 `sessions_purchased` 設成 `SessionCount`；`isOverQuotaSession()` 只排除包堂（`PackageID`）課程，沒有排除月結（`payment_type !== 'session'`）課程。月結課根本沒有「購買堂數上限」的概念，`SessionCount` 對月結課而言不代表硬性上限，但只要材質化堂數超過這個數字就會被誤標。
+- **修法**：(1) 前端 `calendarExceptionMerge.js::shouldRenderScheduledException()` 加上「同課程同日多筆 `scheduled` 標記時，只採信 id 最大（最新）那筆」的防禦，不管後端資料多髒，畫面都只顯示一筆；(2) `useCourseSessionsDisplay.js::isOverQuotaSession()` 加上 `isSessionMode(course)` 檢查（沿用既有的月結/堂數制判斷函式，不是新發明的邏輯），月結課程一律略過超排判斷。均為前端顯示層防禦性修正，未動 production 的 `schedules`/`ClassSession` 資料，也未動後端刪除邏輯本身（風險太高，觸發條件未完全查明前不做臆測性後端修改）。
+- **未解決**：後端 `ScheduleController::store()` 那段防重複刪除為何在這個案例沒生效，需要更多真實案例或加 log 才能確定；目前前端防禦已能保證畫面正確，暫不追根究柢阻擋修法上線。
+- **業務判斷，非本次範圍**：這門課目前實際有 5 筆佔堂數紀錄對上 `SessionCount=4`，是否為合理的補課多算、還是請假轉補課少頂替了原堂號，需主任/owner 確認，不是可以由 AI 判斷的技術問題。
+- **測試**：`calendarOccurrenceMerge.test.js`、`useCourseSessionsDisplay.test.js` 均以本案真實資料（SC#2688、schedules id 7583/7584/7588/7589、ClassSession id 24169）新增回歸案例。

@@ -1,3 +1,12 @@
+## 2026-08-08 — fix(calendar,course-mgmt): 木柵吳艾潼 8/8 行事曆重複時段 + 月結課誤判超排
+
+- **背景**：主任回報木柵吳艾潼 8/8 的課「課程管理只有一堂，行事曆卻出現兩個時段」，且這門月結課在課程管理被標成「超排」。
+- **根因 1（行事曆重複時段）**：`schedules` 表這門課 8/8 當晚被連續調課兩次，第二次調課重新提交到跟第一次「相同」的時間（14:30），後端 `ScheduleController::store()` 的防重複刪除邏輯是照「精確舊時段時間」比對，沒抓到這種「調到同一個時間」的邊界情況，留下一筆已被取代但狀態仍是 `scheduled` 的舊紀錄（id 7584）跟最新的紀錄（id 7589）並存。前端 `shouldRenderScheduledException()` 沒有處理「同一課程同一天有多筆 scheduled 標記」的情況，兩筆都會被畫出來。
+- **根因 2（月結誤判超排）**：`StudentClassController` 不管課程是不是月結，一律把 `sessions_purchased` 設成 `SessionCount`；`isOverQuotaSession()` 只排除了包堂（PackageID）課程，沒有排除月結課程，導致月結課只要材質化堂數超過 `SessionCount` 這個（其實不該當作上限的）數字，就被誤標超排。月結本來就沒有「買幾堂」的概念。
+- **修法**：前端 `shouldRenderScheduledException()` 同課程同日多筆 `scheduled` 標記時，只採信 id 最大（最新）那筆；`isOverQuotaSession()` 加上 `isSessionMode(course)` 檢查，月結課程一律略過超排判斷。均為前端顯示層修正，未改動任何 production 資料或後端調課紀錄。
+- **測試**：`calendarOccurrenceMerge.test.js` 新增以本案真實 SC#2688／id 7584/7589 為本的回歸案例；`useCourseSessionsDisplay.test.js` 新增月結課不誤標超排的回歸案例。
+- **未解決（需人工確認，非本次範圍）**：這門課目前確實有 5 筆佔堂數的紀錄對上 `SessionCount=4`（3 已上 + 8/8 補課例外 + 8/9 正常堂），這是否為合理的補課多算、還是 7/26 請假轉補課的邏輯少頂替了原堂號，屬於業務判斷，需主任/你確認，未在本次一併修正。
+
 ## 2026-08-08 — fix(scheduling): #170 修復上線後生產資料仍卡住，補上夜間自我修復掃描
 
 - **背景**：稍早的 #170 修復（`voidLiveArtifactsForLeave()` 抽出共用作廢邏輯，接到 `ExceptionWorkflowController::confirmCandidate()`）上線後，用新增的唯讀診斷 workflow 重新查詢，發現 `bugs:verify-reproductions` 的 `leave_session_with_live_learning_record` 條件當晚（8/8 04:00）**仍然 REGRESSED**——同一筆 `ClassSession #15635` / `LearningRecord #11828` 依然存在。
