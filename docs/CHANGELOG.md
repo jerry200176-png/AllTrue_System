@@ -1,3 +1,11 @@
+## 2026-08-08 — fix(ops): DB 密碼輪替 workflow 的 `ALTER USER` host 寫死錯誤，導致 2026-08-07 Founder 觸發失敗
+
+- **背景**：SEC-ALLTRUE-003 的密碼輪替最後一步（Founder-only）2026-08-07 執行失敗，錯誤是 `ERROR 1396: Operation ALTER USER failed`。
+- **根因**：連線用 `-h 127.0.0.1`（驗證身分是 `@'127.0.0.1'`/`@'%'`），但改密碼硬寫 `@'localhost'`，兩者是不同帳號，MySQL 找不到要改的那一列。
+- **修法**：`ALTER USER '${DB_USER}'@'localhost'` 改成 `ALTER USER CURRENT_USER()`，一定改到實際連線驗證通過的那個帳號。
+- **範圍**：只修 workflow 腳本本身；未觸發輪替，實際執行仍待 Founder。
+- **詳見**：`docs/AI_REGRESSION_LESSONS.md` R104。
+
 ## 2026-08-08 — fix(calendar): 行事曆會畫出課程管理否認存在的孤兒改期堂次（in-app #225/#226/#227）
 
 - **背景**：三筆同分校回報（#225 10:03、#226 10:39、#227 11:00）文字幾乎一樣：「行事曆有，課程管理沒有」。#225 早於當天任何部署，是既有問題；查證後發現這跟同一天稍早修的「鬼影方框」（in-app #225 原本被誤標成這個，已更正見 R103）是不同症狀。

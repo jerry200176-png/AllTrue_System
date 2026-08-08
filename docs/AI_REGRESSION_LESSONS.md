@@ -1292,3 +1292,11 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **測試**：`calendarOccurrenceMerge.test.js` 新增合成案例（無法取得 #226/#227 真實 production id，明確標註為 synthetic，區別於 R102 用真實 id 的案例）；revert-proof 已人工驗證（移除守衛後測試從 pass 變 `1 !== 0` fail，restore 後再度 pass）。
 - **大廠對標**：同 R102 已引用的 RFC 5545 `RECURRENCE-ID`、Google Calendar `recurringEventId`/`originalStartTime`、cal.com 同款鏈模型 bug（[calcom/cal.com#12922](https://github.com/calcom/cal.com/issues/12922)）——不重複列出，見 R102。TD-076（#1687）持續追蹤架構根治（穩定 occurrence identity + 更新既有紀錄取代新增鏈節點），本次僅治標。
 - **未解決**：孤兒 `scheduled` 例外（有 `original_schedule_id` 卻無對應 `ClassSession`）是怎麼產生的，需要後端／DB 層才能確認（是否跟 R102 提到的「防重複刪除沒生效」是同一根因），本次無 DB 存取權限，僅能防禦性隱藏顯示，未追根究柢。
+
+### R104. `1387-db-password-rotation.yml` 的 `ALTER USER '<name>'@'localhost'` 跟連線時實際使用的 host 不一致，Founder 觸發時失敗（2026-08-07 觸發、2026-08-08 診斷修復）
+
+- **現象**：SEC-ALLTRUE-003（production DB 密碼與 CI log 洩漏事件關聯）的最後一步——Founder 觸發 `1387 DB Password Rotation` workflow——2026-08-07 執行失敗，`rotate` job 的「Generate and apply new credential」步驟報 `ERROR 1396 (HY000): Operation ALTER USER failed for '***'@'localhost'`。
+- **根因**：腳本用 `mysql -h 127.0.0.1 -u "$DB_USER" ...` 連線，MySQL 會用 `DB_USER@'127.0.0.1'` 或 `DB_USER@'%'` 這個帳號列做驗證（TCP 連線不會匹配 `@'localhost'` 那一列，那是給 Unix socket 連線或明確存在對應 grant 列時才會匹配的獨立帳號身分）。但緊接著的 `ALTER USER '${DB_USER}'@'localhost' IDENTIFIED BY ...` 卻寫死要改 `@'localhost'` 這個帳號——如果 MySQL 裡實際上沒有這一列（只有 `@'%'` 或 `@'127.0.0.1'`），對 MySQL 來說這是在改一個不存在的帳號，回 1396。
+- **修法**：把 `ALTER USER '${DB_USER}'@'localhost' IDENTIFIED BY ...` 改成 `ALTER USER CURRENT_USER() IDENTIFIED BY ...`——`CURRENT_USER()` 一定解析成「這個連線實際驗證通過的那個帳號」，不管它的 host pattern 是 `%`、`127.0.0.1` 還是 `localhost`，從根本上消除這種「連線用一個身分、改密碼卻寫死另一個身分」的錯位可能性。
+- **範圍**：只修了 workflow 腳本本身的 bug，**沒有觸發這個 workflow**——實際的密碼輪替仍是 Founder-only 動作，AI agent 不應該也沒有執行它。
+- **測試**：`python3 -c "import yaml; yaml.safe_load(...)"` 確認 YAML 語法合法；`ALTER USER CURRENT_USER() IDENTIFIED BY '...'` 是 MySQL 官方文件記載的標準寫法（自我改密碼不需要知道自己帳號的 host pattern），無法在不觸發真正 production 輪替的前提下端對端測試，這點是本次修復的已知限制，留給 Founder 下次觸發時驗證。
