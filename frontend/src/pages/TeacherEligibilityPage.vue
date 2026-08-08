@@ -38,12 +38,12 @@
     <template v-else>
       <div class="summary-grid">
         <div class="summary-card"><span>老師總數</span><strong>{{ filteredTeachers.length }}</strong></div>
-        <div class="summary-card success"><span>符合／有福利項目</span><strong>{{ qualifyingCount }}</strong></div>
+        <div class="summary-card success"><span>符合獎金項目</span><strong>{{ qualifyingCount }}</strong></div>
         <div class="summary-card warning"><span>待人工確認</span><strong>{{ reviewCount }}</strong></div>
         <div class="summary-card danger"><span>有扣除案件</span><strong>{{ deductionCount }}</strong></div>
       </div>
 
-      <div class="eligibility-card table-wrap">
+      <div class="eligibility-card table-wrap desktop-table">
         <table>
           <thead>
             <tr><th>老師</th><th>整體狀態</th><th v-for="item in visibleComponents" :key="item.key">{{ item.label }}</th><th>缺少資料／原因</th></tr>
@@ -61,6 +61,25 @@
             <tr v-if="filteredTeachers.length === 0"><td :colspan="visibleComponents.length + 3" class="empty">查詢期間沒有符合條件的正職老師資料。</td></tr>
           </tbody>
         </table>
+      </div>
+      <div class="mobile-list">
+        <article v-for="teacher in filteredTeachers" :key="teacher.teacher_id" class="eligibility-card teacher-card">
+          <div class="teacher-card-header">
+            <div><strong>{{ teacher.teacher_name }}</strong><small>ID {{ teacher.teacher_id }}</small></div>
+            <span :class="['status', statusClass(teacher.overall_status)]">{{ statusLabel(teacher.overall_status) }}</span>
+          </div>
+          <div class="teacher-components">
+            <div v-for="item in visibleComponents" :key="item.key" class="component-row">
+              <span>{{ item.label }}</span>
+              <span class="component-value">
+                <span :class="['status', statusClass(teacher.components?.[item.key]?.status)]">{{ statusLabel(teacher.components?.[item.key]?.status) }}</span>
+                <small>{{ detail(item.key, teacher.components?.[item.key]) }}</small>
+              </span>
+            </div>
+          </div>
+          <p class="mobile-reason">{{ reasonText(teacher) }}</p>
+        </article>
+        <div v-if="filteredTeachers.length === 0" class="eligibility-card empty">查詢期間沒有符合條件的正職老師資料。</div>
       </div>
       <p class="footnote">資料不足時顯示「待人工確認」，不會直接判定不符合；假日、請假、升學成果與扣除案件需先完成資料登錄／審核。</p>
     </template>
@@ -94,7 +113,10 @@ const visibleComponents = computed(() => componentKey.value === 'all'
   : componentOptions.filter(item => item.key === componentKey.value));
 const filteredTeachers = computed(() => teachers.value.filter(teacher => !search.value || teacher.teacher_name.includes(search.value)));
 const reviewCount = computed(() => filteredTeachers.value.filter(t => t.review_required).length);
-const qualifyingCount = computed(() => filteredTeachers.value.filter(t => t.overall_status === 'qualifies').length);
+const qualifyingCount = computed(() => filteredTeachers.value.filter((teacher) => componentOptions.some((item) => {
+  const component = teacher.components?.[item.key];
+  return component?.status === 'qualifies' && (Number(component.rate) > 0 || Number(component.amount) > 0);
+})).length);
 const deductionCount = computed(() => filteredTeachers.value.filter(t => Number(t.components?.deductions?.rate || 0) < 0).length);
 
 async function loadData() {
@@ -112,10 +134,11 @@ function statusLabel(status) { return { qualifies: '符合', not_qualifies: '不
 function statusClass(status) { return { qualifies: 'pass', not_qualifies: 'fail', review: 'review' }[status] || 'unknown'; }
 function detail(key, component) {
   if (!component) return '—';
-  if (key === 'weekly_16_segments') return `${component.amount || 0}元`;
-  if (key === 'holiday_16_hours' || key === 'weekday_afternoon' || key === 'special_performance') return `${component.rate || 0}%`;
-  if (key === 'deductions') return `${component.rate || 0}%`;
-  return `${component.metrics?.subject_count || 0}科`;
+  if (component.status === 'review') return '待補資料／確認';
+  if (key === 'weekly_16_segments') return `${component.amount ?? 0}元`;
+  if (key === 'holiday_16_hours' || key === 'weekday_afternoon' || key === 'special_performance') return `${component.rate ?? 0}%`;
+  if (key === 'deductions') return `${component.rate ?? 0}%`;
+  return component.metrics?.subject_count == null ? '—' : `${component.metrics.subject_count}科`;
 }
 function reasonText(teacher) {
   const reasons = [];
@@ -144,6 +167,7 @@ onMounted(loadData);
 .search-label input { min-width:220px; }.policy-chip { margin-left:auto; padding:8px 12px; color:var(--ds-ink-mute); background:var(--ds-canvas-soft); border-radius:8px; font-size:13px; }
 .summary-grid { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:12px; margin-bottom:18px; }
 .summary-card { padding:16px; background:var(--ds-canvas); border:1px solid var(--border); border-radius:12px; }.summary-card span { color:var(--ds-ink-mute); font-size:13px; }.summary-card strong { display:block; font-size:28px; margin-top:6px; }.summary-card.success strong { color:var(--ds-success); }.summary-card.warning strong { color:var(--ds-warning); }.summary-card.danger strong { color:var(--ds-danger); }
-.table-wrap { overflow:auto; }.table-wrap table { width:100%; border-collapse:collapse; min-width:1050px; }.table-wrap th,.table-wrap td { padding:12px 10px; border-bottom:1px solid var(--border); text-align:left; vertical-align:top; }.table-wrap th { color:var(--ds-ink-mute); font-size:13px; background:var(--ds-canvas-soft); }.table-wrap td small { display:block; margin-top:4px; color:var(--ds-ink-mute); font-size:12px; }.status { display:inline-flex; padding:4px 8px; border-radius:999px; font-size:12px; white-space:nowrap; }.status.pass { background:var(--ds-success-wash); color:var(--ds-success); }.status.fail { background:var(--ds-danger-wash); color:var(--ds-danger); }.status.review { background:var(--ds-warning-wash); color:var(--ds-warning); }.status.unknown { background:var(--ds-canvas-soft); color:var(--ds-ink-mute); }.reason-cell { min-width:280px; line-height:1.6; }.empty,.loading { text-align:center; color:var(--ds-ink-mute); padding:36px; }.error { color:var(--ds-danger); display:flex; align-items:center; gap:12px; }.footnote { color:var(--ds-ink-mute); font-size:13px; margin:12px 4px; }
-@media (max-width: 900px) { .eligibility-page { padding:16px; }.summary-grid { grid-template-columns:repeat(2, minmax(0,1fr)); }.policy-chip { margin-left:0; } }
+.table-wrap { overflow:auto; }.table-wrap table { width:100%; border-collapse:collapse; min-width:1050px; }.table-wrap th,.table-wrap td { padding:12px 10px; border-bottom:1px solid var(--border); text-align:left; vertical-align:top; }.table-wrap th { color:var(--ds-ink-mute); font-size:13px; background:var(--ds-canvas-soft); }.table-wrap td small { display:block; margin-top:4px; color:var(--ds-ink-mute); font-size:12px; }.status { display:inline-flex; padding:4px 8px; border-radius:999px; font-size:12px; white-space:nowrap; }.status.pass { background:var(--ds-success-wash); color:var(--ds-success); }.status.fail { background:var(--ds-danger-wash); color:var(--ds-danger); }.status.review { background:var(--ds-warning-wash); color:var(--ds-warning); }.status.unknown { background:var(--ds-canvas-soft); color:var(--ds-ink-mute); }.reason-cell { min-width:280px; line-height:1.6; }.empty,.loading { text-align:center; color:var(--ds-ink-mute); padding:36px; }.error { color:var(--ds-danger); display:flex; align-items:center; gap:12px; }.footnote { color:var(--ds-ink-mute); font-size:13px; margin:12px 4px; }.mobile-list { display:none; }
+.teacher-card-header { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }.teacher-card-header small { display:block; margin-top:4px; color:var(--ds-ink-mute); font-size:12px; }.teacher-components { margin-top:14px; border-top:1px solid var(--border); }.component-row { display:flex; justify-content:space-between; gap:12px; padding:10px 0; border-bottom:1px solid var(--border); }.component-value { display:flex; flex-direction:column; align-items:flex-end; gap:4px; }.component-value small { color:var(--ds-ink-mute); font-size:12px; }.mobile-reason { margin:12px 0 0; color:var(--ds-ink-mute); font-size:13px; line-height:1.6; }
+@media (max-width: 900px) { .eligibility-page { padding:16px; }.summary-grid { grid-template-columns:repeat(2, minmax(0,1fr)); }.policy-chip { margin-left:0; }.desktop-table { display:none; }.mobile-list { display:grid; gap:12px; } }
 </style>
