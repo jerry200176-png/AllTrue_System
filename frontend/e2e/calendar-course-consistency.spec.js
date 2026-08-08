@@ -118,7 +118,10 @@ async function navigate(page, label) {
 }
 
 async function assertResponsive(page, label) {
-  await expect(page.getByText(label, { exact: false }).first()).toBeVisible({ timeout: 15_000 });
+  const title = label.includes('行事曆')
+    ? page.locator('.smart-cal-title').first()
+    : page.locator('.course-page .page-title').first();
+  await expect(title).toBeVisible({ timeout: 15_000 });
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
   expect(overflow, `${label} has horizontal overflow`).toBeFalsy();
   if ((page.viewportSize()?.width || 0) <= 640) {
