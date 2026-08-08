@@ -70,6 +70,16 @@ class TeacherEligibilityPolicy
         $segments = $weekly['segments'] ?? null;
         $workHours = $weekly['work_hours'] ?? null;
         $exception = $weekly['exception'] ?? null;
+        $exceptionIncomplete = $exception !== null && (
+            (array_key_exists('official_event', $exception) && $exception['official_event'] === null)
+            || (array_key_exists('leave_eligible', $exception) && $exception['leave_eligible'] === null)
+        );
+        if ($exceptionIncomplete) {
+            return $this->review(['weekly_exception_context'], '請假或官方活動例外資料尚未完整。');
+        }
+        if ($exception !== null && !empty($exception['saturday_leave_blocked'])) {
+            return $this->result(self::NOT_QUALIFIES, '週六請假且週日無補課或可抵扣假日假。');
+        }
         if (($segments === null || $workHours === null) && $exception !== null && (!empty($exception['official_event']) || !empty($exception['leave_eligible']))) {
             return $this->result(self::QUALIFIES, !empty($exception['official_event']) ? '官方活動或統一公休例外。' : '請假抵扣或補課符合例外規則。', [
                 'weekly_segments' => $segments === null ? null : round((float) $segments, 2),
@@ -185,8 +195,30 @@ class TeacherEligibilityPolicy
                 continue;
             }
             $outcomeKey = (string) ($achievement['outcome_key'] ?? 'achievement');
-            if ($outcomeKey === 'employee_of_year' && (empty($achievement['starts_on']) || empty($achievement['ends_on']))) {
+            if (empty($achievement['starts_on']) || empty($achievement['ends_on'])) {
                 $pending[] = $outcomeKey;
+                continue;
+            }
+            try {
+                $achievementStart = Carbon::parse($achievement['starts_on'])->startOfDay();
+                $achievementEnd = Carbon::parse($achievement['ends_on'])->endOfDay();
+            } catch (\Throwable) {
+                $pending[] = $outcomeKey;
+                continue;
+            }
+            if ($achievementEnd->lt($achievementStart)) {
+                $pending[] = $outcomeKey;
+                continue;
+            }
+            $activeMonths = $achievementStart->copy()->startOfMonth()->diffInMonths($achievementEnd->copy()->startOfMonth()) + 1;
+            $maxMonths = $outcomeKey === 'employee_of_year'
+                ? 12
+                : (int) $this->setting('student_achievement_max_months', 3);
+            if ($activeMonths > $maxMonths) {
+                $pending[] = $outcomeKey;
+                continue;
+            }
+            if ($outcomeKey === 'employee_of_year' && $achievementStart->year < (int) $this->setting('employee_of_year_start_year', 2027)) {
                 continue;
             }
             if ($start && !empty($achievement['starts_on']) && Carbon::parse($achievement['starts_on'])->gt($end)) {
@@ -194,6 +226,20 @@ class TeacherEligibilityPolicy
             }
             if ($end && !empty($achievement['ends_on']) && Carbon::parse($achievement['ends_on'])->lt($start)) {
                 continue;
+            }
+            if ($outcomeKey === 'employee_of_year') {
+                $awardYear = isset($achievement['award_year']) ? (int) $achievement['award_year'] : null;
+                if ($awardYear === null) {
+                    $pending[] = $outcomeKey;
+                    continue;
+                }
+                if ($awardYear < (int) $this->setting('employee_of_year_start_year', 2027)) {
+                    continue;
+                }
+                if ($achievementStart->year !== $awardYear + 1) {
+                    $pending[] = $outcomeKey;
+                    continue;
+                }
             }
             $verified[] = $achievement;
         }

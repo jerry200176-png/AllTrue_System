@@ -86,11 +86,101 @@ class TeacherEligibilityPolicyTest extends TestCase
             ['outcome_key' => 'ntu', 'status' => 'pending', 'evidence' => null],
         ], '2026-08-01', '2026-08-31');
         $pass = $this->policy->specialPerformance([
-            ['outcome_key' => 'ntu', 'status' => 'verified', 'evidence' => 'evidence.pdf'],
+            [
+                'outcome_key' => 'ntu',
+                'status' => 'verified',
+                'evidence' => 'evidence.pdf',
+                'starts_on' => '2026-08-01',
+                'ends_on' => '2026-08-31',
+            ],
         ], '2026-08-01', '2026-08-31');
 
         $this->assertSame(TeacherEligibilityPolicy::REVIEW, $review['status']);
         $this->assertSame(5.0, $pass['rate']);
+    }
+
+    public function test_achievement_without_active_period_is_review(): void
+    {
+        $result = $this->policy->specialPerformance([
+            ['outcome_key' => 'ntu', 'status' => 'verified', 'evidence' => 'evidence.pdf'],
+        ], '2026-08-01', '2026-08-31');
+
+        $this->assertSame(TeacherEligibilityPolicy::REVIEW, $result['status']);
+        $this->assertContains('achievement_evidence_or_approval', $result['missing_fields']);
+    }
+
+    public function test_student_achievement_longer_than_three_months_is_review(): void
+    {
+        $result = $this->policy->specialPerformance([
+            [
+                'outcome_key' => 'student_outcome',
+                'status' => 'verified',
+                'evidence' => 'students.pdf',
+                'starts_on' => '2026-01-01',
+                'ends_on' => '2026-04-30',
+            ],
+        ], '2026-02-01', '2026-02-28');
+
+        $this->assertSame(TeacherEligibilityPolicy::REVIEW, $result['status']);
+    }
+
+    public function test_employee_of_year_before_2027_is_not_applied(): void
+    {
+        $result = $this->policy->specialPerformance([
+            [
+                'outcome_key' => 'employee_of_year',
+                'status' => 'verified',
+                'evidence' => 'award.pdf',
+                'award_year' => 2026,
+                'starts_on' => '2026-01-01',
+                'ends_on' => '2026-12-31',
+            ],
+        ], '2026-08-01', '2026-08-31');
+
+        $this->assertSame(0.0, $result['rate']);
+        $this->assertSame(TeacherEligibilityPolicy::QUALIFIES, $result['status']);
+    }
+
+    public function test_employee_of_year_requires_award_year_and_next_year_period(): void
+    {
+        $missingYear = $this->policy->specialPerformance([
+            [
+                'outcome_key' => 'employee_of_year',
+                'status' => 'verified',
+                'evidence' => 'award.pdf',
+                'starts_on' => '2028-01-01',
+                'ends_on' => '2028-12-31',
+            ],
+        ], '2028-01-01', '2028-12-31');
+        $wrongPeriod = $this->policy->specialPerformance([
+            [
+                'outcome_key' => 'employee_of_year',
+                'status' => 'verified',
+                'evidence' => 'award.pdf',
+                'award_year' => 2027,
+                'starts_on' => '2027-01-01',
+                'ends_on' => '2027-12-31',
+            ],
+        ], '2027-01-01', '2027-12-31');
+
+        $this->assertSame(TeacherEligibilityPolicy::REVIEW, $missingYear['status']);
+        $this->assertSame(TeacherEligibilityPolicy::REVIEW, $wrongPeriod['status']);
+    }
+
+    public function test_saturday_leave_without_sunday_makeup_blocks_weekly_bonus(): void
+    {
+        $result = $this->policy->weekly16([
+            'segments' => 16,
+            'work_hours' => 40,
+            'exception' => [
+                'official_event' => false,
+                'leave_eligible' => false,
+                'saturday_leave_blocked' => true,
+            ],
+        ]);
+
+        $this->assertSame(TeacherEligibilityPolicy::NOT_QUALIFIES, $result['status']);
+        $this->assertSame(0, $result['amount']);
     }
 
     public function test_deductions_require_both_approvals_and_accumulate(): void
