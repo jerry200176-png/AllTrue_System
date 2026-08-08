@@ -22,3 +22,5 @@ Evidence:
 # kickoff 2026-07-30T11:55:00Z — Phase C write-back for #208: owner-approved guarded repair executed and independently verified, adding to allowlist with exact mandated public reply text
 
 # kickoff 2026-08-07T13:10:00Z — Phase C write-back for #224: findSessionRowForCell same-date fallback fix (PR #1673) deployed and health/version.json-verified; walks new→triaged→in_progress→resolved with public reply since no separate Phase A write-back was performed (workflow_dispatch-only, unavailable to this cloud session)
+
+# kickoff 2026-08-08T04:43:00Z — Phase C write-back for #225/#226/#227: fresh queue/detail dumps verified all three triaged, production revision 84abaddb deployed and health/version/smoke verified; same GitHub issue #1690 and public reply, no data repair
