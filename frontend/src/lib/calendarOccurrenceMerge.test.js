@@ -416,3 +416,47 @@ assert.equal(
   3,
   '#187/#188: distinct students sharing one date+time slot must all render (no collapse to slot count)',
 );
+
+// 木柵吳艾潼 SC#2688, 2026-08-08 (production incident, 2026-08-08): a slot rescheduled
+// twice in quick succession left TWO `schedules` rows with status='scheduled' for the
+// same course+date (id 7584 stale/superseded, id 7589 the real current one) — the
+// backend's exact-start_time dedupe delete didn't catch 7584 because the second
+// reschedule re-submitted to the *same* start_time as the first (14:30), not a
+// different one. Both passed shouldRenderScheduledException (both status='scheduled',
+// no leave that day), producing a ghost box in the calendar alongside the real one.
+const muzhaWuAitongCourse = {
+  ...baseCourse,
+  id: 2688,
+  student_id: 178,
+  student_name: '吳艾潼',
+  days_of_week: [7],
+  day_time_slots: [{ day: 7, start_time: '10:00', duration_hours: 2 }],
+};
+const muzhaStaleRescheduleWeek = { 6: '2026-08-08', 7: '2026-08-09' };
+const muzhaStaleRescheduleMerge = merge({
+  courses: [muzhaWuAitongCourse],
+  allCourses: [muzhaWuAitongCourse],
+  weekDatesByDow: muzhaStaleRescheduleWeek,
+  sessionDatesByCourseId: {
+    2688: [
+      { id: 24169, session_date: '2026-08-08', start_time: '14:30', end_time: '16:30', status: 'scheduled', teacher_id: 17 },
+    ],
+  },
+  courseLastSessionDate: { 2688: '2026-08-09' },
+  exceptions: [
+    { id: 7583, status: 'rescheduled', schedule_date: '2026-08-08', student_course_id: 2688, student_id: 178, start_time: '15:00', teacher_id: 17 },
+    { id: 7584, status: 'scheduled', schedule_date: '2026-08-08', student_course_id: 2688, student_id: 178, start_time: '14:30', end_time: '16:30', teacher_id: 17, original_schedule_id: 7583 },
+    { id: 7588, status: 'rescheduled', schedule_date: '2026-08-08', student_course_id: 2688, student_id: 178, start_time: '14:30', teacher_id: 17 },
+    { id: 7589, status: 'scheduled', schedule_date: '2026-08-08', student_course_id: 2688, student_id: 178, start_time: '14:30', end_time: '16:30', teacher_id: 17, original_schedule_id: 7588 },
+  ],
+});
+const muzhaAug8Rows = muzhaStaleRescheduleMerge.filter((o) => defaultToYmdForTest(o) === '2026-08-08' && Number(o.student_course_id ?? o.id) === 2688);
+function defaultToYmdForTest(row) {
+  return String(row?.session_date || row?.schedule_date || '').slice(0, 10) || (row?.day_of_week === 6 ? '2026-08-08' : '');
+}
+assert.equal(
+  muzhaAug8Rows.length,
+  1,
+  '木柵吳艾潼 SC#2688 2026-08-08: stale superseded scheduled marker (7584) must not render a second ghost box next to the real occurrence (7589/24169)',
+);
+assert.equal(muzhaAug8Rows[0].class_session_id, 24169);
