@@ -305,6 +305,7 @@
       <TuitionCollectionPage v-if="!isPasswordChangeLocked && isDirector && active === 'tuition-collect' && !pinModalActive" :branch-id="currentBranch" />
       <TuitionReportPage v-if="!isPasswordChangeLocked && isDirector && active === 'tuition-report' && !pinModalActive" :branch-id="currentBranch" />
       <ParttimePayrollPage v-if="!isPasswordChangeLocked && isDirector && active === 'parttime-payroll' && !pinModalActive" :branch-id="currentBranch" :user-role="role" />
+      <TeacherEligibilityPage v-if="!isPasswordChangeLocked && isDirector && active === 'teacher-eligibility' && !pinModalActive" :branch-id="currentBranch" />
       <TeachersList v-if="!isPasswordChangeLocked && isDirector && active === 'teachers' && !pinModalActive" :branch-id="currentBranch" @navigate-to-schedule="onNavigateToSchedule" />
       <CourseManagement v-if="!isPasswordChangeLocked && isDirector && active === 'course-mgmt'" :branch-id="currentBranch" :initial-teacher-id="initialTeacherIdForNav" @clear-initial-teacher="initialTeacherIdForNav = null" @navigate="onNavigateFromCourseManagement" />
       <ClassroomManagement v-if="!isPasswordChangeLocked && isDirector && active === 'classroom'" :branch-id="currentBranch" />
@@ -464,6 +465,7 @@ const SubjectUnitsPage      = defineAsyncComponent(() => import('./pages/Subject
 const TuitionCollectionPage = defineAsyncComponent(() => import('./pages/TuitionCollectionPage.vue'));
 const TuitionReportPage     = defineAsyncComponent(() => import('./pages/TuitionReportPage.vue'));
 const ParttimePayrollPage   = defineAsyncComponent(() => import('./pages/ParttimePayrollPage.vue'));
+const TeacherEligibilityPage = defineAsyncComponent(() => import('./pages/TeacherEligibilityPage.vue'));
 const DirectorAccountsPage  = defineAsyncComponent(() => import('./pages/DirectorAccountsPage.vue'));
 const BranchManagementPage  = defineAsyncComponent(() => import('./pages/BranchManagementPage.vue'));
 const NotificationsCenter   = defineAsyncComponent(() => import('./pages/NotificationsCenter.vue'));
@@ -1332,6 +1334,7 @@ const sidebarNavGroups = computed(() => {
           { page: 'tuition-report', label: '當月學收', icon: 'bar_chart' },
           { page: 'subject-units', label: '科目數統計', icon: 'calculate' },
           { page: 'parttime-payroll', label: '兼職薪資', icon: 'account_balance_wallet' },
+          { page: 'teacher-eligibility', label: '正職薪資要件', icon: 'rule' },
         ],
       },
       {
