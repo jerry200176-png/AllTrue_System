@@ -8,8 +8,31 @@
 1. merge + deploy + production 驗證後才公告。  
 2. （可選）參考 `changelogDraft.generated.js` 起草。  
 3. 人工核准後寫入 `STAFF_UPDATES.yml`。  
-4. `cd frontend && npm run sync-release-notes && npm run test:release-notes`  
+4. `cd frontend && npm run sync-release-notes && npm run test:release-notes`
 5. commit YAML + generated JS → PR merge 才算發布。
+
+## 不漏公告的強制規則
+
+每一筆近期 `CHANGELOG.md` 產品變更都必須在標題下方放一個決策標記：
+
+```md
+<!-- release-notes: staff_update=staff-YYYY-MM-DD-short-name -->
+```
+
+若是只影響內部治理、CI、文件或安全作業，不能直接省略，必須改用：
+
+```md
+<!-- release-notes: silent_ship=silent-YYYY-MM-DD-short-name -->
+```
+
+並在 `docs/RELEASE_NOTES_EXEMPTIONS.yml` 寫明不公告的原因。`staff_update` 的 id 必須存在於 `STAFF_UPDATES.yml`，`silent_ship` 的 id 必須存在於例外清單；Presubmit 的 CHECK 4A 會 fail-closed 檢查，沒有決策就不能 merge。
+
+因此每次完成 production 修正時，PR checklist 必須同時完成：
+
+1. 寫 `CHANGELOG`。
+2. 判斷教職員是否需要知道；需要就寫 `STAFF_UPDATES.yml`，不需要就寫例外清單。
+3. 跑 `npm run sync-release-notes`、`npm run test:release-notes-coverage`。
+4. 確認 generated JS、CI、deploy、production smoke 都以同一個 merge SHA 通過。
 
 AI 不得把未核准草稿寫進 YAML 並宣稱已發布。
 

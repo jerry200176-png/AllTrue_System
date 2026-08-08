@@ -1,9 +1,13 @@
 ## 2026-08-08 — fix: 請假補課候選改以原堂日期為基準
 
+<!-- release-notes: staff_update=staff-2026-08-08-makeup-candidate-date-fix -->
+
 - **Fixed**：原堂是 8/20 的請假案件，不會再出現 8/9 這類原堂之前的補課候選；畫面會直接顯示可安排的日期範圍。
 - 開發備註：前端與 `ExceptionWorkflowCandidateGenerator` 後端同步套用「原堂後一天」邊界，並新增 API regression test。
 
 ## 2026-08-08 — fix(ops): DB 密碼輪替 workflow 的 `ALTER USER` host 寫死錯誤，導致 2026-08-07 Founder 觸發失敗
+
+<!-- release-notes: silent_ship=silent-2026-08-08-db-password-rotation -->
 
 - **背景**：SEC-ALLTRUE-003 的密碼輪替最後一步（Founder-only）2026-08-07 執行失敗，錯誤是 `ERROR 1396: Operation ALTER USER failed`。
 - **根因**：連線用 `-h 127.0.0.1`（驗證身分是 `@'127.0.0.1'`/`@'%'`），但改密碼硬寫 `@'localhost'`，兩者是不同帳號，MySQL 找不到要改的那一列。
@@ -13,6 +17,8 @@
 
 ## 2026-08-08 — fix(calendar): 行事曆會畫出課程管理否認存在的孤兒改期堂次（in-app #225/#226/#227）
 
+<!-- release-notes: staff_update=staff-2026-08-08-calendar-stability -->
+
 - **背景**：三筆同分校回報（#225 10:03、#226 10:39、#227 11:00）文字幾乎一樣：「行事曆有，課程管理沒有」。#225 早於當天任何部署，是既有問題；查證後發現這跟同一天稍早修的「鬼影方框」（in-app #225 原本被誤標成這個，已更正見 R103）是不同症狀。
 - **根因**：行事曆合併邏輯會把沒有對應已物化 `ClassSession` 的 `scheduled` 改期例外仍然畫成一堂課；課程管理只讀已物化列，看不到這種孤兒例外。
 - **修法**：`calendarOccurrenceMerge.js` 新增守衛，改期目的地例外若找不到對應 `ClassSession` 就不合成 occurrence。純前端顯示層修正。
@@ -21,6 +27,8 @@
 
 ## 2026-08-08 — chore: GitHub governance 收尾（#876/#879/#880）— Solo/Multi 審查切換文件、tag 保護、secret 輪換自動提醒
 
+<!-- release-notes: silent_ship=silent-2026-08-08-github-governance -->
+
 - **#876**：`RISK_BASED_MERGE_POLICY.md` 新增「Solo vs Multi-maintainer」切換表——目前單人模式維持 0 approval（既有 Founder Decision），新增第二位維護者時要改哪些設定（`required_approving_review_count`、`require_code_owner_review` 等）已明確列出。
 - **#879**：Private vulnerability reporting 確認已啟用、0 筆待處理 advisory；secret 輪換提醒改成每 90 天自動開 issue（`.github/workflows/secret-rotation-reminder.yml`），不再依賴人工手動建立；`SEVERITY_MATRIX.md` 新增 security alert 的 P0-P2 SLA 對照。
 - **#880**：新增 `release-tag-protection` ruleset（`refs/tags/v*` 禁刪除/禁移動)，避免 release tag 被誤刪影響 `RUNBOOK_ROLLBACK.md` 的回滾路徑；`REF_GITHUB_RULESET_BASELINE.md` 記錄現況快照；`OPERATIONAL_CONSISTENCY_CHECK.md` 新增 Rule 8 做月度漂移檢查。
@@ -28,11 +36,15 @@
 
 ## 2026-08-08 — fix(calendar): 改期規則從「同天取最新」精修為「同格已被更新的改期標記取代」（in-app #225，木柵陳宥翰 SC#1249）
 
+<!-- release-notes: staff_update=staff-2026-08-08-calendar-stability -->
+
 - **背景**：`#1685`（本檔前一則）上線幾分鐘後，主任又回報同分校另一筆課「8/7 行事曆有、課程管理沒有」（in-app #225），查證是同一類問題的另一種變體：這次調課鏈連續改了三次，最後一次的目的地落在**不同一天**（8/7 → 最終到 8/8）。`#1685` 的第一版修法（同一天取 id 最大的 scheduled 標記）沒辦法涵蓋這種情況——8/7 那筆被取代的紀錄沒有「同一天更新的 scheduled 標記」可以輸給它，因為真正取代它的下一步改到了 8/8。
 - **修法**：把判斷規則從「同課程同日期取最新」改成更精確的「同課程＋同日期＋同時段，若有一筆更新（id 更大）的 rescheduled 標記，代表這個 scheduled 標記已被取代」——不管改期後的新目的地落在哪一天，都能正確判斷。同時補上 `#1685` 那筆真實案例（吳艾潼 SC#2688）與這次的新案例（陳宥翰 SC#1249）作為回歸測試，確認新規則兩案都涵蓋。
 - **測試**：`calendarExceptionMerge.test.js` 新增以真實 `schedules` id 為本的兩組案例（SC#2688 id 7583/7584/7588/7589、SC#1249 id 7138/7139/7207/7208/7422/7423）。
 
 ## 2026-08-08 — fix(calendar,course-mgmt): 木柵吳艾潼 8/8 行事曆重複時段 + 月結課誤判超排
+
+<!-- release-notes: staff_update=staff-2026-08-08-calendar-stability -->
 
 - **背景**：主任回報木柵吳艾潼 8/8 的課「課程管理只有一堂，行事曆卻出現兩個時段」，且這門月結課在課程管理被標成「超排」。
 - **根因 1（行事曆重複時段）**：`schedules` 表這門課 8/8 當晚被連續調課兩次，第二次調課重新提交到跟第一次「相同」的時間（14:30），後端 `ScheduleController::store()` 的防重複刪除邏輯是照「精確舊時段時間」比對，沒抓到這種「調到同一個時間」的邊界情況，留下一筆已被取代但狀態仍是 `scheduled` 的舊紀錄（id 7584）跟最新的紀錄（id 7589）並存。前端 `shouldRenderScheduledException()` 沒有處理「同一課程同一天有多筆 scheduled 標記」的情況，兩筆都會被畫出來。
@@ -42,6 +54,8 @@
 - **未解決（需人工確認，非本次範圍）**：這門課目前確實有 5 筆佔堂數的紀錄對上 `SessionCount=4`（3 已上 + 8/8 補課例外 + 8/9 正常堂），這是否為合理的補課多算、還是 7/26 請假轉補課的邏輯少頂替了原堂號，屬於業務判斷，需主任/你確認，未在本次一併修正。
 
 ## 2026-08-08 — fix(scheduling): #170 修復上線後生產資料仍卡住，補上夜間自我修復掃描
+
+<!-- release-notes: staff_update=staff-2026-08-08-leave-review-integrity -->
 
 - **背景**：稍早的 #170 修復（`voidLiveArtifactsForLeave()` 抽出共用作廢邏輯，接到 `ExceptionWorkflowController::confirmCandidate()`）上線後，用新增的唯讀診斷 workflow 重新查詢，發現 `bugs:verify-reproductions` 的 `leave_session_with_live_learning_record` 條件當晚（8/8 04:00）**仍然 REGRESSED**——同一筆 `ClassSession #15635` / `LearningRecord #11828` 依然存在。
 - **根因**：程式碼修復只能防止「未來」呼叫 `confirmCandidate()` 時發生同樣問題，對「修復上線前就已經被寫壞」的既有資料完全無感——這是修 code path 與修「已經髒掉的資料」是兩件不同的事，只做前者不代表後者會自動消失。
@@ -1296,6 +1310,8 @@ Fixed：班級行事曆若週次篩選暫時隱藏某課程，已實際存在的
 - 批次核准只會處理前端明確勾選的評量；選取範圍與目前權限/狀態不一致時整批停止，不會擴大核准範圍。
 - 新增事件檢討與回歸測試：`docs/incidents/2026-08-01-billing-and-batch-approval.md`。
 ## 2026-08-08 — feat(payroll): 正職老師薪資要件分項篩選
+
+<!-- release-notes: staff_update=staff-2026-08-08-payroll-eligibility -->
 
 - 新增主任用「正職老師薪資要件」報表，依週／月／年度分層，按每週 16 段、假日 16 小時、平日下午課、特殊表現、扣除案件與科目數獎金分開判定。
 - 接上主任唯讀 API 與報表頁面，依分校範圍顯示符合、不符合及待人工確認結果。
