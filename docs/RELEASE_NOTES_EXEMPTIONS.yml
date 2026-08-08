@@ -1,0 +1,13 @@
+# CHANGELOG entries that are intentionally not shown in the staff in-app updates.
+# Every silent ship must have a stable id and a plain-language reason.
+
+exemptions:
+  - id: silent-2026-08-08-db-password-rotation
+    changelog_date: "2026-08-08"
+    changelog_title: "fix(ops): DB 密碼輪替 workflow 的 ALTER USER host 寫死錯誤，導致 2026-08-07 Founder 觸發失敗"
+    reason: 內部安全 workflow 修正，沒有教職員可操作或可感知的產品變更。
+
+  - id: silent-2026-08-08-github-governance
+    changelog_date: "2026-08-08"
+    changelog_title: "chore: GitHub governance 收尾"
+    reason: GitHub 治理與文件設定，不是 AllTrue 使用者功能更新。

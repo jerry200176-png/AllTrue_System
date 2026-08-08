@@ -26,5 +26,11 @@ class TeacherEligibilityMigrationContractTest extends TestCase
 
         self::assertStringContainsString("->unsignedBigInteger('teacher_id')->nullable()", $source);
         self::assertStringContainsString("->string('status', 24)->default('pending')", $source);
+        self::assertStringContainsString("->unsignedSmallInteger('award_year')->nullable()", $source);
+
+        $hardening = file_get_contents(__DIR__ . '/../../database/migrations/2026_08_08_000002_harden_teacher_eligibility_input_defaults.php');
+        self::assertIsString($hardening);
+        self::assertStringContainsString("DEFAULT 'pending'", $hardening);
+        self::assertStringContainsString('makeup_completed TINYINT(1) NULL DEFAULT NULL', $hardening);
     }
 }

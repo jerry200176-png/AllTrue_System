@@ -172,6 +172,36 @@ class ExceptionWorkflowApiTest extends TestCase
         ]);
     }
 
+    public function test_makeup_candidates_start_after_original_session_even_when_requested_window_starts_earlier(): void
+    {
+        [$student, $course, $session] = $this->makeStudentCourseSession(1, '日期邊界學生', '0912000010');
+        $session->update(['SessionDate' => '2026-08-20']);
+        $workflow = app(ExceptionWorkflowService::class)->createOrGet([
+            'source_key' => "parent_leave:class_session:{$session->id}",
+            'campus_id' => 1,
+            'student_id' => $student->id,
+            'student_class_id' => $course->ID,
+            'class_session_id' => $session->id,
+            'type' => 'student_leave',
+            'status' => 'open',
+        ]);
+        $token = $this->createDirectorToken([1], 'director-date-boundary@example.com');
+
+        $res = $this->postJson("/api/v1/exception-workflows/{$workflow->id}/generate-candidates", [
+            'start_date' => '2026-08-09',
+            'end_date' => '2026-08-23',
+            'limit' => 5,
+        ], [
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ]);
+
+        $res->assertOk()->assertJsonPath('data.candidates.0.candidate_date', '2026-08-21');
+        $dates = collect($res->json('data.candidates'))->pluck('candidate_date')->all();
+        $this->assertNotEmpty($dates);
+        $this->assertTrue(collect($dates)->every(fn (string $date) => $date > '2026-08-20'));
+    }
+
     public function test_generate_candidates_rejects_cross_campus_director(): void
     {
         [$student, $course, $session] = $this->makeStudentCourseSession(2, '跨校候選學生', '0912000008');

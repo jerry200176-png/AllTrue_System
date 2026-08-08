@@ -3,6 +3,107 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-08-makeup-candidate-date-fix
+    published_at: "2026-08-08"
+    audiences:
+      - director
+      - teacher
+    importance: major
+    title: 請假補課日期更合理
+    summary: 原堂是 8/20 時，補課候選會從原堂之後開始，不會出現 8/9 這類錯誤日期。
+    items:
+      - category: fixed
+        text: 補課候選會參考原堂日期，原堂 8/20 的案件只會提供 8/21 之後的時段。
+      - category: improved
+        text: 主任畫面會顯示補課候選範圍，確認日期依據更清楚。
+    source_refs:
+      - "changelog:2026-08-08:makeup-candidate-date-fix"
+
+  - id: staff-2026-08-08-calendar-stability
+    published_at: "2026-08-08"
+    audiences:
+      - director
+      - teacher
+    importance: major
+    title: 行事曆改期更可靠
+    summary: 改期、重複時段與月結課判斷更準。
+    items:
+      - category: fixed
+        text: 不存在的改期堂次不會被行事曆畫出來。
+      - category: fixed
+        text: 連續調課或同時段重排只保留最新有效時段。
+      - category: improved
+        text: 月結課不會被誤判為超排。
+    source_refs:
+      - "changelog:2026-08-08:calendar-orphan-rescheduled"
+      - "changelog:2026-08-08:calendar-reschedule-chain"
+      - "changelog:2026-08-08:calendar-duplicate-monthly"
+
+  - id: staff-2026-08-08-leave-review-integrity
+    published_at: "2026-08-08"
+    audiences:
+      - director
+      - teacher
+    importance: major
+    title: 請假評量狀態更完整
+    summary: 請假補課確認後，原堂評量會正確清理。
+    items:
+      - category: fixed
+        text: 主任確認請假補課後，原堂待審評量不會殘留。
+      - category: improved
+        text: 夜間檢查會自動清理既有的請假殘留狀態。
+    source_refs:
+      - "changelog:2026-08-08:leave-stale-review"
+
+  - id: staff-2026-08-08-payroll-eligibility
+    published_at: "2026-08-08"
+    audiences:
+      - director
+    importance: major
+    title: 正職薪資條件更清楚
+    summary: 主任可分項查看正職老師薪資要件。
+    items:
+      - category: added
+        text: 可依週、月、年度查看正職老師薪資要件報表。
+      - category: improved
+        text: 各項符合、不符合與待確認條件會分開顯示。
+    source_refs:
+      - "changelog:2026-08-08:payroll-eligibility"
+
+  - id: staff-2026-08-07-scheduling-billing-improvements
+    published_at: "2026-08-07"
+    audiences:
+      - director
+      - teacher
+    importance: major
+    title: 課表與繳費更穩定
+    summary: 手動排課、暫停恢復與繳費提醒更順。
+    items:
+      - category: fixed
+        text: 手動排課偏離預設時段時，取消與評量操作仍可使用。
+      - category: fixed
+        text: 課程恢復後，被取消的未來堂次會一併還原。
+      - category: improved
+        text: 大量繳費提醒的查詢效率提升。
+    source_refs:
+      - "changelog:2026-08-07:manual-scheduling-session-time"
+      - "changelog:2026-08-05:course-pause-restore"
+      - "changelog:2026-08-07:billing-alert-n-plus-one"
+
+  - id: staff-2026-08-05-calendar-data-stability
+    published_at: "2026-08-05"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 行事曆資料更完整
+    summary: 編輯合約後，舊課程堂次仍會正常保留。
+    items:
+      - category: fixed
+        text: 編輯新合約後，已完成的舊堂次不會從行事曆消失。
+    source_refs:
+      - "changelog:2026-08-05:calendar-history-cache"
+
   - id: staff-2026-08-06-leave-makeup-count-fix
     published_at: "2026-08-06"
     audiences:

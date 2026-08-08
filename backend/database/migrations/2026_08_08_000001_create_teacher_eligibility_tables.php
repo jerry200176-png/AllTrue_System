@@ -19,7 +19,10 @@ return new class extends Migration
                 $table->string('leave_type', 32)->nullable();
                 $table->decimal('holiday_leave_hours', 6, 2)->nullable();
                 $table->boolean('makeup_completed')->default(false);
-                $table->string('status', 24)->default('approved');
+                // Every manually entered fact must be reviewed before it can
+                // affect payroll. Existing rows are handled by the hardening
+                // migration that follows this table migration.
+                $table->string('status', 24)->default('pending');
                 $table->text('evidence')->nullable();
                 $table->unsignedBigInteger('approved_by')->nullable();
                 $table->dateTime('approved_at')->nullable();
@@ -38,6 +41,7 @@ return new class extends Migration
                 $table->unsignedBigInteger('student_id')->nullable();
                 $table->string('outcome_key', 96);
                 $table->string('subject', 96)->nullable();
+                $table->unsignedSmallInteger('award_year')->nullable();
                 $table->text('evidence')->nullable();
                 $table->string('status', 24)->default('pending');
                 $table->unsignedBigInteger('verified_by')->nullable();
