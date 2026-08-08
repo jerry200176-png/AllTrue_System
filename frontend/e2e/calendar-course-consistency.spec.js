@@ -82,27 +82,28 @@ async function navigate(page, label) {
   await dismissOverlays(page);
   const isMobile = (page.viewportSize()?.width || 0) <= 640;
   if (isMobile && label === '班級行事曆 / 課表') {
-    const bottomTab = page.getByRole('button', { name: '行事曆', exact: true }).first();
+    const bottomNav = page.locator('.mobile-bottom-nav');
+    const bottomTab = bottomNav.getByRole('button', { name: /行事曆/ }).first();
     if (await bottomTab.count()) {
       await expect(bottomTab).toBeVisible({ timeout: 15_000 });
       await bottomTab.click();
       await expect(bottomTab).toHaveClass(/active/, { timeout: 15_000 });
       return;
     }
-    const more = page.getByRole('button', { name: '更多', exact: true }).first();
+    const more = bottomNav.getByRole('button', { name: /更多/ }).first();
     await expect(more).toBeVisible({ timeout: 15_000 });
     await more.click();
-    const button = page.locator('.more-sheet.open').getByRole('button', { name: label, exact: true }).first();
+    const button = page.locator('.more-sheet.open').getByRole('button', { name: new RegExp(label) }).first();
     await expect(button).toBeVisible({ timeout: 15_000 });
     await button.click();
     await expect(button).toHaveClass(/active/, { timeout: 15_000 });
     return;
   }
   if (isMobile && label === '課程管理') {
-    const more = page.getByRole('button', { name: '更多', exact: true }).first();
+    const more = page.locator('.mobile-bottom-nav').getByRole('button', { name: /更多/ }).first();
     await expect(more).toBeVisible({ timeout: 15_000 });
     await more.click();
-    const button = page.locator('.more-sheet.open').getByRole('button', { name: label, exact: true }).first();
+    const button = page.locator('.more-sheet.open').getByRole('button', { name: new RegExp(label) }).first();
     await expect(button).toBeVisible({ timeout: 15_000 });
     await button.click();
     await expect(button).toHaveClass(/active/, { timeout: 15_000 });
