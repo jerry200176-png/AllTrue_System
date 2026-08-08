@@ -7,6 +7,8 @@
 
 ## 2026-08-08 — security(ops): #1387 三階段具名 DB principal 輪替（待 Founder 審核／未執行）
 
+<!-- release-notes: silent_ship=silent-2026-08-08-staged-principal-rotation -->
+
 - **流程**：在唯一允許的 `.github/workflows/deploy.yml` 內新增 Founder-only 的 Phase 1 建立＋複製 `SHOW GRANTS`、Phase 2 雙帳號存活期間切換＋具名 DB read 驗證、Phase 3 人工觀察後鎖舊帳號；三階段各有獨立 typed confirmation，絕不自動串接，沒有新增 standalone workflow。
 - **驗證**：Phase 2 除 health/version 外，強制 Laravel 新連線回報新 principal 並執行 `SELECT 1`，另以 `schedule:list` 驗證 scheduler graph 可在新 config 下啟動；PHP-FPM reload 失敗視為 hard failure 並自動還原該次 `.env`。
 - **拓撲修正**：7 個 production workflow 與 3 支 production-oriented script 原本把 `.env` 的新密碼配上寫死的 `admin` username，已改成 username/password 同源讀取；CI/local-only fixture 不變。
