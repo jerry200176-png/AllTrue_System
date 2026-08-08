@@ -5,9 +5,10 @@ set -euo pipefail
 DATE="${DATE:-$(date +%Y-%m-%d)}"; CAMPUS_ID="${CAMPUS_ID:-9}"
 STUDENT_NAME="${STUDENT_NAME:?STUDENT_NAME required}"; TEACHER_NAME="${TEACHER_NAME:-}"
 ENV_FILE="${ENV_FILE:-/home/admin/backend/.env}"
+DB_USER=$(grep '^DB_USERNAME=' "$ENV_FILE" | cut -d= -f2-)
 DB_PASS=$(grep '^DB_PASSWORD=' "$ENV_FILE" | cut -d= -f2-)
 DB_NAME=$(grep '^DB_DATABASE=' "$ENV_FILE" | cut -d= -f2-)
-M=(mysql -h 127.0.0.1 -u admin -p"${DB_PASS}" "$DB_NAME" -N -B)
+M=(mysql -h 127.0.0.1 -u "$DB_USER" -p"${DB_PASS}" "$DB_NAME" -N -B)
 SN=$(printf "%s" "$STUDENT_NAME" | sed "s/'/\\\\'/g")
 
 echo "=== diagnose STUDENT=$STUDENT_NAME DATE=$DATE CAMPUS=$CAMPUS_ID generated=$(date -Iseconds) ==="

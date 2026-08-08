@@ -6,6 +6,21 @@ on:
     types: [completed]
     branches: [main]
 
+  workflow_dispatch:
+    inputs:
+      phase:
+        description: "Choose exactly one phase; phases never auto-chain"
+        required: true
+        type: choice
+        options:
+          - phase1-create
+          - phase2-cutover
+          - phase3-lock
+      confirm:
+        description: "Type the phase-specific confirmation phrase from the runbook"
+        required: true
+        type: string
+
 concurrency:
   group: production-deploy
   cancel-in-progress: false
@@ -137,7 +152,8 @@ jobs:
             TS=$(date '+%Y-%m-%d_%H%M%S')
             BACKUP_FILE="/home/admin/backups/emergency/db_pre_migration_${TS}.sql.gz"
             mkdir -p /home/admin/backups/emergency
-            mysqldump -h 127.0.0.1 -u admin -p"$(grep DB_PASSWORD /home/admin/backend/.env | cut -d= -f2)" \
+            DB_USER="$(grep '^DB_USERNAME=' /home/admin/backend/.env | cut -d= -f2-)"
+            mysqldump -h 127.0.0.1 -u "$DB_USER" -p"$(grep '^DB_PASSWORD=' /home/admin/backend/.env | cut -d= -f2-)" \
               --single-transaction AllTrue | gzip > "$BACKUP_FILE"
             echo "✅ 備份完成：$BACKUP_FILE"
             # R67：migration 失敗絕不可被吞（無 -e 的 SSH script 會照走並印成功）
@@ -284,3 +300,471 @@ jobs:
 
           exit 1
           ENDSSH
+  staged_principal_rotation:
+    name: Staged DB principal rotation (one phase)
+    if: github.event_name == 'workflow_dispatch' && (inputs.phase == 'phase1-create' || inputs.phase == 'phase2-cutover' || inputs.phase == 'phase3-lock')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Require phase-specific typed confirmation
+        env:
+          PHASE: ${{ inputs.phase }}
+          CONFIRM_INPUT: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          case "$PHASE" in
+            phase1-create) EXPECTED="CREATE_NEW_PRINCIPAL" ;;
+            phase2-cutover) EXPECTED="CUTOVER_NEW_PRINCIPAL" ;;
+            phase3-lock) EXPECTED="LOCK_OLD_PRINCIPAL" ;;
+            *) echo "::error::Unknown phase. Nothing touched."; exit 1 ;;
+          esac
+          if [[ "$CONFIRM_INPUT" != "$EXPECTED" ]]; then
+            echo "::error::Confirmation phrase does not match the selected phase. Nothing touched."
+            exit 1
+          fi
+
+      - name: Setup pinned SSH identity
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_HOST_KEY: ${{ secrets.PI_HOST_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$PI_SSH_KEY"
+          test -n "$PI_HOST_KEY"
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          printf '%s\n' "$PI_HOST_KEY" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/deploy_key ~/.ssh/known_hosts
+
+      - name: Create principal by replaying the old principal's exact SHOW GRANTS output
+        if: inputs.phase == 'phase1-create'
+        env:
+          PI_HOST: ${{ secrets.PI_HOST }}
+          PI_USER: ${{ secrets.PI_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=20 -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${PI_USER}@${PI_HOST}" bash <<'REMOTE'
+          set -euo pipefail
+          umask 077
+          cd /home/admin/backend
+
+          STATE_DIR=/home/admin/backups/pre-rotation/1387-staged
+          STATE_FILE="$STATE_DIR/rotation-state.env"
+          mkdir -p "$STATE_DIR"
+          chmod 700 "$STATE_DIR"
+
+          read_env() {
+            local key="$1"
+            grep -m1 "^${key}=" .env | cut -d= -f2-
+          }
+          validate_account_part() {
+            [[ "$1" =~ ^[A-Za-z0-9_.%:-]+$ ]]
+          }
+
+          if [[ -f "$STATE_FILE" ]]; then
+            # shellcheck disable=SC1090
+            source "$STATE_FILE"
+            [[ "${STATUS:-}" == "principal_created" ]] || {
+              echo "::error::A staged rotation is already past Phase 1; refusing to create another principal."
+              exit 1
+            }
+            mysql --protocol=TCP -h "$DB_HOST" -P "$DB_PORT" \
+              -u "$STAGED_DB_USERNAME" -p"$STAGED_DB_PASSWORD" "$DB_DATABASE" \
+              --batch --skip-column-names -e "SELECT 1" >/dev/null 2>&1
+            [[ "$(read_env DB_USERNAME)" == "$OLD_DB_USERNAME" ]] || {
+              echo "::error::State says Phase 1, but the application username has changed. Refusing."
+              exit 1
+            }
+            echo "Phase 1 already complete: the staged principal still authenticates; old app configuration is untouched."
+            exit 0
+          fi
+
+          OLD_DB_USERNAME="$(read_env DB_USERNAME)"
+          OLD_DB_PASSWORD="$(read_env DB_PASSWORD)"
+          DB_HOST="$(read_env DB_HOST)"
+          DB_PORT="$(read_env DB_PORT)"
+          DB_DATABASE="$(read_env DB_DATABASE)"
+          [[ -n "$OLD_DB_USERNAME" && -n "$OLD_DB_PASSWORD" && -n "$DB_DATABASE" ]]
+          DB_HOST="${DB_HOST:-127.0.0.1}"
+          DB_PORT="${DB_PORT:-3306}"
+          validate_account_part "$OLD_DB_USERNAME" || {
+            echo "::error::Unexpected DB username shape; no account was changed."
+            exit 1
+          }
+
+          OLD_MYSQL=(mysql --protocol=TCP -h "$DB_HOST" -P "$DB_PORT" \
+            -u "$OLD_DB_USERNAME" -p"$OLD_DB_PASSWORD" --batch --skip-column-names)
+          CURRENT_ACCOUNT="$("${OLD_MYSQL[@]}" -e "SELECT CURRENT_USER()")"
+          [[ "$CURRENT_ACCOUNT" == "$OLD_DB_USERNAME@"* ]] || {
+            echo "::error::DB_USERNAME does not match CURRENT_USER(); no account was changed."
+            exit 1
+          }
+          OLD_ACCOUNT_HOST="${CURRENT_ACCOUNT#"$OLD_DB_USERNAME"@}"
+          validate_account_part "$OLD_ACCOUNT_HOST" || {
+            echo "::error::Unexpected authenticated host pattern; no account was changed."
+            exit 1
+          }
+
+          STAGED_DB_USERNAME="atr_$(date -u '+%y%m%d%H%M%S')_$(openssl rand -hex 3)"
+          STAGED_DB_PASSWORD="$(openssl rand -hex 32)"
+          export OLD_DB_USERNAME OLD_ACCOUNT_HOST STAGED_DB_USERNAME STAGED_DB_PASSWORD
+
+          TRANSFORMER="$(mktemp /tmp/1387-grant-transform.XXXXXX.py)"
+          cat > "$TRANSFORMER" <<'PY'
+          import os
+          import re
+          import sys
+
+          old_user = os.environ["OLD_DB_USERNAME"]
+          old_host = os.environ["OLD_ACCOUNT_HOST"]
+          new_user = os.environ["STAGED_DB_USERNAME"]
+          new_pass = os.environ["STAGED_DB_PASSWORD"]
+
+          ident = r"(?:'(?:''|\\\\.|[^'])*'|`(?:``|[^`])*`)"
+          target = re.compile(rf"(?i)(\b(?:TO|FROM)\s+)({ident})@({ident})")
+
+          def decode(token):
+              if token.startswith("`"):
+                  return token[1:-1].replace("``", "`")
+              value = token[1:-1].replace("''", "'")
+              return re.sub(r"\\\\(.)", r"\1", value)
+
+          def quote(value):
+              return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"
+
+          print(f"CREATE USER {quote(new_user)}@{quote(old_host)} IDENTIFIED BY {quote(new_pass)};")
+          count = 0
+          for raw in sys.stdin:
+              grant = raw.strip()
+              if not grant:
+                  continue
+              if " IDENTIFIED " in grant.upper():
+                  raise SystemExit("SHOW GRANTS contains authentication material; refusing unsafe replay")
+              matches = list(target.finditer(grant))
+              if len(matches) != 1:
+                  raise SystemExit("unexpected SHOW GRANTS target shape")
+              match = matches[0]
+              if decode(match.group(2)) != old_user or decode(match.group(3)) != old_host:
+                  raise SystemExit("SHOW GRANTS target does not match CURRENT_USER()")
+              replacement = match.group(1) + quote(new_user) + "@" + quote(old_host)
+              statement = grant[:match.start()] + replacement + grant[match.end():]
+              print(statement.rstrip(";") + ";")
+              count += 1
+          if count == 0:
+              raise SystemExit("SHOW GRANTS returned no statements")
+          PY
+
+          created_attempted=0
+          completed=0
+          cleanup() {
+            rc=$?
+            rm -f "$TRANSFORMER"
+            if [[ "$completed" != 1 && "$created_attempted" == 1 ]]; then
+              "${OLD_MYSQL[@]}" -e \
+                "DROP USER IF EXISTS '${STAGED_DB_USERNAME}'@'${OLD_ACCOUNT_HOST}'" \
+                >/dev/null 2>&1 || echo "::error::Automatic DROP USER rollback failed; Founder follow-up required."
+              rm -f "$STATE_FILE"
+            fi
+            unset OLD_DB_PASSWORD STAGED_DB_PASSWORD
+            exit "$rc"
+          }
+          trap cleanup EXIT
+
+          created_attempted=1
+          "${OLD_MYSQL[@]}" -e "SHOW GRANTS FOR CURRENT_USER()" \
+            | python3 "$TRANSFORMER" \
+            | "${OLD_MYSQL[@]}" >/dev/null
+
+          mysql --protocol=TCP -h "$DB_HOST" -P "$DB_PORT" \
+            -u "$STAGED_DB_USERNAME" -p"$STAGED_DB_PASSWORD" "$DB_DATABASE" \
+            --batch --skip-column-names -e "SELECT 1" >/dev/null 2>&1
+
+          {
+            printf 'STATUS=%q\n' principal_created
+            printf 'OLD_DB_USERNAME=%q\n' "$OLD_DB_USERNAME"
+            printf 'OLD_ACCOUNT_HOST=%q\n' "$OLD_ACCOUNT_HOST"
+            printf 'STAGED_DB_USERNAME=%q\n' "$STAGED_DB_USERNAME"
+            printf 'STAGED_DB_PASSWORD=%q\n' "$STAGED_DB_PASSWORD"
+            printf 'DB_HOST=%q\n' "$DB_HOST"
+            printf 'DB_PORT=%q\n' "$DB_PORT"
+            printf 'DB_DATABASE=%q\n' "$DB_DATABASE"
+            printf 'OLD_ENV_BACKUP=%q\n' ''
+            printf 'ATTEMPT_ENV_BACKUP=%q\n' ''
+            printf 'PREVIOUS_STATUS=%q\n' ''
+            printf 'LOCK_METHOD=%q\n' ''
+            printf 'QUARANTINE_PASSWORD=%q\n' ''
+          } > "$STATE_FILE"
+          chmod 600 "$STATE_FILE"
+          completed=1
+          echo "Phase 1 complete: exact SHOW GRANTS statements replayed and the new principal passed a fresh SELECT 1 connection."
+          echo "The old principal and application .env were not changed."
+          REMOTE
+
+      - name: Backup, cut over .env, rebuild config, reload PHP-FPM, and verify new DB identity
+        if: inputs.phase == 'phase2-cutover'
+        env:
+          PI_HOST: ${{ secrets.PI_HOST }}
+          PI_USER: ${{ secrets.PI_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=20 -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${PI_USER}@${PI_HOST}" bash <<'REMOTE'
+          set -euo pipefail
+          umask 077
+          cd /home/admin/backend
+          STATE_FILE=/home/admin/backups/pre-rotation/1387-staged/rotation-state.env
+          [[ -f "$STATE_FILE" ]] || { echo "::error::Phase 1 state is missing."; exit 1; }
+          # shellcheck disable=SC1090
+          source "$STATE_FILE"
+          [[ "$STATUS" == "principal_created" || "$STATUS" == "cutover_verified" ]] || {
+            echo "::error::Phase 2 cannot run from the recorded state: $STATUS"
+            exit 1
+          }
+          for consumer in /home/admin/scripts/{diagnose-classsession-duplicates.sh,diagnose-student-session.sh,post-merge-smoke.sh}; do
+            grep -q 'DB_USERNAME' "$consumer" || { echo "::error::Production checkout predates the username-consumer fixes."; exit 1; }
+          done
+
+          state_set() { sed -i "s|^${1}=.*|${1}=${2}|" "$STATE_FILE"; }
+
+          mysql --protocol=TCP -h "$DB_HOST" -P "$DB_PORT" \
+            -u "$STAGED_DB_USERNAME" -p"$STAGED_DB_PASSWORD" "$DB_DATABASE" \
+            --batch --skip-column-names -e "SELECT 1" >/dev/null 2>&1
+
+          STAMP="$(date '+%Y-%m-%d_%H%M%S')"
+          BACKUP_FILE="/home/admin/backups/pre-rotation/alltrue_pre_staged_cutover_${STAMP}.sql.gz"
+          CURRENT_USER="$(grep -m1 '^DB_USERNAME=' .env | cut -d= -f2-)"
+          CURRENT_PASS="$(grep -m1 '^DB_PASSWORD=' .env | cut -d= -f2-)"
+          mysqldump --protocol=TCP -h "$DB_HOST" -P "$DB_PORT" -u "$CURRENT_USER" -p"$CURRENT_PASS" \
+            --single-transaction --routines --triggers "$DB_DATABASE" | gzip > "$BACKUP_FILE"
+          test -s "$BACKUP_FILE"
+          echo "pre-cutover backup: $(basename "$BACKUP_FILE") ($(du -h "$BACKUP_FILE" | cut -f1))"
+
+          PREVIOUS_STATUS="$STATUS"
+          ATTEMPT_ENV_BACKUP="/home/admin/backups/pre-rotation/env_pre_staged_cutover_${STAMP}.bak"
+          cp .env "$ATTEMPT_ENV_BACKUP"
+          chmod 600 "$ATTEMPT_ENV_BACKUP"
+          if [[ -z "$OLD_ENV_BACKUP" ]]; then
+            OLD_ENV_BACKUP="$ATTEMPT_ENV_BACKUP"
+          fi
+          state_set PREVIOUS_STATUS "$STATUS"
+          state_set ATTEMPT_ENV_BACKUP "$ATTEMPT_ENV_BACKUP"
+          state_set OLD_ENV_BACKUP "$OLD_ENV_BACKUP"
+          state_set STATUS cutover_pending
+
+          ENV_TMP="$(mktemp .env.1387-staged.XXXXXX)"
+          awk -v user="$STAGED_DB_USERNAME" -v pass="$STAGED_DB_PASSWORD" '
+            BEGIN { users=0; passwords=0 }
+            /^DB_USERNAME=/ { print "DB_USERNAME=" user; users++; next }
+            /^DB_PASSWORD=/ { print "DB_PASSWORD=" pass; passwords++; next }
+            { print }
+            END { if (users != 1 || passwords != 1) exit 42 }
+          ' .env > "$ENV_TMP"
+          chmod --reference=.env "$ENV_TMP"
+          mv "$ENV_TMP" .env
+
+          php artisan config:cache
+
+          export EXPECTED_DB_USERNAME="$STAGED_DB_USERNAME"
+          php artisan tinker --execute='
+          \Illuminate\Support\Facades\DB::purge("mysql");
+          $row = \Illuminate\Support\Facades\DB::selectOne("SELECT CURRENT_USER() AS principal, 1 AS probe");
+          $expected = (string) getenv("EXPECTED_DB_USERNAME");
+          if (!$row || (int) $row->probe !== 1 || !str_starts_with((string) $row->principal, $expected . "@")) {
+              throw new RuntimeException("staged principal verification failed");
+          }
+          echo "db-read-new-principal=OK", PHP_EOL;
+          '
+          php artisan schedule:list >/dev/null
+          echo "scheduler-bootstrap=OK"
+
+          if grep -q '^DB_PERSISTENT=true' .env 2>/dev/null; then
+            echo "DB_PERSISTENT=true detected -- FPM reload is required."
+          else
+            echo "DB_PERSISTENT not set to true -- reloading as defense-in-depth."
+          fi
+          if sudo -n service php8.2-fpm reload 2>/tmp/fpm_reload_err; then
+            echo "php8.2-fpm reload: OK"
+          else
+            cat /tmp/fpm_reload_err 2>/dev/null || true
+            rm -f /tmp/fpm_reload_err
+            echo "::error::PHP-FPM reload failed; automatic .env rollback will run."
+            exit 1
+          fi
+          rm -f /tmp/fpm_reload_err
+          state_set STATUS cutover_local_verified
+          unset CURRENT_PASS STAGED_DB_PASSWORD
+          REMOTE
+
+      - name: Verify application health and version after the new-principal read passed
+        if: inputs.phase == 'phase2-cutover'
+        env:
+          PRODUCTION_URL: https://daan.lifenet.com.tw
+        run: |
+          set -euo pipefail
+          HEALTH=""
+          for i in $(seq 1 10); do
+            HEALTH=$(curl -sf "$PRODUCTION_URL/api/v1/health" || true)
+            echo "attempt $i: $HEALTH"
+            echo "$HEALTH" | grep -q '"status":"ok"' && break
+            sleep 3
+          done
+          echo "$HEALTH" | grep -q '"status":"ok"' || {
+            echo "::error::Health check did not return ok after staged cutover"
+            exit 1
+          }
+          VERSION=$(curl -sf "$PRODUCTION_URL/version.json")
+          test -n "$VERSION"
+          echo "version endpoint: $VERSION"
+
+      - name: Mark the observation window open
+        if: inputs.phase == 'phase2-cutover'
+        env:
+          PI_HOST: ${{ secrets.PI_HOST }}
+          PI_USER: ${{ secrets.PI_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=20 -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${PI_USER}@${PI_HOST}" bash <<'REMOTE'
+          set -euo pipefail
+          STATE_FILE=/home/admin/backups/pre-rotation/1387-staged/rotation-state.env
+          # shellcheck disable=SC1090
+          source "$STATE_FILE"
+          [[ "$STATUS" == "cutover_local_verified" ]]
+          sed -i 's/^STATUS=.*/STATUS=cutover_verified/' "$STATE_FILE"
+          chmod 600 "$STATE_FILE"
+          echo "Phase 2 complete: observation window is open; the old account remains valid and untouched."
+          REMOTE
+
+      - name: Automatically restore the attempt's .env if Phase 2 fails
+        if: failure() && inputs.phase == 'phase2-cutover'
+        env:
+          PI_HOST: ${{ secrets.PI_HOST }}
+          PI_USER: ${{ secrets.PI_USER }}
+        run: |
+          set -euo pipefail
+          [[ -f ~/.ssh/deploy_key ]] || exit 0
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=20 -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${PI_USER}@${PI_HOST}" bash <<'REMOTE'
+          set -euo pipefail
+          cd /home/admin/backend
+          STATE_FILE=/home/admin/backups/pre-rotation/1387-staged/rotation-state.env
+          [[ -f "$STATE_FILE" ]] || exit 0
+          # shellcheck disable=SC1090
+          source "$STATE_FILE"
+          [[ "$STATUS" == "cutover_pending" || "$STATUS" == "cutover_local_verified" ]] || exit 0
+          [[ -n "$ATTEMPT_ENV_BACKUP" && -f "$ATTEMPT_ENV_BACKUP" ]]
+          cp "$ATTEMPT_ENV_BACKUP" .env
+          php artisan config:cache
+          sudo -n service php8.2-fpm reload
+          sed -i "s/^STATUS=.*/STATUS=${PREVIOUS_STATUS}/" "$STATE_FILE"
+          chmod 600 "$STATE_FILE"
+          echo "Failed Phase 2 attempt rolled back to its entry .env and config cache."
+          REMOTE
+
+      - name: Lock the old principal, with password quarantine only for unsupported lock syntax
+        if: inputs.phase == 'phase3-lock'
+        env:
+          PI_HOST: ${{ secrets.PI_HOST }}
+          PI_USER: ${{ secrets.PI_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=20 -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${PI_USER}@${PI_HOST}" bash <<'REMOTE'
+          set -euo pipefail
+          umask 077
+          cd /home/admin/backend
+          STATE_FILE=/home/admin/backups/pre-rotation/1387-staged/rotation-state.env
+          [[ -f "$STATE_FILE" ]] || { echo "::error::Staged rotation state is missing."; exit 1; }
+          # shellcheck disable=SC1090
+          source "$STATE_FILE"
+          [[ "$STATUS" == "cutover_verified" ]] || {
+            echo "::error::Phase 3 requires a completed Phase 2 observation window."
+            exit 1
+          }
+          [[ "$(grep -m1 '^DB_USERNAME=' .env | cut -d= -f2-)" == "$STAGED_DB_USERNAME" ]] || {
+            echo "::error::Application .env is not on the staged principal."
+            exit 1
+          }
+          [[ -n "$OLD_ENV_BACKUP" && -f "$OLD_ENV_BACKUP" ]]
+          OLD_DB_PASSWORD="$(grep -m1 '^DB_PASSWORD=' "$OLD_ENV_BACKUP" | cut -d= -f2-)"
+          state_set() { sed -i "s|^${1}=.*|${1}=${2}|" "$STATE_FILE"; }
+          state_secret_set() {
+            local tmp="${STATE_FILE}.tmp"
+            while IFS= read -r line; do
+              if [[ "$line" == QUARANTINE_PASSWORD=* ]]; then
+                printf 'QUARANTINE_PASSWORD=%q\n' "$1"
+              else
+                printf '%s\n' "$line"
+              fi
+            done < "$STATE_FILE" > "$tmp"
+            chmod 600 "$tmp"
+            mv "$tmp" "$STATE_FILE"
+          }
+          NEW_MYSQL=(mysql --protocol=TCP -h "$DB_HOST" -P "$DB_PORT" \
+            -u "$STAGED_DB_USERNAME" -p"$STAGED_DB_PASSWORD" --batch --skip-column-names)
+          OLD_ACCOUNT_SQL="'${OLD_DB_USERNAME}'@'${OLD_ACCOUNT_HOST}'"
+
+          "${NEW_MYSQL[@]}" "$DB_DATABASE" -e "SELECT 1" >/dev/null 2>&1
+          LOCK_ERROR="$(mktemp /tmp/1387-account-lock.XXXXXX.err)"
+          if "${NEW_MYSQL[@]}" -e "ALTER USER ${OLD_ACCOUNT_SQL} ACCOUNT LOCK" \
+              >/dev/null 2>"$LOCK_ERROR"; then
+            LOCK_METHOD=account_lock
+            QUARANTINE_PASSWORD=''
+          elif grep -qE 'ERROR 1064|syntax' "$LOCK_ERROR"; then
+            # Compatibility fallback for a pre-account-lock server. The random
+            # replacement remains only in the protected Pi state file.
+            QUARANTINE_PASSWORD="$(openssl rand -hex 32)"
+            printf "ALTER USER %s IDENTIFIED BY '%s';\n" "$OLD_ACCOUNT_SQL" "$QUARANTINE_PASSWORD" \
+              | "${NEW_MYSQL[@]}" >/dev/null
+            LOCK_METHOD=password_quarantine
+          else
+            cat "$LOCK_ERROR" >&2
+            rm -f "$LOCK_ERROR"
+            echo "::error::ACCOUNT LOCK failed for a reason other than unsupported syntax; no fallback attempted."
+            exit 1
+          fi
+          rm -f "$LOCK_ERROR"
+          state_set LOCK_METHOD "$LOCK_METHOD"
+          state_secret_set "$QUARANTINE_PASSWORD"
+          state_set STATUS containment_pending
+
+          if mysql --protocol=TCP -h "$DB_HOST" -P "$DB_PORT" \
+              -u "$OLD_DB_USERNAME" -p"$OLD_DB_PASSWORD" "$DB_DATABASE" \
+              --batch --skip-column-names -e "SELECT 1" >/dev/null 2>&1; then
+            if [[ "$LOCK_METHOD" == account_lock ]]; then
+              "${NEW_MYSQL[@]}" -e "ALTER USER ${OLD_ACCOUNT_SQL} ACCOUNT UNLOCK" >/dev/null
+            fi
+            state_set LOCK_METHOD ''
+            state_secret_set ''
+            state_set STATUS cutover_verified
+            echo "::error::The old credential still authenticated; ACCOUNT LOCK was undone if it had been applied."
+            exit 1
+          fi
+          "${NEW_MYSQL[@]}" "$DB_DATABASE" -e "SELECT 1" >/dev/null 2>&1
+
+          export EXPECTED_DB_USERNAME="$STAGED_DB_USERNAME"
+          php artisan tinker --execute='
+          \Illuminate\Support\Facades\DB::purge("mysql");
+          $row = \Illuminate\Support\Facades\DB::selectOne("SELECT CURRENT_USER() AS principal, 1 AS probe");
+          $expected = (string) getenv("EXPECTED_DB_USERNAME");
+          if (!$row || (int) $row->probe !== 1 || !str_starts_with((string) $row->principal, $expected . "@")) {
+              throw new RuntimeException("post-lock staged principal verification failed");
+          }
+          echo "post-lock-db-read-new-principal=OK", PHP_EOL;
+          '
+
+          state_set STATUS old_principal_contained
+          chmod 600 "$STATE_FILE"
+          unset OLD_DB_PASSWORD STAGED_DB_PASSWORD QUARANTINE_PASSWORD
+          echo "Phase 3 complete: the old credential cannot open a new connection; the new principal still passes an app-level DB read."
+          REMOTE
+
+      - name: Remove local key material
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
