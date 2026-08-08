@@ -42,6 +42,16 @@ Two collaborators total. **Owner action needed**: confirm `MonkeyJeng`'s Write a
 | `huihui` | 1001 | **Owner action needed**: identify and confirm still-needed |
 | `admin` | 1002 | The deploy/service account this session's SSH access used |
 
+### 3.1 Third-party production agent
+
+The colleague-owned Hermes gateway running under `admin` is tracked as a
+temporary, Founder-approved exception in
+[`PRODUCTION_AGENT_EXCEPTION_HERMES_2026-08.md`](./PRODUCTION_AGENT_EXCEPTION_HERMES_2026-08.md)
+and [Issue #1676](https://github.com/jerry200176-png/AllTrue_System/issues/1676).
+Its capability inventory, service owner identity, and least-privilege plan are
+still open owner/colleague actions; do not infer them from the service being
+owner-readable.
+
 ## 4. Production Pi — SSH keys authorized on `admin`
 
 4 keys in `~/.ssh/authorized_keys`, identified by their trailing comment/label:
