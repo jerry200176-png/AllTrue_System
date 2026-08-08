@@ -68,7 +68,7 @@ class TeacherEligibilityController extends Controller
         $schedules = DB::table('schedules')
             ->whereIn('teacher_id', $teacherIds)
             ->whereBetween('schedule_date', [$effectiveStart->toDateString(), $period['end']->toDateString()])
-            ->where('status', '!=', 'cancelled')
+            ->whereNotIn('status', ['cancelled', 'leave', 'leave_requested'])
             ->when($branchFilter !== null, fn ($query) => $query->whereIn('branch_id', $branchFilter))
             ->get();
 
@@ -122,6 +122,11 @@ class TeacherEligibilityController extends Controller
                 }))->get()
             : collect();
 
+        // Existing attendance/leave is the product's source of truth. The
+        // additive payroll event table is only for policy facts that the core
+        // product does not model (for example a company holiday calendar).
+        $events = $events->concat($this->existingLeaveEvents($teacherIds, $branchFilter, $effectiveStart, $period['end']));
+
         $scheduleByTeacher = $schedules->groupBy('teacher_id');
         $signInByTeacher = $signIns->groupBy('TeacherID');
         $eventByTeacher = $events->groupBy(fn ($event) => $event->teacher_id ? (string) $event->teacher_id : '*');
@@ -141,7 +146,8 @@ class TeacherEligibilityController extends Controller
             }
 
             $weeklyStatus = $this->aggregateWeeklyStatus($weeklyRows);
-            $holidayDays = $this->holidayDays($teacherSchedules, $teacherSignIns, $teacherEvents, $effectiveStart, $period['end'], $eventsAvailable);
+            $holidayCalendarAvailable = $teacherEvents->contains(fn ($event) => $event->event_type === 'holiday');
+            $holidayDays = $this->holidayDays($teacherSchedules, $teacherSignIns, $teacherEvents, $effectiveStart, $period['end'], $holidayCalendarAvailable);
             $weekdayHours = $this->weekdayHours($teacherSchedules, $effectiveStart, $period['end']);
             $subjectCount = $subjectUnitsByTeacher[$teacherId] ?? null;
 
@@ -210,18 +216,25 @@ class TeacherEligibilityController extends Controller
                 $workHoursKnown = false;
             }
         }
-        $official = $eventsAvailable && $events->contains(fn ($event) => $event->event_type === 'official_closure' && $event->event_date >= $start->toDateString() && $event->event_date <= $end->toDateString());
-        $leaveEligible = $eventsAvailable && $events->contains(function ($event) use ($start, $end) {
-            return $event->event_type === 'leave'
-                && $event->event_date >= $start->toDateString()
-                && $event->event_date <= $end->toDateString()
-                && (($event->makeup_completed ?? false) || ((float) ($event->holiday_leave_hours ?? 0) >= (float) ($event->hours ?? 0)));
-        });
+        $weekEvents = $events->filter(fn ($event) => $event->event_date >= $start->toDateString() && $event->event_date <= $end->toDateString());
+        $official = $eventsAvailable && $weekEvents->contains(fn ($event) => $event->event_type === 'official_closure');
+        $leaveEvents = $weekEvents->filter(fn ($event) => $event->event_type === 'leave');
+        $leaveEligible = $this->resolveLeaveEligibility($leaveEvents);
+        $saturdayLeaveBlocked = false;
+        $hasSaturdayLeave = $leaveEvents->contains(fn ($event) => Carbon::parse((string) $event->event_date)->dayOfWeekIso === 6);
+        if ($hasSaturdayLeave) {
+            $sundayHasRegularClass = $weekSchedules->contains(fn ($row) => Carbon::parse($row->schedule_date)->dayOfWeekIso === 7 && $this->isRegularAssignable($row));
+            $saturdayLeaveBlocked = !$sundayHasRegularClass && $leaveEligible === false;
+        }
 
         $policy = $this->policy->weekly16([
             'segments' => $segments,
             'work_hours' => $workHoursKnown ? $workHours : null,
-            'exception' => $eventsAvailable ? ['official_event' => $official, 'leave_eligible' => $leaveEligible] : null,
+            'exception' => $eventsAvailable ? [
+                'official_event' => $official,
+                'leave_eligible' => $leaveEligible,
+                'saturday_leave_blocked' => $saturdayLeaveBlocked,
+            ] : null,
         ]);
         $policy['metrics']['week_start'] = $start->toDateString();
         $policy['metrics']['week_end'] = $end->toDateString();
@@ -269,10 +282,82 @@ class TeacherEligibilityController extends Controller
                 if (!$row->SignOutDT) return 0;
                 try { return Carbon::parse($row->SignInDT)->diffInMinutes(Carbon::parse($row->SignOutDT)) / 60; } catch (\Throwable) { return 0; }
             });
-            $leaveHours = $events->filter(fn ($event) => $event->event_type === 'leave' && $event->event_date === $date)->sum(fn ($event) => (float) ($event->holiday_leave_hours ?? 0));
-            $result[] = ['date' => $date, 'worked_hours' => round($worked, 2), 'holiday_leave_hours' => round($leaveHours, 2)];
+            $leaveEvents = $events->filter(fn ($event) => $event->event_type === 'leave' && $event->event_date === $date);
+            $leaveHours = $leaveEvents->contains(fn ($event) => $event->holiday_leave_hours === null)
+                ? null
+                : $leaveEvents->sum(fn ($event) => (float) $event->holiday_leave_hours);
+            $result[] = [
+                'date' => $date,
+                'worked_hours' => round($worked, 2),
+                'holiday_leave_hours' => $leaveHours === null ? null : round($leaveHours, 2),
+            ];
         }
         return $result;
+    }
+
+    private function resolveLeaveEligibility($leaveEvents): ?bool
+    {
+        if ($leaveEvents->isEmpty()) {
+            return false;
+        }
+
+        $unknown = $leaveEvents->contains(function ($event) {
+            return $event->makeup_completed === null
+                && ($event->holiday_leave_hours === null || $event->hours === null);
+        });
+        if ($unknown) {
+            return null;
+        }
+
+        return $leaveEvents->contains(function ($event) {
+            return (bool) ($event->makeup_completed ?? false)
+                || ((float) ($event->holiday_leave_hours ?? 0) >= (float) ($event->hours ?? 0));
+        });
+    }
+
+    private function existingLeaveEvents(array $teacherIds, ?array $branchFilter, Carbon $start, Carbon $end)
+    {
+        if (!Schema::hasTable('ClassSession')) {
+            return collect();
+        }
+
+        $query = DB::table('ClassSession as cs')
+            ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+            ->join('Student as st', 'st.id', '=', 'sc.StudentID')
+            ->whereIn('sc.TeacherID', $teacherIds)
+            ->whereBetween('cs.SessionDate', [$start->toDateString(), $end->toDateString()])
+            ->when($branchFilter !== null, fn ($query) => $query->whereIn('st.CampusID', $branchFilter));
+        if (Schema::hasTable('StudentSingIn')) {
+            $query->leftJoin('StudentSingIn as si', 'si.ClassSessionID', '=', 'cs.id')
+                ->where(function ($nested) {
+                    $nested->whereIn('cs.Status', ['leave', 'leave_adjusted', 'leave_requested', 'excused'])
+                        ->orWhereIn('si.Status', ['leave', 'excused']);
+                });
+        } else {
+            $query->whereIn('cs.Status', ['leave', 'leave_adjusted', 'leave_requested', 'excused']);
+        }
+
+        return $query->get([
+                'sc.TeacherID as teacher_id', 'cs.SessionDate as event_date', 'cs.Status as source_status',
+                'cs.StartTime as start_time', 'cs.EndTime as end_time',
+            ])
+            ->map(function ($row) {
+                $hours = null;
+                try {
+                    $hours = Carbon::parse((string) $row->start_time)->diffInMinutes(Carbon::parse((string) $row->end_time)) / 60;
+                } catch (\Throwable) {
+                    // Keep null: missing duration must remain reviewable.
+                }
+
+                return (object) [
+                    'teacher_id' => (int) $row->teacher_id,
+                    'event_date' => substr((string) $row->event_date, 0, 10),
+                    'event_type' => 'leave',
+                    'hours' => $hours,
+                    'holiday_leave_hours' => null,
+                    'makeup_completed' => $row->source_status === 'leave_adjusted' ? true : null,
+                ];
+            });
     }
 
     /**
