@@ -50,6 +50,7 @@ jobs:
           PI_USER: ${{ secrets.PI_USER }}
         run: |
           ssh -i ~/.ssh/pi_key -o ConnectTimeout=15 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts ${PI_USER}@${PI_HOST} bash << 'REMOTE'
+          DB_USER=$(grep '^DB_USERNAME=' /home/admin/backend/.env | cut -d= -f2-)
           DB_PASS=$(grep DB_PASSWORD /home/admin/backend/.env | cut -d= -f2)
           DB_NAME=$(grep DB_DATABASE /home/admin/backend/.env | cut -d= -f2)
 
@@ -58,12 +59,12 @@ jobs:
 
           # 1. slow_query_log 狀態
           echo "--- Slow Query Log 設定 ---"
-          mysql -h 127.0.0.1 -u admin -p"${DB_PASS}" -e \
+          mysql -h 127.0.0.1 -u "$DB_USER" -p"${DB_PASS}" -e \
             "SHOW VARIABLES LIKE 'slow_query_log%'; SHOW VARIABLES LIKE 'long_query_time';" 2>/dev/null || \
             echo "⚠️ 無法讀取 MySQL 設定（可能 user 無 SHOW VARIABLES 權限）"
 
           # 2. 如果 slow query log 已啟用，列出最近 TOP 10 慢查詢
-          SLOW_LOG=$(mysql -h 127.0.0.1 -u admin -p"${DB_PASS}" -sN -e \
+          SLOW_LOG=$(mysql -h 127.0.0.1 -u "$DB_USER" -p"${DB_PASS}" -sN -e \
             "SHOW VARIABLES LIKE 'slow_query_log_file';" 2>/dev/null | awk '{print $2}')
 
           if [ -f "$SLOW_LOG" ]; then
@@ -80,7 +81,7 @@ jobs:
           # 3. information_schema.PROCESSLIST 即時查看
           echo ""
           echo "--- 目前執行中的長查詢（> 3 秒）---"
-          mysql -h 127.0.0.1 -u admin -p"${DB_PASS}" -e \
+          mysql -h 127.0.0.1 -u "$DB_USER" -p"${DB_PASS}" -e \
             "SELECT ID, USER, HOST, DB, TIME, STATE, LEFT(INFO,120) AS QUERY FROM information_schema.PROCESSLIST WHERE COMMAND != 'Sleep' AND TIME > 3 ORDER BY TIME DESC;" \
             2>/dev/null || echo "（無或無法讀取）"
           REMOTE

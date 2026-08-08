@@ -1139,7 +1139,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | Git / PR 工作流 | §R58（禁止 assume-unchanged 藏檔）、`scripts/git-index-audit.sh`、Epic #535 Phase 0、**§R87 追加教訓 2（squash-merge 後繼續在同一 designated branch 開下一個 commit 前，一律先 `git fetch + checkout -B <branch> origin/main` 重啟，勿等 `mergeable_state: dirty` 才修）** |
 | Migration / schema drift | §R63（未合併分支的 migration 禁上 production；drift 修復＝port 回 main＋drift 測試） |
 | 前端 UI 參考 star repo / RFC 落地 | **§R88（「參考 star 的 repo」＝真的 `git clone` 讀原始碼，`RFC_PLATFORM_OPTIMIZATION_FROM_STARS_2026.md` 的一行摘要只是索引不是替代品；落差要能具體引用來源檔案/規則）** |
-| 部署 pipeline | §R62（deploy 必須 fetch fail-fast + reset 到 CI `head_sha` 並校驗 HEAD；禁止 `reset --hard origin/main` 靠 stale tracking ref 靜默出貨舊版；Pi repo config 出現 `http.sslbackend=schannel` = 已被 Windows 工具污染，先 unset）、§R67（SSH script 關鍵步驟失敗必須標紅；migration 失敗不得吞成綠燈）、§R68（排程任務上線必須驗證 schedule:run driver 存在；證據=執行 log 而非 schedule:list）、**§R87（`copy-to-backend.cjs` 是獨立白名單；新增 `frontend/public/` 子目錄必須同步加進 `PUBLIC_DIRS`，且驗證需實際跑複製腳本＋正式站 curl，不能只看 `vite build`／dev-server 截圖）** |
+| 部署 pipeline | §R62（deploy 必須 fetch fail-fast + reset 到 CI `head_sha` 並校驗 HEAD；禁止 `reset --hard origin/main` 靠 stale tracking ref 靜默出貨舊版；Pi repo config 出現 `http.sslbackend=schannel` = 已被 Windows 工具污染，先 unset）、§R67（SSH script 關鍵步驟失敗必須標紅；migration 失敗不得吞成綠燈）、§R68（排程任務上線必須驗證 schedule:run driver 存在；證據=執行 log 而非 schedule:list）、**§R87（`copy-to-backend.cjs` 是獨立白名單；新增 `frontend/public/` 子目錄必須同步加進 `PUBLIC_DIRS`，且驗證需實際跑複製腳本＋正式站 curl，不能只看 `vite build`／dev-server 截圖）**、**§R105（具名 DB principal 輪替時 username/password 必須同源，禁止 production `.env` 密碼配寫死帳號）** |
 
 ---
 
@@ -1300,3 +1300,10 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **修法**：把 `ALTER USER '${DB_USER}'@'localhost' IDENTIFIED BY ...` 改成 `ALTER USER CURRENT_USER() IDENTIFIED BY ...`——`CURRENT_USER()` 一定解析成「這個連線實際驗證通過的那個帳號」，不管它的 host pattern 是 `%`、`127.0.0.1` 還是 `localhost`，從根本上消除這種「連線用一個身分、改密碼卻寫死另一個身分」的錯位可能性。
 - **範圍**：只修了 workflow 腳本本身的 bug，**沒有觸發這個 workflow**——實際的密碼輪替仍是 Founder-only 動作，AI agent 不應該也沒有執行它。
 - **測試**：`python3 -c "import yaml; yaml.safe_load(...)"` 確認 YAML 語法合法；`ALTER USER CURRENT_USER() IDENTIFIED BY '...'` 是 MySQL 官方文件記載的標準寫法（自我改密碼不需要知道自己帳號的 host pattern），無法在不觸發真正 production 輪替的前提下端對端測試，這點是本次修復的已知限制，留給 Founder 下次觸發時驗證。
+
+### R105. 換成具名 DB principal 時，不能只搜尋 `DB_PASSWORD`；username/password 必須同源切換（2026-08-08）
+
+- **觸發情境**：SEC-ALLTRUE-003 改採新 principal 的三階段輪替後，盤點發現 7 個 production workflow 與 3 支 production-oriented script 雖然每次都從 `/home/admin/backend/.env` 讀最新 `DB_PASSWORD`，MySQL 指令卻仍寫死 `-u admin`。只改 `.env` 的 `DB_USERNAME`/`DB_PASSWORD` 會讓這些路徑把「新密碼＋舊帳號」配在一起，下一次備份、deploy migration backup、診斷或 repair 才延遲爆炸。
+- **強制規則**：任何 DB credential 輪替盤點都要把 `DB_USERNAME`、`DB_PASSWORD` 與 DSN 當成同一個 identity tuple；所有 production CLI consumer 必須從同一個 effective config 同時取得 username/password。CI service/local-dev 的隔離 fixture 必須另外分類，不可誤當 production consumer 批次改名。
+- **驗收**：除了 app health，必須用 fresh Laravel connection 查 `CURRENT_USER()` 並比對新 username；另掃描 production workflow/script 不得再出現搭配 production `.env` password 的 `-u admin`。舊 principal 只可在人類確認 observation window 後由獨立 gate 鎖定。
+- **範圍**：本次只準備 workflow/scripts/runbook，未觸發 Actions、SSH、DB 或 production mutation；實際 grant replay、server account-lock 支援與 cron/backup observation 仍是 Founder-only evidence。
