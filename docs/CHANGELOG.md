@@ -1,3 +1,10 @@
+## 2026-08-08 — chore: GitHub governance 收尾（#876/#879/#880）— Solo/Multi 審查切換文件、tag 保護、secret 輪換自動提醒
+
+- **#876**：`RISK_BASED_MERGE_POLICY.md` 新增「Solo vs Multi-maintainer」切換表——目前單人模式維持 0 approval（既有 Founder Decision），新增第二位維護者時要改哪些設定（`required_approving_review_count`、`require_code_owner_review` 等）已明確列出。
+- **#879**：Private vulnerability reporting 確認已啟用、0 筆待處理 advisory；secret 輪換提醒改成每 90 天自動開 issue（`.github/workflows/secret-rotation-reminder.yml`），不再依賴人工手動建立；`SEVERITY_MATRIX.md` 新增 security alert 的 P0-P2 SLA 對照。
+- **#880**：新增 `release-tag-protection` ruleset（`refs/tags/v*` 禁刪除/禁移動)，避免 release tag 被誤刪影響 `RUNBOOK_ROLLBACK.md` 的回滾路徑；`REF_GITHUB_RULESET_BASELINE.md` 記錄現況快照；`OPERATIONAL_CONSISTENCY_CHECK.md` 新增 Rule 8 做月度漂移檢查。
+- **未做**：`#871`（Merge Queue）另外評估，因為會改變合併機制本身，風險與本次文件/唯讀 API 設定不同級別，不在本次一併處理。
+
 ## 2026-08-08 — fix(calendar): 改期規則從「同天取最新」精修為「同格已被更新的改期標記取代」（in-app #225，木柵陳宥翰 SC#1249）
 
 - **背景**：`#1685`（本檔前一則）上線幾分鐘後，主任又回報同分校另一筆課「8/7 行事曆有、課程管理沒有」（in-app #225），查證是同一類問題的另一種變體：這次調課鏈連續改了三次，最後一次的目的地落在**不同一天**（8/7 → 最終到 8/8）。`#1685` 的第一版修法（同一天取 id 最大的 scheduled 標記）沒辦法涵蓋這種情況——8/7 那筆被取代的紀錄沒有「同一天更新的 scheduled 標記」可以輸給它，因為真正取代它的下一步改到了 8/8。

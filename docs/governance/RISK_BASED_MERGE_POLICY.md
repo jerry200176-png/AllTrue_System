@@ -1,7 +1,7 @@
 # Risk-Based Merge Policy
 
-**Version:** 1.0.0  
-**Effective:** 2026-07-18  
+**Version:** 1.1.0  
+**Effective:** 2026-07-18 (§Solo vs Multi-maintainer gate added 2026-08-08, #876)  
 **Owner:** Founder / CTO Agent  
 **Status:** Canonical  
 **Founder Decision:** 2026-07-18 — risk-tiered approvals; **not** universal Founder rubber-stamp  
@@ -47,6 +47,21 @@ Self-approval and same-chat “LGTM” do **not** count.
 ## Rollback
 
 Every R1+ PR must state rollback in one of: revert commit, feature flag off, prior deploy SHA, or data rollback command (R3).
+
+## Solo vs Multi-maintainer review gate (#876)
+
+This repo currently has **one** human maintainer (Jerry). GitHub-level `required_approving_review_count` is deliberately kept at **0** (see §Enforcement above, Founder Decision 3) — the Risk-Class self-review checklist + CODEOWNERS routing + required status checks are the substitute for a second human reviewer at R0/R1, and "independent" R2/R3 review is satisfied by a separately-launched verifier Agent (no write mandate) rather than a second human, per the "Independent approval" section above.
+
+**What changes when a second maintainer joins** (do this switch explicitly, not implicitly):
+
+| Setting | Solo mode (current) | Multi-maintainer mode (switch to when a second person can review) |
+|---|---|---|
+| `required_approving_review_count` (ruleset `main-protection`) | `0` | `1` |
+| `require_code_owner_review` | `false` | `true` — CODEOWNERS becomes a real blocking gate, not just a review request |
+| R2/R3 "independent approval" | Separately-launched verifier Agent, or Founder | A human second maintainer, *in addition to* the Agent self-review checklist (both, not either/or, for R3) |
+| `dismiss_stale_reviews_on_push` | `false` | `true` — a stale approval shouldn't survive a force-push-equivalent re-push |
+
+**How to switch**: update ruleset `main-protection` via `gh api repos/OWNER/REPO/rulesets/{id} -X PUT` with the new `pull_request` rule parameters above, then update this table's "current" column and bump this doc's version. Do not silently enable required review without updating this doc — the whole point of this section is that the switch is a visible, deliberate decision, not a drift.
 
 ## Related
 
