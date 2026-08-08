@@ -20,36 +20,7 @@ Treat that file and every `.env` backup as secret material. Do not display, down
 - PHP-FPM is the only evidenced long-running app process; reload failure is a hard cutover failure.
 - Seven workflows and three scripts previously paired the fresh `.env` password with hard-coded `admin`; this change makes them read `DB_USERNAME` from the same file.
 
-The current `DB_PASSWORD` inventory is:
-
-**15 workflow files**
-
-`1387-db-password-rotation.yml`, `173-lr-merge-repair.yml`,
-`173-supersede-repair.yml`, `actual-duration-acceptance.yml`,
-`actual-duration-activation.yml`, `backup-restore-test.yml`, `ci.yml`,
-`classsession-duplicate-diagnose-push.yml`, `db-password-fingerprint-audit.yml`,
-`deploy.yml`, `migration-dryrun.yml`, `ops-leave-cascade-repair.yml`,
-`secret-rotation-reminder.yml`, `slow-query-report.yml`, and
-`teacher-signin-recovery.yml`.
-
-`ci.yml` and `migration-dryrun.yml` use isolated CI fixtures; the fingerprint
-audit and reminder only inspect/report credential state. The remaining
-production-oriented workflows read the Pi `.env` at execution time.
-
-**10 scripts**
-
-`backup-audit.sh`, `db-health-check.sh`, `diagnose-classsession-duplicates.sh`,
-`diagnose-student-session.sh`, `local-dev-setup.sh`, `monthly-restore-drill.sh`,
-`nightly-backup.sh`, `phpunit-isolated.sh`, `post-merge-smoke.sh`, and
-`sixhour-backup.sh`.
-
-`local-dev-setup.sh` and `phpunit-isolated.sh` are isolated local tooling; the
-other eight are production-oriented or Pi backup/health consumers. The seven
-production CLI paths that previously paired the fresh password with literal
-`admin` are now username/password-tuple reads: the four repair/deploy paths,
-the diagnose path, slow-query report, and teacher-signin recovery, plus the
-three corresponding shell scripts (`diagnose-classsession-duplicates.sh`,
-`diagnose-student-session.sh`, and `post-merge-smoke.sh`).
+Current inventory: `grep -rl DB_PASSWORD --include="*.yml" .github/workflows/` (15 files) and `grep -rl DB_PASSWORD --include="*.sh" scripts/` (10 files). `ci.yml`, `migration-dryrun.yml`, `local-dev-setup.sh`, `phpunit-isolated.sh` use isolated fixtures; the fingerprint-audit and secret-rotation-reminder workflows only inspect/report. The remaining production-oriented consumers read the Pi `.env` at execution time — 7 of them previously paired the fresh password with a hard-coded `admin` username, now fixed to read `DB_USERNAME`/`DB_PASSWORD` as one tuple (`1387-db-password-rotation.yml`, `173-lr-merge-repair.yml`, `173-supersede-repair.yml`, `classsession-duplicate-diagnose-push.yml`, `ops-leave-cascade-repair.yml`, `slow-query-report.yml`, `teacher-signin-recovery.yml`, plus scripts `diagnose-classsession-duplicates.sh`, `diagnose-student-session.sh`, `post-merge-smoke.sh`).
 
 Repository inspection cannot prove the absence of manual Pi jobs or external integrations. Before Phase 2, confirm no out-of-repository consumer stores the username separately.
 
