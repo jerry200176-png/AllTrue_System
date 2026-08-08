@@ -80,6 +80,24 @@ async function dismissOverlays(page) {
 
 async function navigate(page, label) {
   await dismissOverlays(page);
+  const isMobile = (page.viewportSize()?.width || 0) <= 640;
+  if (isMobile && label === '班級行事曆 / 課表') {
+    const button = page.getByRole('button', { name: '行事曆', exact: true }).first();
+    await expect(button).toBeVisible({ timeout: 15_000 });
+    await button.click();
+    await expect(button).toHaveClass(/active/, { timeout: 15_000 });
+    return;
+  }
+  if (isMobile && label === '課程管理') {
+    const more = page.getByRole('button', { name: '更多', exact: true }).first();
+    await expect(more).toBeVisible({ timeout: 15_000 });
+    await more.click();
+    const button = page.locator('.more-sheet.open').getByRole('button', { name: label, exact: true }).first();
+    await expect(button).toBeVisible({ timeout: 15_000 });
+    await button.click();
+    await expect(button).toHaveClass(/active/, { timeout: 15_000 });
+    return;
+  }
   const button = page.getByRole('button', { name: label, exact: false }).first();
   await expect(button).toBeVisible({ timeout: 15_000 });
   await button.click();
