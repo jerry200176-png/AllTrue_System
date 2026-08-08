@@ -734,18 +734,36 @@ jobs:
           state_secret_set "$QUARANTINE_PASSWORD"
           state_set STATUS containment_pending
 
+          OLD_PROBE_ERROR="$(mktemp /tmp/1387-old-credential-probe.XXXXXX.err)"
           if mysql --protocol=TCP -h "$DB_HOST" -P "$DB_PORT" \
               -u "$OLD_DB_USERNAME" -p"$OLD_DB_PASSWORD" "$DB_DATABASE" \
-              --batch --skip-column-names -e "SELECT 1" >/dev/null 2>&1; then
+              --batch --skip-column-names -e "SELECT 1" >/dev/null 2>"$OLD_PROBE_ERROR"; then
             if [[ "$LOCK_METHOD" == account_lock ]]; then
               "${NEW_MYSQL[@]}" -e "ALTER USER ${OLD_ACCOUNT_SQL} ACCOUNT UNLOCK" >/dev/null
+              state_set LOCK_METHOD ''
+              state_secret_set ''
+              state_set STATUS cutover_verified
             fi
-            state_set LOCK_METHOD ''
-            state_secret_set ''
-            state_set STATUS cutover_verified
-            echo "::error::The old credential still authenticated; ACCOUNT LOCK was undone if it had been applied."
+            rm -f "$OLD_PROBE_ERROR"
+            echo "::error::The old credential still authenticated; containment was not accepted."
             exit 1
           fi
+
+          OLD_PROBE_CODE="$(sed -n 's/.*ERROR \([0-9][0-9]*\).*/\1/p' "$OLD_PROBE_ERROR" | head -n 1)"
+          if [[ "$OLD_PROBE_CODE" != 1045 && "$OLD_PROBE_CODE" != 3118 ]]; then
+            cat "$OLD_PROBE_ERROR" >&2
+            if [[ "$LOCK_METHOD" == account_lock ]]; then
+              "${NEW_MYSQL[@]}" -e "ALTER USER ${OLD_ACCOUNT_SQL} ACCOUNT UNLOCK" >/dev/null
+              state_set LOCK_METHOD ''
+              state_secret_set ''
+              state_set STATUS cutover_verified
+            fi
+            rm -f "$OLD_PROBE_ERROR"
+            echo "::error::Old-credential probe did not return a known authentication rejection; containment was not accepted."
+            exit 1
+          fi
+          rm -f "$OLD_PROBE_ERROR"
+          echo "old-credential-probe=AUTH_REJECTED code=$OLD_PROBE_CODE"
           "${NEW_MYSQL[@]}" "$DB_DATABASE" -e "SELECT 1" >/dev/null 2>&1
 
           export EXPECTED_DB_USERNAME="$STAGED_DB_USERNAME"

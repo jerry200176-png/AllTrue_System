@@ -96,6 +96,14 @@ The job must prove all three facts before success:
 - the staged principal can still open a fresh direct connection; and
 - a fresh Laravel connection still reports the staged principal and reads the DB.
 
+The old-credential probe is accepted only when the MySQL client returns a known
+authentication rejection (`ERROR 1045` for invalid credentials or `ERROR 3118`
+for an account-lock response). A network error, server outage, TLS/host error,
+permission error, or any unknown client error is **not** evidence of containment;
+the phase fails closed. If the phase used `ACCOUNT LOCK`, it unlocks that account
+again before failing. If it used password quarantine, it leaves the quarantine
+state for Founder-led recovery instead of restoring the compromised password.
+
 **Rollback after `ACCOUNT LOCK`:** an authorized operator can run `ACCOUNT UNLOCK` through the staged connection, then use Phase 2 rollback if needed. This restores the compromised credential, so it is emergency and time-bounded.
 
 **Fallback rollback:** the quarantined account is unlocked but the leaked credential is invalid. If cutback is unavoidable, rebuild `.env` directly from the protected quarantine value; never restore/reveal the leak.
