@@ -99,6 +99,7 @@ async function navigate(page, label) {
     await expect(button).toBeVisible({ timeout: 15_000 });
     await button.click();
     await expect(page.locator('.more-sheet.open')).toHaveCount(0, { timeout: 15_000 });
+    await expect(page.locator('.smart-cal-title')).toBeVisible({ timeout: 15_000 });
     return;
   }
   if (isMobile && label === '課程管理') {
@@ -109,6 +110,7 @@ async function navigate(page, label) {
     await expect(button).toBeVisible({ timeout: 15_000 });
     await button.click();
     await expect(page.locator('.more-sheet.open')).toHaveCount(0, { timeout: 15_000 });
+    await expect(page.locator('.course-page .page-title')).toBeVisible({ timeout: 15_000 });
     return;
   }
   const button = page.getByRole('button', { name: label, exact: false }).first();
