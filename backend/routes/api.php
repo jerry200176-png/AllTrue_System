@@ -18,6 +18,7 @@ use App\Http\Controllers\AdminCampusController;
 use App\Http\Controllers\BusinessDigestController;
 use App\Http\Controllers\AdminRoutingRuleController;
 use App\Http\Controllers\ExceptionWorkflowController;
+use App\Http\Controllers\BindingController;
 use App\Http\Controllers\ParentFeedbackController;
 use App\Http\Controllers\ParentPortalController;
 use App\Http\Controllers\StudentClassController;
@@ -695,5 +696,15 @@ Route::prefix('v1')->group(function () {
     Route::middleware(['role:director,super_admin', 'require_campus', 'require_password_change'])->group(function () {
         Route::get('admin/duplicate-sessions/p2-review', [AdminDuplicateSessionController::class, 'p2Review']);
         Route::patch('admin/duplicate-sessions/p2-review/{groupId}', [AdminDuplicateSessionController::class, 'patchP2Review']);
+    });
+
+    // ── W31 Parent Binding Management ──
+    Route::middleware(['auth:sanctum', 'require_password_change'])->group(function () {
+        Route::get('bindings', [BindingController::class, 'index']);
+        Route::get('bindings/conflicts', [BindingController::class, 'conflicts']);
+        Route::get('bindings/metrics', [BindingController::class, 'metrics']);
+        Route::get('bindings/{id}', [BindingController::class, 'show'])->whereNumber('id');
+        Route::post('bindings', [BindingController::class, 'store']);
+        Route::delete('bindings/{id}', [BindingController::class, 'destroy'])->whereNumber('id');
     });
 });
