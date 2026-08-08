@@ -113,4 +113,30 @@ class TeacherEligibilityPolicyTest extends TestCase
         $this->assertSame(115, $row['metrics']['multiplier']);
         $this->assertSame(TeacherEligibilityPolicy::REVIEW, $outOfRange['status']);
     }
+
+    public function test_missing_subject_count_is_review_instead_of_zero_bonus(): void
+    {
+        $result = $this->policy->subjectCountBonus(null);
+
+        $this->assertSame(TeacherEligibilityPolicy::REVIEW, $result['status']);
+        $this->assertContains('approved_learning_records', $result['missing_fields']);
+        $this->assertSame(0, $result['amount']);
+    }
+
+    public function test_fractional_subject_count_is_reviewed_without_rounding_to_a_table_row(): void
+    {
+        $result = $this->policy->subjectCountBonus(20.25);
+
+        $this->assertSame(TeacherEligibilityPolicy::REVIEW, $result['status']);
+        $this->assertContains('subject_count_table', $result['missing_fields']);
+        $this->assertSame(20.25, $result['metrics']['subject_count']);
+    }
+
+    public function test_missing_holiday_calendar_is_review_instead_of_no_holiday_zero(): void
+    {
+        $result = $this->policy->holiday16(null);
+
+        $this->assertSame(TeacherEligibilityPolicy::REVIEW, $result['status']);
+        $this->assertContains('holiday_calendar', $result['missing_fields']);
+    }
 }

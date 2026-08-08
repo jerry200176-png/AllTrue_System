@@ -38,7 +38,11 @@ class TeacherEligibilityPolicy
             'weekday_afternoon' => $this->weekdayAfternoon($input['weekday_hours'] ?? []),
             'special_performance' => $this->specialPerformance($input['achievements'] ?? [], $input['period_start'] ?? null, $input['period_end'] ?? null),
             'deductions' => $this->deductions($input['deductions'] ?? [], $input['period_start'] ?? null, $input['period_end'] ?? null),
-            'subject_count_bonus' => $this->subjectCountBonus((int) ($input['subject_count'] ?? 0)),
+            'subject_count_bonus' => $this->subjectCountBonus(
+                array_key_exists('subject_count', $input) && $input['subject_count'] !== null
+                    ? (float) $input['subject_count']
+                    : null
+            ),
         ];
 
         $missing = [];
@@ -241,11 +245,29 @@ class TeacherEligibilityPolicy
         );
     }
 
-    public function subjectCountBonus(int $subjectCount): array
+    public function subjectCountBonus(?float $subjectCount): array
     {
+        if ($subjectCount === null) {
+            return $this->review(
+                ['approved_learning_records'],
+                '缺少已核准評量的科目數資料，無法套用附件表格。'
+            );
+        }
+
+        $subjectCount = round($subjectCount, 2);
         if ($subjectCount < 1) {
             return $this->result(self::QUALIFIES, '查詢期間沒有科目數獎金。', ['subject_count' => 0], 0, 0);
         }
+
+        if (abs($subjectCount - round($subjectCount)) > 0.0001) {
+            return $this->review(
+                ['subject_count_table'],
+                '科目數含加權小數，附件表格只有1～50整數版本，無法自行推算。',
+                ['subject_count' => $subjectCount]
+            );
+        }
+
+        $subjectCount = (int) round($subjectCount);
         $table = $this->setting('subject_count_table', []);
         if ($subjectCount > 50) {
             return $this->review(['subject_count_table'], '科目數超出附件表格1～50範圍。');
