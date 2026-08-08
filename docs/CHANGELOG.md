@@ -1,3 +1,8 @@
+## 2026-08-08 — fix: 請假補課候選改以原堂日期為基準
+
+- **Fixed**：原堂是 8/20 的請假案件，不會再出現 8/9 這類原堂之前的補課候選；畫面會直接顯示可安排的日期範圍。
+- 開發備註：前端與 `ExceptionWorkflowCandidateGenerator` 後端同步套用「原堂後一天」邊界，並新增 API regression test。
+
 ## 2026-08-08 — fix(ops): DB 密碼輪替 workflow 的 `ALTER USER` host 寫死錯誤，導致 2026-08-07 Founder 觸發失敗
 
 - **背景**：SEC-ALLTRUE-003 的密碼輪替最後一步（Founder-only）2026-08-07 執行失敗，錯誤是 `ERROR 1396: Operation ALTER USER failed`。

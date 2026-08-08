@@ -195,6 +195,10 @@
                   <article v-for="workflow in exceptionWorkflows" :key="workflow.id" :id="`exception-workflow-${workflow.id}`" class="director-leave-case">
                     <header class="director-leave-case__header"><div><strong>{{ workflow.student?.name || '未命名學生' }}</strong><span>{{ workflowStatusLabel(workflow.status) }}</span></div><span>案件 #{{ workflow.id }}</span></header>
                     <dl class="director-leave-case__details"><div><dt>原堂次</dt><dd>{{ workflow.class_session?.date || '未提供日期' }} {{ workflow.class_session?.start_time || '' }}–{{ workflow.class_session?.end_time || '' }}</dd></div><div><dt>原因</dt><dd>{{ workflow.payload?.reason || '未提供原因' }}</dd></div></dl>
+                    <p class="director-leave-case__window">
+                      <span class="material-symbols-outlined" aria-hidden="true">date_range</span>
+                      補課候選範圍：{{ makeupWindowLabel(workflow) }}（原堂後一天起）
+                    </p>
                     <div v-if="workflowCandidates[workflow.id]?.length" class="director-candidate-list" role="radiogroup" :aria-label="`${workflow.student?.name || '學生'}補課候選`">
                       <label v-for="candidate in workflowCandidates[workflow.id]" :key="candidate.id" class="director-candidate" :class="{ 'is-selected': selectedWorkflowCandidates[workflow.id] === candidate.id }"><input v-model="selectedWorkflowCandidates[workflow.id]" type="radio" :name="`leave-candidate-${workflow.id}`" :value="candidate.id" :disabled="workflowActionId === workflow.id" /><span><strong>{{ candidate.candidate_date }}</strong> {{ candidate.start_time }}–{{ candidate.end_time }}</span></label>
                     </div>
@@ -259,6 +263,7 @@ import {
   markTrustSeen,
   markTrustProvidedPathUsed,
 } from '../lib/adoptionTelemetry';
+import { getMakeupCandidateWindow } from '../lib/makeupCandidateWindow';
 import {
   listExceptionWorkflows,
   getExceptionWorkflow,
@@ -723,6 +728,12 @@ const workflowStatusLabel = (status) => ({
   closed: '已關閉',
 }[String(status || '')] || String(status || '—'));
 
+const makeupWindowLabel = (workflow) => {
+  const window = getMakeupCandidateWindow(workflow);
+  if (!window.startDate || !window.endDate) return '請先確認原堂日期';
+  return `${window.startDate}～${window.endDate}`;
+};
+
 const addDaysYmd = (days) => {
   const d = new Date();
   d.setDate(d.getDate() + days);
@@ -793,9 +804,10 @@ const generateCandidates = async (workflow) => {
   workflowActionId.value = workflow.id;
   exceptionWorkflowError.value = '';
   try {
+    const window = getMakeupCandidateWindow(workflow);
     const result = await generateExceptionWorkflowCandidates(token, workflow.id, {
-      startDate: addDaysYmd(1),
-      endDate: addDaysYmd(14),
+      startDate: window.startDate,
+      endDate: window.endDate,
       limit: 5,
     });
     setWorkflowCandidates(workflow.id, result?.candidates || []);
@@ -2869,6 +2881,8 @@ onBeforeUnmount(() => {
 .director-leave-case__details dd { margin: 4px 0 0; color: var(--ds-ink-secondary); font-size: 12px; }
 .director-leave-case__hint { display: flex; align-items: flex-start; gap: 7px; margin: 14px 0 0; color: var(--ds-ink-mute); font-size: 11px; line-height: 1.5; }
 .director-leave-case__hint .material-symbols-outlined { color: var(--ds-warning); font-size: 17px; }
+.director-leave-case__window { display: flex; align-items: center; gap: 6px; margin: 14px 0 0; color: var(--ds-ink-mute); font-size: 11px; line-height: 1.5; }
+.director-leave-case__window .material-symbols-outlined { color: var(--ds-primary); font-size: 17px; }
 .director-leave-case__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; padding: 7px 11px; border: 1px solid var(--ds-hairline-input); border-radius: 6px; background: var(--ds-canvas); color: var(--ds-ink-secondary); font-size: 12px; font-weight: 800; }
 .button:hover { border-color: var(--ds-ink-secondary); color: var(--ds-ink); }
