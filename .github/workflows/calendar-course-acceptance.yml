@@ -86,7 +86,6 @@ jobs:
             ->where("uc.CampusID", $branch)
             ->where(function ($q) { $q->where("uc.Approved", 1)->orWhereNull("uc.Approved"); })
             ->where("t.expires_at", ">", now())
-            ->orderByRaw("CASE WHEN u.type = \'D\' THEN 0 ELSE 1 END")
             ->orderByDesc("t.expires_at")
             ->select("t.token", "u.id", "u.type", "u.Name", "u.LoginName", "u.MustChangePassword")
             ->first();
