@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\TeacherEligibilityPolicy;
+use App\Support\AttendanceStatus;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -72,12 +73,37 @@ class TeacherEligibilityController extends Controller
             ->when($branchFilter !== null, fn ($query) => $query->whereIn('branch_id', $branchFilter))
             ->get();
 
-        $signIns = DB::table('TeacherSingIn')
-            ->whereIn('TeacherID', $teacherIds)
-            ->whereDate('SignInDT', '>=', $effectiveStart->toDateString())
-            ->whereDate('SignInDT', '<=', $period['end']->toDateString())
-            ->when($branchFilter !== null, fn ($query) => $query->whereIn('CampusID', $branchFilter))
-            ->get();
+        // Teacher RFID is still incomplete in production. Work-hours for
+        // this report therefore use attended student class sessions, not
+        // TeacherSingIn. Each ClassSession is counted once even for shared
+        // classes with multiple student rows.
+        $attendanceSourceAvailable = Schema::hasTable('ClassSession')
+            && Schema::hasTable('StudentClass')
+            && Schema::hasTable('StudentSingIn');
+        $attendanceSessions = collect();
+        if ($attendanceSourceAvailable) {
+            $attendanceSessions = DB::table('ClassSession as cs')
+                ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+                ->join('StudentSingIn as si', 'si.ClassSessionID', '=', 'cs.id')
+                ->join('Student as st', 'st.id', '=', 'sc.StudentID')
+                ->whereIn('sc.TeacherID', $teacherIds)
+                ->whereBetween('cs.SessionDate', [$effectiveStart->toDateString(), $period['end']->toDateString()])
+                ->whereNull('si.VoidedAt')
+                ->whereIn('si.Status', $this->payableStudentAttendanceStatuses())
+                ->whereNotIn('cs.Status', ['cancelled', 'voided', 'leave', 'leave_adjusted', 'leave_requested', 'excused'])
+                ->when($branchFilter !== null, fn ($query) => $query->whereIn('st.CampusID', $branchFilter))
+                ->select([
+                    'cs.id as class_session_id', 'cs.SessionDate as session_date',
+                    'cs.StartTime as start_time', 'cs.EndTime as end_time',
+                    'cs.Status as session_status', 'si.Status as attendance_status',
+                    'si.SignInDT as student_sign_in_at', 'si.SignOutDT as student_sign_out_at',
+                    'sc.TeacherID as teacher_id', 'sc.ClassType as class_type',
+                ])
+                ->get()
+                ->filter(fn ($row) => $this->isEligibleTeachingAttendance($row))
+                ->unique('class_session_id')
+                ->values();
+        }
 
         $events = Schema::hasTable('teacher_payroll_events')
             ? DB::table('teacher_payroll_events')
@@ -128,26 +154,26 @@ class TeacherEligibilityController extends Controller
         $events = $events->concat($this->existingLeaveEvents($teacherIds, $branchFilter, $effectiveStart, $period['end']));
 
         $scheduleByTeacher = $schedules->groupBy('teacher_id');
-        $signInByTeacher = $signIns->groupBy('TeacherID');
+        $attendanceByTeacher = $attendanceSessions->groupBy('teacher_id');
         $eventByTeacher = $events->groupBy(fn ($event) => $event->teacher_id ? (string) $event->teacher_id : '*');
         $achievementByTeacher = $achievements->groupBy('teacher_id');
         $deductionByTeacher = $deductions->groupBy('teacher_id');
         $eventsAvailable = Schema::hasTable('teacher_payroll_events') && $events->isNotEmpty();
         $subjectUnitsByTeacher = $this->subjectUnitsByTeacher($teacherIds, $branchFilter, $effectiveStart, $period['end']);
 
-        $rows = $teachers->map(function ($teacher) use ($period, $effectiveStart, $scheduleByTeacher, $signInByTeacher, $eventByTeacher, $achievementByTeacher, $deductionByTeacher, $eventsAvailable, $subjectUnitsByTeacher) {
+        $rows = $teachers->map(function ($teacher) use ($period, $effectiveStart, $scheduleByTeacher, $attendanceByTeacher, $eventByTeacher, $achievementByTeacher, $deductionByTeacher, $eventsAvailable, $attendanceSourceAvailable, $subjectUnitsByTeacher) {
             $teacherId = (int) $teacher->id;
             $teacherSchedules = $scheduleByTeacher->get($teacherId, collect());
-            $teacherSignIns = $signInByTeacher->get($teacherId, collect());
+            $teacherAttendance = $attendanceByTeacher->get($teacherId, collect());
             $teacherEvents = $eventByTeacher->get((string) $teacherId, collect())->concat($eventByTeacher->get('*', collect()));
             $weeklyRows = [];
             foreach ($this->splitIntoWeeks($effectiveStart, $period['end']) as [$weekStart, $weekEnd]) {
-                $weeklyRows[] = $this->evaluateWeek($weekStart, $weekEnd, $teacherSchedules, $teacherSignIns, $teacherEvents, $eventsAvailable);
+                $weeklyRows[] = $this->evaluateWeek($weekStart, $weekEnd, $teacherSchedules, $teacherAttendance, $teacherEvents, $eventsAvailable, $attendanceSourceAvailable);
             }
 
             $weeklyStatus = $this->aggregateWeeklyStatus($weeklyRows);
             $holidayCalendarAvailable = $teacherEvents->contains(fn ($event) => $event->event_type === 'holiday');
-            $holidayDays = $this->holidayDays($teacherSchedules, $teacherSignIns, $teacherEvents, $effectiveStart, $period['end'], $holidayCalendarAvailable);
+            $holidayDays = $this->holidayDays($teacherAttendance, $teacherEvents, $effectiveStart, $period['end'], $holidayCalendarAvailable);
             $weekdayHours = $this->weekdayHours($teacherSchedules, $effectiveStart, $period['end']);
             $subjectCount = $subjectUnitsByTeacher[$teacherId] ?? null;
 
@@ -179,6 +205,7 @@ class TeacherEligibilityController extends Controller
                 'overall_status' => $result['overall_status'],
                 'components' => $result['components'],
                 'weekly' => $weeklyRows,
+                'work_hours_source' => 'student_attendance',
                 'missing_fields' => $result['missing_fields'],
                 'review_required' => $result['overall_status'] === TeacherEligibilityPolicy::REVIEW,
             ];
@@ -194,7 +221,7 @@ class TeacherEligibilityController extends Controller
         ]);
     }
 
-    private function evaluateWeek(Carbon $start, Carbon $end, $schedules, $signIns, $events, bool $eventsAvailable): array
+    private function evaluateWeek(Carbon $start, Carbon $end, $schedules, $attendanceSessions, $events, bool $eventsAvailable, bool $attendanceSourceAvailable): array
     {
         $weekSchedules = $schedules->filter(fn ($row) => $row->schedule_date >= $start->toDateString() && $row->schedule_date <= $end->toDateString());
         $segments = 0.0;
@@ -202,20 +229,11 @@ class TeacherEligibilityController extends Controller
             if (!$this->isRegularAssignable($row)) continue;
             $segments += $this->durationHours($row) / 2;
         }
-        $weekSignIns = $signIns->filter(fn ($row) => substr((string) $row->SignInDT, 0, 10) >= $start->toDateString() && substr((string) $row->SignInDT, 0, 10) <= $end->toDateString());
-        $workHours = 0.0;
-        $workHoursKnown = $weekSignIns->isNotEmpty();
-        foreach ($weekSignIns as $row) {
-            if (!$row->SignOutDT) {
-                $workHoursKnown = false;
-                continue;
-            }
-            try {
-                $workHours += Carbon::parse($row->SignInDT)->diffInMinutes(Carbon::parse($row->SignOutDT)) / 60;
-            } catch (\Throwable) {
-                $workHoursKnown = false;
-            }
-        }
+        $weekAttendance = $attendanceSessions->filter(fn ($row) => substr((string) $row->session_date, 0, 10) >= $start->toDateString() && substr((string) $row->session_date, 0, 10) <= $end->toDateString());
+        $workHours = round($weekAttendance->sum(fn ($row) => $this->studentAttendanceDurationHours($row)), 2);
+        // An empty week is a known zero when the student-attendance source is
+        // available; it must not become a missing TeacherSingIn review.
+        $workHoursKnown = $attendanceSourceAvailable;
         $weekEvents = $events->filter(fn ($event) => $event->event_date >= $start->toDateString() && $event->event_date <= $end->toDateString());
         $official = $eventsAvailable && $weekEvents->contains(fn ($event) => $event->event_type === 'official_closure');
         $leaveEvents = $weekEvents->filter(fn ($event) => $event->event_type === 'leave');
@@ -238,6 +256,8 @@ class TeacherEligibilityController extends Controller
         ]);
         $policy['metrics']['week_start'] = $start->toDateString();
         $policy['metrics']['week_end'] = $end->toDateString();
+        $policy['metrics']['work_hours_source'] = 'student_attendance';
+        $policy['metrics']['attendance_sessions'] = $weekAttendance->count();
         return $policy;
     }
 
@@ -269,7 +289,7 @@ class TeacherEligibilityController extends Controller
         ];
     }
 
-    private function holidayDays($schedules, $signIns, $events, Carbon $start, Carbon $end, bool $eventsAvailable): ?array
+    private function holidayDays($attendanceSessions, $events, Carbon $start, Carbon $end, bool $eventsAvailable): ?array
     {
         if (!$eventsAvailable) {
             return null;
@@ -278,10 +298,9 @@ class TeacherEligibilityController extends Controller
         $holidays = $events->filter(fn ($event) => $event->event_type === 'holiday')->groupBy('event_date');
         $result = [];
         foreach ($holidays as $date => $dayEvents) {
-            $worked = $signIns->filter(fn ($row) => substr((string) $row->SignInDT, 0, 10) === $date)->sum(function ($row) {
-                if (!$row->SignOutDT) return 0;
-                try { return Carbon::parse($row->SignInDT)->diffInMinutes(Carbon::parse($row->SignOutDT)) / 60; } catch (\Throwable) { return 0; }
-            });
+            $worked = $attendanceSessions
+                ->filter(fn ($row) => substr((string) $row->session_date, 0, 10) === $date)
+                ->sum(fn ($row) => $this->studentAttendanceDurationHours($row));
             $leaveEvents = $events->filter(fn ($event) => $event->event_type === 'leave' && $event->event_date === $date);
             $leaveHours = $leaveEvents->contains(fn ($event) => $event->holiday_leave_hours === null)
                 ? null
@@ -494,12 +513,48 @@ class TeacherEligibilityController extends Controller
 
     private function durationHours($row): float
     {
-        if ($row->duration_hours !== null && (float) $row->duration_hours > 0) return (float) $row->duration_hours;
+        if (property_exists($row, 'duration_hours') && $row->duration_hours !== null && (float) $row->duration_hours > 0) return (float) $row->duration_hours;
         try {
             return Carbon::parse((string) $row->start_time)->diffInMinutes(Carbon::parse((string) $row->end_time)) / 60;
         } catch (\Throwable) {
             return 0;
         }
+    }
+
+    private function studentAttendanceDurationHours($row): float
+    {
+        if (!empty($row->student_sign_in_at) && !empty($row->student_sign_out_at)) {
+            try {
+                $start = Carbon::parse((string) $row->student_sign_in_at);
+                $end = Carbon::parse((string) $row->student_sign_out_at);
+                if ($end->gt($start)) {
+                    return round($start->diffInMinutes($end) / 60, 2);
+                }
+            } catch (\Throwable) {
+                // Fall back to the persisted ClassSession duration below.
+            }
+        }
+
+        // A student may be marked present without a reliable sign-out time;
+        // use the persisted class-session window instead of returning review.
+        return $this->durationHours($row);
+    }
+
+    /** @return list<string> */
+    private function payableStudentAttendanceStatuses(): array
+    {
+        // Include legacy values written by older attendance paths.
+        return array_values(array_unique(array_merge(
+            AttendanceStatus::payableCodes(),
+            ['attended', 'completed']
+        )));
+    }
+
+    private function isEligibleTeachingAttendance($row): bool
+    {
+        $classType = strtolower((string) ($row->class_type ?? ''));
+        return !in_array($classType, ['trial', 'tutoring'], true)
+            && in_array(strtolower((string) ($row->attendance_status ?? '')), $this->payableStudentAttendanceStatuses(), true);
     }
 
     private function splitIntoWeeks(Carbon $start, Carbon $end): array

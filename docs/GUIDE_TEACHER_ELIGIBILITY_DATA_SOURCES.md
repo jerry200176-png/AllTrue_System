@@ -4,7 +4,7 @@
 
 | 要件 | Alltrue 來源 | 缺資料時 |
 | --- | --- | --- |
-| 每週 16 段／40 小時 | schedules 正課時段、TeacherSingIn 實際上下班 | 待人工確認 |
+| 每週 16 段／40 小時 | schedules 正課時段；實際工時以學生點名 `StudentSingIn` 對應的 `ClassSession` 時間為主，不依賴 TeacherSingIn | 學生點名來源不存在時待人工確認 |
 | 請假／補課 | ClassSession.Status 與 StudentSingIn.Status 的 leave 狀態；補課與假日假由薪資事件補充 | 待人工確認 |
 | 官方活動／統一公休／假日曆 | teacher_payroll_events | 待人工確認 |
 | 平日下午課 | schedules 正課時數，先扣每日 4 小時低消 | 依可取得的課表計算 |
