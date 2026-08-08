@@ -40,15 +40,20 @@ export function shouldRenderScheduledException(exception, exceptions = [], targe
   const courseId = exception?.student_course_id;
   if (courseId == null) return true;
   if (hasLeaveExceptionForCourseDate(exceptions, targetDate, courseId)) return false;
-  // A course/date can end up with more than one 'scheduled' marker when a slot is
-  // rescheduled again in quick succession — the backend's dedupe delete (keyed on
-  // exact old start_time) doesn't always catch a marker whose own start_time was
-  // never the "vacated" slot (e.g. a same-time re-submit chain). Rather than trust
-  // the backend to always leave exactly one row, treat the highest-id 'scheduled'
-  // entry for this course/date as authoritative and drop earlier ones, so a stale
-  // superseded marker never renders as a second calendar box next to the real one.
-  const latestId = (exceptions || [])
-    .filter((ex) => String(ex?.status || '').toLowerCase() === 'scheduled' && sameCourseDate(ex, targetDate, courseId))
-    .reduce((max, ex) => Math.max(max, Number(ex?.id) || 0), 0);
-  return !latestId || Number(exception?.id) >= latestId;
+  // A 'scheduled' marker represents one specific (course, date, start_time) slot. If
+  // that exact slot was itself later rescheduled again — a same-slot 'rescheduled'
+  // marker created after this one — this entry is stale/superseded and must not
+  // render, even when the later reschedule's own destination lands on a *different*
+  // date entirely (a same-date-only "keep the latest" dedupe misses that case; the
+  // backend's own dedupe-delete, keyed on the rescheduled marker's exact start_time,
+  // also doesn't always catch it — see two real production incidents, #1685 and the
+  // follow-up in-app #225: same-time re-submit, and reschedule-to-another-date).
+  const exStart = normalizeExceptionStartTime(exception?.start_time);
+  const supersededBy = (exceptions || []).find((ex) =>
+    String(ex?.status || '').toLowerCase() === 'rescheduled'
+      && sameCourseDate(ex, targetDate, courseId)
+      && normalizeExceptionStartTime(ex?.start_time) === exStart
+      && Number(ex?.id) > Number(exception?.id)
+  );
+  return !supersededBy;
 }
