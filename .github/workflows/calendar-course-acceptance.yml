@@ -79,7 +79,7 @@ jobs:
           cd /home/admin/backend
           php artisan tinker --no-ansi --execute='
           $branch = (int) getenv("BRANCH_ID");
-          $row = \\Illuminate\\Support\\Facades\\DB::table("auth_tokens as t")
+          $row = \Illuminate\Support\Facades\DB::table("auth_tokens as t")
             ->join("User as u", "u.id", "=", "t.user_id")
             ->join("UserCampus as uc", "uc.UserID", "=", "u.id")
             ->where("u.type", "D")
@@ -91,7 +91,7 @@ jobs:
             ->first();
           if (!$row) {
             // A super admin may administer a branch without a UserCampus row.
-            $row = \\Illuminate\\Support\\Facades\\DB::table("auth_tokens as t")
+            $row = \Illuminate\Support\Facades\DB::table("auth_tokens as t")
               ->join("User as u", "u.id", "=", "t.user_id")
               ->where("u.type", "S")
               ->where("t.expires_at", ">", now())
@@ -99,8 +99,8 @@ jobs:
               ->select("t.token", "u.id", "u.type", "u.Name", "u.LoginName", "u.MustChangePassword")
               ->first();
           }
-          if (!$row) { throw new \\RuntimeException("no valid director smoke session"); }
-          $campuses = \\Illuminate\\Support\\Facades\\DB::table("UserCampus")
+          if (!$row) { throw new \RuntimeException("no valid director smoke session"); }
+          $campuses = \Illuminate\Support\Facades\DB::table("UserCampus")
             ->where("UserID", $row->id)
             ->where(function ($q) { $q->where("Approved", 1)->orWhereNull("Approved"); })
             ->pluck("CampusID")
