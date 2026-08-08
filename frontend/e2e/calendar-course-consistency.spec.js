@@ -72,6 +72,7 @@ async function dismissOverlays(page) {
   await expect(page.locator('.brand-idle-layer')).toHaveCount(0, { timeout: 5_000 }).catch(() => {});
   for (const selector of ['.guide-tour-close', '.release-nudge-btn:has-text("稍後再看")']) {
     const item = page.locator(selector).first();
+    if (await item.count()) await item.waitFor({ state: 'visible', timeout: 5_000 }).catch(() => {});
     if (await item.isVisible().catch(() => false)) await item.click({ force: true }).catch(() => {});
   }
 }
@@ -153,6 +154,11 @@ test.describe('production acceptance — calendar/course parity', () => {
       await page.addInitScript(({ session, branch }) => {
         localStorage.setItem('alltrue_session', JSON.stringify(session));
         localStorage.setItem('app_branch', String(branch));
+        // This is an existing-user state: the intro is already seen. Keeping
+        // the acceptance focused on the reported pages avoids the first-login
+        // animation racing the sidebar click while still exercising production
+        // auth, routing, data loading, and responsive layout.
+        sessionStorage.setItem('alltrue_brand_intro_seen_token', String(session.access_token || ''));
       }, { session: SESSION, branch: BRANCH_ID });
 
       const pageErrors = [];
