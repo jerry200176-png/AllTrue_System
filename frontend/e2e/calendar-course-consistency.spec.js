@@ -60,9 +60,13 @@ async function getJson(request, path, token) {
 }
 
 async function dismissOverlays(page) {
+  // The authenticated app may show an animated brand intro before the
+  // release nudge. Wait for it to leave the pointer-event layer instead of
+  // racing the sidebar click.
+  await expect(page.locator('.brand-idle-layer')).toHaveCount(0, { timeout: 15_000 }).catch(() => {});
   for (const selector of ['.guide-tour-close', '.release-nudge-btn:has-text("稍後再看")']) {
     const item = page.locator(selector).first();
-    if (await item.isVisible().catch(() => false)) await item.click().catch(() => {});
+    if (await item.isVisible().catch(() => false)) await item.click({ force: true }).catch(() => {});
   }
 }
 
