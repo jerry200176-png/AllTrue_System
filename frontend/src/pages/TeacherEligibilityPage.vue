@@ -81,7 +81,15 @@
         </article>
         <div v-if="filteredTeachers.length === 0" class="eligibility-card empty">查詢期間沒有符合條件的正職老師資料。</div>
       </div>
-      <p class="footnote">資料不足時顯示「待人工確認」，不會直接判定不符合；假日、請假、升學成果與扣除案件需先完成資料登錄／審核。</p>
+      <TeacherEligibilityInputPanel
+        :branch-id="props.branchId"
+        :teachers="filteredTeachers"
+        :start="periodWindow.start"
+        :end="periodWindow.end"
+        :user-role="props.userRole"
+        @changed="loadData"
+      />
+      <p class="footnote">資料不足時顯示「待人工確認」，不會直接判定不符合；缺少欄位會在各項目下方列出，可直接從上方補登並送審。</p>
     </template>
   </div>
 </template>
@@ -89,14 +97,19 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue';
 import { fetchTeacherEligibility } from '../lib/teacherEligibilityApi.js';
+import TeacherEligibilityInputPanel from '../components/TeacherEligibilityInputPanel.vue';
 
-const props = defineProps({ branchId: { type: [Number, String], default: null } });
+const props = defineProps({
+  branchId: { type: [Number, String], default: null },
+  userRole: { type: String, default: '' },
+});
 const period = ref('month');
 const componentKey = ref('all');
 const search = ref('');
 const loading = ref(false);
 const error = ref('');
 const teachers = ref([]);
+const periodWindow = ref({ start: '', end: '' });
 const policyVersion = ref('115.07');
 const effectiveFrom = ref('2026-07-01');
 const componentOptions = [
@@ -124,6 +137,7 @@ async function loadData() {
   try {
     const data = await fetchTeacherEligibility({ period: period.value, branchId: props.branchId });
     teachers.value = data.teachers || [];
+    periodWindow.value = { start: data.period?.start || '', end: data.period?.end || '' };
     policyVersion.value = data.policy_version || policyVersion.value;
     effectiveFrom.value = data.effective_from || effectiveFrom.value;
   } catch (e) { error.value = e?.message || '載入失敗'; }
@@ -134,11 +148,32 @@ function statusLabel(status) { return { qualifies: '符合', not_qualifies: '不
 function statusClass(status) { return { qualifies: 'pass', not_qualifies: 'fail', review: 'review' }[status] || 'unknown'; }
 function detail(key, component) {
   if (!component) return '—';
-  if (component.status === 'review') return '待補資料／確認';
+  if (component.status === 'review') {
+    const missing = (component.missing_fields || []).map(missingLabel).filter(Boolean);
+    return missing.length ? `待補：${missing.join('、')}` : '待人工確認';
+  }
   if (key === 'weekly_16_segments') return `${component.amount ?? 0}元`;
   if (key === 'holiday_16_hours' || key === 'weekday_afternoon' || key === 'special_performance') return `${component.rate ?? 0}%`;
   if (key === 'deductions') return `${component.rate ?? 0}%`;
   return component.metrics?.subject_count == null ? '—' : `${component.metrics.subject_count}科`;
+}
+function missingLabel(field) {
+  const labels = {
+    weekly_segments: '每週正課段數',
+    work_hours: '實際工時',
+    weekly_exception_context: '官方活動／公休／請假例外',
+    holiday_calendar: '假日曆',
+    achievement_evidence_or_approval: '成果證明／審核',
+    deduction_approval: '主任確認／總部核准',
+    approved_learning_records: '已核准評量資料',
+    subject_count_table: '科目數附件表',
+  };
+  if (labels[field]) return labels[field];
+  const match = /^holiday_days\.\d+\.(.+)$/.exec(field || '');
+  if (match) return `假日${({ date: '日期', worked_hours: '出勤時數', holiday_leave_hours: '抵扣時數' }[match[1]] || match[1])}`;
+  const weekday = /^weekday_hours\.(.+)$/.exec(field || '');
+  if (weekday) return `平日課程時數 ${weekday[1]}`;
+  return field;
 }
 function reasonText(teacher) {
   const reasons = [];
