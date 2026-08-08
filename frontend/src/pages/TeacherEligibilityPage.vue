@@ -152,7 +152,11 @@ function detail(key, component) {
     const missing = (component.missing_fields || []).map(missingLabel).filter(Boolean);
     return missing.length ? `待補：${missing.join('、')}` : '待人工確認';
   }
-  if (key === 'weekly_16_segments') return `${component.amount ?? 0}元`;
+  if (key === 'weekly_16_segments') {
+    const weeks = component.metrics?.weeks || [];
+    const attendanceSessions = weeks.reduce((total, week) => total + Number(week.attendance_sessions || 0), 0);
+    return `${component.amount ?? 0}元｜學生點名 ${attendanceSessions} 堂`;
+  }
   if (key === 'holiday_16_hours' || key === 'weekday_afternoon' || key === 'special_performance') return `${component.rate ?? 0}%`;
   if (key === 'deductions') return `${component.rate ?? 0}%`;
   return component.metrics?.subject_count == null ? '—' : `${component.metrics.subject_count}科`;
@@ -177,6 +181,9 @@ function missingLabel(field) {
 }
 function reasonText(teacher) {
   const reasons = [];
+  if (teacher.work_hours_source === 'student_attendance') {
+    reasons.push('工時來源：學生到班／點名（不採教師刷卡）');
+  }
   for (const item of componentOptions) {
     const component = teacher.components?.[item.key];
     if (component?.reason) reasons.push(`${item.label}：${component.reason}`);
