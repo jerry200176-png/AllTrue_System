@@ -173,7 +173,7 @@ class TeacherEligibilityController extends Controller
 
             $weeklyStatus = $this->aggregateWeeklyStatus($weeklyRows);
             $holidayCalendarAvailable = $teacherEvents->contains(fn ($event) => $event->event_type === 'holiday');
-            $holidayDays = $this->holidayDays($teacherAttendance, $teacherEvents, $effectiveStart, $period['end'], $holidayCalendarAvailable);
+            $holidayDays = $this->holidayDays($teacherAttendance, $teacherSchedules, $teacherEvents, $effectiveStart, $period['end'], $holidayCalendarAvailable);
             $weekdayHours = $this->weekdayHours($teacherSchedules, $effectiveStart, $period['end']);
             $subjectCount = $subjectUnitsByTeacher[$teacherId] ?? null;
 
@@ -289,7 +289,7 @@ class TeacherEligibilityController extends Controller
         ];
     }
 
-    private function holidayDays($attendanceSessions, $events, Carbon $start, Carbon $end, bool $eventsAvailable): ?array
+    private function holidayDays($attendanceSessions, $schedules, $events, Carbon $start, Carbon $end, bool $eventsAvailable): ?array
     {
         if (!$eventsAvailable) {
             return null;
@@ -301,12 +301,17 @@ class TeacherEligibilityController extends Controller
             $worked = $attendanceSessions
                 ->filter(fn ($row) => substr((string) $row->session_date, 0, 10) === $date)
                 ->sum(fn ($row) => $this->studentAttendanceDurationHours($row));
+            $regularScheduledHours = $this->scheduledCoverageHoursForDate(
+                $schedules->filter(fn ($row) => (string) $row->schedule_date === (string) $date),
+                fn ($row) => $this->isRecurringSchedule($row)
+            );
             $leaveEvents = $events->filter(fn ($event) => $event->event_type === 'leave' && $event->event_date === $date);
             $leaveHours = $leaveEvents->contains(fn ($event) => $event->holiday_leave_hours === null)
                 ? null
                 : $leaveEvents->sum(fn ($event) => (float) $event->holiday_leave_hours);
             $result[] = [
                 'date' => $date,
+                'regular_scheduled_hours' => round($regularScheduledHours, 2),
                 'worked_hours' => round($worked, 2),
                 'holiday_leave_hours' => $leaveHours === null ? null : round($leaveHours, 2),
             ];
@@ -494,7 +499,7 @@ class TeacherEligibilityController extends Controller
         $intervalsByDate = [];
         $fallbackHoursByDate = [];
         foreach ($schedules as $row) {
-            if (!$this->isRegularAssignable($row)) continue;
+            if (!$this->isRecurringSchedule($row)) continue;
             $date = (string) $row->schedule_date;
             if (!$date || $date < $start->toDateString() || $date > $end->toDateString()) continue;
             $day = Carbon::parse($date)->dayOfWeekIso;
@@ -560,6 +565,63 @@ class TeacherEligibilityController extends Controller
         $type = strtolower((string) ($row->type ?? ''));
         return !in_array($classType, ['tutoring', 'trial', 'admin'], true)
             && !in_array($type, ['tutoring', 'admin', 'unavailable'], true);
+    }
+
+    private function isRecurringSchedule($row): bool
+    {
+        if (!$this->isRegularAssignable($row)) {
+            return false;
+        }
+
+        $type = strtolower((string) ($row->type ?? ''));
+        $origin = strtolower((string) ($row->schedule_origin ?? $row->origin ?? ''));
+
+        return !in_array($type, ['extra', 'makeup', 'temporary', 'temp', 'one_off', 'one-time'], true)
+            && !in_array($origin, ['extra', 'makeup', 'temporary', 'temp', 'one_off', 'one-time'], true);
+    }
+
+    private function scheduledCoverageHoursForDate($rows, callable $include): float
+    {
+        $intervals = [];
+        $fallbackHours = 0.0;
+        foreach ($rows as $row) {
+            if (!$include($row)) {
+                continue;
+            }
+
+            $startMinutes = $this->clockMinutes($row->start_time ?? null);
+            $endMinutes = $this->clockMinutes($row->end_time ?? null);
+            if ($startMinutes !== null && $endMinutes !== null && $endMinutes > $startMinutes) {
+                $intervals[] = [$startMinutes, $endMinutes];
+                continue;
+            }
+
+            $fallbackHours += $this->durationHours($row);
+        }
+
+        usort($intervals, fn ($left, $right) => $left[0] <=> $right[0] ?: $left[1] <=> $right[1]);
+        $coverageMinutes = 0;
+        $mergedStart = null;
+        $mergedEnd = null;
+        foreach ($intervals as [$intervalStart, $intervalEnd]) {
+            if ($mergedStart === null) {
+                $mergedStart = $intervalStart;
+                $mergedEnd = $intervalEnd;
+                continue;
+            }
+            if ($intervalStart <= $mergedEnd) {
+                $mergedEnd = max($mergedEnd, $intervalEnd);
+                continue;
+            }
+            $coverageMinutes += $mergedEnd - $mergedStart;
+            $mergedStart = $intervalStart;
+            $mergedEnd = $intervalEnd;
+        }
+        if ($mergedStart !== null) {
+            $coverageMinutes += $mergedEnd - $mergedStart;
+        }
+
+        return ($coverageMinutes / 60) + $fallbackHours;
     }
 
     private function durationHours($row): float

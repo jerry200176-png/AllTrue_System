@@ -157,7 +157,13 @@ function detail(key, component) {
     const attendanceSessions = weeks.reduce((total, week) => total + Number(week.attendance_sessions || 0), 0);
     return `${component.amount ?? 0}元｜學生點名 ${attendanceSessions} 堂`;
   }
-  if (key === 'holiday_16_hours' || key === 'special_performance') return `${component.rate ?? 0}%`;
+  if (key === 'holiday_16_hours') {
+    const metrics = component.metrics || {};
+    const baseline = Object.values(metrics.regular_scheduled_hours || {}).reduce((total, hours) => total + Number(hours || 0), 0);
+    const leave = Object.values(metrics.holiday_leave_hours || {}).reduce((total, hours) => total + Number(hours || 0), 0);
+    return `${component.rate ?? 0}%｜常態${baseline}h｜假日假${leave}h不加算`;
+  }
+  if (key === 'special_performance') return `${component.rate ?? 0}%`;
   if (key === 'weekday_afternoon') return `${component.rate ?? 0}%｜有效${component.metrics?.extra_segments ?? 0}段`;
   if (key === 'deductions') return `${component.rate ?? 0}%`;
   return component.metrics?.subject_count == null ? '—' : `${component.metrics.subject_count}科`;
@@ -168,6 +174,7 @@ function missingLabel(field) {
     work_hours: '實際工時',
     weekly_exception_context: '官方活動／公休／請假例外',
     holiday_calendar: '假日曆',
+    regular_scheduled_hours: '假日常態排課時數',
     achievement_evidence_or_approval: '成果證明／審核',
     deduction_approval: '主任確認／總部核准',
     approved_learning_records: '已核准評量資料',
@@ -175,7 +182,7 @@ function missingLabel(field) {
   };
   if (labels[field]) return labels[field];
   const match = /^holiday_days\.\d+\.(.+)$/.exec(field || '');
-  if (match) return `假日${({ date: '日期', worked_hours: '出勤時數', holiday_leave_hours: '抵扣時數' }[match[1]] || match[1])}`;
+  if (match) return `假日${({ date: '日期', regular_scheduled_hours: '常態排課時數', worked_hours: '出勤時數', holiday_leave_hours: '假日假時數' }[match[1]] || match[1])}`;
   const weekday = /^weekday_hours\.(.+)$/.exec(field || '');
   if (weekday) return `平日課程時數 ${weekday[1]}`;
   return field;

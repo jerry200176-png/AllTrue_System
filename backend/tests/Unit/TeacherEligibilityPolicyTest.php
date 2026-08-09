@@ -51,20 +51,32 @@ class TeacherEligibilityPolicyTest extends TestCase
         $this->assertSame(1000, $result['amount']);
     }
 
-    public function test_holiday_multiplier_requires_every_holiday_to_reach_sixteen_hours(): void
+    public function test_holiday_leave_preserves_multiplier_without_creating_missing_hours(): void
     {
         $pass = $this->policy->holiday16([
-            ['date' => '2026-08-01', 'worked_hours' => 8, 'holiday_leave_hours' => 8],
-            ['date' => '2026-08-02', 'worked_hours' => 16, 'holiday_leave_hours' => 0],
+            ['date' => '2026-08-01', 'regular_scheduled_hours' => 16, 'worked_hours' => 8, 'holiday_leave_hours' => 8],
+            ['date' => '2026-08-02', 'regular_scheduled_hours' => 16, 'worked_hours' => 16, 'holiday_leave_hours' => 0],
         ]);
         $fail = $this->policy->holiday16([
-            ['date' => '2026-08-01', 'worked_hours' => 8, 'holiday_leave_hours' => 7.5],
-            ['date' => '2026-08-02', 'worked_hours' => 16, 'holiday_leave_hours' => 0],
+            ['date' => '2026-08-01', 'regular_scheduled_hours' => 8, 'worked_hours' => 8, 'holiday_leave_hours' => 8],
+            ['date' => '2026-08-02', 'regular_scheduled_hours' => 16, 'worked_hours' => 16, 'holiday_leave_hours' => 0],
         ]);
 
         $this->assertSame(10.0, $pass['rate']);
         $this->assertSame(0, $fail['rate']);
         $this->assertSame(TeacherEligibilityPolicy::NOT_QUALIFIES, $fail['status']);
+        $this->assertSame('neutral_not_added_to_multiplier', $pass['metrics']['holiday_leave_effect']);
+        $this->assertSame(16.0, $pass['metrics']['regular_scheduled_hours']['2026-08-01']);
+    }
+
+    public function test_holiday_multiplier_requires_regular_schedule_baseline(): void
+    {
+        $result = $this->policy->holiday16([
+            ['date' => '2026-08-01', 'worked_hours' => 16, 'holiday_leave_hours' => 0],
+        ]);
+
+        $this->assertSame(TeacherEligibilityPolicy::REVIEW, $result['status']);
+        $this->assertContains('holiday_days.0.regular_scheduled_hours', $result['missing_fields']);
     }
 
     public function test_weekday_after_four_hour_low_consumption_is_capped_at_five_percent(): void
