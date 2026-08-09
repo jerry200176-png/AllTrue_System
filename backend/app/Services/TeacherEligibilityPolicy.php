@@ -128,7 +128,7 @@ class TeacherEligibilityPolicy
 
         $missing = [];
         foreach ($holidayDays as $index => $day) {
-            foreach (['date', 'worked_hours', 'holiday_leave_hours'] as $field) {
+            foreach (['date', 'regular_scheduled_hours'] as $field) {
                 if (!array_key_exists($field, $day) || $day[$field] === null) {
                     $missing[] = "holiday_days.{$index}.{$field}";
                 }
@@ -139,11 +139,31 @@ class TeacherEligibilityPolicy
         }
 
         $required = (float) $this->setting('holiday_required_hours', 16);
-        $qualified = collect($holidayDays)->every(fn ($day) => (float) $day['worked_hours'] + (float) $day['holiday_leave_hours'] >= $required);
+        $qualified = collect($holidayDays)->every(fn ($day) => (float) $day['regular_scheduled_hours'] >= $required);
+        $metrics = [
+            'holiday_count' => count($holidayDays),
+            'required_hours' => $required,
+            'regular_scheduled_hours' => collect($holidayDays)->mapWithKeys(fn ($day) => [
+                (string) $day['date'] => round((float) $day['regular_scheduled_hours'], 2),
+            ])->all(),
+            'worked_hours' => collect($holidayDays)->mapWithKeys(fn ($day) => [
+                (string) $day['date'] => array_key_exists('worked_hours', $day) && $day['worked_hours'] !== null
+                    ? round((float) $day['worked_hours'], 2)
+                    : null,
+            ])->all(),
+            'holiday_leave_hours' => collect($holidayDays)->mapWithKeys(fn ($day) => [
+                (string) $day['date'] => array_key_exists('holiday_leave_hours', $day) && $day['holiday_leave_hours'] !== null
+                    ? round((float) $day['holiday_leave_hours'], 2)
+                    : null,
+            ])->all(),
+            'holiday_leave_effect' => 'neutral_not_added_to_multiplier',
+        ];
         return $this->result(
             $qualified ? self::QUALIFIES : self::NOT_QUALIFIES,
-            $qualified ? '每個假日經抵扣後均達16小時。' : '至少一個假日經抵扣後未達16小時。',
-            ['holiday_count' => count($holidayDays), 'required_hours' => $required],
+            $qualified
+                ? '每個假日常態排課均達16小時；假日假不扣除假日倍率。'
+                : '至少一個假日常態排課未達16小時；假日假不能創造假日倍率。',
+            $metrics,
             0,
             $qualified ? (float) $this->setting('holiday_multiplier_pass', 10) : 0
         );

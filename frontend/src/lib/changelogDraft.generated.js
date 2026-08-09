@@ -5,6 +5,28 @@
  */
 export const changelogDraftNotes = [
   {
+    "version": "2026.08.09",
+    "date": "2026-08-09",
+    "title": "2026.08.09 草稿（未發布）",
+    "summary": "正職薪資假日假與常態排課規則對齊",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "正職薪資假日假與常態排課規則對齊"
+        ]
+      }
+    ],
+    "items": [
+      "正職薪資假日假與常態排課規則對齊"
+    ]
+  },
+  {
     "version": "2026.08.08",
     "date": "2026-08-08",
     "title": "2026.08.08 草稿（未發布）",
@@ -542,39 +564,6 @@ export const changelogDraftNotes = [
       "出缺勤「同一堂變兩堂」跨約／停用殘留防護",
       "調課改為單一交易，並顯示點名建立來源",
       "attendance is closed when it is created"
-    ]
-  },
-  {
-    "version": "2026.07.17",
-    "date": "2026-07-17",
-    "title": "2026.07.17 草稿（未發布）",
-    "summary": "learning-review notification sync no longer returns 500；surviving student sign-in orphans",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "修正內容",
-        "items": [
-          "learning-review notification sync no longer returns 500",
-          "surviving student sign-in orphans",
-          "夜間對帳面板可讀、可分類，且不再假裝能一鍵改堂數"
-        ]
-      },
-      {
-        "title": "其他改善",
-        "items": [
-          "local PHPUnit schemas per ocess"
-        ]
-      }
-    ],
-    "items": [
-      "learning-review notification sync no longer returns 500",
-      "surviving student sign-in orphans",
-      "夜間對帳面板可讀、可分類，且不再假裝能一鍵改堂數",
-      "local PHPUnit schemas per ocess"
     ]
   }
 ];

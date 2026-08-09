@@ -4,6 +4,40 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-09-payroll-director-rules-v2",
+    "publishedAt": "2026-08-09",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "正職薪資假日假規則更精準",
+    "summary": "假日假維持資格但不會創造假日倍率，平日下午只計常態排課。",
+    "items": [
+      "常態假日滿16小時時，假日請假不扣假日倍率與每週16段獎金。",
+      "常態假日不足16小時時，假日假不會補成10%倍率。",
+      "平日下午倍率排除補課與臨時加課，常態5.5小時換算0.75段。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "常態假日滿16小時時，假日請假不扣假日倍率與每週16段獎金。",
+          "常態假日不足16小時時，假日假不會補成10%倍率。",
+          "平日下午倍率排除補課與臨時加課，常態5.5小時換算0.75段。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-09:payroll-director-rules-v2"
+    ],
+    "date": "2026-08-09",
+    "version": "2026.08.09"
+  },
+  {
     "id": "staff-2026-08-08-payroll-eligibility",
     "publishedAt": "2026-08-08",
     "effectiveAt": null,
