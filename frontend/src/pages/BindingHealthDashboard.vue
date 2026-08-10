@@ -280,7 +280,7 @@ onMounted(load);
 .bhd-ring-fg { stroke: var(--ds-primary); stroke-width: 10; stroke-linecap: round; transition: stroke-dasharray var(--ds-motion-slow) var(--ds-ease-standard); }
 .bhd-ring-center {
   position: absolute; inset: 0; display: flex; flex-direction: column;
-  align-items: center; justify-content: center; gap: 2px; pointer-events: none;
+  align-items: center; justify-content: center; gap: 4px; pointer-events: none;
 }
 .bhd-ring-center strong { font-size: 20px; color: var(--ds-ink); font-variant-numeric: tabular-nums; }
 .bhd-ring-center span { font-size: var(--ds-font-size-sm); color: var(--ds-ink-mute); }
@@ -314,7 +314,7 @@ onMounted(load);
 
 /* 時間軸 */
 .bhd-tl-item { display: flex; gap: var(--ds-space-3); padding: var(--ds-space-2) var(--ds-space-3); border: var(--ds-border-width) solid var(--ds-hairline); border-radius: var(--ds-radius-md); background: var(--ds-surface-1); }
-.bhd-tl-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; flex-shrink: 0; background: var(--ds-warning); }
+.bhd-tl-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 8px; flex-shrink: 0; background: var(--ds-warning); }
 .bhd-tl-dot--danger { background: var(--ds-danger); }
 .bhd-tl-dot--info { background: var(--ds-info); }
 .bhd-tl-head { display: flex; align-items: center; gap: var(--ds-space-2); flex-wrap: wrap; }

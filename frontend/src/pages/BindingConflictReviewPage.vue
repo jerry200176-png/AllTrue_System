@@ -78,7 +78,7 @@
                     :disabled="submittingId === c.id"
                     @click="openResolveDialog(c, b)"
                   >
-                    {{ b.keep ? '保留此側' : '保留此側' }}
+                    {{ b.keep ? '保留此側' : '改為保留此側' }}
                   </AtButton>
                 </span>
               </div>
@@ -105,8 +105,8 @@
     <!-- 解決衝突確認 -->
     <Teleport to="body">
       <div v-if="resolveTarget" class="bcrp-overlay" @click.self="closeResolveDialog">
-        <div class="bcrp-dialog" role="dialog" aria-modal="true">
-          <h3>保留綁定並解除另一側</h3>
+        <div class="bcrp-dialog" role="dialog" aria-modal="true" :aria-labelledby="resolveTitleId">
+          <h3 :id="resolveTitleId">保留綁定並解除另一側</h3>
           <p>
             學生 <strong>{{ resolveTarget.conflict.student_name || `#${resolveTarget.conflict.student_id}` }}</strong>
             綁定了 {{ bindingSides(resolveTarget.conflict).length }} 個 LINE 帳號。確認保留
@@ -124,7 +124,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
 import { branches } from '../lib/useBranches';
 import { fetchBindingConflicts, resolveBindingConflict } from '../lib/bindingsApi';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
@@ -150,6 +150,12 @@ const resolveTarget = ref(null);
 const submitting = ref(false);
 const resolveError = ref('');
 const submittingId = ref(null);
+const resolveTitleId = 'bcrp-resolve-title';
+
+function handleEsc(e) {
+  if (e.key !== 'Escape') return;
+  if (resolveTarget.value) closeResolveDialog();
+}
 
 const activeCampusId = computed(() => {
   if (filters.value.campusId) return Number(filters.value.campusId);
@@ -219,7 +225,13 @@ async function confirmResolve() {
 }
 
 watch(() => props.branchId, () => load());
-onMounted(load);
+onMounted(() => {
+  document.addEventListener('keydown', handleEsc);
+  load();
+});
+onBeforeUnmount(() => {
+  document.removeEventListener('keydown', handleEsc);
+});
 </script>
 
 <style scoped>

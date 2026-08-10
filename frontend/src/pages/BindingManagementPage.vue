@@ -167,7 +167,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
 import { branches } from '../lib/useBranches';
 import {
   fetchBindings,
@@ -305,6 +305,10 @@ function closeUnbindDialog() {
   if (unbinding.value) return;
   unbindTarget.value = null;
 }
+function handleEsc(e) {
+  if (e.key !== 'Escape') return;
+  if (unbindTarget.value) closeUnbindDialog();
+}
 async function confirmUnbind() {
   if (!unbindTarget.value) return;
   unbinding.value = true;
@@ -327,7 +331,14 @@ watch(() => props.branchId, () => {
   page.value = 1;
   refresh();
 });
-onMounted(() => { load(); loadStats(); });
+onMounted(() => {
+  document.addEventListener('keydown', handleEsc);
+  load();
+  loadStats();
+});
+onBeforeUnmount(() => {
+  document.removeEventListener('keydown', handleEsc);
+});
 </script>
 
 <style scoped>
