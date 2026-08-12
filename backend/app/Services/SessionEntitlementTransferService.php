@@ -52,7 +52,7 @@ final class SessionEntitlementTransferService
                 ->where('StudentClassID', $targetClassId)
                 ->whereDate('SessionDate', substr((string) $session->getAttribute('SessionDate'), 0, 10))
                 ->whereRaw('SUBSTRING(StartTime, 1, 5) = ?', [substr((string) $session->getAttribute('StartTime'), 0, 5)])
-                ->whereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted', 'excused'])
+                ->whereNotIn('Status', CourseLeaveCascadeService::NON_BILLABLE_STATUSES)
                 ->where('id', '!=', $sessionId)
                 ->first();
             if ($collision) $errors[] = '目標批次已有同日同時段堂次，禁止製造重複堂';
