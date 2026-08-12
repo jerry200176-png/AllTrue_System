@@ -36,12 +36,14 @@ class ManualSessionBookingService
         $startHm = $start->format('H:i');
         $duration = $this->durationForDate($course, $date);
         $end = $start->copy()->addMinutes($duration);
+        $packageId = (int) $course->getAttribute('PackageID');
+        $studentId = (int) $course->getAttribute('StudentID');
 
         $package = null;
-        if ((int) ($course->PackageID ?? 0) > 0) {
+        if ($packageId > 0) {
             $package = CoursePackage::query()
-                ->where('id', (int) $course->PackageID)
-                ->where('student_id', (int) $course->StudentID)
+                ->where('id', $packageId)
+                ->where('student_id', $studentId)
                 ->first();
         }
 
@@ -63,7 +65,7 @@ class ManualSessionBookingService
             'suggested_actions' => [],
         ];
 
-        if ((int) ($course->PackageID ?? 0) > 0 && !$package) {
+        if ($packageId > 0 && !$package) {
             return $this->blocked($base, 'package_not_found', '找不到共用方案，請重新整理後再試');
         }
 
@@ -199,12 +201,13 @@ class ManualSessionBookingService
     {
         return DB::transaction(function () use ($course, $sessionDate, $startTime, $branchId, $operatorId, $idempotencyKey) {
             $lockedCourse = StudentClass::query()->where('ID', (int) $course->ID)->lockForUpdate()->firstOrFail();
-            if ((int) ($lockedCourse->PackageID ?? 0) > 0) {
+            $packageId = (int) $lockedCourse->getAttribute('PackageID');
+            if ($packageId > 0) {
                 // Serialize package bookings so two operators cannot consume the
                 // last pooled reservation at the same time (#228/#229).
                 CoursePackage::query()
-                    ->where('id', (int) $lockedCourse->PackageID)
-                    ->where('student_id', (int) $lockedCourse->StudentID)
+                    ->where('id', $packageId)
+                    ->where('student_id', (int) $lockedCourse->getAttribute('StudentID'))
                     ->lockForUpdate()
                     ->first();
             }
@@ -266,10 +269,11 @@ class ManualSessionBookingService
             ->whereDate('SessionDate', '>=', $today)
             ->whereNotIn('Status', self::EXCLUDED_SESSION_STATUSES);
 
-        if ((int) ($course->PackageID ?? 0) > 0) {
+        $packageId = (int) $course->getAttribute('PackageID');
+        if ($packageId > 0) {
             $memberIds = StudentClass::query()
-                ->where('PackageID', (int) $course->PackageID)
-                ->where('StudentID', (int) $course->StudentID)
+                ->where('PackageID', $packageId)
+                ->where('StudentID', (int) $course->getAttribute('StudentID'))
                 ->pluck('ID');
             $query->whereIn('StudentClassID', $memberIds);
         } else {

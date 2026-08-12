@@ -244,8 +244,8 @@ class ClassSessionController extends Controller
             }
 
             app(ClassSessionMaterializationService::class)->upsertSlot([
-                'StudentClassID' => (int) $course->ID,
-                'SubjectID' => $course->SubjectID ?: null,
+                'StudentClassID' => (int) $course->getAttribute('ID'),
+                'SubjectID' => $course->getAttribute('SubjectID') ?: null,
                 'SessionDate' => $start,
                 'StartTime' => $startTime,
                 'EndTime' => $endTime,

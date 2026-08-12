@@ -2647,10 +2647,11 @@ class StudentClassController extends Controller
             $teacherId,
             $note
         ) {
-            if ((int) ($studentClass->PackageID ?? 0) > 0) {
+            $packageId = (int) $studentClass->getAttribute('PackageID');
+            if ($packageId > 0) {
                 CoursePackage::query()
-                    ->where('id', (int) $studentClass->PackageID)
-                    ->where('student_id', (int) $studentClass->StudentID)
+                    ->where('id', $packageId)
+                    ->where('student_id', (int) $studentClass->getAttribute('StudentID'))
                     ->lockForUpdate()
                     ->first();
                 $studentClass->refresh();
@@ -3081,14 +3082,15 @@ class StudentClassController extends Controller
                 ->first();
 
             $packageHasCapacity = true;
-            if ($studentClass && (int) ($studentClass->PackageID ?? 0) > 0 && !$movableSession) {
+            $packageId = $studentClass ? (int) $studentClass->getAttribute('PackageID') : 0;
+            if ($studentClass && $packageId > 0 && !$movableSession) {
                 $package = CoursePackage::query()
-                    ->where('id', (int) $studentClass->PackageID)
-                    ->where('student_id', (int) $studentClass->StudentID)
+                    ->where('id', $packageId)
+                    ->where('student_id', (int) $studentClass->getAttribute('StudentID'))
                     ->first();
                 $memberIds = StudentClass::query()
-                    ->where('PackageID', (int) $studentClass->PackageID)
-                    ->where('StudentID', (int) $studentClass->StudentID)
+                    ->where('PackageID', $packageId)
+                    ->where('StudentID', (int) $studentClass->getAttribute('StudentID'))
                     ->pluck('ID');
                 $reserved = (int) ClassSession::query()
                     ->whereIn('StudentClassID', $memberIds)
@@ -3103,9 +3105,9 @@ class StudentClassController extends Controller
                 $activeSessionCount = (int) ClassSession::where('StudentClassID', $classId)
                     ->where('Status', '!=', 'cancelled')
                     ->count();
-                if (!$packageHasCapacity && $studentClass && (int) ($studentClass->PackageID ?? 0) > 0) {
+                if (!$packageHasCapacity && $studentClass && $packageId > 0) {
                     return [
-                        'conflict_type' => 'full_capacity',
+                    'conflict_type' => 'full_capacity',
                         'error_code' => 'SESSIONS_FULL',
                         'message' => '共用方案可用堂數已排滿，請先調課、請假，或增加方案總堂數。',
                         'suggested_actions' => ['調課', '請假', '增加總堂數'],
@@ -3115,14 +3117,12 @@ class StudentClassController extends Controller
                 }
                 if ($sessionCount > 0
                     && $activeSessionCount >= $sessionCount
-                    && !($studentClass && (int) ($studentClass->PackageID ?? 0) > 0)
+                    && !($studentClass && $packageId > 0)
                 ) {
                     return [
                         'conflict_type' => 'full_capacity',
                         'error_code' => 'SESSIONS_FULL',
-                        'message' => $studentClass && (int) ($studentClass->PackageID ?? 0) > 0
-                            ? '共用方案可用堂數已排滿，請先調課、請假，或增加方案總堂數。'
-                            : '此課程堂次已排滿且無可調整的未來堂次。請先調課、請假，或增加總堂數。',
+                        'message' => '此課程堂次已排滿且無可調整的未來堂次。請先調課、請假，或增加總堂數。',
                         'suggested_actions' => ['調課', '請假', '增加總堂數'],
                         '_existing_session' => null,
                         '_movable_session' => null,
