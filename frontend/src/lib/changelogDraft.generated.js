@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.08.12",
     "date": "2026-08-12",
     "title": "2026.08.12 草稿（未發布）",
-    "summary": "可稽核地將誤扣堂次移至續購批次",
+    "summary": "建立堂次跨續購批次轉移的可稽核核心",
     "audience": [
       "teacher",
       "director"
@@ -18,12 +18,12 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
-          "可稽核地將誤扣堂次移至續購批次"
+          "建立堂次跨續購批次轉移的可稽核核心"
         ]
       }
     ],
     "items": [
-      "可稽核地將誤扣堂次移至續購批次"
+      "建立堂次跨續購批次轉移的可稽核核心"
     ]
   },
   {

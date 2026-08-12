@@ -3,21 +3,6 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
-  - id: staff-2026-08-12-session-entitlement-transfer
-    published_at: "2026-08-12"
-    audiences:
-      - director
-    importance: major
-    title: 超額堂次可安全承接到新一期
-    summary: 已上課但誤算在舊一期的堂次，可保留點名與評量並移到新一期。
-    items:
-      - category: fixed
-        text: 修復時會同步保留堂次、點名、評量與扣堂紀錄，不會改動付款或收據。
-      - category: improved
-        text: 每次修復都有事前快照、稽核紀錄、執行後驗證與安全回滾。
-    source_refs:
-      - "changelog:2026-08-12:session-entitlement-transfer"
-
   - id: staff-2026-08-09-payroll-director-rules-v2
     published_at: "2026-08-09"
     audiences:
