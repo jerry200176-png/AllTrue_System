@@ -136,12 +136,27 @@ class SessionEntitlementTransferTest extends TestCase
             'SessionDate' => '2026-08-05',
             'StartTime' => '19:30:00',
             'EndTime' => '21:30:00',
-            'Status' => 'scheduled',
+            'Status' => 'leave',
         ]);
 
         $preview = app(SessionEntitlementTransferService::class)->preview($source->ID, $target->ID, $session->id);
         $this->assertFalse($preview['ok']);
         $this->assertContains('目標批次已有同日同時段堂次，禁止製造重複堂', $preview['errors']);
+    }
+
+    public function test_preview_rejects_same_batch_and_full_target(): void
+    {
+        $student = Student::create(['name' => '容量防線測試生', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+        $source = $this->course($student->id);
+        $target = $this->course($student->id, ['SessionCount' => 1]);
+        $sourceSession = ClassSession::create(['StudentClassID' => $source->ID, 'SessionDate' => '2026-08-05', 'StartTime' => '19:30:00', 'EndTime' => '21:30:00', 'Status' => 'attended']);
+        ClassSession::create(['StudentClassID' => $target->ID, 'SessionDate' => '2026-08-06', 'StartTime' => '19:30:00', 'EndTime' => '21:30:00', 'Status' => 'attended']);
+
+        $sameBatch = app(SessionEntitlementTransferService::class)->preview($source->ID, $source->ID, $sourceSession->id);
+        $fullTarget = app(SessionEntitlementTransferService::class)->preview($source->ID, $target->ID, $sourceSession->id);
+
+        $this->assertContains('來源與目標不可為同一批次', $sameBatch['errors']);
+        $this->assertContains('目標批次已無可用堂數', $fullTarget['errors']);
     }
 
     public function test_rollback_restores_ownership_and_counters_without_deleting_audit(): void

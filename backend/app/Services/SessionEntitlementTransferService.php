@@ -33,10 +33,16 @@ final class SessionEntitlementTransferService
         if (!$session) $errors[] = '堂次不存在';
 
         if ($source && $target) {
+            if ($sourceClassId === $targetClassId) $errors[] = '來源與目標不可為同一批次';
             if ((int) $source->getAttribute('StudentID') !== (int) $target->getAttribute('StudentID')) $errors[] = '來源與目標不是同一位學生';
             if ((int) $source->getAttribute('SubjectID') !== (int) $target->getAttribute('SubjectID')) $errors[] = '來源與目標不是同一科目';
             if ((int) ($source->getAttribute('PackageID') ?? 0) > 0 || (int) ($target->getAttribute('PackageID') ?? 0) > 0) $errors[] = '共用方案不可使用此修復路徑';
             if ((string) ($source->getAttribute('ScheduleMode') ?? 'count') !== 'count' || (string) ($target->getAttribute('ScheduleMode') ?? 'count') !== 'count') $errors[] = '只有堂數制批次可轉移';
+
+            $targetUsage = SessionDeductionService::batchExpectedUsedSessionDiagnostics([$targetClassId]);
+            $targetCapacity = (int) $target->getAttribute('SessionCount');
+            $targetUncappedUsed = (int) ($targetUsage[$targetClassId]['uncapped_used'] ?? 0);
+            if ($targetCapacity <= 0 || $targetUncappedUsed >= $targetCapacity) $errors[] = '目標批次已無可用堂數';
         }
 
         if ($session && $source && (int) $session->getAttribute('StudentClassID') !== $sourceClassId) $errors[] = '堂次不屬於來源課程';
@@ -52,7 +58,7 @@ final class SessionEntitlementTransferService
                 ->where('StudentClassID', $targetClassId)
                 ->whereDate('SessionDate', substr((string) $session->getAttribute('SessionDate'), 0, 10))
                 ->whereRaw('SUBSTRING(StartTime, 1, 5) = ?', [substr((string) $session->getAttribute('StartTime'), 0, 5)])
-                ->whereNotIn('Status', CourseLeaveCascadeService::NON_BILLABLE_STATUSES)
+                ->whereRaw('LOWER(Status) <> ?', ['cancelled'])
                 ->where('id', '!=', $sessionId)
                 ->first();
             if ($collision) $errors[] = '目標批次已有同日同時段堂次，禁止製造重複堂';
