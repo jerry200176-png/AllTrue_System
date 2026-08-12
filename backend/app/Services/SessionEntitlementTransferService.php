@@ -36,6 +36,8 @@ final class SessionEntitlementTransferService
             if ($sourceClassId === $targetClassId) $errors[] = '來源與目標不可為同一批次';
             if ((int) $source->getAttribute('StudentID') !== (int) $target->getAttribute('StudentID')) $errors[] = '來源與目標不是同一位學生';
             if ((int) $source->getAttribute('SubjectID') !== (int) $target->getAttribute('SubjectID')) $errors[] = '來源與目標不是同一科目';
+            if ($source->isUsageSettlementLocked()) $errors[] = '來源批次已完成用量結算，禁止轉移';
+            if ($target->isUsageSettlementLocked()) $errors[] = '目標批次已完成用量結算，禁止轉移';
             if ((int) ($source->getAttribute('PackageID') ?? 0) > 0 || (int) ($target->getAttribute('PackageID') ?? 0) > 0) $errors[] = '共用方案不可使用此修復路徑';
             if ((string) ($source->getAttribute('ScheduleMode') ?? 'count') !== 'count' || (string) ($target->getAttribute('ScheduleMode') ?? 'count') !== 'count') $errors[] = '只有堂數制批次可轉移';
 
