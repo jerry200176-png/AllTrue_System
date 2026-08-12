@@ -183,7 +183,7 @@ jobs:
             $studentIds = $students->pluck("id")->map(fn ($id) => (int) $id)->all();
             $courses = empty($studentIds) ? collect() : $db::table("StudentClass")
               ->whereIn("StudentID", $studentIds)
-              ->get(["id", "StudentID", "TeacherID", "SubjectID", "Stop", "ClassType", "room_id"]);
+              ->get(["id", "StudentID", "TeacherID", "SubjectID", "Stop", "ClassType", "room_id", "SessionCount", "RemainingSessions", "UsedSessions", "PackageID", "ScheduleMode", "scheduling_policy", "StartDate", "EndDate"]);
             $courseIds = $courses->pluck("id")->map(fn ($id) => (int) $id)->all();
             $scheduleRows = empty($courseIds) ? collect() : $db::table("schedules")
               ->whereIn("student_course_id", $courseIds)
