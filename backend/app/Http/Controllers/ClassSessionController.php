@@ -170,8 +170,89 @@ class ClassSessionController extends Controller
             $this->autoMaterializeTeacherMonthlySessionsForRange($request, $teacherId, $campusIds);
         }
         $this->autoMaterializeCountSessionsForRange($request, (string) $role, $teacherId, $campusIds);
+        $this->autoMaterializeScheduledExceptionsForRange($request, $campusIds);
 
         return null;
+    }
+
+    /**
+     * Repair the read boundary between schedules and ClassSession for normal
+     * scheduled exceptions. Older substitute/reschedule writes could leave the
+     * schedule row present while the class-session projection was missing, so
+     * the capacity view showed two students but the teacher calendar showed one
+     * (#233). Makeup rows (type=extra) intentionally remain schedule-only per
+     * the R13 contract.
+     *
+     * This is deliberately limited to a same-day read and is idempotent through
+     * ClassSessionMaterializationService::upsertSlot.
+     *
+     * @param array<int> $campusIds
+     */
+    private function autoMaterializeScheduledExceptionsForRange(Request $request, array $campusIds): void
+    {
+        if (!$request->filled('start') || !$request->filled('end')) {
+            return;
+        }
+
+        try {
+            $start = Carbon::parse((string) $request->input('start'))->toDateString();
+            $end = Carbon::parse((string) $request->input('end'))->toDateString();
+        } catch (\Throwable $e) {
+            return;
+        }
+
+        if ($start !== $end) {
+            return;
+        }
+
+        $schedules = Schedule::query()
+            ->whereDate('schedule_date', $start)
+            ->where('status', 'scheduled')
+            ->where(function ($query) {
+                $query->whereNull('type')->orWhere('type', '!=', 'extra');
+            })
+            ->whereNotNull('student_course_id')
+            ->when(!empty($campusIds), fn ($query) => $query->whereIn('branch_id', $campusIds))
+            ->get();
+
+        foreach ($schedules as $schedule) {
+            $course = StudentClass::query()->find((int) $schedule->student_course_id);
+            if (!$course || (int) ($course->Stop ?? 0) === 1) {
+                continue;
+            }
+
+            // A cross-date reschedule is materialized by the reschedule flow;
+            // repairing it here would create a duplicate ghost occurrence.
+            $anchorId = (int) ($schedule->original_schedule_id ?? 0);
+            if ($anchorId > 0) {
+                $anchorDate = Schedule::query()->whereKey($anchorId)->value('schedule_date');
+                if ($anchorDate && Carbon::parse($anchorDate)->toDateString() !== $start) {
+                    continue;
+                }
+            }
+
+            $startTime = substr((string) ($schedule->start_time ?? ''), 0, 8);
+            $endTime = substr((string) ($schedule->end_time ?? ''), 0, 8);
+            if ($startTime === '' || $endTime === '') {
+                continue;
+            }
+            if (strlen($startTime) === 5) {
+                $startTime .= ':00';
+            }
+            if (strlen($endTime) === 5) {
+                $endTime .= ':00';
+            }
+
+            app(ClassSessionMaterializationService::class)->upsertSlot([
+                'StudentClassID' => (int) $course->ID,
+                'SubjectID' => $course->SubjectID ?: null,
+                'SessionDate' => $start,
+                'StartTime' => $startTime,
+                'EndTime' => $endTime,
+                'Status' => 'scheduled',
+                'Note' => 'auto-materialized-from-schedule-read-repair',
+            ]);
+        }
     }
 
     private function buildClassSessionIndexQuery(Request $request)

@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\AuthToken;
 use App\Models\ClassSession;
+use App\Models\CoursePackage;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
@@ -129,5 +130,63 @@ class ManualSessionBookingTest extends TestCase
         $response->assertStatus(422)
             ->assertJsonPath('error_code', 'RESERVATION_LIMIT');
         $this->assertSame(3, (int) $this->course->fresh()->RemainingSessions);
+    }
+
+    public function test_shared_package_manual_booking_uses_the_pool_across_members(): void
+    {
+        $package = CoursePackage::create([
+            'student_id' => $this->student->id,
+            'campus_id' => 1,
+            'name' => '共用方案測試',
+            'billing_mode' => 'count',
+            'total_sessions' => 3,
+            'remaining_sessions' => 3,
+            'used_sessions' => 0,
+            'rate' => 500,
+            'rate_unit' => 'session',
+            'class_type' => 'one_on_one',
+            'paid' => true,
+            'stop' => false,
+            'enabled' => true,
+        ]);
+
+        $member = $this->course->replicate();
+        $member->ID = null;
+        $member->PackageID = $package->id;
+        $member->scheduling_policy = 'manual_occurrence';
+        $member->save();
+        $this->course->PackageID = $package->id;
+        $this->course->save();
+
+        $firstDate = Carbon::today()->addDays(7)->toDateString();
+        $this->withHeaders($this->headers())
+            ->postJson("/api/v1/student-classes/{$this->course->ID}/manual-sessions/check", [
+                'session_date' => $firstDate,
+                'start_time' => '16:00',
+            ])
+            ->assertOk()
+            ->assertJsonPath('can_add', true)
+            ->assertJsonPath('remaining_sessions', 3)
+            ->assertJsonPath('available_sessions', 3);
+
+        foreach ([7, 14, 21] as $days) {
+            ClassSession::create([
+                'StudentClassID' => $member->ID,
+                'SessionDate' => Carbon::today()->addDays($days)->toDateString(),
+                'StartTime' => '18:00:00',
+                'EndTime' => '19:00:00',
+                'Status' => 'scheduled',
+            ]);
+        }
+
+        $this->withHeaders($this->headers())
+            ->postJson("/api/v1/student-classes/{$this->course->ID}/manual-sessions/check", [
+                'session_date' => Carbon::today()->addDays(21)->toDateString(),
+                'start_time' => '16:00',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('error_code', 'RESERVATION_LIMIT');
+
+        $this->assertSame(3, (int) $package->fresh()->remaining_sessions);
     }
 }
