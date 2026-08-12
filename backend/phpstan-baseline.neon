@@ -6193,12 +6193,6 @@ parameters:
 			path: app/Services/ManualSessionBookingService.php
 
 		-
-			message: '#^Comparison operation "\>" between int\<min, 0\> and 0 is always false\.$#'
-			identifier: greater.alwaysFalse
-			count: 1
-			path: app/Services/ManualSessionBookingService.php
-
-		-
 			message: '#^Strict comparison using === between int\<min, 0\>\|int\<2, max\> and 1 will always evaluate to false\.$#'
 			identifier: identical.alwaysFalse
 			count: 1

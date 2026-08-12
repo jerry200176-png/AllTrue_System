@@ -5,6 +5,14 @@
 - 新增 transaction、稽核快照、執行後驗證與 drift-safe rollback 的 domain service；同步堂次、評量、點名與扣堂帳，但不更動發票、付款或收據。
 - 本 PR 只有 backend domain 與測試，沒有 UI 或可執行命令，無員工操作變更；正式 owner-gated 命令與員工更新由後續獨立 PR 上線。
 
+## 2026-08-12 — fix(in-app-bugs): 排課、收費與收據顯示修正（#228–#233）
+
+<!-- release-notes: staff_update=staff-2026-08-12-in-app-bug-fixes -->
+
+- 共用方案新增堂次會正確使用跨課程的剩餘堂數，不再誤判單一課程已滿；收帳提醒改用課程合約費率與堂數計算，收據期間改以實際堂次日期為準。
+- 行事曆會補回遺失的正常改期堂次；課程管理只修改備註或其他非排程資料時，不會意外重建或新增預排堂次。
+- **詳見**：in-app #228–#233；相關回歸測試涵蓋包堂容量、課堂投影、收費提醒、收據期間與課程更新流程。
+
 ## 2026-08-09 — fix(payroll): 正職薪資假日假與常態排課規則對齊
 
 <!-- release-notes: staff_update=staff-2026-08-09-payroll-director-rules-v2 -->

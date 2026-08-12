@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\ClassSession;
+use App\Models\CoursePackage;
 use App\Models\ScheduleAuditLog;
 use App\Models\Student;
 use App\Models\StudentClass;
@@ -35,6 +36,16 @@ class ManualSessionBookingService
         $startHm = $start->format('H:i');
         $duration = $this->durationForDate($course, $date);
         $end = $start->copy()->addMinutes($duration);
+        $packageId = (int) $course->getAttribute('PackageID');
+        $studentId = (int) $course->getAttribute('StudentID');
+
+        $package = null;
+        if ($packageId > 0) {
+            $package = CoursePackage::query()
+                ->where('id', $packageId)
+                ->where('student_id', $studentId)
+                ->first();
+        }
 
         $base = [
             'can_add' => false,
@@ -46,11 +57,17 @@ class ManualSessionBookingService
             'end_time' => $end->format('H:i'),
             'duration_minutes' => $duration,
             'reserved_sessions' => 0,
-            'remaining_sessions' => max(0, (int) ($course->RemainingSessions ?? 0)),
+            'remaining_sessions' => $package
+                ? max(0, (int) $package->computeRemainingFromLedger())
+                : max(0, (int) ($course->RemainingSessions ?? 0)),
             'available_sessions' => 0,
             'existing_session_id' => null,
             'suggested_actions' => [],
         ];
+
+        if ($packageId > 0 && !$package) {
+            return $this->blocked($base, 'package_not_found', '找不到共用方案，請重新整理後再試');
+        }
 
         // Validate the course contract before idempotency. A stale matching row
         // must not let an auto-recurrence, stopped, or package course use this API.
@@ -59,9 +76,6 @@ class ManualSessionBookingService
         }
         if (!in_array((string) ($course->scheduling_policy ?? 'auto_recurrence'), [self::POLICY], true)) {
             return $this->blocked($base, 'manual_policy_required', 'Course is not configured for manual occurrence scheduling');
-        }
-        if ((int) ($course->PackageID ?? 0) > 0) {
-            return $this->blocked($base, 'shared_package_not_supported', 'Shared package manual booking is not supported');
         }
         if ((int) ($course->Stop ?? 0) === 1) {
             return $this->blocked($base, 'course_stopped', 'Course is stopped');
@@ -92,9 +106,6 @@ class ManualSessionBookingService
         if (!in_array((string) ($course->scheduling_policy ?? 'auto_recurrence'), [self::POLICY], true)) {
             return $this->blocked($base, 'manual_policy_required', '請先將課程切換為逐堂手動排課');
         }
-        if ((int) ($course->PackageID ?? 0) > 0) {
-            return $this->blocked($base, 'shared_package_not_supported', '共用方案課程目前尚未支援逐堂手動預約');
-        }
         if ((int) ($course->Stop ?? 0) === 1) {
             return $this->blocked($base, 'course_stopped', '課程已停用，不能新增堂次');
         }
@@ -116,8 +127,8 @@ class ManualSessionBookingService
             return $this->blocked($base, 'after_course_end', '堂次日期不可超過課程到期日');
         }
 
-        $reserved = $this->reservedSessionCount((int) $course->ID, $now->toDateString());
-        $remaining = max(0, (int) ($course->RemainingSessions ?? 0));
+        $reserved = $this->reservedSessionCount($course, $now->toDateString());
+        $remaining = (int) $base['remaining_sessions'];
         $available = max(0, $remaining - $reserved);
         $base['reserved_sessions'] = $reserved;
         $base['available_sessions'] = $available;
@@ -190,6 +201,16 @@ class ManualSessionBookingService
     {
         return DB::transaction(function () use ($course, $sessionDate, $startTime, $branchId, $operatorId, $idempotencyKey) {
             $lockedCourse = StudentClass::query()->where('ID', (int) $course->ID)->lockForUpdate()->firstOrFail();
+            $packageId = (int) $lockedCourse->getAttribute('PackageID');
+            if ($packageId > 0) {
+                // Serialize package bookings so two operators cannot consume the
+                // last pooled reservation at the same time (#228/#229).
+                CoursePackage::query()
+                    ->where('id', $packageId)
+                    ->where('student_id', (int) $lockedCourse->getAttribute('StudentID'))
+                    ->lockForUpdate()
+                    ->first();
+            }
             $check = $this->check($lockedCourse, $sessionDate, $startTime, $branchId);
 
             if (!$check['can_add']) {
@@ -242,13 +263,24 @@ class ManualSessionBookingService
         });
     }
 
-    private function reservedSessionCount(int $courseId, string $today): int
+    private function reservedSessionCount(StudentClass $course, string $today): int
     {
-        return (int) ClassSession::query()
-            ->where('StudentClassID', $courseId)
+        $query = ClassSession::query()
             ->whereDate('SessionDate', '>=', $today)
-            ->whereNotIn('Status', self::EXCLUDED_SESSION_STATUSES)
-            ->count();
+            ->whereNotIn('Status', self::EXCLUDED_SESSION_STATUSES);
+
+        $packageId = (int) $course->getAttribute('PackageID');
+        if ($packageId > 0) {
+            $memberIds = StudentClass::query()
+                ->where('PackageID', $packageId)
+                ->where('StudentID', (int) $course->getAttribute('StudentID'))
+                ->pluck('ID');
+            $query->whereIn('StudentClassID', $memberIds);
+        } else {
+            $query->where('StudentClassID', (int) $course->ID);
+        }
+
+        return (int) $query->count();
     }
 
     private function durationForDate(StudentClass $course, string $date): int

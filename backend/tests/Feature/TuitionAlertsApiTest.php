@@ -911,6 +911,34 @@ class TuitionAlertsApiTest extends TestCase
         $this->assertSame(5000, (int) $row['outstanding'], 'void invoice should not count as receivable');
     }
 
+    public function test_count_mode_amount_uses_rate_and_session_count_when_charge_snapshot_is_stale(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-stale-charge@example.com');
+        $student = Student::create([
+            'name' => '收帳金額測試', 'CampusID' => 1, 'ClassID' => 1,
+            'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+
+        $course = $this->createCountModeClass($student->id, [
+            'Rate' => 1650,
+            'SessionCount' => 8,
+            'Charge' => 24750,
+            'Paid' => 0,
+            'RemainingSessions' => 8,
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/alerts/tuition?branch_id=1');
+
+        $res->assertOk();
+        $row = collect($res->json())->firstWhere('id', $course->ID);
+        $this->assertNotNull($row);
+        $this->assertSame(13200, (int) $row['charge']);
+        $this->assertSame(13200, (int) $row['outstanding']);
+    }
+
     private function createDirectorToken(array $campusIds, string $loginName = 'director-tuition@example.com'): string
     {
         $user = User::create([
