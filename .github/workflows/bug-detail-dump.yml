@@ -253,7 +253,7 @@ jobs:
                 "id", "StudentID", "TeacherID", "SubjectID", "Stop", "ClassType",
                 "Rate", "rate_unit", "Charge", "Pay", "Paid", "Disconunt",
                 "SessionCount", "RemainingSessions", "UsedSessions", "SessionDuration",
-                "standard_lesson_minutes", "deduction_basis", "PackageID",
+                "standard_lesson_minutes", "deduction_basis", "PackageID", "ScheduleMode", "scheduling_policy",
                 "settlement_day", "monthly_sessions", "MDate", "StartDate", "EndDate",
               ]);
             $courseIds2 = $courses2->pluck("id")->map(fn ($id) => (int) $id)->all();
