@@ -3596,6 +3596,7 @@ const submitEdit = async () => {
         const baseline = editScheduleBaseline.value;
         const scheduleChanged = baseline != null && scheduleFingerprintForEdit(form) !== baseline;
         const scheduleFields = scheduleChanged ? {
+          duration_hours: form.duration_hours,
           days_of_week: (form.days_of_week || []).length ? form.days_of_week : [],
           start_time: form.start_time,
           day_time_slots: (form.day_time_slots || [])
@@ -3615,7 +3616,6 @@ const submitEdit = async () => {
           teacher_id: form.teacher_id || null,
           class_type: form.class_type,
           rate_per_30min: form.rate_per_30min,
-          duration_hours: form.duration_hours,
           sessions_purchased: form.sessions_purchased,
           ...(isPackageCourse ? {} : { remaining_sessions: form.remaining_sessions }),
           payment_type: form.payment_type,
