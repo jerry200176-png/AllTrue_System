@@ -4,6 +4,43 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-12-session-entitlement-transfer",
+    "publishedAt": "2026-08-12",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "超額堂次可安全承接到新一期",
+    "summary": "已上課但誤算在舊一期的堂次，可保留點名與評量並移到新一期。",
+    "items": [
+      "修復時會同步保留堂次、點名、評量與扣堂紀錄，不會改動付款或收據。",
+      "每次修復都有事前快照、稽核紀錄、執行後驗證與安全回滾。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "修復時會同步保留堂次、點名、評量與扣堂紀錄，不會改動付款或收據。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "每次修復都有事前快照、稽核紀錄、執行後驗證與安全回滾。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-12:session-entitlement-transfer"
+    ],
+    "date": "2026-08-12",
+    "version": "2026.08.12"
+  },
+  {
     "id": "staff-2026-08-09-payroll-director-rules-v2",
     "publishedAt": "2026-08-09",
     "effectiveAt": null,

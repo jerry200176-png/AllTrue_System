@@ -1,3 +1,11 @@
+## 2026-08-12 — fix(course): 可稽核地將誤扣堂次移至續購批次
+
+<!-- release-notes: staff_update=staff-2026-08-12-session-entitlement-transfer -->
+
+- 新增 owner-gated 修復命令：預設只做 dry-run；正式執行要求事前 JSON snapshot，並在單一 transaction 中同步轉移堂次、評量、點名與扣堂帳。
+- 新增不可刪除的轉移稽核、執行後一致性驗證與 drift-safe rollback；不更動發票、付款或收據。
+- 先用於已確認的「請假補課後第 9 堂應由新一期承接」案件；一般操作介面的自動承接與跨入口防呆依 `RFC_SESSION_ENTITLEMENT_BOUNDARY.md` 分期上線。
+
 ## 2026-08-09 — fix(payroll): 正職薪資假日假與常態排課規則對齊
 
 <!-- release-notes: staff_update=staff-2026-08-09-payroll-director-rules-v2 -->
