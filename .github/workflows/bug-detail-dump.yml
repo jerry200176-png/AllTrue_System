@@ -220,7 +220,7 @@ jobs:
               ->where("StartTime", "<", "12:00:00")
               ->where("EndTime", ">", "10:00:00")
               ->whereIn("StudentClassID", function ($q) {{
-                $q->select("ID")->from("StudentClass as sc2")
+                $q->select("sc2.ID")->from("StudentClass as sc2")
                   ->join("Student as st2", "st2.id", "=", "sc2.StudentID")
                   ->where("st2.CampusID", 3);
               }})
