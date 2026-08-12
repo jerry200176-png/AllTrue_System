@@ -53,6 +53,7 @@ class SessionEntitlementTransferTest extends TestCase
             'ClassSessionID' => $session->id,
             'TeacherID' => $source->TeacherID,
             'Status' => 'approved',
+            'Content' => '堂次轉移測試評量',
             'SessionDate' => '2026-08-05',
             'StartTime' => '19:30:00',
             'EndTime' => '21:30:00',
