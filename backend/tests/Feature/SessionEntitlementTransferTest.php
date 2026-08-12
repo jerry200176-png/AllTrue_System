@@ -162,9 +162,11 @@ class SessionEntitlementTransferTest extends TestCase
     public function test_preview_rejects_settlement_locked_source_and_target(): void
     {
         $student = Student::create(['name' => '結算鎖定測試生', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
-        $source = $this->course($student->id, ['settlement_locked_at' => now()]);
-        $target = $this->course($student->id, ['closed_reason' => 'usage_settled']);
+        $source = $this->course($student->id);
+        $target = $this->course($student->id);
         $session = ClassSession::create(['StudentClassID' => $source->ID, 'SessionDate' => '2026-08-05', 'StartTime' => '19:30:00', 'EndTime' => '21:30:00', 'Status' => 'attended']);
+        $source->setAttribute('settlement_locked_at', now())->save();
+        $target->setAttribute('closed_reason', 'usage_settled')->save();
 
         $preview = app(SessionEntitlementTransferService::class)->preview($source->ID, $target->ID, $session->id);
 
