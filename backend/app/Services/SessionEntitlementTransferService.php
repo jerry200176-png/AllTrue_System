@@ -19,6 +19,7 @@ use RuntimeException;
 final class SessionEntitlementTransferService
 {
     private const MOVABLE_STATUSES = ['attended', 'completed', 'late', 'absent'];
+    private const CAPACITY_STATUSES = ['scheduled', 'attended', 'completed', 'late', 'absent'];
 
     /** @return array<string,mixed> */
     public function preview(int $sourceClassId, int $targetClassId, int $sessionId): array
@@ -44,7 +45,11 @@ final class SessionEntitlementTransferService
             $targetUsage = SessionDeductionService::batchExpectedUsedSessionDiagnostics([$targetClassId]);
             $targetCapacity = (int) $target->getAttribute('SessionCount');
             $targetUncappedUsed = (int) ($targetUsage[$targetClassId]['uncapped_used'] ?? 0);
-            if ($targetCapacity <= 0 || $targetUncappedUsed >= $targetCapacity) $errors[] = '目標批次已無可用堂數';
+            $targetCommittedSessions = ClassSession::query()
+                ->where('StudentClassID', $targetClassId)
+                ->whereIn('Status', self::CAPACITY_STATUSES)
+                ->count();
+            if ($targetCapacity <= 0 || max($targetUncappedUsed, $targetCommittedSessions) >= $targetCapacity) $errors[] = '目標批次已無可用堂數';
         }
 
         if ($session && $source && (int) $session->getAttribute('StudentClassID') !== $sourceClassId) $errors[] = '堂次不屬於來源課程';

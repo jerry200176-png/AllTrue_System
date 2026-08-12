@@ -150,7 +150,7 @@ class SessionEntitlementTransferTest extends TestCase
         $source = $this->course($student->id);
         $target = $this->course($student->id, ['SessionCount' => 1]);
         $sourceSession = ClassSession::create(['StudentClassID' => $source->ID, 'SessionDate' => '2026-08-05', 'StartTime' => '19:30:00', 'EndTime' => '21:30:00', 'Status' => 'attended']);
-        ClassSession::create(['StudentClassID' => $target->ID, 'SessionDate' => '2026-08-06', 'StartTime' => '19:30:00', 'EndTime' => '21:30:00', 'Status' => 'attended']);
+        ClassSession::create(['StudentClassID' => $target->ID, 'SessionDate' => '2026-08-06', 'StartTime' => '19:30:00', 'EndTime' => '21:30:00', 'Status' => 'scheduled']);
 
         $sameBatch = app(SessionEntitlementTransferService::class)->preview($source->ID, $source->ID, $sourceSession->id);
         $fullTarget = app(SessionEntitlementTransferService::class)->preview($source->ID, $target->ID, $sourceSession->id);
