@@ -257,20 +257,24 @@ jobs:
                 "settlement_day", "monthly_sessions", "MDate", "StartDate", "EndDate",
               ]);
             $courseIds2 = $courses2->pluck("id")->map(fn ($id) => (int) $id)->all();
-            $invoices2 = collect();
-            if (!empty($courseIds2) && \\Illuminate\\Support\\Facades\\Schema::hasTable("invoices")) {{
-              $invoices2 = $db::table("invoices")
-                ->whereIn("student_class_id", $courseIds2)
-                ->orderByDesc("id")->limit(30)
-                ->get(["id", "student_class_id", "status", "amount", "period_start", "period_end", "issued_at", "created_at"]);
-            }}
-            $payments2 = collect();
-            if (!empty($courseIds2) && \\Illuminate\\Support\\Facades\\Schema::hasTable("Payment")) {{
-              $payments2 = $db::table("Payment")
-                ->whereIn("StudentClassID", $courseIds2)
-                ->orderByDesc("id")->limit(30)
-                ->get();
-            }}
+            $invoices2 = "skipped";
+            try {{
+              if (!empty($courseIds2) && \\Illuminate\\Support\\Facades\\Schema::hasTable("invoices")) {{
+                $invoices2 = $db::table("invoices")
+                  ->whereIn("student_class_id", $courseIds2)
+                  ->orderByDesc("id")->limit(30)
+                  ->get(["id", "student_class_id", "status", "amount", "period_start", "period_end", "issued_at", "created_at"]);
+              }}
+            }} catch (\\Throwable $e) {{ $invoices2 = "error: " . $e->getMessage(); }}
+            $payments2 = "skipped";
+            try {{
+              if (!empty($courseIds2) && \\Illuminate\\Support\\Facades\\Schema::hasTable("Payment")) {{
+                $payments2 = $db::table("Payment")
+                  ->whereIn("student_class_id", $courseIds2)
+                  ->orderByDesc("id")->limit(30)
+                  ->get();
+              }}
+            }} catch (\\Throwable $e) {{ $payments2 = "error: " . $e->getMessage(); }}
             $billingEvidence = [
               "students" => $students2,
               "courses" => $courses2,
