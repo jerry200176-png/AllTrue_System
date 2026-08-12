@@ -235,6 +235,49 @@ jobs:
               "sat_0815_10to12_class_sessions_campus3" => $satSlotSessions,
             ];
           }}
+          // #230/#231/#232 probe: campus 9 billing/course-mgmt cluster (陳姝彣,
+          // 張珉恩), same reporter, same day. Only runs for these bug ids.
+          $billingEvidence = null;
+          if (in_array($bugId, [230, 231, 232], true)) {{
+            $names2 = ["陳姝彣", "張珉恩"];
+            $students2 = $db::table("Student")
+              ->where("CampusID", 9)
+              ->where(function ($q) use ($names2) {{
+                foreach ($names2 as $n) {{ $q->orWhere("Name", "like", "%" . $n . "%"); }}
+              }})
+              ->get(["id", "Name", "CampusID"]);
+            $studentIds2 = $students2->pluck("id")->map(fn ($id) => (int) $id)->all();
+            $courses2 = empty($studentIds2) ? collect() : $db::table("StudentClass")
+              ->whereIn("StudentID", $studentIds2)
+              ->get([
+                "id", "StudentID", "TeacherID", "SubjectID", "Stop", "ClassType",
+                "Rate", "rate_unit", "Charge", "Pay", "Paid", "Disconunt",
+                "SessionCount", "RemainingSessions", "UsedSessions", "SessionDuration",
+                "standard_lesson_minutes", "deduction_basis", "PackageID",
+                "settlement_day", "monthly_sessions", "MDate", "StartDate", "EndDate",
+              ]);
+            $courseIds2 = $courses2->pluck("id")->map(fn ($id) => (int) $id)->all();
+            $invoices2 = collect();
+            if (!empty($courseIds2) && \\Illuminate\\Support\\Facades\\Schema::hasTable("invoices")) {{
+              $invoices2 = $db::table("invoices")
+                ->whereIn("student_class_id", $courseIds2)
+                ->orderByDesc("id")->limit(30)
+                ->get(["id", "student_class_id", "status", "amount", "period_start", "period_end", "issued_at", "created_at"]);
+            }}
+            $payments2 = collect();
+            if (!empty($courseIds2) && \\Illuminate\\Support\\Facades\\Schema::hasTable("Payment")) {{
+              $payments2 = $db::table("Payment")
+                ->whereIn("StudentClassID", $courseIds2)
+                ->orderByDesc("id")->limit(30)
+                ->get();
+            }}
+            $billingEvidence = [
+              "students" => $students2,
+              "courses" => $courses2,
+              "invoices" => $invoices2,
+              "payments" => $payments2,
+            ];
+          }}
           echo json_encode([
             "ok" => true,
             "bug" => [
@@ -256,6 +299,7 @@ jobs:
             "reporter_history_comments" => $reporterComments,
             "reporter_history_status_logs" => $reporterStatusLogs,
             "probe_228_229_233_schedule_evidence" => $scheduleEvidence,
+            "probe_230_231_232_billing_evidence" => $billingEvidence,
             "probe_208_package_recompute" => [
               "package_124" => $pkg,
               "package_124_members" => $pkgMembers,
