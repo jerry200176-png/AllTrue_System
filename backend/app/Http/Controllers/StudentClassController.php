@@ -1468,12 +1468,10 @@ class StudentClassController extends Controller
         $effectivePolicy = (string) ($mapped['scheduling_policy'] ?? ($studentClass->scheduling_policy ?? 'auto_recurrence'));
         $effectiveScheduleMode = (string) ($mapped['ScheduleMode'] ?? ($studentClass->ScheduleMode ?? 'count'));
         if ($effectivePolicy === ManualSessionBookingService::POLICY
-            && ($effectiveScheduleMode !== 'count' || (int) ($studentClass->PackageID ?? 0) > 0)
+            && $effectiveScheduleMode !== 'count'
         ) {
             return response()->json([
-                'message' => $effectiveScheduleMode !== 'count'
-                    ? 'Manual occurrence scheduling requires an independent session course'
-                    : 'Shared package manual occurrence booking is not supported yet',
+                'message' => 'Manual occurrence scheduling requires a session course',
             ], 422);
         }
         $scheduleSlotsForRebuild = is_array($mapped['ScheduleSlots'] ?? null) ? $mapped['ScheduleSlots'] : [];
@@ -1578,7 +1576,12 @@ class StudentClassController extends Controller
             $newCount = max(0, (int) ($studentClass->SessionCount ?? 0));
             if ($newCount > 0) {
                 $sessionCountChanged = $newCount !== $oldSessionCountSnapshot;
-                if ($sessionCountChanged || !$scheduleFieldsPresent) {
+                // A round-trip edit (for example memo/payment metadata) may
+                // carry the same SessionCount without changing the schedule.
+                // Only an actual count change is allowed to cancel/extend
+                // projected sessions; otherwise saving a note can pre-plan new
+                // lessons unexpectedly (#231).
+                if ($sessionCountChanged) {
                     $this->cancelExcessScheduledSessions((int) $studentClass->ID, $newCount);
                     if ((string) ($studentClass->scheduling_policy ?? 'auto_recurrence') !== ManualSessionBookingService::POLICY) {
                         $this->extendSessionsIfNeeded($studentClass, $newCount);
@@ -2644,6 +2647,15 @@ class StudentClassController extends Controller
             $teacherId,
             $note
         ) {
+            $packageId = (int) $studentClass->getAttribute('PackageID');
+            if ($packageId > 0) {
+                CoursePackage::query()
+                    ->where('id', $packageId)
+                    ->where('student_id', (int) $studentClass->getAttribute('StudentID'))
+                    ->lockForUpdate()
+                    ->first();
+                $studentClass->refresh();
+            }
             $authUser = request()->attributes->get('auth_user');
             $authUserId = is_object($authUser) ? (int) ($authUser->id ?? 0) : 0;
             $hasLearningRecordSessionDeducted = Schema::hasColumn('LearningRecord', 'SessionDeducted');
@@ -2679,7 +2691,8 @@ class StudentClassController extends Controller
 
             $conflict = $this->detectAddSessionConflict(
                 $classId, $sessionDate, $startTime, $isSessionMode, $sessionCount,
-                $lockedSessionIdMap, $approvedSessionIds, $signInSessionIds, $todayYmd, $nowTime
+                $lockedSessionIdMap, $approvedSessionIds, $signInSessionIds, $todayYmd, $nowTime,
+                $studentClass
             );
 
             if ($conflict['conflict_type'] !== 'none') {
@@ -2887,7 +2900,8 @@ class StudentClassController extends Controller
 
         $result = $this->detectAddSessionConflict(
             $classId, $sessionDate, $startTime, $isSessionMode, $sessionCount,
-            $lockedSessionIdMap, $approvedSessionIds, $signInSessionIds, $todayYmd, $nowTime
+            $lockedSessionIdMap, $approvedSessionIds, $signInSessionIds, $todayYmd, $nowTime,
+            $studentClass
         );
 
         $canAdd = $result['conflict_type'] === 'none';
@@ -3019,7 +3033,8 @@ class StudentClassController extends Controller
         array $approvedSessionIds,
         array $signInSessionIds,
         string $todayYmd,
-        string $nowTime
+        string $nowTime,
+        ?StudentClass $studentClass = null
     ): array {
         $existing = ClassSession::where('StudentClassID', $classId)
             ->whereDate('SessionDate', $sessionDate)
@@ -3066,11 +3081,44 @@ class StudentClassController extends Controller
                 ->orderBy('StartTime', 'desc')
                 ->first();
 
+            $packageHasCapacity = true;
+            $packageId = $studentClass ? (int) $studentClass->getAttribute('PackageID') : 0;
+            if ($studentClass && $packageId > 0 && !$movableSession) {
+                $package = CoursePackage::query()
+                    ->where('id', $packageId)
+                    ->where('student_id', (int) $studentClass->getAttribute('StudentID'))
+                    ->first();
+                $memberIds = StudentClass::query()
+                    ->where('PackageID', $packageId)
+                    ->where('StudentID', (int) $studentClass->getAttribute('StudentID'))
+                    ->pluck('ID');
+                $reserved = (int) ClassSession::query()
+                    ->whereIn('StudentClassID', $memberIds)
+                    ->whereDate('SessionDate', '>=', $todayYmd)
+                    ->whereNotIn('Status', ['cancelled', 'voided', 'leave', 'leave_adjusted'])
+                    ->count();
+                $remaining = $package ? max(0, (int) $package->computeRemainingFromLedger()) : 0;
+                $packageHasCapacity = $package !== null && $reserved < $remaining;
+            }
+
             if ($isSessionMode && !$movableSession) {
                 $activeSessionCount = (int) ClassSession::where('StudentClassID', $classId)
                     ->where('Status', '!=', 'cancelled')
                     ->count();
-                if ($sessionCount > 0 && $activeSessionCount >= $sessionCount) {
+                if (!$packageHasCapacity && $studentClass && $packageId > 0) {
+                    return [
+                    'conflict_type' => 'full_capacity',
+                        'error_code' => 'SESSIONS_FULL',
+                        'message' => '共用方案可用堂數已排滿，請先調課、請假，或增加方案總堂數。',
+                        'suggested_actions' => ['調課', '請假', '增加總堂數'],
+                        '_existing_session' => null,
+                        '_movable_session' => null,
+                    ];
+                }
+                if ($sessionCount > 0
+                    && $activeSessionCount >= $sessionCount
+                    && !($studentClass && $packageId > 0)
+                ) {
                     return [
                         'conflict_type' => 'full_capacity',
                         'error_code' => 'SESSIONS_FULL',

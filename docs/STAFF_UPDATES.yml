@@ -3,6 +3,24 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-12-in-app-bug-fixes
+    published_at: "2026-08-12"
+    audiences:
+      - director
+      - teacher
+    importance: major
+    title: 排課與收費顯示更準
+    summary: 共用方案、收帳金額、收據日期與課表缺漏已修正。
+    items:
+      - category: fixed
+        text: 共用方案可跨課程正確新增與預約堂次，不會誤判單一課程已滿。
+      - category: fixed
+        text: 收帳金額與收據期間會按照實際合約與堂次資料顯示。
+      - category: improved
+        text: 課表缺漏的正常改期堂次會補回，修改備註不會新增預排。
+    source_refs:
+      - "changelog:2026-08-12:in-app-bug-fixes"
+
   - id: staff-2026-08-09-payroll-director-rules-v2
     published_at: "2026-08-09"
     audiences:

@@ -736,6 +736,23 @@ class PaymentReportController extends Controller
                         $sessionDates[] = ['date' => $d, 'expected' => true];
                     }
                 }
+
+                // A count-course's StartDate/EndDate is legacy contract metadata,
+                // not the receipt period. Renewal, leave-extension, and older
+                // imports can leave those fields stale (or even inverted) while
+                // ClassSession remains the authoritative dated record. Derive
+                // the printed period from the same sessions shown on the receipt
+                // so an old payment cannot display a newer course period (#232).
+                $receiptDates = collect($sessionDates)
+                    ->pluck('date')
+                    ->filter()
+                    ->map(fn ($d) => Carbon::createFromFormat('Y/m/d', (string) $d)->startOfDay())
+                    ->sortBy(fn (Carbon $d) => $d->timestamp)
+                    ->values();
+                if ($receiptDates->isNotEmpty()) {
+                    $periodStart = $receiptDates->first()->format('Y/m/d');
+                    $periodEnd = $receiptDates->last()->format('Y/m/d');
+                }
             }
         }
 

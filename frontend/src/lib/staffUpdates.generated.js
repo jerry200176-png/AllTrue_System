@@ -4,6 +4,47 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-12-in-app-bug-fixes",
+    "publishedAt": "2026-08-12",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "major",
+    "title": "排課與收費顯示更準",
+    "summary": "共用方案、收帳金額、收據日期與課表缺漏已修正。",
+    "items": [
+      "共用方案可跨課程正確新增與預約堂次，不會誤判單一課程已滿。",
+      "收帳金額與收據期間會按照實際合約與堂次資料顯示。",
+      "課表缺漏的正常改期堂次會補回，修改備註不會新增預排。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "共用方案可跨課程正確新增與預約堂次，不會誤判單一課程已滿。",
+          "收帳金額與收據期間會按照實際合約與堂次資料顯示。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "課表缺漏的正常改期堂次會補回，修改備註不會新增預排。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-12:in-app-bug-fixes"
+    ],
+    "date": "2026-08-12",
+    "version": "2026.08.12"
+  },
+  {
     "id": "staff-2026-08-09-payroll-director-rules-v2",
     "publishedAt": "2026-08-09",
     "effectiveAt": null,
