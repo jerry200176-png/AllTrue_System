@@ -195,11 +195,44 @@ jobs:
               ->whereBetween("SessionDate", ["2026-08-08", "2026-08-17"])
               ->orderBy("StudentClassID")->orderBy("SessionDate")
               ->get(["id", "StudentClassID", "SessionDate", "StartTime", "EndTime", "Status"]);
+            // Decisive orphan-chain check: a 'scheduled' row that is ITSELF later
+            // referenced as another row's original_schedule_id was rescheduled
+            // again but never flipped out of 'scheduled' — the TD-076 orphan.
+            $orphanChainRows = $db::table("schedules as s1")
+              ->where("s1.branch_id", 3)
+              ->where("s1.status", "scheduled")
+              ->whereExists(function ($q) {{
+                $q->selectRaw("1")->from("schedules as s2")
+                  ->whereColumn("s2.original_schedule_id", "s1.id");
+              }})
+              ->whereBetween("s1.schedule_date", ["2026-08-01", "2026-08-17"])
+              ->get(["s1.id", "s1.student_course_id", "s1.student_id", "s1.teacher_id", "s1.status", "s1.schedule_date", "s1.start_time", "s1.end_time", "s1.original_schedule_id"]);
+            // Saturday 8/15 10-12 destination-slot occupancy at campus 3, broadly
+            // (not filtered by student) — tests #233's "shows 2, actually 1" claim.
+            $satSlotSchedules = $db::table("schedules")
+              ->where("branch_id", 3)
+              ->where("schedule_date", "2026-08-15")
+              ->where("start_time", "<", "12:00:00")
+              ->where("end_time", ">", "10:00:00")
+              ->get(["id", "student_course_id", "student_id", "teacher_id", "status", "start_time", "end_time", "original_schedule_id"]);
+            $satSlotSessions = $db::table("ClassSession")
+              ->where("SessionDate", "2026-08-15")
+              ->where("StartTime", "<", "12:00:00")
+              ->where("EndTime", ">", "10:00:00")
+              ->whereIn("StudentClassID", function ($q) {{
+                $q->select("ID")->from("StudentClass as sc2")
+                  ->join("Student as st2", "st2.id", "=", "sc2.StudentID")
+                  ->where("st2.CampusID", 3);
+              }})
+              ->get(["id", "StudentClassID", "SessionDate", "StartTime", "EndTime", "Status"]);
             $scheduleEvidence = [
               "students" => $students,
               "courses" => $courses,
               "schedules" => $scheduleRows,
               "class_sessions" => $sessionRows,
+              "orphan_chain_rows_campus3" => $orphanChainRows,
+              "sat_0815_10to12_schedules_campus3" => $satSlotSchedules,
+              "sat_0815_10to12_class_sessions_campus3" => $satSlotSessions,
             ];
           }}
           echo json_encode([
