@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "79bfb5e1145c4a7b9062448ff37981ac",
+  "session_id": "428358d09941476dbf857221a5b9d793",
   "project": "alltrue",
-  "task_id": "teacher-eligibility-director-rules-v2",
+  "task_id": "bugs-228-229-230-231-232-233",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "87998d2a1e83c98d9633ce88ab2c5eebbc9f60c4",
-  "branch": "chore/task-teacher-eligibility-director-rules-v2",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/teacher-eligibility-director-rules-v2",
-  "started_at": "2026-08-09T02:11:55Z",
+  "base_sha": "3d1cf08791272f7215cc453ce250f0cb1610f92a",
+  "branch": "chore/task-bugs-228-229-230-231-232-233",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/bugs-228-229-230-231-232-233",
+  "started_at": "2026-08-12T11:58:41Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": "codex",
+  "agent_cli": null,
   "gateway_version": "0.5.0"
 }

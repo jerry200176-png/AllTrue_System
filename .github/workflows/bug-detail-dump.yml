@@ -168,6 +168,40 @@ jobs:
             ->orderByDesc("id")
             ->limit(10)
             ->get(["id","package_id","student_class_id","class_session_id","delta","reason","recorded_by","created_at"]);
+          // #228/#229/#233 probe: campus 3 orphan-scheduled-exception hypothesis
+          // (TD-076 / GitHub #1690 backend gap, GitHub #1733). Only runs for these
+          // bug ids so it doesn't become permanent overhead on unrelated dumps.
+          $scheduleEvidence = null;
+          if (in_array($bugId, [228, 229, 233], true)) {{
+            $names = ["張維耀", "曾與岑", "詹筑媗"];
+            $students = $db::table("Student")
+              ->where("CampusID", 3)
+              ->where(function ($q) use ($names) {{
+                foreach ($names as $n) {{ $q->orWhere("Name", "like", "%" . $n . "%"); }}
+              }})
+              ->get(["id", "Name", "CampusID"]);
+            $studentIds = $students->pluck("id")->map(fn ($id) => (int) $id)->all();
+            $courses = empty($studentIds) ? collect() : $db::table("StudentClass")
+              ->whereIn("StudentID", $studentIds)
+              ->get(["id", "StudentID", "TeacherID", "SubjectID", "Stop", "ClassType", "room_id"]);
+            $courseIds = $courses->pluck("id")->map(fn ($id) => (int) $id)->all();
+            $scheduleRows = empty($courseIds) ? collect() : $db::table("schedules")
+              ->whereIn("student_course_id", $courseIds)
+              ->whereBetween("schedule_date", ["2026-08-08", "2026-08-17"])
+              ->orderBy("student_course_id")->orderBy("schedule_date")
+              ->get(["id", "student_course_id", "student_id", "teacher_id", "branch_id", "status", "schedule_date", "start_time", "end_time", "original_schedule_id", "created_at", "updated_at"]);
+            $sessionRows = empty($courseIds) ? collect() : $db::table("ClassSession")
+              ->whereIn("StudentClassID", $courseIds)
+              ->whereBetween("SessionDate", ["2026-08-08", "2026-08-17"])
+              ->orderBy("StudentClassID")->orderBy("SessionDate")
+              ->get(["id", "StudentClassID", "SessionDate", "StartTime", "EndTime", "Status"]);
+            $scheduleEvidence = [
+              "students" => $students,
+              "courses" => $courses,
+              "schedules" => $scheduleRows,
+              "class_sessions" => $sessionRows,
+            ];
+          }}
           echo json_encode([
             "ok" => true,
             "bug" => [
@@ -188,6 +222,7 @@ jobs:
             "reporter_history" => $reporterHistory,
             "reporter_history_comments" => $reporterComments,
             "reporter_history_status_logs" => $reporterStatusLogs,
+            "probe_228_229_233_schedule_evidence" => $scheduleEvidence,
             "probe_208_package_recompute" => [
               "package_124" => $pkg,
               "package_124_members" => $pkgMembers,
