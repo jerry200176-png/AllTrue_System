@@ -695,6 +695,34 @@
 | 清償成本估計 | 中（一張新表或擴充既有表 + policy 新 component + input/approve 端點 + 前端輸入面板一個新分頁，估半天～一天） |
 | 不做的代價 | 有行政職務(行政協助/總導師/副主任)的正職老師，總發放金額會系統性偏低最多 10%，需要主任手動加扣款彌補，容易被忽略或算錯 |
 
+### TD-078：正職老師底薪設定（`storeSalaryProfile`）沒有雙階段審核，director 單方就能直接改變總發放金額
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P2 |
+| 發現日期 | 2026-08-14 |
+| 發現來源 | 自動安全審查（push/commit security review）在 `TeacherEligibilityInputController.php` 點出 separation-of-duties 缺口，經跟使用者確認後記錄為技術債，暫不在這次 PR（#1773）處理。 |
+| 影響模組 | `backend/app/Http/Controllers/TeacherEligibilityInputController.php`（`storeSalaryProfile()`）、`fulltime_salary_profiles` 表 |
+| 描述 | `teacher_payroll_deductions` 有「主任確認（`director_confirmed_by`）→ 總部核准（`hq_approved_by`，限 `super_admin`）」兩階段才生效；`storeSalaryProfile()` 卻是任何 `role:director` 帶 PIN 就能單方直接寫入並立即生效（`TeacherEligibilityController::index()` 馬上採用最新一筆算總發放金額），沒有第二人核准，也沒有留下「誰改了底薪、改前改後多少」的變更歷史（只有一筆 `created_by`，沒有審核鏈）。底薪直接乘進總發放金額，出錯或被濫用的影響比扣款更大。 |
+| 建議做法 | 比照 `teacher_payroll_deductions` 加兩階段：`fulltime_salary_profiles` 新增 `status`（`pending`/`approved`）＋ `approved_by`/`approved_at`，`storeSalaryProfile()` 先寫 `pending`，`salaryProfilesByTeacher()` 只採用 `approved` 的最新一筆；新增一個 `approveSalaryProfile` 端點限 `super_admin`。 |
+| 清償成本估計 | 小～中（一個 migration 加欄位 + controller 加一個 approve 端點 + 前端加一個待審核狀態顯示，估半天） |
+| 不做的代價 | 單一 director 帳號（或被盜用的 PIN）可以無審核地改變任何老師的總發放金額，且改動沒有留痕，事後難以稽核或還原 |
+
+### TD-079：正職老師底薪 `effective_from` 沒有限制，可回溯覆蓋已結算/已發放月份的總發放金額
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P2 |
+| 發現日期 | 2026-08-14 |
+| 發現來源 | 自動安全審查（push/commit security review）在 `TeacherEligibilityInputController.php` 點出 retroactive-write-past-period 缺口，經跟使用者確認後記錄為技術債，暫不在這次 PR（#1773）處理。 |
+| 影響模組 | `backend/app/Http/Controllers/TeacherEligibilityInputController.php`（`storeSalaryProfile()` 的 `effective_from` 驗證）、`backend/app/Http/Controllers/TeacherEligibilityController.php`（`salaryProfilesByTeacher()` 依 `effective_from <= 查詢期間結束日` 取最新一筆） |
+| 描述 | `effective_from` 目前只驗證 `required, date`，沒有下限。系統沒有「已結算/已發放月份鎖定」的概念（不像 G-011 的 `BillingContractLockGuard`），所以任何時間點都能新增一筆較早的 `effective_from`，讓已經對外呈現、甚至已經實際發放的月份重新算出不同的總發放金額，且沒有鎖定機制也沒有留痕，容易被用來悄悄修改歷史紀錄（不論是惡意還是操作失誤）。 |
+| 建議做法 | 需要先決定政策（例如：只允許補登「從未設過底薪」的老師的歷史起薪、或允許但要求連動核准與變更日誌），政策確定後在 `storeSalaryProfile()` 加對應的日期下限驗證，並讓 `fulltime_salary_profiles` 的每筆寫入都留下「異動前/異動後」快照，供稽核用。 |
+| 清償成本估計 | 中（政策確認 + 驗證規則 + 稽核欄位/表，估半天～一天，視政策複雜度） |
+| 不做的代價 | 已對外呈現或已發放月份的總發放金額可以被悄悄改動，沒有稽核軌跡，出現爭議時無法還原「當時算出來的金額」 |
+
 ### TD-076：`schedules` 表用「不可變紀錄鏈」表達改期，二次改期時容易讓已取代的紀錄殘留（連續兩起 production 事故，2026-08-08）
 
 | 欄位 | 內容 |
