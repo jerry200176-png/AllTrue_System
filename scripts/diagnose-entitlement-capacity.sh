@@ -105,8 +105,13 @@ SELECT CONCAT_WS('|',sc.StudentID,sc.ID,sc.SubjectID,IFNULL(sub.Subject_Name,'nu
  IFNULL((SELECT GROUP_CONCAT(CONCAT(i.id,':',i.Status,':total=',i.TotalAmount,':paid=',i.PaidAmount) ORDER BY i.id SEPARATOR ',') FROM Invoice i WHERE i.StudentClassID=sc.ID),'none'))
 FROM StudentClass sc
 LEFT JOIN Subject sub ON sub.id=sc.SubjectID
+JOIN (
+ SELECT StudentID,SubjectID
+ FROM StudentClass
+ WHERE ID IN (1681,1682)
+) source_subject
+ ON source_subject.StudentID=sc.StudentID AND source_subject.SubjectID=sc.SubjectID
 WHERE sc.StudentID IN (373,374)
-  AND sc.SubjectID=(SELECT SubjectID FROM StudentClass WHERE ID=1681)
 ORDER BY sc.StudentID,sc.ID;"
 
 echo "--- exact transfer sessions remain on source ---"
