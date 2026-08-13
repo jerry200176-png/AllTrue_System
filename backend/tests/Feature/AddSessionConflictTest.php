@@ -11,6 +11,7 @@ use App\Models\StudentClass;
 use App\Models\StudentSignIn;
 use App\Models\User;
 use App\Models\UserCampus;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -164,6 +165,43 @@ class AddSessionConflictTest extends TestCase
 
         $res->assertOk()->assertJsonPath('can_add', true);
         $this->assertSame(0, ClassSession::where('StudentClassID', $sibling->ID)->count());
+    }
+
+    public function test_shared_package_quick_add_ignores_excused_future_occurrences(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $package = CoursePackage::create([
+            'student_id' => $student->id, 'campus_id' => 1,
+            'name' => 'Quick add package with excused occurrences',
+            'billing_mode' => 'count', 'total_sessions' => 3, 'remaining_sessions' => 3,
+            'used_sessions' => 0, 'rate' => 500, 'rate_unit' => 'session',
+            'class_type' => 'one_on_one', 'paid' => true, 'stop' => false, 'enabled' => true,
+        ]);
+        $course = $this->createStudentClass($student->id, [
+            'PackageID' => $package->id,
+            'SessionCount' => 1,
+            'RemainingSessions' => 0,
+            'UsedSessions' => 1,
+        ]);
+
+        foreach ([7, 9, 11] as $days) {
+            ClassSession::create([
+                'StudentClassID' => $course->ID,
+                'SessionDate' => Carbon::today()->addDays($days)->toDateString(),
+                'StartTime' => '19:00:00',
+                'EndTime' => '20:00:00',
+                'Status' => 'excused',
+            ]);
+        }
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->postJson("/api/v1/student-classes/{$course->ID}/add-session/check", [
+            'session_date' => Carbon::today()->addDays(14)->toDateString(), 'start_time' => '10:00',
+        ]);
+
+        $res->assertOk()->assertJsonPath('can_add', true);
     }
 
     // --- add-session: movable session exists → success with moved_from_date ---

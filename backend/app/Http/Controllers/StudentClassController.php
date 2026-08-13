@@ -15,6 +15,7 @@ use App\Models\StudentClass;
 use App\Models\StudentSignIn;
 use App\Models\UserCampus;
 use App\Models\CoursePackage;
+use App\Support\SessionStatus;
 use App\Support\Utf8mb3SearchSanitizer;
 use App\Services\ClassSessionMaterializationService;
 use App\Services\ContractScheduleMatcher;
@@ -3095,7 +3096,9 @@ class StudentClassController extends Controller
                 $reserved = (int) ClassSession::query()
                     ->whereIn('StudentClassID', $memberIds)
                     ->whereDate('SessionDate', '>=', $todayYmd)
-                    ->whereNotIn('Status', ['cancelled', 'voided', 'leave', 'leave_adjusted'])
+                    // #1733/#228/#229: leave-like occurrences do not consume
+                    // shared package future reservation capacity.
+                    ->whereNotIn('Status', SessionStatus::futureReservationExclusionStatuses())
                     ->count();
                 $remaining = $package ? max(0, (int) $package->computeRemainingFromLedger()) : 0;
                 $packageHasCapacity = $package !== null && $reserved < $remaining;
