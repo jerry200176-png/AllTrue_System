@@ -4,6 +4,17 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * @property int $id
+ * @property int $teacher_id
+ * @property int|null $branch_id
+ * @property string $base_salary
+ * @property string $effective_from
+ * @property int|null $created_by
+ *
+ * @method static \Illuminate\Database\Eloquent\Builder|FulltimeSalaryProfile where($column, $operator = null, $value = null, $boolean = 'and')
+ * @method static static create(array $attributes = [])
+ */
 class FulltimeSalaryProfile extends Model
 {
     protected $table = 'fulltime_salary_profiles';
