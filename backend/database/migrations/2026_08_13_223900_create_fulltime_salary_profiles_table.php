@@ -12,7 +12,7 @@ return new class extends Migration
             Schema::create('fulltime_salary_profiles', function (Blueprint $table) {
                 $table->id();
                 $table->unsignedInteger('teacher_id');
-                $table->unsignedInteger('branch_id');
+                $table->unsignedInteger('branch_id')->nullable();
                 $table->decimal('base_salary', 10, 2);
                 $table->date('effective_from');
                 $table->unsignedInteger('created_by')->nullable();

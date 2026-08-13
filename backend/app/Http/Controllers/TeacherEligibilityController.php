@@ -479,7 +479,8 @@ class TeacherEligibilityController extends Controller
                 $nested->whereNull('branch_id')->orWhereIn('branch_id', $branchFilter);
             }))
             ->orderBy('effective_from')
-            ->get(['teacher_id', 'base_salary', 'effective_from'])
+            ->orderBy('id')
+            ->get(['teacher_id', 'base_salary', 'effective_from', 'id'])
             ->groupBy('teacher_id')
             ->map(fn ($rows) => (float) $rows->last()->base_salary)
             ->all();
