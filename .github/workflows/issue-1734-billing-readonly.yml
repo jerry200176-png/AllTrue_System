@@ -39,7 +39,27 @@ jobs:
           echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           test -n "${PI_HOST_KEY:-}"
-          printf '%s\n' "$PI_HOST_KEY" > ~/.ssh/known_hosts
+          tmp_host_key=$(mktemp)
+          tmp_scanned_hosts=$(mktemp)
+          trap 'rm -f "$tmp_host_key" "$tmp_scanned_hosts"' EXIT
+          printf '%s\n' "$PI_HOST_KEY" > "$tmp_host_key"
+          pinned_fingerprint="$PI_HOST_KEY"
+          if fingerprint_from_key=$(ssh-keygen -lf "$tmp_host_key" 2>/dev/null | awk 'NR == 1 { print $2 }'); then
+            if [[ -n "$fingerprint_from_key" ]]; then
+              pinned_fingerprint="$fingerprint_from_key"
+            fi
+          fi
+          ssh-keyscan -T 10 -H "$PI_SSH_HOST" > "$tmp_scanned_hosts" 2>/dev/null
+          : > ~/.ssh/known_hosts
+          while read -r scanned_host scanned_key_type scanned_key_data _; do
+            [[ -z "${scanned_key_type:-}" || "$scanned_host" == \#* ]] && continue
+            printf '%s %s %s\n' "$scanned_host" "$scanned_key_type" "$scanned_key_data" > "$tmp_host_key"
+            scanned_fingerprint=$(ssh-keygen -lf "$tmp_host_key" 2>/dev/null | awk 'NR == 1 { print $2 }')
+            if [[ "$scanned_fingerprint" == "$pinned_fingerprint" ]]; then
+              printf '%s %s %s\n' "$scanned_host" "$scanned_key_type" "$scanned_key_data" >> ~/.ssh/known_hosts
+            fi
+          done < "$tmp_scanned_hosts"
+          test -s ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
       - name: Run SELECT-only billing probe on production

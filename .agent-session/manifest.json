@@ -4,7 +4,7 @@
   "project": "alltrue",
   "task_id": "in-app-236-phase-c",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "a2e824ca103a5813c37f449a92b7ea96609c57db",
+  "base_sha": "e47d59fd41a701cf74ad270a6d46e96680bcfd9c",
   "branch": "fix/in-app-236-phase-c",
   "worktree_path": "/home/jerry/workspace/tasks/alltrue/in-app-236-phase-c",
   "started_at": "2026-08-13T10:22:00Z",
