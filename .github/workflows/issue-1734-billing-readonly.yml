@@ -10,10 +10,6 @@ on:
         required: true
         type: string
         default: "1052"
-  pull_request:
-    types: [opened, synchronize, reopened]
-    paths:
-      - ".github/workflows/issue-1734-billing-readonly.yml"
 
 permissions:
   contents: read
