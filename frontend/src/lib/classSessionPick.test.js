@@ -93,6 +93,15 @@ const deduped = dedupeSessionsByStudentSlot([
 assert.equal(deduped.length, 1, 'same student slot collapses to one row');
 assert.equal(deduped[0].id, 200, 'attended session wins over scheduled duplicate');
 
+// fetchClassSessions normalizes rows to camelCase before TeacherHomePage uses
+// this helper. The same renewal-overlap pair must still collapse.
+const camelCaseDeduped = dedupeSessionsByStudentSlot([
+  { id: 210, studentId: 5, date: '2026-06-28', startTime: '12:00', status: 'scheduled', learningRecordStatus: 'missing' },
+  { id: 220, studentId: 5, date: '2026-06-28', startTime: '12:00', status: 'attended', learningRecordStatus: 'approved' },
+]);
+assert.equal(camelCaseDeduped.length, 1, 'normalized SessionViewModels collapse to one teacher-home row');
+assert.equal(camelCaseDeduped[0].id, 220, 'normalized attended session wins over scheduled duplicate');
+
 // in-app #188 regression: rows that cannot be keyed must NEVER be dropped.
 const twoStudentsSameSlot = dedupeSessionsByStudentSlot([
   { id: 301, student_id: 5, session_date: '2026-06-28', start_time: '10:00', status: 'attended' },
