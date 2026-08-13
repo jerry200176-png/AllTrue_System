@@ -6,6 +6,7 @@ use App\Models\AuthToken;
 use App\Models\ClassSession;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
+use App\Models\Schedule;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
@@ -319,6 +320,93 @@ class MonthlyRenewTest extends TestCase
                 ->count(),
             'materialize projected session must be idempotent'
         );
+    }
+
+    public function test_scheduled_exception_projection_can_be_materialized_and_cancelled(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-scheduled-exception@example.com');
+        $student = $this->createStudent();
+
+        $course = $this->createStudentClass($student->id, [
+            'ScheduleMode' => 'date',
+            'StartDate' => '2026-04-01',
+            'EndDate' => '2026-04-30',
+            'SessionCount' => 0,
+            'RemainingSessions' => 0,
+            'week' => 7,
+            'time' => '10:00:00',
+            'SessionDuration' => 120,
+        ]);
+
+        $schedule = Schedule::create([
+            'student_id' => $student->id,
+            'teacher_id' => $course->TeacherID,
+            'subject' => '物理',
+            'day_of_week' => 3,
+            'start_time' => '10:00',
+            'end_time' => '12:00',
+            'branch_id' => 1,
+            'schedule_date' => '2026-04-08',
+            'status' => 'scheduled',
+            'type' => 'normal',
+            'student_course_id' => $course->ID,
+        ]);
+
+        $headers = [
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ];
+
+        $this->withHeaders($headers)
+            ->postJson('/api/v1/class-sessions/ensure-projected', [
+                'student_class_id' => (int) $course->ID,
+                'session_date' => '2026-04-08',
+                'start_time' => '10:00',
+                'branch_id' => 1,
+            ])
+            ->assertOk()
+            ->assertJsonPath('session.session_date', '2026-04-08')
+            ->assertJsonPath('session.start_time', '10:00')
+            ->assertJsonPath('session.end_time', '12:00');
+
+        $session = ClassSession::where('StudentClassID', $course->ID)
+            ->whereDate('SessionDate', '2026-04-08')
+            ->where('StartTime', '10:00:00')
+            ->firstOrFail();
+
+        $this->withHeaders($headers)
+            ->patchJson("/api/v1/class-sessions/{$session->id}", ['status' => 'cancelled'])
+            ->assertOk();
+
+        $this->assertDatabaseHas('schedules', [
+            'id' => $schedule->id,
+            'status' => 'cancelled',
+        ]);
+        $this->assertDatabaseHas('ClassSession', [
+            'id' => $session->id,
+            'Status' => 'cancelled',
+        ]);
+
+        $dates = $this->withHeaders($headers)
+            ->postJson('/api/v1/student-classes/session-dates', [
+                'branch_id' => 1,
+                'range_start' => '2026-04-01',
+                'range_end' => '2026-04-30',
+                'courses' => [[
+                    'id' => (int) $course->ID,
+                    'first_class_date' => '2026-04-01',
+                    'sessions_purchased' => 0,
+                    'days_of_week' => [7],
+                ]],
+            ])
+            ->assertOk()
+            ->json((string) $course->ID);
+
+        $allDates = array_merge(
+            array_column($dates['materialized'] ?? [], 'session_date'),
+            array_column($dates['projected'] ?? [], 'session_date')
+        );
+        $this->assertNotContains('2026-04-08', $allDates);
     }
 
     public function test_materializing_projected_session_rejects_inactive_course(): void

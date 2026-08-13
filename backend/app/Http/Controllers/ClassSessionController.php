@@ -803,6 +803,11 @@ class ClassSessionController extends Controller
         if ($startDate && $sessionDate < $startDate) {
             return response()->json(['message' => '堂次日期早於課程開始日'], 422);
         }
+        $scheduledException = $this->findScheduledExceptionSlot(
+            $studentClass,
+            $sessionDate,
+            isset($data['start_time']) ? substr((string) $data['start_time'], 0, 5) : null
+        );
         if ($endDate && $sessionDate > $endDate) {
             return response()->json(['message' => '堂次日期超過課程到期日'], 422);
         }
@@ -812,6 +817,9 @@ class ClassSessionController extends Controller
             (int) Carbon::parse($sessionDate)->dayOfWeekIso,
             isset($data['start_time']) ? substr((string) $data['start_time'], 0, 5) : null
         );
+        if (!$slot) {
+            $slot = $scheduledException;
+        }
         if (!$slot) {
             return response()->json(['message' => '指定日期不符合此課程固定時段'], 422);
         }
@@ -853,6 +861,42 @@ class ClassSessionController extends Controller
 
     private const ATTENDED_STATUSES = ['attended', 'completed', 'late', 'absent'];
     private const LEAVE_ADJUSTED_REQUIRES = ['director', 'admin', 'super_admin'];
+
+    /**
+     * A legacy scheduled exception can be visible as a projected chip before
+     * its ClassSession was materialized. Keep that chip actionable by resolving
+     * its stored exception time, even when the date is outside the recurring
+     * weekday contract.
+     *
+     * @return array{start_time:string,end_time:string}|null
+     */
+    private function findScheduledExceptionSlot(
+        StudentClass $studentClass,
+        string $sessionDate,
+        ?string $requestedStart
+    ): ?array {
+        $query = Schedule::query()
+            ->where('student_course_id', (int) $studentClass->ID)
+            ->whereDate('schedule_date', $sessionDate)
+            ->where('status', 'scheduled');
+
+        if ($requestedStart) {
+            $query->where('start_time', 'like', substr($requestedStart, 0, 5) . '%');
+        }
+
+        $schedule = $query->orderBy('id')->first();
+        if (!$schedule) {
+            return null;
+        }
+
+        $start = substr((string) ($schedule->start_time ?? ''), 0, 5);
+        $end = substr((string) ($schedule->end_time ?? ''), 0, 5);
+        if ($start === '' || $end === '') {
+            return null;
+        }
+
+        return ['start_time' => $start, 'end_time' => $end];
+    }
 
     /**
      * PATCH /api/v1/class-sessions/{id}
@@ -983,6 +1027,9 @@ class ClassSessionController extends Controller
                     }
                     $this->applyTimeAndNoteUpdates($session, $data);
                     $session->save();
+                    if ($newStatus === 'cancelled') {
+                        $this->cancelLinkedScheduleExceptions($session);
+                    }
                     SessionDeductionService::recomputeCounters((int) $studentClass->ID);
 
                     $msg = '已更新為' . $newStatus . '，並完成堂數沖回';
@@ -1027,6 +1074,9 @@ class ClassSessionController extends Controller
                 $session->Status = $newStatus;
                 $this->applyTimeAndNoteUpdates($session, $data);
                 $session->save();
+                if ($newStatus === 'cancelled') {
+                    $this->cancelLinkedScheduleExceptions($session);
+                }
 
                 SessionDeductionService::syncCounters($studentClass);
 
@@ -1214,6 +1264,32 @@ class ClassSessionController extends Controller
                 'end_time'   => $newEnd,
                 'updated_at' => now(),
             ]);
+    }
+
+    /**
+     * Keep a schedule-backed projected exception from being recreated after
+     * its ClassSession is cancelled through the normal session editor.
+     */
+    private function cancelLinkedScheduleExceptions(ClassSession $session): void
+    {
+        $date = $session->SessionDate ? substr((string) $session->SessionDate, 0, 10) : null;
+        $start = substr((string) $session->StartTime, 0, 5);
+        $end = substr((string) $session->EndTime, 0, 5);
+        if (!$date || $start === '') {
+            return;
+        }
+
+        $query = Schedule::query()
+            ->where('student_course_id', (int) $session->StudentClassID)
+            ->whereDate('schedule_date', $date)
+            ->where('status', 'scheduled')
+            ->where('start_time', 'like', $start . '%');
+
+        if ($end !== '') {
+            $query->where('end_time', 'like', $end . '%');
+        }
+
+        $query->update(['status' => 'cancelled', 'updated_at' => now()]);
     }
 
     /**
