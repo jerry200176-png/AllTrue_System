@@ -101,6 +101,10 @@ class RepairTransferSessionEntitlement extends Command
             return self::SUCCESS;
         }
         if (!$this->productionWriteAllowed()) return self::FAILURE;
+        if ($found->getAttribute('rolled_back_at') !== null) {
+            $this->info('TRANSFER_ALREADY_ROLLED_BACK id=' . $id . '; no data changed.');
+            return self::SUCCESS;
+        }
 
         $service->rollback($id, $this->option('actor-user-id') ? (int) $this->option('actor-user-id') : null, (string) ($this->option('actor') ?: 'artisan:repair:transfer-session-entitlement:rollback'));
         $this->info('TRANSFER_ROLLED_BACK id=' . $id);
@@ -149,4 +153,3 @@ class RepairTransferSessionEntitlement extends Command
         $this->info('SNAPSHOT_WRITTEN path=' . $path);
     }
 }
-

@@ -36,6 +36,27 @@ class SessionEntitlementTransferTest extends TestCase
         $this->assertDatabaseCount('session_entitlement_transfers', 0);
     }
 
+    public function test_repair_command_reports_already_rolled_back_as_no_op(): void
+    {
+        $student = Student::create(['name' => '命令回滾測試生', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+        $source = $this->course($student->id, ['UsedSessions' => 1, 'RemainingSessions' => 7]);
+        $target = $this->course($student->id);
+        $session = ClassSession::create(['StudentClassID' => $source->ID, 'SessionDate' => '2026-08-05', 'StartTime' => '19:30:00', 'EndTime' => '21:30:00', 'Status' => 'attended']);
+        $service = app(SessionEntitlementTransferService::class);
+        $transfer = $service->transfer($source->ID, $target->ID, $session->id, 'test', 'P0-COMMAND-NOOP');
+        $service->rollback($transfer['transfer']->id);
+
+        $exit = Artisan::call('repair:transfer-session-entitlement', [
+            '--rollback' => $transfer['transfer']->id,
+            '--execute' => true,
+        ]);
+
+        $this->assertSame(0, $exit);
+        $this->assertStringContainsString('TRANSFER_ALREADY_ROLLED_BACK', Artisan::output());
+        $this->assertStringNotContainsString('TRANSFER_ROLLED_BACK id=', Artisan::output());
+        $this->assertSame($source->ID, (int) $session->refresh()->StudentClassID);
+    }
+
     public function test_completed_session_transfer_moves_all_attendance_ownership_and_recomputes_counters(): void
     {
         $student = Student::create([
