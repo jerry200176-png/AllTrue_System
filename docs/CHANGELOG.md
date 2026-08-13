@@ -1,3 +1,10 @@
+## 2026-08-14 — fix(ui): 月結課不再顯示購買堂數，老師清單同一堂不重複
+
+<!-- release-notes: staff_update=staff-2026-08-14-monthly-copy-teacher-list -->
+
+- 月結課程的上課日期改顯示已上堂數，不再把 `SessionCount` 寫成「購買 N 堂」。
+- 行事曆老師清單對同一學生、同一星期、同一開始時間只保留一筆，避免舊契約與現行課程並列。
+
 ## 2026-08-13 — fix(course): 上線堂次跨續購批次的 owner 修復命令
 
 <!-- release-notes: staff_update=staff-2026-08-13-session-entitlement-transfer-command -->

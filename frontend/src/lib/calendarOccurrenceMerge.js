@@ -48,7 +48,7 @@ function makeFallbackOccurrenceKey(row, dow, normalizeTime) {
   return `fallback:${studentKey}|${date || dow}|${start}|${row?.original_schedule_id || row?.original_id || row?.id || ''}`;
 }
 
-function dedupeByStudentSlot(items, normalizeTime) {
+export function dedupeCalendarRowsByStudentSlot(items, normalizeTime = defaultNormalizeTime) {
   const bestByKey = new Map();
   const scoreRow = (row) => {
     const sessionScore = row?.class_session_id ? 2 : 0;
@@ -296,7 +296,7 @@ export function mergeWeekCalendarOccurrences({
   // from the calendar while course management still shows it. Emit any such materialized session
   // that was not already rendered, so materialized truth never disappears. Projected/template
   // occurrences are untouched (they are keyed `session:<id>` when session-backed, so already-rendered
-  // sessions are skipped here and never duplicated). dedupeByStudentSlot collapses any slot overlap.
+  // sessions are skipped here and never duplicated). dedupeCalendarRowsByStudentSlot collapses any slot overlap.
   const dowByDate = new Map();
   for (let dow = 1; dow <= 7; dow += 1) {
     const ymd = defaultToYmd(weekDatesByDow[dow]);
@@ -341,7 +341,7 @@ export function mergeWeekCalendarOccurrences({
     }
   }
 
-  let out = dedupeByStudentSlot(Array.from(mergedByOccurrence.values()), normalizeTime);
+  let out = dedupeCalendarRowsByStudentSlot(Array.from(mergedByOccurrence.values()), normalizeTime);
   const effectiveFilterTeacherId = filterTeacherId || teacherScopeId || '';
   if (effectiveFilterTeacherId) {
     out = out.filter((row) => String(row.teacher_id ?? '') === String(effectiveFilterTeacherId));

@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
-import { mergeWeekCalendarOccurrences } from './calendarOccurrenceMerge.js';
+import {
+  dedupeCalendarRowsByStudentSlot,
+  mergeWeekCalendarOccurrences,
+} from './calendarOccurrenceMerge.js';
 
 const weekDatesByDow = {
   1: '2026-05-04',
@@ -506,3 +509,24 @@ assert.equal(
   0,
   'synthetic #226/#227: orphan scheduled reschedule target without a matching ClassSession must not render as a calendar ghost',
 );
+
+// Teacher-list view does not run week-occurrence merge. Two active contracts for
+// the same student/weekday/start (大安翟君和 社會) must still collapse to one row.
+{
+  const legacy = {
+    id: 3100,
+    student_id: 880,
+    student_name: '翟君和',
+    teacher_id: 41,
+    teacher_name: '陳禹誠',
+    subject: '社會',
+    class_type: 'one_on_one',
+    day_of_week: 5,
+    start_time: '13:00',
+    end_time: '15:00',
+  };
+  const current = { ...legacy, id: 3200 };
+  const rows = dedupeCalendarRowsByStudentSlot([legacy, current]);
+  assert.equal(rows.length, 1, 'teacher list must not show the same weekly slot twice');
+  assert.equal(rows[0].id, 3200, 'prefer the newer StudentClass id');
+}

@@ -3,6 +3,22 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-14-monthly-copy-teacher-list
+    published_at: "2026-08-14"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 月結課表顯示修正
+    summary: 月結課程不再寫成購買堂數；老師清單同一堂不重複。
+    items:
+      - category: fixed
+        text: 月結課程的上課日期改顯示已上堂數，不再出現購買堂數。
+      - category: fixed
+        text: 老師清單同一學生同時段只列一筆，不再重複同一門課。
+    source_refs:
+      - "changelog:2026-08-14:monthly-copy-teacher-list"
+
   - id: staff-2026-08-13-monthly-projection-exception
     published_at: "2026-08-13"
     audiences:

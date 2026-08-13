@@ -1282,6 +1282,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
   - **Cal.com（開源，本專案 `RFC_PLATFORM_OPTIMIZATION_FROM_STARS_2026.md` 已引用的排程參考）**：用的是跟 AllTrue 一樣的「鏈」模型（`Booking.rescheduledToUid` 正向指標，AllTrue 是反向的 `original_schedule_id`），**且已知在 production 出過同一類 bug**——[cal.com issue #12922](https://github.com/calcom/cal.com/issues/12922)：「對已經改期過的 Booking 再次改期，會產生多筆同時有效的 Booking」，跟本次 AllTrue 的事故是同一種根因形狀。這是「鏈模型本身容易在二次改期時出錯」的獨立佐證，不是 AllTrue 特有的失誤。
   - **落地方向**：若要根治（而非一直在下游修 dedupe 規則），`schedules` 應改成「每個 occurrence 身分（`student_course_id` + 原始 `schedule_date`/`start_time`，第一次物化後永久不變）對應最多一筆目前有效的紀錄，被改期時**更新**它（新 `schedule_date`/`start_time`，`status` 維持 `scheduled`），不是新增 rescheduled/scheduled 紀錄對」；歷史另外進獨立的 `schedule_change_log`（append-only，沒有任何「目前狀態」查詢會讀它）——這正是 `bug_report_status_logs` 已經跟 `bug_reports` 目前狀態分離的同一種模式，本專案並不陌生。列為技術債，待排入架構修正時再處理，本次不動資料表結構。
 - **測試**：`calendarExceptionMerge.test.js`、`calendarOccurrenceMerge.test.js`、`useCourseSessionsDisplay.test.js` 均以本案真實資料（SC#2688 schedules id 7583/7584/7588/7589、ClassSession id 24169；SC#1249 schedules id 7138/7139/7207/7208/7422/7423）新增回歸案例。
+- **延伸（2026-08-14，大安翟君和社會）**：R102 只擋了月結「超排」標記，課程管理「上課日期」標題仍走 `packageMemberSessionSummary()` 的堂數制「已上 / 購買」文案，月結課 `SessionCount` 被讀成購買上限。老師清單也不走週檢視的 `dedupeCalendarRowsByStudentSlot()`，同一學生同時段的兩筆 active 契約會並列。修法：月結標題改「已上 N 堂」；老師清單套用同一套學生+星期+開始時間去重。
 
 ### R103. in-app #225 的症狀被誤標成 R102 的鬼影方框問題；真正症狀（行事曆有、課程管理沒有）到今天才被正確分診（in-app #225/#226/#227，2026-08-08）
 
