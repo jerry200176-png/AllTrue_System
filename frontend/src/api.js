@@ -112,7 +112,7 @@ export async function getExceptionWorkflow(token, workflowId) {
   return data?.data || null;
 }
 
-export async function generateExceptionWorkflowCandidates(token, workflowId, { startDate, endDate, limit = 5 }) {
+export async function generateExceptionWorkflowCandidates(token, workflowId, { startDate, endDate, limit = 20 }) {
   const res = await fetch(`${API_BASE}/exception-workflows/${workflowId}/generate-candidates`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
