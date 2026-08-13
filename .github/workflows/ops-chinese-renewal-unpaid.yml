@@ -105,28 +105,34 @@ jobs:
           set -euo pipefail
           mkdir -p out
           SCRIPT_B64=$(base64 -w0 scripts/ops-chinese-renewal-unpaid.sh)
-          PHP_B64=$(base64 -w0 scripts/ops-chinese-renewal-unpaid.php)
-          students="$STUDENT"
-          if [ "$students" = both ]; then
-            students='zhang_zheng_ning zhang_zheng_le'
+          PHP_B64=""
+          if [ "$MODE" = apply ]; then
+            PHP_B64=$(base64 -w0 scripts/ops-chinese-renewal-unpaid.php)
           fi
           : > out/operation.txt
-          for key in $students; do
-            case "$key" in
-              zhang_zheng_ning)
-                sid=374; sname='張正甯'; source=1681 ;;
-              zhang_zheng_le)
-                sid=373; sname='張正樂'; source=1682 ;;
-              *) echo "::error::student $key is not allowlisted"; exit 1 ;;
-            esac
+          run_one() {
+            local key="$1" sid="$2" sname="$3" source="$4"
             ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
               "${PI_SSH_USER}@${PI_SSH_HOST}" \
               MODE="$MODE" CONFIRM="$CONFIRM" STUDENT_KEY="$key" STUDENT_ID="$sid" \
               STUDENT_NAME="$sname" SOURCE_CLASS="$source" SESSIONS=8 START_DATE=2026-08-19 \
               RUN_ID="$RUN_ID" ACTOR="$ACTOR" SCRIPT_B64="$SCRIPT_B64" PHP_B64="$PHP_B64" \
-              'echo "$SCRIPT_B64" | base64 -d > /tmp/ops-chinese-renewal-unpaid.sh && bash /tmp/ops-chinese-renewal-unpaid.sh; ec=$?; rm -f /tmp/ops-chinese-renewal-unpaid.sh; exit $ec' \
-              | tee -a out/operation.txt
-          done
+              'bash -s' <<'ENDSSH' | tee -a out/operation.txt
+          set -euo pipefail
+          echo "$SCRIPT_B64" | base64 -d > /tmp/ops-chinese-renewal-unpaid.sh
+          chmod +x /tmp/ops-chinese-renewal-unpaid.sh
+          bash /tmp/ops-chinese-renewal-unpaid.sh
+          rm -f /tmp/ops-chinese-renewal-unpaid.sh
+          ENDSSH
+          }
+          case "$STUDENT" in
+            both|zhang_zheng_ning) run_one zhang_zheng_ning 374 '張正甯' 1681 ;;
+          esac
+          case "$STUDENT" in
+            both|zhang_zheng_le) run_one zhang_zheng_le 373 '張正樂' 1682 ;;
+          esac
+          grep -q PLAN_OK out/operation.txt
+          grep -q DRY_RUN_ONLY out/operation.txt || [ "$MODE" = apply ]
 
       - name: Upload evidence
         if: always()
