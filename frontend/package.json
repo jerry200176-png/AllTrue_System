@@ -52,8 +52,8 @@
   },
   "dependencies": {
     "@sentry/vue": "^10.69.0",
-    "@supabase/supabase-js": "^2.111.0",
-    "vue": "^3.5.40"
+    "@supabase/supabase-js": "^2.112.2",
+    "vue": "^3.5.41"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
@@ -71,6 +71,6 @@
     "vue-eslint-parser": "^9.4.3"
   },
   "optionalDependencies": {
-    "@rollup/rollup-linux-arm64-gnu": "^4.62.3"
+    "@rollup/rollup-linux-arm64-gnu": "^4.62.4"
   }
 }
