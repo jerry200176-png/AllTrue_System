@@ -352,6 +352,21 @@ class MonthlyRenewTest extends TestCase
             'student_course_id' => $course->ID,
         ]);
 
+        $unverifiableSchedule = Schedule::create([
+            'student_id' => $student->id,
+            'teacher_id' => $course->TeacherID,
+            'subject' => '?拍?',
+            'day_of_week' => 3,
+            'start_time' => '10:00',
+            'end_time' => '12:00',
+            'branch_id' => 1,
+            'schedule_date' => '2026-04-08',
+            'status' => 'scheduled',
+            'type' => 'normal',
+            'student_course_id' => $course->ID,
+            'original_schedule_id' => 999999,
+        ]);
+
         $extraSchedule = Schedule::create([
             'student_id' => $student->id,
             'teacher_id' => $course->TeacherID,
@@ -422,6 +437,10 @@ class MonthlyRenewTest extends TestCase
 
         $this->assertDatabaseHas('schedules', [
             'id' => $schedule->id,
+            'status' => 'cancelled',
+        ]);
+        $this->assertDatabaseHas('schedules', [
+            'id' => $unverifiableSchedule->id,
             'status' => 'cancelled',
         ]);
         $this->assertSame('scheduled', (string) $extraSchedule->fresh()->status);
@@ -528,6 +547,21 @@ class MonthlyRenewTest extends TestCase
             'student_course_id' => $course->ID,
         ]);
 
+        $unverifiable = Schedule::create([
+            'student_id' => $student->id,
+            'teacher_id' => $course->TeacherID,
+            'subject' => '?拍?',
+            'day_of_week' => 3,
+            'start_time' => '10:00',
+            'end_time' => '12:00',
+            'branch_id' => 1,
+            'schedule_date' => '2026-04-08',
+            'status' => 'scheduled',
+            'type' => 'normal',
+            'student_course_id' => $course->ID,
+            'original_schedule_id' => 999998,
+        ]);
+
         $crossDateAnchor = Schedule::create([
             'student_id' => $student->id,
             'teacher_id' => $course->TeacherID,
@@ -571,6 +605,7 @@ class MonthlyRenewTest extends TestCase
             'SessionDate' => '2026-04-08',
         ]);
         $this->assertSame('scheduled', (string) $extra->fresh()->status);
+        $this->assertSame('scheduled', (string) $unverifiable->fresh()->status);
         $this->assertSame('scheduled', (string) $crossDateDestination->fresh()->status);
     }
 

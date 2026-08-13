@@ -1008,7 +1008,11 @@ class ClassSessionController extends Controller
         return ['start_time' => $start, 'end_time' => $end];
     }
 
-    private function isMaterializableScheduledException(Schedule $schedule, string $sessionDate): bool
+    private function isMaterializableScheduledException(
+        Schedule $schedule,
+        string $sessionDate,
+        bool $allowUnverifiableAnchor = false
+    ): bool
     {
         if ((string) ($schedule->status ?? '') !== 'scheduled') {
             return false;
@@ -1025,7 +1029,7 @@ class ClassSessionController extends Controller
 
         $anchorDate = Schedule::query()->whereKey($anchorId)->value('schedule_date');
         if (!$anchorDate) {
-            return false;
+            return $allowUnverifiableAnchor;
         }
 
         return Carbon::parse((string) $anchorDate)->toDateString() === $sessionDate;
@@ -1423,7 +1427,7 @@ class ClassSessionController extends Controller
         }
 
         $schedules = $query->get()
-            ->filter(fn (Schedule $schedule): bool => $this->isMaterializableScheduledException($schedule, $date))
+            ->filter(fn (Schedule $schedule): bool => $this->isMaterializableScheduledException($schedule, $date, true))
             ->values();
         if ($schedules->isEmpty()) {
             return;
