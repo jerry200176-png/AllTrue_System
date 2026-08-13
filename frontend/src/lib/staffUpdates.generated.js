@@ -4,6 +4,45 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-13-teacher-home-projection-integrity",
+    "publishedAt": "2026-08-13",
+    "effectiveAt": null,
+    "audiences": [
+      "teacher",
+      "director"
+    ],
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "importance": "major",
+    "title": "教師首頁課表與評量顯示更穩定",
+    "summary": "重新整理或切換分校時，課表會保留已載入的內容並避免重複的同堂評量卡。",
+    "items": [
+      "同一學生、日期與時段的重複課堂投影會合併為一筆，不會顯示成兩張評量卡。",
+      "週課表載入新資料時不會先清空舊畫面；較早完成的舊請求也不會覆蓋最新課表。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "同一學生、日期與時段的重複課堂投影會合併為一筆，不會顯示成兩張評量卡。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "週課表載入新資料時不會先清空舊畫面；較早完成的舊請求也不會覆蓋最新課表。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-13:teacher-home-projection-integrity"
+    ],
+    "date": "2026-08-13",
+    "version": "2026.08.13"
+  },
+  {
     "id": "staff-2026-08-13-session-entitlement-transfer-command",
     "publishedAt": "2026-08-13",
     "effectiveAt": null,
