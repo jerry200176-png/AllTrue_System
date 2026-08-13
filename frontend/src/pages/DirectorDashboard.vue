@@ -199,8 +199,15 @@
                       <span class="material-symbols-outlined" aria-hidden="true">date_range</span>
                       補課候選範圍：{{ makeupWindowLabel(workflow) }}（原堂後一天起）
                     </p>
-                    <div v-if="workflowCandidates[workflow.id]?.length" class="director-candidate-list" role="radiogroup" :aria-label="`${workflow.student?.name || '學生'}補課候選`">
-                      <label v-for="candidate in workflowCandidates[workflow.id]" :key="candidate.id" class="director-candidate" :class="{ 'is-selected': selectedWorkflowCandidates[workflow.id] === candidate.id }"><input v-model="selectedWorkflowCandidates[workflow.id]" type="radio" :name="`leave-candidate-${workflow.id}`" :value="candidate.id" :disabled="workflowActionId === workflow.id" /><span><strong>{{ candidate.candidate_date }}</strong> {{ candidate.start_time }}–{{ candidate.end_time }}</span></label>
+                    <div v-if="workflowCandidates[workflow.id]?.length" class="director-candidate-picker">
+                      <div class="director-candidate-dates" role="tablist" :aria-label="`${workflow.student?.name || '學生'}可補課日期`">
+                        <button v-for="date in workflowCandidateGroups[workflow.id]?.dates" :key="date" type="button" role="tab" class="director-candidate-date" :class="{ 'is-selected': selectedWorkflowCandidateDates[workflow.id] === date }" :aria-selected="selectedWorkflowCandidateDates[workflow.id] === date" @click="selectCandidateDate(workflow.id, date)">
+                          {{ candidateDateLabel(date) }}
+                        </button>
+                      </div>
+                      <div class="director-candidate-list" role="radiogroup" :aria-label="`${workflow.student?.name || '學生'}補課候選`">
+                        <label v-for="candidate in (workflowCandidateGroups[workflow.id]?.byDate[selectedWorkflowCandidateDates[workflow.id]] || [])" :key="candidate.id" class="director-candidate" :class="{ 'is-selected': selectedWorkflowCandidates[workflow.id] === candidate.id }"><input v-model="selectedWorkflowCandidates[workflow.id]" type="radio" :name="`leave-candidate-${workflow.id}`" :value="candidate.id" :disabled="workflowActionId === workflow.id" /><span><strong>{{ candidate.start_time }}–{{ candidate.end_time }}</strong><small v-if="candidate.status === 'warning'">已有其他課程</small></span></label>
+                      </div>
                     </div>
                     <p v-else class="director-leave-case__hint"><span class="material-symbols-outlined" aria-hidden="true">lightbulb</span>先搜尋沒有衝堂的可用時段，也可以直接核准不補課。</p>
                     <div class="director-leave-case__actions">
@@ -298,11 +305,13 @@ const notificationSummary = ref([]);
 const showAllPayments = ref(false);
 const paymentAlertLimit = 5;
 const pendingMakeupCount = ref(0);
+const MAKEUP_CANDIDATE_LIMIT = 20;
 const exceptionWorkflows = ref([]);
 const exceptionWorkflowError = ref('');
 const exceptionWorkflowLoading = ref(false);
 const workflowCandidates = ref({});
 const selectedWorkflowCandidates = ref({});
+const selectedWorkflowCandidateDates = ref({});
 const workflowActionId = ref(null);
 const workflowDecisionModal = ref(null);
 const workflowDecisionReason = ref('');
@@ -322,6 +331,25 @@ const selectedWorkflowCandidate = computed(() => {
   return (workflowCandidates.value[modal.workflow.id] || [])
     .find((candidate) => Number(candidate.id) === Number(selectedWorkflowCandidates.value[modal.workflow.id])) || null;
 });
+const workflowCandidateGroups = computed(() => Object.fromEntries(
+  Object.entries(workflowCandidates.value).map(([workflowId, candidates]) => {
+    const normalizedCandidates = Array.isArray(candidates) ? candidates : [];
+    const dates = [...new Set(normalizedCandidates.map((candidate) => candidate.candidate_date).filter(Boolean))].sort();
+    const byDate = Object.fromEntries(dates.map((date) => [date, normalizedCandidates.filter((candidate) => candidate.candidate_date === date)]));
+    return [workflowId, { dates, byDate }];
+  }),
+));
+const candidateDateLabel = (date) => {
+  const parsed = new Date(`${date}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return date;
+  return new Intl.DateTimeFormat('zh-TW', { month: 'numeric', day: 'numeric', weekday: 'short' }).format(parsed);
+};
+const selectCandidateDate = (workflowId, date) => {
+  selectedWorkflowCandidateDates.value = {
+    ...selectedWorkflowCandidateDates.value,
+    [workflowId]: date,
+  };
+};
 const workflowDecisionTitle = computed(() => {
   const modal = workflowDecisionModal.value;
   if (!modal) return '';
@@ -762,13 +790,18 @@ const loadExceptionWorkflows = async () => {
 };
 
 const setWorkflowCandidates = (workflowId, candidates) => {
+  const normalizedCandidates = Array.isArray(candidates) ? candidates : [];
   workflowCandidates.value = {
     ...workflowCandidates.value,
-    [workflowId]: Array.isArray(candidates) ? candidates : [],
+    [workflowId]: normalizedCandidates,
   };
   selectedWorkflowCandidates.value = {
     ...selectedWorkflowCandidates.value,
     [workflowId]: null,
+  };
+  selectedWorkflowCandidateDates.value = {
+    ...selectedWorkflowCandidateDates.value,
+    [workflowId]: normalizedCandidates[0]?.candidate_date || null,
   };
 };
 
@@ -808,7 +841,7 @@ const generateCandidates = async (workflow) => {
     const result = await generateExceptionWorkflowCandidates(token, workflow.id, {
       startDate: window.startDate,
       endDate: window.endDate,
-      limit: 5,
+      limit: MAKEUP_CANDIDATE_LIMIT,
     });
     setWorkflowCandidates(workflow.id, result?.candidates || []);
     await loadExceptionWorkflows();
@@ -2891,11 +2924,18 @@ onBeforeUnmount(() => {
 .button--quiet { background: transparent; }
 .button--danger { border-color: var(--ds-danger); color: var(--ds-danger); }
 .button--danger:hover { background: var(--ds-danger-wash); }
-.director-candidate-list { display: grid; gap: 7px; margin-top: 14px; }
-.director-candidate { display: flex; align-items: center; gap: 9px; padding: 9px 10px; border: 1px solid var(--ds-hairline); border-radius: 6px; background: var(--ds-canvas); color: var(--ds-ink-secondary); font-size: 12px; cursor: pointer; }
+.director-candidate-picker { margin-top: 14px; }
+.director-candidate-dates { display: flex; gap: 7px; overflow-x: auto; padding: 2px 1px 8px; scrollbar-width: thin; }
+.director-candidate-date { flex: 0 0 auto; min-height: 34px; padding: 7px 10px; border: 1px solid var(--ds-hairline); border-radius: 999px; background: var(--ds-canvas); color: var(--ds-ink-mute); font-size: 12px; font-weight: 800; cursor: pointer; }
+.director-candidate-date:hover { border-color: var(--ds-ink-secondary); color: var(--ds-ink); }
+.director-candidate-date.is-selected { border-color: var(--ds-cta); background: var(--ds-primary-wash); color: var(--ds-ink); }
+.director-candidate-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin-top: 2px; }
+.director-candidate { display: flex; align-items: center; gap: 9px; min-height: 48px; padding: 9px 10px; border: 1px solid var(--ds-hairline); border-radius: 6px; background: var(--ds-canvas); color: var(--ds-ink-secondary); font-size: 12px; cursor: pointer; }
 .director-candidate.is-selected { border-color: var(--ds-cta); }
 .director-candidate input { accent-color: var(--ds-cta); }
 .director-candidate strong { color: var(--ds-ink); }
+.director-candidate span { display: grid; gap: 3px; }
+.director-candidate small { color: var(--ds-warning); font-size: 10px; }
 .director-evaluation-list, .director-payment-list, .director-notification-list { padding: 0 22px; }
 .director-evaluation-row, .director-payment-row, .director-notification-list > div { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 0; border-top: 1px solid var(--ds-hairline); }
 .director-evaluation-row > div:first-child, .director-payment-row > div { display: grid; gap: 3px; min-width: 0; }
@@ -2945,6 +2985,7 @@ onBeforeUnmount(() => {
   .director-leave-list { padding-inline: 16px; }
   .director-leave-case { padding: 13px; }
   .director-leave-case__details { grid-template-columns: 1fr; gap: 8px; }
+  .director-candidate-list { grid-template-columns: 1fr; }
   .director-leave-case__actions, .director-evaluation-row > div:last-child { align-items: stretch; flex-direction: column; }
   .director-leave-case__actions .button, .director-evaluation-row > div:last-child .button { width: 100%; }
   .director-evaluation-row { align-items: flex-start; flex-direction: column; }
