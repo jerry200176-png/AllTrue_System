@@ -6,7 +6,7 @@
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
   "base_sha": "d457fbf99cb2ae798797ac9036c0c2bce4604647",
   "branch": "fix/in-app-bugs-234-235",
-  "worktree_path": "C:/home/jerry/workspace/alltrue-bugs-234-235-win",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/in-app-bugs-234-235",
   "started_at": "2026-08-12T15:51:00Z",
   "production_mutation": false,
   "preflight_result": "pass",
