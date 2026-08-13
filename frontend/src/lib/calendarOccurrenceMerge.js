@@ -39,6 +39,18 @@ function isAttendedStatus(row) {
   return ['attended', 'completed', 'late', 'absent'].includes(statusOf(row));
 }
 
+function isLeaveOccurrence(row) {
+  const sessionStatus = String(row?.session_status || '').toLowerCase();
+  const exceptionStatus = String(row?.exception_status || '').toLowerCase();
+  return row?.is_leave === true
+    || isLeaveStatus({ status: sessionStatus })
+    || isLeaveStatus({ status: exceptionStatus });
+}
+
+function normalizedSubject(row) {
+  return String(row?.subject || row?.Subject || '').trim().toLowerCase();
+}
+
 function makeFallbackOccurrenceKey(row, dow, normalizeTime) {
   const scid = row?.student_course_id != null ? String(row.student_course_id) : '';
   const sid = row?.student_id != null ? String(row.student_id) : '';
@@ -57,6 +69,24 @@ function dedupeByStudentSlot(items, normalizeTime) {
     return sessionScore * 1_000_000_000 + exceptionScore * 1_000_000 + idNum;
   };
 
+  const shouldReplace = (row, previous) => {
+    if (!previous) return true;
+
+    // A leave in one subject and a live occurrence in another subject are not
+    // interchangeable duplicates. This is the exact case where a student
+    // takes Social instead of a Biology lesson they were excused from: the
+    // old leave row must not hide the live replacement lesson.
+    const rowSubject = normalizedSubject(row);
+    const previousSubject = normalizedSubject(previous);
+    if (rowSubject && previousSubject && rowSubject !== previousSubject) {
+      const rowLeave = isLeaveOccurrence(row);
+      const previousLeave = isLeaveOccurrence(previous);
+      if (rowLeave !== previousLeave) return !rowLeave;
+    }
+
+    return scoreRow(row) >= scoreRow(previous);
+  };
+
   for (const row of items) {
     const sid = row?.student_id != null ? `sid:${row.student_id}` : '';
     const name = String(row?.student_name || '').trim().toLowerCase();
@@ -68,7 +98,7 @@ function dedupeByStudentSlot(items, normalizeTime) {
     const key = studentKey && dayKey && start ? `${studentKey}|${dayKey}|${start}` : '';
     if (!key) continue;
     const prev = bestByKey.get(key);
-    if (!prev || scoreRow(row) >= scoreRow(prev)) {
+    if (shouldReplace(row, prev)) {
       bestByKey.set(key, row);
     }
   }
@@ -202,6 +232,7 @@ export function mergeWeekCalendarOccurrences({
           is_base: true,
           is_exception: false,
           class_session_id: sessionRow?.id || null,
+          session_status: statusOf(sessionRow) || null,
           student_course_id: course.id,
           occurrence_key: sessionRow?.id ? `session:${sessionRow.id}` : `base:${cid}|${targetDate}|${start}`,
         };
@@ -251,6 +282,7 @@ export function mergeWeekCalendarOccurrences({
           teacher_id: ex.teacher_id,
           teacher_name: ex.teacher?.username || resolveTeacherName(ex.teacher_id) || mergedByOccurrence.get(occurrenceKey)?.teacher_name || '未指派',
           original_schedule_id: ex.original_schedule_id || null,
+          exception_status: statusOf(ex),
           is_exception: true,
           source: 'schedule_overlay',
         });
@@ -282,6 +314,7 @@ export function mergeWeekCalendarOccurrences({
         duration_hours: ex.duration_hours,
         student_course_id: ex.student_course_id,
         original_schedule_id: ex.original_schedule_id || null,
+        exception_status: statusOf(ex),
         class_session_id: null,
         occurrence_key: occurrenceKey,
       });
@@ -335,6 +368,7 @@ export function mergeWeekCalendarOccurrences({
         is_base: true,
         is_exception: false,
         class_session_id: sid,
+        session_status: statusOf(sessionRow) || null,
         student_course_id: course.id,
         occurrence_key: `session:${sid}`,
       });
