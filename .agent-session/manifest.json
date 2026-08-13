@@ -5,7 +5,7 @@
   "task_id": "in-app-bugs-234-235",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
   "base_sha": "3fa2c400de28a56384fd4f3530a2aaad631c4e91",
-  "branch": "fix/in-app-bugs-234-235-monthly-projected-exception-cancel-v5",
+  "branch": "fix/in-app-bugs-234-235-monthly-projected-exception-cancel-v6",
   "worktree_path": "/home/jerry/workspace/worktrees/alltrue-wu-aitong-0812",
   "started_at": "2026-08-13T08:30:00Z",
   "production_mutation": false,
