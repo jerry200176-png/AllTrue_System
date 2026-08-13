@@ -46,6 +46,13 @@ class RepairRenewalOverlap234Test extends TestCase
         $this->assertStringContainsString('FINANCIAL_GATE_BLOCKED', Artisan::output());
     }
 
+    public function test_invoice_item_presence_blocks_repair(): void
+    {
+        DB::table('InvoiceItem')->insert(['InvoiceID' => 999234, 'StudentClassID' => 1050, 'Description' => 'contract evidence', 'Amount' => 8800, 'created_at' => now(), 'updated_at' => now()]);
+        $this->assertSame(1, Artisan::call('repair:renewal-overlap-234'));
+        $this->assertStringContainsString('FINANCIAL_GATE_BLOCKED', Artisan::output());
+    }
+
     public function test_execute_appends_reversal_and_recomputes_unpaid_contract(): void
     {
         $snapshot = storage_path('app/repair-snapshots/test-234.json');
@@ -59,5 +66,17 @@ class RepairRenewalOverlap234Test extends TestCase
         $this->assertSame(1, DB::table('session_deduction_ledger')->where('student_class_id', 1050)->where('class_session_id', 30430)->where('event_type', 'reverse')->count());
         $this->assertSame('retro_leave', DB::table('session_deduction_ledger')->where('student_class_id', 1050)->where('class_session_id', 30430)->where('event_type', 'reverse')->value('source'));
         $this->assertSame('attended', DB::table('ClassSession')->where('id', 30421)->value('Status'));
+    }
+
+    public function test_rollback_requires_execute_and_restores_counter_projection(): void
+    {
+        $this->assertSame(0, Artisan::call('repair:renewal-overlap-234', ['--execute' => true]));
+        $this->assertSame(0, Artisan::call('repair:renewal-overlap-234', ['--rollback' => true]));
+        $this->assertSame('cancelled', DB::table('ClassSession')->where('id', 30430)->value('Status'));
+        $this->assertSame(0, Artisan::call('repair:renewal-overlap-234', ['--rollback' => true, '--execute' => true]));
+        $this->assertSame('attended', DB::table('ClassSession')->where('id', 30430)->value('Status'));
+        $this->assertSame(8, (int) DB::table('StudentClass')->where('ID', 1050)->value('UsedSessions'));
+        $this->assertSame(0, (int) DB::table('StudentClass')->where('ID', 1050)->value('RemainingSessions'));
+        $this->assertSame('retro_leave', DB::table('session_deduction_ledger')->where('student_class_id', 1050)->where('class_session_id', 30430)->where('event_type', 'deduct')->latest('id')->value('source'));
     }
 }

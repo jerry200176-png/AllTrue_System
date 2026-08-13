@@ -89,7 +89,7 @@ jobs:
             php artisan repair:renewal-overlap-234 --execute --force --actor="$ACTOR" --snapshot="$SNAP"
             echo "SNAPSHOT=$SNAP"
           else
-            php artisan repair:renewal-overlap-234 --rollback --force --actor="$ACTOR"
+            php artisan repair:renewal-overlap-234 --rollback --execute --force --actor="$ACTOR"
             echo "REPAIR_STATE=ROLLED_BACK"
             exit 0
           fi

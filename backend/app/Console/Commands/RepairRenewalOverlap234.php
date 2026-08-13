@@ -102,26 +102,34 @@ class RepairRenewalOverlap234 extends Command
         $oldSession = DB::table('ClassSession')->where('id', self::OLD_SESSION)->first();
         $newSession = DB::table('ClassSession')->where('id', self::NEW_SESSION)->first();
         $invoices = DB::table('Invoice')->where('StudentClassID', self::OLD_CLASS)->count();
+        $invoiceItems = DB::table('InvoiceItem')->where('StudentClassID', self::OLD_CLASS)->count();
         $payments = DB::table('Payment as p')->join('Invoice as i', 'i.id', '=', 'p.InvoiceID')->where('i.StudentClassID', self::OLD_CLASS)->count();
         $correction = SessionCorrection::query()->where('session_id', self::OLD_SESSION)->where('decision_reference', self::REF)->whereNull('rolled_back_at')->first();
-        $before = compact('old', 'new', 'oldSession', 'newSession', 'invoices', 'payments');
+        $liveLearningRecordIds = DB::table('LearningRecord')->where('ClassSessionID', self::OLD_SESSION)->whereNull('VoidedAt')->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $before = compact('old', 'new', 'oldSession', 'newSession', 'invoices', 'invoiceItems', 'payments', 'liveLearningRecordIds');
         if ($correction) return ['error' => null, 'already' => true, 'before' => $before, 'summary' => ['already_applied' => true, 'correction_id' => $correction->id]];
         if (!$old || !$new || !$oldSession || !$newSession) return ['error' => 'REPAIR_234_MISSING_ROW', 'already' => false, 'before' => $before, 'summary' => []];
         if ((int) $oldSession->StudentClassID !== self::OLD_CLASS || (int) $newSession->StudentClassID !== self::NEW_CLASS || (string) $oldSession->Status !== 'attended' || (string) $newSession->Status !== 'attended') return ['error' => 'REPAIR_234_SESSION_DRIFT', 'already' => false, 'before' => $before, 'summary' => []];
         if (substr((string) $oldSession->SessionDate, 0, 10) !== '2026-08-08' || substr((string) $newSession->SessionDate, 0, 10) !== '2026-08-08' || substr((string) $oldSession->StartTime, 0, 5) !== '15:00' || substr((string) $newSession->StartTime, 0, 5) !== '15:00') return ['error' => 'REPAIR_234_SLOT_DRIFT', 'already' => false, 'before' => $before, 'summary' => []];
-        if ((int) $old->Rate !== 1100 || (int) $old->Charge !== 8800 || (int) $old->UsedSessions !== 8 || (int) $old->RemainingSessions !== 0 || (int) $old->Paid !== 0 || $invoices !== 0 || $payments !== 0) return ['error' => 'REPAIR_234_FINANCIAL_GATE_BLOCKED', 'already' => false, 'before' => $before, 'summary' => []];
-        return ['error' => null, 'already' => false, 'before' => $before, 'summary' => ['keeper_session' => self::NEW_SESSION, 'cancel_session' => self::OLD_SESSION, 'old_contract' => ['used' => '8 -> 7', 'remaining' => '0 -> 1', 'charge' => '8800 -> 7700'], 'billing' => 'no Invoice/Payment rows; no receipt mutation', 'learning_record' => 'void pending duplicate record', 'ledger' => 'append reverse event']];
+        if ((int) $old->Rate !== 1100 || (int) $old->Charge !== 8800 || (int) $old->UsedSessions !== 8 || (int) $old->RemainingSessions !== 0 || (int) $old->Paid !== 0 || $invoices !== 0 || $invoiceItems !== 0 || $payments !== 0) return ['error' => 'REPAIR_234_FINANCIAL_GATE_BLOCKED', 'already' => false, 'before' => $before, 'summary' => []];
+        return ['error' => null, 'already' => false, 'before' => $before, 'summary' => ['keeper_session' => self::NEW_SESSION, 'cancel_session' => self::OLD_SESSION, 'old_contract' => ['used' => '8 -> 7', 'remaining' => '0 -> 1', 'charge' => '8800 -> 7700'], 'billing' => 'no Invoice/InvoiceItem/Payment rows; no receipt mutation', 'learning_record' => 'void only active duplicate records recorded in snapshot', 'ledger' => 'append reverse event']];
     }
 
     private function rollback(): int
     {
         $corr = SessionCorrection::query()->where('session_id', self::OLD_SESSION)->where('decision_reference', self::REF)->whereNull('rolled_back_at')->latest('id')->first();
         if (!$corr) { $this->error('No active #234 correction to roll back'); return self::FAILURE; }
+        if (!$this->option('execute')) { $this->line('=== DRY RUN ROLLBACK repair:renewal-overlap-234 ==='); $this->line('WOULD restore only LearningRecord ids captured by the apply snapshot.'); return self::SUCCESS; }
         if (!$this->prodOk()) return self::FAILURE;
+        $invoiceItems = DB::table('InvoiceItem')->where('StudentClassID', self::OLD_CLASS)->count();
+        $invoices = DB::table('Invoice')->where('StudentClassID', self::OLD_CLASS)->count();
+        $payments = DB::table('Payment as p')->join('Invoice as i', 'i.id', '=', 'p.InvoiceID')->where('i.StudentClassID', self::OLD_CLASS)->count();
+        if ($invoices || $invoiceItems || $payments) { $this->error('REPAIR_234_FINANCIAL_GATE_BLOCKED'); return self::FAILURE; }
         DB::transaction(function () use ($corr): void {
             DB::table('ClassSession')->where('id', self::OLD_SESSION)->update(['Status' => 'attended', 'updated_at' => now()]);
-            DB::table('LearningRecord')->where('ClassSessionID', self::OLD_SESSION)->update(['VoidedAt' => null, 'updated_at' => now()]);
-            DB::table('session_deduction_ledger')->insert(['student_class_id' => self::OLD_CLASS, 'class_session_id' => self::OLD_SESSION, 'event_type' => 'deduct', 'source' => 'renewal_overlap_rollback', 'note' => self::REF, 'created_by' => $this->actorId(), 'created_at' => now(), 'updated_at' => now()]);
+            $ids = array_map('intval', (array) (($corr->snapshot_before ?? [])['liveLearningRecordIds'] ?? []));
+            if ($ids !== []) DB::table('LearningRecord')->whereIn('id', $ids)->where('ClassSessionID', self::OLD_SESSION)->update(['VoidedAt' => null, 'updated_at' => now()]);
+            SessionDeductionService::deductForSession(self::OLD_CLASS, self::OLD_SESSION, 'retro_leave', $this->actorId(), self::REF);
             SessionDeductionService::recomputeCounters(self::OLD_CLASS);
             DB::table('StudentClass')->where('ID', self::OLD_CLASS)->update(['Charge' => 8800]);
             $corr->rolled_back_at = now(); $corr->save();
