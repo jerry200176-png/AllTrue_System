@@ -192,6 +192,11 @@ jobs:
               "rev" => "f92f280bd67262b4c0134abd96883ea49526c57f",
               "deploy" => "31612134722",
             ],
+            235 => [
+              "reply" => "已修好並上線：教師首頁現在會使用統一的課程資料欄位，因此不會再顯示 Branch #0 或遺漏學生、科目；逾期課堂的補課操作也會帶入正確分校與日期。已完成 production read-only acceptance 與正式站新建置驗證。請重新整理教師首頁後確認；若仍有異常，請回覆此單。",
+              "rev" => "aac95a04c0a7bfad42fd24aa20eb7515e9627431",
+              "deploy" => "31680466886",
+            ],
           ];
           $results = [];
           foreach ($items as $bugId => $cfg) {
