@@ -18,8 +18,8 @@ use RuntimeException;
  */
 final class SessionEntitlementTransferService
 {
-    private const MOVABLE_STATUSES = ['attended', 'completed', 'late', 'absent'];
-    private const CAPACITY_STATUSES = ['scheduled', 'attended', 'completed', 'late', 'absent'];
+    private const MOVABLE_STATUSES = ['attended', 'completed', 'late'];
+    private const CAPACITY_STATUSES = ['scheduled', 'attended', 'completed', 'late'];
 
     /** @return array<string,mixed> */
     public function preview(int $sourceClassId, int $targetClassId, int $sessionId): array
