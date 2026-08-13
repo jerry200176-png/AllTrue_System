@@ -4,6 +4,38 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-13-session-entitlement-transfer-command",
+    "publishedAt": "2026-08-13",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "超額堂次可安全轉到續購批次",
+    "summary": "已提供具稽核、驗證與回滾保護的管理修復流程。",
+    "items": [
+      "已確認誤扣在舊一期的已上課堂次，可保留原點名與評量並轉至同一學生的續購批次。",
+      "系統會攔截跨學生、跨科目、目標已滿、重複時段及已結算批次。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "已確認誤扣在舊一期的已上課堂次，可保留原點名與評量並轉至同一學生的續購批次。",
+          "系統會攔截跨學生、跨科目、目標已滿、重複時段及已結算批次。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-13:session-entitlement-transfer-command"
+    ],
+    "date": "2026-08-13",
+    "version": "2026.08.13"
+  },
+  {
     "id": "staff-2026-08-12-in-app-bug-fixes",
     "publishedAt": "2026-08-12",
     "effectiveAt": null,
