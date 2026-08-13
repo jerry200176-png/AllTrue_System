@@ -39,7 +39,20 @@ jobs:
           echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           test -n "${PI_HOST_KEY:-}"
-          printf '%s\n' "$PI_HOST_KEY" > ~/.ssh/known_hosts
+          tmp_host_key=$(mktemp)
+          tmp_scanned_hosts=$(mktemp)
+          trap 'rm -f "$tmp_host_key" "$tmp_scanned_hosts"' EXIT
+          printf '%s\n' "$PI_HOST_KEY" > "$tmp_host_key"
+          pinned_fingerprint="$PI_HOST_KEY"
+          if fingerprint_from_key=$(ssh-keygen -lf "$tmp_host_key" 2>/dev/null | awk 'NR == 1 { print $2 }'); then
+            if [[ -n "$fingerprint_from_key" ]]; then
+              pinned_fingerprint="$fingerprint_from_key"
+            fi
+          fi
+          ssh-keyscan -T 10 -H "$PI_SSH_HOST" > "$tmp_scanned_hosts" 2>/dev/null
+          actual_fingerprints=$(ssh-keygen -lf "$tmp_scanned_hosts" 2>/dev/null | awk '{ print $2 }')
+          grep -Fqx "$pinned_fingerprint" <<< "$actual_fingerprints"
+          cp "$tmp_scanned_hosts" ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
       - name: Run SELECT-only billing probe on production
