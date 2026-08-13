@@ -34,4 +34,11 @@ assert.equal(source.includes('o.branch_id'), false, 'overdue evaluation actions 
 assert.equal(source.includes('o.session_date'), false, 'overdue evaluation actions must use SessionViewModel date');
 assert.match(source, /branchId: o\.branchId[\s\S]*sessionDate: o\.date/);
 
+// #236: a reactive week reload must retain the last good projection while the
+// next request is loading, and must not let an older response replace it.
+assert.equal(source.includes('weekSessions.value = [];'), false,
+  'week reload must not blank the schedule before the replacement is ready');
+assert.match(source, /const requestSequence = \+\+weekLoadSequence[\s\S]*requestSequence === weekLoadSequence/,
+  'week reload must guard against stale async responses');
+
 console.log('teacher home SessionViewModel contract tests passed');

@@ -1,5 +1,7 @@
 # Request: Phase-C allowlist resolve
 
+# kickoff 2026-08-13T10:20:08Z — Phase C write-back for #236: teacher-home projection fix PR #1764 merged as `a2e824ca103a5813c37f449a92b7ea96609c57db`, deploy run `31690470136` succeeded, and Calendar/Course Production Acceptance (read-only) run `31690622342` succeeded. The fix only changes client-side stale-load handling and canonical session-field deduplication; no production course, quota, receipt, payment, or configuration mutation is authorized or required. Public reply links GitHub issue #1763 and requests reporter verification.
+
 Trigger: `bug-phase-c-allowlist.yml`  
 Allowlist: in-app **#211** (PR #1528 / merge `c64806f` / deploy run `30516032349`, success 2026-07-30T05:14:45Z) — root cause confirmed (blocking message never told directors they could skip the fixed-weekday requirement by manually picking dates on the calendar; capability already existed), UI copy fix merged and deployed; public reply + resolved.  
 Also idempotent: **#210**, **#207**, **#205**, **#198** (skip if already resolved/closed).

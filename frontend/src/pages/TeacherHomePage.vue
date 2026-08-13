@@ -1122,7 +1122,7 @@ const weekOffset = ref(0);
 const loadingWeek = ref(true);
 const weekLoadError = ref('');
 const weekSessions = ref([]);
-let weekAbort = null;
+let weekLoadSequence = 0;
 
 const dayNames = ['日', '一', '二', '三', '四', '五', '六'];
 
@@ -1158,14 +1158,18 @@ const allBranchNames = computed(() => {
 });
 
 async function loadWeekSchedule() {
-  if (weekAbort) weekAbort.abort();
-  weekAbort = new AbortController();
+  // Multiple reactive inputs can refresh this view at once. fetchClassSessions
+  // does not currently accept AbortSignal, so ignore stale responses instead
+  // of allowing one to overwrite the current week/branch projection.
+  const requestSequence = ++weekLoadSequence;
   loadingWeek.value = true;
   weekLoadError.value = '';
-  weekSessions.value = [];
 
   const token = await getToken();
-  if (!token) { loadingWeek.value = false; return; }
+  if (!token) {
+    if (requestSequence === weekLoadSequence) loadingWeek.value = false;
+    return;
+  }
 
   const startStr = formatDate(weekStart.value);
   const endStr = formatDate(weekEnd.value);
@@ -1184,11 +1188,12 @@ async function loadWeekSchedule() {
       if (a.startTime !== b.startTime) return a.startTime.localeCompare(b.startTime);
       return (a.branchId || 0) - (b.branchId || 0);
     });
-    weekSessions.value = items;
+    if (requestSequence === weekLoadSequence) weekSessions.value = items;
   } catch (e) {
+    if (requestSequence !== weekLoadSequence) return;
     weekLoadError.value = '無法載入課表，請稍後重試';
   }
-  loadingWeek.value = false;
+  if (requestSequence === weekLoadSequence) loadingWeek.value = false;
 }
 
 const todayStr = computed(() => localTodayYmd());
@@ -1593,7 +1598,7 @@ watch(
 );
 
 onBeforeUnmount(() => {
-  if (weekAbort) weekAbort.abort();
+  weekLoadSequence++;
   stopPolling();
   document.removeEventListener('visibilitychange', onVisibilityChange);
   window.removeEventListener('alltrue-teacher-learning-progress-refresh', onLearningProgressRefreshEvent);

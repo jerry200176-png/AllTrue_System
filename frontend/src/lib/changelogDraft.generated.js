@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.08.13",
     "date": "2026-08-13",
     "title": "2026.08.13 草稿（未發布）",
-    "summary": "上線堂次跨續購批次的 owner 修復命令",
+    "summary": "上線堂次跨續購批次的 owner 修復命令；穩定教師首頁課表與評量投影",
     "audience": [
       "teacher",
       "director"
@@ -18,12 +18,14 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
-          "上線堂次跨續購批次的 owner 修復命令"
+          "上線堂次跨續購批次的 owner 修復命令",
+          "穩定教師首頁課表與評量投影"
         ]
       }
     ],
     "items": [
-      "上線堂次跨續購批次的 owner 修復命令"
+      "上線堂次跨續購批次的 owner 修復命令",
+      "穩定教師首頁課表與評量投影"
     ]
   },
   {
