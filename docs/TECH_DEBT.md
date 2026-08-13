@@ -681,6 +681,20 @@
 | 清償成本估計 | 低（短期作法本身已在本次一併完成；中長期作法各約半天） |
 | 不做的代價 | Accepted-risk 清單只增不減，幾個月後沒人記得當初為什麼要 ignore、是否還成立，新加入的工程師（或未來的 AI agent）看到一長串 ignore 只能照單全收，逐漸變成「反正 CI 會過」的安全放行章，而非真的持續被驗證的風險判斷 |
 
+### TD-077：正職老師「行政加給倍率」尚未實作，總發放金額目前只組合四項多乘標準
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P2 |
+| 發現日期 | 2026-08-13 |
+| 發現來源 | 建置正職結算「底薪＋總發放金額」（`FulltimeSettlementComposer`）時，對照 115.07 薪資規定公告全文才發現既有 `TeacherEligibilityPolicy` 的六項要件（每週16段、假日16小時、平日下午課、特殊表現、扣除、科目數獎金）沒有涵蓋公告第 3 條第 4 項「行政加給倍率」。 |
+| 影響模組 | `backend/app/Services/TeacherEligibilityPolicy.php`、`backend/app/Http/Controllers/TeacherEligibilityController.php`、`backend/app/Support/FulltimeSettlementComposer.php`、`teacher_payroll_events`／`_achievements`／`_deductions` 三張表（需要第四種分類或新表） |
+| 描述 | 公告「教師獎金倍率制度」列了 4 個可疊加的倍率項目：假日16小時、平日下午5段課、科目數(≥20科)、**行政加給(行政協助／總導師／副主任，0～10%，主任判定總部審核)**。目前系統只做了前三項＋特殊表現＋扣除，`FulltimeSettlementComposer::compose()` 算出的「教師倍率」因此對有行政職務的老師會少算最多 10 個百分點，總發放金額會偏低。 |
+| 建議做法 | 比照 `teacher_payroll_deductions` 的雙階段核准模式（主任確認＋總部審核），新增 `teacher_payroll_admin_allowances`（或擴充 `teacher_payroll_events`/`achievements` 其中一張既有表，需先評估哪個 shape 較合適），並在 `TeacherEligibilityPolicy::evaluate()` 補上第七個 component，`FulltimeSettlementComposer` 一併把它的 rate 疊加進教師倍率。 |
+| 清償成本估計 | 中（一張新表或擴充既有表 + policy 新 component + input/approve 端點 + 前端輸入面板一個新分頁，估半天～一天） |
+| 不做的代價 | 有行政職務(行政協助/總導師/副主任)的正職老師，總發放金額會系統性偏低最多 10%，需要主任手動加扣款彌補，容易被忽略或算錯 |
+
 ### TD-076：`schedules` 表用「不可變紀錄鏈」表達改期，二次改期時容易讓已取代的紀錄殘留（連續兩起 production 事故，2026-08-08）
 
 | 欄位 | 內容 |

@@ -1,3 +1,10 @@
+## 2026-08-13 — feat(payroll): 正職老師薪資要件頁面新增底薪與總發放金額
+
+<!-- release-notes: staff_update=staff-2026-08-13-fulltime-settlement-total-payout -->
+
+- 「正職老師薪資要件」頁面新增可編輯底薪欄位，並依既有六項符合要件（每週16段、假日16小時、平日下午課、特殊表現、扣除、科目數獎金）組成教師倍率與總發放金額。
+- 已知缺口：目前六項要件未涵蓋公告中的「行政加給倍率」（行政協助／總導師／副主任，0～10%），需另外排單補上。
+
 ## 2026-08-13 — fix(course): 上線堂次跨續購批次的 owner 修復命令
 
 <!-- release-notes: staff_update=staff-2026-08-13-session-entitlement-transfer-command -->
