@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "f7f0d7bf96f34e5da85f3792845e9ceb",
+  "session_id": "3421e74522f94c47b9215375ee8dfa43",
   "project": "alltrue",
-  "task_id": "revert-in-app-235-status",
+  "task_id": "fulltime-salary-settlement",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "c4fc99ed1046ec9f7b345c8816fb5689d4f4032d",
-  "branch": "chore/revert-in-app-235-status",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/revert-in-app-235-status",
-  "started_at": "2026-08-13T11:17:39Z",
+  "base_sha": "0c078ac4036f4d4d71f26192cc305279c5cb809a",
+  "branch": "chore/task-fulltime-salary-settlement",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/fulltime-salary-settlement",
+  "started_at": "2026-08-13T14:37:56Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": "codex",
+  "agent_cli": null,
   "gateway_version": "0.5.0"
 }
