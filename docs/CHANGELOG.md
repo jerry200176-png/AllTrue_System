@@ -1,3 +1,10 @@
+## 2026-08-12 — fix(course): 建立堂次跨續購批次轉移的可稽核核心
+
+<!-- release-notes: silent_ship=silent-2026-08-12-session-entitlement-transfer-core -->
+
+- 新增 transaction、稽核快照、執行後驗證與 drift-safe rollback 的 domain service；同步堂次、評量、點名與扣堂帳，但不更動發票、付款或收據。
+- 本 PR 只有 backend domain 與測試，沒有 UI 或可執行命令，無員工操作變更；正式 owner-gated 命令與員工更新由後續獨立 PR 上線。
+
 ## 2026-08-12 — fix(in-app-bugs): 排課、收費與收據顯示修正（#228–#233）
 
 <!-- release-notes: staff_update=staff-2026-08-12-in-app-bug-fixes -->
