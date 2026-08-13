@@ -189,4 +189,46 @@ class ManualSessionBookingTest extends TestCase
 
         $this->assertSame(3, (int) $package->fresh()->remaining_sessions);
     }
+
+    public function test_excused_future_occurrences_do_not_consume_shared_package_capacity(): void
+    {
+        $package = CoursePackage::create([
+            'student_id' => $this->student->id,
+            'campus_id' => 1,
+            'name' => 'Manual package with excused occurrences',
+            'billing_mode' => 'count',
+            'total_sessions' => 3,
+            'remaining_sessions' => 3,
+            'used_sessions' => 0,
+            'rate' => 500,
+            'rate_unit' => 'session',
+            'class_type' => 'one_on_one',
+            'paid' => true,
+            'stop' => false,
+            'enabled' => true,
+        ]);
+
+        $this->course->PackageID = $package->id;
+        $this->course->save();
+
+        foreach ([7, 14, 21] as $days) {
+            ClassSession::create([
+                'StudentClassID' => $this->course->ID,
+                'SessionDate' => Carbon::today()->addDays($days)->toDateString(),
+                'StartTime' => '16:00:00',
+                'EndTime' => '17:00:00',
+                'Status' => 'excused',
+            ]);
+        }
+
+        $this->withHeaders($this->headers())
+            ->postJson("/api/v1/student-classes/{$this->course->ID}/manual-sessions/check", [
+                'session_date' => Carbon::today()->addDays(28)->toDateString(),
+                'start_time' => '16:00',
+            ])
+            ->assertOk()
+            ->assertJsonPath('can_add', true)
+            ->assertJsonPath('reserved_sessions', 0)
+            ->assertJsonPath('available_sessions', 3);
+    }
 }

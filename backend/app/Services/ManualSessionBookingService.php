@@ -22,7 +22,9 @@ use Illuminate\Support\Facades\Schema;
 class ManualSessionBookingService
 {
     public const POLICY = 'manual_occurrence';
-    private const EXCLUDED_SESSION_STATUSES = ['cancelled', 'voided', 'leave', 'leave_adjusted'];
+    // Keep reservation capacity aligned with ScheduleGuardService and the
+    // attendance/quota rules: an excused occurrence is not a live reservation.
+    private const EXCLUDED_SESSION_STATUSES = ['cancelled', 'voided', 'leave', 'leave_adjusted', 'excused'];
 
     public function __construct(private ScheduleGuardService $scheduleGuardService) {}
 

@@ -3095,7 +3095,9 @@ class StudentClassController extends Controller
                 $reserved = (int) ClassSession::query()
                     ->whereIn('StudentClassID', $memberIds)
                     ->whereDate('SessionDate', '>=', $todayYmd)
-                    ->whereNotIn('Status', ['cancelled', 'voided', 'leave', 'leave_adjusted'])
+                    // #1733/#228/#229: excused occurrences do not consume the
+                    // shared package's future reservation capacity.
+                    ->whereNotIn('Status', ['cancelled', 'voided', 'leave', 'leave_adjusted', 'excused'])
                     ->count();
                 $remaining = $package ? max(0, (int) $package->computeRemainingFromLedger()) : 0;
                 $packageHasCapacity = $package !== null && $reserved < $remaining;
