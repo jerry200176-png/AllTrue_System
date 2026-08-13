@@ -213,6 +213,32 @@ class TeacherEligibilityInputController extends Controller
         return response()->json(['id' => $id, 'status' => 'approved']);
     }
 
+    /**
+     * POST /api/v1/finance/teacher-eligibility/salary-profiles
+     * 正職老師底薪(可隨時間調整，effective_from 之後的月份結算會採用最新一筆）。
+     */
+    public function storeSalaryProfile(Request $request)
+    {
+        $data = $request->validate([
+            'teacher_id' => ['required', 'integer', 'min:1'],
+            'branch_id' => ['nullable', 'integer', 'min:1'],
+            'base_salary' => ['required', 'numeric', 'min:0', 'max:99999999.99'],
+            'effective_from' => ['required', 'date'],
+        ]);
+        $branchId = $this->resolveWriteBranch($request, $data['branch_id'] ?? null);
+        $this->assertTeacherScope($request, $data['teacher_id'], $branchId);
+
+        $profile = \App\Models\FulltimeSalaryProfile::create([
+            'teacher_id' => $data['teacher_id'],
+            'branch_id' => $branchId,
+            'base_salary' => $data['base_salary'],
+            'effective_from' => $data['effective_from'],
+            'created_by' => $this->actorId($request),
+        ]);
+
+        return response()->json($profile, 201);
+    }
+
     private function ensureTables(): void
     {
         foreach (['teacher_payroll_events', 'teacher_payroll_achievements', 'teacher_payroll_deductions'] as $table) {

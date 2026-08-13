@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-13-fulltime-settlement-total-payout
+    published_at: "2026-08-13"
+    audiences:
+      - director
+    importance: major
+    title: 正職薪資總發放金額
+    summary: 新增底薪欄位，自動組成教師倍率與總發放金額
+    items:
+      - category: added
+        text: 「正職老師薪資要件」頁面新增可編輯底薪欄位，自動算出教師倍率與總發放金額。
+      - category: action_required
+        text: 行政加給倍率（行政協助／總導師／副主任）尚未計入，主任需自行加算，之後會補上。
+    source_refs:
+      - "changelog:2026-08-13:fulltime-settlement-total-payout"
+
   - id: staff-2026-08-13-monthly-projection-exception
     published_at: "2026-08-13"
     audiences:

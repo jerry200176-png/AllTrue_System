@@ -114,6 +114,43 @@ export const staffUpdates = [
     "version": "2026.08.13"
   },
   {
+    "id": "staff-2026-08-13-fulltime-settlement-total-payout",
+    "publishedAt": "2026-08-13",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "正職薪資總發放金額",
+    "summary": "新增底薪欄位，自動組成教師倍率與總發放金額",
+    "items": [
+      "「正職老師薪資要件」頁面新增可編輯底薪欄位，自動算出教師倍率與總發放金額。",
+      "行政加給倍率（行政協助／總導師／副主任）尚未計入，主任需自行加算，之後會補上。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "「正職老師薪資要件」頁面新增可編輯底薪欄位，自動算出教師倍率與總發放金額。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "行政加給倍率（行政協助／總導師／副主任）尚未計入，主任需自行加算，之後會補上。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-13:fulltime-settlement-total-payout"
+    ],
+    "date": "2026-08-13",
+    "version": "2026.08.13"
+  },
+  {
     "id": "staff-2026-08-12-in-app-bug-fixes",
     "publishedAt": "2026-08-12",
     "effectiveAt": null,

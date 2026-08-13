@@ -8,13 +8,19 @@ export const changelogDraftNotes = [
     "version": "2026.08.13",
     "date": "2026-08-13",
     "title": "2026.08.13 草稿（未發布）",
-    "summary": "上線堂次跨續購批次的 owner 修復命令；穩定教師首頁課表與評量投影",
+    "summary": "正職老師薪資要件頁面新增底薪與總發放金額；上線堂次跨續購批次的 owner 修復命令",
     "audience": [
       "teacher",
       "director"
     ],
     "draft": true,
     "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "正職老師薪資要件頁面新增底薪與總發放金額"
+        ]
+      },
       {
         "title": "修正內容",
         "items": [
@@ -25,6 +31,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "正職老師薪資要件頁面新增底薪與總發放金額",
       "上線堂次跨續購批次的 owner 修復命令",
       "穩定教師首頁課表與評量投影",
       "月例外堂次投影與關閉"
