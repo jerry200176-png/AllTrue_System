@@ -381,6 +381,34 @@ class MonthlyRenewTest extends TestCase
             'student_course_id' => $course->ID,
         ]);
 
+        $sameDayAnchor = Schedule::create([
+            'student_id' => $student->id,
+            'teacher_id' => $course->TeacherID,
+            'subject' => '物理',
+            'day_of_week' => 3,
+            'start_time' => '09:00',
+            'end_time' => '11:00',
+            'branch_id' => 1,
+            'schedule_date' => '2026-04-08',
+            'status' => 'rescheduled',
+            'type' => 'normal',
+            'student_course_id' => $course->ID,
+        ]);
+        $sameDayDestination = Schedule::create([
+            'student_id' => $student->id,
+            'teacher_id' => $course->TeacherID,
+            'subject' => '物理',
+            'day_of_week' => 3,
+            'start_time' => '10:00',
+            'end_time' => '12:00',
+            'branch_id' => 1,
+            'schedule_date' => '2026-04-08',
+            'status' => 'scheduled',
+            'type' => 'normal',
+            'student_course_id' => $course->ID,
+            'original_schedule_id' => $sameDayAnchor->id,
+        ]);
+
         $crossDateAnchor = Schedule::create([
             'student_id' => $student->id,
             'teacher_id' => $course->TeacherID,
@@ -445,6 +473,7 @@ class MonthlyRenewTest extends TestCase
         ]);
         $this->assertSame('scheduled', (string) $extraSchedule->fresh()->status);
         $this->assertSame('scheduled', (string) $crossDateDestination->fresh()->status);
+        $this->assertSame('cancelled', (string) $sameDayDestination->fresh()->status);
         $this->assertDatabaseHas('ClassSession', [
             'id' => $session->id,
             'IsContractException' => 1,
@@ -491,7 +520,7 @@ class MonthlyRenewTest extends TestCase
         ]);
         $substitute = Schedule::create([
             'student_id' => $student->id,
-            'teacher_id' => $course->TeacherID,
+            'teacher_id' => 1234,
             'subject' => '物理',
             'day_of_week' => 3,
             'start_time' => '10:00',

@@ -1438,7 +1438,7 @@ class ClassSessionController extends Controller
         }
 
         $schedules = $query->get()
-            ->filter(fn (Schedule $schedule): bool => $this->isCancelableProjectedExceptionSchedule($schedule, $date))
+            ->filter(fn (Schedule $schedule): bool => $this->isCancelableProjectedExceptionSchedule($schedule, $date, $session))
             ->values();
         if ($schedules->isEmpty()) {
             return;
@@ -1478,7 +1478,11 @@ class ClassSessionController extends Controller
         );
     }
 
-    private function isCancelableProjectedExceptionSchedule(Schedule $schedule, string $sessionDate): bool
+    private function isCancelableProjectedExceptionSchedule(
+        Schedule $schedule,
+        string $sessionDate,
+        ClassSession $session
+    ): bool
     {
         if (!$this->isMaterializableScheduledException($schedule, $sessionDate, true)) {
             return false;
@@ -1489,10 +1493,23 @@ class ClassSessionController extends Controller
             return true;
         }
 
-        // A valid anchor identifies a substitute/reschedule assignment, not
-        // the projected exception source. An orphaned anchor is still safe to
-        // cancel because it cannot be restored by a schedule relationship.
-        return !Schedule::query()->whereKey($anchorId)->exists();
+        $anchorExists = Schedule::query()->whereKey($anchorId)->exists();
+        if (!$anchorExists) {
+            // An orphaned anchor cannot be restored by a schedule relationship.
+            return true;
+        }
+
+        // Same-day substitute rows point at the original schedule but carry a
+        // different teacher. They are an independent assignment and must
+        // survive cancelling the projected contract exception. A same-day
+        // reschedule destination keeps the contract teacher and is owned by
+        // this projected occurrence, so it is cancelled with the occurrence.
+        $contractTeacherId = (int) StudentClass::query()
+            ->where('ID', (int) $session->StudentClassID)
+            ->value('TeacherID');
+
+        return $contractTeacherId <= 0
+            || (int) ($schedule->teacher_id ?? 0) === $contractTeacherId;
     }
 
     /**
