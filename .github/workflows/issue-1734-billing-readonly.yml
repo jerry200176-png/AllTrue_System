@@ -38,14 +38,8 @@ jobs:
           mkdir -p ~/.ssh
           echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          if ssh-keyscan -H "$PI_SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null; then
-            :
-          elif [[ -n "${PI_HOST_KEY:-}" ]]; then
-            printf '%s\n' "$PI_HOST_KEY" > ~/.ssh/known_hosts
-          else
-            echo "::error::no host key" >&2
-            exit 1
-          fi
+          test -n "${PI_HOST_KEY:-}"
+          printf '%s\n' "$PI_HOST_KEY" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
       - name: Run SELECT-only billing probe on production
@@ -93,7 +87,7 @@ jobs:
           $invoiceIds = array_values(array_filter(array_map(fn (array $row) => $row['id'] ?? null, $invoices)));
 
           $payments = $invoiceIds === [] ? [] : $rows('Payment', [
-              'id', 'InvoiceID', 'Amount', 'PaidAt', 'Method', 'receipt_url', 'payment_report_id', 'created_at',
+              'id', 'InvoiceID', 'Amount', 'PaidAt', 'Method', 'payment_report_id', 'created_at',
           ], fn ($query) => $query->whereIn('InvoiceID', $invoiceIds)->orderBy('id'));
           $invoiceItems = $invoiceIds === [] ? [] : $rows('InvoiceItem', [
               'id', 'InvoiceID', 'StudentClassID', 'Amount', 'PeriodStart', 'PeriodEnd', 'created_at',
@@ -103,11 +97,16 @@ jobs:
               'payment_method', 'status', 'confirmed_at', 'payment_id', 'voided_at', 'created_at',
           ], fn ($query) => $query->where('StudentClassID', $studentClassId)->orderBy('id'));
 
-          $receiptEvidence = array_map(function (array $row): array {{
+          $hasReceiptUrlColumn = in_array('receipt_url', $existingColumns('Payment', ['receipt_url']), true);
+          $receiptEvidence = array_map(function (array $row) use ($db, $hasReceiptUrlColumn): array {{
               return [
                   'payment_id' => $row['id'] ?? null,
                   'invoice_id' => $row['InvoiceID'] ?? null,
-                  'has_receipt_url' => !empty($row['receipt_url'] ?? null),
+                  'has_receipt_url' => $hasReceiptUrlColumn && $db::table('Payment')
+                      ->where('id', $row['id'] ?? null)
+                      ->whereNotNull('receipt_url')
+                      ->where('receipt_url', '<>', '')
+                      ->exists(),
               ];
           }}, $payments);
 
