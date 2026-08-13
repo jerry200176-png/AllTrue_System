@@ -83,6 +83,37 @@ WHERE candidate.StudentID IN (373,374)
   AND candidate.SubjectID IN (SELECT SubjectID FROM StudentClass WHERE ID IN (1681,1682))
 ORDER BY candidate.StudentID,candidate.SubjectID,candidate.ID;"
 
+echo "--- every contract with subject and financial evidence ---"
+"${M[@]}" -e "
+SELECT CONCAT_WS('|',sc.StudentID,s.name,sc.ID,IFNULL(sc.SubjectID,'null'),IFNULL(sub.Subject_Name,'null'),
+ sc.TeacherID,sc.Stop,sc.ScheduleMode,sc.SessionCount,IFNULL(sc.UsedSessions,'null'),
+ IFNULL(sc.RemainingSessions,'null'),IFNULL(sc.Charge,'null'),IFNULL(sc.Paid,'null'),
+ (SELECT COUNT(*) FROM ClassSession cs WHERE cs.StudentClassID=sc.ID AND LOWER(cs.Status) IN ('scheduled','attended','completed','late')),
+ IFNULL((SELECT GROUP_CONCAT(CONCAT(i.id,':',i.Status,':total=',i.TotalAmount,':paid=',i.PaidAmount,':date=',i.IssueDate) ORDER BY i.id SEPARATOR ',') FROM Invoice i WHERE i.StudentClassID=sc.ID),'none'),
+ IFNULL((SELECT GROUP_CONCAT(CONCAT(p.id,':amount=',p.Amount,':date=',DATE(p.PaidAt),':method=',IFNULL(p.Method,'null')) ORDER BY p.id SEPARATOR ',') FROM Payment p JOIN Invoice i ON i.id=p.InvoiceID WHERE i.StudentClassID=sc.ID),'none'))
+FROM StudentClass sc
+JOIN Student s ON s.id=sc.StudentID
+LEFT JOIN Subject sub ON sub.id=sc.SubjectID
+WHERE sc.StudentID IN (373,374)
+ORDER BY sc.StudentID,sc.ID;"
+
+echo "--- all same-Chinese-subject candidates including stopped/full batches ---"
+"${M[@]}" -e "
+SELECT CONCAT_WS('|',sc.StudentID,sc.ID,sc.SubjectID,IFNULL(sub.Subject_Name,'null'),sc.Stop,
+ sc.ScheduleMode,sc.SessionCount,IFNULL(sc.UsedSessions,'null'),IFNULL(sc.RemainingSessions,'null'),
+ (SELECT COUNT(*) FROM ClassSession cs WHERE cs.StudentClassID=sc.ID AND LOWER(cs.Status) IN ('scheduled','attended','completed','late')),
+ IFNULL((SELECT GROUP_CONCAT(CONCAT(i.id,':',i.Status,':total=',i.TotalAmount,':paid=',i.PaidAmount) ORDER BY i.id SEPARATOR ',') FROM Invoice i WHERE i.StudentClassID=sc.ID),'none'))
+FROM StudentClass sc
+LEFT JOIN Subject sub ON sub.id=sc.SubjectID
+JOIN (
+ SELECT StudentID,SubjectID
+ FROM StudentClass
+ WHERE ID IN (1681,1682)
+) source_subject
+ ON source_subject.StudentID=sc.StudentID AND source_subject.SubjectID=sc.SubjectID
+WHERE sc.StudentID IN (373,374)
+ORDER BY sc.StudentID,sc.ID;"
+
 echo "--- exact transfer sessions remain on source ---"
 "${M[@]}" -e "
 SELECT CONCAT_WS('|',cs.id,cs.StudentClassID,sc.StudentID,sc.SubjectID,IFNULL(cs.SubjectID,'inherit'),
