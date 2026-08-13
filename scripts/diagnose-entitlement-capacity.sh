@@ -13,7 +13,7 @@ echo "ALLOWLIST student_ids=374,373 batches=1681,1682,2649,2606 sessions=23157,2
 
 echo "--- exact batch identity and subject ---"
 "${M[@]}" -e "
-SELECT CONCAT_WS('|',sc.ID,sc.StudentID,s.name,s.CampusID,sc.SubjectID,sub.Subject_Name,
+SELECT CONCAT_WS('|',sc.ID,sc.StudentID,s.name,s.CampusID,IFNULL(sc.SubjectID,'null'),IFNULL(sub.Subject_Name,'null'),
  sc.TeacherID,sc.Stop,sc.ScheduleMode,sc.SessionCount,IFNULL(sc.UsedSessions,'null'),
  IFNULL(sc.RemainingSessions,'null'),IFNULL(sc.Paid,'null'),IFNULL(sc.PackageID,'null'))
 FROM StudentClass sc
@@ -35,11 +35,11 @@ SELECT CONCAT_WS('|',cs.StudentClassID,cs.id,sc.StudentID,s.name,sc.SubjectID,
    ELSE 'consumed_session'
  END,
  (SELECT COUNT(*) FROM LearningRecord lr WHERE lr.ClassSessionID=cs.id),
- (SELECT GROUP_CONCAT(CONCAT(lr.id,':',lr.Status,':class=',lr.StudentClassID) ORDER BY lr.id SEPARATOR ',') FROM LearningRecord lr WHERE lr.ClassSessionID=cs.id),
+ IFNULL((SELECT GROUP_CONCAT(CONCAT(lr.id,':',lr.Status,':class=',lr.StudentClassID) ORDER BY lr.id SEPARATOR ',') FROM LearningRecord lr WHERE lr.ClassSessionID=cs.id),'none'),
  (SELECT COUNT(*) FROM StudentSingIn si WHERE si.ClassSessionID=cs.id AND si.VoidedAt IS NULL),
- (SELECT GROUP_CONCAT(CONCAT(si.id,':',si.Status,':deduct=',IFNULL(si.SessionDeducted,'null'),':class=',si.StudentClassID) ORDER BY si.id SEPARATOR ',') FROM StudentSingIn si WHERE si.ClassSessionID=cs.id),
+ IFNULL((SELECT GROUP_CONCAT(CONCAT(si.id,':',si.Status,':deduct=',IFNULL(si.SessionDeducted,'null'),':class=',si.StudentClassID) ORDER BY si.id SEPARATOR ',') FROM StudentSingIn si WHERE si.ClassSessionID=cs.id),'none'),
  (SELECT COUNT(*) FROM session_deduction_ledger dl WHERE dl.class_session_id=cs.id),
- (SELECT GROUP_CONCAT(CONCAT(dl.id,':',dl.event_type,':',dl.source,':class=',dl.student_class_id) ORDER BY dl.id SEPARATOR ',') FROM session_deduction_ledger dl WHERE dl.class_session_id=cs.id),
+ IFNULL((SELECT GROUP_CONCAT(CONCAT(dl.id,':',dl.event_type,':',dl.source,':class=',dl.student_class_id) ORDER BY dl.id SEPARATOR ',') FROM session_deduction_ledger dl WHERE dl.class_session_id=cs.id),'none'),
  LEFT(REPLACE(REPLACE(IFNULL(cs.Note,''),'\n',' '),'\r',' '),160))
 FROM ClassSession cs
 JOIN StudentClass sc ON sc.ID=cs.StudentClassID
@@ -52,11 +52,12 @@ ORDER BY cs.StudentClassID,cs.SessionDate,cs.StartTime,cs.id;"
 
 echo "--- persisted counters and canonical counter components ---"
 "${M[@]}" -e "
-SELECT CONCAT_WS('|',sc.ID,sc.SessionCount,sc.UsedSessions,sc.RemainingSessions,
+SELECT CONCAT_WS('|',sc.ID,sc.SessionCount,IFNULL(sc.UsedSessions,'null'),IFNULL(sc.RemainingSessions,'null'),
  (SELECT COUNT(*) FROM ClassSession cs WHERE cs.StudentClassID=sc.ID AND LOWER(cs.Status) IN ('attended','completed','late')),
  (SELECT COUNT(DISTINCT COALESCE(NULLIF(si.ClassSessionID,0),si.id)) FROM StudentSingIn si WHERE si.StudentClassID=sc.ID AND si.VoidedAt IS NULL AND si.SessionDeducted=1),
  (SELECT COUNT(*) FROM ClassSession cs WHERE cs.StudentClassID=sc.ID AND LOWER(cs.Status) IN ('scheduled','attended','completed','late')),
  (SELECT COUNT(*) FROM ClassSession cs WHERE cs.StudentClassID=sc.ID AND LOWER(cs.Status)='scheduled'),
+ (SELECT COUNT(DISTINCT CONCAT(DATE(lr.SessionDate),'|',IFNULL(LEFT(lr.StartTime,5),''))) FROM LearningRecord lr WHERE lr.StudentClassID=sc.ID AND lr.Status='approved' AND (lr.ClassSessionID IS NULL OR lr.ClassSessionID<=0) AND lr.SessionDate IS NOT NULL),
  (SELECT COALESCE(SUM(CASE WHEN dl.event_type='deduct' THEN 1 WHEN dl.event_type='reverse' THEN -1 ELSE 0 END),0) FROM session_deduction_ledger dl WHERE dl.student_class_id=sc.ID AND dl.source IN ('attendance','retro_leave','status_adjust')))
 FROM StudentClass sc WHERE sc.ID IN (1681,1682,2649,2606)
 ORDER BY sc.StudentID,sc.ID;"
@@ -72,8 +73,8 @@ ORDER BY cs.StudentClassID,cs.SessionDate,cs.StartTime;"
 
 echo "--- active same-subject candidate batches (proposal evidence only) ---"
 "${M[@]}" -e "
-SELECT CONCAT_WS('|',candidate.ID,candidate.StudentID,candidate.SubjectID,sub.Subject_Name,
- candidate.SessionCount,candidate.UsedSessions,candidate.RemainingSessions,candidate.Stop,
+SELECT CONCAT_WS('|',candidate.ID,candidate.StudentID,IFNULL(candidate.SubjectID,'null'),IFNULL(sub.Subject_Name,'null'),
+ candidate.SessionCount,IFNULL(candidate.UsedSessions,'null'),IFNULL(candidate.RemainingSessions,'null'),candidate.Stop,
  (SELECT COUNT(*) FROM ClassSession cs WHERE cs.StudentClassID=candidate.ID AND LOWER(cs.Status) IN ('scheduled','attended','completed','late')))
 FROM StudentClass candidate
 LEFT JOIN Subject sub ON sub.id=candidate.SubjectID
