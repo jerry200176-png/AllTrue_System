@@ -957,7 +957,7 @@ class ClassSessionController extends Controller
         ?string $requestedStart
     ): ?array {
         $query = Schedule::query()
-            ->where('student_course_id', (int) $studentClass->ID)
+            ->where('student_course_id', (int) $studentClass->getAttribute('ID'))
             ->whereDate('schedule_date', $sessionDate)
             ->where('status', 'scheduled');
 
