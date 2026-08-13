@@ -1334,10 +1334,10 @@ function fillNextPendingLearning() {
   const o = overdueRecords.value[0];
   if (o) {
     goFillRecord({
-      branchId: o.branch_id,
+      branchId: o.branchId,
       recordId: null,
       classSessionId: o.id,
-      sessionDate: o.session_date,
+      sessionDate: o.date,
     });
     return;
   }
@@ -1358,10 +1358,10 @@ function openOverdueTask() {
   const o = overdueRecords.value[0];
   if (o) {
     goFillRecord({
-      branchId: o.branch_id,
+      branchId: o.branchId,
       recordId: null,
       classSessionId: o.id,
-      sessionDate: o.session_date,
+      sessionDate: o.date,
     });
     return;
   }

@@ -30,4 +30,8 @@ for (const field of ['s.date', 's.startTime', 's.studentName', 's.branchId', 's.
   assert.equal(source.includes(field), true, `TeacherHomePage must read SessionViewModel field ${field}`);
 }
 
+assert.equal(source.includes('o.branch_id'), false, 'overdue evaluation actions must use SessionViewModel branchId');
+assert.equal(source.includes('o.session_date'), false, 'overdue evaluation actions must use SessionViewModel date');
+assert.match(source, /branchId: o\.branchId[\s\S]*sessionDate: o\.date/);
+
 console.log('teacher home SessionViewModel contract tests passed');
