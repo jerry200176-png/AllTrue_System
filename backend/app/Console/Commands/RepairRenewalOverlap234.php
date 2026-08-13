@@ -75,7 +75,7 @@ class RepairRenewalOverlap234 extends Command
             SessionDeductionService::recomputeCounters(self::OLD_CLASS);
             $used = (int) DB::table('StudentClass')->where('ID', self::OLD_CLASS)->value('UsedSessions');
             DB::table('StudentClass')->where('ID', self::OLD_CLASS)->update(['Charge' => $used * 1100]);
-            SessionCorrection::create([
+            $correction = new SessionCorrection([
                 'session_id' => self::OLD_SESSION,
                 'replaced_by_session_id' => self::NEW_SESSION,
                 'correction_reason' => 'duplicate_after_renewal',
@@ -88,6 +88,7 @@ class RepairRenewalOverlap234 extends Command
                 'keeper_learning_record_id' => DB::table('LearningRecord')->where('ClassSessionID', self::NEW_SESSION)->whereNull('VoidedAt')->value('id'),
                 'snapshot_before' => $plan['before'],
             ]);
+            $correction->save();
         });
         $this->info('Applied #234 repair; rerun --dry-run to verify.');
         return self::SUCCESS;
