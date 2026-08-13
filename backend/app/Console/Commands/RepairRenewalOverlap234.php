@@ -67,7 +67,11 @@ class RepairRenewalOverlap234 extends Command
             DB::table('LearningRecord')->where('ClassSessionID', self::OLD_SESSION)->whereNull('VoidedAt')->update([
                 'VoidedAt' => now(), 'updated_at' => now(),
             ]);
-            SessionDeductionService::reverseForSession(self::OLD_CLASS, self::OLD_SESSION, 'renewal_overlap_repair', $this->actorId(), self::REF);
+            // The counter projection only includes canonical attendance sources.
+            // Keep the reason in the immutable note, but use `retro_leave` for
+            // the compensating ledger event so the reversal participates in
+            // every counter/reconciliation projection.
+            SessionDeductionService::reverseForSession(self::OLD_CLASS, self::OLD_SESSION, 'retro_leave', $this->actorId(), self::REF);
             SessionDeductionService::recomputeCounters(self::OLD_CLASS);
             $used = (int) DB::table('StudentClass')->where('ID', self::OLD_CLASS)->value('UsedSessions');
             DB::table('StudentClass')->where('ID', self::OLD_CLASS)->update(['Charge' => $used * 1100]);

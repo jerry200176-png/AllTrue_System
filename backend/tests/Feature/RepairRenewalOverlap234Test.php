@@ -21,7 +21,14 @@ class RepairRenewalOverlap234Test extends TestCase
         foreach ([[30430, 1050], [30421, 3226]] as [$id, $class]) {
             DB::table('ClassSession')->insert(['id' => $id, 'StudentClassID' => $class, 'SessionDate' => '2026-08-08', 'StartTime' => '15:00:00', 'EndTime' => '17:00:00', 'Status' => 'attended', 'Note' => '', 'created_at' => now(), 'updated_at' => now()]);
         }
-        foreach ([[1050, 30430], [3226, 30421]] as [$class, $session]) DB::table('session_deduction_ledger')->insert(['student_class_id' => $class, 'class_session_id' => $session, 'event_type' => 'deduct', 'source' => 'attendance', 'created_at' => now(), 'updated_at' => now()]);
+        // The old contract already has seven legitimate completed sessions;
+        // 30430 is its eighth, duplicated renewal-overlap attendance.
+        foreach (range(1, 7) as $id) {
+            DB::table('ClassSession')->insert(['id' => 30300 + $id, 'StudentClassID' => 1050, 'SessionDate' => '2026-07-' . str_pad((string) $id, 2, '0', STR_PAD_LEFT), 'StartTime' => '15:00:00', 'EndTime' => '17:00:00', 'Status' => 'attended', 'Note' => '', 'created_at' => now(), 'updated_at' => now()]);
+        }
+        foreach (array_merge([[1050, 30430], [3226, 30421]], array_map(fn (int $id) => [1050, 30300 + $id], range(1, 7))) as [$class, $session]) {
+            DB::table('session_deduction_ledger')->insert(['student_class_id' => $class, 'class_session_id' => $session, 'event_type' => 'deduct', 'source' => 'attendance', 'created_at' => now(), 'updated_at' => now()]);
+        }
     }
 
     public function test_dry_run_is_fail_closed_and_does_not_mutate(): void
@@ -50,6 +57,7 @@ class RepairRenewalOverlap234Test extends TestCase
         $this->assertSame(1, (int) DB::table('StudentClass')->where('ID', 1050)->value('RemainingSessions'));
         $this->assertSame(7700, (int) DB::table('StudentClass')->where('ID', 1050)->value('Charge'));
         $this->assertSame(1, DB::table('session_deduction_ledger')->where('student_class_id', 1050)->where('class_session_id', 30430)->where('event_type', 'reverse')->count());
+        $this->assertSame('retro_leave', DB::table('session_deduction_ledger')->where('student_class_id', 1050)->where('class_session_id', 30430)->where('event_type', 'reverse')->value('source'));
         $this->assertSame('attended', DB::table('ClassSession')->where('id', 30421)->value('Status'));
     }
 }
