@@ -12,6 +12,7 @@ use App\Models\StudentSignIn;
 use App\Models\User;
 use App\Models\UserCampus;
 use App\Services\ClassSessionMaterializationService;
+use App\Services\ContractScheduleMatcher;
 use App\Services\EnrollmentService;
 use App\Services\LearningRecordResurrectionPolicy;
 use App\Services\ScheduleGuardService;
@@ -912,7 +913,9 @@ class ClassSessionController extends Controller
             'EndTime'              => $slot['end_time'],
             'Status'               => 'scheduled',
             'Note'                 => 'projected-monthly-materialized',
-            'IsContractException'  => 0,
+            // A persisted schedule exception is a one-off occurrence even
+            // when its stored slot shares the contract's clock time.
+            'IsContractException'  => $scheduledException !== null ? 1 : 0,
         ]);
         $created = $result['created'];
         $session = $result['session'];
@@ -1409,6 +1412,14 @@ class ClassSessionController extends Controller
      */
     private function cancelLinkedScheduleExceptions(ClassSession $session): void
     {
+        // This hook is reached for every ClassSession cancellation. Only a
+        // projected monthly exception owns an unmaterialized schedule row;
+        // ordinary contract sessions and manually-created substitute sessions
+        // must not cancel their same-day schedule assignments.
+        if (!$this->isProjectedMonthlyExceptionSession($session)) {
+            return;
+        }
+
         $date = $session->SessionDate ? substr((string) $session->SessionDate, 0, 10) : null;
         $start = substr((string) $session->StartTime, 0, 5);
         $end = substr((string) $session->EndTime, 0, 5);
@@ -1427,7 +1438,7 @@ class ClassSessionController extends Controller
         }
 
         $schedules = $query->get()
-            ->filter(fn (Schedule $schedule): bool => $this->isMaterializableScheduledException($schedule, $date, true))
+            ->filter(fn (Schedule $schedule): bool => $this->isCancelableProjectedExceptionSchedule($schedule, $date))
             ->values();
         if ($schedules->isEmpty()) {
             return;
@@ -1436,6 +1447,52 @@ class ClassSessionController extends Controller
         Schedule::query()
             ->whereIn('id', $schedules->pluck('id')->all())
             ->update(['status' => 'cancelled', 'updated_at' => now()]);
+    }
+
+    private function isProjectedMonthlyExceptionSession(ClassSession $session): bool
+    {
+        $note = (string) ($session->Note ?? '');
+        if (!str_contains($note, 'projected-monthly-materialized')) {
+            return false;
+        }
+
+        if ((int) ($session->IsContractException ?? 0) === 1) {
+            return true;
+        }
+
+        // Legacy projected rows were explicitly created with the old 0 flag.
+        // Recover only the off-contract case; a normal projected occurrence
+        // still must not cancel a same-day substitute schedule.
+        $studentClass = StudentClass::query()
+            ->where('ID', (int) $session->StudentClassID)
+            ->first();
+        if (!$studentClass || !$session->SessionDate) {
+            return false;
+        }
+
+        return !app(ContractScheduleMatcher::class)->matchesContract(
+            substr((string) $session->SessionDate, 0, 10),
+            substr((string) $session->StartTime, 0, 5),
+            $session->EndTime ? substr((string) $session->EndTime, 0, 5) : null,
+            $studentClass
+        );
+    }
+
+    private function isCancelableProjectedExceptionSchedule(Schedule $schedule, string $sessionDate): bool
+    {
+        if (!$this->isMaterializableScheduledException($schedule, $sessionDate, true)) {
+            return false;
+        }
+
+        $anchorId = (int) ($schedule->original_schedule_id ?? 0);
+        if ($anchorId <= 0) {
+            return true;
+        }
+
+        // A valid anchor identifies a substitute/reschedule assignment, not
+        // the projected exception source. An orphaned anchor is still safe to
+        // cancel because it cannot be restored by a schedule relationship.
+        return !Schedule::query()->whereKey($anchorId)->exists();
     }
 
     /**

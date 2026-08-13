@@ -447,6 +447,10 @@ class MonthlyRenewTest extends TestCase
         $this->assertSame('scheduled', (string) $crossDateDestination->fresh()->status);
         $this->assertDatabaseHas('ClassSession', [
             'id' => $session->id,
+            'IsContractException' => 1,
+        ]);
+        $this->assertDatabaseHas('ClassSession', [
+            'id' => $session->id,
             'Status' => 'cancelled',
         ]);
 
@@ -454,6 +458,68 @@ class MonthlyRenewTest extends TestCase
         // date; session-dates intentionally keeps those occurrences visible.
         // The cancellation assertion must stay scoped to the linked exception
         // row rather than treating every date occurrence as that ClassSession.
+    }
+
+    public function test_cancelling_a_regular_session_does_not_cancel_same_day_substitute_schedule(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-regular-session-cancel@example.com');
+        $student = $this->createStudent();
+
+        $course = $this->createStudentClass($student->id, [
+            'ScheduleMode' => 'date',
+            'StartDate' => '2026-04-01',
+            'EndDate' => '2026-04-30',
+            'SessionCount' => 0,
+            'RemainingSessions' => 0,
+            'week' => 3,
+            'time' => '10:00:00',
+            'SessionDuration' => 120,
+        ]);
+
+        $anchor = Schedule::create([
+            'student_id' => $student->id,
+            'teacher_id' => $course->TeacherID,
+            'subject' => '物理',
+            'day_of_week' => 3,
+            'start_time' => '10:00',
+            'end_time' => '12:00',
+            'branch_id' => 1,
+            'schedule_date' => '2026-04-08',
+            'status' => 'rescheduled',
+            'type' => 'normal',
+            'student_course_id' => $course->ID,
+        ]);
+        $substitute = Schedule::create([
+            'student_id' => $student->id,
+            'teacher_id' => $course->TeacherID,
+            'subject' => '物理',
+            'day_of_week' => 3,
+            'start_time' => '10:00',
+            'end_time' => '12:00',
+            'branch_id' => 1,
+            'schedule_date' => '2026-04-08',
+            'status' => 'scheduled',
+            'type' => 'normal',
+            'student_course_id' => $course->ID,
+            'original_schedule_id' => $anchor->id,
+        ]);
+        $session = ClassSession::create([
+            'StudentClassID' => $course->ID,
+            'SessionDate' => '2026-04-08',
+            'StartTime' => '10:00:00',
+            'EndTime' => '12:00:00',
+            'Status' => 'scheduled',
+            'Note' => 'regular-contract-session',
+            'IsContractException' => 0,
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->patchJson("/api/v1/class-sessions/{$session->id}", ['status' => 'cancelled'])
+            ->assertOk();
+
+        $this->assertSame('scheduled', (string) $substitute->fresh()->status);
     }
 
     public function test_scheduled_exception_projection_uses_stored_time_when_contract_time_is_requested(): void
