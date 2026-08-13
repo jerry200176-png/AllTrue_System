@@ -3,6 +3,22 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-13-teacher-home-projection-integrity
+    published_at: "2026-08-13"
+    audiences:
+      - teacher
+      - director
+    importance: major
+    title: 教師首頁課表與評量顯示更穩定
+    summary: 重新整理或切換分校時，課表會保留已載入的內容並避免重複的同堂評量卡。
+    items:
+      - category: fixed
+        text: 同一學生、日期與時段的重複課堂投影會合併為一筆，不會顯示成兩張評量卡。
+      - category: improved
+        text: 週課表載入新資料時不會先清空舊畫面；較早完成的舊請求也不會覆蓋最新課表。
+    source_refs:
+      - "changelog:2026-08-13:teacher-home-projection-integrity"
+
   - id: staff-2026-08-13-session-entitlement-transfer-command
     published_at: "2026-08-13"
     audiences:
