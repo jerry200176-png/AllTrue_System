@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Allowlisted 國文續購：8 堂、原金額、未入帳。Default is read-only.
 # Apply calls production purchaseBatch; never records payment; never transfers 8/5.
+# Remote SSH is invoked without a heredoc so the runner can keep the closer intact.
 set -euo pipefail
 
 MODE="${MODE:-dry-run}"
