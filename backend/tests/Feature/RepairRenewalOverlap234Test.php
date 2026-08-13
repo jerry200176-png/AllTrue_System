@@ -16,7 +16,7 @@ class RepairRenewalOverlap234Test extends TestCase
         parent::setUp();
         DB::table('Student')->insert(['id' => 900234, 'name' => 'Case234 Fixture', 'CampusID' => 9, 'ClassID' => 1, 'enable' => 1]);
         foreach ([[1050, 8, 0, 8800], [3226, 1, 7, 10400]] as [$id, $used, $remaining, $charge]) {
-            DB::table('StudentClass')->insert(['ID' => $id, 'StudentID' => 900234, 'GradeID' => 1, 'SubjectID' => 53, 'TeacherID' => 53, 'by1' => 1, 'Period' => 4, 'TotalHours' => 0, 'Charge' => $charge, 'Pay' => 0, 'Paid' => 0, 'Rate' => $id === 1050 ? 1100 : 1300, 'SessionDuration' => 120, 'ScheduleMode' => 'count', 'SessionCount' => 8, 'UsedSessions' => $used, 'RemainingSessions' => $remaining, 'Stop' => 0]);
+            DB::table('StudentClass')->insert(['ID' => $id, 'StudentID' => 900234, 'GradeID' => 1, 'SubjectID' => 53, 'TeacherID' => 53, 'by1' => 1, 'Period' => 4, 'TotalHours' => 0, 'StartDate' => '2026-07-01 00:00:00', 'EndDate' => '2026-09-30 00:00:00', 'Charge' => $charge, 'Pay' => 0, 'Paid' => 0, 'Rate' => $id === 1050 ? 1100 : 1300, 'SessionDuration' => 120, 'ScheduleMode' => 'count', 'SessionCount' => 8, 'UsedSessions' => $used, 'RemainingSessions' => $remaining, 'Stop' => 0]);
         }
         foreach ([[30430, 1050], [30421, 3226]] as [$id, $class]) {
             DB::table('ClassSession')->insert(['id' => $id, 'StudentClassID' => $class, 'SessionDate' => '2026-08-08', 'StartTime' => '15:00:00', 'EndTime' => '17:00:00', 'Status' => 'attended', 'Note' => '', 'created_at' => now(), 'updated_at' => now()]);
