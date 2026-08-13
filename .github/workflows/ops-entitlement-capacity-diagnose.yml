@@ -1,0 +1,64 @@
+name: Entitlement capacity diagnose (read-only P0)
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: entitlement-capacity-diagnose-readonly
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Run exact read-only diagnosis
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          SCRIPT_B64=$(base64 -w0 scripts/diagnose-entitlement-capacity.sh)
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" SCRIPT_B64="$SCRIPT_B64" 'bash -s' <<'ENDSSH' | tee out/diagnose.txt
+          set -euo pipefail
+          echo "$SCRIPT_B64" | base64 -d > /tmp/diagnose-entitlement-capacity.sh
+          chmod +x /tmp/diagnose-entitlement-capacity.sh
+          bash /tmp/diagnose-entitlement-capacity.sh
+          rm -f /tmp/diagnose-entitlement-capacity.sh
+          ENDSSH
+
+      - name: Upload evidence artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: entitlement-capacity-diagnose-${{ github.run_id }}
+          path: out/diagnose.txt
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo '### Entitlement capacity diagnosis (read-only)'
+            echo '```text'
+            cat out/diagnose.txt 2>/dev/null || echo 'No output captured.'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
