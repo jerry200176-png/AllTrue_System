@@ -327,6 +327,9 @@ Route::prefix('v1')->group(function () {
         Route::post('finance/periods/close', [\App\Http\Controllers\AccountingPeriodController::class, 'close']);
         Route::post('finance/periods/reopen', [\App\Http\Controllers\AccountingPeriodController::class, 'reopen']);
 
+        // ── Full-time teacher base salary (正職結算底薪), feeds finance/teacher-eligibility's total_payout ──
+        Route::post('finance/teacher-eligibility/salary-profiles', [TeacherEligibilityInputController::class, 'storeSalaryProfile'])->middleware('require_pin');
+
         // ── Dunning (#400) ──
         Route::get('dunning/rules', [\App\Http\Controllers\DunningController::class, 'rules']);
         Route::get('dunning/history', [\App\Http\Controllers\DunningController::class, 'history']);

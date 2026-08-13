@@ -160,8 +160,9 @@ class TeacherEligibilityController extends Controller
         $deductionByTeacher = $deductions->groupBy('teacher_id');
         $eventsAvailable = Schema::hasTable('teacher_payroll_events') && $events->isNotEmpty();
         $subjectUnitsByTeacher = $this->subjectUnitsByTeacher($teacherIds, $branchFilter, $effectiveStart, $period['end']);
+        $salaryByTeacher = $this->salaryProfilesByTeacher($teacherIds, $period['end']->toDateString());
 
-        $rows = $teachers->map(function ($teacher) use ($period, $effectiveStart, $scheduleByTeacher, $attendanceByTeacher, $eventByTeacher, $achievementByTeacher, $deductionByTeacher, $eventsAvailable, $attendanceSourceAvailable, $subjectUnitsByTeacher) {
+        $rows = $teachers->map(function ($teacher) use ($period, $effectiveStart, $scheduleByTeacher, $attendanceByTeacher, $eventByTeacher, $achievementByTeacher, $deductionByTeacher, $eventsAvailable, $attendanceSourceAvailable, $subjectUnitsByTeacher, $salaryByTeacher) {
             $teacherId = (int) $teacher->id;
             $teacherSchedules = $scheduleByTeacher->get($teacherId, collect());
             $teacherAttendance = $attendanceByTeacher->get($teacherId, collect());
@@ -197,6 +198,7 @@ class TeacherEligibilityController extends Controller
                 'subject_count' => $subjectCount,
             ]);
             $result['components']['weekly_16_segments'] = $weeklyStatus;
+            $settlement = \App\Support\FulltimeSettlementComposer::compose($result['components'], $salaryByTeacher[$teacherId] ?? null);
 
             return [
                 'teacher_id' => $teacherId,
@@ -207,7 +209,8 @@ class TeacherEligibilityController extends Controller
                 'weekly' => $weeklyRows,
                 'work_hours_source' => 'student_attendance',
                 'missing_fields' => $result['missing_fields'],
-                'review_required' => $result['overall_status'] === TeacherEligibilityPolicy::REVIEW,
+                'review_required' => $result['overall_status'] === TeacherEligibilityPolicy::REVIEW || $settlement['review_required'],
+                'settlement' => $settlement,
             ];
         })->values()->all();
 
@@ -454,6 +457,26 @@ class TeacherEligibilityController extends Controller
         }
 
         return collect($buckets)->mapWithKeys(fn ($weighted, $teacherId) => [$teacherId => round($weighted / 8, 2)])->all();
+    }
+
+    /**
+     * Latest fulltime_salary_profiles row at or before $onDate, per teacher.
+     * @return array<int, float>
+     */
+    private function salaryProfilesByTeacher(array $teacherIds, string $onDate): array
+    {
+        if (!Schema::hasTable('fulltime_salary_profiles') || $teacherIds === []) {
+            return [];
+        }
+
+        return DB::table('fulltime_salary_profiles')
+            ->whereIn('teacher_id', $teacherIds)
+            ->where('effective_from', '<=', $onDate)
+            ->orderBy('effective_from')
+            ->get(['teacher_id', 'base_salary', 'effective_from'])
+            ->groupBy('teacher_id')
+            ->map(fn ($rows) => (float) $rows->last()->base_salary)
+            ->all();
     }
 
     private function subjectRecordHours($row): float

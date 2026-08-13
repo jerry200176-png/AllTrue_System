@@ -68,3 +68,7 @@ export function confirmTeacherEligibilityDeduction(id) {
 export function approveTeacherEligibilityDeduction(id) {
   return request(`/finance/teacher-eligibility/deductions/${id}/approve`, { method: 'POST' });
 }
+
+export function saveTeacherSalaryProfile(payload) {
+  return request('/finance/teacher-eligibility/salary-profiles', { method: 'POST', body: JSON.stringify(payload) });
+}
