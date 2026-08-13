@@ -1109,9 +1109,11 @@ const otherBranchTodayCount = computed(() => {
   const today = localTodayYmd();
   const currentBid = Number(props.branchId);
   return todayAllSessions.value.filter(s => {
-    const bid = Number(s?.branchId || 0);
+    // todayAllSessions is supplied by App.vue's direct class-sessions request,
+    // not fetchClassSessions' normalized SessionViewModel.
+    const bid = Number(s?.branch_id || s?.CampusID || 0);
     const st = String(s?.status || '').toLowerCase();
-    return bid > 0 && bid !== currentBid && String(s?.date || '').slice(0, 10) === today && st !== 'cancelled';
+    return bid > 0 && bid !== currentBid && String(s?.session_date || '').slice(0, 10) === today && st !== 'cancelled';
   }).length;
 });
 
