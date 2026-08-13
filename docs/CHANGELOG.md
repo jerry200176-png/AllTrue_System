@@ -1,3 +1,10 @@
+## 2026-08-13 — fix(course): 上線堂次跨續購批次的 owner 修復命令
+
+<!-- release-notes: staff_update=staff-2026-08-13-session-entitlement-transfer-command -->
+
+- 新增預設唯讀的 dry-run 命令；正式操作必須同時提供 execute、force、production repair gate 與不可覆寫的 JSON snapshot。
+- 支援執行後 verify 與 drift-safe rollback，供已確認的超額堂次在不更動付款、發票或收據的前提下轉至續購批次。
+
 ## 2026-08-12 — fix(course): 建立堂次跨續購批次轉移的可稽核核心
 
 <!-- release-notes: silent_ship=silent-2026-08-12-session-entitlement-transfer-core -->

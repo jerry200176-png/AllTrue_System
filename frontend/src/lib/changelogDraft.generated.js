@@ -5,6 +5,28 @@
  */
 export const changelogDraftNotes = [
   {
+    "version": "2026.08.13",
+    "date": "2026-08-13",
+    "title": "2026.08.13 草稿（未發布）",
+    "summary": "上線堂次跨續購批次的 owner 修復命令",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "上線堂次跨續購批次的 owner 修復命令"
+        ]
+      }
+    ],
+    "items": [
+      "上線堂次跨續購批次的 owner 修復命令"
+    ]
+  },
+  {
     "version": "2026.08.12",
     "date": "2026-08-12",
     "title": "2026.08.12 草稿（未發布）",
@@ -528,34 +550,6 @@ export const changelogDraftNotes = [
     ],
     "items": [
       "帳務中心收據改回既有 payment-report"
-    ]
-  },
-  {
-    "version": "2026.07.19",
-    "date": "2026-07-19",
-    "title": "2026.07.19 草稿（未發布）",
-    "summary": "補課加長按實際分鐘扣堂；請假順延不再錯置其他星期時段",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "修正內容",
-        "items": [
-          "補課加長按實際分鐘扣堂",
-          "請假順延不再錯置其他星期時段",
-          "單堂改時段費用與畫面說明一致",
-          "主任堂數異常只呈現可核對的帳務候選"
-        ]
-      }
-    ],
-    "items": [
-      "補課加長按實際分鐘扣堂",
-      "請假順延不再錯置其他星期時段",
-      "單堂改時段費用與畫面說明一致",
-      "主任堂數異常只呈現可核對的帳務候選"
     ]
   }
 ];
