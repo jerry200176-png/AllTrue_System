@@ -893,14 +893,13 @@ class ClassSessionController extends Controller
             return response()->json(['message' => '堂次日期超過課程到期日'], 422);
         }
 
-        $slot = $this->resolveProjectedMonthlySlot(
+        // A persisted exception is the source of truth for this date.  It may
+        // intentionally use a different time from the recurring contract.
+        $slot = $scheduledException ?: $this->resolveProjectedMonthlySlot(
             $studentClass,
             (int) Carbon::parse($sessionDate)->dayOfWeekIso,
             isset($data['start_time']) ? substr((string) $data['start_time'], 0, 5) : null
         );
-        if (!$slot) {
-            $slot = $scheduledException;
-        }
         if (!$slot) {
             return response()->json(['message' => '指定日期不符合此課程固定時段'], 422);
         }
@@ -959,17 +958,47 @@ class ClassSessionController extends Controller
         $query = Schedule::query()
             ->where('student_course_id', (int) $studentClass->getAttribute('ID'))
             ->whereDate('schedule_date', $sessionDate)
-            ->where('status', 'scheduled');
+            ->where('status', 'scheduled')
+            ->where(function ($query): void {
+                $query->whereNull('type')->orWhere('type', '!=', 'extra');
+            });
 
-        if ($requestedStart) {
-            $query->where('start_time', 'like', substr($requestedStart, 0, 5) . '%');
-        }
-
-        $schedule = $query->orderBy('id')->first();
-        if (!$schedule) {
+        $schedules = $query->orderBy('id')->get()
+            ->filter(fn (Schedule $schedule): bool => $this->isMaterializableScheduledException($schedule, $sessionDate))
+            ->values();
+        if ($schedules->isEmpty()) {
             return null;
         }
 
+        $requestedStart = $requestedStart ? substr($requestedStart, 0, 5) : null;
+        if ($requestedStart) {
+            $schedule = $schedules->first(function (Schedule $candidate) use ($requestedStart): bool {
+                return substr((string) ($candidate->start_time ?? ''), 0, 5) === $requestedStart;
+            });
+            if ($schedule) {
+                return $this->scheduleExceptionSlot($schedule);
+            }
+        }
+
+        // Without an exact requested-time match, only a single eligible row is
+        // safe to materialize. Multiple exceptions require an explicit slot.
+        if ($schedules->count() !== 1) {
+            return null;
+        }
+
+        $schedule = $schedules->first();
+        if (!$schedule instanceof Schedule) {
+            return null;
+        }
+
+        return $this->scheduleExceptionSlot($schedule);
+    }
+
+    /**
+     * @return array{start_time:string,end_time:string}|null
+     */
+    private function scheduleExceptionSlot(Schedule $schedule): ?array
+    {
         $start = substr((string) ($schedule->start_time ?? ''), 0, 5);
         $end = substr((string) ($schedule->end_time ?? ''), 0, 5);
         if ($start === '' || $end === '') {
@@ -977,6 +1006,29 @@ class ClassSessionController extends Controller
         }
 
         return ['start_time' => $start, 'end_time' => $end];
+    }
+
+    private function isMaterializableScheduledException(Schedule $schedule, string $sessionDate): bool
+    {
+        if ((string) ($schedule->status ?? '') !== 'scheduled') {
+            return false;
+        }
+
+        if (strtolower(trim((string) ($schedule->type ?? ''))) === 'extra') {
+            return false;
+        }
+
+        $anchorId = (int) ($schedule->original_schedule_id ?? 0);
+        if ($anchorId <= 0) {
+            return true;
+        }
+
+        $anchorDate = Schedule::query()->whereKey($anchorId)->value('schedule_date');
+        if (!$anchorDate) {
+            return false;
+        }
+
+        return Carbon::parse((string) $anchorDate)->toDateString() === $sessionDate;
     }
 
     /**
@@ -1370,7 +1422,16 @@ class ClassSessionController extends Controller
             $query->where('end_time', 'like', $end . '%');
         }
 
-        $query->update(['status' => 'cancelled', 'updated_at' => now()]);
+        $schedules = $query->get()
+            ->filter(fn (Schedule $schedule): bool => $this->isMaterializableScheduledException($schedule, $date))
+            ->values();
+        if ($schedules->isEmpty()) {
+            return;
+        }
+
+        Schedule::query()
+            ->whereIn('id', $schedules->pluck('id')->all())
+            ->update(['status' => 'cancelled', 'updated_at' => now()]);
     }
 
     /**

@@ -75,6 +75,45 @@ export const staffUpdates = [
     "version": "2026.08.13"
   },
   {
+    "id": "staff-2026-08-13-monthly-projection-exception",
+    "publishedAt": "2026-08-13",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "major",
+    "title": "月例外投影修正",
+    "summary": "修正例外堂次無法關閉與誤建堂次",
+    "items": [
+      "月排課在例外時間不同於合約時間時，仍可由投影堂次正常開啟與關閉。",
+      "補課與跨日改課目的列不會再被誤當成月例外堂次 materialize 或連帶取消。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "月排課在例外時間不同於合約時間時，仍可由投影堂次正常開啟與關閉。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "補課與跨日改課目的列不會再被誤當成月例外堂次 materialize 或連帶取消。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-13:monthly-projection-exception"
+    ],
+    "date": "2026-08-13",
+    "version": "2026.08.13"
+  },
+  {
     "id": "staff-2026-08-12-in-app-bug-fixes",
     "publishedAt": "2026-08-12",
     "effectiveAt": null,

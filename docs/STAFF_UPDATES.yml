@@ -3,6 +3,22 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-13-monthly-projection-exception
+    published_at: "2026-08-13"
+    audiences:
+      - director
+      - teacher
+    importance: major
+    title: 月例外投影修正
+    summary: 修正例外堂次無法關閉與誤建堂次
+    items:
+      - category: fixed
+        text: 月排課在例外時間不同於合約時間時，仍可由投影堂次正常開啟與關閉。
+      - category: improved
+        text: 補課與跨日改課目的列不會再被誤當成月例外堂次 materialize 或連帶取消。
+    source_refs:
+      - "changelog:2026-08-13:monthly-projection-exception"
+
   - id: staff-2026-08-13-teacher-home-projection-integrity
     published_at: "2026-08-13"
     audiences:
