@@ -360,6 +360,30 @@ assert.equal(biologyLeaveSocialReplacement.length, 1, 'same student/date/start s
 assert.equal(biologyLeaveSocialReplacement[0].subject, 'Social', 'live replacement subject must beat excused old subject');
 assert.equal(biologyLeaveSocialReplacement[0].class_session_id, 126201, 'live replacement session must remain authoritative');
 
+// A template/legacy replacement without a ClassSession must not hide the
+// materialized leave session. The materialized row is the source of truth.
+const biologyLeaveWithLegacySocial = merge({
+  courses: [biologyLeaveCourse, socialReplacementCourse],
+  allCourses: [biologyLeaveCourse, socialReplacementCourse],
+  weekDatesByDow: {
+    1: '2026-05-11',
+    2: '2026-05-12',
+    3: '2026-05-13',
+    4: '2026-05-14',
+    5: '2026-05-15',
+    6: '2026-05-16',
+    7: '2026-05-17',
+  },
+  sessionDatesByCourseId: {
+    1261: [
+      { id: 126101, session_date: '2026-05-16', start_time: '13:00', end_time: '15:00', status: 'leave', teacher_id: 17 },
+    ],
+  },
+});
+assert.equal(biologyLeaveWithLegacySocial.length, 1, 'materialized leave and legacy template should still render one slot');
+assert.equal(biologyLeaveWithLegacySocial[0].subject, 'Biology', 'materialized leave must beat a legacy template replacement');
+assert.equal(biologyLeaveWithLegacySocial[0].class_session_id, 126101, 'materialized leave must remain authoritative');
+
 const historicalStoppedCourse = {
   ...baseCourse,
   id: 777,

@@ -51,6 +51,10 @@ function normalizedSubject(row) {
   return String(row?.subject || row?.Subject || '').trim().toLowerCase();
 }
 
+function isMaterializedOccurrence(row) {
+  return row?.class_session_id != null && row.class_session_id !== '';
+}
+
 function makeFallbackOccurrenceKey(row, dow, normalizeTime) {
   const scid = row?.student_course_id != null ? String(row.student_course_id) : '';
   const sid = row?.student_id != null ? String(row.student_id) : '';
@@ -81,7 +85,15 @@ function dedupeByStudentSlot(items, normalizeTime) {
     if (rowSubject && previousSubject && rowSubject !== previousSubject) {
       const rowLeave = isLeaveOccurrence(row);
       const previousLeave = isLeaveOccurrence(previous);
-      if (rowLeave !== previousLeave) return !rowLeave;
+      if (rowLeave !== previousLeave) {
+        // A real ClassSession is authoritative over a template/legacy row.
+        // Do not let a row without a session id become a ghost replacement for
+        // a materialized leave session, or hide a materialized replacement.
+        const rowMaterialized = isMaterializedOccurrence(row);
+        const previousMaterialized = isMaterializedOccurrence(previous);
+        if (rowMaterialized !== previousMaterialized) return rowMaterialized;
+        return !rowLeave;
+      }
     }
 
     return scoreRow(row) >= scoreRow(previous);
