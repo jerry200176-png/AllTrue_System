@@ -1,16 +1,17 @@
 {
   "schema_version": "1.0",
+<<<<<<< HEAD
   "session_id": "019ff650-1c03-7153-bd1d-f2a15d86f4af",
   "project": "alltrue",
   "task_id": "in-app-bugs-234-235",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "3986c52e9a0a1fbcbcb5c8c42012affc30701236",
+  "base_sha": "8f853ed2add01a3e4cc518ab89ca8235a47eeeb6",
   "branch": "fix/in-app-bugs-234-235-monthly-projected-exception-cancel-v6",
   "worktree_path": "/home/jerry/workspace/tasks/alltrue/in-app-bugs-234-235-monthly-projected-exception-cancel-v6",
   "started_at": "2026-08-13T08:30:00Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": "codex",
+  "agent_cli": null,
   "gateway_version": "0.5.0"
 }
