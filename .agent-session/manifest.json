@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "f935e18a6a034dc1a3481952097586b0",
+  "session_id": "86a44237ef3a40dc97f532fb02a59388",
   "project": "alltrue",
-  "task_id": "entitlement-transfer-ops-20260813",
+  "task_id": "entitlement-capacity-diagnose-20260813",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "3986c52e9a0a1fbcbcb5c8c42012affc30701236",
-  "branch": "chore/task-entitlement-transfer-ops-20260813",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/entitlement-transfer-ops-20260813",
-  "started_at": "2026-08-13T11:40:00Z",
+  "base_sha": "7ac25ac2a56ad686b2cf0d8693c3e7466e98b133",
+  "branch": "chore/task-entitlement-capacity-diagnose-20260813",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/entitlement-capacity-diagnose-20260813",
+  "started_at": "2026-08-13T11:18:43Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": "codex",
+  "agent_cli": null,
   "gateway_version": "0.5.0"
 }
