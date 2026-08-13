@@ -8,7 +8,7 @@
   "branch": "chore/revert-in-app-235-status",
   "worktree_path": "/home/jerry/workspace/tasks/alltrue/revert-in-app-235-status",
   "started_at": "2026-08-13T11:17:39Z",
-  "production_mutation": true,
+  "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
   "agent_cli": "codex",
