@@ -2902,7 +2902,7 @@ onBeforeUnmount(() => {
 .director-schedule-row__status--scheduled { color: var(--ds-warning) !important; }
 .surface-panel__footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 22px; padding: 13px 0 16px; border-top: 1px solid var(--ds-hairline); color: var(--ds-ink-mute); font-size: 11px; }
 .director-leave-list { display: grid; gap: 14px; padding: 0 22px 20px; }
-.director-leave-case { padding: 16px; border: 1px solid var(--ds-hairline); border-radius: 8px; background: var(--ds-canvas-soft); }
+.director-leave-case { min-width: 0; padding: 16px; border: 1px solid var(--ds-hairline); border-radius: 8px; background: var(--ds-canvas-soft); }
 .director-leave-case__header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .director-leave-case__header > div { display: flex; align-items: center; gap: 9px; min-width: 0; }
 .director-leave-case__header strong { font-size: 14px; }
@@ -2924,7 +2924,7 @@ onBeforeUnmount(() => {
 .button--quiet { background: transparent; }
 .button--danger { border-color: var(--ds-danger); color: var(--ds-danger); }
 .button--danger:hover { background: var(--ds-danger-wash); }
-.director-candidate-picker { margin-top: 14px; }
+.director-candidate-picker { min-width: 0; margin-top: 14px; }
 .director-candidate-dates { display: flex; gap: 7px; overflow-x: auto; padding: 2px 1px 8px; scrollbar-width: thin; }
 .director-candidate-date { flex: 0 0 auto; min-height: 34px; padding: 7px 10px; border: 1px solid var(--ds-hairline); border-radius: 999px; background: var(--ds-canvas); color: var(--ds-ink-mute); font-size: 12px; font-weight: 800; cursor: pointer; }
 .director-candidate-date:hover { border-color: var(--ds-ink-secondary); color: var(--ds-ink); }
