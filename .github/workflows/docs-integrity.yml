@@ -22,6 +22,9 @@ permissions:
 jobs:
   changes:
     name: Detect docs changes
+    # Repository contract: entry jobs must skip draft PRs; ready-for-review PRs
+    # still run the required integrity check even when docs are unchanged.
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     # Current topology: GitHub-hosted. See docs/REF_CI_RUNNER_TOPOLOGY.md.
     runs-on: ubuntu-latest
     timeout-minutes: 3
