@@ -1,0 +1,113 @@
+name: In-app #234 Renewal-overlap Repair (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "dry-run (default), execute, or rollback"
+        required: true
+        default: dry-run
+        type: choice
+        options: [dry-run, execute, rollback]
+      confirm:
+        description: "For execute/rollback only: type I_APPROVE_234_RENEWAL_OVERLAP"
+        required: false
+        type: string
+      actor:
+        description: "Immutable audit actor label"
+        required: false
+        default: "gha:234-renewal-overlap"
+        type: string
+
+concurrency:
+  group: repair-234-renewal-overlap
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    name: Run allowlisted #234 renewal-overlap repair
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Validate inputs
+        env:
+          MODE: ${{ inputs.mode }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          case "$MODE" in dry-run|execute|rollback) ;; *) exit 1 ;; esac
+          if [ "$MODE" != "dry-run" ]; then
+            [ "$CONFIRM" = "I_APPROVE_234_RENEWAL_OVERLAP" ] || {
+              echo "::error::execute/rollback requires exact confirmation string"; exit 1;
+            }
+          fi
+
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Run repair and post-verify on production
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          MODE: ${{ inputs.mode }}
+          ACTOR: ${{ inputs.actor }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes "${PI_SSH_USER}@${PI_SSH_HOST}" MODE="$MODE" ACTOR="$ACTOR" 'bash -s' <<'ENDSSH'
+          set -euo pipefail
+          cd /home/admin/backend
+          PRE=$(php artisan repair:renewal-overlap-234 2>&1) || { echo "$PRE"; exit 1; }
+          echo "$PRE"
+          if [ "$MODE" = "dry-run" ]; then
+            echo "REPAIR_STATE=DRY_RUN_VERIFIED_NO_MUTATION"
+            exit 0
+          fi
+
+          TS=$(date '+%Y-%m-%d_%H%M%S')
+          mkdir -p /home/admin/backups/emergency
+          BACKUP_FILE="/home/admin/backups/emergency/db_pre_234_renewal_overlap_${TS}.sql.gz"
+          DB_USER="$(grep '^DB_USERNAME=' .env | cut -d= -f2-)"
+          mysqldump -h 127.0.0.1 -u "$DB_USER" -p"$(grep '^DB_PASSWORD=' .env | cut -d= -f2-)" \
+            --single-transaction AllTrue ClassSession StudentClass LearningRecord Invoice InvoiceItem Payment session_deduction_ledger session_corrections \
+            | gzip > "$BACKUP_FILE"
+          test -s "$BACKUP_FILE"
+          echo "Backup created: $BACKUP_FILE"
+
+          export ALLOW_PROD_REPAIR=1
+          if [ "$MODE" = "execute" ]; then
+            SNAP="storage/app/repair-snapshots/234-renewal-overlap-${TS}.json"
+            php artisan repair:renewal-overlap-234 --execute --force --actor="$ACTOR" --snapshot="$SNAP"
+            echo "SNAPSHOT=$SNAP"
+          else
+            php artisan repair:renewal-overlap-234 --rollback --force --actor="$ACTOR"
+            echo "REPAIR_STATE=ROLLED_BACK"
+            exit 0
+          fi
+          unset ALLOW_PROD_REPAIR
+
+          php -r '
+            require "vendor/autoload.php";
+            $app = require "bootstrap/app.php";
+            $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+            $DB = Illuminate\Support\Facades\DB::class;
+            $old = $DB::table("StudentClass")->where("ID", 1050)->first(["ID","UsedSessions","RemainingSessions","Charge","Paid"]);
+            $oldSession = $DB::table("ClassSession")->where("id", 30430)->first(["id","Status","StudentClassID"]);
+            $keeper = $DB::table("ClassSession")->where("id", 30421)->first(["id","Status","StudentClassID"]);
+            $reverse = $DB::table("session_deduction_ledger")->where("student_class_id",1050)->where("class_session_id",30430)->where("event_type","reverse")->where("source","retro_leave")->exists();
+            $correction = $DB::table("session_corrections")->where("session_id",30430)->where("decision_reference","in-app #234")->whereNull("rolled_back_at")->exists();
+            $out = compact("old","oldSession","keeper","reverse","correction"); echo json_encode($out, JSON_UNESCAPED_UNICODE), PHP_EOL;
+            $ok = $old && (int)$old->UsedSessions === 7 && (int)$old->RemainingSessions === 1 && (int)$old->Charge === 7700 && (int)$old->Paid === 0 && $oldSession && $oldSession->Status === "cancelled" && $keeper && $keeper->Status === "attended" && $reverse && $correction;
+            exit($ok ? 0 : 42);
+          '
+          echo "REPAIR_STATE=APPLIED_AND_VERIFIED"
+          ENDSSH
