@@ -124,13 +124,8 @@ jobs:
               MODE="$MODE" CONFIRM="$CONFIRM" STUDENT_KEY="$key" STUDENT_ID="$sid" \
               STUDENT_NAME="$sname" SOURCE_CLASS="$source" SESSIONS=8 START_DATE=2026-08-19 \
               RUN_ID="$RUN_ID" ACTOR="$ACTOR" SCRIPT_B64="$SCRIPT_B64" PHP_B64="$PHP_B64" \
-              'bash -s' <<'ENDSSH' | tee -a out/operation.txt
-            set -euo pipefail
-            echo "$SCRIPT_B64" | base64 -d > /tmp/ops-chinese-renewal-unpaid.sh
-            chmod +x /tmp/ops-chinese-renewal-unpaid.sh
-            bash /tmp/ops-chinese-renewal-unpaid.sh
-            rm -f /tmp/ops-chinese-renewal-unpaid.sh
-            ENDSSH
+              'echo "$SCRIPT_B64" | base64 -d > /tmp/ops-chinese-renewal-unpaid.sh && bash /tmp/ops-chinese-renewal-unpaid.sh; ec=$?; rm -f /tmp/ops-chinese-renewal-unpaid.sh; exit $ec' \
+              | tee -a out/operation.txt
           done
 
       - name: Upload evidence
