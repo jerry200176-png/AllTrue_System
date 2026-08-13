@@ -10,6 +10,10 @@ on:
         required: true
         type: string
         default: "1052"
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - ".github/workflows/issue-1734-billing-readonly.yml"
 
 permissions:
   contents: read
@@ -52,7 +56,7 @@ jobs:
         env:
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
-          STUDENT_CLASS_ID: ${{ inputs.student_class_id }}
+          STUDENT_CLASS_ID: ${{ inputs.student_class_id || '1052' }}
         run: |
           set -euo pipefail
           [[ "$STUDENT_CLASS_ID" =~ ^[0-9]+$ ]] || { echo "student_class_id must be numeric" >&2; exit 1; }
