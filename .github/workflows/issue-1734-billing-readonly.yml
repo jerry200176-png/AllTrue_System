@@ -50,9 +50,16 @@ jobs:
             fi
           fi
           ssh-keyscan -T 10 -H "$PI_SSH_HOST" > "$tmp_scanned_hosts" 2>/dev/null
-          actual_fingerprints=$(ssh-keygen -lf "$tmp_scanned_hosts" 2>/dev/null | awk '{ print $2 }')
-          grep -Fqx "$pinned_fingerprint" <<< "$actual_fingerprints"
-          cp "$tmp_scanned_hosts" ~/.ssh/known_hosts
+          : > ~/.ssh/known_hosts
+          while read -r scanned_host scanned_key_type scanned_key_data _; do
+            [[ -z "${scanned_key_type:-}" || "$scanned_host" == \#* ]] && continue
+            printf '%s %s %s\n' "$scanned_host" "$scanned_key_type" "$scanned_key_data" > "$tmp_host_key"
+            scanned_fingerprint=$(ssh-keygen -lf "$tmp_host_key" 2>/dev/null | awk 'NR == 1 { print $2 }')
+            if [[ "$scanned_fingerprint" == "$pinned_fingerprint" ]]; then
+              printf '%s %s %s\n' "$scanned_host" "$scanned_key_type" "$scanned_key_data" >> ~/.ssh/known_hosts
+            fi
+          done < "$tmp_scanned_hosts"
+          test -s ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
       - name: Run SELECT-only billing probe on production
