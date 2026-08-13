@@ -1,3 +1,10 @@
+## 2026-08-14 — chore(ops): 張正甯／張正樂國文續購 8 堂未入帳作業閘門
+
+<!-- release-notes: silent_ship=silent-2026-08-14-chinese-renewal-unpaid -->
+
+- 新增只允許來源批次 `1681`／`1682` 的續購作業：8 堂、原金額、未付款，並走正式 `purchase-batch`。
+- 預設 dry-run；apply 需要確認字串，且不會入帳、不會移 8/5、不會使用數學批次。
+
 ## 2026-08-13 — fix(course): 上線堂次跨續購批次的 owner 修復命令
 
 <!-- release-notes: staff_update=staff-2026-08-13-session-entitlement-transfer-command -->

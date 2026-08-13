@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-08-14-chinese-renewal-unpaid
+    changelog_date: "2026-08-14"
+    changelog_title: "chore(ops): 張正甯／張正樂國文續購 8 堂未入帳作業閘門"
+    reason: 內部 allowlisted production 作業閘門，沒有教職員可操作的新產品入口。
+
   - id: silent-2026-08-12-session-entitlement-transfer-core
     changelog_date: "2026-08-12"
     changelog_title: "fix(course): 建立堂次跨續購批次轉移的可稽核核心"
