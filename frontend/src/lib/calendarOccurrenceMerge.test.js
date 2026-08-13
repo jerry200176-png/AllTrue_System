@@ -318,6 +318,72 @@ assert.equal(muzhaDuplicateStudentSlot.length, 1, 'same student/date/start shoul
 assert.equal(muzhaDuplicateStudentSlot[0].student_course_id, 1256);
 assert.equal(muzhaDuplicateStudentSlot[0].class_session_id, 11262);
 
+// A student may take a different subject in the same slot after the original
+// lesson is excused. The live replacement subject must remain visible; the
+// excused original must not win the student/date/start dedupe key.
+const biologyLeaveCourse = {
+  ...baseCourse,
+  id: 1261,
+  subject: 'Biology',
+  days_of_week: [6],
+  day_time_slots: [{ day: 6, start_time: '13:00', duration_hours: 2 }],
+};
+const socialReplacementCourse = {
+  ...baseCourse,
+  id: 1262,
+  subject: 'Social',
+  days_of_week: [6],
+  day_time_slots: [{ day: 6, start_time: '13:00', duration_hours: 2 }],
+};
+const biologyLeaveSocialReplacement = merge({
+  courses: [biologyLeaveCourse, socialReplacementCourse],
+  allCourses: [biologyLeaveCourse, socialReplacementCourse],
+  weekDatesByDow: {
+    1: '2026-05-11',
+    2: '2026-05-12',
+    3: '2026-05-13',
+    4: '2026-05-14',
+    5: '2026-05-15',
+    6: '2026-05-16',
+    7: '2026-05-17',
+  },
+  sessionDatesByCourseId: {
+    1261: [
+      { id: 126101, session_date: '2026-05-16', start_time: '13:00', end_time: '15:00', status: 'leave', teacher_id: 17 },
+    ],
+    1262: [
+      { id: 126201, session_date: '2026-05-16', start_time: '13:00', end_time: '15:00', status: 'scheduled', teacher_id: 17 },
+    ],
+  },
+});
+assert.equal(biologyLeaveSocialReplacement.length, 1, 'same student/date/start still renders one replacement lesson');
+assert.equal(biologyLeaveSocialReplacement[0].subject, 'Social', 'live replacement subject must beat excused old subject');
+assert.equal(biologyLeaveSocialReplacement[0].class_session_id, 126201, 'live replacement session must remain authoritative');
+
+// A template/legacy replacement without a ClassSession must not hide the
+// materialized leave session. The materialized row is the source of truth.
+const biologyLeaveWithLegacySocial = merge({
+  courses: [biologyLeaveCourse, socialReplacementCourse],
+  allCourses: [biologyLeaveCourse, socialReplacementCourse],
+  weekDatesByDow: {
+    1: '2026-05-11',
+    2: '2026-05-12',
+    3: '2026-05-13',
+    4: '2026-05-14',
+    5: '2026-05-15',
+    6: '2026-05-16',
+    7: '2026-05-17',
+  },
+  sessionDatesByCourseId: {
+    1261: [
+      { id: 126101, session_date: '2026-05-16', start_time: '13:00', end_time: '15:00', status: 'leave', teacher_id: 17 },
+    ],
+  },
+});
+assert.equal(biologyLeaveWithLegacySocial.length, 1, 'materialized leave and legacy template should still render one slot');
+assert.equal(biologyLeaveWithLegacySocial[0].subject, 'Biology', 'materialized leave must beat a legacy template replacement');
+assert.equal(biologyLeaveWithLegacySocial[0].class_session_id, 126101, 'materialized leave must remain authoritative');
+
 const historicalStoppedCourse = {
   ...baseCourse,
   id: 777,
