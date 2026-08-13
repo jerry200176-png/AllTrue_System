@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "019ff650-1c03-7153-bd1d-f2a15d86f4af",
+  "session_id": "8df7eb3a981143bea3d1b7d22722c9c5",
   "project": "alltrue",
-  "task_id": "phase-c-in-app-235",
+  "task_id": "entitlement-transfer-command-20260813",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "0ca9dcf3e8b24cec20333731fafe375697c0515d",
-  "branch": "chore/phase-c-in-app-235-r2",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/phase-c-in-app-235",
-  "started_at": "2026-08-12T15:51:00Z",
+  "base_sha": "64a8f4f18e36b34f5ee935dd4ebc656366afb448",
+  "branch": "chore/task-entitlement-transfer-command-20260813",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/entitlement-transfer-command-20260813",
+  "started_at": "2026-08-13T07:58:18Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": "codex",
+  "agent_cli": null,
   "gateway_version": "0.5.0"
 }

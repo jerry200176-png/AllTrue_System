@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-13-session-entitlement-transfer-command
+    published_at: "2026-08-13"
+    audiences:
+      - director
+    importance: major
+    title: 超額堂次可安全轉到續購批次
+    summary: 已提供具稽核、驗證與回滾保護的管理修復流程。
+    items:
+      - category: improved
+        text: 已確認誤扣在舊一期的已上課堂次，可保留原點名與評量並轉至同一學生的續購批次。
+      - category: improved
+        text: 系統會攔截跨學生、跨科目、目標已滿、重複時段及已結算批次。
+    source_refs:
+      - "changelog:2026-08-13:session-entitlement-transfer-command"
+
   - id: staff-2026-08-12-in-app-bug-fixes
     published_at: "2026-08-12"
     audiences:
