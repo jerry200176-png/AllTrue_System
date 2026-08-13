@@ -160,7 +160,7 @@ class TeacherEligibilityController extends Controller
         $deductionByTeacher = $deductions->groupBy('teacher_id');
         $eventsAvailable = Schema::hasTable('teacher_payroll_events') && $events->isNotEmpty();
         $subjectUnitsByTeacher = $this->subjectUnitsByTeacher($teacherIds, $branchFilter, $effectiveStart, $period['end']);
-        $salaryByTeacher = $this->salaryProfilesByTeacher($teacherIds, $period['end']->toDateString());
+        $salaryByTeacher = $this->salaryProfilesByTeacher($teacherIds, $branchFilter, $period['end']->toDateString());
 
         $rows = $teachers->map(function ($teacher) use ($period, $effectiveStart, $scheduleByTeacher, $attendanceByTeacher, $eventByTeacher, $achievementByTeacher, $deductionByTeacher, $eventsAvailable, $attendanceSourceAvailable, $subjectUnitsByTeacher, $salaryByTeacher) {
             $teacherId = (int) $teacher->id;
@@ -461,9 +461,12 @@ class TeacherEligibilityController extends Controller
 
     /**
      * Latest fulltime_salary_profiles row at or before $onDate, per teacher.
+     * Scoped the same way as scopedQuery()/subjectUnitsByTeacher(): a teacher
+     * shared across campuses can have a different base_salary row per branch,
+     * so a branch-scoped viewer must not see another campus's profile.
      * @return array<int, float>
      */
-    private function salaryProfilesByTeacher(array $teacherIds, string $onDate): array
+    private function salaryProfilesByTeacher(array $teacherIds, ?array $branchFilter, string $onDate): array
     {
         if (!Schema::hasTable('fulltime_salary_profiles') || $teacherIds === []) {
             return [];
@@ -472,6 +475,9 @@ class TeacherEligibilityController extends Controller
         return DB::table('fulltime_salary_profiles')
             ->whereIn('teacher_id', $teacherIds)
             ->where('effective_from', '<=', $onDate)
+            ->when($branchFilter !== null, fn ($query) => $query->where(function ($nested) use ($branchFilter) {
+                $nested->whereNull('branch_id')->orWhereIn('branch_id', $branchFilter);
+            }))
             ->orderBy('effective_from')
             ->get(['teacher_id', 'base_salary', 'effective_from'])
             ->groupBy('teacher_id')

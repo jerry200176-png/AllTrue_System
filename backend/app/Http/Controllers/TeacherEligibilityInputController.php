@@ -222,7 +222,7 @@ class TeacherEligibilityInputController extends Controller
         $data = $request->validate([
             'teacher_id' => ['required', 'integer', 'min:1'],
             'branch_id' => ['nullable', 'integer', 'min:1'],
-            'base_salary' => ['required', 'numeric', 'min:0'],
+            'base_salary' => ['required', 'numeric', 'min:0', 'max:99999999.99'],
             'effective_from' => ['required', 'date'],
         ]);
         $branchId = $this->resolveWriteBranch($request, $data['branch_id'] ?? null);
