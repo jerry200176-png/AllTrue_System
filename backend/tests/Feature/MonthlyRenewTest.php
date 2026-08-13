@@ -432,9 +432,9 @@ class MonthlyRenewTest extends TestCase
         ]);
 
         // The course may still have independent extra/reschedule rows on this
-        // date; the cancellation assertion above must remain scoped to the
-        // linked exception row rather than treating every date occurrence as
-        // the cancelled ClassSession.
+        // date; session-dates intentionally keeps those occurrences visible.
+        // The cancellation assertion must stay scoped to the linked exception
+        // row rather than treating every date occurrence as that ClassSession.
     }
 
     public function test_scheduled_exception_projection_uses_stored_time_when_contract_time_is_requested(): void
