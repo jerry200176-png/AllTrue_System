@@ -24,3 +24,8 @@ transition. Any different state fails without a write.
 The same change removes only #235 from the legacy Phase-C allowlist. That
 prevents a later generic Phase-C run from resolving #235 again. No other
 allowlist entry is changed.
+
+The legacy workflow is no longer triggered by edits to its own workflow file;
+only its dedicated request file may start it. This merge therefore cannot
+start a generic Phase-C write-back. The dedicated #235 workflow remains the
+only production mutation path in this PR.
