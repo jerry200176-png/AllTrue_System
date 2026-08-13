@@ -11,6 +11,7 @@ use App\Models\StudentClass;
 use App\Models\StudentSignIn;
 use App\Models\User;
 use App\Models\UserCampus;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -184,10 +185,10 @@ class AddSessionConflictTest extends TestCase
             'UsedSessions' => 1,
         ]);
 
-        foreach (['2026-03-20', '2026-03-22', '2026-03-24'] as $date) {
+        foreach ([7, 9, 11] as $days) {
             ClassSession::create([
                 'StudentClassID' => $course->ID,
-                'SessionDate' => $date,
+                'SessionDate' => Carbon::today()->addDays($days)->toDateString(),
                 'StartTime' => '19:00:00',
                 'EndTime' => '20:00:00',
                 'Status' => 'excused',
@@ -197,7 +198,7 @@ class AddSessionConflictTest extends TestCase
         $res = $this->withHeaders([
             'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
         ])->postJson("/api/v1/student-classes/{$course->ID}/add-session/check", [
-            'session_date' => '2026-04-01', 'start_time' => '10:00',
+            'session_date' => Carbon::today()->addDays(14)->toDateString(), 'start_time' => '10:00',
         ]);
 
         $res->assertOk()->assertJsonPath('can_add', true);

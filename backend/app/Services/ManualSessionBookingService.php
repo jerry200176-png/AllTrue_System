@@ -8,6 +8,7 @@ use App\Models\ScheduleAuditLog;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\UserCampus;
+use App\Support\SessionStatus;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -22,9 +23,6 @@ use Illuminate\Support\Facades\Schema;
 class ManualSessionBookingService
 {
     public const POLICY = 'manual_occurrence';
-    // Keep reservation capacity aligned with ScheduleGuardService and the
-    // attendance/quota rules: an excused occurrence is not a live reservation.
-    private const EXCLUDED_SESSION_STATUSES = ['cancelled', 'voided', 'leave', 'leave_adjusted', 'excused'];
 
     public function __construct(private ScheduleGuardService $scheduleGuardService) {}
 
@@ -142,7 +140,7 @@ class ManualSessionBookingService
             ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
             ->where('sc.StudentID', (int) $course->StudentID)
             ->whereDate('cs.SessionDate', $date)
-            ->whereNotIn('cs.Status', self::EXCLUDED_SESSION_STATUSES)
+            ->whereNotIn('cs.Status', SessionStatus::futureReservationExclusionStatuses())
             ->where(function ($query) {
                 $query->where('sc.Stop', 0)->orWhereNull('sc.Stop');
             })
@@ -269,7 +267,7 @@ class ManualSessionBookingService
     {
         $query = ClassSession::query()
             ->whereDate('SessionDate', '>=', $today)
-            ->whereNotIn('Status', self::EXCLUDED_SESSION_STATUSES);
+            ->whereNotIn('Status', SessionStatus::futureReservationExclusionStatuses());
 
         $packageId = (int) $course->getAttribute('PackageID');
         if ($packageId > 0) {
