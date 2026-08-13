@@ -70,7 +70,7 @@ class RepairRenewalOverlap234 extends Command
             SessionDeductionService::reverseForSession(self::OLD_CLASS, self::OLD_SESSION, 'renewal_overlap_repair', $this->actorId(), self::REF);
             SessionDeductionService::recomputeCounters(self::OLD_CLASS);
             $used = (int) DB::table('StudentClass')->where('ID', self::OLD_CLASS)->value('UsedSessions');
-            DB::table('StudentClass')->where('ID', self::OLD_CLASS)->update(['Charge' => $used * 1100, 'updated_at' => now()]);
+            DB::table('StudentClass')->where('ID', self::OLD_CLASS)->update(['Charge' => $used * 1100]);
             SessionCorrection::create([
                 'session_id' => self::OLD_SESSION,
                 'replaced_by_session_id' => self::NEW_SESSION,
@@ -118,7 +118,7 @@ class RepairRenewalOverlap234 extends Command
             DB::table('LearningRecord')->where('ClassSessionID', self::OLD_SESSION)->update(['VoidedAt' => null, 'updated_at' => now()]);
             DB::table('session_deduction_ledger')->insert(['student_class_id' => self::OLD_CLASS, 'class_session_id' => self::OLD_SESSION, 'event_type' => 'deduct', 'source' => 'renewal_overlap_rollback', 'note' => self::REF, 'created_by' => $this->actorId(), 'created_at' => now(), 'updated_at' => now()]);
             SessionDeductionService::recomputeCounters(self::OLD_CLASS);
-            DB::table('StudentClass')->where('ID', self::OLD_CLASS)->update(['Charge' => 8800, 'updated_at' => now()]);
+            DB::table('StudentClass')->where('ID', self::OLD_CLASS)->update(['Charge' => 8800]);
             $corr->rolled_back_at = now(); $corr->save();
         });
         $this->info('Rolled back #234 repair.'); return self::SUCCESS;
