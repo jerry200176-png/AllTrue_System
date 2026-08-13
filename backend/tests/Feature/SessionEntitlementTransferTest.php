@@ -10,11 +10,31 @@ use App\Models\StudentClass;
 use App\Models\StudentSignIn;
 use App\Services\SessionEntitlementTransferService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use Tests\TestCase;
 
 class SessionEntitlementTransferTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_repair_command_defaults_to_read_only_preview(): void
+    {
+        $student = Student::create(['name' => '命令預覽測試生', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+        $source = $this->course($student->id);
+        $target = $this->course($student->id);
+        $session = ClassSession::create(['StudentClassID' => $source->ID, 'SessionDate' => '2026-08-05', 'StartTime' => '19:30:00', 'EndTime' => '21:30:00', 'Status' => 'attended']);
+
+        $exit = Artisan::call('repair:transfer-session-entitlement', [
+            '--source-class' => $source->ID,
+            '--target-class' => $target->ID,
+            '--session-id' => $session->id,
+        ]);
+
+        $this->assertSame(0, $exit);
+        $this->assertStringContainsString('Dry-run complete; no data changed.', Artisan::output());
+        $this->assertSame($source->ID, (int) $session->refresh()->StudentClassID);
+        $this->assertDatabaseCount('session_entitlement_transfers', 0);
+    }
 
     public function test_completed_session_transfer_moves_all_attendance_ownership_and_recomputes_counters(): void
     {
