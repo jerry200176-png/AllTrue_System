@@ -20,3 +20,7 @@ is still the exact Phase-C transition recorded against production revision
 `1852913e67445b8aa502664558b409520f00b07e`. It re-checks those facts while
 holding a row lock, then records a single audited `resolved` -> `in_progress`
 transition. Any different state fails without a write.
+
+The same change removes only #235 from the legacy Phase-C allowlist. That
+prevents a later generic Phase-C run from resolving #235 again. No other
+allowlist entry is changed.
