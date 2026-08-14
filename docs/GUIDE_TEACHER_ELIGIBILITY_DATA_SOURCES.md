@@ -18,14 +18,20 @@
 
 - GET /api/v1/finance/teacher-eligibility/inputs
 - POST /api/v1/finance/teacher-eligibility/events
+- PUT /api/v1/finance/teacher-eligibility/events/{id}
+- POST /api/v1/finance/teacher-eligibility/events/{id}/withdraw
 - POST /api/v1/finance/teacher-eligibility/achievements
+- PUT /api/v1/finance/teacher-eligibility/achievements/{id}
+- POST /api/v1/finance/teacher-eligibility/achievements/{id}/withdraw
 - POST /api/v1/finance/teacher-eligibility/deductions
+- PUT /api/v1/finance/teacher-eligibility/deductions/{id}
+- POST /api/v1/finance/teacher-eligibility/deductions/{id}/withdraw
 - POST /api/v1/finance/teacher-eligibility/events/{id}/approve
 - POST /api/v1/finance/teacher-eligibility/achievements/{id}/verify
 - POST /api/v1/finance/teacher-eligibility/deductions/{id}/confirm
 - POST /api/v1/finance/teacher-eligibility/deductions/{id}/approve
 
-新建事件、成果或扣除一律是 pending；只有核准後才會進入報表。扣除案件的核准順序固定為「主任確認 → 總部核准」。分校主任不可寫入其他分校；總部可處理全分校資料。
+新建事件、成果或扣除一律是 pending；核准前可用 PUT 修改或 withdraw 撤回。只有核准後才會進入報表。扣除案件在主任確認後即不可再改。核准順序固定為「主任確認 → 總部核准」。分校主任不可寫入其他分校；總部可處理全分校資料。
 
 ## 總部仍須提供的業務資料
 
@@ -47,8 +53,10 @@
 主任從「正職薪資要件」頁面即可完成資料補登與審核，不需要直接操作資料庫：
 
 1. 在「資料補登與審核」選擇假日／公休／請假、升學成果／年度績優或扣除案件。
-2. 填寫日期、老師、時數、證明／備註與生效期間後送出；新資料會以「待審核」保留。
-3. 右側待辦清單可直接完成主任核准／確認；扣除案件再由總部執行第二階段核准。
+   - **假日（計算16小時）／官方活動／統一公休**：登記「全分校這一天放假」，不是幫某個老師請假。
+   - **請假／補課抵扣**：才是幫某一位老師補登系統沒抓到的請假或補課。
+2. 填寫日期、證明／備註後送出；新資料會以「待審核」出現在右側。核准前可按「修改」或「撤回」。
+3. 右側待辦清單可完成主任核准／確認；扣除案件再由總部執行第二階段核准。已核准資料才會進入薪資判定。
 4. 報表項目的「待人工確認」會列出實際缺少欄位，補登並完成審核後按重新整理即可重新計算。
 
 這個流程採用成熟 HR 系統常見的「表單補登 → 狀態化待辦 → 分級審核 → 審核後才納入計算」模式，避免把未知資料誤當成 0 或直接扣薪。

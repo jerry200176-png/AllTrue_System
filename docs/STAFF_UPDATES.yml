@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-14-eligibility-pending-edit
+    published_at: "2026-08-14"
+    audiences:
+      - director
+    importance: digest
+    title: 薪資補登可先改再核
+    summary: 假日是全校放假登記；送出後、核准前可修改或撤回。
+    items:
+      - category: improved
+        text: 假日／公休是登記全分校哪一天放假，不是幫某個老師請假。
+      - category: added
+        text: 待審核資料可在右側清單修改或撤回，核准後才會算進薪資。
+    source_refs:
+      - "changelog:2026-08-14:eligibility-pending-edit"
+
   - id: staff-2026-08-13-fulltime-settlement-total-payout
     published_at: "2026-08-13"
     audiences:
