@@ -1,3 +1,10 @@
+## 2026-08-14 — fix(teacher-home): 缺分校時不再顯示內部編號
+
+<!-- release-notes: staff_update=staff-2026-08-14-teacher-home-campus-label -->
+
+- 教師首頁今日待辦與週課表改走同一套課堂資料；沒有分校時不再出現內部編號，分校標籤改顯示中文或隱藏。
+- 分校名稱比對改為數字比對，避免字串 ID 對不到名單。
+
 ## 2026-08-13 — feat(payroll): 正職老師薪資要件頁面新增底薪與總發放金額
 
 <!-- release-notes: staff_update=staff-2026-08-13-fulltime-settlement-total-payout -->

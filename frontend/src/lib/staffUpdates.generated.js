@@ -4,6 +4,38 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-14-teacher-home-campus-label",
+    "publishedAt": "2026-08-14",
+    "effectiveAt": null,
+    "audiences": [
+      "teacher",
+      "director"
+    ],
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "importance": "digest",
+    "title": "教師首頁分校顯示",
+    "summary": "課堂缺分校時不再出現看不懂的編號，改顯示中文或隱藏。",
+    "items": [
+      "教師首頁待填評量與週課表會顯示分校名稱；缺資料時改為中文說明或隱藏。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "教師首頁待填評量與週課表會顯示分校名稱；缺資料時改為中文說明或隱藏。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-14:teacher-home-campus-label"
+    ],
+    "date": "2026-08-14",
+    "version": "2026.08.14"
+  },
+  {
     "id": "staff-2026-08-13-teacher-home-projection-integrity",
     "publishedAt": "2026-08-13",
     "effectiveAt": null,

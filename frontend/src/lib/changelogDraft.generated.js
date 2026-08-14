@@ -5,6 +5,28 @@
  */
 export const changelogDraftNotes = [
   {
+    "version": "2026.08.14",
+    "date": "2026-08-14",
+    "title": "2026.08.14 草稿（未發布）",
+    "summary": "缺分校時不再顯示內部編號",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "缺分校時不再顯示內部編號"
+        ]
+      }
+    ],
+    "items": [
+      "缺分校時不再顯示內部編號"
+    ]
+  },
+  {
     "version": "2026.08.13",
     "date": "2026-08-13",
     "title": "2026.08.13 草稿（未發布）",
@@ -539,28 +561,6 @@ export const changelogDraftNotes = [
       "試聽建課不再被「同科同師日期重疊」擋死；行事曆快速排課補上強制建立",
       "課程改老師不再改寫已上堂次的授課老師",
       "排課摘要「補登已上」改以堂數顯示（同日多時段）"
-    ]
-  },
-  {
-    "version": "2026.07.21",
-    "date": "2026-07-21",
-    "title": "2026.07.21 草稿（未發布）",
-    "summary": "帳務中心收據改回既有 payment-report",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "修正內容",
-        "items": [
-          "帳務中心收據改回既有 payment-report"
-        ]
-      }
-    ],
-    "items": [
-      "帳務中心收據改回既有 payment-report"
     ]
   }
 ];

@@ -3,6 +3,20 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-14-teacher-home-campus-label
+    published_at: "2026-08-14"
+    audiences:
+      - teacher
+      - director
+    importance: digest
+    title: 教師首頁分校顯示
+    summary: 課堂缺分校時不再出現看不懂的編號，改顯示中文或隱藏。
+    items:
+      - category: fixed
+        text: 教師首頁待填評量與週課表會顯示分校名稱；缺資料時改為中文說明或隱藏。
+    source_refs:
+      - "changelog:2026-08-14:teacher-home-campus-label"
+
   - id: staff-2026-08-13-fulltime-settlement-total-payout
     published_at: "2026-08-13"
     audiences:
