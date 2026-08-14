@@ -6,7 +6,7 @@
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
   "base_sha": "e01f3cff30b92fbb349a5493ad4949d65026d8f2",
   "branch": "chore/claude-triage-20260731-clean",
-  "worktree_path": "/home/jerry/wt/claude-triage-20260731",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/claude-triage-20260731",
   "started_at": "2026-08-14T21:55:00Z",
   "production_mutation": false,
   "preflight_result": "pass",
