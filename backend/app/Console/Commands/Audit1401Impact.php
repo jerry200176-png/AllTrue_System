@@ -2,10 +2,14 @@
 
 namespace App\Console\Commands;
 
+use App\Models\ParentSession;
 use App\Models\Student;
 use App\Models\StudentLineBinding;
 use App\Support\StudentContactPhone;
 use Illuminate\Console\Command;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Read-only privacy-incident impact audit for issue #1401.
@@ -27,6 +31,19 @@ class Audit1401Impact extends Command
     protected $signature = 'audit:1401-impact';
     protected $description = 'Read-only, PII-free impact audit for issue #1401 (parent-portal LINE cross-family exposure)';
 
+    /**
+     * The #1400 containment migration
+     * (2026_07_24_130000_require_verified_parent_line_bindings) expired every
+     * ParentSession valid at the time it ran. This is the same date encoded in
+     * that migration's filename, used here only as an approximate "before
+     * containment" cutoff for legacy-session detection -- not a claim about the
+     * exact second the migration executed. See item 6's note for the same
+     * lower-bound caveat applied to binding data.
+     */
+    private const CONTAINMENT_CUTOFF = '2026-07-24 13:00:00';
+
+    private const CONTAINMENT_MIGRATION = '2026_07_24_130000_require_verified_parent_line_bindings';
+
     public function handle(): int
     {
         $this->line('=== #1401 impact audit — aggregate/hashed output only ===');
@@ -37,6 +54,8 @@ class Audit1401Impact extends Command
         $failedClosed |= !$this->itemCrossFamilyIdentities();
         $failedClosed |= !$this->itemSwitchAuditLog();
         $failedClosed |= !$this->itemNotificationDeliveryLog();
+        $failedClosed |= !$this->itemLegacySessionsStillActive();
+        $failedClosed |= !$this->itemRebindVerificationIntegrity();
 
         $this->line('=== end ===');
         $this->line($failedClosed
@@ -172,5 +191,89 @@ class Audit1401Impact extends Command
         $this->line('   after the fact, whether a specific historical send went through an unverified or');
         $this->line('   cross-family binding. This item is insufficient-logs by design.');
         return true;
+    }
+
+    /**
+     * Item 7: how many ParentSession rows created before the containment
+     * cutoff are still unexpired right now? Should be 0 -- the containment
+     * migration set ExpiresAt=now() for every session valid at the time it
+     * ran. A non-zero count here means containment did not fully apply.
+     * Sessions created AFTER the cutoff are excluded on purpose: those are
+     * ordinary post-fix logins through the now-verified-only flow, not
+     * evidence of anything.
+     */
+    private function itemLegacySessionsStillActive(): bool
+    {
+        try {
+            if (!Schema::hasTable('ParentSession')) {
+                $this->line('7. legacy_session_still_active_total\t(table absent)');
+                return true;
+            }
+
+            $cutoff = Carbon::parse(self::CONTAINMENT_CUTOFF);
+
+            $total = ParentSession::query()
+                ->where('created_at', '<', $cutoff)
+                ->where('ExpiresAt', '>', now())
+                ->count();
+            $this->line("7. legacy_session_still_active_total\t{$total}");
+
+            $byCampus = ParentSession::query()
+                ->join('Student', 'Student.id', '=', 'ParentSession.StudentID')
+                ->where('ParentSession.created_at', '<', $cutoff)
+                ->where('ParentSession.ExpiresAt', '>', now())
+                ->selectRaw('Student.CampusID as campus_id, count(*) as cnt')
+                ->groupBy('Student.CampusID')
+                ->orderBy('Student.CampusID')
+                ->get();
+            foreach ($byCampus as $row) {
+                $this->line("7. legacy_session_still_active_campus\t{$row->campus_id}\t{$row->cnt}");
+            }
+            if ($byCampus->isEmpty()) {
+                $this->line('7. legacy_session_still_active_campus\t(none)');
+            }
+            $this->line('7. note: cutoff is the #1400 containment migration date (' . self::CONTAINMENT_CUTOFF . '),');
+            $this->line('   an approximation from the migration filename, not a query against a precise run');
+            $this->line('   timestamp. Expected result if containment applied cleanly: 0.');
+            return true;
+        } catch (\Throwable $e) {
+            $this->line('7. UNAVAILABLE — ' . get_class($e));
+            return false;
+        }
+    }
+
+    /**
+     * Item 8: structural re-bind verification checks. Never simulates or
+     * performs a re-bind -- confirms (a) the containment migration is
+     * recorded as applied, and (b) verified_at / verification_method are
+     * always set or unset together, i.e. no row claims to be verified
+     * without a method or has a method without a verified timestamp.
+     */
+    private function itemRebindVerificationIntegrity(): bool
+    {
+        try {
+            $migrationRan = DB::table('migrations')
+                ->where('migration', self::CONTAINMENT_MIGRATION)
+                ->exists();
+            $this->line('8. containment_migration_recorded_ran\t' . ($migrationRan ? 'true' : 'false'));
+
+            $verifiedWithoutMethod = StudentLineBinding::query()
+                ->whereNotNull('verified_at')
+                ->whereNull('verification_method')
+                ->count();
+            $methodWithoutVerified = StudentLineBinding::query()
+                ->whereNull('verified_at')
+                ->whereNotNull('verification_method')
+                ->count();
+            $this->line("8. verified_at_without_method_count\t{$verifiedWithoutMethod}");
+            $this->line("8. method_without_verified_at_count\t{$methodWithoutVerified}");
+            $this->line('8. note: this is a data-integrity check on the verified_at/verification_method');
+            $this->line('   contract, not a live re-bind. Expected result if the re-bind flow behaves');
+            $this->line('   correctly in production: both counts 0.');
+            return true;
+        } catch (\Throwable $e) {
+            $this->line('8. UNAVAILABLE — ' . get_class($e));
+            return false;
+        }
     }
 }
