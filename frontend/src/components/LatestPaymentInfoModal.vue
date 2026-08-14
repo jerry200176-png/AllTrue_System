@@ -48,15 +48,14 @@
 
         <div class="lpi-receipt">
           <button
-            v-if="latest.report_id && latest.status === 'confirmed'"
+            v-if="receiptCta.kind === 'button'"
             class="small primary"
             @click="$emit('view-receipt', latest.report_id)"
           >
             <span class="material-symbols-outlined" style="font-size:16px">receipt_long</span>
             查看收據
           </button>
-          <span v-else-if="latest.report_id" class="lpi-receipt-hint">尚未核帳確認，暫無收據</span>
-          <span v-else class="lpi-receipt-hint">此筆繳費無電子收據記錄</span>
+          <span v-else class="lpi-receipt-hint">{{ receiptCta.text }}</span>
         </div>
       </div>
 
@@ -93,7 +92,7 @@ const latest = computed(() => {
 });
 
 function statusLabel(status) {
-  const labels = { confirmed: '已收款', pending: '待核帳', rejected: '已退回', voided: '已撤銷' };
+  const labels = { confirmed: '已收款', pending: '待核帳確認', rejected: '已退回', voided: '已作廢' };
   return labels[status] || '已收款';
 }
 function methodLabel(method) {
@@ -101,12 +100,38 @@ function methodLabel(method) {
   return labels[method] || method || '—';
 }
 
+// Receipt eligibility is derived from server-authoritative fields only
+// (status + can_view_receipt from GET .../invoices, which mirrors the actual
+// role:director-only gate on GET /payment-reports/{id}/receipt). Never guess
+// permission from account_last5 or any other incidental field.
+const receiptCta = computed(() => {
+  const p = latest.value;
+  if (!p || !p.report_id) return { kind: 'none', text: '此筆繳費無電子收據記錄' };
+  if (p.status === 'voided') return { kind: 'none', text: '此筆繳費已作廢，無法查看收據' };
+  if (p.status === 'rejected') return { kind: 'none', text: '此筆繳費已退回，無收據' };
+  if (p.status === 'pending') return { kind: 'none', text: '尚未核帳確認，暫無收據' };
+  if (p.status !== 'confirmed') return { kind: 'none', text: '此筆繳費無電子收據記錄' };
+  if (!p.can_view_receipt) return { kind: 'none', text: '您沒有查看收據的權限，請洽主任' };
+  return { kind: 'button' };
+});
+
 function getToken() {
   const session = JSON.parse(localStorage.getItem('alltrue_session') || 'null');
   return session?.access_token;
 }
 
+// Sequence guard (in addition to AbortController) so a course switch never
+// lets an in-flight, now-superseded request overwrite the currently selected
+// course's data — regardless of whether the fetch layer actually honors abort.
+let activeController = null;
+let requestSeq = 0;
+
 async function load() {
+  const seq = ++requestSeq;
+  if (activeController) activeController.abort();
+  const controller = new AbortController();
+  activeController = controller;
+
   loading.value = true;
   error.value = '';
   payments.value = [];
@@ -120,7 +145,10 @@ async function load() {
     const res = await fetch(`/api/v1/student-classes/${courseId}/invoices`, {
       credentials: 'include',
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      signal: controller.signal,
     });
+
+    if (seq !== requestSeq) return;
 
     if (!res.ok) {
       if (res.status === 403) {
@@ -133,11 +161,13 @@ async function load() {
     }
 
     const json = await res.json().catch(() => ({}));
+    if (seq !== requestSeq) return;
     payments.value = (json.invoices || []).flatMap((inv) => inv.payments || []);
   } catch (e) {
+    if (e?.name === 'AbortError' || seq !== requestSeq) return;
     error.value = e?.message || '載入繳費資訊失敗';
   } finally {
-    loading.value = false;
+    if (seq === requestSeq) loading.value = false;
   }
 }
 
@@ -189,7 +219,7 @@ watch(() => [props.show, props.course?.id], ([visible]) => {
 .lpi-status-chip.voided { background: var(--ds-danger-wash); color: var(--ds-danger); }
 
 .lpi-receipt { margin-top: 12px; display: flex; justify-content: center; }
-.lpi-receipt-hint { font-size: 12px; color: var(--text-light); }
+.lpi-receipt-hint { font-size: 12px; color: var(--text-light); text-align: center; }
 
 .small, .ghost, .primary {
   display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px;
