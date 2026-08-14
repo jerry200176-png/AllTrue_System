@@ -10,6 +10,7 @@ import {
 import { getSubjectLabel } from '../../lib/constants';
 import { commitReschedule } from '../../lib/rescheduleApi';
 import { canMaterializeProjectedSession } from '../../lib/sessionPlanningStatus';
+import { SESSION_STATUS_LABELS } from '../../lib/sessionStatus';
 
 const SESSION_STATUS_TRANSITIONS = {
   scheduled:      ['attended', 'late', 'absent', 'leave', 'cancelled'],
@@ -22,11 +23,6 @@ const SESSION_STATUS_TRANSITIONS = {
   cancelled:      ['scheduled'],
 };
 
-const SESSION_STATUS_LABELS = {
-  scheduled: '排課中', attended: '已上', completed: '已上', late: '遲到', absent: '缺席',
-  excused: '請假', leave: '請假', leave_adjusted: '請假',
-  cancelled: '已取消',
-};
 
 export function useSessionEditFlow({
   supabase,
@@ -278,7 +274,11 @@ export function useSessionEditFlow({
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.session) {
-        openSessionResolveDialog(course, dateYmd, unit?.id, unit, '無法建立可編輯堂次', '固定時段推算建立失敗。尚未進行任何變更，可以再試一次。');
+        const backendMessage = typeof json?.message === 'string' ? json.message.trim() : '';
+        const message = backendMessage
+          ? `固定時段推算建立失敗：${backendMessage}。尚未進行任何變更。`
+          : '固定時段推算建立失敗。尚未進行任何變更，可以再試一次。';
+        openSessionResolveDialog(course, dateYmd, unit?.id, unit, '無法建立可編輯堂次', message);
         return null;
       }
       const vm = sessionViewModelFromEnsureProjected(json.session);

@@ -416,7 +416,9 @@ jobs:
   vite-build:
     name: Vite Frontend Build
     needs: changes
-    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.ci_config == 'true' || needs.changes.outputs.ui_foundation == 'true'
+    # This is a required main-branch check.  Run it for every PR so a
+    # backend-only change reports success instead of a skipped required check.
+    # The frontend tests remain read-only and do not deploy anything.
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -462,6 +464,10 @@ jobs:
       - name: Engagement rank progress (pure logic)
         working-directory: frontend
         run: npm run test:engagement-progress
+
+      - name: Exception workflow focus reconciliation (pure logic, GitHub #1625)
+        working-directory: frontend
+        run: npm run test:exception-workflow-focus
 
       - name: "Component unit tests + coverage gate (Vitest, #731)"
         working-directory: frontend

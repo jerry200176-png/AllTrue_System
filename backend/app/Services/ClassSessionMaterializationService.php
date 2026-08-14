@@ -93,10 +93,12 @@ class ClassSessionMaterializationService
         }
 
         return DB::transaction(function () use ($slot, $studentClassId, $sessionDate, $startTime, $startHm) {
+            $reviveCancelled = !empty($slot['_revive_cancelled']);
             $existing = ClassSession::query()
                 ->where('StudentClassID', $studentClassId)
                 ->whereDate('SessionDate', $sessionDate)
                 ->whereRaw('SUBSTRING(StartTime, 1, 5) = ?', [$startHm])
+                ->when($reviveCancelled, fn ($q) => $q->whereRaw('LOWER(Status) <> ?', ['cancelled']))
                 ->lockForUpdate()
                 ->orderBy('id')
                 ->first();

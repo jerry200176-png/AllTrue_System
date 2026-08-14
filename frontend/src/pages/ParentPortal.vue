@@ -120,6 +120,20 @@
           </div>
           <p class="pp-error" v-if="switchError" style="margin-top:6px;">{{ switchError }}</p>
         </div>
+        <div class="pp-campus-switcher" v-if="(dashboard.enrollments || []).length > 1">
+          <label class="pp-switcher-label" for="parent-campus-scope">
+            <span class="material-symbols-outlined" style="font-size:16px;">account_balance</span>
+            分校範圍
+          </label>
+          <select id="parent-campus-scope" class="pp-campus-select" v-model="campusScope" @change="switchCampusScope">
+            <option value="all">全部分校</option>
+            <option v-for="enrollment in dashboard.enrollments" :key="enrollment.student_id" :value="String(enrollment.campus_id)">
+              {{ enrollment.campus_name || `分校 ${enrollment.campus_id}` }}
+            </option>
+          </select>
+          <p class="pp-switcher-hint">課表與總覽可跨校查看；請假、回饋與帳單仍依指定分校處理。</p>
+          <p v-if="dashboard.cross_campus_access === 'readonly'" class="pp-switcher-hint">目前為唯讀試點，請假與回饋操作暫未開放。</p>
+        </div>
       </div>
 
       <!-- ═══ Progress Hub (PRD enterprise v2) ═══ -->
@@ -239,7 +253,7 @@
           <div v-for="ann in dashboard.announcements" :key="ann.id" class="pp-announcement">
             <div class="pp-ann-title">{{ ann.Title || ann.title || '公告' }}</div>
             <div class="pp-ann-body" v-if="ann.Content || ann.content">{{ ann.Content || ann.content }}</div>
-            <div class="pp-ann-date">{{ ann.created_at ? ann.created_at.substring(0, 10) : '' }}</div>
+            <div class="pp-ann-date">{{ ann.campus_name || '全校公告' }} · {{ ann.created_at ? ann.created_at.substring(0, 10) : '' }}</div>
           </div>
         </div>
 
@@ -298,6 +312,7 @@
                     <span class="material-symbols-outlined" style="font-size:14px;margin-left:6px;">schedule</span>
                     {{ record.StartTime?.substring(0,5) }}–{{ record.EndTime?.substring(0,5) }}
                   </template>
+                  <span v-if="record.campus_name" class="pp-campus-label">{{ record.campus_name }}</span>
                 </div>
               </div>
               <div class="pp-report-score-ring" v-if="record.QuizScore != null && record.QuizScore !== ''">
@@ -321,7 +336,7 @@
                 <span class="material-symbols-outlined pp-indicator-icon" style="color:var(--ds-ink-mute);">person</span>
                 <span class="pp-indicator-text">{{ record.teacher_name }}</span>
               </div>
-              <button type="button" class="pp-fb-quick" @click.stop="openFeedbackForRecord(record)">
+              <button v-if="crossCampusActionsEnabled" type="button" class="pp-fb-quick" @click.stop="openFeedbackForRecord(record)">
                 <span class="material-symbols-outlined" style="font-size:16px;">chat</span>
                 {{ record.parent_feedback ? '更新給老師的留言' : '留言給老師' }}
               </button>
@@ -379,6 +394,7 @@
                   :id="'pp-fb-ta-' + (record.id ?? record.ID)"
                   v-model="record._feedbackDraft"
                   class="pp-feedback-textarea"
+                  :disabled="!crossCampusActionsEnabled"
                   maxlength="500"
                   aria-label="給老師的回饋"
                   :placeholder="record.parent_feedback?.content || '例如：孩子回家說這個單元還不太熟，想請老師下次協助加強。'"
@@ -422,7 +438,7 @@
                   ></textarea>
                   <div class="pp-feedback-actions">
                     <span :class="['pp-feedback-count', { warn: (record._replyDraft || '').length >= 480 }]">{{ (record._replyDraft || '').length }}/500</span>
-                    <button class="pp-btn pp-btn-primary pp-feedback-submit" :disabled="record._replySaving || !(record._replyDraft || '').trim()" @click.stop="submitParentReply(record)">
+                    <button class="pp-btn pp-btn-primary pp-feedback-submit" :disabled="!crossCampusActionsEnabled || record._replySaving || !(record._replyDraft || '').trim()" @click.stop="submitParentReply(record)">
                       {{ record._replySaving ? '送出中...' : '回覆老師' }}
                     </button>
                   </div>
@@ -595,13 +611,15 @@
                 <div class="pp-session-day">{{ formatDay(s.SessionDate) }}</div>
                 <div class="pp-session-weekday">{{ formatWeekday(s.SessionDate) }}</div>
               </div>
-              <div class="pp-session-info">
-                <div class="pp-session-subject">{{ s.Subject || '課程' }}</div>
-                <div class="pp-session-time">{{ formatHM(s.StartTime) }}~{{ formatHM(s.EndTime) }}</div>
+                <div class="pp-session-info">
+                  <div class="pp-session-subject">{{ s.Subject || '課程' }}</div>
+                  <div class="pp-session-time">{{ formatHM(s.StartTime) }}~{{ formatHM(s.EndTime) }}</div>
+                  <div v-if="s.campus_name" class="pp-campus-label">{{ s.campus_name }}</div>
               </div>
               <div class="pp-session-action">
                 <span :class="['pp-status-dot', s.Status]"></span>
                 <span class="pp-status-text">{{ statusLabel(s.Status) }}</span>
+                <small v-if="s.LeaveWorkflowStatus === 'rejected'" class="pp-leave-rejected">上次請假已退回{{ s.LeaveWorkflowReason ? `：${s.LeaveWorkflowReason}` : '' }}</small>
                 <button
                   v-if="canRequestLeave(s)"
                   type="button"
@@ -641,6 +659,7 @@
             <div v-for="c in dashboard.classes" :key="c.id" class="pp-course-card" :class="courseCardClass(c)">
               <div class="pp-course-top">
                 <span class="pp-course-subject">{{ c.subject || '課程' }}</span>
+                <span v-if="c.campus_name" class="pp-campus-label">{{ c.campus_name }}</span>
                 <span v-if="isMonthlyCourse(c)" class="pp-badge pp-badge-info">月結</span>
                 <span v-if="c.is_package" class="pp-badge pp-badge-info-soft">共用方案</span>
                 <span v-if="c.paid" class="pp-badge pp-badge-success">{{ c.payment_status_label || '已繳費' }}</span>
@@ -731,6 +750,7 @@
               <div class="pp-invoice-amount">${{ inv.TotalAmount || inv.total_amount || 0 }}</div>
             </div>
             <div class="pp-invoice-badges">
+              <span v-if="inv.campus_name" class="pp-campus-label">{{ inv.campus_name }}</span>
               <span :class="['pp-badge', inv.Status === 'paid' || inv.status === 'paid' ? 'pp-badge-success' : 'pp-badge-warning']">
                 {{ inv.Status === 'paid' || inv.status === 'paid' ? '已付款' : '未付款' }}
               </span>
@@ -962,6 +982,8 @@ async function submitFeedbackForm() {
 const studentsKey = 'parent_portal_students';
 try { localStorage.removeItem(studentsKey); } catch (_) {}
 const students = ref(null);
+const campusScope = ref('all');
+const switchingCampus = ref(false);
 const switchingStudent = ref(false);
 
 const setStudents = (list) => {
@@ -1023,7 +1045,7 @@ const prepareFeedbackDraft = (record) => {
 const feedbackLength = (record) => String(record._feedbackDraft ?? record.parent_feedback?.content ?? '').length;
 const canSubmitFeedback = (record) => {
   const text = String(record._feedbackDraft ?? '').trim();
-  return text.length > 0 && text.length <= 500;
+  return crossCampusActionsEnabled.value && text.length > 0 && text.length <= 500;
 };
 const formatFeedbackTime = (value) => {
   const d = new Date(value);
@@ -1137,11 +1159,17 @@ const inviteParentFeedbackFromHub = async () => {
 };
 
 const statusLabel = (s) => {
-  const map = { scheduled: '排定', rescheduled: '已調課', leave_requested: '已請假', cancelled: '已取消', completed: '已完成' };
+  const map = { scheduled: '排定', rescheduled: '已調課', leave_requested: '請假審核中', leave: '已核准請假', cancelled: '已取消', completed: '已完成' };
   return map[s] || s;
 };
 
-const canRequestLeave = (session) => ['scheduled', 'rescheduled'].includes(String(session?.Status || '').toLowerCase());
+const crossCampusActionsEnabled = computed(() => {
+  const mode = dashboard.value?.cross_campus_access;
+  return !dashboard.value?.identity_group_id || mode === 'actions';
+});
+
+const canRequestLeave = (session) => crossCampusActionsEnabled.value
+  && ['scheduled', 'rescheduled'].includes(String(session?.Status || '').toLowerCase());
 
 const openLeaveBox = (session) => {
   leaveSessionId.value = session?.id ?? null;
@@ -1164,6 +1192,8 @@ const submitLeaveRequest = async (session) => {
   try {
     const result = await parentRequestLeave(token.value, session.id, { reason: leaveReason.value });
     session.Status = result?.session?.status || 'leave_requested';
+    session.LeaveWorkflowStatus = 'open';
+    session.LeaveWorkflowReason = null;
     leaveSuccess.value = '請假申請已送出，補習班會安排補課時段。';
     trackParentPortalEvent(token.value, 'parent.leave_submitted', {
       session_id: session.id,
@@ -1321,12 +1351,20 @@ watch(dashboard, (d) => {
   if (d && urlTabParam) applyTabFromUrl(urlTabParam);
 });
 
-const loadDashboard = async () => {
+const loadDashboard = async ({ resetRecords = true } = {}) => {
   if (!token.value) return;
   try {
-    lrPage.value = 1;
-    lrSubjectFilter.value = '';
-    const data = await getParentDashboard(token.value, { lrPage: 1, lrPerPage });
+    if (resetRecords) {
+      lrPage.value = 1;
+      lrSubjectFilter.value = '';
+    }
+    const campusId = campusScope.value !== 'all' ? campusScope.value : null;
+    const data = await getParentDashboard(token.value, {
+      lrPage: resetRecords ? 1 : lrPage.value,
+      lrPerPage,
+      scope: campusScope.value === 'all' ? 'all' : 'campus',
+      campusId,
+    });
     dashboard.value = data;
     trackParentPortalEvent(token.value, 'parent.dashboard_opened', {
       student_id: data?.student?.id || null,
@@ -1341,7 +1379,11 @@ const loadDashboard = async () => {
     lrTotal.value = meta.total || 0;
     await loadNotificationPreferences();
   } catch (e) {
-    console.error('Dashboard load failed:', e);
+    // An expired parent token is an expected path for a public entry URL;
+    // clear it quietly and let the login screen render without a console error.
+    const status = Number(e?.status || e?.response?.status || 0);
+    const isUnauthorized = status === 401 || /unauthorized/i.test(String(e?.message || ''));
+    if (!isUnauthorized) console.error('Dashboard load failed:', e);
     token.value = '';
     localStorage.removeItem(tokenKey);
   }
@@ -1382,7 +1424,12 @@ const loadMoreRecords = async () => {
   lrLoading.value = true;
   try {
     const nextPage = lrPage.value + 1;
-    const data = await getParentDashboard(token.value, { lrPage: nextPage, lrPerPage });
+    const data = await getParentDashboard(token.value, {
+      lrPage: nextPage,
+      lrPerPage,
+      scope: campusScope.value === 'all' ? 'all' : 'campus',
+      campusId: campusScope.value !== 'all' ? campusScope.value : null,
+    });
     const newRecords = data.learning_records || [];
     allLearningRecords.value.push(...newRecords);
     const meta = data.learning_records_meta || {};
@@ -1409,6 +1456,7 @@ const login = async () => {
     token.value = result.token;
     localStorage.setItem(tokenKey, result.token);
     setStudents(result.students || null);
+    campusScope.value = 'all';
     await loadDashboard();
   } catch (error) {
     loginError.value = error.message || '登入失敗，請確認學生姓名及手機號碼是否正確';
@@ -1437,6 +1485,7 @@ const loginWithLine = async () => {
     token.value = result.token;
     localStorage.setItem(tokenKey, result.token);
     setStudents(result.students || null);
+    campusScope.value = 'all';
     autoLineNotBound.value = false;
     await loadDashboard();
   } catch (e) {
@@ -1504,6 +1553,7 @@ const switchStudent = async (studentId) => {
     localStorage.setItem(tokenKey, result.token);
     allLearningRecords.value = [];
     lrPage.value = 1;
+    campusScope.value = 'all';
     expandedRecords.clear();
     activeTab.value = 'learning';
     await loadDashboard();
@@ -1515,10 +1565,25 @@ const switchStudent = async (studentId) => {
   }
 };
 
+const switchCampusScope = async () => {
+  if (switchingCampus.value || !token.value) return;
+  switchingCampus.value = true;
+  allLearningRecords.value = [];
+  expandedRecords.clear();
+  try {
+    await loadDashboard({ resetRecords: true });
+  } catch (e) {
+    console.error('Switch campus scope failed:', e);
+  } finally {
+    switchingCampus.value = false;
+  }
+};
+
 const logout = () => {
   token.value = '';
   localStorage.removeItem(tokenKey);
   dashboard.value = null;
+  campusScope.value = 'all';
   setStudents(null);
 };
 
@@ -1731,6 +1796,10 @@ onMounted(async () => {
 .pp-student-switcher { padding: 10px 0 4px; border-top: 1px solid var(--ds-canvas-soft); margin-top: 4px; }
 .pp-switcher-label { display: flex; align-items: center; gap: 4px; font-size: 0.82em; color: var(--ds-ink-mute); margin-bottom: 8px; }
 .pp-switcher-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.pp-campus-switcher { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--ds-border); }
+.pp-campus-select { width: 100%; min-height: 38px; border: 1px solid var(--ds-border); border-radius: 8px; background: var(--ds-surface); color: var(--ds-ink); padding: 0 10px; }
+.pp-switcher-hint { margin: 6px 0 0; font-size: 0.78em; color: var(--ds-ink-mute); }
+.pp-campus-label { display: inline-flex; align-items: center; margin-left: 6px; padding: 2px 7px; border-radius: 999px; background: var(--ds-success-wash); color: var(--ds-success); font-size: 0.75em; white-space: nowrap; }
 .pp-chip {
   padding: 6px 14px; border-radius: 20px; border: 1.5px solid var(--ds-canvas-soft);
   background: var(--ds-canvas); font-size: 0.88em; cursor: pointer; transition: all 0.2s;
@@ -2276,6 +2345,7 @@ onMounted(async () => {
 .pp-status-dot.rescheduled { background: var(--ds-warning); }
 .pp-status-dot.leave_requested { background: var(--ds-ink-mute); }
 .pp-status-text { font-size: 0.78em; color: var(--ds-ink-mute); }
+.pp-leave-rejected { flex-basis: 100%; color: var(--ds-danger); font-size: 0.72em; }
 .pp-leave-box {
   flex: 1 0 100%;
   margin-left: 56px;

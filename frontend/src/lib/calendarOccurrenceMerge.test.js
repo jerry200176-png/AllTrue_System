@@ -318,6 +318,72 @@ assert.equal(muzhaDuplicateStudentSlot.length, 1, 'same student/date/start shoul
 assert.equal(muzhaDuplicateStudentSlot[0].student_course_id, 1256);
 assert.equal(muzhaDuplicateStudentSlot[0].class_session_id, 11262);
 
+// A student may take a different subject in the same slot after the original
+// lesson is excused. The live replacement subject must remain visible; the
+// excused original must not win the student/date/start dedupe key.
+const biologyLeaveCourse = {
+  ...baseCourse,
+  id: 1261,
+  subject: 'Biology',
+  days_of_week: [6],
+  day_time_slots: [{ day: 6, start_time: '13:00', duration_hours: 2 }],
+};
+const socialReplacementCourse = {
+  ...baseCourse,
+  id: 1262,
+  subject: 'Social',
+  days_of_week: [6],
+  day_time_slots: [{ day: 6, start_time: '13:00', duration_hours: 2 }],
+};
+const biologyLeaveSocialReplacement = merge({
+  courses: [biologyLeaveCourse, socialReplacementCourse],
+  allCourses: [biologyLeaveCourse, socialReplacementCourse],
+  weekDatesByDow: {
+    1: '2026-05-11',
+    2: '2026-05-12',
+    3: '2026-05-13',
+    4: '2026-05-14',
+    5: '2026-05-15',
+    6: '2026-05-16',
+    7: '2026-05-17',
+  },
+  sessionDatesByCourseId: {
+    1261: [
+      { id: 126101, session_date: '2026-05-16', start_time: '13:00', end_time: '15:00', status: 'leave', teacher_id: 17 },
+    ],
+    1262: [
+      { id: 126201, session_date: '2026-05-16', start_time: '13:00', end_time: '15:00', status: 'scheduled', teacher_id: 17 },
+    ],
+  },
+});
+assert.equal(biologyLeaveSocialReplacement.length, 1, 'same student/date/start still renders one replacement lesson');
+assert.equal(biologyLeaveSocialReplacement[0].subject, 'Social', 'live replacement subject must beat excused old subject');
+assert.equal(biologyLeaveSocialReplacement[0].class_session_id, 126201, 'live replacement session must remain authoritative');
+
+// A template/legacy replacement without a ClassSession must not hide the
+// materialized leave session. The materialized row is the source of truth.
+const biologyLeaveWithLegacySocial = merge({
+  courses: [biologyLeaveCourse, socialReplacementCourse],
+  allCourses: [biologyLeaveCourse, socialReplacementCourse],
+  weekDatesByDow: {
+    1: '2026-05-11',
+    2: '2026-05-12',
+    3: '2026-05-13',
+    4: '2026-05-14',
+    5: '2026-05-15',
+    6: '2026-05-16',
+    7: '2026-05-17',
+  },
+  sessionDatesByCourseId: {
+    1261: [
+      { id: 126101, session_date: '2026-05-16', start_time: '13:00', end_time: '15:00', status: 'leave', teacher_id: 17 },
+    ],
+  },
+});
+assert.equal(biologyLeaveWithLegacySocial.length, 1, 'materialized leave and legacy template should still render one slot');
+assert.equal(biologyLeaveWithLegacySocial[0].subject, 'Biology', 'materialized leave must beat a legacy template replacement');
+assert.equal(biologyLeaveWithLegacySocial[0].class_session_id, 126101, 'materialized leave must remain authoritative');
+
 const historicalStoppedCourse = {
   ...baseCourse,
   id: 777,
@@ -415,4 +481,94 @@ assert.equal(
   sharedSlotMultiStudent.filter((o) => [8101, 8102, 8103].includes(o.class_session_id)).length,
   3,
   '#187/#188: distinct students sharing one date+time slot must all render (no collapse to slot count)',
+);
+
+// 木柵吳艾潼 SC#2688, 2026-08-08 (production incident, 2026-08-08): a slot rescheduled
+// twice in quick succession left TWO `schedules` rows with status='scheduled' for the
+// same course+date (id 7584 stale/superseded, id 7589 the real current one) — the
+// backend's exact-start_time dedupe delete didn't catch 7584 because the second
+// reschedule re-submitted to the *same* start_time as the first (14:30), not a
+// different one. Both passed shouldRenderScheduledException (both status='scheduled',
+// no leave that day), producing a ghost box in the calendar alongside the real one.
+const muzhaWuAitongCourse = {
+  ...baseCourse,
+  id: 2688,
+  student_id: 178,
+  student_name: '吳艾潼',
+  days_of_week: [7],
+  day_time_slots: [{ day: 7, start_time: '10:00', duration_hours: 2 }],
+};
+const muzhaStaleRescheduleWeek = { 6: '2026-08-08', 7: '2026-08-09' };
+const muzhaStaleRescheduleMerge = merge({
+  courses: [muzhaWuAitongCourse],
+  allCourses: [muzhaWuAitongCourse],
+  weekDatesByDow: muzhaStaleRescheduleWeek,
+  sessionDatesByCourseId: {
+    2688: [
+      { id: 24169, session_date: '2026-08-08', start_time: '14:30', end_time: '16:30', status: 'scheduled', teacher_id: 17 },
+    ],
+  },
+  courseLastSessionDate: { 2688: '2026-08-09' },
+  exceptions: [
+    { id: 7583, status: 'rescheduled', schedule_date: '2026-08-08', student_course_id: 2688, student_id: 178, start_time: '15:00', teacher_id: 17 },
+    { id: 7584, status: 'scheduled', schedule_date: '2026-08-08', student_course_id: 2688, student_id: 178, start_time: '14:30', end_time: '16:30', teacher_id: 17, original_schedule_id: 7583 },
+    { id: 7588, status: 'rescheduled', schedule_date: '2026-08-08', student_course_id: 2688, student_id: 178, start_time: '14:30', teacher_id: 17 },
+    { id: 7589, status: 'scheduled', schedule_date: '2026-08-08', student_course_id: 2688, student_id: 178, start_time: '14:30', end_time: '16:30', teacher_id: 17, original_schedule_id: 7588 },
+  ],
+});
+const muzhaAug8Rows = muzhaStaleRescheduleMerge.filter((o) => defaultToYmdForTest(o) === '2026-08-08' && Number(o.student_course_id ?? o.id) === 2688);
+function defaultToYmdForTest(row) {
+  return String(row?.session_date || row?.schedule_date || '').slice(0, 10) || (row?.day_of_week === 6 ? '2026-08-08' : '');
+}
+assert.equal(
+  muzhaAug8Rows.length,
+  1,
+  '木柵吳艾潼 SC#2688 2026-08-08: stale superseded scheduled marker (7584) must not render a second ghost box next to the real occurrence (7589/24169)',
+);
+assert.equal(muzhaAug8Rows[0].class_session_id, 24169);
+
+// In-app #226/#227 regression shape: these schedule and course IDs are synthetic because the
+// production row IDs were not available without DB access, unlike the real #1685/#1686 fixtures.
+// The scheduled reschedule target has no matching materialized ClassSession, so it must not become
+// a calendar-only occurrence that course management cannot corroborate.
+const syntheticOrphanCourse = {
+  ...baseCourse,
+  id: 22601,
+  student_id: 226001,
+  student_name: 'synthetic #226/#227 student',
+  days_of_week: [6],
+  day_time_slots: [{ day: 6, start_time: '11:00', duration_hours: 2 }],
+};
+const syntheticOrphanMerge = merge({
+  courses: [syntheticOrphanCourse],
+  allCourses: [syntheticOrphanCourse],
+  weekDatesByDow: { 6: '2026-08-08' },
+  sessionDatesByCourseId: { 22601: [] },
+  courseLastSessionDate: { 22601: '2026-08-08' },
+  exceptions: [
+    {
+      id: 2261001,
+      status: 'rescheduled',
+      schedule_date: '2026-08-08',
+      student_course_id: 22601,
+      student_id: 226001,
+      start_time: '10:00',
+    },
+    {
+      id: 2261002,
+      status: 'scheduled',
+      schedule_date: '2026-08-08',
+      student_course_id: 22601,
+      student_id: 226001,
+      start_time: '11:00',
+      end_time: '13:00',
+      teacher_id: 17,
+      original_schedule_id: 2261001,
+    },
+  ],
+});
+assert.equal(
+  syntheticOrphanMerge.filter((row) => Number(row.student_course_id) === 22601).length,
+  0,
+  'synthetic #226/#227: orphan scheduled reschedule target without a matching ClassSession must not render as a calendar ghost',
 );

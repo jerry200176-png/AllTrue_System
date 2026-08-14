@@ -24,8 +24,7 @@ import {
   canMaterializeProjectedSession,
   planningStatusToLegacyWarning,
 } from '../../lib/sessionPlanningStatus';
-
-const LEAVE_STATUSES = new Set(['leave', 'leave_adjusted', 'excused']);
+import { FINAL_LEAVE_STATUSES, LEAVE_STATUSES } from '../../lib/sessionStatus';
 const ATTENDED_SESSION_STATUSES = new Set(['completed', 'attended', 'late']);
 const SESSION_DISPLAY_CONSUMED = new Set(['completed', 'absent']);
 
@@ -226,7 +225,10 @@ export function useCourseSessionsDisplay({
   const rowOccupiesPurchasedQuota = (row) => rowOccupiesPurchasedQuotaShared(row, { exceptionsOccupyQuota: true });
 
   const isOverQuotaSession = (course, row) => {
-    if (!row || course?.PackageID) return false;
+    // 月結課程沒有「購買堂數上限」的概念——後端 StudentClassController 對每門課都會把
+    // sessions_purchased 設成 SessionCount（即使是月結課），所以不能只看 purchased>0，
+    // 一定要先確認這是堂數制（isSessionMode）才適用超排判斷，否則月結課會被錯誤標記超排。
+    if (!row || course?.PackageID || !isSessionMode(course)) return false;
     const purchased = getPurchasedSessions(course);
     if (purchased <= 0 || !rowOccupiesPurchasedQuota(row)) return false;
 
@@ -317,6 +319,7 @@ export function useCourseSessionsDisplay({
     if ([...statuses].some((status) => ATTENDED_SESSION_STATUSES.has(status))) return { label: '已上', className: 'completed' };
     if (statuses.has('absent')) return { label: '缺席', className: 'absent' };
     if (statuses.has('leave_adjusted')) return { label: '補請假', className: 'leave' };
+    if (statuses.has('leave_requested')) return { label: '請假待審', className: 'leave-requested' };
     if (statuses.has('excused') || statuses.has('leave')) return { label: '請假', className: 'leave' };
     if (statuses.has('cancelled')) return { label: '取消', className: 'cancelled' };
     if (rows.some((row) => isContractException(row))) return { label: '例外堂', className: 'exception' };

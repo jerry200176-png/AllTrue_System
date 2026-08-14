@@ -955,6 +955,41 @@ class PaymentReportApiTest extends TestCase
         $this->assertSame(0, count(array_filter($sessionDates, fn ($s) => $s['expected'] === true)));
     }
 
+    public function test_count_receipt_period_comes_from_receipt_sessions_not_stale_course_dates(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, [
+            'SessionCount' => 2,
+            'StartDate' => '2026-08-17',
+            'EndDate' => '2026-08-24',
+        ]);
+
+        foreach (['2026-05-08', '2026-08-10'] as $date) {
+            ClassSession::create([
+                'StudentClassID' => $sc->ID,
+                'SessionDate' => $date,
+                'StartTime' => '18:00',
+                'EndTime' => '20:00',
+                'Status' => 'attended',
+            ]);
+        }
+
+        $report = $this->createConfirmedReport($student, $sc, [
+            'payment_date' => '2026-05-08',
+            'reported_amount' => 3300,
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/payment-reports/{$report->id}/receipt");
+
+        $res->assertOk()
+            ->assertJsonPath('period_start', '2026/05/08')
+            ->assertJsonPath('period_end', '2026/08/10');
+    }
+
     public function test_receipt_rejects_cross_campus_report(): void
     {
         $token = $this->createDirectorToken([2]);

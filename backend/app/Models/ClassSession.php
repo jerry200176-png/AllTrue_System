@@ -116,7 +116,11 @@ class ClassSession extends Model
      * @param  array<int>  $studentClassIds
      * @return list<array{student_class_id:int,date:string,start_time:?string,end_time:?string,status:string,subject:?string}>
      */
-    public static function sessionsForPaymentSlip(array $studentClassIds): array
+    public static function sessionsForPaymentSlip(
+        array $studentClassIds,
+        ?string $periodStart = null,
+        ?string $periodEnd = null
+    ): array
     {
         $ids = array_values(array_unique(array_filter(array_map('intval', $studentClassIds))));
         if ($ids === []) {
@@ -128,6 +132,8 @@ class ClassSession extends Model
         return static::query()
             ->whereIn('StudentClassID', $ids)
             ->whereNotIn('Status', ['cancelled'])
+            ->when($periodStart !== null, fn ($q) => $q->whereDate('SessionDate', '>=', $periodStart))
+            ->when($periodEnd !== null, fn ($q) => $q->whereDate('SessionDate', '<=', $periodEnd))
             ->with(['studentClass'])
             ->orderBy('SessionDate')
             ->orderBy('StartTime')

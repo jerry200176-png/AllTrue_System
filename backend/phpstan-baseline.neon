@@ -999,7 +999,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\Invoice\:\:\$PaidAmount\.$#'
 			identifier: property.notFound
-			count: 4
+			count: 2
 			path: app/Http/Controllers/BillingController.php
 
 		-
@@ -1023,7 +1023,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\Invoice\:\:\$TotalAmount\.$#'
 			identifier: property.notFound
-			count: 3
+			count: 1
 			path: app/Http/Controllers/BillingController.php
 
 		-
@@ -1185,7 +1185,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$ID\.$#'
 			identifier: property.notFound
-			count: 9
+			count: 6
 			path: app/Http/Controllers/ClassSessionController.php
 
 		-
@@ -1209,7 +1209,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 4
+			count: 1
 			path: app/Http/Controllers/ClassSessionController.php
 
 		-
@@ -1779,19 +1779,19 @@ parameters:
 		-
 			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model\:\:\$closed_reason\.$#'
 			identifier: property.notFound
-			count: 2
+			count: 1
 			path: app/Http/Controllers/ExceptionWorkflowController.php
 
 		-
 			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
 			identifier: property.notFound
-			count: 3
+			count: 2
 			path: app/Http/Controllers/ExceptionWorkflowController.php
 
 		-
 			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model\:\:\$payload\.$#'
 			identifier: property.notFound
-			count: 2
+			count: 1
 			path: app/Http/Controllers/ExceptionWorkflowController.php
 
 		-
@@ -1857,7 +1857,7 @@ parameters:
 		-
 			message: '#^Parameter \#1 \$workflow of method App\\Http\\Controllers\\ExceptionWorkflowController\:\:serialize\(\) expects App\\Models\\ExceptionWorkflow, Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model given\.$#'
 			identifier: argument.type
-			count: 4
+			count: 3
 			path: app/Http/Controllers/ExceptionWorkflowController.php
 
 		-
@@ -1882,48 +1882,6 @@ parameters:
 			message: '#^Access to an undefined property App\\Models\\Campus\:\:\$name\.$#'
 			identifier: property.notFound
 			count: 2
-			path: app/Http/Controllers/FinanceController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\LearningRecord\:\:\$EndTime\.$#'
-			identifier: property.notFound
-			count: 2
-			path: app/Http/Controllers/FinanceController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\LearningRecord\:\:\$SessionDate\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/FinanceController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\LearningRecord\:\:\$StartTime\.$#'
-			identifier: property.notFound
-			count: 2
-			path: app/Http/Controllers/FinanceController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\LearningRecord\:\:\$Subject\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/FinanceController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\LearningRecord\:\:\$TeacherID\.$#'
-			identifier: property.notFound
-			count: 2
-			path: app/Http/Controllers/FinanceController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\LearningRecord\:\:\$id\.$#'
-			identifier: property.notFound
-			count: 2
-			path: app/Http/Controllers/FinanceController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\LearningRecord\:\:\$studentClass\.$#'
-			identifier: property.notFound
-			count: 1
 			path: app/Http/Controllers/FinanceController.php
 
 		-
@@ -1953,7 +1911,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\PayrollBranchRule\:\:\$id\.$#'
 			identifier: property.notFound
-			count: 2
+			count: 3
 			path: app/Http/Controllers/FinanceController.php
 
 		-
@@ -1965,7 +1923,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\PayrollMonthStatus\:\:\$status\.$#'
 			identifier: property.notFound
-			count: 1
+			count: 2
 			path: app/Http/Controllers/FinanceController.php
 
 		-
@@ -2005,12 +1963,6 @@ parameters:
 			path: app/Http/Controllers/FinanceController.php
 
 		-
-			message: '#^Call to an undefined method Illuminate\\Database\\Query\\Builder\:\:active\(\)\.$#'
-			identifier: method.notFound
-			count: 1
-			path: app/Http/Controllers/FinanceController.php
-
-		-
 			message: '#^Call to an undefined method Illuminate\\Database\\Query\\Builder\:\:whereHas\(\)\.$#'
 			identifier: method.notFound
 			count: 1
@@ -2019,19 +1971,13 @@ parameters:
 		-
 			message: '#^Call to an undefined method Illuminate\\Database\\Query\\Builder\:\:with\(\)\.$#'
 			identifier: method.notFound
-			count: 2
+			count: 3
 			path: app/Http/Controllers/FinanceController.php
 
 		-
 			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:whereIn\(\)\.$#'
 			identifier: staticMethod.notFound
 			count: 1
-			path: app/Http/Controllers/FinanceController.php
-
-		-
-			message: '#^Call to an undefined static method App\\Models\\LearningRecord\:\:active\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 3
 			path: app/Http/Controllers/FinanceController.php
 
 		-
@@ -2091,7 +2037,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\Student\:\:whereIn\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 9
+			count: 10
 			path: app/Http/Controllers/FinanceController.php
 
 		-
@@ -2104,6 +2050,54 @@ parameters:
 			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:whereIn\(\)\.$#'
 			identifier: staticMethod.notFound
 			count: 7
+			path: app/Http/Controllers/FinanceController.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\PayrollRun\:\:create\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Http/Controllers/FinanceController.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\PayrollRunLine\:\:create\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Http/Controllers/FinanceController.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\PayrollRun\:\:whereKey\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Http/Controllers/FinanceController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\PayrollMonthStatus\:\:\$current_run_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/FinanceController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\PayrollRun\:\:\$lines\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Http/Controllers/FinanceController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\ClassSession\:\:\$studentClass\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/FinanceController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\ClassSession\:\:\$TeacherID\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Http/Controllers/FinanceController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\ClassSession\:\:\$Subject\.$#'
+			identifier: property.notFound
+			count: 1
 			path: app/Http/Controllers/FinanceController.php
 
 		-
@@ -2122,6 +2116,12 @@ parameters:
 			message: '#^Offset ''teacher_id'' on array\{teacher_id\: \(int\|string\), teacher_name\: string, one_on_one_hours\: float, one_on_two_hours\: float, one_on_three_hours\: float, tutoring_hours\: float, total_hours\: float, subject_count_with\: string, \.\.\.\} on left side of \?\? always exists and is not nullable\.$#'
 			identifier: nullCoalesce.offset
 			count: 1
+			path: app/Http/Controllers/FinanceController.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\LearningRecord\:\:active\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 3
 			path: app/Http/Controllers/FinanceController.php
 
 		-
@@ -3055,33 +3055,9 @@ parameters:
 			path: app/Http/Controllers/ParentPortalController.php
 
 		-
-			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model\:\:\$EndTime\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/ParentPortalController.php
-
-		-
-			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model\:\:\$SessionDate\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/ParentPortalController.php
-
-		-
-			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model\:\:\$StartTime\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/ParentPortalController.php
-
-		-
 			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model\:\:\$Status\.$#'
 			identifier: property.notFound
 			count: 1
-			path: app/Http/Controllers/ParentPortalController.php
-
-		-
-			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
-			identifier: property.notFound
-			count: 4
 			path: app/Http/Controllers/ParentPortalController.php
 
 		-
@@ -3171,19 +3147,13 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 3
+			count: 1
 			path: app/Http/Controllers/ParentPortalController.php
 
 		-
 			message: '#^Call to an undefined static method App\\Models\\StudentLineBinding\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
 			count: 6
-			path: app/Http/Controllers/ParentPortalController.php
-
-		-
-			message: '#^Call to an undefined static method App\\Models\\StudentSignIn\:\:where\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 1
 			path: app/Http/Controllers/ParentPortalController.php
 
 		-
@@ -3675,7 +3645,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\User\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 2
+			count: 3
 			path: app/Http/Controllers/ProfileController.php
 
 		-
@@ -3999,7 +3969,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$ID\.$#'
 			identifier: property.notFound
-			count: 45
+			count: 47
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
@@ -4047,7 +4017,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$StudentID\.$#'
 			identifier: property.notFound
-			count: 11
+			count: 12
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
@@ -4113,7 +4083,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$student\.$#'
 			identifier: property.notFound
-			count: 1
+			count: 2
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
@@ -4131,7 +4101,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 18
+			count: 19
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
@@ -4179,7 +4149,13 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\LearningRecord\:\:whereIn\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 2
+			count: 3
+			path: app/Http/Controllers/StudentClassController.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\ScheduleAuditLog\:\:create\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
@@ -4203,7 +4179,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\Student\:\:whereIn\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 4
+			count: 5
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
@@ -4855,12 +4831,6 @@ parameters:
 			path: app/Models/ClassSession.php
 
 		-
-			message: '#^Call to an undefined method Illuminate\\Database\\Query\\Builder\:\:with\(\)\.$#'
-			identifier: method.notFound
-			count: 1
-			path: app/Models/ClassSession.php
-
-		-
 			message: '#^Access to an undefined property App\\Models\\CoursePackage\:\:\$remaining_sessions\.$#'
 			identifier: property.notFound
 			count: 1
@@ -5337,13 +5307,13 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 4
+			count: 6
 			path: app/Services/CourseLeaveCascadeService.php
 
 		-
 			message: '#^Call to an undefined static method App\\Models\\LearningRecord\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 4
+			count: 5
 			path: app/Services/CourseLeaveCascadeService.php
 
 		-
@@ -5355,7 +5325,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\StudentSignIn\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 2
+			count: 3
 			path: app/Services/CourseLeaveCascadeService.php
 
 		-
@@ -5517,12 +5487,6 @@ parameters:
 		-
 			message: '#^Parameter \#1 \$array \(list\<string\>\) of array_values is already a list, call has no effect\.$#'
 			identifier: arrayValues.list
-			count: 1
-			path: app/Services/EnrollmentService.php
-
-		-
-			message: '#^Variable \$allDatesForMonthly in empty\(\) always exists and is not falsy\.$#'
-			identifier: empty.variable
 			count: 1
 			path: app/Services/EnrollmentService.php
 
@@ -6155,3 +6119,87 @@ parameters:
 			identifier: staticMethod.notFound
 			count: 1
 			path: app/Services/CourseContinuityService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$ID\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Services/ManualSessionBookingService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$StudentID\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Services/ManualSessionBookingService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$TeacherID\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Services/ManualSessionBookingService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$StartDate\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/ManualSessionBookingService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$EndDate\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/ManualSessionBookingService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$ClassType\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/ManualSessionBookingService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$room_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/ManualSessionBookingService.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\Student\:\:where\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 2
+			path: app/Services/ManualSessionBookingService.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:find\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Services/ManualSessionBookingService.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\ScheduleAuditLog\:\:create\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Services/ManualSessionBookingService.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\UserCampus\:\:where\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Services/ManualSessionBookingService.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Query\\Builder\:\:firstOrFail\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Services/ManualSessionBookingService.php
+
+		-
+			message: '#^Strict comparison using === between int\<min, 0\>\|int\<2, max\> and 1 will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Services/ManualSessionBookingService.php
+
+		-
+			message: '#^Comparison operation "\<=" between int\<1, max\> and 0 is always false\.$#'
+			identifier: smallerOrEqual.alwaysFalse
+			count: 1
+			path: app/Services/ManualSessionBookingService.php

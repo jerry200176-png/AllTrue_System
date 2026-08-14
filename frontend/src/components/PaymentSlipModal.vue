@@ -135,7 +135,9 @@ function normalizeSlipData(raw) {
   const items = [];
   items.push({
     description: `${raw.subject}（${modeLabel}）`,
-    period: raw.remaining_sessions != null ? `剩餘 ${raw.remaining_sessions} 堂` : '—',
+    period: raw.schedule_mode === 'date' && raw.period_sessions != null
+      ? `本期 ${raw.period_sessions} 堂`
+      : (raw.remaining_sessions != null ? `剩餘 ${raw.remaining_sessions} 堂` : '—'),
     amount: raw.charge ? formatAmount(raw.charge) : '—',
   });
 

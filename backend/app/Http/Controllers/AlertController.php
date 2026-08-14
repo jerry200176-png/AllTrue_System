@@ -9,6 +9,8 @@ use App\Models\Invoice;
 use App\Models\PaymentReport;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Services\InvoiceAmountReconciliationService;
+use App\Services\MonthlyBillingService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -16,6 +18,13 @@ use Illuminate\Support\Facades\Log;
 
 class AlertController extends Controller
 {
+    public function __construct(
+        private MonthlyBillingService $monthlyBilling,
+        private InvoiceAmountReconciliationService $invoiceAmounts
+    )
+    {
+    }
+
     /**
      * GET /api/v1/alerts/tuition
      * 主任儀表板「繳費提醒」資料源。規則見 docs/DIRECTOR_PAYMENT_ALERT_RULES.md
@@ -98,9 +107,10 @@ class AlertController extends Controller
             ->all();
         $paidAtMap = self::lastPaidAtByStudentClassIds($allClassIds);
         $invoiceAggMap = self::invoiceAggregateByStudentClassIds($allClassIds);
-        $openMonthlyInvoiceMap = self::openInvoiceByStudentClassIds($dateResults->pluck('ID')->unique()->values()->all());
+        $openMonthlyInvoiceMap = $this->openInvoiceByStudentClassIds($dateResults->pluck('ID')->unique()->values()->all());
         $pendingReportMap = self::latestPendingReportByStudentClassIds($allClassIds);
         $newerCourseMap = self::newerCourseByStudentClassIds($allClassIds);
+        $subjectNameMap = $this->subjectNameMapForCourses($countResults->merge($dateResults));
 
         $allResults = $countResults->merge($dateResults)->keyBy('ID');
 
@@ -195,7 +205,7 @@ class AlertController extends Controller
             $charge = $this->packageCountModeCharge($pkg);
             $invoiceAgg = $invoiceAggMap[$anchorId] ?? null;
             $paidAmount = $invoiceAgg ? (int) $invoiceAgg['paid_amount'] : 0;
-            $isPaid = (bool) $pkg->paid || ($charge > 0 && $paidAmount >= $charge);
+            $isPaid = $this->isFullyPaid((bool) $pkg->paid, $paidAmount, $charge);
             $pendingReportId = $pendingReportMap[$anchorId] ?? null;
             $remaining = max(0, (int) ($pkg->remaining_sessions ?? 0));
 
@@ -232,20 +242,28 @@ class AlertController extends Controller
             ->merge(
                 $countResults
                     ->filter(fn ($c) => !$countPkgMemberIds->contains($c->ID))
-                    ->map(fn ($c) => $this->mapCountModeAlert($c))->filter()
+                    ->map(fn ($c) => $this->mapCountModeAlert($c, $subjectNameMap))->filter()
             )
             ->merge(
                 // Exclude monthly-package members from individual date-mode alerts
                 $dateResults->filter(fn ($c) => !$monthlyPkgMemberIds->contains($c->ID))
-                    ->map(fn ($c) => $this->mapMonthlyAlert($c, $today, $openMonthlyInvoiceMap[(int) $c->ID] ?? null))->filter()
+                    ->map(fn ($c) => $this->mapMonthlyAlert($c, $today, $openMonthlyInvoiceMap[(int) $c->ID] ?? null, $subjectNameMap))->filter()
             )
-            ->map(function ($row) use ($paidAtMap, $allResults, $invoiceAggMap, $pendingReportMap, $newerCourseMap) {
+            ->map(function ($row) use ($paidAtMap, $allResults, $invoiceAggMap, $pendingReportMap, $newerCourseMap, $today, $openMonthlyInvoiceMap) {
                 $classId = (int) $row['id'];
                 $sc = $allResults->get($classId);
                 $directPaidAt = ($sc && $sc->PayDate) ? substr($sc->PayDate, 0, 10) : null;
                 $invoicePaidAt = $paidAtMap[$classId] ?? null;
 
-                $charge = (int) ($sc->Charge ?? 0);
+                $openInvoice = $openMonthlyInvoiceMap[$classId] ?? null;
+                $invoiceProjection = $openInvoice && isset($openInvoice['invoice'])
+                    ? $this->invoiceAmounts->resolve($openInvoice['invoice'], $sc)
+                    : null;
+                $charge = $sc && ($sc->ScheduleMode ?? 'count') === 'date'
+                    ? ($invoiceProjection
+                        ? (int) $invoiceProjection['total_amount']
+                        : (int) $this->monthlyBilling->summarize($sc, $today)['charge'])
+                    : $this->countModeCharge($sc);
                 $invoiceAgg = $invoiceAggMap[$classId] ?? null;
                 $paidAmount = $invoiceAgg ? (int) $invoiceAgg['paid_amount'] : 0;
                 $scIsPaid = (int) ($sc->Paid ?? 0) === 1;
@@ -281,6 +299,11 @@ class AlertController extends Controller
                     'newer_course_start_date'  => $newerInfo['start_date'] ?? null,
                     'current_course_end_date'  => $currentEndDate,
                     'newer_course_overlap'     => $newerCourseOverlap,
+                    'invoice_stored_amount'    => $invoiceProjection['stored_total_amount'] ?? null,
+                    'invoice_computed_amount'  => $invoiceProjection['computed_total_amount'] ?? null,
+                    'invoice_amount_source'    => $invoiceProjection['amount_source'] ?? null,
+                    'invoice_amount_discrepancy' => $invoiceProjection['amount_discrepancy'] ?? false,
+                    'invoice_period_sessions' => $invoiceProjection['period_sessions'] ?? null,
                 ];
             })
             ->filter(fn ($row) => ($row['charge'] ?? 0) > 0)
@@ -294,7 +317,7 @@ class AlertController extends Controller
         return response()->json($rows);
     }
 
-    private function mapCountModeAlert(StudentClass $c): ?array
+    private function mapCountModeAlert(StudentClass $c, array $subjectNameMap = []): ?array
     {
         $remaining = max(0, (int) ($c->RemainingSessions ?? 0));
         $isPaid = (int) ($c->Paid ?? 0) === 1;
@@ -310,7 +333,7 @@ class AlertController extends Controller
             'student_id'         => (int) $c->StudentID,
             'student_name'       => $c->student->name ?? 'Unknown',
             'campus_id'          => (int) ($c->student->CampusID ?? 0),
-            'subject'            => $this->subjectLabel($c),
+            'subject'            => $this->subjectLabel($c, $subjectNameMap),
             'schedule_mode'      => 'count',
             'remaining_sessions' => $remaining,
             'sessions_purchased' => (int) ($c->SessionCount ?? 0),
@@ -329,12 +352,40 @@ class AlertController extends Controller
         return (int) round($sessions * $rate);
     }
 
+    /**
+     * Count-course alerts must use the contract price, not a stale Charge
+     * snapshot. Historical renewals could copy a previous total into Charge,
+     * making an 8-session course at 1,650 display as 24,750 instead of 13,200
+     * (#230). Charge remains stored for audit; this is the director-facing
+     * effective amount used for status and collection decisions.
+     */
+    private function countModeCharge(StudentClass $course): int
+    {
+        $rate = (float) ($course->Rate ?? 0);
+        $sessions = max(0, (int) ($course->SessionCount ?? 0));
+        if ($rate <= 0 || $sessions <= 0) {
+            return max(0, (int) ($course->Charge ?? 0));
+        }
+
+        $rateUnit = strtolower(trim((string) ($course->rate_unit ?? 'session')));
+        if ($rateUnit === 'hour') {
+            $hours = (int) ($course->TotalHours ?? 0);
+            if ($hours <= 0) {
+                $duration = max(30, (int) ($course->SessionDuration ?? 120));
+                $hours = (int) round(($sessions * $duration) / 60);
+            }
+            return max(0, (int) round($rate * $hours));
+        }
+
+        return max(0, (int) round($rate * $sessions));
+    }
+
     private function computePackageCountPaymentStatus(CoursePackage $pkg, int $paidAmount, int $charge, bool $hasPendingReport): string
     {
         if ($hasPendingReport) {
             return 'pending_report';
         }
-        $isPaid = (bool) $pkg->paid || ($charge > 0 && $paidAmount >= $charge);
+        $isPaid = $this->isFullyPaid((bool) $pkg->paid, $paidAmount, $charge);
         if (!$isPaid && $paidAmount > 0 && $charge > 0 && $paidAmount < $charge) {
             return 'partial';
         }
@@ -344,7 +395,7 @@ class AlertController extends Controller
         return (int) ($pkg->remaining_sessions ?? 0) <= 2 ? 'renew_needed' : 'paid';
     }
 
-    private function mapMonthlyAlert(StudentClass $c, Carbon $today, ?array $openInvoice = null): ?array
+    private function mapMonthlyAlert(StudentClass $c, Carbon $today, ?array $openInvoice = null, array $subjectNameMap = []): ?array
     {
         $settlementDay = (int) ($c->settlement_day ?? 0);
         if ($settlementDay < 1 || $settlementDay > 31) {
@@ -358,7 +409,7 @@ class AlertController extends Controller
                 return null;
             }
 
-            return $this->monthlyAlertRow($c, $invoiceDue, $daysUntilDue, $openInvoice);
+            return $this->monthlyAlertRow($c, $invoiceDue, $daysUntilDue, $openInvoice, $subjectNameMap);
         }
 
         $isPaid = (int) ($c->Paid ?? 0) === 1;
@@ -371,11 +422,11 @@ class AlertController extends Controller
                     return null;
                 }
 
-                return $this->monthlyAlertRow($c, $thisDue, $daysLeft);
+                return $this->monthlyAlertRow($c, $thisDue, $daysLeft, null, $subjectNameMap);
             }
             $daysLate = (int) $thisDue->copy()->startOfDay()->diffInDays($today->copy()->startOfDay(), false);
 
-            return $this->monthlyAlertRow($c, $thisDue, -$daysLate);
+            return $this->monthlyAlertRow($c, $thisDue, -$daysLate, null, $subjectNameMap);
         }
 
         // 已繳費：若尚未過「本月」繳費日，下一個截止日仍為本月；否則為下月同日（遇短月則取月底）
@@ -385,7 +436,7 @@ class AlertController extends Controller
                 return null;
             }
 
-            return $this->monthlyAlertRow($c, $thisDue, $daysLeft);
+            return $this->monthlyAlertRow($c, $thisDue, $daysLeft, null, $subjectNameMap);
         }
 
         $nextMonth = $today->copy()->startOfMonth()->addMonthNoOverflow();
@@ -395,10 +446,10 @@ class AlertController extends Controller
             return null;
         }
 
-        return $this->monthlyAlertRow($c, $nextDue, $daysLeft);
+        return $this->monthlyAlertRow($c, $nextDue, $daysLeft, null, $subjectNameMap);
     }
 
-    private function monthlyAlertRow(StudentClass $c, Carbon $dueDate, int $daysUntilSettlement, ?array $invoice = null): array
+    private function monthlyAlertRow(StudentClass $c, Carbon $dueDate, int $daysUntilSettlement, ?array $invoice = null, array $subjectNameMap = []): array
     {
         $isPaid = (int) ($c->Paid ?? 0) === 1;
 
@@ -407,7 +458,7 @@ class AlertController extends Controller
             'student_id'         => (int) $c->StudentID,
             'student_name'       => $c->student->name ?? 'Unknown',
             'campus_id'          => (int) ($c->student->CampusID ?? 0),
-            'subject'            => $this->subjectLabel($c),
+            'subject'            => $this->subjectLabel($c, $subjectNameMap),
             'schedule_mode'      => 'date',
             'remaining_sessions' => max(0, (int) ($c->RemainingSessions ?? 0)),
             'sessions_purchased' => (int) ($c->SessionCount ?? 0),
@@ -435,31 +486,34 @@ class AlertController extends Controller
         return Carbon::createFromDate($year, $month, $d)->startOfDay();
     }
 
-    private static function openInvoiceByStudentClassIds(array $studentClassIds): array
+    private function openInvoiceByStudentClassIds(array $studentClassIds): array
     {
         $ids = array_values(array_unique(array_map('intval', $studentClassIds)));
         if (empty($ids)) {
             return [];
         }
 
-        $rows = Invoice::query()
+        $rows = Invoice::with(['payments' => function ($query) {
+                $query->select(['id', 'InvoiceID', 'Amount', 'Method']);
+            }])
             ->whereIn('StudentClassID', $ids)
             ->whereIn('Status', ['unpaid', 'partial'])
             ->orderBy('DueDate')
             ->orderBy('id')
-            ->get(['id', 'StudentClassID', 'DueDate', 'billing_period', 'Status']);
+            ->get(['id', 'StudentClassID', 'DueDate', 'billing_period', 'IssueDate', 'TotalAmount', 'Status']);
 
         $map = [];
         foreach ($rows as $invoice) {
             $classId = (int) $invoice->StudentClassID;
-            if (isset($map[$classId]) || !$invoice->DueDate) {
+            if (isset($map[$classId])) {
                 continue;
             }
             $map[$classId] = [
                 'id' => (int) $invoice->id,
-                'due_date' => substr((string) $invoice->DueDate, 0, 10),
+                'due_date' => $invoice->DueDate ? substr((string) $invoice->DueDate, 0, 10) : null,
                 'billing_period' => $invoice->billing_period,
                 'status' => $invoice->Status,
+                'invoice' => $invoice,
             ];
         }
 
@@ -511,10 +565,19 @@ class AlertController extends Controller
         $campus = Campus::find((int) $student->CampusID);
         $subject = $this->subjectLabel($sc);
         $remaining = max(0, (int) ($sc->RemainingSessions ?? 0));
-        $charge = (int) ($sc->Charge ?? 0);
         $mode = $sc->ScheduleMode ?? 'count';
-
         $today = Carbon::today();
+        $billing = $mode === 'date'
+            ? $this->monthlyBilling->summarize($sc, $today)
+            : [
+                'charge' => max(0, (int) ($sc->Charge ?? 0)),
+                'period_sessions' => null,
+                'period_start' => null,
+                'period_end' => null,
+                'source' => 'stored_charge_count_mode',
+            ];
+        $charge = (int) $billing['charge'];
+
         $dueDate = null;
         $daysUntilSettlement = null;
 
@@ -547,11 +610,18 @@ class AlertController extends Controller
             'subject'          => $subject,
             'schedule_mode'    => $mode,
             'remaining_sessions' => $remaining,
+            'period_sessions' => $billing['period_sessions'],
+            'billing_period_start' => $billing['period_start'],
+            'billing_period_end' => $billing['period_end'],
             'charge'           => $charge,
             'due_date'         => $dueDate,
             'days_until_settlement' => $daysUntilSettlement,
             'note'             => $sc->Memo ?? '',
-            'sessions' => ClassSession::sessionsForPaymentSlip([(int) $sc->ID]),
+            'sessions' => ClassSession::sessionsForPaymentSlip(
+                [(int) $sc->ID],
+                $billing['period_start'],
+                $billing['period_end']
+            ),
         ]);
     }
 
@@ -589,9 +659,80 @@ class AlertController extends Controller
         return $rows->filter(fn ($r) => !isset($renewedIds[$r['id']]))->values();
     }
 
-    private function subjectLabel(StudentClass $c): string
+    /**
+     * @param  array<int, string>|null  $subjectNameMap  SubjectID => name, pre-batched by
+     *                                                    subjectNameMapForCourses() to avoid
+     *                                                    StudentClass::displaySubjectName()'s
+     *                                                    per-row Subject/BaseData fallback
+     *                                                    query (#984). Pass null (the single-
+     *                                                    course call sites' default) to allow
+     *                                                    the one-off per-row query; pass a map
+     *                                                    (even an empty one, from the bulk
+     *                                                    tuition() path) to force '課程' instead
+     *                                                    of re-querying for an id the batch
+     *                                                    lookup already tried and found nothing.
+     */
+    private function subjectLabel(StudentClass $c, ?array $subjectNameMap = null): string
     {
-        return $c->displaySubjectName();
+        $subject = $c->getAttribute('Subject');
+        if ($subject !== null && $subject !== '') {
+            return (string) $subject;
+        }
+        $id = (int) ($c->SubjectID ?? 0);
+        if ($id <= 0) {
+            return '課程';
+        }
+        if ($subjectNameMap === null) {
+            return $c->displaySubjectName();
+        }
+
+        return $subjectNameMap[$id] ?? '課程';
+    }
+
+    /**
+     * Batch-resolve subject display names for a set of courses in at most two
+     * queries total, instead of StudentClass::displaySubjectName()'s per-row
+     * Subject/BaseData fallback (#984 — was ~2 extra queries per unpaid course
+     * whenever the StudentClass.Subject string column was empty).
+     *
+     * @param  \Illuminate\Support\Collection  $courses  Collection of StudentClass
+     * @return array<int, string>  SubjectID => name
+     */
+    private function subjectNameMapForCourses(\Illuminate\Support\Collection $courses): array
+    {
+        $ids = $courses
+            ->filter(fn ($c) => empty($c->getAttribute('Subject')))
+            ->pluck('SubjectID')
+            ->filter(fn ($id) => (int) $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+        if (empty($ids)) {
+            return [];
+        }
+
+        $fromSubject = DB::table('Subject')->whereIn('id', $ids)->pluck('Subject_Name', 'id')->all();
+        $missing = array_diff($ids, array_keys($fromSubject));
+        $fromBase = empty($missing)
+            ? []
+            : DB::table('BaseData')->where('Name', '課程')->whereIn('id', $missing)->pluck('Val', 'id')->all();
+
+        return $fromSubject + $fromBase;
+    }
+
+    /**
+     * Single canonical "is this fully paid" predicate for payment_status display
+     * (both single-course and package-level). Paid=1 (or pkg->paid) OR a fully-
+     * covering invoice payment counts as paid; a partial payment does not, so
+     * callers can still distinguish 'partial' from 'paid'. computePaymentStatus(),
+     * computePackageCountPaymentStatus(), and the count-mode package alert row
+     * builder (tuition()'s $countPkgAlerts map) previously each reimplemented
+     * this independently and had drifted (F7/R94) — this is the one place it
+     * should live.
+     */
+    private function isFullyPaid(bool $rawPaidFlag, int $paidAmount, int $charge): bool
+    {
+        return $rawPaidFlag || ($charge > 0 && $paidAmount >= $charge);
     }
 
     /**
@@ -603,6 +744,11 @@ class AlertController extends Controller
      *   4. renew_needed — Paid=1, count-mode, RemainingSessions <= 2
      *   5. monthly_due_soon — date-mode and Paid=1
      *   6. paid — Paid=1 and none of the above
+     *
+     * "Paid" (for step 3/4 purposes) also counts a fully-covered invoice
+     * (paid_amount >= charge) even when the raw Paid flag was never flipped,
+     * matching StudentClassController's own paid rule. Deliberately amount-based
+     * rather than "any payment exists" so partial payments still hit step 2.
      */
     private function computePaymentStatus(?StudentClass $sc, int $paidAmount, int $charge, bool $hasPendingReport): string
     {
@@ -614,7 +760,7 @@ class AlertController extends Controller
             return 'pending_report';
         }
 
-        $isPaid = (int) ($sc->Paid ?? 0) === 1;
+        $isPaid = $this->isFullyPaid((int) ($sc->Paid ?? 0) === 1, $paidAmount, $charge);
 
         if (!$isPaid && $paidAmount > 0 && $charge > 0 && $paidAmount < $charge) {
             return 'partial';

@@ -103,7 +103,8 @@ jobs:
           TS=$(date '+%Y-%m-%d_%H%M%S')
           mkdir -p /home/admin/backups/emergency
           BACKUP_FILE="/home/admin/backups/emergency/db_pre_173_supersede_${TS}.sql.gz"
-          mysqldump -h 127.0.0.1 -u admin -p"$(grep DB_PASSWORD /home/admin/backend/.env | cut -d= -f2)" \
+          DB_USER="$(grep '^DB_USERNAME=' /home/admin/backend/.env | cut -d= -f2-)"
+          mysqldump -h 127.0.0.1 -u "$DB_USER" -p"$(grep '^DB_PASSWORD=' /home/admin/backend/.env | cut -d= -f2-)" \
             --single-transaction AllTrue \
             ClassSession StudentClass LearningRecord Invoice Payment session_corrections \
             | gzip > "$BACKUP_FILE"

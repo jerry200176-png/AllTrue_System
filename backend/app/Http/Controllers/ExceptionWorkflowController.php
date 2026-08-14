@@ -6,8 +6,10 @@ use App\Models\ClassSession;
 use App\Models\ExceptionWorkflow;
 use App\Models\ExceptionWorkflowCandidate;
 use App\Models\Schedule;
+use App\Services\CourseLeaveCascadeService;
 use App\Services\ExceptionWorkflowCandidateGenerator;
 use App\Services\ExceptionWorkflowService;
+use App\Support\SessionStatus;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -28,6 +30,11 @@ class ExceptionWorkflowController extends Controller
         $status = trim((string) $request->query('status', ''));
         if ($status !== '') {
             $query->where('status', $status);
+        }
+
+        $type = trim((string) $request->query('type', ''));
+        if ($type !== '') {
+            $query->where('type', $type);
         }
 
         $items = $query->limit(50)->get()->map(fn (ExceptionWorkflow $workflow) => $this->serialize($workflow));
@@ -78,7 +85,7 @@ class ExceptionWorkflowController extends Controller
 
         return response()->json([
             'data' => [
-                'workflow_id' => (int) $workflow->id,
+                'workflow_id' => (int) $workflow->getKey(),
                 'generated_count' => count($candidates),
                 'workflow' => $this->serialize($workflow),
                 'candidates' => $workflow->candidates()
@@ -172,6 +179,22 @@ class ExceptionWorkflowController extends Controller
                 );
             }
 
+            // A makeup confirmation also resolves the original parent request.
+            // Keep the original and extra session in this transaction.
+            $originalSessionId = (int) $workflow->getAttribute('class_session_id');
+            if ($originalSessionId > 0) {
+                $original = ClassSession::query()->whereKey($originalSessionId)->lockForUpdate()->first();
+                if ($original && in_array(strtolower((string) $original->Status), ['leave_requested', 'scheduled', 'rescheduled'], true)) {
+                    // #170: a nightly backfill can have already created a `pending` LearningRecord
+                    // for $original while it was still 'scheduled' and already past. Void it here
+                    // (same as the interactive leave path) or it's left live on a leave session.
+                    CourseLeaveCascadeService::voidLiveArtifactsForLeave((int) $original->id);
+                    $original->Status = 'leave';
+                    $original->Note = $this->appendNote($original->Note, 'parent-leave-approved');
+                    $original->save();
+                }
+            }
+
             $workflow->status = 'confirmed';
             $workflow->closed_at = now();
             $workflow->closed_reason = 'candidate_confirmed';
@@ -229,17 +252,15 @@ class ExceptionWorkflowController extends Controller
         $reason = trim((string) ($data['reason'] ?? ''));
         $authUserId = (int) ($request->attributes->get('auth_user')->id ?? 0);
 
-        $workflow->status = 'waived';
-        $workflow->closed_at = now();
-        $workflow->closed_reason = 'no_makeup_needed';
-        $payload = $workflow->payload ?? [];
-        $payload['waived_at'] = now()->toIso8601String();
-        $payload['waived_by_user_id'] = $authUserId;
+        $payload = [
+            'waived_at' => now()->toIso8601String(),
+            'waived_by_user_id' => $authUserId,
+            'decision' => 'approved_without_makeup',
+        ];
         if ($reason !== '') {
             $payload['waive_reason'] = $reason;
         }
-        $workflow->payload = $payload;
-        $workflow->save();
+        $workflow = app(ExceptionWorkflowService::class)->approveLeave($workflow, 'no_makeup_needed', $payload);
 
         $workflow->refresh()->load(['student', 'studentClass', 'classSession', 'candidates']);
 
@@ -248,6 +269,27 @@ class ExceptionWorkflowController extends Controller
                 'workflow' => $this->serialize($workflow),
             ],
         ]);
+    }
+
+    public function reject(Request $request, int $id)
+    {
+        $workflow = ExceptionWorkflow::with(['studentClass', 'classSession'])->findOrFail($id);
+
+        if (!$this->canAccessCampus($request, (int) $workflow->getAttribute('campus_id'))) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $data = $request->validate(['reason' => 'required|string|max:255']);
+        $authUserId = (int) ($request->attributes->get('auth_user')->id ?? 0);
+
+        try {
+            $workflow = app(ExceptionWorkflowService::class)->rejectLeave($workflow, $data['reason'], $authUserId);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        $workflow->load(['student', 'studentClass', 'classSession', 'candidates']);
+        return response()->json(['data' => ['workflow' => $this->serialize($workflow)]]);
     }
 
     private function authorizedCampusIds(Request $request, int $branchId): ?array
@@ -376,7 +418,7 @@ class ExceptionWorkflowController extends Controller
             ->where('sc.TeacherID', (int) ($candidate->teacher_id ?? $course->TeacherID ?? 0))
             ->where('st.CampusID', (int) $workflow->campus_id)
             ->whereDate('ClassSession.SessionDate', Carbon::parse($candidate->candidate_date)->toDateString())
-            ->whereNotIn('ClassSession.Status', ['cancelled', 'leave', 'leave_requested'])
+            ->whereNotIn('ClassSession.Status', array_merge(['cancelled'], SessionStatus::leaveFamily()))
             ->where('ClassSession.id', '!=', (int) $workflow->class_session_id)
             ->where(function ($query) use ($candidate) {
                 $start = $this->trimToHM($candidate->start_time);
@@ -407,5 +449,13 @@ class ExceptionWorkflowController extends Controller
         }
 
         return preg_replace('/^(\d{1,2}:\d{2}).*$/', '$1', $time);
+    }
+
+    private function appendNote(?string $note, string $suffix): string
+    {
+        $current = trim((string) $note);
+        if ($current === '') return $suffix;
+        if (str_contains($current, $suffix)) return $current;
+        return $current . '|' . $suffix;
     }
 }

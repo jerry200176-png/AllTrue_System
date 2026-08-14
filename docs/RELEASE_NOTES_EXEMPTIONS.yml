@@ -1,0 +1,23 @@
+# CHANGELOG entries that are intentionally not shown in the staff in-app updates.
+# Every silent ship must have a stable id and a plain-language reason.
+
+exemptions:
+  - id: silent-2026-08-12-session-entitlement-transfer-core
+    changelog_date: "2026-08-12"
+    changelog_title: "fix(course): 建立堂次跨續購批次轉移的可稽核核心"
+    reason: 本階段只有未暴露入口的 backend domain 與測試，教職員尚無操作或可感知變更；正式命令會在後續 PR 附員工更新。
+
+  - id: silent-2026-08-08-staged-principal-rotation
+    changelog_date: "2026-08-08"
+    changelog_title: "security(ops): #1387 三階段具名 DB principal 輪替（待 Founder 審核／未執行）"
+    reason: 內部安全與 production credential rotation 機制，沒有教職員可操作或可感知的產品變更。
+
+  - id: silent-2026-08-08-db-password-rotation
+    changelog_date: "2026-08-08"
+    changelog_title: "fix(ops): DB 密碼輪替 workflow 的 ALTER USER host 寫死錯誤，導致 2026-08-07 Founder 觸發失敗"
+    reason: 內部安全 workflow 修正，沒有教職員可操作或可感知的產品變更。
+
+  - id: silent-2026-08-08-github-governance
+    changelog_date: "2026-08-08"
+    changelog_title: "chore: GitHub governance 收尾"
+    reason: GitHub 治理與文件設定，不是 AllTrue 使用者功能更新。

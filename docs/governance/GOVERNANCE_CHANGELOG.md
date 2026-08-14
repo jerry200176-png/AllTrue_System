@@ -1,5 +1,14 @@
 # Governance changelog
 
+## 2026-08-09 — Hermes production-agent temporary exception (#1676)
+
+- Recorded the Founder-approved temporary exception for the colleague-owned
+  Hermes gateway on the production Pi.
+- Added live evidence, explicit unknowns, non-actions, a 2026-08-23 review
+  date, and a least-privilege/systemd hardening follow-up.
+- No production host, service, credential, database, or network configuration
+  was changed by this governance pass.
+
 ## 2026-07-26 — CI failure intelligence + fast preflight (G1)
 
 - Canonical docs: `docs/governance/CI_GOVERNANCE.md`

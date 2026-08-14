@@ -1,5 +1,11 @@
 # Minimal Founder Runbook — #1387 DB Password Rotation
 
+> **P0 note:** this in-place procedure is retained as an alternative, but the
+> Founder selected the separately named, three-phase principal rotation in
+> [`1387-staged-rotation-runbook.md`](1387-staged-rotation-runbook.md) for
+> SEC-ALLTRUE-003. Do not mix the two paths; this workflow now refuses to run
+> while staged-rotation state exists.
+
 **Purpose**: rotate the production MySQL password after PR #1414's fingerprint
 audit confirmed the pre-fix leaked value still matches production's live
 credential (`MATCH_ROTATION_REQUIRED`).

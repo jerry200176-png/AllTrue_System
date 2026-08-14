@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Services\UserEngagementXpAwardService;
+use App\Support\SessionStatus;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 
@@ -61,7 +62,7 @@ class LearningRecord extends Model
             $outer->whereNotIn("{$t}.Status", ['pending', 'changes_requested'])
                 ->orWhere(function ($keep) use ($t) {
                     $keep->whereDoesntHave('classSession', function ($cs) {
-                        $cs->whereIn('Status', ['leave', 'leave_requested', 'leave_adjusted', 'excused']);
+                        $cs->whereIn('Status', SessionStatus::leaveFamily());
                     })->whereNotExists(function ($sub) use ($t) {
                         $sub->selectRaw('1')
                             ->from('StudentSingIn as ssi_leave')

@@ -4,12 +4,14 @@ namespace Tests\Feature;
 
 use App\Models\AuthToken;
 use App\Models\ClassSession;
+use App\Models\CoursePackage;
 use App\Models\LearningRecord;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
 use App\Models\User;
 use App\Models\UserCampus;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -126,6 +128,82 @@ class AddSessionConflictTest extends TestCase
             ->assertJsonPath('conflict_type', 'full_capacity');
     }
 
+    public function test_shared_package_quick_add_uses_pool_capacity_when_member_is_full(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $package = CoursePackage::create([
+            'student_id' => $student->id, 'campus_id' => 1, 'name' => '共用方案快速補課',
+            'billing_mode' => 'count', 'total_sessions' => 4, 'remaining_sessions' => 4,
+            'used_sessions' => 0, 'rate' => 500, 'rate_unit' => 'session',
+            'class_type' => 'one_on_one', 'paid' => true, 'stop' => false, 'enabled' => true,
+        ]);
+        $course = $this->createStudentClass($student->id, [
+            'PackageID' => $package->id,
+            'SessionCount' => 2,
+            'RemainingSessions' => 2,
+            'UsedSessions' => 2,
+        ]);
+        $sibling = $this->createStudentClass($student->id, [
+            'PackageID' => $package->id,
+            'SessionCount' => 2,
+            'RemainingSessions' => 2,
+        ]);
+
+        foreach (['2026-03-20', '2026-03-22'] as $date) {
+            ClassSession::create([
+                'StudentClassID' => $course->ID, 'SessionDate' => $date,
+                'StartTime' => '19:00:00', 'EndTime' => '21:00:00', 'Status' => 'attended',
+            ]);
+        }
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->postJson("/api/v1/student-classes/{$course->ID}/add-session/check", [
+            'session_date' => '2026-04-01', 'start_time' => '10:00',
+        ]);
+
+        $res->assertOk()->assertJsonPath('can_add', true);
+        $this->assertSame(0, ClassSession::where('StudentClassID', $sibling->ID)->count());
+    }
+
+    public function test_shared_package_quick_add_ignores_excused_future_occurrences(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $package = CoursePackage::create([
+            'student_id' => $student->id, 'campus_id' => 1,
+            'name' => 'Quick add package with excused occurrences',
+            'billing_mode' => 'count', 'total_sessions' => 3, 'remaining_sessions' => 3,
+            'used_sessions' => 0, 'rate' => 500, 'rate_unit' => 'session',
+            'class_type' => 'one_on_one', 'paid' => true, 'stop' => false, 'enabled' => true,
+        ]);
+        $course = $this->createStudentClass($student->id, [
+            'PackageID' => $package->id,
+            'SessionCount' => 1,
+            'RemainingSessions' => 0,
+            'UsedSessions' => 1,
+        ]);
+
+        foreach ([7, 9, 11] as $days) {
+            ClassSession::create([
+                'StudentClassID' => $course->ID,
+                'SessionDate' => Carbon::today()->addDays($days)->toDateString(),
+                'StartTime' => '19:00:00',
+                'EndTime' => '20:00:00',
+                'Status' => 'excused',
+            ]);
+        }
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->postJson("/api/v1/student-classes/{$course->ID}/add-session/check", [
+            'session_date' => Carbon::today()->addDays(14)->toDateString(), 'start_time' => '10:00',
+        ]);
+
+        $res->assertOk()->assertJsonPath('can_add', true);
+    }
+
     // --- add-session: movable session exists → success with moved_from_date ---
     public function test_add_session_moves_last_future_session_and_returns_moved_from(): void
     {
@@ -160,6 +238,41 @@ class AddSessionConflictTest extends TestCase
 
         $res->assertStatus(201)
             ->assertJsonPath('moved_from_date', '2026-12-30');
+    }
+
+    // --- add-session: repeated moves must not exceed Note varchar(255) ---
+    // Regression: Sentry PHP-LARAVEL-29 — repeated 系統調整堂次（原 ...） appends
+    // with no cap overflowed ClassSession.Note (varchar(255)) and threw
+    // "Data too long for column 'Note'" on production (daan, StudentClass 2905).
+    public function test_add_session_repeated_moves_keep_note_within_column_limit(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createStudentClass($student->id, ['SessionCount' => 2]);
+
+        $cs = ClassSession::create([
+            'StudentClassID' => $sc->ID,
+            'SessionDate' => '2026-09-01',
+            'StartTime' => '19:00:00',
+            'EndTime' => '21:00:00',
+            'Status' => 'scheduled',
+        ]);
+
+        $headers = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+
+        for ($i = 0; $i < 15; $i++) {
+            $res = $this->withHeaders($headers)
+                ->postJson("/api/v1/student-classes/{$sc->ID}/add-session", [
+                    'session_date' => now()->addDays(30 + $i)->toDateString(),
+                    'start_time' => '19:00',
+                    'duration_minutes' => 120,
+                    'auto_approve' => false,
+                ]);
+            $res->assertStatus(201);
+        }
+
+        $cs->refresh();
+        $this->assertLessThanOrEqual(255, mb_strlen((string) $cs->Note));
     }
 
     // --- check endpoint: locked ---

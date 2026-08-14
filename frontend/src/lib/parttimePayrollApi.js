@@ -58,7 +58,13 @@ export async function lockPayroll({ month, branchId }) {
     headers: { ...headers(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ month, branch_id: branchId }),
   });
-  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Lock failed');
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const error = new Error(body.error || 'Lock failed');
+    error.anomalies = body.anomalies || [];
+    error.anomaly_count = body.anomaly_count || error.anomalies.length;
+    throw error;
+  }
   return res.json();
 }
 

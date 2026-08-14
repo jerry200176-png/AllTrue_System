@@ -18,6 +18,10 @@
             <input type="file" @change="importStudents" accept=".csv,.xlsx" style="display: none;" />
           </label>
           <AtButton shape="rect" variant="primary" icon="add" @click="openAddStudent">新增學生</AtButton>
+          <button class="small ghost" @click="openIdentityModal">
+            <span class="material-symbols-outlined btn-icon">merge</span>
+            跨分校身份
+          </button>
         </template>
       </AtPageHeader>
 
@@ -666,6 +670,65 @@
         </div>
       </div>
     </div>
+
+    <!-- Cross-campus identity bridge: explicit director confirmation only. -->
+    <div v-if="showIdentityModal" class="modal-overlay" @click.self="closeIdentityModal">
+      <div class="modal" style="width: 680px; max-width: calc(100vw - 32px);">
+        <div class="modal-header-row">
+          <h3>跨分校學生身份關聯</h3>
+          <button class="ghost small" @click="closeIdentityModal">關閉</button>
+        </div>
+        <p class="hint">只把主任已確認為同一位學生的兩筆分校資料關聯；姓名或手機相同不會自動合併。</p>
+        <div class="identity-search-row">
+          <input v-model="identityQuery" placeholder="搜尋學生姓名" @keyup.enter="searchIdentityStudents" />
+          <button class="small ghost" @click="searchIdentityStudents" :disabled="identityLoading">搜尋</button>
+        </div>
+        <div v-if="identityError" class="error-text">{{ identityError }}</div>
+        <div v-if="identityLoading" class="empty-text">載入中…</div>
+        <div v-else class="identity-candidate-list">
+          <button
+            v-for="candidate in identityStudents"
+            :key="candidate.student_id"
+            type="button"
+            class="identity-candidate"
+            :class="{ selected: selectedIdentityStudentIds.includes(candidate.student_id) }"
+            @click="toggleIdentityCandidate(candidate.student_id)"
+          >
+            <span><strong>{{ candidate.name }}</strong> · {{ candidate.campus_name || `分校 ${candidate.campus_id}` }}</span>
+            <small>{{ candidate.identity_group_id ? `群組 #${candidate.identity_group_id}` : '尚未關聯' }}</small>
+          </button>
+          <div v-if="!identityStudents.length" class="empty-text">請搜尋可管理的學生資料</div>
+        </div>
+        <div class="identity-selected-summary">已選 {{ selectedIdentityStudentIds.length }} / 2 筆</div>
+        <div class="actions">
+          <button class="ghost" @click="closeIdentityModal">取消</button>
+          <button class="primary" :disabled="selectedIdentityStudentIds.length !== 2 || identitySaving" @click="linkIdentityStudents">
+            {{ identitySaving ? '建立中…' : '建立身份關聯' }}
+          </button>
+        </div>
+
+        <div class="identity-group-list" v-if="identityGroups.length">
+          <h4>已建立的身份群組</h4>
+          <div v-for="group in identityGroups" :key="group.id" class="identity-group-card">
+            <div class="identity-group-head">
+              <strong>{{ group.display_name || `身份群組 #${group.id}` }}</strong>
+              <select v-model="group.mode" @change="updateIdentityMode(group)">
+                <option value="off">關閉</option>
+                <option value="readonly">唯讀試點</option>
+                <option value="actions">開放操作</option>
+              </select>
+            </div>
+            <div class="identity-group-members">
+              <span v-for="member in group.members" :key="member.student_id" class="pp-campus-label">
+                {{ member.name }} · {{ member.campus_name || `分校 ${member.campus_id}` }}
+              </span>
+            </div>
+            <button class="small ghost" @click="loadIdentityAudit(group.id)">查看稽核紀錄</button>
+          </div>
+        </div>
+        <pre v-if="identityAudit.length" class="identity-audit">{{ JSON.stringify(identityAudit, null, 2) }}</pre>
+      </div>
+    </div>
   </div>
   <div v-if="toastVisible" class="toast-notification">{{ toastMsg }}</div>
 </template>
@@ -709,6 +772,17 @@ const expandedId = ref(null);
 const filters = ref({ name: '', grade: '', status: 'active' });
 const selectedStudentIds = ref([]);
 const showHistoricalCourses = ref(false);
+
+// Cross-campus identity bridge (director/super_admin API; no auto-merge).
+const showIdentityModal = ref(false);
+const identityQuery = ref('');
+const identityStudents = ref([]);
+const identityGroups = ref([]);
+const selectedIdentityStudentIds = ref([]);
+const identityAudit = ref([]);
+const identityLoading = ref(false);
+const identitySaving = ref(false);
+const identityError = ref('');
 
 // Student modal
 const showStudentModal = ref(false);
@@ -1523,6 +1597,110 @@ const showToast = (msg) => {
   toastVisible.value = true;
   if (toastTimer) clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { toastVisible.value = false; }, 2500);
+};
+
+const identityAuthHeaders = () => {
+  const sess = JSON.parse(localStorage.getItem('alltrue_session') || '{}');
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${sess?.access_token || ''}`,
+  };
+};
+
+const loadIdentityData = async () => {
+  identityLoading.value = true;
+  identityError.value = '';
+  try {
+    const query = identityQuery.value.trim();
+    const res = await fetch(`/api/v1/student-identities${query ? `?q=${encodeURIComponent(query)}` : ''}`, {
+      headers: identityAuthHeaders(),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data?.message || '無法載入身份資料');
+    identityStudents.value = data.students || [];
+    identityGroups.value = data.groups || [];
+  } catch (e) {
+    identityError.value = e?.message || '無法載入身份資料';
+  } finally {
+    identityLoading.value = false;
+  }
+};
+
+const openIdentityModal = async () => {
+  showIdentityModal.value = true;
+  selectedIdentityStudentIds.value = [];
+  identityAudit.value = [];
+  await loadIdentityData();
+};
+
+const closeIdentityModal = () => {
+  showIdentityModal.value = false;
+  selectedIdentityStudentIds.value = [];
+  identityAudit.value = [];
+};
+
+const searchIdentityStudents = () => loadIdentityData();
+
+const toggleIdentityCandidate = (studentId) => {
+  const ids = selectedIdentityStudentIds.value;
+  if (ids.includes(studentId)) {
+    selectedIdentityStudentIds.value = ids.filter((id) => id !== studentId);
+  } else if (ids.length < 2) {
+    selectedIdentityStudentIds.value = [...ids, studentId];
+  }
+};
+
+const linkIdentityStudents = async () => {
+  if (selectedIdentityStudentIds.value.length !== 2 || identitySaving.value) return;
+  identitySaving.value = true;
+  identityError.value = '';
+  try {
+    const res = await fetch('/api/v1/student-identities/link', {
+      method: 'POST',
+      headers: identityAuthHeaders(),
+      body: JSON.stringify({
+        first_student_id: selectedIdentityStudentIds.value[0],
+        second_student_id: selectedIdentityStudentIds.value[1],
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data?.message || Object.values(data?.errors || {}).flat().join('、') || '建立身份關聯失敗');
+    selectedIdentityStudentIds.value = [];
+    showToast('身份關聯已建立，預設為關閉狀態');
+    await loadIdentityData();
+  } catch (e) {
+    identityError.value = e?.message || '建立身份關聯失敗';
+  } finally {
+    identitySaving.value = false;
+  }
+};
+
+const updateIdentityMode = async (group) => {
+  identityError.value = '';
+  try {
+    const res = await fetch(`/api/v1/student-identities/${group.id}/access`, {
+      method: 'PUT',
+      headers: identityAuthHeaders(),
+      body: JSON.stringify({ mode: group.mode }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data?.message || '更新試點狀態失敗');
+    showToast(`群組狀態已更新為 ${group.mode}`);
+  } catch (e) {
+    identityError.value = e?.message || '更新試點狀態失敗';
+    await loadIdentityData();
+  }
+};
+
+const loadIdentityAudit = async (groupId) => {
+  try {
+    const res = await fetch(`/api/v1/student-identities/${groupId}/audit`, { headers: identityAuthHeaders() });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data?.message || '無法載入稽核紀錄');
+    identityAudit.value = data.audit || [];
+  } catch (e) {
+    identityError.value = e?.message || '無法載入稽核紀錄';
+  }
 };
 
 const deleteSelectedStudents = async () => {
@@ -3527,8 +3705,23 @@ table th { font-size: 12.5px; }
 /* Dark mode override：只剩無 ds token 的多態色（completed 藍 / tag-package 紫）。
    其餘 history section / card / empty 已改用 --ds-* 自動適應 dark mode（styles.css 已定義 [data-theme="dark"] 變體），原 override 為 token 化前殘留，全部移除。 */
 [data-theme="dark"] .sl-tag-history--completed {
-  background: #172554;
+   background: #172554;
   color: #60a5fa;
   border-color: #1e40af;
 }
+.modal-header-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.identity-search-row { display: flex; gap: 8px; margin: 14px 0 8px; }
+.identity-search-row input { flex: 1; min-width: 0; }
+.identity-candidate-list { max-height: 190px; overflow: auto; border: 1px solid var(--ds-border); border-radius: 8px; }
+.identity-candidate { width: 100%; display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 0; border-bottom: 1px solid var(--ds-border); background: var(--ds-surface); color: var(--ds-ink); text-align: left; cursor: pointer; }
+.identity-candidate:last-child { border-bottom: 0; }
+.identity-candidate.selected { background: var(--ds-success-wash); }
+.identity-candidate small { color: var(--ds-ink-mute); white-space: nowrap; }
+.identity-selected-summary { margin-top: 8px; color: var(--ds-ink-mute); font-size: 13px; }
+.identity-group-list { margin-top: 18px; border-top: 1px solid var(--ds-border); padding-top: 14px; }
+.identity-group-card { border: 1px solid var(--ds-border); border-radius: 8px; padding: 10px; margin-top: 8px; }
+.identity-group-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.identity-group-head select { min-height: 32px; }
+.identity-group-members { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
+.identity-audit { max-height: 180px; overflow: auto; margin-top: 10px; padding: 10px; background: var(--ds-surface-2); border-radius: 6px; font-size: 11px; }
 </style>

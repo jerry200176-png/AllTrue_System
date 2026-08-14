@@ -5,16 +5,17 @@
 <!-- Pick the HIGHEST class that applies. When unsure, choose higher. -->
 - [ ] **R0** — docs / generated evidence / no production behavior
 - [ ] **R1** — low-risk reversible code (isolated fix, display); tests + rollback
-- [ ] **R2** — domain/billing/auth/cron/deploy/migration/cross-campus — needs **independent** approval
+- [ ] **R2** — domain/billing/auth/cron/deploy/migration/cross-campus — needs documented **self-review checklist**（單人模式免獨立 verifier，見 Founder Decision 2026-08-14）
 - [ ] **R3** — data repair / destructive / privilege / financial / security boundary — **Founder** + execution gate
 
 **Risk-Class:** R?  
-**Independent verifier / approval:** <!-- name or "n/a for R0" — not the same implementation context -->  
+**Self-review checklist（R2）/ Independent verifier / approval（R3）：** <!-- R2: 你自己確認了什麼（authz/scoping、migration 可逆性、rollback）；R3: name — not the same implementation context -->  
 **Rollback:** <!-- revert SHA / prior deploy / repair --rollback / n/a -->
 
 > **單人 repo Review Gate（#736）**：無第二位強制 reviewer 時，以「自動代理人 + 強制檢查」近似第二雙眼——
-> ①自動 AI review 留言（Bugbot/Copilot review，repo 設定啟用）②高風險檔強制附測試（required check `High-Risk Test Gate`）③下方 self-review checklist。  
-> **R2/R3 禁止**用另一個假身份 rubber-stamp；需不同 context 的獨立核准（Founder Decision 2026-07-18）。
+> ①自動 AI review 留言（Bugbot/Copilot review，repo 設定啟用，**merge 前需 resolve 所有 thread**）②高風險檔強制附測試（required check `High-Risk Test Gate`）③下方 self-review checklist。  
+> **R2**：CI 全綠 + 本 checklist 據實填寫即可 merge，單人模式不需另開獨立 verifier（Founder Decision 2026-08-14）。  
+> **R3 禁止**用另一個假身份 rubber-stamp；需不同 context 的獨立核准（Founder Decision 2026-07-18）。
 
 ## 關聯 Issue（Refs / Closes 規則）
 <!-- 多階段、Epic、仍有一截沒做完 → 只填 Refs，不要寫 Closes，避免 GitHub 整張 issue 被關掉 -->
@@ -69,8 +70,8 @@
 <!-- 參考 docs/RULE_DESIGN_SYSTEM.md（唯一真相）；不確定就對照禁止清單 §7 -->
 <!-- CI 自動偵測新增 raw hex：一旦超過 baseline 即 FAIL（不再 advisory） -->
 - [ ] **無新增 raw `#hex`**（CI blocking — 違反即 PR 無法 merge；需清理或更新 baseline）
-- [ ] 每個區塊 Primary CTA ≤ 1 顆（`docs/RULE_DESIGN_SYSTEM.md §5`）
-- [ ] 金額 / 堂數 / 日期已套 `tabular-nums`（`§6 tabular`）
+- [ ] 每個區塊 Primary CTA ≤ 1 顆（`docs/RULE_DESIGN_SYSTEM.md §6`）
+- [ ] 金額 / 堂數 / 日期已套 `tabular-nums`（`docs/RULE_DESIGN_SYSTEM.md §4 / §6`）
 - [ ] 空狀態含圖示 + 一句說明 + 下一步行動（`docs/GUIDE_UI_COPY.md §2`）
 - [ ] Loading 狀態：骨架屏或 spinner，非白屏（`RULE_DESIGN_SYSTEM §4`）
 - [ ] 未改業務邏輯 / 繳費規則（只動樣式 / 文案 / 空狀態）

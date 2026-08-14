@@ -15,6 +15,7 @@ use App\Http\Controllers\PendingSwipeController;
 use App\Http\Controllers\ApiClientController;
 use App\Http\Controllers\CampusController;
 use App\Http\Controllers\AdminCampusController;
+use App\Http\Controllers\BusinessDigestController;
 use App\Http\Controllers\AdminRoutingRuleController;
 use App\Http\Controllers\ExceptionWorkflowController;
 use App\Http\Controllers\ParentFeedbackController;
@@ -41,6 +42,7 @@ use App\Http\Controllers\TeacherLeaveController;
 use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\BugReportController;
+use App\Http\Controllers\TeacherDuplicateController;
 use App\Http\Controllers\SubjectController;
 use App\Http\Controllers\PaymentReportController;
 use App\Http\Controllers\ScheduleAuditController;
@@ -52,6 +54,9 @@ use App\Http\Controllers\DirectorOperationsTrustController;
 use App\Http\Controllers\AdminReconcileController;
 use App\Http\Controllers\AdminDuplicateSessionController;
 use App\Http\Controllers\GitHubIssueController;
+use App\Http\Controllers\StudentIdentityController;
+use App\Http\Controllers\TeacherEligibilityController;
+use App\Http\Controllers\TeacherEligibilityInputController;
 
 
 if (app()->environment('local')) {
@@ -233,6 +238,7 @@ Route::prefix('v1')->group(function () {
 
     // ── Super Admin: 分校管理 CRUD ───────────────────────────────────────────────
     Route::middleware(['role:super_admin'])->group(function () {
+        Route::get('admin/business-digest', [BusinessDigestController::class, 'index']);
         Route::get('admin/campuses', [AdminCampusController::class, 'index']);
         Route::post('admin/campuses', [AdminCampusController::class, 'store']);
         Route::put('admin/campuses/{id}', [AdminCampusController::class, 'update'])->whereNumber('id');
@@ -250,6 +256,11 @@ Route::prefix('v1')->group(function () {
 
         // ── Bug Reports (admin) ──
         Route::get('admin/bug-reports', [BugReportController::class, 'index']);
+
+        // ── R99 (in-app #219/#223) root-cause prevention: duplicate teacher accounts ──
+        Route::get('admin/teachers/duplicates', [TeacherDuplicateController::class, 'index']);
+        Route::post('admin/teachers/merge-preview', [TeacherDuplicateController::class, 'preview']);
+        Route::post('admin/teachers/merge', [TeacherDuplicateController::class, 'merge']);
     });
 
     // ── GitHub Issues (director + super_admin) ──
@@ -300,12 +311,24 @@ Route::prefix('v1')->group(function () {
         Route::get('finance/revenue', [FinanceController::class, 'revenue']);
         Route::get('finance/outstanding', [FinanceController::class, 'outstanding']);
         Route::get('finance/teacher-payroll', [FinanceController::class, 'teacherPayroll'])->middleware('require_pin'); // #769 Phase C：薪資敏感
+        Route::get('finance/teacher-eligibility', [TeacherEligibilityController::class, 'index'])->middleware('require_pin');
+        Route::get('finance/teacher-eligibility/inputs', [TeacherEligibilityInputController::class, 'index'])->middleware('require_pin');
+        Route::post('finance/teacher-eligibility/events', [TeacherEligibilityInputController::class, 'storeEvent'])->middleware('require_pin');
+        Route::post('finance/teacher-eligibility/achievements', [TeacherEligibilityInputController::class, 'storeAchievement'])->middleware('require_pin');
+        Route::post('finance/teacher-eligibility/deductions', [TeacherEligibilityInputController::class, 'storeDeduction'])->middleware('require_pin');
+        Route::post('finance/teacher-eligibility/events/{id}/approve', [TeacherEligibilityInputController::class, 'approveEvent'])->whereNumber('id')->middleware('require_pin');
+        Route::post('finance/teacher-eligibility/achievements/{id}/verify', [TeacherEligibilityInputController::class, 'verifyAchievement'])->whereNumber('id')->middleware('require_pin');
+        Route::post('finance/teacher-eligibility/deductions/{id}/confirm', [TeacherEligibilityInputController::class, 'confirmDeduction'])->whereNumber('id')->middleware('require_pin');
+        Route::post('finance/teacher-eligibility/deductions/{id}/approve', [TeacherEligibilityInputController::class, 'approveDeduction'])->whereNumber('id')->middleware('require_pin');
         Route::get('finance/ar-aging', [FinanceController::class, 'arAging']);
         Route::get('finance/gl-export', [FinanceController::class, 'glExport']);
         Route::get('finance/consolidated-summary', [FinanceController::class, 'consolidatedSummary']);
         Route::get('finance/periods', [\App\Http\Controllers\AccountingPeriodController::class, 'index']);
         Route::post('finance/periods/close', [\App\Http\Controllers\AccountingPeriodController::class, 'close']);
         Route::post('finance/periods/reopen', [\App\Http\Controllers\AccountingPeriodController::class, 'reopen']);
+
+        // ── Full-time teacher base salary (正職結算底薪), feeds finance/teacher-eligibility's total_payout ──
+        Route::post('finance/teacher-eligibility/salary-profiles', [TeacherEligibilityInputController::class, 'storeSalaryProfile'])->middleware('require_pin');
 
         // ── Dunning (#400) ──
         Route::get('dunning/rules', [\App\Http\Controllers\DunningController::class, 'rules']);
@@ -376,6 +399,7 @@ Route::prefix('v1')->group(function () {
         Route::post('exception-workflows/{id}/generate-candidates', [ExceptionWorkflowController::class, 'generateCandidates'])->whereNumber('id');
         Route::post('exception-workflows/{id}/confirm-candidate', [ExceptionWorkflowController::class, 'confirmCandidate'])->whereNumber('id');
         Route::post('exception-workflows/{id}/waive', [ExceptionWorkflowController::class, 'waive'])->whereNumber('id');
+        Route::post('exception-workflows/{id}/reject', [ExceptionWorkflowController::class, 'reject'])->whereNumber('id');
 
         Route::get('temp-rfid', [TempRfidController::class, 'show']);
         Route::post('temp-rfid/consume', [TempRfidController::class, 'consume']);
@@ -401,6 +425,20 @@ Route::prefix('v1')->group(function () {
         Route::post('subjects', [SubjectController::class, 'store']);
         Route::put('subjects/{id}', [SubjectController::class, 'update']);
         Route::delete('subjects/{id}', [SubjectController::class, 'destroy']);
+    });
+
+    // Cross-campus student identity bridge: explicit two-campus authorization only.
+    Route::middleware(['role:director,super_admin', 'require_campus', 'require_password_change'])->group(function () {
+        Route::get('student-identities', [StudentIdentityController::class, 'index']);
+        Route::post('student-identities/link', [StudentIdentityController::class, 'link']);
+        Route::delete('student-identities/members/{studentId}', [StudentIdentityController::class, 'unlink']);
+        Route::put('student-identities/{groupId}/access', [StudentIdentityController::class, 'access']);
+        Route::get('student-identities/{groupId}/audit', [StudentIdentityController::class, 'audit']);
+    });
+
+    Route::middleware(['role:director,admin,super_admin', 'require_campus', 'require_password_change'])->group(function () {
+        Route::post('student-classes/{studentClass}/manual-sessions/check', [StudentClassController::class, 'checkManualSession']);
+        Route::post('student-classes/{studentClass}/manual-sessions', [StudentClassController::class, 'createManualSession']);
     });
 
     Route::middleware(['role:director,teacher', 'require_campus', 'require_password_change'])->group(function () {

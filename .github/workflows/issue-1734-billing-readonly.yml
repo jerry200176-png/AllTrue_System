@@ -1,0 +1,204 @@
+name: Issue 1734 Billing Diagnose (read-only)
+
+# Founder-authorized, SELECT-only production evidence for AllTrue issue #1734.
+# This workflow intentionally has no write-capable production command.
+on:
+  workflow_dispatch:
+    inputs:
+      student_class_id:
+        description: StudentClass.ID to inspect (numeric; issue #1734 uses 1052)
+        required: true
+        type: string
+        default: "1052"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue-1734-billing-readonly
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    name: Production billing evidence (SELECT-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          PI_HOST_KEY: ${{ secrets.PI_HOST_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$PI_SSH_KEY"
+          test -n "$PI_SSH_HOST"
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          test -n "${PI_HOST_KEY:-}"
+          tmp_host_key=$(mktemp)
+          tmp_scanned_hosts=$(mktemp)
+          trap 'rm -f "$tmp_host_key" "$tmp_scanned_hosts"' EXIT
+          printf '%s\n' "$PI_HOST_KEY" > "$tmp_host_key"
+          pinned_fingerprint="$PI_HOST_KEY"
+          if fingerprint_from_key=$(ssh-keygen -lf "$tmp_host_key" 2>/dev/null | awk 'NR == 1 { print $2 }'); then
+            if [[ -n "$fingerprint_from_key" ]]; then
+              pinned_fingerprint="$fingerprint_from_key"
+            fi
+          fi
+          ssh-keyscan -T 10 -H "$PI_SSH_HOST" > "$tmp_scanned_hosts" 2>/dev/null
+          : > ~/.ssh/known_hosts
+          while read -r scanned_host scanned_key_type scanned_key_data _; do
+            [[ -z "${scanned_key_type:-}" || "$scanned_host" == \#* ]] && continue
+            printf '%s %s %s\n' "$scanned_host" "$scanned_key_type" "$scanned_key_data" > "$tmp_host_key"
+            scanned_fingerprint=$(ssh-keygen -lf "$tmp_host_key" 2>/dev/null | awk 'NR == 1 { print $2 }')
+            if [[ "$scanned_fingerprint" == "$pinned_fingerprint" ]]; then
+              printf '%s %s %s\n' "$scanned_host" "$scanned_key_type" "$scanned_key_data" >> ~/.ssh/known_hosts
+            fi
+          done < "$tmp_scanned_hosts"
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Run SELECT-only billing probe on production
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          STUDENT_CLASS_ID: ${{ inputs.student_class_id || '1052' }}
+        run: |
+          set -euo pipefail
+          [[ "$STUDENT_CLASS_ID" =~ ^[0-9]+$ ]] || { echo "student_class_id must be numeric" >&2; exit 1; }
+          python3 - "$STUDENT_CLASS_ID" > /tmp/issue-1734-billing-probe.php <<'PY'
+          import sys
+
+          student_class_id = int(sys.argv[1])
+          print(f'''<?php
+          $studentClassId = {student_class_id};
+          $schema = \Illuminate\Support\Facades\Schema::class;
+          $db = \Illuminate\Support\Facades\DB::class;
+
+          $existingColumns = function (string $table, array $wanted) use ($schema): array {{
+              if (!$schema::hasTable($table)) {{
+                  return [];
+              }}
+              return array_values(array_filter($wanted, fn (string $column): bool => $schema::hasColumn($table, $column)));
+          }};
+          $rows = function (string $table, array $wanted, callable $filter) use ($db, $existingColumns): array {{
+              $columns = $existingColumns($table, $wanted);
+              if ($columns === []) {{
+                  return [];
+              }}
+              return $filter($db::table($table)->select($columns))->get()->map(fn ($row) => (array)$row)->all();
+          }};
+
+          $studentClassColumns = $existingColumns('StudentClass', [
+              'ID', 'StudentID', 'Rate', 'rate_unit', 'SessionCount', 'Charge', 'Paid', 'PayDate',
+              'StartDate', 'EndDate', 'MDate', 'Stop',
+          ]);
+          $studentClass = $studentClassColumns === [] ? null : (array)$db::table('StudentClass')
+              ->where('ID', $studentClassId)->first($studentClassColumns);
+
+          $invoices = $rows('Invoice', [
+              'id', 'StudentID', 'StudentClassID', 'IssueDate', 'DueDate', 'TotalAmount', 'PaidAmount',
+              'Status', 'created_at', 'updated_at', 'reconciled_at', 'billing_period',
+          ], fn ($query) => $query->where('StudentClassID', $studentClassId)->orderBy('id'));
+          $invoiceIds = array_values(array_filter(array_map(fn (array $row) => $row['id'] ?? null, $invoices)));
+
+          $payments = $invoiceIds === [] ? [] : $rows('Payment', [
+              'id', 'InvoiceID', 'Amount', 'PaidAt', 'Method', 'payment_report_id', 'created_at',
+          ], fn ($query) => $query->whereIn('InvoiceID', $invoiceIds)->orderBy('id'));
+          $invoiceItems = $invoiceIds === [] ? [] : $rows('InvoiceItem', [
+              'id', 'InvoiceID', 'StudentClassID', 'Amount', 'PeriodStart', 'PeriodEnd', 'created_at',
+          ], fn ($query) => $query->whereIn('InvoiceID', $invoiceIds)->orderBy('id'));
+          $paymentReports = $rows('payment_reports', [
+              'id', 'StudentID', 'StudentClassID', 'InvoiceID', 'reported_amount', 'payment_date',
+              'payment_method', 'status', 'confirmed_at', 'payment_id', 'voided_at', 'created_at',
+          ], fn ($query) => $query->where('StudentClassID', $studentClassId)->orderBy('id'));
+
+          $hasReceiptUrlColumn = in_array('receipt_url', $existingColumns('Payment', ['receipt_url']), true);
+          $receiptEvidence = array_map(function (array $row) use ($db, $hasReceiptUrlColumn): array {{
+              return [
+                  'payment_id' => $row['id'] ?? null,
+                  'invoice_id' => $row['InvoiceID'] ?? null,
+                  'has_receipt_url' => $hasReceiptUrlColumn && $db::table('Payment')
+                      ->where('id', $row['id'] ?? null)
+                      ->whereNotNull('receipt_url')
+                      ->where('receipt_url', '<>', '')
+                      ->exists(),
+              ];
+          }}, $payments);
+
+          echo json_encode([
+              'ok' => true,
+              'read_only' => true,
+              'student_class' => $studentClass,
+              'invoices' => $invoices,
+              'invoice_items' => $invoiceItems,
+              'payments' => $payments,
+              'payment_reports' => $paymentReports,
+              'receipt_evidence' => $receiptEvidence,
+              'generated_at' => gmdate('c'),
+              'production_head' => trim((string)@shell_exec('git rev-parse HEAD')),
+          ], JSON_UNESCAPED_UNICODE), PHP_EOL;
+          ''')
+          PY
+          B64=$(base64 -w0 /tmp/issue-1734-billing-probe.php)
+          mkdir -p out
+          ssh -i ~/.ssh/deploy_key \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            -o ConnectTimeout=20 \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" \
+            "B64='${B64}' bash -s" <<'REMOTE' | tee out/issue-1734-billing.log
+          set -euo pipefail
+          cd /home/admin/backend
+          php -r 'file_put_contents("/tmp/issue-1734-billing-probe.php", base64_decode(getenv("B64")));'
+          php artisan tinker --execute='require "/tmp/issue-1734-billing-probe.php";'
+          rm -f /tmp/issue-1734-billing-probe.php
+          REMOTE
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          raw = Path("out/issue-1734-billing.log").read_text(encoding="utf-8", errors="replace")
+          parsed = None
+          for line in raw.splitlines():
+              line = line.strip()
+              if line.startswith("{"):
+                  try:
+                      candidate = json.loads(line)
+                  except json.JSONDecodeError:
+                      continue
+                  if candidate.get("read_only") is True:
+                      parsed = candidate
+          if parsed is None:
+              raise SystemExit("SELECT-only probe returned no JSON result")
+          Path("out/issue-1734-billing.json").write_text(
+              json.dumps(parsed, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+          )
+          print("parsed read_only=", parsed.get("read_only"))
+          print("invoice_count=", len(parsed.get("invoices", [])))
+          print("payment_count=", len(parsed.get("payments", [])))
+          print("payment_report_count=", len(parsed.get("payment_reports", [])))
+          PY
+
+      - name: Upload read-only evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue-1734-billing-readonly
+          path: out/issue-1734-billing.*
+          retention-days: 14
+
+      - name: Job summary
+        run: |
+          {
+            echo '### Issue #1734 billing evidence (read-only)'
+            echo 'Only SELECT queries were executed on production.'
+            echo '```'
+            cat out/issue-1734-billing.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

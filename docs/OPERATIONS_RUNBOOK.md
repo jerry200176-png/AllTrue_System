@@ -875,7 +875,7 @@ DB password 輪換屬高風險操作。執行前需先讀 `docs/DANGEROUS_OPERAT
 
 ### 4. 提醒機制
 
-每 90 天在 GitHub Issues 手動建立「Secret rotation reminder」milestone issue，指派給 `jerry200176-png`。
+每 90 天自動觸發（`.github/workflows/secret-rotation-reminder.yml`，`cron: '0 16 1 */3 *'`）開一則提醒 issue（`area:security,priority:p2`），列出完整 secret 清單；也可 `workflow_dispatch` 手動觸發。P2／排到下個方便的維運窗口，非當天急件（急件走上面「外洩應急」）。SLA 對照見 `docs/SEVERITY_MATRIX.md` SEC-04。
 
 ## P. 工程成熟度現況（2026-04-25 評估）
 
@@ -1290,10 +1290,11 @@ CalVer（`vYYYY.MM.DD`）與既有 dated CHANGELOG 1:1 對應、無需人工判�
 | 來源 | 內容 | 何時更新 |
 |---|---|---|
 | `backend/public/version.json` | 前端 build 時間戳（Vite `deploy.yml`）| **只在前端有重 build 時** |
+| `backend/public/deployment.json` | 實際啟用的 backend SHA、frontend build SHA、部署時間 | 每次 deploy／rollback |
 | Git tag `vYYYY.MM.DD[.N]` | 該次 notable merge（CHANGELOG 有變更）| CHANGELOG 變更合併進 main 時 |
 | GitHub Release | tag + CHANGELOG 該節全文 | 同上 |
 
-排查「線上是哪一版」：先看 `version.json` 時間戳對應到最接近、且早於它的 tag/Release；backend-only deploy 不更新 `version.json`，以 tag 時間為準。
+排查「線上是哪一版」：先看 `deployment.json.backend_sha` 確認 backend runtime，再看 `deployment.json.frontend_build_sha`／`version.json.build_sha` 確認前端 bundle；backend-only deploy 不更新 `version.json`，不得以 frontend hash 代替 backend identity。
 
 ### X4. 注意
 

@@ -13,6 +13,8 @@ API_BASE="${BASE_URL%/}/api/v1"
 PI_SSH="${SMOKE_PI_SSH:-admin@pi.lifenet.com.tw}"
 PI_BACKEND="${SMOKE_PI_BACKEND:-/home/admin/backend}"
 EXPECTED_HASH="${SMOKE_EXPECTED_HASH:-$(git rev-parse --short=8 HEAD 2>/dev/null || echo '')}"
+EXPECTED_BACKEND_SHA="${SMOKE_EXPECTED_BACKEND_SHA:-}"
+REQUIRE_DEPLOYMENT_MANIFEST="${SMOKE_REQUIRE_DEPLOYMENT_MANIFEST:-0}"
 
 # Running on Pi during deploy.yml (no SSH hop)
 if [[ -z "${SMOKE_ON_PI:-}" && -d "${PI_BACKEND}/public/assets" ]]; then
@@ -30,10 +32,11 @@ pi_sh() {
 pi_mysql() {
   local sql="$1"
   if [[ "${SMOKE_ON_PI:-}" == "1" ]]; then
+    DB_USER="$(grep ^DB_USERNAME= "${PI_BACKEND}/.env" | cut -d= -f2-)"
     DB_PASS="$(grep ^DB_PASSWORD= "${PI_BACKEND}/.env" | cut -d= -f2-)"
-    mysql -u admin -p"$DB_PASS" AllTrue -N -e "$sql" 2>/dev/null
+    mysql -u "$DB_USER" -p"$DB_PASS" AllTrue -N -e "$sql" 2>/dev/null
   else
-    ssh -o BatchMode=yes "$PI_SSH" "DB_PASS=\$(grep ^DB_PASSWORD= ${PI_BACKEND}/.env | cut -d= -f2-); mysql -u admin -p\"\$DB_PASS\" AllTrue -N -e \"$sql\"" 2>/dev/null
+    ssh -o BatchMode=yes "$PI_SSH" "DB_USER=\$(grep ^DB_USERNAME= ${PI_BACKEND}/.env | cut -d= -f2-); DB_PASS=\$(grep ^DB_PASSWORD= ${PI_BACKEND}/.env | cut -d= -f2-); mysql -u \"\$DB_USER\" -p\"\$DB_PASS\" AllTrue -N -e \"$sql\"" 2>/dev/null
   fi
 }
 
@@ -72,12 +75,51 @@ else
   pass "version.json hash=$ver_hash"
 fi
 
+deployment_json="$(curl -sk "$BASE_URL/deployment.json" || true)"
+manifest_backend_sha="$(python3 - <<'PY' "$deployment_json"
+import json, sys
+try:
+    print(json.loads(sys.argv[1]).get("backend_sha", "").strip())
+except Exception:
+    print("")
+PY
+)"
+manifest_frontend_sha="$(python3 - <<'PY' "$deployment_json"
+import json, sys
+try:
+    print((json.loads(sys.argv[1]).get("frontend_build_sha") or "").strip())
+except Exception:
+    print("")
+PY
+)"
+if [[ -z "$manifest_backend_sha" ]]; then
+  if [[ "$REQUIRE_DEPLOYMENT_MANIFEST" == "1" ]]; then
+    fail "deployment.json missing backend identity"
+  else
+    warn "deployment.json missing (runtime manifest not required for this invocation)"
+  fi
+else
+  if [[ -n "$EXPECTED_BACKEND_SHA" && "$manifest_backend_sha" != "$EXPECTED_BACKEND_SHA" ]]; then
+    fail "deployment.json backend_sha=$manifest_backend_sha (expected $EXPECTED_BACKEND_SHA)"
+  else
+    pass "deployment.json backend_sha=$manifest_backend_sha"
+  fi
+  if [[ -n "$manifest_frontend_sha" ]]; then
+    pass "deployment.json frontend_build_sha=$manifest_frontend_sha"
+  else
+    warn "deployment.json has no frontend build identity (frontend artifact may predate this manifest schema)"
+  fi
+fi
+
 if [[ "${SMOKE_ON_PI:-}" == "1" ]] || ssh -o BatchMode=yes -o ConnectTimeout=8 "$PI_SSH" true 2>/dev/null; then
   pi_commit="$(pi_sh "cd ${PI_BACKEND} && git rev-parse --short=8 HEAD" 2>/dev/null || echo '')"
   if [[ -n "$pi_commit" ]]; then
     pass "Pi git HEAD=$pi_commit"
     if [[ -n "$ver_hash" && "$ver_hash" != "$pi_commit" ]]; then
       warn "version.json hash=$ver_hash ≠ Pi git HEAD=$pi_commit (expected when backend-only deploy skipped frontend rebuild)"
+    fi
+    if [[ -n "$manifest_backend_sha" && "${manifest_backend_sha:0:8}" != "${pi_commit:0:8}" ]]; then
+      fail "deployment.json backend_sha=$manifest_backend_sha ≠ Pi git HEAD=$pi_commit"
     fi
   else
     warn "Could not read Pi git HEAD"

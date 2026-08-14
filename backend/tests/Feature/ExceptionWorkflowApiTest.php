@@ -5,10 +5,12 @@ namespace Tests\Feature;
 use App\Models\AuthToken;
 use App\Models\ClassSession;
 use App\Models\ExceptionWorkflow;
+use App\Models\LearningRecord;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
 use App\Models\UserCampus;
+use App\Services\CourseLeaveCascadeService;
 use App\Services\ExceptionWorkflowService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -170,6 +172,64 @@ class ExceptionWorkflowApiTest extends TestCase
         ]);
     }
 
+    public function test_candidate_generation_spreads_options_across_available_dates(): void
+    {
+        [$student, $course, $session] = $this->makeStudentCourseSession(1, 'Date spread student', '0912000015');
+        $workflow = app(ExceptionWorkflowService::class)->createOrGet([
+            'source_key' => "parent_leave:class_session:{$session->id}",
+            'campus_id' => 1,
+            'student_id' => $student->id,
+            'student_class_id' => $course->ID,
+            'class_session_id' => $session->id,
+            'type' => 'student_leave',
+            'status' => 'open',
+        ]);
+        $token = $this->createDirectorToken([1], 'director-date-spread@example.com');
+
+        $res = $this->postJson("/api/v1/exception-workflows/{$workflow->id}/generate-candidates", [
+            'start_date' => '2026-05-07',
+            'end_date' => '2026-05-09',
+            'limit' => 3,
+        ], [
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ]);
+
+        $res->assertOk();
+        $dates = collect($res->json('data.candidates'))->pluck('candidate_date')->all();
+        $this->assertSame(['2026-05-07', '2026-05-08', '2026-05-09'], $dates);
+    }
+
+    public function test_makeup_candidates_start_after_original_session_even_when_requested_window_starts_earlier(): void
+    {
+        [$student, $course, $session] = $this->makeStudentCourseSession(1, '日期邊界學生', '0912000010');
+        $session->update(['SessionDate' => '2026-08-20']);
+        $workflow = app(ExceptionWorkflowService::class)->createOrGet([
+            'source_key' => "parent_leave:class_session:{$session->id}",
+            'campus_id' => 1,
+            'student_id' => $student->id,
+            'student_class_id' => $course->ID,
+            'class_session_id' => $session->id,
+            'type' => 'student_leave',
+            'status' => 'open',
+        ]);
+        $token = $this->createDirectorToken([1], 'director-date-boundary@example.com');
+
+        $res = $this->postJson("/api/v1/exception-workflows/{$workflow->id}/generate-candidates", [
+            'start_date' => '2026-08-09',
+            'end_date' => '2026-08-23',
+            'limit' => 5,
+        ], [
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ]);
+
+        $res->assertOk()->assertJsonPath('data.candidates.0.candidate_date', '2026-08-21');
+        $dates = collect($res->json('data.candidates'))->pluck('candidate_date')->all();
+        $this->assertNotEmpty($dates);
+        $this->assertTrue(collect($dates)->every(fn (string $date) => $date > '2026-08-20'));
+    }
+
     public function test_generate_candidates_rejects_cross_campus_director(): void
     {
         [$student, $course, $session] = $this->makeStudentCourseSession(2, '跨校候選學生', '0912000008');
@@ -230,6 +290,11 @@ class ExceptionWorkflowApiTest extends TestCase
             ->assertJsonPath('data.schedule.status', 'scheduled')
             ->assertJsonPath('data.class_session.status', 'scheduled');
 
+        $this->assertDatabaseHas('ClassSession', [
+            'id' => $session->id,
+            'Status' => 'leave',
+        ]);
+
         $this->assertDatabaseHas('schedules', [
             'student_id' => $student->id,
             'teacher_id' => 1,
@@ -249,6 +314,66 @@ class ExceptionWorkflowApiTest extends TestCase
             'id' => $workflow->id,
             'status' => 'confirmed',
         ]);
+    }
+
+    /**
+     * #170 regression: if the original session already picked up a `pending`
+     * LearningRecord before the parent's leave request was confirmed (e.g. the
+     * nightly learning-records:backfill-missing swept it while it was still
+     * 'scheduled' and already past), confirmCandidate() must void it — same as
+     * CourseLeaveCascadeService's interactive leave path — or bugs:verify-reproductions'
+     * enforced `leave_session_with_live_learning_record` (#170) condition regresses
+     * nightly with a stale pending evaluation stuck on a leave session.
+     */
+    public function test_director_confirming_candidate_voids_stale_pending_learning_record_on_original_session(): void
+    {
+        [$student, $course, $session] = $this->makeStudentCourseSession(1, '確認補課學生留評量', '0912000011');
+        $record = LearningRecord::create([
+            'StudentClassID' => $course->ID,
+            'ClassSessionID' => $session->id,
+            'TeacherID' => 1,
+            'Content' => '',
+            'Subject' => '測試科目',
+            'SessionDate' => $session->SessionDate,
+            'StartTime' => $session->StartTime,
+            'EndTime' => $session->EndTime,
+            'Status' => 'pending',
+        ]);
+
+        $workflow = app(ExceptionWorkflowService::class)->createOrGet([
+            'source_key' => "parent_leave:class_session:{$session->id}",
+            'campus_id' => 1,
+            'student_id' => $student->id,
+            'student_class_id' => $course->ID,
+            'class_session_id' => $session->id,
+            'type' => 'student_leave',
+            'status' => 'open',
+        ]);
+        $token = $this->createDirectorToken([1]);
+        $candidateId = (int) $this->postJson("/api/v1/exception-workflows/{$workflow->id}/generate-candidates", [
+            'start_date' => '2026-05-07',
+            'end_date' => '2026-05-07',
+            'limit' => 1,
+        ], [
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->assertOk()->json('data.candidates.0.id');
+
+        $this->postJson("/api/v1/exception-workflows/{$workflow->id}/confirm-candidate", [
+            'candidate_id' => $candidateId,
+        ], [
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->assertOk();
+
+        $this->assertDatabaseHas('ClassSession', [
+            'id' => $session->id,
+            'Status' => 'leave',
+        ]);
+
+        $record->refresh();
+        $this->assertNotNull($record->VoidedAt, 'stale pending LearningRecord on the original leave session must be voided');
+        $this->assertSame(CourseLeaveCascadeService::VOID_REASON_LEAVE, $record->VoidReason);
     }
 
     public function test_confirm_candidate_is_idempotent_and_rejects_cross_campus(): void
@@ -324,6 +449,11 @@ class ExceptionWorkflowApiTest extends TestCase
 
         $res->assertOk()->assertJsonPath('data.workflow.status', 'waived');
 
+        $this->assertDatabaseHas('ClassSession', [
+            'id' => $session->id,
+            'Status' => 'leave',
+        ]);
+
         $this->assertDatabaseHas('exception_workflows', [
             'id' => $workflow->id,
             'status' => 'waived',
@@ -334,6 +464,40 @@ class ExceptionWorkflowApiTest extends TestCase
         $this->assertSame($sessionCountBefore, ClassSession::where('StudentClassID', $course->ID)->count());
         // 不額外扣堂：RemainingSessions 不變。
         $this->assertSame($remainingBefore, (int) StudentClass::where('ID', $course->ID)->value('RemainingSessions'));
+    }
+
+    public function test_director_can_reject_pending_parent_leave_and_restore_session(): void
+    {
+        [$student, $course, $session] = $this->makeStudentCourseSession(1, '退回請假學生', '0912000014');
+        $parentToken = $this->parentLogin('退回請假學生', '0912000014');
+        $this->postJson("/api/v1/parent/sessions/{$session->id}/leave", [
+            'reason' => '臨時請假',
+        ], ['Authorization' => "Bearer {$parentToken}"])->assertOk();
+
+        $workflow = ExceptionWorkflow::where('class_session_id', $session->id)->firstOrFail();
+        $directorToken = $this->createDirectorToken([1], 'director-reject@example.com');
+        $response = $this->postJson("/api/v1/exception-workflows/{$workflow->id}/reject", [
+            'reason' => '當日仍需到課，請與櫃台聯繫',
+        ], [
+            'Authorization' => "Bearer {$directorToken}",
+            'Accept' => 'application/json',
+        ]);
+
+        $response->assertOk()->assertJsonPath('data.workflow.status', 'rejected');
+        $this->assertDatabaseHas('ClassSession', ['id' => $session->id, 'Status' => 'scheduled']);
+        $this->assertDatabaseHas('exception_workflows', [
+            'id' => $workflow->id,
+            'status' => 'rejected',
+            'closed_reason' => 'parent_leave_rejected',
+        ]);
+        $this->assertSame('當日仍需到課，請與櫃台聯繫', ExceptionWorkflow::find($workflow->id)->payload['rejection_reason']);
+
+        $this->getJson('/api/v1/parent/dashboard', [
+            'Authorization' => "Bearer {$parentToken}",
+            'Accept' => 'application/json',
+        ])->assertOk()
+            ->assertJsonPath('upcoming_sessions.0.LeaveWorkflowStatus', 'rejected')
+            ->assertJsonPath('upcoming_sessions.0.LeaveWorkflowReason', '當日仍需到課，請與櫃台聯繫');
     }
 
     public function test_waive_rejects_already_closed_workflow(): void

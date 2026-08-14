@@ -123,7 +123,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 7. **資料修復／事故 execution package（需核准）**：[`docs/incidents/189-191-data-repair-plan.md`](incidents/189-191-data-repair-plan.md)、[`docs/incidents/189-191-execution-package.md`](incidents/189-191-execution-package.md)、[`docs/incidents/190-historical-billing-repair-plan.md`](incidents/190-historical-billing-repair-plan.md)、[`docs/incidents/190-reconciliation-report.md`](incidents/190-reconciliation-report.md)、[`docs/incidents/190-billing-technical-options.md`](incidents/190-billing-technical-options.md)、[`docs/incidents/189-191-dryrun-report.md`](incidents/189-191-dryrun-report.md)、[#1127 scheduler output evidence](incidents/1127-scheduler-evidence-execution-package.md)、[2026-07-18 新店出缺勤雙列](incidents/2026-07-18-xindian-duplicate-attendance-slots.md)、[scheduled-cross-sc execution](incidents/2026-07-18-scheduled-cross-sc-execution-package.md)、[木柵高瑞樸 7/30 GHA containment](incidents/muzha-gaorui-2026-07-30-option1-execution-package.md)（[#1466](https://github.com/jerry200176-png/AllTrue_System/pull/1466)）
 8. **Bug 關閉閘門**：[`docs/GUIDE_BUG_CLOSURE_GATE.md`](GUIDE_BUG_CLOSURE_GATE.md) — 根因/測試/驗證/回覆/文件/回滾六項必填
 9. **Release Execution Package**：[`docs/GUIDE_RELEASE_EXECUTION_PACKAGE.md`](GUIDE_RELEASE_EXECUTION_PACKAGE.md) — production 變更標準模板
-10. **#957 D1 Sprint**：[`docs/refactor/957-d1-sprint-design.md`](refactor/957-d1-sprint-design.md)、[`docs/runbooks/957-d1-deploy-runbook.md`](runbooks/957-d1-deploy-runbook.md)、[`docs/runbooks/957-d1-production-readiness-report.md`](runbooks/957-d1-production-readiness-report.md)、[`docs/runbooks/957-d1-pcr.md`](runbooks/957-d1-pcr.md)
+10. **#957 D1 Sprint**：[`docs/refactor/957-d1-sprint-design.md`](refactor/957-d1-sprint-design.md)、[`docs/runbooks/957-d1-deploy-runbook.md`](runbooks/957-d1-deploy-runbook.md)、[`docs/runbooks/957-d1-production-readiness-report.md`](runbooks/957-d1-production-readiness-report.md)、[`docs/runbooks/957-d1-pcr.md`](runbooks/957-d1-pcr.md)（SUPERSEDED，見 [`957-d1-pcr-r2.md`](runbooks/957-d1-pcr-r2.md)）
 11. **Course Continuity（#1382）**：[`docs/architecture/RFC_COURSE_CONTINUITY.md`](architecture/RFC_COURSE_CONTINUITY.md) · cohort SQL [`scripts/course-continuity-cohort-discovery.sql`](../scripts/course-continuity-cohort-discovery.sql) — **≠** #1130 歷史修復；MVP API：`/api/v1/course-contract-groups`（空表 migrate；不物理 merge）
 12. **Platform opt from stars（規劃）**：[`docs/architecture/RFC_PLATFORM_OPTIMIZATION_FROM_STARS_2026.md`](architecture/RFC_PLATFORM_OPTIMIZATION_FROM_STARS_2026.md) — 每項優化附「參考 repo／要學／不要學／落地」；**不含業務碼改動**
 13. **非標準課程時長／分鐘制扣堂調查（規劃，Draft，Founder D1-D7 已拍板，Phase 0A/0B 工具已 merge）**：[`docs/architecture/RFC_NONSTANDARD_SESSION_DURATION_BILLING.md`](architecture/RFC_NONSTANDARD_SESSION_DURATION_BILLING.md) — 現況：`#613 A1` 分鐘制引擎僅覆蓋補課（`schedules.type='extra'`）；購買堂數與排課 occurrence 數量目前被 `EnrollmentService.php:210-222` 硬性等式驗證鎖死（§2.5，D6 拍板以既有 `session_plan` 為 canonical occurrence source）；扣堂 opt-in 採 `deduction_basis` 欄位（D2，R59 改寫提案見 §10，未套用至規則正文）；共用課程包／自動跨期拆帳／entitlement 事件溯源第一版明確排除（D3/D4/D7）；第 6 次超額採 soft block + 明確確認（D5）。**Phase 0A**（唯讀盤點 `sessions:report-nonstandard-duration`）與**Phase 0B**（純 coverage calculator + dry-run contract，`LessonEntitlementCoverageCalculator`／`NonstandardDurationCoveragePreviewContract`）已實作並通過測試，**未啟用任何 production write 或 runtime 扣堂行為變更**；Phase 1/2 詳細計畫見文件 §15；Founder 尚待拍板事項見 §14；技術債見 `TECH_DEBT.md` `TD-072`；**不含業務碼改動**
@@ -260,6 +260,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `docs/SYSTEM_TECH_GUIDE.md` | 架構深度文件（延伸閱讀，非必讀）|
 | `docs/SOP_MATURITY.md` | SOP 成熟度、M4–M9 roadmap、Actions freeze 接手地圖 |
 | `docs/MODULE_PRODUCT_ENGINEERING_MATURITY_ROADMAP.md` | Product maturity → engineering maturity 的 7/1 後 AI 接手總圖 |
+| `docs/MODULE_CROSS_CAMPUS_PARENT_PORTAL.md` | 跨分校學生身份 bridge、家長 scope、pilot gate 與 rollback |
 | `docs/CHANGELOG.md` | 最近上線功能記錄 |
 | `docs/archive/CHANGELOG_ARCHIVE_2026-05.md` | 2026-05 CHANGELOG（滾動歸檔，只搜尋不通讀） |
 | `docs/archive/CHANGELOG_ARCHIVE_2026-04.md` | 2026-04（含更早）CHANGELOG（archive，只搜尋不通讀） |
@@ -277,6 +278,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `docs/SUPER_ADMIN_AND_MIGRATIONS.md` | super_admin 與 migration 操作速記 |
 | `docs/RULE_MIGRATION_COMPAT.md` | **Migration 向後相容守則**（Expand/Contract、down() 可逆性、PR 必填欄位）|
 | `docs/AMBIENT_AUDIO_LICENSES.md` | 環境音效彩蛋的音檔授權清單 |
+| `docs/REF_GITHUB_RULESET_BASELINE.md` | GitHub repository ruleset（branch/tag protection）現況快照（#880）；漂移檢查見 `OPERATIONAL_CONSISTENCY_CHECK.md` Rule 8 |
 
 ### 維運 SOP
 | 檔案 | 一行說明 |
@@ -308,6 +310,12 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 |------|---------|
 | `docs/security/ASVS_L1_2026.md` | OWASP ASVS L1 年度自查 |
 | `docs/security/AUDIT_LOG_POLICY.md` | 敏感 admin 行為 audit log 政策 |
+| `docs/security/PII_DATA_INVENTORY.md` | PII 資料地圖／分類（#889），欄位級盤點 + 保存政策待辦 |
+| `docs/security/IAM_ACCESS_REVIEW.md` | GitHub／Pi／第三方平台權限季度盤點（#888）|
+| `docs/security/PRODUCTION_AGENT_EXCEPTION_HERMES_2026-08.md` | Hermes production agent 暫時例外、即時證據與 hardening follow-up（#1676）|
+| `docs/security/AUDIT_LOG_COVERAGE_MATRIX.md` | 敏感操作 audit log 覆蓋矩陣，含 PIN reset 無稽核紀錄的具體缺口（#890）|
+| `docs/security/RUNBOOK_HOST_HARDENING_VERIFICATION.md` | Production host（UFW/SSH/fail2ban/服務暴露）稽核（#887）|
+| `docs/sop/PRIVACY_REQUEST_SOP.md` | 資料查詢／匯出／刪除／封存請求處理流程（#903）|
 
 ### Backend 局部參考（非主入口）
 | 檔案 | 用途 |

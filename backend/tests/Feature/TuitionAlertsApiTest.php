@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\AuthToken;
+use App\Models\CoursePackage;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\PaymentReport;
@@ -445,6 +446,167 @@ class TuitionAlertsApiTest extends TestCase
         $this->assertSame(7000, $row['outstanding']);
     }
 
+    /**
+     * Director-reported live discrepancy (2026-08-06): a course settled via a
+     * recorded invoice payment (paid_amount === charge) but whose raw Paid
+     * flag was never manually flipped showed "已繳費" in course management
+     * (Paid=1 OR has invoice payment) but "未繳費" here (Paid flag only).
+     */
+    public function test_payment_status_paid_when_invoice_fully_paid_without_paid_flag(): void
+    {
+        $token = $this->createDirectorToken([1], 'ps-invoice-settled@example.com');
+        $student = Student::create([
+            'name' => '帳單結清未切旗標',
+            'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $course = $this->createCountModeClass($student->id, [
+            'Paid' => 0, 'RemainingSessions' => 5, 'Charge' => 8000,
+        ]);
+        $invoice = Invoice::create([
+            'StudentID' => $student->id, 'StudentClassID' => $course->ID,
+            'IssueDate' => '2026-06-01', 'TotalAmount' => 8000, 'PaidAmount' => 8000, 'Status' => 'paid',
+        ]);
+        Payment::create([
+            'InvoiceID' => $invoice->id, 'Amount' => 8000, 'PaidAt' => '2026-06-02', 'Method' => 'cash',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->getJson('/api/v1/alerts/tuition?branch_id=1');
+
+        $res->assertOk();
+        $row = collect($res->json())->firstWhere('id', $course->ID);
+        $this->assertNotNull($row);
+        $this->assertSame('paid', $row['payment_status']);
+        $this->assertSame(8000, $row['charge']);
+        $this->assertSame(8000, $row['paid_amount']);
+        $this->assertSame(0, $row['outstanding']);
+    }
+
+    /**
+     * Same scenario as above but with 0 remaining sessions (the exact shape
+     * of the reported course): must resolve to the renewal-reminder state,
+     * never plain "unpaid" — a fully-settled, exhausted course is still due
+     * for a renewal nudge, but it must not read as if nothing was paid.
+     */
+    public function test_payment_status_renew_needed_not_unpaid_when_invoice_fully_paid_and_zero_remaining(): void
+    {
+        $token = $this->createDirectorToken([1], 'ps-invoice-settled-zero@example.com');
+        $student = Student::create([
+            'name' => '帳單結清零堂數',
+            'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $course = $this->createCountModeClass($student->id, [
+            'Paid' => 0, 'RemainingSessions' => 0, 'Charge' => 8000,
+        ]);
+        $invoice = Invoice::create([
+            'StudentID' => $student->id, 'StudentClassID' => $course->ID,
+            'IssueDate' => '2026-06-01', 'TotalAmount' => 8000, 'PaidAmount' => 8000, 'Status' => 'paid',
+        ]);
+        Payment::create([
+            'InvoiceID' => $invoice->id, 'Amount' => 8000, 'PaidAt' => '2026-06-02', 'Method' => 'cash',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->getJson('/api/v1/alerts/tuition?branch_id=1');
+
+        $res->assertOk();
+        $row = collect($res->json())->firstWhere('id', $course->ID);
+        $this->assertNotNull($row);
+        $this->assertSame('renew_needed', $row['payment_status']);
+        $this->assertNotSame('unpaid', $row['payment_status']);
+        $this->assertSame(0, $row['outstanding']);
+    }
+
+    /**
+     * Count-mode CoursePackage (multi-subject shared session pool) equivalent of
+     * test_payment_status_paid_when_invoice_fully_paid_without_paid_flag — this path
+     * (AlertController::computePackageCountPaymentStatus() + the $countPkgAlerts row's
+     * own 'paid'/'outstanding' fields) had no regression coverage at all before this
+     * PR's AlertController::isFullyPaid() consolidation, despite reimplementing the
+     * exact same "Paid OR fully-covering invoice payment" predicate independently.
+     */
+    public function test_package_count_mode_payment_status_paid_when_invoice_fully_paid_without_paid_flag(): void
+    {
+        $token = $this->createDirectorToken([1], 'ps-pkg-invoice-settled@example.com');
+        $student = Student::create([
+            'name' => '方案帳單結清未切旗標',
+            'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $pkg = CoursePackage::create([
+            'student_id' => $student->id, 'campus_id' => 1, 'name' => '方案結清測試',
+            'total_sessions' => 8, 'remaining_sessions' => 5, 'used_sessions' => 3,
+            'rate' => 1000, 'rate_unit' => 'session', 'class_type' => 'one_on_one',
+            'paid' => false, 'stop' => false, 'enabled' => true,
+        ]);
+        $anchor = $this->createCountModeClass($student->id, [
+            'Paid' => 0, 'RemainingSessions' => 5, 'SessionCount' => 8,
+            'PackageID' => $pkg->id, 'PackageTotalSessions' => 8, 'PackageName' => $pkg->name,
+        ]);
+        $invoice = Invoice::create([
+            'StudentID' => $student->id, 'StudentClassID' => $anchor->ID,
+            'IssueDate' => '2026-06-01', 'TotalAmount' => 8000, 'PaidAmount' => 8000, 'Status' => 'paid',
+        ]);
+        Payment::create([
+            'InvoiceID' => $invoice->id, 'Amount' => 8000, 'PaidAt' => '2026-06-02', 'Method' => 'cash',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->getJson('/api/v1/alerts/tuition?branch_id=1');
+
+        $res->assertOk();
+        $row = collect($res->json())->firstWhere('package_id', $pkg->id);
+        $this->assertNotNull($row);
+        $this->assertSame('paid', $row['payment_status']);
+        $this->assertTrue($row['paid']);
+        $this->assertSame(0, $row['outstanding']);
+    }
+
+    /**
+     * Same package path, but the invoice covers only part of the charge — must
+     * stay 'partial' (both in payment_status and the row's own 'paid'/'outstanding'
+     * fields), not be misclassified as fully paid by the "any payment exists" trap
+     * this codebase's other payment-status implementations fall into (F7 family).
+     */
+    public function test_package_count_mode_payment_status_partial_when_invoice_partially_paid(): void
+    {
+        $token = $this->createDirectorToken([1], 'ps-pkg-invoice-partial@example.com');
+        $student = Student::create([
+            'name' => '方案部分付款',
+            'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $pkg = CoursePackage::create([
+            'student_id' => $student->id, 'campus_id' => 1, 'name' => '方案部分付款測試',
+            'total_sessions' => 8, 'remaining_sessions' => 5, 'used_sessions' => 3,
+            'rate' => 1000, 'rate_unit' => 'session', 'class_type' => 'one_on_one',
+            'paid' => false, 'stop' => false, 'enabled' => true,
+        ]);
+        $anchor = $this->createCountModeClass($student->id, [
+            'Paid' => 0, 'RemainingSessions' => 5, 'SessionCount' => 8,
+            'PackageID' => $pkg->id, 'PackageTotalSessions' => 8, 'PackageName' => $pkg->name,
+        ]);
+        $invoice = Invoice::create([
+            'StudentID' => $student->id, 'StudentClassID' => $anchor->ID,
+            'IssueDate' => '2026-06-01', 'TotalAmount' => 8000, 'PaidAmount' => 3000, 'Status' => 'partial',
+        ]);
+        Payment::create([
+            'InvoiceID' => $invoice->id, 'Amount' => 3000, 'PaidAt' => '2026-06-02', 'Method' => 'cash',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->getJson('/api/v1/alerts/tuition?branch_id=1');
+
+        $res->assertOk();
+        $row = collect($res->json())->firstWhere('package_id', $pkg->id);
+        $this->assertNotNull($row);
+        $this->assertSame('partial', $row['payment_status']);
+        $this->assertFalse($row['paid']);
+        $this->assertSame(5000, $row['outstanding']);
+    }
+
     public function test_payment_status_pending_report_when_has_pending_report(): void
     {
         $token = $this->createDirectorToken([1], 'ps-pending@example.com');
@@ -747,6 +909,34 @@ class TuitionAlertsApiTest extends TestCase
         $row = collect($res->json())->firstWhere('id', $course->ID);
         $this->assertNotNull($row);
         $this->assertSame(5000, (int) $row['outstanding'], 'void invoice should not count as receivable');
+    }
+
+    public function test_count_mode_amount_uses_rate_and_session_count_when_charge_snapshot_is_stale(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-stale-charge@example.com');
+        $student = Student::create([
+            'name' => '收帳金額測試', 'CampusID' => 1, 'ClassID' => 1,
+            'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+
+        $course = $this->createCountModeClass($student->id, [
+            'Rate' => 1650,
+            'SessionCount' => 8,
+            'Charge' => 24750,
+            'Paid' => 0,
+            'RemainingSessions' => 8,
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/alerts/tuition?branch_id=1');
+
+        $res->assertOk();
+        $row = collect($res->json())->firstWhere('id', $course->ID);
+        $this->assertNotNull($row);
+        $this->assertSame(13200, (int) $row['charge']);
+        $this->assertSame(13200, (int) $row['outstanding']);
     }
 
     private function createDirectorToken(array $campusIds, string $loginName = 'director-tuition@example.com'): string

@@ -56,7 +56,8 @@ jobs:
           EOF
 
       # ─────────────────────────────────────────────
-      # CHECK 2：PR 大小（推薦 ≤ 400 行，強制 ≤ 700 行）
+      # CHECK 2：PR 大小（推薦 ≤ 400 行，強制 ≤ 700 行；
+      # 純刪除為主的死碼清償另有較高上限，見下方）
       # 排除：lock files, migration seed 純資料
       # ─────────────────────────────────────────────
       - name: "[CHECK 2] PR size check (≤ 700 lines hard limit)"
@@ -71,17 +72,18 @@ jobs:
           if echo "$BRANCH" | grep -qE '^chore/docs-'; then
             EXTRA_EXCLUDE+=(':!docs/CHANGELOG.md' ':!docs/archive/**')
           fi
-          # 計算加減總行數，排除 lock 檔和純資料檔
-          TOTAL=$(git diff --numstat origin/main...HEAD \
+          # 計算加減行數（分開算），排除 lock 檔和純資料檔
+          read -r ADD DEL <<< "$(git diff --numstat origin/main...HEAD \
             -- ':!*.lock' ':!**/package-lock.json' ':!package-lock.json' \
                ':!**/composer.lock' ':!composer.lock' \
                ':!*.sql' ':!*.sql.gz' ':!*.min.js' ':!*.min.css' \
                ':!*.log' ':!**/*.log' \
                ':!*phpstan-baseline.neon' ':!**/*.generated.js' \
                "${EXTRA_EXCLUDE[@]}" \
-            | awk 'NF==3 {add+=$1; del+=$2} END {print add+del+0}')
+            | awk 'NF==3 {add+=$1; del+=$2} END {print add+0, del+0}')"
+          TOTAL=$((ADD + DEL))
 
-          echo "PR size: $TOTAL lines changed (excluding lock/data files)"
+          echo "PR size: $TOTAL lines changed (+$ADD/-$DEL, excluding lock/data files)"
           echo "PR_SIZE=$TOTAL" >> "$GITHUB_ENV"
 
           # docs 整併 epic（chore/docs-*）允許較大 diff；仍禁止混 production code
@@ -95,6 +97,26 @@ jobs:
               HARD_LIMIT=1300
               echo "Docs consolidation branch (no production paths): hard limit raised to $HARD_LIMIT"
             fi
+          fi
+
+          # 死碼／技術債刪除例外：這個 gate 本意是限制「新邏輯的審查負擔」，但用同一把尺
+          # 量純刪除並不合理——刪掉 1,000 行已經證明打不到的死碼，風險跟新增 1,000 行邏輯完
+          # 全不同（前者的正確性由 build/lint/e2e 就能驗證完，不需要人工逐行審查）。
+          # 觸發條件很窄：insertions 必須很小（≤30，只容許順手改 import/註解），且 deletions
+          # 遠大於一般上限——才會套用較高的刪除上限；insertions 本身永遠受 HARD_LIMIT 約束，
+          # 無法用這條路徑夾帶真正的新邏輯。
+          DELETION_INSERT_CAP=30
+          DELETION_HARD_LIMIT=3000
+          if [ "$ADD" -le "$DELETION_INSERT_CAP" ] && [ "$DEL" -gt "$HARD_LIMIT" ]; then
+            if [ "$DEL" -gt "$DELETION_HARD_LIMIT" ]; then
+              echo "❌ PR too large even as deletion-dominant cleanup: -$DEL lines (limit: $DELETION_HARD_LIMIT)"
+              echo ""
+              echo "Please split into smaller PRs. Each PR should cover one independent feature."
+              echo "Reference: .cursor/rules/module-industry-standards.mdc"
+              exit 1
+            fi
+            echo "✅ Deletion-dominant cleanup (+$ADD/-$DEL) — exempt from the $HARD_LIMIT insertion-oriented limit (≤ $DELETION_HARD_LIMIT deletions)."
+            exit 0
           fi
 
           if [ "$TOTAL" -gt "$HARD_LIMIT" ]; then
@@ -159,6 +181,15 @@ jobs:
           else
             echo "✅ CHANGELOG check OK"
           fi
+
+      # ─────────────────────────────────────────────
+      # CHECK 4A：版本更新覆蓋閘門
+      # CHANGELOG 每一筆近期產品變更都必須標記 STAFF_UPDATE 或 SILENT_SHIP。
+      # ─────────────────────────────────────────────
+      - name: "[CHECK 4A] Release-notes coverage"
+        run: |
+          node scripts/check-release-notes-coverage.mjs --self-test
+          node scripts/check-release-notes-coverage.mjs --base origin/main --head HEAD
 
       # ─────────────────────────────────────────────
       # CHECK 5：禁止 CI workflow 內含 ssh/rsync/deploy 指令

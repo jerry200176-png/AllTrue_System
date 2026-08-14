@@ -7,11 +7,16 @@ use App\Models\Invoice;
 use App\Models\PaymentReport;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Services\InvoiceAmountReconciliationService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 
 class AccountingController extends Controller
 {
+    public function __construct(private InvoiceAmountReconciliationService $invoiceAmounts)
+    {
+    }
+
     public function payments(Request $request)
     {
         return $this->paymentResponse($request, false);
@@ -51,7 +56,10 @@ class AccountingController extends Controller
             ->limit(500)
             ->get();
         $courseIds = $courses->pluck('ID')->map(fn ($id) => (int) $id)->values()->all();
-        $invoiceMap = Invoice::with(['payments' => fn ($q) => $q->select(['id', 'InvoiceID', 'Amount', 'PaidAt', 'Method'])])
+        $invoiceMap = Invoice::with([
+                'studentClass',
+                'payments' => fn ($q) => $q->select(['id', 'InvoiceID', 'Amount', 'PaidAt', 'Method']),
+            ])
             ->whereIn('StudentClassID', $courseIds)
             ->notVoided()
             ->get()
@@ -73,7 +81,8 @@ class AccountingController extends Controller
             $overpaidTotal = 0;
             $outstandingTotal = 0;
             foreach ($invoices as $invoice) {
-                $total = (int) ($invoice->TotalAmount ?? 0);
+                $projection = $this->invoiceAmounts->resolve($invoice, $invoice->getRelationValue('studentClass'));
+                $total = (int) $projection['total_amount'];
                 $positive = (int) $invoice->payments
                     ->filter(fn ($payment) => (int) ($payment->Amount ?? 0) > 0 && (string) ($payment->Method ?? '') !== 'void')
                     ->sum(fn ($payment) => (int) ($payment->Amount ?? 0));
@@ -172,7 +181,7 @@ class AccountingController extends Controller
             ->get();
         $classIds = $classes->pluck('ID')->map(fn ($id) => (int) $id)->values()->all();
 
-        $invoices = Invoice::with(['payments' => function ($query) {
+        $invoices = Invoice::with(['studentClass', 'payments' => function ($query) {
                 $query->select(['id', 'InvoiceID', 'Amount', 'PaidAt', 'Method', 'Note', 'payment_report_id'])
                     ->orderBy('PaidAt')
                     ->orderBy('id');
@@ -205,7 +214,8 @@ class AccountingController extends Controller
             $positiveTotal = (int) $positivePayments->sum(fn ($payment) => (int) ($payment->Amount ?? 0));
             $voidedAmount = abs((int) $voidPayments->sum(fn ($payment) => (int) ($payment->Amount ?? 0)));
             $netApplied = max(0, $positiveTotal - $voidedAmount);
-            $totalAmount = (int) ($invoice->TotalAmount ?? 0);
+            $projection = $this->invoiceAmounts->resolve($invoice, $invoice->getRelationValue('studentClass'));
+            $totalAmount = (int) $projection['total_amount'];
             $appliedAmount = min($totalAmount, $netApplied);
             $overpaidAmount = max(0, $netApplied - $totalAmount);
             $outstanding = max(0, $totalAmount - $appliedAmount);
@@ -325,6 +335,11 @@ class AccountingController extends Controller
                 'issue_date' => $invoice->IssueDate ? substr((string) $invoice->IssueDate, 0, 10) : null,
                 'due_date' => $invoice->DueDate ? substr((string) $invoice->DueDate, 0, 10) : null,
                 'total_amount' => $totalAmount,
+                'stored_total_amount' => $projection['stored_total_amount'],
+                'computed_total_amount' => $projection['computed_total_amount'],
+                'amount_source' => $projection['amount_source'],
+                'amount_discrepancy' => $projection['amount_discrepancy'],
+                'period_sessions' => $projection['period_sessions'],
                 'paid_amount' => $paidAmount,
                 'calculated_applied_amount' => $appliedAmount,
                 'voided_amount' => $voidedAmount,

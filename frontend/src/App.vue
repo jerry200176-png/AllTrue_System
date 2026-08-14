@@ -305,8 +305,9 @@
       <TuitionCollectionPage v-if="!isPasswordChangeLocked && isDirector && active === 'tuition-collect' && !pinModalActive" :branch-id="currentBranch" />
       <TuitionReportPage v-if="!isPasswordChangeLocked && isDirector && active === 'tuition-report' && !pinModalActive" :branch-id="currentBranch" />
       <ParttimePayrollPage v-if="!isPasswordChangeLocked && isDirector && active === 'parttime-payroll' && !pinModalActive" :branch-id="currentBranch" :user-role="role" />
+      <TeacherEligibilityPage v-if="!isPasswordChangeLocked && isDirector && active === 'teacher-eligibility' && !pinModalActive" :branch-id="currentBranch" :user-role="role" />
       <TeachersList v-if="!isPasswordChangeLocked && isDirector && active === 'teachers' && !pinModalActive" :branch-id="currentBranch" @navigate-to-schedule="onNavigateToSchedule" />
-      <CourseManagement v-if="!isPasswordChangeLocked && isDirector && active === 'course-mgmt'" :branch-id="currentBranch" :initial-teacher-id="initialTeacherIdForNav" @clear-initial-teacher="initialTeacherIdForNav = null" @navigate="active = $event" />
+      <CourseManagement v-if="!isPasswordChangeLocked && isDirector && active === 'course-mgmt'" :branch-id="currentBranch" :initial-teacher-id="initialTeacherIdForNav" @clear-initial-teacher="initialTeacherIdForNav = null" @navigate="onNavigateFromCourseManagement" />
       <ClassroomManagement v-if="!isPasswordChangeLocked && isDirector && active === 'classroom'" :branch-id="currentBranch" />
       <SubjectSettingsPage v-if="!isPasswordChangeLocked && isDirector && active === 'subject-settings'" :branch-id="currentBranch" :user-role="role" />
       <SubjectUnitsPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'subject-units'" :branch-id="currentBranch" :user-role="role" />
@@ -328,7 +329,7 @@
         v-if="(isTeacher || isDirector) && active === 'profile'"
         :token="session?.access_token ?? ''"
         :force-password-change="isPasswordChangeLocked"
-        :initial-tab="isPasswordChangeLocked ? 'security' : 'profile'"
+        :initial-tab="isPasswordChangeLocked ? 'security' : (profileFocusTab || 'profile')"
         @profile-updated="onProfileUpdated"
         @password-change-complete="onPasswordChangeComplete"
       />
@@ -464,6 +465,7 @@ const SubjectUnitsPage      = defineAsyncComponent(() => import('./pages/Subject
 const TuitionCollectionPage = defineAsyncComponent(() => import('./pages/TuitionCollectionPage.vue'));
 const TuitionReportPage     = defineAsyncComponent(() => import('./pages/TuitionReportPage.vue'));
 const ParttimePayrollPage   = defineAsyncComponent(() => import('./pages/ParttimePayrollPage.vue'));
+const TeacherEligibilityPage = defineAsyncComponent(() => import('./pages/TeacherEligibilityPage.vue'));
 const DirectorAccountsPage  = defineAsyncComponent(() => import('./pages/DirectorAccountsPage.vue'));
 const BranchManagementPage  = defineAsyncComponent(() => import('./pages/BranchManagementPage.vue'));
 const NotificationsCenter   = defineAsyncComponent(() => import('./pages/NotificationsCenter.vue'));
@@ -892,6 +894,7 @@ const inboxUrgentTotal = ref(0);
 const inboxCountScopeKey = ref('');
 const directorFocusWorkflowId = ref(null);
 const directorFocusSection = ref(null);
+const profileFocusTab = ref(null);
 const badgeByType = ref({});
 let unreadPollingTimer = null;
 let chatBadgePollingTimer = null;
@@ -1040,7 +1043,16 @@ function onNavigateFromNotifications({ target, recordId, focus, section, workflo
     directorFocusSection.value = null;
     directorFocusWorkflowId.value = null;
   }
+  profileFocusTab.value = (target === 'profile' && section === 'notifications') ? 'notifications' : null;
   active.value = target;
+}
+
+function onNavigateFromCourseManagement(payload) {
+  if (typeof payload === 'string') {
+    active.value = payload;
+    return;
+  }
+  onNavigateFromNotifications(payload || {});
 }
 
 let skipTeacherNavSfxOnce = false;
@@ -1322,6 +1334,7 @@ const sidebarNavGroups = computed(() => {
           { page: 'tuition-report', label: '當月學收', icon: 'bar_chart' },
           { page: 'subject-units', label: '科目數統計', icon: 'calculate' },
           { page: 'parttime-payroll', label: '兼職薪資', icon: 'account_balance_wallet' },
+          { page: 'teacher-eligibility', label: '正職薪資要件', icon: 'rule' },
         ],
       },
       {
@@ -2638,6 +2651,16 @@ function formatBuildTime(rawIso) {
   cursor: grabbing;
   transform: none;
   transition: none;
+}
+
+/* Keep the draggable guide control clear of the fixed mobile bottom nav. */
+@media (max-width: 640px) {
+  .global-guide-btn {
+    top: auto !important;
+    right: 8px !important;
+    bottom: calc(56px + env(safe-area-inset-bottom, 0px) + 8px) !important;
+    left: auto !important;
+  }
 }
 
 .guide-tour-popover-layer {

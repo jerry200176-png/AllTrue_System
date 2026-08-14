@@ -9,11 +9,13 @@ use App\Models\LearningRecord;
 use App\Models\Payment;
 use App\Models\PaymentReport;
 use App\Models\Schedule;
+use App\Models\ScheduleAuditLog;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
 use App\Models\UserCampus;
 use App\Models\CoursePackage;
+use App\Support\SessionStatus;
 use App\Support\Utf8mb3SearchSanitizer;
 use App\Services\ClassSessionMaterializationService;
 use App\Services\ContractScheduleMatcher;
@@ -22,8 +24,10 @@ use App\Services\Scheduling\DeductionBasis;
 use App\Services\Scheduling\LessonEntitlementCoverageCalculator;
 use App\Services\ClassSessionContractReflowService;
 use App\Services\FrontendSubjectIdResolver;
+use App\Services\InvoiceAmountReconciliationService;
 use App\Services\SessionDeductionService;
 use App\Services\ScheduleGuardService;
+use App\Services\ManualSessionBookingService;
 use App\Services\SessionProjectionReadService;
 use App\Services\TeacherScopeService;
 use Carbon\Carbon;
@@ -35,7 +39,8 @@ class StudentClassController extends Controller
 {
     public function __construct(
         private ScheduleGuardService $scheduleGuardService,
-        private ClassSessionContractReflowService $contractSessionReflowService
+        private ClassSessionContractReflowService $contractSessionReflowService,
+        private InvoiceAmountReconciliationService $invoiceAmounts
     )
     {
     }
@@ -740,6 +745,7 @@ class StudentClassController extends Controller
                     'ID',
                     'StudentID',
                     'PackageID',
+                    'scheduling_policy',
                     'StartDate',
                     'EndDate',
                     'SessionCount',
@@ -808,7 +814,10 @@ class StudentClassController extends Controller
                 if (isset($result[(string) $id]) && (!$class || ($class->ScheduleMode ?? '') !== 'date')) {
                     continue;
                 }
-                $isSessionMode = $class && ($class->ScheduleMode ?? '') === 'count' && (int) ($class->SessionCount ?? 0) > 0;
+                $isSessionMode = $class
+                    && ($class->ScheduleMode ?? '') === 'count'
+                    && (int) ($class->SessionCount ?? 0) > 0
+                    && (string) ($class->scheduling_policy ?? 'auto_recurrence') !== ManualSessionBookingService::POLICY;
                 $startDate = $class && $class->StartDate ? Carbon::parse($class->StartDate)->toDateString() : null;
 
                 $weekFields = ['week', 'week1', 'week2', 'week3', 'week4', 'week5', 'week6'];
@@ -1452,6 +1461,20 @@ class StudentClassController extends Controller
         }
 
         $mapped = $this->mapFrontendPayload($request);
+        if (array_key_exists('scheduling_policy', $mapped)
+            && !in_array($mapped['scheduling_policy'], ['auto_recurrence', ManualSessionBookingService::POLICY], true)
+        ) {
+            return response()->json(['message' => 'Invalid scheduling policy'], 422);
+        }
+        $effectivePolicy = (string) ($mapped['scheduling_policy'] ?? ($studentClass->scheduling_policy ?? 'auto_recurrence'));
+        $effectiveScheduleMode = (string) ($mapped['ScheduleMode'] ?? ($studentClass->ScheduleMode ?? 'count'));
+        if ($effectivePolicy === ManualSessionBookingService::POLICY
+            && $effectiveScheduleMode !== 'count'
+        ) {
+            return response()->json([
+                'message' => 'Manual occurrence scheduling requires a session course',
+            ], 422);
+        }
         $scheduleSlotsForRebuild = is_array($mapped['ScheduleSlots'] ?? null) ? $mapped['ScheduleSlots'] : [];
 
         // Remove ScheduleSlots and ID references to prevent overwriting critical relationships
@@ -1554,15 +1577,30 @@ class StudentClassController extends Controller
             $newCount = max(0, (int) ($studentClass->SessionCount ?? 0));
             if ($newCount > 0) {
                 $sessionCountChanged = $newCount !== $oldSessionCountSnapshot;
-                if ($sessionCountChanged || !$scheduleFieldsPresent) {
+                // A round-trip edit (for example memo/payment metadata) may
+                // carry the same SessionCount without changing the schedule.
+                // Only an actual count change is allowed to cancel/extend
+                // projected sessions; otherwise saving a note can pre-plan new
+                // lessons unexpectedly (#231).
+                if ($sessionCountChanged) {
                     $this->cancelExcessScheduledSessions((int) $studentClass->ID, $newCount);
-                    $this->extendSessionsIfNeeded($studentClass, $newCount);
+                    if ((string) ($studentClass->scheduling_policy ?? 'auto_recurrence') !== ManualSessionBookingService::POLICY) {
+                        $this->extendSessionsIfNeeded($studentClass, $newCount);
+                    }
                 }
             }
         }
 
         // 主任「強制重建未上堂次」：直接執行安全部分重建，不走完整重建流程
         if ($request->boolean('force_partial_rebuild', false)) {
+            if ((string) ($studentClass->scheduling_policy ?? 'auto_recurrence') === ManualSessionBookingService::POLICY) {
+                return response()->json(array_merge($studentClass->fresh()->toArray(), [
+                    'session_sync' => [
+                        'rebuilt' => false,
+                        'reason' => 'manual_occurrence_policy',
+                    ],
+                ]));
+            }
             $slots = $this->resolveScheduleSlotsForRebuild($studentClass, $scheduleSlotsForRebuild);
             if (!empty($slots)) {
                 $durationMinutes = max(30, (int) ($studentClass->SessionDuration ?? 120));
@@ -1604,7 +1642,7 @@ class StudentClassController extends Controller
                 $sessionSync['reconcile_skipped'] = true;
                 $sessionSync['warning'] = '未來堂次因狀態鎖定未更新時間，課程主檔已儲存新時段但堂次仍為舊時段，請檢查堂次狀態。';
             }
-        } else {
+        } elseif ((string) ($studentClass->scheduling_policy ?? 'auto_recurrence') !== ManualSessionBookingService::POLICY) {
             $this->reconcileWeekTimeFieldsFromSessions($studentClass);
         }
 
@@ -2248,17 +2286,23 @@ class StudentClassController extends Controller
         $reportsById = $reports->keyBy('id');
 
         return response()->json([
-            'invoices' => $invoices->map(function ($inv) use ($reportsByPaymentId, $reportsById, $canSeeAccountLast5) {
+            'invoices' => $invoices->map(function ($inv) use ($reportsByPaymentId, $reportsById, $canSeeAccountLast5, $studentClass) {
                 $effectivePayments = $inv->payments
                     ->filter(fn ($payment) => (int) ($payment->Amount ?? 0) > 0 && (string) ($payment->Method ?? '') !== 'void')
                     ->values();
                 $voidPayments = $inv->payments
                     ->filter(fn ($payment) => (int) ($payment->Amount ?? 0) < 0 || (string) ($payment->Method ?? '') === 'void')
                     ->values();
-                $positiveTotal = (int) $effectivePayments->sum(fn ($payment) => (int) ($payment->Amount ?? 0));
-                $voidedTotal = abs((int) $voidPayments->sum(fn ($payment) => (int) ($payment->Amount ?? 0)));
-                $netApplied = max(0, $positiveTotal - $voidedTotal);
-                $totalAmount = (int) ($inv->TotalAmount ?? 0);
+                $reconciliation = $this->invoiceAmounts->resolve($inv, $studentClass);
+                $netApplied = (int) $reconciliation['net_applied'];
+                $storedTotalAmount = (int) $reconciliation['stored_total_amount'];
+                $totalAmount = (int) $reconciliation['total_amount'];
+                $computedTotalAmount = $reconciliation['computed_total_amount'];
+                $amountSource = $reconciliation['amount_source'];
+                $amountDiscrepancy = $reconciliation['amount_discrepancy'];
+                $periodSessions = $reconciliation['period_sessions'];
+                $periodStart = $reconciliation['period_start'];
+                $periodEnd = $reconciliation['period_end'];
                 $appliedAmount = min($totalAmount, $netApplied);
                 $outstandingAmount = max(0, $totalAmount - $appliedAmount);
                 $status = (string) ($inv->Status ?? '');
@@ -2312,7 +2356,14 @@ class StudentClassController extends Controller
                             'account_last5'  => ($canSeeAccountLast5 && $report) ? $report->account_last5 : null,
                         ];
                     })->values()->all(),
-                    'total_amount'   => (int) $inv->TotalAmount,
+                    'total_amount'   => $totalAmount,
+                    'stored_total_amount' => $storedTotalAmount,
+                    'computed_total_amount' => $computedTotalAmount,
+                    'amount_source' => $amountSource,
+                    'amount_discrepancy' => $amountDiscrepancy,
+                    'period_sessions' => $periodSessions,
+                    'period_start' => $periodStart,
+                    'period_end' => $periodEnd,
                     'paid_amount'    => (int) $inv->PaidAmount,
                     'status'         => $inv->Status,
                     'ledger_status'  => $ledgerStatus,
@@ -2603,6 +2654,15 @@ class StudentClassController extends Controller
             $teacherId,
             $note
         ) {
+            $packageId = (int) $studentClass->getAttribute('PackageID');
+            if ($packageId > 0) {
+                CoursePackage::query()
+                    ->where('id', $packageId)
+                    ->where('student_id', (int) $studentClass->getAttribute('StudentID'))
+                    ->lockForUpdate()
+                    ->first();
+                $studentClass->refresh();
+            }
             $authUser = request()->attributes->get('auth_user');
             $authUserId = is_object($authUser) ? (int) ($authUser->id ?? 0) : 0;
             $hasLearningRecordSessionDeducted = Schema::hasColumn('LearningRecord', 'SessionDeducted');
@@ -2638,7 +2698,8 @@ class StudentClassController extends Controller
 
             $conflict = $this->detectAddSessionConflict(
                 $classId, $sessionDate, $startTime, $isSessionMode, $sessionCount,
-                $lockedSessionIdMap, $approvedSessionIds, $signInSessionIds, $todayYmd, $nowTime
+                $lockedSessionIdMap, $approvedSessionIds, $signInSessionIds, $todayYmd, $nowTime,
+                $studentClass
             );
 
             if ($conflict['conflict_type'] !== 'none') {
@@ -2677,7 +2738,11 @@ class StudentClassController extends Controller
                     } else {
                         $suffix = $movedFromDate ? ("系統調整堂次（原 {$movedFromDate}）") : '系統調整堂次';
                         $baseNote = trim((string) ($classSession->Note ?? ''));
-                        $classSession->Note = $baseNote === '' ? $suffix : ($baseNote . '; ' . $suffix);
+                        $combinedNote = $baseNote === '' ? $suffix : ($baseNote . '; ' . $suffix);
+                        // Note is varchar(255); repeated moves would otherwise grow this
+                        // unbounded and trip a DB truncation error (Sentry PHP-LARAVEL-29).
+                        // Keep the tail so the most recent adjustments survive truncation.
+                        $classSession->Note = mb_strlen($combinedNote) > 255 ? mb_substr($combinedNote, -255) : $combinedNote;
                     }
                     $classSession->save();
                 } else {
@@ -2842,7 +2907,8 @@ class StudentClassController extends Controller
 
         $result = $this->detectAddSessionConflict(
             $classId, $sessionDate, $startTime, $isSessionMode, $sessionCount,
-            $lockedSessionIdMap, $approvedSessionIds, $signInSessionIds, $todayYmd, $nowTime
+            $lockedSessionIdMap, $approvedSessionIds, $signInSessionIds, $todayYmd, $nowTime,
+            $studentClass
         );
 
         $canAdd = $result['conflict_type'] === 'none';
@@ -2872,6 +2938,93 @@ class StudentClassController extends Controller
     }
 
     /**
+     * Dry-run check for the formal one-occurrence-at-a-time scheduling flow.
+     * POST /api/v1/student-classes/{studentClass}/manual-sessions/check
+     */
+    public function checkManualSession(Request $request, StudentClass $studentClass)
+    {
+        if ($auth = $this->authorizeManualSessionAccess($studentClass)) {
+            return $auth;
+        }
+
+        $data = $request->validate([
+            'session_date' => 'required|date',
+            'start_time' => 'required|date_format:H:i',
+        ]);
+
+        $result = app(ManualSessionBookingService::class)->check(
+            $studentClass,
+            Carbon::parse($data['session_date'])->toDateString(),
+            $data['start_time']
+        );
+
+        return response()->json($result, $result['can_add'] ? 200 : 422);
+    }
+
+    /**
+     * Create exactly one future occurrence. Repeated requests for the same
+     * course/date/start slot are idempotent.
+     * POST /api/v1/student-classes/{studentClass}/manual-sessions
+     */
+    public function createManualSession(Request $request, StudentClass $studentClass)
+    {
+        if ($auth = $this->authorizeManualSessionAccess($studentClass)) {
+            return $auth;
+        }
+
+        $data = $request->validate([
+            'session_date' => 'required|date',
+            'start_time' => 'required|date_format:H:i',
+        ]);
+
+        $authUser = $request->attributes->get('auth_user');
+        $operatorId = is_object($authUser) ? (int) ($authUser->id ?? 0) : null;
+        $result = app(ManualSessionBookingService::class)->create(
+            $studentClass,
+            Carbon::parse($data['session_date'])->toDateString(),
+            $data['start_time'],
+            null,
+            $operatorId ?: null,
+            $request->header('Idempotency-Key')
+        );
+
+        if (!$result['can_add']) {
+            $status = in_array($result['conflict_type'] ?? null, ['student_conflict', 'schedule_conflict'], true)
+                ? 409
+                : 422;
+            return response()->json($result, $status);
+        }
+
+        $session = $result['session'] ?? null;
+        return response()->json(array_merge($result, [
+            'session' => $session ? [
+                'id' => (int) $session->id,
+                'student_class_id' => (int) $session->StudentClassID,
+                'session_date' => Carbon::parse($session->SessionDate)->toDateString(),
+                'start_time' => substr((string) $session->StartTime, 0, 5),
+                'end_time' => substr((string) $session->EndTime, 0, 5),
+                'status' => (string) $session->Status,
+            ] : null,
+        ]), $result['created'] ?? false ? 201 : 200);
+    }
+
+    private function authorizeManualSessionAccess(StudentClass $studentClass): ?\Illuminate\Http\JsonResponse
+    {
+        $role = request()->attributes->get('auth_role');
+        if (!in_array($role, ['director', 'admin', 'super_admin'], true)) {
+            return response()->json(['message' => 'Only directors and administrators may book manual occurrences'], 403);
+        }
+
+        $campusIds = $role === 'super_admin' ? [] : request()->attributes->get('auth_campus_ids', []);
+        if (!empty($campusIds) && !Student::whereIn('CampusID', $campusIds)
+            ->where('id', $studentClass->StudentID)->exists()) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        return null;
+    }
+
+    /**
      * Shared conflict detection for add-session and its check endpoint.
      * Returns a structured array; when conflict_type === 'none' the caller
      * may proceed with the write. Internal keys prefixed with '_' are
@@ -2887,7 +3040,8 @@ class StudentClassController extends Controller
         array $approvedSessionIds,
         array $signInSessionIds,
         string $todayYmd,
-        string $nowTime
+        string $nowTime,
+        ?StudentClass $studentClass = null
     ): array {
         $existing = ClassSession::where('StudentClassID', $classId)
             ->whereDate('SessionDate', $sessionDate)
@@ -2934,11 +3088,46 @@ class StudentClassController extends Controller
                 ->orderBy('StartTime', 'desc')
                 ->first();
 
+            $packageHasCapacity = true;
+            $packageId = $studentClass ? (int) $studentClass->getAttribute('PackageID') : 0;
+            if ($studentClass && $packageId > 0 && !$movableSession) {
+                $package = CoursePackage::query()
+                    ->where('id', $packageId)
+                    ->where('student_id', (int) $studentClass->getAttribute('StudentID'))
+                    ->first();
+                $memberIds = StudentClass::query()
+                    ->where('PackageID', $packageId)
+                    ->where('StudentID', (int) $studentClass->getAttribute('StudentID'))
+                    ->pluck('ID');
+                $reserved = (int) ClassSession::query()
+                    ->whereIn('StudentClassID', $memberIds)
+                    ->whereDate('SessionDate', '>=', $todayYmd)
+                    // #1733/#228/#229: leave-like occurrences do not consume
+                    // shared package future reservation capacity.
+                    ->whereNotIn('Status', SessionStatus::futureReservationExclusionStatuses())
+                    ->count();
+                $remaining = $package ? max(0, (int) $package->computeRemainingFromLedger()) : 0;
+                $packageHasCapacity = $package !== null && $reserved < $remaining;
+            }
+
             if ($isSessionMode && !$movableSession) {
                 $activeSessionCount = (int) ClassSession::where('StudentClassID', $classId)
                     ->where('Status', '!=', 'cancelled')
                     ->count();
-                if ($sessionCount > 0 && $activeSessionCount >= $sessionCount) {
+                if (!$packageHasCapacity && $studentClass && $packageId > 0) {
+                    return [
+                    'conflict_type' => 'full_capacity',
+                        'error_code' => 'SESSIONS_FULL',
+                        'message' => '共用方案可用堂數已排滿，請先調課、請假，或增加方案總堂數。',
+                        'suggested_actions' => ['調課', '請假', '增加總堂數'],
+                        '_existing_session' => null,
+                        '_movable_session' => null,
+                    ];
+                }
+                if ($sessionCount > 0
+                    && $activeSessionCount >= $sessionCount
+                    && !($studentClass && $packageId > 0)
+                ) {
                     return [
                         'conflict_type' => 'full_capacity',
                         'error_code' => 'SESSIONS_FULL',
@@ -3468,6 +3657,9 @@ class StudentClassController extends Controller
         if (isset($input['subject'])) $mappedData['SubjectID'] = $subjectId;
         if (isset($input['class_type'])) $mappedData['ClassType'] = $input['class_type'];
         if (isset($input['payment_type'])) $mappedData['ScheduleMode'] = ($input['payment_type'] === 'session') ? 'count' : 'date';
+        if (array_key_exists('scheduling_policy', $input)) {
+            $mappedData['scheduling_policy'] = (string) $input['scheduling_policy'];
+        }
         if (isset($input['rate_per_30min'])) $mappedData['Rate'] = $input['rate_per_30min'];
         if (isset($input['rate_unit'])) $mappedData['rate_unit'] = $input['rate_unit'];
         if (isset($input['duration_hours'])) $mappedData['SessionDuration'] = (int) round((float) $input['duration_hours'] * 60);
@@ -3506,6 +3698,7 @@ class StudentClassController extends Controller
         if (array_key_exists('room_id', $input)) $mappedData['room_id'] = $input['room_id'] ? (int) $input['room_id'] : null;
         if (array_key_exists('settlement_day', $input)) $mappedData['settlement_day'] = $input['settlement_day'] !== null && $input['settlement_day'] !== '' ? (int) $input['settlement_day'] : null;
         if (array_key_exists('monthly_sessions', $input)) $mappedData['monthly_sessions'] = $input['monthly_sessions'] !== null && $input['monthly_sessions'] !== '' ? (int) $input['monthly_sessions'] : null;
+        if (array_key_exists('end_date', $input)) $mappedData['EndDate'] = $input['end_date'] ?: null;
         if (array_key_exists('Memo', $input)) $mappedData['Memo'] = $input['Memo'];
         if (array_key_exists('memo', $input)) $mappedData['Memo'] = $input['memo'];
 
@@ -4212,14 +4405,35 @@ class StudentClassController extends Controller
             );
         }
 
+        // R99 follow-up (in-app #219): mass ::delete() query builder calls bypass Eloquent
+        // model events entirely, so ClassSessionObserver::deleted() never fires and the
+        // existing schedule_audit_logs trail is silently skipped — this is exactly why an
+        // earlier production repair on this same rebuild path left no recoverable trace of
+        // the deleted session or its evaluation record. Snapshot LearningRecord content here
+        // (it has no observer of its own) and delete ClassSession rows one at a time so the
+        // established audit-log infrastructure actually captures what's being destroyed.
+        $operatorId = (int) (optional(request()->attributes->get('auth_user'))->id ?: 0) ?: null;
+        $branchId = (int) (optional($studentClass->student)->CampusID ?: 0) ?: null;
         $sessionIds = ClassSession::where('StudentClassID', (int) $studentClass->ID)->pluck('id')->all();
         if (!empty($sessionIds)) {
+            $recordsToDelete = LearningRecord::whereIn('ClassSessionID', $sessionIds)->get();
+            foreach ($recordsToDelete as $record) {
+                ScheduleAuditLog::create([
+                    'session_id'  => $record->ClassSessionID,
+                    'action_type' => 'delete',
+                    'description' => "開課日/排課調整重建：刪除評量記錄 #{$record->id}（StudentClassID {$studentClass->ID}，learning_record_id={$record->id}）",
+                    'operator_id' => $operatorId,
+                    'branch_id'   => $branchId,
+                    'old_data'    => $record->toArray(),
+                    'new_data'    => null,
+                ]);
+            }
             LearningRecord::whereIn('ClassSessionID', $sessionIds)->delete();
         }
         LearningRecord::where('StudentClassID', (int) $studentClass->ID)
             ->whereNull('ClassSessionID')
             ->delete();
-        ClassSession::where('StudentClassID', (int) $studentClass->ID)->delete();
+        ClassSession::where('StudentClassID', (int) $studentClass->ID)->get()->each->delete();
 
         $createdSessions = 0;
         $createdPendingRecords = 0;
@@ -4453,6 +4667,9 @@ class StudentClassController extends Controller
      */
     public function extendSessionsIfNeeded(StudentClass $studentClass, int $newCount): void
     {
+        if ((string) ($studentClass->scheduling_policy ?? 'auto_recurrence') === ManualSessionBookingService::POLICY) {
+            return;
+        }
         $classId = (int) $studentClass->ID;
         $nonQuotaStatuses = ['cancelled', 'leave', 'leave_adjusted', 'excused'];
 
@@ -5536,6 +5753,11 @@ class StudentClassController extends Controller
      */
     public function togglePause(Request $request, StudentClass $studentClass)
     {
+        $auth = $this->authorizeStudentClassAccess($studentClass);
+        if ($auth !== null) {
+            return $auth;
+        }
+
         $sc = $studentClass;
 
         $action = $request->input('action', 'pause');
@@ -5596,9 +5818,14 @@ class StudentClassController extends Controller
                 $sc->closed_reason = null;
                 $sc->save();
 
+                $restored = $this->restorePauseCancelledSessions($sc);
+
                 DB::commit();
                 return response()->json([
-                    'message' => '課程已恢復，可重新排課。',
+                    'message' => $restored > 0
+                        ? "課程已恢復，可重新排課。已恢復 {$restored} 堂先前暫停時取消的堂次。"
+                        : '課程已恢復，可重新排課。',
+                    'restored_count' => $restored,
                 ]);
             }
         } catch (\Throwable $e) {
@@ -5618,6 +5845,29 @@ class StudentClassController extends Controller
             ->update([
                 'Status' => 'cancelled',
                 'Note' => DB::raw("CONCAT(COALESCE(Note,''), ' {$noteTag}')"),
+                'updated_at' => now(),
+            ]);
+    }
+
+    /**
+     * Undo exactly what cancelFutureScheduledSessions() (or the FixOrphanScheduledSessions
+     * companion job, tag [孤兒停用取消]) did on pause: restore sessions it cancelled back to
+     * scheduled, scoped to our own note tags so a director's unrelated manual cancellation is
+     * never touched (in-app #219: resume only reset Stop/closed_reason, never the sessions the
+     * pause itself cancelled, so they silently stayed invisible on the calendar).
+     */
+    private function restorePauseCancelledSessions(StudentClass $studentClass): int
+    {
+        return ClassSession::where('StudentClassID', $studentClass->ID)
+            ->where('Status', 'cancelled')
+            ->where(function ($q) {
+                $q->where('Note', 'like', '%[暫停取消]%')
+                    ->orWhere('Note', 'like', '%[結案取消]%')
+                    ->orWhere('Note', 'like', '%[孤兒停用取消]%');
+            })
+            ->update([
+                'Status' => 'scheduled',
+                'Note' => DB::raw("TRIM(REPLACE(REPLACE(REPLACE(COALESCE(Note,''), ' [暫停取消]', ''), ' [結案取消]', ''), ' [孤兒停用取消]', ''))"),
                 'updated_at' => now(),
             ]);
     }

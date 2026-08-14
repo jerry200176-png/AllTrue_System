@@ -4,7 +4,7 @@
     <div class="card course-header-card" data-guide="course-mgmt-header">
       <div class="header-actions">
         <div class="page-title-block">
-          <p class="command-kicker">AllTrue Operations Command</p>
+          <p class="command-kicker">課務營運</p>
           <h2 class="page-title">課程管理</h2>
           <p class="ref-hint">即時掌握學生課程、續報風險、排課狀態與營運節奏</p>
           <div class="meta-pills">
@@ -13,16 +13,16 @@
           </div>
         </div>
         <div class="header-buttons">
-          <button class="btn-soft" @click="expandAllGroups">全部展開</button>
-          <button class="btn-soft" @click="collapseAllGroups">全部收合</button>
+          <button class="btn-soft" @click="expandAllGroups"><span class="material-symbols-outlined btn-icon" aria-hidden="true">unfold_more</span>全部展開</button>
+          <button class="btn-soft" @click="collapseAllGroups"><span class="material-symbols-outlined btn-icon" aria-hidden="true">unfold_less</span>全部收合</button>
           <button class="btn-soft" @click="showBulkLeaveModal = true">
-            <span class="btn-icon">🏖️</span> 連假批次請假
+            <span class="material-symbols-outlined btn-icon" aria-hidden="true">event_busy</span> 連假批次請假
           </button>
           <button class="btn-soft" @click="emit('navigate', 'subject-settings')">
-            <span class="btn-icon">📚</span> 管理科目
+            <span class="material-symbols-outlined btn-icon" aria-hidden="true">library_books</span> 管理科目
           </button>
           <button class="btn-accent" @click="openBackfillModal">
-            <span class="btn-icon">📥</span> 新增課程
+            <span class="material-symbols-outlined btn-icon" aria-hidden="true">add</span> 新增課程
           </button>
         </div>
       </div>
@@ -92,6 +92,40 @@
       </div>
     </transition>
 
+    <section v-if="pendingLeaveLoaded || pendingLeaveLoading || pendingLeaveError" class="pending-leave-summary" aria-live="polite">
+      <div class="pending-leave-summary__header">
+        <div class="pending-leave-summary__icon material-symbols-outlined" aria-hidden="true">inbox</div>
+        <div class="pending-leave-summary__body">
+          <strong>家長請假待處理</strong>
+          <span v-if="pendingLeaveLoading">正在同步待辦案件…</span>
+          <span v-else-if="pendingLeaveError" class="pending-leave-summary__error" role="alert">{{ pendingLeaveError }}</span>
+          <span v-else-if="pendingLeaveWorkflows.length">先確認案件摘要，再進入主任收件匣完成決策。</span>
+          <span v-else>目前沒有待處理的家長請假。</span>
+        </div>
+        <button v-if="pendingLeaveWorkflows.length" class="pending-leave-summary__cta pending-leave-summary__cta--all" type="button" @click="emit('navigate', { target: 'director', section: 'exception-workflows' })">查看全部請假<span aria-hidden="true">→</span></button>
+      </div>
+      <div v-if="pendingLeaveLoading" class="pending-leave-case-list" aria-hidden="true">
+        <div v-for="idx in 2" :key="idx" class="pending-leave-case pending-leave-case--skeleton"></div>
+      </div>
+      <div v-else-if="pendingLeaveError" class="pending-leave-summary__error-actions">
+        <button class="pending-leave-summary__cta" type="button" @click="loadCourses(pagination.page)">再試一次</button>
+      </div>
+      <div v-else-if="pendingLeaveWorkflows.length" class="pending-leave-case-list">
+        <article v-for="workflow in pendingLeavePreview" :key="workflow.id" class="pending-leave-case" data-testid="pending-leave-case">
+          <div class="pending-leave-case__content">
+            <div class="pending-leave-case__title-row">
+              <strong>{{ workflow.student?.name || '未命名學生' }}</strong>
+              <span class="pending-leave-case__status">{{ pendingLeaveStatusLabel(workflow.status) }}</span>
+            </div>
+            <p>{{ pendingLeaveSessionLabel(workflow) }}</p>
+            <p class="pending-leave-case__reason">原因：{{ workflow.payload?.reason || '家長未提供原因' }}</p>
+          </div>
+          <button class="pending-leave-case__cta" type="button" :aria-label="`處理這筆請假：${workflow.student?.name || '未命名學生'}`" @click="openPendingLeaveWorkflow(workflow)">處理這筆請假<span aria-hidden="true">→</span></button>
+        </article>
+        <button v-if="pendingLeaveWorkflows.length > pendingLeavePreview.length" class="pending-leave-summary__more" type="button" @click="emit('navigate', { target: 'director', section: 'exception-workflows' })">還有 {{ pendingLeaveWorkflows.length - pendingLeavePreview.length }} 筆，查看全部</button>
+      </div>
+    </section>
+
     <!-- Course Table -->
     <div class="card table-card" data-guide="course-mgmt-table">
       <div v-if="coursesLoading && !groupedCourses.length" class="course-list-skeleton" role="status" aria-label="課程資料載入中">
@@ -112,7 +146,15 @@
           class="student-group-card"
           :class="{ 'student-group-has-paused': groupHasPausedCourse(group) }"
         >
-          <button class="student-group-header" @click="toggleStudentGroup(group.key)">
+          <div
+            class="student-group-header"
+            role="button"
+            tabindex="0"
+            :aria-expanded="expandedStudentGroups.has(group.key)"
+            @click="toggleStudentGroup(group.key)"
+            @keydown.enter.prevent="toggleStudentGroup(group.key)"
+            @keydown.space.prevent="toggleStudentGroup(group.key)"
+          >
             <span class="student-group-left">
               <span class="expand-indicator">{{ expandedStudentGroups.has(group.key) ? '▼' : '▶' }}</span>
               <span class="cell-student">{{ group.student_name }}</span>
@@ -126,9 +168,10 @@
               class="focus-btn"
               :class="{ active: focusedStudentKey === group.key }"
               @click="focusStudent(group, $event)"
+              @keydown.stop
               :title="focusedStudentKey === group.key ? '取消專注' : '專注此學生'"
             >⊙</button>
-          </button>
+          </div>
           <div v-if="expandedStudentGroups.has(group.key)" class="student-group-add-row">
             <button type="button" class="btn-soft student-group-add-btn" @click="openBackfillModalForGroup(group)">
               <span class="btn-icon" aria-hidden="true">＋</span>
@@ -233,7 +276,12 @@
                     <td class="cell-actions">
                       <div class="action-btns-row">
                         <button
-                          v-if="isSessionMode(c)"
+                          v-if="isManualOccurrenceCourse(c)"
+                          class="small btn-add-session manual-occurrence-action"
+                          @click="openManualSessionModal(c)"
+                        >＋新增下一堂</button>
+                        <button
+                          v-if="isSessionMode(c) && !isManualOccurrenceCourse(c)"
                           class="small btn-add-session"
                           :class="{ disabled: !canQuickAddSession(c) }"
                           :disabled="!canQuickAddSession(c)"
@@ -250,7 +298,12 @@
                             <p class="action-section-label">日常操作</p>
                             <button class="action-dropdown-item" @click="editCourse(c); closeActionMenu()"><span class="action-icon">✏️</span> 編輯</button>
                             <button
-                              v-if="isSessionMode(c)"
+                              v-if="isManualOccurrenceCourse(c)"
+                              class="action-dropdown-item"
+                              @click="openManualSessionModal(c); closeActionMenu()"
+                            ><span class="action-icon">＋</span> 新增下一堂</button>
+                            <button
+                              v-if="isSessionMode(c) && !isManualOccurrenceCourse(c)"
                               class="action-dropdown-item action-dropdown-add-session-mobile"
                               :class="{ 'action-dropdown-item--disabled': !canQuickAddSession(c) }"
                               :disabled="!canQuickAddSession(c)"
@@ -556,6 +609,18 @@
       @check="runQuickAddCheck"
     />
 
+    <ManualSessionModal
+      :show="showManualSessionModal"
+      :form="manualSessionForm"
+      :result="manualSessionCheck"
+      :checking="manualSessionChecking"
+      :submitting="manualSessionSubmitting"
+      :today="todayYmd"
+      @close="showManualSessionModal = false"
+      @check="runManualSessionCheck"
+      @submit="submitManualSession"
+    />
+
     <LeaveModal
       :show="showLeaveModal"
       :form="leaveForm"
@@ -747,7 +812,12 @@
                   </div>
                   <span v-else class="hint">—</span>
                 </td>
-                <td class="invoice-amount-cell">${{ formatMoney(inv.total_amount) }}</td>
+                <td class="invoice-amount-cell">
+                  <strong>${{ formatMoney(inv.total_amount) }}</strong>
+                  <div v-if="inv.amount_discrepancy" class="invoice-amount-warning" role="status">
+                    依實際 {{ inv.period_sessions }} 堂計算；原帳單 ${{ formatMoney(inv.stored_total_amount) }}
+                  </div>
+                </td>
                 <td class="invoice-amount-cell">${{ formatMoney(inv.paid_amount) }}</td>
                 <td class="invoice-status-cell">
                   <span :class="['invoice-status-chip', invoiceStatusClass(inv)]">
@@ -911,9 +981,11 @@ import CourseEditForm from '../components/CourseEditForm.vue';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
 import EnrollmentConflictDecisionModal from '../components/EnrollmentConflictDecisionModal.vue';
 import { buildForceOverrideFields } from '../lib/enrollmentConflictDecision';
+import { isPendingWorkflowStatus } from '../lib/exceptionWorkflowFocus.js';
 import PurchaseSessionsModal from '../components/course-management/PurchaseSessionsModal.vue';
 import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal.vue';
 import QuickAddSessionModal from '../components/course-management/QuickAddSessionModal.vue';
+import ManualSessionModal from '../components/course-management/ManualSessionModal.vue';
 import LeaveModal from '../components/course-management/LeaveModal.vue';
 import BulkLeaveModal from '../components/course-management/BulkLeaveModal.vue';
 import RescheduleModal from '../components/course-management/RescheduleModal.vue';
@@ -924,6 +996,12 @@ import PaymentEntryModal from '../components/PaymentEntryModal.vue';
 import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
 import ToastWithUndo from '../components/substitute/ToastWithUndo.vue';
 import { fetchTeacherAvailability, undoSubstitute } from '../lib/substituteApi.js';
+import { listExceptionWorkflows } from '../api';
+import {
+  buildCourseLeaveDeepLink,
+  pendingLeaveSessionLabel,
+  pendingLeaveStatusLabel,
+} from '../lib/courseLeaveWorkflowDisplay.js';
 
 // PRD 9c058f19 — 代課流程 UX 優化旗標；env 為字串，需解析。
 // 與 SmartCalendar.vue 對齊：預設開啟（'1'），設為 '0' 回退舊版 <select> 模式。
@@ -1025,6 +1103,37 @@ function showCreationBanner(msg) {
   if (creationBannerTimer) clearTimeout(creationBannerTimer);
   creationBannerTimer = setTimeout(() => { creationSuccessBanner.value = null; }, 6000);
 }
+const pendingLeaveWorkflows = ref([]);
+const pendingLeaveLoading = ref(false);
+const pendingLeaveError = ref('');
+const pendingLeaveLoaded = ref(false);
+const pendingLeavePreview = computed(() => pendingLeaveWorkflows.value.slice(0, 3));
+
+function openPendingLeaveWorkflow(workflow) {
+  emit('navigate', buildCourseLeaveDeepLink(workflow));
+}
+
+async function loadPendingLeaveWorkflows(token) {
+  if (!props.branchId || !token) {
+    pendingLeaveLoaded.value = true;
+    return;
+  }
+  pendingLeaveLoading.value = true;
+  pendingLeaveError.value = '';
+  try {
+    const rows = await listExceptionWorkflows(token, { branchId: props.branchId, type: 'student_leave' });
+    pendingLeaveWorkflows.value = rows
+      .filter((row) => isPendingWorkflowStatus(row?.status))
+      .sort((a, b) => String(a?.due_at || a?.created_at || '').localeCompare(String(b?.due_at || b?.created_at || '')));
+  } catch (e) {
+    pendingLeaveWorkflows.value = [];
+    pendingLeaveError.value = e?.message || '家長請假待辦載入失敗';
+  } finally {
+    pendingLeaveLoading.value = false;
+    pendingLeaveLoaded.value = true;
+  }
+}
+
 const completedSessionDatesByCourse = ref({});
 const sessionsByCourse = ref({});
 const classSessionsByCourse = sessionsByCourse;
@@ -1626,6 +1735,13 @@ const quickAddSessionForm = ref({
   student_name: '',
   subject: 'Math',
 });
+const showManualSessionModal = ref(false);
+const manualSessionCourse = ref(null);
+const manualSessionCheck = ref(null);
+const manualSessionChecking = ref(false);
+const manualSessionSubmitting = ref(false);
+const manualSessionForm = ref({ session_date: '', start_time: '16:00' });
+const isManualOccurrenceCourse = (course) => String(course?.scheduling_policy || 'auto_recurrence') === 'manual_occurrence';
 const pauseConfirmTarget = ref(null);
 const pauseConfirmSubmitting = ref(false);
 const pauseCancelRemaining = ref(true);
@@ -2129,6 +2245,69 @@ async function submitQuickAddSession() {
   }
 }
 // ----- Leave (請假) -----
+function openManualSessionModal(course) {
+  if (!course?.id || !isManualOccurrenceCourse(course)) return;
+  manualSessionCourse.value = course;
+  manualSessionCheck.value = null;
+  manualSessionForm.value = {
+    session_date: localTodayYmd(),
+    start_time: String(course.start_time || '16:00').slice(0, 5),
+  };
+  showManualSessionModal.value = true;
+  runManualSessionCheck();
+}
+
+async function runManualSessionCheck() {
+  const course = manualSessionCourse.value;
+  const form = manualSessionForm.value;
+  if (!course?.id || !form.session_date || !form.start_time) return;
+  manualSessionChecking.value = true;
+  try {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    const token = sess?.access_token;
+    if (!token) throw new Error('請先登入');
+    const res = await fetch(`/api/v1/student-classes/${course.id}/manual-sessions/check`, {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ session_date: form.session_date, start_time: form.start_time }),
+    });
+    manualSessionCheck.value = await res.json().catch(() => ({ can_add: false, message: '檢查失敗' }));
+  } catch (e) {
+    manualSessionCheck.value = { can_add: false, message: e?.message || '檢查失敗' };
+  } finally {
+    manualSessionChecking.value = false;
+  }
+}
+
+async function submitManualSession() {
+  const course = manualSessionCourse.value;
+  const form = manualSessionForm.value;
+  if (!course?.id || !manualSessionCheck.value?.can_add) return;
+  manualSessionSubmitting.value = true;
+  try {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    const token = sess?.access_token;
+    if (!token) throw new Error('請先登入');
+    const res = await fetch(`/api/v1/student-classes/${course.id}/manual-sessions`, {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ session_date: form.session_date, start_time: form.start_time }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      manualSessionCheck.value = json;
+      return;
+    }
+    showManualSessionModal.value = false;
+    alert(json.created === false ? '這一堂已存在，未重複建立。' : '下一堂已建立，已加入課表。');
+    await loadCourses();
+  } catch (e) {
+    alert(e?.message || '建立手動排課失敗');
+  } finally {
+    manualSessionSubmitting.value = false;
+  }
+}
+
 const showLeaveModal = ref(false);
 const leaveCourse = ref(null);
 const leaveForm = ref({
@@ -2814,7 +2993,13 @@ const loadCourses = async (page = 1) => {
   sessionsByCourse.value = {};
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
+    let token = sess?.access_token;
+    if (!token) {
+      try {
+        token = JSON.parse(localStorage.getItem('alltrue_session') || '{}')?.access_token || '';
+      } catch { token = ''; }
+    }
+    loadPendingLeaveWorkflows(token);
     if (token) {
       const params = new URLSearchParams({
         branch_id: String(props.branchId),
@@ -3331,7 +3516,9 @@ function scheduleFingerprintForEdit(form) {
   const dur = Math.round((Number(f.duration_hours) || 2) * 10) / 10;
   const start = normalizeTo30Min(String(f.start_time || '16:00').slice(0, 5));
   const first = String(f.first_class_date || '').slice(0, 10);
-  return `${days}|${slots}|${dur}|${start}|${first}`;
+  const end = String(f.end_date || '').slice(0, 10);
+  const mode = String(f.payment_type || 'session');
+  return `${days}|${slots}|${dur}|${start}|${first}|${end}|${mode}`;
 }
 
 const editCourse = (c) => {
@@ -3377,6 +3564,8 @@ const editCourse = (c) => {
     settlement_day: c.settlement_day ?? null,
     monthly_sessions: c.monthly_sessions ?? null,
     first_class_date: c.first_class_date || '',
+    end_date: c.end_date || (c.EndDate ? String(c.EndDate).slice(0, 10) : ''),
+    scheduling_policy: c.scheduling_policy || 'auto_recurrence',
     room_id: c.room_id ?? null,
     memo: c.memo ?? c.Memo ?? '',
     paid_at: c.paid_at || c.last_paid_at || '',
@@ -3400,14 +3589,14 @@ const submitEdit = async () => {
       if (token) {
         const endTime = computeEndTime(form.start_time, form.duration_hours);
         const isPackageCourse = !!editingCourseRaw.value?.PackageID;
-        const body = {
-          subject: form.subject,
-          teacher_id: form.teacher_id || null,
-          class_type: form.class_type,
-          rate_per_30min: form.rate_per_30min,
+        // A memo/payment/teacher edit must not be interpreted as a schedule
+        // edit. Sending the schedule fields on every save caused the backend
+        // to reconcile or rebuild future projected sessions even when the
+        // director only added a note (#231).
+        const baseline = editScheduleBaseline.value;
+        const scheduleChanged = baseline != null && scheduleFingerprintForEdit(form) !== baseline;
+        const scheduleFields = scheduleChanged ? {
           duration_hours: form.duration_hours,
-          sessions_purchased: form.sessions_purchased,
-          ...(isPackageCourse ? {} : { remaining_sessions: form.remaining_sessions }),
           days_of_week: (form.days_of_week || []).length ? form.days_of_week : [],
           start_time: form.start_time,
           day_time_slots: (form.day_time_slots || [])
@@ -3418,13 +3607,24 @@ const submitEdit = async () => {
             }))
             .filter((slot) => slot.day >= 1 && slot.day <= 7),
           end_time: endTime,
+          first_class_date: form.first_class_date || null,
+          end_date: form.payment_type === 'monthly' ? form.end_date || null : null,
+          force_rebuild_if_mismatch: true,
+        } : {};
+        const body = {
+          subject: form.subject,
+          teacher_id: form.teacher_id || null,
+          class_type: form.class_type,
+          rate_per_30min: form.rate_per_30min,
+          sessions_purchased: form.sessions_purchased,
+          ...(isPackageCourse ? {} : { remaining_sessions: form.remaining_sessions }),
           payment_type: form.payment_type,
+          scheduling_policy: form.scheduling_policy || 'auto_recurrence',
           settlement_day: form.payment_type === 'monthly' ? form.settlement_day : null,
           monthly_sessions: form.payment_type === 'monthly' ? form.monthly_sessions : null,
-          first_class_date: form.first_class_date || null,
-          force_rebuild_if_mismatch: true,
           room_id: form.room_id || null,
-          Memo: form.memo || null
+          Memo: form.memo || null,
+          ...scheduleFields,
         };
         if (String(form.paid_at || '') !== String(form.original_paid_at || '')) {
           body.paid_at = form.paid_at ? form.paid_at : null;
@@ -3438,8 +3638,6 @@ const submitEdit = async () => {
         if (res.ok) {
           const payload = await res.json().catch(() => ({}));
           const sync = payload?.session_sync || {};
-          const baseline = editScheduleBaseline.value;
-          const scheduleChanged = baseline != null && scheduleFingerprintForEdit(form) !== baseline;
           let scheduleAutoRebuildOk = false;
           if (scheduleChanged) {
             const rbRes = await fetch(`/api/v1/student-classes/${id}`, {
@@ -4043,6 +4241,103 @@ onUnmounted(() => {
   border: 1px solid var(--ds-hairline);
 }
 
+.pending-leave-summary {
+  display: grid;
+  gap: 12px;
+  margin: 14px 0;
+  padding: 14px 16px;
+  border: 1px solid var(--ds-hairline);
+  border-left: 4px solid var(--ds-primary);
+  border-radius: 14px;
+  background: var(--ds-canvas);
+  box-shadow: 0 4px 16px rgba(15, 35, 64, 0.05);
+}
+.pending-leave-summary__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.pending-leave-summary__icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  border-radius: 10px;
+  background: var(--ds-canvas);
+  color: var(--ds-primary-deep);
+}
+.pending-leave-summary__body {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+.pending-leave-summary__body strong { color: var(--ds-ink); }
+.pending-leave-summary__body span { color: var(--ds-ink-secondary); font-size: 13px; line-height: 1.4; }
+.pending-leave-summary__error { color: var(--ds-danger) !important; }
+.pending-leave-summary__cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 9px 14px;
+  border: 1px solid var(--ds-primary);
+  border-radius: 10px;
+  background: var(--ds-primary);
+  color: var(--ds-on-primary);
+  font-weight: 700;
+  cursor: pointer;
+  transition: var(--transition);
+}
+.pending-leave-summary__cta:hover { background: var(--ds-primary-deep); border-color: var(--ds-primary-deep); }
+.pending-leave-summary__cta--all { margin-left: auto; }
+.pending-leave-case-list { display: grid; gap: 8px; }
+.pending-leave-case {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--ds-hairline);
+  border-radius: 10px;
+  background: var(--ds-canvas-soft);
+}
+.pending-leave-case__content { min-width: 0; flex: 1; }
+.pending-leave-case__title-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pending-leave-case__title-row strong { color: var(--ds-ink); }
+.pending-leave-case__status { color: var(--ds-primary-deep); font-size: 12px; font-weight: 700; }
+.pending-leave-case p { margin: 4px 0 0; color: var(--ds-ink-secondary); font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
+.pending-leave-case__reason { color: var(--ds-ink-mute) !important; }
+.pending-leave-case__cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  gap: 6px;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--ds-primary);
+  border-radius: 9px;
+  background: var(--ds-primary);
+  color: var(--ds-on-primary);
+  font-weight: 700;
+  cursor: pointer;
+}
+.pending-leave-case__cta:hover { background: var(--ds-primary-deep); }
+.pending-leave-summary__more { justify-self: start; border: 0; padding: 2px 0; background: transparent; color: var(--ds-primary-deep); font-weight: 700; cursor: pointer; }
+.pending-leave-summary__error-actions { display: flex; }
+.pending-leave-case--skeleton { height: 66px; background: linear-gradient(90deg, var(--ds-canvas-soft) 25%, var(--ds-canvas) 50%, var(--ds-canvas-soft) 75%); background-size: 200% 100%; animation: pending-leave-shimmer 1.2s infinite; }
+@keyframes pending-leave-shimmer { to { background-position: -200% 0; } }
+@media (max-width: 700px) {
+  .pending-leave-summary__header { align-items: flex-start; flex-wrap: wrap; }
+  .pending-leave-summary__cta--all { width: 100%; margin-left: 0; }
+  .pending-leave-case { align-items: stretch; flex-direction: column; gap: 10px; }
+  .pending-leave-case__cta { width: 100%; }
+}
+
 .header-buttons {
   display: flex;
   gap: 8px;
@@ -4367,6 +4662,10 @@ onUnmounted(() => {
 
 .student-group-header:hover {
   background: var(--ds-canvas-soft);
+}
+.student-group-header:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--ds-primary) 28%, transparent);
+  outline-offset: -3px;
 }
 
 .student-group-left {
@@ -4726,7 +5025,7 @@ onUnmounted(() => {
   margin-top: 3px;
   font-size: 11px;
   font-weight: 600;
-  color: #b45309;
+  color: var(--ds-warning);
   background: #fef3c7;
   border: 1px solid #fcd34d;
   border-radius: 4px;
@@ -6085,6 +6384,14 @@ button.danger:disabled {
 .invoice-status-cell {
   text-align: right !important;
   white-space: nowrap;
+}
+.invoice-amount-warning {
+  margin-top: 3px;
+  color: #b45309;
+  font-size: 11px;
+  line-height: 1.35;
+  white-space: normal;
+  min-width: 150px;
 }
 .invoice-status-chip {
   display: inline-flex;

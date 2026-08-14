@@ -31,7 +31,7 @@
 
 ## 公司治理記錄原則
 
-- 新功能 / bug fix 上線：更新 `docs/CHANGELOG.md`。
+- 新功能 / bug fix 上線：更新 `docs/CHANGELOG.md`，並依 [`docs/GUIDE_STAFF_UPDATES.md`](docs/GUIDE_STAFF_UPDATES.md) 加上 `staff_update` 或 `silent_ship` 決策標記；教職員可感知的變更必須同步 `docs/STAFF_UPDATES.yml`。
 - AI 犯錯或發現防再犯規則：更新 `docs/AI_REGRESSION_LESSONS.md`。
 - 本次不修但會影響未來維護：更新 `docs/TECH_DEBT.md`。
 - 複雜架構、資料流或 SOP：更新 `docs/SYSTEM_TECH_GUIDE.md` 或 `docs/OPERATIONS_RUNBOOK.md`。
