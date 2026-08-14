@@ -265,4 +265,37 @@ describe('LatestPaymentInfoModal — student page authoritative payment summary'
     expect(wrapper.text()).toContain('尚無繳費紀錄');
     expect(wrapper.find('.lpi-error').exists()).toBe(false);
   });
+
+  it('a stale error response never overwrites a newer course\'s successful render, even when the error body resolves after the switch', async () => {
+    // A's fetch() resolves not-ok immediately, but its res.json() body stays
+    // pending until the test releases it — reproducing the window between the
+    // sequence check after fetch() and the second await on res.json().
+    let resolveABody;
+    global.fetch.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      json: () => new Promise((resolve) => { resolveABody = resolve; }),
+    });
+
+    const wrapper = mount(LatestPaymentInfoModal, {
+      props: { show: true, course: { id: 1, student_name: 'A' } },
+    });
+    await tick();
+
+    // Switch to B before A's error body resolves; B succeeds immediately.
+    global.fetch.mockResolvedValueOnce(ok(invoicesResponse([
+      payment({ id: 1, note: 'B的最新繳費', report_id: 20, status: 'confirmed' }),
+    ])));
+    await wrapper.setProps({ course: { id: 2, student_name: 'B' } });
+    await tick();
+    expect(wrapper.text()).toContain('B的最新繳費');
+
+    // Now A's error body finally resolves — must not clobber B's rendered data.
+    resolveABody({ message: 'A的過期錯誤' });
+    await tick();
+
+    expect(wrapper.text()).toContain('B的最新繳費');
+    expect(wrapper.text()).not.toContain('A的過期錯誤');
+    expect(wrapper.find('.lpi-error').exists()).toBe(false);
+  });
 });

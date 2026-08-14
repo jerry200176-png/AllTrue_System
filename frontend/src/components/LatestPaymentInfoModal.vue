@@ -155,6 +155,7 @@ async function load() {
         error.value = '沒有權限查看此筆繳費資訊（可能跨分校）';
       } else {
         const body = await res.json().catch(() => ({}));
+        if (seq !== requestSeq) return;
         error.value = body.message || `載入失敗（${res.status}）`;
       }
       return;
