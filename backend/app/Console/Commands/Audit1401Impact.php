@@ -255,7 +255,7 @@ class Audit1401Impact extends Command
             $migrationRan = DB::table('migrations')
                 ->where('migration', self::CONTAINMENT_MIGRATION)
                 ->exists();
-            $this->line('8. containment_migration_recorded_ran\t' . ($migrationRan ? 'true' : 'false'));
+            $this->line("8. containment_migration_recorded_ran\t" . ($migrationRan ? 'true' : 'false'));
 
             $verifiedWithoutMethod = StudentLineBinding::query()
                 ->whereNotNull('verified_at')
