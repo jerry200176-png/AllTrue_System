@@ -5,7 +5,7 @@
   "task_id": "governance-onboard-20260815",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
   "base_sha": "6182fd9b1daddbeb34af45c3874c9db13140ff56",
-  "branch": "chore/task-governance-onboard-20260815",
+  "branch": "chore/docs-governance-onboard-20260815",
   "worktree_path": "/home/jerry/workspace/tasks/alltrue/governance-onboard-20260815",
   "started_at": "2026-08-15T06:49:25Z",
   "production_mutation": false,
