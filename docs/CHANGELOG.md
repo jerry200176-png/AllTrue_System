@@ -1,3 +1,10 @@
+## 2026-08-15 — fix(payroll): 已核准可退回，全校放假改讀課程管理
+
+<!-- release-notes: staff_update=staff-2026-08-15-eligibility-approved-revert -->
+
+- 已核准的薪資補登可按「退回」，該筆不再進入薪資。
+- 全校放假改讀課程管理連假／堂次請假，不必再手動登假日曆。
+
 ## 2026-08-14 — fix(payroll): 待審核薪資補登可修改與撤回
 
 <!-- release-notes: staff_update=staff-2026-08-14-eligibility-pending-edit -->

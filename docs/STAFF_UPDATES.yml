@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-15-eligibility-approved-revert
+    published_at: "2026-08-15"
+    audiences:
+      - director
+    importance: digest
+    title: 誤核薪資可退回
+    summary: 已核准可退回；全校放假改看課程管理連假。
+    items:
+      - category: added
+        text: 已核准的補登可按退回，該筆不再進入薪資。
+      - category: improved
+        text: 全校放假以課程管理連假為準，不必再手動登假日曆。
+    source_refs:
+      - "changelog:2026-08-15:eligibility-approved-revert"
+
   - id: staff-2026-08-14-eligibility-pending-edit
     published_at: "2026-08-14"
     audiences:

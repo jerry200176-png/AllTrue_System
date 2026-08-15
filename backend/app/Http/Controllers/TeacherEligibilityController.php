@@ -72,6 +72,12 @@ class TeacherEligibilityController extends Controller
             ->whereNotIn('status', ['cancelled', 'leave', 'leave_requested'])
             ->when($branchFilter !== null, fn ($query) => $query->whereIn('branch_id', $branchFilter))
             ->get();
+        $plannedSchedules = DB::table('schedules')
+            ->whereIn('teacher_id', $teacherIds)
+            ->whereBetween('schedule_date', [$effectiveStart->toDateString(), $period['end']->toDateString()])
+            ->whereNotIn('status', ['cancelled'])
+            ->when($branchFilter !== null, fn ($query) => $query->whereIn('branch_id', $branchFilter))
+            ->get();
 
         // Teacher RFID is still incomplete in production. Work-hours for
         // this report therefore use attended student class sessions, not
@@ -156,19 +162,41 @@ class TeacherEligibilityController extends Controller
         // additive payroll event table is only for policy facts that the core
         // product does not model (for example a company holiday calendar).
         $events = $events->concat($this->existingLeaveEvents($teacherIds, $branchFilter, $effectiveStart, $period['end']));
+        $sessionCalendarAvailable = Schema::hasTable('ClassSession');
+        if ($sessionCalendarAvailable) {
+            $knownHolidayDates = $events->filter(fn ($event) => $event->event_type === 'holiday')
+                ->map(fn ($event) => substr((string) $event->event_date, 0, 10))
+                ->unique()
+                ->all();
+            foreach ($this->campusClosedDates($branchFilter, $effectiveStart, $period['end']) as $date) {
+                if (in_array($date, $knownHolidayDates, true)) {
+                    continue;
+                }
+                $events->push((object) [
+                    'teacher_id' => null,
+                    'event_date' => $date,
+                    'event_type' => 'holiday',
+                    'hours' => null,
+                    'holiday_leave_hours' => 0,
+                    'makeup_completed' => true,
+                ]);
+            }
+        }
 
         $scheduleByTeacher = $schedules->groupBy('teacher_id');
+        $plannedByTeacher = $plannedSchedules->groupBy('teacher_id');
         $attendanceByTeacher = $attendanceSessions->groupBy('teacher_id');
         $eventByTeacher = $events->groupBy(fn ($event) => $event->teacher_id ? (string) $event->teacher_id : '*');
         $achievementByTeacher = $achievements->groupBy('teacher_id');
         $deductionByTeacher = $deductions->groupBy('teacher_id');
-        $eventsAvailable = Schema::hasTable('teacher_payroll_events') && $events->isNotEmpty();
+        $eventsAvailable = $sessionCalendarAvailable || $events->isNotEmpty();
         $subjectUnitsByTeacher = $this->subjectUnitsByTeacher($teacherIds, $branchFilter, $effectiveStart, $period['end']);
         $salaryByTeacher = $this->salaryProfilesByTeacher($teacherIds, $branchFilter, $period['end']->toDateString());
 
-        $rows = $teachers->map(function ($teacher) use ($period, $effectiveStart, $scheduleByTeacher, $attendanceByTeacher, $eventByTeacher, $achievementByTeacher, $deductionByTeacher, $eventsAvailable, $attendanceSourceAvailable, $subjectUnitsByTeacher, $salaryByTeacher) {
+        $rows = $teachers->map(function ($teacher) use ($period, $effectiveStart, $scheduleByTeacher, $plannedByTeacher, $attendanceByTeacher, $eventByTeacher, $achievementByTeacher, $deductionByTeacher, $eventsAvailable, $attendanceSourceAvailable, $sessionCalendarAvailable, $subjectUnitsByTeacher, $salaryByTeacher) {
             $teacherId = (int) $teacher->id;
             $teacherSchedules = $scheduleByTeacher->get($teacherId, collect());
+            $teacherPlanned = $plannedByTeacher->get($teacherId, collect());
             $teacherAttendance = $attendanceByTeacher->get($teacherId, collect());
             $teacherEvents = $eventByTeacher->get((string) $teacherId, collect())->concat($eventByTeacher->get('*', collect()));
             $weeklyRows = [];
@@ -177,8 +205,9 @@ class TeacherEligibilityController extends Controller
             }
 
             $weeklyStatus = $this->aggregateWeeklyStatus($weeklyRows);
-            $holidayCalendarAvailable = $teacherEvents->contains(fn ($event) => $event->event_type === 'holiday');
-            $holidayDays = $this->holidayDays($teacherAttendance, $teacherSchedules, $teacherEvents, $effectiveStart, $period['end'], $holidayCalendarAvailable);
+            $holidayCalendarAvailable = $sessionCalendarAvailable
+                || $teacherEvents->contains(fn ($event) => $event->event_type === 'holiday');
+            $holidayDays = $this->holidayDays($teacherAttendance, $teacherPlanned, $teacherEvents, $effectiveStart, $period['end'], $holidayCalendarAvailable);
             $weekdayHours = $this->weekdayHours($teacherSchedules, $effectiveStart, $period['end']);
             $subjectCount = $subjectUnitsByTeacher[$teacherId] ?? null;
 
@@ -242,9 +271,11 @@ class TeacherEligibilityController extends Controller
         // available; it must not become a missing TeacherSingIn review.
         $workHoursKnown = $attendanceSourceAvailable;
         $weekEvents = $events->filter(fn ($event) => $event->event_date >= $start->toDateString() && $event->event_date <= $end->toDateString());
-        $official = $eventsAvailable && $weekEvents->contains(fn ($event) => $event->event_type === 'official_closure');
+        $official = $eventsAvailable && $weekEvents->contains(
+            fn ($event) => in_array($event->event_type, ['official_closure', 'holiday'], true)
+        );
         $leaveEvents = $weekEvents->filter(fn ($event) => $event->event_type === 'leave');
-        $leaveEligible = $this->resolveLeaveEligibility($leaveEvents);
+        $leaveEligible = $official ? false : $this->resolveLeaveEligibility($leaveEvents);
         $saturdayLeaveBlocked = false;
         $hasSaturdayLeave = $leaveEvents->contains(fn ($event) => Carbon::parse((string) $event->event_date)->dayOfWeekIso === 6);
         if ($hasSaturdayLeave) {
@@ -324,6 +355,64 @@ class TeacherEligibilityController extends Controller
             ];
         }
         return $result;
+    }
+
+    /**
+     * @param  array<int, array{date?:string, status?:string}>  $rows
+     * @return list<string>
+     */
+    private function campusClosedDatesFromSessionRows(array $rows): array
+    {
+        $counts = [];
+        foreach ($rows as $row) {
+            $date = substr((string) ($row['date'] ?? ''), 0, 10);
+            if ($date === '') {
+                continue;
+            }
+            $counts[$date] ??= ['total' => 0, 'open' => 0];
+            $counts[$date]['total']++;
+            if ($this->isOpenTeachingSessionStatus($row['status'] ?? null)) {
+                $counts[$date]['open']++;
+            }
+        }
+        $dates = [];
+        foreach ($counts as $date => $count) {
+            if ($count['total'] > 0 && $count['open'] === 0) {
+                $dates[] = $date;
+            }
+        }
+        sort($dates);
+
+        return $dates;
+    }
+
+    private function campusClosedDates(?array $branchFilter, Carbon $start, Carbon $end): array
+    {
+        if (!Schema::hasTable('ClassSession') || !Schema::hasTable('StudentClass') || !Schema::hasTable('Student')) {
+            return [];
+        }
+
+        $rows = DB::table('ClassSession as cs')
+            ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+            ->join('Student as st', 'st.id', '=', 'sc.StudentID')
+            ->whereBetween('cs.SessionDate', [$start->toDateString(), $end->toDateString()])
+            ->when($branchFilter !== null, fn ($query) => $query->whereIn('st.CampusID', $branchFilter))
+            ->get(['cs.SessionDate as event_date', 'cs.Status as status']);
+
+        return $this->campusClosedDatesFromSessionRows($rows->map(fn ($row) => [
+            'date' => substr((string) $row->event_date, 0, 10),
+            'status' => $row->status,
+        ])->all());
+    }
+
+    private function isOpenTeachingSessionStatus(?string $status): bool
+    {
+        $status = strtolower(trim((string) $status));
+
+        return !in_array($status, [
+            'leave', 'leave_adjusted', 'leave_requested', 'excused',
+            'cancelled', 'canceled', 'voided', 'suspended', 'holiday',
+        ], true);
     }
 
     private function resolveLeaveEligibility($leaveEvents): ?bool
