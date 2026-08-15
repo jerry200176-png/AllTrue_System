@@ -131,7 +131,9 @@ class TeacherEligibilityController extends Controller
                 })
                 ->when($branchFilter !== null, fn ($query) => $query->where(function ($nested) use ($branchFilter) {
                     $nested->whereNull('branch_id')->orWhereIn('branch_id', $branchFilter);
-                }))->get()
+                }))
+                ->where('status', '!=', 'withdrawn')
+                ->get()
             : collect();
 
         $deductions = Schema::hasTable('teacher_payroll_deductions')
@@ -145,7 +147,9 @@ class TeacherEligibilityController extends Controller
                 })
                 ->when($branchFilter !== null, fn ($query) => $query->where(function ($nested) use ($branchFilter) {
                     $nested->whereNull('branch_id')->orWhereIn('branch_id', $branchFilter);
-                }))->get()
+                }))
+                ->where('status', '!=', 'withdrawn')
+                ->get()
             : collect();
 
         // Existing attendance/leave is the product's source of truth. The
