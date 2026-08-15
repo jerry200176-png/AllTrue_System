@@ -60,9 +60,10 @@ jobs:
           TEACHER_NAME="_none_"
           STUDENT_NAME_LIKE="妍耣"
           ENV_FILE=/home/admin/backend/.env
+          DB_USER=$(grep '^DB_USERNAME=' "$ENV_FILE" | cut -d= -f2-)
           DB_PASS=$(grep '^DB_PASSWORD=' "$ENV_FILE" | cut -d= -f2-)
           DB_NAME=$(grep '^DB_DATABASE=' "$ENV_FILE" | cut -d= -f2-)
-          M=(mysql -h 127.0.0.1 -u admin -p"${DB_PASS}" "$DB_NAME" -N -B)
+          M=(mysql -h 127.0.0.1 -u "$DB_USER" -p"${DB_PASS}" "$DB_NAME" -N -B)
           NAME_ESC=$(printf "%s" "$STUDENT_NAME_LIKE" | sed "s/'/\\\\'/g")
           IN=$("${M[@]}" -e "SELECT GROUP_CONCAT(CONCAT(\"'\",id,\"'\") SEPARATOR ',') FROM Student WHERE name LIKE CONCAT('%','$NAME_ESC','%');")
           IN="${IN:-'-1'}"

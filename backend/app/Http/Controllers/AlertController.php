@@ -263,7 +263,7 @@ class AlertController extends Controller
                     ? ($invoiceProjection
                         ? (int) $invoiceProjection['total_amount']
                         : (int) $this->monthlyBilling->summarize($sc, $today)['charge'])
-                    : (int) ($sc->Charge ?? 0);
+                    : $this->countModeCharge($sc);
                 $invoiceAgg = $invoiceAggMap[$classId] ?? null;
                 $paidAmount = $invoiceAgg ? (int) $invoiceAgg['paid_amount'] : 0;
                 $scIsPaid = (int) ($sc->Paid ?? 0) === 1;
@@ -350,6 +350,34 @@ class AlertController extends Controller
         $sessions = max(0, (int) ($pkg->total_sessions ?? 0));
         $rate = (float) ($pkg->rate ?? 0);
         return (int) round($sessions * $rate);
+    }
+
+    /**
+     * Count-course alerts must use the contract price, not a stale Charge
+     * snapshot. Historical renewals could copy a previous total into Charge,
+     * making an 8-session course at 1,650 display as 24,750 instead of 13,200
+     * (#230). Charge remains stored for audit; this is the director-facing
+     * effective amount used for status and collection decisions.
+     */
+    private function countModeCharge(StudentClass $course): int
+    {
+        $rate = (float) ($course->Rate ?? 0);
+        $sessions = max(0, (int) ($course->SessionCount ?? 0));
+        if ($rate <= 0 || $sessions <= 0) {
+            return max(0, (int) ($course->Charge ?? 0));
+        }
+
+        $rateUnit = strtolower(trim((string) ($course->rate_unit ?? 'session')));
+        if ($rateUnit === 'hour') {
+            $hours = (int) ($course->TotalHours ?? 0);
+            if ($hours <= 0) {
+                $duration = max(30, (int) ($course->SessionDuration ?? 120));
+                $hours = (int) round(($sessions * $duration) / 60);
+            }
+            return max(0, (int) round($rate * $hours));
+        }
+
+        return max(0, (int) round($rate * $sessions));
     }
 
     private function computePackageCountPaymentStatus(CoursePackage $pkg, int $paidAmount, int $charge, bool $hasPendingReport): string

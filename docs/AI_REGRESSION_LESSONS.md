@@ -1131,15 +1131,15 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | 家長入口 UI / `releaseNotes` | §R10、§R11、§R18、§R38、§R45（家長卡僅 `PARENT_UPDATES.yml` 顯式投影 + `sync-release-notes`）、**§R85（教職員卡僅 `STAFF_UPDATES.yml`；CHANGELOG 不得自動發布）** |
 | 課表回報 | §2026-04-17 回報系統（14 條禁止項） |
 | 排課 | §start_time 格式、§智慧排課誤標取消、§R25（請假優先於 scheduled 例外）、§R29（請假不可 fallback 只寫 schedules）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R47（rescheduled 幽靈不可蓋掉同日 ClassSession）、§R49（同學生同時段去重不可用 StudentClassID 當唯一 key）、§R50（行事曆載入不可 REST 成功後再跑 fallback）、§R69（bulk reflow 先 snapshot schedule IDs，禁止 mutable natural key 連鎖更新）、§R71（mutation contract／slot idempotency／兩階段補償）、**§R80（排課摘要補登堂數≠天數；須與 session_plan 同源 expand）**、§R83（調課後 IsContractException 防 realign）、**§R84（IsContractException 結構性保證，不再靠呼叫者記得）** |
-| 出缺勤 / 分校隔離 | §SEC-001、§分校隔離後端強制、§R12（查詢日期寫死今天）、§R14（submitQuickAttend 缺 StudentID）、§R15（出勤頁預設只顯示今天，歷史到班紀錄不可見）、§R16（`script setup` const TDZ 初始化順序 → 整頁空白）、**§R86（composable return 引用未宣告識別字 → ReferenceError 整頁空白；鏡像測試攔不住）**、§R33（老師每分校 RFID 優先）、§R36（個別資料有課但老師今日名單缺漏）、§R40（點名扣堂不可只用 ClassSessionID 防重）、§R41（補請假不可只用課程+日期找堂次）、§R42（行事曆堂次顯示老師不可被舊評量老師覆蓋）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R71（請假寫入即封閉 interval；禁止留待隔夜 repair）|
+| 出缺勤 / 分校隔離 | §SEC-001、§分校隔離後端強制、§R12（查詢日期寫死今天）、§R14（submitQuickAttend 缺 StudentID）、§R15（出勤頁預設只顯示今天，歷史到班紀錄不可見）、§R16（`script setup` const TDZ 初始化順序 → 整頁空白）、**§R86（composable return 引用未宣告識別字 → ReferenceError 整頁空白；鏡像測試攔不住）**、§R33（老師每分校 RFID 優先）、§R36（個別資料有課但老師今日名單缺漏）、§R40（點名扣堂不可只用 ClassSessionID 防重）、§R41（補請假不可只用課程+日期找堂次）、§R42（行事曆堂次顯示老師不可被舊評量老師覆蓋）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R71（請假寫入即封閉 interval；禁止留待隔夜 repair）、**§R107（projected 堂次必須帶 branch_id；教師首頁禁 Branch #N）**|
 | 月結制 / 加購 / 多科固定時段 | §b3 inactive 歷史、§b4 加購分流、§R21（堂數制加購是新批次）、§R22（月結詳情不可只依賴 ClassSession）、§R23（推算日期不可成為 dead-end chip）、§R24（多科固定時段優先走一般課程）、§R26（月結續報與堂數額度不可混在同一語意）、§R38（家長端繳費提醒不可套主任續課提醒） |
 | routes/api.php | §AI 靜默回退路由（改前必讀完整檔案 + route:list） |
 | 備份 / nightly | §nightly 覆蓋修正、§備份還原演練、§R34（備份新鮮度不可只看 mtime）、§R71（repair 與 producer prevention 分離；同日全日期 health aggregate） |
-| Bug 回報 / 附件存檔 | §R11 storage symlink（Archive）、§R51（分診前必查 attachments + reporter 歷史 + 跨分校）、§R53（上線後必回 in-app）、`docs/CHAT_BUG_SYSTEM.md` §3.6–§3.7 |
+| Bug 回報 / 附件存檔 | §R11 storage symlink（Archive）、§R51（分診前必查 attachments + reporter 歷史 + 跨分校）、§R53（上線後必回 in-app）、`docs/CHAT_BUG_SYSTEM.md` §3.6–§3.7、**§R108（utf8mb3 姓名 LIKE 禁 4-byte）** |
 | Git / PR 工作流 | §R58（禁止 assume-unchanged 藏檔）、`scripts/git-index-audit.sh`、Epic #535 Phase 0、**§R87 追加教訓 2（squash-merge 後繼續在同一 designated branch 開下一個 commit 前，一律先 `git fetch + checkout -B <branch> origin/main` 重啟，勿等 `mergeable_state: dirty` 才修）** |
 | Migration / schema drift | §R63（未合併分支的 migration 禁上 production；drift 修復＝port 回 main＋drift 測試） |
 | 前端 UI 參考 star repo / RFC 落地 | **§R88（「參考 star 的 repo」＝真的 `git clone` 讀原始碼，`RFC_PLATFORM_OPTIMIZATION_FROM_STARS_2026.md` 的一行摘要只是索引不是替代品；落差要能具體引用來源檔案/規則）** |
-| 部署 pipeline | §R62（deploy 必須 fetch fail-fast + reset 到 CI `head_sha` 並校驗 HEAD；禁止 `reset --hard origin/main` 靠 stale tracking ref 靜默出貨舊版；Pi repo config 出現 `http.sslbackend=schannel` = 已被 Windows 工具污染，先 unset）、§R67（SSH script 關鍵步驟失敗必須標紅；migration 失敗不得吞成綠燈）、§R68（排程任務上線必須驗證 schedule:run driver 存在；證據=執行 log 而非 schedule:list）、**§R87（`copy-to-backend.cjs` 是獨立白名單；新增 `frontend/public/` 子目錄必須同步加進 `PUBLIC_DIRS`，且驗證需實際跑複製腳本＋正式站 curl，不能只看 `vite build`／dev-server 截圖）** |
+| 部署 pipeline | §R62（deploy 必須 fetch fail-fast + reset 到 CI `head_sha` 並校驗 HEAD；禁止 `reset --hard origin/main` 靠 stale tracking ref 靜默出貨舊版；Pi repo config 出現 `http.sslbackend=schannel` = 已被 Windows 工具污染，先 unset）、§R67（SSH script 關鍵步驟失敗必須標紅；migration 失敗不得吞成綠燈）、§R68（排程任務上線必須驗證 schedule:run driver 存在；證據=執行 log 而非 schedule:list）、**§R87（`copy-to-backend.cjs` 是獨立白名單；新增 `frontend/public/` 子目錄必須同步加進 `PUBLIC_DIRS`，且驗證需實際跑複製腳本＋正式站 curl，不能只看 `vite build`／dev-server 截圖）**、**§R106（具名 DB principal 輪替時 username/password 必須同源，禁止 production `.env` 密碼配寫死帳號）** |
 
 ---
 
@@ -1255,3 +1255,77 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **測試**：`RebuildDestructiveDeleteAuditTest`——驗證整批重建刪除 `ClassSession`／`LearningRecord` 前，`schedule_audit_logs` 都留下可還原的快照。
 - **防再犯**：(1) 任何要刪除「有價值內容」（使用者填寫的文字、審核紀錄等）的 Model 時，先確認是走 `->delete()`（觸發 events，既有 observer 可攔截）還是 `Model::where(...)->delete()`（query builder，繞過所有 events）——後者只適合「純粹衍生、可重算」的資料，不適合任何帶內容的紀錄。(2) 做任何有風險的 production 資料修正前，先確認「如果這個修正觸發了非預期的連鎖反應，有沒有辦法事後查到發生了什麼」——這次剛好系統已經有審計機制，只是被繞過，算是運氣好；下次不能只靠運氣，修正前應該先確認目標資料表有沒有審計/備份機制、機制實際上會不會被觸發。(3) `LearningRecord` 本身完全沒有任何審計/歷史版本機制（不像 `ClassSession` 有 `ScheduleAuditLog`），這次事件確認了一旦內容被覆蓋或刪除就無法還原——這是後續可評估是否要補上的技術債，記在 `docs/TECH_DEBT.md`。
 - **這次遺失的評量內容如何結案**：吳宥萱 6/18 試聽課的評量記錄已確認無法還原（無備份、無法聯繫到當事老師 高為澎 核實），CEO 已核准直接結案，不再追查；堂數與收費不受影響，純粹是這一筆評量文字內容遺失。
+
+### R101. 「這個行事曆格子對應哪一筆 ClassSession」在同一份檔案裡有兩套獨立比對邏輯，其中一套沒跟著新功能更新（in-app #224，2026-08-07）
+
+- in-app #224（張進鴻 8/8 17-19 那堂課無法移動或刪除）B1 偵查發現：`frontend/src/pages/SmartCalendar.vue::findSessionRowForCell()`（供「取消本堂」按鈕可見性、點名/評量角標使用）比對某日期對應哪一筆 `ClassSession` 時，先要求 row 的 `start_time` 完全等於 `course.start_time`（課程契約預設時段），只有調課例外（`is_exception=true`）才會退回「同日任一筆」。同一份檔案裡，**負責實際畫出行事曆方塊**的 `resolveAllCourseGridTimesForDate()` 從來沒有這個限制——只要當日有已物化、非取消的 row 就會用它的實際時間畫出方塊。兩套邏輯對「這個格子是哪一筆」給出不同答案。
+- 這個落差本來不會被踩到，直到 #211（逐堂手動排課，2026-08-02 上線）讓使用者可以自由輸入新堂次的開始時間、不必等於課程預設時段——這類堂次 `is_exception` 是 `false`，`findSessionRowForCell()` 的 exact-match 找不到、也不會退回，直接回傳 `null`。使用者看得到方塊（渲染路徑沒問題），但點開後「取消本堂」按鈕整顆消失、點名/評量角標也不顯示，畫面上沒有任何錯誤訊息解釋原因——體感就是「這堂課沒辦法動」。
+- 根因層級：**架構缺口**，不是單純邏輯錯字。專案裡其實已經有一套正確、有測試的同類實作——`frontend/src/lib/classSessionPick.js::resolveSessionIdForSubstitute()`（換代課老師流程用，同日 exact-time 優先、找不到才退回 `pickBestSessionRow(sameDateRows)`）——但 `findSessionRowForCell()` 是另一份 page-local 的獨立實作，沒有共用它。這正是**GitHub #1041**「Consolidate frontend session pick/dedupe logic (classSessionPick vs page-local copies)」點名、當時尚未收斂的技術債之一；本次是它第一次造成使用者可見的回報。
+- **大廠參考**：Google Calendar Events API 用穩定的 `recurringEventId` + `originalStartTime` 維持一堂次的身分，即使該堂次被改到別的時間，仍能透過原始序列位置找到它，而不是靠「現在應該是幾點」反推。本次修法方向一致：找「這個格子是哪一筆」時，身分依據是「這一天 + 已物化的 row」，不是「課程預設時段」。
+- **修法**：`classSessionPick.js` 新增 `resolveSessionRowForCell()`（回傳完整 row，供 `resolveSessionIdForSubstitute()` 內部共用），`SmartCalendar.vue::findSessionRowForCell()` 改為直接呼叫它，移除「只有 `is_exception` 才退回」的限制，讓一般（非例外）逐堂手動排課堂次也能走到同日退回比對。純前端顯示/互動修正，未觸碰任何後端扣堂/寫入路徑。
+- **測試**：`classSessionPick.test.js` 新增「時段偏離課程預設仍能找到 row」「exact match 不受影響」「跨日期不誤命中」等 case；`npm run test:calendar` 全綠。
+- **防再犯**：(1) 同一個概念（「這個格子對應哪一筆 row」）在同一份檔案裡出現第二套獨立比對邏輯時，應該立刻懷疑而非視為正常——尤其該概念已經有共用實作存在的情況下；(2) 任何新增「使用者可自由輸入時間、不受課程契約時段限制」的功能（如 #211）上線前，應該搜尋所有假設「同一課程同一天只會有一個固定時段」的既有比對邏輯（`grep course.start_time`／`grep courseStart` 一類），逐一確認是否也需要跟著放寬；(3) GitHub #1041 這類「已知但尚未收斂」的技術債，一旦某個 page-local 副本開始造成使用者可見的回報，應優先收斂那一份，而不是就地加 patch 再產生第三份重複邏輯。
+
+### R102. 連續調課（調課的調課）在原始時間重新提交時，後端精確時段比對的防重複刪除抓不到舊紀錄；月結課被誤套「購買堂數」上限（木柵吳艾潼 SC#2688，2026-08-08）
+
+- 現象：主任回報「課程管理只有一堂，行事曆卻出現兩個時段」，且這門月結課被標成「超排」。
+- **根因 1（重複時段）**：`schedules` 表這門課 8/8 當晚被連續調課兩次；第二次調課的目的地時間跟第一次相同（都是 14:30），`ScheduleController::store()` 建立 `status=rescheduled` 標記時的防重複刪除（`where('status','scheduled')->whereRaw('SUBSTRING(start_time,1,5)=?', [$startHm])->delete()`）是照「這個 rescheduled 標記自己的時間」去比對要刪掉哪筆舊的 `scheduled` 紀錄——正常情況下這個時間就是被取代掉的舊時段，能抓到；但當使用者把同一堂課「重新調到同一個時間」時，這個比對邏輯理論上仍應該匹配（新舊時間相同），卻沒有生效，確切觸發條件（race / lock 順序）未完全查明，不排除是併發或交易時序的邊界情況。結果是舊的 `scheduled` 紀錄（id 7584）沒被刪除，跟最新的（id 7589）並存，`shouldRenderScheduledException()` 沒有處理「同課程同日多筆 scheduled」的情況，兩筆都被畫成行事曆方塊。
+- **根因 2（月結誤判超排）**：`StudentClassController` 不分課程類型，一律把 `sessions_purchased` 設成 `SessionCount`；`isOverQuotaSession()` 只排除包堂（`PackageID`）課程，沒有排除月結（`payment_type !== 'session'`）課程。月結課根本沒有「購買堂數上限」的概念，`SessionCount` 對月結課而言不代表硬性上限，但只要材質化堂數超過這個數字就會被誤標。
+- **修法（第一版，已被下面的第二版取代邏輯本身，非取代教訓）**：前端 `calendarExceptionMerge.js::shouldRenderScheduledException()` 加上「同課程同日多筆 `scheduled` 標記時，只採信 id 最大（最新）那筆」的防禦；`useCourseSessionsDisplay.js::isOverQuotaSession()` 加上 `isSessionMode(course)` 檢查（沿用既有的月結/堂數制判斷函式，不是新發明的邏輯），月結課程一律略過超排判斷。均為前端顯示層防禦性修正，未動 production 的 `schedules`/`ClassSession` 資料，也未動後端刪除邏輯本身。
+- **同日上線後幾分鐘，同分校另一案例（in-app #225，木柵陳宥翰 SC#1249）證明第一版規則不夠**：這次調課連續改了三次，最後一次的目的地落在**不同一天**（8/7 被取代的紀錄，最終改到 8/8）。「同一天取最新」抓不到這種情況——8/7 那筆被取代的 `scheduled` 標記（id 7208）在 8/7 這天沒有「更新的 scheduled 標記」可以贏過它，因為真正取代它的下一步改到了 8/8，不在同一天可比較的範圍內。
+- **修法（第二版，正式版）**：規則從「同課程同日期取最新」精修為「同課程＋同日期＋同時段，若存在一筆更新（id 更大）的 `rescheduled` 標記，代表這個 `scheduled` 標記已被取代」——不看「同一天有沒有更新的 scheduled」，而是直接問「這個確切時段本身有沒有被更新的改期紀錄標記為已取代」，不管新目的地落在哪一天都能正確判斷。這是比第一版更貼近問題本質的規則：一個 `scheduled` 標記的身分是它自己的「課程＋日期＋時段」，取代它的訊號應該直接看這個身分本身有沒有被蓋掉，而不是「同一天還有沒有別的更新標記」這種間接推論。
+- **未解決**：後端 `ScheduleController::store()` 那段防重複刪除為何在原始案例（吳艾潼）沒生效，需要更多真實案例或加 log 才能確定；目前前端防禦已能保證畫面正確，暫不追根究柢阻擋修法上線。
+- **業務判斷，非本次範圍**：吳艾潼那門課目前實際有 5 筆佔堂數紀錄對上 `SessionCount=4`，是否為合理的補課多算、還是請假轉補課少頂替了原堂號，需主任/owner 確認，不是可以由 AI 判斷的技術問題。
+- **大廠對標（待落地，未在本次一併實作）**：這整類問題的架構性根因是 `schedules` 表用「不可變紀錄鏈」（每次改期都是新增一對 rescheduled/scheduled 紀錄，靠 `original_schedule_id` 串起來）表達「這一堂被改期了」，但語意上這應該是**單一堂次的目前狀態**，不是一串需要正確走訪的歷史鏈。
+  - **RFC 5545（iCalendar）**：一個重複事件系列共用一個 `UID`；被改期的某一次用 `RECURRENCE-ID` 綁定「這是原始重複規則算出的哪一個時間點」（值永遠不變，即使該堂次被移到別的時間），對同一個 occurrence 的第二次修改是**更新同一個 VEVENT 元件**（同一組 UID+RECURRENCE-ID，`SEQUENCE` 遞增），不是疊加第二層 override。（[§3.8.4.4](https://icalendar.org/iCalendar-RFC-5545/3-8-4-4-recurrence-id.html)）
+  - **Google Calendar Events API**：完全對應同一套模型，`recurringEventId` + `originalStartTime` 是穩定不變的身分鍵；移動該堂次是對「這一個 instance 自己的資源 URL」`PATCH`，再移動一次是對**同一個** instance 資源再 `PATCH`，不會生出第二個 instance 物件。（[Recurring events guide](https://developers.google.com/workspace/calendar/api/guides/recurringevents)）
+  - **Cal.com（開源，本專案 `RFC_PLATFORM_OPTIMIZATION_FROM_STARS_2026.md` 已引用的排程參考）**：用的是跟 AllTrue 一樣的「鏈」模型（`Booking.rescheduledToUid` 正向指標，AllTrue 是反向的 `original_schedule_id`），**且已知在 production 出過同一類 bug**——[cal.com issue #12922](https://github.com/calcom/cal.com/issues/12922)：「對已經改期過的 Booking 再次改期，會產生多筆同時有效的 Booking」，跟本次 AllTrue 的事故是同一種根因形狀。這是「鏈模型本身容易在二次改期時出錯」的獨立佐證，不是 AllTrue 特有的失誤。
+  - **落地方向**：根治計畫已寫成 [`docs/architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md`](architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md)（工程主線 [`ALLTRUE_ENGINEERING_NORTH_STAR.md`](architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md)）。Agent 不得在未讀 RFC、未獲 Founder GO 前改 `schedules` 寫入形狀。前端 dedupe 仍是治標，直到 Phase 4+。
+- **測試**：`calendarExceptionMerge.test.js`、`calendarOccurrenceMerge.test.js`、`useCourseSessionsDisplay.test.js` 均以本案真實資料（SC#2688 schedules id 7583/7584/7588/7589、ClassSession id 24169；SC#1249 schedules id 7138/7139/7207/7208/7422/7423）新增回歸案例。
+
+### R103. in-app #225 的症狀被誤標成 R102 的鬼影方框問題；真正症狀（行事曆有、課程管理沒有）到今天才被正確分診（in-app #225/#226/#227，2026-08-08）
+
+- **自我檢討**：處理 in-app #225 時，直接沿用 R102／TD-076（#1687）既有記錄「in-app #225 = 木柵陳宥翰 SC#1249 鬼影方框」去開 GitHub issue、回覆使用者「已修好」，**沒有先跑 `bug-detail-dump` 撈 #225 在資料庫裡實際的 `description` 欄位**。事後撈證據才發現 #225 真正回報的是完全不同的症狀：「8/7 李維 陳宥翰的數學課程在行事曆有 但是課程管理沒有」——跟 R102 修的「同一堂課出現兩個方框」無關。已發公開留言更正，改開正確 issue（#1690）。**教訓**：既有文件對某個 bug ID 的描述，不能取代重新撈那個 bug 的實際證據；§3.6 規則「先撈附件與描述再分診」對「看起來已經有前例」的 bug 一樣適用，越是看起來眼熟的 bug 越容易因為省略這一步而分診錯目標。
+- **現象（更正後的真正症狀）**：#225（10:03，早於當天任何部署）、#226（10:39）、#227（11:00）三筆回報，同一分校（campus_id=16），文字幾乎一模一樣：「行事曆有，課程管理沒有」，三個不同學生/老師。#225 早於當天任何一次部署，確定是既有問題，非 R102 那兩次修復造成的回歸。
+- **根因**：`calendarOccurrenceMerge.js` 的 exception-only 合併迴圈，會把一筆 `status='scheduled'` 且帶 `original_schedule_id`（代表自己是某次改期的目的地）的例外，在**找不到對應的已物化 `ClassSession`** 時仍然合成一個行事曆 occurrence（`class_session_id: null`）。課程管理只讀 `/api/v1/class-sessions` 回來的已物化列，`sessionViewModelFromClassSessionsRow()` 會擋掉沒有真正 session id 的列——同一份 `schedules` 資料，行事曆多畫了一堂課程管理看不到的孤兒堂次。這是 R102／#180 的同一個「行事曆與課程管理沒有共用同一套 occurrence 真相來源」架構問題的第三種變體（#180 是課程管理有、行事曆漏；R102 是同一堂重複畫兩次；這次是行事曆畫了課程管理否認存在的一堂）。
+- **修法**：`mergeWeekCalendarOccurrences()` 內既有的「materialized-completeness」檢查旁，加一道守衛：`scheduled` 且為改期目的地（`original_schedule_id` 存在）卻找不到對應 `sessionRow` 時，直接跳過、不合成 occurrence。純前端顯示層防禦，未動 `schedules`/`ClassSession` 資料或後端邏輯。
+- **測試**：`calendarOccurrenceMerge.test.js` 新增合成案例（無法取得 #226/#227 真實 production id，明確標註為 synthetic，區別於 R102 用真實 id 的案例）；revert-proof 已人工驗證（移除守衛後測試從 pass 變 `1 !== 0` fail，restore 後再度 pass）。
+- **大廠對標**：同 R102 已引用的 RFC 5545 `RECURRENCE-ID`、Google Calendar `recurringEventId`/`originalStartTime`、cal.com 同款鏈模型 bug（[calcom/cal.com#12922](https://github.com/calcom/cal.com/issues/12922)）——不重複列出，見 R102。TD-076（#1687）持續追蹤架構根治（穩定 occurrence identity + 更新既有紀錄取代新增鏈節點），本次僅治標。
+- **未解決**：孤兒 `scheduled` 例外（有 `original_schedule_id` 卻無對應 `ClassSession`）是怎麼產生的，需要後端／DB 層才能確認（是否跟 R102 提到的「防重複刪除沒生效」是同一根因），本次無 DB 存取權限，僅能防禦性隱藏顯示，未追根究柢。
+
+### R104. `1387-db-password-rotation.yml` 的 `ALTER USER '<name>'@'localhost'` 跟連線時實際使用的 host 不一致，Founder 觸發時失敗（2026-08-07 觸發、2026-08-08 診斷修復）
+
+- **現象**：SEC-ALLTRUE-003（production DB 密碼與 CI log 洩漏事件關聯）的最後一步——Founder 觸發 `1387 DB Password Rotation` workflow——2026-08-07 執行失敗，`rotate` job 的「Generate and apply new credential」步驟報 `ERROR 1396 (HY000): Operation ALTER USER failed for '***'@'localhost'`。
+- **根因**：腳本用 `mysql -h 127.0.0.1 -u "$DB_USER" ...` 連線，MySQL 會用 `DB_USER@'127.0.0.1'` 或 `DB_USER@'%'` 這個帳號列做驗證（TCP 連線不會匹配 `@'localhost'` 那一列，那是給 Unix socket 連線或明確存在對應 grant 列時才會匹配的獨立帳號身分）。但緊接著的 `ALTER USER '${DB_USER}'@'localhost' IDENTIFIED BY ...` 卻寫死要改 `@'localhost'` 這個帳號——如果 MySQL 裡實際上沒有這一列（只有 `@'%'` 或 `@'127.0.0.1'`），對 MySQL 來說這是在改一個不存在的帳號，回 1396。
+- **修法**：把 `ALTER USER '${DB_USER}'@'localhost' IDENTIFIED BY ...` 改成 `ALTER USER CURRENT_USER() IDENTIFIED BY ...`——`CURRENT_USER()` 一定解析成「這個連線實際驗證通過的那個帳號」，不管它的 host pattern 是 `%`、`127.0.0.1` 還是 `localhost`，從根本上消除這種「連線用一個身分、改密碼卻寫死另一個身分」的錯位可能性。
+- **範圍**：只修了 workflow 腳本本身的 bug，**沒有觸發這個 workflow**——實際的密碼輪替仍是 Founder-only 動作，AI agent 不應該也沒有執行它。
+- **測試**：`python3 -c "import yaml; yaml.safe_load(...)"` 確認 YAML 語法合法；`ALTER USER CURRENT_USER() IDENTIFIED BY '...'` 是 MySQL 官方文件記載的標準寫法（自我改密碼不需要知道自己帳號的 host pattern），無法在不觸發真正 production 輪替的前提下端對端測試，這點是本次修復的已知限制，留給 Founder 下次觸發時驗證。
+
+### R105. 補課候選日期必須晚於原堂，不能只從今天起算
+
+- **觸發情境**：今天是 8/8、學生請假原堂是 8/20，主任的補課候選卻從 8/9 開始，容易安排成原堂前的錯誤時序。
+- **根因**：主任儀表板原本固定用「今天 +1～+14 天」呼叫候選 API，候選產生器也沒有以 `class_session.SessionDate` 做日期邊界驗證。
+- **強制規則**：補課候選查詢起點必須是 `max(今天+1、原堂日+1)`；前端只負責提供正確視窗，後端候選產生器必須再次夾限，避免舊客戶端或手動 request 繞過規則。
+- **測試必補**：原堂 8/20、request window 8/9～8/23 時，第一個候選為 8/21，且所有候選日期都大於 8/20。
+
+### R106. 換成具名 DB principal 時，不能只搜尋 `DB_PASSWORD`；username/password 必須同源切換（2026-08-08）
+
+- **觸發情境**：SEC-ALLTRUE-003 改採新 principal 的三階段輪替後，盤點發現 7 個 production workflow 與 3 支 production-oriented script 雖然每次都從 `/home/admin/backend/.env` 讀最新 `DB_PASSWORD`，MySQL 指令卻仍寫死 `-u admin`。只改 `.env` 的 `DB_USERNAME`/`DB_PASSWORD` 會讓這些路徑把「新密碼＋舊帳號」配在一起，下一次備份、deploy migration backup、診斷或 repair 才延遲爆炸。
+- **強制規則**：任何 DB credential 輪替盤點都要把 `DB_USERNAME`、`DB_PASSWORD` 與 DSN 當成同一個 identity tuple；所有 production CLI consumer 必須從同一個 effective config 同時取得 username/password。CI service/local-dev 的隔離 fixture 必須另外分類，不可誤當 production consumer 批次改名。
+- **驗收**：除了 app health，必須用 fresh Laravel connection 查 `CURRENT_USER()` 並比對新 username；另掃描 production workflow/script 不得再出現搭配 production `.env` password 的 `-u admin`。舊 principal 只可在人類確認 observation window 後由獨立 gate 鎖定。
+- **範圍**：本次只準備 workflow/scripts/runbook，未觸發 Actions、SSH、DB 或 production mutation；實際 grant replay、server account-lock 支援與 cron/backup observation 仍是 Founder-only evidence。
+
+### R107. 教師首頁 projected 堂次必須帶 branch_id，缺分校不可顯示內部編號（in-app #235，2026-08-15）
+
+- **現象**：#1739／第一次欄位對齊修法上線後，回報者兩次按「問題仍存在」。週課表仍出現「Branch #0」。
+- **根因**：已物化堂次有 `branch_id`；`SessionProjectionReadService::projectedSlot()` 從未回傳，前端 `s.branchId || 0`。另外 `getBranchName` 對不到名單時輸出 `Branch #N`，今日待辦另走一份未正規化 JSON。
+- **修法**：projected slot 從學生 `CampusID` 帶 `branch_id`；`sessionDates` 與 index 路徑 eager-load `student`；教師首頁今日待辦改走 `fetchClassSessions`；缺分校隱藏或顯示「未設定」。
+- **測試**：`SessionProjectionReadServiceTest`、`classSessionsApi.test.js`、`useBranches.test.js`、`teacherHomeSessionContract.test.js`。
+- **驗收**：deploy 後請 in-app #235 回報者再按確認；GitHub #1739 已關，不可再提前標 resolved。
+
+### R108. utf8mb3 姓名欄位不可把 4-byte Unicode 直接丟進 LIKE（GitHub #1788，2026-08-15）
+
+- **現象**：學生名單搜尋 `蔡🏠` 直接 SQLSTATE 1267（utf8mb3 vs utf8mb4 collation）。
+- **根因**：`Student.name` 仍是 utf8mb3；課程名單已用 `Utf8mb3SearchSanitizer`，`StudentController::index` 漏掉。
+- **修法**：搜尋 term 先去掉 4-byte 字元；只剩 emoji 則空結果。欄位 charset 升級另案，不在這次。
+- **測試**：`Utf8mb3SearchSanitizerTest`、`StudentNameSearchUtf8mb3Test`。

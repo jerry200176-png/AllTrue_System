@@ -1,5 +1,33 @@
 # Governance changelog
 
+## 2026-08-15 — Agent is the operator (constitution pin stays 0.1.0)
+
+- Implementing Agent owns merge R0–R3, issue close, task mail, and committed
+  workflow dispatch. Repair Manifest still required for R3 data writes.
+- Machine bans: Pi SSH / artisan / phpunit, secret print, force-push, `--admin`.
+- Overlay pin remains 0.1.0.
+
+## 2026-08-15 — Fleet merge capability (constitution pin stays 0.1.0)
+
+- Portfolio-ops is the fleet authority. Agents squash-merge AllTrue R0–R2 when
+  required GitHub checks are green (`AUTONOMY_POLICY` / `fleet-merge-policy`).
+- AllTrue keeps domain P0 (no Pi tests, campus isolation) and Control Plane I1
+  (`deploy.yml` is still the only production execute path). Docs-only still
+  skips deploy; a **code** merge to `main` may start deploy, and that is accepted.
+- Product overlays must not re-ban merge. R3 and extra production mutation stay
+  Founder-only.
+- Overlay pin remains 0.1.0 (sunrise `OVERLAY.md`); no constitution version bump
+  until a coordinated sunrise pin PR.
+
+## 2026-08-09 — Hermes production-agent temporary exception (#1676)
+
+- Recorded the Founder-approved temporary exception for the colleague-owned
+  Hermes gateway on the production Pi.
+- Added live evidence, explicit unknowns, non-actions, a 2026-08-23 review
+  date, and a least-privilege/systemd hardening follow-up.
+- No production host, service, credential, database, or network configuration
+  was changed by this governance pass.
+
 ## 2026-07-26 — CI failure intelligence + fast preflight (G1)
 
 - Canonical docs: `docs/governance/CI_GOVERNANCE.md`

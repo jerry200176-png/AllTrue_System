@@ -47,6 +47,13 @@ else
   else
     bad "health check 出現 $HC 次（應 ≥2：部署後 + 回滾後）"
   fi
+  if grep -q 'old-credential-probe=AUTH_REJECTED' "$DEPLOY" \
+    && grep -q 'OLD_PROBE_CODE.*1045' "$DEPLOY" \
+    && grep -q 'OLD_PROBE_CODE.*3118' "$DEPLOY"; then
+    ok "staged rotation 只接受明確 authentication rejection（1045/3118）"
+  else
+    bad "staged rotation 缺少明確 1045/3118 authentication rejection gate"
+  fi
 fi
 
 # ── CHECK 2：migration 可逆（每筆都有 down()）────────────────────────

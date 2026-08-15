@@ -1,8 +1,8 @@
 # Request: single bug detail dump (read-only)
 
-bug_id: 208
+bug_id: 224
 
-Purpose: Post-repair verification for #208. `package-124-guarded-repair.yml` run 30540075390 (2026-07-30T11:50:08Z) reported `ok:true` and applied `PackageDeductionService::fullRecompute(124)` after all 10 preconditions passed, including `security_fix_deployed` (PR #1531, prod_head confirmed equal to the fix commit). Reported result: package 124 unchanged (56/1/55), course 2824 unchanged (RemainingSessions=55, UsedSessions=1), course 2825 RemainingSessions 96→55 (UsedSessions unchanged at 0), ledger unchanged (1 row, net -1). This dump re-reads the same package 124 / course 2825 / ledger probe directly from a fresh production read to independently confirm that result before any Phase-C write-back on #208.
+Purpose: Phase A triage for new in-app bug #224 (status=new, severity=high, campus_id=3, page_key=calendar, title "學生課無法移動或刪除", reporter_user_id=72, created 2026-08-07 19:20:02, no attachments per bug-queue-dump run 31175636740). Need description, comments, status_logs, and reporter's full history/cross-campus record per CHAT_BUG_SYSTEM.md §3.6 before proposing a root cause.
 **No writes.**
 
 # kickoff 2026-07-30T04:48:00Z — retry after fixing StudentClass campus lookup (StudentClass has no CampusID column; campus lives on Student, joined via StudentID — query previously selected the nonexistent `sc.CampusID`)
@@ -12,3 +12,5 @@ Purpose: Post-repair verification for #208. `package-124-guarded-repair.yml` run
 # kickoff 2026-07-30T05:02:00Z — #208 evidence captured; re-pointing at bug_id 211 for its detail read
 
 # kickoff 2026-07-30T11:52:00Z — post-repair verification for #208, re-pointing bug_id back to 208
+
+# kickoff 2026-08-07T11:52:30Z — Phase A triage for new bug #224 (student class cannot be moved/deleted), re-pointing bug_id to 224; must land within 15 min of bug-queue-dump run 31175636740 (generated 2026-08-07T11:49:48Z) for freshness gate

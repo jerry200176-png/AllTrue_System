@@ -680,3 +680,60 @@
 | 建議做法 | (1) 短期：`league/commonmark` 的 4 條新 ignore 比照 `GHSA-5vg9-5847-vvmq` 的模式，同樣綁定 `#977`（Laravel 8 EOL 遷移）——升級/更換框架時一併重新評估是否仍不可達、是否該套件仍被帶入。(2) 中期：`docs-integrity-check.mjs` 或另開一個輕量 CI 腳本，每次 `composer audit` 有新的 ignore 被新增時，強制 commit message／PR body 要包含 reachability review 日期與理由（目前是慣例，非強制）。(3) 長期：評估是否比照 `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` 的模式，開一份 `SECURITY_ACCEPTED_RISK.md` 集中列出所有 accepted-risk 條目 + 複查頻率，而不是分散在各個 `composer.json`／未來可能出現的 `package.json` audit-ignore 裡各自為政。 |
 | 清償成本估計 | 低（短期作法本身已在本次一併完成；中長期作法各約半天） |
 | 不做的代價 | Accepted-risk 清單只增不減，幾個月後沒人記得當初為什麼要 ignore、是否還成立，新加入的工程師（或未來的 AI agent）看到一長串 ignore 只能照單全收，逐漸變成「反正 CI 會過」的安全放行章，而非真的持續被驗證的風險判斷 |
+
+### TD-077：正職老師「行政加給倍率」尚未實作，總發放金額目前只組合四項多乘標準
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P2 |
+| 發現日期 | 2026-08-13 |
+| 發現來源 | 建置正職結算「底薪＋總發放金額」（`FulltimeSettlementComposer`）時，對照 115.07 薪資規定公告全文才發現既有 `TeacherEligibilityPolicy` 的六項要件（每週16段、假日16小時、平日下午課、特殊表現、扣除、科目數獎金）沒有涵蓋公告第 3 條第 4 項「行政加給倍率」。 |
+| 影響模組 | `backend/app/Services/TeacherEligibilityPolicy.php`、`backend/app/Http/Controllers/TeacherEligibilityController.php`、`backend/app/Support/FulltimeSettlementComposer.php`、`teacher_payroll_events`／`_achievements`／`_deductions` 三張表（需要第四種分類或新表） |
+| 描述 | 公告「教師獎金倍率制度」列了 4 個可疊加的倍率項目：假日16小時、平日下午5段課、科目數(≥20科)、**行政加給(行政協助／總導師／副主任，0～10%，主任判定總部審核)**。目前系統只做了前三項＋特殊表現＋扣除，`FulltimeSettlementComposer::compose()` 算出的「教師倍率」因此對有行政職務的老師會少算最多 10 個百分點，總發放金額會偏低。 |
+| 建議做法 | 比照 `teacher_payroll_deductions` 的雙階段核准模式（主任確認＋總部審核），新增 `teacher_payroll_admin_allowances`（或擴充 `teacher_payroll_events`/`achievements` 其中一張既有表，需先評估哪個 shape 較合適），並在 `TeacherEligibilityPolicy::evaluate()` 補上第七個 component，`FulltimeSettlementComposer` 一併把它的 rate 疊加進教師倍率。 |
+| 清償成本估計 | 中（一張新表或擴充既有表 + policy 新 component + input/approve 端點 + 前端輸入面板一個新分頁，估半天～一天） |
+| 不做的代價 | 有行政職務(行政協助/總導師/副主任)的正職老師，總發放金額會系統性偏低最多 10%，需要主任手動加扣款彌補，容易被忽略或算錯 |
+
+### TD-078：正職老師底薪設定（`storeSalaryProfile`）沒有雙階段審核，director 單方就能直接改變總發放金額
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P2 |
+| 發現日期 | 2026-08-14 |
+| 發現來源 | 自動安全審查（push/commit security review）在 `TeacherEligibilityInputController.php` 點出 separation-of-duties 缺口，經跟使用者確認後記錄為技術債，暫不在這次 PR（#1773）處理。 |
+| 影響模組 | `backend/app/Http/Controllers/TeacherEligibilityInputController.php`（`storeSalaryProfile()`）、`fulltime_salary_profiles` 表 |
+| 描述 | `teacher_payroll_deductions` 有「主任確認（`director_confirmed_by`）→ 總部核准（`hq_approved_by`，限 `super_admin`）」兩階段才生效；`storeSalaryProfile()` 卻是任何 `role:director` 帶 PIN 就能單方直接寫入並立即生效（`TeacherEligibilityController::index()` 馬上採用最新一筆算總發放金額），沒有第二人核准，也沒有留下「誰改了底薪、改前改後多少」的變更歷史（只有一筆 `created_by`，沒有審核鏈）。底薪直接乘進總發放金額，出錯或被濫用的影響比扣款更大。 |
+| 建議做法 | 比照 `teacher_payroll_deductions` 加兩階段：`fulltime_salary_profiles` 新增 `status`（`pending`/`approved`）＋ `approved_by`/`approved_at`，`storeSalaryProfile()` 先寫 `pending`，`salaryProfilesByTeacher()` 只採用 `approved` 的最新一筆；新增一個 `approveSalaryProfile` 端點限 `super_admin`。 |
+| 清償成本估計 | 小～中（一個 migration 加欄位 + controller 加一個 approve 端點 + 前端加一個待審核狀態顯示，估半天） |
+| 不做的代價 | 單一 director 帳號（或被盜用的 PIN）可以無審核地改變任何老師的總發放金額，且改動沒有留痕，事後難以稽核或還原 |
+
+### TD-079：正職老師底薪 `effective_from` 沒有限制，可回溯覆蓋已結算/已發放月份的總發放金額
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P2 |
+| 發現日期 | 2026-08-14 |
+| 發現來源 | 自動安全審查（push/commit security review）在 `TeacherEligibilityInputController.php` 點出 retroactive-write-past-period 缺口，經跟使用者確認後記錄為技術債，暫不在這次 PR（#1773）處理。 |
+| 影響模組 | `backend/app/Http/Controllers/TeacherEligibilityInputController.php`（`storeSalaryProfile()` 的 `effective_from` 驗證）、`backend/app/Http/Controllers/TeacherEligibilityController.php`（`salaryProfilesByTeacher()` 依 `effective_from <= 查詢期間結束日` 取最新一筆） |
+| 描述 | `effective_from` 目前只驗證 `required, date`，沒有下限。系統沒有「已結算/已發放月份鎖定」的概念（不像 G-011 的 `BillingContractLockGuard`），所以任何時間點都能新增一筆較早的 `effective_from`，讓已經對外呈現、甚至已經實際發放的月份重新算出不同的總發放金額，且沒有鎖定機制也沒有留痕，容易被用來悄悄修改歷史紀錄（不論是惡意還是操作失誤）。 |
+| 建議做法 | 需要先決定政策（例如：只允許補登「從未設過底薪」的老師的歷史起薪、或允許但要求連動核准與變更日誌），政策確定後在 `storeSalaryProfile()` 加對應的日期下限驗證，並讓 `fulltime_salary_profiles` 的每筆寫入都留下「異動前/異動後」快照，供稽核用。 |
+| 清償成本估計 | 中（政策確認 + 驗證規則 + 稽核欄位/表，估半天～一天，視政策複雜度） |
+| 不做的代價 | 已對外呈現或已發放月份的總發放金額可以被悄悄改動，沒有稽核軌跡，出現爭議時無法還原「當時算出來的金額」 |
+
+### TD-076：`schedules` 表用「不可變紀錄鏈」表達改期，二次改期時容易讓已取代的紀錄殘留（連續兩起 production 事故，2026-08-08）
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P2 |
+| 發現日期 | 2026-08-08 |
+| 發現來源 | 同一晚連續兩起主任回報（木柵吳艾潼 SC#2688、木柵陳宥翰 SC#1249／in-app #225），根因都是同一種資料模型缺陷；下游已各自修好前端 dedupe 規則（見 `AI_REGRESSION_LESSONS.md` R102），但架構本身沒動。 |
+| 影響模組 | `backend/app/Http/Controllers/ScheduleController.php`（`store()` 的改期建立/防重複邏輯）、`schedules` 資料表、`frontend/src/lib/calendarExceptionMerge.js`（下游 dedupe） |
+| 描述 | `schedules` 表把「這一堂被改期了」表達成一條**不可變紀錄鏈**：每次改期都新增一筆 `status=rescheduled`（標記舊時段作廢）+ 一筆 `status=scheduled`（新時段），用 `original_schedule_id` 串起來。這個模型的問題是：讀者（不管是後端刪除邏輯、前端渲染邏輯，或未來任何新功能）每次都要**正確走訪整條鏈**才能算出「這一堂現在到底在哪」，只要鏈很長、或改期又改到同一個時間、或改期目的地換了日期，任何一處走訪邏輯少考慮一種情況，就會讓已經作廢的舊紀錄看起來仍然有效。這不是實作疏漏，是資料模型本身的形狀在鼓勵這類 bug。 |
+| 大廠對標 | RFC 5545（iCalendar）用 `RECURRENCE-ID`（原始時間，永不變）當身分鍵，覆寫同一個 occurrence 是**更新同一筆**，不是疊加；Google Calendar API 的 `recurringEventId`+`originalStartTime` 同款設計，PATCH 同一個 instance 資源。Cal.com（本專案 star repo 名單裡的排程參考）用的是跟 AllTrue 一樣的鏈模型，且[已知在 production 出過同一類 bug](https://github.com/calcom/cal.com/issues/12922)——這不是 AllTrue 特有的失誤，是鏈模型這個選擇本身容易在二次改期時出錯的獨立佐證。詳見 `AI_REGRESSION_LESSONS.md` R102。 |
+| 建議做法 | 把 `schedules` 的身分從「最新一筆的 id」改成「`student_class_id` + 原始 `schedule_date`/`start_time`（第一次物化後永久不變）」。**計畫 SSOT：** [`docs/architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md`](architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md)。Phase 2 已上線可空欄＋預設關閉雙寫。Phase 3 命令 `schedules:backfill-occurrence-identity` 預設 dry-run；production execute 仍 gated。尚未 unique / 讀取切換 / 停鏈。 |
+| 清償成本估計 | 大（資料模型遷移 + 所有讀寫路徑改寫 + 回填腳本，估需完整 RFC/PRD 規劃後才能估工） |
+| 不做的代價 | 每次「改期的改期」場景出現新的變化（同時間重新提交、跨日期改期、未來可能的批次改期等），下游都要再補一次 dedupe patch——已經發生兩次，且 Cal.com 的先例顯示這個模式在其他成熟產品也會反覆冒出同類 bug，不是修一次就永久免疫 |

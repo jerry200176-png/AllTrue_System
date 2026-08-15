@@ -518,7 +518,7 @@ import {
   previewTeacherLeaves,
   batchSubstitute as batchSubstituteApi,
 } from '../lib/substituteApi.js';
-import { pickBestSessionRow } from '../lib/classSessionPick.js';
+import { resolveSessionRowForCell } from '../lib/classSessionPick.js';
 // #740 Step 1：純日期工具已剝離至 lib（Leaf-First / Pure Move），測試見 calendarDateUtils.test.js
 import {
   formatLocalDate,
@@ -1115,28 +1115,12 @@ function findSessionRowForCell(course, ymd) {
   const key = rollCallSessionKey(course);
   const rows = sessionDatesByCourseId.value[key];
   if (!Array.isArray(rows) || !rows.length) return null;
-  const targetYmd = String(ymd || '').slice(0, 10);
-  if (!targetYmd) return null;
-  const courseStart = normalizeTimeTo30(course.start_time || '');
-  const sameDateRows = rows.filter(r => String(r.session_date || '').slice(0, 10) === targetYmd);
-  if (!sameDateRows.length) return null;
-
-  const exactMatches = courseStart
-    ? sameDateRows.filter(r => normalizeTimeTo30(r.start_time || '') === courseStart)
-    : [];
-
-  // FR-005: when the cell comes from a rescheduled-to exception entry, its
-  // course.start_time IS the exception's new start_time. If the ClassSession row
-  // for that date hasn't yet been synced to the new time (e.g. backend regression
-  // or deployment lag), fall back to the first same-date row so the attendance
-  // badge still mounts on the correct cell rather than disappearing.
-  if (exactMatches.length) {
-    return pickBestSessionRow(exactMatches);
-  }
-  if (course.is_exception) {
-    return pickBestSessionRow(sameDateRows);
-  }
-  return null;
+  // #224: delegate to the same exact-time-then-any-same-date-fallback resolver
+  // already used (and tested) by the substitute flow, so a materialized session
+  // whose time deviates from the course's default start_time (e.g. #211 逐堂手動排課
+  // with a user-chosen time) is still found here, not just in the grid-render path
+  // (resolveAllCourseGridTimesForDate already has no such restriction).
+  return resolveSessionRowForCell(rows, ymd, course.start_time);
 }
 
 function rollCallBadge(course, ymd) {
