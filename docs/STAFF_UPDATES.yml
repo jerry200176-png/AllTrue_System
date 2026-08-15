@@ -3,6 +3,20 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-15-teacher-home-projected-campus
+    published_at: "2026-08-15"
+    audiences:
+      - teacher
+      - director
+    importance: digest
+    title: 教師首頁分校顯示
+    summary: 還沒上課的堂次會顯示正確分校；缺資料時改中文或隱藏。
+    items:
+      - category: fixed
+        text: 週課表未來堂次不再出現看不懂的編號，會顯示分校名稱。
+    source_refs:
+      - "changelog:2026-08-15:teacher-home-projected-campus"
+
   - id: staff-2026-08-14-eligibility-pending-edit
     published_at: "2026-08-14"
     audiences:

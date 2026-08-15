@@ -1131,7 +1131,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | 家長入口 UI / `releaseNotes` | §R10、§R11、§R18、§R38、§R45（家長卡僅 `PARENT_UPDATES.yml` 顯式投影 + `sync-release-notes`）、**§R85（教職員卡僅 `STAFF_UPDATES.yml`；CHANGELOG 不得自動發布）** |
 | 課表回報 | §2026-04-17 回報系統（14 條禁止項） |
 | 排課 | §start_time 格式、§智慧排課誤標取消、§R25（請假優先於 scheduled 例外）、§R29（請假不可 fallback 只寫 schedules）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R47（rescheduled 幽靈不可蓋掉同日 ClassSession）、§R49（同學生同時段去重不可用 StudentClassID 當唯一 key）、§R50（行事曆載入不可 REST 成功後再跑 fallback）、§R69（bulk reflow 先 snapshot schedule IDs，禁止 mutable natural key 連鎖更新）、§R71（mutation contract／slot idempotency／兩階段補償）、**§R80（排課摘要補登堂數≠天數；須與 session_plan 同源 expand）**、§R83（調課後 IsContractException 防 realign）、**§R84（IsContractException 結構性保證，不再靠呼叫者記得）** |
-| 出缺勤 / 分校隔離 | §SEC-001、§分校隔離後端強制、§R12（查詢日期寫死今天）、§R14（submitQuickAttend 缺 StudentID）、§R15（出勤頁預設只顯示今天，歷史到班紀錄不可見）、§R16（`script setup` const TDZ 初始化順序 → 整頁空白）、**§R86（composable return 引用未宣告識別字 → ReferenceError 整頁空白；鏡像測試攔不住）**、§R33（老師每分校 RFID 優先）、§R36（個別資料有課但老師今日名單缺漏）、§R40（點名扣堂不可只用 ClassSessionID 防重）、§R41（補請假不可只用課程+日期找堂次）、§R42（行事曆堂次顯示老師不可被舊評量老師覆蓋）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R71（請假寫入即封閉 interval；禁止留待隔夜 repair）|
+| 出缺勤 / 分校隔離 | §SEC-001、§分校隔離後端強制、§R12（查詢日期寫死今天）、§R14（submitQuickAttend 缺 StudentID）、§R15（出勤頁預設只顯示今天，歷史到班紀錄不可見）、§R16（`script setup` const TDZ 初始化順序 → 整頁空白）、**§R86（composable return 引用未宣告識別字 → ReferenceError 整頁空白；鏡像測試攔不住）**、§R33（老師每分校 RFID 優先）、§R36（個別資料有課但老師今日名單缺漏）、§R40（點名扣堂不可只用 ClassSessionID 防重）、§R41（補請假不可只用課程+日期找堂次）、§R42（行事曆堂次顯示老師不可被舊評量老師覆蓋）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R71（請假寫入即封閉 interval；禁止留待隔夜 repair）、**§R107（projected 堂次必須帶 branch_id；教師首頁禁 Branch #N）**|
 | 月結制 / 加購 / 多科固定時段 | §b3 inactive 歷史、§b4 加購分流、§R21（堂數制加購是新批次）、§R22（月結詳情不可只依賴 ClassSession）、§R23（推算日期不可成為 dead-end chip）、§R24（多科固定時段優先走一般課程）、§R26（月結續報與堂數額度不可混在同一語意）、§R38（家長端繳費提醒不可套主任續課提醒） |
 | routes/api.php | §AI 靜默回退路由（改前必讀完整檔案 + route:list） |
 | 備份 / nightly | §nightly 覆蓋修正、§備份還原演練、§R34（備份新鮮度不可只看 mtime）、§R71（repair 與 producer prevention 分離；同日全日期 health aggregate） |
@@ -1314,3 +1314,11 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **強制規則**：任何 DB credential 輪替盤點都要把 `DB_USERNAME`、`DB_PASSWORD` 與 DSN 當成同一個 identity tuple；所有 production CLI consumer 必須從同一個 effective config 同時取得 username/password。CI service/local-dev 的隔離 fixture 必須另外分類，不可誤當 production consumer 批次改名。
 - **驗收**：除了 app health，必須用 fresh Laravel connection 查 `CURRENT_USER()` 並比對新 username；另掃描 production workflow/script 不得再出現搭配 production `.env` password 的 `-u admin`。舊 principal 只可在人類確認 observation window 後由獨立 gate 鎖定。
 - **範圍**：本次只準備 workflow/scripts/runbook，未觸發 Actions、SSH、DB 或 production mutation；實際 grant replay、server account-lock 支援與 cron/backup observation 仍是 Founder-only evidence。
+
+### R107. 教師首頁 projected 堂次必須帶 branch_id，缺分校不可顯示內部編號（in-app #235，2026-08-15）
+
+- **現象**：#1739／第一次欄位對齊修法上線後，回報者兩次按「問題仍存在」。週課表仍出現「Branch #0」。
+- **根因**：已物化堂次有 `branch_id`；`SessionProjectionReadService::projectedSlot()` 從未回傳，前端 `s.branchId || 0`。另外 `getBranchName` 對不到名單時輸出 `Branch #N`，今日待辦另走一份未正規化 JSON。
+- **修法**：projected slot 從學生 `CampusID` 帶 `branch_id`；`sessionDates` 與 index 路徑 eager-load `student`；教師首頁今日待辦改走 `fetchClassSessions`；缺分校隱藏或顯示「未設定」。
+- **測試**：`SessionProjectionReadServiceTest`、`classSessionsApi.test.js`、`useBranches.test.js`、`teacherHomeSessionContract.test.js`。
+- **驗收**：deploy 後請 in-app #235 回報者再按確認；GitHub #1739 已關，不可再提前標 resolved。
