@@ -1,3 +1,10 @@
+## 2026-08-14 — fix(payroll): 待審核薪資補登可修改與撤回
+
+<!-- release-notes: staff_update=staff-2026-08-14-eligibility-pending-edit -->
+
+- 資料補登預設改為老師請假／補課；全校放假請走課程管理「連假批次請假」，假日曆僅作少用補登。
+- 待審核資料可在右側清單修改或撤回；已核准後仍不能改，也不會誤算進薪資。
+
 ## 2026-08-13 — feat(payroll): 正職老師薪資要件頁面新增底薪與總發放金額
 
 <!-- release-notes: staff_update=staff-2026-08-13-fulltime-settlement-total-payout -->
