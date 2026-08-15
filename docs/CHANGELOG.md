@@ -1,5 +1,7 @@
 ## 2026-08-15 — fix(billing): 計費模式轉換後標示舊收據可能已被取代 (#934)
 
+<!-- release-notes: staff_update=staff-2026-08-15-stale-receipt-badge-934 -->
+
 - `Invoice` 新增 `ScheduleModeAtIssue`（開立當下的計費模式快照，純新增欄位，舊資料 NULL，不回填）。
 - 課程計費模式（堂數制/月結）事後變更時，收據 API 會標示 `billing_mode_changed`，前端顯示提醒；不自動作廢、不改動任何金額或已結帳資料。
 - 範圍縮小：只修「舊收據看起來仍有效」的顯示問題；黃玟睿本案實際應收金額仍待校方確認，不由本次變更決定。
