@@ -481,6 +481,7 @@ class StudentClassController extends Controller
             }
             if (!empty($courseIds)) {
                 $bodyClasses = StudentClass::whereIn('ID', $courseIds)
+                    ->with('student')
                     ->select(
                         'ID',
                         'StudentID',
@@ -522,6 +523,7 @@ class StudentClassController extends Controller
                 if ($packageIds->isNotEmpty() && $studentIds->isNotEmpty()) {
                     $packageSiblings = StudentClass::whereIn('PackageID', $packageIds->all())
                         ->whereIn('StudentID', $studentIds->all())
+                        ->with('student')
                         ->select(
                             'ID',
                             'StudentID',
@@ -741,6 +743,7 @@ class StudentClassController extends Controller
 
         try {
             $classes = StudentClass::whereIn('ID', $classIds)
+                ->with('student')
                 ->select(
                     'ID',
                     'StudentID',

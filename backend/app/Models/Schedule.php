@@ -24,5 +24,7 @@ class Schedule extends Model
         'schedule_date',
         'student_course_id',
         'original_schedule_id',
+        'original_schedule_date',
+        'original_start_time',
     ];
 }

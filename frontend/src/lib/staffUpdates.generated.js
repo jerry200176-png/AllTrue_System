@@ -4,6 +4,105 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-15-tuition-charge-display-1734",
+    "publishedAt": "2026-08-15",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "收帳金額顯示修正",
+    "summary": "已收款課程會顯示實際合約總額，不再出現舊的錯誤數字。",
+    "items": [
+      "收帳頁會跟已開立帳單同一金額，不再顯示過期的錯誤總額。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "收帳頁會跟已開立帳單同一金額，不再顯示過期的錯誤總額。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-15:tuition-charge-display-1734"
+    ],
+    "date": "2026-08-15",
+    "version": "2026.08.15"
+  },
+  {
+    "id": "staff-2026-08-15-teacher-home-projected-campus",
+    "publishedAt": "2026-08-15",
+    "effectiveAt": null,
+    "audiences": [
+      "teacher",
+      "director"
+    ],
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "importance": "digest",
+    "title": "教師首頁分校顯示",
+    "summary": "還沒上課的堂次會顯示正確分校；缺資料時改中文或隱藏。",
+    "items": [
+      "週課表未來堂次不再出現看不懂的編號，會顯示分校名稱。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "週課表未來堂次不再出現看不懂的編號，會顯示分校名稱。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-15:teacher-home-projected-campus"
+    ],
+    "date": "2026-08-15",
+    "version": "2026.08.15"
+  },
+  {
+    "id": "staff-2026-08-14-eligibility-pending-edit",
+    "publishedAt": "2026-08-14",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "薪資補登可先改再核",
+    "summary": "全校放假請走課程管理；這裡預設幫老師補請假。",
+    "items": [
+      "全校放假用課程管理「連假批次請假」；這裡預設是幫老師補請假。",
+      "待審核資料可在右側清單修改或撤回，核准後才會算進薪資。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "全校放假用課程管理「連假批次請假」；這裡預設是幫老師補請假。"
+        ]
+      },
+      {
+        "title": "你現在可以",
+        "items": [
+          "待審核資料可在右側清單修改或撤回，核准後才會算進薪資。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-14:eligibility-pending-edit"
+    ],
+    "date": "2026-08-14",
+    "version": "2026.08.14"
+  },
+  {
     "id": "staff-2026-08-13-teacher-home-projection-integrity",
     "publishedAt": "2026-08-13",
     "effectiveAt": null,

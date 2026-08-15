@@ -7,6 +7,7 @@ use App\Models\StudentClass;
 use App\Models\StudentLineBinding;
 use App\Models\SecurityAuditEvent;
 use App\Models\UserCampus;
+use App\Support\Utf8mb3SearchSanitizer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -68,10 +69,10 @@ class StudentController extends Controller
         }
 
         if ($request->filled('name')) {
-            $query->where('name', 'like', '%' . $request->input('name') . '%');
+            Utf8mb3SearchSanitizer::applyLike($query, 'name', $request->input('name'));
         }
         if ($request->filled('name__ilike')) {
-            $query->where('name', 'like', '%' . $request->input('name__ilike') . '%');
+            Utf8mb3SearchSanitizer::applyLike($query, 'name', $request->input('name__ilike'));
         }
 
         if ($request->filled('class_id')) {

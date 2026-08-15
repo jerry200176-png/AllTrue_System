@@ -1,3 +1,80 @@
+## 2026-08-15 — chore(schedule): TD-076 Phase 3 回填命令（預設 dry-run）
+
+<!-- release-notes: silent_ship=silent-2026-08-15-td076-phase3-backfill -->
+
+- 新增排課原始時段回填命令，預設只報告、不寫入；正式寫入需修復閘道，本包不執行。
+- 教職員調課與畫面不變，也不打開新旗標。
+
+## 2026-08-15 — chore(schedule): TD-076 Phase 2 雙寫身分欄（旗標預設關）
+
+<!-- release-notes: silent_ship=silent-2026-08-15-td076-phase2-dual-write -->
+
+- 排課表新增可空的原始日期／時間欄，以及只追加的改期紀錄表；預設不啟用，調課行為與現在相同。
+- 不改日曆／課程管理讀取路徑，也不加唯一鍵。
+
+## 2026-08-15 — docs(arch): TD-076 Phase 0 盤點與舊 bug 鎖測
+
+<!-- release-notes: silent_ship=silent-2026-08-15-td076-phase0-inventory -->
+
+- 只補排課身分計畫的寫入／讀取清單，以及防止 R102／R103／請假扣堂／鎖老師復發的測試。
+- 不改 `schedules` 寫入形狀，不遷移 production。
+
+## 2026-08-15 — chore(bug): 已結案回報可補一則公開說明
+
+<!-- release-notes: silent_ship=silent-2026-08-15-resolved-bug-followup -->
+
+- 內部追蹤流程允許在已標成修好的回報上再留一則說明，不會改狀態。
+- 教職員畫面與操作不變。
+
+## 2026-08-15 — fix(billing): 陳姝彣收帳顯示改回合約金額
+
+<!-- release-notes: staff_update=staff-2026-08-15-tuition-charge-display-1734 -->
+
+- 收帳列表對已收款、且帳單已是正確總額的課程，不再顯示過期的錯誤合約金額。
+- 只改顯示用合約金額；已開立帳單與實收紀錄不變。
+
+## 2026-08-15 — fix(students): 搜尋含表情符號不再讓學生名單崩潰
+
+<!-- release-notes: silent_ship=silent-2026-08-15-student-name-utf8mb3-like -->
+
+- 學生／帳務／評量姓名搜尋會先去掉 4-byte 字元再查 utf8mb3 欄位，避免 SQL collation 錯誤。
+- 純表情符號搜尋回傳空結果，不會列出全部分校學生。
+
+## 2026-08-15 — fix(teacher-home): 未來堂次帶分校，不再顯示 Branch #0
+
+<!-- release-notes: staff_update=staff-2026-08-15-teacher-home-projected-campus -->
+
+- 教師週課表尚未產生實體堂次時，會帶學生所屬分校；缺分校時顯示中文或隱藏標籤，不再出現內部編號。
+- 今日待辦與週課表改讀同一套課堂資料。
+
+## 2026-08-15 — docs(gov): Agent 是操作者（不再等人點頭）
+
+<!-- release-notes: silent_ship=silent-2026-08-15-agent-operator -->
+
+- 艦隊政策改為 Agent 負責 merge / 關 issue / 寄任務信 / dispatch 已提交的 workflow。
+- AllTrue 仍禁 Pi SSH、印 secrets、force-push。R3 要 Repair Manifest，不要 Founder 橡皮圖章。
+
+## 2026-08-15 — docs(gov): 艦隊 merge 政策指標（R0–R2 驗收後 Agent 合入）
+
+<!-- release-notes: silent_ship=silent-2026-08-15-fleet-merge-pointer -->
+
+- 誰可以 merge 以 portfolio-ops `AUTONOMY_POLICY` 為準；AllTrue 只分類風險與產品 P0，不再把 R0–R2 merge 禁回去。
+- Required GitHub checks 綠了由 Agent squash-merge；R3 與額外 production 變更仍是 Founder。
+
+## 2026-08-15 — docs(arch): 排課 occurrence 身分根治計畫（TD-076）
+
+<!-- release-notes: silent_ship=silent-2026-08-15-schedule-occurrence-identity-rfc -->
+
+- 新增工程主線與 RFC：禁止整包重寫；排課改期改為穩定 occurrence 身分（計畫階段，無產品行為變更）。
+- Agent（Claude Code / Codex / Cursor）從 `AGENTS.md` / `CLAUDE.md` / INDEX 可找到同一份計畫。
+
+## 2026-08-14 — fix(payroll): 待審核薪資補登可修改與撤回
+
+<!-- release-notes: staff_update=staff-2026-08-14-eligibility-pending-edit -->
+
+- 資料補登預設改為老師請假／補課；全校放假請走課程管理「連假批次請假」，假日曆僅作少用補登。
+- 待審核資料可在右側清單修改或撤回；已核准後仍不能改，也不會誤算進薪資。
+
 ## 2026-08-13 — feat(payroll): 正職老師薪資要件頁面新增底薪與總發放金額
 
 <!-- release-notes: staff_update=staff-2026-08-13-fulltime-settlement-total-payout -->

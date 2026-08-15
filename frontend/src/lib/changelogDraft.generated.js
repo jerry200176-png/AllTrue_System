@@ -5,6 +5,54 @@
  */
 export const changelogDraftNotes = [
   {
+    "version": "2026.08.15",
+    "date": "2026-08-15",
+    "title": "2026.08.15 草稿（未發布）",
+    "summary": "陳姝彣收帳顯示改回合約金額；搜尋含表情符號不再讓學生名單崩潰",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "陳姝彣收帳顯示改回合約金額",
+          "搜尋含表情符號不再讓學生名單崩潰",
+          "未來堂次帶分校，不再顯示 Branch"
+        ]
+      }
+    ],
+    "items": [
+      "陳姝彣收帳顯示改回合約金額",
+      "搜尋含表情符號不再讓學生名單崩潰",
+      "未來堂次帶分校，不再顯示 Branch"
+    ]
+  },
+  {
+    "version": "2026.08.14",
+    "date": "2026-08-14",
+    "title": "2026.08.14 草稿（未發布）",
+    "summary": "待審核薪資補登可修改與撤回",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "待審核薪資補登可修改與撤回"
+        ]
+      }
+    ],
+    "items": [
+      "待審核薪資補登可修改與撤回"
+    ]
+  },
+  {
     "version": "2026.08.13",
     "date": "2026-08-13",
     "title": "2026.08.13 草稿（未發布）",
@@ -502,65 +550,6 @@ export const changelogDraftNotes = [
       "調課後課表穩定（系列契約 vs 單堂例外）",
       "登入頁恢復 前視覺",
       "頁改吃 DS tokens"
-    ]
-  },
-  {
-    "version": "2026.07.22",
-    "date": "2026-07-22",
-    "title": "2026.07.22 草稿（未發布）",
-    "summary": "待辦匣 P0（fail-closed／分頁／DTO）；課程備註可正確儲存 emoji 與完整中文",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "新增內容",
-        "items": [
-          "待辦匣 P0（fail-closed／分頁／DTO）"
-        ]
-      },
-      {
-        "title": "修正內容",
-        "items": [
-          "課程備註可正確儲存 emoji 與完整中文",
-          "建課衝突改為明確決策（試聽／加購／續報／獨立）",
-          "試聽建課不再被「同科同師日期重疊」擋死；行事曆快速排課補上強制建立",
-          "課程改老師不再改寫已上堂次的授課老師",
-          "排課摘要「補登已上」改以堂數顯示（同日多時段）"
-        ]
-      }
-    ],
-    "items": [
-      "待辦匣 P0（fail-closed／分頁／DTO）",
-      "課程備註可正確儲存 emoji 與完整中文",
-      "建課衝突改為明確決策（試聽／加購／續報／獨立）",
-      "試聽建課不再被「同科同師日期重疊」擋死；行事曆快速排課補上強制建立",
-      "課程改老師不再改寫已上堂次的授課老師",
-      "排課摘要「補登已上」改以堂數顯示（同日多時段）"
-    ]
-  },
-  {
-    "version": "2026.07.21",
-    "date": "2026-07-21",
-    "title": "2026.07.21 草稿（未發布）",
-    "summary": "帳務中心收據改回既有 payment-report",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "修正內容",
-        "items": [
-          "帳務中心收據改回既有 payment-report"
-        ]
-      }
-    ],
-    "items": [
-      "帳務中心收據改回既有 payment-report"
     ]
   }
 ];

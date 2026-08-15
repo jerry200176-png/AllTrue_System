@@ -16,6 +16,7 @@
 | Question | Canonical answer |
 |----------|------------------|
 | 我要從哪裡開始？ | `AGENTS.md` → [`governance/COMPANY_CONSTITUTION.md`](governance/COMPANY_CONSTITUTION.md) → this INDEX → task-specific row below |
+| 現在的工程主線是什麼？ | [`architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md`](architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md) → 排課根治 [`architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md`](architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md)（TD-076；**非**整包重構） |
 | 這個服務誰負責？ | Machine catalog [`catalog/services.json`](catalog/services.json) → [`catalog/SERVICES_INDEX.md`](catalog/SERVICES_INDEX.md) |
 | production 怎麼部署？ | [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) only (contract I1) |
 | 出事怎麼回滾？ | [`RUNBOOK_ROLLBACK.md`](RUNBOOK_ROLLBACK.md) + deploy prior SHA; data repairs use Repair Manifest rollback |
@@ -25,7 +26,7 @@
 | 文件是否仍有效？ | Prefer `last_verified` / Constitution Version / radar latest run; stale = archive or re-verify |
 
 **Worktree ban:** never edit `/home/jerry/alltrue` — [`governance/WORKTREE_POLICY.md`](governance/WORKTREE_POLICY.md).  
-**Merge risk:** [`governance/RISK_BASED_MERGE_POLICY.md`](governance/RISK_BASED_MERGE_POLICY.md) (R0–R3).  
+**Merge risk:** [`governance/RISK_BASED_MERGE_POLICY.md`](governance/RISK_BASED_MERGE_POLICY.md) (R0–R3 classify risk). **Operator:** fleet [portfolio-ops `AUTONOMY_POLICY`](https://github.com/jerry200176-png/portfolio-ops/blob/main/governance/AUTONOMY_POLICY.md) — Agent squash-merges after required checks, including R3 with a Repair Manifest.  
 **CI governance / preflight:** [`governance/CI_GOVERNANCE.md`](governance/CI_GOVERNANCE.md) · `npm run ci:preflight`
 
 ---
@@ -127,6 +128,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 11. **Course Continuity（#1382）**：[`docs/architecture/RFC_COURSE_CONTINUITY.md`](architecture/RFC_COURSE_CONTINUITY.md) · cohort SQL [`scripts/course-continuity-cohort-discovery.sql`](../scripts/course-continuity-cohort-discovery.sql) — **≠** #1130 歷史修復；MVP API：`/api/v1/course-contract-groups`（空表 migrate；不物理 merge）
 12. **Platform opt from stars（規劃）**：[`docs/architecture/RFC_PLATFORM_OPTIMIZATION_FROM_STARS_2026.md`](architecture/RFC_PLATFORM_OPTIMIZATION_FROM_STARS_2026.md) — 每項優化附「參考 repo／要學／不要學／落地」；**不含業務碼改動**
 13. **非標準課程時長／分鐘制扣堂調查（規劃，Draft，Founder D1-D7 已拍板，Phase 0A/0B 工具已 merge）**：[`docs/architecture/RFC_NONSTANDARD_SESSION_DURATION_BILLING.md`](architecture/RFC_NONSTANDARD_SESSION_DURATION_BILLING.md) — 現況：`#613 A1` 分鐘制引擎僅覆蓋補課（`schedules.type='extra'`）；購買堂數與排課 occurrence 數量目前被 `EnrollmentService.php:210-222` 硬性等式驗證鎖死（§2.5，D6 拍板以既有 `session_plan` 為 canonical occurrence source）；扣堂 opt-in 採 `deduction_basis` 欄位（D2，R59 改寫提案見 §10，未套用至規則正文）；共用課程包／自動跨期拆帳／entitlement 事件溯源第一版明確排除（D3/D4/D7）；第 6 次超額採 soft block + 明確確認（D5）。**Phase 0A**（唯讀盤點 `sessions:report-nonstandard-duration`）與**Phase 0B**（純 coverage calculator + dry-run contract，`LessonEntitlementCoverageCalculator`／`NonstandardDurationCoveragePreviewContract`）已實作並通過測試，**未啟用任何 production write 或 runtime 扣堂行為變更**；Phase 1/2 詳細計畫見文件 §15；Founder 尚待拍板事項見 §14；技術債見 `TECH_DEBT.md` `TD-072`；**不含業務碼改動**
+14. **現行工程主線／排課 occurrence 身分（規劃，Draft，schema DEV 需 Founder GO）**：[`docs/architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md`](architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md) · [`docs/architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md`](architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md) — 對齊 TD-076／R102／R103；**禁止**整包重寫前端或 Laravel；Phase 0＝盤點寫入／讀取路徑＋鎖現況 golden tests；與 Course Continuity、非標準時長 RFC **分軌**
 
 ### 後端開發
 | 需要什麼 | 去哪裡找 |
