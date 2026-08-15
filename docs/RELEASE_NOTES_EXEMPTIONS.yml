@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-08-15-td076-phase2-dual-write
+    changelog_date: "2026-08-15"
+    changelog_title: "chore(schedule): TD-076 Phase 2 雙寫身分欄（旗標預設關）"
+    reason: 僅新增可空欄位與預設關閉的雙寫；教職員畫面與調課操作不變。
+
   - id: silent-2026-08-15-td076-phase0-inventory
     changelog_date: "2026-08-15"
     changelog_title: "docs(arch): TD-076 Phase 0 盤點與舊 bug 鎖測"

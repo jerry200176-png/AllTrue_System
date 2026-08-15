@@ -1,3 +1,10 @@
+## 2026-08-15 — chore(schedule): TD-076 Phase 2 雙寫身分欄（旗標預設關）
+
+<!-- release-notes: silent_ship=silent-2026-08-15-td076-phase2-dual-write -->
+
+- 排課表新增可空的原始日期／時間欄，以及只追加的改期紀錄表；預設不啟用，調課行為與現在相同。
+- 不改日曆／課程管理讀取路徑，也不加唯一鍵。
+
 ## 2026-08-15 — docs(arch): TD-076 Phase 0 盤點與舊 bug 鎖測
 
 <!-- release-notes: silent_ship=silent-2026-08-15-td076-phase0-inventory -->

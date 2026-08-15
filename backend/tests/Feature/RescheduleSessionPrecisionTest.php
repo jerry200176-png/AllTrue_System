@@ -205,6 +205,14 @@ class RescheduleSessionPrecisionTest extends TestCase
             'status' => 'scheduled',
             'original_schedule_id' => $anchorId,
         ]);
+        $destination = Schedule::where('student_course_id', $courseId)
+            ->where('status', 'scheduled')
+            ->whereDate('schedule_date', '2026-08-02')
+            ->first();
+        $this->assertNotNull($destination);
+        $this->assertNull($destination->original_schedule_date);
+        $this->assertNull($destination->original_start_time);
+        $this->assertSame(0, \App\Models\ScheduleChangeLog::query()->count());
     }
 
     public function test_atomic_mode_is_idempotent_for_an_identical_retry(): void
