@@ -4,6 +4,10 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * @property string $name
+ * @property int $CampusID
+ */
 class Student extends Model
 {
     protected $table = 'Student';

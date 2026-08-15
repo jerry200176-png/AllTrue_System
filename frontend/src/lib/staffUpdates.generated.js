@@ -4,6 +4,38 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-15-teacher-home-projected-campus",
+    "publishedAt": "2026-08-15",
+    "effectiveAt": null,
+    "audiences": [
+      "teacher",
+      "director"
+    ],
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "importance": "digest",
+    "title": "教師首頁分校顯示",
+    "summary": "還沒上課的堂次會顯示正確分校；缺資料時改中文或隱藏。",
+    "items": [
+      "週課表未來堂次不再出現看不懂的編號，會顯示分校名稱。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "週課表未來堂次不再出現看不懂的編號，會顯示分校名稱。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-15:teacher-home-projected-campus"
+    ],
+    "date": "2026-08-15",
+    "version": "2026.08.15"
+  },
+  {
     "id": "staff-2026-08-14-eligibility-pending-edit",
     "publishedAt": "2026-08-14",
     "effectiveAt": null,

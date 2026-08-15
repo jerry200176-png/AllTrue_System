@@ -167,13 +167,24 @@ export async function loadBranches() {
 }
 
 /**
+ * Canonical campus id for UI. Missing / 0 / NaN must not become "Branch #0"
+ * (in-app #235).
+ */
+export function campusIdFrom(value) {
+    const n = Number(value);
+    return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+/**
  * Look up the display name for a branch by its integer ID.
- * Returns the name if found, or a fallback string.
+ * Returns the name if found, or a Chinese fallback. Never "Branch #N".
  */
 export function getBranchName(branchId) {
-    if (branchId === null || branchId === undefined) return '未設定';
-    const b = branches.value.find(br => br.id === branchId || br.code === branchId);
-    return b ? b.name : `Branch #${branchId}`;
+    const id = campusIdFrom(branchId);
+    if (id == null) return '未設定';
+    const b = branches.value.find((br) => Number(br.id) === id || String(br.code) === String(branchId));
+    if (b?.name) return b.name;
+    return branches.value.length === 0 ? '分校載入中' : '未設定';
 }
 
 /**

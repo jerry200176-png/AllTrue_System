@@ -1,3 +1,10 @@
+## 2026-08-15 — fix(teacher-home): 未來堂次帶分校，不再顯示 Branch #0
+
+<!-- release-notes: staff_update=staff-2026-08-15-teacher-home-projected-campus -->
+
+- 教師週課表尚未產生實體堂次時，會帶學生所屬分校；缺分校時顯示中文或隱藏標籤，不再出現內部編號。
+- 今日待辦與週課表改讀同一套課堂資料。
+
 ## 2026-08-15 — docs(gov): Agent 是操作者（不再等人點頭）
 
 <!-- release-notes: silent_ship=silent-2026-08-15-agent-operator -->
