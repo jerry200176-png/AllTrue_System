@@ -274,6 +274,7 @@ class NotificationController extends Controller
                             'TotalAmount' => $initialAmount,
                             'PaidAmount' => 0,
                             'Status' => 'unpaid',
+                            'ScheduleModeAtIssue' => $studentClass->ScheduleMode,
                             'Note' => '',
                         ]);
                     }
