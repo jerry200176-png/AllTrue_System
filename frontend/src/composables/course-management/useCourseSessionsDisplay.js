@@ -225,7 +225,10 @@ export function useCourseSessionsDisplay({
   const rowOccupiesPurchasedQuota = (row) => rowOccupiesPurchasedQuotaShared(row, { exceptionsOccupyQuota: true });
 
   const isOverQuotaSession = (course, row) => {
-    if (!row || course?.PackageID) return false;
+    // 月結課程沒有「購買堂數上限」的概念——後端 StudentClassController 對每門課都會把
+    // sessions_purchased 設成 SessionCount（即使是月結課），所以不能只看 purchased>0，
+    // 一定要先確認這是堂數制（isSessionMode）才適用超排判斷，否則月結課會被錯誤標記超排。
+    if (!row || course?.PackageID || !isSessionMode(course)) return false;
     const purchased = getPurchasedSessions(course);
     if (purchased <= 0 || !rowOccupiesPurchasedQuota(row)) return false;
 

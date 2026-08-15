@@ -1,0 +1,160 @@
+name: Calendar/Course Production Acceptance (read-only)
+
+# Authenticated acceptance for the calendar/course-management parity contract.
+# The director session is fetched from the existing short-lived Pi smoke-token
+# path. No password is stored in GitHub or the repository; this job performs
+# only GET requests against production.
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch_id:
+        description: 'Campus ID to inspect'
+        required: false
+        default: '16'
+      start_date:
+        description: 'Inclusive date window start (YYYY-MM-DD)'
+        required: false
+        default: '2026-08-05'
+      end_date:
+        description: 'Inclusive date window end (YYYY-MM-DD)'
+        required: false
+        default: '2026-08-07'
+  workflow_run:
+    workflows: ['Deploy to Pi']
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: calendar-course-production-acceptance
+  cancel-in-progress: false
+
+jobs:
+  acceptance:
+    name: Authenticated calendar/course parity (read-only)
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup SSH for read-only smoke token lookup
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          PI_HOST_KEY: ${{ secrets.PI_HOST_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if ssh-keyscan -H "$PI_SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null; then
+            :
+          elif [[ -n "${PI_HOST_KEY:-}" ]]; then
+            printf '%s\n' "$PI_HOST_KEY" > ~/.ssh/known_hosts
+          else
+            echo '::error::no Pi host key available'; exit 1
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Fetch short-lived director session (read-only)
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          BRANCH_ID: ${{ github.event.inputs.branch_id || '16' }}
+        run: |
+          set -euo pipefail
+          session_json="$({
+            ssh -i ~/.ssh/deploy_key \
+              -o IdentitiesOnly=yes \
+              -o BatchMode=yes \
+              -o ConnectTimeout=20 \
+              -o StrictHostKeyChecking=yes \
+              -o UserKnownHostsFile=~/.ssh/known_hosts \
+              "$PI_SSH_USER@$PI_SSH_HOST" "BRANCH_ID=$BRANCH_ID bash" <<'REMOTE'
+          set -euo pipefail
+          cd /home/admin/backend
+          php artisan tinker --no-ansi --execute='
+          $branch = (int) getenv("BRANCH_ID");
+          $row = \Illuminate\Support\Facades\DB::table("auth_tokens as t")
+            ->join("User as u", "u.id", "=", "t.user_id")
+            ->join("UserCampus as uc", "uc.UserID", "=", "u.id")
+            ->where("u.type", "D")
+            ->where("uc.CampusID", $branch)
+            ->where(function ($q) { $q->where("uc.Approved", 1)->orWhereNull("uc.Approved"); })
+            ->where("t.expires_at", ">", now())
+            ->orderByDesc("t.expires_at")
+            ->select("t.token", "u.id", "u.type", "u.Name", "u.LoginName", "u.MustChangePassword")
+            ->first();
+          if (!$row) {
+            // A super admin may administer a branch without a UserCampus row.
+            $row = \Illuminate\Support\Facades\DB::table("auth_tokens as t")
+              ->join("User as u", "u.id", "=", "t.user_id")
+              ->where("u.type", "S")
+              ->where("t.expires_at", ">", now())
+              ->orderByDesc("t.expires_at")
+              ->select("t.token", "u.id", "u.type", "u.Name", "u.LoginName", "u.MustChangePassword")
+              ->first();
+          }
+          if (!$row) { throw new \RuntimeException("no valid director smoke session"); }
+          $campuses = \Illuminate\Support\Facades\DB::table("UserCampus")
+            ->where("UserID", $row->id)
+            ->where(function ($q) { $q->where("Approved", 1)->orWhereNull("Approved"); })
+            ->pluck("CampusID")
+            ->map(fn ($id) => (int) $id)->values()->all();
+          echo json_encode([
+            "access_token" => $row->token,
+            "token_type" => "Bearer",
+            "user" => [
+              "id" => (int) $row->id,
+              "name" => (string) $row->Name,
+              "account" => (string) $row->LoginName,
+              "email" => (string) $row->LoginName,
+              "role" => $row->type === "S" ? "super_admin" : "director",
+              "campuses" => $campuses,
+              "must_change_password" => (bool) $row->MustChangePassword,
+            ],
+          ]);
+          '
+          REMOTE
+          })"
+          test -n "$session_json"
+          session_b64="$(printf '%s' "$session_json" | base64 -w0)"
+          echo "::add-mask::$session_b64"
+          printf 'SMOKE_DIRECTOR_SESSION_B64=%s\n' "$session_b64" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Run authenticated production acceptance
+        working-directory: frontend
+        env:
+          CI: 'true'
+          SMOKE_BASE_URL: https://daan.lifenet.com.tw
+          SMOKE_BRANCH_ID: ${{ github.event.inputs.branch_id || '16' }}
+          SMOKE_START_DATE: ${{ github.event.inputs.start_date || '2026-08-05' }}
+          SMOKE_END_DATE: ${{ github.event.inputs.end_date || '2026-08-07' }}
+        run: npx playwright test e2e/calendar-course-consistency.spec.js --project=chromium
+
+      - name: Upload acceptance report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: calendar-course-acceptance-report
+          path: frontend/playwright-report/
+          retention-days: 14
+          if-no-files-found: ignore

@@ -39,5 +39,21 @@ export function shouldRenderScheduledException(exception, exceptions = [], targe
   if (String(exception?.status || '').toLowerCase() !== 'scheduled') return false;
   const courseId = exception?.student_course_id;
   if (courseId == null) return true;
-  return !hasLeaveExceptionForCourseDate(exceptions, targetDate, courseId);
+  if (hasLeaveExceptionForCourseDate(exceptions, targetDate, courseId)) return false;
+  // A 'scheduled' marker represents one specific (course, date, start_time) slot. If
+  // that exact slot was itself later rescheduled again — a same-slot 'rescheduled'
+  // marker created after this one — this entry is stale/superseded and must not
+  // render, even when the later reschedule's own destination lands on a *different*
+  // date entirely (a same-date-only "keep the latest" dedupe misses that case; the
+  // backend's own dedupe-delete, keyed on the rescheduled marker's exact start_time,
+  // also doesn't always catch it — see two real production incidents, #1685 and the
+  // follow-up in-app #225: same-time re-submit, and reschedule-to-another-date).
+  const exStart = normalizeExceptionStartTime(exception?.start_time);
+  const supersededBy = (exceptions || []).find((ex) =>
+    String(ex?.status || '').toLowerCase() === 'rescheduled'
+      && sameCourseDate(ex, targetDate, courseId)
+      && normalizeExceptionStartTime(ex?.start_time) === exStart
+      && Number(ex?.id) > Number(exception?.id)
+  );
+  return !supersededBy;
 }

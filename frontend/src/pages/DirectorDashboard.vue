@@ -62,6 +62,16 @@
               <span class="surface-panel__count">{{ dashboardPrimaryTasks.length }} 項</span>
             </header>
 
+            <section v-if="!dashboardLoading && dashboardTopRisks.length" class="director-top-risks" aria-labelledby="director-top-risks-title">
+              <h3 id="director-top-risks-title">今日營運風險 Top {{ dashboardTopRisks.length }}</h3>
+              <ol>
+                <li v-for="risk in dashboardTopRisks" :key="`risk-${risk.id}`" :class="`director-top-risks__item director-top-risks__item--${risk.severity}`">
+                  <strong>{{ risk.title }}</strong>
+                  <span>{{ risk.summary }}</span>
+                </li>
+              </ol>
+            </section>
+
             <div v-if="dashboardLoading" class="director-task-list" aria-live="polite" aria-label="正在載入今日待辦">
               <div v-for="n in 3" :key="n" class="director-task director-task--loading" aria-hidden="true">
                 <span class="director-skeleton__index"></span>
@@ -129,10 +139,10 @@
                 </div>
               </header>
               <dl class="director-summary-list">
-                <div><dt>今日課程</dt><dd>{{ todaySchedules.length }}</dd><small>{{ attendedCount }} 堂已完成</small></div>
-                <div><dt>待審評量</dt><dd>{{ pendingEvaluations.length }}</dd><small>需要確認的紀錄</small></div>
-                <div><dt>未讀通知</dt><dd>{{ unreadNotificationCount }}</dd><small>通知中心待查看</small></div>
-                <div><dt>今日工作量</dt><dd>{{ workflowDailySummary.due_total }}</dd><small>已完成 {{ workflowDailySummary.done_total }} 件</small></div>
+                <div><dt :title="DASHBOARD_SUMMARY_DEFINITIONS.todaySchedules">今日課程<span class="material-symbols-outlined director-summary-list__info" aria-hidden="true">info</span></dt><dd>{{ todaySchedules.length }}</dd><small>{{ attendedCount }} 堂已完成</small></div>
+                <div><dt :title="DASHBOARD_SUMMARY_DEFINITIONS.pendingEvaluations">待審評量<span class="material-symbols-outlined director-summary-list__info" aria-hidden="true">info</span></dt><dd>{{ pendingEvaluations.length }}</dd><small>需要確認的紀錄</small></div>
+                <div><dt :title="DASHBOARD_SUMMARY_DEFINITIONS.unreadNotifications">未讀通知<span class="material-symbols-outlined director-summary-list__info" aria-hidden="true">info</span></dt><dd>{{ unreadNotificationCount }}</dd><small>通知中心待查看</small></div>
+                <div><dt :title="DASHBOARD_SUMMARY_DEFINITIONS.workflowDaily">今日工作量<span class="material-symbols-outlined director-summary-list__info" aria-hidden="true">info</span></dt><dd>{{ workflowDailySummary.due_total }}</dd><small>已完成 {{ workflowDailySummary.done_total }} 件</small></div>
               </dl>
             </section>
 
@@ -185,8 +195,19 @@
                   <article v-for="workflow in exceptionWorkflows" :key="workflow.id" :id="`exception-workflow-${workflow.id}`" class="director-leave-case">
                     <header class="director-leave-case__header"><div><strong>{{ workflow.student?.name || '未命名學生' }}</strong><span>{{ workflowStatusLabel(workflow.status) }}</span></div><span>案件 #{{ workflow.id }}</span></header>
                     <dl class="director-leave-case__details"><div><dt>原堂次</dt><dd>{{ workflow.class_session?.date || '未提供日期' }} {{ workflow.class_session?.start_time || '' }}–{{ workflow.class_session?.end_time || '' }}</dd></div><div><dt>原因</dt><dd>{{ workflow.payload?.reason || '未提供原因' }}</dd></div></dl>
-                    <div v-if="workflowCandidates[workflow.id]?.length" class="director-candidate-list" role="radiogroup" :aria-label="`${workflow.student?.name || '學生'}補課候選`">
-                      <label v-for="candidate in workflowCandidates[workflow.id]" :key="candidate.id" class="director-candidate" :class="{ 'is-selected': selectedWorkflowCandidates[workflow.id] === candidate.id }"><input v-model="selectedWorkflowCandidates[workflow.id]" type="radio" :name="`leave-candidate-${workflow.id}`" :value="candidate.id" :disabled="workflowActionId === workflow.id" /><span><strong>{{ candidate.candidate_date }}</strong> {{ candidate.start_time }}–{{ candidate.end_time }}</span></label>
+                    <p class="director-leave-case__window">
+                      <span class="material-symbols-outlined" aria-hidden="true">date_range</span>
+                      補課候選範圍：{{ makeupWindowLabel(workflow) }}（原堂後一天起）
+                    </p>
+                    <div v-if="workflowCandidates[workflow.id]?.length" class="director-candidate-picker">
+                      <div class="director-candidate-dates" role="tablist" :aria-label="`${workflow.student?.name || '學生'}可補課日期`">
+                        <button v-for="date in workflowCandidateGroups[workflow.id]?.dates" :key="date" type="button" role="tab" class="director-candidate-date" :class="{ 'is-selected': selectedWorkflowCandidateDates[workflow.id] === date }" :aria-selected="selectedWorkflowCandidateDates[workflow.id] === date" @click="selectCandidateDate(workflow.id, date)">
+                          {{ candidateDateLabel(date) }}
+                        </button>
+                      </div>
+                      <div class="director-candidate-list" role="radiogroup" :aria-label="`${workflow.student?.name || '學生'}補課候選`">
+                        <label v-for="candidate in (workflowCandidateGroups[workflow.id]?.byDate[selectedWorkflowCandidateDates[workflow.id]] || [])" :key="candidate.id" class="director-candidate" :class="{ 'is-selected': selectedWorkflowCandidates[workflow.id] === candidate.id }"><input v-model="selectedWorkflowCandidates[workflow.id]" type="radio" :name="`leave-candidate-${workflow.id}`" :value="candidate.id" :disabled="workflowActionId === workflow.id" /><span><strong>{{ candidate.start_time }}–{{ candidate.end_time }}</strong><small v-if="candidate.status === 'warning'">已有其他課程</small></span></label>
+                      </div>
                     </div>
                     <p v-else class="director-leave-case__hint"><span class="material-symbols-outlined" aria-hidden="true">lightbulb</span>先搜尋沒有衝堂的可用時段，也可以直接核准不補課。</p>
                     <div class="director-leave-case__actions">
@@ -249,6 +270,7 @@ import {
   markTrustSeen,
   markTrustProvidedPathUsed,
 } from '../lib/adoptionTelemetry';
+import { getMakeupCandidateWindow } from '../lib/makeupCandidateWindow';
 import {
   listExceptionWorkflows,
   getExceptionWorkflow,
@@ -283,11 +305,13 @@ const notificationSummary = ref([]);
 const showAllPayments = ref(false);
 const paymentAlertLimit = 5;
 const pendingMakeupCount = ref(0);
+const MAKEUP_CANDIDATE_LIMIT = 20;
 const exceptionWorkflows = ref([]);
 const exceptionWorkflowError = ref('');
 const exceptionWorkflowLoading = ref(false);
 const workflowCandidates = ref({});
 const selectedWorkflowCandidates = ref({});
+const selectedWorkflowCandidateDates = ref({});
 const workflowActionId = ref(null);
 const workflowDecisionModal = ref(null);
 const workflowDecisionReason = ref('');
@@ -307,6 +331,25 @@ const selectedWorkflowCandidate = computed(() => {
   return (workflowCandidates.value[modal.workflow.id] || [])
     .find((candidate) => Number(candidate.id) === Number(selectedWorkflowCandidates.value[modal.workflow.id])) || null;
 });
+const workflowCandidateGroups = computed(() => Object.fromEntries(
+  Object.entries(workflowCandidates.value).map(([workflowId, candidates]) => {
+    const normalizedCandidates = Array.isArray(candidates) ? candidates : [];
+    const dates = [...new Set(normalizedCandidates.map((candidate) => candidate.candidate_date).filter(Boolean))].sort();
+    const byDate = Object.fromEntries(dates.map((date) => [date, normalizedCandidates.filter((candidate) => candidate.candidate_date === date)]));
+    return [workflowId, { dates, byDate }];
+  }),
+));
+const candidateDateLabel = (date) => {
+  const parsed = new Date(`${date}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return date;
+  return new Intl.DateTimeFormat('zh-TW', { month: 'numeric', day: 'numeric', weekday: 'short' }).format(parsed);
+};
+const selectCandidateDate = (workflowId, date) => {
+  selectedWorkflowCandidateDates.value = {
+    ...selectedWorkflowCandidateDates.value,
+    [workflowId]: date,
+  };
+};
 const workflowDecisionTitle = computed(() => {
   const modal = workflowDecisionModal.value;
   if (!modal) return '';
@@ -512,6 +555,20 @@ const dashboardTasks = computed(() => buildDirectorDashboardTasks({
 const dashboardPrimaryTasks = computed(() => dashboardTasks.value.filter((item) => item.source !== 'adoption'));
 const dashboardAdditionalTaskCount = computed(() => dashboardTasks.value.filter((item) => item.source === 'adoption').length);
 
+// Top 3 today's operating risks: highest-severity primary tasks, excluding pure
+// info-level items (those are queue work, not risk). Reuses the already-sorted
+// dashboardPrimaryTasks order (severity, then due date) rather than re-sorting.
+const dashboardTopRisks = computed(() => dashboardPrimaryTasks.value
+  .filter((item) => item.severity === 'critical' || item.severity === 'danger' || item.severity === 'warning')
+  .slice(0, 3));
+
+const DASHBOARD_SUMMARY_DEFINITIONS = Object.freeze({
+  todaySchedules: '今天已排定的所有課程堂數，含已完成與未開始的。',
+  pendingEvaluations: '已上課但主任尚未核准或退回的評量紀錄；核准後家長才看得到。',
+  unreadNotifications: '通知中心裡尚未標記已讀的系統通知，例如繳費提醒、課表異動。',
+  workflowDaily: '今天需要主任處理並完成的營運工作總數，例如請假案件、補課登記。',
+});
+
 const workflowDailySummary = computed(() => ({
   due_total: Number(adoptionWeeklyMetrics.value?.workflow_daily?.due_total || 0),
   done_total: Number(adoptionWeeklyMetrics.value?.workflow_daily?.done_total || 0),
@@ -699,6 +756,12 @@ const workflowStatusLabel = (status) => ({
   closed: '已關閉',
 }[String(status || '')] || String(status || '—'));
 
+const makeupWindowLabel = (workflow) => {
+  const window = getMakeupCandidateWindow(workflow);
+  if (!window.startDate || !window.endDate) return '請先確認原堂日期';
+  return `${window.startDate}～${window.endDate}`;
+};
+
 const addDaysYmd = (days) => {
   const d = new Date();
   d.setDate(d.getDate() + days);
@@ -727,13 +790,18 @@ const loadExceptionWorkflows = async () => {
 };
 
 const setWorkflowCandidates = (workflowId, candidates) => {
+  const normalizedCandidates = Array.isArray(candidates) ? candidates : [];
   workflowCandidates.value = {
     ...workflowCandidates.value,
-    [workflowId]: Array.isArray(candidates) ? candidates : [],
+    [workflowId]: normalizedCandidates,
   };
   selectedWorkflowCandidates.value = {
     ...selectedWorkflowCandidates.value,
     [workflowId]: null,
+  };
+  selectedWorkflowCandidateDates.value = {
+    ...selectedWorkflowCandidateDates.value,
+    [workflowId]: normalizedCandidates[0]?.candidate_date || null,
   };
 };
 
@@ -769,10 +837,11 @@ const generateCandidates = async (workflow) => {
   workflowActionId.value = workflow.id;
   exceptionWorkflowError.value = '';
   try {
+    const window = getMakeupCandidateWindow(workflow);
     const result = await generateExceptionWorkflowCandidates(token, workflow.id, {
-      startDate: addDaysYmd(1),
-      endDate: addDaysYmd(14),
-      limit: 5,
+      startDate: window.startDate,
+      endDate: window.endDate,
+      limit: MAKEUP_CANDIDATE_LIMIT,
     });
     setWorkflowCandidates(workflow.id, result?.candidates || []);
     await loadExceptionWorkflows();
@@ -2792,9 +2861,19 @@ onBeforeUnmount(() => {
 .director-workbench-v2__more:hover { border-bottom-color: var(--ds-cta); color: var(--ds-cta); }
 .director-summary-list { margin: 0; padding: 0 22px; }
 .director-summary-list > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 14px 0; border-top: 1px solid var(--ds-hairline); }
-.director-summary-list dt { color: var(--ds-ink-secondary); font-size: 12px; }
+.director-summary-list dt { display: inline-flex; align-items: center; gap: 4px; color: var(--ds-ink-secondary); font-size: 12px; cursor: help; }
 .director-summary-list dd { margin: 0; color: var(--ds-ink); font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .director-summary-list small { grid-column: 1 / -1; color: var(--ds-ink-mute); font-size: 11px; }
+.director-summary-list__info { font-size: 14px; color: var(--ds-ink-mute); }
+
+.director-top-risks { margin: 0 22px 16px; padding: 14px 16px; border: 1px solid var(--ds-hairline); border-radius: 12px; background: var(--ds-canvas-soft); }
+.director-top-risks h3 { margin: 0 0 8px; color: var(--ds-ink-secondary); font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.02em; }
+.director-top-risks ol { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.director-top-risks__item { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 8px; background: var(--ds-canvas); border-left: 3px solid var(--ds-ink-mute); }
+.director-top-risks__item strong { color: var(--ds-ink); font-size: 13px; font-weight: 700; }
+.director-top-risks__item span { color: var(--ds-ink-mute); font-size: 12px; }
+.director-top-risks__item--critical, .director-top-risks__item--danger { border-left-color: var(--ds-danger); }
+.director-top-risks__item--warning { border-left-color: var(--ds-warning); }
 .director-trust-note { border-top: 1px solid var(--ds-hairline); border-bottom: 1px solid var(--ds-hairline); }
 .director-trust-note summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 0 2px; color: var(--ds-ink-secondary); font-size: 12px; font-weight: 800; cursor: pointer; list-style: none; }
 .director-trust-note summary::-webkit-details-marker { display: none; }
@@ -2823,7 +2902,7 @@ onBeforeUnmount(() => {
 .director-schedule-row__status--scheduled { color: var(--ds-warning) !important; }
 .surface-panel__footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 22px; padding: 13px 0 16px; border-top: 1px solid var(--ds-hairline); color: var(--ds-ink-mute); font-size: 11px; }
 .director-leave-list { display: grid; gap: 14px; padding: 0 22px 20px; }
-.director-leave-case { padding: 16px; border: 1px solid var(--ds-hairline); border-radius: 8px; background: var(--ds-canvas-soft); }
+.director-leave-case { min-width: 0; padding: 16px; border: 1px solid var(--ds-hairline); border-radius: 8px; background: var(--ds-canvas-soft); }
 .director-leave-case__header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .director-leave-case__header > div { display: flex; align-items: center; gap: 9px; min-width: 0; }
 .director-leave-case__header strong { font-size: 14px; }
@@ -2835,6 +2914,8 @@ onBeforeUnmount(() => {
 .director-leave-case__details dd { margin: 4px 0 0; color: var(--ds-ink-secondary); font-size: 12px; }
 .director-leave-case__hint { display: flex; align-items: flex-start; gap: 7px; margin: 14px 0 0; color: var(--ds-ink-mute); font-size: 11px; line-height: 1.5; }
 .director-leave-case__hint .material-symbols-outlined { color: var(--ds-warning); font-size: 17px; }
+.director-leave-case__window { display: flex; align-items: center; gap: 6px; margin: 14px 0 0; color: var(--ds-ink-mute); font-size: 11px; line-height: 1.5; }
+.director-leave-case__window .material-symbols-outlined { color: var(--ds-primary); font-size: 17px; }
 .director-leave-case__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; padding: 7px 11px; border: 1px solid var(--ds-hairline-input); border-radius: 6px; background: var(--ds-canvas); color: var(--ds-ink-secondary); font-size: 12px; font-weight: 800; }
 .button:hover { border-color: var(--ds-ink-secondary); color: var(--ds-ink); }
@@ -2843,11 +2924,18 @@ onBeforeUnmount(() => {
 .button--quiet { background: transparent; }
 .button--danger { border-color: var(--ds-danger); color: var(--ds-danger); }
 .button--danger:hover { background: var(--ds-danger-wash); }
-.director-candidate-list { display: grid; gap: 7px; margin-top: 14px; }
-.director-candidate { display: flex; align-items: center; gap: 9px; padding: 9px 10px; border: 1px solid var(--ds-hairline); border-radius: 6px; background: var(--ds-canvas); color: var(--ds-ink-secondary); font-size: 12px; cursor: pointer; }
+.director-candidate-picker { min-width: 0; margin-top: 14px; }
+.director-candidate-dates { display: flex; gap: 7px; overflow-x: auto; padding: 2px 1px 8px; scrollbar-width: thin; }
+.director-candidate-date { flex: 0 0 auto; min-height: 34px; padding: 7px 10px; border: 1px solid var(--ds-hairline); border-radius: 999px; background: var(--ds-canvas); color: var(--ds-ink-mute); font-size: 12px; font-weight: 800; cursor: pointer; }
+.director-candidate-date:hover { border-color: var(--ds-ink-secondary); color: var(--ds-ink); }
+.director-candidate-date.is-selected { border-color: var(--ds-cta); background: var(--ds-primary-wash); color: var(--ds-ink); }
+.director-candidate-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin-top: 2px; }
+.director-candidate { display: flex; align-items: center; gap: 9px; min-height: 48px; padding: 9px 10px; border: 1px solid var(--ds-hairline); border-radius: 6px; background: var(--ds-canvas); color: var(--ds-ink-secondary); font-size: 12px; cursor: pointer; }
 .director-candidate.is-selected { border-color: var(--ds-cta); }
 .director-candidate input { accent-color: var(--ds-cta); }
 .director-candidate strong { color: var(--ds-ink); }
+.director-candidate span { display: grid; gap: 3px; }
+.director-candidate small { color: var(--ds-warning); font-size: 10px; }
 .director-evaluation-list, .director-payment-list, .director-notification-list { padding: 0 22px; }
 .director-evaluation-row, .director-payment-row, .director-notification-list > div { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 0; border-top: 1px solid var(--ds-hairline); }
 .director-evaluation-row > div:first-child, .director-payment-row > div { display: grid; gap: 3px; min-width: 0; }
@@ -2897,6 +2985,7 @@ onBeforeUnmount(() => {
   .director-leave-list { padding-inline: 16px; }
   .director-leave-case { padding: 13px; }
   .director-leave-case__details { grid-template-columns: 1fr; gap: 8px; }
+  .director-candidate-list { grid-template-columns: 1fr; }
   .director-leave-case__actions, .director-evaluation-row > div:last-child { align-items: stretch; flex-direction: column; }
   .director-leave-case__actions .button, .director-evaluation-row > div:last-child .button { width: 100%; }
   .director-evaluation-row { align-items: flex-start; flex-direction: column; }

@@ -62,6 +62,34 @@ class CourseLeaveCascadeService
     }
 
     /**
+     * Nightly self-healing sweep for #170: `voidLiveArtifactsForLeave()` only guards the code
+     * paths that transition a session to leave *going forward* — it does nothing for rows that
+     * were already left in a bad state by a call that happened before this guard existed (or by
+     * any future code path nobody has found and covered yet). Scans every ClassSession currently
+     * sitting in leave/leave_adjusted for a live LearningRecord and voids it via the same shared
+     * logic, so `bugs:verify-reproductions`' `leave_session_with_live_learning_record` condition
+     * self-heals on its own schedule instead of requiring a one-off manual data repair each time
+     * it's found. Idempotent: a session with no live LearningRecord is a no-op.
+     *
+     * @return int number of ClassSession rows that had at least one live artifact voided
+     */
+    public static function sweepStaleLiveArtifactsForLeave(): int
+    {
+        $sessionIds = DB::table('ClassSession as cs')
+            ->join('LearningRecord as lr', 'lr.ClassSessionID', '=', 'cs.id')
+            ->whereIn(DB::raw('LOWER(cs.Status)'), ['leave', 'leave_adjusted'])
+            ->whereNull('lr.VoidedAt')
+            ->distinct()
+            ->pluck('cs.id');
+
+        foreach ($sessionIds as $sessionId) {
+            self::voidLiveArtifactsForLeave((int) $sessionId);
+        }
+
+        return $sessionIds->count();
+    }
+
+    /**
      * Mark the target session as leave, void related records,
      * shift subsequent scheduled sessions forward, and append one new session
      * to keep the total count intact.

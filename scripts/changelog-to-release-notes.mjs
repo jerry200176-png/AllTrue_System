@@ -146,7 +146,9 @@ function buildSummary(sections) {
 }
 
 function parseChangelog(md) {
-  const lines = md.split('\n');
+  // Changelog is checked out with CRLF on Windows but generated in Linux CI.
+  // Normalize line endings so headings are parsed identically in both places.
+  const lines = md.split(/\r?\n/);
   /** @type {Map<string, Map<string, string[]>>} */
   const grouped = new Map();
 

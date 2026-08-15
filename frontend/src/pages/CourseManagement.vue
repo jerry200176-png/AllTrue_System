@@ -3661,7 +3661,9 @@ function scheduleFingerprintForEdit(form) {
   const dur = Math.round((Number(f.duration_hours) || 2) * 10) / 10;
   const start = normalizeTo30Min(String(f.start_time || '16:00').slice(0, 5));
   const first = String(f.first_class_date || '').slice(0, 10);
-  return `${days}|${slots}|${dur}|${start}|${first}`;
+  const end = String(f.end_date || '').slice(0, 10);
+  const mode = String(f.payment_type || 'session');
+  return `${days}|${slots}|${dur}|${start}|${first}|${end}|${mode}`;
 }
 
 const editCourse = (c) => {
@@ -3732,14 +3734,14 @@ const submitEdit = async () => {
       if (token) {
         const endTime = computeEndTime(form.start_time, form.duration_hours);
         const isPackageCourse = !!editingCourseRaw.value?.PackageID;
-        const body = {
-          subject: form.subject,
-          teacher_id: form.teacher_id || null,
-          class_type: form.class_type,
-          rate_per_30min: form.rate_per_30min,
+        // A memo/payment/teacher edit must not be interpreted as a schedule
+        // edit. Sending the schedule fields on every save caused the backend
+        // to reconcile or rebuild future projected sessions even when the
+        // director only added a note (#231).
+        const baseline = editScheduleBaseline.value;
+        const scheduleChanged = baseline != null && scheduleFingerprintForEdit(form) !== baseline;
+        const scheduleFields = scheduleChanged ? {
           duration_hours: form.duration_hours,
-          sessions_purchased: form.sessions_purchased,
-          ...(isPackageCourse ? {} : { remaining_sessions: form.remaining_sessions }),
           days_of_week: (form.days_of_week || []).length ? form.days_of_week : [],
           start_time: form.start_time,
           day_time_slots: (form.day_time_slots || [])
@@ -3750,15 +3752,24 @@ const submitEdit = async () => {
             }))
             .filter((slot) => slot.day >= 1 && slot.day <= 7),
           end_time: endTime,
+          first_class_date: form.first_class_date || null,
+          end_date: form.payment_type === 'monthly' ? form.end_date || null : null,
+          force_rebuild_if_mismatch: true,
+        } : {};
+        const body = {
+          subject: form.subject,
+          teacher_id: form.teacher_id || null,
+          class_type: form.class_type,
+          rate_per_30min: form.rate_per_30min,
+          sessions_purchased: form.sessions_purchased,
+          ...(isPackageCourse ? {} : { remaining_sessions: form.remaining_sessions }),
           payment_type: form.payment_type,
           scheduling_policy: form.scheduling_policy || 'auto_recurrence',
           settlement_day: form.payment_type === 'monthly' ? form.settlement_day : null,
           monthly_sessions: form.payment_type === 'monthly' ? form.monthly_sessions : null,
-          first_class_date: form.first_class_date || null,
-          end_date: form.payment_type === 'monthly' ? form.end_date || null : null,
-          force_rebuild_if_mismatch: true,
           room_id: form.room_id || null,
-          Memo: form.memo || null
+          Memo: form.memo || null,
+          ...scheduleFields,
         };
         if (String(form.paid_at || '') !== String(form.original_paid_at || '')) {
           body.paid_at = form.paid_at ? form.paid_at : null;
@@ -3772,8 +3783,6 @@ const submitEdit = async () => {
         if (res.ok) {
           const payload = await res.json().catch(() => ({}));
           const sync = payload?.session_sync || {};
-          const baseline = editScheduleBaseline.value;
-          const scheduleChanged = baseline != null && scheduleFingerprintForEdit(form) !== baseline;
           let scheduleAutoRebuildOk = false;
           if (scheduleChanged) {
             const rbRes = await fetch(`/api/v1/student-classes/${id}`, {
