@@ -511,12 +511,6 @@ parameters:
 			path: app/Http/Controllers/AlertController.php
 
 		-
-			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$student\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/AlertController.php
-
-		-
 			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\:\:\$id\.$#'
 			identifier: property.notFound
 			count: 2
@@ -2815,12 +2809,6 @@ parameters:
 			path: app/Http/Controllers/LearningRecordTeacherCommentController.php
 
 		-
-			message: '#^Access to an undefined property App\\Models\\Student\:\:\$CampusID\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/LineWebhookController.php
-
-		-
 			message: '#^Access to an undefined property App\\Models\\Student\:\:\$id\.$#'
 			identifier: property.notFound
 			count: 1
@@ -3040,12 +3028,6 @@ parameters:
 			message: '#^Access to an undefined property App\\Models\\Student\:\:\$id\.$#'
 			identifier: property.notFound
 			count: 3
-			path: app/Http/Controllers/ParentPortalController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\Student\:\:\$name\.$#'
-			identifier: property.notFound
-			count: 1
 			path: app/Http/Controllers/ParentPortalController.php
 
 		-
@@ -4081,12 +4063,6 @@ parameters:
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
-			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$student\.$#'
-			identifier: property.notFound
-			count: 2
-			path: app/Http/Controllers/StudentClassController.php
-
-		-
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$time\.$#'
 			identifier: property.notFound
 			count: 2
@@ -4321,12 +4297,6 @@ parameters:
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
-			message: '#^Access to an undefined property App\\Models\\Student\:\:\$CampusID\.$#'
-			identifier: property.notFound
-			count: 7
-			path: app/Http/Controllers/StudentController.php
-
-		-
 			message: '#^Access to an undefined property App\\Models\\Student\:\:\$ClassID\.$#'
 			identifier: property.notFound
 			count: 4
@@ -4360,12 +4330,6 @@ parameters:
 			message: '#^Access to an undefined property App\\Models\\Student\:\:\$id\.$#'
 			identifier: property.notFound
 			count: 8
-			path: app/Http/Controllers/StudentController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\Student\:\:\$name\.$#'
-			identifier: property.notFound
-			count: 1
 			path: app/Http/Controllers/StudentController.php
 
 		-
@@ -4534,12 +4498,6 @@ parameters:
 			message: '#^Access to an undefined property App\\Models\\Student\:\:\$id\.$#'
 			identifier: property.notFound
 			count: 14
-			path: app/Http/Controllers/SwipeRfidController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\Student\:\:\$name\.$#'
-			identifier: property.notFound
-			count: 5
 			path: app/Http/Controllers/SwipeRfidController.php
 
 		-
@@ -5809,12 +5767,6 @@ parameters:
 			path: app/Services/RescheduleSessionService.php
 
 		-
-			message: '#^Access to an undefined property App\\Models\\Student\:\:\$CampusID\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Services/RescheduleSessionService.php
-
-		-
 			message: '#^Access to an undefined property App\\Models\\Student\:\:\$id\.$#'
 			identifier: property.notFound
 			count: 3
@@ -6203,3 +6155,9 @@ parameters:
 			identifier: smallerOrEqual.alwaysFalse
 			count: 1
 			path: app/Services/ManualSessionBookingService.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>CampusID" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Services/SessionProjectionReadService.php
