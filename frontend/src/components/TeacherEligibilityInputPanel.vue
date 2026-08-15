@@ -4,7 +4,7 @@
       <div>
         <div class="eyebrow"><span class="material-symbols-outlined">fact_check</span>資料補登與審核</div>
         <h3>把系統無法自動得知的薪資要件補進來</h3>
-        <p>假日／公休是登記「哪一天全校放假」；請假／補課才是幫某一位老師補資料。送出後會出現在右側，核准前可以修改或撤回。</p>
+        <p>全校放假請用課程管理的「連假批次請假」。這裡平常是補系統沒抓到的老師請假；假日曆只在薪資缺資料時才用。送出後核准前可修改或撤回。</p>
       </div>
       <button class="btn-outline small" type="button" :disabled="loading" @click="loadInputs">
         <span class="material-symbols-outlined">sync</span>更新待辦
@@ -36,9 +36,9 @@
         <template v-if="formType === 'event'">
           <label>資料類型
             <select v-model="eventForm.event_type">
-              <option value="holiday">假日（計算16小時）</option>
-              <option value="official_closure">官方活動／統一公休</option>
               <option value="leave">請假／補課抵扣</option>
+              <option value="holiday">假日曆補登（少用）</option>
+              <option value="official_closure">官方活動／統一公休（少用）</option>
             </select>
           </label>
           <p class="field-hint">{{ eventHint }}</p>
@@ -231,7 +231,7 @@ const inputRecords = reactive({ events: [], achievements: [], deductions: [] });
 
 const today = new Date().toISOString().slice(0, 10);
 const eventForm = reactive({
-  event_type: 'holiday', event_date: props.start || today, teacher_id: '', hours: '', leave_type: '',
+  event_type: 'leave', event_date: props.start || today, teacher_id: '', hours: '', leave_type: '',
   holiday_leave_hours: '', makeup_completed: '', evidence: '',
 });
 const achievementForm = reactive({
@@ -307,7 +307,7 @@ function deductionLabel(key) {
 function branchPayload(payload) { return props.branchId ? { ...payload, branch_id: Number(props.branchId) } : payload; }
 function resetForm() {
   editingKey.value = '';
-  eventForm.event_type = 'holiday'; eventForm.event_date = props.start || today; eventForm.teacher_id = ''; eventForm.hours = '';
+  eventForm.event_type = 'leave'; eventForm.event_date = props.start || today; eventForm.teacher_id = ''; eventForm.hours = '';
   eventForm.leave_type = ''; eventForm.holiday_leave_hours = ''; eventForm.makeup_completed = ''; eventForm.evidence = '';
   achievementForm.teacher_id = ''; achievementForm.student_id = ''; achievementForm.outcome_key = 'student_outcome'; achievementForm.subject = '';
   achievementForm.award_year = ''; achievementForm.evidence = ''; achievementForm.starts_on = props.start || today; achievementForm.ends_on = props.end || today;
@@ -336,7 +336,7 @@ function startEdit(item) {
   formType.value = item.kind;
   const row = item.row || {};
   if (item.kind === 'event') {
-    eventForm.event_type = row.event_type || 'holiday';
+    eventForm.event_type = row.event_type || 'leave';
     eventForm.event_date = row.event_date || today;
     eventForm.teacher_id = row.teacher_id ? String(row.teacher_id) : '';
     eventForm.hours = row.hours ?? '';

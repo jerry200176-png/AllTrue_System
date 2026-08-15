@@ -9,10 +9,10 @@ updates:
       - director
     importance: digest
     title: 薪資補登可先改再核
-    summary: 假日是全校放假登記；送出後、核准前可修改或撤回。
+    summary: 全校放假請走課程管理；這裡預設幫老師補請假。
     items:
       - category: improved
-        text: 假日／公休是登記全分校哪一天放假，不是幫某個老師請假。
+        text: 全校放假用課程管理「連假批次請假」；這裡預設是幫老師補請假。
       - category: added
         text: 待審核資料可在右側清單修改或撤回，核准後才會算進薪資。
     source_refs:
