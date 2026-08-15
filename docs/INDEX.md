@@ -269,6 +269,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `docs/TECH_DEBT.md` | TD-NNN 技術債清單 |
 | `docs/DANGEROUS_OPERATIONS.md` | 高風險操作清單與 SOP |
 | `docs/DEPLOYMENT.md` | 部署架構說明 |
+| `docs/STAGING_ENVIRONMENT.md` | staging 環境（同一台 Pi、不同 port/DB）設定與部署流程（issue #868） |
 | `docs/DB_PERF.md` | DB 效能優化記錄 |
 | `docs/SECURITY.md` | 安全設計決策 |
 | `docs/RULE_DESIGN_SYSTEM.md` | **設計系統唯一真相來源**（淺色底 + navy 墨字 + 品牌橘黃主色、金額 tabular、不用 gradient mesh）；所有前端 UI 照此生成 |
