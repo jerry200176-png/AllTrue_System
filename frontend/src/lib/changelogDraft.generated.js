@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.08.15",
     "date": "2026-08-15",
     "title": "2026.08.15 草稿（未發布）",
-    "summary": "陳姝彣收帳顯示改回合約金額；搜尋含表情符號不再讓學生名單崩潰",
+    "summary": "計費模式轉換後標示舊收據可能已被取代；陳姝彣收帳顯示改回合約金額",
     "audience": [
       "teacher",
       "director"
@@ -18,6 +18,7 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "計費模式轉換後標示舊收據可能已被取代",
           "陳姝彣收帳顯示改回合約金額",
           "搜尋含表情符號不再讓學生名單崩潰",
           "未來堂次帶分校，不再顯示 Branch"
@@ -25,6 +26,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "計費模式轉換後標示舊收據可能已被取代",
       "陳姝彣收帳顯示改回合約金額",
       "搜尋含表情符號不再讓學生名單崩潰",
       "未來堂次帶分校，不再顯示 Branch"
