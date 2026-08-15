@@ -1,0 +1,54 @@
+name: TD-076 occurrence identity backfill (dry-run only)
+
+# SELECT/report only. This workflow has no execute/rollback path.
+on:
+  workflow_dispatch:
+    inputs:
+      student_course_id:
+        description: Optional StudentClass.ID (empty = all courses)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: td076-occurrence-identity-backfill-dry-run
+  cancel-in-progress: false
+
+jobs:
+  dry-run:
+    name: Production identity backfill dry-run
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Run artisan dry-run on production
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          STUDENT_COURSE_ID: ${{ inputs.student_course_id }}
+        run: |
+          set -euo pipefail
+          if [ -n "${STUDENT_COURSE_ID}" ]; then
+            [[ "$STUDENT_COURSE_ID" =~ ^[0-9]+$ ]] || { echo "student_course_id must be numeric" >&2; exit 1; }
+          fi
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes "${PI_SSH_USER}@${PI_SSH_HOST}" STUDENT_COURSE_ID="$STUDENT_COURSE_ID" 'bash -s' <<'ENDSSH'
+          set -euo pipefail
+          cd /home/admin/backend
+          if [ -n "${STUDENT_COURSE_ID}" ]; then
+            php artisan schedules:backfill-occurrence-identity --student-course-id="$STUDENT_COURSE_ID"
+          else
+            php artisan schedules:backfill-occurrence-identity
+          fi
+          echo "REPAIR_STATE=DRY_RUN_VERIFIED_NO_MUTATION"
+          ENDSSH

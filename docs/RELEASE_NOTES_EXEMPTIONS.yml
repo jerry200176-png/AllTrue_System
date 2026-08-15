@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-08-15-td076-phase3-backfill
+    changelog_date: "2026-08-15"
+    changelog_title: "chore(schedule): TD-076 Phase 3 回填命令（預設 dry-run）"
+    reason: 僅新增預設 dry-run 的回填命令與報告 workflow；教職員畫面與調課操作不變，也不寫 production 資料。
+
   - id: silent-2026-08-15-td076-phase2-dual-write
     changelog_date: "2026-08-15"
     changelog_title: "chore(schedule): TD-076 Phase 2 雙寫身分欄（旗標預設關）"
