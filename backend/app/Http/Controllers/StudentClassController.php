@@ -2195,6 +2195,7 @@ class StudentClassController extends Controller
                 'DueDate'        => $dueDate,
                 'TotalAmount'    => $totalAmount,
                 'PaidAmount'     => 0,
+                'ScheduleModeAtIssue' => $newCourse->ScheduleMode,
                 'Status'         => 'unpaid',
                 'Note'           => '',
                 'billing_period' => $billingPeriod,
