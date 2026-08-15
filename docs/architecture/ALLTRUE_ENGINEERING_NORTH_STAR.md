@@ -36,9 +36,9 @@ Keep [`ADR_004_atomic_reschedule_boundary.md`](../ADR_004_atomic_reschedule_boun
 one transaction, `RescheduleSessionService::execute()`, idempotent replay.
 The campaign changes **how the row is stored**, not the atomic write boundary.
 
-**No schema / dual-write / backfill DEV until Founder GO on the RFC.**  
-Phase 0 (inventory + golden tests that lock *current* behavior) may proceed as
-T0/T1 after this plan merges.
+Founder GO 2026-08-15: **Phase 1+2 only** (nullable identity columns + dual-write
+behind `FEATURE_SCHEDULE_OCCURRENCE_V2`, default off). No unique index, no
+backfill, no reader switch, no stop-chain until a later GO.
 
 ## Parallel work (allowed without waiting for TD-076)
 
