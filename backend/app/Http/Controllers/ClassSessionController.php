@@ -577,7 +577,9 @@ class ClassSessionController extends Controller
         // Eager-load student: buildProjectedFromEffectiveDates() reads
         // $class->student->CampusID per class for projected-slot branch_id
         // (in-app #235) -- without this it's an N+1, one query per class.
-        $classes = StudentClass::query()->whereIn('ID', $classIds)->with('student')->get()->keyBy('ID');
+        $classesQuery = StudentClass::query()->with('student');
+        $classesQuery->whereIn('ID', $classIds);
+        $classes = $classesQuery->get()->keyBy('ID');
         $schedules = Schedule::query()
             ->whereIn('student_course_id', $classIds)
             ->whereDate('schedule_date', '>=', $rangeStart)
