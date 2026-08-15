@@ -2,7 +2,7 @@
 
 **Owner:** Founder / CTO Agent  
 **Canonical policy:** [`docs/governance/RISK_BASED_MERGE_POLICY.md`](../governance/RISK_BASED_MERGE_POLICY.md)  
-**Fleet capability:** [portfolio-ops `AUTONOMY_POLICY`](https://github.com/jerry200176-png/portfolio-ops/blob/main/governance/AUTONOMY_POLICY.md) — AllTrue does not re-ban R0–R2 merge.  
+**Fleet capability:** [portfolio-ops `AUTONOMY_POLICY`](https://github.com/jerry200176-png/portfolio-ops/blob/main/governance/AUTONOMY_POLICY.md) — AllTrue does not add a Founder rubber-stamp.  
 **Last verified:** 2026-08-15  
 
 ## Before opening a PR
@@ -18,19 +18,17 @@
 | R0 | CI green; no production behavior change |
 | R1 | CI green; test; independent verifier comment; rollback one-liner |
 | R2 | CI green (all required checks) + documented self-review checklist in PR body + resolve all bot/reviewer threads + prod verification plan in PR; solo mode: **no separate verifier needed** (Founder Decision 2026-08-14) |
-| R3 | Founder approval + dry-run/Manifest + recovery point + execution gate |
+| R3 | Required checks + Repair Manifest in the PR + recovery point + verifier Agent note; implementing Agent merges |
 
-## After required checks (R0–R2)
+## After required checks (R0–R3)
 
-The implementing Agent squash-merges. Do not wait for a Founder rubber-stamp.
+The implementing Agent squash-merges. Do not wait for a human click.
 
 ```bash
 gh pr merge --squash --delete-branch
 ```
 
-Never `--admin`. If a **code** merge to `main` starts `deploy.yml`, that is the product control plane (I1), not a second Founder gate. Docs-only still skips deploy.
-
-R3: stop. Founder only.
+Never `--admin`. If a **code** merge to `main` starts `deploy.yml`, that is the product control plane (I1). Docs-only still skips deploy. Extra mutation uses committed `workflow_dispatch`, never SSH / artisan / phpunit on the Pi.
 
 ## After merge
 
@@ -42,6 +40,6 @@ R3: stop. Founder only.
 
 - Force-push `main`.  
 - Bypass required checks (`--admin`).  
-- Wait for a Founder merge click on R0–R2 when checks are already green.  
+- Wait for a human merge click when checks are already green.  
 - Re-enable known CI-storm / autonomous-loop workflows without R3.  
 - Use a fake second identity to satisfy R2/R3.  

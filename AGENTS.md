@@ -19,7 +19,7 @@
 **SOP（防重踩同坑）**：收到任務後**先讀文檔再打程式**，禁止只靠對話上下文硬改。高風險模組（代課／評量／智慧行事曆合併／扣堂／繳費提醒等）必須對照下面第 2、4 步與 `AI_REGRESSION_LESSONS` 文末**模組索引表**對應 §，再動 `backend/`、`frontend/src/`。
 
 0. **`docs/governance/COMPANY_CONSTITUTION.md`** + **`docs/sop/AGENT_PREFLIGHT.md`**（公司根政策）  
-   Merge 能力以艦隊 **portfolio-ops** 為準：required GitHub checks 綠了就 `gh pr merge --squash`（R0–R2）。不要等 Founder 再點一次。R3 / 額外 production mutation / 憑證 / Gmail / 關 issue / 改歷史仍是 Founder。產品 P0（禁止 Pi 上測、campus isolation）與 Control Plane I1（只有 `deploy.yml`）仍有效，但**不得**把 R0–R2 merge 再禁回去。
+   操作者是 **Agent**。艦隊 **portfolio-ops** `AUTONOMY_POLICY`：required checks 綠了就 `gh pr merge --squash`（R0–R3；R3 要 Repair Manifest）。關 issue、寄任務相關信、dispatch 已在 main 上的 workflow，都自己做。不要等人點頭。機器禁令：Pi SSH / artisan / phpunit、印 secrets、force-push、`--admin`、Gmail 刪信。產品 P0 與 Control Plane I1 仍有效。
 1. `.cursorrules`（P0 事故 + 安全快評 + 工作流程概覽）— **自動載入，已讀**
 2. **`docs/INDEX.md`（導航地圖，決定接下來只讀哪些章節）— 必讀，省 token 關鍵**
 2c. **現行工程主線（Claude Code / Codex / Cursor 共用）**：[`docs/architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md`](docs/architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md)。禁止整包重寫；排課根治見 [`RFC_SCHEDULE_OCCURRENCE_IDENTITY.md`](docs/architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md)（TD-076）。沒讀這兩份就不要改 `schedules` 寫入形狀。

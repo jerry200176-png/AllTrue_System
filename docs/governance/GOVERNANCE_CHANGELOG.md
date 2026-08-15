@@ -1,5 +1,12 @@
 # Governance changelog
 
+## 2026-08-15 — Agent is the operator (constitution pin stays 0.1.0)
+
+- Implementing Agent owns merge R0–R3, issue close, task mail, and committed
+  workflow dispatch. Repair Manifest still required for R3 data writes.
+- Machine bans: Pi SSH / artisan / phpunit, secret print, force-push, `--admin`.
+- Overlay pin remains 0.1.0.
+
 ## 2026-08-15 — Fleet merge capability (constitution pin stays 0.1.0)
 
 - Portfolio-ops is the fleet authority. Agents squash-merge AllTrue R0–R2 when

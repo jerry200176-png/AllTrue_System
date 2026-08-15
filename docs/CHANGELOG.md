@@ -1,3 +1,10 @@
+## 2026-08-15 — docs(gov): Agent 是操作者（不再等人點頭）
+
+<!-- release-notes: silent_ship=silent-2026-08-15-agent-operator -->
+
+- 艦隊政策改為 Agent 負責 merge / 關 issue / 寄任務信 / dispatch 已提交的 workflow。
+- AllTrue 仍禁 Pi SSH、印 secrets、force-push。R3 要 Repair Manifest，不要 Founder 橡皮圖章。
+
 ## 2026-08-15 — docs(gov): 艦隊 merge 政策指標（R0–R2 驗收後 Agent 合入）
 
 <!-- release-notes: silent_ship=silent-2026-08-15-fleet-merge-pointer -->
