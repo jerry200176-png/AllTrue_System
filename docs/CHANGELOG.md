@@ -1,3 +1,10 @@
+## 2026-08-15 — fix(billing): 陳姝彣收帳顯示改回合約金額
+
+<!-- release-notes: staff_update=staff-2026-08-15-tuition-charge-display-1734 -->
+
+- 收帳列表對已收款、且帳單已是正確總額的課程，不再顯示過期的錯誤合約金額。
+- 只改顯示用合約金額；已開立帳單與實收紀錄不變。
+
 ## 2026-08-15 — fix(students): 搜尋含表情符號不再讓學生名單崩潰
 
 <!-- release-notes: silent_ship=silent-2026-08-15-student-name-utf8mb3-like -->

@@ -4,6 +4,36 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-15-tuition-charge-display-1734",
+    "publishedAt": "2026-08-15",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "收帳金額顯示修正",
+    "summary": "已收款課程會顯示實際合約總額，不再出現舊的錯誤數字。",
+    "items": [
+      "收帳頁會跟已開立帳單同一金額，不再顯示過期的錯誤總額。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "收帳頁會跟已開立帳單同一金額，不再顯示過期的錯誤總額。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-15:tuition-charge-display-1734"
+    ],
+    "date": "2026-08-15",
+    "version": "2026.08.15"
+  },
+  {
     "id": "staff-2026-08-15-teacher-home-projected-campus",
     "publishedAt": "2026-08-15",
     "effectiveAt": null,
