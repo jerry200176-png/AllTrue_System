@@ -164,7 +164,7 @@ only freezes identity on the destination while the chain still grows.
 ### Phase 3 — Backfill (Repair Manifest; execute still gated)
 
 - Command `schedules:backfill-occurrence-identity` (default dry-run).
-- Dry-run workflow: `td076-occurrence-identity-backfill-dry-run.yml` (no execute path).
+- Dry-run: `php artisan schedules:backfill-occurrence-identity` after deploy (no Pi laptop artisan; use a later committed dry-run workflow if needed).
 - Execute requires `--force` + `ALLOW_PROD_REPAIR=1` + `I_APPROVE_TD076_OCCURRENCE_BACKFILL=1` + snapshot.
 - Do not run execute on Pi until a later GO. Do not enable `FEATURE_SCHEDULE_OCCURRENCE_V2`.
 

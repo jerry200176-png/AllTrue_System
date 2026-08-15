@@ -36,7 +36,7 @@ class BackfillScheduleOccurrenceIdentityTest extends TestCase
 
         $this->artisan('schedules:backfill-occurrence-identity', [
             '--student-course-id' => $courseId,
-        ])->assertOk();
+        ])->assertExitCode(0);
 
         $live->refresh();
         $this->assertNull($live->original_schedule_date);
@@ -57,7 +57,7 @@ class BackfillScheduleOccurrenceIdentityTest extends TestCase
             '--student-course-id' => $courseId,
             '--execute' => true,
             '--snapshot' => $snapshot,
-        ])->assertOk();
+        ])->assertExitCode(0);
 
         $live->refresh();
         $this->assertSame('2026-07-01', substr((string) $live->original_schedule_date, 0, 10));
@@ -67,7 +67,7 @@ class BackfillScheduleOccurrenceIdentityTest extends TestCase
             '--rollback' => true,
             '--execute' => true,
             '--snapshot' => $snapshot,
-        ])->assertOk();
+        ])->assertExitCode(0);
 
         $live->refresh();
         $this->assertNull($live->original_schedule_date);
@@ -92,7 +92,7 @@ class BackfillScheduleOccurrenceIdentityTest extends TestCase
             '--student-course-id' => $courseId,
             '--execute' => true,
             '--snapshot' => $snapshot,
-        ])->assertOk();
+        ])->assertExitCode(0);
 
         $a->refresh();
         $b->refresh();
