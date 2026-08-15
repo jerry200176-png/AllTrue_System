@@ -5763,6 +5763,24 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\Schedule\:\:\$id\.$#'
 			identifier: property.notFound
+			count: 4
+			path: app/Services/RescheduleSessionService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Schedule\:\:\$original_schedule_date\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/RescheduleSessionService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Schedule\:\:\$original_start_time\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/RescheduleSessionService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Schedule\:\:\$student_course_id\.$#'
+			identifier: property.notFound
 			count: 2
 			path: app/Services/RescheduleSessionService.php
 
@@ -5811,7 +5829,13 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\Schedule\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 6
+			count: 7
+			path: app/Services/RescheduleSessionService.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\ScheduleChangeLog\:\:create\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
 			path: app/Services/RescheduleSessionService.php
 
 		-

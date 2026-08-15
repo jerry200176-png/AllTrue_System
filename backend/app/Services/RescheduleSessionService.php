@@ -320,15 +320,17 @@ class RescheduleSessionService
             : null;
 
         if (!$frozenDate || !$frozenTime) {
-            $previous = Schedule::where('student_course_id', (int) $target->student_course_id)
+            $stamped = Schedule::where('student_course_id', (int) $target->student_course_id)
                 ->whereDate('schedule_date', $oldDate)
                 ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$fromTime])
                 ->where('id', '<>', (int) $target->id)
+                ->whereNotNull('original_schedule_date')
+                ->whereNotNull('original_start_time')
                 ->orderByDesc('id')
                 ->first();
-            if ($previous && $previous->original_schedule_date && $previous->original_start_time) {
-                $frozenDate = Carbon::parse((string) $previous->original_schedule_date)->toDateString();
-                $frozenTime = substr((string) $previous->original_start_time, 0, 5);
+            if ($stamped) {
+                $frozenDate = Carbon::parse((string) $stamped->original_schedule_date)->toDateString();
+                $frozenTime = substr((string) $stamped->original_start_time, 0, 5);
             } else {
                 $frozenDate = Carbon::parse($oldDate)->toDateString();
                 $frozenTime = $fromTime;
