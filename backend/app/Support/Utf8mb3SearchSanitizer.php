@@ -19,4 +19,26 @@ class Utf8mb3SearchSanitizer
 
         return trim($sanitized);
     }
+
+    /**
+     * Apply a LIKE filter that utf8mb3 columns can execute.
+     * 4-byte-only terms match nothing instead of throwing SQLSTATE 1267 (#1788).
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder|\Illuminate\Database\Query\Builder  $query
+     */
+    public static function applyLike($query, string $column, ?string $term): void
+    {
+        if (trim((string) ($term ?? '')) === '') {
+            return;
+        }
+
+        $sanitized = self::forLike($term);
+        if ($sanitized === '') {
+            $query->whereRaw('1 = 0');
+
+            return;
+        }
+
+        $query->where($column, 'like', '%' . $sanitized . '%');
+    }
 }

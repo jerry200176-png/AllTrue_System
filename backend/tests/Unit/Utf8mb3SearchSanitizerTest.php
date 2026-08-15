@@ -16,4 +16,9 @@ class Utf8mb3SearchSanitizerTest extends TestCase
     {
         $this->assertSame('', Utf8mb3SearchSanitizer::forLike('🀄️'));
     }
+
+    public function test_strips_house_emoji_from_student_search_term(): void
+    {
+        $this->assertSame('蔡', Utf8mb3SearchSanitizer::forLike('蔡🏠'));
+    }
 }
