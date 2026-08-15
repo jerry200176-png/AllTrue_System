@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-08-15-td076-phase0-inventory
+    changelog_date: "2026-08-15"
+    changelog_title: "docs(arch): TD-076 Phase 0 盤點與舊 bug 鎖測"
+    reason: 僅計畫附錄與回歸測試；教職員畫面與操作不變。
+
   - id: silent-2026-08-15-resolved-bug-followup
     changelog_date: "2026-08-15"
     changelog_title: "chore(bug): 已結案回報可補一則公開說明"
