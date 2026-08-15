@@ -1,6 +1,6 @@
 # RFC: Schedule occurrence identity（TD-076 根治計畫）
 
-> **Status:** Draft plan — **not** production execute. Schema DEV needs Founder GO.  
+> **Status:** Draft plan — **not** production execute. Phase 0 inventory filled 2026-08-15. Schema DEV needs Founder GO.  
 > **Date:** 2026-08-15  
 > **Campaign card:** [`ALLTRUE_ENGINEERING_NORTH_STAR.md`](ALLTRUE_ENGINEERING_NORTH_STAR.md)  
 > **Debt / lessons:** `docs/TECH_DEBT.md` TD-076 · `docs/AI_REGRESSION_LESSONS.md` R102, R103  
@@ -218,28 +218,73 @@ Do not start Phase 2 in a second worktree while Phase 0 is open.
 - Phase 4: flag off; readers back to chain (frontend dedupe still present).
 - Phase 3 backfill: Repair Manifest inverse; do not hand-edit Pi rows.
 
-## 9. Open questions (Founder)
+## 9. Founder answers (2026-08-15) + remaining Phase 1 questions
 
-1. Exact unique key vs cancelled extras.
-2. Whether `ClassSession` stores the frozen original start or only current.
-3. Timing vs Laravel 8 (TD-014): **do not combine**.
+Answered (lock these; do not “simplify” in a later PR):
 
-Until those are answered, agents may only execute **Phase 0**.
+1. **Leave:** the occurrence **still exists**. Status is leave. It **does not deduct a purchased session and does not count as billed money** (`AttendanceStatus` `leave` is `deductible=false`, `payable=false`; `rowOccupiesPurchasedQuota` is false).
+2. **Substitute teacher:** the teacher **on that occurrence** (schedule pin / that session’s substitute row), not the contract teacher on `StudentClass`.
+3. **Past attendance:** once a session is attended, **lock the teacher who was there**. Changing the contract teacher must not rewrite history (`ContractTeacherChangePreservesHistoryTest`, in-app #207).
+4. **Production:** no schema / dual-write / Pi migrate until a later GO. Phase 0 is docs + tests only.
+
+Still open for Phase 1 (not blocking Phase 0):
+
+- Exact unique key vs cancelled extras (extras stay **out** of the identity unique key until a later decision).
+- Whether `ClassSession` stores frozen original start or only current.
+- Timing vs Laravel 8 (TD-014): **do not combine**.
+
+Until Phase 1 GO, agents may only execute **Phase 0**.
 
 ---
 
-## Appendix A — Write paths (fill in Phase 0)
+## Appendix A — Write paths (Phase 0, 2026-08-15)
+
+Inventory: `rg -n "original_schedule_id|status=.rescheduled" backend/app`.
 
 | Path | Inserts chain? | Notes |
 |---|---|---|
-| `RescheduleSessionService::execute()` | TBD | Must remain the only reschedule writer |
-| `ScheduleController::store()` | TBD | R102: duplicate-delete may not fire |
-| *(add rows)* |  |  |
+| `RescheduleSessionService::execute()` | **yes** | ADR-004 atomic writer: creates `rescheduled` anchor + `scheduled` destination with `original_schedule_id`. Must remain the only **product** reschedule API. |
+| `ScheduleController::store()` | **yes** | Generic exception store. R102: same-slot duplicate-delete may miss a live `scheduled` row. Also creates `status=leave` (`deduction=0`) without `original_schedule_id`. |
+| `ClassSessionController` (substitute / move) | **yes** | Can `Schedule::create` a `rescheduled`+`scheduled` pair when pinning a substitute onto a moved session. Same ghost-row delete pattern as `ScheduleController`. |
+| `StudentClassController` (substitute display pin) | **yes** | Writes `rescheduled` + destination `original_schedule_id` so calendar prefers the substitute teacher for that slot. |
+| `SubstituteController` | reads/updates chain | Looks up `rescheduled` + `original_schedule_id`; must not invent a second live destination. |
+| `AttendanceController` leave path | **no chain** | `Schedule::create` `status=leave`, `deduction=0`. Occurrence stays; no purchased-session deduct. |
+| `PaymentReportController` / `ParentPortalController` | read only | Treat `rescheduled` as a session status in some lists — do not add writes. |
+| `LearningRecordController` | read substitute pin | Joins `schedules.original_schedule_id` to show who taught; must keep attended lock. |
 
-## Appendix B — Read / merge paths (fill in Phase 0)
+## Appendix B — Read / merge paths (Phase 0, 2026-08-15)
 
 | Path | Walks chain? | Notes |
 |---|---|---|
-| `frontend/src/lib/calendarExceptionMerge.js` | yes | R102 dedupe |
-| `frontend/src/lib/calendarOccurrenceMerge.js` | yes | R103 orphan skip |
-| *(add rows)* |  |  |
+| `frontend/src/lib/calendarExceptionMerge.js` | yes | R102 same-slot supersede (not same-date-only). Leave on that course/date hides the scheduled exception card. |
+| `frontend/src/lib/calendarOccurrenceMerge.js` | yes | R103: skip `scheduled`+`original_schedule_id` with no materialized `ClassSession`. |
+| `frontend/src/lib/sessionDates.js` | yes | Treats `scheduled`+`original_schedule_id` as a reschedule destination. |
+| `frontend/src/composables/course-management/useRescheduleAndMakeup.js` | yes | Splits leave vs destination lists. |
+| `frontend/src/pages/SmartCalendar.vue` | yes | Uses `original_schedule_id` when matching a cell. |
+| `frontend/src/lib/sessionOccurrenceFilter.js` | no | Shared “effective session”; `leave` does not occupy quota. |
+| `frontend/src/lib/sessionConsistency.js` | no | Attendance vs eval labels (`leave_requested` #194). |
+| `SubstituteScheduleService` / `SubstituteService` | yes | Live substitute = `scheduled` + `original_schedule_id` + other teacher. |
+| `ClassSessionController::index` teacher join | yes | Derived-table `MAX(id)` of substitute rows (TD-058). |
+
+## Appendix C — Extra / makeup rows (out of identity unique key)
+
+`schedules.type='extra'` makeup rows are **not** the original occurrence. Phase 1 unique key must not fold them in. They remain a separate live row until a later RFC decision (nonstandard duration / makeup identity).
+
+## Appendix D — Regression lock commands (do not drop)
+
+These must stay green. They encode old production bugs; “simplifying” merge to make TD-076 easier is a regression.
+
+```bash
+cd frontend && node src/lib/scheduleOccurrencePhase0.lock.test.js
+cd frontend && npm run test:calendar
+cd backend && ./vendor/bin/phpunit --filter 'RescheduleSessionPrecisionTest|RescheduleOccupiedSlotTest|RescheduleClassSessionSyncTest|ScheduleStoreOrphanPreventionTest|SubstituteRescheduleRegressionTest|ContractTeacherChangePreservesHistoryTest|AttendanceStatusSemanticsTest|ClassSessionsTeacherVisibilityAfterSubstituteTest|AttendanceLeaveStatusContractTest'
+```
+
+| Lock | Bug / rule |
+|---|---|
+| `scheduleOccurrencePhase0.lock.test.js` + `calendarExceptionMerge.test.js` | R102 ghost boxes SC#2688 / SC#1249 |
+| `calendarOccurrenceMerge.test.js` | R103 calendar-only orphan |
+| `sessionOccurrenceFilter.test.js` + `AttendanceStatusSemanticsTest` | leave exists, no deduct / no pay |
+| `ContractTeacherChangePreservesHistoryTest` | in-app #207 attended teacher lock |
+| `ClassSessionsTeacherVisibilityAfterSubstituteTest` | occurrence substitute teacher wins display |
+| `sessionConsistency.test.js` | #194 leave_requested visible in attendance + eval |

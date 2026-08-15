@@ -1,3 +1,10 @@
+## 2026-08-15 — docs(arch): TD-076 Phase 0 盤點與舊 bug 鎖測
+
+<!-- release-notes: silent_ship=silent-2026-08-15-td076-phase0-inventory -->
+
+- 只補排課身分計畫的寫入／讀取清單，以及防止 R102／R103／請假扣堂／鎖老師復發的測試。
+- 不改 `schedules` 寫入形狀，不遷移 production。
+
 ## 2026-08-15 — chore(bug): 已結案回報可補一則公開說明
 
 <!-- release-notes: silent_ship=silent-2026-08-15-resolved-bug-followup -->
