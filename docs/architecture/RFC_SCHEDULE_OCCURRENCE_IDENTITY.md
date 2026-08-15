@@ -1,6 +1,6 @@
 # RFC: Schedule occurrence identity（TD-076 根治計畫）
 
-> **Status:** Phase 0 merged; Phase 1+2 in code (nullable columns + dual-write, flag **default off**). No unique index, no read cutover, no stop-chain.  
+> **Status:** Phase 0–2 merged (`5634e9e9`). Phase 3 = dry-run backfill command (execute gated; not run on production). No read cutover, no stop-chain.  
 > **Date:** 2026-08-15  
 > **Campaign card:** [`ALLTRUE_ENGINEERING_NORTH_STAR.md`](ALLTRUE_ENGINEERING_NORTH_STAR.md)  
 > **Debt / lessons:** `docs/TECH_DEBT.md` TD-076 · `docs/AI_REGRESSION_LESSONS.md` R102, R103  
@@ -161,11 +161,12 @@ only freezes identity on the destination while the chain still grows.
 - No read-path switch. Keep frontend R102/R103.
 - Rollback: flag stays off; unused nullable columns.
 
-### Phase 3 — Backfill (Repair Manifest; Founder-gated data)
+### Phase 3 — Backfill (Repair Manifest; execute still gated)
 
-- Dry-run report of chain heads vs identity collisions.
-- Founder GO + backup + Repair Manifest.
-- Do not run on Pi as “test”.
+- Command `schedules:backfill-occurrence-identity` (default dry-run).
+- Dry-run: `php artisan schedules:backfill-occurrence-identity` after deploy (no Pi laptop artisan; use a later committed dry-run workflow if needed).
+- Execute requires `--force` + `ALLOW_PROD_REPAIR=1` + `I_APPROVE_TD076_OCCURRENCE_BACKFILL=1` + snapshot.
+- Do not run execute on Pi until a later GO. Do not enable `FEATURE_SCHEDULE_OCCURRENCE_V2`.
 
 ### Phase 4 — Read cutover (flag on in production after smoke)
 
@@ -194,7 +195,7 @@ only freezes identity on the destination while the chain still grows.
 | 1 contract | same as 0 + Founder | decided column list in §4 |
 | 2–5 | one implementer + independent review | Draft PR + evidence + unverified list |
 
-Phase 0 is merged (`b49d0efe`). Do not start Phase 3+ without a later GO.
+Phase 0–2 merged (`5634e9e9`). Phase 3 ships the dry-run/gated command only; do not execute production backfill or start Phase 4/5 without a later GO.
 
 ---
 
@@ -272,7 +273,7 @@ These must stay green. They encode old production bugs; “simplifying” merge 
 ```bash
 cd frontend && node src/lib/scheduleOccurrencePhase0.lock.test.js
 cd frontend && npm run test:calendar
-cd backend && ./vendor/bin/phpunit --filter 'RescheduleSessionPrecisionTest|RescheduleOccupiedSlotTest|RescheduleClassSessionSyncTest|ScheduleStoreOrphanPreventionTest|SubstituteRescheduleRegressionTest|ContractTeacherChangePreservesHistoryTest|AttendanceStatusSemanticsTest|ClassSessionsTeacherVisibilityAfterSubstituteTest|AttendanceLeaveStatusContractTest|ScheduleOccurrenceDualWriteTest'
+cd backend && ./vendor/bin/phpunit --filter 'RescheduleSessionPrecisionTest|RescheduleOccupiedSlotTest|RescheduleClassSessionSyncTest|ScheduleStoreOrphanPreventionTest|SubstituteRescheduleRegressionTest|ContractTeacherChangePreservesHistoryTest|AttendanceStatusSemanticsTest|ClassSessionsTeacherVisibilityAfterSubstituteTest|AttendanceLeaveStatusContractTest|ScheduleOccurrenceDualWriteTest|BackfillScheduleOccurrenceIdentityTest'
 ```
 
 | Lock | Bug / rule |
@@ -284,3 +285,4 @@ cd backend && ./vendor/bin/phpunit --filter 'RescheduleSessionPrecisionTest|Resc
 | `ClassSessionsTeacherVisibilityAfterSubstituteTest` | occurrence substitute teacher wins display |
 | `sessionConsistency.test.js` | #194 leave_requested visible in attendance + eval |
 | `ScheduleOccurrenceDualWriteTest` | Phase 2: flag off = null identity; flag on = frozen identity + one log per execute; chain still exists |
+| `BackfillScheduleOccurrenceIdentityTest` | Phase 3: two-hop live head identity; extras/ghosts skipped; collisions not stamped; production execute gated |

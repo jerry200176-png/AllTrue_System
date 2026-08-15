@@ -1,3 +1,10 @@
+## 2026-08-15 — chore(schedule): TD-076 Phase 3 回填命令（預設 dry-run）
+
+<!-- release-notes: silent_ship=silent-2026-08-15-td076-phase3-backfill -->
+
+- 新增排課原始時段回填命令，預設只報告、不寫入；正式寫入需修復閘道，本包不執行。
+- 教職員調課與畫面不變，也不打開新旗標。
+
 ## 2026-08-15 — chore(schedule): TD-076 Phase 2 雙寫身分欄（旗標預設關）
 
 <!-- release-notes: silent_ship=silent-2026-08-15-td076-phase2-dual-write -->
