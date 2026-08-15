@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-08-15-fleet-merge-pointer
+    changelog_date: "2026-08-15"
+    changelog_title: "docs(gov): 艦隊 merge 政策指標（R0–R2 驗收後 Agent 合入）"
+    reason: 僅治理指標與 Agent 入口，沒有教職員可操作或可感知的產品變更。
+
   - id: silent-2026-08-15-schedule-occurrence-identity-rfc
     changelog_date: "2026-08-15"
     changelog_title: "docs(arch): 排課 occurrence 身分根治計畫（TD-076）"

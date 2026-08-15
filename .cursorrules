@@ -38,7 +38,7 @@
 **⛔ 開發環境規則（2026-04-24 起）**：
 - 所有程式碼改動只在 **WSL2 安全 task worktree** 進行（**禁止** `/home/jerry/alltrue`；政策：`docs/governance/WORKTREE_POLICY.md`；檢查：`make agent-preflight`）
 - 禁止 SSH 到 Pi `/home/admin` 直接編輯任何檔案
-- 部署唯一合法路徑：WSL2 push → PR → CI 綠 → merge → deploy.yml 自動執行
+- 部署唯一合法路徑：WSL2 push → PR → CI 綠 → **Agent squash-merge（R0–R2；艦隊 AUTONOMY_POLICY）** → deploy.yml 自動執行。不要等 Founder 再點 merge。R3 停。
 - 緊急修復例外：先在 WSL2 改、push hotfix branch、merge，Pi 自動更新
 - ⛔ **禁止直接 `git push origin main`**（含原生 git 指令）—— 必須用 feature branch → PR → merge。`scripts/git-sync.sh` 在 main 會 abort，但原生 git 指令不受此保護，AI 必須自我約束
 

@@ -1,11 +1,12 @@
 # Risk-Based Merge Policy
 
-**Version:** 1.2.0  
+**Version:** 1.3.0  
 **Effective:** 2026-07-18 (§Solo vs Multi-maintainer gate added 2026-08-08, #876; R2 independent-approval requirement dropped in solo mode 2026-08-14)  
 **Owner:** Founder / CTO Agent  
 **Status:** Canonical  
 **Founder Decision:** 2026-07-18 — risk-tiered approvals; **not** universal Founder rubber-stamp  
 **Founder Decision:** 2026-08-14 — in solo-maintainer mode, R2 no longer requires a separately-launched independent verifier; a documented self-review checklist + CI green is sufficient. R3 is unchanged (still requires Founder approval + independent technical verification) — this change is scoped to R2 only.  
+**Founder Decision:** 2026-08-15 — required GitHub checks are acceptance. After they are green, the implementing Agent squash-merges R0–R2. Do not wait for a Founder click that will not re-run CI. Fleet capability table: [portfolio-ops `AUTONOMY_POLICY`](https://github.com/jerry200176-png/portfolio-ops/blob/main/governance/AUTONOMY_POLICY.md). This file classifies **risk** and AllTrue extra gates; it does not override the fleet merge capability.  
 
 ## Purpose
 
@@ -71,6 +72,7 @@ This repo currently has **one** human maintainer (Jerry). GitHub-level `required
 
 ## Related
 
+- Fleet merge procedure: [portfolio-ops `docs/fleet-merge-policy.md`](https://github.com/jerry200176-png/portfolio-ops/blob/main/docs/fleet-merge-policy.md)  
 - [`docs/sop/MERGE_SOP.md`](../sop/MERGE_SOP.md)  
 - [`docs/governance/COMPANY_CONSTITUTION.md`](./COMPANY_CONSTITUTION.md)  
 - [`.github/pull_request_template.md`](../../.github/pull_request_template.md)  
