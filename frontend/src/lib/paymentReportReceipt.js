@@ -33,6 +33,9 @@ export function adaptPaymentReportReceipt(api, reportId) {
     receipt_number: api?.receipt_no || '—',
     report_id: reportId,
     is_backfilled: !!api?.is_backfilled,
+    // #934: course's billing mode changed since this receipt was issued —
+    // the amount/period shown may no longer reflect the current contract.
+    billing_mode_changed: !!api?.billing_mode_changed,
     content_snapshot: {
       school_name: formatReceiptBrandTitle(api?.campus_name),
       campus_name: api?.campus_name || '',

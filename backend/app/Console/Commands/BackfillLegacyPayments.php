@@ -93,6 +93,7 @@ class BackfillLegacyPayments extends Command
                                 'TotalAmount'    => (int) $sc->Charge,
                                 'PaidAmount'     => (int) $sc->Charge,
                                 'Status'         => 'paid',
+                                'ScheduleModeAtIssue' => $sc->ScheduleMode,
                                 'Note'           => '[系統補建]',
                                 'reconciled_at'  => Carbon::now(),
                                 'reconciled_by'  => null,
