@@ -1,3 +1,10 @@
+## 2026-08-15 — fix(students): 搜尋含表情符號不再讓學生名單崩潰
+
+<!-- release-notes: silent_ship=silent-2026-08-15-student-name-utf8mb3-like -->
+
+- 學生／帳務／評量姓名搜尋會先去掉 4-byte 字元再查 utf8mb3 欄位，避免 SQL collation 錯誤。
+- 純表情符號搜尋回傳空結果，不會列出全部分校學生。
+
 ## 2026-08-15 — fix(teacher-home): 未來堂次帶分校，不再顯示 Branch #0
 
 <!-- release-notes: staff_update=staff-2026-08-15-teacher-home-projected-campus -->

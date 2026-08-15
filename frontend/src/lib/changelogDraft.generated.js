@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.08.15",
     "date": "2026-08-15",
     "title": "2026.08.15 草稿（未發布）",
-    "summary": "未來堂次帶分校，不再顯示 Branch",
+    "summary": "搜尋含表情符號不再讓學生名單崩潰；未來堂次帶分校，不再顯示 Branch",
     "audience": [
       "teacher",
       "director"
@@ -18,11 +18,13 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "搜尋含表情符號不再讓學生名單崩潰",
           "未來堂次帶分校，不再顯示 Branch"
         ]
       }
     ],
     "items": [
+      "搜尋含表情符號不再讓學生名單崩潰",
       "未來堂次帶分校，不再顯示 Branch"
     ]
   },

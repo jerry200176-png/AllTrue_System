@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-08-15-student-name-utf8mb3-like
+    changelog_date: "2026-08-15"
+    changelog_title: "fix(students): 搜尋含表情符號不再讓學生名單崩潰"
+    reason: 僅避免搜尋崩潰；教職員操作路徑與畫面文案不變。
+
   - id: silent-2026-08-15-agent-operator
     changelog_date: "2026-08-15"
     changelog_title: "docs(gov): Agent 是操作者（不再等人點頭）"
