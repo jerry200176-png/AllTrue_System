@@ -571,6 +571,18 @@ parameters:
 			path: app/Http/Controllers/AlertController.php
 
 		-
+			message: '#^Call to an undefined static method App\\Models\\Campus\:\:find\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Console/Commands/RotateTelegramWebhookSecret.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\Campus\:\:where\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Console/Commands/RotateTelegramWebhookSecret.php
+
+		-
 			message: '#^Call to an undefined static method App\\Models\\Student\:\:whereIn\(\)\.$#'
 			identifier: staticMethod.notFound
 			count: 1
