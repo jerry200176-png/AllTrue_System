@@ -2,7 +2,7 @@
 
 **Version:** 0.1.0  
 **Effective:** 2026-07-18  
-**Revised:** 2026-08-15 (fleet merge capability; product does not re-ban R0–R2; overlay pin stays 0.1.0)  
+**Revised:** 2026-08-15 (Agent is operator; overlay pin stays 0.1.0)  
 **Owner:** Founder / CTO Agent  
 **Scope:** AllTrue System + sunrise-cafe (portfolio)  
 **Canonical:** This file is tool-neutral. Cursor Rules / CLAUDE.md / Skills are adapters only.
@@ -15,7 +15,7 @@ Define non-negotiable decision order, safety floors, and success definitions so 
 
 1. **Production safety & data integrity** (billing, attendance, auth, PII)
 2. **This Constitution**
-3. **Fleet merge/autonomy table** — `jerry200176-png/portfolio-ops` [`governance/AUTONOMY_POLICY.md`](https://github.com/jerry200176-png/portfolio-ops/blob/main/governance/AUTONOMY_POLICY.md) + [`docs/fleet-merge-policy.md`](https://github.com/jerry200176-png/portfolio-ops/blob/main/docs/fleet-merge-policy.md). Portfolio-ops is the control plane for every governed repo. Product overlays add required checks and domain P0; they **must not** withdraw R0–R2 merge after those checks pass.
+3. **Fleet operator table** — `jerry200176-png/portfolio-ops` [`governance/AUTONOMY_POLICY.md`](https://github.com/jerry200176-png/portfolio-ops/blob/main/governance/AUTONOMY_POLICY.md) + [`docs/fleet-merge-policy.md`](https://github.com/jerry200176-png/portfolio-ops/blob/main/docs/fleet-merge-policy.md). Portfolio-ops is the control plane. Product overlays add required checks and domain P0; they **must not** add a Founder rubber-stamp.
 4. [`CONTROL_PLANE_CONTRACT.md`](../CONTROL_PLANE_CONTRACT.md) / [`CONTRADICTION_REGISTRY.md`](../CONTRADICTION_REGISTRY.md) (AllTrue **deploy** authority: `deploy.yml` on `main` only)
 5. Product overlay SOPs (AllTrue / sunrise-cafe)
 6. `AGENTS.md` → `CLAUDE.md` → `.cursorrules` / `.cursor/rules` (adapters)
@@ -40,7 +40,7 @@ If Claude or Cursor text says it “overrides everything,” **Constitution + fl
 - Do not assume permissions (PR merge, deploy, in-app write) without Capability Registry evidence.
 - Do not re-enable sunrise `autonomous-loop` without fixing self-dispatch probes.
 - Do not require Founder approval on every PR — follow [`RISK_BASED_MERGE_POLICY.md`](./RISK_BASED_MERGE_POLICY.md) (R0–R3).
-- Do not re-ban R0–R2 squash-merge after **required** GitHub checks. A Founder click that does not re-run CI is not a control. R3, extra production mutation, credentials, Gmail, issue close, and history rewrite stay Founder-only.
+- Do not re-ban Agent squash-merge after **required** GitHub checks, including R3 with a Repair Manifest. A human click that does not re-run CI is not a control. Machine bans stay: force-push, `--admin`, production SSH / artisan / phpunit, secret print, Gmail trash/delete.
 - Do not execute production data repair without an immutable Repair Manifest + Data Repair Gate (R3).
 
 ## Agent deploy / reply conditions
