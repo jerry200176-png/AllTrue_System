@@ -1,3 +1,10 @@
+## 2026-08-15 — chore(bug): 已結案回報可補一則公開說明
+
+<!-- release-notes: silent_ship=silent-2026-08-15-resolved-bug-followup -->
+
+- 內部追蹤流程允許在已標成修好的回報上再留一則說明，不會改狀態。
+- 教職員畫面與操作不變。
+
 ## 2026-08-15 — fix(billing): 陳姝彣收帳顯示改回合約金額
 
 <!-- release-notes: staff_update=staff-2026-08-15-tuition-charge-display-1734 -->

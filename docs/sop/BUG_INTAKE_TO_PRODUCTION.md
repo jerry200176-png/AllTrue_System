@@ -71,7 +71,8 @@ IDs, or reusing a stale artifact.
 
 `bug-phase-a-triage.yml` (posts the `new`→`triaged` transition + public
 reply) and `bug-followup-comment.yml` (posts a follow-up without changing
-status) are **`workflow_dispatch`-only, no `push` fallback** — unlike the
+status; `expected_status` may be `triaged`, `in_progress`, or `resolved`)
+are **`workflow_dispatch`-only, no `push` fallback** — unlike the
 read-only dumps above. This is intentional: they write to production, so
 they are not given the request-file trigger that lets a 403'd cloud agent
 route around `workflow_dispatch`. A cloud session can do everything up to
