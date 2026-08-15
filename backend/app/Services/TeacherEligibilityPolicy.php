@@ -210,6 +210,9 @@ class TeacherEligibilityPolicy
 
         foreach ($achievements as $achievement) {
             $status = (string) ($achievement['status'] ?? 'pending');
+            if ($status === 'withdrawn') {
+                continue;
+            }
             if ($status !== 'verified') {
                 $pending[] = $achievement['outcome_key'] ?? 'achievement';
                 continue;
@@ -294,6 +297,9 @@ class TeacherEligibilityPolicy
         $pending = [];
         $active = [];
         foreach ($deductions as $deduction) {
+            if (($deduction['status'] ?? 'pending') === 'withdrawn') {
+                continue;
+            }
             if (($deduction['status'] ?? 'pending') !== 'approved') {
                 $pending[] = $deduction['deduction_key'] ?? 'deduction';
                 continue;

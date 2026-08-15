@@ -187,6 +187,11 @@ class TeacherEligibilityInputController extends Controller
         if (($data['starts_on'] ?? null) !== null && ($data['ends_on'] ?? null) !== null && $data['ends_on'] < $data['starts_on']) {
             return response()->json(['message' => 'ends_on must be on or after starts_on'], 422);
         }
+        if (($data['student_id'] ?? null) !== null) {
+            $studentQuery = DB::table('Student')->where('id', $data['student_id']);
+            if ($branchId !== null) $studentQuery->where('CampusID', $branchId);
+            if (!$studentQuery->exists()) return response()->json(['message' => 'student is outside the selected branch'], 422);
+        }
         DB::table('teacher_payroll_achievements')->where('id', $id)->update([
             'teacher_id' => $data['teacher_id'],
             'branch_id' => $branchId,
