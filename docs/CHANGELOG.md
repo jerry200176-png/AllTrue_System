@@ -1,3 +1,10 @@
+## 2026-08-15 — docs(arch): 排課 occurrence 身分根治計畫（TD-076）
+
+<!-- release-notes: silent_ship=silent-2026-08-15-schedule-occurrence-identity-rfc -->
+
+- 新增工程主線與 RFC：禁止整包重寫；排課改期改為穩定 occurrence 身分（計畫階段，無產品行為變更）。
+- Agent（Claude Code / Codex / Cursor）從 `AGENTS.md` / `CLAUDE.md` / INDEX 可找到同一份計畫。
+
 ## 2026-08-14 — fix(payroll): 待審核薪資補登可修改與撤回
 
 <!-- release-notes: staff_update=staff-2026-08-14-eligibility-pending-edit -->

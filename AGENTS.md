@@ -21,6 +21,7 @@
 0. **`docs/governance/COMPANY_CONSTITUTION.md`** + **`docs/sop/AGENT_PREFLIGHT.md`**（公司根政策）
 1. `.cursorrules`（P0 事故 + 安全快評 + 工作流程概覽）— **自動載入，已讀**
 2. **`docs/INDEX.md`（導航地圖，決定接下來只讀哪些章節）— 必讀，省 token 關鍵**
+2c. **現行工程主線（Claude Code / Codex / Cursor 共用）**：[`docs/architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md`](docs/architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md)。禁止整包重寫；排課根治見 [`RFC_SCHEDULE_OCCURRENCE_IDENTITY.md`](docs/architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md)（TD-076）。沒讀這兩份就不要改 `schedules` 寫入形狀。
 2b. 任務牽涉 **長文件 / 多份 docs** 時：讀 `docs/INDEX.md` 的速讀卡／治理節奏；`docs/AI_DOC_LITERACY.md` 只是索引 stub
 3. 需要回顧決策或 bug 時：`~/.local/bin/mempalace search "<關鍵字>"`（本機；非跨機器權威）
 4. `docs/AI_REGRESSION_LESSONS.md`（已發生過的缺口，改高風險模組前必讀；並查文末**模組對照索引**挑 §）

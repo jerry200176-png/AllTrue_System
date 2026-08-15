@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-08-15-schedule-occurrence-identity-rfc
+    changelog_date: "2026-08-15"
+    changelog_title: "docs(arch): 排課 occurrence 身分根治計畫（TD-076）"
+    reason: 僅架構計畫與 agent 入口指標，沒有教職員可操作或可感知的產品變更。
+
   - id: silent-2026-08-12-session-entitlement-transfer-core
     changelog_date: "2026-08-12"
     changelog_title: "fix(course): 建立堂次跨續購批次轉移的可稽核核心"
