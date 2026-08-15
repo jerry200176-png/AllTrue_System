@@ -557,15 +557,16 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
-| 優先級 | P1 |
+| 狀態 | **UI 已隱藏（2026-08-16），完整 API 仍 Open** |
+| 優先級 | P1 → P2（使用者不會再點到必失敗操作） |
 | 發現日期 | 2026-07-21 |
 | 發現來源 | [REVIEW] 收據 404 hotfix closeout（#1363 後） |
 | 影響模組 | `BatchInvoiceModal.vue`、`OverdueBucketsPanel.vue`、`TuitionCollectionPage.vue` |
 | 描述 | PR #1197 前端-only 上線；後端 `/invoices/batch-preview`、`/invoices/batch`、`/invoices/overdue-summary` 從未進 main。使用者若點到這些入口會固定失敗。收據已改回 payment-reports；這兩塊仍是孤兒 UI。 |
-| 建議做法 | 先確認 production 可否觸發 → 可觸發則 hide／feature-flag／disable；禁止半套 stub route。完整 API 另走 PLAN。 |
-| 清償成本估計 | 低（隱藏入口）／中（若要真做後端） |
-| 不做的代價 | 主任繼續點到必失敗操作，信任再次受損（與收據 404 同族：前端超前後端） |
+| 已做 | 依既有建議「先確認可觸發 → hide」：移除 `TuitionCollectionPage.vue` 的「批次開單」按鈕與「逾期分級」分頁入口（連同對應 ref/watch/import），使用者再也點不到這兩個必失敗的動作。未新增任何半套 stub route。 |
+| 建議做法 | 若未來真的要做，完整 API（batch-preview/batch/overdue-summary）另走 PLAN，把移除的 UI 重新接回。 |
+| 清償成本估計 | 隱藏部分已完成／中（若要真做後端） |
+| 不做的代價（剩餘） | 批次開單／逾期分級功能本身仍不存在，只是不會再誤導使用者去點 |
 
 ### TD-068：Receipt Domain T3（immutable snapshot／PDF／void／legal-info）— blocked
 
