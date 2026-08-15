@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-08-15-resolved-bug-followup
+    changelog_date: "2026-08-15"
+    changelog_title: "chore(bug): 已結案回報可補一則公開說明"
+    reason: 僅擴大內部 follow-up workflow 允許的狀態；沒有教職員可操作或可感知的產品變更。
+
   - id: silent-2026-08-15-student-name-utf8mb3-like
     changelog_date: "2026-08-15"
     changelog_title: "fix(students): 搜尋含表情符號不再讓學生名單崩潰"
