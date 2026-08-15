@@ -19,7 +19,7 @@
 
 **Also found, not in scope of the 7 categories above:**
 - `StudentIdentityAuditLog` — ✅ fully wired for cross-campus student-identity linking (`StudentIdentityService::audit()`, `app/Services/StudentIdentityService.php:266`).
-- `SecurityAuditEvent` model exists but **no code anywhere calls `::create()`/`::insert()` on it** — currently dead as an audit sink. Worth a follow-up: either wire it up or remove it (unused model tables are exactly the kind of drift #890 exists to catch).
+- ~~`SecurityAuditEvent` model exists but no code anywhere calls `::create()`~~ **Correction**: this was wrong — the initial grep only checked `::create()`/`::insert()`/`new SecurityAuditEvent(` and missed the actual call pattern, `SecurityAuditEvent::append(...)`. It's fully wired: `LineWebhookController::263`, `StudentController::500`, `ParentPortalController::304-424` (parent auth failures/success, sibling-switch). Delivered via #1420/PR #1580 (merged 2026-08-01), separate from this issue's scope. No follow-up needed here.
 
 ## Critical gaps → follow-up issues
 
@@ -32,7 +32,6 @@ Per #890's acceptance criteria ("Critical gaps 有 issue 與優先級"), the fou
 | #4 PII 匯出無稽核 | Student PII export with zero log — cannot answer "who exported what, when" for a privacy request | #1812, P1 |
 | #5b Admin 代重設密碼無稽核 | Highest-privilege account-takeover-adjacent action (super_admin can silently reset any director's password) with zero trail | #1813, P2 |
 
-`SecurityAuditEvent` dead-model cleanup is a separate, lower-priority follow-up (not security-critical by itself, but worth tracking so it doesn't rot further).
 
 ## What this document deliberately does not do
 
