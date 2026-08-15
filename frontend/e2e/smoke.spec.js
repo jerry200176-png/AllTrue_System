@@ -24,6 +24,7 @@ import { test, expect } from '@playwright/test';
 const BASE = process.env.SMOKE_BASE_URL;
 const DIRECTOR = { account: process.env.SMOKE_DIRECTOR_USER, password: process.env.SMOKE_DIRECTOR_PASS };
 const TEACHER = { account: process.env.SMOKE_TEACHER_USER, password: process.env.SMOKE_TEACHER_PASS };
+const PARENT = { name: process.env.SMOKE_PARENT_STUDENT_NAME, phone: process.env.SMOKE_PARENT_PHONE };
 
 /** 以登入頁完成登入；role: 'teacher' | 'director'。 */
 async function login(page, role, creds) {
@@ -78,6 +79,24 @@ test.describe('UI smoke — director', () => {
 
     // TODO: 可於 CourseManagement 根容器補 data-testid="course-mgmt-page" 讓斷言更穩。
     await expect(page.getByText('課程管理', { exact: false }).first()).toBeVisible();
+    expect(errors, `頁面 JS 錯誤：\n${errors.join('\n')}`).toEqual([]);
+  });
+});
+
+test.describe('UI smoke — parent portal（#983）', () => {
+  test.skip(!BASE || !PARENT.name || !PARENT.phone, '未設定 SMOKE_BASE_URL / SMOKE_PARENT_*（缺 parent secrets）— 略過');
+
+  test('parent: ?parent=1 standalone 入口登入後首頁載入', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(String(e)));
+
+    await page.goto('/?parent=1');
+    await page.locator('input[type="text"]').first().fill(PARENT.name);
+    await page.locator('input[type="tel"]').first().fill(PARENT.phone);
+    await page.getByRole('button', { name: /登入|login/i }).first().click();
+
+    // 登入成功後學生 hub（進度/課表/帳務）應該渲染，登入表單消失。
+    await expect(page.locator('input[type="tel"]')).toHaveCount(0, { timeout: 15_000 });
     expect(errors, `頁面 JS 錯誤：\n${errors.join('\n')}`).toEqual([]);
   });
 });
