@@ -34,8 +34,17 @@ boundary entirely instead of reopening it.
    `STAGING_*` secrets to the repo, and hand-write
    `/home/staging/AllTrue_System/backend/.env`.
 
-After that, `.github/workflows/staging-deploy.yml` deploys every green
-`main` automatically.
+4. **The auto-deploy workflow is not included in this PR.** `scripts/control-plane-lint.mjs`
+   (I1 enforcement) flags any tracked `.github/workflows/*.yml` that combines
+   an SSH deploy step with `git fetch origin main` / `git reset --hard
+   origin/main` as a shadow production-deploy path — it can't tell "this
+   targets a separate staging host" from static analysis, and that's by
+   design (see `docs/archive/control-plane-shadow-v1/` for why a second
+   deploy path was archived before). Until a formal `[contract-change]` PR
+   amends I1–I5 to carve out a non-production exception, deploy to staging
+   manually: SSH in, `git fetch && git reset --hard origin/main`, `composer
+   install`, `php artisan migrate --force`, rebuild frontend — same steps
+   `staging-deploy.yml` would have automated, just run by hand for now.
 
 ## Not done yet (deliberately out of scope for the first pass)
 

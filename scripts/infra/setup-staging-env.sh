@@ -92,6 +92,11 @@ cat <<NEXT
      DB_USERNAME=${STAGING_DB_USERNAME}
      DB_PASSWORD=${STAGING_DB_PASSWORD}
 
-.github/workflows/staging-deploy.yml (added in this PR) handles every
-deploy after that — nothing further to do by hand.
+Auto-deploy workflow is NOT set up yet (blocked on a formal contract-change
+review, see docs/GUIDE_STAGING_ENVIRONMENT.md) — for now, deploy manually:
+  ssh into this host, then:
+    cd ${STAGING_DIR} && git fetch && git reset --hard origin/main
+    cd backend && composer install --no-interaction --prefer-dist
+    php artisan migrate --force
+    cd ../frontend && npm install --prefer-offline && npm run build
 NEXT
