@@ -4,6 +4,43 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-14-eligibility-pending-edit",
+    "publishedAt": "2026-08-14",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "薪資補登可先改再核",
+    "summary": "全校放假請走課程管理；這裡預設幫老師補請假。",
+    "items": [
+      "全校放假用課程管理「連假批次請假」；這裡預設是幫老師補請假。",
+      "待審核資料可在右側清單修改或撤回，核准後才會算進薪資。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "全校放假用課程管理「連假批次請假」；這裡預設是幫老師補請假。"
+        ]
+      },
+      {
+        "title": "你現在可以",
+        "items": [
+          "待審核資料可在右側清單修改或撤回，核准後才會算進薪資。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-14:eligibility-pending-edit"
+    ],
+    "date": "2026-08-14",
+    "version": "2026.08.14"
+  },
+  {
     "id": "staff-2026-08-13-teacher-home-projection-integrity",
     "publishedAt": "2026-08-13",
     "effectiveAt": null,

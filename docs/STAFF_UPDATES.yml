@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-14-eligibility-pending-edit
+    published_at: "2026-08-14"
+    audiences:
+      - director
+    importance: digest
+    title: 薪資補登可先改再核
+    summary: 全校放假請走課程管理；這裡預設幫老師補請假。
+    items:
+      - category: improved
+        text: 全校放假用課程管理「連假批次請假」；這裡預設是幫老師補請假。
+      - category: added
+        text: 待審核資料可在右側清單修改或撤回，核准後才會算進薪資。
+    source_refs:
+      - "changelog:2026-08-14:eligibility-pending-edit"
+
   - id: staff-2026-08-13-fulltime-settlement-total-payout
     published_at: "2026-08-13"
     audiences:

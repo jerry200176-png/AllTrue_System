@@ -45,12 +45,36 @@ export function createTeacherEligibilityEvent(payload) {
   return request('/finance/teacher-eligibility/events', { method: 'POST', body: JSON.stringify(payload) });
 }
 
+export function updateTeacherEligibilityEvent(id, payload) {
+  return request(`/finance/teacher-eligibility/events/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+}
+
+export function withdrawTeacherEligibilityEvent(id) {
+  return request(`/finance/teacher-eligibility/events/${id}/withdraw`, { method: 'POST' });
+}
+
 export function createTeacherEligibilityAchievement(payload) {
   return request('/finance/teacher-eligibility/achievements', { method: 'POST', body: JSON.stringify(payload) });
 }
 
+export function updateTeacherEligibilityAchievement(id, payload) {
+  return request(`/finance/teacher-eligibility/achievements/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+}
+
+export function withdrawTeacherEligibilityAchievement(id) {
+  return request(`/finance/teacher-eligibility/achievements/${id}/withdraw`, { method: 'POST' });
+}
+
 export function createTeacherEligibilityDeduction(payload) {
   return request('/finance/teacher-eligibility/deductions', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export function updateTeacherEligibilityDeduction(id, payload) {
+  return request(`/finance/teacher-eligibility/deductions/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+}
+
+export function withdrawTeacherEligibilityDeduction(id) {
+  return request(`/finance/teacher-eligibility/deductions/${id}/withdraw`, { method: 'POST' });
 }
 
 export function approveTeacherEligibilityEvent(id) {

@@ -4,7 +4,7 @@
       <div>
         <div class="eyebrow"><span class="material-symbols-outlined">fact_check</span>資料補登與審核</div>
         <h3>把系統無法自動得知的薪資要件補進來</h3>
-        <p>主任可先送出資料；資料會保留待審核狀態，核准後才會進入薪資判定。</p>
+        <p>全校放假請用課程管理的「連假批次請假」。這裡平常是補系統沒抓到的老師請假；假日曆只在薪資缺資料時才用。送出後核准前可修改或撤回。</p>
       </div>
       <button class="btn-outline small" type="button" :disabled="loading" @click="loadInputs">
         <span class="material-symbols-outlined">sync</span>更新待辦
@@ -23,7 +23,7 @@
       <form class="data-form" @submit.prevent="submitForm">
         <div class="form-toolbar">
           <div>
-            <span class="form-kicker">新增資料</span>
+            <span class="form-kicker">{{ editingKey ? '修改資料' : '新增資料' }}</span>
             <strong>{{ formTitle }}</strong>
           </div>
           <select v-model="formType" aria-label="資料類型">
@@ -36,11 +36,12 @@
         <template v-if="formType === 'event'">
           <label>資料類型
             <select v-model="eventForm.event_type">
-              <option value="holiday">假日（計算16小時）</option>
-              <option value="official_closure">官方活動／統一公休</option>
               <option value="leave">請假／補課抵扣</option>
+              <option value="holiday">假日曆補登（少用）</option>
+              <option value="official_closure">官方活動／統一公休（少用）</option>
             </select>
           </label>
+          <p class="field-hint">{{ eventHint }}</p>
           <label v-if="eventForm.event_type === 'leave'">老師
             <select v-model="eventForm.teacher_id" required>
               <option value="">請選擇老師</option>
@@ -144,8 +145,9 @@
 
         <div v-if="formError" class="form-error" role="alert">{{ formError }}</div>
         <button class="btn-primary submit-button" type="submit" :disabled="saving || teachers.length === 0">
-          <span class="material-symbols-outlined">send</span>{{ saving ? '送出中…' : '送出待審核' }}
+          <span class="material-symbols-outlined">{{ editingKey ? 'save' : 'send' }}</span>{{ saving ? '送出中…' : (editingKey ? '儲存修改' : '送出待審核') }}
         </button>
+        <button v-if="editingKey" class="btn-outline submit-button" type="button" :disabled="saving" @click="cancelEdit">取消修改</button>
         <p v-if="teachers.length === 0" class="field-hint">目前分校沒有可選的正職老師，請先確認老師與分校資料。</p>
       </form>
 
@@ -161,7 +163,7 @@
         <div v-else-if="queueItems.length === 0" class="queue-empty">
           <span class="material-symbols-outlined">task_alt</span>
           <strong>目前沒有待處理資料</strong>
-          <small>新增資料後會先出現在這裡，核准後才會影響報表。</small>
+          <small>送出後會列在這裡。核准前可修改或撤回；核准後才會算進薪資。</small>
         </div>
         <div v-else class="queue-list">
           <article v-for="item in queueItems" :key="item.key" class="queue-item">
@@ -174,6 +176,8 @@
             </div>
             <p v-if="item.description">{{ item.description }}</p>
             <div class="queue-actions">
+              <button v-if="item.canEdit" class="btn-outline small" type="button" :disabled="busyKey === item.key" @click="startEdit(item)">修改</button>
+              <button v-if="item.canWithdraw" class="btn-outline small" type="button" :disabled="busyKey === item.key" @click="withdrawItem(item)">{{ busyKey === item.key ? '處理中…' : '撤回' }}</button>
               <button v-if="item.action === 'approve-event'" class="btn-soft" type="button" :disabled="busyKey === item.key" @click="runAction(item)">{{ busyKey === item.key ? '處理中…' : '主任核准' }}</button>
               <button v-if="item.action === 'verify-achievement'" class="btn-soft" type="button" :disabled="busyKey === item.key" @click="runAction(item)">{{ busyKey === item.key ? '處理中…' : '確認成果' }}</button>
               <button v-if="item.action === 'confirm-deduction'" class="btn-soft" type="button" :disabled="busyKey === item.key" @click="runAction(item)">{{ busyKey === item.key ? '處理中…' : '主任確認' }}</button>
@@ -197,8 +201,15 @@ import {
   createTeacherEligibilityDeduction,
   createTeacherEligibilityEvent,
   fetchTeacherEligibilityInputs,
+  updateTeacherEligibilityAchievement,
+  updateTeacherEligibilityDeduction,
+  updateTeacherEligibilityEvent,
   verifyTeacherEligibilityAchievement,
+  withdrawTeacherEligibilityAchievement,
+  withdrawTeacherEligibilityDeduction,
+  withdrawTeacherEligibilityEvent,
 } from '../lib/teacherEligibilityApi.js';
+import { eventKindHint, eventKindLabel, eventSubtitle } from '../lib/teacherEligibilityDisplay.js';
 
 const props = defineProps({
   branchId: { type: [Number, String], default: null },
@@ -215,11 +226,12 @@ const saving = ref(false);
 const busyKey = ref('');
 const formError = ref('');
 const message = ref('');
+const editingKey = ref('');
 const inputRecords = reactive({ events: [], achievements: [], deductions: [] });
 
 const today = new Date().toISOString().slice(0, 10);
 const eventForm = reactive({
-  event_type: 'holiday', event_date: props.start || today, teacher_id: '', hours: '', leave_type: '',
+  event_type: 'leave', event_date: props.start || today, teacher_id: '', hours: '', leave_type: '',
   holiday_leave_hours: '', makeup_completed: '', evidence: '',
 });
 const achievementForm = reactive({
@@ -233,38 +245,60 @@ const deductionForm = reactive({
 const formTitle = computed(() => ({
   event: '假日／公休／請假事件', achievement: '升學成果／年度績優', deduction: '扣除案件',
 }[formType.value]));
+const eventHint = computed(() => eventKindHint(eventForm.event_type));
 const isHq = computed(() => props.userRole === 'super_admin');
-const totalInputCount = computed(() => inputRecords.events.length + inputRecords.achievements.length + inputRecords.deductions.length);
+const totalInputCount = computed(() => queueItems.value.length);
 const queueItems = computed(() => {
   const teachersById = new Map(props.teachers.map((teacher) => [String(teacher.teacher_id), teacher.teacher_name]));
-  const teacherName = (id) => teachersById.get(String(id)) || `老師 #${id || '未指定'}`;
+  const teacherName = (id) => teachersById.get(String(id)) || '未指定老師';
   const items = [];
   for (const row of inputRecords.events) {
-    if (row.status !== 'approved') items.push({
-      key: `event-${row.id}`, title: eventLabel(row.event_type), subtitle: `${row.event_date}｜${teacherName(row.teacher_id)}`,
-      description: row.evidence || row.leave_type || '', statusLabel: '待主任核准', tone: 'pending', action: 'approve-event', id: row.id,
+    if (row.status === 'withdrawn') continue;
+    const pending = row.status !== 'approved';
+    items.push({
+      key: `event-${row.id}`, kind: 'event', id: row.id, row,
+      title: eventKindLabel(row.event_type), subtitle: eventSubtitle(row, teacherName(row.teacher_id)),
+      description: row.evidence || row.leave_type || '',
+      statusLabel: pending ? '待主任核准' : '已核准', tone: pending ? 'pending' : 'done',
+      action: pending ? 'approve-event' : '', canEdit: pending, canWithdraw: pending,
     });
   }
   for (const row of inputRecords.achievements) {
-    if (row.status !== 'verified') items.push({
-      key: `achievement-${row.id}`, title: achievementLabel(row.outcome_key), subtitle: `${teacherName(row.teacher_id)}｜${row.starts_on || '未設生效日'}`,
-      description: row.evidence || '尚未填寫證明文件', statusLabel: '待主任確認', tone: 'pending', action: 'verify-achievement', id: row.id,
+    if (row.status === 'withdrawn') continue;
+    const pending = row.status !== 'verified';
+    items.push({
+      key: `achievement-${row.id}`, kind: 'achievement', id: row.id, row,
+      title: achievementLabel(row.outcome_key), subtitle: `${teacherName(row.teacher_id)}｜${row.starts_on || '未設生效日'}`,
+      description: row.evidence || '尚未填寫證明文件',
+      statusLabel: pending ? '待主任確認' : '已確認', tone: pending ? 'pending' : 'done',
+      action: pending ? 'verify-achievement' : '', canEdit: pending, canWithdraw: pending,
     });
   }
   for (const row of inputRecords.deductions) {
-    if (row.status === 'approved') continue;
+    if (row.status === 'approved' || row.status === 'withdrawn') {
+      if (row.status === 'withdrawn') continue;
+      items.push({
+        key: `deduction-${row.id}`, kind: 'deduction', id: row.id, row,
+        title: deductionLabel(row.deduction_key), subtitle: `${teacherName(row.teacher_id)}｜${row.starts_on || '未設生效日'}`,
+        description: row.reason || '尚未填寫事實說明', statusLabel: '已核准', tone: 'done',
+        action: '', canEdit: false, canWithdraw: false,
+      });
+      continue;
+    }
     const confirmed = Boolean(row.director_confirmed_at);
     items.push({
-      key: `deduction-${row.id}`, title: deductionLabel(row.deduction_key), subtitle: `${teacherName(row.teacher_id)}｜${row.starts_on || '未設生效日'}`,
-      description: row.reason || '尚未填寫事實說明', statusLabel: confirmed ? '待總部核准' : '待主任確認', tone: confirmed ? 'hq' : 'pending',
-      action: confirmed && isHq.value ? 'approve-deduction' : (confirmed ? '' : 'confirm-deduction'), id: row.id,
+      key: `deduction-${row.id}`, kind: 'deduction', id: row.id, row,
+      title: deductionLabel(row.deduction_key), subtitle: `${teacherName(row.teacher_id)}｜${row.starts_on || '未設生效日'}`,
+      description: row.reason || '尚未填寫事實說明',
+      statusLabel: confirmed ? '待總部核准' : '待主任確認', tone: confirmed ? 'hq' : 'pending',
+      action: confirmed && isHq.value ? 'approve-deduction' : (confirmed ? '' : 'confirm-deduction'),
+      canEdit: !confirmed, canWithdraw: !confirmed,
     });
   }
   return items;
 });
-const pendingCount = computed(() => queueItems.value.filter((item) => item.action).length);
+const pendingCount = computed(() => queueItems.value.filter((item) => item.action || item.canEdit).length);
 
-function eventLabel(key) { return ({ holiday: '假日', official_closure: '官方活動／統一公休', leave: '請假／補課抵扣' }[key] || key || '薪資事件'); }
 function achievementLabel(key) { return key === 'employee_of_year' ? '年度績優員工' : '學生升學成果'; }
 function deductionLabel(key) {
   return ({ harassment: '疑似騷擾成立', major_complaint: '重大客訴成立', unexcused_late: '無故遲到早退', property_damage: '嚴重破壞公物', rights_loss: '造成補習班權益受損' }[key] || key || '扣除案件');
@@ -272,7 +306,8 @@ function deductionLabel(key) {
 
 function branchPayload(payload) { return props.branchId ? { ...payload, branch_id: Number(props.branchId) } : payload; }
 function resetForm() {
-  eventForm.event_type = 'holiday'; eventForm.event_date = props.start || today; eventForm.teacher_id = ''; eventForm.hours = '';
+  editingKey.value = '';
+  eventForm.event_type = 'leave'; eventForm.event_date = props.start || today; eventForm.teacher_id = ''; eventForm.hours = '';
   eventForm.leave_type = ''; eventForm.holiday_leave_hours = ''; eventForm.makeup_completed = ''; eventForm.evidence = '';
   achievementForm.teacher_id = ''; achievementForm.student_id = ''; achievementForm.outcome_key = 'student_outcome'; achievementForm.subject = '';
   achievementForm.award_year = ''; achievementForm.evidence = ''; achievementForm.starts_on = props.start || today; achievementForm.ends_on = props.end || today;
@@ -291,20 +326,82 @@ async function loadInputs() {
   } finally { loading.value = false; }
 }
 
+function cancelEdit() {
+  resetForm();
+  message.value = '';
+}
+
+function startEdit(item) {
+  editingKey.value = item.key;
+  formType.value = item.kind;
+  const row = item.row || {};
+  if (item.kind === 'event') {
+    eventForm.event_type = row.event_type || 'leave';
+    eventForm.event_date = row.event_date || today;
+    eventForm.teacher_id = row.teacher_id ? String(row.teacher_id) : '';
+    eventForm.hours = row.hours ?? '';
+    eventForm.leave_type = row.leave_type || '';
+    eventForm.holiday_leave_hours = row.holiday_leave_hours ?? '';
+    eventForm.makeup_completed = row.makeup_completed === true || row.makeup_completed === 1 ? 'true' : (row.makeup_completed === false || row.makeup_completed === 0 ? 'false' : '');
+    eventForm.evidence = row.evidence || '';
+  } else if (item.kind === 'achievement') {
+    achievementForm.teacher_id = String(row.teacher_id || '');
+    achievementForm.student_id = row.student_id || '';
+    achievementForm.outcome_key = row.outcome_key || 'student_outcome';
+    achievementForm.subject = row.subject || '';
+    achievementForm.award_year = row.award_year || '';
+    achievementForm.evidence = row.evidence || '';
+    achievementForm.starts_on = row.starts_on || today;
+    achievementForm.ends_on = row.ends_on || today;
+  } else {
+    deductionForm.teacher_id = String(row.teacher_id || '');
+    deductionForm.deduction_key = row.deduction_key || 'harassment';
+    deductionForm.reason = row.reason || '';
+    deductionForm.starts_on = row.starts_on || today;
+    deductionForm.ends_on = row.ends_on || '';
+  }
+}
+
+function editingId(kind) {
+  if (!editingKey.value.startsWith(`${kind}-`)) return null;
+  const id = Number(editingKey.value.slice(kind.length + 1));
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+async function withdrawItem(item) {
+  busyKey.value = item.key; formError.value = ''; message.value = '';
+  try {
+    if (item.kind === 'event') await withdrawTeacherEligibilityEvent(item.id);
+    if (item.kind === 'achievement') await withdrawTeacherEligibilityAchievement(item.id);
+    if (item.kind === 'deduction') await withdrawTeacherEligibilityDeduction(item.id);
+    if (editingKey.value === item.key) resetForm();
+    await loadInputs(); emit('changed'); message.value = '已撤回，不會進入薪資計算。';
+  } catch (error) { formError.value = error?.message || '撤回失敗'; }
+  finally { busyKey.value = ''; }
+}
+
 async function submitForm() {
   saving.value = true; formError.value = ''; message.value = '';
   try {
     if (formType.value === 'event') {
       const payload = { ...eventForm, teacher_id: eventForm.teacher_id ? Number(eventForm.teacher_id) : null, hours: eventForm.hours === '' ? null : Number(eventForm.hours), holiday_leave_hours: eventForm.holiday_leave_hours === '' ? null : Number(eventForm.holiday_leave_hours), makeup_completed: eventForm.makeup_completed === '' ? null : eventForm.makeup_completed === 'true' };
       if (payload.event_type !== 'leave') { payload.teacher_id = null; payload.hours = null; payload.leave_type = null; payload.holiday_leave_hours = null; payload.makeup_completed = null; }
-      await createTeacherEligibilityEvent(branchPayload(payload));
+      const eventId = editingId('event');
+      if (eventId) await updateTeacherEligibilityEvent(eventId, branchPayload(payload));
+      else await createTeacherEligibilityEvent(branchPayload(payload));
     } else if (formType.value === 'achievement') {
       const payload = { ...achievementForm, teacher_id: Number(achievementForm.teacher_id), student_id: achievementForm.student_id ? Number(achievementForm.student_id) : null, award_year: achievementForm.award_year ? Number(achievementForm.award_year) : null };
-      await createTeacherEligibilityAchievement(branchPayload(payload));
+      const achievementId = editingId('achievement');
+      if (achievementId) await updateTeacherEligibilityAchievement(achievementId, branchPayload(payload));
+      else await createTeacherEligibilityAchievement(branchPayload(payload));
     } else {
-      await createTeacherEligibilityDeduction(branchPayload({ ...deductionForm, teacher_id: Number(deductionForm.teacher_id), ends_on: deductionForm.ends_on || null }));
+      const deductionId = editingId('deduction');
+      const payload = branchPayload({ ...deductionForm, teacher_id: Number(deductionForm.teacher_id), ends_on: deductionForm.ends_on || null });
+      if (deductionId) await updateTeacherEligibilityDeduction(deductionId, payload);
+      else await createTeacherEligibilityDeduction(payload);
     }
-    resetForm(); await loadInputs(); emit('changed'); message.value = '資料已送出，請在右側待辦清單完成主任確認。';
+    const wasEditing = Boolean(editingKey.value);
+    resetForm(); await loadInputs(); emit('changed'); message.value = wasEditing ? '已儲存修改，仍須主任核准後才會進入薪資。' : '資料已送出，請在右側待辦清單完成主任確認。核准前可修改或撤回。';
   } catch (error) { formError.value = error?.message || '送出失敗，請檢查欄位後再試'; }
   finally { saving.value = false; }
 }
@@ -334,7 +431,7 @@ onMounted(loadInputs);
 .workflow-steps { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin:16px 0; color:var(--ds-ink-mute); font-size:12px; }.workflow-step { display:inline-flex; align-items:center; gap:6px; padding:6px 9px; border-radius:999px; background:var(--ds-canvas-soft); }.workflow-step.active { color:var(--ds-primary); background:var(--ds-primary-wash); }.workflow-step b { display:grid; width:18px; height:18px; place-items:center; border-radius:50%; background:currentColor; color:var(--ds-canvas); font-size:11px; }.workflow-arrow { color:var(--border-strong, var(--border)); }
 .input-panel-grid { display:grid; grid-template-columns:minmax(0, 1.1fr) minmax(320px, .9fr); gap:16px; }.data-form,.review-queue { padding:16px; border:1px solid var(--border); border-radius:12px; background:var(--ds-canvas-soft); }.form-toolbar,.queue-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px; }.form-toolbar strong,.queue-heading strong { display:block; margin-top:3px; }.form-toolbar select { min-width:190px; }
 .data-form label { display:flex; flex-direction:column; gap:6px; margin-bottom:11px; color:var(--ds-ink-mute); font-size:12px; font-weight:600; }.data-form input,.data-form select,.data-form textarea { width:100%; box-sizing:border-box; padding:9px 10px; border:1px solid var(--border); border-radius:8px; background:var(--ds-canvas); color:var(--ds-ink); font:inherit; font-weight:400; }.data-form textarea { resize:vertical; }.form-two-col { display:grid; grid-template-columns:1fr 1fr; gap:10px; }.form-warning { display:flex; gap:7px; align-items:flex-start; margin:8px 0 12px; padding:9px 10px; border-radius:8px; color:var(--ds-warning); background:var(--ds-warning-wash); font-size:12px; line-height:1.5; }.form-warning .material-symbols-outlined { font-size:17px; }.form-error { margin:8px 0; color:var(--ds-danger); font-size:12px; }.field-hint { margin:8px 0 0; color:var(--ds-ink-mute); font-size:12px; }.submit-button { width:100%; justify-content:center; }
-.queue-total { color:var(--ds-ink-mute); font-size:12px; }.queue-empty { display:flex; min-height:150px; flex-direction:column; align-items:center; justify-content:center; gap:7px; text-align:center; color:var(--ds-ink-mute); }.queue-empty .material-symbols-outlined { font-size:28px; color:var(--ds-success); }.queue-empty small { max-width:230px; line-height:1.5; }.queue-list { display:grid; gap:9px; max-height:380px; overflow:auto; }.queue-item { padding:11px; border:1px solid var(--border); border-radius:9px; background:var(--ds-canvas); }.queue-item-top { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; }.queue-item strong { display:block; font-size:13px; }.queue-item small { display:block; margin-top:4px; color:var(--ds-ink-mute); font-size:11px; }.queue-item p { margin:9px 0; color:var(--ds-ink-mute); font-size:12px; line-height:1.5; white-space:pre-wrap; }.queue-status { flex-shrink:0; padding:4px 7px; border-radius:999px; font-size:11px; }.queue-status.pending { color:var(--ds-warning); background:var(--ds-warning-wash); }.queue-status.hq { color:var(--ds-primary); background:var(--ds-primary-wash); }.queue-actions { display:flex; justify-content:flex-end; gap:7px; }.btn-soft { border:1px solid var(--ds-primary); border-radius:8px; padding:7px 10px; color:var(--ds-primary); background:var(--ds-primary-wash); font-size:12px; cursor:pointer; }.btn-primary { display:inline-flex; align-items:center; gap:6px; border:0; border-radius:8px; padding:9px 12px; color:var(--ds-canvas); background:var(--ds-primary); font-size:12px; cursor:pointer; }.btn-primary.small { padding:7px 10px; }.btn-primary:disabled,.btn-soft:disabled { opacity:.55; cursor:not-allowed; }.btn-outline { display:inline-flex; align-items:center; gap:6px; border:1px solid var(--border); border-radius:8px; padding:8px 10px; color:var(--ds-ink); background:var(--ds-canvas); cursor:pointer; }.btn-outline.small { padding:7px 9px; font-size:12px; }.btn-outline .material-symbols-outlined { font-size:17px; }.panel-message { margin:12px 3px 0; color:var(--ds-success); font-size:12px; }
+.queue-total { color:var(--ds-ink-mute); font-size:12px; }.queue-empty { display:flex; min-height:150px; flex-direction:column; align-items:center; justify-content:center; gap:7px; text-align:center; color:var(--ds-ink-mute); }.queue-empty .material-symbols-outlined { font-size:28px; color:var(--ds-success); }.queue-empty small { max-width:230px; line-height:1.5; }.queue-list { display:grid; gap:9px; max-height:380px; overflow:auto; }.queue-item { padding:11px; border:1px solid var(--border); border-radius:9px; background:var(--ds-canvas); }.queue-item-top { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; }.queue-item strong { display:block; font-size:13px; }.queue-item small { display:block; margin-top:4px; color:var(--ds-ink-mute); font-size:11px; }.queue-item p { margin:9px 0; color:var(--ds-ink-mute); font-size:12px; line-height:1.5; white-space:pre-wrap; }.queue-status { flex-shrink:0; padding:4px 7px; border-radius:999px; font-size:11px; }.queue-status.pending { color:var(--ds-warning); background:var(--ds-warning-wash); }.queue-status.hq { color:var(--ds-primary); background:var(--ds-primary-wash); }.queue-status.done { color:var(--ds-success); background:var(--ds-success-wash, var(--ds-primary-wash)); }.queue-actions { display:flex; justify-content:flex-end; gap:7px; }.btn-soft { border:1px solid var(--ds-primary); border-radius:8px; padding:7px 10px; color:var(--ds-primary); background:var(--ds-primary-wash); font-size:12px; cursor:pointer; }.btn-primary { display:inline-flex; align-items:center; gap:6px; border:0; border-radius:8px; padding:9px 12px; color:var(--ds-canvas); background:var(--ds-primary); font-size:12px; cursor:pointer; }.btn-primary.small { padding:7px 10px; }.btn-primary:disabled,.btn-soft:disabled { opacity:.55; cursor:not-allowed; }.btn-outline { display:inline-flex; align-items:center; gap:6px; border:1px solid var(--border); border-radius:8px; padding:8px 10px; color:var(--ds-ink); background:var(--ds-canvas); cursor:pointer; }.btn-outline.small { padding:7px 9px; font-size:12px; }.btn-outline .material-symbols-outlined { font-size:17px; }.panel-message { margin:12px 3px 0; color:var(--ds-success); font-size:12px; }
 @media (max-width: 960px) { .input-panel-grid { grid-template-columns:1fr; } }
 @media (max-width: 560px) { .input-panel-heading { flex-direction:column; }.form-toolbar { align-items:flex-start; flex-direction:column; }.form-toolbar select { width:100%; }.form-two-col { grid-template-columns:1fr; }.workflow-arrow { display:none; } }
 </style>
