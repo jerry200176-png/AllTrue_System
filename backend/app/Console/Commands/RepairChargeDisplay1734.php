@@ -66,7 +66,7 @@ class RepairChargeDisplay1734 extends Command
         ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT) . PHP_EOL);
         $this->line('Snapshot: ' . $path);
 
-        DB::transaction(function () use ($plan): void {
+        DB::transaction(function (): void {
             $row = DB::table('StudentClass')->where('ID', self::CLASS_ID)->lockForUpdate()->first();
             if (!$row || (int) $row->Charge !== self::FROM_CHARGE) {
                 throw new RuntimeException('REPAIR_1734_DRIFT');
