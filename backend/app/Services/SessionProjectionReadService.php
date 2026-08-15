@@ -45,21 +45,13 @@ class SessionProjectionReadService
     /**
      * Projected slots intentionally omit ClassSession id.
      *
-     * branch_id is required here (not just on materialized rows) -- omitting it
-     * left every projected slot with an undefined branchId on the frontend,
-     * which the teacher weekly view falls back to `|| 0` and renders as
-     * "Branch #0" for any not-yet-materialized session (in-app #235). Callers
-     * source this the same way the materialized-row query does: the student's
-     * CampusID (see ClassSessionController::transformClassSessionIndexRow).
-     *
      * @return array<string, mixed>
      */
     public function projectedSlot(
         int $studentClassId,
         string $sessionDate,
         string $startTime,
-        string $endTime = '',
-        int $branchId = 0
+        string $endTime = ''
     ): array {
         return [
             'kind' => self::KIND_PROJECTED,
@@ -68,7 +60,6 @@ class SessionProjectionReadService
             'start_time' => substr($startTime, 0, 5),
             'end_time' => substr($endTime, 0, 5),
             'status' => 'projected',
-            'branch_id' => $branchId,
         ];
     }
 
@@ -141,15 +132,13 @@ class SessionProjectionReadService
             $materializedSlotSet[$this->slotKey($row['session_date'], $row['start_time'])] = true;
         }
 
-        $branchId = (int) ($class?->student?->CampusID ?? 0);
-
         $projected = [];
         foreach ($effectiveDateList as $date) {
             if (isset($materializedDateSet[$date])) {
                 continue;
             }
             $times = $this->resolveSlotTimesForCourseDate($class, $date);
-            $slot = $this->projectedSlot($classId, $date, $times['start'], $times['end'], $branchId);
+            $slot = $this->projectedSlot($classId, $date, $times['start'], $times['end']);
             $key = $this->slotKey($slot['session_date'], $slot['start_time']);
             if (isset($materializedSlotSet[$key])) {
                 continue;

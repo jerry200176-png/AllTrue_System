@@ -196,10 +196,6 @@ export function sessionViewModelFromSessionDatesSlot(raw, fallbackClassId = 0) {
     endTime: raw?.end_time || raw?.endTime,
     status: 'projected',
     isProjected: true,
-    // Projected slots now carry branch_id from the backend (in-app #235) --
-    // without it this fell through to `s.branchId || 0` at render time and
-    // showed "Branch #0" for any not-yet-materialized session.
-    branchId: raw?.branch_id != null ? Number(raw.branch_id) : undefined,
   });
 }
 
