@@ -26,7 +26,7 @@
 | 文件是否仍有效？ | Prefer `last_verified` / Constitution Version / radar latest run; stale = archive or re-verify |
 
 **Worktree ban:** never edit `/home/jerry/alltrue` — [`governance/WORKTREE_POLICY.md`](governance/WORKTREE_POLICY.md).  
-**Merge risk:** [`governance/RISK_BASED_MERGE_POLICY.md`](governance/RISK_BASED_MERGE_POLICY.md) (R0–R3).  
+**Merge risk:** [`governance/RISK_BASED_MERGE_POLICY.md`](governance/RISK_BASED_MERGE_POLICY.md) (R0–R3 classify risk). **Who may merge:** fleet [portfolio-ops `AUTONOMY_POLICY`](https://github.com/jerry200176-png/portfolio-ops/blob/main/governance/AUTONOMY_POLICY.md) — Agent squash-merges R0–R2 after required checks; R3 stays Founder.  
 **CI governance / preflight:** [`governance/CI_GOVERNANCE.md`](governance/CI_GOVERNANCE.md) · `npm run ci:preflight`
 
 ---

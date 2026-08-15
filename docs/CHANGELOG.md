@@ -1,3 +1,10 @@
+## 2026-08-15 — docs(gov): 艦隊 merge 政策指標（R0–R2 驗收後 Agent 合入）
+
+<!-- release-notes: silent_ship=silent-2026-08-15-fleet-merge-pointer -->
+
+- 誰可以 merge 以 portfolio-ops `AUTONOMY_POLICY` 為準；AllTrue 只分類風險與產品 P0，不再把 R0–R2 merge 禁回去。
+- Required GitHub checks 綠了由 Agent squash-merge；R3 與額外 production 變更仍是 Founder。
+
 ## 2026-08-15 — docs(arch): 排課 occurrence 身分根治計畫（TD-076）
 
 <!-- release-notes: silent_ship=silent-2026-08-15-schedule-occurrence-identity-rfc -->

@@ -1,5 +1,15 @@
 # Governance changelog
 
+## 2026-08-15 — Fleet merge capability (constitution 0.1.1)
+
+- Portfolio-ops is the fleet authority. Agents squash-merge AllTrue R0–R2 when
+  required GitHub checks are green (`AUTONOMY_POLICY` / `fleet-merge-policy`).
+- AllTrue keeps domain P0 (no Pi tests, campus isolation) and Control Plane I1
+  (`deploy.yml` is still the only production execute path). Docs-only still
+  skips deploy; a **code** merge to `main` may start deploy, and that is accepted.
+- Product overlays must not re-ban merge. R3 and extra production mutation stay
+  Founder-only.
+
 ## 2026-08-09 — Hermes production-agent temporary exception (#1676)
 
 - Recorded the Founder-approved temporary exception for the colleague-owned
