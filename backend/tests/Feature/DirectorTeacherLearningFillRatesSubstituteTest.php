@@ -104,6 +104,7 @@ class DirectorTeacherLearningFillRatesSubstituteTest extends TestCase
             'ClassSessionID' => $cs->id,
             'StudentClassID' => $sc->ID,
             'TeacherID' => $t2->id,
+            'Content' => '本堂已完成第 5 章練習',
             'Progress' => '本堂已完成第 5 章練習',
             'Status' => 'pending',
         ]);
