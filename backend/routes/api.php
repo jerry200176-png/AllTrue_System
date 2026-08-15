@@ -314,8 +314,14 @@ Route::prefix('v1')->group(function () {
         Route::get('finance/teacher-eligibility', [TeacherEligibilityController::class, 'index'])->middleware('require_pin');
         Route::get('finance/teacher-eligibility/inputs', [TeacherEligibilityInputController::class, 'index'])->middleware('require_pin');
         Route::post('finance/teacher-eligibility/events', [TeacherEligibilityInputController::class, 'storeEvent'])->middleware('require_pin');
+        Route::put('finance/teacher-eligibility/events/{id}', [TeacherEligibilityInputController::class, 'updateEvent'])->whereNumber('id')->middleware('require_pin');
+        Route::post('finance/teacher-eligibility/events/{id}/withdraw', [TeacherEligibilityInputController::class, 'withdrawEvent'])->whereNumber('id')->middleware('require_pin');
         Route::post('finance/teacher-eligibility/achievements', [TeacherEligibilityInputController::class, 'storeAchievement'])->middleware('require_pin');
+        Route::put('finance/teacher-eligibility/achievements/{id}', [TeacherEligibilityInputController::class, 'updateAchievement'])->whereNumber('id')->middleware('require_pin');
+        Route::post('finance/teacher-eligibility/achievements/{id}/withdraw', [TeacherEligibilityInputController::class, 'withdrawAchievement'])->whereNumber('id')->middleware('require_pin');
         Route::post('finance/teacher-eligibility/deductions', [TeacherEligibilityInputController::class, 'storeDeduction'])->middleware('require_pin');
+        Route::put('finance/teacher-eligibility/deductions/{id}', [TeacherEligibilityInputController::class, 'updateDeduction'])->whereNumber('id')->middleware('require_pin');
+        Route::post('finance/teacher-eligibility/deductions/{id}/withdraw', [TeacherEligibilityInputController::class, 'withdrawDeduction'])->whereNumber('id')->middleware('require_pin');
         Route::post('finance/teacher-eligibility/events/{id}/approve', [TeacherEligibilityInputController::class, 'approveEvent'])->whereNumber('id')->middleware('require_pin');
         Route::post('finance/teacher-eligibility/achievements/{id}/verify', [TeacherEligibilityInputController::class, 'verifyAchievement'])->whereNumber('id')->middleware('require_pin');
         Route::post('finance/teacher-eligibility/deductions/{id}/confirm', [TeacherEligibilityInputController::class, 'confirmDeduction'])->whereNumber('id')->middleware('require_pin');
