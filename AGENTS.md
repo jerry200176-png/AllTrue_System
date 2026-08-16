@@ -16,20 +16,29 @@
 
 ## 開工前 First-read 順序
 
-**SOP（防重踩同坑）**：收到任務後**先讀文檔再打程式**，禁止只靠對話上下文硬改。高風險模組（代課／評量／智慧行事曆合併／扣堂／繳費提醒等）必須對照下面第 2、4 步與 `AI_REGRESSION_LESSONS` 文末**模組索引表**對應 §，再動 `backend/`、`frontend/src/`。
+**SOP（防重踩同坑）**：收到任務後**先讀文檔再打程式**，禁止只靠對話上下文硬改。
 
-0. **`docs/governance/COMPANY_CONSTITUTION.md`** + **`docs/sop/AGENT_PREFLIGHT.md`**（公司根政策）  
-   操作者是 **Agent**。艦隊 **portfolio-ops** `AUTONOMY_POLICY`：required checks 綠了就 `gh pr merge --squash`（R0–R3；R3 要 Repair Manifest）。關 issue、寄任務相關信、dispatch 已在 main 上的 workflow，都自己做。不要等人點頭。機器禁令：Pi SSH / artisan / phpunit、印 secrets、force-push、`--admin`、Gmail 刪信。產品 P0 與 Control Plane I1 仍有效。
-1. `.cursorrules`（P0 事故 + 安全快評 + 工作流程概覽）— **自動載入，已讀**
-2. **`docs/INDEX.md`（導航地圖，決定接下來只讀哪些章節）— 必讀，省 token 關鍵**
-2c. **現行工程主線（Claude Code / Codex / Cursor 共用）**：[`docs/architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md`](docs/architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md)。禁止整包重寫；排課根治見 [`RFC_SCHEDULE_OCCURRENCE_IDENTITY.md`](docs/architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md)（TD-076）。沒讀這兩份就不要改 `schedules` 寫入形狀。
-2b. 任務牽涉 **長文件 / 多份 docs** 時：讀 `docs/INDEX.md` 的速讀卡／治理節奏；`docs/AI_DOC_LITERACY.md` 只是索引 stub
-3. 需要回顧決策或 bug 時：`~/.local/bin/mempalace search "<關鍵字>"`（本機；非跨機器權威）
-4. `docs/AI_REGRESSION_LESSONS.md`（已發生過的缺口，改高風險模組前必讀；並查文末**模組對照索引**挑 §）
-5. `.cursor/.local/test-credentials.md`（做任何瀏覽器測試前讀）
-6. 若涉及繳費/提醒邏輯：`docs/DIRECTOR_PAYMENT_ALERT_RULES.md`
-7. **處理 in-app Bug 回報**（分診或修完上線）：`docs/CHAT_BUG_SYSTEM.md` **§3.6–§3.7** + `AI_REGRESSION_LESSONS.md` **§R51、§R53**（開 issue 與 merge 後都要回系統留言，勿只動 GitHub）
-8. Capabilities：`docs/governance/AGENT_CAPABILITY_REGISTRY.md` — 勿假設權限
+**操作者權限（適用於每一次任務，不是要讀的檔案，是規則本身）**：操作者是 **Agent**。艦隊 **portfolio-ops** `AUTONOMY_POLICY`：required checks 綠了就 `gh pr merge --squash`（R0–R3；R3 要 Repair Manifest）。關 issue、寄任務相關信、dispatch 已在 main 上的 workflow，都自己做，不要等人點頭。機器禁令：Pi SSH / artisan / phpunit、印 secrets、force-push、`--admin`、Gmail 刪信。產品 P0 與 Control Plane I1 仍有效。Capabilities 詳見 `docs/governance/AGENT_CAPABILITY_REGISTRY.md`，勿假設權限。
+
+### 必讀（3 份，每次任務都讀）
+
+1. **`docs/governance/COMPANY_CONSTITUTION.md`** + **`docs/sop/AGENT_PREFLIGHT.md`**（公司根政策）
+2. **`docs/architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md`**（現行工程主線；禁止整包重寫）
+3. **`docs/INDEX.md`**（導航地圖，決定接下來只讀哪些章節 — 省 token 關鍵）
+
+（`.cursorrules` 自動載入，已讀，不用手動加進清單。）
+
+### 條件分支（依任務類型挑對應章節，不用全讀）
+
+| 任務類型 | 加讀 |
+|---|---|
+| 改排課／行事曆／扣堂 | `docs/architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md`（TD-076）+ `AI_REGRESSION_LESSONS.md` 模組索引表對應的 R10x 系列 |
+| 改計費／繳費提醒邏輯 | `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` |
+| 處理 in-app Bug（分診或修完上線） | `docs/CHAT_BUG_SYSTEM.md` **§3.6–§3.7** + `AI_REGRESSION_LESSONS.md` **§R51、§R53**（開 issue 與 merge 後都要回系統留言，勿只動 GitHub）|
+| 高風險模組（代課／評量／智慧行事曆合併等）任何改動 | `docs/AI_REGRESSION_LESSONS.md` 文末模組索引表對應 § — 動 `backend/`／`frontend/src/` 前必讀 |
+| 需要回顧決策或舊 bug | `~/.local/bin/mempalace search "<關鍵字>"`（本機搜尋；非跨機器權威）|
+| 任何瀏覽器測試 | `.cursor/.local/test-credentials.md` |
+| 任務牽涉長文件／多份 docs | `docs/INDEX.md` 的速讀卡／治理節奏（`docs/AI_DOC_LITERACY.md` 只是索引 stub）|
 
 ## 公司治理記錄原則
 

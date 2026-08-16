@@ -7,6 +7,7 @@ use App\Models\Student;
 use App\Models\StudentIdentityGroup;
 use App\Models\StudentIdentityMember;
 use App\Services\StudentIdentityService;
+use App\Support\Utf8mb3SearchSanitizer;
 use Illuminate\Http\Request;
 
 class StudentIdentityController extends Controller
@@ -29,8 +30,9 @@ class StudentIdentityController extends Controller
         $query = trim((string) $request->query('q', ''));
         $students = collect();
         if ($query !== '') {
-            $students = Student::query()
-                ->where('name', 'like', "%{$query}%")
+            $students = Student::query();
+            Utf8mb3SearchSanitizer::applyLike($students, 'name', $query);
+            $students = $students
                 ->get()
                 ->filter(fn ($student) => $this->canManageCampus($request, (int) $student->getAttribute('CampusID')))
                 ->map(function ($student) {

@@ -4,6 +4,36 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-15-tuition-charge-display-1734",
+    "publishedAt": "2026-08-15",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "收帳金額顯示修正",
+    "summary": "已收款課程會顯示實際合約總額，不再出現舊的錯誤數字。",
+    "items": [
+      "收帳頁會跟已開立帳單同一金額，不再顯示過期的錯誤總額。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "收帳頁會跟已開立帳單同一金額，不再顯示過期的錯誤總額。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-15:tuition-charge-display-1734"
+    ],
+    "date": "2026-08-15",
+    "version": "2026.08.15"
+  },
+  {
     "id": "staff-2026-08-15-teacher-home-projected-campus",
     "publishedAt": "2026-08-15",
     "effectiveAt": null,
@@ -31,6 +61,36 @@ export const staffUpdates = [
     ],
     "sourceRefs": [
       "changelog:2026-08-15:teacher-home-projected-campus"
+    ],
+    "date": "2026-08-15",
+    "version": "2026.08.15"
+  },
+  {
+    "id": "staff-2026-08-15-stale-receipt-badge-934",
+    "publishedAt": "2026-08-15",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "收據新增「可能已被取代」提醒",
+    "summary": "課程計費模式（堂數制/月結）事後變更時，舊收據會顯示提醒，避免家長拿舊收據截圖產生誤會。",
+    "items": [
+      "收據頁面：若課程計費模式已變更，顯示黃色提醒訊息。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "收據頁面：若課程計費模式已變更，顯示黃色提醒訊息。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-15:stale-receipt-badge-934"
     ],
     "date": "2026-08-15",
     "version": "2026.08.15"
