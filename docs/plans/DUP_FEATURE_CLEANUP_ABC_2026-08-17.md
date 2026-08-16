@@ -1,6 +1,6 @@
 # 重複功能清理計畫 A → B → C（2026-08-17）
 
-> Founder GO：全做，順序 A→B→C。本檔為執行契約；產品行為變更（B／C）另有核准閘門。
+> Founder GO：全做，順序 A→B→C。本檔為執行契約；產品行為變更（B／C）另有核准閘門。追蹤：**TD-083**（TD-082 號碼另有用途）。
 
 ## 決策摘要
 
@@ -8,7 +8,7 @@
 
 | Phase | 內容 | 風險 | 核准 |
 |-------|------|------|------|
-| **A** | 刪除未掛載前端死碼頁 | 低 | 已核准（本 PR） |
+| **A** | 刪除未掛載前端死碼頁 | 低 | **已上線** #1864；計畫 #1866 |
 | **B** | 收斂 `isPaid`／`isFullyPaid`（TD-073 金流子項） | 高（金流） | **分批**；`DunningService` 需另開 Founder GO |
 | **C** | 補請假權威＋共用作廢 helper（TD-069）；接 TD-012 點名副作用 | 高（堂數） | 先定權威政策再改行為 |
 
@@ -62,7 +62,7 @@ isFullyPaid = (Paid == 1) OR (charge > 0 AND paid_amount >= charge)
 
 | Batch | 呼叫點 | 備註 |
 |-------|--------|------|
-| B0 | `StudentClass`（或小 helper）新增 `isFullyPaid()`；`AlertController` 改呼叫 | 單元／feature 鎖 R94 |
+| B0 | `StudentClass` 新增 `isFullyPaid()`；`AlertController` 改呼叫 | **本 PR** — model 為 SSOT，Alert 薄委派；單元測鎖 R94 |
 | B1 | `StudentClassController`、`AccountingController`、`PaymentReportController` | 顯示／帳本對齊 |
 | B2 | `NotificationSyncService`、`NotificationController`、`SendTuitionReminders`、`ParentPortalController` | 通知／家長 |
 | B3 | `DunningService` | **凍結**；需 Founder 書面 GO + `DIRECTOR_PAYMENT_ALERT_RULES` 對照表 |

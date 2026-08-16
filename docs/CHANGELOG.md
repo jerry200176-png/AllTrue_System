@@ -4,6 +4,11 @@
 
 - `GET /api/v1/students/export` 成功匯出前寫入 `security_audit_events`（操作者雜湊、筆數、校區範圍）；不含姓名／電話等明文。
 - 修正 `students/export` 被 `students/{student}` 搶路由的問題，並對 student id 加 `whereNumber`。
+## 2026-08-17 — chore(billing): isFullyPaid 收斂到 StudentClass（TD-083 B0）
+
+<!-- release-notes: silent_ship=silent-2026-08-17-ispaid-b0 -->
+
+顯示用「已足額繳清」判斷改以 `StudentClass::isFullyPaid` 為單一來源；`AlertController` 改為委派。催繳列入條件未改。
 
 ## 2026-08-17 — docs: 重複功能清理 A→B→C 執行計畫
 

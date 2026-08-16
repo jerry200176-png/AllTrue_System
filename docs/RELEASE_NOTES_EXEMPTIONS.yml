@@ -6,6 +6,10 @@ exemptions:
     changelog_date: "2026-08-17"
     changelog_title: "fix(security): 學生 Excel 匯出寫入稽核事件"
     reason: 僅後端稽核事件與測試；主任匯出學生名單畫面與檔案內容不變。
+  - id: silent-2026-08-17-ispaid-b0
+    changelog_date: "2026-08-17"
+    changelog_title: "chore(billing): isFullyPaid 收斂到 StudentClass（TD-083 B0）"
+    reason: 僅後端顯示判斷委派與單元測試；主任可見文案與催繳列入條件不變。
 
   - id: silent-2026-08-17-dup-cleanup-plan
     changelog_date: "2026-08-17"
