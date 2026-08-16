@@ -31,7 +31,7 @@
 | 2 | 行事曆與調課 | `SmartCalendar.vue`、`ScheduleDiscrepancyPage.vue` | 研究與規格中；Issue [#1605](https://github.com/jerry200176-png/AllTrue_System/issues/1605) |
 | 3 | 老師每日工作流 | `TeacherHomePage.vue`、`AttendancePage.vue` | 待處理 |
 | 4 | 評量跨角色整合 | `LearningRecordsPage.vue` 老師／主任／家長入口 | 研究與第一波預覽完成；Issue [#1611](https://github.com/jerry200176-png/AllTrue_System/issues/1611)，待 PR／production evidence |
-| 5 | 繳費與財務 | `TuitionCollectionPage.vue`、`TuitionReportPage.vue` 等 | 高風險、待處理 |
+| 5 | 繳費與財務 | `TuitionCollectionPage.vue`、`BillingList.vue` 等 | 高風險、待處理 |
 | 6 | 學生／老師／課程管理 | 建立、搜尋、匯入、停用 | 待處理 |
 | 7 | 家長入口與溝通 | `ParentPortal.vue`、通知、聊天、版本說明 | 待處理 |
 | 8 | 系統管理與支援 | 權限、分校、登入、支援工具 | 待處理 |

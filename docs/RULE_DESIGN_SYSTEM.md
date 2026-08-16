@@ -141,7 +141,7 @@ AllTrue 的視覺方向是 **淺色優先、專業可信、為「資料與金流
 1. `DirectorDashboard`、`CourseManagement`（reference pages）
 2. `StudentsList`
 3. `TeachersList`
-4. `TuitionCollectionPage`、`TuitionReportPage`（金流，重點 tabular）
+4. `TuitionCollectionPage`、`TuitionReportPage`、`PayReportPage`（金流，重點 tabular）
 5. `AttendancePage`
 6. `LearningRecordsPage`
 7. `SmartCalendar`、其餘頁面與 modal
