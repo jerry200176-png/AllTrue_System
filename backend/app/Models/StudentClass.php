@@ -98,6 +98,28 @@ class StudentClass extends Model
     }
 
     /**
+     * Display-path "fully paid" predicate (R94 / DIRECTOR_PAYMENT_ALERT_RULES).
+     *
+     * Paid flag OR invoice amounts covering charge. Deliberately amount-based —
+     * never treat "any payment exists" as paid (that would collapse partial).
+     * Not the dunning *inclusion* rule (which may still key off Paid==1 only).
+     */
+    public static function isFullyPaid(bool $rawPaidFlag, int $paidAmount, int $charge): bool
+    {
+        return $rawPaidFlag || ($charge > 0 && $paidAmount >= $charge);
+    }
+
+    /**
+     * Instance wrapper: use this course's Paid flag with a caller-supplied invoice sum.
+     */
+    public function isFullyPaidWithInvoiceAmount(int $paidAmount, ?int $charge = null): bool
+    {
+        $charge ??= (int) ($this->Charge ?? 0);
+
+        return self::isFullyPaid((int) ($this->Paid ?? 0) === 1, $paidAmount, $charge);
+    }
+
+    /**
      * 取得「某堂課當日」的標準時長（分鐘）。
      * 先查 duration1~duration6 對應 ISO weekday；否則 fallback 到 SessionDuration。
      * 供單堂時間調整時的費率換算使用（per-day > contract default）。
