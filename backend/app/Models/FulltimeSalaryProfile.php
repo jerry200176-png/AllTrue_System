@@ -20,7 +20,8 @@ class FulltimeSalaryProfile extends Model
     protected $table = 'fulltime_salary_profiles';
 
     protected $fillable = [
-        'teacher_id', 'branch_id', 'base_salary', 'effective_from', 'created_by',
+        'teacher_id', 'branch_id', 'base_salary', 'effective_from', 'status',
+        'created_by', 'approved_by', 'approved_at',
     ];
 
     protected $casts = [
@@ -28,10 +29,14 @@ class FulltimeSalaryProfile extends Model
         'base_salary' => 'decimal:2',
     ];
 
-    /** Base salary effective on the given date (latest profile at or before it). */
+    /**
+     * Base salary effective on the given date (latest APPROVED profile at or
+     * before it). TD-078: unapproved writes must never feed payroll.
+     */
     public static function effectiveFor(int $teacherId, string $onDate): ?self
     {
         return self::where('teacher_id', $teacherId)
+            ->where('status', 'approved')
             ->where('effective_from', '<=', $onDate)
             ->orderByDesc('effective_from')
             ->first();

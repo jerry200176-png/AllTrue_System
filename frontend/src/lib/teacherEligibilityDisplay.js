@@ -19,3 +19,35 @@ export function eventSubtitle(row, teacherName) {
   }
   return `${date}｜全分校`;
 }
+
+export function formatMoney(value) {
+  const n = Number(value ?? 0);
+  return `$${n.toLocaleString('zh-TW', { maximumFractionDigits: 0 })}`;
+}
+
+export function formatSubjects(value) {
+  if (value == null || value === '') return '—';
+  return Number(value).toLocaleString('zh-TW', { maximumFractionDigits: 4 });
+}
+
+export function formatPct(value) {
+  const n = Number(value ?? 0);
+  const sign = n > 0 ? '+' : '';
+  return `${sign}${n}%`;
+}
+
+export function weightedBonusFormula(settlement) {
+  const subject = Number(settlement?.subject_count_bonus ?? 0);
+  const oneToThree = Number(settlement?.one_to_three_bonus ?? 0);
+  const multiplier = Number(settlement?.multiplier_pct ?? 100);
+  const weighted = Number(settlement?.weighted_bonus_amount ?? 0);
+  return `(${formatMoney(subject)} + ${formatMoney(oneToThree)}) × ${multiplier}% = ${formatMoney(weighted)}`;
+}
+
+export function monthWindow(yearMonth) {
+  const [year, month] = String(yearMonth || '').split('-').map(Number);
+  if (!year || !month) return { start: '', end: '' };
+  const lastDay = new Date(year, month, 0).getDate();
+  const pad = (n) => String(n).padStart(2, '0');
+  return { start: `${year}-${pad(month)}-01`, end: `${year}-${pad(month)}-${pad(lastDay)}` };
+}

@@ -209,7 +209,8 @@ class TeacherEligibilityController extends Controller
                 || $teacherEvents->contains(fn ($event) => $event->event_type === 'holiday');
             $holidayDays = $this->holidayDays($teacherAttendance, $teacherPlanned, $teacherEvents, $effectiveStart, $period['end'], $holidayCalendarAvailable);
             $weekdayHours = $this->weekdayHours($teacherSchedules, $effectiveStart, $period['end']);
-            $subjectCount = $subjectUnitsByTeacher[$teacherId] ?? null;
+            $subjectUnits = $subjectUnitsByTeacher[$teacherId] ?? null;
+            $subjectCount = is_array($subjectUnits) ? ($subjectUnits['payroll_total'] ?? null) : $subjectUnits;
 
             $result = $this->policy->evaluate([
                 'period_start' => $effectiveStart->toDateString(),
@@ -229,9 +230,14 @@ class TeacherEligibilityController extends Controller
                     'ends_on' => $row->ends_on,
                 ])->all(),
                 'subject_count' => $subjectCount,
+                'subject_units' => is_array($subjectUnits) ? $subjectUnits : [],
             ]);
             $result['components']['weekly_16_segments'] = $weeklyStatus;
-            $settlement = \App\Support\FulltimeSettlementComposer::compose($result['components'], $salaryByTeacher[$teacherId] ?? null);
+            $settlement = \App\Support\FulltimeSettlementComposer::compose(
+                $result['components'],
+                $salaryByTeacher[$teacherId] ?? null,
+                is_array($subjectUnits) ? $subjectUnits : []
+            );
 
             return [
                 'teacher_id' => $teacherId,
@@ -254,6 +260,7 @@ class TeacherEligibilityController extends Controller
             'components' => ['weekly_16_segments', 'holiday_16_hours', 'weekday_afternoon', 'special_performance', 'deductions', 'subject_count_bonus'],
             'teachers' => $rows,
             'total_teachers' => count($rows),
+            'branch_subject_total' => round(collect($rows)->sum(fn ($row) => (float) ($row['settlement']['payroll_subject_count'] ?? 0)), 4),
         ]);
     }
 
@@ -520,13 +527,14 @@ class TeacherEligibilityController extends Controller
                 continue;
             }
 
-            $weight = match ($classType) {
+            $hours = $this->subjectRecordHours($row) * match ($classType) {
                 'one_on_two' => 0.75,
                 'one_on_three' => 0.5,
                 default => 1.5,
             };
             $teacherId = (int) $row->teacher_id;
-            $buckets[$teacherId] = ($buckets[$teacherId] ?? 0.0) + ($this->subjectRecordHours($row) * $weight);
+            $bucket = $classType === 'one_on_three' ? 'one_to_three' : 'regular';
+            $buckets[$teacherId][$bucket] = ($buckets[$teacherId][$bucket] ?? 0.0) + $hours;
         }
 
         $tutoringQuery = DB::table('ClassSession as cs')
@@ -546,10 +554,40 @@ class TeacherEligibilityController extends Controller
 
         foreach ($tutoringQuery->get() as $row) {
             $teacherId = (int) $row->teacher_id;
-            $buckets[$teacherId] = ($buckets[$teacherId] ?? 0.0) + ($this->subjectRecordHours($row) * 0.5);
+            $buckets[$teacherId]['tutoring_trial'] = ($buckets[$teacherId]['tutoring_trial'] ?? 0.0) + ($this->subjectRecordHours($row) * 0.5);
         }
 
-        return collect($buckets)->mapWithKeys(fn ($weighted, $teacherId) => [$teacherId => round($weighted / 8, 2)])->all();
+        $trialQuery = DB::table('ClassSession as cs')
+            ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+            ->join('Student as s', 's.id', '=', 'sc.StudentID')
+            ->whereIn('sc.TeacherID', $teacherIds)
+            ->where('sc.ClassType', 'trial')
+            ->whereIn('cs.Status', ['trial', 'attended', 'completed'])
+            ->whereBetween('cs.SessionDate', [$start->toDateString(), $end->toDateString()])
+            ->when($branchFilter !== null, fn ($builder) => $builder->whereIn('s.CampusID', $branchFilter))
+            ->select([
+                'sc.TeacherID as teacher_id', 'cs.StartTime as start_time', 'cs.EndTime as end_time',
+                'cs.SessionDate as session_date', 'sc.SessionDuration as session_duration',
+                'sc.week1', 'sc.week2', 'sc.week3', 'sc.week4', 'sc.week5', 'sc.week6',
+                'sc.duration1', 'sc.duration2', 'sc.duration3', 'sc.duration4', 'sc.duration5', 'sc.duration6',
+            ]);
+
+        foreach ($trialQuery->get() as $row) {
+            $teacherId = (int) $row->teacher_id;
+            $buckets[$teacherId]['tutoring_trial'] = ($buckets[$teacherId]['tutoring_trial'] ?? 0.0) + ($this->subjectRecordHours($row) * 0.5);
+        }
+
+        return collect($buckets)->mapWithKeys(function ($parts, $teacherId) {
+            $regular = round(($parts['regular'] ?? 0) / 8, 4);
+            $tutoringTrial = round(($parts['tutoring_trial'] ?? 0) / 8, 4);
+            $oneToThree = round(($parts['one_to_three'] ?? 0) / 8, 4);
+            return [$teacherId => [
+                'regular' => $regular,
+                'tutoring_trial' => $tutoringTrial,
+                'one_to_three' => $oneToThree,
+                'payroll_total' => round($regular + $tutoringTrial, 4),
+            ]];
+        })->all();
     }
 
     /**
@@ -567,6 +605,7 @@ class TeacherEligibilityController extends Controller
 
         return DB::table('fulltime_salary_profiles')
             ->whereIn('teacher_id', $teacherIds)
+            ->where('status', 'approved') // TD-078: unapproved writes must never feed payroll
             ->where('effective_from', '<=', $onDate)
             ->when($branchFilter !== null, fn ($query) => $query->where(function ($nested) use ($branchFilter) {
                 $nested->whereNull('branch_id')->orWhereIn('branch_id', $branchFilter);

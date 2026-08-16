@@ -368,10 +368,37 @@ class TeacherEligibilityInputController extends Controller
             'branch_id' => $branchId,
             'base_salary' => $data['base_salary'],
             'effective_from' => $data['effective_from'],
+            'status' => 'pending',
             'created_by' => $this->actorId($request),
         ]);
 
         return response()->json($profile, 201);
+    }
+
+    /**
+     * POST /api/v1/finance/teacher-eligibility/salary-profiles/{id}/approve
+     * TD-078: second-person approval before a base-salary write can feed payroll.
+     * super_admin only — the director who wrote it cannot also approve it.
+     */
+    public function approveSalaryProfile(Request $request, int $id)
+    {
+        if ($request->attributes->get('auth_role') !== 'super_admin') {
+            return response()->json(['message' => 'Only headquarters can approve salary profiles'], 403);
+        }
+        $profile = \App\Models\FulltimeSalaryProfile::find($id);
+        if (!$profile) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+        if ($profile->status === 'approved') {
+            return response()->json(['message' => '此底薪已核准，無需重複核准。'], 422);
+        }
+        $profile->update([
+            'status' => 'approved',
+            'approved_by' => $this->actorId($request),
+            'approved_at' => now(),
+        ]);
+
+        return response()->json($profile);
     }
 
     private function validatedEvent(Request $request): array|\Illuminate\Http\JsonResponse

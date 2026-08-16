@@ -14,6 +14,7 @@ Copy into PR comment or `docs/incidents/` note when stopping mid-work.
 - Done:
 - Not done / stop reason:
 - Next command / SOP:
+- Campaign check: read `docs/architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md` if the task touches schedules / calendar / course management
 - Risks / do-not-touch:
 - Capability notes (token, DNS, disabled workflows):
 ```

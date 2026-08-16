@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "test:calendar": "node src/lib/sessionOccurrenceFilter.test.js && node src/lib/calendarExceptionMerge.test.js && node src/lib/calendarOccurrenceMerge.test.js && node src/lib/calendarLoadPerformance.test.js && node src/lib/calendarCourseLoad.test.js && node src/lib/classSessionPick.test.js && node src/lib/classSessionsApi.test.js && node src/lib/teacherHomeSessionContract.test.js && node src/lib/calendarDateUtils.test.js && node src/lib/calendarFormat.test.js && node src/lib/calendarDropRouting.test.js && node src/lib/teacherColor.test.js && npx vitest run src/composables/__tests__/supabaseMutationContract.test.js && npx vitest run src/components/substitute/__tests__/SubstituteTeacherPickerModal.test.js && npx vitest run src/composables/course-management/__tests__/useRescheduleAndMakeup.test.js && npx vitest run src/composables/calendar/__tests__/useCalendarLeaveExtra.test.js && npx vitest run src/composables/calendar/__tests__/useCalendarSubstitute.test.js && npx vitest run src/composables/calendar/__tests__/useCalendarReschedule.test.js",
+    "test:calendar": "node src/lib/scheduleOccurrencePhase0.lock.test.js && node src/lib/sessionOccurrenceFilter.test.js && node src/lib/calendarExceptionMerge.test.js && node src/lib/calendarOccurrenceMerge.test.js && node src/lib/calendarLoadPerformance.test.js && node src/lib/calendarCourseLoad.test.js && node src/lib/classSessionPick.test.js && node src/lib/classSessionsApi.test.js && node src/lib/useBranches.test.js && node src/lib/teacherHomeSessionContract.test.js && node src/lib/calendarDateUtils.test.js && node src/lib/calendarFormat.test.js && node src/lib/calendarDropRouting.test.js && node src/lib/teacherColor.test.js && npx vitest run src/composables/__tests__/supabaseMutationContract.test.js && npx vitest run src/components/substitute/__tests__/SubstituteTeacherPickerModal.test.js && npx vitest run src/composables/course-management/__tests__/useRescheduleAndMakeup.test.js && npx vitest run src/composables/calendar/__tests__/useCalendarLeaveExtra.test.js && npx vitest run src/composables/calendar/__tests__/useCalendarSubstitute.test.js && npx vitest run src/composables/calendar/__tests__/useCalendarReschedule.test.js",
     "test:teacher-streak": "node src/lib/teacherLoginStreak.test.js",
     "test:engagement-progress": "node src/lib/engagementRankProgress.test.js",
     "test:exception-workflow-focus": "node src/lib/exceptionWorkflowFocus.test.js",
@@ -25,6 +25,7 @@
     "test:student-class-display": "node src/lib/studentClassDisplay.test.js",
     "test:schedule-display": "node src/lib/scheduleDisplay.test.js",
     "test:attendance-source-display": "node src/lib/attendanceSourceDisplay.test.js",
+    "test:attendance-mark-confirm-hint": "node src/lib/attendanceMarkConfirmHint.test.js",
     "test:director-facing-id-leak": "node src/lib/directorFacingIdLeak.test.js",
     "test:parent-notification-preferences": "vitest run src/composables/__tests__/parentNotificationPreferences.test.js",
     "test:scroll-lock": "node src/lib/useScrollLock.test.js",
@@ -45,16 +46,16 @@
     "lint:design": "bash ../scripts/check-no-raw-hex.sh",
     "lint:ui-fixtures": "bash ../scripts/check-no-public-ui-fixtures.sh",
     "lint:no-undef": "eslint src --no-warn-ignored",
-    "build": "npm run lint:no-undef && npm run sync-release-notes && npm run test:session-consistency && npm run test:session-occurrence-filter && npm run test:package-sessions && npm run test:session-planning-status && npm run test:course-teacher-options && npm run test:universal-scheduler-api && npm run test:enrollment-conflict-decision && npm run test:schedule-display && npm run test:attendance-source-display && npm run test:director-facing-id-leak && npm run test:learning-records-window && npm run test:learning-record-target && npm run test:learning-record-sort && npm run test:learning-record-preview && npm run test:trust-decision-display && npm run test:student-class-display && npm run test:parent-notification-preferences && npm run test:scroll-lock && npm run test:course-pricing && npm run test:scheduler-session-expand && npm run test:lesson-coverage && npm run test:pin-gate && npm run test:teacher-eligibility-display && vite build && npm run lint:ui-fixtures",
+    "build": "npm run lint:no-undef && npm run sync-release-notes && npm run test:session-consistency && npm run test:session-occurrence-filter && npm run test:package-sessions && npm run test:session-planning-status && npm run test:course-teacher-options && npm run test:universal-scheduler-api && npm run test:enrollment-conflict-decision && npm run test:schedule-display && npm run test:attendance-source-display && npm run test:attendance-mark-confirm-hint && npm run test:director-facing-id-leak && npm run test:learning-records-window && npm run test:learning-record-target && npm run test:learning-record-sort && npm run test:learning-record-preview && npm run test:trust-decision-display && npm run test:student-class-display && npm run test:parent-notification-preferences && npm run test:scroll-lock && npm run test:course-pricing && npm run test:scheduler-session-expand && npm run test:lesson-coverage && npm run test:pin-gate && npm run test:teacher-eligibility-display && vite build && npm run lint:ui-fixtures",
     "preview": "vite preview",
     "deploy": "npm run build && node scripts/copy-to-backend.cjs",
     "deploy:pack": "npm run build && node scripts/pack-deploy.cjs",
     "prepare": "husky"
   },
   "dependencies": {
-    "@sentry/vue": "^10.69.0",
-    "@supabase/supabase-js": "^2.111.0",
-    "vue": "^3.5.40"
+    "@sentry/vue": "^10.70.0",
+    "@supabase/supabase-js": "^2.112.3",
+    "vue": "^3.5.41"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
@@ -72,6 +73,6 @@
     "vue-eslint-parser": "^9.4.3"
   },
   "optionalDependencies": {
-    "@rollup/rollup-linux-arm64-gnu": "^4.62.3"
+    "@rollup/rollup-linux-arm64-gnu": "^4.62.4"
   }
 }

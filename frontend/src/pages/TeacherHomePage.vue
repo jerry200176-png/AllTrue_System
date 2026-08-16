@@ -339,7 +339,7 @@
           <div class="th-overdue-info">
             <span class="th-overdue-student">{{ item.studentName || '—' }}</span>
             <span class="th-overdue-subject">{{ item.subjectName || item.subject || '' }}</span>
-            <span class="th-branch-chip" :style="{ background: branchColor(item.branchId) }">{{ branchShortName(item.branchId) }}</span>
+            <span v-if="campusIdFrom(item.branchId)" class="th-branch-chip" :style="{ background: branchColor(item.branchId) }">{{ branchShortName(item.branchId) }}</span>
           </div>
           <button class="th-fill-btn" @click="goFillRecord({ branchId: item.branchId, recordId: null, classSessionId: item.id, sessionDate: item.date })" title="填寫評量">
             <span class="material-symbols-outlined">edit_note</span>
@@ -409,7 +409,7 @@
                 <div class="th-event-student">{{ ev.studentName }}</div>
                 <div class="th-event-meta">
                   <span class="th-event-subject">{{ ev.subject }}</span>
-                  <span class="th-branch-chip" :style="{ background: branchColor(ev.branchId) }">{{ branchShortName(ev.branchId) }}</span>
+                  <span v-if="campusIdFrom(ev.branchId)" class="th-branch-chip" :style="{ background: branchColor(ev.branchId) }">{{ branchShortName(ev.branchId) }}</span>
                   <span v-if="ev.formStatus && ev.formStatus !== 'missing'" :class="['th-form-chip', `th-form-${ev.formStatus}`]">{{ formStatusLabel(ev.formStatus) }}</span>
                 </div>
               </div>
@@ -531,7 +531,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { supabase } from '../supabase';
-import { branches, getBranchName } from '../lib/useBranches';
+import { branches, campusIdFrom, getBranchName } from '../lib/useBranches';
 import { fetchClassSessions } from '../lib/classSessionsApi';
 import { dedupeSessionsByStudentSlot } from '../lib/classSessionPick';
 import { fetchChatUnreadCount } from '../lib/chatApi';
@@ -814,18 +814,9 @@ async function fetchPendingAttendance() {
     const token = await getToken();
     if (!token) return;
     const today = localTodayYmd();
-    const qs = new URLSearchParams({ start: today, end: today, per_page: '500' });
-    const res = await fetch(`/api/v1/class-sessions?${qs}`, {
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-    });
-    if (!res.ok) return;
-    const json = await res.json();
-    const rows = Array.isArray(json?.data) ? json.data : (Array.isArray(json) ? json : []);
-    const scheduled = rows.filter(r => {
-      const s = String(r?.status || '').toLowerCase();
-      return s === 'scheduled';
-    });
-    pendingAttendanceCount.value = scheduled.length;
+    const result = await fetchClassSessions({ token, start: today, end: today, perPage: 500 });
+    const rows = result.items || [];
+    pendingAttendanceCount.value = rows.filter((r) => String(r?.status || '').toLowerCase() === 'scheduled').length;
     todayAllSessions.value = rows;
   } catch { /* ignore */ } finally {
     loadingAttendance.value = false;
@@ -1109,11 +1100,9 @@ const otherBranchTodayCount = computed(() => {
   const today = localTodayYmd();
   const currentBid = Number(props.branchId);
   return todayAllSessions.value.filter(s => {
-    // todayAllSessions is supplied by App.vue's direct class-sessions request,
-    // not fetchClassSessions' normalized SessionViewModel.
-    const bid = Number(s?.branch_id || s?.CampusID || 0);
+    const bid = campusIdFrom(s?.branchId);
     const st = String(s?.status || '').toLowerCase();
-    return bid > 0 && bid !== currentBid && String(s?.session_date || '').slice(0, 10) === today && st !== 'cancelled';
+    return bid != null && bid !== currentBid && String(s?.date || '').slice(0, 10) === today && st !== 'cancelled';
   }).length;
 });
 
@@ -1212,7 +1201,7 @@ const weekDays = computed(() => {
         // 請假待審核：與出缺勤管理／課表與評量同一認定，不列入今日待填（in-app bug 194）
         const isLeaveRequested = status === 'leave_requested';
         return {
-          key: `${s.id}-${s.branchId}`,
+          key: `${s.id}-${campusIdFrom(s.branchId) || 'none'}`,
           id: s.id,
           studentClassId: s.studentClassId,
           studentName: s.studentName || '—',
@@ -1220,7 +1209,7 @@ const weekDays = computed(() => {
           date: s.date || dateStr,
           startTime: s.startTime || '—',
           endTime: s.endTime || '',
-          branchId: s.branchId || 0,
+          branchId: campusIdFrom(s.branchId),
           status: s.status,
           formStatus: isLeave ? 'leave' : (isLeaveRequested ? 'leave_requested' : (s.learningRecordStatus || 'missing')),
           recordId: s.learningRecordId || null,
@@ -1312,7 +1301,8 @@ function branchColor(branchId) {
 }
 
 function branchShortName(branchId) {
-  const name = getBranchName(Number(branchId));
+  if (campusIdFrom(branchId) == null) return '';
+  const name = getBranchName(branchId);
   return name.replace(/分校$/, '').replace(/校區$/, '');
 }
 

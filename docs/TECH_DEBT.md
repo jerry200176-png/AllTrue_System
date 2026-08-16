@@ -557,15 +557,16 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
-| 優先級 | P1 |
+| 狀態 | **UI 已隱藏（2026-08-16），完整 API 仍 Open** |
+| 優先級 | P1 → P2（使用者不會再點到必失敗操作） |
 | 發現日期 | 2026-07-21 |
 | 發現來源 | [REVIEW] 收據 404 hotfix closeout（#1363 後） |
 | 影響模組 | `BatchInvoiceModal.vue`、`OverdueBucketsPanel.vue`、`TuitionCollectionPage.vue` |
 | 描述 | PR #1197 前端-only 上線；後端 `/invoices/batch-preview`、`/invoices/batch`、`/invoices/overdue-summary` 從未進 main。使用者若點到這些入口會固定失敗。收據已改回 payment-reports；這兩塊仍是孤兒 UI。 |
-| 建議做法 | 先確認 production 可否觸發 → 可觸發則 hide／feature-flag／disable；禁止半套 stub route。完整 API 另走 PLAN。 |
-| 清償成本估計 | 低（隱藏入口）／中（若要真做後端） |
-| 不做的代價 | 主任繼續點到必失敗操作，信任再次受損（與收據 404 同族：前端超前後端） |
+| 已做 | 依既有建議「先確認可觸發 → hide」：移除 `TuitionCollectionPage.vue` 的「批次開單」按鈕與「逾期分級」分頁入口（連同對應 ref/watch/import），使用者再也點不到這兩個必失敗的動作。未新增任何半套 stub route。 |
+| 建議做法 | 若未來真的要做，完整 API（batch-preview/batch/overdue-summary）另走 PLAN，把移除的 UI 重新接回。 |
+| 清償成本估計 | 隱藏部分已完成／中（若要真做後端） |
+| 不做的代價（剩餘） | 批次開單／逾期分級功能本身仍不存在，只是不會再誤導使用者去點 |
 
 ### TD-068：Receipt Domain T3（immutable snapshot／PDF／void／legal-info）— blocked
 
@@ -699,15 +700,16 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
+| 狀態 | **後端已修（2026-08-16，見對應 PR），前端待審核狀態顯示 Open** |
 | 優先級 | P2 |
 | 發現日期 | 2026-08-14 |
 | 發現來源 | 自動安全審查（push/commit security review）在 `TeacherEligibilityInputController.php` 點出 separation-of-duties 缺口，經跟使用者確認後記錄為技術債，暫不在這次 PR（#1773）處理。 |
 | 影響模組 | `backend/app/Http/Controllers/TeacherEligibilityInputController.php`（`storeSalaryProfile()`）、`fulltime_salary_profiles` 表 |
 | 描述 | `teacher_payroll_deductions` 有「主任確認（`director_confirmed_by`）→ 總部核准（`hq_approved_by`，限 `super_admin`）」兩階段才生效；`storeSalaryProfile()` 卻是任何 `role:director` 帶 PIN 就能單方直接寫入並立即生效（`TeacherEligibilityController::index()` 馬上採用最新一筆算總發放金額），沒有第二人核准，也沒有留下「誰改了底薪、改前改後多少」的變更歷史（只有一筆 `created_by`，沒有審核鏈）。底薪直接乘進總發放金額，出錯或被濫用的影響比扣款更大。 |
-| 建議做法 | 比照 `teacher_payroll_deductions` 加兩階段：`fulltime_salary_profiles` 新增 `status`（`pending`/`approved`）＋ `approved_by`/`approved_at`，`storeSalaryProfile()` 先寫 `pending`，`salaryProfilesByTeacher()` 只採用 `approved` 的最新一筆；新增一個 `approveSalaryProfile` 端點限 `super_admin`。 |
-| 清償成本估計 | 小～中（一個 migration 加欄位 + controller 加一個 approve 端點 + 前端加一個待審核狀態顯示，估半天） |
-| 不做的代價 | 單一 director 帳號（或被盜用的 PIN）可以無審核地改變任何老師的總發放金額，且改動沒有留痕，事後難以稽核或還原 |
+| 已做 | 加 `status`/`approved_by`/`approved_at`；`storeSalaryProfile()` 先寫 `pending`；`salaryProfilesByTeacher()`／`FulltimeSalaryProfile::effectiveFor()` 只採用 `approved`；新增 `POST .../salary-profiles/{id}/approve`（限 `super_admin`，寫的人不能自己核准）。既有資料在同一個 migration 裡直接 grandfather 成 `approved`，不會突然讓現有老師的薪水從計算結果消失。 |
+| 建議做法（剩餘） | 前端加一個「待核准」狀態顯示與 super_admin 的核准入口 UI（目前只有 API，沒有畫面） |
+| 清償成本估計 | 後端已完成／前端小（半天內） |
+| 不做的代價（剩餘） | super_admin 目前只能透過 API 直接呼叫核准，沒有畫面可以看到待審清單 |
 
 ### TD-079：正職老師底薪 `effective_from` 沒有限制，可回溯覆蓋已結算/已發放月份的總發放金額
 
@@ -723,6 +725,20 @@
 | 清償成本估計 | 中（政策確認 + 驗證規則 + 稽核欄位/表，估半天～一天，視政策複雜度） |
 | 不做的代價 | 已對外呈現或已發放月份的總發放金額可以被悄悄改動，沒有稽核軌跡，出現爭議時無法還原「當時算出來的金額」 |
 
+### TD-080：行政「核帳登記」與會計入帳核銷綁死，沒有已回報待對帳中間態
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Resolved（#1827 Phase 2b UI；本 PR merge 後） |
+| 優先級 | P1 |
+| 發現日期 | 2026-08-16 |
+| 發現來源 | 現場建議（嗨森）：行政看官方 LINE 登錄已繳、會計對銀行後核銷再開收據；批次與課程頁同畫面 |
+| 影響模組 | `PaymentReportController::directorRecord`、`PaymentEntryModal.vue`、`TuitionCollectionPage.vue`、`CourseManagement.vue` 繳費切換、`AlertController::computePaymentStatus` |
+| 描述 | `directorRecord` 一次寫 Payment＋Invoice 結清＋`Paid=1`＋`reconciled_at`＋confirmed report。行政無法在會計對帳前登錄；LINE 假繳費會變成帳上已繳。`pending_report`／confirm／reject 仍存在，但主任路徑跳過 pending。 |
+| 建議做法 | 見 [`docs/architecture/RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md`](architecture/RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md)：Phase 1 改狀態機；Phase 2 課程頁帳務分頁＋批次。不在此清償 TD-068。 |
+| 清償成本估計 | 高（Phase 1 狀態機＋測試；Phase 2 UI） |
+| 不做的代價 | 繼續用口頭帳或假已繳；催繳與收據時機錯誤 |
+
 ### TD-076：`schedules` 表用「不可變紀錄鏈」表達改期，二次改期時容易讓已取代的紀錄殘留（連續兩起 production 事故，2026-08-08）
 
 | 欄位 | 內容 |
@@ -734,6 +750,6 @@
 | 影響模組 | `backend/app/Http/Controllers/ScheduleController.php`（`store()` 的改期建立/防重複邏輯）、`schedules` 資料表、`frontend/src/lib/calendarExceptionMerge.js`（下游 dedupe） |
 | 描述 | `schedules` 表把「這一堂被改期了」表達成一條**不可變紀錄鏈**：每次改期都新增一筆 `status=rescheduled`（標記舊時段作廢）+ 一筆 `status=scheduled`（新時段），用 `original_schedule_id` 串起來。這個模型的問題是：讀者（不管是後端刪除邏輯、前端渲染邏輯，或未來任何新功能）每次都要**正確走訪整條鏈**才能算出「這一堂現在到底在哪」，只要鏈很長、或改期又改到同一個時間、或改期目的地換了日期，任何一處走訪邏輯少考慮一種情況，就會讓已經作廢的舊紀錄看起來仍然有效。這不是實作疏漏，是資料模型本身的形狀在鼓勵這類 bug。 |
 | 大廠對標 | RFC 5545（iCalendar）用 `RECURRENCE-ID`（原始時間，永不變）當身分鍵，覆寫同一個 occurrence 是**更新同一筆**，不是疊加；Google Calendar API 的 `recurringEventId`+`originalStartTime` 同款設計，PATCH 同一個 instance 資源。Cal.com（本專案 star repo 名單裡的排程參考）用的是跟 AllTrue 一樣的鏈模型，且[已知在 production 出過同一類 bug](https://github.com/calcom/cal.com/issues/12922)——這不是 AllTrue 特有的失誤，是鏈模型這個選擇本身容易在二次改期時出錯的獨立佐證。詳見 `AI_REGRESSION_LESSONS.md` R102。 |
-| 建議做法 | 把 `schedules` 的身分從「最新一筆的 id」改成「`student_course_id` + 原始 `schedule_date`/`start_time`（第一次物化後永久不變）」，每個身分對應**最多一筆**目前有效紀錄；改期是 **UPDATE** 這筆紀錄的 `schedule_date`/`start_time`（`status` 維持 `scheduled`），不是新增 rescheduled/scheduled 紀錄對。歷史移到獨立的 append-only `schedule_change_log`，比照 `bug_report_status_logs` 已經跟 `bug_reports` 目前狀態分離的既有模式。這是資料表結構＋所有讀寫路徑的改動，需要完整遷移計畫（雙寫期、回填既有鏈資料、golden 測試鎖住既有行為），不是一次 PR 能做完。 |
+| 建議做法 | 把 `schedules` 的身分從「最新一筆的 id」改成「`student_class_id` + 原始 `schedule_date`/`start_time`（第一次物化後永久不變）」。**計畫 SSOT：** [`docs/architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md`](architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md)。Phase 2 已上線可空欄＋預設關閉雙寫。Phase 3 命令 `schedules:backfill-occurrence-identity` 預設 dry-run；production execute 仍 gated。尚未 unique / 讀取切換 / 停鏈。 |
 | 清償成本估計 | 大（資料模型遷移 + 所有讀寫路徑改寫 + 回填腳本，估需完整 RFC/PRD 規劃後才能估工） |
 | 不做的代價 | 每次「改期的改期」場景出現新的變化（同時間重新提交、跨日期改期、未來可能的批次改期等），下游都要再補一次 dedupe patch——已經發生兩次，且 Cal.com 的先例顯示這個模式在其他成熟產品也會反覆冒出同類 bug，不是修一次就永久免疫 |
