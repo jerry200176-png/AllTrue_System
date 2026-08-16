@@ -299,7 +299,7 @@
         role="status"
       >
         <p class="pin-gate-placeholder-title">此頁需要 PIN 才能查看</p>
-        <p class="pin-gate-placeholder-body">帳務中心、當月學收、薪資與老師管理會先解鎖。請在中央視窗輸入 PIN，或按「暫不啟用，直接進入」。解鎖前名單不會載入，避免敏感資料露在背景。</p>
+        <p class="pin-gate-placeholder-body">薪資、當月學收與老師管理會先解鎖。請在中央視窗輸入 PIN，或按「暫不啟用，直接進入」。帳務中心可直接進入，不必先解 PIN。</p>
       </div>
       <DirectorDashboard v-if="!isPasswordChangeLocked && isDirector && active === 'director'" :branch-id="currentBranch" :unread-feedback-count="unreadFeedbackCount" :initial-engagement="userProfile?.engagement ?? null" :focus-workflow-id="directorFocusWorkflowId" :focus-section="directorFocusSection" @navigate="onNavigateFromNotifications" />
       <NotificationsCenter
@@ -310,7 +310,7 @@
       />
       <SmartCalendar v-if="!isPasswordChangeLocked && active === 'calendar'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" :initial-teacher-id="initialTeacherIdForNav" :reset-week-token="calendarResetToken" @clear-initial-teacher="initialTeacherIdForNav = null" />
       <StudentsList v-if="!isPasswordChangeLocked && isDirector && active === 'students'" :branch-id="currentBranch" />
-      <TuitionCollectionPage v-if="!isPasswordChangeLocked && isDirector && active === 'tuition-collect' && !pinModalActive" :branch-id="currentBranch" />
+      <TuitionCollectionPage v-if="!isPasswordChangeLocked && isDirector && active === 'tuition-collect'" :branch-id="currentBranch" />
       <TuitionReportPage v-if="!isPasswordChangeLocked && isDirector && active === 'tuition-report' && !pinModalActive" :branch-id="currentBranch" />
       <ParttimePayrollPage v-if="!isPasswordChangeLocked && isDirector && active === 'parttime-payroll' && !pinModalActive" :branch-id="currentBranch" :user-role="role" />
       <TeacherEligibilityPage v-if="!isPasswordChangeLocked && isDirector && active === 'teacher-eligibility' && !pinModalActive" :branch-id="currentBranch" :user-role="role" />

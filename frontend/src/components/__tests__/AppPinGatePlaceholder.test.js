@@ -12,6 +12,6 @@ describe('PIN gate placeholder', () => {
     expect(source).toContain('class="pin-gate-placeholder"');
     expect(source).toContain('此頁需要 PIN 才能查看');
     expect(source).toContain('暫不啟用，直接進入');
-    expect(source).toContain('TuitionCollectionPage v-if="!isPasswordChangeLocked && isDirector && active === \'tuition-collect\' && !pinModalActive"');
+    expect(source).toContain('TuitionCollectionPage v-if="!isPasswordChangeLocked && isDirector && active === \'tuition-collect\'"');
   });
 });

@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-16-director-confirms
+    published_at: "2026-08-16"
+    audiences:
+      - director
+    importance: digest
+    title: 帳務中心直接開
+    summary: 帳務中心不再擋 PIN；對到帳後由主任按確認入帳。
+    items:
+      - category: fixed
+        text: 帳務中心一進去就有名單，不必先解 PIN。
+      - category: improved
+        text: 沒有會計角色；主任按確認入帳就完成。
+    source_refs:
+      - "changelog:2026-08-16:director-confirms"
+
   - id: staff-2026-08-16-billing-tabs-visible
     published_at: "2026-08-16"
     audiences:
@@ -99,7 +114,7 @@ updates:
       - director
     importance: digest
     title: 通知中心先回報
-    summary: 通知中心登記已繳後仍待對帳，會計確認才入帳開收據。
+    summary: 通知中心登記已繳後仍待對帳，確認入帳後才開收據。
     items:
       - category: improved
         text: 通知中心學費改「送出已回報」，不會當場變已繳或開收據。
@@ -129,12 +144,12 @@ updates:
       - director
     importance: action_required
     title: 繳費改先回報再入帳
-    summary: 行政先登記家長已繳；會計對到帳才開收據，避免沒匯款就變已繳。
+    summary: 行政先登記家長已繳；對到帳後主任按確認入帳才開收據。
     items:
       - category: action_required
-        text: 看官方 LINE 請用「登記已回報」，不要等會計也能先登錄。
+        text: 看官方 LINE 請用「登記已回報」，不必等人也能先登錄。
       - category: improved
-        text: 會計確認入帳後才會開電子收據；對不到款可退回。
+        text: 對到帳後按確認入帳才開電子收據；對不到款可退回。
     source_refs:
       - "changelog:2026-08-16:reported-paid-pending"
 

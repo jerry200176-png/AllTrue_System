@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "session_id": "f3845b272b5143cba3b4ee82ea55a0d9",
+  "project": "alltrue",
+  "task_id": "billing-no-accountant-ux-20260816",
+  "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
+  "base_sha": "91f135ff5ede3f05f4ae580ecf4a9beb4f4d9a78",
+  "branch": "chore/task-billing-no-accountant-ux-20260816",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/billing-no-accountant-ux-20260816",
+  "started_at": "2026-08-16T14:24:21Z",
+  "production_mutation": false,
+  "preflight_result": "pass",
+  "provenance_type": "agent-session",
+  "agent_cli": null,
+  "gateway_version": "0.5.0"
+}
