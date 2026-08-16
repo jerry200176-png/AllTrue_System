@@ -715,7 +715,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
+| 狀態 | **已清償（2026-08-16：已鎖定月份拒絕改底薪生效日）** |
 | 優先級 | P2 |
 | 發現日期 | 2026-08-14 |
 | 發現來源 | 自動安全審查（push/commit security review）在 `TeacherEligibilityInputController.php` 點出 retroactive-write-past-period 缺口，經跟使用者確認後記錄為技術債，暫不在這次 PR（#1773）處理。 |

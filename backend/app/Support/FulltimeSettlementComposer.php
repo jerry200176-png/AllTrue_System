@@ -94,6 +94,7 @@ final class FulltimeSettlementComposer
                 ['key' => 'deductions', 'label' => '扣除案件', 'pct' => $deductionRate],
             ],
             'adjustments' => $adjustments,
+            'payout_is_draft' => $reviewRequired,
         ];
     }
 

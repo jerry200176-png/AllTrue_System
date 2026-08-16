@@ -96,3 +96,30 @@ export function approveTeacherEligibilityDeduction(id) {
 export function saveTeacherSalaryProfile(payload) {
   return request('/finance/teacher-eligibility/salary-profiles', { method: 'POST', body: JSON.stringify(payload) });
 }
+
+export function lockFulltimePayroll({ month, branchId }) {
+  return request('/finance/teacher-eligibility/lock', { method: 'POST', body: JSON.stringify({ month, branch_id: Number(branchId) }) });
+}
+
+export function reopenFulltimePayroll({ month, branchId, reason }) {
+  return request('/finance/teacher-eligibility/reopen', { method: 'POST', body: JSON.stringify({ month, branch_id: Number(branchId), reason }) });
+}
+
+export async function exportFulltimePayrollCsv({ month, branchId }) {
+  const params = new URLSearchParams({ month, branch_id: String(branchId) });
+  const res = await fetch(`${API_BASE}/finance/teacher-eligibility/export?${params}`, { headers: headers() });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data?.message || '匯出失敗');
+  }
+  const blob = await res.blob();
+  const disposition = res.headers.get('Content-Disposition') || '';
+  const match = disposition.match(/filename[^;=\n]*=["']?([^"';\n]*)["']?/);
+  const filename = match ? decodeURIComponent(match[1]) : `正職薪資_${month}.csv`;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
