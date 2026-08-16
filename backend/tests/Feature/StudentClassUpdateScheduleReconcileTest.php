@@ -280,6 +280,35 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
     }
 
     /**
+     * The edit form round-trips the existing purchase count. That metadata
+     * must not be treated as a count change and extend the future plan when a
+     * director only saves a memo (#231).
+     */
+    public function test_memo_round_trip_with_same_session_count_does_not_extend_future_plan(): void
+    {
+        [$token, $student, $course] = $this->seedCourseWithHistory();
+        $before = ClassSession::where('StudentClassID', $course->ID)->count();
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->putJson("/api/v1/student-classes/{$course->ID}", [
+            'subject' => 'Math',
+            'class_type' => 'one_on_one',
+            'duration_hours' => 2,
+            'sessions_purchased' => 8,
+            'remaining_sessions' => 4,
+            'payment_type' => 'session',
+            'scheduling_policy' => 'auto_recurrence',
+            'Memo' => '只改備註',
+        ]);
+
+        $res->assertOk();
+        $this->assertSame($before, ClassSession::where('StudentClassID', $course->ID)->count());
+        $this->assertSame('只改備註', (string) $course->fresh()->Memo);
+    }
+
+    /**
      * Memo-only update on a course with no future scheduled sessions must not
      * let reconcile rebuild week/time from past attended rows on other weekdays.
      */

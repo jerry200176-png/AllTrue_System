@@ -4,9 +4,10 @@ set -euo pipefail
 DATE="${DATE:-$(date +%Y-%m-%d)}"; CAMPUS_ID="${CAMPUS_ID:-9}"
 TEACHER_NAME="${TEACHER_NAME:-黃芝琳}"; STUDENT_NAMES="${STUDENT_NAMES:-王品方,陳品承}"
 ENV_FILE="${ENV_FILE:-/home/admin/backend/.env}"
+DB_USER=$(grep '^DB_USERNAME=' "$ENV_FILE" | cut -d= -f2-)
 DB_PASS=$(grep '^DB_PASSWORD=' "$ENV_FILE" | cut -d= -f2-)
 DB_NAME=$(grep '^DB_DATABASE=' "$ENV_FILE" | cut -d= -f2-)
-M=(mysql -h 127.0.0.1 -u admin -p"${DB_PASS}" "$DB_NAME" -N -B)
+M=(mysql -h 127.0.0.1 -u "$DB_USER" -p"${DB_PASS}" "$DB_NAME" -N -B)
 IFS=',' read -r -a NAMES <<< "$STUDENT_NAMES"; IN=""
 for n in "${NAMES[@]}"; do
   n=$(echo "$n" | xargs); [ -z "$n" ] && continue

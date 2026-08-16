@@ -12,6 +12,7 @@ use App\Models\StudentSignIn;
 use App\Models\User;
 use App\Models\UserCampus;
 use App\Services\ClassSessionMaterializationService;
+use App\Services\ContractScheduleMatcher;
 use App\Services\EnrollmentService;
 use App\Services\LearningRecordResurrectionPolicy;
 use App\Services\ScheduleGuardService;
@@ -170,8 +171,89 @@ class ClassSessionController extends Controller
             $this->autoMaterializeTeacherMonthlySessionsForRange($request, $teacherId, $campusIds);
         }
         $this->autoMaterializeCountSessionsForRange($request, (string) $role, $teacherId, $campusIds);
+        $this->autoMaterializeScheduledExceptionsForRange($request, $campusIds);
 
         return null;
+    }
+
+    /**
+     * Repair the read boundary between schedules and ClassSession for normal
+     * scheduled exceptions. Older substitute/reschedule writes could leave the
+     * schedule row present while the class-session projection was missing, so
+     * the capacity view showed two students but the teacher calendar showed one
+     * (#233). Makeup rows (type=extra) intentionally remain schedule-only per
+     * the R13 contract.
+     *
+     * This is deliberately limited to a same-day read and is idempotent through
+     * ClassSessionMaterializationService::upsertSlot.
+     *
+     * @param array<int> $campusIds
+     */
+    private function autoMaterializeScheduledExceptionsForRange(Request $request, array $campusIds): void
+    {
+        if (!$request->filled('start') || !$request->filled('end')) {
+            return;
+        }
+
+        try {
+            $start = Carbon::parse((string) $request->input('start'))->toDateString();
+            $end = Carbon::parse((string) $request->input('end'))->toDateString();
+        } catch (\Throwable $e) {
+            return;
+        }
+
+        if ($start !== $end) {
+            return;
+        }
+
+        $schedules = Schedule::query()
+            ->whereDate('schedule_date', $start)
+            ->where('status', 'scheduled')
+            ->where(function ($query) {
+                $query->whereNull('type')->orWhere('type', '!=', 'extra');
+            })
+            ->whereNotNull('student_course_id')
+            ->when(!empty($campusIds), fn ($query) => $query->whereIn('branch_id', $campusIds))
+            ->get();
+
+        foreach ($schedules as $schedule) {
+            $course = StudentClass::query()->find((int) $schedule->student_course_id);
+            if (!$course || (int) ($course->Stop ?? 0) === 1) {
+                continue;
+            }
+
+            // A cross-date reschedule is materialized by the reschedule flow;
+            // repairing it here would create a duplicate ghost occurrence.
+            $anchorId = (int) ($schedule->original_schedule_id ?? 0);
+            if ($anchorId > 0) {
+                $anchorDate = Schedule::query()->whereKey($anchorId)->value('schedule_date');
+                if ($anchorDate && Carbon::parse($anchorDate)->toDateString() !== $start) {
+                    continue;
+                }
+            }
+
+            $startTime = substr((string) ($schedule->start_time ?? ''), 0, 8);
+            $endTime = substr((string) ($schedule->end_time ?? ''), 0, 8);
+            if ($startTime === '' || $endTime === '') {
+                continue;
+            }
+            if (strlen($startTime) === 5) {
+                $startTime .= ':00';
+            }
+            if (strlen($endTime) === 5) {
+                $endTime .= ':00';
+            }
+
+            app(ClassSessionMaterializationService::class)->upsertSlot([
+                'StudentClassID' => (int) $course->getAttribute('ID'),
+                'SubjectID' => $course->getAttribute('SubjectID') ?: null,
+                'SessionDate' => $start,
+                'StartTime' => $startTime,
+                'EndTime' => $endTime,
+                'Status' => 'scheduled',
+                'Note' => 'auto-materialized-from-schedule-read-repair',
+            ]);
+        }
     }
 
     private function buildClassSessionIndexQuery(Request $request)
@@ -492,7 +574,12 @@ class ClassSessionController extends Controller
             return [];
         }
 
-        $classes = StudentClass::query()->whereIn('ID', $classIds)->get()->keyBy('ID');
+        // Eager-load student: buildProjectedFromEffectiveDates() reads
+        // $class->student->CampusID per class for projected-slot branch_id
+        // (in-app #235) -- without this it's an N+1, one query per class.
+        $classesQuery = StudentClass::query()->with('student');
+        $classesQuery->whereIn('ID', $classIds);
+        $classes = $classesQuery->get()->keyBy('ID');
         $schedules = Schedule::query()
             ->whereIn('student_course_id', $classIds)
             ->whereDate('schedule_date', '>=', $rangeStart)
@@ -803,11 +890,18 @@ class ClassSessionController extends Controller
         if ($startDate && $sessionDate < $startDate) {
             return response()->json(['message' => '堂次日期早於課程開始日'], 422);
         }
+        $scheduledException = $this->findScheduledExceptionSlot(
+            $studentClass,
+            $sessionDate,
+            isset($data['start_time']) ? substr((string) $data['start_time'], 0, 5) : null
+        );
         if ($endDate && $sessionDate > $endDate) {
             return response()->json(['message' => '堂次日期超過課程到期日'], 422);
         }
 
-        $slot = $this->resolveProjectedMonthlySlot(
+        // A persisted exception is the source of truth for this date.  It may
+        // intentionally use a different time from the recurring contract.
+        $slot = $scheduledException ?: $this->resolveProjectedMonthlySlot(
             $studentClass,
             (int) Carbon::parse($sessionDate)->dayOfWeekIso,
             isset($data['start_time']) ? substr((string) $data['start_time'], 0, 5) : null
@@ -824,7 +918,9 @@ class ClassSessionController extends Controller
             'EndTime'              => $slot['end_time'],
             'Status'               => 'scheduled',
             'Note'                 => 'projected-monthly-materialized',
-            'IsContractException'  => 0,
+            // A persisted schedule exception is a one-off occurrence even
+            // when its stored slot shares the contract's clock time.
+            'IsContractException'  => $scheduledException !== null ? 1 : 0,
         ]);
         $created = $result['created'];
         $session = $result['session'];
@@ -853,6 +949,99 @@ class ClassSessionController extends Controller
 
     private const ATTENDED_STATUSES = ['attended', 'completed', 'late', 'absent'];
     private const LEAVE_ADJUSTED_REQUIRES = ['director', 'admin', 'super_admin'];
+
+    /**
+     * A legacy scheduled exception can be visible as a projected chip before
+     * its ClassSession was materialized. Keep that chip actionable by resolving
+     * its stored exception time, even when the date is outside the recurring
+     * weekday contract.
+     *
+     * @return array{start_time:string,end_time:string}|null
+     */
+    private function findScheduledExceptionSlot(
+        StudentClass $studentClass,
+        string $sessionDate,
+        ?string $requestedStart
+    ): ?array {
+        $query = Schedule::query()
+            ->where('student_course_id', (int) $studentClass->getAttribute('ID'))
+            ->whereDate('schedule_date', $sessionDate)
+            ->where('status', 'scheduled')
+            ->where(function ($query): void {
+                $query->whereNull('type')->orWhere('type', '!=', 'extra');
+            });
+
+        $schedules = $query->orderBy('id')->get()
+            ->filter(fn (Schedule $schedule): bool => $this->isMaterializableScheduledException($schedule, $sessionDate))
+            ->values();
+        if ($schedules->isEmpty()) {
+            return null;
+        }
+
+        $requestedStart = $requestedStart ? substr($requestedStart, 0, 5) : null;
+        if ($requestedStart) {
+            $schedule = $schedules->first(function (Schedule $candidate) use ($requestedStart): bool {
+                return substr((string) ($candidate->start_time ?? ''), 0, 5) === $requestedStart;
+            });
+            if ($schedule) {
+                return $this->scheduleExceptionSlot($schedule);
+            }
+        }
+
+        // Without an exact requested-time match, only a single eligible row is
+        // safe to materialize. Multiple exceptions require an explicit slot.
+        if ($schedules->count() !== 1) {
+            return null;
+        }
+
+        $schedule = $schedules->first();
+        if (!$schedule instanceof Schedule) {
+            return null;
+        }
+
+        return $this->scheduleExceptionSlot($schedule);
+    }
+
+    /**
+     * @return array{start_time:string,end_time:string}|null
+     */
+    private function scheduleExceptionSlot(Schedule $schedule): ?array
+    {
+        $start = substr((string) ($schedule->start_time ?? ''), 0, 5);
+        $end = substr((string) ($schedule->end_time ?? ''), 0, 5);
+        if ($start === '' || $end === '') {
+            return null;
+        }
+
+        return ['start_time' => $start, 'end_time' => $end];
+    }
+
+    private function isMaterializableScheduledException(
+        Schedule $schedule,
+        string $sessionDate,
+        bool $allowUnverifiableAnchor = false
+    ): bool
+    {
+        if ((string) ($schedule->status ?? '') !== 'scheduled') {
+            return false;
+        }
+
+        if (strtolower(trim((string) ($schedule->type ?? ''))) === 'extra') {
+            return false;
+        }
+
+        $anchorId = (int) ($schedule->original_schedule_id ?? 0);
+        if ($anchorId <= 0) {
+            return true;
+        }
+
+        $anchorDate = Schedule::query()->whereKey($anchorId)->value('schedule_date');
+        if (!$anchorDate) {
+            return $allowUnverifiableAnchor;
+        }
+
+        return Carbon::parse((string) $anchorDate)->toDateString() === $sessionDate;
+    }
 
     /**
      * PATCH /api/v1/class-sessions/{id}
@@ -983,6 +1172,9 @@ class ClassSessionController extends Controller
                     }
                     $this->applyTimeAndNoteUpdates($session, $data);
                     $session->save();
+                    if ($newStatus === 'cancelled') {
+                        $this->cancelLinkedScheduleExceptions($session);
+                    }
                     SessionDeductionService::recomputeCounters((int) $studentClass->ID);
 
                     $msg = '已更新為' . $newStatus . '，並完成堂數沖回';
@@ -1027,6 +1219,9 @@ class ClassSessionController extends Controller
                 $session->Status = $newStatus;
                 $this->applyTimeAndNoteUpdates($session, $data);
                 $session->save();
+                if ($newStatus === 'cancelled') {
+                    $this->cancelLinkedScheduleExceptions($session);
+                }
 
                 SessionDeductionService::syncCounters($studentClass);
 
@@ -1214,6 +1409,112 @@ class ClassSessionController extends Controller
                 'end_time'   => $newEnd,
                 'updated_at' => now(),
             ]);
+    }
+
+    /**
+     * Keep a schedule-backed projected exception from being recreated after
+     * its ClassSession is cancelled through the normal session editor.
+     */
+    private function cancelLinkedScheduleExceptions(ClassSession $session): void
+    {
+        // This hook is reached for every ClassSession cancellation. Only a
+        // projected monthly exception owns an unmaterialized schedule row;
+        // ordinary contract sessions and manually-created substitute sessions
+        // must not cancel their same-day schedule assignments.
+        if (!$this->isProjectedMonthlyExceptionSession($session)) {
+            return;
+        }
+
+        $date = $session->SessionDate ? substr((string) $session->SessionDate, 0, 10) : null;
+        $start = substr((string) $session->StartTime, 0, 5);
+        $end = substr((string) $session->EndTime, 0, 5);
+        if (!$date || $start === '') {
+            return;
+        }
+
+        $query = Schedule::query()
+            ->where('student_course_id', (int) $session->StudentClassID)
+            ->whereDate('schedule_date', $date)
+            ->where('status', 'scheduled')
+            ->where('start_time', 'like', $start . '%');
+
+        if ($end !== '') {
+            $query->where('end_time', 'like', $end . '%');
+        }
+
+        $schedules = $query->get()
+            ->filter(fn (Schedule $schedule): bool => $this->isCancelableProjectedExceptionSchedule($schedule, $date, $session))
+            ->values();
+        if ($schedules->isEmpty()) {
+            return;
+        }
+
+        Schedule::query()
+            ->whereIn('id', $schedules->pluck('id')->all())
+            ->update(['status' => 'cancelled', 'updated_at' => now()]);
+    }
+
+    private function isProjectedMonthlyExceptionSession(ClassSession $session): bool
+    {
+        $note = (string) ($session->Note ?? '');
+        if (!str_contains($note, 'projected-monthly-materialized')) {
+            return false;
+        }
+
+        if ((int) ($session->IsContractException ?? 0) === 1) {
+            return true;
+        }
+
+        // Legacy projected rows were explicitly created with the old 0 flag.
+        // Recover only the off-contract case; a normal projected occurrence
+        // still must not cancel a same-day substitute schedule.
+        $studentClass = StudentClass::query()
+            ->where('ID', (int) $session->StudentClassID)
+            ->first();
+        if (!$studentClass || !$session->SessionDate) {
+            return false;
+        }
+
+        return !app(ContractScheduleMatcher::class)->matchesContract(
+            substr((string) $session->SessionDate, 0, 10),
+            substr((string) $session->StartTime, 0, 5),
+            $session->EndTime ? substr((string) $session->EndTime, 0, 5) : null,
+            $studentClass
+        );
+    }
+
+    private function isCancelableProjectedExceptionSchedule(
+        Schedule $schedule,
+        string $sessionDate,
+        ClassSession $session
+    ): bool
+    {
+        if (!$this->isMaterializableScheduledException($schedule, $sessionDate, true)) {
+            return false;
+        }
+
+        $anchorId = (int) ($schedule->original_schedule_id ?? 0);
+        if ($anchorId <= 0) {
+            return true;
+        }
+
+        $anchorExists = Schedule::query()->whereKey($anchorId)->exists();
+        if (!$anchorExists) {
+            // An orphaned anchor cannot be restored by a schedule relationship.
+            return true;
+        }
+
+        // Same-day substitute rows point at the original schedule but carry a
+        // different teacher. They are an independent assignment and must
+        // survive cancelling the projected contract exception. A same-day
+        // reschedule destination keeps the contract teacher and is owned by
+        // this projected occurrence, so it is cancelled with the occurrence.
+        $contractTeacherId = (int) StudentClass::query()
+            ->where('ID', (int) $session->StudentClassID)
+            ->value('TeacherID');
+
+        return $contractTeacherId <= 0
+            || (int) ($schedule->teacher_id ?? 0) === $contractTeacherId;
     }
 
     /**

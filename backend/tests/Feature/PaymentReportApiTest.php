@@ -849,6 +849,91 @@ class PaymentReportApiTest extends TestCase
         $this->assertStringStartsWith('R-', $res->json('receipt_no'));
     }
 
+    // (#934) 課程計費模式（堂數制/月結）在開立發票後被變更 → 收據應標示「可能已被取代」
+    public function test_receipt_flags_billing_mode_changed_since_invoice_issued(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, ['Charge' => 5000]);
+
+        $invoice = Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'IssueDate' => Carbon::today()->toDateString(),
+            'TotalAmount' => 5000,
+            'PaidAmount' => 5000,
+            'Status' => 'paid',
+            'ScheduleModeAtIssue' => $sc->ScheduleMode, // 'count'
+        ]);
+
+        $report = PaymentReport::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'InvoiceID' => $invoice->id,
+            'reported_by_name' => $student->name,
+            'payment_date' => Carbon::today(),
+            'payment_method' => 'transfer',
+            'reported_amount' => 5000,
+            'status' => 'confirmed',
+            'confirmed_at' => Carbon::now(),
+            'confirmed_by' => 1,
+            'report_token_hash' => hash('sha256', 'test-mode-changed-' . uniqid()),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+
+        // Director later converts the course to monthly billing.
+        $sc->update(['ScheduleMode' => 'date']);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/payment-reports/{$report->id}/receipt");
+
+        $res->assertOk();
+        $this->assertTrue($res->json('billing_mode_changed'));
+    }
+
+    // Same-mode invoice, or no snapshot recorded (legacy row) → never flagged.
+    public function test_receipt_does_not_flag_unchanged_or_unknown_billing_mode(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, ['Charge' => 5000]);
+
+        $invoice = Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'IssueDate' => Carbon::today()->toDateString(),
+            'TotalAmount' => 5000,
+            'PaidAmount' => 5000,
+            'Status' => 'paid',
+            'ScheduleModeAtIssue' => null, // legacy row, no snapshot
+        ]);
+
+        $report = PaymentReport::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'InvoiceID' => $invoice->id,
+            'reported_by_name' => $student->name,
+            'payment_date' => Carbon::today(),
+            'payment_method' => 'transfer',
+            'reported_amount' => 5000,
+            'status' => 'confirmed',
+            'confirmed_at' => Carbon::now(),
+            'confirmed_by' => 1,
+            'report_token_hash' => hash('sha256', 'test-mode-unchanged-' . uniqid()),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/payment-reports/{$report->id}/receipt");
+
+        $res->assertOk();
+        $this->assertFalse($res->json('billing_mode_changed'));
+    }
+
     // (#554) 堂數制收據：除已上課堂次外，補列「已購但尚未上課」的預期堂次，補足到已購堂數
     public function test_receipt_lists_expected_future_sessions_for_count_mode(): void
     {
@@ -953,6 +1038,41 @@ class PaymentReportApiTest extends TestCase
         $sessionDates = $res->json('session_dates');
         $this->assertCount(3, $sessionDates);
         $this->assertSame(0, count(array_filter($sessionDates, fn ($s) => $s['expected'] === true)));
+    }
+
+    public function test_count_receipt_period_comes_from_receipt_sessions_not_stale_course_dates(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, [
+            'SessionCount' => 2,
+            'StartDate' => '2026-08-17',
+            'EndDate' => '2026-08-24',
+        ]);
+
+        foreach (['2026-05-08', '2026-08-10'] as $date) {
+            ClassSession::create([
+                'StudentClassID' => $sc->ID,
+                'SessionDate' => $date,
+                'StartTime' => '18:00',
+                'EndTime' => '20:00',
+                'Status' => 'attended',
+            ]);
+        }
+
+        $report = $this->createConfirmedReport($student, $sc, [
+            'payment_date' => '2026-05-08',
+            'reported_amount' => 3300,
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/payment-reports/{$report->id}/receipt");
+
+        $res->assertOk()
+            ->assertJsonPath('period_start', '2026/05/08')
+            ->assertJsonPath('period_end', '2026/08/10');
     }
 
     public function test_receipt_rejects_cross_campus_report(): void

@@ -16,6 +16,7 @@
 | Question | Canonical answer |
 |----------|------------------|
 | 我要從哪裡開始？ | `AGENTS.md` → [`governance/COMPANY_CONSTITUTION.md`](governance/COMPANY_CONSTITUTION.md) → this INDEX → task-specific row below |
+| 現在的工程主線是什麼？ | [`architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md`](architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md) → 排課根治 [`architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md`](architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md)（TD-076；**非**整包重構） |
 | 這個服務誰負責？ | Machine catalog [`catalog/services.json`](catalog/services.json) → [`catalog/SERVICES_INDEX.md`](catalog/SERVICES_INDEX.md) |
 | production 怎麼部署？ | [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) only (contract I1) |
 | 出事怎麼回滾？ | [`RUNBOOK_ROLLBACK.md`](RUNBOOK_ROLLBACK.md) + deploy prior SHA; data repairs use Repair Manifest rollback |
@@ -25,7 +26,7 @@
 | 文件是否仍有效？ | Prefer `last_verified` / Constitution Version / radar latest run; stale = archive or re-verify |
 
 **Worktree ban:** never edit `/home/jerry/alltrue` — [`governance/WORKTREE_POLICY.md`](governance/WORKTREE_POLICY.md).  
-**Merge risk:** [`governance/RISK_BASED_MERGE_POLICY.md`](governance/RISK_BASED_MERGE_POLICY.md) (R0–R3).  
+**Merge risk:** [`governance/RISK_BASED_MERGE_POLICY.md`](governance/RISK_BASED_MERGE_POLICY.md) (R0–R3 classify risk). **Operator:** fleet [portfolio-ops `AUTONOMY_POLICY`](https://github.com/jerry200176-png/portfolio-ops/blob/main/governance/AUTONOMY_POLICY.md) — Agent squash-merges after required checks, including R3 with a Repair Manifest.  
 **CI governance / preflight:** [`governance/CI_GOVERNANCE.md`](governance/CI_GOVERNANCE.md) · `npm run ci:preflight`
 
 ---
@@ -127,6 +128,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 11. **Course Continuity（#1382）**：[`docs/architecture/RFC_COURSE_CONTINUITY.md`](architecture/RFC_COURSE_CONTINUITY.md) · cohort SQL [`scripts/course-continuity-cohort-discovery.sql`](../scripts/course-continuity-cohort-discovery.sql) — **≠** #1130 歷史修復；MVP API：`/api/v1/course-contract-groups`（空表 migrate；不物理 merge）
 12. **Platform opt from stars（規劃）**：[`docs/architecture/RFC_PLATFORM_OPTIMIZATION_FROM_STARS_2026.md`](architecture/RFC_PLATFORM_OPTIMIZATION_FROM_STARS_2026.md) — 每項優化附「參考 repo／要學／不要學／落地」；**不含業務碼改動**
 13. **非標準課程時長／分鐘制扣堂調查（規劃，Draft，Founder D1-D7 已拍板，Phase 0A/0B 工具已 merge）**：[`docs/architecture/RFC_NONSTANDARD_SESSION_DURATION_BILLING.md`](architecture/RFC_NONSTANDARD_SESSION_DURATION_BILLING.md) — 現況：`#613 A1` 分鐘制引擎僅覆蓋補課（`schedules.type='extra'`）；購買堂數與排課 occurrence 數量目前被 `EnrollmentService.php:210-222` 硬性等式驗證鎖死（§2.5，D6 拍板以既有 `session_plan` 為 canonical occurrence source）；扣堂 opt-in 採 `deduction_basis` 欄位（D2，R59 改寫提案見 §10，未套用至規則正文）；共用課程包／自動跨期拆帳／entitlement 事件溯源第一版明確排除（D3/D4/D7）；第 6 次超額採 soft block + 明確確認（D5）。**Phase 0A**（唯讀盤點 `sessions:report-nonstandard-duration`）與**Phase 0B**（純 coverage calculator + dry-run contract，`LessonEntitlementCoverageCalculator`／`NonstandardDurationCoveragePreviewContract`）已實作並通過測試，**未啟用任何 production write 或 runtime 扣堂行為變更**；Phase 1/2 詳細計畫見文件 §15；Founder 尚待拍板事項見 §14；技術債見 `TECH_DEBT.md` `TD-072`；**不含業務碼改動**
+14. **現行工程主線／排課 occurrence 身分（規劃，Draft，schema DEV 需 Founder GO）**：[`docs/architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md`](architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md) · [`docs/architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md`](architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md) — 對齊 TD-076／R102／R103；**禁止**整包重寫前端或 Laravel；Phase 0＝盤點寫入／讀取路徑＋鎖現況 golden tests；與 Course Continuity、非標準時長 RFC **分軌**
 
 ### 後端開發
 | 需要什麼 | 去哪裡找 |
@@ -267,6 +269,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `docs/TECH_DEBT.md` | TD-NNN 技術債清單 |
 | `docs/DANGEROUS_OPERATIONS.md` | 高風險操作清單與 SOP |
 | `docs/DEPLOYMENT.md` | 部署架構說明 |
+| `docs/GUIDE_STAGING_ENVIRONMENT.md` | staging 環境（獨立主機，非 production Pi）設定與部署流程（issue #868） |
 | `docs/DB_PERF.md` | DB 效能優化記錄 |
 | `docs/SECURITY.md` | 安全設計決策 |
 | `docs/RULE_DESIGN_SYSTEM.md` | **設計系統唯一真相來源**（淺色底 + navy 墨字 + 品牌橘黃主色、金額 tabular、不用 gradient mesh）；所有前端 UI 照此生成 |
@@ -278,6 +281,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `docs/SUPER_ADMIN_AND_MIGRATIONS.md` | super_admin 與 migration 操作速記 |
 | `docs/RULE_MIGRATION_COMPAT.md` | **Migration 向後相容守則**（Expand/Contract、down() 可逆性、PR 必填欄位）|
 | `docs/AMBIENT_AUDIO_LICENSES.md` | 環境音效彩蛋的音檔授權清單 |
+| `docs/REF_GITHUB_RULESET_BASELINE.md` | GitHub repository ruleset（branch/tag protection）現況快照（#880）；漂移檢查見 `OPERATIONAL_CONSISTENCY_CHECK.md` Rule 8 |
 
 ### 維運 SOP
 | 檔案 | 一行說明 |
@@ -309,6 +313,12 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 |------|---------|
 | `docs/security/ASVS_L1_2026.md` | OWASP ASVS L1 年度自查 |
 | `docs/security/AUDIT_LOG_POLICY.md` | 敏感 admin 行為 audit log 政策 |
+| `docs/security/PII_DATA_INVENTORY.md` | PII 資料地圖／分類（#889），欄位級盤點 + 保存政策待辦 |
+| `docs/security/IAM_ACCESS_REVIEW.md` | GitHub／Pi／第三方平台權限季度盤點（#888）|
+| `docs/security/PRODUCTION_AGENT_EXCEPTION_HERMES_2026-08.md` | Hermes production agent 暫時例外、即時證據與 hardening follow-up（#1676）|
+| `docs/security/AUDIT_LOG_COVERAGE_MATRIX.md` | 敏感操作 audit log 覆蓋矩陣，含 PIN reset 無稽核紀錄的具體缺口（#890）|
+| `docs/security/RUNBOOK_HOST_HARDENING_VERIFICATION.md` | Production host（UFW/SSH/fail2ban/服務暴露）稽核（#887）|
+| `docs/sop/PRIVACY_REQUEST_SOP.md` | 資料查詢／匯出／刪除／封存請求處理流程（#903）|
 
 ### Backend 局部參考（非主入口）
 | 檔案 | 用途 |

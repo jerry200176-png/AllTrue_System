@@ -1,8 +1,10 @@
 # AllTrue — CLAUDE.md（Claude Code 自動載入）
 
 > 任何 AI 讀取此專案時，先遵守 **[`docs/governance/COMPANY_CONSTITUTION.md`](docs/governance/COMPANY_CONSTITUTION.md)** 與 **[`docs/governance/PRECEDENCE.md`](docs/governance/PRECEDENCE.md)**。  
+> **操作者：** 艦隊 [portfolio-ops `AUTONOMY_POLICY`](https://github.com/jerry200176-png/portfolio-ops/blob/main/governance/AUTONOMY_POLICY.md)。Required checks 綠 → Agent squash-merge R0–R3。不要等人類橡皮圖章。Pi SSH 仍禁。  
 > 本檔是 **Claude Code adapter**，**不是**凌駕 Constitution / Control Plane 的最高法。  
 > **🗺️ 任何任務開始前：先讀 `docs/INDEX.md`（導航地圖）。禁止未讀 INDEX 就直接動手。**  
+> **現行工程主線：** [`docs/architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md`](docs/architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md) — 不要重寫整個前端／後端；排課資料模型根治見 [`RFC_SCHEDULE_OCCURRENCE_IDENTITY.md`](docs/architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md)。  
 > 通用入口：[`AGENTS.md`](AGENTS.md)。完整工作流程 / 角色規格 / P0 詳細全文：請讀 **`.cursorrules`**（不要跳過）。
 
 ---
@@ -112,7 +114,15 @@ Palace：`~/.mempalace/palace`（local-first）。權威文件仍在 git markdow
 **第一筆扣堂 ledger 之後**，`standard_lesson_minutes`／`deduction_basis`／`SessionCount` 由 `BillingContractLockGuard` 在**後端**鎖定（回 422）；前端變灰只是 UX。v1 **不提供**任何扣堂後修正管道——額度仍由 `SessionCount × standard_lesson_minutes` 推導，事後改標準堂長等於重新解釋歷史，宣稱「只影響未來」是假保證。要改就結掉重開。
 **超額永遠不擋點名**：確認只發生在建課階段（D5）。若出現「因額度不足而無法點名」＝ bug，先關旗標。上線／回滾見 [`docs/RUNBOOK_ACTUAL_DURATION_ACTIVATION.md`](docs/RUNBOOK_ACTUAL_DURATION_ACTIVATION.md)。
 
-完整 Gotchas G-001 ~ G-011：見 `.cursorrules` §核心資料表 gotcha 或 `alltrue-system.mdc`。
+### G-012：雲端／遠端 session（無 SSH、無 DB 連線）撈／回寫 in-app bug 資料——讀走 push request file，寫要交給人類
+Claude Code on the web／其他雲端 session 的 container 是全新隔離環境，**不會**掛載本機 WSL2 的 Pi SSH key 或 DB 連線；`~/.ssh`、`PI_SSH_*` 環境變數皆為空，且 `gh workflow run` / `workflow_dispatch` 對雲端 agent 一律回 403（GitHub App 權限限制）。
+**撈資料（唯讀）**：編輯 `operations/closeout/bug-queue-dump.request.md`（撈開放佇列，無參數）與 `operations/closeout/bug-detail-dump.request.md`（**要改檔內 `bug_id: <n>` 那一行**，workflow 真的會解析這行，不是只看 diff 有沒有變動）— 走 **`chore/`（禁止 `ops/`，`branch-policy.mjs` 只認 `chore|ci|fix`）** branch → PR → CI 綠 → merge 進 `main`（`push: branches:[main]` 才會觸發）→ 抓 run。
+**artifact zip 抓不到**：`blob.core.windows.net` 下載連結會被這個 session 的 egress 政策擋 403（`curl $HTTPS_PROXY/__agentproxy/status` 可確認），這是真的政策拒絕、不要重試繞過。改用 `mcp__github__get_job_logs`（`return_content:true`，`tail_lines` 建議 2000+）——每個 dump 步驟都會把完整 JSON `echo` 到 log 裡，抓那行就等於拿到 artifact 內容。
+**兩者有 15 分鐘新鮮度限制**（`scripts/validate-bug-intake-evidence.py --max-age-minutes 15`）：queue-dump 與 detail-dump 必須在同一輪 15 分鐘內連續觸發並互相對得上，否則視為 stale、禁止拿舊 dump 直接分診。
+**回寫（new→triaged + 公開留言）沒有雲端路徑**：`bug-phase-a-triage.yml`／`bug-followup-comment.yml` 只有 `workflow_dispatch`、**沒有** push fallback（這是刻意的——會寫production，不像唯讀 dump 給雲端 agent 開後門）。雲端 session 能做到開 GitHub issue 為止；`bug_id` + `github_issue_url` + 符合 §3.8 白話規則的 `public_reply`（必須含 issue URL）要交給有 `workflow_dispatch` 權限的人類手動跑。`bug-phase-c-allowlist.yml` 雖有 push trigger，但限定「修復已上線」的 Phase C，不可拿來做未驗證的 Phase A。
+完整程序見 [`docs/sop/BUG_INTAKE_TO_PRODUCTION.md`](docs/sop/BUG_INTAKE_TO_PRODUCTION.md)。
+
+完整 Gotchas G-001 ~ G-012：見 `.cursorrules` §核心資料表 gotcha 或 `alltrue-system.mdc`。
 
 ---
 
