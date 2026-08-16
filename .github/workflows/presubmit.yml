@@ -86,17 +86,26 @@ jobs:
           echo "PR size: $TOTAL lines changed (+$ADD/-$DEL, excluding lock/data files)"
           echo "PR_SIZE=$TOTAL" >> "$GITHUB_ENV"
 
-          # docs 整併 epic（chore/docs-*）允許較大 diff；仍禁止混 production code
+          # Non-production-path exception: the 700-line ceiling exists to bound the
+          # review burden of new *production logic*. A PR that touches zero
+          # production paths (docs, governance/config scaffolding, CI, templates,
+          # generated reference docs, ...) carries a different, much lower risk
+          # profile per line — it can be verified by lint/build/CI, not line-by-line
+          # logic review. Previously this only applied to chore/docs-* branches
+          # (see git blame); widened here to any branch, since the risk signal is
+          # "does the diff touch production code," not what the branch is named —
+          # a chore/task-* governance-bootstrap PR that's 100% new config files
+          # deserves the same treatment as a docs-consolidation PR. The production
+          # path check itself is unchanged and still catches any PR that mixes in
+          # real backend/frontend logic, so this cannot be used to smuggle in new
+          # business logic under a large diff.
           HARD_LIMIT=700
-          BRANCH="${GITHUB_HEAD_REF}"
-          if echo "$BRANCH" | grep -qE '^chore/docs-'; then
-            PROD=$(git diff --name-only origin/main...HEAD \
-              | sed 's/^"//;s/"$//' \
-              | grep -cE '^(backend/app/|backend/routes/|backend/database/|frontend/src/)' || true)
-            if [ "$PROD" -eq 0 ]; then
-              HARD_LIMIT=1300
-              echo "Docs consolidation branch (no production paths): hard limit raised to $HARD_LIMIT"
-            fi
+          PROD=$(git diff --name-only origin/main...HEAD \
+            | sed 's/^"//;s/"$//' \
+            | grep -cE '^(backend/app/|backend/routes/|backend/database/|frontend/src/)' || true)
+          if [ "$PROD" -eq 0 ]; then
+            HARD_LIMIT=1300
+            echo "No production paths touched: hard limit raised to $HARD_LIMIT"
           fi
 
           # 死碼／技術債刪除例外：這個 gate 本意是限制「新邏輯的審查負擔」，但用同一把尺
