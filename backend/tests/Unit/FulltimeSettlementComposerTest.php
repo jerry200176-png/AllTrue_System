@@ -127,5 +127,6 @@ class FulltimeSettlementComposerTest extends TestCase
         $result = FulltimeSettlementComposer::compose($components, 30000.0);
 
         $this->assertTrue($result['review_required']);
+        $this->assertTrue($result['payout_is_draft']);
     }
 }
