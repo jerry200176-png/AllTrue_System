@@ -48,7 +48,7 @@
       <div v-if="tuitionModal.visible" class="modal-overlay" @click.self="tuitionModal.visible = false">
         <div class="modal-box payment-modal">
           <h3>登記已回報</h3>
-          <p class="modal-desc">依家長回報填寫；送出後仍是未繳費，等會計對到帳才入帳開收據。</p>
+          <p class="modal-desc">依家長回報填寫；送出後仍是未繳費，對到帳後由主任按確認入帳才開收據。</p>
           <div class="modal-item-name">
             <span><strong>學生</strong>{{ tuitionPaymentRow.student_name || '-' }}</span>
             <span><strong>科目</strong>{{ tuitionPaymentRow.subject || '學費' }}</span>

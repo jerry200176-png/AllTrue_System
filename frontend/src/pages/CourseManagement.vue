@@ -568,7 +568,7 @@
                   </td>
                   <td>
                     <span v-if="row.reports?.some((r) => r.status === 'confirmed')" class="hint">確認入帳後可開</span>
-                    <span v-else class="hint">待會計確認</span>
+                    <span v-else class="hint">待確認入帳</span>
                   </td>
                   <td class="cell-actions">
                     <div class="action-btns-row">
@@ -3487,7 +3487,7 @@ const onPaymentEntryConfirmed = async () => {
   if (invoiceModalOpen.value) {
     closeInvoiceModal();
   }
-  alert('已送出待對帳。會計確認入帳後才會開電子收據。');
+  alert('已送出待對帳。請到帳務中心按確認入帳後才會開電子收據。');
   await loadCourses();
   for (const group of visibleGroups.value || []) {
     if (studentGroupTab(group.key) === 'billing') {

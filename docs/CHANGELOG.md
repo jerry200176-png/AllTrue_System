@@ -1,3 +1,10 @@
+## 2026-08-16 — fix(billing): 帳務中心不擋 PIN，確認入帳由主任完成
+
+<!-- release-notes: staff_update=staff-2026-08-16-director-confirms -->
+
+- 帳務中心不再走 PIN 卸載，一進去就載入催繳名單。
+- 文案改為主任對到帳後按確認入帳；不假設有獨立會計。
+
 ## 2026-08-15 — fix(payroll): 已核准可退回，全校放假改讀課程管理
 
 <!-- release-notes: staff_update=staff-2026-08-15-eligibility-approved-revert -->
