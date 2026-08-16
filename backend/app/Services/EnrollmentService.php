@@ -871,32 +871,24 @@ class EnrollmentService
                     $slotEndTime = $this->computeEndTime($slotStartTime, $slotDur);
 
                     if ($row['kind'] === 'confirmed') {
-                        $existing = ClassSession::query()
-                            ->where('StudentClassID', $studentClass->ID)
-                            ->whereDate('SessionDate', $date)
-                            ->where('StartTime', $slotStartTime)
-                            ->first();
-
-                        $classSession = $existing;
-                        if ($existing) {
-                            if ((string) $existing->Status !== 'completed') {
-                                $existing->Status = 'completed';
-                                $existing->save();
+                        $upsert = app(ClassSessionMaterializationService::class)->upsertSlot([
+                            '_student_class' => $studentClass,
+                            'StudentClassID' => $studentClass->ID,
+                            'SessionDate' => $date,
+                            'StartTime' => $slotStartTime,
+                            'EndTime' => $slotEndTime,
+                            'Status' => 'completed',
+                            'Note' => '',
+                        ]);
+                        $classSession = $upsert['session'];
+                        if (!$upsert['created']) {
+                            if ((string) $classSession->Status !== 'completed') {
+                                $classSession->Status = 'completed';
+                                $classSession->save();
                             }
                             $skippedConfirmedDates[] = $date;
                         } else {
-                            $upsert = app(ClassSessionMaterializationService::class)->upsertSlot([
-                                'StudentClassID' => $studentClass->ID,
-                                'SessionDate' => $date,
-                                'StartTime' => $slotStartTime,
-                                'EndTime' => $slotEndTime,
-                                'Status' => 'completed',
-                                'Note' => '',
-                            ]);
-                            $classSession = $upsert['session'];
-                            if ($upsert['created']) {
-                                $createdConfirmedSessions++;
-                            }
+                            $createdConfirmedSessions++;
                         }
 
                         $syncResult = $this->syncApprovedLearningRecord(
@@ -919,18 +911,9 @@ class EnrollmentService
                         continue;
                     }
 
-                    $existing = ClassSession::query()
-                        ->where('StudentClassID', $studentClass->ID)
-                        ->whereDate('SessionDate', $date)
-                        ->where('StartTime', $slotStartTime)
-                        ->first();
-                    if ($existing) {
-                        $skippedFutureDates[] = $date;
-                        continue;
-                    }
-
                     $isEndedAtCreateTime = $this->sessionEndedByEndTime($date, $slotEndTime, $decisionNow);
                     $upsert = app(ClassSessionMaterializationService::class)->upsertSlot([
+                        '_student_class' => $studentClass,
                         'StudentClassID' => $studentClass->ID,
                         'SessionDate' => $date,
                         'StartTime' => $slotStartTime,
@@ -939,6 +922,10 @@ class EnrollmentService
                         'Note' => $isEndedAtCreateTime ? '系統判定補登（新增時已過下課時間）' : '',
                     ]);
                     $classSession = $upsert['session'];
+                    if (!$upsert['created']) {
+                        $skippedFutureDates[] = $date;
+                        continue;
+                    }
                     if ($isEndedAtCreateTime) {
                         $autoApprovedFromFuture++;
                         $createdConfirmedSessions++;
