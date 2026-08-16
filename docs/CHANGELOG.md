@@ -1,3 +1,9 @@
+## 2026-08-16 — feat(payroll): 正職現金加扣款
+
+<!-- release-notes: staff_update=staff-2026-08-16-fulltime-cash-adj -->
+
+- 現金加扣款是獨立金額，不進倍率；主任確認、總部核准後才加進總發放。已鎖定月份不能新增。
+
 ## 2026-08-16 — feat(payroll): 正職行政加給與底薪核准畫面
 
 <!-- release-notes: staff_update=staff-2026-08-16-fulltime-admin-allowance -->

@@ -55,7 +55,7 @@ class TeacherEligibilityController extends Controller
                 'policy_version' => $lockedRun->policy_version ?: config('teacher_salary.policy_version'),
                 'effective_from' => config('teacher_salary.effective_from'),
                 'period' => ['type' => $period['type'], 'start' => $effectiveStart->toDateString(), 'end' => $period['end']->toDateString()],
-                'components' => ['weekly_16_segments', 'holiday_16_hours', 'weekday_afternoon', 'special_performance', 'deductions', 'admin_allowance', 'subject_count_bonus'],
+                'components' => ['weekly_16_segments', 'holiday_16_hours', 'weekday_afternoon', 'special_performance', 'deductions', 'admin_allowance', 'cash_adjustments', 'subject_count_bonus'],
                 'teachers' => $rows,
                 'total_teachers' => count($rows),
                 'branch_subject_total' => (float) $lockedRun->branch_subject_total,
@@ -236,12 +236,28 @@ class TeacherEligibilityController extends Controller
                 ->get()
             : collect();
         $allowanceByTeacher = $allowances->groupBy('teacher_id');
+        $cashRows = Schema::hasTable('teacher_payroll_cash_adjustments')
+            ? DB::table('teacher_payroll_cash_adjustments')
+                ->whereIn('teacher_id', $teacherIds)
+                ->where(function ($query) use ($effectiveStart) {
+                    $query->whereNull('ends_on')->orWhereDate('ends_on', '>=', $effectiveStart->toDateString());
+                })
+                ->where(function ($query) use ($period) {
+                    $query->whereNull('starts_on')->orWhereDate('starts_on', '<=', $period['end']->toDateString());
+                })
+                ->when($branchFilter !== null, fn ($query) => $query->where(function ($nested) use ($branchFilter) {
+                    $nested->whereNull('branch_id')->orWhereIn('branch_id', $branchFilter);
+                }))
+                ->where('status', '!=', 'withdrawn')
+                ->get()
+            : collect();
+        $cashByTeacher = $cashRows->groupBy('teacher_id');
         $pendingSalaryByTeacher = $this->pendingSalaryByTeacher($teacherIds, $branchFilter);
         $eventsAvailable = $sessionCalendarAvailable || $events->isNotEmpty();
         $subjectUnitsByTeacher = $this->subjectUnitsByTeacher($teacherIds, $branchFilter, $effectiveStart, $period['end']);
         $salaryByTeacher = $this->salaryProfilesByTeacher($teacherIds, $branchFilter, $period['end']->toDateString());
 
-        $rows = $teachers->map(function ($teacher) use ($period, $effectiveStart, $scheduleByTeacher, $plannedByTeacher, $attendanceByTeacher, $eventByTeacher, $achievementByTeacher, $deductionByTeacher, $allowanceByTeacher, $pendingSalaryByTeacher, $eventsAvailable, $attendanceSourceAvailable, $sessionCalendarAvailable, $subjectUnitsByTeacher, $salaryByTeacher) {
+        $rows = $teachers->map(function ($teacher) use ($period, $effectiveStart, $scheduleByTeacher, $plannedByTeacher, $attendanceByTeacher, $eventByTeacher, $achievementByTeacher, $deductionByTeacher, $allowanceByTeacher, $cashByTeacher, $pendingSalaryByTeacher, $eventsAvailable, $attendanceSourceAvailable, $sessionCalendarAvailable, $subjectUnitsByTeacher, $salaryByTeacher) {
             $teacherId = (int) $teacher->id;
             $teacherSchedules = $scheduleByTeacher->get($teacherId, collect());
             $teacherPlanned = $plannedByTeacher->get($teacherId, collect());
@@ -284,6 +300,12 @@ class TeacherEligibilityController extends Controller
                     'starts_on' => $row->starts_on,
                     'ends_on' => $row->ends_on,
                 ])->all(),
+                'cash_adjustments' => $cashByTeacher->get($teacherId, collect())->map(fn ($row) => [
+                    'amount' => (float) $row->amount,
+                    'status' => ($row->director_confirmed_at && $row->hq_approved_at) ? 'approved' : $row->status,
+                    'starts_on' => $row->starts_on,
+                    'ends_on' => $row->ends_on,
+                ])->all(),
                 'subject_count' => $subjectCount,
                 'subject_units' => is_array($subjectUnits) ? $subjectUnits : [],
             ]);
@@ -313,7 +335,7 @@ class TeacherEligibilityController extends Controller
             'policy_version' => config('teacher_salary.policy_version'),
             'effective_from' => config('teacher_salary.effective_from'),
             'period' => ['type' => $period['type'], 'start' => $effectiveStart->toDateString(), 'end' => $period['end']->toDateString()],
-            'components' => ['weekly_16_segments', 'holiday_16_hours', 'weekday_afternoon', 'special_performance', 'deductions', 'admin_allowance', 'subject_count_bonus'],
+            'components' => ['weekly_16_segments', 'holiday_16_hours', 'weekday_afternoon', 'special_performance', 'deductions', 'admin_allowance', 'cash_adjustments', 'subject_count_bonus'],
             'teachers' => $rows,
             'total_teachers' => count($rows),
             'branch_subject_total' => round(collect($rows)->sum(fn ($row) => (float) ($row['settlement']['payroll_subject_count'] ?? 0)), 4),
