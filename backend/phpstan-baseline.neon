@@ -1083,7 +1083,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 1
+			count: 2
 			path: app/Http/Controllers/BillingController.php
 
 		-
@@ -3261,8 +3261,26 @@ parameters:
 		-
 			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model\:\:\$ScheduleMode\.$#'
 			identifier: property.notFound
-			count: 2
+			count: 3
 			path: app/Http/Controllers/PaymentReportController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model\:\:\$invoice\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/PaymentReportController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Invoice\:\:\$ScheduleModeAtIssue\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Models/Invoice.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Invoice\:\:\$studentClass\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Models/Invoice.php
 
 		-
 			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model\:\:\$SessionCount\.$#'
@@ -3975,7 +3993,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$ScheduleMode\.$#'
 			identifier: property.notFound
-			count: 1
+			count: 2
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
@@ -6125,3 +6143,9 @@ parameters:
 			identifier: nullsafe.neverNull
 			count: 1
 			path: app/Services/SessionProjectionReadService.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\FulltimeSalaryProfile\:\:find\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Http/Controllers/TeacherEligibilityInputController.php

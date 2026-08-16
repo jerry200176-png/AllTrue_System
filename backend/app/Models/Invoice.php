@@ -16,6 +16,7 @@ class Invoice extends Model
         'TotalAmount',
         'PaidAmount',
         'Status',
+        'ScheduleModeAtIssue',
         'Note',
         'reconciled_at',
         'reconciled_by',
@@ -47,5 +48,19 @@ class Invoice extends Model
     public function studentClass()
     {
         return $this->belongsTo(StudentClass::class, 'StudentClassID', 'ID');
+    }
+
+    /**
+     * #934: true only when we know the mode at issue AND it has since changed.
+     * NULL ScheduleModeAtIssue (every pre-existing row) always returns false —
+     * "unknown" is not "stale", so old invoices never get a false-positive badge.
+     */
+    public function billingModeChangedSinceIssue(): bool
+    {
+        if (!$this->ScheduleModeAtIssue) {
+            return false;
+        }
+        $current = $this->studentClass?->ScheduleMode;
+        return $current !== null && $current !== $this->ScheduleModeAtIssue;
     }
 }

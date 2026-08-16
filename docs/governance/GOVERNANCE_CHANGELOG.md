@@ -1,5 +1,17 @@
 # Governance changelog
 
+## 2026-08-16 — Constitution/Control Plane scope clarification + cool-off rule (pin stays 0.1.0)
+
+- `CONTROL_PLANE_CONTRACT.md`'s "Supersedes: all other docs" banner now scoped to
+  production deploy/runtime execution only, matching this Constitution's own
+  precedence table (Constitution is level 2, Control Plane is level 4) — the
+  2026-08-15 external review found these two top docs disagreeing on "who's
+  supreme" with no scope qualifier.
+- New 24-hour cool-off rule: governance-file PRs (this file, Control Plane
+  Contract, AUTONOMY_POLICY) must not merge same-day as feature/fix PRs, and
+  any capability they grant needs 24h before first use — prompted by the
+  review finding a same-day self-merge-authority grant-and-use (#1792/#1793).
+
 ## 2026-08-15 — Agent is the operator (constitution pin stays 0.1.0)
 
 - Implementing Agent owns merge R0–R3, issue close, task mail, and committed
