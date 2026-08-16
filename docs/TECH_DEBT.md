@@ -753,3 +753,14 @@
 | 建議做法 | 把 `schedules` 的身分從「最新一筆的 id」改成「`student_class_id` + 原始 `schedule_date`/`start_time`（第一次物化後永久不變）」。**計畫 SSOT：** [`docs/architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md`](architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md)。Phase 2 已上線可空欄＋預設關閉雙寫。Phase 3 命令 `schedules:backfill-occurrence-identity` 預設 dry-run；production execute 仍 gated。尚未 unique / 讀取切換 / 停鏈。 |
 | 清償成本估計 | 大（資料模型遷移 + 所有讀寫路徑改寫 + 回填腳本，估需完整 RFC/PRD 規劃後才能估工） |
 | 不做的代價 | 每次「改期的改期」場景出現新的變化（同時間重新提交、跨日期改期、未來可能的批次改期等），下游都要再補一次 dedupe patch——已經發生兩次，且 Cal.com 的先例顯示這個模式在其他成熟產品也會反覆冒出同類 bug，不是修一次就永久免疫 |
+
+## Open
+
+### TD-081 — 「對帳／reconcile」命名跨領域過載（P2）
+
+- **發現來源**：2026-08-16 夜間堂數對帳澄清研究
+- **影響**：同一中文「對帳」同時指堂數一致性、學費帳務流水、發票勾稽、銀行勾稽；工程師與主任容易以為功能重複或進錯頁。
+- **現況**：`GUIDE_NIGHTLY_SESSION_RECONCILE.md` 已列對照表；夜間 UI 已正名「夜間堂數對帳」。
+- **建議**：後續把繳費收款按鈕「對帳」改成「帳務流水」等更精確動詞（需 Founder 文案 GO）；不要合併 `reconcile:nightly` 與 `packages:reconcile`。
+- **優先級**：P2
+

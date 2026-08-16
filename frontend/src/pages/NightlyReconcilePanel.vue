@@ -1,10 +1,10 @@
 <template>
-  <div class="nightly-reconcile" role="region" aria-label="夜間對帳異常面板">
+  <div class="nightly-reconcile" role="region" aria-label="夜間堂數對帳異常面板">
     <!-- 頁首 -->
     <div class="nr-header">
       <div>
-        <h1 class="nr-title">夜間對帳異常</h1>
-        <p class="nr-subtitle">監控每日自動對帳結果，依原因檢視需要處理的課程</p>
+        <h1 class="nr-title">夜間堂數對帳</h1>
+        <p class="nr-subtitle">每天 02:00 比對課程「已用堂數」與權威扣堂口徑（出勤／扣堂帳本）。這不是銀行或學費入帳勾稽。本頁只診斷，不改數字。</p>
       </div>
       <button
         class="nr-refresh-btn"
@@ -33,8 +33,8 @@
     <!-- 無報告（404） -->
     <div v-else-if="!report" class="nr-empty" role="status">
       <span class="material-symbols-outlined nr-empty-icon" aria-hidden="true">receipt_long</span>
-      <h2 class="nr-empty-title">尚無對帳報告</h2>
-      <p class="nr-empty-desc">夜間對帳排程尚未執行，或尚未產出第一份報告。請稍後再試。</p>
+      <h2 class="nr-empty-title">尚無堂數對帳報告</h2>
+      <p class="nr-empty-desc">02:00 排程尚未跑完，或今天還沒寫出報告。這與帳務中心／銀行勾稽無關。</p>
       <button class="nr-cta-btn" @click="loadReport">重新檢查</button>
     </div>
 
@@ -65,7 +65,7 @@
       <!-- 零異常狀態 -->
       <div v-if="summary.mismatch_count === 0" class="nr-all-clear" role="status">
         <span class="material-symbols-outlined" aria-hidden="true" style="font-size:48px;color:var(--success)">check_circle</span>
-        <p>所有課程對帳一致，無異常資料</p>
+        <p>已用堂數與權威扣堂口徑一致，沒有需要處理的課程</p>
       </div>
 
       <!-- 異常列表區 -->
