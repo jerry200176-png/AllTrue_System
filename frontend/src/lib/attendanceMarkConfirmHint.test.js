@@ -14,5 +14,4 @@ assert.equal(
   '缺席將不扣堂，也不順延課程。',
 );
 assert.equal(attendanceMarkConfirmHint('present'), '');
-assert.ok(!attendanceMarkConfirmHint('absent').includes('扣堂。') || attendanceMarkConfirmHint('absent').includes('不扣堂'));
 assert.ok(!attendanceMarkConfirmHint('absent').includes('將扣堂'));
