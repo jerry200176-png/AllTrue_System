@@ -258,6 +258,38 @@ export const staffUpdates = [
     "version": "2026.08.16"
   },
   {
+    "id": "staff-2026-08-16-hai-sen-director-copy",
+    "publishedAt": "2026-08-16",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "對帳由主任完成",
+    "summary": "已回報後請到帳務中心確認入帳；沒有會計角色。",
+    "items": [
+      "同一課程已有待對帳時，會請你到帳務中心確認入帳或退回。",
+      "對到帳後按確認入帳就是完成，系統不會再開會計帳號。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "同一課程已有待對帳時，會請你到帳務中心確認入帳或退回。",
+          "對到帳後按確認入帳就是完成，系統不會再開會計帳號。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-16:hai-sen-director-copy"
+    ],
+    "date": "2026-08-16",
+    "version": "2026.08.16"
+  },
+  {
     "id": "staff-2026-08-16-fillrate-substitute-absent-copy",
     "publishedAt": "2026-08-16",
     "effectiveAt": null,

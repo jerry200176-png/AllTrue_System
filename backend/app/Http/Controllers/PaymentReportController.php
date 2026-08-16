@@ -173,7 +173,7 @@ class PaymentReportController extends Controller
         ]);
 
         return response()->json([
-            'message' => '繳費回報已送出，請等待會計確認',
+            'message' => '繳費回報已送出，分校對到帳後才會開收據',
             'report_id' => $report->id,
         ], 201);
     }
@@ -457,7 +457,7 @@ class PaymentReportController extends Controller
                 ->first();
             if ($existingPending) {
                 return response()->json([
-                    'message' => '此課程已有待對帳回報，請先請會計確認或退回後再登錄。',
+                    'message' => '此課程已有待對帳回報，請先到帳務中心確認入帳或退回後再登錄。',
                     'code' => 'pending_report_exists',
                     'report_id' => $existingPending->id,
                 ], 422);

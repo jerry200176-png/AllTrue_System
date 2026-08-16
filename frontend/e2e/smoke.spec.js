@@ -47,9 +47,10 @@ async function login(page, role, creds) {
  * best-effort：不存在就略過。
  */
 async function dismissOverlays(page) {
-  for (const sel of ['.guide-tour-close', '.release-nudge-btn:has-text("稍後再看")']) {
-    await page.locator(sel).first().click({ force: true, timeout: 1500 }).catch(() => {});
-  }
+  await page.locator('.release-nudge-btn:has-text("稍後再看")').click({ timeout: 5000 }).catch(() => {});
+  await page.locator('.release-nudge-layer').waitFor({ state: 'hidden', timeout: 3000 }).catch(() => {});
+  await page.locator('.guide-tour-close').click({ timeout: 800 }).catch(() => {});
+  await page.locator('.brand-idle-layer').click({ timeout: 800 }).catch(() => {});
 }
 
 /**
