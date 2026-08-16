@@ -129,40 +129,4 @@ class FulltimeSettlementComposerTest extends TestCase
         $this->assertTrue($result['review_required']);
         $this->assertTrue($result['payout_is_draft']);
     }
-
-    public function test_admin_allowance_rate_is_added_to_multiplier(): void
-    {
-        $components = [
-            'admin_allowance' => ['status' => 'qualifies', 'amount' => 0, 'rate' => 8],
-            'subject_count_bonus' => [
-                'status' => 'qualifies', 'amount' => 0, 'rate' => 0,
-                'metrics' => ['subject_count' => 10, 'subject_count_bonus' => 1000, 'one_to_three_bonus' => 0],
-            ],
-        ];
-
-        $result = FulltimeSettlementComposer::compose($components, 0.0, ['payroll_total' => 10]);
-
-        $this->assertSame(108.0, $result['multiplier_pct']);
-        $this->assertSame(1080.0, $result['weighted_bonus_amount']);
-    }
-
-    public function test_manual_cash_and_multiplier_adjustments_recompose_total(): void
-    {
-        $base = FulltimeSettlementComposer::compose([
-            'weekly_16_segments' => ['status' => 'qualifies', 'amount' => 1000, 'rate' => 0],
-            'subject_count_bonus' => [
-                'status' => 'qualifies', 'amount' => 0, 'rate' => 0,
-                'metrics' => ['subject_count' => 10, 'subject_count_bonus' => 1000, 'one_to_three_bonus' => 0],
-            ],
-        ], 30000.0, ['payroll_total' => 10]);
-
-        $result = FulltimeSettlementComposer::applyManualAdjustments($base, [
-            ['field' => 'multiplier_pct', 'delta' => 5, 'label' => '調整倍率'],
-            ['field' => 'cash', 'delta' => -200, 'label' => '扣款'],
-        ]);
-
-        $this->assertSame(105.0, $result['multiplier_pct']);
-        $this->assertSame(1050.0, $result['weighted_bonus_amount']);
-        $this->assertSame(31850.0, $result['total_payout']);
-    }
 }

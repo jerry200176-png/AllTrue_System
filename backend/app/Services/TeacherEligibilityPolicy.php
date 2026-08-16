@@ -38,7 +38,6 @@ class TeacherEligibilityPolicy
             'weekday_afternoon' => $this->weekdayAfternoon($input['weekday_hours'] ?? []),
             'special_performance' => $this->specialPerformance($input['achievements'] ?? [], $input['period_start'] ?? null, $input['period_end'] ?? null),
             'deductions' => $this->deductions($input['deductions'] ?? [], $input['period_start'] ?? null, $input['period_end'] ?? null),
-            'admin_allowance' => $this->adminAllowance($input['admin_allowances'] ?? [], $input['period_start'] ?? null, $input['period_end'] ?? null),
             'subject_count_bonus' => $this->subjectCountBonus(
                 array_key_exists('subject_count', $input) && $input['subject_count'] !== null
                     ? (float) $input['subject_count']
@@ -53,7 +52,7 @@ class TeacherEligibilityPolicy
             $missing = array_merge($missing, $component['missing_fields'] ?? []);
         }
 
-        $positive = ['weekly_16_segments', 'holiday_16_hours', 'weekday_afternoon', 'special_performance', 'admin_allowance'];
+        $positive = ['weekly_16_segments', 'holiday_16_hours', 'weekday_afternoon', 'special_performance'];
         $hasReview = collect($components)->contains(fn ($component) => $component['status'] === self::REVIEW);
         $hasBenefit = collect($positive)->contains(fn ($key) => ($components[$key]['rate'] ?? 0) > 0 || ($components[$key]['amount'] ?? 0) > 0);
 
@@ -332,42 +331,6 @@ class TeacherEligibilityPolicy
         return $this->result(
             $active === [] ? self::QUALIFIES : self::NOT_QUALIFIES,
             $active === [] ? '查詢期間沒有已核准扣除案件。' : '查詢期間有已核准扣除案件。',
-            ['active_count' => count($active)],
-            0,
-            round($rate, 2)
-        );
-    }
-
-    public function adminAllowance(array $allowances, ?string $periodStart, ?string $periodEnd): array
-    {
-        $start = $periodStart ? Carbon::parse($periodStart)->startOfDay() : null;
-        $end = $periodEnd ? Carbon::parse($periodEnd)->endOfDay() : null;
-        $pending = [];
-        $active = [];
-        foreach ($allowances as $row) {
-            if (($row['status'] ?? 'pending') === 'withdrawn') {
-                continue;
-            }
-            $approved = ($row['status'] ?? '') === 'approved' || (!empty($row['director_confirmed_at']) && !empty($row['hq_approved_at']));
-            if (!$approved) {
-                $pending[] = $row['role_label'] ?? 'admin_allowance';
-                continue;
-            }
-            if ($start && !empty($row['starts_on']) && Carbon::parse($row['starts_on'])->gt($end)) {
-                continue;
-            }
-            if ($end && !empty($row['ends_on']) && Carbon::parse($row['ends_on'])->lt($start)) {
-                continue;
-            }
-            $active[] = $row;
-        }
-        if ($pending !== []) {
-            return $this->review(['admin_allowance_approval'], '有行政加給尚未完成主任確認及總部審核。', ['pending_count' => count($pending)]);
-        }
-        $rate = min(10.0, collect($active)->sum(fn ($row) => (float) ($row['rate'] ?? 0)));
-        return $this->result(
-            $rate > 0 ? self::QUALIFIES : self::QUALIFIES,
-            $rate > 0 ? '已核准行政加給倍率。' : '查詢期間沒有行政加給。',
             ['active_count' => count($active)],
             0,
             round($rate, 2)

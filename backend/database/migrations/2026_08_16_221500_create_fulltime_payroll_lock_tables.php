@@ -40,22 +40,6 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasTable('fulltime_payroll_adjustments')) {
-            Schema::create('fulltime_payroll_adjustments', function (Blueprint $table) {
-                $table->id();
-                $table->unsignedInteger('branch_id');
-                $table->char('month', 7);
-                $table->unsignedInteger('teacher_id');
-                $table->string('field', 32);
-                $table->decimal('delta', 12, 4);
-                $table->string('label', 64)->nullable();
-                $table->string('note', 500)->nullable();
-                $table->unsignedInteger('created_by')->nullable();
-                $table->timestamps();
-                $table->index(['branch_id', 'month', 'teacher_id']);
-            });
-        }
-
         if (!Schema::hasTable('fulltime_payroll_audit_logs')) {
             Schema::create('fulltime_payroll_audit_logs', function (Blueprint $table) {
                 $table->id();
@@ -68,34 +52,11 @@ return new class extends Migration
                 $table->index(['branch_id', 'month']);
             });
         }
-
-        if (!Schema::hasTable('teacher_payroll_admin_allowances')) {
-            Schema::create('teacher_payroll_admin_allowances', function (Blueprint $table) {
-                $table->id();
-                $table->unsignedInteger('teacher_id');
-                $table->unsignedInteger('branch_id')->nullable();
-                $table->decimal('rate', 5, 2);
-                $table->string('role_label', 64);
-                $table->string('reason', 10000)->nullable();
-                $table->date('starts_on')->nullable();
-                $table->date('ends_on')->nullable();
-                $table->string('status', 24)->default('pending');
-                $table->unsignedInteger('director_confirmed_by')->nullable();
-                $table->dateTime('director_confirmed_at')->nullable();
-                $table->unsignedInteger('hq_approved_by')->nullable();
-                $table->dateTime('hq_approved_at')->nullable();
-                $table->unsignedInteger('created_by')->nullable();
-                $table->timestamps();
-                $table->index(['teacher_id', 'status']);
-            });
-        }
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('teacher_payroll_admin_allowances');
         Schema::dropIfExists('fulltime_payroll_audit_logs');
-        Schema::dropIfExists('fulltime_payroll_adjustments');
         Schema::dropIfExists('fulltime_payroll_run_teachers');
         Schema::dropIfExists('fulltime_payroll_runs');
     }

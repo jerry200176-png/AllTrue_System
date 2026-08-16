@@ -97,46 +97,12 @@ export function saveTeacherSalaryProfile(payload) {
   return request('/finance/teacher-eligibility/salary-profiles', { method: 'POST', body: JSON.stringify(payload) });
 }
 
-export function approveTeacherSalaryProfile(id) {
-  return request(`/finance/teacher-eligibility/salary-profiles/${id}/approve`, { method: 'POST' });
-}
-
-export function createTeacherEligibilityAdminAllowance(payload) {
-  return request('/finance/teacher-eligibility/admin-allowances', { method: 'POST', body: JSON.stringify(payload) });
-}
-
-export function updateTeacherEligibilityAdminAllowance(id, payload) {
-  return request(`/finance/teacher-eligibility/admin-allowances/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
-}
-
-export function withdrawTeacherEligibilityAdminAllowance(id) {
-  return request(`/finance/teacher-eligibility/admin-allowances/${id}/withdraw`, { method: 'POST' });
-}
-
-export function confirmTeacherEligibilityAdminAllowance(id) {
-  return request(`/finance/teacher-eligibility/admin-allowances/${id}/confirm`, { method: 'POST' });
-}
-
-export function approveTeacherEligibilityAdminAllowance(id) {
-  return request(`/finance/teacher-eligibility/admin-allowances/${id}/approve`, { method: 'POST' });
-}
-
 export function lockFulltimePayroll({ month, branchId }) {
   return request('/finance/teacher-eligibility/lock', { method: 'POST', body: JSON.stringify({ month, branch_id: Number(branchId) }) });
 }
 
 export function reopenFulltimePayroll({ month, branchId, reason }) {
   return request('/finance/teacher-eligibility/reopen', { method: 'POST', body: JSON.stringify({ month, branch_id: Number(branchId), reason }) });
-}
-
-export function addFulltimePayrollAdjustment(payload) {
-  return request('/finance/teacher-eligibility/adjustments', { method: 'POST', body: JSON.stringify(payload) });
-}
-
-export async function fetchTeacherEligibilityDaily({ teacherId, start, end, branchId }) {
-  const params = new URLSearchParams({ start, end });
-  if (branchId) params.set('branch_id', branchId);
-  return request(`/finance/teacher-eligibility/${teacherId}/daily?${params}`);
 }
 
 export async function exportFulltimePayrollCsv({ month, branchId }) {

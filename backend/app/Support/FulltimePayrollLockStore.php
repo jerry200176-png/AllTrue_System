@@ -111,40 +111,6 @@ final class FulltimePayrollLockStore
         self::audit($branchId, $month, 'reopen', $userId, ['run_id' => $run->id, 'reason' => $reason]);
     }
 
-    /**
-     * @return array<int, list<array{field:string,delta:float,label:?string,note:?string}>>
-     */
-    public static function adjustmentsByTeacher(int $branchId, string $month): array
-    {
-        if (!Schema::hasTable('fulltime_payroll_adjustments')) {
-            return [];
-        }
-        $grouped = [];
-        foreach (DB::table('fulltime_payroll_adjustments')
-            ->where('branch_id', $branchId)
-            ->where('month', $month)
-            ->orderBy('id')
-            ->get() as $row) {
-            $tid = (int) $row->teacher_id;
-            $grouped[$tid][] = [
-                'field' => (string) $row->field,
-                'delta' => (float) $row->delta,
-                'label' => $row->label,
-                'note' => $row->note,
-            ];
-        }
-        return $grouped;
-    }
-
-    public static function addAdjustment(array $row): int
-    {
-        return (int) DB::table('fulltime_payroll_adjustments')->insertGetId([
-            ...$row,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-    }
-
     public static function audit(int $branchId, string $month, string $action, ?int $userId, array $meta = []): void
     {
         if (!Schema::hasTable('fulltime_payroll_audit_logs')) {

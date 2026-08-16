@@ -12,7 +12,7 @@ class FulltimePayrollLockTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_empty_month_can_lock_and_blocks_salary_and_adjustments(): void
+    public function test_empty_month_can_lock_and_blocks_salary_writes(): void
     {
         $director = $this->createDirector(1, 'ft-lock-dir@test.com');
         $headers = ['Authorization' => "Bearer {$director['token']}", 'Accept' => 'application/json'];
@@ -33,23 +33,13 @@ class FulltimePayrollLockTest extends TestCase
             'base_salary' => 33000,
             'effective_from' => '2026-08-01',
         ])->assertStatus(422);
-
-        $this->withHeaders($headers)->postJson('/api/v1/finance/teacher-eligibility/adjustments', [
-            'branch_id' => 1,
-            'month' => '2026-08',
-            'teacher_id' => $teacherId,
-            'field' => 'cash',
-            'delta' => 200,
-            'label' => '臨時加給',
-        ])->assertStatus(422);
     }
 
-    public function test_only_super_admin_can_reopen_and_then_adjustments_apply(): void
+    public function test_only_super_admin_can_reopen(): void
     {
         $director = $this->createDirector(1, 'ft-reopen-dir@test.com');
         $admin = $this->createSuperAdmin('ft-reopen-admin@test.com');
         $dirHeaders = ['Authorization' => "Bearer {$director['token']}", 'Accept' => 'application/json'];
-        $adminHeaders = ['Authorization' => "Bearer {$admin['token']}", 'Accept' => 'application/json'];
 
         $this->withHeaders($dirHeaders)->postJson('/api/v1/finance/teacher-eligibility/lock', [
             'month' => '2026-08',
@@ -62,29 +52,14 @@ class FulltimePayrollLockTest extends TestCase
             'reason' => '更正科目數',
         ])->assertStatus(403);
 
-        $this->withHeaders($adminHeaders)->postJson('/api/v1/finance/teacher-eligibility/reopen', [
+        $this->withHeaders([
+            'Authorization' => "Bearer {$admin['token']}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/finance/teacher-eligibility/reopen', [
             'month' => '2026-08',
             'branch_id' => 1,
             'reason' => '更正科目數',
         ])->assertOk()->assertJsonPath('status', 'reopened');
-
-        $teacherId = $this->createTeacher(1, 'ft-reopen-teacher@test.com');
-
-        $this->withHeaders($dirHeaders)->postJson('/api/v1/finance/teacher-eligibility/adjustments', [
-            'branch_id' => 1,
-            'month' => '2026-08',
-            'teacher_id' => $teacherId,
-            'field' => 'cash',
-            'delta' => 200,
-            'label' => '臨時加給',
-        ])->assertCreated();
-
-        $report = $this->withHeaders($dirHeaders)->getJson('/api/v1/finance/teacher-eligibility?period=month&start=2026-08-01&end=2026-08-31&branch_id=1');
-        $report->assertOk()->assertJsonPath('lock.status', 'draft');
-        $row = collect($report->json('teachers'))->firstWhere('teacher_id', $teacherId);
-        $this->assertNotNull($row);
-        $this->assertSame(200.0, (float) collect($row['settlement']['adjustments'] ?? [])->firstWhere('label', '臨時加給')['amount']);
-        $this->assertSame(200.0, (float) $row['settlement']['total_payout']);
     }
 
     public function test_cannot_lock_when_any_teacher_is_still_review(): void
@@ -101,37 +76,6 @@ class FulltimePayrollLockTest extends TestCase
             'month' => '2026-08',
             'branch_id' => 1,
         ])->assertStatus(422);
-    }
-
-    public function test_admin_allowance_requires_director_then_hq(): void
-    {
-        $director = $this->createDirector(1, 'ft-admin-dir@test.com');
-        $admin = $this->createSuperAdmin('ft-admin-hq@test.com');
-        $teacherId = $this->createTeacher(1, 'ft-admin-teacher@test.com');
-        $dirHeaders = ['Authorization' => "Bearer {$director['token']}", 'Accept' => 'application/json'];
-
-        $created = $this->withHeaders($dirHeaders)->postJson('/api/v1/finance/teacher-eligibility/admin-allowances', [
-            'teacher_id' => $teacherId,
-            'branch_id' => 1,
-            'rate' => 8,
-            'role_label' => '總導師',
-            'starts_on' => '2026-08-01',
-        ]);
-        $created->assertCreated();
-        $id = (int) $created->json('id');
-
-        $this->withHeaders($dirHeaders)->postJson("/api/v1/finance/teacher-eligibility/admin-allowances/{$id}/approve")
-            ->assertStatus(403);
-
-        $this->withHeaders($dirHeaders)->postJson("/api/v1/finance/teacher-eligibility/admin-allowances/{$id}/confirm")
-            ->assertOk();
-
-        $this->withHeaders([
-            'Authorization' => "Bearer {$admin['token']}",
-            'Accept' => 'application/json',
-        ])->postJson("/api/v1/finance/teacher-eligibility/admin-allowances/{$id}/approve")
-            ->assertOk()
-            ->assertJsonPath('status', 'approved');
     }
 
     private function createDirector(int $campusId, string $email): array

@@ -266,18 +266,4 @@ class TeacherEligibilityPolicyTest extends TestCase
         $this->assertSame(TeacherEligibilityPolicy::REVIEW, $result['status']);
         $this->assertContains('holiday_calendar', $result['missing_fields']);
     }
-
-    public function test_pending_admin_allowance_is_review_and_approved_rate_caps_at_ten(): void
-    {
-        $pending = $this->policy->adminAllowance([
-            ['role_label' => '總導師', 'rate' => 8, 'status' => 'pending'],
-        ], '2026-08-01', '2026-08-31');
-        $approved = $this->policy->adminAllowance([
-            ['role_label' => '總導師', 'rate' => 8, 'status' => 'approved', 'starts_on' => '2026-08-01'],
-            ['role_label' => '行政協助', 'rate' => 5, 'status' => 'approved', 'starts_on' => '2026-08-01'],
-        ], '2026-08-01', '2026-08-31');
-
-        $this->assertSame(TeacherEligibilityPolicy::REVIEW, $pending['status']);
-        $this->assertSame(10.0, $approved['rate']);
-    }
 }
