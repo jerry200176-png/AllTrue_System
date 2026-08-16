@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "session_id": "17a9b6e079ba43c982492203c104131d",
+  "project": "alltrue",
+  "task_id": "issue-1731-n1-fix-20260813",
+  "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
+  "base_sha": "64a8f4f18e36b34f5ee935dd4ebc656366afb448",
+  "branch": "chore/task-issue-1731-n1-fix-20260813",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/issue-1731-n1-fix-20260813",
+  "started_at": "2026-08-13T07:55:59Z",
+  "production_mutation": false,
+  "preflight_result": "pass",
+  "provenance_type": "agent-session",
+  "agent_cli": "codex",
+  "gateway_version": "0.5.0"
+}
