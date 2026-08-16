@@ -2,6 +2,10 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-08-16-nightly-session-reconcile-clarity
+    changelog_date: "2026-08-16"
+    changelog_title: "docs(ops): 夜間對帳正名為堂數一致性檢查"
+    reason: 僅系統管理員側欄文案、FAQ 與排程 domain 標籤；主任／老師畫面與學費入帳流程不變。
   - id: silent-2026-08-16-reported-paid-accounting-split-rfc
     changelog_date: "2026-08-16"
     changelog_title: "docs(arch): 行政已回報與會計入帳核銷拆分計畫（#1827）"
