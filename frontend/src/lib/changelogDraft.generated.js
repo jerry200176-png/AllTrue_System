@@ -5,6 +5,28 @@
  */
 export const changelogDraftNotes = [
   {
+    "version": "2026.08.17",
+    "date": "2026-08-17",
+    "title": "2026.08.17 草稿（未發布）",
+    "summary": "帳務中心白屏（activeTab 宣告順序）",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "帳務中心白屏（activeTab 宣告順序）"
+        ]
+      }
+    ],
+    "items": [
+      "帳務中心白屏（activeTab 宣告順序）"
+    ]
+  },
+  {
     "version": "2026.08.16",
     "date": "2026-08-16",
     "title": "2026.08.16 草稿（未發布）",
@@ -519,46 +541,6 @@ export const changelogDraftNotes = [
     ],
     "items": [
       "共用方案堂次區狀態語意與預排 chip 分流"
-    ]
-  },
-  {
-    "version": "2026.07.26",
-    "date": "2026-07-26",
-    "title": "2026.07.26 草稿（未發布）",
-    "summary": "00 家長綁定 PII-safe observability；家長更新卡改為顯式 PARENT_UPDATES 投影（B+）",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "新增內容",
-        "items": [
-          "00 家長綁定 PII-safe observability"
-        ]
-      },
-      {
-        "title": "修正內容",
-        "items": [
-          "家長更新卡改為顯式 PARENT_UPDATES 投影（B+）",
-          "堂數制請假改為保留未來日期、只補尾堂"
-        ]
-      },
-      {
-        "title": "體驗調整",
-        "items": [
-          "Foundation + 主任收件匣 pilot",
-          "學生列表 UI Foundation pilot (B)"
-        ]
-      }
-    ],
-    "items": [
-      "00 家長綁定 PII-safe observability",
-      "家長更新卡改為顯式 PARENT_UPDATES 投影（B+）",
-      "堂數制請假改為保留未來日期、只補尾堂",
-      "Foundation + 主任收件匣 pilot",
-      "學生列表 UI Foundation pilot (B)"
     ]
   }
 ];
