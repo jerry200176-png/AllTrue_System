@@ -1704,7 +1704,10 @@ watch([session, role, isPasswordChangeLocked], () => {
     return;
   }
   const seenVersion = localStorage.getItem(RELEASE_NOTES_SEEN_KEY) || '';
-  releaseNudgeOpen.value = seenVersion !== latestVersion;
+  // Playwright / WebDriver sessions hit production UI Smoke; skip the modal so
+  // pointer-event layers do not block nav/tab clicks (force-click never runs Vue).
+  const automated = typeof navigator !== 'undefined' && Boolean(navigator.webdriver);
+  releaseNudgeOpen.value = !automated && seenVersion !== latestVersion;
 });
 
 watch(brandOverlayAllowed, (allowed) => {

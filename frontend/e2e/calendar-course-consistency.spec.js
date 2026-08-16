@@ -1,6 +1,7 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
 import { latestReleaseVersionForRole } from '../src/lib/releaseNotes.js';
+import { dismissOverlays } from './fixtures/dismissOverlays.js';
 
 /**
  * Authenticated, read-only acceptance for the calendar/course-management parity
@@ -62,24 +63,6 @@ async function getJson(request, path, token) {
   });
   expect(response.ok(), `${path} should return 2xx, got ${response.status()}`).toBeTruthy();
   return response.json();
-}
-
-async function dismissOverlays(page) {
-  // The authenticated app may show an animated brand intro before the
-  // release nudge. Wait for it to leave the pointer-event layer instead of
-  // racing the sidebar click.
-  const brandOverlay = page.locator('.brand-idle-layer').first();
-  if (await brandOverlay.isVisible().catch(() => false)) {
-    // The real overlay is click-to-dismiss; exercise that user-facing path so
-    // the acceptance does not mutate app state behind the UI's back.
-    await brandOverlay.click({ position: { x: 5, y: 5 }, force: true }).catch(() => {});
-  }
-  await expect(page.locator('.brand-idle-layer')).toHaveCount(0, { timeout: 5_000 }).catch(() => {});
-  for (const selector of ['.guide-tour-close', '.release-nudge-btn:has-text("稍後再看")']) {
-    const item = page.locator(selector).first();
-    if (await item.count()) await item.waitFor({ state: 'visible', timeout: 5_000 }).catch(() => {});
-    if (await item.isVisible().catch(() => false)) await item.click({ force: true }).catch(() => {});
-  }
 }
 
 async function navigate(page, label) {

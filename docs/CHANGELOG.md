@@ -1,3 +1,10 @@
+## 2026-08-17 — fix(e2e): UI Smoke 不再被版本公告擋住導覽
+
+<!-- release-notes: silent_ship=silent-2026-08-17-ui-smoke-overlay -->
+
+- Playwright 關閉版本公告改走真實「稍後再看」點擊（不用 force）；無學生時不硬性要求「帳務資料」分頁。
+- WebDriver 工作階段不自動彈出版本公告，避免 pointer-events 層攔截側欄。
+
 ## 2026-08-17 — fix(billing): 帳務中心白屏（activeTab 宣告順序）
 
 <!-- release-notes: staff_update=staff-2026-08-17-tuition-collect-tdz -->
