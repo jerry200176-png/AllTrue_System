@@ -1,3 +1,10 @@
+## 2026-08-16 — feat(billing): 課程頁帳務分頁與批次回報 (#1827)
+
+<!-- release-notes: staff_update=staff-2026-08-16-reported-paid-phase2 -->
+
+- 課程管理同一學生可切「帳務資料」，不必再到收費頁重搜姓名。
+- 收費頁可勾選多筆批次回報或確認入帳；批次確認不會自動開收據。
+
 ## 2026-08-16 — fix(reports): 代課老師填報率計入代課老師
 
 <!-- release-notes: staff_update=staff-2026-08-16-fillrate-substitute-absent-copy -->
