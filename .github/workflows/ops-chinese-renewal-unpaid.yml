@@ -1,14 +1,6 @@
 name: Chinese renewal unpaid 8 sessions (allowlisted)
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, labeled, edited]
-    paths:
-      - '.github/workflows/ops-chinese-renewal-unpaid.yml'
-      - 'scripts/ops-chinese-renewal-unpaid.sh'
-      - 'scripts/ops-chinese-renewal-unpaid.php'
-      - 'scripts/tests/test_ops_chinese_renewal_unpaid.py'
-      - 'docs/incidents/2026-08-14-chinese-renewal-unpaid.md'
   workflow_dispatch:
     inputs:
       student:

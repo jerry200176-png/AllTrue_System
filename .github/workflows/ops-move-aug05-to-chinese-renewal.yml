@@ -1,13 +1,6 @@
 name: Move 8/5 國文 onto unpaid renewal (allowlisted)
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, labeled, edited]
-    paths:
-      - '.github/workflows/ops-move-aug05-to-chinese-renewal.yml'
-      - 'scripts/ops-move-aug05-to-chinese-renewal.sh'
-      - 'scripts/ops-cancel-last-future-slot.php'
-      - 'scripts/tests/test_ops_move_aug05_to_chinese_renewal.py'
   workflow_dispatch:
     inputs:
       student:
