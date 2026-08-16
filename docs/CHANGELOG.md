@@ -140,6 +140,13 @@
 - 資料補登預設改為老師請假／補課；全校放假請走課程管理「連假批次請假」，假日曆僅作少用補登。
 - 待審核資料可在右側清單修改或撤回；已核准後仍不能改，也不會誤算進薪資。
 
+## 2026-08-14 — fix(ui): 月結課不再顯示購買堂數，老師清單同一堂不重複
+
+<!-- release-notes: staff_update=staff-2026-08-14-monthly-copy-teacher-list -->
+
+- 月結課程的上課日期改顯示已上堂數，不再把 `SessionCount` 寫成「購買 N 堂」。
+- 行事曆老師清單對同一學生、同一星期、同一開始時間只保留一筆，避免舊契約與現行課程並列。
+
 ## 2026-08-13 — feat(payroll): 正職老師薪資要件頁面新增底薪與總發放金額
 
 <!-- release-notes: staff_update=staff-2026-08-13-fulltime-settlement-total-payout -->
