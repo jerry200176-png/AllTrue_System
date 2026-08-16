@@ -287,6 +287,36 @@ export const staffUpdates = [
     "version": "2026.08.16"
   },
   {
+    "id": "staff-2026-08-16-billing-tabs-visible",
+    "publishedAt": "2026-08-16",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "帳務資料在學生列",
+    "summary": "課程管理每位學生姓名下方有課程資料與帳務資料。",
+    "items": [
+      "點學生列下面的「帳務資料」即可對帳，不必先展開。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "點學生列下面的「帳務資料」即可對帳，不必先展開。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-16:billing-tabs-visible"
+    ],
+    "date": "2026-08-16",
+    "version": "2026.08.16"
+  },
+  {
     "id": "staff-2026-08-15-tuition-charge-display-1734",
     "publishedAt": "2026-08-15",
     "effectiveAt": null,
