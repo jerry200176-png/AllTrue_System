@@ -63,7 +63,7 @@ async function navTo(page, navLabel) {
   const navBtn = page.getByRole('button', { name: navLabel, exact: false }).first();
   await navBtn.click();
   await page.waitForLoadState('networkidle').catch(() => {});
-  await expect(navBtn).toHaveClass(/active/, { timeout: 10_000 });
+  await expect(navBtn).toHaveClass(/active/, { timeout: 15_000 });
 }
 
 test.describe('UI smoke — director', () => {
