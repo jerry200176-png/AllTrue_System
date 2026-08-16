@@ -3,6 +3,19 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-16-billing-tabs-visible
+    published_at: "2026-08-16"
+    audiences:
+      - director
+    importance: digest
+    title: 帳務資料在學生列
+    summary: 課程管理每位學生姓名下方有課程資料與帳務資料。
+    items:
+      - category: improved
+        text: 點學生列下面的「帳務資料」即可對帳，不必先展開。
+    source_refs:
+      - "changelog:2026-08-16:billing-tabs-visible"
+
   - id: staff-2026-08-16-billing-ux-find
     published_at: "2026-08-16"
     audiences:
