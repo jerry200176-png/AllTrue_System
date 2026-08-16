@@ -1293,7 +1293,7 @@ const sidebarNavGroups = computed(() => {
       });
       systemItems.push({
         page: 'nightly-reconcile',
-        label: '夜間對帳',
+        label: '夜間堂數對帳',
         icon: 'receipt_long',
       });
     }

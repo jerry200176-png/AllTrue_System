@@ -251,6 +251,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | 檔案 | 一行說明 |
 |------|---------|
 | `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` | 繳費/續課提醒規則，**禁止擅改** |
+| `docs/GUIDE_NIGHTLY_SESSION_RECONCILE.md` | 夜間堂數對帳（02:00 診斷已用堂數；不是銀行／學費勾稽） |
 | `docs/architecture/RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md` | 行政已回報 vs 會計入帳拆分（#1827／TD-080）；Phase 1 狀態機、Phase 2 通知／批次／同畫面 |
 | `docs/PRICING_CONTRACT.md` | 費率合約（每堂費用計算）|
 | `docs/ROLE_PLAYBOOK.md` | 各角色權限與 UI 行為 |

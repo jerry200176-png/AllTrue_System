@@ -4,7 +4,7 @@
   "project": "alltrue",
   "task_id": "ui-smoke-1855-20260817",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "96f0e076a1b17803d1dec560659e8c9222784ef4",
+  "base_sha": "36875ff6dbbcc2a4914402b9d1686b831b80df21",
   "branch": "chore/task-ui-smoke-1855-20260817",
   "worktree_path": "/home/jerry/workspace/tasks/alltrue/ui-smoke-1855-20260817",
   "started_at": "2026-08-16T20:46:17Z",
