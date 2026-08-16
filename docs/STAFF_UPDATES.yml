@@ -3,6 +3,19 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-07-29-tuition-alert-payment-truth-959
+    published_at: "2026-07-29"
+    audiences:
+      - director
+    importance: digest
+    title: 繳費提醒付款狀態修正
+    summary: 帳單已結清但課程繳費狀態未同步更新時，繳費提醒頁面不再誤顯示「未繳費」與欠款金額。
+    items:
+      - category: fixed
+        text: 繳費提醒頁的已繳/未繳狀態改為跟課程列表同一套判斷，不再兩邊不一致。
+    source_refs:
+      - "changelog:2026-07-29:tuition-alert-payment-truth-959"
+
   - id: staff-2026-08-15-stale-receipt-badge-934
     published_at: "2026-08-15"
     audiences:
