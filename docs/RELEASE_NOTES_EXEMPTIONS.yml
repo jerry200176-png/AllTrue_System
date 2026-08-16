@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-08-17-dup-cleanup-plan
+    changelog_date: "2026-08-17"
+    changelog_title: "docs: 重複功能清理 A→B→C 執行計畫"
+    reason: 僅計畫與技術債追蹤文件；教職員畫面與操作不變。
+
   - id: silent-2026-08-17-orphan-fe-dead-pages
     changelog_date: "2026-08-17"
     changelog_title: "chore(frontend): 移除未掛載死碼頁（重複功能清理 A）"
