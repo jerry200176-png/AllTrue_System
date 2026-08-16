@@ -273,15 +273,15 @@ Route::prefix('v1')->group(function () {
         Route::get('students', [StudentController::class, 'index']);
         Route::post('students', [StudentController::class, 'store']);
         Route::post('students/bulk-delete', [StudentController::class, 'bulkDestroy']);
-        Route::get('students/{student}', [StudentController::class, 'show']);
-        Route::put('students/{student}', [StudentController::class, 'update']);
-        Route::delete('students/{student}', [StudentController::class, 'destroy']);
-        Route::post('students/{student}/bind-card', [StudentController::class, 'bindCard']);
-        Route::get('students/{student}/line-bindings', [StudentController::class, 'lineBindings']);
-        Route::delete('students/{student}/line-bindings/{binding}', [StudentController::class, 'removeLineBinding']);
-
+        // Static paths must precede {student} or "export"/"import" are captured as IDs (#1812).
         Route::post('students/import', [ImportController::class, 'students']);
         Route::get('students/export', [ExportController::class, 'students']);
+        Route::get('students/{student}', [StudentController::class, 'show'])->whereNumber('student');
+        Route::put('students/{student}', [StudentController::class, 'update'])->whereNumber('student');
+        Route::delete('students/{student}', [StudentController::class, 'destroy'])->whereNumber('student');
+        Route::post('students/{student}/bind-card', [StudentController::class, 'bindCard'])->whereNumber('student');
+        Route::get('students/{student}/line-bindings', [StudentController::class, 'lineBindings'])->whereNumber('student');
+        Route::delete('students/{student}/line-bindings/{binding}', [StudentController::class, 'removeLineBinding'])->whereNumber('student');
 
         Route::post('student-classes/import', [ImportController::class, 'studentClasses']);
         Route::get('student-classes/export', [ExportController::class, 'studentClasses']);

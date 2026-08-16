@@ -3,6 +3,7 @@
 <!-- release-notes: silent_ship=silent-2026-08-17-pii-export-audit-1812 -->
 
 - `GET /api/v1/students/export` 成功匯出前寫入 `security_audit_events`（操作者雜湊、筆數、校區範圍）；不含姓名／電話等明文。
+- 修正 `students/export` 被 `students/{student}` 搶路由的問題，並對 student id 加 `whereNumber`。
 
 ## 2026-08-17 — docs: 重複功能清理 A→B→C 執行計畫
 
