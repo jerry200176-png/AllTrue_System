@@ -3088,26 +3088,30 @@ class ClassSessionController extends Controller
 
         $lrSubSql = '(SELECT lr_inner.* FROM `LearningRecord` lr_inner INNER JOIN (SELECT ClassSessionID, MAX(id) AS max_id FROM `LearningRecord` WHERE VoidedAt IS NULL GROUP BY ClassSessionID) lr_latest ON lr_inner.id = lr_latest.max_id)';
 
+        // Same substitute resolution as buildClassSessionIndexQuery (#985 / #1822):
+        // a joined derived table, not a per-row correlated MAX(sub2.id) subquery.
         $rows = DB::table('ClassSession as cs')
             ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
             ->join('Student as s', 's.id', '=', 'sc.StudentID')
-            ->leftJoin('schedules as sub_sched', function ($join) {
+            ->leftJoin(DB::raw('(
+                SELECT ss.*
+                FROM `schedules` ss
+                INNER JOIN (
+                    SELECT sub2.student_course_id,
+                           sub2.schedule_date,
+                           SUBSTRING(sub2.start_time, 1, 5) AS st_hm,
+                           MAX(sub2.id) AS max_id
+                    FROM `schedules` sub2
+                    INNER JOIN `StudentClass` sc2 ON sc2.ID = sub2.student_course_id
+                    WHERE sub2.status = "scheduled"
+                      AND sub2.original_schedule_id IS NOT NULL
+                      AND sub2.teacher_id <> sc2.TeacherID
+                    GROUP BY sub2.student_course_id, sub2.schedule_date, SUBSTRING(sub2.start_time, 1, 5)
+                ) sub_latest ON ss.id = sub_latest.max_id
+            ) as sub_sched'), function ($join) {
                 $join->on('sub_sched.student_course_id', '=', 'sc.ID')
-                    ->where('sub_sched.status', '=', 'scheduled')
-                    ->whereNotNull('sub_sched.original_schedule_id')
                     ->whereRaw('DATE(sub_sched.schedule_date) = DATE(cs.SessionDate)')
-                    ->whereRaw('SUBSTRING(sub_sched.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)')
-                    ->whereColumn('sub_sched.teacher_id', '!=', 'sc.TeacherID')
-                    ->whereRaw('sub_sched.id = (
-                        SELECT MAX(sub2.id)
-                        FROM schedules sub2
-                        WHERE sub2.student_course_id = sc.ID
-                          AND sub2.status = "scheduled"
-                          AND sub2.original_schedule_id IS NOT NULL
-                          AND DATE(sub2.schedule_date) = DATE(cs.SessionDate)
-                          AND SUBSTRING(sub2.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)
-                          AND sub2.teacher_id <> sc.TeacherID
-                    )');
+                    ->whereRaw('SUBSTRING(sub_sched.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)');
             })
             ->leftJoin(DB::raw($lrSubSql . ' AS lr'), 'lr.ClassSessionID', '=', 'cs.id')
             ->where('s.CampusID', $branchId)
