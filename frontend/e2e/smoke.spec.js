@@ -79,6 +79,7 @@ test.describe('UI smoke — director', () => {
 
     // TODO: 可於 CourseManagement 根容器補 data-testid="course-mgmt-page" 讓斷言更穩。
     await expect(page.getByText('課程管理', { exact: false }).first()).toBeVisible();
+    await expect(page.getByRole('tab', { name: '帳務資料' }).first()).toBeVisible({ timeout: 20_000 });
     expect(errors, `頁面 JS 錯誤：\n${errors.join('\n')}`).toEqual([]);
   });
 });

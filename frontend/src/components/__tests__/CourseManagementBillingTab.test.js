@@ -12,7 +12,9 @@ describe('CourseManagement student billing tab', () => {
     expect(source).toContain('student-group-header-actions');
     expect(source).toContain('selectStudentGroupTab');
     expect(source).toContain("@click.stop=\"selectStudentGroupTab(group, 'billing', $event)\"");
-    expect(source).toContain('>帳務</button>');
+    expect(source).toContain('>帳務資料</button>');
+    expect(source).toContain('>課程資料</button>');
+    expect(source).toContain('data-testid="student-tab-billing"');
     expect(source).toContain('aria-label="帳務資料"');
     expect(source).toContain('studentGroupTab(group.key) === \'billing\'');
     expect(source).toContain('/api/v1/payment-reports?student_class_id=');
