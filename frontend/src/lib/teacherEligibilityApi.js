@@ -113,6 +113,22 @@ export function approveTeacherEligibilityAdminAllowance(id) {
   return request(`/finance/teacher-eligibility/admin-allowances/${id}/approve`, { method: 'POST' });
 }
 
+export function createTeacherEligibilityCashAdjustment(payload) {
+  return request('/finance/teacher-eligibility/cash-adjustments', { method: 'POST', body: JSON.stringify(payload) });
+}
+export function updateTeacherEligibilityCashAdjustment(id, payload) {
+  return request(`/finance/teacher-eligibility/cash-adjustments/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+}
+export function withdrawTeacherEligibilityCashAdjustment(id) {
+  return request(`/finance/teacher-eligibility/cash-adjustments/${id}/withdraw`, { method: 'POST' });
+}
+export function confirmTeacherEligibilityCashAdjustment(id) {
+  return request(`/finance/teacher-eligibility/cash-adjustments/${id}/confirm`, { method: 'POST' });
+}
+export function approveTeacherEligibilityCashAdjustment(id) {
+  return request(`/finance/teacher-eligibility/cash-adjustments/${id}/approve`, { method: 'POST' });
+}
+
 export function approveTeacherSalaryProfile(id) {
   return request(`/finance/teacher-eligibility/salary-profiles/${id}/approve`, { method: 'POST' });
 }

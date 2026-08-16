@@ -332,6 +332,11 @@ Route::prefix('v1')->group(function () {
         Route::post('finance/teacher-eligibility/admin-allowances/{id}/withdraw', [TeacherEligibilityInputController::class, 'withdrawAdminAllowance'])->whereNumber('id')->middleware('require_pin');
         Route::post('finance/teacher-eligibility/admin-allowances/{id}/confirm', [TeacherEligibilityInputController::class, 'confirmAdminAllowance'])->whereNumber('id')->middleware('require_pin');
         Route::post('finance/teacher-eligibility/admin-allowances/{id}/approve', [TeacherEligibilityInputController::class, 'approveAdminAllowance'])->whereNumber('id')->middleware('require_pin');
+        Route::post('finance/teacher-eligibility/cash-adjustments', [TeacherEligibilityInputController::class, 'storeCashAdjustment'])->middleware('require_pin');
+        Route::put('finance/teacher-eligibility/cash-adjustments/{id}', [TeacherEligibilityInputController::class, 'updateCashAdjustment'])->whereNumber('id')->middleware('require_pin');
+        Route::post('finance/teacher-eligibility/cash-adjustments/{id}/withdraw', [TeacherEligibilityInputController::class, 'withdrawCashAdjustment'])->whereNumber('id')->middleware('require_pin');
+        Route::post('finance/teacher-eligibility/cash-adjustments/{id}/confirm', [TeacherEligibilityInputController::class, 'confirmCashAdjustment'])->whereNumber('id')->middleware('require_pin');
+        Route::post('finance/teacher-eligibility/cash-adjustments/{id}/approve', [TeacherEligibilityInputController::class, 'approveCashAdjustment'])->whereNumber('id')->middleware('require_pin');
         Route::get('finance/ar-aging', [FinanceController::class, 'arAging']);
         Route::get('finance/gl-export', [FinanceController::class, 'glExport']);
         Route::get('finance/consolidated-summary', [FinanceController::class, 'consolidatedSummary']);

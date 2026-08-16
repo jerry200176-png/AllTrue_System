@@ -122,6 +122,36 @@ export const staffUpdates = [
     "version": "2026.08.16"
   },
   {
+    "id": "staff-2026-08-16-fulltime-cash-adj",
+    "publishedAt": "2026-08-16",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "正職現金加扣款",
+    "summary": "可登錄獨立現金加或扣，不進倍率；主任確認、總部核准後才進總發放。",
+    "items": [
+      "未鎖定月份可登錄現金加扣款，核准後顯示在結算加扣款欄。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "未鎖定月份可登錄現金加扣款，核准後顯示在結算加扣款欄。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-16:fulltime-cash-adj"
+    ],
+    "date": "2026-08-16",
+    "version": "2026.08.16"
+  },
+  {
     "id": "staff-2026-08-16-fulltime-admin-allowance",
     "publishedAt": "2026-08-16",
     "effectiveAt": null,
