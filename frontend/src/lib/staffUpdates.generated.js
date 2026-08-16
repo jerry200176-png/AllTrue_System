@@ -41,6 +41,38 @@ export const staffUpdates = [
     "version": "2026.08.16"
   },
   {
+    "id": "staff-2026-08-16-lr-resurrect-status-adjust",
+    "publishedAt": "2026-08-16",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "重點名後評量會自動恢復待填",
+    "summary": "已到班的堂次若被改回未點名再標到班，老師端評量會恢復成待填，不必再找主任重開。",
+    "items": [
+      "出缺勤狀態來回調整後，系統作廢的評量會自動還原。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "出缺勤狀態來回調整後，系統作廢的評量會自動還原。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-16:lr-resurrect-status-adjust"
+    ],
+    "date": "2026-08-16",
+    "version": "2026.08.16"
+  },
+  {
     "id": "staff-2026-08-15-tuition-charge-display-1734",
     "publishedAt": "2026-08-15",
     "effectiveAt": null,
