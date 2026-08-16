@@ -760,13 +760,13 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
+| 狀態 | Partially paid（2026-08-17） |
 | 優先級 | P2 |
 | 發現日期 | 2026-08-17 |
-| 發現來源 | Founder：帳務對帳難懂；盤點時發現非帳務頁仍夾雜英文欄位名 |
-| 影響模組 | `TeachersList.vue`（CSV 提示 `branch_id`／`subject_ids`）、部分管理匯入 placeholder、收據編號含 `LEGACY` 字樣 |
-| 描述 | 帳務中心／學生對帳主路徑已改白話（本 PR）。老師批次匯入等仍露出 DB 欄位英文；收據編號 `RCPT-LEGACY-…` 對主任仍像技術碼。 |
-| 建議做法 | 匯入欄位改中文別名＋對照表；收據編號舊資料改顯示「舊資料」而不是 `LEGACY`；逐頁用 `GUIDE_UI_COPY.md` §10 掃。 |
+| 發現來源 | Founder：系統偶發技術語言；帳務對帳難懂 |
+| 影響模組 | 老師匯入、分校授權碼、收據／帳單編號、帳務 API 錯誤；其餘管理頁／LINE Channel Token 等仍可能露出英文 |
+| 描述 | Wave 1：老師批次匯入改中文欄位說明；`LEGACY`／`INV-`／`RCPT-` 顯示層改白話；分校 Token→授權碼；帳務 Forbidden／payment_method 改中文；共用 `humanizeApiErrorMessage`。 |
+| 建議做法 | 下一波：側欄／超管工具、LINE Channel 設定、匯出 CSV 表頭、其餘 Controller 英文 `message` 逐批改繁中。 |
 | 清償成本估計 | 中（多頁＋匯入契約測試） |
 | 不做的代價 | 主任／行政在次要頁面仍撞到英文欄位名 |
 

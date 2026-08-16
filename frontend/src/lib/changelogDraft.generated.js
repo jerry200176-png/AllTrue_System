@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.08.17",
     "date": "2026-08-17",
     "title": "2026.08.17 草稿（未發布）",
-    "summary": "學生 Excel 匯出寫入稽核事件；對帳與帳務中心掃讀密度",
+    "summary": "學生 Excel 匯出寫入稽核事件；改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
     "audience": [
       "teacher",
       "director"
@@ -19,6 +19,7 @@ export const changelogDraftNotes = [
         "title": "修正內容",
         "items": [
           "學生 Excel 匯出寫入稽核事件",
+          "改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
           "對帳與帳務中心掃讀密度",
           "帳務對帳改白話，拿掉技術符號",
           "Smoke 不再被版本公告擋住導覽",
@@ -28,6 +29,7 @@ export const changelogDraftNotes = [
     ],
     "items": [
       "學生 Excel 匯出寫入稽核事件",
+      "改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
       "對帳與帳務中心掃讀密度",
       "帳務對帳改白話，拿掉技術符號",
       "Smoke 不再被版本公告擋住導覽",

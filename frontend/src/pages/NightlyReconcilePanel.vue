@@ -217,7 +217,7 @@
         <!-- 顯示筆數資訊 -->
         <div class="nr-info" v-if="filteredMismatches.length > 0">
           顯示 {{ filteredMismatches.length }} / {{ mismatches.length }} 筆異常
-          <template v-if="filters.campus || filters.subject || filters.category">（已套用篩選）</template>
+          <template v-if="filters.campus || filters.subject || filters.category">（已篩選）</template>
         </div>
       </template>
     </template>

@@ -511,7 +511,7 @@
             </thead>
             <tbody>
               <tr v-for="row in accountingRows" :key="row.report_id">
-                <td>{{ row.receipt_no }}</td>
+                <td>{{ humanizeDocumentRef(row.receipt_no) }}</td>
                 <td>{{ row.payment_date || '—' }}</td>
                 <td class="tc-cell-name">{{ row.student_name }}</td>
                 <td>{{ row.subject }}</td>
@@ -527,11 +527,11 @@
                 <td>{{ row.confirmed_by_name || '—' }}</td>
                 <td>
                   <div class="tc-actions">
-                    <button class="tc-btn tc-btn--ledger" @click="openLedgerForReport(row)" :aria-label="`對帳 ${row.receipt_no}`">
+                    <button class="tc-btn tc-btn--ledger" @click="openLedgerForReport(row)" :aria-label="`對帳 ${humanizeDocumentRef(row.receipt_no)}`">
                       <span class="material-symbols-outlined">account_balance</span>
                       對帳
                     </button>
-                    <button class="tc-btn tc-btn--receipt" @click="openReceiptByReport(row.report_id)" :aria-label="`查看 ${row.receipt_no}`">
+                    <button class="tc-btn tc-btn--receipt" @click="openReceiptByReport(row.report_id)" :aria-label="`查看 ${humanizeDocumentRef(row.receipt_no)}`">
                       <span class="material-symbols-outlined">receipt</span>
                       查看收據
                     </button>
@@ -540,7 +540,7 @@
                       class="tc-btn tc-btn--void"
                       @click="openVoidDialog(row)"
                       :disabled="voidLoading"
-                      :aria-label="`撤銷 ${row.receipt_no}`"
+                      :aria-label="`撤銷 ${humanizeDocumentRef(row.receipt_no)}`"
                     >
                       <span class="material-symbols-outlined">undo</span>
                       撤銷
@@ -664,7 +664,7 @@
           <div class="tc-dialog-info" v-if="voidTarget">
             <span>{{ voidTarget.student_name }} — {{ voidTarget.subject }}</span>
             <small v-if="voidTarget.receipt_no">
-              {{ voidTarget.receipt_no }} · {{ voidTarget.payment_date || '未記錄日期' }} · {{ formatCurrency(voidTarget.total_amount || voidTarget.reported_amount || 0) }}
+              {{ humanizeDocumentRef(voidTarget.receipt_no) }} · {{ voidTarget.payment_date || '未記錄日期' }} · {{ formatCurrency(voidTarget.total_amount || voidTarget.reported_amount || 0) }}
             </small>
           </div>
           <label class="tc-dialog-label">撤銷原因（必填）</label>
@@ -800,6 +800,7 @@ import {
   formatTuitionSettleSummary,
   formatTuitionNewerCourseHint,
   formatNewerCourseOverlapWarning,
+  humanizeDocumentRef,
 } from '../lib/studentClassDisplay.js';
 
 const props = defineProps({

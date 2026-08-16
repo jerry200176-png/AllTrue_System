@@ -144,6 +144,10 @@ Empty state 元件：用 `AtEmpty`（#688），圖示用 `material-symbols-outli
 
 **掃讀密度（Filament／Carbon）**：對帳主表只放帳單＋金額＋狀態；收款用展開時間線。摘要用緊湊列，不要五張大卡搶首屏。異常先顯示需處理項，其餘收合。勾選後批次操作列 sticky，不要用說明句教使用者去找按鈕。
 
+**編號顯示**：畫面上 `INV-`／`RCPT-`／`PAY-`／`LEGACY` 用 `humanizeDocumentRef` 轉成「帳單-／收據-／收款-／舊資料」。API 仍可保留機器碼。
+
+**API 錯誤**：`Forbidden`、`*_id required` 等英文 payload 經 `humanizeApiErrorMessage` 再顯示；後端新錯誤訊息直接寫繁中。
+
 ---
 
 ## 參考
