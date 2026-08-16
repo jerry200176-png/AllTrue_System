@@ -702,6 +702,36 @@ export const staffUpdates = [
     "version": "2026.07.29"
   },
   {
+    "id": "staff-2026-07-29-tuition-alert-payment-truth-959",
+    "publishedAt": "2026-07-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "繳費提醒付款狀態修正",
+    "summary": "帳單已結清但課程繳費狀態未同步更新時，繳費提醒頁面不再誤顯示「未繳費」與欠款金額。",
+    "items": [
+      "繳費提醒頁的已繳/未繳狀態改為跟課程列表同一套判斷，不再兩邊不一致。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "繳費提醒頁的已繳/未繳狀態改為跟課程列表同一套判斷，不再兩邊不一致。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-07-29:tuition-alert-payment-truth-959"
+    ],
+    "date": "2026-07-29",
+    "version": "2026.07.29"
+  },
+  {
     "id": "staff-2026-07-28-reschedule-stability",
     "publishedAt": "2026-07-28",
     "effectiveAt": null,

@@ -702,6 +702,38 @@ class TuitionAlertsApiTest extends TestCase
         $this->assertSame('renew_needed', $row['payment_status']);
     }
 
+    // #959/G-009: course-list payment_status treats a fully-settled non-void Invoice
+    // payment as paid even when StudentClass.Paid was never flipped to 1 — the tuition
+    // alert path must agree, or a course looks paid on one screen and unpaid on another.
+    public function test_payment_status_paid_when_settled_via_invoice_despite_paid_flag_zero(): void
+    {
+        $token = $this->createDirectorToken([1], 'ps-invoice-settled@example.com');
+        $student = Student::create([
+            'name' => '發票已結清但Paid未更新',
+            'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $course = $this->createCountModeClass($student->id, [
+            'Paid' => 0, 'RemainingSessions' => 5, 'Charge' => 8000,
+        ]);
+        $invoice = Invoice::create([
+            'StudentID' => $student->id, 'StudentClassID' => $course->ID,
+            'IssueDate' => '2026-04-01', 'TotalAmount' => 8000, 'PaidAmount' => 8000, 'Status' => 'paid',
+        ]);
+        Payment::create([
+            'InvoiceID' => $invoice->id, 'Amount' => 8000, 'PaidAt' => '2026-04-05', 'Method' => 'cash',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->getJson('/api/v1/alerts/tuition?branch_id=1');
+
+        $res->assertOk();
+        $row = collect($res->json())->firstWhere('id', $course->ID);
+        $this->assertNotNull($row);
+        $this->assertNotSame('unpaid', $row['payment_status']);
+        $this->assertSame(0, $row['outstanding'], 'fully invoice-settled course must not show outstanding balance');
+    }
+
     public function test_has_newer_course_true_when_same_subject_active_course_exists(): void
     {
         $token = $this->createDirectorToken([1], 'newer-true@example.com');
