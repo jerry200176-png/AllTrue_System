@@ -50,3 +50,5 @@ Allowed only when Capability Registry lists the capability as **Proven** for thi
 ## Change process
 
 PR that updates this file must bump Version and append [`GOVERNANCE_CHANGELOG.md`](./GOVERNANCE_CHANGELOG.md).
+
+**24-hour cool-off, no same-day feature merge**: a PR that changes this file, `CONTROL_PLANE_CONTRACT.md`, or `AUTONOMY_POLICY.md` must not merge on the same calendar day (Asia/Taipei) as any non-governance feature/fix PR, and must sit at least 24 hours between merge and first use of any capability it grants. This applies especially to any change that expands what an Agent may do without a human click (e.g. self-merge authority) — an expansion that takes effect the same day it's written has no observation window before it's exercised. Reason: the 2026-08-15 external review found a same-day case of exactly this (#1792/#1793 self-merge authority, used same day).

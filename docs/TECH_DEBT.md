@@ -557,15 +557,16 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
-| 優先級 | P1 |
+| 狀態 | **UI 已隱藏（2026-08-16），完整 API 仍 Open** |
+| 優先級 | P1 → P2（使用者不會再點到必失敗操作） |
 | 發現日期 | 2026-07-21 |
 | 發現來源 | [REVIEW] 收據 404 hotfix closeout（#1363 後） |
 | 影響模組 | `BatchInvoiceModal.vue`、`OverdueBucketsPanel.vue`、`TuitionCollectionPage.vue` |
 | 描述 | PR #1197 前端-only 上線；後端 `/invoices/batch-preview`、`/invoices/batch`、`/invoices/overdue-summary` 從未進 main。使用者若點到這些入口會固定失敗。收據已改回 payment-reports；這兩塊仍是孤兒 UI。 |
-| 建議做法 | 先確認 production 可否觸發 → 可觸發則 hide／feature-flag／disable；禁止半套 stub route。完整 API 另走 PLAN。 |
-| 清償成本估計 | 低（隱藏入口）／中（若要真做後端） |
-| 不做的代價 | 主任繼續點到必失敗操作，信任再次受損（與收據 404 同族：前端超前後端） |
+| 已做 | 依既有建議「先確認可觸發 → hide」：移除 `TuitionCollectionPage.vue` 的「批次開單」按鈕與「逾期分級」分頁入口（連同對應 ref/watch/import），使用者再也點不到這兩個必失敗的動作。未新增任何半套 stub route。 |
+| 建議做法 | 若未來真的要做，完整 API（batch-preview/batch/overdue-summary）另走 PLAN，把移除的 UI 重新接回。 |
+| 清償成本估計 | 隱藏部分已完成／中（若要真做後端） |
+| 不做的代價（剩餘） | 批次開單／逾期分級功能本身仍不存在，只是不會再誤導使用者去點 |
 
 ### TD-068：Receipt Domain T3（immutable snapshot／PDF／void／legal-info）— blocked
 
@@ -699,15 +700,16 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
+| 狀態 | **後端已修（2026-08-16，見對應 PR），前端待審核狀態顯示 Open** |
 | 優先級 | P2 |
 | 發現日期 | 2026-08-14 |
 | 發現來源 | 自動安全審查（push/commit security review）在 `TeacherEligibilityInputController.php` 點出 separation-of-duties 缺口，經跟使用者確認後記錄為技術債，暫不在這次 PR（#1773）處理。 |
 | 影響模組 | `backend/app/Http/Controllers/TeacherEligibilityInputController.php`（`storeSalaryProfile()`）、`fulltime_salary_profiles` 表 |
 | 描述 | `teacher_payroll_deductions` 有「主任確認（`director_confirmed_by`）→ 總部核准（`hq_approved_by`，限 `super_admin`）」兩階段才生效；`storeSalaryProfile()` 卻是任何 `role:director` 帶 PIN 就能單方直接寫入並立即生效（`TeacherEligibilityController::index()` 馬上採用最新一筆算總發放金額），沒有第二人核准，也沒有留下「誰改了底薪、改前改後多少」的變更歷史（只有一筆 `created_by`，沒有審核鏈）。底薪直接乘進總發放金額，出錯或被濫用的影響比扣款更大。 |
-| 建議做法 | 比照 `teacher_payroll_deductions` 加兩階段：`fulltime_salary_profiles` 新增 `status`（`pending`/`approved`）＋ `approved_by`/`approved_at`，`storeSalaryProfile()` 先寫 `pending`，`salaryProfilesByTeacher()` 只採用 `approved` 的最新一筆；新增一個 `approveSalaryProfile` 端點限 `super_admin`。 |
-| 清償成本估計 | 小～中（一個 migration 加欄位 + controller 加一個 approve 端點 + 前端加一個待審核狀態顯示，估半天） |
-| 不做的代價 | 單一 director 帳號（或被盜用的 PIN）可以無審核地改變任何老師的總發放金額，且改動沒有留痕，事後難以稽核或還原 |
+| 已做 | 加 `status`/`approved_by`/`approved_at`；`storeSalaryProfile()` 先寫 `pending`；`salaryProfilesByTeacher()`／`FulltimeSalaryProfile::effectiveFor()` 只採用 `approved`；新增 `POST .../salary-profiles/{id}/approve`（限 `super_admin`，寫的人不能自己核准）。既有資料在同一個 migration 裡直接 grandfather 成 `approved`，不會突然讓現有老師的薪水從計算結果消失。 |
+| 建議做法（剩餘） | 前端加一個「待核准」狀態顯示與 super_admin 的核准入口 UI（目前只有 API，沒有畫面） |
+| 清償成本估計 | 後端已完成／前端小（半天內） |
+| 不做的代價（剩餘） | super_admin 目前只能透過 API 直接呼叫核准，沒有畫面可以看到待審清單 |
 
 ### TD-079：正職老師底薪 `effective_from` 沒有限制，可回溯覆蓋已結算/已發放月份的總發放金額
 
