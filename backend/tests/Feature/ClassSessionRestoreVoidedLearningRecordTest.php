@@ -63,6 +63,39 @@ class ClassSessionRestoreVoidedLearningRecordTest extends TestCase
     }
 
     /**
+     * 張韙 2026-08-14：attended → scheduled（VoidReason=由已上調整狀態）→ attended
+     * 不可留下作廢評量，否則主任看得到歷史、老師端沒有可填草稿。
+     */
+    public function test_attended_to_scheduled_to_attended_resurrects_status_adjust_void(): void
+    {
+        [$token, $cs, $lr] = $this->seedAttendedScenario();
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->patchJson("/api/v1/class-sessions/{$cs->id}", [
+            'status' => 'scheduled',
+        ])->assertOk();
+
+        $lr->refresh();
+        $this->assertNotNull($lr->VoidedAt);
+        $this->assertSame('由已上調整狀態', $lr->VoidReason);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->patchJson("/api/v1/class-sessions/{$cs->id}", [
+            'status' => 'attended',
+        ])->assertOk();
+
+        $lr->refresh();
+        $this->assertNull($lr->VoidedAt, '由已上調整狀態作廢後再標到班，評量草稿必須自動復活');
+        $this->assertNull($lr->VoidReason);
+        $this->assertSame('pending', $lr->Status);
+        $this->assertSame('attended', strtolower((string) $cs->fresh()->Status));
+    }
+
+    /**
      * @return array{0:string,1:ClassSession,2:LearningRecord}
      */
     private function seedLeaveScenario(string $voidReason): array
@@ -165,5 +198,22 @@ class ClassSessionRestoreVoidedLearningRecordTest extends TestCase
         ]);
 
         return [$token, $cs, $voidedLr];
+    }
+
+    /**
+     * @return array{0:string,1:ClassSession,2:LearningRecord}
+     */
+    private function seedAttendedScenario(): array
+    {
+        [$token, $cs, $lr] = $this->seedLeaveScenario('placeholder');
+        $cs->Status = 'attended';
+        $cs->Note = '';
+        $cs->save();
+        $lr->VoidedAt = null;
+        $lr->VoidReason = null;
+        $lr->Content = '到班後評量草稿';
+        $lr->save();
+
+        return [$token, $cs, $lr];
     }
 }

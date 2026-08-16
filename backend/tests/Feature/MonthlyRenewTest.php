@@ -1072,6 +1072,18 @@ class MonthlyRenewTest extends TestCase
         $res->assertOk();
 
         $invoice->refresh();
+        $this->assertSame('unpaid', $invoice->Status);
+        $this->assertSame(0, (int) $invoice->PaidAmount);
+        $course->refresh();
+        $this->assertSame(0, (int) $course->Paid);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept'        => 'application/json',
+        ])->putJson('/api/v1/payment-reports/' . $res->json('report_id') . '/confirm')
+            ->assertOk();
+
+        $invoice->refresh();
         $this->assertSame('paid', $invoice->Status, '當月 Invoice 應被標為 paid');
         $this->assertSame(4800, (int) $invoice->PaidAmount);
 
@@ -1114,6 +1126,17 @@ class MonthlyRenewTest extends TestCase
         ]);
 
         $res->assertOk();
+
+        $invoice->refresh();
+        $this->assertSame('unpaid', $invoice->Status);
+        $course->refresh();
+        $this->assertSame(0, (int) $course->Paid);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept'        => 'application/json',
+        ])->putJson('/api/v1/payment-reports/' . $res->json('report_id') . '/confirm')
+            ->assertOk();
 
         $invoice->refresh();
         $this->assertSame('paid', $invoice->Status, '0 元 Invoice 應可核帳為 paid');

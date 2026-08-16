@@ -14,10 +14,15 @@ permissions:
 jobs:
   provenance:
     name: Agent Session Provenance
+    # Dependabot (and other bot-authored) PRs never carry an .agent-session
+    # manifest — they're mechanical dependency bumps, not agent work — so the
+    # check always fails for them regardless of branch/task naming. Exempt by
+    # PR author instead of asking every dependency-bump PR to fake a manifest.
+    if: github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
       - name: Verify provenance manifest

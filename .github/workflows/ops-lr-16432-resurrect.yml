@@ -1,0 +1,173 @@
+name: Resurrect LR 16432 (guarded)
+
+# ONE-TIME, fail-closed repair for 張韙 2026-08-14 CS 14375 / LR 16432.
+# The product fix is already on production (#1833 / ffcfc4fa). Same-status
+# attended does not call restore; this job applies the same policy once.
+# Trigger: request file on main, or workflow_dispatch.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'operations/closeout/lr-16432-resurrect.request.md'
+      - '.github/workflows/ops-lr-16432-resurrect.yml'
+
+concurrency:
+  group: ops-lr-16432-resurrect
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          PI_HOST_KEY: ${{ secrets.PI_HOST_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if ssh-keyscan -H "$PI_SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null; then
+            echo "keyscan ok"
+          elif [[ -n "${PI_HOST_KEY:-}" ]]; then
+            printf '%s\n' "$PI_HOST_KEY" > ~/.ssh/known_hosts
+          else
+            echo "::error::no host key"; exit 1
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Guarded restore of LR 16432
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          ssh -i ~/.ssh/deploy_key \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            -o ConnectTimeout=20 \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" "RUN_ID='${RUN_ID}' bash -s" <<'REMOTE' | tee out/repair.log
+          set -euo pipefail
+          cd /home/admin/backend
+          php artisan tinker --execute='
+          $runId = getenv("RUN_ID") ?: "unknown";
+          $prodHead = trim((string) @shell_exec("git rev-parse HEAD"));
+          $requiredFixCommit = "ffcfc4fa93ed6f6a6e61775a715434c9ecb62180";
+          $fixDeployed = trim((string) @shell_exec("git merge-base --is-ancestor {$requiredFixCommit} HEAD && echo yes")) === "yes";
+          $db = \Illuminate\Support\Facades\DB::class;
+          $lr = $db::table("LearningRecord")->where("id", 16432)->first();
+          $cs = $db::table("ClassSession")->where("id", 14375)->first();
+          $sc = $cs ? $db::table("StudentClass")->where("ID", (int) $cs->StudentClassID)->first() : null;
+          $studentId = $sc ? (int) $sc->StudentID : 0;
+          $voidReason = $lr ? (string) ($lr->VoidReason ?? "") : "";
+          $alreadyRestored = $lr
+            && (int) $lr->ClassSessionID === 14375
+            && strtolower((string) ($cs->Status ?? "")) === "attended"
+            && $studentId === 2034
+            && $lr->VoidedAt === null
+            && (string) $lr->Status === "pending"
+            && (int) $lr->TeacherID === 232;
+          $checks = [
+            "fix_deployed" => $fixDeployed,
+            "lr_16432_exists" => (bool) $lr,
+            "cs_14375_exists" => (bool) $cs,
+            "lr_session_is_14375" => $lr && (int) $lr->ClassSessionID === 14375,
+            "cs_attended" => $cs && strtolower((string) $cs->Status) === "attended",
+            "student_2034" => $studentId === 2034,
+            "teacher_232" => $lr && (int) $lr->TeacherID === 232,
+            "lr_pending" => $lr && (string) $lr->Status === "pending",
+            "void_reason_status_adjust" => $alreadyRestored || $voidReason === "由已上調整狀態",
+            "voided_or_already_restored" => $alreadyRestored || ($lr && $lr->VoidedAt !== null),
+          ];
+          $allPass = !in_array(false, $checks, true);
+          $emit = function (array $payload) use ($checks, $prodHead, $runId) {
+            echo "---RESULT---", PHP_EOL;
+            echo json_encode($payload + [
+              "checks" => $checks,
+              "prod_head" => $prodHead,
+              "run_id" => $runId,
+              "timestamp" => gmdate("c"),
+            ], JSON_UNESCAPED_UNICODE), PHP_EOL;
+          };
+          if (!$allPass) {
+            $emit([
+              "ok" => false,
+              "aborted" => true,
+              "reason" => "precondition_mismatch",
+              "no_write_performed" => true,
+            ]);
+            return;
+          }
+          if ($alreadyRestored) {
+            $emit([
+              "ok" => true,
+              "aborted" => false,
+              "already_restored" => true,
+              "no_write_performed" => true,
+              "lr_id" => 16432,
+              "class_session_id" => 14375,
+            ]);
+            return;
+          }
+          $session = \App\Models\ClassSession::find(14375);
+          $restored = \App\Services\LearningRecordResurrectionPolicy::restoreEligibleForSession($session);
+          $after = $db::table("LearningRecord")->where("id", 16432)->first();
+          $ok = $restored
+            && $after
+            && $after->VoidedAt === null
+            && (string) $after->Status === "pending"
+            && $after->VoidReason === null;
+          $emit([
+            "ok" => $ok,
+            "aborted" => !$ok,
+            "already_restored" => false,
+            "no_write_performed" => false,
+            "policy_returned" => $restored,
+            "lr_id" => 16432,
+            "class_session_id" => 14375,
+            "after_voided_at_null" => $after && $after->VoidedAt === null,
+          ]);
+          '
+          REMOTE
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          import sys
+          text = Path("out/repair.log").read_text(encoding="utf-8", errors="replace")
+          obj = None
+          for line in text.splitlines():
+              line = line.strip()
+              if line.startswith("{") and '"ok"' in line:
+                  try:
+                      obj = json.loads(line)
+                  except Exception:
+                      pass
+          Path("out/repair-result.json").write_text(
+              json.dumps(obj or {"ok": False, "raw_tail": text[-3000:]}, ensure_ascii=False, indent=2),
+              encoding="utf-8",
+          )
+          print("parsed", bool(obj is not None))
+          print("ok", obj.get("ok") if obj else None)
+          print("already_restored", obj.get("already_restored") if obj else None)
+          if not obj or obj.get("ok") is not True:
+              sys.exit(1)
+          PY
+
+      - name: Upload repair artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lr-16432-resurrect
+          path: out/
+          retention-days: 90

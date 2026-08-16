@@ -4,6 +4,349 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-16-reported-paid-pending",
+    "publishedAt": "2026-08-16",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "繳費改先回報再入帳",
+    "summary": "行政先登記家長已繳；會計對到帳才開收據，避免沒匯款就變已繳。",
+    "items": [
+      "看官方 LINE 請用「登記已回報」，不要等會計也能先登錄。",
+      "會計確認入帳後才會開電子收據；對不到款可退回。"
+    ],
+    "sections": [
+      {
+        "title": "需要你注意",
+        "items": [
+          "看官方 LINE 請用「登記已回報」，不要等會計也能先登錄。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "會計確認入帳後才會開電子收據；對不到款可退回。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-16:reported-paid-pending"
+    ],
+    "date": "2026-08-16",
+    "version": "2026.08.16"
+  },
+  {
+    "id": "staff-2026-08-16-fulltime-settlement-table",
+    "publishedAt": "2026-08-16",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "正職結算表上線",
+    "summary": "正職薪資頁改為底薪與獎金結算欄",
+    "items": [
+      "可見底薪、科目數拆分、倍率後獎金算式與總發放。",
+      "假日假可補足16小時倍率；小數科目數依附件表內插。",
+      "全勤、勞健保、行政加給仍未自動列入，請人工核對。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "可見底薪、科目數拆分、倍率後獎金算式與總發放。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "假日假可補足16小時倍率；小數科目數依附件表內插。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "全勤、勞健保、行政加給仍未自動列入，請人工核對。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-16:fulltime-settlement-table"
+    ],
+    "date": "2026-08-16",
+    "version": "2026.08.16"
+  },
+  {
+    "id": "staff-2026-08-16-reported-paid-phase2",
+    "publishedAt": "2026-08-16",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "課程頁可批次帳務",
+    "summary": "同一學生切帳務；收費頁勾選批次回報，確認後才開收據。",
+    "items": [
+      "課程管理同一學生可切帳務資料，不必再搜一次。",
+      "收費頁可一次勾選多筆已回報或確認入帳。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "課程管理同一學生可切帳務資料，不必再搜一次。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "收費頁可一次勾選多筆已回報或確認入帳。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-16:reported-paid-phase2"
+    ],
+    "date": "2026-08-16",
+    "version": "2026.08.16"
+  },
+  {
+    "id": "staff-2026-08-16-reported-paid-notif",
+    "publishedAt": "2026-08-16",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "通知中心先回報",
+    "summary": "通知中心登記已繳後仍待對帳，會計確認才入帳開收據。",
+    "items": [
+      "通知中心學費改「送出已回報」，不會當場變已繳或開收據。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "通知中心學費改「送出已回報」，不會當場變已繳或開收據。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-16:reported-paid-notif"
+    ],
+    "date": "2026-08-16",
+    "version": "2026.08.16"
+  },
+  {
+    "id": "staff-2026-08-16-lr-resurrect-status-adjust",
+    "publishedAt": "2026-08-16",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "重點名後評量會自動恢復待填",
+    "summary": "已到班的堂次若被改回未點名再標到班，老師端評量會恢復成待填，不必再找主任重開。",
+    "items": [
+      "出缺勤狀態來回調整後，系統作廢的評量會自動還原。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "出缺勤狀態來回調整後，系統作廢的評量會自動還原。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-16:lr-resurrect-status-adjust"
+    ],
+    "date": "2026-08-16",
+    "version": "2026.08.16"
+  },
+  {
+    "id": "staff-2026-08-16-fillrate-substitute-absent-copy",
+    "publishedAt": "2026-08-16",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "代課填報率與缺席不扣堂說明",
+    "summary": "代課堂次的評量填寫率改算在代課老師；點名標缺席時改為不扣堂、也不順延。",
+    "items": [
+      "主任填報率報表與課表一樣，把代課堂次算給代課老師。",
+      "點名確認缺席時改顯示不扣堂、不順延；請假仍會順延。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "主任填報率報表與課表一樣，把代課堂次算給代課老師。",
+          "點名確認缺席時改顯示不扣堂、不順延；請假仍會順延。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-16:fillrate-substitute-absent-copy"
+    ],
+    "date": "2026-08-16",
+    "version": "2026.08.16"
+  },
+  {
+    "id": "staff-2026-08-15-tuition-charge-display-1734",
+    "publishedAt": "2026-08-15",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "收帳金額顯示修正",
+    "summary": "已收款課程會顯示實際合約總額，不再出現舊的錯誤數字。",
+    "items": [
+      "收帳頁會跟已開立帳單同一金額，不再顯示過期的錯誤總額。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "收帳頁會跟已開立帳單同一金額，不再顯示過期的錯誤總額。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-15:tuition-charge-display-1734"
+    ],
+    "date": "2026-08-15",
+    "version": "2026.08.15"
+  },
+  {
+    "id": "staff-2026-08-15-teacher-home-projected-campus",
+    "publishedAt": "2026-08-15",
+    "effectiveAt": null,
+    "audiences": [
+      "teacher",
+      "director"
+    ],
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "importance": "digest",
+    "title": "教師首頁分校顯示",
+    "summary": "還沒上課的堂次會顯示正確分校；缺資料時改中文或隱藏。",
+    "items": [
+      "週課表未來堂次不再出現看不懂的編號，會顯示分校名稱。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "週課表未來堂次不再出現看不懂的編號，會顯示分校名稱。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-15:teacher-home-projected-campus"
+    ],
+    "date": "2026-08-15",
+    "version": "2026.08.15"
+  },
+  {
+    "id": "staff-2026-08-15-stale-receipt-badge-934",
+    "publishedAt": "2026-08-15",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "收據新增「可能已被取代」提醒",
+    "summary": "課程計費模式（堂數制/月結）事後變更時，舊收據會顯示提醒，避免家長拿舊收據截圖產生誤會。",
+    "items": [
+      "收據頁面：若課程計費模式已變更，顯示黃色提醒訊息。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "收據頁面：若課程計費模式已變更，顯示黃色提醒訊息。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-15:stale-receipt-badge-934"
+    ],
+    "date": "2026-08-15",
+    "version": "2026.08.15"
+  },
+  {
+    "id": "staff-2026-08-14-eligibility-pending-edit",
+    "publishedAt": "2026-08-14",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "薪資補登可先改再核",
+    "summary": "全校放假請走課程管理；這裡預設幫老師補請假。",
+    "items": [
+      "全校放假用課程管理「連假批次請假」；這裡預設是幫老師補請假。",
+      "待審核資料可在右側清單修改或撤回，核准後才會算進薪資。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "全校放假用課程管理「連假批次請假」；這裡預設是幫老師補請假。"
+        ]
+      },
+      {
+        "title": "你現在可以",
+        "items": [
+          "待審核資料可在右側清單修改或撤回，核准後才會算進薪資。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-14:eligibility-pending-edit"
+    ],
+    "date": "2026-08-14",
+    "version": "2026.08.14"
+  },
+  {
     "id": "staff-2026-08-13-teacher-home-projection-integrity",
     "publishedAt": "2026-08-13",
     "effectiveAt": null,
@@ -109,6 +452,43 @@ export const staffUpdates = [
     ],
     "sourceRefs": [
       "changelog:2026-08-13:monthly-projection-exception"
+    ],
+    "date": "2026-08-13",
+    "version": "2026.08.13"
+  },
+  {
+    "id": "staff-2026-08-13-fulltime-settlement-total-payout",
+    "publishedAt": "2026-08-13",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "正職薪資總發放金額",
+    "summary": "新增底薪欄位，自動組成教師倍率與總發放金額",
+    "items": [
+      "「正職老師薪資要件」頁面新增可編輯底薪欄位，自動算出教師倍率與總發放金額。",
+      "行政加給倍率（行政協助／總導師／副主任）尚未計入，主任需自行加算，之後會補上。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "「正職老師薪資要件」頁面新增可編輯底薪欄位，自動算出教師倍率與總發放金額。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "行政加給倍率（行政協助／總導師／副主任）尚未計入，主任需自行加算，之後會補上。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-13:fulltime-settlement-total-payout"
     ],
     "date": "2026-08-13",
     "version": "2026.08.13"
@@ -531,6 +911,36 @@ export const staffUpdates = [
     ],
     "sourceRefs": [
       "2026-07-28"
+    ],
+    "date": "2026-07-29",
+    "version": "2026.07.29"
+  },
+  {
+    "id": "staff-2026-07-29-tuition-alert-payment-truth-959",
+    "publishedAt": "2026-07-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "繳費提醒付款狀態修正",
+    "summary": "帳單已結清但課程繳費狀態未同步更新時，繳費提醒頁面不再誤顯示「未繳費」與欠款金額。",
+    "items": [
+      "繳費提醒頁的已繳/未繳狀態改為跟課程列表同一套判斷，不再兩邊不一致。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "繳費提醒頁的已繳/未繳狀態改為跟課程列表同一套判斷，不再兩邊不一致。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-07-29:tuition-alert-payment-truth-959"
     ],
     "date": "2026-07-29",
     "version": "2026.07.29"

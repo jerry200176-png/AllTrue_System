@@ -574,7 +574,12 @@ class ClassSessionController extends Controller
             return [];
         }
 
-        $classes = StudentClass::query()->whereIn('ID', $classIds)->get()->keyBy('ID');
+        // Eager-load student: buildProjectedFromEffectiveDates() reads
+        // $class->student->CampusID per class for projected-slot branch_id
+        // (in-app #235) -- without this it's an N+1, one query per class.
+        $classesQuery = StudentClass::query()->with('student');
+        $classesQuery->whereIn('ID', $classIds);
+        $classes = $classesQuery->get()->keyBy('ID');
         $schedules = Schedule::query()
             ->whereIn('student_course_id', $classIds)
             ->whereDate('schedule_date', '>=', $rangeStart)
@@ -1136,6 +1141,10 @@ class ClassSessionController extends Controller
                     // TD-005: sync active StudentSignIn.Status if one exists (e.g. RFID swipe already in)
                     $this->syncStudentSignInStatus($session->id, $newStatus);
 
+                    // R55: attended→scheduled voids LR as 由已上調整狀態; coming back
+                    // to attended/late must resurrect or teachers have nothing to fill.
+                    $this->restoreVoidedLearningRecord($session);
+
                     return $this->sessionUpdateResponse($session, '狀態已更新為' . $newStatus);
                 }
 
@@ -1306,21 +1315,7 @@ class ClassSessionController extends Controller
      */
     private function restoreVoidedLearningRecord(ClassSession $session): void
     {
-        $lr = LearningRecord::where('ClassSessionID', $session->id)->first();
-        if (!$lr || !$lr->isVoided()) {
-            return;
-        }
-        if (!LearningRecordResurrectionPolicy::isEligibleForResurrect($lr->VoidReason, $session->Status)) {
-            return;
-        }
-        $lr->VoidedAt       = null;
-        $lr->VoidedByUserID = null;
-        $lr->VoidReason     = null;
-        $lr->Status         = 'pending';
-        $lr->SessionDate    = $session->SessionDate ? substr((string) $session->SessionDate, 0, 10) : null;
-        $lr->StartTime      = $session->StartTime   ? substr((string) $session->StartTime, 0, 5)   : null;
-        $lr->EndTime        = $session->EndTime      ? substr((string) $session->EndTime, 0, 5)     : null;
-        $lr->save();
+        LearningRecordResurrectionPolicy::restoreEligibleForSession($session);
     }
 
     private function applyTimeAndNoteUpdates(ClassSession $session, array $data): void
@@ -3093,26 +3088,30 @@ class ClassSessionController extends Controller
 
         $lrSubSql = '(SELECT lr_inner.* FROM `LearningRecord` lr_inner INNER JOIN (SELECT ClassSessionID, MAX(id) AS max_id FROM `LearningRecord` WHERE VoidedAt IS NULL GROUP BY ClassSessionID) lr_latest ON lr_inner.id = lr_latest.max_id)';
 
+        // Same substitute resolution as buildClassSessionIndexQuery (#985 / #1822):
+        // a joined derived table, not a per-row correlated MAX(sub2.id) subquery.
         $rows = DB::table('ClassSession as cs')
             ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
             ->join('Student as s', 's.id', '=', 'sc.StudentID')
-            ->leftJoin('schedules as sub_sched', function ($join) {
+            ->leftJoin(DB::raw('(
+                SELECT ss.*
+                FROM `schedules` ss
+                INNER JOIN (
+                    SELECT sub2.student_course_id,
+                           sub2.schedule_date,
+                           SUBSTRING(sub2.start_time, 1, 5) AS st_hm,
+                           MAX(sub2.id) AS max_id
+                    FROM `schedules` sub2
+                    INNER JOIN `StudentClass` sc2 ON sc2.ID = sub2.student_course_id
+                    WHERE sub2.status = "scheduled"
+                      AND sub2.original_schedule_id IS NOT NULL
+                      AND sub2.teacher_id <> sc2.TeacherID
+                    GROUP BY sub2.student_course_id, sub2.schedule_date, SUBSTRING(sub2.start_time, 1, 5)
+                ) sub_latest ON ss.id = sub_latest.max_id
+            ) as sub_sched'), function ($join) {
                 $join->on('sub_sched.student_course_id', '=', 'sc.ID')
-                    ->where('sub_sched.status', '=', 'scheduled')
-                    ->whereNotNull('sub_sched.original_schedule_id')
                     ->whereRaw('DATE(sub_sched.schedule_date) = DATE(cs.SessionDate)')
-                    ->whereRaw('SUBSTRING(sub_sched.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)')
-                    ->whereColumn('sub_sched.teacher_id', '!=', 'sc.TeacherID')
-                    ->whereRaw('sub_sched.id = (
-                        SELECT MAX(sub2.id)
-                        FROM schedules sub2
-                        WHERE sub2.student_course_id = sc.ID
-                          AND sub2.status = "scheduled"
-                          AND sub2.original_schedule_id IS NOT NULL
-                          AND DATE(sub2.schedule_date) = DATE(cs.SessionDate)
-                          AND SUBSTRING(sub2.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)
-                          AND sub2.teacher_id <> sc.TeacherID
-                    )');
+                    ->whereRaw('SUBSTRING(sub_sched.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)');
             })
             ->leftJoin(DB::raw($lrSubSql . ' AS lr'), 'lr.ClassSessionID', '=', 'cs.id')
             ->where('s.CampusID', $branchId)

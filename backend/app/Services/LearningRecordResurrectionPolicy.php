@@ -2,6 +2,9 @@
 
 namespace App\Services;
 
+use App\Models\ClassSession;
+use App\Models\LearningRecord;
+
 /**
  * R55 (F1-adjacent): whether a voided LearningRecord may be silently brought
  * back to life is a decision made in two places — LearningRecordController::store()
@@ -53,5 +56,31 @@ class LearningRecordResurrectionPolicy
         $isFillable = in_array(strtolower((string) $classSessionStatus), self::FILLABLE_STATUSES, true);
 
         return $isCascadeVoid && $isFillable;
+    }
+
+    /**
+     * Proactive restore used when a ClassSession becomes fillable again
+     * (leave→attended, attended→scheduled→attended, or re-mark attendance).
+     * No-op when there is no voided row or VoidReason is not on the whitelist.
+     */
+    public static function restoreEligibleForSession(ClassSession $session): bool
+    {
+        $lr = LearningRecord::where('ClassSessionID', $session->id)->first();
+        if (!$lr || !$lr->isVoided()) {
+            return false;
+        }
+        if (!self::isEligibleForResurrect($lr->VoidReason, $session->Status)) {
+            return false;
+        }
+        $lr->VoidedAt = null;
+        $lr->VoidedByUserID = null;
+        $lr->VoidReason = null;
+        $lr->Status = 'pending';
+        $lr->SessionDate = $session->SessionDate ? substr((string) $session->SessionDate, 0, 10) : null;
+        $lr->StartTime = $session->StartTime ? substr((string) $session->StartTime, 0, 5) : null;
+        $lr->EndTime = $session->EndTime ? substr((string) $session->EndTime, 0, 5) : null;
+        $lr->save();
+
+        return true;
     }
 }

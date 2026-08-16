@@ -2,10 +2,50 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
-  - id: silent-2026-08-14-chinese-renewal-unpaid
-    changelog_date: "2026-08-14"
-    changelog_title: "chore(ops): 張正甯／張正樂國文續購 8 堂未入帳作業閘門"
-    reason: 內部 allowlisted production 作業閘門，沒有教職員可操作的新產品入口。
+  - id: silent-2026-08-16-reported-paid-accounting-split-rfc
+    changelog_date: "2026-08-16"
+    changelog_title: "docs(arch): 行政已回報與會計入帳核銷拆分計畫（#1827）"
+    reason: 僅架構計畫與 agent 入口指標，沒有教職員可操作或可感知的產品變更。
+
+  - id: silent-2026-08-15-td076-phase3-backfill
+    changelog_date: "2026-08-15"
+    changelog_title: "chore(schedule): TD-076 Phase 3 回填命令（預設 dry-run）"
+    reason: 僅新增預設 dry-run 的回填命令與報告 workflow；教職員畫面與調課操作不變，也不寫 production 資料。
+
+  - id: silent-2026-08-15-td076-phase2-dual-write
+    changelog_date: "2026-08-15"
+    changelog_title: "chore(schedule): TD-076 Phase 2 雙寫身分欄（旗標預設關）"
+    reason: 僅新增可空欄位與預設關閉的雙寫；教職員畫面與調課操作不變。
+
+  - id: silent-2026-08-15-td076-phase0-inventory
+    changelog_date: "2026-08-15"
+    changelog_title: "docs(arch): TD-076 Phase 0 盤點與舊 bug 鎖測"
+    reason: 僅計畫附錄與回歸測試；教職員畫面與操作不變。
+
+  - id: silent-2026-08-15-resolved-bug-followup
+    changelog_date: "2026-08-15"
+    changelog_title: "chore(bug): 已結案回報可補一則公開說明"
+    reason: 僅擴大內部 follow-up workflow 允許的狀態；沒有教職員可操作或可感知的產品變更。
+
+  - id: silent-2026-08-15-student-name-utf8mb3-like
+    changelog_date: "2026-08-15"
+    changelog_title: "fix(students): 搜尋含表情符號不再讓學生名單崩潰"
+    reason: 僅避免搜尋崩潰；教職員操作路徑與畫面文案不變。
+
+  - id: silent-2026-08-15-agent-operator
+    changelog_date: "2026-08-15"
+    changelog_title: "docs(gov): Agent 是操作者（不再等人點頭）"
+    reason: 僅治理指標與 Agent 入口，沒有教職員可操作或可感知的產品變更。
+
+  - id: silent-2026-08-15-fleet-merge-pointer
+    changelog_date: "2026-08-15"
+    changelog_title: "docs(gov): 艦隊 merge 政策指標（R0–R2 驗收後 Agent 合入）"
+    reason: 僅治理指標與 Agent 入口，沒有教職員可操作或可感知的產品變更。
+
+  - id: silent-2026-08-15-schedule-occurrence-identity-rfc
+    changelog_date: "2026-08-15"
+    changelog_title: "docs(arch): 排課 occurrence 身分根治計畫（TD-076）"
+    reason: 僅架構計畫與 agent 入口指標，沒有教職員可操作或可感知的產品變更。
 
   - id: silent-2026-08-12-session-entitlement-transfer-core
     changelog_date: "2026-08-12"
@@ -26,3 +66,7 @@ exemptions:
     changelog_date: "2026-08-08"
     changelog_title: "chore: GitHub governance 收尾"
     reason: GitHub 治理與文件設定，不是 AllTrue 使用者功能更新。
+  - id: silent-2026-08-14-chinese-renewal-unpaid
+    changelog_date: "2026-08-14"
+    changelog_title: "chore(ops): 張正甯／張正樂國文續購 8 堂未入帳作業閘門"
+    reason: 內部 allowlisted production 作業閘門，沒有教職員可操作的新產品入口。

@@ -91,6 +91,36 @@ class TeacherEligibilityInputController extends Controller
         return response()->json(['id' => $id, 'status' => 'pending'], 201);
     }
 
+    public function updateEvent(Request $request, int $id)
+    {
+        $this->ensureTables();
+        $record = $this->recordForScope($request, 'teacher_payroll_events', $id);
+        if (!$record) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+        $blocked = $this->rejectUnlessPending($record->status ?? '', '已核准或已撤回的假日資料不能修改。');
+        if ($blocked) {
+            return $blocked;
+        }
+        $data = $this->validatedEvent($request);
+        if ($data instanceof \Illuminate\Http\JsonResponse) {
+            return $data;
+        }
+        $branchId = $this->resolveWriteBranch($request, $data['branch_id'] ?? $record->branch_id);
+        $this->assertTeacherScope($request, $data['teacher_id'] ?? null, $branchId);
+        DB::table('teacher_payroll_events')->where('id', $id)->update([
+            ...$this->eventWriteColumns($data, $branchId),
+            'updated_at' => now(),
+        ]);
+
+        return response()->json(['id' => $id, 'status' => 'pending']);
+    }
+
+    public function withdrawEvent(Request $request, int $id)
+    {
+        return $this->withdrawRecord($request, 'teacher_payroll_events', $id, '已核准的假日資料不能撤回。');
+    }
+
     public function storeAchievement(Request $request)
     {
         $this->ensureTables();
@@ -130,6 +160,59 @@ class TeacherEligibilityInputController extends Controller
         return response()->json(['id' => $id, 'status' => 'pending'], 201);
     }
 
+    public function updateAchievement(Request $request, int $id)
+    {
+        $this->ensureTables();
+        $record = $this->recordForScope($request, 'teacher_payroll_achievements', $id);
+        if (!$record) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+        $blocked = $this->rejectUnlessPending($record->status ?? '', '已確認或已撤回的成果不能修改。');
+        if ($blocked) {
+            return $blocked;
+        }
+        $data = $request->validate([
+            'teacher_id' => ['required', 'integer', 'min:1'],
+            'branch_id' => ['nullable', 'integer', 'min:1'],
+            'student_id' => ['nullable', 'integer', 'min:1'],
+            'outcome_key' => ['required', 'string', 'max:96'],
+            'subject' => ['nullable', 'string', 'max:96'],
+            'award_year' => ['nullable', 'integer', 'min:2027', 'max:2100'],
+            'evidence' => ['nullable', 'string', 'max:10000'],
+            'starts_on' => ['nullable', 'date'],
+            'ends_on' => ['nullable', 'date'],
+        ]);
+        $branchId = $this->resolveWriteBranch($request, $data['branch_id'] ?? $record->branch_id);
+        $this->assertTeacherScope($request, $data['teacher_id'], $branchId);
+        if (($data['starts_on'] ?? null) !== null && ($data['ends_on'] ?? null) !== null && $data['ends_on'] < $data['starts_on']) {
+            return response()->json(['message' => 'ends_on must be on or after starts_on'], 422);
+        }
+        if (($data['student_id'] ?? null) !== null) {
+            $studentQuery = DB::table('Student')->where('id', $data['student_id']);
+            if ($branchId !== null) $studentQuery->where('CampusID', $branchId);
+            if (!$studentQuery->exists()) return response()->json(['message' => 'student is outside the selected branch'], 422);
+        }
+        DB::table('teacher_payroll_achievements')->where('id', $id)->update([
+            'teacher_id' => $data['teacher_id'],
+            'branch_id' => $branchId,
+            'student_id' => $data['student_id'] ?? null,
+            'outcome_key' => $data['outcome_key'],
+            'subject' => $data['subject'] ?? null,
+            'award_year' => $data['award_year'] ?? null,
+            'evidence' => $data['evidence'] ?? null,
+            'starts_on' => $data['starts_on'] ?? null,
+            'ends_on' => $data['ends_on'] ?? null,
+            'updated_at' => now(),
+        ]);
+
+        return response()->json(['id' => $id, 'status' => 'pending']);
+    }
+
+    public function withdrawAchievement(Request $request, int $id)
+    {
+        return $this->withdrawRecord($request, 'teacher_payroll_achievements', $id, '已確認的成果不能撤回。');
+    }
+
     public function storeDeduction(Request $request)
     {
         $this->ensureTables();
@@ -163,11 +246,69 @@ class TeacherEligibilityInputController extends Controller
         return response()->json(['id' => $id, 'status' => 'pending'], 201);
     }
 
+    public function updateDeduction(Request $request, int $id)
+    {
+        $this->ensureTables();
+        $record = $this->recordForScope($request, 'teacher_payroll_deductions', $id);
+        if (!$record) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+        if ($record->director_confirmed_at || ($record->status ?? '') === 'approved' || ($record->status ?? '') === 'withdrawn') {
+            return response()->json(['message' => '已進入審核的扣除案件不能修改。'], 422);
+        }
+        $data = $request->validate([
+            'teacher_id' => ['required', 'integer', 'min:1'],
+            'branch_id' => ['nullable', 'integer', 'min:1'],
+            'deduction_key' => ['required', 'string', 'max:96'],
+            'reason' => ['nullable', 'string', 'max:10000'],
+            'starts_on' => ['nullable', 'date'],
+            'ends_on' => ['nullable', 'date'],
+        ]);
+        $branchId = $this->resolveWriteBranch($request, $data['branch_id'] ?? $record->branch_id);
+        $this->assertTeacherScope($request, $data['teacher_id'], $branchId);
+        if (($data['starts_on'] ?? null) !== null && ($data['ends_on'] ?? null) !== null && $data['ends_on'] < $data['starts_on']) {
+            return response()->json(['message' => 'ends_on must be on or after starts_on'], 422);
+        }
+        DB::table('teacher_payroll_deductions')->where('id', $id)->update([
+            'teacher_id' => $data['teacher_id'],
+            'branch_id' => $branchId,
+            'deduction_key' => $data['deduction_key'],
+            'reason' => $data['reason'] ?? null,
+            'starts_on' => $data['starts_on'] ?? null,
+            'ends_on' => $data['ends_on'] ?? null,
+            'updated_at' => now(),
+        ]);
+
+        return response()->json(['id' => $id, 'status' => 'pending']);
+    }
+
+    public function withdrawDeduction(Request $request, int $id)
+    {
+        $this->ensureTables();
+        $record = $this->recordForScope($request, 'teacher_payroll_deductions', $id);
+        if (!$record) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+        if ($record->director_confirmed_at || ($record->status ?? '') === 'approved') {
+            return response()->json(['message' => '已進入審核的扣除案件不能撤回。'], 422);
+        }
+        DB::table('teacher_payroll_deductions')->where('id', $id)->update([
+            'status' => 'withdrawn',
+            'updated_at' => now(),
+        ]);
+
+        return response()->json(['id' => $id, 'status' => 'withdrawn']);
+    }
+
     public function approveEvent(Request $request, int $id)
     {
         $this->ensureTables();
         $record = $this->recordForScope($request, 'teacher_payroll_events', $id);
         if (!$record) return response()->json(['message' => 'Not found'], 404);
+        $blocked = $this->rejectUnlessPending($record->status ?? '', '已撤回的假日資料不能核准。');
+        if ($blocked) {
+            return $blocked;
+        }
         DB::table('teacher_payroll_events')->where('id', $id)->update([
             'status' => 'approved', 'approved_by' => $this->actorId($request), 'approved_at' => now(), 'updated_at' => now(),
         ]);
@@ -179,6 +320,10 @@ class TeacherEligibilityInputController extends Controller
         $this->ensureTables();
         $record = $this->recordForScope($request, 'teacher_payroll_achievements', $id);
         if (!$record) return response()->json(['message' => 'Not found'], 404);
+        $blocked = $this->rejectUnlessPending($record->status ?? '', '已確認或已撤回的成果不能再確認。');
+        if ($blocked) {
+            return $blocked;
+        }
         DB::table('teacher_payroll_achievements')->where('id', $id)->update([
             'status' => 'verified', 'verified_by' => $this->actorId($request), 'verified_at' => now(), 'updated_at' => now(),
         ]);
@@ -190,6 +335,9 @@ class TeacherEligibilityInputController extends Controller
         $this->ensureTables();
         $record = $this->recordForScope($request, 'teacher_payroll_deductions', $id);
         if (!$record) return response()->json(['message' => 'Not found'], 404);
+        if (($record->status ?? '') === 'withdrawn' || ($record->status ?? '') === 'approved' || $record->director_confirmed_at) {
+            return response()->json(['message' => '已撤回或已進入審核的扣除案件不能再確認。'], 422);
+        }
         DB::table('teacher_payroll_deductions')->where('id', $id)->update([
             'director_confirmed_by' => $this->actorId($request), 'director_confirmed_at' => now(), 'updated_at' => now(),
         ]);
@@ -211,6 +359,132 @@ class TeacherEligibilityInputController extends Controller
             'status' => 'approved', 'hq_approved_by' => $this->actorId($request), 'hq_approved_at' => now(), 'updated_at' => now(),
         ]);
         return response()->json(['id' => $id, 'status' => 'approved']);
+    }
+
+    /**
+     * POST /api/v1/finance/teacher-eligibility/salary-profiles
+     * 正職老師底薪(可隨時間調整，effective_from 之後的月份結算會採用最新一筆）。
+     */
+    public function storeSalaryProfile(Request $request)
+    {
+        $data = $request->validate([
+            'teacher_id' => ['required', 'integer', 'min:1'],
+            'branch_id' => ['nullable', 'integer', 'min:1'],
+            'base_salary' => ['required', 'numeric', 'min:0', 'max:99999999.99'],
+            'effective_from' => ['required', 'date'],
+        ]);
+        $branchId = $this->resolveWriteBranch($request, $data['branch_id'] ?? null);
+        $this->assertTeacherScope($request, $data['teacher_id'], $branchId);
+
+        $profile = \App\Models\FulltimeSalaryProfile::create([
+            'teacher_id' => $data['teacher_id'],
+            'branch_id' => $branchId,
+            'base_salary' => $data['base_salary'],
+            'effective_from' => $data['effective_from'],
+            'status' => 'pending',
+            'created_by' => $this->actorId($request),
+        ]);
+
+        return response()->json($profile, 201);
+    }
+
+    /**
+     * POST /api/v1/finance/teacher-eligibility/salary-profiles/{id}/approve
+     * TD-078: second-person approval before a base-salary write can feed payroll.
+     * super_admin only — the director who wrote it cannot also approve it.
+     */
+    public function approveSalaryProfile(Request $request, int $id)
+    {
+        if ($request->attributes->get('auth_role') !== 'super_admin') {
+            return response()->json(['message' => 'Only headquarters can approve salary profiles'], 403);
+        }
+        $profile = \App\Models\FulltimeSalaryProfile::find($id);
+        if (!$profile) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+        if ($profile->status === 'approved') {
+            return response()->json(['message' => '此底薪已核准，無需重複核准。'], 422);
+        }
+        $profile->update([
+            'status' => 'approved',
+            'approved_by' => $this->actorId($request),
+            'approved_at' => now(),
+        ]);
+
+        return response()->json($profile);
+    }
+
+    private function validatedEvent(Request $request): array|\Illuminate\Http\JsonResponse
+    {
+        $data = $request->validate([
+            'teacher_id' => ['nullable', 'integer', 'min:1'],
+            'branch_id' => ['nullable', 'integer', 'min:1'],
+            'event_date' => ['required', 'date'],
+            'event_type' => ['required', 'in:' . implode(',', self::EVENT_TYPES)],
+            'hours' => ['nullable', 'numeric', 'min:0'],
+            'leave_type' => ['nullable', 'string', 'max:32'],
+            'holiday_leave_hours' => ['nullable', 'numeric', 'min:0'],
+            'makeup_completed' => ['nullable', 'boolean'],
+            'evidence' => ['nullable', 'string', 'max:10000'],
+        ]);
+        $data['makeup_completed'] = array_key_exists('makeup_completed', $data)
+            ? ($data['makeup_completed'] === null ? null : (bool) $data['makeup_completed'])
+            : null;
+        if ($data['event_type'] === 'leave' && ($data['hours'] ?? null) === null) {
+            return response()->json(['message' => '請假／補課必須填時數'], 422);
+        }
+        if ($data['event_type'] !== 'leave') {
+            $data['teacher_id'] = null;
+            $data['hours'] = null;
+            $data['leave_type'] = null;
+            $data['holiday_leave_hours'] = null;
+            $data['makeup_completed'] = null;
+        }
+
+        return $data;
+    }
+
+    private function eventWriteColumns(array $data, ?int $branchId): array
+    {
+        return [
+            'teacher_id' => $data['teacher_id'] ?? null,
+            'branch_id' => $branchId,
+            'event_date' => $data['event_date'],
+            'event_type' => $data['event_type'],
+            'hours' => $data['hours'] ?? null,
+            'leave_type' => $data['leave_type'] ?? null,
+            'holiday_leave_hours' => $data['holiday_leave_hours'] ?? null,
+            'makeup_completed' => $data['makeup_completed'] ?? null,
+            'evidence' => $data['evidence'] ?? null,
+        ];
+    }
+
+    private function rejectUnlessPending(string $status, string $message)
+    {
+        if ($status === 'pending') {
+            return null;
+        }
+
+        return response()->json(['message' => $message], 422);
+    }
+
+    private function withdrawRecord(Request $request, string $table, int $id, string $approvedMessage)
+    {
+        $this->ensureTables();
+        $record = $this->recordForScope($request, $table, $id);
+        if (!$record) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+        $blocked = $this->rejectUnlessPending($record->status ?? '', $approvedMessage);
+        if ($blocked) {
+            return $blocked;
+        }
+        DB::table($table)->where('id', $id)->update([
+            'status' => 'withdrawn',
+            'updated_at' => now(),
+        ]);
+
+        return response()->json(['id' => $id, 'status' => 'withdrawn']);
     }
 
     private function ensureTables(): void

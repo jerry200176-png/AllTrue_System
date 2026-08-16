@@ -16,18 +16,29 @@
 
 ## 開工前 First-read 順序
 
-**SOP（防重踩同坑）**：收到任務後**先讀文檔再打程式**，禁止只靠對話上下文硬改。高風險模組（代課／評量／智慧行事曆合併／扣堂／繳費提醒等）必須對照下面第 2、4 步與 `AI_REGRESSION_LESSONS` 文末**模組索引表**對應 §，再動 `backend/`、`frontend/src/`。
+**SOP（防重踩同坑）**：收到任務後**先讀文檔再打程式**，禁止只靠對話上下文硬改。
 
-0. **`docs/governance/COMPANY_CONSTITUTION.md`** + **`docs/sop/AGENT_PREFLIGHT.md`**（公司根政策）
-1. `.cursorrules`（P0 事故 + 安全快評 + 工作流程概覽）— **自動載入，已讀**
-2. **`docs/INDEX.md`（導航地圖，決定接下來只讀哪些章節）— 必讀，省 token 關鍵**
-2b. 任務牽涉 **長文件 / 多份 docs** 時：讀 `docs/INDEX.md` 的速讀卡／治理節奏；`docs/AI_DOC_LITERACY.md` 只是索引 stub
-3. 需要回顧決策或 bug 時：`~/.local/bin/mempalace search "<關鍵字>"`（本機；非跨機器權威）
-4. `docs/AI_REGRESSION_LESSONS.md`（已發生過的缺口，改高風險模組前必讀；並查文末**模組對照索引**挑 §）
-5. `.cursor/.local/test-credentials.md`（做任何瀏覽器測試前讀）
-6. 若涉及繳費/提醒邏輯：`docs/DIRECTOR_PAYMENT_ALERT_RULES.md`
-7. **處理 in-app Bug 回報**（分診或修完上線）：`docs/CHAT_BUG_SYSTEM.md` **§3.6–§3.7** + `AI_REGRESSION_LESSONS.md` **§R51、§R53**（開 issue 與 merge 後都要回系統留言，勿只動 GitHub）
-8. Capabilities：`docs/governance/AGENT_CAPABILITY_REGISTRY.md` — 勿假設權限
+**操作者權限（適用於每一次任務，不是要讀的檔案，是規則本身）**：操作者是 **Agent**。艦隊 **portfolio-ops** `AUTONOMY_POLICY`：required checks 綠了就 `gh pr merge --squash`（R0–R3；R3 要 Repair Manifest）。關 issue、寄任務相關信、dispatch 已在 main 上的 workflow，都自己做，不要等人點頭。機器禁令：Pi SSH / artisan / phpunit、印 secrets、force-push、`--admin`、Gmail 刪信。產品 P0 與 Control Plane I1 仍有效。Capabilities 詳見 `docs/governance/AGENT_CAPABILITY_REGISTRY.md`，勿假設權限。
+
+### 必讀（3 份，每次任務都讀）
+
+1. **`docs/governance/COMPANY_CONSTITUTION.md`** + **`docs/sop/AGENT_PREFLIGHT.md`**（公司根政策）
+2. **`docs/architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md`**（現行工程主線；禁止整包重寫）
+3. **`docs/INDEX.md`**（導航地圖，決定接下來只讀哪些章節 — 省 token 關鍵）
+
+（`.cursorrules` 自動載入，已讀，不用手動加進清單。）
+
+### 條件分支（依任務類型挑對應章節，不用全讀）
+
+| 任務類型 | 加讀 |
+|---|---|
+| 改排課／行事曆／扣堂 | `docs/architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md`（TD-076）+ `AI_REGRESSION_LESSONS.md` 模組索引表對應的 R10x 系列 |
+| 改計費／繳費提醒／核帳登記／電子收據時機 | `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` + [`docs/architecture/RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md`](docs/architecture/RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md)（#1827）。禁止把行政登錄再次做成一次 `Paid=1`＋核銷＋開收據。 |
+| 處理 in-app Bug（分診或修完上線） | `docs/CHAT_BUG_SYSTEM.md` **§3.6–§3.7** + `AI_REGRESSION_LESSONS.md` **§R51、§R53**（開 issue 與 merge 後都要回系統留言，勿只動 GitHub）|
+| 高風險模組（代課／評量／智慧行事曆合併等）任何改動 | `docs/AI_REGRESSION_LESSONS.md` 文末模組索引表對應 § — 動 `backend/`／`frontend/src/` 前必讀 |
+| 需要回顧決策或舊 bug | `~/.local/bin/mempalace search "<關鍵字>"`（本機搜尋；非跨機器權威）|
+| 任何瀏覽器測試 | `.cursor/.local/test-credentials.md` |
+| 任務牽涉長文件／多份 docs | `docs/INDEX.md` 的速讀卡／治理節奏（`docs/AI_DOC_LITERACY.md` 只是索引 stub）|
 
 ## 公司治理記錄原則
 
@@ -115,3 +126,142 @@ git commit -m "<type>(<scope>): <one-line summary>
 - **GitHub Copilot**：讀 `.github/copilot-instructions.md`（若存在）
 - **GitHub 協作（分支／PR／Issue／通報）**：`CONTRIBUTING.md`、`SECURITY.md`
 - **人類協作者**：先讀 `README.md`、`docs/INDEX.md`、本檔 `AGENTS.md`
+
+<!-- exo:governance:begin -->
+<!-- Governance hash: f45f0f00b0698aa4 -->
+# ExoProtocol — Agent Operating Instructions
+
+This repository is governed by ExoProtocol. All AI agent work must follow the session lifecycle.
+
+## ExoProtocol Governance
+
+- kernel: exo-kernel 0.1.0
+- lock hash: `f45f0f00b0698aa4...`
+- generated: 2026-08-15T14:50:36+08:00
+
+### Filesystem Deny Rules
+
+- **RULE-SEC-001**: deny read, write on `~/.aws/**`, `~/.ssh/**`, `**/.env`, `**/.env.local`, `**/.env.*.local`, `**/.env.production`, `**/.env.staging`, `**/.env.development`, `**/.env.test`
+- **RULE-GIT-001**: deny read, write, delete on `.git/**`
+
+### Structural Rules
+
+- **RULE-LOCK-001** (require_lock): Blocked by RULE-LOCK-001 (acquire a ticket lock first).
+- **RULE-CHECK-001** (require_checks): Blocked by RULE-CHECK-001 (checks must pass before done).
+- **RULE-EVO-001** (evolution_gate): Practice is mutable, governance requires explicit human approval.
+- **RULE-EVO-002** (patch_first): Patch-first evolution required.
+
+### Default Budgets
+
+- max files changed: 12
+
+### Approved Checks
+
+- `npm run test:unit`
+- `npm run lint:no-undef`
+- `npm run build`
+- `vendor/bin/phpunit`
+
+### Source of Truth
+
+The values above are a **snapshot** generated from the governance manifest.
+
+Manifest paths:
+- `.exo/config.yaml` — budgets, checks allowlist, scheduler config
+- `.exo/governance.lock.json` — compiled rules, deny patterns, source hash
+
+### Test-Driven, Manifest-First Workflow
+
+This principle applies to **all code you write** — governance and application logic alike.
+
+1. **Config/contract is the source of truth.** When a value is defined in a config file,
+   schema, manifest, or contract — code must load it from that source at runtime.
+   Never copy a value from a config file and paste it as a literal in source code.
+2. **Tests verify the wiring, not the value.** Tests must assert that code reads from
+   the config/contract, not that it produces a specific hardcoded result.
+   A test that passes when you swap the config value *and* swap the assertion is useless —
+   it only proves both sides were copy-pasted from the same place.
+3. **If you can change a config value and no test breaks, the test is missing.**
+   Every configurable value should have at least one test that will vary the input
+   and verify the output follows.
+
+Examples:
+- **BAD**: `assert budget == 10` (hardcoded, passes even if config is ignored)
+- **GOOD**: set config to 42, assert output contains 42 and not the old default
+- **BAD**: `MAX_RETRIES = 3` (literal in source when retries is in config)
+- **GOOD**: `max_retries = load_config()['max_retries']`
+
+### Operational Learnings
+
+When you discover a reusable pattern, gotcha, or operational insight during a session:
+- Record it with `exo reflect` (CLI) or `exo_reflect` (MCP) — NOT your private memory
+- ExoProtocol reflections are injected into future session bootstraps for all agents
+- Private memory files (MEMORY.md, .cursorrules, etc.) are agent-specific and invisible to the team
+- If you must write to private memory, also create an ExoProtocol reflection with the same insight
+
+**Private memory monitoring**: If `private_memory.watch_paths` in `.exo/config.yaml` is empty,
+add the absolute path to your memory file (e.g., `~/.claude/.../memory/MEMORY.md`) so that
+ExoProtocol can detect when you write to private memory without creating a shared reflection.
+
+### End-of-Work Reflection
+
+When you complete significant work or the user appears to be wrapping up:
+- **Proactively** run `exo reflect --pattern '<what kept happening>' --insight '<what was learned>'`
+  for each non-trivial insight discovered during the conversation
+- Do NOT wait for `session-finish` — many users close the editor without explicit session end
+- Good reflection triggers: bug fixes, CI failures, gotchas, architectural decisions, workflow improvements
+
+### Tool Reuse Protocol
+
+Before writing new utility functions, SEARCH the tool registry:
+  `exo tool-search "<keywords>"`
+
+After building a reusable utility, REGISTER it:
+  `exo tool-register <module> <function> --description "..."`
+
+Mark a tool as used when you import/call it:
+  `exo tool-use <tool_id>`
+
+
+## Session Lifecycle
+
+1. `exo session-start --ticket-id <TICKET> --vendor <VENDOR> --model <MODEL> --task "<TASK>"`
+2. Read `.exo/cache/sessions/<actor>.bootstrap.md`
+3. Execute work within ticket scope
+4. `exo session-finish --ticket-id <TICKET> --summary "<SUMMARY>" --set-status review`
+
+## Enforcement
+
+- Governance rules are enforced at the kernel level, not by prompt
+- The bootstrap file contains your session's scope, checks, and lifecycle commands
+- Drift detection runs at session-finish and is recorded in the session memento
+- Audit sessions may be triggered to review your work independently
+
+## Governed Push
+
+Before pushing code, ALWAYS run checks first:
+
+```
+exo push                      # runs exo check, then git push (recommended)
+# OR
+exo check && git push         # manual equivalent
+```
+
+Do NOT use bare `git push` — it bypasses governance checks.
+If checks fail, fix the issues before pushing.
+
+## Non-Negotiables
+
+- No governed execution without active session
+- Respect lock ownership and ticket scope
+- Verification is default at finish; break-glass must be explicit
+- All configurable values must be loaded from their source of truth at runtime — never hardcode, always test
+- Read `.exo/LEARNINGS.md` for operational learnings from prior sessions
+
+<!-- exo:governance:end -->
+
+## Portfolio governance overlay
+
+Read `governance/PORTFOLIO_AGENT_CONTRACT.md` before writing. It is committed
+for cloud/mobile agents and contains the company's PR, approval, production,
+and Founder-approval boundaries.
