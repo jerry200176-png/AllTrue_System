@@ -109,6 +109,8 @@ class FulltimeSettlementComposerTest extends TestCase
         $this->assertSame(450.0, $result['one_to_three_bonus']);
         $this->assertSame([['label' => '16段課', 'amount' => 4000.0]], $result['adjustments']);
     }
+
+    public function test_missing_base_salary_defaults_to_zero_not_error(): void
     {
         $result = FulltimeSettlementComposer::compose([], null);
 

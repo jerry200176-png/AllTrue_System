@@ -255,7 +255,7 @@ onMounted(loadData);
 .title-group h2 { margin:0; }.title-sub { margin:4px 0 0; color:var(--ds-ink-mute); }
 .privilege-chip { padding:4px 10px; border-radius:999px; background:var(--ds-warning-wash); color:var(--ds-warning); font-size:12px; }
 .header-actions { display:flex; gap:8px; }
-.btn-primary { display:inline-flex; align-items:center; gap:6px; border:0; background:var(--ds-primary); color:#fff; border-radius:8px; padding:9px 14px; cursor:pointer; }
+.btn-primary { display:inline-flex; align-items:center; gap:6px; border:0; background:var(--ds-primary); color:var(--ds-on-primary); border-radius:8px; padding:9px 14px; cursor:pointer; }
 .eligibility-card { background:var(--ds-canvas); border:1px solid var(--border); border-radius:14px; padding:16px; box-shadow:var(--ds-shadow-1); }
 .filters { display:flex; align-items:end; gap:16px; flex-wrap:wrap; margin-bottom:18px; }
 .filters label { display:flex; flex-direction:column; gap:6px; font-size:13px; color:var(--ds-ink-mute); }
