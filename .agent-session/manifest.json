@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "session_id": "eecbda93ac0c4c478b1a3811b230644c",
+  "project": "alltrue",
+  "task_id": "reported-paid-split-rfc-20260816",
+  "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
+  "base_sha": "1fba4cf23a73f37bda34fcf5ea7ea6b83caf5760",
+  "branch": "chore/task-reported-paid-split-rfc-20260816",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/reported-paid-split-rfc-20260816",
+  "started_at": "2026-08-16T03:58:16Z",
+  "production_mutation": false,
+  "preflight_result": "pass",
+  "provenance_type": "agent-session",
+  "agent_cli": null,
+  "gateway_version": "0.5.0"
+}

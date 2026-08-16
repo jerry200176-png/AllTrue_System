@@ -1,3 +1,10 @@
+## 2026-08-16 — docs(arch): 行政已回報與會計入帳核銷拆分計畫（#1827）
+
+<!-- release-notes: silent_ship=silent-2026-08-16-reported-paid-accounting-split-rfc -->
+
+- 新增繳費狀態機 RFC：行政先登錄「已回報」，會計對帳後才標已繳並開收據；第二步才做課程頁同畫面與批次。
+- 本筆只有計畫與入口指標，沒有教職員可操作的產品變更。
+
 ## 2026-08-15 — fix(billing): 計費模式轉換後標示舊收據可能已被取代 (#934)
 
 <!-- release-notes: staff_update=staff-2026-08-15-stale-receipt-badge-934 -->
