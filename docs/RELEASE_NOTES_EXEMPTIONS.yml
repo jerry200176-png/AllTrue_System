@@ -70,3 +70,7 @@ exemptions:
     changelog_date: "2026-08-14"
     changelog_title: "chore(ops): 測試主任 285 唯讀清理診斷"
     reason: 內部 allowlisted production 唯讀診斷，沒有教職員可操作或可感知的產品變更。
+  - id: silent-2026-08-14-chinese-renewal-unpaid
+    changelog_date: "2026-08-14"
+    changelog_title: "chore(ops): 張正甯／張正樂國文續購 8 堂未入帳作業閘門"
+    reason: 內部 allowlisted production 作業閘門，沒有教職員可操作的新產品入口。

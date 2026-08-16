@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\StudentClass;
 use App\Services\ClassSessionMaterializationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
@@ -45,6 +46,40 @@ class ClassSessionMaterializationServiceTest extends TestCase
                 ->whereRaw('SUBSTRING(StartTime, 1, 5) = ?', ['16:00'])
                 ->count()
         );
+    }
+
+    public function test_upsert_slot_uses_preloaded_settlement_state_without_exists_query(): void
+    {
+        $courseId = $this->createCourse(1, 1);
+        $studentClass = StudentClass::query()->findOrFail($courseId);
+        $service = app(ClassSessionMaterializationService::class);
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        try {
+            $result = $service->upsertSlot([
+                '_student_class' => $studentClass,
+                'StudentClassID' => $courseId,
+                'SessionDate' => '2026-06-11',
+                'StartTime' => '16:00',
+                'EndTime' => '18:00:00',
+                'Status' => 'scheduled',
+                'Note' => 'backfill-from-schedules',
+            ]);
+            $queries = DB::getQueryLog();
+        } finally {
+            DB::disableQueryLog();
+            DB::flushQueryLog();
+        }
+
+        $this->assertTrue($result['created']);
+        $settlementQueries = array_filter(
+            $queries,
+            static fn (array $entry): bool => str_contains(strtolower((string) $entry['query']), 'select exists')
+                && str_contains(strtolower((string) $entry['query']), 'studentclass')
+        );
+
+        $this->assertCount(0, $settlementQueries);
     }
 
     public function test_audit_duplicates_command_outputs_json_report(): void
