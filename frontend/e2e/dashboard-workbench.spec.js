@@ -11,6 +11,15 @@ const VIEWPORTS = [
   { name: '1440', width: 1440, height: 900 },
 ];
 
+async function dismissOverlays(page) {
+  for (const sel of ['.guide-tour-close', '.release-nudge-btn:has-text("稍後再看")']) {
+    const el = page.locator(sel).first();
+    if (await el.isVisible().catch(() => false)) {
+      await el.click().catch(() => {});
+    }
+  }
+}
+
 async function login(page) {
   await page.goto('/');
   await page.evaluate(() => localStorage.removeItem('alltrue.director_dashboard_view_mode.v1'));
@@ -19,6 +28,7 @@ async function login(page) {
   await page.locator('#login-password').fill(DIRECTOR.password);
   await page.locator('button.login-btn').click();
   await expect(page.locator('#login-account')).toHaveCount(0, { timeout: 15_000 });
+  await dismissOverlays(page);
 }
 
 for (const viewport of VIEWPORTS) {
@@ -51,6 +61,7 @@ for (const viewport of VIEWPORTS) {
       await expect(page.locator('.director-task__action').first()).toBeVisible();
     }
 
+    await dismissOverlays(page);
     const fullView = page.getByRole('tab', { name: '完整營運', exact: true });
     await fullView.click();
     await expect.poll(() => secondaryRequests.length, { timeout: 10_000 }).toBeGreaterThan(0);

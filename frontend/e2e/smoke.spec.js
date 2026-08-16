@@ -75,7 +75,9 @@ test.describe('UI smoke — director', () => {
     page.on('pageerror', (e) => errors.push(String(e)));
 
     await login(page, 'director', DIRECTOR);
+    await dismissOverlays(page);
     await navTo(page, '課程管理');
+    await dismissOverlays(page);
 
     // TODO: 可於 CourseManagement 根容器補 data-testid="course-mgmt-page" 讓斷言更穩。
     await expect(page.getByText('課程管理', { exact: false }).first()).toBeVisible();
