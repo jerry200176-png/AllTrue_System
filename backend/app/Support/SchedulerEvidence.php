@@ -419,6 +419,17 @@ final class SchedulerEvidence
             }
         }
 
+        if ($job === 'bindings-cleanup-orphans' && preg_match(
+            '/orphan_bindings_deleted=(\d+) anomaly_students=(\d+)/',
+            $output,
+            $matches
+        )) {
+            return [
+                'orphan_bindings_deleted' => (int) $matches[1],
+                'anomaly_students' => (int) $matches[2],
+            ];
+        }
+
         if ($job === 'bugs-verify-reproductions') {
             $decoded = json_decode(trim($output), true);
             if (!is_array($decoded) || !isset($decoded['regressed'], $decoded['conditions']) || !is_array($decoded['conditions'])) {
