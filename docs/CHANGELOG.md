@@ -1,3 +1,10 @@
+## 2026-08-16 — fix(billing): 帳務入口可見性與待對帳用語
+
+<!-- release-notes: staff_update=staff-2026-08-16-billing-ux-find -->
+
+- 課程管理把「課程／帳務」分頁放到學生列標題，收合時也能直接點帳務並展開。
+- 帳務中心等 PIN 頁在解鎖前顯示說明，不再一片空白；待核帳改稱待對帳，勾選左欄才出現批次列。
+
 ## 2026-08-14 — chore(ops): 測試主任 285 唯讀清理診斷
 
 <!-- release-notes: silent_ship=silent-2026-08-14-director-285-diagnose -->

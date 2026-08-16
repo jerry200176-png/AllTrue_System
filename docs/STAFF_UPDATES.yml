@@ -3,6 +3,20 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-16-billing-ux-find
+    published_at: "2026-08-16"
+    audiences:
+      - director
+    importance: digest
+    title: 帳務入口比較好找
+    summary: 課程列上可切帳務；帳務中心解鎖前會說明要 PIN。
+    items:
+      - category: improved
+        text: 課程管理學生列上有「課程／帳務」分頁，收合也能點進去。
+      - category: improved
+        text: 帳務中心若要 PIN，畫面會說明，不再一片空白。
+    source_refs:
+      - "changelog:2026-08-16:billing-ux-find"
 
   - id: staff-2026-08-14-monthly-copy-teacher-list
     published_at: "2026-08-14"

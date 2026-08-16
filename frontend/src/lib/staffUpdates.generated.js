@@ -218,6 +218,38 @@ export const staffUpdates = [
     "version": "2026.08.16"
   },
   {
+    "id": "staff-2026-08-16-billing-ux-find",
+    "publishedAt": "2026-08-16",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "帳務入口比較好找",
+    "summary": "課程列上可切帳務；帳務中心解鎖前會說明要 PIN。",
+    "items": [
+      "課程管理學生列上有「課程／帳務」分頁，收合也能點進去。",
+      "帳務中心若要 PIN，畫面會說明，不再一片空白。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "課程管理學生列上有「課程／帳務」分頁，收合也能點進去。",
+          "帳務中心若要 PIN，畫面會說明，不再一片空白。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-16:billing-ux-find"
+    ],
+    "date": "2026-08-16",
+    "version": "2026.08.16"
+  },
+  {
     "id": "staff-2026-08-15-tuition-charge-display-1734",
     "publishedAt": "2026-08-15",
     "effectiveAt": null,

@@ -8,9 +8,12 @@ const pagePath = resolve(__dirname, '../../pages/CourseManagement.vue');
 const source = readFileSync(pagePath, 'utf8');
 
 describe('CourseManagement student billing tab', () => {
-  it('keeps course and billing tabs on the same student card', () => {
-    expect(source).toContain('課程資料');
-    expect(source).toContain('帳務資料');
+  it('keeps course and billing tabs on the student card header', () => {
+    expect(source).toContain('student-group-header-actions');
+    expect(source).toContain('selectStudentGroupTab');
+    expect(source).toContain("@click.stop=\"selectStudentGroupTab(group, 'billing', $event)\"");
+    expect(source).toContain('>帳務</button>');
+    expect(source).toContain('aria-label="帳務資料"');
     expect(source).toContain('studentGroupTab(group.key) === \'billing\'');
     expect(source).toContain('/api/v1/payment-reports?student_class_id=');
     expect(source).toContain('/api/v1/student-classes/${c.id}/invoices');

@@ -92,7 +92,7 @@ const latest = computed(() => {
 });
 
 function statusLabel(status) {
-  const labels = { confirmed: '已收款', pending: '待核帳確認', rejected: '已退回', voided: '已作廢' };
+  const labels = { confirmed: '已收款', pending: '待對帳確認', rejected: '已退回', voided: '已作廢' };
   return labels[status] || '已收款';
 }
 function methodLabel(method) {
