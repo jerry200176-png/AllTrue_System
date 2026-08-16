@@ -1,4 +1,11 @@
-## 2026-08-15 — fix(billing): 計費模式轉換後標示舊收據可能已被取代 (#934)
+## 2026-08-16 — fix(eval): 已上改回未點再標到班時自動還原評量草稿
+
+<!-- release-notes: staff_update=staff-2026-08-16-lr-resurrect-status-adjust -->
+
+- 堂次從「已到班」改回「未點名」再改回「到班」時，系統作廢的評量會自動恢復為待填，老師端不再空白。
+- 不改請假／手動作廢評量的規則；人工作廢仍不會自動復活。
+
+
 
 <!-- release-notes: staff_update=staff-2026-08-15-stale-receipt-badge-934 -->
 
