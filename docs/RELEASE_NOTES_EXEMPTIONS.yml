@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-08-16-reported-paid-accounting-split-rfc
+    changelog_date: "2026-08-16"
+    changelog_title: "docs(arch): 行政已回報與會計入帳核銷拆分計畫（#1827）"
+    reason: 僅架構計畫與 agent 入口指標，沒有教職員可操作或可感知的產品變更。
+
   - id: silent-2026-08-15-td076-phase3-backfill
     changelog_date: "2026-08-15"
     changelog_title: "chore(schedule): TD-076 Phase 3 回填命令（預設 dry-run）"

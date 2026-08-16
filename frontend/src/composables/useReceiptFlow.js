@@ -8,10 +8,8 @@ import { ref } from 'vue';
  *   - Viewing a receipt always closes the latest-payment-info modal first. Both
  *     overlays share the same stacking context; opening one without closing the
  *     other leaves two overlays fighting for the same layer.
- *   - Opening the receipt after a successful payment never waits on (or is
- *     masked by) refreshing the course list. The payment has already succeeded
- *     by the time this runs, so a refresh failure is swallowed — never rethrown
- *     as if the payment itself had failed, and never used to retry the payment.
+ *   - Admin “登記已回報” does not open a receipt. Receipts exist only after
+ *     accounting confirms the pending PaymentReport (#1827).
  */
 export function useReceiptFlow({ refreshCourses, toast } = {}) {
   const paymentEntryOpen = ref(false);
@@ -43,15 +41,9 @@ export function useReceiptFlow({ refreshCourses, toast } = {}) {
 
   async function onPaymentEntryConfirmed(result) {
     paymentEntryOpen.value = false;
-    toast?.('已完成核帳登記');
+    toast?.('已送出待對帳，請會計確認入帳後才會開收據');
 
-    // Open the receipt immediately — do not let a slow/failed course refresh
-    // delay or block it. The payment already succeeded; the receipt is just a
-    // read of the record that succeeded.
-    if (result?.report_id) {
-      openReceiptByReport(result.report_id);
-    }
-
+    // #1827: admin report is pending — do not open a receipt (R79: receipt is confirmed-only).
     const studentId = paymentEntryStudentId.value;
     paymentEntryStudentId.value = null;
     if (studentId && refreshCourses) {

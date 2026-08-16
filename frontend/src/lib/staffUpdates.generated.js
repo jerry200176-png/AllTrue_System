@@ -4,6 +4,154 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-16-reported-paid-pending",
+    "publishedAt": "2026-08-16",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "繳費改先回報再入帳",
+    "summary": "行政先登記家長已繳；會計對到帳才開收據，避免沒匯款就變已繳。",
+    "items": [
+      "看官方 LINE 請用「登記已回報」，不要等會計也能先登錄。",
+      "會計確認入帳後才會開電子收據；對不到款可退回。"
+    ],
+    "sections": [
+      {
+        "title": "需要你注意",
+        "items": [
+          "看官方 LINE 請用「登記已回報」，不要等會計也能先登錄。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "會計確認入帳後才會開電子收據；對不到款可退回。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-16:reported-paid-pending"
+    ],
+    "date": "2026-08-16",
+    "version": "2026.08.16"
+  },
+  {
+    "id": "staff-2026-08-16-fulltime-settlement-table",
+    "publishedAt": "2026-08-16",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "正職結算表上線",
+    "summary": "正職薪資頁改為底薪與獎金結算欄",
+    "items": [
+      "可見底薪、科目數拆分、倍率後獎金算式與總發放。",
+      "假日假可補足16小時倍率；小數科目數依附件表內插。",
+      "全勤、勞健保、行政加給仍未自動列入，請人工核對。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "可見底薪、科目數拆分、倍率後獎金算式與總發放。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "假日假可補足16小時倍率；小數科目數依附件表內插。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "全勤、勞健保、行政加給仍未自動列入，請人工核對。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-16:fulltime-settlement-table"
+    ],
+    "date": "2026-08-16",
+    "version": "2026.08.16"
+  },
+  {
+    "id": "staff-2026-08-16-reported-paid-phase2",
+    "publishedAt": "2026-08-16",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "課程頁可批次帳務",
+    "summary": "同一學生切帳務；收費頁勾選批次回報，確認後才開收據。",
+    "items": [
+      "課程管理同一學生可切帳務資料，不必再搜一次。",
+      "收費頁可一次勾選多筆已回報或確認入帳。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "課程管理同一學生可切帳務資料，不必再搜一次。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "收費頁可一次勾選多筆已回報或確認入帳。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-16:reported-paid-phase2"
+    ],
+    "date": "2026-08-16",
+    "version": "2026.08.16"
+  },
+  {
+    "id": "staff-2026-08-16-reported-paid-notif",
+    "publishedAt": "2026-08-16",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "通知中心先回報",
+    "summary": "通知中心登記已繳後仍待對帳，會計確認才入帳開收據。",
+    "items": [
+      "通知中心學費改「送出已回報」，不會當場變已繳或開收據。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "通知中心學費改「送出已回報」，不會當場變已繳或開收據。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-16:reported-paid-notif"
+    ],
+    "date": "2026-08-16",
+    "version": "2026.08.16"
+  },
+  {
     "id": "staff-2026-08-16-lr-resurrect-status-adjust",
     "publishedAt": "2026-08-16",
     "effectiveAt": null,
@@ -31,6 +179,40 @@ export const staffUpdates = [
     ],
     "sourceRefs": [
       "changelog:2026-08-16:lr-resurrect-status-adjust"
+    ],
+    "date": "2026-08-16",
+    "version": "2026.08.16"
+  },
+  {
+    "id": "staff-2026-08-16-fillrate-substitute-absent-copy",
+    "publishedAt": "2026-08-16",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "代課填報率與缺席不扣堂說明",
+    "summary": "代課堂次的評量填寫率改算在代課老師；點名標缺席時改為不扣堂、也不順延。",
+    "items": [
+      "主任填報率報表與課表一樣，把代課堂次算給代課老師。",
+      "點名確認缺席時改顯示不扣堂、不順延；請假仍會順延。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "主任填報率報表與課表一樣，把代課堂次算給代課老師。",
+          "點名確認缺席時改顯示不扣堂、不順延；請假仍會順延。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-16:fillrate-substitute-absent-copy"
     ],
     "date": "2026-08-16",
     "version": "2026.08.16"

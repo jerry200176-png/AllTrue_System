@@ -261,15 +261,32 @@ class PaymentReportController extends Controller
 
         return DB::transaction(function () use ($report, $userId, $note) {
             $sc = StudentClass::find($report->StudentClassID);
+            $package = $sc ? $this->lockPackageForCourse($sc) : null;
 
             if ($sc && $this->courseAlreadyHasConfirmedPayment((int) $sc->ID, (int) ($sc->Paid ?? 0))) {
                 return $this->duplicateCoursePaymentResponse();
             }
+            if ($package && (bool) $package->paid) {
+                return $this->duplicateCoursePaymentResponse();
+            }
 
-            $invoice = Invoice::where('StudentClassID', $report->StudentClassID)
-                ->where('Status', '!=', 'paid')
-                ->lockForUpdate()
-                ->first();
+            $invoice = null;
+            if (!empty($report->InvoiceID)) {
+                $invoice = Invoice::where('id', (int) $report->InvoiceID)
+                    ->where('StudentClassID', $report->StudentClassID)
+                    ->lockForUpdate()
+                    ->first();
+                if ($invoice && (string) $invoice->Status === 'paid') {
+                    return $this->duplicateCoursePaymentResponse();
+                }
+            }
+
+            if (! $invoice) {
+                $invoice = Invoice::where('StudentClassID', $report->StudentClassID)
+                    ->where('Status', '!=', 'paid')
+                    ->lockForUpdate()
+                    ->first();
+            }
 
             $hasPaidInvoice = false;
             if (! $invoice) {
@@ -317,6 +334,12 @@ class PaymentReportController extends Controller
             if ($sc && !$sc->Paid) {
                 $sc->update(['Paid' => 1, 'PayDate' => Carbon::today()->toDateString()]);
             }
+            if ($package && $status === 'paid') {
+                $paidAt = $report->payment_date
+                    ? Carbon::parse($report->payment_date)->toDateString()
+                    : Carbon::today()->toDateString();
+                $this->markPackagePaid($package, $paidAt);
+            }
 
             $report->update([
                 'status'       => 'confirmed',
@@ -344,7 +367,8 @@ class PaymentReportController extends Controller
 
     /**
      * POST /api/v1/payment-reports/director-record
-     * Director directly records a confirmed payment (no parent form needed).
+     * Admin/director records a claimed payment (LINE / verbal). Does not mark Paid
+     * or issue a receipt — accounting confirm does that (#1827 Phase 1).
      */
     public function directorRecord(Request $request)
     {
@@ -427,74 +451,152 @@ class PaymentReportController extends Controller
                 return $this->duplicateCoursePaymentResponse();
             }
 
-            if (!$invoice) {
-                $invoice = Invoice::create([
-                    'StudentID'      => $sc->StudentID,
-                    'StudentClassID' => $sc->ID,
-                    'IssueDate'      => Carbon::today()->toDateString(),
-                    'TotalAmount'    => (int) $data['amount'],
-                    'PaidAmount'     => 0,
-                    'Status'         => 'unpaid',
-                    'ScheduleModeAtIssue' => $sc->ScheduleMode,
-                    'Note'           => '',
-                ]);
-            }
-
-            $payment = Payment::create([
-                'InvoiceID' => $invoice->id,
-                'Amount'    => (int) $data['amount'],
-                'PaidAt'    => $data['payment_date'],
-                'Method'    => $data['payment_method'],
-                'Note'      => $data['note'] ?? '主任核帳登記',
-            ]);
-
-            $newPaid = $invoice->PaidAmount + (int) $data['amount'];
-            $status = $newPaid >= $invoice->TotalAmount ? 'paid' : 'partial';
-            $invoice->update([
-                'PaidAmount'     => $newPaid,
-                'Status'         => $status,
-                'reconciled_at'  => Carbon::now(),
-                'reconciled_by'  => $userId,
-            ]);
-
-            if ($sc && !$sc->Paid) {
-                $sc->update(['Paid' => 1, 'PayDate' => Carbon::today()->toDateString()]);
-            }
-            if ($package && $status === 'paid') {
-                $this->markPackagePaid($package, (string) $data['payment_date']);
+            $existingPending = PaymentReport::where('StudentClassID', $sc->ID)
+                ->where('status', 'pending')
+                ->lockForUpdate()
+                ->first();
+            if ($existingPending) {
+                return response()->json([
+                    'message' => '此課程已有待對帳回報，請先請會計確認或退回後再登錄。',
+                    'code' => 'pending_report_exists',
+                    'report_id' => $existingPending->id,
+                ], 422);
             }
 
             $report = PaymentReport::create([
                 'StudentID'         => $sc->StudentID,
                 'StudentClassID'    => $sc->ID,
-                'InvoiceID'         => $invoice->id,
+                'InvoiceID'         => $invoice?->id,
                 'reported_by_name'  => $sc->student->name,
                 'payment_date'      => $data['payment_date'],
                 'payment_method'    => $data['payment_method'],
                 'reported_amount'   => $data['amount'],
                 'account_last5'     => $data['account_last5'] ?? null,
-                'status'            => 'confirmed',
-                'confirmed_by'      => $userId,
-                'confirmed_at'      => Carbon::now(),
-                'payment_id'        => $payment->id,
+                'status'            => 'pending',
                 'report_token_hash' => hash('sha256', 'director-' . $sc->ID . '-' . now()->timestamp),
-                'token_expires_at'  => Carbon::now(),
+                'token_expires_at'  => Carbon::now()->addDays(30),
             ]);
 
-            Log::info('PaymentReport director-record', [
+            Log::info('PaymentReport director-record pending', [
                 'report_id'  => $report->id,
-                'payment_id' => $payment->id,
-                'invoice_id' => $invoice->id,
+                'invoice_id' => $invoice?->id,
                 'user_id'    => $userId,
             ]);
 
             return response()->json([
-                'message'    => '已核帳登記',
+                'message'    => '已送出待對帳',
                 'report_id'  => $report->id,
-                'payment_id' => $payment->id,
-                'invoice_id' => $invoice->id,
+                'payment_id' => null,
+                'invoice_id' => $invoice?->id,
+                'status'     => 'pending',
             ]);
         });
+    }
+
+    /**
+     * POST /api/v1/payment-reports/director-record-batch
+     */
+    public function directorRecordBatch(Request $request)
+    {
+        $data = $request->validate([
+            'payment_date'   => 'required|date|before_or_equal:today',
+            'payment_method' => 'required|in:transfer,cash',
+            'note'           => 'nullable|string|max:500',
+            'entries'        => 'required|array|min:1|max:40',
+            'entries.*.student_class_id' => 'required|integer',
+            'entries.*.amount'           => 'required|numeric|min:0|max:999999',
+            'entries.*.account_last5'    => 'nullable|string|max:5|regex:/^[0-9]*$/',
+            'entries.*.invoice_id'       => 'nullable|integer',
+        ]);
+
+        $results = [];
+        $accepted = 0;
+        foreach ($data['entries'] as $index => $entry) {
+            $payload = [
+                'student_class_id' => $entry['student_class_id'],
+                'payment_date'     => $data['payment_date'],
+                'payment_method'   => $data['payment_method'],
+                'amount'           => $entry['amount'],
+            ];
+            if (!empty($entry['account_last5'])) {
+                $payload['account_last5'] = $entry['account_last5'];
+            }
+            if (!empty($entry['invoice_id'])) {
+                $payload['invoice_id'] = $entry['invoice_id'];
+            }
+            if (!empty($data['note'])) {
+                $payload['note'] = $data['note'];
+            }
+
+            $inner = Request::create('/api/v1/payment-reports/director-record', 'POST', $payload);
+            $inner->headers->set('Accept', 'application/json');
+            foreach (['auth_user_id', 'auth_role', 'auth_campus_ids'] as $key) {
+                $inner->attributes->set($key, $request->attributes->get($key));
+            }
+
+            $resp = $this->directorRecord($inner);
+            $body = json_decode($resp->getContent(), true) ?: [];
+            $http = $resp->getStatusCode();
+            if ($http < 300) {
+                $accepted++;
+            }
+            $results[] = [
+                'index' => $index,
+                'student_class_id' => (int) $entry['student_class_id'],
+                'http_status' => $http,
+                'report_id' => $body['report_id'] ?? null,
+                'message' => $body['message'] ?? null,
+                'code' => $body['code'] ?? null,
+            ];
+        }
+
+        return response()->json([
+            'message' => "已送出 {$accepted} / " . count($data['entries']) . ' 筆待對帳',
+            'accepted' => $accepted,
+            'results' => $results,
+        ], $accepted === count($data['entries']) ? 200 : 207);
+    }
+
+    /**
+     * POST /api/v1/payment-reports/confirm-batch
+     */
+    public function confirmBatch(Request $request)
+    {
+        $data = $request->validate([
+            'ids'  => 'required|array|min:1|max:40',
+            'ids.*' => 'integer',
+            'note' => 'nullable|string|max:500',
+        ]);
+
+        $results = [];
+        $accepted = 0;
+        foreach (array_values(array_unique($data['ids'])) as $id) {
+            $inner = Request::create('/api/v1/payment-reports/' . $id . '/confirm', 'PUT', [
+                'note' => $data['note'] ?? '',
+            ]);
+            $inner->headers->set('Accept', 'application/json');
+            foreach (['auth_user_id', 'auth_role', 'auth_campus_ids'] as $key) {
+                $inner->attributes->set($key, $request->attributes->get($key));
+            }
+            $resp = $this->confirm($inner, $id);
+            $body = json_decode($resp->getContent(), true) ?: [];
+            $http = $resp->getStatusCode();
+            if ($http < 300) {
+                $accepted++;
+            }
+            $results[] = [
+                'id' => (int) $id,
+                'http_status' => $http,
+                'message' => $body['message'] ?? null,
+                'code' => $body['code'] ?? null,
+            ];
+        }
+
+        return response()->json([
+            'message' => "已確認 {$accepted} / " . count($results) . ' 筆入帳',
+            'accepted' => $accepted,
+            'results' => $results,
+        ], $accepted === count($results) ? 200 : 207);
     }
 
     private function courseAlreadyHasConfirmedPayment(int $studentClassId, int $coursePaid): bool
