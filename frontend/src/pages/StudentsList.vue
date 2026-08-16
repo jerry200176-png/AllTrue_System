@@ -932,15 +932,10 @@ const setPaymentStatusPending = (courseId, pending) => {
   pendingPaymentStatusIds.value = next;
 };
 const paymentStatusButtonClass = (course) => {
-  if (course?.payment_status === 'paid') return 'ghost';
-  if (course?.payment_status === 'pending_report') return 'ghost';
-  return 'primary';
+  return course?.payment_status === 'paid' ? 'ghost' : 'primary';
 };
 const paymentStatusButtonLabel = (course) => {
-  if (course?.payment_status === 'paid') return '已繳費';
-  if (course?.payment_status === 'pending_report') return '待對帳';
-  if (course?.payment_status === 'partial') return '部分繳';
-  return '未繳費';
+  return course?.payment_status === 'paid' ? '已繳費' : '未繳費';
 };
 
 // --- Helpers ---
@@ -2676,12 +2671,7 @@ const togglePaymentStatus = async (course, studentName = '') => {
   const courseId = course?.id;
   if (!courseId || isPaymentStatusPending(courseId)) return;
 
-  if (course.payment_status === 'pending_report') {
-    alert('此課程已有待對帳回報，請到帳務中心確認入帳或退回後再登錄。');
-    return;
-  }
-
-  // 未繳費 → 已回報：走登記 Modal；確認入帳後才變已繳費
+  // 未繳費 → 已繳費：一律走核帳登記 Modal（強制填繳款日期）
   if (course.payment_status !== 'paid') {
     const subjectLabel = getSubjectLabel(course.subject).split('(')[0].trim();
     receiptFlow.openPaymentEntry({

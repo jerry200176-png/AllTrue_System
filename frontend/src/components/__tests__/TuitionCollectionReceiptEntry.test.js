@@ -29,16 +29,6 @@ describe('TuitionCollectionPage receipt entry paths', () => {
     expect(source).not.toMatch(/if\s*\(result\?\.report_id\)\s*\{[\s\S]*receiptReportId\.value\s*=\s*result\.report_id/);
   });
 
-  it('batch confirm does not auto-open receipts', () => {
-    expect(source).toContain('submitBatchConfirm');
-    expect(source).toContain('/api/v1/payment-reports/confirm-batch');
-    expect(source).toContain('/api/v1/payment-reports/director-record-batch');
-    const batchConfirm = source.match(/async function submitBatchConfirm\(\) \{[\s\S]*?\n\}/);
-    expect(batchConfirm).toBeTruthy();
-    expect(batchConfirm[0]).not.toMatch(/receiptReportId/);
-    expect(batchConfirm[0]).not.toMatch(/receiptOpen/);
-  });
-
   it('class-list receipt lookup opens with match.id (payment report id)', () => {
     expect(source).toContain('async function viewReceiptForClass(row)');
     expect(source).toMatch(/receiptReportId\.value\s*=\s*match\.id/);

@@ -145,47 +145,6 @@
           </div>
         </div>
 
-        <div
-          v-if="selectedRows.length"
-          class="tc-batch-bar"
-          role="region"
-          :aria-label="batchMode === 'confirm' ? '批次確認入帳' : '今日批次回報'"
-        >
-          <span class="tc-batch-count">已選 {{ selectedRows.length }} 筆</span>
-          <template v-if="batchMode === 'report'">
-            <label class="tc-batch-field">
-              繳費日
-              <input v-model="batchForm.payment_date" type="date" :max="todayYmd" />
-            </label>
-            <label class="tc-batch-field">
-              方式
-              <select v-model="batchForm.payment_method">
-                <option value="transfer">匯款</option>
-                <option value="cash">現金</option>
-              </select>
-            </label>
-            <label class="tc-batch-field tc-batch-note">
-              備註
-              <input v-model="batchForm.note" type="text" maxlength="500" placeholder="選填" />
-            </label>
-            <button
-              class="tc-btn tc-btn--confirm"
-              type="button"
-              :disabled="batchBusy || !batchForm.payment_date"
-              @click="submitBatchReport"
-            >送出已回報</button>
-          </template>
-          <template v-else>
-            <button
-              class="tc-btn tc-btn--confirm"
-              type="button"
-              :disabled="batchBusy"
-              @click="submitBatchConfirm"
-            >批次確認入帳</button>
-          </template>
-          <button class="tc-btn tc-btn--ghost" type="button" :disabled="batchBusy" @click="clearSelection">取消選取</button>
-        </div>
-
         <!-- Empty state for current tab -->
         <div v-if="!filteredRows.length" class="tc-empty" style="padding:32px 0">
           <span v-if="searchQuery" class="material-symbols-outlined" style="font-size:40px;color:var(--text-light)">person_search</span>
@@ -201,16 +160,6 @@
           <table class="tc-table">
             <thead>
               <tr>
-                <th class="tc-col-check">
-                  <input
-                    type="checkbox"
-                    :checked="allVisibleSelected"
-                    :indeterminate.prop="someVisibleSelected && !allVisibleSelected"
-                    :disabled="!selectableRows.length"
-                    @change="toggleSelectAll($event.target.checked)"
-                    :aria-label="batchMode === 'confirm' ? '全選待核帳' : '全選未繳'"
-                  />
-                </th>
                 <th class="tc-th-sort" @click="toggleSort('student_name')">
                   學生
                   <span v-if="sortKey === 'student_name'" class="tc-sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
@@ -240,28 +189,7 @@
             </thead>
             <tbody>
               <tr v-for="r in filteredRows" :key="r.id" :class="rowClass(r)">
-                <td class="tc-col-check">
-                  <input
-                    v-if="isRowSelectable(r)"
-                    type="checkbox"
-                    :checked="selectedIdSet.has(r.id)"
-                    @change="toggleSelect(r.id, $event.target.checked)"
-                    :aria-label="`選取 ${r.student_name}`"
-                  />
-                </td>
-                <td class="tc-cell-name">
-                  {{ r.student_name }}
-                  <input
-                    v-if="batchMode === 'report' && selectedIdSet.has(r.id) && batchForm.payment_method === 'transfer'"
-                    v-model="batchLast5ById[r.id]"
-                    class="tc-last5-input"
-                    type="text"
-                    inputmode="numeric"
-                    maxlength="5"
-                    placeholder="後5碼"
-                    @click.stop
-                  />
-                </td>
+                <td class="tc-cell-name">{{ r.student_name }}</td>
                 <td>{{ r.subject }}</td>
                 <td class="tc-col-mode">
                   <span class="mode-tag" :class="r.schedule_mode">
@@ -326,7 +254,7 @@
                       :title="overlapWarningTitle(r)"
                     >{{ overlapWarningLabel(r) }}</span>
 
-                    <!-- unpaid / partial: slip + 登記已回報 -->
+                    <!-- unpaid / partial: slip + 核帳登記 -->
                     <span
                       v-if="r.invoice_amount_discrepancy"
                       class="tc-amount-warning"
@@ -855,136 +783,6 @@ const canVoid = computed(() => {
   return ['director', 'admin', 'super_admin'].includes(role);
 });
 
-function formatTodayYmd() {
-  const d = new Date();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${d.getFullYear()}-${m}-${day}`;
-}
-const todayYmd = computed(() => formatTodayYmd());
-
-const selectedIds = ref([]);
-const batchBusy = ref(false);
-const batchLast5ById = ref({});
-const batchForm = ref({
-  payment_date: formatTodayYmd(),
-  payment_method: 'transfer',
-  note: '',
-});
-
-const selectedIdSet = computed(() => new Set(selectedIds.value));
-
-function isRowSelectable(r) {
-  const ps = r?.payment_status;
-  if (activeTab.value === 'pending_report') return ps === 'pending_report' && !!r.latest_payment_report_id;
-  return ps === 'unpaid' || ps === 'partial';
-}
-
-const selectableRows = computed(() => filteredRows.value.filter(isRowSelectable));
-const batchMode = computed(() => (activeTab.value === 'pending_report' ? 'confirm' : 'report'));
-const selectedRows = computed(() => filteredRows.value.filter((r) => selectedIdSet.value.has(r.id)));
-const allVisibleSelected = computed(() => selectableRows.value.length > 0 && selectableRows.value.every((r) => selectedIdSet.value.has(r.id)));
-const someVisibleSelected = computed(() => selectableRows.value.some((r) => selectedIdSet.value.has(r.id)));
-
-function toggleSelect(id, checked) {
-  const next = new Set(selectedIds.value);
-  if (checked) next.add(id);
-  else next.delete(id);
-  selectedIds.value = [...next];
-}
-
-function toggleSelectAll(checked) {
-  if (!checked) {
-    const visible = new Set(selectableRows.value.map((r) => r.id));
-    selectedIds.value = selectedIds.value.filter((id) => !visible.has(id));
-    return;
-  }
-  const next = new Set(selectedIds.value);
-  selectableRows.value.forEach((r) => next.add(r.id));
-  selectedIds.value = [...next];
-}
-
-function clearSelection() {
-  selectedIds.value = [];
-}
-
-watch(activeTab, () => {
-  clearSelection();
-});
-
-async function submitBatchReport() {
-  const rows = selectedRows.value.filter((r) => r.payment_status === 'unpaid' || r.payment_status === 'partial');
-  if (!rows.length) {
-    showToast('請先勾選未繳課程', 'warning');
-    return;
-  }
-  if (rows.length > 40) {
-    showToast('一次最多 40 筆', 'warning');
-    return;
-  }
-  batchBusy.value = true;
-  try {
-    const token = getToken();
-    const resp = await fetch('/api/v1/payment-reports/director-record-batch', {
-      method: 'POST',
-      headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        payment_date: batchForm.value.payment_date,
-        payment_method: batchForm.value.payment_method,
-        note: batchForm.value.note || undefined,
-        entries: rows.map((r) => ({
-          student_class_id: r.id,
-          amount: Number(r.outstanding ?? r.charge ?? 0),
-          account_last5: batchForm.value.payment_method === 'transfer' ? (batchLast5ById.value[r.id] || undefined) : undefined,
-        })),
-      }),
-    });
-    const json = await resp.json().catch(() => ({}));
-    if (!resp.ok && resp.status !== 207) {
-      throw new Error(json.message || `送出失敗（${resp.status}）`);
-    }
-    showToast(json.message || '已送出待對帳');
-    clearSelection();
-    loadAlerts();
-  } catch (e) {
-    showToast(e.message || '批次回報失敗', 'error');
-  } finally {
-    batchBusy.value = false;
-  }
-}
-
-async function submitBatchConfirm() {
-  const rows = selectedRows.value.filter((r) => r.payment_status === 'pending_report' && r.latest_payment_report_id);
-  if (!rows.length) {
-    showToast('請先勾選待核帳課程', 'warning');
-    return;
-  }
-  if (rows.length > 40) {
-    showToast('一次最多 40 筆', 'warning');
-    return;
-  }
-  batchBusy.value = true;
-  try {
-    const token = getToken();
-    const resp = await fetch('/api/v1/payment-reports/confirm-batch', {
-      method: 'POST',
-      headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ids: rows.map((r) => r.latest_payment_report_id) }),
-    });
-    const json = await resp.json().catch(() => ({}));
-    if (!resp.ok && resp.status !== 207) {
-      throw new Error(json.message || `確認失敗（${resp.status}）`);
-    }
-    showToast(json.message || '已確認入帳');
-    clearSelection();
-    loadAlerts();
-  } catch (e) {
-    showToast(e.message || '批次確認失敗', 'error');
-  } finally {
-    batchBusy.value = false;
-  }
-}
-
 // ═══ Payment Status Helpers ═══
 const STATUS_CONFIG = {
   unpaid:           { label: '未繳費',        cls: 'st-unpaid' },
@@ -1499,7 +1297,7 @@ function showToast(msg, type = 'success') {
   ({ error: _toast.error, warning: _toast.warning, success: _toast.success }[type] || _toast.success)(msg);
 }
 
-// ═══ Payment Entry (登記已回報) ═══
+// ═══ Payment Entry (核帳登記) ═══
 const entryOpen = ref(false);
 const entryRow = ref(null);
 
@@ -2233,58 +2031,6 @@ loadAlerts();
 .tc-btn--batch:hover { background: var(--primary-light, rgba(37,99,235,0.08)); border-color: var(--primary); }
 
 .tc-cell-name { font-weight: 500; }
-.tc-col-check {
-  width: 36px;
-  text-align: center;
-  vertical-align: middle;
-}
-.tc-last5-input {
-  display: block;
-  margin-top: 4px;
-  width: 72px;
-  font-size: 12px;
-  padding: 2px 6px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--ds-canvas);
-  color: var(--ds-ink);
-}
-.tc-batch-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 10px;
-  margin: 0 0 12px;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--ds-canvas-soft, var(--bg));
-}
-.tc-batch-count {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ds-ink);
-  margin-right: 4px;
-}
-.tc-batch-field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-light);
-}
-.tc-batch-field input,
-.tc-batch-field select {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--ds-ink);
-  padding: 4px 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--ds-canvas);
-}
-.tc-batch-note { min-width: 160px; flex: 1; }
 
 .tc-col-mode { width: 60px; text-align: center; }
 .tc-col-currency { width: 90px; text-align: right; font-variant-numeric: tabular-nums; font-size: 13px; }

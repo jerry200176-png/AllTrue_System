@@ -178,30 +178,7 @@
               為此學生新增課程
             </button>
           </div>
-          <div
-            v-if="expandedStudentGroups.has(group.key)"
-            class="student-group-view-tabs"
-            role="tablist"
-            aria-label="學生課程與帳務"
-          >
-            <button
-              type="button"
-              class="student-group-view-tab"
-              :class="{ active: studentGroupTab(group.key) === 'courses' }"
-              role="tab"
-              :aria-selected="studentGroupTab(group.key) === 'courses'"
-              @click="setStudentGroupTab(group, 'courses')"
-            >課程資料</button>
-            <button
-              type="button"
-              class="student-group-view-tab"
-              :class="{ active: studentGroupTab(group.key) === 'billing' }"
-              role="tab"
-              :aria-selected="studentGroupTab(group.key) === 'billing'"
-              @click="setStudentGroupTab(group, 'billing')"
-            >帳務資料</button>
-          </div>
-          <div v-if="expandedStudentGroups.has(group.key) && studentGroupTab(group.key) === 'courses'" class="table-wrap group-table-wrap">
+          <div v-if="expandedStudentGroups.has(group.key)" class="table-wrap group-table-wrap">
             <table class="course-table">
               <thead>
                 <tr>
@@ -520,65 +497,6 @@
               </div>
             </div>
           </div>
-          <div
-            v-if="expandedStudentGroups.has(group.key) && studentGroupTab(group.key) === 'billing'"
-            class="table-wrap group-table-wrap student-billing-wrap"
-          >
-            <div v-if="studentBillingState[group.key]?.loading" class="student-billing-state">載入帳務中…</div>
-            <div v-else-if="studentBillingState[group.key]?.error" class="student-billing-state student-billing-error" role="alert">
-              {{ studentBillingState[group.key].error }}
-            </div>
-            <table v-else class="course-table student-billing-table">
-              <thead>
-                <tr>
-                  <th>科目</th>
-                  <th>繳費</th>
-                  <th>最近回報</th>
-                  <th>收據</th>
-                  <th class="col-actions">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-if="!(studentBillingState[group.key]?.rows || []).length">
-                  <td colspan="5" class="student-billing-state">此學生目前沒有課程可對帳</td>
-                </tr>
-                <tr v-for="row in (studentBillingState[group.key]?.rows || [])" :key="row.course.id">
-                  <td>
-                    <div class="subject-line">
-                      <span class="tag subject-tag">{{ getSubjectLabel(row.course.subject) }}</span>
-                    </div>
-                    <div class="price-line">應繳 ${{ formatMoney(row.course.Charge ?? row.course.charge ?? 0) }}</div>
-                  </td>
-                  <td>
-                    <span :class="['small', 'btn-status', paymentStatusButtonClass(row.course)]">{{ paymentStatusButtonLabel(row.course) }}</span>
-                  </td>
-                  <td>
-                    <template v-if="row.reports?.[0]">
-                      {{ row.reports[0].payment_date || '—' }}
-                      · {{ reportStatusLabel(row.reports[0].status) }}
-                      <span v-if="row.reports[0].account_last5"> · {{ row.reports[0].account_last5 }}</span>
-                    </template>
-                    <span v-else class="hint">尚無回報</span>
-                  </td>
-                  <td>
-                    <span v-if="row.reports?.some((r) => r.status === 'confirmed')" class="hint">確認入帳後可開</span>
-                    <span v-else class="hint">待會計確認</span>
-                  </td>
-                  <td class="cell-actions">
-                    <div class="action-btns-row">
-                      <button
-                        v-if="row.course.payment_status !== 'paid' && row.course.payment_status !== 'pending_report'"
-                        class="small primary"
-                        type="button"
-                        @click="togglePaymentStatus(row.course)"
-                      >登記已回報</button>
-                      <button class="small ghost btn-invoices" type="button" @click="openInvoiceModal(row.course)">帳單/對帳</button>
-                    </div>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
         </section>
       </div>
       <div v-else class="empty-state">
@@ -813,7 +731,7 @@
     />
     <ToastWithUndo ref="toastRef" />
 
-    <!-- Payment Entry Modal — 登記已回報（待對帳，確認入帳後才已繳費） -->
+    <!-- Payment Entry Modal — 核帳登記（未繳費→已繳費必須填繳款日期） -->
     <PaymentEntryModal
       :show="paymentEntryOpen"
       :row="paymentEntryRow"
@@ -913,7 +831,7 @@
                       class="small primary invoice-pay-btn"
                       type="button"
                       @click="openPaymentEntryForInvoice(inv)"
-                    >登記已回報</button>
+                    >核帳</button>
                     <button
                       v-if="canVoidInvoice(inv)"
                       class="small ghost invoice-void-btn"
@@ -3017,21 +2935,11 @@ const coursesBySubject = computed(() => {
 });
 
 const paymentStatusButtonClass = (course) => {
-  if (course?.payment_status === 'paid') return 'tag-paid';
-  if (course?.payment_status === 'pending_report') return 'tag-pending-report';
-  return 'tag-unpaid';
+  return course?.payment_status === 'paid' ? 'tag-paid' : 'tag-unpaid';
 };
 const paymentStatusButtonLabel = (course) => {
-  if (course?.payment_status === 'paid') return '已繳費';
-  if (course?.payment_status === 'pending_report') return '待對帳';
-  if (course?.payment_status === 'partial') return '部分繳';
-  return '未繳費';
+  return course?.payment_status === 'paid' ? '已繳費' : '未繳費';
 };
-const reportStatusLabel = (status) => ({
-  pending: '待對帳',
-  confirmed: '已入帳',
-  rejected: '已退回',
-}[status] || status || '—');
 
 const formatMoney = (value) => {
   const n = Number(value ?? 0);
@@ -3419,12 +3327,7 @@ const onSubstituteV2Submit = async (submitPayload) => {
 const togglePaymentStatus = async (c) => {
   if (!c?.id) return;
 
-  if (c.payment_status === 'pending_report') {
-    alert('此課程已有待對帳回報，請到帳務中心確認入帳或退回後再登錄。');
-    return;
-  }
-
-  // 未繳費 → 已回報：走登記 Modal（強制填繳款日期）；確認入帳後才變已繳費
+  // 未繳費 → 已繳費：一律走核帳登記 Modal（強制填繳款日期）
   if (c.payment_status !== 'paid') {
     paymentEntryRow.value = {
       id: c.id,
@@ -3483,11 +3386,6 @@ const onPaymentEntryConfirmed = async () => {
   }
   alert('已送出待對帳。會計確認入帳後才會開電子收據。');
   await loadCourses();
-  for (const group of visibleGroups.value || []) {
-    if (studentGroupTab(group.key) === 'billing') {
-      await loadStudentGroupBilling(group);
-    }
-  }
 };
 
 const loadStudents = async () => {
@@ -3832,8 +3730,6 @@ const paymentEntryOpen = ref(false);
 const paymentEntryRow = ref(null);
 const ledgerOpen = ref(false);
 const ledgerStudentClassId = ref(null);
-const studentGroupTabs = ref({});
-const studentBillingState = ref({});
 const invoiceModalOpen = ref(false);
 const invoiceModalCourse = ref(null);
 const invoiceModalList = ref([]);
@@ -3846,56 +3742,6 @@ const invoiceVoidSubmitting = ref(false);
 
 const closeInvoiceModal = () => {
   invoiceModalOpen.value = false;
-};
-
-const studentGroupTab = (key) => studentGroupTabs.value[key] || 'courses';
-
-const setStudentGroupTab = async (group, tab) => {
-  studentGroupTabs.value = { ...studentGroupTabs.value, [group.key]: tab };
-  if (tab === 'billing') {
-    await loadStudentGroupBilling(group);
-  }
-};
-
-const loadStudentGroupBilling = async (group) => {
-  const key = group?.key;
-  if (!key) return;
-  studentBillingState.value = {
-    ...studentBillingState.value,
-    [key]: { loading: true, error: '', rows: studentBillingState.value[key]?.rows || [] },
-  };
-  try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
-    if (!token) {
-      studentBillingState.value = {
-        ...studentBillingState.value,
-        [key]: { loading: false, error: '請重新登入後再查看帳務。', rows: [] },
-      };
-      return;
-    }
-    const courses = [...activeCourses(group), ...historyCourses(group)];
-    const rows = await Promise.all(courses.map(async (c) => {
-      const headers = { Accept: 'application/json', Authorization: `Bearer ${token}` };
-      const [invRes, rptRes] = await Promise.all([
-        fetch(`/api/v1/student-classes/${c.id}/invoices`, { credentials: 'include', headers }),
-        fetch(`/api/v1/payment-reports?student_class_id=${c.id}`, { credentials: 'include', headers }),
-      ]);
-      const invJson = await invRes.json().catch(() => ({}));
-      const rptJson = await rptRes.json().catch(() => ({}));
-      return {
-        course: c,
-        invoices: Array.isArray(invJson?.invoices) ? invJson.invoices : [],
-        reports: Array.isArray(rptJson?.data) ? rptJson.data : [],
-      };
-    }));
-    studentBillingState.value = { ...studentBillingState.value, [key]: { loading: false, error: '', rows } };
-  } catch (e) {
-    studentBillingState.value = {
-      ...studentBillingState.value,
-      [key]: { loading: false, error: e?.message || '帳務載入失敗，請稍後再試。', rows: [] },
-    };
-  }
 };
 
 const openLedgerForCourse = (course) => {
@@ -4919,35 +4765,6 @@ onUnmounted(() => {
   background: var(--ds-canvas-soft);
   border-bottom: 1px solid var(--ds-hairline);
 }
-
-.student-group-view-tabs {
-  display: flex;
-  gap: 0;
-  padding: 0 12px;
-  background: var(--ds-canvas-soft);
-  border-bottom: 1px solid var(--ds-hairline);
-}
-.student-group-view-tab {
-  border: none;
-  background: transparent;
-  color: var(--ds-ink-secondary);
-  font-size: 13px;
-  font-weight: 600;
-  padding: 8px 12px;
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-}
-.student-group-view-tab.active {
-  color: var(--ds-ink);
-  border-bottom-color: var(--ds-primary);
-}
-.student-billing-state {
-  padding: 16px 12px;
-  color: var(--ds-ink-secondary);
-  font-size: 13px;
-}
-.student-billing-error { color: var(--ds-danger); }
-.student-billing-table { min-width: 640px; }
 
 .student-group-add-btn {
   font-size: 12.5px;
@@ -6442,16 +6259,6 @@ button.danger:disabled {
   background: #fff3e0;
   color: #e65100;
   border: 1px solid #ffcc80;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  padding: 3px 10px;
-}
-.tag-pending-report {
-  background: var(--ds-warning-wash, #fff8e1);
-  color: #8a6d1b;
-  border: 1px solid var(--ds-warning, #f0c36d);
   border-radius: 6px;
   font-size: 12px;
   font-weight: 600;

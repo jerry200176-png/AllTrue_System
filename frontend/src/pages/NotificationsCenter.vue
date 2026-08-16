@@ -44,11 +44,11 @@
     />
 
     <template v-else>
-      <!-- 登記已回報 Modal（待對帳，非立刻已繳） -->
+      <!-- 核帳確認 Modal -->
       <div v-if="tuitionModal.visible" class="modal-overlay" @click.self="tuitionModal.visible = false">
         <div class="modal-box payment-modal">
-          <h3>登記已回報</h3>
-          <p class="modal-desc">依家長回報填寫；送出後仍是未繳費，等會計對到帳才入帳開收據。</p>
+          <h3>核帳登記</h3>
+          <p class="modal-desc">請依實際入帳資訊填寫，系統會同步更新催繳與通知狀態。</p>
           <div class="modal-item-name">
             <span><strong>學生</strong>{{ tuitionPaymentRow.student_name || '-' }}</span>
             <span><strong>科目</strong>{{ tuitionPaymentRow.subject || '學費' }}</span>
@@ -91,11 +91,11 @@
               繳費金額 <span class="required">*</span>
               <input v-model.number="tuitionModal.form.amount" type="number" required min="0" max="999999" step="1" />
             </label>
-            <p v-if="Number(tuitionModal.form.amount || 0) === 0" class="modal-hint">免費課程，金額為 NT$ 0，送出後仍待對帳。</p>
+            <p v-if="Number(tuitionModal.form.amount || 0) === 0" class="modal-hint">免費課程，金額為 NT$ 0，確認後會標記為已結算。</p>
 
             <label class="modal-field">
               備註（選填）
-              <textarea v-model="tuitionModal.form.note" rows="2" placeholder="例如：官方 LINE 已回報"></textarea>
+              <textarea v-model="tuitionModal.form.note" rows="2" placeholder="例如：通知中心核帳"></textarea>
             </label>
 
             <div v-if="tuitionModal.error" class="modal-error">{{ tuitionModal.error }}</div>
@@ -103,7 +103,7 @@
             <div class="modal-actions">
               <AtButton shape="rect" size="sm" variant="ghost" type="button" @click="tuitionModal.visible = false">取消</AtButton>
               <AtButton shape="rect" size="sm" variant="primary" type="submit" :loading="tuitionModal.processing" :disabled="tuitionModal.processing">
-                {{ tuitionModal.processing ? '處理中...' : '送出已回報' }}
+                {{ tuitionModal.processing ? '處理中...' : '確認已繳費' }}
               </AtButton>
             </div>
           </form>
@@ -1046,12 +1046,12 @@ const confirmTuitionPaid = async () => {
       }),
     });
     const json = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(json?.message || '送出已回報失敗');
+    if (!res.ok) throw new Error(json?.message || '更新繳費狀態失敗');
 
     tuitionModal.value.visible = false;
     await syncNotifications(false);
   } catch (err) {
-    tuitionModal.value.error = err.message || '送出已回報失敗';
+    tuitionModal.value.error = err.message || '更新繳費狀態失敗';
   } finally {
     setMarkingTuitionPaid(item.id, false);
     tuitionModal.value.processing = false;
