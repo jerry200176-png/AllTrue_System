@@ -1,3 +1,10 @@
+## 2026-08-16 — feat(billing): 行政登錄已回報，會計確認後才入帳開收據 (#1827)
+
+<!-- release-notes: staff_update=staff-2026-08-16-reported-paid-pending -->
+
+- 行政在課程管理／收費頁「登記已回報」後，課程仍是未繳費（待對帳），不會立刻變已繳或開收據。
+- 會計在催繳名單對「待核帳」按確認入帳後，才標記已繳並可開電子收據；對不到款可退回。
+
 ## 2026-08-16 — docs(arch): 行政已回報與會計入帳核銷拆分計畫（#1827）
 
 <!-- release-notes: silent_ship=silent-2026-08-16-reported-paid-accounting-split-rfc -->

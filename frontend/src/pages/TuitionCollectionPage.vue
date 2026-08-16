@@ -268,9 +268,9 @@
                         <span class="material-symbols-outlined">receipt_long</span>
                         繳費單
                       </button>
-                      <button class="tc-btn tc-btn--confirm" @click="openPaymentEntry(r)" title="核帳登記" :disabled="actionLoading === r.id">
+                      <button class="tc-btn tc-btn--confirm" @click="openPaymentEntry(r)" title="登記已回報" :disabled="actionLoading === r.id">
                         <span class="material-symbols-outlined">check_circle</span>
-                        核帳登記
+                        登記已回報
                       </button>
                     </template>
 
@@ -1306,15 +1306,9 @@ function openPaymentEntry(row) {
   entryOpen.value = true;
 }
 
-function onEntryConfirmed(result) {
+function onEntryConfirmed(_result) {
   entryOpen.value = false;
-  showToast('已完成核帳登記');
-
-  if (result?.report_id) {
-    receiptReportId.value = result.report_id;
-    receiptOpen.value = true;
-  }
-
+  showToast('已送出待對帳，請會計確認入帳後才會開收據');
   loadAlerts();
 }
 
@@ -1337,6 +1331,10 @@ async function confirmReport(row) {
       throw new Error(err.message || `操作失敗（${resp.status}）`);
     }
     showToast('已確認入帳');
+    if (row.latest_payment_report_id) {
+      receiptReportId.value = row.latest_payment_report_id;
+      receiptOpen.value = true;
+    }
     loadAlerts();
   } catch (e) {
     showToast(e.message || '確認入帳失敗', 'error');

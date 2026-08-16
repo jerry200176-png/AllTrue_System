@@ -1,13 +1,13 @@
 ---
 owner: jerry (CEO)
-status: Draft plan — Phase 0 docs only; Phase 1/2 DEV in follow-up PRs
+status: Phase 1 in this PR; Phase 2 not started
 review_cycle: as-needed
 last_reviewed: 2026-08-16
 ---
 
 # RFC: 行政已回報 ≠ 會計已入帳（繳費狀態拆分）
 
-> **Status:** Founder 已拍板兩階段順序；本檔是架構邊界，**本 PR 不含產品行為變更**。  
+> **Status:** Phase 1 實作中（行政登錄 = pending；confirm 才 Paid／收據）。Phase 2 尚未開始。  
 > **Date:** 2026-08-16  
 > **Issue:** [#1827](https://github.com/jerry200176-png/AllTrue_System/issues/1827)  
 > **Debt / lessons:** `docs/TECH_DEBT.md` TD-080 · F7 / R95 已繳費雙真相 · `docs/DIRECTOR_PAYMENT_ALERT_RULES.md`  

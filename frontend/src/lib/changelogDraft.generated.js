@@ -5,6 +5,28 @@
  */
 export const changelogDraftNotes = [
   {
+    "version": "2026.08.16",
+    "date": "2026-08-16",
+    "title": "2026.08.16 草稿（未發布）",
+    "summary": "行政登錄已回報，會計確認後才入帳開收據",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "行政登錄已回報，會計確認後才入帳開收據"
+        ]
+      }
+    ],
+    "items": [
+      "行政登錄已回報，會計確認後才入帳開收據"
+    ]
+  },
+  {
     "version": "2026.08.15",
     "date": "2026-08-15",
     "title": "2026.08.15 草稿（未發布）",
@@ -512,46 +534,6 @@ export const changelogDraftNotes = [
       "堂數制請假改為保留未來日期、只補尾堂",
       "Foundation + 主任收件匣 pilot",
       "學生列表 UI Foundation pilot (B)"
-    ]
-  },
-  {
-    "version": "2026.07.24",
-    "date": "2026-07-24",
-    "title": "2026.07.24 草稿（未發布）",
-    "summary": "Continuity 群組 MVP；修正行事曆課程合併邏輯，避免課程重複出現或突然消失",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "新增內容",
-        "items": [
-          "Continuity 群組 MVP"
-        ]
-      },
-      {
-        "title": "修正內容",
-        "items": [
-          "修正行事曆課程合併邏輯，避免課程重複出現或突然消失",
-          "調課後課表穩定（系列契約 vs 單堂例外）"
-        ]
-      },
-      {
-        "title": "其他改善",
-        "items": [
-          "登入頁恢復 前視覺",
-          "頁改吃 DS tokens"
-        ]
-      }
-    ],
-    "items": [
-      "Continuity 群組 MVP",
-      "修正行事曆課程合併邏輯，避免課程重複出現或突然消失",
-      "調課後課表穩定（系列契約 vs 單堂例外）",
-      "登入頁恢復 前視覺",
-      "頁改吃 DS tokens"
     ]
   }
 ];
