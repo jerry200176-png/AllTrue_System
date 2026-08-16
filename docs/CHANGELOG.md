@@ -5,6 +5,13 @@
 - 課程管理同一學生可切「帳務資料」，不必再到收費頁重搜姓名。
 - 收費頁可勾選多筆批次回報或確認入帳；批次確認不會自動開收據。
 
+## 2026-08-16 — fix(reports): 代課老師填報率計入代課老師
+
+<!-- release-notes: staff_update=staff-2026-08-16-fillrate-substitute-absent-copy -->
+
+- 主任「評量填寫率」改與課表同一套代課解析，代課堂次計入代課老師，不再算在原契約老師或消失。
+- 點名確認：缺席改為不扣堂、不順延；請假仍不扣堂並順延。
+
 ## 2026-08-16 — feat(billing): 通知中心與批次 API 改待對帳 (#1827)
 
 <!-- release-notes: staff_update=staff-2026-08-16-reported-paid-notif -->
