@@ -1,3 +1,9 @@
+## 2026-08-17 — docs: 重複功能清理 A→B→C 執行計畫
+
+<!-- release-notes: silent_ship=silent-2026-08-17-dup-cleanup-plan -->
+
+新增 [`docs/plans/DUP_FEATURE_CLEANUP_ABC_2026-08-17.md`](plans/DUP_FEATURE_CLEANUP_ABC_2026-08-17.md) 與 TD-082；產品行為不變。
+
 ## 2026-08-17 — fix(billing): 帳務對帳改白話，拿掉技術符號
 
 <!-- release-notes: staff_update=staff-2026-08-17-billing-human-copy -->
