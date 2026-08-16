@@ -74,6 +74,42 @@ class FulltimeSettlementComposerTest extends TestCase
         $this->assertSame(100.0, $result['multiplier_pct']);
     }
 
+    public function test_screenshot_row_formula_without_unspecified_cash_adjustments(): void
+    {
+        $components = [
+            'weekly_16_segments' => ['status' => 'qualifies', 'amount' => 4000, 'rate' => 0],
+            'holiday_16_hours' => ['status' => 'qualifies', 'amount' => 0, 'rate' => 10],
+            'weekday_afternoon' => ['status' => 'qualifies', 'amount' => 0, 'rate' => 4.5],
+            'special_performance' => ['status' => 'qualifies', 'amount' => 0, 'rate' => 0],
+            'deductions' => ['status' => 'qualifies', 'amount' => 0, 'rate' => 0],
+            'subject_count_bonus' => [
+                'status' => 'qualifies', 'amount' => 0, 'rate' => 0,
+                'metrics' => [
+                    'subject_count' => 5.625,
+                    'subject_count_bonus' => 0,
+                    'one_to_three_bonus' => 450,
+                    'regular_subject_count' => 5.25,
+                    'tutoring_trial_subject_count' => 0.375,
+                    'one_to_three_count' => 4.5,
+                ],
+            ],
+        ];
+
+        $result = FulltimeSettlementComposer::compose($components, 30000.0, [
+            'regular' => 5.25,
+            'tutoring_trial' => 0.375,
+            'one_to_three' => 4.5,
+            'payroll_total' => 5.625,
+        ]);
+
+        $this->assertSame(114.5, $result['multiplier_pct']);
+        $this->assertSame(515.25, $result['weighted_bonus_amount']);
+        $this->assertSame(34515.25, $result['total_payout']);
+        $this->assertSame(0.0, $result['subject_count_bonus']);
+        $this->assertSame(450.0, $result['one_to_three_bonus']);
+        $this->assertSame([['label' => '16段課', 'amount' => 4000.0]], $result['adjustments']);
+    }
+
     public function test_missing_base_salary_defaults_to_zero_not_error(): void
     {
         $result = FulltimeSettlementComposer::compose([], null);

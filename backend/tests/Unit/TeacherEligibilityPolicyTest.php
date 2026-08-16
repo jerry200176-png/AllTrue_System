@@ -51,22 +51,21 @@ class TeacherEligibilityPolicyTest extends TestCase
         $this->assertSame(1000, $result['amount']);
     }
 
-    public function test_holiday_leave_preserves_multiplier_without_creating_missing_hours(): void
+    public function test_holiday_leave_can_offset_short_regular_hours_to_keep_ten_percent(): void
     {
         $pass = $this->policy->holiday16([
-            ['date' => '2026-08-01', 'regular_scheduled_hours' => 16, 'worked_hours' => 8, 'holiday_leave_hours' => 8],
+            ['date' => '2026-08-01', 'regular_scheduled_hours' => 8, 'worked_hours' => 8, 'holiday_leave_hours' => 8],
             ['date' => '2026-08-02', 'regular_scheduled_hours' => 16, 'worked_hours' => 16, 'holiday_leave_hours' => 0],
         ]);
         $fail = $this->policy->holiday16([
-            ['date' => '2026-08-01', 'regular_scheduled_hours' => 8, 'worked_hours' => 8, 'holiday_leave_hours' => 8],
+            ['date' => '2026-08-01', 'regular_scheduled_hours' => 8, 'worked_hours' => 8, 'holiday_leave_hours' => 4],
             ['date' => '2026-08-02', 'regular_scheduled_hours' => 16, 'worked_hours' => 16, 'holiday_leave_hours' => 0],
         ]);
 
         $this->assertSame(10.0, $pass['rate']);
         $this->assertSame(0, $fail['rate']);
         $this->assertSame(TeacherEligibilityPolicy::NOT_QUALIFIES, $fail['status']);
-        $this->assertSame('neutral_not_added_to_multiplier', $pass['metrics']['holiday_leave_effect']);
-        $this->assertSame(16.0, $pass['metrics']['regular_scheduled_hours']['2026-08-01']);
+        $this->assertSame('offsets_toward_required_hours', $pass['metrics']['holiday_leave_effect']);
     }
 
     public function test_holiday_multiplier_requires_regular_schedule_baseline(): void
@@ -249,13 +248,15 @@ class TeacherEligibilityPolicyTest extends TestCase
         $this->assertSame(0, $result['amount']);
     }
 
-    public function test_fractional_subject_count_is_reviewed_without_rounding_to_a_table_row(): void
+    public function test_fractional_subject_count_interpolates_adjacent_table_rows(): void
     {
-        $result = $this->policy->subjectCountBonus(20.25);
+        $result = $this->policy->subjectCountBonus(5.625, 4.5);
 
-        $this->assertSame(TeacherEligibilityPolicy::REVIEW, $result['status']);
-        $this->assertContains('subject_count_table', $result['missing_fields']);
-        $this->assertSame(20.25, $result['metrics']['subject_count']);
+        $this->assertSame(TeacherEligibilityPolicy::QUALIFIES, $result['status']);
+        $this->assertSame(0, $result['metrics']['subject_count_bonus']);
+        $this->assertEquals(450, $result['metrics']['one_to_three_bonus']);
+        $this->assertEquals(5.625, $result['metrics']['subject_count']);
+        $this->assertEquals(4.5, $result['metrics']['one_to_three_count']);
     }
 
     public function test_missing_holiday_calendar_is_review_instead_of_no_holiday_zero(): void
