@@ -165,30 +165,6 @@
               <span v-if="historyCourses(group).length" class="student-group-history-count">{{ historyCourses(group).length }} 筆歷史</span>
             </span>
             <div class="student-group-header-actions">
-              <div
-                class="student-group-view-tabs"
-                role="tablist"
-                aria-label="學生課程與帳務"
-                @click.stop
-                @keydown.stop
-              >
-                <button
-                  type="button"
-                  class="student-group-view-tab"
-                  :class="{ active: studentGroupTab(group.key) === 'courses' }"
-                  role="tab"
-                  :aria-selected="studentGroupTab(group.key) === 'courses'"
-                  @click.stop="selectStudentGroupTab(group, 'courses', $event)"
-                >課程</button>
-                <button
-                  type="button"
-                  class="student-group-view-tab"
-                  :class="{ active: studentGroupTab(group.key) === 'billing' }"
-                  role="tab"
-                  :aria-selected="studentGroupTab(group.key) === 'billing'"
-                  @click.stop="selectStudentGroupTab(group, 'billing', $event)"
-                >帳務</button>
-              </div>
               <button
                 class="focus-btn"
                 :class="{ active: focusedStudentKey === group.key }"
@@ -197,6 +173,33 @@
                 :title="focusedStudentKey === group.key ? '取消專注' : '專注此學生'"
               >⊙</button>
             </div>
+          </div>
+          <div
+            class="student-group-view-tabs"
+            role="tablist"
+            aria-label="學生課程與帳務"
+            data-testid="student-group-view-tabs"
+            @click.stop
+            @keydown.stop
+          >
+            <button
+              type="button"
+              class="student-group-view-tab"
+              :class="{ active: studentGroupTab(group.key) === 'courses' }"
+              role="tab"
+              data-testid="student-tab-courses"
+              :aria-selected="studentGroupTab(group.key) === 'courses'"
+              @click.stop="selectStudentGroupTab(group, 'courses', $event)"
+            >課程資料</button>
+            <button
+              type="button"
+              class="student-group-view-tab"
+              :class="{ active: studentGroupTab(group.key) === 'billing' }"
+              role="tab"
+              data-testid="student-tab-billing"
+              :aria-selected="studentGroupTab(group.key) === 'billing'"
+              @click.stop="selectStudentGroupTab(group, 'billing', $event)"
+            >帳務資料</button>
           </div>
           <div v-if="expandedStudentGroups.has(group.key)" class="student-group-add-row">
             <button type="button" class="btn-soft student-group-add-btn" @click="openBackfillModalForGroup(group)">
@@ -4941,28 +4944,27 @@ onUnmounted(() => {
 }
 
 .student-group-view-tabs {
-  display: inline-flex;
-  flex-shrink: 0;
+  display: flex;
+  width: 100%;
   gap: 0;
-  padding: 0;
+  padding: 0 10px;
   background: var(--ds-canvas);
-  border: 1px solid var(--ds-hairline);
-  border-radius: 8px;
-  overflow: hidden;
+  border-top: 1px solid var(--ds-hairline);
 }
 .student-group-view-tab {
+  flex: 1;
   border: none;
   background: transparent;
-  color: var(--ds-ink-secondary);
-  font-size: 13px;
+  color: var(--ds-ink);
+  font-size: 15px;
   font-weight: 700;
-  padding: 6px 12px;
+  padding: 11px 12px;
   cursor: pointer;
 }
 .student-group-view-tab.active {
   color: var(--ds-ink);
-  background: var(--ds-primary-wash, var(--ds-canvas-soft));
-  box-shadow: inset 0 -2px 0 var(--ds-primary);
+  background: var(--ds-primary-wash);
+  box-shadow: inset 0 -3px 0 var(--ds-primary);
 }
 .student-billing-state {
   padding: 16px 12px;
