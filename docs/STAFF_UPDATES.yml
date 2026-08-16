@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-17-billing-scan-density
+    published_at: "2026-08-17"
+    audiences:
+      - director
+    importance: digest
+    title: 對帳畫面比較好掃
+    summary: 帳單與收款分開看；摘要變精簡，勾選後批次列會跟著畫面。
+    items:
+      - category: improved
+        text: 學生對帳先看帳單列，點開才看收款明細。
+      - category: improved
+        text: 帳務中心勾選多筆後，操作列會貼在上方方便確認。
+    source_refs:
+      - "changelog:2026-08-17:billing-scan-density"
+
   - id: staff-2026-08-17-billing-human-copy
     published_at: "2026-08-17"
     audiences:

@@ -58,8 +58,8 @@
     </div>
 
     <template v-else>
-      <!-- Summary cards -->
-      <div class="tc-summary" v-if="rows.length">
+      <!-- Compact metric strip (Carbon/Fluent ops density) -->
+      <div class="tc-summary tc-summary--strip" v-if="rows.length" aria-label="催繳摘要">
         <div class="tc-card tc-card--total">
           <span class="tc-card-num">{{ rows.length }}</span>
           <span class="tc-card-label">筆提醒</span>
@@ -70,8 +70,7 @@
         </div>
         <div class="tc-card tc-card--overdue">
           <span class="tc-card-num">{{ overdueRows.length }}</span>
-          <span class="tc-card-label">逾期</span>
-          <span class="tc-card-sub">{{ formatCurrency(overdueTotal) }}</span>
+          <span class="tc-card-label">逾期 {{ formatCurrency(overdueTotal) }}</span>
         </div>
         <div class="tc-card tc-card--warn">
           <span class="tc-card-num">{{ statusCounts.pending_report }}</span>
@@ -145,12 +144,9 @@
           </div>
         </div>
 
-        <p v-if="!selectedRows.length && filteredRows.length" class="tc-batch-hint">
-          勾選最左欄後才會出現批次回報或確認列。
-        </p>
         <div
           v-if="selectedRows.length"
-          class="tc-batch-bar"
+          class="tc-batch-bar tc-batch-bar--sticky"
           role="region"
           :aria-label="batchMode === 'confirm' ? '批次確認入帳' : '今日批次回報'"
         >
@@ -1947,6 +1943,30 @@ loadAlerts();
   margin-bottom: 10px;
   flex-wrap: wrap;
 }
+.tc-summary--strip {
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.tc-summary--strip .tc-card {
+  padding: 6px 12px;
+  border-radius: 8px;
+}
+.tc-summary--strip .tc-card-num {
+  font-size: 16px;
+}
+.tc-summary--strip .tc-card-label {
+  font-size: 12px;
+}
+.tc-summary--strip .tc-card--outstanding .tc-card-num,
+.tc-summary--strip .tc-card--success .tc-card-num,
+.tc-summary--strip .tc-card--info .tc-card-num {
+  font-size: 15px;
+}
+.tc-summary--strip .tc-rate {
+  display: inline;
+  margin-left: 4px;
+  margin-top: 0;
+}
 .tc-summary-note {
   margin: 0 0 18px;
   color: var(--text-light);
@@ -2254,12 +2274,6 @@ loadAlerts();
   background: var(--ds-canvas);
   color: var(--ds-ink);
 }
-.tc-batch-hint {
-  margin: 0 0 10px;
-  font-size: 12px;
-  line-height: 1.45;
-  color: var(--ds-ink-secondary);
-}
 .tc-batch-bar {
   display: flex;
   flex-wrap: wrap;
@@ -2270,6 +2284,12 @@ loadAlerts();
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--ds-canvas-soft, var(--bg));
+}
+.tc-batch-bar--sticky {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.06);
 }
 .tc-batch-count {
   font-size: 13px;
