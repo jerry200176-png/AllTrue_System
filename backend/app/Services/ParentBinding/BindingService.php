@@ -96,7 +96,8 @@ final class BindingService
     {
         $correlationId = $this->observability->newCorrelationId($correlationId);
 
-        $student = Student::query()->find($studentId);
+        /** @var \App\Models\Student|null $student */
+        $student = Student::query()->whereKey($studentId)->first();
         $result = $this->classifier->classifyLineStudentId($student, '', $campusId);
 
         // For create, we use a simpler check — just verify student exists in campus
@@ -241,7 +242,7 @@ final class BindingService
         $conflictedLineUsers = DB::table('student_line_bindings')
             ->select('line_user_id')
             ->groupBy('line_user_id')
-            ->having(DB::raw('COUNT(DISTINCT campus_id)'), '>', 1)
+            ->havingRaw('COUNT(DISTINCT campus_id) > 1')
             ->pluck('line_user_id');
 
         if ($conflictedLineUsers->isEmpty()) {
