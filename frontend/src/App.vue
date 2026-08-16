@@ -293,6 +293,14 @@
         @skip="onPinSkip"
         @dismiss="onPinDismiss"
       />
+      <div
+        v-if="pinModalActive"
+        class="pin-gate-placeholder"
+        role="status"
+      >
+        <p class="pin-gate-placeholder-title">此頁需要 PIN 才能查看</p>
+        <p class="pin-gate-placeholder-body">帳務中心、當月學收、薪資與老師管理會先解鎖。請在中央視窗輸入 PIN，或按「暫不啟用，直接進入」。解鎖前名單不會載入，避免敏感資料露在背景。</p>
+      </div>
       <DirectorDashboard v-if="!isPasswordChangeLocked && isDirector && active === 'director'" :branch-id="currentBranch" :unread-feedback-count="unreadFeedbackCount" :initial-engagement="userProfile?.engagement ?? null" :focus-workflow-id="directorFocusWorkflowId" :focus-section="directorFocusSection" @navigate="onNavigateFromNotifications" />
       <NotificationsCenter
         v-if="!isPasswordChangeLocked && isDirector && active === 'notifications'"
@@ -2478,6 +2486,28 @@ function formatBuildTime(rawIso) {
 
 .nav-label {
   min-width: 0;
+}
+
+.pin-gate-placeholder {
+  max-width: 40rem;
+  margin: 2rem auto;
+  padding: 20px 18px;
+  border: 1px solid var(--ds-hairline);
+  border-radius: 12px;
+  background: var(--ds-canvas);
+  box-shadow: var(--ds-shadow-1);
+}
+.pin-gate-placeholder-title {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ds-ink);
+}
+.pin-gate-placeholder-body {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ds-ink-secondary);
 }
 
 .main-topbar {
