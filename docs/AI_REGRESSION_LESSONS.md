@@ -851,7 +851,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 - **觸發情境**：2026-05-23 in-app #125 / GitHub #495：沈宇璿評量提交 409，原因是先前因「一般請假」自動連動 cascade void 了 LR，但同堂 ClassSession 後續又被改回 `attended/scheduled`，DB 留下 `VoidedAt!=NULL` 但堂次活著的孤兒 LR。
 - **2026-05-31 延伸 in-app #146 / GitHub #618**：陳嘉軒 5/31 12:30-14:30（LR#7737, CS#9426）評量被作廢無法填寫。根因同類但 **VoidReason 不只「一般請假」**：`ClassSessionController` attended→scheduled 以 `voidAttendanceArtifacts('由已上調整狀態')` 作廢並沖回堂數；之後 scheduled→attended 走 generic 分支不還原（`restoreVoidedLearningRecord` 僅 `leave→attended` 觸發）。原 `=== '一般請假'` 字串相等判斷漏掉 `'由已上調整狀態'` → 老師永久 409。
-- **強制規則**：`LearningRecordController::store()` 遇到既有 LR `VoidedAt!=NULL` 時，必須檢查 `VoidReason` 屬 **`SYSTEM_RESURRECTABLE_VOID_REASONS` 白名單**（`一般請假`/`由已上調整狀態`/`補請假：已上課改請假`/`單堂標記請假`，皆為系統 cascade 作廢且作廢當下已沖回堂數或該堂未扣堂）且 `ClassSession.Status` 屬於 fillable（`attended/scheduled/completed/late`）→ 自動 resurrect（清 void 欄位、轉 `pending`、用新 payload 覆寫）；其他情境（手動作廢、真實取消 / leave）維持 409 拒絕。**新增系統作廢原因時，務必同步加入此白名單**（用 `in_array` 不要再寫死單一字串）。
+- **強制規則**：`LearningRecordController::store()` 遇到既有 LR `VoidedAt!=NULL` 時，必須檢查 `VoidReason` 屬 **`SYSTEM_RESURRECTABLE_VOID_REASONS` 白名單**（`一般請假`/`由已上調整狀態`/`補請假：已上課改請假`/`單堂標記請假`，皆為系統 cascade 作廢且作廢當下已沖回堂數或該堂未扣堂）且 `ClassSession.Status` 屬於 fillable（`attended/scheduled/completed/late`）→ 自動 resurrect（清 void 欄位、轉 `pending`、用新 payload 覆寫）；其他情境（手動作廢、真實取消 / leave）維持 409 拒絕。**新增系統作廢原因時，務必同步加入此白名單**（用 `in_array` 不要再寫死單一字串）。**`ClassSessionController` scheduled→attended/late 與點名寫入路徑也必須呼叫同一份 `restoreEligibleForSession`**，不可只靠老師重送 store（張韙 2026-08-14：attended→scheduled→attended 後老師端沒有草稿可點）。
 - **測試必補**：`LearningRecordVoidedResurrectTest`：(1) cascade voided（一般請假）+ 堂次 attended → 200 + LR 復活 (2) 手動作廢（VoidReason 非白名單）仍 409 (3) 堂次仍 leave/cancelled 仍 409 (4) #146：`由已上調整狀態` + 堂次 attended → 200 + 復活 + `SessionDeducted=false`。
 - **副作用提醒**：resurrect 後不可自動再扣 `RemainingSessions`（扣堂仍走 `LearningRecord approved → AttendanceEffectsService` 路徑）；本規則只是把卡關打開，不改業務語意。白名單原因在作廢時都已沖回堂數，resurrect→pending→核准會 net-correct 扣 1 堂。
 - **2026-07-28 結構性補強**：架構稽核複查發現 `ClassSessionController::restoreVoidedLearningRecord()`（leave→attended 自動復活路徑）從未檢查 `VoidReason`，只要 session 曾經是 `leave` 現在轉回 attended-like，就無條件復活該堂任何已作廢 LR——與 `LearningRecordController::store()` 的白名單判斷各自維護，兩者可能漂移（同一類根因見 R83/R84、TD-060）。已抽出共用 `LearningRecordResurrectionPolicy::isEligibleForResurrect()`，兩處都改呼叫同一份判斷；`CourseLeaveCascadeService` 的請假撤銷復原（只認 `VoidReason='一般請假'`）維持原樣不動，因為那是刻意窄範圍（只復原「這次請假」本身作廢的記錄，非任意系統白名單原因）。
@@ -1123,7 +1123,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | 模組 | 必讀條目（在 Archive） |
 |------|----------|
 | 堂數 / 扣堂 | §2026-04-17 繳費日期、§單堂費用固定、**§R59（分鐘制權威：RemainingSessions 為 ROUND_HALF_UP 衍生值，讀取端勿用 count 覆寫 fractional）**、§R70（對帳面板唯讀＋真實 API contract test）、**§R76（單堂改時段費用前後端必須一致）** |
-| 繳費 / 學收 | §繳費狀態 paid_at、§歷史課程漏算、§催繳名單六狀態、§幽靈課程、§R30（帳務入口共用 AR ledger）、**§R76（session／hour 費用文案與 Charge 寫入）**、**§R79（收據前端不得超前後端 contract；合法路徑=payment-reports/{id}/receipt）** |
+| 繳費 / 學收 | §繳費狀態 paid_at、§歷史課程漏算、§催繳名單六狀態、§幽靈課程、§R30（帳務入口共用 AR ledger）、**§R76（session／hour 費用文案與 Charge 寫入）**、**§R79（收據前端不得超前後端 contract；合法路徑=payment-reports/{id}/receipt）**、**#1827／RFC_REPORTED_PAID_ACCOUNTING_SPLIT（行政已回報 ≠ Paid；收據僅 confirm 後）** |
 | 薪資 / 併堂 | §兼職薪資 concurrency、§同層級併堂 v1.4、§契約時長為準 |
 | 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession）、§R39（代課評量權限需匹配時段）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R52（代課 scheduled 例外不可缺 original_schedule_id anchor）、§R71（調課單一交易＋前端 committed gate）、§R83（原子調課必須標記 IsContractException）、**§R84（IsContractException 搬進 ClassSessionObserver 結構性保證）**、§R72（cancelled ClassSession 不得讓 scheduled 例外佔用代課老師）、§R73（跨老師 gesture 必走 atomic substitute；legacy 兩階段精準補償）、§R74（代課衝突排除同一學生續約佔用） |
 | 請假 / 順延 | §R29、**§R82（KEEP dates+append）**、§R75（SUPERSEDED）、§R77、§R81 |
@@ -1131,11 +1131,11 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | 家長入口 UI / `releaseNotes` | §R10、§R11、§R18、§R38、§R45（家長卡僅 `PARENT_UPDATES.yml` 顯式投影 + `sync-release-notes`）、**§R85（教職員卡僅 `STAFF_UPDATES.yml`；CHANGELOG 不得自動發布）** |
 | 課表回報 | §2026-04-17 回報系統（14 條禁止項） |
 | 排課 | §start_time 格式、§智慧排課誤標取消、§R25（請假優先於 scheduled 例外）、§R29（請假不可 fallback 只寫 schedules）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R47（rescheduled 幽靈不可蓋掉同日 ClassSession）、§R49（同學生同時段去重不可用 StudentClassID 當唯一 key）、§R50（行事曆載入不可 REST 成功後再跑 fallback）、§R69（bulk reflow 先 snapshot schedule IDs，禁止 mutable natural key 連鎖更新）、§R71（mutation contract／slot idempotency／兩階段補償）、**§R80（排課摘要補登堂數≠天數；須與 session_plan 同源 expand）**、§R83（調課後 IsContractException 防 realign）、**§R84（IsContractException 結構性保證，不再靠呼叫者記得）** |
-| 出缺勤 / 分校隔離 | §SEC-001、§分校隔離後端強制、§R12（查詢日期寫死今天）、§R14（submitQuickAttend 缺 StudentID）、§R15（出勤頁預設只顯示今天，歷史到班紀錄不可見）、§R16（`script setup` const TDZ 初始化順序 → 整頁空白）、**§R86（composable return 引用未宣告識別字 → ReferenceError 整頁空白；鏡像測試攔不住）**、§R33（老師每分校 RFID 優先）、§R36（個別資料有課但老師今日名單缺漏）、§R40（點名扣堂不可只用 ClassSessionID 防重）、§R41（補請假不可只用課程+日期找堂次）、§R42（行事曆堂次顯示老師不可被舊評量老師覆蓋）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R71（請假寫入即封閉 interval；禁止留待隔夜 repair）|
+| 出缺勤 / 分校隔離 | §SEC-001、§分校隔離後端強制、§R12（查詢日期寫死今天）、§R14（submitQuickAttend 缺 StudentID）、§R15（出勤頁預設只顯示今天，歷史到班紀錄不可見）、§R16（`script setup` const TDZ 初始化順序 → 整頁空白）、**§R86（composable return 引用未宣告識別字 → ReferenceError 整頁空白；鏡像測試攔不住）**、§R33（老師每分校 RFID 優先）、§R36（個別資料有課但老師今日名單缺漏）、§R40（點名扣堂不可只用 ClassSessionID 防重）、§R41（補請假不可只用課程+日期找堂次）、§R42（行事曆堂次顯示老師不可被舊評量老師覆蓋）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R71（請假寫入即封閉 interval；禁止留待隔夜 repair）、**§R107（projected 堂次必須帶 branch_id；教師首頁禁 Branch #N）**|
 | 月結制 / 加購 / 多科固定時段 | §b3 inactive 歷史、§b4 加購分流、§R21（堂數制加購是新批次）、§R22（月結詳情不可只依賴 ClassSession）、§R23（推算日期不可成為 dead-end chip）、§R24（多科固定時段優先走一般課程）、§R26（月結續報與堂數額度不可混在同一語意）、§R38（家長端繳費提醒不可套主任續課提醒） |
 | routes/api.php | §AI 靜默回退路由（改前必讀完整檔案 + route:list） |
 | 備份 / nightly | §nightly 覆蓋修正、§備份還原演練、§R34（備份新鮮度不可只看 mtime）、§R71（repair 與 producer prevention 分離；同日全日期 health aggregate） |
-| Bug 回報 / 附件存檔 | §R11 storage symlink（Archive）、§R51（分診前必查 attachments + reporter 歷史 + 跨分校）、§R53（上線後必回 in-app）、`docs/CHAT_BUG_SYSTEM.md` §3.6–§3.7 |
+| Bug 回報 / 附件存檔 | §R11 storage symlink（Archive）、§R51（分診前必查 attachments + reporter 歷史 + 跨分校）、§R53（上線後必回 in-app）、`docs/CHAT_BUG_SYSTEM.md` §3.6–§3.7、**§R108（utf8mb3 姓名 LIKE 禁 4-byte）** |
 | Git / PR 工作流 | §R58（禁止 assume-unchanged 藏檔）、`scripts/git-index-audit.sh`、Epic #535 Phase 0、**§R87 追加教訓 2（squash-merge 後繼續在同一 designated branch 開下一個 commit 前，一律先 `git fetch + checkout -B <branch> origin/main` 重啟，勿等 `mergeable_state: dirty` 才修）** |
 | Migration / schema drift | §R63（未合併分支的 migration 禁上 production；drift 修復＝port 回 main＋drift 測試） |
 | 前端 UI 參考 star repo / RFC 落地 | **§R88（「參考 star 的 repo」＝真的 `git clone` 讀原始碼，`RFC_PLATFORM_OPTIMIZATION_FROM_STARS_2026.md` 的一行摘要只是索引不是替代品；落差要能具體引用來源檔案/規則）** |
@@ -1280,7 +1280,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
   - **RFC 5545（iCalendar）**：一個重複事件系列共用一個 `UID`；被改期的某一次用 `RECURRENCE-ID` 綁定「這是原始重複規則算出的哪一個時間點」（值永遠不變，即使該堂次被移到別的時間），對同一個 occurrence 的第二次修改是**更新同一個 VEVENT 元件**（同一組 UID+RECURRENCE-ID，`SEQUENCE` 遞增），不是疊加第二層 override。（[§3.8.4.4](https://icalendar.org/iCalendar-RFC-5545/3-8-4-4-recurrence-id.html)）
   - **Google Calendar Events API**：完全對應同一套模型，`recurringEventId` + `originalStartTime` 是穩定不變的身分鍵；移動該堂次是對「這一個 instance 自己的資源 URL」`PATCH`，再移動一次是對**同一個** instance 資源再 `PATCH`，不會生出第二個 instance 物件。（[Recurring events guide](https://developers.google.com/workspace/calendar/api/guides/recurringevents)）
   - **Cal.com（開源，本專案 `RFC_PLATFORM_OPTIMIZATION_FROM_STARS_2026.md` 已引用的排程參考）**：用的是跟 AllTrue 一樣的「鏈」模型（`Booking.rescheduledToUid` 正向指標，AllTrue 是反向的 `original_schedule_id`），**且已知在 production 出過同一類 bug**——[cal.com issue #12922](https://github.com/calcom/cal.com/issues/12922)：「對已經改期過的 Booking 再次改期，會產生多筆同時有效的 Booking」，跟本次 AllTrue 的事故是同一種根因形狀。這是「鏈模型本身容易在二次改期時出錯」的獨立佐證，不是 AllTrue 特有的失誤。
-  - **落地方向**：若要根治（而非一直在下游修 dedupe 規則），`schedules` 應改成「每個 occurrence 身分（`student_course_id` + 原始 `schedule_date`/`start_time`，第一次物化後永久不變）對應最多一筆目前有效的紀錄，被改期時**更新**它（新 `schedule_date`/`start_time`，`status` 維持 `scheduled`），不是新增 rescheduled/scheduled 紀錄對」；歷史另外進獨立的 `schedule_change_log`（append-only，沒有任何「目前狀態」查詢會讀它）——這正是 `bug_report_status_logs` 已經跟 `bug_reports` 目前狀態分離的同一種模式，本專案並不陌生。列為技術債，待排入架構修正時再處理，本次不動資料表結構。
+  - **落地方向**：根治計畫已寫成 [`docs/architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md`](architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md)（工程主線 [`ALLTRUE_ENGINEERING_NORTH_STAR.md`](architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md)）。Agent 不得在未讀 RFC、未獲 Founder GO 前改 `schedules` 寫入形狀。前端 dedupe 仍是治標，直到 Phase 4+。
 - **測試**：`calendarExceptionMerge.test.js`、`calendarOccurrenceMerge.test.js`、`useCourseSessionsDisplay.test.js` 均以本案真實資料（SC#2688 schedules id 7583/7584/7588/7589、ClassSession id 24169；SC#1249 schedules id 7138/7139/7207/7208/7422/7423）新增回歸案例。
 
 ### R103. in-app #225 的症狀被誤標成 R102 的鬼影方框問題；真正症狀（行事曆有、課程管理沒有）到今天才被正確分診（in-app #225/#226/#227，2026-08-08）
@@ -1314,3 +1314,18 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **強制規則**：任何 DB credential 輪替盤點都要把 `DB_USERNAME`、`DB_PASSWORD` 與 DSN 當成同一個 identity tuple；所有 production CLI consumer 必須從同一個 effective config 同時取得 username/password。CI service/local-dev 的隔離 fixture 必須另外分類，不可誤當 production consumer 批次改名。
 - **驗收**：除了 app health，必須用 fresh Laravel connection 查 `CURRENT_USER()` 並比對新 username；另掃描 production workflow/script 不得再出現搭配 production `.env` password 的 `-u admin`。舊 principal 只可在人類確認 observation window 後由獨立 gate 鎖定。
 - **範圍**：本次只準備 workflow/scripts/runbook，未觸發 Actions、SSH、DB 或 production mutation；實際 grant replay、server account-lock 支援與 cron/backup observation 仍是 Founder-only evidence。
+
+### R107. 教師首頁 projected 堂次必須帶 branch_id，缺分校不可顯示內部編號（in-app #235，2026-08-15）
+
+- **現象**：#1739／第一次欄位對齊修法上線後，回報者兩次按「問題仍存在」。週課表仍出現「Branch #0」。
+- **根因**：已物化堂次有 `branch_id`；`SessionProjectionReadService::projectedSlot()` 從未回傳，前端 `s.branchId || 0`。另外 `getBranchName` 對不到名單時輸出 `Branch #N`，今日待辦另走一份未正規化 JSON。
+- **修法**：projected slot 從學生 `CampusID` 帶 `branch_id`；`sessionDates` 與 index 路徑 eager-load `student`；教師首頁今日待辦改走 `fetchClassSessions`；缺分校隱藏或顯示「未設定」。
+- **測試**：`SessionProjectionReadServiceTest`、`classSessionsApi.test.js`、`useBranches.test.js`、`teacherHomeSessionContract.test.js`。
+- **驗收**：deploy 後請 in-app #235 回報者再按確認；GitHub #1739 已關，不可再提前標 resolved。
+
+### R108. utf8mb3 姓名欄位不可把 4-byte Unicode 直接丟進 LIKE（GitHub #1788，2026-08-15）
+
+- **現象**：學生名單搜尋 `蔡🏠` 直接 SQLSTATE 1267（utf8mb3 vs utf8mb4 collation）。
+- **根因**：`Student.name` 仍是 utf8mb3；課程名單已用 `Utf8mb3SearchSanitizer`，`StudentController::index` 漏掉。
+- **修法**：搜尋 term 先去掉 4-byte 字元；只剩 emoji 則空結果。欄位 charset 升級另案，不在這次。
+- **測試**：`Utf8mb3SearchSanitizerTest`、`StudentNameSearchUtf8mb3Test`。

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\ClassSession;
+use App\Services\LearningRecordResurrectionPolicy;
 use App\Support\AttendanceStatus;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
@@ -70,6 +71,8 @@ class AttendanceEffectsService
 
         $session->Status = $newStatus;
         $session->save();
+
+        LearningRecordResurrectionPolicy::restoreEligibleForSession($session);
 
         Log::info('[attendance_effects] classsession_status_updated', [
             'class_session_id' => $session->id,

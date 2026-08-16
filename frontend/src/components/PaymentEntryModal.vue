@@ -2,7 +2,7 @@
   <div v-if="show" class="modal-overlay" @click.self="$emit('close')">
     <div class="modal pe-modal">
       <div class="pe-header">
-        <h3>核帳登記</h3>
+        <h3>登記已回報</h3>
         <button class="pe-close" @click="$emit('close')" title="關閉">
           <span class="material-symbols-outlined">close</span>
         </button>
@@ -77,7 +77,7 @@
           <button type="button" class="ghost" @click="$emit('close')">取消</button>
           <button type="submit" class="primary" :disabled="submitting">
             <span v-if="submitting" class="material-symbols-outlined spin" style="font-size:16px">progress_activity</span>
-            {{ submitting ? '處理中…' : '確認核帳' }}
+            {{ submitting ? '處理中…' : '送出已回報' }}
           </button>
         </div>
       </form>
@@ -167,13 +167,13 @@ async function submit() {
 
     if (!resp.ok) {
       const data = await resp.json().catch(() => ({}));
-      throw new Error(data.message || `核帳失敗（${resp.status}）`);
+      throw new Error(data.message || `登錄失敗（${resp.status}）`);
     }
 
     const result = await resp.json();
     emit('confirmed', result);
   } catch (e) {
-    submitError.value = e.message || '核帳失敗';
+    submitError.value = e.message || '登錄失敗';
   } finally {
     submitting.value = false;
   }

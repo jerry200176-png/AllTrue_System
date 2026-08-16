@@ -2,35 +2,35 @@
   <div class="eligibility-page">
     <div class="page-header">
       <div class="page-header-left">
-        <div class="page-icon"><span class="material-symbols-outlined">rule</span></div>
+        <div class="page-icon"><span class="material-symbols-outlined">payments</span></div>
         <div class="title-group">
-          <h2>正職老師薪資要件</h2>
-          <p class="title-sub">依115.07制度分項挑出符合條件、未符合與待人工確認的老師</p>
+          <h2>正職薪資要件</h2>
+          <p class="title-sub">115.07 正職結算：本薪＋16段課獎金＋科目數／一對三獎金×教師倍率</p>
         </div>
+        <span class="privilege-chip">高權限存取區</span>
       </div>
-      <button class="btn-outline" :disabled="loading" @click="loadData">
-        <span class="material-symbols-outlined">refresh</span>重新整理
-      </button>
+      <div class="header-actions">
+        <button class="btn-primary" :disabled="loading" @click="loadData">
+          <span class="material-symbols-outlined">refresh</span>重新結算
+        </button>
+      </div>
     </div>
 
     <div class="eligibility-card filters">
+      <label>結算月份
+        <input v-model="settlementMonth" type="month" @change="period = 'month'; loadData()" />
+      </label>
       <label>查詢層級
         <select v-model="period" @change="loadData">
           <option value="week">本週</option>
-          <option value="month">本月</option>
+          <option value="month">結算月</option>
           <option value="year">本年度</option>
-        </select>
-      </label>
-      <label>顯示項目
-        <select v-model="componentKey">
-          <option value="all">全部項目</option>
-          <option v-for="item in componentOptions" :key="item.key" :value="item.key">{{ item.label }}</option>
         </select>
       </label>
       <label class="search-label">搜尋老師
         <input v-model.trim="search" placeholder="姓名" />
       </label>
-      <span class="policy-chip">制度 {{ policyVersion }}｜生效 {{ effectiveFrom }}</span>
+      <span class="policy-chip">本月分校總科目數 {{ formatSubjects(branchSubjectTotal) }} 科｜制度 {{ policyVersion }}</span>
     </div>
 
     <div v-if="loading" class="eligibility-card loading">載入中…</div>
@@ -46,37 +46,80 @@
       <div class="eligibility-card table-wrap desktop-table">
         <table>
           <thead>
-            <tr><th>老師</th><th>整體狀態</th><th v-for="item in visibleComponents" :key="item.key">{{ item.label }}</th><th>缺少資料／原因</th></tr>
+            <tr>
+              <th>老師姓名</th>
+              <th>固定底薪</th>
+              <th>正課科目數</th>
+              <th>輔導＋試聽科目數</th>
+              <th>核薪總科目數</th>
+              <th>一對三總計</th>
+              <th>科目數獎金</th>
+              <th>一對三獎金</th>
+              <th>教師倍率</th>
+              <th>倍率後獎金</th>
+              <th>加扣款</th>
+              <th>總發放金額</th>
+            </tr>
           </thead>
           <tbody>
             <tr v-for="teacher in filteredTeachers" :key="teacher.teacher_id">
-              <td><strong>{{ teacher.teacher_name }}</strong><small>ID {{ teacher.teacher_id }}</small></td>
-              <td><span :class="['status', statusClass(teacher.overall_status)]">{{ statusLabel(teacher.overall_status) }}</span></td>
-              <td v-for="item in visibleComponents" :key="item.key">
-                <span :class="['status', statusClass(teacher.components?.[item.key]?.status)]">{{ statusLabel(teacher.components?.[item.key]?.status) }}</span>
-                <small>{{ detail(item.key, teacher.components?.[item.key]) }}</small>
+              <td>
+                <strong>{{ teacher.teacher_name }}</strong>
+                <small>老師</small>
+                <span :class="['status', statusClass(teacher.overall_status)]">{{ statusLabel(teacher.overall_status) }}</span>
               </td>
-              <td class="reason-cell">{{ reasonText(teacher) }}</td>
+              <td class="salary-cell">
+                <template v-if="editingSalaryId === teacher.teacher_id">
+                  <input v-model.number="salaryDraft" type="number" min="0" step="1" class="salary-input" />
+                  <button class="btn-outline small" :disabled="savingSalary" @click="saveSalary(teacher)">存</button>
+                  <button class="btn-outline small" @click="editingSalaryId = null">取消</button>
+                </template>
+                <template v-else>
+                  <span class="money-pos">{{ formatMoney(teacher.settlement?.base_salary) }}</span>
+                  <button class="btn-outline small" @click="startEditSalary(teacher)">改</button>
+                </template>
+              </td>
+              <td>{{ formatSubjects(teacher.settlement?.regular_subject_count) }}</td>
+              <td>{{ formatSubjects(teacher.settlement?.tutoring_trial_subject_count) }}</td>
+              <td>{{ formatSubjects(teacher.settlement?.payroll_subject_count) }}</td>
+              <td>{{ formatSubjects(teacher.settlement?.one_to_three_count) }}</td>
+              <td>{{ formatMoney(teacher.settlement?.subject_count_bonus) }}</td>
+              <td>{{ formatMoney(teacher.settlement?.one_to_three_bonus) }}</td>
+              <td>
+                <strong>{{ teacher.settlement?.multiplier_pct ?? 100 }}%</strong>
+                <small v-for="part in visibleMultiplierParts(teacher)" :key="part.key">{{ part.label }} {{ formatPct(part.pct) }}</small>
+              </td>
+              <td>
+                <strong>{{ formatMoney(teacher.settlement?.weighted_bonus_amount) }}</strong>
+                <small>{{ weightedBonusFormula(teacher.settlement) }}</small>
+              </td>
+              <td>
+                <span
+                  v-for="item in teacher.settlement?.adjustments || []"
+                  :key="item.label"
+                  :class="['adj-chip', Number(item.amount) >= 0 ? 'pos' : 'neg']"
+                >{{ item.label }} {{ Number(item.amount) >= 0 ? '+' : '' }}{{ Math.round(Number(item.amount)) }}</span>
+                <small v-if="!(teacher.settlement?.adjustments || []).length">—</small>
+              </td>
+              <td class="total-cell"><strong>{{ formatMoney(teacher.settlement?.total_payout) }}</strong></td>
             </tr>
-            <tr v-if="filteredTeachers.length === 0"><td :colspan="visibleComponents.length + 3" class="empty">查詢期間沒有符合條件的正職老師資料。</td></tr>
+            <tr v-if="filteredTeachers.length === 0"><td colspan="12" class="empty">查詢期間沒有符合條件的正職老師資料。</td></tr>
           </tbody>
         </table>
       </div>
       <div class="mobile-list">
         <article v-for="teacher in filteredTeachers" :key="teacher.teacher_id" class="eligibility-card teacher-card">
           <div class="teacher-card-header">
-            <div><strong>{{ teacher.teacher_name }}</strong><small>ID {{ teacher.teacher_id }}</small></div>
+            <div><strong>{{ teacher.teacher_name }}</strong><small>老師</small></div>
             <span :class="['status', statusClass(teacher.overall_status)]">{{ statusLabel(teacher.overall_status) }}</span>
           </div>
-          <div class="teacher-components">
-            <div v-for="item in visibleComponents" :key="item.key" class="component-row">
-              <span>{{ item.label }}</span>
-              <span class="component-value">
-                <span :class="['status', statusClass(teacher.components?.[item.key]?.status)]">{{ statusLabel(teacher.components?.[item.key]?.status) }}</span>
-                <small>{{ detail(item.key, teacher.components?.[item.key]) }}</small>
-              </span>
-            </div>
-          </div>
+          <div class="component-row"><span>固定底薪</span><span class="component-value money-pos">{{ formatMoney(teacher.settlement?.base_salary) }}</span></div>
+          <div class="component-row"><span>核薪總科目數</span><span class="component-value">{{ formatSubjects(teacher.settlement?.payroll_subject_count) }}</span></div>
+          <div class="component-row"><span>科目數獎金</span><span class="component-value">{{ formatMoney(teacher.settlement?.subject_count_bonus) }}</span></div>
+          <div class="component-row"><span>一對三獎金</span><span class="component-value">{{ formatMoney(teacher.settlement?.one_to_three_bonus) }}</span></div>
+          <div class="component-row"><span>教師倍率</span><span class="component-value">{{ teacher.settlement?.multiplier_pct ?? 100 }}%</span></div>
+          <div class="component-row"><span>倍率後獎金</span><span class="component-value">{{ formatMoney(teacher.settlement?.weighted_bonus_amount) }}</span></div>
+          <div class="component-row total-cell"><span>總發放金額</span><strong>{{ formatMoney(teacher.settlement?.total_payout) }}</strong></div>
           <p class="mobile-reason">{{ reasonText(teacher) }}</p>
         </article>
         <div v-if="filteredTeachers.length === 0" class="eligibility-card empty">查詢期間沒有符合條件的正職老師資料。</div>
@@ -89,29 +132,40 @@
         :user-role="props.userRole"
         @changed="loadData"
       />
-      <p class="footnote">資料不足時顯示「待人工確認」，不會直接判定不符合；缺少欄位會在各項目下方列出，可直接從上方補登並送審。</p>
+      <p class="footnote">資料不足時仍會列出試算金額並標「待人工確認」，不會把缺資料當成 0。全勤／勞健保／行政加給尚未列入 115.07 這份規定，不會自動加減。</p>
     </template>
   </div>
 </template>
 
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue';
-import { fetchTeacherEligibility } from '../lib/teacherEligibilityApi.js';
+import { fetchTeacherEligibility, saveTeacherSalaryProfile } from '../lib/teacherEligibilityApi.js';
 import TeacherEligibilityInputPanel from '../components/TeacherEligibilityInputPanel.vue';
+import {
+  formatMoney,
+  formatPct,
+  formatSubjects,
+  monthWindow,
+  weightedBonusFormula,
+} from '../lib/teacherEligibilityDisplay.js';
 
 const props = defineProps({
   branchId: { type: [Number, String], default: null },
   userRole: { type: String, default: '' },
 });
 const period = ref('month');
-const componentKey = ref('all');
+const now = new Date();
+const settlementMonth = ref(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
 const search = ref('');
 const loading = ref(false);
 const error = ref('');
 const teachers = ref([]);
 const periodWindow = ref({ start: '', end: '' });
 const policyVersion = ref('115.07');
-const effectiveFrom = ref('2026-07-01');
+const branchSubjectTotal = ref(0);
+const editingSalaryId = ref(null);
+const salaryDraft = ref(0);
+const savingSalary = ref(false);
 const componentOptions = [
   { key: 'weekly_16_segments', label: '每週16段' },
   { key: 'holiday_16_hours', label: '假日16小時' },
@@ -121,9 +175,6 @@ const componentOptions = [
   { key: 'subject_count_bonus', label: '科目數獎金' },
 ];
 
-const visibleComponents = computed(() => componentKey.value === 'all'
-  ? componentOptions
-  : componentOptions.filter(item => item.key === componentKey.value));
 const filteredTeachers = computed(() => teachers.value.filter(teacher => !search.value || teacher.teacher_name.includes(search.value)));
 const reviewCount = computed(() => filteredTeachers.value.filter(t => t.review_required).length);
 const qualifyingCount = computed(() => filteredTeachers.value.filter((teacher) => componentOptions.some((item) => {
@@ -132,61 +183,53 @@ const qualifyingCount = computed(() => filteredTeachers.value.filter((teacher) =
 })).length);
 const deductionCount = computed(() => filteredTeachers.value.filter(t => Number(t.components?.deductions?.rate || 0) < 0).length);
 
+function visibleMultiplierParts(teacher) {
+  return (teacher.settlement?.multiplier_parts || []).filter((part) => Number(part.pct) !== 0);
+}
+
+function startEditSalary(teacher) {
+  editingSalaryId.value = teacher.teacher_id;
+  salaryDraft.value = Math.round(Number(teacher.settlement?.base_salary ?? 0));
+}
+
+async function saveSalary(teacher) {
+  savingSalary.value = true;
+  try {
+    await saveTeacherSalaryProfile({
+      teacher_id: teacher.teacher_id,
+      branch_id: props.branchId || null,
+      base_salary: salaryDraft.value,
+      effective_from: new Date().toISOString().slice(0, 10),
+    });
+    editingSalaryId.value = null;
+    await loadData();
+  } catch (e) {
+    error.value = e?.message || '底薪儲存失敗';
+  } finally {
+    savingSalary.value = false;
+  }
+}
+
 async function loadData() {
   loading.value = true; error.value = '';
   try {
-    const data = await fetchTeacherEligibility({ period: period.value, branchId: props.branchId });
+    const range = period.value === 'month' ? monthWindow(settlementMonth.value) : {};
+    const data = await fetchTeacherEligibility({
+      period: period.value,
+      branchId: props.branchId,
+      start: range.start,
+      end: range.end,
+    });
     teachers.value = data.teachers || [];
-    periodWindow.value = { start: data.period?.start || '', end: data.period?.end || '' };
+    periodWindow.value = { start: data.period?.start || range.start || '', end: data.period?.end || range.end || '' };
     policyVersion.value = data.policy_version || policyVersion.value;
-    effectiveFrom.value = data.effective_from || effectiveFrom.value;
+    branchSubjectTotal.value = Number(data.branch_subject_total ?? 0);
   } catch (e) { error.value = e?.message || '載入失敗'; }
   finally { loading.value = false; }
 }
 
 function statusLabel(status) { return { qualifies: '符合', not_qualifies: '不符合', review: '待人工確認' }[status] || '未判定'; }
 function statusClass(status) { return { qualifies: 'pass', not_qualifies: 'fail', review: 'review' }[status] || 'unknown'; }
-function detail(key, component) {
-  if (!component) return '—';
-  if (component.status === 'review') {
-    const missing = (component.missing_fields || []).map(missingLabel).filter(Boolean);
-    return missing.length ? `待補：${missing.join('、')}` : '待人工確認';
-  }
-  if (key === 'weekly_16_segments') {
-    const weeks = component.metrics?.weeks || [];
-    const attendanceSessions = weeks.reduce((total, week) => total + Number(week.attendance_sessions || 0), 0);
-    return `${component.amount ?? 0}元｜學生點名 ${attendanceSessions} 堂`;
-  }
-  if (key === 'holiday_16_hours') {
-    const metrics = component.metrics || {};
-    const baseline = Object.values(metrics.regular_scheduled_hours || {}).reduce((total, hours) => total + Number(hours || 0), 0);
-    const leave = Object.values(metrics.holiday_leave_hours || {}).reduce((total, hours) => total + Number(hours || 0), 0);
-    return `${component.rate ?? 0}%｜常態${baseline}h｜假日假${leave}h不加算`;
-  }
-  if (key === 'special_performance') return `${component.rate ?? 0}%`;
-  if (key === 'weekday_afternoon') return `${component.rate ?? 0}%｜有效${component.metrics?.extra_segments ?? 0}段`;
-  if (key === 'deductions') return `${component.rate ?? 0}%`;
-  return component.metrics?.subject_count == null ? '—' : `${component.metrics.subject_count}科`;
-}
-function missingLabel(field) {
-  const labels = {
-    weekly_segments: '每週正課段數',
-    work_hours: '實際工時',
-    weekly_exception_context: '官方活動／公休／請假例外',
-    holiday_calendar: '假日曆',
-    regular_scheduled_hours: '假日常態排課時數',
-    achievement_evidence_or_approval: '成果證明／審核',
-    deduction_approval: '主任確認／總部核准',
-    approved_learning_records: '已核准評量資料',
-    subject_count_table: '科目數附件表',
-  };
-  if (labels[field]) return labels[field];
-  const match = /^holiday_days\.\d+\.(.+)$/.exec(field || '');
-  if (match) return `假日${({ date: '日期', regular_scheduled_hours: '常態排課時數', worked_hours: '出勤時數', holiday_leave_hours: '假日假時數' }[match[1]] || match[1])}`;
-  const weekday = /^weekday_hours\.(.+)$/.exec(field || '');
-  if (weekday) return `平日課程時數 ${weekday[1]}`;
-  return field;
-}
 function reasonText(teacher) {
   const reasons = [];
   if (teacher.work_hours_source === 'student_attendance') {
@@ -207,9 +250,12 @@ onMounted(loadData);
 <style scoped>
 .eligibility-page { padding: 24px; max-width: 1800px; margin: 0 auto; }
 .page-header { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:18px; }
-.page-header-left { display:flex; align-items:center; gap:12px; }
+.page-header-left { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
 .page-icon { width:44px; height:44px; border-radius:12px; display:grid; place-items:center; background:var(--ds-primary-wash); color:var(--ds-primary); }
 .title-group h2 { margin:0; }.title-sub { margin:4px 0 0; color:var(--ds-ink-mute); }
+.privilege-chip { padding:4px 10px; border-radius:999px; background:var(--ds-warning-wash); color:var(--ds-warning); font-size:12px; }
+.header-actions { display:flex; gap:8px; }
+.btn-primary { display:inline-flex; align-items:center; gap:6px; border:0; background:var(--ds-primary); color:var(--ds-on-primary); border-radius:8px; padding:9px 14px; cursor:pointer; }
 .eligibility-card { background:var(--ds-canvas); border:1px solid var(--border); border-radius:14px; padding:16px; box-shadow:var(--ds-shadow-1); }
 .filters { display:flex; align-items:end; gap:16px; flex-wrap:wrap; margin-bottom:18px; }
 .filters label { display:flex; flex-direction:column; gap:6px; font-size:13px; color:var(--ds-ink-mute); }
@@ -217,7 +263,14 @@ onMounted(loadData);
 .search-label input { min-width:220px; }.policy-chip { margin-left:auto; padding:8px 12px; color:var(--ds-ink-mute); background:var(--ds-canvas-soft); border-radius:8px; font-size:13px; }
 .summary-grid { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:12px; margin-bottom:18px; }
 .summary-card { padding:16px; background:var(--ds-canvas); border:1px solid var(--border); border-radius:12px; }.summary-card span { color:var(--ds-ink-mute); font-size:13px; }.summary-card strong { display:block; font-size:28px; margin-top:6px; }.summary-card.success strong { color:var(--ds-success); }.summary-card.warning strong { color:var(--ds-warning); }.summary-card.danger strong { color:var(--ds-danger); }
-.table-wrap { overflow:auto; }.table-wrap table { width:100%; border-collapse:collapse; min-width:1050px; }.table-wrap th,.table-wrap td { padding:12px 10px; border-bottom:1px solid var(--border); text-align:left; vertical-align:top; }.table-wrap th { color:var(--ds-ink-mute); font-size:13px; background:var(--ds-canvas-soft); }.table-wrap td small { display:block; margin-top:4px; color:var(--ds-ink-mute); font-size:12px; }.status { display:inline-flex; padding:4px 8px; border-radius:999px; font-size:12px; white-space:nowrap; }.status.pass { background:var(--ds-success-wash); color:var(--ds-success); }.status.fail { background:var(--ds-danger-wash); color:var(--ds-danger); }.status.review { background:var(--ds-warning-wash); color:var(--ds-warning); }.status.unknown { background:var(--ds-canvas-soft); color:var(--ds-ink-mute); }.reason-cell { min-width:280px; line-height:1.6; }.empty,.loading { text-align:center; color:var(--ds-ink-mute); padding:36px; }.error { color:var(--ds-danger); display:flex; align-items:center; gap:12px; }.footnote { color:var(--ds-ink-mute); font-size:13px; margin:12px 4px; }.mobile-list { display:none; }
-.teacher-card-header { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }.teacher-card-header small { display:block; margin-top:4px; color:var(--ds-ink-mute); font-size:12px; }.teacher-components { margin-top:14px; border-top:1px solid var(--border); }.component-row { display:flex; justify-content:space-between; gap:12px; padding:10px 0; border-bottom:1px solid var(--border); }.component-value { display:flex; flex-direction:column; align-items:flex-end; gap:4px; }.component-value small { color:var(--ds-ink-mute); font-size:12px; }.mobile-reason { margin:12px 0 0; color:var(--ds-ink-mute); font-size:13px; line-height:1.6; }
+.table-wrap { overflow:auto; }.table-wrap table { width:100%; border-collapse:collapse; min-width:1280px; }.table-wrap th,.table-wrap td { padding:12px 10px; border-bottom:1px solid var(--border); text-align:left; vertical-align:top; }.table-wrap th { color:var(--ds-ink-mute); font-size:13px; background:var(--ds-canvas-soft); white-space:nowrap; }.table-wrap td small { display:block; margin-top:4px; color:var(--ds-ink-mute); font-size:12px; }.status { display:inline-flex; margin-top:6px; padding:4px 8px; border-radius:999px; font-size:12px; white-space:nowrap; }.status.pass { background:var(--ds-success-wash); color:var(--ds-success); }.status.fail { background:var(--ds-danger-wash); color:var(--ds-danger); }.status.review { background:var(--ds-warning-wash); color:var(--ds-warning); }.status.unknown { background:var(--ds-canvas-soft); color:var(--ds-ink-mute); }.empty,.loading { text-align:center; color:var(--ds-ink-mute); padding:36px; }.error { color:var(--ds-danger); display:flex; align-items:center; gap:12px; }.footnote { color:var(--ds-ink-mute); font-size:13px; margin:12px 4px; }.mobile-list { display:none; }
+.salary-cell { white-space:nowrap; }
+.salary-input { width:90px; padding:6px 8px; border:1px solid var(--border); border-radius:6px; background:var(--ds-canvas); color:inherit; margin-right:4px; }
+.money-pos { color:var(--ds-success); font-variant-numeric:tabular-nums; }
+.total-cell strong { font-variant-numeric:tabular-nums; color:var(--ds-primary); }
+.adj-chip { display:inline-flex; margin:0 6px 6px 0; padding:3px 8px; border-radius:999px; font-size:12px; }
+.adj-chip.pos { background:var(--ds-success-wash); color:var(--ds-success); }
+.adj-chip.neg { background:var(--ds-danger-wash); color:var(--ds-danger); }
+.teacher-card-header { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }.teacher-card-header small { display:block; margin-top:4px; color:var(--ds-ink-mute); font-size:12px; }.component-row { display:flex; justify-content:space-between; gap:12px; padding:10px 0; border-bottom:1px solid var(--border); }.component-value { display:flex; flex-direction:column; align-items:flex-end; gap:4px; }.component-value small { color:var(--ds-ink-mute); font-size:12px; }.mobile-reason { margin:12px 0 0; color:var(--ds-ink-mute); font-size:13px; line-height:1.6; }
 @media (max-width: 900px) { .eligibility-page { padding:16px; }.summary-grid { grid-template-columns:repeat(2, minmax(0,1fr)); }.policy-chip { margin-left:0; }.desktop-table { display:none; }.mobile-list { display:grid; gap:12px; } }
 </style>

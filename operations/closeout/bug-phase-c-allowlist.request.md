@@ -1,5 +1,7 @@
 # Request: Phase-C allowlist resolve
 
+# kickoff 2026-08-15T06:56:00Z — Phase C write-back for #235: projected campus fix PR #1794 merged as `a6a9c1892133ae818570d18b3468f75c6076a5c2`; Deploy to Pi run `31870543472` succeeded. Production `version.json` build_sha `a6a9c1892133ae818570d18b3468f75c6076a5c2` at 2026-08-15T06:54:26Z; health `{"status":"ok"}`. Public reply asks reporter to re-test teacher home upcoming sessions; no production business-data mutation.
+
 # kickoff 2026-08-13T13:27:00Z — Phase C write-back for #228/#229: shared-package reservation capacity fix PR #1769 merged as `1852913e67445b8aa502664558b409520f00b07e`; deployment run `31704756638` and read-only production acceptance run `31704826154` succeeded. Production confirms backend SHA `1852913e67445b8aa502664558b409520f00b07e`; no production business-data change is authorized or required. The public reply asks the reporter to re-test after refresh.
 
 # kickoff 2026-08-13T10:20:08Z — Phase C write-back for #236: teacher-home projection fix PR #1764 merged as `a2e824ca103a5813c37f449a92b7ea96609c57db`, deploy run `31690470136` succeeded, and Calendar/Course Production Acceptance (read-only) run `31690622342` succeeded. The fix only changes client-side stale-load handling and canonical session-field deduplication; no production course, quota, receipt, payment, or configuration mutation is authorized or required. Public reply links GitHub issue #1763 and requests reporter verification.

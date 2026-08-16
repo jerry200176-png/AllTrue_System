@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "provenance_type": "human-authored",
-  "declared_at": "2026-07-29T01:00:00Z",
+  "declared_at": "2026-08-16T00:00:00Z",
   "author": "cursor-cloud-agent",
-  "note": "Split engineering CHANGELOG from staff in-app release notes: STAFF_UPDATES.yml is sole publish source; CHANGELOG → changelogDraft only; userFacingCopyGate; R85. Founder decision 2026-07-29."
+  "note": "Tier 0 Action SHA pin wave 1 (agent-provenance.yml): pin actions/checkout to a commit SHA instead of a floating major tag. PR #1459."
 }

@@ -22,9 +22,16 @@ for (const field of staleFields) {
 
 assert.match(
   source,
-  /todayAllSessions\.value\.filter[\s\S]*s\?\.branch_id[\s\S]*s\?\.session_date/,
-  'the direct App.vue todayAllSessions payload must retain its raw snake_case contract',
+  /todayAllSessions\.value = rows/,
+  'today attendance rows must be stored after SessionViewModel mapping',
 );
+assert.match(
+  source,
+  /fetchClassSessions\(\{ token, start: today, end: today/,
+  'today attendance must reuse fetchClassSessions, not a second raw class-sessions contract',
+);
+assert.equal(source.includes('branchId: s.branchId || 0'), false, 'missing branchId must not coerce to 0');
+assert.equal(source.includes('Branch #'), false, 'teacher home must not render Branch #N labels');
 
 for (const field of ['s.date', 's.startTime', 's.studentName', 's.branchId', 's.learningRecordStatus']) {
   assert.equal(source.includes(field), true, `TeacherHomePage must read SessionViewModel field ${field}`);

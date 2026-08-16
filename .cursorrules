@@ -38,7 +38,7 @@
 **⛔ 開發環境規則（2026-04-24 起）**：
 - 所有程式碼改動只在 **WSL2 安全 task worktree** 進行（**禁止** `/home/jerry/alltrue`；政策：`docs/governance/WORKTREE_POLICY.md`；檢查：`make agent-preflight`）
 - 禁止 SSH 到 Pi `/home/admin` 直接編輯任何檔案
-- 部署唯一合法路徑：WSL2 push → PR → CI 綠 → merge → deploy.yml 自動執行
+- 部署唯一合法路徑：WSL2 push → PR → CI 綠 → **Agent squash-merge（R0–R3；艦隊 AUTONOMY_POLICY）** → deploy.yml 自動執行。不要等人再點 merge。Pi 上禁止 artisan/phpunit/SSH。
 - 緊急修復例外：先在 WSL2 改、push hotfix branch、merge，Pi 自動更新
 - ⛔ **禁止直接 `git push origin main`**（含原生 git 指令）—— 必須用 feature branch → PR → merge。`scripts/git-sync.sh` 在 main 會 abort，但原生 git 指令不受此保護，AI 必須自我約束
 
@@ -96,6 +96,7 @@ GitHub Flow、Google SRE、OWASP 等業界常識 AI 已知，**不需要重複�
 ### AI／開發防再犯（修改相關功能前必讀）
 - **`.cursor/.local/test-credentials.md`**：各角色測試帳號 + Browser MCP 登入 SOP（fill/type 踩坑、家長入口用 `?parent=1`）
 - **`docs/AI_REGRESSION_LESSONS.md`**：紅線/黃線速查摘要（127 行，必讀）＋模組索引；詳細事故 → `docs/archive/AI_REGRESSION_LESSONS_ARCHIVE.md`
+- **現行工程主線**：`docs/architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md`；改 `schedules` 寫入形狀前必讀 `docs/architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md`
 - **`docs/DIRECTOR_PAYMENT_ALERT_RULES.md`**：繳費/續課提醒完整規則；**勿擅自改條件**
 - **`docs/OPERATIONS_RUNBOOK.md` §B1/B2**：分支治理與 Actions minutes 節流（PR 合併即刪、docs-only 不跑重 CI/不部署）
 
@@ -239,3 +240,131 @@ GitHub Flow、Google SRE、OWASP 等業界常識 AI 已知，**不需要重複�
 ### [DATA] BI / Analytics Engineer
 > 報表設計、Dashboard 指標、分析查詢（**不可在正式環境跑全表掃描**）
 - 維度：時間 / 分校 / 老師 / 科目；指標：出席率、收款率、科目數
+
+<!-- exo:governance:begin -->
+<!-- Governance hash: f45f0f00b0698aa4 -->
+# ExoProtocol — Governed Repository
+
+This repository uses ExoProtocol governance. All work must go through the session lifecycle.
+
+## ExoProtocol Governance
+
+- kernel: exo-kernel 0.1.0
+- lock hash: `f45f0f00b0698aa4...`
+- generated: 2026-08-15T14:50:36+08:00
+
+### Filesystem Deny Rules
+
+- **RULE-SEC-001**: deny read, write on `~/.aws/**`, `~/.ssh/**`, `**/.env*`
+- **RULE-GIT-001**: deny read, write, delete on `.git/**`
+
+### Structural Rules
+
+- **RULE-LOCK-001** (require_lock): Blocked by RULE-LOCK-001 (acquire a ticket lock first).
+- **RULE-CHECK-001** (require_checks): Blocked by RULE-CHECK-001 (checks must pass before done).
+- **RULE-EVO-001** (evolution_gate): Practice is mutable, governance requires explicit human approval.
+- **RULE-EVO-002** (patch_first): Patch-first evolution required.
+
+### Default Budgets
+
+- max files changed: 12
+
+### Approved Checks
+
+- `npm test`
+- `npm run lint`
+- `pytest`
+- `python -m pytest`
+- `python3 -m pytest`
+
+### Source of Truth
+
+The values above are a **snapshot** generated from the governance manifest.
+
+Manifest paths:
+- `.exo/config.yaml` — budgets, checks allowlist, scheduler config
+- `.exo/governance.lock.json` — compiled rules, deny patterns, source hash
+
+### Test-Driven, Manifest-First Workflow
+
+This principle applies to **all code you write** — governance and application logic alike.
+
+1. **Config/contract is the source of truth.** When a value is defined in a config file,
+   schema, manifest, or contract — code must load it from that source at runtime.
+   Never copy a value from a config file and paste it as a literal in source code.
+2. **Tests verify the wiring, not the value.** Tests must assert that code reads from
+   the config/contract, not that it produces a specific hardcoded result.
+   A test that passes when you swap the config value *and* swap the assertion is useless —
+   it only proves both sides were copy-pasted from the same place.
+3. **If you can change a config value and no test breaks, the test is missing.**
+   Every configurable value should have at least one test that will vary the input
+   and verify the output follows.
+
+Examples:
+- **BAD**: `assert budget == 10` (hardcoded, passes even if config is ignored)
+- **GOOD**: set config to 42, assert output contains 42 and not the old default
+- **BAD**: `MAX_RETRIES = 3` (literal in source when retries is in config)
+- **GOOD**: `max_retries = load_config()['max_retries']`
+
+### Operational Learnings
+
+When you discover a reusable pattern, gotcha, or operational insight during a session:
+- Record it with `exo reflect` (CLI) or `exo_reflect` (MCP) — NOT your private memory
+- ExoProtocol reflections are injected into future session bootstraps for all agents
+- Private memory files (MEMORY.md, .cursorrules, etc.) are agent-specific and invisible to the team
+- If you must write to private memory, also create an ExoProtocol reflection with the same insight
+
+**Private memory monitoring**: If `private_memory.watch_paths` in `.exo/config.yaml` is empty,
+add the absolute path to your memory file (e.g., `~/.claude/.../memory/MEMORY.md`) so that
+ExoProtocol can detect when you write to private memory without creating a shared reflection.
+
+### End-of-Work Reflection
+
+When you complete significant work or the user appears to be wrapping up:
+- **Proactively** run `exo reflect --pattern '<what kept happening>' --insight '<what was learned>'`
+  for each non-trivial insight discovered during the conversation
+- Do NOT wait for `session-finish` — many users close the editor without explicit session end
+- Good reflection triggers: bug fixes, CI failures, gotchas, architectural decisions, workflow improvements
+
+### Tool Reuse Protocol
+
+Before writing new utility functions, SEARCH the tool registry:
+  `exo tool-search "<keywords>"`
+
+After building a reusable utility, REGISTER it:
+  `exo tool-register <module> <function> --description "..."`
+
+Mark a tool as used when you import/call it:
+  `exo tool-use <tool_id>`
+
+
+## Session Lifecycle
+
+Before starting any work:
+
+1. Start session: `EXO_ACTOR=agent:cursor python3 -m exo.cli session-start --ticket-id <TICKET> --vendor cursor --model <MODEL> --task "<TASK>"`
+2. Read bootstrap: `.exo/cache/sessions/agent-cursor.bootstrap.md`
+3. Execute work within ticket scope
+4. Finish session: `EXO_ACTOR=agent:cursor python3 -m exo.cli session-finish --ticket-id <TICKET> --summary "<SUMMARY>" --set-status review`
+
+## Governed Push
+
+Before pushing: `exo push` (runs checks, then git push).
+Do NOT use bare `git push` — it bypasses governance checks.
+
+## Rules
+
+- No work without active session
+- Respect ticket scope (allow/deny globs)
+- Finish with summary and memento
+- Skip-check requires break-glass reason
+- Never hardcode configurable values — load from manifest/config, write tests that vary inputs
+- Read `.exo/LEARNINGS.md` for operational learnings from prior sessions
+
+<!-- exo:governance:end -->
+
+## Portfolio governance overlay
+
+Read `governance/PORTFOLIO_AGENT_CONTRACT.md` before writing. It is committed
+for cloud/mobile agents and contains the company's PR, approval, production,
+and Founder-approval boundaries.
