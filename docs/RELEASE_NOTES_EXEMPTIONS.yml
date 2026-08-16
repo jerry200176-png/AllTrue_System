@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-08-17-ui-smoke-overlay
+    changelog_date: "2026-08-17"
+    changelog_title: "fix(e2e): UI Smoke 不再被版本公告擋住導覽"
+    reason: 僅 Playwright 覆蓋層關閉與 WebDriver 略過公告；真人教職員登入仍會看到版本公告。
+
   - id: silent-2026-08-16-reported-paid-accounting-split-rfc
     changelog_date: "2026-08-16"
     changelog_title: "docs(arch): 行政已回報與會計入帳核銷拆分計畫（#1827）"
