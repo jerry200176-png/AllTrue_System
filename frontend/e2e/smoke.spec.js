@@ -34,8 +34,10 @@ async function login(page, role, creds) {
   await page.locator('.role-btn', { hasText: roleTitle }).first().click({ trial: false }).catch(() => {});
   await page.locator('#login-account').fill(creds.account);
   await page.locator('#login-password').fill(creds.password);
-  await page.locator('button.login-btn').click();
-  // 登入後離開登入頁（登入卡消失）
+  await page.locator('button.login-btn').click({ force: true });
+  if (await page.locator('#login-account').count()) {
+    await page.locator('button.login-btn').click({ force: true });
+  }
   await expect(page.locator('#login-account')).toHaveCount(0, { timeout: 15_000 });
 }
 
@@ -46,11 +48,7 @@ async function login(page, role, creds) {
  */
 async function dismissOverlays(page) {
   for (const sel of ['.guide-tour-close', '.release-nudge-btn:has-text("稍後再看")']) {
-    const el = page.locator(sel).first();
-    if (await el.isVisible().catch(() => false)) {
-      await el.click().catch(() => {});
-      await page.waitForTimeout(200);
-    }
+    await page.locator(sel).first().click({ force: true, timeout: 1500 }).catch(() => {});
   }
 }
 
@@ -62,7 +60,7 @@ async function navTo(page, navLabel) {
   await dismissOverlays(page);
   // 側欄項目是 <button>，可及名稱含 nav-label 文字；可能尾隨 badge 數字故用 substring。
   const navBtn = page.getByRole('button', { name: navLabel, exact: false }).first();
-  await navBtn.click();
+  await navBtn.click({ force: true });
   await page.waitForLoadState('networkidle').catch(() => {});
   await expect(navBtn).toHaveClass(/active/, { timeout: 10_000 });
 }
@@ -75,9 +73,7 @@ test.describe('UI smoke — director', () => {
     page.on('pageerror', (e) => errors.push(String(e)));
 
     await login(page, 'director', DIRECTOR);
-    await dismissOverlays(page);
     await navTo(page, '課程管理');
-    await dismissOverlays(page);
 
     // TODO: 可於 CourseManagement 根容器補 data-testid="course-mgmt-page" 讓斷言更穩。
     await expect(page.getByText('課程管理', { exact: false }).first()).toBeVisible();

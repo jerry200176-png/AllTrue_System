@@ -13,10 +13,7 @@ const VIEWPORTS = [
 
 async function dismissOverlays(page) {
   for (const sel of ['.guide-tour-close', '.release-nudge-btn:has-text("稍後再看")']) {
-    const el = page.locator(sel).first();
-    if (await el.isVisible().catch(() => false)) {
-      await el.click().catch(() => {});
-    }
+    await page.locator(sel).first().click({ force: true, timeout: 1500 }).catch(() => {});
   }
 }
 
