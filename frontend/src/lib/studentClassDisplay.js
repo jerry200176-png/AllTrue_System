@@ -233,15 +233,30 @@ export function formatDuplicatePurchaseHint({ subject = '' } = {}) {
 /** Ledger / invoice course line — never COURSE-000123. */
 export function formatLedgerCourseLabel(row) {
   const ref = trimStr(row?.course_ref);
-  if (ref && !/^COURSE-\d+$/i.test(ref)) return ref;
+  if (ref && !/^COURSE-\d+$/i.test(ref)) return humanizeDocumentRef(ref);
   const subject = trimStr(row?.subject_name || row?.subject || row?.Subject);
   if (subject) return subject;
   return '本課程';
 }
 
+/**
+ * Document refs for director UI — hide LEGACY / English model prefixes.
+ * Machine codes stay on the wire; only display is humanized.
+ */
+export function humanizeDocumentRef(ref) {
+  const s = trimStr(ref);
+  if (!s) return '';
+  return s
+    .replace(/LEGACY/gi, '舊資料')
+    .replace(/^INV-/i, '帳單-')
+    .replace(/^RCPT-/i, '收據-')
+    .replace(/^PAY-/i, '收款-')
+    .replace(/^COURSE-/i, '課程-');
+}
+
 /** Ledger invoice title — prefer invoice_no, never Invoice #id alone. */
 export function formatLedgerInvoiceLabel(inv) {
-  const no = trimStr(inv?.invoice_no);
+  const no = humanizeDocumentRef(inv?.invoice_no);
   if (no) return no;
   return '帳單';
 }

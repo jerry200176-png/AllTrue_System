@@ -331,7 +331,7 @@
     <div v-if="showBulkModal" class="modal-overlay">
       <div class="modal modal-wide">
         <h3>批次新增老師</h3>
-        <p class="hint">貼上資料或 CSV 內容（建議欄位：account,name,phone,branch_id,subject_ids,multi_branches,line_id,status）。未提供 branch_id 會使用下方預設主分校。</p>
+        <p class="hint">貼上資料或 CSV（建議欄位：帳號、姓名、電話、主分校、可授科目、兼職分校、LINE、狀態）。未填主分校時，會用下方預設主分校。</p>
 
         <div class="bulk-row">
           <div class="form-group">
@@ -354,9 +354,9 @@
           <textarea
             v-model="bulkInputText"
             rows="10"
-            placeholder="account,name,phone,branch_id,subject_ids,multi_branches,line_id,status&#10;teacher001,王老師,0912345678,1,數學|英文,2|3,line001,active"
+            placeholder="帳號,姓名,電話,主分校,可授科目,兼職分校,LINE,狀態&#10;teacher001,王老師,0912345678,大安,數學|英文,板橋,line001,在職"
           />
-          <div class="hint">subject_ids 支援科目名稱（國文/英文/數學...）或 id；multi_branches 用 |、,、; 分隔。</div>
+          <div class="hint">可授科目可填科目名稱（國文／英文／數學…）或編號；兼職分校可用｜、逗號或分號分隔。仍相容英文欄名（account、branch_id…）。</div>
         </div>
 
         <div v-if="bulkParseSummary.rowCount > 0" class="bulk-preview">
@@ -887,15 +887,23 @@ function parseBulkRows(rawInput) {
     const account = String(rowObj.account || '').trim();
     const name = String(rowObj.name || '').trim();
     const statusRaw = String(rowObj.status || '').trim().toLowerCase();
-    const status = ['active', 'pending', 'suspended'].includes(statusRaw) ? statusRaw : bulkDefaultStatus.value;
+    const statusAlias = {
+      active: 'active',
+      pending: 'pending',
+      suspended: 'suspended',
+      '在職': 'active',
+      '待審核': 'pending',
+      '停用': 'suspended',
+    };
+    const status = statusAlias[statusRaw] || statusAlias[String(rowObj.status || '').trim()] || bulkDefaultStatus.value;
     const branchId = resolveBranchId(rowObj.branch_id, fallbackBranchId);
     const multiBranches = splitListTokens(rowObj.multi_branches)
       .map((token) => resolveBranchId(token, null))
       .filter((id) => Number.isFinite(id) && id > 0 && id !== branchId);
     const { ids: subjectIds, unknown } = resolveSubjectIds(rowObj.subject_ids);
 
-    if (!account) errors.push(`第 ${rowNumber} 列缺少 account`);
-    if (!name) errors.push(`第 ${rowNumber} 列缺少 name`);
+    if (!account) errors.push(`第 ${rowNumber} 列缺少帳號`);
+    if (!name) errors.push(`第 ${rowNumber} 列缺少姓名`);
     if (!Number.isFinite(branchId) || branchId <= 0) errors.push(`第 ${rowNumber} 列分校無法辨識`);
     if (unknown.length > 0) errors.push(`第 ${rowNumber} 列有無法辨識的科目：${unknown.join('、')}`);
 

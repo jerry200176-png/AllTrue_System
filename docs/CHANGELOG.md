@@ -1,3 +1,9 @@
+## 2026-08-17 — fix(ui): 主任畫面技術語言再清一波
+
+<!-- release-notes: staff_update=staff-2026-08-17-ui-human-copy-sweep -->
+
+- 老師批次匯入改中文欄位說明；收據／帳單編號不再顯示 LEGACY、INV 英文碼。
+- 分校刷卡「Token」改「授權碼」；帳務錯誤訊息改中文。
 ## 2026-08-17 — fix(billing): 課程列表已繳改認足額收款（TD-083 B1）
 
 <!-- release-notes: silent_ship=silent-2026-08-17-ispaid-b1 -->
