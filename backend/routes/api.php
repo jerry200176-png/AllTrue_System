@@ -449,6 +449,12 @@ Route::prefix('v1')->group(function () {
         Route::get('student-identities/{groupId}/audit', [StudentIdentityController::class, 'audit']);
     });
 
+    // Cross-campus LINE binding conflicts (P2-2): directors are campus-scoped.
+    Route::middleware(['role:director,super_admin', 'require_campus', 'require_password_change'])->group(function () {
+        Route::get('bindings/conflicts', [\App\Http\Controllers\BindingConflictController::class, 'index']);
+        Route::post('bindings/conflicts/{id}/resolve', [\App\Http\Controllers\BindingConflictController::class, 'resolve'])->whereNumber('id');
+    });
+
     Route::middleware(['role:director,admin,super_admin', 'require_campus', 'require_password_change'])->group(function () {
         Route::post('student-classes/{studentClass}/manual-sessions/check', [StudentClassController::class, 'checkManualSession']);
         Route::post('student-classes/{studentClass}/manual-sessions', [StudentClassController::class, 'createManualSession']);
@@ -727,7 +733,6 @@ Route::prefix('v1')->group(function () {
     // ── W31 Parent Binding Management ──
     Route::middleware(['auth:sanctum', 'require_password_change'])->group(function () {
         Route::get('bindings', [BindingController::class, 'index']);
-        Route::get('bindings/conflicts', [BindingController::class, 'conflicts']);
         Route::get('bindings/metrics', [BindingController::class, 'metrics']);
         Route::get('bindings/{id}', [BindingController::class, 'show'])->whereNumber('id');
         Route::post('bindings', [BindingController::class, 'store']);
