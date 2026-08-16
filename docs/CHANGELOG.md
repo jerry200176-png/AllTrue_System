@@ -1,3 +1,11 @@
+## 2026-08-16 — feat(payroll): 正職結算可鎖定、匯出、調整與行政加給
+
+<!-- release-notes: staff_update=staff-2026-08-16-fulltime-payroll-lock -->
+
+- 正職結算單可鎖定凍結金額（有試算列不能鎖）、總部可重開、可匯出 CSV（Excel 可開）、可在草稿加調整，並可看每日堂次。
+- 底薪改為待總部核准才計入；已鎖定月份不能回溯改底薪。行政加給 0–10% 要主任確認再總部核准才進倍率。
+- 全勤／勞健保仍未列入 115.07 規定，不會自動加減。
+
 ## 2026-08-16 — fix(reports): 代課老師填報率計入代課老師
 
 <!-- release-notes: staff_update=staff-2026-08-16-fillrate-substitute-absent-copy -->

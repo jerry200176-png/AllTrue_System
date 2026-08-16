@@ -4,10 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Services\TeacherEligibilityPolicy;
 use App\Support\AttendanceStatus;
+use App\Support\FulltimePayrollLockStore;
+use App\Support\FulltimeSettlementComposer;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class TeacherEligibilityController extends Controller
 {
@@ -40,6 +43,33 @@ class TeacherEligibilityController extends Controller
             return $campusIds;
         }
 
+        $lockBranchId = is_array($campusIds) && count($campusIds) === 1 ? (int) $campusIds[0] : null;
+        $lockMonth = $period['start']->format('Y-m');
+        $lockedRun = ($lockBranchId && $period['type'] === 'month')
+            ? FulltimePayrollLockStore::lockedRun($lockBranchId, $lockMonth)
+            : null;
+        if ($lockedRun) {
+            $rows = FulltimePayrollLockStore::snapshotTeachers((int) $lockedRun->id);
+
+            return response()->json([
+                'policy_version' => $lockedRun->policy_version ?: config('teacher_salary.policy_version'),
+                'effective_from' => config('teacher_salary.effective_from'),
+                'period' => ['type' => $period['type'], 'start' => $effectiveStart->toDateString(), 'end' => $period['end']->toDateString()],
+                'components' => ['weekly_16_segments', 'holiday_16_hours', 'weekday_afternoon', 'special_performance', 'deductions', 'admin_allowance', 'subject_count_bonus'],
+                'teachers' => $rows,
+                'total_teachers' => count($rows),
+                'branch_subject_total' => (float) $lockedRun->branch_subject_total,
+                'lock' => [
+                    'status' => 'locked',
+                    'month' => $lockMonth,
+                    'branch_id' => $lockBranchId,
+                    'locked_at' => $lockedRun->locked_at,
+                    'locked_by' => $lockedRun->locked_by,
+                    'run_id' => $lockedRun->id,
+                ],
+            ]);
+        }
+
         $teachers = DB::table('User as u')
             ->join('UserCampus as uc', 'uc.UserID', '=', 'u.id')
             ->where('u.type', 'T')
@@ -61,6 +91,7 @@ class TeacherEligibilityController extends Controller
                 'period' => ['type' => $period['type'], 'start' => $effectiveStart->toDateString(), 'end' => $period['end']->toDateString()],
                 'teachers' => [],
                 'total_teachers' => 0,
+                'lock' => ['status' => 'draft', 'month' => $lockMonth, 'branch_id' => $lockBranchId],
             ]);
         }
 
@@ -162,11 +193,30 @@ class TeacherEligibilityController extends Controller
         $eventByTeacher = $events->groupBy(fn ($event) => $event->teacher_id ? (string) $event->teacher_id : '*');
         $achievementByTeacher = $achievements->groupBy('teacher_id');
         $deductionByTeacher = $deductions->groupBy('teacher_id');
+        $adminAllowances = Schema::hasTable('teacher_payroll_admin_allowances')
+            ? DB::table('teacher_payroll_admin_allowances')
+                ->whereIn('teacher_id', $teacherIds)
+                ->where(function ($query) use ($effectiveStart) {
+                    $query->whereNull('ends_on')->orWhereDate('ends_on', '>=', $effectiveStart->toDateString());
+                })
+                ->where(function ($query) use ($period) {
+                    $query->whereNull('starts_on')->orWhereDate('starts_on', '<=', $period['end']->toDateString());
+                })
+                ->when($branchFilter !== null, fn ($query) => $query->where(function ($nested) use ($branchFilter) {
+                    $nested->whereNull('branch_id')->orWhereIn('branch_id', $branchFilter);
+                }))
+                ->where('status', '!=', 'withdrawn')
+                ->get()
+            : collect();
+        $adminAllowanceByTeacher = $adminAllowances->groupBy('teacher_id');
         $eventsAvailable = Schema::hasTable('teacher_payroll_events') && $events->isNotEmpty();
         $subjectUnitsByTeacher = $this->subjectUnitsByTeacher($teacherIds, $branchFilter, $effectiveStart, $period['end']);
         $salaryByTeacher = $this->salaryProfilesByTeacher($teacherIds, $branchFilter, $period['end']->toDateString());
+        $adjustmentsByTeacher = ($lockBranchId && $period['type'] === 'month')
+            ? FulltimePayrollLockStore::adjustmentsByTeacher($lockBranchId, $lockMonth)
+            : [];
 
-        $rows = $teachers->map(function ($teacher) use ($period, $effectiveStart, $scheduleByTeacher, $attendanceByTeacher, $eventByTeacher, $achievementByTeacher, $deductionByTeacher, $eventsAvailable, $attendanceSourceAvailable, $subjectUnitsByTeacher, $salaryByTeacher) {
+        $rows = $teachers->map(function ($teacher) use ($period, $effectiveStart, $scheduleByTeacher, $attendanceByTeacher, $eventByTeacher, $achievementByTeacher, $deductionByTeacher, $adminAllowanceByTeacher, $eventsAvailable, $attendanceSourceAvailable, $subjectUnitsByTeacher, $salaryByTeacher, $adjustmentsByTeacher) {
             $teacherId = (int) $teacher->id;
             $teacherSchedules = $scheduleByTeacher->get($teacherId, collect());
             $teacherAttendance = $attendanceByTeacher->get($teacherId, collect());
@@ -181,7 +231,15 @@ class TeacherEligibilityController extends Controller
             $holidayDays = $this->holidayDays($teacherAttendance, $teacherSchedules, $teacherEvents, $effectiveStart, $period['end'], $holidayCalendarAvailable);
             $weekdayHours = $this->weekdayHours($teacherSchedules, $effectiveStart, $period['end']);
             $subjectUnits = $subjectUnitsByTeacher[$teacherId] ?? null;
-            $subjectCount = is_array($subjectUnits) ? ($subjectUnits['payroll_total'] ?? null) : $subjectUnits;
+            $manual = $adjustmentsByTeacher[$teacherId] ?? [];
+            $hasSubjectAdj = collect($manual)->contains(fn ($row) => in_array($row['field'] ?? '', ['regular_subjects', 'tutoring_trial', 'one_to_three'], true));
+            $units = is_array($subjectUnits)
+                ? $subjectUnits
+                : ($hasSubjectAdj ? ['regular' => 0.0, 'tutoring_trial' => 0.0, 'one_to_three' => 0.0, 'payroll_total' => 0.0] : []);
+            if (is_array($subjectUnits) || $hasSubjectAdj) {
+                $units = FulltimeSettlementComposer::applySubjectAdjustments($units, $manual);
+            }
+            $subjectCount = (is_array($subjectUnits) || $hasSubjectAdj) ? ($units['payroll_total'] ?? null) : $subjectUnits;
 
             $result = $this->policy->evaluate([
                 'period_start' => $effectiveStart->toDateString(),
@@ -200,15 +258,25 @@ class TeacherEligibilityController extends Controller
                     'starts_on' => $row->starts_on,
                     'ends_on' => $row->ends_on,
                 ])->all(),
+                'admin_allowances' => $adminAllowanceByTeacher->get($teacherId, collect())->map(fn ($row) => [
+                    'role_label' => $row->role_label,
+                    'rate' => $row->rate,
+                    'status' => ($row->director_confirmed_at && $row->hq_approved_at) ? 'approved' : $row->status,
+                    'starts_on' => $row->starts_on,
+                    'ends_on' => $row->ends_on,
+                    'director_confirmed_at' => $row->director_confirmed_at,
+                    'hq_approved_at' => $row->hq_approved_at,
+                ])->all(),
                 'subject_count' => $subjectCount,
-                'subject_units' => is_array($subjectUnits) ? $subjectUnits : [],
+                'subject_units' => $units,
             ]);
             $result['components']['weekly_16_segments'] = $weeklyStatus;
-            $settlement = \App\Support\FulltimeSettlementComposer::compose(
+            $settlement = FulltimeSettlementComposer::compose(
                 $result['components'],
                 $salaryByTeacher[$teacherId] ?? null,
-                is_array($subjectUnits) ? $subjectUnits : []
+                $units
             );
+            $settlement = FulltimeSettlementComposer::applyManualAdjustments($settlement, $manual);
 
             return [
                 'teacher_id' => $teacherId,
@@ -228,11 +296,204 @@ class TeacherEligibilityController extends Controller
             'policy_version' => config('teacher_salary.policy_version'),
             'effective_from' => config('teacher_salary.effective_from'),
             'period' => ['type' => $period['type'], 'start' => $effectiveStart->toDateString(), 'end' => $period['end']->toDateString()],
-            'components' => ['weekly_16_segments', 'holiday_16_hours', 'weekday_afternoon', 'special_performance', 'deductions', 'subject_count_bonus'],
+            'components' => ['weekly_16_segments', 'holiday_16_hours', 'weekday_afternoon', 'special_performance', 'deductions', 'admin_allowance', 'subject_count_bonus'],
             'teachers' => $rows,
             'total_teachers' => count($rows),
             'branch_subject_total' => round(collect($rows)->sum(fn ($row) => (float) ($row['settlement']['payroll_subject_count'] ?? 0)), 4),
+            'lock' => [
+                'status' => 'draft',
+                'month' => $lockMonth,
+                'branch_id' => $lockBranchId,
+            ],
         ]);
+    }
+
+    public function lock(Request $request)
+    {
+        $data = $request->validate([
+            'month' => ['required', 'regex:/^\\d{4}-\\d{2}$/'],
+            'branch_id' => ['required', 'integer', 'min:1'],
+        ]);
+        $branchId = (int) $data['branch_id'];
+        $this->assertWritableBranch($request, $branchId);
+        $end = Carbon::parse($data['month'] . '-01', 'Asia/Taipei')->endOfMonth()->toDateString();
+        $request->merge([
+            'period' => 'month',
+            'start' => $data['month'] . '-01',
+            'end' => $end,
+            'branch_id' => $branchId,
+        ]);
+        $payload = $this->index($request)->getData(true);
+        if (($payload['lock']['status'] ?? '') === 'locked') {
+            return response()->json(['message' => '本月結算已鎖定。'], 422);
+        }
+        $userId = (int) ($request->attributes->get('auth_user_id') ?? $request->attributes->get('auth_user')?->id ?? 0);
+        try {
+            $runId = FulltimePayrollLockStore::lock(
+                $branchId,
+                $data['month'],
+                $payload['teachers'] ?? [],
+                $userId,
+                (string) ($payload['policy_version'] ?? config('teacher_salary.policy_version'))
+            );
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => '本月結算已鎖定。'], 422);
+        }
+
+        return response()->json(['ok' => true, 'status' => 'locked', 'run_id' => $runId]);
+    }
+
+    public function reopen(Request $request)
+    {
+        if ($request->attributes->get('auth_role') !== 'super_admin') {
+            return response()->json(['message' => '只有總部可以重開已鎖定的正職結算。'], 403);
+        }
+        $data = $request->validate([
+            'month' => ['required', 'regex:/^\\d{4}-\\d{2}$/'],
+            'branch_id' => ['required', 'integer', 'min:1'],
+            'reason' => ['required', 'string', 'min:4', 'max:500'],
+        ]);
+        try {
+            FulltimePayrollLockStore::reopen((int) $data['branch_id'], $data['month'], (int) $request->attributes->get('auth_user_id'), $data['reason']);
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => '本月尚未鎖定。'], 422);
+        }
+
+        return response()->json(['ok' => true, 'status' => 'reopened']);
+    }
+
+    public function export(Request $request): StreamedResponse
+    {
+        $data = $request->validate([
+            'month' => ['required', 'regex:/^\\d{4}-\\d{2}$/'],
+            'branch_id' => ['required', 'integer', 'min:1'],
+        ]);
+        $this->assertWritableBranch($request, (int) $data['branch_id']);
+        $end = Carbon::parse($data['month'] . '-01', 'Asia/Taipei')->endOfMonth()->toDateString();
+        $request->merge([
+            'period' => 'month',
+            'start' => $data['month'] . '-01',
+            'end' => $end,
+            'branch_id' => (int) $data['branch_id'],
+        ]);
+        $payload = $this->index($request)->getData(true);
+        $branchName = DB::table('Campus')->where('id', $data['branch_id'])->value('name') ?? $data['branch_id'];
+        $filename = "正職薪資_{$branchName}_{$data['month']}.csv";
+        FulltimePayrollLockStore::audit((int) $data['branch_id'], $data['month'], 'export', (int) ($request->attributes->get('auth_user_id') ?? 0));
+
+        return response()->streamDownload(function () use ($payload) {
+            $out = fopen('php://output', 'w');
+            fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
+            fputcsv($out, ['老師姓名', '固定底薪', '正課科目數', '輔導試聽科目數', '核薪總科目數', '一對三總計', '科目數獎金', '一對三獎金', '教師倍率', '倍率後獎金', '加扣款', '總發放金額', '狀態']);
+            foreach ($payload['teachers'] ?? [] as $teacher) {
+                $s = $teacher['settlement'] ?? [];
+                $adj = collect($s['adjustments'] ?? [])->map(fn ($row) => ($row['label'] ?? '') . ':' . ($row['amount'] ?? 0))->implode(';');
+                $draft = !empty($teacher['review_required']) || !empty($s['payout_is_draft']);
+                fputcsv($out, [
+                    $teacher['teacher_name'] ?? '',
+                    $s['base_salary'] ?? 0,
+                    $s['regular_subject_count'] ?? '',
+                    $s['tutoring_trial_subject_count'] ?? '',
+                    $s['payroll_subject_count'] ?? '',
+                    $s['one_to_three_count'] ?? '',
+                    $s['subject_count_bonus'] ?? 0,
+                    $s['one_to_three_bonus'] ?? 0,
+                    $s['multiplier_pct'] ?? 100,
+                    $s['weighted_bonus_amount'] ?? 0,
+                    $adj,
+                    $s['total_payout'] ?? 0,
+                    $draft ? '試算' : (($payload['lock']['status'] ?? '') === 'locked' ? '已鎖定' : '草稿'),
+                ]);
+            }
+            fclose($out);
+        }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    public function daily(Request $request, int $teacherId)
+    {
+        $data = $request->validate([
+            'start' => ['required', 'date'],
+            'end' => ['required', 'date'],
+            'branch_id' => ['nullable', 'integer', 'min:1'],
+        ]);
+        if ($data['end'] < $data['start']) {
+            abort(422, 'end must be after or equal to start');
+        }
+        $campusIds = $this->resolveCampusIds($request);
+        if ($campusIds instanceof \Illuminate\Http\JsonResponse) {
+            return $campusIds;
+        }
+        if (!Schema::hasTable('ClassSession') || !Schema::hasTable('StudentClass')) {
+            return response()->json(['sessions' => []]);
+        }
+        $rows = DB::table('ClassSession as cs')
+            ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+            ->join('Student as st', 'st.id', '=', 'sc.StudentID')
+            ->where('sc.TeacherID', $teacherId)
+            ->whereBetween('cs.SessionDate', [$data['start'], $data['end']])
+            ->when($campusIds !== null, fn ($query) => $query->whereIn('st.CampusID', $campusIds))
+            ->orderBy('cs.SessionDate')
+            ->orderBy('cs.StartTime')
+            ->get([
+                'cs.id',
+                'cs.SessionDate as session_date',
+                'cs.StartTime as start_time',
+                'cs.EndTime as end_time',
+                'cs.Status as status',
+                'sc.ClassType as class_type',
+                'st.Name as student_name',
+            ]);
+
+        return response()->json(['sessions' => $rows]);
+    }
+
+    public function storeAdjustment(Request $request)
+    {
+        $data = $request->validate([
+            'branch_id' => ['required', 'integer', 'min:1'],
+            'month' => ['required', 'regex:/^\\d{4}-\\d{2}$/'],
+            'teacher_id' => ['required', 'integer', 'min:1'],
+            'field' => ['required', 'in:regular_subjects,tutoring_trial,one_to_three,multiplier_pct,cash'],
+            'delta' => ['required', 'numeric'],
+            'label' => ['nullable', 'string', 'max:64'],
+            'note' => ['nullable', 'string', 'max:500'],
+        ]);
+        $this->assertWritableBranch($request, (int) $data['branch_id']);
+        if (FulltimePayrollLockStore::monthIsLocked((int) $data['branch_id'], $data['month'])) {
+            return response()->json(['message' => '已鎖定月份不能再加調整。'], 422);
+        }
+        $id = FulltimePayrollLockStore::addAdjustment([
+            'branch_id' => (int) $data['branch_id'],
+            'month' => $data['month'],
+            'teacher_id' => (int) $data['teacher_id'],
+            'field' => $data['field'],
+            'delta' => $data['delta'],
+            'label' => $data['label'] ?? null,
+            'note' => $data['note'] ?? null,
+            'created_by' => $request->attributes->get('auth_user_id'),
+        ]);
+        FulltimePayrollLockStore::audit((int) $data['branch_id'], $data['month'], 'adjust', (int) $request->attributes->get('auth_user_id'), [
+            'adjustment_id' => $id,
+            'teacher_id' => $data['teacher_id'],
+            'field' => $data['field'],
+            'delta' => $data['delta'],
+        ]);
+
+        return response()->json(['id' => $id], 201);
+    }
+
+    private function assertWritableBranch(Request $request, int $branchId): void
+    {
+        $role = $request->attributes->get('auth_role');
+        if ($role === 'super_admin') {
+            return;
+        }
+        $allowed = array_map('intval', $request->attributes->get('auth_campus_ids', []));
+        if (!in_array($branchId, $allowed, true)) {
+            abort(403, 'Forbidden');
+        }
     }
 
     private function evaluateWeek(Carbon $start, Carbon $end, $schedules, $attendanceSessions, $events, bool $eventsAvailable, bool $attendanceSourceAvailable): array

@@ -30,6 +30,7 @@
             <option value="event">假日／公休／請假</option>
             <option value="achievement">升學成果／年度績優</option>
             <option value="deduction">扣除案件</option>
+            <option value="admin">行政加給</option>
           </select>
         </div>
 
@@ -113,7 +114,7 @@
           </label>
         </template>
 
-        <template v-else>
+        <template v-else-if="formType === 'deduction'">
           <label>老師
             <select v-model="deductionForm.teacher_id" required>
               <option value="">請選擇老師</option>
@@ -141,6 +142,37 @@
             <textarea v-model.trim="deductionForm.reason" rows="3" required placeholder="請填事實、相關紀錄與主任確認依據"></textarea>
           </label>
           <p class="form-warning"><span class="material-symbols-outlined">security</span>扣除案件一定要經主任確認，再由總部核准；未完成不會自動扣10%。</p>
+        </template>
+
+        <template v-else>
+          <label>老師
+            <select v-model="adminForm.teacher_id" required>
+              <option value="">請選擇老師</option>
+              <option v-for="teacher in teachers" :key="teacher.teacher_id" :value="teacher.teacher_id">{{ teacher.teacher_name }}（{{ teacher.teacher_id }}）</option>
+            </select>
+          </label>
+          <label>職務
+            <select v-model="adminForm.role_label">
+              <option value="行政協助">行政協助</option>
+              <option value="總導師">總導師</option>
+              <option value="副主任">副主任</option>
+            </select>
+          </label>
+          <label>加給倍率（0–10%）
+            <input v-model="adminForm.rate" type="number" min="0" max="10" step="0.5" required />
+          </label>
+          <div class="form-two-col">
+            <label>生效日
+              <input v-model="adminForm.starts_on" type="date" required />
+            </label>
+            <label>失效日（可留白）
+              <input v-model="adminForm.ends_on" type="date" />
+            </label>
+          </div>
+          <label>職務說明
+            <textarea v-model.trim="adminForm.reason" rows="2" placeholder="主任判定依據"></textarea>
+          </label>
+          <p class="form-warning"><span class="material-symbols-outlined">security</span>行政加給要主任確認後由總部核准，才會加進教師倍率。</p>
         </template>
 
         <div v-if="formError" class="form-error" role="alert">{{ formError }}</div>
@@ -182,6 +214,9 @@
               <button v-if="item.action === 'verify-achievement'" class="btn-soft" type="button" :disabled="busyKey === item.key" @click="runAction(item)">{{ busyKey === item.key ? '處理中…' : '確認成果' }}</button>
               <button v-if="item.action === 'confirm-deduction'" class="btn-soft" type="button" :disabled="busyKey === item.key" @click="runAction(item)">{{ busyKey === item.key ? '處理中…' : '主任確認' }}</button>
               <button v-if="item.action === 'approve-deduction'" class="btn-primary small" type="button" :disabled="busyKey === item.key" @click="runAction(item)">{{ busyKey === item.key ? '處理中…' : '總部核准' }}</button>
+              <button v-if="item.action === 'confirm-admin'" class="btn-soft" type="button" :disabled="busyKey === item.key" @click="runAction(item)">{{ busyKey === item.key ? '處理中…' : '主任確認' }}</button>
+              <button v-if="item.action === 'approve-admin'" class="btn-primary small" type="button" :disabled="busyKey === item.key" @click="runAction(item)">{{ busyKey === item.key ? '處理中…' : '總部核准' }}</button>
+              <button v-if="item.action === 'approve-salary'" class="btn-primary small" type="button" :disabled="busyKey === item.key" @click="runAction(item)">{{ busyKey === item.key ? '處理中…' : '核准底薪' }}</button>
             </div>
           </article>
         </div>
@@ -196,16 +231,22 @@ import { computed, onMounted, reactive, ref, watch } from 'vue';
 import {
   approveTeacherEligibilityDeduction,
   approveTeacherEligibilityEvent,
+  approveTeacherEligibilityAdminAllowance,
+  approveTeacherSalaryProfile,
+  confirmTeacherEligibilityAdminAllowance,
   confirmTeacherEligibilityDeduction,
   createTeacherEligibilityAchievement,
+  createTeacherEligibilityAdminAllowance,
   createTeacherEligibilityDeduction,
   createTeacherEligibilityEvent,
   fetchTeacherEligibilityInputs,
   updateTeacherEligibilityAchievement,
+  updateTeacherEligibilityAdminAllowance,
   updateTeacherEligibilityDeduction,
   updateTeacherEligibilityEvent,
   verifyTeacherEligibilityAchievement,
   withdrawTeacherEligibilityAchievement,
+  withdrawTeacherEligibilityAdminAllowance,
   withdrawTeacherEligibilityDeduction,
   withdrawTeacherEligibilityEvent,
 } from '../lib/teacherEligibilityApi.js';
@@ -227,7 +268,7 @@ const busyKey = ref('');
 const formError = ref('');
 const message = ref('');
 const editingKey = ref('');
-const inputRecords = reactive({ events: [], achievements: [], deductions: [] });
+const inputRecords = reactive({ events: [], achievements: [], deductions: [], admin_allowances: [], salary_profiles: [] });
 
 const today = new Date().toISOString().slice(0, 10);
 const eventForm = reactive({
@@ -241,9 +282,12 @@ const achievementForm = reactive({
 const deductionForm = reactive({
   teacher_id: '', deduction_key: 'harassment', reason: '', starts_on: props.start || today, ends_on: '',
 });
+const adminForm = reactive({
+  teacher_id: '', role_label: '行政協助', rate: 5, reason: '', starts_on: props.start || today, ends_on: '',
+});
 
 const formTitle = computed(() => ({
-  event: '假日／公休／請假事件', achievement: '升學成果／年度績優', deduction: '扣除案件',
+  event: '假日／公休／請假事件', achievement: '升學成果／年度績優', deduction: '扣除案件', admin: '行政加給',
 }[formType.value]));
 const eventHint = computed(() => eventKindHint(eventForm.event_type));
 const isHq = computed(() => props.userRole === 'super_admin');
@@ -295,6 +339,39 @@ const queueItems = computed(() => {
       canEdit: !confirmed, canWithdraw: !confirmed,
     });
   }
+  for (const row of inputRecords.admin_allowances) {
+    if (row.status === 'approved' || row.status === 'withdrawn') {
+      if (row.status === 'withdrawn') continue;
+      items.push({
+        key: `admin-${row.id}`, kind: 'admin', id: row.id, row,
+        title: `行政加給 ${row.rate}%`, subtitle: `${teacherName(row.teacher_id)}｜${row.role_label}`,
+        description: row.reason || '', statusLabel: '已核准', tone: 'done',
+        action: '', canEdit: false, canWithdraw: false,
+      });
+      continue;
+    }
+    const confirmed = Boolean(row.director_confirmed_at);
+    items.push({
+      key: `admin-${row.id}`, kind: 'admin', id: row.id, row,
+      title: `行政加給 ${row.rate}%`, subtitle: `${teacherName(row.teacher_id)}｜${row.role_label}`,
+      description: row.reason || '',
+      statusLabel: confirmed ? '待總部核准' : '待主任確認', tone: confirmed ? 'hq' : 'pending',
+      action: confirmed && isHq.value ? 'approve-admin' : (confirmed ? '' : 'confirm-admin'),
+      canEdit: !confirmed, canWithdraw: !confirmed,
+    });
+  }
+  for (const row of inputRecords.salary_profiles) {
+    if (row.status === 'withdrawn') continue;
+    const pending = row.status !== 'approved';
+    items.push({
+      key: `salary-${row.id}`, kind: 'salary', id: row.id, row,
+      title: `底薪 ${row.base_salary}`, subtitle: `${teacherName(row.teacher_id)}｜生效 ${row.effective_from || ''}`,
+      description: pending ? '總部核准前不會進入結算' : '已核准',
+      statusLabel: pending ? '待總部核准底薪' : '底薪已核准', tone: pending ? 'hq' : 'done',
+      action: pending && isHq.value ? 'approve-salary' : '',
+      canEdit: false, canWithdraw: false,
+    });
+  }
   return items;
 });
 const pendingCount = computed(() => queueItems.value.filter((item) => item.action || item.canEdit).length);
@@ -312,6 +389,7 @@ function resetForm() {
   achievementForm.teacher_id = ''; achievementForm.student_id = ''; achievementForm.outcome_key = 'student_outcome'; achievementForm.subject = '';
   achievementForm.award_year = ''; achievementForm.evidence = ''; achievementForm.starts_on = props.start || today; achievementForm.ends_on = props.end || today;
   deductionForm.teacher_id = ''; deductionForm.deduction_key = 'harassment'; deductionForm.reason = ''; deductionForm.starts_on = props.start || today; deductionForm.ends_on = '';
+  adminForm.teacher_id = ''; adminForm.role_label = '行政協助'; adminForm.rate = 5; adminForm.reason = ''; adminForm.starts_on = props.start || today; adminForm.ends_on = '';
 }
 
 async function loadInputs() {
@@ -321,6 +399,8 @@ async function loadInputs() {
     inputRecords.events = data.events || [];
     inputRecords.achievements = data.achievements || [];
     inputRecords.deductions = data.deductions || [];
+    inputRecords.admin_allowances = data.admin_allowances || [];
+    inputRecords.salary_profiles = data.salary_profiles || [];
   } catch (error) {
     formError.value = error?.message || '無法載入薪資要件待辦';
   } finally { loading.value = false; }
@@ -353,6 +433,13 @@ function startEdit(item) {
     achievementForm.evidence = row.evidence || '';
     achievementForm.starts_on = row.starts_on || today;
     achievementForm.ends_on = row.ends_on || today;
+  } else if (item.kind === 'admin') {
+    adminForm.teacher_id = String(row.teacher_id || '');
+    adminForm.role_label = row.role_label || '行政協助';
+    adminForm.rate = row.rate ?? 5;
+    adminForm.reason = row.reason || '';
+    adminForm.starts_on = row.starts_on || today;
+    adminForm.ends_on = row.ends_on || '';
   } else {
     deductionForm.teacher_id = String(row.teacher_id || '');
     deductionForm.deduction_key = row.deduction_key || 'harassment';
@@ -374,6 +461,7 @@ async function withdrawItem(item) {
     if (item.kind === 'event') await withdrawTeacherEligibilityEvent(item.id);
     if (item.kind === 'achievement') await withdrawTeacherEligibilityAchievement(item.id);
     if (item.kind === 'deduction') await withdrawTeacherEligibilityDeduction(item.id);
+    if (item.kind === 'admin') await withdrawTeacherEligibilityAdminAllowance(item.id);
     if (editingKey.value === item.key) resetForm();
     await loadInputs(); emit('changed'); message.value = '已撤回，不會進入薪資計算。';
   } catch (error) { formError.value = error?.message || '撤回失敗'; }
@@ -394,11 +482,16 @@ async function submitForm() {
       const achievementId = editingId('achievement');
       if (achievementId) await updateTeacherEligibilityAchievement(achievementId, branchPayload(payload));
       else await createTeacherEligibilityAchievement(branchPayload(payload));
-    } else {
+    } else if (formType.value === 'deduction') {
       const deductionId = editingId('deduction');
       const payload = branchPayload({ ...deductionForm, teacher_id: Number(deductionForm.teacher_id), ends_on: deductionForm.ends_on || null });
       if (deductionId) await updateTeacherEligibilityDeduction(deductionId, payload);
       else await createTeacherEligibilityDeduction(payload);
+    } else {
+      const adminId = editingId('admin');
+      const payload = branchPayload({ ...adminForm, teacher_id: Number(adminForm.teacher_id), rate: Number(adminForm.rate), ends_on: adminForm.ends_on || null });
+      if (adminId) await updateTeacherEligibilityAdminAllowance(adminId, payload);
+      else await createTeacherEligibilityAdminAllowance(payload);
     }
     const wasEditing = Boolean(editingKey.value);
     resetForm(); await loadInputs(); emit('changed'); message.value = wasEditing ? '已儲存修改，仍須主任核准後才會進入薪資。' : '資料已送出，請在右側待辦清單完成主任確認。核准前可修改或撤回。';
@@ -414,6 +507,9 @@ async function runAction(item) {
     if (item.action === 'verify-achievement') await verifyTeacherEligibilityAchievement(item.id);
     if (item.action === 'confirm-deduction') await confirmTeacherEligibilityDeduction(item.id);
     if (item.action === 'approve-deduction') await approveTeacherEligibilityDeduction(item.id);
+    if (item.action === 'confirm-admin') await confirmTeacherEligibilityAdminAllowance(item.id);
+    if (item.action === 'approve-admin') await approveTeacherEligibilityAdminAllowance(item.id);
+    if (item.action === 'approve-salary') await approveTeacherSalaryProfile(item.id);
     await loadInputs(); emit('changed'); message.value = '待辦狀態已更新，報表將重新計算。';
   } catch (error) { formError.value = error?.message || '審核操作失敗'; }
   finally { busyKey.value = ''; }

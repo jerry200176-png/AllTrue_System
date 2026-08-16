@@ -57,12 +57,14 @@ final class FulltimeSettlementComposer
         $weekdayRate = (float) ($components['weekday_afternoon']['rate'] ?? 0);
         $specialRate = (float) ($components['special_performance']['rate'] ?? 0);
         $deductionRate = (float) ($components['deductions']['rate'] ?? 0);
+        $adminRate = (float) ($components['admin_allowance']['rate'] ?? 0);
 
         $multiplierPct = 100.0
             + $holidayRate
             + $weekdayRate
             + $specialRate
             + $deductionRate
+            + $adminRate
             + $subjectCountRate;
 
         $weightedBonus = round(($rawSubjectBonus + $rawOneToThreeBonus) * ($multiplierPct / 100.0), 2);
@@ -91,10 +93,64 @@ final class FulltimeSettlementComposer
                 ['key' => 'weekday_afternoon', 'label' => '平日下午課倍率', 'pct' => $weekdayRate],
                 ['key' => 'special_performance', 'label' => '特殊表現倍率', 'pct' => $specialRate],
                 ['key' => 'subject_count_threshold', 'label' => '科目數20科倍率', 'pct' => $subjectCountRate],
+                ['key' => 'admin_allowance', 'label' => '行政加給倍率', 'pct' => $adminRate],
                 ['key' => 'deductions', 'label' => '扣除案件', 'pct' => $deductionRate],
             ],
             'adjustments' => $adjustments,
+            'payout_is_draft' => $reviewRequired,
+            'line_items' => [
+                ['label' => '固定底薪', 'amount' => $baseSalary],
+                ['label' => '16段課', 'amount' => $weeklyBonus],
+                ['label' => '倍率後獎金', 'amount' => $weightedBonus],
+            ],
         ];
+    }
+
+    public static function applyManualAdjustments(array $settlement, array $adjustments): array
+    {
+        $multiplier = (float) ($settlement['multiplier_pct'] ?? 100);
+        $parts = $settlement['multiplier_parts'] ?? [];
+        $lines = $settlement['adjustments'] ?? [];
+        foreach ($adjustments as $adj) {
+            $field = $adj['field'] ?? '';
+            $delta = (float) ($adj['delta'] ?? 0);
+            $label = $adj['label'] ?: ($field === 'multiplier_pct' ? '調整倍率' : '加扣款');
+            if ($field === 'multiplier_pct' && $delta != 0.0) {
+                $multiplier += $delta;
+                $parts[] = ['key' => 'manual_multiplier', 'label' => $label, 'pct' => $delta];
+            }
+            if ($field === 'cash' && $delta != 0.0) {
+                $lines[] = ['label' => $label, 'amount' => $delta];
+            }
+        }
+        $subject = (float) ($settlement['subject_count_bonus'] ?? 0);
+        $oneToThree = (float) ($settlement['one_to_three_bonus'] ?? 0);
+        $weighted = round(($subject + $oneToThree) * ($multiplier / 100.0), 2);
+        $cashTotal = collect($lines)->sum(fn ($row) => (float) ($row['amount'] ?? 0));
+        $settlement['multiplier_pct'] = round($multiplier, 2);
+        $settlement['multiplier_parts'] = $parts;
+        $settlement['adjustments'] = $lines;
+        $settlement['weighted_bonus_amount'] = $weighted;
+        $settlement['total_payout'] = round(((float) ($settlement['base_salary'] ?? 0)) + $weighted + $cashTotal, 2);
+        return $settlement;
+    }
+
+    public static function applySubjectAdjustments(array $units, array $adjustments): array
+    {
+        foreach ($adjustments as $adj) {
+            $delta = (float) ($adj['delta'] ?? 0);
+            $field = $adj['field'] ?? '';
+            if ($field === 'regular_subjects') {
+                $units['regular'] = ($units['regular'] ?? 0) + $delta;
+            } elseif ($field === 'tutoring_trial') {
+                $units['tutoring_trial'] = ($units['tutoring_trial'] ?? 0) + $delta;
+            } elseif ($field === 'one_to_three') {
+                $units['one_to_three'] = ($units['one_to_three'] ?? 0) + $delta;
+            }
+        }
+        $units['payroll_total'] = round(($units['regular'] ?? 0) + ($units['tutoring_trial'] ?? 0), 4);
+
+        return $units;
     }
 
     private static function nullableFloat(mixed $value): ?float
@@ -102,6 +158,7 @@ final class FulltimeSettlementComposer
         if ($value === null || $value === '') {
             return null;
         }
+
         return round((float) $value, 4);
     }
 }
