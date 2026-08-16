@@ -534,6 +534,7 @@
 開發備註：UI 標示改「最新更新」；分類改「你現在可以／我們修好了／操作更順手／需要你注意」。回歸 `npm run test:release-notes`。
 
 ## 2026-07-29 — fix(billing): 繳費提醒與課程列表付款真相對齊（#959，G-009）
+<!-- release-notes: staff_update=staff-2026-07-29-tuition-alert-payment-truth-959 -->
 
 - `AlertController::computePaymentStatus()` 新增 `hasInvoicePayment` 參數：`已繳費 = Paid=1 OR 有未作廢 Invoice 已結清付款`，與 `StudentClassController` 課程列表（`lastPaidAtByStudentClassIds`）的權威判斷對齊。
 - 同步修正 `outstanding` 計算：發票已結清但 `Paid` 未同步更新的課程，不再顯示欠款。
