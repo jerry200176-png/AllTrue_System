@@ -5,12 +5,12 @@
 - 課程管理把「課程／帳務」分頁放到學生列標題，收合時也能直接點帳務並展開。
 - 帳務中心等 PIN 頁在解鎖前顯示說明，不再一片空白；待核帳改稱待對帳，勾選左欄才出現批次列。
 
-## 2026-08-14 — chore(ops): 測試主任 285 唯讀清理診斷
+## 2026-08-16 — feat(payroll): 正職結算可鎖定、匯出、調整與行政加給
 
-<!-- release-notes: silent_ship=silent-2026-08-14-director-285-diagnose -->
+<!-- release-notes: staff_update=staff-2026-08-16-fulltime-payroll-lock -->
 
-- 新增只允許 `user_id=285` / `w3-director-test-20260813` / campus `9` 的 GitHub Actions 唯讀診斷；身分不符即停止。
-- 不刪除帳號、不改 production 資料；正式刪除仍走 super_admin 的主任管理頁。
+- 正職結算單可鎖定凍結金額（有試算列不能鎖）、總部可重開、可匯出 CSV（Excel 可開）。
+- 已鎖定月份不能回溯改底薪。全勤／勞健保／行政加給仍未自動列入。
 
 ## 2026-08-16 — feat(billing): 課程頁帳務分頁與批次回報 (#1827)
 
@@ -18,6 +18,13 @@
 
 - 課程管理同一學生可切「帳務資料」，不必再到收費頁重搜姓名。
 - 收費頁可勾選多筆批次回報或確認入帳；批次確認不會自動開收據。
+
+## 2026-08-14 — chore(ops): 測試主任 285 唯讀清理診斷
+
+<!-- release-notes: silent_ship=silent-2026-08-14-director-285-diagnose -->
+
+- 新增只允許 `user_id=285` / `w3-director-test-20260813` / campus `9` 的 GitHub Actions 唯讀診斷；身分不符即停止。
+- 不刪除帳號、不改 production 資料；正式刪除仍走 super_admin 的主任管理頁。
 
 ## 2026-08-16 — fix(reports): 代課老師填報率計入代課老師
 

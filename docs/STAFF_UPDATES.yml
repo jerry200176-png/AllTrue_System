@@ -18,6 +18,21 @@ updates:
     source_refs:
       - "changelog:2026-08-16:billing-ux-find"
 
+  - id: staff-2026-08-16-fulltime-payroll-lock
+    published_at: "2026-08-16"
+    audiences:
+      - director
+    importance: major
+    title: 正職結算可鎖定與匯出
+    summary: 正職薪資可鎖定本月並匯出 Excel；底薪核准後才計入，鎖定月份不能改。
+    items:
+      - category: added
+        text: 確認無試算列後可鎖定本月，匯出 CSV 給 Excel 開；總部可填原因重開。
+      - category: action_required
+        text: 已鎖定月份不能改底薪。行政加給與加扣款調整下一包才上。
+    source_refs:
+      - "changelog:2026-08-16:fulltime-payroll-lock"
+
   - id: staff-2026-08-14-monthly-copy-teacher-list
     published_at: "2026-08-14"
     audiences:

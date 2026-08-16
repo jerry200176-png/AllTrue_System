@@ -85,6 +85,43 @@ export const staffUpdates = [
     "version": "2026.08.16"
   },
   {
+    "id": "staff-2026-08-16-fulltime-payroll-lock",
+    "publishedAt": "2026-08-16",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "正職結算可鎖定與匯出",
+    "summary": "正職薪資可鎖定本月並匯出 Excel；底薪核准後才計入，鎖定月份不能改。",
+    "items": [
+      "確認無試算列後可鎖定本月，匯出 CSV 給 Excel 開；總部可填原因重開。",
+      "已鎖定月份不能改底薪。行政加給與加扣款調整下一包才上。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "確認無試算列後可鎖定本月，匯出 CSV 給 Excel 開；總部可填原因重開。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "已鎖定月份不能改底薪。行政加給與加扣款調整下一包才上。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-16:fulltime-payroll-lock"
+    ],
+    "date": "2026-08-16",
+    "version": "2026.08.16"
+  },
+  {
     "id": "staff-2026-08-16-reported-paid-phase2",
     "publishedAt": "2026-08-16",
     "effectiveAt": null,
