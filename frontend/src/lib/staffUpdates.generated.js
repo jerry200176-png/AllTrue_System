@@ -15,22 +15,22 @@ export const staffUpdates = [
     ],
     "importance": "action_required",
     "title": "繳費改先回報再入帳",
-    "summary": "行政先登記家長已繳；會計對到帳才開收據，避免沒匯款就變已繳。",
+    "summary": "行政先登記家長已繳；對到帳後主任按確認入帳才開收據。",
     "items": [
-      "看官方 LINE 請用「登記已回報」，不要等會計也能先登錄。",
-      "會計確認入帳後才會開電子收據；對不到款可退回。"
+      "看官方 LINE 請用「登記已回報」，不必等人也能先登錄。",
+      "對到帳後按確認入帳才開電子收據；對不到款可退回。"
     ],
     "sections": [
       {
         "title": "需要你注意",
         "items": [
-          "看官方 LINE 請用「登記已回報」，不要等會計也能先登錄。"
+          "看官方 LINE 請用「登記已回報」，不必等人也能先登錄。"
         ]
       },
       {
         "title": "操作更順手",
         "items": [
-          "會計確認入帳後才會開電子收據；對不到款可退回。"
+          "對到帳後按確認入帳才開電子收據；對不到款可退回。"
         ]
       }
     ],
@@ -170,7 +170,7 @@ export const staffUpdates = [
     ],
     "importance": "digest",
     "title": "通知中心先回報",
-    "summary": "通知中心登記已繳後仍待對帳，會計確認才入帳開收據。",
+    "summary": "通知中心登記已繳後仍待對帳，確認入帳後才開收據。",
     "items": [
       "通知中心學費改「送出已回報」，不會當場變已繳或開收據。"
     ],
@@ -250,6 +250,43 @@ export const staffUpdates = [
     ],
     "sourceRefs": [
       "changelog:2026-08-16:fillrate-substitute-absent-copy"
+    ],
+    "date": "2026-08-16",
+    "version": "2026.08.16"
+  },
+  {
+    "id": "staff-2026-08-16-director-confirms",
+    "publishedAt": "2026-08-16",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "帳務中心直接開",
+    "summary": "帳務中心不再擋 PIN；對到帳後由主任按確認入帳。",
+    "items": [
+      "帳務中心一進去就有名單，不必先解 PIN。",
+      "沒有會計角色；主任按確認入帳就完成。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "帳務中心一進去就有名單，不必先解 PIN。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "沒有會計角色；主任按確認入帳就完成。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-16:director-confirms"
     ],
     "date": "2026-08-16",
     "version": "2026.08.16"

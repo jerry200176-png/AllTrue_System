@@ -31,7 +31,7 @@ describe('TuitionCollectionPage receipt entry paths', () => {
   });
 
   it('admin reported-paid path does not auto-open a receipt', () => {
-    expect(source).toContain('已送出待對帳，請會計確認入帳後才會開收據');
+    expect(source).toContain('已送出待對帳，請到帳務中心按確認入帳後才會開收據');
     expect(source).not.toMatch(/if\s*\(result\?\.report_id\)\s*\{[\s\S]*receiptReportId\.value\s*=\s*result\.report_id/);
   });
 
