@@ -99,7 +99,7 @@ export const staffUpdates = [
     "summary": "正職薪資可鎖定本月並匯出 Excel；底薪核准後才計入，鎖定月份不能改。",
     "items": [
       "確認無試算列後可鎖定本月，匯出 CSV 給 Excel 開；總部可填原因重開。",
-      "已鎖定月份不能改底薪。行政加給與加扣款調整下一包才上。"
+      "已鎖定月份不能改底薪。現金加扣款調整下一包才上。"
     ],
     "sections": [
       {
@@ -111,12 +111,49 @@ export const staffUpdates = [
       {
         "title": "需要你注意",
         "items": [
-          "已鎖定月份不能改底薪。行政加給與加扣款調整下一包才上。"
+          "已鎖定月份不能改底薪。現金加扣款調整下一包才上。"
         ]
       }
     ],
     "sourceRefs": [
       "changelog:2026-08-16:fulltime-payroll-lock"
+    ],
+    "date": "2026-08-16",
+    "version": "2026.08.16"
+  },
+  {
+    "id": "staff-2026-08-16-fulltime-admin-allowance",
+    "publishedAt": "2026-08-16",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "正職行政加給與底薪核准",
+    "summary": "行政加給要主任確認、總部核准才進倍率。主任改底薪先待核准；總部改了立刻計入。",
+    "items": [
+      "可登錄行政協助／總導師／副主任加給 0–10%，核准後才計入。",
+      "主任改底薪會看到待核准金額；總部可核准，或自己改立即生效。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "可登錄行政協助／總導師／副主任加給 0–10%，核准後才計入。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "主任改底薪會看到待核准金額；總部可核准，或自己改立即生效。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-16:fulltime-admin-allowance"
     ],
     "date": "2026-08-16",
     "version": "2026.08.16"

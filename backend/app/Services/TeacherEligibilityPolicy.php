@@ -38,6 +38,7 @@ class TeacherEligibilityPolicy
             'weekday_afternoon' => $this->weekdayAfternoon($input['weekday_hours'] ?? []),
             'special_performance' => $this->specialPerformance($input['achievements'] ?? [], $input['period_start'] ?? null, $input['period_end'] ?? null),
             'deductions' => $this->deductions($input['deductions'] ?? [], $input['period_start'] ?? null, $input['period_end'] ?? null),
+            'admin_allowance' => $this->adminAllowance($input['admin_allowances'] ?? [], $input['period_start'] ?? null, $input['period_end'] ?? null),
             'subject_count_bonus' => $this->subjectCountBonus(
                 array_key_exists('subject_count', $input) && $input['subject_count'] !== null
                     ? (float) $input['subject_count']
@@ -332,6 +333,43 @@ class TeacherEligibilityPolicy
             $active === [] ? self::QUALIFIES : self::NOT_QUALIFIES,
             $active === [] ? '查詢期間沒有已核准扣除案件。' : '查詢期間有已核准扣除案件。',
             ['active_count' => count($active)],
+            0,
+            round($rate, 2)
+        );
+    }
+
+    public function adminAllowance(array $allowances, ?string $periodStart, ?string $periodEnd): array
+    {
+        $start = $periodStart ? Carbon::parse($periodStart)->startOfDay() : null;
+        $end = $periodEnd ? Carbon::parse($periodEnd)->endOfDay() : null;
+        $pending = [];
+        $rate = 0.0;
+        foreach ($allowances as $row) {
+            if (($row['status'] ?? 'pending') === 'withdrawn') {
+                continue;
+            }
+            if (($row['status'] ?? 'pending') !== 'approved') {
+                $pending[] = $row['role_key'] ?? 'admin_allowance';
+                continue;
+            }
+            if ($start && !empty($row['starts_on']) && Carbon::parse($row['starts_on'])->gt($end)) {
+                continue;
+            }
+            if ($end && !empty($row['ends_on']) && Carbon::parse($row['ends_on'])->lt($start)) {
+                continue;
+            }
+            $rate += (float) ($row['rate'] ?? 0);
+        }
+        if ($pending !== []) {
+            return $this->review(['admin_allowance_approval'], '有行政加給尚未完成主任確認及總部審核。', ['pending_count' => count($pending)]);
+        }
+        $cap = (float) $this->setting('admin_allowance_rate_cap', 10);
+        $rate = min($cap, max(0.0, $rate));
+
+        return $this->result(
+            self::QUALIFIES,
+            $rate > 0 ? '已核准行政加給，可依制度疊加。' : '查詢期間沒有已核准行政加給。',
+            ['rate_cap' => $cap],
             0,
             round($rate, 2)
         );
