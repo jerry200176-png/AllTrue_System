@@ -1,5 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
+import { dismissOverlays } from './fixtures/dismissOverlays.js';
 
 /**
  * in-app #200 — director can decide without understanding SC.
@@ -24,16 +25,6 @@ async function login(page, creds) {
   await page.locator('#login-password').fill(creds.password);
   await page.locator('button.login-btn').click();
   await expect(page.locator('#login-account')).toHaveCount(0, { timeout: 15_000 });
-}
-
-async function dismissOverlays(page) {
-  for (const sel of ['.guide-tour-close', '.release-nudge-btn:has-text("稍後再看")']) {
-    const el = page.locator(sel).first();
-    if (await el.isVisible().catch(() => false)) {
-      await el.click().catch(() => {});
-      await page.waitForTimeout(200);
-    }
-  }
 }
 
 test.describe('Duplicate review human labels — in-app #200', () => {
