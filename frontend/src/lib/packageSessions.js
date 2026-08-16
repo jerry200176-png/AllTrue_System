@@ -1,3 +1,5 @@
+import { isSessionModeCourse } from './sessionPlanningStatus.js';
+
 /**
  * Pure helpers for shared-package (共用方案) total-session edits.
  *
@@ -62,6 +64,7 @@ export function computePackageNextTotal({ mode, currentTotal, value, usedSession
  * the pool's already-used count. Frame package members around the SHARED pool —
  * the single source of truth (`package_total/remaining_sessions`) — instead.
  * Non-package session courses keep the per-course「已上 / 購買」framing.
+ * Monthly courses have no purchased-session cap (R102); never say「購買 N 堂」.
  *
  * @param {Object} course   StudentClass row (with package_* fields when pooled)
  * @param {Object} [counts]
@@ -90,6 +93,16 @@ export function packageMemberSessionSummary(course, { completed = 0, cancelled =
   }
 
   const purchased = Math.max(0, Number(course?.sessions_purchased ?? course?.SessionCount ?? 0) || 0);
+  if (!isSessionModeCourse(course)) {
+    return {
+      isPackage: false,
+      total: purchased,
+      used: done,
+      remaining: null,
+      purchased,
+      text: `已上 ${done} 堂${cancelledSuffix}`,
+    };
+  }
   return {
     isPackage: false,
     total: purchased,
