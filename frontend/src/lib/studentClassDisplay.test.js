@@ -17,6 +17,7 @@ import {
   formatLedgerInvoiceLabel,
   formatLedgerReceiptBillLine,
   formatLedgerAnomalyDetail,
+  humanizeDocumentRef,
   humanizeBulkLeaveSkipReason,
   formatBulkLeaveSkippedLine,
   primaryLeaksInternalId,
@@ -161,8 +162,11 @@ assert.equal(formatDirectorPersonName({ student_name: '高瑞璞' }), '高瑞璞
 // --- User Task: 收費／看帳本 ---
 assert.equal(formatLedgerCourseLabel({ course_ref: 'COURSE-000382' }), '本課程');
 assert.equal(formatLedgerCourseLabel({ course_ref: '高中英文｜王老師' }), '高中英文｜王老師');
-assert.equal(formatLedgerInvoiceLabel({ invoice_no: 'INV-1' }), 'INV-1');
+assert.equal(formatLedgerInvoiceLabel({ invoice_no: 'INV-1' }), '帳單-1');
+assert.equal(formatLedgerInvoiceLabel({ invoice_no: 'INV-LEGACY-000009' }), '帳單-舊資料-000009');
 assert.equal(formatLedgerInvoiceLabel({ id: 9 }), '帳單');
+assert.equal(humanizeDocumentRef('RCPT-LEGACY-000123'), '收據-舊資料-000123');
+assert.equal(humanizeDocumentRef('PAY-202508-1'), '收款-202508-1');
 assert.equal(formatLedgerReceiptBillLine({ invoice_id: 1, course_ref: 'COURSE-1' }), '已對應帳單 · 本課程');
 assert.ok(!formatLedgerAnomalyDetail({ payment_id: 3, invoice_id: 1, report_id: 2 }).includes('Payment'));
 

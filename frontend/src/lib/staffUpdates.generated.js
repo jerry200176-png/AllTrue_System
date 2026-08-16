@@ -4,6 +4,38 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-17-ui-human-copy-sweep",
+    "publishedAt": "2026-08-17",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "畫面用語再白話一點",
+    "summary": "匯入老師、收據編號、分校授權碼改成比較好懂的中文。",
+    "items": [
+      "批次新增老師改用「帳號／主分校／可授科目」說明，不再寫 branch_id。",
+      "收據與帳單編號改顯示「收據／帳單／舊資料」，不再出現 LEGACY。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "批次新增老師改用「帳號／主分校／可授科目」說明，不再寫 branch_id。",
+          "收據與帳單編號改顯示「收據／帳單／舊資料」，不再出現 LEGACY。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-17:ui-human-copy-sweep"
+    ],
+    "date": "2026-08-17",
+    "version": "2026.08.17"
+  },
+  {
     "id": "staff-2026-08-17-tuition-collect-tdz",
     "publishedAt": "2026-08-17",
     "effectiveAt": null,

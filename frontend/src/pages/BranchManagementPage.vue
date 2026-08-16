@@ -82,7 +82,7 @@
             <div class="form-section">
               <div class="form-section__title">刷卡機授權</div>
               <label class="form-field">
-                <span class="form-label">Token</span>
+                <span class="form-label">授權碼</span>
                 <div class="token-field">
                   <input
                     v-model="form.Token"
@@ -95,7 +95,7 @@
                     {{ showToken ? '隱藏' : '顯示' }}
                   </button>
                 </div>
-                <span class="form-hint">刷卡機連線時使用，請妥善保管</span>
+                <span class="form-hint">刷卡機連線用的授權碼，請妥善保管</span>
               </label>
             </div>
 
