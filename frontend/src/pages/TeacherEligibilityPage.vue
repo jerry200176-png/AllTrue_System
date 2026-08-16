@@ -46,19 +46,32 @@
       <div class="eligibility-card table-wrap desktop-table">
         <table>
           <thead>
-            <tr><th>老師</th><th>整體狀態</th><th v-for="item in visibleComponents" :key="item.key">{{ item.label }}</th><th>缺少資料／原因</th></tr>
+            <tr><th>老師</th><th>整體狀態</th><th>底薪</th><th>教師倍率</th><th v-for="item in visibleComponents" :key="item.key">{{ item.label }}</th><th>總發放金額</th><th>缺少資料／原因</th></tr>
           </thead>
           <tbody>
             <tr v-for="teacher in filteredTeachers" :key="teacher.teacher_id">
               <td><strong>{{ teacher.teacher_name }}</strong><small>ID {{ teacher.teacher_id }}</small></td>
               <td><span :class="['status', statusClass(teacher.overall_status)]">{{ statusLabel(teacher.overall_status) }}</span></td>
+              <td class="salary-cell">
+                <template v-if="editingSalaryId === teacher.teacher_id">
+                  <input v-model.number="salaryDraft" type="number" min="0" step="1" class="salary-input" />
+                  <button class="btn-outline small" :disabled="savingSalary" @click="saveSalary(teacher)">存</button>
+                  <button class="btn-outline small" @click="editingSalaryId = null">取消</button>
+                </template>
+                <template v-else>
+                  {{ formatMoney(teacher.settlement?.base_salary) }}
+                  <button class="btn-outline small" @click="startEditSalary(teacher)">改</button>
+                </template>
+              </td>
+              <td>{{ teacher.settlement?.multiplier_pct ?? 100 }}%</td>
               <td v-for="item in visibleComponents" :key="item.key">
                 <span :class="['status', statusClass(teacher.components?.[item.key]?.status)]">{{ statusLabel(teacher.components?.[item.key]?.status) }}</span>
                 <small>{{ detail(item.key, teacher.components?.[item.key]) }}</small>
               </td>
+              <td class="total-cell"><strong>{{ formatMoney(teacher.settlement?.total_payout) }}</strong></td>
               <td class="reason-cell">{{ reasonText(teacher) }}</td>
             </tr>
-            <tr v-if="filteredTeachers.length === 0"><td :colspan="visibleComponents.length + 3" class="empty">查詢期間沒有符合條件的正職老師資料。</td></tr>
+            <tr v-if="filteredTeachers.length === 0"><td :colspan="visibleComponents.length + 6" class="empty">查詢期間沒有符合條件的正職老師資料。</td></tr>
           </tbody>
         </table>
       </div>
@@ -68,6 +81,8 @@
             <div><strong>{{ teacher.teacher_name }}</strong><small>ID {{ teacher.teacher_id }}</small></div>
             <span :class="['status', statusClass(teacher.overall_status)]">{{ statusLabel(teacher.overall_status) }}</span>
           </div>
+          <div class="component-row"><span>底薪</span><span class="component-value">{{ formatMoney(teacher.settlement?.base_salary) }}</span></div>
+          <div class="component-row"><span>教師倍率</span><span class="component-value">{{ teacher.settlement?.multiplier_pct ?? 100 }}%</span></div>
           <div class="teacher-components">
             <div v-for="item in visibleComponents" :key="item.key" class="component-row">
               <span>{{ item.label }}</span>
@@ -77,6 +92,7 @@
               </span>
             </div>
           </div>
+          <div class="component-row total-cell"><span>總發放金額</span><strong>{{ formatMoney(teacher.settlement?.total_payout) }}</strong></div>
           <p class="mobile-reason">{{ reasonText(teacher) }}</p>
         </article>
         <div v-if="filteredTeachers.length === 0" class="eligibility-card empty">查詢期間沒有符合條件的正職老師資料。</div>
@@ -96,7 +112,7 @@
 
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue';
-import { fetchTeacherEligibility } from '../lib/teacherEligibilityApi.js';
+import { fetchTeacherEligibility, saveTeacherSalaryProfile } from '../lib/teacherEligibilityApi.js';
 import TeacherEligibilityInputPanel from '../components/TeacherEligibilityInputPanel.vue';
 
 const props = defineProps({
@@ -131,6 +147,38 @@ const qualifyingCount = computed(() => filteredTeachers.value.filter((teacher) =
   return component?.status === 'qualifies' && (Number(component.rate) > 0 || Number(component.amount) > 0);
 })).length);
 const deductionCount = computed(() => filteredTeachers.value.filter(t => Number(t.components?.deductions?.rate || 0) < 0).length);
+
+const editingSalaryId = ref(null);
+const salaryDraft = ref(0);
+const savingSalary = ref(false);
+
+function formatMoney(value) {
+  const n = Number(value ?? 0);
+  return `$${n.toLocaleString('zh-TW', { maximumFractionDigits: 0 })}`;
+}
+
+function startEditSalary(teacher) {
+  editingSalaryId.value = teacher.teacher_id;
+  salaryDraft.value = Math.round(Number(teacher.settlement?.base_salary ?? 0));
+}
+
+async function saveSalary(teacher) {
+  savingSalary.value = true;
+  try {
+    await saveTeacherSalaryProfile({
+      teacher_id: teacher.teacher_id,
+      branch_id: props.branchId || null,
+      base_salary: salaryDraft.value,
+      effective_from: new Date().toISOString().slice(0, 10),
+    });
+    editingSalaryId.value = null;
+    await loadData();
+  } catch (e) {
+    error.value = e?.message || '底薪儲存失敗';
+  } finally {
+    savingSalary.value = false;
+  }
+}
 
 async function loadData() {
   loading.value = true; error.value = '';
@@ -218,6 +266,9 @@ onMounted(loadData);
 .summary-grid { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:12px; margin-bottom:18px; }
 .summary-card { padding:16px; background:var(--ds-canvas); border:1px solid var(--border); border-radius:12px; }.summary-card span { color:var(--ds-ink-mute); font-size:13px; }.summary-card strong { display:block; font-size:28px; margin-top:6px; }.summary-card.success strong { color:var(--ds-success); }.summary-card.warning strong { color:var(--ds-warning); }.summary-card.danger strong { color:var(--ds-danger); }
 .table-wrap { overflow:auto; }.table-wrap table { width:100%; border-collapse:collapse; min-width:1050px; }.table-wrap th,.table-wrap td { padding:12px 10px; border-bottom:1px solid var(--border); text-align:left; vertical-align:top; }.table-wrap th { color:var(--ds-ink-mute); font-size:13px; background:var(--ds-canvas-soft); }.table-wrap td small { display:block; margin-top:4px; color:var(--ds-ink-mute); font-size:12px; }.status { display:inline-flex; padding:4px 8px; border-radius:999px; font-size:12px; white-space:nowrap; }.status.pass { background:var(--ds-success-wash); color:var(--ds-success); }.status.fail { background:var(--ds-danger-wash); color:var(--ds-danger); }.status.review { background:var(--ds-warning-wash); color:var(--ds-warning); }.status.unknown { background:var(--ds-canvas-soft); color:var(--ds-ink-mute); }.reason-cell { min-width:280px; line-height:1.6; }.empty,.loading { text-align:center; color:var(--ds-ink-mute); padding:36px; }.error { color:var(--ds-danger); display:flex; align-items:center; gap:12px; }.footnote { color:var(--ds-ink-mute); font-size:13px; margin:12px 4px; }.mobile-list { display:none; }
+.salary-cell { white-space:nowrap; }
+.salary-input { width:90px; padding:6px 8px; border:1px solid var(--border); border-radius:6px; background:var(--ds-canvas); color:inherit; margin-right:4px; }
+.total-cell strong { font-variant-numeric:tabular-nums; color:var(--ds-primary); }
 .teacher-card-header { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }.teacher-card-header small { display:block; margin-top:4px; color:var(--ds-ink-mute); font-size:12px; }.teacher-components { margin-top:14px; border-top:1px solid var(--border); }.component-row { display:flex; justify-content:space-between; gap:12px; padding:10px 0; border-bottom:1px solid var(--border); }.component-value { display:flex; flex-direction:column; align-items:flex-end; gap:4px; }.component-value small { color:var(--ds-ink-mute); font-size:12px; }.mobile-reason { margin:12px 0 0; color:var(--ds-ink-mute); font-size:13px; line-height:1.6; }
 @media (max-width: 900px) { .eligibility-page { padding:16px; }.summary-grid { grid-template-columns:repeat(2, minmax(0,1fr)); }.policy-chip { margin-left:0; }.desktop-table { display:none; }.mobile-list { display:grid; gap:12px; } }
 </style>

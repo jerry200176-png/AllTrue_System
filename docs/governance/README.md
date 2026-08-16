@@ -11,7 +11,7 @@ Tool-neutral canonical governance for the portfolio. Product specifics live in o
 | [OUTBOUND_READINESS_GATE.md](./OUTBOUND_READINESS_GATE.md) | Human-recipient workflow activation gate (artifact ≠ delivery) |
 | [GOVERNANCE_CHANGELOG.md](./GOVERNANCE_CHANGELOG.md) | Governance version history |
 | [CI_GOVERNANCE.md](./CI_GOVERNANCE.md) | CI failure taxonomy, preflight, branch/size policy |
-| [RISK_BASED_MERGE_POLICY.md](./RISK_BASED_MERGE_POLICY.md) | R0–R3 merge requirements |
+| [RISK_BASED_MERGE_POLICY.md](./RISK_BASED_MERGE_POLICY.md) | R0–R3 **risk** classes; merge *capability* is fleet AUTONOMY_POLICY |
 | [../sop/AGENT_PREFLIGHT.md](../sop/AGENT_PREFLIGHT.md) | Mandatory start checklist |
 | [../sop/BUG_INTAKE_TO_PRODUCTION.md](../sop/BUG_INTAKE_TO_PRODUCTION.md) | Bug path wrapper |
 | [../sop/AGENT_HANDOFF.md](../sop/AGENT_HANDOFF.md) | Session handoff template |
