@@ -721,18 +721,13 @@ class AlertController extends Controller
     }
 
     /**
-     * Single canonical "is this fully paid" predicate for payment_status display
-     * (both single-course and package-level). Paid=1 (or pkg->paid) OR a fully-
-     * covering invoice payment counts as paid; a partial payment does not, so
-     * callers can still distinguish 'partial' from 'paid'. computePaymentStatus(),
-     * computePackageCountPaymentStatus(), and the count-mode package alert row
-     * builder (tuition()'s $countPkgAlerts map) previously each reimplemented
-     * this independently and had drifted (F7/R94) — this is the one place it
-     * should live.
+     * Thin delegate to StudentClass::isFullyPaid — single display-path truth (TD-083 B0).
+     * Kept private on the controller so existing call sites stay local; do not
+     * reimplement the predicate here.
      */
     private function isFullyPaid(bool $rawPaidFlag, int $paidAmount, int $charge): bool
     {
-        return $rawPaidFlag || ($charge > 0 && $paidAmount >= $charge);
+        return StudentClass::isFullyPaid($rawPaidFlag, $paidAmount, $charge);
     }
 
     /**
