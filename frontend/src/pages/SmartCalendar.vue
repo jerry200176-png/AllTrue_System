@@ -491,7 +491,7 @@ import { ref, computed, onMounted, watch, nextTick } from 'vue';
 import { supabase } from '../supabase';
 import { SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
-import { mergeWeekCalendarOccurrences } from '../lib/calendarOccurrenceMerge';
+import { dedupeCalendarRowsByStudentSlot, mergeWeekCalendarOccurrences } from '../lib/calendarOccurrenceMerge';
 import { resolveTeacherAliasIds, courseBelongsToTeacherAlias } from '../lib/teacherAliasMatch';
 import {
   resolveCalendarDataFetchBoundsYmd,
@@ -1610,6 +1610,7 @@ const teacherGroups = computed(() => {
   });
   // Sort courses within each group by day then time
   Object.values(map).forEach(g => {
+    g.courses = dedupeCalendarRowsByStudentSlot(g.courses, normalizeTimeTo30);
     g.courses.sort((a, b) => (a.day_of_week - b.day_of_week) || (a.start_time || '').localeCompare(b.start_time || ''));
   });
   return Object.values(map).sort((a, b) => b.courses.length - a.courses.length);
