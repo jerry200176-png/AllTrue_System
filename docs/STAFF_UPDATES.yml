@@ -3,6 +3,123 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-15-stale-receipt-badge-934
+    published_at: "2026-08-15"
+    audiences:
+      - director
+    importance: digest
+    title: 收據新增「可能已被取代」提醒
+    summary: 課程計費模式（堂數制/月結）事後變更時，舊收據會顯示提醒，避免家長拿舊收據截圖產生誤會。
+    items:
+      - category: added
+        text: 收據頁面：若課程計費模式已變更，顯示黃色提醒訊息。
+    source_refs:
+      - "changelog:2026-08-15:stale-receipt-badge-934"
+
+  - id: staff-2026-08-15-tuition-charge-display-1734
+    published_at: "2026-08-15"
+    audiences:
+      - director
+    importance: digest
+    title: 收帳金額顯示修正
+    summary: 已收款課程會顯示實際合約總額，不再出現舊的錯誤數字。
+    items:
+      - category: fixed
+        text: 收帳頁會跟已開立帳單同一金額，不再顯示過期的錯誤總額。
+    source_refs:
+      - "changelog:2026-08-15:tuition-charge-display-1734"
+
+  - id: staff-2026-08-15-teacher-home-projected-campus
+    published_at: "2026-08-15"
+    audiences:
+      - teacher
+      - director
+    importance: digest
+    title: 教師首頁分校顯示
+    summary: 還沒上課的堂次會顯示正確分校；缺資料時改中文或隱藏。
+    items:
+      - category: fixed
+        text: 週課表未來堂次不再出現看不懂的編號，會顯示分校名稱。
+    source_refs:
+      - "changelog:2026-08-15:teacher-home-projected-campus"
+
+  - id: staff-2026-08-14-eligibility-pending-edit
+    published_at: "2026-08-14"
+    audiences:
+      - director
+    importance: digest
+    title: 薪資補登可先改再核
+    summary: 全校放假請走課程管理；這裡預設幫老師補請假。
+    items:
+      - category: improved
+        text: 全校放假用課程管理「連假批次請假」；這裡預設是幫老師補請假。
+      - category: added
+        text: 待審核資料可在右側清單修改或撤回，核准後才會算進薪資。
+    source_refs:
+      - "changelog:2026-08-14:eligibility-pending-edit"
+
+  - id: staff-2026-08-13-fulltime-settlement-total-payout
+    published_at: "2026-08-13"
+    audiences:
+      - director
+    importance: major
+    title: 正職薪資總發放金額
+    summary: 新增底薪欄位，自動組成教師倍率與總發放金額
+    items:
+      - category: added
+        text: 「正職老師薪資要件」頁面新增可編輯底薪欄位，自動算出教師倍率與總發放金額。
+      - category: action_required
+        text: 行政加給倍率（行政協助／總導師／副主任）尚未計入，主任需自行加算，之後會補上。
+    source_refs:
+      - "changelog:2026-08-13:fulltime-settlement-total-payout"
+
+  - id: staff-2026-08-13-monthly-projection-exception
+    published_at: "2026-08-13"
+    audiences:
+      - director
+      - teacher
+    importance: major
+    title: 月例外投影修正
+    summary: 修正例外堂次無法關閉與誤建堂次
+    items:
+      - category: fixed
+        text: 月排課在例外時間不同於合約時間時，仍可由投影堂次正常開啟與關閉。
+      - category: improved
+        text: 補課與跨日改課目的列不會再被誤當成月例外堂次 materialize 或連帶取消。
+    source_refs:
+      - "changelog:2026-08-13:monthly-projection-exception"
+
+  - id: staff-2026-08-13-teacher-home-projection-integrity
+    published_at: "2026-08-13"
+    audiences:
+      - teacher
+      - director
+    importance: major
+    title: 教師首頁課表與評量顯示更穩定
+    summary: 重新整理或切換分校時，課表會保留已載入的內容並避免重複的同堂評量卡。
+    items:
+      - category: fixed
+        text: 同一學生、日期與時段的重複課堂投影會合併為一筆，不會顯示成兩張評量卡。
+      - category: improved
+        text: 週課表載入新資料時不會先清空舊畫面；較早完成的舊請求也不會覆蓋最新課表。
+    source_refs:
+      - "changelog:2026-08-13:teacher-home-projection-integrity"
+
+  - id: staff-2026-08-13-session-entitlement-transfer-command
+    published_at: "2026-08-13"
+    audiences:
+      - director
+    importance: major
+    title: 超額堂次可安全轉到續購批次
+    summary: 已提供具稽核、驗證與回滾保護的管理修復流程。
+    items:
+      - category: improved
+        text: 已確認誤扣在舊一期的已上課堂次，可保留原點名與評量並轉至同一學生的續購批次。
+      - category: improved
+        text: 系統會攔截跨學生、跨科目、目標已滿、重複時段及已結算批次。
+    source_refs:
+      - "changelog:2026-08-13:session-entitlement-transfer-command"
+
   - id: staff-2026-08-12-in-app-bug-fixes
     published_at: "2026-08-12"
     audiences:

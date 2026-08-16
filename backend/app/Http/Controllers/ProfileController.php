@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Models\UserCampus;
 use App\Services\TeacherScopeService;
 use App\Support\PinGate;
+use App\Support\Utf8mb3SearchSanitizer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -80,15 +81,18 @@ class ProfileController extends Controller
         }
 
         if ($request->filled('username__ilike')) {
-            $query->where('Name', 'like', '%' . $request->input('username__ilike') . '%');
+            Utf8mb3SearchSanitizer::applyLike($query, 'Name', $request->input('username__ilike'));
         }
 
         // Search by name or phone (q)
         if ($request->filled('q')) {
             $q = $request->input('q');
-            $query->where(function ($qry) use ($q) {
-                $qry->where('User.Name', 'like', '%' . $q . '%')
-                    ->orWhere('User.phone', 'like', '%' . $q . '%');
+            $nameTerm = Utf8mb3SearchSanitizer::forLike((string) $q);
+            $query->where(function ($qry) use ($q, $nameTerm) {
+                if ($nameTerm !== '') {
+                    $qry->where('User.Name', 'like', '%' . $nameTerm . '%');
+                }
+                $qry->orWhere('User.phone', 'like', '%' . $q . '%');
             });
         }
 

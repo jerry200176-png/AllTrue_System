@@ -43,13 +43,16 @@ class ExceptionWorkflowCandidateGenerator
         $teacherId = (int) ($course->TeacherID ?? 0);
         $capacity = $this->capacityForClassType((string) ($course->ClassType ?? 'one_on_one'));
         $occupancy = $this->buildOccupancy($workflow, $teacherId, $start, $end);
-        $candidates = [];
+        // Keep the candidate set flexible across the whole window. A simple
+        // date-first limit can fill every result with one morning's slots,
+        // which makes a multi-day makeup window look artificially narrow.
+        $candidateBuckets = [];
         $rank = 1;
 
-        for ($cursor = $start->copy(); $cursor->lte($end) && count($candidates) < $limit; $cursor->addDay()) {
+        for ($cursor = $start->copy(); $cursor->lte($end); $cursor->addDay()) {
             $date = $cursor->toDateString();
             $dayOccupancy = $occupancy[$date] ?? [];
-            for ($slot = $this->slotIndex('09:00'); $slot <= $this->slotIndex('21:00') - $durationSlots && count($candidates) < $limit; $slot += 1) {
+            for ($slot = $this->slotIndex('09:00'); $slot <= $this->slotIndex('21:00') - $durationSlots; $slot += 1) {
                 $maxCount = 0;
                 $available = true;
                 $names = [];
@@ -75,7 +78,7 @@ class ExceptionWorkflowCandidateGenerator
 
                 $startTime = $this->slotTime($slot);
                 $endTime = $this->slotTime($slot + $durationSlots);
-                $candidates[] = [
+                $candidateBuckets[$date][] = [
                     'rank' => $rank,
                     'candidate_date' => $date,
                     'start_time' => $startTime,
@@ -92,6 +95,27 @@ class ExceptionWorkflowCandidateGenerator
                 ];
                 $rank += 1;
             }
+        }
+
+        // Round-robin by date: show at least one option per available day,
+        // then fill each day with additional times until the requested limit.
+        $candidates = [];
+        $added = true;
+        while ($added && count($candidates) < $limit) {
+            $added = false;
+            foreach ($candidateBuckets as &$dayCandidates) {
+                if (count($candidates) >= $limit) {
+                    break;
+                }
+                if ($dayCandidates === []) {
+                    continue;
+                }
+                $candidate = array_shift($dayCandidates);
+                $candidate['rank'] = count($candidates) + 1;
+                $candidates[] = $candidate;
+                $added = true;
+            }
+            unset($dayCandidates);
         }
 
         $this->workflowService->replaceCandidates($workflow, $candidates);

@@ -102,18 +102,22 @@ export function dedupeSessionsByStudentSlot(sessions = []) {
   const scoreRow = (row) => {
     const st = String(row?.status || '').toLowerCase();
     const attended = ['attended', 'completed', 'late', 'absent'].includes(st) ? 100 : 0;
-    const lr = String(row?.learning_record_status || '').toLowerCase();
+    const lr = String(row?.learningRecordStatus ?? row?.learning_record_status ?? '').toLowerCase();
     const lrScore = lr === 'approved' ? 10 : lr === 'pending' ? 5 : 0;
     const materialized = row?.isProjected ? 0 : 2;
     return attended + lrScore + materialized + (Number(row?.id) || 0) / 1e6;
   };
 
   for (const row of sessions) {
-    const sid = row?.student_id != null ? `sid:${row.student_id}` : '';
-    const name = String(row?.student_name || '').trim().toLowerCase();
+    // fetchClassSessions returns SessionViewModel camelCase fields, while a few
+    // legacy callers still pass raw API rows. Support both contracts so a
+    // renewal-overlap pair cannot render as two evaluation cards (#236).
+    const rawStudentId = row?.studentId ?? row?.student_id;
+    const sid = rawStudentId != null ? `sid:${rawStudentId}` : '';
+    const name = String(row?.studentName ?? row?.student_name ?? '').trim().toLowerCase();
     const studentKey = sid || (name ? `name:${name}` : '');
-    const date = String(row?.session_date || '').slice(0, 10);
-    const start = normalizeTimeTo30(row?.start_time || '');
+    const date = String(row?.date ?? row?.session_date ?? '').slice(0, 10);
+    const start = normalizeTimeTo30(row?.startTime ?? row?.start_time ?? '');
     const key = studentKey && date && start ? `${studentKey}|${date}|${start}` : '';
     if (!key) {
       passthrough.push(row);

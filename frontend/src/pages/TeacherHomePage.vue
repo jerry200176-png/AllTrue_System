@@ -335,13 +335,13 @@
           :key="item.id"
           class="th-overdue-row"
         >
-          <div class="th-overdue-date">{{ overdueDateLabel(item.session_date) }}</div>
+          <div class="th-overdue-date">{{ overdueDateLabel(item.date) }}</div>
           <div class="th-overdue-info">
-            <span class="th-overdue-student">{{ item.student_name || '—' }}</span>
-            <span class="th-overdue-subject">{{ item.subject_name || item.subject || '' }}</span>
-            <span class="th-branch-chip" :style="{ background: branchColor(item.branch_id) }">{{ branchShortName(item.branch_id) }}</span>
+            <span class="th-overdue-student">{{ item.studentName || '—' }}</span>
+            <span class="th-overdue-subject">{{ item.subjectName || item.subject || '' }}</span>
+            <span v-if="campusIdFrom(item.branchId)" class="th-branch-chip" :style="{ background: branchColor(item.branchId) }">{{ branchShortName(item.branchId) }}</span>
           </div>
-          <button class="th-fill-btn" @click="goFillRecord({ branchId: item.branch_id, recordId: null, classSessionId: item.id, sessionDate: item.session_date })" title="填寫評量">
+          <button class="th-fill-btn" @click="goFillRecord({ branchId: item.branchId, recordId: null, classSessionId: item.id, sessionDate: item.date })" title="填寫評量">
             <span class="material-symbols-outlined">edit_note</span>
           </button>
         </div>
@@ -409,7 +409,7 @@
                 <div class="th-event-student">{{ ev.studentName }}</div>
                 <div class="th-event-meta">
                   <span class="th-event-subject">{{ ev.subject }}</span>
-                  <span class="th-branch-chip" :style="{ background: branchColor(ev.branchId) }">{{ branchShortName(ev.branchId) }}</span>
+                  <span v-if="campusIdFrom(ev.branchId)" class="th-branch-chip" :style="{ background: branchColor(ev.branchId) }">{{ branchShortName(ev.branchId) }}</span>
                   <span v-if="ev.formStatus && ev.formStatus !== 'missing'" :class="['th-form-chip', `th-form-${ev.formStatus}`]">{{ formStatusLabel(ev.formStatus) }}</span>
                 </div>
               </div>
@@ -531,7 +531,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { supabase } from '../supabase';
-import { branches, getBranchName } from '../lib/useBranches';
+import { branches, campusIdFrom, getBranchName } from '../lib/useBranches';
 import { fetchClassSessions } from '../lib/classSessionsApi';
 import { dedupeSessionsByStudentSlot } from '../lib/classSessionPick';
 import { fetchChatUnreadCount } from '../lib/chatApi';
@@ -814,18 +814,9 @@ async function fetchPendingAttendance() {
     const token = await getToken();
     if (!token) return;
     const today = localTodayYmd();
-    const qs = new URLSearchParams({ start: today, end: today, per_page: '500' });
-    const res = await fetch(`/api/v1/class-sessions?${qs}`, {
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-    });
-    if (!res.ok) return;
-    const json = await res.json();
-    const rows = Array.isArray(json?.data) ? json.data : (Array.isArray(json) ? json : []);
-    const scheduled = rows.filter(r => {
-      const s = String(r?.status || '').toLowerCase();
-      return s === 'scheduled';
-    });
-    pendingAttendanceCount.value = scheduled.length;
+    const result = await fetchClassSessions({ token, start: today, end: today, perPage: 500 });
+    const rows = result.items || [];
+    pendingAttendanceCount.value = rows.filter((r) => String(r?.status || '').toLowerCase() === 'scheduled').length;
     todayAllSessions.value = rows;
   } catch { /* ignore */ } finally {
     loadingAttendance.value = false;
@@ -1082,11 +1073,11 @@ async function fetchOverdueLearning() {
 
     const missing = allItems.filter(s => {
       const st = String(s.status || '').toLowerCase();
-      const lr = String(s.learning_record_status || 'missing').toLowerCase();
+      const lr = String(s.learningRecordStatus || 'missing').toLowerCase();
       return st === 'attended' && lr === 'missing';
     });
 
-    missing.sort((a, b) => b.session_date.localeCompare(a.session_date) || b.start_time.localeCompare(a.start_time));
+    missing.sort((a, b) => b.date.localeCompare(a.date) || b.startTime.localeCompare(a.startTime));
     overdueRecords.value = missing;
   } catch { /* silent */ } finally {
     loadingOverdue.value = false;
@@ -1109,9 +1100,9 @@ const otherBranchTodayCount = computed(() => {
   const today = localTodayYmd();
   const currentBid = Number(props.branchId);
   return todayAllSessions.value.filter(s => {
-    const bid = Number(s?.branch_id || s?.CampusID || 0);
+    const bid = campusIdFrom(s?.branchId);
     const st = String(s?.status || '').toLowerCase();
-    return bid > 0 && bid !== currentBid && String(s?.session_date || '').slice(0, 10) === today && st !== 'cancelled';
+    return bid != null && bid !== currentBid && String(s?.date || '').slice(0, 10) === today && st !== 'cancelled';
   }).length;
 });
 
@@ -1120,7 +1111,7 @@ const weekOffset = ref(0);
 const loadingWeek = ref(true);
 const weekLoadError = ref('');
 const weekSessions = ref([]);
-let weekAbort = null;
+let weekLoadSequence = 0;
 
 const dayNames = ['日', '一', '二', '三', '四', '五', '六'];
 
@@ -1156,14 +1147,18 @@ const allBranchNames = computed(() => {
 });
 
 async function loadWeekSchedule() {
-  if (weekAbort) weekAbort.abort();
-  weekAbort = new AbortController();
+  // Multiple reactive inputs can refresh this view at once. fetchClassSessions
+  // does not currently accept AbortSignal, so ignore stale responses instead
+  // of allowing one to overwrite the current week/branch projection.
+  const requestSequence = ++weekLoadSequence;
   loadingWeek.value = true;
   weekLoadError.value = '';
-  weekSessions.value = [];
 
   const token = await getToken();
-  if (!token) { loadingWeek.value = false; return; }
+  if (!token) {
+    if (requestSequence === weekLoadSequence) loadingWeek.value = false;
+    return;
+  }
 
   const startStr = formatDate(weekStart.value);
   const endStr = formatDate(weekEnd.value);
@@ -1178,15 +1173,16 @@ async function loadWeekSchedule() {
     const result = await fetchClassSessions({ token, start: startStr, end: endStr, perPage: 500 });
     const items = dedupeSessionsByStudentSlot(result.items || []);
     items.sort((a, b) => {
-      if (a.session_date !== b.session_date) return a.session_date.localeCompare(b.session_date);
-      if (a.start_time !== b.start_time) return a.start_time.localeCompare(b.start_time);
-      return (a.branch_id || 0) - (b.branch_id || 0);
+      if (a.date !== b.date) return a.date.localeCompare(b.date);
+      if (a.startTime !== b.startTime) return a.startTime.localeCompare(b.startTime);
+      return (a.branchId || 0) - (b.branchId || 0);
     });
-    weekSessions.value = items;
+    if (requestSequence === weekLoadSequence) weekSessions.value = items;
   } catch (e) {
+    if (requestSequence !== weekLoadSequence) return;
     weekLoadError.value = '無法載入課表，請稍後重試';
   }
-  loadingWeek.value = false;
+  if (requestSequence === weekLoadSequence) loadingWeek.value = false;
 }
 
 const todayStr = computed(() => localTodayYmd());
@@ -1198,25 +1194,25 @@ const weekDays = computed(() => {
     d.setDate(weekStart.value.getDate() + i);
     const dateStr = formatDate(d);
     const events = weekSessions.value
-      .filter(s => s.session_date === dateStr && String(s.status || '').toLowerCase() !== 'cancelled')
+      .filter(s => s.date === dateStr && String(s.status || '').toLowerCase() !== 'cancelled')
       .map(s => {
         const status = String(s.status || '').toLowerCase();
         const isLeave = status === 'leave' || status === 'leave_adjusted' || status === 'excused';
         // 請假待審核：與出缺勤管理／課表與評量同一認定，不列入今日待填（in-app bug 194）
         const isLeaveRequested = status === 'leave_requested';
         return {
-          key: `${s.id}-${s.branch_id}`,
+          key: `${s.id}-${campusIdFrom(s.branchId) || 'none'}`,
           id: s.id,
-          studentClassId: s.student_class_id,
-          studentName: s.student_name || '—',
-          subject: s.subject_name || s.subjectName || s.subject || (s.teacher_name ? `${s.teacher_name}` : '—'),
-          date: s.session_date || dateStr,
-          startTime: s.start_time || '—',
-          endTime: s.end_time || '',
-          branchId: s.branch_id || 0,
+          studentClassId: s.studentClassId,
+          studentName: s.studentName || '—',
+          subject: s.subjectName || s.subject || (s.teacherName ? `${s.teacherName}` : '—'),
+          date: s.date || dateStr,
+          startTime: s.startTime || '—',
+          endTime: s.endTime || '',
+          branchId: campusIdFrom(s.branchId),
           status: s.status,
-          formStatus: isLeave ? 'leave' : (isLeaveRequested ? 'leave_requested' : (s.learning_record_status || 'missing')),
-          recordId: s.learning_record_id || null,
+          formStatus: isLeave ? 'leave' : (isLeaveRequested ? 'leave_requested' : (s.learningRecordStatus || 'missing')),
+          recordId: s.learningRecordId || null,
         };
       });
     days.push({
@@ -1305,7 +1301,8 @@ function branchColor(branchId) {
 }
 
 function branchShortName(branchId) {
-  const name = getBranchName(Number(branchId));
+  if (campusIdFrom(branchId) == null) return '';
+  const name = getBranchName(branchId);
   return name.replace(/分校$/, '').replace(/校區$/, '');
 }
 
@@ -1332,10 +1329,10 @@ function fillNextPendingLearning() {
   const o = overdueRecords.value[0];
   if (o) {
     goFillRecord({
-      branchId: o.branch_id,
+      branchId: o.branchId,
       recordId: null,
       classSessionId: o.id,
-      sessionDate: o.session_date,
+      sessionDate: o.date,
     });
     return;
   }
@@ -1356,10 +1353,10 @@ function openOverdueTask() {
   const o = overdueRecords.value[0];
   if (o) {
     goFillRecord({
-      branchId: o.branch_id,
+      branchId: o.branchId,
       recordId: null,
       classSessionId: o.id,
-      sessionDate: o.session_date,
+      sessionDate: o.date,
     });
     return;
   }
@@ -1591,7 +1588,7 @@ watch(
 );
 
 onBeforeUnmount(() => {
-  if (weekAbort) weekAbort.abort();
+  weekLoadSequence++;
   stopPolling();
   document.removeEventListener('visibilitychange', onVisibilityChange);
   window.removeEventListener('alltrue-teacher-learning-progress-refresh', onLearningProgressRefreshEvent);

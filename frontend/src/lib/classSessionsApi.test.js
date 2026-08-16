@@ -6,6 +6,7 @@ import {
   mergeSessionsByCourse,
   normalizeClassSessionsPayload,
   createSessionViewModel,
+  sessionViewModelFromSessionDatesSlot,
 } from './classSessionsApi.js';
 
 function materialized(over) {
@@ -70,6 +71,36 @@ function materialized(over) {
   assert.equal((merged['1123'] || []).length, 1, '未被本次 fetch 觸及的課程必須保留原本的堂次');
   assert.equal(merged['1123'][0].status, 'attended');
   assert.equal((merged['2711'] || []).length, 1, '本次 fetch 涵蓋的課程要拿到新資料');
+}
+
+// 6. 未物化（projected）堂次必須帶入後端給的 branch_id，不可退回 undefined→0
+//    顯示成「Branch #0」（in-app #235）。materialized 已經走 sessionViewModelFromClassSessionsRow
+//    正確帶 branch_id；這裡專測 projected 分支（backend 直到本次修復前從未回傳 branch_id）。
+{
+  const projectedRaw = {
+    kind: 'projected',
+    student_class_id: 3010,
+    session_date: '2026-09-01',
+    start_time: '18:00',
+    end_time: '20:00',
+    branch_id: 16,
+  };
+  const vm = sessionViewModelFromSessionDatesSlot(projectedRaw);
+  assert.equal(vm.isProjected, true);
+  assert.equal(vm.branchId, 16, 'projected 堂次要拿到 backend 給的 branch_id，不是 undefined');
+}
+
+// 7. projected 堂次沒收到 branch_id 時保持 undefined（呼叫端仍要自己決定 fallback，
+//    不在這一層偷偷塞 0，避免把「沒資料」跟「真的是 0 號分校」混在一起）
+{
+  const projectedRaw = {
+    kind: 'projected',
+    student_class_id: 3010,
+    session_date: '2026-09-01',
+    start_time: '18:00',
+  };
+  const vm = sessionViewModelFromSessionDatesSlot(projectedRaw);
+  assert.equal(vm.branchId, undefined);
 }
 
 console.log('classSessionsApi.test.js ✅ all assertions passed');
