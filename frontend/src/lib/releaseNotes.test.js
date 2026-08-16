@@ -32,6 +32,7 @@ assert.ok(['digest', 'major', 'action_required'].includes(latest.importance));
     'staff-2026-08-16-reported-paid-notif',
     'staff-2026-08-16-fulltime-settlement-table',
     'staff-2026-08-16-reported-paid-pending',
+    'staff-2026-08-14-monthly-copy-teacher-list',
     'staff-2026-08-16-fillrate-substitute-absent-copy',
     'staff-2026-08-16-lr-resurrect-status-adjust',
     'staff-2026-08-15-tuition-charge-display-1734',

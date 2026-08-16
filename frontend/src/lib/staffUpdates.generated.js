@@ -310,41 +310,38 @@ export const staffUpdates = [
     "version": "2026.08.15"
   },
   {
-    "id": "staff-2026-08-15-eligibility-approved-revert",
-    "publishedAt": "2026-08-15",
+    "id": "staff-2026-08-14-monthly-copy-teacher-list",
+    "publishedAt": "2026-08-14",
     "effectiveAt": null,
     "audiences": [
-      "director"
+      "director",
+      "teacher"
     ],
     "audience": [
-      "director"
+      "director",
+      "teacher"
     ],
     "importance": "digest",
-    "title": "誤核薪資可退回",
-    "summary": "已核准可退回；全校放假改看課程管理連假。",
+    "title": "月結課表顯示修正",
+    "summary": "月結課程不再寫成購買堂數；老師清單同一堂不重複。",
     "items": [
-      "已核准的補登可按退回，該筆不再進入薪資。",
-      "全校放假以課程管理連假為準，不必再手動登假日曆。"
+      "月結課程的上課日期改顯示已上堂數，不再出現購買堂數。",
+      "老師清單同一學生同時段只列一筆，不再重複同一門課。"
     ],
     "sections": [
       {
-        "title": "你現在可以",
+        "title": "我們修好了",
         "items": [
-          "已核准的補登可按退回，該筆不再進入薪資。"
-        ]
-      },
-      {
-        "title": "操作更順手",
-        "items": [
-          "全校放假以課程管理連假為準，不必再手動登假日曆。"
+          "月結課程的上課日期改顯示已上堂數，不再出現購買堂數。",
+          "老師清單同一學生同時段只列一筆，不再重複同一門課。"
         ]
       }
     ],
     "sourceRefs": [
-      "changelog:2026-08-15:eligibility-approved-revert"
+      "changelog:2026-08-14:monthly-copy-teacher-list"
     ],
-    "date": "2026-08-15",
-    "version": "2026.08.15"
+    "date": "2026-08-14",
+    "version": "2026.08.14"
   },
   {
     "id": "staff-2026-08-14-eligibility-pending-edit",
