@@ -475,7 +475,6 @@ const SubjectSettingsPage   = defineAsyncComponent(() => import('./pages/Subject
 const TeachersList          = defineAsyncComponent(() => import('./pages/TeachersList.vue'));
 const AttendancePage        = defineAsyncComponent(() => import('./pages/AttendancePage.vue'));
 const SubjectUnitsPage      = defineAsyncComponent(() => import('./pages/SubjectUnitsPage.vue'));
-// BillingList removed — replaced by TuitionReportPage (當月學收)
 const TuitionCollectionPage = defineAsyncComponent(() => import('./pages/TuitionCollectionPage.vue'));
 const TuitionReportPage     = defineAsyncComponent(() => import('./pages/TuitionReportPage.vue'));
 const ParttimePayrollPage   = defineAsyncComponent(() => import('./pages/ParttimePayrollPage.vue'));

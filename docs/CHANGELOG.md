@@ -1,3 +1,9 @@
+## 2026-08-17 — chore(frontend): 移除未掛載死碼頁（重複功能清理 A）
+
+<!-- release-notes: silent_ship=silent-2026-08-17-orphan-fe-dead-pages -->
+
+刪除側欄已不使用的 `BillingList`／`PayReportPage`／`CoursePackagesPage`／`ClassesList`／`StudentWizard`／`TeacherProfilePage`；後端帳單／繳費回報／方案 API 不變。
+
 ## 2026-08-17 — fix(billing): 對帳與帳務中心掃讀密度
 
 <!-- release-notes: staff_update=staff-2026-08-17-billing-scan-density -->
