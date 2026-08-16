@@ -1141,6 +1141,10 @@ class ClassSessionController extends Controller
                     // TD-005: sync active StudentSignIn.Status if one exists (e.g. RFID swipe already in)
                     $this->syncStudentSignInStatus($session->id, $newStatus);
 
+                    // R55: attended→scheduled voids LR as 由已上調整狀態; coming back
+                    // to attended/late must resurrect or teachers have nothing to fill.
+                    $this->restoreVoidedLearningRecord($session);
+
                     return $this->sessionUpdateResponse($session, '狀態已更新為' . $newStatus);
                 }
 
@@ -1311,21 +1315,7 @@ class ClassSessionController extends Controller
      */
     private function restoreVoidedLearningRecord(ClassSession $session): void
     {
-        $lr = LearningRecord::where('ClassSessionID', $session->id)->first();
-        if (!$lr || !$lr->isVoided()) {
-            return;
-        }
-        if (!LearningRecordResurrectionPolicy::isEligibleForResurrect($lr->VoidReason, $session->Status)) {
-            return;
-        }
-        $lr->VoidedAt       = null;
-        $lr->VoidedByUserID = null;
-        $lr->VoidReason     = null;
-        $lr->Status         = 'pending';
-        $lr->SessionDate    = $session->SessionDate ? substr((string) $session->SessionDate, 0, 10) : null;
-        $lr->StartTime      = $session->StartTime   ? substr((string) $session->StartTime, 0, 5)   : null;
-        $lr->EndTime        = $session->EndTime      ? substr((string) $session->EndTime, 0, 5)     : null;
-        $lr->save();
+        LearningRecordResurrectionPolicy::restoreEligibleForSession($session);
     }
 
     private function applyTimeAndNoteUpdates(ClassSession $session, array $data): void
