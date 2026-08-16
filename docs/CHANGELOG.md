@@ -4,6 +4,11 @@
 
 - `GET /api/v1/students/export` 成功匯出前寫入 `security_audit_events`（操作者雜湊、筆數、校區範圍）；不含姓名／電話等明文。
 
+## 2026-08-17 — docs: 重複功能清理 A→B→C 執行計畫
+
+<!-- release-notes: silent_ship=silent-2026-08-17-dup-cleanup-plan -->
+
+新增 [`docs/plans/DUP_FEATURE_CLEANUP_ABC_2026-08-17.md`](plans/DUP_FEATURE_CLEANUP_ABC_2026-08-17.md) 與 TD-082；產品行為不變。
 ## 2026-08-17 — chore(frontend): 移除未掛載死碼頁（重複功能清理 A）
 
 <!-- release-notes: silent_ship=silent-2026-08-17-orphan-fe-dead-pages -->

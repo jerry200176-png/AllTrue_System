@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Models\UserCampus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Maatwebsite\Excel\Facades\Excel;
 use Tests\TestCase;
 
 /**
@@ -129,12 +130,16 @@ class StudentsExportTest extends TestCase
 
         [$token, $userId] = $this->directorToken(campusId: 1);
 
+        // Avoid binary XLSX / view-cache side effects in CI; audit runs before download.
+        Excel::fake();
+
         $res = $this->withHeaders([
             'Authorization' => "Bearer {$token}",
-            'Accept' => '*/*',
+            'Accept' => 'application/json',
         ])->get('/api/v1/students/export');
 
         $res->assertOk();
+        Excel::assertDownloaded('students.xlsx');
 
         $row = DB::table('security_audit_events')
             ->where('event_type', 'pii.export.students')
