@@ -2,7 +2,7 @@
 
 > **contract-version:** 2  
 > **Single runtime spec for AllTrue production operations.**  
-> **Supersedes:** all other docs on conflict. See [`CONTRADICTION_REGISTRY.md`](CONTRADICTION_REGISTRY.md).  
+> **Supersedes:** all other docs on conflict, **within production deploy/runtime execution** (this file governs `deploy.yml` on `main` and nothing broader). Outside that scope, `governance/COMPANY_CONSTITUTION.md`'s precedence order applies — that Constitution lists this contract as level 4, under itself (level 2) and the fleet operator table (level 3). See [`CONTRADICTION_REGISTRY.md`](CONTRADICTION_REGISTRY.md).  
 > **Audit:** [`CONTROL_PLANE_AUDIT.md`](CONTROL_PLANE_AUDIT.md)  
 > **POP (Production Operations Platform):** [`docs/pop/adr/README.md`](pop/adr/README.md) — Architecture Freeze 2026-07-16. Amends I1 per [ADR-POP-010](pop/adr/ADR-POP-010-contract-i1.md).
 
