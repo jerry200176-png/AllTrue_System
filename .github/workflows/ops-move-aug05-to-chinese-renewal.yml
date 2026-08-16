@@ -1,0 +1,140 @@
+name: Move 8/5 國文 onto unpaid renewal (allowlisted)
+
+on:
+  workflow_dispatch:
+    inputs:
+      student:
+        required: true
+        type: choice
+        options: [both, zhang_zheng_ning, zhang_zheng_le]
+      mode:
+        required: true
+        default: dry-run
+        type: choice
+        options: [dry-run, apply]
+      confirm:
+        description: "For apply: APPROVE_MOVE_20260805_TO_3230_3231"
+        required: false
+        type: string
+
+concurrency:
+  group: move-aug05-chinese-renewal-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  operate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve fail-closed scope
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_STUDENT: ${{ inputs.student }}
+          INPUT_MODE: ${{ inputs.mode }}
+          INPUT_CONFIRM: ${{ inputs.confirm }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          set -euo pipefail
+          APPLY_CONFIRM='APPROVE_MOVE_20260805_TO_3230_3231'
+          STUDENT='both'
+          MODE='dry-run'
+          CONFIRM=''
+          if [ "$EVENT_NAME" = workflow_dispatch ]; then
+            STUDENT="${INPUT_STUDENT:-both}"
+            MODE="${INPUT_MODE:-dry-run}"
+            CONFIRM="${INPUT_CONFIRM:-}"
+          elif [ "$EVENT_NAME" = pull_request ]; then
+            STUDENT='both'
+            if echo ",$PR_LABELS," | grep -q ',apply-move-aug05-chinese,' \
+              && echo "$PR_BODY" | grep -q "$APPLY_CONFIRM"; then
+              MODE=apply
+              CONFIRM="$APPLY_CONFIRM"
+            fi
+          fi
+          if [ "$MODE" = apply ] && [ "$CONFIRM" != "$APPLY_CONFIRM" ]; then
+            echo '::error::apply requires the exact confirmation string'
+            exit 1
+          fi
+          echo "student=$STUDENT" >> "$GITHUB_OUTPUT"
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+          echo "confirm=$CONFIRM" >> "$GITHUB_OUTPUT"
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+      - name: Run guarded 8/5 move
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          MODE: ${{ steps.scope.outputs.mode }}
+          CONFIRM: ${{ steps.scope.outputs.confirm }}
+          STUDENT: ${{ steps.scope.outputs.student }}
+          RUN_ID: ${{ github.run_id }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          SCRIPT_B64=$(base64 -w0 scripts/ops-move-aug05-to-chinese-renewal.sh)
+          PHP_B64=""
+          if [ "$MODE" = apply ]; then
+            PHP_B64=$(base64 -w0 scripts/ops-cancel-last-future-slot.php)
+          fi
+          : > out/operation.txt
+          run_one() {
+            local key="$1" sid="$2" sname="$3" source="$4" target="$5" session="$6"
+            ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
+              "${PI_SSH_USER}@${PI_SSH_HOST}" \
+              MODE="$MODE" CONFIRM="$CONFIRM" STUDENT_KEY="$key" STUDENT_ID="$sid" \
+              STUDENT_NAME="$sname" SOURCE_CLASS="$source" TARGET_CLASS="$target" \
+              SESSION_ID="$session" RUN_ID="$RUN_ID" ACTOR="$ACTOR" \
+              SCRIPT_B64="$SCRIPT_B64" PHP_B64="$PHP_B64" \
+              'bash -s' <<'ENDSSH' | tee -a out/operation.txt
+          set -euo pipefail
+          echo "$SCRIPT_B64" | base64 -d > /tmp/ops-move-aug05-to-chinese-renewal.sh
+          chmod +x /tmp/ops-move-aug05-to-chinese-renewal.sh
+          bash /tmp/ops-move-aug05-to-chinese-renewal.sh
+          rm -f /tmp/ops-move-aug05-to-chinese-renewal.sh
+          ENDSSH
+          }
+          case "$STUDENT" in
+            both|zhang_zheng_ning) run_one zhang_zheng_ning 374 '張正甯' 1681 3230 23157 ;;
+          esac
+          case "$STUDENT" in
+            both|zhang_zheng_le) run_one zhang_zheng_le 373 '張正樂' 1682 3231 27156 ;;
+          esac
+          expected=1
+          [ "$STUDENT" = both ] && expected=2
+          test "$(grep -c '^PLAN_OK$' out/operation.txt || true)" -eq "$expected"
+          if [ "$MODE" = dry-run ]; then
+            test "$(grep -c '^DRY_RUN_ONLY:' out/operation.txt || true)" -eq "$expected"
+          else
+            test "$(grep -c '^MOVE_OK ' out/operation.txt || true)" -eq "$expected"
+          fi
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: move-aug05-chinese-${{ steps.scope.outputs.mode }}-${{ github.run_id }}
+          path: out/operation.txt
+          if-no-files-found: error
+          retention-days: 90
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo '### Move 8/5 onto unpaid 國文 renewal'
+            echo '```text'
+            cat out/operation.txt 2>/dev/null || echo 'No operation output was captured.'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
