@@ -18,28 +18,26 @@ describe('useReceiptFlow', () => {
     expect(flow.receiptReportId.value).toBe(42);
   });
 
-  it('post-payment: opens the receipt synchronously on result.report_id, before the course refresh resolves (blocker 5)', async () => {
+  it('admin reported-paid does not open a receipt; refresh still runs (issue 1827)', async () => {
     let resolveRefresh;
     const refreshCourses = vi.fn(() => new Promise((r) => { resolveRefresh = r; }));
     const toast = vi.fn();
     const flow = useReceiptFlow({ refreshCourses, toast });
 
     flow.openPaymentEntry({ id: 1, student_name: '王小明' }, 99);
-    const confirmPromise = flow.onPaymentEntryConfirmed({ report_id: 7 });
+    const confirmPromise = flow.onPaymentEntryConfirmed({ report_id: 7, status: 'pending' });
 
-    // Receipt must already be open before the (still-pending) refresh resolves.
-    expect(flow.receiptOpen.value).toBe(true);
-    expect(flow.receiptReportId.value).toBe(7);
+    expect(flow.receiptOpen.value).toBe(false);
     expect(flow.paymentEntryOpen.value).toBe(false);
-    expect(toast).toHaveBeenCalledWith('已完成核帳登記');
+    expect(toast).toHaveBeenCalledWith('已送出待對帳，請會計確認入帳後才會開收據');
     expect(refreshCourses).toHaveBeenCalledWith(99);
 
     resolveRefresh();
     await confirmPromise;
-    expect(flow.receiptOpen.value).toBe(true);
+    expect(flow.receiptOpen.value).toBe(false);
   });
 
-  it('a failed course refresh does not close the receipt, does not re-toast as a failure, and does not retry the payment (blocker 5)', async () => {
+  it('a failed course refresh does not toast as a payment failure and does not retry the payment', async () => {
     const refreshCourses = vi.fn(() => Promise.reject(new Error('network down')));
     const toast = vi.fn();
     const flow = useReceiptFlow({ refreshCourses, toast });
@@ -47,12 +45,10 @@ describe('useReceiptFlow', () => {
     flow.openPaymentEntry({ id: 1 }, 99);
     await flow.onPaymentEntryConfirmed({ report_id: 7 });
 
-    expect(flow.receiptOpen.value).toBe(true);
-    expect(flow.receiptReportId.value).toBe(7);
+    expect(flow.receiptOpen.value).toBe(false);
     expect(refreshCourses).toHaveBeenCalledTimes(1);
-    // Only the one success toast — no second "failed" toast, no thrown error.
     expect(toast).toHaveBeenCalledTimes(1);
-    expect(toast).toHaveBeenCalledWith('已完成核帳登記');
+    expect(toast).toHaveBeenCalledWith('已送出待對帳，請會計確認入帳後才會開收據');
   });
 
   it('no report_id (e.g. NT$0 settle with no receipt-eligible report) does not open the receipt', async () => {
