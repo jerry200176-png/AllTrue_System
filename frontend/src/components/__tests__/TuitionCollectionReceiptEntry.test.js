@@ -30,6 +30,14 @@ describe('TuitionCollectionPage receipt entry paths', () => {
     expect(source).toContain('勾選最左欄後才會出現批次回報或確認列。');
   });
 
+  it('declares activeTab before batchMode / isRowSelectable / watch(activeTab) (TDZ)', () => {
+    const decl = source.indexOf("const activeTab = ref('all')");
+    expect(decl).toBeGreaterThan(-1);
+    expect(decl).toBeLessThan(source.indexOf('function isRowSelectable'));
+    expect(decl).toBeLessThan(source.indexOf("activeTab.value === 'pending_report' ? 'confirm'"));
+    expect(decl).toBeLessThan(source.indexOf('watch(activeTab,'));
+  });
+
   it('admin reported-paid path does not auto-open a receipt', () => {
     expect(source).toContain('已送出待對帳，請到帳務中心按確認入帳後才會開收據');
     expect(source).not.toMatch(/if\s*\(result\?\.report_id\)\s*\{[\s\S]*receiptReportId\.value\s*=\s*result\.report_id/);

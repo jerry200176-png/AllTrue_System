@@ -866,6 +866,17 @@ function formatTodayYmd() {
 }
 const todayYmd = computed(() => formatTodayYmd());
 
+// Tab filter state must be declared before batchMode / isRowSelectable / watch(activeTab)
+// (TDZ: accessing const activeTab before this line crashes the page as blank white).
+const activeTab = ref('all');
+const TAB_DEFS = [
+  { key: 'all', label: '全部' },
+  { key: 'unpaid', label: '未繳' },
+  { key: 'overdue', label: '逾期' },
+  { key: 'pending_report', label: '待對帳' },
+  { key: 'renewal', label: '續課/將到期' },
+];
+
 const selectedIds = ref([]);
 const batchBusy = ref(false);
 const batchLast5ById = ref({});
@@ -1076,16 +1087,7 @@ function openLedgerForReport(row) {
   ledgerOpen.value = true;
 }
 
-// ═══ Tab Filter ═══
-const activeTab = ref('all');
-const TAB_DEFS = [
-  { key: 'all', label: '全部' },
-  { key: 'unpaid', label: '未繳' },
-  { key: 'overdue', label: '逾期' },
-  { key: 'pending_report', label: '待對帳' },
-  { key: 'renewal', label: '續課/將到期' },
-];
-
+// ═══ Tab Filter counts / overdue (activeTab + TAB_DEFS declared above batch UI) ═══
 function isOverdue(r) {
   return (r.days_until_settlement != null && r.days_until_settlement < 0) &&
     ['unpaid', 'partial', 'pending_report'].includes(r.payment_status);
