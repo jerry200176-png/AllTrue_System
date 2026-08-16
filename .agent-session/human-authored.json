@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "provenance_type": "human-authored",
-  "declared_at": "2026-08-16T14:20:00Z",
+  "declared_at": "2026-08-16T21:05:00Z",
   "author": "jerry-claude-code-session",
-  "note": "Split PR D1/3: W31 Binding Management page, extracted from oversized PR #1728."
+  "note": "Split PR D2/3: W31 Binding Conflict Review page, extracted from oversized PR #1728."
 }
