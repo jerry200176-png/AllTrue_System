@@ -6131,3 +6131,51 @@ parameters:
 			identifier: nullsafe.neverNull
 			count: 1
 			path: app/Console/Commands/CleanupOrphanBindings.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentLineBinding\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Services/ParentBinding/BindingConflictService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentLineBinding\:\:\$campus_id\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Services/ParentBinding/BindingConflictService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentLineBinding\:\:\$line_user_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/ParentBinding/BindingConflictService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentLineBinding\:\:\$bound_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/ParentBinding/BindingConflictService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentLineBinding\:\:\$verified_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/ParentBinding/BindingConflictService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentLineBinding\:\:\$verification_method\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/ParentBinding/BindingConflictService.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\StudentLineBinding\:\:where\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Services/ParentBinding/BindingConflictService.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\Campus\:\:whereIn\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Services/ParentBinding/BindingConflictService.php

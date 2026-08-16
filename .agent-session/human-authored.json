@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "provenance_type": "human-authored",
-  "declared_at": "2026-08-16T13:30:00Z",
+  "declared_at": "2026-08-16T14:00:00Z",
   "author": "jerry-claude-code-session",
-  "note": "Split PR B/4: CleanupOrphanBindings command, extracted from oversized PR #1727 to satisfy the 700-line gate."
+  "note": "Split PR C/4: cross-campus binding conflict resolution API, extracted from oversized PR #1727."
 }
