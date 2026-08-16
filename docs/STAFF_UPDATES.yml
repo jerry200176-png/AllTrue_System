@@ -16,6 +16,23 @@ updates:
     source_refs:
       - "changelog:2026-08-16:reported-paid-notif"
 
+  - id: staff-2026-08-16-fulltime-settlement-table
+    published_at: "2026-08-16"
+    audiences:
+      - director
+    importance: major
+    title: 正職結算表上線
+    summary: 正職薪資頁改為底薪與獎金結算欄
+    items:
+      - category: added
+        text: 可見底薪、科目數拆分、倍率後獎金算式與總發放。
+      - category: improved
+        text: 假日假可補足16小時倍率；小數科目數依附件表內插。
+      - category: action_required
+        text: 全勤、勞健保、行政加給仍未自動列入，請人工核對。
+    source_refs:
+      - "changelog:2026-08-16:fulltime-settlement-table"
+
   - id: staff-2026-08-16-reported-paid-pending
     published_at: "2026-08-16"
     audiences:

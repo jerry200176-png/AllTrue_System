@@ -251,7 +251,7 @@ class NotificationController extends Controller
             $studentClassId = (int) ($notification->SourceID ?: ($payload['class_id'] ?? 0));
         } else {
             $invoiceId = (int) ($notification->SourceID ?: ($payload['invoice_id'] ?? 0));
-            $invoice = Invoice::query()->where('id', $invoiceId)->first();
+            $invoice = Invoice::query()->find($invoiceId);
             if (!$invoice instanceof Invoice) {
                 return response()->json(['message' => '找不到帳單資料'], 422);
             }

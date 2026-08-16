@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.08.16",
     "date": "2026-08-16",
     "title": "2026.08.16 草稿（未發布）",
-    "summary": "通知中心與批次 改待對帳；行政登錄已回報，會計確認後才入帳開收據",
+    "summary": "通知中心與批次 改待對帳；正職薪資要件改為 115.07 結算表",
     "audience": [
       "teacher",
       "director"
@@ -19,6 +19,7 @@ export const changelogDraftNotes = [
         "title": "新增內容",
         "items": [
           "通知中心與批次 改待對帳",
+          "正職薪資要件改為 115.07 結算表",
           "行政登錄已回報，會計確認後才入帳開收據"
         ]
       },
@@ -31,6 +32,7 @@ export const changelogDraftNotes = [
     ],
     "items": [
       "通知中心與批次 改待對帳",
+      "正職薪資要件改為 115.07 結算表",
       "行政登錄已回報，會計確認後才入帳開收據",
       "已上改回未點再標到班時自動還原評量草稿"
     ]
