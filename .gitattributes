@@ -3,3 +3,4 @@
 /docs export-ignore
 /tests export-ignore
 /.agent-session export-ignore
+.agent-session/manifest.json merge=ours
