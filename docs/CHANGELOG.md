@@ -1,3 +1,9 @@
+## 2026-08-16 — fix(billing): 課程管理學生列顯示課程資料／帳務資料
+
+<!-- release-notes: staff_update=staff-2026-08-16-billing-tabs-visible -->
+
+- 課程管理每位學生姓名下方整列顯示「課程資料｜帳務資料」，不必先展開、也不用找右側小字。
+
 ## 2026-08-16 — fix(billing): 帳務入口可見性與待對帳用語
 
 <!-- release-notes: staff_update=staff-2026-08-16-billing-ux-find -->
