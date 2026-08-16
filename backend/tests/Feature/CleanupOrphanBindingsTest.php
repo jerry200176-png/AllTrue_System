@@ -6,7 +6,7 @@ use App\Models\Campus;
 use App\Models\Student;
 use App\Models\StudentLineBinding;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Artisan;
 use Tests\TestCase;
 
 /**
@@ -26,6 +26,17 @@ class CleanupOrphanBindingsTest extends TestCase
         $this->lineUserId = 'U' . str_repeat('a', 32);
     }
 
+    // expectsOutputToContain() isn't available on this Laravel version's
+    // PendingCommand, so run via Artisan::call() and assert on the raw
+    // output buffer instead -- same "contains" semantics, no version dependency.
+    private function runCleanup(): string
+    {
+        $exitCode = Artisan::call('bindings:cleanup-orphans');
+        $this->assertSame(0, $exitCode);
+
+        return Artisan::output();
+    }
+
     public function test_deletes_bindings_for_nonexistent_students(): void
     {
         // Create a binding pointing to a non-existent student
@@ -36,9 +47,8 @@ class CleanupOrphanBindingsTest extends TestCase
             'bound_at' => now(),
         ]);
 
-        $this->artisan('bindings:cleanup-orphans')
-            ->expectsOutputToContain('orphan_bindings_deleted=1')
-            ->assertExitCode(0);
+        $output = $this->runCleanup();
+        $this->assertStringContainsString('orphan_bindings_deleted=1', $output);
 
         $this->assertDatabaseMissing('student_line_bindings', [
             'line_user_id' => $this->lineUserId,
@@ -56,9 +66,8 @@ class CleanupOrphanBindingsTest extends TestCase
             'bound_at' => now(),
         ]);
 
-        $this->artisan('bindings:cleanup-orphans')
-            ->expectsOutputToContain('orphan_bindings_deleted=1')
-            ->assertExitCode(0);
+        $output = $this->runCleanup();
+        $this->assertStringContainsString('orphan_bindings_deleted=1', $output);
 
         $this->assertDatabaseMissing('student_line_bindings', [
             'student_id' => $student->id,
@@ -76,9 +85,8 @@ class CleanupOrphanBindingsTest extends TestCase
             'bound_at' => now(),
         ]);
 
-        $this->artisan('bindings:cleanup-orphans')
-            ->expectsOutputToContain('orphan_bindings_deleted=0')
-            ->assertExitCode(0);
+        $output = $this->runCleanup();
+        $this->assertStringContainsString('orphan_bindings_deleted=0', $output);
 
         $this->assertDatabaseHas('student_line_bindings', [
             'student_id' => $student->id,
@@ -98,17 +106,15 @@ class CleanupOrphanBindingsTest extends TestCase
             ]);
         }
 
-        $this->artisan('bindings:cleanup-orphans')
-            ->expectsOutputToContain('orphan_bindings_deleted=0')
-            ->expectsOutputToContain('anomaly_students=1')
-            ->assertExitCode(0);
+        $output = $this->runCleanup();
+        $this->assertStringContainsString('orphan_bindings_deleted=0', $output);
+        $this->assertStringContainsString('anomaly_students=1', $output);
     }
 
     public function test_handles_empty_database_gracefully(): void
     {
-        $this->artisan('bindings:cleanup-orphans')
-            ->expectsOutputToContain('orphan_bindings_deleted=0')
-            ->expectsOutputToContain('anomaly_students=0')
-            ->assertExitCode(0);
+        $output = $this->runCleanup();
+        $this->assertStringContainsString('orphan_bindings_deleted=0', $output);
+        $this->assertStringContainsString('anomaly_students=0', $output);
     }
 }
