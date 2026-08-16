@@ -39,6 +39,7 @@ final class SchedulerEvidence
         'learning-records-void-stale-leave' => ['command' => 'learning-records:void-stale-leave', 'time' => '03:55'],
         'bugs-verify-reproductions' => ['command' => 'bugs:verify-reproductions --json', 'time' => '04:00'],
         'ops-business-digest' => ['command' => 'ops:business-digest', 'time' => '04:10'],
+        'bindings-cleanup-orphans' => ['command' => 'bindings:cleanup-orphans', 'time' => '04:30'],
     ];
 
     /** @return array<string,array{command:string,time:string}> */
@@ -416,6 +417,17 @@ final class SchedulerEvidence
                     'stranded_sessions' => (int) $decoded['stranded_sessions'],
                 ];
             }
+        }
+
+        if ($job === 'bindings-cleanup-orphans' && preg_match(
+            '/orphan_bindings_deleted=(\d+) anomaly_students=(\d+)/',
+            $output,
+            $matches
+        )) {
+            return [
+                'orphan_bindings_deleted' => (int) $matches[1],
+                'anomaly_students' => (int) $matches[2],
+            ];
         }
 
         if ($job === 'bugs-verify-reproductions') {
