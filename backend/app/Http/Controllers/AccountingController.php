@@ -486,7 +486,7 @@ class AccountingController extends Controller
         if ($request->filled('payment_method')) {
             $method = (string) $request->input('payment_method');
             if (!in_array($method, ['cash', 'transfer'], true)) {
-                return response()->json(['message' => 'Invalid payment_method'], 422);
+                return response()->json(['message' => '繳費方式無效'], 422);
             }
             $query->where('payment_method', $method);
         }
@@ -561,7 +561,7 @@ class AccountingController extends Controller
         if ($request->filled('branch_id')) {
             $branchId = (int) $request->input('branch_id');
             if ($role !== 'super_admin' && !empty($campusIds) && !in_array($branchId, $campusIds, true)) {
-                return response()->json(['message' => 'Forbidden'], 403);
+                return response()->json(['message' => '沒有權限執行此操作'], 403);
             }
             $query->whereHas('student', fn ($q) => $q->where('CampusID', $branchId));
             return null;
@@ -584,7 +584,7 @@ class AccountingController extends Controller
         if ($request->filled('branch_id')) {
             $branchId = (int) $request->input('branch_id');
             if ($role !== 'super_admin' && !empty($campusIds) && !in_array($branchId, $campusIds, true)) {
-                return response()->json(['message' => 'Forbidden'], 403);
+                return response()->json(['message' => '沒有權限執行此操作'], 403);
             }
             $query->whereHas('student', fn ($q) => $q->where('CampusID', $branchId));
             return null;
@@ -605,11 +605,11 @@ class AccountingController extends Controller
             : array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
 
         if ($request->filled('branch_id') && (int) $request->input('branch_id') !== $campusId) {
-            return response()->json(['message' => 'Forbidden'], 403);
+            return response()->json(['message' => '沒有權限執行此操作'], 403);
         }
 
         if ($role !== 'super_admin' && !empty($campusIds) && !in_array($campusId, $campusIds, true)) {
-            return response()->json(['message' => 'Forbidden'], 403);
+            return response()->json(['message' => '沒有權限執行此操作'], 403);
         }
 
         return null;

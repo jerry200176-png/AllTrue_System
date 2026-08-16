@@ -154,7 +154,7 @@
                                 <div class="ledger-timeline__meta">
                                   <span v-if="p.applied_amount">記入 {{ formatCurrency(p.applied_amount) }}</span>
                                   <span v-if="p.unapplied_amount">多收 {{ formatCurrency(p.unapplied_amount) }}</span>
-                                  <span v-if="p.receipt_no" class="ledger-ref">{{ p.receipt_no }}</span>
+                                  <span v-if="p.receipt_no" class="ledger-ref">{{ humanizeDocumentRef(p.receipt_no) }}</span>
                                 </div>
                               </div>
                             </li>
@@ -177,7 +177,7 @@
                 <span>{{ r.payment_date || '未記錄日期' }}</span>
                 <span>{{ paymentMethodLabel(r.payment_method) }}</span>
                 <span :class="['ledger-chip', reportStatusClass(r.status)]">{{ reportStatusLabel(r.status) }}</span>
-                <small class="ledger-ref">{{ r.receipt_no }}</small>
+                <small class="ledger-ref">{{ humanizeDocumentRef(r.receipt_no) }}</small>
                 <small>{{ formatLedgerReceiptBillLine(r) }}</small>
               </div>
             </div>
@@ -195,7 +195,9 @@ import {
   formatLedgerInvoiceLabel,
   formatLedgerReceiptBillLine,
   formatLedgerAnomalyDetail,
+  humanizeDocumentRef,
 } from '../lib/studentClassDisplay.js';
+import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 
 const EXCEPTION_PREVIEW = 2;
 
@@ -268,11 +270,11 @@ async function loadLedger() {
       headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
     });
     const json = await resp.json().catch(() => ({}));
-    if (!resp.ok) throw new Error(json.message || `載入失敗（${resp.status}）`);
+    if (!resp.ok) throw new Error(humanizeApiErrorMessage(json.message || `載入失敗（${resp.status}）`));
     payload.value = json;
     autoExpandAttention();
   } catch (e) {
-    error.value = e.message || '載入對帳資料失敗';
+    error.value = humanizeApiErrorMessage(e.message || '載入對帳資料失敗');
   } finally {
     loading.value = false;
   }
@@ -299,7 +301,7 @@ const ledgerExceptions = computed(() => {
       rows.push({
         key: `p-${p.id}`,
         title: '多收，疑似重複收款',
-        message: `${p.receipt_no || p.payment_no || '未編號收款'} 有 ${formatCurrency(p.unapplied_amount)} 尚未記入帳單`,
+        message: `${humanizeDocumentRef(p.receipt_no || p.payment_no) || '未編號收款'} 有 ${formatCurrency(p.unapplied_amount)} 尚未記入帳單`,
         detail: `${formatLedgerInvoiceLabel(inv)} · ${p.paid_at || '未記錄日期'}`,
         report_id: p.report_id || null,
         can_void: !!p.report_id && !p.is_void,
@@ -335,11 +337,11 @@ async function voidReport(reportId) {
       body: JSON.stringify({ void_reason: reason.trim() }),
     });
     const json = await resp.json().catch(() => ({}));
-    if (!resp.ok) throw new Error(json.message || `撤銷失敗（${resp.status}）`);
+    if (!resp.ok) throw new Error(humanizeApiErrorMessage(json.message || `撤銷失敗（${resp.status}）`));
     await loadLedger();
     emit('changed');
   } catch (e) {
-    error.value = e.message || '撤銷失敗';
+    error.value = humanizeApiErrorMessage(e.message || '撤銷失敗');
   } finally {
     busyReportId.value = null;
   }
@@ -368,11 +370,11 @@ async function voidInvoice(invoice, mode) {
       body: JSON.stringify({ reason: reason.trim() }),
     });
     const json = await resp.json().catch(() => ({}));
-    if (!resp.ok) throw new Error(json.message || `${actionLabel}失敗（${resp.status}）`);
+    if (!resp.ok) throw new Error(humanizeApiErrorMessage(json.message || `${actionLabel}失敗（${resp.status}）`));
     await loadLedger();
     emit('changed');
   } catch (e) {
-    error.value = e.message || `${actionLabel}失敗`;
+    error.value = humanizeApiErrorMessage(e.message || `${actionLabel}失敗`);
   } finally {
     busyInvoiceId.value = null;
   }

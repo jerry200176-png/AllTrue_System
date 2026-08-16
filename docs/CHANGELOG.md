@@ -3,6 +3,12 @@
 <!-- release-notes: silent_ship=silent-2026-08-17-session-balance-audit-1811 -->
 
 - 主任改 `SessionCount`／`RemainingSessions` 時寫入 `security_audit_events`（操作者雜湊、舊→新堂數）；不含學生姓名。
+## 2026-08-17 — fix(ui): 主任畫面技術語言再清一波
+
+<!-- release-notes: staff_update=staff-2026-08-17-ui-human-copy-sweep -->
+
+- 老師批次匯入改中文欄位說明；收據／帳單編號不再顯示 LEGACY、INV 英文碼。
+- 分校刷卡「Token」改「授權碼」；帳務錯誤訊息改中文。
 
 ## 2026-08-17 — fix(billing): 課程列表已繳改認足額收款（TD-083 B1）
 
@@ -16,6 +22,7 @@
 
 - `GET /api/v1/students/export` 成功匯出前寫入 `security_audit_events`（操作者雜湊、筆數、校區範圍）；不含姓名／電話等明文。
 - 修正 `students/export` 被 `students/{student}` 搶路由的問題，並對 student id 加 `whereNumber`。
+
 ## 2026-08-17 — chore(billing): isFullyPaid 收斂到 StudentClass（TD-083 B0）
 
 <!-- release-notes: silent_ship=silent-2026-08-17-ispaid-b0 -->
@@ -27,6 +34,7 @@
 <!-- release-notes: silent_ship=silent-2026-08-17-dup-cleanup-plan -->
 
 新增 [`docs/plans/DUP_FEATURE_CLEANUP_ABC_2026-08-17.md`](plans/DUP_FEATURE_CLEANUP_ABC_2026-08-17.md) 與 TD-082；產品行為不變。
+
 ## 2026-08-17 — chore(frontend): 移除未掛載死碼頁（重複功能清理 A）
 
 <!-- release-notes: silent_ship=silent-2026-08-17-orphan-fe-dead-pages -->
@@ -580,6 +588,7 @@
 - 修法：比照 #1509 的模式，在方法最前面呼叫既有的 `authorizeStudentClassAccess()`（未通過即回 403，不執行任何 mutation）。未新增授權邏輯、未變更既有 campus／teacher 判定語意。
 - 新增 `backend/tests/Feature/StudentClassTogglePauseAuthzTest.php`（8 案例：跨分校 director、非本人課程 teacher 各自 pause／resume 應 403 且完全不改動資料；同分校 director、擁有該課程的 teacher 應維持原有 pause／resume 成功行為與未來排課取消語意）。修補前 4 個跨分校/跨老師案例可重現性失敗（RED），修補後全數通過（GREEN），既有 `StudentClassCloseFutureSessionsTest`／`StudentClassConfirmPaymentAuthzTest` 無回歸，全庫 PHPUnit 1580 測試全過。
 - 本次僅做 containment（單一方法補授權檢查），未建立新的 CI gate、未重構授權層、未觸碰 #1062 排程或帳務邏輯。CI 綠後仍需 Founder 過目才可 merge（R2 風險等級：授權／跨分校邊界／課程狀態變更）。
+
 ## 2026-07-31 — feat(billing): 依實際上課時長扣堂——正式環境後端＋前端旗標已啟用（經 Founder 明確授權，未有課程走完驗收）
 
 - 延續上一則（2026-07-31，功能合併但旗標關閉）。本則記錄：Founder 明確授權透過新的 Founder-gated GitHub Actions control plane（`.github/workflows/actual-duration-activation.yml`）進行受控啟用。
@@ -954,18 +963,21 @@ Accepted direction（文件）：保留 StudentsList／SmartCalendar／CourseMan
 - 長期截圖：`docs/reviews/login-polish-1386/`。
 
 ## 2026-07-22 — fix: 課程備註可正確儲存 emoji 與完整中文
+
 ## 2026-07-22 — fix: 建課衝突改為明確決策（試聽／加購／續報／獨立）
 
 - 遇到同科進行中課程時，主任可選「建立試聽」「加購」「下一期續報」或「建立獨立課程」，不再只有含糊的強制建立。
 - 建立獨立課程須填寫原因，系統會留下操作者與既有合約紀錄。
 
 開發備註：#1379 follow-up。`EnrollmentConflictDecisionModal` + `force_reason` 審計（`create_trial`／`renewal_next_term`／`independent_parallel`）。尚非 Course Continuity 最終設計。
+
 ## 2026-07-22 — fix: 試聽建課不再被「同科同師日期重疊」擋死；行事曆快速排課補上強制建立
 
 - 新建「試聽」課程時，不再套用續報用的 `overlapping_active_course` 攔截（試聽本意是旁聽正式課堂）；同科重複試聽仍會提示。
 - 智慧行事曆「快速排課」遇到重複／重疊課程時，改跳出「仍要新增課程」視窗，不再靜默失敗。
 
 開發備註：`EnrollmentService` 對 `class_type=trial` 跳過 #805 重疊守衛；`SmartCalendar` 補 `@duplicate-course` + force modal（對齊課程管理／學生管理）。回歸 `OverlappingCourseGuardTest::test_trial_course_is_not_blocked_by_overlapping_active_course`。
+
 ## 2026-07-24 — chore: 安裝 taste-skill（設計品味 Agent 技能）
 
 - 建課備註可含 emoji、中文、換行與標點，不再因資料庫字元集錯誤整筆失敗。
@@ -996,6 +1008,7 @@ Fixed：在課程管理編輯「授課老師」時，已上過／已點名的過
 - #1342：Engineering PASS／Operational Delivery BLOCKED；platform-ops 以既有主任 LINE 私訊／群組從 run `29686172773` 人工交付；tracker v2（checksum／delivered_at／acknowledged_at／deadline_at_risk）。
 - 永久治理：`docs/governance/OUTBOUND_READINESS_GATE.md` + `scripts/outbound-readiness-gate.py`（artifact ≠ 交付）。
 - #1062/#1130：`scripts/ops/stranded-classify-probe.php` — 24h/72h producer proxy、exposure total/active-21d/dormant、group/pair/student/course/future-active。
+
 ## 2026-07-22 — feat: Action Inbox P0（fail-closed／分頁／DTO）
 
 - 唯讀 `action-inbox`+`count`+`cases/{id}`；fail-closed 校區；`cases_unresolved`/`cases_candidate_ready`/`badge_total`/`urgent_total`；DTO+`no-store`；不雙寫 leave Notification（§R81）。deprecated：`cases_open`/`needs_attention`→2026-09-01。
@@ -1105,6 +1118,7 @@ Fixed：課程管理、堂次編輯與行事曆的調課現在只有在原堂、
 Fixed：主任從行事曆、課程請假或出缺勤編輯建立「請假」時，系統會直接保存該堂完整的起訖時間，不再把請假誤記成仍在補習班內、等到隔夜才修正的未簽退紀錄。
 
 開發備註：集中所有請假出缺勤寫入、加入 model fail-closed invariant、同日 production health 聚合檢查與 PII-free 修復摘要；另以「02:30 後補登前一日請假」回歸測試覆蓋實際 producer 條件。
+
 ## 2026-07-17 — test: isolate local PHPUnit schemas per process (#1266)
 
 開發備註：新增 `scripts/phpunit-isolated.sh`，每個 worktree／process 啟動只綁 loopback 的非特權 ephemeral MariaDB，使用唯一 `AllTrue_test_<suffix>_<nonce>` schema，原樣轉交 PHPUnit 參數並保留 exit code，結束或中斷時 drop／shutdown／清除 data directory。Wrapper 不需 sudo、Docker 或 production credential，且 fail-closed 拒絕 production DB 名稱、遠端 host 與自訂 PHPUnit config。
@@ -1553,6 +1567,7 @@ Fixed：班級行事曆若週次篩選暫時隱藏某課程，已實際存在的
 開發備註：Phase 2。老師資料 runtime 改以 `User`（姓名、電話、LineID）與 `UserCampus`（分校、RFID）為權威來源；`Teacher.RFID` 已由 `UserCampus.RFID` 完全取代。更新老師建帳/更新/刪除、RFID 刷卡、老師打卡、LINE 通知、課程/評量/財務/出勤查詢與合併工具，不再 join/write `Teacher` table。`TeacherSingIn.TeacherID`、`StudentClass.TeacherID`、`StudentSingIn.TeacherID`、`schedules.teacher_id` 語意維持 `User.id`。新增 migration 將 legacy `Teacher` 的 phone/LineID/CampusID/RFID 補回 `User`/`UserCampus`，`down()` 不刪 live data。測試 fixture 同步移除 `Teacher` table 假設；本機 PHP 不可用且依使用者指示改由 GitHub Actions 執行測試。
 
 ## 2026-06-06 — feat(ui): 課程 modal 中性結構色 token 化（#691 第三階段）
+
 ## 2026-06-06 — feat(ui): App 外殼去裝飾、品牌色統一（#698 topbar/FAB/banner）
 
 全站共用外殼的視覺收斂：頭像、說明浮動鈕、系統更新提示列從多色漸層統一為單一品牌色，與設計系統一致。
@@ -1639,11 +1654,13 @@ Fixed：班級行事曆若週次篩選暫時隱藏某課程，已實際存在的
 ## 2026-06-01 — chore(deps): composer 鎖定 PHP 8.2 平台 + 月初帳務測試健全化
 
 開發備註：(1) `backend/composer.json` 設 `config.platform.php=8.2.30`，避免 dependabot/`composer update` 解析出需 PHP 8.3/8.4 的相依（如 `symfony/css-selector` v8、`zipstream` 3.2.2）而在 8.2 runtime 裝不起來（dependabot PR #643 即此症）。順帶安全升版：`symfony/routing` v5.4.48→v5.4.53、`symfony/polyfill-intl-idn` v1.33.0→v1.38.1（清掉 2 筆 OSV 發現，TD-061）、`guzzle` 7.10.5、`maatwebsite/excel` 3.1.69，並把 `laravel/framework` 由 dev 分支 pin 至穩定 `v8.83.29`。(2) `CoursePackageMonthlyBillingTest` 月結堂數測試夾住堂次日期 ≤ 今天，修正每月 1 號（月內未來日期被 `alerts/tuition` 正確排除）造成的時間敏感失敗。
+
 ## 2026-08-01 fix: billing reconciliation and explicit batch approval
 
 - 所有 billing read surfaces（帳務中心、帳單列表、繳費單、對帳查詢）依帳單月份的實際已上課堂計算，顯示原始金額與差異警示；不再默默沿用過期的預存金額。
 - 批次核准只會處理前端明確勾選的評量；選取範圍與目前權限/狀態不一致時整批停止，不會擴大核准範圍。
 - 新增事件檢討與回歸測試：`docs/incidents/2026-08-01-billing-and-batch-approval.md`。
+
 ## 2026-08-08 — feat(payroll): 正職老師薪資要件分項篩選
 
 <!-- release-notes: staff_update=staff-2026-08-08-payroll-eligibility -->
@@ -1653,6 +1670,7 @@ Fixed：班級行事曆若週次篩選暫時隱藏某課程，已實際存在的
 - 新增薪資制度 115.07（2026-07-01）政策引擎；資料不足會列為「待人工確認」並回報缺少欄位，不會直接判定不符合。科目數與一對三獎金採附件 1–50 科目表，不推算缺漏值。
 - 新增教師薪資事件、升學成果與扣除案件的 additive migration；扣除案件只有主任及總部審核完成才會自動計入，報表端維持唯讀。
 - 新增主任 API、前端頁面與 8 個純單元測試；PHPUnit、PHPStan、Vite build、design token guard 與 diff check 通過。正式部署待 PR 審核合併後由既有 CI 流程執行。
+
 ## 2026-08-13 — fix(teacher-home): 穩定教師首頁課表與評量投影
 
 <!-- release-notes: staff_update=staff-2026-08-13-teacher-home-projection-integrity -->
@@ -1660,6 +1678,7 @@ Fixed：班級行事曆若週次篩選暫時隱藏某課程，已實際存在的
 - 教師首頁現在會以統一的課堂資料欄位合併同一學生、日期與時段的重複投影，避免同一堂課顯示兩張評量卡。
 - 週課表重新載入時保留上一份有效結果，並忽略過期請求，避免畫面閃爍或跨分校課程短暫消失。
 - 此修正不更動上課、評量、點名或收費資料；若偵測到真正的資料重複，仍須走受控稽核與修復流程。
+
 ## 2026-08-13 — fix(calendar): 月例外堂次投影與關閉
 
 <!-- release-notes: staff_update=staff-2026-08-13-monthly-projection-exception -->

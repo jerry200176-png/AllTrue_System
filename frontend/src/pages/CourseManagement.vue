@@ -879,7 +879,7 @@
             <tbody>
               <tr v-for="inv in invoiceModalList" :key="inv.id">
                 <td>
-                  <strong>{{ inv.invoice_no || `INV-${inv.id}` }}</strong>
+                  <strong>{{ formatLedgerInvoiceLabel(inv) }}</strong>
                   <div class="hint">{{ formatLedgerCourseLabel({ course_ref: inv.course_ref, subject: invoiceModalCourse?.subject_name || invoiceModalCourse?.subject }) }} · {{ formatBillingPeriod(inv.billing_period) }}</div>
                 </td>
                 <td>{{ inv.due_date || '—' }}</td>
@@ -894,7 +894,7 @@
                       <span class="invoice-payment-date">{{ payment.paid_at || '未記錄日期' }}</span>
                       <span class="invoice-payment-amount">{{ payment.is_void ? '已更正 ' : '已收 ' }}${{ formatMoney(Math.abs(payment.amount || 0)) }}</span>
                       <span class="invoice-payment-method">{{ invoicePaymentMethodLabel(payment.method) }}</span>
-                      <span v-if="payment.receipt_no" class="invoice-payment-receipt">{{ payment.receipt_no }}</span>
+                      <span v-if="payment.receipt_no" class="invoice-payment-receipt">{{ humanizeDocumentRef(payment.receipt_no) }}</span>
                       <span v-if="payment.is_void" class="invoice-payment-void">更正</span>
                     </div>
                   </div>
@@ -954,7 +954,7 @@
             <p class="premium-danger-kicker">Accounting Control</p>
             <h3 class="modal-title">{{ invoiceVoidMode === 'exception' ? '更正並作廢帳單' : '作廢帳單' }}</h3>
             <p class="modal-desc">
-              {{ invoiceVoidTarget.invoice_no || `INV-${invoiceVoidTarget.id}` }} · {{ invoiceVoidTarget.course_ref || 'COURSE' }} · {{ formatBillingPeriod(invoiceVoidTarget.billing_period) }}
+              {{ formatLedgerInvoiceLabel(invoiceVoidTarget) }} · {{ formatLedgerCourseLabel({ course_ref: invoiceVoidTarget.course_ref, subject: invoiceModalCourse?.subject_name || invoiceModalCourse?.subject }) }} · {{ formatBillingPeriod(invoiceVoidTarget.billing_period) }}
             </p>
           </div>
         </div>
@@ -1057,6 +1057,8 @@ import {
   formatRenewSuccessMessage,
   formatDuplicatePurchaseHint,
   formatLedgerCourseLabel,
+  formatLedgerInvoiceLabel,
+  humanizeDocumentRef,
 } from '../lib/studentClassDisplay.js';
 import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
 import { updatePackage } from '../lib/coursePackagesApi';

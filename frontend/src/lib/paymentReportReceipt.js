@@ -1,3 +1,5 @@
+import { humanizeDocumentRef } from './studentClassDisplay.js';
+
 /**
  * Adapter: PaymentReportController@receipt → ReceiptModal view model.
  * Only maps fields that exist on GET /api/v1/payment-reports/{id}/receipt.
@@ -30,7 +32,7 @@ export function adaptPaymentReportReceipt(api, reportId) {
   const periodStart = api?.period_start || null;
   const periodEnd = api?.period_end || null;
   return {
-    receipt_number: api?.receipt_no || '—',
+    receipt_number: humanizeDocumentRef(api?.receipt_no) || '—',
     report_id: reportId,
     is_backfilled: !!api?.is_backfilled,
     // #934: course's billing mode changed since this receipt was issued —
