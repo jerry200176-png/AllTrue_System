@@ -85,6 +85,36 @@ export const staffUpdates = [
     "version": "2026.08.16"
   },
   {
+    "id": "staff-2026-08-16-reported-paid-notif",
+    "publishedAt": "2026-08-16",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "通知中心先回報",
+    "summary": "通知中心登記已繳後仍待對帳，會計確認才入帳開收據。",
+    "items": [
+      "通知中心學費改「送出已回報」，不會當場變已繳或開收據。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "通知中心學費改「送出已回報」，不會當場變已繳或開收據。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-16:reported-paid-notif"
+    ],
+    "date": "2026-08-16",
+    "version": "2026.08.16"
+  },
+  {
     "id": "staff-2026-08-16-lr-resurrect-status-adjust",
     "publishedAt": "2026-08-16",
     "effectiveAt": null,

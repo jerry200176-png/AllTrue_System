@@ -3,6 +3,19 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-16-reported-paid-notif
+    published_at: "2026-08-16"
+    audiences:
+      - director
+    importance: digest
+    title: 通知中心先回報
+    summary: 通知中心登記已繳後仍待對帳，會計確認才入帳開收據。
+    items:
+      - category: improved
+        text: 通知中心學費改「送出已回報」，不會當場變已繳或開收據。
+    source_refs:
+      - "changelog:2026-08-16:reported-paid-notif"
+
   - id: staff-2026-08-16-fulltime-settlement-table
     published_at: "2026-08-16"
     audiences:

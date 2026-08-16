@@ -1,3 +1,10 @@
+## 2026-08-16 — feat(billing): 通知中心與批次 API 改待對帳 (#1827)
+
+<!-- release-notes: staff_update=staff-2026-08-16-reported-paid-notif -->
+
+- 通知中心學費按鈕改為送出已回報，課程仍未繳，等會計確認才入帳開收據。
+- 新增批次回報／批次確認 API（最多 40 筆），給下一版收費頁勾選使用。
+
 ## 2026-08-16 — feat(payroll): 正職薪資要件改為 115.07 結算表
 
 <!-- release-notes: staff_update=staff-2026-08-16-fulltime-settlement-table -->

@@ -2839,31 +2839,7 @@ parameters:
 			path: app/Http/Controllers/LineWebhookController.php
 
 		-
-			message: '#^Access to an undefined property App\\Models\\Invoice\:\:\$PaidAmount\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/NotificationController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\Invoice\:\:\$Status\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/NotificationController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\Invoice\:\:\$id\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/NotificationController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\Invoice\:\:\$reconciled_at\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/NotificationController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\Invoice\:\:\$reconciled_by\.$#'
+			message: '#^Access to an undefined property App\\Models\\Invoice\:\:\$StudentClassID\.$#'
 			identifier: property.notFound
 			count: 1
 			path: app/Http/Controllers/NotificationController.php
@@ -2899,18 +2875,6 @@ parameters:
 			path: app/Http/Controllers/NotificationController.php
 
 		-
-			message: '#^Call to an undefined static method App\\Models\\Invoice\:\:create\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 1
-			path: app/Http/Controllers/NotificationController.php
-
-		-
-			message: '#^Call to an undefined static method App\\Models\\Invoice\:\:where\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 1
-			path: app/Http/Controllers/NotificationController.php
-
-		-
 			message: '#^Call to an undefined static method App\\Models\\NotificationRead\:\:updateOrCreate\(\)\.$#'
 			identifier: staticMethod.notFound
 			count: 2
@@ -2920,18 +2884,6 @@ parameters:
 			message: '#^Call to an undefined static method App\\Models\\NotificationRead\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
 			count: 2
-			path: app/Http/Controllers/NotificationController.php
-
-		-
-			message: '#^Call to an undefined static method App\\Models\\Payment\:\:create\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 1
-			path: app/Http/Controllers/NotificationController.php
-
-		-
-			message: '#^Parameter \#1 \$invoice of method App\\Http\\Controllers\\NotificationController\:\:recordNotificationPayment\(\) expects App\\Models\\Invoice, Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model given\.$#'
-			identifier: argument.type
-			count: 1
 			path: app/Http/Controllers/NotificationController.php
 
 		-
