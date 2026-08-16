@@ -649,10 +649,11 @@
 
       <div v-else class="lr-groups">
         <details
-          v-for="(group, groupIndex) in filteredGroupedRecords"
+          v-for="(group) in filteredGroupedRecords"
           :key="group.key"
           class="lr-group"
-          :open="groupIndex === 0 || filteredGroupedRecords.length === 1"
+          :open="openGroupKeys.has(group.key)"
+          @toggle="onGroupToggle(group.key, $event)"
         >
           <summary class="lr-group-summary">
             <div class="lr-group-title">
@@ -1881,6 +1882,25 @@ const filteredGroupedRecords = computed(() => {
     })
     .sort((a, b) => collator.compare(a.student_name, b.student_name));
 });
+
+// 學生卡片展開/收合狀態：獨立於 filteredGroupedRecords 之外記錄，只在「第一次
+// 看到這個學生」時套用預設展開，之後完全跟隨老師手動點擊。避免 in-app bug：
+// 每次送出評量、輪詢更新導致 filteredGroupedRecords 重新計算，若展開狀態直接
+// 綁定 groupIndex === 0，Vue 會在每次重繪時把第一位學生的卡片強制重新展開，
+// 蓋掉老師剛收合的動作。
+const openGroupKeys = ref(new Set());
+const seenGroupKeys = new Set();
+watch(filteredGroupedRecords, (groups) => {
+  (groups || []).forEach((g, i) => {
+    if (seenGroupKeys.has(g.key)) return;
+    seenGroupKeys.add(g.key);
+    if (i === 0 || groups.length === 1) openGroupKeys.value.add(g.key);
+  });
+}, { immediate: true });
+function onGroupToggle(key, event) {
+  if (event.target.open) openGroupKeys.value.add(key);
+  else openGroupKeys.value.delete(key);
+}
 
 const pendingCount = computed(() => (records.value || []).filter(r => r.Status === 'pending' || r.Status === 'changes_requested').length);
 const kpiPendingOnlyCount = computed(() => (records.value || []).filter(r => r.Status === 'pending').length);
