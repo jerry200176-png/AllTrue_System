@@ -570,7 +570,9 @@ test.describe('UI foundation — real Vue page evidence', () => {
     test(`director workbench with urgent tasks @${vp.name}`, async ({ page }) => {
       await openPilot(page, { pageName: 'director', mode: 'dashboard', viewport: vp });
       await expect(page.getByText('主任總覽', { exact: true })).toBeVisible({ timeout: 10_000 });
-      await expect(page.getByText('家長請假待主任處理')).toBeVisible();
+      // Scoped to the risk-list label: the same text also appears as a task
+      // card <h3> heading, which made the unscoped locator ambiguous.
+      await expect(page.getByLabel('今日營運風險 Top').getByText('家長請假待主任處理')).toBeVisible();
       const ctas = page.locator('.director-task__action');
       expect(await ctas.count()).toBeGreaterThan(0);
       await expect(ctas.first()).toBeVisible();
