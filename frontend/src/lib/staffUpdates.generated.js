@@ -41,6 +41,50 @@ export const staffUpdates = [
     "version": "2026.08.16"
   },
   {
+    "id": "staff-2026-08-16-fulltime-settlement-table",
+    "publishedAt": "2026-08-16",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "正職結算表上線",
+    "summary": "正職薪資頁改為底薪與獎金結算欄",
+    "items": [
+      "可見底薪、科目數拆分、倍率後獎金算式與總發放。",
+      "假日假可補足16小時倍率；小數科目數依附件表內插。",
+      "全勤、勞健保、行政加給仍未自動列入，請人工核對。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "可見底薪、科目數拆分、倍率後獎金算式與總發放。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "假日假可補足16小時倍率；小數科目數依附件表內插。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "全勤、勞健保、行政加給仍未自動列入，請人工核對。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-16:fulltime-settlement-table"
+    ],
+    "date": "2026-08-16",
+    "version": "2026.08.16"
+  },
+  {
     "id": "staff-2026-08-16-lr-resurrect-status-adjust",
     "publishedAt": "2026-08-16",
     "effectiveAt": null,
