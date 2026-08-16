@@ -1,18 +1,18 @@
 ---
 owner: jerry (CEO)
-status: Phase 2 complete (awaiting this PR merge)
+status: Phase 2 complete; confirm actor is director (no accountant role)
 review_cycle: as-needed
 last_reviewed: 2026-08-16
 ---
 
 # RFC: 行政已回報 ≠ 會計已入帳（繳費狀態拆分）
 
-> **Status:** Phase 1+2a 已上 main。本 PR 為 Phase 2b（課程頁帳務分頁、收費頁勾選批次）。  
+> **Status:** Phase 1+2 已上 main。海森現場無獨立會計；confirm 由主任完成。  
 > **Date:** 2026-08-16  
 > **Issue:** [#1827](https://github.com/jerry200176-png/AllTrue_System/issues/1827)  
 > **Debt / lessons:** `docs/TECH_DEBT.md` TD-080 · F7 / R95 已繳費雙真相 · `docs/DIRECTOR_PAYMENT_ALERT_RULES.md`  
 > **Related (do not solve here):** TD-068 Receipt Domain T3（法定完整收據／PDF）  
-> **Source:** 嗨森建議（行政／會計分工、批次回報、課程頁看帳務）。示意圖只當概念，不是畫面規格。
+> **Source:** 嗨森建議（先登錄家長已繳、對到帳再開收據、批次回報、課程頁看帳務）。示意圖只當概念，不是畫面規格。原始建議用「行政／會計」描述兩步驟；產品實作是同一主任帳號走兩步，不開會計角色。
 
 Agent 在改 `PaymentReportController`、`PaymentEntryModal`、催繳名單、課程管理繳費切換、或 `StudentClass.Paid` 寫入路徑前，必須讀本檔。若實作把「行政登錄」再次做成一次 `Paid=1`＋核銷＋開收據，停下來。
 
@@ -88,9 +88,8 @@ Agent 在改 `PaymentReportController`、`PaymentEntryModal`、催繳名單、�
 
 | 角色 | Phase 1 | Phase 2 |
 |---|---|---|
-| 行政／主任 | 登錄已回報、看狀態 | 批次登錄；課程頁看該生帳務 |
-| 會計 | confirm / reject（可暫與主任同 API，前端收斂入口） | 待核銷工作台批次核銷；預設不改課程主檔 |
-| 家長 | 仍見未結清，直到 confirm | 可顯示「已回報審核中」文案（非已繳費） |
+| 行政／主任 | 登錄已回報、看狀態；對到帳後 confirm／reject | 批次登錄與批次確認；課程頁看該生帳務 |
+| 家長 | 仍見未結清，直到 confirm | 可顯示「已回報、待對帳」文案（非已繳費） |
 
 分校隔離不變：`CampusID` / `auth_campus_ids`。
 
@@ -98,7 +97,7 @@ Agent 在改 `PaymentReportController`、`PaymentEntryModal`、催繳名單、�
 
 **建議（最小改動）：** 把 `directorRecord` 改成只建立 `status=pending` 的 `PaymentReport`（不建 `Payment`、不改 `Paid`、不寫 `reconciled_at`）。確認繼續走既有 `PUT .../confirm`；退回走 `PUT .../reject`。
 
-若必須保留「主任當場現金且會計已在現場」的捷徑：另開明確 endpoint（例如 `director-record-and-confirm`），預設 UI **不要**用它；測試證明兩條路徑不會雙寫。禁止在同一個「行政看 LINE」按鈕上走捷徑。
+若必須保留「當場現金且已對到帳」的捷徑：另開明確 endpoint（例如 `director-record-and-confirm`），預設 UI **不要**用它；測試證明兩條路徑不會雙寫。禁止在同一個「看 LINE」按鈕上走捷徑。海森目前不開此捷徑。
 
 防重（既有、必須保留）：課程已 `Paid=1` 或已有 paid Invoice → 422 `course_already_paid`。Pending 重複登錄：同一 `StudentClass` 已有 pending report → 422 或冪等回傳既有 id（實作 PR 二選一並寫測試）。
 
@@ -164,9 +163,10 @@ Deliverables:
 ## 7. Founder decisions（已拍板）
 
 - **D1：** 兩步走：先狀態機，後同畫面＋批次。
-- **D2：** 行政已回報 ≠ 已繳費；收據綁會計入帳。
+- **D2：** 已回報 ≠ 已繳費；收據綁確認入帳（海森由主任按確認入帳）。
 - **D3：** 示意圖非實作規格。
 - **D4：** 不在本 epic 做 TD-068 法定收據。
+- **D5：** 不開獨立會計角色；海森主任核完帳即確認。
 
 未決（Phase 1 PR 可帶預設，需在 PR 寫明）：
 
@@ -183,7 +183,7 @@ Phase 1 最低測試（實作 PR）：
 
 ```text
 行政登錄 → report pending、Paid=0、無 Payment、無收據
-會計 confirm → Paid=1、有 Payment、receipt OK
+主任 confirm → Paid=1、有 Payment、receipt OK
 reject → Paid=0、無收款、催繳仍在
 pending 期間 alerts/tuition 仍列入；payment_status=pending_report
 已 Paid 再 director-record → 422
