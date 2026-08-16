@@ -3,7 +3,6 @@
 namespace Tests\Unit;
 
 use App\Models\StudentClass;
-use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
@@ -11,7 +10,9 @@ use Tests\TestCase;
  */
 class StudentClassIsFullyPaidTest extends TestCase
 {
-    #[DataProvider('fullyPaidCases')]
+    /**
+     * @dataProvider fullyPaidCases
+     */
     public function test_is_fully_paid_matrix(bool $flag, int $paidAmount, int $charge, bool $expected): void
     {
         $this->assertSame($expected, StudentClass::isFullyPaid($flag, $paidAmount, $charge));
