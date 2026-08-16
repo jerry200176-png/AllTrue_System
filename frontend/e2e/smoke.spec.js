@@ -1,5 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
+import { dismissOverlays } from './fixtures/dismissOverlays.js';
 
 /**
  * 前端 UI smoke / 關鍵業務路徑（#547 起，#730 擴充）。
@@ -42,18 +43,6 @@ async function login(page, role, creds) {
 }
 
 /**
- * 關閉登入後可能自動彈出的覆蓋層（onboarding 導覽 popover、版本公告 nudge）。
- * 這些覆蓋層有 backdrop（pointer-events:auto），會攔截側欄點擊導致 click 逾時。
- * best-effort：不存在就略過。
- */
-async function dismissOverlays(page) {
-  await page.locator('.release-nudge-btn:has-text("稍後再看")').click({ timeout: 5000 }).catch(() => {});
-  await page.locator('.release-nudge-layer').waitFor({ state: 'hidden', timeout: 3000 }).catch(() => {});
-  await page.locator('.guide-tour-close').click({ timeout: 800 }).catch(() => {});
-  await page.locator('.brand-idle-layer').click({ timeout: 800 }).catch(() => {});
-}
-
-/**
  * 點側欄導航切頁（SPA 用 active ref，無 Vue Router）。點 <button>（label span 為 pointer 容器），
  * 先清覆蓋層；點完斷言該 nav 按鈕進入 active，確保確實切頁而非空點。
  */
@@ -74,11 +63,16 @@ test.describe('UI smoke — director', () => {
     page.on('pageerror', (e) => errors.push(String(e)));
 
     await login(page, 'director', DIRECTOR);
+    await dismissOverlays(page);
     await navTo(page, '課程管理');
 
     // TODO: 可於 CourseManagement 根容器補 data-testid="course-mgmt-page" 讓斷言更穩。
     await expect(page.getByText('課程管理', { exact: false }).first()).toBeVisible();
-    await expect(page.getByRole('tab', { name: '帳務資料' }).first()).toBeVisible({ timeout: 20_000 });
+    // 「帳務資料」tab 只在有學生分組時渲染；smoke 帳號可能無學生，不能硬性要求。
+    const billingTab = page.getByRole('tab', { name: '帳務資料' });
+    if (await billingTab.count()) {
+      await expect(billingTab.first()).toBeVisible({ timeout: 10_000 });
+    }
     expect(errors, `頁面 JS 錯誤：\n${errors.join('\n')}`).toEqual([]);
   });
 });

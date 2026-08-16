@@ -1,5 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
+import { dismissOverlays } from './fixtures/dismissOverlays.js';
 
 const BASE = process.env.SMOKE_BASE_URL;
 const DIRECTOR = { account: process.env.SMOKE_DIRECTOR_USER, password: process.env.SMOKE_DIRECTOR_PASS };
@@ -10,12 +11,6 @@ const VIEWPORTS = [
   { name: '1280', width: 1280, height: 900 },
   { name: '1440', width: 1440, height: 900 },
 ];
-
-async function dismissOverlays(page) {
-  for (const sel of ['.guide-tour-close', '.release-nudge-btn:has-text("稍後再看")']) {
-    await page.locator(sel).first().click({ force: true, timeout: 1500 }).catch(() => {});
-  }
-}
 
 async function login(page) {
   await page.goto('/');

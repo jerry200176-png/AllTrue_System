@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.08.17",
     "date": "2026-08-17",
     "title": "2026.08.17 草稿（未發布）",
-    "summary": "帳務中心白屏（activeTab 宣告順序）",
+    "summary": "Smoke 不再被版本公告擋住導覽；帳務中心白屏（activeTab 宣告順序）",
     "audience": [
       "teacher",
       "director"
@@ -18,11 +18,13 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "Smoke 不再被版本公告擋住導覽",
           "帳務中心白屏（activeTab 宣告順序）"
         ]
       }
     ],
     "items": [
+      "Smoke 不再被版本公告擋住導覽",
       "帳務中心白屏（activeTab 宣告順序）"
     ]
   },
