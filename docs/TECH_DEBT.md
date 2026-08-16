@@ -700,15 +700,16 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
+| 狀態 | **後端已修（2026-08-16，見對應 PR），前端待審核狀態顯示 Open** |
 | 優先級 | P2 |
 | 發現日期 | 2026-08-14 |
 | 發現來源 | 自動安全審查（push/commit security review）在 `TeacherEligibilityInputController.php` 點出 separation-of-duties 缺口，經跟使用者確認後記錄為技術債，暫不在這次 PR（#1773）處理。 |
 | 影響模組 | `backend/app/Http/Controllers/TeacherEligibilityInputController.php`（`storeSalaryProfile()`）、`fulltime_salary_profiles` 表 |
 | 描述 | `teacher_payroll_deductions` 有「主任確認（`director_confirmed_by`）→ 總部核准（`hq_approved_by`，限 `super_admin`）」兩階段才生效；`storeSalaryProfile()` 卻是任何 `role:director` 帶 PIN 就能單方直接寫入並立即生效（`TeacherEligibilityController::index()` 馬上採用最新一筆算總發放金額），沒有第二人核准，也沒有留下「誰改了底薪、改前改後多少」的變更歷史（只有一筆 `created_by`，沒有審核鏈）。底薪直接乘進總發放金額，出錯或被濫用的影響比扣款更大。 |
-| 建議做法 | 比照 `teacher_payroll_deductions` 加兩階段：`fulltime_salary_profiles` 新增 `status`（`pending`/`approved`）＋ `approved_by`/`approved_at`，`storeSalaryProfile()` 先寫 `pending`，`salaryProfilesByTeacher()` 只採用 `approved` 的最新一筆；新增一個 `approveSalaryProfile` 端點限 `super_admin`。 |
-| 清償成本估計 | 小～中（一個 migration 加欄位 + controller 加一個 approve 端點 + 前端加一個待審核狀態顯示，估半天） |
-| 不做的代價 | 單一 director 帳號（或被盜用的 PIN）可以無審核地改變任何老師的總發放金額，且改動沒有留痕，事後難以稽核或還原 |
+| 已做 | 加 `status`/`approved_by`/`approved_at`；`storeSalaryProfile()` 先寫 `pending`；`salaryProfilesByTeacher()`／`FulltimeSalaryProfile::effectiveFor()` 只採用 `approved`；新增 `POST .../salary-profiles/{id}/approve`（限 `super_admin`，寫的人不能自己核准）。既有資料在同一個 migration 裡直接 grandfather 成 `approved`，不會突然讓現有老師的薪水從計算結果消失。 |
+| 建議做法（剩餘） | 前端加一個「待核准」狀態顯示與 super_admin 的核准入口 UI（目前只有 API，沒有畫面） |
+| 清償成本估計 | 後端已完成／前端小（半天內） |
+| 不做的代價（剩餘） | super_admin 目前只能透過 API 直接呼叫核准，沒有畫面可以看到待審清單 |
 
 ### TD-079：正職老師底薪 `effective_from` 沒有限制，可回溯覆蓋已結算/已發放月份的總發放金額
 
