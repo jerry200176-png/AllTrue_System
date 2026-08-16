@@ -1,3 +1,9 @@
+## 2026-08-17 — fix(billing): 課程列表已繳改認足額收款（TD-083 B1）
+
+<!-- release-notes: silent_ship=silent-2026-08-17-ispaid-b1 -->
+
+課程管理列表的已繳判斷與帳務中心對齊：`Paid` 或帳單足額收款才算已繳；僅部分收款不再顯示已繳。重複入帳閘同步。
+
 ## 2026-08-17 — chore(billing): isFullyPaid 收斂到 StudentClass（TD-083 B0）
 
 <!-- release-notes: silent_ship=silent-2026-08-17-ispaid-b0 -->

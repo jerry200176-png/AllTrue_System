@@ -168,6 +168,7 @@ class StudentClassController extends Controller
         $classIds = $classes->getCollection()->pluck('ID')->map(fn ($id) => (int) $id)->filter(fn ($id) => $id > 0)->values()->all();
         $observedUsedByClass = SessionDeductionService::batchObservedUsedSessions($classIds);
         $paidAtMap = AlertController::lastPaidAtByStudentClassIds($classIds);
+        $invoiceAggMap = AlertController::invoiceAggregateByStudentClassIds($classIds);
 
         $packageIds = $classes->getCollection()
             ->pluck('PackageID')->filter(fn ($id) => $id > 0)->unique()->values()->all();
@@ -229,7 +230,7 @@ class StudentClassController extends Controller
             }
         }
 
-        $classes->getCollection()->transform(function ($class) use ($courseNames, $subjectNames, $teacherNames, $userStatuses, $observedUsedByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap, $packageMap) {
+        $classes->getCollection()->transform(function ($class) use ($courseNames, $subjectNames, $teacherNames, $userStatuses, $observedUsedByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap, $invoiceAggMap, $packageMap) {
             $class->subject_name = $courseNames[$class->SubjectID]
                 ?? $subjectNames[$class->SubjectID]
                 ?? null;
@@ -427,8 +428,13 @@ class StudentClassController extends Controller
 
             $directPaidAt = $class->PayDate ? substr($class->PayDate, 0, 10) : null;
             $invoicePaidAt = $paidAtMap[(int) $class->ID] ?? null;
-            $hasInvoicePayment = $invoicePaidAt !== null;
-            $class->payment_status = (empty($class->Paid) && !$hasInvoicePayment) ? 'unpaid' : 'paid';
+            $invoicePaidAmount = (int) (($invoiceAggMap[(int) $class->ID]['paid_amount'] ?? 0));
+            // Display paid = Paid flag OR full invoice cover (R94 / TD-083 B1). Never "any payment".
+            $class->payment_status = StudentClass::isFullyPaid(
+                (int) ($class->Paid ?? 0) === 1,
+                $invoicePaidAmount,
+                $effectiveCharge
+            ) ? 'paid' : 'unpaid';
             $class->paid_at = $directPaidAt;
             $class->last_paid_at = $invoicePaidAt ?? $directPaidAt;
             $class->status = empty($class->Stop) ? 'active' : 'inactive';

@@ -487,6 +487,7 @@ class StudentClassPaidStatusTest extends TestCase
         $sc = $this->createStudentClass($student->id, [
             'Paid' => 0,
             'PayDate' => null,
+            'Charge' => 16500,
         ]);
 
         $invoice = \App\Models\Invoice::create([
@@ -515,6 +516,47 @@ class StudentClassPaidStatusTest extends TestCase
         $match = collect($data)->first(fn ($c) => (int) ($c['ID'] ?? $c['id'] ?? 0) === (int) $sc->ID);
         $this->assertNotNull($match, 'Course should appear in list');
         $this->assertSame('paid', $match['payment_status'], 'payment_status should be paid when invoice has payment');
+    }
+
+    /**
+     * TD-083 B1 / R94: partial invoice payment must NOT display as paid on the course list.
+     */
+    public function test_index_shows_unpaid_when_invoice_only_partially_paid(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent();
+        $sc = $this->createStudentClass($student->id, [
+            'Paid' => 0,
+            'PayDate' => null,
+            'Charge' => 16500,
+        ]);
+
+        $invoice = \App\Models\Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'IssueDate' => now()->toDateString(),
+            'TotalAmount' => 16500,
+            'PaidAmount' => 8000,
+            'Status' => 'partial',
+        ]);
+        \App\Models\Payment::create([
+            'InvoiceID' => $invoice->id,
+            'Amount' => 8000,
+            'PaidAt' => '2026-04-15',
+            'Method' => 'cash',
+        ]);
+
+        $res = $this->getJson(
+            '/api/v1/student-classes?branch_id=1',
+            ['Authorization' => "Bearer {$token}"]
+        );
+
+        $res->assertOk();
+        $json = $res->json();
+        $data = $json['data'] ?? $json;
+        $match = collect($data)->first(fn ($c) => (int) ($c['ID'] ?? $c['id'] ?? 0) === (int) $sc->ID);
+        $this->assertNotNull($match, 'Course should appear in list');
+        $this->assertSame('unpaid', $match['payment_status'], 'partial cover must not count as paid');
     }
 
     /**
