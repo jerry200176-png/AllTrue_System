@@ -64,9 +64,28 @@ class TeacherEligibilityInputMutationTest extends TestCase
             'event_date' => '2026-08-30',
             'event_type' => 'holiday',
         ])->assertStatus(422);
+    }
+
+    public function test_approved_event_can_be_reverted(): void
+    {
+        $token = $this->createDirectorToken([1], 'elig-director-3@test.com');
+        $headers = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+        $created = $this->withHeaders($headers)->postJson('/api/v1/finance/teacher-eligibility/events', [
+            'branch_id' => 1,
+            'event_date' => '2026-08-31',
+            'event_type' => 'holiday',
+        ])->assertCreated();
+        $id = (int) $created->json('id');
+        $this->withHeaders($headers)->postJson("/api/v1/finance/teacher-eligibility/events/{$id}/approve")->assertOk();
 
         $this->withHeaders($headers)->postJson("/api/v1/finance/teacher-eligibility/events/{$id}/withdraw")
-            ->assertStatus(422);
+            ->assertOk()
+            ->assertJsonPath('status', 'withdrawn');
+
+        $this->assertDatabaseHas('teacher_payroll_events', [
+            'id' => $id,
+            'status' => 'withdrawn',
+        ]);
     }
 
     /** @param  array<int>  $campusIds */

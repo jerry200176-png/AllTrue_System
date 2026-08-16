@@ -4,7 +4,7 @@
       <div>
         <div class="eyebrow"><span class="material-symbols-outlined">fact_check</span>資料補登與審核</div>
         <h3>把系統無法自動得知的薪資要件補進來</h3>
-        <p>全校放假請用課程管理的「連假批次請假」。這裡平常是補系統沒抓到的老師請假；假日曆只在薪資缺資料時才用。送出後核准前可修改或撤回。</p>
+        <p>全校放假與請假以課程管理為準，不必再登一次。這裡只補升學成果、績優與扣除案件。已送出或已核准的都可以退回。</p>
       </div>
       <button class="btn-outline small" type="button" :disabled="loading" @click="loadInputs">
         <span class="material-symbols-outlined">sync</span>更新待辦
@@ -195,7 +195,7 @@
         <div v-else-if="queueItems.length === 0" class="queue-empty">
           <span class="material-symbols-outlined">task_alt</span>
           <strong>目前沒有待處理資料</strong>
-          <small>送出後會列在這裡。核准前可修改或撤回；核准後才會算進薪資。</small>
+          <small>課程管理的連假與請假會自動算進薪資。這裡只處理成果與扣除；已核准也可退回。</small>
         </div>
         <div v-else class="queue-list">
           <article v-for="item in queueItems" :key="item.key" class="queue-item">
@@ -209,7 +209,7 @@
             <p v-if="item.description">{{ item.description }}</p>
             <div class="queue-actions">
               <button v-if="item.canEdit" class="btn-outline small" type="button" :disabled="busyKey === item.key" @click="startEdit(item)">修改</button>
-              <button v-if="item.canWithdraw" class="btn-outline small" type="button" :disabled="busyKey === item.key" @click="withdrawItem(item)">{{ busyKey === item.key ? '處理中…' : '撤回' }}</button>
+              <button v-if="item.canWithdraw" class="btn-outline small" type="button" :disabled="busyKey === item.key" @click="withdrawItem(item)">{{ busyKey === item.key ? '處理中…' : (item.tone === 'done' ? '退回' : '撤回') }}</button>
               <button v-if="item.action === 'approve-event'" class="btn-soft" type="button" :disabled="busyKey === item.key" @click="runAction(item)">{{ busyKey === item.key ? '處理中…' : '主任核准' }}</button>
               <button v-if="item.action === 'verify-achievement'" class="btn-soft" type="button" :disabled="busyKey === item.key" @click="runAction(item)">{{ busyKey === item.key ? '處理中…' : '確認成果' }}</button>
               <button v-if="item.action === 'confirm-deduction'" class="btn-soft" type="button" :disabled="busyKey === item.key" @click="runAction(item)">{{ busyKey === item.key ? '處理中…' : '主任確認' }}</button>
@@ -259,7 +259,7 @@ const props = defineProps({
 });
 const emit = defineEmits(['changed']);
 
-const formType = ref('event');
+const formType = ref('achievement');
 const loading = ref(false);
 const saving = ref(false);
 const busyKey = ref('');
@@ -302,7 +302,7 @@ const queueItems = computed(() => {
       title: eventKindLabel(row.event_type), subtitle: eventSubtitle(row, teacherName(row.teacher_id)),
       description: row.evidence || row.leave_type || '',
       statusLabel: pending ? '待主任核准' : '已核准', tone: pending ? 'pending' : 'done',
-      action: pending ? 'approve-event' : '', canEdit: pending, canWithdraw: pending,
+      action: pending ? 'approve-event' : '', canEdit: pending, canWithdraw: true,
     });
   }
   for (const row of inputRecords.achievements) {
@@ -313,7 +313,7 @@ const queueItems = computed(() => {
       title: achievementLabel(row.outcome_key), subtitle: `${teacherName(row.teacher_id)}｜${row.starts_on || '未設生效日'}`,
       description: row.evidence || '尚未填寫證明文件',
       statusLabel: pending ? '待主任確認' : '已確認', tone: pending ? 'pending' : 'done',
-      action: pending ? 'verify-achievement' : '', canEdit: pending, canWithdraw: pending,
+      action: pending ? 'verify-achievement' : '', canEdit: pending, canWithdraw: true,
     });
   }
   for (const row of inputRecords.deductions) {
@@ -323,7 +323,7 @@ const queueItems = computed(() => {
         key: `deduction-${row.id}`, kind: 'deduction', id: row.id, row,
         title: deductionLabel(row.deduction_key), subtitle: `${teacherName(row.teacher_id)}｜${row.starts_on || '未設生效日'}`,
         description: row.reason || '尚未填寫事實說明', statusLabel: '已核准', tone: 'done',
-        action: '', canEdit: false, canWithdraw: false,
+        action: '', canEdit: false, canWithdraw: true,
       });
       continue;
     }
@@ -451,7 +451,7 @@ async function withdrawItem(item) {
     if (item.kind === 'deduction') await withdrawTeacherEligibilityDeduction(item.id);
     if (item.kind === 'allowance') await withdrawTeacherEligibilityAdminAllowance(item.id);
     if (editingKey.value === item.key) resetForm();
-    await loadInputs(); emit('changed'); message.value = '已撤回，不會進入薪資計算。';
+    await loadInputs(); emit('changed'); message.value = item.tone === 'done' ? '已退回，這筆不再進入薪資計算。' : '已撤回，不會進入薪資計算。';
   } catch (error) { formError.value = error?.message || '撤回失敗'; }
   finally { busyKey.value = ''; }
 }

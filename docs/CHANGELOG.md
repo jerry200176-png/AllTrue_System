@@ -6,6 +6,20 @@
 - 主任改底薪會顯示待核准；總部改底薪立即計入。未完成審核不能鎖定該月。
 - 現金加扣款調整下一包才上。
 
+## 2026-08-16 — fix(billing): 帳務中心不擋 PIN，確認入帳由主任完成
+
+<!-- release-notes: staff_update=staff-2026-08-16-director-confirms -->
+
+- 帳務中心不再走 PIN 卸載，一進去就載入催繳名單。
+- 文案改為主任對到帳後按確認入帳；不假設有獨立會計。
+
+## 2026-08-15 — fix(payroll): 已核准可退回，全校放假改讀課程管理
+
+<!-- release-notes: staff_update=staff-2026-08-15-eligibility-approved-revert -->
+
+- 已核准的薪資補登可按「退回」，該筆不再進入薪資。
+- 全校放假改讀課程管理連假／堂次請假，不必再手動登假日曆。
+
 ## 2026-08-14 — chore(ops): 張正甯／張正樂國文續購 8 堂未入帳作業閘門
 
 <!-- release-notes: silent_ship=silent-2026-08-14-chinese-renewal-unpaid -->

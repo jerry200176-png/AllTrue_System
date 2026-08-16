@@ -128,7 +128,7 @@ class TeacherEligibilityInputController extends Controller
 
     public function withdrawEvent(Request $request, int $id)
     {
-        return $this->withdrawRecord($request, 'teacher_payroll_events', $id, '已核准的假日資料不能撤回。');
+        return $this->withdrawRecord($request, 'teacher_payroll_events', $id, '已撤回的假日資料不能再撤回。');
     }
 
     public function storeAchievement(Request $request)
@@ -220,7 +220,7 @@ class TeacherEligibilityInputController extends Controller
 
     public function withdrawAchievement(Request $request, int $id)
     {
-        return $this->withdrawRecord($request, 'teacher_payroll_achievements', $id, '已確認的成果不能撤回。');
+        return $this->withdrawRecord($request, 'teacher_payroll_achievements', $id, '已撤回的成果不能再撤回。');
     }
 
     public function storeDeduction(Request $request)
@@ -294,20 +294,7 @@ class TeacherEligibilityInputController extends Controller
 
     public function withdrawDeduction(Request $request, int $id)
     {
-        $this->ensureTables();
-        $record = $this->recordForScope($request, 'teacher_payroll_deductions', $id);
-        if (!$record) {
-            return response()->json(['message' => 'Not found'], 404);
-        }
-        if ($record->director_confirmed_at || ($record->status ?? '') === 'approved') {
-            return response()->json(['message' => '已進入審核的扣除案件不能撤回。'], 422);
-        }
-        DB::table('teacher_payroll_deductions')->where('id', $id)->update([
-            'status' => 'withdrawn',
-            'updated_at' => now(),
-        ]);
-
-        return response()->json(['id' => $id, 'status' => 'withdrawn']);
+        return $this->withdrawRecord($request, 'teacher_payroll_deductions', $id, '已撤回的扣除案件不能再撤回。');
     }
 
     public function approveEvent(Request $request, int $id)
@@ -622,21 +609,30 @@ class TeacherEligibilityInputController extends Controller
         return response()->json(['message' => $message], 422);
     }
 
-    private function withdrawRecord(Request $request, string $table, int $id, string $approvedMessage)
+    private function withdrawRecord(Request $request, string $table, int $id, string $alreadyMessage)
     {
         $this->ensureTables();
         $record = $this->recordForScope($request, $table, $id);
         if (!$record) {
             return response()->json(['message' => 'Not found'], 404);
         }
-        $blocked = $this->rejectUnlessPending($record->status ?? '', $approvedMessage);
-        if ($blocked) {
-            return $blocked;
+        $status = (string) ($record->status ?? '');
+        if ($status === 'withdrawn') {
+            return response()->json(['message' => $alreadyMessage], 422);
         }
-        DB::table($table)->where('id', $id)->update([
+        $update = [
             'status' => 'withdrawn',
             'updated_at' => now(),
-        ]);
+        ];
+        foreach ([
+            'approved_by', 'approved_at', 'verified_by', 'verified_at',
+            'hq_approved_by', 'hq_approved_at', 'director_confirmed_by', 'director_confirmed_at',
+        ] as $column) {
+            if (Schema::hasColumn($table, $column)) {
+                $update[$column] = null;
+            }
+        }
+        DB::table($table)->where('id', $id)->update($update);
 
         return response()->json(['id' => $id, 'status' => 'withdrawn']);
     }

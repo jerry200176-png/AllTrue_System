@@ -20,7 +20,7 @@
     <div class="pr-card pr-center" v-else-if="submitted">
       <span class="material-symbols-outlined" style="font-size:56px;color:var(--success)">check_circle</span>
       <h3 style="margin:12px 0 4px">繳費回報已送出</h3>
-      <p style="color:var(--text-light)">請等待會計確認入帳後，系統將開立電子收據</p>
+      <p style="color:var(--text-light)">對到帳後請按確認入帳，系統才會開立電子收據</p>
     </div>
 
     <!-- Form -->
