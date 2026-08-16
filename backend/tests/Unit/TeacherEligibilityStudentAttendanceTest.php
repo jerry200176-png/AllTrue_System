@@ -146,6 +146,46 @@ class TeacherEligibilityStudentAttendanceTest extends TestCase
         ));
     }
 
+    public function test_campus_closed_day_is_inferred_when_every_session_is_leave(): void
+    {
+        self::assertSame(['2026-08-31'], $this->invoke('campusClosedDatesFromSessionRows', [
+            ['date' => '2026-08-31', 'status' => 'leave'],
+            ['date' => '2026-08-31', 'status' => 'leave_adjusted'],
+            ['date' => '2026-08-30', 'status' => 'leave'],
+            ['date' => '2026-08-30', 'status' => 'scheduled'],
+        ]));
+    }
+
+    public function test_holiday_hours_still_count_when_recurring_plan_was_marked_leave(): void
+    {
+        $schedules = collect([
+            (object) [
+                'schedule_date' => '2026-08-31',
+                'start_time' => '06:00:00',
+                'end_time' => '22:00:00',
+                'class_type' => 'one_on_one',
+                'type' => 'normal',
+                'status' => 'leave',
+            ],
+        ]);
+        $events = collect([
+            (object) ['event_type' => 'holiday', 'event_date' => '2026-08-31'],
+        ]);
+
+        $result = $this->invoke(
+            'holidayDays',
+            collect(),
+            $schedules,
+            $events,
+            Carbon::parse('2026-08-31'),
+            Carbon::parse('2026-08-31'),
+            true
+        );
+
+        self::assertSame('2026-08-31', $result[0]['date']);
+        self::assertSame(16.0, $result[0]['regular_scheduled_hours']);
+    }
+
     private function invoke(string $method, mixed ...$arguments): mixed
     {
         $reflection = new ReflectionMethod($this->controller, $method);
