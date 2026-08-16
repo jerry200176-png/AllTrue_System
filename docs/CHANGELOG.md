@@ -1,3 +1,9 @@
+## 2026-08-17 — fix(security): 學生 Excel 匯出寫入稽核事件
+
+<!-- release-notes: silent_ship=silent-2026-08-17-pii-export-audit-1812 -->
+
+- `GET /api/v1/students/export` 成功匯出前寫入 `security_audit_events`（操作者雜湊、筆數、校區範圍）；不含姓名／電話等明文。
+
 ## 2026-08-17 — fix(billing): 對帳與帳務中心掃讀密度
 
 <!-- release-notes: staff_update=staff-2026-08-17-billing-scan-density -->

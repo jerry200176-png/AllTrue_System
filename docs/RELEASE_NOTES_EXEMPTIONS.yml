@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-08-17-pii-export-audit-1812
+    changelog_date: "2026-08-17"
+    changelog_title: "fix(security): 學生 Excel 匯出寫入稽核事件"
+    reason: 僅後端稽核事件與測試；主任匯出學生名單畫面與檔案內容不變。
+
   - id: silent-2026-08-17-ui-smoke-overlay
     changelog_date: "2026-08-17"
     changelog_title: "fix(e2e): UI Smoke 不再被版本公告擋住導覽"
