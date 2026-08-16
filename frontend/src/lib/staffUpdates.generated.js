@@ -147,6 +147,40 @@ export const staffUpdates = [
     "version": "2026.08.16"
   },
   {
+    "id": "staff-2026-08-16-fillrate-substitute-absent-copy",
+    "publishedAt": "2026-08-16",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "代課填報率與缺席不扣堂說明",
+    "summary": "代課堂次的評量填寫率改算在代課老師；點名標缺席時改為不扣堂、也不順延。",
+    "items": [
+      "主任填報率報表與課表一樣，把代課堂次算給代課老師。",
+      "點名確認缺席時改顯示不扣堂、不順延；請假仍會順延。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "主任填報率報表與課表一樣，把代課堂次算給代課老師。",
+          "點名確認缺席時改顯示不扣堂、不順延；請假仍會順延。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-16:fillrate-substitute-absent-copy"
+    ],
+    "date": "2026-08-16",
+    "version": "2026.08.16"
+  },
+  {
     "id": "staff-2026-08-15-tuition-charge-display-1734",
     "publishedAt": "2026-08-15",
     "effectiveAt": null,

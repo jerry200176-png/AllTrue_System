@@ -3,6 +3,22 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-16-fillrate-substitute-absent-copy
+    published_at: "2026-08-16"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 代課填報率與缺席不扣堂說明
+    summary: 代課堂次的評量填寫率改算在代課老師；點名標缺席時改為不扣堂、也不順延。
+    items:
+      - category: fixed
+        text: 主任填報率報表與課表一樣，把代課堂次算給代課老師。
+      - category: fixed
+        text: 點名確認缺席時改顯示不扣堂、不順延；請假仍會順延。
+    source_refs:
+      - "changelog:2026-08-16:fillrate-substitute-absent-copy"
+
   - id: staff-2026-08-16-reported-paid-notif
     published_at: "2026-08-16"
     audiences:
