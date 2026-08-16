@@ -248,14 +248,14 @@ export function formatLedgerInvoiceLabel(inv) {
 
 /** Receipt row secondary line. */
 export function formatLedgerReceiptBillLine(r) {
-  const bill = r?.invoice_id ? '已套用帳單' : '尚未套用帳單';
+  const bill = r?.invoice_id ? '已對應帳單' : '尚未對應帳單';
   return `${bill} · ${formatLedgerCourseLabel(r)}`;
 }
 
 /** Anomaly detail — no Payment # / bare invoice id. */
 export function formatLedgerAnomalyDetail(a) {
   const parts = [];
-  if (a?.report_id) parts.push('相關收據可沖銷');
+  if (a?.report_id) parts.push('相關收據可撤銷');
   if (a?.invoice_id) parts.push('已對應帳單');
   return parts.join(' · ');
 }

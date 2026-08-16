@@ -124,8 +124,29 @@ Empty state 元件：用 `AtEmpty`（#688），圖示用 `material-symbols-outli
 
 ---
 
+## 10. 帳務用語（主任／行政畫面）
+
+對齊 Stripe／Filament：狀態與文件用**人話標籤**，不把內部表名、英文模型名、斜線工程詞塞進畫面。
+
+| 內部概念 | 畫面用語 | 不要寫 |
+|---|---|---|
+| Invoice | 帳單 | Invoice、INV 當標題 |
+| Payment | 收款／收款紀錄 | Payment、付款流水 |
+| Receipt / PaymentReport | 收據 | Receipt、核帳紀錄當主詞 |
+| applied | 已記入 | 已套用（會計黑話） |
+| void / credit | 撤銷收款／更正收款 | 沖銷、負值沖銷 |
+| overpaid | 多收待處理 | 溢收/待沖銷 |
+| AR Ledger | 學生帳務 | AR Ledger |
+
+**斜線規則**：一欄一個意思。用「帳單（科目）」或兩個欄位，不要「帳單 / 課程」「查看 / PNG」。
+
+**帳務中心說明句**：說「統計方式不同」，不要寫「口徑」「同源查核」。
+
+---
+
 ## 參考
 
 - Stripe Dashboard microcopy（短句、動詞開頭、不寫「點擊」）
 - GitHub Primer content guidelines（empty state 公式）
+- Filament table `label()`／badge 狀態色（人話標籤，不暴露模型名）
 - Epic #687、`docs/RULE_DESIGN_SYSTEM.md`

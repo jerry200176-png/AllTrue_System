@@ -4,16 +4,16 @@
       <div class="ledger-modal" role="dialog" aria-modal="true" aria-label="學生帳務對帳">
         <div class="ledger-header">
           <div>
-            <p class="ledger-eyebrow">AR Ledger</p>
+            <p class="ledger-eyebrow">學生帳務</p>
             <h3>學生帳務對帳</h3>
             <p class="ledger-subtitle">
-              {{ payload?.student?.name || '載入中' }} · Invoice / Receipt / Payment 同源查核
+              {{ payload?.student?.name || '載入中' }} · 對齊帳單、收款與收據
             </p>
           </div>
           <button class="ledger-close" type="button" @click="$emit('close')" aria-label="關閉">×</button>
         </div>
 
-        <div v-if="loading" class="ledger-state">載入對帳資料中...</div>
+        <div v-if="loading" class="ledger-state">載入對帳資料中…</div>
         <div v-else-if="error" class="ledger-state ledger-error">{{ error }}</div>
         <template v-else-if="payload">
           <div class="ledger-summary">
@@ -23,7 +23,7 @@
             </div>
             <div>
               <strong>{{ formatCurrency(payload.summary?.applied_total) }}</strong>
-              <span>已套用收款</span>
+              <span>已記入收款</span>
             </div>
             <div>
               <strong>{{ formatCurrency(payload.summary?.outstanding_total) }}</strong>
@@ -31,11 +31,11 @@
             </div>
             <div :class="{ warn: (payload.summary?.overpaid_total || 0) > 0 }">
               <strong>{{ formatCurrency(payload.summary?.overpaid_total) }}</strong>
-              <span>溢收/待沖銷</span>
+              <span>多收待處理</span>
             </div>
             <div :class="{ warn: (payload.summary?.anomaly_count || 0) > 0 }">
               <strong>{{ payload.summary?.anomaly_count || 0 }}</strong>
-              <span>異常標籤</span>
+              <span>需注意</span>
             </div>
           </div>
 
@@ -51,30 +51,30 @@
           </div>
 
           <section v-if="ledgerExceptions.length" class="ledger-section">
-            <h4>例外處理區</h4>
+            <h4>需先處理</h4>
             <div class="ledger-receipts">
               <div v-for="x in ledgerExceptions" :key="x.key" class="ledger-receipt">
                 <strong>{{ x.title }}</strong>
                 <span>{{ x.message }}</span>
                 <small>{{ x.detail }}</small>
-                <button v-if="x.can_void" class="ledger-action ledger-action--danger" type="button" :disabled="busyReportId === x.report_id" @click="voidReport(x.report_id)">撤銷/沖銷</button>
-                <span v-if="!x.can_void && !x.report_id" class="ledger-muted">需人工資料修復</span>
+                <button v-if="x.can_void" class="ledger-action ledger-action--danger" type="button" :disabled="busyReportId === x.report_id" @click="voidReport(x.report_id)">撤銷收款</button>
+                <span v-if="!x.can_void && !x.report_id" class="ledger-muted">請聯絡總部協助</span>
               </div>
             </div>
           </section>
 
           <section class="ledger-section">
-            <h4>帳單與付款套用</h4>
-            <div v-if="!payload.invoices?.length" class="ledger-empty">此學生尚無 Invoice 帳單。</div>
+            <h4>帳單與收款</h4>
+            <div v-if="!payload.invoices?.length" class="ledger-empty">此學生尚無帳單。</div>
             <div v-else class="ledger-table-wrap">
               <table class="ledger-table">
                 <thead>
                   <tr>
-                    <th>帳單 / 課程</th>
+                    <th>帳單（科目）</th>
                     <th>應繳日</th>
                     <th>應收</th>
-                    <th>套用</th>
-                    <th>溢收</th>
+                    <th>已記入</th>
+                    <th>多收</th>
                     <th>未結清</th>
                     <th>狀態</th>
                     <th>已收款紀錄</th>
@@ -96,10 +96,10 @@
                     <td>
                       <div v-if="inv.payments?.length" class="ledger-lines">
                         <span v-for="p in inv.payments" :key="p.id" :class="{ void: p.is_void, due: p.application_status === 'overpayment_pending_review' }">
-                          {{ p.paid_at || '未記錄' }} · {{ p.is_void ? '沖銷' : paymentMethodLabel(p.method) }}
+                          {{ p.paid_at || '未記錄' }} · {{ p.is_void ? '更正收款' : paymentMethodLabel(p.method) }}
                           {{ signedCurrency(p.amount) }} · {{ applicationStatusLabel(p.application_status) }}
-                          <em v-if="p.applied_amount">套用 {{ formatCurrency(p.applied_amount) }}</em>
-                          <em v-if="p.unapplied_amount">溢收 {{ formatCurrency(p.unapplied_amount) }}</em>
+                          <em v-if="p.applied_amount">記入 {{ formatCurrency(p.applied_amount) }}</em>
+                          <em v-if="p.unapplied_amount">多收 {{ formatCurrency(p.unapplied_amount) }}</em>
                           <em v-if="p.receipt_no">{{ p.receipt_no }}</em>
                         </span>
                       </div>
@@ -120,7 +120,7 @@
                           type="button"
                           :disabled="isBusyInvoice(inv)"
                           @click="voidInvoice(inv, 'exception')"
-                        >沖銷作廢</button>
+                        >更正並作廢</button>
                         <span v-else class="ledger-muted">—</span>
                       </div>
                     </td>
@@ -131,8 +131,8 @@
           </section>
 
           <section class="ledger-section">
-            <h4>收據流水</h4>
-            <div v-if="!payload.receipts?.length" class="ledger-empty">此學生尚無收據/核帳紀錄。</div>
+            <h4>收據紀錄</h4>
+            <div v-if="!payload.receipts?.length" class="ledger-empty">此學生尚無收據紀錄。</div>
             <div v-else class="ledger-receipts">
               <div v-for="r in payload.receipts" :key="r.report_id" class="ledger-receipt">
                 <strong>{{ r.receipt_no }}</strong>
@@ -226,8 +226,8 @@ const ledgerExceptions = computed(() => {
       if (p.application_status !== 'overpayment_pending_review') return;
       rows.push({
         key: `p-${p.id}`,
-        title: '溢收/疑似重複收款',
-        message: `${p.receipt_no || p.payment_no || '未編號收款'} 有 ${formatCurrency(p.unapplied_amount)} 未套用到帳單`,
+        title: '多收，疑似重複收款',
+        message: `${p.receipt_no || p.payment_no || '未編號收款'} 有 ${formatCurrency(p.unapplied_amount)} 尚未記入帳單`,
         detail: `${formatLedgerInvoiceLabel(inv)} · ${p.paid_at || '未記錄日期'}`,
         report_id: p.report_id || null,
         can_void: !!p.report_id && !p.is_void,
@@ -244,7 +244,7 @@ function getAuthRole() {
 
 async function voidReport(reportId) {
   if (!reportId || !['director', 'admin', 'super_admin'].includes(getAuthRole())) return;
-  const reason = window.prompt('請輸入撤銷/沖銷原因（會保留稽核紀錄）');
+  const reason = window.prompt('請輸入撤銷原因（會保留稽核紀錄）');
   if (!reason || !reason.trim()) return;
   busyReportId.value = reportId;
   try {
@@ -274,7 +274,7 @@ const isBusyInvoice = (invoice) => busyInvoiceId.value === invoice?.id;
 async function voidInvoice(invoice, mode) {
   if (!invoice?.id || !canManageInvoices()) return;
   const isException = mode === 'exception';
-  const actionLabel = isException ? '沖銷作廢' : '作廢';
+  const actionLabel = isException ? '更正並作廢' : '作廢';
   const reason = window.prompt(`請輸入${actionLabel}原因（會保留稽核紀錄）`);
   if (!reason || reason.trim().length < 3) return;
 
@@ -303,11 +303,22 @@ const labelMap = (map, key) => map[key] || key || '—';
 const formatCurrency = (value) => 'NT$ ' + Number(value || 0).toLocaleString('zh-TW');
 const signedCurrency = (value) => `${Number(value || 0) > 0 ? '+' : Number(value || 0) < 0 ? '-' : ''}${formatCurrency(Math.abs(Number(value || 0)))}`;
 const formatPeriod = (period) => !period ? '—' : (String(period).split('-').length === 2 ? String(period).replace('-', '/') : period);
-const paymentMethodLabel = (method) => labelMap({ cash: '現金', transfer: '匯款', void: '沖銷' }, method);
+const paymentMethodLabel = (method) => labelMap({ cash: '現金', transfer: '匯款', void: '更正收款' }, method);
 const invoiceStatusLabel = (status) => labelMap({ paid: '已繳', unpaid: '未繳', partial: '部分付款', void: '已作廢' }, status);
 const reportStatusLabel = (status) => labelMap({ confirmed: '已核帳', pending: '待對帳', voided: '已撤銷' }, status);
-const applicationStatusLabel = (status) => labelMap({ applied: '已套用', partially_applied: '部分套用', overpayment_pending_review: '溢收/待沖銷', voided: '已沖銷' }, status);
-const anomalyLabel = (code) => labelMap({ overpayment_pending_review: '溢收/疑似重複收款', duplicate_effective_payments: '同帳單多筆收款', paid_amount_mismatch: '帳單金額不一致', paid_status_with_balance: '已繳狀態仍有餘額', open_status_without_balance: '未繳狀態但已足額', payment_without_receipt: '付款缺收據', receipt_without_payment: '收據缺付款', receipt_without_invoice: '收據未套帳單', confirmed_receipt_without_payment: '核帳缺付款', receipt_payment_outside_ledger: '收據付款不在本帳本' }, code) || '異常';
+const applicationStatusLabel = (status) => labelMap({ applied: '已記入', partially_applied: '部分記入', overpayment_pending_review: '多收待處理', voided: '已更正' }, status);
+const anomalyLabel = (code) => labelMap({
+  overpayment_pending_review: '多收，疑似重複收款',
+  duplicate_effective_payments: '同一帳單有多筆收款',
+  paid_amount_mismatch: '帳單金額不一致',
+  paid_status_with_balance: '顯示已繳但仍有餘額',
+  open_status_without_balance: '顯示未繳但已繳足',
+  payment_without_receipt: '收款缺少收據',
+  receipt_without_payment: '收據缺少收款',
+  receipt_without_invoice: '收據尚未對到帳單',
+  confirmed_receipt_without_payment: '已確認收據缺少收款',
+  receipt_payment_outside_ledger: '收據收款不在本學生帳本',
+}, code) || '需注意';
 </script>
 
 <style scoped>

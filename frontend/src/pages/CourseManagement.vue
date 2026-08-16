@@ -61,18 +61,18 @@
       <!-- Performance cockpit stats -->
       <div class="stats-strip">
         <span class="stats-orb stats-orb-total">
-          <span class="stats-orb-label">Course Matrix</span>
+          <span class="stats-orb-label">課程總覽</span>
           <span class="stats-orb-num">{{ courses.length }}</span>
           <span class="stats-orb-caption">筆課程在線</span>
         </span>
         <span class="stats-orb"><span class="stats-orb-label">1:1</span><span class="stats-orb-num">{{ coursesByType.one_on_one }}</span><span class="stats-orb-caption">一對一</span></span>
         <span class="stats-orb"><span class="stats-orb-label">1:2</span><span class="stats-orb-num">{{ coursesByType.one_on_two }}</span><span class="stats-orb-caption">一對二</span></span>
         <span class="stats-orb"><span class="stats-orb-label">1:3</span><span class="stats-orb-num">{{ coursesByType.one_on_three }}</span><span class="stats-orb-caption">一對三</span></span>
-        <span class="stats-orb"><span class="stats-orb-label">Coach</span><span class="stats-orb-num">{{ coursesByType.tutoring }}</span><span class="stats-orb-caption">輔導</span></span>
-        <span class="stats-orb"><span class="stats-orb-label">Trial</span><span class="stats-orb-num">{{ coursesByType.trial }}</span><span class="stats-orb-caption">試聽</span></span>
+        <span class="stats-orb"><span class="stats-orb-label">輔導</span><span class="stats-orb-num">{{ coursesByType.tutoring }}</span><span class="stats-orb-caption">輔導</span></span>
+        <span class="stats-orb"><span class="stats-orb-label">試聽</span><span class="stats-orb-num">{{ coursesByType.trial }}</span><span class="stats-orb-caption">試聽</span></span>
         <template v-if="coursesBySubject.length">
           <span class="stats-subject-deck">
-            <span class="stats-subject-title">Subjects</span>
+            <span class="stats-subject-title">科目</span>
             <span
               v-for="s in coursesBySubject"
               :key="s.subject"
@@ -320,7 +320,7 @@
                         <button class="small ghost btn-toggle" @click="toggleDatesAndMakeups(c)">
                           {{ expandedDates.has(c.id) ? '收起' : '詳情' }}
                         </button>
-                        <button class="small ghost btn-invoices" @click="openInvoiceModal(c)">帳單/對帳</button>
+                        <button class="small ghost btn-invoices" @click="openInvoiceModal(c)">帳單與對帳</button>
                         <div class="action-menu-wrapper">
                           <button class="small ghost action-menu-trigger" @click.stop="toggleActionMenu(c.id)" title="更多操作">操作 ▾</button>
                           <div v-if="activeActionMenu === c.id" class="action-dropdown" @click.stop>
@@ -484,7 +484,7 @@
                     <span class="history-course-card__detail" v-if="hc.last_paid_at"><span class="history-course-card__detail-label">繳費</span> {{ hc.last_paid_at }}</span>
                   </div>
                   <div class="history-course-card__actions">
-                    <button class="small ghost btn-invoices" @click="openInvoiceModal(hc)">帳單/對帳</button>
+                    <button class="small ghost btn-invoices" @click="openInvoiceModal(hc)">帳單與對帳</button>
                     <button class="small ghost btn-toggle" @click="toggleDates(hc)">
                       {{ expandedDates.has(hc.id) ? '收起詳情' : '查看堂次' }}
                     </button>
@@ -578,7 +578,7 @@
                         type="button"
                         @click="togglePaymentStatus(row.course)"
                       >登記已回報</button>
-                      <button class="small ghost btn-invoices" type="button" @click="openInvoiceModal(row.course)">帳單/對帳</button>
+                      <button class="small ghost btn-invoices" type="button" @click="openInvoiceModal(row.course)">帳單與對帳</button>
                     </div>
                   </td>
                 </tr>
@@ -839,7 +839,7 @@
       <div class="modal course-modal invoice-modal">
         <div class="invoice-modal-header">
           <div>
-            <h3 class="modal-title">帳單 / 對帳記錄</h3>
+            <h3 class="modal-title">帳單與對帳紀錄</h3>
             <p class="modal-desc">
               {{ invoiceModalCourse?.student_name || '學生' }} — {{ getSubjectLabel(invoiceModalCourse?.subject) }}
             </p>
@@ -866,7 +866,7 @@
           <table class="invoice-table">
             <thead>
               <tr>
-                <th>帳單 / 期別</th>
+                <th>帳單（期別）</th>
                 <th>應繳日</th>
                 <th>付款日</th>
                 <th>已收款紀錄</th>
@@ -892,10 +892,10 @@
                       :class="['invoice-payment-row', { 'invoice-payment-row--void': payment.is_void }]"
                     >
                       <span class="invoice-payment-date">{{ payment.paid_at || '未記錄日期' }}</span>
-                      <span class="invoice-payment-amount">{{ payment.is_void ? '已沖銷 ' : '已收 ' }}${{ formatMoney(Math.abs(payment.amount || 0)) }}</span>
+                      <span class="invoice-payment-amount">{{ payment.is_void ? '已更正 ' : '已收 ' }}${{ formatMoney(Math.abs(payment.amount || 0)) }}</span>
                       <span class="invoice-payment-method">{{ invoicePaymentMethodLabel(payment.method) }}</span>
                       <span v-if="payment.receipt_no" class="invoice-payment-receipt">{{ payment.receipt_no }}</span>
-                      <span v-if="payment.is_void" class="invoice-payment-void">沖銷</span>
+                      <span v-if="payment.is_void" class="invoice-payment-void">更正</span>
                     </div>
                   </div>
                   <span v-else class="hint">—</span>
@@ -931,7 +931,7 @@
                       class="small ghost invoice-void-btn invoice-void-btn--exception"
                       type="button"
                       @click="openInvoiceExceptionVoidDialog(inv)"
-                    >沖銷作廢</button>
+                    >更正並作廢</button>
                     <span v-if="inv.status === 'paid' && !canVoidInvoice(inv) && !canExceptionVoidInvoice(inv)" class="hint">—</span>
                   </div>
                 </td>
@@ -952,7 +952,7 @@
           <span class="premium-danger-icon">!</span>
           <div>
             <p class="premium-danger-kicker">Accounting Control</p>
-            <h3 class="modal-title">{{ invoiceVoidMode === 'exception' ? '沖銷作廢帳單' : '作廢帳單' }}</h3>
+            <h3 class="modal-title">{{ invoiceVoidMode === 'exception' ? '更正並作廢帳單' : '作廢帳單' }}</h3>
             <p class="modal-desc">
               {{ invoiceVoidTarget.invoice_no || `INV-${invoiceVoidTarget.id}` }} · {{ invoiceVoidTarget.course_ref || 'COURSE' }} · {{ formatBillingPeriod(invoiceVoidTarget.billing_period) }}
             </p>
@@ -960,10 +960,10 @@
         </div>
         <div class="invoice-void-warning">
           <template v-if="invoiceVoidMode === 'exception'">
-            這張帳單已有收款流水或已收足額但狀態異常。系統會建立負值沖銷紀錄、保留原始收款/收據稽核，並將帳單標記作廢後排除應收。
+            這張帳單已有收款，或已繳足但狀態異常。系統會建立更正紀錄、保留原始收款與收據，並將帳單標記作廢後不再列入應收。
           </template>
           <template v-else>
-            這會將帳單狀態改為作廢並從家長應收、課程帳單與主任催繳統計排除。已收款或部分收款帳單不可在此作廢，需走收款撤銷/沖銷流程。
+            這會將帳單標記作廢，並從家長應收、課程帳單與催繳名單排除。已收款或部分收款的帳單不可在此作廢，請改走「撤銷收款」。
           </template>
         </div>
         <label class="field-label" for="invoice-void-reason">作廢原因（必填）</label>
@@ -980,7 +980,7 @@
         <div class="actions">
           <button class="ghost" type="button" :disabled="invoiceVoidSubmitting" @click="closeInvoiceVoidDialog">取消</button>
           <button class="danger-btn" type="button" :disabled="invoiceVoidSubmitting || invoiceVoidReason.trim().length < 3" @click="submitInvoiceVoid">
-            {{ invoiceVoidSubmitting ? '處理中...' : (invoiceVoidMode === 'exception' ? '確認沖銷作廢' : '確認作廢') }}
+            {{ invoiceVoidSubmitting ? '處理中…' : (invoiceVoidMode === 'exception' ? '確認更正並作廢' : '確認作廢') }}
           </button>
         </div>
       </div>
@@ -3073,7 +3073,7 @@ const invoicePaidDateLabel = (invoice) => {
 const invoicePaymentMethodLabel = (method) => ({
   cash: '現金',
   transfer: '匯款',
-  void: '沖銷',
+  void: '更正收款',
 }[method] || method || '—');
 
 const loadCourses = async (page = 1) => {
@@ -3971,7 +3971,7 @@ const openInvoiceVoidDialog = (invoice) => {
   if (!canVoidInvoice(invoice)) {
     toastRef.value?.show?.({
       title: '不可直接作廢',
-      description: '此帳單已有收款或狀態不是未繳，請走收款撤銷/沖銷流程。',
+      description: '此帳單已有收款或狀態不是未繳，請改走「撤銷收款」。',
       variant: 'warning',
       durationMs: 5000,
     });
@@ -3985,7 +3985,7 @@ const openInvoiceVoidDialog = (invoice) => {
 const openInvoiceExceptionVoidDialog = (invoice) => {
   if (!canExceptionVoidInvoice(invoice)) {
     toastRef.value?.show?.({
-      title: '不可沖銷作廢',
+      title: '不可更正並作廢',
       description: '此帳單沒有收款痕跡或不是帳務例外，請使用一般作廢流程。',
       variant: 'warning',
       durationMs: 5000,
@@ -4037,7 +4037,7 @@ const submitInvoiceVoid = async () => {
 
     const periodLabel = formatBillingPeriod(invoice.billing_period);
     toastRef.value?.show?.({
-      title: invoiceVoidMode.value === 'exception' ? '已沖銷作廢帳單' : '已作廢帳單',
+      title: invoiceVoidMode.value === 'exception' ? '已更正並作廢帳單' : '已作廢帳單',
       description: `${periodLabel} 帳單已作廢並排除應收。`,
       variant: 'success',
       durationMs: 5000,

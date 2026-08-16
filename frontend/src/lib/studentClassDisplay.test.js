@@ -163,7 +163,7 @@ assert.equal(formatLedgerCourseLabel({ course_ref: 'COURSE-000382' }), '本課�
 assert.equal(formatLedgerCourseLabel({ course_ref: '高中英文｜王老師' }), '高中英文｜王老師');
 assert.equal(formatLedgerInvoiceLabel({ invoice_no: 'INV-1' }), 'INV-1');
 assert.equal(formatLedgerInvoiceLabel({ id: 9 }), '帳單');
-assert.equal(formatLedgerReceiptBillLine({ invoice_id: 1, course_ref: 'COURSE-1' }), '已套用帳單 · 本課程');
+assert.equal(formatLedgerReceiptBillLine({ invoice_id: 1, course_ref: 'COURSE-1' }), '已對應帳單 · 本課程');
 assert.ok(!formatLedgerAnomalyDetail({ payment_id: 3, invoice_id: 1, report_id: 2 }).includes('Payment'));
 
 // --- User Task: 請假 — 批次略過清單不得用「課程 #id」 ---
