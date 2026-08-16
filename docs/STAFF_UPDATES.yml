@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-16-hai-sen-director-copy
+    published_at: "2026-08-16"
+    audiences:
+      - director
+    importance: digest
+    title: 對帳由主任完成
+    summary: 已回報後請到帳務中心確認入帳；沒有會計角色。
+    items:
+      - category: improved
+        text: 同一課程已有待對帳時，會請你到帳務中心確認入帳或退回。
+      - category: improved
+        text: 對到帳後按確認入帳就是完成，系統不會再開會計帳號。
+    source_refs:
+      - "changelog:2026-08-16:hai-sen-director-copy"
+
   - id: staff-2026-08-16-director-confirms
     published_at: "2026-08-16"
     audiences:
