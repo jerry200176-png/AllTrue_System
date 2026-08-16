@@ -305,7 +305,7 @@ const signedCurrency = (value) => `${Number(value || 0) > 0 ? '+' : Number(value
 const formatPeriod = (period) => !period ? '—' : (String(period).split('-').length === 2 ? String(period).replace('-', '/') : period);
 const paymentMethodLabel = (method) => labelMap({ cash: '現金', transfer: '匯款', void: '沖銷' }, method);
 const invoiceStatusLabel = (status) => labelMap({ paid: '已繳', unpaid: '未繳', partial: '部分付款', void: '已作廢' }, status);
-const reportStatusLabel = (status) => labelMap({ confirmed: '已核帳', pending: '待核帳', voided: '已撤銷' }, status);
+const reportStatusLabel = (status) => labelMap({ confirmed: '已核帳', pending: '待對帳', voided: '已撤銷' }, status);
 const applicationStatusLabel = (status) => labelMap({ applied: '已套用', partially_applied: '部分套用', overpayment_pending_review: '溢收/待沖銷', voided: '已沖銷' }, status);
 const anomalyLabel = (code) => labelMap({ overpayment_pending_review: '溢收/疑似重複收款', duplicate_effective_payments: '同帳單多筆收款', paid_amount_mismatch: '帳單金額不一致', paid_status_with_balance: '已繳狀態仍有餘額', open_status_without_balance: '未繳狀態但已足額', payment_without_receipt: '付款缺收據', receipt_without_payment: '收據缺付款', receipt_without_invoice: '收據未套帳單', confirmed_receipt_without_payment: '核帳缺付款', receipt_payment_outside_ledger: '收據付款不在本帳本' }, code) || '異常';
 </script>
