@@ -151,7 +151,7 @@ Claude Code on the web／其他雲端 session 的 container 是全新隔離環�
 | 前端 deploy SOP | `.cursor/rules/auto-frontend-deploy.mdc` |
 | 各模組已知坑 | `docs/AI_REGRESSION_LESSONS.md` |
 | 繳費/續課提醒規則 | `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` |
-| 行政已回報 vs 會計入帳（#1827） | `docs/architecture/RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md` |
+| 已回報 vs 確認入帳（#1827） | `docs/architecture/RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md` |
 | 各角色測試帳號 | `.cursor/.local/test-credentials.md` |
 
 <!-- exo:governance:begin -->

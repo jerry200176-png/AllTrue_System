@@ -65,17 +65,18 @@ class FulltimeSalaryProfileTest extends TestCase
         $this->assertSame(35000.0, $result[$teacherId], 'same-day correction must win over the first-inserted row, not an arbitrary DB row order');
     }
 
-    // TD-078: new writes must default to pending and never feed payroll until approved.
+    // TD-078: director writes stay pending and never feed payroll until HQ approves.
     public function test_new_salary_profile_defaults_to_pending_and_is_excluded_from_payroll(): void
     {
-        $admin = $this->createSuperAdmin('fs-td078-super1@test.com');
+        $director = $this->createDirector(1, 'fs-td078-dir-pending@test.com');
         $teacherId = $this->createTeacher(1, 'fs-td078-teacher1@test.com');
 
         $response = $this->withHeaders([
-            'Authorization' => "Bearer {$admin['token']}",
+            'Authorization' => "Bearer {$director['token']}",
             'Accept' => 'application/json',
         ])->postJson('/api/v1/finance/teacher-eligibility/salary-profiles', [
             'teacher_id' => $teacherId,
+            'branch_id' => 1,
             'base_salary' => 40000,
             'effective_from' => '2026-08-01',
         ]);
@@ -95,6 +96,36 @@ class FulltimeSalaryProfileTest extends TestCase
         $result = $reflection->invoke($controller, [$teacherId], null, '2026-08-31');
 
         $this->assertArrayNotHasKey($teacherId, $result, '未核准的底薪不可計入發放總額');
+    }
+
+    public function test_super_admin_salary_write_is_approved_immediately(): void
+    {
+        $admin = $this->createSuperAdmin('fs-td078-super-direct@test.com');
+        $teacherId = $this->createTeacher(1, 'fs-td078-teacher-direct@test.com');
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$admin['token']}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/finance/teacher-eligibility/salary-profiles', [
+            'teacher_id' => $teacherId,
+            'base_salary' => 41000,
+            'effective_from' => '2026-08-01',
+        ])->assertCreated();
+
+        $this->assertDatabaseHas('fulltime_salary_profiles', [
+            'teacher_id' => $teacherId,
+            'base_salary' => '41000.00',
+            'status' => 'approved',
+            'approved_by' => $admin['user_id'],
+        ]);
+
+        $controller = new TeacherEligibilityController(
+            new TeacherEligibilityPolicy(require __DIR__ . '/../../config/teacher_salary.php')
+        );
+        $reflection = new ReflectionMethod($controller, 'salaryProfilesByTeacher');
+        $reflection->setAccessible(true);
+        $result = $reflection->invoke($controller, [$teacherId], null, '2026-08-31');
+        $this->assertSame(41000.0, $result[$teacherId]);
     }
 
     // TD-078: director who wrote it cannot also approve it — must be super_admin.

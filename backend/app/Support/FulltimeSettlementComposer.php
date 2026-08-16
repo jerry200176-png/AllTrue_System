@@ -57,13 +57,15 @@ final class FulltimeSettlementComposer
         $weekdayRate = (float) ($components['weekday_afternoon']['rate'] ?? 0);
         $specialRate = (float) ($components['special_performance']['rate'] ?? 0);
         $deductionRate = (float) ($components['deductions']['rate'] ?? 0);
+        $adminAllowanceRate = (float) ($components['admin_allowance']['rate'] ?? 0);
 
         $multiplierPct = 100.0
             + $holidayRate
             + $weekdayRate
             + $specialRate
             + $deductionRate
-            + $subjectCountRate;
+            + $subjectCountRate
+            + $adminAllowanceRate;
 
         $weightedBonus = round(($rawSubjectBonus + $rawOneToThreeBonus) * ($multiplierPct / 100.0), 2);
         $weeklyBonus = (float) ($components['weekly_16_segments']['amount'] ?? 0);
@@ -92,6 +94,7 @@ final class FulltimeSettlementComposer
                 ['key' => 'special_performance', 'label' => '特殊表現倍率', 'pct' => $specialRate],
                 ['key' => 'subject_count_threshold', 'label' => '科目數20科倍率', 'pct' => $subjectCountRate],
                 ['key' => 'deductions', 'label' => '扣除案件', 'pct' => $deductionRate],
+                ['key' => 'admin_allowance', 'label' => '行政加給', 'pct' => $adminAllowanceRate],
             ],
             'adjustments' => $adjustments,
             'payout_is_draft' => $reviewRequired,

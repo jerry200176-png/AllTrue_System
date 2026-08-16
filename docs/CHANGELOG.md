@@ -1,3 +1,16 @@
+## 2026-08-16 — feat(payroll): 正職行政加給與底薪核准畫面
+
+<!-- release-notes: staff_update=staff-2026-08-16-fulltime-admin-allowance -->
+
+- 行政加給 0–10% 與底薪：主任確認／待核准，總部核准後才進倍率；現金加扣款下一包。
+
+## 2026-08-16 — fix(billing): 回報提示改請主任確認入帳
+
+<!-- release-notes: staff_update=staff-2026-08-16-hai-sen-director-copy -->
+
+- 已有待對帳時改提示到帳務中心確認入帳或退回，不再寫請會計。
+- 嗨森無會計角色；兩步驟不變，主任核完帳即入帳開收據。
+
 ## 2026-08-16 — fix(billing): 帳務中心不擋 PIN，確認入帳由主任完成
 
 <!-- release-notes: staff_update=staff-2026-08-16-director-confirms -->

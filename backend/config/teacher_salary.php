@@ -16,6 +16,7 @@ return [
     'student_achievement_rate' => 5.0,
     'student_achievement_max_months' => 3,
     'deduction_rate' => -10.0,
+    'admin_allowance_rate_cap' => 10.0,
     'subject_count_table' => [
         1 => [0, 100, 110, 110], 2 => [0, 200, 110, 220], 3 => [0, 300, 110, 330],
         4 => [0, 400, 110, 440], 5 => [0, 500, 110, 550], 6 => [0, 600, 110, 660],

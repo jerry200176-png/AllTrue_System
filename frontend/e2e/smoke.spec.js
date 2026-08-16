@@ -34,8 +34,10 @@ async function login(page, role, creds) {
   await page.locator('.role-btn', { hasText: roleTitle }).first().click({ trial: false }).catch(() => {});
   await page.locator('#login-account').fill(creds.account);
   await page.locator('#login-password').fill(creds.password);
-  await page.locator('button.login-btn').click();
-  // 登入後離開登入頁（登入卡消失）
+  await page.locator('button.login-btn').click({ force: true });
+  if (await page.locator('#login-account').count()) {
+    await page.locator('button.login-btn').click({ force: true });
+  }
   await expect(page.locator('#login-account')).toHaveCount(0, { timeout: 15_000 });
 }
 
@@ -45,13 +47,10 @@ async function login(page, role, creds) {
  * best-effort：不存在就略過。
  */
 async function dismissOverlays(page) {
-  for (const sel of ['.guide-tour-close', '.release-nudge-btn:has-text("稍後再看")']) {
-    const el = page.locator(sel).first();
-    if (await el.isVisible().catch(() => false)) {
-      await el.click().catch(() => {});
-      await page.waitForTimeout(200);
-    }
-  }
+  await page.locator('.release-nudge-btn:has-text("稍後再看")').click({ timeout: 5000 }).catch(() => {});
+  await page.locator('.release-nudge-layer').waitFor({ state: 'hidden', timeout: 3000 }).catch(() => {});
+  await page.locator('.guide-tour-close').click({ timeout: 800 }).catch(() => {});
+  await page.locator('.brand-idle-layer').click({ timeout: 800 }).catch(() => {});
 }
 
 /**
