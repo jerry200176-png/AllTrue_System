@@ -1,3 +1,10 @@
+## 2026-08-17 — fix(billing): 帳務對帳改白話，拿掉技術符號
+
+<!-- release-notes: staff_update=staff-2026-08-17-billing-human-copy -->
+
+- 學生帳務對帳拿掉 AR Ledger、Invoice／Payment 等英文；「帳單／課程」改「帳單（科目）」。
+- 帳務中心與課程管理改「多收待處理」「撤銷收款」「帳單與對帳」等主任用語。
+
 ## 2026-08-17 — fix(e2e): UI Smoke 不再被版本公告擋住導覽
 
 <!-- release-notes: silent_ship=silent-2026-08-17-ui-smoke-overlay -->

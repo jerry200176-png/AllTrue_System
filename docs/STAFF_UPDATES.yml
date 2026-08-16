@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-17-billing-human-copy
+    published_at: "2026-08-17"
+    audiences:
+      - director
+    importance: digest
+    title: 帳務用語比較好懂
+    summary: 對帳畫面改成白話；不再出現英文 Invoice 或帳單／課程斜線。
+    items:
+      - category: improved
+        text: 學生對帳改看「帳單（科目）」「已記入」「多收待處理」。
+      - category: improved
+        text: 課程管理改「帳單與對帳」，統計標籤改中文。
+    source_refs:
+      - "changelog:2026-08-17:billing-human-copy"
+
   - id: staff-2026-08-17-tuition-collect-tdz
     published_at: "2026-08-17"
     audiences:

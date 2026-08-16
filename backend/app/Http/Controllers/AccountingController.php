@@ -145,14 +145,14 @@ class AccountingController extends Controller
         $reportId = (int) $request->input('report_id', 0);
 
         if ($studentClassId <= 0 && $reportId <= 0) {
-            return response()->json(['message' => 'student_class_id or report_id is required'], 422);
+            return response()->json(['message' => '請指定課程或收據'], 422);
         }
 
         $anchorReport = null;
         if ($reportId > 0) {
             $anchorReport = PaymentReport::with(['student', 'studentClass.student'])->find($reportId);
             if (!$anchorReport) {
-                return response()->json(['message' => 'Payment report not found'], 404);
+                return response()->json(['message' => '找不到收據'], 404);
             }
             $studentClassId = $studentClassId > 0 ? $studentClassId : (int) $anchorReport->StudentClassID;
         }
@@ -164,12 +164,12 @@ class AccountingController extends Controller
             $anchorClass = $anchorReport->studentClass;
         }
         if (!$anchorClass) {
-            return response()->json(['message' => 'Student class not found'], 404);
+            return response()->json(['message' => '找不到課程'], 404);
         }
 
         $student = $anchorClass->student ?: Student::find($anchorClass->StudentID);
         if (!$student) {
-            return response()->json(['message' => 'Student not found'], 404);
+            return response()->json(['message' => '找不到學生'], 404);
         }
 
         $guard = $this->authorizeCampusForStudent($request, (int) $student->CampusID);
@@ -230,7 +230,7 @@ class AccountingController extends Controller
                 $invoiceAnomalies[] = $this->ledgerAnomaly(
                     'overpayment_pending_review',
                     'critical',
-                    '同一張帳單的淨收款超過應收金額，超過部分應列為溢收/疑似重複並進行沖銷或轉抵。',
+                    '同一張帳單的收款超過應收金額，多出的部分請撤銷或轉到其他帳單。',
                     $invoice
                 );
             }
@@ -239,7 +239,7 @@ class AccountingController extends Controller
                 $invoiceAnomalies[] = $this->ledgerAnomaly(
                     'paid_amount_mismatch',
                     'warning',
-                    '帳單 PaidAmount 與付款流水淨額不一致。',
+                    '帳單已收金額與收款紀錄合計不一致。',
                     $invoice
                 );
             }
@@ -248,7 +248,7 @@ class AccountingController extends Controller
                 $invoiceAnomalies[] = $this->ledgerAnomaly(
                     'paid_status_with_balance',
                     'critical',
-                    '帳單狀態為已繳，但依付款流水仍有未結清金額。',
+                    '帳單顯示已繳，但依收款紀錄仍有未結清金額。',
                     $invoice
                 );
             }
@@ -257,7 +257,7 @@ class AccountingController extends Controller
                 $invoiceAnomalies[] = $this->ledgerAnomaly(
                     'open_status_without_balance',
                     'warning',
-                    '帳單狀態仍為未繳/部分付款，但付款流水已足額。',
+                    '帳單仍顯示未繳或部分付款，但收款紀錄已繳足。',
                     $invoice
                 );
             }
@@ -287,7 +287,7 @@ class AccountingController extends Controller
                     $invoiceAnomalies[] = $this->ledgerAnomaly(
                         'payment_without_receipt',
                         'warning',
-                        '付款流水找不到對應收據/核帳紀錄。',
+                        '收款紀錄找不到對應收據。',
                         $invoice,
                         null,
                         (int) $payment->id
@@ -320,7 +320,7 @@ class AccountingController extends Controller
                     $invoiceAnomalies[] = $this->ledgerAnomaly(
                         'receipt_without_payment',
                         'warning',
-                        '已確認收據缺少 Payment 關聯，會造成收據與帳單難以對齊。',
+                        '已確認收據缺少收款紀錄，會造成收據與帳單難以對齊。',
                         $invoice,
                         (int) $reportRow['report_id']
                     );
@@ -365,7 +365,7 @@ class AccountingController extends Controller
                 $anomalies[] = [
                     'code' => 'receipt_without_invoice',
                     'severity' => 'warning',
-                    'message' => '已確認收據未套用到本學生帳單。',
+                    'message' => '已確認收據尚未對到本學生帳單。',
                     'invoice_id' => $report->InvoiceID ? (int) $report->InvoiceID : null,
                     'student_class_id' => (int) $report->StudentClassID,
                     'report_id' => (int) $report->id,
@@ -377,7 +377,7 @@ class AccountingController extends Controller
                 $anomalies[] = [
                     'code' => 'confirmed_receipt_without_payment',
                     'severity' => 'warning',
-                    'message' => '已確認收據缺少 Payment 關聯。',
+                    'message' => '已確認收據缺少收款紀錄。',
                     'invoice_id' => $report->InvoiceID ? (int) $report->InvoiceID : null,
                     'student_class_id' => (int) $report->StudentClassID,
                     'report_id' => (int) $report->id,
@@ -389,7 +389,7 @@ class AccountingController extends Controller
                 $anomalies[] = [
                     'code' => 'receipt_payment_outside_ledger',
                     'severity' => 'warning',
-                    'message' => '收據關聯的 Payment 不在本學生帳單流水內。',
+                    'message' => '收據對應的收款不在本學生帳單紀錄內。',
                     'invoice_id' => $report->InvoiceID ? (int) $report->InvoiceID : null,
                     'student_class_id' => (int) $report->StudentClassID,
                     'report_id' => (int) $report->id,
@@ -632,13 +632,13 @@ class AccountingController extends Controller
     private function ledgerAnomalyAction(string $code, ?int $reportId, ?int $paymentId): array
     {
         if ($reportId && in_array($code, ['receipt_without_invoice', 'receipt_without_payment', 'confirmed_receipt_without_payment'], true)) {
-            return ['type' => 'void_report', 'label' => '撤銷/沖銷收據', 'report_id' => $reportId];
+            return ['type' => 'void_report', 'label' => '撤銷收據', 'report_id' => $reportId];
         }
         if ($reportId) {
             return ['type' => 'view_receipt', 'label' => '查看收據', 'report_id' => $reportId];
         }
         if ($paymentId) {
-            return ['type' => 'manual_review', 'label' => '需人工修復 Payment 關聯'];
+            return ['type' => 'manual_review', 'label' => '請聯絡總部核對收款資料'];
         }
         return ['type' => 'review', 'label' => '檢視對帳明細'];
     }

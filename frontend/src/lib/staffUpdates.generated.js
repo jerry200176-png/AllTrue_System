@@ -34,6 +34,38 @@ export const staffUpdates = [
     "version": "2026.08.17"
   },
   {
+    "id": "staff-2026-08-17-billing-human-copy",
+    "publishedAt": "2026-08-17",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "帳務用語比較好懂",
+    "summary": "對帳畫面改成白話；不再出現英文 Invoice 或帳單／課程斜線。",
+    "items": [
+      "學生對帳改看「帳單（科目）」「已記入」「多收待處理」。",
+      "課程管理改「帳單與對帳」，統計標籤改中文。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "學生對帳改看「帳單（科目）」「已記入」「多收待處理」。",
+          "課程管理改「帳單與對帳」，統計標籤改中文。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-17:billing-human-copy"
+    ],
+    "date": "2026-08-17",
+    "version": "2026.08.17"
+  },
+  {
     "id": "staff-2026-08-16-reported-paid-pending",
     "publishedAt": "2026-08-16",
     "effectiveAt": null,

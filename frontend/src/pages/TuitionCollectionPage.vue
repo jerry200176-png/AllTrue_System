@@ -459,11 +459,11 @@
         <div class="tc-summary">
           <div class="tc-card tc-card--total">
             <span class="tc-card-num">{{ accountingSummary.total_count || 0 }}</span>
-            <span class="tc-card-label">有效收款流水</span>
+            <span class="tc-card-label">已確認收款筆數</span>
           </div>
           <div class="tc-card tc-card--info">
             <span class="tc-card-num">{{ accountingSummary.unique_paid_course_count || 0 }}</span>
-            <span class="tc-card-label">對應課程數</span>
+            <span class="tc-card-label">涵蓋課程數</span>
           </div>
           <div class="tc-card" :class="{ 'tc-card--warn': (accountingSummary.duplicate_payment_course_count || 0) > 0 }">
             <span class="tc-card-num">{{ accountingSummary.duplicate_payment_course_count || 0 }}</span>
@@ -487,7 +487,7 @@
           </div>
         </div>
         <p class="tc-summary-note">
-          「有效收款流水」是一張張收據/核帳紀錄；「對應課程數」是這些收款對應到的不同課程。若同課程多筆收款大於 0，請用逐筆撤銷沖銷錯帳，不要刪除原紀錄。
+          「已確認收款筆數」是一筆筆收據；「涵蓋課程數」是這些收款對到的不同課程。若同一課程有多筆收款，請逐筆撤銷錯的那筆，不要刪除原紀錄。
         </p>
 
         <div v-if="!accountingRows.length" class="tc-empty">
@@ -537,7 +537,7 @@
                     </button>
                     <button class="tc-btn tc-btn--receipt" @click="openReceiptByReport(row.report_id)" :aria-label="`查看 ${row.receipt_no}`">
                       <span class="material-symbols-outlined">receipt</span>
-                      查看 / PNG
+                      查看收據
                     </button>
                     <button
                       v-if="canVoid"
@@ -580,12 +580,12 @@
       <template v-else>
         <div class="tc-summary">
           <div class="tc-card tc-card--total"><span class="tc-card-num">{{ settledSummary.course_count || 0 }}</span><span class="tc-card-label">已結清課程</span></div>
-          <div class="tc-card tc-card--success"><span class="tc-card-num">{{ formatCurrency(settledSummary.paid_total || 0) }}</span><span class="tc-card-label">已套用收款</span></div>
+          <div class="tc-card tc-card--success"><span class="tc-card-num">{{ formatCurrency(settledSummary.paid_total || 0) }}</span><span class="tc-card-label">已記入收款</span></div>
           <div class="tc-card" :class="{ 'tc-card--warn': (settledSummary.legacy_count || 0) > 0 }"><span class="tc-card-num">{{ settledSummary.legacy_count || 0 }}</span><span class="tc-card-label">舊制無帳單</span></div>
           <div class="tc-card" :class="{ 'tc-card--warn': (settledSummary.exception_count || 0) > 0 }"><span class="tc-card-num">{{ settledSummary.exception_count || 0 }}</span><span class="tc-card-label">例外待處理</span></div>
-          <div class="tc-card tc-card--outstanding"><span class="tc-card-num">{{ formatCurrency(settledSummary.overpaid_total || 0) }}</span><span class="tc-card-label">溢收/待沖銷</span></div>
+          <div class="tc-card tc-card--outstanding"><span class="tc-card-num">{{ formatCurrency(settledSummary.overpaid_total || 0) }}</span><span class="tc-card-label">多收待處理</span></div>
         </div>
-        <p class="tc-summary-note">「已結清課程彙總」用 Invoice/Payment/Receipt 與課程主檔彙整；「收據流水」是一筆筆收款/沖銷紀錄，兩者口徑不同。</p>
+        <p class="tc-summary-note">「已結清課程」依帳單、收款、收據與課程資料彙整；「收據紀錄」是一筆筆收款與更正紀錄，兩邊統計方式不同。</p>
 
         <div v-if="settledLoading && !settledRows.length" class="tc-skeleton-area">
           <div class="tc-card tc-card--skeleton"><span class="skel skel-num"></span><span class="skel skel-label"></span></div>
@@ -598,7 +598,7 @@
           <table class="tc-table acct-table">
             <thead>
               <tr>
-                <th>課程</th><th>學生</th><th>科目</th><th>模式</th><th class="tc-col-currency">已套用</th><th>最近付款</th><th>標籤</th><th>操作</th>
+                <th>課程</th><th>學生</th><th>科目</th><th>模式</th><th class="tc-col-currency">已記入</th><th>最近付款</th><th>標籤</th><th>操作</th>
               </tr>
             </thead>
             <tbody>
@@ -664,7 +664,7 @@
             <span class="material-symbols-outlined" style="font-size:22px;color:var(--danger)">warning</span>
             撤銷收款確認
           </h3>
-          <p class="tc-dialog-desc">此操作不會刪除付款；系統會建立一筆負值沖銷並保留稽核紀錄。請只用於重複入帳、金額錯誤或誤核帳。</p>
+          <p class="tc-dialog-desc">此操作不會刪除原收款；系統會建立一筆更正紀錄並保留稽核。請只用於重複入帳、金額錯誤或誤確認。</p>
           <div class="tc-dialog-info" v-if="voidTarget">
             <span>{{ voidTarget.student_name }} — {{ voidTarget.subject }}</span>
             <small v-if="voidTarget.receipt_no">
@@ -819,7 +819,7 @@ const actionLoading = ref(null);
 const ACCOUNTING_TABS = [
   { key: 'receivables', label: '待處理', icon: 'payments' },
   { key: 'settled', label: '已結清課程彙總', icon: 'task_alt' },
-  { key: 'payments', label: '收據流水紀錄', icon: 'receipt_long' },
+  { key: 'payments', label: '收據紀錄', icon: 'receipt_long' },
 ];
 const activeAccountingTab = ref('receivables');
 const accountingLoading = ref(false);
