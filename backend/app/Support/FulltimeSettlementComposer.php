@@ -69,10 +69,14 @@ final class FulltimeSettlementComposer
 
         $weightedBonus = round(($rawSubjectBonus + $rawOneToThreeBonus) * ($multiplierPct / 100.0), 2);
         $weeklyBonus = (float) ($components['weekly_16_segments']['amount'] ?? 0);
+        $cashAmount = (float) ($components['cash_adjustments']['amount'] ?? 0);
 
         $adjustments = [];
         if ($weeklyBonus != 0.0) {
             $adjustments[] = ['label' => '16段課', 'amount' => $weeklyBonus];
+        }
+        if ($cashAmount != 0.0) {
+            $adjustments[] = ['label' => '現金加扣款', 'amount' => $cashAmount];
         }
 
         return [
@@ -80,7 +84,7 @@ final class FulltimeSettlementComposer
             'multiplier_pct' => round($multiplierPct, 2),
             'weighted_bonus_amount' => $weightedBonus,
             'weekly_segment_bonus_amount' => $weeklyBonus,
-            'total_payout' => round($baseSalary + $weeklyBonus + $weightedBonus, 2),
+            'total_payout' => round($baseSalary + $weeklyBonus + $weightedBonus + $cashAmount, 2),
             'review_required' => $reviewRequired,
             'regular_subject_count' => self::nullableFloat($subjectUnits['regular'] ?? $subjectMetrics['regular_subject_count'] ?? null),
             'tutoring_trial_subject_count' => self::nullableFloat($subjectUnits['tutoring_trial'] ?? $subjectMetrics['tutoring_trial_subject_count'] ?? null),
