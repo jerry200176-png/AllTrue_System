@@ -129,4 +129,26 @@ class FulltimeSettlementComposerTest extends TestCase
         $this->assertTrue($result['review_required']);
         $this->assertTrue($result['payout_is_draft']);
     }
+
+    public function test_admin_allowance_stacks_into_multiplier(): void
+    {
+        $result = FulltimeSettlementComposer::compose([
+            'admin_allowance' => ['status' => 'qualifies', 'rate' => 8],
+            'subject_count_bonus' => [
+                'status' => 'qualifies', 'amount' => 0, 'rate' => 0,
+                'metrics' => ['subject_count' => 10, 'subject_count_bonus' => 0, 'one_to_three_bonus' => 0],
+            ],
+        ], 0.0);
+
+        $this->assertSame(108.0, $result['multiplier_pct']);
+        $part = null;
+        foreach ($result['multiplier_parts'] as $row) {
+            if (($row['key'] ?? '') === 'admin_allowance') {
+                $part = $row;
+                break;
+            }
+        }
+        $this->assertNotNull($part);
+        $this->assertSame(8.0, $part['pct']);
+    }
 }

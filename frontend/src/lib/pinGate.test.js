@@ -21,6 +21,7 @@ t('受保護頁對 director 為 true', () => {
 t('非受保護頁為 false', () => {
   assert.strictEqual(isPinProtectedPage('calendar', 'director'), false);
   assert.strictEqual(isPinProtectedPage('students', 'director'), false);
+  assert.strictEqual(isPinProtectedPage('tuition-collect', 'director'), false);
 });
 t('D3：super_admin 一律不納管', () => {
   for (const p of PIN_PROTECTED_PAGES) {

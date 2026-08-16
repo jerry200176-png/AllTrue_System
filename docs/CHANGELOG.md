@@ -5,6 +5,32 @@
 - 系統管理員側欄改稱「夜間堂數對帳」，並寫明這是已用堂數 vs 權威扣堂口徑，不是銀行或學費勾稽。
 - 排程登錄 domain 從誤標的 payment 改為 session_deduction；命令仍只診斷、不改堂數。
 
+## 2026-08-16 — feat(payroll): 正職現金加扣款
+
+<!-- release-notes: staff_update=staff-2026-08-16-fulltime-cash-adj -->
+
+- 現金加扣款是獨立金額，不進倍率；主任確認、總部核准後才加進總發放。已鎖定月份不能新增。
+
+## 2026-08-16 — feat(payroll): 正職行政加給與底薪核准畫面
+
+<!-- release-notes: staff_update=staff-2026-08-16-fulltime-admin-allowance -->
+
+- 行政加給 0–10% 與底薪：主任確認／待核准，總部核准後才進倍率；現金加扣款下一包。
+
+## 2026-08-16 — fix(billing): 回報提示改請主任確認入帳
+
+<!-- release-notes: staff_update=staff-2026-08-16-hai-sen-director-copy -->
+
+- 已有待對帳時改提示到帳務中心確認入帳或退回，不再寫請會計。
+- 嗨森無會計角色；兩步驟不變，主任核完帳即入帳開收據。
+
+## 2026-08-16 — fix(billing): 帳務中心不擋 PIN，確認入帳由主任完成
+
+<!-- release-notes: staff_update=staff-2026-08-16-director-confirms -->
+
+- 帳務中心不再走 PIN 卸載，一進去就載入催繳名單。
+- 文案改為主任對到帳後按確認入帳；不假設有獨立會計。
+
 ## 2026-08-15 — fix(payroll): 已核准可退回，全校放假改讀課程管理
 
 <!-- release-notes: staff_update=staff-2026-08-15-eligibility-approved-revert -->

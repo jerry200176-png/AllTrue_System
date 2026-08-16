@@ -1513,7 +1513,7 @@ function openPaymentEntry(row) {
 
 function onEntryConfirmed(_result) {
   entryOpen.value = false;
-  showToast('已送出待對帳，請會計確認入帳後才會開收據');
+  showToast('已送出待對帳，請到帳務中心按確認入帳後才會開收據');
   loadAlerts();
 }
 

@@ -60,6 +60,7 @@
         />
         <p v-if="error" class="pin-lock-error">{{ error }}</p>
         <button class="pin-lock-btn primary" type="submit" :disabled="busy">解鎖</button>
+        <button class="pin-lock-link" type="button" @click="$emit('skip')">暫時略過，先進入</button>
         <button class="pin-lock-link" type="button" @click="goReset">忘記 PIN？用帳號密碼重設</button>
       </form>
 

@@ -15,22 +15,22 @@ export const staffUpdates = [
     ],
     "importance": "action_required",
     "title": "繳費改先回報再入帳",
-    "summary": "行政先登記家長已繳；會計對到帳才開收據，避免沒匯款就變已繳。",
+    "summary": "行政先登記家長已繳；對到帳後主任按確認入帳才開收據。",
     "items": [
-      "看官方 LINE 請用「登記已回報」，不要等會計也能先登錄。",
-      "會計確認入帳後才會開電子收據；對不到款可退回。"
+      "看官方 LINE 請用「登記已回報」，不必等人也能先登錄。",
+      "對到帳後按確認入帳才開電子收據；對不到款可退回。"
     ],
     "sections": [
       {
         "title": "需要你注意",
         "items": [
-          "看官方 LINE 請用「登記已回報」，不要等會計也能先登錄。"
+          "看官方 LINE 請用「登記已回報」，不必等人也能先登錄。"
         ]
       },
       {
         "title": "操作更順手",
         "items": [
-          "會計確認入帳後才會開電子收據；對不到款可退回。"
+          "對到帳後按確認入帳才開電子收據；對不到款可退回。"
         ]
       }
     ],
@@ -99,7 +99,7 @@ export const staffUpdates = [
     "summary": "正職薪資可鎖定本月並匯出 Excel；底薪核准後才計入，鎖定月份不能改。",
     "items": [
       "確認無試算列後可鎖定本月，匯出 CSV 給 Excel 開；總部可填原因重開。",
-      "已鎖定月份不能改底薪。行政加給與加扣款調整下一包才上。"
+      "已鎖定月份不能改底薪。現金加扣款調整下一包才上。"
     ],
     "sections": [
       {
@@ -111,12 +111,79 @@ export const staffUpdates = [
       {
         "title": "需要你注意",
         "items": [
-          "已鎖定月份不能改底薪。行政加給與加扣款調整下一包才上。"
+          "已鎖定月份不能改底薪。現金加扣款調整下一包才上。"
         ]
       }
     ],
     "sourceRefs": [
       "changelog:2026-08-16:fulltime-payroll-lock"
+    ],
+    "date": "2026-08-16",
+    "version": "2026.08.16"
+  },
+  {
+    "id": "staff-2026-08-16-fulltime-cash-adj",
+    "publishedAt": "2026-08-16",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "正職現金加扣款",
+    "summary": "可登錄獨立現金加或扣，不進倍率；主任確認、總部核准後才進總發放。",
+    "items": [
+      "未鎖定月份可登錄現金加扣款，核准後顯示在結算加扣款欄。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "未鎖定月份可登錄現金加扣款，核准後顯示在結算加扣款欄。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-16:fulltime-cash-adj"
+    ],
+    "date": "2026-08-16",
+    "version": "2026.08.16"
+  },
+  {
+    "id": "staff-2026-08-16-fulltime-admin-allowance",
+    "publishedAt": "2026-08-16",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "正職行政加給與底薪核准",
+    "summary": "行政加給要主任確認、總部核准才進倍率。主任改底薪先待核准；總部改了立刻計入。",
+    "items": [
+      "可登錄行政協助／總導師／副主任加給 0–10%，核准後才計入。",
+      "主任改底薪會看到待核准金額；總部可核准，或自己改立即生效。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "可登錄行政協助／總導師／副主任加給 0–10%，核准後才計入。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "主任改底薪會看到待核准金額；總部可核准，或自己改立即生效。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-16:fulltime-admin-allowance"
     ],
     "date": "2026-08-16",
     "version": "2026.08.16"
@@ -170,7 +237,7 @@ export const staffUpdates = [
     ],
     "importance": "digest",
     "title": "通知中心先回報",
-    "summary": "通知中心登記已繳後仍待對帳，會計確認才入帳開收據。",
+    "summary": "通知中心登記已繳後仍待對帳，確認入帳後才開收據。",
     "items": [
       "通知中心學費改「送出已回報」，不會當場變已繳或開收據。"
     ],
@@ -221,6 +288,38 @@ export const staffUpdates = [
     "version": "2026.08.16"
   },
   {
+    "id": "staff-2026-08-16-hai-sen-director-copy",
+    "publishedAt": "2026-08-16",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "對帳由主任完成",
+    "summary": "已回報後請到帳務中心確認入帳；沒有會計角色。",
+    "items": [
+      "同一課程已有待對帳時，會請你到帳務中心確認入帳或退回。",
+      "對到帳後按確認入帳就是完成，系統不會再開會計帳號。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "同一課程已有待對帳時，會請你到帳務中心確認入帳或退回。",
+          "對到帳後按確認入帳就是完成，系統不會再開會計帳號。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-16:hai-sen-director-copy"
+    ],
+    "date": "2026-08-16",
+    "version": "2026.08.16"
+  },
+  {
     "id": "staff-2026-08-16-fillrate-substitute-absent-copy",
     "publishedAt": "2026-08-16",
     "effectiveAt": null,
@@ -250,6 +349,43 @@ export const staffUpdates = [
     ],
     "sourceRefs": [
       "changelog:2026-08-16:fillrate-substitute-absent-copy"
+    ],
+    "date": "2026-08-16",
+    "version": "2026.08.16"
+  },
+  {
+    "id": "staff-2026-08-16-director-confirms",
+    "publishedAt": "2026-08-16",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "帳務中心直接開",
+    "summary": "帳務中心不再擋 PIN；對到帳後由主任按確認入帳。",
+    "items": [
+      "帳務中心一進去就有名單，不必先解 PIN。",
+      "沒有會計角色；主任按確認入帳就完成。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "帳務中心一進去就有名單，不必先解 PIN。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "沒有會計角色；主任按確認入帳就完成。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-16:director-confirms"
     ],
     "date": "2026-08-16",
     "version": "2026.08.16"
