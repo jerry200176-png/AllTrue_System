@@ -3,6 +3,45 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-07-29-tuition-alert-payment-truth-959
+    published_at: "2026-07-29"
+    audiences:
+      - director
+    importance: digest
+    title: 繳費提醒付款狀態修正
+    summary: 帳單已結清但課程繳費狀態未同步更新時，繳費提醒頁面不再誤顯示「未繳費」與欠款金額。
+    items:
+      - category: fixed
+        text: 繳費提醒頁的已繳/未繳狀態改為跟課程列表同一套判斷，不再兩邊不一致。
+    source_refs:
+      - "changelog:2026-07-29:tuition-alert-payment-truth-959"
+
+  - id: staff-2026-08-15-stale-receipt-badge-934
+    published_at: "2026-08-15"
+    audiences:
+      - director
+    importance: digest
+    title: 收據新增「可能已被取代」提醒
+    summary: 課程計費模式（堂數制/月結）事後變更時，舊收據會顯示提醒，避免家長拿舊收據截圖產生誤會。
+    items:
+      - category: added
+        text: 收據頁面：若課程計費模式已變更，顯示黃色提醒訊息。
+    source_refs:
+      - "changelog:2026-08-15:stale-receipt-badge-934"
+
+  - id: staff-2026-08-15-tuition-charge-display-1734
+    published_at: "2026-08-15"
+    audiences:
+      - director
+    importance: digest
+    title: 收帳金額顯示修正
+    summary: 已收款課程會顯示實際合約總額，不再出現舊的錯誤數字。
+    items:
+      - category: fixed
+        text: 收帳頁會跟已開立帳單同一金額，不再顯示過期的錯誤總額。
+    source_refs:
+      - "changelog:2026-08-15:tuition-charge-display-1734"
+
   - id: staff-2026-08-15-teacher-home-projected-campus
     published_at: "2026-08-15"
     audiences:

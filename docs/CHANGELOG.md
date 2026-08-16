@@ -1,3 +1,53 @@
+## 2026-08-15 — fix(billing): 計費模式轉換後標示舊收據可能已被取代 (#934)
+
+<!-- release-notes: staff_update=staff-2026-08-15-stale-receipt-badge-934 -->
+
+- `Invoice` 新增 `ScheduleModeAtIssue`（開立當下的計費模式快照，純新增欄位，舊資料 NULL，不回填）。
+- 課程計費模式（堂數制/月結）事後變更時，收據 API 會標示 `billing_mode_changed`，前端顯示提醒；不自動作廢、不改動任何金額或已結帳資料。
+- 範圍縮小：只修「舊收據看起來仍有效」的顯示問題；黃玟睿本案實際應收金額仍待校方確認，不由本次變更決定。
+
+## 2026-08-15 — chore(schedule): TD-076 Phase 3 回填命令（預設 dry-run）
+
+<!-- release-notes: silent_ship=silent-2026-08-15-td076-phase3-backfill -->
+
+- 新增排課原始時段回填命令，預設只報告、不寫入；正式寫入需修復閘道，本包不執行。
+- 教職員調課與畫面不變，也不打開新旗標。
+
+## 2026-08-15 — chore(schedule): TD-076 Phase 2 雙寫身分欄（旗標預設關）
+
+<!-- release-notes: silent_ship=silent-2026-08-15-td076-phase2-dual-write -->
+
+- 排課表新增可空的原始日期／時間欄，以及只追加的改期紀錄表；預設不啟用，調課行為與現在相同。
+- 不改日曆／課程管理讀取路徑，也不加唯一鍵。
+
+## 2026-08-15 — docs(arch): TD-076 Phase 0 盤點與舊 bug 鎖測
+
+<!-- release-notes: silent_ship=silent-2026-08-15-td076-phase0-inventory -->
+
+- 只補排課身分計畫的寫入／讀取清單，以及防止 R102／R103／請假扣堂／鎖老師復發的測試。
+- 不改 `schedules` 寫入形狀，不遷移 production。
+
+## 2026-08-15 — chore(bug): 已結案回報可補一則公開說明
+
+<!-- release-notes: silent_ship=silent-2026-08-15-resolved-bug-followup -->
+
+- 內部追蹤流程允許在已標成修好的回報上再留一則說明，不會改狀態。
+- 教職員畫面與操作不變。
+
+## 2026-08-15 — fix(billing): 陳姝彣收帳顯示改回合約金額
+
+<!-- release-notes: staff_update=staff-2026-08-15-tuition-charge-display-1734 -->
+
+- 收帳列表對已收款、且帳單已是正確總額的課程，不再顯示過期的錯誤合約金額。
+- 只改顯示用合約金額；已開立帳單與實收紀錄不變。
+
+## 2026-08-15 — fix(students): 搜尋含表情符號不再讓學生名單崩潰
+
+<!-- release-notes: silent_ship=silent-2026-08-15-student-name-utf8mb3-like -->
+
+- 學生／帳務／評量姓名搜尋會先去掉 4-byte 字元再查 utf8mb3 欄位，避免 SQL collation 錯誤。
+- 純表情符號搜尋回傳空結果，不會列出全部分校學生。
+
 ## 2026-08-15 — fix(teacher-home): 未來堂次帶分校，不再顯示 Branch #0
 
 <!-- release-notes: staff_update=staff-2026-08-15-teacher-home-projected-campus -->
@@ -482,6 +532,15 @@
 - 操作指南：`docs/GUIDE_STAFF_UPDATES.md`。
 
 開發備註：UI 標示改「最新更新」；分類改「你現在可以／我們修好了／操作更順手／需要你注意」。回歸 `npm run test:release-notes`。
+
+## 2026-07-29 — fix(billing): 繳費提醒與課程列表付款真相對齊（#959，G-009）
+<!-- release-notes: staff_update=staff-2026-07-29-tuition-alert-payment-truth-959 -->
+
+- `AlertController::computePaymentStatus()` 新增 `hasInvoicePayment` 參數：`已繳費 = Paid=1 OR 有未作廢 Invoice 已結清付款`，與 `StudentClassController` 課程列表（`lastPaidAtByStudentClassIds`）的權威判斷對齊。
+- 同步修正 `outstanding` 計算：發票已結清但 `Paid` 未同步更新的課程，不再顯示欠款。
+- 呼叫端已於同一輪迴圈算出 `$invoicePaidAt`，本次僅重用既有資料、不新增查詢。
+
+開發備註：回歸 `TuitionAlertsApiTest::test_payment_status_paid_when_settled_via_invoice_despite_paid_flag_zero`。CoursePackage 側（`computePackageCountPaymentStatus`）已有等效 OR 邏輯，本次不動。
 
 ## 2026-07-24 — feat: Course Continuity 群組 API MVP（#1382）
 

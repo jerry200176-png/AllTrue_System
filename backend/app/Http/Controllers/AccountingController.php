@@ -8,6 +8,7 @@ use App\Models\PaymentReport;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Services\InvoiceAmountReconciliationService;
+use App\Support\Utf8mb3SearchSanitizer;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 
@@ -42,7 +43,9 @@ class AccountingController extends Controller
 
         if ($request->filled('student')) {
             $student = trim((string) $request->input('student'));
-            $query->whereHas('student', fn ($q) => $q->where('name', 'like', "%{$student}%"));
+            $query->whereHas('student', function ($q) use ($student) {
+                Utf8mb3SearchSanitizer::applyLike($q, 'name', $student);
+            });
         }
 
         if ($request->filled('subject')) {
@@ -470,7 +473,9 @@ class AccountingController extends Controller
 
         if ($request->filled('student')) {
             $student = trim((string) $request->input('student'));
-            $query->whereHas('student', fn ($q) => $q->where('name', 'like', "%{$student}%"));
+            $query->whereHas('student', function ($q) use ($student) {
+                Utf8mb3SearchSanitizer::applyLike($q, 'name', $student);
+            });
         }
 
         if ($request->filled('subject')) {

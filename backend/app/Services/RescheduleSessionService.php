@@ -3,9 +3,11 @@
 namespace App\Services;
 
 use App\Exceptions\RescheduleSessionException;
+use App\Helpers\FeatureFlag;
 use App\Models\ClassSession;
 use App\Models\LearningRecord;
 use App\Models\Schedule;
+use App\Models\ScheduleChangeLog;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
@@ -15,6 +17,8 @@ use Illuminate\Support\Facades\Schema;
 
 class RescheduleSessionService
 {
+    public const OCCURRENCE_V2_FLAG = 'schedule-occurrence-v2';
+
     public function __construct(
         private ClassSessionMaterializationService $materializationService,
         private ScheduleGuardService $scheduleGuardService
@@ -99,6 +103,15 @@ class RescheduleSessionService
                     $endTime,
                     isset($data['teacher_id']) ? (int) $data['teacher_id'] : null,
                     isset($data['subject']) ? (string) $data['subject'] : null
+                );
+                $this->maybeDualWriteOccurrenceIdentity(
+                    $student,
+                    $target,
+                    (string) $oldDate,
+                    (string) $oldStartTime,
+                    $newDate,
+                    $startTime,
+                    $authUserId
                 );
             }
 
@@ -274,6 +287,77 @@ class RescheduleSessionService
             'committed' => true,
             'idempotent_replay' => true,
         ];
+    }
+
+    /**
+     * Flag default off: production keeps today's chain-only writes.
+     * When on: stamp frozen identity on the destination and append one log row.
+     * Readers still walk the chain (Phase 4).
+     */
+    private function maybeDualWriteOccurrenceIdentity(
+        Student $student,
+        Schedule $target,
+        string $oldDate,
+        string $oldStartTime,
+        string $newDate,
+        string $newStartTime,
+        int $authUserId
+    ): void {
+        if (!FeatureFlag::enabled(self::OCCURRENCE_V2_FLAG, (int) $student->CampusID)) {
+            return;
+        }
+        if (!Schema::hasColumn('schedules', 'original_schedule_date')) {
+            return;
+        }
+
+        $fromTime = substr($oldStartTime, 0, 5);
+        $toTime = substr($newStartTime, 0, 5);
+        $frozenDate = $target->original_schedule_date
+            ? Carbon::parse((string) $target->original_schedule_date)->toDateString()
+            : null;
+        $frozenTime = $target->original_start_time
+            ? substr((string) $target->original_start_time, 0, 5)
+            : null;
+
+        if (!$frozenDate || !$frozenTime) {
+            $stamped = Schedule::where('student_course_id', (int) $target->student_course_id)
+                ->whereDate('schedule_date', $oldDate)
+                ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$fromTime])
+                ->where('id', '<>', (int) $target->id)
+                ->whereNotNull('original_schedule_date')
+                ->whereNotNull('original_start_time')
+                ->orderByDesc('id')
+                ->first();
+            if ($stamped) {
+                $frozenDate = Carbon::parse((string) $stamped->original_schedule_date)->toDateString();
+                $frozenTime = substr((string) $stamped->original_start_time, 0, 5);
+            } else {
+                $frozenDate = Carbon::parse($oldDate)->toDateString();
+                $frozenTime = $fromTime;
+            }
+        }
+
+        $target->original_schedule_date = $frozenDate;
+        $target->original_start_time = $frozenTime;
+        $target->save();
+
+        if (!Schema::hasTable('schedule_change_log')) {
+            return;
+        }
+
+        ScheduleChangeLog::create([
+            'schedule_id' => (int) $target->id,
+            'student_course_id' => (int) $target->student_course_id,
+            'original_schedule_date' => $frozenDate,
+            'original_start_time' => $frozenTime,
+            'from_date' => Carbon::parse($oldDate)->toDateString(),
+            'from_time' => $fromTime,
+            'to_date' => Carbon::parse($newDate)->toDateString(),
+            'to_time' => $toTime,
+            'actor_id' => $authUserId > 0 ? $authUserId : null,
+            'reason' => 'reschedule',
+            'created_at' => now(),
+        ]);
     }
 
     /** @return array{0: Schedule, 1: Schedule} */

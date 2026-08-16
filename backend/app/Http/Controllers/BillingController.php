@@ -99,6 +99,9 @@ class BillingController extends Controller
         ]);
 
         return DB::transaction(function () use ($data) {
+            $scheduleModeAtIssue = !empty($data['StudentClassID'])
+                ? StudentClass::where('ID', $data['StudentClassID'])->first()?->ScheduleMode
+                : null;
             $invoice = Invoice::create([
                 'StudentID' => $data['StudentID'],
                 'StudentClassID' => $data['StudentClassID'] ?? null,
@@ -107,6 +110,7 @@ class BillingController extends Controller
                 'TotalAmount' => $data['TotalAmount'],
                 'PaidAmount' => 0,
                 'Status' => 'unpaid',
+                'ScheduleModeAtIssue' => $scheduleModeAtIssue,
                 'Note' => $data['Note'] ?? '',
             ]);
 

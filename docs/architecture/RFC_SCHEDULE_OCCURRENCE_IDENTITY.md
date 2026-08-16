@@ -1,6 +1,6 @@
 # RFC: Schedule occurrence identity（TD-076 根治計畫）
 
-> **Status:** Draft plan — **not** production execute. Schema DEV needs Founder GO.  
+> **Status:** Phase 0–2 merged (`5634e9e9`). Phase 3 = dry-run backfill command (execute gated; not run on production). No read cutover, no stop-chain.  
 > **Date:** 2026-08-15  
 > **Campaign card:** [`ALLTRUE_ENGINEERING_NORTH_STAR.md`](ALLTRUE_ENGINEERING_NORTH_STAR.md)  
 > **Debt / lessons:** `docs/TECH_DEBT.md` TD-076 · `docs/AI_REGRESSION_LESSONS.md` R102, R103  
@@ -74,30 +74,26 @@ After cutover, for a normal (non-`extra`) occurrence:
 
 ## 4. Architecture (target)
 
-### Live row (sketch — Phase 1 locks names before migrate)
+### Live row (Phase 1 names, locked 2026-08-15)
 
-```text
-schedules
-  id
-  student_class_id
-  original_schedule_date   -- frozen
-  original_start_time      -- frozen
-  schedule_date            -- current
-  start_time               -- current
-  status                   -- live scheduled / cancelled / extra / …
-  campus / teacher / room / type …
-  UNIQUE (student_class_id, original_schedule_date, original_start_time)
-    where live  -- exact unique predicate decided in Phase 1
-```
+Identity columns on existing `schedules` (Laravel `student_course_id` = course):
+
+- `original_schedule_date` (date, nullable) — frozen first slot date
+- `original_start_time` (string HH:MM, nullable) — frozen first slot start
+
+Current slot remains `schedule_date` / `start_time`. **No UNIQUE index in Phase 2** (collisions until Phase 3 backfill). Extras stay out of any future unique key (Appendix C).
+
+Flag: `FeatureFlag::enabled('schedule-occurrence-v2')` → env `FEATURE_SCHEDULE_OCCURRENCE_V2` (default **false**). Campus override: `FEATURE_SCHEDULE_OCCURRENCE_V2_CAMPUS_{id}`.
 
 ### Log
 
 ```text
 schedule_change_log
-  id, schedule_id or identity tuple
+  id, schedule_id, student_course_id
+  original_schedule_date, original_start_time
   from_date, from_time, to_date, to_time
   actor_id, reason, created_at
-  -- append-only; no updates
+  -- append-only; no updates; readers do not query this for current state
 ```
 
 `ClassSession` still materializes one session per live occurrence. Calendar and
@@ -144,31 +140,33 @@ cd backend && ./vendor/bin/phpunit --filter Reschedule
 cd frontend && npx vitest run src/lib/calendarExceptionMerge.test.js src/lib/calendarOccurrenceMerge.test.js
 ```
 
-### Phase 1 — Contract + dual-write design (docs + failing tests for target)
+### Phase 1 — Contract (names locked 2026-08-15 Founder GO)
 
-Founder GO on:
+Locked:
 
-- column names
-- unique predicate (including cancelled / extra)
-- flag name (`schedule_occurrence_v2` or equivalent)
-- backfill dry-run shape
+- column names: `original_schedule_date`, `original_start_time`
+- flag: `schedule-occurrence-v2` / `FEATURE_SCHEDULE_OCCURRENCE_V2` default false
+- unique predicate: **deferred** (not in Phase 2 migrate)
+- backfill dry-run: Phase 3 + Repair Manifest (not this PR)
 
-Add tests that describe **target** behavior (second reschedule does not add a
-live row) marked skipped or behind the flag until Phase 2.
+Target “second reschedule does not add a live row” remains **Phase 5**. Phase 2
+only freezes identity on the destination while the chain still grows.
 
-### Phase 2 — Migration + dual write (flag default off)
+### Phase 2 — Migration + dual write (flag default off) — **this PR family**
 
-- Add columns + `schedule_change_log`.
-- Writes: still produce chain **and** update identity columns / log (dual
-  write) inside `RescheduleSessionService` transaction.
-- No read-path switch.
-- Rollback: revert deploy; columns stay nullable.
+- Add nullable columns + `schedule_change_log`. No unique index.
+- Writes: still produce chain **and**, when the flag is on, stamp identity on
+  the destination + one log row inside `RescheduleSessionService::execute()`.
+- Flag off (production default): columns stay null; behavior matches today.
+- No read-path switch. Keep frontend R102/R103.
+- Rollback: flag stays off; unused nullable columns.
 
-### Phase 3 — Backfill (Repair Manifest; Founder-gated data)
+### Phase 3 — Backfill (Repair Manifest; execute still gated)
 
-- Dry-run report of chain heads vs identity collisions.
-- Founder GO + backup + Repair Manifest.
-- Do not run on Pi as “test”.
+- Command `schedules:backfill-occurrence-identity` (default dry-run).
+- Dry-run: `php artisan schedules:backfill-occurrence-identity` after deploy (no Pi laptop artisan; use a later committed dry-run workflow if needed).
+- Execute requires `--force` + `ALLOW_PROD_REPAIR=1` + `I_APPROVE_TD076_OCCURRENCE_BACKFILL=1` + snapshot.
+- Do not run execute on Pi until a later GO. Do not enable `FEATURE_SCHEDULE_OCCURRENCE_V2`.
 
 ### Phase 4 — Read cutover (flag on in production after smoke)
 
@@ -197,7 +195,7 @@ live row) marked skipped or behind the flag until Phase 2.
 | 1 contract | same as 0 + Founder | decided column list in §4 |
 | 2–5 | one implementer + independent review | Draft PR + evidence + unverified list |
 
-Do not start Phase 2 in a second worktree while Phase 0 is open.
+Phase 0–2 merged (`5634e9e9`). Phase 3 ships the dry-run/gated command only; do not execute production backfill or start Phase 4/5 without a later GO.
 
 ---
 
@@ -218,28 +216,73 @@ Do not start Phase 2 in a second worktree while Phase 0 is open.
 - Phase 4: flag off; readers back to chain (frontend dedupe still present).
 - Phase 3 backfill: Repair Manifest inverse; do not hand-edit Pi rows.
 
-## 9. Open questions (Founder)
+## 9. Founder answers (2026-08-15) + remaining Phase 1 questions
 
-1. Exact unique key vs cancelled extras.
-2. Whether `ClassSession` stores the frozen original start or only current.
-3. Timing vs Laravel 8 (TD-014): **do not combine**.
+Answered (lock these; do not “simplify” in a later PR):
 
-Until those are answered, agents may only execute **Phase 0**.
+1. **Leave:** the occurrence **still exists**. Status is leave. It **does not deduct a purchased session and does not count as billed money** (`AttendanceStatus` `leave` is `deductible=false`, `payable=false`; `rowOccupiesPurchasedQuota` is false).
+2. **Substitute teacher:** the teacher **on that occurrence** (schedule pin / that session’s substitute row), not the contract teacher on `StudentClass`.
+3. **Past attendance:** once a session is attended, **lock the teacher who was there**. Changing the contract teacher must not rewrite history (`ContractTeacherChangePreservesHistoryTest`, in-app #207).
+4. **Production:** Founder GO 2026-08-15 for **Phase 1+2 only** if live product is not broken. Flag stays **off**. No Phase 3 backfill, Phase 4 read cutover, or Phase 5 stop-chain without a later GO. No Pi artisan as “test”.
+
+Still open (not blocking Phase 2):
+
+- Exact unique key vs cancelled extras (extras stay **out** of the identity unique key until a later decision).
+- Whether `ClassSession` stores frozen original start or only current.
+- Timing vs Laravel 8 (TD-014): **do not combine**.
 
 ---
 
-## Appendix A — Write paths (fill in Phase 0)
+## Appendix A — Write paths (Phase 0, 2026-08-15)
+
+Inventory: `rg -n "original_schedule_id|status=.rescheduled" backend/app`.
 
 | Path | Inserts chain? | Notes |
 |---|---|---|
-| `RescheduleSessionService::execute()` | TBD | Must remain the only reschedule writer |
-| `ScheduleController::store()` | TBD | R102: duplicate-delete may not fire |
-| *(add rows)* |  |  |
+| `RescheduleSessionService::execute()` | **yes** | ADR-004 atomic writer: creates `rescheduled` anchor + `scheduled` destination with `original_schedule_id`. Must remain the only **product** reschedule API. |
+| `ScheduleController::store()` | **yes** | Generic exception store. R102: same-slot duplicate-delete may miss a live `scheduled` row. Also creates `status=leave` (`deduction=0`) without `original_schedule_id`. |
+| `ClassSessionController` (substitute / move) | **yes** | Can `Schedule::create` a `rescheduled`+`scheduled` pair when pinning a substitute onto a moved session. Same ghost-row delete pattern as `ScheduleController`. |
+| `StudentClassController` (substitute display pin) | **yes** | Writes `rescheduled` + destination `original_schedule_id` so calendar prefers the substitute teacher for that slot. |
+| `SubstituteController` | reads/updates chain | Looks up `rescheduled` + `original_schedule_id`; must not invent a second live destination. |
+| `AttendanceController` leave path | **no chain** | `Schedule::create` `status=leave`, `deduction=0`. Occurrence stays; no purchased-session deduct. |
+| `PaymentReportController` / `ParentPortalController` | read only | Treat `rescheduled` as a session status in some lists — do not add writes. |
+| `LearningRecordController` | read substitute pin | Joins `schedules.original_schedule_id` to show who taught; must keep attended lock. |
 
-## Appendix B — Read / merge paths (fill in Phase 0)
+## Appendix B — Read / merge paths (Phase 0, 2026-08-15)
 
 | Path | Walks chain? | Notes |
 |---|---|---|
-| `frontend/src/lib/calendarExceptionMerge.js` | yes | R102 dedupe |
-| `frontend/src/lib/calendarOccurrenceMerge.js` | yes | R103 orphan skip |
-| *(add rows)* |  |  |
+| `frontend/src/lib/calendarExceptionMerge.js` | yes | R102 same-slot supersede (not same-date-only). Leave on that course/date hides the scheduled exception card. |
+| `frontend/src/lib/calendarOccurrenceMerge.js` | yes | R103: skip `scheduled`+`original_schedule_id` with no materialized `ClassSession`. |
+| `frontend/src/lib/sessionDates.js` | yes | Treats `scheduled`+`original_schedule_id` as a reschedule destination. |
+| `frontend/src/composables/course-management/useRescheduleAndMakeup.js` | yes | Splits leave vs destination lists. |
+| `frontend/src/pages/SmartCalendar.vue` | yes | Uses `original_schedule_id` when matching a cell. |
+| `frontend/src/lib/sessionOccurrenceFilter.js` | no | Shared “effective session”; `leave` does not occupy quota. |
+| `frontend/src/lib/sessionConsistency.js` | no | Attendance vs eval labels (`leave_requested` #194). |
+| `SubstituteScheduleService` / `SubstituteService` | yes | Live substitute = `scheduled` + `original_schedule_id` + other teacher. |
+| `ClassSessionController::index` teacher join | yes | Derived-table `MAX(id)` of substitute rows (TD-058). |
+
+## Appendix C — Extra / makeup rows (out of identity unique key)
+
+`schedules.type='extra'` makeup rows are **not** the original occurrence. Phase 1 unique key must not fold them in. They remain a separate live row until a later RFC decision (nonstandard duration / makeup identity).
+
+## Appendix D — Regression lock commands (do not drop)
+
+These must stay green. They encode old production bugs; “simplifying” merge to make TD-076 easier is a regression.
+
+```bash
+cd frontend && node src/lib/scheduleOccurrencePhase0.lock.test.js
+cd frontend && npm run test:calendar
+cd backend && ./vendor/bin/phpunit --filter 'RescheduleSessionPrecisionTest|RescheduleOccupiedSlotTest|RescheduleClassSessionSyncTest|ScheduleStoreOrphanPreventionTest|SubstituteRescheduleRegressionTest|ContractTeacherChangePreservesHistoryTest|AttendanceStatusSemanticsTest|ClassSessionsTeacherVisibilityAfterSubstituteTest|AttendanceLeaveStatusContractTest|ScheduleOccurrenceDualWriteTest|BackfillScheduleOccurrenceIdentityTest'
+```
+
+| Lock | Bug / rule |
+|---|---|
+| `scheduleOccurrencePhase0.lock.test.js` + `calendarExceptionMerge.test.js` | R102 ghost boxes SC#2688 / SC#1249 |
+| `calendarOccurrenceMerge.test.js` | R103 calendar-only orphan |
+| `sessionOccurrenceFilter.test.js` + `AttendanceStatusSemanticsTest` | leave exists, no deduct / no pay |
+| `ContractTeacherChangePreservesHistoryTest` | in-app #207 attended teacher lock |
+| `ClassSessionsTeacherVisibilityAfterSubstituteTest` | occurrence substitute teacher wins display |
+| `sessionConsistency.test.js` | #194 leave_requested visible in attendance + eval |
+| `ScheduleOccurrenceDualWriteTest` | Phase 2: flag off = null identity; flag on = frozen identity + one log per execute; chain still exists |
+| `BackfillScheduleOccurrenceIdentityTest` | Phase 3: two-hop live head identity; extras/ghosts skipped; collisions not stamped; production execute gated |
