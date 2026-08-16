@@ -1135,7 +1135,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | 月結制 / 加購 / 多科固定時段 | §b3 inactive 歷史、§b4 加購分流、§R21（堂數制加購是新批次）、§R22（月結詳情不可只依賴 ClassSession）、§R23（推算日期不可成為 dead-end chip）、§R24（多科固定時段優先走一般課程）、§R26（月結續報與堂數額度不可混在同一語意）、§R38（家長端繳費提醒不可套主任續課提醒） |
 | routes/api.php | §AI 靜默回退路由（改前必讀完整檔案 + route:list） |
 | 備份 / nightly | §nightly 覆蓋修正、§備份還原演練、§R34（備份新鮮度不可只看 mtime）、§R71（repair 與 producer prevention 分離；同日全日期 health aggregate） |
-| Bug 回報 / 附件存檔 | §R11 storage symlink（Archive）、§R51（分診前必查 attachments + reporter 歷史 + 跨分校）、§R53（上線後必回 in-app）、`docs/CHAT_BUG_SYSTEM.md` §3.6–§3.7 |
+| Bug 回報 / 附件存檔 | §R11 storage symlink（Archive）、§R51（分診前必查 attachments + reporter 歷史 + 跨分校）、§R53（上線後必回 in-app）、`docs/CHAT_BUG_SYSTEM.md` §3.6–§3.7、**§R108（utf8mb3 姓名 LIKE 禁 4-byte）** |
 | Git / PR 工作流 | §R58（禁止 assume-unchanged 藏檔）、`scripts/git-index-audit.sh`、Epic #535 Phase 0、**§R87 追加教訓 2（squash-merge 後繼續在同一 designated branch 開下一個 commit 前，一律先 `git fetch + checkout -B <branch> origin/main` 重啟，勿等 `mergeable_state: dirty` 才修）** |
 | Migration / schema drift | §R63（未合併分支的 migration 禁上 production；drift 修復＝port 回 main＋drift 測試） |
 | 前端 UI 參考 star repo / RFC 落地 | **§R88（「參考 star 的 repo」＝真的 `git clone` 讀原始碼，`RFC_PLATFORM_OPTIMIZATION_FROM_STARS_2026.md` 的一行摘要只是索引不是替代品；落差要能具體引用來源檔案/規則）** |
@@ -1322,3 +1322,10 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **修法**：projected slot 從學生 `CampusID` 帶 `branch_id`；`sessionDates` 與 index 路徑 eager-load `student`；教師首頁今日待辦改走 `fetchClassSessions`；缺分校隱藏或顯示「未設定」。
 - **測試**：`SessionProjectionReadServiceTest`、`classSessionsApi.test.js`、`useBranches.test.js`、`teacherHomeSessionContract.test.js`。
 - **驗收**：deploy 後請 in-app #235 回報者再按確認；GitHub #1739 已關，不可再提前標 resolved。
+
+### R108. utf8mb3 姓名欄位不可把 4-byte Unicode 直接丟進 LIKE（GitHub #1788，2026-08-15）
+
+- **現象**：學生名單搜尋 `蔡🏠` 直接 SQLSTATE 1267（utf8mb3 vs utf8mb4 collation）。
+- **根因**：`Student.name` 仍是 utf8mb3；課程名單已用 `Utf8mb3SearchSanitizer`，`StudentController::index` 漏掉。
+- **修法**：搜尋 term 先去掉 4-byte 字元；只剩 emoji 則空結果。欄位 charset 升級另案，不在這次。
+- **測試**：`Utf8mb3SearchSanitizerTest`、`StudentNameSearchUtf8mb3Test`。
