@@ -304,6 +304,7 @@
                           @click="openAddSessionsForCourse(course)"
                         >{{ course.payment_type === 'session' && (course.PackageID ? (course.package_remaining_sessions ?? 0) <= 2 : (course.remaining_sessions ?? 0) <= 2) ? '續報加購' : '加購' }}</button>
                         <button v-if="course.payment_type === 'monthly'" class="small ghost" @click="openInvoiceModal(course)">帳單</button>
+                        <button class="small ghost" @click="openLatestPaymentInfo(course, student.name)">繳費資訊</button>
                         <button class="small ghost" @click="editCourse(course)">編輯</button>
                         <button v-if="canCloseCourse(course)" class="small close-btn" @click="closeCourseNoRenew(course, student.name)">結案</button>
                         <button class="small danger" @click="deleteCourse(course)">刪除</button>
@@ -483,6 +484,19 @@
       :row="paymentEntryRow"
       @close="paymentEntryOpen = false"
       @confirmed="onPaymentEntryConfirmed"
+    />
+
+    <ReceiptModal
+      :show="receiptOpen"
+      :report-id="receiptReportId"
+      @close="receiptOpen = false"
+    />
+
+    <LatestPaymentInfoModal
+      :show="latestPaymentOpen"
+      :course="latestPaymentCourse"
+      @close="latestPaymentOpen = false"
+      @view-receipt="openReceiptByReport"
     />
 
     <QuickAddSessionModal
@@ -737,6 +751,9 @@ import QuickAddSessionModal from '../components/course-management/QuickAddSessio
 import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal.vue';
 import ToastWithUndo from '../components/substitute/ToastWithUndo.vue';
 import PaymentEntryModal from '../components/PaymentEntryModal.vue';
+import ReceiptModal from '../components/ReceiptModal.vue';
+import LatestPaymentInfoModal from '../components/LatestPaymentInfoModal.vue';
+import { useReceiptFlow } from '../composables/useReceiptFlow.js';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AtFilterBar from '../components/design-system/AtFilterBar.vue';
 import AtButton from '../components/design-system/AtButton.vue';
@@ -885,9 +902,20 @@ const interceptOriginalPayload = ref(null);
 const interceptPendingClassType = ref('');
 const forceSubmitting = ref(false);
 const pendingPaymentStatusIds = ref(new Set());
-const paymentEntryOpen = ref(false);
-const paymentEntryRow = ref(null);
-const paymentEntryStudentId = ref(null);
+const receiptFlow = useReceiptFlow({
+  refreshCourses: (studentId) => loadStudentCourses(studentId),
+  toast: (msg) => showToast(msg),
+});
+const {
+  paymentEntryOpen,
+  paymentEntryRow,
+  receiptOpen,
+  receiptReportId,
+  latestPaymentOpen,
+  latestPaymentCourse,
+  openReceiptByReport,
+  onPaymentEntryConfirmed,
+} = receiptFlow;
 
 // Quick add session (single extra lesson within existing session count)
 const showQuickAddSession = ref(false);
@@ -2646,14 +2674,12 @@ const togglePaymentStatus = async (course, studentName = '') => {
   // 未繳費 → 已繳費：一律走核帳登記 Modal（強制填繳款日期）
   if (course.payment_status !== 'paid') {
     const subjectLabel = getSubjectLabel(course.subject).split('(')[0].trim();
-    paymentEntryRow.value = {
+    receiptFlow.openPaymentEntry({
       id: courseId,
       student_name: studentName || '此學生',
       subject: subjectLabel || course.subject || '',
       charge: course.charge ?? 0,
-    };
-    paymentEntryStudentId.value = course.student_id ?? null;
-    paymentEntryOpen.value = true;
+    }, course.student_id ?? null);
     return;
   }
 
@@ -2692,13 +2718,14 @@ const togglePaymentStatus = async (course, studentName = '') => {
   }
 };
 
-const onPaymentEntryConfirmed = async () => {
-  paymentEntryOpen.value = false;
-  if (paymentEntryStudentId.value) {
-    await loadStudentCourses(paymentEntryStudentId.value);
-  }
-  paymentEntryStudentId.value = null;
-};
+function openLatestPaymentInfo(course, studentName = '') {
+  const subjectLabel = getSubjectLabel(course.subject).split('(')[0].trim();
+  receiptFlow.openLatestPaymentInfo({
+    id: course.id,
+    student_name: studentName || '此學生',
+    subject: subjectLabel || course.subject || '',
+  });
+}
 
 // --- CSV Import ---
 const importStudents = async (event) => {

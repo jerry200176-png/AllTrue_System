@@ -215,6 +215,21 @@ class TeacherEligibilityPolicyTest extends TestCase
         $this->assertSame(-20.0, $result['rate']);
     }
 
+    public function test_withdrawn_achievement_and_deduction_do_not_force_review(): void
+    {
+        $achievement = $this->policy->specialPerformance([
+            ['outcome_key' => 'ntu', 'status' => 'withdrawn', 'evidence' => null],
+        ], '2026-08-01', '2026-08-31');
+        $deduction = $this->policy->deductions([
+            ['deduction_key' => 'complaint', 'status' => 'withdrawn', 'starts_on' => '2026-08-01', 'ends_on' => null],
+        ], '2026-08-01', '2026-08-31');
+
+        $this->assertSame(TeacherEligibilityPolicy::QUALIFIES, $achievement['status']);
+        $this->assertSame(0.0, $achievement['rate']);
+        $this->assertSame(TeacherEligibilityPolicy::QUALIFIES, $deduction['status']);
+        $this->assertSame(0.0, $deduction['rate']);
+    }
+
     public function test_subject_count_uses_exact_attachment_row_and_rejects_out_of_range(): void
     {
         $row = $this->policy->subjectCountBonus(20);

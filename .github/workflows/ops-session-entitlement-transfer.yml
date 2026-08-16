@@ -1,0 +1,196 @@
+name: Session entitlement transfer (allowlisted P0)
+
+on:
+  workflow_dispatch:
+    inputs:
+      student:
+        description: "Exact allowlisted student"
+        required: true
+        type: choice
+        options:
+          - zhang_zheng_ning
+          - zhang_zheng_le
+      mode:
+        description: "dry-run is read-only; apply mutates one allowlisted session; verify is read-only"
+        required: true
+        default: dry-run
+        type: choice
+        options:
+          - dry-run
+          - apply
+          - verify
+      approved_dry_run_id:
+        description: "Successful GitHub run ID reviewed before apply"
+        required: false
+        type: string
+      transfer_id:
+        description: "Transfer ID required for verify"
+        required: false
+        type: string
+      confirm:
+        description: "For apply: APPROVE_EXACT_2026_08_05_ENTITLEMENT_TRANSFER"
+        required: false
+        type: string
+
+concurrency:
+  group: session-entitlement-transfer-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  transfer:
+    name: ${{ inputs.mode }} ${{ inputs.student }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve and validate exact scope
+        id: scope
+        env:
+          STUDENT: ${{ inputs.student }}
+          MODE: ${{ inputs.mode }}
+          DRY_RUN_ID: ${{ inputs.approved_dry_run_id }}
+          TRANSFER_ID: ${{ inputs.transfer_id }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          case "$STUDENT" in
+            zhang_zheng_ning)
+              echo 'student_id=374' >> "$GITHUB_OUTPUT"
+              echo 'student_name=張正甯' >> "$GITHUB_OUTPUT"
+              echo 'source_class=1681' >> "$GITHUB_OUTPUT"
+              echo 'target_class=2649' >> "$GITHUB_OUTPUT"
+              echo 'session_id=23157' >> "$GITHUB_OUTPUT"
+              ;;
+            zhang_zheng_le)
+              echo 'student_id=373' >> "$GITHUB_OUTPUT"
+              echo 'student_name=張正樂' >> "$GITHUB_OUTPUT"
+              echo 'source_class=1682' >> "$GITHUB_OUTPUT"
+              echo 'target_class=2606' >> "$GITHUB_OUTPUT"
+              echo 'session_id=27156' >> "$GITHUB_OUTPUT"
+              ;;
+            *) echo '::error::student is not allowlisted'; exit 1 ;;
+          esac
+          if [ "$MODE" = apply ]; then
+            [[ "$DRY_RUN_ID" =~ ^[0-9]+$ ]] || { echo '::error::apply requires approved_dry_run_id'; exit 1; }
+            [ "$CONFIRM" = APPROVE_EXACT_2026_08_05_ENTITLEMENT_TRANSFER ] || {
+              echo '::error::apply requires the exact confirmation string'; exit 1;
+            }
+          elif [ "$MODE" = verify ]; then
+            [[ "$TRANSFER_ID" =~ ^[0-9]+$ ]] || { echo '::error::verify requires transfer_id'; exit 1; }
+          fi
+
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Run guarded production operation
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          MODE: ${{ inputs.mode }}
+          DRY_RUN_ID: ${{ inputs.approved_dry_run_id }}
+          TRANSFER_ID: ${{ inputs.transfer_id }}
+          STUDENT_KEY: ${{ inputs.student }}
+          STUDENT_ID: ${{ steps.scope.outputs.student_id }}
+          STUDENT_NAME: ${{ steps.scope.outputs.student_name }}
+          SOURCE_CLASS: ${{ steps.scope.outputs.source_class }}
+          TARGET_CLASS: ${{ steps.scope.outputs.target_class }}
+          SESSION_ID: ${{ steps.scope.outputs.session_id }}
+          RUN_ID: ${{ github.run_id }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          SCRIPT_B64=$(base64 -w0 scripts/diagnose-student-session.sh)
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" \
+            MODE="$MODE" DRY_RUN_ID="$DRY_RUN_ID" TRANSFER_ID="$TRANSFER_ID" STUDENT_KEY="$STUDENT_KEY" \
+            STUDENT_ID="$STUDENT_ID" STUDENT_NAME="$STUDENT_NAME" SOURCE_CLASS="$SOURCE_CLASS" \
+            TARGET_CLASS="$TARGET_CLASS" SESSION_ID="$SESSION_ID" RUN_ID="$RUN_ID" ACTOR="$ACTOR" SCRIPT_B64="$SCRIPT_B64" \
+            'bash -s' <<'ENDSSH' | tee out/operation.txt
+          set -euo pipefail
+          cd /home/admin/backend
+          REQUIRED_SHA=a8c947c460b7a3cea2dfa87808cca35fbef5c6db
+          PROD_SHA=$(git rev-parse HEAD)
+          echo "PRODUCTION_SHA=$PROD_SHA"
+          git merge-base --is-ancestor "$REQUIRED_SHA" "$PROD_SHA" || {
+            echo "SCOPE_MISMATCH: production does not contain repair command SHA $REQUIRED_SHA"; exit 1;
+          }
+
+          case "$STUDENT_KEY:$STUDENT_ID:$SOURCE_CLASS:$TARGET_CLASS:$SESSION_ID" in
+            zhang_zheng_ning:374:1681:2649:23157|zhang_zheng_le:373:1682:2606:27156) ;;
+            *) echo 'SCOPE_MISMATCH: exact allowlist rejected'; exit 1 ;;
+          esac
+
+          CMD=(php artisan repair:transfer-session-entitlement
+            "--source-class=$SOURCE_CLASS" "--target-class=$TARGET_CLASS" "--session-id=$SESSION_ID"
+            "--reference=P0-2026-08-05-$STUDENT_KEY-run-$RUN_ID-dry-$DRY_RUN_ID"
+            '--reason=Preserve 2026-08-01 leave makeup; transfer only 2026-08-05 ninth lesson'
+            "--actor=github-actions:$ACTOR:run-$RUN_ID")
+
+          if [ "$MODE" = verify ]; then
+            php artisan repair:transfer-session-entitlement "--verify=$TRANSFER_ID"
+          else
+            echo '=== Mandatory current-state dry-run ==='
+            "${CMD[@]}"
+            if [ "$MODE" = dry-run ]; then
+              echo 'DRY_RUN_ONLY: no production data changed.'
+              exit 0
+            fi
+
+            TS=$(date -u '+%Y%m%dT%H%M%SZ')
+            BACKUP_DIR=/home/admin/backups/emergency
+            SNAPSHOT="$BACKUP_DIR/session_entitlement_transfer_${STUDENT_KEY}_${RUN_ID}_${TS}.json"
+            DB_BACKUP="$BACKUP_DIR/db_pre_session_entitlement_transfer_${STUDENT_KEY}_${RUN_ID}_${TS}.sql.gz"
+            mkdir -p "$BACKUP_DIR"
+            DB_USER=$(grep '^DB_USERNAME=' .env | cut -d= -f2-)
+            DB_PASSWORD=$(grep '^DB_PASSWORD=' .env | cut -d= -f2-)
+            mysqldump -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASSWORD" --single-transaction AllTrue | gzip > "$DB_BACKUP"
+            unset DB_PASSWORD
+            echo "DB_BACKUP=$DB_BACKUP"
+            ALLOW_PROD_REPAIR=1 "${CMD[@]}" --execute --force "--snapshot=$SNAPSHOT" | tee /tmp/transfer-apply.txt
+            APPLIED_ID=$(sed -n 's/^TRANSFER_APPLIED id=//p' /tmp/transfer-apply.txt | tail -1)
+            [[ "$APPLIED_ID" =~ ^[0-9]+$ ]] || { echo 'APPLY_FAILED: no transfer ID'; exit 1; }
+            echo "TRANSFER_ID=$APPLIED_ID"
+            echo "SNAPSHOT=$SNAPSHOT"
+            echo "ROLLBACK_COMMAND=ALLOW_PROD_REPAIR=1 php artisan repair:transfer-session-entitlement --rollback=$APPLIED_ID --execute --force"
+            php artisan repair:transfer-session-entitlement "--verify=$APPLIED_ID"
+          fi
+
+          echo '=== Post-check 2026-08-01 leave/makeup boundary ==='
+          echo "$SCRIPT_B64" | base64 -d > /tmp/diagnose-student-session.sh
+          chmod +x /tmp/diagnose-student-session.sh
+          STUDENT_NAME="$STUDENT_NAME" TEACHER_NAME='' DATE=2026-08-01 CAMPUS_ID=16 bash /tmp/diagnose-student-session.sh
+          echo '=== Post-check 2026-08-05 transferred session and financial boundary ==='
+          STUDENT_NAME="$STUDENT_NAME" TEACHER_NAME='' DATE=2026-08-05 CAMPUS_ID=16 bash /tmp/diagnose-student-session.sh
+          rm -f /tmp/diagnose-student-session.sh /tmp/transfer-apply.txt
+          ENDSSH
+
+      - name: Upload complete operation output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: entitlement-transfer-${{ inputs.mode }}-${{ inputs.student }}-${{ github.run_id }}
+          path: out/operation.txt
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Add job summary
+        if: always()
+        run: |
+          {
+            echo '### Allowlisted session entitlement operation'
+            echo '```text'
+            cat out/operation.txt 2>/dev/null || echo 'No operation output was captured.'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

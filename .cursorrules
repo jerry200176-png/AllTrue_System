@@ -38,7 +38,7 @@
 **⛔ 開發環境規則（2026-04-24 起）**：
 - 所有程式碼改動只在 **WSL2 安全 task worktree** 進行（**禁止** `/home/jerry/alltrue`；政策：`docs/governance/WORKTREE_POLICY.md`；檢查：`make agent-preflight`）
 - 禁止 SSH 到 Pi `/home/admin` 直接編輯任何檔案
-- 部署唯一合法路徑：WSL2 push → PR → CI 綠 → merge → deploy.yml 自動執行
+- 部署唯一合法路徑：WSL2 push → PR → CI 綠 → **Agent squash-merge（R0–R3；艦隊 AUTONOMY_POLICY）** → deploy.yml 自動執行。不要等人再點 merge。Pi 上禁止 artisan/phpunit/SSH。
 - 緊急修復例外：先在 WSL2 改、push hotfix branch、merge，Pi 自動更新
 - ⛔ **禁止直接 `git push origin main`**（含原生 git 指令）—— 必須用 feature branch → PR → merge。`scripts/git-sync.sh` 在 main 會 abort，但原生 git 指令不受此保護，AI 必須自我約束
 
@@ -96,6 +96,7 @@ GitHub Flow、Google SRE、OWASP 等業界常識 AI 已知，**不需要重複�
 ### AI／開發防再犯（修改相關功能前必讀）
 - **`.cursor/.local/test-credentials.md`**：各角色測試帳號 + Browser MCP 登入 SOP（fill/type 踩坑、家長入口用 `?parent=1`）
 - **`docs/AI_REGRESSION_LESSONS.md`**：紅線/黃線速查摘要（127 行，必讀）＋模組索引；詳細事故 → `docs/archive/AI_REGRESSION_LESSONS_ARCHIVE.md`
+- **現行工程主線**：`docs/architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md`；改 `schedules` 寫入形狀前必讀 `docs/architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md`
 - **`docs/DIRECTOR_PAYMENT_ALERT_RULES.md`**：繳費/續課提醒完整規則；**勿擅自改條件**
 - **`docs/OPERATIONS_RUNBOOK.md` §B1/B2**：分支治理與 Actions minutes 節流（PR 合併即刪、docs-only 不跑重 CI/不部署）
 

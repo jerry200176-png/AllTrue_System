@@ -131,7 +131,9 @@ class TeacherEligibilityController extends Controller
                 })
                 ->when($branchFilter !== null, fn ($query) => $query->where(function ($nested) use ($branchFilter) {
                     $nested->whereNull('branch_id')->orWhereIn('branch_id', $branchFilter);
-                }))->get()
+                }))
+                ->where('status', '!=', 'withdrawn')
+                ->get()
             : collect();
 
         $deductions = Schema::hasTable('teacher_payroll_deductions')
@@ -145,7 +147,9 @@ class TeacherEligibilityController extends Controller
                 })
                 ->when($branchFilter !== null, fn ($query) => $query->where(function ($nested) use ($branchFilter) {
                     $nested->whereNull('branch_id')->orWhereIn('branch_id', $branchFilter);
-                }))->get()
+                }))
+                ->where('status', '!=', 'withdrawn')
+                ->get()
             : collect();
 
         // Existing attendance/leave is the product's source of truth. The
@@ -160,8 +164,9 @@ class TeacherEligibilityController extends Controller
         $deductionByTeacher = $deductions->groupBy('teacher_id');
         $eventsAvailable = Schema::hasTable('teacher_payroll_events') && $events->isNotEmpty();
         $subjectUnitsByTeacher = $this->subjectUnitsByTeacher($teacherIds, $branchFilter, $effectiveStart, $period['end']);
+        $salaryByTeacher = $this->salaryProfilesByTeacher($teacherIds, $branchFilter, $period['end']->toDateString());
 
-        $rows = $teachers->map(function ($teacher) use ($period, $effectiveStart, $scheduleByTeacher, $attendanceByTeacher, $eventByTeacher, $achievementByTeacher, $deductionByTeacher, $eventsAvailable, $attendanceSourceAvailable, $subjectUnitsByTeacher) {
+        $rows = $teachers->map(function ($teacher) use ($period, $effectiveStart, $scheduleByTeacher, $attendanceByTeacher, $eventByTeacher, $achievementByTeacher, $deductionByTeacher, $eventsAvailable, $attendanceSourceAvailable, $subjectUnitsByTeacher, $salaryByTeacher) {
             $teacherId = (int) $teacher->id;
             $teacherSchedules = $scheduleByTeacher->get($teacherId, collect());
             $teacherAttendance = $attendanceByTeacher->get($teacherId, collect());
@@ -197,6 +202,7 @@ class TeacherEligibilityController extends Controller
                 'subject_count' => $subjectCount,
             ]);
             $result['components']['weekly_16_segments'] = $weeklyStatus;
+            $settlement = \App\Support\FulltimeSettlementComposer::compose($result['components'], $salaryByTeacher[$teacherId] ?? null);
 
             return [
                 'teacher_id' => $teacherId,
@@ -207,7 +213,8 @@ class TeacherEligibilityController extends Controller
                 'weekly' => $weeklyRows,
                 'work_hours_source' => 'student_attendance',
                 'missing_fields' => $result['missing_fields'],
-                'review_required' => $result['overall_status'] === TeacherEligibilityPolicy::REVIEW,
+                'review_required' => $result['overall_status'] === TeacherEligibilityPolicy::REVIEW || $settlement['review_required'],
+                'settlement' => $settlement,
             ];
         })->values()->all();
 
@@ -454,6 +461,34 @@ class TeacherEligibilityController extends Controller
         }
 
         return collect($buckets)->mapWithKeys(fn ($weighted, $teacherId) => [$teacherId => round($weighted / 8, 2)])->all();
+    }
+
+    /**
+     * Latest fulltime_salary_profiles row at or before $onDate, per teacher.
+     * Scoped the same way as scopedQuery()/subjectUnitsByTeacher(): a teacher
+     * shared across campuses can have a different base_salary row per branch,
+     * so a branch-scoped viewer must not see another campus's profile.
+     * @return array<int, float>
+     */
+    private function salaryProfilesByTeacher(array $teacherIds, ?array $branchFilter, string $onDate): array
+    {
+        if (!Schema::hasTable('fulltime_salary_profiles') || $teacherIds === []) {
+            return [];
+        }
+
+        return DB::table('fulltime_salary_profiles')
+            ->whereIn('teacher_id', $teacherIds)
+            ->where('status', 'approved') // TD-078: unapproved writes must never feed payroll
+            ->where('effective_from', '<=', $onDate)
+            ->when($branchFilter !== null, fn ($query) => $query->where(function ($nested) use ($branchFilter) {
+                $nested->whereNull('branch_id')->orWhereIn('branch_id', $branchFilter);
+            }))
+            ->orderBy('effective_from')
+            ->orderBy('id')
+            ->get(['teacher_id', 'base_salary', 'effective_from', 'id'])
+            ->groupBy('teacher_id')
+            ->map(fn ($rows) => (float) $rows->last()->base_salary)
+            ->all();
     }
 
     private function subjectRecordHours($row): float

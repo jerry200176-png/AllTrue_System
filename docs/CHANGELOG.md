@@ -1,3 +1,117 @@
+## 2026-08-15 — fix(billing): 計費模式轉換後標示舊收據可能已被取代 (#934)
+
+<!-- release-notes: staff_update=staff-2026-08-15-stale-receipt-badge-934 -->
+
+- `Invoice` 新增 `ScheduleModeAtIssue`（開立當下的計費模式快照，純新增欄位，舊資料 NULL，不回填）。
+- 課程計費模式（堂數制/月結）事後變更時，收據 API 會標示 `billing_mode_changed`，前端顯示提醒；不自動作廢、不改動任何金額或已結帳資料。
+- 範圍縮小：只修「舊收據看起來仍有效」的顯示問題；黃玟睿本案實際應收金額仍待校方確認，不由本次變更決定。
+
+## 2026-08-15 — chore(schedule): TD-076 Phase 3 回填命令（預設 dry-run）
+
+<!-- release-notes: silent_ship=silent-2026-08-15-td076-phase3-backfill -->
+
+- 新增排課原始時段回填命令，預設只報告、不寫入；正式寫入需修復閘道，本包不執行。
+- 教職員調課與畫面不變，也不打開新旗標。
+
+## 2026-08-15 — chore(schedule): TD-076 Phase 2 雙寫身分欄（旗標預設關）
+
+<!-- release-notes: silent_ship=silent-2026-08-15-td076-phase2-dual-write -->
+
+- 排課表新增可空的原始日期／時間欄，以及只追加的改期紀錄表；預設不啟用，調課行為與現在相同。
+- 不改日曆／課程管理讀取路徑，也不加唯一鍵。
+
+## 2026-08-15 — docs(arch): TD-076 Phase 0 盤點與舊 bug 鎖測
+
+<!-- release-notes: silent_ship=silent-2026-08-15-td076-phase0-inventory -->
+
+- 只補排課身分計畫的寫入／讀取清單，以及防止 R102／R103／請假扣堂／鎖老師復發的測試。
+- 不改 `schedules` 寫入形狀，不遷移 production。
+
+## 2026-08-15 — chore(bug): 已結案回報可補一則公開說明
+
+<!-- release-notes: silent_ship=silent-2026-08-15-resolved-bug-followup -->
+
+- 內部追蹤流程允許在已標成修好的回報上再留一則說明，不會改狀態。
+- 教職員畫面與操作不變。
+
+## 2026-08-15 — fix(billing): 陳姝彣收帳顯示改回合約金額
+
+<!-- release-notes: staff_update=staff-2026-08-15-tuition-charge-display-1734 -->
+
+- 收帳列表對已收款、且帳單已是正確總額的課程，不再顯示過期的錯誤合約金額。
+- 只改顯示用合約金額；已開立帳單與實收紀錄不變。
+
+## 2026-08-15 — fix(students): 搜尋含表情符號不再讓學生名單崩潰
+
+<!-- release-notes: silent_ship=silent-2026-08-15-student-name-utf8mb3-like -->
+
+- 學生／帳務／評量姓名搜尋會先去掉 4-byte 字元再查 utf8mb3 欄位，避免 SQL collation 錯誤。
+- 純表情符號搜尋回傳空結果，不會列出全部分校學生。
+
+## 2026-08-15 — fix(teacher-home): 未來堂次帶分校，不再顯示 Branch #0
+
+<!-- release-notes: staff_update=staff-2026-08-15-teacher-home-projected-campus -->
+
+- 教師週課表尚未產生實體堂次時，會帶學生所屬分校；缺分校時顯示中文或隱藏標籤，不再出現內部編號。
+- 今日待辦與週課表改讀同一套課堂資料。
+
+## 2026-08-15 — docs(gov): Agent 是操作者（不再等人點頭）
+
+<!-- release-notes: silent_ship=silent-2026-08-15-agent-operator -->
+
+- 艦隊政策改為 Agent 負責 merge / 關 issue / 寄任務信 / dispatch 已提交的 workflow。
+- AllTrue 仍禁 Pi SSH、印 secrets、force-push。R3 要 Repair Manifest，不要 Founder 橡皮圖章。
+
+## 2026-08-15 — docs(gov): 艦隊 merge 政策指標（R0–R2 驗收後 Agent 合入）
+
+<!-- release-notes: silent_ship=silent-2026-08-15-fleet-merge-pointer -->
+
+- 誰可以 merge 以 portfolio-ops `AUTONOMY_POLICY` 為準；AllTrue 只分類風險與產品 P0，不再把 R0–R2 merge 禁回去。
+- Required GitHub checks 綠了由 Agent squash-merge；R3 與額外 production 變更仍是 Founder。
+
+## 2026-08-15 — docs(arch): 排課 occurrence 身分根治計畫（TD-076）
+
+<!-- release-notes: silent_ship=silent-2026-08-15-schedule-occurrence-identity-rfc -->
+
+- 新增工程主線與 RFC：禁止整包重寫；排課改期改為穩定 occurrence 身分（計畫階段，無產品行為變更）。
+- Agent（Claude Code / Codex / Cursor）從 `AGENTS.md` / `CLAUDE.md` / INDEX 可找到同一份計畫。
+
+## 2026-08-14 — fix(payroll): 待審核薪資補登可修改與撤回
+
+<!-- release-notes: staff_update=staff-2026-08-14-eligibility-pending-edit -->
+
+- 資料補登預設改為老師請假／補課；全校放假請走課程管理「連假批次請假」，假日曆僅作少用補登。
+- 待審核資料可在右側清單修改或撤回；已核准後仍不能改，也不會誤算進薪資。
+
+## 2026-08-13 — feat(payroll): 正職老師薪資要件頁面新增底薪與總發放金額
+
+<!-- release-notes: staff_update=staff-2026-08-13-fulltime-settlement-total-payout -->
+
+- 「正職老師薪資要件」頁面新增可編輯底薪欄位，並依既有六項符合要件（每週16段、假日16小時、平日下午課、特殊表現、扣除、科目數獎金）組成教師倍率與總發放金額。
+- 已知缺口：目前六項要件未涵蓋公告中的「行政加給倍率」（行政協助／總導師／副主任，0～10%），需另外排單補上。
+
+## 2026-08-13 — fix(course): 上線堂次跨續購批次的 owner 修復命令
+
+<!-- release-notes: staff_update=staff-2026-08-13-session-entitlement-transfer-command -->
+
+- 新增預設唯讀的 dry-run 命令；正式操作必須同時提供 execute、force、production repair gate 與不可覆寫的 JSON snapshot。
+- 支援執行後 verify 與 drift-safe rollback，供已確認的超額堂次在不更動付款、發票或收據的前提下轉至續購批次。
+
+## 2026-08-12 — fix(course): 建立堂次跨續購批次轉移的可稽核核心
+
+<!-- release-notes: silent_ship=silent-2026-08-12-session-entitlement-transfer-core -->
+
+- 新增 transaction、稽核快照、執行後驗證與 drift-safe rollback 的 domain service；同步堂次、評量、點名與扣堂帳，但不更動發票、付款或收據。
+- 本 PR 只有 backend domain 與測試，沒有 UI 或可執行命令，無員工操作變更；正式 owner-gated 命令與員工更新由後續獨立 PR 上線。
+
+## 2026-08-12 — fix(in-app-bugs): 排課、收費與收據顯示修正（#228–#233）
+
+<!-- release-notes: staff_update=staff-2026-08-12-in-app-bug-fixes -->
+
+- 共用方案新增堂次會正確使用跨課程的剩餘堂數，不再誤判單一課程已滿；收帳提醒改用課程合約費率與堂數計算，收據期間改以實際堂次日期為準。
+- 行事曆會補回遺失的正常改期堂次；課程管理只修改備註或其他非排程資料時，不會意外重建或新增預排堂次。
+- **詳見**：in-app #228–#233；相關回歸測試涵蓋包堂容量、課堂投影、收費提醒、收據期間與課程更新流程。
+
 ## 2026-08-09 — fix(payroll): 正職薪資假日假與常態排課規則對齊
 
 <!-- release-notes: staff_update=staff-2026-08-09-payroll-director-rules-v2 -->
@@ -1337,3 +1451,16 @@ Fixed：班級行事曆若週次篩選暫時隱藏某課程，已實際存在的
 - 新增薪資制度 115.07（2026-07-01）政策引擎；資料不足會列為「待人工確認」並回報缺少欄位，不會直接判定不符合。科目數與一對三獎金採附件 1–50 科目表，不推算缺漏值。
 - 新增教師薪資事件、升學成果與扣除案件的 additive migration；扣除案件只有主任及總部審核完成才會自動計入，報表端維持唯讀。
 - 新增主任 API、前端頁面與 8 個純單元測試；PHPUnit、PHPStan、Vite build、design token guard 與 diff check 通過。正式部署待 PR 審核合併後由既有 CI 流程執行。
+## 2026-08-13 — fix(teacher-home): 穩定教師首頁課表與評量投影
+
+<!-- release-notes: staff_update=staff-2026-08-13-teacher-home-projection-integrity -->
+
+- 教師首頁現在會以統一的課堂資料欄位合併同一學生、日期與時段的重複投影，避免同一堂課顯示兩張評量卡。
+- 週課表重新載入時保留上一份有效結果，並忽略過期請求，避免畫面閃爍或跨分校課程短暫消失。
+- 此修正不更動上課、評量、點名或收費資料；若偵測到真正的資料重複，仍須走受控稽核與修復流程。
+## 2026-08-13 — fix(calendar): 月例外堂次投影與關閉
+
+<!-- release-notes: staff_update=staff-2026-08-13-monthly-projection-exception -->
+
+- 修正月排課在合約時間與例外時間不同時仍能正確 materialize，並避免把補課或跨日改課目的列誤當成同一堂。
+- 修正關閉已 materialize 的例外堂次時，不會連帶取消補課或跨日改課目的列。

@@ -23,6 +23,7 @@ use App\Services\SessionDeductionService;
 use App\Services\RescheduleSessionService;
 use App\Services\SubstituteScheduleService;
 use App\Support\TeacherProfileDirectory;
+use App\Support\Utf8mb3SearchSanitizer;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -258,13 +259,17 @@ class LearningRecordController extends Controller
         }
 
         if ($request->filled('student_name')) {
-            $nameQ = $request->input('student_name');
-            $matchingStudentIds = Student::where('name', 'like', "%{$nameQ}%")->pluck('id');
-            $matchingClassIds = StudentClass::whereIn('StudentID', $matchingStudentIds)->pluck('ID');
-            if ($matchingClassIds->isNotEmpty()) {
-                $query->whereIn('StudentClassID', $matchingClassIds);
-            } else {
+            $nameQ = Utf8mb3SearchSanitizer::forLike((string) $request->input('student_name'));
+            if ($nameQ === '') {
                 $query->whereRaw('1 = 0');
+            } else {
+                $matchingStudentIds = Student::where('name', 'like', "%{$nameQ}%")->pluck('id');
+                $matchingClassIds = StudentClass::whereIn('StudentID', $matchingStudentIds)->pluck('ID');
+                if ($matchingClassIds->isNotEmpty()) {
+                    $query->whereIn('StudentClassID', $matchingClassIds);
+                } else {
+                    $query->whereRaw('1 = 0');
+                }
             }
         }
 

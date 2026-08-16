@@ -27,7 +27,7 @@ if [ -n "$TEACHER_NAME" ]; then
 fi
 
 echo "--- StudentClass rows for this student (all active courses) ---"
-"${M[@]}" -e "SELECT CONCAT_WS('|',sc.ID,sc.TeacherID,sc.Stop,sc.ScheduleMode,sc.SessionCount,IFNULL(sc.RemainingSessions,'null'),s.CampusID)
+"${M[@]}" -e "SELECT CONCAT_WS('|',sc.ID,sc.TeacherID,sc.Stop,sc.ScheduleMode,sc.SessionCount,IFNULL(sc.UsedSessions,'null'),IFNULL(sc.RemainingSessions,'null'),IFNULL(sc.Rate,'null'),IFNULL(sc.rate_unit,'null'),IFNULL(sc.Charge,'null'),IFNULL(sc.Paid,'null'),s.CampusID)
 FROM StudentClass sc JOIN Student s ON s.id=sc.StudentID
 WHERE s.name='$SN' AND s.CampusID=$CAMPUS_ID;"
 
@@ -71,5 +71,43 @@ WHERE si.ClassSessionID IN (
   WHERE s.name='$SN' AND s.CampusID=$CAMPUS_ID AND cs.SessionDate='$DATE'
 )
 ORDER BY si.id;"
+
+echo "--- Invoice rows linked to this student's contracts ---"
+"${M[@]}" -e "
+SELECT CONCAT_WS('|',i.id,i.StudentClassID,i.IssueDate,IFNULL(i.DueDate,''),i.TotalAmount,i.PaidAmount,i.Status,LEFT(IFNULL(i.Note,''),120),i.created_at,i.updated_at)
+FROM Invoice i
+JOIN StudentClass sc ON sc.ID=i.StudentClassID
+JOIN Student s ON s.id=sc.StudentID
+WHERE s.name='$SN' AND s.CampusID=$CAMPUS_ID
+ORDER BY i.id;"
+
+echo "--- InvoiceItem rows linked to this student's contracts ---"
+"${M[@]}" -e "
+SELECT CONCAT_WS('|',ii.id,ii.InvoiceID,ii.StudentClassID,ii.Amount,IFNULL(ii.PeriodStart,''),IFNULL(ii.PeriodEnd,''),LEFT(IFNULL(ii.Description,''),120),ii.created_at,ii.updated_at)
+FROM InvoiceItem ii
+JOIN StudentClass sc ON sc.ID=ii.StudentClassID
+JOIN Student s ON s.id=sc.StudentID
+WHERE s.name='$SN' AND s.CampusID=$CAMPUS_ID
+ORDER BY ii.InvoiceID,ii.id;"
+
+echo "--- Payment rows linked to this student's contract invoices ---"
+"${M[@]}" -e "
+SELECT CONCAT_WS('|',p.id,p.InvoiceID,p.Amount,IFNULL(p.PaidAt,''),IFNULL(p.Method,''),LEFT(IFNULL(p.Note,''),120),p.created_at)
+FROM Payment p
+JOIN Invoice i ON i.id=p.InvoiceID
+JOIN StudentClass sc ON sc.ID=i.StudentClassID
+JOIN Student s ON s.id=sc.StudentID
+WHERE s.name='$SN' AND s.CampusID=$CAMPUS_ID
+ORDER BY p.InvoiceID,p.id;"
+
+echo "--- Session deduction ledger rows for target-date sessions ---"
+"${M[@]}" -e "
+SELECT CONCAT_WS('|',sdl.id,sdl.student_class_id,sdl.class_session_id,sdl.event_type,sdl.source,IFNULL(sdl.minutes,'null'),sdl.created_at)
+FROM session_deduction_ledger sdl
+WHERE sdl.class_session_id IN (
+  SELECT cs.id FROM ClassSession cs JOIN StudentClass sc ON sc.ID=cs.StudentClassID JOIN Student s ON s.id=sc.StudentID
+  WHERE s.name='$SN' AND s.CampusID=$CAMPUS_ID AND cs.SessionDate='$DATE'
+)
+ORDER BY sdl.id;"
 
 echo "=== END ==="
