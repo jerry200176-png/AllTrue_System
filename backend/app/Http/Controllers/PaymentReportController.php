@@ -291,6 +291,7 @@ class PaymentReportController extends Controller
                     'TotalAmount'    => (int) $report->reported_amount,
                     'PaidAmount'     => 0,
                     'Status'         => 'unpaid',
+                    'ScheduleModeAtIssue' => $sc->ScheduleMode ?? null,
                     'Note'           => '',
                 ]);
             }
@@ -434,6 +435,7 @@ class PaymentReportController extends Controller
                     'TotalAmount'    => (int) $data['amount'],
                     'PaidAmount'     => 0,
                     'Status'         => 'unpaid',
+                    'ScheduleModeAtIssue' => $sc->ScheduleMode,
                     'Note'           => '',
                 ]);
             }
@@ -665,7 +667,7 @@ class PaymentReportController extends Controller
      */
     public function receipt(Request $request, $id)
     {
-        $report = PaymentReport::with(['student', 'studentClass.subjectRecord', 'confirmedByUser'])
+        $report = PaymentReport::with(['student', 'studentClass.subjectRecord', 'confirmedByUser', 'invoice'])
             ->findOrFail($id);
 
         $role = $request->attributes->get('auth_role');
@@ -781,6 +783,10 @@ class PaymentReportController extends Controller
             'schedule_mode'    => $sc?->ScheduleMode,
             'is_backfilled'    => !empty($report->backfill_note),
             'backfill_note'    => $report->backfill_note,
+            // #934: course's billing mode (count/date) changed since this receipt
+            // was issued — the amount/period shown may no longer reflect the
+            // current contract. Display-only flag; no ledger figure is touched.
+            'billing_mode_changed' => (bool) $report->invoice?->billingModeChangedSinceIssue(),
         ]);
     }
 }
