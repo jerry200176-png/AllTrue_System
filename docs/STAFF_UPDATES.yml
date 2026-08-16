@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-16-fulltime-admin-allowance
+    published_at: "2026-08-16"
+    audiences:
+      - director
+    importance: major
+    title: 正職行政加給與底薪核准
+    summary: 行政加給要主任確認、總部核准才進倍率；底薪改完先待核准。
+    items:
+      - category: added
+        text: 可登錄行政協助／總導師／副主任加給 0–10%，核准後才計入。
+      - category: improved
+        text: 底薪送出後顯示待核准，總部可在結算表核准。
+    source_refs:
+      - "changelog:2026-08-16:fulltime-admin-allowance"
+
   - id: staff-2026-08-16-billing-ux-find
     published_at: "2026-08-16"
     audiences:
@@ -29,7 +44,7 @@ updates:
       - category: added
         text: 確認無試算列後可鎖定本月，匯出 CSV 給 Excel 開；總部可填原因重開。
       - category: action_required
-        text: 已鎖定月份不能改底薪。行政加給與加扣款調整下一包才上。
+        text: 已鎖定月份不能改底薪。現金加扣款調整下一包才上。
     source_refs:
       - "changelog:2026-08-16:fulltime-payroll-lock"
 

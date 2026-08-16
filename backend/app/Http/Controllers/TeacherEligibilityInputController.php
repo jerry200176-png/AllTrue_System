@@ -51,6 +51,16 @@ class TeacherEligibilityInputController extends Controller
                     $nested->whereNull('starts_on')->orWhereDate('starts_on', '<=', $end);
                 }))
                 ->orderByDesc('id')->limit(500)->get(),
+            'admin_allowances' => Schema::hasTable('teacher_payroll_admin_allowances')
+                ? $this->scopedQuery('teacher_payroll_admin_allowances', $campusIds)
+                    ->when($start !== null, fn ($query) => $query->where(function ($nested) use ($start) {
+                        $nested->whereNull('ends_on')->orWhereDate('ends_on', '>=', $start);
+                    }))
+                    ->when($end !== null, fn ($query) => $query->where(function ($nested) use ($end) {
+                        $nested->whereNull('starts_on')->orWhereDate('starts_on', '<=', $end);
+                    }))
+                    ->orderByDesc('id')->limit(500)->get()
+                : [],
         ]);
     }
 
@@ -361,6 +371,132 @@ class TeacherEligibilityInputController extends Controller
         return response()->json(['id' => $id, 'status' => 'approved']);
     }
 
+    public function storeAdminAllowance(Request $request)
+    {
+        $this->ensureTables();
+        $data = $this->validatedAllowance($request);
+        if ($data instanceof \Illuminate\Http\JsonResponse) {
+            return $data;
+        }
+        $branchId = $this->resolveWriteBranch($request, $data['branch_id'] ?? null);
+        $this->assertTeacherScope($request, $data['teacher_id'], $branchId);
+        if (!empty($data['starts_on'])) {
+            $this->rejectIfSalaryMonthLocked($data['teacher_id'], $branchId, $data['starts_on']);
+        }
+
+        $id = DB::table('teacher_payroll_admin_allowances')->insertGetId([
+            'teacher_id' => $data['teacher_id'],
+            'branch_id' => $branchId,
+            'role_key' => $data['role_key'],
+            'rate' => $data['rate'],
+            'reason' => $data['reason'] ?? null,
+            'status' => 'pending',
+            'starts_on' => $data['starts_on'] ?? null,
+            'ends_on' => $data['ends_on'] ?? null,
+            'created_by' => $this->actorId($request),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return response()->json(['id' => $id, 'status' => 'pending'], 201);
+    }
+
+    public function updateAdminAllowance(Request $request, int $id)
+    {
+        $this->ensureTables();
+        $record = $this->recordForScope($request, 'teacher_payroll_admin_allowances', $id);
+        if (!$record) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+        if ($record->director_confirmed_at || in_array($record->status ?? '', ['approved', 'withdrawn'], true)) {
+            return response()->json(['message' => '已進入審核的行政加給不能修改。'], 422);
+        }
+        $data = $this->validatedAllowance($request);
+        if ($data instanceof \Illuminate\Http\JsonResponse) {
+            return $data;
+        }
+        $branchId = $this->resolveWriteBranch($request, $data['branch_id'] ?? $record->branch_id);
+        $this->assertTeacherScope($request, $data['teacher_id'], $branchId);
+        if (!empty($data['starts_on'])) {
+            $this->rejectIfSalaryMonthLocked($data['teacher_id'], $branchId, $data['starts_on']);
+        }
+        DB::table('teacher_payroll_admin_allowances')->where('id', $id)->update([
+            'teacher_id' => $data['teacher_id'],
+            'branch_id' => $branchId,
+            'role_key' => $data['role_key'],
+            'rate' => $data['rate'],
+            'reason' => $data['reason'] ?? null,
+            'starts_on' => $data['starts_on'] ?? null,
+            'ends_on' => $data['ends_on'] ?? null,
+            'updated_at' => now(),
+        ]);
+
+        return response()->json(['id' => $id, 'status' => 'pending']);
+    }
+
+    public function withdrawAdminAllowance(Request $request, int $id)
+    {
+        $this->ensureTables();
+        $record = $this->recordForScope($request, 'teacher_payroll_admin_allowances', $id);
+        if (!$record) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+        if ($record->director_confirmed_at || ($record->status ?? '') === 'approved') {
+            return response()->json(['message' => '已進入審核的行政加給不能撤回。'], 422);
+        }
+        DB::table('teacher_payroll_admin_allowances')->where('id', $id)->update([
+            'status' => 'withdrawn',
+            'updated_at' => now(),
+        ]);
+
+        return response()->json(['id' => $id, 'status' => 'withdrawn']);
+    }
+
+    public function confirmAdminAllowance(Request $request, int $id)
+    {
+        $this->ensureTables();
+        $record = $this->recordForScope($request, 'teacher_payroll_admin_allowances', $id);
+        if (!$record) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+        if (($record->status ?? '') === 'withdrawn' || ($record->status ?? '') === 'approved' || $record->director_confirmed_at) {
+            return response()->json(['message' => '已撤回或已進入審核的行政加給不能再確認。'], 422);
+        }
+        DB::table('teacher_payroll_admin_allowances')->where('id', $id)->update([
+            'director_confirmed_by' => $this->actorId($request),
+            'director_confirmed_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return response()->json(['id' => $id, 'status' => 'pending_hq_approval']);
+    }
+
+    public function approveAdminAllowance(Request $request, int $id)
+    {
+        if ($request->attributes->get('auth_role') !== 'super_admin') {
+            return response()->json(['message' => 'Only headquarters can approve admin allowances'], 403);
+        }
+        $this->ensureTables();
+        $record = $this->recordForScope($request, 'teacher_payroll_admin_allowances', $id);
+        if (!$record) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+        if (!$record->director_confirmed_at) {
+            return response()->json(['message' => 'Director confirmation is required first'], 422);
+        }
+        if (!empty($record->starts_on)) {
+            $this->rejectIfSalaryMonthLocked((int) $record->teacher_id, $record->branch_id !== null ? (int) $record->branch_id : null, (string) $record->starts_on);
+        }
+        DB::table('teacher_payroll_admin_allowances')->where('id', $id)->update([
+            'status' => 'approved',
+            'hq_approved_by' => $this->actorId($request),
+            'hq_approved_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return response()->json(['id' => $id, 'status' => 'approved']);
+    }
+
     /**
      * POST /api/v1/finance/teacher-eligibility/salary-profiles
      * 正職老師底薪(可隨時間調整，effective_from 之後的月份結算會採用最新一筆）。
@@ -406,6 +542,7 @@ class TeacherEligibilityInputController extends Controller
         if ($profile->status === 'approved') {
             return response()->json(['message' => '此底薪已核准，無需重複核准。'], 422);
         }
+        $this->rejectIfSalaryMonthLocked((int) $profile->teacher_id, $profile->branch_id !== null ? (int) $profile->branch_id : null, (string) $profile->effective_from);
         $profile->update([
             'status' => 'approved',
             'approved_by' => $this->actorId($request),
@@ -503,9 +640,27 @@ class TeacherEligibilityInputController extends Controller
 
     private function ensureTables(): void
     {
-        foreach (['teacher_payroll_events', 'teacher_payroll_achievements', 'teacher_payroll_deductions'] as $table) {
+        foreach (['teacher_payroll_events', 'teacher_payroll_achievements', 'teacher_payroll_deductions', 'teacher_payroll_admin_allowances'] as $table) {
             if (!Schema::hasTable($table)) abort(503, 'Teacher eligibility input tables are not ready');
         }
+    }
+
+    private function validatedAllowance(Request $request): array|\Illuminate\Http\JsonResponse
+    {
+        $data = $request->validate([
+            'teacher_id' => ['required', 'integer', 'min:1'],
+            'branch_id' => ['nullable', 'integer', 'min:1'],
+            'role_key' => ['required', 'in:admin_assist,head_tutor,deputy_director'],
+            'rate' => ['required', 'numeric', 'min:0', 'max:10'],
+            'reason' => ['nullable', 'string', 'max:10000'],
+            'starts_on' => ['nullable', 'date'],
+            'ends_on' => ['nullable', 'date'],
+        ]);
+        if (($data['starts_on'] ?? null) !== null && ($data['ends_on'] ?? null) !== null && $data['ends_on'] < $data['starts_on']) {
+            return response()->json(['message' => 'ends_on must be on or after starts_on'], 422);
+        }
+
+        return $data;
     }
 
     private function scopedQuery(string $table, ?array $campusIds)

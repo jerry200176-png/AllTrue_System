@@ -266,4 +266,24 @@ class TeacherEligibilityPolicyTest extends TestCase
         $this->assertSame(TeacherEligibilityPolicy::REVIEW, $result['status']);
         $this->assertContains('holiday_calendar', $result['missing_fields']);
     }
+
+    public function test_pending_admin_allowance_is_review(): void
+    {
+        $result = $this->policy->adminAllowance([
+            ['role_key' => 'head_tutor', 'rate' => 8, 'status' => 'pending', 'starts_on' => '2026-08-01'],
+        ], '2026-08-01', '2026-08-31');
+
+        $this->assertSame(TeacherEligibilityPolicy::REVIEW, $result['status']);
+    }
+
+    public function test_approved_admin_allowance_caps_at_ten(): void
+    {
+        $result = $this->policy->adminAllowance([
+            ['role_key' => 'admin_assist', 'rate' => 8, 'status' => 'approved', 'starts_on' => '2026-08-01'],
+            ['role_key' => 'head_tutor', 'rate' => 5, 'status' => 'approved', 'starts_on' => '2026-08-01'],
+        ], '2026-08-01', '2026-08-31');
+
+        $this->assertSame(TeacherEligibilityPolicy::QUALIFIES, $result['status']);
+        $this->assertSame(10.0, $result['rate']);
+    }
 }

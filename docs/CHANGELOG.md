@@ -1,3 +1,11 @@
+## 2026-08-16 — feat(payroll): 正職行政加給與底薪核准畫面
+
+<!-- release-notes: staff_update=staff-2026-08-16-fulltime-admin-allowance -->
+
+- 行政加給（0–10%）比照扣除案件：主任確認、總部核准後才疊進教師倍率。
+- 底薪改完會顯示待核准金額；總部可在結算表核准。未完成審核不能鎖定該月。
+- 現金加扣款調整下一包才上。
+
 ## 2026-08-16 — fix(billing): 帳務入口可見性與待對帳用語
 
 <!-- release-notes: staff_update=staff-2026-08-16-billing-ux-find -->
