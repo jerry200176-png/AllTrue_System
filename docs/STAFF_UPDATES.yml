@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-16-reported-paid-phase2
+    published_at: "2026-08-16"
+    audiences:
+      - director
+    importance: digest
+    title: 課程頁可批次帳務
+    summary: 同一學生切帳務；收費頁勾選批次回報，確認後才開收據。
+    items:
+      - category: added
+        text: 課程管理同一學生可切帳務資料，不必再搜一次。
+      - category: improved
+        text: 收費頁可一次勾選多筆已回報或確認入帳。
+    source_refs:
+      - "changelog:2026-08-16:reported-paid-phase2"
+
   - id: staff-2026-08-16-reported-paid-notif
     published_at: "2026-08-16"
     audiences:
