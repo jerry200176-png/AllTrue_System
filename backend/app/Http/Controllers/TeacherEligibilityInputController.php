@@ -375,6 +375,7 @@ class TeacherEligibilityInputController extends Controller
         ]);
         $branchId = $this->resolveWriteBranch($request, $data['branch_id'] ?? null);
         $this->assertTeacherScope($request, $data['teacher_id'], $branchId);
+        $this->rejectIfSalaryMonthLocked($data['teacher_id'], $branchId, $data['effective_from']);
 
         $profile = \App\Models\FulltimeSalaryProfile::create([
             'teacher_id' => $data['teacher_id'],
@@ -412,6 +413,19 @@ class TeacherEligibilityInputController extends Controller
         ]);
 
         return response()->json($profile);
+    }
+
+    private function rejectIfSalaryMonthLocked(int $teacherId, ?int $branchId, string $effectiveFrom): void
+    {
+        $month = substr($effectiveFrom, 0, 7);
+        $campusIds = $branchId !== null
+            ? [$branchId]
+            : DB::table('UserCampus')->where('UserID', $teacherId)->pluck('CampusID')->map(fn ($id) => (int) $id)->all();
+        foreach ($campusIds as $campusId) {
+            if (\App\Support\FulltimePayrollLockStore::monthIsLocked((int) $campusId, $month)) {
+                abort(422, '此月份已鎖定正職結算，不能再改底薪生效日。');
+            }
+        }
     }
 
     private function validatedEvent(Request $request): array|\Illuminate\Http\JsonResponse
