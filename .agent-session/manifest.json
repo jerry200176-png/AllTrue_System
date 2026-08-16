@@ -4,7 +4,7 @@
   "project": "alltrue",
   "task_id": "issue-1139-telegram-webhook",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "02d52a6c6333abc80da6d9572a0902b26f2e434f",
+  "base_sha": "94836840472ef9b67e6f6eabaad2a56b09ccfda3",
   "branch": "chore/task-issue-1139-telegram-webhook-auth",
   "worktree_path": "/home/jerry/workspace/tasks/alltrue/issue-1139-telegram-webhook-secret",
   "started_at": "2026-08-15T12:57:52Z",
