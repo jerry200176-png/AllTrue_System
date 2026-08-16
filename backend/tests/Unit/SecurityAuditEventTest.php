@@ -29,6 +29,20 @@ class SecurityAuditEventTest extends TestCase
             'campus_scope' => 'restricted',
         ]);
 
+        $metadata2 = SecurityAuditEvent::metadata([
+            'old_session_count' => 8,
+            'new_session_count' => 10,
+            'old_remaining_sessions' => 3,
+            'new_remaining_sessions' => 5,
+            'phone' => '0912345678',
+        ]);
+        $this->assertSame([
+            'old_session_count' => 8,
+            'new_session_count' => 10,
+            'old_remaining_sessions' => 3,
+            'new_remaining_sessions' => 5,
+        ], $metadata2);
+
         $this->assertSame([
             'method' => 'line',
             'provider_status' => 200,

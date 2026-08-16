@@ -1,3 +1,9 @@
+## 2026-08-17 — fix(security): 手動調整堂數寫入稽核事件
+
+<!-- release-notes: silent_ship=silent-2026-08-17-session-balance-audit-1811 -->
+
+- 主任改 `SessionCount`／`RemainingSessions` 時寫入 `security_audit_events`（操作者雜湊、舊→新堂數）；不含學生姓名。
+
 ## 2026-08-17 — fix(billing): 課程列表已繳改認足額收款（TD-083 B1）
 
 <!-- release-notes: silent_ship=silent-2026-08-17-ispaid-b1 -->
