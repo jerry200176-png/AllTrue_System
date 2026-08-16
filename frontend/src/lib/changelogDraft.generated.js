@@ -5,10 +5,43 @@
  */
 export const changelogDraftNotes = [
   {
+    "version": "2026.08.16",
+    "date": "2026-08-16",
+    "title": "2026.08.16 草稿（未發布）",
+    "summary": "通知中心與批次 改待對帳；正職薪資要件改為 115.07 結算表",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "通知中心與批次 改待對帳",
+          "正職薪資要件改為 115.07 結算表",
+          "行政登錄已回報，會計確認後才入帳開收據"
+        ]
+      },
+      {
+        "title": "修正內容",
+        "items": [
+          "已上改回未點再標到班時自動還原評量草稿"
+        ]
+      }
+    ],
+    "items": [
+      "通知中心與批次 改待對帳",
+      "正職薪資要件改為 115.07 結算表",
+      "行政登錄已回報，會計確認後才入帳開收據",
+      "已上改回未點再標到班時自動還原評量草稿"
+    ]
+  },
+  {
     "version": "2026.08.15",
     "date": "2026-08-15",
     "title": "2026.08.15 草稿（未發布）",
-    "summary": "計費模式轉換後標示舊收據可能已被取代；陳姝彣收帳顯示改回合約金額",
+    "summary": "陳姝彣收帳顯示改回合約金額；搜尋含表情符號不再讓學生名單崩潰",
     "audience": [
       "teacher",
       "director"
@@ -18,7 +51,6 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
-          "計費模式轉換後標示舊收據可能已被取代",
           "陳姝彣收帳顯示改回合約金額",
           "搜尋含表情符號不再讓學生名單崩潰",
           "未來堂次帶分校，不再顯示 Branch"
@@ -26,7 +58,6 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
-      "計費模式轉換後標示舊收據可能已被取代",
       "陳姝彣收帳顯示改回合約金額",
       "搜尋含表情符號不再讓學生名單崩潰",
       "未來堂次帶分校，不再顯示 Branch"
@@ -512,46 +543,6 @@ export const changelogDraftNotes = [
       "堂數制請假改為保留未來日期、只補尾堂",
       "Foundation + 主任收件匣 pilot",
       "學生列表 UI Foundation pilot (B)"
-    ]
-  },
-  {
-    "version": "2026.07.24",
-    "date": "2026-07-24",
-    "title": "2026.07.24 草稿（未發布）",
-    "summary": "Continuity 群組 MVP；修正行事曆課程合併邏輯，避免課程重複出現或突然消失",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "新增內容",
-        "items": [
-          "Continuity 群組 MVP"
-        ]
-      },
-      {
-        "title": "修正內容",
-        "items": [
-          "修正行事曆課程合併邏輯，避免課程重複出現或突然消失",
-          "調課後課表穩定（系列契約 vs 單堂例外）"
-        ]
-      },
-      {
-        "title": "其他改善",
-        "items": [
-          "登入頁恢復 前視覺",
-          "頁改吃 DS tokens"
-        ]
-      }
-    ],
-    "items": [
-      "Continuity 群組 MVP",
-      "修正行事曆課程合併邏輯，避免課程重複出現或突然消失",
-      "調課後課表穩定（系列契約 vs 單堂例外）",
-      "登入頁恢復 前視覺",
-      "頁改吃 DS tokens"
     ]
   }
 ];

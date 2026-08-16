@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "session_id": "3d635a15fa944f7c80e61944c145e9e9",
+  "project": "alltrue",
+  "task_id": "reported-paid-phase2-20260816",
+  "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
+  "base_sha": "ad7384d6a7df781b56c4a8cfd8f0ddbafb8178e4",
+  "branch": "chore/task-reported-paid-phase2-20260816",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/reported-paid-phase2-20260816",
+  "started_at": "2026-08-16T12:21:00Z",
+  "production_mutation": false,
+  "preflight_result": "pass",
+  "provenance_type": "agent-session",
+  "agent_cli": null,
+  "gateway_version": "0.5.0"
+}

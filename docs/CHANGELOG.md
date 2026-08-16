@@ -1,4 +1,40 @@
-## 2026-08-15 — fix(billing): 計費模式轉換後標示舊收據可能已被取代 (#934)
+## 2026-08-16 — feat(billing): 通知中心與批次 API 改待對帳 (#1827)
+
+<!-- release-notes: staff_update=staff-2026-08-16-reported-paid-notif -->
+
+- 通知中心學費按鈕改為送出已回報，課程仍未繳，等會計確認才入帳開收據。
+- 新增批次回報／批次確認 API（最多 40 筆），給下一版收費頁勾選使用。
+
+## 2026-08-16 — feat(payroll): 正職薪資要件改為 115.07 結算表
+
+<!-- release-notes: staff_update=staff-2026-08-16-fulltime-settlement-table -->
+
+- 主任頁改為正職結算欄：底薪、正課／輔導試聽／核薪科目數、一對三、科目數與一對三獎金、倍率拆解、倍率後獎金算式、16 段課加扣款、總發放金額。
+- 假日 16 小時改依規定以常態排課加假日假抵扣滿 16 小時給 10%，否則 0%。科目數非整數依附件 1–50 表相鄰列內插；一對三與正課分桶計算。
+- 全勤、勞健保、行政加給（TD-077）仍不自動列入。
+
+## 2026-08-16 — feat(billing): 行政登錄已回報，會計確認後才入帳開收據 (#1827)
+
+<!-- release-notes: staff_update=staff-2026-08-16-reported-paid-pending -->
+
+- 行政在課程管理／收費頁「登記已回報」後，課程仍是未繳費（待對帳），不會立刻變已繳或開收據。
+- 會計在催繳名單對「待核帳」按確認入帳後，才標記已繳並可開電子收據；對不到款可退回。
+
+## 2026-08-16 — docs(arch): 行政已回報與會計入帳核銷拆分計畫（#1827）
+
+<!-- release-notes: silent_ship=silent-2026-08-16-reported-paid-accounting-split-rfc -->
+
+- 新增繳費狀態機 RFC：行政先登錄「已回報」，會計對帳後才標已繳並開收據；第二步才做課程頁同畫面與批次。
+- 本筆只有計畫與入口指標，沒有教職員可操作的產品變更。
+
+## 2026-08-16 — fix(eval): 已上改回未點再標到班時自動還原評量草稿
+
+<!-- release-notes: staff_update=staff-2026-08-16-lr-resurrect-status-adjust -->
+
+- 堂次從「已到班」改回「未點名」再改回「到班」時，系統作廢的評量會自動恢復為待填，老師端不再空白。
+- 不改請假／手動作廢評量的規則；人工作廢仍不會自動復活。
+
+
 
 <!-- release-notes: staff_update=staff-2026-08-15-stale-receipt-badge-934 -->
 
@@ -532,6 +568,15 @@
 - 操作指南：`docs/GUIDE_STAFF_UPDATES.md`。
 
 開發備註：UI 標示改「最新更新」；分類改「你現在可以／我們修好了／操作更順手／需要你注意」。回歸 `npm run test:release-notes`。
+
+## 2026-07-29 — fix(billing): 繳費提醒與課程列表付款真相對齊（#959，G-009）
+<!-- release-notes: staff_update=staff-2026-07-29-tuition-alert-payment-truth-959 -->
+
+- `AlertController::computePaymentStatus()` 新增 `hasInvoicePayment` 參數：`已繳費 = Paid=1 OR 有未作廢 Invoice 已結清付款`，與 `StudentClassController` 課程列表（`lastPaidAtByStudentClassIds`）的權威判斷對齊。
+- 同步修正 `outstanding` 計算：發票已結清但 `Paid` 未同步更新的課程，不再顯示欠款。
+- 呼叫端已於同一輪迴圈算出 `$invoicePaidAt`，本次僅重用既有資料、不新增查詢。
+
+開發備註：回歸 `TuitionAlertsApiTest::test_payment_status_paid_when_settled_via_invoice_despite_paid_flag_zero`。CoursePackage 側（`computePackageCountPaymentStatus`）已有等效 OR 邏輯，本次不動。
 
 ## 2026-07-24 — feat: Course Continuity 群組 API MVP（#1382）
 
