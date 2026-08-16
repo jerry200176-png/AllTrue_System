@@ -1,3 +1,10 @@
+## 2026-08-17 — fix(ui): 主任畫面技術語言再清一波
+
+<!-- release-notes: staff_update=staff-2026-08-17-ui-human-copy-sweep -->
+
+- 老師批次匯入改中文欄位說明；收據／帳單編號不再顯示 LEGACY、INV 英文碼。
+- 分校刷卡「Token」改「授權碼」；帳務錯誤訊息改中文。
+
 ## 2026-08-17 — fix(security): 學生 Excel 匯出寫入稽核事件
 
 <!-- release-notes: silent_ship=silent-2026-08-17-pii-export-audit-1812 -->
@@ -20,13 +27,6 @@
 <!-- release-notes: silent_ship=silent-2026-08-17-orphan-fe-dead-pages -->
 
 刪除側欄已不使用的 `BillingList`／`PayReportPage`／`CoursePackagesPage`／`ClassesList`／`StudentWizard`／`TeacherProfilePage`；後端帳單／繳費回報／方案 API 不變。
-
-## 2026-08-17 — fix(ui): 主任畫面技術語言再清一波
-
-<!-- release-notes: staff_update=staff-2026-08-17-ui-human-copy-sweep -->
-
-- 老師批次匯入改中文欄位說明；收據／帳單編號不再顯示 LEGACY、INV 英文碼。
-- 分校刷卡「Token」改「授權碼」；帳務錯誤訊息改中文。
 
 ## 2026-08-17 — fix(billing): 對帳與帳務中心掃讀密度
 
