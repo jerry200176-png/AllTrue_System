@@ -384,7 +384,7 @@ class TeacherEligibilityController extends Controller
         }
         $dates = [];
         foreach ($counts as $date => $count) {
-            if ($count['total'] > 0 && $count['open'] === 0) {
+            if ($count['open'] === 0) {
                 $dates[] = $date;
             }
         }
