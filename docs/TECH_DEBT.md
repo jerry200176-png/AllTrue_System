@@ -725,6 +725,20 @@
 | 清償成本估計 | 中（政策確認 + 驗證規則 + 稽核欄位/表，估半天～一天，視政策複雜度） |
 | 不做的代價 | 已對外呈現或已發放月份的總發放金額可以被悄悄改動，沒有稽核軌跡，出現爭議時無法還原「當時算出來的金額」 |
 
+### TD-080：行政「核帳登記」與會計入帳核銷綁死，沒有已回報待對帳中間態
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | In Progress（#1827 Phase 2a API＋通知中心） |
+| 優先級 | P1 |
+| 發現日期 | 2026-08-16 |
+| 發現來源 | 現場建議（嗨森）：行政看官方 LINE 登錄已繳、會計對銀行後核銷再開收據；批次與課程頁同畫面 |
+| 影響模組 | `PaymentReportController::directorRecord`、`PaymentEntryModal.vue`、`TuitionCollectionPage.vue`、`CourseManagement.vue` 繳費切換、`AlertController::computePaymentStatus` |
+| 描述 | `directorRecord` 一次寫 Payment＋Invoice 結清＋`Paid=1`＋`reconciled_at`＋confirmed report。行政無法在會計對帳前登錄；LINE 假繳費會變成帳上已繳。`pending_report`／confirm／reject 仍存在，但主任路徑跳過 pending。 |
+| 建議做法 | 見 [`docs/architecture/RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md`](architecture/RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md)：Phase 1 改狀態機；Phase 2 課程頁帳務分頁＋批次。不在此清償 TD-068。 |
+| 清償成本估計 | 高（Phase 1 狀態機＋測試；Phase 2 UI） |
+| 不做的代價 | 繼續用口頭帳或假已繳；催繳與收據時機錯誤 |
+
 ### TD-076：`schedules` 表用「不可變紀錄鏈」表達改期，二次改期時容易讓已取代的紀錄殘留（連續兩起 production 事故，2026-08-08）
 
 | 欄位 | 內容 |

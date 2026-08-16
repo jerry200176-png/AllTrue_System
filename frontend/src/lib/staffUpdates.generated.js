@@ -4,6 +4,117 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-16-reported-paid-pending",
+    "publishedAt": "2026-08-16",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "繳費改先回報再入帳",
+    "summary": "行政先登記家長已繳；會計對到帳才開收據，避免沒匯款就變已繳。",
+    "items": [
+      "看官方 LINE 請用「登記已回報」，不要等會計也能先登錄。",
+      "會計確認入帳後才會開電子收據；對不到款可退回。"
+    ],
+    "sections": [
+      {
+        "title": "需要你注意",
+        "items": [
+          "看官方 LINE 請用「登記已回報」，不要等會計也能先登錄。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "會計確認入帳後才會開電子收據；對不到款可退回。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-16:reported-paid-pending"
+    ],
+    "date": "2026-08-16",
+    "version": "2026.08.16"
+  },
+  {
+    "id": "staff-2026-08-16-fulltime-settlement-table",
+    "publishedAt": "2026-08-16",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "正職結算表上線",
+    "summary": "正職薪資頁改為底薪與獎金結算欄",
+    "items": [
+      "可見底薪、科目數拆分、倍率後獎金算式與總發放。",
+      "假日假可補足16小時倍率；小數科目數依附件表內插。",
+      "全勤、勞健保、行政加給仍未自動列入，請人工核對。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "可見底薪、科目數拆分、倍率後獎金算式與總發放。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "假日假可補足16小時倍率；小數科目數依附件表內插。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "全勤、勞健保、行政加給仍未自動列入，請人工核對。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-16:fulltime-settlement-table"
+    ],
+    "date": "2026-08-16",
+    "version": "2026.08.16"
+  },
+  {
+    "id": "staff-2026-08-16-reported-paid-notif",
+    "publishedAt": "2026-08-16",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "通知中心先回報",
+    "summary": "通知中心登記已繳後仍待對帳，會計確認才入帳開收據。",
+    "items": [
+      "通知中心學費改「送出已回報」，不會當場變已繳或開收據。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "通知中心學費改「送出已回報」，不會當場變已繳或開收據。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-16:reported-paid-notif"
+    ],
+    "date": "2026-08-16",
+    "version": "2026.08.16"
+  },
+  {
     "id": "staff-2026-08-16-lr-resurrect-status-adjust",
     "publishedAt": "2026-08-16",
     "effectiveAt": null,

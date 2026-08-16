@@ -3384,6 +3384,7 @@ const onPaymentEntryConfirmed = async () => {
   if (invoiceModalOpen.value) {
     closeInvoiceModal();
   }
+  alert('已送出待對帳。會計確認入帳後才會開電子收據。');
   await loadCourses();
 };
 
