@@ -446,6 +446,43 @@ export const staffUpdates = [
     "version": "2026.08.15"
   },
   {
+    "id": "staff-2026-08-15-eligibility-approved-revert",
+    "publishedAt": "2026-08-15",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "誤核薪資可退回",
+    "summary": "已核准可退回；全校放假改看課程管理連假。",
+    "items": [
+      "已核准的補登可按退回，該筆不再進入薪資。",
+      "全校放假以課程管理連假為準，不必再手動登假日曆。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "已核准的補登可按退回，該筆不再進入薪資。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "全校放假以課程管理連假為準，不必再手動登假日曆。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-15:eligibility-approved-revert"
+    ],
+    "date": "2026-08-15",
+    "version": "2026.08.15"
+  },
+  {
     "id": "staff-2026-08-14-monthly-copy-teacher-list",
     "publishedAt": "2026-08-14",
     "effectiveAt": null,
