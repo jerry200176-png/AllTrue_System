@@ -16,115 +16,153 @@
         <div v-if="loading" class="ledger-state">載入對帳資料中…</div>
         <div v-else-if="error" class="ledger-state ledger-error">{{ error }}</div>
         <template v-else-if="payload">
-          <div class="ledger-summary">
-            <div>
-              <strong>{{ formatCurrency(payload.summary?.invoice_total) }}</strong>
-              <span>應收合計</span>
+          <!-- Carbon-style compact metric strip (ops density) -->
+          <div class="ledger-strip" aria-label="對帳摘要">
+            <div class="ledger-strip__item">
+              <span class="ledger-strip__label">應收</span>
+              <strong class="ledger-strip__value">{{ formatCurrency(payload.summary?.invoice_total) }}</strong>
             </div>
-            <div>
-              <strong>{{ formatCurrency(payload.summary?.applied_total) }}</strong>
-              <span>已記入收款</span>
+            <div class="ledger-strip__item">
+              <span class="ledger-strip__label">已記入</span>
+              <strong class="ledger-strip__value">{{ formatCurrency(payload.summary?.applied_total) }}</strong>
             </div>
-            <div>
-              <strong>{{ formatCurrency(payload.summary?.outstanding_total) }}</strong>
-              <span>未結清</span>
+            <div class="ledger-strip__item" :class="{ 'is-warn': (payload.summary?.outstanding_total || 0) > 0 }">
+              <span class="ledger-strip__label">未結清</span>
+              <strong class="ledger-strip__value">{{ formatCurrency(payload.summary?.outstanding_total) }}</strong>
             </div>
-            <div :class="{ warn: (payload.summary?.overpaid_total || 0) > 0 }">
-              <strong>{{ formatCurrency(payload.summary?.overpaid_total) }}</strong>
-              <span>多收待處理</span>
+            <div class="ledger-strip__item" :class="{ 'is-warn': (payload.summary?.overpaid_total || 0) > 0 }">
+              <span class="ledger-strip__label">多收</span>
+              <strong class="ledger-strip__value">{{ formatCurrency(payload.summary?.overpaid_total) }}</strong>
             </div>
-            <div :class="{ warn: (payload.summary?.anomaly_count || 0) > 0 }">
-              <strong>{{ payload.summary?.anomaly_count || 0 }}</strong>
-              <span>需注意</span>
-            </div>
-          </div>
-
-          <div v-if="payload.anomalies?.length" class="ledger-alerts">
-            <div
-              v-for="a in payload.anomalies"
-              :key="`${a.code}-${a.invoice_id || 'na'}-${a.report_id || 'na'}-${a.payment_id || 'na'}`"
-              :class="['ledger-alert', `ledger-alert--${a.severity || 'warning'}`]"
-            >
-              <strong>{{ anomalyLabel(a.code) }}</strong>
-              <span>{{ a.message }}</span>
+            <div class="ledger-strip__item" :class="{ 'is-danger': (payload.summary?.anomaly_count || 0) > 0 }">
+              <span class="ledger-strip__label">需注意</span>
+              <strong class="ledger-strip__value">{{ payload.summary?.anomaly_count || 0 }}</strong>
             </div>
           </div>
 
           <section v-if="ledgerExceptions.length" class="ledger-section">
             <h4>需先處理</h4>
             <div class="ledger-receipts">
-              <div v-for="x in ledgerExceptions" :key="x.key" class="ledger-receipt">
+              <div v-for="x in visibleExceptions" :key="x.key" class="ledger-receipt">
                 <strong>{{ x.title }}</strong>
                 <span>{{ x.message }}</span>
                 <small>{{ x.detail }}</small>
-                <button v-if="x.can_void" class="ledger-action ledger-action--danger" type="button" :disabled="busyReportId === x.report_id" @click="voidReport(x.report_id)">撤銷收款</button>
+                <button
+                  v-if="x.can_void"
+                  class="ledger-action ledger-action--danger"
+                  type="button"
+                  :disabled="busyReportId === x.report_id"
+                  @click="voidReport(x.report_id)"
+                >撤銷收款</button>
                 <span v-if="!x.can_void && !x.report_id" class="ledger-muted">請聯絡總部協助</span>
               </div>
             </div>
+            <button
+              v-if="ledgerExceptions.length > EXCEPTION_PREVIEW"
+              class="ledger-more"
+              type="button"
+              @click="showAllExceptions = !showAllExceptions"
+            >
+              {{ showAllExceptions ? '收合異常' : `還有 ${ledgerExceptions.length - EXCEPTION_PREVIEW} 則` }}
+            </button>
           </section>
 
           <section class="ledger-section">
-            <h4>帳單與收款</h4>
+            <h4>帳單</h4>
             <div v-if="!payload.invoices?.length" class="ledger-empty">此學生尚無帳單。</div>
             <div v-else class="ledger-table-wrap">
               <table class="ledger-table">
                 <thead>
                   <tr>
+                    <th class="ledger-col-expand" scope="col"><span class="sr-only">展開收款</span></th>
                     <th>帳單（科目）</th>
                     <th>應繳日</th>
-                    <th>應收</th>
-                    <th>已記入</th>
-                    <th>多收</th>
-                    <th>未結清</th>
+                    <th class="num">應收</th>
+                    <th class="num">已記入</th>
+                    <th class="num">未結清</th>
                     <th>狀態</th>
-                    <th>已收款紀錄</th>
                     <th>操作</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="inv in payload.invoices" :key="inv.id">
-                    <td>
-                      <strong>{{ formatLedgerInvoiceLabel(inv) }}</strong>
-                      <small>{{ formatLedgerCourseLabel(inv) }} · {{ formatPeriod(inv.billing_period) }}</small>
-                    </td>
-                    <td>{{ inv.due_date || '—' }}</td>
-                    <td>{{ formatCurrency(inv.total_amount) }}</td>
-                    <td>{{ formatCurrency(inv.calculated_applied_amount) }}</td>
-                    <td :class="{ due: (inv.overpaid_amount || 0) > 0 }">{{ formatCurrency(inv.overpaid_amount) }}</td>
-                    <td :class="{ due: (inv.outstanding_amount || 0) > 0 }">{{ formatCurrency(inv.outstanding_amount) }}</td>
-                    <td><span class="ledger-chip">{{ invoiceStatusLabel(inv.status) }}</span></td>
-                    <td>
-                      <div v-if="inv.payments?.length" class="ledger-lines">
-                        <span v-for="p in inv.payments" :key="p.id" :class="{ void: p.is_void, due: p.application_status === 'overpayment_pending_review' }">
-                          {{ p.paid_at || '未記錄' }} · {{ p.is_void ? '更正收款' : paymentMethodLabel(p.method) }}
-                          {{ signedCurrency(p.amount) }} · {{ applicationStatusLabel(p.application_status) }}
-                          <em v-if="p.applied_amount">記入 {{ formatCurrency(p.applied_amount) }}</em>
-                          <em v-if="p.unapplied_amount">多收 {{ formatCurrency(p.unapplied_amount) }}</em>
-                          <em v-if="p.receipt_no">{{ p.receipt_no }}</em>
-                        </span>
-                      </div>
-                      <span v-else class="ledger-muted">—</span>
-                    </td>
-                    <td>
-                      <div class="ledger-actions">
+                  <template v-for="inv in payload.invoices" :key="inv.id">
+                    <tr :class="{ 'ledger-row--open': isExpanded(inv.id), 'ledger-row--attention': needsAttention(inv) }">
+                      <td class="ledger-col-expand">
                         <button
-                          v-if="canDirectVoidInvoice(inv)"
-                          class="ledger-action ledger-action--danger"
+                          class="ledger-expand"
                           type="button"
-                          :disabled="isBusyInvoice(inv)"
-                          @click="voidInvoice(inv, 'direct')"
-                        >作廢</button>
-                        <button
-                          v-else-if="canExceptionVoidInvoice(inv)"
-                          class="ledger-action ledger-action--warning"
-                          type="button"
-                          :disabled="isBusyInvoice(inv)"
-                          @click="voidInvoice(inv, 'exception')"
-                        >更正並作廢</button>
-                        <span v-else class="ledger-muted">—</span>
-                      </div>
-                    </td>
-                  </tr>
+                          :aria-expanded="isExpanded(inv.id)"
+                          :aria-label="isExpanded(inv.id) ? '收合收款紀錄' : '展開收款紀錄'"
+                          :disabled="!(inv.payments?.length)"
+                          @click="toggleExpand(inv.id)"
+                        >
+                          <span aria-hidden="true">{{ isExpanded(inv.id) ? '▾' : '▸' }}</span>
+                          <em v-if="inv.payments?.length" class="ledger-pay-count">{{ inv.payments.length }}</em>
+                        </button>
+                      </td>
+                      <td>
+                        <strong>{{ formatLedgerInvoiceLabel(inv) }}</strong>
+                        <small>{{ formatLedgerCourseLabel(inv) }} · {{ formatPeriod(inv.billing_period) }}</small>
+                        <small v-if="(inv.overpaid_amount || 0) > 0" class="ledger-overpay-hint">多收 {{ formatCurrency(inv.overpaid_amount) }}</small>
+                      </td>
+                      <td>{{ inv.due_date || '—' }}</td>
+                      <td class="num">{{ formatCurrency(inv.total_amount) }}</td>
+                      <td class="num">{{ formatCurrency(inv.calculated_applied_amount) }}</td>
+                      <td class="num" :class="{ due: (inv.outstanding_amount || 0) > 0 }">{{ formatCurrency(inv.outstanding_amount) }}</td>
+                      <td>
+                        <span :class="['ledger-chip', invoiceStatusClass(inv.status)]">{{ invoiceStatusLabel(inv.status) }}</span>
+                      </td>
+                      <td>
+                        <div class="ledger-actions">
+                          <button
+                            v-if="canDirectVoidInvoice(inv)"
+                            class="ledger-action ledger-action--danger"
+                            type="button"
+                            :disabled="isBusyInvoice(inv)"
+                            @click="voidInvoice(inv, 'direct')"
+                          >作廢</button>
+                          <button
+                            v-else-if="canExceptionVoidInvoice(inv)"
+                            class="ledger-action ledger-action--warning"
+                            type="button"
+                            :disabled="isBusyInvoice(inv)"
+                            @click="voidInvoice(inv, 'exception')"
+                          >更正並作廢</button>
+                          <span v-else class="ledger-muted">—</span>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr v-if="isExpanded(inv.id)" class="ledger-detail-row">
+                      <td colspan="8">
+                        <div class="ledger-timeline" aria-label="收款時間線">
+                          <p v-if="!inv.payments?.length" class="ledger-muted">尚無收款紀錄</p>
+                          <ol v-else class="ledger-timeline__list">
+                            <li
+                              v-for="p in inv.payments"
+                              :key="p.id"
+                              :class="[
+                                'ledger-timeline__item',
+                                { 'is-void': p.is_void, 'is-overpay': p.application_status === 'overpayment_pending_review' },
+                              ]"
+                            >
+                              <div class="ledger-timeline__when">{{ p.paid_at || '未記錄日期' }}</div>
+                              <div class="ledger-timeline__body">
+                                <strong>{{ p.is_void ? '更正收款' : paymentMethodLabel(p.method) }} {{ signedCurrency(p.amount) }}</strong>
+                                <span :class="['ledger-chip', applicationStatusClass(p.application_status)]">
+                                  {{ applicationStatusLabel(p.application_status) }}
+                                </span>
+                                <div class="ledger-timeline__meta">
+                                  <span v-if="p.applied_amount">記入 {{ formatCurrency(p.applied_amount) }}</span>
+                                  <span v-if="p.unapplied_amount">多收 {{ formatCurrency(p.unapplied_amount) }}</span>
+                                  <span v-if="p.receipt_no" class="ledger-ref">{{ p.receipt_no }}</span>
+                                </div>
+                              </div>
+                            </li>
+                          </ol>
+                        </div>
+                      </td>
+                    </tr>
+                  </template>
                 </tbody>
               </table>
             </div>
@@ -133,13 +171,13 @@
           <section class="ledger-section">
             <h4>收據紀錄</h4>
             <div v-if="!payload.receipts?.length" class="ledger-empty">此學生尚無收據紀錄。</div>
-            <div v-else class="ledger-receipts">
+            <div v-else class="ledger-receipts ledger-receipts--compact">
               <div v-for="r in payload.receipts" :key="r.report_id" class="ledger-receipt">
-                <strong>{{ r.receipt_no }}</strong>
+                <strong>{{ formatCurrency(r.amount) }}</strong>
                 <span>{{ r.payment_date || '未記錄日期' }}</span>
                 <span>{{ paymentMethodLabel(r.payment_method) }}</span>
-                <span>{{ formatCurrency(r.amount) }}</span>
-                <span :class="['ledger-chip', `status-${r.status}`]">{{ reportStatusLabel(r.status) }}</span>
+                <span :class="['ledger-chip', reportStatusClass(r.status)]">{{ reportStatusLabel(r.status) }}</span>
+                <small class="ledger-ref">{{ r.receipt_no }}</small>
                 <small>{{ formatLedgerReceiptBillLine(r) }}</small>
               </div>
             </div>
@@ -159,6 +197,8 @@ import {
   formatLedgerAnomalyDetail,
 } from '../lib/studentClassDisplay.js';
 
+const EXCEPTION_PREVIEW = 2;
+
 const props = defineProps({ show: Boolean, studentClassId: [Number, String], reportId: [Number, String], branchId: [Number, String] });
 
 const emit = defineEmits(['close', 'changed']);
@@ -168,10 +208,39 @@ const error = ref('');
 const payload = ref(null);
 const busyReportId = ref(null);
 const busyInvoiceId = ref(null);
+const expandedIds = ref(new Set());
+const showAllExceptions = ref(false);
 
 function getToken() {
   const session = JSON.parse(localStorage.getItem('alltrue_session') || 'null');
   return session?.access_token;
+}
+
+function needsAttention(inv) {
+  return (inv.overpaid_amount || 0) > 0
+    || (inv.outstanding_amount || 0) > 0
+    || (inv.anomalies?.length || 0) > 0
+    || (inv.payments || []).some((p) => p.application_status === 'overpayment_pending_review');
+}
+
+function isExpanded(id) {
+  return expandedIds.value.has(Number(id));
+}
+
+function toggleExpand(id) {
+  const next = new Set(expandedIds.value);
+  const key = Number(id);
+  if (next.has(key)) next.delete(key);
+  else next.add(key);
+  expandedIds.value = next;
+}
+
+function autoExpandAttention() {
+  const next = new Set();
+  for (const inv of payload.value?.invoices || []) {
+    if (needsAttention(inv) && inv.payments?.length) next.add(Number(inv.id));
+  }
+  expandedIds.value = next;
 }
 
 async function loadLedger() {
@@ -186,6 +255,7 @@ async function loadLedger() {
   loading.value = true;
   error.value = '';
   payload.value = null;
+  showAllExceptions.value = false;
   try {
     const token = getToken();
     if (!token) throw new Error('請先登入');
@@ -200,6 +270,7 @@ async function loadLedger() {
     const json = await resp.json().catch(() => ({}));
     if (!resp.ok) throw new Error(json.message || `載入失敗（${resp.status}）`);
     payload.value = json;
+    autoExpandAttention();
   } catch (e) {
     error.value = e.message || '載入對帳資料失敗';
   } finally {
@@ -219,6 +290,7 @@ const ledgerExceptions = computed(() => {
       detail: formatLedgerAnomalyDetail(a),
       report_id: a.report_id || null,
       can_void: a.action?.type === 'void_report',
+      severity: a.severity === 'critical' ? 0 : 1,
     });
   });
   (payload.value?.invoices || []).forEach((inv) => {
@@ -231,11 +303,18 @@ const ledgerExceptions = computed(() => {
         detail: `${formatLedgerInvoiceLabel(inv)} · ${p.paid_at || '未記錄日期'}`,
         report_id: p.report_id || null,
         can_void: !!p.report_id && !p.is_void,
+        severity: 1,
       });
     });
   });
-  return rows;
+  return rows.sort((a, b) => a.severity - b.severity);
 });
+
+const visibleExceptions = computed(() => (
+  showAllExceptions.value
+    ? ledgerExceptions.value
+    : ledgerExceptions.value.slice(0, EXCEPTION_PREVIEW)
+));
 
 function getAuthRole() {
   const session = JSON.parse(localStorage.getItem('alltrue_session') || 'null');
@@ -307,6 +386,23 @@ const paymentMethodLabel = (method) => labelMap({ cash: '現金', transfer: '匯
 const invoiceStatusLabel = (status) => labelMap({ paid: '已繳', unpaid: '未繳', partial: '部分付款', void: '已作廢' }, status);
 const reportStatusLabel = (status) => labelMap({ confirmed: '已核帳', pending: '待對帳', voided: '已撤銷' }, status);
 const applicationStatusLabel = (status) => labelMap({ applied: '已記入', partially_applied: '部分記入', overpayment_pending_review: '多收待處理', voided: '已更正' }, status);
+const invoiceStatusClass = (status) => labelMap({
+  paid: 'chip--success',
+  unpaid: 'chip--danger',
+  partial: 'chip--warning',
+  void: 'chip--muted',
+}, status);
+const reportStatusClass = (status) => labelMap({
+  confirmed: 'chip--success',
+  pending: 'chip--warning',
+  voided: 'chip--muted',
+}, status);
+const applicationStatusClass = (status) => labelMap({
+  applied: 'chip--success',
+  partially_applied: 'chip--warning',
+  overpayment_pending_review: 'chip--danger',
+  voided: 'chip--muted',
+}, status);
 const anomalyLabel = (code) => labelMap({
   overpayment_pending_review: '多收，疑似重複收款',
   duplicate_effective_payments: '同一帳單有多筆收款',
@@ -322,5 +418,74 @@ const anomalyLabel = (code) => labelMap({
 </script>
 
 <style scoped>
-.ledger-overlay{position:fixed;inset:0;z-index:1200;background:rgba(15,23,42,.45);display:flex;justify-content:flex-end}.ledger-modal{width:min(1040px,96vw);height:100vh;overflow:auto;background:var(--surface,var(--ds-canvas));color:var(--text,var(--ds-ink));box-shadow:-16px 0 44px rgba(15,23,42,.22);padding:24px}.ledger-header{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:18px}.ledger-eyebrow{margin:0 0 4px;color:var(--primary,var(--ds-ink-mute));font-size:12px;font-weight:800;letter-spacing:.08em}.ledger-header h3{margin:0;font-size:24px}.ledger-subtitle{margin:6px 0 0;color:var(--text-light,var(--ds-ink-mute))}.ledger-close{border:0;background:transparent;font-size:28px;cursor:pointer;color:var(--text-light,var(--ds-ink-mute))}.ledger-state,.ledger-empty{padding:28px;border:1px dashed var(--ds-canvas-soft);border-radius:14px;color:var(--text-light,var(--ds-ink-mute));text-align:center}.ledger-error{color:var(--ds-danger);background:var(--ds-danger-wash);border-color:var(--ds-danger-wash)}.ledger-summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:14px}.ledger-summary>div{border:1px solid var(--ds-canvas-soft);border-radius:14px;padding:14px;background:var(--ds-canvas-soft)}.ledger-summary strong{display:block;font-size:20px}.ledger-summary span{color:var(--text-light,var(--ds-ink-mute));font-size:12px}.ledger-summary .warn{background:var(--ds-warning-wash);border-color:var(--ds-warning)}.ledger-alerts,.ledger-lines,.ledger-receipts{display:grid;gap:8px}.ledger-alerts{margin-bottom:16px}.ledger-alert{display:flex;gap:8px;border-radius:12px;padding:10px 12px;background:var(--ds-warning-wash);color:var(--ds-warning)}.ledger-alert--critical{background:var(--ds-danger-wash);color:var(--ds-danger)}.ledger-section{margin-top:20px}.ledger-section h4{margin:0 0 10px}.ledger-table-wrap{overflow-x:auto}.ledger-table{width:100%;border-collapse:collapse;font-size:13px}.ledger-table th,.ledger-table td{border-bottom:1px solid var(--ds-canvas-soft);padding:10px;text-align:left;vertical-align:top}.ledger-table th{color:var(--text-light,var(--ds-ink-mute));background:var(--ds-canvas-soft)}.due{color:var(--ds-danger);font-weight:800}.ledger-chip{display:inline-flex;border-radius:999px;padding:2px 8px;background:var(--ds-canvas-soft);color:var(--ds-ink-mute);font-size:12px;font-weight:700}.ledger-lines span,.ledger-receipt{color:var(--text,var(--ds-ink))}.ledger-lines .void{color:var(--text-light,var(--ds-ink-mute));text-decoration:line-through}.ledger-lines em{margin-left:4px;color:var(--text-light,var(--ds-ink-mute));font-style:normal}.ledger-muted,.ledger-receipt small,.ledger-table small{color:var(--text-light,var(--ds-ink-mute))}.ledger-receipt{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 12px;border:1px solid var(--ds-canvas-soft);border-radius:12px}.ledger-actions{display:flex;gap:6px;flex-wrap:wrap}.ledger-action{border:1px solid var(--ds-canvas-soft);background:var(--ds-canvas);border-radius:999px;padding:4px 10px;cursor:pointer}.ledger-action--danger{border-color:var(--ds-danger-wash);color:var(--ds-danger)}.ledger-action--warning{border-color:var(--ds-warning-wash);color:var(--ds-danger);background:var(--ds-warning-wash)}.status-voided{background:var(--ds-warning-wash);color:var(--ds-warning)}.status-pending{background:var(--ds-canvas-soft);color:var(--ds-ink)}.ledger-fade-enter-active,.ledger-fade-leave-active{transition:opacity .16s ease}.ledger-fade-enter-from,.ledger-fade-leave-to{opacity:0}@media (max-width:760px){.ledger-modal{width:100vw;padding:18px}.ledger-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.ledger-overlay{position:fixed;inset:0;z-index:1200;background:rgba(15,23,42,.45);display:flex;justify-content:flex-end}
+.ledger-modal{width:min(920px,96vw);height:100vh;overflow:auto;background:var(--surface,var(--ds-canvas));color:var(--text,var(--ds-ink));box-shadow:-16px 0 44px rgba(15,23,42,.22);padding:20px 22px 32px}
+.ledger-header{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:14px}
+.ledger-eyebrow{margin:0 0 4px;color:var(--primary,var(--ds-ink-mute));font-size:12px;font-weight:800;letter-spacing:.08em}
+.ledger-header h3{margin:0;font-size:22px}
+.ledger-subtitle{margin:6px 0 0;color:var(--text-light,var(--ds-ink-mute));font-size:13px}
+.ledger-close{border:0;background:transparent;font-size:28px;cursor:pointer;color:var(--text-light,var(--ds-ink-mute))}
+.ledger-state,.ledger-empty{padding:24px;border:1px dashed var(--ds-canvas-soft);border-radius:12px;color:var(--text-light,var(--ds-ink-mute));text-align:center}
+.ledger-error{color:var(--ds-danger);background:var(--ds-danger-wash);border-color:var(--ds-danger-wash)}
+
+.ledger-strip{display:flex;flex-wrap:wrap;gap:0;margin-bottom:14px;border:1px solid var(--ds-canvas-soft);border-radius:10px;overflow:hidden;background:var(--ds-canvas)}
+.ledger-strip__item{flex:1 1 110px;display:flex;flex-direction:column;gap:2px;padding:10px 12px;border-right:1px solid var(--ds-canvas-soft);min-width:0}
+.ledger-strip__item:last-child{border-right:0}
+.ledger-strip__label{font-size:11px;font-weight:600;color:var(--text-light,var(--ds-ink-mute));letter-spacing:.02em}
+.ledger-strip__value{font-size:16px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.2}
+.ledger-strip__item.is-warn .ledger-strip__value{color:var(--ds-warning)}
+.ledger-strip__item.is-danger .ledger-strip__value{color:var(--ds-danger)}
+
+.ledger-section{margin-top:18px}
+.ledger-section h4{margin:0 0 8px;font-size:14px}
+.ledger-more{margin-top:8px;border:0;background:transparent;color:var(--primary,var(--ds-info));font-size:13px;font-weight:600;cursor:pointer;padding:0}
+.ledger-table-wrap{overflow-x:auto}
+.ledger-table{width:100%;border-collapse:collapse;font-size:13px}
+.ledger-table th,.ledger-table td{border-bottom:1px solid var(--ds-canvas-soft);padding:8px 10px;text-align:left;vertical-align:top}
+.ledger-table th{color:var(--text-light,var(--ds-ink-mute));background:var(--ds-canvas-soft);font-weight:600;font-size:12px}
+.ledger-table .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ledger-col-expand{width:44px;padding-left:6px;padding-right:4px}
+.ledger-expand{display:inline-flex;align-items:center;gap:4px;border:0;background:transparent;cursor:pointer;color:var(--ds-ink-mute);padding:2px 4px;border-radius:6px}
+.ledger-expand:disabled{opacity:.35;cursor:default}
+.ledger-expand:not(:disabled):hover{background:var(--ds-canvas-soft);color:var(--ds-ink)}
+.ledger-pay-count{font-style:normal;font-size:11px;font-weight:700;color:var(--ds-ink-mute)}
+.ledger-row--open td{background:var(--ds-canvas-soft)}
+.ledger-row--attention td:nth-child(2) strong{color:var(--ds-ink)}
+.ledger-overpay-hint{display:block;color:var(--ds-danger);font-weight:600}
+.due{color:var(--ds-danger);font-weight:700}
+
+.ledger-chip{display:inline-flex;border-radius:6px;padding:2px 7px;background:var(--ds-canvas-soft);color:var(--ds-ink-mute);font-size:11px;font-weight:700}
+.ledger-chip.chip--success{background:var(--ds-success-wash);color:var(--ds-success)}
+.ledger-chip.chip--warning{background:var(--ds-warning-wash);color:var(--ds-warning)}
+.ledger-chip.chip--danger{background:var(--ds-danger-wash);color:var(--ds-danger)}
+.ledger-chip.chip--muted{background:var(--ds-canvas-soft);color:var(--ds-ink-mute)}
+
+.ledger-detail-row td{background:var(--ds-canvas);padding:0 10px 12px 44px;border-bottom:1px solid var(--ds-canvas-soft)}
+.ledger-timeline__list{list-style:none;margin:0;padding:8px 0 0;display:grid;gap:8px}
+.ledger-timeline__item{display:grid;grid-template-columns:96px 1fr;gap:10px;padding:8px 10px;border:1px solid var(--ds-canvas-soft);border-radius:10px;background:var(--surface,var(--ds-canvas))}
+.ledger-timeline__item.is-void{opacity:.65}
+.ledger-timeline__item.is-void strong{text-decoration:line-through}
+.ledger-timeline__item.is-overpay{border-color:var(--ds-warning);background:var(--ds-warning-wash)}
+.ledger-timeline__when{font-size:12px;color:var(--text-light,var(--ds-ink-mute));font-variant-numeric:tabular-nums}
+.ledger-timeline__body{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px}
+.ledger-timeline__meta{width:100%;display:flex;flex-wrap:wrap;gap:8px;font-size:12px;color:var(--text-light,var(--ds-ink-mute))}
+.ledger-ref{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:var(--ds-ink-mute)}
+
+.ledger-receipts{display:grid;gap:8px}
+.ledger-receipt{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 12px;border:1px solid var(--ds-canvas-soft);border-radius:10px}
+.ledger-receipts--compact .ledger-receipt{padding:8px 10px}
+.ledger-muted,.ledger-receipt small,.ledger-table small{color:var(--text-light,var(--ds-ink-mute))}
+.ledger-table small{display:block;margin-top:2px}
+.ledger-actions{display:flex;gap:6px;flex-wrap:wrap}
+.ledger-action{border:1px solid var(--ds-canvas-soft);background:var(--ds-canvas);border-radius:8px;padding:4px 10px;cursor:pointer;font-size:12px}
+.ledger-action--danger{border-color:var(--ds-danger-wash);color:var(--ds-danger)}
+.ledger-action--warning{border-color:var(--ds-warning-wash);color:var(--ds-danger);background:var(--ds-warning-wash)}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.ledger-fade-enter-active,.ledger-fade-leave-active{transition:opacity .16s ease}
+.ledger-fade-enter-from,.ledger-fade-leave-to{opacity:0}
+@media (max-width:760px){
+  .ledger-modal{width:100vw;padding:16px}
+  .ledger-timeline__item{grid-template-columns:1fr}
+  .ledger-detail-row td{padding-left:10px}
+}
 </style>

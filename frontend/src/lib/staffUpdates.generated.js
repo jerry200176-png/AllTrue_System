@@ -34,6 +34,38 @@ export const staffUpdates = [
     "version": "2026.08.17"
   },
   {
+    "id": "staff-2026-08-17-billing-scan-density",
+    "publishedAt": "2026-08-17",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "對帳畫面比較好掃",
+    "summary": "帳單與收款分開看；摘要變精簡，勾選後批次列會跟著畫面。",
+    "items": [
+      "學生對帳先看帳單列，點開才看收款明細。",
+      "帳務中心勾選多筆後，操作列會貼在上方方便確認。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "學生對帳先看帳單列，點開才看收款明細。",
+          "帳務中心勾選多筆後，操作列會貼在上方方便確認。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-17:billing-scan-density"
+    ],
+    "date": "2026-08-17",
+    "version": "2026.08.17"
+  },
+  {
     "id": "staff-2026-08-17-billing-human-copy",
     "publishedAt": "2026-08-17",
     "effectiveAt": null,

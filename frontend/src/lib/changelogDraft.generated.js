@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.08.17",
     "date": "2026-08-17",
     "title": "2026.08.17 草稿（未發布）",
-    "summary": "帳務對帳改白話，拿掉技術符號；Smoke 不再被版本公告擋住導覽",
+    "summary": "對帳與帳務中心掃讀密度；帳務對帳改白話，拿掉技術符號",
     "audience": [
       "teacher",
       "director"
@@ -18,6 +18,7 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "對帳與帳務中心掃讀密度",
           "帳務對帳改白話，拿掉技術符號",
           "Smoke 不再被版本公告擋住導覽",
           "帳務中心白屏（activeTab 宣告順序）"
@@ -25,6 +26,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "對帳與帳務中心掃讀密度",
       "帳務對帳改白話，拿掉技術符號",
       "Smoke 不再被版本公告擋住導覽",
       "帳務中心白屏（activeTab 宣告順序）"
