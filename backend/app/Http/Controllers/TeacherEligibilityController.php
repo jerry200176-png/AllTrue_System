@@ -478,6 +478,7 @@ class TeacherEligibilityController extends Controller
 
         return DB::table('fulltime_salary_profiles')
             ->whereIn('teacher_id', $teacherIds)
+            ->where('status', 'approved') // TD-078: unapproved writes must never feed payroll
             ->where('effective_from', '<=', $onDate)
             ->when($branchFilter !== null, fn ($query) => $query->where(function ($nested) use ($branchFilter) {
                 $nested->whereNull('branch_id')->orWhereIn('branch_id', $branchFilter);
