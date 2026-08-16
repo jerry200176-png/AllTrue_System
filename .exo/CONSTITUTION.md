@@ -10,7 +10,7 @@ Edit these rules to match your project's needs, then run `exo build-governance` 
 {
   "id": "RULE-SEC-001",
   "type": "filesystem_deny",
-  "patterns": ["~/.aws/**", "~/.ssh/**", "**/.env*"],
+  "patterns": ["~/.aws/**", "~/.ssh/**", "**/.env", "**/.env.local", "**/.env.*.local", "**/.env.production", "**/.env.staging", "**/.env.development", "**/.env.test"],
   "actions": ["read", "write"],
   "message": "Blocked by RULE-SEC-001 (Secrets). Use secret injection."
 }

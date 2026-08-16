@@ -15,7 +15,13 @@
       "patterns": [
         "~/.aws/**",
         "~/.ssh/**",
-        "**/.env*"
+        "**/.env",
+        "**/.env.local",
+        "**/.env.*.local",
+        "**/.env.production",
+        "**/.env.staging",
+        "**/.env.development",
+        "**/.env.test"
       ],
       "type": "filesystem_deny"
     },

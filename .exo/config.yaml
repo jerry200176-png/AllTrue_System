@@ -5,11 +5,10 @@ defaults:
     max_loc_changed: 400
   ticket_checks: []
 checks_allowlist:
-- npm test
-- npm run lint
-- pytest
-- python -m pytest
-- python3 -m pytest
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+- vendor/bin/phpunit
 global_checks: []
 do_allowlist:
 - npm run build

@@ -141,7 +141,7 @@ This repository is governed by ExoProtocol. All AI agent work must follow the se
 
 ### Filesystem Deny Rules
 
-- **RULE-SEC-001**: deny read, write on `~/.aws/**`, `~/.ssh/**`, `**/.env*`
+- **RULE-SEC-001**: deny read, write on `~/.aws/**`, `~/.ssh/**`, `**/.env`, `**/.env.local`, `**/.env.*.local`, `**/.env.production`, `**/.env.staging`, `**/.env.development`, `**/.env.test`
 - **RULE-GIT-001**: deny read, write, delete on `.git/**`
 
 ### Structural Rules
@@ -157,11 +157,10 @@ This repository is governed by ExoProtocol. All AI agent work must follow the se
 
 ### Approved Checks
 
-- `npm test`
-- `npm run lint`
-- `pytest`
-- `python -m pytest`
-- `python3 -m pytest`
+- `npm run test:unit`
+- `npm run lint:no-undef`
+- `npm run build`
+- `vendor/bin/phpunit`
 
 ### Source of Truth
 

@@ -3,7 +3,7 @@ review_id: REV-NNN-001
 proposal: PROP-NNN
 reviewer: human:your-name
 timestamp: YYYY-MM-DDTHH:MM:SS+00:00
-decision: approve
+decision: approved
 confidence: high
 ---
 
