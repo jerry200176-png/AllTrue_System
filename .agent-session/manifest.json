@@ -4,7 +4,7 @@
   "project": "alltrue",
   "task_id": "nightly-session-reconcile-clarity",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "61fefadea4ffaa434cf4209d1cbcb1ee9a422739",
+  "base_sha": "96f0e076a1b17803d1dec560659e8c9222784ef4",
   "branch": "chore/task-nightly-session-reconcile-clarity",
   "worktree_path": "/home/jerry/workspace/tasks/alltrue/nightly-session-reconcile-clarity",
   "started_at": "2026-08-16T14:50:32Z",
