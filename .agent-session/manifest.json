@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "a068dafc2f6445289c371de02c46168f",
+  "session_id": "8d0d36bf37e245eba3ffa6b04acd64cc",
   "project": "alltrue",
-  "task_id": "billing-human-copy-20260817",
+  "task_id": "orphan-fe-dead-pages-20260817",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "86af3466694837c6cdeb6cd484f63126e9d79849",
-  "branch": "chore/task-billing-human-copy-20260817",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/billing-human-copy-20260817",
-  "started_at": "2026-08-16T20:58:14Z",
+  "base_sha": "8b6038c6d089b30955e98aa7c3d855a9410b0b47",
+  "branch": "chore/task-orphan-fe-dead-pages-20260817",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/orphan-fe-dead-pages-20260817",
+  "started_at": "2026-08-16T22:06:49Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": "cursor",
+  "agent_cli": null,
   "gateway_version": "0.5.0"
 }
