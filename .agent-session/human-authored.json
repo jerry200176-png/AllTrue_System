@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "provenance_type": "human-authored",
-  "declared_at": "2026-08-16T00:00:00Z",
-  "author": "cursor-cloud-agent",
-  "note": "Tier 0 Action SHA pin wave 1 (agent-provenance.yml): pin actions/checkout to a commit SHA instead of a floating major tag. PR #1459."
+  "declared_at": "2026-08-16T13:00:00Z",
+  "author": "jerry-claude-code-session",
+  "note": "Split PR A/4: W31 Parent Binding core service/API, extracted from oversized PR #1727 to satisfy the 700-line gate."
 }

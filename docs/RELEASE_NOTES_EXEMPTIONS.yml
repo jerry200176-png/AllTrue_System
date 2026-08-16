@@ -66,3 +66,7 @@ exemptions:
     changelog_date: "2026-08-08"
     changelog_title: "chore: GitHub governance 收尾"
     reason: GitHub 治理與文件設定，不是 AllTrue 使用者功能更新。
+  - id: silent-2026-08-14-director-285-diagnose
+    changelog_date: "2026-08-14"
+    changelog_title: "chore(ops): 測試主任 285 唯讀清理診斷"
+    reason: 內部 allowlisted production 唯讀診斷，沒有教職員可操作或可感知的產品變更。

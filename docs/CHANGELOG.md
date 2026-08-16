@@ -140,6 +140,13 @@
 - 資料補登預設改為老師請假／補課；全校放假請走課程管理「連假批次請假」，假日曆僅作少用補登。
 - 待審核資料可在右側清單修改或撤回；已核准後仍不能改，也不會誤算進薪資。
 
+## 2026-08-14 — chore(ops): 測試主任 285 唯讀清理診斷
+
+<!-- release-notes: silent_ship=silent-2026-08-14-director-285-diagnose -->
+
+- 新增只允許 `user_id=285` / `w3-director-test-20260813` / campus `9` 的 GitHub Actions 唯讀診斷；身分不符即停止。
+- 不刪除帳號、不改 production 資料；正式刪除仍走 super_admin 的主任管理頁。
+
 ## 2026-08-13 — fix(teacher-home): 穩定教師首頁課表與評量投影
 
 <!-- release-notes: staff_update=staff-2026-08-13-teacher-home-projection-integrity -->
