@@ -7,6 +7,11 @@ exemptions:
     changelog_title: "fix(security): 學生 Excel 匯出寫入稽核事件"
     reason: 僅後端稽核事件與測試；主任匯出學生名單畫面與檔案內容不變。
 
+  - id: silent-2026-08-17-orphan-fe-dead-pages
+    changelog_date: "2026-08-17"
+    changelog_title: "chore(frontend): 移除未掛載死碼頁（重複功能清理 A）"
+    reason: 僅刪除早已不在側欄的前端頁面；主任／老師／家長可見流程與 API 不變。
+
   - id: silent-2026-08-17-ui-smoke-overlay
     changelog_date: "2026-08-17"
     changelog_title: "fix(e2e): UI Smoke 不再被版本公告擋住導覽"
