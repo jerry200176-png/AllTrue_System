@@ -33,7 +33,7 @@
 | 任務類型 | 加讀 |
 |---|---|
 | 改排課／行事曆／扣堂 | `docs/architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md`（TD-076）+ `AI_REGRESSION_LESSONS.md` 模組索引表對應的 R10x 系列 |
-| 改計費／繳費提醒邏輯 | `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` |
+| 改計費／繳費提醒／核帳登記／電子收據時機 | `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` + [`docs/architecture/RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md`](docs/architecture/RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md)（#1827）。禁止把行政登錄再次做成一次 `Paid=1`＋核銷＋開收據。 |
 | 處理 in-app Bug（分診或修完上線） | `docs/CHAT_BUG_SYSTEM.md` **§3.6–§3.7** + `AI_REGRESSION_LESSONS.md` **§R51、§R53**（開 issue 與 merge 後都要回系統留言，勿只動 GitHub）|
 | 高風險模組（代課／評量／智慧行事曆合併等）任何改動 | `docs/AI_REGRESSION_LESSONS.md` 文末模組索引表對應 § — 動 `backend/`／`frontend/src/` 前必讀 |
 | 需要回顧決策或舊 bug | `~/.local/bin/mempalace search "<關鍵字>"`（本機搜尋；非跨機器權威）|
