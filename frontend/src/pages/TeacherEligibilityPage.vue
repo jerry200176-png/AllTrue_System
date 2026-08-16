@@ -244,14 +244,17 @@ function startEditSalary(teacher) {
 async function saveSalary(teacher) {
   savingSalary.value = true;
   try {
-    await saveTeacherSalaryProfile({
+    const saved = await saveTeacherSalaryProfile({
       teacher_id: teacher.teacher_id,
       branch_id: props.branchId || null,
       base_salary: salaryDraft.value,
-      effective_from: new Date().toISOString().slice(0, 10),
+      effective_from: periodWindow.value.start || `${settlementMonth.value}-01`,
     });
     editingSalaryId.value = null;
     await loadData();
+    if (saved?.status === 'pending') {
+      error.value = '底薪已送出，待總部核准後才會改結算金額。';
+    }
   } catch (e) {
     error.value = e?.message || '底薪儲存失敗';
   } finally {

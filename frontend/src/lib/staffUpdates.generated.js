@@ -133,10 +133,10 @@ export const staffUpdates = [
     ],
     "importance": "major",
     "title": "正職行政加給與底薪核准",
-    "summary": "行政加給要主任確認、總部核准才進倍率；底薪改完先待核准。",
+    "summary": "行政加給要主任確認、總部核准才進倍率。主任改底薪先待核准；總部改了立刻計入。",
     "items": [
       "可登錄行政協助／總導師／副主任加給 0–10%，核准後才計入。",
-      "底薪送出後顯示待核准，總部可在結算表核准。"
+      "主任改底薪會看到待核准金額；總部可核准，或自己改立即生效。"
     ],
     "sections": [
       {
@@ -148,7 +148,7 @@ export const staffUpdates = [
       {
         "title": "操作更順手",
         "items": [
-          "底薪送出後顯示待核准，總部可在結算表核准。"
+          "主任改底薪會看到待核准金額；總部可核准，或自己改立即生效。"
         ]
       }
     ],
@@ -319,6 +319,36 @@ export const staffUpdates = [
     ],
     "sourceRefs": [
       "changelog:2026-08-16:billing-ux-find"
+    ],
+    "date": "2026-08-16",
+    "version": "2026.08.16"
+  },
+  {
+    "id": "staff-2026-08-16-billing-tabs-visible",
+    "publishedAt": "2026-08-16",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "帳務資料在學生列",
+    "summary": "課程管理每位學生姓名下方有課程資料與帳務資料。",
+    "items": [
+      "點學生列下面的「帳務資料」即可對帳，不必先展開。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "點學生列下面的「帳務資料」即可對帳，不必先展開。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-16:billing-tabs-visible"
     ],
     "date": "2026-08-16",
     "version": "2026.08.16"

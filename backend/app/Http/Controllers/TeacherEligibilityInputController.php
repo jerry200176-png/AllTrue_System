@@ -513,13 +513,16 @@ class TeacherEligibilityInputController extends Controller
         $this->assertTeacherScope($request, $data['teacher_id'], $branchId);
         $this->rejectIfSalaryMonthLocked($data['teacher_id'], $branchId, $data['effective_from']);
 
+        $isHq = $request->attributes->get('auth_role') === 'super_admin';
         $profile = \App\Models\FulltimeSalaryProfile::create([
             'teacher_id' => $data['teacher_id'],
             'branch_id' => $branchId,
             'base_salary' => $data['base_salary'],
             'effective_from' => $data['effective_from'],
-            'status' => 'pending',
+            'status' => $isHq ? 'approved' : 'pending',
             'created_by' => $this->actorId($request),
+            'approved_by' => $isHq ? $this->actorId($request) : null,
+            'approved_at' => $isHq ? now() : null,
         ]);
 
         return response()->json($profile, 201);

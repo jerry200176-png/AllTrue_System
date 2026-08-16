@@ -9,14 +9,27 @@ updates:
       - director
     importance: major
     title: 正職行政加給與底薪核准
-    summary: 行政加給要主任確認、總部核准才進倍率；底薪改完先待核准。
+    summary: 行政加給要主任確認、總部核准才進倍率。主任改底薪先待核准；總部改了立刻計入。
     items:
       - category: added
         text: 可登錄行政協助／總導師／副主任加給 0–10%，核准後才計入。
       - category: improved
-        text: 底薪送出後顯示待核准，總部可在結算表核准。
+        text: 主任改底薪會看到待核准金額；總部可核准，或自己改立即生效。
     source_refs:
       - "changelog:2026-08-16:fulltime-admin-allowance"
+
+  - id: staff-2026-08-16-billing-tabs-visible
+    published_at: "2026-08-16"
+    audiences:
+      - director
+    importance: digest
+    title: 帳務資料在學生列
+    summary: 課程管理每位學生姓名下方有課程資料與帳務資料。
+    items:
+      - category: improved
+        text: 點學生列下面的「帳務資料」即可對帳，不必先展開。
+    source_refs:
+      - "changelog:2026-08-16:billing-tabs-visible"
 
   - id: staff-2026-08-16-billing-ux-find
     published_at: "2026-08-16"
