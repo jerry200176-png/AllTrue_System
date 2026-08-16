@@ -11,7 +11,7 @@ services:
       - ./backend:/var/www
       - app-storage:/var/www/storage
     depends_on:
-      postgres:
+      mysql:
         condition: service_healthy
     networks:
       - alltrue
@@ -31,24 +31,28 @@ services:
     networks:
       - alltrue
 
-  # ── PostgreSQL (Database) ──────────────────────────────────────────
-  postgres:
-    image: postgres:15-alpine
-    container_name: alltrue-postgres
+  # ── MySQL (Database) ────────────────────────────────────────────────
+  # Matches production (Pi runs MySQL, not Postgres) so `docker compose up`
+  # actually catches what CI/production will see. See issue #868.
+  mysql:
+    image: mysql:8.0
+    container_name: alltrue-mysql
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${DB_DATABASE:-alltrue}
-      POSTGRES_USER: ${DB_USERNAME:-alltrue}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-secret}
+      MYSQL_DATABASE: ${DB_DATABASE:-alltrue}
+      MYSQL_USER: ${DB_USERNAME:-alltrue}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-secret}
+      MYSQL_ALLOW_EMPTY_PASSWORD: "no"
+      MYSQL_RANDOM_ROOT_PASSWORD: "yes"
     volumes:
-      - ./data/postgres:/var/lib/postgresql/data
+      - ./data/mysql:/var/lib/mysql
     ports:
-      - "5432:5432"
+      - "3306:3306"
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${DB_USERNAME:-alltrue} -d ${DB_DATABASE:-alltrue}" ]
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "${DB_USERNAME:-alltrue}", "-p${DB_PASSWORD:-secret}" ]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
     networks:
       - alltrue
 

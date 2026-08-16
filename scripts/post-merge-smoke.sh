@@ -32,10 +32,11 @@ pi_sh() {
 pi_mysql() {
   local sql="$1"
   if [[ "${SMOKE_ON_PI:-}" == "1" ]]; then
+    DB_USER="$(grep ^DB_USERNAME= "${PI_BACKEND}/.env" | cut -d= -f2-)"
     DB_PASS="$(grep ^DB_PASSWORD= "${PI_BACKEND}/.env" | cut -d= -f2-)"
-    mysql -u admin -p"$DB_PASS" AllTrue -N -e "$sql" 2>/dev/null
+    mysql -u "$DB_USER" -p"$DB_PASS" AllTrue -N -e "$sql" 2>/dev/null
   else
-    ssh -o BatchMode=yes "$PI_SSH" "DB_PASS=\$(grep ^DB_PASSWORD= ${PI_BACKEND}/.env | cut -d= -f2-); mysql -u admin -p\"\$DB_PASS\" AllTrue -N -e \"$sql\"" 2>/dev/null
+    ssh -o BatchMode=yes "$PI_SSH" "DB_USER=\$(grep ^DB_USERNAME= ${PI_BACKEND}/.env | cut -d= -f2-); DB_PASS=\$(grep ^DB_PASSWORD= ${PI_BACKEND}/.env | cut -d= -f2-); mysql -u \"\$DB_USER\" -p\"\$DB_PASS\" AllTrue -N -e \"$sql\"" 2>/dev/null
   fi
 }
 

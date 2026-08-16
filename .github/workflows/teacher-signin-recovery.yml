@@ -103,7 +103,8 @@ jobs:
           TS=$(date '+%Y-%m-%d_%H%M%S')
           BACKUP_FILE="/home/admin/backups/emergency/db_pre_teacher_signin_recovery_${TS}.sql.gz"
           mkdir -p /home/admin/backups/emergency
-          mysqldump -h 127.0.0.1 -u admin -p"$(grep DB_PASSWORD /home/admin/backend/.env | cut -d= -f2)" \
+          DB_USER="$(grep '^DB_USERNAME=' /home/admin/backend/.env | cut -d= -f2-)"
+          mysqldump -h 127.0.0.1 -u "$DB_USER" -p"$(grep '^DB_PASSWORD=' /home/admin/backend/.env | cut -d= -f2-)" \
             --single-transaction AllTrue | gzip > "$BACKUP_FILE"
           echo "Backup complete: $BACKUP_FILE"
 
