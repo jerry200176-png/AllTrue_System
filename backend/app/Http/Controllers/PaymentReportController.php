@@ -605,7 +605,7 @@ class PaymentReportController extends Controller
             return true;
         }
 
-        $charge = (int) (StudentClass::where('ID', $studentClassId)->value('Charge') ?? 0);
+        $charge = (int) (StudentClass::query()->where('ID', $studentClassId)->value('Charge') ?? 0);
         $paidAmount = (int) Invoice::where('StudentClassID', $studentClassId)
             ->where(function ($q) {
                 $q->whereNull('Status')->orWhere('Status', '!=', 'void');

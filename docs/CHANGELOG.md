@@ -4,6 +4,12 @@
 
 課程管理列表的已繳判斷與帳務中心對齊：`Paid` 或帳單足額收款才算已繳；僅部分收款不再顯示已繳。重複入帳閘同步。
 
+## 2026-08-17 — fix(security): 學生 Excel 匯出寫入稽核事件
+
+<!-- release-notes: silent_ship=silent-2026-08-17-pii-export-audit-1812 -->
+
+- `GET /api/v1/students/export` 成功匯出前寫入 `security_audit_events`（操作者雜湊、筆數、校區範圍）；不含姓名／電話等明文。
+- 修正 `students/export` 被 `students/{student}` 搶路由的問題，並對 student id 加 `whereNumber`。
 ## 2026-08-17 — chore(billing): isFullyPaid 收斂到 StudentClass（TD-083 B0）
 
 <!-- release-notes: silent_ship=silent-2026-08-17-ispaid-b0 -->

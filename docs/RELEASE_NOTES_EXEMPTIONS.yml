@@ -7,6 +7,10 @@ exemptions:
     changelog_title: "fix(billing): 課程列表已繳改認足額收款（TD-083 B1）"
     reason: 僅對齊已繳判斷口徑（部分收款不再誤顯示已繳）；無新操作流程。
 
+  - id: silent-2026-08-17-pii-export-audit-1812
+    changelog_date: "2026-08-17"
+    changelog_title: "fix(security): 學生 Excel 匯出寫入稽核事件"
+    reason: 僅後端稽核事件與測試；主任匯出學生名單畫面與檔案內容不變。
   - id: silent-2026-08-17-ispaid-b0
     changelog_date: "2026-08-17"
     changelog_title: "chore(billing): isFullyPaid 收斂到 StudentClass（TD-083 B0）"
