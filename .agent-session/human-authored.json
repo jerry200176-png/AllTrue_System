@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "provenance_type": "human-authored",
-  "declared_at": "2026-08-16T14:00:00Z",
+  "declared_at": "2026-08-16T15:40:00Z",
   "author": "jerry-claude-code-session",
-  "note": "Split PR C/4: cross-campus binding conflict resolution API, extracted from oversized PR #1727."
+  "note": "Revert of f54a8014 to unblock repo-wide UI Smoke CI failure -- see issue #1855."
 }
