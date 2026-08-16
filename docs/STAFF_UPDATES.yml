@@ -18,6 +18,22 @@ updates:
     source_refs:
       - "changelog:2026-08-16:fulltime-payroll-lock"
 
+  - id: staff-2026-08-14-monthly-copy-teacher-list
+    published_at: "2026-08-14"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 月結課表顯示修正
+    summary: 月結課程不再寫成購買堂數；老師清單同一堂不重複。
+    items:
+      - category: fixed
+        text: 月結課程的上課日期改顯示已上堂數，不再出現購買堂數。
+      - category: fixed
+        text: 老師清單同一學生同時段只列一筆，不再重複同一門課。
+    source_refs:
+      - "changelog:2026-08-14:monthly-copy-teacher-list"
+
   - id: staff-2026-08-16-reported-paid-phase2
     published_at: "2026-08-16"
     audiences:

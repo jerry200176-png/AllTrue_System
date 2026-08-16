@@ -70,10 +70,23 @@ import { computePackageNextTotal, packageMemberSessionSummary } from './packageS
 
 // non-package session course keeps the per-course 購買 framing (unchanged).
 {
-  const solo = { SessionCount: 8, sessions_purchased: 8 };
+  const solo = { payment_type: 'session', SessionCount: 8, sessions_purchased: 8 };
   const r = packageMemberSessionSummary(solo, { completed: 2 });
   assert.equal(r.isPackage, false);
   assert.equal(r.text, '已上 2 / 購買 8 堂');
+}
+
+// monthly courses must not reuse prepaid「購買 N 堂」(大安翟君和 社會 / R102 copy gap).
+{
+  const monthly = {
+    payment_type: 'monthly',
+    SessionCount: 4,
+    sessions_purchased: 4,
+    settlement_day: 31,
+  };
+  const r = packageMemberSessionSummary(monthly, { completed: 3 });
+  assert.equal(r.text, '已上 3 堂');
+  assert.doesNotMatch(r.text, /購買/);
 }
 
 // cancelled suffix preserved for both modes.
@@ -83,7 +96,10 @@ import { computePackageNextTotal, packageMemberSessionSummary } from './packageS
     { completed: 2, cancelled: 1 },
   );
   assert.match(pkg.text, /，1 堂已取消$/);
-  const solo = packageMemberSessionSummary({ SessionCount: 8 }, { completed: 2, cancelled: 2 });
+  const solo = packageMemberSessionSummary(
+    { payment_type: 'session', SessionCount: 8 },
+    { completed: 2, cancelled: 2 },
+  );
   assert.equal(solo.text, '已上 2 / 購買 8 堂，2 堂已取消');
 }
 

@@ -347,6 +347,40 @@ export const staffUpdates = [
     "version": "2026.08.15"
   },
   {
+    "id": "staff-2026-08-14-monthly-copy-teacher-list",
+    "publishedAt": "2026-08-14",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "月結課表顯示修正",
+    "summary": "月結課程不再寫成購買堂數；老師清單同一堂不重複。",
+    "items": [
+      "月結課程的上課日期改顯示已上堂數，不再出現購買堂數。",
+      "老師清單同一學生同時段只列一筆，不再重複同一門課。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "月結課程的上課日期改顯示已上堂數，不再出現購買堂數。",
+          "老師清單同一學生同時段只列一筆，不再重複同一門課。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-14:monthly-copy-teacher-list"
+    ],
+    "date": "2026-08-14",
+    "version": "2026.08.14"
+  },
+  {
     "id": "staff-2026-08-14-eligibility-pending-edit",
     "publishedAt": "2026-08-14",
     "effectiveAt": null,
