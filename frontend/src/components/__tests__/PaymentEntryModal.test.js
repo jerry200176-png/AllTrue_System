@@ -25,7 +25,7 @@ beforeEach(() => {
 
 describe('PaymentEntryModal — director-record submission contract', () => {
   it('emits confirmed with the API result on success (this is what report_id flows through)', async () => {
-    global.fetch.mockResolvedValueOnce(ok({ message: '已核帳登記', report_id: 42, payment_id: 1, invoice_id: 2 }));
+    global.fetch.mockResolvedValueOnce(ok({ message: '已送出待對帳', report_id: 42, payment_id: null, invoice_id: 2, status: 'pending' }));
     const wrapper = mount(PaymentEntryModal, { props: { show: false, row } });
     await wrapper.setProps({ show: true });
     await nextTick();
@@ -33,7 +33,7 @@ describe('PaymentEntryModal — director-record submission contract', () => {
     await wrapper.find('form').trigger('submit');
     await tick();
 
-    expect(wrapper.emitted('confirmed')).toEqual([[{ message: '已核帳登記', report_id: 42, payment_id: 1, invoice_id: 2 }]]);
+    expect(wrapper.emitted('confirmed')).toEqual([[{ message: '已送出待對帳', report_id: 42, payment_id: null, invoice_id: 2, status: 'pending' }]]);
   });
 
   // ── Blocker 5 precondition: a failed payment API call must never emit

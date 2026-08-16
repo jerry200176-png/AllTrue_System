@@ -28,6 +28,7 @@ assert.ok(latest.id && latest.publishedAt && latest.sections?.length);
 assert.ok(['digest', 'major', 'action_required'].includes(latest.importance));
   assert.strictEqual(latest.publishedAt, '2026-08-16');
   for (const id of [
+    'staff-2026-08-16-reported-paid-pending',
     'staff-2026-08-16-lr-resurrect-status-adjust',
     'staff-2026-08-15-tuition-charge-display-1734',
     'staff-2026-08-15-teacher-home-projected-campus',

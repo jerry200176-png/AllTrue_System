@@ -3213,7 +3213,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\CoursePackage\:\:\$paid\.$#'
 			identifier: property.notFound
-			count: 2
+			count: 3
 			path: app/Http/Controllers/PaymentReportController.php
 
 		-
@@ -3247,12 +3247,6 @@ parameters:
 			path: app/Http/Controllers/PaymentReportController.php
 
 		-
-			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model\:\:\$Paid\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/PaymentReportController.php
-
-		-
 			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model\:\:\$RemainingSessions\.$#'
 			identifier: property.notFound
 			count: 2
@@ -3261,7 +3255,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model\:\:\$ScheduleMode\.$#'
 			identifier: property.notFound
-			count: 3
+			count: 2
 			path: app/Http/Controllers/PaymentReportController.php
 
 		-
@@ -3303,7 +3297,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model\:\:\$StudentID\.$#'
 			identifier: property.notFound
-			count: 3
+			count: 2
 			path: app/Http/Controllers/PaymentReportController.php
 
 		-
@@ -3399,7 +3393,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\Invoice\:\:create\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 2
+			count: 1
 			path: app/Http/Controllers/PaymentReportController.php
 
 		-
@@ -3411,13 +3405,13 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\Invoice\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 7
+			count: 8
 			path: app/Http/Controllers/PaymentReportController.php
 
 		-
 			message: '#^Call to an undefined static method App\\Models\\Payment\:\:create\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 3
+			count: 2
 			path: app/Http/Controllers/PaymentReportController.php
 
 		-
@@ -3435,7 +3429,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\PaymentReport\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 2
+			count: 3
 			path: app/Http/Controllers/PaymentReportController.php
 
 		-
@@ -3447,12 +3441,6 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 1
-			path: app/Http/Controllers/PaymentReportController.php
-
-		-
-			message: '#^Left side of && is always true\.$#'
-			identifier: booleanAnd.leftAlwaysTrue
 			count: 1
 			path: app/Http/Controllers/PaymentReportController.php
 

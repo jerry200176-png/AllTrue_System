@@ -4,6 +4,43 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-16-reported-paid-pending",
+    "publishedAt": "2026-08-16",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "繳費改先回報再入帳",
+    "summary": "行政先登記家長已繳；會計對到帳才開收據，避免沒匯款就變已繳。",
+    "items": [
+      "看官方 LINE 請用「登記已回報」，不要等會計也能先登錄。",
+      "會計確認入帳後才會開電子收據；對不到款可退回。"
+    ],
+    "sections": [
+      {
+        "title": "需要你注意",
+        "items": [
+          "看官方 LINE 請用「登記已回報」，不要等會計也能先登錄。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "會計確認入帳後才會開電子收據；對不到款可退回。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-16:reported-paid-pending"
+    ],
+    "date": "2026-08-16",
+    "version": "2026.08.16"
+  },
+  {
     "id": "staff-2026-08-16-fulltime-settlement-table",
     "publishedAt": "2026-08-16",
     "effectiveAt": null,
