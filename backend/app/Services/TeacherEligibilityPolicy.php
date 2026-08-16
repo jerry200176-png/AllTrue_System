@@ -41,7 +41,9 @@ class TeacherEligibilityPolicy
             'subject_count_bonus' => $this->subjectCountBonus(
                 array_key_exists('subject_count', $input) && $input['subject_count'] !== null
                     ? (float) $input['subject_count']
-                    : null
+                    : (isset($input['subject_units']['payroll_total']) ? (float) $input['subject_units']['payroll_total'] : null),
+                isset($input['subject_units']['one_to_three']) ? (float) $input['subject_units']['one_to_three'] : null,
+                is_array($input['subject_units'] ?? null) ? $input['subject_units'] : []
             ),
         ];
 
@@ -139,7 +141,21 @@ class TeacherEligibilityPolicy
         }
 
         $required = (float) $this->setting('holiday_required_hours', 16);
-        $qualified = collect($holidayDays)->every(fn ($day) => (float) $day['regular_scheduled_hours'] >= $required);
+        foreach ($holidayDays as $index => $day) {
+            $regular = (float) $day['regular_scheduled_hours'];
+            $leaveUnknown = !array_key_exists('holiday_leave_hours', $day) || $day['holiday_leave_hours'] === null;
+            if ($regular < $required && $leaveUnknown) {
+                $missing[] = "holiday_days.{$index}.holiday_leave_hours";
+            }
+        }
+        if ($missing !== []) {
+            return $this->review($missing, '缺少假日出勤或假日假抵扣時數。');
+        }
+
+        $qualified = collect($holidayDays)->every(function ($day) use ($required) {
+            $covered = (float) $day['regular_scheduled_hours'] + (float) ($day['holiday_leave_hours'] ?? 0);
+            return $covered >= $required;
+        });
         $metrics = [
             'holiday_count' => count($holidayDays),
             'required_hours' => $required,
@@ -156,13 +172,13 @@ class TeacherEligibilityPolicy
                     ? round((float) $day['holiday_leave_hours'], 2)
                     : null,
             ])->all(),
-            'holiday_leave_effect' => 'neutral_not_added_to_multiplier',
+            'holiday_leave_effect' => 'offsets_toward_required_hours',
         ];
         return $this->result(
             $qualified ? self::QUALIFIES : self::NOT_QUALIFIES,
             $qualified
-                ? '每個假日常態排課均達16小時；假日假不扣除假日倍率。'
-                : '至少一個假日常態排課未達16小時；假日假不能創造假日倍率。',
+                ? '每個假日常態排課加假日假抵扣均達16小時。'
+                : '至少一個假日常態排課加假日假仍未達16小時。',
             $metrics,
             0,
             $qualified ? (float) $this->setting('holiday_multiplier_pass', 10) : 0
@@ -210,6 +226,9 @@ class TeacherEligibilityPolicy
 
         foreach ($achievements as $achievement) {
             $status = (string) ($achievement['status'] ?? 'pending');
+            if ($status === 'withdrawn') {
+                continue;
+            }
             if ($status !== 'verified') {
                 $pending[] = $achievement['outcome_key'] ?? 'achievement';
                 continue;
@@ -294,6 +313,9 @@ class TeacherEligibilityPolicy
         $pending = [];
         $active = [];
         foreach ($deductions as $deduction) {
+            if (($deduction['status'] ?? 'pending') === 'withdrawn') {
+                continue;
+            }
             if (($deduction['status'] ?? 'pending') !== 'approved') {
                 $pending[] = $deduction['deduction_key'] ?? 'deduction';
                 continue;
@@ -315,7 +337,7 @@ class TeacherEligibilityPolicy
         );
     }
 
-    public function subjectCountBonus(?float $subjectCount): array
+    public function subjectCountBonus(?float $subjectCount, ?float $oneToThreeCount = null, array $units = []): array
     {
         if ($subjectCount === null) {
             return $this->review(
@@ -324,35 +346,69 @@ class TeacherEligibilityPolicy
             );
         }
 
-        $subjectCount = round($subjectCount, 2);
-        if ($subjectCount < 1) {
-            return $this->result(self::QUALIFIES, '查詢期間沒有科目數獎金。', ['subject_count' => 0], 0, 0);
+        $payrollCount = round($subjectCount, 4);
+        $oneToThree = round($oneToThreeCount ?? $subjectCount, 4);
+        if ($payrollCount < 1 && $oneToThree < 1) {
+            return $this->result(self::QUALIFIES, '查詢期間沒有科目數獎金。', [
+                'subject_count' => 0,
+                'one_to_three_count' => 0,
+                'regular_subject_count' => $units['regular'] ?? 0,
+                'tutoring_trial_subject_count' => $units['tutoring_trial'] ?? 0,
+                'subject_count_bonus' => 0,
+                'one_to_three_bonus' => 0,
+            ], 0, 0);
         }
 
-        if (abs($subjectCount - round($subjectCount)) > 0.0001) {
+        $table = $this->setting('subject_count_table', []);
+        $subjectBonus = $this->interpolateTableValue($table, max(0, $payrollCount), 0);
+        $oneToThreeBonus = $this->interpolateTableValue($table, max(0, $oneToThree), 1);
+        $illustrativeMultiplier = $this->interpolateTableValue($table, max($payrollCount, $oneToThree), 2);
+        $illustrativeAmount = $this->interpolateTableValue($table, max($payrollCount, $oneToThree), 3);
+        if ($subjectBonus === null || $oneToThreeBonus === null || $illustrativeMultiplier === null) {
             return $this->review(
                 ['subject_count_table'],
-                '科目數含加權小數，附件表格只有1～50整數版本，無法自行推算。',
-                ['subject_count' => $subjectCount]
+                '科目數超出附件表格1～50範圍。',
+                ['subject_count' => $payrollCount, 'one_to_three_count' => $oneToThree]
             );
         }
 
-        $subjectCount = (int) round($subjectCount);
-        $table = $this->setting('subject_count_table', []);
-        if ($subjectCount > 50) {
-            return $this->review(['subject_count_table'], '科目數超出附件表格1～50範圍。');
-        }
-        $row = $table[$subjectCount] ?? null;
-        if ($row === null) {
-            return $this->review(['subject_count_table'], '科目數超出附件表格1～50範圍。');
-        }
         return $this->result(
             self::QUALIFIES,
             '依115.07科目數及一對三獎金表計算。',
-            ['subject_count' => $subjectCount, 'subject_count_bonus' => $row[0], 'one_to_three_bonus' => $row[1], 'multiplier' => $row[2]],
-            $row[3],
-            $row[2] - 100
+            [
+                'subject_count' => $payrollCount,
+                'one_to_three_count' => $oneToThree,
+                'regular_subject_count' => $units['regular'] ?? null,
+                'tutoring_trial_subject_count' => $units['tutoring_trial'] ?? null,
+                'subject_count_bonus' => $this->number(round($subjectBonus, 2)),
+                'one_to_three_bonus' => $this->number(round($oneToThreeBonus, 2)),
+                'multiplier' => $this->number(round($illustrativeMultiplier, 2)),
+            ],
+            $illustrativeAmount === null ? 0 : $this->number(round($illustrativeAmount, 2)),
+            $this->number(round($illustrativeMultiplier - 100, 2))
         );
+    }
+
+    private function interpolateTableValue(array $table, float $count, int $column): ?float
+    {
+        if ($count < 1) {
+            return 0.0;
+        }
+        if ($count > 50) {
+            return null;
+        }
+        $floor = (int) floor($count);
+        $ceil = (int) ceil($count);
+        $low = $table[$floor] ?? null;
+        $high = $table[$ceil] ?? null;
+        if ($low === null || $high === null) {
+            return null;
+        }
+        if ($floor === $ceil) {
+            return (float) $low[$column];
+        }
+        $fraction = $count - $floor;
+        return (float) $low[$column] + ((float) $high[$column] - (float) $low[$column]) * $fraction;
     }
 
     private function result(string $status, string $reason, array $metrics = [], $amount = 0, $rate = 0): array
@@ -382,5 +438,11 @@ class TeacherEligibilityPolicy
     private function setting(string $key, $default)
     {
         return array_key_exists($key, $this->settings) ? $this->settings[$key] : $default;
+    }
+
+    private function number(float $value): int|float
+    {
+        $rounded = round($value, 2);
+        return abs($rounded - (int) round($rounded)) < 0.0001 ? (int) round($rounded) : $rounded;
     }
 }

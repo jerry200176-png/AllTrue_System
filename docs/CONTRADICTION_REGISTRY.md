@@ -20,6 +20,11 @@
 | **K9** | deploy.yml vs INCIDENT | Deploy run outcome decides STATE or skips policy | **I4:** deploy executes FINAL_ACTION only; re-infer after observe. | **Resolved:** committed `deploy.yml` restored; no ADR fail-closed WIP in tree. |
 | **K10** | Override vs inference | Undefined "emergency" manual state pick | **Explicit rule:** Override **only** in ESCALATED_FAILURE + documented + CEO LINE. | **Resolved:** contract I3 + INCIDENT stack explicit override gate. |
 | **K11** | POP vs deploy.yml vs legacy repair workflows | Multiple execution paths (SSH repair workflows, Pi manual artisan) | **I1 v2:** POP Executor + `deploy.yml` only. Legacy workflows deprecated, not parallel authority. | **Resolved (2026-07-16):** ADR-POP-010; contract-version 2. |
+| **K12** | COMPANY_CONSTITUTION.md vs CONTROL_PLANE_CONTRACT.md | Constitution says Control Plane is level 4 (below itself); Control Plane's own banner claimed unscoped "supersedes all other docs" | Control Plane supersedes **within production deploy/runtime execution only**; Constitution precedence governs everything else. | **Resolved (2026-08-16):** scope qualifier added to Control Plane's banner; found by the 2026-08-15 external review. |
+
+---
+
+**Open-entry policy**: every row above is `Resolved` — that's the target state, not a coincidence. A row staying open past the PR that adds it means the conflict is live in `main`, which this registry exists to prevent. If this table ever needs a "Status: Open" row for more than one PR cycle, treat that as a signal the registry itself is growing past what a single read-through can track (see the 2026-08-15 external review's note that the existence of this file is itself evidence `docs/` is near its maintainable size).
 
 ---
 

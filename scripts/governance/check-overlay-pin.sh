@@ -23,6 +23,8 @@ if [[ -z "$OVERLAY" ]]; then
     TMP=$(mktemp)
     if curl -fsSL "https://raw.githubusercontent.com/jerry200176-png/sunrise-cafe/main/docs/governance/OVERLAY.md" -o "$TMP"; then
       OVERLAY="$TMP"
+    elif [[ -f "$ROOT/docs/governance/SUNRISE_OVERLAY_PIN" ]]; then
+      OVERLAY="$ROOT/docs/governance/SUNRISE_OVERLAY_PIN"
     else
       fail "no OVERLAY_FILE and cannot fetch sunrise OVERLAY.md"
     fi

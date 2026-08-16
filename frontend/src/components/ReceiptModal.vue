@@ -25,6 +25,12 @@
           <span>此收據由系統依舊繳費記錄補建，原始付款方式與日期可能不精確。</span>
         </div>
 
+        <!-- Billing mode changed since issue (#934) -->
+        <div v-if="receipt.billing_mode_changed" class="receipt-backfill-notice">
+          <span class="material-symbols-outlined" style="font-size:16px;flex-shrink:0;margin-top:1px">warning</span>
+          <span>此課程計費模式已變更，此收據可能已被取代，請以最新繳費紀錄為準。</span>
+        </div>
+
         <!-- Voided banner -->
         <div v-if="receipt.status === 'voided'" class="receipt-voided-banner">
           <span class="material-symbols-outlined">cancel</span>
