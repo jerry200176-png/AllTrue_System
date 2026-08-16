@@ -4,6 +4,36 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-17-tuition-collect-tdz",
+    "publishedAt": "2026-08-17",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "帳務中心可正常開啟",
+    "summary": "進入帳務中心不再白屏，可直接看催繳與待對帳名單。",
+    "items": [
+      "帳務中心一進去就能載入名單，不再空白。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "帳務中心一進去就能載入名單，不再空白。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-17:tuition-collect-tdz"
+    ],
+    "date": "2026-08-17",
+    "version": "2026.08.17"
+  },
+  {
     "id": "staff-2026-08-16-reported-paid-pending",
     "publishedAt": "2026-08-16",
     "effectiveAt": null,
