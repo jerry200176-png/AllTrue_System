@@ -783,8 +783,8 @@
 - **發現來源**：2026-08-17 全站重複功能掃描（Founder 要求）
 - **計畫**：[`docs/plans/DUP_FEATURE_CLEANUP_ABC_2026-08-17.md`](plans/DUP_FEATURE_CLEANUP_ABC_2026-08-17.md)
 - **A（死碼頁）**：#1864 已清償；計畫文件 #1866
-- **B（isPaid 多真相）**：B0 = `StudentClass::isFullyPaid` SSOT（本 PR）；B1–B2 接續；B3 `DunningService` 需另 GO
-- **C（補請假／TD-069＋TD-012）**：先裁定尾端補課權威再改行為
+- **B（isPaid 多真相）**：B0 #1869 已上線；B1 本 PR（列表／重複入帳）；B2 通知；B3 Dunning **已獲 Founder GO**
+- **C（補請假／TD-069＋TD-012）**：Founder 已裁定 `appendTailAfterLeave` 為權威
 - **註**：TD-082 號碼已被「非帳務英文 UI」佔用，故本追蹤用 TD-083
 - **優先級**：P1（B／C）
 

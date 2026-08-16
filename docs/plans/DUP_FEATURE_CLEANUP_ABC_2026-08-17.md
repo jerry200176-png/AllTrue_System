@@ -1,6 +1,10 @@
 # 重複功能清理計畫 A → B → C（2026-08-17）
 
 > Founder GO：全做，順序 A→B→C。本檔為執行契約；產品行為變更（B／C）另有核准閘門。追蹤：**TD-083**（TD-082 號碼另有用途）。
+>
+> **Founder 裁定（2026-08-17）**
+> - **C0**：尾端補課權威 = `CourseLeaveCascadeService::appendTailAfterLeave()`；`tryExtendOnLeave` 視為舊路徑、對齊後汰換。
+> - **B3**：允許 `DunningService` 改用顯示口徑 `StudentClass::isFullyPaid`（足額收款視為已繳，不再只看 `Paid==1`）。
 
 ## 決策摘要
 
@@ -62,10 +66,10 @@ isFullyPaid = (Paid == 1) OR (charge > 0 AND paid_amount >= charge)
 
 | Batch | 呼叫點 | 備註 |
 |-------|--------|------|
-| B0 | `StudentClass` 新增 `isFullyPaid()`；`AlertController` 改呼叫 | **本 PR** — model 為 SSOT，Alert 薄委派；單元測鎖 R94 |
-| B1 | `StudentClassController`、`AccountingController`、`PaymentReportController` | 顯示／帳本對齊 |
+| B0 | `StudentClass` 新增 `isFullyPaid()`；`AlertController` 改呼叫 | **已上線** #1869 |
+| B1 | `StudentClassController`、`PaymentReportController`（帳本顯示／重複入帳閘） | **本 PR** — 列表不再把「部分收款」當已繳 |
 | B2 | `NotificationSyncService`、`NotificationController`、`SendTuitionReminders`、`ParentPortalController` | 通知／家長 |
-| B3 | `DunningService` | **凍結**；需 Founder 書面 GO + `DIRECTOR_PAYMENT_ALERT_RULES` 對照表 |
+| B3 | `DunningService` | **Founder 已 GO（2026-08-17）** — 改用 `isFullyPaid` |
 
 ### 驗收（每批）
 
@@ -81,8 +85,8 @@ isFullyPaid = (Paid == 1) OR (charge > 0 AND paid_amount >= charge)
 
 | 問題 | 建議預設（待 Founder 確認） |
 |------|---------------------------|
-| 尾端補課權威？ | `CourseLeaveCascadeService::appendTailAfterLeave()`（2026-07-26 keep-future-dates-append-tail） |
-| `tryExtendOnLeave`？ | 若確認為舊政策 → 汰換為呼叫同一 cascade；若情境必須不同 → 文件化「為何兩條」後只抽共用 void |
+| 尾端補課權威？ | **已裁定**：`CourseLeaveCascadeService::appendTailAfterLeave()` |
+| `tryExtendOnLeave`？ | **已裁定**：舊政策殘留 → 對齊後汰換為同一 cascade |
 | 前端誰打哪個 endpoint？ | 盤點後寫進本檔附錄；重疊則收斂到單一 API |
 
 ### C1 — 安全抽共用（行為不變）

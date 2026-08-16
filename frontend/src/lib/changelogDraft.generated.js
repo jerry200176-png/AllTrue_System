@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.08.17",
     "date": "2026-08-17",
     "title": "2026.08.17 草稿（未發布）",
-    "summary": "學生 Excel 匯出寫入稽核事件；對帳與帳務中心掃讀密度",
+    "summary": "課程列表已繳改認足額收款（TD-083 B1）；學生 Excel 匯出寫入稽核事件",
     "audience": [
       "teacher",
       "director"
@@ -18,6 +18,7 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "課程列表已繳改認足額收款（TD-083 B1）",
           "學生 Excel 匯出寫入稽核事件",
           "對帳與帳務中心掃讀密度",
           "帳務對帳改白話，拿掉技術符號",
@@ -27,6 +28,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "課程列表已繳改認足額收款（TD-083 B1）",
       "學生 Excel 匯出寫入稽核事件",
       "對帳與帳務中心掃讀密度",
       "帳務對帳改白話，拿掉技術符號",

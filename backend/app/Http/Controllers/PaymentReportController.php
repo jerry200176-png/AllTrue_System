@@ -605,9 +605,14 @@ class PaymentReportController extends Controller
             return true;
         }
 
-        return Invoice::where('StudentClassID', $studentClassId)
-            ->where('Status', 'paid')
-            ->exists();
+        $charge = (int) (StudentClass::query()->where('ID', $studentClassId)->value('Charge') ?? 0);
+        $paidAmount = (int) Invoice::where('StudentClassID', $studentClassId)
+            ->where(function ($q) {
+                $q->whereNull('Status')->orWhere('Status', '!=', 'void');
+            })
+            ->sum('PaidAmount');
+
+        return StudentClass::isFullyPaid(false, $paidAmount, $charge);
     }
 
     private function lockPackageForCourse(StudentClass $studentClass): ?CoursePackage

@@ -124,6 +124,8 @@ last_reviewed: 2026-08-16
 
 **修法**：`$isPaid = Paid=1 或 (charge > 0 且 paid_amount >= charge)`，僅在「足額收款」時才視為已繳，**不可**用「有任何收款紀錄」（`paid_at !== null`）判斷——後者連部分付款也會誤判為已繳，破壞既有 `partial` 狀態判斷（見上方 §payment_status 補充欄位）。
 
+**2026-08-17 延伸**：課程管理列表（`StudentClassController`）已改同一口徑（TD-083 B1）。`DunningService` 顧客催繳亦經 Founder GO 可改同一 `isFullyPaid`（B3 待實作）；列入帳務中心提醒名單的 query 仍依本章「列入條件」獨立維護。
+
 **測試**：`TuitionAlertsApiTest::test_payment_status_paid_when_invoice_fully_paid_without_paid_flag`、`TuitionAlertsApiTest::test_payment_status_renew_needed_not_unpaid_when_invoice_fully_paid_and_zero_remaining`。
 
 ## 行政已回報、待主任入帳（#1827 Phase 1）
