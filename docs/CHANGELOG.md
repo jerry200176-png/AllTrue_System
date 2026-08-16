@@ -5,6 +5,13 @@
 - 已核准的薪資補登可按「退回」，該筆不再進入薪資。
 - 全校放假改讀課程管理連假／堂次請假，不必再手動登假日曆。
 
+## 2026-08-14 — chore(ops): 張正甯／張正樂國文續購 8 堂未入帳作業閘門
+
+<!-- release-notes: silent_ship=silent-2026-08-14-chinese-renewal-unpaid -->
+
+- 新增只允許來源批次 `1681`／`1682` 的續購作業：8 堂、原金額、未付款，並走正式 `purchase-batch`。
+- 預設 dry-run；apply 需要確認字串，且不會入帳、不會移 8/5、不會使用數學批次。
+
 ## 2026-08-16 — fix(billing): 課程管理學生列顯示課程資料／帳務資料
 
 <!-- release-notes: staff_update=staff-2026-08-16-billing-tabs-visible -->
