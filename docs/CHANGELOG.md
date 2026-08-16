@@ -1,3 +1,9 @@
+## 2026-08-17 — fix(billing): 帳務中心白屏（activeTab 宣告順序）
+
+<!-- release-notes: staff_update=staff-2026-08-17-tuition-collect-tdz -->
+
+- 帳務中心進入時因 `activeTab` 使用早於宣告而崩潰；調整宣告順序後可正常載入名單。
+
 ## 2026-08-16 — feat(payroll): 正職現金加扣款
 
 <!-- release-notes: staff_update=staff-2026-08-16-fulltime-cash-adj -->

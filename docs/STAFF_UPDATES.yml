@@ -3,6 +3,19 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-17-tuition-collect-tdz
+    published_at: "2026-08-17"
+    audiences:
+      - director
+    importance: digest
+    title: 帳務中心可正常開啟
+    summary: 進入帳務中心不再白屏，可直接看催繳與待對帳名單。
+    items:
+      - category: fixed
+        text: 帳務中心一進去就能載入名單，不再空白。
+    source_refs:
+      - "changelog:2026-08-17:tuition-collect-tdz"
+
   - id: staff-2026-08-16-fulltime-cash-adj
     published_at: "2026-08-16"
     audiences:
