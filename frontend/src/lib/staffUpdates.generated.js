@@ -124,6 +124,43 @@ export const staffUpdates = [
     "version": "2026.08.16"
   },
   {
+    "id": "staff-2026-08-16-reported-paid-phase2",
+    "publishedAt": "2026-08-16",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "課程頁可批次帳務",
+    "summary": "同一學生切帳務；收費頁勾選批次回報，確認後才開收據。",
+    "items": [
+      "課程管理同一學生可切帳務資料，不必再搜一次。",
+      "收費頁可一次勾選多筆已回報或確認入帳。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "課程管理同一學生可切帳務資料，不必再搜一次。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "收費頁可一次勾選多筆已回報或確認入帳。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-16:reported-paid-phase2"
+    ],
+    "date": "2026-08-16",
+    "version": "2026.08.16"
+  },
+  {
     "id": "staff-2026-08-16-reported-paid-notif",
     "publishedAt": "2026-08-16",
     "effectiveAt": null,

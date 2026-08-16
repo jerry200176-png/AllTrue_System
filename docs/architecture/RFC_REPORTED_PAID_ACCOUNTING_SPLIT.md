@@ -1,13 +1,13 @@
 ---
 owner: jerry (CEO)
-status: Phase 2a in this PR (batch API + notification path); Phase 2b UI next
+status: Phase 2 complete (awaiting this PR merge)
 review_cycle: as-needed
 last_reviewed: 2026-08-16
 ---
 
 # RFC: 行政已回報 ≠ 會計已入帳（繳費狀態拆分）
 
-> **Status:** Phase 1 已上 main。本 PR 為 Phase 2a（通知中心走 pending；批次回報／確認 API）。課程頁帳務分頁與收費頁勾選為 Phase 2b。  
+> **Status:** Phase 1+2a 已上 main。本 PR 為 Phase 2b（課程頁帳務分頁、收費頁勾選批次）。  
 > **Date:** 2026-08-16  
 > **Issue:** [#1827](https://github.com/jerry200176-png/AllTrue_System/issues/1827)  
 > **Debt / lessons:** `docs/TECH_DEBT.md` TD-080 · F7 / R95 已繳費雙真相 · `docs/DIRECTOR_PAYMENT_ALERT_RULES.md`  
@@ -131,9 +131,9 @@ Deliverables:
 
 ### Phase 2 — 同學生脈絡＋批次（T2）
 
-**Phase 2a（本 PR）：** 通知中心學費按鈕走 `directorRecord` pending；`POST director-record-batch` / `confirm-batch`（最多 40，部分成功 207）。
+**Phase 2a（已上 main）：** 通知中心學費按鈕走 `directorRecord` pending；`POST director-record-batch` / `confirm-batch`（最多 40，部分成功 207）。
 
-**Phase 2b（下一 PR）：** 課程頁帳務分頁與收費頁勾選批次 UI。
+**Phase 2b（本 PR）：** 課程頁帳務分頁與收費頁勾選批次 UI。
 
 **Finish:** 不必換頁重搜姓名；一次可登 ≥5 筆。
 
