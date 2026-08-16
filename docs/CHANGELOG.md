@@ -1,3 +1,10 @@
+## 2026-08-16 — feat(billing): 課程頁帳務分頁與批次回報／確認 (#1827)
+
+<!-- release-notes: staff_update=staff-2026-08-16-reported-paid-phase2 -->
+
+- 課程管理同一學生可切「帳務資料」，查看回報／收據狀態並登記已回報，不必再到收費頁重搜姓名。
+- 收費頁可勾選多筆共用繳費日／方式送出待對帳；待核帳可批次確認入帳。通知中心「學費已繳」也改為只送出待對帳。
+
 ## 2026-08-16 — feat(billing): 行政登錄已回報，會計確認後才入帳開收據 (#1827)
 
 <!-- release-notes: staff_update=staff-2026-08-16-reported-paid-pending -->

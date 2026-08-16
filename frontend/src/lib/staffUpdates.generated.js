@@ -41,6 +41,38 @@ export const staffUpdates = [
     "version": "2026.08.16"
   },
   {
+    "id": "staff-2026-08-16-reported-paid-phase2",
+    "publishedAt": "2026-08-16",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "課程頁可看帳務批次",
+    "summary": "同一學生切帳務分頁；收費頁可一次回報或多筆確認入帳。",
+    "items": [
+      "課程管理同一學生可切「帳務資料」，不必再到收費頁重搜姓名。",
+      "收費頁可勾選多筆送出已回報；待核帳可批次確認入帳。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "課程管理同一學生可切「帳務資料」，不必再到收費頁重搜姓名。",
+          "收費頁可勾選多筆送出已回報；待核帳可批次確認入帳。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-16:reported-paid-phase2"
+    ],
+    "date": "2026-08-16",
+    "version": "2026.08.16"
+  },
+  {
     "id": "staff-2026-08-15-tuition-charge-display-1734",
     "publishedAt": "2026-08-15",
     "effectiveAt": null,

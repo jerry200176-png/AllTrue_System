@@ -359,27 +359,21 @@ class NotificationApiTest extends TestCase
             'note' => '通知中心核帳',
         ]);
 
-        $response->assertOk();
+        $response->assertOk()->assertJsonPath('message', '已送出待對帳');
 
         $this->assertDatabaseHas('StudentClass', [
             'ID' => $class->ID,
-            'Paid' => 1,
-            'PayDate' => '2026-04-20',
+            'Paid' => 0,
         ]);
-        $this->assertDatabaseHas('Invoice', [
-            'StudentID' => $student->id,
+        $this->assertDatabaseHas('payment_reports', [
             'StudentClassID' => $class->ID,
-            'TotalAmount' => 5000,
-            'PaidAmount' => 5000,
-            'Status' => 'paid',
+            'status' => 'pending',
+            'reported_amount' => 5000,
+            'account_last5' => '45688',
         ]);
-        $invoice = Invoice::where('StudentClassID', $class->ID)->firstOrFail();
-        $this->assertDatabaseHas('Payment', [
-            'InvoiceID' => $invoice->id,
-            'Amount' => 5000,
-            'PaidAt' => '2026-04-20 00:00:00',
-            'Method' => 'transfer',
-            'Note' => '通知中心核帳（帳號後5碼：45688）',
+        $this->assertDatabaseMissing('Invoice', [
+            'StudentClassID' => $class->ID,
+            'Status' => 'paid',
         ]);
         $this->assertDatabaseHas('NotificationReads', [
             'NotificationID' => $notification->id,
@@ -430,23 +424,16 @@ class NotificationApiTest extends TestCase
             'note' => '免費課程結算',
         ]);
 
-        $response->assertOk();
+        $response->assertOk()->assertJsonPath('message', '已送出待對帳');
 
         $this->assertDatabaseHas('StudentClass', [
             'ID' => $class->ID,
-            'Paid' => 1,
-            'PayDate' => '2026-04-20',
+            'Paid' => 0,
         ]);
-        $invoice = Invoice::where('StudentClassID', $class->ID)->firstOrFail();
-        $this->assertSame(0, (int) $invoice->TotalAmount);
-        $this->assertSame(0, (int) $invoice->PaidAmount);
-        $this->assertSame('paid', (string) $invoice->Status);
-        $this->assertDatabaseHas('Payment', [
-            'InvoiceID' => $invoice->id,
-            'Amount' => 0,
-            'PaidAt' => '2026-04-20 00:00:00',
-            'Method' => 'cash',
-            'Note' => '免費課程結算',
+        $this->assertDatabaseHas('payment_reports', [
+            'StudentClassID' => $class->ID,
+            'status' => 'pending',
+            'reported_amount' => 0,
         ]);
     }
 
@@ -498,19 +485,18 @@ class NotificationApiTest extends TestCase
             'note' => '櫃台現金',
         ]);
 
-        $response->assertOk();
+        $response->assertOk()->assertJsonPath('message', '已送出待對帳');
 
         $this->assertDatabaseHas('Invoice', [
             'id' => $invoice->id,
-            'PaidAmount' => 6200,
-            'Status' => 'paid',
+            'PaidAmount' => 1000,
+            'Status' => 'partial',
         ]);
-        $this->assertDatabaseHas('Payment', [
+        $this->assertDatabaseHas('payment_reports', [
+            'StudentClassID' => $class->ID,
             'InvoiceID' => $invoice->id,
-            'Amount' => 5200,
-            'PaidAt' => '2026-04-21 00:00:00',
-            'Method' => 'cash',
-            'Note' => '櫃台現金',
+            'status' => 'pending',
+            'reported_amount' => 5200,
         ]);
     }
 

@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.08.16",
     "date": "2026-08-16",
     "title": "2026.08.16 草稿（未發布）",
-    "summary": "行政登錄已回報，會計確認後才入帳開收據",
+    "summary": "課程頁帳務分頁與批次回報／確認；行政登錄已回報，會計確認後才入帳開收據",
     "audience": [
       "teacher",
       "director"
@@ -18,11 +18,13 @@ export const changelogDraftNotes = [
       {
         "title": "新增內容",
         "items": [
+          "課程頁帳務分頁與批次回報／確認",
           "行政登錄已回報，會計確認後才入帳開收據"
         ]
       }
     ],
     "items": [
+      "課程頁帳務分頁與批次回報／確認",
       "行政登錄已回報，會計確認後才入帳開收據"
     ]
   },

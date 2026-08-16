@@ -1,13 +1,13 @@
 ---
 owner: jerry (CEO)
-status: Phase 1 in this PR; Phase 2 not started
+status: Phase 1+2 in this PR
 review_cycle: as-needed
 last_reviewed: 2026-08-16
 ---
 
 # RFC: 行政已回報 ≠ 會計已入帳（繳費狀態拆分）
 
-> **Status:** Phase 1 實作中（行政登錄 = pending；confirm 才 Paid／收據）。Phase 2 尚未開始。  
+> **Status:** Phase 1+2 實作（行政登錄 = pending；confirm 才 Paid／收據；課程頁帳務分頁＋批次）。  
 > **Date:** 2026-08-16  
 > **Issue:** [#1827](https://github.com/jerry200176-png/AllTrue_System/issues/1827)  
 > **Debt / lessons:** `docs/TECH_DEBT.md` TD-080 · F7 / R95 已繳費雙真相 · `docs/DIRECTOR_PAYMENT_ALERT_RULES.md`  
@@ -129,7 +129,7 @@ Deliverables:
 
 **Rollback:** revert SHA。Pending 列可 reject；不得留下 Paid=1 而無 Payment 的半套。
 
-### Phase 2 — 同學生脈絡＋批次（T2 UI）— **Phase 1 merge 之後**
+### Phase 2 — 同學生脈絡＋批次（T2 UI）— **本 PR 一併實作**
 
 **Finish:** 不必換頁重搜姓名；一次可登 ≥5 筆。
 
@@ -138,7 +138,7 @@ Deliverables:
 1. 課程管理：同一學生卡／同一搜尋結果內切換「課程資料｜帳務資料」（繳費日、課程期間自動帶帳單、方式、後五碼、收據狀態）。不要做成第二套帳務模組。
 2. 行政「今日批次回報」：共用繳費日／方式／備註，多列學生＋後五碼＋金額；送出 = 多筆 pending。
 3. 會計批次核銷：對帳戶＋後五碼勾選 confirm。
-4. 權限：會計預設看不到改課／排課寫入；主任可看全程。
+4. 權限：產品無獨立會計角色；主任／行政走同一 confirm API。不另開「只能核帳不能改課」的角色切面。
 5. UI：Ops／表格密度、design tokens、無 mesh；Primary CTA 每區 ≤ 1。
 
 **Out of Phase 2:** 多通道自動發送收據；Excel 匯入可列 follow-up。

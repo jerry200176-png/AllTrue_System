@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Models\Notification;
 use App\Models\NotificationRead;
 use App\Models\Invoice;
-use App\Models\Payment;
 use App\Services\NotificationSyncService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -246,120 +245,68 @@ class NotificationController extends Controller
 
         $payload = is_array($notification->Payload) ? $notification->Payload : [];
 
-        try {
-            DB::transaction(function () use ($notification, $payload, $userId, $data) {
-                if ((string) $notification->SourceType === 'StudentClass') {
-                    $studentClassId = (int) ($notification->SourceID ?: ($payload['class_id'] ?? 0));
-                    if ($studentClassId <= 0) {
-                        throw new \RuntimeException('找不到課程資料');
-                    }
-
-                    $studentClass = DB::table('StudentClass')->where('ID', $studentClassId)->first();
-                    if (!$studentClass) {
-                        throw new \RuntimeException('找不到對應課程，無法更新繳費狀態');
-                    }
-
-                    $invoice = Invoice::where('StudentClassID', $studentClassId)
-                        ->where('Status', '!=', 'paid')
-                        ->first();
-                    $classCharge = (int) ($studentClass->Charge ?? $studentClass->Pay ?? 0);
-
-                    if (!$invoice) {
-                        $initialAmount = (int) ($data['amount'] ?? max(1, $classCharge));
-                        $invoice = Invoice::create([
-                            'StudentID' => (int) $studentClass->StudentID,
-                            'StudentClassID' => $studentClassId,
-                            'IssueDate' => Carbon::today()->toDateString(),
-                            'DueDate' => null,
-                            'TotalAmount' => $initialAmount,
-                            'PaidAmount' => 0,
-                            'Status' => 'unpaid',
-                            'ScheduleModeAtIssue' => $studentClass->ScheduleMode,
-                            'Note' => '',
-                        ]);
-                    }
-
-                    $this->recordNotificationPayment($invoice, $data, $userId);
-
-                    DB::table('StudentClass')
-                        ->where('ID', $studentClassId)
-                        ->update([
-                            'Paid' => 1,
-                            'PayDate' => $this->paymentDate($data),
-                        ]);
-                } else {
-                    $invoiceId = (int) ($notification->SourceID ?: ($payload['invoice_id'] ?? 0));
-                    if ($invoiceId <= 0) {
-                        throw new \RuntimeException('找不到帳單資料');
-                    }
-
-                    $invoice = Invoice::query()->find($invoiceId);
-                    if (!$invoice) {
-                        throw new \RuntimeException('找不到帳單資料');
-                    }
-
-                    $this->recordNotificationPayment($invoice, $data, $userId);
-                }
-
-                NotificationRead::updateOrCreate(
-                    [
-                        'NotificationID' => $notification->id,
-                        'UserID' => $userId,
-                    ],
-                    [
-                        'ReadAt' => now(),
-                    ]
-                );
-            });
-        } catch (\RuntimeException $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
+        $studentClassId = 0;
+        $invoiceId = null;
+        if ((string) $notification->SourceType === 'StudentClass') {
+            $studentClassId = (int) ($notification->SourceID ?: ($payload['class_id'] ?? 0));
+        } else {
+            $invoiceId = (int) ($notification->SourceID ?: ($payload['invoice_id'] ?? 0));
+            $invoice = Invoice::query()->find($invoiceId);
+            if (!$invoice) {
+                return response()->json(['message' => '找不到帳單資料'], 422);
+            }
+            $studentClassId = (int) $invoice->StudentClassID;
         }
 
+        if ($studentClassId <= 0) {
+            return response()->json(['message' => '找不到課程資料'], 422);
+        }
+
+        $amount = $data['amount'] ?? null;
+        if ($amount === null || $amount === '') {
+            return response()->json(['message' => '請填寫繳費金額'], 422);
+        }
+
+        $inner = Request::create('/api/v1/payment-reports/director-record', 'POST', array_filter([
+            'student_class_id' => $studentClassId,
+            'invoice_id' => $invoiceId,
+            'payment_date' => $data['payment_date'] ?? Carbon::today()->toDateString(),
+            'payment_method' => $data['payment_method'] ?? 'cash',
+            'amount' => $amount,
+            'account_last5' => $data['account_last5'] ?? null,
+            'note' => $data['note'] ?? '通知中心已回報',
+        ], static fn ($v) => $v !== null && $v !== ''));
+        $inner->headers->set('Accept', 'application/json');
+        foreach (['auth_user_id', 'auth_role', 'auth_campus_ids'] as $key) {
+            $inner->attributes->set($key, $request->attributes->get($key));
+        }
+
+        $recordResponse = app(PaymentReportController::class)->directorRecord($inner);
+        if ($recordResponse->getStatusCode() >= 400) {
+            return $recordResponse;
+        }
+
+        NotificationRead::updateOrCreate(
+            [
+                'NotificationID' => $notification->id,
+                'UserID' => $userId,
+            ],
+            [
+                'ReadAt' => now(),
+            ]
+        );
+
         $syncResult = NotificationSyncService::sync($campusIds, $branchId);
+        $body = json_decode($recordResponse->getContent(), true) ?: [];
 
         return response()->json([
             'status' => 'ok',
-            'message' => '已標記繳費完成',
+            'message' => '已送出待對帳',
+            'report_id' => $body['report_id'] ?? null,
             'sync' => $syncResult,
             'unread_count' => $this->countUnread($userId, $campusIds),
             'urgent_unread_count' => $this->countUrgentUnread($userId, $campusIds),
         ]);
-    }
-
-    private function recordNotificationPayment(Invoice $invoice, array $data, int $userId): Payment
-    {
-        $total = (int) ($invoice->TotalAmount ?? 0);
-        $paid = (int) ($invoice->PaidAmount ?? 0);
-        $remaining = max(0, $total - $paid);
-        $amount = (int) ($data['amount'] ?? max(1, $remaining));
-        $paymentDate = $this->paymentDate($data);
-        $method = (string) ($data['payment_method'] ?? 'cash');
-        $note = trim((string) ($data['note'] ?? '通知中心標記已繳費'));
-        if ($method === 'transfer' && !empty($data['account_last5'])) {
-            $note .= "（帳號後5碼：{$data['account_last5']}）";
-        }
-
-        $payment = Payment::create([
-            'InvoiceID' => (int) $invoice->id,
-            'Amount' => $amount,
-            'PaidAt' => $paymentDate,
-            'Method' => $method,
-            'Note' => $note,
-        ]);
-
-        $newPaid = $paid + $amount;
-        $invoice->PaidAmount = $newPaid;
-        $invoice->Status = $newPaid >= $total ? 'paid' : 'partial';
-        $invoice->reconciled_at = Carbon::now();
-        $invoice->reconciled_by = $userId;
-        $invoice->save();
-
-        return $payment;
-    }
-
-    private function paymentDate(array $data): string
-    {
-        return Carbon::parse($data['payment_date'] ?? Carbon::today()->toDateString())->toDateString();
     }
 
     public function unreadCount(Request $request)

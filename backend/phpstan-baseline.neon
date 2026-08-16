@@ -2923,18 +2923,6 @@ parameters:
 			path: app/Http/Controllers/NotificationController.php
 
 		-
-			message: '#^Call to an undefined static method App\\Models\\Payment\:\:create\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 1
-			path: app/Http/Controllers/NotificationController.php
-
-		-
-			message: '#^Parameter \#1 \$invoice of method App\\Http\\Controllers\\NotificationController\:\:recordNotificationPayment\(\) expects App\\Models\\Invoice, Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model given\.$#'
-			identifier: argument.type
-			count: 1
-			path: app/Http/Controllers/NotificationController.php
-
-		-
 			message: '#^Parameter \#2 \$default of method Illuminate\\Http\\Request\:\:header\(\) expects array\|string\|null, int given\.$#'
 			identifier: argument.type
 			count: 1

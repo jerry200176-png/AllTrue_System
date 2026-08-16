@@ -447,6 +447,134 @@ class PaymentReportApiTest extends TestCase
         $this->assertSame(0, \App\Models\Payment::query()->count());
     }
 
+    public function test_director_record_batch_creates_pending_only(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $a = $this->createCountModeClass($student->id, [
+            'SubjectID' => 1,
+            'Charge' => 1000,
+            'Paid' => 0,
+        ]);
+        $b = $this->createCountModeClass($student->id, [
+            'SubjectID' => 2,
+            'Charge' => 2000,
+            'Paid' => 0,
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/payment-reports/director-record-batch', [
+            'payment_date' => '2026-04-28',
+            'payment_method' => 'transfer',
+            'note' => '今日 LINE',
+            'entries' => [
+                ['student_class_id' => $a->ID, 'amount' => 1000, 'account_last5' => '12345'],
+                ['student_class_id' => $b->ID, 'amount' => 2000, 'account_last5' => '67890'],
+            ],
+        ]);
+
+        $res->assertOk()
+            ->assertJsonPath('accepted', 2)
+            ->assertJsonPath('results.0.http_status', 200)
+            ->assertJsonPath('results.1.http_status', 200);
+
+        $a->refresh();
+        $b->refresh();
+        $this->assertSame(0, (int) $a->Paid);
+        $this->assertSame(0, (int) $b->Paid);
+        $this->assertSame(0, Payment::query()->count());
+        $this->assertSame(2, PaymentReport::where('status', 'pending')->count());
+    }
+
+    public function test_director_record_batch_partial_failure_returns_207(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $pending = $this->createCountModeClass($student->id, [
+            'SubjectID' => 1,
+            'Charge' => 1000,
+            'Paid' => 0,
+        ]);
+        $fresh = $this->createCountModeClass($student->id, [
+            'SubjectID' => 2,
+            'Charge' => 2000,
+            'Paid' => 0,
+        ]);
+        $headers = [
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ];
+        $this->withHeaders($headers)->postJson('/api/v1/payment-reports/director-record', [
+            'student_class_id' => $pending->ID,
+            'payment_date' => '2026-04-28',
+            'payment_method' => 'cash',
+            'amount' => 1000,
+        ])->assertOk();
+
+        $res = $this->withHeaders($headers)->postJson('/api/v1/payment-reports/director-record-batch', [
+            'payment_date' => '2026-04-28',
+            'payment_method' => 'cash',
+            'entries' => [
+                ['student_class_id' => $pending->ID, 'amount' => 1000],
+                ['student_class_id' => $fresh->ID, 'amount' => 2000],
+            ],
+        ]);
+
+        $res->assertStatus(207)
+            ->assertJsonPath('accepted', 1)
+            ->assertJsonPath('results.0.code', 'pending_report_exists')
+            ->assertJsonPath('results.1.http_status', 200);
+        $this->assertSame(0, Payment::query()->count());
+    }
+
+    public function test_confirm_batch_marks_courses_paid(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $a = $this->createCountModeClass($student->id, [
+            'SubjectID' => 1,
+            'Charge' => 1000,
+            'Paid' => 0,
+        ]);
+        $b = $this->createCountModeClass($student->id, [
+            'SubjectID' => 2,
+            'Charge' => 2000,
+            'Paid' => 0,
+        ]);
+        $headers = [
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ];
+        $first = $this->withHeaders($headers)->postJson('/api/v1/payment-reports/director-record', [
+            'student_class_id' => $a->ID,
+            'payment_date' => '2026-04-28',
+            'payment_method' => 'cash',
+            'amount' => 1000,
+        ]);
+        $second = $this->withHeaders($headers)->postJson('/api/v1/payment-reports/director-record', [
+            'student_class_id' => $b->ID,
+            'payment_date' => '2026-04-28',
+            'payment_method' => 'cash',
+            'amount' => 2000,
+        ]);
+        $first->assertOk();
+        $second->assertOk();
+
+        $res = $this->withHeaders($headers)->postJson('/api/v1/payment-reports/confirm-batch', [
+            'ids' => [$first->json('report_id'), $second->json('report_id')],
+        ]);
+
+        $res->assertOk()->assertJsonPath('accepted', 2);
+        $a->refresh();
+        $b->refresh();
+        $this->assertSame(1, (int) $a->Paid);
+        $this->assertSame(1, (int) $b->Paid);
+        $this->assertSame(2, Payment::query()->count());
+        $this->assertSame(2, PaymentReport::where('status', 'confirmed')->count());
+    }
+
     public function test_director_record_marks_count_package_and_all_members_paid(): void
     {
         Carbon::setTestNow('2026-05-16 12:00:00');
