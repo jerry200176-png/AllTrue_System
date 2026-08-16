@@ -24,10 +24,12 @@ describe('TuitionCollectionPage receipt entry paths', () => {
     expect(source).toMatch(/receiptReportId\.value\s*=\s*row\.latest_payment_report_id/);
   });
 
-  it('uses 待對帳 on collection tabs and shows a batch-select hint', () => {
+  it('uses 待對帳 on collection tabs and sticky batch bar when rows are selected', () => {
     expect(source).toContain("{ key: 'pending_report', label: '待對帳' }");
     expect(source).toContain("pending_report:   { label: '待對帳'");
-    expect(source).toContain('勾選最左欄後才會出現批次回報或確認列。');
+    expect(source).toContain('tc-batch-bar--sticky');
+    expect(source).toContain('v-if="selectedRows.length"');
+    expect(source).not.toContain('勾選最左欄後才會出現批次回報或確認列。');
   });
 
   it('declares activeTab before batchMode / isRowSelectable / watch(activeTab) (TDZ)', () => {

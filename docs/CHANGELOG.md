@@ -3,6 +3,12 @@
 <!-- release-notes: silent_ship=silent-2026-08-17-dup-cleanup-plan -->
 
 新增 [`docs/plans/DUP_FEATURE_CLEANUP_ABC_2026-08-17.md`](plans/DUP_FEATURE_CLEANUP_ABC_2026-08-17.md) 與 TD-082；產品行為不變。
+## 2026-08-17 — fix(billing): 對帳與帳務中心掃讀密度
+
+<!-- release-notes: staff_update=staff-2026-08-17-billing-scan-density -->
+
+- 學生對帳改精簡摘要列；帳單主表可展開看收款時間線，異常只先顯示需處理項。
+- 帳務中心催繳摘要改緊湊列；勾選後批次操作列會貼在畫面上方。
 
 ## 2026-08-17 — fix(billing): 帳務對帳改白話，拿掉技術符號
 
