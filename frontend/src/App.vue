@@ -343,6 +343,7 @@
       />
       <ParentPortal v-if="!isPasswordChangeLocked && active === 'parent'" />
       <LineIntegration v-if="!isPasswordChangeLocked && isDirector && active === 'line-integration'" :branch-id="currentBranch" />
+      <BindingManagementPage v-if="!isPasswordChangeLocked && isDirector && active === 'binding-management'" :branch-id="currentBranch" :user-role="role" />
       <DirectorAccountsPage v-if="!isPasswordChangeLocked && role === 'super_admin' && active === 'director-accounts'" :token="session?.access_token ?? ''" />
       <BranchManagementPage v-if="!isPasswordChangeLocked && role === 'super_admin' && active === 'branch-management'" :token="session?.access_token ?? ''" />
       <NightlyReconcilePanel v-if="!isPasswordChangeLocked && role === 'super_admin' && active === 'nightly-reconcile'" :token="session?.access_token ?? ''" />
@@ -463,6 +464,7 @@ const LearningRecordsPage   = defineAsyncComponent(() => import('./pages/Learnin
 const SmartCalendar         = defineAsyncComponent(() => import('./pages/SmartCalendar.vue'));
 const DirectorDashboard     = defineAsyncComponent(() => import('./pages/DirectorDashboard.vue'));
 const LineIntegration       = defineAsyncComponent(() => import('./pages/LineIntegration.vue'));
+const BindingManagementPage = defineAsyncComponent(() => import('./pages/BindingManagementPage.vue'));
 const CourseManagement      = defineAsyncComponent(() => import('./pages/CourseManagement.vue'));
 const ClassroomManagement   = defineAsyncComponent(() => import('./pages/ClassroomManagement.vue'));
 const SubjectSettingsPage   = defineAsyncComponent(() => import('./pages/SubjectSettingsPage.vue'));
@@ -1278,6 +1280,7 @@ const sidebarNavGroups = computed(() => {
   if (isDirector.value) {
     const systemItems = [
       { page: 'line-integration', label: '家長 LINE 通知', icon: 'chat' },
+      { page: 'binding-management', label: 'LINE 綁定管理', icon: 'link' },
     ];
     if (role.value === 'super_admin') {
       systemItems.push({
