@@ -337,6 +337,9 @@ Route::prefix('v1')->group(function () {
         // ── Full-time teacher base salary (正職結算底薪), feeds finance/teacher-eligibility's total_payout ──
         Route::post('finance/teacher-eligibility/salary-profiles', [TeacherEligibilityInputController::class, 'storeSalaryProfile'])->middleware('require_pin');
         Route::post('finance/teacher-eligibility/salary-profiles/{id}/approve', [TeacherEligibilityInputController::class, 'approveSalaryProfile'])->whereNumber('id')->middleware('require_pin');
+        Route::post('finance/teacher-eligibility/lock', [TeacherEligibilityController::class, 'lock'])->middleware('require_pin');
+        Route::post('finance/teacher-eligibility/reopen', [TeacherEligibilityController::class, 'reopen'])->middleware('require_pin');
+        Route::get('finance/teacher-eligibility/export', [TeacherEligibilityController::class, 'export'])->middleware('require_pin');
 
         // ── Dunning (#400) ──
         Route::get('dunning/rules', [\App\Http\Controllers\DunningController::class, 'rules']);

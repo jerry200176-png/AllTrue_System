@@ -164,42 +164,45 @@
               <span>{{ activeCourses(group).length }} 筆進行中</span>
               <span v-if="historyCourses(group).length" class="student-group-history-count">{{ historyCourses(group).length }} 筆歷史</span>
             </span>
-            <button
-              class="focus-btn"
-              :class="{ active: focusedStudentKey === group.key }"
-              @click="focusStudent(group, $event)"
-              @keydown.stop
-              :title="focusedStudentKey === group.key ? '取消專注' : '專注此學生'"
-            >⊙</button>
+            <div class="student-group-header-actions">
+              <div
+                class="student-group-view-tabs"
+                role="tablist"
+                aria-label="學生課程與帳務"
+                @click.stop
+                @keydown.stop
+              >
+                <button
+                  type="button"
+                  class="student-group-view-tab"
+                  :class="{ active: studentGroupTab(group.key) === 'courses' }"
+                  role="tab"
+                  :aria-selected="studentGroupTab(group.key) === 'courses'"
+                  @click.stop="selectStudentGroupTab(group, 'courses', $event)"
+                >課程</button>
+                <button
+                  type="button"
+                  class="student-group-view-tab"
+                  :class="{ active: studentGroupTab(group.key) === 'billing' }"
+                  role="tab"
+                  :aria-selected="studentGroupTab(group.key) === 'billing'"
+                  @click.stop="selectStudentGroupTab(group, 'billing', $event)"
+                >帳務</button>
+              </div>
+              <button
+                class="focus-btn"
+                :class="{ active: focusedStudentKey === group.key }"
+                @click="focusStudent(group, $event)"
+                @keydown.stop
+                :title="focusedStudentKey === group.key ? '取消專注' : '專注此學生'"
+              >⊙</button>
+            </div>
           </div>
           <div v-if="expandedStudentGroups.has(group.key)" class="student-group-add-row">
             <button type="button" class="btn-soft student-group-add-btn" @click="openBackfillModalForGroup(group)">
               <span class="btn-icon" aria-hidden="true">＋</span>
               為此學生新增課程
             </button>
-          </div>
-          <div
-            v-if="expandedStudentGroups.has(group.key)"
-            class="student-group-view-tabs"
-            role="tablist"
-            aria-label="學生課程與帳務"
-          >
-            <button
-              type="button"
-              class="student-group-view-tab"
-              :class="{ active: studentGroupTab(group.key) === 'courses' }"
-              role="tab"
-              :aria-selected="studentGroupTab(group.key) === 'courses'"
-              @click="setStudentGroupTab(group, 'courses')"
-            >課程資料</button>
-            <button
-              type="button"
-              class="student-group-view-tab"
-              :class="{ active: studentGroupTab(group.key) === 'billing' }"
-              role="tab"
-              :aria-selected="studentGroupTab(group.key) === 'billing'"
-              @click="setStudentGroupTab(group, 'billing')"
-            >帳務資料</button>
           </div>
           <div v-if="expandedStudentGroups.has(group.key) && studentGroupTab(group.key) === 'courses'" class="table-wrap group-table-wrap">
             <table class="course-table">
@@ -528,7 +531,7 @@
             <div v-else-if="studentBillingState[group.key]?.error" class="student-billing-state student-billing-error" role="alert">
               {{ studentBillingState[group.key].error }}
             </div>
-            <table v-else class="course-table student-billing-table">
+            <table v-else class="course-table student-billing-table" aria-label="帳務資料">
               <thead>
                 <tr>
                   <th>科目</th>
@@ -3857,6 +3860,14 @@ const setStudentGroupTab = async (group, tab) => {
   }
 };
 
+const selectStudentGroupTab = async (group, tab, event) => {
+  event?.stopPropagation?.();
+  const next = new Set(expandedStudentGroups.value);
+  next.add(group.key);
+  expandedStudentGroups.value = next;
+  await setStudentGroupTab(group, tab);
+};
+
 const loadStudentGroupBilling = async (group) => {
   const key = group?.key;
   if (!key) return;
@@ -4811,6 +4822,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 10px;
   cursor: pointer;
 }
@@ -4855,8 +4867,16 @@ onUnmounted(() => {
   border: 1px solid var(--ds-hairline);
 }
 
-.focus-btn {
+.student-group-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   margin-left: auto;
+  flex-shrink: 0;
+}
+
+.focus-btn {
+  margin-left: 0;
   padding: 3px 9px;
   border: 1px solid var(--ds-hairline);
   border-radius: 999px;
@@ -4921,25 +4941,28 @@ onUnmounted(() => {
 }
 
 .student-group-view-tabs {
-  display: flex;
+  display: inline-flex;
+  flex-shrink: 0;
   gap: 0;
-  padding: 0 12px;
-  background: var(--ds-canvas-soft);
-  border-bottom: 1px solid var(--ds-hairline);
+  padding: 0;
+  background: var(--ds-canvas);
+  border: 1px solid var(--ds-hairline);
+  border-radius: 8px;
+  overflow: hidden;
 }
 .student-group-view-tab {
   border: none;
   background: transparent;
   color: var(--ds-ink-secondary);
   font-size: 13px;
-  font-weight: 600;
-  padding: 8px 12px;
+  font-weight: 700;
+  padding: 6px 12px;
   cursor: pointer;
-  border-bottom: 2px solid transparent;
 }
 .student-group-view-tab.active {
   color: var(--ds-ink);
-  border-bottom-color: var(--ds-primary);
+  background: var(--ds-primary-wash, var(--ds-canvas-soft));
+  box-shadow: inset 0 -2px 0 var(--ds-primary);
 }
 .student-billing-state {
   padding: 16px 12px;

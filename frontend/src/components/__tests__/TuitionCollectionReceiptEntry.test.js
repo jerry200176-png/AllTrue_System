@@ -24,6 +24,12 @@ describe('TuitionCollectionPage receipt entry paths', () => {
     expect(source).toMatch(/receiptReportId\.value\s*=\s*row\.latest_payment_report_id/);
   });
 
+  it('uses 待對帳 on collection tabs and shows a batch-select hint', () => {
+    expect(source).toContain("{ key: 'pending_report', label: '待對帳' }");
+    expect(source).toContain("pending_report:   { label: '待對帳'");
+    expect(source).toContain('勾選最左欄後才會出現批次回報或確認列。');
+  });
+
   it('admin reported-paid path does not auto-open a receipt', () => {
     expect(source).toContain('已送出待對帳，請會計確認入帳後才會開收據');
     expect(source).not.toMatch(/if\s*\(result\?\.report_id\)\s*\{[\s\S]*receiptReportId\.value\s*=\s*result\.report_id/);

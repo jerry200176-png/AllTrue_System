@@ -3,7 +3,7 @@
     <div class="tc-header">
       <div>
         <h2>帳務中心</h2>
-        <p class="tc-subtitle">未繳待收、待核帳、續課提醒，以及已結清課程彙總與收據流水</p>
+        <p class="tc-subtitle">未繳待收、待對帳、續課提醒，以及已結清課程彙總與收據流水</p>
       </div>
       <button class="tc-refresh-btn" @click="refreshActiveTab()" :disabled="activeTabLoading">
         <span class="material-symbols-outlined" style="font-size:17px">refresh</span>
@@ -75,7 +75,7 @@
         </div>
         <div class="tc-card tc-card--warn">
           <span class="tc-card-num">{{ statusCounts.pending_report }}</span>
-          <span class="tc-card-label">待核帳</span>
+          <span class="tc-card-label">待對帳</span>
         </div>
         <div class="tc-card tc-card--outstanding">
           <span class="tc-card-num">{{ formatCurrency(totalOutstanding) }}</span>
@@ -145,6 +145,9 @@
           </div>
         </div>
 
+        <p v-if="!selectedRows.length && filteredRows.length" class="tc-batch-hint">
+          勾選最左欄後才會出現批次回報或確認列。
+        </p>
         <div
           v-if="selectedRows.length"
           class="tc-batch-bar"
@@ -208,7 +211,7 @@
                     :indeterminate.prop="someVisibleSelected && !allVisibleSelected"
                     :disabled="!selectableRows.length"
                     @change="toggleSelectAll($event.target.checked)"
-                    :aria-label="batchMode === 'confirm' ? '全選待核帳' : '全選未繳'"
+                    :aria-label="batchMode === 'confirm' ? '全選待對帳' : '全選未繳'"
                   />
                 </th>
                 <th class="tc-th-sort" @click="toggleSort('student_name')">
@@ -956,7 +959,7 @@ async function submitBatchReport() {
 async function submitBatchConfirm() {
   const rows = selectedRows.value.filter((r) => r.payment_status === 'pending_report' && r.latest_payment_report_id);
   if (!rows.length) {
-    showToast('請先勾選待核帳課程', 'warning');
+    showToast('請先勾選待對帳課程', 'warning');
     return;
   }
   if (rows.length > 40) {
@@ -989,7 +992,7 @@ async function submitBatchConfirm() {
 const STATUS_CONFIG = {
   unpaid:           { label: '未繳費',        cls: 'st-unpaid' },
   partial:          { label: '部分付款',      cls: 'st-partial' },
-  pending_report:   { label: '待核帳',        cls: 'st-pending' },
+  pending_report:   { label: '待對帳',        cls: 'st-pending' },
   paid:             { label: '已繳費',        cls: 'st-paid' },
   renew_needed:     { label: '續課待處理',    cls: 'st-renew' },
   monthly_due_soon: { label: '月結將到期',    cls: 'st-monthly' },
@@ -1079,7 +1082,7 @@ const TAB_DEFS = [
   { key: 'all', label: '全部' },
   { key: 'unpaid', label: '未繳' },
   { key: 'overdue', label: '逾期' },
-  { key: 'pending_report', label: '待核帳' },
+  { key: 'pending_report', label: '待對帳' },
   { key: 'renewal', label: '續課/將到期' },
 ];
 
@@ -2248,6 +2251,12 @@ loadAlerts();
   border-radius: 4px;
   background: var(--ds-canvas);
   color: var(--ds-ink);
+}
+.tc-batch-hint {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ds-ink-secondary);
 }
 .tc-batch-bar {
   display: flex;
