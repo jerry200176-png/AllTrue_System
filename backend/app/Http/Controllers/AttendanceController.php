@@ -13,6 +13,7 @@ use App\Models\StudentSignIn;
 use App\Services\ClassSessionMaterializationService;
 use App\Services\CourseLeaveCascadeService;
 use App\Services\LeaveAttendanceService;
+use App\Services\LearningRecordResurrectionPolicy;
 use App\Services\SessionDeductionService;
 use App\Services\SubstituteScheduleService;
 use Carbon\Carbon;
@@ -837,6 +838,7 @@ class AttendanceController extends Controller
 
         $classSession->Status = $sessionStatus;
         $classSession->save();
+        LearningRecordResurrectionPolicy::restoreEligibleForSession($classSession);
     }
 
     private function activeAttendanceExistsForSessionSlot(ClassSession $classSession): bool

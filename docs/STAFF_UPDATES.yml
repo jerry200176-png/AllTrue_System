@@ -3,6 +3,20 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-16-lr-resurrect-status-adjust
+    published_at: "2026-08-16"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 重點名後評量草稿會自動回來
+    summary: 已到班的堂次若被改回未點名再標到班，老師端評量會恢復成待填，不必再找主任重開。
+    items:
+      - category: fixed
+        text: 出缺勤狀態來回調整後，系統作廢的評量草稿會自動還原。
+    source_refs:
+      - "changelog:2026-08-16:lr-resurrect-status-adjust"
+
   - id: staff-2026-07-29-tuition-alert-payment-truth-959
     published_at: "2026-07-29"
     audiences:
