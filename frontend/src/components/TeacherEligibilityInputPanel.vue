@@ -363,6 +363,15 @@ const queueItems = computed(() => {
 const pendingCount = computed(() => queueItems.value.filter((item) => item.action || item.canEdit).length);
 
 function achievementLabel(key) { return key === 'employee_of_year' ? '年度績優員工' : '學生升學成果'; }
+function deductionLabel(key) {
+  return ({
+    harassment: '疑似騷擾成立',
+    major_complaint: '重大客訴成立',
+    unexcused_late: '無故遲到早退影響營運',
+    property_damage: '嚴重破壞公物',
+    rights_loss: '造成補習班權益受損',
+  }[key] || key || '扣除案件');
+}
 function allowanceLabel(key) {
   return ({ admin_assist: '行政協助', head_tutor: '總導師', deputy_director: '副主任' }[key] || key || '行政加給');
 }
