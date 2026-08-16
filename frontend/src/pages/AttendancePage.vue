@@ -1038,6 +1038,7 @@ import ReportDiscrepancyModal from '../components/ReportDiscrepancyModal.vue';
 import TeacherAdjustModal from '../components/TeacherAdjustModal.vue';
 import { fetchMyDiscrepancies, STATUS_LABELS as DISCREPANCY_STATUS_LABELS } from '../lib/scheduleDiscrepanciesApi';
 import { classifyAttendanceSessionRows } from '../lib/sessionConsistency';
+import { attendanceMarkConfirmHint } from '../lib/attendanceMarkConfirmHint';
 
 const props = defineProps({
   branchId: [String, Number],
@@ -1817,7 +1818,7 @@ const submitPendingMark = async (s) => {
 
   if (status !== 'present' && status !== 'late') {
     confirmDialog.title = `確認${statusLabelMap[status]}`;
-    confirmDialog.body = `${s.student_name}（${s.start_time}–${s.end_time} ${s.subject_name}）\n狀態：${statusLabelMap[status]}\n${status === 'leave' ? '請假將不扣堂並順延課程。' : '缺席將扣堂。'}`;
+    confirmDialog.body = `${s.student_name}（${s.start_time}–${s.end_time} ${s.subject_name}）\n狀態：${statusLabelMap[status]}\n${attendanceMarkConfirmHint(status)}`;
     confirmDialog.onConfirm = () => doSubmitPendingMark(s, status);
     confirmDialog.visible = true;
     return;

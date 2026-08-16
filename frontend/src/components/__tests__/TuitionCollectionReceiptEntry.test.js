@@ -20,8 +20,23 @@ describe('TuitionCollectionPage receipt entry paths', () => {
     expect(source).toMatch(/receiptReportId\.value\s*=\s*Number\(reportId\)/);
   });
 
-  it('post-confirm auto-open uses result.report_id', () => {
-    expect(source).toMatch(/if\s*\(result\?\.report_id\)\s*\{[\s\S]*receiptReportId\.value\s*=\s*result\.report_id/);
+  it('accounting confirm auto-open uses latest_payment_report_id', () => {
+    expect(source).toMatch(/receiptReportId\.value\s*=\s*row\.latest_payment_report_id/);
+  });
+
+  it('admin reported-paid path does not auto-open a receipt', () => {
+    expect(source).toContain('已送出待對帳，請會計確認入帳後才會開收據');
+    expect(source).not.toMatch(/if\s*\(result\?\.report_id\)\s*\{[\s\S]*receiptReportId\.value\s*=\s*result\.report_id/);
+  });
+
+  it('batch confirm does not auto-open receipts', () => {
+    expect(source).toContain('submitBatchConfirm');
+    expect(source).toContain('/api/v1/payment-reports/confirm-batch');
+    expect(source).toContain('/api/v1/payment-reports/director-record-batch');
+    const batchConfirm = source.match(/async function submitBatchConfirm\(\) \{[\s\S]*?\n\}/);
+    expect(batchConfirm).toBeTruthy();
+    expect(batchConfirm[0]).not.toMatch(/receiptReportId/);
+    expect(batchConfirm[0]).not.toMatch(/receiptOpen/);
   });
 
   it('class-list receipt lookup opens with match.id (payment report id)', () => {

@@ -383,6 +383,8 @@ Route::prefix('v1')->group(function () {
         Route::get('accounting/payments', [AccountingController::class, 'payments'])->middleware('require_pin');
         Route::get('accounting/payments/export', [AccountingController::class, 'paymentsExport'])->middleware('require_pin');
         Route::post('payment-reports/director-record', [PaymentReportController::class, 'directorRecord']);
+        Route::post('payment-reports/director-record-batch', [PaymentReportController::class, 'directorRecordBatch']);
+        Route::post('payment-reports/confirm-batch', [PaymentReportController::class, 'confirmBatch']);
         Route::get('payment-reports', [PaymentReportController::class, 'index']);
         Route::put('payment-reports/{id}/confirm', [PaymentReportController::class, 'confirm']);
         Route::put('payment-reports/{id}/reject', [PaymentReportController::class, 'reject']);
