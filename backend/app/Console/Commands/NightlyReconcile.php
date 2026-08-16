@@ -14,7 +14,7 @@ class NightlyReconcile extends Command
                             {--dry-run : Preview only, no DB writes or alerts}
                             {--threshold=0 : Minimum discrepancy count to trigger alert}';
 
-    protected $description = 'Nightly reconcile: compare StudentClass.UsedSessions with canonical deduction semantics. Alert on mismatch.';
+    protected $description = 'Nightly session-count check: compare StudentClass.UsedSessions with SessionDeductionService (not bank/tuition). Alert only; never rewrite counters.';
 
     public function handle(): int
     {
@@ -96,7 +96,7 @@ class NightlyReconcile extends Command
         $this->line('Causes: ' . json_encode($causeCounts, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
         if ($total === 0) {
-            $this->info('All UsedSessions match actual attended counts.');
+            $this->info('All UsedSessions match canonical expected_used.');
             return self::SUCCESS;
         }
 
@@ -160,8 +160,8 @@ class NightlyReconcile extends Command
             return $this->causeLabel($category) . " {$causeCount} 筆";
         })->implode('、');
 
-        $title = "⚠ 夜間對帳：{$count} 筆堂次異常";
-        $body  = "已用堂數與權威扣堂口徑不一致。分類：{$causeSummary}。請開啟「夜間對帳異常」面板檢視；資料修復需另走核准與回滾流程。";
+        $title = "⚠ 夜間堂數對帳：{$count} 筆課程異常";
+        $body  = "已用堂數與權威扣堂口徑不一致（不是學費／銀行勾稽）。分類：{$causeSummary}。請開啟「夜間堂數對帳」面板檢視；資料修復需另走核准與回滾流程。";
 
         try {
             Notification::query()->updateOrCreate(

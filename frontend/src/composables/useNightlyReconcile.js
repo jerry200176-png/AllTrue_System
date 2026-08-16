@@ -2,7 +2,7 @@ import { ref, computed } from 'vue';
 import { getReconcileLatest } from '../api';
 
 /**
- * 夜間對帳異常面板的狀態與邏輯。
+ * 夜間堂數對帳異常面板：讀最新報告、分類篩選。不改寫堂數。
  * 回傳 reactive 物件供 NightlyReconcilePanel 消費。
  *
  * @param {import('vue').Ref<string>} tokenRef - supabase access_token

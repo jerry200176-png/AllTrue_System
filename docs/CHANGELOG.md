@@ -1,3 +1,10 @@
+## 2026-08-16 — docs(ops): 夜間對帳正名為堂數一致性檢查
+
+<!-- release-notes: silent_ship=silent-2026-08-16-nightly-session-reconcile-clarity -->
+
+- 系統管理員側欄改稱「夜間堂數對帳」，並寫明這是已用堂數 vs 權威扣堂口徑，不是銀行或學費勾稽。
+- 排程登錄 domain 從誤標的 payment 改為 session_deduction；命令仍只診斷、不改堂數。
+
 ## 2026-08-15 — fix(payroll): 已核准可退回，全校放假改讀課程管理
 
 <!-- release-notes: staff_update=staff-2026-08-15-eligibility-approved-revert -->

@@ -182,6 +182,7 @@ class NightlyReconcileTest extends TestCase
             ->first();
         $this->assertNotNull($notification);
         $this->assertStringContainsString('已用堂數高於現有證據 1 筆', $notification->Body);
+        $this->assertStringContainsString('不是學費', $notification->Body);
         $this->assertStringNotContainsString('Course #', $notification->Body);
     }
 
