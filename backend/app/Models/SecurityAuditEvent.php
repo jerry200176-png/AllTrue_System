@@ -17,9 +17,10 @@ final class SecurityAuditEvent
     private const RETENTION_DAYS = 180;
 
     private const SAFE_METADATA_KEYS = [
-        'allowed', 'attempt_count', 'binding_verified', 'delivery_status',
+        'allowed', 'attempt_count', 'binding_verified', 'campus_count',
+        'campus_scope', 'column_count', 'delivery_status', 'export_format',
         'http_status', 'method', 'notification_type', 'outcome', 'provider_status',
-        'reason_code', 'source', 'student_count', 'verification_method',
+        'reason_code', 'row_count', 'source', 'student_count', 'verification_method',
     ];
 
     public static function ref(string $kind, int|string|null $value): ?string

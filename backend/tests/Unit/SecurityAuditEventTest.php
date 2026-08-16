@@ -24,8 +24,17 @@ class SecurityAuditEventTest extends TestCase
             'phone' => '0912345678',
             'line_user_id' => 'Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
             'provider_status' => 200,
+            'row_count' => 12,
+            'export_format' => 'xlsx',
+            'campus_scope' => 'restricted',
         ]);
 
-        $this->assertSame(['method' => 'line', 'provider_status' => 200], $metadata);
+        $this->assertSame([
+            'method' => 'line',
+            'provider_status' => 200,
+            'row_count' => 12,
+            'export_format' => 'xlsx',
+            'campus_scope' => 'restricted',
+        ], $metadata);
     }
 }
