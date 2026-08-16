@@ -85,7 +85,7 @@ class CleanupOrphanBindings extends Command
         $anomalies = StudentLineBinding::query()
             ->select('student_id', DB::raw('COUNT(*) as binding_count'))
             ->groupBy('student_id')
-            ->having('binding_count', '>', 3)
+            ->having('binding_count', '>', '3')
             ->get();
 
         foreach ($anomalies as $anomaly) {
