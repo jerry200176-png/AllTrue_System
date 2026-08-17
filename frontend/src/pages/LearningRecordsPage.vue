@@ -2770,7 +2770,10 @@ function pickBestSession(candidates) {
 function deduplicateSessionsBySlot(sessions) {
   const groups = {};
   for (const s of sessions) {
-    if (s?.isProjected) continue;
+    if (s?.isProjected) {
+      const st = String(s?.status || '').toLowerCase();
+      if (!['completed', 'attended', 'late'].includes(st)) continue;
+    }
     const id = Number(s?.id || 0);
     const date = String(s?.date || '').slice(0, 10);
     const time = normalizeTime(s?.startTime) || '';
@@ -2928,7 +2931,10 @@ const buildEvents = (targetDates) => {
     const allSessions = sessionDatesByClassId.value[String(classId)] || [];
     const rawSessions = deduplicateSessionsBySlot(allSessions);
     for (const rawSession of rawSessions) {
-      if (rawSession?.isProjected) continue;
+      if (rawSession?.isProjected) {
+        const st = String(rawSession?.status || '').toLowerCase();
+        if (!['completed', 'attended', 'late'].includes(st)) continue;
+      }
       const dateStr = String(rawSession?.date || '').slice(0, 10);
       if (!targetSet.has(dateStr)) continue;
       const startTime = normalizeTime(rawSession?.startTime) || resolveCourseStartTime(sc, dateStr);
@@ -3120,7 +3126,10 @@ const syncFormTimesFromCourseSchedule = () => {
   const classId = Number(course.id || course.ID || 0);
   const sessions = directorSessionsByClassId.value[String(classId)] || [];
   const daySessions = sessions.filter((s) => {
-    if (s?.isProjected) return false;
+    if (s?.isProjected) {
+      const st = String(s?.status || '').toLowerCase();
+      if (!['completed', 'attended', 'late'].includes(st)) return false;
+    }
     if (String(s.date || '').slice(0, 10) !== dateStr) return false;
     const st = String(s.status || '').toLowerCase();
     return st !== 'cancelled' && st !== 'leave';

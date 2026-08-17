@@ -3,6 +3,24 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-17-course-count-memo-fillrate
+    published_at: "2026-08-17"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 已上堂數、課程備註、代課填寫率
+    summary: 課程管理已上堂數跟列表對齊；備註太長會提示而不是失敗；代課堂次會算進代課老師填寫率。
+    items:
+      - category: fixed
+        text: 課程管理「已上幾堂」改跟堂次標籤一致，剛點名的堂次比較填得到評量。
+      - category: fixed
+        text: 課程備註貼太長時會請你縮短，不會整頁錯誤。
+      - category: fixed
+        text: 主任看的評量填寫率，代課老師的已上堂次會算進去。
+    source_refs:
+      - "changelog:2026-08-17:course-count-memo-fillrate"
+
   - id: staff-2026-08-17-count-settle-makeup-1839
     published_at: "2026-08-17"
     audiences:

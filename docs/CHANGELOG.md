@@ -1,3 +1,17 @@
+## 2026-08-17 — fix(course): 已上堂數與備註過長、代課填寫率
+
+<!-- release-notes: staff_update=staff-2026-08-17-course-count-memo-fillrate -->
+
+- 課程管理「已上 X 堂」改跟堂次標籤同一口徑；剛點名仍顯示預排時也會算進去，評量比較填得到。
+- 課程備註過長改中文提示，不再直接 SQL 炸掉；正式庫欄位加長。
+- 主任老師評量填寫率把 `completed` 代課堂次算進代課老師。
+
+## 2026-08-17 — chore: 部署監看改用 python3（不依賴 jq）
+
+<!-- release-notes: silent_ship=silent-2026-08-17-wait-github-deploy -->
+
+- 新增 `scripts/wait-github-deploy.sh`：等 `deploy.yml` 成功並對 `version.json`。
+
 ## 2026-08-17 — fix(schedule): 堂數制還有餘額時不可結案吃掉補課
 
 <!-- release-notes: staff_update=staff-2026-08-17-count-settle-makeup-1839 -->

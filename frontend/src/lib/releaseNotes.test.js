@@ -28,6 +28,8 @@ assert.ok(latest.id && latest.publishedAt && latest.sections?.length);
 assert.ok(['digest', 'major', 'action_required'].includes(latest.importance));
   assert.strictEqual(latest.publishedAt, '2026-08-17');
   for (const id of [
+    'staff-2026-08-17-course-count-memo-fillrate',
+    'staff-2026-08-17-count-settle-makeup-1839',
     'staff-2026-08-17-ui-jargon-w2',
     'staff-2026-08-17-ui-human-copy-sweep',
     'staff-2026-08-17-billing-scan-density',

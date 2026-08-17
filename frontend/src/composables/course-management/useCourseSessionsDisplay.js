@@ -40,7 +40,10 @@ export function useCourseSessionsDisplay({
 
   async function ensureCompletedSessionDatesLoaded(course) {
     const cid = String(course?.id ?? '');
-    if (!cid || completedSessionDatesByCourse.value[cid]) return;
+    if (!cid) return;
+    const existing = sessionsByCourse.value[cid];
+    const hasMaterialized = Array.isArray(existing) && existing.some((row) => !row?.isProjected);
+    if (completedSessionDatesByCourse.value[cid] && hasMaterialized) return;
 
     try {
       const { data: { session: sess } } = await supabase.auth.getSession();
@@ -87,6 +90,13 @@ export function useCourseSessionsDisplay({
       });
       const rows = Array.isArray(byClass?.[cid]) ? byClass[cid] : [];
       sessionsByCourse.value = mergeSessionsByCourse(sessionsByCourse.value, { [cid]: rows });
+      const dates = [...new Set(
+        materializedSessionsOnly(rows)
+          .filter((row) => ATTENDED_SESSION_STATUSES.has(String(row?.status || '').toLowerCase()))
+          .map((row) => row.date)
+          .filter(Boolean)
+      )].sort();
+      completedSessionDatesByCourse.value = { ...completedSessionDatesByCourse.value, [cid]: dates };
       return true;
     } catch (_) {
       return false;
@@ -280,9 +290,16 @@ export function useCourseSessionsDisplay({
   };
 
   const getCompletedSessionCount = (course) => {
-    const rows = getCourseSessionRows(course);
-    if (rows.length > 0) {
-      return rows.filter((row) => ATTENDED_SESSION_STATUSES.has(String(row?.status || '').toLowerCase())).length;
+    const units = sessionUnits(course);
+    if (units.length > 0) {
+      // Same denominator as the chip grid: a row that the chip labels 已上
+      // must be counted here. Projected chips show 預排, so skip those.
+      return units.filter((unit) => {
+        const date = String(unit?.date || '').slice(0, 10);
+        const state = getSessionState(course, date, unit?.id);
+        if (state?.className === 'completed') return true;
+        return ATTENDED_SESSION_STATUSES.has(String(unit?.status || '').toLowerCase());
+      }).length;
     }
     const key = String(course?.id ?? '');
     const dates = completedSessionDatesByCourse.value[key];
@@ -291,15 +308,15 @@ export function useCourseSessionsDisplay({
 
   const getCourseCompletedDates = (course) => {
     const rows = getCourseSessionRows(course);
-    if (rows.length > 0) {
-      const dates = rows
-        .filter((row) => ATTENDED_SESSION_STATUSES.has(String(row?.status || '').toLowerCase()))
-        .map((row) => row.date)
-        .filter(Boolean);
-      return [...new Set(dates)].sort();
-    }
-    const dates = completedSessionDatesByCourse.value[String(course?.id ?? '')];
-    return Array.isArray(dates) ? dates : [];
+    const fromRows = rows
+      .filter((row) => ATTENDED_SESSION_STATUSES.has(String(row?.status || '').toLowerCase()))
+      .map((row) => row.date)
+      .filter(Boolean);
+    const fromCache = completedSessionDatesByCourse.value[String(course?.id ?? '')];
+    return [...new Set([
+      ...fromRows,
+      ...(Array.isArray(fromCache) ? fromCache : []),
+    ])].sort();
   };
 
   const isCompletedDate = (course, dateYmd) => getCourseCompletedDates(course).includes(String(dateYmd || ''));

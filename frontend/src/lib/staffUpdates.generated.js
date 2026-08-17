@@ -98,6 +98,42 @@ export const staffUpdates = [
     "version": "2026.08.17"
   },
   {
+    "id": "staff-2026-08-17-course-count-memo-fillrate",
+    "publishedAt": "2026-08-17",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "已上堂數、課程備註、代課填寫率",
+    "summary": "課程管理已上堂數跟列表對齊；備註太長會提示而不是失敗；代課堂次會算進代課老師填寫率。",
+    "items": [
+      "課程管理「已上幾堂」改跟堂次標籤一致，剛點名的堂次比較填得到評量。",
+      "課程備註貼太長時會請你縮短，不會整頁錯誤。",
+      "主任看的評量填寫率，代課老師的已上堂次會算進去。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "課程管理「已上幾堂」改跟堂次標籤一致，剛點名的堂次比較填得到評量。",
+          "課程備註貼太長時會請你縮短，不會整頁錯誤。",
+          "主任看的評量填寫率，代課老師的已上堂次會算進去。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-17:course-count-memo-fillrate"
+    ],
+    "date": "2026-08-17",
+    "version": "2026.08.17"
+  },
+  {
     "id": "staff-2026-08-17-count-settle-makeup-1839",
     "publishedAt": "2026-08-17",
     "effectiveAt": null,

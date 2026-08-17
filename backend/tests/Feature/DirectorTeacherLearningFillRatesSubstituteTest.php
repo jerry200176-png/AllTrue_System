@@ -120,4 +120,93 @@ class DirectorTeacherLearningFillRatesSubstituteTest extends TestCase
         $this->assertSame(1, (int) $t2Row['sessions_attended']);
         $this->assertSame(1, (int) $t2Row['learning_records_filled']);
     }
+
+    public function test_completed_status_also_credits_substitute_teacher(): void
+    {
+        $campusId = 1;
+
+        $director = User::create([
+            'LoginName' => 'dir-fillrate-c@example.com', 'Name' => '主任', 'PSW' => 'x',
+            'type' => 'A', 'phone' => '0910000003', 'MustChangePassword' => false,
+        ]);
+        UserCampus::create(['CampusID' => $campusId, 'UserID' => $director->id, 'Admin' => 1, 'Approved' => 1]);
+        $dirToken = bin2hex(random_bytes(16));
+        AuthToken::create(['user_id' => $director->id, 'token' => $dirToken, 'expires_at' => now()->addDay()]);
+
+        $t1 = User::create([
+            'LoginName' => 't1-fillrate-c@example.com', 'Name' => '契約老師T1', 'PSW' => 'x',
+            'type' => 'T', 'phone' => '0911003003', 'MustChangePassword' => false,
+        ]);
+        UserCampus::create(['CampusID' => $campusId, 'UserID' => $t1->id, 'Admin' => 0, 'Approved' => 1]);
+
+        $t2 = User::create([
+            'LoginName' => 't2-fillrate-c@example.com', 'Name' => '代課老師T2', 'PSW' => 'x',
+            'type' => 'T', 'phone' => '0911003004', 'MustChangePassword' => false,
+        ]);
+        UserCampus::create(['CampusID' => $campusId, 'UserID' => $t2->id, 'Admin' => 0, 'Approved' => 1]);
+
+        $student = Student::create([
+            'name' => '填寫率代課完成態測試生', 'CampusID' => $campusId, 'ClassID' => 1,
+            'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $sc = StudentClass::create([
+            'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 1,
+            'TeacherID' => $t1->id, 'ClassType' => 'one_on_one',
+            'by1' => 1, 'Period' => 4, 'StartDate' => now()->toDateString(), 'TotalHours' => 20,
+            'SessionCount' => 10, 'SessionDuration' => 120,
+            'RemainingSessions' => 10, 'UsedSessions' => 1,
+            'Charge' => 1600, 'Pay' => 16000, 'Paid' => 0, 'Rate' => 800, 'Stop' => 0,
+            'MDate' => now(), 'ScheduleMode' => 'count',
+        ]);
+
+        $sessionDate = now()->toDateString();
+        $cs = ClassSession::create([
+            'StudentClassID' => $sc->ID, 'SessionDate' => $sessionDate,
+            'StartTime' => '14:00', 'EndTime' => '16:00', 'Status' => 'completed',
+        ]);
+
+        $anchor = Schedule::create([
+            'student_id' => $student->id,
+            'teacher_id' => $t1->id,
+            'day_of_week' => 5,
+            'start_time' => '14:00',
+            'end_time' => '16:00',
+            'status' => 'rescheduled',
+            'type' => 'normal',
+            'deduction' => 1,
+            'branch_id' => $campusId,
+            'schedule_date' => $sessionDate,
+            'student_course_id' => $sc->ID,
+        ]);
+
+        Schedule::create([
+            'student_id' => $student->id,
+            'teacher_id' => $t2->id,
+            'day_of_week' => 5,
+            'start_time' => '14:00',
+            'end_time' => '16:00',
+            'status' => 'scheduled',
+            'type' => 'normal',
+            'deduction' => 1,
+            'branch_id' => $campusId,
+            'schedule_date' => $sessionDate,
+            'student_course_id' => $sc->ID,
+            'original_schedule_id' => $anchor->id,
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$dirToken}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/reports/teacher-learning-fill-rates?' . http_build_query([
+            'branch_id' => $campusId,
+            'days' => 14,
+        ]));
+
+        $res->assertOk();
+        $rows = collect($res->json('teachers') ?? []);
+        $this->assertNull($rows->firstWhere('teacher_id', (int) $t1->id));
+        $t2Row = $rows->firstWhere('teacher_id', (int) $t2->id);
+        $this->assertNotNull($t2Row, 'Status=completed 的代課堂次也應計入 T2');
+        $this->assertSame(1, (int) $t2Row['sessions_attended']);
+    }
 }

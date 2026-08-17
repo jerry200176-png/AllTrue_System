@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
 import { useCourseSessionsDisplay } from '../useCourseSessionsDisplay.js';
-import { sessionViewModelFromClassSessionsRow } from '../../../lib/classSessionsApi.js';
+import { sessionViewModelFromClassSessionsRow, createSessionViewModel } from '../../../lib/classSessionsApi.js';
 
 /**
  * Regression for 2026-07-29: useCourseSessionsDisplay() referenced an
@@ -69,5 +69,52 @@ describe('useCourseSessionsDisplay', () => {
     // labeled 超排 for a monthly course.
     const state = display.getSessionState(monthlyCourse, '2026-08-09');
     expect(state?.label).not.toBe('超排');
+  });
+
+  /**
+   * in-app #237 / GitHub #1834: header「已上 X 堂」must match chips labeled 已上.
+   * A just-attended occurrence can still sit as projected while completedSessionDates
+   * already includes that day — chips showed 已上 (via getSessionState fallback),
+   * count used materialized rows only and lagged by 1.
+   */
+  it('counts a projected 已上 chip in getCompletedSessionCount (in-app #237)', () => {
+    const course = {
+      id: 99,
+      ScheduleMode: 'date',
+      payment_type: 'monthly',
+      sessions_purchased: 4,
+    };
+    const attended = [
+      { id: 1, student_class_id: 99, session_date: '2026-07-05', start_time: '10:00', end_time: '12:00', status: 'attended' },
+      { id: 2, student_class_id: 99, session_date: '2026-07-12', start_time: '10:00', end_time: '12:00', status: 'attended' },
+      { id: 3, student_class_id: 99, session_date: '2026-07-19', start_time: '10:00', end_time: '12:00', status: 'attended' },
+      { id: 4, student_class_id: 99, session_date: '2026-07-26', start_time: '10:00', end_time: '12:00', status: 'attended' },
+      { id: 5, student_class_id: 99, session_date: '2026-08-02', start_time: '10:00', end_time: '12:00', status: 'attended' },
+      { id: 6, student_class_id: 99, session_date: '2026-08-09', start_time: '10:00', end_time: '12:00', status: 'attended' },
+    ].map(sessionViewModelFromClassSessionsRow);
+    const todayProjected = createSessionViewModel({
+      kind: 'projected',
+      isProjected: true,
+      studentClassId: 99,
+      date: '2026-08-16',
+      startTime: '10:00',
+      endTime: '12:00',
+      status: 'projected',
+    });
+
+    const display = useCourseSessionsDisplay({
+      sessionsByCourse: ref({ 99: [...attended, todayProjected] }),
+      completedSessionDatesByCourse: ref({
+        99: ['2026-07-05', '2026-07-12', '2026-07-19', '2026-07-26', '2026-08-02', '2026-08-09', '2026-08-16'],
+      }),
+      fetchClassSessionsFn: vi.fn(),
+      supabase: { auth: { getSession: vi.fn() } },
+      branchId: ref(16),
+    });
+
+    const chips = display.primarySessionUnits(course);
+    const labeledAttended = chips.filter((u) => display.getSessionStateLabel(course, u.date, u.id) === '已上');
+    expect(labeledAttended).toHaveLength(7);
+    expect(display.getCompletedSessionCount(course)).toBe(7);
   });
 });

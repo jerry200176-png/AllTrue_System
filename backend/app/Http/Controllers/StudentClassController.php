@@ -1208,7 +1208,7 @@ class StudentClassController extends Controller
             'StartDate' => 'required|date',
             'EndDate' => 'nullable|date',
             'TotalHours' => 'nullable|integer',
-            'Memo' => 'nullable|string|max:512',
+            'Memo' => 'nullable|string|max:8000',
             'Charge' => 'nullable|integer',
             'Pay' => 'nullable|integer',
             'PayDate' => 'nullable|date',
@@ -1514,6 +1514,10 @@ class StudentClassController extends Controller
         $oldRemainingSessionsSnapshot = (int) ($studentClass->RemainingSessions ?? 0);
         $oldTotalHoursSnapshot = (int) ($studentClass->TotalHours ?? 0);
         $oldTeacherSnapshot = (int) ($studentClass->TeacherID ?? 0);
+        if (array_key_exists('Memo', $mapped) && is_string($mapped['Memo']) && mb_strlen($mapped['Memo']) > 8000) {
+            return response()->json(['message' => '課程備註太長，請縮短後再儲存'], 422);
+        }
+
         $oldRateUnitSnapshot = strtolower(trim((string) ($studentClass->rate_unit ?? 'session')));
         if (!in_array($oldRateUnitSnapshot, ['session', 'hour'], true)) {
             $oldRateUnitSnapshot = 'session';
