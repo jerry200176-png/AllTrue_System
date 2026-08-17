@@ -24,6 +24,12 @@ echo "--- teacher (if provided) ---"
 if [ -n "$TEACHER_NAME" ]; then
   TN=$(printf "%s" "$TEACHER_NAME" | sed "s/'/\\\\'/g")
   "${M[@]}" -e "SELECT id,Name,LoginName FROM User WHERE Name='$TN' LIMIT 5;"
+  echo "--- teacher occupancy UserCampus (ids only) ---"
+  "${M[@]}" -e "SELECT CONCAT_WS('|','uc',uc.UserID,uc.CampusID,uc.Approved) FROM UserCampus uc JOIN User u ON u.id=uc.UserID WHERE u.Name='$TN' ORDER BY uc.CampusID;"
+  echo "--- teacher occupancy ClassSession on DATE (ids only, no names) ---"
+  "${M[@]}" -e "SELECT CONCAT_WS('|','cs',cs.id,cs.StudentClassID,sc.StudentID,st.CampusID,IFNULL(sc.ClassType,''),cs.Status,SUBSTRING(cs.StartTime,1,5),SUBSTRING(cs.EndTime,1,5),sc.Stop) FROM ClassSession cs JOIN StudentClass sc ON sc.ID=cs.StudentClassID JOIN Student st ON st.id=sc.StudentID JOIN User u ON u.id=sc.TeacherID WHERE u.Name='$TN' AND cs.SessionDate='$DATE' ORDER BY cs.StartTime, cs.id;"
+  echo "--- teacher occupancy schedules on DATE (ids only, no names) ---"
+  "${M[@]}" -e "SELECT CONCAT_WS('|','sch',s.id,s.branch_id,s.student_id,IFNULL(s.student_course_id,'null'),s.status,IFNULL(s.type,''),IFNULL(s.class_type,''),SUBSTRING(s.start_time,1,5),SUBSTRING(s.end_time,1,5),IFNULL(s.original_schedule_id,'null')) FROM schedules s JOIN User u ON u.id=s.teacher_id WHERE u.Name='$TN' AND DATE(s.schedule_date)='$DATE' ORDER BY s.start_time, s.id;"
 fi
 
 echo "--- StudentClass rows for this student (all active courses) ---"
