@@ -14,6 +14,9 @@ export const BRANCHES_LEGACY = [
     { id: 'xizhi', name: '汐止分校 (Xizhi)' },
 ];
 
+/** Must match App\Models\StudentClass::MEMO_MAX_LENGTH */
+export const STUDENT_CLASS_MEMO_MAX_LENGTH = 8000;
+
 export const GRADES = [
     { value: 'P1', label: '國小一年級 (P1)' },
     { value: 'P2', label: '國小二年級 (P2)' },

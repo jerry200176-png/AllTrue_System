@@ -78,7 +78,7 @@ class ClassSessionController extends Controller
             'settlement_day' => 'nullable|integer|min:1|max:31',
             'monthly_sessions' => 'nullable|integer|min:1|max:500',
             'room_id' => 'nullable|integer|exists:rooms,id',
-            'memo' => 'nullable|string|max:512',
+            'memo' => 'nullable|string|max:' . StudentClass::MEMO_MAX_LENGTH,
             'paid_at' => 'nullable|date',
             'branch_id' => 'nullable|integer|min:1',
             'mode' => 'nullable|in:create,backfill',

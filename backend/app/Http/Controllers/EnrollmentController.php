@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\StudentClass;
 use App\Services\EnrollmentService;
 use Illuminate\Http\Request;
 
@@ -43,7 +44,7 @@ class EnrollmentController extends Controller
             'settlement_day' => 'nullable|integer|min:1|max:31',
             'monthly_sessions' => 'nullable|integer|min:1|max:500',
             'room_id' => 'nullable|integer|exists:rooms,id',
-            'memo' => 'nullable|string|max:512',
+            'memo' => 'nullable|string|max:' . StudentClass::MEMO_MAX_LENGTH,
             'branch_id' => 'required|integer|min:1',
             'mode' => 'nullable|in:create,backfill,enrollment',
             'identity_group_id' => 'nullable|integer|min:1',
