@@ -242,7 +242,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | **F4 共用堂數（一對三）** | `Charge` 未計算（=0）；**購買堂數 vs 實體 ClassSession 數**呈現混淆；把方案池總堂數當成員課程應物化列數 → 假「不一致」警告；堂數制 projected chip 誤呼叫 ensure-projected；把方案池剩餘數當成員可排能力 | #147、#553、#430、#448、#440、§R21、§R24、#1465；架構後續見 **ADR-006**（Commitment→materialize→pool coverage；非餘額猜堂） | 池／成員排課／已用分欄；package under→info 且**成員課程 UI 不顯示方案池剩餘**；無 allocation aggregate 前不推導尚可排／未排 N；count projected 不呼叫 ensure-projected；物化 affordance 僅 `ScheduleMode=date` |
 | **F5 行事曆合併** | week 檢視 merge/去重/過濾**排除有效堂次**（含歷史已上） | #152、§R47、§R49、§R50、行544、§G-007 | 唯一走 `calendarOccurrenceMerge.js`；`npm run test:calendar`；歷史已上堂次仍顯示 |
 | **F7 繳費金額/狀態雙真相** | `Charge` 與 `Rate×數量` 的差額、`StudentClass.Paid` 與 Invoice/Payment 各有兩套真相；點修單邊會「改了又跳回」 | #112、#425、#509、#798、#799、§G-009 | Charge 差額必須可追溯到 `session_charge` 調整；有效收款紀錄存在時課程不得被改為未繳費（解鈴走帳單作廢），任何降級路徑都要明確回饋不得靜默 |
-| **F6 輸入邊界 collation** | utf8mb3 文字欄遇 **4-byte 字元（emoji）** → `like` collation 1267 crash；**寫入**同根因 → `Incorrect string value` 1366（`StudentClass.Memo`） | #657、**#1378** | 搜尋：先濾 4-byte；**寫入**：canonical 修 charset→utf8mb4（禁默默刪 emoji）；過渡期回 422 `memo_charset_incompatible` 且 transaction 回滾 |
+| **F6 輸入邊界 collation／長度** | utf8mb3 文字欄遇 **4-byte 字元（emoji）** → `like` collation 1267 crash；**寫入**同根因 → `Incorrect string value` 1366（`StudentClass.Memo`）；另 **VARCHAR(512) 溢位** → SQLSTATE 22001 Data too long（貼繳費說明） | #657、**#1378**、**#1732** | 搜尋：先濾 4-byte；**寫入**：canonical 修 charset→utf8mb4（禁默默刪 emoji）；過渡期回 422 `memo_charset_incompatible` 且 transaction 回滾；超長備註須 422 `memo_too_long`，禁止 500 |
 
 **通用防再犯規則（跨家族）：**
 1. 任何「**狀態變更**」（停用、結束、結算、續期、調課）寫主檔時，必須在**同一交易內**決定其衍生 `ClassSession`/`schedules`/名額/金額如何對齊，並寫測試覆蓋「變更後衍生資料正確」。
@@ -251,6 +251,8 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 4. DB 文字欄若為 `utf8mb3`：查詢 `like` **先濾**非 BMP（F6 搜尋）；**寫入**路徑則必須升級欄位 charset 至 utf8mb4（#1378），禁止永久靜默刪 emoji。
 
 **延伸（2026-07-22 / #1378）**：production `StudentClass.Memo` 為 utf8mb3 時，備註含 📅 會讓建課 transaction 整筆失敗。CI DB 預設 utf8mb4 → 測不到。修法：migration `2026_07_22_130000_convert_student_class_free_text_to_utf8mb4` + `StudentClassMemoUtf8mb4Test`；Founder GO → [`docs/runbooks/1378-memo-utf8mb4-execution-package.md`](runbooks/1378-memo-utf8mb4-execution-package.md)。
+
+**延伸（2026-08-17 / #1732）**：VARCHAR(512) 備註被貼上整封繳費說明 → `StudentClassController::update` 無長度驗證、直接 500。修法：Memo→TEXT + `MEMO_MAX_LENGTH` 422；見 §R111。
 
 **度量與工具（業界對齊，2026-06-06）：**
 - **復發率＝主指標**：同根因 6 個月內再現的比例（業界 postmortem 通用 KPI）。本節家族成員再現即計入；目標逐季下降。
@@ -1135,7 +1137,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | 月結制 / 加購 / 多科固定時段 | §b3 inactive 歷史、§b4 加購分流、§R21（堂數制加購是新批次）、§R22（月結詳情不可只依賴 ClassSession）、§R23（推算日期不可成為 dead-end chip）、§R24（多科固定時段優先走一般課程）、§R26（月結續報與堂數額度不可混在同一語意）、§R38（家長端繳費提醒不可套主任續課提醒） |
 | routes/api.php | §AI 靜默回退路由（改前必讀完整檔案 + route:list） |
 | 備份 / nightly | §nightly 覆蓋修正、§備份還原演練、§R34（備份新鮮度不可只看 mtime）、§R71（repair 與 producer prevention 分離；同日全日期 health aggregate） |
-| Bug 回報 / 附件存檔 | §R11 storage symlink（Archive）、§R51（分診前必查 attachments + reporter 歷史 + 跨分校）、§R53（上線後必回 in-app）、`docs/CHAT_BUG_SYSTEM.md` §3.6–§3.7、**§R108（utf8mb3 姓名 LIKE 禁 4-byte）** |
+| Bug 回報 / 附件存檔 | §R11 storage symlink（Archive）、§R51（分診前必查 attachments + reporter 歷史 + 跨分校）、§R53（上線後必回 in-app）、`docs/CHAT_BUG_SYSTEM.md` §3.6–§3.7、**§R108（utf8mb3 姓名 LIKE 禁 4-byte）**、**§R111（課程備註長度 TEXT+422，禁 SQL 500）** |
 | Git / PR 工作流 | §R58（禁止 assume-unchanged 藏檔）、`scripts/git-index-audit.sh`、Epic #535 Phase 0、**§R87 追加教訓 2（squash-merge 後繼續在同一 designated branch 開下一個 commit 前，一律先 `git fetch + checkout -B <branch> origin/main` 重啟，勿等 `mergeable_state: dirty` 才修）** |
 | Migration / schema drift | §R63（未合併分支的 migration 禁上 production；drift 修復＝port 回 main＋drift 測試） |
 | 前端 UI 參考 star repo / RFC 落地 | **§R88（「參考 star 的 repo」＝真的 `git clone` 讀原始碼，`RFC_PLATFORM_OPTIMIZATION_FROM_STARS_2026.md` 的一行摘要只是索引不是替代品；落差要能具體引用來源檔案/規則）** |
@@ -1347,5 +1349,15 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **根因**：標頭 `getCompletedSessionCount` 只數 `materializedSessionsOnly` 的 attended；晶片走 `primarySessionUnits`（含 session-dates 合併）+ `getSessionState`。列表載入還用「今天前後兩個月」切窗，展開詳情若已有日期快取就不再重抓。月結若缺 `payment_type` 只剩 `SessionCount`，標題會誤寫「購買 N 堂」。
 - **強制規則**：已上堂數必須數使用者看得到的「已上」晶片；展開詳情必須重抓該課全部 ClassSession；`isSessionModeCourse` 遇 `ScheduleMode=date` 不得當堂數制。
 - **測試必補**：7 筆 attended 晶片 → `getCompletedSessionCount === 7`；`ScheduleMode=date` 且無 payment_type 時 summary 不得出現「購買」。
+
+### R111. 課程備註超長必須 422，不可讓 MySQL 截斷變 500（GitHub #1732，2026-08-17）
+
+- **現象**：主任把給家長的繳費說明貼進課程備註，儲存直接 SQLSTATE 22001 Data too long for column `Memo`（Sentry PHP-LARAVEL-2B）。編輯表單沒有字數上限；`update()` 也沒驗證 Memo。
+- **根因**：F6 輸入邊界的長度面——欄位仍是 VARCHAR(512)，寫入路徑假設「備註很短」。#1378 只修 charset，沒修長度。
+- **強制規則**：
+  1. `StudentClass.Memo` 用 TEXT（utf8mb4）；長度上限單一常數 `StudentClass::MEMO_MAX_LENGTH`。
+  2. 更新／建課 API 超長回 422 `memo_too_long`，禁止落到 SQL 500。
+  3. 前端 textarea `maxlength` 必須跟後端常數同一數字。
+- **測試必補**：600 字中文備註 PUT 成功；上限 +1 → 422 且資料未改；MySQL `DATA_TYPE` 為 text。
 
 

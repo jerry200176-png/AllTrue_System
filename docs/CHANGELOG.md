@@ -1,3 +1,10 @@
+## 2026-08-17 — fix(courses): 課程備註可存較長繳費說明
+
+<!-- release-notes: staff_update=staff-2026-08-17-course-memo-length-1732 -->
+
+- 課程備註加長，貼上給家長看的繳費說明也能存檔。
+- 超過上限會提示請刪短，不再存檔失敗。
+
 ## 2026-08-17 — fix(ui): 課程管理已上堂數跟明細對齊
 
 <!-- release-notes: staff_update=staff-2026-08-17-course-attended-count-1834 -->

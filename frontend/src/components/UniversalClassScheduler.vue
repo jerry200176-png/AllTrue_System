@@ -601,7 +601,13 @@
           <article class="scheduler-card">
             <h4>備註</h4>
             <div class="form-group">
-              <textarea v-model="form.memo" rows="2" placeholder="可選填"></textarea>
+              <textarea
+                v-model="form.memo"
+                rows="2"
+                placeholder="可選填"
+                :maxlength="STUDENT_CLASS_MEMO_MAX_LENGTH"
+              ></textarea>
+              <p class="hint-text">最多 {{ STUDENT_CLASS_MEMO_MAX_LENGTH }} 字。</p>
             </div>
           </article>
         </section>
@@ -842,7 +848,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
 import { createMultiSubjectPackage } from '../lib/coursePackagesApi';
-import { checkTeacherScope } from '../lib/constants';
+import { checkTeacherScope, STUDENT_CLASS_MEMO_MAX_LENGTH } from '../lib/constants';
 import { calculateCoverage, lessonEquivalent } from '../lib/lessonCoverage';
 import perfFlags from '../lib/perfFlags';
 import { estimateCreateCharge } from '../lib/coursePricing';
