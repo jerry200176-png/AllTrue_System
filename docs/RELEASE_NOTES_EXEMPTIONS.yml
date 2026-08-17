@@ -7,6 +7,11 @@ exemptions:
     changelog_title: "fix(security): 主任密碼重設寫入稽核事件"
     reason: 僅後端稽核事件與測試；重設密碼畫面與回傳臨時密碼不變。
 
+  - id: silent-2026-08-17-director-approve-audit-1810
+    changelog_date: "2026-08-17"
+    changelog_title: "fix(security): 主任核准／駁回寫入稽核事件"
+    reason: 僅後端稽核事件與測試；主任申請核准／駁回畫面與結果不變。
+
   - id: silent-2026-08-17-session-balance-audit-1811
     changelog_date: "2026-08-17"
     changelog_title: "fix(security): 手動調整堂數寫入稽核事件"

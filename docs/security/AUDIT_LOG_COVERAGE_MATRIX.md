@@ -30,7 +30,7 @@ Pulled from the live codebase (`grep` over `backend/app/Http/Controllers`, `back
 | Bug report status/comment changes | ✅ Yes | `BugReportStatusLog` |
 | Payment/invoice void | ✅ Yes (inline) | `voided_by`/`voided_at`/`void_reason` columns |
 | **PIN set/reset** (`PinVerificationController.php`, `pin_hash` writes at ~L61-63, L126-128) | ❌ **No** | No audit write found alongside `pin_hash = password_hash(...)` — a PIN reset today leaves no trace of who did it or when, beyond `pin_set_at` on the `User` row itself (a timestamp, but not a "who/why" record) |
-| Role/type changes (`User.type`) | ⚠️ **Not verified this pass** | No dedicated audit model found; needs a follow-up grep specifically for `->type =` writes on `User` |
+| Role/type changes (`User.type` director approve/reject) | ✅ Yes (#1810) | `SecurityAuditEvent` `director.account.approved` / `director.account.rejected` on `DirectorAccountController` (hashed actor/subject, old→new type codes; no names) |
 | PII export (students.xlsx) | ✅ Yes (#1812) | `SecurityAuditEvent` `pii.export.students` on `GET /api/v1/students/export` (hashed actor, row/campus scope counts; no names/phones) |
 | StudentClass SessionCount / RemainingSessions manual edit | ✅ Yes (#1811) | `SecurityAuditEvent` `student_class.session_balance_adjust` on `StudentClassController::update` when counts change (old→new ints only) |
 | super_admin director password reset | ✅ Yes (#1813) | `SecurityAuditEvent` `director.password.reset` on `DirectorAccountController::resetPassword` (hashed actor/subject; temp password never in metadata) |
@@ -40,7 +40,7 @@ Pulled from the live codebase (`grep` over `backend/app/Http/Controllers`, `back
 
 1. **PIN reset has zero audit trail.** For a system using PIN-based verification (per `PinVerificationController.php`), not knowing who reset a PIN and when is a real gap — this is exactly the kind of "who did this sensitive thing" question an audit trail exists to answer. Recommend: a lightweight `PinAuditLog` (or reuse `ScheduleAuditLog`'s pattern) recording `user_id`, `changed_by`, `action` (`set`/`reset`/`unlock`), `at`. Low effort, follows an existing pattern in this codebase.
 2. **PII student Excel export is covered (#1812).** `ExportController::students` writes `security_audit_events` (`pii.export.students`). Broader "who viewed a single student record in UI" query logging remains open if needed later.
-3. **Role/type changes not verified.** Flagging as unverified rather than claiming either coverage or a gap — needs a dedicated pass.
+3. **Director approve/reject role changes are covered (#1810).** Other `User.type` writes (if any) remain unverified.
 
 ## Acceptance against #890
 

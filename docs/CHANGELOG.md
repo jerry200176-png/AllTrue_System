@@ -4,6 +4,12 @@
 
 - 超級管理員代主任重設密碼時寫入 `security_audit_events`（操作者雜湊、對象雜湊）；不含臨時密碼與姓名。
 
+## 2026-08-17 — fix(security): 主任核准／駁回寫入稽核事件
+
+<!-- release-notes: silent_ship=silent-2026-08-17-director-approve-audit-1810 -->
+
+- 超級管理員核准或駁回主任申請時寫入 `security_audit_events`（操作者雜湊、對象雜湊、舊→新身分代碼）；不含姓名／帳號明文。
+
 ## 2026-08-17 — fix(ui): LINE 設定與錯誤訊息再白話
 
 <!-- release-notes: staff_update=staff-2026-08-17-ui-jargon-w2 -->

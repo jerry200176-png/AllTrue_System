@@ -55,6 +55,18 @@ class SecurityAuditEventTest extends TestCase
             'source' => 'directors.reset-password',
         ], $metadata3);
 
+        $roleMeta = SecurityAuditEvent::metadata([
+            'old_type' => 'U',
+            'new_type' => 'D',
+            'reason_code' => 'approve',
+            'Name' => 'Pending Director',
+        ]);
+        $this->assertSame([
+            'old_type' => 'U',
+            'new_type' => 'D',
+            'reason_code' => 'approve',
+        ], $roleMeta);
+
         $this->assertSame([
             'method' => 'line',
             'provider_status' => 200,

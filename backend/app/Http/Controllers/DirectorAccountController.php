@@ -124,9 +124,17 @@ class DirectorAccountController extends Controller
             return response()->json(['message' => 'User not found'], 404);
         }
 
-        UserCampus::where('UserID', $id)->where('Approved', false)->update(['Approved' => true]);
-        $user->type = 'D';
-        $user->save();
+        $oldType = (string) $user->type;
+        $campusId = UserCampus::query()->where('UserID', $id)->where('Approved', false)->value('CampusID');
+
+        DB::transaction(function () use ($request, $user, $id, $oldType, $campusId) {
+            UserCampus::where('UserID', $id)->where('Approved', false)->update(['Approved' => true]);
+            $user->type = 'D';
+            $user->save();
+
+            // #1810: director approval is a highest-privilege role change.
+            $this->auditDirectorDecision($request, $id, 'approve', $campusId !== null ? (int) $campusId : null, $oldType, 'D');
+        });
 
         return response()->json(['message' => '已通過審核']);
     }
@@ -145,9 +153,16 @@ class DirectorAccountController extends Controller
             return response()->json(['message' => 'User not found'], 404);
         }
 
-        UserCampus::where('UserID', $id)->where('Approved', false)->delete();
-        // Leave user as type U with no campus; they can re-register if needed. Optionally delete user.
-        $user->delete();
+        $oldType = (string) $user->type;
+        $campusId = UserCampus::query()->where('UserID', $id)->where('Approved', false)->value('CampusID');
+
+        DB::transaction(function () use ($request, $user, $id, $oldType, $campusId) {
+            UserCampus::where('UserID', $id)->where('Approved', false)->delete();
+            // #1810: record who rejected whom before the pending user row is removed.
+            $this->auditDirectorDecision($request, $id, 'reject', $campusId !== null ? (int) $campusId : null, $oldType, 'deleted');
+            // Leave user as type U with no campus; they can re-register if needed. Optionally delete user.
+            $user->delete();
+        });
 
         return response()->json(['message' => '已拒絕']);
     }
@@ -352,6 +367,33 @@ class DirectorAccountController extends Controller
             'campus_ids'   => $validIds,
             'campus_names' => $campusNames,
         ]);
+    }
+
+    private function auditDirectorDecision(
+        Request $request,
+        int $subjectUserId,
+        string $action,
+        ?int $campusId,
+        string $oldType,
+        string $newType
+    ): void {
+        $actor = $request->attributes->get('auth_user');
+        SecurityAuditEvent::append(
+            $action === 'approve' ? 'director.account.approved' : 'director.account.rejected',
+            'success',
+            [
+                'actor_type' => 'user',
+                'actor_id' => $actor?->id,
+                'subject_type' => 'user',
+                'subject_id' => $subjectUserId,
+                'campus_id' => $campusId,
+            ],
+            [
+                'reason_code' => $action,
+                'old_type' => $oldType,
+                'new_type' => $newType,
+            ]
+        );
     }
 
     private function generatePassword(): string
