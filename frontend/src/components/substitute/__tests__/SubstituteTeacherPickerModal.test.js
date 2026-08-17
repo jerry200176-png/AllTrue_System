@@ -98,4 +98,50 @@ describe('SubstituteTeacherPickerModal drag prefill', () => {
     expect(call[2]).toMatchObject({ excludeStudentId: 7 });
     expect(wrapper.get('.stp-card').classes()).not.toContain('stp-card--conflict');
   });
+
+  it('does not mark a mixed 1v2+1v3 slot full when covering 1v3', async () => {
+    const wrapper = mount(SubstituteTeacherPickerModal, {
+      props: {
+        modelValue: false,
+        context: {
+          student_id: 341,
+          student_name: '一對三學生',
+          class_type: 'one_on_three',
+          subject_label: '數學',
+          session_date: '2026-08-20',
+          start_time: '15:00',
+          end_time: '17:00',
+          original_teacher_id: 71,
+          original_teacher_name: '正班老師',
+          session_campus_id: 3,
+        },
+        teachers: [{ id: 80, name: '代課老師', branch_ids: [3] }],
+        branchNameMap: { 3: '大直' },
+        fetchAvailability: vi.fn(async () => ({
+          busy_slots: [
+            {
+              start_time: '15:00',
+              end_time: '17:00',
+              campus_id: 3,
+              class_type: 'one_on_two',
+              remaining_capacity: 0,
+            },
+            {
+              start_time: '15:00',
+              end_time: '17:00',
+              campus_id: 3,
+              class_type: 'one_on_three',
+              remaining_capacity: 1,
+            },
+          ],
+        })),
+      },
+    });
+
+    await wrapper.setProps({ modelValue: true });
+    await flushPromises();
+
+    expect(wrapper.get('.stp-card').classes()).not.toContain('stp-card--conflict');
+    expect(wrapper.get('.stp-card').classes()).toContain('stp-card--warn');
+  });
 });

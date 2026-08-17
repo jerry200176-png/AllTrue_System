@@ -1,6 +1,6 @@
 ---
 owner: jerry (CEO)
-status: Draft plan — Phase 0 docs only; DEV in follow-up PR Refs #1889
+status: Implemented — follow-up PR Refs #1889; last merge Closes
 review_cycle: as-needed
 last_reviewed: 2026-08-17
 ---
@@ -37,7 +37,7 @@ last_reviewed: 2026-08-17
 |---|---|
 | 功能名稱 | 行事曆／代課混班型時段容量 |
 | 版本 | 2026-08-17 |
-| 狀態 | Phase 0 計畫（本 PR）；實作 follow-up Refs #1889 |
+| 狀態 | 實作 PR（本工作樹）；Refs #1889，merge 後 Closes |
 | 嚴重度 | P1 |
 | 目標角色 | 分校主任（行事曆排課、代課選人） |
 | 關聯 Bug | in-app #238 剩餘；GitHub #1889；前案 #1885／#1582／#935 |
@@ -139,7 +139,7 @@ Ops 密度畫面。徽章維持 `count/max` chip，不改成行銷風。Tooltip 
 - `SubstituteTeacherPickerModal` 的 `enriched`：衝突＝被代課班型 remaining≤0，不是任一重疊列 remaining≤0。
 - `SmartCalendar.vue`：`getSlotOccupancy`、`checkConflict` 的 `blockedBy`（現況用既有課程班型上限擋新課）。
 - 測試：`AvailabilityCapacityTest` 增混班案例；`SubstituteTeacherPickerModal.test.js`；抽出徽章純函式則單測（避免只改 Vue 無 revert-proof）。
-- 文件：實作 PR 寫 §R115；CHANGELOG 教職員可感知 → `staff_update`。
+- 文件：實作 PR 寫 §R116；CHANGELOG 教職員可感知 → `staff_update`。
 
 **治標 vs 治本：** 本包是讀側容量語意治標。治本混班政策（是否允許 1v2+1v3 同格）屬產品，正式站已存在故本包承認混班。幽靈列治本仍是 TD-076，**本包不碰**。
 
@@ -212,10 +212,10 @@ P1。執行 Agent：`[DEV]`／`[TEST]`／`[REVIEW]`／`[DOCS]`／`[OPS]`。In-ap
 | 本 PR：計畫＋INDEX＋silent CHANGELOG | `[DOCS]` | 本工作樹 |
 | GitHub #1889 | `[DOCS]` | 已開 |
 | in-app #238 follow-up（不改狀態） | `[DOCS]` | docs PR 後 dispatch |
-| 後端容量聚合 | `[DEV]` | 實作 PR |
-| 前端徽章／衝突／代課卡 | `[DEV]` | 實作 PR |
-| Regression + revert-proof | `[TEST]` | 實作 PR |
-| Code review 對照 FR | `[REVIEW]` | 實作 PR |
-| §R115 + staff_update | `[DOCS]` | 實作 PR |
+| 後端容量聚合 | `[DEV]` | 本 PR |
+| 前端徽章／衝突／代課卡 | `[DEV]` | 本 PR |
+| Regression + revert-proof | `[TEST]` | 本 PR |
+| Code review 對照 FR | `[REVIEW]` | 本 PR |
+| §R116 + staff_update | `[DOCS]` | 本 PR |
 | deploy + health | `[OPS]` | 實作 PR |
 | Migration | `[DEV]` | 不適用 |

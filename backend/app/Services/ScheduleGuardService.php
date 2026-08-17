@@ -7,6 +7,8 @@ use Illuminate\Support\Facades\DB;
 
 class ScheduleGuardService
 {
+    public const TEACHER_SLOT_ABSOLUTE_MAX = 3;
+
     /** @var array<string, int> */
     private array $classCapacityMap = [
         'one_on_one' => 1,
@@ -364,6 +366,45 @@ class ScheduleGuardService
             return null;
         }
 
+        $hasOneOnOne = false;
+        foreach ($overlaps as $entry) {
+            if ((string) ($entry['class_type'] ?? '') === 'one_on_one') {
+                $hasOneOnOne = true;
+                break;
+            }
+        }
+        if ($hasOneOnOne) {
+            return [
+                'type' => 'teacher_capacity',
+                'day_of_week' => (int) ($slot['day_of_week'] ?? 0),
+                'start_time' => (string) ($slot['start_time'] ?? ''),
+                'end_time' => (string) ($slot['end_time'] ?? ''),
+                'current_students' => $existingCount,
+                'allowed_students' => 1,
+                'message' => '老師此時段本分校已有一對一課程，無法再加課。',
+                'overlap_summary' => $overlapSummary,
+                'overlap_details' => $overlapDetails,
+            ];
+        }
+
+        if ($existingCount >= self::TEACHER_SLOT_ABSOLUTE_MAX) {
+            return [
+                'type' => 'teacher_capacity',
+                'day_of_week' => (int) ($slot['day_of_week'] ?? 0),
+                'start_time' => (string) ($slot['start_time'] ?? ''),
+                'end_time' => (string) ($slot['end_time'] ?? ''),
+                'current_students' => $existingCount,
+                'allowed_students' => self::TEACHER_SLOT_ABSOLUTE_MAX,
+                'message' => sprintf(
+                    '老師此時段本分校已有 %d 位學生，上限為 %d 位學生。',
+                    $existingCount,
+                    self::TEACHER_SLOT_ABSOLUTE_MAX
+                ),
+                'overlap_summary' => $overlapSummary,
+                'overlap_details' => $overlapDetails,
+            ];
+        }
+
         if ($existingCount >= $newCapacity) {
             return [
                 'type' => 'teacher_capacity',
@@ -373,7 +414,7 @@ class ScheduleGuardService
                 'current_students' => $existingCount,
                 'allowed_students' => $newCapacity,
                 'message' => sprintf(
-                    '老師此時段已有 %d 位學生，%s 上限為 %d 位學生。',
+                    '老師此時段本分校已有 %d 位學生，已達%s上限（%d 位）。',
                     $existingCount,
                     $this->classTypeLabel($newClassType),
                     $newCapacity
@@ -381,29 +422,6 @@ class ScheduleGuardService
                 'overlap_summary' => $overlapSummary,
                 'overlap_details' => $overlapDetails,
             ];
-        }
-
-        foreach ($overlaps as $entry) {
-            $existingType = (string) ($entry['class_type'] ?? 'one_on_one');
-            $existingCapacity = $this->capacityForClassType($existingType);
-            if ($existingCount >= $existingCapacity) {
-                return [
-                    'type' => 'teacher_capacity',
-                    'day_of_week' => (int) ($slot['day_of_week'] ?? 0),
-                    'start_time' => (string) ($slot['start_time'] ?? ''),
-                    'end_time' => (string) ($slot['end_time'] ?? ''),
-                    'current_students' => $existingCount,
-                    'allowed_students' => $existingCapacity,
-                    'message' => sprintf(
-                        '老師此時段已有 %d 位學生，既有%s課型上限為 %d 位學生。',
-                        $existingCount,
-                        $this->classTypeLabel($existingType),
-                        $existingCapacity
-                    ),
-                    'overlap_summary' => $overlapSummary,
-                    'overlap_details' => $overlapDetails,
-                ];
-            }
         }
 
         return null;

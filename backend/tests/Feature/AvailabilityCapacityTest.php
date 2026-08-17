@@ -186,6 +186,43 @@ class AvailabilityCapacityTest extends TestCase
         $this->assertSame([1], $slots->pluck('remaining_capacity')->unique()->values()->all());
     }
 
+    /**
+     * #1889: mixed 1v2 + 1v3 with two unique students. Remaining follows each
+     * row's class type vs unique occupants — 1v2 is full, 1v3 still has 1 seat.
+     */
+    public function test_mixed_one_on_two_and_one_on_three_remaining_follows_row_class_type(): void
+    {
+        $teacher = $this->createTeacher('teacher-avail-mixed@example.com');
+        $studentTwo = $this->createStudent('mixed-1v2');
+        $studentThree = $this->createStudent('mixed-1v3');
+
+        $scTwo = $this->createStudentClass($studentTwo->id, $teacher->id, 'one_on_two');
+        $scThree = $this->createStudentClass($studentThree->id, $teacher->id, 'one_on_three');
+        foreach ([$scTwo, $scThree] as $sc) {
+            ClassSession::create([
+                'StudentClassID' => $sc->ID,
+                'SessionDate'    => '2026-08-20',
+                'StartTime'      => '15:00:00',
+                'EndTime'        => '17:00:00',
+                'Status'         => 'scheduled',
+            ]);
+        }
+
+        $response = $this->withHeaders([
+            'Authorization' => "Bearer {$this->dirToken}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/teachers/{$teacher->id}/availability?date=2026-08-20");
+
+        $response->assertOk();
+        $slots = collect($response->json('busy_slots'))
+            ->filter(fn ($slot) => $slot['start_time'] === '15:00' && $slot['end_time'] === '17:00');
+
+        $this->assertCount(2, $slots);
+        $byType = $slots->keyBy('class_type');
+        $this->assertEquals(0, $byType['one_on_two']['remaining_capacity']);
+        $this->assertEquals(1, $byType['one_on_three']['remaining_capacity']);
+    }
+
     private function createTeacher(string $loginName): User
     {
         $teacher = User::create([

@@ -1128,13 +1128,13 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | 堂數 / 扣堂 | §2026-04-17 繳費日期、§單堂費用固定、**§R59（分鐘制權威：RemainingSessions 為 ROUND_HALF_UP 衍生值，讀取端勿用 count 覆寫 fractional）**、§R70（對帳面板唯讀＋真實 API contract test）、**§R76（單堂改時段費用前後端必須一致）** |
 | 繳費 / 學收 | §繳費狀態 paid_at、§歷史課程漏算、§催繳名單六狀態、§幽靈課程、§R30（帳務入口共用 AR ledger）、**§R76（session／hour 費用文案與 Charge 寫入）**、**§R79（收據前端不得超前後端 contract；合法路徑=payment-reports/{id}/receipt）**、**#1827／RFC_REPORTED_PAID_ACCOUNTING_SPLIT（行政已回報 ≠ Paid；收據僅 confirm 後）**、**§R115（堂數制↔月結轉換封存未入帳、禁止沖銷已確認收款）** |
 | 薪資 / 併堂 | §兼職薪資 concurrency、§同層級併堂 v1.4、§契約時長為準 |
-| 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession）、§R39（代課評量權限需匹配時段）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R52（代課 scheduled 例外不可缺 original_schedule_id anchor）、§R71（調課單一交易＋前端 committed gate）、§R83（原子調課必須標記 IsContractException）、**§R84（IsContractException 搬進 ClassSessionObserver 結構性保證）**、§R72（cancelled ClassSession 不得讓 scheduled 例外佔用代課老師）、**§R114（同日二次調課中間 scheduled 殘影不得佔用）**、§R73（跨老師 gesture 必走 atomic substitute；legacy 兩階段精準補償）、§R74（代課衝突排除同一學生續約佔用） |
+| 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession）、§R39（代課評量權限需匹配時段）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R52（代課 scheduled 例外不可缺 original_schedule_id anchor）、§R71（調課單一交易＋前端 committed gate）、§R83（原子調課必須標記 IsContractException）、**§R84（IsContractException 搬進 ClassSessionObserver 結構性保證）**、§R72（cancelled ClassSession 不得讓 scheduled 例外佔用代課老師）、**§R114（同日二次調課中間 scheduled 殘影不得佔用）**、**§R116（混班型剩餘依被代課班型）**、§R73（跨老師 gesture 必走 atomic substitute；legacy 兩階段精準補償）、§R74（代課衝突排除同一學生續約佔用） |
 | 請假 / 順延 | §R29、**§R82（KEEP dates+append）**、§R75（SUPERSEDED）、§R77、§R81、**§R109（結案不可吃掉請假順延尾堂）** |
 | 評量 / 家長回饋 | §同天多堂課 buildEvents、§請假後不填評量、§R17（ownership 先於狀態判斷）、§R19（mark-read 不可更新 updated_at）、§R32（停用課程已上課評量不可消失）、§R39（代課評量權限需匹配時段）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R65（新增 session 狀態值必須同步全部消費端；leave 家族用集合判斷）、**§R78（nightly backfill 須 in-place restore 作廢評量，不可把 voided 當已有）**、**§R110（課程管理已上堂數須與日期晶片同源）**、**§R112（預排不可佔第 N 堂）** |
 | 效能 / Eloquent 事件 | **§R113（ClassSession creating/updating 禁逐筆 StudentClass exists；請求內一次載入已結清課程 ID）** |
 | 家長入口 UI / `releaseNotes` | §R10、§R11、§R18、§R38、§R45（家長卡僅 `PARENT_UPDATES.yml` 顯式投影 + `sync-release-notes`）、**§R85（教職員卡僅 `STAFF_UPDATES.yml`；CHANGELOG 不得自動發布）** |
 | 課表回報 | §2026-04-17 回報系統（14 條禁止項） |
-| 排課 | §start_time 格式、§智慧排課誤標取消、§R25（請假優先於 scheduled 例外）、§R29（請假不可 fallback 只寫 schedules）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R47（rescheduled 幽靈不可蓋掉同日 ClassSession）、§R49（同學生同時段去重不可用 StudentClassID 當唯一 key）、§R50（行事曆載入不可 REST 成功後再跑 fallback）、§R69（bulk reflow 先 snapshot schedule IDs，禁止 mutable natural key 連鎖更新）、§R71（mutation contract／slot idempotency／兩階段補償）、**§R80（排課摘要補登堂數≠天數；須與 session_plan 同源 expand）**、§R83（調課後 IsContractException 防 realign）、**§R84（IsContractException 結構性保證，不再靠呼叫者記得）**、**#1889 混班型容量計畫（剩餘依即將加入班型；禁止較嚴上限蓋一對三；實作後寫 §R115）** |
+| 排課 | §start_time 格式、§智慧排課誤標取消、§R25（請假優先於 scheduled 例外）、§R29（請假不可 fallback 只寫 schedules）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R47（rescheduled 幽靈不可蓋掉同日 ClassSession）、§R49（同學生同時段去重不可用 StudentClassID 當唯一 key）、§R50（行事曆載入不可 REST 成功後再跑 fallback）、§R69（bulk reflow 先 snapshot schedule IDs，禁止 mutable natural key 連鎖更新）、§R71（mutation contract／slot idempotency／兩階段補償）、**§R80（排課摘要補登堂數≠天數；須與 session_plan 同源 expand）**、§R83（調課後 IsContractException 防 realign）、**§R84（IsContractException 結構性保證，不再靠呼叫者記得）**、**§R116（混班型剩餘依即將加入班型；禁止較嚴上限蓋一對三）** |
 | 出缺勤 / 分校隔離 | §SEC-001、§分校隔離後端強制、§R12（查詢日期寫死今天）、§R14（submitQuickAttend 缺 StudentID）、§R15（出勤頁預設只顯示今天，歷史到班紀錄不可見）、§R16（`script setup` const TDZ 初始化順序 → 整頁空白）、**§R86（composable return 引用未宣告識別字 → ReferenceError 整頁空白；鏡像測試攔不住）**、§R33（老師每分校 RFID 優先）、§R36（個別資料有課但老師今日名單缺漏）、§R40（點名扣堂不可只用 ClassSessionID 防重）、§R41（補請假不可只用課程+日期找堂次）、§R42（行事曆堂次顯示老師不可被舊評量老師覆蓋）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R71（請假寫入即封閉 interval；禁止留待隔夜 repair）、**§R107（projected 堂次必須帶 branch_id；教師首頁禁 Branch #N）**|
 | 月結制 / 加購 / 多科固定時段 | §b3 inactive 歷史、§b4 加購分流、§R21（堂數制加購是新批次）、§R22（月結詳情不可只依賴 ClassSession）、§R23（推算日期不可成為 dead-end chip）、§R24（多科固定時段優先走一般課程）、§R26（月結續報與堂數額度不可混在同一語意）、§R38（家長端繳費提醒不可套主任續課提醒） |
 | routes/api.php | §AI 靜默回退路由（改前必讀完整檔案 + route:list） |
@@ -1394,5 +1394,12 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
   2. `confirmed` 回報、已 paid／partial／有 Payment 的帳單**禁止**自動作廢或寫負向 Payment；`StudentClass.Paid` 與金額不變（G-009）。
   3. NULL `ScheduleModeAtIssue` 只回填**轉換前**模式，讓後續收據能標 `billing_mode_changed`；禁止回填新模式。
 - **測試必補**：`BillingModeConversionArchiveTest` — unpaid+pending 作廢、paid+confirmed 保留、legacy snapshot 回填後收據亮燈、PUT `payment_type` 會走封存。
+
+### R116. 混班型時段剩餘必須依即將加入／被代課班型計算（in-app #238 剩餘 / GitHub #1889，2026-08-17）
+
+- **現象**：大直主任看 8/20 15:00 徽章 `2/2` 已滿、加一對三被擋、代課卡已滿；以為是其他分校佔用。實際是 1 位一對二 + 1 位一對三，一對三還能再收 1。幽靈殘影已由 §R114 處理，不可回退、不可重開 in-app #238。
+- **根因**：unique 學生數拿去跟「該格出現過的最嚴班型容量」或「任一重疊列 remaining=0」比。`getSlotOccupancy` 見到一對二就把 max 設 2；`checkConflict`／`ScheduleGuardService::buildTeacherCapacityConflict` 用既有課程班型上限擋新課；代課 picker 任一 remaining=0 就標衝突。
+- **強制規則**：剩餘＝`capacity(即將加入或被代課班型) − unique 學生`。一對一仍獨佔；老師實體上限 3。徽章有一對三且無一對一時 max=3，count 不 clamp 成較嚴班型。佔用全在目前分校時，文案寫本分校，不寫他校。禁止用別的班型的滿席蓋掉一對三空位。禁止禁混班（正式站已有混班）。
+- **測試必補**：`AvailabilityCapacityTest::test_mixed_one_on_two_and_one_on_three_remaining_follows_row_class_type`；`ScheduleGuardrailsTest::test_mixed_one_on_two_full_still_allows_one_on_three_third_seat`；`frontend/src/lib/slotOccupancy.test.js`；picker 混班案例。Revert 後上述至少一項必須 fail。
 
 
