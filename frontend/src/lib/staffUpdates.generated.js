@@ -4,6 +4,38 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-17-ui-jargon-w2",
+    "publishedAt": "2026-08-17",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "LINE 設定與錯誤提示更白話",
+    "summary": "頻道授權碼改中文；操作失敗時較少出現英文 Forbidden。",
+    "items": [
+      "家長 LINE 設定改看「頻道授權碼」「頻道密鑰」。",
+      "沒有權限、找不到資料等錯誤改中文。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "家長 LINE 設定改看「頻道授權碼」「頻道密鑰」。",
+          "沒有權限、找不到資料等錯誤改中文。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-17:ui-jargon-w2"
+    ],
+    "date": "2026-08-17",
+    "version": "2026.08.17"
+  },
+  {
     "id": "staff-2026-08-17-ui-human-copy-sweep",
     "publishedAt": "2026-08-17",
     "effectiveAt": null,

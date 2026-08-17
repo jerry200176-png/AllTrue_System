@@ -1,4 +1,12 @@
+## 2026-08-17 — fix(ui): LINE 設定與錯誤訊息再白話
+
+<!-- release-notes: staff_update=staff-2026-08-17-ui-jargon-w2 -->
+
+- 家長 LINE 設定改「頻道授權碼／頻道密鑰」；老師帳密匯出改中文表頭。
+- 常見英文錯誤（沒有權限、找不到資料、需主任確認）會轉成中文再顯示。
+
 ## 2026-08-17 — fix(security): 手動調整堂數寫入稽核事件
+
 
 <!-- release-notes: silent_ship=silent-2026-08-17-session-balance-audit-1811 -->
 

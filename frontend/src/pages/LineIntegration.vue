@@ -57,42 +57,42 @@
       </div>
 
       <div class="field">
-        <label>Channel Access Token <span class="required">*</span></label>
+        <label>頻道授權碼 <span class="required">*</span></label>
         <div class="input-row">
           <input
             v-model="form.messaging_channel_token"
             :type="show.token ? 'text' : 'password'"
-            :placeholder="status?.has_channel_token ? '（已設定，輸入新值可覆蓋）' : '貼上你的 Channel Access Token…'"
+            :placeholder="status?.has_channel_token ? '（已設定，輸入新值可覆蓋）' : '貼上 LINE 後台的頻道授權碼…'"
             class="mono-input"
           />
           <button class="toggle-btn" @click="show.token = !show.token">{{ show.token ? '隱藏' : '顯示' }}</button>
         </div>
-        <p class="field-hint">在 LINE Developers → Messaging API → Channel access token 取得（長期 Token）</p>
+        <p class="field-hint">LINE Developers → Messaging API → Channel access token（請選長期授權碼）</p>
       </div>
 
       <div class="field">
-        <label>Channel Secret <span class="required">*</span></label>
+        <label>頻道密鑰 <span class="required">*</span></label>
         <div class="input-row">
           <input
             v-model="form.messaging_channel_secret"
             :type="show.secret ? 'text' : 'password'"
-            :placeholder="status?.has_channel_secret ? '（已設定，輸入新值可覆蓋）' : '貼上你的 Channel Secret…'"
+            :placeholder="status?.has_channel_secret ? '（已設定，輸入新值可覆蓋）' : '貼上 LINE 後台的頻道密鑰…'"
             class="mono-input"
           />
           <button class="toggle-btn" @click="show.secret = !show.secret">{{ show.secret ? '隱藏' : '顯示' }}</button>
         </div>
-        <p class="field-hint">在 LINE Developers → Basic settings → Channel secret 取得</p>
+        <p class="field-hint">LINE Developers → Basic settings → Channel secret</p>
       </div>
 
       <div class="field">
-        <label>LIFF ID <span class="optional">（選填，讓家長在 LINE 內直接開啟頁面）</span></label>
+        <label>手機開啟代碼 <span class="optional">（選填，讓家長在 LINE 內直接開啟頁面）</span></label>
         <input
           v-model="form.liff_id"
           type="text"
           placeholder="例：1234567890-AbCdEfGh"
           class="mono-input"
         />
-        <p class="field-hint">在 LINE Developers → LIFF 分頁建立後取得</p>
+        <p class="field-hint">LINE Developers → LIFF 分頁建立後會得到一組代碼</p>
       </div>
 
       <div class="save-row">
@@ -177,6 +177,7 @@
 <script setup>
 import { ref, onMounted, watch, computed } from 'vue';
 import { supabase } from '../supabase';
+import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 
 const props = defineProps({ branchId: { type: Number, default: null } });
 
@@ -193,7 +194,7 @@ const form = ref({ messaging_channel_token: '', messaging_channel_secret: '', li
 const show = ref({ token: false, secret: false });
 const quickStart = [
   '到 LINE Official Account Manager 啟用 Messaging API（會自動建立 channel）',
-  '從 LINE Developers 複製 Channel access token + Channel secret，貼回此頁並儲存',
+  '從 LINE Developers 複製頻道授權碼與頻道密鑰，貼回此頁並儲存',
   '在 Messaging API 的 Webhook settings 貼上本頁網址，開啟 Use webhook 並 Verify',
 ];
 const troubleshooting = [
@@ -202,12 +203,12 @@ const troubleshooting = [
     desc: '確認 URL 完整含分校參數、網址可外網連線，並在 LINE 後台開啟 Use webhook 再重試。',
   },
   {
-    title: 'Token 儲存後仍顯示未連線',
-    desc: '請重新產生長期 token 後貼上，避免複製到短期 token 或多餘空白字元。',
+    title: '授權碼儲存後仍顯示未連線',
+    desc: '請重新產生長期授權碼後貼上，避免複製到短期碼或多餘空白字元。',
   },
   {
-    title: 'Channel secret 貼錯欄位',
-    desc: 'Channel secret 在 Basic settings，不在 Messaging API 的 token 區塊。',
+    title: '頻道密鑰貼錯欄位',
+    desc: '頻道密鑰在 Basic settings，不在 Messaging API 的授權碼區塊。',
   },
   {
     title: 'LIFF 可建但家長點開錯頁',
@@ -249,7 +250,7 @@ const steps = computed(() => {
       ],
     },
     {
-      title: '取得 Channel Access Token 和 Channel Secret',
+      title: '取得頻道授權碼與頻道密鑰',
       lines: [
         '1. 進入 <strong>LINE Developers Console</strong>（<code>developers.line.biz</code>）',
         '2. 點擊你的 Channel → 上方選「<strong>Messaging API</strong>」分頁',
@@ -308,7 +309,7 @@ async function loadStatus() {
       let msg = `無法載入狀態（HTTP ${res.status}）`;
       try {
         const j = JSON.parse(t);
-        if (j.message) msg = j.message === 'Forbidden' ? '無權限檢視此分校的 LINE 設定' : j.message;
+        if (j.message) msg = j.message === 'Forbidden' ? '無權限檢視此分校的 LINE 設定' : humanizeApiErrorMessage(j.message, msg);
       } catch (_) { /* ignore */ }
       loadError.value = msg;
       console.error('LINE status API error:', res.status, t);
