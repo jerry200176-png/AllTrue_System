@@ -130,6 +130,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 13. **非標準課程時長／分鐘制扣堂調查（規劃，Draft，Founder D1-D7 已拍板，Phase 0A/0B 工具已 merge）**：[`docs/architecture/RFC_NONSTANDARD_SESSION_DURATION_BILLING.md`](architecture/RFC_NONSTANDARD_SESSION_DURATION_BILLING.md) — 現況：`#613 A1` 分鐘制引擎僅覆蓋補課（`schedules.type='extra'`）；購買堂數與排課 occurrence 數量目前被 `EnrollmentService.php:210-222` 硬性等式驗證鎖死（§2.5，D6 拍板以既有 `session_plan` 為 canonical occurrence source）；扣堂 opt-in 採 `deduction_basis` 欄位（D2，R59 改寫提案見 §10，未套用至規則正文）；共用課程包／自動跨期拆帳／entitlement 事件溯源第一版明確排除（D3/D4/D7）；第 6 次超額採 soft block + 明確確認（D5）。**Phase 0A**（唯讀盤點 `sessions:report-nonstandard-duration`）與**Phase 0B**（純 coverage calculator + dry-run contract，`LessonEntitlementCoverageCalculator`／`NonstandardDurationCoveragePreviewContract`）已實作並通過測試，**未啟用任何 production write 或 runtime 扣堂行為變更**；Phase 1/2 詳細計畫見文件 §15；Founder 尚待拍板事項見 §14；技術債見 `TECH_DEBT.md` `TD-072`；**不含業務碼改動**
 14. **現行工程主線／排課 occurrence 身分（規劃，Draft，schema DEV 需 Founder GO）**：[`docs/architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md`](architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md) · [`docs/architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md`](architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md) — 對齊 TD-076／R102／R103；**禁止**整包重寫前端或 Laravel；Phase 0＝盤點寫入／讀取路徑＋鎖現況 golden tests；與 Course Continuity、非標準時長 RFC **分軌**
 15. **已回報 ≠ 已入帳（#1827）**：[`docs/architecture/RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md`](architecture/RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md) — 兩步驟狀態機、通知／批次／課程頁帳務分頁。海森無會計角色，主任 confirm。**禁止**一登就綠色已繳費。與 TD-068 法定收據 **分軌**；改繳費提醒列入條件仍受 [`DIRECTOR_PAYMENT_ALERT_RULES.md`](DIRECTOR_PAYMENT_ALERT_RULES.md) 列管
+16. **混班型時段容量（規劃，#1889，in-app #238 剩餘）**：[`docs/plans/2026-08-17-mixed-class-type-occupancy.md`](plans/2026-08-17-mixed-class-type-occupancy.md) — 同一格一對二+一對三時，剩餘依即將加入／被代課班型算，禁止用較嚴上限蓋掉一對三空位。幽靈殘影已由 §R114／#1885 處理，**本計畫不回退、不重開 #238**
 
 ### 後端開發
 | 需要什麼 | 去哪裡找 |
@@ -151,6 +152,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | Deploy SOP | `.cursor/rules/auto-frontend-deploy.mdc` |
 | UI 設計規則 | `.cursor/rules/module-frontend.mdc` |
 | 行事曆週檢視資料合併規則 | `CLAUDE.md §G-007`（⛔ 禁止分散 if，必走 `calendarOccurrenceMerge.js`）|
+| 混班型時段容量（#1889） | [`plans/2026-08-17-mixed-class-type-occupancy.md`](plans/2026-08-17-mixed-class-type-occupancy.md) — 剩餘依班型；§R114 殘影分軌 |
 | 行事曆 ClassSession 投影完整性 | `docs/GUIDE_PROJECTION_INTEGRITY.md`（list vs projection API；CI `ClassSessionProjectionTest`）|
 | **SmartCalendar 受控拆分（#740）** | `docs/GUIDE_SMARTCALENDAR_REFACTOR.md`（元件清單、API、CSS 解耦決策）|
 | 行事曆回歸測試 | `npm run test:calendar`（修改任何 calendar merge 邏輯前必跑）|
