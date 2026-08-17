@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-08-17-session-settlement-lock-nplusone-1731
+    changelog_date: "2026-08-17"
+    changelog_title: "fix(perf): 堂次寫入不再逐筆查課程結清鎖定"
+    reason: 僅後端查詢次數與測試；堂次鎖定規則與畫面不變。
+
   - id: silent-2026-08-17-director-resetpw-audit-1813
     changelog_date: "2026-08-17"
     changelog_title: "fix(security): 主任密碼重設寫入稽核事件"

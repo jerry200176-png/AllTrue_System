@@ -1,3 +1,10 @@
+## 2026-08-17 — fix(perf): 堂次寫入不再逐筆查課程結清鎖定
+
+<!-- release-notes: silent_ship=silent-2026-08-17-session-settlement-lock-nplusone-1731 -->
+
+- 新增大批課堂或改堂次狀態時，不再對每一筆重查課程是否已結清鎖定。
+- 畫面與鎖定規則不變；已結清的課仍不能改堂次。
+
 ## 2026-08-17 — fix(ui): 預排日期不佔「第幾堂」
 
 <!-- release-notes: staff_update=staff-2026-08-17-projected-ordinal -->
