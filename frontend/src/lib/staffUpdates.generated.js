@@ -176,6 +176,43 @@ export const staffUpdates = [
     "version": "2026.08.17"
   },
   {
+    "id": "staff-2026-08-17-lr-batch-approve-perf",
+    "publishedAt": "2026-08-17",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "學習評量批次核准與進頁速度",
+    "summary": "已停用課程裡已上過的待審評量可以批次核准；進頁會先出列表，比較不會轉很久。",
+    "items": [
+      "勾選已停用課程、但堂次已上的待審評量時，批次核准不再整批失敗。",
+      "學習評量表會先顯示列表，補建與課表在背景載入。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "勾選已停用課程、但堂次已上的待審評量時，批次核准不再整批失敗。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "學習評量表會先顯示列表，補建與課表在背景載入。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-17:lr-batch-approve-perf"
+    ],
+    "date": "2026-08-17",
+    "version": "2026.08.17"
+  },
+  {
     "id": "staff-2026-08-17-fillrate-completed",
     "publishedAt": "2026-08-17",
     "effectiveAt": null,
