@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-17-billing-mode-convert-archive
+    published_at: "2026-08-17"
+    audiences:
+      - director
+    importance: digest
+    title: 改計費方式會清掉未入帳帳單
+    summary: 堂數制改月結（或反向）時，還沒入帳的帳單與待確認回報會自動作廢；已確認收款不會動金額。
+    items:
+      - category: fixed
+        text: 改計費方式後，舊的未繳帳單與待確認回報不再繼續出現。
+      - category: improved
+        text: 已經確認的收據金額不變，開收據時會提醒計費方式已改過。
+    source_refs:
+      - "changelog:2026-08-17:billing-mode-convert-archive"
+
   - id: staff-2026-08-17-lr-batch-approve-perf
     published_at: "2026-08-17"
     audiences:

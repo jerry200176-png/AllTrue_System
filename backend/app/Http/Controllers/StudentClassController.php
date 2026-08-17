@@ -18,6 +18,7 @@ use App\Models\UserCampus;
 use App\Models\CoursePackage;
 use App\Support\SessionStatus;
 use App\Support\Utf8mb3SearchSanitizer;
+use App\Services\BillingModeConversionArchiveService;
 use App\Services\ClassSessionMaterializationService;
 use App\Services\ContractScheduleMatcher;
 use App\Services\Scheduling\BillingContractLockGuard;
@@ -41,7 +42,8 @@ class StudentClassController extends Controller
     public function __construct(
         private ScheduleGuardService $scheduleGuardService,
         private ClassSessionContractReflowService $contractSessionReflowService,
-        private InvoiceAmountReconciliationService $invoiceAmounts
+        private InvoiceAmountReconciliationService $invoiceAmounts,
+        private BillingModeConversionArchiveService $billingModeConversionArchive
     )
     {
     }
@@ -1417,6 +1419,7 @@ class StudentClassController extends Controller
         $role = $request->attributes->get('auth_role');
         $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
         $previousStartDate = $this->normalizeDateString($studentClass->StartDate ?? null);
+        $oldScheduleMode = (string) ($studentClass->ScheduleMode ?? 'count');
 
         if (!empty($campusIds)) {
             $allowed = Student::whereIn('CampusID', $campusIds)
@@ -1531,6 +1534,20 @@ class StudentClassController extends Controller
 
         $studentClass->update($mapped);
         $studentClass->refresh();
+
+        $billingModeConversion = null;
+        if (array_key_exists('ScheduleMode', $mapped)) {
+            $newScheduleMode = (string) ($studentClass->ScheduleMode ?? 'count');
+            if ($oldScheduleMode !== $newScheduleMode) {
+                $actor = $request->attributes->get('auth_user');
+                $billingModeConversion = $this->billingModeConversionArchive->archiveAfterScheduleModeChange(
+                    $studentClass,
+                    $oldScheduleMode,
+                    $newScheduleMode,
+                    $actor?->id
+                );
+            }
+        }
 
         // #1811: manual SessionCount / RemainingSessions edits need who/when/old→new evidence.
         $sessionCountTouched = array_key_exists('SessionCount', $mapped)
@@ -1702,6 +1719,9 @@ class StudentClassController extends Controller
 
         $payload = $studentClass->toArray();
         $payload['session_sync'] = $sessionSync;
+        if ($billingModeConversion !== null) {
+            $payload['billing_mode_conversion'] = $billingModeConversion;
+        }
 
         $gradeId = (int) ($studentClass->GradeID ?? Student::where('id', $studentClass->StudentID)->value('ClassID') ?? 0);
         $scopeResult = TeacherScopeService::check(
