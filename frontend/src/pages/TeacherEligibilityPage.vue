@@ -156,6 +156,7 @@ import {
   monthWindow,
   weightedBonusFormula,
 } from '../lib/teacherEligibilityDisplay.js';
+import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 
 const props = defineProps({
   branchId: { type: [Number, String], default: null },
@@ -210,7 +211,7 @@ async function exportCsv() {
   try {
     await exportFulltimePayrollCsv({ month: settlementMonth.value, branchId: props.branchId });
   } catch (e) {
-    error.value = e?.message || '匯出失敗';
+    error.value = humanizeApiErrorMessage(e?.message, '匯出失敗');
   }
 }
 
@@ -221,7 +222,7 @@ async function lockMonth() {
     await lockFulltimePayroll({ month: settlementMonth.value, branchId: props.branchId });
     await loadData();
   } catch (e) {
-    error.value = e?.message || '鎖定失敗';
+    error.value = humanizeApiErrorMessage(e?.message, '鎖定失敗');
   }
 }
 
@@ -232,7 +233,7 @@ async function reopenMonth() {
     await reopenFulltimePayroll({ month: settlementMonth.value, branchId: props.branchId, reason });
     await loadData();
   } catch (e) {
-    error.value = e?.message || '重開失敗';
+    error.value = humanizeApiErrorMessage(e?.message, '重開失敗');
   }
 }
 
@@ -256,7 +257,7 @@ async function saveSalary(teacher) {
       error.value = '底薪已送出，待總部核准後才會改結算金額。';
     }
   } catch (e) {
-    error.value = e?.message || '底薪儲存失敗';
+    error.value = humanizeApiErrorMessage(e?.message, '底薪儲存失敗');
   } finally {
     savingSalary.value = false;
   }
@@ -269,7 +270,7 @@ async function approveSalary(teacher) {
     await approveTeacherSalaryProfile(teacher.pending_salary.id);
     await loadData();
   } catch (e) {
-    error.value = e?.message || '底薪核准失敗';
+    error.value = humanizeApiErrorMessage(e?.message, '底薪核准失敗');
   } finally {
     savingSalary.value = false;
   }
@@ -290,7 +291,7 @@ async function loadData() {
     policyVersion.value = data.policy_version || policyVersion.value;
     branchSubjectTotal.value = Number(data.branch_subject_total ?? 0);
     lockState.value = data.lock || { status: 'draft' };
-  } catch (e) { error.value = e?.message || '載入失敗'; }
+  } catch (e) { error.value = humanizeApiErrorMessage(e?.message, '載入失敗'); }
   finally { loading.value = false; }
 }
 

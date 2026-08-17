@@ -760,13 +760,13 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Partially paid（2026-08-17） |
+| 狀態 | Partially paid（2026-08-17 wave 2） |
 | 優先級 | P2 |
 | 發現日期 | 2026-08-17 |
 | 發現來源 | Founder：系統偶發技術語言；帳務對帳難懂 |
-| 影響模組 | 老師匯入、分校授權碼、收據／帳單編號、帳務 API 錯誤；其餘管理頁／LINE Channel Token 等仍可能露出英文 |
-| 描述 | Wave 1：老師批次匯入改中文欄位說明；`LEGACY`／`INV-`／`RCPT-` 顯示層改白話；分校 Token→授權碼；帳務 Forbidden／payment_method 改中文；共用 `humanizeApiErrorMessage`。 |
-| 建議做法 | 下一波：側欄／超管工具、LINE Channel 設定、匯出 CSV 表頭、其餘 Controller 英文 `message` 逐批改繁中。 |
+| 影響模組 | 老師匯入、分校授權碼、收據／帳單編號、帳務 API 錯誤、LINE 設定、薪資錯誤、共用 API client |
+| 描述 | Wave 1：老師批次匯入、編號、分校 Token、帳務 Forbidden。Wave 2：LINE 頻道授權碼／密鑰、老師帳密 CSV 中文表頭、`humanizeApiErrorMessage` 擴大並接到 supabase client／帳務中心／正職薪資。 |
+| 建議做法 | 下一波：其餘 Controller 英文 `message` 後端直接改繁中；超管工具、匯出 Excel 表頭、LINE 教學裡仍保留的 Developers 英文專有名詞可再收斂。 |
 | 清償成本估計 | 中（多頁＋匯入契約測試） |
 | 不做的代價 | 主任／行政在次要頁面仍撞到英文欄位名 |
 
