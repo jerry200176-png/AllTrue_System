@@ -70,4 +70,37 @@ describe('useCourseSessionsDisplay', () => {
     const state = display.getSessionState(monthlyCourse, '2026-08-09');
     expect(state?.label).not.toBe('超排');
   });
+
+  it('counts 已上 from the same chips the date panel shows (#1834 / in-app #237)', () => {
+    const monthlyCourse = {
+      id: 2688,
+      ScheduleMode: 'date',
+      payment_type: 'monthly',
+      sessions_purchased: 4,
+      SessionCount: 4,
+    };
+    const rawRows = [
+      { id: 1, student_class_id: 2688, session_date: '2026-07-05', start_time: '10:00', end_time: '12:00', status: 'attended' },
+      { id: 2, student_class_id: 2688, session_date: '2026-07-12', start_time: '10:00', end_time: '12:00', status: 'attended' },
+      { id: 3, student_class_id: 2688, session_date: '2026-07-19', start_time: '10:00', end_time: '12:00', status: 'attended' },
+      { id: 4, student_class_id: 2688, session_date: '2026-07-26', start_time: '10:00', end_time: '12:00', status: 'attended' },
+      { id: 5, student_class_id: 2688, session_date: '2026-08-02', start_time: '10:00', end_time: '12:00', status: 'attended' },
+      { id: 6, student_class_id: 2688, session_date: '2026-08-09', start_time: '10:00', end_time: '12:00', status: 'attended' },
+      { id: 7, student_class_id: 2688, session_date: '2026-08-16', start_time: '10:00', end_time: '12:00', status: 'attended' },
+    ];
+
+    const display = useCourseSessionsDisplay({
+      sessionsByCourse: ref({ 2688: rawRows.map(sessionViewModelFromClassSessionsRow) }),
+      completedSessionDatesByCourse: ref({}),
+      fetchClassSessionsFn: vi.fn(),
+      supabase: { auth: { getSession: vi.fn() } },
+      branchId: ref(16),
+    });
+
+    const attendedChips = display.primarySessionUnits(monthlyCourse)
+      .filter((u) => display.getSessionStateLabel(monthlyCourse, u.date, u.id) === '已上');
+    expect(attendedChips).toHaveLength(7);
+    expect(display.getCompletedSessionCount(monthlyCourse)).toBe(7);
+    expect(display.getSessionStateLabel(monthlyCourse, '2026-08-16', 7)).toBe('已上');
+  });
 });

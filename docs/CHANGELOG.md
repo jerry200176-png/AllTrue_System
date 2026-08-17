@@ -1,3 +1,10 @@
+## 2026-08-17 — fix(ui): 課程管理已上堂數跟明細對齊
+
+<!-- release-notes: staff_update=staff-2026-08-17-course-attended-count-1834 -->
+
+- 課程卡片的已上堂數改跟展開後的日期列表同一套計算，避免剛點名的堂次沒算進去。
+- 月結課不再誤顯示購買堂數。
+
 ## 2026-08-17 — fix(schedule): 堂數制還有餘額時不可結案吃掉補課
 
 <!-- release-notes: staff_update=staff-2026-08-17-count-settle-makeup-1839 -->

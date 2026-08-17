@@ -98,6 +98,45 @@ export const staffUpdates = [
     "version": "2026.08.17"
   },
   {
+    "id": "staff-2026-08-17-course-attended-count-1834",
+    "publishedAt": "2026-08-17",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "課程「已上堂數」跟明細一致",
+    "summary": "卡片上的已上堂數會跟展開的上課日期對齊；剛點名的堂次也會算進去。",
+    "items": [
+      "課程管理顯示的已上堂數，改跟日期列表同一套計算。",
+      "月結課不會再出現「購買多少堂」這種容易誤會的字。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "課程管理顯示的已上堂數，改跟日期列表同一套計算。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "月結課不會再出現「購買多少堂」這種容易誤會的字。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-17:course-attended-count-1834"
+    ],
+    "date": "2026-08-17",
+    "version": "2026.08.17"
+  },
+  {
     "id": "staff-2026-08-17-count-settle-makeup-1839",
     "publishedAt": "2026-08-17",
     "effectiveAt": null,
