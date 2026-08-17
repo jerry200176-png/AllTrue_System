@@ -1,3 +1,10 @@
+## 2026-08-17 — fix(billing): 堂數制改月結時作廢未入帳帳單
+
+<!-- release-notes: staff_update=staff-2026-08-17-billing-mode-convert-archive -->
+
+- 課程從堂數制改月結（或反向）時，還沒入帳的帳單與待確認回報會自動作廢。
+- 已經確認收款的收據金額不變；舊帳單若沒有計費模式快照，會補上記錄，之後開收據會提醒模式已變更。
+
 ## 2026-08-17 — docs(calendar): 混班型時段容量修復計畫（#1889）
 
 <!-- release-notes: silent_ship=silent-2026-08-17-mixed-class-type-occupancy-plan -->

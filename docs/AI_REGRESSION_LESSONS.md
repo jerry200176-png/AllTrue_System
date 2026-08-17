@@ -1126,7 +1126,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | 模組 | 必讀條目（在 Archive） |
 |------|----------|
 | 堂數 / 扣堂 | §2026-04-17 繳費日期、§單堂費用固定、**§R59（分鐘制權威：RemainingSessions 為 ROUND_HALF_UP 衍生值，讀取端勿用 count 覆寫 fractional）**、§R70（對帳面板唯讀＋真實 API contract test）、**§R76（單堂改時段費用前後端必須一致）** |
-| 繳費 / 學收 | §繳費狀態 paid_at、§歷史課程漏算、§催繳名單六狀態、§幽靈課程、§R30（帳務入口共用 AR ledger）、**§R76（session／hour 費用文案與 Charge 寫入）**、**§R79（收據前端不得超前後端 contract；合法路徑=payment-reports/{id}/receipt）**、**#1827／RFC_REPORTED_PAID_ACCOUNTING_SPLIT（行政已回報 ≠ Paid；收據僅 confirm 後）** |
+| 繳費 / 學收 | §繳費狀態 paid_at、§歷史課程漏算、§催繳名單六狀態、§幽靈課程、§R30（帳務入口共用 AR ledger）、**§R76（session／hour 費用文案與 Charge 寫入）**、**§R79（收據前端不得超前後端 contract；合法路徑=payment-reports/{id}/receipt）**、**#1827／RFC_REPORTED_PAID_ACCOUNTING_SPLIT（行政已回報 ≠ Paid；收據僅 confirm 後）**、**§R115（堂數制↔月結轉換封存未入帳、禁止沖銷已確認收款）** |
 | 薪資 / 併堂 | §兼職薪資 concurrency、§同層級併堂 v1.4、§契約時長為準 |
 | 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession）、§R39（代課評量權限需匹配時段）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R52（代課 scheduled 例外不可缺 original_schedule_id anchor）、§R71（調課單一交易＋前端 committed gate）、§R83（原子調課必須標記 IsContractException）、**§R84（IsContractException 搬進 ClassSessionObserver 結構性保證）**、§R72（cancelled ClassSession 不得讓 scheduled 例外佔用代課老師）、**§R114（同日二次調課中間 scheduled 殘影不得佔用）**、§R73（跨老師 gesture 必走 atomic substitute；legacy 兩階段精準補償）、§R74（代課衝突排除同一學生續約佔用） |
 | 請假 / 順延 | §R29、**§R82（KEEP dates+append）**、§R75（SUPERSEDED）、§R77、§R81、**§R109（結案不可吃掉請假順延尾堂）** |
@@ -1385,5 +1385,14 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **前端**：日檢視週課模板若當天 active ClassSession 在別的整點，不可再算進容量徽章／該格課程卡。
 - **治本**：TD-076 / RFC_SCHEDULE_OCCURRENCE_IDENTITY（穩定 occurrence identity，調課 UPDATE 同一列）。本次為讀側治標。
 - **測試必補**：`StaleScheduleExceptionBusyTest::test_same_day_second_reschedule_leftover_scheduled_is_not_busy`（17:00 不 busy、19:00 busy）；leave+makeup 17:00 仍 busy；`weeklyTemplateOccupiesHour` 單元測試。Revert 後前者必須 fail。
+
+### R115. 堂數制↔月結轉換必須封存未入帳帳單，且不可沖銷已確認收款（GitHub #934，2026-08-17）
+
+- **現象**：課程改計費模式後，舊發票／收據仍顯示轉換前金額（黃玟睿 8000 vs 4000）。#1804 已在收據標 `billing_mode_changed`，但未入帳帳單與待確認回報仍留在畫面上；舊列 `ScheduleModeAtIssue` 為 NULL 時也不會亮燈。
+- **強制規則**：
+  1. `StudentClass.ScheduleMode` 真正變更時，未入帳且無收款的 Invoice 作廢；`pending` PaymentReport 標 `voided`。
+  2. `confirmed` 回報、已 paid／partial／有 Payment 的帳單**禁止**自動作廢或寫負向 Payment；`StudentClass.Paid` 與金額不變（G-009）。
+  3. NULL `ScheduleModeAtIssue` 只回填**轉換前**模式，讓後續收據能標 `billing_mode_changed`；禁止回填新模式。
+- **測試必補**：`BillingModeConversionArchiveTest` — unpaid+pending 作廢、paid+confirmed 保留、legacy snapshot 回填後收據亮燈、PUT `payment_type` 會走封存。
 
 

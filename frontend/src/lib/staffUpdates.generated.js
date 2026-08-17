@@ -395,6 +395,43 @@ export const staffUpdates = [
     "version": "2026.08.17"
   },
   {
+    "id": "staff-2026-08-17-billing-mode-convert-archive",
+    "publishedAt": "2026-08-17",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "改計費方式會清掉未入帳帳單",
+    "summary": "堂數制改月結（或反向）時，還沒入帳的帳單與待確認回報會自動作廢；已確認收款不會動金額。",
+    "items": [
+      "改計費方式後，舊的未繳帳單與待確認回報不再繼續出現。",
+      "已經確認的收據金額不變，開收據時會提醒計費方式已改過。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "改計費方式後，舊的未繳帳單與待確認回報不再繼續出現。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "已經確認的收據金額不變，開收據時會提醒計費方式已改過。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-17:billing-mode-convert-archive"
+    ],
+    "date": "2026-08-17",
+    "version": "2026.08.17"
+  },
+  {
     "id": "staff-2026-08-17-billing-human-copy",
     "publishedAt": "2026-08-17",
     "effectiveAt": null,
