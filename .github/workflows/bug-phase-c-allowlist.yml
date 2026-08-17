@@ -211,6 +211,11 @@ jobs:
               "rev" => "a69d1d0f5a43f736dfa12f918670fed382be9b1d",
               "deploy" => "32015729177",
             ],
+            238 => [
+              "reply" => "已修好並上線：同一天把課堂調到別的時段後，舊時段不會再顯示已滿，可以再排其他學生。真正還有學生在上課的時段仍會顯示已滿。請重新整理行事曆後看 8 月 20 日；若已正常請按「確認已修好」，若仍不對請按「問題仍存在」。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/1885",
+              "rev" => "2d7ae86a043edbe226765c92476e5883ed06dd49",
+              "deploy" => "32021552314",
+            ],
           ];
           $results = [];
           foreach ($items as $bugId => $cfg) {
