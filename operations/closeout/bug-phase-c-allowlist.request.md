@@ -1,5 +1,7 @@
 # Request: Phase-C allowlist resolve
 
+# kickoff 2026-08-17T09:40:00Z — Phase C write-back for #237: course attended-count fix PR #1877 merged as `a69d1d0f5a43f736dfa12f918670fed382be9b1d`, Deploy to Pi run `32015729177` succeeded. The fix only changes client-side attended-count / expand refetch / session-mode detection; no production course, quota, receipt, payment, or configuration mutation is authorized or required. Public reply links GitHub issue #1834 and requests reporter verification.
+
 # kickoff 2026-08-15T06:56:00Z — Phase C write-back for #235: projected campus fix PR #1794 merged as `a6a9c1892133ae818570d18b3468f75c6076a5c2`; Deploy to Pi run `31870543472` succeeded. Production `version.json` build_sha `a6a9c1892133ae818570d18b3468f75c6076a5c2` at 2026-08-15T06:54:26Z; health `{"status":"ok"}`. Public reply asks reporter to re-test teacher home upcoming sessions; no production business-data mutation.
 
 # kickoff 2026-08-13T13:27:00Z — Phase C write-back for #228/#229: shared-package reservation capacity fix PR #1769 merged as `1852913e67445b8aa502664558b409520f00b07e`; deployment run `31704756638` and read-only production acceptance run `31704826154` succeeded. Production confirms backend SHA `1852913e67445b8aa502664558b409520f00b07e`; no production business-data change is authorized or required. The public reply asks the reporter to re-test after refresh.
