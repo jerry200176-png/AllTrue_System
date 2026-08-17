@@ -18,6 +18,22 @@ updates:
     source_refs:
       - "changelog:2026-08-17:fillrate-completed"
 
+  - id: staff-2026-08-17-same-day-reschedule-occupancy-1885
+    published_at: "2026-08-17"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 同一天調課後舊時段可再排
+    summary: 課堂改到別的時段後，原來那個時段不再顯示已滿。
+    items:
+      - category: fixed
+        text: 同一天把課調走後，舊時段可以再排其他學生，不會一直顯示已滿。
+      - category: improved
+        text: 還沒建成正式課堂的補課，以及請假後另約的時段，仍會佔用老師時間。
+    source_refs:
+      - "changelog:2026-08-17:same-day-reschedule-occupancy-1885"
+
   - id: staff-2026-08-17-projected-ordinal
     published_at: "2026-08-17"
     audiences:

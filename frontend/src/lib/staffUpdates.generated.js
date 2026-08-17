@@ -98,6 +98,45 @@ export const staffUpdates = [
     "version": "2026.08.17"
   },
   {
+    "id": "staff-2026-08-17-same-day-reschedule-occupancy-1885",
+    "publishedAt": "2026-08-17",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "同一天調課後舊時段可再排",
+    "summary": "課堂改到別的時段後，原來那個時段不再顯示已滿。",
+    "items": [
+      "同一天把課調走後，舊時段可以再排其他學生，不會一直顯示已滿。",
+      "還沒建成正式課堂的補課，以及請假後另約的時段，仍會佔用老師時間。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "同一天把課調走後，舊時段可以再排其他學生，不會一直顯示已滿。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "還沒建成正式課堂的補課，以及請假後另約的時段，仍會佔用老師時間。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-17:same-day-reschedule-occupancy-1885"
+    ],
+    "date": "2026-08-17",
+    "version": "2026.08.17"
+  },
+  {
     "id": "staff-2026-08-17-projected-ordinal",
     "publishedAt": "2026-08-17",
     "effectiveAt": null,
