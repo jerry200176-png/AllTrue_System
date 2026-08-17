@@ -125,7 +125,7 @@ class DirectorAccountController extends Controller
         }
 
         $oldType = (string) $user->type;
-        $campusId = UserCampus::where('UserID', $id)->where('Approved', false)->value('CampusID');
+        $campusId = UserCampus::query()->where('UserID', $id)->where('Approved', false)->value('CampusID');
 
         DB::transaction(function () use ($request, $user, $id, $oldType, $campusId) {
             UserCampus::where('UserID', $id)->where('Approved', false)->update(['Approved' => true]);
@@ -133,7 +133,7 @@ class DirectorAccountController extends Controller
             $user->save();
 
             // #1810: director approval is a highest-privilege role change.
-            $this->auditDirectorDecision($request, $user, 'approve', $campusId !== null ? (int) $campusId : null, $oldType, 'D');
+            $this->auditDirectorDecision($request, $id, 'approve', $campusId !== null ? (int) $campusId : null, $oldType, 'D');
         });
 
         return response()->json(['message' => '已通過審核']);
@@ -154,12 +154,12 @@ class DirectorAccountController extends Controller
         }
 
         $oldType = (string) $user->type;
-        $campusId = UserCampus::where('UserID', $id)->where('Approved', false)->value('CampusID');
+        $campusId = UserCampus::query()->where('UserID', $id)->where('Approved', false)->value('CampusID');
 
         DB::transaction(function () use ($request, $user, $id, $oldType, $campusId) {
             UserCampus::where('UserID', $id)->where('Approved', false)->delete();
             // #1810: record who rejected whom before the pending user row is removed.
-            $this->auditDirectorDecision($request, $user, 'reject', $campusId !== null ? (int) $campusId : null, $oldType, 'deleted');
+            $this->auditDirectorDecision($request, $id, 'reject', $campusId !== null ? (int) $campusId : null, $oldType, 'deleted');
             // Leave user as type U with no campus; they can re-register if needed. Optionally delete user.
             $user->delete();
         });
@@ -349,7 +349,7 @@ class DirectorAccountController extends Controller
 
     private function auditDirectorDecision(
         Request $request,
-        User $user,
+        int $subjectUserId,
         string $action,
         ?int $campusId,
         string $oldType,
@@ -363,7 +363,7 @@ class DirectorAccountController extends Controller
                 'actor_type' => 'user',
                 'actor_id' => $actor?->id,
                 'subject_type' => 'user',
-                'subject_id' => $user->id,
+                'subject_id' => $subjectUserId,
                 'campus_id' => $campusId,
             ],
             [
