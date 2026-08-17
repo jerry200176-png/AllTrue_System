@@ -252,7 +252,13 @@
 
         <div class="form-group span-full">
           <label>備註（選填）</label>
-          <textarea v-model="form.memo" rows="2" placeholder="課程或地點補充"></textarea>
+          <textarea
+            v-model="form.memo"
+            rows="2"
+            placeholder="課程或地點補充"
+            :maxlength="STUDENT_CLASS_MEMO_MAX_LENGTH"
+          ></textarea>
+          <p class="slot-help-text">最多 {{ STUDENT_CLASS_MEMO_MAX_LENGTH }} 字，可貼上給家長看的繳費說明。</p>
         </div>
       </div>
     </section>
@@ -261,7 +267,7 @@
 
 <script setup>
 import { computed, nextTick, reactive, ref, watch } from 'vue';
-import { checkTeacherScope } from '../lib/constants';
+import { checkTeacherScope, STUDENT_CLASS_MEMO_MAX_LENGTH } from '../lib/constants';
 
 const props = defineProps({
   modelValue: { type: Object, required: true },

@@ -1208,7 +1208,7 @@ class StudentClassController extends Controller
             'StartDate' => 'required|date',
             'EndDate' => 'nullable|date',
             'TotalHours' => 'nullable|integer',
-            'Memo' => 'nullable|string|max:512',
+            'Memo' => 'nullable|string|max:' . StudentClass::MEMO_MAX_LENGTH,
             'Charge' => 'nullable|integer',
             'Pay' => 'nullable|integer',
             'PayDate' => 'nullable|date',
@@ -1486,6 +1486,16 @@ class StudentClassController extends Controller
             ], 422);
         }
         $scheduleSlotsForRebuild = is_array($mapped['ScheduleSlots'] ?? null) ? $mapped['ScheduleSlots'] : [];
+
+        if (array_key_exists('Memo', $mapped) && is_string($mapped['Memo'])) {
+            $memoMax = StudentClass::MEMO_MAX_LENGTH;
+            if (mb_strlen($mapped['Memo']) > $memoMax) {
+                return response()->json([
+                    'message' => "備註太長，請刪到 {$memoMax} 字以內再存。",
+                    'code' => 'memo_too_long',
+                ], 422);
+            }
+        }
 
         // Remove ScheduleSlots and ID references to prevent overwriting critical relationships
         unset($mapped['ScheduleSlots'], $mapped['StudentID'], $mapped['GradeID'], $mapped['by1']);

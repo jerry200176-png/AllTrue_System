@@ -20,6 +20,9 @@ class StudentClass extends Model
     protected $primaryKey = 'ID';
     public $timestamps = false;
 
+    /** Course memo is TEXT; keep a hard cap so paste cannot unbounded-grow the row. */
+    public const MEMO_MAX_LENGTH = 8000;
+
     protected $fillable = [
         'StudentID', 'GradeID', 'SubjectID', 'TeacherID', 'by1',
         'Period', 'StartDate', 'EndDate',

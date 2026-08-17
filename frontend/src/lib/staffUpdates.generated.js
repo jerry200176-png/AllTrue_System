@@ -98,6 +98,43 @@ export const staffUpdates = [
     "version": "2026.08.17"
   },
   {
+    "id": "staff-2026-08-17-course-memo-length-1732",
+    "publishedAt": "2026-08-17",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "課程備註可存更長",
+    "summary": "備註可貼上給家長看的繳費說明，不再存檔失敗。",
+    "items": [
+      "課程備註加長，貼上繳費說明也能存檔。",
+      "字數超過上限會提示請刪短，不會再存檔失敗。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "課程備註加長，貼上繳費說明也能存檔。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "字數超過上限會提示請刪短，不會再存檔失敗。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-17:course-memo-length-1732"
+    ],
+    "date": "2026-08-17",
+    "version": "2026.08.17"
+  },
+  {
     "id": "staff-2026-08-17-course-attended-count-1834",
     "publishedAt": "2026-08-17",
     "effectiveAt": null,
