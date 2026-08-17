@@ -1,3 +1,9 @@
+## 2026-08-17 — fix(security): 主任密碼重設寫入稽核事件
+
+<!-- release-notes: silent_ship=silent-2026-08-17-director-resetpw-audit-1813 -->
+
+- 超級管理員代主任重設密碼時寫入 `security_audit_events`（操作者雜湊、對象雜湊）；不含臨時密碼與姓名。
+
 ## 2026-08-17 — fix(security): 主任核准／駁回寫入稽核事件
 
 <!-- release-notes: silent_ship=silent-2026-08-17-director-approve-audit-1810 -->

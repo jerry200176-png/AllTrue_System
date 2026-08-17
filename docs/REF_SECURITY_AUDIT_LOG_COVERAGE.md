@@ -13,7 +13,7 @@
 | 3 | 堂數/SessionCount 手動調整 | `StudentClassController::update` (`:1408`, field write `:1502-1584`) | ❌ **none** for the field mutation itself (only indirect: session-rebuild side effects log separately) |
 | 4 | PII 匯出 | `ExportController::students` → `StudentsExport` (Name/Phone/SchoolName) (`app/Http/Controllers/ExportController.php:13-19`) | ❌ **none** — no `Log::` calls anywhere in `ExportController.php` |
 | 5a | Password reset request（公開） | `PasswordResetRequestController::store` (`:15`) | ⚠️ Weak — creates a `PasswordResetRequest` row (request record, not a completed-reset log) |
-| 5b | Password reset（super_admin 代重設 director） | `DirectorAccountController::resetPassword` (`:194`, field write `:206-217`) | ❌ **none** |
+| 5b | Password reset（super_admin 代重設 director） | `DirectorAccountController::resetPassword` | ✅ Yes (#1813) — `SecurityAuditEvent` `director.password.reset` (no temp password in metadata) |
 | 6 | Bug 狀態變更 | `BugReportService::changeStatus` (`:211`) | ✅ `BugReportStatusLog::create()` (`:256`), inside `DB::transaction` |
 | 7 | 薪資（Payroll） | `FinanceController::parttimePayrollLock/Reopen/RulesUpdate/TeacherRulesUpdate/TeacherRulesDelete` | ✅ `PayrollAuditLog::create()` at each corresponding write site |
 
@@ -30,7 +30,7 @@ Per #890's acceptance criteria ("Critical gaps 有 issue 與優先級"), the fou
 | #1 權限變更無稽核 | Director approval/rejection — covered by #1810 (`director.account.approved` / `director.account.rejected`) | #1810, done |
 | #3 SessionCount 手動調整無稽核 | Same risk shape as the billing dual-truth bugs this session already touched (#934/#920/#959) — a manually-changed session count with no "who/when/why" trail is unauditable if a family disputes it | #1811, P1 |
 | #4 PII 匯出無稽核 | Student PII export with zero log — cannot answer "who exported what, when" for a privacy request | #1812, P1 |
-| #5b Admin 代重設密碼無稽核 | Highest-privilege account-takeover-adjacent action (super_admin can silently reset any director's password) with zero trail | #1813, P2 |
+| #5b Admin 代重設密碼無稽核 | Highest-privilege account-takeover-adjacent action (super_admin can silently reset any director's password) with zero trail | #1813, P2 — closed: `director.password.reset` |
 
 
 ## What this document deliberately does not do

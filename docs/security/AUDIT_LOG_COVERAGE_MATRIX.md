@@ -33,6 +33,7 @@ Pulled from the live codebase (`grep` over `backend/app/Http/Controllers`, `back
 | Role/type changes (`User.type` director approve/reject) | ✅ Yes (#1810) | `SecurityAuditEvent` `director.account.approved` / `director.account.rejected` on `DirectorAccountController` (hashed actor/subject, old→new type codes; no names) |
 | PII export (students.xlsx) | ✅ Yes (#1812) | `SecurityAuditEvent` `pii.export.students` on `GET /api/v1/students/export` (hashed actor, row/campus scope counts; no names/phones) |
 | StudentClass SessionCount / RemainingSessions manual edit | ✅ Yes (#1811) | `SecurityAuditEvent` `student_class.session_balance_adjust` on `StudentClassController::update` when counts change (old→new ints only) |
+| super_admin director password reset | ✅ Yes (#1813) | `SecurityAuditEvent` `director.password.reset` on `DirectorAccountController::resetPassword` (hashed actor/subject; temp password never in metadata) |
 | Sensitive admin session/impersonation (if any exists) | ⚠️ **Not verified this pass** | Out of scope for this grep pass |
 
 ## Critical gaps → tracked as follow-up

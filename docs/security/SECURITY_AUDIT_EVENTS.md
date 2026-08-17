@@ -12,6 +12,7 @@ The first implementation covers:
 - `notification.delivery`: learning-feedback and tuition-reminder delivery outcomes per verified binding.
 - `pii.export.students`: director/super_admin student Excel export (`ExportController::students`, #1812) with row/campus scope counts only.
 - `student_class.session_balance_adjust`: director manual `SessionCount` / `RemainingSessions` edits (`StudentClassController::update`, #1811) with old→new counts only.
+- `director.password.reset`: super_admin resetting a director password (`DirectorAccountController::resetPassword`, #1813); hashed actor/subject only — temporary password never stored.
 - `director.account.approved` / `director.account.rejected`: super_admin director application decisions (`DirectorAccountController`, #1810) with hashed actor/subject and old→new `User.type` codes only.
 
 Each event includes an event type, outcome, correlation UUID, optional campus, hashed actor/subject/binding references, allow-listed metadata, and a `retention_until` timestamp. The default retention window is 180 days and can only be changed through reviewed configuration/migration work.

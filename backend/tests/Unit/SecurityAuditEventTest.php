@@ -43,6 +43,18 @@ class SecurityAuditEventTest extends TestCase
             'new_remaining_sessions' => 5,
         ], $metadata2);
 
+        $metadata3 = SecurityAuditEvent::metadata([
+            'reason_code' => 'admin_reset',
+            'method' => 'super_admin',
+            'source' => 'directors.reset-password',
+            'temporary_password' => 'should-not-store',
+        ]);
+        $this->assertSame([
+            'reason_code' => 'admin_reset',
+            'method' => 'super_admin',
+            'source' => 'directors.reset-password',
+        ], $metadata3);
+
         $roleMeta = SecurityAuditEvent::metadata([
             'old_type' => 'U',
             'new_type' => 'D',

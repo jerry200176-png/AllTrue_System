@@ -219,18 +219,40 @@ class DirectorAccountController extends Controller
         }
 
         $temporaryPassword = $this->generatePassword();
-        $user->PSW = password_hash($temporaryPassword, PASSWORD_DEFAULT);
-        if (Schema::hasColumn('User', 'MustChangePassword')) {
-            $user->MustChangePassword = true;
-        }
-        if (Schema::hasColumn('User', 'PasswordChangedAt')) {
-            $user->PasswordChangedAt = null;
-        }
-        if (Schema::hasColumn('User', 'PasswordSetByUserID')) {
-            $operator = $request->attributes->get('auth_user');
-            $user->PasswordSetByUserID = $operator?->id;
-        }
-        $user->save();
+        $operator = $request->attributes->get('auth_user');
+        $campusId = UserCampus::query()->where('UserID', $id)->where('Approved', true)->value('CampusID');
+
+        DB::transaction(function () use ($user, $temporaryPassword, $operator, $id, $campusId) {
+            $user->PSW = password_hash($temporaryPassword, PASSWORD_DEFAULT);
+            if (Schema::hasColumn('User', 'MustChangePassword')) {
+                $user->MustChangePassword = true;
+            }
+            if (Schema::hasColumn('User', 'PasswordChangedAt')) {
+                $user->PasswordChangedAt = null;
+            }
+            if (Schema::hasColumn('User', 'PasswordSetByUserID')) {
+                $user->PasswordSetByUserID = $operator?->id;
+            }
+            $user->save();
+
+            // #1813: admin-initiated password reset must leave a hashed trail; never log the temp password.
+            SecurityAuditEvent::append(
+                'director.password.reset',
+                'success',
+                [
+                    'actor_type' => 'user',
+                    'actor_id' => $operator?->id,
+                    'subject_type' => 'user',
+                    'subject_id' => $id,
+                    'campus_id' => $campusId !== null ? (int) $campusId : null,
+                ],
+                [
+                    'reason_code' => 'admin_reset',
+                    'method' => 'super_admin',
+                    'source' => 'directors.reset-password',
+                ]
+            );
+        });
 
         return response()->json([
             'message'            => '密碼已重設',
