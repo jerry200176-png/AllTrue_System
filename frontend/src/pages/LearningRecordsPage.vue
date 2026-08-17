@@ -4651,15 +4651,20 @@ const submitBulkBackfill = async () => {
 
 const ensurePastRecords = async () => {
   try {
-    if (!isDirectorRole.value) return;
+    if (!isDirectorRole.value) return 0;
     const token = await getToken();
-    if (!token || !props.branchId) return;
-    await fetch('/api/v1/learning-records/ensure-past', {
+    if (!token || !props.branchId) return 0;
+    const res = await fetch('/api/v1/learning-records/ensure-past', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       body: JSON.stringify({ branch_id: props.branchId })
     });
-  } catch (e) { /* silent */ }
+    if (!res.ok) return 0;
+    const json = await res.json().catch(() => ({}));
+    return Number(json.created || 0);
+  } catch (e) {
+    return 0;
+  }
 };
 
 // ── Export ──
@@ -4794,18 +4799,24 @@ onMounted(async () => {
   // _buildRecordsParams injects the authoritative window in the initial request.
   await perf.trackAsync('loadRemoteFlags', () => loadRemoteFlags().catch(() => {}));
 
-  await perf.trackAsync('ensurePastRecords', () => ensurePastRecords());
-  await perf.trackAsync('fetchRecords', () => fetchRecords());
+  const recordsPromise = perf.trackAsync('fetchRecords', () => fetchRecords());
+  // ensure-past used to run first and block TTI (~5s campus-wide N+1). List first;
+  // refresh only if the backfill actually created rows.
+  const ensurePastPromise = perf.trackAsync('ensurePastRecords', () => ensurePastRecords())
+    .then((created) => {
+      if (Number(created) > 0) return fetchRecords();
+      return null;
+    })
+    .catch(() => null);
 
-  // Secondary data: fire in parallel, don't block TTI
+  await recordsPromise;
+
+  // Secondary data: fire in parallel, don't block TTI except cheap filter lists.
   const secondaryLoads = [
     perf.trackAsync('fetchTeachers', () => fetchTeachers()),
     perf.trackAsync('fetchSubjects', () => fetchSubjects()),
     perf.trackAsync('fetchStudents', () => fetchStudents()),
   ];
-  if (props.branchId && isDirectorRole.value) {
-    secondaryLoads.push(perf.trackAsync('fetchCourses', () => fetchCourses()));
-  }
   if (isDirectorRole.value && !isTeacher.value) {
     secondaryLoads.push(perf.trackAsync('fetchStatusCounts', () => fetchStatusCounts()));
   }
@@ -4821,6 +4832,12 @@ onMounted(async () => {
   if (tti > 3000) {
     console.warn(`[perf] LearningRecordsPage TTI=${tti}ms — exceeds 3s target`);
   }
+
+  // Director schedule widget + bulk backfill: not needed before first paint.
+  if (props.branchId && isDirectorRole.value) {
+    perf.trackAsync('fetchCourses', () => fetchCourses()).catch(() => {});
+  }
+  ensurePastPromise.catch(() => {});
 
   nextTick(() => openTargetRecord());
   // 首次掛載即帶有回饋 focus（從其他頁點 CTA 切過來）→ 套用回饋篩選。(#138)

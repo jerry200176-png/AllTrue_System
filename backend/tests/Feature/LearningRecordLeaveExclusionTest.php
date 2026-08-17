@@ -212,6 +212,54 @@ class LearningRecordLeaveExclusionTest extends TestCase
         ]);
     }
 
+    public function test_batch_approve_allows_pending_on_attended_stopped_course(): void
+    {
+        [$token, $teacherId, $studentId] = $this->bootActors('batch-stopped-attended');
+        $courseId = $this->seedCourse($studentId, $teacherId);
+        $cs = $this->seedSession($courseId, 'attended');
+        $record = $this->seedPendingLr($courseId, $teacherId, $cs);
+
+        StudentClass::where('ID', $courseId)->update(['Stop' => 1]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/learning-records/batch-approve', [
+            'DirectorID' => 1,
+            'branch_id' => 1,
+            'ids' => [(int) $record->id],
+        ]);
+
+        $res->assertOk()->assertJsonPath('approved', 1);
+        $this->assertSame('approved', $record->fresh()->Status);
+    }
+
+    public function test_ensure_past_ignores_sessions_outside_default_window(): void
+    {
+        \Illuminate\Support\Facades\Config::set('perfflags.learning_records_default_window_days', 90);
+
+        [$token, $teacherId, $studentId] = $this->bootActors('ensure-window');
+        $courseId = $this->seedCourse($studentId, $teacherId);
+        $old = ClassSession::create([
+            'StudentClassID' => $courseId,
+            'SessionDate' => now()->subDays(200)->toDateString(),
+            'StartTime' => '16:00',
+            'EndTime' => '18:00',
+            'Status' => 'attended',
+            'Note' => '',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/learning-records/ensure-past', ['branch_id' => 1]);
+
+        $res->assertOk()->assertJsonPath('created', 0);
+        $this->assertDatabaseMissing('LearningRecord', [
+            'ClassSessionID' => $old->id,
+        ]);
+    }
+
     public function test_pending_lr_excluded_when_active_leave_signin_even_if_classsession_not_leave(): void
     {
         // in-app #170：請假其實是用 StudentSingIn.Status='leave' 記的，部分路徑沒同步把

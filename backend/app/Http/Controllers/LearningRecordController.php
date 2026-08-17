@@ -1403,19 +1403,26 @@ class LearningRecordController extends Controller
             $campusIds = [(int) $data['branch_id']];
         }
 
-        $classIds = StudentClass::query();
+        $classQuery = StudentClass::query();
         if (!empty($campusIds)) {
             $studentIds = Student::whereIn('CampusID', $campusIds)->pluck('id');
-            $classIds = $classIds->whereIn('StudentID', $studentIds);
+            $classQuery->whereIn('StudentID', $studentIds);
         }
-        $classIds = $classIds->where(function ($q) {
-            $q->where('Stop', 0)->orWhereNull('Stop');
-        })->pluck('ID');
+        $classIds = $classQuery->pluck('ID');
+        if ($classIds->isEmpty()) {
+            return response()->json([
+                'message' => '部分勾選資料已不存在、無權限或不可核准，未執行任何變更。請重新整理後再試。',
+                'requested' => count($data['ids']),
+                'eligible' => 0,
+                'approved' => 0,
+            ], 422);
+        }
 
         $query = LearningRecord::active()
             ->whereIn('id', $data['ids'])
             ->whereIn('StudentClassID', $classIds)
             ->whereIn('Status', ['pending', 'changes_requested'])
+            ->excludePausedCoursePendingReview()
             ->excludeLeaveSessionPendingReview();
 
         if (!empty($data['teacher_id'])) {
@@ -1913,6 +1920,7 @@ class LearningRecordController extends Controller
         }
 
         $now = Carbon::now()->format('Y-m-d H:i:s');
+        $windowDays = (int) config('perfflags.learning_records_default_window_days', 90);
 
         $studentIds = Student::where('CampusID', $branchId)->pluck('id');
         if ($studentIds->isEmpty()) {
@@ -1920,35 +1928,53 @@ class LearningRecordController extends Controller
         }
 
         $classes = StudentClass::whereIn('StudentID', $studentIds)->get();
+        if ($classes->isEmpty()) {
+            return response()->json(['created' => 0]);
+        }
+
+        $classById = $classes->keyBy(static fn ($sc) => (int) $sc->ID);
+        $sessionQuery = ClassSession::whereIn('StudentClassID', $classes->pluck('ID'))
+            ->whereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted'])
+            ->whereRaw("CONCAT(SessionDate, ' ', COALESCE(StartTime, '00:00:00')) <= ?", [$now]);
+        if ($windowDays > 0) {
+            $sessionQuery->whereDate('SessionDate', '>=', Carbon::now()->subDays($windowDays)->toDateString());
+        }
+        $sessions = $sessionQuery->get();
+        if ($sessions->isEmpty()) {
+            return response()->json(['created' => 0]);
+        }
+
+        $existingBySessionId = LearningRecord::query()
+            ->whereIn('ClassSessionID', $sessions->pluck('id')->all())
+            ->get()
+            ->keyBy(static fn ($row) => (int) $row->ClassSessionID);
 
         $subjectNameMap = DB::table('Subject')->pluck('Subject_Name', 'id')->all();
-
+        $backfill = app(LearningRecordBackfillService::class);
         $created = 0;
 
-        foreach ($classes as $sc) {
+        foreach ($sessions as $cs) {
+            $sc = $classById->get((int) $cs->StudentClassID);
+            if (!$sc) {
+                continue;
+            }
             $courseStopped = (int) ($sc->Stop ?? 0) === 1;
-            $sessions = ClassSession::where('StudentClassID', $sc->ID)
-                ->whereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted'])
-                ->whereRaw("CONCAT(SessionDate, ' ', COALESCE(StartTime, '00:00:00')) <= ?", [$now])
-                ->when($courseStopped, function ($query) {
-                    $query->whereIn('Status', ['attended', 'late', 'absent']);
-                })
-                ->get();
+            if ($courseStopped && !in_array(strtolower((string) $cs->Status), ['attended', 'late', 'absent'], true)) {
+                continue;
+            }
 
-            foreach ($sessions as $cs) {
-                $existing = LearningRecord::where('ClassSessionID', $cs->id)->first();
-                if ($existing && !$existing->isVoided()) {
-                    // Self-heal legacy drift: if record date/time no longer matches ClassSession,
-                    // force them back to ClassSession so CourseManagement and LearningRecords stay aligned.
-                    $this->syncRecordWithClassSession($existing, $cs, (int) ($sc->TeacherID ?? 0));
-                    continue;
-                }
+            $existing = $existingBySessionId->get((int) $cs->id);
+            if ($existing && !$existing->isVoided()) {
+                // Self-heal legacy drift: if record date/time no longer matches ClassSession,
+                // force them back to ClassSession so CourseManagement and LearningRecords stay aligned.
+                $this->syncRecordWithClassSession($existing, $cs, (int) ($sc->TeacherID ?? 0));
+                continue;
+            }
 
-                // Single source for create + voided-restore lives in LearningRecordBackfillService
-                // so interactive ensure-past and nightly backfill-missing never drift (#1078).
-                if (app(LearningRecordBackfillService::class)->createPendingForSession($sc, $cs, $subjectNameMap)) {
-                    $created++;
-                }
+            // Single source for create + voided-restore lives in LearningRecordBackfillService
+            // so interactive ensure-past and nightly backfill-missing never drift (#1078).
+            if ($backfill->createPendingForSession($sc, $cs, $subjectNameMap)) {
+                $created++;
             }
         }
 

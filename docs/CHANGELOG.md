@@ -1,3 +1,10 @@
+## 2026-08-17 — fix(eval): 批次核准不再誤擋停用課；評量頁先出列表
+
+<!-- release-notes: staff_update=staff-2026-08-17-lr-batch-approve-perf -->
+
+- 課程已停用但堂次已上的待審評量，批次核准可以過，不再整批失敗。
+- 學習評量表會先顯示列表，補建與課表資料在背景載入，進頁比較不會卡住。
+
 ## 2026-08-17 — fix(reports): 已完成堂次計入老師評量填寫率
 
 <!-- release-notes: staff_update=staff-2026-08-17-fillrate-completed -->
