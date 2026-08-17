@@ -98,6 +98,45 @@ export const staffUpdates = [
     "version": "2026.08.17"
   },
   {
+    "id": "staff-2026-08-17-projected-ordinal",
+    "publishedAt": "2026-08-17",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "預排不再佔堂次序號",
+    "summary": "還沒排成課堂的預排日期，不會再插進已上課堂的編號。",
+    "items": [
+      "預排只顯示日期與預排，不佔已上課堂的編號。",
+      "已經排進課表、還沒點名的堂次，仍照順序編號。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "預排只顯示日期與預排，不佔已上課堂的編號。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "已經排進課表、還沒點名的堂次，仍照順序編號。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-17:projected-ordinal"
+    ],
+    "date": "2026-08-17",
+    "version": "2026.08.17"
+  },
+  {
     "id": "staff-2026-08-17-course-memo-length-1732",
     "publishedAt": "2026-08-17",
     "effectiveAt": null,

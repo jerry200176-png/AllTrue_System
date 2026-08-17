@@ -349,10 +349,17 @@ export function useCourseSessionsDisplay({
       const row = u.id ? getSessionRowById(course, u.id) || u : u;
       const state = getSessionState(course, u.date, u.id || undefined);
       const isLeave = state && LEAVE_STATUSES.has(state.className);
-      const isNonQuota = isLeave || isOverQuotaSession(course, row);
+      // Projected chips are a read-model expansion (RFC 5545 virtual instance /
+      // Google Calendar tentative / Open edX never-published draft). They must
+      // not consume 第N堂. Same skip set as LearningRecord session_number plus
+      // isProjected (backend numbers only materialized ClassSession rows).
+      const skipNumber = !!(u.isProjected || row?.isProjected)
+        || !rowOccupiesPurchasedQuota(row)
+        || isLeave
+        || isOverQuotaSession(course, row);
       const isMatch = sessionId ? (u.id && u.id === Number(sessionId)) : (u.date === dateYmd);
-      if (isMatch) return isNonQuota ? null : num + 1;
-      if (!isNonQuota) num++;
+      if (isMatch) return skipNumber ? null : num + 1;
+      if (!skipNumber) num++;
     }
     return null;
   };

@@ -3,6 +3,22 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-17-projected-ordinal
+    published_at: "2026-08-17"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 預排不再佔堂次序號
+    summary: 還沒排成課堂的預排日期，不會再插進已上課堂的編號。
+    items:
+      - category: fixed
+        text: 預排只顯示日期與預排，不佔已上課堂的編號。
+      - category: improved
+        text: 已經排進課表、還沒點名的堂次，仍照順序編號。
+    source_refs:
+      - "changelog:2026-08-17:projected-ordinal"
+
   - id: staff-2026-08-17-course-memo-length-1732
     published_at: "2026-08-17"
     audiences:
