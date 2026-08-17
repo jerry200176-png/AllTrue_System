@@ -7,7 +7,7 @@
 
 | # | Category | Action | Audit write? |
 |---|---|---|---|
-| 1 | 權限變更 | `DirectorAccountController::approve` — `User.type='D'`, `UserCampus.Approved=true` (`app/Http/Controllers/DirectorAccountController.php:126-128`) | ❌ **none** |
+| 1 | 權限變更 | `DirectorAccountController::approve` / `reject` — `User.type='D'`, `UserCampus.Approved=true` (`app/Http/Controllers/DirectorAccountController.php`) | ✅ Yes (#1810) — `SecurityAuditEvent` `director.account.approved` / `director.account.rejected` |
 | 2a | 帳務作廢（Invoice） | `BillingController::voidInvoice` (`:184`) | ⚠️ Weak — audit string in `Invoice.Note` + `Log::info` (`:226`), no dedicated audit-log row |
 | 2b | 帳務作廢（PaymentReport） | `PaymentReportController::void` (`:579`) | ⚠️ Weak — `voided_by`/`voided_at`/`void_reason` columns + `Log::info` (`:646`), no dedicated audit-log row |
 | 3 | 堂數/SessionCount 手動調整 | `StudentClassController::update` (`:1408`, field write `:1502-1584`) | ❌ **none** for the field mutation itself (only indirect: session-rebuild side effects log separately) |
@@ -27,7 +27,7 @@ Per #890's acceptance criteria ("Critical gaps 有 issue 與優先級"), the fou
 
 | Gap | Why critical | Follow-up |
 |---|---|---|
-| #1 權限變更無稽核 | Director approval/rejection changes who can act as director for a campus — highest-privilege action in the system with zero trail | #1810, P1 |
+| #1 權限變更無稽核 | Director approval/rejection — covered by #1810 (`director.account.approved` / `director.account.rejected`) | #1810, done |
 | #3 SessionCount 手動調整無稽核 | Same risk shape as the billing dual-truth bugs this session already touched (#934/#920/#959) — a manually-changed session count with no "who/when/why" trail is unauditable if a family disputes it | #1811, P1 |
 | #4 PII 匯出無稽核 | Student PII export with zero log — cannot answer "who exported what, when" for a privacy request | #1812, P1 |
 | #5b Admin 代重設密碼無稽核 | Highest-privilege account-takeover-adjacent action (super_admin can silently reset any director's password) with zero trail | #1813, P2 |
