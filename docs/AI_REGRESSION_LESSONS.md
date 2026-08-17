@@ -1049,6 +1049,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **強制規則**：讀取老師佔用時，若同 `student_course_id + 日期 + HH:MM` 存在 ClassSession 且全部為 cancelled／leave／leave_adjusted／excused，該 scheduled 例外必須剔除。無 ClassSession 證據的 row（補課 R13）仍為真實佔用。
 - **寫入側後續**：永久解法仍需 cancel 路徑 cascade 關閉 schedules 例外；讀側過濾不可省略，否則歷史殘留會再炸。
 - **測試必補**：stale 例外 → availability 不 busy 且 substitute 成功；active ClassSession 例外仍 busy；無 ClassSession 的 makeup schedule 仍 busy。
+- **延伸（2026-08-17 / in-app #238 / GitHub #1885）**：二次同日調課會在中間時段留下 `scheduled` 殘影；同 key 沒有 ClassSession，R72 原規則會當成 R13 補課而佔用。若同課程同日已有 **active** ClassSession（其他 HH:MM），該殘影必須剔除。見 §R114。
 
 ### R73. 跨老師拖曳的 domain intent 優先於日期／時間，寫入必須 atomic 或可證明補償（in-app #201/#202）
 
@@ -1127,7 +1128,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | 堂數 / 扣堂 | §2026-04-17 繳費日期、§單堂費用固定、**§R59（分鐘制權威：RemainingSessions 為 ROUND_HALF_UP 衍生值，讀取端勿用 count 覆寫 fractional）**、§R70（對帳面板唯讀＋真實 API contract test）、**§R76（單堂改時段費用前後端必須一致）** |
 | 繳費 / 學收 | §繳費狀態 paid_at、§歷史課程漏算、§催繳名單六狀態、§幽靈課程、§R30（帳務入口共用 AR ledger）、**§R76（session／hour 費用文案與 Charge 寫入）**、**§R79（收據前端不得超前後端 contract；合法路徑=payment-reports/{id}/receipt）**、**#1827／RFC_REPORTED_PAID_ACCOUNTING_SPLIT（行政已回報 ≠ Paid；收據僅 confirm 後）** |
 | 薪資 / 併堂 | §兼職薪資 concurrency、§同層級併堂 v1.4、§契約時長為準 |
-| 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession）、§R39（代課評量權限需匹配時段）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R52（代課 scheduled 例外不可缺 original_schedule_id anchor）、§R71（調課單一交易＋前端 committed gate）、§R83（原子調課必須標記 IsContractException）、**§R84（IsContractException 搬進 ClassSessionObserver 結構性保證）**、§R72（cancelled ClassSession 不得讓 scheduled 例外佔用代課老師）、§R73（跨老師 gesture 必走 atomic substitute；legacy 兩階段精準補償）、§R74（代課衝突排除同一學生續約佔用） |
+| 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession）、§R39（代課評量權限需匹配時段）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R52（代課 scheduled 例外不可缺 original_schedule_id anchor）、§R71（調課單一交易＋前端 committed gate）、§R83（原子調課必須標記 IsContractException）、**§R84（IsContractException 搬進 ClassSessionObserver 結構性保證）**、§R72（cancelled ClassSession 不得讓 scheduled 例外佔用代課老師）、**§R114（同日二次調課中間 scheduled 殘影不得佔用）**、§R73（跨老師 gesture 必走 atomic substitute；legacy 兩階段精準補償）、§R74（代課衝突排除同一學生續約佔用） |
 | 請假 / 順延 | §R29、**§R82（KEEP dates+append）**、§R75（SUPERSEDED）、§R77、§R81、**§R109（結案不可吃掉請假順延尾堂）** |
 | 評量 / 家長回饋 | §同天多堂課 buildEvents、§請假後不填評量、§R17（ownership 先於狀態判斷）、§R19（mark-read 不可更新 updated_at）、§R32（停用課程已上課評量不可消失）、§R39（代課評量權限需匹配時段）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R65（新增 session 狀態值必須同步全部消費端；leave 家族用集合判斷）、**§R78（nightly backfill 須 in-place restore 作廢評量，不可把 voided 當已有）**、**§R110（課程管理已上堂數須與日期晶片同源）**、**§R112（預排不可佔第 N 堂）** |
 | 效能 / Eloquent 事件 | **§R113（ClassSession creating/updating 禁逐筆 StudentClass exists；請求內一次載入已結清課程 ID）** |
@@ -1375,5 +1376,14 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **根因**：`ClassSession::creating`／`updating` 的結清鎖定檢查對**每一筆**堂次跑 `StudentClass::where('ID', $courseId)->exists()`。行事曆物化、補登、批次改狀態會在同一請求寫入多筆，查詢數隨堂次數線性成長。Laravel 官方建議關聯與不變式檢查用 eager load／一次載入，而不是 model event 裡逐列查（[Eloquent eager loading](https://laravel.com/docs/eloquent-relationships#eager-loading)；Sentry [N+1 Query Detection](https://docs.sentry.io/product/insights/backend/issues/n-plus-one-queries/)）。
 - **強制規則**：未走 `setPreloadedCourseSettlementLock` 時，同一請求只查一次已結清課程 ID 集合；`StudentClass` 改 `settlement_locked_at`／`closed_reason` 必須清快取。測試之間也要清，避免 RefreshDatabase 殘留。
 - **測試必補**：一次建立 8 筆不同課程堂次，不得再出現 per-ID `exists(StudentClass)`，結清鎖定查詢 ≤ 1。
+
+### R114. 同日二次調課的中間 `scheduled` 殘影不得佔用老師時段（in-app #238 / GitHub #1885，2026-08-17）
+
+- **現象**：主任在行事曆看到老師時段已滿，並以為是其他分校佔用。Production（campus 3、2026-08-20）availability 把 17:00 算成 3 人已滿，但當天該時段只有 1 筆 live ClassSession；另外 2 人的堂次已在 19:00。
+- **根因（F1 / R72 缺口）**：`StaleScheduleExceptionFilter` 只在「同課程＋同日＋**同時段** ClassSession 全數 inactive」時剔除 `schedules.status=scheduled`。二次調課會在中間時段留下 scheduled 殘影，該 key **沒有** ClassSession，原規則當成 R13 補課而保留。#1733 closeout 用「scheduled 是否被其他列的 original_schedule_id 指到」找孤兒，找不到這種「不是當前鏈父節點」的殘影。
+- **強制規則**：同課程同日若已有 **active** ClassSession（非 cancelled/leave/leave_adjusted/excused），只有起始時間對得上那些堂次的 scheduled 列可佔用。零 ClassSession（R13 補課）仍佔用。僅有請假堂次時，另約時段的 makeup scheduled 仍佔用。
+- **前端**：日檢視週課模板若當天 active ClassSession 在別的整點，不可再算進容量徽章／該格課程卡。
+- **治本**：TD-076 / RFC_SCHEDULE_OCCURRENCE_IDENTITY（穩定 occurrence identity，調課 UPDATE 同一列）。本次為讀側治標。
+- **測試必補**：`StaleScheduleExceptionBusyTest::test_same_day_second_reschedule_leftover_scheduled_is_not_busy`（17:00 不 busy、19:00 busy）；leave+makeup 17:00 仍 busy；`weeklyTemplateOccupiesHour` 單元測試。Revert 後前者必須 fail。
 
 

@@ -121,6 +121,62 @@ class StaleScheduleExceptionBusyTest extends TestCase
         $this->assertContains('13:00', $starts, 'Makeup schedule without ClassSession must stay busy');
     }
 
+    public function test_same_day_second_reschedule_leftover_scheduled_is_not_busy(): void
+    {
+        $s = $this->seedBase();
+        $this->seedSecondRescheduleLeftover($s, campusId: 1);
+
+        $res = $this->withAuth($s['dirToken'])
+            ->getJson("/api/v1/teachers/{$s['subId']}/availability?date=" . self::DATE);
+
+        $res->assertOk();
+        $starts = array_column($res->json('busy_slots'), 'start_time');
+        $this->assertNotContains(
+            '17:00',
+            $starts,
+            'Leftover scheduled at the intermediate 17:00 slot must not occupy after ClassSession moved to 19:00'
+        );
+        $this->assertContains('19:00', $starts, 'Live ClassSession at 19:00 must remain busy');
+    }
+
+    public function test_same_day_leave_plus_makeup_schedule_still_busy(): void
+    {
+        $s = $this->seedBase();
+        $s['staleSc']->TeacherID = $s['subId'];
+        $s['staleSc']->save();
+        ClassSession::create([
+            'StudentClassID' => $s['staleSc']->ID,
+            'SessionDate' => self::DATE,
+            'StartTime' => '15:00',
+            'EndTime' => '17:00',
+            'Status' => 'leave',
+        ]);
+        Schedule::create([
+            'student_id' => $s['staleStudent']->id,
+            'teacher_id' => $s['subId'],
+            'subject' => '數學',
+            'day_of_week' => Carbon::parse(self::DATE)->dayOfWeekIso,
+            'start_time' => '17:00',
+            'end_time' => '19:00',
+            'duration_hours' => 2,
+            'class_type' => 'one_on_one',
+            'status' => 'scheduled',
+            'type' => 'extra',
+            'deduction' => 1,
+            'branch_id' => 1,
+            'schedule_date' => self::DATE,
+            'student_course_id' => $s['staleSc']->ID,
+        ]);
+
+        $res = $this->withAuth($s['dirToken'])
+            ->getJson("/api/v1/teachers/{$s['subId']}/availability?date=" . self::DATE);
+
+        $res->assertOk();
+        $starts = array_column($res->json('busy_slots'), 'start_time');
+        $this->assertNotContains('15:00', $starts, 'Leave ClassSession must free the original slot');
+        $this->assertContains('17:00', $starts, 'Same-date makeup schedule without ClassSession must stay busy');
+    }
+
     public function test_exception_row_with_active_class_session_still_busy(): void
     {
         $s = $this->seedBase();
@@ -244,6 +300,75 @@ class StaleScheduleExceptionBusyTest extends TestCase
             'StartTime' => '13:00',
             'EndTime' => '15:00',
             'Status' => $sessionStatus,
+        ]);
+    }
+
+    /**
+     * Production in-app #238 shape (teacher 71 / 2026-08-20):
+     * first move wrote scheduled@17:00, second move wrote rescheduled@17:00 + scheduled@19:00
+     * and moved ClassSession to 19:00, leaving the intermediate scheduled row occupying 17:00.
+     */
+    private function seedSecondRescheduleLeftover(array $s, int $campusId): void
+    {
+        $s['staleSc']->TeacherID = $s['subId'];
+        $s['staleSc']->save();
+
+        Schedule::create([
+            'student_id' => $s['staleStudent']->id,
+            'teacher_id' => $s['subId'],
+            'subject' => '數學',
+            'day_of_week' => Carbon::parse(self::DATE)->dayOfWeekIso,
+            'start_time' => '17:00',
+            'end_time' => '19:00',
+            'duration_hours' => 2,
+            'class_type' => 'one_on_two',
+            'status' => 'scheduled',
+            'type' => 'normal',
+            'deduction' => 1,
+            'branch_id' => $campusId,
+            'schedule_date' => self::DATE,
+            'student_course_id' => $s['staleSc']->ID,
+            'original_schedule_id' => null,
+        ]);
+        $secondFrom = Schedule::create([
+            'student_id' => $s['staleStudent']->id,
+            'teacher_id' => $s['subId'],
+            'subject' => '數學',
+            'day_of_week' => Carbon::parse(self::DATE)->dayOfWeekIso,
+            'start_time' => '17:00',
+            'end_time' => '19:00',
+            'duration_hours' => 2,
+            'class_type' => 'one_on_two',
+            'status' => 'rescheduled',
+            'type' => 'normal',
+            'deduction' => 1,
+            'branch_id' => $campusId,
+            'schedule_date' => self::DATE,
+            'student_course_id' => $s['staleSc']->ID,
+        ]);
+        Schedule::create([
+            'student_id' => $s['staleStudent']->id,
+            'teacher_id' => $s['subId'],
+            'subject' => '數學',
+            'day_of_week' => Carbon::parse(self::DATE)->dayOfWeekIso,
+            'start_time' => '19:00',
+            'end_time' => '21:00',
+            'duration_hours' => 2,
+            'class_type' => 'one_on_two',
+            'status' => 'scheduled',
+            'type' => 'normal',
+            'deduction' => 1,
+            'branch_id' => $campusId,
+            'schedule_date' => self::DATE,
+            'student_course_id' => $s['staleSc']->ID,
+            'original_schedule_id' => $secondFrom->id,
+        ]);
+        ClassSession::create([
+            'StudentClassID' => $s['staleSc']->ID,
+            'SessionDate' => self::DATE,
+            'StartTime' => '19:00',
+            'EndTime' => '21:00',
+            'Status' => 'scheduled',
         ]);
     }
 

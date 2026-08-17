@@ -519,6 +519,7 @@ import {
   batchSubstitute as batchSubstituteApi,
 } from '../lib/substituteApi.js';
 import { resolveSessionRowForCell } from '../lib/classSessionPick.js';
+import { weeklyTemplateOccupiesHour } from '../lib/sessionOccurrenceFilter.js';
 // #740 Step 1：純日期工具已剝離至 lib（Leaf-First / Pure Move），測試見 calendarDateUtils.test.js
 import {
   formatLocalDate,
@@ -1258,6 +1259,16 @@ const isSessionOnLeaveOnDate = (course, ymd) => {
   );
 };
 
+const courseOccupiesHourOnDate = (course, ymd, hour) => {
+  if (!ymd) return true;
+  const courseKey = String((course.is_exception ? (course.student_course_id ?? course.id) : course.id) ?? '');
+  const rows = sessionDatesByCourseId.value[courseKey];
+  const sameDate = Array.isArray(rows)
+    ? rows.filter((r) => String(r.session_date || r.SessionDate || r.date || '').slice(0, 10) === ymd)
+    : [];
+  return weeklyTemplateOccupiesHour({ sessionRowsOnDate: sameDate, hour, parseHour });
+};
+
 // 同一位老師掛兩個帳號、顯示名稱相同時，dayViewTeacherColumns/visibleTeachers 只會合併顯示一欄
 // （代表 ID 為課程數較多的那個帳號），但課程本身的 teacher_id 仍是原本各自的帳號 ID。
 // 這裡務必比對「別名帳號集合」而非單一 teacherId，否則掛在另一個別名帳號下的課程會直接消失
@@ -1275,6 +1286,7 @@ const getCoursesForTeacherAt = (teacherId, hour) => {
     if (c.day_of_week !== selectedDow.value) return false;
     if (!courseMatchesStudentSearch(c)) return false;
     if (isSessionCancelledOnDate(c, selectedDateStr.value)) return false;
+    if (!courseOccupiesHourOnDate(c, selectedDateStr.value, hour)) return false;
     return true;
   });
 };
@@ -1725,6 +1737,7 @@ const getSlotOccupancy = (teacherId, dow, hour) => {
     // 已請假的課程不占用容量徽章的名額 — 該時段仍可排新學生。
     // 課程方塊本身仍會顯示（帶「假」角標），只是不算進 count。
     if (isSessionOnLeaveOnDate(c, ymd)) return false;
+    if (!courseOccupiesHourOnDate(c, ymd, hour)) return false;
     return true;
   });
   if (coursesAtSlot.length === 0) {

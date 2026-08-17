@@ -61,3 +61,25 @@ export function rowOccupiesPurchasedQuota(row, { exceptionsOccupyQuota = true } 
   }
   return !SESSION_NOT_OCCUPYING_QUOTA.has(sessionStatusOf(row));
 }
+
+function hourOfSessionRow(row, parseHour) {
+  if (typeof parseHour !== 'function') return null;
+  const raw = row?.start_time || row?.StartTime || row?.startTime || '';
+  const hour = parseHour(raw);
+  return Number.isFinite(hour) ? hour : null;
+}
+
+/**
+ * Weekly template at `hour` occupies a calendar slot only if that course has
+ * no active ClassSession that day, or at least one active session starts then.
+ *
+ * Same-day second reschedule (in-app #238): live session at 19:00 must not let
+ * the leftover weekly/scheduled 17:00 template keep a 已滿 badge.
+ * Leave + makeup with no ClassSession at the new time still occupies (R13).
+ */
+export function weeklyTemplateOccupiesHour({ sessionRowsOnDate = [], hour, parseHour }) {
+  const rows = Array.isArray(sessionRowsOnDate) ? sessionRowsOnDate : [];
+  const active = rows.filter((row) => !SESSION_NOT_OCCUPYING_QUOTA.has(sessionStatusOf(row)));
+  if (active.length === 0) return true;
+  return active.some((row) => hourOfSessionRow(row, parseHour) === hour);
+}

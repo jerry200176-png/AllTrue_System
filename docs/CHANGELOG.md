@@ -12,6 +12,13 @@
 - 新增 `scripts/wait-github-deploy.sh`：用 `gh --json` + python3 等 `deploy.yml` 成功，再核對線上 `version.json`。
 - 本機 WSL 沒裝 jq 時不再誤判部署失敗。
 
+## 2026-08-17 — fix(schedule): 同一天第二次調課不再讓舊時段顯示已滿
+
+<!-- release-notes: staff_update=staff-2026-08-17-same-day-reschedule-occupancy-1885 -->
+
+- 同一天把課堂從一個時段改到另一個時段後，舊時段不再算已排滿，可以再排其他學生。
+- 補課（還沒建成正式課堂）以及請假後另約的時段，仍會佔用老師時間。
+
 ## 2026-08-17 — fix(perf): 堂次寫入不再逐筆查課程結清鎖定
 
 <!-- release-notes: silent_ship=silent-2026-08-17-session-settlement-lock-nplusone-1731 -->

@@ -16,6 +16,9 @@ use Illuminate\Support\Facades\DB;
  *   （補課 schedule 依 R13 可不建 ClassSession，仍為真實佔用）。
  * - 該 key 存在至少一筆 active ClassSession → 保留。
  * - 該 key 有 ClassSession 且全部為 cancelled / leave / leave_adjusted / excused → 視為 stale，剔除。
+ * - 同課程同日已有 **active** ClassSession（其他起始時間）：此 scheduled 是二次調課
+ *   留在中間時段的殘影（in-app #238 / GitHub #1885），不可佔用。請假堂次不算 active，
+ *   故「原時段請假 + 同時段另排補課（無 ClassSession）」仍會保留補課列。
  *
  * 狀態集合與 ScheduleGuardService 的 occupancy 排除集合（#557）一致。
  */
@@ -56,18 +59,34 @@ class StaleScheduleExceptionFilter
             ->get();
 
         $keyState = [];
+        $activeStartsByCourse = [];
         foreach ($sessions as $session) {
-            $key = (int) $session->StudentClassID . '|' . $this->hhmm($session->StartTime);
+            $courseId = (int) $session->StudentClassID;
+            $hhmm = $this->hhmm($session->StartTime);
+            $key = $courseId . '|' . $hhmm;
             $isActive = !in_array(strtolower(trim((string) $session->Status)), self::INACTIVE_STATUSES, true);
             $keyState[$key] = ($keyState[$key] ?? false) || $isActive;
+            if ($isActive) {
+                $activeStartsByCourse[$courseId][$hhmm] = true;
+            }
         }
 
         $kept = [];
         foreach ($rows as $row) {
             $courseId = (int) ($row->student_course_id ?? 0);
-            $key = $courseId . '|' . $this->hhmm($row->start_time ?? null);
+            $hhmm = $this->hhmm($row->start_time ?? null);
+            $key = $courseId . '|' . $hhmm;
+            if ($courseId <= 0) {
+                $kept[] = $row;
+                continue;
+            }
+            // Same-day second move: live ClassSession exists at another clock.
+            $activeStarts = $activeStartsByCourse[$courseId] ?? [];
+            if ($activeStarts !== [] && !isset($activeStarts[$hhmm])) {
+                continue;
+            }
             // 沒有任何 ClassSession 證據 → 保留；有證據且存在 active → 保留
-            if ($courseId <= 0 || !array_key_exists($key, $keyState) || $keyState[$key]) {
+            if (!array_key_exists($key, $keyState) || $keyState[$key]) {
                 $kept[] = $row;
             }
         }

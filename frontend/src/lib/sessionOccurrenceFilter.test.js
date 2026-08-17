@@ -8,6 +8,7 @@ import {
   isInternalCancelPlaceholder,
   isVisibleCancelledSession,
   rowOccupiesPurchasedQuota,
+  weeklyTemplateOccupiesHour,
 } from './sessionOccurrenceFilter.js';
 
 const INTERNAL = 'cancelled-duplicate-reschedule-placeholder';
@@ -28,5 +29,30 @@ assert.equal(rowOccupiesPurchasedQuota({ status: 'scheduled', isContractExceptio
 assert.equal(rowOccupiesPurchasedQuota({ status: 'scheduled', isContractException: true }, { exceptionsOccupyQuota: false }), false);
 assert.equal(rowOccupiesPurchasedQuota({ status: 'scheduled', isContractException: false }), true);
 assert.equal(rowOccupiesPurchasedQuota({ status: 'leave' }), false);
+
+const parseHour = (value) => {
+  const m = String(value || '').match(/(\d{1,2})/);
+  return m ? Number(m[1]) : NaN;
+};
+assert.equal(weeklyTemplateOccupiesHour({
+  sessionRowsOnDate: [{ status: 'scheduled', start_time: '19:00' }],
+  hour: 17,
+  parseHour,
+}), false);
+assert.equal(weeklyTemplateOccupiesHour({
+  sessionRowsOnDate: [{ status: 'scheduled', start_time: '19:00' }],
+  hour: 19,
+  parseHour,
+}), true);
+assert.equal(weeklyTemplateOccupiesHour({
+  sessionRowsOnDate: [{ status: 'leave', start_time: '15:00' }],
+  hour: 17,
+  parseHour,
+}), true);
+assert.equal(weeklyTemplateOccupiesHour({
+  sessionRowsOnDate: [],
+  hour: 17,
+  parseHour,
+}), true);
 
 console.log('ok: sessionOccurrenceFilter');
