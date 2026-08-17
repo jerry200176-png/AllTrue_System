@@ -483,7 +483,7 @@ const pageGuideConfig = {
       target: '[data-guide="line-config"]',
       icon: 'key',
       title: 'LINE 設定填寫',
-      description: '填入 Channel Access Token、Channel Secret（從 LINE Developers 後台取得）與 LIFF ID（選填）。儲存後請重新整理確認燈號變綠。',
+      description: '填入頻道授權碼、頻道密鑰（從 LINE Developers 後台取得）與手機開啟代碼（選填）。儲存後請重新整理確認燈號變綠。',
       placement: 'top',
     },
     {

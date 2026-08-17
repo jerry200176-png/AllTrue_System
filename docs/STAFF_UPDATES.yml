@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-17-ui-jargon-w2
+    published_at: "2026-08-17"
+    audiences:
+      - director
+    importance: digest
+    title: LINE 設定與錯誤提示更白話
+    summary: 頻道授權碼改中文；操作失敗時較少出現英文 Forbidden。
+    items:
+      - category: improved
+        text: 家長 LINE 設定改看「頻道授權碼」「頻道密鑰」。
+      - category: improved
+        text: 沒有權限、找不到資料等錯誤改中文。
+    source_refs:
+      - "changelog:2026-08-17:ui-jargon-w2"
+
   - id: staff-2026-08-17-ui-human-copy-sweep
     published_at: "2026-08-17"
     audiences:

@@ -7,6 +7,8 @@
  * the Docker backend by vite.config.js.
  * In production, /api resolves to the same origin (Nginx on port 80).
  */
+import { humanizeApiErrorMessage } from './lib/humanizeApiErrorMessage.js';
+
 const API_BASE = (import.meta.env.VITE_API_BASE || '/api') + '/v1';
 const JSON_ACCEPT_HEADER = { Accept: 'application/json' };
 
@@ -311,7 +313,9 @@ class QueryBuilder {
             }
         }
         if (!resp.ok && !json.error) {
-            json.error = { message: json.message || `Request failed (${resp.status})` };
+            json.error = { message: humanizeApiErrorMessage(json.message || `Request failed (${resp.status})`) };
+        } else if (json.error?.message) {
+            json.error.message = humanizeApiErrorMessage(json.error.message);
         }
         // Preserve conflicts array from 409 responses on the error object for caller inspection
         if (resp.status === 409 && json.conflicts && json.error) {

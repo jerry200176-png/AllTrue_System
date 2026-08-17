@@ -356,7 +356,7 @@
             rows="10"
             placeholder="帳號,姓名,電話,主分校,可授科目,兼職分校,LINE,狀態&#10;teacher001,王老師,0912345678,大安,數學|英文,板橋,line001,在職"
           />
-          <div class="hint">可授科目可填科目名稱（國文／英文／數學…）或編號；兼職分校可用｜、逗號或分號分隔。仍相容英文欄名（account、branch_id…）。</div>
+          <div class="hint">可授科目可填科目名稱（國文／英文／數學…）或編號；兼職分校可用｜、逗號或分號分隔。</div>
         </div>
 
         <div v-if="bulkParseSummary.rowCount > 0" class="bulk-preview">
@@ -737,10 +737,10 @@ const BULK_HEADER_ALIASES = {
   name: ['name', 'username', '姓名', '老師姓名'],
   phone: ['phone', 'mobile', '電話', '手機'],
   branch_id: ['branch', 'branchid', 'branch_id', 'campus', 'campusid', '主分校', '分校'],
-  subject_ids: ['subject', 'subjects', 'subjectid', 'subject_ids', '科目', '可授課科目'],
-  multi_branches: ['multibranches', 'multi_branches', '跨校', '跨校支援', '支援分校'],
+  subject_ids: ['subject', 'subjects', 'subjectid', 'subject_ids', '科目', '可授課科目', '可授科目'],
+  multi_branches: ['multibranches', 'multi_branches', '跨校', '跨校支援', '支援分校', '兼職分校'],
   line_id: ['line', 'lineid', 'line_id', 'line帳號', 'lineid帳號'],
-  status: ['status', '狀態'],
+  status: ['status', '狀態', '在職', '待審核', '停用'],
 };
 
 function normalizeHeaderToken(value) {
@@ -1258,7 +1258,7 @@ function closeBulkModal() {
 }
 
 function buildBulkCredentialText(createdRows = []) {
-  const lines = ['account,name,initial_password,branch_id'];
+  const lines = ['帳號,姓名,初始密碼,主分校編號'];
   createdRows.forEach((row) => {
     lines.push([
       row.account || '',
@@ -1290,13 +1290,13 @@ function downloadBulkCredentialsCsv() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `teacher-credentials-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `老師帳密_${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }
 
 function rowsToBulkInput(rows = []) {
-  const lines = ['account,name,phone,branch_id,subject_ids,multi_branches,line_id,status'];
+  const lines = ['帳號,姓名,電話,主分校,可授科目,兼職分校,LINE,狀態'];
   rows.forEach((row) => {
     lines.push([
       row.account || '',

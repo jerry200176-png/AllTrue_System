@@ -802,6 +802,7 @@ import {
   formatNewerCourseOverlapWarning,
   humanizeDocumentRef,
 } from '../lib/studentClassDisplay.js';
+import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 
 const props = defineProps({
   branchId: { type: [Number, String], default: null },
@@ -952,7 +953,7 @@ async function submitBatchReport() {
     });
     const json = await resp.json().catch(() => ({}));
     if (!resp.ok && resp.status !== 207) {
-      throw new Error(json.message || `送出失敗（${resp.status}）`);
+      throw new Error(humanizeApiErrorMessage(json.message || `送出失敗（${resp.status}）`));
     }
     showToast(json.message || '已送出待對帳');
     clearSelection();
@@ -984,7 +985,7 @@ async function submitBatchConfirm() {
     });
     const json = await resp.json().catch(() => ({}));
     if (!resp.ok && resp.status !== 207) {
-      throw new Error(json.message || `確認失敗（${resp.status}）`);
+      throw new Error(humanizeApiErrorMessage(json.message || `確認失敗（${resp.status}）`));
     }
     showToast(json.message || '已確認入帳');
     clearSelection();
@@ -1258,7 +1259,7 @@ async function loadAlerts() {
       return da - db;
     });
   } catch (e) {
-    error.value = e.message || '載入失敗';
+    error.value = humanizeApiErrorMessage(e.message, '載入失敗');
   } finally {
     loading.value = false;
   }
