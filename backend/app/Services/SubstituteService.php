@@ -242,8 +242,9 @@ class SubstituteService
             return [];
         }
 
-        // 對每個 slot 計算 student_count（與自身重疊的所有 slot 數，含自身）
-        // 並以該 slot 的 class_type 容量計算 remaining_capacity。
+        // Unique students across overlapping rows, then remaining vs THIS row's
+        // class type (#1889). Do not use another class type's remaining=0 to
+        // mark a mixed 1-on-3 slot full. Do not mergeBusySlots (keep metadata).
         $result = [];
         foreach ($rawSlots as $slot) {
             $occupants = [];

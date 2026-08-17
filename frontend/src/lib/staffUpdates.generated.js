@@ -176,6 +176,43 @@ export const staffUpdates = [
     "version": "2026.08.17"
   },
   {
+    "id": "staff-2026-08-17-mixed-class-type-occupancy-1889",
+    "publishedAt": "2026-08-17",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "混班時段一對三還能加",
+    "summary": "同一時段已有一對二時，一對三仍可再收，不會整格顯示已滿。",
+    "items": [
+      "一對二與一對三同一時段時，一對三還有位子不會顯示已滿。",
+      "容量會分開寫一對二和一對三；本分校上課不會寫成其他分校。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "一對二與一對三同一時段時，一對三還有位子不會顯示已滿。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "容量會分開寫一對二和一對三；本分校上課不會寫成其他分校。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-17:mixed-class-type-occupancy-1889"
+    ],
+    "date": "2026-08-17",
+    "version": "2026.08.17"
+  },
+  {
     "id": "staff-2026-08-17-lr-batch-approve-perf",
     "publishedAt": "2026-08-17",
     "effectiveAt": null,

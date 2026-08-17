@@ -1,3 +1,10 @@
+## 2026-08-17 — fix(calendar): 混班型時段一對三仍可再收（#1889）
+
+<!-- release-notes: staff_update=staff-2026-08-17-mixed-class-type-occupancy-1889 -->
+
+- 同一時段同時有一對二和一對三時，行事曆不再把整格打成已滿；一對三還能再收時會顯示剩餘名額。
+- 加課與代課選老師也依「正在排的班型」算位子。本分校已滿會寫本分校，不會讓人以為是其他分校佔用。
+
 ## 2026-08-17 — fix(billing): 堂數制改月結時作廢未入帳帳單
 
 <!-- release-notes: staff_update=staff-2026-08-17-billing-mode-convert-archive -->

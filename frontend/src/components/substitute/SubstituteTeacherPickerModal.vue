@@ -259,6 +259,7 @@
 // SubstituteTeacherPickerModal — 代課流程 UX 優化（PRD 9c058f19 FR-001~004a）
 // 卡片式老師選擇；跨分校衝堂標籤；搜尋；inline 錯誤；skeleton；送出後交由上層 handleSubmit 呼叫 API。
 import { computed, ref, watch } from 'vue';
+import { pickerSlotConflict, timesOverlap } from '../../lib/slotOccupancy.js';
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -405,11 +406,6 @@ async function refreshAvailability() {
   }
 }
 
-function overlaps(aStart, aEnd, bStart, bEnd) {
-  if (!aStart || !aEnd || !bStart || !bEnd) return false;
-  return aStart < bEnd && bStart < aEnd;
-}
-
 const enriched = computed(() => {
   const ctx = props.context || {};
   const sessionCampus = Number(ctx.session_campus_id || 0);
@@ -431,30 +427,22 @@ const enriched = computed(() => {
       const crossCampusWarn =
         sessionCampus > 0 && branchIds.length > 0 && !branchIds.includes(sessionCampus);
 
-      // FR-006: capacity-aware conflict detection.
-      // - conflict=true → ALL overlapping busy_slots are fully booked (remaining_capacity === 0)
-      // - capacityWarn=true → at least one overlapping slot has remaining_capacity > 0
-      //   (teacher has room; allow selection with orange warning)
-      // Backward compat: if remaining_capacity is missing, treat as 0 (full) to be safe.
+      // #1889: remaining vs the class type being covered, not ANY remaining=0 row.
       const slots = teacherBusyMap.value[t.id] || [];
       const hasAvailabilityData = teacherBusyMap.value[t.id] !== undefined;
-      let conflict = false;
-      let capacityWarn = false;
-      let conflictCampusId = 0;
-      for (const s of slots) {
-        if (!isHistoricalSameDateCorrection.value && overlaps(checkStart, checkEnd, s.start_time, s.end_time)) {
-          const rc = s.remaining_capacity !== undefined ? Number(s.remaining_capacity) : 0;
-          if (rc <= 0) {
-            conflict = true;
-            conflictCampusId = Number(s.campus_id || 0);
-          } else {
-            capacityWarn = true;
-          }
-        }
-      }
-      const conflictTooltip = conflict
-        ? `於 ${props.branchNameMap[conflictCampusId] || `分校#${conflictCampusId}`} 有課`
-        : '';
+      const overlapping = isHistoricalSameDateCorrection.value
+        ? []
+        : slots.filter((s) => timesOverlap(checkStart, checkEnd, s.start_time, s.end_time));
+      const {
+        conflict,
+        capacityWarn,
+        conflictTooltip,
+      } = pickerSlotConflict({
+        overlappingSlots: overlapping,
+        coveredClassType: ctx.class_type || '',
+        sessionCampusId: sessionCampus,
+        branchNameMap: props.branchNameMap || {},
+      });
 
       let teachesSubject = null;
       if (typeof props.teachesSubjectFn === 'function') {

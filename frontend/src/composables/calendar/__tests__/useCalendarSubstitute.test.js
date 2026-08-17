@@ -68,6 +68,7 @@ describe('useCalendarSubstitute', () => {
       student_id: 10,
       subject: 'Math',
       teacher_id: 5,
+      class_type: 'one_on_three',
       start_time: '17:30',
       end_time: '19:30',
     }, '2026-06-11', 8, {
@@ -80,6 +81,7 @@ describe('useCalendarSubstitute', () => {
     expect(showSubstituteV2Modal.value).toBe(true);
     expect(substituteV2SessionId.value).toBe(701);
     expect(substituteV2Context.value.student_id).toBe(10);
+    expect(substituteV2Context.value.class_type).toBe('one_on_three');
     expect(substituteV2Context.value.prefill_substitute_teacher_id).toBe(8);
     expect(substituteV2Context.value.prefill_new_start_time).toBe('18:00');
     expect(substituteV2Context.value.allow_past_same_date).toBe(true);

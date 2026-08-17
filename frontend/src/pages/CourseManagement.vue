@@ -3312,6 +3312,7 @@ const openSubstituteV2FromEdit = () => {
     student_name: form.student_name || course.student_name || '',
     subject_id: course.subject_id || null,
     subject_label: getSubjectLabel(form.subject || course.subject) || '',
+    class_type: form.class_type || course.class_type || '',
     session_date: form.session_date || '',
     start_time: (form.start_time || '').toString().slice(0, 5),
     end_time: (form.end_time || '').toString().slice(0, 5),

@@ -74,6 +74,54 @@ class ScheduleGuardrailsTest extends TestCase
             ->assertJsonPath('conflicts.0.type', 'teacher_capacity');
     }
 
+    /**
+     * #1889: a full 1-on-2 occupant must not block adding a 1-on-3 third seat.
+     * Revert-proof: the old existing-type cap loop 409s the 1-on-3 add.
+     */
+    public function test_mixed_one_on_two_full_still_allows_one_on_three_third_seat(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-guard-mixed@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-guard-mixed@example.com');
+
+        $studentA = $this->createStudent(1, '混班一對二');
+        $studentB = $this->createStudent(1, '混班一對三甲');
+        $studentC = $this->createStudent(1, '混班一對三乙');
+        $studentD = $this->createStudent(1, '混班一對二第三人');
+
+        $this->createCourseViaApi($token, $studentA->id, $teacherId, [
+            'class_type' => 'one_on_two',
+            'start_time' => '15:00',
+            'first_class_date' => '2026-08-20',
+            'days_of_week' => [4],
+        ])->assertCreated();
+
+        $this->createCourseViaApi($token, $studentB->id, $teacherId, [
+            'class_type' => 'one_on_three',
+            'start_time' => '15:00',
+            'first_class_date' => '2026-08-20',
+            'days_of_week' => [4],
+        ])->assertCreated();
+
+        $this->createCourseViaApi($token, $studentC->id, $teacherId, [
+            'class_type' => 'one_on_three',
+            'start_time' => '15:00',
+            'first_class_date' => '2026-08-20',
+            'days_of_week' => [4],
+        ])->assertCreated();
+
+        $blockedTwo = $this->createCourseViaApi($token, $studentD->id, $teacherId, [
+            'class_type' => 'one_on_two',
+            'start_time' => '15:00',
+            'first_class_date' => '2026-08-20',
+            'days_of_week' => [4],
+        ]);
+        $blockedTwo->assertStatus(409)
+            ->assertJsonPath('conflicts.0.type', 'teacher_capacity');
+        $message = (string) $blockedTwo->json('conflicts.0.message');
+        $this->assertStringContainsString('本分校', $message);
+        $this->assertStringContainsString('一對二', $message);
+    }
+
     public function test_room_capacity_three_allows_only_two_students_same_slot(): void
     {
         $token = $this->createDirectorToken([1], 'director-guard-c@example.com');

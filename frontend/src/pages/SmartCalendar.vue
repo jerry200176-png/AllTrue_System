@@ -520,6 +520,7 @@ import {
 } from '../lib/substituteApi.js';
 import { resolveSessionRowForCell } from '../lib/classSessionPick.js';
 import { weeklyTemplateOccupiesHour } from '../lib/sessionOccurrenceFilter.js';
+import { occupancyBadge, incomingClassConflict, TEACHER_SLOT_ABSOLUTE_MAX } from '../lib/slotOccupancy.js';
 // #740 Step 1：純日期工具已剝離至 lib（Leaf-First / Pure Move），測試見 calendarDateUtils.test.js
 import {
   formatLocalDate,
@@ -1721,10 +1722,7 @@ const isSlotRoomFull = (dow, hour) => {
 };
 
 // --- Conflict Detection ---
-// Rules: one_on_one max 1, one_on_two max 2, one_on_three max 3, tutoring counts as 1
-const CAPACITY_MAP = { 'one_on_one': 1, 'one_on_two': 2, 'one_on_three': 3, 'tutoring': 1, 'trial': 1 };
-
-const TEACHER_SLOT_ABSOLUTE_MAX = 3;
+// Rules: remaining seats follow the class type being added; mixed 1v2+1v3 uses unique students (#1889).
 const getSlotOccupancy = (teacherId, dow, hour) => {
   const aliasSet = getTeacherAliasIdSet(teacherId);
   const coursesAtSlot = filteredCourses.value.filter(c => {
@@ -1740,20 +1738,7 @@ const getSlotOccupancy = (teacherId, dow, hour) => {
     if (!courseOccupiesHourOnDate(c, ymd, hour)) return false;
     return true;
   });
-  if (coursesAtSlot.length === 0) {
-    return { count: 0, max: TEACHER_SLOT_ABSOLUTE_MAX, color: '#10b981', label: '', tooltip: '' };
-  }
-  const types = coursesAtSlot.map(c => String(c.class_type || ''));
-  let max = TEACHER_SLOT_ABSOLUTE_MAX;
-  if (types.includes('one_on_one')) max = 1;
-  else if (types.includes('one_on_two')) max = 2;
-  const rawCount = coursesAtSlot.length;
-  const count = Math.min(rawCount, max);
-  const remaining = Math.max(0, max - count);
-  const color = count >= max ? '#ef4444' : remaining === 1 ? '#f59e0b' : '#10b981';
-  const status = count >= max ? '已滿' : `可再收 ${remaining} 位`;
-  const tooltip = `此時段學生 ${count} 位（上限 ${max} 位，${status}）`;
-  return { count, max, color, label: `${count}/${max}`, tooltip, raw: rawCount, courses: coursesAtSlot };
+  return { ...occupancyBadge({ courses: coursesAtSlot }), raw: coursesAtSlot.length, courses: coursesAtSlot };
 };
 
 const checkConflict = () => {
@@ -1792,22 +1777,21 @@ const checkConflict = () => {
     return;
   }
 
-  const newMax = CAPACITY_MAP[modalForm.value.class_type] || 1;
-
-  if (overlapping.length >= newMax) {
-    const names = overlapping.map(c => c.student_name).join('、');
-    const typeLabel = classTypeLabel(modalForm.value.class_type);
-    conflictWarning.value = `${tName} ${dayLabel(dow)} 已有 ${overlapping.length} 堂課（${names}），${typeLabel}最多 ${newMax} 堂`;
-    return;
-  }
-
-  const blockedBy = overlapping.find(c => {
-    const existingMax = CAPACITY_MAP[c.class_type] || 1;
-    return overlapping.length >= existingMax;
+  const verdict = incomingClassConflict({
+    incomingType: modalForm.value.class_type,
+    overlappingCourses: overlapping,
   });
-  if (blockedBy) {
-    const existingLabel = classTypeLabel(blockedBy.class_type);
-    conflictWarning.value = `${tName} ${dayLabel(dow)} 已有${existingLabel}課程（${blockedBy.student_name}），已達上限無法再加課`;
+  if (verdict.blocked) {
+    const names = overlapping.map(c => c.student_name).filter(Boolean).join('、');
+    const typeLabel = classTypeLabel(modalForm.value.class_type);
+    const who = names ? `（${names}）` : '';
+    if (verdict.reason === 'one_on_one') {
+      conflictWarning.value = `${tName} ${dayLabel(dow)} 本分校已有一對一課程${who}，無法再加課`;
+    } else if (verdict.reason === 'absolute') {
+      conflictWarning.value = `${tName} ${dayLabel(dow)} 本分校已有 ${verdict.unique} 位學生${who}，上限 ${TEACHER_SLOT_ABSOLUTE_MAX} 位`;
+    } else {
+      conflictWarning.value = `${tName} ${dayLabel(dow)} 本分校已有 ${verdict.unique} 位學生${who}，已達${typeLabel}上限（${verdict.newMax} 位）`;
+    }
     return;
   }
 
