@@ -44,6 +44,15 @@ class StudentClass extends Model
         'settlement_locked_at' => 'datetime',
     ];
 
+    protected static function booted(): void
+    {
+        static::saved(function (StudentClass $course): void {
+            if ($course->wasChanged(['settlement_locked_at', 'closed_reason'])) {
+                ClassSession::resetSettlementLockCache();
+            }
+        });
+    }
+
     public function student()
     {
         return $this->belongsTo(Student::class, 'StudentID', 'id');

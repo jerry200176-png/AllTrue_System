@@ -22,6 +22,15 @@ class ClassSession extends Model
 
     private static ?bool $settlementLockColumnExists = null;
 
+    /**
+     * Request-memo of usage-settled course IDs. Null means not loaded yet.
+     * Loaded once per request so bulk ClassSession create/update does not
+     * repeat `exists(select * from StudentClass …)` per row (Sentry #1731).
+     *
+     * @var array<int, true>|null
+     */
+    private static ?array $lockedCourseIdSet = null;
+
     private ?bool $preloadedCourseSettlementLocked = null;
 
     protected $fillable = [
@@ -58,6 +67,42 @@ class ClassSession extends Model
         return $this;
     }
 
+    public static function resetSettlementLockCache(): void
+    {
+        self::$lockedCourseIdSet = null;
+        self::$settlementLockColumnExists = null;
+    }
+
+    /**
+     * @return array<int, true>
+     */
+    private static function lockedCourseIdSet(): array
+    {
+        if (self::$lockedCourseIdSet !== null) {
+            return self::$lockedCourseIdSet;
+        }
+
+        self::$settlementLockColumnExists ??= Schema::hasColumn('StudentClass', 'settlement_locked_at');
+        if (!self::$settlementLockColumnExists) {
+            return self::$lockedCourseIdSet = [];
+        }
+
+        $ids = StudentClass::query()
+            ->where(function ($query) {
+                $query->whereNotNull('settlement_locked_at')
+                    ->orWhere('closed_reason', 'usage_settled');
+            })
+            ->pluck('ID')
+            ->all();
+
+        $set = [];
+        foreach ($ids as $id) {
+            $set[(int) $id] = true;
+        }
+
+        return self::$lockedCourseIdSet = $set;
+    }
+
     private function assertCourseIsMutable(): void
     {
         $courseId = (int) $this->getAttribute('StudentClassID');
@@ -75,19 +120,7 @@ class ClassSession extends Model
             return;
         }
 
-        self::$settlementLockColumnExists ??= Schema::hasColumn('StudentClass', 'settlement_locked_at');
-        if (!self::$settlementLockColumnExists) {
-            return;
-        }
-
-        $locked = StudentClass::query()
-            ->where('ID', $courseId)
-            ->where(function ($query) {
-                $query->whereNotNull('settlement_locked_at')
-                    ->orWhere('closed_reason', 'usage_settled');
-            })
-            ->exists();
-        if ($locked) {
+        if (isset(self::lockedCourseIdSet()[$courseId])) {
             throw ValidationException::withMessages([
                 'student_class_id' => '此課程已提前結清，堂次與點名紀錄已鎖定。',
             ]);

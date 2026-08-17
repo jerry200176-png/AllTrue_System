@@ -1130,6 +1130,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession）、§R39（代課評量權限需匹配時段）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R52（代課 scheduled 例外不可缺 original_schedule_id anchor）、§R71（調課單一交易＋前端 committed gate）、§R83（原子調課必須標記 IsContractException）、**§R84（IsContractException 搬進 ClassSessionObserver 結構性保證）**、§R72（cancelled ClassSession 不得讓 scheduled 例外佔用代課老師）、§R73（跨老師 gesture 必走 atomic substitute；legacy 兩階段精準補償）、§R74（代課衝突排除同一學生續約佔用） |
 | 請假 / 順延 | §R29、**§R82（KEEP dates+append）**、§R75（SUPERSEDED）、§R77、§R81、**§R109（結案不可吃掉請假順延尾堂）** |
 | 評量 / 家長回饋 | §同天多堂課 buildEvents、§請假後不填評量、§R17（ownership 先於狀態判斷）、§R19（mark-read 不可更新 updated_at）、§R32（停用課程已上課評量不可消失）、§R39（代課評量權限需匹配時段）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R65（新增 session 狀態值必須同步全部消費端；leave 家族用集合判斷）、**§R78（nightly backfill 須 in-place restore 作廢評量，不可把 voided 當已有）**、**§R110（課程管理已上堂數須與日期晶片同源）**、**§R112（預排不可佔第 N 堂）** |
+| 效能 / Eloquent 事件 | **§R113（ClassSession creating/updating 禁逐筆 StudentClass exists；請求內一次載入已結清課程 ID）** |
 | 家長入口 UI / `releaseNotes` | §R10、§R11、§R18、§R38、§R45（家長卡僅 `PARENT_UPDATES.yml` 顯式投影 + `sync-release-notes`）、**§R85（教職員卡僅 `STAFF_UPDATES.yml`；CHANGELOG 不得自動發布）** |
 | 課表回報 | §2026-04-17 回報系統（14 條禁止項） |
 | 排課 | §start_time 格式、§智慧排課誤標取消、§R25（請假優先於 scheduled 例外）、§R29（請假不可 fallback 只寫 schedules）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R47（rescheduled 幽靈不可蓋掉同日 ClassSession）、§R49（同學生同時段去重不可用 StudentClassID 當唯一 key）、§R50（行事曆載入不可 REST 成功後再跑 fallback）、§R69（bulk reflow 先 snapshot schedule IDs，禁止 mutable natural key 連鎖更新）、§R71（mutation contract／slot idempotency／兩階段補償）、**§R80（排課摘要補登堂數≠天數；須與 session_plan 同源 expand）**、§R83（調課後 IsContractException 防 realign）、**§R84（IsContractException 結構性保證，不再靠呼叫者記得）** |
@@ -1367,5 +1368,12 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **對標**：RFC 5545 `STATUS:TENTATIVE` 與 Google Calendar `status=tentative` 不是 confirmed；Open edX 未發布草稿不進學習序；Frappe Education 行事曆只列已存 `CourseSchedule`。本系統評量 `batchSessionNumbers` 也只數實體 ClassSession。
 - **強制規則**：第 N 堂只給已物化且佔堂數的列；`isProjected` 回 `null`（畫面只留「預排」）。已排未點名的 `scheduled` 仍編號。
 - **測試必補**：已上、預排、已上 → 預排無序號，後一筆已上為 3。
+
+### R113. ClassSession 寫入不可對 StudentClass 逐筆 `exists()`（Sentry N+1 #1731，2026-08-17）
+
+- **現象**：Sentry `PHP-LARAVEL-2A` 標成 N+1 Query，offending span 為 `select exists(select * from StudentClass …)`。
+- **根因**：`ClassSession::creating`／`updating` 的結清鎖定檢查對**每一筆**堂次跑 `StudentClass::where('ID', $courseId)->exists()`。行事曆物化、補登、批次改狀態會在同一請求寫入多筆，查詢數隨堂次數線性成長。Laravel 官方建議關聯與不變式檢查用 eager load／一次載入，而不是 model event 裡逐列查（[Eloquent eager loading](https://laravel.com/docs/eloquent-relationships#eager-loading)；Sentry [N+1 Query Detection](https://docs.sentry.io/product/insights/backend/issues/n-plus-one-queries/)）。
+- **強制規則**：未走 `setPreloadedCourseSettlementLock` 時，同一請求只查一次已結清課程 ID 集合；`StudentClass` 改 `settlement_locked_at`／`closed_reason` 必須清快取。測試之間也要清，避免 RefreshDatabase 殘留。
+- **測試必補**：一次建立 8 筆不同課程堂次，不得再出現 per-ID `exists(StudentClass)`，結清鎖定查詢 ≤ 1。
 
 
