@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-08-17-mixed-class-type-occupancy-plan
+    changelog_date: "2026-08-17"
+    changelog_title: "docs(calendar): 混班型時段容量修復計畫（#1889）"
+    reason: 僅 Bug Fix Plan 與 agent 入口指標，沒有教職員可操作或可感知的產品變更。
+
   - id: silent-2026-08-17-wait-github-deploy
     changelog_date: "2026-08-17"
     changelog_title: "chore(ops): 部署監看改 python3，不再依賴 jq"

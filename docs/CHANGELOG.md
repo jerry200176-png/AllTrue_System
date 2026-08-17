@@ -1,3 +1,10 @@
+## 2026-08-17 — docs(calendar): 混班型時段容量修復計畫（#1889）
+
+<!-- release-notes: silent_ship=silent-2026-08-17-mixed-class-type-occupancy-plan -->
+
+- 記錄 in-app #238 剩餘缺口：同一時段一對二與一對三並列時，不可用較嚴上限把一對三打成已滿。
+- 本筆只有計畫與入口指標，沒有教職員可操作的產品變更。幽靈佔用修復仍見同日「同一天第二次調課」那筆。
+
 ## 2026-08-17 — fix(eval): 批次核准不再誤擋停用課；評量頁先出列表
 
 <!-- release-notes: staff_update=staff-2026-08-17-lr-batch-approve-perf -->

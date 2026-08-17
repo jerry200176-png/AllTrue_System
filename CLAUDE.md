@@ -96,6 +96,7 @@ Palace：`~/.mempalace/palace`（local-first）。權威文件仍在 git markdow
 ### G-007：智慧行事曆週檢視必須走 occurrence resolver，不可分散 if 合併
 **唯一合法路徑**：`SmartCalendar.vue` → `calendarOccurrenceMerge.js` `mergeWeekCalendarOccurrences()`。
 違反會導致課程消失或同一堂掛兩位老師。回歸測試：`npm run test:calendar`。
+混班型容量（一對二與一對三同一格）見 [`docs/plans/2026-08-17-mixed-class-type-occupancy.md`](docs/plans/2026-08-17-mixed-class-type-occupancy.md)（#1889）；剩餘依即將加入的班型算。二次調課殘影見 §R114，不可回退。
 
 ### G-008：家長入口更新卡只吃 `docs/PARENT_UPDATES.yml`（禁止 CHANGELOG 關鍵字推導）
 教職員卡唯一來源 `docs/STAFF_UPDATES.yml`（§R85）；家長卡唯一來源 `docs/PARENT_UPDATES.yml`（§R45）。CHANGELOG 只產草稿、不得自動發布。改 YAML 後跑 `npm run sync-release-notes` 並提交 generated 檔。
