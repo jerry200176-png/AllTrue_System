@@ -5813,6 +5813,7 @@ class StudentClassController extends Controller
 
         $reason = $request->input('reason'); // 'completed' or null
         $cancelRemaining = $request->boolean('cancel_remaining', true);
+        $forfeitRemaining = $request->boolean('forfeit_remaining', false);
 
         if (!$reason
             && (string) ($sc->ScheduleMode ?? '') === 'count'
@@ -5825,6 +5826,24 @@ class StudentClassController extends Controller
         // 月結制課程停用時，無論剩餘堂數，一律視為完課（completed）
         if (!$reason && (string) ($sc->ScheduleMode ?? 'count') !== 'count') {
             $reason = 'completed';
+        }
+
+        $remainingOwed = (int) ($sc->getAttribute('RemainingSessions') ?? 0);
+
+        // #1839: count-mode still owes sessions — do not settle/complete and wipe
+        // the leave-cascade tail. Pause (no settled/completed reason) stays allowed.
+        if (
+            $action === 'pause'
+            && !$forfeitRemaining
+            && in_array((string) $reason, ['settled', 'completed'], true)
+            && (string) ($sc->ScheduleMode ?? '') === 'count'
+            && $remainingOwed > 0
+        ) {
+            return response()->json([
+                'message' => "還有 {$remainingOwed} 堂未上，不能結案。請先把請假順延的堂次排好，或確認放棄餘額後再結案。",
+                'error_code' => 'remaining_sessions_unscheduled',
+                'remaining_sessions' => $remainingOwed,
+            ], 422);
         }
 
         DB::beginTransaction();

@@ -77,8 +77,13 @@ class ManualSessionBookingService
         if (!in_array((string) ($course->scheduling_policy ?? 'auto_recurrence'), [self::POLICY], true)) {
             return $this->blocked($base, 'manual_policy_required', 'Course is not configured for manual occurrence scheduling');
         }
+        // #1839: a stopped count-mode course that still owes sessions must remain
+        // bookable so directors can place the leave-cascade tail. Fully consumed
+        // stopped courses stay blocked.
         if ((int) ($course->Stop ?? 0) === 1) {
-            return $this->blocked($base, 'course_stopped', 'Course is stopped');
+            if ((int) $base['remaining_sessions'] <= 0) {
+                return $this->blocked($base, 'course_stopped', 'Course is stopped');
+            }
         }
         if ((int) ($course->SessionCount ?? 0) <= 0) {
             return $this->blocked($base, 'session_count_missing', 'Course has no purchased session count');
@@ -107,7 +112,9 @@ class ManualSessionBookingService
             return $this->blocked($base, 'manual_policy_required', '請先將課程切換為逐堂手動排課');
         }
         if ((int) ($course->Stop ?? 0) === 1) {
-            return $this->blocked($base, 'course_stopped', '課程已停用，不能新增堂次');
+            if ((int) $base['remaining_sessions'] <= 0) {
+                return $this->blocked($base, 'course_stopped', '課程已停用，不能新增堂次');
+            }
         }
         if ((int) ($course->SessionCount ?? 0) <= 0) {
             return $this->blocked($base, 'session_count_missing', '課程尚未設定購買堂數');
@@ -123,7 +130,7 @@ class ManualSessionBookingService
         if ($startDate && $date < $startDate) {
             return $this->blocked($base, 'before_course_start', '堂次日期不可早於課程開始日');
         }
-        if ($endDate && $date > $endDate) {
+        if ($endDate && $date > $endDate && (int) $base['remaining_sessions'] <= 0) {
             return $this->blocked($base, 'after_course_end', '堂次日期不可超過課程到期日');
         }
 
@@ -141,8 +148,9 @@ class ManualSessionBookingService
             ->where('sc.StudentID', (int) $course->StudentID)
             ->whereDate('cs.SessionDate', $date)
             ->whereNotIn('cs.Status', SessionStatus::futureReservationExclusionStatuses())
-            ->where(function ($query) {
-                $query->where('sc.Stop', 0)->orWhereNull('sc.Stop');
+            ->where(function ($query) use ($course) {
+                $query->where('sc.Stop', 0)->orWhereNull('sc.Stop')
+                    ->orWhere('cs.StudentClassID', (int) $course->getKey());
             })
             ->select(['cs.id', 'cs.StudentClassID', 'cs.StartTime', 'cs.EndTime'])
             ->get();

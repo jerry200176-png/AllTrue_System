@@ -231,4 +231,44 @@ class ManualSessionBookingTest extends TestCase
             ->assertJsonPath('reserved_sessions', 0)
             ->assertJsonPath('available_sessions', 3);
     }
+
+    public function test_stopped_count_course_with_remaining_sessions_can_book_past_end_date(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-08-08 10:00:00'));
+        $this->course->Stop = 1;
+        $this->course->closed_reason = 'settled';
+        $this->course->RemainingSessions = 1;
+        $this->course->UsedSessions = 2;
+        $this->course->EndDate = '2026-08-08';
+        $this->course->save();
+
+        $payload = ['session_date' => '2026-08-17', 'start_time' => '16:00'];
+
+        $this->withHeaders($this->headers())
+            ->postJson("/api/v1/student-classes/{$this->course->ID}/manual-sessions/check", $payload)
+            ->assertOk()
+            ->assertJsonPath('can_add', true);
+
+        $this->withHeaders($this->headers())
+            ->postJson("/api/v1/student-classes/{$this->course->ID}/manual-sessions", $payload)
+            ->assertCreated()
+            ->assertJsonPath('created', true);
+    }
+
+    public function test_stopped_count_course_with_no_remaining_sessions_stays_blocked(): void
+    {
+        $this->course->Stop = 1;
+        $this->course->closed_reason = 'settled';
+        $this->course->RemainingSessions = 0;
+        $this->course->UsedSessions = 3;
+        $this->course->save();
+
+        $this->withHeaders($this->headers())
+            ->postJson("/api/v1/student-classes/{$this->course->ID}/manual-sessions/check", [
+                'session_date' => Carbon::today()->addDays(7)->toDateString(),
+                'start_time' => '16:00',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('error_code', 'COURSE_STOPPED');
+    }
 }

@@ -47,6 +47,74 @@ class StudentClassCloseFutureSessionsTest extends TestCase
         }
     }
 
+    public function test_settle_is_blocked_when_count_course_still_owes_leave_cascade_sessions(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-08-08 10:00:00'));
+        try {
+            $token = $this->createDirectorToken([1]);
+            $student = $this->createStudent();
+            $course = $this->createStudentClass($student->id, [
+                'Paid' => 1,
+                'RemainingSessions' => 1,
+                'UsedSessions' => 7,
+                'SessionCount' => 8,
+                'EndDate' => '2026-08-08',
+            ]);
+            $makeupId = $this->createClassSession((int) $course->ID, '2026-08-09', 'scheduled');
+            DB::table('ClassSession')->where('id', $makeupId)->update([
+                'Note' => 'auto-extended-after-leave:ld=2026-08-05:ls=26348',
+            ]);
+
+            $this->postJson(
+                "/api/v1/student-classes/{$course->ID}/pause",
+                ['action' => 'pause', 'reason' => 'settled'],
+                ['Authorization' => "Bearer {$token}"]
+            )->assertStatus(422)
+                ->assertJsonPath('error_code', 'remaining_sessions_unscheduled')
+                ->assertJsonPath('remaining_sessions', 1);
+
+            $this->assertSame('scheduled', DB::table('ClassSession')->where('id', $makeupId)->value('Status'));
+            $this->assertStringNotContainsString('[結案取消]', (string) DB::table('ClassSession')->where('id', $makeupId)->value('Note'));
+            $course->refresh();
+            $this->assertSame(0, (int) $course->Stop);
+            $this->assertNull($course->closed_reason);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_settle_can_forfeit_remaining_count_sessions_when_explicitly_confirmed(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-08-08 10:00:00'));
+        try {
+            $token = $this->createDirectorToken([1]);
+            $student = $this->createStudent();
+            $course = $this->createStudentClass($student->id, [
+                'Paid' => 1,
+                'RemainingSessions' => 1,
+                'UsedSessions' => 7,
+                'SessionCount' => 8,
+            ]);
+            $makeupId = $this->createClassSession((int) $course->ID, '2026-08-09', 'scheduled');
+            DB::table('ClassSession')->where('id', $makeupId)->update([
+                'Note' => 'auto-extended-after-leave:ld=2026-08-05:ls=26348',
+            ]);
+
+            $this->postJson(
+                "/api/v1/student-classes/{$course->ID}/pause",
+                ['action' => 'pause', 'reason' => 'settled', 'forfeit_remaining' => true],
+                ['Authorization' => "Bearer {$token}"]
+            )->assertOk();
+
+            $this->assertSame('cancelled', DB::table('ClassSession')->where('id', $makeupId)->value('Status'));
+            $course->refresh();
+            $this->assertSame(1, (int) $course->Stop);
+            $this->assertSame('settled', $course->closed_reason);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     public function test_direct_status_update_to_inactive_cannot_leave_future_scheduled_sessions(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-04-27 10:00:00'));
