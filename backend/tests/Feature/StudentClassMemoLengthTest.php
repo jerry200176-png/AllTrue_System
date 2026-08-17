@@ -27,7 +27,8 @@ class StudentClassMemoLengthTest extends TestCase
         $course = StudentClass::create([
             'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 66, 'TeacherID' => $teacher->id,
             'by1' => 1, 'Period' => 2, 'StartDate' => '2026-01-03', 'time' => '13:00:00',
-            'SessionCount' => 2, 'SessionDuration' => 120, 'RemainingSessions' => 2, 'UsedSessions' => 0, 'Stop' => 0,
+            'TotalHours' => 4, 'SessionCount' => 2, 'SessionDuration' => 120,
+            'RemainingSessions' => 2, 'UsedSessions' => 0, 'Stop' => 0,
             'Memo' => '短備註',
         ]);
 
