@@ -1,3 +1,8 @@
+## 2026-08-17 — fix(security): 手動調整堂數寫入稽核事件
+
+<!-- release-notes: silent_ship=silent-2026-08-17-session-balance-audit-1811 -->
+
+- 主任改 `SessionCount`／`RemainingSessions` 時寫入 `security_audit_events`（操作者雜湊、舊→新堂數）；不含學生姓名。
 ## 2026-08-17 — fix(ui): 主任畫面技術語言再清一波
 
 <!-- release-notes: staff_update=staff-2026-08-17-ui-human-copy-sweep -->

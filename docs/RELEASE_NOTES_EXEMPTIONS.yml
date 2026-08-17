@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-08-17-session-balance-audit-1811
+    changelog_date: "2026-08-17"
+    changelog_title: "fix(security): 手動調整堂數寫入稽核事件"
+    reason: 僅後端稽核事件與測試；主任改堂數畫面與結果不變。
+
   - id: silent-2026-08-17-ispaid-b1
     changelog_date: "2026-08-17"
     changelog_title: "fix(billing): 課程列表已繳改認足額收款（TD-083 B1）"

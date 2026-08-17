@@ -10,6 +10,7 @@ use App\Models\Payment;
 use App\Models\PaymentReport;
 use App\Models\Schedule;
 use App\Models\ScheduleAuditLog;
+use App\Models\SecurityAuditEvent;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
@@ -1510,6 +1511,7 @@ class StudentClassController extends Controller
         $oldChargeSnapshot = (int) ($studentClass->Charge ?? 0);
         $oldRateSnapshot = (float) ($studentClass->Rate ?? 0);
         $oldSessionCountSnapshot = (int) ($studentClass->SessionCount ?? 0);
+        $oldRemainingSessionsSnapshot = (int) ($studentClass->RemainingSessions ?? 0);
         $oldTotalHoursSnapshot = (int) ($studentClass->TotalHours ?? 0);
         $oldTeacherSnapshot = (int) ($studentClass->TeacherID ?? 0);
         $oldRateUnitSnapshot = strtolower(trim((string) ($studentClass->rate_unit ?? 'session')));
@@ -1519,6 +1521,34 @@ class StudentClassController extends Controller
 
         $studentClass->update($mapped);
         $studentClass->refresh();
+
+        // #1811: manual SessionCount / RemainingSessions edits need who/when/old→new evidence.
+        $sessionCountTouched = array_key_exists('SessionCount', $mapped)
+            && (int) ($studentClass->SessionCount ?? 0) !== $oldSessionCountSnapshot;
+        $remainingTouched = array_key_exists('RemainingSessions', $mapped)
+            && (int) ($studentClass->RemainingSessions ?? 0) !== $oldRemainingSessionsSnapshot;
+        if ($sessionCountTouched || $remainingTouched) {
+            $actor = $request->attributes->get('auth_user');
+            $campusId = (int) (optional($studentClass->student)->CampusID ?: 0) ?: null;
+            SecurityAuditEvent::append(
+                'student_class.session_balance_adjust',
+                'success',
+                [
+                    'actor_type' => 'user',
+                    'actor_id' => $actor?->id,
+                    'subject_type' => 'student_class',
+                    'subject_id' => $studentClass->getKey(),
+                    'campus_id' => $campusId,
+                ],
+                [
+                    'old_session_count' => $oldSessionCountSnapshot,
+                    'new_session_count' => (int) ($studentClass->SessionCount ?? 0),
+                    'old_remaining_sessions' => $oldRemainingSessionsSnapshot,
+                    'new_remaining_sessions' => (int) ($studentClass->RemainingSessions ?? 0),
+                    'reason_code' => 'manual_update',
+                ]
+            );
+        }
 
         if (array_key_exists('TeacherID', $mapped)) {
             $newTeacherId = (int) ($studentClass->TeacherID ?? 0);
