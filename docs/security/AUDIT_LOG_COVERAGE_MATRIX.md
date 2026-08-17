@@ -33,6 +33,7 @@ Pulled from the live codebase (`grep` over `backend/app/Http/Controllers`, `back
 | Role/type changes (`User.type`) | ⚠️ **Not verified this pass** | No dedicated audit model found; needs a follow-up grep specifically for `->type =` writes on `User` |
 | PII export (students.xlsx) | ✅ Yes (#1812) | `SecurityAuditEvent` `pii.export.students` on `GET /api/v1/students/export` (hashed actor, row/campus scope counts; no names/phones) |
 | StudentClass SessionCount / RemainingSessions manual edit | ✅ Yes (#1811) | `SecurityAuditEvent` `student_class.session_balance_adjust` on `StudentClassController::update` when counts change (old→new ints only) |
+| super_admin director password reset | ✅ Yes (#1813) | `SecurityAuditEvent` `director.password.reset` on `DirectorAccountController::resetPassword` (hashed actor/subject; temp password never in metadata) |
 | Sensitive admin session/impersonation (if any exists) | ⚠️ **Not verified this pass** | Out of scope for this grep pass |
 
 ## Critical gaps → tracked as follow-up
