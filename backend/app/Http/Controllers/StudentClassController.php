@@ -5828,6 +5828,8 @@ class StudentClassController extends Controller
             $reason = 'completed';
         }
 
+        $remainingOwed = (int) ($sc->getAttribute('RemainingSessions') ?? 0);
+
         // #1839: count-mode still owes sessions — do not settle/complete and wipe
         // the leave-cascade tail. Pause (no settled/completed reason) stays allowed.
         if (
@@ -5835,13 +5837,12 @@ class StudentClassController extends Controller
             && !$forfeitRemaining
             && in_array((string) $reason, ['settled', 'completed'], true)
             && (string) ($sc->ScheduleMode ?? '') === 'count'
-            && (int) ($sc->RemainingSessions ?? 0) > 0
+            && $remainingOwed > 0
         ) {
-            $remaining = (int) $sc->RemainingSessions;
             return response()->json([
-                'message' => "還有 {$remaining} 堂未上，不能結案。請先把請假順延的堂次排好，或確認放棄餘額後再結案。",
+                'message' => "還有 {$remainingOwed} 堂未上，不能結案。請先把請假順延的堂次排好，或確認放棄餘額後再結案。",
                 'error_code' => 'remaining_sessions_unscheduled',
-                'remaining_sessions' => $remaining,
+                'remaining_sessions' => $remainingOwed,
             ], 422);
         }
 

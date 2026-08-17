@@ -80,8 +80,10 @@ class ManualSessionBookingService
         // #1839: a stopped count-mode course that still owes sessions must remain
         // bookable so directors can place the leave-cascade tail. Fully consumed
         // stopped courses stay blocked.
-        if ((int) ($course->Stop ?? 0) === 1 && (int) $base['remaining_sessions'] <= 0) {
-            return $this->blocked($base, 'course_stopped', 'Course is stopped');
+        if ((int) ($course->Stop ?? 0) === 1) {
+            if ((int) $base['remaining_sessions'] <= 0) {
+                return $this->blocked($base, 'course_stopped', 'Course is stopped');
+            }
         }
         if ((int) ($course->SessionCount ?? 0) <= 0) {
             return $this->blocked($base, 'session_count_missing', 'Course has no purchased session count');
@@ -109,8 +111,10 @@ class ManualSessionBookingService
         if (!in_array((string) ($course->scheduling_policy ?? 'auto_recurrence'), [self::POLICY], true)) {
             return $this->blocked($base, 'manual_policy_required', '請先將課程切換為逐堂手動排課');
         }
-        if ((int) ($course->Stop ?? 0) === 1 && (int) $base['remaining_sessions'] <= 0) {
-            return $this->blocked($base, 'course_stopped', '課程已停用，不能新增堂次');
+        if ((int) ($course->Stop ?? 0) === 1) {
+            if ((int) $base['remaining_sessions'] <= 0) {
+                return $this->blocked($base, 'course_stopped', '課程已停用，不能新增堂次');
+            }
         }
         if ((int) ($course->SessionCount ?? 0) <= 0) {
             return $this->blocked($base, 'session_count_missing', '課程尚未設定購買堂數');
@@ -146,7 +150,7 @@ class ManualSessionBookingService
             ->whereNotIn('cs.Status', SessionStatus::futureReservationExclusionStatuses())
             ->where(function ($query) use ($course) {
                 $query->where('sc.Stop', 0)->orWhereNull('sc.Stop')
-                    ->orWhere('cs.StudentClassID', (int) $course->ID);
+                    ->orWhere('cs.StudentClassID', (int) $course->getKey());
             })
             ->select(['cs.id', 'cs.StudentClassID', 'cs.StartTime', 'cs.EndTime'])
             ->get();
