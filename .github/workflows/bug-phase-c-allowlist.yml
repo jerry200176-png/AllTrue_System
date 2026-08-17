@@ -206,6 +206,11 @@ jobs:
               "rev" => "a2e824ca103a5813c37f449a92b7ea96609c57db",
               "deploy" => "31690470136",
             ],
+            237 => [
+              "reply" => "已修好並上線：課程管理卡片上的已上堂數，現在會跟展開後的上課日期用同一套計算，剛點名的也會算進去。請重新整理課程管理後確認；若已正常請按「確認已修好」，若仍不對請按「問題仍存在」。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/1834",
+              "rev" => "a69d1d0f5a43f736dfa12f918670fed382be9b1d",
+              "deploy" => "32015729177",
+            ],
           ];
           $results = [];
           foreach ($items as $bugId => $cfg) {
