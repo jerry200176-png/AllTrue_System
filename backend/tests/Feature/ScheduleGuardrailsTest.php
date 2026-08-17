@@ -102,13 +102,6 @@ class ScheduleGuardrailsTest extends TestCase
             'days_of_week' => [4],
         ])->assertCreated();
 
-        $this->createCourseViaApi($token, $studentC->id, $teacherId, [
-            'class_type' => 'one_on_three',
-            'start_time' => '15:00',
-            'first_class_date' => '2026-08-20',
-            'days_of_week' => [4],
-        ])->assertCreated();
-
         $blockedTwo = $this->createCourseViaApi($token, $studentD->id, $teacherId, [
             'class_type' => 'one_on_two',
             'start_time' => '15:00',
@@ -120,6 +113,13 @@ class ScheduleGuardrailsTest extends TestCase
         $message = (string) $blockedTwo->json('conflicts.0.message');
         $this->assertStringContainsString('本分校', $message);
         $this->assertStringContainsString('一對二', $message);
+
+        $this->createCourseViaApi($token, $studentC->id, $teacherId, [
+            'class_type' => 'one_on_three',
+            'start_time' => '15:00',
+            'first_class_date' => '2026-08-20',
+            'days_of_week' => [4],
+        ])->assertCreated();
     }
 
     public function test_room_capacity_three_allows_only_two_students_same_slot(): void
