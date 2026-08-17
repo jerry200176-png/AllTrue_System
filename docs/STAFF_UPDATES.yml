@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-17-lr-batch-approve-perf
+    published_at: "2026-08-17"
+    audiences:
+      - director
+    importance: digest
+    title: 學習評量批次核准與進頁速度
+    summary: 已停用課程裡已上過的待審評量可以批次核准；進頁會先出列表，比較不會轉很久。
+    items:
+      - category: fixed
+        text: 勾選已停用課程、但堂次已上的待審評量時，批次核准不再整批失敗。
+      - category: improved
+        text: 學習評量表會先顯示列表，補建與課表在背景載入。
+    source_refs:
+      - "changelog:2026-08-17:lr-batch-approve-perf"
+
   - id: staff-2026-08-17-fillrate-completed
     published_at: "2026-08-17"
     audiences:
