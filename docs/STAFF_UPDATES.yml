@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-17-fillrate-completed
+    published_at: "2026-08-17"
+    audiences:
+      - director
+    importance: digest
+    title: 已完成堂次也算進評量填寫率
+    summary: 課堂狀態是「已完成」時，也會跟已到班、遲到一樣算進老師評量填寫率。
+    items:
+      - category: fixed
+        text: 主任報表不再漏掉已完成的堂次。
+      - category: improved
+        text: 代課老師填了評量的已完成堂次，會算在代課老師名下。
+    source_refs:
+      - "changelog:2026-08-17:fillrate-completed"
+
   - id: staff-2026-08-17-projected-ordinal
     published_at: "2026-08-17"
     audiences:

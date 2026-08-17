@@ -1,3 +1,17 @@
+## 2026-08-17 — fix(reports): 已完成堂次計入老師評量填寫率
+
+<!-- release-notes: staff_update=staff-2026-08-17-fillrate-completed -->
+
+- 主任看的老師評量填寫率，把狀態為「已完成」的課堂跟已到班、遲到一樣算進去。
+- 代課老師的填寫率不會再因為堂次被標成已完成而漏掉。
+
+## 2026-08-17 — chore(ops): 部署監看改 python3，不再依賴 jq
+
+<!-- release-notes: silent_ship=silent-2026-08-17-wait-github-deploy -->
+
+- 新增 `scripts/wait-github-deploy.sh`：用 `gh --json` + python3 等 `deploy.yml` 成功，再核對線上 `version.json`。
+- 本機 WSL 沒裝 jq 時不再誤判部署失敗。
+
 ## 2026-08-17 — fix(perf): 堂次寫入不再逐筆查課程結清鎖定
 
 <!-- release-notes: silent_ship=silent-2026-08-17-session-settlement-lock-nplusone-1731 -->

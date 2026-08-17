@@ -137,6 +137,43 @@ export const staffUpdates = [
     "version": "2026.08.17"
   },
   {
+    "id": "staff-2026-08-17-fillrate-completed",
+    "publishedAt": "2026-08-17",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "已完成堂次也算進評量填寫率",
+    "summary": "課堂狀態是「已完成」時，也會跟已到班、遲到一樣算進老師評量填寫率。",
+    "items": [
+      "主任報表不再漏掉已完成的堂次。",
+      "代課老師填了評量的已完成堂次，會算在代課老師名下。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "主任報表不再漏掉已完成的堂次。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "代課老師填了評量的已完成堂次，會算在代課老師名下。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-17:fillrate-completed"
+    ],
+    "date": "2026-08-17",
+    "version": "2026.08.17"
+  },
+  {
     "id": "staff-2026-08-17-course-memo-length-1732",
     "publishedAt": "2026-08-17",
     "effectiveAt": null,
