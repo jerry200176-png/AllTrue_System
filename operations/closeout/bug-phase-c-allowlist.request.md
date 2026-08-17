@@ -1,5 +1,7 @@
 # Request: Phase-C allowlist resolve
 
+# kickoff 2026-08-17T10:47:00Z — Phase C write-back for #238: same-day second-reschedule occupancy fix PR #1886 merged as `2d7ae86a043edbe226765c92476e5883ed06dd49`, Deploy to Pi run `32021552314` succeeded. The fix only changes occupancy filtering (leftover scheduled rows after a same-day move no longer occupy); no production course, quota, receipt, payment, or configuration mutation is authorized or required. Public reply links GitHub issue #1885 and requests reporter verification.
+
 # kickoff 2026-08-17T09:40:00Z — Phase C write-back for #237: course attended-count fix PR #1877 merged as `a69d1d0f5a43f736dfa12f918670fed382be9b1d`, Deploy to Pi run `32015729177` succeeded. The fix only changes client-side attended-count / expand refetch / session-mode detection; no production course, quota, receipt, payment, or configuration mutation is authorized or required. Public reply links GitHub issue #1834 and requests reporter verification.
 
 # kickoff 2026-08-15T06:56:00Z — Phase C write-back for #235: projected campus fix PR #1794 merged as `a6a9c1892133ae818570d18b3468f75c6076a5c2`; Deploy to Pi run `31870543472` succeeded. Production `version.json` build_sha `a6a9c1892133ae818570d18b3468f75c6076a5c2` at 2026-08-15T06:54:26Z; health `{"status":"ok"}`. Public reply asks reporter to re-test teacher home upcoming sessions; no production business-data mutation.
