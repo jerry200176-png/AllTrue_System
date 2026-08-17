@@ -1129,7 +1129,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | 薪資 / 併堂 | §兼職薪資 concurrency、§同層級併堂 v1.4、§契約時長為準 |
 | 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession）、§R39（代課評量權限需匹配時段）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R52（代課 scheduled 例外不可缺 original_schedule_id anchor）、§R71（調課單一交易＋前端 committed gate）、§R83（原子調課必須標記 IsContractException）、**§R84（IsContractException 搬進 ClassSessionObserver 結構性保證）**、§R72（cancelled ClassSession 不得讓 scheduled 例外佔用代課老師）、§R73（跨老師 gesture 必走 atomic substitute；legacy 兩階段精準補償）、§R74（代課衝突排除同一學生續約佔用） |
 | 請假 / 順延 | §R29、**§R82（KEEP dates+append）**、§R75（SUPERSEDED）、§R77、§R81、**§R109（結案不可吃掉請假順延尾堂）** |
-| 評量 / 家長回饋 | §同天多堂課 buildEvents、§請假後不填評量、§R17（ownership 先於狀態判斷）、§R19（mark-read 不可更新 updated_at）、§R32（停用課程已上課評量不可消失）、§R39（代課評量權限需匹配時段）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R65（新增 session 狀態值必須同步全部消費端；leave 家族用集合判斷）、**§R78（nightly backfill 須 in-place restore 作廢評量，不可把 voided 當已有）**、**§R110（課程管理已上堂數須與日期晶片同源）** |
+| 評量 / 家長回饋 | §同天多堂課 buildEvents、§請假後不填評量、§R17（ownership 先於狀態判斷）、§R19（mark-read 不可更新 updated_at）、§R32（停用課程已上課評量不可消失）、§R39（代課評量權限需匹配時段）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R65（新增 session 狀態值必須同步全部消費端；leave 家族用集合判斷）、**§R78（nightly backfill 須 in-place restore 作廢評量，不可把 voided 當已有）**、**§R110（課程管理已上堂數須與日期晶片同源）**、**§R112（預排不可佔第 N 堂）** |
 | 家長入口 UI / `releaseNotes` | §R10、§R11、§R18、§R38、§R45（家長卡僅 `PARENT_UPDATES.yml` 顯式投影 + `sync-release-notes`）、**§R85（教職員卡僅 `STAFF_UPDATES.yml`；CHANGELOG 不得自動發布）** |
 | 課表回報 | §2026-04-17 回報系統（14 條禁止項） |
 | 排課 | §start_time 格式、§智慧排課誤標取消、§R25（請假優先於 scheduled 例外）、§R29（請假不可 fallback 只寫 schedules）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R47（rescheduled 幽靈不可蓋掉同日 ClassSession）、§R49（同學生同時段去重不可用 StudentClassID 當唯一 key）、§R50（行事曆載入不可 REST 成功後再跑 fallback）、§R69（bulk reflow 先 snapshot schedule IDs，禁止 mutable natural key 連鎖更新）、§R71（mutation contract／slot idempotency／兩階段補償）、**§R80（排課摘要補登堂數≠天數；須與 session_plan 同源 expand）**、§R83（調課後 IsContractException 防 realign）、**§R84（IsContractException 結構性保證，不再靠呼叫者記得）** |
@@ -1359,5 +1359,13 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
   2. 更新／建課 API 超長回 422 `memo_too_long`，禁止落到 SQL 500。
   3. 前端 textarea `maxlength` 必須跟後端常數同一數字。
 - **測試必補**：600 字中文備註 PUT 成功；上限 +1 → 422 且資料未改；MySQL `DATA_TYPE` 為 text。
+
+### R112. 預排晶片不可佔「第 N 堂」（課程管理日期列，2026-08-17）
+
+- **現象**：方案課「本科已上 5 堂」，但中間一筆尚未建成 ClassSession 的預排被標成第 3 堂，後面已上的變成第 4–6 堂。
+- **根因**：`getSessionNumber` 對 `sessionUnits()` 逐筆加一，只跳過請假／超排。預排是 session-dates 展開（`isProjected`），不是已確認堂次，卻跟已上／已排共用序號。
+- **對標**：RFC 5545 `STATUS:TENTATIVE` 與 Google Calendar `status=tentative` 不是 confirmed；Open edX 未發布草稿不進學習序；Frappe Education 行事曆只列已存 `CourseSchedule`。本系統評量 `batchSessionNumbers` 也只數實體 ClassSession。
+- **強制規則**：第 N 堂只給已物化且佔堂數的列；`isProjected` 回 `null`（畫面只留「預排」）。已排未點名的 `scheduled` 仍編號。
+- **測試必補**：已上、預排、已上 → 預排無序號，後一筆已上為 3。
 
 

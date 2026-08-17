@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
 import { useCourseSessionsDisplay } from '../useCourseSessionsDisplay.js';
-import { sessionViewModelFromClassSessionsRow } from '../../../lib/classSessionsApi.js';
+import { sessionViewModelFromClassSessionsRow, createSessionViewModel } from '../../../lib/classSessionsApi.js';
 
 /**
  * Regression for 2026-07-29: useCourseSessionsDisplay() referenced an
@@ -102,5 +102,64 @@ describe('useCourseSessionsDisplay', () => {
     expect(attendedChips).toHaveLength(7);
     expect(display.getCompletedSessionCount(monthlyCourse)).toBe(7);
     expect(display.getSessionStateLabel(monthlyCourse, '2026-08-16', 7)).toBe('已上');
+  });
+
+  it('does not let a 預排 chip steal 第N堂 from later attended sessions', () => {
+    const course = {
+      id: 4101,
+      ScheduleMode: 'count',
+      payment_type: 'session',
+      PackageID: 56,
+      sessions_purchased: 56,
+      SessionCount: 56,
+    };
+    const attended = [
+      { id: 11, student_class_id: 4101, session_date: '2026-07-28', start_time: '18:00', end_time: '20:00', status: 'attended' },
+      { id: 12, student_class_id: 4101, session_date: '2026-07-31', start_time: '18:00', end_time: '20:00', status: 'attended', is_contract_exception: true },
+      { id: 14, student_class_id: 4101, session_date: '2026-08-07', start_time: '16:00', end_time: '18:00', status: 'attended', is_contract_exception: true },
+      { id: 15, student_class_id: 4101, session_date: '2026-08-11', start_time: '18:00', end_time: '20:00', status: 'attended' },
+      { id: 16, student_class_id: 4101, session_date: '2026-08-14', start_time: '16:00', end_time: '18:00', status: 'attended', is_contract_exception: true },
+    ];
+    const projected = createSessionViewModel({
+      id: null,
+      kind: 'projected',
+      studentClassId: 4101,
+      date: '2026-08-04',
+      startTime: '18:00',
+      endTime: '20:00',
+      status: 'projected',
+      isProjected: true,
+    });
+    const scheduled = sessionViewModelFromClassSessionsRow({
+      id: 17,
+      student_class_id: 4101,
+      session_date: '2026-08-18',
+      start_time: '18:00',
+      end_time: '20:00',
+      status: 'scheduled',
+    });
+
+    const display = useCourseSessionsDisplay({
+      sessionsByCourse: ref({
+        4101: [
+          ...attended.map(sessionViewModelFromClassSessionsRow),
+          projected,
+          scheduled,
+        ],
+      }),
+      completedSessionDatesByCourse: ref({}),
+      fetchClassSessionsFn: vi.fn(),
+      supabase: { auth: { getSession: vi.fn() } },
+      branchId: ref(1),
+    });
+
+    expect(display.getSessionNumber(course, '2026-07-28', 11)).toBe(1);
+    expect(display.getSessionNumber(course, '2026-07-31', 12)).toBe(2);
+    expect(display.getSessionNumber(course, '2026-08-04', null)).toBeNull();
+    expect(display.getSessionNumber(course, '2026-08-07', 14)).toBe(3);
+    expect(display.getSessionNumber(course, '2026-08-11', 15)).toBe(4);
+    expect(display.getSessionNumber(course, '2026-08-14', 16)).toBe(5);
+    expect(display.getSessionNumber(course, '2026-08-18', 17)).toBe(6);
+    expect(display.getCompletedSessionCount(course)).toBe(5);
   });
 });
