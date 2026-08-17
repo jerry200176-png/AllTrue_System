@@ -1,17 +1,8 @@
-/**
- * Mixed class-type slot occupancy (#1889).
- *
- * Remaining seats = capacity(incoming / covered class type) − unique students.
- * A full 1-on-2 must not mark a mixed 1-on-3 slot full.
- * Keep in sync with SubstituteService::capacityForClassType and
- * ScheduleGuardService (absolute teacher max = 3).
- */
-
+/** Mixed occupancy (#1889): remaining = capacity(incoming type) − unique students. */
 import { classTypeLabel } from './calendarFormat.js';
 
 export const TEACHER_SLOT_ABSOLUTE_MAX = 3;
 
-/** Calendar badge / add-course caps (tutoring counts as 1 on the grid). */
 export const CLASS_CAPACITY = {
   one_on_one: 1,
   one_on_two: 2,
@@ -20,7 +11,7 @@ export const CLASS_CAPACITY = {
   trial: 1,
 };
 
-/** Availability busy_slots remaining is computed with this map on the backend. */
+/** Backend availability remaining uses tutoring=4; calendar badge uses 1. */
 export const AVAILABILITY_CLASS_CAPACITY = {
   one_on_one: 1,
   one_on_two: 2,
