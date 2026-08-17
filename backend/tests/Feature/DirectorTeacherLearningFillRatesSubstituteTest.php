@@ -22,10 +22,21 @@ class DirectorTeacherLearningFillRatesSubstituteTest extends TestCase
 
     public function test_attended_session_credits_substitute_teacher_not_original(): void
     {
+        $this->assertSubstituteFillRateCreditsT2('attended');
+    }
+
+    public function test_completed_status_also_credits_substitute_teacher(): void
+    {
+        $this->assertSubstituteFillRateCreditsT2('completed');
+    }
+
+    private function assertSubstituteFillRateCreditsT2(string $sessionStatus): void
+    {
         $campusId = 1;
+        $suffix = substr(bin2hex(random_bytes(3)), 0, 6);
 
         $director = User::create([
-            'LoginName' => 'dir-fillrate@example.com', 'Name' => '主任', 'PSW' => 'x',
+            'LoginName' => "dir-fillrate-{$suffix}@example.com", 'Name' => '主任', 'PSW' => 'x',
             'type' => 'A', 'phone' => '0910000002', 'MustChangePassword' => false,
         ]);
         UserCampus::create(['CampusID' => $campusId, 'UserID' => $director->id, 'Admin' => 1, 'Approved' => 1]);
@@ -33,13 +44,13 @@ class DirectorTeacherLearningFillRatesSubstituteTest extends TestCase
         AuthToken::create(['user_id' => $director->id, 'token' => $dirToken, 'expires_at' => now()->addDay()]);
 
         $t1 = User::create([
-            'LoginName' => 't1-fillrate@example.com', 'Name' => '契約老師T1', 'PSW' => 'x',
+            'LoginName' => "t1-fillrate-{$suffix}@example.com", 'Name' => '契約老師T1', 'PSW' => 'x',
             'type' => 'T', 'phone' => '0911003001', 'MustChangePassword' => false,
         ]);
         UserCampus::create(['CampusID' => $campusId, 'UserID' => $t1->id, 'Admin' => 0, 'Approved' => 1]);
 
         $t2 = User::create([
-            'LoginName' => 't2-fillrate@example.com', 'Name' => '代課老師T2', 'PSW' => 'x',
+            'LoginName' => "t2-fillrate-{$suffix}@example.com", 'Name' => '代課老師T2', 'PSW' => 'x',
             'type' => 'T', 'phone' => '0911003002', 'MustChangePassword' => false,
         ]);
         UserCampus::create(['CampusID' => $campusId, 'UserID' => $t2->id, 'Admin' => 0, 'Approved' => 1]);
@@ -61,7 +72,7 @@ class DirectorTeacherLearningFillRatesSubstituteTest extends TestCase
         $sessionDate = now()->toDateString();
         $cs = ClassSession::create([
             'StudentClassID' => $sc->ID, 'SessionDate' => $sessionDate,
-            'StartTime' => '14:00', 'EndTime' => '16:00', 'Status' => 'attended',
+            'StartTime' => '14:00', 'EndTime' => '16:00', 'Status' => $sessionStatus,
         ]);
 
         $anchor = Schedule::create([
@@ -115,8 +126,8 @@ class DirectorTeacherLearningFillRatesSubstituteTest extends TestCase
         $t1Row = $rows->firstWhere('teacher_id', (int) $t1->id);
         $t2Row = $rows->firstWhere('teacher_id', (int) $t2->id);
 
-        $this->assertNull($t1Row, '契約老師 T1 被代課後不應計入其填寫率統計');
-        $this->assertNotNull($t2Row, '代課老師 T2 應計入填寫率統計');
+        $this->assertNull($t1Row, "契約老師 T1 被代課後不應計入其填寫率統計（status={$sessionStatus}）");
+        $this->assertNotNull($t2Row, "代課老師 T2 應計入填寫率統計（status={$sessionStatus}）");
         $this->assertSame(1, (int) $t2Row['sessions_attended']);
         $this->assertSame(1, (int) $t2Row['learning_records_filled']);
     }

@@ -3116,7 +3116,8 @@ class ClassSessionController extends Controller
             ->leftJoin(DB::raw($lrSubSql . ' AS lr'), 'lr.ClassSessionID', '=', 'cs.id')
             ->where('s.CampusID', $branchId)
             ->whereBetween(DB::raw('DATE(cs.SessionDate)'), [$start->toDateString(), $end->toDateString()])
-            ->whereRaw('LOWER(cs.Status) IN ("attended", "late")')
+            // completed is a past attended-equivalent used by schedule reconcile; omit it and substitute fill-rate silently drops those rows.
+            ->whereRaw('LOWER(cs.Status) IN ("attended", "late", "completed")')
             ->select([
                 DB::raw('COALESCE(sub_sched.teacher_id, sc.TeacherID) AS teacher_id'),
                 DB::raw('COUNT(*) AS session_total'),

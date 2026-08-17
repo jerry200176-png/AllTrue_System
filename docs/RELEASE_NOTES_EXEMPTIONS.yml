@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-08-17-wait-github-deploy
+    changelog_date: "2026-08-17"
+    changelog_title: "chore(ops): 部署監看改 python3，不再依賴 jq"
+    reason: 僅 Agent／工程師本機監看腳本；教職員畫面與操作不變。
+
   - id: silent-2026-08-17-session-settlement-lock-nplusone-1731
     changelog_date: "2026-08-17"
     changelog_title: "fix(perf): 堂次寫入不再逐筆查課程結清鎖定"
