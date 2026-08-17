@@ -1,3 +1,10 @@
+## 2026-08-17 — fix(ui): 預排日期不佔「第幾堂」
+
+<!-- release-notes: staff_update=staff-2026-08-17-projected-ordinal -->
+
+- 還沒建成正式課堂的預排日期，只顯示「預排」，不再插入已上課堂的編號。
+- 已排進課表、尚未點名的堂次仍照順序編號。
+
 ## 2026-08-17 — fix(courses): 課程備註可存較長繳費說明
 
 <!-- release-notes: staff_update=staff-2026-08-17-course-memo-length-1732 -->
