@@ -98,6 +98,43 @@ export const staffUpdates = [
     "version": "2026.08.17"
   },
   {
+    "id": "staff-2026-08-17-count-settle-makeup-1839",
+    "publishedAt": "2026-08-17",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "還有堂數時不能直接結案",
+    "summary": "學生還有未上的堂次時，結案會被擋住，避免請假補課被系統取消。",
+    "items": [
+      "堂數制課程還有未上堂次時，催繳名單不能結案；請先把請假順延的課排好。",
+      "若課程已被結案但還有餘額，仍可把剩下的堂次排進去。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "堂數制課程還有未上堂次時，催繳名單不能結案；請先把請假順延的課排好。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "若課程已被結案但還有餘額，仍可把剩下的堂次排進去。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-17:count-settle-makeup-1839"
+    ],
+    "date": "2026-08-17",
+    "version": "2026.08.17"
+  },
+  {
     "id": "staff-2026-08-17-billing-scan-density",
     "publishedAt": "2026-08-17",
     "effectiveAt": null,

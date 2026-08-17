@@ -236,7 +236,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 | 家族 | 共同根因（不變式被違反） | 前例 | 必補回歸測試守門 |
 |------|--------------------------|------|------------------|
-| **F1 狀態收尾缺口** | 主檔狀態變更（`Stop=1` / 老師 `suspended` / 月結結算）後，**未對齊未來 `ClassSession.scheduled` / `schedules` / 老師名額**，殘留堂次續顯示 | #151、#427、#99、行290、§R32、§R59 | 停用/結算課程或老師後，未來 scheduled 堂次不得再出現在行事曆/名額；已上堂次須保留 |
+| **F1 狀態收尾缺口** | 主檔狀態變更（`Stop=1` / 老師 `suspended` / 月結結算）後，**未對齊未來 `ClassSession.scheduled` / `schedules` / 老師名額**，殘留堂次續顯示；**反面**：堂數制仍有 `RemainingSessions` 時不得把請假順延尾堂當幽靈取消 | #151、#427、#99、**#1839**、行290、§R32、§R59、**§R109** | 停用/結算課程或老師後，未來 scheduled 堂次不得再出現在行事曆/名額；已上堂次須保留；**count + RemainingSessions>0 禁止 settled/completed 除非 `forfeit_remaining`** |
 | **F2 月結續期語意** | 續期未依**當期實際堂數**重算金額/堂次；收據未綁 `billing_period` | #149、§R22、§R26、#554、#594 | 續期＝新一期+結算舊期；收據金額=當期堂數×費率、含結算月 |
 | **F3 排課堂次生成** | 建課後未依 `week/time` 契約**推算/補齊完整未來堂次**（只生成片段） | #148、#497、#539、#424、§R22、§R23、§R64（週日 slot 全滅→0 元月結） | 建課後即依契約生成完整未來 ClassSession；預排日不得反白/dead-end；weekday 比對先 `isoWeekday()` 正規化 |
 | **F4 共用堂數（一對三）** | `Charge` 未計算（=0）；**購買堂數 vs 實體 ClassSession 數**呈現混淆；把方案池總堂數當成員課程應物化列數 → 假「不一致」警告；堂數制 projected chip 誤呼叫 ensure-projected；把方案池剩餘數當成員可排能力 | #147、#553、#430、#448、#440、§R21、§R24、#1465；架構後續見 **ADR-006**（Commitment→materialize→pool coverage；非餘額猜堂） | 池／成員排課／已用分欄；package under→info 且**成員課程 UI 不顯示方案池剩餘**；無 allocation aggregate 前不推導尚可排／未排 N；count projected 不呼叫 ensure-projected；物化 affordance 僅 `ScheduleMode=date` |
@@ -1126,7 +1126,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | 繳費 / 學收 | §繳費狀態 paid_at、§歷史課程漏算、§催繳名單六狀態、§幽靈課程、§R30（帳務入口共用 AR ledger）、**§R76（session／hour 費用文案與 Charge 寫入）**、**§R79（收據前端不得超前後端 contract；合法路徑=payment-reports/{id}/receipt）**、**#1827／RFC_REPORTED_PAID_ACCOUNTING_SPLIT（行政已回報 ≠ Paid；收據僅 confirm 後）** |
 | 薪資 / 併堂 | §兼職薪資 concurrency、§同層級併堂 v1.4、§契約時長為準 |
 | 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession）、§R39（代課評量權限需匹配時段）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R52（代課 scheduled 例外不可缺 original_schedule_id anchor）、§R71（調課單一交易＋前端 committed gate）、§R83（原子調課必須標記 IsContractException）、**§R84（IsContractException 搬進 ClassSessionObserver 結構性保證）**、§R72（cancelled ClassSession 不得讓 scheduled 例外佔用代課老師）、§R73（跨老師 gesture 必走 atomic substitute；legacy 兩階段精準補償）、§R74（代課衝突排除同一學生續約佔用） |
-| 請假 / 順延 | §R29、**§R82（KEEP dates+append）**、§R75（SUPERSEDED）、§R77、§R81 |
+| 請假 / 順延 | §R29、**§R82（KEEP dates+append）**、§R75（SUPERSEDED）、§R77、§R81、**§R109（結案不可吃掉請假順延尾堂）** |
 | 評量 / 家長回饋 | §同天多堂課 buildEvents、§請假後不填評量、§R17（ownership 先於狀態判斷）、§R19（mark-read 不可更新 updated_at）、§R32（停用課程已上課評量不可消失）、§R39（代課評量權限需匹配時段）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R65（新增 session 狀態值必須同步全部消費端；leave 家族用集合判斷）、**§R78（nightly backfill 須 in-place restore 作廢評量，不可把 voided 當已有）** |
 | 家長入口 UI / `releaseNotes` | §R10、§R11、§R18、§R38、§R45（家長卡僅 `PARENT_UPDATES.yml` 顯式投影 + `sync-release-notes`）、**§R85（教職員卡僅 `STAFF_UPDATES.yml`；CHANGELOG 不得自動發布）** |
 | 課表回報 | §2026-04-17 回報系統（14 條禁止項） |
@@ -1330,3 +1330,14 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **根因**：`Student.name` 仍是 utf8mb3；課程名單已用 `Utf8mb3SearchSanitizer`，`StudentController::index` 漏掉。
 - **修法**：搜尋 term 先去掉 4-byte 字元；只剩 emoji 則空結果。欄位 charset 升級另案，不在這次。
 - **測試**：`Utf8mb3SearchSanitizerTest`、`StudentNameSearchUtf8mb3Test`。
+
+### R109. 堂數制請假順延尾堂不可被結案取消（GitHub #1839，2026-08-17）
+
+- **現象**：木柵 SC#2155 連續請假自動順延到 EndDate 之後；繳費頁結案（`reason=settled`）把最後一堂標 `[結案取消]`，但 `RemainingSessions` 仍為 1。主任調課被 `ManualSessionBookingService` `course_stopped` 擋死。
+- **根因層級**：F1 狀態收尾的**反面缺口**——R20 要求停用必須清未來 scheduled，但沒有「還欠堂數」守衛，結案把請假鏈尾堂當成幽靈堂次吃掉。對標：餘額未用完不可 close（Stripe subscription cancel at period end / remaining credits）。G-010／ADR-006 向前生成仍是架構債，本次不處理。
+- **強制規則**：
+  1. count-mode `RemainingSessions > 0` 時，`togglePause` 的 `settled`／`completed` 必須 422 `remaining_sessions_unscheduled`，除非顯式 `forfeit_remaining=true`。
+  2. 已誤結案且仍有餘額時，`ManualSessionBookingService` 不得 `course_stopped`，也不得用 `EndDate` 擋住補課日。
+  3. 繳費催繳「結案」按鈕在剩餘堂數 > 0 時不可送出。
+- **測試必補**：`StudentClassCloseFutureSessionsTest` 結案 422 且尾堂仍 scheduled；`forfeit_remaining` 才取消。`ManualSessionBookingTest` Stop=1 + remaining>0 可排在 EndDate 之後；remaining=0 仍擋。
+

@@ -695,6 +695,10 @@
             <div style="font-size:12px;color:var(--text-light)">{{ settleSummary.primary }}</div>
             <div v-if="settleSummary.techId" class="tc-tech-id" aria-hidden="true">{{ settleSummary.techId }}</div>
           </div>
+          <div v-if="settleTargetStillOwesSessions" class="tc-settle-warn-info">
+            <span class="material-symbols-outlined" style="font-size:16px;color:var(--ds-warning)">info</span>
+            <span>還有 {{ Number(settleTarget.remaining_sessions) }} 堂未上，請先到課程管理把請假順延的堂次排好，不能直接結案。</span>
+          </div>
           <div v-if="settleTarget?.has_newer_course" class="tc-settle-newer-info">
             <span class="material-symbols-outlined" style="font-size:16px;color:var(--ds-success)">check_circle</span>
             <span>{{ settleNewerHint.primary }}</span>
@@ -705,7 +709,7 @@
           </div>
           <div class="tc-dialog-btns">
             <button class="tc-btn tc-btn--ghost" @click="settleDialogOpen = false" :disabled="settleLoading">取消</button>
-            <button class="tc-btn tc-btn--primary" @click="confirmSettle" :disabled="settleLoading">
+            <button class="tc-btn tc-btn--primary" @click="confirmSettle" :disabled="settleLoading || settleTargetStillOwesSessions">
               <span v-if="settleLoading" class="material-symbols-outlined spin" style="font-size:15px">progress_activity</span>
               確認結案
             </button>
@@ -1670,6 +1674,7 @@ const settleTarget = ref(null);
 const settleLoading = ref(null);
 const settleSummary = computed(() => formatTuitionSettleSummary(settleTarget.value || {}));
 const settleNewerHint = computed(() => formatTuitionNewerCourseHint(settleTarget.value || {}));
+const settleTargetStillOwesSessions = computed(() => Number(settleTarget.value?.remaining_sessions ?? 0) > 0);
 
 function openSettleDialog(row) {
   settleTarget.value = row;
@@ -1695,6 +1700,10 @@ function overlapWarningLabel(row) {
 async function confirmSettle() {
   if (!settleTarget.value) return;
   const row = settleTarget.value;
+  if (Number(row.remaining_sessions ?? 0) > 0) {
+    showToast(`還有 ${Number(row.remaining_sessions)} 堂未上，請先排課後再結案`, 'warning');
+    return;
+  }
   settleLoading.value = row.id;
   try {
     const token = getToken();

@@ -1,3 +1,10 @@
+## 2026-08-17 — fix(schedule): 堂數制還有餘額時不可結案吃掉補課
+
+<!-- release-notes: staff_update=staff-2026-08-17-count-settle-makeup-1839 -->
+
+- 堂數制課程還有未上堂次時，繳費頁／結案 API 會擋下，避免把請假順延的最後一堂取消。
+- 若課程已被誤結案但還有餘額，主任仍可把剩下的堂次排進去。
+
 ## 2026-08-17 — fix(security): 主任密碼重設寫入稽核事件
 
 <!-- release-notes: silent_ship=silent-2026-08-17-director-resetpw-audit-1813 -->

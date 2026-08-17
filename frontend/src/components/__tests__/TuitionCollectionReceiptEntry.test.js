@@ -59,4 +59,10 @@ describe('TuitionCollectionPage receipt entry paths', () => {
     expect(source).toContain('async function viewReceiptForClass(row)');
     expect(source).toMatch(/receiptReportId\.value\s*=\s*match\.id/);
   });
+
+  it('blocks settle when remaining sessions are still owed (#1839)', () => {
+    expect(source).toContain('settleTargetStillOwesSessions');
+    expect(source).toContain('還有 ${Number(row.remaining_sessions)} 堂未上，請先排課後再結案');
+    expect(source).toContain(':disabled="settleLoading || settleTargetStillOwesSessions"');
+  });
 });
