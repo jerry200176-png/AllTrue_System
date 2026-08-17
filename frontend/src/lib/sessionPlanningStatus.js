@@ -8,6 +8,9 @@
 export function isSessionModeCourse(course) {
   const paymentType = String(course?.payment_type || '').trim();
   if (paymentType) return paymentType === 'session';
+  const mode = String(course?.ScheduleMode ?? course?.schedule_mode ?? '').trim().toLowerCase();
+  if (mode === 'date') return false;
+  if (mode === 'count') return true;
   return Number(course?.sessions_purchased ?? course?.SessionCount ?? 0) > 0;
 }
 

@@ -40,7 +40,7 @@ export function useCourseSessionsDisplay({
 
   async function ensureCompletedSessionDatesLoaded(course) {
     const cid = String(course?.id ?? '');
-    if (!cid || completedSessionDatesByCourse.value[cid]) return;
+    if (!cid) return;
 
     try {
       const { data: { session: sess } } = await supabase.auth.getSession();
@@ -106,6 +106,11 @@ export function useCourseSessionsDisplay({
       const rangeStart = new Date(now.getFullYear(), now.getMonth() - 2, 1);
       const rangeEnd = new Date(now.getFullYear(), now.getMonth() + 2, 0);
       rows.forEach((course) => {
+        const startRaw = course?.start_date || course?.StartDate || '';
+        const startDate = startRaw ? new Date(`${String(startRaw).slice(0, 10)}T12:00:00`) : null;
+        if (startDate && !Number.isNaN(startDate.getTime()) && startDate < rangeStart) {
+          rangeStart.setTime(startDate.getTime());
+        }
         const endRaw = course?.end_date || course?.EndDate || '';
         const endDate = endRaw ? new Date(`${String(endRaw).slice(0, 10)}T12:00:00`) : null;
         if (endDate && !Number.isNaN(endDate.getTime()) && endDate > rangeEnd) {
@@ -146,6 +151,11 @@ export function useCourseSessionsDisplay({
       const rangeStart = new Date(now.getFullYear(), now.getMonth() - 2, 1);
       const rangeEnd = new Date(now.getFullYear(), now.getMonth() + 2, 0);
       rows.forEach((course) => {
+        const startRaw = course?.start_date || course?.StartDate || '';
+        const startDate = startRaw ? new Date(`${String(startRaw).slice(0, 10)}T12:00:00`) : null;
+        if (startDate && !Number.isNaN(startDate.getTime()) && startDate < rangeStart) {
+          rangeStart.setTime(startDate.getTime());
+        }
         const endRaw = course?.end_date || course?.EndDate || '';
         const endDate = endRaw ? new Date(`${String(endRaw).slice(0, 10)}T12:00:00`) : null;
         if (endDate && !Number.isNaN(endDate.getTime()) && endDate > rangeEnd) {
@@ -280,9 +290,13 @@ export function useCourseSessionsDisplay({
   };
 
   const getCompletedSessionCount = (course) => {
-    const rows = getCourseSessionRows(course);
-    if (rows.length > 0) {
-      return rows.filter((row) => ATTENDED_SESSION_STATUSES.has(String(row?.status || '').toLowerCase())).length;
+    const units = primarySessionUnits(course);
+    if (units.length > 0) {
+      return units.filter((unit) => {
+        const status = String(unit?.status || '').toLowerCase();
+        if (ATTENDED_SESSION_STATUSES.has(status)) return true;
+        return getSessionStateLabel(course, unit.date, unit.id) === '已上';
+      }).length;
     }
     const key = String(course?.id ?? '');
     const dates = completedSessionDatesByCourse.value[key];

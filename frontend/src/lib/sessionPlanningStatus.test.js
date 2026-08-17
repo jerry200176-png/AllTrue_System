@@ -98,6 +98,8 @@ assert.equal(buildSessionPlanningStatus({
   sessionLoadFailed: true,
 }).code, 'session_load_failed');
 assert.equal(isSessionModeCourse({ payment_type: 'monthly' }), false);
+assert.equal(isSessionModeCourse({ ScheduleMode: 'date', SessionCount: 4, sessions_purchased: 4 }), false);
+assert.equal(isSessionModeCourse({ ScheduleMode: 'count', SessionCount: 8 }), true);
 assert.equal(buildSessionPlanningStatus({
   course: { payment_type: 'monthly' }, effectiveCount: 2, hasAnySessionRows: true,
 }), null);

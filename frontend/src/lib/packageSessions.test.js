@@ -89,6 +89,17 @@ import { computePackageNextTotal, packageMemberSessionSummary } from './packageS
   assert.doesNotMatch(r.text, /購買/);
 }
 
+{
+  const monthlyByMode = {
+    ScheduleMode: 'date',
+    SessionCount: 4,
+    sessions_purchased: 4,
+  };
+  const r = packageMemberSessionSummary(monthlyByMode, { completed: 7 });
+  assert.equal(r.text, '已上 7 堂');
+  assert.doesNotMatch(r.text, /購買/);
+}
+
 // cancelled suffix preserved for both modes.
 {
   const pkg = packageMemberSessionSummary(

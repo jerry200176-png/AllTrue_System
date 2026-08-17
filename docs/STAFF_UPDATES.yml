@@ -3,6 +3,22 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-17-course-attended-count-1834
+    published_at: "2026-08-17"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 課程「已上堂數」跟明細一致
+    summary: 卡片上的已上堂數會跟展開的上課日期對齊；剛點名的堂次也會算進去。
+    items:
+      - category: fixed
+        text: 課程管理顯示的已上堂數，改跟日期列表同一套計算。
+      - category: improved
+        text: 月結課不會再出現「購買多少堂」這種容易誤會的字。
+    source_refs:
+      - "changelog:2026-08-17:course-attended-count-1834"
+
   - id: staff-2026-08-17-count-settle-makeup-1839
     published_at: "2026-08-17"
     audiences:
