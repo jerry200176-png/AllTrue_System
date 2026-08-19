@@ -4,6 +4,36 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-19-receipt-line-clarity",
+    "publishedAt": "2026-08-19",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "收據紀錄看得到班型",
+    "summary": "同科兩筆會標班型；0元看得出試聽或輔導。",
+    "items": [
+      "科目會寫一對一、輔導、試聽；歷史課首堂有說明。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "科目會寫一對一、輔導、試聽；歷史課首堂有說明。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-19:receipt-line-clarity"
+    ],
+    "date": "2026-08-19",
+    "version": "2026.08.19"
+  },
+  {
     "id": "staff-2026-08-19-accounting-receipt-pin-gap",
     "publishedAt": "2026-08-19",
     "effectiveAt": null,

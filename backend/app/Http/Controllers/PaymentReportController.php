@@ -9,6 +9,7 @@ use App\Models\CoursePackage;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\Subject;
+use App\Support\AccountingCourseClarity;
 use App\Services\PaymentReportTokenService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -789,7 +790,7 @@ class PaymentReportController extends Controller
         }
 
         $sc = $report->studentClass;
-        $subjectName = $sc?->subjectRecord?->Subject_Name ?? '課程';
+        $subjectName = $sc?->displaySubjectName() ?? ($sc?->subjectRecord?->Subject_Name ?? '課程');
 
         $periodStart = null;
         $periodEnd = null;
@@ -871,6 +872,22 @@ class PaymentReportController extends Controller
             $campusName = $campus->name ?? '';
         }
 
+        $sessionMeta = ['first_live' => null, 'first_any' => null];
+        if ($sc) {
+            $sessionMetaRow = \App\Models\ClassSession::query()
+                ->selectRaw("MIN(CASE WHEN Status <> 'cancelled' THEN SessionDate END) as first_live, MIN(SessionDate) as first_any")
+                ->where('StudentClassID', $sc->ID)
+                ->first();
+            $sessionMeta = [
+                'first_live' => $sessionMetaRow?->first_live ? substr((string) $sessionMetaRow->first_live, 0, 10) : null,
+                'first_any' => $sessionMetaRow?->first_any ? substr((string) $sessionMetaRow->first_any, 0, 10) : null,
+            ];
+        }
+        $life = AccountingCourseClarity::lifecycle($sc);
+        $first = AccountingCourseClarity::firstSession($sessionMeta, $sc);
+        $classType = (string) ($sc?->ClassType ?? '');
+        $amount = (float) $report->reported_amount;
+
         return response()->json([
             'receipt_no'       => 'R-' . str_pad($report->id, 6, '0', STR_PAD_LEFT),
             'student_name'     => $report->student?->name ?? $report->reported_by_name,
@@ -883,11 +900,18 @@ class PaymentReportController extends Controller
             'session_dates'    => $sessionDates,
             'payment_date'     => $report->payment_date?->format('Y/m/d'),
             'payment_method'   => $report->payment_method,
-            'amount'           => (float) $report->reported_amount,
+            'amount'           => $amount,
             'confirmed_at'     => $report->confirmed_at?->format('Y/m/d'),
             'confirmed_by'     => $report->confirmedByUser?->Name ?? '系統',
-            'class_type'       => $sc?->ClassType,
+            'class_type'       => $classType,
+            'class_type_label' => AccountingCourseClarity::classTypeLabel($classType),
             'schedule_mode'    => $sc?->ScheduleMode,
+            'course_lifecycle' => $life['code'],
+            'course_lifecycle_label' => $life['label'],
+            'first_session_date' => $first['date'],
+            'first_session_display' => $first['display'],
+            'first_session_source' => $first['source'],
+            'first_session_note' => $first['note'],
             'is_backfilled'    => !empty($report->backfill_note),
             'backfill_note'    => $report->backfill_note,
             // #934: course's billing mode (count/date) changed since this receipt

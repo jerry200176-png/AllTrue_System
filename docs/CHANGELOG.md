@@ -1,3 +1,10 @@
+## 2026-08-19 — feat(billing): 收據紀錄標出班型、0 元原因與首堂來源
+
+<!-- release-notes: staff_update=staff-2026-08-19-receipt-line-clarity -->
+
+- 同一科目兩筆會寫出一對一／輔導／試聽與堂數，不必再對課程管理猜。
+- 0 元會標試聽或輔導；歷史課不再只寫「尚未排課」，會說明堂次已取消或顯示合約開課日。預收判定仍只看有效堂次。
+
 ## 2026-08-19 — fix(billing): 帳務中心收據紀錄不再卡 PIN 卻沒輸入框
 
 <!-- release-notes: staff_update=staff-2026-08-19-accounting-receipt-pin-gap -->

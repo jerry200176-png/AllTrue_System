@@ -514,15 +514,23 @@
                 <td>{{ humanizeDocumentRef(row.receipt_no) }}</td>
                 <td>{{ row.payment_date || '—' }}</td>
                 <td class="tc-cell-name">{{ row.student_name }}</td>
-                <td>{{ row.subject }}</td>
-                <td>{{ row.first_session_date || '尚未排課' }}</td>
+                <td>
+                  <div>{{ formatAccountingReceiptSubject(row).primary }}</div>
+                  <div v-if="formatAccountingReceiptSubject(row).secondary" class="acct-sub">{{ formatAccountingReceiptSubject(row).secondary }}</div>
+                </td>
+                <td>
+                  <div>{{ formatAccountingFirstSession(row).date || formatAccountingFirstSession(row).note }}</div>
+                  <div v-if="formatAccountingFirstSession(row).date && formatAccountingFirstSession(row).note" class="acct-sub">{{ formatAccountingFirstSession(row).note }}</div>
+                </td>
                 <td class="tc-col-currency">{{ formatCurrency(row.cash_amount || 0) }}</td>
                 <td class="tc-col-currency">{{ formatCurrency(row.transfer_amount || 0) }}</td>
                 <td class="tc-col-currency">{{ formatCurrency(row.total_amount || 0) }}</td>
                 <td>
+                  <span v-if="formatAccountingZeroChip(row)" class="acct-chip acct-chip--type">{{ formatAccountingZeroChip(row) }}</span>
                   <span v-if="row.is_prepaid" class="acct-chip acct-chip--prepaid">預收</span>
                   <span v-if="row.is_backfilled" class="acct-chip acct-chip--backfill">補建</span>
-                  <span v-if="!row.is_prepaid && !row.is_backfilled" class="text-light">—</span>
+                  <span v-if="row.course_lifecycle === 'history_completed' || row.course_lifecycle === 'history_settled'" class="acct-chip acct-chip--backfill">{{ row.course_lifecycle_label }}</span>
+                  <span v-if="!formatAccountingTagLine(row)" class="text-light">—</span>
                 </td>
                 <td>{{ row.confirmed_by_name || '—' }}</td>
                 <td>
@@ -805,6 +813,10 @@ import {
   formatTuitionNewerCourseHint,
   formatNewerCourseOverlapWarning,
   humanizeDocumentRef,
+  formatAccountingReceiptSubject,
+  formatAccountingFirstSession,
+  formatAccountingZeroChip,
+  formatAccountingTagLine,
 } from '../lib/studentClassDisplay.js';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 
@@ -1365,18 +1377,21 @@ async function exportAccountingCSV() {
       showToast('目前篩選條件沒有可匯出的收據流水紀錄', 'warning');
       return;
     }
-    const headers = ['收據編號', '繳費日期', '學生姓名', '科目', '第一堂課日期', '現金', '匯款', '合計', '付款方式', '標籤', '核帳人'];
+    const headers = ['收據編號', '繳費日期', '學生姓名', '科目', '班型', '課程狀態', '第一堂課日期', '第一堂課說明', '現金', '匯款', '合計', '付款方式', '標籤', '核帳人'];
     const csvRows = data.map(r => [
       r.receipt_no || '',
       r.payment_date || '',
       r.student_name || '',
-      r.subject || '',
-      r.first_session_date || '尚未排課',
+      formatAccountingReceiptSubject(r).primary,
+      r.class_type_label || '',
+      r.course_lifecycle_label || '',
+      formatAccountingFirstSession(r).date || '',
+      formatAccountingFirstSession(r).note,
       r.cash_amount || 0,
       r.transfer_amount || 0,
       r.total_amount || 0,
       paymentMethodLabel(r.payment_method),
-      [r.is_prepaid ? '預收' : '', r.is_backfilled ? '補建' : ''].filter(Boolean).join(' / '),
+      formatAccountingTagLine(r),
       r.confirmed_by_name || '',
     ]);
     const bom = '\uFEFF';
@@ -1427,12 +1442,12 @@ async function exportAccountingPDF() {
         <td>${escapeHtml(r.receipt_no || '')}</td>
         <td>${escapeHtml(r.payment_date || '')}</td>
         <td>${escapeHtml(r.student_name || '')}</td>
-        <td>${escapeHtml(r.subject || '')}</td>
-        <td>${escapeHtml(r.first_session_date || '尚未排課')}</td>
+        <td>${escapeHtml(formatAccountingReceiptSubject(r).primary)}</td>
+        <td>${escapeHtml(formatAccountingFirstSession(r).date || formatAccountingFirstSession(r).note)}</td>
         <td class="num">${Number(r.cash_amount || 0).toLocaleString('zh-TW')}</td>
         <td class="num">${Number(r.transfer_amount || 0).toLocaleString('zh-TW')}</td>
         <td class="num">${Number(r.total_amount || 0).toLocaleString('zh-TW')}</td>
-        <td>${r.is_prepaid ? '預收' : ''}${r.is_backfilled ? ' 補建' : ''}</td>
+        <td>${escapeHtml(formatAccountingTagLine(r))}</td>
         <td>${escapeHtml(r.confirmed_by_name || '')}</td>
       </tr>
     `).join('');
@@ -1942,6 +1957,17 @@ loadAlerts();
 .acct-chip--backfill {
   background: var(--ds-canvas-soft);
   color: var(--ds-ink-mute);
+}
+.acct-chip--type {
+  background: var(--ds-primary-wash);
+  color: var(--ds-on-brand);
+}
+.acct-sub {
+  font-size: 11px;
+  color: var(--ds-ink-mute);
+  margin-top: 2px;
+  max-width: 220px;
+  line-height: 1.35;
 }
 .acct-table .tc-btn {
   white-space: nowrap;

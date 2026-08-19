@@ -73,6 +73,14 @@ describe('paymentReportReceipt helpers (#1197 closeout)', () => {
     expect(view.content_snapshot.campus_name).toBe('大安分校');
     expect(view.content_snapshot.total_amount).toBe(12000);
     expect(view.content_snapshot.license_number).toBeUndefined();
+    expect(view.content_snapshot.items[0].description).toBe('英文 · 8 堂 · 堂數制');
+  });
+
+  it('receipt line names trial and tutoring', () => {
+    const trial = adaptPaymentReportReceipt({ ...SAMPLE, class_type: 'trial', session_count: 1, amount: 0 }, 1);
+    expect(trial.content_snapshot.items[0].description).toContain('試聽');
+    const tutor = adaptPaymentReportReceipt({ ...SAMPLE, class_type: 'tutoring', amount: 0 }, 2);
+    expect(tutor.content_snapshot.items[0].description).toContain('輔導');
   });
 });
 
