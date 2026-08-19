@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Model;
  *
  * @property int $id
  * @property int $session_id
- * @property int $replaced_by_session_id
+ * @property int|null $replaced_by_session_id
  * @property string $correction_reason
  * @property string $decision_reference
  * @property \Illuminate\Support\Carbon $decided_at
