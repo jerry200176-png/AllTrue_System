@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "provenance_type": "human-authored",
-  "declared_at": "2026-08-16T21:06:00Z",
+  "declared_at": "2026-08-19T02:30:53Z",
   "author": "jerry-claude-code-session",
-  "note": "Split PR D3/3 (final): W31 Binding Health Dashboard page, extracted from oversized PR #1728."
+  "note": "In-app bug Phase A triage kickoff: trigger read-only bug-queue-dump.yml via request-file push (cloud session, no local agent-gateway worktree)."
 }
