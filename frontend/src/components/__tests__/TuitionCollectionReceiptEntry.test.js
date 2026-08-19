@@ -32,6 +32,11 @@ describe('TuitionCollectionPage receipt entry paths', () => {
     expect(source).not.toContain('勾選最左欄後才會出現批次回報或確認列。');
   });
 
+  it('receipt records fetch accounting/payments without a page-local PIN modal', () => {
+    expect(source).toContain('fetch(`/api/v1/accounting/payments?${params}`');
+    expect(source).not.toContain('PinLockModal');
+  });
+
   it('declares activeTab before batchMode / isRowSelectable / watch(activeTab) (TDZ)', () => {
     const decl = source.indexOf("const activeTab = ref('all')");
     expect(decl).toBeGreaterThan(-1);

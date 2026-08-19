@@ -1,3 +1,10 @@
+## 2026-08-19 — fix(billing): 帳務中心收據紀錄不再卡 PIN 卻沒輸入框
+
+<!-- release-notes: staff_update=staff-2026-08-19-accounting-receipt-pin-gap -->
+
+- 收據流水與已結清課程與催繳同一頁，登入後可直接查看。
+- 不再出現「請輸入 PIN」但畫面沒有輸入欄。薪資、當月學收、老師管理仍要 PIN。
+
 ## 2026-08-17 — fix(calendar): 混班型時段一對三仍可再收（#1889）
 
 <!-- release-notes: staff_update=staff-2026-08-17-mixed-class-type-occupancy-1889 -->
