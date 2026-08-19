@@ -729,8 +729,10 @@ class AccountingController extends Controller
         $first = AccountingCourseClarity::firstSession($meta, $sc);
         $firstSessionDate = $first['date'];
         $isConfirmed = $report->status === 'confirmed';
-        $classType = $sc !== null ? (string) $sc->ClassType : '';
+        $classType = $sc !== null ? (string) $sc->getAttribute('ClassType') : '';
         $life = AccountingCourseClarity::lifecycle($sc);
+        $sessionCount = $sc?->getAttribute('SessionCount');
+        $remaining = $sc?->getAttribute('RemainingSessions');
 
         return [
             'report_id' => (int) $report->id,
@@ -742,9 +744,9 @@ class AccountingController extends Controller
             'subject' => $sc?->displaySubjectName() ?? '課程',
             'class_type' => $classType,
             'class_type_label' => AccountingCourseClarity::classTypeLabel($classType),
-            'session_count' => $sc?->SessionCount !== null ? (int) $sc->SessionCount : null,
-            'remaining_sessions' => $sc?->RemainingSessions !== null ? (int) $sc->RemainingSessions : null,
-            'schedule_mode' => (string) ($sc?->ScheduleMode ?? ''),
+            'session_count' => $sessionCount !== null ? (int) $sessionCount : null,
+            'remaining_sessions' => $remaining !== null ? (int) $remaining : null,
+            'schedule_mode' => (string) ($sc?->getAttribute('ScheduleMode') ?? ''),
             'course_lifecycle' => $life['code'],
             'course_lifecycle_label' => $life['label'],
             'first_session_date' => $firstSessionDate,

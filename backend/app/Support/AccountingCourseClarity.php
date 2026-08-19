@@ -2,8 +2,8 @@
 
 namespace App\Support;
 
-use App\Models\StudentClass;
 use DateTimeInterface;
+use Illuminate\Database\Eloquent\Model;
 
 /**
  * Display-only labels for accounting receipt rows.
@@ -29,15 +29,15 @@ class AccountingCourseClarity
     /**
      * @return array{code:string,label:string,is_history:bool}
      */
-    public static function lifecycle(?StudentClass $sc): array
+    public static function lifecycle(?Model $sc): array
     {
         if (!$sc) {
             return ['code' => 'unknown', 'label' => '', 'is_history' => false];
         }
 
-        $reason = (string) ($sc->closed_reason ?? '');
-        $stop = (int) ($sc->Stop ?? 0) === 1;
-        $mode = (string) ($sc->ScheduleMode ?? 'count');
+        $reason = (string) ($sc->getAttribute('closed_reason') ?? '');
+        $stop = (int) ($sc->getAttribute('Stop') ?? 0) === 1;
+        $mode = (string) ($sc->getAttribute('ScheduleMode') ?? 'count');
 
         if ($reason === 'settled') {
             return ['code' => 'history_settled', 'label' => '已結算', 'is_history' => true];
@@ -45,7 +45,7 @@ class AccountingCourseClarity
         if ($reason === 'completed') {
             return ['code' => 'history_completed', 'label' => '已完課', 'is_history' => true];
         }
-        if ($stop && $mode !== 'date' && (int) ($sc->Paid ?? 0) === 1 && (int) ($sc->RemainingSessions ?? 0) <= 0) {
+        if ($stop && $mode !== 'date' && (int) ($sc->getAttribute('Paid') ?? 0) === 1 && (int) ($sc->getAttribute('RemainingSessions') ?? 0) <= 0) {
             return ['code' => 'history_completed', 'label' => '已完課', 'is_history' => true];
         }
         if ($stop && $mode === 'date') {
@@ -58,7 +58,7 @@ class AccountingCourseClarity
         return ['code' => 'active', 'label' => '進行中', 'is_history' => false];
     }
 
-    public static function contractStartDate(?StudentClass $sc): ?string
+    public static function contractStartDate(?Model $sc): ?string
     {
         if (!$sc) {
             return null;
@@ -76,7 +76,7 @@ class AccountingCourseClarity
      * @param  array{first_live?:?string,first_any?:?string}  $meta
      * @return array{date:?string,display:?string,source:string,note:string}
      */
-    public static function firstSession(array $meta, ?StudentClass $sc): array
+    public static function firstSession(array $meta, ?Model $sc): array
     {
         $live = self::ymd($meta['first_live'] ?? null);
         $any = self::ymd($meta['first_any'] ?? null);
