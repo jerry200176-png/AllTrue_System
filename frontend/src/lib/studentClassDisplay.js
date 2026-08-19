@@ -6,6 +6,8 @@
  * Pure functions — do not assemble ad-hoc strings in Vue templates.
  */
 
+import { classTypeLabel } from './calendarFormat.js';
+
 function trimStr(v) {
   return String(v ?? '').trim();
 }
@@ -312,3 +314,50 @@ export function formatBulkLeaveSkippedLine(skip, course = null) {
   const when = date ? `${date}：` : '';
   return `${who} ${when}${reason}`.replace(/\s+/g, ' ').trim();
 }
+
+/** Accounting receipt list — distinguish same-subject 一對一 / 輔導 / 試聽 without course ids. */
+export function formatAccountingReceiptSubject(row) {
+  const subject = trimStr(row?.subject) || '課程';
+  const parts = [subject];
+  const typeKey = trimStr(row?.class_type);
+  const type = typeKey ? (classTypeLabel(typeKey) || typeKey) : '';
+  if (type) parts.push(type);
+  if (row?.schedule_mode === 'date') {
+    parts.push('月結');
+  } else if (row?.session_count != null && row?.session_count !== '') {
+    parts.push(`${Number(row.session_count)} 堂`);
+  }
+  return {
+    primary: parts.join(' · '),
+    secondary: trimStr(row?.course_lifecycle_label),
+  };
+}
+
+export function formatAccountingFirstSession(row) {
+  const date = trimStr(row?.first_session_display || row?.first_session_date);
+  const note = trimStr(row?.first_session_note);
+  if (date) {
+    return { date, note, empty: false };
+  }
+  return { date: '', note: note || '尚未排課', empty: true };
+}
+
+export function formatAccountingZeroChip(row) {
+  const reason = row?.zero_reason;
+  if (reason === 'trial') return '試聽';
+  if (reason === 'tutoring') return '輔導';
+  if (reason === 'zero') return '0元';
+  return '';
+}
+
+export function formatAccountingTagLine(row) {
+  return [
+    formatAccountingZeroChip(row),
+    row?.is_prepaid ? '預收' : '',
+    row?.is_backfilled ? '補建' : '',
+    row?.course_lifecycle === 'history_completed' || row?.course_lifecycle === 'history_settled'
+      ? trimStr(row?.course_lifecycle_label)
+      : '',
+  ].filter(Boolean).join(' / ');
+}
+

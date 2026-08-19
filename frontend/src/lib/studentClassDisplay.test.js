@@ -21,6 +21,9 @@ import {
   humanizeBulkLeaveSkipReason,
   formatBulkLeaveSkippedLine,
   primaryLeaksInternalId,
+  formatAccountingReceiptSubject,
+  formatAccountingFirstSession,
+  formatAccountingZeroChip,
 } from './studentClassDisplay.js';
 
 // --- unit: open date ---
@@ -197,5 +200,24 @@ assert.ok(skipBare.includes('名單上的一門課'));
 assert.ok(skipBare.includes('2026-07-20'));
 assert.equal(primaryLeaksInternalId(skipBare), false);
 assert.ok(!skipBare.includes('課程 #'));
+
+const trialRow = formatAccountingReceiptSubject({
+  subject: '英文',
+  class_type: 'trial',
+  session_count: 1,
+  course_lifecycle_label: '已完課',
+});
+assert.equal(trialRow.primary, '英文 · 試聽 · 1 堂');
+assert.equal(trialRow.secondary, '已完課');
+assert.equal(formatAccountingZeroChip({ zero_reason: 'trial' }), '試聽');
+assert.equal(formatAccountingZeroChip({ zero_reason: 'tutoring' }), '輔導');
+const histFirst = formatAccountingFirstSession({
+  first_session_date: null,
+  first_session_display: '2026-03-01',
+  first_session_note: '課程已進歷史，目前沒有有效堂次，顯示合約開課日',
+});
+assert.equal(histFirst.date, '2026-03-01');
+assert.ok(histFirst.note.includes('歷史'));
+assert.equal(primaryLeaksInternalId(trialRow.primary), false);
 
 console.log('studentClassDisplay.test.js: all assertions passed');

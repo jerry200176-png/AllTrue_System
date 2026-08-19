@@ -5,6 +5,35 @@
  */
 export const changelogDraftNotes = [
   {
+    "version": "2026.08.19",
+    "date": "2026-08-19",
+    "title": "2026.08.19 草稿（未發布）",
+    "summary": "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。；帳務中心收據紀錄不再卡 PIN 卻沒輸入框",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。"
+        ]
+      },
+      {
+        "title": "修正內容",
+        "items": [
+          "帳務中心收據紀錄不再卡 PIN 卻沒輸入框"
+        ]
+      }
+    ],
+    "items": [
+      "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。",
+      "帳務中心收據紀錄不再卡 PIN 卻沒輸入框"
+    ]
+  },
+  {
     "version": "2026.08.17",
     "date": "2026-08-17",
     "title": "2026.08.17 草稿（未發布）",
@@ -529,28 +558,6 @@ export const changelogDraftNotes = [
       "006 Phase 0 唯讀 epaid horizon 報告（slice 2/2）",
       "防呆 current_end_date 無效日期",
       "55 復活判斷收斂為單一共用政策"
-    ]
-  },
-  {
-    "version": "2026.07.27",
-    "date": "2026-07-27",
-    "title": "2026.07.27 草稿（未發布）",
-    "summary": "共用方案堂次區狀態語意與預排 chip 分流",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "修正內容",
-        "items": [
-          "共用方案堂次區狀態語意與預排 chip 分流"
-        ]
-      }
-    ],
-    "items": [
-      "共用方案堂次區狀態語意與預排 chip 分流"
     ]
   }
 ];

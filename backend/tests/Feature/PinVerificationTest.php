@@ -204,8 +204,8 @@ class PinVerificationTest extends TestCase
     }
 
     /**
-     * @test Phase C：薪資／當月學收／帳務中心專屬端點已掛 require_pin；
-     * 共享端點（teachers／student-classes 等，被非敏感頁復用）不得誤掛。
+     * @test Phase C：薪資／當月學收專屬端點已掛 require_pin；
+     * 共享端點（teachers／student-classes／alerts/tuition／accounting payments）不得誤掛。
      */
     public function protected_routes_have_require_pin_and_shared_routes_do_not(): void
     {
@@ -225,8 +225,6 @@ class PinVerificationTest extends TestCase
             ['GET', 'api/v1/finance/parttime-payroll'],
             ['GET', 'api/v1/finance/teacher-payroll'],
             ['GET', 'api/v1/finance/branch-monthly-tuition'],
-            ['GET', 'api/v1/accounting/payments'],
-            ['GET', 'api/v1/accounting/settled-courses'],
         ];
         foreach ($protected as [$m, $u]) {
             $this->assertContains('require_pin', $middlewareFor($m, $u), "{$u} 應掛 require_pin");
@@ -237,6 +235,10 @@ class PinVerificationTest extends TestCase
             ['GET', 'api/v1/teachers'],
             ['GET', 'api/v1/student-classes'],
             ['GET', 'api/v1/alerts/tuition'],
+            ['GET', 'api/v1/accounting/payments'],
+            ['GET', 'api/v1/accounting/payments/export'],
+            ['GET', 'api/v1/accounting/settled-courses'],
+            ['GET', 'api/v1/accounting/ledger'],
         ];
         foreach ($shared as [$m, $u]) {
             $this->assertNotContains('require_pin', $middlewareFor($m, $u), "{$u} 為共享端點，不應掛 require_pin");

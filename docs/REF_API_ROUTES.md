@@ -32,9 +32,9 @@
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
 | GET | `api/v1/accounting/ledger` | `AccountingController@ledger` | role+campus |
-| GET | `api/v1/accounting/payments` | `AccountingController@payments` | role+campus+pin |
-| GET | `api/v1/accounting/payments/export` | `AccountingController@paymentsExport` | role+campus+pin |
-| GET | `api/v1/accounting/settled-courses` | `AccountingController@settledCourses` | role+campus+pin |
+| GET | `api/v1/accounting/payments` | `AccountingController@payments` | role+campus |
+| GET | `api/v1/accounting/payments/export` | `AccountingController@paymentsExport` | role+campus |
+| GET | `api/v1/accounting/settled-courses` | `AccountingController@settledCourses` | role+campus |
 
 ## /api/v1/action-inbox (3)
 

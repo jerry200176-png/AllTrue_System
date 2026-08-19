@@ -1103,6 +1103,8 @@ class PaymentReportApiTest extends TestCase
         $res->assertJsonStructure(['receipt_no', 'student_name', 'amount', 'payment_method', 'confirmed_at']);
         $this->assertEquals(8800, $res->json('amount'));
         $this->assertStringStartsWith('R-', $res->json('receipt_no'));
+        $this->assertSame('one_on_one', $res->json('class_type'));
+        $this->assertSame('一對一', $res->json('class_type_label'));
     }
 
     // (#934) 課程計費模式（堂數制/月結）在開立發票後被變更 → 收據應標示「可能已被取代」
@@ -1729,6 +1731,64 @@ class PaymentReportApiTest extends TestCase
             ->assertJsonPath('data.0.schedule_mode', 'date')
             ->assertJsonPath('data.0.first_session_date', '2026-04-01')
             ->assertJsonPath('data.0.is_prepaid', false);
+    }
+
+    public function test_accounting_payments_labels_zero_tutoring_and_history_first_session(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $tutoring = $this->createCountModeClass($student->id, [
+            'ClassType' => 'tutoring',
+            'Charge' => 0,
+            'SessionCount' => 4,
+        ]);
+        $history = $this->createCountModeClass($student->id, [
+            'ClassType' => 'one_on_one',
+            'Charge' => 8800,
+            'StartDate' => '2026-03-01',
+            'Stop' => 1,
+            'closed_reason' => 'completed',
+            'Paid' => 1,
+            'RemainingSessions' => 0,
+        ]);
+        ClassSession::create([
+            'StudentClassID' => $history->ID,
+            'SessionDate' => '2026-03-08',
+            'StartTime' => '18:00',
+            'EndTime' => '20:00',
+            'Status' => 'cancelled',
+        ]);
+        $this->createConfirmedReport($student, $tutoring, [
+            'payment_date' => '2026-04-10',
+            'payment_method' => 'cash',
+            'reported_amount' => 0,
+        ]);
+        $this->createConfirmedReport($student, $history, [
+            'payment_date' => '2026-04-12',
+            'payment_method' => 'transfer',
+            'reported_amount' => 8800,
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/accounting/payments?branch_id=1&start=2026-04-01&end=2026-04-30');
+
+        $res->assertOk();
+        $rows = collect($res->json('data'));
+        $tutorRow = $rows->firstWhere('class_type', 'tutoring');
+        $histRow = $rows->firstWhere('class_type', 'one_on_one');
+        $this->assertNotNull($tutorRow);
+        $this->assertSame('輔導', $tutorRow['class_type_label']);
+        $this->assertSame('tutoring', $tutorRow['zero_reason']);
+        $this->assertSame(0, $tutorRow['total_amount']);
+        $this->assertNotNull($histRow);
+        $this->assertSame('history_completed', $histRow['course_lifecycle']);
+        $this->assertNull($histRow['first_session_date']);
+        $this->assertSame('2026-03-08', $histRow['first_session_display']);
+        $this->assertSame('cancelled', $histRow['first_session_source']);
+        $this->assertFalse($histRow['is_prepaid']);
+        $this->assertStringContainsString('歷史', $histRow['first_session_note']);
     }
 
     public function test_accounting_ledger_aligns_invoice_payments_and_receipts(): void

@@ -392,10 +392,11 @@ Route::prefix('v1')->group(function () {
 
         // ── Payment Reports (學收核銷) ──────────────────────────────
         Route::get('accounting/ledger', [AccountingController::class, 'ledger']);
-        // #769 Phase C：帳務中心（tuition-collect 頁）核銷/收款資料為敏感 API。
-        Route::get('accounting/settled-courses', [AccountingController::class, 'settledCourses'])->middleware('require_pin');
-        Route::get('accounting/payments', [AccountingController::class, 'payments'])->middleware('require_pin');
-        Route::get('accounting/payments/export', [AccountingController::class, 'paymentsExport'])->middleware('require_pin');
+        // 帳務中心（tuition-collect）前端不掛 PIN 覆蓋層，避免整頁空白。
+        // 收據流水／已結清與催繳、ledger 同頁，不可單獨 require_pin，否則 423 卻沒輸入框。
+        Route::get('accounting/settled-courses', [AccountingController::class, 'settledCourses']);
+        Route::get('accounting/payments', [AccountingController::class, 'payments']);
+        Route::get('accounting/payments/export', [AccountingController::class, 'paymentsExport']);
         Route::post('payment-reports/director-record', [PaymentReportController::class, 'directorRecord']);
         Route::post('payment-reports/director-record-batch', [PaymentReportController::class, 'directorRecordBatch']);
         Route::post('payment-reports/confirm-batch', [PaymentReportController::class, 'confirmBatch']);

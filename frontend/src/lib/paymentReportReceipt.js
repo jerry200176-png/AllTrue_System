@@ -1,4 +1,5 @@
 import { humanizeDocumentRef } from './studentClassDisplay.js';
+import { classTypeLabel } from './calendarFormat.js';
 
 /**
  * Adapter: PaymentReportController@receipt → ReceiptModal view model.
@@ -16,6 +17,8 @@ export function formatReceiptBrandTitle(campusName) {
 export function buildReceiptItemDescription(api = {}) {
   const parts = [];
   if (api.subject) parts.push(api.subject);
+  const typeKey = String(api.class_type || '').trim();
+  if (typeKey) parts.push(classTypeLabel(typeKey) || typeKey);
   if (api.session_count != null && api.session_count !== '') {
     parts.push(`${api.session_count} 堂`);
   }
@@ -53,6 +56,11 @@ export function adaptPaymentReportReceipt(api, reportId) {
       confirmed_by: api?.confirmed_by || null,
       session_dates: Array.isArray(api?.session_dates) ? api.session_dates : [],
       attended_dates: Array.isArray(api?.attended_dates) ? api.attended_dates : [],
+      class_type: api?.class_type || '',
+      class_type_label: api?.class_type_label || '',
+      course_lifecycle_label: api?.course_lifecycle_label || '',
+      first_session_display: api?.first_session_display || api?.first_session_date || '',
+      first_session_note: api?.first_session_note || '',
     },
   };
 }

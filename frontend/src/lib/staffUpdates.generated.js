@@ -4,6 +4,66 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-19-receipt-line-clarity",
+    "publishedAt": "2026-08-19",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "收據紀錄看得到班型",
+    "summary": "同科兩筆會標班型；0元看得出試聽或輔導。",
+    "items": [
+      "科目會寫一對一、輔導、試聽；歷史課首堂有說明。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "科目會寫一對一、輔導、試聽；歷史課首堂有說明。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-19:receipt-line-clarity"
+    ],
+    "date": "2026-08-19",
+    "version": "2026.08.19"
+  },
+  {
+    "id": "staff-2026-08-19-accounting-receipt-pin-gap",
+    "publishedAt": "2026-08-19",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "收據紀錄不必再卡 PIN",
+    "summary": "收據流水登入即可看，不再卡 PIN 沒輸入欄。",
+    "items": [
+      "收據紀錄不再要求 PIN；薪資、當月學收、老師管理仍要 PIN。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "收據紀錄不再要求 PIN；薪資、當月學收、老師管理仍要 PIN。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-19:accounting-receipt-pin-gap"
+    ],
+    "date": "2026-08-19",
+    "version": "2026.08.19"
+  },
+  {
     "id": "staff-2026-08-17-ui-jargon-w2",
     "publishedAt": "2026-08-17",
     "effectiveAt": null,

@@ -51,6 +51,7 @@ t('密碼變更鎖優先 → 不顯示', () => {
 });
 t('非受保護頁 → 不顯示', () => {
   assert.strictEqual(shouldShowPinModal({ ...base, page: 'calendar' }), false);
+  assert.strictEqual(shouldShowPinModal({ ...base, page: 'tuition-collect' }), false);
 });
 t('super_admin 在受保護頁 → 不顯示', () => {
   assert.strictEqual(shouldShowPinModal({ ...base, role: 'super_admin' }), false);
