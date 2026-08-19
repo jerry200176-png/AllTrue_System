@@ -3227,6 +3227,73 @@ class StudentClassController extends Controller
         ];
     }
 
+    /**
+     * 轉移堂次紀錄到另一門課程（interim workaround for in-app #1901/#1902/#1904）。
+     *
+     * 只搬「已存在的 ClassSession 及其評量／點名紀錄」，完全不動任一課程的
+     * SessionCount／Charge／standard_lesson_minutes 等計費鎖定欄位 —— 那些欄位
+     * 一旦有扣堂紀錄就由 BillingContractLockGuard 鎖死（RFC_NONSTANDARD_SESSION_
+     * DURATION_BILLING，Founder-gated），此端點不繞過、也不嘗試重新詮釋。
+     * 金額/堂數對帳仍是既有的人工流程；本端點只解決「評量表要重填」這個痛點。
+     * POST /api/v1/student-classes/{studentClass}/transfer-sessions
+     */
+    public function transferSessions(Request $request, StudentClass $studentClass)
+    {
+        $auth = $this->authorizeStudentClassAccess($studentClass);
+        if ($auth !== null) {
+            return $auth;
+        }
+
+        $data = $request->validate([
+            'session_ids' => 'required|array|min:1|max:100',
+            'session_ids.*' => 'integer',
+            'target_student_class_id' => 'required|integer',
+        ]);
+
+        return DB::transaction(function () use ($studentClass, $data) {
+            $source = StudentClass::where('ID', $studentClass->ID)->lockForUpdate()->firstOrFail();
+            $target = StudentClass::where('ID', $data['target_student_class_id'])->lockForUpdate()->firstOrFail();
+
+            if ($source->hasDeductionHistory() && (string) $source->getAttribute('closed_reason') === 'usage_settled') {
+                return response()->json([
+                    'message' => '來源課程已提前結清，堂次與紀錄已鎖定，無法轉移。',
+                ], 422);
+            }
+            if ((int) $target->StudentID !== (int) $source->StudentID) {
+                return response()->json([
+                    'message' => '目標課程與來源課程的學生不一致，拒絕轉移。',
+                ], 422);
+            }
+
+            $sessions = ClassSession::where('StudentClassID', $source->ID)
+                ->whereIn('id', $data['session_ids'])
+                ->get();
+            $foundIds = $sessions->pluck('id')->all();
+            $missing = array_diff($data['session_ids'], $foundIds);
+            if (!empty($missing)) {
+                return response()->json([
+                    'message' => '部分堂次不存在於來源課程，未執行任何轉移。',
+                    'errors' => ['session_ids' => ['不存在的堂次 id: ' . implode(',', $missing)]],
+                ], 422);
+            }
+
+            foreach ($sessions as $session) {
+                $session->StudentClassID = $target->ID;
+                $session->save(); // fires assertCourseIsMutable() against the TARGET course
+            }
+
+            LearningRecord::whereIn('ClassSessionID', $foundIds)->update(['StudentClassID' => $target->ID]);
+            StudentSignIn::whereIn('ClassSessionID', $foundIds)->update(['StudentClassID' => $target->ID]);
+
+            return response()->json([
+                'message' => "已轉移 " . count($foundIds) . " 堂課程紀錄（含已填評量／點名），計費堂數與金額請照原流程人工對帳。",
+                'transferred_session_ids' => $foundIds,
+                'source_course_id' => (int) $source->ID,
+                'target_course_id' => (int) $target->ID,
+            ]);
+        });
+    }
+
     public function destroy(StudentClass $studentClass)
     {
         $role = request()->attributes->get('auth_role');

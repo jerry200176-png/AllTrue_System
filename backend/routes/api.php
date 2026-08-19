@@ -501,6 +501,7 @@ Route::prefix('v1')->group(function () {
         Route::post('student-classes/{studentClass}/add-session', [StudentClassController::class, 'addSession']);
         Route::post('student-classes/{studentClass}/add-session/check', [StudentClassController::class, 'checkAddSession']);
         Route::post('student-classes/{studentClass}/pause', [StudentClassController::class, 'togglePause']);
+        Route::post('student-classes/{studentClass}/transfer-sessions', [StudentClassController::class, 'transferSessions']);
         Route::delete('student-classes/{studentClass}', [StudentClassController::class, 'destroy']);
 
         // Course Continuity (#1382) — group link without physical merge
