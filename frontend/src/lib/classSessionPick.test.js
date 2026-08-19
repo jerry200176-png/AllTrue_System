@@ -86,6 +86,40 @@ assert.equal(
   'rows on a different date must not match'
 );
 
+// in-app #239: a course can have more than one ClassSession on the same date
+// (R39 — e.g. a same-day reschedule leaves a leftover row, or a leave/makeup
+// pair shares the date). When the cell's time hint doesn't exactly match any
+// row, the resolver must not silently fall back to "any row on this date" by
+// status/id alone — that can target a completely different occurrence than
+// the one the director clicked, so the substitute POST "succeeds" against the
+// wrong ClassSession and the cell the director is looking at never changes.
+// It must prefer the same-date row whose time is *closest* to the hint.
+assert.equal(
+  resolveSessionRowForCell(
+    [
+      { id: 9002, session_date: '2026-08-21', start_time: '09:00', status: 'scheduled' }, // higher id, far from hint
+      { id: 9001, session_date: '2026-08-21', start_time: '15:30', status: 'scheduled' }, // lower id, close to hint
+    ],
+    '2026-08-21',
+    '15:00' // no exact 30-min-rounded match; must not fall back to "highest id" (9002, wrong)
+  )?.id,
+  9001,
+  'ambiguous same-date match must prefer the row closest to the hinted time, not the highest id'
+);
+
+assert.equal(
+  resolveSessionRowForCell(
+    [
+      { id: 8001, session_date: '2026-08-21', start_time: '09:00', status: 'attended' }, // far from hint, but higher status priority
+      { id: 8002, session_date: '2026-08-21', start_time: '15:15', status: 'scheduled' }, // close to hint, lower status priority
+    ],
+    '2026-08-21',
+    '15:00' // must not fall back to "attended wins" (8001, wrong) when time clearly disambiguates
+  )?.id,
+  8002,
+  'nearest-time match wins over status priority when times clearly disambiguate'
+);
+
 const deduped = dedupeSessionsByStudentSlot([
   { id: 100, student_id: 5, session_date: '2026-06-28', start_time: '10:00', status: 'scheduled', learning_record_status: 'missing' },
   { id: 200, student_id: 5, session_date: '2026-06-28', start_time: '10:00', status: 'attended', learning_record_status: 'approved' },

@@ -29,6 +29,16 @@ export function normalizeTimeTo30(timeStr) {
   return `${String(rh).padStart(2, '0')}:${String(rm).padStart(2, '0')}`;
 }
 
+function timeToMinutes(hhmm) {
+  const raw = String(hhmm || '').trim();
+  if (!raw) return null;
+  const parts = raw.split(':');
+  const h = Number(parts[0]);
+  const m = Number(parts[1] ?? 0);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  return h * 60 + m;
+}
+
 export function pickBestSessionRow(candidates) {
   if (!candidates?.length) return null;
   if (candidates.length === 1) return candidates[0];
@@ -69,6 +79,32 @@ export function resolveSessionRowForCell(sessions, dateYmd, startTimeHint) {
       (r) => normalizeTimeTo30(r.start_time || r.StartTime || '') === hint
     );
     if (exact.length) return pickBestSessionRow(exact);
+
+    // in-app #239: a course can have more than one ClassSession on the same
+    // date (R39). With no exact-time match, do not silently fall back to
+    // "any row on this date" by status/id alone -- that can target a
+    // different occurrence than the cell the caller is acting on, so a
+    // substitute/reschedule write "succeeds" against the wrong ClassSession
+    // while the cell the director is looking at never changes. Mirror the
+    // Google Calendar identity model: prefer the same-date row whose time is
+    // closest to the hint before falling back to status/id.
+    if (sameDateRows.length > 1) {
+      const hintMinutes = timeToMinutes(hint);
+      let bestDelta = Infinity;
+      let nearest = [];
+      for (const row of sameDateRows) {
+        const rowMinutes = timeToMinutes(normalizeTimeTo30(row.start_time || row.StartTime || ''));
+        if (rowMinutes == null) continue;
+        const delta = Math.abs(rowMinutes - hintMinutes);
+        if (delta < bestDelta) {
+          bestDelta = delta;
+          nearest = [row];
+        } else if (delta === bestDelta) {
+          nearest.push(row);
+        }
+      }
+      if (nearest.length) return pickBestSessionRow(nearest);
+    }
   }
 
   return pickBestSessionRow(sameDateRows);
