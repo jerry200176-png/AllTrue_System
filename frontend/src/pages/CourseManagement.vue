@@ -349,6 +349,7 @@
                             <button v-if="c.status !== 'inactive'" class="action-dropdown-item" @click="requestCoursePause(c); closeActionMenu()"><span class="action-icon">⏸</span> 暫停課程</button>
                             <button v-if="c.status === 'inactive'" class="action-dropdown-item action-dropdown-resume" @click="requestCoursePause(c); closeActionMenu()"><span class="action-icon">▶</span> 恢復課程</button>
                             <button v-if="canCloseCourse(c)" class="action-dropdown-item action-dropdown-close" @click="closeCourseNoRenew(c); closeActionMenu()"><span class="action-icon">✓</span> 結案（不續報）</button>
+                            <button class="action-dropdown-item" title="把已上課、已填評量的堂次搬到另一門課程，不用重填評量" @click="openTransferSessionsModal(c); closeActionMenu()"><span class="action-icon">↪</span> 轉移堂次紀錄</button>
                             <hr class="action-dropdown-divider" />
                             <p class="action-section-label action-section-label--danger">危險操作</p>
                             <button class="action-dropdown-item action-dropdown-danger" @click="confirmDeleteTarget = c; closeActionMenu()"><span class="action-icon">🗑</span> 刪除課程</button>
@@ -673,6 +674,17 @@
       :warnings="renewMonthlyWarnings"
       @close="!renewMonthlySubmitting && (showRenewMonthlyModal = false)"
       @submit="submitRenewMonthly"
+    />
+
+    <TransferSessionsModal
+      :show="showTransferSessionsModal"
+      :student-name="transferSessionsCourse?.student_name || ''"
+      :subject="transferSessionsCourse?.subject_name || transferSessionsCourse?.subject || ''"
+      :sessions="transferSessionsSessionOptions"
+      :submitting="transferSessionsSubmitting"
+      :error-message="transferSessionsError"
+      @close="!transferSessionsSubmitting && (showTransferSessionsModal = false)"
+      @submit="submitTransferSessions"
     />
 
     <EnrollmentConflictDecisionModal
@@ -1074,6 +1086,7 @@ import { buildForceOverrideFields } from '../lib/enrollmentConflictDecision';
 import { isPendingWorkflowStatus } from '../lib/exceptionWorkflowFocus.js';
 import PurchaseSessionsModal from '../components/course-management/PurchaseSessionsModal.vue';
 import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal.vue';
+import TransferSessionsModal from '../components/course-management/TransferSessionsModal.vue';
 import QuickAddSessionModal from '../components/course-management/QuickAddSessionModal.vue';
 import ManualSessionModal from '../components/course-management/ManualSessionModal.vue';
 import LeaveModal from '../components/course-management/LeaveModal.vue';
@@ -1806,6 +1819,64 @@ const renewMonthlyCourse = ref(null);
 const renewMonthlyForm = ref({});
 const renewMonthlySubmitting = ref(false);
 const renewMonthlyWarnings = ref([]);
+
+const showTransferSessionsModal = ref(false);
+const transferSessionsCourse = ref(null);
+const transferSessionsSubmitting = ref(false);
+const transferSessionsError = ref('');
+const transferSessionsSessionOptions = computed(() => {
+  const c = transferSessionsCourse.value;
+  if (!c) return [];
+  return allSessionUnits(c)
+    .filter((s) => s?.status !== 'cancelled')
+    .map((s) => ({ id: Number(s.id), date: s.date, status: s.status }));
+});
+
+function openTransferSessionsModal(course) {
+  transferSessionsCourse.value = course;
+  transferSessionsError.value = '';
+  showTransferSessionsModal.value = true;
+}
+
+async function submitTransferSessions({ targetCourseId, sessionIds }) {
+  const course = transferSessionsCourse.value;
+  if (!course || sessionIds.length === 0) return;
+  transferSessionsSubmitting.value = true;
+  transferSessionsError.value = '';
+  try {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    const token = sess?.access_token;
+    if (!token) { transferSessionsError.value = '請重新登入後再試'; return; }
+    const res = await fetch(`/api/v1/student-classes/${course.id}/transfer-sessions`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ session_ids: sessionIds, target_student_class_id: targetCourseId }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const details = json?.errors ? Object.values(json.errors || {}).flat().join(' ') : '';
+      transferSessionsError.value = details || json?.message || '轉移失敗';
+      return;
+    }
+    showTransferSessionsModal.value = false;
+    toastRef.value?.show?.({
+      title: '已轉移堂次紀錄',
+      description: json?.message || `已轉移 ${sessionIds.length} 堂到課程 #${targetCourseId}`,
+      variant: 'success',
+      durationMs: 7000,
+    });
+    await loadCourses();
+  } catch (e) {
+    transferSessionsError.value = '轉移失敗：' + (e?.message || '請稍後再試');
+  } finally {
+    transferSessionsSubmitting.value = false;
+  }
+}
 const purchaseForm = ref({
   sessions: 8,
   start_date: '',
