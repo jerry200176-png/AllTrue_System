@@ -1126,7 +1126,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | 模組 | 必讀條目（在 Archive） |
 |------|----------|
 | 堂數 / 扣堂 | §2026-04-17 繳費日期、§單堂費用固定、**§R59（分鐘制權威：RemainingSessions 為 ROUND_HALF_UP 衍生值，讀取端勿用 count 覆寫 fractional）**、§R70（對帳面板唯讀＋真實 API contract test）、**§R76（單堂改時段費用前後端必須一致）** |
-| 繳費 / 學收 | §繳費狀態 paid_at、§歷史課程漏算、§催繳名單六狀態、§幽靈課程、§R30（帳務入口共用 AR ledger）、**§R76（session／hour 費用文案與 Charge 寫入）**、**§R79（收據前端不得超前後端 contract；合法路徑=payment-reports/{id}/receipt）**、**#1827／RFC_REPORTED_PAID_ACCOUNTING_SPLIT（行政已回報 ≠ Paid；收據僅 confirm 後）**、**§R115（堂數制↔月結轉換封存未入帳、禁止沖銷已確認收款）**、**§R117（帳務中心收據 API 不可 require_pin 而前端無輸入框）** |
+| 繳費 / 學收 | §繳費狀態 paid_at、§歷史課程漏算、§催繳名單六狀態、§幽靈課程、§R30（帳務入口共用 AR ledger）、**§R76（session／hour 費用文案與 Charge 寫入）**、**§R79（收據前端不得超前後端 contract；合法路徑=payment-reports/{id}/receipt）**、**#1827／RFC_REPORTED_PAID_ACCOUNTING_SPLIT（行政已回報 ≠ Paid；收據僅 confirm 後）**、**§R115（堂數制↔月結轉換封存未入帳、禁止沖銷已確認收款）**、**§R117（帳務中心收據 API 不可 require_pin 而前端無輸入框）**、**§R118（收據流水必須標班型／0元原因／首堂來源，禁止只寫尚未排課）** |
 | 薪資 / 併堂 | §兼職薪資 concurrency、§同層級併堂 v1.4、§契約時長為準 |
 | 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession）、§R39（代課評量權限需匹配時段）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R52（代課 scheduled 例外不可缺 original_schedule_id anchor）、§R71（調課單一交易＋前端 committed gate）、§R83（原子調課必須標記 IsContractException）、**§R84（IsContractException 搬進 ClassSessionObserver 結構性保證）**、§R72（cancelled ClassSession 不得讓 scheduled 例外佔用代課老師）、**§R114（同日二次調課中間 scheduled 殘影不得佔用）**、**§R116（混班型剩餘依被代課班型）**、§R73（跨老師 gesture 必走 atomic substitute；legacy 兩階段精準補償）、§R74（代課衝突排除同一學生續約佔用） |
 | 請假 / 順延 | §R29、**§R82（KEEP dates+append）**、§R75（SUPERSEDED）、§R77、§R81、**§R109（結案不可吃掉請假順延尾堂）** |
@@ -1408,5 +1408,12 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **根因**：#769 後端把 `accounting/payments*`、`accounting/settled-courses` 掛 `require_pin`。後來帳務中心從 `PIN_PROTECTED_PAGES` 拿掉（催繳不可整頁空白），`PinLockModal` 不再出現，API 仍回 423。
 - **強制規則**：`tuition-collect` 前端不擋 PIN 時，該頁專用 API 也不得掛 `require_pin`。薪資／當月學收／老師管理仍走 PIN。前後端保護清單必須同步；禁止只在錯誤字串要求 PIN。
 - **測試必補**：`PinVerificationTest` 將 accounting payments／settled-courses／ledger 列為共享端點不得掛 `require_pin`；`pinGate.test.js` `tuition-collect` 不顯示 modal。
+
+### R118. 收據流水必須能分辨同科兩筆、0 元原因與首堂來源（2026-08-19）
+
+- **現象**：同一科目拆成兩筆看不出一對一／輔導／試聽；0 元不知是試聽還是輔導；歷史課只寫「尚未排課」，要切到課程管理才懂。
+- **根因**：列表只顯示 `displaySubjectName()`，收據項目沒帶 `ClassType`；`first_session_date` 只取未取消 ClassSession，完課後堂次取消就變空。
+- **強制規則**：收據列表與電子收據項目必須帶班型。0 元標試聽／輔導／0元。`first_session_date` 仍只給有效堂次（預收判定不變）；畫面用 `first_session_display`＋說明（取消堂次或合約開課日）。禁止用課程內部編號當主文案。
+- **測試必補**：`AccountingCourseClarityTest`；`PaymentReportApiTest::test_accounting_payments_labels_zero_tutoring_and_history_first_session`；`studentClassDisplay.test.js`／收據 adapter 試聽輔導文案。
 
 

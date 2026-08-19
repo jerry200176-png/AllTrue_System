@@ -28,6 +28,7 @@ assert.ok(latest.id && latest.publishedAt && latest.sections?.length);
 assert.ok(['digest', 'major', 'action_required'].includes(latest.importance));
   assert.strictEqual(latest.publishedAt, '2026-08-19');
   for (const id of [
+    'staff-2026-08-19-receipt-line-clarity',
     'staff-2026-08-19-accounting-receipt-pin-gap',
     'staff-2026-08-17-lr-batch-approve-perf',
     'staff-2026-08-17-fillrate-completed',

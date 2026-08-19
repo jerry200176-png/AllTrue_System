@@ -3,6 +3,19 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-19-receipt-line-clarity
+    published_at: "2026-08-19"
+    audiences:
+      - director
+    importance: digest
+    title: 收據紀錄看得到班型
+    summary: 同科兩筆會標班型；0元看得出試聽或輔導。
+    items:
+      - category: improved
+        text: 科目會寫一對一、輔導、試聽；歷史課首堂有說明。
+    source_refs:
+      - "changelog:2026-08-19:receipt-line-clarity"
+
   - id: staff-2026-08-19-accounting-receipt-pin-gap
     published_at: "2026-08-19"
     audiences:

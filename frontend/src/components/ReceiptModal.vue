@@ -92,6 +92,16 @@
                 </div>
               </div>
 
+              <div v-if="(snapshot.session_dates || []).length" class="receipt-doc-sessions">
+                <div class="receipt-doc-label">上課日期</div>
+                <div class="receipt-doc-session-list">
+                  <span v-for="(s, i) in snapshot.session_dates.slice(0, 16)" :key="i">
+                    {{ s.date }}<template v-if="s.expected">（尚未上）</template>
+                  </span>
+                  <span v-if="snapshot.session_dates.length > 16">…共 {{ snapshot.session_dates.length }} 堂</span>
+                </div>
+              </div>
+
               <div class="receipt-doc-row">
                 <span class="receipt-doc-label">收款日期</span>
                 <span class="receipt-doc-value">{{ snapshot.paid_at || '—' }}</span>
@@ -118,6 +128,14 @@
 
             <div v-if="receipt.status === 'voided'" class="receipt-voided-watermark">作廢</div>
           </div>
+        </div>
+
+        <div v-if="snapshot.course_lifecycle_label || snapshot.first_session_note" class="receipt-ops" aria-label="帳務說明">
+          <p v-if="snapshot.course_lifecycle_label">課程狀態：{{ snapshot.course_lifecycle_label }}</p>
+          <p v-if="snapshot.first_session_note">
+            第一堂課：{{ snapshot.first_session_display || '—' }}
+            · {{ snapshot.first_session_note }}
+          </p>
         </div>
 
         <!-- Actions -->
@@ -282,6 +300,12 @@ watch(() => [props.show, props.reportId], async ([visible]) => {
 .receipt-doc-item-row { display: flex; justify-content: space-between; padding: 7px 10px; border-top: 1px solid var(--border); font-size: 13px; }
 .receipt-doc-amount-col { text-align: right; font-variant-numeric: tabular-nums; }
 .receipt-doc-total-row { background: var(--ds-success-wash); font-weight: 700; }
+.receipt-doc-sessions { padding: 10px 0; font-size: 12px; border-bottom: 1px solid var(--border); }
+.receipt-doc-session-list { display: flex; flex-wrap: wrap; gap: 6px 10px; margin-top: 6px; color: var(--ds-ink); }
+.receipt-ops { margin-top: 12px; padding: 10px 12px; background: var(--ds-canvas-soft); border-radius: 8px; font-size: 12px; color: var(--ds-ink-mute); }
+.receipt-ops p { margin: 0 0 4px; }
+.receipt-ops p:last-child { margin-bottom: 0; }
+@media print { .receipt-ops { display: none; } }
 .receipt-doc-refund { padding: 10px 0; font-size: 12px; }
 .receipt-doc-refund-text { margin-top: 4px; color: var(--text-light); line-height: 1.6; white-space: pre-line; }
 .receipt-doc-footer { padding: 12px 20px; border-top: 1px solid var(--border); font-size: 11px; color: var(--text-light); display: flex; justify-content: space-between; align-items: flex-start; }

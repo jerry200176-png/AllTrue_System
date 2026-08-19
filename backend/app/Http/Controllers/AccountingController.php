@@ -8,6 +8,7 @@ use App\Models\PaymentReport;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Services\InvoiceAmountReconciliationService;
+use App\Support\AccountingCourseClarity;
 use App\Support\Utf8mb3SearchSanitizer;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -496,7 +497,7 @@ class AccountingController extends Controller
             ->orderBy('id', 'desc')
             ->limit($export ? 5000 : 10000)
             ->get();
-        $firstSessionMap = $this->firstSessionDateMap($allRows->pluck('StudentClassID')->all());
+        $firstSessionMap = $this->firstSessionMetaMap($allRows->pluck('StudentClassID')->all());
         $transformed = $allRows->map(fn (PaymentReport $report) => $this->transformPaymentReport($report, $firstSessionMap))->values();
         $summary = $this->summarize($transformed);
 
@@ -687,21 +688,34 @@ class AccountingController extends Controller
         return 'COURSE-' . str_pad((string) $studentClassId, 6, '0', STR_PAD_LEFT);
     }
 
-    private function firstSessionDateMap(array $studentClassIds): array
+    /**
+     * @return array<int, array{first_live:?string,first_any:?string}>
+     */
+    private function firstSessionMetaMap(array $studentClassIds): array
     {
         $ids = array_values(array_unique(array_filter(array_map('intval', $studentClassIds))));
         if ($ids === []) {
             return [];
         }
 
-        return ClassSession::query()
-            ->selectRaw('StudentClassID, MIN(SessionDate) as first_date')
+        $rows = ClassSession::query()
+            ->selectRaw("StudentClassID as sid,
+                MIN(CASE WHEN Status <> 'cancelled' THEN SessionDate END) as first_live,
+                MIN(SessionDate) as first_any")
             ->whereIn('StudentClassID', $ids)
-            ->where('Status', '!=', 'cancelled')
             ->groupBy('StudentClassID')
-            ->pluck('first_date', 'StudentClassID')
-            ->map(fn ($date) => $date ? substr((string) $date, 0, 10) : null)
-            ->all();
+            ->get();
+
+        $map = [];
+        foreach ($rows as $row) {
+            $id = (int) $row->sid;
+            $map[$id] = [
+                'first_live' => $row->first_live ? substr((string) $row->first_live, 0, 10) : null,
+                'first_any' => $row->first_any ? substr((string) $row->first_any, 0, 10) : null,
+            ];
+        }
+
+        return $map;
     }
 
     private function transformPaymentReport(PaymentReport $report, array $firstSessionMap): array
@@ -709,8 +723,16 @@ class AccountingController extends Controller
         $method = (string) ($report->payment_method ?? 'cash');
         $amount = (int) round((float) $report->reported_amount);
         $paymentDate = $report->payment_date ? $report->payment_date->toDateString() : null;
-        $firstSessionDate = $firstSessionMap[(int) $report->StudentClassID] ?? null;
+        $sc = $report->getRelationValue('studentClass');
+        $sc = $sc instanceof StudentClass ? $sc : null;
+        $meta = $firstSessionMap[(int) $report->StudentClassID] ?? ['first_live' => null, 'first_any' => null];
+        $first = AccountingCourseClarity::firstSession($meta, $sc);
+        $firstSessionDate = $first['date'];
         $isConfirmed = $report->status === 'confirmed';
+        $classType = $sc !== null ? (string) $sc->getAttribute('ClassType') : '';
+        $life = AccountingCourseClarity::lifecycle($sc);
+        $sessionCount = $sc?->getAttribute('SessionCount');
+        $remaining = $sc?->getAttribute('RemainingSessions');
 
         return [
             'report_id' => (int) $report->id,
@@ -719,14 +741,25 @@ class AccountingController extends Controller
             'student_id' => (int) $report->StudentID,
             'student_name' => $report->student?->name ?? $report->reported_by_name,
             'student_class_id' => (int) $report->StudentClassID,
-            'subject' => $report->studentClass?->displaySubjectName() ?? '課程',
+            'subject' => $sc?->displaySubjectName() ?? '課程',
+            'class_type' => $classType,
+            'class_type_label' => AccountingCourseClarity::classTypeLabel($classType),
+            'session_count' => $sessionCount !== null ? (int) $sessionCount : null,
+            'remaining_sessions' => $remaining !== null ? (int) $remaining : null,
             'schedule_mode' => (string) ($report->studentClass?->ScheduleMode ?? ''),
+            'course_lifecycle' => $life['code'],
+            'course_lifecycle_label' => $life['label'],
             'first_session_date' => $firstSessionDate,
+            'first_session_display' => $first['display'],
+            'first_session_source' => $first['source'],
+            'first_session_note' => $first['note'],
+            'contract_start_date' => AccountingCourseClarity::contractStartDate($sc),
             'is_prepaid' => $paymentDate !== null && $firstSessionDate !== null && $paymentDate < $firstSessionDate,
             'payment_method' => $method,
             'cash_amount' => $isConfirmed && $method === 'cash' ? $amount : 0,
             'transfer_amount' => $isConfirmed && $method === 'transfer' ? $amount : 0,
             'total_amount' => $isConfirmed ? $amount : 0,
+            'zero_reason' => AccountingCourseClarity::zeroReason($amount, $classType),
             'status' => (string) $report->status,
             'confirmed_at' => $report->confirmed_at?->toIso8601String(),
             'confirmed_by_name' => $report->confirmedByUser?->Name,

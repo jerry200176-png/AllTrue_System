@@ -8,13 +8,19 @@ export const changelogDraftNotes = [
     "version": "2026.08.19",
     "date": "2026-08-19",
     "title": "2026.08.19 草稿（未發布）",
-    "summary": "帳務中心收據紀錄不再卡 PIN 卻沒輸入框",
+    "summary": "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。；帳務中心收據紀錄不再卡 PIN 卻沒輸入框",
     "audience": [
       "teacher",
       "director"
     ],
     "draft": true,
     "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。"
+        ]
+      },
       {
         "title": "修正內容",
         "items": [
@@ -23,6 +29,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。",
       "帳務中心收據紀錄不再卡 PIN 卻沒輸入框"
     ]
   },
