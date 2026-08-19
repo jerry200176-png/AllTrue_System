@@ -1,8 +1,8 @@
 # Request: single bug detail dump (read-only)
 
-bug_id: 224
+bug_id: 239
 
-Purpose: Phase A triage for new in-app bug #224 (status=new, severity=high, campus_id=3, page_key=calendar, title "學生課無法移動或刪除", reporter_user_id=72, created 2026-08-07 19:20:02, no attachments per bug-queue-dump run 31175636740). Need description, comments, status_logs, and reporter's full history/cross-campus record per CHAT_BUG_SYSTEM.md §3.6 before proposing a root cause.
+Purpose: Phase A triage for new in-app bug #239 (status=new, severity=critical, campus_id=3, page_key=calendar, title "代課老師設定寫成功但實際課表根本無法改", reporter_user_id=72, created 2026-08-18 14:38:33, no attachments per bug-queue-dump run 32210083540, dump_generated_at 2026-08-19T02:52:13Z). Need description, comments, status_logs, and reporter's full history/cross-campus record per CHAT_BUG_SYSTEM.md §3.6 before proposing a root cause.
 **No writes.**
 
 # kickoff 2026-07-30T04:48:00Z — retry after fixing StudentClass campus lookup (StudentClass has no CampusID column; campus lives on Student, joined via StudentID — query previously selected the nonexistent `sc.CampusID`)

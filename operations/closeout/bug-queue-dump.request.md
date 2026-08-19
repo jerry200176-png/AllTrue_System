@@ -13,3 +13,5 @@ Purpose: weekly triage sweep — pull current `new`/`triaged`/`in_progress` queu
 # kickoff 2026-08-07T11:45:03Z — new in-app bug report reported by user this session; pull current open queue for Phase A triage
 
 # kickoff 2026-08-19T02:30:53Z — new in-app bug report, user asked to process it this session; pull current open queue for Phase A triage
+
+# kickoff 2026-08-19T03:05:01Z — re-dump immediately alongside bug-detail-dump for bug_id 239 in the same merge, to keep both within the 15-min freshness window for §3.6 evidence validation
