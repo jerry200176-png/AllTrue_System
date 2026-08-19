@@ -53,7 +53,11 @@ function runAction(t) {
   position: fixed;
   bottom: 20px;
   right: 20px;
-  z-index: 10060;
+  /* Must outrank every modal/confirm overlay (highest known: .att-overlay 10200 in
+     AttendancePage.vue) — a toast fired while a dialog is open must never render
+     behind that dialog's backdrop. See in-app bug report re: contract-lock error
+     toast appearing dimmed/unreadable behind an open confirm dialog. */
+  z-index: 20000;
   display: flex;
   flex-direction: column;
   gap: 10px;
