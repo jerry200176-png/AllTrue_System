@@ -25,6 +25,21 @@ class RepairTyphoonAttendance1903Test extends TestCase
             ]);
         }
         foreach ([[22302, 1849], [16728, 2081]] as [$sessionId, $classId]) {
+            // Three OTHER legitimate attended sessions per course, so
+            // recomputeCounters() (which derives UsedSessions from actual
+            // ClassSession/ledger/sign-in state, not the raw stored field)
+            // has real signal to land on 4 before / 3 after repair.
+            foreach (range(1, 3) as $i) {
+                $otherId = $sessionId * 1000 + $i;
+                DB::table('ClassSession')->insert([
+                    'id' => $otherId, 'StudentClassID' => $classId, 'SessionDate' => "2026-06-0{$i}", 'StartTime' => '10:00:00',
+                    'EndTime' => '12:00:00', 'Status' => 'attended', 'Note' => '', 'created_at' => now(), 'updated_at' => now(),
+                ]);
+                DB::table('session_deduction_ledger')->insert([
+                    'student_class_id' => $classId, 'class_session_id' => $otherId, 'event_type' => 'deduct',
+                    'source' => 'attendance', 'created_at' => now(), 'updated_at' => now(),
+                ]);
+            }
             DB::table('ClassSession')->insert([
                 'id' => $sessionId, 'StudentClassID' => $classId, 'SessionDate' => '2026-07-11', 'StartTime' => '10:00:00',
                 'EndTime' => '12:00:00', 'Status' => 'attended', 'Note' => '', 'created_at' => now(), 'updated_at' => now(),
