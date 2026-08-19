@@ -63,7 +63,7 @@ class AccountingCourseClarity
         if (!$sc) {
             return null;
         }
-        $start = $sc->StartDate;
+        $start = $sc->getAttribute('StartDate');
         if ($start instanceof DateTimeInterface) {
             return $start->format('Y-m-d');
         }

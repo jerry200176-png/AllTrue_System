@@ -789,7 +789,8 @@ class PaymentReportController extends Controller
             return response()->json(['message' => '尚未核帳確認，無法產生收據'], 422);
         }
 
-        $sc = $report->studentClass;
+        $sc = $report->getRelationValue('studentClass');
+        $sc = $sc instanceof StudentClass ? $sc : null;
         $subjectName = $sc?->displaySubjectName() ?? ($sc?->subjectRecord?->Subject_Name ?? '課程');
 
         $periodStart = null;
@@ -885,7 +886,7 @@ class PaymentReportController extends Controller
         }
         $life = AccountingCourseClarity::lifecycle($sc);
         $first = AccountingCourseClarity::firstSession($sessionMeta, $sc);
-        $classType = (string) ($sc?->ClassType ?? '');
+        $classType = $sc !== null ? (string) $sc->ClassType : '';
         $amount = (float) $report->reported_amount;
 
         return response()->json([

@@ -723,12 +723,13 @@ class AccountingController extends Controller
         $method = (string) ($report->payment_method ?? 'cash');
         $amount = (int) round((float) $report->reported_amount);
         $paymentDate = $report->payment_date ? $report->payment_date->toDateString() : null;
-        $sc = $report->studentClass;
+        $sc = $report->getRelationValue('studentClass');
+        $sc = $sc instanceof StudentClass ? $sc : null;
         $meta = $firstSessionMap[(int) $report->StudentClassID] ?? ['first_live' => null, 'first_any' => null];
         $first = AccountingCourseClarity::firstSession($meta, $sc);
         $firstSessionDate = $first['date'];
         $isConfirmed = $report->status === 'confirmed';
-        $classType = (string) ($sc?->ClassType ?? '');
+        $classType = $sc !== null ? (string) $sc->ClassType : '';
         $life = AccountingCourseClarity::lifecycle($sc);
 
         return [
