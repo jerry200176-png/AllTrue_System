@@ -493,34 +493,66 @@
         </div>
 
         <div v-else class="tc-table-wrap">
+          <div class="acct-bulkbar" v-if="selectedReportIds.size > 0">
+            <span>已選取 {{ selectedReportIds.size }} 筆</span>
+            <button class="tc-btn tc-btn--ghost" @click="selectedReportIds = new Set()">取消選取</button>
+            <button class="tc-btn tc-btn--csv" @click="exportSelectedAccountingCSV">
+              <span class="material-symbols-outlined" style="font-size:16px">download</span>
+              匯出已選取
+            </button>
+          </div>
           <table class="tc-table acct-table">
             <thead>
               <tr>
-                <th>收據編號</th>
-                <th>繳費日期</th>
-                <th>學生</th>
-                <th>科目</th>
-                <th>第一堂課</th>
+                <th class="acct-col-check">
+                  <input type="checkbox" :checked="allAccountingSelected" @change="toggleSelectAllAccounting" aria-label="全選" />
+                </th>
+                <th class="acct-th-sortable" @click="toggleAccountingSort('payment_date')">
+                  繳費日期／收據編號
+                  <span v-if="accountingSortKey === 'payment_date'" class="acct-sort-arrow">{{ accountingSortDir === 'asc' ? '▲' : '▼' }}</span>
+                </th>
+                <th class="acct-th-sortable" @click="toggleAccountingSort('student_name')">
+                  學生
+                  <span v-if="accountingSortKey === 'student_name'" class="acct-sort-arrow">{{ accountingSortDir === 'asc' ? '▲' : '▼' }}</span>
+                </th>
+                <th>科目／第一堂課</th>
                 <th class="tc-col-currency">現金</th>
                 <th class="tc-col-currency">匯款</th>
-                <th class="tc-col-currency">合計</th>
-                <th>標籤</th>
-                <th>核帳人</th>
+                <th class="tc-col-currency acct-th-sortable" @click="toggleAccountingSort('total_amount')">
+                  合計
+                  <span v-if="accountingSortKey === 'total_amount'" class="acct-sort-arrow">{{ accountingSortDir === 'asc' ? '▲' : '▼' }}</span>
+                </th>
+                <th>標籤／核帳人</th>
                 <th>操作</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="row in accountingRows" :key="row.report_id">
-                <td>{{ humanizeDocumentRef(row.receipt_no) }}</td>
-                <td>{{ row.payment_date || '—' }}</td>
+              <tr
+                v-for="row in sortedAccountingRows"
+                :key="row.report_id"
+                class="acct-row-clickable"
+                :class="{ 'acct-row-selected': selectedReportIds.has(row.report_id) }"
+                @click="openReceiptByReport(row.report_id)"
+              >
+                <td class="acct-col-check" @click.stop>
+                  <input
+                    type="checkbox"
+                    :checked="selectedReportIds.has(row.report_id)"
+                    @change="toggleAccountingRowSelected(row.report_id)"
+                    :aria-label="`選取 ${humanizeDocumentRef(row.receipt_no)}`"
+                  />
+                </td>
+                <td>
+                  <div class="acct-primary">{{ row.payment_date || '—' }}</div>
+                  <div class="acct-sub">{{ humanizeDocumentRef(row.receipt_no) }}</div>
+                </td>
                 <td class="tc-cell-name">{{ row.student_name }}</td>
                 <td>
                   <div>{{ formatAccountingReceiptSubject(row).primary }}</div>
                   <div v-if="formatAccountingReceiptSubject(row).secondary" class="acct-sub">{{ formatAccountingReceiptSubject(row).secondary }}</div>
-                </td>
-                <td>
-                  <div>{{ formatAccountingFirstSession(row).date || formatAccountingFirstSession(row).note }}</div>
-                  <div v-if="formatAccountingFirstSession(row).date && formatAccountingFirstSession(row).note" class="acct-sub">{{ formatAccountingFirstSession(row).note }}</div>
+                  <div v-if="formatAccountingFirstSession(row).date || formatAccountingFirstSession(row).note" class="acct-sub">
+                    {{ formatAccountingFirstSession(row).date || formatAccountingFirstSession(row).note }}
+                  </div>
                 </td>
                 <td class="tc-col-currency">{{ formatCurrency(row.cash_amount || 0) }}</td>
                 <td class="tc-col-currency">{{ formatCurrency(row.transfer_amount || 0) }}</td>
@@ -531,9 +563,9 @@
                   <span v-if="row.is_backfilled" class="acct-chip acct-chip--backfill">補建</span>
                   <span v-if="row.course_lifecycle === 'history_completed' || row.course_lifecycle === 'history_settled'" class="acct-chip acct-chip--backfill">{{ row.course_lifecycle_label }}</span>
                   <span v-if="!formatAccountingTagLine(row)" class="text-light">—</span>
+                  <div class="acct-sub">{{ row.confirmed_by_name || '—' }}</div>
                 </td>
-                <td>{{ row.confirmed_by_name || '—' }}</td>
-                <td>
+                <td @click.stop>
                   <div class="tc-actions">
                     <button class="tc-btn tc-btn--ledger" @click="openLedgerForReport(row)" :aria-label="`對帳 ${humanizeDocumentRef(row.receipt_no)}`">
                       <span class="material-symbols-outlined">account_balance</span>
@@ -817,6 +849,8 @@ import {
   formatAccountingFirstSession,
   formatAccountingZeroChip,
   formatAccountingTagLine,
+  buildAccountingCsvRows,
+  ACCOUNTING_CSV_HEADERS,
 } from '../lib/studentClassDisplay.js';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 
@@ -852,6 +886,79 @@ const accountingSummary = ref({
   prepaid_count: 0,
 });
 const accountingFilters = ref(defaultAccountingFilters());
+
+// Sortable + selectable 收據紀錄 table (mirrors mature accounting-software list
+// patterns: click a header to sort, checkbox rows to bulk-export a subset).
+const accountingSortKey = ref('payment_date');
+const accountingSortDir = ref('desc');
+const selectedReportIds = ref(new Set());
+
+const ACCOUNTING_SORT_ACCESSORS = {
+  payment_date: (r) => r.payment_date || '',
+  student_name: (r) => r.student_name || '',
+  total_amount: (r) => Number(r.total_amount || 0),
+};
+
+function toggleAccountingSort(key) {
+  if (!ACCOUNTING_SORT_ACCESSORS[key]) return;
+  if (accountingSortKey.value === key) {
+    accountingSortDir.value = accountingSortDir.value === 'asc' ? 'desc' : 'asc';
+  } else {
+    accountingSortKey.value = key;
+    accountingSortDir.value = key === 'total_amount' ? 'desc' : 'asc';
+  }
+}
+
+const sortedAccountingRows = computed(() => {
+  const accessor = ACCOUNTING_SORT_ACCESSORS[accountingSortKey.value];
+  if (!accessor) return accountingRows.value;
+  const dir = accountingSortDir.value === 'asc' ? 1 : -1;
+  return [...accountingRows.value].sort((a, b) => {
+    const av = accessor(a);
+    const bv = accessor(b);
+    if (av < bv) return -1 * dir;
+    if (av > bv) return 1 * dir;
+    return 0;
+  });
+});
+
+const allAccountingSelected = computed(() => (
+  accountingRows.value.length > 0 && accountingRows.value.every((r) => selectedReportIds.value.has(r.report_id))
+));
+
+function toggleAccountingRowSelected(reportId) {
+  const next = new Set(selectedReportIds.value);
+  if (next.has(reportId)) next.delete(reportId); else next.add(reportId);
+  selectedReportIds.value = next;
+}
+
+function toggleSelectAllAccounting() {
+  selectedReportIds.value = allAccountingSelected.value
+    ? new Set()
+    : new Set(accountingRows.value.map((r) => r.report_id));
+}
+
+function downloadAccountingCsv(rows, filenameSuffix) {
+  const bom = '﻿';
+  const csv = bom + [ACCOUNTING_CSV_HEADERS, ...buildAccountingCsvRows(rows)].map((row) => row.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `收據流水紀錄_${filenameSuffix}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportSelectedAccountingCSV() {
+  const rows = accountingRows.value.filter((r) => selectedReportIds.value.has(r.report_id));
+  if (!rows.length) {
+    showToast('請先勾選要匯出的收據', 'warning');
+    return;
+  }
+  downloadAccountingCsv(rows, `已選取${rows.length}筆`);
+  showToast(`已匯出 ${rows.length} 筆選取的收據`);
+}
 
 const activeTabLoading = computed(() => (
   activeAccountingTab.value === 'receivables' ? loading.value : activeAccountingTab.value === 'settled' ? settledLoading.value : accountingLoading.value
@@ -1284,6 +1391,7 @@ async function loadAlerts() {
 async function loadAccountingPayments() {
   accountingLoading.value = true;
   accountingError.value = '';
+  selectedReportIds.value = new Set();
   try {
     const token = getToken();
     if (!token) { accountingError.value = '請先登入'; return; }
@@ -1377,32 +1485,7 @@ async function exportAccountingCSV() {
       showToast('目前篩選條件沒有可匯出的收據流水紀錄', 'warning');
       return;
     }
-    const headers = ['收據編號', '繳費日期', '學生姓名', '科目', '班型', '課程狀態', '第一堂課日期', '第一堂課說明', '現金', '匯款', '合計', '付款方式', '標籤', '核帳人'];
-    const csvRows = data.map(r => [
-      r.receipt_no || '',
-      r.payment_date || '',
-      r.student_name || '',
-      formatAccountingReceiptSubject(r).primary,
-      r.class_type_label || '',
-      r.course_lifecycle_label || '',
-      formatAccountingFirstSession(r).date || '',
-      formatAccountingFirstSession(r).note,
-      r.cash_amount || 0,
-      r.transfer_amount || 0,
-      r.total_amount || 0,
-      paymentMethodLabel(r.payment_method),
-      formatAccountingTagLine(r),
-      r.confirmed_by_name || '',
-    ]);
-    const bom = '\uFEFF';
-    const csv = bom + [headers, ...csvRows].map(row => row.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `收據流水紀錄_${accountingFilters.value.start}_${accountingFilters.value.end}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadAccountingCsv(data, `${accountingFilters.value.start}_${accountingFilters.value.end}`);
     showToast('已匯出 CSV');
   } catch (e) {
     showToast(e.message || 'CSV 匯出失敗', 'error');
@@ -1968,6 +2051,25 @@ loadAlerts();
   margin-top: 2px;
   max-width: 220px;
   line-height: 1.35;
+}
+.acct-primary { font-weight: 600; }
+.acct-col-check { width: 32px; text-align: center; }
+.acct-th-sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+.acct-th-sortable:hover { color: var(--ds-ink); }
+.acct-sort-arrow { font-size: 10px; margin-left: 3px; }
+.acct-row-clickable { cursor: pointer; }
+.acct-row-clickable:hover { background: var(--ds-canvas-soft); }
+.acct-row-selected { background: var(--ds-primary-wash); }
+.acct-bulkbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  border-radius: 8px;
+  background: var(--ds-primary-wash);
+  font-size: 13px;
+  font-weight: 600;
 }
 .acct-table .tc-btn {
   white-space: nowrap;

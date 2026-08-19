@@ -24,6 +24,8 @@ import {
   formatAccountingReceiptSubject,
   formatAccountingFirstSession,
   formatAccountingZeroChip,
+  buildAccountingCsvRows,
+  ACCOUNTING_CSV_HEADERS,
 } from './studentClassDisplay.js';
 
 // --- unit: open date ---
@@ -219,5 +221,35 @@ const histFirst = formatAccountingFirstSession({
 assert.equal(histFirst.date, '2026-03-01');
 assert.ok(histFirst.note.includes('歷史'));
 assert.equal(primaryLeaksInternalId(trialRow.primary), false);
+
+// 收據紀錄 CSV export shares one row-builder between "export all" and
+// "export selected" (TuitionCollectionPage.vue) — pin the column order/count
+// so a future edit to one export path can't silently drift from the other.
+const csvRow = buildAccountingCsvRows([{
+  receipt_no: 'R-2026-0001',
+  payment_date: '2026-08-19',
+  student_name: '測試學生',
+  subject: '數學',
+  class_type: 'one_on_one',
+  class_type_label: '一對一',
+  course_lifecycle_label: '進行中',
+  first_session_date: '2026-08-02',
+  first_session_note: '',
+  cash_amount: 1000,
+  transfer_amount: 0,
+  total_amount: 1000,
+  payment_method: 'cash',
+  is_prepaid: false,
+  is_backfilled: false,
+  confirmed_by_name: '王主任',
+}])[0];
+assert.equal(csvRow.length, ACCOUNTING_CSV_HEADERS.length);
+assert.equal(csvRow[0], 'R-2026-0001');
+assert.equal(csvRow[1], '2026-08-19');
+assert.equal(csvRow[8], 1000); // 現金
+assert.equal(csvRow[11], '現金'); // 付款方式 label, not the raw enum value
+assert.equal(csvRow[13], '王主任');
+assert.equal(buildAccountingCsvRows([]).length, 0);
+assert.equal(buildAccountingCsvRows(undefined).length, 0);
 
 console.log('studentClassDisplay.test.js: all assertions passed');
