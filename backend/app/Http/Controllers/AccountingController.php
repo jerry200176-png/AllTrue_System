@@ -746,7 +746,7 @@ class AccountingController extends Controller
             'class_type_label' => AccountingCourseClarity::classTypeLabel($classType),
             'session_count' => $sessionCount !== null ? (int) $sessionCount : null,
             'remaining_sessions' => $remaining !== null ? (int) $remaining : null,
-            'schedule_mode' => (string) ($sc?->getAttribute('ScheduleMode') ?? ''),
+            'schedule_mode' => (string) ($report->studentClass?->ScheduleMode ?? ''),
             'course_lifecycle' => $life['code'],
             'course_lifecycle_label' => $life['label'],
             'first_session_date' => $firstSessionDate,
