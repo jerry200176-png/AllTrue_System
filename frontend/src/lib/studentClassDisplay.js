@@ -361,3 +361,29 @@ export function formatAccountingTagLine(row) {
   ].filter(Boolean).join(' / ');
 }
 
+export const ACCOUNTING_CSV_HEADERS = ['收據編號', '繳費日期', '學生姓名', '科目', '班型', '課程狀態', '第一堂課日期', '第一堂課說明', '現金', '匯款', '合計', '付款方式', '標籤', '核帳人'];
+
+function accountingPaymentMethodLabel(method) {
+  return method === 'transfer' ? '匯款' : method === 'cash' ? '現金' : method || '—';
+}
+
+/** Pure row-mapper shared by "export all" and "export selected" in TuitionCollectionPage.vue's 收據紀錄 tab. */
+export function buildAccountingCsvRows(rows) {
+  return (rows || []).map((r) => [
+    r.receipt_no || '',
+    r.payment_date || '',
+    r.student_name || '',
+    formatAccountingReceiptSubject(r).primary,
+    r.class_type_label || '',
+    r.course_lifecycle_label || '',
+    formatAccountingFirstSession(r).date || '',
+    formatAccountingFirstSession(r).note,
+    r.cash_amount || 0,
+    r.transfer_amount || 0,
+    r.total_amount || 0,
+    accountingPaymentMethodLabel(r.payment_method),
+    formatAccountingTagLine(r),
+    r.confirmed_by_name || '',
+  ]);
+}
+
