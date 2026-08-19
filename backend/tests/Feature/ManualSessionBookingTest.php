@@ -239,6 +239,12 @@ class ManualSessionBookingTest extends TestCase
         $this->course->closed_reason = 'settled';
         $this->course->RemainingSessions = 1;
         $this->course->UsedSessions = 2;
+        // StartDate was set in setUp() via the real (unfrozen) Carbon::today(), which
+        // drifts forward with wall-clock time. Once real "today" passes the payload's
+        // fixed 2026-08-17 session_date, that inherited StartDate makes the booking
+        // look like it's before the course even starts. Pin it alongside EndDate so
+        // this test stays independent of when it actually runs.
+        $this->course->StartDate = '2026-08-01';
         $this->course->EndDate = '2026-08-08';
         $this->course->save();
 
