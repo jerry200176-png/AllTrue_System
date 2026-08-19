@@ -1,7 +1,7 @@
 // #769 敏感頁 PIN 二次驗證 — 前端 gate 純邏輯（可單元測試，無 DOM/fetch 依賴）。
 // 真正的安全邊界在後端 require_pin middleware；此處只決定 UX gate 是否顯示。
 
-/** D2：受保護的 active 頁集合。帳務中心日常催繳不納管，避免 PIN 把整頁卸載成空白。 */
+/** D2：受保護的 active 頁集合。帳務中心（含收據紀錄）不納管，避免 PIN 把整頁卸載成空白、API 卻回 423。 */
 export const PIN_PROTECTED_PAGES = ['parttime-payroll', 'tuition-report', 'teachers'];
 
 /** 對齊後端常數。 */
