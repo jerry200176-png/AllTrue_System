@@ -1,0 +1,112 @@
+name: In-app #1903 Typhoon-attendance Repair (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "dry-run (default), execute, or rollback"
+        required: true
+        default: dry-run
+        type: choice
+        options: [dry-run, execute, rollback]
+      confirm:
+        description: "For execute/rollback only: type I_APPROVE_1903_TYPHOON_ATTENDANCE"
+        required: false
+        type: string
+      actor:
+        description: "Immutable audit actor label"
+        required: false
+        default: "gha:1903-typhoon-attendance"
+        type: string
+
+concurrency:
+  group: repair-1903-typhoon-attendance
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    name: Run allowlisted #1903 typhoon-attendance repair
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Validate inputs
+        env:
+          MODE: ${{ inputs.mode }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          case "$MODE" in dry-run|execute|rollback) ;; *) exit 1 ;; esac
+          if [ "$MODE" != "dry-run" ]; then
+            [ "$CONFIRM" = "I_APPROVE_1903_TYPHOON_ATTENDANCE" ] || {
+              echo "::error::execute/rollback requires exact confirmation string"; exit 1;
+            }
+          fi
+
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Run repair and post-verify on production
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          MODE: ${{ inputs.mode }}
+          ACTOR: ${{ inputs.actor }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes "${PI_SSH_USER}@${PI_SSH_HOST}" MODE="$MODE" ACTOR="$ACTOR" 'bash -s' <<'ENDSSH'
+          set -euo pipefail
+          cd /home/admin/backend
+          PRE=$(php artisan repair:typhoon-attendance-1903 2>&1) || { echo "$PRE"; exit 1; }
+          echo "$PRE"
+          if [ "$MODE" = "dry-run" ]; then
+            echo "REPAIR_STATE=DRY_RUN_VERIFIED_NO_MUTATION"
+            exit 0
+          fi
+
+          TS=$(date '+%Y-%m-%d_%H%M%S')
+          mkdir -p /home/admin/backups/emergency
+          BACKUP_FILE="/home/admin/backups/emergency/db_pre_1903_typhoon_attendance_${TS}.sql.gz"
+          DB_USER="$(grep '^DB_USERNAME=' .env | cut -d= -f2-)"
+          mysqldump -h 127.0.0.1 -u "$DB_USER" -p"$(grep '^DB_PASSWORD=' .env | cut -d= -f2-)" \
+            --single-transaction AllTrue ClassSession StudentClass LearningRecord session_deduction_ledger session_corrections \
+            | gzip > "$BACKUP_FILE"
+          test -s "$BACKUP_FILE"
+          echo "Backup created: $BACKUP_FILE"
+
+          export ALLOW_PROD_REPAIR=1
+          if [ "$MODE" = "execute" ]; then
+            SNAP="storage/app/repair-snapshots/1903-typhoon-attendance-${TS}.json"
+            php artisan repair:typhoon-attendance-1903 --execute --force --actor="$ACTOR" --snapshot="$SNAP"
+            echo "SNAPSHOT=$SNAP"
+          else
+            php artisan repair:typhoon-attendance-1903 --rollback --execute --force --actor="$ACTOR"
+            echo "REPAIR_STATE=ROLLED_BACK"
+            exit 0
+          fi
+          unset ALLOW_PROD_REPAIR
+
+          php -r '
+            require "vendor/autoload.php";
+            $app = require "bootstrap/app.php";
+            $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+            $DB = Illuminate\Support\Facades\DB::class;
+            $s1 = $DB::table("ClassSession")->where("id", 22302)->first(["id","Status"]);
+            $s2 = $DB::table("ClassSession")->where("id", 16728)->first(["id","Status"]);
+            $c1 = $DB::table("session_corrections")->where("session_id",22302)->where("decision_reference","in-app #1903")->whereNull("rolled_back_at")->exists();
+            $c2 = $DB::table("session_corrections")->where("session_id",16728)->where("decision_reference","in-app #1903")->whereNull("rolled_back_at")->exists();
+            $out = compact("s1","s2","c1","c2"); echo json_encode($out, JSON_UNESCAPED_UNICODE), PHP_EOL;
+            $ok = $s1 && $s1->Status === "cancelled" && $s2 && $s2->Status === "cancelled" && $c1 && $c2;
+            exit($ok ? 0 : 42);
+          '
+          echo "REPAIR_STATE=APPLIED_AND_VERIFIED"
+          ENDSSH
