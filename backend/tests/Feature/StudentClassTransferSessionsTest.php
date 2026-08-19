@@ -57,6 +57,31 @@ class StudentClassTransferSessionsTest extends TestCase
         $this->assertSame(8, (int) $source->SessionCount);
     }
 
+    // IDOR regression: authorizeStudentClassAccess() was only ever called on
+    // the source course. A teacher who owns the source course could transfer
+    // records into ANY other course for the same student, including one they
+    // do not teach and have no write access to.
+    public function test_rejects_when_caller_lacks_write_access_to_target_course(): void
+    {
+        $token = $this->createTeacherToken([1]);
+        $student = $this->createStudent(1);
+        $source = $this->createCourse($student->id, $this->lastTeacherUserId);
+        $target = $this->createCourse($student->id, 999999); // a different teacher's course
+        $sessionId = $this->createClassSession((int) $source->ID, '2026-08-02');
+
+        $res = $this->postJson(
+            "/api/v1/student-classes/{$source->ID}/transfer-sessions",
+            ['session_ids' => [$sessionId], 'target_student_class_id' => $target->ID],
+            ['Authorization' => "Bearer {$token}"]
+        );
+
+        $res->assertStatus(403);
+        $this->assertSame(
+            (int) $source->ID,
+            (int) DB::table('ClassSession')->where('id', $sessionId)->value('StudentClassID')
+        );
+    }
+
     public function test_rejects_when_target_belongs_to_a_different_student(): void
     {
         $token = $this->createDirectorToken([1]);
@@ -115,6 +140,26 @@ class StudentClassTransferSessionsTest extends TestCase
         foreach ($campusIds as $cid) {
             UserCampus::create(['CampusID' => $cid, 'UserID' => $user->id, 'Admin' => 1, 'Approved' => 1]);
         }
+        $token = bin2hex(random_bytes(16));
+        AuthToken::create(['user_id' => $user->id, 'token' => $token, 'expires_at' => now()->addDay()]);
+        return $token;
+    }
+
+    private int $lastTeacherUserId = 0;
+
+    private function createTeacherToken(array $campusIds): string
+    {
+        $user = User::create([
+            'LoginName' => 'teach-transfersess-' . uniqid() . '@test.com',
+            'Name' => '老師測試',
+            'PSW' => 'secret',
+            'type' => 'T',
+            'phone' => '0912345679',
+        ]);
+        foreach ($campusIds as $cid) {
+            UserCampus::create(['CampusID' => $cid, 'UserID' => $user->id, 'Admin' => 0, 'Approved' => 1]);
+        }
+        $this->lastTeacherUserId = (int) $user->id;
         $token = bin2hex(random_bytes(16));
         AuthToken::create(['user_id' => $user->id, 'token' => $token, 'expires_at' => now()->addDay()]);
         return $token;

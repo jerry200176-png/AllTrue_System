@@ -3254,6 +3254,15 @@ class StudentClassController extends Controller
             $source = StudentClass::where('ID', $studentClass->ID)->lockForUpdate()->firstOrFail();
             $target = StudentClass::where('ID', $data['target_student_class_id'])->lockForUpdate()->firstOrFail();
 
+            // Caller must have write authority over the TARGET course too, not just the
+            // source — otherwise a caller could smuggle session/evaluation records into
+            // any course id belonging to the same student, including one on a campus or
+            // under a teacher they have no access to (IDOR).
+            $authTarget = $this->authorizeStudentClassAccess($target);
+            if ($authTarget !== null) {
+                return $authTarget;
+            }
+
             if ($source->hasDeductionHistory() && (string) $source->getAttribute('closed_reason') === 'usage_settled') {
                 return response()->json([
                     'message' => '來源課程已提前結清，堂次與紀錄已鎖定，無法轉移。',
