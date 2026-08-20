@@ -2033,6 +2033,57 @@ class ClassSessionController extends Controller
      * Route is super_admin-only (highest admin tier, same convention as
      * `role:super_admin` admin/campus-management routes).
      */
+    /**
+     * GET /api/v1/class-sessions/{id}/reassign-contract-targets
+     *
+     * Lists the group-linked StudentClass contracts a super_admin may reassign
+     * this ClassSession onto (same student+subject, linked via
+     * course_contract_group, excluding the session's current contract).
+     * Colocated with reassignContract() since it exists only to populate
+     * that endpoint's target dropdown — same eligibility rules, read-only.
+     */
+    public function reassignContractTargets(int $id): \Illuminate\Http\JsonResponse
+    {
+        $session = ClassSession::find($id);
+        if (!$session) {
+            return response()->json(['message' => '找不到該堂次'], 404);
+        }
+
+        $old = StudentClass::where('ID', $session->StudentClassID)->first();
+        if (!$old) {
+            return response()->json(['message' => '找不到堂次目前所屬的課程合約'], 404);
+        }
+
+        $groupIds = CourseContractGroupMember::where('student_class_id', $old->ID)
+            ->whereNull('unlinked_at')
+            ->pluck('group_id');
+
+        $targetIds = $groupIds->isEmpty() ? collect() : CourseContractGroupMember::whereIn('group_id', $groupIds)
+            ->whereNull('unlinked_at')
+            ->where('student_class_id', '!=', $old->ID)
+            ->pluck('student_class_id')
+            ->unique();
+
+        $targets = $targetIds->isEmpty() ? collect() : StudentClass::whereIn('ID', $targetIds)
+            ->where('StudentID', $old->StudentID)
+            ->where('SubjectID', $old->SubjectID)
+            ->get();
+
+        $teacherNames = DB::table('User')->whereIn('id', $targets->pluck('TeacherID'))->pluck('Name', 'id');
+        $subjectNames = DB::table('Subject')->whereIn('id', $targets->pluck('SubjectID'))->pluck('Subject_Name', 'id');
+
+        return response()->json([
+            'data' => $targets->map(fn (StudentClass $t) => [
+                'id' => (int) $t->ID,
+                'subject_id' => (int) $t->SubjectID,
+                'subject_name' => $subjectNames[$t->SubjectID] ?? null,
+                'teacher_id' => (int) $t->TeacherID,
+                'teacher_name' => $teacherNames[$t->TeacherID] ?? null,
+                'remaining_sessions' => $t->RemainingSessions !== null ? (int) $t->RemainingSessions : null,
+            ])->values(),
+        ]);
+    }
+
     public function reassignContract(Request $request, int $id): \Illuminate\Http\JsonResponse
     {
         $data = $request->validate([
