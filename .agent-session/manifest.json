@@ -4,7 +4,7 @@
   "project": "alltrue",
   "task_id": "wuaitong-signin-10229-repair",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "9504f70e",
+  "base_sha": "e0ae5761f3b25f063811c48562ebf54d34fa2680",
   "branch": "fix/wuaitong-signin-10229-repair",
   "worktree_path": "/home/jerry/workspace/tasks/alltrue/course-ia-consolidation-plan",
   "started_at": "2026-08-20T06:32:29Z",
