@@ -1191,7 +1191,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$ID\.$#'
 			identifier: property.notFound
-			count: 6
+			count: 7
 			path: app/Http/Controllers/ClassSessionController.php
 
 		-
@@ -1209,7 +1209,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:find\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 3
+			count: 4
 			path: app/Http/Controllers/ClassSessionController.php
 
 		-
@@ -1221,13 +1221,13 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\CourseContractGroupMember\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 1
+			count: 2
 			path: app/Http/Controllers/ClassSessionController.php
 
 		-
 			message: '#^Call to an undefined static method App\\Models\\CourseContractGroupMember\:\:whereIn\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 1
+			count: 2
 			path: app/Http/Controllers/ClassSessionController.php
 
 		-
@@ -1305,7 +1305,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 5
+			count: 6
 			path: app/Http/Controllers/ClassSessionController.php
 
 		-
@@ -1396,6 +1396,30 @@ parameters:
 			message: '#^Strict comparison using \!\=\= between mixed and null will always evaluate to true\.$#'
 			identifier: notIdentical.alwaysTrue
 			count: 5
+			path: app/Http/Controllers/ClassSessionController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$RemainingSessions\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/ClassSessionController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$SubjectID\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Http/Controllers/ClassSessionController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$TeacherID\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Http/Controllers/ClassSessionController.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:whereIn\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
 			path: app/Http/Controllers/ClassSessionController.php
 
 		-
