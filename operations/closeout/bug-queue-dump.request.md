@@ -17,3 +17,5 @@ Purpose: weekly triage sweep — pull current `new`/`triaged`/`in_progress` queu
 # kickoff 2026-08-19T03:05:01Z — re-dump immediately alongside bug-detail-dump for bug_id 239 in the same merge, to keep both within the 15-min freshness window for §3.6 evidence validation
 
 # kickoff 2026-08-19T03:17:25Z — merge conflict from PR #1895 squash-merge required resolving; re-kicking with a fresh timestamp so this run is the one actually paired with the bug-detail-dump for bug_id 239
+
+# kickoff 2026-08-20T05:54:37Z — user asked "isn't there still an in-app bug" this session; pull current open queue to check for anything outstanding
