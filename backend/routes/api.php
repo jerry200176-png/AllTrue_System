@@ -565,6 +565,10 @@ Route::prefix('v1')->group(function () {
             ->middleware('role:director,super_admin');
         Route::get('schedule-audit', [ScheduleAuditController::class, 'index']);
         Route::patch('class-sessions/{id}', [ClassSessionController::class, 'update']);
+        // Contract renewal pain point (#1382 prior art) — super_admin only (highest admin tier).
+        Route::post('class-sessions/{id}/reassign-contract', [ClassSessionController::class, 'reassignContract'])
+            ->whereNumber('id')
+            ->middleware('role:super_admin');
         Route::post('class-sessions/{id}/substitute', [ClassSessionController::class, 'substitute']);
         // PRD 9c058f19 — 代課流程 UX 優化
         Route::post('class-sessions/{id}/substitute/undo', [SubstituteController::class, 'undo']);

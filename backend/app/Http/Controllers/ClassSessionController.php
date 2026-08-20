@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\ClassSession;
+use App\Models\ClassSessionReassignment;
+use App\Models\CourseContractGroupMember;
 use App\Models\LearningRecord;
 use App\Models\LearningRecordTeacherChange;
 use App\Models\Schedule;
@@ -26,6 +28,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\ValidationException;
 
 class ClassSessionController extends Controller
 {
@@ -1989,6 +1992,103 @@ class ClassSessionController extends Controller
             null,
             $classSessionId > 0 ? $classSessionId : null
         );
+    }
+
+    /**
+     * POST /api/v1/class-sessions/{id}/reassign-contract
+     *
+     * Contract renewal pain point (student 洪睿淵 case; prior art:
+     * RFC_COURSE_CONTINUITY.md #1382 — that RFC links renewed contracts for a
+     * unified view but deliberately never moves session/evaluation history).
+     *
+     * Moves a single ClassSession to a different StudentClass contract so its
+     * already-filled LearningRecord "belongs" to the new contract without the
+     * teacher re-filling anything. LearningRecord's content (Progress etc.)
+     * is never rewritten, but its denormalized StudentClassID mirror IS kept
+     * in sync (see LearningRecordDriftCheck) so billing/approval queries
+     * elsewhere don't lose track of it.
+     * Route is super_admin-only (highest admin tier, same convention as
+     * `role:super_admin` admin/campus-management routes).
+     */
+    public function reassignContract(Request $request, int $id): \Illuminate\Http\JsonResponse
+    {
+        $data = $request->validate([
+            'new_student_class_id' => 'required|integer|min:1',
+            'reason' => 'required|string|max:255',
+        ]);
+
+        $session = ClassSession::find($id);
+        if (!$session) {
+            return response()->json(['message' => '找不到該堂次'], 404);
+        }
+
+        return DB::transaction(function () use ($request, $data, $session) {
+            $old = StudentClass::where('ID', $session->StudentClassID)->lockForUpdate()->first();
+            if (!$old) {
+                return response()->json(['message' => '找不到堂次目前所屬的課程合約'], 404);
+            }
+
+            $new = StudentClass::where('ID', $data['new_student_class_id'])->lockForUpdate()->first();
+            if (!$new) {
+                return response()->json(['message' => '找不到目標課程合約'], 422);
+            }
+
+            if ((int) $new->ID === (int) $old->ID) {
+                return response()->json(['message' => '目標課程合約與目前課程合約相同，無需改派。'], 422);
+            }
+
+            if ((int) $new->StudentID !== (int) $old->StudentID || (int) $new->SubjectID !== (int) $old->SubjectID) {
+                return response()->json(['message' => '新舊課程合約的學生或科目不一致，拒絕改派。'], 422);
+            }
+
+            $oldGroupIds = CourseContractGroupMember::where('student_class_id', $old->ID)
+                ->whereNull('unlinked_at')
+                ->pluck('group_id');
+            $linked = $oldGroupIds->isNotEmpty() && CourseContractGroupMember::whereIn('group_id', $oldGroupIds)
+                ->where('student_class_id', $new->ID)
+                ->whereNull('unlinked_at')
+                ->exists();
+            if (!$linked) {
+                return response()->json([
+                    'message' => '新舊課程合約未透過課程延續群組建立關聯，拒絕改派。',
+                ], 422);
+            }
+
+            try {
+                $session->StudentClassID = $new->ID;
+                $session->save(); // fires assertCourseIsMutable() against the new contract
+            } catch (ValidationException $e) {
+                return response()->json(['message' => implode('；', $e->validator->errors()->all())], 422);
+            }
+
+            ClassSessionReassignment::create([
+                'class_session_id' => $session->id,
+                'old_student_class_id' => $old->ID,
+                'new_student_class_id' => $new->ID,
+                'reason' => $data['reason'],
+                'performed_by' => optional($request->attributes->get('auth_user'))->id,
+                'created_at' => now(),
+            ]);
+
+            // LearningRecord content (Progress etc.) is never touched — it stays
+            // bound to the same ClassSession.id. But StudentClassID is a
+            // denormalized mirror of ClassSession.StudentClassID (see
+            // LearningRecordDriftCheck), relied on by billing/approval queries
+            // across StudentClassController — must stay in sync, same as the
+            // existing transfer-sessions endpoint (StudentClassController::transferSessions).
+            LearningRecord::where('ClassSessionID', $session->id)
+                ->update(['StudentClassID' => $new->ID]);
+
+            SessionDeductionService::recomputeCounters((int) $old->ID);
+            SessionDeductionService::recomputeCounters((int) $new->ID);
+
+            return response()->json([
+                'message' => '已將堂次改派至新課程合約，剩餘堂數已更新。',
+                'class_session_id' => (int) $session->id,
+                'old_student_class_id' => (int) $old->ID,
+                'new_student_class_id' => (int) $new->ID,
+            ]);
+        });
     }
 
     /**
