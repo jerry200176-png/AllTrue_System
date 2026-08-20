@@ -273,8 +273,14 @@ class ClassSessionController extends Controller
         $query = DB::table('ClassSession as cs')
             ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
             ->join('Student as s', 's.id', '=', 'sc.StudentID')
+            // TD-058: sub_sched exposes start_time_hm (pre-normalized once per row here,
+            // over the small substitute-schedule result set) so the outer ON clause below
+            // can compare it directly to cs.StartTimeHM without wrapping either side in
+            // SUBSTRING()/DATE() — function-wrapped join columns defeat index usage.
+            // cs.SessionDate and sub_sched.schedule_date are both native DATE columns, so
+            // comparing them directly (no DATE() wrap) is behaviorally identical.
             ->leftJoin(DB::raw('(
-                SELECT ss.*
+                SELECT ss.*, SUBSTRING(ss.start_time, 1, 5) AS start_time_hm
                 FROM `schedules` ss
                 INNER JOIN (
                     SELECT sub2.student_course_id,
@@ -290,8 +296,8 @@ class ClassSessionController extends Controller
                 ) sub_latest ON ss.id = sub_latest.max_id
             ) as sub_sched'), function ($join) {
                 $join->on('sub_sched.student_course_id', '=', 'sc.ID')
-                    ->whereRaw('DATE(sub_sched.schedule_date) = DATE(cs.SessionDate)')
-                    ->whereRaw('SUBSTRING(sub_sched.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)');
+                    ->on('sub_sched.schedule_date', '=', 'cs.SessionDate')
+                    ->on('sub_sched.start_time_hm', '=', 'cs.StartTimeHM');
             })
             ->leftJoin('User as subu', 'subu.id', '=', 'sub_sched.teacher_id')
             ->leftJoin(DB::raw('(SELECT lr_inner.* FROM `LearningRecord` lr_inner INNER JOIN (SELECT ClassSessionID, MAX(id) AS max_id FROM `LearningRecord` WHERE VoidedAt IS NULL GROUP BY ClassSessionID) lr_latest ON lr_inner.id = lr_latest.max_id) AS lr'), 'lr.ClassSessionID', '=', 'cs.id')
