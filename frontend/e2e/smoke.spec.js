@@ -6,8 +6,8 @@ import { dismissOverlays } from './fixtures/dismissOverlays.js';
  * 前端 UI smoke / 關鍵業務路徑（#547 起，#730 擴充）。
  *
  * 覆蓋 API smoke 沒涵蓋的關鍵前端路徑（純讀取導航，不寫入 production）：
- *  - director：課程管理頁載入（含待補課面板區塊渲染，issue #527）。
- *  - teacher：教學工作台 + 出缺勤 / 課表與評量 / 班級行事曆 / 科目數統計逐頁載入，
+ *  - director：課程查找頁載入（含待補課面板區塊渲染，issue #527）。
+ *  - teacher：教學工作台 + 出缺勤 / 課表與評量 / 我的課表 / 科目數統計逐頁載入，
  *             每頁斷言「無 JS 例外」（pageerror）——抓真正會讓老師白畫面的 crash。
  *
  * ⛔ Secrets 策略（granular skip）：
@@ -58,13 +58,13 @@ async function navTo(page, navLabel) {
 test.describe('UI smoke — director', () => {
   test.skip(!BASE || !DIRECTOR.account, '未設定 SMOKE_BASE_URL / SMOKE_DIRECTOR_*（缺 director secrets）— 略過');
 
-  test('director: 課程管理頁與待補課面板載入', async ({ page }) => {
+  test('director: 課程查找頁與待補課面板載入', async ({ page }) => {
     const errors = [];
     page.on('pageerror', (e) => errors.push(String(e)));
 
     await login(page, 'director', DIRECTOR);
     await dismissOverlays(page);
-    await navTo(page, '課程管理');
+    await navTo(page, '課程查找');
 
     // TODO: 可於 CourseManagement 根容器補 data-testid="course-mgmt-page" 讓斷言更穩。
     await expect(page.getByText('課程管理', { exact: false }).first()).toBeVisible();
@@ -109,12 +109,12 @@ test.describe('UI smoke — teacher 關鍵業務路徑', () => {
     expect(errors, `頁面 JS 錯誤：\n${errors.join('\n')}`).toEqual([]);
   });
 
-  test('teacher: 出缺勤管理頁載入無 JS 例外', async ({ page }) => {
+  test('teacher: 出缺勤頁載入無 JS 例外', async ({ page }) => {
     const errors = [];
     page.on('pageerror', (e) => errors.push(String(e)));
 
     await login(page, 'teacher', TEACHER);
-    await navTo(page, '出缺勤管理');
+    await navTo(page, '出缺勤');
 
     await expect(page.getByText('出缺勤', { exact: false }).first()).toBeVisible({ timeout: 15_000 });
     expect(errors, `頁面 JS 錯誤：\n${errors.join('\n')}`).toEqual([]);
@@ -132,15 +132,15 @@ test.describe('UI smoke — teacher 關鍵業務路徑', () => {
     expect(errors, `頁面 JS 錯誤：\n${errors.join('\n')}`).toEqual([]);
   });
 
-  test('teacher: 班級行事曆載入無 JS 例外（G-007 守護的合併路徑）', async ({ page }) => {
+  test('teacher: 我的課表載入無 JS 例外（G-007 守護的合併路徑）', async ({ page }) => {
     const errors = [];
     page.on('pageerror', (e) => errors.push(String(e)));
 
     await login(page, 'teacher', TEACHER);
-    await navTo(page, '班級行事曆');
+    await navTo(page, '我的課表');
 
-    // 行事曆週/日檢視為 G-007 高風險區，至少確保開頁不 crash。
-    await expect(page.getByText('行事曆', { exact: false }).first()).toBeVisible({ timeout: 15_000 });
+    // 老師入口顯示「我的課表」；週/日檢視仍是 G-007 高風險區。
+    await expect(page.getByText('我的課表', { exact: false }).first()).toBeVisible({ timeout: 15_000 });
     expect(errors, `頁面 JS 錯誤：\n${errors.join('\n')}`).toEqual([]);
   });
 

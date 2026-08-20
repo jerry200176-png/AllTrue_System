@@ -9,15 +9,40 @@
       </p>
 
       <div class="form-group">
-        <label>目標課程 ID</label>
+        <label for="transfer-target-course">目標課程</label>
         <input
-          v-model.trim="targetCourseId"
+          id="transfer-target-course"
+          v-model.trim="targetCourseQuery"
           type="text"
           inputmode="numeric"
-          placeholder="輸入要搬到哪一門課程（課程 ID）"
+          placeholder="搜尋學生的其他課程，或輸入課程 ID"
+          autocomplete="off"
           :disabled="submitting"
+          @input="onTargetCourseInput"
         />
-        <span class="hint">目標課程要先另外開好，這裡只填它的 ID，不會自動建立新課程。</span>
+        <span class="hint">先在學生管理建立新一期課程，再從下面點選；不會自動建立課程。</span>
+        <div v-if="targetCoursesLoading" class="hint">正在找這位學生的其他課程…</div>
+        <div v-else-if="filteredTargetCourses.length > 0" class="target-course-list" role="listbox" aria-label="可選的目標課程">
+          <button
+            v-for="course in filteredTargetCourses"
+            :key="course.id"
+            type="button"
+            class="target-course-option"
+            :class="{ selected: String(course.id) === targetCourseId }"
+            :aria-selected="String(course.id) === targetCourseId"
+            @click="selectTargetCourse(course)"
+          >
+            <span class="target-course-copy">
+              <strong>{{ targetCourseTitle(course) }}</strong>
+              <small>{{ targetCourseMeta(course) }}</small>
+            </span>
+            <span class="target-course-check material-symbols-outlined" aria-hidden="true">
+              {{ String(course.id) === targetCourseId ? 'check_circle' : 'radio_button_unchecked' }}
+            </span>
+          </button>
+        </div>
+        <div v-else class="hint target-course-empty">目前找不到可選課程；確認已建立新課程，或直接貼上課程 ID。</div>
+        <span v-if="targetCourseId" class="selected-target-hint">已選目標課程</span>
       </div>
 
       <div class="form-group">
@@ -55,6 +80,8 @@ const props = defineProps({
   studentName: { type: String, default: '' },
   subject: { type: String, default: '' },
   sessions: { type: Array, default: () => [] }, // [{ id, date, status }]
+  targetCourses: { type: Array, default: () => [] },
+  targetCoursesLoading: { type: Boolean, default: false },
   submitting: { type: Boolean, default: false },
   errorMessage: { type: String, default: '' },
 });
@@ -62,12 +89,29 @@ const emit = defineEmits(['close', 'submit']);
 
 const subjectLabel = computed(() => getSubjectLabel(props.subject));
 const targetCourseId = ref('');
+const targetCourseQuery = ref('');
 const selectedIds = ref([]);
+
+const filteredTargetCourses = computed(() => {
+  const q = targetCourseQuery.value.trim().toLowerCase();
+  if (!q || /^\d+$/.test(q)) return props.targetCourses.slice(0, 8);
+  return props.targetCourses.filter((course) => {
+    const haystack = [
+      course.subject_name,
+      course.subject,
+      course.teacher_name,
+      course.start_date,
+      course.id,
+    ].filter(Boolean).join(' ').toLowerCase();
+    return haystack.includes(q);
+  }).slice(0, 8);
+});
 
 // Reset the form every time the modal opens for a (possibly different) course.
 watch(() => props.show, (isShown) => {
   if (isShown) {
     targetCourseId.value = '';
+    targetCourseQuery.value = '';
     selectedIds.value = [];
   }
 });
@@ -75,6 +119,28 @@ watch(() => props.show, (isShown) => {
 const STATUS_LABELS = { attended: '已上', late: '已上（遲到）', leave: '請假', absent: '缺席', scheduled: '未上' };
 function statusLabel(status) {
   return STATUS_LABELS[status] || status || '';
+}
+
+function targetCourseTitle(course) {
+  const subject = course.subject_name || getSubjectLabel(course.subject) || '未命名科目';
+  return `${subject}｜${course.teacher_name || '尚未指定老師'}`;
+}
+
+function targetCourseMeta(course) {
+  const start = course.start_date ? `開始 ${course.start_date}` : '開始日期未設定';
+  return start;
+}
+
+function selectTargetCourse(course) {
+  targetCourseId.value = String(course.id);
+  targetCourseQuery.value = '';
+}
+
+function onTargetCourseInput(event) {
+  const value = String(event?.target?.value || '').trim();
+  targetCourseQuery.value = value;
+  if (/^\d+$/.test(value)) targetCourseId.value = value;
+  else targetCourseId.value = '';
 }
 
 function onSubmit() {
