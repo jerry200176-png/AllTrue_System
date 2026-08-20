@@ -96,7 +96,7 @@ jobs:
           DB_USER="$(grep '^DB_USERNAME=' .env | cut -d= -f2-)"
           DB_PASS="$(grep '^DB_PASSWORD=' .env | cut -d= -f2-)"
           mysqldump -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASS" \
-            --single-transaction AllTrue StudentSignIn \
+            --single-transaction AllTrue StudentSingIn \
             | gzip > "$BACKUP"
           test -s "$BACKUP"
           echo "Backup_ok size=$(wc -c < "$BACKUP")"
