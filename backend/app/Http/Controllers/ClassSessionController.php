@@ -1995,9 +1995,8 @@ class ClassSessionController extends Controller
     }
 
     /**
-     * POST /api/v1/class-sessions/{id}/substitute
+     * POST /api/v1/class-sessions/{id}/reassign-contract
      *
-     * Atomic single-session substitute teacher: writes schedules (rescheduled + scheduled
      * Contract renewal pain point (student 洪睿淵 case; prior art:
      * RFC_COURSE_CONTINUITY.md #1382 — that RFC links renewed contracts for a
      * unified view but deliberately never moves session/evaluation history).
@@ -2092,6 +2091,12 @@ class ClassSessionController extends Controller
         });
     }
 
+    /**
+     * POST /api/v1/class-sessions/{id}/substitute
+     *
+     * Atomic single-session substitute teacher: writes schedules (rescheduled + scheduled
+     * with new teacher_id on same date/time) and updates LearningRecord.TeacherID.
+     */
     public function substitute(Request $request, int $id)
     {
         $data = $request->validate([
