@@ -46,25 +46,39 @@
           <div class="brand-sub">教務管理系統</div>
         </div>
       </div>
-      <button class="sidebar-collapse-btn" @click="toggleSidebarCollapsed" :title="sidebarCollapsed ? '展開側欄' : '收起側欄'">
+      <button
+        type="button"
+        class="sidebar-collapse-btn"
+        @click="toggleSidebarCollapsed"
+        :title="sidebarCollapsed ? '展開側欄' : '收起側欄'"
+        :aria-label="sidebarCollapsed ? '展開側欄' : '收起側欄'"
+        :aria-expanded="String(!sidebarCollapsed)"
+      >
         <span class="material-symbols-outlined">{{ sidebarCollapsed ? 'chevron_right' : 'chevron_left' }}</span>
       </button>
 
       <nav class="sidebar-nav" data-guide="app-sidebar-nav">
         <template v-if="sidebarNavGroups.length > 0">
           <details v-for="group in sidebarNavGroups" :key="group.key" class="nav-group" :open="group.defaultOpen !== false">
-            <summary class="nav-group-summary" v-show="!sidebarCollapsed">
+            <summary
+              class="nav-group-summary"
+              v-show="!sidebarCollapsed"
+              :aria-controls="`sidebar-group-${group.key}`"
+            >
               <span class="nav-group-title">{{ group.title.replace(/^[A-Z]\s*組：\s*/i, '') }}</span>
               <span class="nav-group-chevron">▾</span>
             </summary>
-            <div class="nav-group-list">
+            <div :id="`sidebar-group-${group.key}`" class="nav-group-list">
               <button
                 v-for="item in group.items"
                 :key="item.page"
+                type="button"
                 @click="setActivePage(item.page)"
                 :class="{ active: active === item.page }"
                 :disabled="isNavItemDisabled(item.page)"
                 :title="sidebarCollapsed ? item.label : ''"
+                :aria-label="sidebarCollapsed ? item.label : undefined"
+                :aria-current="active === item.page ? 'page' : undefined"
               >
                 <span class="material-symbols-outlined nav-icon" aria-hidden="true">{{ item.icon }}</span>
                 <span class="nav-label" v-show="!sidebarCollapsed">{{ item.label }}</span>
@@ -159,7 +173,9 @@
       <button
         v-for="tab in mobileTabItems"
         :key="tab.page"
+        type="button"
         :class="['mob-tab', { active: tab.page === 'more' ? showMoreMenu : active === tab.page }]"
+        :aria-current="tab.page !== 'more' && active === tab.page ? 'page' : undefined"
         @click="tab.page === 'more' ? (showMoreMenu = !showMoreMenu) : (setActivePage(tab.page), showMoreMenu = false)"
       >
         <span class="material-symbols-outlined mob-tab-icon">{{ tab.icon }}</span>
@@ -182,7 +198,9 @@
           <button
             v-for="item in group.items.filter(i => !mobileTabPages.has(i.page))"
             :key="item.page"
+            type="button"
             :class="['more-item', { active: active === item.page }]"
+            :aria-current="active === item.page ? 'page' : undefined"
             @click="setActivePage(item.page); showMoreMenu = false"
           >
             <span class="material-symbols-outlined">{{ item.icon }}</span>
@@ -1308,12 +1326,12 @@ const sidebarNavGroups = computed(() => {
     return [
       {
         key: 'overview',
-        title: '總覽與通訊',
+        title: '今日工作',
         defaultOpen: true,
         items: [
-          { page: 'director', label: '總覽儀表板', icon: 'dashboard' },
-          { page: 'notifications', label: '主任收件匣', icon: 'inbox' },
-          { page: 'chat', label: '內部聊天', icon: 'forum', badgeTypes: ['chat'] },
+          { page: 'director', label: '今日工作台', icon: 'dashboard' },
+          { page: 'notifications', label: '待處理收件匣', icon: 'inbox' },
+          { page: 'chat', label: '內部訊息', icon: 'forum', badgeTypes: ['chat'] },
           // GH-943 (in-app 179): moved out of the collapsed「系統設定」group so
           // 主任 can find Bug 回報 without expanding settings.
           { page: 'bugs', label: 'Bug 回報', icon: 'bug_report', badgeTypes: ['bugs'] },
@@ -1321,29 +1339,28 @@ const sidebarNavGroups = computed(() => {
       },
       {
         key: 'teaching',
-        title: '排課與教學',
+        title: '教學現場',
         defaultOpen: true,
         items: [
-          { page: 'calendar', label: '班級行事曆 / 課表', icon: 'calendar_today' },
-          { page: 'course-mgmt', label: '課程管理', icon: 'menu_book', badgeTypes: ['tuition'] },
-          { page: 'attendance', label: '出缺勤管理', icon: 'fact_check', badgeTypes: ['pending_swipe', 'attendance'] },
+          { page: 'calendar', label: '班級行事曆', icon: 'calendar_today' },
+          { page: 'attendance', label: '出缺勤', icon: 'fact_check', badgeTypes: ['pending_swipe', 'attendance'] },
           { page: 'schedule-discrepancy', label: '課表回報管理', icon: 'flag', badgeTypes: ['schedule_discrepancy'] },
-          { page: 'learning', label: '學習評量表', icon: 'assignment', badgeTypes: ['learning_review', 'parent_feedback'] },
+          { page: 'learning', label: '學習評量', icon: 'assignment', badgeTypes: ['learning_review', 'parent_feedback'] },
           { page: 'duplicate-review', label: '重疊課程審核', icon: 'compare_arrows' },
         ],
       },
       {
-        key: 'people',
-        title: '人員管理',
+        key: 'students-courses',
+        title: '學生與課程',
         defaultOpen: true,
         items: [
           { page: 'students', label: '學生管理', icon: 'groups' },
-          { page: 'teachers', label: '老師管理', icon: 'badge', badgeTypes: ['pending_teachers'] },
+          { page: 'course-mgmt', label: '課程查找', icon: 'menu_book', badgeTypes: ['tuition'] },
         ],
       },
       {
         key: 'finance',
-        title: '財務收費',
+        title: '財務與人事',
         defaultOpen: true,
         items: [
           { page: 'tuition-collect', label: '帳務中心', icon: 'payments' },
@@ -1351,11 +1368,12 @@ const sidebarNavGroups = computed(() => {
           { page: 'subject-units', label: '科目數統計', icon: 'calculate' },
           { page: 'parttime-payroll', label: '兼職薪資', icon: 'account_balance_wallet' },
           { page: 'teacher-eligibility', label: '正職薪資要件', icon: 'rule' },
+          { page: 'teachers', label: '老師管理', icon: 'badge', badgeTypes: ['pending_teachers'] },
         ],
       },
       {
         key: 'settings',
-        title: '系統設定',
+        title: '設定與資源',
         defaultOpen: false,
         items: [
           { page: 'classroom', label: '教室管理', icon: 'meeting_room' },
@@ -1370,13 +1388,13 @@ const sidebarNavGroups = computed(() => {
     return [
       {
         key: 'teaching',
-        title: '教學工作',
+        title: '今日教學',
         defaultOpen: true,
         items: [
           { page: 'teacher-home', label: '教學工作台', icon: 'space_dashboard' },
-          { page: 'attendance', label: '出缺勤管理', icon: 'fact_check', badgeTypes: ['attendance'] },
+          { page: 'calendar', label: '我的課表', icon: 'calendar_today' },
+          { page: 'attendance', label: '出缺勤', icon: 'fact_check', badgeTypes: ['attendance'] },
           { page: 'learning', label: '課表與評量', icon: 'assignment', badgeTypes: ['teacher_learning_pending', 'parent_feedback'] },
-          { page: 'calendar', label: '班級行事曆', icon: 'calendar_today' },
           { page: 'subject-units', label: '科目數統計', icon: 'calculate' },
           { page: 'chat', label: '內部聊天', icon: 'forum', badgeTypes: ['chat'] },
           { page: 'bugs', label: 'Bug 回報', icon: 'bug_report', badgeTypes: ['bugs'] },
