@@ -58,6 +58,7 @@ use App\Http\Controllers\GitHubIssueController;
 use App\Http\Controllers\StudentIdentityController;
 use App\Http\Controllers\TeacherEligibilityController;
 use App\Http\Controllers\TeacherEligibilityInputController;
+use App\Http\Controllers\AssessmentController;
 
 
 if (app()->environment('local')) {
@@ -606,6 +607,30 @@ Route::prefix('v1')->group(function () {
         Route::post('rooms', [RoomController::class, 'store']);
         Route::put('rooms/{room}', [RoomController::class, 'update']);
         Route::delete('rooms/{room}', [RoomController::class, 'destroy']);
+    });
+
+    Route::middleware(['role:director,teacher,super_admin', 'require_campus', 'require_password_change'])->group(function () {
+        // Learning assessment MVP: separate diagnostic results from LearningRecord/attendance.
+        Route::get('assessment-options/classes', [AssessmentController::class, 'classOptions']);
+        Route::get('assessments', [AssessmentController::class, 'index']);
+        Route::get('assessments/{assessment}', [AssessmentController::class, 'show'])->whereNumber('assessment');
+        Route::get('assessments/{assessment}/students', [AssessmentController::class, 'students'])->whereNumber('assessment');
+        Route::get('assessments/{assessment}/results', [AssessmentController::class, 'results'])->whereNumber('assessment');
+        Route::get('assessment-reports/summary', [AssessmentController::class, 'summary']);
+    });
+
+    Route::middleware(['role:director,teacher', 'require_campus', 'require_password_change'])->group(function () {
+        Route::post('assessments', [AssessmentController::class, 'store']);
+        Route::patch('assessments/{assessment}', [AssessmentController::class, 'update'])->whereNumber('assessment');
+        Route::post('assessments/{assessment}/publish', [AssessmentController::class, 'publish'])->whereNumber('assessment');
+        Route::post('assessments/{assessment}/results', [AssessmentController::class, 'storeResult'])->whereNumber('assessment');
+        Route::patch('assessment-results/{assessmentResult}', [AssessmentController::class, 'updateResult'])->whereNumber('assessmentResult');
+    });
+
+    Route::middleware(['role:director,super_admin', 'require_campus', 'require_password_change'])->group(function () {
+        Route::post('assessments/{assessment}/close', [AssessmentController::class, 'close'])->whereNumber('assessment');
+        Route::post('assessment-results/{assessmentResult}/review', [AssessmentController::class, 'reviewResult'])->whereNumber('assessmentResult');
+        Route::post('assessment-results/{assessmentResult}/void', [AssessmentController::class, 'voidResult'])->whereNumber('assessmentResult');
     });
 
     Route::middleware(['role:director,teacher,super_admin', 'require_campus', 'require_password_change'])->group(function () {
