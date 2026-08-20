@@ -4819,7 +4819,13 @@ class StudentClassController extends Controller
      * Must never delete/rebuild locked history; only create missing contract rows
      * and cancel unlocked scheduled rows outside the first N contract slots.
      */
-    public function extendSessionsIfNeeded(StudentClass $studentClass, int $newCount): void
+    /**
+     * @param  \Illuminate\Support\Collection<int, ClassSession>|null  $preloadedExistingSessions  When the
+     *         caller already batch-fetched this class's existing ClassSession rows (e.g. TD-018-style
+     *         batch preload across many classes in one query), pass them here to skip the per-class
+     *         query. Pass null (default) to have this method query them itself, as before.
+     */
+    public function extendSessionsIfNeeded(StudentClass $studentClass, int $newCount, ?\Illuminate\Support\Collection $preloadedExistingSessions = null): void
     {
         if ((string) ($studentClass->scheduling_policy ?? 'auto_recurrence') === ManualSessionBookingService::POLICY) {
             return;
@@ -4851,7 +4857,7 @@ class StudentClassController extends Controller
             }
         }
 
-        $existingSessions = ClassSession::where('StudentClassID', $classId)
+        $existingSessions = $preloadedExistingSessions ?? ClassSession::where('StudentClassID', $classId)
             ->orderBy('SessionDate')
             ->orderBy('StartTime')
             ->orderBy('id')

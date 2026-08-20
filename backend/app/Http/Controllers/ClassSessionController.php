@@ -725,9 +725,26 @@ class ClassSessionController extends Controller
             ->select('StudentClass.*')
             ->get();
 
+        // TD-018 Offender A pattern applied to count-mode: batch-preload existing
+        // ClassSession rows for ALL candidate classes in ONE query instead of one
+        // query per class inside extendSessionsIfNeeded (N+1, linear with contract count).
+        $classIds = $classes->pluck('ID')->map(fn ($v) => (int) $v)->all();
+        $existingSessionsByClass = [];
+        if (!empty($classIds)) {
+            ClassSession::whereIn('StudentClassID', $classIds)
+                ->orderBy('SessionDate')
+                ->orderBy('StartTime')
+                ->orderBy('id')
+                ->get()
+                ->each(function ($row) use (&$existingSessionsByClass) {
+                    $existingSessionsByClass[(int) $row->StudentClassID][] = $row;
+                });
+        }
+
         $studentClassController = app(StudentClassController::class);
         foreach ($classes as $studentClass) {
-            $studentClassController->extendSessionsIfNeeded($studentClass, (int) $studentClass->SessionCount);
+            $preloaded = collect($existingSessionsByClass[(int) $studentClass->ID] ?? []);
+            $studentClassController->extendSessionsIfNeeded($studentClass, (int) $studentClass->SessionCount, $preloaded);
         }
     }
 
