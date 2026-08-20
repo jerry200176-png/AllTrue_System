@@ -178,6 +178,60 @@ class ClassSessionReassignContractTest extends TestCase
         );
     }
 
+    public function test_targets_endpoint_lists_only_group_linked_same_student_subject_contracts(): void
+    {
+        $token = $this->superAdminToken();
+        $student = $this->createStudent(1);
+        $old = $this->createCourse($student->id, subjectId: 1);
+        $new = $this->createCourse($student->id, subjectId: 1);
+        $unrelated = $this->createCourse($student->id, subjectId: 1); // not linked to $old's group
+        $this->linkGroup($student->id, 1, [$old->ID, $new->ID]);
+        $sessionId = $this->createClassSession((int) $old->ID, '2026-08-02');
+
+        $res = $this->getJson(
+            "/api/v1/class-sessions/{$sessionId}/reassign-contract-targets",
+            ['Authorization' => "Bearer {$token}"]
+        );
+
+        $res->assertOk();
+        $ids = collect($res->json('data'))->pluck('id')->all();
+        $this->assertSame([(int) $new->ID], $ids);
+        $this->assertNotContains((int) $unrelated->ID, $ids);
+        $this->assertNotContains((int) $old->ID, $ids);
+        $this->assertSame(8, $res->json('data.0.remaining_sessions'));
+    }
+
+    public function test_targets_endpoint_empty_when_no_group_link(): void
+    {
+        $token = $this->superAdminToken();
+        $student = $this->createStudent(1);
+        $old = $this->createCourse($student->id, subjectId: 1);
+        $sessionId = $this->createClassSession((int) $old->ID, '2026-08-02');
+
+        $res = $this->getJson(
+            "/api/v1/class-sessions/{$sessionId}/reassign-contract-targets",
+            ['Authorization' => "Bearer {$token}"]
+        );
+
+        $res->assertOk();
+        $this->assertSame([], $res->json('data'));
+    }
+
+    public function test_targets_endpoint_rejects_when_caller_is_not_super_admin(): void
+    {
+        $token = $this->directorToken([1]);
+        $student = $this->createStudent(1);
+        $old = $this->createCourse($student->id, subjectId: 1);
+        $sessionId = $this->createClassSession((int) $old->ID, '2026-08-02');
+
+        $res = $this->getJson(
+            "/api/v1/class-sessions/{$sessionId}/reassign-contract-targets",
+            ['Authorization' => "Bearer {$token}"]
+        );
+
+        $res->assertStatus(403);
+    }
+
     // ── helpers ──
 
     private function superAdminToken(): string

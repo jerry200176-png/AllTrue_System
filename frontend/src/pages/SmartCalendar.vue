@@ -390,6 +390,9 @@
       @show-cancel-confirm="cancelState.show = true"
       @dismiss-cancel-confirm="cancelState.show = false"
       @confirm-cancel="doConfirmCancelSession"
+      @show-reassign-confirm="reassignState = { show: true, loading: false, error: '' }"
+      @dismiss-reassign-confirm="reassignState = { show: false, loading: false, error: '' }"
+      @confirm-reassign="doConfirmReassign"
       @delete-exception="deleteException"
       @delete-course="deleteCourse"
       @cancel-makeup="cancelMakeupClass"
@@ -1980,6 +1983,9 @@ const onCourseClick = (course, fullDateStr) => {
   showModal.value = true;
   // Load evaluation records for this course
   loadCourseEvalRecords(baseId);
+  // Load eligible reassign-contract targets (only non-empty when this contract
+  // is group-linked to another one for the same student+subject).
+  loadReassignTargets(baseId, fullDateStr);
 };
 
 const loadCourseEvalRecords = async (courseId) => {
@@ -2174,6 +2180,54 @@ const canCancelSelectedSession = computed(() => {
   return st !== 'cancelled' && st !== 'voided';
 });
 
+// ===== Reassign contract for single session (🔀 改派合約) =====
+
+const reassignTargets = ref([]);
+const reassignState = ref({ show: false, loading: false, error: '' });
+
+const loadReassignTargets = async (courseId, dateStr) => {
+  reassignTargets.value = [];
+  const course = courses.value.find((c) => String(c.id) === String(courseId));
+  if (!course || !dateStr) return;
+  const row = findSessionRowForCell(course, dateStr);
+  if (!row?.id) return;
+  try {
+    const token = await getToken();
+    const resp = await fetch(`/api/v1/class-sessions/${row.id}/reassign-contract-targets`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!resp.ok) return;
+    const json = await resp.json();
+    reassignTargets.value = json.data || [];
+  } catch (e) {
+    reassignTargets.value = [];
+  }
+};
+
+const doConfirmReassign = async ({ newStudentClassId, reason }) => {
+  const row = cancelTargetSession.value;
+  if (!row?.id || reassignState.value.loading) return;
+  reassignState.value = { show: true, loading: true, error: '' };
+  try {
+    const token = await getToken();
+    const res = await fetch(`/api/v1/class-sessions/${row.id}/reassign-contract`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ new_student_class_id: Number(newStudentClassId), reason }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.message || `HTTP ${res.status}`);
+    }
+    reassignState.value = { show: false, loading: false, error: '' };
+    showModal.value = false;
+    alert(data.message || '已改派至新課程合約');
+    await loadCourses();
+  } catch (e) {
+    reassignState.value = { show: true, loading: false, error: e.message || '改派失敗，請重試' };
+  }
+};
+
 // #740 Modals：sessionEdit 分組 props（display 類見 getStudentName 之後）
 const sessionEditSession = computed(() => ({
   actionDate: editingActionDate.value,
@@ -2185,6 +2239,8 @@ const sessionEditSession = computed(() => ({
   featureSubstituteV2,
   canCancelSession: canCancelSelectedSession.value,
   cancelState: cancelState.value,
+  reassignTargets: reassignTargets.value,
+  reassignState: reassignState.value,
   editingException: !!editingException.value,
   editingExceptionIsExtra: editingExceptionIsExtra.value,
   evalRecords: courseEvalRecords.value,
@@ -2353,7 +2409,13 @@ watch(
   },
   { immediate: true }
 );
-watch(showModal, (v) => { if (!v) cancelState.value = { show: false, loading: false }; });
+watch(showModal, (v) => {
+  if (!v) {
+    cancelState.value = { show: false, loading: false };
+    reassignState.value = { show: false, loading: false, error: '' };
+    reassignTargets.value = [];
+  }
+});
 
 watch(isWeekOverview, () => {
   // Multi-select: no need to auto-select first teacher; empty = show all
