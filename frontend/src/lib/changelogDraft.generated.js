@@ -5,6 +5,30 @@
  */
 export const changelogDraftNotes = [
   {
+    "version": "2026.08.20",
+    "date": "2026-08-20",
+    "title": "2026.08.20 草稿（未發布）",
+    "summary": "側欄改用工作情境分組；修正行事曆課程合併邏輯，避免課程重複出現或突然消失",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "側欄改用工作情境分組",
+          "修正行事曆課程合併邏輯，避免課程重複出現或突然消失"
+        ]
+      }
+    ],
+    "items": [
+      "側欄改用工作情境分組",
+      "修正行事曆課程合併邏輯，避免課程重複出現或突然消失"
+    ]
+  },
+  {
     "version": "2026.08.19",
     "date": "2026-08-19",
     "title": "2026.08.19 草稿（未發布）",
@@ -508,56 +532,6 @@ export const changelogDraftNotes = [
       "修正正式站從未部署自架圖示字型（全站圖示曾顯示英文）",
       "主任總覽頁面 Wave A —— 收斂重複資訊源 + 修正文字換行 bug",
       "學習評量表工具列大瘦身 + 批次核准改為「選取模式」+ 圖示字型自架"
-    ]
-  },
-  {
-    "version": "2026.07.28",
-    "date": "2026-07-28",
-    "title": "2026.07.28 草稿（未發布）",
-    "summary": "修正超級管理員看不到版本更新內容的問題；006 Phase 3A pool coverage planner（read-only）",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "新增內容",
-        "items": [
-          "修正超級管理員看不到版本更新內容的問題",
-          "006 Phase 3A pool coverage planner（read-only）",
-          "006 Phase 2 shadow horizon（read-only）",
-          "006 Phase 1B EnsureSessionHorizon（default-off）",
-          "006 Phase 1A eviewSessionHorizon（read-only）",
-          "006 Phase 0 唯讀 epaid horizon 報告（slice 2/2）"
-        ]
-      },
-      {
-        "title": "修正內容",
-        "items": [
-          "防呆 current_end_date 無效日期",
-          "55 復活判斷收斂為單一共用政策",
-          "家長留言預覽增加「回覆家長」入口",
-          "調課標記 IsContractException（防 realign 還原）",
-          "006 acceptance amendments（dormant／Ensure gates／ADR status）"
-        ]
-      },
-      {
-        "title": "其他改善",
-        "items": [
-          "搬進 ClassSessionObserver（R83 結構性根治）"
-        ]
-      }
-    ],
-    "items": [
-      "修正超級管理員看不到版本更新內容的問題",
-      "006 Phase 3A pool coverage planner（read-only）",
-      "006 Phase 2 shadow horizon（read-only）",
-      "006 Phase 1B EnsureSessionHorizon（default-off）",
-      "006 Phase 1A eviewSessionHorizon（read-only）",
-      "006 Phase 0 唯讀 epaid horizon 報告（slice 2/2）",
-      "防呆 current_end_date 無效日期",
-      "55 復活判斷收斂為單一共用政策"
     ]
   }
 ];
