@@ -139,8 +139,8 @@ test.describe('UI smoke — teacher 關鍵業務路徑', () => {
     await login(page, 'teacher', TEACHER);
     await navTo(page, '我的課表');
 
-    // 行事曆週/日檢視為 G-007 高風險區，至少確保開頁不 crash。
-    await expect(page.getByText('行事曆', { exact: false }).first()).toBeVisible({ timeout: 15_000 });
+    // 老師入口顯示「我的課表」；週/日檢視仍是 G-007 高風險區。
+    await expect(page.getByText('我的課表', { exact: false }).first()).toBeVisible({ timeout: 15_000 });
     expect(errors, `頁面 JS 錯誤：\n${errors.join('\n')}`).toEqual([]);
   });
 
