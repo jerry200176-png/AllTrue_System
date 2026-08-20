@@ -4,15 +4,22 @@
     <div class="card course-header-card" data-guide="course-mgmt-header">
       <div class="header-actions">
         <div class="page-title-block">
-          <p class="command-kicker">課務營運</p>
+          <div class="course-lens-kicker">
+            <p class="command-kicker">課務營運</p>
+            <span class="course-lens-badge">唯讀營運視圖</span>
+          </div>
           <h2 class="page-title">課程管理</h2>
-          <p class="ref-hint">即時掌握學生課程、續報風險、排課狀態與營運節奏</p>
+          <p class="ref-hint">先找出需要處理的課程，再回到學生管理完成變更。</p>
           <div class="meta-pills">
             <span class="meta-pill">{{ groupedCourses.length }} 位學生</span>
             <span v-if="pagination.lastPage > 1" class="meta-pill">第 {{ pagination.page }} / {{ pagination.lastPage }} 頁</span>
           </div>
         </div>
         <div class="header-buttons">
+          <button class="course-lens-primary-action" type="button" @click="emit('navigate', 'students')">
+            <span class="material-symbols-outlined btn-icon" aria-hidden="true">person_search</span>
+            前往學生管理
+          </button>
           <button class="btn-soft" @click="expandAllGroups"><span class="material-symbols-outlined btn-icon" aria-hidden="true">unfold_more</span>全部展開</button>
           <button class="btn-soft" @click="collapseAllGroups"><span class="material-symbols-outlined btn-icon" aria-hidden="true">unfold_less</span>全部收合</button>
           <button class="btn-soft" @click="showBulkLeaveModal = true">
@@ -21,21 +28,34 @@
           <button class="btn-soft" @click="emit('navigate', 'subject-settings')">
             <span class="material-symbols-outlined btn-icon" aria-hidden="true">library_books</span> 管理科目
           </button>
-          <button class="btn-accent" @click="openBackfillModal">
-            <span class="material-symbols-outlined btn-icon" aria-hidden="true">add</span> 新增課程
-          </button>
         </div>
+      </div>
+
+      <div class="course-lens-guidance" role="note" data-testid="course-lens-guidance">
+        <span class="material-symbols-outlined course-lens-guidance__icon" aria-hidden="true">near_me</span>
+        <div>
+          <strong>這一頁適合查找與分流</strong>
+          <span>建立、編輯、續報與加購課程，請從「學生管理」的學生主檔進入，避免同一筆合約在不同頁面產生兩套狀態。</span>
+        </div>
+      </div>
+
+      <div class="course-lens-summary" aria-label="課程管理摘要" data-testid="course-lens-summary">
+        <article v-for="metric in courseLensMetrics" :key="metric.key" class="course-lens-metric" :class="`course-lens-metric--${metric.tone}`">
+          <span class="course-lens-metric__label">{{ metric.label }}</span>
+          <strong class="course-lens-metric__value">{{ metric.value }}</strong>
+          <span class="course-lens-metric__hint">{{ metric.hint }}</span>
+        </article>
       </div>
 
       <!-- Filters -->
       <div class="filter-bar grid" data-guide="course-mgmt-filters">
         <div class="filter-field">
-          <label>搜尋學生</label>
-          <input v-model="filters.name" placeholder="輸入姓名..." @input="debouncedLoad" />
+          <label for="course-filter-student">搜尋學生</label>
+          <input id="course-filter-student" v-model="filters.name" placeholder="輸入姓名..." @input="debouncedLoad" />
         </div>
         <div class="filter-field">
-          <label>上課類型</label>
-          <select v-model="filters.class_type" @change="loadCourses(1)">
+          <label for="course-filter-type">上課類型</label>
+          <select id="course-filter-type" v-model="filters.class_type" @change="loadCourses(1)">
             <option value="">全部</option>
             <option value="one_on_one">一對一</option>
             <option value="one_on_two">一對二</option>
@@ -45,21 +65,25 @@
           </select>
         </div>
         <div class="filter-field">
-          <label>搜尋老師</label>
-          <input v-model="filters.teacher_name" placeholder="輸入老師姓名..." @input="debouncedLoad" />
+          <label for="course-filter-teacher">搜尋老師</label>
+          <input id="course-filter-teacher" v-model="filters.teacher_name" placeholder="輸入老師姓名..." @input="debouncedLoad" />
         </div>
         <div class="filter-field">
-          <label>課程狀態</label>
-          <select v-model="filters.course_status" @change="loadCourses(1)">
+          <label for="course-filter-status">課程狀態</label>
+          <select id="course-filter-status" v-model="filters.course_status" @change="loadCourses(1)">
             <option value="">全部</option>
             <option value="active">進行中</option>
             <option value="inactive">已暫停</option>
           </select>
         </div>
+        <button v-if="hasActiveCourseFilters" class="course-filter-clear" type="button" data-testid="course-filter-clear" @click="clearCourseFilters">
+          <span class="material-symbols-outlined" aria-hidden="true">filter_alt_off</span>
+          清除篩選
+        </button>
       </div>
 
       <!-- Performance cockpit stats -->
-      <div class="stats-strip">
+      <div class="stats-strip" aria-label="本頁課程類型分布">
         <span class="stats-orb stats-orb-total">
           <span class="stats-orb-label">課程總覽</span>
           <span class="stats-orb-num">{{ courses.length }}</span>
@@ -591,7 +615,10 @@
       <div v-else class="empty-state">
         <div class="empty-icon">📋</div>
         <p class="empty-title">目前尚無課程資料</p>
-        <p class="empty-desc">請在「學生管理」為學生建立課程，或使用上方「新增課程」快速建立課程。</p>
+        <p class="empty-desc">請在「學生管理」為學生建立課程。</p>
+        <button type="button" class="btn-accent" data-testid="empty-state-goto-students" @click="emit('navigate', 'students')">
+          <span class="material-symbols-outlined btn-icon" aria-hidden="true">groups</span> 前往學生管理
+        </button>
       </div>
       <div v-if="pagination.lastPage > 1" class="pagination-bar">
         <span class="pagination-info">第 {{ (pagination.page - 1) * pagination.perPage + 1 }}–{{ Math.min(pagination.page * pagination.perPage, pagination.total) }} 筆，共 {{ pagination.total }} 筆</span>
@@ -1672,7 +1699,7 @@ const forceSubmitting = ref(false);
 async function openBackfillModalForGroup(group) {
   const sid = resolveGroupStudentId(group);
   if (!sid) {
-    alert('無法取得此學生的編號，請改從上方「新增課程」手動選擇學生。');
+    alert('無法取得此學生的編號，請至「學生管理」為此學生建立課程。');
     return;
   }
   try {
@@ -1710,9 +1737,11 @@ function proceedOpenBackfillForGroup(group) {
 async function onEnrollmentConflictDecision(decision) {
   const payload = interceptOriginalPayload.value;
   if (!payload) {
-    interceptPendingGroup.value
-      ? proceedOpenBackfillForGroup(interceptPendingGroup.value)
-      : openBackfillModal();
+    if (interceptPendingGroup.value) {
+      proceedOpenBackfillForGroup(interceptPendingGroup.value);
+    } else {
+      showDuplicateInterceptModal.value = false;
+    }
     return;
   }
   forceSubmitting.value = true;
@@ -1744,14 +1773,6 @@ function interceptGoToPurchaseCM(conflict) {
   if (target) {
     openPurchaseModal(target);
   }
-}
-
-function openBackfillModal() {
-  schedulerInitialStudentId.value = '';
-  schedulerInitialTeacherId.value = '';
-  resetBackfillDatePicker();
-  showBackfillModal.value = true;
-  loadRoomsForBranch();
 }
 
 async function handleUniversalBackfillSuccess(result) {
@@ -3093,6 +3114,60 @@ const coursesBySubject = computed(() => {
     label: getSubjectLabel(subject),
     count
   })).sort((a, b) => b.count - a.count);
+});
+
+const hasActiveCourseFilters = computed(() => (
+  ['name', 'class_type', 'teacher_name', 'teacher_id', 'course_status']
+    .some((key) => String(filters.value[key] ?? '').trim() !== '')
+));
+
+function clearCourseFilters() {
+  filters.value = { name: '', class_type: '', teacher_name: '', teacher_id: '', course_status: '' };
+  loadCourses(1);
+}
+
+const courseLensMetrics = computed(() => {
+  const visibleCourses = courses.value;
+  const activeCount = visibleCourses.filter((course) => !isHistoryCourse(course) && course.status !== 'inactive').length;
+  const attentionCount = visibleCourses.filter((course) => {
+    const remaining = displayRemainingSessions(course);
+    return isSessionMode(course)
+      && remaining != null
+      && Number(remaining) <= 2
+      && !effectiveClosedReason(course);
+  }).length;
+  const pausedCount = visibleCourses.filter((course) => course.status === 'inactive' && !effectiveClosedReason(course)).length;
+
+  return [
+    {
+      key: 'students',
+      label: '本頁學生',
+      value: groupedCourses.value.length,
+      hint: pagination.value.total ? `篩選結果 ${pagination.value.total} 筆課程` : '目前沒有篩選結果',
+      tone: 'neutral',
+    },
+    {
+      key: 'active',
+      label: '進行中',
+      value: activeCount,
+      hint: '可優先查看排課與堂數',
+      tone: 'success',
+    },
+    {
+      key: 'attention',
+      label: '續報提醒',
+      value: attentionCount,
+      hint: attentionCount ? '剩餘 2 堂以下' : '目前沒有低堂數提醒',
+      tone: attentionCount ? 'warning' : 'neutral',
+    },
+    {
+      key: 'paused',
+      label: '暫停中',
+      value: pausedCount,
+      hint: pausedCount ? '不列入新增排課' : '目前沒有暫停課程',
+      tone: pausedCount ? 'info' : 'neutral',
+    },
+  ];
 });
 
 const paymentStatusButtonClass = (course) => {
@@ -4440,6 +4515,119 @@ onUnmounted(() => {
 .page-title-block {
   min-width: 0;
 }
+
+.course-lens-kicker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.course-lens-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 3px 9px;
+  border: 1px solid var(--ds-primary);
+  border-radius: var(--ds-radius-pill);
+  background: var(--ds-primary-wash);
+  color: var(--ds-primary-deep);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.course-lens-primary-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 40px;
+  padding: 9px 14px;
+  border: 1px solid var(--ds-cta);
+  border-radius: var(--ds-radius-pill);
+  background: var(--ds-cta);
+  color: var(--ds-on-cta);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.course-lens-primary-action:hover {
+  border-color: var(--ds-cta-hover);
+  background: var(--ds-cta-hover);
+}
+
+.course-lens-guidance {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--ds-hairline);
+  border-left: 3px solid var(--ds-primary);
+  border-radius: var(--ds-radius-lg);
+  background: var(--ds-primary-wash);
+  color: var(--ds-ink-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.course-lens-guidance__icon {
+  flex: 0 0 auto;
+  color: var(--ds-primary-deep);
+  font-size: 20px;
+}
+
+.course-lens-guidance strong {
+  margin-right: 6px;
+  color: var(--ds-ink);
+}
+
+.course-lens-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.course-lens-metric {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--ds-hairline);
+  border-top: 3px solid var(--ds-hairline);
+  border-radius: var(--ds-radius-lg);
+  background: var(--ds-canvas);
+  box-shadow: var(--ds-shadow-1);
+}
+
+.course-lens-metric--success { border-top-color: var(--ds-success); }
+.course-lens-metric--warning { border-top-color: var(--ds-warning); }
+.course-lens-metric--info { border-top-color: var(--ds-primary); }
+
+.course-lens-metric__label {
+  color: var(--ds-ink-mute);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.course-lens-metric__value {
+  color: var(--ds-ink);
+  font-size: 26px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.course-lens-metric__hint {
+  overflow-wrap: anywhere;
+  color: var(--ds-ink-secondary);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .command-kicker {
   margin: 0 0 4px;
   font-size: 11px;
@@ -4663,6 +4851,37 @@ onUnmounted(() => {
   color: var(--ds-ink);
 }
 
+.course-filter-clear {
+  align-self: end;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 34px;
+  padding: 7px 11px;
+  border: 1px solid var(--ds-hairline);
+  border-radius: var(--ds-radius-pill);
+  background: var(--ds-canvas);
+  color: var(--ds-ink-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.course-filter-clear:hover {
+  border-color: var(--ds-primary);
+  background: var(--ds-primary-wash);
+  color: var(--ds-primary-deep);
+}
+
+.course-lens-primary-action:focus-visible,
+.course-filter-clear:focus-visible,
+.btn-soft:focus-visible {
+  outline: 3px solid var(--ds-focus-ring);
+  outline-offset: 2px;
+}
+
 /* ----- Compact stats strip ----- */
 .creation-success-banner {
   display: flex;
@@ -4774,6 +4993,16 @@ onUnmounted(() => {
   .header-actions {
     align-items: flex-start;
     flex-direction: column;
+  }
+  .header-buttons {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .course-lens-primary-action {
+    margin-right: auto;
+  }
+  .course-lens-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .stats-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -5916,6 +6145,35 @@ button.danger:disabled {
 
   .header-buttons {
     justify-content: flex-start;
+  }
+
+  .course-header-card {
+    padding: 16px;
+  }
+
+  .course-lens-primary-action {
+    width: 100%;
+  }
+
+  .course-lens-summary {
+    gap: 8px;
+  }
+
+  .course-lens-metric {
+    padding: 12px;
+  }
+
+  .course-lens-metric__value {
+    font-size: 22px;
+  }
+
+  .course-lens-guidance {
+    display: grid;
+    grid-template-columns: auto 1fr;
+  }
+
+  .course-filter-clear {
+    width: 100%;
   }
 
   .summary-row {

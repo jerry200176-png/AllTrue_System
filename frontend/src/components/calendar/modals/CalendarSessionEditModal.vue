@@ -54,11 +54,6 @@
             class="action-btn cancel-session"
             @click="$emit('show-cancel-confirm')"
           >🚫 取消本堂</button>
-          <button
-            v-if="!session.isTeacher && session.reassignTargets.length > 0"
-            class="action-btn reassign"
-            @click="$emit('show-reassign-confirm')"
-          >🔀 改派合約</button>
         </div>
         <div v-if="session.cancelState.show" class="cancel-session-confirm">
           <p>確定取消這堂課？<br><small>此操作無法自動還原（可至課程管理手動設回「排程中」）。</small></p>
@@ -67,31 +62,6 @@
             <button class="action-btn cancel-session" :disabled="session.cancelState.loading" @click="$emit('confirm-cancel')">
               {{ session.cancelState.loading ? '處理中...' : '確定取消本堂' }}
             </button>
-          </div>
-        </div>
-        <div v-if="session.reassignState.show" class="reassign-confirm">
-          <p>將本堂改派至已透過課程延續群組關聯的另一份課程合約：</p>
-          <div class="form-group">
-            <label>目標課程合約</label>
-            <select v-model="reassignTargetId" :disabled="session.reassignState.loading">
-              <option value="">請選擇</option>
-              <option v-for="t in session.reassignTargets" :key="t.id" :value="t.id">
-                {{ t.subject_name || `科目#${t.subject_id}` }} · {{ t.teacher_name || `老師#${t.teacher_id}` }} · 剩 {{ t.remaining_sessions ?? '—' }} 堂（#{{ t.id }}）
-              </option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>改派原因</label>
-            <input v-model.trim="reassignReason" type="text" maxlength="255" placeholder="請輸入改派原因" :disabled="session.reassignState.loading" />
-          </div>
-          <p v-if="session.reassignState.error" class="reassign-error" role="alert">{{ session.reassignState.error }}</p>
-          <div class="reassign-confirm-btns">
-            <button class="action-btn" style="background:var(--ds-canvas-soft);color:var(--ds-ink);" :disabled="session.reassignState.loading" @click="$emit('dismiss-reassign-confirm')">取消</button>
-            <button
-              class="action-btn reassign"
-              :disabled="!reassignTargetId || !reassignReason || session.reassignState.loading"
-              @click="$emit('confirm-reassign', { newStudentClassId: reassignTargetId, reason: reassignReason })"
-            >{{ session.reassignState.loading ? '處理中...' : '確定改派' }}</button>
           </div>
         </div>
       </div>
@@ -210,7 +180,6 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue';
 import './calendarModalRwd.css';
 import SearchableSelect from '../../SearchableSelect.vue';
 
@@ -230,8 +199,6 @@ const props = defineProps({
       featureSubstituteV2: false,
       canCancelSession: false,
       cancelState: { show: false, loading: false },
-      reassignTargets: [],
-      reassignState: { show: false, loading: false, error: '' },
       editingException: false,
       editingExceptionIsExtra: false,
       evalRecords: [],
@@ -251,19 +218,8 @@ const props = defineProps({
 defineEmits([
   'close', 'leave', 'reschedule', 'substitute', 'substitute-v2',
   'show-cancel-confirm', 'dismiss-cancel-confirm', 'confirm-cancel',
-  'show-reassign-confirm', 'dismiss-reassign-confirm', 'confirm-reassign',
   'delete-exception', 'delete-course', 'cancel-makeup', 'teacher-change',
 ]);
-
-const reassignTargetId = ref('');
-const reassignReason = ref('');
-// Reset the small inline form whenever it opens (possibly for a different session).
-watch(() => props.session.reassignState.show, (isShown) => {
-  if (isShown) {
-    reassignTargetId.value = '';
-    reassignReason.value = '';
-  }
-});
 </script>
 
 <style scoped>
@@ -432,9 +388,6 @@ watch(() => props.session.reassignState.show, (isShown) => {
 .action-btn.cancel-session { background: var(--ds-danger-wash); color: var(--ds-danger); border-color: var(--ds-danger); }
 .action-btn.cancel-session:hover:not(:disabled) { background: var(--ds-danger-wash); }
 .action-btn.cancel-session:disabled { opacity: 0.6; cursor: not-allowed; }
-.action-btn.reassign { background: var(--ds-primary-wash); color: var(--ds-primary-deep); border-color: var(--ds-primary); }
-.action-btn.reassign:hover:not(:disabled) { background: var(--ds-primary-wash); }
-.action-btn.reassign:disabled { opacity: 0.6; cursor: not-allowed; }
 .cancel-session-confirm {
   margin-top: 10px;
   padding: 12px 14px;
@@ -447,28 +400,6 @@ watch(() => props.session.reassignState.show, (isShown) => {
 .cancel-session-confirm p { margin: 0 0 10px; line-height: 1.5; }
 .cancel-session-confirm small { color: var(--ds-ink); }
 .cancel-session-confirm-btns { display: flex; gap: 8px; }
-.reassign-confirm {
-  margin-top: 10px;
-  padding: 12px 14px;
-  background: var(--ds-primary-wash);
-  border: 1.5px solid var(--ds-primary);
-  border-radius: 8px;
-  font-size: 13px;
-  color: var(--ds-ink);
-}
-.reassign-confirm p { margin: 0 0 10px; line-height: 1.5; }
-.reassign-confirm .form-group { margin-bottom: 10px; }
-.reassign-confirm .form-group label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px; }
-.reassign-confirm select,
-.reassign-confirm input { width: 100%; padding: 6px 8px; font-size: 13px; }
-.reassign-error {
-  margin: 0 0 10px;
-  padding: 6px 8px;
-  background: var(--ds-danger-wash);
-  color: var(--ds-danger);
-  border-radius: 6px;
-}
-.reassign-confirm-btns { display: flex; gap: 8px; }
 .eval-summary-box {
   margin-top: 16px;
   padding: 12px;
