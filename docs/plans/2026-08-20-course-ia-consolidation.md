@@ -1,151 +1,175 @@
-> Canonical source: https://github.com/jerry200176-png/AllTrue_System/issues/1922 (created from this file, 2026-08-20). This file is a local copy for review.
+> Canonical source: https://github.com/jerry200176-png/AllTrue_System/issues/1922 (this file is a local copy for review). Sub-issue of Epic #1600.
 
-Title: `[UX] 課程/合約 IA 收斂：一筆紀錄一個主頁，行事曆與儀表板只做唯讀導向`
-Parent: #1600
+---
+owner: jerry (CEO)
+status: Plan — awaiting agent review before implementation
+review_cycle: as-needed
+last_reviewed: 2026-08-20
+---
 
-> 上層 Epic：#1600。前案：#1601（已關閉但問題未解）、#1618、#1621。
-> Risk-Class：本文件 R0（docs only）；Phase A1 實作 R1；Phase A2/B 實作 R2。
+# [UX] 課程／合約資訊架構收斂：一筆紀錄一個主檔頁，其餘只做唯讀導覽
 
-## 0. 根因確認（Root Cause）
+**Epic:** #1600 ｜ **前案:** #1601（已關閉，未解決本問題）、#1382 `RFC_COURSE_CONTINUITY.md`
+**今日相關 PR:** #1915（後端 reassign-contract）、#1916（行事曆 🔀改派合約 前端）
+**Risk-Class:** Phase A = R2（動堂數歸屬與計數）；Phase B 首刀 = R1（前端刪動作）；Phase C = R0（唯讀稽核）
 
-| 欄位 | 內容 |
-|---|---|
-| 嚴重度 | P1（IA／可維護性，非資料錯誤） |
-| 根因類型 | 資訊架構：同一筆 StudentClass 有多個互不相通的變更入口 |
-| 根因摘要 | 「課程／合約」沒有唯一的 record 主頁。學生管理、課程管理、行事曆各自長出一套 mutation，新需求就往最近的畫面加，於是入口愈長愈多。 |
-| 錯誤行為 | 2026-08-20 三個 PR（#1915／#1916）在行事曆單堂面板再加第三個合約管理入口 🔀改派合約。 |
-| 預期行為 | 一筆課程合約＝一個主頁（學生管理的課程列）＝唯一會改狀態的地方；儀表板與行事曆是唯讀鏡頭，只做 deep-link。 |
-| 歷史比對 | #1601「課程管理＋家長請假完整流程」2026-08-01 關閉，但 8/20 又新增同型入口 ⇒ #1601 只補了單一 deep-link，沒有處理「誰可以 mutate」這條規則。 |
-| 根因層級 | 產品規則缺口，不是一次性 bug。 |
+---
 
-### 現況證據（本 session 實查，勿再重推）
+## 0. 問題陳述（Root Cause）
 
-**入口 1 — 課程管理 `frontend/src/pages/CourseManagement.vue`（7127 行）**
-- 自稱是「即時掌握學生課程、續報風險、排課狀態與營運節奏」的儀表板（`:9`）。
-- 實際上有 **27 個 API 呼叫點，其中約 20 個是 mutation**：`transfer-sessions`（`:1850`）、`pause`（`:1960`/`:1998`）、`purchase-batch`（`:2176`）、`renew-monthly`（`:2240`）、`add-session`（`:2369`）、`manual-sessions`（`:2452`）、`undo-leave`（`:2762`）、`class-sessions/{id}/substitute`（`:3420`）、`PUT /student-classes/{id}`（`:3529`/`:3815`/`:4338`）、`DELETE`（`:4159`）、invoice void（`:4096`）。
-- 它自己的空狀態文案就自相矛盾：`:594`「請在「學生管理」為學生建立課程，或使用上方「新增課程」快速建立課程。」——同一句話同時說「去別頁做」和「在這裡做」。
+同一筆「學生的某一門課／某一份合約」目前有 **三個以上互不相通的變更入口**，今天又新增了第四個。
 
-**入口 2 — 學生管理 `frontend/src/pages/StudentsList.vue`（3724 行）**
-- 真正的 per-course CRUD 在這裡：加購／續報加購按鈕 `:304-305` → `openAddSessionsForCourse` `:2502` → `POST /student-classes/{id}/purchase-batch` `:2562`。
-- 後端 `StudentClassController::purchaseBatch`（`backend/app/Http/Controllers/StudentClassController.php:2463`）已在單一 transaction 內複製舊合約的 week/time/duration/teacher/subject/room/rate 建立新 StudentClass ⇒ 續報精靈的骨架已經存在。
-- 缺點：課程列要點學生列才展開，沒有可視 affordance。但它是離「record 主頁」最近的東西。
+| # | 入口 | 實證 | 性質 |
+|---|---|---|---|
+| 1 | 課程管理 `frontend/src/pages/CourseManagement.vue`（7127 行） | 頁首自稱「即時掌握學生課程、續報風險、排課狀態與營運節奏」(:9)，但檔內有約 25 個寫入端點：`transfer-sessions`(:1850)、`pause`(:1960,:1998)、`purchase-batch`(:2176)、`renew-monthly`(:2240)、`add-session`(:2369)、`manual-sessions`(:2452)、`undo-leave`(:2762)、`substitute`(:3420)、`PUT student-classes`(:3529,:3815)、`DELETE`(:4159)、`invoices/{id}/void`(:4096) | **不是唯讀 dashboard，是第二套完整 CRUD** |
+| 2 | 學生管理 `frontend/src/pages/StudentsList.vue`（3724 行） | 課程列的 加購／續報加購 (:304-305) → `openAddSessionsForCourse` (:2502) → `POST /student-classes/{id}/purchase-batch` (:2562)；另有 繳費資訊／編輯／刪除 | **真正的主檔 CRUD** |
+| 3 | 班級行事曆 `SmartCalendar.vue` + `components/calendar/modals/CalendarSessionEditModal.vue` | 單堂動作：請假／調課／換代課老師／取消本堂 | 單堂例外處理（合理） |
+| 4 | **今天新增** 🔀改派合約 | `CalendarSessionEditModal.vue:58-94`、`SmartCalendar.vue:2183-2243`；後端 `ClassSessionController::reassignContract()` (:2087)、`reassignContractTargets()` (:2045)，路由 `backend/routes/api.php:569,572`，皆 `super_admin` only | **第四個入口；本計畫要撤掉** |
 
-**入口 3 — 行事曆 `frontend/src/pages/SmartCalendar.vue` + `frontend/src/components/calendar/modals/CalendarSessionEditModal.vue`**
-- 既有單堂動作：請假／調課／換代課老師／取消本堂。
-- 2026-08-20 新增 🔀改派合約：`CalendarSessionEditModal.vue:58-94`（按鈕＋inline 表單）、`SmartCalendar.vue:2183-2243`（targets 載入＋送出）、`:393-395`（事件接線）。
-- 後端：`ClassSessionController::reassignContractTargets`（`:2045`）、`reassignContract`（`:2087`），路由 `backend/routes/api.php:569`／`:572`，皆 `role:super_admin`。
+**兩個關鍵佐證（本 session 讀原始碼確認，非推論）：**
 
-**本次規劃新發現（背景敘述有誤，請一併採納）**
+1. **今天上線的按鈕在正式站很可能根本看不到。** 按鈕的顯示條件是 `session.reassignTargets.length > 0`（`CalendarSessionEditModal.vue:58`），而 targets 來自 `course_contract_group` 關聯。全前端 `grep -rn "course-contract-groups" frontend/src` → **零結果**：`CourseContractGroupController`（`api.php:509-512`）只能用 API/DB 直接呼叫，沒有任何 UI 能建立群組關聯。**實作前務必先查正式站 `course_contract_groups` 是否有資料**（見第 7 節 Q1）。
+2. **`purchaseBatch` 不會建立群組關聯。** `grep -n "CourseContractGroup" backend/app/Http/Controllers/StudentClassController.php` → 零結果。群組只在 `CourseContinuityService::createGroup()` 建立。因此「續報加購已自動 course_contract_group 連結」這個前提 **不成立**，Phase A 必須自己補上這一段。
 
-1. **`purchaseBatch` 並不會建立 `course_contract_group` 關聯。** 全 repo 搜尋顯示 group 只由 `CourseContinuityService::createGroup`／`CourseContractGroupController`（`backend/routes/api.php:509-512`）建立。所以 Phase A2 不是「沿用既有自動關聯」，而是要**新增**自動關聯。
-2. **前端沒有任何地方呼叫 `course-contract-groups`。** `grep -rn "course-contract-group" frontend/src` 無結果。而 🔀改派合約 按鈕的顯示條件是 `session.reassignTargets.length > 0`（`CalendarSessionEditModal.vue:58`），targets 又要求兩張合約已 group-linked ⇒ **這顆按鈕在正式站很可能從來沒有出現過**。落地前請先確認：`SELECT COUNT(*) FROM course_contract_group_members WHERE unlinked_at IS NULL;`
-3. **本專案沒有 vue-router。** 導覽是 `App.vue` 的 `active` tab state（`:312` StudentsList、`:318` CourseManagement）。「deep-link」在這裡的意思是 `@navigate` 事件＋ focus prop，既有前例：`initialTeacherIdForNav` 與 `onNavigateFromCourseManagement`（`App.vue:1063`）。Phase B 直接沿用這個 pattern，不要引入 router。
-4. **`reassignContract` 無法直接被 `purchaseBatch` 呼叫。** 它是一個把驗證、`response()->json()` 錯誤回傳、audit 寫入、`SessionDeductionService::recomputeCounters()` 全綁在一起的 controller closure。要重用必須先抽成 service method（回傳結果或丟 exception，不要回傳 HTTP response）。
+**#1601 為何沒解決：** #1601（2026-08-01 關閉）範圍是 `CourseManagement.vue`／`ParentPortal.vue`／`DirectorDashboard.vue` 之間的**家長請假 deep-link 與案件摘要**——它是「加一條導覽路徑進主任收件匣」，從未移除任何重複的變更入口。所以它關閉後（8/20）同型反模式又長出第四個。這次要修的是**移除入口**，不是再加導覽。
 
-## 1. 設計決策
+---
 
-**規則：一筆紀錄＝一個主頁＝唯一會改它狀態的地方。清單、儀表板、行事曆是唯讀鏡頭，只能導向該主頁，不得成為獨立的變更路徑。**
+## 1. 設計決策：一筆紀錄 = 一個主檔頁
 
-研究依據：
-- **ERPNext／Frappe**（source-verified，本次與稍早 research pass）：renewal 動作是掛在被續約的紀錄本身上的單一 toolbar 按鈕（`toolbar.js:599 add_auto_repeat()`），依紀錄自身狀態決定是否顯示，不會出現在另一個獨立畫面。
-- **GibbonEdu/core**（GPL-3.0，624★，2026-08-08 才 push，source-verified，本次新增）：學生的單一記錄頁 `modules/Students/student_view_details.php` 直接把 `Gibbon\UI\Timetable\Timetable`、`Gibbon\Module\Attendance\StudentHistoryView` 等跨模組元件組合進同一頁渲染，而不是叫使用者跳到獨立的 Timetable／Attendance 頁面。這是第二個、且是同業（學校/補習班排課系統）的原始碼驗證證據，比通用 CRM 更貼近 AllTrue 的實際場景。
-- Salesforce Lightning record page／HubSpot record page 的「single record page」架構：**標記為 inferred／training knowledge**——本次曾用 Cloudflare Browser Run 實際取得 Salesforce Help 頁面（200 回應，非封鎖），但該頁是 JS SPA 殼，未能在時間內取出可驗證的條文內容，故維持 inferred 標記，不升級。
-- Repo 內既有同向論述：`docs/architecture/RFC_PLATFORM_OPTIMIZATION_FROM_STARS_2026.md:130`「ERPNext（文件關聯不亂 merge）」。
-- Design System SSOT：`docs/RULE_DESIGN_SYSTEM.md`。
+**原則：** 一筆紀錄的狀態只在它的主檔頁被改變；dashboard 與行事曆是**唯讀鏡頭**，互動元素一律 deep-link 回主檔頁，不得自成變更路徑。
+
+對 AllTrue 的對應：
+- **StudentClass（課程／合約）的主檔頁 = 學生管理的學生展開列。** 加購／續報／編輯／刪除／繳費留在這裡。
+- **課程管理 = 唯讀 triage lens**（搜尋、篩選、班型統計、續報風險）。
+- **行事曆 = 單堂例外處理**（請假／調課／代課／取消本堂）。合約層級的動作不屬於這裡。
+
+**證據層級（誠實標示）：**
+
+| 來源 | 內容 | 驗證狀態 |
+|---|---|---|
+| **GibbonEdu/core**（GPL-3.0，624★，pushed 2026-08-08，**同領域**：學校管理） | `modules/Students/student_view_details.php` 是唯一的學生主檔頁，直接在同一頁 inline 組合跨模組視圖 —— `use Gibbon\UI\Timetable\Timetable;` 與 `use Gibbon\Module\Attendance\StudentHistoryView;` 與一般學生資料一起渲染，**不需要跳去獨立的 Timetable／Attendance 頂層頁**才看得到某學生的課表與出席歷程 | ✅ 原始碼驗證（本 session） |
+| **frappe/ERPNext** | 每個 DocType 只有一個 form route，list／calendar view 一律導回 form 才能編輯；狀態變更動作掛在 form 上 | ⚠️ 本 session 未逐行複驗檔案／行號，寫進 PR 描述前請重新取得精確引用 |
+| **Salesforce Lightning Record Page / HubSpot record page** | 「一筆紀錄一個頁面、related lists 唯讀導覽」 | ❌ **推論／訓練知識，未經現場驗證**。本 session 嘗試 live fetch，取得 200 但頁面是 JS SPA shell，時間內取不到可擷取的正文。**維持推論標示，不得升級為已驗證** |
+
+Gibbon 是本計畫最強的引用：同一個領域（學校排課／出席），同樣的結論。
+
+---
 
 ## 2. 範圍（分階段）
 
-### Phase A1 — 撤回今天的行事曆改派合約【今天可完成，1 個 PR】
+### Phase A — 撤回行事曆的改派合約，把能力併回續報加購 ✅ 一天內可完成
 
-**In**
-- 移除 `CalendarSessionEditModal.vue` 的 `:58-94`（按鈕＋inline 表單）、`:233-234`（props 預設）、`:254`（emits）、`:258-264`（local refs／watch）、`:435-471`（樣式）。
-- 移除 `SmartCalendar.vue` 的 `:393-395`、`:1986` 附近的 targets 預載、`:2183-2243`、`:2415-2416` 重置。
-- 移除 `CalendarSessionEditModal.test.js` 內 `:14`／`:19`／`:64` 起的 reassign 相關案例與 fixture 欄位。
-- 後端 `reassignContract`／`reassignContractTargets`／`class_session_reassignments` **暫時保留不動**（見 Open Question 1）。
+**A1（刪除，前端 R1）**
+- `CalendarSessionEditModal.vue`：移除 :58-61 按鈕、:72-94 inline 表單、:233-234 props 欄位、:254 三個 emits、:258-264 local state、:435-471 CSS。
+- `SmartCalendar.vue`：移除 :393-395 事件綁定、:2183-2243 `reassignTargets`／`reassignState`／`doConfirmReassign`／targets 載入 (:1986,:2196)、:2415-2416 reset。
+- `CalendarSessionEditModal.test.js` 移除對應 3 個測項（reassign 相關），保留其餘。
 
-**Out**：不動請假／調課／代課／取消本堂任何一條既有路徑。
+**A2（後端重構，不改行為）**
+`reassignContract()`（`ClassSessionController.php:2087-`）目前是一個把驗證與 `response()->json()` 混在一起的 controller method，**無法直接在 `purchaseBatch` 內重用**。抽出核心到 service（建議 `App\Services\CourseContinuityService`，群組邏輯已在那裡），簽章回傳結果／丟例外，而非 `JsonResponse`。必須完整保留現有行為：同學生同科目檢查、群組關聯檢查、`lockForUpdate`、`assertCourseIsMutable()`、`class_session_reassignments` 稽核列、`LearningRecord.StudentClassID` 同步（denormalized mirror，`LearningRecordDriftCheck` 依賴）、`SessionDeductionService::recomputeCounters()` 雙邊重算。
 
-### Phase A2 — 續報加購順帶結轉已上完堂次【今天做不完，需另開 issue】
+**A3（併入續報加購）**
+`StudentClassController::purchaseBatch()`（:2463）已在 `DB::transaction` 內複製 week/time/durationN/TeacherID/SubjectID/room_id 等排課設定建立新 `StudentClass`。新增：
+- 選填 `carry_forward_session_ids: array<int>`；
+- 建立新合約後，**建立 `course_contract_group` 關聯**（新舊合約入同一群組；這是新行為，Q1 待確認）；
+- 對每個 session id 跑 A2 抽出的核心邏輯，全在**同一個 transaction** 內；
+- 任一堂失敗 → 整筆 rollback（不得留下「新合約已建但堂次沒搬」的中間狀態）。
 
-誠實評估：這不是一個 session 的量。需要依序做完
-1. 把 `reassignContract` 的驗證＋搬移＋recompute 抽成 service（例如 `SessionContractReassignService`），controller 只剩薄殼，既有 `ClassSessionReassignContractTest` 必須維持全綠。
-2. 決定 `purchaseBatch` 是否要自動建立／掛入 `course_contract_group`（目前完全沒有），還是乾脆讓結轉不依賴 group（見 Open Question 2）。
-3. `purchaseBatch` 新增 optional `carry_forward_session_ids: array`，在同一個 `DB::transaction` 內對每個 id 跑 service，最後一次 `recomputeCounters`。
-4. `StudentsList.vue` 加購 modal 內新增「一併轉入新合約的已上堂次」多選（預設全不選）。
+前端：`StudentsList.vue` 加購 modal（:586-623）加一區「一併帶入已上課堂次」——列出舊合約已完成／已填評量的堂次，預設全不勾。
 
-建議拆成兩個 PR（後端 service 抽取＋端點擴充／前端 modal），符合本 repo 正式程式碼 700 行上限。
+**A4（誠實的範圍界線）** 若 Q1 答案是「正式站已有群組資料且有人用過改派」，A1 的刪除要改成保留一個 super_admin 補救路徑，Phase A 就會超過一天，另開 follow-up。
 
-### Phase B — 課程管理降級為唯讀 triage【今天只做最小的一刀】
+### Phase B — 課程管理回歸唯讀 lens ⚠️ 一天只能做第一刀
 
-**今天可完成**
-- 移除頁首「新增課程」按鈕（`:25`）與 `:207`「為此學生新增課程」。
-- 改寫 `:594` 空狀態文案，去掉自相矛盾的後半句，改成導向學生管理的按鈕（透過 `@navigate` 事件，沿用 `App.vue:1063`）。
-- 新增「在學生管理中開啟」的 row-level deep-link，帶 student id 讓 `StudentsList` 自動展開該學生的課程列。
+一天內可完成：
+- 移除 `CourseManagement.vue:25` 的「新增課程」按鈕與 :611 的排課 modal 入口；
+- 修正 :594 自相矛盾的空狀態文案（只留「請在『學生管理』為學生建立課程」＋一個導向按鈕）；
+- 導覽用**既有機制**：本 repo 沒有 vue-router，`App.vue` 用 `active` tab state；已有 `@navigate` → `onNavigateFromCourseManagement()`（`App.vue:318,1063`）與 `initial-teacher-id` prop 的先例，照抄即可，**不要引入 router**。
 
-**今天做不完，需另開 issue**：其餘約 19 個 mutation 呼叫點（pause／transfer-sessions／renew-monthly／add-session／manual-sessions／substitute／PUT／DELETE／invoice void）的遷移。每一個都要先確認學生管理側有對等入口，沒有的要先補，否則就是把功能砍掉而不是搬家。這是多 PR、跨數個 session 的工作。
+**一天內做不完，必須另開 follow-up issue：** 其餘約 20 個寫入端點（pause／renew-monthly／add-session／manual-sessions／transfer-sessions／substitute／PUT／DELETE／invoice void）。這是一個 7127 行檔案的多 PR 逐步下架，每個端點都要先確認學生管理側有對等入口才能移除。**不要在本 issue 假裝一天做得完。**
 
-### Phase C — 學習評量表【只做調查，不做改動】
+### Phase C — 學習評量表：先查證，不預設 🔍 稽核，不改碼
 
-`frontend/src/pages/LearningRecordsPage.vue`（8697 行）**尚未取得證據**，僅憑 pattern 推測可能有相同問題。初步掃描顯示它有 16 個 mutation 呼叫點，但對 `student-classes` 只有兩處唯讀查詢（`:2630`、`:4517`），**沒有**直接改課程／合約的跡象 ⇒ 它的 mutation 很可能都是 LearningRecord 自身的狀態，屬於合理的 record-page 行為。
+初步唯讀觀察（本 session）：`LearningRecordsPage.vue`（8697 行）有 16 個寫入呼叫，但對 `student-classes` 的呼叫只有兩處 **GET**（:2630、:4517）——即它的變更面**侷限在 LearningRecord 自己的領域**，可能本來就符合原則。
 
-本階段交付物是一份調查結論（可作為本 issue 的 comment），不是程式碼。並且要先確認是否與 open 中的 #1621 重疊。
+Phase C 交付**只有一份稽核報告**：逐一列出 16 個寫入端點、各自主檔歸屬、與學生管理／行事曆是否重疊，再決定要不要動。**不預設同一套修法適用。** 與 #1621 範圍重疊，結論要回寫到 #1621，不另闢戰場。
+
+---
 
 ## 3. Non-goals
 
-- **不做導覽重構**：不把課程管理併入學生管理成為單一頁面。那是更大的決策，另案討論。
-- 不改資料庫真相：不動 `Charge`／`Invoice`／`Payment`、不動扣堂規則。
-- 不動 `course_contract_group` 的既有語意（Phase A2 才會碰，且需先回答 Open Question 2）。
-- 不做 `LearningRecordsPage` 的 IA 改動（那是 #1621 的範圍）。
-- 不重寫行事曆的請假／調課／代課路徑。
+- ❌ **不做導覽重構**：不把 課程管理 併進 學生管理 變成單一頁面。那是更大的產品決策，另案處理（見 Q4）。
+- ❌ **不改資料庫真相**：不動 Charge／Invoice／Payment，不動堂數扣除規則。Phase A 只重用既有的 `recomputeCounters()`。
+- ❌ **不移除 `POST /class-sessions/{id}/reassign-contract` 端點**：#1915 的後端與稽核表保留（仍是 super_admin 補救工具），只撤掉行事曆 UI 入口。
+- ❌ **不重寫行事曆的單堂例外流程**：請假／調課／代課／取消本堂維持現狀。
+- ❌ **不在 Phase C 動任何程式碼**。
 
-## 4. 測試與驗收
+---
 
-**沿用 #1600 的固定驗收（原文）**：390/412/768/1280/1440、loading/empty/error/dense/long text、無水平溢出、鍵盤/focus/ARIA、權限/分校隔離、API/status contract、相關 regression family、Vite/lint/design guard、production health/version/desktop/mobile evidence。
+## 4. 驗收標準
 
-**本 issue 專屬的回歸紅線（以下檔案必須全綠）**
+**Epic #1600 固定驗收（原文照抄）：**
+> 390/412/768/1280/1440、loading/empty/error/dense/long text、無水平溢出、鍵盤/focus/ARIA、權限/分校隔離、API/status contract、相關 regression family、Vite/lint/design guard、production health/version/desktop/mobile evidence。
 
-| 檔案 | 為什麼 |
+**本計畫專屬回歸（檔名已 grep 確認存在）：**
+
+| 測試檔 | 為何相關 |
 |---|---|
-| `backend/tests/Feature/ClassSessionReassignContractTest.php` | Phase A1 若順手刪後端會直接紅；A2 抽 service 後語意必須不變 |
-| `backend/tests/Feature/StudentClassPurchaseBatchTest.php` | Phase A2 主要修改對象 |
-| `backend/tests/Feature/PurchaseBatchClosesSourceTest.php` | 續報會結案舊合約，結轉不得破壞這個順序 |
-| `backend/tests/Feature/SessionEntitlementTransferTest.php` | 堂數歸屬移轉的既有契約 |
-| `backend/tests/Feature/StudentClassTransferSessionsTest.php` | 同型的 session 搬移端點，語意須一致 |
-| `backend/tests/Feature/CourseContinuityGroupApiTest.php` | Phase A2 若動 group 建立邏輯 |
-| `frontend/src/components/calendar/modals/__tests__/CalendarSessionEditModal.test.js` | Phase A1 直接修改；同時確保請假／調課／代課／取消四顆按鈕的既有案例不受波及 |
-| `frontend/src/composables/calendar/__tests__/useCalendarLeaveExtra.test.js`、`useCalendarReschedule.test.js`、`useCalendarSubstitute.test.js` | 確認移除改派沒有波及同一面板的其他動作 |
-| `npm run test:calendar`、`npx vitest run` 全綠 | #1916 的基準是 249/249，移除後案例數會下降，須說明差額來源 |
+| `backend/tests/Feature/ClassSessionReassignContractTest.php` | A2 抽 service 後行為必須逐項不變（含 `LearningRecord` byte-for-byte、雙邊計數、稽核列、403） |
+| `backend/tests/Feature/StudentClassPurchaseBatchTest.php` | A3 不得破壞既有續報加購 |
+| `backend/tests/Feature/PurchaseBatchClosesSourceTest.php` | 續報後舊合約結案語意 |
+| `backend/tests/Feature/CourseContinuityGroupApiTest.php` | A3 新建群組關聯不得破壞既有群組 API |
+| `backend/tests/Feature/StudentClassTransferSessionsTest.php`／`SessionEntitlementTransferTest.php` | 另一條搬堂數路徑，計數不得互相干擾 |
+| `frontend/.../modals/__tests__/CalendarSessionEditModal.test.js` | A1 刪除後其餘測項全綠 |
 
-**失敗會怎樣（給 reviewer 的風險清單）**
-- Phase A1 若順手刪掉後端端點但沒刪 migration／test ⇒ CI 紅。
-- Phase A2 若把 `recomputeCounters` 漏在 transaction 外 ⇒ 兩張合約的剩餘堂數不一致，直接影響繳費。
-- Phase A2 若忘了同步 `LearningRecord.StudentClassID`（`reassignContract` 目前有做，見 `ClassSessionController` 內註解與 `LearningRecordDriftCheck`）⇒ 帳務／審核查詢會漂移。
-- Phase B 若移除按鈕但沒補 deep-link ⇒ 直接是功能退化，不是 IA 改善。
+**新增測試（最小集）：**
+- 後端：續報加購 + 帶入 2 堂 → 新合約建立、群組關聯建立、2 堂 `StudentClassID` 已改、雙邊計數正確、`LearningRecord` 內容未變、稽核列 2 筆。
+- 後端：帶入的堂次中有一堂不可變更 → **整筆 rollback**，新合約不存在。
+- 前端：加購 modal 未勾任何堂次時 payload 不含 `carry_forward_session_ids`（既有流程零變化）。
+
+**若出錯會壞什麼（給 reviewer 的紅線）：** 堂次歸屬錯 → 已用／剩餘堂數錯 → 帳務與續報風險判斷錯，且評量歷程掛到錯的合約。這是 R2，不是 UI 改動。
+
+---
 
 ## 5. Rollout
 
-- 沿用現行治理：feature branch → PR → CI 全綠 → agent squash-merge（`CLAUDE.md`：required checks 綠即可 R0–R3 自行合併，不等人類 review）。禁止直推 main、禁止 SSH 上 Pi 改碼。
-- 若 Phase A2 產生 migration：合併後才 `php artisan migrate --force`（CLAUDE.md R5）。
-- 正式程式碼 PR 上限 700 行 ⇒ Phase A2、Phase B 必須拆。
-- `.agent-session/manifest.json` 幾乎必衝突，直接 `git checkout --ours` 或 `git rm -f`（#1867）。
-- PHPStan Advisory 紅燈不擋合併；新的 undefined property／static method 錯誤照現有格式手動加進 `backend/phpstan-baseline.neon`，不要整檔重生成（#1867）。
+- 走現有治理：feature branch → PR → CI 全綠 → squash-merge（`CLAUDE.md` R3/R6：禁止直接 push main、禁止 SSH 上 Pi 改碼）。
+- 拆 PR：**A1（前端刪除）／A2（後端重構，行為不變）／A3（purchaseBatch 擴充＋前端 UI）／B 首刀** 各自獨立 PR。動到 `backend/app`、`frontend/src` 的 PR 有 700 行上限（#1867）。
+- **本計畫會回退今天已上正式站的功能。** 消失的使用者可見行為：單堂檢視面板的 🔀改派合約 按鈕。影響評估：
+  - 該按鈕是 **super_admin only**（`api.php:569,572`）→ 一般老師／主任本來就看不到；
+  - 顯示條件需要 `course_contract_group` 關聯，而**沒有任何 UI 能建立該關聯** → 極可能從未在正式站顯示過。
+  - **結論：先查 DB 確認 `course_contract_groups` 筆數；若為 0，不需要對外溝通**，PR 描述註明即可。若非 0，需通知曾使用者「改用 學生管理 → 續報加購 → 帶入已上課堂次」。
+- Rollback：revert PR。A3 若已建立群組關聯資料，revert 程式碼不會刪資料 —— 群組關聯是 additive、既有 API 支援 unlink，可接受。
+- 已知操作坑（#1867）：`.agent-session/manifest.json` 幾乎必衝突（直接 `git checkout --ours` 或 `git rm -f`）；PHPStan advisory 紅燈不擋合併，新的 undefined property 要手動加 `phpstan-baseline.neon` 條目、不要整檔重生成。
 
-**本計畫會撤回今天已上線的功能，使用者影響評估：**
-- 消失的是 `單堂檢視` 面板中的 🔀改派合約 按鈕。
-- 影響範圍極小：該端點是 `role:super_admin` only，且按鈕只在該堂次的合約已被 `course_contract_group` 關聯時才渲染，而**前端沒有任何地方能建立這種關聯**。合理推論是正式站上根本沒人看得到它。
-- **落地前必做**：查 `course_contract_group_members` 實際筆數。若為 0 ⇒ 不需要任何對外溝通，PR 描述註明即可。若 >0 ⇒ 需在 `ReleaseNotesPage` 補一則說明，並在 Phase A2 上線前提供替代路徑（續報加購時勾選結轉）。
-- Rollback：revert PR 即可，Phase A1 不含 schema 變更。
+---
 
-## 6. 給 reviewer 的未決問題
+## 6. 交付分割與誠實的時程
 
-1. **Phase A1 要不要一起刪後端？** 選項：(a) 只刪前端，`reassignContract` 留著給 A2 當基礎，`reassignContractTargets` 變成死碼；(b) 前後端全刪（含 `class_session_reassignments` 表與 migration），A2 從零寫。(b) 比較乾淨但會丟掉一份已通過測試的正確邏輯與 audit 表。
-2. **A2 到底要不要建立在 `course_contract_group` 之上？** 既然正式站可能一個 group 都沒有，堅持 group-link 前置條件等於要求主任先做一個 UI 上根本不存在的動作。是否改成：續報加購時「同一學生＋同一科目＋來源合約」這個上下文本身就足以授權結轉，完全不引入 group？
-3. **Phase B 的驗收標準要訂在哪？** 「課程管理變成真正唯讀」是約 20 個 mutation 的搬遷，跨數個 session。今天只拿掉「新增課程」＋修文案＋加 deep-link，是否可接受作為本 issue 的 Phase B 完成定義，其餘另開子 issue？還是應該一次訂死完整目標、分批交付但不分開結案（#1600 有「不以半成品結案」的規定）？
-4. **Phase C 與 #1621 重疊怎麼處理？** #1621 已經 open 且明確擁有 `LearningRecordsPage` 的資訊架構。本 issue 是只交付一份「有／沒有重複 mutation 入口」的調查結論後就把球傳給 #1621，還是直接不設 Phase C、把這個問題寫成 #1621 的一則 comment？
+| 項目 | 今天做得完？ |
+|---|---|
+| A1 撤回行事曆改派 UI | ✅ |
+| A2 後端抽 service（行為不變） | ✅ |
+| A3 purchaseBatch 帶入堂次（含群組關聯） | ⚠️ 勉強；Q1／Q2 未定則不動工 |
+| B 首刀（移除新增課程＋修空狀態） | ✅ |
+| B 其餘約 20 個寫入端點下架 | ❌ **另開 follow-up issue** |
+| C 稽核報告 | ✅（只有報告） |
+| C 依報告修改 | ❌ **視結論另議** |
+
+---
+
+## 7. 給 review agent 的問題
+
+1. **正式站 `course_contract_groups` 有沒有資料？** 若為 0，Phase A 的 A1 是純刪除、零使用者影響，而 A3 會是**史上第一個建立群組關聯的程式路徑**——那麼「每次續報加購都自動建群組」是可接受的預設，還是應該做成使用者勾選帶入堂次時才建？（自動建群組會改變 #1382 RFC 對群組語意的假設。）
+2. **權限：** `reassignContract` 今天是 `super_admin` only，但 續報加購 是主任日常操作。帶入堂次會改動帳務歸屬與堂數計數 —— 要 (a) 主任可用（新開放的權限面）、(b) 只有 super_admin 看得到帶入區塊、還是 (c) 主任可提出、super_admin 核准？(c) 明顯超出一天。
+3. **Phase B 的終局：** 課程管理有約 25 個寫入端點而非一顆按鈕。要 (a) 今天只移除 新增課程 並開 follow-up 逐步下架，還是 (b) 承認「唯讀 lens」在多 PR 下架完成前只是宣示，先寫進 issue 當北極星？
+4. **課程管理 該不該存在？** 若它的正當範圍只剩搜尋／篩選／統計，那和 學生管理 的清單重疊度很高。本計畫**刻意把導覽合併列為 non-goal**——請 reviewer 確認這個切分正確，或指出 Phase B 沒有先回答 Q4 就做不下去。
 
 ### Critical Files for Implementation
 - frontend/src/components/calendar/modals/CalendarSessionEditModal.vue
 - frontend/src/pages/SmartCalendar.vue
 - frontend/src/pages/CourseManagement.vue
+- frontend/src/pages/StudentsList.vue
 - backend/app/Http/Controllers/StudentClassController.php
 - backend/app/Http/Controllers/ClassSessionController.php
+- backend/app/Services/CourseContinuityService.php
