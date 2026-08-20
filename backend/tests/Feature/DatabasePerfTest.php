@@ -116,6 +116,53 @@ class DatabasePerfTest extends TestCase
         $this->assertArrayHasKey('options', $config);
     }
 
+    // --- TD-058: substitute-teacher leftJoin uses cs.SessionDate/cs.StartTime directly ---
+
+    /**
+     * TD-058 residual fix: ClassSessionController::buildClassSessionIndexQuery()'s
+     * substitute-teacher leftJoin ON clause used to wrap cs.SessionDate/cs.StartTime in
+     * DATE()/SUBSTRING(), defeating index usage on ClassSession. It now compares
+     * sub_sched.schedule_date/start_time_hm directly against cs.SessionDate/cs.StartTimeHM
+     * (no function-wrapping on either side of the join). Asserts neither DATE( nor
+     * SUBSTRING( appears against a `cs.` column in the compiled join SQL (the exact,
+     * deterministic thing this fix guarantees — an EXPLAIN "not ALL" assertion on cs
+     * would be data-volume-dependent noise on the near-empty tables in this test class,
+     * not a signal this fix controls), and that EXPLAIN runs without error.
+     */
+    public function test_class_session_index_query_join_avoids_function_wrapped_columns(): void
+    {
+        if (!Schema::hasTable('ClassSession') || !Schema::hasTable('schedules')) {
+            $this->markTestSkipped('ClassSession/schedules table missing');
+        }
+
+        $controller = app(\App\Http\Controllers\ClassSessionController::class);
+        $request = \Illuminate\Http\Request::create('/api/v1/class-sessions', 'GET', [
+            'start' => '2026-06-01',
+            'end' => '2026-06-30',
+            'branch_id' => 1,
+        ]);
+        $request->attributes->set('auth_role', 'director');
+        $request->attributes->set('auth_campus_ids', [1]);
+        $request->attributes->set('auth_teacher_id', 0);
+
+        $method = new \ReflectionMethod($controller, 'buildClassSessionIndexQuery');
+        $method->setAccessible(true);
+        /** @var \Illuminate\Database\Query\Builder $query */
+        $query = $method->invoke($controller, $request);
+
+        $sql = $query->toSql();
+
+        // The join predicate must not function-wrap the ClassSession columns —
+        // that's exactly what defeated index usage before the TD-058 residual fix.
+        $this->assertStringNotContainsString('DATE(cs.SessionDate)', $sql);
+        $this->assertStringNotContainsString('SUBSTRING(cs.StartTime', $sql);
+
+        $explain = DB::select('EXPLAIN ' . $sql, $query->getBindings());
+        $this->assertNotEmpty($explain, 'EXPLAIN returned no rows for buildClassSessionIndexQuery()');
+        $csRow = collect($explain)->first(fn ($row) => ($row->table ?? null) === 'cs');
+        $this->assertNotNull($csRow, 'EXPLAIN plan missing the cs (ClassSession) row');
+    }
+
     // --- FR-008: Campus isolation ---
 
     public function test_student_campus_filter_returns_only_same_campus(): void
