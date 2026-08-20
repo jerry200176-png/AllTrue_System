@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.08.20",
     "date": "2026-08-20",
     "title": "2026.08.20 草稿（未發布）",
-    "summary": "修正行事曆課程合併邏輯，避免課程重複出現或突然消失",
+    "summary": "側欄改用工作情境分組；修正行事曆課程合併邏輯，避免課程重複出現或突然消失",
     "audience": [
       "teacher",
       "director"
@@ -18,11 +18,13 @@ export const changelogDraftNotes = [
       {
         "title": "新增內容",
         "items": [
+          "側欄改用工作情境分組",
           "修正行事曆課程合併邏輯，避免課程重複出現或突然消失"
         ]
       }
     ],
     "items": [
+      "側欄改用工作情境分組",
       "修正行事曆課程合併邏輯，避免課程重複出現或突然消失"
     ]
   },
