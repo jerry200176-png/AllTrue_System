@@ -4,6 +4,40 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-20-course-triage-lens",
+    "publishedAt": "2026-08-20",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "課程管理更容易找課",
+    "summary": "先篩選與找提醒，再到學生管理修改課程。",
+    "items": [
+      "課程管理新增唯讀提示、摘要與清除篩選，找課更容易。",
+      "建立、編輯、續報與加購請從學生管理的學生主檔進入。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "課程管理新增唯讀提示、摘要與清除篩選，找課更容易。",
+          "建立、編輯、續報與加購請從學生管理的學生主檔進入。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-20:course-triage-lens"
+    ],
+    "date": "2026-08-20",
+    "version": "2026.08.20"
+  },
+  {
     "id": "staff-2026-08-19-receipt-line-clarity",
     "publishedAt": "2026-08-19",
     "effectiveAt": null,

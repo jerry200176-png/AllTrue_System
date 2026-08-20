@@ -3,6 +3,22 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-20-course-triage-lens
+    published_at: "2026-08-20"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 課程管理更容易找課
+    summary: 先篩選與找提醒，再到學生管理修改課程。
+    items:
+      - category: improved
+        text: 課程管理新增唯讀提示、摘要與清除篩選，找課更容易。
+      - category: improved
+        text: 建立、編輯、續報與加購請從學生管理的學生主檔進入。
+    source_refs:
+      - "changelog:2026-08-20:course-triage-lens"
+
   - id: staff-2026-08-19-receipt-line-clarity
     published_at: "2026-08-19"
     audiences:

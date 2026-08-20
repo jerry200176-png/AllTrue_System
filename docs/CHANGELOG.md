@@ -1,3 +1,10 @@
+## 2026-08-20 — feat(ui): 課程管理回到唯讀營運鏡頭
+
+<!-- release-notes: staff_update=staff-2026-08-20-course-triage-lens -->
+
+- 課程管理頁現在先用來搜尋、篩選與找出需要注意的課程；建立、編輯、續報與加購請從「學生管理」進入。
+- 行事曆移除合約層級的「改派合約」入口，避免同一份課程在不同頁面產生兩套狀態。
+
 ## 2026-08-19 — feat(billing): 收據紀錄標出班型、0 元原因與首堂來源
 
 <!-- release-notes: staff_update=staff-2026-08-19-receipt-line-clarity -->
