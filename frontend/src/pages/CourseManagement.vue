@@ -21,9 +21,6 @@
           <button class="btn-soft" @click="emit('navigate', 'subject-settings')">
             <span class="material-symbols-outlined btn-icon" aria-hidden="true">library_books</span> 管理科目
           </button>
-          <button class="btn-accent" @click="openBackfillModal">
-            <span class="material-symbols-outlined btn-icon" aria-hidden="true">add</span> 新增課程
-          </button>
         </div>
       </div>
 
@@ -591,7 +588,10 @@
       <div v-else class="empty-state">
         <div class="empty-icon">📋</div>
         <p class="empty-title">目前尚無課程資料</p>
-        <p class="empty-desc">請在「學生管理」為學生建立課程，或使用上方「新增課程」快速建立課程。</p>
+        <p class="empty-desc">請在「學生管理」為學生建立課程。</p>
+        <button type="button" class="btn-accent" data-testid="empty-state-goto-students" @click="emit('navigate', 'students')">
+          <span class="material-symbols-outlined btn-icon" aria-hidden="true">groups</span> 前往學生管理
+        </button>
       </div>
       <div v-if="pagination.lastPage > 1" class="pagination-bar">
         <span class="pagination-info">第 {{ (pagination.page - 1) * pagination.perPage + 1 }}–{{ Math.min(pagination.page * pagination.perPage, pagination.total) }} 筆，共 {{ pagination.total }} 筆</span>
@@ -1672,7 +1672,7 @@ const forceSubmitting = ref(false);
 async function openBackfillModalForGroup(group) {
   const sid = resolveGroupStudentId(group);
   if (!sid) {
-    alert('無法取得此學生的編號，請改從上方「新增課程」手動選擇學生。');
+    alert('無法取得此學生的編號，請至「學生管理」為此學生建立課程。');
     return;
   }
   try {
@@ -1710,9 +1710,11 @@ function proceedOpenBackfillForGroup(group) {
 async function onEnrollmentConflictDecision(decision) {
   const payload = interceptOriginalPayload.value;
   if (!payload) {
-    interceptPendingGroup.value
-      ? proceedOpenBackfillForGroup(interceptPendingGroup.value)
-      : openBackfillModal();
+    if (interceptPendingGroup.value) {
+      proceedOpenBackfillForGroup(interceptPendingGroup.value);
+    } else {
+      showDuplicateInterceptModal.value = false;
+    }
     return;
   }
   forceSubmitting.value = true;
@@ -1744,14 +1746,6 @@ function interceptGoToPurchaseCM(conflict) {
   if (target) {
     openPurchaseModal(target);
   }
-}
-
-function openBackfillModal() {
-  schedulerInitialStudentId.value = '';
-  schedulerInitialTeacherId.value = '';
-  resetBackfillDatePicker();
-  showBackfillModal.value = true;
-  loadRoomsForBranch();
 }
 
 async function handleUniversalBackfillSuccess(result) {
