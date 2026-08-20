@@ -44,17 +44,39 @@
       <div class="nr-summary" v-if="summary">
         <div class="nr-card">
           <span class="nr-card-num">{{ formatDateTime(summary.checked_at) }}</span>
-          <span class="nr-card-label">對帳時間</span>
+          <span class="nr-card-label">最近檢查</span>
         </div>
         <div class="nr-card">
           <span class="nr-card-num">{{ summary.total_checked }}</span>
-          <span class="nr-card-label">已檢查課程</span>
+          <span class="nr-card-label">檢查課程數</span>
         </div>
         <div :class="['nr-card', summary.mismatch_count > 0 ? 'nr-card--danger' : 'nr-card--ok']">
           <span class="nr-card-num">{{ summary.mismatch_count }}</span>
-          <span class="nr-card-label">異常筆數</span>
+          <span class="nr-card-label">需要人工確認</span>
         </div>
       </div>
+
+      <details class="nr-explainer" open>
+        <summary>
+          <span class="material-symbols-outlined" aria-hidden="true">help_outline</span>
+          這份報告檢查什麼？
+        </summary>
+        <div class="nr-explainer-grid">
+          <div>
+            <strong>1．課程已用堂數</strong>
+            <p>課程目前記錄為已使用的堂數。</p>
+          </div>
+          <div>
+            <strong>2．權威扣堂計算</strong>
+            <p>由系統扣堂服務依分鐘制與合約上限計算應使用堂數。</p>
+          </div>
+          <div>
+            <strong>3．實際出席證據</strong>
+            <p>查看堂次是否有已到班、完成或遲到的出席紀錄。</p>
+          </div>
+        </div>
+        <p class="nr-explainer-foot">有差異時只產生報告並通知主任，不會自動改寫堂數；這也不是銀行或學費入帳對帳。</p>
+      </details>
 
       <div v-if="causeCounts.length" class="nr-cause-summary" aria-label="異常原因摘要">
         <span v-for="item in causeCounts" :key="item.category" class="nr-cause-chip">
@@ -72,7 +94,7 @@
       <template v-else>
         <div class="nr-readonly-note" role="note">
           <span class="material-symbols-outlined" aria-hidden="true">policy</span>
-          <span>此頁只提供診斷，不會直接改寫堂數。確認原因後，資料修復會另走備份、核准與回滾流程。</span>
+          <span>此頁只提供診斷，不會直接改寫堂數。請先檢查課程與出席紀錄；確認原因後，資料修復另走備份、核准與回滾流程。</span>
         </div>
 
         <!-- 篩選列 -->
@@ -155,7 +177,7 @@
                     :aria-sort="sortKey === 'recorded_used' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'"
                     scope="col"
                   >
-                    已用（DB）
+                    已用（課程記錄）
                     <span class="nr-sort-icon" aria-hidden="true">{{ sortKey === 'recorded_used' ? (sortDir === 'asc' ? '▲' : '▼') : '' }}</span>
                   </th>
                   <th
@@ -164,7 +186,7 @@
                     :aria-sort="sortKey === 'expected_used' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'"
                     scope="col"
                   >
-                    預期
+                    權威應為
                     <span class="nr-sort-icon" aria-hidden="true">{{ sortKey === 'expected_used' ? (sortDir === 'asc' ? '▲' : '▼') : '' }}</span>
                   </th>
                   <th scope="col">實際出席</th>
@@ -476,6 +498,40 @@ onMounted(() => {
   color: var(--text-light);
 }
 
+.nr-explainer {
+  margin: -6px 0 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card-bg);
+}
+
+.nr-explainer summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  list-style: none;
+}
+
+.nr-explainer summary::-webkit-details-marker { display: none; }
+.nr-explainer summary::after { content: '展開'; margin-left: auto; color: var(--text-light); font-size: 12px; font-weight: 500; }
+.nr-explainer[open] summary::after { content: '收合'; }
+.nr-explainer summary .material-symbols-outlined { color: var(--accent); font-size: 19px; }
+.nr-explainer-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+.nr-explainer-grid > div { padding: 10px; border-radius: 8px; background: var(--bg-light, rgba(148, 163, 184, 0.1)); }
+.nr-explainer-grid strong { display: block; color: var(--text); font-size: 12px; }
+.nr-explainer-grid p { margin: 4px 0 0; color: var(--text-light); font-size: 12px; line-height: 1.45; }
+.nr-explainer-foot { margin: 12px 0 0; color: var(--text-light); font-size: 12px; line-height: 1.5; }
+
 .nr-cause-summary {
   display: flex;
   flex-wrap: wrap;
@@ -690,6 +746,10 @@ onMounted(() => {
   .nr-filters {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .nr-explainer-grid {
+    grid-template-columns: 1fr;
   }
 
   .nr-select {

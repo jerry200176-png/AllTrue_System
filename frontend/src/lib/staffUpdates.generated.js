@@ -40,6 +40,38 @@ export const staffUpdates = [
     "version": "2026.08.20"
   },
   {
+    "id": "staff-2026-08-20-nightly-session-check",
+    "publishedAt": "2026-08-20",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "夜間堂數檢查改用白話說明",
+    "summary": "看得出它檢查什麼、什麼不會改，以及異常後該走哪個流程。",
+    "items": [
+      "頁面明確區分課程已用堂數、權威扣堂計算與實際出席證據。",
+      "異常只提供診斷與人工確認，不會自動改寫堂數，也不是銀行或學費入帳對帳。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "頁面明確區分課程已用堂數、權威扣堂計算與實際出席證據。",
+          "異常只提供診斷與人工確認，不會自動改寫堂數，也不是銀行或學費入帳對帳。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-20:nightly-session-check"
+    ],
+    "date": "2026-08-20",
+    "version": "2026.08.20"
+  },
+  {
     "id": "staff-2026-08-20-course-triage-lens",
     "publishedAt": "2026-08-20",
     "effectiveAt": null,

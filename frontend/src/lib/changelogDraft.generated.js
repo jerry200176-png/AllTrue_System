@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.08.20",
     "date": "2026-08-20",
     "title": "2026.08.20 草稿（未發布）",
-    "summary": "轉移堂次改用課程選擇；側欄改用工作情境分組",
+    "summary": "家長首頁與夜間堂數檢查說明；轉移堂次改用課程選擇",
     "audience": [
       "teacher",
       "director"
@@ -18,6 +18,7 @@ export const changelogDraftNotes = [
       {
         "title": "新增內容",
         "items": [
+          "家長首頁與夜間堂數檢查說明",
           "轉移堂次改用課程選擇",
           "側欄改用工作情境分組",
           "修正行事曆課程合併邏輯，避免課程重複出現或突然消失"
@@ -25,6 +26,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "家長首頁與夜間堂數檢查說明",
       "轉移堂次改用課程選擇",
       "側欄改用工作情境分組",
       "修正行事曆課程合併邏輯，避免課程重複出現或突然消失"
