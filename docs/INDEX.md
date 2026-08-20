@@ -131,6 +131,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 14. **現行工程主線／排課 occurrence 身分（規劃，Draft，schema DEV 需 Founder GO）**：[`docs/architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md`](architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md) · [`docs/architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md`](architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md) — 對齊 TD-076／R102／R103；**禁止**整包重寫前端或 Laravel；Phase 0＝盤點寫入／讀取路徑＋鎖現況 golden tests；與 Course Continuity、非標準時長 RFC **分軌**
 15. **已回報 ≠ 已入帳（#1827）**：[`docs/architecture/RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md`](architecture/RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md) — 兩步驟狀態機、通知／批次／課程頁帳務分頁。海森無會計角色，主任 confirm。**禁止**一登就綠色已繳費。與 TD-068 法定收據 **分軌**；改繳費提醒列入條件仍受 [`DIRECTOR_PAYMENT_ALERT_RULES.md`](DIRECTOR_PAYMENT_ALERT_RULES.md) 列管
 16. **混班型時段容量（#1889，in-app #238 剩餘）**：[`docs/plans/2026-08-17-mixed-class-type-occupancy.md`](plans/2026-08-17-mixed-class-type-occupancy.md) — 剩餘依即將加入／被代課班型；禁止較嚴上限蓋一對三。幽靈殘影見 §R114；本修復見 **§R116**。
+17. **側欄資訊架構與 UX 重構（提案，2026-08-20）**：[`plans/2026-08-20-sidebar-ia-ux-restructure.md`](plans/2026-08-20-sidebar-ia-ux-restructure.md) · [`research/2026-08-20-sidebar-ux-research.md`](research/2026-08-20-sidebar-ux-research.md) — 導航 registry、角色／分校情境、學生／課程／行事曆責任邊界、responsive drawer、無障礙與分階段 rollout。
 
 ### 後端開發
 | 需要什麼 | 去哪裡找 |
