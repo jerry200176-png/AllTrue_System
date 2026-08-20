@@ -1,3 +1,10 @@
+## 2026-08-20 — feat(ui): 家長首頁與夜間堂數檢查說明
+
+<!-- release-notes: staff_update=staff-2026-08-20-nightly-session-check -->
+
+- 家長登入後會先看到需要留意的請假、回覆、帳務、評量留言與今日課程，點選即可到正確分頁。
+- 夜間堂數檢查清楚區分課程已用堂數、權威扣堂計算與出席證據；異常只供診斷與人工確認，不會自動改寫堂數，也不是銀行／學費對帳。
+
 ## 2026-08-20 — feat(ui): 轉移堂次改用課程選擇
 
 <!-- release-notes: staff_update=staff-2026-08-20-course-transfer-picker -->

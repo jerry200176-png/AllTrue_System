@@ -194,6 +194,40 @@
         </button>
       </div>
 
+      <div class="pp-card pp-attention-card" v-if="progressSummary" data-guide="parent-attention-card">
+        <div class="pp-attention-head">
+          <div>
+            <div class="pp-attention-title">
+              <span class="material-symbols-outlined" aria-hidden="true">notifications_active</span>
+              <h3>需要留意</h3>
+            </div>
+            <p class="pp-attention-subtitle">把需要你查看或回覆的事情集中在這裡。</p>
+          </div>
+          <span v-if="parentActionItems.length" class="pp-attention-count">{{ parentActionItems.length }}</span>
+        </div>
+        <div v-if="parentActionItems.length" class="pp-attention-list">
+          <button
+            v-for="item in parentActionItems"
+            :key="item.key"
+            type="button"
+            :class="['pp-attention-item', `pp-attention-item--${item.tone}`]"
+            @click="gotoParentTarget(item.target, `attention_${item.key}`)"
+          >
+            <span class="material-symbols-outlined pp-attention-item__icon" aria-hidden="true">{{ item.icon }}</span>
+            <span class="pp-attention-item__main">
+              <strong>{{ item.title }}</strong>
+              <small>{{ item.detail }}</small>
+            </span>
+            <span class="pp-attention-item__action">{{ item.action }}</span>
+            <span class="material-symbols-outlined pp-attention-item__chevron" aria-hidden="true">chevron_right</span>
+          </button>
+        </div>
+        <div v-else class="pp-attention-empty">
+          <span class="material-symbols-outlined" aria-hidden="true">task_alt</span>
+          <span>目前沒有需要處理的事項。完整紀錄仍可從下方分頁查看。</span>
+        </div>
+      </div>
+
       <div class="pp-card pp-parent-update" v-if="progressSummary && parentReleaseNotes.length">
         <button type="button" class="pp-parent-update__btn" @click="openReleaseNote(parentReleaseNotes[0])">
           <span class="material-symbols-outlined pp-parent-update__icon">new_releases</span>
@@ -814,6 +848,7 @@ import { onMounted, ref, computed, reactive, nextTick, watch } from 'vue';
 import { getParentDashboard, parentLogin, parentLoginLine, parentSwitchStudent, upsertParentLearningRecordFeedback, parentReplyLearningRecordFeedback, getParentLearningRecordFeedback, submitParentFeedback, parentRequestLeave, getParentNotificationPreferences, setParentNotificationPreferences } from '../api';
 import { notesForRole, parentReleaseNoteTeaser } from '../lib/releaseNotes';
 import { trackParentPortalEvent } from '../lib/adoptionTelemetry';
+import { buildParentActionItems } from '../lib/parentActionItems';
 
 function resolveParentLiffId() {
   const q = new URLSearchParams(window.location.search);
@@ -889,6 +924,12 @@ const selectedReleaseNote = ref(null);
 
 const progressSummary = computed(() => dashboard.value?.progress_summary || null);
 const parentReleaseNotes = computed(() => notesForRole('parent').slice(0, 2));
+const parentActionItems = computed(() => buildParentActionItems({
+  progressSummary: progressSummary.value,
+  paymentAlerts: dashboard.value?.payment_alerts,
+  upcomingSessions: dashboard.value?.upcoming_sessions,
+  learningRecords: allLearningRecords.value,
+}));
 
 function parentNoteTeaser(note) {
   return parentReleaseNoteTeaser(note);
@@ -2098,6 +2139,72 @@ onMounted(async () => {
   color: var(--ds-ink-mute);
   flex-shrink: 0;
 }
+
+/* ═══ Parent attention summary ═══ */
+.pp-attention-card { padding: 16px 14px 12px; }
+.pp-attention-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.pp-attention-title { display: flex; align-items: center; gap: 7px; }
+.pp-attention-title .material-symbols-outlined { color: var(--ds-primary-deep); font-size: 21px; }
+.pp-attention-title h3 { margin: 0; font-size: 16px; color: var(--ds-ink); }
+.pp-attention-subtitle { margin: 4px 0 0; font-size: 12px; color: var(--ds-ink-mute); }
+.pp-attention-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--ds-primary-wash);
+  color: var(--ds-primary-deep);
+  font-size: 12px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.pp-attention-list { display: flex; flex-direction: column; gap: 7px; }
+.pp-attention-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 9px;
+  border: 1px solid var(--ds-hairline);
+  border-radius: 10px;
+  background: var(--ds-canvas);
+  color: var(--ds-ink);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.pp-attention-item:hover { border-color: var(--ds-primary); background: var(--ds-canvas-soft); transform: translateY(-1px); }
+.pp-attention-item:focus-visible { outline: 3px solid var(--ds-primary-wash); outline-offset: 2px; }
+.pp-attention-item__icon { flex-shrink: 0; font-size: 22px; color: var(--ds-ink-mute); }
+.pp-attention-item--warning .pp-attention-item__icon { color: var(--ds-warning); }
+.pp-attention-item--success .pp-attention-item__icon { color: var(--ds-success); }
+.pp-attention-item--info .pp-attention-item__icon,
+.pp-attention-item--today .pp-attention-item__icon { color: var(--ds-primary-deep); }
+.pp-attention-item__main { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.pp-attention-item__main strong { font-size: 13px; font-weight: 800; }
+.pp-attention-item__main small { overflow: hidden; color: var(--ds-ink-mute); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.pp-attention-item__action { flex-shrink: 0; color: var(--ds-primary-deep); font-size: 11px; font-weight: 800; }
+.pp-attention-item__chevron { flex-shrink: 0; color: var(--ds-ink-mute); font-size: 19px; }
+.pp-attention-empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 2px 2px;
+  color: var(--ds-ink-mute);
+  font-size: 13px;
+}
+.pp-attention-empty .material-symbols-outlined { color: var(--ds-success); font-size: 20px; }
 
 .pp-lr-engage-strip {
   display: flex;
