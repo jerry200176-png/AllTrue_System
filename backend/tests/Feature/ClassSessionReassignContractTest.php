@@ -23,7 +23,7 @@ class ClassSessionReassignContractTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_reassigns_session_leaves_learning_record_untouched_and_recalculates_both_contracts(): void
+    public function test_reassigns_session_keeps_learning_record_content_but_syncs_student_class_id_and_recalculates_both_contracts(): void
     {
         $token = $this->superAdminToken();
         $student = $this->createStudent(1);
@@ -56,13 +56,20 @@ class ClassSessionReassignContractTest extends TestCase
             (int) DB::table('ClassSession')->where('id', $sessionId)->value('StudentClassID')
         );
 
-        // LearningRecord must be byte-for-byte unchanged — not even its
-        // StudentClassID column moves; only the endpoint's own audit row
-        // records the change of ownership.
+        // LearningRecord *content* must be byte-for-byte unchanged (Content,
+        // Status, TeacherID, etc.) — the teacher's work is never touched.
+        // But StudentClassID is a denormalized mirror of
+        // ClassSession.StudentClassID (relied on by billing/approval queries
+        // in StudentClassController), so it MUST follow the session to the
+        // new contract — same invariant the existing transfer-sessions
+        // endpoint enforces. Only that one column may differ from $lrBefore.
         $lrAfter = DB::table('LearningRecord')->where('ClassSessionID', $sessionId)->first();
-        $this->assertEquals((array) $lrBefore, (array) $lrAfter);
+        $beforeMinusStudentClassId = (array) $lrBefore;
+        $afterMinusStudentClassId = (array) $lrAfter;
+        unset($beforeMinusStudentClassId['StudentClassID'], $afterMinusStudentClassId['StudentClassID']);
+        $this->assertEquals($beforeMinusStudentClassId, $afterMinusStudentClassId);
         $this->assertSame($lrContentBefore, $lrAfter->Content);
-        $this->assertSame((int) $old->ID, (int) $lrAfter->StudentClassID);
+        $this->assertSame((int) $new->ID, (int) $lrAfter->StudentClassID);
 
         // Both contracts' 已用/剩餘堂數 recalculated via the same
         // SessionDeductionService the rest of the app uses.

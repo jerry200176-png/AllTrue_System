@@ -2004,7 +2004,10 @@ class ClassSessionController extends Controller
      *
      * Moves a single ClassSession to a different StudentClass contract so its
      * already-filled LearningRecord "belongs" to the new contract without the
-     * teacher re-filling anything — LearningRecord itself is never written.
+     * teacher re-filling anything. LearningRecord's content (Progress etc.)
+     * is never rewritten, but its denormalized StudentClassID mirror IS kept
+     * in sync (see LearningRecordDriftCheck) so billing/approval queries
+     * elsewhere don't lose track of it.
      * Route is super_admin-only (highest admin tier, same convention as
      * `role:super_admin` admin/campus-management routes).
      */
@@ -2068,9 +2071,15 @@ class ClassSessionController extends Controller
                 'created_at' => now(),
             ]);
 
-            // LearningRecord is intentionally never touched here — it stays
-            // bound to the same ClassSession.id, so its content is unchanged;
-            // it now simply "belongs" to whichever contract the session points to.
+            // LearningRecord content (Progress etc.) is never touched — it stays
+            // bound to the same ClassSession.id. But StudentClassID is a
+            // denormalized mirror of ClassSession.StudentClassID (see
+            // LearningRecordDriftCheck), relied on by billing/approval queries
+            // across StudentClassController — must stay in sync, same as the
+            // existing transfer-sessions endpoint (StudentClassController::transferSessions).
+            LearningRecord::where('ClassSessionID', $session->id)
+                ->update(['StudentClassID' => $new->ID]);
+
             SessionDeductionService::recomputeCounters((int) $old->ID);
             SessionDeductionService::recomputeCounters((int) $new->ID);
 
