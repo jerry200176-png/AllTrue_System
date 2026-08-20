@@ -1,0 +1,130 @@
+name: 吳艾潼 StudentSignIn status repair (single-row, guarded)
+
+# One-off data fix for the in-app bug fixed in code by
+# fix(class-sessions): sync stale leave StudentSignIn on leave->attended generic
+# transition (2026-08-20). That fix prevents recurrence but does not retroactively
+# repair StudentSignIn.id=10229, which was already left at Status='leave',
+# VoidedAt=null before the fix deployed -- blocking LearningRecord.id=17070
+# (ClassSession.id=30441) from appearing in any eval list/panel for the teacher.
+#
+# Scope is intentionally a single hardcoded row id, not a scan-and-repair job --
+# this is not a systemic backfill, just correcting the one row this bug report
+# was about. Never widen the WHERE clause without re-reviewing this workflow.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: dry-run (default) | execute
+        required: true
+        default: dry-run
+        type: choice
+        options: [dry-run, execute]
+      confirm_phrase:
+        description: 'For execute: type I_APPROVE_SIGNIN_10229_REPAIR'
+        required: false
+        type: string
+
+concurrency:
+  group: repair-wuaitong-signin-10229
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Validate gate
+        env:
+          MODE: ${{ inputs.mode }}
+          PHRASE: ${{ inputs.confirm_phrase }}
+        run: |
+          set -euo pipefail
+          if [ "$MODE" = "execute" ] && [ "$PHRASE" != "I_APPROVE_SIGNIN_10229_REPAIR" ]; then
+            echo "confirm_phrase_required for execute"
+            exit 1
+          fi
+          echo "GATE_OK mode=$MODE"
+
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Inspect + (execute only) repair row 10229
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          MODE: ${{ inputs.mode }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" MODE="$MODE" 'bash -s' <<'ENDSSH'
+          set -euo pipefail
+          cd /home/admin/backend
+
+          echo "=== Before state ==="
+          php artisan tinker --execute='
+            $r = \App\Models\StudentSignIn::find(10229);
+            if (!$r) { echo "ROW_NOT_FOUND", PHP_EOL; exit(1); }
+            echo json_encode([
+              "id" => $r->id,
+              "ClassSessionID" => $r->ClassSessionID,
+              "Status" => $r->Status,
+              "VoidedAt" => $r->VoidedAt,
+              "MDT" => $r->MDT,
+            ], JSON_UNESCAPED_UNICODE), PHP_EOL;
+          '
+
+          if [ "${MODE}" = "dry-run" ]; then
+            echo "Dry-run complete; no production write."
+            exit 0
+          fi
+
+          TS=$(date '+%Y-%m-%d_%H%M%S')
+          mkdir -p /home/admin/backups/emergency
+          BACKUP="/home/admin/backups/emergency/db_pre_signin10229_repair_${TS}.sql.gz"
+          DB_USER="$(grep '^DB_USERNAME=' .env | cut -d= -f2-)"
+          DB_PASS="$(grep '^DB_PASSWORD=' .env | cut -d= -f2-)"
+          mysqldump -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASS" \
+            --single-transaction AllTrue StudentSignIn \
+            | gzip > "$BACKUP"
+          test -s "$BACKUP"
+          echo "Backup_ok size=$(wc -c < "$BACKUP")"
+
+          php artisan tinker --execute='
+            $r = \App\Models\StudentSignIn::where("id", 10229)
+              ->where("ClassSessionID", 30441)
+              ->where("Status", "leave")
+              ->whereNull("VoidedAt")
+              ->first();
+            if (!$r) {
+              echo "PRECONDITION_FAILED: row 10229 no longer matches expected before-state (already fixed, or state changed) -- aborting, no write", PHP_EOL;
+              exit(1);
+            }
+            $r->Status = "present";
+            $r->MDT = now();
+            $r->save();
+            echo "REPAIRED id=", $r->id, " new_status=", $r->Status, PHP_EOL;
+          '
+
+          echo "=== After state ==="
+          php artisan tinker --execute='
+            $r = \App\Models\StudentSignIn::find(10229);
+            echo json_encode([
+              "id" => $r->id,
+              "Status" => $r->Status,
+              "VoidedAt" => $r->VoidedAt,
+              "MDT" => $r->MDT,
+            ], JSON_UNESCAPED_UNICODE), PHP_EOL;
+          '
+          ENDSSH
