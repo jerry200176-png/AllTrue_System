@@ -3,6 +3,22 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-20-course-transfer-picker
+    published_at: "2026-08-20"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 轉移堂次不用再背課程 ID
+    summary: 轉移評量與點名紀錄時，可以直接選同一學生的新課程。
+    items:
+      - category: improved
+        text: 轉移堂次會列出同一學生的其他課程，點選目標課程即可。
+      - category: improved
+        text: 已完成的評量與點名紀錄仍會一起搬過去，堂數與金額不會改變。
+    source_refs:
+      - "changelog:2026-08-20:course-transfer-picker"
+
   - id: staff-2026-08-20-sidebar-workspaces
     published_at: "2026-08-20"
     audiences:

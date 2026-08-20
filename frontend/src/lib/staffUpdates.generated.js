@@ -74,6 +74,40 @@ export const staffUpdates = [
     "version": "2026.08.20"
   },
   {
+    "id": "staff-2026-08-20-course-transfer-picker",
+    "publishedAt": "2026-08-20",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "轉移堂次不用再背課程 ID",
+    "summary": "轉移評量與點名紀錄時，可以直接選同一學生的新課程。",
+    "items": [
+      "轉移堂次會列出同一學生的其他課程，點選目標課程即可。",
+      "已完成的評量與點名紀錄仍會一起搬過去，堂數與金額不會改變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "轉移堂次會列出同一學生的其他課程，點選目標課程即可。",
+          "已完成的評量與點名紀錄仍會一起搬過去，堂數與金額不會改變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-20:course-transfer-picker"
+    ],
+    "date": "2026-08-20",
+    "version": "2026.08.20"
+  },
+  {
     "id": "staff-2026-08-19-receipt-line-clarity",
     "publishedAt": "2026-08-19",
     "effectiveAt": null,

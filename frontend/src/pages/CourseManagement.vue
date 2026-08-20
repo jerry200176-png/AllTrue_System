@@ -708,6 +708,8 @@
       :student-name="transferSessionsCourse?.student_name || ''"
       :subject="transferSessionsCourse?.subject_name || transferSessionsCourse?.subject || ''"
       :sessions="transferSessionsSessionOptions"
+      :target-courses="transferTargetCourses"
+      :target-courses-loading="transferTargetCoursesLoading"
       :submitting="transferSessionsSubmitting"
       :error-message="transferSessionsError"
       @close="!transferSessionsSubmitting && (showTransferSessionsModal = false)"
@@ -1845,6 +1847,9 @@ const showTransferSessionsModal = ref(false);
 const transferSessionsCourse = ref(null);
 const transferSessionsSubmitting = ref(false);
 const transferSessionsError = ref('');
+const transferTargetCourses = ref([]);
+const transferTargetCoursesLoading = ref(false);
+let transferTargetCoursesRequest = 0;
 const transferSessionsSessionOptions = computed(() => {
   const c = transferSessionsCourse.value;
   if (!c) return [];
@@ -1856,7 +1861,72 @@ const transferSessionsSessionOptions = computed(() => {
 function openTransferSessionsModal(course) {
   transferSessionsCourse.value = course;
   transferSessionsError.value = '';
+  transferTargetCourses.value = [];
   showTransferSessionsModal.value = true;
+  loadTransferTargetCourses(course);
+}
+
+function normalizedCourseValue(value) {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+function sameCourseSubject(source, target) {
+  const sourceValues = [source?.subject, source?.subject_name].filter(Boolean).map(normalizedCourseValue);
+  const targetValues = [target?.subject, target?.subject_name].filter(Boolean).map(normalizedCourseValue);
+  if (sourceValues.length === 0 || targetValues.length === 0) return true;
+  return sourceValues.some((value) => targetValues.includes(value))
+    || sourceValues.some((value) => getSubjectText(value) && targetValues.includes(normalizedCourseValue(getSubjectText(value))));
+}
+
+function sameCourseStudent(source, target) {
+  const sourceId = source?.student_id ?? source?.StudentID;
+  const targetId = target?.student_id ?? target?.StudentID;
+  if (sourceId != null && targetId != null && String(sourceId) !== String(targetId)) return false;
+  const sourceName = normalizedCourseValue(source?.student_name);
+  const targetName = normalizedCourseValue(target?.student_name);
+  return !sourceName || !targetName || sourceName === targetName;
+}
+
+async function loadTransferTargetCourses(sourceCourse) {
+  const requestId = ++transferTargetCoursesRequest;
+  transferTargetCoursesLoading.value = true;
+  try {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    const token = sess?.access_token;
+    if (!token || !props.branchId || !sourceCourse) return;
+    const params = new URLSearchParams({
+      branch_id: String(props.branchId),
+      per_page: '100',
+      page: '1',
+    });
+    if (sourceCourse.student_name) params.set('name', String(sourceCourse.student_name));
+    const res = await fetch(`/api/v1/student-classes?${params}`, {
+      credentials: 'include',
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return;
+    const json = await res.json().catch(() => ({}));
+    const list = json?.data ?? json;
+    const rows = Array.isArray(list) ? list : (list?.data ?? []);
+    const candidates = rows
+      .map((course) => ({
+        ...course,
+        id: Number(course?.id ?? course?.ID),
+        student_name: course?.student_name ?? course?.student?.name ?? '',
+        subject_name: course?.subject_name ?? '',
+        teacher_name: course?.teacher_name ?? course?.teacher?.name ?? course?.teacher?.username ?? '',
+        start_date: course?.start_date ?? course?.StartDate ?? '',
+      }))
+      .filter((course) => Number.isFinite(course.id) && course.id > 0)
+      .filter((course) => course.id !== Number(sourceCourse.id))
+      .filter((course) => sameCourseStudent(sourceCourse, course))
+      .filter((course) => sameCourseSubject(sourceCourse, course));
+    if (requestId === transferTargetCoursesRequest) transferTargetCourses.value = candidates;
+  } catch (_) {
+    // The manual ID fallback remains available if the lookup endpoint is unavailable.
+  } finally {
+    if (requestId === transferTargetCoursesRequest) transferTargetCoursesLoading.value = false;
+  }
 }
 
 async function submitTransferSessions({ targetCourseId, sessionIds }) {

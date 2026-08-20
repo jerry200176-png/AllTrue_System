@@ -1,3 +1,10 @@
+## 2026-08-20 — feat(ui): 轉移堂次改用課程選擇
+
+<!-- release-notes: staff_update=staff-2026-08-20-course-transfer-picker -->
+
+- 轉移已完成評量的堂次時，會先列出同一學生的其他課程，可以直接點選目標課程，不必背課程 ID。
+- 仍可手動貼上課程 ID；系統繼續沿用後端的學生、分校與結算安全檢查。
+
 ## 2026-08-20 — feat(ui): 側欄改用工作情境分組
 
 <!-- release-notes: staff_update=staff-2026-08-20-sidebar-workspaces -->
