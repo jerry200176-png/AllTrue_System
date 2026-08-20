@@ -7,6 +7,7 @@ use App\Models\ClassSession;
 use App\Models\LearningRecord;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Models\StudentSignIn;
 use App\Models\User;
 use App\Models\UserCampus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -93,6 +94,49 @@ class ClassSessionRestoreVoidedLearningRecordTest extends TestCase
         $this->assertNull($lr->VoidReason);
         $this->assertSame('pending', $lr->Status);
         $this->assertSame('attended', strtolower((string) $cs->fresh()->Status));
+    }
+
+    /**
+     * in-app bug (木柵分校／吳艾潼, 2026-08-20): admin flips 到班→請假→已上 via the
+     * generic leave->attended fallback path (not the dedicated scheduled->attended
+     * branch). ClassSession.Status and the LearningRecord both end up correct, but
+     * the StudentSignIn row created while marking leave stays at Status='leave',
+     * VoidedAt=null — scopeExcludeLeaveSessionPendingReview() treats that stale row
+     * as authoritative and hides the (correctly restored) pending LearningRecord
+     * from every eval list/panel, so the teacher can't find anything to fill in.
+     */
+    public function test_leave_to_attended_syncs_stale_leave_student_sign_in_status(): void
+    {
+        [$token, $cs, $voidedLr] = $this->seedLeaveScenario('一般請假');
+
+        $signIn = StudentSignIn::create([
+            'StudentID' => $cs->studentClass->StudentID,
+            'StudentClassID' => $cs->StudentClassID,
+            'ClassSessionID' => $cs->id,
+            'CampusID' => 1,
+            'SignInDT' => $cs->SessionDate . ' ' . $cs->StartTime,
+            'SignOutDT' => $cs->SessionDate . ' ' . $cs->EndTime,
+            'Status' => 'leave',
+            'MDT' => now(),
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->patchJson("/api/v1/class-sessions/{$cs->id}", [
+            'status' => 'attended',
+        ])->assertOk();
+
+        $voidedLr->refresh();
+        $this->assertNull($voidedLr->VoidedAt, '評量草稿應照常自動復活');
+
+        $signIn->refresh();
+        $this->assertSame(
+            'present',
+            $signIn->Status,
+            '殘留的請假簽到記錄必須跟著同步為到班，否則評量會被 scopeExcludeLeaveSessionPendingReview 誤擋'
+        );
+        $this->assertNull($signIn->VoidedAt);
     }
 
     /**
