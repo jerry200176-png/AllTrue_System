@@ -1,6 +1,6 @@
 # Learning Assessment MVP research record
 
-**Date:** 2026-08-20 (Asia/Taipei)
+**Date:** 2026-08-21 (Asia/Taipei; Slice 3 update)
 **Decision:** how to add structured learning checks to AllTrue without changing
 the existing attendance, LearningRecord approval, or billing contracts.
 **Target:** AllTrue System (`jerry200176-png/AllTrue_System`)
@@ -97,9 +97,8 @@ not copy source or add a dependency.
 2. **Result snapshots.** Store the score and maximum score used at the time of
    entry. A later assessment edit must not silently reinterpret an old result.
 3. **Structured score now, question bank later.** The first slice handles the
-   real paper-test workflow with manual score entry. Question-level answers,
-   reusable questions, and auto-grading belong to a later slice once a real
-   subject and question format are validated.
+   real paper-test workflow with manual score entry. Slice 3 now adds a narrow
+   staff-mediated runner without changing the paper-result path.
 4. **Class/campus authorization before UI filtering.** Gibbon's edit boundary
    is useful, but AllTrue must enforce it in Laravel using the existing
    `auth_campus_ids` attributes; Vue filters are not security controls.
@@ -138,6 +137,23 @@ not copy source or add a dependency.
 
 - Versioned questions, assessment question snapshots, answer rows, automatic
   marking for deterministic types, and manual review for free text.
+
+Slice 3 adaptation decision (2026-08-21): the current AllTrue API has
+teacher/director authentication and campus/class ownership, but no established
+student login contract for this workflow. The first online runner is therefore
+staff-mediated: an authorized teacher or director opens an attempt for a
+student, records answers, and submits it. A later student-facing runner must
+reuse the same attempt tables after product ownership, session expiry, and
+parent visibility are explicitly specified.
+
+The scoring boundary follows Moodle's documented separation between reusable
+question-bank content, deferred submission, automatic grading, and a manual
+grading queue for essay/free-text responses ([essay question type](https://docs.moodle.org/en/Essay_question_type),
+[manual grading report](https://docs.moodle.org/501/en/Quiz_manual_grading_report)).
+Assessment snapshots retain the approved question version and correct answer
+server-side; normal payloads redact the correct answer, and any attempt makes
+the assessment's question set immutable. This is an adaptation of the
+workflow pattern, not a dependency or source-code copy.
 
 ### Slice 4 — parent-facing progress
 

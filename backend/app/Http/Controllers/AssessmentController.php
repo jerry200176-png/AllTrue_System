@@ -8,6 +8,7 @@ use App\Models\AssessmentRemediationAction;
 use App\Models\AssessmentResult;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Services\AssessmentAttemptService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -323,6 +324,127 @@ class AssessmentController extends Controller
         ])->values();
 
         return response()->json(['data' => $rows]);
+    }
+
+    public function questions(Request $request, Assessment $assessment, AssessmentAttemptService $attempts)
+    {
+        if (!$this->canAccessAssessment($request, $assessment)) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+        return response()->json(['data' => $attempts->questionPayloads((int) $assessment->id)]);
+    }
+
+    public function configureQuestions(Request $request, Assessment $assessment, AssessmentAttemptService $attempts)
+    {
+        if (!$this->canManageAssessment($request, $assessment)) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+        if ($assessment->status !== 'draft') {
+            return response()->json(['message' => '檢測發布後不可配置題目'], 409);
+        }
+        $data = $request->validate([
+            'question_bank_item_ids' => ['required', 'array', 'min:1', 'max:100'],
+            'question_bank_item_ids.*' => ['required', 'integer', 'distinct', 'min:1'],
+        ]);
+        $questions = $attempts->configureQuestions((int) $assessment->id, $data['question_bank_item_ids'], (int) $assessment->campus_id);
+        $this->audit($request, $assessment, null, 'questions_configured', null, ['question_count' => count($questions), 'question_ids' => array_column($questions, 'id')]);
+        return response()->json(['data' => $questions], 201);
+    }
+
+    public function attempts(Request $request, Assessment $assessment, AssessmentAttemptService $attempts)
+    {
+        if (!$this->canAccessAssessment($request, $assessment)) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+        return response()->json(['data' => $attempts->listAttempts((int) $assessment->id)]);
+    }
+
+    public function showAttempt(Request $request, int $assessmentAttempt, AssessmentAttemptService $attempts)
+    {
+        $attempt = DB::table('assessment_attempts')->where('id', $assessmentAttempt)->first();
+        $assessment = $attempt ? Assessment::find($attempt->assessment_id) : null;
+        if (!$assessment || !$this->canAccessAssessment($request, $assessment)) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+        return response()->json(['data' => $attempts->getAttempt($assessmentAttempt)]);
+    }
+
+    public function storeAttempt(Request $request, Assessment $assessment, AssessmentAttemptService $attempts)
+    {
+        if (!$this->canManageAssessment($request, $assessment)) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+        if ($assessment->status !== 'published') {
+            return response()->json(['message' => '檢測發布後才能開始作答'], 409);
+        }
+        $data = $request->validate([
+            'student_id' => ['required', 'integer', 'min:1'],
+            'student_class_id' => ['nullable', 'integer', 'min:1'],
+        ]);
+        $student = Student::query()->find((int) $data['student_id']);
+        if (!$student || (int) $student->getAttribute('CampusID') !== (int) $assessment->campus_id) {
+            return response()->json(['message' => '學生不屬於此檢測分校'], 403);
+        }
+        if (!$this->campusAllowed($request, (int) $assessment->campus_id)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+        $classId = (int) ($data['student_class_id'] ?? $assessment->student_class_id ?? 0);
+        if ($assessment->student_class_id && $classId !== (int) $assessment->student_class_id) {
+            throw ValidationException::withMessages(['student_class_id' => '此檢測只允許指定課程的學生。']);
+        }
+        $studentClass = $this->resolveStudentClass($request, $classId ?: null, (int) $assessment->campus_id);
+        if (!$studentClass || (int) $studentClass->getAttribute('StudentID') !== (int) $student->getKey()) {
+            throw ValidationException::withMessages(['student_class_id' => '請提供與學生相符的課程。']);
+        }
+        $attempt = $attempts->createAttempt((int) $assessment->id, (int) $student->getKey(), (int) $studentClass->getAttribute('ID'), (int) $assessment->max_score, $this->userId($request));
+        $this->audit($request, $assessment, null, 'attempt_created', null, ['attempt_id' => $attempt['id'], 'student_id' => $student->getKey(), 'attempt_no' => $attempt['attempt_no']]);
+        return response()->json(['data' => $attempt], 201);
+    }
+
+    public function saveAttemptAnswers(Request $request, int $assessmentAttempt, AssessmentAttemptService $attempts)
+    {
+        $attempt = DB::table('assessment_attempts')->where('id', $assessmentAttempt)->first();
+        $assessment = $attempt ? Assessment::find($attempt->assessment_id) : null;
+        if (!$assessment || !$this->canManageAssessment($request, $assessment)) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+        $data = $request->validate([
+            'answers' => ['required', 'array', 'max:100'],
+            'answers.*.question_id' => ['required', 'integer', 'min:1'],
+            'answers.*.answer' => ['nullable'],
+        ]);
+        return response()->json(['data' => $attempts->saveAnswers($assessmentAttempt, $data['answers'])]);
+    }
+
+    public function submitAttempt(Request $request, int $assessmentAttempt, AssessmentAttemptService $attempts)
+    {
+        $attempt = DB::table('assessment_attempts')->where('id', $assessmentAttempt)->first();
+        $assessment = $attempt ? Assessment::find($attempt->assessment_id) : null;
+        if (!$assessment || !$this->canManageAssessment($request, $assessment)) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+        return response()->json(['data' => $attempts->submit($assessmentAttempt)]);
+    }
+
+    public function reviewAttempt(Request $request, int $assessmentAttempt, AssessmentAttemptService $attempts)
+    {
+        if (!$this->directorOnly($request)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+        $attempt = DB::table('assessment_attempts')->where('id', $assessmentAttempt)->first();
+        $assessment = $attempt ? Assessment::find($attempt->assessment_id) : null;
+        if (!$assessment || !$this->canAccessAssessment($request, $assessment)) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+        $data = $request->validate([
+            'reviews' => ['required', 'array', 'max:100'],
+            'reviews.*.answer_id' => ['required', 'integer', 'min:1'],
+            'reviews.*.score' => ['required', 'numeric', 'min:0'],
+            'reviews.*.review_note' => ['nullable', 'string', 'max:10000'],
+        ]);
+        $result = $attempts->review($assessmentAttempt, $data['reviews'], (int) $this->userId($request));
+        $this->audit($request, $assessment, null, 'attempt_reviewed', null, ['attempt_id' => $assessmentAttempt, 'review_count' => count($data['reviews'])]);
+        return response()->json(['data' => $result]);
     }
 
     public function storeResult(Request $request, Assessment $assessment)
