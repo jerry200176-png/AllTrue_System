@@ -100,16 +100,22 @@ check_rclone_remote() {
     return
   fi
 
-  local db_count monthly_count six_count mani_count
+  local db_count monthly_count six_count mani_count uploads_count snapshots_count
   db_count=$(timeout 20 "$RCLONE_BIN" ls "$REMOTE_PATH/db/" 2>/dev/null | wc -l || echo 0)
   monthly_count=$(timeout 20 "$RCLONE_BIN" ls "$REMOTE_PATH/monthly/" 2>/dev/null | wc -l || echo 0)
   six_count=$(timeout 20 "$RCLONE_BIN" ls "$REMOTE_PATH/sixhour/" 2>/dev/null | wc -l || echo 0)
   mani_count=$(timeout 20 "$RCLONE_BIN" ls "$REMOTE_PATH/manifests/" 2>/dev/null | wc -l || echo 0)
+  uploads_count=$(timeout 20 "$RCLONE_BIN" ls "$REMOTE_PATH/uploads/" 2>/dev/null | wc -l || echo 0)
+  snapshots_count=$(timeout 20 "$RCLONE_BIN" ls "$REMOTE_PATH/repair-snapshots/" 2>/dev/null | wc -l || echo 0)
 
   [ "$db_count" -ge 1 ] && ok "offsite db count=$db_count" || bad "offsite db folder empty/unreachable"
   [ "$monthly_count" -ge 1 ] && ok "offsite monthly count=$monthly_count" || bad "offsite monthly folder empty/unreachable"
   [ "$six_count" -ge 1 ] && ok "offsite sixhour count=$six_count" || warn "offsite sixhour folder empty/unreachable"
   [ "$mani_count" -ge 1 ] && ok "offsite manifests count=$mani_count" || warn "offsite manifests folder empty/unreachable"
+  # #1124: uploads/repair-snapshots are file data outside the DB — warn (not
+  # bad) when empty since a brand-new install may legitimately have none yet.
+  [ "$uploads_count" -ge 1 ] && ok "offsite uploads count=$uploads_count" || warn "offsite uploads folder empty/unreachable"
+  [ "$snapshots_count" -ge 1 ] && ok "offsite repair-snapshots count=$snapshots_count" || warn "offsite repair-snapshots folder empty/unreachable"
 }
 
 check_restore_drill() {

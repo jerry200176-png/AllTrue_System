@@ -119,6 +119,22 @@ jobs:
           MIGRATION_FAILED=0
           TARGET_SHA="${{ github.event.workflow_run.head_sha }}"
 
+          echo "=== [0b/7] Backup storage/app/public（#1124 防呆） ==="
+          # backend/storage/app/public 正在從 git-tracked 轉為 untracked
+          # （#1124）。轉換那次 reset 會把 git 裡已刪除的 tracked 檔案從
+          # working tree 清掉——這一步永久保留，每次 deploy 前都先備份，
+          # 之後若 reset 把檔案清空，下面的還原步驟才有東西可還原。
+          UPLOADS_BACKUP_DIR="/home/admin/backups/uploads"
+          UPLOADS_TS=$(date '+%Y-%m-%d_%H%M%S')
+          UPLOADS_BACKUP_FILE="${UPLOADS_BACKUP_DIR}/storage-app-public-predeploy-${UPLOADS_TS}.tar.gz"
+          if [ -d /home/admin/backend/storage/app/public ] && [ -n "$(find /home/admin/backend/storage/app/public -type f -print -quit)" ]; then
+            mkdir -p "$UPLOADS_BACKUP_DIR"
+            tar -czf "$UPLOADS_BACKUP_FILE" -C /home/admin/backend storage/app/public
+            echo "✅ Backup: $UPLOADS_BACKUP_FILE"
+          else
+            echo "storage/app/public 空或不存在，略過備份"
+          fi
+
           echo "=== [1/7] git fetch + reset ==="
           # R62 自癒：Windows 專用 SSL backend 誤入 repo config 會讓 fetch fatal，
           # 過去因無 -e 被吞掉 → reset 落在 stale tracking ref → 靜默部署舊版
@@ -133,6 +149,18 @@ jobs:
             exit 1
           fi
           echo "✅ production HEAD == CI 驗證版本（$TARGET_SHA）"
+
+          echo "=== [1b/7] Restore storage/app/public（若 reset 清空，#1124） ==="
+          if [ -f "$UPLOADS_BACKUP_FILE" ]; then
+            if [ ! -d /home/admin/backend/storage/app/public ] || [ -z "$(find /home/admin/backend/storage/app/public -type f -print -quit)" ]; then
+              echo "storage/app/public 已被 reset 清空，從剛才的備份還原..."
+              mkdir -p /home/admin/backend/storage/app/public
+              tar -xzf "$UPLOADS_BACKUP_FILE" -C /home/admin/backend
+              echo "✅ 已從 $UPLOADS_BACKUP_FILE 還原"
+            else
+              echo "storage/app/public 仍有檔案，無需還原"
+            fi
+          fi
 
           echo "=== [2/7] Composer dependencies ==="
           cd /home/admin/backend && composer install --no-interaction --prefer-dist --optimize-autoloader
