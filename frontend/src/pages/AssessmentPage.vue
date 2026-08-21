@@ -13,6 +13,8 @@
       <article class="card summary-card"><span>結果筆數</span><strong>{{ summary.result_count }}</strong></article>
       <article class="card summary-card"><span>平均分數</span><strong>{{ summary.average_percent == null ? '—' : `${summary.average_percent}%` }}</strong></article>
       <article class="card summary-card"><span>已審核結果</span><strong>{{ summary.reviewed_count }}</strong></article>
+      <article class="card summary-card"><span>待補強</span><strong>{{ summary.remediation_open_count }}</strong></article>
+      <article class="card summary-card"><span>逾期補強</span><strong>{{ summary.remediation_overdue_count }}</strong></article>
     </div>
 
     <div class="card assessment-list-card">
@@ -75,7 +77,26 @@
         <div v-if="resultsLoading" class="assessment-empty">結果載入中…</div>
         <template v-else>
           <div v-if="!results.length" class="assessment-empty">尚未登錄結果。</div>
-          <table v-else class="assessment-table compact"><thead><tr><th>學生</th><th>次數</th><th>分數</th><th>狀態</th><th>操作</th></tr></thead><tbody><tr v-for="result in results" :key="result.id"><td>{{ result.student_name || result.student_id }}</td><td>第 {{ result.attempt_no }} 次</td><td>{{ result.score }}/{{ result.max_score }}（{{ result.percent }}%）</td><td>{{ result.status === 'reviewed' ? '已審核' : '待審' }}</td><td><button v-if="isDirector && result.status === 'submitted'" class="primary small" @click="reviewResult(result)">審核</button></td></tr></tbody></table>
+          <table v-else class="assessment-table compact"><thead><tr><th>學生</th><th>次數</th><th>分數</th><th>狀態</th><th>補強</th><th>操作</th></tr></thead><tbody><tr v-for="result in results" :key="result.id"><td>{{ result.student_name || result.student_id }}</td><td>第 {{ result.attempt_no }} 次</td><td>{{ result.score }}/{{ result.max_score }}（{{ result.percent }}%）</td><td>{{ result.status === 'reviewed' ? '已審核' : '待審' }}</td><td><button class="ghost small" @click="openRemediation(result)">{{ result.remediation_count || 0 }} 筆</button></td><td><button v-if="isDirector && result.status === 'submitted'" class="primary small" @click="reviewResult(result)">審核</button></td></tr></tbody></table>
+          <div v-if="selectedResult" class="remediation-panel">
+            <div class="assessment-modal-head"><div><h4>補強追蹤：{{ selectedResult.student_name || selectedResult.student_id }}</h4><p class="muted">從檢測結果建立知識缺口與後續行動。</p></div><button class="ghost small" @click="selectedResult = null">收合</button></div>
+            <div v-if="remediationLoading" class="assessment-empty">補強資料載入中…</div>
+            <template v-else>
+              <p v-if="remediationError" class="assessment-error">{{ remediationError }}</p>
+              <div v-if="!remediationActions.length" class="assessment-empty compact-empty">尚未建立補強行動。</div>
+              <div v-for="action in remediationActions" :key="action.id" class="remediation-row">
+                <div><strong>{{ action.knowledge_tag }}</strong><small>{{ action.plan || '未填寫計畫' }}<span v-if="action.due_date"> · 到期 {{ action.due_date }}</span></small></div>
+                <span :class="['status-pill', 'status-' + action.status]">{{ remediationStatusLabel(action.status) }}</span>
+                <button v-if="action.status === 'open'" class="ghost small" @click="updateRemediation(action, 'in_progress')">開始</button>
+                <button v-if="action.status === 'in_progress'" class="primary small" @click="updateRemediation(action, 'completed')">完成</button>
+              </div>
+              <div class="remediation-form">
+                <div class="assessment-form-grid"><label>知識缺口<input v-model.trim="remediationForm.knowledge_tag" maxlength="120" placeholder="例如：英文／過去式" /></label><label>行動類型<select v-model="remediationForm.action_type"><option value="practice">練習</option><option value="retake">重測</option><option value="teacher_followup">老師追蹤</option><option value="other">其他</option></select></label><label>預計完成<input v-model="remediationForm.due_date" type="date" /></label></div>
+                <label>補強計畫<textarea v-model.trim="remediationForm.plan" rows="2" maxlength="10000" placeholder="描述學生下一步要完成的練習或教學安排" /></label>
+                <button class="primary" :disabled="savingRemediation || !remediationForm.knowledge_tag" @click="createRemediation">{{ savingRemediation ? '建立中…' : '建立補強行動' }}</button>
+              </div>
+            </template>
+          </div>
           <div v-if="selectedAssessment.status === 'published'" class="result-entry">
             <h4>登錄學生結果</h4>
             <div class="assessment-form-grid"><label>學生／課程<select v-model="resultForm.student_class_id" @change="syncStudent"><option value="">請選擇</option><option v-for="item in assessmentStudents" :key="item.student_class_id" :value="String(item.student_class_id)">{{ item.name }}</option></select></label><label>分數<input v-model.number="resultForm.score" type="number" min="0" :max="selectedAssessment.max_score" step="0.01" /></label></div>
@@ -98,7 +119,7 @@ const isTeacher = computed(() => props.userRole === 'teacher');
 const isDirector = computed(() => ['director', 'super_admin'].includes(props.userRole));
 const assessments = ref([]);
 const classes = ref([]);
-const summary = reactive({ assessment_count: 0, result_count: 0, average_percent: null, reviewed_count: 0 });
+const summary = reactive({ assessment_count: 0, result_count: 0, average_percent: null, reviewed_count: 0, remediation_open_count: 0, remediation_overdue_count: 0, remediation_completed_count: 0 });
 const loading = ref(false);
 const error = ref('');
 const saving = ref(false);
@@ -110,8 +131,14 @@ const assessmentStudents = ref([]);
 const resultsLoading = ref(false);
 const savingResult = ref(false);
 const resultError = ref('');
+const selectedResult = ref(null);
+const remediationActions = ref([]);
+const remediationLoading = ref(false);
+const remediationError = ref('');
+const savingRemediation = ref(false);
 const createForm = reactive({ title: '', description: '', assessment_type: 'checkpoint', max_score: 100, scheduled_for: '', student_class_id: '' });
 const resultForm = reactive({ student_id: '', student_class_id: '', score: '', notes: '' });
+const remediationForm = reactive({ knowledge_tag: '', action_type: 'practice', plan: '', due_date: '' });
 
 function token() {
   try { return JSON.parse(localStorage.getItem('alltrue_session') || '{}')?.access_token || ''; } catch { return ''; }
@@ -124,6 +151,7 @@ async function api(path, options = {}) {
   return body;
 }
 function statusLabel(status) { return { draft: '草稿', published: '已發布', closed: '已關閉', archived: '已封存' }[status] || status; }
+function remediationStatusLabel(status) { return { open: '待處理', in_progress: '進行中', completed: '已完成', cancelled: '已取消' }[status] || status; }
 async function loadAll() {
   if (!props.branchId) return;
   loading.value = true; error.value = '';
@@ -149,6 +177,7 @@ async function createAssessment() {
 async function publish(assessment) { try { await api(`/assessments/${assessment.id}/publish`, { method: 'POST' }); await loadAll(); } catch (e) { error.value = e.message; } }
 async function closeAssessment(assessment) { if (!window.confirm('關閉後不能再修改檢測定義，確定要關閉嗎？')) return; try { await api(`/assessments/${assessment.id}/close`, { method: 'POST' }); await loadAll(); } catch (e) { error.value = e.message; } }
 async function openAssessment(assessment) {
+  selectedResult.value = null;
   selectedAssessment.value = assessment; resultsLoading.value = true; resultError.value = ''; Object.assign(resultForm, { student_id: '', student_class_id: '', score: '', notes: '' });
   try { const [resultRows, studentRows] = await Promise.all([api(`/assessments/${assessment.id}/results`), api(`/assessments/${assessment.id}/students`)]); results.value = resultRows.data || []; assessmentStudents.value = studentRows.data || []; } catch (e) { resultError.value = e.message; } finally { resultsLoading.value = false; }
 }
@@ -158,6 +187,23 @@ async function saveResult() {
   try { await api(`/assessments/${selectedAssessment.value.id}/results`, { method: 'POST', body: JSON.stringify({ student_id: Number(resultForm.student_id), student_class_id: Number(resultForm.student_class_id), score: Number(resultForm.score), notes: resultForm.notes || null }) }); await openAssessment(selectedAssessment.value); await loadAll(); } catch (e) { resultError.value = e.message; } finally { savingResult.value = false; }
 }
 async function reviewResult(result) { try { await api(`/assessment-results/${result.id}/review`, { method: 'POST' }); await openAssessment(selectedAssessment.value); await loadAll(); } catch (e) { resultError.value = e.message; } }
+async function openRemediation(result) {
+  selectedResult.value = result; remediationLoading.value = true; remediationError.value = '';
+  Object.assign(remediationForm, { knowledge_tag: '', action_type: 'practice', plan: '', due_date: '' });
+  try { const response = await api('/assessment-results/' + result.id + '/remediation-actions'); remediationActions.value = response.data || []; } catch (e) { remediationError.value = e.message; } finally { remediationLoading.value = false; }
+}
+async function createRemediation() {
+  savingRemediation.value = true; remediationError.value = '';
+  try {
+    const body = { knowledge_tag: remediationForm.knowledge_tag, action_type: remediationForm.action_type, plan: remediationForm.plan || null, due_date: remediationForm.due_date || null };
+    await api('/assessment-results/' + selectedResult.value.id + '/remediation-actions', { method: 'POST', body: JSON.stringify(body) });
+    await openRemediation(selectedResult.value); await loadAll();
+  } catch (e) { remediationError.value = e.message; } finally { savingRemediation.value = false; }
+}
+async function updateRemediation(action, status) {
+  remediationError.value = '';
+  try { await api('/assessment-remediation-actions/' + action.id, { method: 'PATCH', body: JSON.stringify({ status }) }); await openRemediation(selectedResult.value); await loadAll(); } catch (e) { remediationError.value = e.message; }
+}
 watch(() => props.branchId, loadAll);
 onMounted(loadAll);
 </script>
@@ -165,7 +211,7 @@ onMounted(loadAll);
 <style scoped>
 .assessment-page { max-width: 1440px; margin: 0 auto; }
 .assessment-header, .assessment-list-head, .assessment-modal-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.assessment-summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
+.assessment-summary-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
 .summary-card { padding: 16px; display: flex; flex-direction: column; gap: 6px; }
 .summary-card span, .muted { color: var(--ds-text-tertiary); font-size: 13px; }
 .summary-card strong { font-size: 28px; color: var(--ds-text-primary); }
@@ -178,7 +224,7 @@ onMounted(loadAll);
 .assessment-table td small { color: var(--ds-text-tertiary); margin-top: 3px; }
 .assessment-actions { white-space: nowrap; }
 .status-pill { border-radius: 999px; padding: 4px 9px; font-size: 12px; background: var(--ds-surface-2); }
-.status-published { background: var(--ds-success-wash); color: var(--ds-success); }.status-draft { color: var(--ds-warning); background: var(--ds-warning-wash); }.status-closed { background: var(--ds-surface-2); color: var(--ds-text-tertiary); }
+.status-published, .status-completed { background: var(--ds-success-wash); color: var(--ds-success); }.status-draft, .status-open { color: var(--ds-warning); background: var(--ds-warning-wash); }.status-closed, .status-cancelled { background: var(--ds-surface-2); color: var(--ds-text-tertiary); }.status-in_progress { background: var(--ds-info-wash); color: var(--ds-info); }
 .assessment-empty { padding: 36px 12px; text-align: center; color: var(--ds-text-tertiary); }
 .assessment-error { color: var(--ds-danger); background: var(--ds-danger-wash); border-radius: 8px; padding: 10px 12px; margin: 10px 0; }
 .assessment-modal { max-width: 720px; width: calc(100vw - 32px); max-height: min(850px, calc(100vh - 32px)); overflow: auto; }
@@ -189,5 +235,10 @@ onMounted(loadAll);
 .compact { min-width: 0; }
 .result-entry { border-top: 1px solid var(--ds-hairline); margin-top: 18px; padding-top: 14px; }
 .result-entry .assessment-form-grid { grid-template-columns: 1.5fr 1fr; }
-@media (max-width: 720px) { .assessment-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .assessment-header { align-items: flex-start; } .assessment-form-grid { grid-template-columns: 1fr; } .result-entry .assessment-form-grid { grid-template-columns: 1fr; } }
+.remediation-panel { margin-top: 16px; padding: 14px; border: 1px solid var(--ds-hairline); border-radius: var(--ds-radius-md); background: var(--ds-surface-0); }
+.remediation-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--ds-hairline); }
+.remediation-row strong, .remediation-row small { display: block; }.remediation-row small { color: var(--ds-text-tertiary); margin-top: 3px; }
+.remediation-form { margin-top: 12px; }.compact-empty { padding: 14px 8px; }
+@media (max-width: 1100px) { .assessment-summary-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 720px) { .assessment-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .assessment-header { align-items: flex-start; } .assessment-form-grid { grid-template-columns: 1fr; } .result-entry .assessment-form-grid { grid-template-columns: 1fr; } .remediation-row { grid-template-columns: minmax(0, 1fr) auto; }.remediation-row button { grid-column: 2; } }
 </style>
