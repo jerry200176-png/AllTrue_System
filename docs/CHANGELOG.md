@@ -1,3 +1,10 @@
+## 2026-08-21 — feat(assessment): 家長端檢測進度與補強狀態
+
+<!-- release-notes: staff_update=staff-2026-08-21-parent-assessment-progress -->
+
+- 家長端現在會顯示已完成複核的檢測分數、達標／再練習提示與補強進度。
+- 只讀投影不包含老師內部備註、補強計畫或檢測內部識別碼；未複核結果不會顯示。
+
 ## 2026-08-21 — feat(assessment): 題庫管理與人工審核
 
 <!-- release-notes: staff_update=staff-2026-08-21-question-bank-management -->
