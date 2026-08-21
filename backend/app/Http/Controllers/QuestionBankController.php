@@ -127,8 +127,9 @@ class QuestionBankController extends Controller
         $handle = @fopen($request->file('file')->getRealPath(), 'rb');
         if (!$handle) throw ValidationException::withMessages(['file' => 'CSV 檔案無法讀取。']);
         $headers = fgetcsv($handle);
-        $headers = array_map(fn ($h) => strtolower(trim((string) $h)), (array) $headers);
-        if (($headers[0] ?? '') !== '') $headers[0] = ltrim($headers[0], "\xEF\xBB\xBF");
+        if ($headers === false) throw ValidationException::withMessages(['file' => 'CSV 缺少標題列。']);
+        $headers = array_map(fn ($h) => strtolower(trim((string) $h)), $headers);
+        $headers[0] = ltrim($headers[0], "\xEF\xBB\xBF");
         $required = ['question_type', 'prompt', 'knowledge_tag', 'difficulty'];
         $missing = array_values(array_diff($required, $headers));
         if ($missing) throw ValidationException::withMessages(['file' => 'CSV 缺少欄位：' . implode(', ', $missing)]);

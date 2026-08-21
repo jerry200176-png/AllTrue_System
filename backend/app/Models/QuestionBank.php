@@ -4,6 +4,16 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * @property int $id
+ * @property int $campus_id
+ * @property int|null $subject_id
+ * @property string $name
+ * @property string|null $description
+ * @property string $status
+ * @property int|null $created_by_user_id
+ * @method static static create(array $attributes = [])
+ */
 class QuestionBank extends Model
 {
     protected $table = 'question_banks';
