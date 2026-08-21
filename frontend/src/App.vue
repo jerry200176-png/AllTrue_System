@@ -352,6 +352,7 @@
       <AttendancePage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'attendance'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" />
       <LearningRecordsPage v-if="!isPasswordChangeLocked && active === 'learning'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" :target-record-id="learningTargetRecordId" :target-session="learningTargetSession" :feedback-focus-token="learningFeedbackFocusToken" @feedback-read="refreshUnreadNotifications" />
       <AssessmentPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'assessments'" :branch-id="currentBranch" :user-role="role" />
+      <QuestionBankPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'question-banks'" :branch-id="currentBranch" :user-role="role" />
       <ProfileCenterPage
         v-if="(isTeacher || isDirector) && active === 'profile'"
         :token="session?.access_token ?? ''"
@@ -483,6 +484,7 @@ import ParentPortal from './pages/ParentPortal.vue';
 const StudentsList          = defineAsyncComponent(() => import('./pages/StudentsList.vue'));
 const LearningRecordsPage   = defineAsyncComponent(() => import('./pages/LearningRecordsPage.vue'));
 const AssessmentPage        = defineAsyncComponent(() => import('./pages/AssessmentPage.vue'));
+const QuestionBankPage      = defineAsyncComponent(() => import('./pages/QuestionBankPage.vue'));
 const SmartCalendar         = defineAsyncComponent(() => import('./pages/SmartCalendar.vue'));
 const DirectorDashboard     = defineAsyncComponent(() => import('./pages/DirectorDashboard.vue'));
 const LineIntegration       = defineAsyncComponent(() => import('./pages/LineIntegration.vue'));
@@ -1349,6 +1351,7 @@ const sidebarNavGroups = computed(() => {
           { page: 'schedule-discrepancy', label: '課表回報管理', icon: 'flag', badgeTypes: ['schedule_discrepancy'] },
           { page: 'learning', label: '學習評量', icon: 'assignment', badgeTypes: ['learning_review', 'parent_feedback'] },
           { page: 'assessments', label: '學習檢測', icon: 'grading' },
+          { page: 'question-banks', label: '題庫管理', icon: 'quiz' },
           { page: 'duplicate-review', label: '重疊課程審核', icon: 'compare_arrows' },
         ],
       },
@@ -1399,6 +1402,7 @@ const sidebarNavGroups = computed(() => {
           { page: 'attendance', label: '出缺勤', icon: 'fact_check', badgeTypes: ['attendance'] },
           { page: 'learning', label: '課表與評量', icon: 'assignment', badgeTypes: ['teacher_learning_pending', 'parent_feedback'] },
           { page: 'assessments', label: '學習檢測', icon: 'grading' },
+          { page: 'question-banks', label: '題庫管理', icon: 'quiz' },
           { page: 'subject-units', label: '科目數統計', icon: 'calculate' },
           { page: 'chat', label: '內部聊天', icon: 'forum', badgeTypes: ['chat'] },
           { page: 'bugs', label: 'Bug 回報', icon: 'bug_report', badgeTypes: ['bugs'] },
