@@ -1,3 +1,10 @@
+## 2026-08-21 — ops(billing): 大安盧越上期誤標已繳回滾（SC1513）
+
+<!-- release-notes: silent_ship=silent-2026-08-21-luyue-1513-unpaid -->
+
+- 上期契約 `StudentClass` 1513（12,000）於 7/6 主任核帳誤標已繳；新增 guarded workflow 沖銷 Invoice 1070／Payment 1049 並還原未繳。
+- 不碰本期 2828 與更早一期 325。詳見 `docs/incidents/lu-yue-1513-unpaid-rollback-manifest.md`。
+
 ## 2026-08-20 — feat(ui): 家長首頁與夜間堂數檢查說明
 
 <!-- release-notes: staff_update=staff-2026-08-20-nightly-session-check -->

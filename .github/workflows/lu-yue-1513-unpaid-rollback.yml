@@ -1,0 +1,215 @@
+name: 大安盧越 SC1513 unpaid rollback (guarded)
+
+# One-off data repair: previous-period contract StudentClass.ID=1513 (盧越 / campus 15)
+# was marked paid via 主任核帳登記 on 2026-07-06 (Invoice 1070 / Payment 1049) but parent
+# has not actually paid that period. Current period SC 2828 is correctly unpaid and must
+# not be touched. Older settled SC 325 must not be touched.
+#
+# Scope is hardcoded IDs only. dry-run prints before-state; execute requires confirm
+# phrase, mysqldump backup, re-checks preconditions atomically, then voids Invoice 1070
+# with a negative Payment (Method=void) and clears StudentClass.Paid/PayDate.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: dry-run (default) | execute
+        required: true
+        default: dry-run
+        type: choice
+        options: [dry-run, execute]
+      confirm_phrase:
+        description: 'For execute: type I_APPROVE_LUYUE_1513_UNPAID_ROLLBACK'
+        required: false
+        type: string
+
+concurrency:
+  group: repair-luyue-1513-unpaid-rollback
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Validate gate
+        env:
+          MODE: ${{ inputs.mode }}
+          PHRASE: ${{ inputs.confirm_phrase }}
+        run: |
+          set -euo pipefail
+          if [ "$MODE" = "execute" ] && [ "$PHRASE" != "I_APPROVE_LUYUE_1513_UNPAID_ROLLBACK" ]; then
+            echo "confirm_phrase_required for execute"
+            exit 1
+          fi
+          echo "GATE_OK mode=$MODE"
+
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Inspect + (execute only) rollback SC 1513
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          MODE: ${{ inputs.mode }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" MODE="$MODE" RUN_ID="$RUN_ID" 'bash -s' <<'ENDSSH'
+          set -euo pipefail
+          cd /home/admin/backend
+
+          echo "=== Before state ==="
+          php artisan tinker --execute='
+            $db = \Illuminate\Support\Facades\DB::class;
+            $student = $db::table("Student")->where("id", 375)->first(["id","name","CampusID"]);
+            $sc1513 = $db::table("StudentClass")->where("ID", 1513)->first(["ID","StudentID","Charge","Rate","Paid","PayDate","Stop","SessionCount","UsedSessions","RemainingSessions"]);
+            $sc2828 = $db::table("StudentClass")->where("ID", 2828)->first(["ID","Paid","Charge","Rate"]);
+            $sc325 = $db::table("StudentClass")->where("ID", 325)->first(["ID","Paid","Stop"]);
+            $inv = $db::table("Invoice")->where("id", 1070)->first(["id","StudentClassID","TotalAmount","PaidAmount","Status"]);
+            $pay = $db::table("Payment")->where("id", 1049)->first(["id","InvoiceID","Amount","Method","Note","PaidAt"]);
+            $reports = $db::table("PaymentReport")->where("StudentClassID", 1513)->get(["id","status","InvoiceID","reported_amount","payment_date"]);
+            echo json_encode(compact("student","sc1513","sc2828","sc325","inv","pay","reports"), JSON_UNESCAPED_UNICODE), PHP_EOL;
+          '
+
+          if [ "${MODE}" = "dry-run" ]; then
+            echo "Dry-run complete; no production write."
+            exit 0
+          fi
+
+          TS=$(date '+%Y-%m-%d_%H%M%S')
+          mkdir -p /home/admin/backups/emergency
+          BACKUP="/home/admin/backups/emergency/db_pre_luyue_1513_unpaid_${TS}.sql.gz"
+          DB_USER="$(grep '^DB_USERNAME=' .env | cut -d= -f2-)"
+          DB_PASS="$(grep '^DB_PASSWORD=' .env | cut -d= -f2-)"
+          mysqldump -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASS" \
+            --single-transaction AllTrue StudentClass Invoice Payment PaymentReport \
+            | gzip > "$BACKUP"
+          test -s "$BACKUP"
+          echo "Backup_ok size=$(wc -c < "$BACKUP") path=$BACKUP"
+
+          php artisan tinker --execute='
+            $runId = getenv("RUN_ID") ?: "unknown";
+            $db = \Illuminate\Support\Facades\DB::class;
+            $db::transaction(function () use ($db, $runId) {
+              $student = $db::table("Student")->where("id", 375)->lockForUpdate()->first();
+              $sc = $db::table("StudentClass")->where("ID", 1513)->lockForUpdate()->first();
+              $inv = $db::table("Invoice")->where("id", 1070)->lockForUpdate()->first();
+              $pay = $db::table("Payment")->where("id", 1049)->lockForUpdate()->first();
+              $sc2828 = $db::table("StudentClass")->where("ID", 2828)->lockForUpdate()->first();
+              $sc325 = $db::table("StudentClass")->where("ID", 325)->lockForUpdate()->first();
+
+              $checks = [
+                "student_name" => $student && $student->name === "盧越",
+                "student_campus" => $student && (int) $student->CampusID === 15,
+                "sc_student" => $sc && (int) $sc->StudentID === 375,
+                "sc_charge" => $sc && (int) $sc->Charge === 12000,
+                "sc_rate" => $sc && (int) $sc->Rate === 1500,
+                "sc_paid" => $sc && (int) $sc->Paid === 1,
+                "sc_sessions" => $sc && (int) $sc->SessionCount === 8 && (int) $sc->UsedSessions === 8,
+                "inv_link" => $inv && (int) $inv->StudentClassID === 1513,
+                "inv_amount" => $inv && (int) $inv->TotalAmount === 12000 && (int) $inv->PaidAmount === 12000,
+                "inv_status" => $inv && strtolower((string) $inv->Status) === "paid",
+                "pay_link" => $pay && (int) $pay->InvoiceID === 1070,
+                "pay_amount" => $pay && (int) $pay->Amount === 12000,
+                "pay_method" => $pay && (string) $pay->Method === "transfer",
+                "current_untouched_pre" => $sc2828 && (int) $sc2828->Paid === 0 && (int) $sc2828->Charge === 13200,
+                "legacy_untouched_pre" => $sc325 && (int) $sc325->Paid === 1 && (int) $sc325->Stop === 1,
+              ];
+              if (in_array(false, $checks, true)) {
+                echo "PRECONDITION_FAILED ", json_encode($checks, JSON_UNESCAPED_UNICODE), PHP_EOL;
+                throw new RuntimeException("precondition failed; aborting with no write");
+              }
+
+              $reason = "Founder-authorized rollback: 大安盧越上期(SC1513)實際未繳，撤銷 2026-07-06 主任核帳登記 Invoice1070/Payment1049; run=".$runId;
+              $existingVoid = $db::table("Payment")
+                ->where("InvoiceID", 1070)
+                ->where("Method", "void")
+                ->where("Amount", -12000)
+                ->exists();
+              if ($existingVoid) {
+                echo "PRECONDITION_FAILED: void payment already exists for invoice 1070", PHP_EOL;
+                throw new RuntimeException("already reversed");
+              }
+
+              \App\Models\Payment::create([
+                "InvoiceID" => 1070,
+                "Amount" => -12000,
+                "PaidAt" => now(),
+                "Method" => "void",
+                "Note" => mb_substr("帳單例外沖銷作廢：".$reason, 0, 255),
+              ]);
+
+              $note = trim((string) ($inv->Note ?? ""));
+              $audit = sprintf(
+                "[exception-void: %s; user_id=gha; at=%s; positive_payments=1049; net=12000]",
+                str_replace(["\r", "\n"], " ", $reason),
+                now()->format("Y-m-d H:i:s")
+              );
+              $db::table("Invoice")->where("id", 1070)->update([
+                "Status" => "void",
+                "PaidAmount" => 0,
+                "Note" => mb_substr(trim($note." ".$audit), 0, 255),
+              ]);
+
+              $db::table("StudentClass")->where("ID", 1513)->update([
+                "Paid" => 0,
+                "PayDate" => null,
+              ]);
+
+              $reportIds = $db::table("PaymentReport")
+                ->where("StudentClassID", 1513)
+                ->where("status", "confirmed")
+                ->pluck("id");
+              if ($reportIds->isNotEmpty()) {
+                $db::table("PaymentReport")->whereIn("id", $reportIds->all())->update([
+                  "status" => "voided",
+                  "void_reason" => mb_substr($reason, 0, 500),
+                  "voided_at" => now(),
+                ]);
+              }
+
+              $afterSc = $db::table("StudentClass")->where("ID", 1513)->first(["Paid","PayDate"]);
+              $afterInv = $db::table("Invoice")->where("id", 1070)->first(["Status","PaidAmount"]);
+              $afterPayNet = (int) $db::table("Payment")->where("InvoiceID", 1070)->sum("Amount");
+              $after2828 = $db::table("StudentClass")->where("ID", 2828)->first(["Paid","Charge"]);
+              $after325 = $db::table("StudentClass")->where("ID", 325)->first(["Paid","Stop"]);
+              $ok = $afterSc && (int) $afterSc->Paid === 0 && $afterSc->PayDate === null
+                && $afterInv && $afterInv->Status === "void" && (int) $afterInv->PaidAmount === 0
+                && $afterPayNet === 0
+                && $after2828 && (int) $after2828->Paid === 0 && (int) $after2828->Charge === 13200
+                && $after325 && (int) $after325->Paid === 1 && (int) $after325->Stop === 1;
+              echo json_encode([
+                "ok" => $ok,
+                "voided_reports" => $reportIds->values()->all(),
+                "after" => compact("afterSc", "afterInv", "afterPayNet", "after2828", "after325"),
+              ], JSON_UNESCAPED_UNICODE), PHP_EOL;
+              if (!$ok) {
+                throw new RuntimeException("postcondition failed");
+              }
+            });
+            echo "REPAIRED_SC_1513_UNPAID", PHP_EOL;
+          '
+
+          echo "=== After state ==="
+          php artisan tinker --execute='
+            $db = \Illuminate\Support\Facades\DB::class;
+            $sc1513 = $db::table("StudentClass")->where("ID", 1513)->first(["ID","Paid","PayDate","Charge"]);
+            $inv = $db::table("Invoice")->where("id", 1070)->first(["id","Status","PaidAmount","Note"]);
+            $pays = $db::table("Payment")->where("InvoiceID", 1070)->orderBy("id")->get(["id","Amount","Method","Note"]);
+            $sc2828 = $db::table("StudentClass")->where("ID", 2828)->first(["ID","Paid","Charge"]);
+            echo json_encode(compact("sc1513","inv","pays","sc2828"), JSON_UNESCAPED_UNICODE), PHP_EOL;
+          '
+          ENDSSH
