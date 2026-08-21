@@ -59,6 +59,7 @@ use App\Http\Controllers\StudentIdentityController;
 use App\Http\Controllers\TeacherEligibilityController;
 use App\Http\Controllers\TeacherEligibilityInputController;
 use App\Http\Controllers\AssessmentController;
+use App\Http\Controllers\QuestionBankController;
 
 
 if (app()->environment('local')) {
@@ -607,6 +608,24 @@ Route::prefix('v1')->group(function () {
         Route::post('rooms', [RoomController::class, 'store']);
         Route::put('rooms/{room}', [RoomController::class, 'update']);
         Route::delete('rooms/{room}', [RoomController::class, 'destroy']);
+    });
+
+    Route::middleware(['role:director,teacher,super_admin', 'require_campus', 'require_password_change'])->group(function () {
+        // Question bank authoring is independent from assessment results and billing.
+        Route::get('question-banks', [QuestionBankController::class, 'index']);
+        Route::get('question-banks/{questionBank}', [QuestionBankController::class, 'show'])->whereNumber('questionBank');
+        Route::get('question-banks/{questionBank}/items', [QuestionBankController::class, 'items'])->whereNumber('questionBank');
+        Route::get('question-bank-items/{questionBankItem}/versions', [QuestionBankController::class, 'versions'])->whereNumber('questionBankItem');
+        Route::post('question-banks', [QuestionBankController::class, 'store']);
+        Route::post('question-banks/{questionBank}/items', [QuestionBankController::class, 'storeItem'])->whereNumber('questionBank');
+        Route::post('question-banks/{questionBank}/items/import', [QuestionBankController::class, 'importItems'])->whereNumber('questionBank');
+        Route::patch('question-bank-items/{questionBankItem}', [QuestionBankController::class, 'updateItem'])->whereNumber('questionBankItem');
+        Route::post('question-bank-items/{questionBankItem}/submit-review', [QuestionBankController::class, 'submitReview'])->whereNumber('questionBankItem');
+    });
+
+    Route::middleware(['role:director,super_admin', 'require_campus', 'require_password_change'])->group(function () {
+        Route::post('question-bank-items/{questionBankItem}/approve', [QuestionBankController::class, 'approve'])->whereNumber('questionBankItem');
+        Route::post('question-bank-items/{questionBankItem}/retire', [QuestionBankController::class, 'retire'])->whereNumber('questionBankItem');
     });
 
     Route::middleware(['role:director,teacher,super_admin', 'require_campus', 'require_password_change'])->group(function () {
