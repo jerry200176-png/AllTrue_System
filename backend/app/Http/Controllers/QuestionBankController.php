@@ -64,6 +64,7 @@ class QuestionBankController extends Controller
     {
         if (!$this->canManageBank($request, $questionBank)) return response()->json(['message' => 'Not found'], 404);
         $data = $this->validatedItem($request);
+        $this->validateProvenance($data);
         $item = DB::transaction(function () use ($data, $questionBank, $request) {
             $item = $questionBank->items()->create(array_merge($data, [
                 'question_key' => (string) Str::uuid(), 'version_no' => 1, 'status' => 'draft',
@@ -81,11 +82,15 @@ class QuestionBankController extends Controller
         if (!$bank || !$this->canManageBank($request, $bank)) return response()->json(['message' => 'Not found'], 404);
         if ($questionBankItem->status === 'retired') return response()->json(['message' => '已退休題目不可修改'], 409);
         $data = $this->validatedItem($request, true);
+        $this->validateProvenance(array_merge($questionBankItem->only([
+            'source_type', 'source_name', 'source_version', 'license_ref',
+        ]), $data));
         $next = DB::transaction(function () use ($data, $questionBankItem, $bank, $request) {
             $version = ((int) $bank->items()->where('question_key', $questionBankItem->question_key)->max('version_no')) + 1;
             $next = $bank->items()->create(array_merge($questionBankItem->only([
                 'question_key', 'question_type', 'prompt', 'choices', 'answer', 'explanation',
-                'knowledge_tag', 'difficulty', 'source_type', 'source_ref',
+                'knowledge_tag', 'difficulty', 'source_type', 'source_name', 'source_version',
+                'grade_level', 'subject_name', 'source_ref', 'license_ref', 'source_question_key',
             ]), $data, [
                 'version_no' => $version, 'status' => 'draft', 'created_by_user_id' => $this->userId($request),
             ]));
@@ -183,13 +188,17 @@ class QuestionBankController extends Controller
             'question_type' => $raw['question_type'] ?? '', 'prompt' => $raw['prompt'] ?? '',
             'knowledge_tag' => $raw['knowledge_tag'] ?? '', 'difficulty' => $raw['difficulty'] ?? '',
             'explanation' => ($raw['explanation'] ?? '') ?: null, 'source_type' => ($raw['source_type'] ?? '') ?: 'internal',
-            'source_ref' => ($raw['source_ref'] ?? '') ?: null,
+            'source_name' => ($raw['source_name'] ?? '') ?: null, 'source_version' => ($raw['source_version'] ?? '') ?: null,
+            'grade_level' => ($raw['grade_level'] ?? '') ?: null, 'subject_name' => ($raw['subject_name'] ?? '') ?: null,
+            'source_ref' => ($raw['source_ref'] ?? '') ?: null, 'license_ref' => ($raw['license_ref'] ?? '') ?: null,
+            'source_question_key' => ($raw['source_question_key'] ?? '') ?: null,
         ];
         if (!in_array($data['question_type'], self::TYPES, true)) throw ValidationException::withMessages(['question_type' => '題型無效。']);
         if ($data['prompt'] === '' || mb_strlen($data['prompt']) > 20000) throw ValidationException::withMessages(['prompt' => '題目內容不可空白且不可超過 20000 字。']);
         if ($data['knowledge_tag'] === '' || mb_strlen($data['knowledge_tag']) > 120) throw ValidationException::withMessages(['knowledge_tag' => '知識標籤不可空白且不可超過 120 字。']);
         if (!ctype_digit((string) $data['difficulty']) || (int) $data['difficulty'] < 1 || (int) $data['difficulty'] > 5) throw ValidationException::withMessages(['difficulty' => '難度必須是 1 到 5。']);
         if (!in_array($data['source_type'], self::SOURCES, true)) throw ValidationException::withMessages(['source_type' => '來源類型無效。']);
+        $this->validateProvenance($data);
         foreach (['choices', 'answer'] as $jsonField) {
             if (($raw[$jsonField] ?? '') === '') { $data[$jsonField] = null; continue; }
             $decoded = json_decode($raw[$jsonField], true);
@@ -201,13 +210,33 @@ class QuestionBankController extends Controller
         return $data;
     }
 
+    private function validateProvenance(array $data): void
+    {
+        if (($data['source_type'] ?? 'internal') === 'licensed') {
+            foreach (['source_name' => '來源名稱', 'source_version' => '來源版本', 'license_ref' => '授權參考'] as $field => $label) {
+                if (empty($data[$field])) throw ValidationException::withMessages([$field => "授權題目必須填寫{$label}。"]);
+            }
+        }
+        foreach ([
+            'source_question_key' => 191, 'source_name' => 120, 'source_version' => 120,
+            'grade_level' => 60, 'subject_name' => 120, 'license_ref' => 255,
+        ] as $field => $max) {
+            if (($data[$field] ?? null) !== null && mb_strlen((string) $data[$field]) > $max) {
+                throw ValidationException::withMessages([$field => "欄位不可超過{$max}字。"]);
+            }
+        }
+    }
+
     private function validatedItem(Request $request, bool $partial = false): array
     {
         $rules = [
             'question_type' => ['required', 'in:' . implode(',', self::TYPES)], 'prompt' => ['required', 'string', 'max:20000'],
             'choices' => ['nullable', 'array'], 'answer' => ['nullable', 'array'], 'explanation' => ['nullable', 'string', 'max:20000'],
             'knowledge_tag' => ['required', 'string', 'max:120'], 'difficulty' => ['required', 'integer', 'between:1,5'],
-            'source_type' => ['nullable', 'in:' . implode(',', self::SOURCES)], 'source_ref' => ['nullable', 'string', 'max:255'],
+            'source_type' => ['nullable', 'in:' . implode(',', self::SOURCES)], 'source_name' => ['nullable', 'string', 'max:120'],
+            'source_version' => ['nullable', 'string', 'max:120'], 'grade_level' => ['nullable', 'string', 'max:60'],
+            'subject_name' => ['nullable', 'string', 'max:120'], 'source_ref' => ['nullable', 'string', 'max:255'],
+            'license_ref' => ['nullable', 'string', 'max:255'], 'source_question_key' => ['nullable', 'string', 'max:191'],
         ];
         if ($partial) foreach ($rules as $field => $rule) $rules[$field] = array_merge(['sometimes'], $rule);
         return $request->validate($rules);
@@ -250,7 +279,7 @@ class QuestionBankController extends Controller
 
     private function itemPayload(QuestionBankItem $item): array
     {
-        return ['id' => (int) $item->id, 'question_bank_id' => (int) $item->question_bank_id, 'question_key' => $item->question_key, 'version_no' => (int) $item->version_no, 'question_type' => $item->question_type, 'prompt' => $item->prompt, 'choices' => $item->choices, 'answer' => $item->answer, 'explanation' => $item->explanation, 'knowledge_tag' => $item->knowledge_tag, 'difficulty' => (int) $item->difficulty, 'source_type' => $item->source_type, 'source_ref' => $item->source_ref, 'status' => $item->status, 'review_note' => $item->review_note, 'created_at' => optional($item->created_at)->toISOString(), 'reviewed_at' => optional($item->reviewed_at)->toISOString()];
+        return ['id' => (int) $item->id, 'question_bank_id' => (int) $item->question_bank_id, 'question_key' => $item->question_key, 'source_question_key' => $item->source_question_key, 'version_no' => (int) $item->version_no, 'question_type' => $item->question_type, 'prompt' => $item->prompt, 'choices' => $item->choices, 'answer' => $item->answer, 'explanation' => $item->explanation, 'knowledge_tag' => $item->knowledge_tag, 'difficulty' => (int) $item->difficulty, 'source_type' => $item->source_type, 'source_name' => $item->source_name, 'source_version' => $item->source_version, 'grade_level' => $item->grade_level, 'subject_name' => $item->subject_name, 'source_ref' => $item->source_ref, 'license_ref' => $item->license_ref, 'status' => $item->status, 'review_note' => $item->review_note, 'created_at' => optional($item->created_at)->toISOString(), 'reviewed_at' => optional($item->reviewed_at)->toISOString()];
     }
 
     private function role(Request $request): string { return (string) $request->attributes->get('auth_role', ''); }
