@@ -4,48 +4,6 @@
  */
 export const staffUpdates = [
   {
-    "id": "staff-2026-08-21-question-bank-management",
-    "publishedAt": "2026-08-21",
-    "effectiveAt": null,
-    "audiences": [
-      "director",
-      "teacher"
-    ],
-    "audience": [
-      "director",
-      "teacher"
-    ],
-    "importance": "major",
-    "title": "題庫管理支援版本與審核",
-    "summary": "題目可依分校管理、匯入、送審與保留版本歷史。",
-    "items": [
-      "可建立題庫、設定知識標籤與 1–5 級難度，題目可用 CSV 批次匯入。",
-      "匯入與老師建立的題目會先進入待審核；主任核准後才列為正式題目。",
-      "修改題目會建立新版本，舊版本保留供追溯，退休題目不會被直接刪除。"
-    ],
-    "sections": [
-      {
-        "title": "你現在可以",
-        "items": [
-          "可建立題庫、設定知識標籤與 1–5 級難度，題目可用 CSV 批次匯入。",
-          "匯入與老師建立的題目會先進入待審核；主任核准後才列為正式題目。"
-        ]
-      },
-      {
-        "title": "操作更順手",
-        "items": [
-          "修改題目會建立新版本，舊版本保留供追溯，退休題目不會被直接刪除。"
-        ]
-      }
-    ],
-    "sourceRefs": [
-      "changelog:2026-08-21:question-bank-management",
-      "issue:1934"
-    ],
-    "date": "2026-08-21",
-    "version": "2026.08.21"
-  },
-  {
     "id": "staff-2026-08-21-learning-assessment-mvp",
     "publishedAt": "2026-08-21",
     "effectiveAt": null,
