@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "2392ce9fe5814d11ae8c5feb1450533d",
+  "session_id": "96c63dbbbf854824859754b0860fb481",
   "project": "alltrue",
-  "task_id": "security-host-hardening-checklist-887",
+  "task_id": "learning-assessment-slice5-question-provenance",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "b30cf73160db6735a1a557960bdf8d8356dafe1c",
-  "branch": "chore/task-security-host-hardening-checklist-887",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/security-host-hardening-checklist-887",
-  "started_at": "2026-08-21T05:18:45Z",
+  "base_sha": "e3eb841c5d09d3e416b740a40a13994cd01c9211",
+  "branch": "chore/task-learning-assessment-slice5-question-provenance",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/learning-assessment-slice5-question-provenance",
+  "started_at": "2026-08-21T08:03:29Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": null,
+  "agent_cli": "codex",
   "gateway_version": "0.5.0"
 }

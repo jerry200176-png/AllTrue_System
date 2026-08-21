@@ -4,6 +4,41 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-21-question-bank-provenance",
+    "publishedAt": "2026-08-21",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "major",
+    "title": "題庫匯入保留授權來源",
+    "summary": "匯入題目現在能追溯來源與授權資訊。",
+    "items": [
+      "可保存來源名稱、版本、外部題號、年級、科目與匯出批次。",
+      "已授權素材缺少授權參考時會整批拒絕，所有匯入題目仍先待主任審核。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "可保存來源名稱、版本、外部題號、年級、科目與匯出批次。",
+          "已授權素材缺少授權參考時會整批拒絕，所有匯入題目仍先待主任審核。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-21:question-bank-provenance",
+      "issue:1934"
+    ],
+    "date": "2026-08-21",
+    "version": "2026.08.21"
+  },
+  {
     "id": "staff-2026-08-21-question-bank-management",
     "publishedAt": "2026-08-21",
     "effectiveAt": null,
