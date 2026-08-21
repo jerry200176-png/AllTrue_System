@@ -3,6 +3,23 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-21-question-bank-provenance
+    published_at: "2026-08-21"
+    audiences:
+      - director
+      - teacher
+    importance: major
+    title: 題庫匯入保留授權來源
+    summary: 匯入題目現在能追溯來源與授權資訊。
+    items:
+      - category: improved
+        text: 可保存來源名稱、版本、外部題號、年級、科目與匯出批次。
+      - category: improved
+        text: 已授權素材缺少授權參考時會整批拒絕，所有匯入題目仍先待主任審核。
+    source_refs:
+      - "changelog:2026-08-21:question-bank-provenance"
+      - "issue:1934"
+
   - id: staff-2026-08-21-parent-assessment-progress
     published_at: "2026-08-21"
     audiences:

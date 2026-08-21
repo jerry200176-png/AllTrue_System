@@ -64,3 +64,19 @@ material can be traced; `ai_draft` is metadata only and never bypasses review.
 - student delivery, randomized selection, auto-marking, and free-text review;
 - importing publisher formats such as GIFT or Moodle XML;
 - AI drafting or automatic approval.
+
+## Authorized vendor provenance boundary (2026-08-21)
+
+The CSV contract now preserves `source_name`, `source_version`,
+`source_question_key`, `grade_level`, `subject_name`,
+`source_ref`, and `license_ref` on every imported version.
+`question_key` remains AllTrue's internal UUID; a vendor key is stored
+separately so TestGo or UPAD12 exports do not need to be rewritten into an
+incompatible identifier format.
+
+Rows marked `licensed` must include source name, source version, and a
+licensing reference. The import remains UTF-8, bounded, campus-scoped,
+all-or-nothing, and enters `pending_review`; no vendor account, private
+session, or undocumented endpoint is accessed. Re-importing or changing
+content still creates an immutable version, and the provenance is included in
+the audit snapshot.

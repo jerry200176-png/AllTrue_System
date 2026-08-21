@@ -5,6 +5,14 @@
 - 家長端現在會顯示已完成複核的檢測分數、達標／再練習提示與補強進度。
 - 只讀投影不包含老師內部備註、補強計畫或檢測內部識別碼；未複核結果不會顯示。
 
+## 2026-08-21 — feat(assessment): 題庫匯入保留授權來源
+
+<!-- release-notes: staff_update=staff-2026-08-21-question-bank-provenance -->
+
+- 題庫匯入可保留來源名稱、版本、外部題號、年級、科目與授權參考。
+- 標記為已授權素材的題目，缺少來源與授權資訊時會整批拒絕，不會留下半批資料。
+- 題目仍先進入待審核；既有版本歷史、分校隔離與人工核准流程不變。
+
 ## 2026-08-21 — feat(assessment): 題庫管理與人工審核
 
 <!-- release-notes: staff_update=staff-2026-08-21-question-bank-management -->
