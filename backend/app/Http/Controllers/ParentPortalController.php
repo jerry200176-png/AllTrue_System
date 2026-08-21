@@ -21,6 +21,7 @@ use App\Models\CoursePackage;
 use App\Models\Invoice;
 use App\Models\Announcement;
 use App\Models\Subject;
+use App\Models\Assessment;
 use App\Models\AssessmentResult;
 use App\Models\AssessmentRemediationAction;
 use App\Models\User;
@@ -1053,14 +1054,15 @@ class ParentPortalController extends Controller
         $studentCampusMap,
         $memberRows
     ): array {
+        $publishedAssessmentIds = Assessment::query()
+            ->whereIn('campus_id', $campusIds ?: [0])
+            ->whereIn('status', ['published', 'closed'])
+            ->pluck('id');
         $query = AssessmentResult::query()
             ->with('assessment')
             ->whereIn('student_id', $studentIds ?: [0])
             ->where('status', 'reviewed')
-            ->whereHas('assessment', function ($assessment) use ($campusIds) {
-                $assessment->whereIn('campus_id', $campusIds ?: [0])
-                    ->whereIn('status', ['published', 'closed']);
-            });
+            ->whereIn('assessment_id', $publishedAssessmentIds);
 
         $total = (clone $query)->count();
         $results = $query
@@ -1088,7 +1090,7 @@ class ParentPortalController extends Controller
         $studentNames = collect($memberRows)->mapWithKeys(fn ($member) => [
             (int) $member->student_id => (string) ($member->student->name ?? ''),
         ]);
-        $subjectIds = $results->map(fn ($result) => (int) ($result->assessment?->subject_id ?? 0))
+        $subjectIds = $results->map(fn ($result) => (int) ($result->assessment->subject_id ?? 0))
             ->filter()->unique()->values();
         $subjectNames = $subjectIds->isNotEmpty()
             ? Subject::query()->whereIn('id', $subjectIds)->pluck('Subject_Name', 'id')
@@ -1097,7 +1099,7 @@ class ParentPortalController extends Controller
         $items = $results->map(function (AssessmentResult $result) use ($actions, $classesById, $studentCampusMap, $studentNames, $subjectNames) {
             $assessment = $result->assessment;
             $class = $classesById->get((int) $result->student_class_id);
-            $subject = $assessment?->subject_id
+            $subject = $assessment->subject_id
                 ? (string) ($subjectNames->get((int) $assessment->subject_id) ?? '')
                 : ($class ? $this->resolveSubjectName($class) : '課程');
             $subject = $subject !== '' ? $subject : ($class ? $this->resolveSubjectName($class) : '課程');
@@ -1119,7 +1121,7 @@ class ParentPortalController extends Controller
             return [
                 'student_name' => $studentNames->get((int) $result->student_id) ?: null,
                 'campus_name' => $campus['campus_name'] ?? null,
-                'title' => (string) ($assessment?->title ?? '學習檢測'),
+                'title' => (string) ($assessment->title ?? '學習檢測'),
                 'subject' => $subject,
                 'score' => (float) $result->score,
                 'max_score' => (float) $result->max_score_snapshot,
@@ -1134,7 +1136,7 @@ class ParentPortalController extends Controller
                     default => '尚未安排補強',
                 },
                 'focus_areas' => $activeActions->pluck('knowledge_tag')->filter()->unique()->values()->take(4)->all(),
-                'reviewed_at' => optional($result->reviewed_at ?? $result->recorded_at ?? $result->created_at)->toIso8601String(),
+                'reviewed_at' => optional($result->reviewed_at ?? $result->recorded_at ?? $result->getAttribute('created_at'))->toIso8601String(),
             ];
         })->values()->all();
 
