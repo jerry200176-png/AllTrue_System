@@ -1,11 +1,3 @@
-## 2026-08-21 — feat(assessment): 題庫管理與人工審核
-
-<!-- release-notes: staff_update=staff-2026-08-21-question-bank-management -->
-
-- 主任與老師可以依分校建立題庫、建立題目、標記知識標籤與 1–5 級難度。
-- 支援嚴格 CSV 匯入；匯入題目一律先進入待審核，不會跳過人工審核。
-- 題目修改採不可覆寫的版本歷史；主任可核准或退休題目，題庫資料不會寫入出缺勤、學習紀錄或帳務。
-
 ## 2026-08-21 — feat(assessment): 學習檢測與補強追蹤
 
 <!-- release-notes: staff_update=staff-2026-08-21-learning-assessment-mvp -->

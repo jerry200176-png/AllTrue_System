@@ -3,25 +3,6 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
-  - id: staff-2026-08-21-question-bank-management
-    published_at: "2026-08-21"
-    audiences:
-      - director
-      - teacher
-    importance: major
-    title: 題庫管理支援版本與審核
-    summary: 題目可依分校管理、匯入、送審與保留版本歷史。
-    items:
-      - category: added
-        text: 可建立題庫、設定知識標籤與 1–5 級難度，題目可用 CSV 批次匯入。
-      - category: added
-        text: 匯入與老師建立的題目會先進入待審核；主任核准後才列為正式題目。
-      - category: improved
-        text: 修改題目會建立新版本，舊版本保留供追溯，退休題目不會被直接刪除。
-    source_refs:
-      - "changelog:2026-08-21:question-bank-management"
-      - "issue:1934"
-
   - id: staff-2026-08-21-learning-assessment-mvp
     published_at: "2026-08-21"
     audiences:
