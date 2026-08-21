@@ -3,6 +3,22 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-21-dunhua-campus-retired
+    published_at: "2026-08-21"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 敦化分校已停用
+    summary: 敦化分校不再出現在可選分校清單，歷史資料仍保留。
+    items:
+      - category: improved
+        text: 敦化分校已從公開分校清單與離線後備清單移除。
+      - category: improved
+        text: 學生、課程、出勤、帳務、評量與稽核歷史資料不會被刪除。
+    source_refs:
+      - "changelog:2026-08-21:dunhua-campus-retired"
+
   - id: staff-2026-08-21-question-bank-provenance
     published_at: "2026-08-21"
     audiences:

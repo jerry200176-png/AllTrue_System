@@ -163,6 +163,40 @@ export const staffUpdates = [
     "version": "2026.08.21"
   },
   {
+    "id": "staff-2026-08-21-dunhua-campus-retired",
+    "publishedAt": "2026-08-21",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "敦化分校已停用",
+    "summary": "敦化分校不再出現在可選分校清單，歷史資料仍保留。",
+    "items": [
+      "敦化分校已從公開分校清單與離線後備清單移除。",
+      "學生、課程、出勤、帳務、評量與稽核歷史資料不會被刪除。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "敦化分校已從公開分校清單與離線後備清單移除。",
+          "學生、課程、出勤、帳務、評量與稽核歷史資料不會被刪除。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-21:dunhua-campus-retired"
+    ],
+    "date": "2026-08-21",
+    "version": "2026.08.21"
+  },
+  {
     "id": "staff-2026-08-20-sidebar-workspaces",
     "publishedAt": "2026-08-20",
     "effectiveAt": null,
