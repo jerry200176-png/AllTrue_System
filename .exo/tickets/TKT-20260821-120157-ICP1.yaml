@@ -13,6 +13,7 @@ labels:
 scope:
   allow:
   - frontend/src/**
+  - package.json
   - docs/**
   - .exo/cache/**
   - .exo/memory/**
