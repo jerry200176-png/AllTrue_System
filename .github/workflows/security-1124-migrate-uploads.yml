@@ -1,0 +1,93 @@
+name: Security #1124 Migrate tracked uploads out of git (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "backup-only (default, safe/repeatable) or verify"
+        required: true
+        default: backup-only
+        type: choice
+        options:
+          - backup-only
+          - verify
+
+concurrency:
+  group: repair-1124-migrate-uploads
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    name: Backup + verify backend/storage/app/public on Pi
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Backup uploads on production
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          MODE: ${{ inputs.mode }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" \
+            MODE="$MODE" 'bash -s' <<'ENDSSH'
+          set -euo pipefail
+          cd /home/admin/backend
+
+          # Refs #1124. Step 1/2 of the issue's plan: inventory + backup
+          # storage/app/public BEFORE any git change lands. This workflow
+          # deliberately stops here — it does not touch git tracking and
+          # does not restart the deploy. Steps 3-5 (the .gitignore + git rm
+          # --cached PR, and the deploy-time restore) are a separate,
+          # reviewed PR per the issue; this backup is a repeatable
+          # precondition, safe to re-run any time.
+
+          if [ "${MODE}" = "verify" ]; then
+            echo "--- latest backups ---"
+            ls -la /home/admin/backups/uploads/ 2>/dev/null || echo "No backups directory yet"
+            exit 0
+          fi
+
+          TS=$(date '+%Y-%m-%d_%H%M%S')
+          BACKUP_DIR="/home/admin/backups/uploads"
+          BACKUP_FILE="${BACKUP_DIR}/storage-app-public-${TS}.tar.gz"
+          mkdir -p "$BACKUP_DIR"
+
+          TRACKED_COUNT=$(git ls-files storage/app/public | wc -l)
+          echo "Git-tracked files under storage/app/public: ${TRACKED_COUNT}"
+
+          tar -czf "$BACKUP_FILE" -C /home/admin/backend storage/app/public
+          echo "Backup written: $BACKUP_FILE"
+
+          # Verify: non-empty archive that actually lists files, and the
+          # listed count is not wildly smaller than what's on disk.
+          test -s "$BACKUP_FILE"
+          ARCHIVE_COUNT=$(tar -tzf "$BACKUP_FILE" | grep -cv '/$' || true)
+          ON_DISK_COUNT=$(find storage/app/public -type f | wc -l)
+          echo "Archive file count: ${ARCHIVE_COUNT}, on-disk file count: ${ON_DISK_COUNT}"
+
+          if [ "$ARCHIVE_COUNT" -lt "$ON_DISK_COUNT" ]; then
+            echo "::error::Archive has fewer files (${ARCHIVE_COUNT}) than on-disk (${ON_DISK_COUNT}) — backup incomplete, do NOT proceed to the git-untrack PR"
+            exit 1
+          fi
+
+          echo "BACKUP_STATE=VERIFIED_COMPLETE file=${BACKUP_FILE} files=${ARCHIVE_COUNT}"
+          echo "Next step (separate PR, human-reviewed): add backend/storage/app/public/ to"
+          echo ".gitignore + git rm -r --cached backend/storage/app/public in the same commit,"
+          echo "then restore this backup on Pi in the same deploy window per issue #1124 step 4."
+          ENDSSH

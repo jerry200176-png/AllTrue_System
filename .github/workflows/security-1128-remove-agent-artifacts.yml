@@ -1,0 +1,111 @@
+name: Security #1128 Remove agent credentials from Pi (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "dry-run (default) or execute"
+        required: true
+        default: dry-run
+        type: choice
+        options:
+          - dry-run
+          - execute
+      confirm:
+        description: "For execute only: type I_APPROVE_1128_REMOVE_AGENT_ARTIFACTS"
+        required: false
+        type: string
+
+concurrency:
+  group: repair-1128-remove-agent-artifacts
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    name: Remove Claude Code footprint + dead git-sync cron from Pi
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Validate inputs
+        env:
+          MODE: ${{ inputs.mode }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          case "$MODE" in
+            dry-run|execute) ;;
+            *) echo "::error::invalid mode"; exit 1 ;;
+          esac
+          if [ "$MODE" = "execute" ]; then
+            [ "$CONFIRM" = "I_APPROVE_1128_REMOVE_AGENT_ARTIFACTS" ] || {
+              echo "::error::execute requires exact confirmation string"
+              exit 1
+            }
+          fi
+
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Remove agent artifacts on production
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          MODE: ${{ inputs.mode }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" \
+            MODE="$MODE" 'bash -s' <<'ENDSSH'
+          set -euo pipefail
+          echo "=== mode=${MODE} ==="
+
+          # Refs #1128 finding 1: /home/admin/.claude (incl. .credentials.json
+          # with an Anthropic OAuth token) and /home/admin/.hermes should not
+          # live on the production host at all.
+          TS=$(date '+%Y-%m-%d_%H%M%S')
+          BACKUP_DIR="/home/admin/backups/emergency/pre-1128-cleanup-${TS}"
+
+          echo "--- inventory ---"
+          [ -d /home/admin/.claude ] && du -sh /home/admin/.claude || echo "/home/admin/.claude: not present"
+          [ -d /home/admin/.hermes ] && du -sh /home/admin/.hermes || echo "/home/admin/.hermes: not present"
+
+          if [ "${MODE}" = "dry-run" ]; then
+            echo "Dry-run: would move the above into ${BACKUP_DIR} then delete originals."
+            echo "Dry-run: would remove the hourly git-sync cron entry (it has been failing its own"
+            echo "SECURITY-ABORT guard, so it currently does nothing but log noise)."
+            exit 0
+          fi
+
+          mkdir -p "$BACKUP_DIR"
+          [ -d /home/admin/.claude ] && cp -a /home/admin/.claude "$BACKUP_DIR/" || true
+          [ -d /home/admin/.hermes ] && cp -a /home/admin/.hermes "$BACKUP_DIR/" || true
+          echo "Backed up (if present) to ${BACKUP_DIR}"
+
+          rm -rf /home/admin/.claude /home/admin/.hermes
+          echo "Removed /home/admin/.claude and /home/admin/.hermes"
+
+          # Remove the hourly git-sync cron line if present (its own scanner
+          # has been refusing to commit — see #1128 finding 2). Grep first so
+          # a missing entry is a no-op, not a failure.
+          if crontab -l 2>/dev/null | grep -q "git-sync"; then
+            crontab -l | grep -v "git-sync" | crontab -
+            echo "Removed git-sync cron entry"
+          else
+            echo "No git-sync cron entry found"
+          fi
+
+          echo "REPAIR_STATE=DONE — rotate the Anthropic OAuth credential separately via"
+          echo "claude.ai account settings / claude /logout on any machine that used it;"
+          echo "that step cannot be scripted from here."
+          ENDSSH
