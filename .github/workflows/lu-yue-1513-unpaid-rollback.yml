@@ -201,7 +201,7 @@ jobs:
               }
             });
             echo "REPAIRED_SC_1513_UNPAID", PHP_EOL;
-          '
+          ' || { echo "TINKER_REPAIR_FAILED"; exit 1; }
 
           echo "=== After state ==="
           php artisan tinker --execute='
@@ -211,5 +211,5 @@ jobs:
             $pays = $db::table("Payment")->where("InvoiceID", 1070)->orderBy("id")->get(["id","Amount","Method","Note"]);
             $sc2828 = $db::table("StudentClass")->where("ID", 2828)->first(["ID","Paid","Charge"]);
             echo json_encode(compact("sc1513","inv","pays","sc2828"), JSON_UNESCAPED_UNICODE), PHP_EOL;
-          '
+          ' || { echo "TINKER_AFTER_FAILED"; exit 1; }
           ENDSSH
