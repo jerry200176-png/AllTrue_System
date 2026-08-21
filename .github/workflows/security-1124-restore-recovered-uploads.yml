@@ -1,0 +1,109 @@
+name: Security #1124 Restore recovered uploads (fill-only, manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "dry-run (default) or execute"
+        required: true
+        default: dry-run
+        type: choice
+        options:
+          - dry-run
+          - execute
+      confirm:
+        description: "For execute only: type I_APPROVE_1124_RESTORE_RECOVERED_UPLOADS"
+        required: false
+        type: string
+
+concurrency:
+  group: repair-1124-restore-recovered-uploads
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  restore:
+    name: Restore the 45 files recovered from orphaned git history (fill missing only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Validate inputs
+        env:
+          MODE: ${{ inputs.mode }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          case "$MODE" in
+            dry-run|execute) ;;
+            *) echo "::error::invalid mode"; exit 1 ;;
+          esac
+          if [ "$MODE" = "execute" ]; then
+            [ "$CONFIRM" = "I_APPROVE_1124_RESTORE_RECOVERED_UPLOADS" ] || {
+              echo "::error::execute requires exact confirmation string"
+              exit 1
+            }
+          fi
+
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Fetch the recovery source commit
+        run: |
+          set -euo pipefail
+          # Refs #1124 investigation. main's history was rewritten (likely the
+          # 2026-04-21 force-push incident) and dropped this commit's lineage,
+          # but it's still reachable from several old feature branches that
+          # remain on origin. This is the last (2026-04-22 20:30) of the
+          # post-incident recovery-sync commits and has the fullest set: 45
+          # files under backend/storage/app/public (8 avatars, 37 bug-report
+          # screenshots). Nothing uploaded after this point is recoverable
+          # this way.
+          RECOVERY_SHA=62b0e9edf363e23345b63cbe7be41f6ec6c6a719
+          git fetch --depth=1 origin "$RECOVERY_SHA"
+          git archive "$RECOVERY_SHA" -- backend/storage/app/public | tar -x -C /tmp
+          echo "Extracted files:"
+          find /tmp/backend/storage/app/public -type f | wc -l
+
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Fill-only restore to production (rsync --ignore-existing)
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          MODE: ${{ inputs.mode }}
+        run: |
+          set -euo pipefail
+          RSYNC_FLAGS="-av --ignore-existing"
+          if [ "${MODE}" = "dry-run" ]; then
+            RSYNC_FLAGS="${RSYNC_FLAGS} --dry-run"
+          fi
+
+          # --ignore-existing = never overwrite a file that's already on Pi
+          # (whether it's the same content, different content, or something
+          # newer). Only fills in paths that are currently missing. This is
+          # the whole point: recover what we can without touching anything
+          # Jerry / the app has written since.
+          rsync $RSYNC_FLAGS \
+            -e "ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=no" \
+            /tmp/backend/storage/app/public/ \
+            "${PI_SSH_USER}@${PI_SSH_HOST}:/home/admin/backend/storage/app/public/"
+
+          echo "=== mode=${MODE} complete ==="
+          if [ "${MODE}" = "dry-run" ]; then
+            echo "Dry-run only — nothing was written. Review the rsync output above"
+            echo "('>f+++++++++' lines = would-be-created; skipped paths = already exist on Pi),"
+            echo "then re-run with mode=execute + confirm phrase."
+          fi
