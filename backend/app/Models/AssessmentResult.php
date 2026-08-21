@@ -57,4 +57,9 @@ class AssessmentResult extends Model
     {
         return $this->belongsTo(StudentClass::class, 'student_class_id', 'ID');
     }
+
+    public function remediationActions()
+    {
+        return $this->hasMany(AssessmentRemediationAction::class, 'assessment_result_id');
+    }
 }

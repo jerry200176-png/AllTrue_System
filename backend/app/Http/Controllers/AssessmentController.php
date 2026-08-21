@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Assessment;
 use App\Models\AssessmentAuditLog;
+use App\Models\AssessmentRemediationAction;
 use App\Models\AssessmentResult;
 use App\Models\Student;
 use App\Models\StudentClass;
@@ -193,12 +194,110 @@ class AssessmentController extends Controller
             return response()->json(['message' => 'Not found'], 404);
         }
 
-        $query = $assessment->results()->with(['student', 'studentClass'])->where('status', '!=', 'voided');
+        $query = $assessment->results()->with(['student', 'studentClass'])->withCount('remediationActions')->where('status', '!=', 'voided');
         if ($request->filled('student_id')) {
             $query->where('student_id', (int) $request->input('student_id'));
         }
 
         return response()->json(['data' => $query->orderBy('student_id')->orderBy('attempt_no')->get()->map(fn (AssessmentResult $result) => $this->resultPayload($result))]);
+    }
+
+    public function remediationActions(Request $request, AssessmentResult $assessmentResult)
+    {
+        $assessment = $assessmentResult->assessment;
+        if (!$assessment || !$this->canAccessAssessment($request, $assessment)) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+
+        $actions = $assessmentResult->remediationActions()
+            ->orderByRaw("CASE status WHEN 'open' THEN 0 WHEN 'in_progress' THEN 1 WHEN 'completed' THEN 2 ELSE 3 END")
+            ->orderBy('due_date')
+            ->orderByDesc('id')
+            ->get();
+
+        return response()->json(['data' => $actions->map(fn (AssessmentRemediationAction $action) => $this->remediationPayload($action))->values()]);
+    }
+
+    public function storeRemediationAction(Request $request, AssessmentResult $assessmentResult)
+    {
+        $assessment = $assessmentResult->assessment;
+        if (!$assessment || !$this->canManageAssessment($request, $assessment)) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+        if ($assessmentResult->status === 'voided') {
+            return response()->json(['message' => '作廢結果不可建立補強行動'], 409);
+        }
+
+        $data = $request->validate([
+            'knowledge_tag' => ['required', 'string', 'max:120'],
+            'action_type' => ['nullable', 'in:practice,retake,teacher_followup,other'],
+            'plan' => ['nullable', 'string', 'max:10000'],
+            'due_date' => ['nullable', 'date'],
+            'notes' => ['nullable', 'string', 'max:10000'],
+        ]);
+
+        $action = DB::transaction(function () use ($assessment, $assessmentResult, $data, $request) {
+            $action = AssessmentRemediationAction::create([
+                'assessment_id' => $assessment->id,
+                'assessment_result_id' => $assessmentResult->id,
+                'campus_id' => $assessment->campus_id,
+                'student_id' => $assessmentResult->student_id,
+                'student_class_id' => $assessmentResult->student_class_id,
+                'knowledge_tag' => trim((string) $data['knowledge_tag']),
+                'action_type' => $data['action_type'] ?? 'practice',
+                'status' => AssessmentRemediationAction::STATUS_OPEN,
+                'plan' => $data['plan'] ?? null,
+                'due_date' => $data['due_date'] ?? null,
+                'notes' => $data['notes'] ?? null,
+                'created_by_user_id' => $this->userId($request),
+            ]);
+            $this->audit($request, $assessment, $assessmentResult, 'remediation_created', null, $action->fresh()->toArray());
+            return $action;
+        });
+
+        return response()->json(['data' => $this->remediationPayload($action)], 201);
+    }
+
+    public function updateRemediationAction(Request $request, AssessmentRemediationAction $remediationAction)
+    {
+        $assessment = $remediationAction->assessment;
+        if (!$assessment || !$this->canManageAssessment($request, $assessment)) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+
+        $data = $request->validate([
+            'knowledge_tag' => ['sometimes', 'string', 'max:120'],
+            'action_type' => ['sometimes', 'in:practice,retake,teacher_followup,other'],
+            'status' => ['sometimes', 'in:open,in_progress,completed,cancelled'],
+            'plan' => ['nullable', 'string', 'max:10000'],
+            'due_date' => ['nullable', 'date'],
+            'notes' => ['nullable', 'string', 'max:10000'],
+        ]);
+        $currentStatus = (string) $remediationAction->status;
+        $nextStatus = (string) ($data['status'] ?? $currentStatus);
+        if ($currentStatus !== $nextStatus && in_array($currentStatus, [
+            AssessmentRemediationAction::STATUS_COMPLETED,
+            AssessmentRemediationAction::STATUS_CANCELLED,
+        ], true)) {
+            return response()->json(['message' => '已結束的補強行動不可重新開啟'], 409);
+        }
+
+        $action = DB::transaction(function () use ($remediationAction, $assessment, $data, $request, $nextStatus) {
+            $before = $remediationAction->fresh()->toArray();
+            $remediationAction->fill($data);
+            $remediationAction->status = $nextStatus;
+            if ($nextStatus === AssessmentRemediationAction::STATUS_IN_PROGRESS && !$remediationAction->started_at) {
+                $remediationAction->started_at = now();
+            }
+            if ($nextStatus === AssessmentRemediationAction::STATUS_COMPLETED) {
+                $remediationAction->completed_at = $remediationAction->completed_at ?: now();
+            }
+            $remediationAction->save();
+            $this->audit($request, $assessment, $remediationAction->assessmentResult, 'remediation_updated', $before, $remediationAction->fresh()->toArray());
+            return $remediationAction;
+        });
+
+        return response()->json(['data' => $this->remediationPayload($action->fresh())]);
     }
 
     public function students(Request $request, Assessment $assessment)
@@ -352,12 +451,22 @@ class AssessmentController extends Controller
 
         $assessments = $query->get();
         $results = $assessments->flatMap(fn (Assessment $assessment) => $assessment->results);
+        $remediationActions = AssessmentRemediationAction::query()
+            ->whereIn('assessment_id', $assessments->pluck('id'))
+            ->get();
+
         return response()->json([
             'data' => [
                 'assessment_count' => $assessments->count(),
                 'result_count' => $results->count(),
                 'average_percent' => $results->count() ? round((float) $results->avg('percent'), 2) : null,
                 'reviewed_count' => $results->where('status', 'reviewed')->count(),
+                'remediation_open_count' => $remediationActions->whereIn('status', ['open', 'in_progress'])->count(),
+                'remediation_overdue_count' => $remediationActions
+                    ->whereIn('status', ['open', 'in_progress'])
+                    ->filter(fn (AssessmentRemediationAction $action) => $action->due_date && $action->due_date->isPast())
+                    ->count(),
+                'remediation_completed_count' => $remediationActions->where('status', 'completed')->count(),
             ],
         ]);
     }
@@ -516,6 +625,29 @@ class AssessmentController extends Controller
             'student_name' => optional($result->student)->name,
             'recorded_at' => optional($result->recorded_at)->toISOString(),
             'reviewed_at' => optional($result->reviewed_at)->toISOString(),
+            'remediation_count' => isset($result->remediation_actions_count)
+                ? (int) $result->remediation_actions_count
+                : $result->remediationActions()->count(),
+        ];
+    }
+
+    private function remediationPayload(AssessmentRemediationAction $action): array
+    {
+        return [
+            'id' => (int) $action->id,
+            'assessment_id' => (int) $action->assessment_id,
+            'assessment_result_id' => (int) $action->assessment_result_id,
+            'student_id' => (int) $action->student_id,
+            'student_class_id' => $action->student_class_id !== null ? (int) $action->student_class_id : null,
+            'knowledge_tag' => $action->knowledge_tag,
+            'action_type' => $action->action_type,
+            'status' => $action->status,
+            'plan' => $action->plan,
+            'due_date' => optional($action->due_date)->format('Y-m-d'),
+            'notes' => $action->notes,
+            'created_at' => optional($action->created_at)->toISOString(),
+            'started_at' => optional($action->started_at)->toISOString(),
+            'completed_at' => optional($action->completed_at)->toISOString(),
         ];
     }
 
