@@ -7,6 +7,8 @@ use App\Models\AssessmentRemediationAction;
 use App\Models\AuthToken;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Models\QuestionBank;
+use App\Models\QuestionBankItem;
 use App\Models\User;
 use App\Models\UserCampus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -208,6 +210,59 @@ class AssessmentApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.remediation_open_count', 0)
             ->assertJsonPath('data.remediation_completed_count', 1);
+    }
+
+    public function test_question_snapshots_attempts_auto_mark_and_manual_review_are_immutable(): void
+    {
+        $campus = $this->makeCampus();
+        $director = $this->makeStaff('A', 'assessment-runner-director@example.com', $campus);
+        $teacher = $this->makeStaff('T', 'assessment-runner-teacher@example.com', $campus);
+        $student = Student::create(['name' => '線上作答學生', 'CampusID' => $campus, 'ClassID' => 1, 'enable' => 1, 'MDT' => now()]);
+        $course = $this->makeClass($student->id, $teacher['user']->id, $campus);
+        $bank = QuestionBank::create(['campus_id' => $campus, 'name' => '英文題庫', 'status' => 'draft', 'created_by_user_id' => $teacher['user']->id]);
+        $choice = QuestionBankItem::create([
+            'question_bank_id' => $bank->id, 'question_key' => Str::uuid(), 'version_no' => 1,
+            'question_type' => 'single_choice', 'prompt' => '1 + 1 = ?', 'choices' => ['A', 'B'], 'answer' => ['B'],
+            'knowledge_tag' => '數學／加法', 'difficulty' => 1, 'source_type' => 'internal', 'status' => 'approved',
+        ]);
+        $short = QuestionBankItem::create([
+            'question_bank_id' => $bank->id, 'question_key' => Str::uuid(), 'version_no' => 1,
+            'question_type' => 'short_answer', 'prompt' => '請用一句話說明。', 'answer' => null,
+            'knowledge_tag' => '表達', 'difficulty' => 2, 'source_type' => 'internal', 'status' => 'approved',
+        ]);
+        $assessment = $this->withAuth($director['token'])->postJson('/api/v1/assessments', [
+            'campus_id' => $campus, 'student_class_id' => $course->ID, 'title' => '線上小測', 'max_score' => 100,
+        ])->assertCreated()->json('data');
+
+        $this->withAuth($teacher['token'])->postJson('/api/v1/assessments/' . $assessment['id'] . '/questions', [
+            'question_bank_item_ids' => [$choice->id, $short->id],
+        ])->assertCreated()->assertJsonCount(2, 'data');
+        $this->withAuth($director['token'])->postJson('/api/v1/assessments/' . $assessment['id'] . '/publish')->assertOk();
+
+        $attempt = $this->withAuth($teacher['token'])->postJson('/api/v1/assessments/' . $assessment['id'] . '/attempts', [
+            'student_id' => $student->id, 'student_class_id' => $course->ID,
+        ])->assertCreated()->json('data');
+        $questionRows = $attempt['questions'];
+        $this->assertArrayNotHasKey('answer', $questionRows[0]);
+        $this->withAuth($teacher['token'])->patchJson('/api/v1/assessment-attempts/' . $attempt['id'] . '/answers', [
+            'answers' => [
+                ['question_id' => $questionRows[0]['id'], 'answer' => 'B'],
+                ['question_id' => $questionRows[1]['id'], 'answer' => '學生的說明'],
+            ],
+        ])->assertOk();
+        $submitted = $this->withAuth($teacher['token'])->postJson('/api/v1/assessment-attempts/' . $attempt['id'] . '/submit')->assertOk()->json('data');
+        $this->assertSame('submitted', $submitted['status']);
+        $this->assertEquals(50, $submitted['score']);
+        $this->assertDatabaseHas('assessment_answers', ['assessment_attempt_id' => $attempt['id'], 'status' => 'needs_review']);
+
+        $shortAnswer = collect($submitted['answers'])->firstWhere('question_id', $questionRows[1]['id']);
+        $this->withAuth($director['token'])->postJson('/api/v1/assessment-attempts/' . $attempt['id'] . '/review', [
+            'reviews' => [['answer_id' => $shortAnswer['id'], 'score' => 1, 'review_note' => '表達清楚']],
+        ])->assertOk()->assertJsonPath('data.status', 'reviewed')->assertJsonPath('data.score', 100);
+        $this->withAuth($teacher['token'])->postJson('/api/v1/assessments/' . $assessment['id'] . '/questions', [
+            'question_bank_item_ids' => [$short->id],
+        ])->assertStatus(409);
+        $this->assertDatabaseHas('assessment_audit_logs', ['assessment_id' => $assessment['id'], 'action' => 'attempt_reviewed']);
     }
 
     private function makeCampus(): int
