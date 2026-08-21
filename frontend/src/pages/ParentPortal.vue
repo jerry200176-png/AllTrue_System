@@ -291,6 +291,37 @@
           </div>
         </div>
 
+        <!-- Reviewed assessment progress — parent-safe projection -->
+        <div class="pp-card pp-assessment-progress-card" v-if="parentAssessmentProgress.length">
+          <div class="pp-section-header">
+            <span class="material-symbols-outlined pp-section-icon" style="color:var(--ds-accent);">insights</span>
+            <h3>檢測進度</h3>
+            <span class="pp-section-count">已複核</span>
+          </div>
+          <p class="pp-assessment-progress-hint">這裡只顯示老師完成複核的檢測結果。</p>
+          <article v-for="item in parentAssessmentProgress" :key="`${item.student_name || ''}-${item.title}-${item.subject}-${item.reviewed_at}`" class="pp-assessment-progress-item">
+            <div class="pp-assessment-progress-head">
+              <div class="pp-assessment-progress-title-wrap">
+                <strong>{{ item.title }}</strong>
+                <span>{{ item.subject || '課程' }}<template v-if="item.student_name"> · {{ item.student_name }}</template></span>
+              </div>
+              <div class="pp-assessment-progress-score">
+                <strong>{{ assessmentProgressScoreLabel(item) }}</strong>
+                <span>{{ assessmentProgressPercentLabel(item) }}</span>
+              </div>
+            </div>
+            <div class="pp-assessment-progress-meta">
+              <span>{{ formatAssessmentProgressDate(item.reviewed_at) }} 複核</span>
+              <span class="pp-assessment-outcome" :class="`pp-assessment-outcome--${item.outcome || 'reviewed'}`">{{ item.outcome_label }}</span>
+              <span class="pp-assessment-remediation" :class="`pp-assessment-remediation--${item.remediation_status || 'none'}`">{{ item.remediation_status_label }}</span>
+            </div>
+            <div v-if="item.focus_areas && item.focus_areas.length" class="pp-assessment-focus-row">
+              <span class="pp-assessment-focus-label">練習方向</span>
+              <span v-for="focus in item.focus_areas" :key="focus" class="pp-assessment-focus-chip">{{ focus }}</span>
+            </div>
+          </article>
+        </div>
+
         <!-- Learning Records — Report Card Style (paginated) -->
         <div class="pp-card" data-guide="parent-learning-card">
         <div class="pp-section-header">
@@ -849,6 +880,7 @@ import { getParentDashboard, parentLogin, parentLoginLine, parentSwitchStudent, 
 import { notesForRole, parentReleaseNoteTeaser } from '../lib/releaseNotes';
 import { trackParentPortalEvent } from '../lib/adoptionTelemetry';
 import { buildParentActionItems } from '../lib/parentActionItems';
+import { formatAssessmentProgressDate, assessmentProgressScoreLabel, assessmentProgressPercentLabel } from '../lib/parentAssessmentProgress';
 
 function resolveParentLiffId() {
   const q = new URLSearchParams(window.location.search);
@@ -923,6 +955,7 @@ const leaveSuccess = ref('');
 const selectedReleaseNote = ref(null);
 
 const progressSummary = computed(() => dashboard.value?.progress_summary || null);
+const parentAssessmentProgress = computed(() => dashboard.value?.assessment_progress?.items || []);
 const parentReleaseNotes = computed(() => notesForRole('parent').slice(0, 2));
 const parentActionItems = computed(() => buildParentActionItems({
   progressSummary: progressSummary.value,
@@ -2557,6 +2590,39 @@ onMounted(async () => {
 .pp-feedback-followup { margin-top: 10px; }
 .pp-feedback-submit { min-height: 44px; }
 .pp-feedback-error { margin-top: 6px; }
+
+/* ═══ Reviewed Assessment Progress ═══ */
+.pp-assessment-progress-hint {
+  margin: -4px 0 12px;
+  color: var(--ds-ink-mute);
+  font-size: .84em;
+}
+.pp-assessment-progress-item {
+  padding: 12px 0;
+  border-top: 1px solid var(--ds-canvas-soft);
+}
+.pp-assessment-progress-item:first-of-type { border-top: 0; padding-top: 0; }
+.pp-assessment-progress-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+}
+.pp-assessment-progress-title-wrap { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.pp-assessment-progress-title-wrap strong { color: var(--ds-ink); font-size: .96em; }
+.pp-assessment-progress-title-wrap span { color: var(--ds-ink-mute); font-size: .82em; }
+.pp-assessment-progress-score { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.pp-assessment-progress-score strong { color: var(--ds-ink); font-size: .9em; }
+.pp-assessment-progress-score span { color: var(--ds-accent); font-weight: 700; font-size: .82em; }
+.pp-assessment-progress-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 9px; color: var(--ds-ink-mute); font-size: .78em; }
+.pp-assessment-outcome, .pp-assessment-remediation { padding: 3px 8px; border-radius: 999px; font-weight: 700; }
+.pp-assessment-outcome--achieved { color: var(--ds-success); background: var(--ds-success-wash); }
+.pp-assessment-outcome--practice { color: var(--ds-warning); background: var(--ds-warning-wash); }
+.pp-assessment-outcome--reviewed { color: var(--ds-ink-mute); background: var(--ds-canvas-soft); }
+.pp-assessment-remediation--none { color: var(--ds-ink-mute); background: var(--ds-canvas-soft); }
+.pp-assessment-remediation--open { color: var(--ds-warning); background: var(--ds-warning-wash); }
+.pp-assessment-remediation--in_progress { color: var(--ds-info); background: var(--ds-info-wash); }
+.pp-assessment-remediation--completed { color: var(--ds-success); background: var(--ds-success-wash); }
+.pp-assessment-focus-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 9px; }
+.pp-assessment-focus-label { color: var(--ds-ink-mute); font-size: .78em; }
+.pp-assessment-focus-chip { padding: 4px 8px; border-radius: 6px; color: var(--ds-ink); background: var(--ds-canvas-soft); font-size: .78em; }
 
 /* ═══ Report Card (Learning Records) ═══ */
 .pp-lr-filter-row {
