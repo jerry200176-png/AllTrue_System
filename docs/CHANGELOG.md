@@ -4,6 +4,7 @@
 
 - 上期契約 `StudentClass` 1513（12,000）於 7/6 主任核帳誤標已繳；新增 guarded workflow 沖銷 Invoice 1070／Payment 1049 並還原未繳。
 - 不碰本期 2828 與更早一期 325。詳見 `docs/incidents/lu-yue-1513-unpaid-rollback-manifest.md`。
+- 修正 workflow 表名為 `payment_reports`（dry-run 曾因錯表名失敗）。
 
 ## 2026-08-20 — feat(ui): 家長首頁與夜間堂數檢查說明
 

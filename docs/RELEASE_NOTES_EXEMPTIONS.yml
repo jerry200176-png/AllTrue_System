@@ -5,7 +5,7 @@ exemptions:
   - id: silent-2026-08-21-luyue-1513-unpaid
     changelog_date: "2026-08-21"
     changelog_title: "ops(billing): 大安盧越上期誤標已繳回滾（SC1513）"
-    reason: 單筆帳務資料回滾（guarded workflow）；非教職員可感知的產品功能變更。
+    reason: 單筆帳務資料回滾（guarded workflow，含 payment_reports 表名修正）；非教職員可感知的產品功能變更。
 
   - id: silent-2026-08-17-mixed-class-type-occupancy-plan
     changelog_date: "2026-08-17"
