@@ -1,3 +1,11 @@
+## 2026-08-21 — feat(assessment): 學習檢測與補強追蹤
+
+<!-- release-notes: staff_update=staff-2026-08-21-learning-assessment-mvp -->
+
+- 主任與老師可以建立、發布學習檢測，登錄學生多次結果並由主任審核。
+- 從檢測結果直接建立知識缺口與補強計畫，追蹤待處理、進行中、完成與逾期數量。
+- 檢測資料獨立於出缺勤、學習紀錄與帳務，不會因登錄檢測改寫既有教務資料。
+
 ## 2026-08-21 — ops(billing): 大安盧越上期誤標已繳回滾（SC1513）
 
 <!-- release-notes: silent_ship=silent-2026-08-21-luyue-1513-unpaid -->
