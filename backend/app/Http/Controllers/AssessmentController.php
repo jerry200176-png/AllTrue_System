@@ -206,7 +206,7 @@ class AssessmentController extends Controller
     public function remediationActions(Request $request, AssessmentResult $assessmentResult)
     {
         $assessment = $assessmentResult->assessment;
-        if (!$assessment || !$this->canAccessAssessment($request, $assessment)) {
+        if (!$assessment instanceof Assessment || !$this->canAccessAssessment($request, $assessment)) {
             return response()->json(['message' => 'Not found'], 404);
         }
 
@@ -222,7 +222,7 @@ class AssessmentController extends Controller
     public function storeRemediationAction(Request $request, AssessmentResult $assessmentResult)
     {
         $assessment = $assessmentResult->assessment;
-        if (!$assessment || !$this->canManageAssessment($request, $assessment)) {
+        if (!$assessment instanceof Assessment || !$this->canManageAssessment($request, $assessment)) {
             return response()->json(['message' => 'Not found'], 404);
         }
         if ($assessmentResult->status === 'voided') {
@@ -262,7 +262,7 @@ class AssessmentController extends Controller
     public function updateRemediationAction(Request $request, AssessmentRemediationAction $remediationAction)
     {
         $assessment = $remediationAction->assessment;
-        if (!$assessment || !$this->canManageAssessment($request, $assessment)) {
+        if (!$assessment instanceof Assessment || !$this->canManageAssessment($request, $assessment)) {
             return response()->json(['message' => 'Not found'], 404);
         }
 
@@ -362,8 +362,8 @@ class AssessmentController extends Controller
     public function showAttempt(Request $request, int $assessmentAttempt, AssessmentAttemptService $attempts)
     {
         $attempt = DB::table('assessment_attempts')->where('id', $assessmentAttempt)->first();
-        $assessment = $attempt ? Assessment::find($attempt->assessment_id) : null;
-        if (!$assessment || !$this->canAccessAssessment($request, $assessment)) {
+        $assessment = $attempt ? Assessment::query()->find($attempt->assessment_id) : null;
+        if (!$assessment instanceof Assessment || !$this->canAccessAssessment($request, $assessment)) {
             return response()->json(['message' => 'Not found'], 404);
         }
         return response()->json(['data' => $attempts->getAttempt($assessmentAttempt)]);
@@ -404,8 +404,8 @@ class AssessmentController extends Controller
     public function saveAttemptAnswers(Request $request, int $assessmentAttempt, AssessmentAttemptService $attempts)
     {
         $attempt = DB::table('assessment_attempts')->where('id', $assessmentAttempt)->first();
-        $assessment = $attempt ? Assessment::find($attempt->assessment_id) : null;
-        if (!$assessment || !$this->canManageAssessment($request, $assessment)) {
+        $assessment = $attempt ? Assessment::query()->find($attempt->assessment_id) : null;
+        if (!$assessment instanceof Assessment || !$this->canManageAssessment($request, $assessment)) {
             return response()->json(['message' => 'Not found'], 404);
         }
         $data = $request->validate([
@@ -419,8 +419,8 @@ class AssessmentController extends Controller
     public function submitAttempt(Request $request, int $assessmentAttempt, AssessmentAttemptService $attempts)
     {
         $attempt = DB::table('assessment_attempts')->where('id', $assessmentAttempt)->first();
-        $assessment = $attempt ? Assessment::find($attempt->assessment_id) : null;
-        if (!$assessment || !$this->canManageAssessment($request, $assessment)) {
+        $assessment = $attempt ? Assessment::query()->find($attempt->assessment_id) : null;
+        if (!$assessment instanceof Assessment || !$this->canManageAssessment($request, $assessment)) {
             return response()->json(['message' => 'Not found'], 404);
         }
         return response()->json(['data' => $attempts->submit($assessmentAttempt)]);
@@ -432,8 +432,8 @@ class AssessmentController extends Controller
             return response()->json(['message' => 'Forbidden'], 403);
         }
         $attempt = DB::table('assessment_attempts')->where('id', $assessmentAttempt)->first();
-        $assessment = $attempt ? Assessment::find($attempt->assessment_id) : null;
-        if (!$assessment || !$this->canAccessAssessment($request, $assessment)) {
+        $assessment = $attempt ? Assessment::query()->find($attempt->assessment_id) : null;
+        if (!$assessment instanceof Assessment || !$this->canAccessAssessment($request, $assessment)) {
             return response()->json(['message' => 'Not found'], 404);
         }
         $data = $request->validate([
