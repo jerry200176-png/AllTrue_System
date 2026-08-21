@@ -80,9 +80,9 @@ jobs:
             $sc325 = $db::table("StudentClass")->where("ID", 325)->first(["ID","Paid","Stop"]);
             $inv = $db::table("Invoice")->where("id", 1070)->first(["id","StudentClassID","TotalAmount","PaidAmount","Status"]);
             $pay = $db::table("Payment")->where("id", 1049)->first(["id","InvoiceID","Amount","Method","Note","PaidAt"]);
-            $reports = $db::table("PaymentReport")->where("StudentClassID", 1513)->get(["id","status","InvoiceID","reported_amount","payment_date"]);
+            $reports = $db::table("payment_reports")->where("StudentClassID", 1513)->get(["id","status","InvoiceID","reported_amount","payment_date"]);
             echo json_encode(compact("student","sc1513","sc2828","sc325","inv","pay","reports"), JSON_UNESCAPED_UNICODE), PHP_EOL;
-          '
+          ' || { echo "TINKER_BEFORE_FAILED"; exit 1; }
 
           if [ "${MODE}" = "dry-run" ]; then
             echo "Dry-run complete; no production write."
@@ -95,7 +95,7 @@ jobs:
           DB_USER="$(grep '^DB_USERNAME=' .env | cut -d= -f2-)"
           DB_PASS="$(grep '^DB_PASSWORD=' .env | cut -d= -f2-)"
           mysqldump -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASS" \
-            --single-transaction AllTrue StudentClass Invoice Payment PaymentReport \
+            --single-transaction AllTrue StudentClass Invoice Payment payment_reports \
             | gzip > "$BACKUP"
           test -s "$BACKUP"
           echo "Backup_ok size=$(wc -c < "$BACKUP") path=$BACKUP"
@@ -169,12 +169,12 @@ jobs:
                 "PayDate" => null,
               ]);
 
-              $reportIds = $db::table("PaymentReport")
+              $reportIds = $db::table("payment_reports")
                 ->where("StudentClassID", 1513)
                 ->where("status", "confirmed")
                 ->pluck("id");
               if ($reportIds->isNotEmpty()) {
-                $db::table("PaymentReport")->whereIn("id", $reportIds->all())->update([
+                $db::table("payment_reports")->whereIn("id", $reportIds->all())->update([
                   "status" => "voided",
                   "void_reason" => mb_substr($reason, 0, 500),
                   "voided_at" => now(),
@@ -201,7 +201,7 @@ jobs:
               }
             });
             echo "REPAIRED_SC_1513_UNPAID", PHP_EOL;
-          '
+          ' || { echo "TINKER_REPAIR_FAILED"; exit 1; }
 
           echo "=== After state ==="
           php artisan tinker --execute='
@@ -211,5 +211,5 @@ jobs:
             $pays = $db::table("Payment")->where("InvoiceID", 1070)->orderBy("id")->get(["id","Amount","Method","Note"]);
             $sc2828 = $db::table("StudentClass")->where("ID", 2828)->first(["ID","Paid","Charge"]);
             echo json_encode(compact("sc1513","inv","pays","sc2828"), JSON_UNESCAPED_UNICODE), PHP_EOL;
-          '
+          ' || { echo "TINKER_AFTER_FAILED"; exit 1; }
           ENDSSH
