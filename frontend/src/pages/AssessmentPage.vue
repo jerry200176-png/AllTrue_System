@@ -167,27 +167,27 @@ onMounted(loadAll);
 .assessment-header, .assessment-list-head, .assessment-modal-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .assessment-summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
 .summary-card { padding: 16px; display: flex; flex-direction: column; gap: 6px; }
-.summary-card span, .muted { color: var(--text-light, #687385); font-size: 13px; }
-.summary-card strong { font-size: 28px; color: var(--text-dark, #1f2937); }
+.summary-card span, .muted { color: var(--ds-text-tertiary); font-size: 13px; }
+.summary-card strong { font-size: 28px; color: var(--ds-text-primary); }
 .assessment-list-card { padding: 18px; }
 .assessment-list-head { margin-bottom: 12px; }
 .assessment-table-wrap { overflow-x: auto; }
 .assessment-table { width: 100%; border-collapse: collapse; min-width: 760px; }
-.assessment-table th, .assessment-table td { padding: 12px 10px; border-bottom: 1px solid var(--border-color, #e5e7eb); text-align: left; vertical-align: middle; }
+.assessment-table th, .assessment-table td { padding: 12px 10px; border-bottom: 1px solid var(--ds-hairline); text-align: left; vertical-align: middle; }
 .assessment-table td strong, .assessment-table td small { display: block; }
-.assessment-table td small { color: var(--text-light, #687385); margin-top: 3px; }
+.assessment-table td small { color: var(--ds-text-tertiary); margin-top: 3px; }
 .assessment-actions { white-space: nowrap; }
-.status-pill { border-radius: 999px; padding: 4px 9px; font-size: 12px; background: #eef2f7; }
-.status-published { background: #e7f5ed; color: #176b42; }.status-draft { color: #795300; background: #fff5d9; }.status-closed { background: #edf0f4; color: #53606f; }
-.assessment-empty { padding: 36px 12px; text-align: center; color: var(--text-light, #687385); }
-.assessment-error { color: #a52d2d; background: #fff1f1; border-radius: 8px; padding: 10px 12px; margin: 10px 0; }
+.status-pill { border-radius: 999px; padding: 4px 9px; font-size: 12px; background: var(--ds-surface-2); }
+.status-published { background: var(--ds-success-wash); color: var(--ds-success); }.status-draft { color: var(--ds-warning); background: var(--ds-warning-wash); }.status-closed { background: var(--ds-surface-2); color: var(--ds-text-tertiary); }
+.assessment-empty { padding: 36px 12px; text-align: center; color: var(--ds-text-tertiary); }
+.assessment-error { color: var(--ds-danger); background: var(--ds-danger-wash); border-radius: 8px; padding: 10px 12px; margin: 10px 0; }
 .assessment-modal { max-width: 720px; width: calc(100vw - 32px); max-height: min(850px, calc(100vh - 32px)); overflow: auto; }
 .assessment-modal label { display: block; margin: 14px 0; font-size: 13px; font-weight: 600; }
-.assessment-modal input, .assessment-modal select, .assessment-modal textarea { display: block; width: 100%; margin-top: 6px; border: 1px solid var(--border-color, #d6dce5); border-radius: 7px; padding: 9px 10px; background: var(--surface, #fff); color: inherit; }
+.assessment-modal input, .assessment-modal select, .assessment-modal textarea { display: block; width: 100%; margin-top: 6px; border: 1px solid var(--ds-hairline-input); border-radius: 7px; padding: 9px 10px; background: var(--ds-canvas); color: inherit; }
 .assessment-form-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
 .compact { min-width: 0; }
-.result-entry { border-top: 1px solid var(--border-color, #e5e7eb); margin-top: 18px; padding-top: 14px; }
+.result-entry { border-top: 1px solid var(--ds-hairline); margin-top: 18px; padding-top: 14px; }
 .result-entry .assessment-form-grid { grid-template-columns: 1.5fr 1fr; }
 @media (max-width: 720px) { .assessment-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .assessment-header { align-items: flex-start; } .assessment-form-grid { grid-template-columns: 1fr; } .result-entry .assessment-form-grid { grid-template-columns: 1fr; } }
 </style>
