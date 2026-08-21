@@ -616,6 +616,7 @@ Route::prefix('v1')->group(function () {
         Route::get('assessments/{assessment}', [AssessmentController::class, 'show'])->whereNumber('assessment');
         Route::get('assessments/{assessment}/students', [AssessmentController::class, 'students'])->whereNumber('assessment');
         Route::get('assessments/{assessment}/results', [AssessmentController::class, 'results'])->whereNumber('assessment');
+        Route::get('assessment-results/{assessmentResult}/remediation-actions', [AssessmentController::class, 'remediationActions'])->whereNumber('assessmentResult');
         Route::get('assessment-reports/summary', [AssessmentController::class, 'summary']);
     });
 
@@ -625,6 +626,8 @@ Route::prefix('v1')->group(function () {
         Route::post('assessments/{assessment}/publish', [AssessmentController::class, 'publish'])->whereNumber('assessment');
         Route::post('assessments/{assessment}/results', [AssessmentController::class, 'storeResult'])->whereNumber('assessment');
         Route::patch('assessment-results/{assessmentResult}', [AssessmentController::class, 'updateResult'])->whereNumber('assessmentResult');
+        Route::post('assessment-results/{assessmentResult}/remediation-actions', [AssessmentController::class, 'storeRemediationAction'])->whereNumber('assessmentResult');
+        Route::patch('assessment-remediation-actions/{remediationAction}', [AssessmentController::class, 'updateRemediationAction'])->whereNumber('remediationAction');
     });
 
     Route::middleware(['role:director,super_admin', 'require_campus', 'require_password_change'])->group(function () {

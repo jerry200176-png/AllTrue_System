@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Assessment;
+use App\Models\AssessmentRemediationAction;
 use App\Models\AuthToken;
 use App\Models\Student;
 use App\Models\StudentClass;
@@ -137,6 +138,76 @@ class AssessmentApiTest extends TestCase
             'student_class_id' => $course->ID,
             'score' => 90,
         ])->assertCreated()->assertJsonPath('data.attempt_no', 2);
+    }
+
+    public function test_remediation_actions_track_knowledge_gap_and_completion_without_learning_record_side_effects(): void
+    {
+        $campus = $this->makeCampus();
+        $director = $this->makeStaff('A', 'assessment-remediation@example.com', $campus);
+        $student = Student::create([
+            'name' => '需要補強學生', 'CampusID' => $campus, 'ClassID' => 1, 'enable' => 1,
+            'MDT' => now(),
+        ]);
+        $course = $this->makeClass($student->id, $director['user']->id, $campus);
+        $assessment = Assessment::create([
+            'campus_id' => $campus,
+            'student_class_id' => $course->ID,
+            'title' => '英文診斷',
+            'assessment_type' => 'baseline',
+            'status' => 'published',
+            'max_score' => 100,
+            'created_by_user_id' => $director['user']->id,
+        ]);
+
+        $result = $this->withAuth($director['token'])->postJson("/api/v1/assessments/{$assessment->id}/results", [
+            'student_id' => $student->id,
+            'student_class_id' => $course->ID,
+            'score' => 48,
+        ])->assertCreated();
+        $resultId = (int) $result->json('data.id');
+
+        $action = $this->withAuth($director['token'])->postJson("/api/v1/assessment-results/{$resultId}/remediation-actions", [
+            'knowledge_tag' => '英文／過去式',
+            'action_type' => 'practice',
+            'plan' => '完成兩回過去式句型練習並由老師口頭抽問',
+            'due_date' => now()->addDays(7)->toDateString(),
+        ])->assertCreated()
+            ->assertJsonPath('data.status', AssessmentRemediationAction::STATUS_OPEN)
+            ->assertJsonPath('data.knowledge_tag', '英文／過去式');
+        $actionId = (int) $action->json('data.id');
+
+        $this->withAuth($director['token'])
+            ->getJson("/api/v1/assessment-results/{$resultId}/remediation-actions")
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $actionId);
+
+        $this->withAuth($director['token'])
+            ->patchJson("/api/v1/assessment-remediation-actions/{$actionId}", ['status' => 'in_progress'])
+            ->assertOk()
+            ->assertJsonPath('data.status', AssessmentRemediationAction::STATUS_IN_PROGRESS);
+
+        $this->withAuth($director['token'])
+            ->patchJson("/api/v1/assessment-remediation-actions/{$actionId}", ['status' => 'completed'])
+            ->assertOk()
+            ->assertJsonPath('data.status', AssessmentRemediationAction::STATUS_COMPLETED);
+
+        $this->withAuth($director['token'])
+            ->patchJson("/api/v1/assessment-remediation-actions/{$actionId}", ['status' => 'open'])
+            ->assertStatus(409);
+
+        $this->assertDatabaseHas('assessment_audit_logs', [
+            'assessment_result_id' => $resultId,
+            'action' => 'remediation_created',
+        ]);
+        $this->assertSame(1, AssessmentRemediationAction::query()->count());
+        $this->assertDatabaseCount('LearningRecord', 0);
+
+        $this->withAuth($director['token'])
+            ->getJson('/api/v1/assessment-reports/summary?campus_id=' . $campus)
+            ->assertOk()
+            ->assertJsonPath('data.remediation_open_count', 0)
+            ->assertJsonPath('data.remediation_completed_count', 1);
     }
 
     private function makeCampus(): int
