@@ -76,8 +76,27 @@
         <div class="assessment-modal-head"><div><h3>{{ selectedAssessment.title }}</h3><p class="muted">滿分 {{ selectedAssessment.max_score }} · {{ statusLabel(selectedAssessment.status) }}</p></div><button class="ghost" @click="selectedAssessment = null">關閉</button></div>
         <div v-if="resultsLoading" class="assessment-empty">結果載入中…</div>
         <template v-else>
+          <section v-if="selectedAssessment.status === 'draft'" class="question-builder">
+            <div class="assessment-modal-head"><div><h4>配置檢測題目</h4><p class="muted">只可選擇已核准題目；發布後會固定題目版本。</p></div><button class="ghost small" :disabled="questionLoading" @click="loadQuestionCatalog">重新載入題庫</button></div>
+            <p v-if="questionError" class="assessment-error">{{ questionError }}</p>
+            <div v-if="questionLoading" class="assessment-empty compact-empty">題庫載入中…</div>
+            <div v-else-if="!questionCatalog.length" class="assessment-empty compact-empty">目前沒有可用的已核准題目，請先到題庫完成核准。</div>
+            <div v-else class="question-picker">
+              <label v-for="question in questionCatalog" :key="question.id" class="question-picker-row"><input v-model="selectedQuestionIds" type="checkbox" :value="Number(question.id)" /><span><strong>{{ question.prompt }}</strong><small>{{ question.bank_name }} · {{ question.knowledge_tag }} · 難度 {{ question.difficulty }}</small></span></label>
+            </div>
+            <button class="primary" :disabled="savingQuestions || !selectedQuestionIds.length || questionRows.length" @click="configureQuestions">{{ questionRows.length ? `已配置 ${questionRows.length} 題` : (savingQuestions ? '配置中…' : `配置 ${selectedQuestionIds.length} 題`) }}</button>
+          </section>
           <div v-if="!results.length" class="assessment-empty">尚未登錄結果。</div>
           <table v-else class="assessment-table compact"><thead><tr><th>學生</th><th>次數</th><th>分數</th><th>狀態</th><th>補強</th><th>操作</th></tr></thead><tbody><tr v-for="result in results" :key="result.id"><td>{{ result.student_name || result.student_id }}</td><td>第 {{ result.attempt_no }} 次</td><td>{{ result.score }}/{{ result.max_score }}（{{ result.percent }}%）</td><td>{{ result.status === 'reviewed' ? '已審核' : '待審' }}</td><td><button class="ghost small" @click="openRemediation(result)">{{ result.remediation_count || 0 }} 筆</button></td><td><button v-if="isDirector && result.status === 'submitted'" class="primary small" @click="reviewResult(result)">審核</button></td></tr></tbody></table>
+          <section v-if="selectedAssessment.status === 'published' && questionRows.length" class="attempt-panel">
+            <div class="assessment-modal-head"><div><h4>數位作答</h4><p class="muted">教職員代學生開啟作答；客觀題自動評分，簡答題送主任複核。</p></div><span class="status-pill status-published">{{ questionRows.length }} 題</span></div>
+            <div class="assessment-form-grid attempt-start"><label>學生／課程<select v-model="attemptForm.student_class_id" @change="syncAttemptStudent"><option value="">請選擇</option><option v-for="item in assessmentStudents" :key="item.student_class_id" :value="String(item.student_class_id)">{{ item.name }}</option></select></label><button class="primary" :disabled="attemptSaving || !attemptForm.student_class_id" @click="startAttempt">{{ attemptSaving ? '建立中…' : '開始一次作答' }}</button></div>
+            <p v-if="attemptError" class="assessment-error">{{ attemptError }}</p>
+            <div v-if="attempts.length" class="attempt-list"><div v-for="attempt in attempts" :key="attempt.id" class="attempt-row"><div><strong>{{ attempt.student_name || attempt.student_id }}</strong><small>第 {{ attempt.attempt_no }} 次 · {{ attemptStatusLabel(attempt.status) }}</small></div><span>{{ attempt.score == null ? '尚未計分' : `${attempt.score}/${attempt.max_score}（${attempt.percent}%）` }}</span><button class="ghost small" @click="openAttempt(attempt.id)">{{ attempt.status === 'submitted' && isDirector ? '複核' : '檢視' }}</button></div></div>
+            <div v-if="attemptLoading" class="assessment-empty compact-empty">作答資料載入中…</div>
+            <div v-if="activeAttempt" class="attempt-editor"><div class="assessment-modal-head"><h4>{{ activeAttempt.student_name || activeAttempt.student_id }} · 第 {{ activeAttempt.attempt_no }} 次</h4><span class="status-pill" :class="'status-' + activeAttempt.status">{{ attemptStatusLabel(activeAttempt.status) }}</span></div><div v-for="question in activeAttempt.questions" :key="question.id" class="attempt-question"><p><strong>{{ question.position }}. {{ question.prompt }}</strong><small>{{ question.knowledge_tag }} · 難度 {{ question.difficulty }}</small></p><div v-if="question.question_type === 'single_choice' || question.question_type === 'true_false'" class="choice-list"><label v-for="choice in (question.choices || (question.question_type === 'true_false' ? ['true', 'false'] : []))" :key="choice"><input v-model="answerDraft[String(question.id)]" type="radio" :name="'q-' + question.id" :value="choice" :disabled="activeAttempt.status !== 'in_progress'" />{{ choice }}</label></div><div v-else-if="question.question_type === 'multiple_choice'" class="choice-list"><label v-for="choice in (question.choices || [])" :key="choice"><input v-model="answerDraft[String(question.id)]" type="checkbox" :value="choice" :disabled="activeAttempt.status !== 'in_progress'" />{{ choice }}</label></div><textarea v-else v-model="answerDraft[String(question.id)]" rows="2" :disabled="activeAttempt.status !== 'in_progress'" placeholder="填寫學生答案" /></div><div v-if="activeAttempt.status === 'in_progress'" class="modal-actions"><button class="ghost" :disabled="attemptSaving" @click="saveAttempt(false)">儲存草稿</button><button class="primary" :disabled="attemptSaving" @click="saveAttempt(true)">{{ attemptSaving ? '送出中…' : '送出作答' }}</button></div><div v-if="isDirector && activeAttempt.status === 'submitted'" class="review-editor"><h4>簡答人工複核</h4><div v-for="answer in activeAttempt.answers.filter((row) => row.status === 'needs_review')" :key="answer.id" class="review-row"><div><strong>{{ answer.position }}. {{ answer.prompt }}</strong><small>學生答案：{{ answer.answer || '未作答' }}</small></div><input v-model.number="reviewScores[answer.id]" type="number" min="0" :max="answer.max_score" step="0.01" placeholder="分數" /></div><button class="primary" :disabled="attemptSaving" @click="reviewAttempt">{{ attemptSaving ? '送出中…' : '完成人工複核' }}</button></div></div>
+          </section>
+          <div v-else-if="selectedAssessment.status === 'published'" class="assessment-empty compact-empty">尚未配置題目；此檢測仍可使用下方的紙本結果登錄。</div>
           <div v-if="selectedResult" class="remediation-panel">
             <div class="assessment-modal-head"><div><h4>補強追蹤：{{ selectedResult.student_name || selectedResult.student_id }}</h4><p class="muted">從檢測結果建立知識缺口與後續行動。</p></div><button class="ghost small" @click="selectedResult = null">收合</button></div>
             <div v-if="remediationLoading" class="assessment-empty">補強資料載入中…</div>
@@ -112,6 +131,7 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { answerMapFromAttempt, attemptStatusLabel, buildAnswerPayload } from '../lib/assessmentRunner.js';
 
 const props = defineProps({ branchId: [String, Number], userRole: String });
 const base = `${import.meta.env.VITE_API_BASE || '/api'}/v1`;
@@ -139,6 +159,20 @@ const savingRemediation = ref(false);
 const createForm = reactive({ title: '', description: '', assessment_type: 'checkpoint', max_score: 100, scheduled_for: '', student_class_id: '' });
 const resultForm = reactive({ student_id: '', student_class_id: '', score: '', notes: '' });
 const remediationForm = reactive({ knowledge_tag: '', action_type: 'practice', plan: '', due_date: '' });
+const questionRows = ref([]);
+const questionCatalog = ref([]);
+const selectedQuestionIds = ref([]);
+const questionLoading = ref(false);
+const questionError = ref('');
+const savingQuestions = ref(false);
+const attempts = ref([]);
+const attemptForm = reactive({ student_class_id: '' });
+const activeAttempt = ref(null);
+const answerDraft = reactive({});
+const attemptLoading = ref(false);
+const attemptSaving = ref(false);
+const attemptError = ref('');
+const reviewScores = reactive({});
 
 function token() {
   try { return JSON.parse(localStorage.getItem('alltrue_session') || '{}')?.access_token || ''; } catch { return ''; }
@@ -177,9 +211,20 @@ async function createAssessment() {
 async function publish(assessment) { try { await api(`/assessments/${assessment.id}/publish`, { method: 'POST' }); await loadAll(); } catch (e) { error.value = e.message; } }
 async function closeAssessment(assessment) { if (!window.confirm('關閉後不能再修改檢測定義，確定要關閉嗎？')) return; try { await api(`/assessments/${assessment.id}/close`, { method: 'POST' }); await loadAll(); } catch (e) { error.value = e.message; } }
 async function openAssessment(assessment) {
-  selectedResult.value = null;
+  selectedResult.value = null; activeAttempt.value = null; attemptError.value = ''; questionError.value = '';
   selectedAssessment.value = assessment; resultsLoading.value = true; resultError.value = ''; Object.assign(resultForm, { student_id: '', student_class_id: '', score: '', notes: '' });
-  try { const [resultRows, studentRows] = await Promise.all([api(`/assessments/${assessment.id}/results`), api(`/assessments/${assessment.id}/students`)]); results.value = resultRows.data || []; assessmentStudents.value = studentRows.data || []; } catch (e) { resultError.value = e.message; } finally { resultsLoading.value = false; }
+  Object.assign(attemptForm, { student_class_id: '' });
+  try {
+    const [resultResponse, studentResponse, questionResponse, attemptResponse] = await Promise.all([
+      api(`/assessments/${assessment.id}/results`),
+      api(`/assessments/${assessment.id}/students`),
+      api(`/assessments/${assessment.id}/questions`),
+      assessment.status === 'published' ? api(`/assessments/${assessment.id}/attempts`) : Promise.resolve({ data: [] }),
+    ]);
+    results.value = resultResponse.data || []; assessmentStudents.value = studentResponse.data || [];
+    questionRows.value = questionResponse.data || []; attempts.value = attemptResponse.data || [];
+    if (assessment.status === 'draft') await loadQuestionCatalog();
+  } catch (e) { resultError.value = e.message; } finally { resultsLoading.value = false; }
 }
 function syncStudent() { const row = assessmentStudents.value.find((item) => String(item.student_class_id) === String(resultForm.student_class_id)); resultForm.student_id = row ? String(row.student_id) : ''; }
 async function saveResult() {
@@ -204,6 +249,70 @@ async function updateRemediation(action, status) {
   remediationError.value = '';
   try { await api('/assessment-remediation-actions/' + action.id, { method: 'PATCH', body: JSON.stringify({ status }) }); await openRemediation(selectedResult.value); await loadAll(); } catch (e) { remediationError.value = e.message; }
 }
+async function loadQuestionCatalog() {
+  questionLoading.value = true; questionError.value = '';
+  try {
+    const banks = await api(`/question-banks?campus_id=${encodeURIComponent(props.branchId)}`);
+    const rows = await Promise.all((banks.data || []).map(async (bank) => {
+      const response = await api(`/question-banks/${bank.id}/items?status=approved`);
+      return (response.data || []).map((item) => ({ ...item, bank_name: bank.name }));
+    }));
+    const latestByKey = new Map();
+    rows.flat().forEach((item) => {
+      const key = item.question_key || `item-${item.id}`;
+      const current = latestByKey.get(key);
+      if (!current || Number(item.version_no || 0) > Number(current.version_no || 0)) latestByKey.set(key, item);
+    });
+    questionCatalog.value = [...latestByKey.values()];
+    selectedQuestionIds.value = questionRows.value.map((question) => Number(question.question_bank_item_id));
+  } catch (e) { questionError.value = e.message; } finally { questionLoading.value = false; }
+}
+async function configureQuestions() {
+  if (!selectedAssessment.value || !selectedQuestionIds.value.length) return;
+  savingQuestions.value = true; questionError.value = '';
+  try {
+    const response = await api(`/assessments/${selectedAssessment.value.id}/questions`, { method: 'POST', body: JSON.stringify({ question_bank_item_ids: selectedQuestionIds.value }) });
+    questionRows.value = response.data || []; await loadAll();
+  } catch (e) { questionError.value = e.message; } finally { savingQuestions.value = false; }
+}
+function syncAttemptStudent() { attemptError.value = ''; }
+async function startAttempt() {
+  const row = assessmentStudents.value.find((item) => String(item.student_class_id) === String(attemptForm.student_class_id));
+  if (!row) return;
+  attemptSaving.value = true; attemptError.value = '';
+  try {
+    const response = await api(`/assessments/${selectedAssessment.value.id}/attempts`, { method: 'POST', body: JSON.stringify({ student_id: Number(row.student_id), student_class_id: Number(row.student_class_id) }) });
+    await openAttempt(response.data.id);
+    attempts.value = [{ ...response.data }, ...attempts.value];
+  } catch (e) { attemptError.value = e.message; } finally { attemptSaving.value = false; }
+}
+async function openAttempt(attemptId) {
+  attemptLoading.value = true; attemptError.value = '';
+  try {
+    const response = await api(`/assessment-attempts/${attemptId}`); activeAttempt.value = response.data; Object.assign(answerDraft, answerMapFromAttempt(response.data));
+    Object.keys(reviewScores).forEach((key) => delete reviewScores[key]);
+    (response.data.answers || []).forEach((answer) => { if (answer.status === 'needs_review') reviewScores[answer.id] = answer.score ?? ''; });
+  } catch (e) { attemptError.value = e.message; } finally { attemptLoading.value = false; }
+}
+async function saveAttempt(submit = false) {
+  if (!activeAttempt.value) return;
+  attemptSaving.value = true; attemptError.value = '';
+  try {
+    const saved = await api(`/assessment-attempts/${activeAttempt.value.id}/answers`, { method: 'PATCH', body: JSON.stringify({ answers: buildAnswerPayload(activeAttempt.value.questions, answerDraft) }) });
+    activeAttempt.value = saved.data;
+    if (submit) { const submitted = await api(`/assessment-attempts/${activeAttempt.value.id}/submit`, { method: 'POST' }); activeAttempt.value = submitted.data; await refreshAttempts(); }
+  } catch (e) { attemptError.value = e.message; } finally { attemptSaving.value = false; }
+}
+async function refreshAttempts() { const response = await api(`/assessments/${selectedAssessment.value.id}/attempts`); attempts.value = response.data || []; }
+async function reviewAttempt() {
+  if (!activeAttempt.value) return;
+  attemptSaving.value = true; attemptError.value = '';
+  try {
+    const reviews = (activeAttempt.value.answers || []).filter((answer) => answer.status === 'needs_review').map((answer) => ({ answer_id: answer.id, score: Number(reviewScores[answer.id] ?? 0), review_note: answer.review_note || null }));
+    const response = await api(`/assessment-attempts/${activeAttempt.value.id}/review`, { method: 'POST', body: JSON.stringify({ reviews }) });
+    activeAttempt.value = response.data; await refreshAttempts();
+  } catch (e) { attemptError.value = e.message; } finally { attemptSaving.value = false; }
+}
 watch(() => props.branchId, loadAll);
 onMounted(loadAll);
 </script>
@@ -224,7 +333,7 @@ onMounted(loadAll);
 .assessment-table td small { color: var(--ds-text-tertiary); margin-top: 3px; }
 .assessment-actions { white-space: nowrap; }
 .status-pill { border-radius: 999px; padding: 4px 9px; font-size: 12px; background: var(--ds-surface-2); }
-.status-published, .status-completed { background: var(--ds-success-wash); color: var(--ds-success); }.status-draft, .status-open { color: var(--ds-warning); background: var(--ds-warning-wash); }.status-closed, .status-cancelled { background: var(--ds-surface-2); color: var(--ds-text-tertiary); }.status-in_progress { background: var(--ds-info-wash); color: var(--ds-info); }
+.status-published, .status-completed, .status-reviewed { background: var(--ds-success-wash); color: var(--ds-success); }.status-draft, .status-open, .status-submitted { color: var(--ds-warning); background: var(--ds-warning-wash); }.status-closed, .status-cancelled { background: var(--ds-surface-2); color: var(--ds-text-tertiary); }.status-in_progress { background: var(--ds-info-wash); color: var(--ds-info); }
 .assessment-empty { padding: 36px 12px; text-align: center; color: var(--ds-text-tertiary); }
 .assessment-error { color: var(--ds-danger); background: var(--ds-danger-wash); border-radius: 8px; padding: 10px 12px; margin: 10px 0; }
 .assessment-modal { max-width: 720px; width: calc(100vw - 32px); max-height: min(850px, calc(100vh - 32px)); overflow: auto; }
@@ -239,6 +348,19 @@ onMounted(loadAll);
 .remediation-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--ds-hairline); }
 .remediation-row strong, .remediation-row small { display: block; }.remediation-row small { color: var(--ds-text-tertiary); margin-top: 3px; }
 .remediation-form { margin-top: 12px; }.compact-empty { padding: 14px 8px; }
+.question-builder, .attempt-panel { margin: 16px 0; padding: 14px; border: 1px solid var(--ds-hairline); border-radius: var(--ds-radius-md); background: var(--ds-surface-0); }
+.question-picker { display: grid; gap: 8px; max-height: 260px; overflow: auto; margin: 12px 0; }
+.question-picker-row { display: grid !important; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 9px; margin: 0 !important; padding: 9px; border: 1px solid var(--ds-hairline); border-radius: 8px; font-weight: 500 !important; cursor: pointer; }
+.question-picker-row input { width: auto !important; margin: 2px 0 0 !important; }
+.question-picker-row strong, .question-picker-row small, .attempt-row strong, .attempt-row small, .attempt-question small, .review-row strong, .review-row small { display: block; }
+.question-picker-row small, .attempt-row small, .attempt-question small, .review-row small { margin-top: 3px; color: var(--ds-text-tertiary); font-weight: 400; }
+.attempt-start { align-items: end; }.attempt-start .primary { margin-bottom: 14px; }
+.attempt-list { display: grid; gap: 8px; margin: 14px 0; }
+.attempt-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 10px; border: 1px solid var(--ds-hairline); border-radius: 8px; }
+.attempt-editor { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--ds-hairline); }
+.attempt-question { padding: 12px 0; border-bottom: 1px solid var(--ds-hairline); }.attempt-question p { margin: 0 0 8px; }
+.choice-list { display: grid; gap: 7px; }.choice-list label { display: flex !important; align-items: center; gap: 7px; margin: 0 !important; font-weight: 400 !important; cursor: pointer; }.choice-list input { width: auto !important; margin: 0 !important; }
+.review-editor { margin-top: 16px; padding: 12px; border: 1px solid var(--ds-warning); border-radius: 8px; background: var(--ds-warning-wash); }.review-row { display: grid; grid-template-columns: minmax(0, 1fr) 120px; gap: 10px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--ds-hairline); }.review-row input { margin-top: 0; }
 @media (max-width: 1100px) { .assessment-summary-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-@media (max-width: 720px) { .assessment-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .assessment-header { align-items: flex-start; } .assessment-form-grid { grid-template-columns: 1fr; } .result-entry .assessment-form-grid { grid-template-columns: 1fr; } .remediation-row { grid-template-columns: minmax(0, 1fr) auto; }.remediation-row button { grid-column: 2; } }
+@media (max-width: 720px) { .assessment-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .assessment-header { align-items: flex-start; } .assessment-form-grid { grid-template-columns: 1fr; } .result-entry .assessment-form-grid { grid-template-columns: 1fr; } .remediation-row { grid-template-columns: minmax(0, 1fr) auto; }.remediation-row button { grid-column: 2; } .attempt-row { grid-template-columns: minmax(0, 1fr) auto; }.attempt-row button { grid-column: 2; grid-row: 1 / span 2; }.review-row { grid-template-columns: 1fr; } .attempt-start .primary { margin-bottom: 0; } }
 </style>
