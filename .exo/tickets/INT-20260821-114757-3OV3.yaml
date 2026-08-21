@@ -1,0 +1,49 @@
+id: INT-20260821-114757-3OV3
+title: Phase 3 question bank management
+intent: Phase 3 question bank management
+kind: intent
+brain_dump: 'User requested autonomous continuation of AllTrue learning assessment
+  roadmap. Implement the next production-safe phase: a question bank with question
+  data, knowledge tags, difficulty, versioning, human review, CSV import, scoped authorization,
+  tests, CI, deployment, and production verification. Do not import unlicensed content
+  or let unreviewed AI drafts publish.'
+boundary: Do not change attendance, LearningRecord, billing, scheduling, authentication
+  foundations, governance contracts, or production data directly. Keep question bank
+  isolated from existing assessment results.
+success_condition: A director/teacher can create and review question items, import
+  a validated CSV, list/filter them by subject/difficulty/tag/status, and all changes
+  pass repository CI and production identity verification.
+risk: high
+priority: 1
+labels:
+- assessment
+scope:
+  allow:
+  - backend/**
+  - frontend/src/**
+  - docs/**
+  - .agent-session/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - backend/.env*
+  - frontend/.env*
+budgets:
+  max_files_changed: 12
+  max_loc_changed: 400
+checks:
+- vendor/bin/phpunit
+- npm run build
+- npm run lint:no-undef
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-21T11:47:57+08:00'
+children: []
+resource_profile: default
