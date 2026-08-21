@@ -3,6 +3,23 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-21-parent-assessment-progress
+    published_at: "2026-08-21"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 家長端可查看已複核檢測進度
+    summary: 家長可看到檢測結果與補強狀態，內部備註仍留在教職員端。
+    items:
+      - category: added
+        text: 家長端只顯示已完成複核的檢測分數與達標／再練習提示。
+      - category: improved
+        text: 補強狀態與練習方向以白話摘要呈現，不會公開老師內部計畫與備註。
+    source_refs:
+      - "changelog:2026-08-21:parent-assessment-progress"
+      - "issue:1934"
+
   - id: staff-2026-08-21-question-bank-management
     published_at: "2026-08-21"
     audiences:

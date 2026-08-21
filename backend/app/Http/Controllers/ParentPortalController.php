@@ -21,6 +21,8 @@ use App\Models\CoursePackage;
 use App\Models\Invoice;
 use App\Models\Announcement;
 use App\Models\Subject;
+use App\Models\AssessmentResult;
+use App\Models\AssessmentRemediationAction;
 use App\Models\User;
 use App\Http\Controllers\LearningRecordController;
 use App\Services\ExceptionWorkflowService;
@@ -977,6 +979,14 @@ class ParentPortalController extends Controller
             ->concat($siblingStudents->map(fn ($s) => ['id' => $s->id, 'name' => $s->name]))
             ->values();
 
+        $assessmentProgress = $this->buildParentAssessmentProgress(
+            $studentIds,
+            $campusIds,
+            $classes,
+            $studentCampusMap,
+            $memberRows
+        );
+
         $progressSummary = $this->buildProgressSummary(
             $session,
             $student,
@@ -1026,8 +1036,117 @@ class ParentPortalController extends Controller
             'upcoming_sessions'        => $upcomingSessions,
             'invoices'                 => $invoices,
             'announcements'            => $announcements,
+            'assessment_progress'      => $assessmentProgress,
             'progress_summary'         => $progressSummary,
         ]);
+    }
+
+    /**
+     * Parent-safe assessment projection: reviewed results only, scoped by the
+     * already-resolved parent student/campus context. Internal notes, IDs and
+     * teacher remediation instructions never leave the staff workflow.
+     */
+    private function buildParentAssessmentProgress(
+        array $studentIds,
+        array $campusIds,
+        $classes,
+        $studentCampusMap,
+        $memberRows
+    ): array {
+        $query = AssessmentResult::query()
+            ->with('assessment')
+            ->whereIn('student_id', $studentIds ?: [0])
+            ->where('status', 'reviewed')
+            ->whereHas('assessment', function ($assessment) use ($campusIds) {
+                $assessment->whereIn('campus_id', $campusIds ?: [0])
+                    ->whereIn('status', ['published', 'closed']);
+            });
+
+        $total = (clone $query)->count();
+        $results = $query
+            ->orderByDesc(DB::raw('COALESCE(reviewed_at, recorded_at, created_at)'))
+            ->limit(20)
+            ->get();
+
+        if ($results->isEmpty()) {
+            return [
+                'version' => 'v1',
+                'items' => [],
+                'meta' => ['total_reviewed' => 0, 'returned' => 0, 'has_more' => false],
+            ];
+        }
+
+        $resultIds = $results->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $actions = AssessmentRemediationAction::query()
+            ->whereIn('assessment_result_id', $resultIds)
+            ->whereIn('student_id', $studentIds ?: [0])
+            ->whereIn('campus_id', $campusIds ?: [0])
+            ->where('status', '!=', AssessmentRemediationAction::STATUS_CANCELLED)
+            ->get()
+            ->groupBy('assessment_result_id');
+        $classesById = collect($classes)->keyBy('ID');
+        $studentNames = collect($memberRows)->mapWithKeys(fn ($member) => [
+            (int) $member->student_id => (string) ($member->student->name ?? ''),
+        ]);
+        $subjectIds = $results->map(fn ($result) => (int) ($result->assessment?->subject_id ?? 0))
+            ->filter()->unique()->values();
+        $subjectNames = $subjectIds->isNotEmpty()
+            ? Subject::query()->whereIn('id', $subjectIds)->pluck('Subject_Name', 'id')
+            : collect();
+
+        $items = $results->map(function (AssessmentResult $result) use ($actions, $classesById, $studentCampusMap, $studentNames, $subjectNames) {
+            $assessment = $result->assessment;
+            $class = $classesById->get((int) $result->student_class_id);
+            $subject = $assessment?->subject_id
+                ? (string) ($subjectNames->get((int) $assessment->subject_id) ?? '')
+                : ($class ? $this->resolveSubjectName($class) : '課程');
+            $subject = $subject !== '' ? $subject : ($class ? $this->resolveSubjectName($class) : '課程');
+            $activeActions = $actions->get((int) $result->id, collect());
+            $statuses = $activeActions->pluck('status')->all();
+            $remediationStatus = empty($statuses)
+                ? 'none'
+                : (in_array(AssessmentRemediationAction::STATUS_IN_PROGRESS, $statuses, true)
+                    ? AssessmentRemediationAction::STATUS_IN_PROGRESS
+                    : (in_array(AssessmentRemediationAction::STATUS_OPEN, $statuses, true)
+                        ? AssessmentRemediationAction::STATUS_OPEN
+                        : AssessmentRemediationAction::STATUS_COMPLETED));
+            $passingScore = $assessment?->passing_score;
+            $outcome = $passingScore === null
+                ? null
+                : ((float) $result->score >= (float) $passingScore ? 'achieved' : 'practice');
+            $campus = $studentCampusMap->get((int) $result->student_id, []);
+
+            return [
+                'student_name' => $studentNames->get((int) $result->student_id) ?: null,
+                'campus_name' => $campus['campus_name'] ?? null,
+                'title' => (string) ($assessment?->title ?? '學習檢測'),
+                'subject' => $subject,
+                'score' => (float) $result->score,
+                'max_score' => (float) $result->max_score_snapshot,
+                'percent' => (float) $result->percent,
+                'outcome' => $outcome,
+                'outcome_label' => $outcome === 'achieved' ? '已達標' : ($outcome === 'practice' ? '建議再練習' : '已完成檢測'),
+                'remediation_status' => $remediationStatus,
+                'remediation_status_label' => match ($remediationStatus) {
+                    AssessmentRemediationAction::STATUS_IN_PROGRESS => '補強進行中',
+                    AssessmentRemediationAction::STATUS_OPEN => '待開始補強',
+                    AssessmentRemediationAction::STATUS_COMPLETED => '補強已完成',
+                    default => '尚未安排補強',
+                },
+                'focus_areas' => $activeActions->pluck('knowledge_tag')->filter()->unique()->values()->take(4)->all(),
+                'reviewed_at' => optional($result->reviewed_at ?? $result->recorded_at ?? $result->created_at)->toIso8601String(),
+            ];
+        })->values()->all();
+
+        return [
+            'version' => 'v1',
+            'items' => $items,
+            'meta' => [
+                'total_reviewed' => (int) $total,
+                'returned' => count($items),
+                'has_more' => $total > count($items),
+            ],
+        ];
     }
 
     /**

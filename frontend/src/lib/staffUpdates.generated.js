@@ -88,6 +88,46 @@ export const staffUpdates = [
     "version": "2026.08.21"
   },
   {
+    "id": "staff-2026-08-21-parent-assessment-progress",
+    "publishedAt": "2026-08-21",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "家長端可查看已複核檢測進度",
+    "summary": "家長可看到檢測結果與補強狀態，內部備註仍留在教職員端。",
+    "items": [
+      "家長端只顯示已完成複核的檢測分數與達標／再練習提示。",
+      "補強狀態與練習方向以白話摘要呈現，不會公開老師內部計畫與備註。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "家長端只顯示已完成複核的檢測分數與達標／再練習提示。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "補強狀態與練習方向以白話摘要呈現，不會公開老師內部計畫與備註。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-21:parent-assessment-progress",
+      "issue:1934"
+    ],
+    "date": "2026-08-21",
+    "version": "2026.08.21"
+  },
+  {
     "id": "staff-2026-08-20-sidebar-workspaces",
     "publishedAt": "2026-08-20",
     "effectiveAt": null,

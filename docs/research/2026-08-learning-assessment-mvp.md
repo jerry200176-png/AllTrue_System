@@ -160,6 +160,21 @@ workflow pattern, not a dependency or source-code copy.
 - Only reviewed/published results appear in the parent portal, with plain
   language and explicit status; internal audit, drafts, and teacher notes stay
   private.
+- The parent projection is read-only and ownership is resolved before the
+  result query. It exposes score snapshots, an optional configured outcome,
+  and a coarse remediation state/focus list; it does not expose result IDs,
+  teacher notes, internal plans, or audit rows.
+
+### Question-source decision — TestGo and UPAD12 (2026-08-21)
+
+The owner has access to TestGo and UPAD12, which are useful candidates for the
+question-bank source layer. They remain external licensed systems, not a new
+AllTrue source of truth. The import boundary will accept an authorized
+CSV/JSON export or documented vendor API response and preserve source name,
+source version, grade, subject, question key, and licensing/provenance
+metadata. We will not scrape private sessions or use owner credentials in the
+application. Until an export/API contract is confirmed, the existing strict
+question import and review workflow remains the safe path.
 
 ## Security, privacy, and operations
 
@@ -186,6 +201,7 @@ workflow pattern, not a dependency or source-code copy.
 ## Unknowns intentionally deferred
 
 - The first subject and exact paper-test import format.
+- The exact authorized TestGo/UPAD12 export or API contract.
 - Whether parents should see raw scores or only level/feedback summaries.
 - Which knowledge-tag taxonomy the teaching team will maintain.
 - Whether online student attempts are needed after the manual-result slice.
