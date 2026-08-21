@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.08.21",
     "date": "2026-08-21",
     "title": "2026.08.21 草稿（未發布）",
-    "summary": "學習檢測與補強追蹤",
+    "summary": "改善學生名冊匯入，表格格式比較不容易造成匯入失敗；學習檢測與補強追蹤",
     "audience": [
       "teacher",
       "director"
@@ -18,11 +18,13 @@ export const changelogDraftNotes = [
       {
         "title": "新增內容",
         "items": [
+          "改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
           "學習檢測與補強追蹤"
         ]
       }
     ],
     "items": [
+      "改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
       "學習檢測與補強追蹤"
     ]
   },
