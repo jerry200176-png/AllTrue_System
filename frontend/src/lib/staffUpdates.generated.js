@@ -4,6 +4,48 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-21-learning-assessment-mvp",
+    "publishedAt": "2026-08-21",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "major",
+    "title": "學習檢測可追蹤補強",
+    "summary": "建立檢測、登錄結果，直接追蹤學生補強行動。",
+    "items": [
+      "主任與老師可建立檢測、發布並登錄學生多次結果。",
+      "從學生結果建立知識缺口、補強計畫與預計完成日。",
+      "可查看待補強與逾期數，將行動標記為進行中或已完成。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "主任與老師可建立檢測、發布並登錄學生多次結果。",
+          "從學生結果建立知識缺口、補強計畫與預計完成日。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "可查看待補強與逾期數，將行動標記為進行中或已完成。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-21:learning-assessment-mvp",
+      "issue:1934"
+    ],
+    "date": "2026-08-21",
+    "version": "2026.08.21"
+  },
+  {
     "id": "staff-2026-08-20-sidebar-workspaces",
     "publishedAt": "2026-08-20",
     "effectiveAt": null,

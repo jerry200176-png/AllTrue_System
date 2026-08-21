@@ -3,6 +3,25 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-21-learning-assessment-mvp
+    published_at: "2026-08-21"
+    audiences:
+      - director
+      - teacher
+    importance: major
+    title: 學習檢測可追蹤補強
+    summary: 建立檢測、登錄結果，直接追蹤學生補強行動。
+    items:
+      - category: added
+        text: 主任與老師可建立檢測、發布並登錄學生多次結果。
+      - category: added
+        text: 從學生結果建立知識缺口、補強計畫與預計完成日。
+      - category: improved
+        text: 可查看待補強與逾期數，將行動標記為進行中或已完成。
+    source_refs:
+      - "changelog:2026-08-21:learning-assessment-mvp"
+      - "issue:1934"
+
   - id: staff-2026-08-20-nightly-session-check
     published_at: "2026-08-20"
     audiences:
