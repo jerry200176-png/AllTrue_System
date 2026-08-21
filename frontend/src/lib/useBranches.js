@@ -32,7 +32,6 @@ export const DEFAULT_BRANCHES = [
     { id: 4,  name: '汐止分校', code: 'xizhi'     },
     { id: 1,  name: '內湖分校', code: 'neihu'     },
     { id: 12, name: '石牌分校', code: 'shipai'    },
-    { id: 22, name: '敦化分校', code: 'dunhua'    },
     { id: 7,  name: '蘆洲分校', code: 'luzhou'    },
     { id: 23, name: '大同分校', code: 'datong'    },
     // 以下 id 以線上 daan /api/v1/branches 為準，僅供離線後備；實際仍以 API 為主

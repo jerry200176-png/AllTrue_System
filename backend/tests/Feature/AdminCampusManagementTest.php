@@ -7,6 +7,7 @@ use App\Models\Campus;
 use App\Models\User;
 use App\Models\UserCampus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -99,6 +100,39 @@ class AdminCampusManagementTest extends TestCase
         $res->assertOk();
         $names = collect($res->json())->pluck('name')->all();
         $this->assertNotContains('廢棄測試分校', $names);
+    }
+
+    /**
+     * The retired Dunhua campus is kept for history but must not be offered
+     * as a selectable branch after the deactivation migration.
+     */
+    /** @test */
+    public function dunhua_campus_is_not_selectable_after_retirement(): void
+    {
+        $campus = Campus::where('code', 'dunhua')->first();
+
+        $this->assertNotNull($campus);
+        // The production row is id=22. The migration test fixture may assign
+        // a different auto-increment id, so normalize the isolated fixture
+        // before invoking the exact production-targeted migration again.
+        if ((int) $campus->id !== 22) {
+            DB::table('Campus')->where('id', $campus->id)->update([
+                'id' => 22,
+                'active' => true,
+            ]);
+        } else {
+            DB::table('Campus')->where('id', 22)->update(['active' => true]);
+        }
+
+        $migration = require base_path('database/migrations/2026_08_21_160000_deactivate_dunhua_campus.php');
+        $migration->up();
+
+        $campus = Campus::find(22);
+        $this->assertFalse((bool) $campus->active);
+
+        $res = $this->getJson('/api/v1/branches');
+        $res->assertOk();
+        $this->assertNotContains('敦化分校', collect($res->json())->pluck('name')->all());
     }
 
     // ── Superadmin CRUD ─────────────────────────────────────────────────────────
