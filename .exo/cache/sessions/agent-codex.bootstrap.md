@@ -1,32 +1,32 @@
 ╔══════════════════════════════════════════════════════╗
 ║  >>> EXO GOVERNED SESSION                            ║
 ║  protocol: ExoProtocol v1 | mode: work               ║
-║  ticket: INT-20260821-114757-3OV3 | actor: agent:codex║
+║  ticket: TKT-20260821-115408-HRYH | actor: agent:codex║
 ║  model: gpt-5                                        ║
-║  branch: exo/INT-20260821-114757-3OV3                ║
+║  branch: feat/task-learning-assessment-mvp-question-bank║
 ╚══════════════════════════════════════════════════════╝
 
 # Exo Agent Session Bootstrap
 
-session_id: SES-20260821114818-632CB8D0
+session_id: SES-20260821115450-D899A6E2
 actor: agent:codex
 vendor: openai
 model: gpt-5
 mode: work
 context_window_tokens: unknown
-ticket_id: INT-20260821-114757-3OV3
-ticket_title: Phase 3 question bank management
+ticket_id: TKT-20260821-115408-HRYH
+ticket_title: Question bank API and data contract
 ticket_status: todo
 ticket_priority: 1
 topic_id: repo:default
 lock_owner: agent:codex
-git_branch: exo/INT-20260821-114757-3OV3
-lock_branch: codex/INT-20260821-114757-3OV3
-lock_expires_at: 2026-08-21T19:48:18+08:00
+git_branch: feat/task-learning-assessment-mvp-question-bank
+lock_branch: codex/TKT-20260821-115408-HRYH
+lock_expires_at: 2026-08-21T19:54:50+08:00
 
 ## Scope
-- allow: ["backend/**", "frontend/src/**", "docs/**", ".agent-session/**", ".exo/cache/**", ".exo/memory/**", ".exo/locks/**", ".exo/tickets/**", ".exo/logs/**"]
-- deny: ["backend/.env*", "frontend/.env*"]
+- allow: ["backend/**", "docs/**", ".exo/cache/**", ".exo/memory/**", ".exo/locks/**", ".exo/tickets/**", ".exo/logs/**"]
+- deny: ["backend/.env*"]
 
 ## Checks
 - ["vendor/bin/phpunit", "npm run build", "npm run lint:no-undef"]
@@ -38,14 +38,8 @@ lock_expires_at: 2026-08-21T19:48:18+08:00
 
 ## Machine Context
 - cpu_cores: 12
-- load_avg_1m: 0.2
+- load_avg_1m: 0.1
 - ram: 2.6GB available / 4.8GB total
-
-## Governance Warning
-`.exo/` governance files are NOT tracked by git.
-Tickets, config, and governance rules are local-only.
-Other agents and CI pipelines cannot see them.
-Fix: `git add .exo/ && git commit -m 'chore: track governance'` or re-run `exo install`.
 
 ## Prior Session Memento
 (none)
@@ -61,10 +55,10 @@ After building a reusable utility, REGISTER it:
 No tools registered yet. Register reusable utilities as you build them.
 
 ## Current Task
-Implement and deploy Phase 3 question bank management for AllTrue learning assessment: question data, tags, difficulty, versions, review, CSV import, scoped authorization, tests, CI, deployment, and production verification.
+question-bank-api
 
 ## Lifecycle Commands
-- heartbeat: EXO_ACTOR=agent:codex python3 -m exo.cli lease-heartbeat --ticket-id INT-20260821-114757-3OV3 --owner agent:codex
+- heartbeat: EXO_ACTOR=agent:codex python3 -m exo.cli lease-heartbeat --ticket-id TKT-20260821-115408-HRYH --owner agent:codex
 - run worker once: EXO_ACTOR=agent:codex python3 -m exo.cli worker-poll --require-session --limit 50
 - suspend: EXO_ACTOR=agent:codex python3 -m exo.cli session-suspend --reason "<why pausing>"
-- finish: EXO_ACTOR=agent:codex python3 -m exo.cli session-finish --summary "<what changed>" --set-status review --ticket-id INT-20260821-114757-3OV3
+- finish: EXO_ACTOR=agent:codex python3 -m exo.cli session-finish --summary "<what changed>" --set-status review --ticket-id TKT-20260821-115408-HRYH
