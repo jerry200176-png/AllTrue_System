@@ -5,7 +5,7 @@
   "task_id": "1387-db-grant-repair",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
   "base_sha": "b61811f4f0c2031e2287e644b2b151074e03ffbc",
-  "branch": "hotfix/1387-db-grant-repair-localhost-principal",
+  "branch": "hotfix/1387-db-grant-repair-credential-recovery",
   "worktree_path": "/home/jerry/workspace/tasks/alltrue/schedule-0823-wu-chen",
   "started_at": "2026-08-22T07:26:51Z",
   "production_mutation": false,
