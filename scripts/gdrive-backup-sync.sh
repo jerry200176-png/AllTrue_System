@@ -6,6 +6,10 @@
 #   - 每月 monthly .sql.gz  → g-drive:AllTrue-Backups/monthly/ （保留 12 份）
 #   - 最新 2 份 sixhour     → g-drive:AllTrue-Backups/sixhour/ （提供 6h 異地快照）
 #   - manifest .txt          → g-drive:AllTrue-Backups/manifests/（檔名/大小/sha256）
+#   - backend/storage/app/public（使用者上傳：頭貼、bug 附件）→ g-drive:AllTrue-Backups/uploads/
+#     （#1124：這批檔案不在 DB 裡，之前所有備份層都漏掉它們，這裡補上）
+#   - backend/storage/app/repair-snapshots（正式站修復腳本的回滾快照）
+#     → g-drive:AllTrue-Backups/repair-snapshots/（同款漏洞：git-ignored 且不在 DB 裡，順手補上）
 #   - 不同步原始碼（GitHub 已是程式碼異地備份）
 #   - 不同步 emergency/ 目錄（大且 GitHub 已覆蓋）
 #
@@ -112,6 +116,39 @@ else
   log "WARN: No sixhour backups found to sync"
 fi
 
+# ── 使用者上傳檔案 → uploads/（#1124 補漏，不在任何 DB 備份裡）──
+sleep 10
+UPLOADS_DIR="/home/admin/backend/storage/app/public"
+if [ -d "$UPLOADS_DIR" ]; then
+  log "Syncing uploads (${UPLOADS_DIR}) to ${REMOTE}/uploads/ ..."
+  "$RCLONE" copy \
+    --transfers 2 \
+    --retries 5 \
+    --retries-sleep 30s \
+    --low-level-retries 10 \
+    --log-level ERROR \
+    "$UPLOADS_DIR" \
+    "${REMOTE}/uploads/" 2>&1 | tee -a "$LOG" || { log "WARN: uploads sync had errors (non-fatal)"; SYNC_ERRORS=$((SYNC_ERRORS+1)); }
+else
+  log "WARN: uploads dir ${UPLOADS_DIR} not found — nothing to sync"
+fi
+
+# ── 修復腳本回滾快照 → repair-snapshots/（同款漏洞，順手補上）──
+sleep 5
+SNAPSHOTS_DIR="/home/admin/backend/storage/app/repair-snapshots"
+if [ -d "$SNAPSHOTS_DIR" ]; then
+  log "Syncing repair snapshots (${SNAPSHOTS_DIR}) to ${REMOTE}/repair-snapshots/ ..."
+  "$RCLONE" copy \
+    --transfers 2 \
+    --retries 5 \
+    --retries-sleep 30s \
+    --log-level ERROR \
+    "$SNAPSHOTS_DIR" \
+    "${REMOTE}/repair-snapshots/" 2>&1 | tee -a "$LOG" || { log "WARN: repair-snapshots sync had errors (non-fatal)"; SYNC_ERRORS=$((SYNC_ERRORS+1)); }
+else
+  log "No repair-snapshots dir yet — nothing to sync"
+fi
+
 # ── 同步 manifest → manifests/ ──
 sleep 5
 log "Syncing manifest to ${REMOTE}/manifests/ ..."
@@ -129,7 +166,9 @@ DB_COUNT=$("$RCLONE" ls "${REMOTE}/db/" 2>/dev/null | wc -l || echo "?")
 MONTHLY_COUNT=$("$RCLONE" ls "${REMOTE}/monthly/" 2>/dev/null | wc -l || echo "?")
 SIXHOUR_COUNT=$("$RCLONE" ls "${REMOTE}/sixhour/" 2>/dev/null | wc -l || echo "?")
 MANIFEST_COUNT=$("$RCLONE" ls "${REMOTE}/manifests/" 2>/dev/null | wc -l || echo "?")
-log "Remote files — db/: ${DB_COUNT}, monthly/: ${MONTHLY_COUNT}, sixhour/: ${SIXHOUR_COUNT}, manifests/: ${MANIFEST_COUNT}"
+UPLOADS_COUNT=$("$RCLONE" ls "${REMOTE}/uploads/" 2>/dev/null | wc -l || echo "?")
+SNAPSHOTS_COUNT=$("$RCLONE" ls "${REMOTE}/repair-snapshots/" 2>/dev/null | wc -l || echo "?")
+log "Remote files — db/: ${DB_COUNT}, monthly/: ${MONTHLY_COUNT}, sixhour/: ${SIXHOUR_COUNT}, manifests/: ${MANIFEST_COUNT}, uploads/: ${UPLOADS_COUNT}, repair-snapshots/: ${SNAPSHOTS_COUNT}"
 
 # ── 遠端舊備份清理（保留最新 14 份 nightly，12 份 monthly，4 份 sixhour）──
 log "Pruning old remote backups..."
