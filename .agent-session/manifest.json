@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "df8d76d4d1174a2fab74d1d35b4d9654",
+  "session_id": "832210ba8c4240cda19011c8995fd333",
   "project": "alltrue",
-  "task_id": "schedule-0823-wu-chen",
+  "task_id": "director-billing-7-lessons",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "047ba395863680abc44366dc51fd30c5e085900b",
-  "branch": "chore/task-schedule-0823-wu-chen",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/schedule-0823-wu-chen",
-  "started_at": "2026-08-22T03:37:22Z",
+  "base_sha": "0a6091f00d4dfbc88850f0f4a862d7fcaef0a921",
+  "branch": "chore/task-director-billing-7-lessons",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/director-billing-7-lessons",
+  "started_at": "2026-08-22T04:02:41Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": null,
+  "agent_cli": "codex",
   "gateway_version": "0.5.0"
 }

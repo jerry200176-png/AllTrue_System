@@ -357,8 +357,8 @@ uncovered_minutes                  = 180 − 60 = 120分鐘（第 6 次超出的
 - **Billing-standard immutability（新增，回應本次修訂要求）**：
   - 第一筆 `session_deduction_ledger` 產生**前**，`standard_lesson_minutes`／`deduction_basis` 可透過一般編輯課程流程正常修改。
   - 第一筆 deduction ledger **產生後**，一般 `PUT /student-classes/{id}` 更新流程必須**拒絕**修改 `standard_lesson_minutes`（回 422，附清楚錯誤訊息），避免如 `recomputeCounters()` 現行公式（`SessionCount × perSessionMinutes()` 即時重算）在事後編輯時，**默默改寫已經發生過的歷史購買額度**。
-  - **v1 不提供任何 post-deduction 修正管道（本次修訂：撤回先前的 correction command 提案）**。先前版本曾提議一個「具名 command 修改 `standard_lesson_minutes`、但只影響未來」的補救途徑——**該提案不安全，已移除**：目前 entitlement 仍由 `SessionCount × standard_lesson_minutes` 即時推導（`recomputeCounters()`，見 §2.2），沒有 entitlement snapshot、沒有 effective date、沒有 allocation 語意，因此「只影響未來」在現行資料模型下**根本無法成立**——一旦改掉 `standard_lesson_minutes`，`purchased_minutes` 會整份重算，等於追溯重新解釋所有已發生的扣堂事件所依據的契約。宣稱它只影響未來會是一個假保證。
-  - 因此：扣堂後若真的需要修正契約，v1 的答案是**停止並升級為獨立的高風險流程**（比照 `docs/GUIDE_RELEASE_EXECUTION_PACKAGE.md` 的 owner-gated 資料修復慣例），必須先定義 entitlement snapshot／effective date／allocation 語意之後才能設計，**不在本 RFC 範圍內**。這也是 §12「停止條件」之一。
+  - **一般流程不提供任意 post-deduction 契約修改**。`standard_lesson_minutes`、`deduction_basis` 仍不可事後改寫；但 #1901 新增的 `billing-correction` 僅處理未收款、非共用、按堂課程的購買堂數下修，且新堂數不得低於 observed usage、費用必須由單堂費率推導。此例外不修改標準堂長／扣堂方式，不改寫歷史 ledger，因此不改變本節對 entitlement snapshot 缺失的安全結論。
+  - 因此：扣堂後若需要修改標準堂長、扣堂方式、已收款帳務或共用方案，v1 的答案仍是**停止並升級為獨立的高風險流程**（比照 `docs/GUIDE_RELEASE_EXECUTION_PACKAGE.md` 的 owner-gated 資料修復慣例）；本次例外只涵蓋固定單堂費率的未收款堂數下修。
   - **是否要把 `purchased_minutes` 從「即時重算」改成「建立時／每次加購時 snapshot 一筆 entitlement grant 事件」**（類似 `session_deduction_ledger` 已經是 event-sourced 的消費端，entitlement 端目前卻不是）——本 RFC 認為這是**更穩健的長期方向**，但**不是** v1 最小 slice 的必要項（v1 用「鎖定欄位 + 具名 command」這個較輕量的守門即可達到「不可默默改寫歷史」的目標）。列為 §14 待決事項，供 Founder 決定要不要在較後期 Phase 導入完整的 entitlement 事件溯源（**見 D7，已拍板 v1 不做**）。
 
 - **A1 snapshot 語意（本次修訂新增，回應 Founder closeout 要求）**：
@@ -375,7 +375,7 @@ uncovered_minutes                  = 180 − 60 = 120分鐘（第 6 次超出的
     - `standard_lesson_minutes` **must be non-null**（Phase 2 驗證：opt-in 時若未解析出非 null 值，拒絕 opt-in）。
     - runtime（`SessionDeductionService`／擴大後的判斷方法）**只能讀取已持久化的課程值**，**不得**在扣堂當下動態 fallback 到當時的 branch/system 預設——這正是 `LessonEntitlementCoverageCalculator` 刻意設計成「無預設值、缺值直接 throw」的原因（`backend/app/Services/Scheduling/LessonEntitlementCoverageCalculator.php` 建構子註解），確保 preview 計算與 runtime 扣堂用的都是同一個**已鎖定**的數字，不是一個會隨時間飄移的動態值。
   - **分校/系統預設日後修改，不得影響既有課程**：因為解析結果已經 snapshot 進 `StudentClass.standard_lesson_minutes`，修改 branch/system 預設只影響**之後新建立或新 opt-in** 的課程，不會回頭改變任何已經持久化的課程契約——這與「billing-standard immutability」（鎖定既有課程的 `standard_lesson_minutes`）是同一個防線的兩面：一面防止「事後編輯」，一面防止「系統預設飄移」。
-  - 第一筆 deduction event 之後：`standard_lesson_minutes`、`deduction_basis`、購買標準單位數（`SessionCount`）皆**不得**由普通編輯流程修改（後端 authoritative guard 回 422；前端 disabled 只是 UX，不可作為唯一防線）。`deduction_basis` 同樣不得被改成會重新解釋歷史的模式（例如 `actual_duration` → `fixed_session` → 再改回來，藉此繞過鎖定）。**v1 不提供任何具名 correction command 作為例外出口**（理由見上一點）。
+  - 第一筆 deduction event 之後：`standard_lesson_minutes`、`deduction_basis`、購買標準單位數（`SessionCount`）皆**不得**由普通編輯流程修改（後端 authoritative guard 回 422；前端 disabled 只是 UX，不可作為唯一防線）。`deduction_basis` 同樣不得被改成會重新解釋歷史的模式（例如 `actual_duration` → `fixed_session` → 再改回來，藉此繞過鎖定）。唯一例外是 #1901 的具名 `billing-correction`，且僅可下修未收款固定堂數課程，不可用來修改上述標準堂長／扣堂方式。
 
 - **D5（Founder 已拍板）— overage confirmation（soft block）**：
 

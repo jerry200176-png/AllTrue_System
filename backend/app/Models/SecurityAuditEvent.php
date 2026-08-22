@@ -20,8 +20,8 @@ final class SecurityAuditEvent
         'allowed', 'attempt_count', 'binding_verified', 'campus_count',
         'campus_scope', 'column_count', 'delivery_status', 'export_format',
         'http_status', 'method', 'new_remaining_sessions', 'new_session_count',
-        'new_type', 'notification_type', 'old_remaining_sessions',
-        'old_session_count', 'old_type', 'outcome', 'provider_status',
+        'new_charge', 'new_type', 'notification_type', 'old_remaining_sessions',
+        'old_session_count', 'old_charge', 'old_type', 'outcome', 'provider_status',
         'reason_code', 'row_count', 'source', 'student_count',
         'verification_method',
     ];

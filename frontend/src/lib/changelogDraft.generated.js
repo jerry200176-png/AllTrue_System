@@ -5,6 +5,28 @@
  */
 export const changelogDraftNotes = [
   {
+    "version": "2026.08.22",
+    "date": "2026-08-22",
+    "title": "2026.08.22 草稿（未發布）",
+    "summary": "未收款課程堂數與費用更正",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "未收款課程堂數與費用更正"
+        ]
+      }
+    ],
+    "items": [
+      "未收款課程堂數與費用更正"
+    ]
+  },
+  {
     "version": "2026.08.21",
     "date": "2026-08-21",
     "title": "2026.08.21 草稿（未發布）",
@@ -498,28 +520,6 @@ export const changelogDraftNotes = [
     "items": [
       "依實際上課時長扣堂——正式環境後端＋前端旗標已啟用（經 Founder 明確授權，未有課程走完驗收）",
       "每門課可自訂「標準一堂 = 幾分鐘」，依實際上課時長按比例扣堂（旗標關閉，尚未啟用）"
-    ]
-  },
-  {
-    "version": "2026.07.30",
-    "date": "2026-07-30",
-    "title": "2026.07.30 草稿（未發布）",
-    "summary": "跨分校／跨老師授權缺失（P0 containment）",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "修正內容",
-        "items": [
-          "跨分校／跨老師授權缺失（P0 containment）"
-        ]
-      }
-    ],
-    "items": [
-      "跨分校／跨老師授權缺失（P0 containment）"
     ]
   }
 ];

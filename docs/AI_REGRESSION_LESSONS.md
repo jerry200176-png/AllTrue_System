@@ -1416,4 +1416,11 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **強制規則**：收據列表與電子收據項目必須帶班型。0 元標試聽／輔導／0元。`first_session_date` 仍只給有效堂次（預收判定不變）；畫面用 `first_session_display`＋說明（取消堂次或合約開課日）。禁止用課程內部編號當主文案。
 - **測試必補**：`AccountingCourseClarityTest`；`PaymentReportApiTest::test_accounting_payments_labels_zero_tutoring_and_history_first_session`；`studentClassDisplay.test.js`／收據 adapter 試聽輔導文案。
 
+### R119. 未收款課程堂數更正必須走具名流程，不得放寬一般契約鎖定（GitHub #1901，2026-08-22）
+
+- **現象**：洪睿淵理化課實際應收 7 堂，但課程已產生扣堂紀錄且仍維持 8 堂；一般編輯回 `billing_contract_locked`，主任無法產生正確 7 堂／7,700 元收據。
+- **根因層級**：F1／F7 的流程架構缺口——契約鎖定正確保護歷史，但缺少「尚未收款的錯誤購買堂數」安全更正邊界；若直接移除 guard，會讓已收款或已使用額度也能被追溯改寫。
+- **強制規則**：只允許 director／super_admin 更正未收款、非共用、按堂課程；無有效 Payment、無 pending／confirmed PaymentReport；新堂數不得低於 observed used；金額必須等於單堂費率×新堂數。保留已上課／ledger，僅取消超額 scheduled，重算餘額並寫 PII-minimized audit。
+- **對標**：Stripe credit note 與 ERPNext amend／immutable ledger 將帳務修正與原始交易分離；本系統以具名 command 實作同一邊界，不把一般 PUT 變成萬用修正入口。
+- **測試必補**：`StudentClassBillingCorrectionTest` 覆蓋 8→7／7,700、低於已使用、已收款、待對帳與 audit；一般 PUT 的 `billing_contract_locked` golden test 維持。
 

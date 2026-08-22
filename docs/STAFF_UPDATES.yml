@@ -3,6 +3,7 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+
   - id: staff-2026-08-21-dunhua-campus-retired
     published_at: "2026-08-21"
     audiences:

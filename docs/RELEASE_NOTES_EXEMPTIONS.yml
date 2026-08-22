@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-08-22-unpaid-billing-correction
+    changelog_date: "2026-08-22"
+    changelog_title: "fix(billing): 未收款課程堂數與費用更正（GitHub #1901）"
+    reason: 新功能先以受控 silent ship 部署，待主任完成個案驗收後再發布教職員版本公告。
+
   - id: silent-2026-08-21-luyue-1513-unpaid
     changelog_date: "2026-08-21"
     changelog_title: "ops(billing): 大安盧越上期誤標已繳回滾（SC1513）"

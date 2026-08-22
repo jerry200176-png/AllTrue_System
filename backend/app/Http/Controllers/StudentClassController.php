@@ -1958,6 +1958,205 @@ class StudentClassController extends Controller
         return response()->json(['synced' => $synced]);
     }
 
+    /**
+     * Correct an unpaid count-based contract after deduction history exists.
+     *
+     * The ordinary update endpoint deliberately remains locked once history is
+     * present. This named endpoint is the auditable exception for a count that
+     * was entered incorrectly before collection.
+     */
+    public function billingCorrection(Request $request, StudentClass $studentClass)
+    {
+        if ($accessError = $this->authorizeStudentClassAccess($studentClass)) {
+            return $accessError;
+        }
+
+        $payload = $request->validate([
+            'new_session_count' => ['required', 'integer', 'min:1'],
+            'new_charge' => ['required', 'integer', 'min:0'],
+            'reason' => ['required', 'string', 'max:255'],
+        ]);
+
+        if ((string) ($studentClass->ScheduleMode ?? 'count') !== 'count') {
+            return response()->json([
+                'message' => '只有堂數制課程可以使用未收款堂數更正。',
+                'code' => 'billing_correction_count_mode_only',
+            ], 422);
+        }
+
+        if ($studentClass->isPartOfPackage()) {
+            return response()->json([
+                'message' => '共用課程包請使用方案調整流程，不可單獨更正課程堂數。',
+                'code' => 'billing_correction_package_forbidden',
+            ], 422);
+        }
+
+        if ((int) ($studentClass->Paid ?? 0) === 1) {
+            return response()->json([
+                'message' => '此課程已標記收款，請先走帳務更正／作廢流程。',
+                'code' => 'billing_correction_paid_locked',
+            ], 409);
+        }
+
+        $classId = (int) $studentClass->getKey();
+        $activePayment = DB::table('Invoice')
+            ->leftJoin('Payment', 'Payment.InvoiceID', '=', 'Invoice.id')
+            ->where('Invoice.StudentClassID', $classId)
+            ->where(function ($q) {
+                $q->whereNull('Invoice.Status')->orWhere('Invoice.Status', '!=', 'void');
+            })
+            ->where(function ($q) {
+                $q->where('Invoice.PaidAmount', '>', 0)
+                    ->orWhere(function ($payment) {
+                        $payment->where('Payment.Amount', '>', 0)
+                            ->where(function ($method) {
+                                $method->whereNull('Payment.Method')->orWhere('Payment.Method', '!=', 'void');
+                            });
+                    });
+            })
+            ->exists();
+        if ($activePayment) {
+            return response()->json([
+                'message' => '此課程已有有效收款紀錄，請先至帳務流程作廢或更正帳單。',
+                'code' => 'billing_correction_payment_locked',
+            ], 409);
+        }
+
+        $hasPendingReport = PaymentReport::query()
+            ->where('StudentClassID', $classId)
+            ->whereIn('status', ['pending', 'confirmed'])
+            ->exists();
+        if ($hasPendingReport) {
+            return response()->json([
+                'message' => '此課程已有待處理或已確認的繳費回報，請先完成或作廢該筆回報。',
+                'code' => 'billing_correction_payment_report_locked',
+            ], 409);
+        }
+
+        $newCount = (int) $payload['new_session_count'];
+        $newCharge = (int) $payload['new_charge'];
+        $oldCount = (int) ($studentClass->SessionCount ?? 0);
+        $oldCharge = (int) ($studentClass->Charge ?? 0);
+        $rateUnit = strtolower(trim((string) ($studentClass->rate_unit ?? 'session')));
+        if ($rateUnit !== 'session') {
+            return response()->json([
+                'message' => '只有按堂計費課程可以使用此更正流程。',
+                'code' => 'billing_correction_session_rate_only',
+            ], 422);
+        }
+
+        $rate = (float) ($studentClass->getAttribute('Rate') ?? 0);
+        $expectedCharge = (int) round($rate * $newCount);
+        if ($newCharge !== $expectedCharge) {
+            return response()->json([
+                'message' => "更正金額必須等於單堂 {$rate} × {$newCount} 堂 = {$expectedCharge} 元。",
+                'code' => 'billing_correction_charge_mismatch',
+                'expected_charge' => $expectedCharge,
+            ], 422);
+        }
+
+        $observedUsed = (int) (SessionDeductionService::batchObservedUsedSessions([$classId])[$classId] ?? 0);
+        if ($newCount < $observedUsed) {
+            return response()->json([
+                'message' => "更正後堂數不可少於已使用 {$observedUsed} 堂；已發生的扣堂紀錄不會被改寫。",
+                'code' => 'billing_correction_below_observed_usage',
+                'observed_used_sessions' => $observedUsed,
+            ], 422);
+        }
+
+        if ($newCount >= $oldCount) {
+            return response()->json([
+                'message' => '此流程只允許未收款課程減少堂數更正；增加堂數請使用加購／續報。',
+                'code' => 'billing_correction_reduction_only',
+            ], 422);
+        }
+
+        $result = DB::transaction(function () use ($classId, $newCount, $newCharge, $payload, $oldCount, $oldCharge, $studentClass, $observedUsed) {
+            $locked = StudentClass::query()->where('ID', $classId)->lockForUpdate()->first();
+            if (!$locked) {
+                abort(404);
+            }
+            if ((int) ($locked->Paid ?? 0) === 1) {
+                abort(response()->json([
+                    'message' => '此課程在處理期間已被標記收款，請重新整理後再操作。',
+                    'code' => 'billing_correction_paid_locked',
+                ], 409));
+            }
+
+            $locked->SessionCount = $newCount;
+            $locked->Charge = $newCharge;
+            $locked->save();
+
+            // An unpaid invoice may already exist even though no payment was
+            // entered. Keep the future payment report and receipt on the same
+            // corrected amount; paid invoices were rejected above.
+            $adjustedInvoiceCount = 0;
+            $openInvoices = Invoice::query()
+                ->where('StudentClassID', $classId)
+                ->where(function ($q) {
+                    $q->whereNull('Status')->orWhere('Status', '!=', 'void');
+                })
+                ->lockForUpdate()
+                ->get();
+            foreach ($openInvoices as $invoice) {
+                if ((int) ($invoice->PaidAmount ?? 0) !== 0) {
+                    abort(response()->json([
+                        'message' => '此課程已有有效收款紀錄，請先至帳務流程作廢或更正帳單。',
+                        'code' => 'billing_correction_payment_locked',
+                    ], 409));
+                }
+                $invoice->TotalAmount = $newCharge;
+                $invoice->save();
+                InvoiceItem::query()
+                    ->where('InvoiceID', $invoice->id)
+                    ->where('StudentClassID', $classId)
+                    ->update(['Amount' => $newCharge]);
+                $adjustedInvoiceCount++;
+            }
+
+            $this->cancelExcessScheduledSessions($classId, $newCount);
+            SessionDeductionService::recomputeCounters($classId);
+            $fresh = $locked->fresh();
+
+            SecurityAuditEvent::append(
+                'student_class.billing_contract_correction',
+                'success',
+                [
+                    'campus_id' => $studentClass->student?->CampusID,
+                    'actor_type' => 'user',
+                    'actor_id' => request()->attributes->get('auth_user')?->id,
+                    'subject_type' => 'student_class',
+                    'subject_id' => $classId,
+                ],
+                [
+                    'old_session_count' => $oldCount,
+                    'new_session_count' => $newCount,
+                    'old_charge' => $oldCharge,
+                    'new_charge' => $newCharge,
+                    'old_remaining_sessions' => (int) ($studentClass->RemainingSessions ?? 0),
+                    'new_remaining_sessions' => (int) ($fresh->RemainingSessions ?? 0),
+                    'reason_code' => 'post_deduction_unpaid_billing_correction',
+                    'outcome' => 'success',
+                ]
+            );
+
+            return [
+                'student_class_id' => $classId,
+                'old_session_count' => $oldCount,
+                'new_session_count' => $newCount,
+                'old_charge' => $oldCharge,
+                'new_charge' => $newCharge,
+                'observed_used_sessions' => $observedUsed,
+                'remaining_sessions' => (int) ($fresh->RemainingSessions ?? 0),
+                'payment_status' => 'unpaid',
+                'reason' => $payload['reason'],
+                'adjusted_invoice_count' => $adjustedInvoiceCount,
+            ];
+        });
+
+        return response()->json($result);
+    }
+
     public function confirmPayment(StudentClass $studentClass)
     {
         $auth = $this->authorizeStudentClassAccess($studentClass);

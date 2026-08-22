@@ -112,7 +112,7 @@ Palace：`~/.mempalace/palace`（local-first）。權威文件仍在 git markdow
 `StudentClass.standard_lesson_minutes`（計費標準堂長）與 `SessionDuration`（排課時長）是**兩件事**。同樣一次 180 分鐘的課，在標準 90 / 120 / 180 分鐘的課程裡分別扣 **2.00 / 1.50 / 1.00** 堂；買 8 堂分別 = 720 / 960 / 1440 分鐘。
 **後端沒有任何 fallback 到 120**：`resolvedStandardLessonMinutes()` 未設定時回傳 `null`，不會退回 `SessionDuration` 也不會退回 120；建課表單的 `120` 只是輸入框初值，一定會隨 payload 明確送出。任何「AllTrue 一堂固定 120 分鐘」「8 堂 = 16 小時」「3 小時課永遠扣 1.5 堂」的假設都是 bug。
 **兩個旗標缺一不可且皆預設關**：`perfflags.actual_duration_deduction_enabled`（環境）＋ `deduction_basis`（每門課）。旗標關閉時，已標記 `actual_duration` 的課行為**完全等同** `fixed_session`（fail-safe，非 fail-open），因此關旗標＝完整回滾、無資料要清。
-**第一筆扣堂 ledger 之後**，`standard_lesson_minutes`／`deduction_basis`／`SessionCount` 由 `BillingContractLockGuard` 在**後端**鎖定（回 422）；前端變灰只是 UX。v1 **不提供**任何扣堂後修正管道——額度仍由 `SessionCount × standard_lesson_minutes` 推導，事後改標準堂長等於重新解釋歷史，宣稱「只影響未來」是假保證。要改就結掉重開。
+**第一筆扣堂 ledger 之後**，`standard_lesson_minutes`／`deduction_basis`／`SessionCount` 由 `BillingContractLockGuard` 在**後端**鎖定（回 422）；前端變灰只是 UX。一般編輯仍不提供扣堂後任意修正；但主任／超級管理員可使用具名的 `billing-correction` 例外流程，僅處理**未收款、非共用、按堂計費的堂數下修**，不得低於已使用堂數，且會留下稽核紀錄。此例外不修改 `standard_lesson_minutes`／`deduction_basis`，也不改寫已發生的扣堂歷史；已收款或付款回報案件仍須走帳務作廢／更正流程。
 **超額永遠不擋點名**：確認只發生在建課階段（D5）。若出現「因額度不足而無法點名」＝ bug，先關旗標。上線／回滾見 [`docs/RUNBOOK_ACTUAL_DURATION_ACTIVATION.md`](docs/RUNBOOK_ACTUAL_DURATION_ACTIVATION.md)。
 
 ### G-012：雲端／遠端 session（無 SSH、無 DB 連線）撈／回寫 in-app bug 資料——讀走 push request file，寫要交給人類
