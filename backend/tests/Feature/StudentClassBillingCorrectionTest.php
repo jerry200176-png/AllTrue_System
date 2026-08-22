@@ -161,8 +161,11 @@ class StudentClassBillingCorrectionTest extends TestCase
             'StudentID' => $student->id,
             'StudentClassID' => $pending->ID,
             'reported_by_name' => $student->name,
+            'payment_date' => now()->toDateString(),
             'reported_amount' => 8800,
             'status' => 'pending',
+            'report_token_hash' => hash('sha256', 'billing-correction-pending-' . uniqid()),
+            'token_expires_at' => now()->addDay(),
         ]);
         $this->withToken($token)->postJson(
             "/api/v1/student-classes/{$pending->ID}/billing-correction",
