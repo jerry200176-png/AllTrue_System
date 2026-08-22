@@ -110,14 +110,31 @@ Route::post('/internal/opcache-reset', function (\Illuminate\Http\Request $req) 
         return response()->json(['error' => 'Forbidden'], 403);
     }
 
-    // opcache_reset() does not close a PDO connection already retained by a
-    // long-lived PHP-FPM worker.  This matters after DB credential rotation:
-    // the worker can have the new cached config while still holding a
-    // connection authenticated with the old password.  Purge and immediately
-    // probe the default connection in the same web process so this request
-    // proves that worker can use the current credentials.
-    $connection = config('database.default');
     try {
+        // A PHP-FPM worker may have opcache enabled with timestamp checks off.
+        // In that case, rebuilding config:cache on the CLI does not guarantee
+        // that this request sees the new DB credential. Invalidate and require
+        // the compiled cache explicitly before touching PDO.
+        $configCache = base_path('bootstrap/cache/config.php');
+        if (is_file($configCache)) {
+            if (function_exists('opcache_invalidate')) {
+                @opcache_invalidate($configCache, true);
+            }
+
+            $freshConfig = require $configCache;
+            $freshDatabase = is_array($freshConfig) ? ($freshConfig['database'] ?? null) : null;
+            if (is_array($freshDatabase)) {
+                config([
+                    'database.default' => $freshDatabase['default'] ?? config('database.default'),
+                    'database.connections' => $freshDatabase['connections'] ?? config('database.connections'),
+                ]);
+            }
+        }
+
+        // opcache_reset() does not close a PDO connection already retained by
+        // a long-lived PHP-FPM worker. Purge and probe the default connection
+        // in this same web process so the request proves current credentials.
+        $connection = config('database.default');
         \Illuminate\Support\Facades\DB::purge($connection);
         \Illuminate\Support\Facades\DB::connection($connection)->select('SELECT 1');
     } catch (\Throwable $e) {

@@ -150,6 +150,16 @@ jobs:
           fi
           echo "✅ production HEAD == CI 驗證版本（$TARGET_SHA）"
 
+          # The DB credential rotation authenticated over TCP and updated the
+          # TCP-matched principal, while the application was still configured
+          # with DB_HOST=localhost (Unix socket), which is a separate MySQL
+          # User@Host match. Normalize the app to the verified TCP endpoint so
+          # the effective username/password pair is the one rotation tested.
+          if grep -q '^DB_HOST=localhost$' /home/admin/backend/.env; then
+            sed -i 's/^DB_HOST=localhost$/DB_HOST=127.0.0.1/' /home/admin/backend/.env
+            echo "✅ normalized production DB_HOST localhost → 127.0.0.1"
+          fi
+
           echo "=== [1b/7] Restore storage/app/public（若 reset 清空，#1124） ==="
           if [ -f "$UPLOADS_BACKUP_FILE" ]; then
             if [ ! -d /home/admin/backend/storage/app/public ] || [ -z "$(find /home/admin/backend/storage/app/public -type f -print -quit)" ]; then
