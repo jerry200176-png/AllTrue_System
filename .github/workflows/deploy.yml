@@ -279,6 +279,16 @@ jobs:
           cd /home/admin/backend
           rm -f bootstrap/cache/packages.php bootstrap/cache/services.php
           php artisan optimize
+          # Read-only probe using the same Laravel config that the web process
+          # will load. Keep the authentication error visible without ever
+          # printing DB_PASSWORD; this distinguishes a remaining credential
+          # mismatch from an FPM worker/cache problem.
+          if DB_PROBE_OUTPUT=$(php artisan tinker --execute='try { DB::select("select 1"); echo "DB OK"; } catch (Throwable $e) { fwrite(STDERR, $e->getMessage()); exit(1); }' 2>&1); then
+            echo "✅ Laravel DB probe passed"
+          else
+            echo "❌ Laravel DB probe failed (password redacted): $DB_PROBE_OUTPUT"
+            exit 1
+          fi
           # ✅ 清除 OPcache（mod_php 架構，用自製 artisan 指令，不需 sudo）
           cd /home/admin/backend && php artisan opcache:reset 2>/dev/null \
             && echo "✅ OPcache 清除完成" \
