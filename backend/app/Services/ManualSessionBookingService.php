@@ -74,7 +74,7 @@ class ManualSessionBookingService
         if (!in_array((string) ($course->ScheduleMode ?? 'count'), ['count'], true)) {
             return $this->blocked($base, 'not_count_course', 'Manual occurrence scheduling requires a session course');
         }
-        if (!in_array((string) ($course->scheduling_policy ?? 'auto_recurrence'), [self::POLICY], true)) {
+        if (!in_array((string) ($course->scheduling_policy ?? 'auto_recurrence'), [self::POLICY, 'auto_recurrence'], true)) {
             return $this->blocked($base, 'manual_policy_required', 'Course is not configured for manual occurrence scheduling');
         }
         // #1839: a stopped count-mode course that still owes sessions must remain
@@ -108,7 +108,7 @@ class ManualSessionBookingService
         if (!in_array((string) ($course->ScheduleMode ?? 'count'), ['count'], true)) {
             return $this->blocked($base, 'not_count_course', '逐堂手動排課目前只適用堂數制課程');
         }
-        if (!in_array((string) ($course->scheduling_policy ?? 'auto_recurrence'), [self::POLICY], true)) {
+        if (!in_array((string) ($course->scheduling_policy ?? 'auto_recurrence'), [self::POLICY, 'auto_recurrence'], true)) {
             return $this->blocked($base, 'manual_policy_required', '請先將課程切換為逐堂手動排課');
         }
         if ((int) ($course->Stop ?? 0) === 1) {

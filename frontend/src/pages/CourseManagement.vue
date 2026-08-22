@@ -335,6 +335,11 @@
                         >＋新增下一堂</button>
                         <button
                           v-if="isSessionMode(c) && !isManualOccurrenceCourse(c)"
+                          class="small btn-add-session manual-occurrence-action"
+                          @click="openManualSessionModal(c)"
+                        >排課</button>
+                        <button
+                          v-if="isSessionMode(c) && !isManualOccurrenceCourse(c)"
                           class="small btn-add-session"
                           :class="{ disabled: !canQuickAddSession(c) }"
                           :disabled="!canQuickAddSession(c)"
@@ -355,6 +360,11 @@
                               class="action-dropdown-item"
                               @click="openManualSessionModal(c); closeActionMenu()"
                             ><span class="action-icon">＋</span> 新增下一堂</button>
+                            <button
+                              v-if="isSessionMode(c) && !isManualOccurrenceCourse(c)"
+                              class="action-dropdown-item"
+                              @click="openManualSessionModal(c); closeActionMenu()"
+                            ><span class="action-icon">＋</span> 排課</button>
                             <button
                               v-if="isSessionMode(c) && !isManualOccurrenceCourse(c)"
                               class="action-dropdown-item action-dropdown-add-session-mobile"
@@ -2498,7 +2508,7 @@ async function submitQuickAddSession() {
 }
 // ----- Leave (請假) -----
 function openManualSessionModal(course) {
-  if (!course?.id || !isManualOccurrenceCourse(course)) return;
+  if (!course?.id) return;
   manualSessionCourse.value = course;
   manualSessionCheck.value = null;
   manualSessionForm.value = {
