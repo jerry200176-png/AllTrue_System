@@ -2124,7 +2124,7 @@ class StudentClassController extends Controller
                 [
                     'campus_id' => $studentClass->student?->CampusID,
                     'actor_type' => 'user',
-                    'actor_id' => request()->attributes->get('auth_user_id'),
+                    'actor_id' => request()->attributes->get('auth_user')?->id,
                     'subject_type' => 'student_class',
                     'subject_id' => $classId,
                 ],

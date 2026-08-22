@@ -160,6 +160,7 @@ class StudentClassBillingCorrectionTest extends TestCase
         PaymentReport::create([
             'StudentID' => $student->id,
             'StudentClassID' => $pending->ID,
+            'reported_by_name' => $student->name,
             'reported_amount' => 8800,
             'status' => 'pending',
         ]);
