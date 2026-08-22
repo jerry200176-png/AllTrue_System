@@ -8,13 +8,19 @@ export const changelogDraftNotes = [
     "version": "2026.08.22",
     "date": "2026-08-22",
     "title": "2026.08.22 草稿（未發布）",
-    "summary": "未收款課程堂數與費用更正",
+    "summary": "課程管理裡日期旁標記較不會無故變灰；讀不到堂次時會顯示清楚錯誤提示。；未收款課程堂數與費用更正",
     "audience": [
       "teacher",
       "director"
     ],
     "draft": true,
     "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "課程管理裡日期旁標記較不會無故變灰；讀不到堂次時會顯示清楚錯誤提示。"
+        ]
+      },
       {
         "title": "修正內容",
         "items": [
@@ -23,6 +29,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "課程管理裡日期旁標記較不會無故變灰；讀不到堂次時會顯示清楚錯誤提示。",
       "未收款課程堂數與費用更正"
     ]
   },

@@ -4,6 +4,44 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-22-manual-session-booking",
+    "publishedAt": "2026-08-22",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "一般課程合約新增「排課」按鈕",
+    "summary": "一般（非進階）課程合約現在可以直接排指定日期時段的課，不用再誤用補課功能。",
+    "items": [
+      "課程管理頁面對一般合約新增「排課」按鈕，可直接指定日期時段建立課堂。",
+      "排課前會先檢查師資／教室是否衝堂，衝堂原因會顯示在對話框內。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "課程管理頁面對一般合約新增「排課」按鈕，可直接指定日期時段建立課堂。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "排課前會先檢查師資／教室是否衝堂，衝堂原因會顯示在對話框內。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-22:manual-session-booking",
+      "github:#1956"
+    ],
+    "date": "2026-08-22",
+    "version": "2026.08.22"
+  },
+  {
     "id": "staff-2026-08-21-question-bank-provenance",
     "publishedAt": "2026-08-21",
     "effectiveAt": null,
