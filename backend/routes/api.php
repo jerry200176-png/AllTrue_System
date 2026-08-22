@@ -109,11 +109,33 @@ Route::post('/internal/opcache-reset', function (\Illuminate\Http\Request $req) 
     if (empty($secret) || $req->header('X-Deploy-Secret') !== $secret) {
         return response()->json(['error' => 'Forbidden'], 403);
     }
+
+    // opcache_reset() does not close a PDO connection already retained by a
+    // long-lived PHP-FPM worker.  This matters after DB credential rotation:
+    // the worker can have the new cached config while still holding a
+    // connection authenticated with the old password.  Purge and immediately
+    // probe the default connection in the same web process so this request
+    // proves that worker can use the current credentials.
+    $connection = config('database.default');
+    try {
+        \Illuminate\Support\Facades\DB::purge($connection);
+        \Illuminate\Support\Facades\DB::connection($connection)->select('SELECT 1');
+    } catch (\Throwable $e) {
+        \Log::error('[internal/opcache-reset] database connection refresh failed: ' . $e->getMessage());
+
+        return response()->json(['error' => 'Database connection refresh failed'], 503);
+    }
+
     $cleared = false;
     if (function_exists('opcache_reset')) {
         $cleared = opcache_reset();
     }
-    return response()->json(['ok' => true, 'opcache_cleared' => $cleared]);
+
+    return response()->json([
+        'ok' => true,
+        'opcache_cleared' => $cleared,
+        'db_connection_refreshed' => true,
+    ]);
 });
 
 Route::prefix('v1')->group(function () {
