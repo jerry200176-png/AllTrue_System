@@ -3,18 +3,6 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
-  - id: staff-2026-08-22-unpaid-billing-correction
-    published_at: "2026-08-22"
-    audiences:
-      - director
-    importance: major
-    title: 未收款課程可更正堂數
-    summary: 收款前可安全修正錯誤購買堂數與總費用。
-    items:
-      - category: fixed
-        text: 保留已上課紀錄，取消多餘未上課排程並同步正確收據金額。
-    source_refs:
-      - "changelog:2026-08-22:unpaid-billing-correction"
 
   - id: staff-2026-08-21-dunhua-campus-retired
     published_at: "2026-08-21"
