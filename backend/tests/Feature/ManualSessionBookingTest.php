@@ -277,4 +277,30 @@ class ManualSessionBookingTest extends TestCase
             ->assertStatus(422)
             ->assertJsonPath('error_code', 'COURSE_STOPPED');
     }
+
+    // in-app 排課: a normal auto_recurrence contract had no first-time "排課"
+    // action in CourseManagement (only manual_occurrence courses could use this
+    // endpoint). This endpoint/service is now shared across both policies so
+    // directors can schedule a next session for a regular contract too.
+    public function test_auto_recurrence_course_can_use_manual_session_booking(): void
+    {
+        $this->course->scheduling_policy = 'auto_recurrence';
+        $this->course->save();
+
+        $date = Carbon::today()->addDays(7)->toDateString();
+        $payload = ['session_date' => $date, 'start_time' => '16:00'];
+
+        $this->withHeaders($this->headers())
+            ->postJson("/api/v1/student-classes/{$this->course->ID}/manual-sessions/check", $payload)
+            ->assertOk()
+            ->assertJsonPath('can_add', true);
+
+        $this->withHeaders($this->headers())
+            ->postJson("/api/v1/student-classes/{$this->course->ID}/manual-sessions", $payload)
+            ->assertCreated()
+            ->assertJsonPath('created', true);
+
+        $this->assertDatabaseCount('ClassSession', 1);
+        $this->assertSame(3, (int) $this->course->fresh()->RemainingSessions);
+    }
 }
