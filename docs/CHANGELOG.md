@@ -1,3 +1,10 @@
+## 2026-08-21 — ops(branch): 停用敦化分校選單
+
+<!-- release-notes: staff_update=staff-2026-08-21-dunhua-campus-retired -->
+
+- 敦化分校保留歷史資料，但已從公開分校清單與前端離線後備清單移除。
+- 不刪除學生、課程、出勤、帳務、評量或稽核紀錄；若要恢復，需由超級管理員明確重新啟用。
+
 ## 2026-08-21 — feat(assessment): 家長端檢測進度與補強狀態
 
 <!-- release-notes: staff_update=staff-2026-08-21-parent-assessment-progress -->
