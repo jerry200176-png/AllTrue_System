@@ -2,7 +2,22 @@
 
 **Purpose:** contain SEC-ALLTRUE-003 by moving production to a separately named MySQL principal, observing both principals in parallel, and only then disabling new logins for the compromised principal.
 
-This is the recommended P0 path. The older `1387-db-password-rotation.yml` in-place path remains available for a different incident, but refuses to run while staged-rotation state exists. Never mix the paths.
+This is now the only supported P0 rotation path. The legacy in-place `rotate` mode in `1387-db-password-rotation.yml` is retired after the 2026-08-22 outage and fails closed without touching production. The same workflow retains an explicitly gated `repair-principal` mode (`REPAIR_DB_PRINCIPAL`) for an already-known mismatch. Never mix the paths.
+
+## 2026-08-22 incident record
+
+Production returned HTTP 500 because the application credential and the actual
+MySQL grant identity were out of sync. The error named `admin@localhost`, but a
+root read-only inventory showed the only row was `admin@%`; attempting to alter
+the nonexistent `admin@localhost` row returned MySQL error 1396. An authorized
+operator aligned the existing `admin@%` row to the protected `.env` value, then
+verified a fresh TCP `SELECT 1`, rebuilt Laravel config, reloaded PHP-FPM, and
+verified `/api/v1/branches` returned HTTP 200. No password value belongs in this
+runbook, logs, tickets, or chat.
+
+The permanent rule is: resolve and verify the exact `User@Host` row before any
+credential mutation. A health endpoint alone is insufficient; every rotation
+must prove a fresh Laravel DB connection and a DB-dependent HTTP read.
 
 No credential is entered in GitHub or printed. Both generated credentials remain in MySQL and the Pi-only, mode-`600` state file:
 
@@ -34,7 +49,7 @@ Open **Actions → Deploy to Pi**, choose `Run workflow`, and run exactly one ph
 | 2 | `phase2-cutover` | `CUTOVER_NEW_PRINCIPAL` |
 | 3 | `phase3-lock` | `LOCK_OLD_PRINCIPAL` |
 
-All phases share the non-cancelling `production-deploy` concurrency group with automatic deploys and the in-place rotation workflow. A dispatch run never enters `detect-deployable` or `deploy`; Phase 3 is never chained from Phase 2.
+All phases share the non-cancelling `production-deploy` concurrency group with automatic deploys and the guarded repair workflow. A dispatch run never enters `detect-deployable` or `deploy`; Phase 3 is never chained from Phase 2.
 
 ## Phase 1 — create and verify; old principal and app untouched
 

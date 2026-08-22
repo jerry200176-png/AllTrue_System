@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.08.22",
     "date": "2026-08-22",
     "title": "2026.08.22 草稿（未發布）",
-    "summary": "未收款課程堂數與費用更正",
+    "summary": "未收款課程堂數與費用更正；DB credential mismatch recovered",
     "audience": [
       "teacher",
       "director"
@@ -20,10 +20,17 @@ export const changelogDraftNotes = [
         "items": [
           "未收款課程堂數與費用更正"
         ]
+      },
+      {
+        "title": "其他改善",
+        "items": [
+          "DB credential mismatch recovered"
+        ]
       }
     ],
     "items": [
-      "未收款課程堂數與費用更正"
+      "未收款課程堂數與費用更正",
+      "DB credential mismatch recovered"
     ]
   },
   {
