@@ -151,13 +151,30 @@ jobs:
           echo "✅ production HEAD == CI 驗證版本（$TARGET_SHA）"
 
           # The DB credential rotation authenticated over TCP and updated the
-          # TCP-matched principal, while the application was still configured
-          # with DB_HOST=localhost (Unix socket), which is a separate MySQL
-          # User@Host match. Normalize the app to the verified TCP endpoint so
-          # the effective username/password pair is the one rotation tested.
-          if grep -q '^DB_HOST=localhost$' /home/admin/backend/.env; then
-            sed -i 's/^DB_HOST=localhost$/DB_HOST=127.0.0.1/' /home/admin/backend/.env
-            echo "✅ normalized production DB_HOST localhost → 127.0.0.1"
+          # TCP-matched principal, while Laravel was still allowed to connect
+          # through the Unix socket. MySQL treats that as a separate
+          # User@Host match (the incident presented as user@localhost).
+          # Normalize both settings so the effective connection is the same
+          # TCP tuple that rotation verified. Handle quoted/CRLF env values and
+          # an existing DB_SOCKET entry; changing only DB_HOST is insufficient
+          # when the socket setting is populated.
+          env_value() {
+            sed -n "s/^$1=//p" /home/admin/backend/.env | head -n 1 \
+              | sed -e 's/\r$//' -e 's/^"//' -e 's/"$//' \
+                    -e "s/^'//" -e "s/'$//"
+          }
+          APP_DB_HOST="$(env_value DB_HOST)"
+          APP_DB_SOCKET="$(env_value DB_SOCKET)"
+          if [ "$APP_DB_HOST" = "localhost" ] || [ -n "$APP_DB_SOCKET" ]; then
+            if grep -q '^DB_HOST=' /home/admin/backend/.env; then
+              sed -i -E 's/^DB_HOST=.*/DB_HOST=127.0.0.1/' /home/admin/backend/.env
+            else
+              printf '\nDB_HOST=127.0.0.1\n' >> /home/admin/backend/.env
+            fi
+            if grep -q '^DB_SOCKET=' /home/admin/backend/.env; then
+              sed -i -E 's/^DB_SOCKET=.*/DB_SOCKET=/' /home/admin/backend/.env
+            fi
+            echo "✅ normalized production DB connection to TCP 127.0.0.1 (socket disabled)"
           fi
 
           echo "=== [1b/7] Restore storage/app/public（若 reset 清空，#1124） ==="
