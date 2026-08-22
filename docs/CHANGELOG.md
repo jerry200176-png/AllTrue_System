@@ -1,3 +1,11 @@
+## 2026-08-22 — feat(schedule): 一般合約新增「排課」按鈕（GitHub #1956）
+
+<!-- release-notes: staff_update=staff-2026-08-22-manual-session-booking -->
+
+- 一般（非進階模式）課程合約，課程管理頁面現在有「排課」按鈕，可直接為既有合約新增指定日期時段的課堂，不必再誤用「補課」功能。
+- 沿用既有的排課檢查與建立流程，會先確認師資／教室無衝堂才建立，失敗原因會顯示在對話框內。
+- 不影響已存在的自動週期排課、補課或調課行為。
+
 ## 2026-08-22 — incident(ops): #1387 production DB credential mismatch recovered
 
 <!-- release-notes: silent_ship=silent-2026-08-22-db-credential-rotation-incident -->

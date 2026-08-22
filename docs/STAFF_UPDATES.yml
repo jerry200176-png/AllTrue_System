@@ -4,6 +4,22 @@
 
 updates:
 
+  - id: staff-2026-08-22-manual-session-booking
+    published_at: "2026-08-22"
+    audiences:
+      - director
+    importance: major
+    title: 一般課程合約新增「排課」按鈕
+    summary: 一般（非進階）課程合約現在可以直接排指定日期時段的課，不用再誤用補課功能。
+    items:
+      - category: added
+        text: 課程管理頁面對一般合約新增「排課」按鈕，可直接指定日期時段建立課堂。
+      - category: improved
+        text: 排課前會先檢查師資／教室是否衝堂，衝堂原因會顯示在對話框內。
+    source_refs:
+      - "changelog:2026-08-22:manual-session-booking"
+      - "github:#1956"
+
   - id: staff-2026-08-21-dunhua-campus-retired
     published_at: "2026-08-21"
     audiences:
