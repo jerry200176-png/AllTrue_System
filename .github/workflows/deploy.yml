@@ -283,7 +283,7 @@ jobs:
           # will load. Keep the authentication error visible without ever
           # printing DB_PASSWORD; this distinguishes a remaining credential
           # mismatch from an FPM worker/cache problem.
-          if DB_PROBE_OUTPUT=$(php artisan tinker --execute='try { DB::select("select 1"); echo "DB OK"; } catch (Throwable $e) { fwrite(STDERR, $e->getMessage()); exit(1); }' 2>&1); then
+          if DB_PROBE_OUTPUT=$(php artisan tinker --execute='try { \Illuminate\Support\Facades\DB::select("select 1"); echo "DB OK"; } catch (Throwable $e) { fwrite(STDERR, $e->getMessage()); exit(1); }' 2>&1); then
             echo "✅ Laravel DB probe passed"
           else
             echo "❌ Laravel DB probe failed (password redacted): $DB_PROBE_OUTPUT"
