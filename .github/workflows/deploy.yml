@@ -158,24 +158,21 @@ jobs:
           # TCP tuple that rotation verified. Handle quoted/CRLF env values and
           # an existing DB_SOCKET entry; changing only DB_HOST is insufficient
           # when the socket setting is populated.
-          env_value() {
-            sed -n "s/^$1=//p" /home/admin/backend/.env | head -n 1 \
-              | sed -e 's/\r$//' -e 's/^"//' -e 's/"$//' \
-                    -e "s/^'//" -e "s/'$//"
-          }
-          APP_DB_HOST="$(env_value DB_HOST)"
-          APP_DB_SOCKET="$(env_value DB_SOCKET)"
-          if [ "$APP_DB_HOST" = "localhost" ] || [ -n "$APP_DB_SOCKET" ]; then
-            if grep -q '^DB_HOST=' /home/admin/backend/.env; then
-              sed -i -E 's/^DB_HOST=.*/DB_HOST=127.0.0.1/' /home/admin/backend/.env
-            else
-              printf '\nDB_HOST=127.0.0.1\n' >> /home/admin/backend/.env
-            fi
-            if grep -q '^DB_SOCKET=' /home/admin/backend/.env; then
-              sed -i -E 's/^DB_SOCKET=.*/DB_SOCKET=/' /home/admin/backend/.env
-            fi
-            echo "✅ normalized production DB connection to TCP 127.0.0.1 (socket disabled)"
+          if grep -qE '^[[:space:]]*DB_HOST[[:space:]]*=' /home/admin/backend/.env; then
+            sed -i -E 's/^[[:space:]]*DB_HOST[[:space:]]*=.*/DB_HOST=127.0.0.1/' /home/admin/backend/.env
+          else
+            printf '\nDB_HOST=127.0.0.1\n' >> /home/admin/backend/.env
           fi
+          if grep -qE '^[[:space:]]*DB_SOCKET[[:space:]]*=' /home/admin/backend/.env; then
+            sed -i -E 's/^[[:space:]]*DB_SOCKET[[:space:]]*=.*/DB_SOCKET=/' /home/admin/backend/.env
+          fi
+          # Laravel gives DATABASE_URL precedence over the individual DB_*
+          # values. Disable it here too; otherwise it can silently restore the
+          # Unix-socket user@localhost path after the host normalization above.
+          if grep -qE '^[[:space:]]*DATABASE_URL[[:space:]]*=' /home/admin/backend/.env; then
+            sed -i -E 's/^[[:space:]]*DATABASE_URL[[:space:]]*=/# DATABASE_URL disabled by deploy/' /home/admin/backend/.env
+          fi
+          echo "✅ normalized production DB connection to TCP 127.0.0.1:3306 (socket and DATABASE_URL disabled)"
 
           echo "=== [1b/7] Restore storage/app/public（若 reset 清空，#1124） ==="
           if [ -f "$UPLOADS_BACKUP_FILE" ]; then
