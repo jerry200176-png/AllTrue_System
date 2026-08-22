@@ -28,29 +28,23 @@
 
 ## 3. 範圍
 ### In Scope
-- 新增主任／超級管理員專用的未收款堂數更正 API。
-- 新增課程管理的操作入口與確認視窗。
-- 驗證堂數制、非共用方案、未收款、無有效付款／待對帳回報、不得低於已使用堂數。
-- 更正後取消超出堂數的 scheduled 排程、重算餘額、寫入稽核紀錄。
+- 新增主任／超級管理員專用 API 與課程管理確認視窗。
+- 驗證堂數制、非共用方案、未收款、付款／待對帳回報與已使用堂數邊界。
+- 更正後取消超出堂數的 scheduled 排程、重算餘額並寫入稽核紀錄。
 - 回歸測試、CHANGELOG、AI regression lesson 與 API 文件。
 
 ### Out of Scope
-- 不放寬一般 `PUT /student-classes/{id}` 的計費契約鎖定。
-- 不修改已收款、已確認／待處理繳費回報或共用課程包。
-- 不改寫已上課、出缺勤、LearningRecord、扣堂 ledger。
-- 不實作付款後 credit note／發票作廢重開流程。
+- 不放寬一般 `PUT /student-classes/{id}` 鎖定，也不修改已收款、待處理回報或共用課程包。
+- 不改寫已上課、出缺勤、LearningRecord、扣堂 ledger；不實作付款後 credit note／發票作廢重開。
 - 不直接修改 production 資料庫；正式資料更正須透過部署後的受控 API 執行。
 
 ## 4. RACI
-- R：AI Agent（後端、前端、測試與文件）
-- A：AI Agent（依既有治理流程提交 branch／PR）
-- C：既有帳務與課務規則文件
-- I：使用本功能的主任與維運人員
+- R/A：AI Agent（後端、前端、測試、文件與 branch／PR）。
+- C：既有帳務與課務規則文件；I：主任與維運人員。
 
 ## 4b. Dependencies
-- 無 migration 依賴；沿用現有 `StudentClass`、`ClassSession`、`PaymentReport`、`security_audit_events`。
-- 依賴既有 `SessionDeductionService::recomputeCounters()` 與 `BillingContractLockGuard`。
-- 正式使用前依既有 CI／PR 流程部署前端與後端。
+- 無 migration；沿用現有 `StudentClass`、`ClassSession`、`PaymentReport`、`security_audit_events`。
+- 依賴 `SessionDeductionService::recomputeCounters()`／`BillingContractLockGuard`，部署遵循 CI／PR。
 
 ## 5. Acceptance Criteria
 ### AC-001：未收款下修
@@ -71,11 +65,9 @@
 - AC-004-b：成功更正寫入不含 PII 的舊／新堂數、舊／新費用與固定 reason code 稽核事件。
 
 ## 6. 功能需求 FR
-- FR-001：系統應提供受角色與分校範圍保護的具名更正 command。
-- FR-002：系統應只允許未收款、無有效收款與無待處理回報的課程。
-- FR-003：系統應確保更正後堂數不低於 observed used sessions，且按堂費用符合單堂費率公式。
-- FR-004：系統應保留歷史堂次與 ledger，僅取消超額 scheduled 堂次並重算衍生餘額。
-- FR-005：系統應在成功更正後讓既有收款／收據讀取新的 SessionCount 與 Charge。
+- FR-001：提供受角色／分校保護的具名 command，且只允許未收款、無有效付款／待處理回報。
+- FR-002：更正後堂數不得低於 observed usage，按堂費用符合費率公式。
+- FR-003：保留歷史堂次／ledger，取消超額 scheduled、重算餘額，讓收款／收據讀取新 SessionCount／Charge。
 
 ## 7. 非功能需求 NFR
 不適用效能型 NFR；本修復是單一課程的交易一致性與權限邊界修復。交易需使用 row lock，避免收款與更正同時寫入造成競態。
@@ -95,15 +87,12 @@
 - 2026-08-22：不接受任意費用；按堂課程必須符合單堂費率 × 堂數，避免堂數與收據金額再次分離。
 
 ## 9. 資安與存取控制
-- Route 僅開放 director／super_admin，並套用 `require_campus` 與既有 password-change gate。
-- Controller 再做 StudentClass 分校授權，避免只依 route middleware。
-- 不接受 Paid=1、有效付款、pending／confirmed report。
-- 稽核 metadata 不記學生姓名、電話、LINE 或輸入內容，只記 hash reference 與帳務變更數值。
+- Route 僅開放 director／super_admin，套用 `require_campus`／password-change；Controller 再做分校授權。
+- 不接受 Paid=1、有效付款、pending／confirmed report；稽核 metadata 不記 PII，只記 hash reference 與帳務變更數值。
 
 ## 10. QA 驗收
 - Happy Path：8→7、8,800→7,700；已上 7 堂保留，尾端 scheduled 取消，餘額為 0。
-- Edge：new count 等於已使用、零／負值、費用不符、無扣堂歷史、已有 unpaid invoice。
-- Error：已付款、pending report、共用方案、月結、按時、跨校、teacher。
+- Edge／Error：低於已使用、零／負值、費用不符、unpaid invoice、已付款／pending、共用／月結／按時、跨校／teacher。
 - API、PHP syntax、前端 build 與既有 billing regression tests 必須通過。
 
 ### Revert-proof 驗證

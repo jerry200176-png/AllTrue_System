@@ -4,6 +4,36 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-22-unpaid-billing-correction",
+    "publishedAt": "2026-08-22",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "未收款課程可更正堂數",
+    "summary": "收款前可安全修正錯誤購買堂數與總費用。",
+    "items": [
+      "保留已上課紀錄，取消多餘未上課排程並同步正確收據金額。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "保留已上課紀錄，取消多餘未上課排程並同步正確收據金額。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-22:unpaid-billing-correction"
+    ],
+    "date": "2026-08-22",
+    "version": "2026.08.22"
+  },
+  {
     "id": "staff-2026-08-21-question-bank-provenance",
     "publishedAt": "2026-08-21",
     "effectiveAt": null,
