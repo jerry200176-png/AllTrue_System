@@ -1,0 +1,118 @@
+name: 1387 DB Grant-Row Repair (diagnose + fix host-pattern mismatch)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type REPAIR to diagnose and (if the host-pattern mismatch is confirmed) fix it"
+        required: true
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Require explicit confirmation
+        env:
+          CONFIRM_INPUT: ${{ github.event.inputs.confirm }}
+        run: |
+          if [ "$CONFIRM_INPUT" != "REPAIR" ]; then
+            echo "::error::Confirmation input must be exactly REPAIR. Aborting, nothing touched."
+            exit 1
+          fi
+
+      - name: Setup pinned SSH identity
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_HOST_KEY: ${{ secrets.PI_HOST_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$PI_SSH_KEY"
+          test -n "$PI_HOST_KEY"
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          printf '%s\n' "$PI_HOST_KEY" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/deploy_key ~/.ssh/known_hosts
+
+      - name: Diagnose grant rows and app-path connectivity, repair if mismatched
+        env:
+          PI_HOST: ${{ secrets.PI_HOST }}
+          PI_USER: ${{ secrets.PI_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=20 -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${PI_USER}@${PI_HOST}" bash <<'REMOTE' > /tmp/repair-result.txt
+          set -euo pipefail
+          cd /home/admin/backend
+
+          DB_USER=$(grep '^DB_USERNAME=' .env | cut -d= -f2-)
+          DB_PASS=$(grep '^DB_PASSWORD=' .env | cut -d= -f2-)
+          APP_DB_HOST=$(grep '^DB_HOST=' .env | cut -d= -f2-)
+          echo "app-configured DB_HOST=${APP_DB_HOST}"
+
+          echo "--- grant rows for ${DB_USER} (host patterns only, no values printed) ---"
+          mysql -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASS" -N -e \
+            "SELECT host FROM mysql.user WHERE user='${DB_USER}';" | tee /tmp/hosts.txt
+
+          echo "--- does the app's own connection path (php artisan tinker, using .env DB_HOST) work? ---"
+          if sudo -n -u www-data php artisan tinker --execute='DB::select("select 1"); echo "APP_DB_OK";' 2>/tmp/tinker_err.txt; then
+            echo "APP_DB_PATH: OK (no fix needed via this path)"
+          else
+            echo "APP_DB_PATH: FAILED"
+            cat /tmp/tinker_err.txt | grep -v "$DB_PASS" || true
+          fi
+
+          MISMATCH_FOUND=false
+          while read -r HOSTPAT; do
+            if [ "$HOSTPAT" != "127.0.0.1" ]; then
+              echo "Attempting to align grant row for host pattern: ${HOSTPAT}"
+              if mysql -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASS" -e \
+                "ALTER USER '${DB_USER}'@'${HOSTPAT}' IDENTIFIED BY '${DB_PASS}'; FLUSH PRIVILEGES;" 2>/tmp/alter_err.txt; then
+                echo "ALIGNED: ${DB_USER}@${HOSTPAT} now matches .env DB_PASSWORD"
+                MISMATCH_FOUND=true
+              else
+                echo "No-op or not applicable for ${HOSTPAT}:"
+                cat /tmp/alter_err.txt
+              fi
+            fi
+          done < /tmp/hosts.txt
+
+          echo "--- re-test app DB path after any alignment ---"
+          if sudo -n -u www-data php artisan tinker --execute='DB::select("select 1"); echo "APP_DB_OK";' 2>/tmp/tinker_err2.txt; then
+            echo "POST_REPAIR_APP_DB_PATH: OK"
+          else
+            echo "POST_REPAIR_APP_DB_PATH: STILL_FAILING"
+            cat /tmp/tinker_err2.txt | grep -v "$DB_PASS" || true
+          fi
+
+          rm -f /tmp/hosts.txt /tmp/tinker_err.txt /tmp/tinker_err2.txt /tmp/alter_err.txt
+          echo "repair-step-complete"
+          REMOTE
+          cat /tmp/repair-result.txt
+          grep -q '^repair-step-complete$' /tmp/repair-result.txt
+          rm -f /tmp/repair-result.txt
+
+      - name: Verify from outside (real HTTP, DB-dependent, public route)
+        env:
+          PRODUCTION_URL: https://daan.lifenet.com.tw
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 10); do
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" "$PRODUCTION_URL/api/v1/branches" || true)
+            echo "attempt $i: /api/v1/branches -> $CODE"
+            [ "$CODE" = "200" ] && break
+            sleep 3
+          done
+          [ "$CODE" = "200" ] || { echo "::error::/api/v1/branches still not 200 after repair attempt"; exit 1; }
+
+      - name: Remove local key material
+        if: always()
+        run: rm -f ~/.ssh/deploy_key /tmp/repair-result.txt
