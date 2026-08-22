@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-08-22-db-credential-rotation-incident
+    changelog_date: "2026-08-22"
+    changelog_title: "incident(ops): #1387 production DB credential mismatch recovered"
+    reason: 正式站事故復原與防再犯控制；屬工程維運紀錄，不是教職員可操作的新功能。
+
   - id: silent-2026-08-22-unpaid-billing-correction
     changelog_date: "2026-08-22"
     changelog_title: "fix(billing): 未收款課程堂數與費用更正（GitHub #1901）"

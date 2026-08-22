@@ -788,3 +788,16 @@
 - **註**：TD-082 號碼已被「非帳務英文 UI」佔用，故本追蹤用 TD-083
 - **優先級**：P1（B／C）
 
+### TD-084：Production DB credential rotation 缺少 out-of-repository consumer inventory（P1）
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P1 |
+| 發現日期 | 2026-08-22 |
+| 發現來源 | [SRE] production outage #1387 |
+| 影響模組 | DB credential rotation、deploy、Pi cron／backup／repair workflows |
+| 描述 | 同一組 `DB_USERNAME`／`DB_PASSWORD`／DSN／MySQL `User@Host` 的實際 consumer 可能分散在 workflow、cron、備份腳本與人工維運；只改其中一條會造成全站 API 500。舊式 in-place rotation 已停用，但外部 consumer inventory 仍需持續驗證。 |
+| 建議做法 | 讓 staged rotation 在 Phase 1/2 前產生非機密 consumer manifest；所有 production DB client 從同一個 effective-config helper 取得 identity tuple，並以 fresh DB read + DB-dependent smoke 作為 required gate。 |
+| 清償成本估計 | 中（半天） |
+| 不做的代價 | 下一次 credential rotation 仍可能只驗到某一條 host rule 或只驗 `/health`，再次造成全站 500，且 rollback 無法只靠 Git 回復。 |

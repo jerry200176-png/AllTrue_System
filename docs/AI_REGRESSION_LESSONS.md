@@ -1424,3 +1424,10 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **對標**：Stripe credit note 與 ERPNext amend／immutable ledger 將帳務修正與原始交易分離；本系統以具名 command 實作同一邊界，不把一般 PUT 變成萬用修正入口。
 - **測試必補**：`StudentClassBillingCorrectionTest` 覆蓋 8→7／7,700、低於已使用、已收款、待對帳與 audit；一般 PUT 的 `billing_contract_locked` golden test 維持。
 
+### R120. DB credential 輪替必須以實際 `User@Host` 為唯一身分，不能把 `localhost` 當預設（production outage #1387，2026-08-22）
+
+- **現象**：正式站所有查 DB API 回 HTTP 500，Laravel／MySQL 回報 `Access denied for user 'admin'@'localhost'`。唯讀盤點 `mysql.user` 後發現 production 實際只有 `admin@'%'`，沒有 `admin@'localhost'`；用不存在的 host row 執行 `ALTER USER 'admin'@'localhost'` 回 `ERROR 1396`。修復實際 `admin@'%'` 後，fresh TCP `SELECT 1` 與 `/api/v1/branches` 均恢復 200。
+- **根因**：輪替／repair 流程把 DB username、password、connection DSN 與 MySQL grant host 拆開處理；雖然 TCP 連線可由 `%` row 驗證，修復卻硬寫 `@localhost`。此外只測 `/health` 會把「PHP 活著」誤當成「DB credential 正常」。
+- **強制規則**：`DB_USERNAME`、`DB_PASSWORD`、`DB_HOST`、`DB_PORT` 與 `CURRENT_USER()` 必須視為同一個 identity tuple；任何修改密碼前，先以既有帳密取得唯一實際 `User@Host`，若不是唯一就 fail closed，不猜 host、不自動建立另一列。
+- **防再犯**：舊式 in-place rotation 已停用；正式輪替只能走 `deploy.yml` 的 Phase 1 → Phase 2 → Phase 3 staged path。repair workflow 必須列舉並驗證實際 host row，成功條件必須同時包含 fresh DB `SELECT 1`、Laravel fresh connection／`CURRENT_USER()` 與真正查 DB 的 API（例如 `/api/v1/branches`）。
+- **安全界線**：事故期間沒有把密碼寫入文件、log 或對話；修復只對既有 `admin@'%'` 改密碼，沒有改資料表、grant 權限或資料內容。

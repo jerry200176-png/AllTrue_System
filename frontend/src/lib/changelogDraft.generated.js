@@ -26,11 +26,18 @@ export const changelogDraftNotes = [
         "items": [
           "未收款課程堂數與費用更正"
         ]
+      },
+      {
+        "title": "其他改善",
+        "items": [
+          "DB credential mismatch recovered"
+        ]
       }
     ],
     "items": [
       "課程管理裡日期旁標記較不會無故變灰；讀不到堂次時會顯示清楚錯誤提示。",
-      "未收款課程堂數與費用更正"
+      "未收款課程堂數與費用更正",
+      "DB credential mismatch recovered"
     ]
   },
   {

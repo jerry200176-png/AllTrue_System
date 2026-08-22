@@ -6,6 +6,14 @@
 - 沿用既有的排課檢查與建立流程，會先確認師資／教室無衝堂才建立，失敗原因會顯示在對話框內。
 - 不影響已存在的自動週期排課、補課或調課行為。
 
+## 2026-08-22 — incident(ops): #1387 production DB credential mismatch recovered
+
+<!-- release-notes: silent_ship=silent-2026-08-22-db-credential-rotation-incident -->
+
+- 正式站 DB authentication mismatch 已恢復；實際 MySQL grant row 是 `admin@%`，不是 `admin@localhost`。修復後 fresh TCP DB read 與 `/api/v1/branches` 回 HTTP 200。
+- 沒有改資料表資料、權限或對話／文件中的密碼；舊式 in-place rotation 已停用，後續只能走具備 rollback、fresh Laravel DB read 與 DB-dependent smoke 的 staged rotation。
+- **詳見**：`docs/AI_REGRESSION_LESSONS.md` R120、`docs/incidents/1387-staged-rotation-runbook.md`。
+
 ## 2026-08-21 — ops(branch): 停用敦化分校選單
 
 <!-- release-notes: staff_update=staff-2026-08-21-dunhua-campus-retired -->
