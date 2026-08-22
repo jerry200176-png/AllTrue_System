@@ -455,6 +455,7 @@ Route::prefix('v1')->group(function () {
 
     // Cross-campus student identity bridge: explicit two-campus authorization only.
     Route::middleware(['role:director,super_admin', 'require_campus', 'require_password_change'])->group(function () {
+        Route::post('student-classes/{studentClass}/billing-correction', [StudentClassController::class, 'billingCorrection']);
         Route::get('student-identities', [StudentIdentityController::class, 'index']);
         Route::post('student-identities/link', [StudentIdentityController::class, 'link']);
         Route::delete('student-identities/members/{studentId}', [StudentIdentityController::class, 'unlink']);

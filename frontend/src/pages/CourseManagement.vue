@@ -383,6 +383,12 @@
                             <button v-if="c.status !== 'inactive'" class="action-dropdown-item" @click="requestCoursePause(c); closeActionMenu()"><span class="action-icon">⏸</span> 暫停課程</button>
                             <button v-if="c.status === 'inactive'" class="action-dropdown-item action-dropdown-resume" @click="requestCoursePause(c); closeActionMenu()"><span class="action-icon">▶</span> 恢復課程</button>
                             <button v-if="canCloseCourse(c)" class="action-dropdown-item action-dropdown-close" @click="closeCourseNoRenew(c); closeActionMenu()"><span class="action-icon">✓</span> 結案（不續報）</button>
+                            <button
+                              v-if="isSessionMode(c) && !c.PackageID && c.payment_status !== 'paid'"
+                              class="action-dropdown-item action-dropdown-correction"
+                              title="未收款課程的購買堂數與金額更正；不修改已上課紀錄"
+                              @click="openBillingCorrectionModal(c); closeActionMenu()"
+                            ><span class="action-icon">↺</span> 更正未收款堂數</button>
                             <button class="action-dropdown-item" title="把已上課、已填評量的堂次搬到另一門課程，不用重填評量" @click="openTransferSessionsModal(c); closeActionMenu()"><span class="action-icon">↪</span> 轉移堂次紀錄</button>
                             <hr class="action-dropdown-divider" />
                             <p class="action-section-label action-section-label--danger">危險操作</p>
@@ -689,6 +695,33 @@
         <div class="actions">
           <button class="ghost" @click="showEditModal = false">取消</button>
           <button class="primary" :disabled="editFormRef?.hasErrors" @click="submitEdit">儲存</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Unpaid post-deduction billing correction -->
+    <div v-if="showBillingCorrectionModal" class="modal-overlay" @click.self="!billingCorrectionSubmitting && (showBillingCorrectionModal = false)">
+      <div class="modal course-modal billing-correction-modal">
+        <h3 class="modal-title">更正未收款堂數</h3>
+        <p class="modal-desc">
+          {{ billingCorrectionCourse?.student_name || '此學生' }}／{{ billingCorrectionCourse?.subject_name || billingCorrectionCourse?.subject || '課程' }}
+        </p>
+        <div class="billing-correction-warning">
+          僅適用於尚未收款的按堂課程。已上課紀錄不會被刪除；超出新堂數的未上課排程會取消，並留下稽核紀錄。
+        </div>
+        <label class="form-label">更正後購買堂數
+          <input v-model.number="billingCorrectionForm.new_session_count" type="number" min="1" step="1" class="form-input" />
+        </label>
+        <label class="form-label">更正後總費用
+          <input v-model.number="billingCorrectionForm.new_charge" type="number" min="0" step="1" class="form-input" />
+        </label>
+        <p class="form-hint">依目前單堂費用試算：${{ billingCorrectionExpectedCharge.toLocaleString() }}</p>
+        <label class="form-label">更正原因
+          <textarea v-model="billingCorrectionForm.reason" class="form-input" rows="3" maxlength="255" placeholder="例如：主任確認本期理化實際收 7 堂"></textarea>
+        </label>
+        <div class="actions">
+          <button class="ghost" :disabled="billingCorrectionSubmitting" @click="showBillingCorrectionModal = false">取消</button>
+          <button class="primary" :disabled="billingCorrectionSubmitting" @click="submitBillingCorrection">{{ billingCorrectionSubmitting ? '處理中…' : '確認更正' }}</button>
         </div>
       </div>
     </div>
@@ -1860,6 +1893,68 @@ const transferSessionsError = ref('');
 const transferTargetCourses = ref([]);
 const transferTargetCoursesLoading = ref(false);
 let transferTargetCoursesRequest = 0;
+
+const showBillingCorrectionModal = ref(false);
+const billingCorrectionCourse = ref(null);
+const billingCorrectionSubmitting = ref(false);
+const billingCorrectionForm = ref({ new_session_count: 1, new_charge: 0, reason: '' });
+const billingCorrectionExpectedCharge = computed(() => {
+  const course = billingCorrectionCourse.value;
+  const count = Number(billingCorrectionForm.value.new_session_count || 0);
+  const rate = Number(course?.rate_per_30min ?? course?.Rate ?? course?.rate ?? 0);
+  return Math.round(rate * count);
+});
+
+function openBillingCorrectionModal(course) {
+  const count = Number(course?.sessions_purchased ?? course?.SessionCount ?? 0);
+  const rate = Number(course?.rate_per_30min ?? course?.Rate ?? course?.rate ?? 0);
+  billingCorrectionCourse.value = course;
+  billingCorrectionForm.value = {
+    new_session_count: count,
+    new_charge: Math.round(rate * count),
+    reason: '',
+  };
+  showBillingCorrectionModal.value = true;
+}
+
+async function submitBillingCorrection() {
+  const course = billingCorrectionCourse.value;
+  if (!course || billingCorrectionSubmitting.value) return;
+  const count = Number(billingCorrectionForm.value.new_session_count || 0);
+  const charge = Number(billingCorrectionForm.value.new_charge || 0);
+  const reason = String(billingCorrectionForm.value.reason || '').trim();
+  if (!Number.isInteger(count) || count < 1 || !Number.isInteger(charge) || charge < 0 || !reason) {
+    toastRef.value?.show?.({ title: '資料不完整', description: '請填寫有效堂數、金額與更正原因。', variant: 'error', durationMs: 4000 });
+    return;
+  }
+  billingCorrectionSubmitting.value = true;
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    if (!token) throw new Error('登入狀態已失效，請重新登入。');
+    const res = await fetch(`/api/v1/student-classes/${course.id}/billing-correction`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ new_session_count: count, new_charge: charge, reason }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body?.message || '更正失敗');
+    showBillingCorrectionModal.value = false;
+    await loadCourses();
+    toastRef.value?.show?.({
+      title: '未收款堂數已更正',
+      description: `已更新為 ${body?.new_session_count ?? count} 堂／$${Number(body?.new_charge ?? charge).toLocaleString()}，已上課紀錄維持不變。`,
+      variant: 'success',
+      durationMs: 5000,
+    });
+  } catch (error) {
+    toastRef.value?.show?.({ title: '更正失敗', description: error?.message || '請稍後再試。', variant: 'error', durationMs: 5000 });
+  } finally {
+    billingCorrectionSubmitting.value = false;
+  }
+}
+
 const transferSessionsSessionOptions = computed(() => {
   const c = transferSessionsCourse.value;
   if (!c) return [];

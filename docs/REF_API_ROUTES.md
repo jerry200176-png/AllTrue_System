@@ -552,7 +552,7 @@
 | POST | `api/v1/schedules/{schedule}/cancel-makeup` | `ScheduleController@cancelMakeup` | role+campus |
 | POST | `api/v1/schedules/{schedule}/undo-leave` | `ScheduleController@undoLeave` | role+campus |
 
-## /api/v1/student-classes (21)
+## /api/v1/student-classes (22)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -568,6 +568,7 @@
 | DELETE | `api/v1/student-classes/{studentClass}` | `StudentClassController@destroy` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/add-session` | `StudentClassController@addSession` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/add-session/check` | `StudentClassController@checkAddSession` | role+campus |
+| POST | `api/v1/student-classes/{studentClass}/billing-correction` | `StudentClassController@billingCorrection` | director/super_admin+campus |
 | POST | `api/v1/student-classes/{studentClass}/confirm-payment` | `StudentClassController@confirmPayment` | role+campus |
 | GET | `api/v1/student-classes/{studentClass}/invoices` | `StudentClassController@invoices` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/manual-sessions` | `StudentClassController@createManualSession` | role+campus |
@@ -691,4 +692,3 @@
 |--------|-----|--------|------|
 | GET | `api/v1/temp-rfid` | `TempRfidController@show` | role+campus |
 | POST | `api/v1/temp-rfid/consume` | `TempRfidController@consume` | role+campus |
-
