@@ -5,7 +5,7 @@
   "task_id": "director-billing-7-lessons",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
   "base_sha": "0a6091f00d4dfbc88850f0f4a862d7fcaef0a921",
-  "branch": "hotfix/production-force-tcp-db-url-director-billing-7-lessons",
+  "branch": "hotfix/production-db-probe-director-billing-7-lessons",
   "worktree_path": "/home/jerry/workspace/tasks/alltrue/director-billing-7-lessons",
   "started_at": "2026-08-22T04:02:41Z",
   "production_mutation": false,
