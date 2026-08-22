@@ -269,16 +269,20 @@ jobs:
             echo "❌ DEPLOY_SECRET missing; refusing to continue with stale FPM config"
             exit 1
           fi
-          OPCACHE_RESPONSE=$(curl -skf -X POST \
-            https://daan.lifenet.com.tw/api/internal/opcache-reset \
-            -H "X-Deploy-Secret: ${DEPLOY_SECRET}" \
-            -H "Content-Type: application/json")
-          if ! echo "$OPCACHE_RESPONSE" | grep -q '"ok":true'; then
-            echo "❌ FPM OPcache endpoint did not confirm reset"
-            exit 1
-          fi
+          for attempt in $(seq 1 16); do
+            OPCACHE_RESPONSE=$(curl -skf -X POST \
+              https://daan.lifenet.com.tw/api/internal/opcache-reset \
+              -H "X-Deploy-Secret: ${DEPLOY_SECRET}" \
+              -H "Connection: close" \
+              -H "Content-Type: application/json")
+            if ! echo "$OPCACHE_RESPONSE" | grep -q '"ok":true' || \
+               ! echo "$OPCACHE_RESPONSE" | grep -q '"db_connection_refreshed":true'; then
+              echo "❌ FPM web-process refresh failed on attempt ${attempt}"
+              exit 1
+            fi
+          done
           unset DEPLOY_SECRET OPCACHE_RESPONSE
-          echo "✅ FPM OPcache/config reload endpoint completed"
+          echo "✅ FPM OPcache/config and DB connection refresh completed across 16 worker requests"
 
           echo "=== [6/7] Health check + Smoke test ==="
           HEALTH=$(curl -sk https://daan.lifenet.com.tw/api/v1/health \
