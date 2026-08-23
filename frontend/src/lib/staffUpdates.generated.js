@@ -42,6 +42,45 @@ export const staffUpdates = [
     "version": "2026.08.23"
   },
   {
+    "id": "staff-2026-08-23-duplicate-usage-reconciliation",
+    "publishedAt": "2026-08-23",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "重複堂次會同步沖回扣堂",
+    "summary": "審核跨合約重複課程時，取消的非保留堂次會一併清理使用證據；數字不一致時會先提醒對帳。",
+    "items": [
+      "重複課程審核取消非保留堂次時，會同步作廢簽到／評量、沖回扣堂並重算剩餘堂數。",
+      "已先被取消但仍殘留扣堂證據的重複堂次，也會回到審核清單供主任完成清理。",
+      "課程管理發現課堂狀態與扣堂紀錄不一致時，會顯示「堂數待對帳」，請先完成對帳再作為收費依據。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "重複課程審核取消非保留堂次時，會同步作廢簽到／評量、沖回扣堂並重算剩餘堂數。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "已先被取消但仍殘留扣堂證據的重複堂次，也會回到審核清單供主任完成清理。",
+          "課程管理發現課堂狀態與扣堂紀錄不一致時，會顯示「堂數待對帳」，請先完成對帳再作為收費依據。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-23:duplicate-usage-reconciliation"
+    ],
+    "date": "2026-08-23",
+    "version": "2026.08.23"
+  },
+  {
     "id": "staff-2026-08-23-contract-correction-transfer-safety",
     "publishedAt": "2026-08-23",
     "effectiveAt": null,
@@ -76,6 +115,38 @@ export const staffUpdates = [
     ],
     "sourceRefs": [
       "changelog:2026-08-23:contract-correction-transfer-safety"
+    ],
+    "date": "2026-08-23",
+    "version": "2026.08.23"
+  },
+  {
+    "id": "staff-2026-08-23-director-adjustment-entry",
+    "publishedAt": "2026-08-23",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "合約與堂次調整入口簡化",
+    "summary": "課程管理把兩個容易混淆的調整功能收斂到同一個入口，主任先選情境，再進入正確流程。",
+    "items": [
+      "「操作」選單只顯示「合約／堂次調整」，不再同時放置「更正未收款堂數」與「轉移堂次紀錄」兩個容易混淆的按鈕。",
+      "未付款課程會先詢問是要把堂數改少，還是把已上課紀錄轉到另一份合約；兩個流程的帳務規則不會混在一起。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "「操作」選單只顯示「合約／堂次調整」，不再同時放置「更正未收款堂數」與「轉移堂次紀錄」兩個容易混淆的按鈕。",
+          "未付款課程會先詢問是要把堂數改少，還是把已上課紀錄轉到另一份合約；兩個流程的帳務規則不會混在一起。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-23:director-adjustment-entry"
     ],
     "date": "2026-08-23",
     "version": "2026.08.23"

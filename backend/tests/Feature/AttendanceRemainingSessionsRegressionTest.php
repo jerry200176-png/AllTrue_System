@@ -10,6 +10,7 @@ use App\Models\StudentSignIn;
 use App\Models\User;
 use App\Models\UserCampus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class AttendanceRemainingSessionsRegressionTest extends TestCase
@@ -182,6 +183,59 @@ class AttendanceRemainingSessionsRegressionTest extends TestCase
         $this->assertNotNull($hit, 'Course row should appear in index');
         $this->assertSame(3, (int) ($hit['remaining_sessions'] ?? -1), '8 購買 − 5 堂 completed = 3 剩餘');
         $this->assertSame(5, (int) ($hit['sessions_used'] ?? -1));
+    }
+
+    public function test_student_classes_index_flags_cancelled_usage_artifact_instead_of_hiding_it(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-index-cancelled-artifact@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-index-cancelled-artifact@example.com');
+        $student = $this->createStudent(1, '取消堂次扣堂異常測試');
+
+        $purchased = 8;
+        $courseId = $this->bootstrapCourse($token, $student->id, $teacherId, $purchased);
+        $sessionIds = [];
+        for ($i = 1; $i <= 6; $i++) {
+            $sessionIds[] = ClassSession::create([
+                'StudentClassID' => $courseId,
+                'SessionDate' => now()->subDays(20 + $i)->toDateString(),
+                'StartTime' => '16:00',
+                'EndTime' => '18:00',
+                'Status' => 'completed',
+                'Note' => '',
+            ])->id;
+        }
+        $cancelledId = ClassSession::create([
+            'StudentClassID' => $courseId,
+            'SessionDate' => now()->subDays(30)->toDateString(),
+            'StartTime' => '16:00',
+            'EndTime' => '18:00',
+            'Status' => 'cancelled',
+            'Note' => '重複課程但未沖回扣堂',
+        ])->id;
+        $sessionIds[] = $cancelledId;
+
+        foreach ($sessionIds as $sessionId) {
+            DB::table('session_deduction_ledger')->insert([
+                'student_class_id' => $courseId,
+                'class_session_id' => $sessionId,
+                'event_type' => 'deduct',
+                'source' => 'attendance',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/student-classes?branch_id=1&student_id=' . $student->id . '&per_page=100')
+            ->assertOk();
+
+        $hit = collect($res->json('data'))->firstWhere('id', $courseId);
+        $this->assertNotNull($hit);
+        $this->assertSame(6, (int) $hit['usage_balance_diagnostic']['class_session_used_sessions']);
+        $this->assertSame(7, (int) $hit['usage_balance_diagnostic']['ledger_used_sessions']);
+        $this->assertSame('review_required', $hit['usage_balance_status']);
     }
 
     private function bootstrapCourse(string $token, int $studentId, int $teacherId, int $remaining): int

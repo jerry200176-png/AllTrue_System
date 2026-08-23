@@ -20,6 +20,38 @@ updates:
       - "changelog:2026-08-23:split-contract-wizard"
       - "github:#1901"
 
+  - id: staff-2026-08-23-duplicate-usage-reconciliation
+    published_at: "2026-08-23"
+    audiences:
+      - director
+    importance: major
+    title: 重複堂次會同步沖回扣堂
+    summary: 審核跨合約重複課程時，取消的非保留堂次會一併清理使用證據；數字不一致時會先提醒對帳。
+    items:
+      - category: fixed
+        text: 重複課程審核取消非保留堂次時，會同步作廢簽到／評量、沖回扣堂並重算剩餘堂數。
+      - category: improved
+        text: 已先被取消但仍殘留扣堂證據的重複堂次，也會回到審核清單供主任完成清理。
+      - category: improved
+        text: 課程管理發現課堂狀態與扣堂紀錄不一致時，會顯示「堂數待對帳」，請先完成對帳再作為收費依據。
+    source_refs:
+      - "changelog:2026-08-23:duplicate-usage-reconciliation"
+
+  - id: staff-2026-08-23-director-adjustment-entry
+    published_at: "2026-08-23"
+    audiences:
+      - director
+    importance: digest
+    title: 合約與堂次調整入口簡化
+    summary: 課程管理把兩個容易混淆的調整功能收斂到同一個入口，主任先選情境，再進入正確流程。
+    items:
+      - category: improved
+        text: 「操作」選單只顯示「合約／堂次調整」，不再同時放置「更正未收款堂數」與「轉移堂次紀錄」兩個容易混淆的按鈕。
+      - category: improved
+        text: 未付款課程會先詢問是要把堂數改少，還是把已上課紀錄轉到另一份合約；兩個流程的帳務規則不會混在一起。
+    source_refs:
+      - "changelog:2026-08-23:director-adjustment-entry"
+
   - id: staff-2026-08-23-contract-correction-transfer-safety
     published_at: "2026-08-23"
     audiences:
