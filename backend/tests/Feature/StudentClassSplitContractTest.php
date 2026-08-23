@@ -31,9 +31,13 @@ class StudentClassSplitContractTest extends TestCase
             ->assertJsonPath('source_course.session_count', 10)
             ->assertJsonPath('source_correction.session_count', 5)
             ->assertJsonPath('source_correction.charge', 2500)
-            ->assertJsonPath('new_course.session_count', 5)
-            ->assertJsonPath('new_course.charge', 2500)
-            ->assertJsonPath('new_course.future_session_count', 2);
+            ->assertJsonPath('new_course.session_count', 3)
+            ->assertJsonPath('new_course.charge', 1500)
+            ->assertJsonPath('new_course.future_session_count', 0)
+            ->assertJsonPath('settlement.billable_session_count', 8)
+            ->assertJsonPath('settlement.billable_charge', 4000)
+            ->assertJsonPath('settlement.waived_session_count', 2)
+            ->assertJsonPath('settlement.waived_charge', 1000);
 
         $source->refresh();
         $this->assertSame(10, (int) $source->SessionCount);
@@ -60,11 +64,15 @@ class StudentClassSplitContractTest extends TestCase
             ->assertJsonPath('source_course.session_count', 5)
             ->assertJsonPath('source_course.charge', 2500)
             ->assertJsonPath('source_course.remaining_sessions', 0)
-            ->assertJsonPath('new_course.session_count', 5)
-            ->assertJsonPath('new_course.charge', 2500)
-            ->assertJsonPath('new_course.remaining_sessions', 2)
+            ->assertJsonPath('new_course.session_count', 3)
+            ->assertJsonPath('new_course.charge', 1500)
+            ->assertJsonPath('new_course.remaining_sessions', 0)
             ->assertJsonPath('new_course.transferred_session_count', 3)
-            ->assertJsonPath('new_course.future_session_count', 2);
+            ->assertJsonPath('new_course.future_session_count', 0)
+            ->assertJsonPath('settlement.billable_session_count', 8)
+            ->assertJsonPath('settlement.billable_charge', 4000)
+            ->assertJsonPath('settlement.waived_session_count', 2)
+            ->assertJsonPath('settlement.waived_charge', 1000);
 
         $newId = (int) $response->json('new_course.id');
         $source->refresh();
@@ -73,10 +81,10 @@ class StudentClassSplitContractTest extends TestCase
         $this->assertSame(5, (int) $source->SessionCount);
         $this->assertSame(2500, (int) $source->Charge);
         $this->assertSame(0, (int) $source->RemainingSessions);
-        $this->assertSame(5, (int) $newCourse->SessionCount);
-        $this->assertSame(2500, (int) $newCourse->Charge);
-        $this->assertSame(2, (int) $newCourse->RemainingSessions);
-        $this->assertSame(5, DB::table('ClassSession')->where('StudentClassID', $newId)->count());
+        $this->assertSame(3, (int) $newCourse->SessionCount);
+        $this->assertSame(1500, (int) $newCourse->Charge);
+        $this->assertSame(0, (int) $newCourse->RemainingSessions);
+        $this->assertSame(3, DB::table('ClassSession')->where('StudentClassID', $newId)->count());
         $this->assertSame(5, DB::table('ClassSession')->where('StudentClassID', $source->ID)->count());
         $this->assertSame($newId, (int) DB::table('LearningRecord')->where('ClassSessionID', $selectedIds[0])->value('StudentClassID'));
         $this->assertSame($newId, (int) DB::table('StudentSingIn')->where('ClassSessionID', $selectedIds[0])->value('StudentClassID'));

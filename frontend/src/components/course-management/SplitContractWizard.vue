@@ -18,7 +18,7 @@
 
       <section v-if="step === 1" aria-labelledby="split-step-one-title">
         <h4 id="split-step-one-title" class="wizard-section-title">選擇要搬到新合約的已上課堂次</h4>
-        <p class="period-hint">只會搬移已上課紀錄；評量與點名會一起保留。未上課排程不會被搬移。</p>
+        <p class="period-hint">只會搬移已上課紀錄；評量與點名會一起保留。未上課堂次會取消，不會建立後續補課。</p>
         <div class="session-pick-list">
           <label v-for="session in sessions" :key="session.id" class="session-pick-row">
             <input v-model="selectedIds" type="checkbox" :value="Number(session.id)" :disabled="submitting" />
@@ -27,15 +27,15 @@
           </label>
           <p v-if="sessions.length === 0" class="empty-hint">目前沒有可搬移的已上課堂次。</p>
         </div>
-        <label class="form-label">新合約首堂日期
+        <label class="form-label">新合約起算日期
           <input id="split-start-date" v-model="startDate" type="date" class="form-input" :disabled="submitting" />
         </label>
-        <p class="form-hint">選取 {{ selectedIds.length }} 堂；下一步會由後端自動試算兩份合約。</p>
+        <p class="form-hint">選取 {{ selectedIds.length }} 堂；新合約只保留搬入的已上課紀錄，不會自動排未來課。</p>
       </section>
 
       <section v-else-if="step === 2" aria-labelledby="split-step-two-title">
         <h4 id="split-step-two-title" class="wizard-section-title">確認自動試算</h4>
-        <p class="period-hint">搬課會先發生，再把來源合約更正到搬課後的已使用堂數；兩筆變更會一次完成或全部不變。</p>
+        <p class="period-hint">這是「未付款結算」：只收已上課堂次，未上課堂次取消，不會建立後續補課。搬課與金額更正會一次完成或全部不變。</p>
         <div v-if="previewLoading" class="wizard-loading" role="status">正在試算合約金額與堂數…</div>
         <div v-else-if="preview" class="split-summary" data-testid="split-summary">
           <article class="split-summary-card">
@@ -49,16 +49,21 @@
             <span class="split-summary-label">新合約</span>
             <strong>{{ formatCount(preview.new_course?.session_count) }} 堂</strong>
             <span>{{ formatMoney(preview.new_course?.charge) }}</span>
-            <small>搬入 {{ formatCount(preview.new_course?.transferred_session_count) }} 堂＋未來 {{ formatCount(preview.new_course?.future_session_count) }} 堂</small>
+            <small>搬入 {{ formatCount(preview.new_course?.transferred_session_count) }} 堂；不建立後續課</small>
           </article>
+        </div>
+        <div v-if="preview && preview.settlement" class="split-settlement-summary">
+          <strong>本次應收 {{ formatMoney(preview.settlement.billable_charge) }}</strong>
+          <span>已上 {{ formatCount(preview.settlement.billable_session_count) }} 堂</span>
+          <span class="split-waived">取消未上 {{ formatCount(preview.settlement.waived_session_count) }} 堂（{{ formatMoney(preview.settlement.waived_charge) }}）</span>
         </div>
       </section>
 
       <section v-else aria-labelledby="split-step-three-title">
         <h4 id="split-step-three-title" class="wizard-section-title">確認送出</h4>
-        <p class="period-hint">送出後會建立未收款新合約、搬移評量／點名，並更新舊合約與未付款帳單。此操作會留下稽核紀錄。</p>
+        <p class="period-hint">送出後會建立未收款新合約、搬移評量／點名，只保留已上課堂次；未上課堂次及其金額取消，不會排後續課。此操作會留下稽核紀錄。</p>
         <label class="form-label">拆分原因（必填）
-          <textarea id="split-reason" v-model.trim="reason" class="form-input" rows="3" maxlength="255" placeholder="例如：主任確認本期實際收費與剩餘堂次拆分"></textarea>
+          <textarea id="split-reason" v-model.trim="reason" class="form-input" rows="3" maxlength="255" placeholder="例如：學生未付款，主任確認只收已上 8 堂，未上 2 堂取消"></textarea>
         </label>
         <p class="form-hint">請確認金額與堂數無誤，再按下「確認拆分合約」。</p>
       </section>
@@ -177,6 +182,9 @@ function submit() {
 .split-summary { display: flex; align-items: stretch; gap: 8px; }
 .split-summary-card { flex: 1; display: flex; min-height: 125px; flex-direction: column; justify-content: center; gap: 5px; padding: 14px; border: 1px solid var(--ds-hairline); border-radius: 10px; background: var(--ds-canvas-soft); }
 .split-summary-card--new { border-color: var(--ds-brand); background: var(--ds-brand-wash); }
+.split-settlement-summary { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 12px; padding: 12px 14px; border: 1px solid var(--ds-warning, #f0c36a); border-radius: 10px; background: var(--ds-warning-wash, #fff9e8); color: var(--text); font-size: 12px; }
+.split-settlement-summary strong { flex-basis: 100%; font-size: 14px; }
+.split-waived { color: var(--ds-ink-mute); }
 .split-summary-label { color: var(--ds-ink-mute); font-size: 12px; font-weight: 800; }
 .split-summary-card strong { color: var(--text); font-size: 22px; }
 .split-summary-card span { color: var(--text); font-size: 17px; font-variant-numeric: tabular-nums; }

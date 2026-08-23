@@ -14,7 +14,8 @@ describe('SplitContractWizard', () => {
     preview: {
       selected_session_count: 3,
       source_correction: { session_count: 5, charge: 2500 },
-      new_course: { session_count: 5, charge: 2500, future_session_count: 2 },
+      settlement: { billable_session_count: 8, billable_charge: 4000, waived_session_count: 2, waived_charge: 1000 },
+      new_course: { session_count: 3, charge: 1500, future_session_count: 0, transferred_session_count: 3 },
     },
     previewLoading: false,
     submitting: false,
@@ -45,6 +46,8 @@ describe('SplitContractWizard', () => {
     expect(wrapper.text()).toContain('5 堂');
     expect(wrapper.text()).toContain('$2,500');
     expect(wrapper.text()).toContain('新合約');
+    expect(wrapper.text()).toContain('本次應收 $4,000');
+    expect(wrapper.text()).toContain('取消未上 2 堂');
   });
 
   it('requires a reason and emits one atomic submit payload on the final step', async () => {

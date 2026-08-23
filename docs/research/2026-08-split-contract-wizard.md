@@ -23,10 +23,10 @@ authorization, unpaid-payment guards, and the ordinary billing lock.
   `frontend/src/pages/CourseManagement.vue`: current split operations are
   separate and the transfer UI requires a manually-created target course.
 
-Observed local constraint: creating a full new purchase batch and then moving
-used rows would over-materialize the new contract. The new command therefore
-creates only `old_count - observed_used_count` future rows; moved rows fill the
-rest of the new contract entitlement.
+Product decision (2026-08-23): this is an unpaid settlement flow, not a
+future-entitlement transfer. Only observed used sessions remain billable;
+unused sessions are explicitly waived. The new command creates no future rows;
+moved rows are the complete new contract entitlement.
 
 ## Reference evidence
 
@@ -52,10 +52,11 @@ rest of the new contract entitlement.
 
 - Step 1 is linear and selection-only. The UI lists only session rows already
   marked attended/completed/late by the existing display composable. A start
-  date is captured for the genuinely future rows in the new contract.
+  date is retained as the new contract's historical grouping date; it does not
+  create future schedule rows.
 - Step 2 calls a server preview. The client never calculates an authoritative
-  charge or count. The preview shows both contracts side by side and labels
-  the moved and future counts.
+  charge or count. The preview shows both contracts side by side and explicitly
+  shows total billable amount plus waived unused sessions and amount.
 - Step 3 requires a reason and a second confirmation. The submit command
   repeats all validations under source-course row lock, creates the new unpaid
   contract, moves sessions plus LearningRecord/StudentSignIn rows, then applies
@@ -70,7 +71,8 @@ rest of the new contract entitlement.
 ## Acceptance and rollback
 
 - 10 purchased / 8 used, select 3: source becomes 5 sessions / 2,500, new
-  contract becomes 5 sessions / 2,500 with 3 moved + 2 future sessions.
+  contract becomes 3 sessions / 1,500, total amount due is 4,000, and 2
+  unused sessions / 1,000 are waived. No future sessions are created.
 - LearningRecord and StudentSignIn follow each moved ClassSession.
 - Future source sessions beyond the corrected count are cancelled by the same
   existing correction logic; used rows are never deleted or rewritten.
@@ -85,5 +87,7 @@ rest of the new contract entitlement.
   review of transaction order, payment guards, audit metadata, and campus
   isolation before merge.
 - Paid, partially paid, pending-report, package, monthly, hourly, and
-  usage-settled courses remain blocked. Payment-after-correction workflows are
-  explicitly out of scope.
+  usage-settled courses remain blocked. The result remains unpaid: the two
+  corrected course charges, and any existing unpaid invoice, are the amounts to
+  collect later. This command creates no Payment record and does not mark the
+  course paid.
