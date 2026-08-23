@@ -2468,13 +2468,18 @@ class StudentClassController extends Controller
 
             $newCourse = $this->createStudentClassRecordResilient($newPayload);
             $newCourse->refresh();
-            $sessionSync = $this->ensureMonthlyFutureScheduledSessions($newCourse);
 
+            // Close and cancel the old period before materializing the new
+            // period. A legacy source course may contain future rows beyond
+            // EndDate; leaving it active during generation makes the new
+            // renewal look like a real student overlap.
             $studentClass->Stop = 1;
             $studentClass->closed_reason = 'settled';
             $studentClass->save();
             $cancelled = $this->cancelFutureScheduledSessions($studentClass, 'settled');
             $studentClass->refresh();
+
+            $sessionSync = $this->ensureMonthlyFutureScheduledSessions($newCourse);
 
             $billingPeriod = Carbon::parse($newStartDate)->format('Y-m');
             $totalAmount = max(0, (int) ($newCourse->Charge ?? 0));

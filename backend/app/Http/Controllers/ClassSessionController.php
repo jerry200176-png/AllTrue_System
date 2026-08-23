@@ -3274,7 +3274,7 @@ class ClassSessionController extends Controller
 
         // Same substitute resolution as buildClassSessionIndexQuery (#985 / #1822):
         // a joined derived table, not a per-row correlated MAX(sub2.id) subquery.
-        $rows = DB::table('ClassSession as cs')
+        $effectiveSessionRows = DB::table('ClassSession as cs')
             ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
             ->join('Student as s', 's.id', '=', 'sc.StudentID')
             ->leftJoin(DB::raw('(
@@ -3304,10 +3304,21 @@ class ClassSessionController extends Controller
             ->whereRaw('LOWER(cs.Status) IN ("attended", "late", "completed")')
             ->select([
                 DB::raw('COALESCE(sub_sched.teacher_id, sc.TeacherID) AS teacher_id'),
+                DB::raw('lr.id AS learning_record_id'),
+                DB::raw('lr.Progress AS learning_record_progress'),
+            ]);
+
+        // Aggregate from a derived table so MySQL ONLY_FULL_GROUP_BY groups on
+        // the already-resolved teacher_id value instead of re-validating the
+        // underlying COALESCE(sc.TeacherID, sub_sched.teacher_id) columns.
+        $rows = DB::table('effective_sessions')
+            ->fromSub($effectiveSessionRows, 'effective_sessions')
+            ->select([
+                'teacher_id',
                 DB::raw('COUNT(*) AS session_total'),
-                DB::raw('SUM(CASE WHEN lr.id IS NOT NULL AND TRIM(IFNULL(lr.Progress, "")) != "" THEN 1 ELSE 0 END) AS filled'),
+                DB::raw('SUM(CASE WHEN learning_record_id IS NOT NULL AND TRIM(IFNULL(learning_record_progress, "")) != "" THEN 1 ELSE 0 END) AS filled'),
             ])
-            ->groupBy(DB::raw('COALESCE(sub_sched.teacher_id, sc.TeacherID)'))
+            ->groupBy('teacher_id')
             ->orderByDesc('session_total')
             ->get()
             ->filter(static function ($row) {

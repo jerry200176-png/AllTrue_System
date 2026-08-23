@@ -119,6 +119,7 @@ class ClassSessionMaterializationService
             $payload = $this->buildCreatePayload($slot, $studentClassId, $sessionDate, $startTime);
             $session = new ClassSession($payload);
             $session->setPreloadedStudentClass($studentClass);
+            $session->setAllowStudentOverlap(!empty($slot['_allow_student_overlap']));
             if (($slot['_student_class'] ?? null) instanceof StudentClass) {
                 $session->setPreloadedCourseSettlementLock(
                     $slot['_student_class']->isUsageSettlementLocked()
@@ -167,7 +168,7 @@ class ClassSessionMaterializationService
             $sessionDate,
             $this->normalizeTimeForStorage($session->getAttribute('StartTime')),
             $this->normalizeTimeForStorage($session->getAttribute('EndTime')),
-            $session->exists() ? (int) $session->getKey() : null,
+            $session->exists ? (int) $session->getKey() : null,
         );
     }
 
@@ -180,6 +181,7 @@ class ClassSessionMaterializationService
         ?int $excludeSessionId = null,
     ): void {
         $studentId = (int) $studentClass->getAttribute('StudentID');
+        $packageId = (int) $studentClass->getAttribute('PackageID');
         if ($studentId <= 0
             || ((int) $studentClass->getAttribute('Stop') === 1
                 && (int) $studentClass->getAttribute('RemainingSessions') <= 0)
@@ -193,6 +195,15 @@ class ClassSessionMaterializationService
             ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
             ->where('sc.StudentID', $studentId)
             ->where('cs.StudentClassID', '!=', $studentClassId)
+            ->when($packageId > 0, function ($query) use ($packageId) {
+                // Members of one shared package intentionally represent
+                // parallel subject tracks; the package is the entitlement
+                // boundary. Unrelated courses remain student-slot guarded.
+                $query->where(function ($packageQuery) use ($packageId) {
+                    $packageQuery->whereNull('sc.PackageID')
+                        ->orWhere('sc.PackageID', '!=', $packageId);
+                });
+            })
             ->when($excludeSessionId !== null, fn ($query) => $query->where('cs.id', '!=', $excludeSessionId))
             ->whereDate('cs.SessionDate', $sessionDate)
             ->where(function ($query) {
@@ -224,6 +235,12 @@ class ClassSessionMaterializationService
             ->where('s.student_id', $studentId)
             ->whereDate('s.schedule_date', $sessionDate)
             ->where('s.status', 'scheduled')
+            ->when($packageId > 0, function ($query) use ($packageId) {
+                $query->where(function ($packageQuery) use ($packageId) {
+                    $packageQuery->whereNull('sc.PackageID')
+                        ->orWhere('sc.PackageID', '!=', $packageId);
+                });
+            })
             ->where(function ($query) use ($studentClassId) {
                 $query->whereNull('s.student_course_id')
                     ->orWhere('s.student_course_id', '!=', $studentClassId);

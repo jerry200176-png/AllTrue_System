@@ -36,6 +36,13 @@ class ClassSession extends Model
 
     private ?StudentClass $preloadedStudentClass = null;
 
+    /**
+     * Explicitly authorised parallel-course write (EnrollmentService force flow).
+     * This is transient model state; direct ClassSession::create() remains
+     * protected by the student overlap guard by default.
+     */
+    private bool $allowStudentOverlap = false;
+
     protected $fillable = [
         'StudentClassID',
         'SubjectID',
@@ -57,14 +64,30 @@ class ClassSession extends Model
     {
         static::creating(function (ClassSession $session) {
             $session->assertCourseIsMutable();
-            app(ClassSessionMaterializationService::class)->assertStudentSlotAvailableForSession($session);
+            if (!$session->allowsStudentOverlap()) {
+                app(ClassSessionMaterializationService::class)->assertStudentSlotAvailableForSession($session);
+            }
         });
         static::updating(function (ClassSession $session) {
             if ($session->isDirty(['StudentClassID', 'SessionDate', 'StartTime', 'EndTime', 'Status'])) {
                 $session->assertCourseIsMutable();
-                app(ClassSessionMaterializationService::class)->assertStudentSlotAvailableForSession($session);
+                if (!$session->allowsStudentOverlap()) {
+                    app(ClassSessionMaterializationService::class)->assertStudentSlotAvailableForSession($session);
+                }
             }
         });
+    }
+
+    public function setAllowStudentOverlap(bool $allow = true): self
+    {
+        $this->allowStudentOverlap = $allow;
+
+        return $this;
+    }
+
+    public function allowsStudentOverlap(): bool
+    {
+        return $this->allowStudentOverlap;
     }
 
     public function setPreloadedStudentClass(StudentClass $studentClass): self

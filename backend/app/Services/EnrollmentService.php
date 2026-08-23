@@ -873,6 +873,7 @@ class EnrollmentService
                     if ($row['kind'] === 'confirmed') {
                         $upsert = app(ClassSessionMaterializationService::class)->upsertSlot([
                             '_student_class' => $studentClass,
+                            '_allow_student_overlap' => !empty($data['force']),
                             'StudentClassID' => $studentClass->ID,
                             'SessionDate' => $date,
                             'StartTime' => $slotStartTime,
@@ -914,6 +915,7 @@ class EnrollmentService
                     $isEndedAtCreateTime = $this->sessionEndedByEndTime($date, $slotEndTime, $decisionNow);
                     $upsert = app(ClassSessionMaterializationService::class)->upsertSlot([
                         '_student_class' => $studentClass,
+                        '_allow_student_overlap' => !empty($data['force']),
                         'StudentClassID' => $studentClass->ID,
                         'SessionDate' => $date,
                         'StartTime' => $slotStartTime,
