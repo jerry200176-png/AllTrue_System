@@ -4,6 +4,38 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-24-course-editability-preflight",
+    "publishedAt": "2026-08-24",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "編輯先說明限制與下一步",
+    "summary": "開啟課程編輯時，系統先說明可改欄位、受保護欄位與安全處理方式。",
+    "items": [
+      "編輯視窗先顯示扣堂、付款、共用方案與對帳狀態；受保護欄位會標明原因。",
+      "更正堂數、處理付款或調整方案時，畫面會提供下一步；一般資料仍可直接編輯。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "編輯視窗先顯示扣堂、付款、共用方案與對帳狀態；受保護欄位會標明原因。",
+          "更正堂數、處理付款或調整方案時，畫面會提供下一步；一般資料仍可直接編輯。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-24:course-editability-preflight"
+    ],
+    "date": "2026-08-24",
+    "version": "2026.08.24"
+  },
+  {
     "id": "staff-2026-08-23-overlap-entitlement-root-guard",
     "publishedAt": "2026-08-23",
     "effectiveAt": null,
