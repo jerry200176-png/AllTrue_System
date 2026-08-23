@@ -1,3 +1,11 @@
+## 2026-08-23 — fix(course): 合約更正與堂次轉移錯誤提示
+
+<!-- release-notes: staff_update=staff-2026-08-23-contract-correction-transfer-safety -->
+
+- 課程編輯儲存失敗改在編輯視窗頂端顯示，不再被底層頁面或 toast 遮住，並保留後端欄位錯誤細節。
+- 尚未收款且原本 5 堂、實際只上 4 堂的按堂課程，請從「操作 → 更正未收款堂數」改為 4 堂；既有已上課紀錄保留，超出的未上排程取消並留下稽核紀錄。
+- 堂次轉移只允許同一學生、同一科目且已上課（含遲到／完成）的堂次；未上課、請假、缺席或不相容目標課程會被拒絕。
+
 ## 2026-08-22 — feat(schedule): 一般合約新增「排課」按鈕（GitHub #1956）
 
 <!-- release-notes: staff_update=staff-2026-08-22-manual-session-booking -->

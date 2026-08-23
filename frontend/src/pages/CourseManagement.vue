@@ -670,6 +670,10 @@
     <div v-if="showEditModal" class="modal-overlay">
       <div class="modal course-modal">
         <h3 class="modal-title">編輯課程</h3>
+        <AtInlineAlert v-if="editSaveError" tone="danger" title="儲存失敗" style="margin: 0 0 14px;">
+          <p>{{ editSaveError.message }}</p>
+          <p v-if="editSaveError.details" class="alert-detail">{{ editSaveError.details }}</p>
+        </AtInlineAlert>
         <div class="form-section">
           <CourseEditForm
             ref="editFormRef"
@@ -1859,6 +1863,7 @@ const editingCourseFromLaravel = ref(false);
 const editingCourseRaw = ref(null);
 const editFormRef = ref(null);
 const editForm = ref({});
+const editSaveError = ref(null);
 const editPackageInfo = computed(() => {
   const c = editingCourseRaw.value;
   if (!c?.PackageID) return null;
@@ -1977,8 +1982,9 @@ async function submitBillingCorrection() {
 const transferSessionsSessionOptions = computed(() => {
   const c = transferSessionsCourse.value;
   if (!c) return [];
+  const movableStatuses = new Set(['attended', 'completed', 'late']);
   return allSessionUnits(c)
-    .filter((s) => s?.status !== 'cancelled')
+    .filter((s) => movableStatuses.has(String(s?.status || '').toLowerCase()))
     .map((s) => ({ id: Number(s.id), date: s.date, status: s.status }));
 });
 
@@ -3975,6 +3981,7 @@ function scheduleFingerprintForEdit(form) {
 
 const editCourse = (c) => {
   editingId.value = c.id;
+  editSaveError.value = null;
   editingCourseRaw.value = c;
   editingCourseFromLaravel.value = !!(
     c.data_source === 'laravel'
@@ -4034,6 +4041,7 @@ const editCourse = (c) => {
 const submitEdit = async () => {
   const id = editingId.value;
   const form = editForm.value;
+  editSaveError.value = null;
   if (editingCourseFromLaravel.value) {
     try {
       const { data: { session: sess } } = await supabase.auth.getSession();
@@ -4149,11 +4157,20 @@ const submitEdit = async () => {
           return;
         }
         const err = await res.json().catch(() => ({}));
-        toastRef.value?.show?.({ title: '儲存失敗', description: err?.message || '更新失敗', variant: 'error', durationMs: 5000 });
+        const details = err?.errors
+          ? Object.values(err.errors).flat().filter(Boolean).join(' ')
+          : '';
+        editSaveError.value = {
+          message: err?.message || '更新失敗，請檢查欄位後再試。',
+          details,
+        };
         return;
       }
     } catch (e) {
-      alert('連線失敗：' + (e?.message || '請稍後再試'));
+      editSaveError.value = {
+        message: '連線失敗，請稍後再試。',
+        details: e?.message || '',
+      };
       return;
     }
   }
@@ -4166,7 +4183,10 @@ const submitEdit = async () => {
     first_class_date: form.first_class_date || null
   }).eq('id', id);
   if (error) {
-    alert('更新失敗：' + (error?.message || '請稍後再試'));
+    editSaveError.value = {
+      message: '更新失敗，請檢查欄位後再試。',
+      details: error?.message || '',
+    };
     return;
   }
   editScheduleBaseline.value = null;

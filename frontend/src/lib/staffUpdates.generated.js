@@ -4,6 +4,45 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-23-contract-correction-transfer-safety",
+    "publishedAt": "2026-08-23",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "未收款合約更正與堂次轉移安全性",
+    "summary": "未收款合約可更正實際堂數，堂次轉移也會清楚限制在可安全搬移的已上課紀錄。",
+    "items": [
+      "課程編輯儲存失敗會固定顯示在編輯視窗內，不會再被錯誤提示或底層畫面遮住。",
+      "原本五堂、尚未收款但實際只上四堂時，可從「操作 → 更正未收款堂數」改為四堂；已上課紀錄不會刪除。",
+      "轉移堂次只列出同一學生、同一科目且已上課的堂次，未上課、請假與缺席堂次會留在原合約。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "課程編輯儲存失敗會固定顯示在編輯視窗內，不會再被錯誤提示或底層畫面遮住。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "原本五堂、尚未收款但實際只上四堂時，可從「操作 → 更正未收款堂數」改為四堂；已上課紀錄不會刪除。",
+          "轉移堂次只列出同一學生、同一科目且已上課的堂次，未上課、請假與缺席堂次會留在原合約。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-23:contract-correction-transfer-safety"
+    ],
+    "date": "2026-08-23",
+    "version": "2026.08.23"
+  },
+  {
     "id": "staff-2026-08-22-manual-session-booking",
     "publishedAt": "2026-08-22",
     "effectiveAt": null,
