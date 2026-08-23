@@ -801,3 +801,18 @@
 | 建議做法 | 讓 staged rotation 在 Phase 1/2 前產生非機密 consumer manifest；所有 production DB client 從同一個 effective-config helper 取得 identity tuple，並以 fresh DB read + DB-dependent smoke 作為 required gate。 |
 | 清償成本估計 | 中（半天） |
 | 不做的代價 | 下一次 credential rotation 仍可能只驗到某一條 host rule 或只驗 `/health`，再次造成全站 500，且 rollback 無法只靠 Git 回復。 |
+
+### TD-085：課程／堂次轉移存在三條責任不同但名稱相近的後端路徑（P2）
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P2 |
+| 發現日期 | 2026-08-23 |
+| 發現來源 | [REVIEW] 合約更正與堂次轉移上線前重複功能審查 |
+| 影響模組 | `StudentClassController::transferSessions`、`ClassSessionController::reassignContract`、`SessionEntitlementTransferService`、課程管理與維運 workflow |
+| 描述 | 目前有三條「把堂次／紀錄轉到另一個 StudentClass」的實作：一般課程管理入口可批次轉移教務紀錄；超級管理員 endpoint 可依課程延續群組單堂改派；allowlist 維運指令則會連同 `SessionDeductionLedger`、稽核快照與 rollback 一起處理。三者的權限、容量檢查、稽核與計費責任不同，不能只靠改名假裝相同；但若未標明邊界，後續很容易再新增第四條或誤用錯誤入口。 |
+| 本次決策 | 一般使用者只使用 `POST /api/v1/student-classes/{studentClass}/transfer-sessions`；本次不新增另一條 API，也不改動超級管理員／維運補救路徑。這條一般入口明確不搬移帳務堂數與金額，避免與未收款堂數更正混用。 |
+| 建議做法 | 後續建立單一 transfer domain contract，明確分成「教務紀錄轉移」與「帳務額度修復」兩種 mode，讓現有三條路徑共用驗證與稽核規則，再逐步標記／退場重複 controller 邏輯；先補呼叫者與 production 使用量證據，不直接合併高風險資料寫入語意。 |
+| 清償成本估計 | 高（需先盤點既有 transfer audit／ledger 資料，再抽 service、補 rollback／權限／容量回歸測試） |
+| 不做的代價 | 新功能可能誤把教務紀錄轉移當成帳務額度轉移，造成 `ClassSession`、評量、點名與扣堂 ledger 不一致；不同入口的錯誤訊息與稽核證據也會繼續分叉。 |

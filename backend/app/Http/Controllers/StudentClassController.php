@@ -2173,7 +2173,6 @@ class StudentClassController extends Controller
             $this->prepareSplitContractPlan($studentClass, $data)
         ));
     }
-
     public function splitContract(Request $request, StudentClass $studentClass)
     {
         if ($accessError = $this->authorizeStudentClassAccess($studentClass)) {
@@ -2203,7 +2202,6 @@ class StudentClassController extends Controller
                     'duplicate_course_id' => (int) $duplicate->ID,
                 ], 409);
             }
-
             $newCourse = $this->createStudentClassRecordResilient(
                 $this->buildSplitContractPayload($source, $plan)
             );
@@ -2305,7 +2303,6 @@ class StudentClassController extends Controller
                     'outcome' => 'success',
                 ]
             );
-
             return response()->json([
                 'message' => '合約拆分完成：已搬移堂次、建立新合約並同步更正未收款金額。',
                 'adjusted_invoice_count' => $adjustedInvoiceCount,
@@ -3638,9 +3635,19 @@ class StudentClassController extends Controller
                     'message' => '來源課程已提前結清，堂次與紀錄已鎖定，無法轉移。',
                 ], 422);
             }
+            if ((int) $target->ID === (int) $source->ID) {
+                return response()->json([
+                    'message' => '來源課程與目標課程不可相同。',
+                ], 422);
+            }
             if ((int) $target->StudentID !== (int) $source->StudentID) {
                 return response()->json([
                     'message' => '目標課程與來源課程的學生不一致，拒絕轉移。',
+                ], 422);
+            }
+            if ((int) ($target->SubjectID ?? 0) !== (int) ($source->SubjectID ?? 0)) {
+                return response()->json([
+                    'message' => '目標課程與來源課程的科目不一致，拒絕轉移。',
                 ], 422);
             }
 
@@ -3653,6 +3660,23 @@ class StudentClassController extends Controller
                 return response()->json([
                     'message' => '部分堂次不存在於來源課程，未執行任何轉移。',
                     'errors' => ['session_ids' => ['不存在的堂次 id: ' . implode(',', $missing)]],
+                ], 422);
+            }
+
+            $movableStatuses = ['attended', 'completed', 'late'];
+            $blockedSessions = $sessions->filter(function (ClassSession $session) use ($movableStatuses): bool {
+                return !in_array(
+                    strtolower((string) $session->getAttribute('Status')),
+                    $movableStatuses,
+                    true
+                );
+            });
+            if ($blockedSessions->isNotEmpty()) {
+                return response()->json([
+                    'message' => '只能轉移已上課的堂次；未上課、請假或缺席堂次請留在原合約處理。',
+                    'errors' => [
+                        'session_ids' => ['不可轉移堂次：' . $blockedSessions->pluck('id')->implode(', ')],
+                    ],
                 ], 422);
             }
 
@@ -4183,7 +4207,6 @@ class StudentClassController extends Controller
                 'code' => 'split_contract_usage_settled',
             ], 422));
         }
-
         $classId = (int) $studentClass->ID;
         $activePayment = DB::table('Invoice')
             ->leftJoin('Payment', 'Payment.InvoiceID', '=', 'Invoice.id')
@@ -4216,7 +4239,6 @@ class StudentClassController extends Controller
                 'code' => 'billing_correction_payment_report_locked',
             ], 409));
         }
-
         $rateUnit = strtolower(trim((string) ($studentClass->rate_unit ?? 'session')));
         if ($rateUnit !== 'session') {
             abort(response()->json([
@@ -4224,7 +4246,6 @@ class StudentClassController extends Controller
                 'code' => 'split_contract_session_rate_only',
             ], 422));
         }
-
         $sessionIds = array_values(array_unique(array_map('intval', $data['session_ids'] ?? [])));
         $sessionsQuery = ClassSession::query()
             ->where('StudentClassID', $classId)
@@ -4239,7 +4260,6 @@ class StudentClassController extends Controller
                 'code' => 'split_contract_session_not_in_source',
             ], 422));
         }
-
         $usedStatuses = ['completed', 'attended', 'late'];
         $invalidSessionIds = $sessions
             ->filter(fn (ClassSession $session): bool => !in_array(strtolower((string) $session->Status), $usedStatuses, true))
@@ -4254,7 +4274,6 @@ class StudentClassController extends Controller
                 'session_ids' => $invalidSessionIds,
             ], 422));
         }
-
         $observedUsed = (int) (SessionDeductionService::batchObservedUsedSessions([$classId])[$classId] ?? 0);
         $oldSessionCount = (int) ($studentClass->SessionCount ?? 0);
         $futureSessionCount = $oldSessionCount - $observedUsed;
@@ -4267,11 +4286,9 @@ class StudentClassController extends Controller
                 'observed_used_sessions' => $observedUsed,
             ], 422));
         }
-
         $rate = (float) ($studentClass->Rate ?? 0);
         $sourceCharge = (int) round($rate * $sourceSessionCount);
         $newCharge = (int) round($rate * $newSessionCount);
-
         return [
             'session_ids' => $sessionIds,
             'selected_session_count' => count($sessionIds),
@@ -4286,16 +4303,13 @@ class StudentClassController extends Controller
             'future_session_count' => $futureSessionCount,
         ];
     }
-
     private function splitContractPreviewPayload(array $plan): array
     {
         return [
             'selected_session_count' => $plan['selected_session_count'],
-            'observed_used_sessions' => $plan['observed_used_sessions'],
             'source_course' => [
                 'session_count' => $plan['old_session_count'],
                 'charge' => $plan['old_charge'],
-                'used_sessions' => $plan['observed_used_sessions'],
                 'remaining_sessions' => max(0, $plan['old_session_count'] - $plan['observed_used_sessions']),
             ],
             'source_correction' => [
@@ -4310,11 +4324,9 @@ class StudentClassController extends Controller
             ],
         ];
     }
-
     private function buildSplitContractPayload(StudentClass $source, array $plan): array
     {
         $duration = max(30, (int) ($source->SessionDuration ?? 120));
-
         return [
             'StudentID' => (int) $source->StudentID,
             'GradeID' => (int) ($source->GradeID ?? 1),
@@ -4369,7 +4381,6 @@ class StudentClassController extends Controller
             'deduction_basis' => $source->deduction_basis,
         ];
     }
-
     private function mapFrontendPayload(Request $request): array
     {
         $input = $request->json()->all();
