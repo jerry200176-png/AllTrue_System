@@ -60,7 +60,7 @@ const subjectLabel = computed(() => getSubjectLabel(props.subject));
   border: 1px solid var(--ds-hairline); border-radius: 12px; background: var(--ds-canvas-soft);
   color: var(--text); text-align: left; cursor: pointer;
 }
-.choice-card:hover, .choice-card:focus-visible { border-color: var(--ds-primary); background: #fff; outline: none; }
+.choice-card:hover, .choice-card:focus-visible { border-color: var(--ds-primary); background: var(--ds-canvas); outline: none; }
 .choice-card__icon { flex: 0 0 28px; font-size: 22px; color: var(--ds-primary-deep); text-align: center; }
 .choice-card__copy { display: grid; gap: 4px; flex: 1; }
 .choice-card__copy strong { font-size: 14px; }
