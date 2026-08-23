@@ -1431,3 +1431,10 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **強制規則**：`DB_USERNAME`、`DB_PASSWORD`、`DB_HOST`、`DB_PORT` 與 `CURRENT_USER()` 必須視為同一個 identity tuple；任何修改密碼前，先以既有帳密取得唯一實際 `User@Host`，若不是唯一就 fail closed，不猜 host、不自動建立另一列。
 - **防再犯**：舊式 in-place rotation 已停用；正式輪替只能走 `deploy.yml` 的 Phase 1 → Phase 2 → Phase 3 staged path。repair workflow 必須列舉並驗證實際 host row，成功條件必須同時包含 fresh DB `SELECT 1`、Laravel fresh connection／`CURRENT_USER()` 與真正查 DB 的 API（例如 `/api/v1/branches`）。
 - **安全界線**：事故期間沒有把密碼寫入文件、log 或對話；修復只對既有 `admin@'%'` 改密碼，沒有改資料表、grant 權限或資料內容。
+
+### R121. 合約拆分必須先轉移已使用堂次，再更正原合約（2026-08-23）
+
+- **現象**：未收款合約要拆出已使用堂次時，若先把原合約堂數改小，契約鎖會以「新堂數低於已使用堂數」拒絕；若先建立完整新合約，又可能把未使用額度重複物化。
+- **強制規則**：拆分流程必須在同一交易內先鎖定並轉移明確選取的已使用 `ClassSession`／學習紀錄／簽到，再以「剩餘原額度＋轉入額度」計算新約，最後更正原約與未來預排堂次。任一步驟失敗都不得留下半套資料。
+- **安全邊界**：只允許未收款、非月結／方案、無有效付款或待對帳回報的按堂合約；預排或尚未使用的堂次不可被當成已使用堂次轉移。前端金額與堂數只顯示後端 preview，不能自行取代伺服器計算。
+- **測試必補**：8 堂已使用 8 堂拆 3 堂時，原約與新約各為 5 堂／正確金額，3 筆堂次與關聯紀錄一起轉移；選到未來 scheduled 堂次、已付款或交易中途失敗時，資料維持原狀。

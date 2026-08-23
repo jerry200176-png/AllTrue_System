@@ -2159,6 +2159,198 @@ class StudentClassController extends Controller
         return response()->json($result);
     }
 
+    /**
+     * Preview an atomic contract split without writing any data.
+     * POST /api/v1/student-classes/{studentClass}/split-contract/preview
+     */
+    public function splitContractPreview(Request $request, StudentClass $studentClass)
+    {
+        if ($accessError = $this->authorizeStudentClassAccess($studentClass)) {
+            return $accessError;
+        }
+
+        $data = $request->validate([
+            'session_ids' => ['required', 'array', 'min:1', 'max:100'],
+            'session_ids.*' => ['integer'],
+            'start_date' => ['required', 'date'],
+        ]);
+
+        return response()->json($this->splitContractPreviewPayload(
+            $this->prepareSplitContractPlan($studentClass, $data)
+        ));
+    }
+
+    /**
+     * Create the new contract, move used records, and correct the unpaid source
+     * contract in one transaction. The server derives both contract amounts;
+     * the client cannot choose an inconsistent count/charge pair.
+     * POST /api/v1/student-classes/{studentClass}/split-contract
+     */
+    public function splitContract(Request $request, StudentClass $studentClass)
+    {
+        if ($accessError = $this->authorizeStudentClassAccess($studentClass)) {
+            return $accessError;
+        }
+
+        $data = $request->validate([
+            'session_ids' => ['required', 'array', 'min:1', 'max:100'],
+            'session_ids.*' => ['integer'],
+            'start_date' => ['required', 'date'],
+            'reason' => ['required', 'string', 'max:255'],
+        ]);
+
+        return DB::transaction(function () use ($studentClass, $data) {
+            $source = StudentClass::query()
+                ->where('ID', $studentClass->ID)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $plan = $this->prepareSplitContractPlan($source, $data, true);
+
+            $duplicate = $this->findDuplicatePurchaseBatch(
+                $source,
+                $plan['start_date'],
+                $plan['new_session_count']
+            );
+            if ($duplicate !== null) {
+                return response()->json([
+                    'message' => '偵測到相同學生、科目、開課日與堂數的既有批次，請先確認是否已拆分過。',
+                    'code' => 'split_contract_duplicate',
+                    'duplicate_course_id' => (int) $duplicate->ID,
+                ], 409);
+            }
+
+            $newCourse = $this->createStudentClassRecordResilient(
+                $this->buildSplitContractPayload($source, $plan)
+            );
+
+            $slots = $this->resolveScheduleSlotsForRebuild($source);
+            if (empty($slots)) {
+                $fallbackTime = $this->normalizeSessionTime($source->time ?? null, '16:00');
+                $slots = [[
+                    'weekday' => (int) Carbon::parse($plan['start_date'])->dayOfWeekIso,
+                    'time' => substr($fallbackTime, 0, 5),
+                    'duration_minutes' => max(30, (int) ($source->SessionDuration ?? 120)),
+                ]];
+            }
+
+            $futureSessions = $this->buildSessionsForCount(
+                (int) $newCourse->ID,
+                $plan['start_date'],
+                $plan['future_session_count'],
+                $slots,
+                max(30, (int) ($source->SessionDuration ?? 120))
+            );
+            $lastFutureDate = null;
+            foreach ($futureSessions as $sessionData) {
+                $upsert = app(ClassSessionMaterializationService::class)->upsertSlot($sessionData);
+                $date = $sessionData['SessionDate'] ?? null;
+                if ($date !== null && ($lastFutureDate === null || $date > $lastFutureDate)) {
+                    $lastFutureDate = $date;
+                }
+            }
+
+            $selectedSessions = ClassSession::query()
+                ->where('StudentClassID', $source->ID)
+                ->whereIn('id', $plan['session_ids'])
+                ->lockForUpdate()
+                ->get();
+            foreach ($selectedSessions as $session) {
+                $session->StudentClassID = $newCourse->ID;
+                $session->save();
+            }
+            LearningRecord::whereIn('ClassSessionID', $plan['session_ids'])
+                ->update(['StudentClassID' => $newCourse->ID]);
+            StudentSignIn::whereIn('ClassSessionID', $plan['session_ids'])
+                ->update(['StudentClassID' => $newCourse->ID]);
+
+            $oldSourceCount = (int) ($source->SessionCount ?? 0);
+            $oldSourceCharge = (int) ($source->Charge ?? 0);
+            $source->SessionCount = $plan['source_session_count'];
+            $source->Charge = $plan['source_charge'];
+            $source->save();
+
+            $adjustedInvoiceCount = 0;
+            $openInvoices = Invoice::query()
+                ->where('StudentClassID', $source->ID)
+                ->where(function ($query) {
+                    $query->whereNull('Status')->orWhere('Status', '!=', 'void');
+                })
+                ->lockForUpdate()
+                ->get();
+            foreach ($openInvoices as $invoice) {
+                if ((int) ($invoice->PaidAmount ?? 0) !== 0) {
+                    abort(response()->json([
+                        'message' => '此課程已有有效收款紀錄，請先至帳務流程作廢或更正帳單。',
+                        'code' => 'billing_correction_payment_locked',
+                    ], 409));
+                }
+                $invoice->TotalAmount = $plan['source_charge'];
+                $invoice->save();
+                InvoiceItem::query()
+                    ->where('InvoiceID', $invoice->id)
+                    ->where('StudentClassID', $source->ID)
+                    ->update(['Amount' => $plan['source_charge']]);
+                $adjustedInvoiceCount++;
+            }
+
+            $this->cancelExcessScheduledSessions((int) $source->ID, $plan['source_session_count']);
+            SessionDeductionService::recomputeCounters((int) $source->ID);
+            SessionDeductionService::recomputeCounters((int) $newCourse->ID);
+            $source = $source->fresh();
+            $newCourse = $newCourse->fresh();
+
+            if ($lastFutureDate !== null) {
+                $newCourse->EndDate = $lastFutureDate;
+                $newCourse->save();
+                $newCourse->refresh();
+            }
+
+            SecurityAuditEvent::append(
+                'student_class.contract_split',
+                'success',
+                [
+                    'campus_id' => $source->student?->CampusID,
+                    'actor_type' => 'user',
+                    'actor_id' => request()->attributes->get('auth_user')?->id,
+                    'subject_type' => 'student_class',
+                    'subject_id' => (int) $source->ID,
+                ],
+                [
+                    'old_session_count' => $oldSourceCount,
+                    'new_source_session_count' => (int) $source->SessionCount,
+                    'new_contract_session_count' => (int) $newCourse->SessionCount,
+                    'old_charge' => $oldSourceCharge,
+                    'new_source_charge' => (int) $source->Charge,
+                    'new_contract_charge' => (int) $newCourse->Charge,
+                    'transferred_session_count' => $plan['selected_session_count'],
+                    'reason_hash' => hash('sha256', (string) $data['reason']),
+                    'reason_code' => 'unpaid_contract_split',
+                    'outcome' => 'success',
+                ]
+            );
+
+            return response()->json([
+                'message' => '合約拆分完成：已搬移堂次、建立新合約並同步更正未收款金額。',
+                'adjusted_invoice_count' => $adjustedInvoiceCount,
+                'source_course' => [
+                    'id' => (int) $source->ID,
+                    'session_count' => (int) $source->SessionCount,
+                    'charge' => (int) $source->Charge,
+                    'remaining_sessions' => (int) ($source->RemainingSessions ?? 0),
+                    'transferred_session_count' => $plan['selected_session_count'],
+                ],
+                'new_course' => [
+                    'id' => (int) $newCourse->ID,
+                    'session_count' => (int) $newCourse->SessionCount,
+                    'charge' => (int) $newCourse->Charge,
+                    'remaining_sessions' => (int) ($newCourse->RemainingSessions ?? 0),
+                    'transferred_session_count' => $plan['selected_session_count'],
+                    'future_session_count' => $plan['future_session_count'],
+                ],
+            ], 201);
+        });
+    }
+
     public function confirmPayment(StudentClass $studentClass)
     {
         $auth = $this->authorizeStudentClassAccess($studentClass);
@@ -3986,6 +4178,225 @@ class StudentClassController extends Controller
         }
 
         return StudentClass::create($payload);
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    private function prepareSplitContractPlan(StudentClass $studentClass, array $data, bool $lockSessions = false): array
+    {
+        if ((string) ($studentClass->ScheduleMode ?? 'count') !== 'count') {
+            abort(response()->json([
+                'message' => '只有堂數制課程可以使用合約拆分。',
+                'code' => 'split_contract_count_mode_only',
+            ], 422));
+        }
+        if ($studentClass->isPartOfPackage()) {
+            abort(response()->json([
+                'message' => '共用課程包請使用方案調整流程，不可拆分單一課程。',
+                'code' => 'split_contract_package_forbidden',
+            ], 422));
+        }
+        if ((int) ($studentClass->Paid ?? 0) === 1) {
+            abort(response()->json([
+                'message' => '此課程已標記收款，請先走帳務更正／作廢流程。',
+                'code' => 'split_contract_paid_locked',
+            ], 409));
+        }
+        if ($studentClass->hasDeductionHistory() && (string) ($studentClass->closed_reason ?? '') === 'usage_settled') {
+            abort(response()->json([
+                'message' => '此課程已提前結清，堂次與紀錄已鎖定，無法拆分。',
+                'code' => 'split_contract_usage_settled',
+            ], 422));
+        }
+
+        $classId = (int) $studentClass->ID;
+        $activePayment = DB::table('Invoice')
+            ->leftJoin('Payment', 'Payment.InvoiceID', '=', 'Invoice.id')
+            ->where('Invoice.StudentClassID', $classId)
+            ->where(function ($query) {
+                $query->whereNull('Invoice.Status')->orWhere('Invoice.Status', '!=', 'void');
+            })
+            ->where(function ($query) {
+                $query->where('Invoice.PaidAmount', '>', 0)
+                    ->orWhere(function ($payment) {
+                        $payment->where('Payment.Amount', '>', 0)
+                            ->where(function ($method) {
+                                $method->whereNull('Payment.Method')->orWhere('Payment.Method', '!=', 'void');
+                            });
+                    });
+            })
+            ->exists();
+        if ($activePayment) {
+            abort(response()->json([
+                'message' => '此課程已有有效收款紀錄，請先至帳務流程作廢或更正帳單。',
+                'code' => 'billing_correction_payment_locked',
+            ], 409));
+        }
+        if (PaymentReport::query()
+            ->where('StudentClassID', $classId)
+            ->whereIn('status', ['pending', 'confirmed'])
+            ->exists()) {
+            abort(response()->json([
+                'message' => '此課程已有待處理或已確認的繳費回報，請先完成或作廢該筆回報。',
+                'code' => 'billing_correction_payment_report_locked',
+            ], 409));
+        }
+
+        $rateUnit = strtolower(trim((string) ($studentClass->rate_unit ?? 'session')));
+        if ($rateUnit !== 'session') {
+            abort(response()->json([
+                'message' => '只有按堂計費課程可以使用合約拆分。',
+                'code' => 'split_contract_session_rate_only',
+            ], 422));
+        }
+
+        $sessionIds = array_values(array_unique(array_map('intval', $data['session_ids'] ?? [])));
+        $sessionsQuery = ClassSession::query()
+            ->where('StudentClassID', $classId)
+            ->whereIn('id', $sessionIds);
+        if ($lockSessions) {
+            $sessionsQuery->lockForUpdate();
+        }
+        $sessions = $sessionsQuery->get();
+        if ($sessions->count() !== count($sessionIds)) {
+            abort(response()->json([
+                'message' => '部分堂次不存在於來源課程，未執行任何拆分。',
+                'code' => 'split_contract_session_not_in_source',
+            ], 422));
+        }
+
+        $usedStatuses = ['completed', 'attended', 'late'];
+        $invalidSessionIds = $sessions
+            ->filter(fn (ClassSession $session): bool => !in_array(strtolower((string) $session->Status), $usedStatuses, true))
+            ->pluck('id')
+            ->map(fn ($id): int => (int) $id)
+            ->values()
+            ->all();
+        if (!empty($invalidSessionIds)) {
+            abort(response()->json([
+                'message' => '只能選擇已使用的堂次；未上課排程不會搬到新合約。',
+                'code' => 'split_contract_used_sessions_only',
+                'session_ids' => $invalidSessionIds,
+            ], 422));
+        }
+
+        $observedUsed = (int) (SessionDeductionService::batchObservedUsedSessions([$classId])[$classId] ?? 0);
+        $oldSessionCount = (int) ($studentClass->SessionCount ?? 0);
+        $futureSessionCount = $oldSessionCount - $observedUsed;
+        $sourceSessionCount = $observedUsed - count($sessionIds);
+        $newSessionCount = $oldSessionCount - $sourceSessionCount;
+        if ($oldSessionCount <= 0 || $observedUsed <= 0 || $futureSessionCount < 0 || $sourceSessionCount < 1 || $newSessionCount < 1) {
+            abort(response()->json([
+                'message' => '目前使用量無法形成至少 1 堂的舊合約與新合約，請重新檢查選取堂次。',
+                'code' => 'split_contract_invalid_balance',
+                'observed_used_sessions' => $observedUsed,
+            ], 422));
+        }
+
+        $rate = (float) ($studentClass->Rate ?? 0);
+        $sourceCharge = (int) round($rate * $sourceSessionCount);
+        $newCharge = (int) round($rate * $newSessionCount);
+
+        return [
+            'session_ids' => $sessionIds,
+            'selected_session_count' => count($sessionIds),
+            'start_date' => Carbon::parse($data['start_date'])->toDateString(),
+            'observed_used_sessions' => $observedUsed,
+            'old_session_count' => $oldSessionCount,
+            'old_charge' => (int) ($studentClass->Charge ?? 0),
+            'source_session_count' => $sourceSessionCount,
+            'source_charge' => $sourceCharge,
+            'new_session_count' => $newSessionCount,
+            'new_charge' => $newCharge,
+            'future_session_count' => $futureSessionCount,
+        ];
+    }
+
+    /** @param array<string, mixed> $plan */
+    private function splitContractPreviewPayload(array $plan): array
+    {
+        return [
+            'selected_session_count' => $plan['selected_session_count'],
+            'observed_used_sessions' => $plan['observed_used_sessions'],
+            'source_course' => [
+                'session_count' => $plan['old_session_count'],
+                'charge' => $plan['old_charge'],
+                'used_sessions' => $plan['observed_used_sessions'],
+                'remaining_sessions' => max(0, $plan['old_session_count'] - $plan['observed_used_sessions']),
+            ],
+            'source_correction' => [
+                'session_count' => $plan['source_session_count'],
+                'charge' => $plan['source_charge'],
+            ],
+            'new_course' => [
+                'session_count' => $plan['new_session_count'],
+                'charge' => $plan['new_charge'],
+                'transferred_session_count' => $plan['selected_session_count'],
+                'future_session_count' => $plan['future_session_count'],
+            ],
+        ];
+    }
+
+    /** @param array<string, mixed> $plan */
+    private function buildSplitContractPayload(StudentClass $source, array $plan): array
+    {
+        $duration = max(30, (int) ($source->SessionDuration ?? 120));
+
+        return [
+            'StudentID' => (int) $source->StudentID,
+            'GradeID' => (int) ($source->GradeID ?? 1),
+            'SubjectID' => (int) ($source->SubjectID ?? 1),
+            'TeacherID' => (int) ($source->TeacherID ?? 0),
+            'by1' => (int) ($source->by1 ?? 1),
+            'Period' => (int) ($source->Period ?? 4),
+            'StartDate' => $plan['start_date'],
+            'EndDate' => null,
+            'week' => $source->week,
+            'time' => $source->time,
+            'week1' => $source->week1,
+            'time1' => $source->time1,
+            'week2' => $source->week2,
+            'time2' => $source->time2,
+            'week3' => $source->week3,
+            'time3' => $source->time3,
+            'week4' => $source->week4,
+            'time4' => $source->time4,
+            'week5' => $source->week5,
+            'time5' => $source->time5,
+            'week6' => $source->week6,
+            'time6' => $source->time6,
+            'duration1' => $source->duration1,
+            'duration2' => $source->duration2,
+            'duration3' => $source->duration3,
+            'duration4' => $source->duration4,
+            'duration5' => $source->duration5,
+            'duration6' => $source->duration6,
+            'TotalHours' => (int) round(($plan['new_session_count'] * $duration) / 60),
+            'Memo' => $source->Memo,
+            'Charge' => $plan['new_charge'],
+            'Pay' => 0,
+            'PayDate' => null,
+            'Paid' => 0,
+            'Disconunt' => $source->Disconunt,
+            'Rate' => (float) ($source->Rate ?? 0),
+            'rate_unit' => 'session',
+            'LearnTimeID' => $source->LearnTimeID,
+            'room_id' => $source->room_id,
+            'settlement_day' => $source->settlement_day,
+            'monthly_sessions' => $source->monthly_sessions,
+            'MDate' => now(),
+            'Stop' => 0,
+            'ScheduleMode' => 'count',
+            'SessionCount' => $plan['new_session_count'],
+            'SessionDuration' => $duration,
+            'RemainingSessions' => $plan['new_session_count'],
+            'ClassType' => $source->ClassType ?: 'one_on_one',
+            'UsedSessions' => 0,
+            'standard_lesson_minutes' => $source->standard_lesson_minutes,
+            'deduction_basis' => $source->deduction_basis,
+        ];
     }
 
     private function mapFrontendPayload(Request $request): array

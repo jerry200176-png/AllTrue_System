@@ -1,3 +1,11 @@
+## 2026-08-23 — feat(billing): 未收款課程合約拆分精靈
+
+<!-- release-notes: staff_update=staff-2026-08-23-split-contract-wizard -->
+
+- 主任可在未收款、按堂且非共用課程中，選取已使用堂次，預覽並送出合約拆分。
+- 後端以單一交易先轉移已使用堂次，再建立新的未收款合約並更正原合約堂數／金額；兩邊的堂次、帳務與餘額不平衡時整批拒絕。
+- 已收款、待對帳、月結、方案課程與未使用的預排堂次維持原有鎖定規則；新流程只開放主任／超級管理員並留下最小化稽核紀錄。
+
 ## 2026-08-22 — feat(schedule): 一般合約新增「排課」按鈕（GitHub #1956）
 
 <!-- release-notes: staff_update=staff-2026-08-22-manual-session-booking -->
