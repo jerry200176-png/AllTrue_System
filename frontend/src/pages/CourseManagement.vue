@@ -709,6 +709,10 @@
         <div class="billing-correction-warning">
           僅適用於尚未收款的按堂課程。已上課紀錄不會被刪除；超出新堂數的未上課排程會取消，並留下稽核紀錄。
         </div>
+        <AtInlineAlert v-if="billingCorrectionBlocked" tone="danger" title="無法更正" style="margin-bottom: 12px;">
+          <p style="margin: 0;">{{ billingCorrectionBlocked.message }}</p>
+          <p v-if="billingCorrectionBlocked.hint" style="margin: 6px 0 0;">{{ billingCorrectionBlocked.hint }}</p>
+        </AtInlineAlert>
         <label class="form-label">更正後購買堂數
           <input v-model.number="billingCorrectionForm.new_session_count" type="number" min="1" step="1" class="form-input" />
         </label>
@@ -1152,6 +1156,7 @@ import { useCourseSessionsDisplay } from '../composables/course-management/useCo
 import { useRescheduleAndMakeup } from '../composables/course-management/useRescheduleAndMakeup';
 import { useSessionEditFlow } from '../composables/course-management/useSessionEditFlow';
 import CourseEditForm from '../components/CourseEditForm.vue';
+import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
 import EnrollmentConflictDecisionModal from '../components/EnrollmentConflictDecisionModal.vue';
 import { buildForceOverrideFields } from '../lib/enrollmentConflictDecision';
@@ -1898,6 +1903,10 @@ const showBillingCorrectionModal = ref(false);
 const billingCorrectionCourse = ref(null);
 const billingCorrectionSubmitting = ref(false);
 const billingCorrectionForm = ref({ new_session_count: 1, new_charge: 0, reason: '' });
+const billingCorrectionBlocked = ref(null);
+const BILLING_CORRECTION_NEXT_STEP_HINT = {
+  edit_charge_only: '堂數不能再改了，但費用還能改：請關閉本視窗，改到課程「編輯」畫面直接調整總費用，堂數維持不變即可。',
+};
 const billingCorrectionExpectedCharge = computed(() => {
   const course = billingCorrectionCourse.value;
   const count = Number(billingCorrectionForm.value.new_session_count || 0);
@@ -1914,6 +1923,7 @@ function openBillingCorrectionModal(course) {
     new_charge: Math.round(rate * count),
     reason: '',
   };
+  billingCorrectionBlocked.value = null;
   showBillingCorrectionModal.value = true;
 }
 
@@ -1927,6 +1937,7 @@ async function submitBillingCorrection() {
     toastRef.value?.show?.({ title: '資料不完整', description: '請填寫有效堂數、金額與更正原因。', variant: 'error', durationMs: 4000 });
     return;
   }
+  billingCorrectionBlocked.value = null;
   billingCorrectionSubmitting.value = true;
   try {
     const { data: { session } } = await supabase.auth.getSession();
@@ -1939,7 +1950,15 @@ async function submitBillingCorrection() {
       body: JSON.stringify({ new_session_count: count, new_charge: charge, reason }),
     });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body?.message || '更正失敗');
+    if (!res.ok) {
+      // Keep this on-screen (not just a toast that vanishes) — the person acting on
+      // it needs to see *why* it's blocked and what to do instead, not just retry.
+      billingCorrectionBlocked.value = {
+        message: body?.message || '更正失敗',
+        hint: BILLING_CORRECTION_NEXT_STEP_HINT[body?.next_step] || null,
+      };
+      return;
+    }
     showBillingCorrectionModal.value = false;
     await loadCourses();
     toastRef.value?.show?.({
@@ -1949,7 +1968,7 @@ async function submitBillingCorrection() {
       durationMs: 5000,
     });
   } catch (error) {
-    toastRef.value?.show?.({ title: '更正失敗', description: error?.message || '請稍後再試。', variant: 'error', durationMs: 5000 });
+    billingCorrectionBlocked.value = { message: error?.message || '請稍後再試。', hint: null };
   } finally {
     billingCorrectionSubmitting.value = false;
   }

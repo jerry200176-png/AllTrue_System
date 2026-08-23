@@ -2058,9 +2058,11 @@ class StudentClassController extends Controller
         $observedUsed = (int) (SessionDeductionService::batchObservedUsedSessions([$classId])[$classId] ?? 0);
         if ($newCount < $observedUsed) {
             return response()->json([
-                'message' => "更正後堂數不可少於已使用 {$observedUsed} 堂；已發生的扣堂紀錄不會被改寫。",
+                'message' => "更正後堂數（{$newCount}）不可少於已使用 {$observedUsed} 堂；已發生的扣堂紀錄不會被改寫。"
+                    . "如需調整收費金額，請改到一般課程編輯畫面手動下修「總費用」（堂數維持不變，不影響已發生的扣堂紀錄）。",
                 'code' => 'billing_correction_below_observed_usage',
                 'observed_used_sessions' => $observedUsed,
+                'next_step' => 'edit_charge_only',
             ], 422);
         }
 

@@ -136,7 +136,9 @@ class StudentClassBillingCorrectionTest extends TestCase
         $this->withToken($token)->postJson(
             "/api/v1/student-classes/{$course->ID}/billing-correction",
             ['new_session_count' => 6, 'new_charge' => 6600, 'reason' => '測試低於已使用']
-        )->assertStatus(422)->assertJsonPath('code', 'billing_correction_below_observed_usage');
+        )->assertStatus(422)
+            ->assertJsonPath('code', 'billing_correction_below_observed_usage')
+            ->assertJsonPath('next_step', 'edit_charge_only');
 
         $this->assertDatabaseHas('StudentClass', [
             'ID' => $course->ID,
