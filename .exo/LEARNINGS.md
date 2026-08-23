@@ -5,8 +5,17 @@ Do not edit manually — regenerate with `exo adapter-generate` or `exo upgrade`
 
 ## Reflections
 
-No active reflections yet. Use `exo reflect` to record operational learnings.
+Patterns learned from prior sessions. Heed these to avoid repeating known mistakes.
+
+- **[MEDIUM]!** 已取消的重複堂次仍殘留扣堂證據
+  - 重複課程審核不能只查 attended/completed；取消狀態若仍有 active attendance、learning record 或正扣堂 ledger，必須回到具名審核流程，清理證據並以 ledger 反向事件重算合約。
+
+## Known Failure Modes
+
+- **已取消的重複堂次仍殘留扣堂證據** [medium]
+  - detect: 已取消的重複堂次仍殘留扣堂證據
+  - mitigate: 重複課程審核不能只查 attended/completed；取消狀態若仍有 active attendance、learning record 或正扣堂 ledger，必須回到具名審核流程，清理證據並以 ledger 反向事件重算合約。
 
 ---
 
-*0 active reflection(s), 0 dismissed.*
+*1 active reflection(s), 0 dismissed.*

@@ -5,10 +5,10 @@ defaults:
     max_loc_changed: 400
   ticket_checks: []
 checks_allowlist:
-- npm run test:unit
+- npm --prefix frontend run test:unit
 - npm run lint:no-undef
 - npm run build
-- vendor/bin/phpunit
+- bash scripts/phpunit-isolated.sh
 global_checks: []
 do_allowlist:
 - npm run build

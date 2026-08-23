@@ -1,0 +1,58 @@
+id: TKT-20260824-005238-O07Z
+title: Implement and verify course editability governed delivery
+intent: Implement and verify course editability governed delivery
+kind: task
+parent_id: INT-20260824-005229-BX26
+boundary: Do not change production data, production deployment, SSH access, payment
+  batch repair, or application dependencies; only course editability UX/API/tests,
+  release documentation, and Exo governance manifests/adapters.
+success_condition: All four configured checks pass, Exo drift/doctor/pr-check pass,
+  and the branch is ready for review with no production mutation.
+priority: 90
+labels:
+- course-editability
+- governance
+scope:
+  allow:
+  - .exo/**
+  - AGENTS.md
+  - CLAUDE.md
+  - .cursorrules
+  - codex.md
+  - backend/app/Http/Controllers/StudentClassController.php
+  - backend/app/Services/CourseEditabilityService.php
+  - backend/routes/api.php
+  - backend/tests/Feature/StudentClassBillingCorrectionTest.php
+  - docs/CHANGELOG.md
+  - frontend/src/components/CourseEditForm.vue
+  - frontend/src/components/course-management/__tests__/CourseEditabilityCopy.test.js
+  - frontend/src/lib/changelogDraft.generated.js
+  - frontend/src/lib/courseEditability.js
+  - frontend/src/pages/CourseManagement.vue
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  - .agent-session/**
+  deny: []
+budgets:
+  max_files_changed: 30
+  max_loc_changed: 6000
+checks:
+- npm --prefix frontend run test:unit
+- npm run lint:no-undef
+- npm run build
+- bash scripts/phpunit-isolated.sh
+type: feature
+status: review
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-24T00:52:38+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default
+commits:
+- 067941c64a3205c32b423ce1dcaca86c81e0198d

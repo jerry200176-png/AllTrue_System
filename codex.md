@@ -28,7 +28,7 @@ rule wins. If the overlay or required governance context is unavailable, stop
 and report the missing context instead of inventing a replacement.
 
 <!-- exo:governance:begin -->
-<!-- Governance hash: f45f0f00b0698aa4 -->
+<!-- Governance hash: f36ea664fa045696 -->
 # ExoProtocol — Codex Operating Instructions
 
 This repository is governed by ExoProtocol. All AI agent work must follow the session lifecycle.
@@ -36,12 +36,12 @@ This repository is governed by ExoProtocol. All AI agent work must follow the se
 ## ExoProtocol Governance
 
 - kernel: exo-kernel 0.1.0
-- lock hash: `f45f0f00b0698aa4...`
-- generated: 2026-08-15T14:50:36+08:00
+- lock hash: `f36ea664fa045696...`
+- generated: 2026-08-23T15:21:55+08:00
 
 ### Filesystem Deny Rules
 
-- **RULE-SEC-001**: deny read, write on `~/.aws/**`, `~/.ssh/**`, `**/.env*`
+- **RULE-SEC-001**: deny read, write on `~/.aws/**`, `~/.ssh/**`, `**/.env`, `**/.env.local`, `**/.env.*.local`, `**/.env.production`, `**/.env.staging`, `**/.env.development`, `**/.env.test`
 - **RULE-GIT-001**: deny read, write, delete on `.git/**`
 
 ### Structural Rules
@@ -57,11 +57,17 @@ This repository is governed by ExoProtocol. All AI agent work must follow the se
 
 ### Approved Checks
 
-- `npm test`
-- `npm run lint`
-- `pytest`
-- `python -m pytest`
-- `python3 -m pytest`
+- `npm --prefix frontend run test:unit`
+- `npm run lint:no-undef`
+- `npm run build`
+- `bash scripts/phpunit-isolated.sh`
+
+### Active Intents
+
+- **INT-20260823-235337-GPGC**: 降低 AllTrue 主任課程編輯失敗與誤用流程 — boundary: *不碰 production DB、正式部署、付款資料批次修復、既有治理檔案；只改課程管理前後端、對帳診斷與測試。*
+  - TKT-20260823-235344-W26Y: Implement director course-edit triage and reconciliation safeguards [allow: backend/app/Http/Controllers/StudentClassController.php, backend/app/Services/**, backend/routes/api.php, backend/tests/Feature/**, frontend/src/pages/CourseManagement.vue, frontend/src/components/CourseEditForm.vue, frontend/src/components/course-management/**, frontend/src/lib/**, frontend/src/**/*.test.*, docs/**, .exo/cache/**, .exo/memory/**, .exo/locks/**, .exo/tickets/**, .exo/logs/**]
+- **INT-20260824-003324-GDVV**: Align Exo governance with AllTrue monorepo checks — boundary: *Do not change product application logic, production data, deployment workflows, or application dependencies; governance manifests and generated agent adapters only.*
+  - TKT-20260824-003332-G1J3: Apply monorepo governance check and adapter alignment [allow: .exo/**, AGENTS.md, CLAUDE.md, .cursorrules, codex.md, .exo/cache/**, .exo/memory/**, .exo/locks/**, .exo/tickets/**, .exo/logs/**]
 
 ### Source of Truth
 
@@ -123,6 +129,12 @@ After building a reusable utility, REGISTER it:
 Mark a tool as used when you import/call it:
   `exo tool-use <tool_id>`
 
+**Registered Tools (4):**
+- `frontend.src.lib.parentAssessmentProgress.js:formatAssessmentProgressDate`: Format reviewed parent assessment dates for display.
+- `frontend.src.lib.parentAssessmentProgress.js:assessmentProgressScoreLabel`: Format safe parent assessment score labels.
+- `frontend.src.lib.parentAssessmentProgress.js:assessmentProgressPercentLabel`: Format safe parent assessment percentage labels.
+- `frontend.src.lib.dashboardLoadPlan.js:runDashboardLoaders`: Run independent dashboard loaders concurrently with isolated failures
+
 
 ## Session Lifecycle
 
@@ -147,7 +159,13 @@ The following paths are denied by governance and MUST NOT be read, written, or d
 
 - `~/.aws/**`
 - `~/.ssh/**`
-- `**/.env*`
+- `**/.env`
+- `**/.env.local`
+- `**/.env.*.local`
+- `**/.env.production`
+- `**/.env.staging`
+- `**/.env.development`
+- `**/.env.test`
 - `.git/**`
 
 When running Codex with `--full-auto`, these paths should be added to your
