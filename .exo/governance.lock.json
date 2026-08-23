@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-15T14:50:36+08:00",
+  "generated_at": "2026-08-23T15:21:55+08:00",
   "kernel": {
     "name": "exo-kernel",
     "version": "0.1.0"
@@ -72,6 +72,6 @@
     }
   ],
   "source_file": ".exo/CONSTITUTION.md",
-  "source_hash": "f45f0f00b0698aa489cbbb2235629dd725f69fea52f1bb484fc377bab05719df",
+  "source_hash": "f36ea664fa045696a839dcda1d02d893a4ebae3c58fa30e67429a0da5d058516",
   "version": "0.1"
 }
