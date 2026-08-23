@@ -1,7 +1,7 @@
 ---
 owner: jerry (CEO)
 review_cycle: quarterly
-last_reviewed: 2026-05-24
+last_reviewed: 2026-08-23
 ---
 
 # ⛔ AllTrue 系統危險操作清單
