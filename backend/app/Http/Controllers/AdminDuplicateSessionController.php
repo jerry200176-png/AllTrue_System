@@ -149,31 +149,7 @@ class AdminDuplicateSessionController extends Controller
             ->where('sc.StudentID', $studentId)
             ->where('cs.SessionDate', $date)
             ->whereRaw('SUBSTRING(cs.StartTime,1,5) = ?', [$time])
-            ->where(function ($q) {
-                $q->whereRaw("LOWER(cs.Status) IN ('attended','completed')")
-                    ->orWhere(function ($cancelled) {
-                        $cancelled->whereRaw("LOWER(cs.Status) = 'cancelled'")
-                            ->where(function ($artifact) {
-                                $artifact->whereExists(function ($sub) {
-                                    $sub->selectRaw('1')
-                                        ->from('StudentSingIn as duplicate_si')
-                                        ->whereColumn('duplicate_si.ClassSessionID', 'cs.id')
-                                        ->whereNull('duplicate_si.VoidedAt')
-                                        ->where('duplicate_si.SessionDeducted', true);
-                                })->orWhereExists(function ($sub) {
-                                    $sub->selectRaw('1')
-                                        ->from('LearningRecord as duplicate_lr')
-                                        ->whereColumn('duplicate_lr.ClassSessionID', 'cs.id')
-                                        ->whereNull('duplicate_lr.VoidedAt');
-                                })->orWhereRaw("(
-                                    SELECT COALESCE(SUM(CASE WHEN l.event_type = 'deduct' THEN 1 ELSE -1 END), 0)
-                                    FROM session_deduction_ledger l
-                                    WHERE l.student_class_id = cs.StudentClassID
-                                      AND l.class_session_id = cs.id
-                                ) > 0");
-                            });
-                    });
-            })
+            ->where($this->duplicateReviewEligibility())
             ->when(!empty($campusIds), fn ($q) => $q->whereIn('s.CampusID', $campusIds))
             ->select('cs.id', 'cs.StudentClassID', 'cs.Status', 'cs.Note')
             ->get();
@@ -323,6 +299,35 @@ class AdminDuplicateSessionController extends Controller
 
     // ── Helpers (mirror RepairDuplicateSessionSlots logic) ──
 
+    private function duplicateReviewEligibility(): \Closure
+    {
+        return static function ($q) {
+            $q->whereRaw("LOWER(cs.Status) IN ('attended','completed')")
+                ->orWhere(function ($cancelled) {
+                    $cancelled->whereRaw("LOWER(cs.Status) = 'cancelled'")
+                        ->where(function ($artifact) {
+                            $artifact->whereExists(function ($sub) {
+                                $sub->selectRaw('1')
+                                    ->from('StudentSingIn as duplicate_si')
+                                    ->whereColumn('duplicate_si.ClassSessionID', 'cs.id')
+                                    ->whereNull('duplicate_si.VoidedAt')
+                                    ->where('duplicate_si.SessionDeducted', true);
+                            })->orWhereExists(function ($sub) {
+                                $sub->selectRaw('1')
+                                    ->from('LearningRecord as duplicate_lr')
+                                    ->whereColumn('duplicate_lr.ClassSessionID', 'cs.id')
+                                    ->whereNull('duplicate_lr.VoidedAt');
+                            })->orWhereRaw("(
+                                SELECT COALESCE(SUM(CASE WHEN l.event_type = 'deduct' THEN 1 ELSE -1 END), 0)
+                                FROM session_deduction_ledger l
+                                WHERE l.student_class_id = cs.StudentClassID
+                                  AND l.class_session_id = cs.id
+                            ) > 0");
+                        });
+                });
+        };
+    }
+
     private function crossScDuplicateGroups(array $campusIds = []): array
     {
         $rows = DB::table('ClassSession as cs')
@@ -330,31 +335,7 @@ class AdminDuplicateSessionController extends Controller
             ->join('Student as s', 's.id', '=', 'sc.StudentID')
             ->leftJoin('User as u', 'u.ID', '=', 'sc.TeacherID')
             ->leftJoin('Subject as sub', 'sub.id', '=', 'sc.SubjectID')
-            ->where(function ($q) {
-                $q->whereRaw("LOWER(cs.Status) IN ('attended','completed')")
-                    ->orWhere(function ($cancelled) {
-                        $cancelled->whereRaw("LOWER(cs.Status) = 'cancelled'")
-                            ->where(function ($artifact) {
-                                $artifact->whereExists(function ($sub) {
-                                    $sub->selectRaw('1')
-                                        ->from('StudentSingIn as duplicate_si')
-                                        ->whereColumn('duplicate_si.ClassSessionID', 'cs.id')
-                                        ->whereNull('duplicate_si.VoidedAt')
-                                        ->where('duplicate_si.SessionDeducted', true);
-                                })->orWhereExists(function ($sub) {
-                                    $sub->selectRaw('1')
-                                        ->from('LearningRecord as duplicate_lr')
-                                        ->whereColumn('duplicate_lr.ClassSessionID', 'cs.id')
-                                        ->whereNull('duplicate_lr.VoidedAt');
-                                })->orWhereRaw("(
-                                    SELECT COALESCE(SUM(CASE WHEN l.event_type = 'deduct' THEN 1 ELSE -1 END), 0)
-                                    FROM session_deduction_ledger l
-                                    WHERE l.student_class_id = cs.StudentClassID
-                                      AND l.class_session_id = cs.id
-                                ) > 0");
-                            });
-                    });
-            })
+            ->where($this->duplicateReviewEligibility())
             ->when(!empty($campusIds), fn ($q) => $q->whereIn('s.CampusID', $campusIds))
             ->selectRaw('
                 cs.id, cs.StudentClassID, cs.SessionDate, SUBSTRING(cs.StartTime,1,5) as hm,
