@@ -669,9 +669,16 @@
     <div v-if="showEditModal" class="modal-overlay">
       <div class="modal course-modal">
         <h3 class="modal-title">編輯課程</h3>
+        <AtInlineAlert v-if="editabilityLoading" tone="info" title="正在檢查課程狀態" style="margin: 0 0 14px;">
+          <p>正在確認付款、扣堂與對帳狀態；一般欄位仍可編輯。</p>
+        </AtInlineAlert>
+        <AtInlineAlert v-if="editabilityError" tone="warning" title="無法完成預檢" style="margin: 0 0 14px;">
+          <p>{{ editabilityError }} 儲存時仍會由後端再次檢查。</p>
+        </AtInlineAlert>
         <AtInlineAlert v-if="editSaveError" tone="danger" title="儲存失敗" style="margin: 0 0 14px;">
           <p>{{ editSaveError.message }}</p>
           <p v-if="editSaveError.details" class="alert-detail">{{ editSaveError.details }}</p>
+          <p v-if="editSaveError.hint" class="alert-detail">{{ editSaveError.hint }}</p>
         </AtInlineAlert>
         <div class="form-section">
           <CourseEditForm
@@ -686,6 +693,7 @@
             :show-remaining="true"
             :package-info="editPackageInfo"
             :context-title="editContextTitle"
+            :editability="editability"
           />
         </div>
         <div
@@ -697,7 +705,7 @@
         </div>
         <div class="actions">
           <button class="ghost" @click="showEditModal = false">取消</button>
-          <button class="primary" :disabled="editFormRef?.hasErrors" @click="submitEdit">儲存</button>
+          <button class="primary" :disabled="editFormRef?.hasErrors || editabilityLoading" @click="submitEdit">儲存</button>
         </div>
       </div>
     </div>
@@ -1163,6 +1171,7 @@ import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
 import { updatePackage } from '../lib/coursePackagesApi';
 import { buildEditTeacherOptions, shouldClearTeacherSelection } from '../lib/courseTeacherOptions';
 import { computePackageNextTotal, packageMemberSessionSummary } from '../lib/packageSessions';
+import { editabilityNextStepForError, editabilityNextStepLabel } from '../lib/courseEditability';
 import { useCourseSessionsDisplay } from '../composables/course-management/useCourseSessionsDisplay';
 import { useRescheduleAndMakeup } from '../composables/course-management/useRescheduleAndMakeup';
 import { useSessionEditFlow } from '../composables/course-management/useSessionEditFlow';
@@ -1879,6 +1888,10 @@ const editingCourseRaw = ref(null);
 const editFormRef = ref(null);
 const editForm = ref({});
 const editSaveError = ref(null);
+const editability = ref(null);
+const editabilityLoading = ref(false);
+const editabilityError = ref('');
+let editabilityRequestId = 0;
 const editPackageInfo = computed(() => {
   const c = editingCourseRaw.value;
   if (!c?.PackageID) return null;
@@ -1897,6 +1910,31 @@ const editContextTitle = computed(() => {
   return studentName ? `正在編輯：${subjectLabel} ／ ${studentName}` : `正在編輯：${subjectLabel}`;
 });
 const editTeacherOptions = computed(() => buildEditTeacherOptions(teachers.value, editingCourseRaw.value));
+
+async function loadCourseEditability(courseId) {
+  const requestId = ++editabilityRequestId;
+  editabilityLoading.value = true;
+  editabilityError.value = '';
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    if (!token) throw new Error('登入狀態已失效，無法完成預檢。');
+    const res = await fetch(`/api/v1/student-classes/${courseId}/editability`, {
+      credentials: 'include',
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body?.message || `預檢失敗（${res.status}）`);
+    if (requestId === editabilityRequestId) editability.value = body;
+  } catch (error) {
+    if (requestId === editabilityRequestId) {
+      editability.value = null;
+      editabilityError.value = error?.message || '課程狀態預檢失敗。';
+    }
+  } finally {
+    if (requestId === editabilityRequestId) editabilityLoading.value = false;
+  }
+}
 /** 開啟編輯時的排課指紋；儲存時若變更則自動 force_partial_rebuild 同步未上預排堂次 */
 const editScheduleBaseline = ref(null);
 const originalFirstClassDate = ref('');
@@ -4026,6 +4064,8 @@ function scheduleFingerprintForEdit(form) {
 const editCourse = (c) => {
   editingId.value = c.id;
   editSaveError.value = null;
+  editability.value = null;
+  editabilityError.value = '';
   editingCourseRaw.value = c;
   editingCourseFromLaravel.value = !!(
     c.data_source === 'laravel'
@@ -4077,6 +4117,7 @@ const editCourse = (c) => {
   originalFirstClassDate.value = c.first_class_date || '';
   loadRoomsForBranch();
   showEditModal.value = true;
+  if (editingCourseFromLaravel.value) void loadCourseEditability(c.id);
   nextTick(() => {
     editScheduleBaseline.value = scheduleFingerprintForEdit(editForm.value);
   });
@@ -4207,6 +4248,7 @@ const submitEdit = async () => {
         editSaveError.value = {
           message: err?.message || '更新失敗，請檢查欄位後再試。',
           details,
+          hint: editabilityNextStepLabel(editabilityNextStepForError(err)),
         };
         return;
       }

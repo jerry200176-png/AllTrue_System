@@ -1,0 +1,46 @@
+id: TKT-20260824-003332-G1J3
+title: Apply monorepo governance check and adapter alignment
+intent: Apply monorepo governance check and adapter alignment
+kind: task
+parent_id: INT-20260824-003324-GDVV
+boundary: Governance manifests, ticket metadata, and generated agent adapters only;
+  no product source, production data, deployment workflow, or dependency changes.
+success_condition: Root checks pass using safe monorepo paths; adapters match the
+  governance hash; the course product ticket scope includes CourseEditForm.vue; exo
+  doctor/check pass.
+priority: 85
+labels:
+- governance
+scope:
+  allow:
+  - .exo/**
+  - AGENTS.md
+  - CLAUDE.md
+  - .cursorrules
+  - codex.md
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 12
+  max_loc_changed: 3000
+checks:
+- npm --prefix frontend run test:unit
+- npm run lint:no-undef
+- npm run build
+- bash scripts/phpunit-isolated.sh
+type: feature
+status: review
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-24T00:33:32+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default
+commits:
+- 755fb107b0a523f6acf85ab6eb2b8f5d5f884f6c

@@ -10,6 +10,13 @@
       </div>
     </div>
 
+    <div v-if="editability?.reasons?.length" class="editability-banner" role="status">
+      <strong>這門課有受保護的資料</strong>
+      <p v-for="reason in editability.reasons" :key="reason.code">
+        {{ reason.message }}<span v-if="editabilityNextStepLabel(reason.next_step)"> {{ editabilityNextStepLabel(reason.next_step) }}</span>
+      </p>
+    </div>
+
     <div v-if="scopeWarning" class="scope-warning-banner">
       ⚠️ {{ scopeWarning }}（仍可儲存）
     </div>
@@ -138,9 +145,10 @@
             type="number"
             min="0"
             placeholder="8"
-            :disabled="!!packageInfo"
+            :disabled="!!packageInfo || lockedFields.has('sessions_purchased')"
           />
           <span v-if="packageInfo" class="field-hint field-hint--info">此為共用方案堂數，請用課程列的「加購／設定總堂數」調整（會同步方案所有科目）</span>
+          <span v-else-if="lockedFields.has('sessions_purchased')" class="field-hint field-hint--warning">已有扣堂紀錄，請使用「合約／堂次調整」處理堂數。</span>
         </div>
 
         <template v-if="form.payment_type === 'monthly'">
@@ -165,8 +173,9 @@
 
         <div class="form-group">
           <label>繳費日期（選填）</label>
-          <input v-model="form.paid_at" type="date" />
+          <input v-model="form.paid_at" type="date" :disabled="lockedFields.has('paid_at')" />
           <p v-if="form.paid_at" class="field-hint field-hint--success">已填寫繳費日期，儲存後將自動標示為已繳費</p>
+          <p v-else-if="lockedFields.has('paid_at')" class="field-hint field-hint--warning">已有收款紀錄，請到收費頁作廢帳單後再處理付款狀態。</p>
           <p v-else class="field-hint field-hint--warning">清空繳費日期儲存後，將改為未繳費</p>
         </div>
 
@@ -268,6 +277,7 @@
 <script setup>
 import { computed, nextTick, reactive, ref, watch } from 'vue';
 import { checkTeacherScope, STUDENT_CLASS_MEMO_MAX_LENGTH } from '../lib/constants';
+import { editabilityNextStepLabel } from '../lib/courseEditability';
 
 const props = defineProps({
   modelValue: { type: Object, required: true },
@@ -281,6 +291,7 @@ const props = defineProps({
   studentGrade: { type: [String, Number], default: null },
   packageInfo: { type: Object, default: null },
   contextTitle: { type: String, default: '' },
+  editability: { type: Object, default: null },
 });
 
 const emit = defineEmits(['update:modelValue']);
@@ -318,6 +329,7 @@ let lastEmittedModel = null;
 
 const teacherSchedule = ref([]);
 const teacherScheduleLoading = ref(false);
+const lockedFields = computed(() => new Set(props.editability?.locked_fields || []));
 
 const teacherScheduleDisplay = computed(() => {
   const dayNames = ['', '一', '二', '三', '四', '五', '六', '日'];
@@ -841,6 +853,18 @@ function computeEndTime(startRaw, durHours) {
   color: var(--ds-warning);
   line-height: 1.5;
 }
+
+.editability-banner {
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  border: 1px solid var(--ds-warning);
+  border-radius: 8px;
+  background: var(--ds-warning-wash);
+  color: var(--ds-ink);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.editability-banner p { margin: 4px 0 0; }
 
 .teacher-schedule-hint {
   margin-top: 6px;

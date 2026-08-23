@@ -1,0 +1,49 @@
+id: INT-20260824-003324-GDVV
+title: Align Exo governance with AllTrue monorepo checks
+intent: Align Exo governance with AllTrue monorepo checks
+kind: intent
+brain_dump: User explicitly authorized a separate governance maintenance task after
+  product checks passed but exo push was blocked by root-relative monorepo commands
+  and a stale adapter/scope snapshot. Correct the checks source, regenerate adapters,
+  and repair the existing product ticket scope without changing product behavior or
+  production state.
+boundary: Do not change product application logic, production data, deployment workflows,
+  or application dependencies; governance manifests and generated agent adapters only.
+success_condition: The repository's configured checks execute from the monorepo root
+  and pass; adapters match the governance hash; the course ticket scope covers every
+  product file in its PR; exo doctor and exo check pass.
+risk: medium
+priority: 85
+labels:
+- governance
+scope:
+  allow:
+  - .exo/config.yaml
+  - .exo/tickets/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - AGENTS.md
+  - CLAUDE.md
+  - .cursorrules
+  - codex.md
+  - .exo/locks/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 12
+  max_loc_changed: 3000
+checks:
+- npm --prefix frontend run test:unit
+- npm run lint:no-undef
+- npm run build
+- bash scripts/phpunit-isolated.sh
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-24T00:33:24+08:00'
+children:
+- TKT-20260824-003332-G1J3
+resource_profile: default

@@ -1,0 +1,60 @@
+id: INT-20260823-235337-GPGC
+title: "\u964D\u4F4E AllTrue \u4E3B\u4EFB\u8AB2\u7A0B\u7DE8\u8F2F\u5931\u6557\u8207\
+  \u8AA4\u7528\u6D41\u7A0B"
+intent: "\u964D\u4F4E AllTrue \u4E3B\u4EFB\u8AB2\u7A0B\u7DE8\u8F2F\u5931\u6557\u8207\
+  \u8AA4\u7528\u6D41\u7A0B"
+kind: intent
+brain_dump: "\u628A\u4E3B\u4EFB\u5E38\u898B\u7684\u8AB2\u7A0B\u4E0D\u80FD\u4FEE\u6539\
+  \u554F\u984C\u505A\u5B8C\uFF1A\u78BA\u8A8D\u7248\u672C\u53EF\u8FA8\u8B58\u3001\u5206\
+  \u985E\u932F\u8AA4\u3001\u9810\u5148\u63D0\u793A\u3001\u6B63\u78BA\u5206\u6D41\u3001\
+  \u8CC7\u6599\u5C0D\u5E33\u3001\u6E2C\u8A66\u8207\u89C0\u6E2C\u3002\u4FDD\u7559\u5F8C\
+  \u7AEF\u5E33\u52D9\u8207\u6B77\u53F2\u8CC7\u6599\u5B89\u5168\u9396\uFF0C\u4E0D\u76F4\
+  \u63A5\u4FEE\u6539 production\u3002"
+boundary: "\u4E0D\u78B0 production DB\u3001\u6B63\u5F0F\u90E8\u7F72\u3001\u4ED8\u6B3E\
+  \u8CC7\u6599\u6279\u6B21\u4FEE\u5FA9\u3001\u65E2\u6709\u6CBB\u7406\u6A94\u6848\uFF1B\
+  \u53EA\u6539\u8AB2\u7A0B\u7BA1\u7406\u524D\u5F8C\u7AEF\u3001\u5C0D\u5E33\u8A3A\u65B7\
+  \u8207\u6E2C\u8A66\u3002"
+success_condition: "\u4E3B\u4EFB\u53EF\u5728\u5132\u5B58\u524D\u77E5\u9053\u4E0D\u53EF\
+  \u4FEE\u6539\u539F\u56E0\uFF0C\u56DB\u985E\u8ABF\u6574\u6709\u660E\u78BA\u5165\u53E3\
+  \uFF1B\u5F8C\u7AEF\u932F\u8AA4\u6709\u7A69\u5B9A code \u8207 audit/metric\uFF1B\u7570\
+  \u5E38\u8CC7\u6599\u53EF\u7531\u53D7\u6B0A\u89D2\u8272\u8B80\u53D6\u5C0D\u5E33\u8A3A\
+  \u65B7\uFF1B\u76F8\u95DC\u6E2C\u8A66\u901A\u904E\u3002"
+risk: high
+priority: 90
+labels:
+- course-management
+scope:
+  allow:
+  - backend/app/Http/Controllers/StudentClassController.php
+  - backend/app/Services/**
+  - backend/routes/api.php
+  - backend/tests/Feature/**
+  - frontend/src/pages/CourseManagement.vue
+  - frontend/src/components/course-management/**
+  - frontend/src/lib/**
+  - frontend/src/**/*.test.*
+  - docs/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 12
+  max_loc_changed: 400
+checks:
+- npm --prefix frontend run test:unit
+- npm run lint:no-undef
+- npm run build
+- bash scripts/phpunit-isolated.sh
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-23T23:53:37+08:00'
+children:
+- TKT-20260823-235344-W26Y
+resource_profile: default
