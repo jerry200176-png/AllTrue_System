@@ -36,6 +36,7 @@ scope:
   - frontend/src/lib/changelogDraft.generated.js
   - frontend/src/lib/courseEditability.js
   - frontend/src/pages/CourseManagement.vue
+  - .agent-session/manifest.json
   - .exo/cache/**
   - .exo/memory/**
   - .exo/locks/**

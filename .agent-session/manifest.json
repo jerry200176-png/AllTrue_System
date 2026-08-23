@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "b2af09fbf64344e291ebfd8be3ea1ad3",
+  "session_id": "SES-20260824005320-663D05A7",
   "project": "alltrue",
-  "task_id": "2006-conflict-msg-clarity",
+  "task_id": "TKT-20260824-005238-O07Z",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "17647240c5ad63ac2f1b4fbd777a20c3de1c47b7",
-  "branch": "fix/2006-conflict-msg-clarity",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/2006-conflict-msg-clarity",
-  "started_at": "2026-08-23T15:33:46Z",
+  "base_sha": "3d96f11391ff4c0d7de287a0ccd3775faa1af06d",
+  "branch": "exo/TKT-20260824-005238-O07Z",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/director-ui-simplify-20260823",
+  "started_at": "2026-08-24T01:03:30+08:00",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": null,
+  "agent_cli": "codex",
   "gateway_version": "0.5.0"
 }
