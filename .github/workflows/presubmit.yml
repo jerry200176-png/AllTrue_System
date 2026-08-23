@@ -8,6 +8,7 @@ on:
   pull_request:
     branches: ["main"]
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -36,7 +37,9 @@ jobs:
 
       - name: "[CHECK 1] Branch naming convention"
         env:
-          BRANCH: ${{ github.head_ref }}
+          # workflow_dispatch has no head_ref (pull_request-only); fall back
+          # to the ref actually being run so a manual run checks its own name.
+          BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
           # Canonical policy: scripts/ci/branch-policy.mjs (shared with npm run ci:preflight)
           node --input-type=module <<'EOF'
@@ -61,6 +64,8 @@ jobs:
       # 排除：lock files, migration seed 純資料
       # ─────────────────────────────────────────────
       - name: "[CHECK 2] PR size check (≤ 700 lines hard limit)"
+        env:
+          GITHUB_HEAD_REF: ${{ github.head_ref || github.ref_name }}
         run: |
           BRANCH="${GITHUB_HEAD_REF}"
           # docs 整併分支（chore/docs-*）：CHANGELOG 滾動歸檔與 archive 屬「機械搬移」，
