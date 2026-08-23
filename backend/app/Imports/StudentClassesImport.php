@@ -2,8 +2,8 @@
 
 namespace App\Imports;
 
-use App\Models\ClassSession;
 use App\Models\StudentClass;
+use App\Services\ClassSessionMaterializationService;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Maatwebsite\Excel\Concerns\ToCollection;
@@ -56,29 +56,34 @@ class StudentClassesImport implements ToCollection, WithHeadingRow
             if (!empty($slots)) {
                 $duration = 120;
                 if ($data['ScheduleMode'] === 'date' && !empty($data['EndDate'])) {
-                    ClassSession::insert(
-                        $this->buildSessionsFromWeeklySchedule(
-                            $studentClass->ID,
-                            $data['StartDate'],
-                            $data['EndDate'],
-                            $slots,
-                            $duration
-                        )
-                    );
+                    $this->materializeSessions($this->buildSessionsFromWeeklySchedule(
+                        $studentClass->ID,
+                        $data['StartDate'],
+                        $data['EndDate'],
+                        $slots,
+                        $duration
+                    ));
                 }
 
                 if ($data['ScheduleMode'] === 'count' && !empty($data['SessionCount'])) {
-                    ClassSession::insert(
-                        $this->buildSessionsForCount(
-                            $studentClass->ID,
-                            $data['StartDate'],
-                            (int) $data['SessionCount'],
-                            $slots,
-                            $duration
-                        )
-                    );
+                    $this->materializeSessions($this->buildSessionsForCount(
+                        $studentClass->ID,
+                        $data['StartDate'],
+                        (int) $data['SessionCount'],
+                        $slots,
+                        $duration
+                    ));
                 }
             }
+        }
+    }
+
+    /** @param array<int, array<string, mixed>> $sessions */
+    private function materializeSessions(array $sessions): void
+    {
+        $materializer = app(ClassSessionMaterializationService::class);
+        foreach ($sessions as $session) {
+            $materializer->upsertSlot($session);
         }
     }
 

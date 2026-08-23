@@ -195,10 +195,12 @@ class SameStudentExcludeBusyTest extends TestCase
 
         // 待代課堂次（正班老師，同學生同日同時段 — 例如舊約仍顯示的操作入口）
         $activeSc = $this->createStudentClass($student->id, $regular->id);
-        $activeSession = ClassSession::create([
+        // This fixture intentionally models the legacy substitute/renewal
+        // dual-track exception; normal future writes are overlap-guarded.
+        $activeSession = ClassSession::withoutEvents(fn () => ClassSession::create([
             'StudentClassID' => $activeSc->ID, 'SessionDate' => self::DATE,
             'StartTime' => '13:00', 'EndTime' => '15:00', 'Status' => 'scheduled',
-        ]);
+        ]));
         LearningRecord::create([
             'StudentClassID' => $activeSc->ID, 'ClassSessionID' => $activeSession->id,
             'TeacherID' => $regular->id, 'Status' => 'pending', 'Content' => '',

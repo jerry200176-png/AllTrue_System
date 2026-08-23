@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
+use App\Services\ClassSessionMaterializationService;
 
 /**
  * @property int $id
@@ -33,6 +34,15 @@ class ClassSession extends Model
 
     private ?bool $preloadedCourseSettlementLocked = null;
 
+    private ?StudentClass $preloadedStudentClass = null;
+
+    /**
+     * Explicitly authorised parallel-course write (EnrollmentService force flow).
+     * This is transient model state; direct ClassSession::create() remains
+     * protected by the student overlap guard by default.
+     */
+    private bool $allowStudentOverlap = false;
+
     protected $fillable = [
         'StudentClassID',
         'SubjectID',
@@ -52,12 +62,44 @@ class ClassSession extends Model
 
     protected static function booted(): void
     {
-        static::creating(fn (ClassSession $session) => $session->assertCourseIsMutable());
+        static::creating(function (ClassSession $session) {
+            $session->assertCourseIsMutable();
+            if (!$session->allowsStudentOverlap()) {
+                app(ClassSessionMaterializationService::class)->assertStudentSlotAvailableForSession($session);
+            }
+        });
         static::updating(function (ClassSession $session) {
             if ($session->isDirty(['StudentClassID', 'SessionDate', 'StartTime', 'EndTime', 'Status'])) {
                 $session->assertCourseIsMutable();
+                if (!$session->allowsStudentOverlap()) {
+                    app(ClassSessionMaterializationService::class)->assertStudentSlotAvailableForSession($session);
+                }
             }
         });
+    }
+
+    public function setAllowStudentOverlap(bool $allow = true): self
+    {
+        $this->allowStudentOverlap = $allow;
+
+        return $this;
+    }
+
+    public function allowsStudentOverlap(): bool
+    {
+        return $this->allowStudentOverlap;
+    }
+
+    public function setPreloadedStudentClass(StudentClass $studentClass): self
+    {
+        $this->preloadedStudentClass = $studentClass;
+
+        return $this;
+    }
+
+    public function preloadedStudentClass(): ?StudentClass
+    {
+        return $this->preloadedStudentClass;
     }
 
     public function setPreloadedCourseSettlementLock(?bool $locked): self

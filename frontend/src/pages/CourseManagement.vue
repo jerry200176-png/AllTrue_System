@@ -414,7 +414,7 @@
                         </div>
                         <div class="dates-panel">
                           <div class="dates-panel-heading">
-                            <strong class="dates-panel-title">上課日期（{{ packageMemberSessionSummary(c, { completed: getCompletedSessionCount(c), cancelled: cancelledSessionCount(c) }).text }}）</strong>
+                            <strong class="dates-panel-title">上課日期（{{ packageMemberSessionSummary(c, { completed: sessionSummaryCount(c), cancelled: cancelledSessionCount(c) }).text }}）</strong>
                             <span
                               v-if="sessionDataLoadFailed || planningStatusVisible(c)"
                               role="status"
@@ -546,7 +546,7 @@
                     <div class="detail-panel">
                       <div class="dates-panel">
                         <div class="dates-panel-heading">
-                          <strong class="dates-panel-title">上課日期（{{ packageMemberSessionSummary(hc, { completed: getCompletedSessionCount(hc), cancelled: cancelledSessionCount(hc) }).text }}）</strong>
+                          <strong class="dates-panel-title">上課日期（{{ packageMemberSessionSummary(hc, { completed: sessionSummaryCount(hc), cancelled: cancelledSessionCount(hc) }).text }}）</strong>
                         </div>
                         <div v-if="primarySessionUnits(hc).length > 0" class="dates-chip-grid">
                           <span
@@ -1368,6 +1368,13 @@ const {
   fetchClassSessionsFn: fetchClassSessions, supabase,
   branchId: computed(() => props.branchId),
 });
+
+// Keep the expanded summary aligned with the table's backend entitlement
+// numbers. Package members still show their own attended rows; the shared pool
+// usage is rendered separately by packageMemberSessionSummary.
+const sessionSummaryCount = (course) => isPackageMember(course)
+  ? getCompletedSessionCount(course)
+  : getUsedSessions(course);
 
 function planningStatusFor(course) {
   return getSessionPlanningStatus(course, { sessionLoadFailed: false });

@@ -4,6 +4,45 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-23-overlap-entitlement-root-guard",
+    "publishedAt": "2026-08-23",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "新增排課防重疊與堂數對齊",
+    "summary": "系統會在未來課堂建立前攔截同一學生的時間重疊，並讓課程展開的已上堂數與剩餘堂數對齊。",
+    "items": [
+      "同一學生已有其他課程或排課時，未來重疊時段會在寫入前提醒，避免事後才到重疊課程頁面處理。",
+      "同一共用方案的平行科目仍可正常排課；主任明確建立獨立平行課時會留下原因紀錄。",
+      "課程展開的已上堂數、購買堂數與剩餘堂數改用同一套帳務口徑。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "同一學生已有其他課程或排課時，未來重疊時段會在寫入前提醒，避免事後才到重疊課程頁面處理。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "同一共用方案的平行科目仍可正常排課；主任明確建立獨立平行課時會留下原因紀錄。",
+          "課程展開的已上堂數、購買堂數與剩餘堂數改用同一套帳務口徑。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-23:overlap-entitlement-root-guard"
+    ],
+    "date": "2026-08-23",
+    "version": "2026.08.23"
+  },
+  {
     "id": "staff-2026-08-23-duplicate-usage-reconciliation",
     "publishedAt": "2026-08-23",
     "effectiveAt": null,
