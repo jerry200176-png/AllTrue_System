@@ -198,7 +198,7 @@ class DatabasePerfTest extends TestCase
         $this->assertStringNotContainsString('DATE(cs.SessionDate)', $sql);
         $this->assertStringNotContainsString('DATE(sub_sched.schedule_date)', $sql);
         $this->assertStringNotContainsString('SUBSTRING(cs.StartTime', $sql);
-        $this->assertStringContainsString('cs.SessionDate', $sql);
+        $this->assertStringContainsString('`cs`.`SessionDate`', $sql);
     }
 
     // --- FR-008: Campus isolation ---
