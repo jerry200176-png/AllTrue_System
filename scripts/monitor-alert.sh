@@ -263,5 +263,6 @@ case "$MODE" in
     check)   check_resources ;;
     report)  daily_report ;;
     test)    send_notify "✅ AllTrue 監控腳本測試成功！通知管道正常運作。$(date '+%Y-%m-%d %H:%M')" ;;
-    *)       echo "用法：$0 [check|report|test]" && exit 1 ;;
+    notify)  shift; send_notify "$*" ;;
+    *)       echo "用法：$0 [check|report|test|notify <message>]" && exit 1 ;;
 esac
