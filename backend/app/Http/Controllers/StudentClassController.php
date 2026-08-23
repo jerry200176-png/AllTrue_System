@@ -2159,53 +2159,38 @@ class StudentClassController extends Controller
         return response()->json($result);
     }
 
-    /**
-     * Preview an atomic contract split without writing any data.
-     * POST /api/v1/student-classes/{studentClass}/split-contract/preview
-     */
     public function splitContractPreview(Request $request, StudentClass $studentClass)
     {
         if ($accessError = $this->authorizeStudentClassAccess($studentClass)) {
             return $accessError;
         }
-
         $data = $request->validate([
             'session_ids' => ['required', 'array', 'min:1', 'max:100'],
             'session_ids.*' => ['integer'],
             'start_date' => ['required', 'date'],
         ]);
-
         return response()->json($this->splitContractPreviewPayload(
             $this->prepareSplitContractPlan($studentClass, $data)
         ));
     }
 
-    /**
-     * Create the new contract, move used records, and correct the unpaid source
-     * contract in one transaction. The server derives both contract amounts;
-     * the client cannot choose an inconsistent count/charge pair.
-     * POST /api/v1/student-classes/{studentClass}/split-contract
-     */
     public function splitContract(Request $request, StudentClass $studentClass)
     {
         if ($accessError = $this->authorizeStudentClassAccess($studentClass)) {
             return $accessError;
         }
-
         $data = $request->validate([
             'session_ids' => ['required', 'array', 'min:1', 'max:100'],
             'session_ids.*' => ['integer'],
             'start_date' => ['required', 'date'],
             'reason' => ['required', 'string', 'max:255'],
         ]);
-
         return DB::transaction(function () use ($studentClass, $data) {
             $source = StudentClass::query()
                 ->where('ID', $studentClass->ID)
                 ->lockForUpdate()
                 ->firstOrFail();
             $plan = $this->prepareSplitContractPlan($source, $data, true);
-
             $duplicate = $this->findDuplicatePurchaseBatch(
                 $source,
                 $plan['start_date'],
@@ -2222,7 +2207,6 @@ class StudentClassController extends Controller
             $newCourse = $this->createStudentClassRecordResilient(
                 $this->buildSplitContractPayload($source, $plan)
             );
-
             $slots = $this->resolveScheduleSlotsForRebuild($source);
             if (empty($slots)) {
                 $fallbackTime = $this->normalizeSessionTime($source->time ?? null, '16:00');
@@ -2232,7 +2216,6 @@ class StudentClassController extends Controller
                     'duration_minutes' => max(30, (int) ($source->SessionDuration ?? 120)),
                 ]];
             }
-
             $futureSessions = $this->buildSessionsForCount(
                 (int) $newCourse->ID,
                 $plan['start_date'],
@@ -2248,7 +2231,6 @@ class StudentClassController extends Controller
                     $lastFutureDate = $date;
                 }
             }
-
             $selectedSessions = ClassSession::query()
                 ->where('StudentClassID', $source->ID)
                 ->whereIn('id', $plan['session_ids'])
@@ -2262,13 +2244,11 @@ class StudentClassController extends Controller
                 ->update(['StudentClassID' => $newCourse->ID]);
             StudentSignIn::whereIn('ClassSessionID', $plan['session_ids'])
                 ->update(['StudentClassID' => $newCourse->ID]);
-
             $oldSourceCount = (int) ($source->SessionCount ?? 0);
             $oldSourceCharge = (int) ($source->Charge ?? 0);
             $source->SessionCount = $plan['source_session_count'];
             $source->Charge = $plan['source_charge'];
             $source->save();
-
             $adjustedInvoiceCount = 0;
             $openInvoices = Invoice::query()
                 ->where('StudentClassID', $source->ID)
@@ -2292,19 +2272,16 @@ class StudentClassController extends Controller
                     ->update(['Amount' => $plan['source_charge']]);
                 $adjustedInvoiceCount++;
             }
-
             $this->cancelExcessScheduledSessions((int) $source->ID, $plan['source_session_count']);
             SessionDeductionService::recomputeCounters((int) $source->ID);
             SessionDeductionService::recomputeCounters((int) $newCourse->ID);
             $source = $source->fresh();
             $newCourse = $newCourse->fresh();
-
             if ($lastFutureDate !== null) {
                 $newCourse->EndDate = $lastFutureDate;
                 $newCourse->save();
                 $newCourse->refresh();
             }
-
             SecurityAuditEvent::append(
                 'student_class.contract_split',
                 'success',
@@ -4180,10 +4157,6 @@ class StudentClassController extends Controller
         return StudentClass::create($payload);
     }
 
-    /**
-     * @param array<string, mixed> $data
-     * @return array<string, mixed>
-     */
     private function prepareSplitContractPlan(StudentClass $studentClass, array $data, bool $lockSessions = false): array
     {
         if ((string) ($studentClass->ScheduleMode ?? 'count') !== 'count') {
@@ -4314,7 +4287,6 @@ class StudentClassController extends Controller
         ];
     }
 
-    /** @param array<string, mixed> $plan */
     private function splitContractPreviewPayload(array $plan): array
     {
         return [
@@ -4339,7 +4311,6 @@ class StudentClassController extends Controller
         ];
     }
 
-    /** @param array<string, mixed> $plan */
     private function buildSplitContractPayload(StudentClass $source, array $plan): array
     {
         $duration = max(30, (int) ($source->SessionDuration ?? 120));
