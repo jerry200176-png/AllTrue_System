@@ -266,3 +266,4 @@ case "$MODE" in
     notify)  shift; send_notify "$*" ;;
     *)       echo "用法：$0 [check|report|test|notify <message>]" && exit 1 ;;
 esac
+
