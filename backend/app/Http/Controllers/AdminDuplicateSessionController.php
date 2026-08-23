@@ -201,29 +201,25 @@ class AdminDuplicateSessionController extends Controller
                 // belongs to the dropped contract. A raw ClassSession update
                 // leaves the attendance ledger at +1, which is exactly why a
                 // later unpaid-contract correction still sees the old count.
-                StudentSignIn::query()
+                $activeSignIns = StudentSignIn::query()
                     ->where('ClassSessionID', (int) $session->id)
-                    ->active()
-                    ->get()
-                    ->each(function (StudentSignIn $signIn) use ($actorId, $voidReason, &$voidedSignInCount): void {
-                        $signIn->VoidedAt = now();
-                        $signIn->VoidedByUserID = $actorId ?: null;
-                        $signIn->VoidReason = $voidReason;
-                        $signIn->save();
-                        $voidedSignInCount++;
-                    });
+                    ->whereNull('VoidedAt');
+                $voidedSignInCount += (int) $activeSignIns->count();
+                $activeSignIns->update([
+                    'VoidedAt' => now(),
+                    'VoidedByUserID' => $actorId ?: null,
+                    'VoidReason' => $voidReason,
+                ]);
 
-                LearningRecord::query()
+                $activeLearningRecords = LearningRecord::query()
                     ->where('ClassSessionID', (int) $session->id)
-                    ->active()
-                    ->get()
-                    ->each(function (LearningRecord $record) use ($actorId, $voidReason, &$voidedLearningRecordCount): void {
-                        $record->VoidedAt = now();
-                        $record->VoidedByUserID = $actorId ?: null;
-                        $record->VoidReason = $voidReason;
-                        $record->save();
-                        $voidedLearningRecordCount++;
-                    });
+                    ->whereNull('VoidedAt');
+                $voidedLearningRecordCount += (int) $activeLearningRecords->count();
+                $activeLearningRecords->update([
+                    'VoidedAt' => now(),
+                    'VoidedByUserID' => $actorId ?: null,
+                    'VoidReason' => $voidReason,
+                ]);
 
                 $session->Status = 'cancelled';
                 $session->Note = trim(((string) $session->Note) . ' 資料修復 #1130 — 主任審核決策保留 SC' . $keepScId);
