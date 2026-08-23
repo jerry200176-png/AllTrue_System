@@ -1,7 +1,7 @@
 ---
 owner: jerry (CEO)
 review_cycle: quarterly
-last_reviewed: 2026-05-24
+last_reviewed: 2026-08-23
 ---
 
 # Operations Runbook (SOP + Lessons Learned)
@@ -396,7 +396,7 @@ From previous incidents:
 
 1. **先確認 DB 真實 Campus.id**（最重要，勿臆測）：
    ```bash
-   mysql -h 127.0.0.1 -u admin -padmin123 AllTrue \
+   mysql -h 127.0.0.1 -u admin -p"$(grep ^DB_PASSWORD= /home/admin/backend/.env | cut -d= -f2-)" AllTrue \
      -e "SELECT id, name FROM Campus ORDER BY id; \
          SELECT CampusID, COUNT(*) as cnt FROM Student GROUP BY CampusID;"
    ```
@@ -459,7 +459,7 @@ curl -sk https://daan.lifenet.com.tw/api/v1/branches
 **Step 4：若仍 500，依序檢查**
 ```bash
 # DB 是否可連
-mysql -h 127.0.0.1 -u admin -padmin123 AllTrue -e "SELECT 1"
+mysql -h 127.0.0.1 -u admin -p"$(grep ^DB_PASSWORD= /home/admin/backend/.env | cut -d= -f2-)" AllTrue -e "SELECT 1"
 
 # PHP-FPM 是否存活
 ps aux | grep php-fpm | grep -v grep

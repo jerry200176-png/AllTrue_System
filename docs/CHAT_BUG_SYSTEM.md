@@ -1,7 +1,7 @@
 ---
 owner: jerry (CEO)
 review_cycle: quarterly
-last_reviewed: 2026-05-24
+last_reviewed: 2026-08-23
 ---
 
 # AI 操作手冊：內部聊天、Bug 回報、使用者頭像
