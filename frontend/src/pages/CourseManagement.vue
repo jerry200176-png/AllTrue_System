@@ -313,6 +313,11 @@
                       <span v-else class="hint">未排定</span>
                       <span v-if="c.schedule_drift" class="schedule-drift-badge" :title="c.contract_exception_count > 0 ? '堂次偏移（另含 ' + c.contract_exception_count + ' 堂補課例外，不受影響）。若偏移非刻意調課，請開啟「編輯」確認固定排課後按儲存，系統會自動同步偏移堂次。' : '未上預排堂次與固定排課（契約）的星期／時段不一致。若偏移非刻意調課，請開啟「編輯」確認固定排課後按儲存，系統會自動同步未上預排堂次。'">⚠ 堂次偏移</span>
                       <span v-else-if="c.contract_exception_count > 0" class="contract-exception-badge" :title="'含 ' + c.contract_exception_count + ' 堂非固定星期的補課／加課，不會被重建覆寫。'">補課例外</span>
+                      <span
+                        v-if="c.usage_balance_status === 'review_required'"
+                        class="usage-balance-warning"
+                        :title="usageBalanceWarningTitle(c)"
+                      >⚠ 堂數待對帳</span>
                     </td>
                     <td>
                       <button
@@ -383,13 +388,7 @@
                             <button v-if="c.status !== 'inactive'" class="action-dropdown-item" @click="requestCoursePause(c); closeActionMenu()"><span class="action-icon">⏸</span> 暫停課程</button>
                             <button v-if="c.status === 'inactive'" class="action-dropdown-item action-dropdown-resume" @click="requestCoursePause(c); closeActionMenu()"><span class="action-icon">▶</span> 恢復課程</button>
                             <button v-if="canCloseCourse(c)" class="action-dropdown-item action-dropdown-close" @click="closeCourseNoRenew(c); closeActionMenu()"><span class="action-icon">✓</span> 結案（不續報）</button>
-                            <button
-                              v-if="isSessionMode(c) && !c.PackageID && c.payment_status !== 'paid'"
-                              class="action-dropdown-item action-dropdown-correction"
-                              title="未收款課程的購買堂數與金額更正；不修改已上課紀錄"
-                              @click="openBillingCorrectionModal(c); closeActionMenu()"
-                            ><span class="action-icon">↺</span> 更正未收款堂數</button>
-                            <button class="action-dropdown-item" title="把已上課、已填評量的堂次搬到另一門課程，不用重填評量" @click="openTransferSessionsModal(c); closeActionMenu()"><span class="action-icon">↪</span> 轉移堂次紀錄</button>
+                            <button class="action-dropdown-item action-dropdown-adjustment" title="依情境選擇更正未付款堂數或轉移已上課紀錄" @click="openContractAdjustmentModal(c); closeActionMenu()"><span class="action-icon">↺</span> 合約／堂次調整</button>
                             <hr class="action-dropdown-divider" />
                             <p class="action-section-label action-section-label--danger">危險操作</p>
                             <button class="action-dropdown-item action-dropdown-danger" @click="confirmDeleteTarget = c; closeActionMenu()"><span class="action-icon">🗑</span> 刪除課程</button>
@@ -702,6 +701,14 @@
         </div>
       </div>
     </div>
+
+    <ContractAdjustmentChoiceModal
+      :show="showContractAdjustmentModal"
+      :student-name="contractAdjustmentCourse?.student_name || ''"
+      :subject="contractAdjustmentCourse?.subject_name || contractAdjustmentCourse?.subject || ''"
+      @close="showContractAdjustmentModal = false"
+      @choose="chooseContractAdjustment"
+    />
 
     <!-- Unpaid post-deduction billing correction -->
     <div v-if="showBillingCorrectionModal" class="modal-overlay" @click.self="!billingCorrectionSubmitting && (showBillingCorrectionModal = false)">
@@ -1168,6 +1175,7 @@ import { isPendingWorkflowStatus } from '../lib/exceptionWorkflowFocus.js';
 import PurchaseSessionsModal from '../components/course-management/PurchaseSessionsModal.vue';
 import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal.vue';
 import TransferSessionsModal from '../components/course-management/TransferSessionsModal.vue';
+import ContractAdjustmentChoiceModal from '../components/course-management/ContractAdjustmentChoiceModal.vue';
 import QuickAddSessionModal from '../components/course-management/QuickAddSessionModal.vue';
 import ManualSessionModal from '../components/course-management/ManualSessionModal.vue';
 import LeaveModal from '../components/course-management/LeaveModal.vue';
@@ -1905,6 +1913,8 @@ const transferTargetCoursesLoading = ref(false);
 let transferTargetCoursesRequest = 0;
 
 const showBillingCorrectionModal = ref(false);
+const showContractAdjustmentModal = ref(false);
+const contractAdjustmentCourse = ref(null);
 const billingCorrectionCourse = ref(null);
 const billingCorrectionSubmitting = ref(false);
 const billingCorrectionForm = ref({ new_session_count: 1, new_charge: 0, reason: '' });
@@ -1930,6 +1940,33 @@ function openBillingCorrectionModal(course) {
   };
   billingCorrectionBlocked.value = null;
   showBillingCorrectionModal.value = true;
+}
+
+function isUnpaidCountCourse(course) {
+  return isSessionMode(course) && !course?.PackageID && course?.payment_status !== 'paid';
+}
+
+function usageBalanceWarningTitle(course) {
+  const diagnostic = course?.usage_balance_diagnostic;
+  if (!diagnostic) return '課堂狀態與扣堂紀錄不一致，請先完成重複堂次／扣堂對帳。';
+  return `課堂狀態顯示已上 ${diagnostic.class_session_used_sessions} 堂，但扣堂紀錄為 ${diagnostic.ledger_used_sessions} 堂；請先完成對帳，再作為收費依據。`;
+}
+
+function openContractAdjustmentModal(course) {
+  contractAdjustmentCourse.value = course;
+  if (!isUnpaidCountCourse(course)) {
+    openTransferSessionsModal(course);
+    return;
+  }
+  showContractAdjustmentModal.value = true;
+}
+
+function chooseContractAdjustment(action) {
+  const course = contractAdjustmentCourse.value;
+  showContractAdjustmentModal.value = false;
+  if (!course) return;
+  if (action === 'billing') openBillingCorrectionModal(course);
+  if (action === 'transfer') openTransferSessionsModal(course);
 }
 
 async function submitBillingCorrection() {
@@ -5765,6 +5802,17 @@ onUnmounted(() => {
   color: #1d4ed8;
   background: #dbeafe;
   border: 1px solid #93c5fd;
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+.usage-balance-warning {
+  display: inline-block;
+  margin-top: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ds-danger);
+  background: var(--ds-danger-wash);
+  border: 1px solid var(--ds-hairline);
   border-radius: 4px;
   padding: 1px 6px;
 }

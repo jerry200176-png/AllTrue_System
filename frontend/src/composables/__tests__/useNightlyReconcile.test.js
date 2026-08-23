@@ -229,6 +229,7 @@ describe('useNightlyReconcile', () => {
     expect(categoryLabel('counter_overstated')).toBe('已用堂數偏高');
     expect(categoryLabel('partial_minutes')).toBe('部分時數換算');
     expect(categoryLabel('contract_cap')).toBe('出勤超出合約堂數');
+    expect(categoryLabel('source_conflict')).toBe('課堂狀態與扣堂證據衝突');
     expect(categoryLabel('unknown')).toBe('待分類');
     expect(categoryLabel('')).toBe('');
   });

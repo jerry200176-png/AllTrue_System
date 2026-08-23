@@ -1,3 +1,18 @@
+## 2026-08-23 — improved(course): 收斂主任的合約與堂次調整入口
+
+<!-- release-notes: staff_update=staff-2026-08-23-director-adjustment-entry -->
+
+- 課程管理的「操作」選單改用單一「合約／堂次調整」入口；未付款堂數更正與已上課紀錄轉移仍使用原本各自的安全流程，不新增重複 API。
+- 未付款按堂課程會先讓主任選擇「堂數改少」或「轉移已上課紀錄」；其他課程直接進入可用的堂次紀錄轉移流程。
+
+## 2026-08-23 — fix(course): 跨合約重複堂次同步沖回扣堂
+
+<!-- release-notes: staff_update=staff-2026-08-23-duplicate-usage-reconciliation -->
+
+- 重複課程審核取消非保留堂次時，會同步作廢該側的簽到／評量、沖回扣堂 ledger，並重算合約剩餘堂數；不再只改課堂狀態留下帳務殘留。
+- 即使重複堂次先前已被標成取消，只要仍有扣堂證據，也會重新出現在審核清單，選定保留合約後可完成清理。
+- 課程管理若發現課堂狀態、簽到觀察值與扣堂紀錄不一致，會顯示「堂數待對帳」，避免主任把矛盾數字直接當成收費依據。
+
 ## 2026-08-23 — fix(course): 合約更正與堂次轉移錯誤提示
 
 <!-- release-notes: staff_update=staff-2026-08-23-contract-correction-transfer-safety -->
