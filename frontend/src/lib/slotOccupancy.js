@@ -137,6 +137,41 @@ export function timesOverlap(aStart, aEnd, bStart, bEnd) {
   return aS < bE && bS < aE;
 }
 
+/**
+ * #2007/#2006: flag courses that silently double-book the same teacher slot —
+ * typically a renewal that left the old course open (root cause of #2006).
+ * Callers should pass only the courses they already consider "active"; this
+ * function only checks teacher+day+time overlap, nothing about status.
+ * Returns a Set of course ids (both sides of every conflicting pair).
+ */
+export function coursesWithSlotConflicts(courses = []) {
+  const conflicted = new Set();
+  const list = Array.isArray(courses) ? courses : [];
+  for (let i = 0; i < list.length; i++) {
+    for (let j = i + 1; j < list.length; j++) {
+      const a = list[i];
+      const b = list[j];
+      const teacherA = a?.teacher_id ?? a?.TeacherID;
+      const teacherB = b?.teacher_id ?? b?.TeacherID;
+      if (!teacherA || !teacherB || String(teacherA) !== String(teacherB)) continue;
+
+      const daysA = (a?.days_of_week?.length ? a.days_of_week : [a?.day_of_week])
+        .filter((d) => d != null).map(Number);
+      const daysB = (b?.days_of_week?.length ? b.days_of_week : [b?.day_of_week])
+        .filter((d) => d != null).map(Number);
+      if (!daysA.some((d) => daysB.includes(d))) continue;
+
+      if (!timesOverlap(a?.start_time, a?.end_time, b?.start_time, b?.end_time)) continue;
+
+      const idA = a?.id ?? a?.ID;
+      const idB = b?.id ?? b?.ID;
+      if (idA != null) conflicted.add(idA);
+      if (idB != null) conflicted.add(idB);
+    }
+  }
+  return conflicted;
+}
+
 export function pickerSlotConflict({
   overlappingSlots = [],
   coveredClassType = '',
