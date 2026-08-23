@@ -8,13 +8,19 @@ export const changelogDraftNotes = [
     "version": "2026.08.23",
     "date": "2026-08-23",
     "title": "2026.08.23 草稿（未發布）",
-    "summary": "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。",
+    "summary": "未收款課程合約拆分精靈；堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。",
     "audience": [
       "teacher",
       "director"
     ],
     "draft": true,
     "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "未收款課程合約拆分精靈"
+        ]
+      },
       {
         "title": "修正內容",
         "items": [
@@ -23,6 +29,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "未收款課程合約拆分精靈",
       "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。"
     ]
   },
