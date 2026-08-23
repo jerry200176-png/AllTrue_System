@@ -1,3 +1,10 @@
+## 2026-08-23 — improved(performance): 主任次要資料查詢優化
+
+<!-- release-notes: staff_update=staff-2026-08-23-performance-backend-query -->
+
+- 主任頁面的老師評量填寫率查詢改用可使用索引的日期／時段比對，減少資料量增加後的等待時間。
+- 主任營運摘要合併重複的統計查詢，在不改變數字口徑的前提下降低資料庫往返次數。
+
 ## 2026-08-23 — improved(performance): 第一批頁面載入優化
 
 <!-- release-notes: staff_update=staff-2026-08-23-performance-first-batch -->

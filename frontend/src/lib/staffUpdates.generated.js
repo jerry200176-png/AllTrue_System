@@ -155,6 +155,38 @@ export const staffUpdates = [
     "version": "2026.08.23"
   },
   {
+    "id": "staff-2026-08-23-performance-backend-query",
+    "publishedAt": "2026-08-23",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "主任頁面查詢加速",
+    "summary": "主任頁面的次要資料與營運摘要減少資料庫等待，資料多時也更穩定。",
+    "items": [
+      "老師評量填寫率改用較有效率的日期／時段查詢，主任開啟完整頁面時等待更少。",
+      "營運摘要合併重複統計，維持原本數字口徑但減少資料庫往返。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "老師評量填寫率改用較有效率的日期／時段查詢，主任開啟完整頁面時等待更少。",
+          "營運摘要合併重複統計，維持原本數字口徑但減少資料庫往返。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-23:performance-backend-query"
+    ],
+    "date": "2026-08-23",
+    "version": "2026.08.23"
+  },
+  {
     "id": "staff-2026-08-23-director-adjustment-entry",
     "publishedAt": "2026-08-23",
     "effectiveAt": null,
