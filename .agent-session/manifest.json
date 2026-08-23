@@ -5,7 +5,7 @@
   "task_id": "split-contract-wizard-20260823",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
   "base_sha": "b3014f6ddbbe4e8556cf72928c4d127f1dcf21b2",
-  "branch": "chore/task-split-contract-wizard-20260823",
+  "branch": "chore/task-split-contract-wizard-20260823-ui",
   "worktree_path": "/home/jerry/workspace/tasks/alltrue/split-contract-wizard-20260823",
   "started_at": "2026-08-23T05:06:05Z",
   "production_mutation": false,
