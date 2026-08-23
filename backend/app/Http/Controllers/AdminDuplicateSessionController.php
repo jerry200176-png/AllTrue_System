@@ -149,7 +149,31 @@ class AdminDuplicateSessionController extends Controller
             ->where('sc.StudentID', $studentId)
             ->where('cs.SessionDate', $date)
             ->whereRaw('SUBSTRING(cs.StartTime,1,5) = ?', [$time])
-            ->whereRaw("LOWER(cs.Status) IN ('attended','completed')")
+            ->where(function ($q) {
+                $q->whereRaw("LOWER(cs.Status) IN ('attended','completed')")
+                    ->orWhere(function ($cancelled) {
+                        $cancelled->whereRaw("LOWER(cs.Status) = 'cancelled'")
+                            ->where(function ($artifact) {
+                                $artifact->whereExists(function ($sub) {
+                                    $sub->selectRaw('1')
+                                        ->from('StudentSingIn as duplicate_si')
+                                        ->whereColumn('duplicate_si.ClassSessionID', 'cs.id')
+                                        ->whereNull('duplicate_si.VoidedAt')
+                                        ->where('duplicate_si.SessionDeducted', true);
+                                })->orWhereExists(function ($sub) {
+                                    $sub->selectRaw('1')
+                                        ->from('LearningRecord as duplicate_lr')
+                                        ->whereColumn('duplicate_lr.ClassSessionID', 'cs.id')
+                                        ->whereNull('duplicate_lr.VoidedAt');
+                                })->orWhereRaw("(
+                                    SELECT COALESCE(SUM(CASE WHEN l.event_type = 'deduct' THEN 1 ELSE -1 END), 0)
+                                    FROM session_deduction_ledger l
+                                    WHERE l.student_class_id = cs.StudentClassID
+                                      AND l.class_session_id = cs.id
+                                ) > 0");
+                            });
+                    });
+            })
             ->when(!empty($campusIds), fn ($q) => $q->whereIn('s.CampusID', $campusIds))
             ->select('cs.id', 'cs.StudentClassID', 'cs.Status', 'cs.Note')
             ->get();
@@ -160,8 +184,15 @@ class AdminDuplicateSessionController extends Controller
         if (!$rows->contains(fn ($row) => (int) $row->StudentClassID === $keepScId)) {
             return response()->json(['message' => 'keep_student_class_id 不在此重複群組內'], 422);
         }
+        if (!$rows->contains(fn ($row) =>
+            (int) $row->StudentClassID === $keepScId
+            && in_array(strtolower((string) $row->Status), ['attended', 'completed'], true)
+        )) {
+            return response()->json(['message' => '保留側必須有仍有效的已上課堂次'], 422);
+        }
 
         $cancelledCount = 0;
+        $alreadyCancelledCount = 0;
         $keptSessionIds = [];
         $reversedCount = 0;
         $voidedLearningRecordCount = 0;
@@ -176,6 +207,7 @@ class AdminDuplicateSessionController extends Controller
             $actorId,
             $reason,
             &$cancelledCount,
+            &$alreadyCancelledCount,
             &$keptSessionIds,
             &$reversedCount,
             &$voidedLearningRecordCount,
@@ -189,13 +221,14 @@ class AdminDuplicateSessionController extends Controller
                 }
 
                 $session = ClassSession::query()->whereKey((int) $row->id)->lockForUpdate()->first();
-                if (!$session || strtolower((string) $session->Status) === 'cancelled') {
+                if (!$session) {
                     continue;
                 }
 
                 $studentClassId = (int) $session->StudentClassID;
                 $affectedStudentClassIds[$studentClassId] = true;
                 $voidReason = '跨合約重複課程：' . $reason;
+                $wasCancelled = strtolower((string) $session->Status) === 'cancelled';
 
                 // Cancelling a duplicate must undo every usage artifact that
                 // belongs to the dropped contract. A raw ClassSession update
@@ -221,9 +254,14 @@ class AdminDuplicateSessionController extends Controller
                     'VoidReason' => $voidReason,
                 ]);
 
-                $session->Status = 'cancelled';
-                $session->Note = trim(((string) $session->Note) . ' 資料修復 #1130 — 主任審核決策保留 SC' . $keepScId);
-                $session->save();
+                if (!$wasCancelled) {
+                    $session->Status = 'cancelled';
+                    $session->Note = trim(((string) $session->Note) . ' 資料修復 #1130 — 主任審核決策保留 SC' . $keepScId);
+                    $session->save();
+                    $cancelledCount++;
+                } else {
+                    $alreadyCancelledCount++;
+                }
 
                 if (SessionDeductionService::reverseForSession(
                     $studentClassId,
@@ -234,7 +272,6 @@ class AdminDuplicateSessionController extends Controller
                 )) {
                     $reversedCount++;
                 }
-                $cancelledCount++;
             }
 
             foreach (array_keys($affectedStudentClassIds) as $studentClassId) {
@@ -265,6 +302,7 @@ class AdminDuplicateSessionController extends Controller
             'time' => $time,
             'keep_sc_id' => $keepScId,
             'cancelled_count' => $cancelledCount,
+            'already_cancelled_count' => $alreadyCancelledCount,
             'reversed_count' => $reversedCount,
             'voided_learning_record_count' => $voidedLearningRecordCount,
             'voided_sign_in_count' => $voidedSignInCount,
@@ -274,6 +312,7 @@ class AdminDuplicateSessionController extends Controller
         return response()->json([
             'data' => [
                 'cancelled_count' => $cancelledCount,
+                'already_cancelled_count' => $alreadyCancelledCount,
                 'kept_session_ids' => $keptSessionIds,
                 'reversed_count' => $reversedCount,
                 'voided_learning_record_count' => $voidedLearningRecordCount,
@@ -291,7 +330,31 @@ class AdminDuplicateSessionController extends Controller
             ->join('Student as s', 's.id', '=', 'sc.StudentID')
             ->leftJoin('User as u', 'u.ID', '=', 'sc.TeacherID')
             ->leftJoin('Subject as sub', 'sub.id', '=', 'sc.SubjectID')
-            ->whereRaw("LOWER(cs.Status) IN ('attended','completed')")
+            ->where(function ($q) {
+                $q->whereRaw("LOWER(cs.Status) IN ('attended','completed')")
+                    ->orWhere(function ($cancelled) {
+                        $cancelled->whereRaw("LOWER(cs.Status) = 'cancelled'")
+                            ->where(function ($artifact) {
+                                $artifact->whereExists(function ($sub) {
+                                    $sub->selectRaw('1')
+                                        ->from('StudentSingIn as duplicate_si')
+                                        ->whereColumn('duplicate_si.ClassSessionID', 'cs.id')
+                                        ->whereNull('duplicate_si.VoidedAt')
+                                        ->where('duplicate_si.SessionDeducted', true);
+                                })->orWhereExists(function ($sub) {
+                                    $sub->selectRaw('1')
+                                        ->from('LearningRecord as duplicate_lr')
+                                        ->whereColumn('duplicate_lr.ClassSessionID', 'cs.id')
+                                        ->whereNull('duplicate_lr.VoidedAt');
+                                })->orWhereRaw("(
+                                    SELECT COALESCE(SUM(CASE WHEN l.event_type = 'deduct' THEN 1 ELSE -1 END), 0)
+                                    FROM session_deduction_ledger l
+                                    WHERE l.student_class_id = cs.StudentClassID
+                                      AND l.class_session_id = cs.id
+                                ) > 0");
+                            });
+                    });
+            })
             ->when(!empty($campusIds), fn ($q) => $q->whereIn('s.CampusID', $campusIds))
             ->selectRaw('
                 cs.id, cs.StudentClassID, cs.SessionDate, SUBSTRING(cs.StartTime,1,5) as hm,

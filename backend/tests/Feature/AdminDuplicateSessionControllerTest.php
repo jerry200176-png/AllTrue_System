@@ -90,6 +90,53 @@ class AdminDuplicateSessionControllerTest extends TestCase
         $this->assertSame('attended', DB::table('ClassSession')->where('id', $keepCs)->value('Status'));
     }
 
+    public function test_p2_review_surfaces_already_cancelled_duplicate_with_usage_artifact(): void
+    {
+        $campus = Campus::factory()->create();
+        $token = $this->directorToken($campus->id);
+
+        [$studentId, $keepSc, $dropSc, $keepCs, $dropCs] = $this->seedDuplicatePair(studentId: 91013, campusId: $campus->id);
+        DB::table('session_deduction_ledger')->insert([
+            'student_class_id' => $dropSc,
+            'class_session_id' => $dropCs,
+            'event_type' => 'deduct',
+            'source' => 'attendance',
+            'note' => 'already-cancelled duplicate test',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        // Simulate the historical bad state: cancellation happened, but the
+        // usage ledger was not reversed, so the old review query could no
+        // longer find this duplicate.
+        DB::table('ClassSession')->where('id', $dropCs)->update(['Status' => 'cancelled']);
+        $groupId = rtrim(strtr(base64_encode($studentId . ':2026-06-10:17:00'), '+/', '-_'), '=');
+
+        $review = $this->withToken($token)->getJson('/api/v1/admin/duplicate-sessions/p2-review');
+        $review->assertOk();
+        $groups = $review->json('data.groups');
+        $group = collect($groups)->firstWhere('id', $groupId);
+        $this->assertNotNull($group);
+        $this->assertContains('cancelled', collect($group['sides'])
+            ->firstWhere('student_class_id', $dropSc)['statuses']);
+
+        $res = $this->withToken($token)->patchJson("/api/v1/admin/duplicate-sessions/p2-review/{$groupId}", [
+            'keep_student_class_id' => $keepSc,
+            'reason' => '清理已取消的重複扣堂證據',
+        ]);
+
+        $res->assertOk()
+            ->assertJsonPath('data.cancelled_count', 0)
+            ->assertJsonPath('data.already_cancelled_count', 1)
+            ->assertJsonPath('data.reversed_count', 1)
+            ->assertJsonPath('data.kept_session_ids.0', $keepCs);
+        $this->assertSame(1, DB::table('session_deduction_ledger')
+            ->where('student_class_id', $dropSc)
+            ->where('class_session_id', $dropCs)
+            ->where('event_type', 'reverse')
+            ->count());
+        $this->assertSame('cancelled', DB::table('ClassSession')->where('id', $dropCs)->value('Status'));
+    }
+
     public function test_patch_p2_review_rejects_keep_student_class_id_outside_group_without_partial_write(): void
     {
         $campus = Campus::factory()->create();
