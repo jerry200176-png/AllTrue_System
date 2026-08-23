@@ -1,4 +1,19 @@
 version: '0.1'
 last_updated: '2026-08-15'
 rules_of_thumb: []
-failure_modes: []
+failure_modes:
+- id: FM-20260823-155425-O219
+  name: "\u5DF2\u53D6\u6D88\u7684\u91CD\u8907\u5802\u6B21\u4ECD\u6B98\u7559\u6263\u5802\
+    \u8B49\u64DA"
+  detection:
+    signal: "\u5DF2\u53D6\u6D88\u7684\u91CD\u8907\u5802\u6B21\u4ECD\u6B98\u7559\u6263\
+      \u5802\u8B49\u64DA"
+    source: reflection:REF-20260823-155425-E92X
+  mitigation:
+    practice: "\u91CD\u8907\u8AB2\u7A0B\u5BE9\u6838\u4E0D\u80FD\u53EA\u67E5 attended/completed\uFF1B\
+      \u53D6\u6D88\u72C0\u614B\u82E5\u4ECD\u6709 active attendance\u3001learning record\
+      \ \u6216\u6B63\u6263\u5802 ledger\uFF0C\u5FC5\u9808\u56DE\u5230\u5177\u540D\u5BE9\
+      \u6838\u6D41\u7A0B\uFF0C\u6E05\u7406\u8B49\u64DA\u4E26\u4EE5 ledger \u53CD\u5411\
+      \u4E8B\u4EF6\u91CD\u7B97\u5408\u7D04\u3002"
+  severity: medium
+  frequency: recurring
