@@ -1,0 +1,61 @@
+name: TD-076 Phase 3 occurrence-identity backfill (dry-run only)
+
+# Read-only report for docs/architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md
+# Phase 3. Runs `schedules:backfill-occurrence-identity` WITHOUT --execute,
+# so it only SELECTs and prints a plan — no production row is written.
+# This workflow intentionally has no execute path. Phase 3 execute, Phase 4
+# read cutover, and Phase 5 stop-chain all require a separate Founder GO
+# per the RFC and are out of scope here.
+
+on:
+  workflow_dispatch:
+    inputs:
+      student_course_id:
+        description: 'Optional: limit to one StudentClass.ID (blank = all)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  dry-run-report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Run dry-run plan on production DB (no --execute, no writes)
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          COURSE_ID: ${{ inputs.student_course_id }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" \
+            COURSE_ID="$COURSE_ID" 'bash -s' <<'ENDSSH' | tee dryrun.log
+          set -euo pipefail
+          cd /home/admin/backend
+          if [ -n "${COURSE_ID:-}" ]; then
+            php artisan schedules:backfill-occurrence-identity --student-course-id="$COURSE_ID"
+          else
+            php artisan schedules:backfill-occurrence-identity
+          fi
+          ENDSSH
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: td076-phase3-dryrun-report
+          path: dryrun.log
+          retention-days: 90
