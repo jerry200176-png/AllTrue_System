@@ -121,6 +121,40 @@ export const staffUpdates = [
     "version": "2026.08.23"
   },
   {
+    "id": "staff-2026-08-23-performance-first-batch",
+    "publishedAt": "2026-08-23",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "頁面載入更順暢",
+    "summary": "登入、主任首頁與行事曆減少等待，常用資產也會更有效率地快取。",
+    "items": [
+      "主任首頁的獨立資料區塊會同時載入，不會因單一區塊較慢而拖住整頁。",
+      "登入與行事曆資料減少連續等待；已下載過的內容切換檢視時更快回應。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "主任首頁的獨立資料區塊會同時載入，不會因單一區塊較慢而拖住整頁。",
+          "登入與行事曆資料減少連續等待；已下載過的內容切換檢視時更快回應。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-23:performance-first-batch"
+    ],
+    "date": "2026-08-23",
+    "version": "2026.08.23"
+  },
+  {
     "id": "staff-2026-08-23-director-adjustment-entry",
     "publishedAt": "2026-08-23",
     "effectiveAt": null,
