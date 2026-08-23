@@ -311,18 +311,14 @@
                         {{ dayLabel(c.day_of_week) }} {{ c.start_time }}~{{ c.end_time }}
                       </span>
                       <span v-else class="hint">未排定</span>
-                      <span
-                        v-if="hasSlotConflict(group, c)"
-                        class="schedule-drift-badge"
-                        title="這位學生還有另一筆進行中課程佔用同一位老師的同一時段，常見於續約時舊課程沒關閉。此堂請假／調課不會釋出對方的時段。"
-                      >⚠ 與另一堂時段重疊</span>
-                      <span v-if="c.schedule_drift" class="schedule-drift-badge" :title="c.contract_exception_count > 0 ? '堂次偏移（另含 ' + c.contract_exception_count + ' 堂補課例外，不受影響）。若偏移非刻意調課，請開啟「編輯」確認固定排課後按儲存，系統會自動同步偏移堂次。' : '未上預排堂次與固定排課（契約）的星期／時段不一致。若偏移非刻意調課，請開啟「編輯」確認固定排課後按儲存，系統會自動同步未上預排堂次。'">⚠ 堂次偏移</span>
-                      <span v-else-if="c.contract_exception_count > 0" class="contract-exception-badge" :title="'含 ' + c.contract_exception_count + ' 堂非固定星期的補課／加課，不會被重建覆寫。'">補課例外</span>
-                      <span
-                        v-if="c.usage_balance_status === 'review_required'"
-                        class="usage-balance-warning"
-                        :title="usageBalanceWarningTitle(c)"
-                      >⚠ 堂數待對帳</span>
+                      <!-- #2007 phase 2: up to 3 warning badges used to stack inline after the
+                           time string, competing with it for attention. Collapse to one summary
+                           chip on its own line; the full list is still in its tooltip. -->
+                      <template v-for="w in rowWarningSummary(group, c)" :key="w.label">
+                        <div class="course-row-badges">
+                          <span class="row-badge" :class="'row-badge--' + w.tone" :title="w.title">{{ w.label }}</span>
+                        </div>
+                      </template>
                     </td>
                     <td>
                       <button
@@ -1158,6 +1154,7 @@ import { fetchSubjectOptions } from '../lib/subjectsApi';
 import { fetchClassSessions, normalizeClassSessionsPayload, sessionViewModelPatchFromApi } from '../lib/classSessionsApi';
 import { getPerSessionFee, getCourseTotalFee } from '../lib/coursePricing';
 import { coursesWithSlotConflicts } from '../lib/slotOccupancy';
+import { courseRowWarningSummary } from '../lib/courseRowWarnings';
 import {
   formatRenewSuccessMessage,
   formatDuplicatePurchaseHint,
@@ -3333,6 +3330,14 @@ const historyCourses = (group) => (group?.courses || []).filter(c => isHistoryCo
 // A student rarely has more than a handful of active courses, so recomputing
 // per render is cheap — no memoization needed.
 const hasSlotConflict = (group, c) => coursesWithSlotConflicts(activeCourses(group)).has(c.id);
+
+// #2007 phase 2: collapse this row's schedule warnings (slot conflict / drift /
+// contract exception / usage-balance review) to one summary chip instead of
+// stacking every badge inline — see frontend/src/lib/courseRowWarnings.js.
+const rowWarningSummary = (group, c) => courseRowWarningSummary(
+  { ...c, hasSlotConflict: hasSlotConflict(group, c) },
+  usageBalanceWarningTitle,
+);
 const expandedHistoryGroups = ref(new Set());
 const toggleHistoryGroup = (key) => {
   const s = new Set(expandedHistoryGroups.value);
@@ -5633,11 +5638,15 @@ onUnmounted(() => {
   gap: 6px;
 }
 
+/* #2007 phase 2: was font-weight 800 — same visual weight as the subject/
+   class-type tags above it, so nothing signalled which line was primary.
+   Demoted so the tags read first, price second (Cal.com text-emphasis vs
+   text-subtle pattern). */
 .price-line {
   margin-top: 4px;
   font-size: 13px;
-  color: #334155;
-  font-weight: 800;
+  color: #475569;
+  font-weight: 600;
 }
 
 .memo-line {
@@ -5803,38 +5812,33 @@ onUnmounted(() => {
 .schedule-slot-line {
   line-height: 1.35;
 }
-.schedule-drift-badge {
-  display: inline-block;
+/* #2007 phase 2: one badge line, one tone-coded chip — replaces the old
+   schedule-drift-badge/contract-exception-badge/usage-balance-warning trio
+   that stacked inline after the schedule text. */
+.course-row-badges {
   margin-top: 3px;
+}
+.row-badge {
+  display: inline-block;
   font-size: 11px;
   font-weight: 600;
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+.row-badge--warning {
   color: var(--ds-warning);
   background: #fef3c7;
   border: 1px solid #fcd34d;
-  border-radius: 4px;
-  padding: 1px 6px;
 }
-.contract-exception-badge {
-  display: inline-block;
-  margin-top: 3px;
-  font-size: 11px;
-  font-weight: 600;
+.row-badge--info {
   color: #1d4ed8;
   background: #dbeafe;
   border: 1px solid #93c5fd;
-  border-radius: 4px;
-  padding: 1px 6px;
 }
-.usage-balance-warning {
-  display: inline-block;
-  margin-top: 3px;
-  font-size: 11px;
-  font-weight: 600;
+.row-badge--danger {
   color: var(--ds-danger);
   background: var(--ds-danger-wash);
   border: 1px solid var(--ds-hairline);
-  border-radius: 4px;
-  padding: 1px 6px;
 }
 
 .cell-remaining {
