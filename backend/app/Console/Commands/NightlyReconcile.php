@@ -54,7 +54,7 @@ class NightlyReconcile extends Command
                 ? abs($actual - (int) ($diagnostic['observed_used'] ?? 0))
                 : 0;
             $diff       = max(abs($expected - $recorded), $sourceDiff);
-            if ($diff > $threshold || $sourceDiff > 0) {
+            if ($diff > $threshold || $sourceConflict) {
                 $category = $this->classifyMismatch($recorded, $diagnostic);
                 $causeCounts[$category] = ($causeCounts[$category] ?? 0) + 1;
                 $mismatches[] = [
