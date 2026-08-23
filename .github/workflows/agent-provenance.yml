@@ -3,6 +3,7 @@ name: Agent Session Provenance
 on:
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: agent-provenance-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -26,4 +27,9 @@ jobs:
         with:
           fetch-depth: 0
       - name: Verify provenance manifest
+        env:
+          # GITHUB_HEAD_REF is only set by the pull_request event; a manual
+          # workflow_dispatch run needs the fallback or the script sees a
+          # detached-HEAD "HEAD" instead of the real branch name.
+          GITHUB_HEAD_REF: ${{ github.head_ref || github.ref_name }}
         run: bash scripts/check-agent-provenance.sh
