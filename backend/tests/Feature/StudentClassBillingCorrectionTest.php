@@ -25,10 +25,15 @@ class StudentClassBillingCorrectionTest extends TestCase
     {
         [$token, $userId] = $this->director();
         $student = $this->student();
-        $course = $this->course($student->id);
+        $course = $this->course($student->id, [
+            'TotalHours' => 10,
+            'Charge' => 5500,
+            'SessionCount' => 5,
+            'RemainingSessions' => 5,
+        ]);
 
         $attended = [];
-        for ($i = 1; $i <= 7; $i++) {
+        for ($i = 1; $i <= 4; $i++) {
             $attended[] = ClassSession::create([
                 'StudentClassID' => $course->ID,
                 'SessionDate' => "2026-05-{$i}",
@@ -55,7 +60,7 @@ class StudentClassBillingCorrectionTest extends TestCase
             'StudentID' => $student->id,
             'StudentClassID' => $course->ID,
             'IssueDate' => '2026-08-12',
-            'TotalAmount' => 8800,
+            'TotalAmount' => 5500,
             'PaidAmount' => 0,
             'Status' => 'unpaid',
         ]);
@@ -63,28 +68,28 @@ class StudentClassBillingCorrectionTest extends TestCase
             'InvoiceID' => $invoice->id,
             'StudentClassID' => $course->ID,
             'Description' => '高中理化',
-            'Amount' => 8800,
+            'Amount' => 5500,
         ]);
 
         $response = $this->withToken($token)->postJson(
             "/api/v1/student-classes/{$course->ID}/billing-correction",
             [
-                'new_session_count' => 7,
-                'new_charge' => 7700,
-                'reason' => '主任確認本期理化實際收七堂',
+                'new_session_count' => 4,
+                'new_charge' => 4400,
+                'reason' => '主任確認本期理化實際上四堂',
             ]
         );
 
         $response->assertOk()
-            ->assertJsonPath('new_session_count', 7)
-            ->assertJsonPath('new_charge', 7700)
+            ->assertJsonPath('new_session_count', 4)
+            ->assertJsonPath('new_charge', 4400)
             ->assertJsonPath('remaining_sessions', 0)
             ->assertJsonPath('payment_status', 'unpaid');
 
         $this->assertDatabaseHas('StudentClass', [
             'ID' => $course->ID,
-            'SessionCount' => 7,
-            'Charge' => 7700,
+            'SessionCount' => 4,
+            'Charge' => 4400,
             'Paid' => 0,
             'RemainingSessions' => 0,
             'UsedSessions' => 7,
@@ -97,11 +102,11 @@ class StudentClassBillingCorrectionTest extends TestCase
         $this->assertSame(0, DB::table('payment_reports')->where('StudentClassID', $course->ID)->count());
         $this->assertDatabaseHas('Invoice', [
             'id' => $invoice->id,
-            'TotalAmount' => 7700,
+            'TotalAmount' => 4400,
         ]);
         $this->assertDatabaseHas('InvoiceItem', [
             'InvoiceID' => $invoice->id,
-            'Amount' => 7700,
+            'Amount' => 4400,
         ]);
 
         $audit = DB::table('security_audit_events')
@@ -111,10 +116,10 @@ class StudentClassBillingCorrectionTest extends TestCase
         $this->assertNotNull($audit);
         $this->assertSame(SecurityAuditEvent::ref('user', $userId), $audit->actor_ref);
         $metadata = json_decode($audit->metadata, true);
-        $this->assertSame(8, (int) $metadata['old_session_count']);
-        $this->assertSame(7, (int) $metadata['new_session_count']);
-        $this->assertSame(8800, (int) $metadata['old_charge']);
-        $this->assertSame(7700, (int) $metadata['new_charge']);
+        $this->assertSame(5, (int) $metadata['old_session_count']);
+        $this->assertSame(4, (int) $metadata['new_session_count']);
+        $this->assertSame(5500, (int) $metadata['old_charge']);
+        $this->assertSame(4400, (int) $metadata['new_charge']);
     }
 
     public function test_correction_cannot_reduce_below_observed_usage(): void
