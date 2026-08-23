@@ -1,3 +1,10 @@
+## 2026-08-23 — improved(course): 收斂主任的合約與堂次調整入口
+
+<!-- release-notes: staff_update=staff-2026-08-23-director-adjustment-entry -->
+
+- 課程管理的「操作」選單改用單一「合約／堂次調整」入口；未付款堂數更正與已上課紀錄轉移仍使用原本各自的安全流程，不新增重複 API。
+- 未付款按堂課程會先讓主任選擇「堂數改少」或「轉移已上課紀錄」；其他課程直接進入可用的堂次紀錄轉移流程。
+
 ## 2026-08-23 — fix(course): 合約更正與堂次轉移錯誤提示
 
 <!-- release-notes: staff_update=staff-2026-08-23-contract-correction-transfer-safety -->

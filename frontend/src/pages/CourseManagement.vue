@@ -383,13 +383,7 @@
                             <button v-if="c.status !== 'inactive'" class="action-dropdown-item" @click="requestCoursePause(c); closeActionMenu()"><span class="action-icon">⏸</span> 暫停課程</button>
                             <button v-if="c.status === 'inactive'" class="action-dropdown-item action-dropdown-resume" @click="requestCoursePause(c); closeActionMenu()"><span class="action-icon">▶</span> 恢復課程</button>
                             <button v-if="canCloseCourse(c)" class="action-dropdown-item action-dropdown-close" @click="closeCourseNoRenew(c); closeActionMenu()"><span class="action-icon">✓</span> 結案（不續報）</button>
-                            <button
-                              v-if="isSessionMode(c) && !c.PackageID && c.payment_status !== 'paid'"
-                              class="action-dropdown-item action-dropdown-correction"
-                              title="未收款課程的購買堂數與金額更正；不修改已上課紀錄"
-                              @click="openBillingCorrectionModal(c); closeActionMenu()"
-                            ><span class="action-icon">↺</span> 更正未收款堂數</button>
-                            <button class="action-dropdown-item" title="把已上課、已填評量的堂次搬到另一門課程，不用重填評量" @click="openTransferSessionsModal(c); closeActionMenu()"><span class="action-icon">↪</span> 轉移堂次紀錄</button>
+                            <button class="action-dropdown-item action-dropdown-adjustment" title="依情境選擇更正未付款堂數或轉移已上課紀錄" @click="openContractAdjustmentModal(c); closeActionMenu()"><span class="action-icon">↺</span> 合約／堂次調整</button>
                             <hr class="action-dropdown-divider" />
                             <p class="action-section-label action-section-label--danger">危險操作</p>
                             <button class="action-dropdown-item action-dropdown-danger" @click="confirmDeleteTarget = c; closeActionMenu()"><span class="action-icon">🗑</span> 刪除課程</button>
@@ -702,6 +696,14 @@
         </div>
       </div>
     </div>
+
+    <ContractAdjustmentChoiceModal
+      :show="showContractAdjustmentModal"
+      :student-name="contractAdjustmentCourse?.student_name || ''"
+      :subject="contractAdjustmentCourse?.subject_name || contractAdjustmentCourse?.subject || ''"
+      @close="showContractAdjustmentModal = false"
+      @choose="chooseContractAdjustment"
+    />
 
     <!-- Unpaid post-deduction billing correction -->
     <div v-if="showBillingCorrectionModal" class="modal-overlay" @click.self="!billingCorrectionSubmitting && (showBillingCorrectionModal = false)">
@@ -1168,6 +1170,7 @@ import { isPendingWorkflowStatus } from '../lib/exceptionWorkflowFocus.js';
 import PurchaseSessionsModal from '../components/course-management/PurchaseSessionsModal.vue';
 import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal.vue';
 import TransferSessionsModal from '../components/course-management/TransferSessionsModal.vue';
+import ContractAdjustmentChoiceModal from '../components/course-management/ContractAdjustmentChoiceModal.vue';
 import QuickAddSessionModal from '../components/course-management/QuickAddSessionModal.vue';
 import ManualSessionModal from '../components/course-management/ManualSessionModal.vue';
 import LeaveModal from '../components/course-management/LeaveModal.vue';
@@ -1905,6 +1908,8 @@ const transferTargetCoursesLoading = ref(false);
 let transferTargetCoursesRequest = 0;
 
 const showBillingCorrectionModal = ref(false);
+const showContractAdjustmentModal = ref(false);
+const contractAdjustmentCourse = ref(null);
 const billingCorrectionCourse = ref(null);
 const billingCorrectionSubmitting = ref(false);
 const billingCorrectionForm = ref({ new_session_count: 1, new_charge: 0, reason: '' });
@@ -1930,6 +1935,27 @@ function openBillingCorrectionModal(course) {
   };
   billingCorrectionBlocked.value = null;
   showBillingCorrectionModal.value = true;
+}
+
+function isUnpaidCountCourse(course) {
+  return isSessionMode(course) && !course?.PackageID && course?.payment_status !== 'paid';
+}
+
+function openContractAdjustmentModal(course) {
+  contractAdjustmentCourse.value = course;
+  if (!isUnpaidCountCourse(course)) {
+    openTransferSessionsModal(course);
+    return;
+  }
+  showContractAdjustmentModal.value = true;
+}
+
+function chooseContractAdjustment(action) {
+  const course = contractAdjustmentCourse.value;
+  showContractAdjustmentModal.value = false;
+  if (!course) return;
+  if (action === 'billing') openBillingCorrectionModal(course);
+  if (action === 'transfer') openTransferSessionsModal(course);
 }
 
 async function submitBillingCorrection() {

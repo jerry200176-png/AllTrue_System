@@ -43,6 +43,38 @@ export const staffUpdates = [
     "version": "2026.08.23"
   },
   {
+    "id": "staff-2026-08-23-director-adjustment-entry",
+    "publishedAt": "2026-08-23",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "合約與堂次調整入口簡化",
+    "summary": "課程管理把兩個容易混淆的調整功能收斂到同一個入口，主任先選情境，再進入正確流程。",
+    "items": [
+      "「操作」選單只顯示「合約／堂次調整」，不再同時放置「更正未收款堂數」與「轉移堂次紀錄」兩個容易混淆的按鈕。",
+      "未付款課程會先詢問是要把堂數改少，還是把已上課紀錄轉到另一份合約；兩個流程的帳務規則不會混在一起。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "「操作」選單只顯示「合約／堂次調整」，不再同時放置「更正未收款堂數」與「轉移堂次紀錄」兩個容易混淆的按鈕。",
+          "未付款課程會先詢問是要把堂數改少，還是把已上課紀錄轉到另一份合約；兩個流程的帳務規則不會混在一起。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-23:director-adjustment-entry"
+    ],
+    "date": "2026-08-23",
+    "version": "2026.08.23"
+  },
+  {
     "id": "staff-2026-08-22-manual-session-booking",
     "publishedAt": "2026-08-22",
     "effectiveAt": null,
