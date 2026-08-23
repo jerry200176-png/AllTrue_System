@@ -563,7 +563,7 @@ class ScheduleGuardService
         if (!empty($courseIds)) {
             $courseMetaMap = DB::table('StudentClass')
                 ->whereIn('ID', $courseIds)
-                ->select(['ID', 'SubjectID', 'Subject', 'StartDate'])
+                ->select(['ID', 'SubjectID', 'StartDate'])
                 ->get()
                 ->keyBy('ID')
                 ->toArray();
@@ -601,7 +601,7 @@ class ScheduleGuardService
             $meta = $courseMetaMap[$courseId] ?? null;
             $subjectName = '';
             if ($meta) {
-                $subjectName = (string) ($meta->Subject ?: ($subjectNameMap[(int) ($meta->SubjectID ?? 0)] ?? ''));
+                $subjectName = (string) ($subjectNameMap[(int) ($meta->SubjectID ?? 0)] ?? '');
             }
             $coursePeriod = $meta && $meta->StartDate
                 ? Carbon::parse((string) $meta->StartDate)->format('n/j') . '期'
