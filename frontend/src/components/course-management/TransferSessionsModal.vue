@@ -47,7 +47,7 @@
 
       <div class="form-group">
         <label>選擇要搬的堂次（{{ selectedIds.length }} / {{ sessions.length }}）</label>
-        <div v-if="sessions.length === 0" class="hint">這門課目前沒有可選的堂次。</div>
+        <div v-if="sessions.length === 0" class="hint">這門課目前沒有可轉移的已上課堂次。</div>
         <div v-else class="session-pick-list">
           <label v-for="s in sessions" :key="s.id" class="session-pick-row">
             <input type="checkbox" :value="s.id" v-model="selectedIds" :disabled="submitting" />

@@ -3635,9 +3635,19 @@ class StudentClassController extends Controller
                     'message' => '來源課程已提前結清，堂次與紀錄已鎖定，無法轉移。',
                 ], 422);
             }
+            if ((int) $target->ID === (int) $source->ID) {
+                return response()->json([
+                    'message' => '來源課程與目標課程不可相同。',
+                ], 422);
+            }
             if ((int) $target->StudentID !== (int) $source->StudentID) {
                 return response()->json([
                     'message' => '目標課程與來源課程的學生不一致，拒絕轉移。',
+                ], 422);
+            }
+            if ((int) ($target->SubjectID ?? 0) !== (int) ($source->SubjectID ?? 0)) {
+                return response()->json([
+                    'message' => '目標課程與來源課程的科目不一致，拒絕轉移。',
                 ], 422);
             }
 
@@ -3650,6 +3660,23 @@ class StudentClassController extends Controller
                 return response()->json([
                     'message' => '部分堂次不存在於來源課程，未執行任何轉移。',
                     'errors' => ['session_ids' => ['不存在的堂次 id: ' . implode(',', $missing)]],
+                ], 422);
+            }
+
+            $movableStatuses = ['attended', 'completed', 'late'];
+            $blockedSessions = $sessions->filter(function (ClassSession $session) use ($movableStatuses): bool {
+                return !in_array(
+                    strtolower((string) $session->getAttribute('Status')),
+                    $movableStatuses,
+                    true
+                );
+            });
+            if ($blockedSessions->isNotEmpty()) {
+                return response()->json([
+                    'message' => '只能轉移已上課的堂次；未上課、請假或缺席堂次請留在原合約處理。',
+                    'errors' => [
+                        'session_ids' => ['不可轉移堂次：' . $blockedSessions->pluck('id')->implode(', ')],
+                    ],
                 ], 422);
             }
 

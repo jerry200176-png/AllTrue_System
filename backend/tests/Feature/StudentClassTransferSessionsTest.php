@@ -126,6 +126,48 @@ class StudentClassTransferSessionsTest extends TestCase
         );
     }
 
+    public function test_rejects_uncompleted_sessions_without_moving_them(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $source = $this->createCourse($student->id, 1);
+        $target = $this->createCourse($student->id, 1);
+        $sessionId = $this->createClassSession((int) $source->ID, '2026-08-02', 'scheduled');
+
+        $res = $this->postJson(
+            "/api/v1/student-classes/{$source->ID}/transfer-sessions",
+            ['session_ids' => [$sessionId], 'target_student_class_id' => $target->ID],
+            ['Authorization' => "Bearer {$token}"]
+        );
+
+        $res->assertStatus(422);
+        $this->assertSame(
+            (int) $source->ID,
+            (int) DB::table('ClassSession')->where('id', $sessionId)->value('StudentClassID')
+        );
+    }
+
+    public function test_rejects_target_with_different_subject(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $source = $this->createCourse($student->id, 1);
+        $target = $this->createCourse($student->id, 1, ['SubjectID' => 2]);
+        $sessionId = $this->createClassSession((int) $source->ID, '2026-08-02');
+
+        $res = $this->postJson(
+            "/api/v1/student-classes/{$source->ID}/transfer-sessions",
+            ['session_ids' => [$sessionId], 'target_student_class_id' => $target->ID],
+            ['Authorization' => "Bearer {$token}"]
+        );
+
+        $res->assertStatus(422);
+        $this->assertSame(
+            (int) $source->ID,
+            (int) DB::table('ClassSession')->where('id', $sessionId)->value('StudentClassID')
+        );
+    }
+
     // ── helpers ──
 
     private function createDirectorToken(array $campusIds): string
@@ -177,9 +219,9 @@ class StudentClassTransferSessionsTest extends TestCase
         ]);
     }
 
-    private function createCourse(int $studentId, int $teacherId): StudentClass
+    private function createCourse(int $studentId, int $teacherId, array $overrides = []): StudentClass
     {
-        return StudentClass::create([
+        return StudentClass::create(array_merge([
             'StudentID' => $studentId,
             'GradeID' => 1,
             'SubjectID' => 1,
@@ -199,17 +241,17 @@ class StudentClassTransferSessionsTest extends TestCase
             'RemainingSessions' => 8,
             'ClassType' => 'one_on_one',
             'UsedSessions' => 0,
-        ]);
+        ], $overrides));
     }
 
-    private function createClassSession(int $courseId, string $date): int
+    private function createClassSession(int $courseId, string $date, string $status = 'attended'): int
     {
         return DB::table('ClassSession')->insertGetId([
             'StudentClassID' => $courseId,
             'SessionDate' => $date,
             'StartTime' => '23:00',
             'EndTime' => '23:30',
-            'Status' => 'attended',
+            'Status' => $status,
         ]);
     }
 
