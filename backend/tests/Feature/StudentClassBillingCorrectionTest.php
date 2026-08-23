@@ -92,7 +92,7 @@ class StudentClassBillingCorrectionTest extends TestCase
             'Charge' => 4400,
             'Paid' => 0,
             'RemainingSessions' => 0,
-            'UsedSessions' => 7,
+            'UsedSessions' => 4,
         ]);
         $this->assertDatabaseHas('ClassSession', [
             'StudentClassID' => $course->ID,
