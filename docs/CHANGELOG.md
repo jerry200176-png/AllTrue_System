@@ -1,3 +1,10 @@
+## 2026-08-23 — improved(performance): 第一批頁面載入優化
+
+<!-- release-notes: staff_update=staff-2026-08-23-performance-first-batch -->
+
+- 主任首頁的獨立資料區塊改為平行載入；單一區塊失敗時，其他區塊仍可完成顯示。
+- 登入初始化與行事曆資料請求減少等待鏈；Vite 內容雜湊資產改採長效快取，HTML 與版本資訊維持即時 revalidate。
+
 ## 2026-08-23 — fix(schedule): 寫入時阻擋學生重疊課程並對齊堂數摘要
 
 <!-- release-notes: staff_update=staff-2026-08-23-overlap-entitlement-root-guard -->

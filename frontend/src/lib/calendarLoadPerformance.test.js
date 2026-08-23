@@ -4,6 +4,7 @@ import {
   shouldUseLegacyCalendarFallback,
   isRangeWithinFetchedBounds,
 } from './calendarLoadPerformance.js';
+import { runDashboardLoaders } from './dashboardLoadPlan.js';
 
 assert.deepEqual(
   resolveCalendarDataFetchBoundsYmd([
@@ -75,6 +76,29 @@ assert.equal(
   false,
   'missing target range must refetch'
 );
+
+const dashboardStarted = [];
+const dashboardStartedAt = Date.now();
+const dashboardResults = await runDashboardLoaders({
+  slow: async () => {
+    dashboardStarted.push('slow');
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    return 'slow';
+  },
+  fast: async () => {
+    dashboardStarted.push('fast');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    return 'fast';
+  },
+  failed: async () => {
+    dashboardStarted.push('failed');
+    throw new Error('one card failed');
+  },
+});
+assert.ok(Date.now() - dashboardStartedAt < 90, 'dashboard cards should load concurrently');
+assert.deepEqual(dashboardStarted, ['slow', 'fast', 'failed'], 'all dashboard cards should start together');
+assert.equal(dashboardResults[1].value, 'fast', 'successful dashboard card should be preserved');
+assert.equal(dashboardResults[2].status, 'rejected', 'one dashboard card failure should stay isolated');
 
 // teacher 視圖：branchId 為 0，視窗 branchId 也為 0 → 以日期判斷
 assert.equal(

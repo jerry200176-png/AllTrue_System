@@ -4,6 +4,22 @@
 
 updates:
 
+  - id: staff-2026-08-23-performance-first-batch
+    published_at: "2026-08-23"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 頁面載入更順暢
+    summary: 登入、主任首頁與行事曆減少等待，常用資產也會更有效率地快取。
+    items:
+      - category: improved
+        text: 主任首頁的獨立資料區塊會同時載入，不會因單一區塊較慢而拖住整頁。
+      - category: improved
+        text: 登入與行事曆資料減少連續等待；已下載過的內容切換檢視時更快回應。
+    source_refs:
+      - "changelog:2026-08-23:performance-first-batch"
+
   - id: staff-2026-08-23-overlap-entitlement-root-guard
     published_at: "2026-08-23"
     audiences:

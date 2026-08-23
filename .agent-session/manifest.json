@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "e4400c81eab24f0e8911147e9d1e9f57",
+  "session_id": "5d989f5f39814849a5ffed369b77e4e0",
   "project": "alltrue",
-  "task_id": "overlap-entitlement-root-fix-20260823",
+  "task_id": "performance-all-pages-20260823",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "cafa432e8ae4b8f796000f272131d3a03820b7d0",
-  "branch": "chore/task-overlap-entitlement-root-fix-20260823",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/overlap-entitlement-root-fix-20260823",
-  "started_at": "2026-08-23T08:42:10Z",
+  "base_sha": "05a9512c87fa465a5c672a51c919ca6bf504f8f2",
+  "branch": "chore/task-performance-all-pages-20260823",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/performance-all-pages-20260823",
+  "started_at": "2026-08-23T10:23:21Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": null,
+  "agent_cli": "codex",
   "gateway_version": "0.5.0"
 }
