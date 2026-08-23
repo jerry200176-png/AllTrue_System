@@ -95,6 +95,8 @@ class SessionDeductionService
      * @return array<int,array{
      *   expected_used:int,
      *   observed_used:int,
+     *   class_session_used:int,
+     *   cancelled_usage_artifacts:int,
      *   ledger_used:int,
      *   ledger_net_minutes:int,
      *   has_partial:bool,
@@ -115,6 +117,45 @@ class SessionDeductionService
             ->get(['ID', 'ScheduleMode', 'SessionCount', 'SessionDuration'])
             ->keyBy('ID');
         $observed = self::batchObservedUsedSessions($ids);
+
+        $classSessionUsed = ClassSession::query()
+            ->whereIn('StudentClassID', $ids)
+            ->whereIn('Status', ['completed', 'attended', 'late'])
+            ->groupBy('StudentClassID')
+            ->selectRaw('StudentClassID, COUNT(*) as c')
+            ->pluck('c', 'StudentClassID');
+
+        // A cancelled ClassSession should not retain active attendance,
+        // approved learning evidence, or a positive session ledger net. Keep
+        // this diagnostic separate from the normal scheduled+sign-in path,
+        // where the effective attendance can legitimately precede a status
+        // transition.
+        $cancelledUsageArtifacts = ClassSession::query()
+            ->from('ClassSession as cancelled_cs')
+            ->whereIn('cancelled_cs.StudentClassID', $ids)
+            ->whereRaw("LOWER(cancelled_cs.Status) = 'cancelled'")
+            ->where(function ($q) {
+                $q->whereExists(function ($sub) {
+                    $sub->selectRaw('1')
+                        ->from('StudentSingIn as cancelled_si')
+                        ->whereColumn('cancelled_si.ClassSessionID', 'cancelled_cs.id')
+                        ->whereNull('cancelled_si.VoidedAt')
+                        ->where('cancelled_si.SessionDeducted', true);
+                })->orWhereExists(function ($sub) {
+                    $sub->selectRaw('1')
+                        ->from('LearningRecord as cancelled_lr')
+                        ->whereColumn('cancelled_lr.ClassSessionID', 'cancelled_cs.id')
+                        ->whereNull('cancelled_lr.VoidedAt');
+                })->orWhereRaw("(
+                    SELECT COALESCE(SUM(CASE WHEN l.event_type = 'deduct' THEN 1 ELSE -1 END), 0)
+                    FROM session_deduction_ledger l
+                    WHERE l.student_class_id = cancelled_cs.StudentClassID
+                      AND l.class_session_id = cancelled_cs.id
+                ) > 0");
+            })
+            ->groupBy('cancelled_cs.StudentClassID')
+            ->selectRaw('cancelled_cs.StudentClassID, COUNT(*) as c')
+            ->pluck('c', 'cancelled_cs.StudentClassID');
 
         $perSessionSql = 'CASE WHEN sc.SessionDuration >= 1 THEN sc.SessionDuration ELSE '
             . StudentClass::DEFAULT_SESSION_MINUTES . ' END';
@@ -151,6 +192,8 @@ class SessionDeductionService
             $ledgerRow = $ledger->get($id);
             $ledgerUsed = max(0, (int) ($ledgerRow->net_events ?? 0));
             $observedUsed = max(0, (int) ($observed[$id] ?? 0));
+            $classSessionUsedCount = max(0, (int) ($classSessionUsed[$id] ?? 0));
+            $cancelledUsageArtifactCount = max(0, (int) ($cancelledUsageArtifacts[$id] ?? 0));
             $usedByAttendance = max($observedUsed, $ledgerUsed);
             $sessionCount = max(0, (int) ($course->SessionCount ?? 0));
             $isSessionMode = (string) ($course->ScheduleMode ?? 'count') === 'count';
@@ -175,6 +218,8 @@ class SessionDeductionService
             $out[$id] = [
                 'expected_used' => $expectedUsed,
                 'observed_used' => $observedUsed,
+                'class_session_used' => $classSessionUsedCount,
+                'cancelled_usage_artifacts' => $cancelledUsageArtifactCount,
                 'ledger_used' => $ledgerUsed,
                 'ledger_net_minutes' => $netMinutes,
                 'has_partial' => $hasPartial,

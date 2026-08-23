@@ -169,7 +169,14 @@ class StudentClassController extends Controller
             ->pluck('status', 'id')
             ->toArray();
         $classIds = $classes->getCollection()->pluck('ID')->map(fn ($id) => (int) $id)->filter(fn ($id) => $id > 0)->values()->all();
-        $observedUsedByClass = SessionDeductionService::batchObservedUsedSessions($classIds);
+        // Keep the list response honest when a cancelled session left behind a
+        // sign-in/ledger artifact. Choosing one evidence source silently creates
+        // the "已上 6 / 剩 1" contradiction directors see.
+        $usageDiagnosticsByClass = SessionDeductionService::batchExpectedUsedSessionDiagnostics($classIds);
+        $observedUsedByClass = array_map(
+            static fn (array $diagnostic): int => (int) $diagnostic['observed_used'],
+            $usageDiagnosticsByClass
+        );
         $paidAtMap = AlertController::lastPaidAtByStudentClassIds($classIds);
         $invoiceAggMap = AlertController::invoiceAggregateByStudentClassIds($classIds);
 
@@ -233,7 +240,7 @@ class StudentClassController extends Controller
             }
         }
 
-        $classes->getCollection()->transform(function ($class) use ($courseNames, $subjectNames, $teacherNames, $userStatuses, $observedUsedByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap, $invoiceAggMap, $packageMap) {
+        $classes->getCollection()->transform(function ($class) use ($courseNames, $subjectNames, $teacherNames, $userStatuses, $observedUsedByClass, $usageDiagnosticsByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap, $invoiceAggMap, $packageMap) {
             $class->subject_name = $courseNames[$class->SubjectID]
                 ?? $subjectNames[$class->SubjectID]
                 ?? null;
@@ -401,6 +408,7 @@ class StudentClassController extends Controller
             $class->effective_charge = $effectiveCharge;
             $class->charge_is_fallback = $storedCharge <= 0 && $effectiveCharge > 0;
             $observedUsedSessions = (int) ($observedUsedByClass[$class->ID] ?? 0);
+            $usageDiagnostic = $usageDiagnosticsByClass[(int) $class->ID] ?? null;
 
             // Remaining = 購買堂數 − 實際已上（扣點、已完成堂次、已核准評量取最大後再與購買數取 cap）
 
@@ -418,6 +426,24 @@ class StudentClassController extends Controller
             }
             $class->sessions_used = (int) ($class->UsedSessions ?? 0);
             $class->remaining_sessions = (int) ($class->RemainingSessions ?? 0);
+            if ($usageDiagnostic !== null) {
+                $expectedRemaining = max(
+                    0,
+                    (int) $class->sessions_purchased - (int) $usageDiagnostic['expected_used']
+                );
+                $class->usage_balance_status = (
+                    (int) $usageDiagnostic['cancelled_usage_artifacts'] > 0
+                    || (int) ($class->RemainingSessions ?? 0) !== $expectedRemaining
+                ) ? 'review_required' : 'ok';
+                $class->usage_balance_diagnostic = [
+                    'observed_used_sessions' => (int) $usageDiagnostic['observed_used'],
+                    'class_session_used_sessions' => (int) $usageDiagnostic['class_session_used'],
+                    'cancelled_usage_artifacts' => (int) $usageDiagnostic['cancelled_usage_artifacts'],
+                    'ledger_used_sessions' => (int) $usageDiagnostic['ledger_used'],
+                    'expected_used_sessions' => (int) $usageDiagnostic['expected_used'],
+                    'expected_remaining_sessions' => $expectedRemaining,
+                ];
+            }
             // 精確剩餘分鐘（部分補課顯示用）；null = 尚未分鐘化的舊資料。
             $class->remaining_minutes = $storedRemainingMinutes !== null ? (int) $storedRemainingMinutes : null;
             $this->attachPreciseBalanceFields($class);

@@ -54,6 +54,42 @@ class AdminDuplicateSessionControllerTest extends TestCase
         $this->assertSame('cancelled', DB::table('ClassSession')->where('id', $dropCs)->value('Status'));
     }
 
+    public function test_patch_p2_review_reverses_usage_for_cancelled_duplicate_side(): void
+    {
+        $campus = Campus::factory()->create();
+        $token = $this->directorToken($campus->id);
+
+        [$studentId, $keepSc, $dropSc, $keepCs, $dropCs] = $this->seedDuplicatePair(studentId: 91012, campusId: $campus->id);
+        DB::table('session_deduction_ledger')->insert([
+            'student_class_id' => $dropSc,
+            'class_session_id' => $dropCs,
+            'event_type' => 'deduct',
+            'source' => 'attendance',
+            'note' => 'duplicate-session test',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $groupId = rtrim(strtr(base64_encode($studentId . ':2026-06-10:17:00'), '+/', '-_'), '=');
+
+        $res = $this->withToken($token)->patchJson("/api/v1/admin/duplicate-sessions/p2-review/{$groupId}", [
+            'keep_student_class_id' => $keepSc,
+            'reason' => '第七堂為跨合約重複課程',
+        ]);
+
+        $res->assertOk()
+            ->assertJsonPath('data.cancelled_count', 1)
+            ->assertJsonPath('data.reversed_count', 1);
+
+        $this->assertSame(1, DB::table('session_deduction_ledger')
+            ->where('student_class_id', $dropSc)
+            ->where('class_session_id', $dropCs)
+            ->where('event_type', 'reverse')
+            ->count());
+        $this->assertSame(0, (int) DB::table('StudentClass')->where('ID', $dropSc)->value('UsedSessions'));
+        $this->assertSame(1, (int) DB::table('StudentClass')->where('ID', $keepSc)->value('UsedSessions'));
+        $this->assertSame('attended', DB::table('ClassSession')->where('id', $keepCs)->value('Status'));
+    }
+
     public function test_patch_p2_review_rejects_keep_student_class_id_outside_group_without_partial_write(): void
     {
         $campus = Campus::factory()->create();

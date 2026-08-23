@@ -313,6 +313,11 @@
                       <span v-else class="hint">未排定</span>
                       <span v-if="c.schedule_drift" class="schedule-drift-badge" :title="c.contract_exception_count > 0 ? '堂次偏移（另含 ' + c.contract_exception_count + ' 堂補課例外，不受影響）。若偏移非刻意調課，請開啟「編輯」確認固定排課後按儲存，系統會自動同步偏移堂次。' : '未上預排堂次與固定排課（契約）的星期／時段不一致。若偏移非刻意調課，請開啟「編輯」確認固定排課後按儲存，系統會自動同步未上預排堂次。'">⚠ 堂次偏移</span>
                       <span v-else-if="c.contract_exception_count > 0" class="contract-exception-badge" :title="'含 ' + c.contract_exception_count + ' 堂非固定星期的補課／加課，不會被重建覆寫。'">補課例外</span>
+                      <span
+                        v-if="c.usage_balance_status === 'review_required'"
+                        class="usage-balance-warning"
+                        :title="usageBalanceWarningTitle(c)"
+                      >⚠ 堂數待對帳</span>
                     </td>
                     <td>
                       <button
@@ -1939,6 +1944,12 @@ function openBillingCorrectionModal(course) {
 
 function isUnpaidCountCourse(course) {
   return isSessionMode(course) && !course?.PackageID && course?.payment_status !== 'paid';
+}
+
+function usageBalanceWarningTitle(course) {
+  const diagnostic = course?.usage_balance_diagnostic;
+  if (!diagnostic) return '課堂狀態與扣堂紀錄不一致，請先完成重複堂次／扣堂對帳。';
+  return `課堂狀態顯示已上 ${diagnostic.class_session_used_sessions} 堂，但扣堂紀錄為 ${diagnostic.ledger_used_sessions} 堂；請先完成對帳，再作為收費依據。`;
 }
 
 function openContractAdjustmentModal(course) {
@@ -5791,6 +5802,17 @@ onUnmounted(() => {
   color: #1d4ed8;
   background: #dbeafe;
   border: 1px solid #93c5fd;
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+.usage-balance-warning {
+  display: inline-block;
+  margin-top: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ds-danger);
+  background: var(--ds-danger-wash);
+  border: 1px solid var(--ds-hairline);
   border-radius: 4px;
   padding: 1px 6px;
 }

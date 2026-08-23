@@ -60,7 +60,7 @@ export async function fetchP2ReviewGroups({ campusId, status = 'pending' } = {})
  * @param {object} payload
  * @param {number} payload.keep_student_class_id — 要保留的 StudentClassID
  * @param {string} [payload.reason] — 決策原因
- * @returns {Promise<{ cancelled_count: number, kept_session_ids: number[] }>}
+ * @returns {Promise<{ cancelled_count: number, reversed_count: number, voided_learning_record_count: number, voided_sign_in_count: number, kept_session_ids: number[] }>}
  */
 export async function patchP2ReviewGroup(groupId, { keep_student_class_id, reason } = {}) {
   const res = await fetch(`${API}/admin/duplicate-sessions/p2-review/${encodeURIComponent(groupId)}`, {

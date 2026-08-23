@@ -635,7 +635,8 @@ async function onSubmit(g) {
     expandedKey.value = null;
     const cancelled = result?.cancelled_count ?? 0;
     const kept = result?.kept_session_ids?.length ?? 0;
-    showToast(`已取消 ${cancelled} 筆堂次，保留 ${kept} 筆。`);
+    const reversed = result?.reversed_count ?? 0;
+    showToast(`已取消 ${cancelled} 筆堂次，沖回 ${reversed} 筆扣堂，保留 ${kept} 筆。`);
   } catch {
     showToast(submitError.value || '提交失敗', 'error');
   }

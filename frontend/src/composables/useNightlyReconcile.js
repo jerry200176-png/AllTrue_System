@@ -17,7 +17,7 @@ export function useNightlyReconcile(tokenRef) {
   const filters = ref({
     campus: '',       // campus_name（空字串 = 全部）
     subject: '',      // subject_name
-    category: '',     // attendance_ahead | ledger_ahead | counter_overstated | partial_minutes | contract_cap
+    category: '',     // attendance_ahead | ledger_ahead | counter_overstated | partial_minutes | contract_cap | source_conflict
   });
   const sortKey = ref('diff');        // 預設依 diff 降冪
   const sortDir = ref('desc');        // 'asc' | 'desc'
@@ -147,6 +147,7 @@ export function useNightlyReconcile(tokenRef) {
       counter_overstated: '已用堂數偏高',
       partial_minutes: '部分時數換算',
       contract_cap: '出勤超出合約堂數',
+      source_conflict: '課堂狀態與扣堂證據衝突',
       unknown: '待分類',
     };
     return map[cat] || cat;

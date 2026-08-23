@@ -2,6 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ClassSession;
+use App\Models\LearningRecord;
+use App\Models\StudentSignIn;
+use App\Services\SessionDeductionService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -159,18 +163,86 @@ class AdminDuplicateSessionController extends Controller
 
         $cancelledCount = 0;
         $keptSessionIds = [];
-        DB::transaction(function () use ($rows, $keepScId, &$cancelledCount, &$keptSessionIds) {
+        $reversedCount = 0;
+        $voidedLearningRecordCount = 0;
+        $voidedSignInCount = 0;
+        $affectedStudentClassIds = [];
+        $actorId = $request->attributes->get('auth_user')?->id;
+        $reason = trim((string) $request->input('reason', '')) ?: '跨合約重複課程審核';
+
+        DB::transaction(function () use (
+            $rows,
+            $keepScId,
+            $actorId,
+            $reason,
+            &$cancelledCount,
+            &$keptSessionIds,
+            &$reversedCount,
+            &$voidedLearningRecordCount,
+            &$voidedSignInCount,
+            &$affectedStudentClassIds
+        ) {
             foreach ($rows as $row) {
                 if ((int) $row->StudentClassID === $keepScId) {
                     $keptSessionIds[] = (int) $row->id;
                     continue;
                 }
-                DB::table('ClassSession')->where('id', $row->id)->update([
-                    'Status' => 'cancelled',
-                    'Note' => trim(((string) ($row->Note ?? '')) . ' 資料修復 #1130 — 主任審核決策保留 SC' . $keepScId),
-                    'updated_at' => now(),
-                ]);
+
+                $session = ClassSession::query()->whereKey((int) $row->id)->lockForUpdate()->first();
+                if (!$session || strtolower((string) $session->Status) === 'cancelled') {
+                    continue;
+                }
+
+                $studentClassId = (int) $session->StudentClassID;
+                $affectedStudentClassIds[$studentClassId] = true;
+                $voidReason = '跨合約重複課程：' . $reason;
+
+                // Cancelling a duplicate must undo every usage artifact that
+                // belongs to the dropped contract. A raw ClassSession update
+                // leaves the attendance ledger at +1, which is exactly why a
+                // later unpaid-contract correction still sees the old count.
+                StudentSignIn::query()
+                    ->where('ClassSessionID', (int) $session->id)
+                    ->active()
+                    ->get()
+                    ->each(function (StudentSignIn $signIn) use ($actorId, $voidReason, &$voidedSignInCount): void {
+                        $signIn->VoidedAt = now();
+                        $signIn->VoidedByUserID = $actorId ?: null;
+                        $signIn->VoidReason = $voidReason;
+                        $signIn->save();
+                        $voidedSignInCount++;
+                    });
+
+                LearningRecord::query()
+                    ->where('ClassSessionID', (int) $session->id)
+                    ->active()
+                    ->get()
+                    ->each(function (LearningRecord $record) use ($actorId, $voidReason, &$voidedLearningRecordCount): void {
+                        $record->VoidedAt = now();
+                        $record->VoidedByUserID = $actorId ?: null;
+                        $record->VoidReason = $voidReason;
+                        $record->save();
+                        $voidedLearningRecordCount++;
+                    });
+
+                $session->Status = 'cancelled';
+                $session->Note = trim(((string) $session->Note) . ' 資料修復 #1130 — 主任審核決策保留 SC' . $keepScId);
+                $session->save();
+
+                if (SessionDeductionService::reverseForSession(
+                    $studentClassId,
+                    (int) $session->id,
+                    'duplicate_session',
+                    $actorId ? (int) $actorId : null,
+                    $voidReason
+                )) {
+                    $reversedCount++;
+                }
                 $cancelledCount++;
+            }
+
+            foreach (array_keys($affectedStudentClassIds) as $studentClassId) {
+                SessionDeductionService::recomputeCounters((int) $studentClassId);
             }
         });
 
@@ -179,8 +251,8 @@ class AdminDuplicateSessionController extends Controller
             'date' => $date,
             'time' => $time,
             'keep_student_class_id' => $keepScId,
-            'reason' => $request->input('reason', ''),
-            'decided_by' => $request->attributes->get('auth_user')?->id,
+            'reason' => $reason,
+            'decided_by' => $actorId,
             'decided_at' => now()->toIso8601String(),
         ];
         $path = storage_path('logs/duplicate-session-decisions.jsonl');
@@ -197,13 +269,19 @@ class AdminDuplicateSessionController extends Controller
             'time' => $time,
             'keep_sc_id' => $keepScId,
             'cancelled_count' => $cancelledCount,
-            'executed_by' => $request->attributes->get('auth_user')?->id,
+            'reversed_count' => $reversedCount,
+            'voided_learning_record_count' => $voidedLearningRecordCount,
+            'voided_sign_in_count' => $voidedSignInCount,
+            'executed_by' => $actorId,
         ]);
 
         return response()->json([
             'data' => [
                 'cancelled_count' => $cancelledCount,
                 'kept_session_ids' => $keptSessionIds,
+                'reversed_count' => $reversedCount,
+                'voided_learning_record_count' => $voidedLearningRecordCount,
+                'voided_sign_in_count' => $voidedSignInCount,
             ],
         ]);
     }
