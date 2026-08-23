@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
+use App\Services\ClassSessionMaterializationService;
 
 /**
  * @property int $id
@@ -33,6 +34,8 @@ class ClassSession extends Model
 
     private ?bool $preloadedCourseSettlementLocked = null;
 
+    private ?StudentClass $preloadedStudentClass = null;
+
     protected $fillable = [
         'StudentClassID',
         'SubjectID',
@@ -52,12 +55,28 @@ class ClassSession extends Model
 
     protected static function booted(): void
     {
-        static::creating(fn (ClassSession $session) => $session->assertCourseIsMutable());
+        static::creating(function (ClassSession $session) {
+            $session->assertCourseIsMutable();
+            app(ClassSessionMaterializationService::class)->assertStudentSlotAvailableForSession($session);
+        });
         static::updating(function (ClassSession $session) {
             if ($session->isDirty(['StudentClassID', 'SessionDate', 'StartTime', 'EndTime', 'Status'])) {
                 $session->assertCourseIsMutable();
+                app(ClassSessionMaterializationService::class)->assertStudentSlotAvailableForSession($session);
             }
         });
+    }
+
+    public function setPreloadedStudentClass(StudentClass $studentClass): self
+    {
+        $this->preloadedStudentClass = $studentClass;
+
+        return $this;
+    }
+
+    public function preloadedStudentClass(): ?StudentClass
+    {
+        return $this->preloadedStudentClass;
     }
 
     public function setPreloadedCourseSettlementLock(?bool $locked): self

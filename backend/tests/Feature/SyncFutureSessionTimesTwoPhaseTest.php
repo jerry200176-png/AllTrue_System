@@ -29,6 +29,8 @@ class SyncFutureSessionTimesTwoPhaseTest extends TestCase
     private const MIGRATION = 'database/migrations/2026_07_09_100000_add_unique_class_session_slot_index.php';
     private const STUDENT_ID = 77902;
 
+    private static int $studentSerial = 0;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -135,9 +137,10 @@ class SyncFutureSessionTimesTwoPhaseTest extends TestCase
 
     private function seedCourse(): int
     {
-        if (!DB::table('Student')->where('id', self::STUDENT_ID)->exists()) {
+        $studentId = self::STUDENT_ID + self::$studentSerial++;
+        if (!DB::table('Student')->where('id', $studentId)->exists()) {
             DB::table('Student')->insert([
-                'id' => self::STUDENT_ID,
+                'id' => $studentId,
                 'name' => 'Sync1384',
                 'CampusID' => 1,
                 'ClassID' => 1,
@@ -148,7 +151,7 @@ class SyncFutureSessionTimesTwoPhaseTest extends TestCase
         }
 
         return (int) DB::table('StudentClass')->insertGetId([
-            'StudentID' => self::STUDENT_ID,
+            'StudentID' => $studentId,
             'GradeID' => 1,
             'SubjectID' => 1,
             'TeacherID' => 99,

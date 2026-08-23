@@ -1431,3 +1431,10 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **強制規則**：`DB_USERNAME`、`DB_PASSWORD`、`DB_HOST`、`DB_PORT` 與 `CURRENT_USER()` 必須視為同一個 identity tuple；任何修改密碼前，先以既有帳密取得唯一實際 `User@Host`，若不是唯一就 fail closed，不猜 host、不自動建立另一列。
 - **防再犯**：舊式 in-place rotation 已停用；正式輪替只能走 `deploy.yml` 的 Phase 1 → Phase 2 → Phase 3 staged path。repair workflow 必須列舉並驗證實際 host row，成功條件必須同時包含 fresh DB `SELECT 1`、Laravel fresh connection／`CURRENT_USER()` 與真正查 DB 的 API（例如 `/api/v1/branches`）。
 - **安全界線**：事故期間沒有把密碼寫入文件、log 或對話；修復只對既有 `admin@'%'` 改密碼，沒有改資料表、grant 權限或資料內容。
+
+### R121. 學生重疊課程必須在 ClassSession 寫入邊界攔截（2026-08-23）
+
+- **現象**：排課與課程建立流程各自有部分衝突檢查，仍可能在不同入口建立同一學生同時段的兩堂課；既有「重疊課程」分頁只能事後找出並修復。
+- **根因**：檢查散落在入口層，沒有保護所有 `ClassSession` 物化路徑；尚未物化的 `schedules` 也可能繞過只查 `ClassSession` 的檢查。
+- **強制規則**：未來 `scheduled`／`rescheduled` 堂次在寫入前必須檢查同學生、同日、時間區間重疊的有效 `ClassSession` 與 `schedules`；同課程冪等重送先回傳，取消／請假狀態依 `SessionStatus` 排除，歷史 `attended`／`completed` 匯入保留既有資料修復彈性，試聽例外維持既有政策。
+- **防再犯**：新增跨課程重疊回歸測試；課程管理展開摘要的非方案課程必須使用後端已用／剩餘口徑，不能只數當前載入的日期晶片。讀側投影若為維持批次查詢預算而不擋，必須保留重疊稽核入口，不可拿投影當預約檢查。

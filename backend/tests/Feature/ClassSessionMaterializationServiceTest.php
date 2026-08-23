@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Exceptions\SlotOccupiedException;
+use App\Models\ClassSession;
 use App\Models\StudentClass;
 use App\Services\ClassSessionMaterializationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -20,7 +22,7 @@ class ClassSessionMaterializationServiceTest extends TestCase
 
         $slot = [
             'StudentClassID' => $courseId,
-            'SessionDate' => '2026-06-10',
+            'SessionDate' => '2026-09-10',
             'StartTime' => '16:00',
             'EndTime' => '18:00:00',
             'Status' => 'scheduled',
@@ -42,7 +44,7 @@ class ClassSessionMaterializationServiceTest extends TestCase
             1,
             DB::table('ClassSession')
                 ->where('StudentClassID', $courseId)
-                ->whereDate('SessionDate', '2026-06-10')
+                ->whereDate('SessionDate', '2026-09-10')
                 ->whereRaw('SUBSTRING(StartTime, 1, 5) = ?', ['16:00'])
                 ->count()
         );
@@ -80,6 +82,79 @@ class ClassSessionMaterializationServiceTest extends TestCase
         );
 
         $this->assertCount(0, $settlementQueries);
+    }
+
+    public function test_upsert_slot_rejects_overlapping_session_for_the_same_student(): void
+    {
+        $firstCourseId = $this->createCourse(1, 1);
+        $secondCourseId = (int) DB::table('StudentClass')->insertGetId([
+            'StudentID' => 1,
+            'GradeID' => 1,
+            'SubjectID' => 2,
+            'TeacherID' => 2,
+            'by1' => 1,
+            'Period' => 4,
+            'TotalHours' => 0,
+            'Charge' => 0,
+            'Pay' => 0,
+            'Paid' => 0,
+            'Rate' => 0,
+            'ClassType' => 'one_on_one',
+            'StartDate' => now()->subDays(30)->toDateTimeString(),
+            'SessionCount' => 8,
+            'SessionDuration' => 120,
+            'RemainingSessions' => 8,
+            'UsedSessions' => 0,
+            'Stop' => 0,
+            'ScheduleMode' => 'count',
+        ]);
+        $service = app(ClassSessionMaterializationService::class);
+
+        $service->upsertSlot([
+            'StudentClassID' => $firstCourseId,
+            'SessionDate' => '2026-09-10',
+            'StartTime' => '16:00',
+            'EndTime' => '18:00',
+            'Status' => 'scheduled',
+        ]);
+
+        try {
+            $service->upsertSlot([
+                'StudentClassID' => $secondCourseId,
+                'SessionDate' => '2026-09-10',
+                'StartTime' => '17:00',
+                'EndTime' => '19:00',
+                'Status' => 'scheduled',
+            ]);
+            $this->fail('Expected overlapping student session to be rejected.');
+        } catch (SlotOccupiedException $exception) {
+            $this->assertSame('student_slot_conflict', $exception->toResponseArray()['code']);
+            $this->assertStringContainsString('學生在此時段已有其他課程', $exception->getMessage());
+        }
+    }
+
+    public function test_direct_class_session_save_also_rejects_student_overlap(): void
+    {
+        $firstCourseId = $this->createCourse(1, 1);
+        $secondCourseId = $this->createCourse(1, 2, ['SubjectID' => 2]);
+
+        ClassSession::create([
+            'StudentClassID' => $firstCourseId,
+            'SessionDate' => '2026-09-12',
+            'StartTime' => '16:00:00',
+            'EndTime' => '18:00:00',
+            'Status' => 'scheduled',
+        ]);
+
+        $this->expectException(SlotOccupiedException::class);
+        $this->expectExceptionMessage('學生在此時段已有其他課程');
+        ClassSession::create([
+            'StudentClassID' => $secondCourseId,
+            'SessionDate' => '2026-09-12',
+            'StartTime' => '17:00:00',
+            'EndTime' => '19:00:00',
+            'Status' => 'scheduled',
+        ]);
     }
 
     public function test_audit_duplicates_command_outputs_json_report(): void
@@ -121,13 +196,15 @@ class ClassSessionMaterializationServiceTest extends TestCase
 
     private function createCourse(int $studentId, int $teacherId, array $overrides = []): int
     {
-        DB::table('Student')->insert([
-            'id' => $studentId,
-            'name' => 'Materialize Test',
-            'CampusID' => 1,
-            'ClassID' => 1,
-            'enable' => 1,
-        ]);
+        if (!DB::table('Student')->where('id', $studentId)->exists()) {
+            DB::table('Student')->insert([
+                'id' => $studentId,
+                'name' => 'Materialize Test',
+                'CampusID' => 1,
+                'ClassID' => 1,
+                'enable' => 1,
+            ]);
+        }
 
         return (int) DB::table('StudentClass')->insertGetId(array_merge([
             'StudentID' => $studentId,

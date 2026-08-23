@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.08.23",
     "date": "2026-08-23",
     "title": "2026.08.23 草稿（未發布）",
-    "summary": "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。；收斂主任的合約與堂次調整入口",
+    "summary": "寫入時阻擋學生重疊課程並對齊堂數摘要；堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。",
     "audience": [
       "teacher",
       "director"
@@ -18,6 +18,7 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "寫入時阻擋學生重疊課程並對齊堂數摘要",
           "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。"
         ]
       },
@@ -29,6 +30,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "寫入時阻擋學生重疊課程並對齊堂數摘要",
       "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。",
       "收斂主任的合約與堂次調整入口"
     ]

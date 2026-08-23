@@ -5,14 +5,16 @@ namespace App\Services;
 use App\Exceptions\SlotOccupiedException;
 use App\Models\ClassSession;
 use App\Models\StudentClass;
+use App\Support\SessionStatus;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
 /**
  * Single write authority for ClassSession row creation (Phase 1 refactor).
  *
- * Idempotent on (StudentClassID, SessionDate, StartTime HH:MM). Does not encode
- * overlap policy, leave cascade, or LearningRecord side-effects — callers retain those.
+ * Idempotent on (StudentClassID, SessionDate, StartTime HH:MM). Interactive
+ * future writes are guarded at the model boundary; historical imports and
+ * read-side projections retain their existing audit/repair semantics.
  */
 class ClassSessionMaterializationService
 {
@@ -107,8 +109,16 @@ class ClassSessionMaterializationService
                 return ['session' => $existing, 'created' => false];
             }
 
+            $studentClass = ($slot['_student_class'] ?? null) instanceof StudentClass
+                ? $slot['_student_class']
+                : StudentClass::query()->whereKey($studentClassId)->lockForUpdate()->first();
+            if (!$studentClass) {
+                throw new InvalidArgumentException('ClassSession slot references an unknown StudentClass.');
+            }
+
             $payload = $this->buildCreatePayload($slot, $studentClassId, $sessionDate, $startTime);
             $session = new ClassSession($payload);
+            $session->setPreloadedStudentClass($studentClass);
             if (($slot['_student_class'] ?? null) instanceof StudentClass) {
                 $session->setPreloadedCourseSettlementLock(
                     $slot['_student_class']->isUsageSettlementLocked()
@@ -122,6 +132,129 @@ class ClassSessionMaterializationService
                 'created' => true,
             ];
         });
+    }
+
+    public function assertStudentSlotAvailableForSession(ClassSession $session): void
+    {
+        $studentClassId = (int) $session->getAttribute('StudentClassID');
+        $status = strtolower(trim((string) $session->getAttribute('Status')));
+        $note = strtolower((string) $session->getAttribute('Note'));
+        $sessionDate = $this->normalizeDate($session->getAttribute('SessionDate'));
+        if ($studentClassId <= 0
+            || !in_array($status, ['scheduled', 'rescheduled'], true)
+            || $sessionDate < now()->toDateString()
+            // Read-side monthly projection and schedule repair are derived
+            // views, not a director booking action; retain their batched query
+            // budget and let the duplicate audit report any legacy collision.
+            || str_contains($note, 'projected-monthly-materialized')
+            || str_contains($note, 'auto-materialized-from-schedule-read-repair')) {
+            return;
+        }
+
+        $studentClass = $session->preloadedStudentClass()
+            ?? StudentClass::query()->whereKey($studentClassId)->first();
+        if (!$studentClass) {
+            // A few legacy audit/constraint tests intentionally create a bare
+            // ClassSession row without its parent contract. There is no student
+            // identity to compare in that case; keep the existing FK behaviour
+            // and leave the overlap guard inapplicable.
+            return;
+        }
+
+        $this->assertStudentSlotAvailable(
+            $studentClass,
+            $studentClassId,
+            $sessionDate,
+            $this->normalizeTimeForStorage($session->getAttribute('StartTime')),
+            $this->normalizeTimeForStorage($session->getAttribute('EndTime')),
+            $session->exists() ? (int) $session->getKey() : null,
+        );
+    }
+
+    private function assertStudentSlotAvailable(
+        StudentClass $studentClass,
+        int $studentClassId,
+        string $sessionDate,
+        string $startTime,
+        string $endTime,
+        ?int $excludeSessionId = null,
+    ): void {
+        $studentId = (int) $studentClass->getAttribute('StudentID');
+        if ($studentId <= 0
+            || ((int) $studentClass->getAttribute('Stop') === 1
+                && (int) $studentClass->getAttribute('RemainingSessions') <= 0)
+            || strtolower(trim((string) $studentClass->getAttribute('ClassType'))) === 'trial') {
+            return;
+        }
+
+        $activeStatuses = SessionStatus::futureReservationExclusionStatuses();
+        $sessionConflict = ClassSession::query()
+            ->from('ClassSession as cs')
+            ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+            ->where('sc.StudentID', $studentId)
+            ->where('cs.StudentClassID', '!=', $studentClassId)
+            ->when($excludeSessionId !== null, fn ($query) => $query->where('cs.id', '!=', $excludeSessionId))
+            ->whereDate('cs.SessionDate', $sessionDate)
+            ->where(function ($query) {
+                $query->where('sc.Stop', 0)->orWhereNull('sc.Stop');
+            })
+            ->whereNotIn('cs.Status', $activeStatuses)
+            ->whereRaw("LOWER(COALESCE(sc.ClassType, '')) <> ?", ['trial'])
+            ->where('cs.StartTime', '<', $endTime)
+            ->where('cs.EndTime', '>', $startTime)
+            ->orderBy('cs.id')
+            ->first();
+
+        if ($sessionConflict) {
+            throw SlotOccupiedException::fromStudentConflict(
+                $studentClassId,
+                $sessionDate,
+                $startTime,
+                (int) $sessionConflict->getKey(),
+                $sessionConflict->getAttribute('Status') !== null
+                    ? (string) $sessionConflict->getAttribute('Status')
+                    : null,
+            );
+        }
+
+        // A schedule may exist before its ClassSession is materialized. Check it
+        // here too, otherwise a later backfill could recreate the overlap.
+        $scheduleConflict = DB::table('schedules as s')
+            ->leftJoin('StudentClass as sc', 'sc.ID', '=', 's.student_course_id')
+            ->where('s.student_id', $studentId)
+            ->whereDate('s.schedule_date', $sessionDate)
+            ->where('s.status', 'scheduled')
+            ->where(function ($query) use ($studentClassId) {
+                $query->whereNull('s.student_course_id')
+                    ->orWhere('s.student_course_id', '!=', $studentClassId);
+            })
+            // An original_schedule_id row is a substitute/reschedule history
+            // anchor. Its live ClassSession is checked above; the anchor itself
+            // must not block a valid renewal at the same student time.
+            ->whereNull('s.original_schedule_id')
+            ->where(function ($query) {
+                $query->whereNull('sc.ClassType')
+                    ->orWhereRaw("LOWER(sc.ClassType) <> ?", ['trial']);
+            })
+            ->where(function ($query) {
+                $query->whereNull('sc.ID')
+                    ->orWhere('sc.Stop', 0)
+                    ->orWhereNull('sc.Stop');
+            })
+            ->where('s.start_time', '<', substr($endTime, 0, 5))
+            ->where('s.end_time', '>', substr($startTime, 0, 5))
+            ->orderBy('s.id')
+            ->first(['s.id', 's.status']);
+
+        if ($scheduleConflict) {
+            throw SlotOccupiedException::fromStudentConflict(
+                $studentClassId,
+                $sessionDate,
+                $startTime,
+                null,
+                $scheduleConflict->status !== null ? (string) $scheduleConflict->status : null,
+            );
+        }
     }
 
     /**
