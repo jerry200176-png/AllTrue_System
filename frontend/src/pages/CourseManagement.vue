@@ -670,10 +670,40 @@
     <div v-if="showEditModal" class="modal-overlay">
       <div class="modal course-modal">
         <h3 class="modal-title">編輯課程</h3>
+        <AtInlineAlert v-if="editabilityLoading" tone="info" title="正在檢查課程狀態" style="margin: 0 0 14px;">
+          <p>正在確認付款、扣堂與對帳狀態；一般欄位仍可編輯。</p>
+        </AtInlineAlert>
+        <AtInlineAlert v-if="editabilityError" tone="warning" title="無法完成預檢" style="margin: 0 0 14px;">
+          <p>{{ editabilityError }} 儲存時仍會由後端再次檢查。</p>
+        </AtInlineAlert>
         <AtInlineAlert v-if="editSaveError" tone="danger" title="儲存失敗" style="margin: 0 0 14px;">
           <p>{{ editSaveError.message }}</p>
           <p v-if="editSaveError.details" class="alert-detail">{{ editSaveError.details }}</p>
+          <p v-if="editSaveError.hint" class="alert-detail">{{ editSaveError.hint }}</p>
         </AtInlineAlert>
+        <section v-if="editability?.reasons?.length" class="editability-action-panel" data-testid="course-editability-panel" aria-label="課程編輯分流">
+          <div class="editability-action-panel__intro">
+            <strong>這門課有資料不能用一般編輯改寫</strong>
+            <span>一般欄位可以繼續修改；要處理受保護資料，請從對應流程進入。</span>
+          </div>
+          <div v-for="reason in editability.reasons" :key="reason.code" class="editability-action-row">
+            <div class="editability-action-row__copy">
+              <strong>{{ reason.message }}</strong>
+              <span v-if="editabilityAffectedFields.length" class="editability-action-row__fields">
+                受保護欄位：{{ editabilityAffectedFields.join('、') }}
+              </span>
+              <span v-if="editabilityActionDescription(reason.next_step)" class="editability-action-row__description">
+                {{ editabilityActionDescription(reason.next_step) }}
+              </span>
+            </div>
+            <button
+              v-if="canOpenEditabilityAction(reason.next_step)"
+              type="button"
+              class="ghost small editability-action-row__button"
+              @click="openEditabilityAction(reason.next_step)"
+            >{{ editabilityActionLabel(reason.next_step) }} <span aria-hidden="true">→</span></button>
+          </div>
+        </section>
         <div class="form-section">
           <CourseEditForm
             ref="editFormRef"
@@ -687,6 +717,7 @@
             :show-remaining="true"
             :package-info="editPackageInfo"
             :context-title="editContextTitle"
+            :editability="editability"
           />
         </div>
         <div
@@ -698,7 +729,7 @@
         </div>
         <div class="actions">
           <button class="ghost" @click="showEditModal = false">取消</button>
-          <button class="primary" :disabled="editFormRef?.hasErrors" @click="submitEdit">儲存</button>
+          <button class="primary" :disabled="editFormRef?.hasErrors || editabilityLoading" @click="submitEdit">儲存</button>
         </div>
       </div>
     </div>
@@ -1166,6 +1197,13 @@ import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
 import { updatePackage } from '../lib/coursePackagesApi';
 import { buildEditTeacherOptions, shouldClearTeacherSelection } from '../lib/courseTeacherOptions';
 import { computePackageNextTotal, packageMemberSessionSummary } from '../lib/packageSessions';
+import {
+  editabilityActionDescription,
+  editabilityActionLabel,
+  editabilityFieldLabel,
+  editabilityNextStepForError,
+  editabilityNextStepLabel,
+} from '../lib/courseEditability';
 import { useCourseSessionsDisplay } from '../composables/course-management/useCourseSessionsDisplay';
 import { useRescheduleAndMakeup } from '../composables/course-management/useRescheduleAndMakeup';
 import { useSessionEditFlow } from '../composables/course-management/useSessionEditFlow';
@@ -1882,6 +1920,10 @@ const editingCourseRaw = ref(null);
 const editFormRef = ref(null);
 const editForm = ref({});
 const editSaveError = ref(null);
+const editability = ref(null);
+const editabilityLoading = ref(false);
+const editabilityError = ref('');
+let editabilityRequestId = 0;
 const editPackageInfo = computed(() => {
   const c = editingCourseRaw.value;
   if (!c?.PackageID) return null;
@@ -1900,6 +1942,58 @@ const editContextTitle = computed(() => {
   return studentName ? `正在編輯：${subjectLabel} ／ ${studentName}` : `正在編輯：${subjectLabel}`;
 });
 const editTeacherOptions = computed(() => buildEditTeacherOptions(teachers.value, editingCourseRaw.value));
+const editabilityAffectedFields = computed(() => (
+  (editability.value?.locked_fields || []).map(editabilityFieldLabel).filter(Boolean)
+));
+
+const EDITABILITY_ACTION_HANDLERS = new Set([
+  'billing_correction',
+  'transfer_sessions',
+  'void_payment',
+  'payment_report',
+]);
+
+function canOpenEditabilityAction(action) {
+  return EDITABILITY_ACTION_HANDLERS.has(action);
+}
+
+function openEditabilityAction(action) {
+  const course = editingCourseRaw.value;
+  if (!course) return;
+  showEditModal.value = false;
+  if (action === 'billing_correction') {
+    openBillingCorrectionModal(course);
+  } else if (action === 'transfer_sessions') {
+    openTransferSessionsModal(course);
+  } else if (action === 'void_payment' || action === 'payment_report') {
+    void openInvoiceModal(course);
+  }
+}
+
+async function loadCourseEditability(courseId) {
+  const requestId = ++editabilityRequestId;
+  editabilityLoading.value = true;
+  editabilityError.value = '';
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    if (!token) throw new Error('登入狀態已失效，無法完成預檢。');
+    const res = await fetch(`/api/v1/student-classes/${courseId}/editability`, {
+      credentials: 'include',
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body?.message || `預檢失敗（${res.status}）`);
+    if (requestId === editabilityRequestId) editability.value = body;
+  } catch (error) {
+    if (requestId === editabilityRequestId) {
+      editability.value = null;
+      editabilityError.value = error?.message || '課程狀態預檢失敗。';
+    }
+  } finally {
+    if (requestId === editabilityRequestId) editabilityLoading.value = false;
+  }
+}
 /** 開啟編輯時的排課指紋；儲存時若變更則自動 force_partial_rebuild 同步未上預排堂次 */
 const editScheduleBaseline = ref(null);
 const originalFirstClassDate = ref('');
@@ -4044,6 +4138,8 @@ function scheduleFingerprintForEdit(form) {
 const editCourse = (c) => {
   editingId.value = c.id;
   editSaveError.value = null;
+  editability.value = null;
+  editabilityError.value = '';
   editingCourseRaw.value = c;
   editingCourseFromLaravel.value = !!(
     c.data_source === 'laravel'
@@ -4095,6 +4191,7 @@ const editCourse = (c) => {
   originalFirstClassDate.value = c.first_class_date || '';
   loadRoomsForBranch();
   showEditModal.value = true;
+  if (editingCourseFromLaravel.value) void loadCourseEditability(c.id);
   nextTick(() => {
     editScheduleBaseline.value = scheduleFingerprintForEdit(editForm.value);
   });
@@ -4225,6 +4322,7 @@ const submitEdit = async () => {
         editSaveError.value = {
           message: err?.message || '更新失敗，請檢查欄位後再試。',
           details,
+          hint: editabilityNextStepLabel(editabilityNextStepForError(err)),
         };
         return;
       }
@@ -6183,6 +6281,54 @@ button.danger:disabled {
   max-width: 560px;
   max-height: 90vh;
   overflow-y: auto;
+}
+
+.editability-action-panel {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 16px;
+  padding: 12px;
+  border: 1px solid var(--ds-warning);
+  border-radius: 12px;
+  background: var(--ds-warning-wash);
+  color: var(--ds-ink);
+}
+.editability-action-panel__intro,
+.editability-action-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.editability-action-panel__intro {
+  flex-direction: column;
+  gap: 3px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.editability-action-panel__intro span,
+.editability-action-row__fields,
+.editability-action-row__description {
+  color: var(--ds-ink-mute);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.editability-action-row {
+  justify-content: space-between;
+  padding-top: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--ds-warning) 30%, transparent);
+}
+.editability-action-row__copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.editability-action-row__copy > strong {
+  font-size: 13px;
+  line-height: 1.45;
+}
+.editability-action-row__button {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .modal-title {
