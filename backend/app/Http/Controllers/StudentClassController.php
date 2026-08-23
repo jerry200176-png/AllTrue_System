@@ -2185,10 +2185,10 @@ class StudentClassController extends Controller
             'reason' => ['required', 'string', 'max:255'],
         ]);
         return DB::transaction(function () use ($studentClass, $data) {
-            $source = StudentClass::query()
-                ->where('ID', $studentClass->ID)
+            $source = StudentClass::query()->where('ID', $studentClass->getAttribute('ID'))
                 ->lockForUpdate()
-                ->firstOrFail();
+                ->first();
+            if (!$source) { abort(404); }
             $plan = $this->prepareSplitContractPlan($source, $data, true);
             $duplicate = $this->findDuplicatePurchaseBatch(
                 $source,
@@ -2207,19 +2207,19 @@ class StudentClassController extends Controller
             );
             $slots = $this->resolveScheduleSlotsForRebuild($source);
             if (empty($slots)) {
-                $fallbackTime = $this->normalizeSessionTime($source->time ?? null, '16:00');
+                $fallbackTime = $this->normalizeSessionTime($source->getAttribute('time'), '16:00');
                 $slots = [[
                     'weekday' => (int) Carbon::parse($plan['start_date'])->dayOfWeekIso,
                     'time' => substr($fallbackTime, 0, 5),
-                    'duration_minutes' => max(30, (int) ($source->SessionDuration ?? 120)),
+                    'duration_minutes' => max(30, (int) ($source->getAttribute('SessionDuration') ?? 120)),
                 ]];
             }
             $futureSessions = $this->buildSessionsForCount(
-                (int) $newCourse->ID,
+                (int) $newCourse->getAttribute('ID'),
                 $plan['start_date'],
                 $plan['future_session_count'],
                 $slots,
-                max(30, (int) ($source->SessionDuration ?? 120))
+                max(30, (int) ($source->getAttribute('SessionDuration') ?? 120))
             );
             $lastFutureDate = null;
             foreach ($futureSessions as $sessionData) {
@@ -2230,26 +2230,26 @@ class StudentClassController extends Controller
                 }
             }
             $selectedSessions = ClassSession::query()
-                ->where('StudentClassID', $source->ID)
+                ->where('StudentClassID', $source->getAttribute('ID'))
                 ->whereIn('id', $plan['session_ids'])
                 ->lockForUpdate()
                 ->get();
             foreach ($selectedSessions as $session) {
-                $session->StudentClassID = $newCourse->ID;
+                $session->setAttribute('StudentClassID', $newCourse->getAttribute('ID'));
                 $session->save();
             }
-            LearningRecord::whereIn('ClassSessionID', $plan['session_ids'])
-                ->update(['StudentClassID' => $newCourse->ID]);
-            StudentSignIn::whereIn('ClassSessionID', $plan['session_ids'])
-                ->update(['StudentClassID' => $newCourse->ID]);
-            $oldSourceCount = (int) ($source->SessionCount ?? 0);
-            $oldSourceCharge = (int) ($source->Charge ?? 0);
-            $source->SessionCount = $plan['source_session_count'];
-            $source->Charge = $plan['source_charge'];
+            LearningRecord::query()->whereIn('ClassSessionID', $plan['session_ids'])
+                ->update(['StudentClassID' => $newCourse->getAttribute('ID')]);
+            StudentSignIn::query()->whereIn('ClassSessionID', $plan['session_ids'])
+                ->update(['StudentClassID' => $newCourse->getAttribute('ID')]);
+            $oldSourceCount = (int) ($source->getAttribute('SessionCount') ?? 0);
+            $oldSourceCharge = (int) ($source->getAttribute('Charge') ?? 0);
+            $source->setAttribute('SessionCount', $plan['source_session_count']);
+            $source->setAttribute('Charge', $plan['source_charge']);
             $source->save();
             $adjustedInvoiceCount = 0;
             $openInvoices = Invoice::query()
-                ->where('StudentClassID', $source->ID)
+                ->where('StudentClassID', $source->getAttribute('ID'))
                 ->where(function ($query) {
                     $query->whereNull('Status')->orWhere('Status', '!=', 'void');
                 })
@@ -2266,17 +2266,17 @@ class StudentClassController extends Controller
                 $invoice->save();
                 InvoiceItem::query()
                     ->where('InvoiceID', $invoice->id)
-                    ->where('StudentClassID', $source->ID)
+                    ->where('StudentClassID', $source->getAttribute('ID'))
                     ->update(['Amount' => $plan['source_charge']]);
                 $adjustedInvoiceCount++;
             }
-            $this->cancelExcessScheduledSessions((int) $source->ID, $plan['source_session_count']);
-            SessionDeductionService::recomputeCounters((int) $source->ID);
-            SessionDeductionService::recomputeCounters((int) $newCourse->ID);
+            $this->cancelExcessScheduledSessions((int) $source->getAttribute('ID'), $plan['source_session_count']);
+            SessionDeductionService::recomputeCounters((int) $source->getAttribute('ID'));
+            SessionDeductionService::recomputeCounters((int) $newCourse->getAttribute('ID'));
             $source = $source->fresh();
             $newCourse = $newCourse->fresh();
             if ($lastFutureDate !== null) {
-                $newCourse->EndDate = $lastFutureDate;
+                $newCourse->setAttribute('EndDate', $lastFutureDate);
                 $newCourse->save();
                 $newCourse->refresh();
             }
@@ -2288,15 +2288,15 @@ class StudentClassController extends Controller
                     'actor_type' => 'user',
                     'actor_id' => request()->attributes->get('auth_user')?->id,
                     'subject_type' => 'student_class',
-                    'subject_id' => (int) $source->ID,
+                    'subject_id' => (int) $source->getAttribute('ID'),
                 ],
                 [
                     'old_session_count' => $oldSourceCount,
-                    'new_source_session_count' => (int) $source->SessionCount,
-                    'new_contract_session_count' => (int) $newCourse->SessionCount,
+                    'new_source_session_count' => (int) $source->getAttribute('SessionCount'),
+                    'new_contract_session_count' => (int) $newCourse->getAttribute('SessionCount'),
                     'old_charge' => $oldSourceCharge,
-                    'new_source_charge' => (int) $source->Charge,
-                    'new_contract_charge' => (int) $newCourse->Charge,
+                    'new_source_charge' => (int) $source->getAttribute('Charge'),
+                    'new_contract_charge' => (int) $newCourse->getAttribute('Charge'),
                     'transferred_session_count' => $plan['selected_session_count'],
                     'reason_hash' => hash('sha256', (string) $data['reason']),
                     'reason_code' => 'unpaid_contract_split',
@@ -2307,17 +2307,17 @@ class StudentClassController extends Controller
                 'message' => '合約拆分完成：已搬移堂次、建立新合約並同步更正未收款金額。',
                 'adjusted_invoice_count' => $adjustedInvoiceCount,
                 'source_course' => [
-                    'id' => (int) $source->ID,
-                    'session_count' => (int) $source->SessionCount,
-                    'charge' => (int) $source->Charge,
-                    'remaining_sessions' => (int) ($source->RemainingSessions ?? 0),
+                    'id' => (int) $source->getAttribute('ID'),
+                    'session_count' => (int) $source->getAttribute('SessionCount'),
+                    'charge' => (int) $source->getAttribute('Charge'),
+                    'remaining_sessions' => (int) ($source->getAttribute('RemainingSessions') ?? 0),
                     'transferred_session_count' => $plan['selected_session_count'],
                 ],
                 'new_course' => [
-                    'id' => (int) $newCourse->ID,
-                    'session_count' => (int) $newCourse->SessionCount,
-                    'charge' => (int) $newCourse->Charge,
-                    'remaining_sessions' => (int) ($newCourse->RemainingSessions ?? 0),
+                    'id' => (int) $newCourse->getAttribute('ID'),
+                    'session_count' => (int) $newCourse->getAttribute('SessionCount'),
+                    'charge' => (int) $newCourse->getAttribute('Charge'),
+                    'remaining_sessions' => (int) ($newCourse->getAttribute('RemainingSessions') ?? 0),
                     'transferred_session_count' => $plan['selected_session_count'],
                     'future_session_count' => $plan['future_session_count'],
                 ],
@@ -4183,7 +4183,7 @@ class StudentClassController extends Controller
 
     private function prepareSplitContractPlan(StudentClass $studentClass, array $data, bool $lockSessions = false): array
     {
-        if ((string) ($studentClass->ScheduleMode ?? 'count') !== 'count') {
+        if ((string) ($studentClass->getAttribute('ScheduleMode') ?? 'count') !== 'count') {
             abort(response()->json([
                 'message' => '只有堂數制課程可以使用合約拆分。',
                 'code' => 'split_contract_count_mode_only',
@@ -4195,19 +4195,19 @@ class StudentClassController extends Controller
                 'code' => 'split_contract_package_forbidden',
             ], 422));
         }
-        if ((int) ($studentClass->Paid ?? 0) === 1) {
+        if ((int) ($studentClass->getAttribute('Paid') ?? 0) === 1) {
             abort(response()->json([
                 'message' => '此課程已標記收款，請先走帳務更正／作廢流程。',
                 'code' => 'split_contract_paid_locked',
             ], 409));
         }
-        if ($studentClass->hasDeductionHistory() && (string) ($studentClass->closed_reason ?? '') === 'usage_settled') {
+        if ($studentClass->hasDeductionHistory() && (string) ($studentClass->getAttribute('closed_reason') ?? '') === 'usage_settled') {
             abort(response()->json([
                 'message' => '此課程已提前結清，堂次與紀錄已鎖定，無法拆分。',
                 'code' => 'split_contract_usage_settled',
             ], 422));
         }
-        $classId = (int) $studentClass->ID;
+        $classId = (int) $studentClass->getAttribute('ID');
         $activePayment = DB::table('Invoice')
             ->leftJoin('Payment', 'Payment.InvoiceID', '=', 'Invoice.id')
             ->where('Invoice.StudentClassID', $classId)
@@ -4239,7 +4239,7 @@ class StudentClassController extends Controller
                 'code' => 'billing_correction_payment_report_locked',
             ], 409));
         }
-        $rateUnit = strtolower(trim((string) ($studentClass->rate_unit ?? 'session')));
+        $rateUnit = strtolower(trim((string) ($studentClass->getAttribute('rate_unit') ?? 'session')));
         if ($rateUnit !== 'session') {
             abort(response()->json([
                 'message' => '只有按堂計費課程可以使用合約拆分。',
@@ -4262,7 +4262,7 @@ class StudentClassController extends Controller
         }
         $usedStatuses = ['completed', 'attended', 'late'];
         $invalidSessionIds = $sessions
-            ->filter(fn (ClassSession $session): bool => !in_array(strtolower((string) $session->Status), $usedStatuses, true))
+            ->filter(fn (ClassSession $session): bool => !in_array(strtolower((string) $session->getAttribute('Status')), $usedStatuses, true))
             ->pluck('id')
             ->map(fn ($id): int => (int) $id)
             ->values()
@@ -4275,7 +4275,7 @@ class StudentClassController extends Controller
             ], 422));
         }
         $observedUsed = (int) (SessionDeductionService::batchObservedUsedSessions([$classId])[$classId] ?? 0);
-        $oldSessionCount = (int) ($studentClass->SessionCount ?? 0);
+        $oldSessionCount = (int) ($studentClass->getAttribute('SessionCount') ?? 0);
         $futureSessionCount = $oldSessionCount - $observedUsed;
         $sourceSessionCount = $observedUsed - count($sessionIds);
         $newSessionCount = $oldSessionCount - $sourceSessionCount;
@@ -4286,7 +4286,7 @@ class StudentClassController extends Controller
                 'observed_used_sessions' => $observedUsed,
             ], 422));
         }
-        $rate = (float) ($studentClass->Rate ?? 0);
+        $rate = (float) ($studentClass->getAttribute('Rate') ?? 0);
         $sourceCharge = (int) round($rate * $sourceSessionCount);
         $newCharge = (int) round($rate * $newSessionCount);
         return [
@@ -4295,7 +4295,7 @@ class StudentClassController extends Controller
             'start_date' => Carbon::parse($data['start_date'])->toDateString(),
             'observed_used_sessions' => $observedUsed,
             'old_session_count' => $oldSessionCount,
-            'old_charge' => (int) ($studentClass->Charge ?? 0),
+            'old_charge' => (int) ($studentClass->getAttribute('Charge') ?? 0),
             'source_session_count' => $sourceSessionCount,
             'source_charge' => $sourceCharge,
             'new_session_count' => $newSessionCount,
@@ -4326,56 +4326,56 @@ class StudentClassController extends Controller
     }
     private function buildSplitContractPayload(StudentClass $source, array $plan): array
     {
-        $duration = max(30, (int) ($source->SessionDuration ?? 120));
+        $duration = max(30, (int) ($source->getAttribute('SessionDuration') ?? 120));
         return [
-            'StudentID' => (int) $source->StudentID,
-            'GradeID' => (int) ($source->GradeID ?? 1),
-            'SubjectID' => (int) ($source->SubjectID ?? 1),
-            'TeacherID' => (int) ($source->TeacherID ?? 0),
-            'by1' => (int) ($source->by1 ?? 1),
-            'Period' => (int) ($source->Period ?? 4),
+            'StudentID' => (int) $source->getAttribute('StudentID'),
+            'GradeID' => (int) ($source->getAttribute('GradeID') ?? 1),
+            'SubjectID' => (int) ($source->getAttribute('SubjectID') ?? 1),
+            'TeacherID' => (int) ($source->getAttribute('TeacherID') ?? 0),
+            'by1' => (int) ($source->getAttribute('by1') ?? 1),
+            'Period' => (int) ($source->getAttribute('Period') ?? 4),
             'StartDate' => $plan['start_date'],
             'EndDate' => null,
-            'week' => $source->week,
-            'time' => $source->time,
-            'week1' => $source->week1,
-            'time1' => $source->time1,
-            'week2' => $source->week2,
-            'time2' => $source->time2,
-            'week3' => $source->week3,
-            'time3' => $source->time3,
-            'week4' => $source->week4,
-            'time4' => $source->time4,
-            'week5' => $source->week5,
-            'time5' => $source->time5,
-            'week6' => $source->week6,
-            'time6' => $source->time6,
-            'duration1' => $source->duration1,
-            'duration2' => $source->duration2,
-            'duration3' => $source->duration3,
-            'duration4' => $source->duration4,
-            'duration5' => $source->duration5,
-            'duration6' => $source->duration6,
+            'week' => $source->getAttribute('week'),
+            'time' => $source->getAttribute('time'),
+            'week1' => $source->getAttribute('week1'),
+            'time1' => $source->getAttribute('time1'),
+            'week2' => $source->getAttribute('week2'),
+            'time2' => $source->getAttribute('time2'),
+            'week3' => $source->getAttribute('week3'),
+            'time3' => $source->getAttribute('time3'),
+            'week4' => $source->getAttribute('week4'),
+            'time4' => $source->getAttribute('time4'),
+            'week5' => $source->getAttribute('week5'),
+            'time5' => $source->getAttribute('time5'),
+            'week6' => $source->getAttribute('week6'),
+            'time6' => $source->getAttribute('time6'),
+            'duration1' => $source->getAttribute('duration1'),
+            'duration2' => $source->getAttribute('duration2'),
+            'duration3' => $source->getAttribute('duration3'),
+            'duration4' => $source->getAttribute('duration4'),
+            'duration5' => $source->getAttribute('duration5'),
+            'duration6' => $source->getAttribute('duration6'),
             'TotalHours' => (int) round(($plan['new_session_count'] * $duration) / 60),
-            'Memo' => $source->Memo,
+            'Memo' => $source->getAttribute('Memo'),
             'Charge' => $plan['new_charge'],
             'Pay' => 0,
             'PayDate' => null,
             'Paid' => 0,
-            'Disconunt' => $source->Disconunt,
-            'Rate' => (float) ($source->Rate ?? 0),
+            'Disconunt' => $source->getAttribute('Disconunt'),
+            'Rate' => (float) ($source->getAttribute('Rate') ?? 0),
             'rate_unit' => 'session',
-            'LearnTimeID' => $source->LearnTimeID,
-            'room_id' => $source->room_id,
-            'settlement_day' => $source->settlement_day,
-            'monthly_sessions' => $source->monthly_sessions,
+            'LearnTimeID' => $source->getAttribute('LearnTimeID'),
+            'room_id' => $source->getAttribute('room_id'),
+            'settlement_day' => $source->getAttribute('settlement_day'),
+            'monthly_sessions' => $source->getAttribute('monthly_sessions'),
             'MDate' => now(),
             'Stop' => 0,
             'ScheduleMode' => 'count',
             'SessionCount' => $plan['new_session_count'],
             'SessionDuration' => $duration,
             'RemainingSessions' => $plan['new_session_count'],
-            'ClassType' => $source->ClassType ?: 'one_on_one',
+            'ClassType' => $source->getAttribute('ClassType') ?: 'one_on_one',
             'UsedSessions' => 0,
             'standard_lesson_minutes' => $source->standard_lesson_minutes,
             'deduction_basis' => $source->deduction_basis,
@@ -6612,7 +6612,7 @@ class StudentClassController extends Controller
         $today = Carbon::today()->toDateString();
         $noteTag = $reason === 'settled' ? '[結案取消]' : '[暫停取消]';
 
-        return ClassSession::where('StudentClassID', $studentClass->ID)
+        return ClassSession::where('StudentClassID', $studentClass->getAttribute('ID'))
             ->where('SessionDate', '>=', $today)
             ->where('Status', 'scheduled')
             ->update([

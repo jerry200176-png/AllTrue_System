@@ -4,6 +4,44 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-23-split-contract-wizard",
+    "publishedAt": "2026-08-23",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "未收款課程可用合約拆分精靈",
+    "summary": "選取已上課堂次後，系統會先搬移紀錄，再自動試算並更正兩份未收款合約。",
+    "items": [
+      "合約拆分會保留評量／點名紀錄，並在送出前顯示舊約與新約的堂數及金額。",
+      "已收款、待對帳或不符合條件的課程會維持鎖定，不會被精靈改寫。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "合約拆分會保留評量／點名紀錄，並在送出前顯示舊約與新約的堂數及金額。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "已收款、待對帳或不符合條件的課程會維持鎖定，不會被精靈改寫。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-23:split-contract-wizard",
+      "github:#1901"
+    ],
+    "date": "2026-08-23",
+    "version": "2026.08.23"
+  },
+  {
     "id": "staff-2026-08-23-contract-correction-transfer-safety",
     "publishedAt": "2026-08-23",
     "effectiveAt": null,
