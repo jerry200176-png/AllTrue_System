@@ -203,7 +203,7 @@ function submit() {
 .split-summary { display: flex; align-items: stretch; gap: 8px; }
 .split-summary-card { flex: 1; display: flex; min-height: 125px; flex-direction: column; justify-content: center; gap: 5px; padding: 14px; border: 1px solid var(--ds-hairline); border-radius: 10px; background: var(--ds-canvas-soft); }
 .split-summary-card--new { border-color: var(--ds-brand); background: var(--ds-brand-wash); }
-.split-settlement-summary { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 12px; padding: 12px 14px; border: 1px solid var(--ds-warning, #f0c36a); border-radius: 10px; background: var(--ds-warning-wash, #fff9e8); color: var(--text); font-size: 12px; }
+.split-settlement-summary { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 12px; padding: 12px 14px; border: 1px solid var(--ds-warning); border-radius: 10px; background: var(--ds-warning-wash); color: var(--text); font-size: 12px; }
 .split-settlement-summary strong { flex-basis: 100%; font-size: 14px; }
 .split-waived { color: var(--ds-ink-mute); }
 .split-summary-label { color: var(--ds-ink-mute); font-size: 12px; font-weight: 800; }
