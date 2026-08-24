@@ -1,9 +1,38 @@
+## 2026-08-24 — improved(course): 收斂主任課程操作入口
+
+<!-- release-notes: staff_update=staff-2026-08-24-course-action-hierarchy -->
+
+- 課程列第一層只保留編輯、排課與查看詳情，主任可先處理最常見工作。
+- 帳單、合約／堂次調整、補課、換師複製與狀態管理移到「更多」並按情境分組；既有安全流程與功能不變。
+
+## 2026-08-23 — improved(performance): 主任次要資料查詢優化
+
+<!-- release-notes: staff_update=staff-2026-08-23-performance-backend-query -->
+
+- 主任頁面的老師評量填寫率查詢改用可使用索引的日期／時段比對，減少資料量增加後的等待時間。
+- 主任營運摘要合併重複的統計查詢，在不改變數字口徑的前提下降低資料庫往返次數。
+
+## 2026-08-23 — improved(performance): 第一批頁面載入優化
+
+<!-- release-notes: staff_update=staff-2026-08-23-performance-first-batch -->
+
+- 主任首頁的獨立資料區塊改為平行載入；單一區塊失敗時，其他區塊仍可完成顯示。
+- 登入初始化與行事曆資料請求減少等待鏈；Vite 內容雜湊資產改採長效快取，HTML 與版本資訊維持即時 revalidate。
+
 ## 2026-08-23 — fix(schedule): 寫入時阻擋學生重疊課程並對齊堂數摘要
 
 <!-- release-notes: staff_update=staff-2026-08-23-overlap-entitlement-root-guard -->
 
 - 主任新增／調整的未來 `ClassSession` 寫入會檢查同一學生的既有課堂與尚未物化的排課；同課程重送仍維持冪等，試聽課程維持既有旁聽例外。同一共用方案成員可維持刻意的平行科目軌；獨立平行課只有通過既有強制建立審計原因才放行，月結續約會先結束舊期再生成新期。歷史資料與讀側投影仍交由既有重疊稽核處理。
 - 課程管理展開摘要的「已上」數字改採後端已用／剩餘堂數口徑，與購買堂數及剩餘堂數一致；共用方案仍以方案池顯示。
+
+## 2026-08-24 — fix(course): 編輯前預檢與阻擋原因導引
+
+<!-- release-notes: staff_update=staff-2026-08-24-course-editability-preflight -->
+
+- 開啟課程編輯時先檢查扣堂、付款、共用方案與對帳狀態；被鎖欄位會直接標示原因與下一步。
+- 一般編輯儲存競態失敗時保留後端錯誤分類，直接導向堂數更正、作廢帳單、方案調整或對帳流程。
+- `student_class.edit_blocked` 以匿名稽核事件記錄主要阻擋原因與 HTTP 狀態，供後續統計主任反覆遇到的情境。
 
 ## 2026-08-23 — improved(course): 收斂主任的合約與堂次調整入口
 

@@ -285,6 +285,7 @@ import {
   trustDecisionTitle,
 } from '../lib/trustDecisionDisplay.js';
 import { buildDirectorDashboardTasks } from '../lib/directorDashboardTasks.js';
+import { runDashboardLoaders } from '../lib/dashboardLoadPlan.js';
 
 const props = defineProps({
   branchId: [String, Number],
@@ -941,7 +942,8 @@ const loadData = async () => {
   dashboardPrimaryError.value = '';
 
   try {
-    try {
+    const alertsPromise = (async () => {
+      try {
     const alertsParams = new URLSearchParams({ branch_id: String(props.branchId) });
     const alertsResp = await fetch(`${baseUrl}/v1/alerts/tuition?${alertsParams}`, {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
@@ -969,43 +971,51 @@ const loadData = async () => {
           schedule_mode: c.schedule_mode ?? 'count',
         }));
     }
-    } catch (err) {
-    console.error('Failed to load alerts:', err);
-    }
-
-  try {
-    const trustParams = new URLSearchParams({ branch_id: String(props.branchId) });
-    const trustResp = await fetch(`${baseUrl}/v1/director/operations-trust?${trustParams}`, {
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-    });
-    if (trustResp.ok) {
-      const trustJson = await trustResp.json();
-      operationsTrust.value = trustJson?.data || null;
-      const dc = operationsTrust.value?.decision_center;
-      if (dc) {
-        const branch = Number(props.branchId) || 0;
-        const keys = Array.isArray(dc.decisions) ? dc.decisions.map((d) => d.key).filter(Boolean) : [];
-        await trackTrustEventOnce('director_trust_score_shown', branch, {
-          score: Number(dc.score) || 0,
-          status: String(dc.status || ''),
-          critical_count: Number(dc.critical_count) || 0,
-          warning_count: Number(dc.warning_count) || 0,
-          decision_count: keys.length,
-          decision_keys: keys,
-        }, 'score');
-        await nextTick();
-        setupTrustImpressions();
+      } catch (err) {
+        console.error('Failed to load alerts:', err);
       }
-    } else {
-      operationsTrust.value = null;
-    }
-  } catch (err) {
-    console.error('Failed to load operations trust:', err);
-    operationsTrust.value = null;
-  }
+    })();
 
-  await loadNotificationSummary(token, baseUrl);
-  await loadExceptionWorkflows();
+    const trustPromise = (async () => {
+      try {
+        const trustParams = new URLSearchParams({ branch_id: String(props.branchId) });
+        const trustResp = await fetch(`${baseUrl}/v1/director/operations-trust?${trustParams}`, {
+          headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+        });
+        if (trustResp.ok) {
+          const trustJson = await trustResp.json();
+          operationsTrust.value = trustJson?.data || null;
+          const dc = operationsTrust.value?.decision_center;
+          if (dc) {
+            const branch = Number(props.branchId) || 0;
+            const keys = Array.isArray(dc.decisions) ? dc.decisions.map((d) => d.key).filter(Boolean) : [];
+            await trackTrustEventOnce('director_trust_score_shown', branch, {
+              score: Number(dc.score) || 0,
+              status: String(dc.status || ''),
+              critical_count: Number(dc.critical_count) || 0,
+              warning_count: Number(dc.warning_count) || 0,
+              decision_count: keys.length,
+              decision_keys: keys,
+            }, 'score');
+            await nextTick();
+            setupTrustImpressions();
+          }
+        } else {
+          operationsTrust.value = null;
+        }
+      } catch (err) {
+        console.error('Failed to load operations trust:', err);
+        operationsTrust.value = null;
+      }
+    })();
+
+    await runDashboardLoaders({
+      alerts: () => alertsPromise,
+      trust: () => trustPromise,
+      notifications: () => loadNotificationSummary(token, baseUrl),
+      workflows: () => loadExceptionWorkflows(),
+    });
+
   const today = localTodayYmd();
   try {
     const params = new URLSearchParams({

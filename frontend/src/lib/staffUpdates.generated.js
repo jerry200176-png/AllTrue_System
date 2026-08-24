@@ -4,6 +4,70 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-24-course-editability-preflight",
+    "publishedAt": "2026-08-24",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "編輯先說明限制與下一步",
+    "summary": "開啟課程編輯時，系統先說明可改欄位、受保護欄位與安全處理方式。",
+    "items": [
+      "編輯視窗先顯示扣堂、付款、共用方案與對帳狀態；受保護欄位會標明原因。",
+      "更正堂數、處理付款或調整方案時，畫面會提供下一步；一般資料仍可直接編輯。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "編輯視窗先顯示扣堂、付款、共用方案與對帳狀態；受保護欄位會標明原因。",
+          "更正堂數、處理付款或調整方案時，畫面會提供下一步；一般資料仍可直接編輯。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-24:course-editability-preflight"
+    ],
+    "date": "2026-08-24",
+    "version": "2026.08.24"
+  },
+  {
+    "id": "staff-2026-08-24-course-action-hierarchy",
+    "publishedAt": "2026-08-24",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "課程操作更清楚",
+    "summary": "課程列只保留最常用入口，其他操作按情境收在「更多」。",
+    "items": [
+      "第一層只保留編輯、排課與查看詳情，主任先處理最常見工作。",
+      "帳單、合約調整、補課與狀態管理改按情境分組，功能仍保留。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "第一層只保留編輯、排課與查看詳情，主任先處理最常見工作。",
+          "帳單、合約調整、補課與狀態管理改按情境分組，功能仍保留。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-24:course-action-hierarchy"
+    ],
+    "date": "2026-08-24",
+    "version": "2026.08.24"
+  },
+  {
     "id": "staff-2026-08-23-overlap-entitlement-root-guard",
     "publishedAt": "2026-08-23",
     "effectiveAt": null,
@@ -116,6 +180,72 @@ export const staffUpdates = [
     ],
     "sourceRefs": [
       "changelog:2026-08-23:contract-correction-transfer-safety"
+    ],
+    "date": "2026-08-23",
+    "version": "2026.08.23"
+  },
+  {
+    "id": "staff-2026-08-23-performance-first-batch",
+    "publishedAt": "2026-08-23",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "頁面載入更順暢",
+    "summary": "登入、主任首頁與行事曆減少等待，常用資產也會更有效率地快取。",
+    "items": [
+      "主任首頁的獨立資料區塊會同時載入，不會因單一區塊較慢而拖住整頁。",
+      "登入與行事曆資料減少連續等待；已下載過的內容切換檢視時更快回應。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "主任首頁的獨立資料區塊會同時載入，不會因單一區塊較慢而拖住整頁。",
+          "登入與行事曆資料減少連續等待；已下載過的內容切換檢視時更快回應。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-23:performance-first-batch"
+    ],
+    "date": "2026-08-23",
+    "version": "2026.08.23"
+  },
+  {
+    "id": "staff-2026-08-23-performance-backend-query",
+    "publishedAt": "2026-08-23",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "主任頁面查詢加速",
+    "summary": "主任頁面的次要資料與營運摘要減少資料庫等待，資料多時也更穩定。",
+    "items": [
+      "老師評量填寫率改用較有效率的日期／時段查詢，主任開啟完整頁面時等待更少。",
+      "營運摘要合併重複統計，維持原本數字口徑但減少資料庫往返。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "老師評量填寫率改用較有效率的日期／時段查詢，主任開啟完整頁面時等待更少。",
+          "營運摘要合併重複統計，維持原本數字口徑但減少資料庫往返。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-23:performance-backend-query"
     ],
     "date": "2026-08-23",
     "version": "2026.08.23"

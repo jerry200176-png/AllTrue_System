@@ -552,10 +552,40 @@ class ScheduleGuardService
                 ->toArray();
         }
 
+        // #2006：衝突訊息只有姓名時，主任分不出「同一堂」還是同學生的另一筆課程
+        // （例如續約舊課程未關閉，跟新課程同時段並存）。補上科目名稱與課程起始日
+        // 讓「此時段已有：王品方（理化・7/11期）」講清楚是哪一筆。
+        $courseIds = array_values(array_unique(array_filter(array_map(function ($entry) {
+            return (int) ($entry['course_id'] ?? $entry['source_id'] ?? 0);
+        }, $entries))));
+
+        $courseMetaMap = [];
+        if (!empty($courseIds)) {
+            $courseMetaMap = DB::table('StudentClass')
+                ->whereIn('ID', $courseIds)
+                ->select(['ID', 'SubjectID', 'StartDate'])
+                ->get()
+                ->keyBy('ID')
+                ->toArray();
+        }
+
+        $subjectIds = array_values(array_unique(array_filter(array_map(
+            fn ($meta) => (int) ($meta->SubjectID ?? 0),
+            $courseMetaMap
+        ))));
+        $subjectNameMap = [];
+        if (!empty($subjectIds)) {
+            $subjectNameMap = DB::table('Subject')
+                ->whereIn('id', $subjectIds)
+                ->pluck('Subject_Name', 'id')
+                ->toArray();
+        }
+
         $details = [];
         $seen = [];
         foreach ($entries as $entry) {
             $studentId = (int) ($entry['student_id'] ?? 0);
+            $courseId = (int) ($entry['course_id'] ?? $entry['source_id'] ?? 0);
             $key = implode('|', [
                 (string) ($entry['source'] ?? ''),
                 (string) ($entry['source_id'] ?? ''),
@@ -568,11 +598,23 @@ class ScheduleGuardService
             }
             $seen[$key] = true;
 
+            $meta = $courseMetaMap[$courseId] ?? null;
+            $subjectName = '';
+            if ($meta) {
+                $subjectName = (string) ($subjectNameMap[(int) ($meta->SubjectID ?? 0)] ?? '');
+            }
+            $coursePeriod = $meta && $meta->StartDate
+                ? Carbon::parse((string) $meta->StartDate)->format('n/j') . '期'
+                : '';
+
             $details[] = [
                 'source' => (string) ($entry['source'] ?? ''),
                 'source_id' => (int) ($entry['source_id'] ?? 0),
+                'course_id' => $courseId,
                 'student_id' => $studentId,
                 'student_name' => $studentId > 0 ? (string) ($studentNameMap[$studentId] ?? '') : '',
+                'subject_name' => $subjectName,
+                'course_period' => $coursePeriod,
                 'class_type' => (string) ($entry['class_type'] ?? ''),
                 'room_id' => !empty($entry['room_id']) ? (int) $entry['room_id'] : null,
                 'start_time' => (string) ($entry['start_time'] ?? ''),
@@ -599,9 +641,13 @@ class ScheduleGuardService
             $name = (string) ($row['student_name'] ?? '');
             $sid = (int) ($row['student_id'] ?? 0);
             $studentLabel = $name !== '' ? $name : ($sid > 0 ? ('#' . $sid) : '未綁定學生');
+            $subjectName = (string) ($row['subject_name'] ?? '');
+            $coursePeriod = (string) ($row['course_period'] ?? '');
+            $courseLabel = trim($subjectName . ($coursePeriod !== '' ? '・' . $coursePeriod : ''));
             $segments[] = sprintf(
-                '%s(%s-%s,%s)',
+                '%s%s(%s-%s,%s)',
                 $studentLabel,
+                $courseLabel !== '' ? "（{$courseLabel}）" : '',
                 (string) ($row['start_time'] ?? ''),
                 (string) ($row['end_time'] ?? ''),
                 (string) ($row['source'] ?? '')
@@ -766,6 +812,7 @@ class ScheduleGuardService
             $entries[] = [
                 'source' => 'schedule',
                 'source_id' => (int) ($row->id ?? 0),
+                'course_id' => $courseId,
                 'student_id' => (int) ($row->student_id ?? 0),
                 'class_type' => $classType,
                 'room_id' => $roomId,

@@ -21,6 +21,50 @@ class StudentClassBillingCorrectionTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_editability_preflight_explains_locked_contract_and_safe_actions(): void
+    {
+        [$token] = $this->director();
+        $student = $this->student();
+        $course = $this->course($student->id, [
+            'UsedSessions' => 1,
+            'RemainingSessions' => 7,
+        ]);
+        $session = ClassSession::create([
+            'StudentClassID' => $course->ID,
+            'SessionDate' => '2026-05-01',
+            'StartTime' => '15:00',
+            'EndTime' => '17:00',
+            'Status' => 'attended',
+        ]);
+        SessionDeductionLedger::create([
+            'student_class_id' => $course->ID,
+            'class_session_id' => $session->id,
+            'event_type' => 'deduct',
+            'source' => 'attendance',
+            'minutes' => 120,
+        ]);
+
+        $this->withToken($token)->getJson(
+            "/api/v1/student-classes/{$course->ID}/editability"
+        )->assertOk()
+            ->assertJsonPath('course_id', $course->ID)
+            ->assertJsonPath('status', 'ready')
+            ->assertJsonPath('locked_fields.0', 'sessions_purchased')
+            ->assertJsonFragment(['code' => 'billing_contract_locked'])
+            ->assertJsonPath('available_actions.1', 'billing_correction')
+            ->assertJsonPath('available_actions.2', 'transfer_sessions');
+
+        $this->withToken($token)->putJson(
+            "/api/v1/student-classes/{$course->ID}",
+            ['sessions_purchased' => 6]
+        )->assertStatus(422)->assertJsonPath('code', 'billing_contract_locked');
+
+        $this->assertDatabaseHas('security_audit_events', [
+            'event_type' => 'student_class.edit_blocked',
+            'outcome' => 'blocked',
+        ]);
+    }
+
     public function test_director_can_correct_unpaid_count_course_after_deduction(): void
     {
         [$token, $userId] = $this->director();

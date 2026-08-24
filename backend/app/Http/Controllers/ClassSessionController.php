@@ -3278,7 +3278,7 @@ class ClassSessionController extends Controller
             ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
             ->join('Student as s', 's.id', '=', 'sc.StudentID')
             ->leftJoin(DB::raw('(
-                SELECT ss.*
+                SELECT ss.*, SUBSTRING(ss.start_time, 1, 5) AS start_time_hm
                 FROM `schedules` ss
                 INNER JOIN (
                     SELECT sub2.student_course_id,
@@ -3294,12 +3294,13 @@ class ClassSessionController extends Controller
                 ) sub_latest ON ss.id = sub_latest.max_id
             ) as sub_sched'), function ($join) {
                 $join->on('sub_sched.student_course_id', '=', 'sc.ID')
-                    ->whereRaw('DATE(sub_sched.schedule_date) = DATE(cs.SessionDate)')
-                    ->whereRaw('SUBSTRING(sub_sched.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)');
+                    ->whereColumn('sub_sched.schedule_date', 'cs.SessionDate')
+                    ->whereColumn('sub_sched.start_time_hm', 'cs.StartTimeHM');
             })
             ->leftJoin(DB::raw($lrSubSql . ' AS lr'), 'lr.ClassSessionID', '=', 'cs.id')
             ->where('s.CampusID', $branchId)
-            ->whereBetween(DB::raw('DATE(cs.SessionDate)'), [$start->toDateString(), $end->toDateString()])
+            ->where('cs.SessionDate', '>=', $start->toDateString())
+            ->where('cs.SessionDate', '<=', $end->toDateString())
             // completed is a past attended-equivalent used by schedule reconcile; omit it and substitute fill-rate silently drops those rows.
             ->whereRaw('LOWER(cs.Status) IN ("attended", "late", "completed")')
             ->select([

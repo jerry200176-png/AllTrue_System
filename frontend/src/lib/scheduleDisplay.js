@@ -176,13 +176,20 @@ export function formatRescheduleSuccessMessage(opts = {}) {
 /** Conflict list — never「#student_id」. */
 export function formatRescheduleConflictStudents(details) {
   const list = Array.isArray(details) ? details : [];
-  const names = list
-    .map((d) => formatDirectorPersonName({
-      student_name: d?.student_name || d?.name,
-      name: d?.name,
-    }))
-    .filter((n) => n && n !== '名單上的學生');
-  if (names.length) return `此時段已有：${names.join('、')}`;
+  const labels = list
+    .map((d) => {
+      const name = formatDirectorPersonName({
+        student_name: d?.student_name || d?.name,
+        name: d?.name,
+      });
+      if (!name || name === '名單上的學生') return '';
+      // #2006：只顯示姓名時，主任分不出是「同一堂」還是這位學生的另一筆課程
+      // （常見於續約時舊課程沒關閉，跟新課程同時段並存）。補上科目/期別。
+      const courseLabel = [d?.subject_name, d?.course_period].filter(Boolean).join('・');
+      return courseLabel ? `${name}（${courseLabel}）` : name;
+    })
+    .filter(Boolean);
+  if (labels.length) return `此時段已有：${labels.join('、')}`;
   if (list.length) return '目標時段已有其他學生，請換一個時段再試。';
   return '';
 }
