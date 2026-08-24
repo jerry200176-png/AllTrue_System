@@ -368,6 +368,7 @@
       <BindingHealthDashboard v-if="!isPasswordChangeLocked && isDirector && active === 'binding-health'" :branch-id="currentBranch" :user-role="role" />
       <DirectorAccountsPage v-if="!isPasswordChangeLocked && role === 'super_admin' && active === 'director-accounts'" :token="session?.access_token ?? ''" />
       <BranchManagementPage v-if="!isPasswordChangeLocked && role === 'super_admin' && active === 'branch-management'" :token="session?.access_token ?? ''" />
+      <BranchHealthBoard v-if="!isPasswordChangeLocked && role === 'super_admin' && active === 'branch-health-board'" :token="session?.access_token ?? ''" />
       <NightlyReconcilePanel v-if="!isPasswordChangeLocked && role === 'super_admin' && active === 'nightly-reconcile'" :token="session?.access_token ?? ''" />
       <ChatPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'chat'" :branch-id="currentBranch" :user-id="session?.user?.id" :avatar-url="avatarUrl" :super-admin="role === 'super_admin'" :user-role="role" />
       <BugReportsPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'bugs'" :branch-id="currentBranch" :user-role="role" />
@@ -503,6 +504,7 @@ const ParttimePayrollPage   = defineAsyncComponent(() => import('./pages/Parttim
 const TeacherEligibilityPage = defineAsyncComponent(() => import('./pages/TeacherEligibilityPage.vue'));
 const DirectorAccountsPage  = defineAsyncComponent(() => import('./pages/DirectorAccountsPage.vue'));
 const BranchManagementPage  = defineAsyncComponent(() => import('./pages/BranchManagementPage.vue'));
+const BranchHealthBoard     = defineAsyncComponent(() => import('./pages/BranchHealthBoard.vue'));
 const NotificationsCenter   = defineAsyncComponent(() => import('./pages/NotificationsCenter.vue'));
 const ProfileCenterPage     = defineAsyncComponent(() => import('./pages/ProfileCenterPage.vue'));
 const ChatPage              = defineAsyncComponent(() => import('./pages/ChatPage.vue'));
@@ -1320,6 +1322,11 @@ const sidebarNavGroups = computed(() => {
         page: 'branch-management',
         label: '分校管理',
         icon: 'store',
+      });
+      systemItems.push({
+        page: 'branch-health-board',
+        label: '分校健康',
+        icon: 'monitor_heart',
       });
       systemItems.push({
         page: 'nightly-reconcile',

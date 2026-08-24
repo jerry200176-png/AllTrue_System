@@ -100,6 +100,44 @@ export const staffUpdates = [
     "version": "2026.08.24"
   },
   {
+    "id": "staff-2026-08-24-branch-health-v1",
+    "publishedAt": "2026-08-24",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "總部可查看分校健康訊號",
+    "summary": "超級管理員可在「分校健康」看板查看各校目前可驗證的營運訊號與下一步。",
+    "items": [
+      "看板以學生、教學、家長、教師、營運五個維度顯示紅黃綠或待接資料，不用單一總分排名分校。",
+      "點入分校可查看訊號來源、資料期間與建議下一步；本頁只讀，不會自動修改排課、堂數或帳務。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "看板以學生、教學、家長、教師、營運五個維度顯示紅黃綠或待接資料，不用單一總分排名分校。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "點入分校可查看訊號來源、資料期間與建議下一步；本頁只讀，不會自動修改排課、堂數或帳務。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-24:branch-health-v1",
+      "architecture:RFC_BRANCH_HEALTH_V1"
+    ],
+    "date": "2026-08-24",
+    "version": "2026.08.24"
+  },
+  {
     "id": "staff-2026-08-23-split-contract-wizard",
     "publishedAt": "2026-08-23",
     "effectiveAt": null,
