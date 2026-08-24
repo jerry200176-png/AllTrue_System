@@ -52,6 +52,7 @@ use App\Http\Controllers\AccountingController;
 use App\Http\Controllers\AdoptionInsightsController;
 use App\Http\Controllers\SystemTrustController;
 use App\Http\Controllers\DirectorOperationsTrustController;
+use App\Http\Controllers\BranchHealthController;
 use App\Http\Controllers\AdminReconcileController;
 use App\Http\Controllers\AdminDuplicateSessionController;
 use App\Http\Controllers\GitHubIssueController;
@@ -281,6 +282,7 @@ Route::prefix('v1')->group(function () {
     // ── Super Admin: 分校管理 CRUD ───────────────────────────────────────────────
     Route::middleware(['role:super_admin'])->group(function () {
         Route::get('admin/business-digest', [BusinessDigestController::class, 'index']);
+        Route::get('admin/branch-health', [BranchHealthController::class, 'index']);
         Route::get('admin/campuses', [AdminCampusController::class, 'index']);
         Route::post('admin/campuses', [AdminCampusController::class, 'store']);
         Route::put('admin/campuses/{id}', [AdminCampusController::class, 'update'])->whereNumber('id');
