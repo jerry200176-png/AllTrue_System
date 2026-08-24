@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "30e0e80ed93f4ca7822fc37341981bc4",
+  "session_id": "SES-20260824100430-C1E189AB",
   "project": "alltrue",
-  "task_id": "split-contract-wizard-research-20260824",
+  "task_id": "TKT-20260824-100223-8OA9",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "1572f506210fa1847971e7f4710975f8f10e2784",
-  "branch": "chore/task-split-contract-wizard-research-20260824",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/split-contract-wizard-research-20260824",
-  "started_at": "2026-08-24T01:44:37Z",
+  "base_sha": "6d4a30791a43d40697d7f7fb464afadfdc121bed",
+  "branch": "chore/task-TKT-20260824-100223-8OA9",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/TKT-20260824-100223-8OA9",
+  "started_at": "2026-08-24T10:04:30+08:00",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": null,
+  "agent_cli": "codex",
   "gateway_version": "0.5.0"
 }
