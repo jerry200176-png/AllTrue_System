@@ -414,7 +414,7 @@
                 </div>
               </div>
               <button
-                v-if="ev.formStatus === 'missing' || ev.formStatus === 'changes_requested'"
+                v-if="!ev.isProjected && (ev.formStatus === 'missing' || ev.formStatus === 'changes_requested')"
                 class="th-fill-btn"
                 @click="goFillRecord(ev)"
                 title="填寫評量"
@@ -423,6 +423,7 @@
               </button>
               <span v-else-if="ev.formStatus === 'approved'" class="th-check-icon material-symbols-outlined">check_circle</span>
               <button
+                v-if="!ev.isProjected"
                 class="th-report-btn"
                 :class="{ 'th-report-btn--active': activeReportMap[ev.id] }"
                 :title="activeReportMap[ev.id] ? '查看課表回報' : '回報課表有誤'"
@@ -434,6 +435,7 @@
                 >hourglass_empty</span>
                 <span v-else class="material-symbols-outlined">flag</span>
               </button>
+              <span v-else class="th-form-chip th-form-pending">待建立堂次</span>
             </div>
           </div>
         </details>
@@ -532,7 +534,7 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { supabase } from '../supabase';
 import { branches, campusIdFrom, getBranchName } from '../lib/useBranches';
-import { fetchClassSessions } from '../lib/classSessionsApi';
+import { fetchClassSessions, fetchClassSessionsProjection } from '../lib/classSessionsApi';
 import { dedupeSessionsByStudentSlot } from '../lib/classSessionPick';
 import { fetchChatUnreadCount } from '../lib/chatApi';
 import ReportDiscrepancyModal from '../components/ReportDiscrepancyModal.vue';
@@ -1147,9 +1149,9 @@ const allBranchNames = computed(() => {
 });
 
 async function loadWeekSchedule() {
-  // Multiple reactive inputs can refresh this view at once. fetchClassSessions
-  // does not currently accept AbortSignal, so ignore stale responses instead
-  // of allowing one to overwrite the current week/branch projection.
+  // Multiple reactive inputs can refresh this view at once. The projection API
+  // is the completeness-safe contract for a whole week; ignore stale responses
+  // instead of allowing one to overwrite the current week/branch projection.
   const requestSequence = ++weekLoadSequence;
   loadingWeek.value = true;
   weekLoadError.value = '';
@@ -1170,7 +1172,7 @@ async function loadWeekSchedule() {
   // (e.g. a class at branch 9 while the workbench branch was 15) — even though the
   // attendance page, which omits branch_id, showed them. This matches that path.
   try {
-    const result = await fetchClassSessions({ token, start: startStr, end: endStr, perPage: 500 });
+    const result = await fetchClassSessionsProjection({ token, start: startStr, end: endStr });
     const items = dedupeSessionsByStudentSlot(result.items || []);
     items.sort((a, b) => {
       if (a.date !== b.date) return a.date.localeCompare(b.date);
@@ -1201,7 +1203,7 @@ const weekDays = computed(() => {
         // 請假待審核：與出缺勤管理／課表與評量同一認定，不列入今日待填（in-app bug 194）
         const isLeaveRequested = status === 'leave_requested';
         return {
-          key: `${s.id}-${campusIdFrom(s.branchId) || 'none'}`,
+          key: `${s.studentClassId}-${s.date}-${s.startTime}-${campusIdFrom(s.branchId) || 'none'}`,
           id: s.id,
           studentClassId: s.studentClassId,
           studentName: s.studentName || '—',
@@ -1213,6 +1215,7 @@ const weekDays = computed(() => {
           status: s.status,
           formStatus: isLeave ? 'leave' : (isLeaveRequested ? 'leave_requested' : (s.learningRecordStatus || 'missing')),
           recordId: s.learningRecordId || null,
+          isProjected: !!s.isProjected,
         };
       });
     days.push({

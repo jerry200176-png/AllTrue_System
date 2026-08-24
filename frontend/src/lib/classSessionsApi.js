@@ -200,6 +200,12 @@ export function sessionViewModelFromSessionDatesSlot(raw, fallbackClassId = 0) {
     // without it this fell through to `s.branchId || 0` at render time and
     // showed "Branch #0" for any not-yet-materialized session.
     branchId: raw?.branch_id != null ? Number(raw.branch_id) : undefined,
+    studentId: raw?.student_id != null ? Number(raw.student_id) : undefined,
+    studentName: raw?.student_name || '',
+    teacherId: raw?.teacher_id != null ? Number(raw.teacher_id) : undefined,
+    teacherName: raw?.teacher_name || '',
+    subjectName: raw?.subject_name || raw?.subject || '',
+    learningRecordStatus: raw?.learning_record_status || 'missing',
   });
 }
 
