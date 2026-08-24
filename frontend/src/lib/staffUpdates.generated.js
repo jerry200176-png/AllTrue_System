@@ -36,6 +36,38 @@ export const staffUpdates = [
     "version": "2026.08.24"
   },
   {
+    "id": "staff-2026-08-24-course-editability-guidance",
+    "publishedAt": "2026-08-24",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "編輯受限有下一步",
+    "summary": "共用方案、堂次對帳與新課程情境，會直接帶到既有處理入口。",
+    "items": [
+      "共用方案堂數不能直接改時，可從編輯視窗開啟方案總堂數調整並預填目前數字。",
+      "堂次對帳與需要另開課程時，畫面會提供前往既有審核或學生管理的按鈕。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "共用方案堂數不能直接改時，可從編輯視窗開啟方案總堂數調整並預填目前數字。",
+          "堂次對帳與需要另開課程時，畫面會提供前往既有審核或學生管理的按鈕。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-24:course-editability-guidance"
+    ],
+    "date": "2026-08-24",
+    "version": "2026.08.24"
+  },
+  {
     "id": "staff-2026-08-24-course-action-hierarchy",
     "publishedAt": "2026-08-24",
     "effectiveAt": null,
