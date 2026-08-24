@@ -53,7 +53,7 @@ class BranchHealthService
     /** @return array<string,mixed> */
     private function summarize(Campus $campus): array
     {
-        $branchId = (int) $campus->id;
+        $branchId = (int) $campus->getAttribute('id');
         $metrics = $this->digest->metrics($branchId);
         $parent = $this->parentSignals($branchId);
         $teacher = $this->teacherSignals($branchId);
