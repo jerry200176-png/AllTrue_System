@@ -15,6 +15,7 @@ const BASE = process.env.SMOKE_BASE_URL;
 const BRANCH_ID = Number(process.env.SMOKE_BRANCH_ID || 16);
 const START = process.env.SMOKE_START_DATE || '2026-08-05';
 const END = process.env.SMOKE_END_DATE || '2026-08-07';
+const COURSE_NAV_LABEL = '課程查找';
 // Keep the returning-user fixture aligned with the same STAFF_UPDATES source
 // that drives the production release nudge. A hard-coded version makes this
 // read-only acceptance fail as soon as a newer staff update is published.
@@ -89,7 +90,7 @@ async function navigate(page, label) {
     await expect(page.locator('.smart-cal-title')).toBeVisible({ timeout: 15_000 });
     return;
   }
-  if (isMobile && label === '課程管理') {
+  if (isMobile && label === COURSE_NAV_LABEL) {
     const more = page.locator('.mobile-bottom-nav').getByRole('button', { name: /更多/ }).first();
     await expect(more).toBeVisible({ timeout: 15_000 });
     await more.click();
@@ -242,8 +243,8 @@ test.describe('production acceptance — calendar/course parity', () => {
         }
       }
 
-      await navigate(page, '課程管理');
-      await assertResponsive(page, '課程管理');
+      await navigate(page, COURSE_NAV_LABEL);
+      await assertResponsive(page, COURSE_NAV_LABEL);
       expect(pageErrors, `production page errors (${viewport.name}):\n${pageErrors.join('\n')}`).toEqual([]);
 
       await test.info().attach(`consistency-${viewport.name}.json`, {
