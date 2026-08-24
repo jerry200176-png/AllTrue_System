@@ -384,6 +384,25 @@ class RescheduleSessionService
             ->first();
 
         if (!$anchor) {
+            // GitHub #2001: the slot being moved away from may itself be the
+            // *target* of an earlier reschedule (status='scheduled', not yet
+            // 'rescheduled'). Reuse that existing row as the new anchor instead
+            // of inserting a disconnected duplicate — otherwise the old target
+            // row is left behind with status='scheduled' forever, a dead row
+            // that still reads as "live" to every busy-slot / calendar query.
+            $anchor = Schedule::where('student_course_id', $classId)
+                ->whereDate('schedule_date', $oldDate)
+                ->where('status', 'scheduled')
+                ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [substr($oldStartTime, 0, 5)])
+                ->lockForUpdate()
+                ->first();
+            if ($anchor) {
+                $anchor->status = 'rescheduled';
+                $anchor->save();
+            }
+        }
+
+        if (!$anchor) {
             $anchor = Schedule::create([
                 'student_id' => (int) $student->id,
                 'teacher_id' => $contractTeacherId ?: null,

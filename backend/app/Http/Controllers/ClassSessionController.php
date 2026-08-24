@@ -3274,11 +3274,11 @@ class ClassSessionController extends Controller
 
         // Same substitute resolution as buildClassSessionIndexQuery (#985 / #1822):
         // a joined derived table, not a per-row correlated MAX(sub2.id) subquery.
-        $rows = DB::table('ClassSession as cs')
+        $effectiveSessionRows = DB::table('ClassSession as cs')
             ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
             ->join('Student as s', 's.id', '=', 'sc.StudentID')
             ->leftJoin(DB::raw('(
-                SELECT ss.*
+                SELECT ss.*, SUBSTRING(ss.start_time, 1, 5) AS start_time_hm
                 FROM `schedules` ss
                 INNER JOIN (
                     SELECT sub2.student_course_id,
@@ -3294,20 +3294,32 @@ class ClassSessionController extends Controller
                 ) sub_latest ON ss.id = sub_latest.max_id
             ) as sub_sched'), function ($join) {
                 $join->on('sub_sched.student_course_id', '=', 'sc.ID')
-                    ->whereRaw('DATE(sub_sched.schedule_date) = DATE(cs.SessionDate)')
-                    ->whereRaw('SUBSTRING(sub_sched.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)');
+                    ->whereColumn('sub_sched.schedule_date', 'cs.SessionDate')
+                    ->whereColumn('sub_sched.start_time_hm', 'cs.StartTimeHM');
             })
             ->leftJoin(DB::raw($lrSubSql . ' AS lr'), 'lr.ClassSessionID', '=', 'cs.id')
             ->where('s.CampusID', $branchId)
-            ->whereBetween(DB::raw('DATE(cs.SessionDate)'), [$start->toDateString(), $end->toDateString()])
+            ->where('cs.SessionDate', '>=', $start->toDateString())
+            ->where('cs.SessionDate', '<=', $end->toDateString())
             // completed is a past attended-equivalent used by schedule reconcile; omit it and substitute fill-rate silently drops those rows.
             ->whereRaw('LOWER(cs.Status) IN ("attended", "late", "completed")')
             ->select([
                 DB::raw('COALESCE(sub_sched.teacher_id, sc.TeacherID) AS teacher_id'),
+                DB::raw('lr.id AS learning_record_id'),
+                DB::raw('lr.Progress AS learning_record_progress'),
+            ]);
+
+        // Aggregate from a derived table so MySQL ONLY_FULL_GROUP_BY groups on
+        // the already-resolved teacher_id value instead of re-validating the
+        // underlying COALESCE(sc.TeacherID, sub_sched.teacher_id) columns.
+        $rows = DB::table('effective_sessions')
+            ->fromSub($effectiveSessionRows, 'effective_sessions')
+            ->select([
+                'teacher_id',
                 DB::raw('COUNT(*) AS session_total'),
-                DB::raw('SUM(CASE WHEN lr.id IS NOT NULL AND TRIM(IFNULL(lr.Progress, "")) != "" THEN 1 ELSE 0 END) AS filled'),
+                DB::raw('SUM(CASE WHEN learning_record_id IS NOT NULL AND TRIM(IFNULL(learning_record_progress, "")) != "" THEN 1 ELSE 0 END) AS filled'),
             ])
-            ->groupBy(DB::raw('COALESCE(sub_sched.teacher_id, sc.TeacherID)'))
+            ->groupBy('teacher_id')
             ->orderByDesc('session_total')
             ->get()
             ->filter(static function ($row) {
