@@ -334,6 +334,7 @@
                     </td>
                     <td class="cell-actions">
                       <div class="action-btns-row">
+                        <button class="small primary course-primary-action" @click="editCourse(c)">編輯</button>
                         <button
                           v-if="isManualOccurrenceCourse(c)"
                           class="small btn-add-session manual-occurrence-action"
@@ -344,55 +345,52 @@
                           class="small btn-add-session manual-occurrence-action"
                           @click="openManualSessionModal(c)"
                         >排課</button>
-                        <button
-                          v-if="isSessionMode(c) && !isManualOccurrenceCourse(c)"
-                          class="small btn-add-session"
-                          :class="{ disabled: !canQuickAddSession(c) }"
-                          :disabled="!canQuickAddSession(c)"
-                          :title="canQuickAddSession(c) ? '補課／補登（總堂數不變）' : quickAddDisabledReason(c)"
-                          @click="canQuickAddSession(c) && openQuickAddSessionModal(c)"
-                        >+ 補課</button>
                         <button class="small ghost btn-toggle" @click="toggleDatesAndMakeups(c)">
                           {{ expandedDates.has(c.id) ? '收起' : '詳情' }}
                         </button>
-                        <button class="small ghost btn-invoices" @click="openInvoiceModal(c)">帳單與對帳</button>
                         <div class="action-menu-wrapper">
-                          <button class="small ghost action-menu-trigger" @click.stop="toggleActionMenu(c.id)" title="更多操作">操作 ▾</button>
-                          <div v-if="activeActionMenu === c.id" class="action-dropdown" @click.stop>
-                            <p class="action-section-label">日常操作</p>
-                            <button class="action-dropdown-item" @click="editCourse(c); closeActionMenu()"><span class="action-icon">✏️</span> 編輯</button>
+                          <button class="small ghost action-menu-trigger" @click.stop="toggleActionMenu(c.id)" title="其他課程操作" aria-haspopup="menu" :aria-expanded="activeActionMenu === c.id">更多 ▾</button>
+                          <div v-if="activeActionMenu === c.id" class="action-dropdown" role="menu" aria-label="其他課程操作" @click.stop>
+                            <p class="action-section-label">排課與課堂</p>
                             <button
                               v-if="isManualOccurrenceCourse(c)"
                               class="action-dropdown-item"
+                              role="menuitem"
                               @click="openManualSessionModal(c); closeActionMenu()"
-                            ><span class="action-icon">＋</span> 新增下一堂</button>
+                            ><span class="material-symbols-outlined action-icon" aria-hidden="true">add</span> 新增下一堂</button>
                             <button
                               v-if="isSessionMode(c) && !isManualOccurrenceCourse(c)"
                               class="action-dropdown-item"
+                              role="menuitem"
                               @click="openManualSessionModal(c); closeActionMenu()"
-                            ><span class="action-icon">＋</span> 排課</button>
+                            ><span class="material-symbols-outlined action-icon" aria-hidden="true">event</span> 排課</button>
                             <button
                               v-if="isSessionMode(c) && !isManualOccurrenceCourse(c)"
                               class="action-dropdown-item action-dropdown-add-session-mobile"
+                              role="menuitem"
                               :class="{ 'action-dropdown-item--disabled': !canQuickAddSession(c) }"
                               :disabled="!canQuickAddSession(c)"
                               :title="canQuickAddSession(c) ? '' : quickAddDisabledReason(c)"
                               @click="canQuickAddSession(c) && (openQuickAddSessionModal(c), closeActionMenu())"
-                            ><span class="action-icon">＋</span> 補課 / 補登</button>
+                            ><span class="material-symbols-outlined action-icon" aria-hidden="true">add_task</span> 補課 / 補登</button>
+                            <p class="action-section-label">帳務與合約</p>
+                            <button class="action-dropdown-item" role="menuitem" @click="openInvoiceModal(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">receipt_long</span> 帳單與對帳</button>
                             <button
                               :class="['action-dropdown-item', { 'action-dropdown-renew': purchaseActionIsRenew(c) }]"
+                              role="menuitem"
                               :title="purchaseActionTitle(c)"
                               @click="openPurchaseModal(c); closeActionMenu()"
-                            ><span class="action-icon">⚡</span> {{ purchaseActionLabel(c) }}</button>
-                            <button class="action-dropdown-item" @click="duplicateCourseForTeacher(c); closeActionMenu()"><span class="action-icon">📋</span> 換師複製</button>
+                            ><span class="material-symbols-outlined action-icon" aria-hidden="true">shopping_cart</span> {{ purchaseActionLabel(c) }}</button>
+                            <button class="action-dropdown-item action-dropdown-adjustment" role="menuitem" title="依情境選擇更正未付款堂數或轉移已上課紀錄" @click="openContractAdjustmentModal(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">edit_note</span> 合約／堂次調整</button>
+                            <p class="action-section-label">其他操作</p>
+                            <button class="action-dropdown-item" role="menuitem" @click="duplicateCourseForTeacher(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">content_copy</span> 換師複製</button>
                             <p class="action-section-label">狀態管理</p>
-                            <button v-if="c.status !== 'inactive'" class="action-dropdown-item" @click="requestCoursePause(c); closeActionMenu()"><span class="action-icon">⏸</span> 暫停課程</button>
-                            <button v-if="c.status === 'inactive'" class="action-dropdown-item action-dropdown-resume" @click="requestCoursePause(c); closeActionMenu()"><span class="action-icon">▶</span> 恢復課程</button>
-                            <button v-if="canCloseCourse(c)" class="action-dropdown-item action-dropdown-close" @click="closeCourseNoRenew(c); closeActionMenu()"><span class="action-icon">✓</span> 結案（不續報）</button>
-                            <button class="action-dropdown-item action-dropdown-adjustment" title="依情境選擇更正未付款堂數或轉移已上課紀錄" @click="openContractAdjustmentModal(c); closeActionMenu()"><span class="action-icon">↺</span> 合約／堂次調整</button>
+                            <button v-if="c.status !== 'inactive'" class="action-dropdown-item" role="menuitem" @click="requestCoursePause(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">pause_circle</span> 暫停課程</button>
+                            <button v-if="c.status === 'inactive'" class="action-dropdown-item action-dropdown-resume" role="menuitem" @click="requestCoursePause(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">play_circle</span> 恢復課程</button>
+                            <button v-if="canCloseCourse(c)" class="action-dropdown-item action-dropdown-close" role="menuitem" @click="closeCourseNoRenew(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">check_circle</span> 結案（不續報）</button>
                             <hr class="action-dropdown-divider" />
                             <p class="action-section-label action-section-label--danger">危險操作</p>
-                            <button class="action-dropdown-item action-dropdown-danger" @click="confirmDeleteTarget = c; closeActionMenu()"><span class="action-icon">🗑</span> 刪除課程</button>
+                            <button class="action-dropdown-item action-dropdown-danger" role="menuitem" @click="confirmDeleteTarget = c; closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">delete</span> 刪除課程</button>
                           </div>
                         </div>
                       </div>
@@ -525,21 +523,21 @@
                     <span class="history-course-card__detail" v-if="hc.last_paid_at"><span class="history-course-card__detail-label">繳費</span> {{ hc.last_paid_at }}</span>
                   </div>
                   <div class="history-course-card__actions">
-                    <button class="small ghost btn-invoices" @click="openInvoiceModal(hc)">帳單與對帳</button>
                     <button class="small ghost btn-toggle" @click="toggleDates(hc)">
-                      {{ expandedDates.has(hc.id) ? '收起詳情' : '查看堂次' }}
+                      {{ expandedDates.has(hc.id) ? '收起詳情' : '查看詳情' }}
                     </button>
                     <div class="action-menu-wrapper">
-                      <button class="small ghost action-menu-trigger" @click.stop="toggleActionMenu(hc.id)" title="更多操作">操作 ▾</button>
-                      <div v-if="activeActionMenu === hc.id" class="action-dropdown" @click.stop>
-                        <p class="action-section-label">日常操作</p>
-                        <button class="action-dropdown-item" @click="editCourse(hc); closeActionMenu()"><span class="action-icon">✏️</span> 編輯</button>
-                        <button class="action-dropdown-item" @click="duplicateCourseForTeacher(hc); closeActionMenu()"><span class="action-icon">📋</span> 換師複製</button>
+                      <button class="small ghost action-menu-trigger" @click.stop="toggleActionMenu(hc.id)" title="其他歷史課程操作" aria-haspopup="menu" :aria-expanded="activeActionMenu === hc.id">更多 ▾</button>
+                      <div v-if="activeActionMenu === hc.id" class="action-dropdown" role="menu" aria-label="其他歷史課程操作" @click.stop>
+                        <p class="action-section-label">課程與帳務</p>
+                        <button class="action-dropdown-item" role="menuitem" @click="editCourse(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">edit</span> 編輯</button>
+                        <button class="action-dropdown-item" role="menuitem" @click="openInvoiceModal(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">receipt_long</span> 帳單與對帳</button>
+                        <button class="action-dropdown-item" role="menuitem" @click="duplicateCourseForTeacher(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">content_copy</span> 換師複製</button>
                         <p class="action-section-label">狀態管理</p>
-                        <button class="action-dropdown-item action-dropdown-resume" @click="requestCoursePause(hc); closeActionMenu()"><span class="action-icon">▶</span> 恢復課程</button>
+                        <button class="action-dropdown-item action-dropdown-resume" role="menuitem" @click="requestCoursePause(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">play_circle</span> 恢復課程</button>
                         <hr class="action-dropdown-divider" />
                         <p class="action-section-label action-section-label--danger">危險操作</p>
-                        <button class="action-dropdown-item action-dropdown-danger" @click="confirmDeleteTarget = hc; closeActionMenu()"><span class="action-icon">🗑</span> 刪除課程</button>
+                        <button class="action-dropdown-item action-dropdown-danger" role="menuitem" @click="confirmDeleteTarget = hc; closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">delete</span> 刪除課程</button>
                       </div>
                     </div>
                   </div>

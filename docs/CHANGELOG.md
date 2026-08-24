@@ -1,3 +1,10 @@
+## 2026-08-24 — improved(course): 收斂主任課程操作入口
+
+<!-- release-notes: staff_update=staff-2026-08-24-course-action-hierarchy -->
+
+- 課程列第一層只保留編輯、排課與查看詳情，主任可先處理最常見工作。
+- 帳單、合約／堂次調整、補課、換師複製與狀態管理移到「更多」並按情境分組；既有安全流程與功能不變。
+
 ## 2026-08-23 — improved(performance): 主任次要資料查詢優化
 
 <!-- release-notes: staff_update=staff-2026-08-23-performance-backend-query -->

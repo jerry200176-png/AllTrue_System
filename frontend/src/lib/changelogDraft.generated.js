@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.08.24",
     "date": "2026-08-24",
     "title": "2026.08.24 草稿（未發布）",
-    "summary": "編輯前預檢與阻擋原因導引",
+    "summary": "編輯前預檢與阻擋原因導引；收斂主任課程操作入口",
     "audience": [
       "teacher",
       "director"
@@ -20,10 +20,17 @@ export const changelogDraftNotes = [
         "items": [
           "編輯前預檢與阻擋原因導引"
         ]
+      },
+      {
+        "title": "其他改善",
+        "items": [
+          "收斂主任課程操作入口"
+        ]
       }
     ],
     "items": [
-      "編輯前預檢與阻擋原因導引"
+      "編輯前預檢與阻擋原因導引",
+      "收斂主任課程操作入口"
     ]
   },
   {
