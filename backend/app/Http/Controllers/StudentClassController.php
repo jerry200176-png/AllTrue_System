@@ -1105,7 +1105,7 @@ class StudentClassController extends Controller
     /**
      * 堂數制：從第一堂日開始，依排課星期與請假/調課/加課，算出恰好 N 堂的有效日期（請假會讓結束日往後推）。
      */
-    private static function computeEffectiveSessionDates(string $startDate, int $n, array $daysOfWeek, array $leaveSet, array $scheduledSet): array
+    public static function computeEffectiveSessionDates(string $startDate, int $n, array $daysOfWeek, array $leaveSet, array $scheduledSet): array
     {
         $list = [];
         $d = Carbon::parse($startDate . ' 12:00:00');

@@ -548,6 +548,13 @@ class ClassSessionController extends Controller
         }
 
         $byClass = $this->buildByClassMapFromItems($items);
+        $projectedByClass = $this->buildProjectedByClassForIndex(
+            $byClass,
+            $start,
+            $end,
+            [],
+            true
+        );
 
         return response()->json([
             'api_kind' => 'projection',
@@ -555,6 +562,7 @@ class ClassSessionController extends Controller
             'total' => count($items),
             'data' => array_values($items),
             'by_class' => $byClass,
+            'projected' => ['by_class' => $projectedByClass],
         ]);
     }
 
@@ -569,7 +577,13 @@ class ClassSessionController extends Controller
      *         range (in-app #222).
      * @return array<string, list<array<string, mixed>>>
      */
-    private function buildProjectedByClassForIndex(array $materializedByClass, ?string $rangeStart, ?string $rangeEnd, array $requestedClassIds = []): array
+    private function buildProjectedByClassForIndex(
+        array $materializedByClass,
+        ?string $rangeStart,
+        ?string $rangeEnd,
+        array $requestedClassIds = [],
+        bool $includeTeacherCandidates = false
+    ): array
     {
         if (!$rangeStart || !$rangeEnd) {
             return [];
@@ -579,6 +593,45 @@ class ClassSessionController extends Controller
             array_map('intval', array_keys($materializedByClass)),
             array_map('intval', $requestedClassIds)
         ), fn ($id) => $id > 0)));
+
+        // A complete teacher projection must include active contracts that have
+        // no ClassSession row in the requested range yet. The LIST endpoint keeps
+        // its historical materialized-row candidate behavior; only the explicit
+        // projection path opts into this wider, read-only contract scope.
+        if ($includeTeacherCandidates && (string) request()->attributes->get('auth_role') === 'teacher') {
+            $teacherId = (int) request()->attributes->get('auth_teacher_id');
+            $campusIds = request()->attributes->get('auth_campus_ids', []);
+            $requestedCampus = (int) (request()->input('branch_id') ?? request()->input('campus_id') ?? 0);
+            if ($requestedCampus > 0) {
+                $campusIds = [$requestedCampus];
+            }
+
+            $candidateQuery = StudentClass::query()
+                ->where('TeacherID', $teacherId)
+                ->where(function ($q) {
+                    $q->where('Stop', 0)->orWhereNull('Stop');
+                })
+                ->where(function ($q) use ($rangeStart, $rangeEnd) {
+                    $q->where(function ($dates) use ($rangeEnd) {
+                        $dates->whereNull('StartDate')->orWhereDate('StartDate', '<=', $rangeEnd);
+                    })->where(function ($dates) use ($rangeStart) {
+                        $dates->whereNull('EndDate')->orWhereDate('EndDate', '>=', $rangeStart);
+                    });
+                });
+            if (!empty($campusIds)) {
+                $candidateQuery->where(function ($q) use ($campusIds) {
+                    $q->whereHas('room', fn ($room) => $room->whereIn('campus_id', $campusIds))
+                        ->orWhere(function ($noRoom) use ($campusIds) {
+                            $noRoom->whereNull('room_id')
+                                ->whereHas('student', fn ($student) => $student->whereIn('CampusID', $campusIds));
+                        });
+                });
+            }
+            $classIds = array_values(array_unique(array_merge(
+                $classIds,
+                $candidateQuery->pluck('ID')->map(fn ($id) => (int) $id)->all()
+            )));
+        }
         if ($classIds === []) {
             return [];
         }
@@ -586,12 +639,19 @@ class ClassSessionController extends Controller
         // Eager-load student: buildProjectedFromEffectiveDates() reads
         // $class->student->CampusID per class for projected-slot branch_id
         // (in-app #235) -- without this it's an N+1, one query per class.
-        $classesQuery = StudentClass::query()->with('student');
+        $classesQuery = StudentClass::query()->with(['student', 'teacher', 'subjectRecord', 'room']);
         $classesQuery->whereIn('ID', $classIds);
         $classes = $classesQuery->get()->keyBy('ID');
+        $scheduleSince = $classes->pluck('StartDate')->filter()->map(function ($date) use ($rangeStart) {
+            try {
+                return Carbon::parse((string) $date)->toDateString();
+            } catch (\Throwable $e) {
+                return $rangeStart;
+            }
+        })->min() ?: $rangeStart;
         $schedules = Schedule::query()
             ->whereIn('student_course_id', $classIds)
-            ->whereDate('schedule_date', '>=', $rangeStart)
+            ->whereDate('schedule_date', '>=', $scheduleSince)
             ->whereDate('schedule_date', '<=', $rangeEnd)
             ->select('student_course_id', 'schedule_date', 'status')
             ->get();
@@ -656,6 +716,34 @@ class ClassSessionController extends Controller
                     $scheduledByClass[$classId] ?? [],
                     $existingSet
                 );
+            } elseif (
+                $includeTeacherCandidates
+                && (string) ($class->ScheduleMode ?? 'count') === 'count'
+                && (int) ($class->SessionCount ?? 0) > 0
+                && (string) ($class->scheduling_policy ?? 'auto_recurrence') !== 'manual_occurrence'
+                && (int) ($class->PackageID ?? 0) <= 0
+                && $class->StartDate
+            ) {
+                $daysOfWeek = [];
+                foreach (['week', 'week1', 'week2', 'week3', 'week4', 'week5', 'week6'] as $field) {
+                    $day = (int) ($class->{$field} ?? 0);
+                    if ($day >= 1 && $day <= 7 && !in_array($day, $daysOfWeek, true)) {
+                        $daysOfWeek[] = $day;
+                    }
+                }
+                if ($daysOfWeek !== []) {
+                    $contractDates = StudentClassController::computeEffectiveSessionDates(
+                        Carbon::parse($class->StartDate)->toDateString(),
+                        (int) $class->SessionCount,
+                        $daysOfWeek,
+                        $leaveByClass[$classId] ?? [],
+                        $scheduledByClass[$classId] ?? []
+                    );
+                    $effectiveDates = array_values(array_filter(
+                        $contractDates,
+                        fn ($date) => $date >= $rangeStart && $date <= $rangeEnd
+                    ));
+                }
             }
 
             $projected = $reader->buildProjectedFromEffectiveDates(
