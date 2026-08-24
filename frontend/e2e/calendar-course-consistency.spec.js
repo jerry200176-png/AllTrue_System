@@ -15,6 +15,7 @@ const BASE = process.env.SMOKE_BASE_URL;
 const BRANCH_ID = Number(process.env.SMOKE_BRANCH_ID || 16);
 const START = process.env.SMOKE_START_DATE || '2026-08-05';
 const END = process.env.SMOKE_END_DATE || '2026-08-07';
+const CALENDAR_NAV_LABEL = '班級行事曆';
 const COURSE_NAV_LABEL = '課程查找';
 // Keep the returning-user fixture aligned with the same STAFF_UPDATES source
 // that drives the production release nudge. A hard-coded version makes this
@@ -69,7 +70,7 @@ async function getJson(request, path, token) {
 async function navigate(page, label) {
   await dismissOverlays(page);
   const isMobile = (page.viewportSize()?.width || 0) <= 640;
-  if (isMobile && label === '班級行事曆 / 課表') {
+  if (isMobile && label === CALENDAR_NAV_LABEL) {
     const bottomNav = page.locator('.mobile-bottom-nav');
     await expect(bottomNav).toBeVisible({ timeout: 15_000 });
     const bottomTab = bottomNav.locator('.mob-tab').filter({ hasText: '行事曆' }).first();
@@ -204,8 +205,8 @@ test.describe('production acceptance — calendar/course parity', () => {
       await page.goto('/');
       await expect(page.locator('#login-account')).toHaveCount(0, { timeout: 20_000 });
 
-      await navigate(page, '班級行事曆 / 課表');
-      await assertResponsive(page, '班級行事曆 / 課表');
+      await navigate(page, CALENDAR_NAV_LABEL);
+      await assertResponsive(page, CALENDAR_NAV_LABEL);
 
       // Force the reported 2026-08-05—08-07 window instead of relying on the
       // runner's current week. The input's change handler triggers the real SPA
