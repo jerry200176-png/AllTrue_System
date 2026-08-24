@@ -1,3 +1,10 @@
+## 2026-08-24 — improved(course): 編輯受限時直接導向下一步
+
+<!-- release-notes: staff_update=staff-2026-08-24-course-editability-guidance -->
+
+- 共用方案堂數受保護時，編輯視窗可直接開啟「設定方案總堂數」，並預填目前總堂數。
+- 堂次／扣堂對帳與需要另開新課程的情境，提供前往既有審核或學生管理入口；不新增或繞過任何安全流程。
+
 ## 2026-08-24 — improved(course): 收斂主任課程操作入口
 
 <!-- release-notes: staff_update=staff-2026-08-24-course-action-hierarchy -->

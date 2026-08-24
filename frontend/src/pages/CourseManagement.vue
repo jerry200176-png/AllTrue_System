@@ -1949,6 +1949,9 @@ const EDITABILITY_ACTION_HANDLERS = new Set([
   'transfer_sessions',
   'void_payment',
   'payment_report',
+  'package_adjustment',
+  'reconcile_usage',
+  'new_contract',
 ]);
 
 function canOpenEditabilityAction(action) {
@@ -1965,6 +1968,12 @@ function openEditabilityAction(action) {
     openTransferSessionsModal(course);
   } else if (action === 'void_payment' || action === 'payment_report') {
     void openInvoiceModal(course);
+  } else if (action === 'package_adjustment') {
+    openPackageAdjustmentModal(course);
+  } else if (action === 'reconcile_usage') {
+    emit('navigate', 'duplicate-review');
+  } else if (action === 'new_contract') {
+    emit('navigate', 'students');
   }
 }
 
@@ -2439,6 +2448,13 @@ function openPurchaseModal(course) {
     package_op: 'add', // 'add' (加購) | 'set' (設定總堂數) — package members only (#553)
   };
   showPurchaseModal.value = true;
+}
+
+function openPackageAdjustmentModal(course) {
+  openPurchaseModal(course);
+  if (!isPackageMember(course)) return;
+  purchaseForm.value.package_op = 'set';
+  purchaseForm.value.sessions = getPackageTotalSessions(course);
 }
 
 async function loadRenewMonthlyPreview(course) {
