@@ -187,6 +187,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | 採用率 / 品質指標定義 | `docs/ADOPTION_QUALITY_METRICS.md` |
 | **Product → Engineering maturity roadmap** | `docs/MODULE_PRODUCT_ENGINEERING_MATURITY_ROADMAP.md`（7/1 後 AI 接手總圖） |
 | **AI-native 演進路線圖（BI/異常/留存/AI 行政）** | `docs/POLICY_AI_NATIVE_ROADMAP.md`；metric 底座＝`ops:business-digest` / `BusinessDigestService` |
+| **分校健康看板 V1（唯讀）** | [`architecture/RFC_BRANCH_HEALTH_V1.md`](architecture/RFC_BRANCH_HEALTH_V1.md)；總部只看可驗證訊號，不做總分排名 |
 | 產品缺口審查（月度快照） | `docs/reviews/PRODUCT_GAP_REVIEW_2026-06.md` |
 | Perception pulse survey 設計 | `docs/archive/PROFESSIONAL_PERCEPTION_SURVEY.md` |
 
