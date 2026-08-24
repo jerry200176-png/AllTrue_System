@@ -36,6 +36,38 @@ export const staffUpdates = [
     "version": "2026.08.24"
   },
   {
+    "id": "staff-2026-08-24-course-action-hierarchy",
+    "publishedAt": "2026-08-24",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "課程操作更清楚",
+    "summary": "課程列只保留最常用入口，其他操作按情境收在「更多」。",
+    "items": [
+      "第一層只保留編輯、排課與查看詳情，主任先處理最常見工作。",
+      "帳單、合約調整、補課與狀態管理改按情境分組，功能仍保留。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "第一層只保留編輯、排課與查看詳情，主任先處理最常見工作。",
+          "帳單、合約調整、補課與狀態管理改按情境分組，功能仍保留。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-24:course-action-hierarchy"
+    ],
+    "date": "2026-08-24",
+    "version": "2026.08.24"
+  },
+  {
     "id": "staff-2026-08-23-overlap-entitlement-root-guard",
     "publishedAt": "2026-08-23",
     "effectiveAt": null,
