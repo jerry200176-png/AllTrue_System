@@ -39,13 +39,19 @@ export const changelogDraftNotes = [
     "version": "2026.08.23",
     "date": "2026-08-23",
     "title": "2026.08.23 草稿（未發布）",
-    "summary": "寫入時阻擋學生重疊課程並對齊堂數摘要；堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。",
+    "summary": "未收款課程合約拆分精靈；寫入時阻擋學生重疊課程並對齊堂數摘要",
     "audience": [
       "teacher",
       "director"
     ],
     "draft": true,
     "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "未收款課程合約拆分精靈"
+        ]
+      },
       {
         "title": "修正內容",
         "items": [
@@ -68,6 +74,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "未收款課程合約拆分精靈",
       "寫入時阻擋學生重疊課程並對齊堂數摘要",
       "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。",
       "收斂主任的合約與堂次調整入口",

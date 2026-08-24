@@ -4,6 +4,22 @@
 
 updates:
 
+  - id: staff-2026-08-23-split-contract-wizard
+    published_at: "2026-08-23"
+    audiences:
+      - director
+    importance: major
+    title: 未收款課程可用合約拆分精靈
+    summary: 選取已上課堂次後，系統會先搬移紀錄，再自動試算並更正兩份未收款合約。
+    items:
+      - category: added
+        text: 合約拆分會保留評量／點名紀錄，並在送出前顯示舊約與新約的堂數及金額。
+      - category: improved
+        text: 已收款、待對帳或不符合條件的課程會維持鎖定，不會被精靈改寫。
+    source_refs:
+      - "changelog:2026-08-23:split-contract-wizard"
+      - "github:#1901"
+
   - id: staff-2026-08-24-course-editability-guidance
     published_at: "2026-08-24"
     audiences:
