@@ -23,7 +23,8 @@ class SlotOccupiedException extends RuntimeException
         public readonly string $startTime,
         public readonly ?int $conflictSessionId = null,
         public readonly ?string $conflictStatus = null,
-        string $message = '該時段已有課程，無法調課至此時段（請先取消原時段的課或改選其他時段）'
+        string $message = '該時段已有課程，無法調課至此時段（請先取消原時段的課或改選其他時段）',
+        public readonly string $responseCode = 'slot_occupied'
     ) {
         parent::__construct($message);
     }
@@ -43,12 +44,30 @@ class SlotOccupiedException extends RuntimeException
         );
     }
 
+    public static function fromStudentConflict(
+        int $courseId,
+        string $sessionDate,
+        string $startTime,
+        ?int $conflictSessionId = null,
+        ?string $conflictStatus = null,
+    ): self {
+        return new self(
+            courseId: $courseId,
+            sessionDate: $sessionDate,
+            startTime: $startTime,
+            conflictSessionId: $conflictSessionId,
+            conflictStatus: $conflictStatus,
+            message: '學生在此時段已有其他課程，無法建立重疊課程（請改選其他日期／時間）',
+            responseCode: 'student_slot_conflict',
+        );
+    }
+
     /** @return array<string, mixed> */
     public function toResponseArray(): array
     {
         return [
             'message' => $this->getMessage(),
-            'code' => 'slot_occupied',
+            'code' => $this->responseCode,
             'conflict_session_id' => $this->conflictSessionId,
             'conflict_status' => $this->conflictStatus,
             'session_date' => $this->sessionDate,

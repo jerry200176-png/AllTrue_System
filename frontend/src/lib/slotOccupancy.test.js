@@ -4,6 +4,7 @@ import {
   incomingClassConflict,
   pickerSlotConflict,
   uniqueStudentCount,
+  coursesWithSlotConflicts,
 } from './slotOccupancy.js';
 
 const mixedTwo = [
@@ -102,3 +103,31 @@ const dupStudent = uniqueStudentCount([
   { id: 2, student_id: 214, class_type: 'one_on_three' },
 ]);
 assert.equal(dupStudent, 1);
+
+// #2007/#2006: renewal left the old course open — same teacher/day/time as the new one.
+const renewalOverlap = coursesWithSlotConflicts([
+  { id: 1272, teacher_id: 67, days_of_week: [6], start_time: '13:00', end_time: '15:00' },
+  { id: 2382, teacher_id: 67, days_of_week: [6], start_time: '13:00', end_time: '15:00' },
+]);
+assert.deepEqual([...renewalOverlap].sort(), [1272, 2382]);
+
+// Different teacher, same time → no conflict.
+const differentTeacher = coursesWithSlotConflicts([
+  { id: 1, teacher_id: 1, days_of_week: [6], start_time: '13:00', end_time: '15:00' },
+  { id: 2, teacher_id: 2, days_of_week: [6], start_time: '13:00', end_time: '15:00' },
+]);
+assert.equal(differentTeacher.size, 0);
+
+// Same teacher/day, non-overlapping times → no conflict.
+const noTimeOverlap = coursesWithSlotConflicts([
+  { id: 1, teacher_id: 1, days_of_week: [6], start_time: '13:00', end_time: '15:00' },
+  { id: 2, teacher_id: 1, days_of_week: [6], start_time: '15:00', end_time: '17:00' },
+]);
+assert.equal(noTimeOverlap.size, 0);
+
+// Legacy single day_of_week field (no days_of_week array) is also supported.
+const legacyDayField = coursesWithSlotConflicts([
+  { id: 1, teacher_id: 5, day_of_week: 2, start_time: '10:00', end_time: '11:00' },
+  { id: 2, teacher_id: 5, day_of_week: 2, start_time: '10:30', end_time: '12:00' },
+]);
+assert.deepEqual([...legacyDayField].sort(), [1, 2]);

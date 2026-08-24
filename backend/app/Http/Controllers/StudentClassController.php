@@ -32,6 +32,7 @@ use App\Services\ScheduleGuardService;
 use App\Services\ManualSessionBookingService;
 use App\Services\SessionProjectionReadService;
 use App\Services\TeacherScopeService;
+use App\Services\CourseEditabilityService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -169,7 +170,14 @@ class StudentClassController extends Controller
             ->pluck('status', 'id')
             ->toArray();
         $classIds = $classes->getCollection()->pluck('ID')->map(fn ($id) => (int) $id)->filter(fn ($id) => $id > 0)->values()->all();
-        $observedUsedByClass = SessionDeductionService::batchObservedUsedSessions($classIds);
+        // Keep the list response honest when a cancelled session left behind a
+        // sign-in/ledger artifact. Choosing one evidence source silently creates
+        // the "已上 6 / 剩 1" contradiction directors see.
+        $usageDiagnosticsByClass = SessionDeductionService::batchExpectedUsedSessionDiagnostics($classIds);
+        $observedUsedByClass = array_map(
+            static fn (array $diagnostic): int => (int) $diagnostic['observed_used'],
+            $usageDiagnosticsByClass
+        );
         $paidAtMap = AlertController::lastPaidAtByStudentClassIds($classIds);
         $invoiceAggMap = AlertController::invoiceAggregateByStudentClassIds($classIds);
 
@@ -233,7 +241,7 @@ class StudentClassController extends Controller
             }
         }
 
-        $classes->getCollection()->transform(function ($class) use ($courseNames, $subjectNames, $teacherNames, $userStatuses, $observedUsedByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap, $invoiceAggMap, $packageMap) {
+        $classes->getCollection()->transform(function ($class) use ($courseNames, $subjectNames, $teacherNames, $userStatuses, $observedUsedByClass, $usageDiagnosticsByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap, $invoiceAggMap, $packageMap) {
             $class->subject_name = $courseNames[$class->SubjectID]
                 ?? $subjectNames[$class->SubjectID]
                 ?? null;
@@ -401,6 +409,7 @@ class StudentClassController extends Controller
             $class->effective_charge = $effectiveCharge;
             $class->charge_is_fallback = $storedCharge <= 0 && $effectiveCharge > 0;
             $observedUsedSessions = (int) ($observedUsedByClass[$class->ID] ?? 0);
+            $usageDiagnostic = $usageDiagnosticsByClass[(int) $class->ID] ?? null;
 
             // Remaining = 購買堂數 − 實際已上（扣點、已完成堂次、已核准評量取最大後再與購買數取 cap）
 
@@ -418,6 +427,24 @@ class StudentClassController extends Controller
             }
             $class->sessions_used = (int) ($class->UsedSessions ?? 0);
             $class->remaining_sessions = (int) ($class->RemainingSessions ?? 0);
+            if ($usageDiagnostic !== null) {
+                $expectedRemaining = max(
+                    0,
+                    (int) $class->sessions_purchased - (int) $usageDiagnostic['expected_used']
+                );
+                $class->usage_balance_status = (
+                    (int) $usageDiagnostic['cancelled_usage_artifacts'] > 0
+                    || (int) ($class->RemainingSessions ?? 0) !== $expectedRemaining
+                ) ? 'review_required' : 'ok';
+                $class->usage_balance_diagnostic = [
+                    'observed_used_sessions' => (int) $usageDiagnostic['observed_used'],
+                    'class_session_used_sessions' => (int) $usageDiagnostic['class_session_used'],
+                    'cancelled_usage_artifacts' => (int) $usageDiagnostic['cancelled_usage_artifacts'],
+                    'ledger_used_sessions' => (int) $usageDiagnostic['ledger_used'],
+                    'expected_used_sessions' => (int) $usageDiagnostic['expected_used'],
+                    'expected_remaining_sessions' => $expectedRemaining,
+                ];
+            }
             // 精確剩餘分鐘（部分補課顯示用）；null = 尚未分鐘化的舊資料。
             $class->remaining_minutes = $storedRemainingMinutes !== null ? (int) $storedRemainingMinutes : null;
             $this->attachPreciseBalanceFields($class);
@@ -1161,6 +1188,15 @@ class StudentClassController extends Controller
         return $fallback;
     }
 
+    public function editability(StudentClass $studentClass)
+    {
+        if ($accessError = $this->authorizeStudentClassAccess($studentClass)) {
+            return $accessError;
+        }
+
+        return response()->json(app(CourseEditabilityService::class)->inspect($studentClass));
+    }
+
     public function show(StudentClass $studentClass)
     {
         $role = request()->attributes->get('auth_role');
@@ -1461,6 +1497,7 @@ class StudentClassController extends Controller
                 ->first();
             if ($activePayment && $activePayment->last_paid_at !== null) {
                 $lastPaidDate = substr((string) $activePayment->last_paid_at, 0, 10);
+                $this->auditEditBlocked($studentClass, 'payment_record_locked', 409);
                 return response()->json([
                     'message' => "此課程在 {$lastPaidDate} 已有收款入帳紀錄，無法直接改為未繳費。"
                         . '若該筆收款是誤登錄，請至「收費」頁將該帳單作廢，狀態會自動恢復為未繳費。',
@@ -1978,6 +2015,7 @@ class StudentClassController extends Controller
         ]);
 
         if ((string) ($studentClass->ScheduleMode ?? 'count') !== 'count') {
+            $this->auditEditBlocked($studentClass, 'billing_correction_count_mode_only', 422);
             return response()->json([
                 'message' => '只有堂數制課程可以使用未收款堂數更正。',
                 'code' => 'billing_correction_count_mode_only',
@@ -1985,6 +2023,7 @@ class StudentClassController extends Controller
         }
 
         if ($studentClass->isPartOfPackage()) {
+            $this->auditEditBlocked($studentClass, 'billing_correction_package_forbidden', 422);
             return response()->json([
                 'message' => '共用課程包請使用方案調整流程，不可單獨更正課程堂數。',
                 'code' => 'billing_correction_package_forbidden',
@@ -1992,6 +2031,7 @@ class StudentClassController extends Controller
         }
 
         if ((int) ($studentClass->Paid ?? 0) === 1) {
+            $this->auditEditBlocked($studentClass, 'billing_correction_paid_locked', 409);
             return response()->json([
                 'message' => '此課程已標記收款，請先走帳務更正／作廢流程。',
                 'code' => 'billing_correction_paid_locked',
@@ -2016,6 +2056,7 @@ class StudentClassController extends Controller
             })
             ->exists();
         if ($activePayment) {
+            $this->auditEditBlocked($studentClass, 'billing_correction_payment_locked', 409);
             return response()->json([
                 'message' => '此課程已有有效收款紀錄，請先至帳務流程作廢或更正帳單。',
                 'code' => 'billing_correction_payment_locked',
@@ -2027,6 +2068,7 @@ class StudentClassController extends Controller
             ->whereIn('status', ['pending', 'confirmed'])
             ->exists();
         if ($hasPendingReport) {
+            $this->auditEditBlocked($studentClass, 'billing_correction_payment_report_locked', 409);
             return response()->json([
                 'message' => '此課程已有待處理或已確認的繳費回報，請先完成或作廢該筆回報。',
                 'code' => 'billing_correction_payment_report_locked',
@@ -2039,6 +2081,7 @@ class StudentClassController extends Controller
         $oldCharge = (int) ($studentClass->Charge ?? 0);
         $rateUnit = strtolower(trim((string) ($studentClass->rate_unit ?? 'session')));
         if ($rateUnit !== 'session') {
+            $this->auditEditBlocked($studentClass, 'billing_correction_session_rate_only', 422);
             return response()->json([
                 'message' => '只有按堂計費課程可以使用此更正流程。',
                 'code' => 'billing_correction_session_rate_only',
@@ -2048,6 +2091,7 @@ class StudentClassController extends Controller
         $rate = (float) ($studentClass->getAttribute('Rate') ?? 0);
         $expectedCharge = (int) round($rate * $newCount);
         if ($newCharge !== $expectedCharge) {
+            $this->auditEditBlocked($studentClass, 'billing_correction_charge_mismatch', 422);
             return response()->json([
                 'message' => "更正金額必須等於單堂 {$rate} × {$newCount} 堂 = {$expectedCharge} 元。",
                 'code' => 'billing_correction_charge_mismatch',
@@ -2057,6 +2101,7 @@ class StudentClassController extends Controller
 
         $observedUsed = (int) (SessionDeductionService::batchObservedUsedSessions([$classId])[$classId] ?? 0);
         if ($newCount < $observedUsed) {
+            $this->auditEditBlocked($studentClass, 'billing_correction_below_observed_usage', 422);
             return response()->json([
                 'message' => "更正後堂數（{$newCount}）不可少於已使用 {$observedUsed} 堂；已發生的扣堂紀錄不會被改寫。"
                     . "如需調整收費金額，請改到一般課程編輯畫面手動下修「總費用」（堂數維持不變，不影響已發生的扣堂紀錄）。",
@@ -2067,6 +2112,7 @@ class StudentClassController extends Controller
         }
 
         if ($newCount >= $oldCount) {
+            $this->auditEditBlocked($studentClass, 'billing_correction_reduction_only', 422);
             return response()->json([
                 'message' => '此流程只允許未收款課程減少堂數更正；增加堂數請使用加購／續報。',
                 'code' => 'billing_correction_reduction_only',
@@ -2168,6 +2214,7 @@ class StudentClassController extends Controller
             'session_ids' => ['required', 'array', 'min:1', 'max:100'],
             'session_ids.*' => ['integer'],
             'start_date' => ['required', 'date'],
+            'carry_forward_unused' => ['sometimes', 'boolean'],
         ]);
         return response()->json($this->splitContractPreviewPayload(
             $this->prepareSplitContractPlan($studentClass, $data)
@@ -2183,6 +2230,7 @@ class StudentClassController extends Controller
             'session_ids.*' => ['integer'],
             'start_date' => ['required', 'date'],
             'reason' => ['required', 'string', 'max:255'],
+            'carry_forward_unused' => ['sometimes', 'boolean'],
         ]);
         return DB::transaction(function () use ($studentClass, $data) {
             $source = StudentClass::query()->where('ID', $studentClass->getAttribute('ID'))
@@ -2205,6 +2253,32 @@ class StudentClassController extends Controller
             $newCourse = $this->createStudentClassRecordResilient(
                 $this->buildSplitContractPayload($source, $plan)
             );
+            $lastFutureDate = null;
+            if ($plan['carry_forward_unused']) {
+                $slots = $this->resolveScheduleSlotsForRebuild($source);
+                if (empty($slots)) {
+                    $fallbackTime = $this->normalizeSessionTime($source->getAttribute('time'), '16:00');
+                    $slots = [[
+                        'weekday' => (int) Carbon::parse($plan['start_date'])->dayOfWeekIso,
+                        'time' => substr($fallbackTime, 0, 5),
+                        'duration_minutes' => max(30, (int) ($source->getAttribute('SessionDuration') ?? 120)),
+                    ]];
+                }
+                $futureSessions = $this->buildSessionsForCount(
+                    (int) $newCourse->getAttribute('ID'),
+                    $plan['start_date'],
+                    $plan['future_session_count'],
+                    $slots,
+                    max(30, (int) ($source->getAttribute('SessionDuration') ?? 120))
+                );
+                foreach ($futureSessions as $sessionData) {
+                    $upsert = app(ClassSessionMaterializationService::class)->upsertSlot($sessionData);
+                    $date = $sessionData['SessionDate'] ?? null;
+                    if ($date !== null && ($lastFutureDate === null || $date > $lastFutureDate)) {
+                        $lastFutureDate = $date;
+                    }
+                }
+            }
             $selectedSessions = ClassSession::query()
                 ->where('StudentClassID', $source->getAttribute('ID'))
                 ->whereIn('id', $plan['session_ids'])
@@ -2251,6 +2325,11 @@ class StudentClassController extends Controller
             SessionDeductionService::recomputeCounters((int) $newCourse->getAttribute('ID'));
             $source = $source->fresh();
             $newCourse = $newCourse->fresh();
+            if ($lastFutureDate !== null) {
+                $newCourse->setAttribute('EndDate', $lastFutureDate);
+                $newCourse->save();
+                $newCourse->refresh();
+            }
             SecurityAuditEvent::append(
                 'student_class.contract_split',
                 'success',
@@ -2272,7 +2351,9 @@ class StudentClassController extends Controller
                     'waived_session_count' => $plan['waived_session_count'],
                     'waived_charge' => $plan['waived_charge'],
                     'reason_hash' => hash('sha256', (string) $data['reason']),
-                    'reason_code' => 'unpaid_contract_split_observed_only',
+                    'reason_code' => $plan['carry_forward_unused']
+                        ? 'unpaid_contract_split'
+                        : 'unpaid_contract_split_observed_only',
                     'outcome' => 'success',
                 ]
             );
@@ -2298,7 +2379,7 @@ class StudentClassController extends Controller
                     'charge' => (int) $newCourse->getAttribute('Charge'),
                     'remaining_sessions' => (int) ($newCourse->getAttribute('RemainingSessions') ?? 0),
                     'transferred_session_count' => $plan['selected_session_count'],
-                    'future_session_count' => 0,
+                    'future_session_count' => $plan['carry_forward_unused'] ? $plan['future_session_count'] : 0,
                 ],
             ], 201);
         });
@@ -2587,13 +2668,18 @@ class StudentClassController extends Controller
 
             $newCourse = $this->createStudentClassRecordResilient($newPayload);
             $newCourse->refresh();
-            $sessionSync = $this->ensureMonthlyFutureScheduledSessions($newCourse);
 
+            // Close and cancel the old period before materializing the new
+            // period. A legacy source course may contain future rows beyond
+            // EndDate; leaving it active during generation makes the new
+            // renewal look like a real student overlap.
             $studentClass->Stop = 1;
             $studentClass->closed_reason = 'settled';
             $studentClass->save();
             $cancelled = $this->cancelFutureScheduledSessions($studentClass, 'settled');
             $studentClass->refresh();
+
+            $sessionSync = $this->ensureMonthlyFutureScheduledSessions($newCourse);
 
             $billingPeriod = Carbon::parse($newStartDate)->format('Y-m');
             $totalAmount = max(0, (int) ($newCourse->Charge ?? 0));
@@ -4132,6 +4218,27 @@ class StudentClassController extends Controller
         return null;
     }
 
+    private function auditEditBlocked(StudentClass $studentClass, string $reasonCode, int $status): void
+    {
+        $actor = request()->attributes->get('auth_user');
+        $campusId = (int) (optional($studentClass->student)->CampusID ?: 0) ?: null;
+        SecurityAuditEvent::append(
+            'student_class.edit_blocked',
+            'blocked',
+            [
+                'actor_type' => 'user',
+                'actor_id' => $actor?->id,
+                'subject_type' => 'student_class',
+                'subject_id' => $studentClass->getKey(),
+                'campus_id' => $campusId,
+            ],
+            [
+                'reason_code' => $reasonCode,
+                'http_status' => $status,
+            ]
+        );
+    }
+
     /**
      * @param  array<string, mixed>  $payload
      */
@@ -4255,12 +4362,19 @@ class StudentClassController extends Controller
         }
         $observedUsed = (int) (SessionDeductionService::batchObservedUsedSessions([$classId])[$classId] ?? 0);
         $oldSessionCount = (int) ($studentClass->getAttribute('SessionCount') ?? 0);
-        // This is an unpaid settlement flow: only sessions already delivered
-        // remain billable. Unused sessions are waived, not carried into a new
-        // contract and not materialized as future schedule rows.
-        $waivedSessionCount = max(0, $oldSessionCount - $observedUsed);
+        // Two settlement modes, director-selected via `carry_forward_unused`:
+        // - carry_forward (default, matches original shipped behavior): unused
+        //   sessions move into the new contract as future scheduled rows.
+        // - waived (opt-in): this is treated as a pure unpaid settlement — only
+        //   sessions already delivered are billable; unused sessions are waived,
+        //   not carried into a new contract and not materialized as future rows.
+        $carryForwardUnused = (bool) ($data['carry_forward_unused'] ?? true);
+        $futureSessionCount = max(0, $oldSessionCount - $observedUsed);
+        $waivedSessionCount = $futureSessionCount;
         $sourceSessionCount = $observedUsed - count($sessionIds);
-        $newSessionCount = count($sessionIds);
+        $newSessionCount = $carryForwardUnused
+            ? $oldSessionCount - $sourceSessionCount
+            : count($sessionIds);
         if ($oldSessionCount <= 0 || $observedUsed <= 0 || $sourceSessionCount < 1 || $newSessionCount < 1) {
             abort(response()->json([
                 'message' => '目前使用量無法形成至少 1 堂的舊合約與新合約，請重新檢查選取堂次。',
@@ -4283,9 +4397,10 @@ class StudentClassController extends Controller
             'source_charge' => $sourceCharge,
             'new_session_count' => $newSessionCount,
             'new_charge' => $newCharge,
-            'future_session_count' => 0,
-            'waived_session_count' => $waivedSessionCount,
-            'waived_charge' => $waivedCharge,
+            'carry_forward_unused' => $carryForwardUnused,
+            'future_session_count' => $futureSessionCount,
+            'waived_session_count' => $carryForwardUnused ? 0 : $waivedSessionCount,
+            'waived_charge' => $carryForwardUnused ? 0 : $waivedCharge,
         ];
     }
     private function splitContractPreviewPayload(array $plan): array
@@ -4311,7 +4426,7 @@ class StudentClassController extends Controller
                 'session_count' => $plan['new_session_count'],
                 'charge' => $plan['new_charge'],
                 'transferred_session_count' => $plan['selected_session_count'],
-                'future_session_count' => 0,
+                'future_session_count' => $plan['carry_forward_unused'] ? $plan['future_session_count'] : 0,
             ],
         ];
     }
@@ -6282,6 +6397,7 @@ class StudentClassController extends Controller
 
         $lock = app(BillingContractLockGuard::class)->inspect($studentClass, $mapped);
         if ($lock['locked']) {
+            $this->auditEditBlocked($studentClass, 'billing_contract_locked', 422);
             return response()->json([
                 'message' => $lock['message'],
                 'code' => 'billing_contract_locked',

@@ -270,6 +270,61 @@ class ScheduleGuardrailsTest extends TestCase
         $res->assertStatus(201);
     }
 
+    /**
+     * #2006: 續約時舊 StudentClass 沒被關閉，跟新 StudentClass 同時段並存。
+     * 學生對「新期」請假後，衝突訊息應該點名是「哪一筆」課程（科目/期別），
+     * 而不是只顯示學生姓名——避免主任誤以為系統把請假的那堂算成佔用。
+     */
+    public function test_conflict_details_include_subject_when_student_has_overlapping_course(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-guard-dup@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-guard-dup@example.com');
+
+        DB::table('Subject')->insertOrIgnore(['id' => 1, 'Subject_Name' => '理化']);
+
+        $studentB = $this->createStudent(1, '王品方');
+        $studentC = $this->createStudent(1, '欲補課學生');
+
+        $date = '2026-08-29'; // Saturday
+
+        // Old (unclosed after renewal) and new course, same subject/teacher/slot.
+        $oldCourse = $this->createOneOnOneCourse($studentB->id, $teacherId, '13:00', '2026-05-09');
+        $newCourse = $this->createOneOnOneCourse($studentB->id, $teacherId, '13:00', '2026-07-11');
+
+        DB::table('ClassSession')->insert([
+            'StudentClassID' => $oldCourse, 'SessionDate' => $date,
+            'StartTime' => '13:00', 'EndTime' => '15:00', 'Status' => 'scheduled',
+        ]);
+        DB::table('ClassSession')->insert([
+            'StudentClassID' => $newCourse, 'SessionDate' => $date,
+            'StartTime' => '13:00', 'EndTime' => '15:00', 'Status' => 'leave',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/schedules', [
+            'student_id' => $studentC->id,
+            'teacher_id' => $teacherId,
+            'subject' => 'Physics',
+            'day_of_week' => 6,
+            'start_time' => '13:00',
+            'end_time' => '15:00',
+            'duration_hours' => 2,
+            'class_type' => 'one_on_one',
+            'status' => 'scheduled',
+            'type' => 'normal',
+            'deduction' => 1,
+            'branch_id' => 1,
+            'schedule_date' => $date,
+        ]);
+
+        // Still correctly blocked — the "old" course is a genuine, still-active occupant.
+        $res->assertStatus(409)
+            ->assertJsonPath('conflicts.0.overlap_details.0.student_name', '王品方')
+            ->assertJsonPath('conflicts.0.overlap_details.0.subject_name', '理化');
+    }
+
     public function test_schedule_update_excludes_same_student_from_capacity_guard(): void
     {
         $token = $this->createDirectorToken([1], 'director-guard-update-self@example.com');
@@ -922,6 +977,38 @@ class ScheduleGuardrailsTest extends TestCase
             'Stop' => 0,
             'MDate' => now(),
             'week' => 1,
+            'time' => $startTime,
+            'ScheduleMode' => 'count',
+        ]);
+    }
+
+    /**
+     * Insert a one_on_one StudentClass with a caller-supplied StartDate — used to
+     * reproduce two overlapping courses left active after a renewal (#2006).
+     */
+    private function createOneOnOneCourse(int $studentId, int $teacherId, string $startTime, string $startDate): int
+    {
+        return (int) StudentClass::query()->insertGetId([
+            'StudentID' => $studentId,
+            'TeacherID' => $teacherId,
+            'ClassType' => 'one_on_one',
+            'GradeID' => 1,
+            'SubjectID' => 1,
+            'by1' => 1,
+            'Period' => 4,
+            'StartDate' => $startDate,
+            'TotalHours' => 16,
+            'SessionCount' => 8,
+            'SessionDuration' => 120,
+            'RemainingSessions' => 8,
+            'UsedSessions' => 0,
+            'Charge' => 1600,
+            'Pay' => 1600,
+            'Paid' => 0,
+            'Rate' => 800,
+            'Stop' => 0,
+            'MDate' => now(),
+            'week' => 6,
             'time' => $startTime,
             'ScheduleMode' => 'count',
         ]);

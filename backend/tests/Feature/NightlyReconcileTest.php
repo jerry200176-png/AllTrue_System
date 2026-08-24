@@ -130,6 +130,40 @@ class NightlyReconcileTest extends TestCase
         $this->assertSame(['ledger_ahead' => 1], $report['cause_counts']);
     }
 
+    public function test_reconcile_flags_positive_usage_artifact_on_cancelled_session(): void
+    {
+        $courseId = $this->bootstrapCourse(8, 7);
+        $sessions = [];
+        for ($i = 1; $i <= 6; $i++) {
+            $sessions[] = $this->attendedSession($courseId, Carbon::now()->subDays(10 + $i)->toDateString());
+        }
+        $cancelled = ClassSession::create([
+            'StudentClassID' => $courseId,
+            'SessionDate' => Carbon::now()->subDays(20)->toDateString(),
+            'StartTime' => '16:00',
+            'EndTime' => '18:00',
+            'Status' => 'cancelled',
+        ]);
+        $sessions[] = $cancelled;
+
+        foreach ($sessions as $session) {
+            SessionDeductionLedger::create([
+                'student_class_id' => $courseId,
+                'class_session_id' => $session->id,
+                'event_type' => 'deduct',
+                'source' => 'attendance',
+            ]);
+        }
+
+        $this->artisan('reconcile:nightly', ['--dry-run' => true])
+            ->assertExitCode(0);
+
+        $report = $this->readReport();
+        $this->assertSame(1, $report['mismatch_count']);
+        $this->assertSame('source_conflict', $report['mismatches'][0]['category']);
+        $this->assertSame(['source_conflict' => 1], $report['cause_counts']);
+    }
+
     public function test_reconcile_classifies_fractional_minute_drift(): void
     {
         $courseId = $this->bootstrapCourse(6, 0);
@@ -220,9 +254,9 @@ class NightlyReconcileTest extends TestCase
         return (int) $course->ID;
     }
 
-    private function attendedSession(int $courseId, string $date): void
+    private function attendedSession(int $courseId, string $date): ClassSession
     {
-        ClassSession::create([
+        return ClassSession::create([
             'StudentClassID' => $courseId,
             'SessionDate' => $date,
             'StartTime' => '16:00',

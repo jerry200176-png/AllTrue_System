@@ -1495,8 +1495,12 @@ onMounted(async () => {
     systemThemeMq?.addEventListener('change', onSystemThemeChange);
     window.addEventListener('popstate', onPopStateDeepLink);
 
-    // Load branches from API (public endpoint, no auth needed)
-    await loadBranches();
+    // Branches and session are independent: start both so a slow public branch
+    // request does not delay auth/profile initialization.
+    const branchesPromise = loadBranches();
+    const sessionPromise = supabase.auth.getSession();
+    const { data } = await sessionPromise;
+    await branchesPromise;
 
     // Restore saved branch or use first branch as default
     const savedBranch = localStorage.getItem('app_branch');
@@ -1510,7 +1514,6 @@ onMounted(async () => {
         currentBranch.value = getDefaultBranchId();
     }
 
-    const { data } = await supabase.auth.getSession();
     session.value = data.session;
 
     if (session.value) {

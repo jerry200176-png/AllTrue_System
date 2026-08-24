@@ -1,0 +1,35 @@
+import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const pagePath = resolve(__dirname, '../../pages/CourseManagement.vue');
+const source = readFileSync(pagePath, 'utf8');
+const activeActionsStart = source.indexOf('<td class="cell-actions">');
+const activeActionsEnd = source.indexOf('<tr v-if="expandedDates.has(c.id)"', activeActionsStart);
+const activeActions = source.slice(activeActionsStart, activeActionsEnd);
+
+describe('CourseManagement action hierarchy', () => {
+  it('keeps core course work visible and groups secondary operations in More', () => {
+    expect(activeActions).toContain('course-primary-action');
+    expect(activeActions).toContain('@click="editCourse(c)"');
+    expect(activeActions).toContain('manual-occurrence-action');
+    expect(activeActions).toContain('btn-toggle');
+    expect(activeActions).toContain('更多 ▾');
+    expect(activeActions).toContain('排課與課堂');
+    expect(activeActions).toContain('帳務與合約');
+    expect(activeActions).toContain('合約／堂次調整');
+    expect(activeActions).not.toContain('btn-invoices');
+    expect(activeActions).not.toContain('>+ 補課</button>');
+  });
+
+  it('keeps the More menu accessible and preserves existing advanced handlers', () => {
+    expect(activeActions).toContain('aria-haspopup="menu"');
+    expect(activeActions).toContain('role="menu"');
+    expect(activeActions).toContain('role="menuitem"');
+    expect(activeActions).toContain('@click="openInvoiceModal(c); closeActionMenu()"');
+    expect(activeActions).toContain('@click="openContractAdjustmentModal(c); closeActionMenu()"');
+    expect(activeActions).toContain('@click="duplicateCourseForTeacher(c); closeActionMenu()"');
+  });
+});

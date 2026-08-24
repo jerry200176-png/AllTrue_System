@@ -163,6 +163,44 @@ class DatabasePerfTest extends TestCase
         $this->assertNotNull($csRow, 'EXPLAIN plan missing the cs (ClassSession) row');
     }
 
+    /**
+     * The director learning fill-rate endpoint uses the same effective-teacher
+     * resolution as the calendar. Keep its date window and substitute join
+     * sargable as well; this endpoint is loaded as secondary dashboard data.
+     * StartTimeHM is the generated ClassSession column used by the calendar
+     * query, so this endpoint must keep the same index-friendly contract.
+     */
+    public function test_teacher_learning_fill_rate_query_avoids_function_wrapped_class_session_columns(): void
+    {
+        foreach (['ClassSession', 'StudentClass', 'Student', 'schedules', 'LearningRecord', 'User'] as $table) {
+            if (!Schema::hasTable($table)) {
+                $this->markTestSkipped("{$table} table missing");
+            }
+        }
+
+        $controller = app(\App\Http\Controllers\ClassSessionController::class);
+        $request = \Illuminate\Http\Request::create('/api/v1/class-sessions/teacher-learning-fill-rates', 'GET', [
+            'branch_id' => 1,
+            'days' => 14,
+        ]);
+        $request->attributes->set('auth_role', 'director');
+        $request->attributes->set('auth_campus_ids', [1]);
+
+        $queries = [];
+        DB::listen(static function ($query) use (&$queries): void {
+            $queries[] = $query->sql;
+        });
+
+        $response = $controller->directorTeacherLearningFillRates($request);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $sql = implode("\n", $queries);
+        $this->assertStringNotContainsString('DATE(cs.SessionDate)', $sql);
+        $this->assertStringNotContainsString('DATE(sub_sched.schedule_date)', $sql);
+        $this->assertStringNotContainsString('SUBSTRING(cs.StartTime', $sql);
+        $this->assertStringContainsString('`cs`.`SessionDate`', $sql);
+    }
+
     // --- FR-008: Campus isolation ---
 
     public function test_student_campus_filter_returns_only_same_campus(): void

@@ -74,6 +74,21 @@ export function useCalendarDataLoad({
 
     const uid = typeof userId === 'function' ? userId() : (userId?.value ?? userId);
 
+    // The projection is scoped only by branch/teacher and date window; it does
+    // not depend on the course list. Start it with the course/schedule requests
+    // so a slow class-sessions query cannot extend the calendar waterfall.
+    const sessionProjectionPromise = (async () => {
+      if (!token || !(bid || teacherMode)) return null;
+      const fetchOpts = { token, start: schedStart, end: schedEnd };
+      if (teacherMode && uid) fetchOpts.teacherId = uid;
+      else if (bid) fetchOpts.branchId = bid;
+      try {
+        return await fetchClassSessionsProjection(fetchOpts);
+      } catch (_) {
+        return null;
+      }
+    })();
+
     if (token) {
       const { courses: coursesResult, schedules } = await fetchCalendarCoursesAndSchedulesParallel({
         fetchCourses: () => fetchCalendarStudentClassesApi({
@@ -179,19 +194,10 @@ export function useCalendarDataLoad({
     exceptions.value = excData;
 
     if (token && (bid || teacherMode)) {
-      const uid = typeof userId === 'function' ? userId() : (userId?.value ?? userId);
       try {
-        const fetchOpts = {
-          token,
-          start: schedStart,
-          end: schedEnd,
-        };
-        if (teacherMode && uid) {
-          fetchOpts.teacherId = uid;
-        } else if (bid) {
-          fetchOpts.branchId = bid;
-        }
-        const { byClass } = await fetchClassSessionsProjection(fetchOpts);
+        const projection = await sessionProjectionPromise;
+        if (!projection) throw new Error('class-sessions projection unavailable');
+        const { byClass } = projection;
         // #220/#221: this fetch is windowed to the currently-viewed week (±buffer), so it
         // only ever knows about a slice of each course's sessions. Wholesale-replacing the
         // shared cache here evicted every other week's already-loaded sessions (e.g. editing

@@ -49,8 +49,12 @@ class NightlyReconcile extends Command
             $actual   = (int) ($actualCounts[$c->ID] ?? 0);
             $expected = (int) ($diagnostic['expected_used'] ?? 0);
             $recorded = (int) ($c->UsedSessions ?? 0);
-            $diff     = abs($expected - $recorded);
-            if ($diff > $threshold) {
+            $sourceConflict = (int) ($diagnostic['cancelled_usage_artifacts'] ?? 0) > 0;
+            $sourceDiff = $sourceConflict
+                ? abs($actual - (int) ($diagnostic['observed_used'] ?? 0))
+                : 0;
+            $diff       = max(abs($expected - $recorded), $sourceDiff);
+            if ($diff > $threshold || $sourceConflict) {
                 $category = $this->classifyMismatch($recorded, $diagnostic);
                 $causeCounts[$category] = ($causeCounts[$category] ?? 0) + 1;
                 $mismatches[] = [
@@ -115,6 +119,10 @@ class NightlyReconcile extends Command
         $expected = (int) ($diagnostic['expected_used'] ?? 0);
         $sessionCount = (int) ($diagnostic['session_count'] ?? 0);
 
+        if ((int) ($diagnostic['cancelled_usage_artifacts'] ?? 0) > 0) {
+            return 'source_conflict';
+        }
+
         if ((bool) ($diagnostic['has_partial'] ?? false)) {
             return 'partial_minutes';
         }
@@ -146,6 +154,7 @@ class NightlyReconcile extends Command
             'counter_overstated' => '已用堂數高於現有證據',
             'ledger_ahead' => '扣堂帳本領先計數器',
             'attendance_ahead' => '出勤或評量證據領先計數器',
+            'source_conflict' => '課堂狀態與扣堂證據衝突',
         ][$category] ?? '待分類';
     }
 

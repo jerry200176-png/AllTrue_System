@@ -17,19 +17,18 @@ class BusinessDigestService
     public function metrics(?int $campusId = null): array
     {
         $remainingDivergence = $this->remainingDivergence($campusId);
+        $stranded = $this->strandedSummary($campusId);
+        $retention = $this->retentionDecomposition($campusId);
 
         $m = [
             'generated_at' => now()->toIso8601String(),
             'campus_id' => $campusId,
             'revenue' => [
-                'stranded_sessions' => $this->strandedSessions($campusId),
-                'stranded_amount' => round($this->strandedAmount($campusId), 0),
+                'stranded_sessions' => $stranded['sessions'],
+                'stranded_amount' => round($stranded['amount'], 0),
                 'unpaid_active_courses' => $this->unpaidActiveCourses($campusId),
             ],
-            'retention' => array_merge(
-                ['no_upcoming_students' => $this->retentionRiskStudents($campusId)],
-                $this->retentionDecomposition($campusId)
-            ),
+            'retention' => $retention,
             'data_quality' => [
                 'attended_without_lr' => $this->attendedWithoutLr($campusId),
                 'cross_sc_duplicate' => $this->crossScDuplicate($campusId),
@@ -383,14 +382,18 @@ class BusinessDigestService
         return $q;
     }
 
-    private function strandedSessions(?int $campusId): int
+    /** @return array{sessions:int, amount:float} */
+    private function strandedSummary(?int $campusId): array
     {
-        return (int) $this->strandedBase($campusId)->sum('sc.RemainingSessions');
-    }
+        $row = $this->strandedBase($campusId)
+            ->selectRaw('COALESCE(SUM(sc.RemainingSessions), 0) AS sessions')
+            ->selectRaw('COALESCE(SUM(sc.RemainingSessions * COALESCE(sc.Rate, 0)), 0) AS amount')
+            ->first();
 
-    private function strandedAmount(?int $campusId): float
-    {
-        return (float) $this->strandedBase($campusId)->sum(DB::raw('sc.RemainingSessions * COALESCE(sc.Rate, 0)'));
+        return [
+            'sessions' => (int) ($row->sessions ?? 0),
+            'amount' => (float) ($row->amount ?? 0),
+        ];
     }
 
     private function unpaidActiveCourses(?int $campusId): int
@@ -405,30 +408,8 @@ class BusinessDigestService
         return (int) $q->count('sc.ID');
     }
 
-    private function retentionRiskStudents(?int $campusId): int
-    {
-        $q = DB::table('Student as s')
-            ->where('s.enable', 1)
-            ->whereExists(function ($e) {
-                $e->select(DB::raw(1))->from('StudentClass as sc')
-                    ->whereColumn('sc.StudentID', 's.id')->where('sc.Stop', 0);
-            })
-            ->whereNotExists(function ($e) {
-                $e->select(DB::raw(1))->from('StudentClass as sc')
-                    ->join('ClassSession as cs', 'cs.StudentClassID', '=', 'sc.ID')
-                    ->whereColumn('sc.StudentID', 's.id')
-                    ->whereRaw('cs.SessionDate BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 14 DAY)')
-                    ->whereRaw("LOWER(cs.Status) NOT IN ('cancelled','voided')");
-            });
-        if ($campusId !== null && $campusId > 0) {
-            $q->where('s.CampusID', $campusId);
-        }
-
-        return (int) $q->count();
-    }
-
     /**
-     * @return array{dormant_prepaid_students:int,dormant_prepaid_recoverable_ntd:int,reenroll_candidates:int}
+     * @return array{no_upcoming_students:int,dormant_prepaid_students:int,dormant_prepaid_recoverable_ntd:int,reenroll_candidates:int}
      */
     private function retentionDecomposition(?int $campusId): array
     {
@@ -461,6 +442,7 @@ class BusinessDigestService
         $reenroll = $rows->filter(fn ($r) => (int) $r->has_prepaid === 0 && (int) $r->has_month === 0);
 
         return [
+            'no_upcoming_students' => $rows->count(),
             'dormant_prepaid_students' => $dormant->count(),
             'dormant_prepaid_recoverable_ntd' => (int) round($dormant->sum(fn ($r) => (float) $r->recoverable)),
             'reenroll_candidates' => $reenroll->count(),

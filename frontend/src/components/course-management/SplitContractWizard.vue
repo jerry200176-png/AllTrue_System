@@ -30,12 +30,23 @@
         <label class="form-label">新合約起算日期
           <input id="split-start-date" v-model="startDate" type="date" class="form-input" :disabled="submitting" />
         </label>
-        <p class="form-hint">選取 {{ selectedIds.length }} 堂；新合約只保留搬入的已上課紀錄，不會自動排未來課。</p>
+        <fieldset class="settlement-mode-fieldset">
+          <legend class="form-label">未使用堂次如何處理</legend>
+          <label class="settlement-mode-option">
+            <input v-model="carryForwardUnused" type="radio" :value="true" name="settlement-mode" :disabled="submitting" />
+            <span><strong>轉入新合約</strong>：未上課堂次隨新合約排入後續課程，維持原本購買堂數</span>
+          </label>
+          <label class="settlement-mode-option">
+            <input v-model="carryForwardUnused" type="radio" :value="false" name="settlement-mode" :disabled="submitting" />
+            <span><strong>直接放棄</strong>：只結算已上課堂次的金額，未上課堂次不排課、不計費</span>
+          </label>
+        </fieldset>
+        <p class="form-hint">選取 {{ selectedIds.length }} 堂。</p>
       </section>
 
       <section v-else-if="step === 2" aria-labelledby="split-step-two-title">
         <h4 id="split-step-two-title" class="wizard-section-title">確認自動試算</h4>
-        <p class="period-hint">這是「未付款結算」：只收已上課堂次，未上課堂次取消，不會建立後續補課。搬課與金額更正會一次完成或全部不變。</p>
+        <p class="period-hint">{{ carryForwardUnused ? '未上課堂次會隨新合約排入後續課程；搬課與金額更正會一次完成或全部不變。' : '這是「未付款結算」：只收已上課堂次，未上課堂次取消，不會建立後續補課。搬課與金額更正會一次完成或全部不變。' }}</p>
         <div v-if="previewLoading" class="wizard-loading" role="status">正在試算合約金額與堂數…</div>
         <div v-else-if="preview" class="split-summary" data-testid="split-summary">
           <article class="split-summary-card">
@@ -49,19 +60,19 @@
             <span class="split-summary-label">新合約</span>
             <strong>{{ formatCount(preview.new_course?.session_count) }} 堂</strong>
             <span>{{ formatMoney(preview.new_course?.charge) }}</span>
-            <small>搬入 {{ formatCount(preview.new_course?.transferred_session_count) }} 堂；不建立後續課</small>
+            <small>{{ carryForwardUnused ? `搬入 ${formatCount(preview.new_course?.transferred_session_count)} 堂已上課；後續 ${formatCount(preview.new_course?.future_session_count)} 堂另排課` : `搬入 ${formatCount(preview.new_course?.transferred_session_count)} 堂；不建立後續課` }}</small>
           </article>
         </div>
-        <div v-if="preview && preview.settlement" class="split-settlement-summary">
+        <div v-if="preview && preview.settlement && !carryForwardUnused" class="split-settlement-summary">
           <strong>本次應收 {{ formatMoney(preview.settlement.billable_charge) }}</strong>
           <span>已上 {{ formatCount(preview.settlement.billable_session_count) }} 堂</span>
-          <span class="split-waived">取消未上 {{ formatCount(preview.settlement.waived_session_count) }} 堂（{{ formatMoney(preview.settlement.waived_charge) }}）</span>
+          <span class="split-waived">放棄未上 {{ formatCount(preview.settlement.waived_session_count) }} 堂（{{ formatMoney(preview.settlement.waived_charge) }}）</span>
         </div>
       </section>
 
       <section v-else aria-labelledby="split-step-three-title">
         <h4 id="split-step-three-title" class="wizard-section-title">確認送出</h4>
-        <p class="period-hint">送出後會建立未收款新合約、搬移評量／點名，只保留已上課堂次；未上課堂次及其金額取消，不會排後續課。此操作會留下稽核紀錄。</p>
+        <p class="period-hint">{{ carryForwardUnused ? '送出後會建立未收款新合約、搬移評量／點名，未上課堂次隨新合約排入後續課程。此操作會留下稽核紀錄。' : '送出後會建立未收款新合約、搬移評量／點名，只保留已上課堂次；未上課堂次及其金額取消，不會排後續課。此操作會留下稽核紀錄。' }}</p>
         <label class="form-label">拆分原因（必填）
           <textarea id="split-reason" v-model.trim="reason" class="form-input" rows="3" maxlength="255" placeholder="例如：學生未付款，主任確認只收已上 8 堂，未上 2 堂取消"></textarea>
         </label>
@@ -104,6 +115,7 @@ const emit = defineEmits(['close', 'preview', 'submit']);
 const step = ref(1);
 const selectedIds = ref([]);
 const startDate = ref('');
+const carryForwardUnused = ref(true);
 const reason = ref('');
 const localError = ref('');
 const displayError = computed(() => props.errorMessage || localError.value);
@@ -113,6 +125,7 @@ watch(() => props.show, (visible) => {
     step.value = 1;
     selectedIds.value = [];
     startDate.value = '';
+    carryForwardUnused.value = true;
     reason.value = '';
     localError.value = '';
   }
@@ -136,7 +149,11 @@ function requestPreview() {
     localError.value = '請至少選擇一堂已上課紀錄，並填寫新合約首堂日期。';
     return;
   }
-  emit('preview', { sessionIds: selectedIds.value.map(Number), startDate: startDate.value });
+  emit('preview', {
+    sessionIds: selectedIds.value.map(Number),
+    startDate: startDate.value,
+    carryForwardUnused: carryForwardUnused.value,
+  });
   step.value = 2;
 }
 function goBack() {
@@ -151,6 +168,7 @@ function submit() {
   emit('submit', {
     sessionIds: selectedIds.value.map(Number),
     startDate: startDate.value,
+    carryForwardUnused: carryForwardUnused.value,
     reason: reason.value,
   });
 }
@@ -176,6 +194,9 @@ function submit() {
 .session-pick-date { flex: 1; }
 .session-pick-status, .form-hint, .empty-hint { color: var(--ds-ink-mute); font-size: 12px; }
 .form-label { display: block; margin: 12px 0 0; color: var(--text); font-size: 13px; font-weight: 700; }
+.settlement-mode-fieldset { margin: 12px 0 0; padding: 0; border: 0; }
+.settlement-mode-option { display: flex; align-items: flex-start; gap: 8px; margin-top: 8px; padding: 8px 10px; border: 1px solid var(--ds-hairline); border-radius: 8px; color: var(--text); font-size: 12px; line-height: 1.5; cursor: pointer; }
+.settlement-mode-option input { margin-top: 3px; }
 .form-input { display: block; width: 100%; box-sizing: border-box; margin-top: 6px; padding: 8px 10px; border: 1px solid var(--ds-hairline); border-radius: 8px; font: inherit; }
 .form-hint { margin: 7px 0 0; font-weight: 400; }
 .wizard-loading { padding: 24px 0; color: var(--ds-ink-mute); text-align: center; }

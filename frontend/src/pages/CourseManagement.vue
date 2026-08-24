@@ -311,8 +311,14 @@
                         {{ dayLabel(c.day_of_week) }} {{ c.start_time }}~{{ c.end_time }}
                       </span>
                       <span v-else class="hint">未排定</span>
-                      <span v-if="c.schedule_drift" class="schedule-drift-badge" :title="c.contract_exception_count > 0 ? '堂次偏移（另含 ' + c.contract_exception_count + ' 堂補課例外，不受影響）。若偏移非刻意調課，請開啟「編輯」確認固定排課後按儲存，系統會自動同步偏移堂次。' : '未上預排堂次與固定排課（契約）的星期／時段不一致。若偏移非刻意調課，請開啟「編輯」確認固定排課後按儲存，系統會自動同步未上預排堂次。'">⚠ 堂次偏移</span>
-                      <span v-else-if="c.contract_exception_count > 0" class="contract-exception-badge" :title="'含 ' + c.contract_exception_count + ' 堂非固定星期的補課／加課，不會被重建覆寫。'">補課例外</span>
+                      <!-- #2007 phase 2: up to 3 warning badges used to stack inline after the
+                           time string, competing with it for attention. Collapse to one summary
+                           chip on its own line; the full list is still in its tooltip. -->
+                      <template v-for="w in rowWarningSummary(group, c)" :key="w.label">
+                        <div class="course-row-badges">
+                          <span class="row-badge" :class="'row-badge--' + w.tone" :title="w.title">{{ w.label }}</span>
+                        </div>
+                      </template>
                     </td>
                     <td>
                       <button
@@ -328,6 +334,7 @@
                     </td>
                     <td class="cell-actions">
                       <div class="action-btns-row">
+                        <button class="small primary course-primary-action" @click="editCourse(c)">編輯</button>
                         <button
                           v-if="isManualOccurrenceCourse(c)"
                           class="small btn-add-session manual-occurrence-action"
@@ -338,67 +345,67 @@
                           class="small btn-add-session manual-occurrence-action"
                           @click="openManualSessionModal(c)"
                         >排課</button>
-                        <button
-                          v-if="isSessionMode(c) && !isManualOccurrenceCourse(c)"
-                          class="small btn-add-session"
-                          :class="{ disabled: !canQuickAddSession(c) }"
-                          :disabled="!canQuickAddSession(c)"
-                          :title="canQuickAddSession(c) ? '補課／補登（總堂數不變）' : quickAddDisabledReason(c)"
-                          @click="canQuickAddSession(c) && openQuickAddSessionModal(c)"
-                        >+ 補課</button>
                         <button class="small ghost btn-toggle" @click="toggleDatesAndMakeups(c)">
                           {{ expandedDates.has(c.id) ? '收起' : '詳情' }}
                         </button>
-                        <button class="small ghost btn-invoices" @click="openInvoiceModal(c)">帳單與對帳</button>
                         <div class="action-menu-wrapper">
-                          <button class="small ghost action-menu-trigger" @click.stop="toggleActionMenu(c.id)" title="更多操作">操作 ▾</button>
-                          <div v-if="activeActionMenu === c.id" class="action-dropdown" @click.stop>
-                            <p class="action-section-label">日常操作</p>
-                            <button class="action-dropdown-item" @click="editCourse(c); closeActionMenu()"><span class="action-icon">✏️</span> 編輯</button>
+                          <button class="small ghost action-menu-trigger" @click.stop="toggleActionMenu(c.id)" title="其他課程操作" aria-haspopup="menu" :aria-expanded="activeActionMenu === c.id">更多 ▾</button>
+                          <div v-if="activeActionMenu === c.id" class="action-dropdown" role="menu" aria-label="其他課程操作" @click.stop>
+                            <p class="action-section-label">排課與課堂</p>
                             <button
                               v-if="isManualOccurrenceCourse(c)"
                               class="action-dropdown-item"
+                              role="menuitem"
                               @click="openManualSessionModal(c); closeActionMenu()"
-                            ><span class="action-icon">＋</span> 新增下一堂</button>
+                            ><span class="material-symbols-outlined action-icon" aria-hidden="true">add</span> 新增下一堂</button>
                             <button
                               v-if="isSessionMode(c) && !isManualOccurrenceCourse(c)"
                               class="action-dropdown-item"
+                              role="menuitem"
                               @click="openManualSessionModal(c); closeActionMenu()"
-                            ><span class="action-icon">＋</span> 排課</button>
+                            ><span class="material-symbols-outlined action-icon" aria-hidden="true">event</span> 排課</button>
                             <button
                               v-if="isSessionMode(c) && !isManualOccurrenceCourse(c)"
                               class="action-dropdown-item action-dropdown-add-session-mobile"
+                              role="menuitem"
                               :class="{ 'action-dropdown-item--disabled': !canQuickAddSession(c) }"
                               :disabled="!canQuickAddSession(c)"
                               :title="canQuickAddSession(c) ? '' : quickAddDisabledReason(c)"
                               @click="canQuickAddSession(c) && (openQuickAddSessionModal(c), closeActionMenu())"
-                            ><span class="action-icon">＋</span> 補課 / 補登</button>
+                            ><span class="material-symbols-outlined action-icon" aria-hidden="true">add_task</span> 補課 / 補登</button>
+                            <p class="action-section-label">帳務與合約</p>
+                            <button class="action-dropdown-item" role="menuitem" @click="openInvoiceModal(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">receipt_long</span> 帳單與對帳</button>
                             <button
                               :class="['action-dropdown-item', { 'action-dropdown-renew': purchaseActionIsRenew(c) }]"
+                              role="menuitem"
                               :title="purchaseActionTitle(c)"
                               @click="openPurchaseModal(c); closeActionMenu()"
-                            ><span class="action-icon">⚡</span> {{ purchaseActionLabel(c) }}</button>
-                            <button class="action-dropdown-item" @click="duplicateCourseForTeacher(c); closeActionMenu()"><span class="action-icon">📋</span> 換師複製</button>
+                            ><span class="material-symbols-outlined action-icon" aria-hidden="true">shopping_cart</span> {{ purchaseActionLabel(c) }}</button>
+                            <button class="action-dropdown-item action-dropdown-adjustment" role="menuitem" title="依情境選擇更正未付款堂數或轉移已上課紀錄" @click="openContractAdjustmentModal(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">edit_note</span> 合約／堂次調整</button>
+                            <p class="action-section-label">其他操作</p>
+                            <button class="action-dropdown-item" role="menuitem" @click="duplicateCourseForTeacher(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">content_copy</span> 換師複製</button>
                             <p class="action-section-label">狀態管理</p>
-                            <button v-if="c.status !== 'inactive'" class="action-dropdown-item" @click="requestCoursePause(c); closeActionMenu()"><span class="action-icon">⏸</span> 暫停課程</button>
-                            <button v-if="c.status === 'inactive'" class="action-dropdown-item action-dropdown-resume" @click="requestCoursePause(c); closeActionMenu()"><span class="action-icon">▶</span> 恢復課程</button>
-                            <button v-if="canCloseCourse(c)" class="action-dropdown-item action-dropdown-close" @click="closeCourseNoRenew(c); closeActionMenu()"><span class="action-icon">✓</span> 結案（不續報）</button>
+                            <button v-if="c.status !== 'inactive'" class="action-dropdown-item" role="menuitem" @click="requestCoursePause(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">pause_circle</span> 暫停課程</button>
+                            <button v-if="c.status === 'inactive'" class="action-dropdown-item action-dropdown-resume" role="menuitem" @click="requestCoursePause(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">play_circle</span> 恢復課程</button>
+                            <button v-if="canCloseCourse(c)" class="action-dropdown-item action-dropdown-close" role="menuitem" @click="closeCourseNoRenew(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">check_circle</span> 結案（不續報）</button>
                             <button
                               v-if="canSplitContract(c)"
                               class="action-dropdown-item action-dropdown-correction"
+                              role="menuitem"
                               title="選擇已上堂次，自動拆分舊合約與新合約的堂數及金額"
                               @click="openSplitContractWizard(c); closeActionMenu()"
-                            ><span class="action-icon">⇄</span> 合約拆分精靈</button>
+                            ><span class="material-symbols-outlined action-icon" aria-hidden="true">call_split</span> 合約拆分精靈</button>
                             <button
                               v-else-if="isSessionMode(c) && !c.PackageID && c.payment_status !== 'paid'"
                               class="action-dropdown-item action-dropdown-correction"
+                              role="menuitem"
                               title="未收款課程的購買堂數與金額更正；不修改已上課紀錄"
                               @click="openBillingCorrectionModal(c); closeActionMenu()"
-                            ><span class="action-icon">↺</span> 更正未收款堂數</button>
-                            <button v-if="!canSplitContract(c)" class="action-dropdown-item" title="把已上課、已填評量的堂次搬到另一門課程，不用重填評量" @click="openTransferSessionsModal(c); closeActionMenu()"><span class="action-icon">↪</span> 轉移堂次紀錄</button>
+                            ><span class="material-symbols-outlined action-icon" aria-hidden="true">undo</span> 更正未收款堂數</button>
+                            <button v-if="!canSplitContract(c)" class="action-dropdown-item" role="menuitem" title="把已上課、已填評量的堂次搬到另一門課程，不用重填評量" @click="openTransferSessionsModal(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">move_up</span> 轉移堂次紀錄</button>
                             <hr class="action-dropdown-divider" />
                             <p class="action-section-label action-section-label--danger">危險操作</p>
-                            <button class="action-dropdown-item action-dropdown-danger" @click="confirmDeleteTarget = c; closeActionMenu()"><span class="action-icon">🗑</span> 刪除課程</button>
+                            <button class="action-dropdown-item action-dropdown-danger" role="menuitem" @click="confirmDeleteTarget = c; closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">delete</span> 刪除課程</button>
                           </div>
                         </div>
                       </div>
@@ -421,7 +428,7 @@
                         </div>
                         <div class="dates-panel">
                           <div class="dates-panel-heading">
-                            <strong class="dates-panel-title">上課日期（{{ packageMemberSessionSummary(c, { completed: getCompletedSessionCount(c), cancelled: cancelledSessionCount(c) }).text }}）</strong>
+                            <strong class="dates-panel-title">上課日期（{{ packageMemberSessionSummary(c, { completed: sessionSummaryCount(c), cancelled: cancelledSessionCount(c) }).text }}）</strong>
                             <span
                               v-if="sessionDataLoadFailed || planningStatusVisible(c)"
                               role="status"
@@ -531,21 +538,21 @@
                     <span class="history-course-card__detail" v-if="hc.last_paid_at"><span class="history-course-card__detail-label">繳費</span> {{ hc.last_paid_at }}</span>
                   </div>
                   <div class="history-course-card__actions">
-                    <button class="small ghost btn-invoices" @click="openInvoiceModal(hc)">帳單與對帳</button>
                     <button class="small ghost btn-toggle" @click="toggleDates(hc)">
-                      {{ expandedDates.has(hc.id) ? '收起詳情' : '查看堂次' }}
+                      {{ expandedDates.has(hc.id) ? '收起詳情' : '查看詳情' }}
                     </button>
                     <div class="action-menu-wrapper">
-                      <button class="small ghost action-menu-trigger" @click.stop="toggleActionMenu(hc.id)" title="更多操作">操作 ▾</button>
-                      <div v-if="activeActionMenu === hc.id" class="action-dropdown" @click.stop>
-                        <p class="action-section-label">日常操作</p>
-                        <button class="action-dropdown-item" @click="editCourse(hc); closeActionMenu()"><span class="action-icon">✏️</span> 編輯</button>
-                        <button class="action-dropdown-item" @click="duplicateCourseForTeacher(hc); closeActionMenu()"><span class="action-icon">📋</span> 換師複製</button>
+                      <button class="small ghost action-menu-trigger" @click.stop="toggleActionMenu(hc.id)" title="其他歷史課程操作" aria-haspopup="menu" :aria-expanded="activeActionMenu === hc.id">更多 ▾</button>
+                      <div v-if="activeActionMenu === hc.id" class="action-dropdown" role="menu" aria-label="其他歷史課程操作" @click.stop>
+                        <p class="action-section-label">課程與帳務</p>
+                        <button class="action-dropdown-item" role="menuitem" @click="editCourse(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">edit</span> 編輯</button>
+                        <button class="action-dropdown-item" role="menuitem" @click="openInvoiceModal(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">receipt_long</span> 帳單與對帳</button>
+                        <button class="action-dropdown-item" role="menuitem" @click="duplicateCourseForTeacher(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">content_copy</span> 換師複製</button>
                         <p class="action-section-label">狀態管理</p>
-                        <button class="action-dropdown-item action-dropdown-resume" @click="requestCoursePause(hc); closeActionMenu()"><span class="action-icon">▶</span> 恢復課程</button>
+                        <button class="action-dropdown-item action-dropdown-resume" role="menuitem" @click="requestCoursePause(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">play_circle</span> 恢復課程</button>
                         <hr class="action-dropdown-divider" />
                         <p class="action-section-label action-section-label--danger">危險操作</p>
-                        <button class="action-dropdown-item action-dropdown-danger" @click="confirmDeleteTarget = hc; closeActionMenu()"><span class="action-icon">🗑</span> 刪除課程</button>
+                        <button class="action-dropdown-item action-dropdown-danger" role="menuitem" @click="confirmDeleteTarget = hc; closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">delete</span> 刪除課程</button>
                       </div>
                     </div>
                   </div>
@@ -553,7 +560,7 @@
                     <div class="detail-panel">
                       <div class="dates-panel">
                         <div class="dates-panel-heading">
-                          <strong class="dates-panel-title">上課日期（{{ packageMemberSessionSummary(hc, { completed: getCompletedSessionCount(hc), cancelled: cancelledSessionCount(hc) }).text }}）</strong>
+                          <strong class="dates-panel-title">上課日期（{{ packageMemberSessionSummary(hc, { completed: sessionSummaryCount(hc), cancelled: cancelledSessionCount(hc) }).text }}）</strong>
                         </div>
                         <div v-if="primarySessionUnits(hc).length > 0" class="dates-chip-grid">
                           <span
@@ -676,10 +683,40 @@
     <div v-if="showEditModal" class="modal-overlay">
       <div class="modal course-modal">
         <h3 class="modal-title">編輯課程</h3>
+        <AtInlineAlert v-if="editabilityLoading" tone="info" title="正在檢查課程狀態" style="margin: 0 0 14px;">
+          <p>正在確認付款、扣堂與對帳狀態；一般欄位仍可編輯。</p>
+        </AtInlineAlert>
+        <AtInlineAlert v-if="editabilityError" tone="warning" title="無法完成預檢" style="margin: 0 0 14px;">
+          <p>{{ editabilityError }} 儲存時仍會由後端再次檢查。</p>
+        </AtInlineAlert>
         <AtInlineAlert v-if="editSaveError" tone="danger" title="儲存失敗" style="margin: 0 0 14px;">
           <p>{{ editSaveError.message }}</p>
           <p v-if="editSaveError.details" class="alert-detail">{{ editSaveError.details }}</p>
+          <p v-if="editSaveError.hint" class="alert-detail">{{ editSaveError.hint }}</p>
         </AtInlineAlert>
+        <section v-if="editability?.reasons?.length" class="editability-action-panel" data-testid="course-editability-panel" aria-label="課程編輯分流">
+          <div class="editability-action-panel__intro">
+            <strong>這門課有資料不能用一般編輯改寫</strong>
+            <span>一般欄位可以繼續修改；要處理受保護資料，請從對應流程進入。</span>
+          </div>
+          <div v-for="reason in editability.reasons" :key="reason.code" class="editability-action-row">
+            <div class="editability-action-row__copy">
+              <strong>{{ reason.message }}</strong>
+              <span v-if="editabilityAffectedFields.length" class="editability-action-row__fields">
+                受保護欄位：{{ editabilityAffectedFields.join('、') }}
+              </span>
+              <span v-if="editabilityActionDescription(reason.next_step)" class="editability-action-row__description">
+                {{ editabilityActionDescription(reason.next_step) }}
+              </span>
+            </div>
+            <button
+              v-if="canOpenEditabilityAction(reason.next_step)"
+              type="button"
+              class="ghost small editability-action-row__button"
+              @click="openEditabilityAction(reason.next_step)"
+            >{{ editabilityActionLabel(reason.next_step) }} <span aria-hidden="true">→</span></button>
+          </div>
+        </section>
         <div class="form-section">
           <CourseEditForm
             ref="editFormRef"
@@ -693,6 +730,7 @@
             :show-remaining="true"
             :package-info="editPackageInfo"
             :context-title="editContextTitle"
+            :editability="editability"
           />
         </div>
         <div
@@ -704,10 +742,18 @@
         </div>
         <div class="actions">
           <button class="ghost" @click="showEditModal = false">取消</button>
-          <button class="primary" :disabled="editFormRef?.hasErrors" @click="submitEdit">儲存</button>
+          <button class="primary" :disabled="editFormRef?.hasErrors || editabilityLoading" @click="submitEdit">儲存</button>
         </div>
       </div>
     </div>
+
+    <ContractAdjustmentChoiceModal
+      :show="showContractAdjustmentModal"
+      :student-name="contractAdjustmentCourse?.student_name || ''"
+      :subject="contractAdjustmentCourse?.subject_name || contractAdjustmentCourse?.subject || ''"
+      @close="showContractAdjustmentModal = false"
+      @choose="chooseContractAdjustment"
+    />
 
     <!-- Unpaid post-deduction billing correction -->
     <div v-if="showBillingCorrectionModal" class="modal-overlay" @click.self="!billingCorrectionSubmitting && (showBillingCorrectionModal = false)">
@@ -1164,6 +1210,8 @@ import { SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
 import { fetchClassSessions, normalizeClassSessionsPayload, sessionViewModelPatchFromApi } from '../lib/classSessionsApi';
 import { getPerSessionFee, getCourseTotalFee } from '../lib/coursePricing';
+import { coursesWithSlotConflicts } from '../lib/slotOccupancy';
+import { courseRowWarningSummary } from '../lib/courseRowWarnings';
 import {
   formatRenewSuccessMessage,
   formatDuplicatePurchaseHint,
@@ -1175,6 +1223,13 @@ import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
 import { updatePackage } from '../lib/coursePackagesApi';
 import { buildEditTeacherOptions, shouldClearTeacherSelection } from '../lib/courseTeacherOptions';
 import { computePackageNextTotal, packageMemberSessionSummary } from '../lib/packageSessions';
+import {
+  editabilityActionDescription,
+  editabilityActionLabel,
+  editabilityFieldLabel,
+  editabilityNextStepForError,
+  editabilityNextStepLabel,
+} from '../lib/courseEditability';
 import { useCourseSessionsDisplay } from '../composables/course-management/useCourseSessionsDisplay';
 import { useRescheduleAndMakeup } from '../composables/course-management/useRescheduleAndMakeup';
 import { useSessionEditFlow } from '../composables/course-management/useSessionEditFlow';
@@ -1188,6 +1243,7 @@ import PurchaseSessionsModal from '../components/course-management/PurchaseSessi
 import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal.vue';
 import TransferSessionsModal from '../components/course-management/TransferSessionsModal.vue';
 import SplitContractWizard from '../components/course-management/SplitContractWizard.vue';
+import ContractAdjustmentChoiceModal from '../components/course-management/ContractAdjustmentChoiceModal.vue';
 import QuickAddSessionModal from '../components/course-management/QuickAddSessionModal.vue';
 import ManualSessionModal from '../components/course-management/ManualSessionModal.vue';
 import LeaveModal from '../components/course-management/LeaveModal.vue';
@@ -1380,6 +1436,13 @@ const {
   fetchClassSessionsFn: fetchClassSessions, supabase,
   branchId: computed(() => props.branchId),
 });
+
+// Keep the expanded summary aligned with the table's backend entitlement
+// numbers. Package members still show their own attended rows; the shared pool
+// usage is rendered separately by packageMemberSessionSummary.
+const sessionSummaryCount = (course) => isPackageMember(course)
+  ? getCompletedSessionCount(course)
+  : getUsedSessions(course);
 
 function planningStatusFor(course) {
   return getSessionPlanningStatus(course, { sessionLoadFailed: false });
@@ -1884,6 +1947,10 @@ const editingCourseRaw = ref(null);
 const editFormRef = ref(null);
 const editForm = ref({});
 const editSaveError = ref(null);
+const editability = ref(null);
+const editabilityLoading = ref(false);
+const editabilityError = ref('');
+let editabilityRequestId = 0;
 const editPackageInfo = computed(() => {
   const c = editingCourseRaw.value;
   if (!c?.PackageID) return null;
@@ -1902,6 +1969,67 @@ const editContextTitle = computed(() => {
   return studentName ? `正在編輯：${subjectLabel} ／ ${studentName}` : `正在編輯：${subjectLabel}`;
 });
 const editTeacherOptions = computed(() => buildEditTeacherOptions(teachers.value, editingCourseRaw.value));
+const editabilityAffectedFields = computed(() => (
+  (editability.value?.locked_fields || []).map(editabilityFieldLabel).filter(Boolean)
+));
+
+const EDITABILITY_ACTION_HANDLERS = new Set([
+  'billing_correction',
+  'transfer_sessions',
+  'void_payment',
+  'payment_report',
+  'package_adjustment',
+  'reconcile_usage',
+  'new_contract',
+]);
+
+function canOpenEditabilityAction(action) {
+  return EDITABILITY_ACTION_HANDLERS.has(action);
+}
+
+function openEditabilityAction(action) {
+  const course = editingCourseRaw.value;
+  if (!course) return;
+  showEditModal.value = false;
+  if (action === 'billing_correction') {
+    openBillingCorrectionModal(course);
+  } else if (action === 'transfer_sessions') {
+    openTransferSessionsModal(course);
+  } else if (action === 'void_payment' || action === 'payment_report') {
+    void openInvoiceModal(course);
+  } else if (action === 'package_adjustment') {
+    openPackageAdjustmentModal(course);
+  } else if (action === 'reconcile_usage') {
+    emit('navigate', 'duplicate-review');
+  } else if (action === 'new_contract') {
+    emit('navigate', 'students');
+  }
+}
+
+async function loadCourseEditability(courseId) {
+  const requestId = ++editabilityRequestId;
+  editabilityLoading.value = true;
+  editabilityError.value = '';
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    if (!token) throw new Error('登入狀態已失效，無法完成預檢。');
+    const res = await fetch(`/api/v1/student-classes/${courseId}/editability`, {
+      credentials: 'include',
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body?.message || `預檢失敗（${res.status}）`);
+    if (requestId === editabilityRequestId) editability.value = body;
+  } catch (error) {
+    if (requestId === editabilityRequestId) {
+      editability.value = null;
+      editabilityError.value = error?.message || '課程狀態預檢失敗。';
+    }
+  } finally {
+    if (requestId === editabilityRequestId) editabilityLoading.value = false;
+  }
+}
 /** 開啟編輯時的排課指紋；儲存時若變更則自動 force_partial_rebuild 同步未上預排堂次 */
 const editScheduleBaseline = ref(null);
 const originalFirstClassDate = ref('');
@@ -1932,6 +2060,8 @@ const splitContractPreview = ref(null);
 const splitContractError = ref('');
 
 const showBillingCorrectionModal = ref(false);
+const showContractAdjustmentModal = ref(false);
+const contractAdjustmentCourse = ref(null);
 const billingCorrectionCourse = ref(null);
 const billingCorrectionSubmitting = ref(false);
 const billingCorrectionForm = ref({ new_session_count: 1, new_charge: 0, reason: '' });
@@ -1993,7 +2123,7 @@ async function splitContractRequest(path, body) {
   return json;
 }
 
-async function requestSplitContractPreview({ sessionIds, startDate }) {
+async function requestSplitContractPreview({ sessionIds, startDate, carryForwardUnused }) {
   const course = splitContractCourse.value;
   if (!course?.id || splitContractPreviewLoading.value) return;
   splitContractError.value = '';
@@ -2002,7 +2132,7 @@ async function requestSplitContractPreview({ sessionIds, startDate }) {
   try {
     splitContractPreview.value = await splitContractRequest(
       `/api/v1/student-classes/${course.id}/split-contract/preview`,
-      { session_ids: sessionIds, start_date: startDate },
+      { session_ids: sessionIds, start_date: startDate, carry_forward_unused: carryForwardUnused },
     );
   } catch (error) {
     splitContractError.value = error?.message || '試算失敗，請稍後再試。';
@@ -2011,7 +2141,7 @@ async function requestSplitContractPreview({ sessionIds, startDate }) {
   }
 }
 
-async function submitSplitContract({ sessionIds, startDate, reason }) {
+async function submitSplitContract({ sessionIds, startDate, carryForwardUnused, reason }) {
   const course = splitContractCourse.value;
   if (!course?.id || splitContractSubmitting.value) return;
   splitContractError.value = '';
@@ -2019,7 +2149,7 @@ async function submitSplitContract({ sessionIds, startDate, reason }) {
   try {
     const result = await splitContractRequest(
       `/api/v1/student-classes/${course.id}/split-contract`,
-      { session_ids: sessionIds, start_date: startDate, reason },
+      { session_ids: sessionIds, start_date: startDate, carry_forward_unused: carryForwardUnused, reason },
     );
     showSplitContractWizard.value = false;
     await loadCourses();
@@ -2047,6 +2177,33 @@ function openBillingCorrectionModal(course) {
   };
   billingCorrectionBlocked.value = null;
   showBillingCorrectionModal.value = true;
+}
+
+function isUnpaidCountCourse(course) {
+  return isSessionMode(course) && !course?.PackageID && course?.payment_status !== 'paid';
+}
+
+function usageBalanceWarningTitle(course) {
+  const diagnostic = course?.usage_balance_diagnostic;
+  if (!diagnostic) return '課堂狀態與扣堂紀錄不一致，請先完成重複堂次／扣堂對帳。';
+  return `課堂狀態顯示已上 ${diagnostic.class_session_used_sessions} 堂，但扣堂紀錄為 ${diagnostic.ledger_used_sessions} 堂；請先完成對帳，再作為收費依據。`;
+}
+
+function openContractAdjustmentModal(course) {
+  contractAdjustmentCourse.value = course;
+  if (!isUnpaidCountCourse(course)) {
+    openTransferSessionsModal(course);
+    return;
+  }
+  showContractAdjustmentModal.value = true;
+}
+
+function chooseContractAdjustment(action) {
+  const course = contractAdjustmentCourse.value;
+  showContractAdjustmentModal.value = false;
+  if (!course) return;
+  if (action === 'billing') openBillingCorrectionModal(course);
+  if (action === 'transfer') openTransferSessionsModal(course);
 }
 
 async function submitBillingCorrection() {
@@ -2417,6 +2574,13 @@ function openPurchaseModal(course) {
     package_op: 'add', // 'add' (加購) | 'set' (設定總堂數) — package members only (#553)
   };
   showPurchaseModal.value = true;
+}
+
+function openPackageAdjustmentModal(course) {
+  openPurchaseModal(course);
+  if (!isPackageMember(course)) return;
+  purchaseForm.value.package_op = 'set';
+  purchaseForm.value.sessions = getPackageTotalSessions(course);
 }
 
 async function loadRenewMonthlyPreview(course) {
@@ -3393,6 +3557,21 @@ const isHistoryCourse = (c) => {
 };
 const activeCourses = (group) => (group?.courses || []).filter(c => !isHistoryCourse(c));
 const historyCourses = (group) => (group?.courses || []).filter(c => isHistoryCourse(c));
+
+// #2007/#2006: a renewal that left the old course open shows up here as two
+// "進行中" rows fighting over the same teacher slot. Flag them so a director
+// doesn't have to guess why a request-leave didn't free the time up.
+// A student rarely has more than a handful of active courses, so recomputing
+// per render is cheap — no memoization needed.
+const hasSlotConflict = (group, c) => coursesWithSlotConflicts(activeCourses(group)).has(c.id);
+
+// #2007 phase 2: collapse this row's schedule warnings (slot conflict / drift /
+// contract exception / usage-balance review) to one summary chip instead of
+// stacking every badge inline — see frontend/src/lib/courseRowWarnings.js.
+const rowWarningSummary = (group, c) => courseRowWarningSummary(
+  { ...c, hasSlotConflict: hasSlotConflict(group, c) },
+  usageBalanceWarningTitle,
+);
 const expandedHistoryGroups = ref(new Set());
 const toggleHistoryGroup = (key) => {
   const s = new Set(expandedHistoryGroups.value);
@@ -4099,6 +4278,8 @@ function scheduleFingerprintForEdit(form) {
 const editCourse = (c) => {
   editingId.value = c.id;
   editSaveError.value = null;
+  editability.value = null;
+  editabilityError.value = '';
   editingCourseRaw.value = c;
   editingCourseFromLaravel.value = !!(
     c.data_source === 'laravel'
@@ -4150,6 +4331,7 @@ const editCourse = (c) => {
   originalFirstClassDate.value = c.first_class_date || '';
   loadRoomsForBranch();
   showEditModal.value = true;
+  if (editingCourseFromLaravel.value) void loadCourseEditability(c.id);
   nextTick(() => {
     editScheduleBaseline.value = scheduleFingerprintForEdit(editForm.value);
   });
@@ -4280,6 +4462,7 @@ const submitEdit = async () => {
         editSaveError.value = {
           message: err?.message || '更新失敗，請檢查欄位後再試。',
           details,
+          hint: editabilityNextStepLabel(editabilityNextStepForError(err)),
         };
         return;
       }
@@ -5693,11 +5876,15 @@ onUnmounted(() => {
   gap: 6px;
 }
 
+/* #2007 phase 2: was font-weight 800 — same visual weight as the subject/
+   class-type tags above it, so nothing signalled which line was primary.
+   Demoted so the tags read first, price second (Cal.com text-emphasis vs
+   text-subtle pattern). */
 .price-line {
   margin-top: 4px;
   font-size: 13px;
-  color: #334155;
-  font-weight: 800;
+  color: #475569;
+  font-weight: 600;
 }
 
 .memo-line {
@@ -5863,27 +6050,33 @@ onUnmounted(() => {
 .schedule-slot-line {
   line-height: 1.35;
 }
-.schedule-drift-badge {
-  display: inline-block;
+/* #2007 phase 2: one badge line, one tone-coded chip — replaces the old
+   schedule-drift-badge/contract-exception-badge/usage-balance-warning trio
+   that stacked inline after the schedule text. */
+.course-row-badges {
   margin-top: 3px;
+}
+.row-badge {
+  display: inline-block;
   font-size: 11px;
   font-weight: 600;
-  color: var(--ds-warning);
-  background: #fef3c7;
-  border: 1px solid #fcd34d;
   border-radius: 4px;
   padding: 1px 6px;
 }
-.contract-exception-badge {
-  display: inline-block;
-  margin-top: 3px;
-  font-size: 11px;
-  font-weight: 600;
+.row-badge--warning {
+  color: var(--ds-warning);
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+}
+.row-badge--info {
   color: #1d4ed8;
   background: #dbeafe;
   border: 1px solid #93c5fd;
-  border-radius: 4px;
-  padding: 1px 6px;
+}
+.row-badge--danger {
+  color: var(--ds-danger);
+  background: var(--ds-danger-wash);
+  border: 1px solid var(--ds-hairline);
 }
 
 .cell-remaining {
@@ -6228,6 +6421,54 @@ button.danger:disabled {
   max-width: 560px;
   max-height: 90vh;
   overflow-y: auto;
+}
+
+.editability-action-panel {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 16px;
+  padding: 12px;
+  border: 1px solid var(--ds-warning);
+  border-radius: 12px;
+  background: var(--ds-warning-wash);
+  color: var(--ds-ink);
+}
+.editability-action-panel__intro,
+.editability-action-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.editability-action-panel__intro {
+  flex-direction: column;
+  gap: 3px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.editability-action-panel__intro span,
+.editability-action-row__fields,
+.editability-action-row__description {
+  color: var(--ds-ink-mute);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.editability-action-row {
+  justify-content: space-between;
+  padding-top: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--ds-warning) 30%, transparent);
+}
+.editability-action-row__copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.editability-action-row__copy > strong {
+  font-size: 13px;
+  line-height: 1.45;
+}
+.editability-action-row__button {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .modal-title {

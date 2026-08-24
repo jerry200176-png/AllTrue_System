@@ -4,6 +4,139 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-24-course-editability-preflight",
+    "publishedAt": "2026-08-24",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "編輯先說明限制與下一步",
+    "summary": "開啟課程編輯時，系統先說明可改欄位、受保護欄位與安全處理方式。",
+    "items": [
+      "編輯視窗先顯示扣堂、付款、共用方案與對帳狀態；受保護欄位會標明原因。",
+      "更正堂數、處理付款或調整方案時，畫面會提供下一步；一般資料仍可直接編輯。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "編輯視窗先顯示扣堂、付款、共用方案與對帳狀態；受保護欄位會標明原因。",
+          "更正堂數、處理付款或調整方案時，畫面會提供下一步；一般資料仍可直接編輯。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-24:course-editability-preflight"
+    ],
+    "date": "2026-08-24",
+    "version": "2026.08.24"
+  },
+  {
+    "id": "staff-2026-08-24-split-contract-wizard-ui",
+    "publishedAt": "2026-08-24",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "合約拆分精靈可選未使用堂次處理方式",
+    "summary": "選堂次時可選擇未使用堂次要轉入新合約排未來課，或直接放棄只結算已上課堂次。",
+    "items": [
+      "選堂次步驟新增「轉入新合約」與「直接放棄」兩個選項，試算與確認畫面會依所選方式顯示對應金額與堂數。",
+      "未選擇時預設維持原本轉入新合約的行為，不影響既有拆分紀錄。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "選堂次步驟新增「轉入新合約」與「直接放棄」兩個選項，試算與確認畫面會依所選方式顯示對應金額與堂數。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "未選擇時預設維持原本轉入新合約的行為，不影響既有拆分紀錄。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-24:split-contract-wizard-ui"
+    ],
+    "date": "2026-08-24",
+    "version": "2026.08.24"
+  },
+  {
+    "id": "staff-2026-08-24-course-editability-guidance",
+    "publishedAt": "2026-08-24",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "編輯受限有下一步",
+    "summary": "共用方案、堂次對帳與新課程情境，會直接帶到既有處理入口。",
+    "items": [
+      "共用方案堂數不能直接改時，可從編輯視窗開啟方案總堂數調整並預填目前數字。",
+      "堂次對帳與需要另開課程時，畫面會提供前往既有審核或學生管理的按鈕。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "共用方案堂數不能直接改時，可從編輯視窗開啟方案總堂數調整並預填目前數字。",
+          "堂次對帳與需要另開課程時，畫面會提供前往既有審核或學生管理的按鈕。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-24:course-editability-guidance"
+    ],
+    "date": "2026-08-24",
+    "version": "2026.08.24"
+  },
+  {
+    "id": "staff-2026-08-24-course-action-hierarchy",
+    "publishedAt": "2026-08-24",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "課程操作更清楚",
+    "summary": "課程列只保留最常用入口，其他操作按情境收在「更多」。",
+    "items": [
+      "第一層只保留編輯、排課與查看詳情，主任先處理最常見工作。",
+      "帳單、合約調整、補課與狀態管理改按情境分組，功能仍保留。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "第一層只保留編輯、排課與查看詳情，主任先處理最常見工作。",
+          "帳單、合約調整、補課與狀態管理改按情境分組，功能仍保留。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-24:course-action-hierarchy"
+    ],
+    "date": "2026-08-24",
+    "version": "2026.08.24"
+  },
+  {
     "id": "staff-2026-08-23-split-contract-wizard",
     "publishedAt": "2026-08-23",
     "effectiveAt": null,
@@ -37,6 +170,84 @@ export const staffUpdates = [
     "sourceRefs": [
       "changelog:2026-08-23:split-contract-wizard",
       "github:#1901"
+    ],
+    "date": "2026-08-23",
+    "version": "2026.08.23"
+  },
+  {
+    "id": "staff-2026-08-23-overlap-entitlement-root-guard",
+    "publishedAt": "2026-08-23",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "新增排課防重疊與堂數對齊",
+    "summary": "系統會在未來課堂建立前攔截同一學生的時間重疊，並讓課程展開的已上堂數與剩餘堂數對齊。",
+    "items": [
+      "同一學生已有其他課程或排課時，未來重疊時段會在寫入前提醒，避免事後才到重疊課程頁面處理。",
+      "同一共用方案的平行科目仍可正常排課；主任明確建立獨立平行課時會留下原因紀錄。",
+      "課程展開的已上堂數、購買堂數與剩餘堂數改用同一套帳務口徑。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "同一學生已有其他課程或排課時，未來重疊時段會在寫入前提醒，避免事後才到重疊課程頁面處理。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "同一共用方案的平行科目仍可正常排課；主任明確建立獨立平行課時會留下原因紀錄。",
+          "課程展開的已上堂數、購買堂數與剩餘堂數改用同一套帳務口徑。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-23:overlap-entitlement-root-guard"
+    ],
+    "date": "2026-08-23",
+    "version": "2026.08.23"
+  },
+  {
+    "id": "staff-2026-08-23-duplicate-usage-reconciliation",
+    "publishedAt": "2026-08-23",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "重複堂次會同步沖回扣堂",
+    "summary": "審核跨合約重複課程時，取消的非保留堂次會一併清理使用證據；數字不一致時會先提醒對帳。",
+    "items": [
+      "重複課程審核取消非保留堂次時，會同步作廢簽到／評量、沖回扣堂並重算剩餘堂數。",
+      "已先被取消但仍殘留扣堂證據的重複堂次，也會回到審核清單供主任完成清理。",
+      "課程管理發現課堂狀態與扣堂紀錄不一致時，會顯示「堂數待對帳」，請先完成對帳再作為收費依據。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "重複課程審核取消非保留堂次時，會同步作廢簽到／評量、沖回扣堂並重算剩餘堂數。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "已先被取消但仍殘留扣堂證據的重複堂次，也會回到審核清單供主任完成清理。",
+          "課程管理發現課堂狀態與扣堂紀錄不一致時，會顯示「堂數待對帳」，請先完成對帳再作為收費依據。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-23:duplicate-usage-reconciliation"
     ],
     "date": "2026-08-23",
     "version": "2026.08.23"
@@ -76,6 +287,104 @@ export const staffUpdates = [
     ],
     "sourceRefs": [
       "changelog:2026-08-23:contract-correction-transfer-safety"
+    ],
+    "date": "2026-08-23",
+    "version": "2026.08.23"
+  },
+  {
+    "id": "staff-2026-08-23-performance-first-batch",
+    "publishedAt": "2026-08-23",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "頁面載入更順暢",
+    "summary": "登入、主任首頁與行事曆減少等待，常用資產也會更有效率地快取。",
+    "items": [
+      "主任首頁的獨立資料區塊會同時載入，不會因單一區塊較慢而拖住整頁。",
+      "登入與行事曆資料減少連續等待；已下載過的內容切換檢視時更快回應。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "主任首頁的獨立資料區塊會同時載入，不會因單一區塊較慢而拖住整頁。",
+          "登入與行事曆資料減少連續等待；已下載過的內容切換檢視時更快回應。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-23:performance-first-batch"
+    ],
+    "date": "2026-08-23",
+    "version": "2026.08.23"
+  },
+  {
+    "id": "staff-2026-08-23-performance-backend-query",
+    "publishedAt": "2026-08-23",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "主任頁面查詢加速",
+    "summary": "主任頁面的次要資料與營運摘要減少資料庫等待，資料多時也更穩定。",
+    "items": [
+      "老師評量填寫率改用較有效率的日期／時段查詢，主任開啟完整頁面時等待更少。",
+      "營運摘要合併重複統計，維持原本數字口徑但減少資料庫往返。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "老師評量填寫率改用較有效率的日期／時段查詢，主任開啟完整頁面時等待更少。",
+          "營運摘要合併重複統計，維持原本數字口徑但減少資料庫往返。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-23:performance-backend-query"
+    ],
+    "date": "2026-08-23",
+    "version": "2026.08.23"
+  },
+  {
+    "id": "staff-2026-08-23-director-adjustment-entry",
+    "publishedAt": "2026-08-23",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "合約與堂次調整入口簡化",
+    "summary": "課程管理把兩個容易混淆的調整功能收斂到同一個入口，主任先選情境，再進入正確流程。",
+    "items": [
+      "「操作」選單只顯示「合約／堂次調整」，不再同時放置「更正未收款堂數」與「轉移堂次紀錄」兩個容易混淆的按鈕。",
+      "未付款課程會先詢問是要把堂數改少，還是把已上課紀錄轉到另一份合約；兩個流程的帳務規則不會混在一起。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "「操作」選單只顯示「合約／堂次調整」，不再同時放置「更正未收款堂數」與「轉移堂次紀錄」兩個容易混淆的按鈕。",
+          "未付款課程會先詢問是要把堂數改少，還是把已上課紀錄轉到另一份合約；兩個流程的帳務規則不會混在一起。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-23:director-adjustment-entry"
     ],
     "date": "2026-08-23",
     "version": "2026.08.23"

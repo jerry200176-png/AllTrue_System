@@ -330,6 +330,7 @@ class CoursePackageController extends Controller
             $createdMembers = [];
             $membersScheduled = [];
             $scController = app()->make(\App\Http\Controllers\StudentClassController::class);
+            $materializer = app(ClassSessionMaterializationService::class);
 
             foreach ($data['subjects'] as $subjectSpec) {
                 $subjectId = (int) $subjectSpec['subject_id'];
@@ -464,7 +465,9 @@ class CoursePackageController extends Controller
                         $durationMinutes
                     );
                     if (!empty($sessions)) {
-                        ClassSession::insert($sessions);
+                        foreach ($sessions as $sessionSlot) {
+                            $materializer->upsertSlot($sessionSlot);
+                        }
                         Log::info('monthly_recurring_package: auto-generated sessions', [
                             'package_id'  => $pkg->id,
                             'subject_id'  => $subjectId,
