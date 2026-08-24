@@ -5847,7 +5847,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\Schedule\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 7
+			count: 8
 			path: app/Services/RescheduleSessionService.php
 
 		-

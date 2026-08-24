@@ -79,7 +79,12 @@ class ScheduleOccurrenceDualWriteTest extends TestCase
         $this->assertSame('2026-08-01', substr((string) $live->original_schedule_date, 0, 10));
         $this->assertSame('10:00', substr((string) $live->original_start_time, 0, 5));
         $this->assertSame(2, ScheduleChangeLog::query()->count());
-        $this->assertGreaterThanOrEqual(4, Schedule::where('student_course_id', $courseId)->count());
+        // GitHub #2001 fix: the old target row at 2026-08-02 is reused (flipped to
+        // 'rescheduled') as the new anchor instead of being left behind as an orphan
+        // and having a disconnected duplicate anchor inserted alongside it — so this
+        // is 3 rows (2026-08-01 rescheduled, 2026-08-02 rescheduled, 2026-08-03
+        // scheduled), not 4.
+        $this->assertGreaterThanOrEqual(3, Schedule::where('student_course_id', $courseId)->count());
 
         $retry = $this->postReschedule($token, [
             'student_class_id' => $courseId,
