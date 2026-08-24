@@ -4,6 +4,21 @@
 
 updates:
 
+  - id: staff-2026-08-24-course-editability-guidance
+    published_at: "2026-08-24"
+    audiences:
+      - director
+    importance: digest
+    title: 編輯受限有下一步
+    summary: 共用方案、堂次對帳與新課程情境，會直接帶到既有處理入口。
+    items:
+      - category: improved
+        text: 共用方案堂數不能直接改時，可從編輯視窗開啟方案總堂數調整並預填目前數字。
+      - category: improved
+        text: 堂次對帳與需要另開課程時，畫面會提供前往既有審核或學生管理的按鈕。
+    source_refs:
+      - "changelog:2026-08-24:course-editability-guidance"
+
   - id: staff-2026-08-24-course-action-hierarchy
     published_at: "2026-08-24"
     audiences:
