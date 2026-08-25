@@ -1,0 +1,208 @@
+name: Production Case Dump (read-only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      case_key:
+        description: 'Bounded case to inspect'
+        required: true
+        type: choice
+        options:
+          - schedule_241
+          - billing_linlai
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-case-dump-${{ inputs.case_key }}
+  cancel-in-progress: false
+
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          PI_HOST_KEY: ${{ secrets.PI_HOST_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if ssh-keyscan -H "$PI_SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null; then
+            :
+          elif [[ -n "${PI_HOST_KEY:-}" ]]; then
+            printf '%s\n' "$PI_HOST_KEY" > ~/.ssh/known_hosts
+          else
+            echo '::error::no host key available'; exit 1
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Run bounded read-only production probe
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          CASE_KEY: ${{ inputs.case_key }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          python3 - <<'PY' > /tmp/production_case_probe.php
+          import os
+          case = os.environ['CASE_KEY']
+          if case not in {'schedule_241', 'billing_linlai'}:
+              raise SystemExit('unsupported case')
+          print(f'''<?php
+          $case = {case!r};
+          $db = \\Illuminate\\Support\\Facades\\DB::class;
+          $out = ['ok' => true, 'case' => $case, 'read_only' => true,
+            'prod_head' => trim((string)@shell_exec('git rev-parse HEAD'))];
+          if ($case === 'schedule_241') {{
+            $campusId = 9;
+            $targetDate = '2026-08-29';
+            $targetStudentIds = $db::table('Student')->where('CampusID', $campusId)
+              ->where('name', 'like', '%洪睿淵%')->pluck('id')->map(fn ($id) => (int)$id)->all();
+            $classes = $db::table('StudentClass as sc')
+              ->leftJoin('Subject as sub', 'sub.id', '=', 'sc.SubjectID')
+              ->whereIn('sc.StudentID', $targetStudentIds)
+              ->where(function ($q) {{ $q->where('sc.Stop', 0)->orWhereNull('sc.Stop'); }})
+              ->where(function ($q) use ($targetDate) {{
+                $q->whereNull('sc.StartDate')->orWhereDate('sc.StartDate', '<=', $targetDate);
+              }})
+              ->where(function ($q) use ($targetDate) {{
+                $q->whereNull('sc.EndDate')->orWhereDate('sc.EndDate', '>=', $targetDate);
+              }})
+              ->get(['sc.ID as class_id', 'sc.StudentID as student_id', 'sc.TeacherID as teacher_id',
+                'sc.SubjectID as subject_id', 'sub.Subject_Name as subject_name', 'sc.ScheduleMode as schedule_mode',
+                'sc.StartDate as start_date', 'sc.EndDate as end_date', 'sc.Stop as stop',
+                'sc.scheduling_policy as scheduling_policy']);
+            $classIds = $classes->pluck('class_id')->map(fn ($id) => (int)$id)->all();
+            $out['target_student_ids'] = $targetStudentIds;
+            $out['target_student_classes'] = $classes->map(fn ($r) => [
+              'class_id'=>(int)$r->class_id, 'student_id'=>(int)$r->student_id,
+              'teacher_id'=>(int)$r->teacher_id, 'subject_id'=>(int)$r->subject_id,
+              'subject_name'=>(string)($r->subject_name ?? ''), 'schedule_mode'=>(string)($r->schedule_mode ?? ''),
+              'start_date'=>$r->start_date, 'end_date'=>$r->end_date,
+              'stop'=>(int)($r->stop ?? 0), 'scheduling_policy'=>$r->scheduling_policy,
+            ])->values()->all();
+            $out['class_session_slots'] = $classIds === [] ? [] : $db::table('ClassSession')
+              ->whereIn('StudentClassID', $classIds)->whereDate('SessionDate', $targetDate)
+              ->whereRaw('TIME(StartTime) = ?', ['13:00:00'])
+              ->get(['id', 'StudentClassID as class_id', 'SessionDate as session_date', 'StartTime as start_time', 'EndTime as end_time', 'Status as status'])
+              ->map(fn ($r) => ['id'=>(int)$r->id, 'class_id'=>(int)$r->class_id,
+                'session_date'=>(string)$r->session_date, 'start_time'=>substr((string)$r->start_time, 0, 5),
+                'end_time'=>substr((string)$r->end_time, 0, 5), 'status'=>(string)$r->status])->values()->all();
+            $out['schedule_slots'] = $classIds === [] ? [] : $db::table('schedules')
+              ->whereIn('student_course_id', $classIds)->whereDate('schedule_date', $targetDate)
+              ->whereRaw('TIME(start_time) = ?', ['13:00:00'])
+              ->get(['id', 'student_course_id as class_id', 'schedule_date as session_date', 'start_time', 'end_time', 'status', 'teacher_id'])
+              ->map(fn ($r) => ['id'=>(int)$r->id, 'class_id'=>(int)$r->class_id,
+                'session_date'=>(string)$r->session_date, 'start_time'=>substr((string)$r->start_time, 0, 5),
+                'end_time'=>substr((string)$r->end_time, 0, 5), 'status'=>(string)$r->status,
+                'teacher_id'=>$r->teacher_id === null ? null : (int)$r->teacher_id])->values()->all();
+            $invoke = function ($controller, string $method, array $args = []) {{
+              $reflection = new \\ReflectionMethod($controller, $method);
+              $reflection->setAccessible(true);
+              return $reflection->invokeArgs($controller, $args);
+            }};
+            $teacherIds = $classes->pluck('teacher_id')->map(fn ($id) => (int)$id)->filter()->unique()->values()->all();
+            $teacherResults = [];
+            foreach ($teacherIds as $teacherId) {{
+              $request = \\Illuminate\\Http\\Request::create('/api/v1/class-sessions/projection', 'GET', [
+                'start'=>'2026-08-23', 'end'=>$targetDate, 'branch_id'=>$campusId,
+              ]);
+              $request->attributes->set('auth_role', 'teacher');
+              $request->attributes->set('auth_teacher_id', $teacherId);
+              $request->attributes->set('auth_campus_ids', [$campusId]);
+              app()->instance('request', $request);
+              $controller = app(\\App\\Http\\Controllers\\ClassSessionController::class);
+              $query = $invoke($controller, 'buildClassSessionIndexQuery', [$request]);
+              $items = $invoke($controller, 'fetchAllClassSessionIndexRows', [$query]);
+              $byClass = $invoke($controller, 'buildByClassMapFromItems', [$items]);
+              $projected = $invoke($controller, 'buildProjectedByClassForIndex', [$byClass, '2026-08-23', $targetDate, [], true]);
+              $ownedIds = $classes->where('teacher_id', $teacherId)->pluck('class_id')->map(fn ($id) => (int)$id)->all();
+              $materialized = collect($items)->filter(fn ($r) => in_array((int)($r->student_class_id ?? 0), $ownedIds, true)
+                && ($r->session_date ?? '') === $targetDate && ($r->start_time ?? '') === '13:00')
+                ->map(fn ($r) => ['id'=>(int)$r->id, 'class_id'=>(int)$r->student_class_id, 'status'=>(string)$r->status])->values()->all();
+              $projectedMatches = [];
+              foreach ($projected as $classId => $slots) {{
+                if (!in_array((int)$classId, $ownedIds, true)) continue;
+                foreach ($slots as $slot) if (($slot['session_date'] ?? '') === $targetDate && ($slot['start_time'] ?? '') === '13:00')
+                  $projectedMatches[] = ['class_id'=>(int)$classId, 'kind'=>(string)($slot['kind'] ?? 'projected')];
+              }}
+              $teacherResults[] = ['teacher_id'=>$teacherId, 'owned_target_class_ids'=>$ownedIds,
+                'materialized_target_slots'=>$materialized, 'projected_target_slots'=>$projectedMatches,
+                'target_slot_visible'=>($materialized !== [] || $projectedMatches !== [])];
+            }}
+            $out['teacher_results'] = $teacherResults;
+          }} else {{
+            $students = $db::table('Student')->where('CampusID', 9)->where('name', 'like', '%林來安%')
+              ->get(['id', 'CampusID as campus_id']);
+            $studentIds = $students->pluck('id')->map(fn ($id) => (int)$id)->all();
+            $subjectIds = $db::table('Subject')->where('Subject_Name', 'like', '%數學%')
+              ->pluck('id')->map(fn ($id) => (int)$id)->all();
+            $classes = $db::table('StudentClass as sc')->whereIn('sc.StudentID', $studentIds)
+              ->whereIn('sc.SubjectID', $subjectIds)->get(['sc.ID as class_id', 'sc.StudentID as student_id',
+                'sc.SubjectID as subject_id', 'sc.Charge as charge', 'sc.Paid as paid', 'sc.PayDate as pay_date',
+                'sc.Stop as stop', 'sc.ScheduleMode as schedule_mode']);
+            $classIds = $classes->pluck('class_id')->map(fn ($id) => (int)$id)->all();
+            $out['student_ids'] = $studentIds;
+            $out['student_count'] = count($studentIds);
+            $out['subject_ids'] = $subjectIds;
+            $out['target_classes'] = $classes->map(fn ($r) => ['class_id'=>(int)$r->class_id,
+              'student_id'=>(int)$r->student_id, 'subject_id'=>(int)$r->subject_id,
+              'charge'=>(float)$r->charge, 'paid'=>(int)$r->paid, 'pay_date'=>$r->pay_date,
+              'stop'=>(int)$r->stop, 'schedule_mode'=>(string)$r->schedule_mode])->values()->all();
+            $out['payment_reports'] = $classIds === [] ? [] : $db::table('payment_reports')
+              ->whereIn('StudentClassID', $classIds)->orderBy('id')
+              ->get(['id', 'StudentID as student_id', 'StudentClassID as class_id', 'InvoiceID as invoice_id',
+                'payment_date', 'reported_amount', 'status', 'payment_id', 'created_at', 'updated_at'])
+              ->map(fn ($r) => ['id'=>(int)$r->id, 'student_id'=>(int)$r->student_id, 'class_id'=>(int)$r->class_id,
+                'invoice_id'=>$r->invoice_id === null ? null : (int)$r->invoice_id, 'payment_date'=>$r->payment_date,
+                'reported_amount'=>(float)$r->reported_amount, 'status'=>(string)$r->status,
+                'payment_id'=>$r->payment_id === null ? null : (int)$r->payment_id,
+                'created_at'=>$r->created_at, 'updated_at'=>$r->updated_at])->values()->all();
+            $out['invoices'] = $classIds === [] ? [] : $db::table('Invoice')->whereIn('StudentClassID', $classIds)
+              ->get(['id', 'StudentClassID as class_id', 'Status as status', 'Amount as amount', 'PaidAmount as paid_amount'])
+              ->map(fn ($r) => ['id'=>(int)$r->id, 'class_id'=>(int)$r->class_id, 'status'=>(string)$r->status,
+                'amount'=>(float)$r->amount, 'paid_amount'=>(float)$r->paid_amount])->values()->all();
+            $out['payments'] = $classIds === [] ? [] : $db::table('Payment')->whereIn('StudentClassID', $classIds)
+              ->get(['id', 'StudentClassID as class_id', 'Amount as amount', 'PaymentReportID as payment_report_id'])
+              ->map(fn ($r) => ['id'=>(int)$r->id, 'class_id'=>(int)$r->class_id, 'amount'=>(float)$r->amount,
+                'payment_report_id'=>$r->payment_report_id === null ? null : (int)$r->payment_report_id])->values()->all();
+          }}
+          echo json_encode($out, JSON_UNESCAPED_UNICODE), PHP_EOL;
+          ?>''')
+          PY
+          B64=$(base64 -w0 /tmp/production_case_probe.php)
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts "$PI_SSH_USER@$PI_SSH_HOST" \
+            "B64='$B64' bash -s" <<'REMOTE' | tee out/production-case.log
+          set -euo pipefail
+          cd /home/admin/backend
+          php -r 'file_put_contents("/tmp/production_case_probe.php", base64_decode(getenv("B64")));'
+          php artisan tinker --execute='require "/tmp/production_case_probe.php";'
+          rm -f /tmp/production_case_probe.php
+          REMOTE
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          text = Path('out/production-case.log').read_text(encoding='utf-8', errors='replace')
+          obj = next((json.loads(line) for line in text.splitlines() if line.lstrip().startswith('{')), None)
+          Path('out/production-case.json').write_text(json.dumps(obj or {'ok': False, 'raw_tail': text[-2000:]}, ensure_ascii=False, indent=2), encoding='utf-8')
+          if not obj or not obj.get('ok'):
+              raise SystemExit('probe did not return ok JSON')
+          print('parsed read-only production case', obj.get('case'))
+          PY
+
+      - name: Upload redacted evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-case-${{ inputs.case_key }}
+          path: out/production-case.json
+          retention-days: 14
