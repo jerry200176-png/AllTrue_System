@@ -247,4 +247,3 @@ export function receiptImageBlob({ source, snapshot = {}, receiptNumber = '—',
     image.src = svgUrl;
   });
 }
-
