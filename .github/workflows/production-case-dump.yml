@@ -182,12 +182,14 @@ jobs:
           B64=$(base64 -w0 /tmp/production_case_probe.php)
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
             -o UserKnownHostsFile=~/.ssh/known_hosts "$PI_SSH_USER@$PI_SSH_HOST" \
-            "B64='$B64' bash -s" <<'REMOTE' | tee out/production-case.log
+            "B64='$B64' CASE_KEY='$CASE_KEY' bash -s" <<'REMOTE' | tee out/production-case.log
           set -euo pipefail
           cd /home/admin/backend
-          php -r 'file_put_contents("/tmp/production_case_probe.php", base64_decode(getenv("B64")));'
-          php artisan tinker --execute='require "/tmp/production_case_probe.php";'
-          rm -f /tmp/production_case_probe.php
+          probe_file="/tmp/production_case_probe_${CASE_KEY}.php"
+          export PROBE_FILE="$probe_file"
+          php -r 'file_put_contents(getenv("PROBE_FILE"), base64_decode(getenv("B64")));'
+          php artisan tinker --execute="require '${probe_file}';"
+          rm -f "${probe_file}"
           REMOTE
           python3 - <<'PY'
           import json
