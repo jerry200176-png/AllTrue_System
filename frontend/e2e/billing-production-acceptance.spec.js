@@ -351,9 +351,9 @@ async function verifyPendingCanary(page, guard, observed, report, canary) {
     console.log('UAT_STAGE pending_accounting_open');
     report.pagesChecked.push('帳務中心／待處理');
     const pendingTab = page.locator('.tc-tabs .tc-tab').filter({ hasText: /待對帳|待核帳/ }).first();
-    requireCondition(await pendingTab.count() > 0, 'accounting center pending tab was not rendered');
+    await waitUntil(() => pendingTab.count().then((count) => count > 0), 'accounting center pending tab was not rendered');
     await pendingTab.click();
-    const search = page.locator('input[placeholder="搜尋學生姓名"]').first();
+    const search = page.locator('input[placeholder^="搜尋學生姓名"]').first();
     if (await search.count()) await search.fill(canary.studentName);
     const pendingRow = page.locator('.tc-table tbody tr').filter({ hasText: canary.studentName }).first();
     await waitUntil(() => pendingRow.count().then((count) => count > 0), 'authorized pending canary did not render in accounting center');
@@ -543,12 +543,14 @@ async function openTuitionReceipt(page, guard) {
     guard.assertNoUnexpectedMutations();
   }
   console.log('UAT_STAGE receipt_accounting_open');
-  await page.getByRole('tab', { name: '收據流水紀錄', exact: true }).click();
+  const receiptLedgerTab = page.getByRole('tab', { name: '收據流水紀錄', exact: true });
+  await waitUntil(() => receiptLedgerTab.count().then((count) => count > 0), 'receipt ledger tab was not rendered');
+  await receiptLedgerTab.click();
   console.log('UAT_STAGE receipt_ledger_tab_open');
   const dates = page.locator('.acct-filter-card input[type="date"]');
   await dates.nth(0).fill('2026-08-01');
   await dates.nth(1).fill('2026-08-31');
-  await page.locator('input[placeholder="搜尋學生姓名"]').fill('');
+  await page.locator('input[placeholder^="搜尋學生姓名"]').fill('');
   await page.getByRole('button', { name: '查詢', exact: true }).click();
   console.log('UAT_STAGE receipt_ledger_query_sent');
   guard.assertNoUnexpectedMutations();
