@@ -570,6 +570,9 @@ async function openStudentsReceipt(page, studentName, observed, guard) {
 }
 
 test('authenticated production billing and receipt acceptance', async ({ page, context }) => {
+  // Canonical paginated reads plus receipt rendering/clipboard/download checks
+  // are intentionally bounded longer than the legacy 45s smoke default.
+  test.setTimeout(180_000);
   requireCondition(BASE && DIRECTOR.account && DIRECTOR.password, 'production smoke secrets are unavailable');
 
   const report = {
