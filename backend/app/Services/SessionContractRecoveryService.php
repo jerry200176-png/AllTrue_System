@@ -11,7 +11,6 @@ use App\Models\StudentClass;
 use App\Models\StudentSignIn;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
-
 /** Controlled repair for cancelled sessions with materialized evidence. */
 final class SessionContractRecoveryService
 {
@@ -111,7 +110,6 @@ final class SessionContractRecoveryService
             ];
         });
     }
-
     /** @return array<int, array{has_evidence: bool}> */
     private function loadEvidence(Collection $sessions): array
     {
