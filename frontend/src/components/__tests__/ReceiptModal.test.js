@@ -144,12 +144,53 @@ describe('ReceiptModal payment-reports contract', () => {
     const wrapper = mount(ReceiptModal, { props: { show: true, reportId: 123 } });
     await tick();
 
-    await wrapper.find('.receipt-actions button').trigger('click');
+    await wrapper.find('[data-testid="copy-receipt-text"]').trigger('click');
     await tick();
     expect(writeText).toHaveBeenCalledTimes(1);
     expect(writeText.mock.calls[0][0]).toContain('收據號碼：R-000123');
     expect(wrapper.text()).toContain('已複製');
     expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('copies a rendered PNG image for LINE or other image-capable chat apps', async () => {
+    global.fetch.mockResolvedValueOnce(ok(SAMPLE));
+    const write = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { write } });
+    Object.defineProperty(window, 'ClipboardItem', {
+      configurable: true,
+      value: class ClipboardItemMock {
+        constructor(items) { Object.assign(this, items); }
+      },
+    });
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:receipt');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+      fillRect: vi.fn(),
+      drawImage: vi.fn(),
+      fillStyle: '#fff',
+    });
+    vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((callback) => {
+      callback(new Blob(['png'], { type: 'image/png' }));
+    });
+    const imageOnLoad = vi.fn();
+    Object.defineProperty(window, 'Image', {
+      configurable: true,
+      value: class ImageMock {
+        set src(_value) {
+          imageOnLoad();
+          this.onload?.();
+        }
+      },
+    });
+
+    const wrapper = mount(ReceiptModal, { props: { show: true, reportId: 123 } });
+    await tick();
+    await wrapper.find('[data-testid="copy-receipt-image"]').trigger('click');
+    await tick();
+
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(write.mock.calls[0][0][0]).toEqual({ 'image/png': expect.any(Blob) });
+    expect(wrapper.text()).toContain('已複製圖片');
   });
 
   it('classifies 403/404/422 without generic 請求失敗', async () => {

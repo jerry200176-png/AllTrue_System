@@ -42,6 +42,44 @@ export const staffUpdates = [
     "version": "2026.08.25"
   },
   {
+    "id": "staff-2026-08-25-receipt-image-copy",
+    "publishedAt": "2026-08-25",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "電子收據可複製圖片",
+    "summary": "收據可直接複製圖片貼給家長。",
+    "items": [
+      "電子收據新增「複製圖片」與「下載圖片」，可直接貼到 LINE 或下載後傳給家長；文字複製仍保留。",
+      "若瀏覽器不支援圖片剪貼簿，請按「下載圖片」，再把 PNG 圖檔傳給家長。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "電子收據新增「複製圖片」與「下載圖片」，可直接貼到 LINE 或下載後傳給家長；文字複製仍保留。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "若瀏覽器不支援圖片剪貼簿，請按「下載圖片」，再把 PNG 圖檔傳給家長。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-25:receipt-image-copy",
+      "github:pull/2046"
+    ],
+    "date": "2026-08-25",
+    "version": "2026.08.25"
+  },
+  {
     "id": "staff-2026-08-25-payment-report-reconciliation",
     "publishedAt": "2026-08-25",
     "effectiveAt": null,
