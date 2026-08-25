@@ -178,9 +178,9 @@ jobs:
                 'payment_id'=>$r->payment_id === null ? null : (int)$r->payment_id,
                 'created_at'=>$r->created_at, 'updated_at'=>$r->updated_at])->values()->all();
             $out['invoices'] = $classIds === [] ? [] : $db::table('Invoice')->whereIn('StudentClassID', $classIds)
-              ->get(['id', 'StudentClassID as class_id', 'Status as status', 'Amount as amount', 'PaidAmount as paid_amount'])
+              ->get(['id', 'StudentClassID as class_id', 'Status as status', 'TotalAmount as total_amount', 'PaidAmount as paid_amount'])
               ->map(fn ($r) => ['id'=>(int)$r->id, 'class_id'=>(int)$r->class_id, 'status'=>(string)$r->status,
-                'amount'=>(float)$r->amount, 'paid_amount'=>(float)$r->paid_amount])->values()->all();
+                'total_amount'=>(float)$r->total_amount, 'paid_amount'=>(float)$r->paid_amount])->values()->all();
             $out['payments'] = $classIds === [] ? [] : $db::table('Payment')->whereIn('StudentClassID', $classIds)
               ->get(['id', 'StudentClassID as class_id', 'Amount as amount', 'PaymentReportID as payment_report_id'])
               ->map(fn ($r) => ['id'=>(int)$r->id, 'class_id'=>(int)$r->class_id, 'amount'=>(float)$r->amount,
