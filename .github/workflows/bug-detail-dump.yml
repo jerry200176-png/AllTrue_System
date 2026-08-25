@@ -168,6 +168,118 @@ jobs:
             ->orderByDesc("id")
             ->limit(10)
             ->get(["id","package_id","student_class_id","class_session_id","delta","reason","recorded_by","created_at"]);
+
+          // #241-specific production acceptance probe. This is deliberately
+          // read-only: invoke the same projection read methods used by the
+          // teacher calendar without entering the public endpoint's
+          // auto-materialization boundary. Emit IDs and slot coordinates only;
+          // do not export student/teacher names or descriptions.
+          $probe241 = ["enabled" => false, "read_only" => true];
+          if ($bugId === 241) {{
+            $probe241["enabled"] = true;
+            $probe241["date_range"] = ["start" => "2026-08-23", "end" => "2026-08-29"];
+            $probe241["target_slot"] = ["date" => "2026-08-29", "start" => "13:00", "end" => "15:00"];
+            try {{
+              $campusId = (int)$bug->CampusID;
+              $targetName = "洪睿淵";
+              $targetStudentIds = $db::table("Student")
+                ->where("CampusID", $campusId)
+                ->where("name", "like", "%".$targetName."%")
+                ->pluck("id")->map(fn ($id) => (int)$id)->all();
+              $targetTeacherIds = $db::table("User")
+                ->where("Name", "like", "%".$targetName."%")
+                ->pluck("id")->map(fn ($id) => (int)$id)->all();
+              $targetIds = array_values(array_unique(array_merge($targetStudentIds, $targetTeacherIds)));
+              $probe241["target_student_count"] = count($targetStudentIds);
+              $probe241["target_teacher_count"] = count($targetTeacherIds);
+              $candidateClasses = collect();
+              if ($targetIds !== []) {{
+                $candidateClasses = $db::table("StudentClass as sc")
+                  ->join("Student as s", "s.id", "=", "sc.StudentID")
+                  ->leftJoin("rooms as r", "r.id", "=", "sc.room_id")
+                  ->where(function ($q) use ($targetStudentIds, $targetTeacherIds) {{
+                    if ($targetStudentIds !== []) $q->whereIn("sc.StudentID", $targetStudentIds);
+                    if ($targetTeacherIds !== []) $q->orWhereIn("sc.TeacherID", $targetTeacherIds);
+                  }})
+                  ->where(function ($q) use ($campusId) {{
+                    $q->where(function ($inner) use ($campusId) {{
+                      $inner->whereNotNull("sc.room_id")->where("r.campus_id", $campusId);
+                    }})->orWhere(function ($inner) use ($campusId) {{
+                      $inner->whereNull("sc.room_id")->where("s.CampusID", $campusId);
+                    }});
+                  }})
+                  ->where(function ($q) {{ $q->where("sc.Stop", 0)->orWhereNull("sc.Stop"); }})
+                  ->where(function ($q) {{ $q->whereNull("sc.StartDate")->orWhereDate("sc.StartDate", "<=", "2026-08-29"); }})
+                  ->where(function ($q) {{ $q->whereNull("sc.EndDate")->orWhereDate("sc.EndDate", ">=", "2026-08-23"); }})
+                  ->get(["sc.ID as class_id", "sc.TeacherID as teacher_id", "sc.StudentID as student_id"]);
+              }}
+              $candidateClassIds = $candidateClasses->pluck("class_id")->map(fn ($id) => (int)$id)->all();
+              $probe241["candidate_class_ids"] = $candidateClassIds;
+              $probe241["db_class_session_slots"] = $candidateClassIds === [] ? [] : $db::table("ClassSession")
+                ->whereIn("StudentClassID", $candidateClassIds)
+                ->whereDate("SessionDate", "2026-08-29")
+                ->whereRaw("TIME(StartTime) = ?", ["13:00:00"])
+                ->get(["id", "StudentClassID as class_id", "SessionDate as session_date", "StartTime as start_time", "EndTime as end_time", "Status as status"])
+                ->map(fn ($row) => ["id"=>(int)$row->id, "class_id"=>(int)$row->class_id, "session_date"=>(string)$row->session_date, "start_time"=>substr((string)$row->start_time, 0, 5), "end_time"=>substr((string)$row->end_time, 0, 5), "status"=>(string)$row->status])->all();
+              $probe241["db_schedule_slots"] = $candidateClassIds === [] ? [] : $db::table("schedules")
+                ->whereIn("student_course_id", $candidateClassIds)
+                ->whereDate("schedule_date", "2026-08-29")
+                ->whereRaw("TIME(start_time) = ?", ["13:00:00"])
+                ->get(["id", "student_course_id as class_id", "schedule_date as session_date", "start_time", "end_time", "status"])
+                ->map(fn ($row) => ["id"=>(int)$row->id, "class_id"=>(int)$row->class_id, "session_date"=>(string)$row->session_date, "start_time"=>substr((string)$row->start_time, 0, 5), "end_time"=>substr((string)$row->end_time, 0, 5), "status"=>(string)$row->status])->all();
+
+              $invoke = function ($controller, string $method, array $args = []) {{
+                $reflection = new \ReflectionMethod($controller, $method);
+                $reflection->setAccessible(true);
+                return $reflection->invokeArgs($controller, $args);
+              }};
+              $teacherIds = $candidateClasses->pluck("teacher_id")->map(fn ($id) => (int)$id)->filter()->unique()->values()->all();
+              $teacherResults = [];
+              foreach ($teacherIds as $teacherId) {{
+                $request = \Illuminate\Http\Request::create(
+                  "/api/v1/class-sessions/projection",
+                  "GET",
+                  ["start" => "2026-08-23", "end" => "2026-08-29", "branch_id" => $campusId]
+                );
+                $request->attributes->set("auth_role", "teacher");
+                $request->attributes->set("auth_teacher_id", $teacherId);
+                $request->attributes->set("auth_campus_ids", [$campusId]);
+                app()->instance("request", $request);
+                $controller = app(\App\Http\Controllers\ClassSessionController::class);
+                $query = $invoke($controller, "buildClassSessionIndexQuery", [$request]);
+                $items = $invoke($controller, "fetchAllClassSessionIndexRows", [$query]);
+                $byClass = $invoke($controller, "buildByClassMapFromItems", [$items]);
+                $projected = $invoke($controller, "buildProjectedByClassForIndex", [$byClass, "2026-08-23", "2026-08-29", [], true]);
+                $targetForTeacher = $candidateClasses->where("teacher_id", $teacherId)->pluck("class_id")->map(fn ($id) => (int)$id)->all();
+                $materializedMatches = collect($items)->filter(function ($row) use ($targetForTeacher) {{
+                  return in_array((int)($row->student_class_id ?? 0), $targetForTeacher, true)
+                    && substr((string)($row->session_date ?? ""), 0, 10) === "2026-08-29"
+                    && substr((string)($row->start_time ?? ""), 0, 5) === "13:00";
+                }})->map(fn ($row) => ["id"=>(int)$row->id, "class_id"=>(int)$row->student_class_id, "session_date"=>substr((string)$row->session_date, 0, 10), "start_time"=>substr((string)$row->start_time, 0, 5), "end_time"=>substr((string)$row->end_time, 0, 5)])->values()->all();
+                $projectedMatches = [];
+                foreach ($projected as $classId => $slots) {{
+                  if (!in_array((int)$classId, $targetForTeacher, true)) continue;
+                  foreach ($slots as $slot) {{
+                    if (($slot["session_date"] ?? "") === "2026-08-29" && ($slot["start_time"] ?? "") === "13:00") {{
+                      $projectedMatches[] = ["class_id"=>(int)$classId, "session_date"=>(string)$slot["session_date"], "start_time"=>(string)$slot["start_time"], "end_time"=>(string)($slot["end_time"] ?? ""), "kind"=>(string)($slot["kind"] ?? "projected")];
+                    }}
+                  }}
+                }}
+                $teacherResults[] = [
+                  "teacher_id" => $teacherId,
+                  "target_class_ids" => $targetForTeacher,
+                  "materialized_target_slots" => $materializedMatches,
+                  "projected_target_slots" => $projectedMatches,
+                  "target_slot_visible" => $materializedMatches !== [] || $projectedMatches !== [],
+                ];
+              }}
+              $probe241["teacher_projection_results"] = $teacherResults;
+              $probe241["target_slot_visible"] = collect($teacherResults)->contains(fn ($result) => $result["target_slot_visible"] === true);
+              $probe241["error"] = null;
+            }} catch (\Throwable $e) {{
+              $probe241["error"] = get_class($e).": ".substr((string)$e->getMessage(), 0, 300);
+            }}
+          }}
           echo json_encode([
             "ok" => true,
             "bug" => [
@@ -194,6 +306,7 @@ jobs:
               "course_2825" => $course2825,
               "package_124_ledger_recent" => $recomputeLedger,
             ],
+            "probe_241_teacher_projection" => $probe241,
             "prod_head" => trim((string)@shell_exec("git rev-parse HEAD")),
             "dump_generated_at" => gmdate("c"),
           ], JSON_UNESCAPED_UNICODE), PHP_EOL;
