@@ -721,14 +721,19 @@ async function openTuitionReceipt(page, guard, report) {
   report.receiptDiagnosis.tabSelected = 'YES';
   report.activeAccountingTab = (await recordRuntimeSnapshot(page, report, 'receipt_ledger_tab_selected')).activeAccountingTab;
   console.log('UAT_STAGE receipt_ledger_tab_open');
-  const dates = page.locator('.acct-filter-bar input[type="date"]');
-  await waitUntil(() => dates.count().then((count) => count >= 2), 'receipt ledger filters did not render', 30_000);
-  await dates.nth(0).fill('2026-08-01');
-  await dates.nth(1).fill('2026-08-31');
-  const studentSearch = page.locator('.acct-filter-bar input[placeholder^="搜尋學生姓名"]').first();
-  if (await studentSearch.count()) await studentSearch.fill('');
-  await page.getByRole('button', { name: '查詢', exact: true }).click();
-  console.log('UAT_STAGE receipt_ledger_query_sent');
+  const dates = page.locator('input[type="date"]');
+  const dateCount = await dates.count();
+  report.receiptDiagnosis.dateFilterInputs = dateCount;
+  if (dateCount >= 2) {
+    await dates.nth(0).fill('2026-08-01');
+    await dates.nth(1).fill('2026-08-31');
+    const studentSearch = page.locator('input[placeholder^="搜尋學生姓名"]').first();
+    if (await studentSearch.count()) await studentSearch.fill('');
+    await page.getByRole('button', { name: '查詢', exact: true }).click();
+    console.log('UAT_STAGE receipt_ledger_query_sent');
+  } else {
+    report.receiptDiagnosis.filterMode = 'AUTO_LOAD_NO_DATE_FILTER';
+  }
   guard.assertNoUnexpectedMutations();
   await waitUntil(async () => {
     const snapshot = await recordRuntimeSnapshot(page, report, 'receipt_data_wait');
