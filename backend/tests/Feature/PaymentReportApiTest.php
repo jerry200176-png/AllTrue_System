@@ -401,9 +401,11 @@ class PaymentReportApiTest extends TestCase
             'payment_date' => '2026-04-28',
             'payment_method' => 'cash',
             'amount' => 3000,
+            'note' => '8/23現金繳費收據號碼:016272',
         ]);
         $record->assertOk();
         $reportId = $record->json('report_id');
+        $this->assertSame('8/23現金繳費收據號碼:016272', (string) PaymentReport::findOrFail($reportId)->note);
 
         $this->withHeaders($headers)
             ->getJson("/api/v1/payment-reports/{$reportId}/receipt")
@@ -413,9 +415,22 @@ class PaymentReportApiTest extends TestCase
             ->putJson("/api/v1/payment-reports/{$reportId}/confirm")
             ->assertOk();
 
+        $this->assertSame(
+            '8/23現金繳費收據號碼:016272',
+            (string) Payment::where('payment_report_id', $reportId)->value('Note')
+        );
+
         $this->withHeaders($headers)
             ->getJson("/api/v1/payment-reports/{$reportId}/receipt")
-            ->assertOk();
+            ->assertOk()
+            ->assertJsonPath('note', '8/23現金繳費收據號碼:016272');
+
+        $students = $this->withHeaders($headers)
+            ->getJson('/api/v1/students?branch_id=1&per_page=all')
+            ->assertOk()
+            ->json();
+        $studentRow = collect($students)->firstWhere('id', $student->id);
+        $this->assertSame('8/23現金繳費收據號碼:016272', $studentRow['latest_payment_note'] ?? null);
     }
 
     public function test_reject_pending_director_record_keeps_course_unpaid(): void

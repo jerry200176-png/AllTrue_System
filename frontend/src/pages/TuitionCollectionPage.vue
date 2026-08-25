@@ -675,6 +675,7 @@
       :row="entryRow"
       @close="entryOpen = false"
       @confirmed="onEntryConfirmed"
+      @pending="onPendingReportConflict"
     />
 
     <ReceiptModal
@@ -1613,10 +1614,18 @@ function openPaymentEntry(row) {
   entryOpen.value = true;
 }
 
-function onEntryConfirmed(_result) {
+async function onEntryConfirmed(_result) {
   entryOpen.value = false;
-  showToast('已送出待對帳，請到帳務中心按確認入帳後才會開收據');
-  loadAlerts();
+  activeTab.value = 'pending_report';
+  showToast('已送出待對帳，畫面已切到待對帳；請按確認入帳後才會變成已繳費並開收據');
+  await loadAlerts();
+}
+
+async function onPendingReportConflict(_result) {
+  entryOpen.value = false;
+  activeTab.value = 'pending_report';
+  showToast('這筆已經在待對帳，畫面已切到待對帳；請按確認入帳，不要重複送出', 'warning');
+  await loadAlerts();
 }
 
 // ═══ Confirm / Reject pending reports ═══

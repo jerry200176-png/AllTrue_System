@@ -52,6 +52,7 @@ export function adaptPaymentReportReceipt(api, reportId) {
       total_amount: api?.amount,
       paid_at: api?.payment_date || null,
       method: api?.payment_method || null,
+      note: api?.note || '',
       confirmed_at: api?.confirmed_at || null,
       confirmed_by: api?.confirmed_by || null,
       session_dates: Array.isArray(api?.session_dates) ? api.session_dates : [],
@@ -122,5 +123,6 @@ export function buildReceiptCopyText(snapshot = {}, receiptNumber = '—') {
   }
   lines.push(`收款日期：${snapshot.paid_at || '—'}`);
   lines.push(`收款方式：${RECEIPT_METHOD_LABELS[snapshot.method] || snapshot.method || '—'}`);
+  if (snapshot.note) lines.push(`備註：${snapshot.note}`);
   return lines.join('\n');
 }

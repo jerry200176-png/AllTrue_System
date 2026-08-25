@@ -51,6 +51,28 @@ describe('PaymentEntryModal — director-record submission contract', () => {
     expect(wrapper.text()).toContain('此課程已標記為已繳費');
   });
 
+  it('explains pending accounting and routes duplicate reports to the pending flow', async () => {
+    global.fetch.mockResolvedValueOnce({
+      ok: false,
+      status: 422,
+      json: () => Promise.resolve({ code: 'pending_report_exists', message: '此課程已有待對帳回報', report_id: 42 }),
+    });
+    const wrapper = mount(PaymentEntryModal, { props: { show: false, row } });
+    await wrapper.setProps({ show: true });
+    await nextTick();
+
+    expect(wrapper.text()).toContain('現金也不會立刻變成已繳費');
+    expect(wrapper.text()).toContain('送出待對帳回報');
+    await wrapper.find('form').trigger('submit');
+    await tick();
+
+    expect(wrapper.emitted('confirmed')).toBeUndefined();
+    expect(wrapper.emitted('pending')).toEqual([[
+      { code: 'pending_report_exists', message: '此課程已有待對帳回報', report_id: 42 },
+    ]]);
+    expect(wrapper.text()).toContain('不要重複送出');
+  });
+
   it('does not emit confirmed on a network error either', async () => {
     global.fetch.mockRejectedValueOnce(new Error('network down'));
     const wrapper = mount(PaymentEntryModal, { props: { show: false, row } });

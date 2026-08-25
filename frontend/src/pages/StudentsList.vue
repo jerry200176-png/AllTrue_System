@@ -438,6 +438,14 @@
         <div class="form-group">
           <label>備註</label>
           <textarea v-model="studentForm.notes" rows="2" placeholder="特殊需求、過敏、家長偏好等..." style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit; resize: vertical;"></textarea>
+          <div v-if="studentForm.latest_payment_note" class="student-latest-payment-note" role="note">
+            <span class="material-symbols-outlined" aria-hidden="true">receipt_long</span>
+            <div>
+              <strong>最近已確認入帳備註（自動）</strong>
+              <p>{{ studentForm.latest_payment_note }}</p>
+              <small>由帳務回報自動帶入，不會覆蓋上方的學生長期備註。</small>
+            </div>
+          </div>
         </div>
 
         <div class="actions">
@@ -788,7 +796,7 @@ const identityError = ref('');
 // Student modal
 const showStudentModal = ref(false);
 const editingStudentId = ref(null);
-const studentForm = ref({ name: '', grade: 'J1', phone: '', school: '', parent_name: '', parent_phone: '', status: 'active', notes: '' });
+const studentForm = ref({ name: '', grade: 'J1', phone: '', school: '', parent_name: '', parent_phone: '', status: 'active', notes: '', latest_payment_note: '' });
 
 // LINE bindings (in edit modal)
 const lineBindings = ref([]);
@@ -1521,7 +1529,7 @@ const toggleExpand = async (student) => {
 // --- Student CRUD ---
 const openAddStudent = () => {
   editingStudentId.value = null;
-  studentForm.value = { name: '', grade: 'J1', phone: '', school: '', parent_name: '', parent_phone: '', status: 'active', notes: '', rfid: '' };
+  studentForm.value = { name: '', grade: 'J1', phone: '', school: '', parent_name: '', parent_phone: '', status: 'active', notes: '', latest_payment_note: '', rfid: '' };
   showStudentModal.value = true;
 };
 
@@ -1536,6 +1544,7 @@ const editStudent = (student) => {
     parent_phone: student.parent_phone || '',
     status: student.status || 'active',
     notes: student.notes || '',
+    latest_payment_note: student.latest_payment_note || '',
     rfid: student.rfid || ''
   };
   showStudentModal.value = true;
@@ -3269,6 +3278,27 @@ table th { font-size: 12.5px; }
 .student-note-label {
   font-weight: 700;
 }
+.student-latest-payment-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 9px 10px;
+  border: 1px solid var(--ds-hairline);
+  border-radius: 8px;
+  background: var(--ds-success-wash);
+  color: var(--ds-ink-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.student-latest-payment-note > .material-symbols-outlined {
+  flex: 0 0 auto;
+  color: var(--ds-success);
+  font-size: 17px;
+}
+.student-latest-payment-note strong { color: var(--ds-success); }
+.student-latest-payment-note p { margin: 2px 0; white-space: pre-wrap; word-break: break-word; }
+.student-latest-payment-note small { color: var(--ds-ink-mute); }
 .course-inner-table {
   width: 100%;
   border-collapse: collapse;

@@ -110,6 +110,10 @@
                 <span class="receipt-doc-label">收款方式</span>
                 <span class="receipt-doc-value">{{ paymentMethodLabel(snapshot.method) }}</span>
               </div>
+              <div v-if="snapshot.note" class="receipt-doc-row receipt-doc-note-row">
+                <span class="receipt-doc-label">備註</span>
+                <span class="receipt-doc-value">{{ snapshot.note }}</span>
+              </div>
 
               <div class="receipt-doc-refund" v-if="snapshot.refund_policy">
                 <div class="receipt-doc-label">退費規定</div>

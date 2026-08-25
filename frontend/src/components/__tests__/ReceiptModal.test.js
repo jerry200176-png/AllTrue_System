@@ -23,6 +23,7 @@ const SAMPLE = {
   session_dates: [{ date: '2026/07/03', expected: false }],
   payment_date: '2026/07/13',
   payment_method: 'cash',
+  note: '8/23現金繳費收據號碼:016272',
   amount: 12000,
   confirmed_at: '2026/07/13',
   confirmed_by: '主任A',
@@ -85,6 +86,7 @@ describe('paymentReportReceipt helpers (#1197 closeout)', () => {
     expect(text).toContain('學生姓名：王小明');
     expect(text).toContain('合計：NT$ 12,000');
     expect(text).toContain('收款方式：現金');
+    expect(text).toContain('備註：8/23現金繳費收據號碼:016272');
   });
 
   it('receipt line names trial and tutoring', () => {
