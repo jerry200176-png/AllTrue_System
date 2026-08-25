@@ -168,6 +168,30 @@ class StudentClassTransferSessionsTest extends TestCase
         );
     }
 
+    public function test_rejects_target_with_an_existing_active_slot_before_moving_anything(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $source = $this->createCourse($student->id, 1);
+        $target = $this->createCourse($student->id, 1);
+        $sourceSessionId = $this->createClassSession((int) $source->ID, '2026-08-08');
+        $targetSessionId = $this->createClassSession((int) $target->ID, '2026-08-08');
+
+        $response = $this->postJson(
+            "/api/v1/student-classes/{$source->ID}/transfer-sessions",
+            ['session_ids' => [$sourceSessionId], 'target_student_class_id' => $target->ID],
+            ['Authorization' => "Bearer {$token}"]
+        );
+
+        $response->assertStatus(422)
+            ->assertJsonPath('code', 'target_slot_conflict')
+            ->assertJsonPath('conflicts.0.session_id', $targetSessionId);
+        $this->assertSame(
+            (int) $source->ID,
+            (int) DB::table('ClassSession')->where('id', $sourceSessionId)->value('StudentClassID')
+        );
+    }
+
     // ── helpers ──
 
     private function createDirectorToken(array $campusIds): string
