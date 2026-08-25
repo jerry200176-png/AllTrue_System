@@ -144,9 +144,17 @@
 
         <!-- Actions -->
         <div class="receipt-actions">
-          <button class="ghost" type="button" :disabled="copyState === 'copying'" @click="copyReceipt">
+          <button data-testid="copy-receipt-image" class="primary" type="button" :disabled="copyState === 'copying'" @click="copyReceiptImage">
+            <span class="material-symbols-outlined">image</span>
+            {{ copyState === 'copied-image' ? '已複製圖片' : '複製圖片' }}
+          </button>
+          <button data-testid="copy-receipt-text" class="ghost" type="button" :disabled="copyState === 'copying'" @click="copyReceiptText">
             <span class="material-symbols-outlined">content_copy</span>
-            {{ copyState === 'copied' ? '已複製' : '複製' }}
+            {{ copyState === 'copied-text' ? '已複製文字' : '複製文字' }}
+          </button>
+          <button data-testid="download-receipt-image" class="ghost" type="button" :disabled="copyState === 'copying'" @click="downloadReceiptImage">
+            <span class="material-symbols-outlined">download</span>
+            下載圖片
           </button>
           <button class="ghost" type="button" @click="printReceipt">
             <span class="material-symbols-outlined">print</span>
@@ -245,7 +253,92 @@ function printReceipt() {
   window.print();
 }
 
-async function copyReceipt() {
+function inlineComputedStyles(source, target) {
+  const sourceNodes = [source, ...source.querySelectorAll('*')];
+  const targetNodes = [target, ...target.querySelectorAll('*')];
+  sourceNodes.forEach((sourceNode, index) => {
+    const targetNode = targetNodes[index];
+    if (!targetNode) return;
+    const styles = window.getComputedStyle(sourceNode);
+    let cssText = '';
+    for (let i = 0; i < styles.length; i += 1) {
+      const property = styles.item(i);
+      cssText += `${property}:${styles.getPropertyValue(property)};`;
+    }
+    targetNode.setAttribute('style', cssText);
+  });
+}
+
+function receiptImageBlob() {
+  const source = receiptPrintRef.value;
+  if (!source) throw new Error('receipt_not_ready');
+
+  const bounds = source.getBoundingClientRect();
+  const width = Math.max(1, Math.ceil(source.scrollWidth || bounds.width));
+  const height = Math.max(1, Math.ceil(source.scrollHeight || bounds.height));
+  const scale = Math.min(3, Math.max(2, window.devicePixelRatio || 1));
+  const clone = source.cloneNode(true);
+  inlineComputedStyles(source, clone);
+
+  const svg = [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`,
+    '<foreignObject width="100%" height="100%">',
+    `<div xmlns="http://www.w3.org/1999/xhtml" style="width:${width}px;min-height:${height}px;background:white;">`,
+    clone.outerHTML,
+    '</div></foreignObject></svg>',
+  ].join('');
+
+  const svgUrl = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }));
+  return new Promise((resolve, reject) => {
+    const image = new window.Image();
+    image.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = width * scale;
+        canvas.height = height * scale;
+        const context = canvas.getContext('2d');
+        if (!context) throw new Error('canvas_unavailable');
+        context.fillStyle = 'white';
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob((blob) => {
+          if (blob) resolve(blob);
+          else reject(new Error('image_encode_failed'));
+        }, 'image/png');
+      } catch (error) {
+        reject(error);
+      } finally {
+        URL.revokeObjectURL(svgUrl);
+      }
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(svgUrl);
+      reject(new Error('image_render_failed'));
+    };
+    image.src = svgUrl;
+  });
+}
+
+async function copyReceiptImage() {
+  if (!receipt.value) return;
+  copyState.value = 'copying';
+  copyError.value = '';
+  try {
+    if (typeof navigator.clipboard?.write !== 'function' || typeof window.ClipboardItem !== 'function') {
+      throw new Error('image_clipboard_unsupported');
+    }
+    const blob = await receiptImageBlob();
+    await navigator.clipboard.write([new window.ClipboardItem({ 'image/png': blob })]);
+    copyState.value = 'copied-image';
+  } catch (error) {
+    copyState.value = 'error';
+    copyError.value = error.message === 'image_clipboard_unsupported'
+      ? '此瀏覽器不支援直接複製圖片，請按「下載圖片」後再傳給家長。'
+      : '複製圖片失敗，請按「下載圖片」後再傳給家長。';
+  }
+}
+
+async function copyReceiptText() {
   if (!receipt.value) return;
   copyState.value = 'copying';
   copyError.value = '';
@@ -264,10 +357,31 @@ async function copyReceipt() {
       if (!document.execCommand('copy')) throw new Error('copy_failed');
       textarea.remove();
     }
-    copyState.value = 'copied';
+    copyState.value = 'copied-text';
   } catch {
     copyState.value = 'error';
-    copyError.value = '複製失敗，請改用列印或手動選取收據內容。';
+    copyError.value = '複製文字失敗，請改用列印或手動選取收據內容。';
+  }
+}
+
+async function downloadReceiptImage() {
+  if (!receipt.value) return;
+  copyState.value = 'copying';
+  copyError.value = '';
+  try {
+    const blob = await receiptImageBlob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `電子收據-${receipt.value.receipt_number || 'receipt'}.png`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    copyState.value = 'downloaded';
+  } catch {
+    copyState.value = 'error';
+    copyError.value = '下載圖片失敗，請改用列印或手動截圖。';
   }
 }
 
