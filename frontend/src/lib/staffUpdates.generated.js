@@ -4,6 +4,44 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-25-transfer-slot-conflict-preflight",
+    "publishedAt": "2026-08-25",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "堂次轉移先檢查衝突",
+    "summary": "相同日期時段會先提示，不再只顯示 Server Error。",
+    "items": [
+      "轉移堂次前會先檢查目標課程是否已有相同日期／時段；有衝突會列出日期，且不會搬動任何來源資料。",
+      "若出現衝突，請先處理目標課程的重複堂次，再選擇沒有相同時段的目標課程重新操作。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "轉移堂次前會先檢查目標課程是否已有相同日期／時段；有衝突會列出日期，且不會搬動任何來源資料。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "若出現衝突，請先處理目標課程的重複堂次，再選擇沒有相同時段的目標課程重新操作。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-25:transfer-slot-conflict-preflight",
+      "github:pull/2042"
+    ],
+    "date": "2026-08-25",
+    "version": "2026.08.25"
+  },
+  {
     "id": "staff-2026-08-25-payment-report-reconciliation",
     "publishedAt": "2026-08-25",
     "effectiveAt": null,

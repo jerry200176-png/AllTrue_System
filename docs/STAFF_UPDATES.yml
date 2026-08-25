@@ -4,6 +4,22 @@
 
 updates:
 
+  - id: staff-2026-08-25-transfer-slot-conflict-preflight
+    published_at: "2026-08-25"
+    audiences:
+      - director
+    importance: action_required
+    title: 堂次轉移先檢查衝突
+    summary: 相同日期時段會先提示，不再只顯示 Server Error。
+    items:
+      - category: fixed
+        text: 轉移堂次前會先檢查目標課程是否已有相同日期／時段；有衝突會列出日期，且不會搬動任何來源資料。
+      - category: action_required
+        text: 若出現衝突，請先處理目標課程的重複堂次，再選擇沒有相同時段的目標課程重新操作。
+    source_refs:
+      - "changelog:2026-08-25:transfer-slot-conflict-preflight"
+      - "github:pull/2042"
+
   - id: staff-2026-08-25-payment-report-reconciliation
     published_at: "2026-08-25"
     audiences:

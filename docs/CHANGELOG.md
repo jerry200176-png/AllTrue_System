@@ -1,3 +1,10 @@
+## 2026-08-25 — fix(course): 堂次轉移先檢查目標時段衝突
+
+<!-- release-notes: staff_update=staff-2026-08-25-transfer-slot-conflict-preflight -->
+
+- 轉移堂次前先檢查目標課程是否已有相同日期／時段；衝突時回傳可理解的日期與處理方向，不再只顯示通用的 `Server Error`。
+- 衝突會在任何來源堂次被修改前拒絕，避免重複堂次或已存在的評量／點名／扣堂資料被誤搬動；請先處理目標課程的重複堂次，再重新操作。
+
 ## 2026-08-23 — feat(billing): 未收款課程合約拆分精靈
 
 <!-- release-notes: staff_update=staff-2026-08-23-split-contract-wizard -->
