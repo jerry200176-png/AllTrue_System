@@ -232,6 +232,12 @@ function installReadObserver(page, observed, runtime) {
   const requestStarted = new WeakMap();
   page.on('request', (request) => {
     if (request.method() === 'GET') requestStarted.set(request, Date.now());
+    if (request.resourceType() === 'script') {
+      try {
+        const pathname = new URL(request.url()).pathname;
+        if (pathname.includes('ReceiptModal')) runtime.receiptModalChunks.add(pathname);
+      } catch (_) { /* non-URL script source */ }
+    }
   });
   page.on('console', (message) => {
     if (message.type() === 'error') runtime.consoleErrors += 1;
@@ -670,7 +676,23 @@ async function verifyPendingCanary(page, guard, observed, report, canary) {
     const hasUnpaidStatus = pendingRowText.includes('未繳費');
     const hasConfirmAction = await pendingRow.getByRole('button', { name: '確認入帳', exact: true }).count() > 0;
     const hasDuplicateReportAction = await pendingRow.getByRole('button', { name: '登記已回報', exact: true }).count() > 0;
-    report.workflowClarity = hasExpectedStatus && hasConfirmAction && !hasDuplicateReportAction ? 'VERIFIED' : 'UX GAP';
+    const hasRejectAction = await pendingRow.getByRole('button', { name: '退回', exact: true }).count() > 0;
+    const hasExplanation = /繳費回報|尚未核帳/.test(pendingRowText);
+    report.workflowConfirmAction = hasConfirmAction ? 'YES' : 'NO';
+    report.workflowDuplicateReportAction = hasDuplicateReportAction ? 'YES' : 'NO';
+    report.workflowRejectAction = hasRejectAction ? 'YES' : 'NO';
+    report.workflowExplanation = hasExplanation ? 'YES' : 'NO';
+    report.workflowNextAction = hasExpectedStatus && hasConfirmAction && !hasDuplicateReportAction ? 'YES' : 'NO';
+    report.workflowMissingBehavior = hasDuplicateReportAction
+      ? '同一待對帳列仍提供「登記已回報」'
+      : !hasConfirmAction
+        ? '缺少「確認入帳」下一步 CTA'
+        : !hasExplanation
+          ? '缺少「已收到繳費回報、尚未核帳」說明文字'
+          : '未達完整流程可理解性條件';
+    report.workflowClarity = hasExpectedStatus && !hasUnpaidStatus && hasConfirmAction && !hasDuplicateReportAction && hasExplanation
+      ? 'VERIFIED'
+      : 'UX GAP';
     report.pendingDiagnosis = hasExpectedStatus && !hasUnpaidStatus ? 'VERIFIED FIXED' : 'PRODUCT RENDER DEFECT';
   } catch (_) {
     report.pending = 'FAIL';
@@ -762,7 +784,25 @@ async function verifyBranchAwarePending(page, guard, report, canary, targetCampu
     report.uiStatus = report.currentLabel;
     const hasConfirmAction = await pendingRow.getByRole('button', { name: '確認入帳', exact: true }).count() > 0;
     const hasDuplicateReportAction = await pendingRow.getByRole('button', { name: '登記已回報', exact: true }).count() > 0;
-    report.workflowClarity = report.currentLabel === '待對帳' && !rowText.includes('未繳費') && hasConfirmAction && !hasDuplicateReportAction
+    const hasRejectAction = await pendingRow.getByRole('button', { name: '退回', exact: true }).count() > 0;
+    const hasExplanation = /繳費回報|尚未核帳/.test(rowText);
+    report.workflowConfirmAction = hasConfirmAction ? 'YES' : 'NO';
+    report.workflowDuplicateReportAction = hasDuplicateReportAction ? 'YES' : 'NO';
+    report.workflowRejectAction = hasRejectAction ? 'YES' : 'NO';
+    report.workflowExplanation = hasExplanation ? 'YES' : 'NO';
+    report.workflowNextAction = report.currentLabel === '待對帳' && hasConfirmAction && !hasDuplicateReportAction ? 'YES' : 'NO';
+    report.workflowMissingBehavior = hasDuplicateReportAction
+      ? '同一待對帳列仍提供「登記已回報」'
+      : !hasConfirmAction
+        ? '缺少「確認入帳」下一步 CTA'
+        : !hasExplanation
+          ? '缺少「已收到繳費回報、尚未核帳」說明文字'
+          : '未達完整流程可理解性條件';
+    report.workflowClarity = report.currentLabel === '待對帳'
+      && !rowText.includes('未繳費')
+      && hasConfirmAction
+      && !hasDuplicateReportAction
+      && hasExplanation
       ? 'VERIFIED'
       : 'UX GAP';
     report.pending = backendContract && report.currentLabel === '待對帳' && !rowText.includes('未繳費')
@@ -801,6 +841,36 @@ async function assertReceiptActions(page) {
   }
   requireCondition(await modal.getByRole('button', { name: '列印', exact: true }).isVisible(), 'print action is not rendered');
   return modal;
+}
+
+async function collectReceiptStructuralEvidence(page) {
+  return page.evaluate(() => {
+    const visible = (element) => {
+      const style = window.getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+    };
+    const modalNode = document.querySelector('.receipt-modal');
+    const safeLabels = new Set(['複製圖片', '複製文字', '下載圖片', '列印']);
+    const visibleButtons = modalNode
+      ? [...modalNode.querySelectorAll('button')]
+        .filter(visible)
+        .map((button) => (button.textContent || '').replace(/\s+/g, ' ').trim())
+        .filter((label) => safeLabels.has(label))
+      : [];
+    return {
+      visibleButtonLabels: [...new Set(visibleButtons)],
+      dataTestids: modalNode
+        ? [...modalNode.querySelectorAll('[data-testid]')]
+          .map((node) => node.getAttribute('data-testid'))
+          .filter(Boolean)
+        : [],
+      receiptActionsContainer: Boolean(modalNode?.querySelector('.receipt-actions')),
+      receiptDocument: Boolean(modalNode?.querySelector('.receipt-document')),
+      receiptLoading: Boolean(modalNode?.querySelector('.receipt-loading')),
+      receiptError: Boolean(modalNode?.querySelector('.receipt-error')),
+    };
+  });
 }
 
 async function receiptActionLocator(modal, testId, label) {
@@ -903,10 +973,113 @@ async function openReceiptCanary(page, guard, report) {
   const receiptButton = row.locator('button[aria-label^="查看 "]').first();
   requireCondition(await receiptButton.count() > 0, 'receipt canary row has no receipt action');
   const trigger = await receiptButton.getAttribute('aria-label');
+  const receiptPath = `/api/v1/payment-reports/${EXISTING_RECEIPT_ID}/receipt`;
+  const receiptRequestStartedAt = Date.now();
+  const receiptResponsePromise = page.waitForResponse(
+    (response) => response.request().method() === 'GET' && new URL(response.url()).pathname === receiptPath,
+    { timeout: 30_000 },
+  ).then(async (response) => ({
+    status: response.status(),
+    durationMs: Math.max(0, Date.now() - receiptRequestStartedAt),
+    body: await response.json().catch(() => null),
+  })).catch(() => null);
   await receiptButton.click();
-  await waitUntil(() => page.locator('.receipt-modal:visible').count().then((count) => count > 0), 'receipt modal did not open');
-  report.receiptModal = 'OPENED';
   const modal = page.locator('.receipt-modal:visible').first();
+  try {
+    await waitUntil(() => modal.count().then((count) => count > 0), 'receipt modal did not open', 15_000);
+    report.receiptModal = 'OPENED';
+  } catch (error) {
+    report.receiptLoadState = 'MODAL NOT VISIBLE';
+    throw error;
+  }
+
+  const receiptResponse = await receiptResponsePromise;
+  report.receiptGet = receiptResponse
+    ? { status: receiptResponse.status, durationMs: receiptResponse.durationMs }
+    : { status: 'NOT COMPLETED', durationMs: Date.now() - receiptRequestStartedAt };
+  if (!receiptResponse) {
+    report.receiptLoadState = await modal.locator('.receipt-loading').isVisible().catch(() => false)
+      ? 'LOADING — DO NOT CLASSIFY'
+      : 'RECEIPT DATA LOAD FAILURE';
+    report.receiptActions = report.receiptLoadState.startsWith('LOADING') ? 'UAT RACE' : 'OTHER';
+    return null;
+  }
+  if (receiptResponse.status < 200 || receiptResponse.status >= 300) {
+    report.receiptLoadState = 'RECEIPT DATA LOAD FAILURE';
+    report.receiptActions = 'OTHER';
+    return null;
+  }
+
+  const receiptNumber = String(
+    receiptResponse.body?.receipt_no
+      || receiptResponse.body?.receipt_number
+      || receiptResponse.body?.receipt?.receipt_no
+      || receiptResponse.body?.receipt?.receipt_number
+      || '',
+  );
+  report.receiptNumberMatchesApi = receiptNumber === EXISTING_RECEIPT_NUMBER
+    || receiptNumber.endsWith(`-${String(EXISTING_RECEIPT_ID).padStart(6, '0')}`)
+    || receiptNumber.includes(String(EXISTING_RECEIPT_ID).padStart(6, '0'));
+  try {
+    await waitUntil(async () => {
+      const loading = await modal.locator('.receipt-loading').isVisible().catch(() => false);
+      const errorVisible = await modal.locator('.receipt-error').isVisible().catch(() => false);
+      const documentVisible = await modal.locator('.receipt-document').isVisible().catch(() => false);
+      return !loading && !errorVisible && documentVisible;
+    }, 'receipt loaded terminal state did not settle', 15_000);
+  } catch (error) {
+    const loading = await modal.locator('.receipt-loading').isVisible().catch(() => false);
+    const errorVisible = await modal.locator('.receipt-error').isVisible().catch(() => false);
+    const documentVisible = await modal.locator('.receipt-document').isVisible().catch(() => false);
+    report.receiptLoadingCleared = loading ? 'NO' : 'YES';
+    report.loadingCleared = report.receiptLoadingCleared;
+    report.receiptErrorVisible = errorVisible ? 'YES' : 'NO';
+    report.receiptDocumentRendered = documentVisible ? 'YES' : 'NO';
+    report.receiptLoadState = errorVisible
+      ? 'PRODUCT RECEIPT LOAD DEFECT'
+      : loading
+        ? 'LOADING — DO NOT CLASSIFY'
+        : 'INCONCLUSIVE';
+    report.receiptActions = report.receiptLoadState === 'LOADING — DO NOT CLASSIFY' ? 'UAT RACE' : 'OTHER';
+    if (report.receiptLoadState !== 'LOADING — DO NOT CLASSIFY') {
+      report.receiptStructuralEvidence = await collectReceiptStructuralEvidence(page);
+    }
+    return null;
+  }
+  report.receiptLoadingCleared = 'YES';
+  report.loadingCleared = 'YES';
+  report.receiptErrorVisible = 'NO';
+  report.receiptDocumentRendered = 'YES';
+  const receiptDocNumber = await modal.locator('.receipt-doc-number').innerText().catch(() => '');
+  report.receiptNumberMatchesDom = receiptDocNumber === EXISTING_RECEIPT_NUMBER
+    || receiptDocNumber.endsWith(`-${String(EXISTING_RECEIPT_ID).padStart(6, '0')}`)
+    || receiptDocNumber.includes(String(EXISTING_RECEIPT_ID).padStart(6, '0'));
+  if (!report.receiptNumberMatchesApi || !report.receiptNumberMatchesDom) {
+    report.receiptLoadState = 'READY BUT WRONG RECEIPT DOM TARGET';
+    report.receiptActions = 'WRONG COMPONENT / DOM TARGET';
+    report.receiptStructuralEvidence = await collectReceiptStructuralEvidence(page);
+    return null;
+  }
+  report.receiptLoadState = 'READY';
+
+  const snapshotNotePresent = Boolean(
+    String(
+      receiptResponse.body?.note
+        || receiptResponse.body?.snapshot?.note
+        || receiptResponse.body?.content_snapshot?.note
+        || receiptResponse.body?.receipt?.note
+        || '',
+    ).trim(),
+  );
+  report.receiptNotePresent = snapshotNotePresent ? 'YES' : 'NO';
+  report.receiptNoteSource = snapshotNotePresent
+    ? (receiptResponse.body?.note != null
+      ? 'payment-reports/{id}/receipt.note'
+      : receiptResponse.body?.receipt?.note != null
+        ? 'payment-reports/{id}/receipt.receipt.note'
+        : 'receipt snapshot note')
+    : 'NO NOTE IN RECEIPT READ MODEL';
+
   report.receiptActionCopyImage = await receiptActionLocator(modal, 'copy-receipt-image', '複製圖片') ? 'YES' : 'NO';
   report.receiptActionCopyText = await receiptActionLocator(modal, 'copy-receipt-text', '複製文字') ? 'YES' : 'NO';
   report.receiptActionDownload = await receiptActionLocator(modal, 'download-receipt-image', '下載圖片') ? 'YES' : 'NO';
@@ -924,6 +1097,10 @@ async function openReceiptCanary(page, guard, report) {
     && report.receiptActionCopyText === 'YES'
     && report.receiptActionDownload === 'YES'
     && report.receiptActionPrint === 'YES' ? 'VERIFIED FIXED' : 'PARTIAL';
+  if (report.receiptActions === 'PARTIAL') {
+    report.receiptActions = 'PRODUCT RENDER DEFECT';
+    report.receiptStructuralEvidence = await collectReceiptStructuralEvidence(page);
+  }
   try {
     requireCondition(report.receiptActionCopyImage === 'YES', 'copy image action is not rendered');
     requireCondition(report.receiptActionCopyText === 'YES', 'copy text action is not rendered');
@@ -934,7 +1111,6 @@ async function openReceiptCanary(page, guard, report) {
     throw error;
   }
   report.receiptDiagnosis.rowCount = await page.locator('table.acct-table tbody tr').count();
-  report.receiptActions = 'VERIFIED FIXED';
   return modal;
 }
 
@@ -1168,7 +1344,68 @@ async function openStudentsReceipt(page, studentName, observed, guard) {
   return { receiptModal, studentRow, paymentInfoNoteVisible, invoiceNote };
 }
 
-async function auditPaymentNote(page, guard, report, canary) {
+async function auditReceiptPaymentNote(page, guard, report, receiptRecord) {
+  if (report.receiptLoadState !== 'READY' || report.receiptNotePresent !== 'YES') {
+    report.paymentNote = report.receiptLoadState === 'READY'
+      ? 'CANARY HAS NO NOTE'
+      : 'NOT VERIFIED';
+    report.authoritativeSource = report.receiptNoteSource || 'UNKNOWN';
+    return;
+  }
+  const studentClassId = Number(receiptRecord?.student_class_id || 0);
+  if (studentClassId <= 0) {
+    report.paymentNote = 'NOT VERIFIED';
+    report.authoritativeSource = report.receiptNoteSource;
+    report.noteAuditUi = 'NO STUDENT_CLASS_ID IN RECEIPT READ MODEL';
+    return;
+  }
+  const contextResponse = await readProductionJson(page, `/api/v1/student-classes/${studentClassId}/invoices`);
+  requireCondition(contextResponse.ok, `receipt payment-note context read returned HTTP ${contextResponse.status}`);
+  const payments = (contextResponse.body?.invoices || []).flatMap((invoice) => invoice.payments || []);
+  const matchingPayment = payments.find((payment) => Number(payment.report_id || 0) === EXISTING_RECEIPT_ID);
+  const contextNotePresent = Boolean(String(matchingPayment?.note || '').trim());
+  report.authoritativeSource = report.receiptNoteSource;
+  report.paymentNoteContextSource = contextNotePresent ? 'student-class invoices.payment.note' : 'NOT FOUND IN STUDENT-CLASS CONTEXT';
+
+  let displayed = false;
+  try {
+    await navigateTo(page, '學生管理', '學生管理', guard, report);
+    const filter = page.locator('input[placeholder="輸入姓名..."]').first();
+    await waitUntil(() => filter.count().then((count) => count > 0), 'receipt canary student filter was not rendered', 30_000);
+    await filter.fill(String(receiptRecord?.student_name || ''));
+    const studentRow = page.locator('tr.student-row').filter({ hasText: String(receiptRecord?.student_name || '') }).first();
+    await waitUntil(() => studentRow.count().then((count) => count > 0), 'receipt canary student row was not rendered', 30_000);
+    await studentRow.click();
+    const detail = page.locator('tr.course-detail-row').first();
+    await waitUntil(() => detail.count().then((count) => count > 0), 'receipt canary course detail was not rendered', 30_000);
+    const infoButtons = detail.locator('button').filter({ hasText: '繳費資訊' });
+    for (let index = 0; index < await infoButtons.count(); index += 1) {
+      await infoButtons.nth(index).click();
+      const infoModal = page.locator('.lpi-modal');
+      await waitUntil(() => infoModal.count().then((count) => count > 0), 'receipt canary payment info modal did not open', 30_000);
+      if (await infoModal.locator('.lpi-row').filter({ hasText: '備註' }).isVisible().catch(() => false)) {
+        displayed = true;
+        report.displayedWhere.push('學生管理／課程／繳費資訊／備註');
+        await infoModal.locator('button[title="關閉"], button').filter({ hasText: '關閉' }).first().click().catch(() => {});
+        break;
+      }
+      await infoModal.locator('button[title="關閉"], button').filter({ hasText: '關閉' }).first().click().catch(() => {});
+    }
+  } catch (_) {
+    report.noteAuditUi = 'NOT REACHED';
+  }
+  report.paymentNote = contextNotePresent && displayed
+    ? 'SINGLE SOURCE — VERIFIED'
+    : contextNotePresent
+      ? 'PRODUCT GAP'
+      : 'NOT VERIFIED';
+}
+
+async function auditPaymentNote(page, guard, report, canary, receiptRecord = null) {
+  if (receiptRecord) {
+    await auditReceiptPaymentNote(page, guard, report, receiptRecord);
+    return;
+  }
   if (!canary?.studentClassId) {
     report.paymentNote = 'CASE HAS NO NOTE — NOT VERIFIABLE';
     return;
@@ -1264,6 +1501,17 @@ test('authenticated production billing and receipt acceptance', async ({ page, c
     receiptCanaryReportId: 'NOT FOUND',
     receiptCanaryUiFilter: 'NOT VERIFIED',
     receiptModal: 'NOT OPENED',
+    receiptGet: { status: 'NOT STARTED', durationMs: 0 },
+    receiptLoadState: 'NOT REACHED',
+    receiptLoadingCleared: 'NOT VERIFIED',
+    receiptNumberMatchesApi: 'NOT VERIFIED',
+    receiptNumberMatchesDom: 'NOT VERIFIED',
+    receiptDocumentRendered: 'NOT VERIFIED',
+    receiptErrorVisible: 'NOT VERIFIED',
+    receiptNotePresent: 'NOT VERIFIED',
+    receiptNoteSource: 'UNKNOWN',
+    receiptStructuralEvidence: null,
+    loadedReceiptModalChunks: [],
     receiptActionCopyImage: 'NOT VERIFIED',
     receiptActionCopyText: 'NOT VERIFIED',
     receiptActionDownload: 'NOT VERIFIED',
@@ -1283,6 +1531,12 @@ test('authenticated production billing and receipt acceptance', async ({ page, c
     pagesChecked: [],
     currentLabel: 'UNKNOWN',
     workflowClarity: 'NOT VERIFIED',
+    workflowConfirmAction: 'NOT VERIFIED',
+    workflowDuplicateReportAction: 'NOT VERIFIED',
+    workflowRejectAction: 'NOT VERIFIED',
+    workflowExplanation: 'NOT VERIFIED',
+    workflowNextAction: 'NOT VERIFIED',
+    workflowMissingBehavior: 'NOT VERIFIED',
     receiptActions: 'NOT VERIFIED',
     receiptEntryPoints: [],
     copyImage: 'NOT VERIFIED',
@@ -1318,7 +1572,7 @@ test('authenticated production billing and receipt acceptance', async ({ page, c
     studentLatestNotes: new Map(),
     invoicePayments: [],
   };
-  const runtime = { consoleErrors: 0, pageErrors: 0, failedRequests: [], getObservations: [] };
+  const runtime = { consoleErrors: 0, pageErrors: 0, failedRequests: [], getObservations: [], receiptModalChunks: new Set() };
   report.getObservations = runtime.getObservations;
   installReadObserver(page, observed, runtime);
   const guard = await installProductionMutationGuard(page, {
@@ -1331,6 +1585,7 @@ test('authenticated production billing and receipt acceptance', async ({ page, c
   let failure = null;
   let canary = null;
   let specificReport = null;
+  let receiptCanaryRecord = null;
 
   try {
     try {
@@ -1381,13 +1636,13 @@ test('authenticated production billing and receipt acceptance', async ({ page, c
       let receiptModal = null;
       try {
         console.log('UAT_STAGE receipt_canary_api_begin');
-        const receiptRecord = await readReceiptCanary(page, report);
-        if (receiptRecord && scope.accessibleCampusIds.includes(RECEIPT_CAMPUS_ID)) {
+        receiptCanaryRecord = await readReceiptCanary(page, report);
+        if (receiptCanaryRecord && scope.accessibleCampusIds.includes(RECEIPT_CAMPUS_ID)) {
           await switchCampusThroughUi(page, guard, report, scope, RECEIPT_CAMPUS_ID, 'receipt');
           report.currentCampus = RECEIPT_CAMPUS_ID;
           console.log('UAT_STAGE receipt_canary_ui_begin');
           receiptModal = await openReceiptCanary(page, guard, report);
-        } else if (receiptRecord) {
+        } else if (receiptCanaryRecord) {
           report.receiptModal = 'NOT OPENED';
           report.receiptDiagnosis.state = 'BLOCKED BY CAMPUS SCOPE';
         }
@@ -1432,7 +1687,7 @@ test('authenticated production billing and receipt acceptance', async ({ page, c
       }
 
       try {
-        await auditPaymentNote(page, guard, report, canary);
+        await auditPaymentNote(page, guard, report, canary, receiptCanaryRecord || {});
         guard.assertNoUnexpectedMutations();
       } catch (error) {
         if (guard.unexpectedMutations().length) throw error;
@@ -1461,6 +1716,7 @@ test('authenticated production billing and receipt acceptance', async ({ page, c
     report.pageErrors = runtime.pageErrors;
     report.failedRequests = runtime.failedRequests;
     report.getObservations = runtime.getObservations;
+    report.loadedReceiptModalChunks = [...runtime.receiptModalChunks];
     const seenRuntimePhases = new Set();
     report.runtimeSnapshots = [...report.runtimeSnapshots].reverse().filter((snapshot) => {
       if (seenRuntimePhases.has(snapshot.phase)) return false;
