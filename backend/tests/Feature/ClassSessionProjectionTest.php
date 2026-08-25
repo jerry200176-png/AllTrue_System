@@ -143,6 +143,50 @@ class ClassSessionProjectionTest extends TestCase
         $this->assertDatabaseCount('ClassSession', 0);
     }
 
+    public function test_teacher_projection_isolates_unmaterialized_candidates_by_branch(): void
+    {
+        [$campusA, , $courseA] = $this->seedBranchCourse('teacher-candidate-a');
+        [, , $courseB] = $this->seedBranchCourse('teacher-candidate-b');
+
+        $courseARecord = \App\Models\StudentClass::findOrFail($courseA);
+        $teacherId = (int) $courseARecord->TeacherID;
+        $courseBRecord = \App\Models\StudentClass::findOrFail($courseB);
+
+        $recurringFields = [
+            'StartDate' => '2026-06-06',
+            'ScheduleMode' => 'count',
+            'SessionCount' => 8,
+            'week' => 6,
+            'time' => '10:00:00',
+            'SessionDuration' => 120,
+        ];
+        $courseARecord->update($recurringFields);
+        $courseBRecord->update(array_merge($recurringFields, [
+            'TeacherID' => $teacherId,
+            'by1' => $teacherId,
+        ]));
+
+        // The same teacher has active contracts in both campuses, but this
+        // token is scoped only to campus A. Neither course has a materialized
+        // ClassSession row in the requested range.
+        $teacherToken = $this->createTeacherToken($teacherId, (int) $campusA->id);
+        $response = $this->withHeaders([
+            'Authorization' => "Bearer {$teacherToken}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/class-sessions/projection?start=2026-06-27&end=2026-06-28');
+
+        $response->assertOk();
+        $projectedByClass = $response->json('projected.by_class') ?? [];
+        $this->assertCount(1, $projectedByClass);
+        $this->assertArrayHasKey((string) $courseA, $projectedByClass);
+        $this->assertArrayNotHasKey((string) $courseB, $projectedByClass);
+        $this->assertSame(
+            (int) $campusA->id,
+            (int) ($projectedByClass[(string) $courseA][0]['branch_id'] ?? 0)
+        );
+        $this->assertDatabaseCount('ClassSession', 0);
+    }
+
     public function test_projection_isolates_branches(): void
     {
         [$campusA, $tokenA, $courseA] = $this->seedBranchCourse('branch-a');
