@@ -16,6 +16,11 @@ on:
         required: false
         default: '林奕安'
         type: string
+      subject_name:
+        description: 'Subject name for billing probe (PII is not written to the artifact)'
+        required: false
+        default: '數學'
+        type: string
 
 permissions:
   contents: read
@@ -56,6 +61,7 @@ jobs:
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
           CASE_KEY: ${{ inputs.case_key }}
           TARGET_STUDENT_NAME: ${{ inputs.student_name }}
+          TARGET_SUBJECT_NAME: ${{ inputs.subject_name }}
         run: |
           set -euo pipefail
           mkdir -p out
@@ -66,9 +72,11 @@ jobs:
           if case not in {'schedule_241', 'billing_linlai', 'parent_lou'}:
               raise SystemExit('unsupported case')
           target_student_name = os.environ.get('TARGET_STUDENT_NAME', '林奕安') or '林奕安'
+          target_subject_name = os.environ.get('TARGET_SUBJECT_NAME', '數學') or '數學'
           print(f'''<?php
           $case = {case!r};
           $targetStudentName = {json.dumps(target_student_name, ensure_ascii=False)};
+          $targetSubjectName = {json.dumps(target_subject_name, ensure_ascii=False)};
           $db = \\Illuminate\\Support\\Facades\\DB::class;
           $out = ['ok' => true, 'case' => $case, 'read_only' => true,
             'prod_head' => trim((string)@shell_exec('git rev-parse HEAD'))];
@@ -154,7 +162,7 @@ jobs:
             $students = $db::table('Student')->where('CampusID', 9)->where('name', 'like', '%' . $targetStudentName . '%')
               ->get(['id', 'CampusID as campus_id']);
             $studentIds = $students->pluck('id')->map(fn ($id) => (int)$id)->all();
-            $subjectIds = $db::table('Subject')->where('Subject_Name', 'like', '%數學%')
+            $subjectIds = $db::table('Subject')->where('Subject_Name', 'like', '%' . $targetSubjectName . '%')
               ->pluck('id')->map(fn ($id) => (int)$id)->all();
             $classes = $db::table('StudentClass as sc')->whereIn('sc.StudentID', $studentIds)
               ->whereIn('sc.SubjectID', $subjectIds)->get(['sc.ID as class_id', 'sc.StudentID as student_id',
