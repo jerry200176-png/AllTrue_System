@@ -57,6 +57,12 @@ describe('TuitionCollectionPage receipt entry paths', () => {
     expect(source).toContain('請按確認入帳後才會變成已繳費並開收據');
   });
 
+  it('shows a stable course reference so duplicate subjects cannot be mistaken for one course', () => {
+    expect(source).toContain('formatCourseRef(r.id)');
+    expect(source).toContain('course_start_date || r.course_end_date');
+    expect(source).toContain('function formatCourseRef(id)');
+  });
+
   it('batch confirm does not auto-open receipts', () => {
     expect(source).toContain('submitBatchConfirm');
     expect(source).toContain('/api/v1/payment-reports/confirm-batch');
