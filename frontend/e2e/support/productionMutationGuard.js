@@ -55,7 +55,7 @@ export async function installProductionMutationGuard(page, options) {
 
     const entry = { method, pathname: url.pathname };
     blocked.push(entry);
-    if (phase === 'authenticated' && expectedSideEffectMap.has(`${method} ${url.pathname}`)) {
+    if (expectedSideEffectMap.has(`${method} ${url.pathname}`)) {
       expectedBlockedSideEffects.push(entry);
     } else {
       unexpectedMutations.push(entry);
