@@ -591,7 +591,7 @@ async function discoverPendingCase(page, report, scope) {
   report.paymentReport1531 = specificState;
   report.specificReportId = specificPending?.id || specificAny?.id || 'NOT VISIBLE';
   report.specificCase = specificPending
-    ? 'BLOCKED BY SCOPE'
+    ? 'FOUND'
     : specificState === 'NOT IN AUTHORIZED SCOPE'
       ? 'BLOCKED BY SCOPE'
       : 'FAIL';
@@ -760,13 +760,16 @@ async function verifyBranchAwarePending(page, guard, report, canary, targetCampu
     const rowText = await pendingRow.innerText();
     report.currentLabel = (rowText.match(/待對帳|待核帳|未繳費|已繳費/) || ['UNKNOWN'])[0];
     report.uiStatus = report.currentLabel;
-    report.workflowClarity = report.currentLabel === '待對帳' && !rowText.includes('未繳費')
+    const hasConfirmAction = await pendingRow.getByRole('button', { name: '確認入帳', exact: true }).count() > 0;
+    const hasDuplicateReportAction = await pendingRow.getByRole('button', { name: '登記已回報', exact: true }).count() > 0;
+    report.workflowClarity = report.currentLabel === '待對帳' && !rowText.includes('未繳費') && hasConfirmAction && !hasDuplicateReportAction
       ? 'VERIFIED'
       : 'UX GAP';
     report.pending = backendContract && report.currentLabel === '待對帳' && !rowText.includes('未繳費')
       ? 'VERIFIED FIXED'
       : 'PRODUCT DEFECT';
     report.pendingDiagnosis = report.pending;
+    report.specificCase = report.pending === 'VERIFIED FIXED' ? 'PASS' : 'FAIL';
     return;
   }
 
@@ -788,11 +791,28 @@ async function verifyBranchAwarePending(page, guard, report, canary, targetCampu
 async function assertReceiptActions(page) {
   const modal = page.locator('.receipt-modal').first();
   await waitUntil(() => modal.count().then((count) => count > 0), 'receipt modal did not open');
-  for (const testId of ['copy-receipt-image', 'copy-receipt-text', 'download-receipt-image']) {
-    requireCondition(await modal.locator(`[data-testid="${testId}"]`).isVisible(), `${testId} is not rendered`);
+  for (const [testId, label] of [
+    ['copy-receipt-image', '複製圖片'],
+    ['copy-receipt-text', '複製文字'],
+    ['download-receipt-image', '下載圖片'],
+  ]) {
+    const action = await receiptActionLocator(modal, testId, label);
+    requireCondition(action, `${label} is not rendered`);
   }
   requireCondition(await modal.getByRole('button', { name: '列印', exact: true }).isVisible(), 'print action is not rendered');
   return modal;
+}
+
+async function receiptActionLocator(modal, testId, label) {
+  const candidates = [
+    modal.locator(`[data-testid="${testId}"]`),
+    modal.getByRole('button', { name: label, exact: true }),
+    modal.getByText(label, { exact: true }),
+  ];
+  for (const candidate of candidates) {
+    if (await candidate.count() && await candidate.first().isVisible().catch(() => false)) return candidate.first();
+  }
+  return null;
 }
 
 async function readReceiptCanary(page, report) {
@@ -887,20 +907,21 @@ async function openReceiptCanary(page, guard, report) {
   await waitUntil(() => page.locator('.receipt-modal').count().then((count) => count > 0), 'receipt modal did not open');
   report.receiptModal = 'OPENED';
   const modal = page.locator('.receipt-modal').first();
-  report.receiptActionCopyImage = await modal.locator('[data-testid="copy-receipt-image"]').isVisible().catch(() => false) ? 'YES' : 'NO';
-  report.receiptActionCopyText = await modal.locator('[data-testid="copy-receipt-text"]').isVisible().catch(() => false) ? 'YES' : 'NO';
-  report.receiptActionDownload = await modal.locator('[data-testid="download-receipt-image"]').isVisible().catch(() => false) ? 'YES' : 'NO';
+  report.receiptActionCopyImage = await receiptActionLocator(modal, 'copy-receipt-image', '複製圖片') ? 'YES' : 'NO';
+  report.receiptActionCopyText = await receiptActionLocator(modal, 'copy-receipt-text', '複製文字') ? 'YES' : 'NO';
+  report.receiptActionDownload = await receiptActionLocator(modal, 'download-receipt-image', '下載圖片') ? 'YES' : 'NO';
   report.receiptActionPrint = await modal.getByRole('button', { name: '列印', exact: true }).isVisible().catch(() => false) ? 'YES' : 'NO';
   try {
     requireCondition(report.receiptActionCopyImage === 'YES', 'copy image action is not rendered');
     requireCondition(report.receiptActionCopyText === 'YES', 'copy text action is not rendered');
     requireCondition(report.receiptActionDownload === 'YES', 'download image action is not rendered');
-    requireCondition(report.receiptActionPrint === 'YES', 'print action is not rendered');
+  requireCondition(report.receiptActionPrint === 'YES', 'print action is not rendered');
   } catch (error) {
     report.receiptDiagnosis.state = 'UI DID NOT RENDER';
     throw error;
   }
   report.receiptEntryPoints.push({ page: '帳務中心／收據紀錄', route: report.runtimeSnapshots.at(-1)?.pathname || 'tuition-collect', trigger, actions: 'YES' });
+  report.receiptDiagnosis.rowCount = await page.locator('table.acct-table tbody tr').count();
   report.receiptActions = 'VERIFIED FIXED';
   return modal;
 }
@@ -921,7 +942,9 @@ async function copyImageEvidence(page, context, modal, report) {
   await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: productionOrigin });
   let clipboard;
   try {
-    await modal.locator('[data-testid="copy-receipt-image"]').click();
+    const copyImageButton = await receiptActionLocator(modal, 'copy-receipt-image', '複製圖片');
+    requireCondition(copyImageButton, 'copy image action is not rendered');
+    await copyImageButton.click();
     if (await modal.locator('.receipt-copy-error').isVisible().catch(() => false)) {
       report.clipboardUiError = 'VISIBLE';
       throw new Error('copy image handler reported an error');
@@ -999,7 +1022,9 @@ async function pasteEvidence(context, report) {
 }
 
 async function copyTextEvidence(page, modal, report) {
-  await modal.locator('[data-testid="copy-receipt-text"]').click();
+  const copyTextButton = await receiptActionLocator(modal, 'copy-receipt-text', '複製文字');
+  requireCondition(copyTextButton, 'copy text action is not rendered');
+  await copyTextButton.click();
   const clipboard = await page.evaluate(async () => {
     const items = await navigator.clipboard.read();
     return items.flatMap((item) => Array.from(item.types));
@@ -1011,7 +1036,9 @@ async function copyTextEvidence(page, modal, report) {
 
 async function downloadEvidence(page, modal, report) {
   const downloadPromise = page.waitForEvent('download');
-  await modal.locator('[data-testid="download-receipt-image"]').click();
+  const downloadButton = await receiptActionLocator(modal, 'download-receipt-image', '下載圖片');
+  requireCondition(downloadButton, 'download image action is not rendered');
+  await downloadButton.click();
   const download = await downloadPromise;
   const tempPath = await download.path();
   requireCondition(tempPath, 'download did not produce a local path');
