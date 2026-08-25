@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.08.25",
     "date": "2026-08-25",
     "title": "2026.08.25 草稿（未發布）",
-    "summary": "回報先待對帳並保留入帳備註",
+    "summary": "堂次轉移先檢查目標時段衝突；回報先待對帳並保留入帳備註",
     "audience": [
       "teacher",
       "director"
@@ -18,11 +18,13 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "堂次轉移先檢查目標時段衝突",
           "回報先待對帳並保留入帳備註"
         ]
       }
     ],
     "items": [
+      "堂次轉移先檢查目標時段衝突",
       "回報先待對帳並保留入帳備註"
     ]
   },
