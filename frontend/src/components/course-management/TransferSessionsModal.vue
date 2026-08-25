@@ -201,8 +201,8 @@ function onSubmit() {
   width: 100%; padding: 8px 10px; border: 1px solid var(--ds-hairline); border-radius: 8px; font-size: 13px; resize: vertical;
 }
 .recovery-warning {
-  margin: 8px 0 14px; padding: 10px 12px; border: 1px solid #f0b429; border-radius: 8px;
-  background: #fff8df; color: #7a4b00; font-size: 12px; line-height: 1.5;
+  margin: 8px 0 14px; padding: 10px 12px; border: 1px solid var(--ds-warning); border-radius: 8px;
+  background: var(--ds-warning-wash); color: var(--ds-warning); font-size: 12px; line-height: 1.5;
 }
 .hint { display: block; margin-top: 6px; font-size: 12px; color: var(--text-light); }
 .session-pick-list {
