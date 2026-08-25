@@ -851,6 +851,11 @@ async function receiptPrintActionLocator(modal) {
   return null;
 }
 
+async function receiptImageErrorKind(modal) {
+  const text = await modal.locator('.receipt-copy-error').innerText().catch(() => '');
+  return /複製圖片失敗|下載圖片失敗/.test(text) ? 'IMAGE_GENERATION_FAILED' : 'UNKNOWN';
+}
+
 async function collectReceiptStructuralEvidence(page) {
   return page.evaluate(() => {
     const visible = (element) => {
@@ -1143,6 +1148,7 @@ async function copyImageEvidence(page, context, modal, report) {
     await copyImageButton.click();
     if (await modal.locator('.receipt-copy-error').isVisible().catch(() => false)) {
       report.clipboardUiError = 'VISIBLE';
+      report.imageGenerationError = await receiptImageErrorKind(modal);
       throw new Error('copy image handler reported an error');
     }
     clipboard = await page.evaluate(async () => {
@@ -1171,6 +1177,10 @@ async function copyImageEvidence(page, context, modal, report) {
           ? 'NotSupportedError'
           : 'UNKNOWN';
     report.clipboardUiError = await modal.locator('.receipt-copy-error').isVisible().catch(() => false) ? 'VISIBLE' : 'NOT_VISIBLE';
+    if (report.clipboardUiError === 'VISIBLE') {
+      report.imageGenerationError = await receiptImageErrorKind(modal);
+      if (report.imageGenerationError === 'IMAGE_GENERATION_FAILED') report.clipboardError = report.imageGenerationError;
+    }
     throw new Error('copy image clipboard runtime failed');
   }
   report.clipboardTypes = clipboard.types;
@@ -1234,11 +1244,12 @@ async function downloadEvidence(page, modal, report) {
   const downloadPromise = page.waitForEvent('download');
   const downloadButton = await receiptActionLocator(modal, 'download-receipt-image', '下載圖片');
   requireCondition(downloadButton, 'download image action is not rendered');
-  await downloadButton.click();
-  const download = await downloadPromise;
-  const tempPath = await download.path();
-  requireCondition(tempPath, 'download did not produce a local path');
+  let download = null;
   try {
+    await downloadButton.click();
+    download = await downloadPromise;
+    const tempPath = await download.path();
+    requireCondition(tempPath, 'download did not produce a local path');
     const bytes = fs.readFileSync(tempPath);
     const png = pngEvidence(bytes, tempPath);
     report.downloadFilename = download.suggestedFilename();
@@ -1248,8 +1259,13 @@ async function downloadEvidence(page, modal, report) {
     requireCondition(/\.png$/i.test(report.downloadFilename), 'download filename is not PNG');
     requireCondition(report.downloadDecode, 'downloaded PNG validation failed');
     report.downloadPng = 'PASS';
+  } catch (error) {
+    if (await modal.locator('.receipt-copy-error').isVisible().catch(() => false)) {
+      report.imageGenerationError = await receiptImageErrorKind(modal);
+    }
+    throw error;
   } finally {
-    await download.delete().catch(() => {});
+    await download?.delete().catch(() => {});
   }
 }
 
@@ -1548,6 +1564,7 @@ test('authenticated production billing and receipt acceptance', async ({ page, c
     receiptActions: 'NOT VERIFIED',
     receiptEntryPoints: [],
     copyImage: 'NOT VERIFIED',
+    imageGenerationError: 'NOT OBSERVED',
     secureContext: false,
     clipboardApi: {},
     clipboardError: 'NONE',
