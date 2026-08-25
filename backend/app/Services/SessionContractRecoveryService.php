@@ -27,9 +27,7 @@ final class SessionContractRecoveryService
         return DB::transaction(function () use ($sourceClassId, $targetClassId, $sessionIds, $reason, $actorUserId) {
             $source = StudentClass::query()->where('ID', $sourceClassId)->lockForUpdate()->firstOrFail();
             $target = StudentClass::query()->where('ID', $targetClassId)->lockForUpdate()->firstOrFail();
-
             $this->assertCoursesCompatible($source, $target);
-
             $sessions = ClassSession::query()
                 ->where('StudentClassID', $sourceClassId)
                 ->whereIn('id', $sessionIds)
@@ -43,7 +41,6 @@ final class SessionContractRecoveryService
                     ['errors' => ['session_ids' => ['不存在的堂次 id: ' . implode(',', $missing)]]]
                 );
             }
-
             $evidence = $this->loadEvidence($sessions);
             $blocked = [];
             $recoveredIds = [];
@@ -64,7 +61,6 @@ final class SessionContractRecoveryService
                     ['errors' => ['session_ids' => ['不可恢復或轉移堂次：' . implode(', ', $blocked)]]]
                 );
             }
-
             $conflicts = $this->targetSlotConflicts($targetClassId, $sessions);
             if ($conflicts->isNotEmpty()) {
                 $dates = $conflicts->pluck('date')->unique()->values()->implode('、');
@@ -76,7 +72,6 @@ final class SessionContractRecoveryService
                     ]
                 );
             }
-
             foreach ($sessions as $session) {
                 $sessionId = (int) $session->id;
                 $isCancelled = strtolower((string) $session->getAttribute('Status')) === 'cancelled';
@@ -85,16 +80,13 @@ final class SessionContractRecoveryService
                     $session->setAttribute('Status', 'attended');
                 }
                 $session->save();
-
                 $this->moveEvidence($sessionId, $targetClassId, $isCancelled);
                 SessionDeductionLedger::query()
                     ->where('class_session_id', $sessionId)
                     ->update(['student_class_id' => $targetClassId, 'updated_at' => now()]);
             }
-
             SessionDeductionService::recomputeCounters($sourceClassId);
             SessionDeductionService::recomputeCounters($targetClassId);
-
             SecurityAuditEvent::append(
                 'student_class.cancelled_session_recovered',
                 'success',
@@ -113,7 +105,6 @@ final class SessionContractRecoveryService
                     'outcome' => 'success',
                 ]
             );
-
             return [
                 'transferred_session_ids' => $foundIds,
                 'recovered_session_ids' => array_values($recoveredIds),
@@ -137,7 +128,6 @@ final class SessionContractRecoveryService
             ->map(fn ($id) => (int) $id)
             ->unique()
             ->all();
-
         $learningSet = array_fill_keys($learningRecordIds, true);
         $signInSet = array_fill_keys($signInIds, true);
         $evidence = [];
@@ -148,7 +138,6 @@ final class SessionContractRecoveryService
         }
         return $evidence;
     }
-
     private function moveEvidence(int $sessionId, int $targetClassId, bool $restoreVoided): void
     {
         $records = LearningRecord::query()
@@ -167,7 +156,6 @@ final class SessionContractRecoveryService
             }
             $record->save();
         }
-
         $signIns = StudentSignIn::query()
             ->where('ClassSessionID', $sessionId)
             ->lockForUpdate()
@@ -182,7 +170,6 @@ final class SessionContractRecoveryService
             $signIn->save();
         }
     }
-
     private function assertCoursesCompatible(StudentClass $source, StudentClass $target): void
     {
         if ((int) $source->ID === (int) $target->ID) {
@@ -198,7 +185,6 @@ final class SessionContractRecoveryService
             $this->blocked('來源課程已提前結清，堂次與紀錄已鎖定，無法恢復移轉。');
         }
     }
-
     private function blocked(string $message): never
     {
         throw new SessionContractRecoveryException($message);
