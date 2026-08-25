@@ -109,7 +109,10 @@ jobs:
           SMOKE_DIRECTOR_PASS: ${{ secrets.SMOKE_DIRECTOR_PASS }}
           SMOKE_TEACHER_USER: ${{ secrets.SMOKE_TEACHER_USER }}
           SMOKE_TEACHER_PASS: ${{ secrets.SMOKE_TEACHER_PASS }}
-        run: npm run test:e2e
+        # This branch is running the founder-approved billing acceptance only;
+        # the spec itself disables all production artifacts and installs the
+        # post-login mutation guard before navigation.
+        run: npx playwright test e2e/billing-production-acceptance.spec.js --config=playwright.production-acceptance.config.js --reporter=line
 
       - name: Upload Playwright report
         if: ${{ steps.detect.outputs.run == 'true' && !cancelled() }}
