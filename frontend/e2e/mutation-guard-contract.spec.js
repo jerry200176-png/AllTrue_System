@@ -30,6 +30,9 @@ test.describe('production mutation guard contract — local mock only', () => {
     const guard = await installProductionMutationGuard(page, {
       baseURL: mock.origin,
       loginPaths: ['/api/v1/auth/login'],
+      expectedBlockedSideEffects: [
+        { method: 'POST', pathname: '/api/v1/adoption/events' },
+      ],
     });
 
     try {
@@ -49,18 +52,22 @@ test.describe('production mutation guard contract — local mock only', () => {
 
       guard.markAuthenticated();
       await page.evaluate(async (origin) => {
-        for (const method of ['POST', 'PATCH', 'DELETE']) {
-          await fetch(`${origin}/api/v1/should-block`, { method }).catch(() => {});
-        }
+        await fetch(`${origin}/api/v1/adoption/events`, { method: 'POST' }).catch(() => {});
+        await fetch(`${origin}/api/v1/payment-reports`, { method: 'POST' }).catch(() => {});
+        await fetch(`${origin}/api/v1/should-block`, { method: 'PATCH' }).catch(() => {});
+        await fetch(`${origin}/api/v1/should-block`, { method: 'DELETE' }).catch(() => {});
       }, mock.origin);
 
-      expect(guard.blockedRequests()).toEqual([
-        { method: 'POST', pathname: '/api/v1/should-block' },
+      expect(guard.expectedBlockedSideEffects()).toEqual([
+        { method: 'POST', pathname: '/api/v1/adoption/events' },
+      ]);
+      expect(guard.unexpectedMutations()).toEqual([
+        { method: 'POST', pathname: '/api/v1/payment-reports' },
         { method: 'PATCH', pathname: '/api/v1/should-block' },
         { method: 'DELETE', pathname: '/api/v1/should-block' },
       ]);
       expect(() => guard.assertNoUnexpectedMutations()).toThrow(
-        'POST /api/v1/should-block, PATCH /api/v1/should-block, DELETE /api/v1/should-block',
+        'POST /api/v1/payment-reports, PATCH /api/v1/should-block, DELETE /api/v1/should-block',
       );
 
       // The blocked requests never reach the local server; only safe methods
