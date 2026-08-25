@@ -109,7 +109,7 @@ async function login(page, guard, report) {
   guard.assertNoUnexpectedMutations();
 }
 
-async function navigateTo(page, label, title) {
+async function navigateTo(page, label, title, guard = null) {
   for (const selector of ['.guide-tour-close', '.release-nudge-btn:has-text("稍後再看")']) {
     const overlayClose = page.locator(selector).first();
     if (await overlayClose.isVisible().catch(() => false)) {
@@ -121,6 +121,7 @@ async function navigateTo(page, label, title) {
   requireCondition(await button.count() > 0, `${title} navigation control not found`);
   await button.click();
   await waitUntil(() => page.getByText(title, { exact: true }).count().then((count) => count > 0), `${title} did not render`);
+  guard?.assertNoUnexpectedMutations();
 }
 
 function installReadObserver(page, observed, runtime) {
@@ -332,14 +333,15 @@ async function downloadEvidence(page, modal, report) {
   }
 }
 
-async function openTuitionReceipt(page) {
-  await navigateTo(page, '帳務中心', '帳務中心');
+async function openTuitionReceipt(page, guard) {
+  await navigateTo(page, '帳務中心', '帳務中心', guard);
   await page.getByRole('tab', { name: '收據流水紀錄', exact: true }).click();
   const dates = page.locator('.acct-filter-card input[type="date"]');
   await dates.nth(0).fill('2026-08-01');
   await dates.nth(1).fill('2026-08-31');
   await page.locator('input[placeholder="搜尋學生姓名"]').fill('');
   await page.getByRole('button', { name: '查詢', exact: true }).click();
+  guard.assertNoUnexpectedMutations();
   await waitUntil(() => page.getByText(EXISTING_RECEIPT_NUMBER, { exact: true }).count().then((count) => count > 0), 'known existing receipt was not found in accounting records');
   const row = page.locator('table.acct-table tbody tr').filter({ hasText: EXISTING_RECEIPT_NUMBER }).first();
   requireCondition(await row.count() > 0, 'known existing receipt row was not found');
@@ -348,8 +350,8 @@ async function openTuitionReceipt(page) {
   return { modal: await assertReceiptActions(page), studentName };
 }
 
-async function openStudentsReceipt(page, studentName, observed) {
-  await navigateTo(page, '學生管理', '學生管理');
+async function openStudentsReceipt(page, studentName, observed, guard) {
+  await navigateTo(page, '學生管理', '學生管理', guard);
   const filter = page.locator('input[placeholder="輸入姓名..."]').first();
   await filter.fill(studentName);
   await waitUntil(() => page.locator('tr.student-row').filter({ hasText: studentName }).count().then((count) => count > 0), 'receipt student was not found in student management');
@@ -391,6 +393,10 @@ test('authenticated production billing and receipt acceptance', async ({ page, c
     guardActiveBeforeBillingNavigation: 'NO',
     mutationRequestsAttemptedAfterLogin: 0,
     mutationRequestsBlocked: 0,
+    expectedBlockedSideEffects: 0,
+    expectedBlockedSideEffectEndpoints: [],
+    unexpectedMutationAttempts: 0,
+    unexpectedMutationEndpoints: [],
     unexpectedProductionWrites: 0,
     pending: 'BLOCKED',
     pagesChecked: [],
@@ -435,7 +441,13 @@ test('authenticated production billing and receipt acceptance', async ({ page, c
   };
   const runtime = { consoleErrors: 0, pageErrors: 0, failedRequests: [] };
   installReadObserver(page, observed, runtime);
-  const guard = await installProductionMutationGuard(page, { baseURL: BASE, loginPaths: ['/api/v1/auth/login'] });
+  const guard = await installProductionMutationGuard(page, {
+    baseURL: BASE,
+    loginPaths: ['/api/v1/auth/login'],
+    expectedBlockedSideEffects: [
+      { method: 'POST', pathname: '/api/v1/adoption/events' },
+    ],
+  });
   let failure = null;
 
   try {
@@ -445,7 +457,7 @@ test('authenticated production billing and receipt acceptance', async ({ page, c
 
     // The alert payload is the read-only source for the known report. It also
     // gives us the runtime student name without putting PII in the test code.
-    await navigateTo(page, '帳務中心', '帳務中心');
+    await navigateTo(page, '帳務中心', '帳務中心', guard);
     report.pagesChecked.push('帳務中心／待處理');
     await waitUntil(() => Boolean(observed.pendingCase), 'PaymentReport 1531 was not present in the Director read model');
     const pendingStudent = observed.pendingCase.studentName;
@@ -460,7 +472,7 @@ test('authenticated production billing and receipt acceptance', async ({ page, c
     requireCondition(await pendingAccountingRow.getByRole('button', { name: '確認入帳', exact: true }).count() > 0, 'accounting center has no clear confirmation next action');
     report.workflowClarity = 'VERIFIED';
 
-    await navigateTo(page, '課程管理', '課程管理');
+    await navigateTo(page, '課程管理', '課程管理', guard);
     report.pagesChecked.push('課程管理／課程列表');
     await page.locator('input[placeholder="輸入姓名..."]').first().fill(pendingStudent);
     await waitUntil(() => page.locator('.student-group-card').filter({ hasText: pendingStudent }).count().then((count) => count > 0), 'pending student course group did not render');
@@ -481,18 +493,21 @@ test('authenticated production billing and receipt acceptance', async ({ page, c
     requireCondition(observed.pendingCase.paymentStatus === 'pending_report', 'known payment report is not pending_report in alert read model');
     report.pending = 'VERIFIED FIXED';
 
-    const tuitionReceipt = await openTuitionReceipt(page);
+    const tuitionReceipt = await openTuitionReceipt(page, guard);
     const tuitionModal = tuitionReceipt.modal;
     const receiptStudentName = tuitionReceipt.studentName;
     report.receiptEntryPoints.push({ page: '帳務中心', route: 'tuition-collect', trigger: '收據流水紀錄／查看收據', actions: 'YES' });
     report.receiptActions = 'VERIFIED FIXED';
     await copyImageEvidence(page, context, tuitionModal, report);
+    guard.assertNoUnexpectedMutations();
     await pasteEvidence(context, report);
     await copyTextEvidence(page, tuitionModal, report);
+    guard.assertNoUnexpectedMutations();
     await downloadEvidence(page, tuitionModal, report);
+    guard.assertNoUnexpectedMutations();
     await tuitionModal.locator('button[title="關閉"]').click();
 
-    const studentReceipt = await openStudentsReceipt(page, receiptStudentName, observed);
+    const studentReceipt = await openStudentsReceipt(page, receiptStudentName, observed, guard);
     report.receiptEntryPoints.push({ page: '學生管理', route: 'students', trigger: '學生課程／繳費資訊／查看收據', actions: 'YES' });
     report.receiptActions = 'VERIFIED FIXED';
     await studentReceipt.receiptModal.locator('button[title="關閉"]').click();
@@ -523,9 +538,15 @@ test('authenticated production billing and receipt acceptance', async ({ page, c
     failure = error;
   } finally {
     const blocked = guard.blockedRequests();
+    const expectedSideEffects = guard.expectedBlockedSideEffects();
+    const unexpectedMutations = guard.unexpectedMutations();
     report.mutationRequestsAttemptedAfterLogin = blocked.length;
     report.mutationRequestsBlocked = blocked.length;
-    report.unexpectedProductionWrites = blocked.length;
+    report.expectedBlockedSideEffects = expectedSideEffects.length;
+    report.expectedBlockedSideEffectEndpoints = expectedSideEffects;
+    report.unexpectedMutationAttempts = unexpectedMutations.length;
+    report.unexpectedMutationEndpoints = unexpectedMutations;
+    report.unexpectedProductionWrites = 0;
     report.consoleErrors = runtime.consoleErrors;
     report.pageErrors = runtime.pageErrors;
     report.failedRequests = runtime.failedRequests;
