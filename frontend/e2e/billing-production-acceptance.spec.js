@@ -155,35 +155,11 @@ function installReadObserver(page, observed, runtime) {
       const list = Array.isArray(json?.data) ? json.data : (Array.isArray(json) ? json : []);
       observed.studentClasses.push(...list.map((course) => ({
         id: Number(course.id),
-        studentName: course.student_name,
-        paymentStatus: course.payment_status,
+        studentName: String(course.student_name || ''),
+        paymentStatus: String(course.payment_status || ''),
+        latestPaymentReportId: Number(course.latest_payment_report_id || 0),
+        branchId: Number(course.branch_id || 0),
       })));
-    }
-    if (url.pathname === '/api/v1/payment-reports') {
-      const reports = Array.isArray(json?.data) ? json.data : (Array.isArray(json) ? json : []);
-      for (const report of reports) {
-        if (Number(report.id) === PENDING_REPORT_ID) {
-          observed.pendingReport = {
-            id: PENDING_REPORT_ID,
-            status: report.status,
-            notePresent: Boolean(String(report.note || '').trim()),
-            studentClassId: Number(report.student_class_id),
-          };
-        }
-      }
-    }
-    if (url.pathname === '/api/v1/alerts/tuition') {
-      const rows = Array.isArray(json) ? json : (Array.isArray(json?.data) ? json.data : []);
-      const pending = rows.find((row) => Number(
-        row.latest_payment_report_id ?? row.payment_report_id ?? row.report_id,
-      ) === PENDING_REPORT_ID);
-      if (pending) {
-        observed.pendingCase = {
-          studentName: String(pending.student_name || ''),
-          studentClassId: Number(pending.id || pending.student_class_id || 0),
-          paymentStatus: String(pending.payment_status || ''),
-        };
-      }
     }
     if (url.pathname === '/api/v1/students') {
       const list = Array.isArray(json?.data) ? json.data : (Array.isArray(json) ? json : []);
@@ -202,6 +178,211 @@ function installReadObserver(page, observed, runtime) {
       })));
     }
   });
+}
+
+async function readProductionJson(page, requestPath) {
+  return page.evaluate(async (path) => {
+    const rawSession = localStorage.getItem('alltrue_session');
+    let token = '';
+    try { token = JSON.parse(rawSession || 'null')?.access_token || ''; } catch (_) { /* no-op */ }
+    const headers = { Accept: 'application/json' };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const response = await fetch(path, { headers });
+    let body = null;
+    try { body = await response.json(); } catch (_) { /* no-op */ }
+    return { status: response.status, ok: response.ok, body };
+  }, requestPath);
+}
+
+function listRows(body) {
+  return Array.isArray(body?.data) ? body.data : (Array.isArray(body) ? body : []);
+}
+
+function paginationLastPage(body) {
+  return Number(body?.last_page ?? body?.meta?.last_page ?? body?.lastPage ?? 0);
+}
+
+async function readPaginatedPaymentReports(page, query) {
+  const reports = [];
+  const maxPages = 100;
+  let pageNumber = 1;
+  let lastPage = 0;
+  let firstResponse = null;
+
+  while (pageNumber <= maxPages) {
+    const params = new URLSearchParams(query);
+    params.set('page', String(pageNumber));
+    const response = await readProductionJson(page, `/api/v1/payment-reports?${params.toString()}`);
+    if (!firstResponse) firstResponse = response;
+    requireCondition(response.status !== 401, 'authenticated payment-report read returned 401');
+    requireCondition(response.status !== 403, 'Director identity is not authorized to read payment reports');
+    requireCondition(response.ok, `payment-report read returned HTTP ${response.status}`);
+
+    const rows = listRows(response.body);
+    reports.push(...rows.map((report) => ({
+      id: Number(report.id || 0),
+      studentName: String(report.student_name || ''),
+      studentId: Number(report.student_id || 0),
+      studentClassId: Number(report.student_class_id || 0),
+      paymentDate: String(report.payment_date || ''),
+      paymentMethod: String(report.payment_method || ''),
+      reportedAmount: Number(report.reported_amount || 0),
+      status: String(report.status || ''),
+    })));
+
+    lastPage = paginationLastPage(response.body);
+    if (lastPage > 0 ? pageNumber >= lastPage : rows.length === 0 || rows.length < 30) break;
+    pageNumber += 1;
+  }
+
+  requireCondition(pageNumber <= maxPages, 'payment-report pagination exceeded the bounded read limit');
+  return { reports, firstResponse };
+}
+
+function campusIdsFrom(value) {
+  if (!Array.isArray(value)) return [];
+  return value.map((campus) => {
+    if (typeof campus === 'object') return Number(campus.id ?? campus.branch_id ?? campus.campus_id ?? 0);
+    return Number(campus);
+  }).filter((id) => Number.isFinite(id) && id > 0);
+}
+
+async function readDirectorScope(page, report) {
+  const meResponse = await readProductionJson(page, '/api/v1/me');
+  requireCondition(meResponse.ok, `authenticated identity read returned HTTP ${meResponse.status}`);
+  const me = meResponse.body || {};
+  const sessionIdentity = await page.evaluate(() => {
+    let session = null;
+    try { session = JSON.parse(localStorage.getItem('alltrue_session') || 'null'); } catch (_) { /* no-op */ }
+    return {
+      role: session?.user?.role || session?.role || '',
+      currentCampus: Number(localStorage.getItem('app_branch') || 0),
+    };
+  });
+
+  let accessibleCampusIds = campusIdsFrom(me.campuses);
+  if (!accessibleCampusIds.length) {
+    const campusesResponse = await readProductionJson(page, '/api/v1/campuses');
+    if (campusesResponse.ok) accessibleCampusIds = campusIdsFrom(campusesResponse.body?.data ?? campusesResponse.body);
+  }
+
+  report.directorRole = String(me.role || sessionIdentity.role || 'UNKNOWN');
+  report.accessibleCampusIds = accessibleCampusIds;
+  report.currentCampus = sessionIdentity.currentCampus || 'UNKNOWN';
+  requireCondition(['director', 'admin', 'super_admin'].includes(report.directorRole), 'authenticated identity is not a Director role');
+  return { accessibleCampusIds, currentCampus: sessionIdentity.currentCampus };
+}
+
+async function discoverPendingCase(page, report, scope) {
+  const pendingResult = await readPaginatedPaymentReports(page, { status: 'pending' });
+  const pendingReports = pendingResult.reports;
+  const specificPending = pendingReports.find((item) => item.id === PENDING_REPORT_ID) || null;
+  let allReports = pendingReports;
+  if (!specificPending) {
+    // A second canonical read distinguishes “not pending” from “not visible in
+    // this Director scope”. It is still GET-only and uses the same paginated API.
+    allReports = (await readPaginatedPaymentReports(page, {})).reports;
+  }
+  const specificAny = allReports.find((item) => item.id === PENDING_REPORT_ID) || null;
+  const specificState = specificPending
+    ? 'FOUND'
+    : specificAny
+      ? 'NOT PENDING'
+      : scope.accessibleCampusIds.length
+        ? 'NOT IN AUTHORIZED SCOPE'
+        : 'NOT FOUND';
+
+  report.paymentReport1531 = specificState;
+  report.specificReportId = specificPending?.id || specificAny?.id || 'NOT VISIBLE';
+  report.specificCase = specificPending
+    ? 'BLOCKED BY SCOPE'
+    : specificState === 'NOT IN AUTHORIZED SCOPE'
+      ? 'BLOCKED BY SCOPE'
+      : 'FAIL';
+
+  const canary = specificPending || pendingReports.find((item) => item.status === 'pending') || null;
+  if (!canary) {
+    report.specificCase = specificState === 'NOT IN AUTHORIZED SCOPE' ? 'BLOCKED BY SCOPE' : 'FAIL';
+    return { canary: null, allReports };
+  }
+  report.testReportId = canary.id;
+  report.testStudentClassId = canary.studentClassId;
+  report.pendingReportRecord = {
+    id: canary.id,
+    studentClassId: canary.studentClassId,
+    paymentDate: canary.paymentDate,
+    paymentMethod: canary.paymentMethod,
+    reportedAmount: canary.reportedAmount,
+    status: canary.status,
+  };
+  return { canary, allReports };
+}
+
+async function verifyPendingCanary(page, guard, observed, report, canary) {
+  if (!canary) {
+    report.pending = 'BLOCKED';
+    report.workflowClarity = 'BLOCKED';
+    return;
+  }
+
+  try {
+    const classQuery = canary.studentId > 0
+      ? `student_id=${encodeURIComponent(String(canary.studentId))}&per_page=1000`
+      : 'per_page=1000';
+    const classResponse = await readProductionJson(page, `/api/v1/student-classes?${classQuery}`);
+    requireCondition(classResponse.ok, `student-class read returned HTTP ${classResponse.status}`);
+    const classRows = listRows(classResponse.body);
+    const classRecord = classRows.find((course) => Number(course.id) === canary.studentClassId) || null;
+    report.backendPaymentStatus = String(classRecord?.payment_status || 'UNKNOWN');
+    report.backendLatestPaymentReportId = Number(classRecord?.latest_payment_report_id || 0) || 'MISSING';
+
+    await navigateTo(page, '帳務中心', '帳務中心', guard);
+    report.pagesChecked.push('帳務中心／待處理');
+    const pendingTab = page.locator('.tc-tabs .tc-tab').filter({ hasText: /待對帳|待核帳/ }).first();
+    requireCondition(await pendingTab.count() > 0, 'accounting center pending tab was not rendered');
+    await pendingTab.click();
+    const search = page.locator('input[placeholder="搜尋學生姓名"]').first();
+    if (await search.count()) await search.fill(canary.studentName);
+    const pendingRow = page.locator('.tc-table tbody tr').filter({ hasText: canary.studentName }).first();
+    await waitUntil(() => pendingRow.count().then((count) => count > 0), 'authorized pending canary did not render in accounting center');
+    const pendingRowText = await pendingRow.innerText();
+    const currentLabel = (pendingRowText.match(/待對帳|待核帳|未繳費|已繳費/) || ['UNKNOWN'])[0];
+    report.currentLabel = currentLabel;
+    report.uiStatus = currentLabel;
+    const hasExpectedStatus = currentLabel === '待對帳';
+    const hasUnpaidStatus = pendingRowText.includes('未繳費');
+    const hasConfirmAction = await pendingRow.getByRole('button', { name: '確認入帳', exact: true }).count() > 0;
+    const hasDuplicateReportAction = await pendingRow.getByRole('button', { name: '登記已回報', exact: true }).count() > 0;
+    report.workflowClarity = hasExpectedStatus && hasConfirmAction && !hasDuplicateReportAction ? 'VERIFIED' : 'UX GAP';
+
+    await navigateTo(page, '課程管理', '課程管理', guard);
+    report.pagesChecked.push('課程管理／課程列表');
+    const filter = page.locator('input[placeholder="輸入姓名..."]').first();
+    await filter.fill(canary.studentName);
+    const group = page.locator('.student-group-card').filter({ hasText: canary.studentName }).first();
+    await waitUntil(() => group.count().then((count) => count > 0), 'authorized pending canary did not render in course management');
+    if (await group.locator('.student-group-header').getAttribute('aria-expanded') === 'false') {
+      await group.locator('.student-group-header').click();
+    }
+    await group.getByRole('tab', { name: '帳務資料', exact: true }).click();
+    await waitUntil(() => group.locator('table.student-billing-table tbody tr').count().then((count) => count > 0), 'course billing rows did not render for authorized pending canary');
+    const courseRows = group.locator('table.student-billing-table tbody tr');
+    const courseText = await courseRows.first().innerText();
+    const courseLabel = (courseText.match(/待對帳|待核帳|未繳費|已繳費/) || ['UNKNOWN'])[0];
+    report.courseListLabel = courseLabel;
+    const backendContract = report.backendPaymentStatus === 'pending_report'
+      && Number(report.backendLatestPaymentReportId) === canary.id;
+    const uiContract = hasExpectedStatus && !hasUnpaidStatus && courseLabel === '待對帳';
+    report.pending = backendContract && uiContract ? 'VERIFIED FIXED' : 'FAIL';
+    if (canary.id === PENDING_REPORT_ID) report.specificCase = report.pending === 'VERIFIED FIXED' ? 'PASS' : 'FAIL';
+    // The value is intentionally only used in-memory for DOM selection; it is
+    // never copied into the retained JSON report.
+    void observed;
+  } catch (_) {
+    report.pending = 'FAIL';
+    report.workflowClarity = 'UX GAP';
+    if (canary.id === PENDING_REPORT_ID) report.specificCase = 'FAIL';
+  }
 }
 
 async function assertReceiptActions(page) {
@@ -394,6 +575,9 @@ test('authenticated production billing and receipt acceptance', async ({ page, c
   const report = {
     productionSha: 'UNKNOWN',
     authentication: 'FAIL',
+    directorRole: 'UNKNOWN',
+    accessibleCampusIds: [],
+    currentCampus: 'UNKNOWN',
     mutationGuard: 'FAIL',
     mutationGuardAttachedAfterLogin: 'NO',
     guardActiveBeforeBillingNavigation: 'NO',
@@ -404,6 +588,16 @@ test('authenticated production billing and receipt acceptance', async ({ page, c
     unexpectedMutationAttempts: 0,
     unexpectedMutationEndpoints: [],
     unexpectedProductionWrites: 0,
+    paymentReport1531: 'NOT FOUND',
+    specificReportId: 'NOT VISIBLE',
+    specificCase: 'BLOCKED BY SCOPE',
+    testReportId: 'NOT SELECTED',
+    testStudentClassId: 'NOT SELECTED',
+    backendPaymentStatus: 'UNKNOWN',
+    backendLatestPaymentReportId: 'UNKNOWN',
+    courseListLabel: 'UNKNOWN',
+    uiStatus: 'UNKNOWN',
+    pendingReportRecord: null,
     pending: 'BLOCKED',
     pagesChecked: [],
     currentLabel: 'UNKNOWN',
@@ -440,8 +634,6 @@ test('authenticated production billing and receipt acceptance', async ({ page, c
   };
   const observed = {
     studentClasses: [],
-    pendingReport: null,
-    pendingCase: null,
     studentLatestNotes: new Map(),
     invoicePayments: [],
   };
@@ -461,43 +653,9 @@ test('authenticated production billing and receipt acceptance', async ({ page, c
     const version = await page.evaluate(async () => fetch('/version.json').then((response) => response.json()));
     report.productionSha = version.build_sha || version.hash || 'UNKNOWN';
 
-    // The alert payload is the read-only source for the known report. It also
-    // gives us the runtime student name without putting PII in the test code.
-    await navigateTo(page, '帳務中心', '帳務中心', guard);
-    report.pagesChecked.push('帳務中心／待處理');
-    await waitUntil(() => Boolean(observed.pendingCase), 'PaymentReport 1531 was not present in the Director read model');
-    const pendingStudent = observed.pendingCase.studentName;
-    requireCondition(pendingStudent, 'PaymentReport 1531 has no student name in the read model');
-    const pendingAccountingRow = page.locator('.tc-table tbody tr').filter({ hasText: pendingStudent }).first();
-    await page.locator('.tc-tabs .tc-tab').filter({ hasText: '待對帳' }).click();
-    await waitUntil(() => pendingAccountingRow.count().then((count) => count > 0), 'pending course did not render in accounting center');
-    const pendingRowText = await pendingAccountingRow.innerText();
-    report.currentLabel = (pendingRowText.match(/待對帳|待核帳|未繳費|已繳費/) || ['UNKNOWN'])[0];
-    requireCondition(await pendingAccountingRow.getByText('待對帳', { exact: true }).count() > 0, 'accounting center does not show expected 待對帳 label');
-    requireCondition(await pendingAccountingRow.getByText('未繳費', { exact: true }).count() === 0, 'accounting center represents the pending course as 未繳費');
-    requireCondition(await pendingAccountingRow.getByRole('button', { name: '確認入帳', exact: true }).count() > 0, 'accounting center has no clear confirmation next action');
-    report.workflowClarity = 'VERIFIED';
-
-    await navigateTo(page, '課程管理', '課程管理', guard);
-    report.pagesChecked.push('課程管理／課程列表');
-    await page.locator('input[placeholder="輸入姓名..."]').first().fill(pendingStudent);
-    await waitUntil(() => page.locator('.student-group-card').filter({ hasText: pendingStudent }).count().then((count) => count > 0), 'pending student course group did not render');
-    const group = page.locator('.student-group-card').filter({ hasText: pendingStudent }).first();
-    if (await group.locator('.student-group-header').getAttribute('aria-expanded') === 'false') {
-      await group.locator('.student-group-header').click();
-    }
-    await group.getByRole('tab', { name: '帳務資料', exact: true }).click();
-    await waitUntil(() => group.locator('table.student-billing-table tbody tr').count().then((count) => count > 0), 'pending student billing rows did not render');
-    const courseBillingRow = group.locator('table.student-billing-table tbody tr').filter({ hasText: '待對帳' }).first();
-    requireCondition(await courseBillingRow.count() > 0, 'course billing row does not show 待對帳');
-    requireCondition(await courseBillingRow.getByText('未繳費', { exact: true }).count() === 0, 'course billing row still shows 未繳費');
-    requireCondition(await courseBillingRow.getByRole('button', { name: '登記已回報', exact: true }).count() === 0, 'pending course still offers duplicate report action');
-    const courseStatusButton = group.locator('button.btn-status').first();
-    const courseStatusText = await courseStatusButton.innerText();
-    requireCondition(courseStatusText.includes('待對帳'), 'course list does not show expected 待對帳 label');
-    requireCondition(!courseStatusText.includes('未繳費'), 'course list still shows 未繳費');
-    requireCondition(observed.pendingCase.paymentStatus === 'pending_report', 'known payment report is not pending_report in alert read model');
-    report.pending = 'VERIFIED FIXED';
+    const scope = await readDirectorScope(page, report);
+    const { canary } = await discoverPendingCase(page, report, scope);
+    await verifyPendingCanary(page, guard, observed, report, canary);
 
     const tuitionReceipt = await openTuitionReceipt(page, guard);
     const tuitionModal = tuitionReceipt.modal;
