@@ -1042,8 +1042,11 @@ test('authenticated production billing and receipt acceptance', async ({ page, c
     report.getObservations = runtime.getObservations;
     if (guard.phase() === 'authenticated') report.mutationGuard = 'ACTIVE';
     if (!failure && unexpectedMutations.length) failure = new Error('unexpected production mutation was blocked');
-    await guard.dispose().catch(() => {});
     console.log(`PRODUCTION_BILLING_UAT_REPORT ${JSON.stringify(report)}`);
+    await Promise.race([
+      guard.dispose().catch(() => {}),
+      new Promise((resolve) => setTimeout(resolve, 1_000)),
+    ]);
   }
 
   if (failure) throw new Error(`production billing acceptance failed: ${failure.message}`);
