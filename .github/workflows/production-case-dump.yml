@@ -16,6 +16,11 @@ on:
         required: false
         default: '林奕安'
         type: string
+      subject_name:
+        description: 'Subject name for billing probe (PII is not written to the artifact)'
+        required: false
+        default: '數學'
+        type: string
 
 permissions:
   contents: read
@@ -56,6 +61,7 @@ jobs:
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
           CASE_KEY: ${{ inputs.case_key }}
           TARGET_STUDENT_NAME: ${{ inputs.student_name }}
+          TARGET_SUBJECT_NAME: ${{ inputs.subject_name }}
         run: |
           set -euo pipefail
           mkdir -p out
@@ -66,9 +72,11 @@ jobs:
           if case not in {'schedule_241', 'billing_linlai', 'parent_lou'}:
               raise SystemExit('unsupported case')
           target_student_name = os.environ.get('TARGET_STUDENT_NAME', '林奕安') or '林奕安'
+          target_subject_name = os.environ.get('TARGET_SUBJECT_NAME', '數學') or '數學'
           print(f'''<?php
           $case = {case!r};
           $targetStudentName = {json.dumps(target_student_name, ensure_ascii=False)};
+          $targetSubjectName = {json.dumps(target_subject_name, ensure_ascii=False)};
           $db = \\Illuminate\\Support\\Facades\\DB::class;
           $out = ['ok' => true, 'case' => $case, 'read_only' => true,
             'prod_head' => trim((string)@shell_exec('git rev-parse HEAD'))];
@@ -154,7 +162,7 @@ jobs:
             $students = $db::table('Student')->where('CampusID', 9)->where('name', 'like', '%' . $targetStudentName . '%')
               ->get(['id', 'CampusID as campus_id']);
             $studentIds = $students->pluck('id')->map(fn ($id) => (int)$id)->all();
-            $subjectIds = $db::table('Subject')->where('Subject_Name', 'like', '%數學%')
+            $subjectIds = $db::table('Subject')->where('Subject_Name', 'like', '%' . $targetSubjectName . '%')
               ->pluck('id')->map(fn ($id) => (int)$id)->all();
             $classes = $db::table('StudentClass as sc')->whereIn('sc.StudentID', $studentIds)
               ->whereIn('sc.SubjectID', $subjectIds)->get(['sc.ID as class_id', 'sc.StudentID as student_id',
@@ -181,8 +189,9 @@ jobs:
               ->get(['id', 'StudentClassID as class_id', 'Status as status', 'TotalAmount as total_amount', 'PaidAmount as paid_amount'])
               ->map(fn ($r) => ['id'=>(int)$r->id, 'class_id'=>(int)$r->class_id, 'status'=>(string)$r->status,
                 'total_amount'=>(float)$r->total_amount, 'paid_amount'=>(float)$r->paid_amount])->values()->all();
-            $out['payments'] = $classIds === [] ? [] : $db::table('Payment')->whereIn('StudentClassID', $classIds)
-              ->get(['id', 'StudentClassID as class_id', 'Amount as amount', 'PaymentReportID as payment_report_id'])
+            $out['payments'] = $classIds === [] ? [] : $db::table('Payment as p')
+              ->join('Invoice as i', 'i.id', '=', 'p.InvoiceID')->whereIn('i.StudentClassID', $classIds)
+              ->get(['p.id', 'i.StudentClassID as class_id', 'p.Amount as amount', 'p.payment_report_id'])
               ->map(fn ($r) => ['id'=>(int)$r->id, 'class_id'=>(int)$r->class_id, 'amount'=>(float)$r->amount,
                 'payment_report_id'=>$r->payment_report_id === null ? null : (int)$r->payment_report_id])->values()->all();
           }} else {{
