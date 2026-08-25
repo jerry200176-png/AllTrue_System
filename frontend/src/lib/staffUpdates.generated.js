@@ -120,6 +120,44 @@ export const staffUpdates = [
     "version": "2026.08.25"
   },
   {
+    "id": "staff-2026-08-25-course-list-pending-report",
+    "publishedAt": "2026-08-25",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "課程列表顯示待對帳",
+    "summary": "已回報未核帳不再誤顯示未繳費。",
+    "items": [
+      "課程管理與學生課程列表會把尚未核帳的回報顯示為「待對帳」，避免主任重複送出。",
+      "主任仍需在帳務中心確認入帳；確認後才會變成「已繳費」並開立電子收據。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "課程管理與學生課程列表會把尚未核帳的回報顯示為「待對帳」，避免主任重複送出。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "主任仍需在帳務中心確認入帳；確認後才會變成「已繳費」並開立電子收據。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-25:course-list-pending-report",
+      "github:pull/2045"
+    ],
+    "date": "2026-08-25",
+    "version": "2026.08.25"
+  },
+  {
     "id": "staff-2026-08-24-course-editability-preflight",
     "publishedAt": "2026-08-24",
     "effectiveAt": null,
