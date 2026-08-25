@@ -1712,7 +1712,7 @@ test('authenticated production billing and receipt acceptance', async ({ page, c
     pngBytes: 0,
     pngDimensions: '0x0',
     pngDecode: false,
-    pasteResult: 'NOTHING',
+    pasteResult: 'NOT VERIFIED',
     copyText: 'NOT VERIFIED',
     copyTextClipboardTypes: [],
     downloadPng: 'NOT VERIFIED',
