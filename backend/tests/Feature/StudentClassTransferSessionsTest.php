@@ -191,7 +191,6 @@ class StudentClassTransferSessionsTest extends TestCase
             (int) DB::table('ClassSession')->where('id', $sourceSessionId)->value('StudentClassID')
         );
     }
-
     public function test_recovers_evidence_backed_cancelled_session_and_transfers_all_artifacts(): void
     {
         $token = $this->createDirectorToken([1]);
@@ -252,7 +251,6 @@ class StudentClassTransferSessionsTest extends TestCase
         $this->assertSame(0, (int) $source->UsedSessions);
         $this->assertSame(1, (int) $target->UsedSessions);
     }
-
     public function test_recovery_endpoint_rejects_cancelled_session_without_history(): void
     {
         $token = $this->createDirectorToken([1]);
@@ -275,7 +273,6 @@ class StudentClassTransferSessionsTest extends TestCase
         $this->assertSame('cancelled', DB::table('ClassSession')->where('id', $sessionId)->value('Status'));
         $this->assertSame((int) $source->ID, (int) DB::table('ClassSession')->where('id', $sessionId)->value('StudentClassID'));
     }
-
     public function test_recovery_endpoint_requires_a_reason(): void
     {
         $token = $this->createDirectorToken([1]);
@@ -293,7 +290,6 @@ class StudentClassTransferSessionsTest extends TestCase
 
         $this->assertSame('cancelled', DB::table('ClassSession')->where('id', $sessionId)->value('Status'));
     }
-
     public function test_recovery_endpoint_is_director_only(): void
     {
         $token = $this->createTeacherToken([1]);
@@ -313,7 +309,6 @@ class StudentClassTransferSessionsTest extends TestCase
             ['Authorization' => "Bearer {$token}"]
         )->assertStatus(403);
     }
-
     public function test_recovery_target_slot_conflict_leaves_cancelled_evidence_untouched(): void
     {
         $token = $this->createDirectorToken([1]);

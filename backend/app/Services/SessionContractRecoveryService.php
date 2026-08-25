@@ -24,8 +24,11 @@ final class SessionContractRecoveryService
         ?int $actorUserId = null
     ): array {
         return DB::transaction(function () use ($sourceClassId, $targetClassId, $sessionIds, $reason, $actorUserId) {
-            $source = StudentClass::query()->where('ID', $sourceClassId)->lockForUpdate()->firstOrFail();
-            $target = StudentClass::query()->where('ID', $targetClassId)->lockForUpdate()->firstOrFail();
+            $source = StudentClass::query()->where('ID', $sourceClassId)->lockForUpdate()->first();
+            $target = StudentClass::query()->where('ID', $targetClassId)->lockForUpdate()->first();
+            if (!$source instanceof StudentClass || !$target instanceof StudentClass) {
+                throw new SessionContractRecoveryException('來源或目標課程不存在。');
+            }
             $this->assertCoursesCompatible($source, $target);
             $sessions = ClassSession::query()
                 ->where('StudentClassID', $sourceClassId)
@@ -106,7 +109,7 @@ final class SessionContractRecoveryService
             );
             return [
                 'transferred_session_ids' => $foundIds,
-                'recovered_session_ids' => array_values($recoveredIds),
+                'recovered_session_ids' => $recoveredIds,
             ];
         });
     }
@@ -170,10 +173,10 @@ final class SessionContractRecoveryService
     }
     private function assertCoursesCompatible(StudentClass $source, StudentClass $target): void
     {
-        if ((int) $source->ID === (int) $target->ID) {
+        if ((int) $source->getAttribute('ID') === (int) $target->getAttribute('ID')) {
             $this->blocked('來源課程與目標課程不可相同。');
         }
-        if ((int) $source->StudentID !== (int) $target->StudentID) {
+        if ((int) $source->getAttribute('StudentID') !== (int) $target->getAttribute('StudentID')) {
             $this->blocked('目標課程與來源課程的學生不一致，拒絕恢復移轉。');
         }
         if ((int) ($source->SubjectID ?? 0) !== (int) ($target->SubjectID ?? 0)) {

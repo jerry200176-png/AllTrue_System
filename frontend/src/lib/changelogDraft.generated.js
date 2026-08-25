@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.08.25",
     "date": "2026-08-25",
     "title": "2026.08.25 草稿（未發布）",
-    "summary": "堂次轉移先檢查目標時段衝突；回報先待對帳並保留入帳備註",
+    "summary": "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。；堂次轉移先檢查目標時段衝突",
     "audience": [
       "teacher",
       "director"
@@ -18,6 +18,7 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。",
           "堂次轉移先檢查目標時段衝突",
           "回報先待對帳並保留入帳備註",
           "課程列表顯示待對帳"
@@ -31,6 +32,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。",
       "堂次轉移先檢查目標時段衝突",
       "回報先待對帳並保留入帳備註",
       "課程列表顯示待對帳",

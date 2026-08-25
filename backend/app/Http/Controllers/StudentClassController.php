@@ -3836,19 +3836,21 @@ class StudentClassController extends Controller
             'reason' => 'required|string|max:255',
         ]);
 
-        $target = StudentClass::query()->find($data['target_student_class_id']);
-        if (!$target) {
+        $target = StudentClass::query()->where('ID', $data['target_student_class_id'])->first();
+        if (!$target instanceof StudentClass) {
             return response()->json(['message' => '目標課程不存在。'], 422);
         }
         if ($authTarget = $this->authorizeStudentClassAccess($target)) {
             return $authTarget;
         }
 
+        $sourceClassId = (int) $studentClass->getAttribute('ID');
+        $targetClassId = (int) $target->getAttribute('ID');
         $actor = $request->attributes->get('auth_user');
         try {
             $result = $recovery->recoverAndTransfer(
-                (int) $studentClass->ID,
-                (int) $target->ID,
+                $sourceClassId,
+                $targetClassId,
                 array_values(array_unique(array_map('intval', $data['session_ids']))),
                 trim((string) $data['reason']),
                 $actor?->id ? (int) $actor->id : null
@@ -3861,8 +3863,8 @@ class StudentClassController extends Controller
 
         return response()->json(array_merge([
             'message' => '已恢復並轉移堂次紀錄；評量、點名與扣堂台帳已同步。',
-            'source_course_id' => (int) $studentClass->ID,
-            'target_course_id' => (int) $target->ID,
+            'source_course_id' => $sourceClassId,
+            'target_course_id' => $targetClassId,
         ], $result));
     }
 
