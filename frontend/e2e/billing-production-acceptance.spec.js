@@ -85,7 +85,20 @@ async function login(page, guard, report) {
   await page.locator('.role-btn', { hasText: '主任/櫃台' }).first().click();
   await page.locator('#login-account').fill(DIRECTOR.account);
   await page.locator('#login-password').fill(DIRECTOR.password);
+  const loginResponsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'POST' && url.pathname === '/api/v1/auth/login';
+  });
   await page.locator('button.login-btn').click();
+  const loginResponse = await loginResponsePromise;
+  requireCondition(loginResponse.ok(), 'normal Director login returned a non-success response');
+
+  // Activate the guard immediately after the authentication response, before
+  // the SPA finishes its post-login transition or any business navigation.
+  guard.markAuthenticated();
+  report.mutationGuardAttachedAfterLogin = 'YES';
+  report.guardActiveBeforeBillingNavigation = guard.phase() === 'authenticated' ? 'YES' : 'NO';
+  requireCondition(report.guardActiveBeforeBillingNavigation === 'YES', 'mutation guard was not activated after login');
   await waitUntil(
     () => page.locator('#login-account').count().then((count) => count === 0),
     'normal Director login did not complete',
@@ -99,13 +112,6 @@ async function login(page, guard, report) {
     'authentication mutation was not narrowly identified',
   );
   report.authentication = 'PASS';
-
-  // The guard is installed before login but becomes active only now, before
-  // any business-page navigation or receipt interaction.
-  guard.markAuthenticated();
-  report.mutationGuardAttachedAfterLogin = 'YES';
-  report.guardActiveBeforeBillingNavigation = guard.phase() === 'authenticated' ? 'YES' : 'NO';
-  requireCondition(report.guardActiveBeforeBillingNavigation === 'YES', 'mutation guard was not activated after login');
   guard.assertNoUnexpectedMutations();
 }
 
