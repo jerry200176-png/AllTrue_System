@@ -789,7 +789,7 @@ async function verifyBranchAwarePending(page, guard, report, canary, targetCampu
 }
 
 async function assertReceiptActions(page) {
-  const modal = page.locator('.receipt-modal').first();
+  const modal = page.locator('.receipt-modal:visible').first();
   await waitUntil(() => modal.count().then((count) => count > 0), 'receipt modal did not open');
   for (const [testId, label] of [
     ['copy-receipt-image', '複製圖片'],
@@ -904,9 +904,9 @@ async function openReceiptCanary(page, guard, report) {
   requireCondition(await receiptButton.count() > 0, 'receipt canary row has no receipt action');
   const trigger = await receiptButton.getAttribute('aria-label');
   await receiptButton.click();
-  await waitUntil(() => page.locator('.receipt-modal').count().then((count) => count > 0), 'receipt modal did not open');
+  await waitUntil(() => page.locator('.receipt-modal:visible').count().then((count) => count > 0), 'receipt modal did not open');
   report.receiptModal = 'OPENED';
-  const modal = page.locator('.receipt-modal').first();
+  const modal = page.locator('.receipt-modal:visible').first();
   report.receiptActionCopyImage = await receiptActionLocator(modal, 'copy-receipt-image', '複製圖片') ? 'YES' : 'NO';
   report.receiptActionCopyText = await receiptActionLocator(modal, 'copy-receipt-text', '複製文字') ? 'YES' : 'NO';
   report.receiptActionDownload = await receiptActionLocator(modal, 'download-receipt-image', '下載圖片') ? 'YES' : 'NO';
