@@ -177,6 +177,7 @@ import {
   paymentReportReceiptUrl,
   parsePositiveReportId,
 } from '../lib/paymentReportReceipt.js';
+import { receiptImageBlob } from '../lib/receiptImage.js';
 
 const props = defineProps({
   show: Boolean,
@@ -253,72 +254,6 @@ function printReceipt() {
   window.print();
 }
 
-function inlineComputedStyles(source, target) {
-  const sourceNodes = [source, ...source.querySelectorAll('*')];
-  const targetNodes = [target, ...target.querySelectorAll('*')];
-  sourceNodes.forEach((sourceNode, index) => {
-    const targetNode = targetNodes[index];
-    if (!targetNode) return;
-    const styles = window.getComputedStyle(sourceNode);
-    let cssText = '';
-    for (let i = 0; i < styles.length; i += 1) {
-      const property = styles.item(i);
-      cssText += `${property}:${styles.getPropertyValue(property)};`;
-    }
-    targetNode.setAttribute('style', cssText);
-  });
-}
-
-function receiptImageBlob() {
-  const source = receiptPrintRef.value;
-  if (!source) throw new Error('receipt_not_ready');
-
-  const bounds = source.getBoundingClientRect();
-  const width = Math.max(1, Math.ceil(source.scrollWidth || bounds.width));
-  const height = Math.max(1, Math.ceil(source.scrollHeight || bounds.height));
-  const scale = Math.min(3, Math.max(2, window.devicePixelRatio || 1));
-  const clone = source.cloneNode(true);
-  inlineComputedStyles(source, clone);
-
-  const svg = [
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`,
-    '<foreignObject width="100%" height="100%">',
-    `<div xmlns="http://www.w3.org/1999/xhtml" style="width:${width}px;min-height:${height}px;background:white;">`,
-    clone.outerHTML,
-    '</div></foreignObject></svg>',
-  ].join('');
-
-  const svgUrl = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }));
-  return new Promise((resolve, reject) => {
-    const image = new window.Image();
-    image.onload = () => {
-      try {
-        const canvas = document.createElement('canvas');
-        canvas.width = width * scale;
-        canvas.height = height * scale;
-        const context = canvas.getContext('2d');
-        if (!context) throw new Error('canvas_unavailable');
-        context.fillStyle = 'white';
-        context.fillRect(0, 0, canvas.width, canvas.height);
-        context.drawImage(image, 0, 0, canvas.width, canvas.height);
-        canvas.toBlob((blob) => {
-          if (blob) resolve(blob);
-          else reject(new Error('image_encode_failed'));
-        }, 'image/png');
-      } catch (error) {
-        reject(error);
-      } finally {
-        URL.revokeObjectURL(svgUrl);
-      }
-    };
-    image.onerror = () => {
-      URL.revokeObjectURL(svgUrl);
-      reject(new Error('image_render_failed'));
-    };
-    image.src = svgUrl;
-  });
-}
-
 async function copyReceiptImage() {
   if (!receipt.value) return;
   copyState.value = 'copying';
@@ -327,7 +262,11 @@ async function copyReceiptImage() {
     if (typeof navigator.clipboard?.write !== 'function' || typeof window.ClipboardItem !== 'function') {
       throw new Error('image_clipboard_unsupported');
     }
-    const blob = await receiptImageBlob();
+    const blob = await receiptImageBlob({
+      source: receiptPrintRef.value,
+      snapshot: snapshot.value,
+      receiptNumber: receipt.value.receipt_number,
+    });
     await navigator.clipboard.write([new window.ClipboardItem({ 'image/png': blob })]);
     copyState.value = 'copied-image';
   } catch (error) {
@@ -369,7 +308,11 @@ async function downloadReceiptImage() {
   copyState.value = 'copying';
   copyError.value = '';
   try {
-    const blob = await receiptImageBlob();
+    const blob = await receiptImageBlob({
+      source: receiptPrintRef.value,
+      snapshot: snapshot.value,
+      receiptNumber: receipt.value.receipt_number,
+    });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
