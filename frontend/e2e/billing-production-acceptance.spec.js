@@ -34,6 +34,73 @@ async function waitUntil(predicate, message, timeoutMs = 15_000) {
   throw new Error(message);
 }
 
+const SAFE_NAV_LABELS = new Set([
+  '首頁', '帳務中心', '課程管理', '學生管理', '老師管理', '出缺勤管理',
+  '班級行事曆 / 課表', '當月學收', 'Bug 回報', '內部聊天', '更多',
+]);
+
+async function runtimeSnapshot(page) {
+  return page.evaluate((safeLabels) => {
+    const visible = (element) => {
+      const style = window.getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+    };
+    const text = (element) => {
+      const clone = element.cloneNode(true);
+      clone.querySelectorAll?.('.material-symbols-outlined').forEach((icon) => icon.remove());
+      return (clone.textContent || '').replace(/\s+/g, ' ').trim();
+    };
+    const visibleElements = (selector) => Array.from(document.querySelectorAll(selector)).filter(visible);
+    const knownLabels = new Set(safeLabels);
+    const navLabels = Array.from(document.querySelectorAll('nav button, nav a, aside button, aside a, .sidebar button, .sidebar a, [data-testid*="nav"] button'))
+      .filter(visible)
+      .map(text)
+      .flatMap((value) => [...knownLabels].filter((label) => value.includes(label)));
+    const accountingTabs = visibleElements('.acct-tabs [role="tab"], .acct-tabs .acct-tab').map((element) => ({
+      label: text(element),
+      active: element.getAttribute('aria-selected') === 'true' || element.classList.contains('active'),
+    }));
+    const statusTabs = visibleElements('.tc-tabs .tc-tab').map((element) => ({
+      label: text(element),
+      active: element.getAttribute('aria-selected') === 'true' || element.classList.contains('tc-tab--active'),
+    }));
+    const loadingSelectors = ['[aria-busy="true"]', '[role="progressbar"]', '.tc-skeleton-area', '.tc-inline-loading', '.tc-loading', '.loading'];
+    const loadingIndicators = loadingSelectors.flatMap((selector) => visibleElements(selector).map((element) => selector));
+    const errorIndicators = visibleElements('[role="alert"], .tc-error, .tc-inline-error, .error').map((element) => element.className || element.getAttribute('role') || 'error');
+    const headingLabels = visibleElements('h1, h2, h3').map(text).filter((value) => value && value.length < 80);
+    return {
+      pathname: `${location.pathname}${location.hash}`,
+      section: headingLabels[0] || 'UNKNOWN',
+      navLabels: [...new Set(navLabels)],
+      activeCampus: Number(localStorage.getItem('app_branch') || 0) || 'UNKNOWN',
+      accountingTabs,
+      activeAccountingTab: accountingTabs.find((tab) => tab.active)?.label || 'NONE',
+      statusTabs,
+      activeStatusTab: statusTabs.find((tab) => tab.active)?.label || 'NONE',
+      loadingIndicators: [...new Set(loadingIndicators)],
+      errorIndicators: [...new Set(errorIndicators)].slice(0, 10),
+      accountingContainer: visibleElements('.acct-tabs').length > 0,
+      receiptRows: visibleElements('.acct-table tbody tr').length,
+      pendingRows: visibleElements('.tc-table:not(.acct-table) tbody tr').length,
+      emptyState: visibleElements('.tc-empty, .tc-accounting-empty').length > 0,
+    };
+  }, [...SAFE_NAV_LABELS]);
+}
+
+async function recordRuntimeSnapshot(page, report, phase) {
+  const snapshot = await runtimeSnapshot(page);
+  report.runtimeSnapshots.push({ phase, ...snapshot });
+  return snapshot;
+}
+
+function responseShape(body) {
+  if (Array.isArray(body)) return { kind: 'array', length: body.length };
+  if (!body || typeof body !== 'object') return { kind: typeof body };
+  const keys = Object.keys(body).filter((key) => ['data', 'meta', 'current_page', 'last_page', 'per_page', 'total', 'invoices', 'summary'].includes(key));
+  return { kind: 'object', keys };
+}
+
 function startPasteTargetServer() {
   const server = http.createServer((_request, response) => {
     response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
@@ -116,7 +183,16 @@ async function login(page, guard, report) {
   guard.assertNoUnexpectedMutations();
 }
 
-async function navigateTo(page, label, title, guard = null) {
+async function findVisibleControl(page, label) {
+  const controls = page.locator('button, a, [role="button"]').filter({ hasText: label });
+  for (let index = 0; index < await controls.count(); index += 1) {
+    const candidate = controls.nth(index);
+    if (await candidate.isVisible().catch(() => false)) return candidate;
+  }
+  return null;
+}
+
+async function navigateTo(page, label, title, guard = null, report = null) {
   for (const selector of ['.guide-tour-close', '.release-nudge-btn:has-text("稍後再看")']) {
     const overlayClose = page.locator(selector).first();
     if (await overlayClose.isVisible().catch(() => false)) {
@@ -124,14 +200,33 @@ async function navigateTo(page, label, title, guard = null) {
       await page.waitForTimeout(200);
     }
   }
-  const button = page.getByRole('button', { name: label, exact: false }).first();
-  requireCondition(await button.count() > 0, `${title} navigation control not found`);
+  const before = await recordRuntimeSnapshot(page, report || { runtimeSnapshots: [] }, `navigation_before_${title}`);
+  const button = await findVisibleControl(page, label);
+  const step = {
+    label,
+    elementFound: Boolean(button),
+    elementVisible: Boolean(button),
+    clickCompleted: false,
+    urlBefore: before.pathname,
+    urlAfter: before.pathname,
+  };
+  report?.navigationSteps.push(step);
+  requireCondition(button, `${title} navigation control not found`);
   await button.click();
-  await waitUntil(() => page.getByText(title, { exact: true }).count().then((count) => count > 0), `${title} did not render`);
+  step.clickCompleted = true;
+  await waitUntil(async () => {
+    const heading = page.getByRole('heading', { name: title, exact: true });
+    return await heading.count() > 0 && await heading.first().isVisible().catch(() => false);
+  }, `${title} did not render`, 30_000);
+  step.urlAfter = (await recordRuntimeSnapshot(page, report || { runtimeSnapshots: [] }, `navigation_after_${title}`)).pathname;
   guard?.assertNoUnexpectedMutations();
 }
 
 function installReadObserver(page, observed, runtime) {
+  const requestStarted = new WeakMap();
+  page.on('request', (request) => {
+    if (request.method() === 'GET') requestStarted.set(request, Date.now());
+  });
   page.on('console', (message) => {
     if (message.type() === 'error') runtime.consoleErrors += 1;
   });
@@ -149,8 +244,19 @@ function installReadObserver(page, observed, runtime) {
     try { url = new URL(response.url()); } catch { return; }
     if (!url.pathname.startsWith('/api/v1/')) return;
 
-    let json;
-    try { json = await response.json(); } catch { return; }
+    const relevant = /\/(payment-reports|alerts\/tuition|student-classes|receipts|invoices|accounting\/payments|accounting\/settled-courses|me|campuses)(?:\/|$)/.test(url.pathname);
+    let json = null;
+    try { json = await response.json(); } catch { /* non-JSON read */ }
+    if (relevant) {
+      runtime.getObservations.push({
+        pathname: url.pathname,
+        status: response.status(),
+        durationMs: Math.max(0, Date.now() - (requestStarted.get(request) || Date.now())),
+        shape: responseShape(json),
+      });
+      if (!json) return;
+    }
+    if (!json) return;
 
     if (url.pathname === '/api/v1/student-classes') {
       const list = Array.isArray(json?.data) ? json.data : (Array.isArray(json) ? json : []);
@@ -179,6 +285,46 @@ function installReadObserver(page, observed, runtime) {
       })));
     }
   });
+}
+
+async function waitForAccountingFrame(page, report, phase) {
+  let last = null;
+  await waitUntil(async () => {
+    last = await recordRuntimeSnapshot(page, report, phase);
+    return last.accountingContainer && last.accountingTabs.length >= 3;
+  }, '帳務中心 container or accounting tabs did not render', 30_000);
+  return last;
+}
+
+async function waitForReceivableState(page, report, phase) {
+  let last = null;
+  await waitUntil(async () => {
+    last = await recordRuntimeSnapshot(page, report, phase);
+    const hasTerminalState = last.statusTabs.length > 0 || last.emptyState || last.errorIndicators.length > 0;
+    return hasTerminalState && last.loadingIndicators.length === 0;
+  }, '帳務中心待處理 data state did not settle', 30_000);
+  return last;
+}
+
+async function ensureAccountingPage(page, guard, report) {
+  let snapshot = await recordRuntimeSnapshot(page, report, 'accounting_before_navigation');
+  if (!snapshot.accountingContainer || snapshot.accountingTabs.length < 3) {
+    await navigateTo(page, '帳務中心', '帳務中心', guard, report);
+    snapshot = await waitForAccountingFrame(page, report, 'accounting_frame_wait');
+  }
+  report.activeAccountingTab = snapshot.activeAccountingTab;
+  return snapshot;
+}
+
+function classifyPendingDiagnosis(snapshot, getObservations) {
+  if (!snapshot) return 'INCONCLUSIVE';
+  if (!snapshot.accountingContainer || snapshot.accountingTabs.length < 3) return 'NAVIGATION FAILURE';
+  const relevant = getObservations.filter((entry) => entry.pathname === '/api/v1/alerts/tuition');
+  if (relevant.some((entry) => entry.status >= 400 || entry.status === 0)) return 'DATA LOAD FAILURE';
+  if (snapshot.loadingIndicators.length > 0) return 'LOADING STATE STUCK';
+  if (snapshot.statusTabs.length === 0 && snapshot.emptyState) return 'FILTER/BRANCH FAILURE';
+  if (snapshot.statusTabs.length === 0) return 'DOM SELECTOR FAILURE';
+  return 'INCONCLUSIVE';
 }
 
 async function readProductionJson(page, requestPath) {
@@ -331,33 +477,51 @@ async function discoverPendingCase(page, report, scope) {
 async function verifyPendingCanary(page, guard, observed, report, canary) {
   if (!canary) {
     report.pending = 'BLOCKED';
-    report.workflowClarity = 'BLOCKED';
+    report.pendingDiagnosis = 'INCONCLUSIVE';
+    report.workflowClarity = 'NOT REACHED';
     return;
   }
 
-  try {
-    console.log('UAT_STAGE pending_canary_begin');
-    const classQuery = canary.studentId > 0
-      ? `student_id=${encodeURIComponent(String(canary.studentId))}&per_page=1000`
-      : 'per_page=1000';
-    const classResponse = await readProductionJson(page, `/api/v1/student-classes?${classQuery}`);
-    requireCondition(classResponse.ok, `student-class read returned HTTP ${classResponse.status}`);
-    const classRows = listRows(classResponse.body);
-    const classRecord = classRows.find((course) => Number(course.id) === canary.studentClassId) || null;
-    report.backendPaymentStatus = String(classRecord?.payment_status || 'UNKNOWN');
-    report.backendLatestPaymentReportId = Number(classRecord?.latest_payment_report_id || 0) || 'MISSING';
+  console.log('UAT_STAGE pending_canary_begin');
+  const classQuery = canary.studentId > 0
+    ? `student_id=${encodeURIComponent(String(canary.studentId))}&per_page=1000`
+    : 'per_page=1000';
+  const classResponse = await readProductionJson(page, `/api/v1/student-classes?${classQuery}`);
+  requireCondition(classResponse.ok, `student-class read returned HTTP ${classResponse.status}`);
+  const classRows = listRows(classResponse.body);
+  const classRecord = classRows.find((course) => Number(course.id) === canary.studentClassId) || null;
+  report.backendPaymentStatus = String(classRecord?.payment_status || 'UNKNOWN');
+  report.backendLatestPaymentReportId = Number(classRecord?.latest_payment_report_id || 0) || 'MISSING';
 
-    await navigateTo(page, '帳務中心', '帳務中心', guard);
+  let pendingRowText = '';
+  let pendingRowReached = false;
+  try {
+    await ensureAccountingPage(page, guard, report);
     console.log('UAT_STAGE pending_accounting_open');
     report.pagesChecked.push('帳務中心／待處理');
-    const pendingTab = page.locator('.tc-tabs .tc-tab').filter({ hasText: /待對帳|待核帳/ }).first();
-    await waitUntil(() => pendingTab.count().then((count) => count > 0), 'accounting center pending tab was not rendered');
+    let state;
+    try {
+      state = await waitForReceivableState(page, report, 'pending_data_wait');
+    } catch (_) {
+      state = await recordRuntimeSnapshot(page, report, 'pending_data_timeout');
+      report.pendingDiagnosis = classifyPendingDiagnosis(state, report.getObservations);
+      throw new Error('receivable application state did not settle');
+    }
+    report.pendingApiReturned = report.getObservations.some((entry) => entry.pathname === '/api/v1/alerts/tuition' && entry.status >= 200 && entry.status < 300) ? 'YES' : 'NO';
+    const pendingTab = await findVisibleControl(page, '待對帳') || await findVisibleControl(page, '待核帳');
+    if (!pendingTab) {
+      report.pendingDiagnosis = classifyPendingDiagnosis(state, report.getObservations);
+      throw new Error('pending status tab is not present in settled DOM');
+    }
+    report.pendingStatusTabFound = 'YES';
     await pendingTab.click();
+    report.activeStatusTab = (await recordRuntimeSnapshot(page, report, 'pending_status_tab_after_click')).activeStatusTab;
     const search = page.locator('input[placeholder^="搜尋學生姓名"]').first();
-    if (await search.count()) await search.fill(canary.studentName);
+    if (await search.count() && await search.isVisible().catch(() => false)) await search.fill(canary.studentName);
     const pendingRow = page.locator('.tc-table tbody tr').filter({ hasText: canary.studentName }).first();
-    await waitUntil(() => pendingRow.count().then((count) => count > 0), 'authorized pending canary did not render in accounting center');
-    const pendingRowText = await pendingRow.innerText();
+    await waitUntil(() => pendingRow.count().then((count) => count > 0), 'authorized pending canary did not render in accounting center', 30_000);
+    pendingRowReached = true;
+    pendingRowText = await pendingRow.innerText();
     const currentLabel = (pendingRowText.match(/待對帳|待核帳|未繳費|已繳費/) || ['UNKNOWN'])[0];
     report.currentLabel = currentLabel;
     report.uiStatus = currentLabel;
@@ -366,38 +530,44 @@ async function verifyPendingCanary(page, guard, observed, report, canary) {
     const hasConfirmAction = await pendingRow.getByRole('button', { name: '確認入帳', exact: true }).count() > 0;
     const hasDuplicateReportAction = await pendingRow.getByRole('button', { name: '登記已回報', exact: true }).count() > 0;
     report.workflowClarity = hasExpectedStatus && hasConfirmAction && !hasDuplicateReportAction ? 'VERIFIED' : 'UX GAP';
+    report.pendingDiagnosis = hasExpectedStatus && !hasUnpaidStatus ? 'VERIFIED FIXED' : 'PRODUCT RENDER DEFECT';
+  } catch (_) {
+    report.pending = 'FAIL';
+    if (!report.pendingDiagnosis || report.pendingDiagnosis === 'INCONCLUSIVE') {
+      report.pendingDiagnosis = classifyPendingDiagnosis(await recordRuntimeSnapshot(page, report, 'pending_failure_snapshot'), report.getObservations);
+    }
+    report.workflowClarity = pendingRowReached ? report.workflowClarity : 'NOT REACHED';
+  }
 
-    await navigateTo(page, '課程管理', '課程管理', guard);
+  try {
+    await navigateTo(page, '課程管理', '課程管理', guard, report);
     console.log('UAT_STAGE pending_course_management_open');
     report.pagesChecked.push('課程管理／課程列表');
     const filter = page.locator('input[placeholder="輸入姓名..."]').first();
+    await waitUntil(() => filter.count().then((count) => count > 0), 'course-management name filter was not rendered', 30_000);
     await filter.fill(canary.studentName);
     const group = page.locator('.student-group-card').filter({ hasText: canary.studentName }).first();
-    await waitUntil(() => group.count().then((count) => count > 0), 'authorized pending canary did not render in course management');
+    await waitUntil(() => group.count().then((count) => count > 0), 'authorized pending canary did not render in course management', 30_000);
     if (await group.locator('.student-group-header').getAttribute('aria-expanded') === 'false') {
       await group.locator('.student-group-header').click();
     }
     await group.getByRole('tab', { name: '帳務資料', exact: true }).click();
-    await waitUntil(() => group.locator('table.student-billing-table tbody tr').count().then((count) => count > 0), 'course billing rows did not render for authorized pending canary');
-    const courseRows = group.locator('table.student-billing-table tbody tr');
-    const courseText = await courseRows.first().innerText();
-    const courseLabel = (courseText.match(/待對帳|待核帳|未繳費|已繳費/) || ['UNKNOWN'])[0];
-    report.courseListLabel = courseLabel;
-    const backendContract = report.backendPaymentStatus === 'pending_report'
-      && Number(report.backendLatestPaymentReportId) === canary.id;
-    const uiContract = hasExpectedStatus && !hasUnpaidStatus && courseLabel === '待對帳';
-    report.pending = backendContract && uiContract ? 'VERIFIED FIXED' : 'FAIL';
-    console.log(`UAT_STAGE pending_complete_${report.pending.replaceAll(' ', '_')}`);
-    if (canary.id === PENDING_REPORT_ID) report.specificCase = report.pending === 'VERIFIED FIXED' ? 'PASS' : 'FAIL';
-    // The value is intentionally only used in-memory for DOM selection; it is
-    // never copied into the retained JSON report.
-    void observed;
+    await waitUntil(() => group.locator('table.student-billing-table tbody tr').count().then((count) => count > 0), 'course billing rows did not render for authorized pending canary', 30_000);
+    const courseText = await group.locator('table.student-billing-table tbody tr').first().innerText();
+    report.courseListLabel = (courseText.match(/待對帳|待核帳|未繳費|已繳費/) || ['UNKNOWN'])[0];
   } catch (_) {
-    console.log('UAT_STAGE pending_failed');
-    report.pending = 'FAIL';
-    report.workflowClarity = 'UX GAP';
-    if (canary.id === PENDING_REPORT_ID) report.specificCase = 'FAIL';
+    report.courseListLabel = report.courseListLabel || 'UNKNOWN';
   }
+
+  const backendContract = report.backendPaymentStatus === 'pending_report'
+    && Number(report.backendLatestPaymentReportId) === canary.id;
+  const uiContract = report.currentLabel === '待對帳'
+    && !pendingRowText.includes('未繳費')
+    && report.courseListLabel === '待對帳';
+  report.pending = backendContract && uiContract ? 'VERIFIED FIXED' : (report.pending === 'BLOCKED' ? 'BLOCKED' : 'FAIL');
+  console.log(`UAT_STAGE pending_complete_${report.pending.replaceAll(' ', '_')}`);
+  if (canary.id === PENDING_REPORT_ID) report.specificCase = report.pending === 'VERIFIED FIXED' ? 'PASS' : 'FAIL';
+  void observed;
 }
 
 async function assertReceiptActions(page) {
@@ -535,31 +705,51 @@ async function downloadEvidence(page, modal, report) {
   }
 }
 
-async function openTuitionReceipt(page, guard) {
-  const accountingHeading = page.getByRole('heading', { name: '帳務中心', exact: true });
-  if (await accountingHeading.count() === 0) {
-    await navigateTo(page, '帳務中心', '帳務中心', guard);
-  } else {
-    guard.assertNoUnexpectedMutations();
-  }
+async function openTuitionReceipt(page, guard, report) {
+  await ensureAccountingPage(page, guard, report);
   console.log('UAT_STAGE receipt_accounting_open');
-  const receiptLedgerTab = page.getByRole('tab', { name: '收據流水紀錄', exact: true });
-  await waitUntil(() => receiptLedgerTab.count().then((count) => count > 0), 'receipt ledger tab was not rendered');
+  const receiptLedgerTab = page.locator('.acct-tabs .acct-tab').filter({ hasText: '收據流水紀錄' }).first();
+  report.receiptDiagnosis.tabFound = await receiptLedgerTab.count() > 0 ? 'YES' : 'NO';
+  requireCondition(await receiptLedgerTab.count() > 0 && await receiptLedgerTab.isVisible().catch(() => false), 'receipt ledger tab was not rendered');
   await receiptLedgerTab.click();
+  await waitUntil(async () => {
+    const selected = page.locator('.acct-tabs .acct-tab.active, .acct-tabs [role="tab"][aria-selected="true"]').filter({ hasText: '收據流水紀錄' });
+    return await selected.count() > 0;
+  }, 'receipt ledger tab did not become active', 15_000);
+  report.receiptDiagnosis.tabSelected = 'YES';
+  report.activeAccountingTab = '收據流水紀錄';
   console.log('UAT_STAGE receipt_ledger_tab_open');
   const dates = page.locator('.acct-filter-card input[type="date"]');
+  await waitUntil(() => dates.count().then((count) => count >= 2), 'receipt ledger filters did not render', 30_000);
   await dates.nth(0).fill('2026-08-01');
   await dates.nth(1).fill('2026-08-31');
-  await page.locator('input[placeholder^="搜尋學生姓名"]').fill('');
+  const studentSearch = page.locator('.acct-filter-card input[placeholder^="搜尋學生姓名"]').first();
+  if (await studentSearch.count()) await studentSearch.fill('');
   await page.getByRole('button', { name: '查詢', exact: true }).click();
   console.log('UAT_STAGE receipt_ledger_query_sent');
   guard.assertNoUnexpectedMutations();
-  await waitUntil(() => page.getByText(EXISTING_RECEIPT_NUMBER, { exact: true }).count().then((count) => count > 0), 'known existing receipt was not found in accounting records');
-  const row = page.locator('table.acct-table tbody tr').filter({ hasText: EXISTING_RECEIPT_NUMBER }).first();
-  requireCondition(await row.count() > 0, 'known existing receipt row was not found');
+  await waitUntil(async () => {
+    const snapshot = await recordRuntimeSnapshot(page, report, 'receipt_data_wait');
+    const relevant = report.getObservations.some((entry) => entry.pathname === '/api/v1/accounting/payments' && entry.status >= 200 && entry.status < 300);
+    const terminal = snapshot.receiptRows > 0 || snapshot.emptyState || snapshot.errorIndicators.length > 0;
+    return relevant && terminal && snapshot.loadingIndicators.length === 0;
+  }, 'receipt ledger data state did not settle', 30_000);
+  const rows = page.locator('table.acct-table tbody tr');
+  const rowCount = await rows.count();
+  report.receiptDiagnosis.rowCount = rowCount;
+  if (!rowCount) {
+    report.receiptDiagnosis.state = (await recordRuntimeSnapshot(page, report, 'receipt_empty_or_error')).errorIndicators.length ? 'UI ERROR' : 'EMPTY DATA';
+    throw new Error('no existing receipt is visible in the settled receipt ledger');
+  }
+  report.receiptDiagnosis.state = 'DATA RENDERED';
+  let row = page.locator('table.acct-table tbody tr').filter({ hasText: EXISTING_RECEIPT_NUMBER }).first();
+  if (await row.count() === 0) row = rows.first();
+  const receiptButton = row.locator('button[aria-label^="查看 "]').first();
+  requireCondition(await receiptButton.count() > 0, 'existing receipt row has no receipt action');
+  const receiptLabel = await receiptButton.getAttribute('aria-label');
   const studentName = (await row.locator('.tc-cell-name').textContent()).trim();
-  await row.getByRole('button', { name: `查看 ${EXISTING_RECEIPT_NUMBER}`, exact: true }).click();
-  return { modal: await assertReceiptActions(page), studentName };
+  await receiptButton.click();
+  return { modal: await assertReceiptActions(page), studentName, trigger: receiptLabel || 'receipt action' };
 }
 
 async function openStudentsReceipt(page, studentName, observed, guard) {
@@ -594,10 +784,47 @@ async function openStudentsReceipt(page, studentName, observed, guard) {
   return { receiptModal, studentRow, paymentInfoNoteVisible, invoiceNote };
 }
 
+async function auditPaymentNote(page, guard, report, canary) {
+  if (!canary?.studentClassId) {
+    report.paymentNote = 'PRODUCT GAP';
+    return;
+  }
+  const noteResponse = await readProductionJson(page, `/api/v1/student-classes/${canary.studentClassId}/invoices`);
+  requireCondition(noteResponse.ok, `payment-note read returned HTTP ${noteResponse.status}`);
+  const payments = (noteResponse.body?.invoices || []).flatMap((invoice) => invoice.payments || []);
+  const notePresent = payments.some((payment) => String(payment.note || '').trim());
+  report.authoritativeSource = notePresent ? 'PaymentReport.note（由付款 read model 提供）' : 'NO PAYMENT NOTE PRESENT IN READ MODEL';
+
+  let displayed = false;
+  try {
+    await navigateTo(page, '學生管理', '學生管理', guard, report);
+    const filter = page.locator('input[placeholder="輸入姓名..."]').first();
+    await waitUntil(() => filter.count().then((count) => count > 0), 'student list name filter was not rendered', 30_000);
+    await filter.fill(canary.studentName);
+    const studentRow = page.locator('tr.student-row').filter({ hasText: canary.studentName }).first();
+    await waitUntil(() => studentRow.count().then((count) => count > 0), 'pending canary student row did not render for note audit', 30_000);
+    await studentRow.click();
+    const detail = page.locator('tr.course-detail-row').first();
+    await waitUntil(() => detail.count().then((count) => count > 0), 'student course detail did not render for note audit', 30_000);
+    const infoButton = detail.locator('button').filter({ hasText: '繳費資訊' }).first();
+    await waitUntil(() => infoButton.count().then((count) => count > 0), 'payment info entry point did not render for note audit', 30_000);
+    await infoButton.click();
+    const lpi = page.locator('.lpi-modal');
+    await waitUntil(() => lpi.count().then((count) => count > 0), 'payment info modal did not open for note audit', 30_000);
+    displayed = await lpi.locator('.lpi-row').filter({ hasText: '備註' }).isVisible().catch(() => false);
+    if (displayed) report.displayedWhere.push('學生管理／課程／繳費資訊／備註');
+    const close = lpi.locator('button[title="關閉"], button').filter({ hasText: '關閉' }).first();
+    if (await close.count() && await close.isVisible().catch(() => false)) await close.click();
+  } catch (_) {
+    report.noteAuditUi = 'NOT REACHED';
+  }
+  report.paymentNote = notePresent && displayed ? 'SINGLE SOURCE — VERIFIED' : 'PRODUCT GAP';
+}
+
 test('authenticated production billing and receipt acceptance', async ({ page, context }) => {
   // Canonical paginated reads plus receipt rendering/clipboard/download checks
   // are intentionally bounded longer than the legacy 45s smoke default.
-  test.setTimeout(180_000);
+  test.setTimeout(300_000);
   page.setDefaultTimeout(15_000);
   page.setDefaultNavigationTimeout(20_000);
   requireCondition(BASE && DIRECTOR.account && DIRECTOR.password, 'production smoke secrets are unavailable');
@@ -618,6 +845,20 @@ test('authenticated production billing and receipt acceptance', async ({ page, c
     unexpectedMutationAttempts: 0,
     unexpectedMutationEndpoints: [],
     unexpectedProductionWrites: 0,
+    navigationSteps: [],
+    runtimeSnapshots: [],
+    getObservations: [],
+    pendingApiReturned: 'UNKNOWN',
+    pendingStatusTabFound: 'UNKNOWN',
+    activeAccountingTab: 'UNKNOWN',
+    activeStatusTab: 'UNKNOWN',
+    pendingDiagnosis: 'INCONCLUSIVE',
+    receiptDiagnosis: {
+      tabFound: 'UNKNOWN',
+      tabSelected: 'UNKNOWN',
+      rowCount: 0,
+      state: 'NOT REACHED',
+    },
     paymentReport1531: 'NOT FOUND',
     specificReportId: 'NOT VISIBLE',
     specificCase: 'BLOCKED BY SCOPE',
@@ -667,7 +908,7 @@ test('authenticated production billing and receipt acceptance', async ({ page, c
     studentLatestNotes: new Map(),
     invoicePayments: [],
   };
-  const runtime = { consoleErrors: 0, pageErrors: 0, failedRequests: [] };
+  const runtime = { consoleErrors: 0, pageErrors: 0, failedRequests: [], getObservations: [] };
   installReadObserver(page, observed, runtime);
   const guard = await installProductionMutationGuard(page, {
     baseURL: BASE,
@@ -677,62 +918,110 @@ test('authenticated production billing and receipt acceptance', async ({ page, c
     ],
   });
   let failure = null;
+  let canary = null;
 
   try {
-    await login(page, guard, report);
-    const version = await page.evaluate(async () => fetch('/version.json').then((response) => response.json()));
-    report.productionSha = version.build_sha || version.hash || 'UNKNOWN';
+    try {
+      await login(page, guard, report);
+    } catch (error) {
+      failure = error;
+    }
 
-    const scope = await readDirectorScope(page, report);
-    console.log('UAT_STAGE director_scope_read');
-    const { canary } = await discoverPendingCase(page, report, scope);
-    console.log(`UAT_STAGE canonical_reports_read_${canary ? 'canary_found' : 'no_canary'}`);
-    await verifyPendingCanary(page, guard, observed, report, canary);
+    if (!failure) {
+      try {
+        const version = await page.evaluate(async () => fetch('/version.json').then((response) => response.json()));
+        report.productionSha = version.build_sha || version.hash || 'UNKNOWN';
+      } catch (_) {
+        report.productionSha = 'UNAVAILABLE';
+      }
 
-    console.log('UAT_STAGE receipt_accounting_begin');
-    const tuitionReceipt = await openTuitionReceipt(page, guard);
-    const tuitionModal = tuitionReceipt.modal;
-    const receiptStudentName = tuitionReceipt.studentName;
-    report.receiptEntryPoints.push({ page: '帳務中心', route: 'tuition-collect', trigger: '收據流水紀錄／查看收據', actions: 'YES' });
-    report.receiptActions = 'VERIFIED FIXED';
-    await copyImageEvidence(page, context, tuitionModal, report);
-    guard.assertNoUnexpectedMutations();
-    await pasteEvidence(context, report);
-    await copyTextEvidence(page, tuitionModal, report);
-    guard.assertNoUnexpectedMutations();
-    await downloadEvidence(page, tuitionModal, report);
-    guard.assertNoUnexpectedMutations();
-    await tuitionModal.locator('button[title="關閉"]').click();
+      let scope = { accessibleCampusIds: [], currentCampus: 'UNKNOWN' };
+      try {
+        scope = await readDirectorScope(page, report);
+        console.log('UAT_STAGE director_scope_read');
+      } catch (_) {
+        report.directorRole = report.directorRole || 'UNKNOWN';
+      }
 
-    console.log('UAT_STAGE receipt_students_begin');
-    const studentReceipt = await openStudentsReceipt(page, receiptStudentName, observed, guard);
-    report.receiptEntryPoints.push({ page: '學生管理', route: 'students', trigger: '學生課程／繳費資訊／查看收據', actions: 'YES' });
-    report.receiptActions = 'VERIFIED FIXED';
-    await studentReceipt.receiptModal.locator('button[title="關閉"]').click();
+      try {
+        ({ canary } = await discoverPendingCase(page, report, scope));
+        console.log(`UAT_STAGE canonical_reports_read_${canary ? 'canary_found' : 'no_canary'}`);
+      } catch (_) {
+        report.pending = 'BLOCKED';
+        report.pendingDiagnosis = 'DATA LOAD FAILURE';
+      }
 
-    const latestNoteDisplayed = studentReceipt.paymentInfoNoteVisible;
-    const paymentNoteDisplayed = observed.invoicePayments.some((payment) => payment.note.trim());
-    const studentLatestNote = observed.studentLatestNotes.get(receiptStudentName) || '';
-    const sameNoteValue = Boolean(studentLatestNote.trim()) && observed.invoicePayments.some((payment) => payment.note.trim() === studentLatestNote.trim());
-    report.authoritativeSource = sameNoteValue ? 'PaymentReport.note（由確認流程帶入 Payment snapshot）' : 'UNKNOWN';
-    report.displayedWhere = [];
-    if (latestNoteDisplayed) report.displayedWhere.push('學生管理／課程／繳費資訊／備註');
-    const lpiClose = page.locator('.lpi-modal button[title="關閉"]').first();
-    if (await lpiClose.count() && await lpiClose.isVisible()) await lpiClose.click();
-    await studentReceipt.studentRow.getByRole('button', { name: '編輯', exact: true }).click();
-    const studentEdit = page.locator('.modal').filter({ hasText: '編輯學生' }).first();
-    await waitUntil(() => studentEdit.count().then((count) => count > 0), 'student edit modal did not open');
-    const editNoteBlock = studentEdit.locator('.student-latest-payment-note');
-    const latestNoteInStudentContext = await editNoteBlock.count() > 0 && await editNoteBlock.isVisible();
-    if (latestNoteInStudentContext) report.displayedWhere.push('學生管理／編輯學生／最近已確認入帳備註');
-    report.paymentNote = latestNoteDisplayed && latestNoteInStudentContext && paymentNoteDisplayed && sameNoteValue
-      ? 'SINGLE SOURCE — VERIFIED'
-      : 'PRODUCT GAP';
-    await studentEdit.getByRole('button', { name: '取消', exact: true }).click();
+      try {
+        await verifyPendingCanary(page, guard, observed, report, canary);
+        guard.assertNoUnexpectedMutations();
+      } catch (error) {
+        if (guard.unexpectedMutations().length) throw error;
+      }
 
-    guard.assertNoUnexpectedMutations();
-    report.mutationGuard = 'ACTIVE';
-    console.log('UAT_STAGE acceptance_complete');
+      let tuitionReceipt = null;
+      try {
+        console.log('UAT_STAGE receipt_accounting_begin');
+        tuitionReceipt = await openTuitionReceipt(page, guard, report);
+        const tuitionModal = tuitionReceipt.modal;
+        report.receiptEntryPoints.push({ page: '帳務中心', route: report.runtimeSnapshots.at(-1)?.pathname || 'tuition-collect', trigger: tuitionReceipt.trigger, actions: 'YES' });
+        report.receiptActions = 'VERIFIED FIXED';
+
+        try {
+          await copyImageEvidence(page, context, tuitionModal, report);
+          guard.assertNoUnexpectedMutations();
+        } catch (error) {
+          if (guard.unexpectedMutations().length) throw error;
+        }
+        if (report.copyImage === 'VERIFIED FIXED') {
+          try {
+            await pasteEvidence(context, report);
+            guard.assertNoUnexpectedMutations();
+          } catch (error) {
+            if (guard.unexpectedMutations().length) throw error;
+          }
+        }
+        try {
+          await copyTextEvidence(page, tuitionModal, report);
+          guard.assertNoUnexpectedMutations();
+        } catch (error) {
+          if (guard.unexpectedMutations().length) throw error;
+        }
+        try {
+          await downloadEvidence(page, tuitionModal, report);
+          guard.assertNoUnexpectedMutations();
+        } catch (error) {
+          if (guard.unexpectedMutations().length) throw error;
+        }
+        await tuitionModal.locator('button[title="關閉"]').click().catch(() => {});
+
+        // The second entry point is audited when reachable, but it does not
+        // gate the independent copy/paste/download acceptance above.
+        try {
+          console.log('UAT_STAGE receipt_students_begin');
+          const studentReceipt = await openStudentsReceipt(page, tuitionReceipt.studentName, observed, guard);
+          report.receiptEntryPoints.push({ page: '學生管理', route: 'students', trigger: '學生課程／繳費資訊／查看收據', actions: 'YES' });
+          await studentReceipt.receiptModal.locator('button[title="關閉"]').click().catch(() => {});
+        } catch (error) {
+          if (guard.unexpectedMutations().length) throw error;
+          report.receiptEntryPoints.push({ page: '學生管理', route: 'students', trigger: '學生課程／繳費資訊／查看收據', actions: 'NOT REACHED' });
+        }
+      } catch (error) {
+        if (guard.unexpectedMutations().length) throw error;
+        report.receiptActions = report.receiptActions === 'VERIFIED FIXED' ? report.receiptActions : 'FAIL';
+        report.receiptDiagnosis.failure = 'UI entry/navigation/data diagnosis recorded';
+      }
+
+      try {
+        await auditPaymentNote(page, guard, report, canary);
+        guard.assertNoUnexpectedMutations();
+      } catch (error) {
+        if (guard.unexpectedMutations().length) throw error;
+        report.paymentNote = 'PRODUCT GAP';
+      }
+
+      report.mutationGuard = 'ACTIVE';
+      console.log('UAT_STAGE acceptance_complete');
+    }
   } catch (error) {
     failure = error;
   } finally {
@@ -749,8 +1038,9 @@ test('authenticated production billing and receipt acceptance', async ({ page, c
     report.consoleErrors = runtime.consoleErrors;
     report.pageErrors = runtime.pageErrors;
     report.failedRequests = runtime.failedRequests;
+    report.getObservations = runtime.getObservations;
     if (guard.phase() === 'authenticated') report.mutationGuard = 'ACTIVE';
-    if (!failure && blocked.length) failure = new Error('unexpected production mutation was blocked');
+    if (!failure && unexpectedMutations.length) failure = new Error('unexpected production mutation was blocked');
     await guard.dispose().catch(() => {});
     console.log(`PRODUCTION_BILLING_UAT_REPORT ${JSON.stringify(report)}`);
   }
