@@ -181,8 +181,9 @@ jobs:
               ->get(['id', 'StudentClassID as class_id', 'Status as status', 'TotalAmount as total_amount', 'PaidAmount as paid_amount'])
               ->map(fn ($r) => ['id'=>(int)$r->id, 'class_id'=>(int)$r->class_id, 'status'=>(string)$r->status,
                 'total_amount'=>(float)$r->total_amount, 'paid_amount'=>(float)$r->paid_amount])->values()->all();
-            $out['payments'] = $classIds === [] ? [] : $db::table('Payment')->whereIn('StudentClassID', $classIds)
-              ->get(['id', 'StudentClassID as class_id', 'Amount as amount', 'PaymentReportID as payment_report_id'])
+            $out['payments'] = $classIds === [] ? [] : $db::table('Payment as p')
+              ->join('Invoice as i', 'i.id', '=', 'p.InvoiceID')->whereIn('i.StudentClassID', $classIds)
+              ->get(['p.id', 'i.StudentClassID as class_id', 'p.Amount as amount', 'p.payment_report_id'])
               ->map(fn ($r) => ['id'=>(int)$r->id, 'class_id'=>(int)$r->class_id, 'amount'=>(float)$r->amount,
                 'payment_report_id'=>$r->payment_report_id === null ? null : (int)$r->payment_report_id])->values()->all();
           }} else {{
