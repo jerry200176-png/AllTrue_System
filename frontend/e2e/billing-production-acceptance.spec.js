@@ -911,6 +911,19 @@ async function openReceiptCanary(page, guard, report) {
   report.receiptActionCopyText = await receiptActionLocator(modal, 'copy-receipt-text', '複製文字') ? 'YES' : 'NO';
   report.receiptActionDownload = await receiptActionLocator(modal, 'download-receipt-image', '下載圖片') ? 'YES' : 'NO';
   report.receiptActionPrint = await modal.getByRole('button', { name: '列印', exact: true }).isVisible().catch(() => false) ? 'YES' : 'NO';
+  report.receiptEntryPoints.push({
+    page: '帳務中心／收據紀錄',
+    route: report.runtimeSnapshots.at(-1)?.pathname || 'tuition-collect',
+    trigger,
+    actions: report.receiptActionCopyImage === 'YES'
+      && report.receiptActionCopyText === 'YES'
+      && report.receiptActionDownload === 'YES'
+      && report.receiptActionPrint === 'YES' ? 'YES' : 'PARTIAL',
+  });
+  report.receiptActions = report.receiptActionCopyImage === 'YES'
+    && report.receiptActionCopyText === 'YES'
+    && report.receiptActionDownload === 'YES'
+    && report.receiptActionPrint === 'YES' ? 'VERIFIED FIXED' : 'PARTIAL';
   try {
     requireCondition(report.receiptActionCopyImage === 'YES', 'copy image action is not rendered');
     requireCondition(report.receiptActionCopyText === 'YES', 'copy text action is not rendered');
@@ -920,7 +933,6 @@ async function openReceiptCanary(page, guard, report) {
     report.receiptDiagnosis.state = 'UI DID NOT RENDER';
     throw error;
   }
-  report.receiptEntryPoints.push({ page: '帳務中心／收據紀錄', route: report.runtimeSnapshots.at(-1)?.pathname || 'tuition-collect', trigger, actions: 'YES' });
   report.receiptDiagnosis.rowCount = await page.locator('table.acct-table tbody tr').count();
   report.receiptActions = 'VERIFIED FIXED';
   return modal;
