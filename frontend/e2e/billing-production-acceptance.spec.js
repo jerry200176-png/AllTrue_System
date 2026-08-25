@@ -20,6 +20,8 @@ const DIRECTOR = {
 };
 const PENDING_REPORT_ID = 1531;
 const EXISTING_RECEIPT_NUMBER = 'R-001540';
+const PENDING_STUDENT_CLASS_ID = 2886;
+const RECEIPT_CAMPUS_ID = 9;
 
 function requireCondition(condition, message) {
   if (!condition) throw new Error(message);
@@ -388,6 +390,7 @@ async function readPaginatedPaymentReports(page, query) {
       reportedAmount: Number(report.reported_amount || 0),
       status: String(report.status || ''),
       notePresent: Boolean(String(report.note || '').trim()),
+      branchId: Number(report.branch_id || report.campus_id || report.branch?.id || report.campus?.id || 0),
     })));
 
     lastPage = paginationLastPage(response.body);
@@ -420,17 +423,141 @@ async function readDirectorScope(page, report) {
     };
   });
 
-  let accessibleCampusIds = campusIdsFrom(me.campuses);
+  let campusRecords = Array.isArray(me.campuses) ? me.campuses : [];
+  let accessibleCampusIds = campusIdsFrom(campusRecords);
   if (!accessibleCampusIds.length) {
     const campusesResponse = await readProductionJson(page, '/api/v1/campuses');
-    if (campusesResponse.ok) accessibleCampusIds = campusIdsFrom(campusesResponse.body?.data ?? campusesResponse.body);
+    if (campusesResponse.ok) {
+      campusRecords = Array.isArray(campusesResponse.body?.data)
+        ? campusesResponse.body.data
+        : (Array.isArray(campusesResponse.body) ? campusesResponse.body : []);
+      accessibleCampusIds = campusIdsFrom(campusRecords);
+    }
   }
 
   report.directorRole = String(me.role || sessionIdentity.role || 'UNKNOWN');
   report.accessibleCampusIds = accessibleCampusIds;
   report.currentCampus = sessionIdentity.currentCampus || 'UNKNOWN';
   requireCondition(['director', 'admin', 'super_admin'].includes(report.directorRole), 'authenticated identity is not a Director role');
-  return { accessibleCampusIds, currentCampus: sessionIdentity.currentCampus };
+  const campusNames = new Map(campusRecords.map((campus) => [
+    Number(campus.id ?? campus.branch_id ?? campus.campus_id ?? 0),
+    String(campus.name || campus.branch_name || campus.campus_name || '').trim(),
+  ]).filter(([id]) => id > 0));
+  return { accessibleCampusIds, currentCampus: sessionIdentity.currentCampus, campusNames };
+}
+
+async function resolveSpecificCampus(page, report, scope, specificReport) {
+  report.paymentReportBranchId = Number(specificReport?.branchId || 0) || 'UNKNOWN';
+  report.studentClassBranchId = 'UNKNOWN';
+  report.studentCampusId = 'UNKNOWN';
+  report.campusResolution = 'INCOMPLETE';
+
+  if (!specificReport) return;
+  const reportStudentId = Number(specificReport?.studentId || 0);
+  const classResponse = await readProductionJson(
+    page,
+    reportStudentId > 0
+      ? `/api/v1/student-classes?student_id=${encodeURIComponent(String(reportStudentId))}&per_page=1000`
+      : '/api/v1/student-classes?per_page=1000',
+  );
+  requireCondition(classResponse.ok, `specific student-class read returned HTTP ${classResponse.status}`);
+  const classRows = listRows(classResponse.body);
+  const classRecord = classRows.find((course) => Number(course.id) === PENDING_STUDENT_CLASS_ID) || null;
+  const resolvedStudentId = reportStudentId || Number(classRecord?.student_id || 0);
+  report.studentClassBranchId = Number(
+    classRecord?.branch_id
+      || classRecord?.campus_id
+      || classRecord?.branch?.id
+      || classRecord?.campus?.id
+      || 0,
+  ) || 'UNKNOWN';
+
+  // Resolve the student campus through the same branch-scoped read the UI uses.
+  // Names and student fields stay in memory only; the report retains IDs.
+  if (resolvedStudentId <= 0) return;
+  for (const campusId of scope.accessibleCampusIds) {
+    const response = await readProductionJson(
+      page,
+      `/api/v1/students?branch_id=${encodeURIComponent(String(campusId))}&per_page=500`,
+    );
+    requireCondition(response.ok, `student campus read returned HTTP ${response.status}`);
+    const student = listRows(response.body).find((candidate) => Number(candidate?.id) === resolvedStudentId);
+    if (student) {
+      report.studentCampusId = Number(
+        student.branch_id
+          || student.campus_id
+          || student.branch?.id
+          || student.campus?.id
+          || campusId,
+      ) || campusId;
+      break;
+    }
+  }
+
+  const ids = [report.paymentReportBranchId, report.studentClassBranchId, report.studentCampusId]
+    .filter((id) => Number.isFinite(Number(id)) && Number(id) > 0)
+    .map(Number);
+  if (ids.length === 3 && ids.every((id) => id === ids[0])) {
+    report.campusResolution = 'MATCHED';
+    report.pendingTargetCampus = ids[0];
+  } else if (ids.length > 1 && new Set(ids).size > 1) {
+    report.campusResolution = 'MISMATCH';
+  }
+}
+
+async function switchCampusThroughUi(page, guard, report, scope, targetCampusId, phase) {
+  const target = Number(targetCampusId);
+  requireCondition(scope.accessibleCampusIds.includes(target), `${phase} target campus is outside Director scope`);
+  const before = await recordRuntimeSnapshot(page, report, `${phase}_campus_before`);
+  report.campusSwitches.push({ phase, targetCampus: target, beforeCampus: before.activeCampus, controlFound: false, clickCompleted: false });
+  if (before.activeCampus === target) {
+    report.campusSwitches.at(-1).controlFound = true;
+    report.campusSwitches.at(-1).clickCompleted = true;
+    return before;
+  }
+
+  const select = page.locator('#mobile-branch-select').first();
+  const switchRecord = report.campusSwitches.at(-1);
+  if (await select.count() && await select.isVisible().catch(() => false)) {
+    const option = select.locator(`option[value="${target}"]`);
+    requireCondition(await option.count() > 0, `${phase} campus selector has no target option`);
+    switchRecord.controlFound = true;
+    await select.selectOption(String(target));
+    switchRecord.clickCompleted = true;
+  } else {
+    const buttons = page.locator('.branch-buttons .branch-btn');
+    const targetName = scope.campusNames?.get(target) || '';
+    for (let index = 0; index < await buttons.count(); index += 1) {
+      const button = buttons.nth(index);
+      if (!await button.isVisible().catch(() => false)) continue;
+      const label = (await button.innerText()).trim();
+      if (targetName && !label.includes(targetName.split('(')[0].trim())) continue;
+      const current = await button.getAttribute('class');
+      if (current?.includes('active') && targetName) continue;
+      switchRecord.controlFound = true;
+      await button.click();
+      switchRecord.clickCompleted = true;
+      break;
+    }
+    if (!switchRecord.controlFound) {
+      const targetIndex = scope.accessibleCampusIds.indexOf(target);
+      if (targetIndex >= 0 && targetIndex < await buttons.count()) {
+        const button = buttons.nth(targetIndex);
+        if (await button.isVisible().catch(() => false)) {
+          switchRecord.controlFound = true;
+          await button.click();
+          switchRecord.clickCompleted = true;
+        }
+      }
+    }
+  }
+  requireCondition(switchRecord.controlFound && switchRecord.clickCompleted, `${phase} campus selector was not usable`);
+  guard.assertNoUnexpectedMutations();
+  await waitUntil(async () => (await runtimeSnapshot(page)).activeCampus === target, `${phase} campus switch did not settle`, 20_000);
+  const after = await recordRuntimeSnapshot(page, report, `${phase}_campus_after`);
+  requireCondition(after.activeCampus === target, `${phase} active campus is not target campus`);
+  guard.assertNoUnexpectedMutations();
+  return after;
 }
 
 async function discoverPendingCase(page, report, scope) {
@@ -476,7 +603,7 @@ async function discoverPendingCase(page, report, scope) {
     status: canary.status,
   };
   report.paymentReportNotePresent = Boolean(canary.notePresent);
-  return { canary, allReports };
+  return { canary, allReports, specificReport: specificPending || specificAny };
 }
 
 async function verifyPendingCanary(page, guard, observed, report, canary) {
@@ -575,6 +702,80 @@ async function verifyPendingCanary(page, guard, observed, report, canary) {
   void observed;
 }
 
+async function verifyBranchAwarePending(page, guard, report, canary, targetCampusId) {
+  if (!canary || Number(canary.id) !== PENDING_REPORT_ID || Number(canary.studentClassId) !== PENDING_STUDENT_CLASS_ID) {
+    report.pending = 'NOT VERIFIED';
+    report.pendingDiagnosis = 'INCONCLUSIVE';
+    report.workflowClarity = 'NOT VERIFIED';
+    return;
+  }
+
+  const classResponse = await readProductionJson(
+    page,
+    `/api/v1/student-classes?student_id=${encodeURIComponent(String(canary.studentId))}&per_page=1000`,
+  );
+  requireCondition(classResponse.ok, `pending student-class read returned HTTP ${classResponse.status}`);
+  const classRecord = listRows(classResponse.body).find((course) => Number(course.id) === PENDING_STUDENT_CLASS_ID);
+  report.backendPaymentStatus = String(classRecord?.payment_status || 'UNKNOWN');
+  report.backendLatestPaymentReportId = Number(classRecord?.latest_payment_report_id || 0) || 'MISSING';
+  const backendContract = report.backendPaymentStatus === 'pending_report'
+    && Number(report.backendLatestPaymentReportId) === PENDING_REPORT_ID;
+
+  const accountingSnapshot = await ensureAccountingPage(page, guard, report);
+  report.pagesChecked.push('帳務中心／待處理');
+  let settled = accountingSnapshot;
+  try {
+    settled = await waitForReceivableState(page, report, 'branch_pending_state_wait');
+  } catch (_) {
+    settled = await recordRuntimeSnapshot(page, report, 'branch_pending_state_timeout');
+  }
+  report.relevantPendingGet = report.getObservations
+    .filter((entry) => entry.pathname === '/api/v1/alerts/tuition')
+    .at(-1) || null;
+  report.loadingCleared = settled.loadingIndicators.length === 0 ? 'YES' : 'NO';
+  const pendingTab = await findVisibleControl(page, '待對帳') || await findVisibleControl(page, '待核帳');
+  if (pendingTab) {
+    report.pendingStatusTabFound = 'YES';
+    await pendingTab.click();
+    report.activeStatusTab = (await recordRuntimeSnapshot(page, report, 'branch_pending_tab_selected')).activeStatusTab;
+  } else {
+    report.pendingStatusTabFound = 'NO';
+  }
+
+  let pendingRow = null;
+  if (canary.studentName) {
+    pendingRow = page.locator('.tc-table tbody tr').filter({ hasText: canary.studentName }).first();
+  }
+  if (pendingRow && await pendingRow.count() > 0 && await pendingRow.isVisible().catch(() => false)) {
+    report.pendingRowRendered = 'YES';
+    const rowText = await pendingRow.innerText();
+    report.currentLabel = (rowText.match(/待對帳|待核帳|未繳費|已繳費/) || ['UNKNOWN'])[0];
+    report.uiStatus = report.currentLabel;
+    report.workflowClarity = report.currentLabel === '待對帳' && !rowText.includes('未繳費')
+      ? 'VERIFIED'
+      : 'UX GAP';
+    report.pending = backendContract && report.currentLabel === '待對帳' && !rowText.includes('未繳費')
+      ? 'VERIFIED FIXED'
+      : 'PRODUCT DEFECT';
+    report.pendingDiagnosis = report.pending;
+    return;
+  }
+
+  report.pendingRowRendered = 'NO';
+  report.uiStatus = 'UNKNOWN';
+  report.currentLabel = 'UNKNOWN';
+  report.pending = 'NOT VERIFIED';
+  report.pendingDiagnosis = !settled.accountingContainer || settled.accountingTabs.length < 3
+    ? 'NAVIGATION FAILURE'
+    : report.relevantPendingGet?.status >= 400
+      ? 'DATA LOAD FAILURE'
+      : settled.loadingIndicators.length > 0
+        ? 'LOADING STUCK'
+        : 'FILTER/BRANCH FAILURE';
+  report.workflowClarity = 'NOT VERIFIED';
+  void targetCampusId;
+}
+
 async function assertReceiptActions(page) {
   const modal = page.locator('.receipt-modal').first();
   await waitUntil(() => modal.count().then((count) => count > 0), 'receipt modal did not open');
@@ -582,6 +783,106 @@ async function assertReceiptActions(page) {
     requireCondition(await modal.locator(`[data-testid="${testId}"]`).isVisible(), `${testId} is not rendered`);
   }
   requireCondition(await modal.getByRole('button', { name: '列印', exact: true }).isVisible(), 'print action is not rendered');
+  return modal;
+}
+
+async function readReceiptCanary(page, report) {
+  const ranges = [
+    ['2026-08-01', '2026-08-31'],
+    ['2020-01-01', '2030-12-31'],
+  ];
+  for (const [start, end] of ranges) {
+    let pageNumber = 1;
+    let lastPage = 0;
+    while (pageNumber <= 100) {
+      const params = new URLSearchParams({
+        branch_id: String(RECEIPT_CAMPUS_ID),
+        start,
+        end,
+        per_page: '200',
+        page: String(pageNumber),
+      });
+      const response = await readProductionJson(page, `/api/v1/accounting/payments?${params.toString()}`);
+      requireCondition(response.ok, `receipt canary read returned HTTP ${response.status}`);
+      const rows = listRows(response.body);
+      const found = rows.find((row) => String(row.receipt_no || '') === EXISTING_RECEIPT_NUMBER);
+      if (found) {
+        report.receiptCanaryFound = 'YES';
+        report.receiptCanaryApi = { branch: RECEIPT_CAMPUS_ID, filter: { start, end }, status: response.status };
+        report.receiptCanaryReportId = Number(found.report_id || found.id || 0) || 'PRESENT';
+        return found;
+      }
+      lastPage = paginationLastPage(response.body);
+      if (lastPage > 0 ? pageNumber >= lastPage : rows.length === 0 || rows.length < 200) break;
+      pageNumber += 1;
+    }
+    requireCondition(pageNumber <= 100, 'receipt canary pagination exceeded the bounded read limit');
+    report.receiptCanaryApi = { branch: RECEIPT_CAMPUS_ID, filter: { start, end }, status: 200 };
+  }
+  report.receiptCanaryFound = 'NO';
+  return null;
+}
+
+async function openReceiptCanary(page, guard, report) {
+  await ensureAccountingPage(page, guard, report);
+  const receiptTab = page.locator('.acct-tabs .acct-tab').filter({ hasText: /收據(?:流水)?紀錄/ }).first();
+  report.receiptDiagnosis.tabFound = await receiptTab.count() > 0 && await receiptTab.isVisible().catch(() => false) ? 'YES' : 'NO';
+  requireCondition(report.receiptDiagnosis.tabFound === 'YES', 'receipt ledger tab was not rendered');
+  await receiptTab.click();
+  await waitUntil(async () => {
+    const selected = page.locator('.acct-tabs .acct-tab.active, .acct-tabs [role="tab"][aria-selected="true"]')
+      .filter({ hasText: /收據(?:流水)?紀錄/ });
+    return await selected.count() > 0;
+  }, 'receipt ledger tab did not become active', 15_000);
+  report.receiptDiagnosis.tabSelected = 'YES';
+  report.activeAccountingTab = (await recordRuntimeSnapshot(page, report, 'receipt_canary_tab_selected')).activeAccountingTab;
+
+  const dates = page.locator('.acct-filter-bar input[type="date"]');
+  report.receiptCanaryUiFilter = 'DEFAULT';
+  if (await dates.count() >= 2) {
+    await dates.nth(0).fill('2026-08-01');
+    await dates.nth(1).fill('2026-08-31');
+    const queryButton = await findVisibleControl(page, '查詢');
+    if (queryButton) {
+      await queryButton.click();
+      report.receiptCanaryUiFilter = '2026-08-01..2026-08-31';
+    }
+  }
+  guard.assertNoUnexpectedMutations();
+  await waitUntil(async () => {
+    const snapshot = await recordRuntimeSnapshot(page, report, 'receipt_canary_state_wait');
+    const hasRead = report.getObservations.some((entry) => entry.pathname === '/api/v1/accounting/payments' && entry.status >= 200 && entry.status < 300);
+    const terminal = snapshot.receiptRows > 0 || snapshot.emptyState || snapshot.errorIndicators.length > 0;
+    return hasRead && terminal && snapshot.loadingIndicators.length === 0;
+  }, 'receipt canary UI state did not settle', 30_000);
+  const row = page.locator('table.acct-table tbody tr').filter({ hasText: EXISTING_RECEIPT_NUMBER }).first();
+  if (await row.count() === 0 || !await row.isVisible().catch(() => false)) {
+    report.receiptDiagnosis.state = 'EMPTY DATA';
+    return null;
+  }
+  report.receiptDiagnosis.state = 'DATA RENDERED';
+  const receiptButton = row.locator(`button[aria-label="查看 ${EXISTING_RECEIPT_NUMBER}"]`).first();
+  requireCondition(await receiptButton.count() > 0, 'receipt canary row has no receipt action');
+  const trigger = await receiptButton.getAttribute('aria-label');
+  await receiptButton.click();
+  await waitUntil(() => page.locator('.receipt-modal').count().then((count) => count > 0), 'receipt modal did not open');
+  report.receiptModal = 'OPENED';
+  const modal = page.locator('.receipt-modal').first();
+  report.receiptActionCopyImage = await modal.locator('[data-testid="copy-receipt-image"]').isVisible().catch(() => false) ? 'YES' : 'NO';
+  report.receiptActionCopyText = await modal.locator('[data-testid="copy-receipt-text"]').isVisible().catch(() => false) ? 'YES' : 'NO';
+  report.receiptActionDownload = await modal.locator('[data-testid="download-receipt-image"]').isVisible().catch(() => false) ? 'YES' : 'NO';
+  report.receiptActionPrint = await modal.getByRole('button', { name: '列印', exact: true }).isVisible().catch(() => false) ? 'YES' : 'NO';
+  try {
+    requireCondition(report.receiptActionCopyImage === 'YES', 'copy image action is not rendered');
+    requireCondition(report.receiptActionCopyText === 'YES', 'copy text action is not rendered');
+    requireCondition(report.receiptActionDownload === 'YES', 'download image action is not rendered');
+    requireCondition(report.receiptActionPrint === 'YES', 'print action is not rendered');
+  } catch (error) {
+    report.receiptDiagnosis.state = 'UI DID NOT RENDER';
+    throw error;
+  }
+  report.receiptEntryPoints.push({ page: '帳務中心／收據紀錄', route: report.runtimeSnapshots.at(-1)?.pathname || 'tuition-collect', trigger, actions: 'YES' });
+  report.receiptActions = 'VERIFIED FIXED';
   return modal;
 }
 
@@ -811,7 +1112,7 @@ async function openStudentsReceipt(page, studentName, observed, guard) {
 
 async function auditPaymentNote(page, guard, report, canary) {
   if (!canary?.studentClassId) {
-    report.paymentNote = 'PRODUCT GAP';
+    report.paymentNote = 'CASE HAS NO NOTE — NOT VERIFIABLE';
     return;
   }
   const noteResponse = await readProductionJson(page, `/api/v1/student-classes/${canary.studentClassId}/invoices`);
@@ -819,6 +1120,12 @@ async function auditPaymentNote(page, guard, report, canary) {
   const payments = (noteResponse.body?.invoices || []).flatMap((invoice) => invoice.payments || []);
   const notePresent = payments.some((payment) => String(payment.note || '').trim()) || Boolean(report.paymentReportNotePresent);
   report.authoritativeSource = notePresent ? 'PaymentReport.note（由付款 read model 提供）' : 'NO PAYMENT NOTE PRESENT IN READ MODEL';
+
+  if (!notePresent) {
+    report.paymentNote = 'CASE HAS NO NOTE — NOT VERIFIABLE';
+    report.noteAuditUi = 'NOT APPLICABLE';
+    return;
+  }
 
   let displayed = false;
   try {
@@ -843,7 +1150,9 @@ async function auditPaymentNote(page, guard, report, canary) {
   } catch (_) {
     report.noteAuditUi = 'NOT REACHED';
   }
-  report.paymentNote = notePresent && displayed ? 'SINGLE SOURCE — VERIFIED' : 'PRODUCT GAP';
+  // A note existing in the payment read model does not by itself establish a
+  // product requirement that it must be copied into the student memo.
+  report.paymentNote = displayed ? 'SINGLE SOURCE — VERIFIED' : 'NOT VERIFIED';
 }
 
 test('authenticated production billing and receipt acceptance', async ({ page, context }) => {
@@ -860,6 +1169,12 @@ test('authenticated production billing and receipt acceptance', async ({ page, c
     directorRole: 'UNKNOWN',
     accessibleCampusIds: [],
     currentCampus: 'UNKNOWN',
+    paymentReportBranchId: 'UNKNOWN',
+    studentClassBranchId: 'UNKNOWN',
+    studentCampusId: 'UNKNOWN',
+    campusResolution: 'INCOMPLETE',
+    pendingTargetCampus: 'UNKNOWN',
+    campusSwitches: [],
     mutationGuard: 'FAIL',
     mutationGuardAttachedAfterLogin: 'NO',
     guardActiveBeforeBillingNavigation: 'NO',
@@ -884,6 +1199,16 @@ test('authenticated production billing and receipt acceptance', async ({ page, c
       rowCount: 0,
       state: 'NOT REACHED',
     },
+    receiptCanaryFound: 'NOT VERIFIED',
+    receiptCanaryApi: null,
+    receiptCanaryApiBranch: RECEIPT_CAMPUS_ID,
+    receiptCanaryReportId: 'NOT FOUND',
+    receiptCanaryUiFilter: 'NOT VERIFIED',
+    receiptModal: 'NOT OPENED',
+    receiptActionCopyImage: 'NOT VERIFIED',
+    receiptActionCopyText: 'NOT VERIFIED',
+    receiptActionDownload: 'NOT VERIFIED',
+    receiptActionPrint: 'NOT VERIFIED',
     paymentReport1531: 'NOT FOUND',
     specificReportId: 'NOT VISIBLE',
     specificCase: 'BLOCKED BY SCOPE',
@@ -895,13 +1220,13 @@ test('authenticated production billing and receipt acceptance', async ({ page, c
     uiStatus: 'UNKNOWN',
     pendingReportRecord: null,
     paymentReportNotePresent: false,
-    pending: 'BLOCKED',
+    pending: 'NOT VERIFIED',
     pagesChecked: [],
     currentLabel: 'UNKNOWN',
-    workflowClarity: 'UX GAP',
-    receiptActions: 'FAIL',
+    workflowClarity: 'NOT VERIFIED',
+    receiptActions: 'NOT VERIFIED',
     receiptEntryPoints: [],
-    copyImage: 'RUNTIME DEFECT',
+    copyImage: 'NOT VERIFIED',
     secureContext: false,
     clipboardApi: {},
     clipboardError: 'NONE',
@@ -912,14 +1237,14 @@ test('authenticated production billing and receipt acceptance', async ({ page, c
     pngDimensions: '0x0',
     pngDecode: false,
     pasteResult: 'NOTHING',
-    copyText: 'FAIL',
+    copyText: 'NOT VERIFIED',
     copyTextClipboardTypes: [],
-    downloadPng: 'FAIL',
+    downloadPng: 'NOT VERIFIED',
     downloadFilename: 'UNKNOWN',
     downloadBytes: 0,
     downloadDimensions: '0x0',
     downloadDecode: false,
-    paymentNote: 'PRODUCT GAP',
+    paymentNote: 'CASE HAS NO NOTE — NOT VERIFIABLE',
     authoritativeSource: 'UNKNOWN',
     displayedWhere: [],
     consoleErrors: 0,
@@ -935,6 +1260,7 @@ test('authenticated production billing and receipt acceptance', async ({ page, c
     invoicePayments: [],
   };
   const runtime = { consoleErrors: 0, pageErrors: 0, failedRequests: [], getObservations: [] };
+  report.getObservations = runtime.getObservations;
   installReadObserver(page, observed, runtime);
   const guard = await installProductionMutationGuard(page, {
     baseURL: BASE,
@@ -945,6 +1271,7 @@ test('authenticated production billing and receipt acceptance', async ({ page, c
   });
   let failure = null;
   let canary = null;
+  let specificReport = null;
 
   try {
     try {
@@ -961,7 +1288,7 @@ test('authenticated production billing and receipt acceptance', async ({ page, c
         report.productionSha = 'UNAVAILABLE';
       }
 
-      let scope = { accessibleCampusIds: [], currentCampus: 'UNKNOWN' };
+      let scope = { accessibleCampusIds: [], currentCampus: 'UNKNOWN', campusNames: new Map() };
       try {
         scope = await readDirectorScope(page, report);
         console.log('UAT_STAGE director_scope_read');
@@ -970,70 +1297,78 @@ test('authenticated production billing and receipt acceptance', async ({ page, c
       }
 
       try {
-        ({ canary } = await discoverPendingCase(page, report, scope));
+        ({ canary, specificReport } = await discoverPendingCase(page, report, scope));
         console.log(`UAT_STAGE canonical_reports_read_${canary ? 'canary_found' : 'no_canary'}`);
       } catch (_) {
-        report.pending = 'BLOCKED';
+        report.pending = 'NOT VERIFIED';
         report.pendingDiagnosis = 'DATA LOAD FAILURE';
       }
 
       try {
-        await verifyPendingCanary(page, guard, observed, report, canary);
+        if (specificReport) await resolveSpecificCampus(page, report, scope, specificReport);
+        if (report.campusResolution === 'MATCHED') {
+          await switchCampusThroughUi(page, guard, report, scope, report.pendingTargetCampus, 'pending');
+          report.currentCampus = report.pendingTargetCampus;
+        } else {
+          report.pending = 'NOT VERIFIED';
+          report.pendingDiagnosis = report.campusResolution === 'MISMATCH' ? 'FILTER/BRANCH FAILURE' : 'INCONCLUSIVE';
+        }
+        await verifyBranchAwarePending(page, guard, report, canary, report.pendingTargetCampus);
         guard.assertNoUnexpectedMutations();
       } catch (error) {
         if (guard.unexpectedMutations().length) throw error;
       }
 
-      let tuitionReceipt = null;
+      let receiptModal = null;
       try {
-        console.log('UAT_STAGE receipt_accounting_begin');
-        tuitionReceipt = await openTuitionReceipt(page, guard, report);
-        const tuitionModal = tuitionReceipt.modal;
-        report.receiptEntryPoints.push({ page: '帳務中心', route: report.runtimeSnapshots.at(-1)?.pathname || 'tuition-collect', trigger: tuitionReceipt.trigger, actions: 'YES' });
-        report.receiptActions = 'VERIFIED FIXED';
-
-        try {
-          await copyImageEvidence(page, context, tuitionModal, report);
-          guard.assertNoUnexpectedMutations();
-        } catch (error) {
-          if (guard.unexpectedMutations().length) throw error;
+        console.log('UAT_STAGE receipt_canary_api_begin');
+        const receiptRecord = await readReceiptCanary(page, report);
+        if (receiptRecord && scope.accessibleCampusIds.includes(RECEIPT_CAMPUS_ID)) {
+          await switchCampusThroughUi(page, guard, report, scope, RECEIPT_CAMPUS_ID, 'receipt');
+          report.currentCampus = RECEIPT_CAMPUS_ID;
+          console.log('UAT_STAGE receipt_canary_ui_begin');
+          receiptModal = await openReceiptCanary(page, guard, report);
+        } else if (receiptRecord) {
+          report.receiptModal = 'NOT OPENED';
+          report.receiptDiagnosis.state = 'BLOCKED BY CAMPUS SCOPE';
         }
-        if (report.copyImage === 'VERIFIED FIXED') {
+
+        if (receiptModal) {
           try {
-            await pasteEvidence(context, report);
+            await copyImageEvidence(page, context, receiptModal, report);
             guard.assertNoUnexpectedMutations();
           } catch (error) {
             if (guard.unexpectedMutations().length) throw error;
+            report.copyImage = report.secureContext && report.clipboardApi?.write ? 'RUNTIME DEFECT' : 'BROWSER LIMITATION';
           }
-        }
-        try {
-          await copyTextEvidence(page, tuitionModal, report);
-          guard.assertNoUnexpectedMutations();
-        } catch (error) {
-          if (guard.unexpectedMutations().length) throw error;
-        }
-        try {
-          await downloadEvidence(page, tuitionModal, report);
-          guard.assertNoUnexpectedMutations();
-        } catch (error) {
-          if (guard.unexpectedMutations().length) throw error;
-        }
-        await tuitionModal.locator('button[title="關閉"]').click().catch(() => {});
-
-        // The second entry point is audited when reachable, but it does not
-        // gate the independent copy/paste/download acceptance above.
-        try {
-          console.log('UAT_STAGE receipt_students_begin');
-          const studentReceipt = await openStudentsReceipt(page, tuitionReceipt.studentName, observed, guard);
-          report.receiptEntryPoints.push({ page: '學生管理', route: 'students', trigger: '學生課程／繳費資訊／查看收據', actions: 'YES' });
-          await studentReceipt.receiptModal.locator('button[title="關閉"]').click().catch(() => {});
-        } catch (error) {
-          if (guard.unexpectedMutations().length) throw error;
-          report.receiptEntryPoints.push({ page: '學生管理', route: 'students', trigger: '學生課程／繳費資訊／查看收據', actions: 'NOT REACHED' });
+          if (report.copyImage === 'VERIFIED FIXED') {
+            try {
+              await pasteEvidence(context, report);
+              guard.assertNoUnexpectedMutations();
+            } catch (error) {
+              if (guard.unexpectedMutations().length) throw error;
+              if (report.pasteResult === 'NOTHING') report.pasteResult = 'NOTHING';
+            }
+          }
+          try {
+            await copyTextEvidence(page, receiptModal, report);
+            guard.assertNoUnexpectedMutations();
+          } catch (error) {
+            if (guard.unexpectedMutations().length) throw error;
+            report.copyText = 'FAIL';
+          }
+          try {
+            await downloadEvidence(page, receiptModal, report);
+            guard.assertNoUnexpectedMutations();
+          } catch (error) {
+            if (guard.unexpectedMutations().length) throw error;
+            report.downloadPng = 'FAIL';
+          }
+          await receiptModal.locator('button[title="關閉"]').click().catch(() => {});
         }
       } catch (error) {
         if (guard.unexpectedMutations().length) throw error;
-        report.receiptActions = report.receiptActions === 'VERIFIED FIXED' ? report.receiptActions : 'FAIL';
+        if (!report.receiptModal || report.receiptModal === 'NOT OPENED') report.receiptModal = 'NOT OPENED';
         report.receiptDiagnosis.failure = 'UI entry/navigation/data diagnosis recorded';
       }
 
@@ -1042,7 +1377,9 @@ test('authenticated production billing and receipt acceptance', async ({ page, c
         guard.assertNoUnexpectedMutations();
       } catch (error) {
         if (guard.unexpectedMutations().length) throw error;
-        report.paymentNote = 'PRODUCT GAP';
+        report.paymentNote = report.paymentReportNotePresent
+          ? 'NOT VERIFIED'
+          : 'CASE HAS NO NOTE — NOT VERIFIABLE';
       }
 
       report.mutationGuard = 'ACTIVE';
