@@ -735,11 +735,32 @@ async function openTuitionReceipt(page, guard, report) {
     return relevant && terminal && snapshot.loadingIndicators.length === 0;
   }, 'receipt ledger data state did not settle', 30_000);
   const rows = page.locator('table.acct-table tbody tr');
-  const rowCount = await rows.count();
+  let rowCount = await rows.count();
   report.receiptDiagnosis.rowCount = rowCount;
   if (!rowCount) {
-    report.receiptDiagnosis.state = (await recordRuntimeSnapshot(page, report, 'receipt_empty_or_error')).errorIndicators.length ? 'UI ERROR' : 'EMPTY DATA';
-    throw new Error('no existing receipt is visible in the settled receipt ledger');
+    report.receiptDiagnosis.initialDataState = 'EMPTY DATA';
+    const dates = page.locator('input[type="date"]');
+    const queryButton = await findVisibleControl(page, '查詢');
+    const beforePaymentReads = report.getObservations.filter((entry) => entry.pathname === '/api/v1/accounting/payments').length;
+    if (await dates.count() >= 2 && queryButton) {
+      await dates.nth(0).fill('2020-01-01');
+      await dates.nth(1).fill('2030-12-31');
+      await queryButton.click();
+      report.receiptDiagnosis.filterMode = 'WIDE_READ_ONLY_RANGE';
+      await waitUntil(async () => {
+        const snapshot = await recordRuntimeSnapshot(page, report, 'receipt_wide_range_wait');
+        const paymentReads = report.getObservations.filter((entry) => entry.pathname === '/api/v1/accounting/payments').length;
+        const terminal = snapshot.receiptRows > 0 || snapshot.emptyState || snapshot.errorIndicators.length > 0;
+        return paymentReads > beforePaymentReads && terminal && snapshot.loadingIndicators.length === 0;
+      }, 'wide receipt read did not settle', 30_000);
+      rowCount = await rows.count();
+      report.receiptDiagnosis.rowCount = rowCount;
+    }
+    if (!rowCount) {
+      const finalSnapshot = await recordRuntimeSnapshot(page, report, 'receipt_empty_or_error').catch(() => null);
+      report.receiptDiagnosis.state = finalSnapshot?.errorIndicators?.length ? 'UI ERROR' : 'EMPTY DATA';
+      throw new Error('no existing receipt is visible in the settled receipt ledger');
+    }
   }
   report.receiptDiagnosis.state = 'DATA RENDERED';
   let row = page.locator('table.acct-table tbody tr').filter({ hasText: EXISTING_RECEIPT_NUMBER }).first();
