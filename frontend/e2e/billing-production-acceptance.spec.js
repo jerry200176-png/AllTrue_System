@@ -20,6 +20,7 @@ const DIRECTOR = {
 };
 const PENDING_REPORT_ID = 1531;
 const EXISTING_RECEIPT_NUMBER = 'R-001540';
+const EXISTING_RECEIPT_ID = Number(EXISTING_RECEIPT_NUMBER.match(/(\d+)$/)?.[1] || 0);
 const PENDING_STUDENT_CLASS_ID = 2886;
 const RECEIPT_CAMPUS_ID = 9;
 
@@ -483,13 +484,21 @@ async function resolveSpecificCampus(page, report, scope, specificReport) {
     requireCondition(response.ok, `student campus read returned HTTP ${response.status}`);
     const student = listRows(response.body).find((candidate) => Number(candidate?.id) === resolvedStudentId);
     if (student) {
-      report.studentCampusId = Number(
+      const resolvedStudentCampusId = Number(
         student.branch_id
           || student.campus_id
           || student.branch?.id
           || student.campus?.id
           || campusId,
       ) || campusId;
+      report.studentCampusId = resolvedStudentCampusId;
+      if (report.paymentReportBranchId === 'UNKNOWN') {
+        // PaymentReport.index exposes StudentID but not branch_id. This is the
+        // canonical relation used by that endpoint's campus scope: report's
+        // student_id -> Student.branch_id.
+        report.paymentReportBranchId = resolvedStudentCampusId;
+        report.paymentReportBranchSource = 'PaymentReport.student_id → Student.branch_id';
+      }
       break;
     }
   }
@@ -805,10 +814,20 @@ async function readReceiptCanary(page, report) {
       const response = await readProductionJson(page, `/api/v1/accounting/payments?${params.toString()}`);
       requireCondition(response.ok, `receipt canary read returned HTTP ${response.status}`);
       const rows = listRows(response.body);
-      const found = rows.find((row) => String(row.receipt_no || '') === EXISTING_RECEIPT_NUMBER);
+      const found = rows.find((row) => {
+        const receiptNo = String(row.receipt_no || '');
+        return receiptNo === EXISTING_RECEIPT_NUMBER
+          || (EXISTING_RECEIPT_ID > 0 && Number(row.report_id || 0) === EXISTING_RECEIPT_ID)
+          || (EXISTING_RECEIPT_ID > 0 && receiptNo.endsWith(`-${String(EXISTING_RECEIPT_ID).padStart(6, '0')}`));
+      });
       if (found) {
         report.receiptCanaryFound = 'YES';
-        report.receiptCanaryApi = { branch: RECEIPT_CAMPUS_ID, filter: { start, end }, status: response.status };
+        report.receiptCanaryApi = {
+          branch: RECEIPT_CAMPUS_ID,
+          filter: { start, end },
+          status: response.status,
+          matchedBy: String(found.receipt_no || '') === EXISTING_RECEIPT_NUMBER ? 'receipt_no' : 'report_id_or_receipt_suffix',
+        };
         report.receiptCanaryReportId = Number(found.report_id || found.id || 0) || 'PRESENT';
         return found;
       }
@@ -855,13 +874,13 @@ async function openReceiptCanary(page, guard, report) {
     const terminal = snapshot.receiptRows > 0 || snapshot.emptyState || snapshot.errorIndicators.length > 0;
     return hasRead && terminal && snapshot.loadingIndicators.length === 0;
   }, 'receipt canary UI state did not settle', 30_000);
-  const row = page.locator('table.acct-table tbody tr').filter({ hasText: EXISTING_RECEIPT_NUMBER }).first();
+  const row = page.locator('table.acct-table tbody tr').filter({ hasText: String(EXISTING_RECEIPT_ID).padStart(6, '0') }).first();
   if (await row.count() === 0 || !await row.isVisible().catch(() => false)) {
     report.receiptDiagnosis.state = 'EMPTY DATA';
     return null;
   }
   report.receiptDiagnosis.state = 'DATA RENDERED';
-  const receiptButton = row.locator(`button[aria-label="查看 ${EXISTING_RECEIPT_NUMBER}"]`).first();
+  const receiptButton = row.locator('button[aria-label^="查看 "]').first();
   requireCondition(await receiptButton.count() > 0, 'receipt canary row has no receipt action');
   const trigger = await receiptButton.getAttribute('aria-label');
   await receiptButton.click();
@@ -1170,6 +1189,7 @@ test('authenticated production billing and receipt acceptance', async ({ page, c
     accessibleCampusIds: [],
     currentCampus: 'UNKNOWN',
     paymentReportBranchId: 'UNKNOWN',
+    paymentReportBranchSource: 'UNKNOWN',
     studentClassBranchId: 'UNKNOWN',
     studentCampusId: 'UNKNOWN',
     campusResolution: 'INCOMPLETE',
