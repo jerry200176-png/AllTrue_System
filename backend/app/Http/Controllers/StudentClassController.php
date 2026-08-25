@@ -28,6 +28,8 @@ use App\Services\ClassSessionContractReflowService;
 use App\Services\FrontendSubjectIdResolver;
 use App\Services\InvoiceAmountReconciliationService;
 use App\Services\SessionDeductionService;
+use App\Services\SessionContractRecoveryService;
+use App\Exceptions\SessionContractRecoveryException;
 use App\Services\ScheduleGuardService;
 use App\Services\ManualSessionBookingService;
 use App\Services\SessionProjectionReadService;
@@ -3814,6 +3816,54 @@ class StudentClassController extends Controller
 
             throw $exception;
         }
+    }
+
+    /**
+     * Recover and transfer cancelled sessions which still have evaluation or
+     * attendance evidence. Ordinary cancelled sessions remain ineligible.
+     */
+    public function recoverAndTransferSessions(Request $request, StudentClass $studentClass, SessionContractRecoveryService $recovery)
+    {
+        $auth = $this->authorizeStudentClassAccess($studentClass);
+        if ($auth !== null) {
+            return $auth;
+        }
+
+        $data = $request->validate([
+            'session_ids' => 'required|array|min:1|max:100',
+            'session_ids.*' => 'integer',
+            'target_student_class_id' => 'required|integer',
+            'reason' => 'required|string|max:255',
+        ]);
+
+        $target = StudentClass::query()->find($data['target_student_class_id']);
+        if (!$target) {
+            return response()->json(['message' => '目標課程不存在。'], 422);
+        }
+        if ($authTarget = $this->authorizeStudentClassAccess($target)) {
+            return $authTarget;
+        }
+
+        $actor = $request->attributes->get('auth_user');
+        try {
+            $result = $recovery->recoverAndTransfer(
+                (int) $studentClass->ID,
+                (int) $target->ID,
+                array_values(array_unique(array_map('intval', $data['session_ids']))),
+                trim((string) $data['reason']),
+                $actor?->id ? (int) $actor->id : null
+            );
+        } catch (SessionContractRecoveryException $exception) {
+            return response()->json(array_merge([
+                'message' => $exception->getMessage(),
+            ], $exception->payload()), $exception->status());
+        }
+
+        return response()->json(array_merge([
+            'message' => '已恢復並轉移堂次紀錄；評量、點名與扣堂台帳已同步。',
+            'source_course_id' => (int) $studentClass->ID,
+            'target_course_id' => (int) $target->ID,
+        ], $result));
     }
 
     public function destroy(StudentClass $studentClass)

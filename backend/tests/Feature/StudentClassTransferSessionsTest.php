@@ -192,6 +192,155 @@ class StudentClassTransferSessionsTest extends TestCase
         );
     }
 
+    public function test_recovers_evidence_backed_cancelled_session_and_transfers_all_artifacts(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $source = $this->createCourse($student->id, 1);
+        $target = $this->createCourse($student->id, 1);
+        $sessionId = $this->createClassSession((int) $source->ID, '2026-08-08', 'cancelled');
+
+        DB::table('LearningRecord')->insert([
+            'StudentClassID' => $source->ID,
+            'ClassSessionID' => $sessionId,
+            'TeacherID' => 1,
+            'CreatedByUserID' => 1,
+            'Content' => '取消前已填寫的評量',
+            'Status' => 'pending',
+            'VoidedAt' => now(),
+            'VoidedByUserID' => 1,
+            'VoidReason' => '由已上調整狀態',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('StudentSingIn')->insert([
+            'StudentClassID' => $source->ID,
+            'ClassSessionID' => $sessionId,
+            'StudentID' => $student->id,
+            'TeacherID' => 1,
+            'Status' => 'present',
+            'SessionDeducted' => 1,
+            'SignInDT' => now(),
+            'VoidedAt' => now(),
+            'VoidedByUserID' => 1,
+            'VoidReason' => '由已上調整狀態',
+        ]);
+
+        $response = $this->postJson(
+            "/api/v1/student-classes/{$source->ID}/recover-transfer-sessions",
+            [
+                'session_ids' => [$sessionId],
+                'target_student_class_id' => $target->ID,
+                'reason' => '原合約誤將已完成堂次標示為已取消，依歷史證據恢復移轉',
+            ],
+            ['Authorization' => "Bearer {$token}"]
+        );
+
+        $response->assertOk()
+            ->assertJsonPath('recovered_session_ids.0', $sessionId)
+            ->assertJsonPath('transferred_session_ids.0', $sessionId);
+        $this->assertSame('attended', DB::table('ClassSession')->where('id', $sessionId)->value('Status'));
+        $this->assertSame((int) $target->ID, (int) DB::table('ClassSession')->where('id', $sessionId)->value('StudentClassID'));
+        $this->assertSame('取消前已填寫的評量', DB::table('LearningRecord')->where('ClassSessionID', $sessionId)->value('Content'));
+        $this->assertNull(DB::table('LearningRecord')->where('ClassSessionID', $sessionId)->value('VoidedAt'));
+        $this->assertNull(DB::table('StudentSingIn')->where('ClassSessionID', $sessionId)->value('VoidedAt'));
+        $this->assertSame((int) $target->ID, (int) DB::table('LearningRecord')->where('ClassSessionID', $sessionId)->value('StudentClassID'));
+        $this->assertSame((int) $target->ID, (int) DB::table('StudentSingIn')->where('ClassSessionID', $sessionId)->value('StudentClassID'));
+
+        $source->refresh();
+        $target->refresh();
+        $this->assertSame(0, (int) $source->UsedSessions);
+        $this->assertSame(1, (int) $target->UsedSessions);
+    }
+
+    public function test_recovery_endpoint_rejects_cancelled_session_without_history(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $source = $this->createCourse($student->id, 1);
+        $target = $this->createCourse($student->id, 1);
+        $sessionId = $this->createClassSession((int) $source->ID, '2026-08-15', 'cancelled');
+
+        $response = $this->postJson(
+            "/api/v1/student-classes/{$source->ID}/recover-transfer-sessions",
+            [
+                'session_ids' => [$sessionId],
+                'target_student_class_id' => $target->ID,
+                'reason' => '確認取消堂次資料',
+            ],
+            ['Authorization' => "Bearer {$token}"]
+        );
+
+        $response->assertStatus(422);
+        $this->assertSame('cancelled', DB::table('ClassSession')->where('id', $sessionId)->value('Status'));
+        $this->assertSame((int) $source->ID, (int) DB::table('ClassSession')->where('id', $sessionId)->value('StudentClassID'));
+    }
+
+    public function test_recovery_endpoint_requires_a_reason(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $source = $this->createCourse($student->id, 1);
+        $target = $this->createCourse($student->id, 1);
+        $sessionId = $this->createClassSession((int) $source->ID, '2026-08-22', 'cancelled');
+        $this->createLearningRecord((int) $source->ID, $sessionId);
+
+        $this->postJson(
+            "/api/v1/student-classes/{$source->ID}/recover-transfer-sessions",
+            ['session_ids' => [$sessionId], 'target_student_class_id' => $target->ID],
+            ['Authorization' => "Bearer {$token}"]
+        )->assertStatus(422);
+
+        $this->assertSame('cancelled', DB::table('ClassSession')->where('id', $sessionId)->value('Status'));
+    }
+
+    public function test_recovery_endpoint_is_director_only(): void
+    {
+        $token = $this->createTeacherToken([1]);
+        $student = $this->createStudent(1);
+        $source = $this->createCourse($student->id, $this->lastTeacherUserId);
+        $target = $this->createCourse($student->id, $this->lastTeacherUserId);
+        $sessionId = $this->createClassSession((int) $source->ID, '2026-08-29', 'cancelled');
+        $this->createLearningRecord((int) $source->ID, $sessionId);
+
+        $this->postJson(
+            "/api/v1/student-classes/{$source->ID}/recover-transfer-sessions",
+            [
+                'session_ids' => [$sessionId],
+                'target_student_class_id' => $target->ID,
+                'reason' => '主任授權恢復',
+            ],
+            ['Authorization' => "Bearer {$token}"]
+        )->assertStatus(403);
+    }
+
+    public function test_recovery_target_slot_conflict_leaves_cancelled_evidence_untouched(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $source = $this->createCourse($student->id, 1);
+        $target = $this->createCourse($student->id, 1);
+        $sessionId = $this->createClassSession((int) $source->ID, '2026-09-05', 'cancelled');
+        $this->createLearningRecord((int) $source->ID, $sessionId);
+        $targetSessionId = $this->createClassSession((int) $target->ID, '2026-09-05', 'attended');
+
+        $this->postJson(
+            "/api/v1/student-classes/{$source->ID}/recover-transfer-sessions",
+            [
+                'session_ids' => [$sessionId],
+                'target_student_class_id' => $target->ID,
+                'reason' => '恢復歷史證據',
+            ],
+            ['Authorization' => "Bearer {$token}"]
+        )->assertStatus(422)
+            ->assertJsonPath('code', 'target_slot_conflict')
+            ->assertJsonPath('conflicts.0.session_id', $targetSessionId);
+
+        $this->assertSame('cancelled', DB::table('ClassSession')->where('id', $sessionId)->value('Status'));
+        $this->assertSame((int) $source->ID, (int) DB::table('ClassSession')->where('id', $sessionId)->value('StudentClassID'));
+        $this->assertSame((int) $source->ID, (int) DB::table('LearningRecord')->where('ClassSessionID', $sessionId)->value('StudentClassID'));
+    }
+
     // ── helpers ──
 
     private function createDirectorToken(array $campusIds): string

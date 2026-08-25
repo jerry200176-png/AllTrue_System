@@ -1,3 +1,10 @@
+## 2026-08-25 — fix(course): 有歷史證據的取消堂次可受控恢復並移轉
+
+<!-- release-notes: staff_update=staff-2026-08-25-cancelled-session-recovery-transfer -->
+
+- 課程管理的「合約／堂次調整」會辨識仍保留評量或點名紀錄的已取消堂次，明確標示為「已取消（可恢復）」；真正沒有歷史證據的取消堂次仍不可移轉。
+- 恢復流程要求主任填寫原因，並在單一交易內恢復為已上課、同步移轉評量／點名／扣堂台帳及來源／目標合約餘額；留下最小化稽核紀錄。
+
 ## 2026-08-25 — fix(course): 堂次轉移先檢查目標時段衝突
 
 <!-- release-notes: staff_update=staff-2026-08-25-transfer-slot-conflict-preflight -->

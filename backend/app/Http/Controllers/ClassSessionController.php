@@ -342,6 +342,8 @@ class ClassSessionController extends Controller
                 'si.SignInDT as attendance_sign_in_at',
                 'si.Memo as attendance_memo',
                 DB::raw('COALESCE(rbu.Name, siu.Name, "") as recorded_by_name'),
+                DB::raw('EXISTS (SELECT 1 FROM LearningRecord lr_history WHERE lr_history.ClassSessionID = cs.id) as learning_record_history'),
+                DB::raw('EXISTS (SELECT 1 FROM StudentSingIn si_history WHERE si_history.ClassSessionID = cs.id) as attendance_history'),
             ]);
 
         if ($role === 'teacher') {
@@ -474,6 +476,10 @@ class ClassSessionController extends Controller
         $row->learning_record_status = $row->learning_record_status ?? 'missing';
         $row->learning_record_body_filled = $row->learning_record_id !== null && trim((string) ($row->learning_record_progress ?? '')) !== '';
         $row->learning_record_teacher_id = $row->learning_record_teacher_id !== null ? (int) $row->learning_record_teacher_id : null;
+        $row->has_learning_record_history = (bool) ($row->learning_record_history ?? false);
+        $row->has_attendance_history = (bool) ($row->attendance_history ?? false);
+        $row->recoverable_cancelled = strtolower((string) ($row->Status ?? '')) === 'cancelled'
+            && ($row->has_learning_record_history || $row->has_attendance_history);
         unset($row->learning_record_progress);
         $row->attendance_sign_in_at = $row->attendance_sign_in_at ?: null;
         $row->attendance_memo = $row->attendance_memo ?: '';
@@ -498,6 +504,8 @@ class ClassSessionController extends Controller
             $row->Status,
             $row->IsContractException,
             $row->effective_status,
+            $row->learning_record_history,
+            $row->attendance_history,
             $row->Note,
             $row->sc_rate,
             $row->sc_session_duration,

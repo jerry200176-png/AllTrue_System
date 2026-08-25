@@ -1181,6 +1181,7 @@ import { lockScroll, unlockScroll } from '../lib/useScrollLock';
 import { SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
 import { fetchClassSessions, normalizeClassSessionsPayload, sessionViewModelPatchFromApi } from '../lib/classSessionsApi';
+import { buildTransferableSessionOption } from '../lib/sessionTransferEligibility';
 import { getPerSessionFee, getCourseTotalFee } from '../lib/coursePricing';
 import { coursesWithSlotConflicts } from '../lib/slotOccupancy';
 import { courseRowWarningSummary } from '../lib/courseRowWarnings';
@@ -2130,10 +2131,9 @@ async function submitBillingCorrection() {
 const transferSessionsSessionOptions = computed(() => {
   const c = transferSessionsCourse.value;
   if (!c) return [];
-  const movableStatuses = new Set(['attended', 'completed', 'late']);
   return allSessionUnits(c)
-    .filter((s) => movableStatuses.has(String(s?.status || '').toLowerCase()))
-    .map((s) => ({ id: Number(s.id), date: s.date, status: s.status }));
+    .map(buildTransferableSessionOption)
+    .filter(Boolean);
 });
 
 function openTransferSessionsModal(course) {
@@ -2207,7 +2207,7 @@ async function loadTransferTargetCourses(sourceCourse) {
   }
 }
 
-async function submitTransferSessions({ targetCourseId, sessionIds }) {
+async function submitTransferSessions({ targetCourseId, sessionIds, reason }) {
   const course = transferSessionsCourse.value;
   if (!course || sessionIds.length === 0) return;
   transferSessionsSubmitting.value = true;
@@ -2216,7 +2216,11 @@ async function submitTransferSessions({ targetCourseId, sessionIds }) {
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
     if (!token) { transferSessionsError.value = '請重新登入後再試'; return; }
-    const res = await fetch(`/api/v1/student-classes/${course.id}/transfer-sessions`, {
+    const hasRecovery = transferSessionsSessionOptions.value.some(
+      (session) => sessionIds.includes(Number(session.id)) && session.recoverableCancelled
+    );
+    const endpoint = hasRecovery ? 'recover-transfer-sessions' : 'transfer-sessions';
+    const res = await fetch(`/api/v1/student-classes/${course.id}/${endpoint}`, {
       method: 'POST',
       credentials: 'include',
       headers: {
@@ -2224,7 +2228,11 @@ async function submitTransferSessions({ targetCourseId, sessionIds }) {
         Accept: 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ session_ids: sessionIds, target_student_class_id: targetCourseId }),
+      body: JSON.stringify({
+        session_ids: sessionIds,
+        target_student_class_id: targetCourseId,
+        ...(hasRecovery ? { reason } : {}),
+      }),
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {

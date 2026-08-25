@@ -57,13 +57,28 @@
         </div>
       </div>
 
+      <div v-if="hasRecoverySelection" class="recovery-warning" role="status">
+        已選取仍保留評量／點名證據的「已取消」堂次。送出後會恢復為「已上課」，並將評量、點名與扣堂台帳一起移轉。
+      </div>
+      <div v-if="hasRecoverySelection" class="form-group">
+        <label for="transfer-recovery-reason">恢復原因（必填）</label>
+        <textarea
+          id="transfer-recovery-reason"
+          v-model.trim="recoveryReason"
+          rows="2"
+          maxlength="255"
+          :disabled="submitting"
+          placeholder="例如：原合約誤將已完成堂次標示為已取消，依評量／點名紀錄恢復並移轉"
+        />
+      </div>
+
       <p v-if="errorMessage" class="transfer-error" role="alert">{{ errorMessage }}</p>
 
       <div class="actions">
         <button class="ghost" :disabled="submitting" @click="$emit('close')">取消</button>
         <button
           class="primary"
-          :disabled="submitting || selectedIds.length === 0 || !targetCourseId"
+          :disabled="submitting || selectedIds.length === 0 || !targetCourseId || (hasRecoverySelection && !recoveryReason)"
           @click="onSubmit"
         >{{ submitting ? '轉移中…' : `轉移 ${selectedIds.length} 堂` }}</button>
       </div>
@@ -91,6 +106,11 @@ const subjectLabel = computed(() => getSubjectLabel(props.subject));
 const targetCourseId = ref('');
 const targetCourseQuery = ref('');
 const selectedIds = ref([]);
+const recoveryReason = ref('');
+
+const hasRecoverySelection = computed(() => props.sessions.some((session) => (
+  selectedIds.value.includes(Number(session.id)) && session.recoverableCancelled
+)));
 
 const filteredTargetCourses = computed(() => {
   const q = targetCourseQuery.value.trim().toLowerCase();
@@ -113,10 +133,14 @@ watch(() => props.show, (isShown) => {
     targetCourseId.value = '';
     targetCourseQuery.value = '';
     selectedIds.value = [];
+    recoveryReason.value = '';
   }
 });
 
-const STATUS_LABELS = { attended: '已上', late: '已上（遲到）', leave: '請假', absent: '缺席', scheduled: '未上' };
+const STATUS_LABELS = {
+  attended: '已上', late: '已上（遲到）', leave: '請假', absent: '缺席', scheduled: '未上',
+  cancelled_recoverable: '已取消（可恢復）',
+};
 function statusLabel(status) {
   return STATUS_LABELS[status] || status || '';
 }
@@ -146,7 +170,12 @@ function onTargetCourseInput(event) {
 function onSubmit() {
   const targetId = Number(targetCourseId.value);
   if (!targetId || targetId <= 0) return;
-  emit('submit', { targetCourseId: targetId, sessionIds: selectedIds.value.map(Number) });
+  if (hasRecoverySelection.value && !recoveryReason.value) return;
+  emit('submit', {
+    targetCourseId: targetId,
+    sessionIds: selectedIds.value.map(Number),
+    ...(hasRecoverySelection.value ? { reason: recoveryReason.value } : {}),
+  });
 }
 </script>
 
@@ -167,6 +196,13 @@ function onSubmit() {
 .form-group label { display: block; font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
 .form-group input[type="text"] {
   width: 100%; padding: 8px 10px; border: 1px solid var(--ds-hairline); border-radius: 8px; font-size: 14px;
+}
+.form-group textarea {
+  width: 100%; padding: 8px 10px; border: 1px solid var(--ds-hairline); border-radius: 8px; font-size: 13px; resize: vertical;
+}
+.recovery-warning {
+  margin: 8px 0 14px; padding: 10px 12px; border: 1px solid #f0b429; border-radius: 8px;
+  background: #fff8df; color: #7a4b00; font-size: 12px; line-height: 1.5;
 }
 .hint { display: block; margin-top: 6px; font-size: 12px; color: var(--text-light); }
 .session-pick-list {
