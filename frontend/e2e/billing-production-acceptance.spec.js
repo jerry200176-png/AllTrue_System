@@ -739,6 +739,10 @@ async function openTuitionReceipt(page, guard, report) {
   report.receiptDiagnosis.rowCount = rowCount;
   if (!rowCount) {
     report.receiptDiagnosis.initialDataState = 'EMPTY DATA';
+    report.receiptDiagnosis.state = 'EMPTY DATA';
+    const broadRead = await readProductionJson(page, '/api/v1/accounting/payments?start=2020-01-01&end=2030-12-31&per_page=200');
+    report.receiptDiagnosis.broadApiStatus = broadRead.status;
+    report.receiptDiagnosis.broadApiDataLength = Array.isArray(broadRead.body?.data) ? broadRead.body.data.length : 0;
     const dates = page.locator('input[type="date"]');
     const queryButton = await findVisibleControl(page, '查詢');
     const beforePaymentReads = report.getObservations.filter((entry) => entry.pathname === '/api/v1/accounting/payments').length;
@@ -758,7 +762,7 @@ async function openTuitionReceipt(page, guard, report) {
     }
     if (!rowCount) {
       const finalSnapshot = await recordRuntimeSnapshot(page, report, 'receipt_empty_or_error').catch(() => null);
-      report.receiptDiagnosis.state = finalSnapshot?.errorIndicators?.length ? 'UI ERROR' : 'EMPTY DATA';
+      if (finalSnapshot?.errorIndicators?.length) report.receiptDiagnosis.state = 'UI ERROR';
       throw new Error('no existing receipt is visible in the settled receipt ledger');
     }
   }
