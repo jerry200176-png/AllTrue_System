@@ -35,6 +35,7 @@ use App\Services\TeacherScopeService;
 use App\Services\CourseEditabilityService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -3668,7 +3669,8 @@ class StudentClassController extends Controller
             'target_student_class_id' => 'required|integer',
         ]);
 
-        return DB::transaction(function () use ($studentClass, $data) {
+        try {
+            return DB::transaction(function () use ($studentClass, $data) {
             $source = StudentClass::where('ID', $studentClass->ID)->lockForUpdate()->firstOrFail();
             $target = StudentClass::where('ID', $data['target_student_class_id'])->lockForUpdate()->firstOrFail();
 
@@ -3731,6 +3733,40 @@ class StudentClassController extends Controller
                 ], 422);
             }
 
+            // The production unique index rejects two active rows in the same
+            // target course/date/start-time slot.  Check before changing any
+            // source row so a normal data conflict is reported as a useful 422
+            // instead of bubbling up as a generic 500 after the first save.
+            $targetSlotConflicts = DB::table('ClassSession')
+                ->where('StudentClassID', $target->ID)
+                ->where(function ($query) {
+                    $query->whereNull('Status')->orWhere('Status', '!=', 'cancelled');
+                })
+                ->where(function ($query) use ($sessions) {
+                    foreach ($sessions as $index => $session) {
+                        $method = $index === 0 ? 'where' : 'orWhere';
+                        $query->{$method}(function ($slot) use ($session) {
+                            $slot->whereDate('SessionDate', $session->SessionDate)
+                                ->where('StartTime', $session->StartTime);
+                        });
+                    }
+                })
+                ->get(['id', 'SessionDate', 'StartTime'])
+                ->map(fn ($row) => [
+                    'session_id' => (int) $row->id,
+                    'date' => substr((string) $row->SessionDate, 0, 10),
+                    'start_time' => substr((string) $row->StartTime, 0, 5),
+                ]);
+
+            if ($targetSlotConflicts->isNotEmpty()) {
+                $dates = $targetSlotConflicts->pluck('date')->unique()->values()->implode('、');
+                return response()->json([
+                    'code' => 'target_slot_conflict',
+                    'message' => "目標課程已有 {$dates} 的同時段堂次，未執行任何轉移。請先處理目標課程的重複堂次，或選擇沒有相同時段的目標課程。",
+                    'conflicts' => $targetSlotConflicts->values()->all(),
+                ], 422);
+            }
+
             foreach ($sessions as $session) {
                 $session->StudentClassID = $target->ID;
                 $session->save(); // fires assertCourseIsMutable() against the TARGET course
@@ -3745,7 +3781,22 @@ class StudentClassController extends Controller
                 'source_course_id' => (int) $source->ID,
                 'target_course_id' => (int) $target->ID,
             ]);
-        });
+            });
+        } catch (QueryException $exception) {
+            // A concurrent writer can create the target slot after the
+            // preflight.  Keep the unique-index guard, but translate that
+            // expected race into the same actionable response.
+            $message = (string) $exception->getMessage();
+            if ((string) $exception->getCode() === '23000'
+                && (str_contains($message, 'uq_class_session_slot') || str_contains($message, 'Duplicate entry'))) {
+                return response()->json([
+                    'code' => 'target_slot_conflict',
+                    'message' => '目標課程剛新增了相同日期／時段的堂次，未執行任何轉移。請重新整理後處理重複堂次，或選擇其他目標課程。',
+                ], 422);
+            }
+
+            throw $exception;
+        }
     }
 
     public function destroy(StudentClass $studentClass)
