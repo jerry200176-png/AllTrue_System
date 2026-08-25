@@ -8,8 +8,21 @@ import {
   paymentReportReceiptUrl,
   parsePositiveReportId,
 } from '../../lib/paymentReportReceipt.js';
+import { receiptImageBlob } from '../../lib/receiptImage.js';
 
 const mockToken = 'test-token';
+
+const VALID_PNG_BYTES = Uint8Array.from([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+  0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+  0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+  0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4,
+  0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41,
+  0x54, 0x78, 0x9c, 0x63, 0x60, 0x00, 0x00, 0x00,
+  0x02, 0x00, 0x01, 0xe2, 0x21, 0xbc, 0x33, 0x00,
+  0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae,
+  0x42, 0x60, 0x82,
+]);
 
 const SAMPLE = {
   receipt_no: 'R-000123',
@@ -36,6 +49,19 @@ function ok(json) {
 }
 function fail(status, message) {
   return { ok: false, status, json: () => Promise.resolve(message ? { message } : {}) };
+}
+function pngBlob() {
+  return new Blob([VALID_PNG_BYTES], { type: 'image/png' });
+}
+async function pngEvidence(blob) {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  return {
+    validSignature: bytes.slice(0, 8).every((byte, index) => byte === [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a][index]),
+    width: view.getUint32(16),
+    height: view.getUint32(20),
+    bytes: bytes.length,
+  };
 }
 async function tick() {
   await new Promise((r) => setTimeout(r, 30));
@@ -159,7 +185,7 @@ describe('ReceiptModal payment-reports contract', () => {
     Object.defineProperty(window, 'ClipboardItem', {
       configurable: true,
       value: class ClipboardItemMock {
-        constructor(items) { Object.assign(this, items); }
+        constructor(items) { this.items = items; }
       },
     });
     vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:receipt');
@@ -170,7 +196,7 @@ describe('ReceiptModal payment-reports contract', () => {
       fillStyle: '#fff',
     });
     vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((callback) => {
-      callback(new Blob(['png'], { type: 'image/png' }));
+      callback(pngBlob());
     });
     const imageOnLoad = vi.fn();
     Object.defineProperty(window, 'Image', {
@@ -189,8 +215,115 @@ describe('ReceiptModal payment-reports contract', () => {
     await tick();
 
     expect(write).toHaveBeenCalledTimes(1);
-    expect(write.mock.calls[0][0][0]).toEqual({ 'image/png': expect.any(Blob) });
+    const imageBlob = write.mock.calls[0][0][0].items['image/png'];
+    const evidence = await pngEvidence(imageBlob);
+    expect(imageBlob.type).toBe('image/png');
+    expect(evidence).toMatchObject({ validSignature: true, width: 1, height: 1 });
+    expect(evidence.bytes).toBeGreaterThan(0);
     expect(wrapper.text()).toContain('已複製圖片');
+  });
+
+  it('uses the same canonical PNG generator for a valid download with Traditional Chinese content', async () => {
+    global.fetch.mockResolvedValueOnce(ok(SAMPLE));
+    const generatedBlobs = [];
+    vi.spyOn(URL, 'createObjectURL').mockImplementation((blob) => {
+      generatedBlobs.push(blob);
+      return `blob:receipt-${generatedBlobs.length}`;
+    });
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+      fillRect: vi.fn(),
+      drawImage: vi.fn(),
+      fillStyle: '#fff',
+    });
+    vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((callback) => callback(pngBlob()));
+    Object.defineProperty(window, 'Image', {
+      configurable: true,
+      value: class ImageMock {
+        set src(_value) { this.onload?.(); }
+      },
+    });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+    const wrapper = mount(ReceiptModal, { props: { show: true, reportId: 123 } });
+    await tick();
+    await wrapper.find('[data-testid="download-receipt-image"]').trigger('click');
+    await tick();
+
+    const downloadedPng = generatedBlobs.at(-1);
+    const evidence = await pngEvidence(downloadedPng);
+    expect(click).toHaveBeenCalled();
+    expect(downloadedPng.type).toBe('image/png');
+    expect(evidence).toMatchObject({ validSignature: true, width: 1, height: 1 });
+    expect(wrapper.text()).toContain('電子收據');
+    expect(wrapper.text()).toContain('王小明');
+  });
+
+  it('reports image generation failure without silently copying text', async () => {
+    global.fetch.mockResolvedValueOnce(ok(SAMPLE));
+    const write = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { write } });
+    Object.defineProperty(window, 'ClipboardItem', { configurable: true, value: class ClipboardItemMock {} });
+    Object.defineProperty(window, 'Image', {
+      configurable: true,
+      value: class ImageMock {
+        set src(_value) { this.onerror?.(new Error('decode failed')); }
+      },
+    });
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:receipt');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+
+    const wrapper = mount(ReceiptModal, { props: { show: true, reportId: 123 } });
+    await tick();
+    await wrapper.find('[data-testid="copy-receipt-image"]').trigger('click');
+    await tick();
+
+    expect(write).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain('複製圖片失敗');
+    expect(wrapper.text()).not.toContain('已複製文字');
+  });
+
+  it('records the generator stages without exposing receipt contents', async () => {
+    global.fetch.mockResolvedValueOnce(ok(SAMPLE));
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:receipt');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+      fillRect: vi.fn(),
+      drawImage: vi.fn(),
+      fillStyle: '#fff',
+    });
+    vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((callback) => callback(pngBlob()));
+    Object.defineProperty(window, 'Image', {
+      configurable: true,
+      value: class ImageMock {
+        set src(_value) { this.onload?.(); }
+      },
+    });
+
+    const wrapper = mount(ReceiptModal, { props: { show: true, reportId: 123 } });
+    await tick();
+    const stages = {};
+    const blob = await receiptImageBlob({
+      source: wrapper.find('.receipt-document').element,
+      snapshot: adaptPaymentReportReceipt(SAMPLE, 123).content_snapshot,
+      receiptNumber: 'R-000123',
+      onStage: (name, value) => { stages[name] = value; },
+    });
+
+    expect(blob.type).toBe('image/png');
+    expect((await pngEvidence(blob)).validSignature).toBe(true);
+    expect(stages).toMatchObject({
+      receiptPrintRefAvailable: true,
+      cloneSuccessful: true,
+      svgStringGenerated: true,
+      svgBlobGenerated: { type: 'image/svg+xml;charset=utf-8' },
+      objectUrlGenerated: true,
+      imageOutcome: 'onload',
+      canvasContextAvailable: true,
+      drawImage: 'SUCCESS',
+      canvasToBlob: 'BLOB',
+      pngBlob: { type: 'image/png' },
+    });
   });
 
   it('classifies 403/404/422 without generic 請求失敗', async () => {
