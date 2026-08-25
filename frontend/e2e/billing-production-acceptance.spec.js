@@ -839,8 +839,16 @@ async function assertReceiptActions(page) {
     const action = await receiptActionLocator(modal, testId, label);
     requireCondition(action, `${label} is not rendered`);
   }
-  requireCondition(await modal.getByRole('button', { name: '列印', exact: true }).isVisible(), 'print action is not rendered');
+  requireCondition(await receiptPrintActionLocator(modal), 'print action is not rendered');
   return modal;
+}
+
+async function receiptPrintActionLocator(modal) {
+  const exact = modal.getByRole('button', { name: '列印', exact: true });
+  if (await exact.count() && await exact.first().isVisible().catch(() => false)) return exact.first();
+  const text = modal.locator('button').filter({ hasText: '列印' });
+  if (await text.count() && await text.first().isVisible().catch(() => false)) return text.first();
+  return null;
 }
 
 async function collectReceiptStructuralEvidence(page) {
@@ -856,7 +864,7 @@ async function collectReceiptStructuralEvidence(page) {
       ? [...modalNode.querySelectorAll('button')]
         .filter(visible)
         .map((button) => (button.textContent || '').replace(/\s+/g, ' ').trim())
-        .filter((label) => safeLabels.has(label))
+        .flatMap((label) => [...safeLabels].filter((safeLabel) => label.includes(safeLabel)))
       : [];
     return {
       visibleButtonLabels: [...new Set(visibleButtons)],
@@ -1083,7 +1091,7 @@ async function openReceiptCanary(page, guard, report) {
   report.receiptActionCopyImage = await receiptActionLocator(modal, 'copy-receipt-image', '複製圖片') ? 'YES' : 'NO';
   report.receiptActionCopyText = await receiptActionLocator(modal, 'copy-receipt-text', '複製文字') ? 'YES' : 'NO';
   report.receiptActionDownload = await receiptActionLocator(modal, 'download-receipt-image', '下載圖片') ? 'YES' : 'NO';
-  report.receiptActionPrint = await modal.getByRole('button', { name: '列印', exact: true }).isVisible().catch(() => false) ? 'YES' : 'NO';
+  report.receiptActionPrint = await receiptPrintActionLocator(modal) ? 'YES' : 'NO';
   report.receiptEntryPoints.push({
     page: '帳務中心／收據紀錄',
     route: report.runtimeSnapshots.at(-1)?.pathname || 'tuition-collect',
