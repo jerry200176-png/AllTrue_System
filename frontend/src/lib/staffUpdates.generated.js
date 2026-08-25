@@ -4,6 +4,46 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-25-payment-report-reconciliation",
+    "publishedAt": "2026-08-25",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "帳務回報流程更清楚",
+    "summary": "現金回報先待對帳，課程與備註資訊會一路保留。",
+    "items": [
+      "現金或匯款送出後會先進「待對帳」；確認入帳後才變成已繳費並開立收據，重複送出會直接帶到待對帳。",
+      "同一學生同科目有多筆課程時，帳務列會顯示課程編號與日期，避免把已繳與未繳課程看成同一筆。",
+      "回報備註會自動保留在對帳、電子收據與學生編輯頁的最近入帳備註，不必重複輸入；收據也可直接複製。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "現金或匯款送出後會先進「待對帳」；確認入帳後才變成已繳費並開立收據，重複送出會直接帶到待對帳。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "同一學生同科目有多筆課程時，帳務列會顯示課程編號與日期，避免把已繳與未繳課程看成同一筆。",
+          "回報備註會自動保留在對帳、電子收據與學生編輯頁的最近入帳備註，不必重複輸入；收據也可直接複製。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-25:payment-report-reconciliation",
+      "github:pull/2039"
+    ],
+    "date": "2026-08-25",
+    "version": "2026.08.25"
+  },
+  {
     "id": "staff-2026-08-24-course-editability-preflight",
     "publishedAt": "2026-08-24",
     "effectiveAt": null,
