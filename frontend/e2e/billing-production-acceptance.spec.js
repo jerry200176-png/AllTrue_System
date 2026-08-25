@@ -536,13 +536,21 @@ async function downloadEvidence(page, modal, report) {
 }
 
 async function openTuitionReceipt(page, guard) {
-  await navigateTo(page, '帳務中心', '帳務中心', guard);
+  const accountingHeading = page.getByRole('heading', { name: '帳務中心', exact: true });
+  if (await accountingHeading.count() === 0) {
+    await navigateTo(page, '帳務中心', '帳務中心', guard);
+  } else {
+    guard.assertNoUnexpectedMutations();
+  }
+  console.log('UAT_STAGE receipt_accounting_open');
   await page.getByRole('tab', { name: '收據流水紀錄', exact: true }).click();
+  console.log('UAT_STAGE receipt_ledger_tab_open');
   const dates = page.locator('.acct-filter-card input[type="date"]');
   await dates.nth(0).fill('2026-08-01');
   await dates.nth(1).fill('2026-08-31');
   await page.locator('input[placeholder="搜尋學生姓名"]').fill('');
   await page.getByRole('button', { name: '查詢', exact: true }).click();
+  console.log('UAT_STAGE receipt_ledger_query_sent');
   guard.assertNoUnexpectedMutations();
   await waitUntil(() => page.getByText(EXISTING_RECEIPT_NUMBER, { exact: true }).count().then((count) => count > 0), 'known existing receipt was not found in accounting records');
   const row = page.locator('table.acct-table tbody tr').filter({ hasText: EXISTING_RECEIPT_NUMBER }).first();
@@ -588,6 +596,8 @@ test('authenticated production billing and receipt acceptance', async ({ page, c
   // Canonical paginated reads plus receipt rendering/clipboard/download checks
   // are intentionally bounded longer than the legacy 45s smoke default.
   test.setTimeout(180_000);
+  page.setDefaultTimeout(15_000);
+  page.setDefaultNavigationTimeout(20_000);
   requireCondition(BASE && DIRECTOR.account && DIRECTOR.password, 'production smoke secrets are unavailable');
 
   const report = {
@@ -739,7 +749,7 @@ test('authenticated production billing and receipt acceptance', async ({ page, c
     report.failedRequests = runtime.failedRequests;
     if (guard.phase() === 'authenticated') report.mutationGuard = 'ACTIVE';
     if (!failure && blocked.length) failure = new Error('unexpected production mutation was blocked');
-    await guard.dispose();
+    await guard.dispose().catch(() => {});
     console.log(`PRODUCTION_BILLING_UAT_REPORT ${JSON.stringify(report)}`);
   }
 
