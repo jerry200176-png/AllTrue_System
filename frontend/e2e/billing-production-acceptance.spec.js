@@ -886,6 +886,142 @@ async function collectReceiptStructuralEvidence(page) {
   });
 }
 
+async function diagnoseLegacyReceiptImagePath(page, report) {
+  report.receiptImageStage = await page.evaluate(async () => {
+    const stage = {
+      receiptPrintRefAvailable: false,
+      sourceDimensions: '0x0',
+      cloneSuccessful: false,
+      svgStringGenerated: false,
+      svgBlobGenerated: false,
+      svgBlobType: 'UNKNOWN',
+      svgBlobBytes: 0,
+      objectUrlGenerated: false,
+      imageOutcome: 'NOT REACHED',
+      canvasContextAvailable: false,
+      drawImage: 'NOT REACHED',
+      canvasToBlob: 'NOT REACHED',
+      pngBlobType: 'UNKNOWN',
+      pngBlobBytes: 0,
+      rootCause: 'NOT DETERMINED',
+    };
+    const source = document.querySelector('.receipt-modal .receipt-document');
+    stage.receiptPrintRefAvailable = Boolean(source);
+    if (!source) return stage;
+
+    const bounds = source.getBoundingClientRect();
+    const width = Math.max(1, Math.ceil(source.scrollWidth || bounds.width));
+    const height = Math.max(1, Math.ceil(source.scrollHeight || bounds.height));
+    stage.sourceDimensions = `${width}x${height}`;
+
+    let clone;
+    try {
+      clone = source.cloneNode(true);
+      const sourceNodes = [source, ...source.querySelectorAll('*')];
+      const targetNodes = [clone, ...clone.querySelectorAll('*')];
+      sourceNodes.forEach((sourceNode, index) => {
+        const targetNode = targetNodes[index];
+        if (!targetNode) return;
+        const styles = window.getComputedStyle(sourceNode);
+        let cssText = '';
+        for (let i = 0; i < styles.length; i += 1) {
+          const property = styles.item(i);
+          cssText += `${property}:${styles.getPropertyValue(property)};`;
+        }
+        targetNode.setAttribute('style', cssText);
+      });
+      stage.cloneSuccessful = true;
+    } catch (_) {
+      stage.rootCause = 'CLONE_FAILED';
+      return stage;
+    }
+
+    let svg;
+    try {
+      svg = [
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`,
+        '<foreignObject width="100%" height="100%">',
+        `<div xmlns="http://www.w3.org/1999/xhtml" style="width:${width}px;min-height:${height}px;background:white;">`,
+        clone.outerHTML,
+        '</div></foreignObject></svg>',
+      ].join('');
+      stage.svgStringGenerated = svg.length > 0;
+    } catch (_) {
+      stage.rootCause = 'SVG_STRING_GENERATION_FAILED';
+      return stage;
+    }
+
+    let svgUrl;
+    try {
+      const svgBlob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+      stage.svgBlobGenerated = true;
+      stage.svgBlobType = svgBlob.type;
+      stage.svgBlobBytes = svgBlob.size;
+      svgUrl = URL.createObjectURL(svgBlob);
+      stage.objectUrlGenerated = Boolean(svgUrl);
+    } catch (_) {
+      stage.rootCause = 'SVG_BLOB_OR_OBJECT_URL_FAILED';
+      return stage;
+    }
+
+    return new Promise((resolve) => {
+      const image = new window.Image();
+      const finish = () => {
+        URL.revokeObjectURL(svgUrl);
+        resolve(stage);
+      };
+      image.onload = () => {
+        stage.imageOutcome = 'onload';
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = width * 2;
+          canvas.height = height * 2;
+          const context = canvas.getContext('2d');
+          stage.canvasContextAvailable = Boolean(context);
+          if (!context) {
+            stage.rootCause = 'CANVAS_CONTEXT_UNAVAILABLE';
+            finish();
+            return;
+          }
+          try {
+            context.drawImage(image, 0, 0, canvas.width, canvas.height);
+            stage.drawImage = 'SUCCESS';
+          } catch (_) {
+            stage.drawImage = 'FAILED';
+            stage.rootCause = 'CANVAS_DRAW_FAILED';
+            finish();
+            return;
+          }
+          stage.canvasToBlob = 'PENDING';
+          canvas.toBlob((blob) => {
+            stage.canvasToBlob = blob ? 'BLOB' : 'NULL';
+            stage.pngBlobType = blob?.type || 'UNKNOWN';
+            stage.pngBlobBytes = blob?.size || 0;
+            if (!blob) stage.rootCause = 'PNG_ENCODING_FAILED';
+            finish();
+          }, 'image/png');
+        } catch (_) {
+          stage.rootCause = 'CANVAS_STAGE_FAILED';
+          finish();
+        }
+      };
+      image.onerror = () => {
+        stage.imageOutcome = 'onerror';
+        stage.rootCause = 'IMAGE_ELEMENT_FAILED_TO_DECODE_SVG';
+        finish();
+      };
+      window.setTimeout(() => {
+        if (stage.imageOutcome === 'NOT REACHED') {
+          stage.imageOutcome = 'timeout';
+          stage.rootCause = 'IMAGE_DECODE_TIMEOUT';
+          finish();
+        }
+      }, 5_000);
+      image.src = svgUrl;
+    });
+  });
+}
+
 async function receiptActionLocator(modal, testId, label) {
   const candidates = [
     modal.locator(`[data-testid="${testId}"]`),
@@ -1074,6 +1210,7 @@ async function openReceiptCanary(page, guard, report) {
     return null;
   }
   report.receiptLoadState = 'READY';
+  await diagnoseLegacyReceiptImagePath(page, report);
 
   const snapshotNotePresent = Boolean(
     String(
@@ -1535,6 +1672,7 @@ test('authenticated production billing and receipt acceptance', async ({ page, c
     receiptNotePresent: 'NOT VERIFIED',
     receiptNoteSource: 'UNKNOWN',
     receiptStructuralEvidence: null,
+    receiptImageStage: null,
     loadedReceiptModalChunks: [],
     receiptActionCopyImage: 'NOT VERIFIED',
     receiptActionCopyText: 'NOT VERIFIED',
