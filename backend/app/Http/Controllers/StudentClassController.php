@@ -181,6 +181,18 @@ class StudentClassController extends Controller
         );
         $paidAtMap = AlertController::lastPaidAtByStudentClassIds($classIds);
         $invoiceAggMap = AlertController::invoiceAggregateByStudentClassIds($classIds);
+        $pendingReportByClassId = !empty($classIds)
+            ? PaymentReport::query()
+                ->whereIn('StudentClassID', $classIds)
+                ->where('status', 'pending')
+                ->orderByDesc('id')
+                ->get(['id', 'StudentClassID'])
+                ->unique('StudentClassID')
+                ->mapWithKeys(fn (PaymentReport $report): array => [
+                    (int) $report->getAttribute('StudentClassID') => (int) $report->getKey(),
+                ])
+                ->all()
+            : [];
 
         $packageIds = $classes->getCollection()
             ->pluck('PackageID')->filter(fn ($id) => $id > 0)->unique()->values()->all();
@@ -242,7 +254,7 @@ class StudentClassController extends Controller
             }
         }
 
-        $classes->getCollection()->transform(function ($class) use ($courseNames, $subjectNames, $teacherNames, $userStatuses, $observedUsedByClass, $usageDiagnosticsByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap, $invoiceAggMap, $packageMap) {
+        $classes->getCollection()->transform(function ($class) use ($courseNames, $subjectNames, $teacherNames, $userStatuses, $observedUsedByClass, $usageDiagnosticsByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap, $invoiceAggMap, $pendingReportByClassId, $packageMap) {
             $class->subject_name = $courseNames[$class->SubjectID]
                 ?? $subjectNames[$class->SubjectID]
                 ?? null;
@@ -460,12 +472,17 @@ class StudentClassController extends Controller
             $directPaidAt = $class->PayDate ? substr($class->PayDate, 0, 10) : null;
             $invoicePaidAt = $paidAtMap[(int) $class->ID] ?? null;
             $invoicePaidAmount = (int) (($invoiceAggMap[(int) $class->ID]['paid_amount'] ?? 0));
-            // Display paid = Paid flag OR full invoice cover (R94 / TD-083 B1). Never "any payment".
-            $class->payment_status = StudentClass::isFullyPaid(
-                (int) ($class->Paid ?? 0) === 1,
-                $invoicePaidAmount,
-                $effectiveCharge
-            ) ? 'paid' : 'unpaid';
+            $pendingReportId = $pendingReportByClassId[(int) $class->ID] ?? null;
+            // A pending report must remain distinct from both paid and unpaid (R94 / TD-083 B1).
+            // It takes priority here so course lists do not invite the same report repeatedly.
+            $class->payment_status = $pendingReportId !== null
+                ? 'pending_report'
+                : (StudentClass::isFullyPaid(
+                    (int) ($class->Paid ?? 0) === 1,
+                    $invoicePaidAmount,
+                    $effectiveCharge
+                ) ? 'paid' : 'unpaid');
+            $class->latest_payment_report_id = $pendingReportId;
             $class->paid_at = $directPaidAt;
             $class->last_paid_at = $invoicePaidAt ?? $directPaidAt;
             $class->status = empty($class->Stop) ? 'active' : 'inactive';
