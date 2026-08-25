@@ -46,8 +46,21 @@ describe('TuitionCollectionPage receipt entry paths', () => {
   });
 
   it('admin reported-paid path does not auto-open a receipt', () => {
-    expect(source).toContain('已送出待對帳，請到帳務中心按確認入帳後才會開收據');
+    expect(source).toContain('已送出待對帳，畫面已切到待對帳；請按確認入帳後才會變成已繳費並開收據');
     expect(source).not.toMatch(/if\s*\(result\?\.report_id\)\s*\{[\s\S]*receiptReportId\.value\s*=\s*result\.report_id/);
+  });
+
+  it('moves successful or duplicate reports into the pending-accounting flow', () => {
+    expect(source).toContain('@pending="onPendingReportConflict"');
+    expect(source).toContain("activeTab.value = 'pending_report'");
+    expect(source).toContain('畫面已切到待對帳');
+    expect(source).toContain('請按確認入帳後才會變成已繳費並開收據');
+  });
+
+  it('shows a stable course reference so duplicate subjects cannot be mistaken for one course', () => {
+    expect(source).toContain('formatCourseRef(r.id)');
+    expect(source).toContain('course_start_date || r.course_end_date');
+    expect(source).toContain('function formatCourseRef(id)');
   });
 
   it('batch confirm does not auto-open receipts', () => {

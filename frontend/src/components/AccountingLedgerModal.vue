@@ -155,6 +155,7 @@
                                   <span v-if="p.applied_amount">記入 {{ formatCurrency(p.applied_amount) }}</span>
                                   <span v-if="p.unapplied_amount">多收 {{ formatCurrency(p.unapplied_amount) }}</span>
                                   <span v-if="p.receipt_no" class="ledger-ref">{{ humanizeDocumentRef(p.receipt_no) }}</span>
+                                  <span v-if="p.note">備註：{{ p.note }}</span>
                                 </div>
                               </div>
                             </li>

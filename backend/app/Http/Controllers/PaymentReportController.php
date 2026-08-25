@@ -233,6 +233,7 @@ class PaymentReportController extends Controller
                 'payment_method'   => $r->payment_method,
                 'reported_amount'  => (float) $r->reported_amount,
                 'account_last5'    => $r->account_last5,
+                'note'             => (string) ($r->note ?? ''),
                 'status'           => $r->status,
                 'confirmed_by_name' => $r->confirmedByUser?->Name ?? null,
                 'confirmed_at'     => $r->confirmed_at?->toIso8601String(),
@@ -258,9 +259,12 @@ class PaymentReportController extends Controller
         }
 
         $userId = $request->attributes->get('auth_user_id');
-        $note = $request->input('note', '');
+        $confirmationNote = trim((string) $request->input('note', ''));
 
-        return DB::transaction(function () use ($report, $userId, $note) {
+        return DB::transaction(function () use ($report, $userId, $confirmationNote) {
+            $note = $confirmationNote !== ''
+                ? $confirmationNote
+                : trim((string) ($report->note ?? ''));
             $sc = StudentClass::find($report->StudentClassID);
             $package = $sc ? $this->lockPackageForCourse($sc) : null;
 
@@ -473,6 +477,7 @@ class PaymentReportController extends Controller
                 'payment_method'    => $data['payment_method'],
                 'reported_amount'   => $data['amount'],
                 'account_last5'     => $data['account_last5'] ?? null,
+                'note'              => trim((string) ($data['note'] ?? '')) ?: null,
                 'status'            => 'pending',
                 'report_token_hash' => hash('sha256', 'director-' . $sc->ID . '-' . now()->timestamp),
                 'token_expires_at'  => Carbon::now()->addDays(30),
@@ -901,6 +906,7 @@ class PaymentReportController extends Controller
             'session_dates'    => $sessionDates,
             'payment_date'     => $report->payment_date?->format('Y/m/d'),
             'payment_method'   => $report->payment_method,
+            'note'             => (string) ($report->note ?? ''),
             'amount'           => $amount,
             'confirmed_at'     => $report->confirmed_at?->format('Y/m/d'),
             'confirmed_by'     => $report->confirmedByUser?->Name ?? '系統',

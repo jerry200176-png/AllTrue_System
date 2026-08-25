@@ -261,7 +261,12 @@
                     @click.stop
                   />
                 </td>
-                <td>{{ r.subject }}</td>
+                <td>
+                  <div>{{ r.subject }}</div>
+                  <span v-if="r.id" class="tc-course-ref">
+                    {{ formatCourseRef(r.id) }}<template v-if="r.course_start_date || r.course_end_date"> · {{ r.course_start_date || '—' }} ~ {{ r.course_end_date || '—' }}</template>
+                  </span>
+                </td>
                 <td class="tc-col-mode">
                   <span class="mode-tag" :class="r.schedule_mode">
                     {{ r.schedule_mode === 'date' ? '月結' : '堂數' }}
@@ -675,6 +680,7 @@
       :row="entryRow"
       @close="entryOpen = false"
       @confirmed="onEntryConfirmed"
+      @pending="onPendingReportConflict"
     />
 
     <ReceiptModal
@@ -1613,10 +1619,25 @@ function openPaymentEntry(row) {
   entryOpen.value = true;
 }
 
-function onEntryConfirmed(_result) {
+function formatCourseRef(id) {
+  const numericId = Number(id);
+  return Number.isInteger(numericId) && numericId > 0
+    ? `課程 ${String(numericId).padStart(6, '0')}`
+    : '課程';
+}
+
+async function onEntryConfirmed(_result) {
   entryOpen.value = false;
-  showToast('已送出待對帳，請到帳務中心按確認入帳後才會開收據');
-  loadAlerts();
+  activeTab.value = 'pending_report';
+  showToast('已送出待對帳，畫面已切到待對帳；請按確認入帳後才會變成已繳費並開收據');
+  await loadAlerts();
+}
+
+async function onPendingReportConflict(_result) {
+  entryOpen.value = false;
+  activeTab.value = 'pending_report';
+  showToast('這筆已經在待對帳，畫面已切到待對帳；請按確認入帳，不要重複送出', 'warning');
+  await loadAlerts();
 }
 
 // ═══ Confirm / Reject pending reports ═══
@@ -2457,6 +2478,7 @@ loadAlerts();
 .tc-batch-note { min-width: 160px; flex: 1; }
 
 .tc-col-mode { width: 60px; text-align: center; }
+.tc-course-ref { display: block; margin-top: 2px; color: var(--ds-ink-mute); font-size: 11px; white-space: nowrap; }
 .tc-col-currency { width: 90px; text-align: right; font-variant-numeric: tabular-nums; font-size: 13px; }
 .tc-col-date { white-space: nowrap; }
 .tc-col-actions { width: 1%; white-space: nowrap; }
