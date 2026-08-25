@@ -127,7 +127,7 @@ class StudentController extends Controller
         }
 
         $student->setAttribute('latest_payment_note', PaymentReport::query()
-            ->where('StudentID', $student->id)
+            ->where('StudentID', $student->getKey())
             ->where('status', 'confirmed')
             ->whereNotNull('note')
             ->where('note', '!=', '')
