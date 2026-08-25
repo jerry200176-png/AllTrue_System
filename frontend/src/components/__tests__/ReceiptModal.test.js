@@ -4,6 +4,7 @@ import { nextTick } from 'vue';
 import ReceiptModal from '../ReceiptModal.vue';
 import {
   adaptPaymentReportReceipt,
+  buildReceiptCopyText,
   paymentReportReceiptUrl,
   parsePositiveReportId,
 } from '../../lib/paymentReportReceipt.js';
@@ -76,6 +77,16 @@ describe('paymentReportReceipt helpers (#1197 closeout)', () => {
     expect(view.content_snapshot.items[0].description).toBe('英文 · 8 堂 · 堂數制');
   });
 
+  it('builds copy text from the fields visible on the receipt', () => {
+    const view = adaptPaymentReportReceipt(SAMPLE, 123);
+    const text = buildReceiptCopyText(view.content_snapshot, view.receipt_number);
+    expect(text).toContain('電子收據');
+    expect(text).toContain('收據號碼：R-000123');
+    expect(text).toContain('學生姓名：王小明');
+    expect(text).toContain('合計：NT$ 12,000');
+    expect(text).toContain('收款方式：現金');
+  });
+
   it('receipt line names trial and tutoring', () => {
     const trial = adaptPaymentReportReceipt({ ...SAMPLE, class_type: 'trial', session_count: 1, amount: 0 }, 1);
     expect(trial.content_snapshot.items[0].description).toContain('試聽');
@@ -122,6 +133,21 @@ describe('ReceiptModal payment-reports contract', () => {
     expect(text).toContain('NT$ 12,000');
     expect(text).toContain('2026/07/13');
     expect(text).toContain('現金');
+  });
+
+  it('copies the receipt text without another API request', async () => {
+    global.fetch.mockResolvedValueOnce(ok(SAMPLE));
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    const wrapper = mount(ReceiptModal, { props: { show: true, reportId: 123 } });
+    await tick();
+
+    await wrapper.find('.receipt-actions button').trigger('click');
+    await tick();
+    expect(writeText).toHaveBeenCalledTimes(1);
+    expect(writeText.mock.calls[0][0]).toContain('收據號碼：R-000123');
+    expect(wrapper.text()).toContain('已複製');
+    expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 
   it('classifies 403/404/422 without generic 請求失敗', async () => {

@@ -140,10 +140,15 @@
 
         <!-- Actions -->
         <div class="receipt-actions">
+          <button class="ghost" type="button" :disabled="copyState === 'copying'" @click="copyReceipt">
+            <span class="material-symbols-outlined">content_copy</span>
+            {{ copyState === 'copied' ? '已複製' : '複製' }}
+          </button>
           <button class="ghost" type="button" @click="printReceipt">
             <span class="material-symbols-outlined">print</span>
             列印
           </button>
+          <span v-if="copyState === 'error'" class="receipt-copy-error" role="status">{{ copyError }}</span>
         </div>
       </template>
     </div>
@@ -156,6 +161,7 @@
 import { ref, computed, watch } from 'vue';
 import {
   adaptPaymentReportReceipt,
+  buildReceiptCopyText,
   paymentReportReceiptUrl,
   parsePositiveReportId,
 } from '../lib/paymentReportReceipt.js';
@@ -170,6 +176,8 @@ const loading = ref(false);
 const error = ref('');
 const receipt = ref(null);
 const receiptPrintRef = ref(null);
+const copyState = ref('idle');
+const copyError = ref('');
 
 const snapshot = computed(() => receipt.value?.content_snapshot || {});
 const schoolName = computed(() => snapshot.value.school_name || '台北全真一對一補習班');
@@ -233,8 +241,36 @@ function printReceipt() {
   window.print();
 }
 
+async function copyReceipt() {
+  if (!receipt.value) return;
+  copyState.value = 'copying';
+  copyError.value = '';
+  const text = buildReceiptCopyText(snapshot.value, receipt.value.receipt_number);
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      if (!document.execCommand('copy')) throw new Error('copy_failed');
+      textarea.remove();
+    }
+    copyState.value = 'copied';
+  } catch {
+    copyState.value = 'error';
+    copyError.value = '複製失敗，請改用列印或手動選取收據內容。';
+  }
+}
+
 watch(() => [props.show, props.reportId], async ([visible]) => {
   if (!visible) return;
+  copyState.value = 'idle';
+  copyError.value = '';
   await loadReceipt();
 }, { immediate: true });
 </script>
@@ -318,6 +354,7 @@ watch(() => [props.show, props.reportId], async ([visible]) => {
 
 .receipt-actions { display: flex; gap: 8px; justify-content: center; margin-top: 16px; flex-wrap: wrap; align-items: center; }
 .receipt-actions button { display: inline-flex; align-items: center; gap: 6px; }
+.receipt-copy-error { flex-basis: 100%; color: var(--ds-danger); font-size: 12px; text-align: center; }
 .receipt-pdf-format { display: flex; gap: 12px; margin-right: 8px; }
 .receipt-format-label { font-size: 12px; display: flex; align-items: center; gap: 4px; cursor: pointer; }
 .receipt-btn-void { color: var(--ds-danger); }
