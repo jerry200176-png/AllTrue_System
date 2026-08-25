@@ -12,19 +12,12 @@ use App\Models\StudentSignIn;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
-/**
- * Controlled repair for a cancelled session which still has materialized
- * evaluation or attendance evidence. This is intentionally separate from the
- * ordinary transfer endpoint: a genuine cancelled session must remain blocked.
- */
+/** Controlled repair for cancelled sessions with materialized evidence. */
 final class SessionContractRecoveryService
 {
     private const MOVABLE_STATUSES = ['attended', 'completed', 'late'];
 
-    /**
-     * @param array<int, int> $sessionIds
-     * @return array{transferred_session_ids: array<int, int>, recovered_session_ids: array<int, int>}
-     */
+    /** @param array<int, int> $sessionIds */
     public function recoverAndTransfer(
         int $sourceClassId,
         int $targetClassId,
