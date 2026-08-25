@@ -112,6 +112,7 @@ async function login(page, guard, report) {
     'authentication mutation was not narrowly identified',
   );
   report.authentication = 'PASS';
+  console.log('UAT_STAGE authentication_pass');
   guard.assertNoUnexpectedMutations();
 }
 
@@ -187,7 +188,16 @@ async function readProductionJson(page, requestPath) {
     try { token = JSON.parse(rawSession || 'null')?.access_token || ''; } catch (_) { /* no-op */ }
     const headers = { Accept: 'application/json' };
     if (token) headers.Authorization = `Bearer ${token}`;
-    const response = await fetch(path, { headers });
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 15_000);
+    let response;
+    try {
+      response = await fetch(path, { headers, signal: controller.signal });
+    } catch (_) {
+      return { status: 0, ok: false, body: null };
+    } finally {
+      window.clearTimeout(timeout);
+    }
     let body = null;
     try { body = await response.json(); } catch (_) { /* no-op */ }
     return { status: response.status, ok: response.ok, body };
@@ -326,6 +336,7 @@ async function verifyPendingCanary(page, guard, observed, report, canary) {
   }
 
   try {
+    console.log('UAT_STAGE pending_canary_begin');
     const classQuery = canary.studentId > 0
       ? `student_id=${encodeURIComponent(String(canary.studentId))}&per_page=1000`
       : 'per_page=1000';
@@ -337,6 +348,7 @@ async function verifyPendingCanary(page, guard, observed, report, canary) {
     report.backendLatestPaymentReportId = Number(classRecord?.latest_payment_report_id || 0) || 'MISSING';
 
     await navigateTo(page, '帳務中心', '帳務中心', guard);
+    console.log('UAT_STAGE pending_accounting_open');
     report.pagesChecked.push('帳務中心／待處理');
     const pendingTab = page.locator('.tc-tabs .tc-tab').filter({ hasText: /待對帳|待核帳/ }).first();
     requireCondition(await pendingTab.count() > 0, 'accounting center pending tab was not rendered');
@@ -356,6 +368,7 @@ async function verifyPendingCanary(page, guard, observed, report, canary) {
     report.workflowClarity = hasExpectedStatus && hasConfirmAction && !hasDuplicateReportAction ? 'VERIFIED' : 'UX GAP';
 
     await navigateTo(page, '課程管理', '課程管理', guard);
+    console.log('UAT_STAGE pending_course_management_open');
     report.pagesChecked.push('課程管理／課程列表');
     const filter = page.locator('input[placeholder="輸入姓名..."]').first();
     await filter.fill(canary.studentName);
@@ -374,11 +387,13 @@ async function verifyPendingCanary(page, guard, observed, report, canary) {
       && Number(report.backendLatestPaymentReportId) === canary.id;
     const uiContract = hasExpectedStatus && !hasUnpaidStatus && courseLabel === '待對帳';
     report.pending = backendContract && uiContract ? 'VERIFIED FIXED' : 'FAIL';
+    console.log(`UAT_STAGE pending_complete_${report.pending.replaceAll(' ', '_')}`);
     if (canary.id === PENDING_REPORT_ID) report.specificCase = report.pending === 'VERIFIED FIXED' ? 'PASS' : 'FAIL';
     // The value is intentionally only used in-memory for DOM selection; it is
     // never copied into the retained JSON report.
     void observed;
   } catch (_) {
+    console.log('UAT_STAGE pending_failed');
     report.pending = 'FAIL';
     report.workflowClarity = 'UX GAP';
     if (canary.id === PENDING_REPORT_ID) report.specificCase = 'FAIL';
@@ -657,9 +672,12 @@ test('authenticated production billing and receipt acceptance', async ({ page, c
     report.productionSha = version.build_sha || version.hash || 'UNKNOWN';
 
     const scope = await readDirectorScope(page, report);
+    console.log('UAT_STAGE director_scope_read');
     const { canary } = await discoverPendingCase(page, report, scope);
+    console.log(`UAT_STAGE canonical_reports_read_${canary ? 'canary_found' : 'no_canary'}`);
     await verifyPendingCanary(page, guard, observed, report, canary);
 
+    console.log('UAT_STAGE receipt_accounting_begin');
     const tuitionReceipt = await openTuitionReceipt(page, guard);
     const tuitionModal = tuitionReceipt.modal;
     const receiptStudentName = tuitionReceipt.studentName;
@@ -674,6 +692,7 @@ test('authenticated production billing and receipt acceptance', async ({ page, c
     guard.assertNoUnexpectedMutations();
     await tuitionModal.locator('button[title="關閉"]').click();
 
+    console.log('UAT_STAGE receipt_students_begin');
     const studentReceipt = await openStudentsReceipt(page, receiptStudentName, observed, guard);
     report.receiptEntryPoints.push({ page: '學生管理', route: 'students', trigger: '學生課程／繳費資訊／查看收據', actions: 'YES' });
     report.receiptActions = 'VERIFIED FIXED';
@@ -701,6 +720,7 @@ test('authenticated production billing and receipt acceptance', async ({ page, c
 
     guard.assertNoUnexpectedMutations();
     report.mutationGuard = 'ACTIVE';
+    console.log('UAT_STAGE acceptance_complete');
   } catch (error) {
     failure = error;
   } finally {
