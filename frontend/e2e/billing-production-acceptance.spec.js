@@ -98,7 +98,10 @@ function responseShape(body) {
   if (Array.isArray(body)) return { kind: 'array', length: body.length };
   if (!body || typeof body !== 'object') return { kind: typeof body };
   const keys = Object.keys(body).filter((key) => ['data', 'meta', 'current_page', 'last_page', 'per_page', 'total', 'invoices', 'summary'].includes(key));
-  return { kind: 'object', keys };
+  const shape = { kind: 'object', keys };
+  if (Array.isArray(body.data)) shape.dataLength = body.data.length;
+  if (Array.isArray(body.invoices)) shape.invoiceLength = body.invoices.length;
+  return shape;
 }
 
 function startPasteTargetServer() {
@@ -721,19 +724,9 @@ async function openTuitionReceipt(page, guard, report) {
   report.receiptDiagnosis.tabSelected = 'YES';
   report.activeAccountingTab = (await recordRuntimeSnapshot(page, report, 'receipt_ledger_tab_selected')).activeAccountingTab;
   console.log('UAT_STAGE receipt_ledger_tab_open');
-  const dates = page.locator('input[type="date"]');
-  const dateCount = await dates.count();
+  const dateCount = await page.locator('input[type="date"]').count();
   report.receiptDiagnosis.dateFilterInputs = dateCount;
-  if (dateCount >= 2) {
-    await dates.nth(0).fill('2026-08-01');
-    await dates.nth(1).fill('2026-08-31');
-    const studentSearch = page.locator('input[placeholder^="搜尋學生姓名"]').first();
-    if (await studentSearch.count()) await studentSearch.fill('');
-    await page.getByRole('button', { name: '查詢', exact: true }).click();
-    console.log('UAT_STAGE receipt_ledger_query_sent');
-  } else {
-    report.receiptDiagnosis.filterMode = 'AUTO_LOAD_NO_DATE_FILTER';
-  }
+  report.receiptDiagnosis.filterMode = dateCount >= 2 ? 'AUTO_LOAD_DEFAULT_RANGE' : 'AUTO_LOAD_NO_DATE_FILTER';
   guard.assertNoUnexpectedMutations();
   await waitUntil(async () => {
     const snapshot = await recordRuntimeSnapshot(page, report, 'receipt_data_wait');
