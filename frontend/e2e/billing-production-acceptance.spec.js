@@ -1040,6 +1040,12 @@ test('authenticated production billing and receipt acceptance', async ({ page, c
     report.pageErrors = runtime.pageErrors;
     report.failedRequests = runtime.failedRequests;
     report.getObservations = runtime.getObservations;
+    const seenRuntimePhases = new Set();
+    report.runtimeSnapshots = [...report.runtimeSnapshots].reverse().filter((snapshot) => {
+      if (seenRuntimePhases.has(snapshot.phase)) return false;
+      seenRuntimePhases.add(snapshot.phase);
+      return true;
+    }).reverse();
     if (guard.phase() === 'authenticated') report.mutationGuard = 'ACTIVE';
     if (!failure && unexpectedMutations.length) failure = new Error('unexpected production mutation was blocked');
     console.log(`PRODUCTION_BILLING_UAT_REPORT ${JSON.stringify(report)}`);
