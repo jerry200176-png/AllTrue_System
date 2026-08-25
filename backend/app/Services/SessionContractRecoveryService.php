@@ -16,7 +16,6 @@ use Illuminate\Support\Facades\DB;
 final class SessionContractRecoveryService
 {
     private const MOVABLE_STATUSES = ['attended', 'completed', 'late'];
-
     /** @param array<int, int> $sessionIds */
     public function recoverAndTransfer(
         int $sourceClassId,
