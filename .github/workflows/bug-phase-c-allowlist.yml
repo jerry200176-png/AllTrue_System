@@ -221,6 +221,11 @@ jobs:
               "rev" => "1ef8af7dafb9daccb60ade96a80fdd18237f1ceb",
               "deploy" => "32222608524",
             ],
+            241 => [
+              "reply" => "已修好並上線：老師課表現在會顯示 8/29 13:00–15:00 已排定的課次，不會再只在主任後台看得到。麻煩您重新整理教師課表後確認；如果已正常，請按「確認已修好」；若仍看不到，請按「問題仍存在」並回覆這則訊息。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2027",
+              "rev" => "639f8ffbb8c22a096156bf4228dd7ca51b310cd5",
+              "deploy" => "32798894950",
+            ],
           ];
           $results = [];
           foreach ($items as $bugId => $cfg) {
