@@ -7,6 +7,12 @@ import { execFileSync } from 'node:child_process';
 import { test } from '@playwright/test';
 import { installProductionMutationGuard } from './support/productionMutationGuard.js';
 
+// This spec may also be selected by the existing UI Smoke workflow when run
+// against this branch. Never retain a production page artifact or retry a
+// production acceptance after a failure.
+test.describe.configure({ retries: 0 });
+test.use({ screenshot: 'off', video: 'off', trace: 'off' });
+
 const BASE = process.env.SMOKE_BASE_URL;
 const DIRECTOR = {
   account: process.env.SMOKE_DIRECTOR_USER,
