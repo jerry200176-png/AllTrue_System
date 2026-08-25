@@ -4,6 +4,25 @@
 
 updates:
 
+  - id: staff-2026-08-25-payment-report-reconciliation
+    published_at: "2026-08-25"
+    audiences:
+      - director
+    importance: major
+    title: 帳務回報流程更清楚
+    summary: 現金回報先待對帳，課程與備註資訊會一路保留。
+    items:
+      - category: fixed
+        text: 現金或匯款送出後會先進「待對帳」；確認入帳後才變成已繳費並開立收據，重複送出會直接帶到待對帳。
+      - category: improved
+        text: 同一學生同科目有多筆課程時，帳務列會顯示課程編號與日期，避免把已繳與未繳課程看成同一筆。
+      - category: improved
+        text: 回報備註會自動保留在對帳、電子收據與學生編輯頁的最近入帳備註，不必重複輸入；收據也可直接複製。
+    source_refs:
+      - "changelog:2026-08-25:payment-report-reconciliation"
+      - "github:pull/2039"
+
+
   - id: staff-2026-08-24-branch-health-v1
     published_at: "2026-08-24"
     audiences:
