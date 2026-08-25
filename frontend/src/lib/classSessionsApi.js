@@ -18,6 +18,9 @@
  * @property {number|null} [learningRecordId]
  * @property {string} [learningRecordStatus]
  * @property {boolean} [learningRecordBodyFilled]
+ * @property {boolean} [hasLearningRecordHistory]
+ * @property {boolean} [hasAttendanceHistory]
+ * @property {boolean} [recoverableCancelled]
  * @property {number|null} [learningRecordTeacherId]
  * @property {string|null} [attendanceSignInAt]
  * @property {string} [attendanceMemo]
@@ -74,6 +77,9 @@ export function createSessionViewModel(input) {
     learningRecordId: input.learningRecordId ?? undefined,
     learningRecordStatus: input.learningRecordStatus,
     learningRecordBodyFilled: input.learningRecordBodyFilled,
+    hasLearningRecordHistory: !!input.hasLearningRecordHistory,
+    hasAttendanceHistory: !!input.hasAttendanceHistory,
+    recoverableCancelled: !!input.recoverableCancelled,
     learningRecordTeacherId: input.learningRecordTeacherId ?? undefined,
     attendanceSignInAt: input.attendanceSignInAt ?? undefined,
     attendanceMemo: input.attendanceMemo,
@@ -138,6 +144,9 @@ export function sessionViewModelFromClassSessionsRow(raw) {
     learningRecordId: raw?.learning_record_id != null ? Number(raw.learning_record_id) : null,
     learningRecordStatus: String(raw?.learning_record_status || 'missing'),
     learningRecordBodyFilled: !!raw?.learning_record_body_filled,
+    hasLearningRecordHistory: !!(raw?.has_learning_record_history ?? raw?.hasLearningRecordHistory),
+    hasAttendanceHistory: !!(raw?.has_attendance_history ?? raw?.hasAttendanceHistory),
+    recoverableCancelled: !!(raw?.recoverable_cancelled ?? raw?.recoverableCancelled),
     learningRecordTeacherId: raw?.learning_record_teacher_id != null ? Number(raw.learning_record_teacher_id) : null,
     attendanceSignInAt: raw?.attendance_sign_in_at || null,
     attendanceMemo: String(raw?.attendance_memo || ''),

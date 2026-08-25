@@ -88,4 +88,27 @@ describe('TransferSessionsModal', () => {
     const wrapper = mountModal({ errorMessage: '轉移失敗：目標課程與來源課程的學生不一致，拒絕轉移。' });
     expect(wrapper.text()).toContain('目標課程與來源課程的學生不一致');
   });
+
+  it('requires a reason and identifies evidence-backed cancelled sessions', async () => {
+    const wrapper = mountModal({
+      sessions: [
+        { id: 201, date: '2026-08-08', status: 'cancelled_recoverable', recoverableCancelled: true },
+      ],
+    });
+    await wrapper.find('.target-course-option').trigger('click');
+    await wrapper.find('input[type="checkbox"]').setValue(true);
+
+    expect(wrapper.text()).toContain('已取消（可恢復）');
+    expect(wrapper.text()).toContain('仍保留評量／點名證據');
+    expect(wrapper.find('button.primary').attributes('disabled')).toBeDefined();
+
+    await wrapper.find('#transfer-recovery-reason').setValue('原合約誤標取消，依歷史紀錄恢復');
+    expect(wrapper.find('button.primary').attributes('disabled')).toBeUndefined();
+    await wrapper.find('button.primary').trigger('click');
+    expect(wrapper.emitted('submit')[0][0]).toEqual({
+      targetCourseId: 1849,
+      sessionIds: [201],
+      reason: '原合約誤標取消，依歷史紀錄恢復',
+    });
+  });
 });

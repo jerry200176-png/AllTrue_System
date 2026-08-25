@@ -42,6 +42,37 @@ export const staffUpdates = [
     "version": "2026.08.25"
   },
   {
+    "id": "staff-2026-08-25-cancelled-session-recovery-transfer",
+    "publishedAt": "2026-08-25",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "已取消堂次可受控恢復",
+    "summary": "有評量或點名紀錄的取消堂次可填原因後恢復並移轉。",
+    "items": [
+      "合約／堂次調整會辨識仍有歷史證據的取消堂次；送出原因後同步恢復評量、點名與扣堂資料，沒有證據的取消堂次仍不可移轉。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "合約／堂次調整會辨識仍有歷史證據的取消堂次；送出原因後同步恢復評量、點名與扣堂資料，沒有證據的取消堂次仍不可移轉。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-25:cancelled-session-recovery-transfer",
+      "github:pull/2050"
+    ],
+    "date": "2026-08-25",
+    "version": "2026.08.25"
+  },
+  {
     "id": "staff-2026-08-25-receipt-image-copy",
     "publishedAt": "2026-08-25",
     "effectiveAt": null,

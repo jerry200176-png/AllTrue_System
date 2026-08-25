@@ -61,6 +61,53 @@ class ClassSessionApiTest extends TestCase
         $this->assertSame(substr((string) $classSession->SessionDate, 0, 10), $hit['session_date'] ?? null);
     }
 
+    public function test_class_sessions_index_marks_cancelled_rows_with_historical_evidence(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-class-session-history@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-class-session-history@example.com');
+        $student = $this->createStudent(1, '取消堂次歷史證據測試');
+        $courseRes = $this->createCourseViaApi($token, $student->id, $teacherId)->assertCreated();
+        $courseId = $this->resolveCourseId($courseRes, $student->id, $teacherId);
+
+        $withHistory = ClassSession::create([
+            'StudentClassID' => $courseId,
+            'SessionDate' => '2026-08-08',
+            'StartTime' => '13:00',
+            'EndTime' => '15:00',
+            'Status' => 'cancelled',
+        ]);
+        LearningRecord::create([
+            'StudentClassID' => $courseId,
+            'ClassSessionID' => $withHistory->id,
+            'TeacherID' => $teacherId,
+            'Content' => '已作廢但可追溯的評量',
+            'Status' => 'pending',
+            'VoidedAt' => now(),
+            'VoidedByUserID' => $teacherId,
+            'VoidReason' => '由已上調整狀態',
+        ]);
+        $withoutHistory = ClassSession::create([
+            'StudentClassID' => $courseId,
+            'SessionDate' => '2026-08-15',
+            'StartTime' => '13:00',
+            'EndTime' => '15:00',
+            'Status' => 'cancelled',
+        ]);
+
+        $response = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/class-sessions?branch_id=1&student_class_id={$courseId}&per_page=100");
+
+        $response->assertOk();
+        $rows = collect($response->json('data'));
+        $historyRow = $rows->firstWhere('id', $withHistory->id);
+        $plainRow = $rows->firstWhere('id', $withoutHistory->id);
+        $this->assertTrue((bool) ($historyRow['has_learning_record_history'] ?? false));
+        $this->assertTrue((bool) ($historyRow['recoverable_cancelled'] ?? false));
+        $this->assertFalse((bool) ($plainRow['recoverable_cancelled'] ?? false));
+    }
+
     public function test_class_sessions_index_uses_current_course_teacher_name_over_old_learning_record_teacher(): void
     {
         $token = $this->createDirectorToken([1], 'director-class-session-teacher-name@example.com');
@@ -265,4 +312,3 @@ class ClassSessionApiTest extends TestCase
         return $courseId;
     }
 }
-
