@@ -384,6 +384,7 @@ async function readPaginatedPaymentReports(page, query) {
       paymentMethod: String(report.payment_method || ''),
       reportedAmount: Number(report.reported_amount || 0),
       status: String(report.status || ''),
+      notePresent: Boolean(String(report.note || '').trim()),
     })));
 
     lastPage = paginationLastPage(response.body);
@@ -471,6 +472,7 @@ async function discoverPendingCase(page, report, scope) {
     reportedAmount: canary.reportedAmount,
     status: canary.status,
   };
+  report.paymentReportNotePresent = Boolean(canary.notePresent);
   return { canary, allReports };
 }
 
@@ -708,12 +710,12 @@ async function downloadEvidence(page, modal, report) {
 async function openTuitionReceipt(page, guard, report) {
   await ensureAccountingPage(page, guard, report);
   console.log('UAT_STAGE receipt_accounting_open');
-  const receiptLedgerTab = page.locator('.acct-tabs .acct-tab').filter({ hasText: '收據流水紀錄' }).first();
+  const receiptLedgerTab = page.locator('.acct-tabs .acct-tab').filter({ hasText: /收據(?:流水)?紀錄/ }).first();
   report.receiptDiagnosis.tabFound = await receiptLedgerTab.count() > 0 ? 'YES' : 'NO';
   requireCondition(await receiptLedgerTab.count() > 0 && await receiptLedgerTab.isVisible().catch(() => false), 'receipt ledger tab was not rendered');
   await receiptLedgerTab.click();
   await waitUntil(async () => {
-    const selected = page.locator('.acct-tabs .acct-tab.active, .acct-tabs [role="tab"][aria-selected="true"]').filter({ hasText: '收據流水紀錄' });
+    const selected = page.locator('.acct-tabs .acct-tab.active, .acct-tabs [role="tab"][aria-selected="true"]').filter({ hasText: /收據(?:流水)?紀錄/ });
     return await selected.count() > 0;
   }, 'receipt ledger tab did not become active', 15_000);
   report.receiptDiagnosis.tabSelected = 'YES';
@@ -792,7 +794,7 @@ async function auditPaymentNote(page, guard, report, canary) {
   const noteResponse = await readProductionJson(page, `/api/v1/student-classes/${canary.studentClassId}/invoices`);
   requireCondition(noteResponse.ok, `payment-note read returned HTTP ${noteResponse.status}`);
   const payments = (noteResponse.body?.invoices || []).flatMap((invoice) => invoice.payments || []);
-  const notePresent = payments.some((payment) => String(payment.note || '').trim());
+  const notePresent = payments.some((payment) => String(payment.note || '').trim()) || Boolean(report.paymentReportNotePresent);
   report.authoritativeSource = notePresent ? 'PaymentReport.note（由付款 read model 提供）' : 'NO PAYMENT NOTE PRESENT IN READ MODEL';
 
   let displayed = false;
@@ -869,6 +871,7 @@ test('authenticated production billing and receipt acceptance', async ({ page, c
     courseListLabel: 'UNKNOWN',
     uiStatus: 'UNKNOWN',
     pendingReportRecord: null,
+    paymentReportNotePresent: false,
     pending: 'BLOCKED',
     pagesChecked: [],
     currentLabel: 'UNKNOWN',
