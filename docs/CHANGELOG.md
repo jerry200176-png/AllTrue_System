@@ -1,3 +1,10 @@
+## 2026-08-26 — fix(attendance): 過期堂次不再出現在出缺勤清單
+
+<!-- release-notes: staff_update=staff-2026-08-26-attendance-session-trust -->
+
+- 出缺勤作業清單現在以 `ClassSession` 堂次狀態為準；已取消堂次或點名與堂次合約不一致的殘留資料不再被當成有效出勤顯示。
+- 自修與既有無堂次編號的臨時點名仍保留；本次不改扣堂、付款、權限或正式資料。
+
 ## 2026-08-26 — improved(billing): 帳務中心先顯示待處理佇列
 
 <!-- release-notes: staff_update=staff-2026-08-26-billing-action-queue -->
