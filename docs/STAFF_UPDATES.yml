@@ -4,6 +4,21 @@
 
 updates:
 
+  - id: staff-2026-08-26-dashboard-return-context
+    published_at: "2026-08-26"
+    audiences:
+      - director
+    importance: major
+    title: 待辦處理後可返回主任工作台
+    summary: 從主任待辦進入工作頁後，可一鍵回到今日待辦。
+    items:
+      - category: improved
+        text: 從今日工作進入帳務、點名、評量或課表處理後，頂端會保留「回到主任今日工作」入口，減少重新找待辦的操作。
+      - category: action_required
+        text: 這是暫時的導覽脈絡提示；帳務、排課、點名與權限規則維持原流程。
+    source_refs:
+      - "changelog:2026-08-26:dashboard-return-context"
+
   - id: staff-2026-08-26-navigation-registry
     published_at: "2026-08-26"
     audiences:

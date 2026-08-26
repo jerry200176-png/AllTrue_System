@@ -1,3 +1,10 @@
+## 2026-08-26 — improved(ux): 主任待辦可返回工作台
+
+<!-- release-notes: staff_update=staff-2026-08-26-dashboard-return-context -->
+
+- 從主任今日工作進入帳務、點名、評量或課表處理後，頂端會保留「回到主任今日工作」入口，完成一筆工作後不必重新尋找待辦。
+- 一般側欄切頁會清除暫時脈絡；不改變既有資料、權限、分校或帳務／排課寫入規則。
+
 ## 2026-08-26 — improved(ux): 統一側欄與手機導覽入口
 
 <!-- release-notes: staff_update=staff-2026-08-26-navigation-registry -->
