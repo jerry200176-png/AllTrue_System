@@ -4,6 +4,21 @@
 
 updates:
 
+  - id: staff-2026-08-26-course-student-focus
+    published_at: "2026-08-26"
+    audiences:
+      - director
+    importance: digest
+    title: 從課程管理直接定位學生
+    summary: 從學生群組前往學生管理時，會直接展開同一位學生。
+    items:
+      - category: improved
+        text: 在課程管理展開學生群組後選擇新增課程，系統會帶到學生管理並定位該學生，接著即可在學生主檔處理課程。
+      - category: fixed
+        text: 定位只會在目前分校已載入的學生清單中生效；一般前往學生管理仍維持完整清單，不改付款、堂數或權限規則。
+    source_refs:
+      - "changelog:2026-08-26:course-student-focus"
+
   - id: staff-2026-08-26-course-create-entry
     published_at: "2026-08-26"
     audiences:

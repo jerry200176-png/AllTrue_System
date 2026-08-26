@@ -33,7 +33,7 @@ describe('CourseManagement read-only lens (Phase B first slice)', () => {
   it('expanded student groups route course creation to 學生管理', () => {
     expect(groupEntry).toContain('data-testid="student-group-goto-students"');
     expect(groupEntry).toContain('到學生管理新增課程');
-    expect(groupEntry).toContain("@click=\"emit('navigate', 'students')\"");
+    expect(groupEntry).toContain("@click=\"emit('navigate', { target: 'students', studentId: group.student_id })\"");
     expect(groupEntry).not.toContain('openBackfillModalForGroup');
   });
 

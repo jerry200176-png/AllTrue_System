@@ -1,3 +1,10 @@
+## 2026-08-26 — improved(ux): 課程管理導頁保留學生上下文
+
+<!-- release-notes: staff_update=staff-2026-08-26-course-student-focus -->
+
+- 從課程管理的學生群組進入學生管理時，會直接定位並展開同一位學生，主任不必重新搜尋；一般「前往學生管理」入口仍維持不指定學生的通用入口。
+- 定位只接受目前分校學生清單中的合法學生，查無資料時不會跨分校開啟；本次不改付款、堂數、出缺勤、後端 API 或權限規則。
+
 ## 2026-08-26 — improved(ux): 課程建立回到學生管理主檔
 
 <!-- release-notes: staff_update=staff-2026-08-26-course-create-entry -->

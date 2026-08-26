@@ -226,7 +226,7 @@
             >帳務資料</button>
           </div>
           <div v-if="expandedStudentGroups.has(group.key)" class="student-group-add-row">
-            <button type="button" class="btn-soft student-group-add-btn" data-testid="student-group-goto-students" @click="emit('navigate', 'students')">
+            <button type="button" class="btn-soft student-group-add-btn" data-testid="student-group-goto-students" @click="emit('navigate', { target: 'students', studentId: group.student_id })">
               <span class="material-symbols-outlined btn-icon" aria-hidden="true">person_add</span>
               到學生管理新增課程
             </button>
@@ -1906,7 +1906,7 @@ function openEditabilityAction(action) {
   } else if (action === 'reconcile_usage') {
     emit('navigate', 'duplicate-review');
   } else if (action === 'new_contract') {
-    emit('navigate', 'students');
+    emit('navigate', { target: 'students', studentId: course.student_id ?? course.StudentID ?? null });
   }
 }
 
@@ -3353,7 +3353,7 @@ const groupCoursesByStudent = (list = []) => {
       ? `sid:${studentId}`
       : `name:${studentName}`;
     if (!groupedMap.has(key)) {
-      const group = { key, student_name: studentName, courses: [] };
+      const group = { key, student_id: studentId, student_name: studentName, courses: [] };
       groupedMap.set(key, group);
       grouped.push(group);
     }
