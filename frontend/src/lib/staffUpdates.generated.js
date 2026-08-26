@@ -4,6 +4,38 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-26-payment-shortcuts",
+    "publishedAt": "2026-08-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "繳費通知與明細直達",
+    "summary": "主任提醒可直接開通知單與繳費明細。",
+    "items": [
+      "主任總覽每筆繳費提醒可直接開啟繳費通知單、查看繳費明細，並複製通知給家長。",
+      "帳務中心的對帳入口改名為繳費明細，帳單、收款與收據時間線仍沿用原本流程。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "主任總覽每筆繳費提醒可直接開啟繳費通知單、查看繳費明細，並複製通知給家長。",
+          "帳務中心的對帳入口改名為繳費明細，帳單、收款與收據時間線仍沿用原本流程。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-26:payment-shortcuts"
+    ],
+    "date": "2026-08-26",
+    "version": "2026.08.26"
+  },
+  {
     "id": "staff-2026-08-26-bug-report-image-paste",
     "publishedAt": "2026-08-26",
     "effectiveAt": null,

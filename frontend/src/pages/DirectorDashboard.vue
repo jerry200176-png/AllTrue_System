@@ -229,7 +229,7 @@
             </div>
 
             <aside class="director-workbench-v2__full-side">
-              <section id="payments-sec" class="surface-panel" aria-labelledby="director-payments-title"><header class="surface-panel__header"><div><h3 id="director-payments-title">繳費與續課</h3><p>{{ paymentActionLaneLabel }}</p></div><span class="surface-panel__count">{{ lowBalanceStudents.length }}</span></header><div v-if="!lowBalanceStudents.length" class="director-state director-state--compact"><span>目前沒有需要跟進的繳費提醒。</span></div><div v-else class="director-payment-list"><div v-for="student in displayPaymentAlerts" :key="student.id" class="director-payment-row"><div><strong>{{ student.name }}</strong><span :class="paymentAlertBadgeClass(student)">{{ paymentAlertBadgeText(student) }}</span></div><button type="button" class="text-action" @click="copyPaymentMessage(student)">複製通知</button></div></div><footer v-if="lowBalanceStudents.length > paymentAlertLimit" class="surface-panel__footer"><button type="button" class="text-action" @click="showAllPayments = !showAllPayments">{{ showAllPayments ? '收起' : `顯示全部 ${lowBalanceStudents.length} 筆` }}</button></footer></section>
+              <section id="payments-sec" class="surface-panel" aria-labelledby="director-payments-title"><header class="surface-panel__header"><div><h3 id="director-payments-title">繳費與續課</h3><p>{{ paymentActionLaneLabel }}</p></div><span class="surface-panel__count">{{ lowBalanceStudents.length }}</span></header><div v-if="!lowBalanceStudents.length" class="director-state director-state--compact"><span>目前沒有需要跟進的繳費提醒。</span></div><div v-else class="director-payment-list"><div v-for="student in displayPaymentAlerts" :key="student.id" class="director-payment-row"><div><strong>{{ student.name }}</strong><span :class="paymentAlertBadgeClass(student)">{{ paymentAlertBadgeText(student) }}</span></div><div class="director-payment-row__actions"><button v-if="isPaymentNoticeAvailable(student)" type="button" class="text-action" @click="openPaymentSlip(student)">繳費通知</button><button type="button" class="text-action" @click="openPaymentLedger(student)">繳費明細</button><button type="button" class="text-action" @click="copyPaymentMessage(student)">複製通知</button></div></div></div><footer v-if="lowBalanceStudents.length > paymentAlertLimit" class="surface-panel__footer"><button type="button" class="text-action" @click="showAllPayments = !showAllPayments">{{ showAllPayments ? '收起' : `顯示全部 ${lowBalanceStudents.length} 筆` }}</button></footer></section>
               <section class="surface-panel" aria-labelledby="director-discrepancy-title"><header class="surface-panel__header"><div><h3 id="director-discrepancy-title">課表回報</h3><p>老師回報的差異需要主任留下處理結果。</p></div><span class="surface-panel__count">{{ sdSummary.pending }}</span></header><div v-if="sdLoading" class="director-state director-state--compact" role="status">載入中…</div><div v-else-if="sdSummary.pending" class="director-state director-state--compact"><span>{{ sdSummary.pending }} 筆待確認</span><button type="button" class="text-action" @click="goToScheduleDiscrepancy">查看回報</button></div><div v-else class="director-state director-state--compact"><span class="material-symbols-outlined" aria-hidden="true">task_alt</span><span>目前沒有待確認的課表回報。</span></div></section>
               <section id="notifications-sec" class="surface-panel" aria-labelledby="director-notifications-title"><header class="surface-panel__header"><div><h3 id="director-notifications-title">通知摘要</h3><p>只顯示未讀通知的最新幾筆。</p></div><span class="surface-panel__count">{{ unreadNotificationCount }}</span></header><div v-if="!notificationSummary.length" class="director-state director-state--compact"><span>目前沒有未讀通知。</span></div><div v-else class="director-notification-list"><div v-for="notification in notificationSummary" :key="notification.id"><strong>{{ notification.title }}</strong><span>{{ notification.typeLabel }}</span></div></div><footer class="surface-panel__footer"><button type="button" class="text-action" @click="goToNotifications">前往通知中心</button></footer></section>
               <section v-if="directorTodoCards.length" class="surface-panel" aria-labelledby="director-other-work-title"><header class="surface-panel__header"><div><h3 id="director-other-work-title">其他營運工作</h3><p>需要追蹤的項目，不佔用今天的主佇列。</p></div><span class="surface-panel__count">{{ directorTodoCards.length }}</span></header><div v-if="adoptionTaskLoading" class="director-state director-state--compact" role="status">載入中…</div><div v-else class="director-other-work-list"><button v-for="work in directorTodoCards.slice(0, 6)" :key="work.id" type="button" @click="handleDirectorTodoClick(work)"><span>{{ work.title }}</span><small>{{ work.description }}</small><span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span></button></div></section>
@@ -250,6 +250,20 @@
           </section>
         </div>
         <div v-if="workflowToast" class="director-toast" role="status">{{ workflowToast }}</div>
+
+        <PaymentSlipModal
+          :show="paymentSlipOpen"
+          :invoice-id="paymentSlipInvoiceId"
+          :student-class-id="paymentSlipStudentClassId"
+          @close="paymentSlipOpen = false"
+        />
+
+        <AccountingLedgerModal
+          :show="paymentLedgerOpen"
+          :student-class-id="paymentLedgerStudentClassId"
+          :branch-id="branchId"
+          @close="paymentLedgerOpen = false"
+        />
       </main>
     </template>
   </div>
@@ -262,6 +276,8 @@ import { getBranchName } from '../lib/useBranches';
 import { getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchDiscrepancySummary } from '../lib/scheduleDiscrepanciesApi';
 import RecentSubstitutesCard from '../components/substitute/RecentSubstitutesCard.vue';
+import PaymentSlipModal from '../components/PaymentSlipModal.vue';
+import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
 import { recentSubstitutes as fetchRecentSubstitutes } from '../lib/substituteApi.js';
 import { sortTodoCards, markTodoAcknowledged, isTodoAcknowledged } from '../lib/adoptionTodo';
 import {
@@ -305,6 +321,11 @@ const unreadNotificationCount = ref(0);
 const notificationSummary = ref([]);
 const showAllPayments = ref(false);
 const paymentAlertLimit = 5;
+const paymentSlipOpen = ref(false);
+const paymentSlipInvoiceId = ref(null);
+const paymentSlipStudentClassId = ref(null);
+const paymentLedgerOpen = ref(false);
+const paymentLedgerStudentClassId = ref(null);
 const pendingMakeupCount = ref(0);
 const MAKEUP_CANDIDATE_LIMIT = 20;
 const exceptionWorkflows = ref([]);
@@ -725,6 +746,38 @@ const paymentAlertBadgeText = (s) => {
   return `未繳 · ${s.remaining_lessons} 堂`;
 };
 
+const isPaymentNoticeAvailable = (student) =>
+  ['unpaid', 'partial', 'pending_report'].includes(student?.payment_status)
+  || (student?.payment_status == null && student?.alert_type === 'unpaid');
+
+const paymentStudentClassId = (student) => Number(student?.student_class_id || student?.id || 0);
+
+const openPaymentSlip = (student) => {
+  if (!isPaymentNoticeAvailable(student)) {
+    alert('這筆是續課／月結提醒，目前沒有可開啟的未繳通知單；可直接複製通知。');
+    return;
+  }
+  const invoiceId = Number(student?.invoice_id || 0);
+  const studentClassId = paymentStudentClassId(student);
+  if (!invoiceId && !studentClassId) {
+    alert('這筆提醒缺少課程資料，請到帳務中心搜尋後查看。');
+    return;
+  }
+  paymentSlipInvoiceId.value = invoiceId || null;
+  paymentSlipStudentClassId.value = invoiceId ? null : studentClassId;
+  paymentSlipOpen.value = true;
+};
+
+const openPaymentLedger = (student) => {
+  const studentClassId = paymentStudentClassId(student);
+  if (!studentClassId) {
+    alert('方案合併提醒沒有單一課程明細，請到帳務中心查看方案資料。');
+    return;
+  }
+  paymentLedgerStudentClassId.value = studentClassId;
+  paymentLedgerOpen.value = true;
+};
+
 const formatTime = (timeStr) => timeStr || '--:--';
 
 const formatScheduleStatus = (status) => {
@@ -960,11 +1013,14 @@ const loadData = async () => {
         })
         .map(c => ({
           id: c.id || c.class_id,
+          student_class_id: c.student_class_id || c.id || c.class_id || null,
+          invoice_id: c.invoice_id || null,
           student_id: c.student_id || null,
           raw_name: c.student_name,
           name: `${c.student_name} — ${c.subject || getSubjectLabel(c.SubjectID) || ''}`,
           remaining_lessons: c.remaining_sessions ?? c.RemainingSessions ?? 0,
           alert_type: c.alert_type || 'unpaid',
+          payment_status: c.payment_status || null,
           days_until_settlement: c.days_until_settlement ?? null,
           due_date: c.due_date ?? null,
           settlement_day: c.settlement_day ?? null,
@@ -2953,6 +3009,7 @@ onBeforeUnmount(() => {
 .director-evaluation-row span, .director-payment-row span, .director-notification-list span { color: var(--ds-ink-mute); font-size: 11px; }
 .director-evaluation-row > div:last-child { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 .director-payment-row span { display: inline-block; margin-top: 2px; }
+.director-payment-row__actions { display: flex !important; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .director-other-work-list { padding: 0 22px 8px; }
 .director-other-work-list button { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 10px; width: 100%; padding: 12px 0; border: 0; border-top: 1px solid var(--ds-hairline); background: transparent; color: var(--ds-ink); text-align: left; cursor: pointer; }
 .director-other-work-list button span:first-child { overflow: hidden; font-size: 12px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }

@@ -1,3 +1,10 @@
+## 2026-08-26 — improved(billing): 主任可從提醒直接開繳費通知與明細
+
+<!-- release-notes: staff_update=staff-2026-08-26-payment-shortcuts -->
+
+- 主任總覽的繳費提醒新增「繳費通知」與「繳費明細」入口，可直接預覽既有通知單、查看帳單／收款／收據時間線，再複製通知給家長。
+- 帳務中心各列表的「對帳」入口改以「繳費明細」呈現，付款狀態、金額計算與既有核帳流程不變。
+
 ## 2026-08-26 — improved(ux): Bug 回報可直接貼上截圖
 
 <!-- release-notes: staff_update=staff-2026-08-26-bug-report-image-paste -->
