@@ -3,8 +3,8 @@ export function normalizeNavigationId(value) {
   const id = Number(value);
   return Number.isSafeInteger(id) && id > 0 ? id : null;
 }
-function courseIdOf(row) {
-  return normalizeNavigationId(row?.student_class_id ?? row?.id);
+export function courseIdOf(row) {
+  return normalizeNavigationId(row?.student_class_id ?? row?.student_course_id ?? row?.course_id ?? row?.class_id ?? row?.id);
 }
 
 export function resolveTuitionFocusRow(rows = [], { studentId, courseId } = {}) {
@@ -24,7 +24,7 @@ export function resolveCalendarFocusCourse(courses = [], { studentId, courseId }
   const cid = normalizeNavigationId(courseId);
   const list = Array.isArray(courses) ? courses : [];
   if (cid) {
-    const exact = list.find((course) => normalizeNavigationId(course?.id) === cid && (!sid || normalizeNavigationId(course?.student_id) === sid));
+    const exact = list.find((course) => courseIdOf(course) === cid && (!sid || normalizeNavigationId(course?.student_id) === sid));
     if (exact) return exact;
   }
   if (sid) return list.find((course) => normalizeNavigationId(course?.student_id) === sid) || null;

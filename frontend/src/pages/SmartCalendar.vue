@@ -567,7 +567,7 @@ import { useCalendarDataLoad } from '../composables/calendar/useCalendarDataLoad
 import { useCalendarLeaveExtra } from '../composables/calendar/useCalendarLeaveExtra.js';
 import { useCalendarSubstitute } from '../composables/calendar/useCalendarSubstitute.js';
 import { useCalendarReschedule } from '../composables/calendar/useCalendarReschedule.js';
-import { resolveCalendarFocusCourse } from '../lib/workflowNavigationContext.js';
+import { courseIdOf, resolveCalendarFocusCourse } from '../lib/workflowNavigationContext.js';
 
 const props = defineProps({
   branchId: [String, Number],
@@ -758,7 +758,7 @@ function applyCalendarFocus() {
     emit('clear-initial-context');
     return;
   }
-  focusedCalendarCourseId.value = Number(course.id) || null;
+  focusedCalendarCourseId.value = courseIdOf(course);
   studentSearch.value = course.student_name || '';
   if (props.initialDate) jumpToDateWeek(props.initialDate);
   calendarFocusMessage.value = `已定位：${course.student_name || '指定學生'}${course.subject ? `／${course.subject}` : ''}`;
