@@ -41,8 +41,8 @@ jobs:
       - name: Validate inputs
         env:
           CAMPUS_ID: ${{ inputs.campus_id || '9' }}
-          DATE_FROM: ${{ inputs.date_from || '2026-08-08' }}
-          DATE_TO: ${{ inputs.date_to || '2026-08-22' }}
+          DATE_FROM: ${{ inputs.date_from || '2026-07-01' }}
+          DATE_TO: ${{ inputs.date_to || '2026-08-26' }}
         run: |
           set -euo pipefail
           [[ "$CAMPUS_ID" =~ ^[0-9]+$ ]] || { echo 'campus_id must be numeric'; exit 1; }
@@ -71,9 +71,9 @@ jobs:
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
           CAMPUS_ID: ${{ inputs.campus_id || '9' }}
-          DATE_FROM: ${{ inputs.date_from || '2026-08-08' }}
-          DATE_TO: ${{ inputs.date_to || '2026-08-22' }}
-          STUDENT_NAME: ${{ inputs.student_name || '' }}
+          DATE_FROM: ${{ inputs.date_from || '2026-07-01' }}
+          DATE_TO: ${{ inputs.date_to || '2026-08-26' }}
+          STUDENT_NAME: ${{ inputs.student_name || '周芮緗' }}
         run: |
           set -euo pipefail
           mkdir -p out
