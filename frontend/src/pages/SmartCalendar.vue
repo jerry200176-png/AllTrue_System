@@ -25,6 +25,7 @@
         </div>
       </div>
       <OperationsQuickStart
+        v-if="!isTeacher"
         compact
         eyebrow="排課處理流程"
         heading="先選工作，再操作課表"
@@ -33,7 +34,7 @@
         :steps="calendarFlowSteps"
         @select="selectCalendarFlowStep"
       />
-      <p v-if="calendarWorkflowHint" class="calendar-workflow-hint" role="status">{{ calendarWorkflowHint }}</p>
+      <p v-if="!isTeacher && calendarWorkflowHint" class="calendar-workflow-hint" role="status">{{ calendarWorkflowHint }}</p>
       <div v-if="viewMode === 'week'" class="smart-cal-toolbar" data-guide="calendar-toolbar">
         <div class="toolbar-row toolbar-row-primary">
           <div class="toolbar-group">
