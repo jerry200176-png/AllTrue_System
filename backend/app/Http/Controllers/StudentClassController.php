@@ -5715,14 +5715,37 @@ class StudentClassController extends Controller
 
         if ($currentCount < $newCount && empty($newSessions)) {
             // No contract gap was found; append after the last row as the legacy extension path.
+            // The first item in buildSessionsForCount is intentionally allowed to be the
+            // supplied start date (that is required for a course's首堂日).  That behaviour
+            // is unsafe here: appendFrom is normally the day after an existing session,
+            // so a Saturday course could otherwise materialize a Sunday/Monday tail.
             $lastSession = ClassSession::where('StudentClassID', $classId)
                 ->orderByDesc('SessionDate')
                 ->orderByDesc('StartTime')
                 ->first();
-            $appendFrom = $lastSession
-                ? Carbon::parse($lastSession->SessionDate)->addDay()->toDateString()
-                : $startFrom;
-            $newSessions = $this->buildSessionsForCount($classId, $appendFrom, $newCount - $currentCount, $slots, $globalDur);
+            $appendFromDate = $lastSession
+                ? Carbon::parse($lastSession->SessionDate)->addDay()->startOfDay()
+                : Carbon::parse($startFrom)->startOfDay();
+            $validWeekdays = array_map(
+                fn (array $slot): int => self::isoWeekday((int) $slot['weekday']),
+                $slots
+            );
+            $appendGuard = 0;
+            while (!in_array((int) $appendFromDate->dayOfWeekIso, $validWeekdays, true)
+                && $appendGuard++ < 14
+            ) {
+                $appendFromDate->addDay();
+            }
+            if ($appendGuard >= 14) {
+                return;
+            }
+            $newSessions = $this->buildSessionsForCount(
+                $classId,
+                $appendFromDate->toDateString(),
+                $newCount - $currentCount,
+                $slots,
+                $globalDur
+            );
         }
 
         $now = Carbon::now();

@@ -1,0 +1,7 @@
+{
+  "kind": "attendance_root_fix_repair_manifest",
+  "decision_reference": "attendance-root-fix-2026-08-26",
+  "approved_session_ids": [28451, 28448, 16731, 31739, 31740],
+  "scope": "allowlisted session corrections only; no student names",
+  "created_at": "2026-08-26T13:00:00+08:00"
+}
