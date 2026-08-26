@@ -1,3 +1,10 @@
+## 2026-08-26 — improved(ux): 課程建立回到學生管理主檔
+
+<!-- release-notes: staff_update=staff-2026-08-26-course-create-entry -->
+
+- 課程管理展開學生資料時，新增課程現在會導向「學生管理」主檔處理，避免同一筆學生／合約在課程管理另開建立流程。
+- 課程查找、排課、調課與換師複製維持原流程；本次不改變資料、堂數、付款或權限規則。
+
 ## 2026-08-26 — improved(ux): 課程管理移除重複排課入口
 
 <!-- release-notes: staff_update=staff-2026-08-26-course-action-dedup -->

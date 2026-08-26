@@ -226,9 +226,9 @@
             >帳務資料</button>
           </div>
           <div v-if="expandedStudentGroups.has(group.key)" class="student-group-add-row">
-            <button type="button" class="btn-soft student-group-add-btn" @click="openBackfillModalForGroup(group)">
-              <span class="btn-icon" aria-hidden="true">＋</span>
-              為此學生新增課程
+            <button type="button" class="btn-soft student-group-add-btn" data-testid="student-group-goto-students" @click="emit('navigate', 'students')">
+              <span class="material-symbols-outlined btn-icon" aria-hidden="true">person_add</span>
+              到學生管理新增課程
             </button>
           </div>
           <div v-if="expandedStudentGroups.has(group.key) && studentGroupTab(group.key) === 'courses'" class="table-wrap group-table-wrap">
@@ -1773,75 +1773,16 @@ async function importBackfillCoursesFromCsv(event) {
   }
 }
 
-function resolveGroupStudentId(group) {
-  if (!group) return '';
-  const key = String(group.key || '');
-  if (key.startsWith('sid:')) {
-    const n = Number(key.slice(4));
-    if (Number.isFinite(n) && n > 0) return n;
-  }
-  const c0 = group.courses?.[0];
-  const raw = c0?.student_id ?? c0?.StudentID;
-  if (raw != null && raw !== '') {
-    const n = Number(raw);
-    if (Number.isFinite(n) && n > 0) return n;
-  }
-  return '';
-}
-
 const showDuplicateInterceptModal = ref(false);
 const duplicateConflicts = ref([]);
-const interceptPendingGroup = ref(null);
 const interceptOriginalPayload = ref(null);
 const interceptPendingClassType = ref('');
 const forceSubmitting = ref(false);
 
-async function openBackfillModalForGroup(group) {
-  const sid = resolveGroupStudentId(group);
-  if (!sid) {
-    alert('無法取得此學生的編號，請至「學生管理」為此學生建立課程。');
-    return;
-  }
-  try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
-    if (token) {
-      const res = await fetch(`/api/v1/students/${sid}/active-courses`, {
-        headers: { 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const json = await res.json();
-        const active = json?.courses || [];
-        if (active.length > 0) {
-          duplicateConflicts.value = active;
-          interceptPendingGroup.value = group;
-          showDuplicateInterceptModal.value = true;
-          return;
-        }
-      }
-    }
-  } catch { /* proceed normally */ }
-  proceedOpenBackfillForGroup(group);
-}
-
-function proceedOpenBackfillForGroup(group) {
-  showDuplicateInterceptModal.value = false;
-  const sid = resolveGroupStudentId(group);
-  schedulerInitialStudentId.value = sid;
-  schedulerInitialTeacherId.value = '';
-  resetBackfillDatePicker();
-  showBackfillModal.value = true;
-  loadRoomsForBranch();
-}
-
 async function onEnrollmentConflictDecision(decision) {
   const payload = interceptOriginalPayload.value;
   if (!payload) {
-    if (interceptPendingGroup.value) {
-      proceedOpenBackfillForGroup(interceptPendingGroup.value);
-    } else {
-      showDuplicateInterceptModal.value = false;
-    }
+    showDuplicateInterceptModal.value = false;
     return;
   }
   forceSubmitting.value = true;

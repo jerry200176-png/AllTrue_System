@@ -4,6 +4,21 @@
 
 updates:
 
+  - id: staff-2026-08-26-course-create-entry
+    published_at: "2026-08-26"
+    audiences:
+      - director
+    importance: digest
+    title: 課程建立回到學生管理
+    summary: 建立新課程請從學生管理的學生主檔進入，課程管理專心做查找與分流。
+    items:
+      - category: improved
+        text: 課程管理展開學生資料後，新增課程會帶到學生管理；建立、編輯與合約操作集中在同一個學生主檔。
+      - category: fixed
+        text: 課程查找、排課、調課與換師複製維持原流程，資料、堂數、付款與權限規則不變。
+    source_refs:
+      - "changelog:2026-08-26:course-create-entry"
+
   - id: staff-2026-08-26-course-action-dedup
     published_at: "2026-08-26"
     audiences:
