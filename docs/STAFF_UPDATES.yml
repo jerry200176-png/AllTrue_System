@@ -4,6 +4,21 @@
 
 updates:
 
+  - id: staff-2026-08-26-billing-batch-preview
+    published_at: "2026-08-26"
+    audiences:
+      - director
+    importance: major
+    title: 批次帳務先看摘要
+    summary: 批次回報與確認入帳前，先核對選取資料。
+    items:
+      - category: improved
+        text: 批次操作會先顯示筆數、金額、付款方式與逐筆課程摘要，確認後才送出。
+      - category: action_required
+        text: 批次回報送出後仍是待對帳；只有確認入帳後才會成為已繳費並開收據。
+    source_refs:
+      - "changelog:2026-08-26:billing-batch-preview"
+
   - id: staff-2026-08-26-ops-workflow-telemetry
     published_at: "2026-08-26"
     audiences:

@@ -81,6 +81,18 @@ describe('TuitionCollectionPage receipt entry paths', () => {
     expect(batchConfirm[0]).not.toMatch(/receiptOpen/);
   });
 
+  it('requires a read-only batch preview before either batch endpoint can run', () => {
+    expect(source).toContain('@click="openBatchPreview"');
+    expect(source).toContain('role="dialog"');
+    expect(source).toContain('aria-modal="true"');
+    expect(source).toContain('送出前確認');
+    expect(source).toContain('function confirmBatchPreview()');
+    expect(source).toContain('if (!batchPreviewOpen.value) return;');
+    expect(source).toContain('批次摘要');
+    expect(source).toContain('只會處理上方未繳／部分付款課程');
+    expect(source).toContain('只會處理上方待對帳課程');
+  });
+
   it('class-list receipt lookup opens with match.id (payment report id)', () => {
     expect(source).toContain('async function viewReceiptForClass(row)');
     expect(source).toMatch(/receiptReportId\.value\s*=\s*match\.id/);

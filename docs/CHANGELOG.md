@@ -1,3 +1,10 @@
+## 2026-08-26 — improved(billing): 批次帳務送出前先看摘要
+
+<!-- release-notes: staff_update=staff-2026-08-26-billing-batch-preview -->
+
+- 帳務中心批次回報與批次確認入帳，現在會先顯示選取筆數、金額、付款方式與逐筆課程摘要；取消或返回修改都不會送出資料。
+- 回報仍先是「待對帳」，確認入帳才會走正式入帳與收據流程；既有付款狀態、權限與 API 不變。
+
 ## 2026-08-26 — improved(ux): 報帳與排課流程加入無個資使用量測
 
 <!-- release-notes: staff_update=staff-2026-08-26-ops-workflow-telemetry -->
