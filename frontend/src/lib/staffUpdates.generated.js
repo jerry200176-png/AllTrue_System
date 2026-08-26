@@ -412,6 +412,43 @@ export const staffUpdates = [
     "version": "2026.08.26"
   },
   {
+    "id": "staff-2026-08-26-course-action-dedup",
+    "publishedAt": "2026-08-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "課程管理排課入口更清楚",
+    "summary": "每列只保留一個主要排課入口，其他課堂操作集中在更多選單。",
+    "items": [
+      "「排課／新增下一堂」不再同時出現在主要操作與更多選單；「補課／補登」仍可從更多選單使用。",
+      "這次只整理畫面入口，既有排課、堂數、付款、資料與權限規則不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "「排課／新增下一堂」不再同時出現在主要操作與更多選單；「補課／補登」仍可從更多選單使用。"
+        ]
+      },
+      {
+        "title": "我們修好了",
+        "items": [
+          "這次只整理畫面入口，既有排課、堂數、付款、資料與權限規則不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-26:course-action-dedup"
+    ],
+    "date": "2026-08-26",
+    "version": "2026.08.26"
+  },
+  {
     "id": "staff-2026-08-25-transfer-slot-conflict-preflight",
     "publishedAt": "2026-08-25",
     "effectiveAt": null,
