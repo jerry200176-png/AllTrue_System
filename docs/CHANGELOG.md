@@ -1,3 +1,10 @@
+## 2026-08-26 — improved(ux): 統一側欄與手機導覽入口
+
+<!-- release-notes: staff_update=staff-2026-08-26-navigation-registry -->
+
+- 桌面側欄、收合側欄、手機底部導覽與 More 選單改由同一份角色導覽定義產生，避免入口漏改或角色看到不該有的頁面。
+- 保留既有 page key、分校切換、badge 與後端權限邊界；側欄群組新增 `aria-expanded`，目前頁面維持 `aria-current`。
+
 ## 2026-08-26 — improved(ux): 主任常用營運流程一站開始
 
 <!-- release-notes: staff_update=staff-2026-08-26-ops-workflow-quick-start -->
