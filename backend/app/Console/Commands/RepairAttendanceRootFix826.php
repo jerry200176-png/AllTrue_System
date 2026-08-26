@@ -2,7 +2,6 @@
 
 namespace App\Console\Commands;
 
-use App\Models\LearningRecord;
 use App\Models\ScheduleAuditLog;
 use App\Models\SessionCorrection;
 use App\Models\StudentSignIn;
@@ -118,14 +117,14 @@ class RepairAttendanceRootFix826 extends Command
             $reason = self::REF . ' — ' . $target['reason'];
             $now = now();
             $actorId = $this->actorId();
-            $activeSignIns = StudentSignIn::where('ClassSessionID', $target['session_id'])->active()->get();
+            $activeSignIns = StudentSignIn::query()->where('ClassSessionID', $target['session_id'])->active()->get();
             foreach ($activeSignIns as $signIn) {
                 $signIn->VoidedAt = $now;
                 $signIn->VoidedByUserID = $actorId;
                 $signIn->VoidReason = $reason;
                 $signIn->save();
             }
-            LearningRecord::where('ClassSessionID', $target['session_id'])->active()->update([
+            DB::table('LearningRecord')->where('ClassSessionID', $target['session_id'])->whereNull('VoidedAt')->update([
                 'VoidedAt' => $now,
                 'VoidedByUserID' => $actorId,
                 'VoidReason' => $reason,
@@ -140,16 +139,17 @@ class RepairAttendanceRootFix826 extends Command
                 'Status' => 'cancelled', 'Note' => $newNote, 'updated_at' => $now,
             ]);
             $branchId = (int) (DB::table('StudentClass as sc')->join('Student as st', 'st.id', '=', 'sc.StudentID')->where('sc.ID', $target['class_id'])->value('st.CampusID') ?? 0);
-            ScheduleAuditLog::create([
+            $audit = new ScheduleAuditLog([
                 'session_id' => $target['session_id'], 'action_type' => 'update',
                 'description' => '資料修復：' . $reason, 'operator_id' => $actorId,
                 'branch_id' => $branchId ?: null, 'old_data' => (array) $session,
                 'new_data' => array_merge((array) $session, ['Status' => 'cancelled', 'Note' => $newNote, 'updated_at' => $now]),
             ]);
+            $audit->save();
             if ($target['schedule_ids'] !== []) {
                 DB::table('schedules')->whereIn('id', $target['schedule_ids'])->where('student_course_id', $target['class_id'])->where('status', 'scheduled')->update(['status' => 'cancelled', 'updated_at' => $now]);
             }
-            SessionCorrection::create([
+            $correction = new SessionCorrection([
                 'session_id' => $target['session_id'], 'replaced_by_session_id' => null,
                 'correction_reason' => 'attendance_root_fix', 'decision_reference' => self::REF,
                 'decided_at' => $now, 'decided_by_user_id' => $actorId,
@@ -157,6 +157,7 @@ class RepairAttendanceRootFix826 extends Command
                 'previous_status' => (string) $session->Status, 'new_status' => 'cancelled',
                 'snapshot_before' => $before,
             ]);
+            $correction->save();
             SessionDeductionService::recomputeCounters((int) $target['class_id']);
         });
     }
