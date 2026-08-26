@@ -262,6 +262,43 @@ export const staffUpdates = [
     "version": "2026.08.26"
   },
   {
+    "id": "staff-2026-08-26-billing-batch-preview",
+    "publishedAt": "2026-08-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "批次帳務先看摘要",
+    "summary": "批次回報與確認入帳前，先核對選取資料。",
+    "items": [
+      "批次操作會先顯示筆數、金額、付款方式與逐筆課程摘要，確認後才送出。",
+      "批次回報送出後仍是待對帳；只有確認入帳後才會成為已繳費並開收據。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "批次操作會先顯示筆數、金額、付款方式與逐筆課程摘要，確認後才送出。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "批次回報送出後仍是待對帳；只有確認入帳後才會成為已繳費並開收據。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-26:billing-batch-preview"
+    ],
+    "date": "2026-08-26",
+    "version": "2026.08.26"
+  },
+  {
     "id": "staff-2026-08-26-billing-action-queue",
     "publishedAt": "2026-08-26",
     "effectiveAt": null,
