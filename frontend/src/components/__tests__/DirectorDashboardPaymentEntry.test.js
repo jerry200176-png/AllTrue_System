@@ -17,7 +17,7 @@ const app = readFileSync(resolve(__dirname, '../../App.vue'), 'utf8');
 describe('director payment shortcuts', () => {
   const rows = [
     { id: 11, student_class_id: 11, student_id: 7, student_name: '甲', subject: '英文' },
-    { id: 12, student_course_id: 12, student_id: 8, student_name: '乙', subject: '數學' },
+    { id: 12, studentClassId: 12, student_id: 8, student_name: '乙', subject: '數學' },
   ];
 
   it('resolves only safe ids and existing course context', () => {

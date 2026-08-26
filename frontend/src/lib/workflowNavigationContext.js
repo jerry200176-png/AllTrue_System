@@ -4,7 +4,7 @@ export function normalizeNavigationId(value) {
   return Number.isSafeInteger(id) && id > 0 ? id : null;
 }
 export function courseIdOf(row) {
-  return normalizeNavigationId(row?.student_class_id ?? row?.student_course_id ?? row?.course_id ?? row?.class_id ?? row?.id);
+  return normalizeNavigationId(row?.student_class_id ?? row?.student_course_id ?? row?.course_id ?? row?.class_id ?? row?.studentClassId ?? row?.id);
 }
 
 export function resolveTuitionFocusRow(rows = [], { studentId, courseId } = {}) {
