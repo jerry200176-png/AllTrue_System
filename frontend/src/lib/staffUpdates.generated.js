@@ -412,6 +412,43 @@ export const staffUpdates = [
     "version": "2026.08.26"
   },
   {
+    "id": "staff-2026-08-26-course-create-entry",
+    "publishedAt": "2026-08-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "課程建立回到學生管理",
+    "summary": "建立新課程請從學生管理的學生主檔進入，課程管理專心做查找與分流。",
+    "items": [
+      "課程管理展開學生資料後，新增課程會帶到學生管理；建立、編輯與合約操作集中在同一個學生主檔。",
+      "課程查找、排課、調課與換師複製維持原流程，資料、堂數、付款與權限規則不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "課程管理展開學生資料後，新增課程會帶到學生管理；建立、編輯與合約操作集中在同一個學生主檔。"
+        ]
+      },
+      {
+        "title": "我們修好了",
+        "items": [
+          "課程查找、排課、調課與換師複製維持原流程，資料、堂數、付款與權限規則不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-26:course-create-entry"
+    ],
+    "date": "2026-08-26",
+    "version": "2026.08.26"
+  },
+  {
     "id": "staff-2026-08-26-course-action-dedup",
     "publishedAt": "2026-08-26",
     "effectiveAt": null,
