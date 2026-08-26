@@ -4,6 +4,21 @@
 
 updates:
 
+  - id: staff-2026-08-26-billing-action-queue
+    published_at: "2026-08-26"
+    audiences:
+      - director
+    importance: major
+    title: 帳務中心先顯示待處理
+    summary: 開啟帳務中心後，會先看到未繳、部分付款與待對帳工作。
+    items:
+      - category: improved
+        text: 預設待處理佇列集中主任現在要做的工作；完整提醒、逾期與續課仍可從其他分類查看。
+      - category: action_required
+        text: 待處理中請分開勾選未繳費回報或待對帳確認；已回報仍須確認入帳後才算已繳費並開收據。
+    source_refs:
+      - "changelog:2026-08-26:billing-action-queue"
+
   - id: staff-2026-08-26-reschedule-preflight
     published_at: "2026-08-26"
     audiences:

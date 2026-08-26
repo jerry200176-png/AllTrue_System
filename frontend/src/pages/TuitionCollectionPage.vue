@@ -98,6 +98,16 @@
         </div>
       </div>
 
+      <div v-if="rows.length" class="tc-action-queue" role="region" aria-label="主任待處理佇列">
+        <div>
+          <strong>{{ tabCounts.action ? `今天先處理 ${tabCounts.action} 筆` : '今天待處理已清空' }}</strong>
+          <span>{{ tabCounts.action ? '未繳費與待對帳會集中在待處理，已結清／續課提醒留在其他分類。' : '如需查看續課或已結清提醒，請切換其他分類。' }}</span>
+        </div>
+        <button v-if="activeTab !== 'action'" class="tc-queue-link" type="button" @click="activeTab = 'action'">
+          回到待處理
+        </button>
+      </div>
+
       <div v-if="!rows.length" class="tc-empty">
         <span class="material-symbols-outlined" style="font-size:52px;color:var(--success)">check_circle</span>
         <p>本分校目前無待催繳課程</p>
@@ -158,7 +168,7 @@
           v-if="selectedRows.length"
           class="tc-batch-bar tc-batch-bar--sticky"
           role="region"
-          :aria-label="batchMode === 'confirm' ? '批次確認入帳' : '今日批次回報'"
+          :aria-label="batchMode === 'confirm' ? '批次確認入帳' : batchMode === 'mixed' ? '混合選取，請分開處理' : '今日批次回報'"
         >
           <span class="tc-batch-count">已選 {{ selectedRows.length }} 筆</span>
           <template v-if="batchMode === 'report'">
@@ -184,7 +194,7 @@
               @click="submitBatchReport"
             >送出已回報</button>
           </template>
-          <template v-else>
+          <template v-else-if="batchMode === 'confirm'">
             <button
               class="tc-btn tc-btn--confirm"
               type="button"
@@ -192,6 +202,7 @@
               @click="submitBatchConfirm"
             >批次確認入帳</button>
           </template>
+          <span v-else class="tc-batch-help">請分開選取未繳費或待對帳，才能進行批次處理。</span>
           <button class="tc-btn tc-btn--ghost" type="button" :disabled="batchBusy" @click="clearSelection">取消選取</button>
         </div>
 
@@ -217,7 +228,7 @@
                     :indeterminate.prop="someVisibleSelected && !allVisibleSelected"
                     :disabled="!selectableRows.length"
                     @change="toggleSelectAll($event.target.checked)"
-                    :aria-label="batchMode === 'confirm' ? '全選待對帳' : '全選未繳'"
+                    :aria-label="batchMode === 'confirm' ? '全選待對帳' : batchMode === 'mixed' ? '全選待處理' : '全選未繳'"
                   />
                 </th>
                 <th class="tc-th-sort" @click="toggleSort('student_name')">
@@ -1007,8 +1018,9 @@ const todayYmd = computed(() => formatTodayYmd());
 
 // Tab filter state must be declared before batchMode / isRowSelectable / watch(activeTab)
 // (TDZ: accessing const activeTab before this line crashes the page as blank white).
-const activeTab = ref('all');
+const activeTab = ref('action');
 const TAB_DEFS = [
+  { key: 'action', label: '待處理' },
   { key: 'all', label: '全部' },
   { key: 'unpaid', label: '未繳' },
   { key: 'overdue', label: '逾期' },
@@ -1023,7 +1035,7 @@ const billingFlowCurrentId = computed(() => {
 });
 
 const billingFlowSteps = [
-  { id: 'queue', icon: 'playlist_add_check', title: '查看待處理', description: '先依學生與狀態找到課程。', action: '查看全部' },
+  { id: 'queue', icon: 'playlist_add_check', title: '查看待處理', description: '先依學生與狀態找到課程。', action: '查看待處理' },
   { id: 'report', icon: 'mark_email_read', title: '登記繳費回報', description: '家長已付款時先登記回報。', action: '查看未繳' },
   { id: 'confirm', icon: 'verified', title: '確認入帳與收據', description: '核對資料後才建立正式入帳。', action: '查看待對帳' },
 ];
@@ -1032,7 +1044,7 @@ function selectBillingFlowStep(stepId) {
   activeAccountingTab.value = 'receivables';
   if (stepId === 'report') activeTab.value = 'unpaid';
   else if (stepId === 'confirm') activeTab.value = 'pending_report';
-  else activeTab.value = 'all';
+  else activeTab.value = 'action';
 }
 
 const selectedIds = ref([]);
@@ -1049,12 +1061,19 @@ const selectedIdSet = computed(() => new Set(selectedIds.value));
 function isRowSelectable(r) {
   const ps = r?.payment_status;
   if (activeTab.value === 'pending_report') return ps === 'pending_report' && !!r.latest_payment_report_id;
+  if (activeTab.value === 'action') return ps === 'unpaid' || ps === 'partial' || ps === 'pending_report';
   return ps === 'unpaid' || ps === 'partial';
 }
 
 const selectableRows = computed(() => filteredRows.value.filter(isRowSelectable));
-const batchMode = computed(() => (activeTab.value === 'pending_report' ? 'confirm' : 'report'));
 const selectedRows = computed(() => filteredRows.value.filter((r) => selectedIdSet.value.has(r.id)));
+const batchMode = computed(() => {
+  if (activeTab.value === 'pending_report') return 'confirm';
+  if (activeTab.value !== 'action') return 'report';
+  const modes = new Set(selectedRows.value.map((r) => r.payment_status === 'pending_report' ? 'confirm' : 'report'));
+  if (modes.size > 1) return 'mixed';
+  return modes.has('confirm') ? 'confirm' : 'report';
+});
 const allVisibleSelected = computed(() => selectableRows.value.length > 0 && selectableRows.value.every((r) => selectedIdSet.value.has(r.id)));
 const someVisibleSelected = computed(() => selectableRows.value.some((r) => selectedIdSet.value.has(r.id)));
 
@@ -1252,10 +1271,11 @@ function isOverdue(r) {
 }
 
 const tabCounts = computed(() => {
-  const c = { all: 0, unpaid: 0, overdue: 0, pending_report: 0, renewal: 0 };
+  const c = { action: 0, all: 0, unpaid: 0, overdue: 0, pending_report: 0, renewal: 0 };
   rows.value.forEach(r => {
     c.all++;
     const ps = r.payment_status;
+    if (['unpaid', 'partial', 'pending_report'].includes(ps)) c.action++;
     if (isOverdue(r)) c.overdue++;
     if (ps === 'unpaid' || ps === 'partial') c.unpaid++;
     else if (ps === 'pending_report') c.pending_report++;
@@ -1322,6 +1342,7 @@ function toggleSort(key) {
 // ═══ Filtered + Sorted Rows (3-layer pipeline) ═══
 const tabFilteredRows = computed(() => {
   const tab = activeTab.value;
+  if (tab === 'action') return rows.value.filter(r => OUTSTANDING_STATUSES.includes(r.payment_status));
   if (tab === 'all') return rows.value;
   if (tab === 'overdue') return rows.value.filter(isOverdue);
   if (tab === 'unpaid') return rows.value.filter(r => r.payment_status === 'unpaid' || r.payment_status === 'partial');
@@ -2262,6 +2283,24 @@ loadAlerts();
 }
 .tc-empty p { margin: 0; font-size: 14px; }
 
+.tc-action-queue {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 14px 0 2px;
+  padding: 11px 14px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--primary);
+  border-radius: 8px;
+  background: var(--bg);
+  font-size: 13px;
+}
+.tc-action-queue > div { display: grid; gap: 2px; }
+.tc-action-queue strong { color: var(--text); }
+.tc-action-queue span { color: var(--text-light); font-size: 12px; }
+.tc-queue-link { border: 0; background: transparent; color: var(--primary); font: inherit; font-weight: 700; cursor: pointer; white-space: nowrap; }
+
 .tc-cta-btn {
   padding: 8px 20px;
   border-radius: 8px;
@@ -2330,6 +2369,7 @@ loadAlerts();
   color: var(--text-light);
 }
 .tc-tab--active .tc-tab-badge { background: var(--primary); color: var(--ds-on-primary); }
+.tc-batch-help { color: var(--text-light); font-size: 12px; }
 
 /* ─── Search toolbar ─── */
 .tc-toolbar {
@@ -2932,6 +2972,7 @@ loadAlerts();
   .acct-filter-actions { justify-content: stretch; }
   .acct-filter-actions .tc-btn { flex: 1; justify-content: center; }
   .tc-tabs { overflow-x: auto; white-space: nowrap; }
+  .tc-action-queue { align-items: flex-start; flex-direction: column; }
   .tc-toolbar { flex-direction: column; align-items: stretch; }
   .tc-toolbar-right { margin-left: 0; justify-content: flex-end; }
 }

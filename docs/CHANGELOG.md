@@ -1,3 +1,10 @@
+## 2026-08-26 — improved(billing): 帳務中心先顯示待處理佇列
+
+<!-- release-notes: staff_update=staff-2026-08-26-billing-action-queue -->
+
+- 帳務中心預設先顯示未繳費、部分付款與待對帳，主任可以直接開始今天要處理的工作；完整提醒、逾期與續課分類仍可切換查看。
+- 在待處理中同時勾選不同狀態時，系統會提示分開處理，不會把回報與確認送到錯誤流程；已回報仍不等於已入帳。
+
 ## 2026-08-26 — improved(ux): 調課前先預覽衝堂
 
 <!-- release-notes: staff_update=staff-2026-08-26-reschedule-preflight -->

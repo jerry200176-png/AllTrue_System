@@ -38,11 +38,19 @@ describe('TuitionCollectionPage receipt entry paths', () => {
   });
 
   it('declares activeTab before batchMode / isRowSelectable / watch(activeTab) (TDZ)', () => {
-    const decl = source.indexOf("const activeTab = ref('all')");
+    const decl = source.indexOf("const activeTab = ref('action')");
     expect(decl).toBeGreaterThan(-1);
     expect(decl).toBeLessThan(source.indexOf('function isRowSelectable'));
-    expect(decl).toBeLessThan(source.indexOf("activeTab.value === 'pending_report' ? 'confirm'"));
+    expect(decl).toBeLessThan(source.indexOf("if (activeTab.value === 'pending_report') return 'confirm';"));
     expect(decl).toBeLessThan(source.indexOf('watch(activeTab,'));
+  });
+
+  it('opens on a mixed-status action queue and prevents mixed batch operations', () => {
+    expect(source).toContain("{ key: 'action', label: '待處理' }");
+    expect(source).toContain('aria-label="主任待處理佇列"');
+    expect(source).toContain("if (activeTab.value === 'action') return ps === 'unpaid' || ps === 'partial' || ps === 'pending_report';");
+    expect(source).toContain("if (modes.size > 1) return 'mixed';");
+    expect(source).toContain('請分開選取未繳費或待對帳，才能進行批次處理。');
   });
 
   it('admin reported-paid path does not auto-open a receipt', () => {
