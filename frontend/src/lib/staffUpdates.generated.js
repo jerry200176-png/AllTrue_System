@@ -73,6 +73,45 @@ export const staffUpdates = [
     "version": "2026.08.26"
   },
   {
+    "id": "staff-2026-08-26-navigation-registry",
+    "publishedAt": "2026-08-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "major",
+    "title": "導覽入口統一",
+    "summary": "桌面、手機與更多功能選單現在使用同一份角色導覽。",
+    "items": [
+      "桌面側欄、手機底部導覽與更多功能會依身分顯示相同的頁面入口，減少找不到功能或看到錯誤入口的情況。",
+      "帳務、排課、點名與資料權限仍依原本後端規則；本次只改善導覽與目前位置提示。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "桌面側欄、手機底部導覽與更多功能會依身分顯示相同的頁面入口，減少找不到功能或看到錯誤入口的情況。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "帳務、排課、點名與資料權限仍依原本後端規則；本次只改善導覽與目前位置提示。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-26:navigation-registry"
+    ],
+    "date": "2026-08-26",
+    "version": "2026.08.26"
+  },
+  {
     "id": "staff-2026-08-26-course-payment-summary",
     "publishedAt": "2026-08-26",
     "effectiveAt": null,

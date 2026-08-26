@@ -4,6 +4,22 @@
 
 updates:
 
+  - id: staff-2026-08-26-navigation-registry
+    published_at: "2026-08-26"
+    audiences:
+      - director
+      - teacher
+    importance: major
+    title: 導覽入口統一
+    summary: 桌面、手機與更多功能選單現在使用同一份角色導覽。
+    items:
+      - category: improved
+        text: 桌面側欄、手機底部導覽與更多功能會依身分顯示相同的頁面入口，減少找不到功能或看到錯誤入口的情況。
+      - category: action_required
+        text: 帳務、排課、點名與資料權限仍依原本後端規則；本次只改善導覽與目前位置提示。
+    source_refs:
+      - "changelog:2026-08-26:navigation-registry"
+
   - id: staff-2026-08-26-ops-workflow-quick-start
     published_at: "2026-08-26"
     audiences:
