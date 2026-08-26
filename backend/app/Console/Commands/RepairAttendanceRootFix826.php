@@ -88,12 +88,14 @@ class RepairAttendanceRootFix826 extends Command
             $error = null;
             if (!$session) {
                 $error = 'MISSING_SESSION';
+            } elseif ($correction) {
+                // An active correction is the idempotent postcondition.  Do not
+                // report the now-cancelled status as drift on post-verify.
+                $error = null;
             } elseif ((int) $session->StudentClassID !== $target['class_id']
                 || substr((string) $session->SessionDate, 0, 10) !== $target['date']
                 || strtolower((string) $session->Status) !== $target['status']) {
                 $error = 'SESSION_DRIFT';
-            } elseif ($correction) {
-                $error = null;
             }
             $out[] = ['target' => $target, 'error' => $error, 'already' => $correction !== null, 'before' => $before];
         }
