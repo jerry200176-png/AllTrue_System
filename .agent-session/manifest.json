@@ -5,7 +5,7 @@
   "task_id": "INT-20260826-204241-CTB6",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
   "base_sha": "d65089df8a9c0ad1fcf6bfa0a5fb11ef05bc3b88",
-  "branch": "exo/INT-20260826-204241-CTB6",
+  "branch": "feat/INT-20260826-204241-CTB6",
   "worktree_path": "/home/jerry/workspace/tasks/alltrue/ops-workflow-telemetry-20260826",
   "started_at": "2026-08-26T20:42:45+08:00",
   "production_mutation": false,
