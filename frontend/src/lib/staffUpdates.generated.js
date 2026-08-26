@@ -36,6 +36,43 @@ export const staffUpdates = [
     "version": "2026.08.26"
   },
   {
+    "id": "staff-2026-08-26-course-payment-summary",
+    "publishedAt": "2026-08-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "課程卡顯示最近繳費備註",
+    "summary": "課程管理可直接看到最近繳費回報內容。",
+    "items": [
+      "課程管理學生課程卡會顯示最近繳費的日期、金額、備註與主任可見的匯款後五碼。",
+      "待對帳資料會標示「待對帳」；付款狀態與收據仍依帳務中心流程處理。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "課程管理學生課程卡會顯示最近繳費的日期、金額、備註與主任可見的匯款後五碼。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "待對帳資料會標示「待對帳」；付款狀態與收據仍依帳務中心流程處理。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-26:course-payment-summary"
+    ],
+    "date": "2026-08-26",
+    "version": "2026.08.26"
+  },
+  {
     "id": "staff-2026-08-26-bug-report-image-paste",
     "publishedAt": "2026-08-26",
     "effectiveAt": null,

@@ -230,6 +230,9 @@
                           {{ classTypeLabel(course.class_type) }}
                         </span>
                         <div v-if="courseMemo(course)" class="course-memo-line">備註：{{ courseMemo(course) }}</div>
+                        <div v-if="coursePaymentSummary(course)" class="course-payment-summary" role="note">
+                          <span class="course-payment-summary__label">最近繳費：</span>{{ formatPaymentSummary(course.latest_payment_summary) }}
+                        </div>
                       </td>
                       <td>
                         <div v-if="course.payment_type === 'session'" class="sessions-cell">
@@ -962,6 +965,19 @@ const classTypeLabel = (type) => {
 const courseMemo = (course) => {
   const text = String(course?.memo ?? course?.Memo ?? '').trim();
   return text || '';
+};
+const coursePaymentSummary = (course) => course?.latest_payment_summary || null;
+const formatPaymentSummary = (summary) => {
+  if (!summary) return '';
+  const parts = [];
+  if (summary.payment_date) parts.push(`日期 ${summary.payment_date}`);
+  if (summary.amount !== null && summary.amount !== undefined && summary.amount !== '') {
+    parts.push(`金額 $${Number(summary.amount).toLocaleString('zh-TW')}`);
+  }
+  if (summary.account_last5) parts.push(`後5碼 ${summary.account_last5}`);
+  if (summary.note) parts.push(`備註 ${summary.note}`);
+  if (summary.status === 'pending') parts.push('待對帳');
+  return parts.join(' · ') || '已有繳費回報';
 };
 const dayLabel = (d) => {
   const days = ['', '週一', '週二', '週三', '週四', '週五', '週六', '週日'];
@@ -3327,6 +3343,14 @@ table th { font-size: 12.5px; }
   line-height: 1.4;
   word-break: break-word;
 }
+.course-payment-summary {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--ds-success);
+  line-height: 1.45;
+  word-break: break-word;
+}
+.course-payment-summary__label { font-weight: 800; }
 
 .cell-schedule-slots .schedule-slot-lines {
   display: flex;
