@@ -5,7 +5,6 @@
   "description": "Root scripts for CI governance / Agent preflight (frontend lives in frontend/)",
   "scripts": {
     "build": "npm --prefix frontend run build",
-    "test:unit": "npm --prefix frontend run test:unit",
     "lint:no-undef": "npm --prefix frontend run lint:no-undef",
     "ci:preflight": "node scripts/ci-preflight.mjs",
     "ci:preflight:self-test": "node scripts/ci-preflight.mjs --self-test",
