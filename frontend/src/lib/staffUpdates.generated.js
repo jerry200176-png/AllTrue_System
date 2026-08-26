@@ -262,6 +262,43 @@ export const staffUpdates = [
     "version": "2026.08.26"
   },
   {
+    "id": "staff-2026-08-26-billing-action-queue",
+    "publishedAt": "2026-08-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "帳務中心先顯示待處理",
+    "summary": "開啟帳務中心後，會先看到未繳、部分付款與待對帳工作。",
+    "items": [
+      "預設待處理佇列集中主任現在要做的工作；完整提醒、逾期與續課仍可從其他分類查看。",
+      "待處理中請分開勾選未繳費回報或待對帳確認；已回報仍須確認入帳後才算已繳費並開收據。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "預設待處理佇列集中主任現在要做的工作；完整提醒、逾期與續課仍可從其他分類查看。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "待處理中請分開勾選未繳費回報或待對帳確認；已回報仍須確認入帳後才算已繳費並開收據。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-26:billing-action-queue"
+    ],
+    "date": "2026-08-26",
+    "version": "2026.08.26"
+  },
+  {
     "id": "staff-2026-08-25-transfer-slot-conflict-preflight",
     "publishedAt": "2026-08-25",
     "effectiveAt": null,
