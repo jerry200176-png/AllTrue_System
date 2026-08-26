@@ -4,6 +4,22 @@
 
 updates:
 
+  - id: staff-2026-08-26-bug-report-image-paste
+    published_at: "2026-08-26"
+    audiences:
+      - director
+      - teacher
+    importance: major
+    title: Bug 回報可直接貼圖
+    summary: 回報問題可直接貼截圖，不必先另存檔案。
+    items:
+      - category: improved
+        text: Bug 回報視窗現在可直接貼上截圖、拖曳圖片或點擊選檔，加入後會顯示預覽並可逐張移除。
+      - category: action_required
+        text: 附件數量與大小有限制；若貼上後格式或大小不符，請改用 JPEG、PNG、GIF 或 WebP 圖片。
+    source_refs:
+      - "changelog:2026-08-26:bug-report-image-paste"
+
   - id: staff-2026-08-25-cancelled-session-recovery-transfer
     published_at: "2026-08-25"
     audiences:

@@ -4,6 +4,45 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-26-bug-report-image-paste",
+    "publishedAt": "2026-08-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "major",
+    "title": "Bug 回報可直接貼圖",
+    "summary": "回報問題可直接貼截圖，不必先另存檔案。",
+    "items": [
+      "Bug 回報視窗現在可直接貼上截圖、拖曳圖片或點擊選檔，加入後會顯示預覽並可逐張移除。",
+      "附件數量與大小有限制；若貼上後格式或大小不符，請改用 JPEG、PNG、GIF 或 WebP 圖片。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "Bug 回報視窗現在可直接貼上截圖、拖曳圖片或點擊選檔，加入後會顯示預覽並可逐張移除。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "附件數量與大小有限制；若貼上後格式或大小不符，請改用 JPEG、PNG、GIF 或 WebP 圖片。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-26:bug-report-image-paste"
+    ],
+    "date": "2026-08-26",
+    "version": "2026.08.26"
+  },
+  {
     "id": "staff-2026-08-25-transfer-slot-conflict-preflight",
     "publishedAt": "2026-08-25",
     "effectiveAt": null,

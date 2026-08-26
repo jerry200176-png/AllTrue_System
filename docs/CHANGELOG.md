@@ -1,3 +1,10 @@
+## 2026-08-26 — improved(ux): Bug 回報可直接貼上截圖
+
+<!-- release-notes: staff_update=staff-2026-08-26-bug-report-image-paste -->
+
+- Bug 回報視窗支援直接貼上剪貼簿截圖、拖曳圖片或點擊選檔；三種方式共用圖片格式、5MB／5 張上限與即時預覽。
+- 純文字貼上仍照常輸入描述；移除附件或關閉視窗會清理預覽資源，既有多段表單與後端附件 API 不變。
+
 ## 2026-08-26 — fix(attendance): 待點名列表遇到歷史衝突仍可載入
 
 <!-- release-notes: silent_ship=silent-2026-08-26-read-side-session-conflict -->

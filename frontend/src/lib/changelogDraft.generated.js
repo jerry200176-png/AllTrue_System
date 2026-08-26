@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.08.26",
     "date": "2026-08-26",
     "title": "2026.08.26 草稿（未發布）",
-    "summary": "待點名列表遇到歷史衝突仍可載入",
+    "summary": "待點名列表遇到歷史衝突仍可載入；回報可直接貼上截圖",
     "audience": [
       "teacher",
       "director"
@@ -20,10 +20,17 @@ export const changelogDraftNotes = [
         "items": [
           "待點名列表遇到歷史衝突仍可載入"
         ]
+      },
+      {
+        "title": "其他改善",
+        "items": [
+          "回報可直接貼上截圖"
+        ]
       }
     ],
     "items": [
-      "待點名列表遇到歷史衝突仍可載入"
+      "待點名列表遇到歷史衝突仍可載入",
+      "回報可直接貼上截圖"
     ]
   },
   {
