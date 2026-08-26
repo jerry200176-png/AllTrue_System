@@ -1,3 +1,10 @@
+## 2026-08-26 — improved(ux): 待辦直接定位帳務與課表
+
+<!-- release-notes: staff_update=staff-2026-08-26-director-contextual-actions -->
+
+- 通知中心的帳務與排課／代課通知會沿用既有學生、課程與日期脈絡，進入目標頁面後直接定位並高亮對應資料，主任不必再重新搜尋。
+- 帳務仍依未繳費／續課分類處理；找不到目前分校資料時會顯示提示，不跨分校猜測、不自動寫入，付款、堂次、權限與後端 API 不變。
+
 ## 2026-08-26 — improved(ux): 課程編輯集中到學生主檔
 
 <!-- release-notes: staff_update=staff-2026-08-26-course-edit-master-record -->

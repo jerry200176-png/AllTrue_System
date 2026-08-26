@@ -35,6 +35,11 @@
         @select="selectCalendarFlowStep"
       />
       <p v-if="!isTeacher && calendarWorkflowHint" class="calendar-workflow-hint" role="status">{{ calendarWorkflowHint }}</p>
+      <p v-if="!isTeacher && calendarFocusMessage" class="calendar-focus-context" role="status">
+        <span class="material-symbols-outlined" aria-hidden="true">my_location</span>
+        <span>{{ calendarFocusMessage }}</span>
+        <button type="button" @click="clearCalendarFocus">清除定位</button>
+      </p>
       <div v-if="viewMode === 'week'" class="smart-cal-toolbar" data-guide="calendar-toolbar">
         <div class="toolbar-row toolbar-row-primary">
           <div class="toolbar-group">
@@ -205,7 +210,7 @@
                 <div
                   v-for="(course, cIdx) in getCoursesForTeacherAt(teacher.id, h)"
                   :key="course.id"
-                  class="course-block"
+                  :class="['course-block', { 'course-block--focused': focusedCalendarCourseId === Number(course.id) }]"
                   :style="getTeacherCourseBlockStyle(course, teacher.id, h, cIdx)"
                   :draggable="!isTeacher"
                   @click.stop="!isTeacher && onCourseClick(course, selectedDateStr)"
@@ -261,7 +266,7 @@
                 <div
                   v-for="(course, cIdx) in getCoursesForWeekCell(idx + 1, h)"
                   :key="course.id"
-                  class="course-block"
+                  :class="['course-block', { 'course-block--focused': focusedCalendarCourseId === Number(course.id) }]"
                   :style="getWeekCourseBlockStyle(course, idx + 1, h, cIdx)"
                   :draggable="!isTeacher"
                   @click.stop="!isTeacher && onCourseClick(course, getDisplayDateFull(idx + 1))"
@@ -562,16 +567,20 @@ import { useCalendarDataLoad } from '../composables/calendar/useCalendarDataLoad
 import { useCalendarLeaveExtra } from '../composables/calendar/useCalendarLeaveExtra.js';
 import { useCalendarSubstitute } from '../composables/calendar/useCalendarSubstitute.js';
 import { useCalendarReschedule } from '../composables/calendar/useCalendarReschedule.js';
+import { courseIdOf, resolveCalendarFocusCourse } from '../lib/workflowNavigationContext.js';
 
 const props = defineProps({
   branchId: [String, Number],
   userRole: String,
   userId: [String, Number],
   initialTeacherId: [String, Number],
+  initialStudentId: [String, Number],
+  initialCourseId: [String, Number],
+  initialDate: String,
   resetWeekToken: [String, Number],
   initialIntent: String,
 });
-const emit = defineEmits(['clear-initial-teacher', 'clear-initial-intent']);
+const emit = defineEmits(['clear-initial-teacher', 'clear-initial-intent', 'clear-initial-context']);
 
 const isTeacher = computed(() => props.userRole === 'teacher');
 const currentTeacherId = computed(() => {
@@ -720,6 +729,41 @@ const selectedDateStr = computed(() => getDisplayDateFull(selectedDow.value));
 const roomFilter = ref('');
 const teacherSearch = ref('');
 const studentSearch = ref('');
+const focusedCalendarCourseId = ref(null);
+const calendarFocusMessage = ref('');
+const consumedCalendarFocusKey = ref('');
+
+function calendarFocusKey() {
+  return `${props.initialStudentId || ''}:${props.initialCourseId || ''}:${props.initialDate || ''}`;
+}
+
+function clearCalendarFocus() {
+  focusedCalendarCourseId.value = null;
+  calendarFocusMessage.value = '';
+  consumedCalendarFocusKey.value = calendarFocusKey();
+  emit('clear-initial-context');
+}
+
+function applyCalendarFocus() {
+  const key = calendarFocusKey();
+  if (!key || key === '::' || key === consumedCalendarFocusKey.value || !courses.value.length) return;
+  consumedCalendarFocusKey.value = key;
+  const course = resolveCalendarFocusCourse(courses.value, {
+    studentId: props.initialStudentId,
+    courseId: props.initialCourseId,
+  });
+  if (!course) {
+    focusedCalendarCourseId.value = null;
+    calendarFocusMessage.value = '通知對象目前不在這份課表，請重新整理或確認分校。';
+    emit('clear-initial-context');
+    return;
+  }
+  focusedCalendarCourseId.value = courseIdOf(course);
+  studentSearch.value = course.student_name || '';
+  if (props.initialDate) jumpToDateWeek(props.initialDate);
+  calendarFocusMessage.value = `已定位：${course.student_name || '指定學生'}${course.subject ? `／${course.subject}` : ''}`;
+  emit('clear-initial-context');
+}
 // 日檢視：是否隱藏「當日無課」的老師欄（純覽模式；開啟後無法點空格快速排課）
 const HIDE_EMPTY_TEACHERS_KEY = 'smart_calendar_hide_empty_teachers';
 const hideEmptyTeacherColumns = ref((() => {
@@ -1001,9 +1045,10 @@ async function submitReschedule() {
 const prevWeek = () => { weekOffset.value -= 1; };
 const nextWeek = () => { weekOffset.value += 1; };
 
-const jumpToDateWeek = () => {
-  const ymd = String(jumpToDate.value || '').slice(0, 10);
+const jumpToDateWeek = (dateValue = jumpToDate.value) => {
+  const ymd = String(dateValue || '').slice(0, 10);
   if (!ymd) return;
+  jumpToDate.value = ymd;
   const target = new Date(ymd + 'T12:00:00');
   if (Number.isNaN(target.getTime())) return;
 
@@ -2410,6 +2455,10 @@ watch(() => props.initialIntent, (intent) => {
   else if (intent === 'reschedule') selectCalendarFlowStep('reschedule');
   emit('clear-initial-intent');
 }, { immediate: true });
+watch(() => [props.initialStudentId, props.initialCourseId, props.initialDate, courses.value.length], () => {
+  if (!props.initialStudentId && !props.initialCourseId && !props.initialDate) consumedCalendarFocusKey.value = '';
+  applyCalendarFocus();
+}, { immediate: true });
 watch(visibleTeachers, (list) => {
   if (!Array.isArray(list) || list.length === 0) {
     weekViewTeacherIds.value = [];
@@ -2557,6 +2606,28 @@ onMounted(() => {
   color: var(--ds-ink-secondary);
   font-size: 12px;
   line-height: 1.5;
+}
+.calendar-focus-context {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -8px 0 16px;
+  padding: 9px 12px;
+  border: 1px solid color-mix(in srgb, var(--ds-cta) 35%, var(--ds-hairline));
+  border-radius: var(--ds-radius-sm, 6px);
+  background: var(--ds-primary-wash, var(--ds-canvas-soft));
+  color: var(--ds-ink-secondary);
+  font-size: 12px;
+}
+.calendar-focus-context .material-symbols-outlined { color: var(--ds-cta); font-size: 18px; }
+.calendar-focus-context button {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: var(--ds-cta);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
 }
 .smart-cal-header-actions {
   display: flex;
@@ -2939,6 +3010,11 @@ onMounted(() => {
 .course-block:hover {
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+.course-block--focused {
+  outline: 3px solid var(--ds-cta);
+  outline-offset: 2px;
+  z-index: 4;
 }
 /* var(--ds-warning) Step 5：.cb-student / .cb-detail / .cb-type 已搬移至 CourseBlockContent.vue */
 .rc-tag {

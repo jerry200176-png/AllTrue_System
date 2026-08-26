@@ -344,9 +344,9 @@
         @navigate="onNavigateFromNotifications"
         @unread-change="onUnreadChange"
       />
-      <SmartCalendar v-if="!isPasswordChangeLocked && active === 'calendar'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" :initial-teacher-id="initialTeacherIdForNav" :reset-week-token="calendarResetToken" :initial-intent="calendarInitialIntent" @clear-initial-teacher="initialTeacherIdForNav = null" @clear-initial-intent="calendarInitialIntent = ''" />
+      <SmartCalendar v-if="!isPasswordChangeLocked && active === 'calendar'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" :initial-teacher-id="initialTeacherIdForNav" :initial-student-id="calendarInitialStudentId" :initial-course-id="calendarInitialCourseId" :initial-date="calendarInitialDate" :reset-week-token="calendarResetToken" :initial-intent="calendarInitialIntent" @clear-initial-teacher="initialTeacherIdForNav = null" @clear-initial-intent="calendarInitialIntent = ''" @clear-initial-context="clearCalendarNavigationContext" />
       <StudentsList v-if="!isPasswordChangeLocked && isDirector && active === 'students'" :branch-id="currentBranch" :initial-student-id="studentFocusIdForNav" :initial-course-id="studentFocusCourseIdForNav" :initial-student-intent="studentFocusIntentForNav" @clear-initial-student="clearStudentNavigationContext" />
-      <TuitionCollectionPage v-if="!isPasswordChangeLocked && isDirector && active === 'tuition-collect'" :branch-id="currentBranch" :initial-tab="tuitionInitialTab" @clear-initial-tab="tuitionInitialTab = ''" />
+      <TuitionCollectionPage v-if="!isPasswordChangeLocked && isDirector && active === 'tuition-collect'" :branch-id="currentBranch" :initial-tab="tuitionInitialTab" :initial-student-id="tuitionInitialStudentId" :initial-course-id="tuitionInitialCourseId" @clear-initial-tab="tuitionInitialTab = ''" @clear-initial-context="clearTuitionNavigationContext" />
       <TuitionReportPage v-if="!isPasswordChangeLocked && isDirector && active === 'tuition-report' && !pinModalActive" :branch-id="currentBranch" />
       <ParttimePayrollPage v-if="!isPasswordChangeLocked && isDirector && active === 'parttime-payroll' && !pinModalActive" :branch-id="currentBranch" :user-role="role" />
       <TeacherEligibilityPage v-if="!isPasswordChangeLocked && isDirector && active === 'teacher-eligibility' && !pinModalActive" :branch-id="currentBranch" :user-role="role" />
@@ -931,7 +931,12 @@ const studentFocusCourseIdForNav = ref(null);
 const studentFocusIntentForNav = ref('');
 const calendarResetToken = ref(0);
 const calendarInitialIntent = ref('');
+const calendarInitialStudentId = ref(null);
+const calendarInitialCourseId = ref(null);
+const calendarInitialDate = ref('');
 const tuitionInitialTab = ref('');
+const tuitionInitialStudentId = ref(null);
+const tuitionInitialCourseId = ref(null);
 const unreadNotificationCount = ref(0);
 const urgentNotificationCount = ref(0);
 const inboxNeedsAttentionCount = ref(0);
@@ -1051,7 +1056,24 @@ function onPopStateDeepLink() {
   applyDeepLinkFromUrl();
 }
 
-function onNavigateFromNotifications({ target, recordId, studentId, courseId, focus, section, workflowId, intent } = {}) {
+function normalizeNavigationId(value) {
+  const id = Number(value);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
+function clearCalendarNavigationContext() {
+  calendarInitialStudentId.value = null;
+  calendarInitialCourseId.value = null;
+  calendarInitialDate.value = '';
+}
+
+function clearTuitionNavigationContext() {
+  tuitionInitialStudentId.value = null;
+  tuitionInitialCourseId.value = null;
+  tuitionInitialTab.value = '';
+}
+
+function onNavigateFromNotifications({ target, recordId, studentId, courseId, date, focus, section, workflowId, intent } = {}) {
   if (isPasswordChangeLocked.value) {
     active.value = 'profile';
     return;
@@ -1061,13 +1083,19 @@ function onNavigateFromNotifications({ target, recordId, studentId, courseId, fo
   if (target === 'calendar') {
     calendarResetToken.value += 1;
     calendarInitialIntent.value = intent || '';
+    calendarInitialStudentId.value = normalizeNavigationId(studentId);
+    calendarInitialCourseId.value = normalizeNavigationId(courseId);
+    calendarInitialDate.value = typeof date === 'string' ? date.slice(0, 10) : '';
   } else {
     calendarInitialIntent.value = '';
+    clearCalendarNavigationContext();
   }
   if (target === 'tuition-collect') {
     tuitionInitialTab.value = intent || '';
+    tuitionInitialStudentId.value = normalizeNavigationId(studentId);
+    tuitionInitialCourseId.value = normalizeNavigationId(courseId);
   } else {
-    tuitionInitialTab.value = '';
+    clearTuitionNavigationContext();
   }
   if (target === 'learning' && recordId) {
     learningTargetRecordId.value = Number(recordId);
@@ -1168,6 +1196,8 @@ function onNavigateLearningFromTeacherHome(payload = {}) {
 function setActivePage(page) {
   dashboardReturnContext.value = null;
   if (page !== 'students') clearStudentNavigationContext();
+  if (page !== 'calendar') clearCalendarNavigationContext();
+  if (page !== 'tuition-collect') clearTuitionNavigationContext();
   const prev = active.value;
   if (isPasswordChangeLocked.value && page !== 'profile') {
     active.value = 'profile';

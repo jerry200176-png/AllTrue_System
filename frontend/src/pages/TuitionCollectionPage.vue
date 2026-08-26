@@ -37,6 +37,12 @@
       </button>
     </div>
 
+    <div v-if="tuitionFocusMessage" class="tc-focus-context" role="status">
+      <span class="material-symbols-outlined" aria-hidden="true">my_location</span>
+      <span>{{ tuitionFocusMessage }}</span>
+      <button type="button" class="tc-focus-context__clear" @click="clearTuitionFocus">清除定位</button>
+    </div>
+
     <section v-if="activeAccountingTab === 'receivables'">
     <!-- Skeleton loading -->
     <div v-if="loading && !rows.length" class="tc-skeleton-area">
@@ -259,7 +265,7 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="r in filteredRows" :key="r.id" :class="rowClass(r)">
+              <tr v-for="r in filteredRows" :id="`tuition-row-${r.id}`" :key="r.id" :class="[rowClass(r), { 'tc-row--focused': tuitionFocusRowId === Number(r.id || r.student_class_id) }]">
                 <td class="tc-col-check">
                   <input
                     v-if="isRowSelectable(r)"
@@ -920,7 +926,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, nextTick } from 'vue';
 import { useToast } from '../composables/useToast';
 import PaymentSlipModal from '../components/PaymentSlipModal.vue';
 import PaymentEntryModal from '../components/PaymentEntryModal.vue';
@@ -941,13 +947,16 @@ import {
   ACCOUNTING_CSV_HEADERS,
 } from '../lib/studentClassDisplay.js';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
+import { resolveTuitionFocusRow } from '../lib/workflowNavigationContext.js';
 
 const props = defineProps({
   branchId: { type: [Number, String], default: null },
   initialTab: { type: String, default: '' },
+  initialStudentId: { type: [Number, String], default: null },
+  initialCourseId: { type: [Number, String], default: null },
 });
 
-const emit = defineEmits(['navigate', 'clear-initial-tab']);
+const emit = defineEmits(['navigate', 'clear-initial-tab', 'clear-initial-context']);
 
 const loading = ref(false);
 const error = ref('');
@@ -1393,6 +1402,45 @@ function refreshActiveTab() {
 // ═══ Alerts ═══
 const rows = ref([]);
 const searchQuery = ref('');
+const tuitionFocusRowId = ref(null);
+const tuitionFocusMessage = ref('');
+const consumedTuitionFocusKey = ref('');
+
+function tuitionFocusKey() {
+  return `${props.initialStudentId || ''}:${props.initialCourseId || ''}`;
+}
+
+function clearTuitionFocus() {
+  tuitionFocusRowId.value = null;
+  tuitionFocusMessage.value = '';
+  consumedTuitionFocusKey.value = tuitionFocusKey();
+  emit('clear-initial-context');
+}
+
+async function applyTuitionFocus() {
+  const key = tuitionFocusKey();
+  if (!key || key === ':' || key === consumedTuitionFocusKey.value || !rows.value.length) return;
+  consumedTuitionFocusKey.value = key;
+  const row = resolveTuitionFocusRow(rows.value, {
+    studentId: props.initialStudentId,
+    courseId: props.initialCourseId,
+  });
+  if (!row) {
+    tuitionFocusRowId.value = null;
+    tuitionFocusMessage.value = '通知對象目前不在這份待處理清單，請切換分類或重新整理。';
+    emit('clear-initial-context');
+    return;
+  }
+  tuitionFocusRowId.value = Number(row.id || row.student_class_id) || null;
+  tuitionFocusMessage.value = `已定位：${row.student_name || '指定學生'}${row.subject ? `／${row.subject}` : ''}`;
+  emit('clear-initial-context');
+  await nextTick();
+  const element = tuitionFocusRowId.value
+    ? document.getElementById(`tuition-row-${tuitionFocusRowId.value}`)
+    : null;
+  element?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+}
+
 const slipOpen = ref(false);
 const slipInvoiceId = ref(null);
 const slipStudentClassId = ref(null);
@@ -1587,6 +1635,7 @@ async function loadAlerts() {
       const db = b.days_until_settlement ?? 999;
       return da - db;
     });
+    await applyTuitionFocus();
   } catch (e) {
     error.value = humanizeApiErrorMessage(e.message, '載入失敗');
   } finally {
@@ -2121,8 +2170,16 @@ watch(() => props.initialTab, (tab) => {
   } else if (tab === 'unpaid') {
     activeAccountingTab.value = 'receivables';
     activeTab.value = 'unpaid';
+  } else if (tab === 'renewal') {
+    activeAccountingTab.value = 'receivables';
+    activeTab.value = 'renewal';
   }
   emit('clear-initial-tab');
+}, { immediate: true });
+
+watch(() => [props.initialStudentId, props.initialCourseId, rows.value.length], () => {
+  if (!props.initialStudentId && !props.initialCourseId) consumedTuitionFocusKey.value = '';
+  applyTuitionFocus();
 }, { immediate: true });
 
 watch(activeAccountingTab, (tab) => {
@@ -2137,6 +2194,32 @@ watch(activeAccountingTab, (tab) => {
 
 loadAlerts();
 </script>
+
+<style scoped>
+.tc-focus-context {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 9px 12px;
+  border: 1px solid color-mix(in srgb, var(--ds-cta) 35%, var(--ds-hairline));
+  border-radius: var(--ds-radius-sm, 6px);
+  background: var(--ds-primary-wash, var(--ds-canvas-soft));
+  color: var(--ds-ink-secondary);
+  font-size: 12px;
+}
+.tc-focus-context .material-symbols-outlined { color: var(--ds-cta); font-size: 18px; }
+.tc-focus-context__clear {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: var(--ds-cta);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.tc-row--focused > td { background: var(--ds-primary-wash, rgba(37, 99, 235, .08)); box-shadow: inset 0 2px 0 var(--ds-cta), inset 0 -2px 0 var(--ds-cta); }
+</style>
 
 <style scoped>
 /* ─── Page ─── */
