@@ -449,6 +449,43 @@ export const staffUpdates = [
     "version": "2026.08.26"
   },
   {
+    "id": "staff-2026-08-26-course-edit-master-record",
+    "publishedAt": "2026-08-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "課程編輯集中到學生主檔",
+    "summary": "從課程管理編輯課程時，會直接開啟學生管理中同一門課的編輯表單。",
+    "items": [
+      "課程管理的編輯入口會帶到同一位學生與同一門課，主任不必再重新找學生或判斷要用哪個編輯畫面。",
+      "只有目前分校清單中能驗證的學生與課程才會開啟；付款、堂數、出缺勤、資料與權限規則不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "課程管理的編輯入口會帶到同一位學生與同一門課，主任不必再重新找學生或判斷要用哪個編輯畫面。"
+        ]
+      },
+      {
+        "title": "我們修好了",
+        "items": [
+          "只有目前分校清單中能驗證的學生與課程才會開啟；付款、堂數、出缺勤、資料與權限規則不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-26:course-edit-master-record"
+    ],
+    "date": "2026-08-26",
+    "version": "2026.08.26"
+  },
+  {
     "id": "staff-2026-08-26-course-create-entry",
     "publishedAt": "2026-08-26",
     "effectiveAt": null,

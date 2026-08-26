@@ -1,3 +1,10 @@
+## 2026-08-26 — improved(ux): 課程編輯集中到學生主檔
+
+<!-- release-notes: staff_update=staff-2026-08-26-course-edit-master-record -->
+
+- 從課程管理編輯課程時，現在會帶到學生管理的同一位學生與同一門課，直接開啟學生主檔編輯表單，避免同一筆課程需要記住兩套編輯入口。
+- 只接受目前分校清單中可驗證的學生與課程脈絡；本次不改付款、堂數、出缺勤、後端 API、資料庫或權限規則。
+
 ## 2026-08-26 — improved(ux): 課程管理導頁保留學生上下文
 
 <!-- release-notes: staff_update=staff-2026-08-26-course-student-focus -->

@@ -337,7 +337,7 @@
                     </td>
                     <td class="cell-actions">
                       <div class="action-btns-row">
-                        <button class="small primary course-primary-action" @click="editCourse(c)">編輯</button>
+                        <button class="small primary course-primary-action" @click="navigateToStudentCourse(c)">編輯</button>
                         <button
                           v-if="isManualOccurrenceCourse(c)"
                           class="small btn-add-session manual-occurrence-action"
@@ -521,7 +521,7 @@
                       <button class="small ghost action-menu-trigger" @click.stop="toggleActionMenu(hc.id)" title="其他歷史課程操作" aria-haspopup="menu" :aria-expanded="activeActionMenu === hc.id">更多 ▾</button>
                       <div v-if="activeActionMenu === hc.id" class="action-dropdown" role="menu" aria-label="其他歷史課程操作" @click.stop>
                         <p class="action-section-label">課程與帳務</p>
-                        <button class="action-dropdown-item" role="menuitem" @click="editCourse(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">edit</span> 編輯</button>
+                        <button class="action-dropdown-item" role="menuitem" @click="navigateToStudentCourse(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">edit</span> 編輯</button>
                         <button class="action-dropdown-item" role="menuitem" @click="openInvoiceModal(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">receipt_long</span> 帳單與對帳</button>
                         <button class="action-dropdown-item" role="menuitem" @click="duplicateCourseForTeacher(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">content_copy</span> 換師複製</button>
                         <p class="action-section-label">狀態管理</p>
@@ -1890,6 +1890,17 @@ const EDITABILITY_ACTION_HANDLERS = new Set([
 function canOpenEditabilityAction(action) {
   return EDITABILITY_ACTION_HANDLERS.has(action);
 }
+
+const navigateToStudentCourse = (course) => {
+  const studentId = Number(course?.student_id ?? course?.StudentID ?? 0);
+  const courseId = Number(course?.id ?? 0);
+  emit('navigate', {
+    target: 'students',
+    studentId: Number.isSafeInteger(studentId) && studentId > 0 ? studentId : null,
+    courseId: Number.isSafeInteger(courseId) && courseId > 0 ? courseId : null,
+    intent: 'edit',
+  });
+};
 
 function openEditabilityAction(action) {
   const course = editingCourseRaw.value;

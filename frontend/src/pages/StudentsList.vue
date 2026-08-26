@@ -772,7 +772,12 @@ import AtButton from '../components/design-system/AtButton.vue';
 import AtIconButton from '../components/design-system/AtIconButton.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
 
-const props = defineProps({ branchId: [String, Number], initialStudentId: [String, Number] });
+const props = defineProps({
+  branchId: [String, Number],
+  initialStudentId: [String, Number],
+  initialCourseId: [String, Number],
+  initialStudentIntent: String,
+});
 const emit = defineEmits(['navigate', 'clear-initial-student']);
 
 // --- State ---
@@ -815,7 +820,7 @@ const editFormRef = ref(null);
 const toastRef = ref(null);
 const selectedStudent = ref(null);
 const initialStudentFocusInFlight = ref(false);
-const handledInitialStudentId = ref(null);
+const handledInitialFocusKey = ref(null);
 const isLaravelCourse = (course) => (
   course?.data_source === 'laravel'
   || course?.branch_name != null
@@ -1547,7 +1552,9 @@ const toggleExpand = async (student) => {
 
 const focusInitialStudent = async () => {
   const targetId = Number(props.initialStudentId);
-  if (!Number.isSafeInteger(targetId) || targetId <= 0 || initialStudentFocusInFlight.value || handledInitialStudentId.value === targetId) return;
+  const targetCourseId = Number(props.initialCourseId);
+  const focusKey = `${targetId}:${Number.isSafeInteger(targetCourseId) && targetCourseId > 0 ? targetCourseId : ''}:${props.initialStudentIntent || ''}`;
+  if (!Number.isSafeInteger(targetId) || targetId <= 0 || initialStudentFocusInFlight.value || handledInitialFocusKey.value === focusKey) return;
   const student = students.value.find((candidate) => Number(candidate?._laravelId ?? candidate?.id ?? 0) === targetId);
   if (!student) return;
 
@@ -1562,7 +1569,13 @@ const focusInitialStudent = async () => {
       ? document.querySelector(`[data-student-id="${student.id}"]`)
       : null;
     row?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
-    handledInitialStudentId.value = targetId;
+    const targetCourse = Number.isSafeInteger(targetCourseId) && targetCourseId > 0
+      ? (studentCourses.value[student.id] || []).find((course) => Number(course?.id) === targetCourseId)
+      : null;
+    if (props.initialStudentIntent === 'edit' && targetCourse) {
+      editCourse(targetCourse);
+    }
+    handledInitialFocusKey.value = focusKey;
     emit('clear-initial-student');
   } finally {
     initialStudentFocusInFlight.value = false;
@@ -2865,8 +2878,8 @@ const importStudents = async (event) => {
 };
 
 watch(() => props.branchId, () => { loadStudents(); loadTeachers(); loadAllStudentCourses(); });
-watch(() => props.initialStudentId, () => {
-  handledInitialStudentId.value = null;
+watch(() => [props.initialStudentId, props.initialCourseId, props.initialStudentIntent], () => {
+  handledInitialFocusKey.value = null;
   focusInitialStudent();
 }, { immediate: true });
 watch(students, focusInitialStudent, { flush: 'post' });
