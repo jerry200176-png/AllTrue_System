@@ -318,9 +318,9 @@
                 </td>
                 <td class="tc-col-actions">
                   <div class="tc-actions">
-                    <button class="tc-btn tc-btn--ledger" @click="openLedgerForClass(r)" title="查看學生帳務對帳">
+                    <button class="tc-btn tc-btn--ledger" @click="openLedgerForClass(r)" title="查看學生繳費明細">
                       <span class="material-symbols-outlined">account_balance</span>
-                      對帳
+                      繳費明細
                     </button>
 
                     <!-- #1100/FD-3: 本期順延與下一期重疊 — director-facing only, never auto-shifts dates -->
@@ -572,9 +572,9 @@
                 </td>
                 <td @click.stop>
                   <div class="tc-actions">
-                    <button class="tc-btn tc-btn--ledger" @click="openLedgerForReport(row)" :aria-label="`對帳 ${humanizeDocumentRef(row.receipt_no)}`">
+                    <button class="tc-btn tc-btn--ledger" @click="openLedgerForReport(row)" :aria-label="`查看繳費明細 ${humanizeDocumentRef(row.receipt_no)}`">
                       <span class="material-symbols-outlined">account_balance</span>
-                      對帳
+                      繳費明細
                     </button>
                     <button class="tc-btn tc-btn--receipt" @click="openReceiptByReport(row.report_id)" :aria-label="`查看 ${humanizeDocumentRef(row.receipt_no)}`">
                       <span class="material-symbols-outlined">receipt</span>
@@ -657,7 +657,7 @@
                 </td>
                 <td>
                   <div class="tc-actions">
-                    <button class="tc-btn tc-btn--ledger" @click="openLedgerForClass(row)"><span class="material-symbols-outlined">account_balance</span>對帳</button>
+                    <button class="tc-btn tc-btn--ledger" @click="openLedgerForClass(row)" title="查看學生繳費明細"><span class="material-symbols-outlined">account_balance</span>繳費明細</button>
                   </div>
                 </td>
               </tr>
