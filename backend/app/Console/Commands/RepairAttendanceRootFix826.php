@@ -30,11 +30,11 @@ class RepairAttendanceRootFix826 extends Command
 
     /** @var list<array{class_id:int,session_id:int,date:string,status:string,schedule_ids:list<int>,reason:string}> */
     private const TARGETS = [
-        ['class_id' => 2819, 'session_id' => 28451, 'date' => '2026-08-03', 'status' => 'attended', 'schedule_ids' => [], 'reason' => '大安生物無課程與行事曆來源的補建已上堂次'],
-        ['class_id' => 2819, 'session_id' => 28448, 'date' => '2026-08-26', 'status' => 'scheduled', 'schedule_ids' => [8867, 8879], 'reason' => '大安生物 8/26 非正式課程，清除 leave 殘留堂次與重複排課'],
-        ['class_id' => 2081, 'session_id' => 16731, 'date' => '2026-08-01', 'status' => 'attended', 'schedule_ids' => [], 'reason' => '周芮緗 8/1 經主任確認未上課，撤銷人工誤點名'],
-        ['class_id' => 2081, 'session_id' => 31739, 'date' => '2026-08-02', 'status' => 'completed', 'schedule_ids' => [], 'reason' => '周芮緗 8/2 補建堂次不具課程來源'],
-        ['class_id' => 2081, 'session_id' => 31740, 'date' => '2026-08-03', 'status' => 'completed', 'schedule_ids' => [], 'reason' => '周芮緗 8/3 補建堂次不具課程來源'],
+        ['class_id' => 2819, 'session_id' => 28451, 'date' => '2026-08-03', 'status' => 'attended', 'schedule_ids' => [], 'reason' => 'SC2819 無課程與行事曆來源的補建已上堂次'],
+        ['class_id' => 2819, 'session_id' => 28448, 'date' => '2026-08-26', 'status' => 'scheduled', 'schedule_ids' => [8867, 8879], 'reason' => 'SC2819 8/26 非正式課程，清除 leave 殘留堂次與重複排課'],
+        ['class_id' => 2081, 'session_id' => 16731, 'date' => '2026-08-01', 'status' => 'attended', 'schedule_ids' => [], 'reason' => 'SC2081 8/1 經主任確認未上課，撤銷人工誤點名'],
+        ['class_id' => 2081, 'session_id' => 31739, 'date' => '2026-08-02', 'status' => 'completed', 'schedule_ids' => [], 'reason' => 'SC2081 8/2 補建堂次不具課程來源'],
+        ['class_id' => 2081, 'session_id' => 31740, 'date' => '2026-08-03', 'status' => 'completed', 'schedule_ids' => [], 'reason' => 'SC2081 8/3 補建堂次不具課程來源'],
     ];
 
     public function handle(): int
