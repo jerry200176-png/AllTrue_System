@@ -236,6 +236,11 @@ jobs:
               "rev" => "639f8ffbb8c22a096156bf4228dd7ca51b310cd5",
               "deploy" => "32798894950",
             ],
+            244 => [
+              "reply" => "已修好並上線：較長的繳費說明現在會完整保留，不會再因說明內容較長而讓確認入帳沒有反應；重試同一筆也不會重複建立收款。請重新整理帳務中心，確認洪家溱 6/20 的回報後再按「確認入帳」；若仍沒有反應，請回覆這則訊息。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2065",
+              "rev" => "46e2ef5aa55ba5dd013ac8d9c20c7fee9befd579",
+              "deploy" => "32957531846",
+            ],
           ];
           $results = [];
           foreach ($items as $bugId => $cfg) {
