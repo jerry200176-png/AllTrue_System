@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-08-26-read-side-session-conflict
+    changelog_date: "2026-08-26"
+    changelog_title: "fix(attendance): 待點名列表遇到歷史衝突仍可載入"
+    reason: 僅隔離讀取投影中的歷史資料衝突並保留診斷紀錄；沒有新增教職員操作流程，正常堂次建立與重疊防護規則不變。
+
   - id: silent-2026-08-22-db-credential-rotation-incident
     changelog_date: "2026-08-22"
     changelog_title: "incident(ops): #1387 production DB credential mismatch recovered"
