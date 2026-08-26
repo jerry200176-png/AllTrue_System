@@ -1,3 +1,10 @@
+## 2026-08-26 — fix(billing): 長備註確認入帳不再失敗
+
+<!-- release-notes: silent_ship=silent-2026-08-26-payment-report-long-note -->
+
+- 主任確認入帳時，較長的繳費說明會完整保留，不會因歷史欄位容量不足而讓整筆核銷失敗。
+- 同一筆回報重試時會維持單一收款紀錄；付款狀態、金額與既有核帳流程不變。
+
 ## 2026-08-26 — improved(billing): 主任可從提醒直接開繳費通知與明細
 
 <!-- release-notes: staff_update=staff-2026-08-26-payment-shortcuts -->

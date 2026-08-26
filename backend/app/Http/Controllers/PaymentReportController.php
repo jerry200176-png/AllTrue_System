@@ -252,16 +252,27 @@ class PaymentReportController extends Controller
      */
     public function confirm(Request $request, $id)
     {
-        $report = PaymentReport::findOrFail($id);
-
-        if ($report->status !== 'pending') {
-            return response()->json(['message' => '此回報已處理過'], 422);
-        }
+        PaymentReport::findOrFail($id);
 
         $userId = $request->attributes->get('auth_user_id');
         $confirmationNote = trim((string) $request->input('note', ''));
 
-        return DB::transaction(function () use ($report, $userId, $confirmationNote) {
+        return DB::transaction(function () use ($id, $userId, $confirmationNote) {
+            // Serialize confirmation attempts for the same report. This keeps a retry
+            // after a lost response from creating a second Payment.
+            $report = PaymentReport::query()
+                ->whereKey($id)
+                ->lockForUpdate()
+                ->first();
+
+            if (!$report) {
+                abort(404);
+            }
+
+            if ($report->status !== 'pending') {
+                return response()->json(['message' => '此回報已處理過'], 422);
+            }
+
             $note = $confirmationNote !== ''
                 ? $confirmationNote
                 : trim((string) ($report->note ?? ''));

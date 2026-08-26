@@ -1467,3 +1467,11 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **強制規則**：貼上圖片、拖曳圖片與選檔必須進入同一套格式／大小／數量驗證與預覽生命週期；貼上純文字不可 `preventDefault`，以免破壞描述欄輸入。圖片預覽使用的 object URL 在移除、關閉、送出成功與元件卸載時都必須釋放；後端驗證仍是最終權威。
 - **對標**：GitHub、GitLab、Jira 都把拖曳／貼上／選檔作為同一個附件工作流；Uppy 與 react-dropzone 的維護測試也分別覆蓋貼上檔案、drop pipeline、文字貼上不攔截與限制驗證。
 - **測試必補**：圖片貼上會阻止預設行為並顯示預覽；純文字貼上保持原事件；拖曳圖片可加入；非法格式／超過 5MB／超過 5 張會顯示原因；送出傳遞原始 `File` 且預覽 URL 會 revoke。移除任一入口後，對應測試必須失敗。
+
+### R126. PaymentReport 長備註確認入帳不可因 legacy Payment.Note 溢位失敗（in-app #244／GitHub #2065，2026-08-26）
+
+- **現象**：洪家溱的付款回報含跨課程核帳說明，主任按「確認入帳」無反應；Sentry #2064 記錄 Payment.Note SQLSTATE 22001／1406。唯讀 production probe 顯示 report #1557 仍 pending、沒有 Payment／Invoice 半套資料，確認交易已正確回滾。
+- **根因層級**：F6 輸入邊界的架構設計缺口，`payment_reports.note` 已允許 500 字，但下游 `Payment.Note` 仍是 VARCHAR(255)；另外 confirm 在 transaction 外先讀 pending，沒有把狀態鎖定與重查放在同一交易內。
+- **對標**：Stripe 的付款狀態生命週期與 idempotent retry、Laravel Cashier Stripe 與 Saleor 的受控交易／狀態模型都要求狀態轉換可重試且不可重複；本系統以 Payment.Note TEXT 保留完整來源備註，並在確認 transaction 內 `lockForUpdate`，不截斷、不重複入帳。
+- **強制規則**：任何付款回報可接受的備註長度，所有下游付款紀錄欄位都必須可承載；確認請求必須在 transaction 內鎖定 PaymentReport 並重新確認 pending。migration rollback 不得為了回復 VARCHAR 而截斷帳務備註。
+- **測試必補**：500 字中文備註可確認且 Payment.Note 完整相等；確認重試回 422 且 payment_report_id 只有一筆 Payment；交易失敗後 PaymentReport／Payment／Invoice／Paid 維持原子狀態。
