@@ -476,6 +476,7 @@
       :subject-label="rescheduleDisplay.subjectLabel"
       :original-slot-label="rescheduleDisplay.originalSlot"
       :new-end-time="computedRescheduleNewEnd"
+      :preview="reschedulePreview"
       :time-options="timeOptions30"
       :error="rescheduleError"
       :submitting="rescheduleSubmitting"
@@ -948,7 +949,7 @@ const {
 
 const {
   showRescheduleModal, rescheduleForm, rescheduleDisplay, computedRescheduleNewEnd,
-  rescheduleSubmitting, rescheduleError,
+  reschedulePreview, rescheduleSubmitting, rescheduleError,
   onRescheduleNewStartChange, openRescheduleModal, submitReschedule,
 } = useCalendarReschedule({
   supabase,

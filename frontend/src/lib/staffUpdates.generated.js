@@ -4,6 +4,43 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-26-reschedule-preflight",
+    "publishedAt": "2026-08-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "調課前先看衝堂結果",
+    "summary": "選好新日期與時間後，系統會先提示目前課表是否可能衝堂。",
+    "items": [
+      "調課視窗會依目前已載入的老師、日期、時段與班型，先顯示可安排或已達上限的結果，已知衝堂時不能誤按確認。",
+      "這是送出前提示，最後仍以系統送出時的權限、房間與衝堂檢查為準；若其他人同時改課，請依最新訊息重新選擇。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "調課視窗會依目前已載入的老師、日期、時段與班型，先顯示可安排或已達上限的結果，已知衝堂時不能誤按確認。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "這是送出前提示，最後仍以系統送出時的權限、房間與衝堂檢查為準；若其他人同時改課，請依最新訊息重新選擇。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-26:reschedule-preflight"
+    ],
+    "date": "2026-08-26",
+    "version": "2026.08.26"
+  },
+  {
     "id": "staff-2026-08-26-payment-shortcuts",
     "publishedAt": "2026-08-26",
     "effectiveAt": null,

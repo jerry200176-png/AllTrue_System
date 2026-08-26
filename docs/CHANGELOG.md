@@ -1,3 +1,10 @@
+## 2026-08-26 — improved(ux): 調課前先預覽衝堂
+
+<!-- release-notes: staff_update=staff-2026-08-26-reschedule-preflight -->
+
+- 主任在調課視窗選擇新日期與時間後，會先看到目前課表是否可能衝堂；已知達到老師或班型上限時，系統會停用確認並提示改選方向。
+- 這是唯讀預覽，最後仍由後端重新檢查權限、房間、跨分校與原子調課規則；付款、堂次與排課資料模型不變。
+
 ## 2026-08-26 — improved(ux): 主任待辦可返回工作台
 
 <!-- release-notes: staff_update=staff-2026-08-26-dashboard-return-context -->

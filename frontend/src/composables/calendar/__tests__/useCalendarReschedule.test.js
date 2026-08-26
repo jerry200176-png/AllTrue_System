@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { ref, computed } from 'vue';
 import { findExactRescheduleAnchor, useCalendarReschedule } from '../useCalendarReschedule.js';
+import { buildReschedulePreview } from '../../../lib/reschedulePreview.js';
 
 function makeDeps(overrides = {}) {
   return {
@@ -66,5 +67,34 @@ describe('useCalendarReschedule', () => {
     expect(rescheduleDisplay.value.studentName).toBe('小明');
     expect(rescheduleDisplay.value.subjectLabel).toBe('數學');
     expect(rescheduleDisplay.value.originalSlot).toBe('週三 16:00~18:00');
+  });
+
+  it('previews a known target conflict before submitting', () => {
+    const { openRescheduleModal, reschedulePreview } = useCalendarReschedule(makeDeps({
+      courses: ref([{ id: 1, student_id: 20, teacher_id: 5, day_of_week: 4, start_time: '16:00', end_time: '18:00', class_type: 'one_on_one' }]),
+    }));
+    openRescheduleModal();
+    expect(reschedulePreview.value.blocked).toBe(true);
+    expect(reschedulePreview.value.message).toContain('已有一對一');
+  });
+
+  it('keeps the preview aligned with capacity and recurring-day rules', () => {
+    const full = buildReschedulePreview({
+      currentCourseId: 99,
+      studentId: 10,
+      teacherId: 7,
+      targetDate: '2026-08-27',
+      startTime: '16:00',
+      endTime: '18:00',
+      classType: 'one_on_three',
+      courses: [
+        { id: 1, student_id: 1, teacher_id: 7, day_of_week: 1, days_of_week: [1, 4], start_time: '16:00', end_time: '18:00', class_type: 'one_on_two' },
+        { id: 2, student_id: 2, teacher_id: 7, day_of_week: 4, start_time: '16:30', end_time: '17:30', class_type: 'one_on_two' },
+        { id: 3, student_id: 3, teacher_id: 7, day_of_week: 4, start_time: '17:00', end_time: '19:00', class_type: 'one_on_two' },
+      ],
+    });
+    expect(full.blocked).toBe(true);
+    expect(full.message).toContain('3 位學生');
+    expect(buildReschedulePreview({ targetDate: '' }).status).toBe('incomplete');
   });
 });

@@ -4,6 +4,21 @@
 
 updates:
 
+  - id: staff-2026-08-26-reschedule-preflight
+    published_at: "2026-08-26"
+    audiences:
+      - director
+    importance: major
+    title: 調課前先看衝堂結果
+    summary: 選好新日期與時間後，系統會先提示目前課表是否可能衝堂。
+    items:
+      - category: improved
+        text: 調課視窗會依目前已載入的老師、日期、時段與班型，先顯示可安排或已達上限的結果，已知衝堂時不能誤按確認。
+      - category: action_required
+        text: 這是送出前提示，最後仍以系統送出時的權限、房間與衝堂檢查為準；若其他人同時改課，請依最新訊息重新選擇。
+    source_refs:
+      - "changelog:2026-08-26:reschedule-preflight"
+
   - id: staff-2026-08-26-dashboard-return-context
     published_at: "2026-08-26"
     audiences:
