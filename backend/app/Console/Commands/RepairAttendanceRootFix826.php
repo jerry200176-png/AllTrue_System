@@ -1,14 +1,14 @@
 <?php
 
-namespace AppConsoleCommands;
+namespace App\Console\Commands;
 
-use AppModelsScheduleAuditLog;
-use AppModelsSessionCorrection;
-use AppModelsStudentSignIn;
-use AppModelsLearningRecord;
-use AppServicesSessionDeductionService;
-use IlluminateConsoleCommand;
-use IlluminateSupportFacadesDB;
+use App\Models\LearningRecord;
+use App\Models\ScheduleAuditLog;
+use App\Models\SessionCorrection;
+use App\Models\StudentSignIn;
+use App\Services\SessionDeductionService;
+use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Allowlisted, auditable repair for the 2026-08-26 attendance incidents.

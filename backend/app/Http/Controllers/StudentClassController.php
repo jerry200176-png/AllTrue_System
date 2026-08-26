@@ -5727,7 +5727,7 @@ class StudentClassController extends Controller
                 ? Carbon::parse($lastSession->SessionDate)->addDay()->startOfDay()
                 : Carbon::parse($startFrom)->startOfDay();
             $validWeekdays = array_map(
-                fn (array $slot): int => self::isoWeekday($slot['weekday'] ?? 0),
+                fn (array $slot): int => self::isoWeekday((int) $slot['weekday']),
                 $slots
             );
             $appendGuard = 0;
