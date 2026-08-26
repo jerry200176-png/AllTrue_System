@@ -1,3 +1,10 @@
+## 2026-08-26 — improved(ux): 課程管理移除重複排課入口
+
+<!-- release-notes: staff_update=staff-2026-08-26-course-action-dedup -->
+
+- 課程管理每列的「排課／新增下一堂」現在只保留一個主要入口；「補課／補登」仍集中在「更多」選單，減少主任誤判操作差異。
+- 本次只整理操作入口，不改變排課、堂數、付款、資料或權限規則。
+
 ## 2026-08-26 — improved(billing): 批次帳務送出前先看摘要
 
 <!-- release-notes: staff_update=staff-2026-08-26-billing-batch-preview -->

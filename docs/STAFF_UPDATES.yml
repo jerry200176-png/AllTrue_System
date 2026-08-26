@@ -4,6 +4,21 @@
 
 updates:
 
+  - id: staff-2026-08-26-course-action-dedup
+    published_at: "2026-08-26"
+    audiences:
+      - director
+    importance: digest
+    title: 課程管理排課入口更清楚
+    summary: 每列只保留一個主要排課入口，其他課堂操作集中在更多選單。
+    items:
+      - category: improved
+        text: 「排課／新增下一堂」不再同時出現在主要操作與更多選單；「補課／補登」仍可從更多選單使用。
+      - category: fixed
+        text: 這次只整理畫面入口，既有排課、堂數、付款、資料與權限規則不變。
+    source_refs:
+      - "changelog:2026-08-26:course-action-dedup"
+
   - id: staff-2026-08-26-billing-batch-preview
     published_at: "2026-08-26"
     audiences:

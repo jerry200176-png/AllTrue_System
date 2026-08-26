@@ -354,19 +354,7 @@
                         <div class="action-menu-wrapper">
                           <button class="small ghost action-menu-trigger" @click.stop="toggleActionMenu(c.id)" title="其他課程操作" aria-haspopup="menu" :aria-expanded="activeActionMenu === c.id">更多 ▾</button>
                           <div v-if="activeActionMenu === c.id" class="action-dropdown" role="menu" aria-label="其他課程操作" @click.stop>
-                            <p class="action-section-label">排課與課堂</p>
-                            <button
-                              v-if="isManualOccurrenceCourse(c)"
-                              class="action-dropdown-item"
-                              role="menuitem"
-                              @click="openManualSessionModal(c); closeActionMenu()"
-                            ><span class="material-symbols-outlined action-icon" aria-hidden="true">add</span> 新增下一堂</button>
-                            <button
-                              v-if="isSessionMode(c) && !isManualOccurrenceCourse(c)"
-                              class="action-dropdown-item"
-                              role="menuitem"
-                              @click="openManualSessionModal(c); closeActionMenu()"
-                            ><span class="material-symbols-outlined action-icon" aria-hidden="true">event</span> 排課</button>
+                            <p v-if="isSessionMode(c)" class="action-section-label">排課與課堂</p>
                             <button
                               v-if="isSessionMode(c) && !isManualOccurrenceCourse(c)"
                               class="action-dropdown-item action-dropdown-add-session-mobile"

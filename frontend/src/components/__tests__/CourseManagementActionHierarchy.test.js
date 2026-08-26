@@ -9,6 +9,7 @@ const source = readFileSync(pagePath, 'utf8');
 const activeActionsStart = source.indexOf('<td class="cell-actions">');
 const activeActionsEnd = source.indexOf('<tr v-if="expandedDates.has(c.id)"', activeActionsStart);
 const activeActions = source.slice(activeActionsStart, activeActionsEnd);
+const activeMoreMenu = activeActions.slice(activeActions.indexOf('class="action-dropdown"'));
 
 describe('CourseManagement action hierarchy', () => {
   it('keeps core course work visible and groups secondary operations in More', () => {
@@ -28,6 +29,8 @@ describe('CourseManagement action hierarchy', () => {
     expect(activeActions).toContain('aria-haspopup="menu"');
     expect(activeActions).toContain('role="menu"');
     expect(activeActions).toContain('role="menuitem"');
+    expect(activeActions.match(/openManualSessionModal\(c\)/g)).toHaveLength(2);
+    expect(activeMoreMenu).not.toContain('openManualSessionModal(c)');
     expect(activeActions).toContain('@click="openInvoiceModal(c); closeActionMenu()"');
     expect(activeActions).toContain('@click="openContractAdjustmentModal(c); closeActionMenu()"');
     expect(activeActions).toContain('@click="duplicateCourseForTeacher(c); closeActionMenu()"');
