@@ -52,6 +52,14 @@
           </button>
         </nav>
 
+        <OperationsQuickStart
+          eyebrow="主任工作流程"
+          heading="從這裡開始今天的工作"
+          description="每個入口都會帶你到正確的下一步；帳務與排課的資料規則維持原本安全流程。"
+          :steps="directorQuickStartSteps"
+          @select="openQuickStart"
+        />
+
         <section v-if="dashboardViewMode === 'focus'" class="director-workbench-v2__focus" aria-label="今天的主任工作">
           <section class="director-workbench-v2__primary surface-panel" aria-labelledby="director-focus-title">
             <header class="surface-panel__header">
@@ -276,6 +284,7 @@ import { getBranchName } from '../lib/useBranches';
 import { getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchDiscrepancySummary } from '../lib/scheduleDiscrepanciesApi';
 import RecentSubstitutesCard from '../components/substitute/RecentSubstitutesCard.vue';
+import OperationsQuickStart from '../components/OperationsQuickStart.vue';
 import PaymentSlipModal from '../components/PaymentSlipModal.vue';
 import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
 import { recentSubstitutes as fetchRecentSubstitutes } from '../lib/substituteApi.js';
@@ -1207,6 +1216,22 @@ const loadNotificationSummary = async (token, baseUrl) => {
 const goToNotifications = () => emit('navigate', { target: 'notifications' });
 const goToAttendance = () => emit('navigate', { target: 'attendance' });
 const goToTuitionCollect = () => emit('navigate', { target: 'tuition-collect' });
+
+const directorQuickStartSteps = [
+  { id: 'billing', icon: 'payments', title: '收款與核帳', description: '處理未繳、回報與待確認入帳。', action: '前往帳務中心' },
+  { id: 'create-schedule', icon: 'event_available', title: '新增排課', description: '建立學生、老師與固定上課時段。', action: '開始快速排課' },
+  { id: 'adjust-schedule', icon: 'event_repeat', title: '調課／代課', description: '先點課卡，再選時間或代課老師。', action: '開啟班級行事曆' },
+];
+
+const openQuickStart = (stepId) => {
+  if (stepId === 'billing') {
+    emit('navigate', { target: 'tuition-collect', intent: 'pending' });
+  } else if (stepId === 'create-schedule') {
+    emit('navigate', { target: 'calendar', intent: 'quick-add' });
+  } else if (stepId === 'adjust-schedule') {
+    emit('navigate', { target: 'calendar', intent: 'reschedule' });
+  }
+};
 
 const openDashboardTask = async (task) => {
   if (!task) return;

@@ -1,3 +1,10 @@
+## 2026-08-26 — improved(ux): 主任常用營運流程一站開始
+
+<!-- release-notes: staff_update=staff-2026-08-26-ops-workflow-quick-start -->
+
+- 主任首頁新增「收款與核帳」、「新增排課」、「調課／代課」三個常用流程入口；帳務中心與班級行事曆也會提示下一步。
+- 入口只簡化尋路，不改變既有權限、衝堂檢查、繳費回報與主任確認入帳規則。
+
 ## 2026-08-26 — fix(billing): 長備註確認入帳不再失敗
 
 <!-- release-notes: silent_ship=silent-2026-08-26-payment-report-long-note -->

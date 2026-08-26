@@ -36,6 +36,43 @@ export const staffUpdates = [
     "version": "2026.08.26"
   },
   {
+    "id": "staff-2026-08-26-ops-workflow-quick-start",
+    "publishedAt": "2026-08-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "主任常用流程更好找",
+    "summary": "收款核帳、排課與調課可從主任首頁直接開始。",
+    "items": [
+      "主任首頁新增收款與核帳、新增排課、調課／代課三個工作入口，帳務中心與班級行事曆內也會顯示下一步。",
+      "帳務仍要先送出繳費回報，再由主任確認入帳；排課與調課仍會保留原有權限、衝堂與堂次安全檢查。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "主任首頁新增收款與核帳、新增排課、調課／代課三個工作入口，帳務中心與班級行事曆內也會顯示下一步。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "帳務仍要先送出繳費回報，再由主任確認入帳；排課與調課仍會保留原有權限、衝堂與堂次安全檢查。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-26:ops-workflow-quick-start"
+    ],
+    "date": "2026-08-26",
+    "version": "2026.08.26"
+  },
+  {
     "id": "staff-2026-08-26-course-payment-summary",
     "publishedAt": "2026-08-26",
     "effectiveAt": null,
