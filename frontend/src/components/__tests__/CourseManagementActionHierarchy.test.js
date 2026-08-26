@@ -14,7 +14,7 @@ const activeMoreMenu = activeActions.slice(activeActions.indexOf('class="action-
 describe('CourseManagement action hierarchy', () => {
   it('keeps core course work visible and groups secondary operations in More', () => {
     expect(activeActions).toContain('course-primary-action');
-    expect(activeActions).toContain('@click="editCourse(c)"');
+    expect(activeActions).toContain('@click="navigateToStudentCourse(c)"');
     expect(activeActions).toContain('manual-occurrence-action');
     expect(activeActions).toContain('btn-toggle');
     expect(activeActions).toContain('更多 ▾');

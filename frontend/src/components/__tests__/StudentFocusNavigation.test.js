@@ -17,9 +17,22 @@ describe('student focus navigation contract', () => {
     expect(appSource).toContain('studentFocusIdForNav.value = Number.isSafeInteger(normalizedStudentId)');
   });
 
+  it('carries the exact course edit intent into the Students master record', () => {
+    expect(courseSource).toContain('const navigateToStudentCourse = (course) =>');
+    expect(courseSource).toContain("courseId: Number.isSafeInteger(courseId) && courseId > 0 ? courseId : null");
+    expect(courseSource).toContain("intent: 'edit'");
+    expect(appSource).toContain(':initial-course-id="studentFocusCourseIdForNav"');
+    expect(appSource).toContain(':initial-student-intent="studentFocusIntentForNav"');
+    expect(appSource).toContain('const normalizedCourseId = Number(courseId)');
+  });
+
   it('uses the branch-filtered student list as the focus safety boundary', () => {
     expect(studentsSource).toContain('initialStudentId: [String, Number]');
+    expect(studentsSource).toContain('initialCourseId: [String, Number]');
+    expect(studentsSource).toContain('initialStudentIntent: String');
     expect(studentsSource).toContain('candidate?._laravelId ?? candidate?.id');
+    expect(studentsSource).toContain("find((course) => Number(course?.id) === targetCourseId)");
+    expect(studentsSource).toContain("if (props.initialStudentIntent === 'edit' && targetCourse)");
     expect(studentsSource).toContain("emit('clear-initial-student')");
     expect(studentsSource).toContain(':data-student-id="student.id"');
   });
