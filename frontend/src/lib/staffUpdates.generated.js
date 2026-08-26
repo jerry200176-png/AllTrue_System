@@ -149,6 +149,43 @@ export const staffUpdates = [
     "version": "2026.08.26"
   },
   {
+    "id": "staff-2026-08-26-director-contextual-actions",
+    "publishedAt": "2026-08-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "待辦直接定位帳務與課表",
+    "summary": "從通知中心進入帳務或排課時，會帶入對應學生／課程脈絡。",
+    "items": [
+      "帳務通知會自動定位並高亮對應課程，排課／代課通知會切到通知日期並高亮對應課卡，主任不必再重新搜尋。",
+      "只在目前分校已載入且可驗證的資料中定位；找不到時顯示提示，不跨分校猜測、不自動寫入，付款、堂次與權限規則不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "帳務通知會自動定位並高亮對應課程，排課／代課通知會切到通知日期並高亮對應課卡，主任不必再重新搜尋。"
+        ]
+      },
+      {
+        "title": "我們修好了",
+        "items": [
+          "只在目前分校已載入且可驗證的資料中定位；找不到時顯示提示，不跨分校猜測、不自動寫入，付款、堂次與權限規則不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-26:director-contextual-actions"
+    ],
+    "date": "2026-08-26",
+    "version": "2026.08.26"
+  },
+  {
     "id": "staff-2026-08-26-dashboard-return-context",
     "publishedAt": "2026-08-26",
     "effectiveAt": null,
