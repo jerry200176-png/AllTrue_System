@@ -4,7 +4,6 @@ namespace App\Console\Commands;
 
 use App\Models\ScheduleAuditLog;
 use App\Models\SessionCorrection;
-use App\Models\StudentSignIn;
 use App\Services\SessionDeductionService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -117,13 +116,9 @@ class RepairAttendanceRootFix826 extends Command
             $reason = self::REF . ' — ' . $target['reason'];
             $now = now();
             $actorId = $this->actorId();
-            $activeSignIns = StudentSignIn::query()->where('ClassSessionID', $target['session_id'])->active()->get();
-            foreach ($activeSignIns as $signIn) {
-                $signIn->VoidedAt = $now;
-                $signIn->VoidedByUserID = $actorId;
-                $signIn->VoidReason = $reason;
-                $signIn->save();
-            }
+            DB::table('StudentSingIn')->where('ClassSessionID', $target['session_id'])->whereNull('VoidedAt')->update([
+                'VoidedAt' => $now, 'VoidedByUserID' => $actorId, 'VoidReason' => $reason,
+            ]);
             DB::table('LearningRecord')->where('ClassSessionID', $target['session_id'])->whereNull('VoidedAt')->update([
                 'VoidedAt' => $now,
                 'VoidedByUserID' => $actorId,
