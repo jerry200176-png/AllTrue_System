@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.08.26",
     "date": "2026-08-26",
     "title": "2026.08.26 草稿（未發布）",
-    "summary": "待點名列表遇到歷史衝突仍可載入；主任可從提醒直接開繳費通知與明細",
+    "summary": "長備註確認入帳不再失敗；待點名列表遇到歷史衝突仍可載入",
     "audience": [
       "teacher",
       "director"
@@ -18,6 +18,7 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "長備註確認入帳不再失敗",
           "待點名列表遇到歷史衝突仍可載入"
         ]
       },
@@ -31,6 +32,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "長備註確認入帳不再失敗",
       "待點名列表遇到歷史衝突仍可載入",
       "主任可從提醒直接開繳費通知與明細",
       "課程管理裡日期旁標記較不會無故變灰；讀不到堂次時會顯示清楚錯誤提示。",
