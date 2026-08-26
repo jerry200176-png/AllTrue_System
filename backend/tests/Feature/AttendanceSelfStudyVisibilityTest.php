@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\AuthToken;
 use App\Models\Campus;
+use App\Models\ClassSession;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
@@ -153,6 +154,108 @@ class AttendanceSelfStudyVisibilityTest extends TestCase
 
         $this->assertNotNull($courseRecord, '課堂出勤記錄仍應出現（LEFT JOIN 回歸）');
         $this->assertSame($course->ID, $courseRecord['StudentClassID']);
+    }
+
+    public function test_attendance_linked_to_cancelled_session_is_hidden(): void
+    {
+        [$token, $student, $teacherId, $subjectId] = $this->scaffold();
+
+        $course = StudentClass::create([
+            'StudentID' => $student->id,
+            'GradeID' => 1,
+            'SubjectID' => $subjectId,
+            'TeacherID' => $teacherId,
+            'by1' => 1,
+            'Period' => 4,
+            'StartDate' => '2026-01-01',
+            'TotalHours' => 20,
+            'Paid' => 0,
+            'ScheduleMode' => 'count',
+            'SessionCount' => 8,
+            'RemainingSessions' => 8,
+            'UsedSessions' => 0,
+            'SessionDuration' => 120,
+            'ClassType' => 'one_on_one',
+            'MDate' => now(),
+            'Rate' => 500,
+        ]);
+        $session = ClassSession::create([
+            'StudentClassID' => $course->ID,
+            'SessionDate' => now()->toDateString(),
+            'StartTime' => '09:00:00',
+            'EndTime' => '11:00:00',
+            'Status' => 'cancelled',
+        ]);
+
+        StudentSignIn::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $course->ID,
+            'TeacherID' => $teacherId,
+            'Memo' => 'stale-attendance',
+            'SignInDT' => now()->toDateTimeString(),
+            'Status' => 'present',
+            'ClassSessionID' => $session->id,
+            'CampusID' => 1,
+            'PersonType' => 'student',
+            'SessionDeducted' => true,
+            'MDT' => now(),
+        ]);
+
+        $otherCourse = StudentClass::create([
+            'StudentID' => $student->id,
+            'GradeID' => 1,
+            'SubjectID' => $subjectId,
+            'TeacherID' => $teacherId,
+            'by1' => 1,
+            'Period' => 4,
+            'StartDate' => '2026-01-01',
+            'TotalHours' => 20,
+            'Paid' => 0,
+            'ScheduleMode' => 'count',
+            'SessionCount' => 8,
+            'RemainingSessions' => 8,
+            'UsedSessions' => 0,
+            'SessionDuration' => 120,
+            'ClassType' => 'one_on_one',
+            'MDate' => now(),
+            'Rate' => 500,
+        ]);
+        $activeOtherSession = ClassSession::create([
+            'StudentClassID' => $otherCourse->ID,
+            'SessionDate' => now()->toDateString(),
+            'StartTime' => '13:00:00',
+            'EndTime' => '15:00:00',
+            'Status' => 'scheduled',
+        ]);
+
+        StudentSignIn::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $course->ID,
+            'TeacherID' => $teacherId,
+            'Memo' => 'mismatched-attendance',
+            'SignInDT' => now()->toDateTimeString(),
+            'Status' => 'present',
+            'ClassSessionID' => $activeOtherSession->id,
+            'CampusID' => 1,
+            'PersonType' => 'student',
+            'SessionDeducted' => true,
+            'MDT' => now(),
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/attendance?date=' . now()->toDateString() . '&branch_id=1');
+
+        $res->assertOk();
+        $this->assertFalse(
+            collect($res->json('data'))->contains(fn ($row) => ($row['Memo'] ?? null) === 'stale-attendance'),
+            '點名對應已取消堂次時，不應出現在作業清單'
+        );
+        $this->assertFalse(
+            collect($res->json('data'))->contains(fn ($row) => ($row['Memo'] ?? null) === 'mismatched-attendance'),
+            '點名與堂次合約不一致時，不應出現在作業清單'
+        );
     }
 
     // ── 同日混合：課堂 + 自修並存 ────────────────────────────────────────────

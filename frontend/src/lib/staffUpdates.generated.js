@@ -299,6 +299,45 @@ export const staffUpdates = [
     "version": "2026.08.26"
   },
   {
+    "id": "staff-2026-08-26-attendance-session-trust",
+    "publishedAt": "2026-08-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "major",
+    "title": "出缺勤只顯示有效堂次",
+    "summary": "已取消或對不上堂次的舊點名不會再混進作業清單。",
+    "items": [
+      "出缺勤清單會先確認點名對應的堂次仍有效；已取消堂次或合約不一致的殘留資料不再顯示成今天的有效出勤。",
+      "自修與舊式臨時點名沒有堂次編號時仍照常保留；付款、扣堂與權限規則不變。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "出缺勤清單會先確認點名對應的堂次仍有效；已取消堂次或合約不一致的殘留資料不再顯示成今天的有效出勤。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "自修與舊式臨時點名沒有堂次編號時仍照常保留；付款、扣堂與權限規則不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-26:attendance-session-trust"
+    ],
+    "date": "2026-08-26",
+    "version": "2026.08.26"
+  },
+  {
     "id": "staff-2026-08-25-transfer-slot-conflict-preflight",
     "publishedAt": "2026-08-25",
     "effectiveAt": null,
