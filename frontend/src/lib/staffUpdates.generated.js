@@ -338,6 +338,43 @@ export const staffUpdates = [
     "version": "2026.08.26"
   },
   {
+    "id": "staff-2026-08-26-ops-workflow-telemetry",
+    "publishedAt": "2026-08-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "報帳與排課流程開始量測",
+    "summary": "系統會用不含個資的方式記錄流程完成與錯誤，作為下一輪簡化依據。",
+    "items": [
+      "帳務回報、確認入帳、新增排課與調課會記錄開始、完成、返回工作區、錯誤類型與耗時。",
+      "只記錄固定流程欄位，不記錄姓名、學號、課程 ID、金額、備註、電話或錯誤原文；紀錄服務異常不會阻塞日常操作。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "帳務回報、確認入帳、新增排課與調課會記錄開始、完成、返回工作區、錯誤類型與耗時。"
+        ]
+      },
+      {
+        "title": "我們修好了",
+        "items": [
+          "只記錄固定流程欄位，不記錄姓名、學號、課程 ID、金額、備註、電話或錯誤原文；紀錄服務異常不會阻塞日常操作。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-26:ops-workflow-telemetry"
+    ],
+    "date": "2026-08-26",
+    "version": "2026.08.26"
+  },
+  {
     "id": "staff-2026-08-25-transfer-slot-conflict-preflight",
     "publishedAt": "2026-08-25",
     "effectiveAt": null,

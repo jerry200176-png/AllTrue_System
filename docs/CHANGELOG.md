@@ -1,3 +1,10 @@
+## 2026-08-26 — improved(ux): 報帳與排課流程加入無個資使用量測
+
+<!-- release-notes: staff_update=staff-2026-08-26-ops-workflow-telemetry -->
+
+- 帳務回報／確認入帳與新增排課／調課會記錄流程開始、完成、返回、錯誤類型與耗時，供後續刪減不必要步驟。
+- telemetry 僅使用固定流程欄位，並沿用後端個資過濾；不記錄姓名、學號、課程 ID、金額、備註、電話或錯誤原文，且紀錄失敗不會阻塞操作。
+
 ## 2026-08-26 — fix(attendance): 過期堂次不再出現在出缺勤清單
 
 <!-- release-notes: staff_update=staff-2026-08-26-attendance-session-trust -->

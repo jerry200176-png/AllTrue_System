@@ -868,6 +868,7 @@ import PaymentEntryModal from '../components/PaymentEntryModal.vue';
 import ReceiptModal from '../components/ReceiptModal.vue';
 import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
 import OperationsQuickStart from '../components/OperationsQuickStart.vue';
+import { adoptionErrorType, trackWorkflowEvent } from '../lib/adoptionTelemetry.js';
 import {
   formatTuitionSettleSummary,
   formatTuitionNewerCourseHint,
@@ -1040,7 +1041,24 @@ const billingFlowSteps = [
   { id: 'confirm', icon: 'verified', title: '確認入帳與收據', description: '核對資料後才建立正式入帳。', action: '查看待對帳' },
 ];
 
+const billingWorkflowStarts = new Map();
+function startBillingWorkflow(step) {
+  const startedAt = Date.now();
+  billingWorkflowStarts.set(step, startedAt);
+  void trackWorkflowEvent('billing', 'started', props.branchId, { step }, startedAt);
+  return startedAt;
+}
+function finishBillingWorkflow(step, phase = 'completed', meta = {}) {
+  const startedAt = billingWorkflowStarts.get(step);
+  billingWorkflowStarts.delete(step);
+  void trackWorkflowEvent('billing', phase, props.branchId, { step, ...meta }, startedAt);
+}
+function billingWorkflowError(step, errorOrStatus) {
+  finishBillingWorkflow(step, 'error', { error_type: adoptionErrorType(errorOrStatus) });
+}
+
 function selectBillingFlowStep(stepId) {
+  startBillingWorkflow(stepId);
   activeAccountingTab.value = 'receivables';
   if (stepId === 'report') activeTab.value = 'unpaid';
   else if (stepId === 'confirm') activeTab.value = 'pending_report';
@@ -1104,16 +1122,21 @@ watch(activeTab, () => {
 });
 
 async function submitBatchReport() {
+  const workflowStep = 'report';
   const rows = selectedRows.value.filter((r) => r.payment_status === 'unpaid' || r.payment_status === 'partial');
   if (!rows.length) {
     showToast('請先勾選未繳課程', 'warning');
+    billingWorkflowError(workflowStep, 'validation');
     return;
   }
   if (rows.length > 40) {
     showToast('一次最多 40 筆', 'warning');
+    billingWorkflowError(workflowStep, 'validation');
     return;
   }
+  if (!billingWorkflowStarts.has(workflowStep)) startBillingWorkflow(workflowStep);
   batchBusy.value = true;
+  let responseStatus = null;
   try {
     const token = getToken();
     const resp = await fetch('/api/v1/payment-reports/director-record-batch', {
@@ -1130,6 +1153,7 @@ async function submitBatchReport() {
         })),
       }),
     });
+    responseStatus = resp.status;
     const json = await resp.json().catch(() => ({}));
     if (!resp.ok && resp.status !== 207) {
       throw new Error(humanizeApiErrorMessage(json.message || `送出失敗（${resp.status}）`));
@@ -1137,24 +1161,32 @@ async function submitBatchReport() {
     showToast(json.message || '已送出待對帳');
     clearSelection();
     loadAlerts();
+    finishBillingWorkflow(workflowStep, 'completed', { result: resp.status === 207 ? 'partial' : 'ok' });
+    void trackWorkflowEvent('billing', 'returned', props.branchId, { step: workflowStep, target: 'queue' });
   } catch (e) {
     showToast(e.message || '批次回報失敗', 'error');
+    billingWorkflowError(workflowStep, responseStatus || e);
   } finally {
     batchBusy.value = false;
   }
 }
 
 async function submitBatchConfirm() {
+  const workflowStep = 'confirm';
   const rows = selectedRows.value.filter((r) => r.payment_status === 'pending_report' && r.latest_payment_report_id);
   if (!rows.length) {
     showToast('請先勾選待對帳課程', 'warning');
+    billingWorkflowError(workflowStep, 'validation');
     return;
   }
   if (rows.length > 40) {
     showToast('一次最多 40 筆', 'warning');
+    billingWorkflowError(workflowStep, 'validation');
     return;
   }
+  if (!billingWorkflowStarts.has(workflowStep)) startBillingWorkflow(workflowStep);
   batchBusy.value = true;
+  let responseStatus = null;
   try {
     const token = getToken();
     const resp = await fetch('/api/v1/payment-reports/confirm-batch', {
@@ -1162,6 +1194,7 @@ async function submitBatchConfirm() {
       headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ ids: rows.map((r) => r.latest_payment_report_id) }),
     });
+    responseStatus = resp.status;
     const json = await resp.json().catch(() => ({}));
     if (!resp.ok && resp.status !== 207) {
       throw new Error(humanizeApiErrorMessage(json.message || `確認失敗（${resp.status}）`));
@@ -1169,8 +1202,11 @@ async function submitBatchConfirm() {
     showToast(json.message || '已確認入帳');
     clearSelection();
     loadAlerts();
+    finishBillingWorkflow(workflowStep, 'completed', { result: resp.status === 207 ? 'partial' : 'ok' });
+    void trackWorkflowEvent('billing', 'returned', props.branchId, { step: workflowStep, target: 'queue' });
   } catch (e) {
     showToast(e.message || '批次確認失敗', 'error');
+    billingWorkflowError(workflowStep, responseStatus || e);
   } finally {
     batchBusy.value = false;
   }
@@ -1694,8 +1730,11 @@ async function onPendingReportConflict(_result) {
 
 // ═══ Confirm / Reject pending reports ═══
 async function confirmReport(row) {
+  const workflowStep = 'confirm';
+  if (!billingWorkflowStarts.has(workflowStep)) startBillingWorkflow(workflowStep);
   if (!row.latest_payment_report_id) {
     showToast('找不到待確認的回報', 'error');
+    billingWorkflowError(workflowStep, 'validation');
     return;
   }
   actionLoading.value = row.id;
@@ -1716,8 +1755,11 @@ async function confirmReport(row) {
       receiptOpen.value = true;
     }
     loadAlerts();
+    finishBillingWorkflow(workflowStep);
+    void trackWorkflowEvent('billing', 'returned', props.branchId, { step: workflowStep, target: 'queue' });
   } catch (e) {
     showToast(e.message || '確認入帳失敗', 'error');
+    billingWorkflowError(workflowStep, e);
   } finally {
     actionLoading.value = null;
   }

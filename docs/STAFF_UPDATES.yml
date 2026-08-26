@@ -4,6 +4,21 @@
 
 updates:
 
+  - id: staff-2026-08-26-ops-workflow-telemetry
+    published_at: "2026-08-26"
+    audiences:
+      - director
+    importance: digest
+    title: 報帳與排課流程開始量測
+    summary: 系統會用不含個資的方式記錄流程完成與錯誤，作為下一輪簡化依據。
+    items:
+      - category: improved
+        text: 帳務回報、確認入帳、新增排課與調課會記錄開始、完成、返回工作區、錯誤類型與耗時。
+      - category: fixed
+        text: 只記錄固定流程欄位，不記錄姓名、學號、課程 ID、金額、備註、電話或錯誤原文；紀錄服務異常不會阻塞日常操作。
+    source_refs:
+      - "changelog:2026-08-26:ops-workflow-telemetry"
+
   - id: staff-2026-08-26-attendance-session-trust
     published_at: "2026-08-26"
     audiences:
