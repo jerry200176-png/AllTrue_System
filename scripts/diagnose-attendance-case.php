@@ -41,6 +41,9 @@ $classes = $studentIds === [] ? collect() : DB::table('StudentClass as sc')
         'sc.Stop as stop', 'sc.ScheduleMode as schedule_mode', 'sc.SessionCount as session_count',
         'sc.UsedSessions as used_sessions', 'sc.RemainingSessions as remaining_sessions',
         'sc.Charge as charge', 'sc.Rate as rate', 'sc.StartDate as start_date', 'sc.EndDate as end_date',
+        'sc.week', 'sc.time', 'sc.week1', 'sc.time1', 'sc.duration1', 'sc.week2', 'sc.time2', 'sc.duration2',
+        'sc.week3', 'sc.time3', 'sc.duration3', 'sc.week4', 'sc.time4', 'sc.duration4',
+        'sc.week5', 'sc.time5', 'sc.duration5', 'sc.week6', 'sc.time6', 'sc.duration6',
         'sc.MDate as modified_at',
     ]);
 $classIds = $classes->pluck('class_id')->map(fn ($id) => (int) $id)->all();
