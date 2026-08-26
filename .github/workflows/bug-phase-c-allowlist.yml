@@ -66,6 +66,16 @@ jobs:
           $svc = \App\Services\BugReportService::class;
           // Allowlist: in-app id => [public reply, production_revision, deploy_run_id optional]
           $items = [
+            242 => [
+              "reply" => "已修好並上線：讀取待點名堂次時，遇到歷史重疊資料不會再讓整份列表回傳 HTTP 422；衝突資料會保留供後續處理，其他可點名堂次會正常載入。請重新整理待點名頁確認；若仍無法載入，請回覆這則訊息。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2060",
+              "rev" => "9e4a815cd9da8bc0aa2764f9ac3e501608c753c1",
+              "deploy" => "32938402333",
+            ],
+            243 => [
+              "reply" => "已完成並上線：學生管理與課程管理的課程卡現在會直接顯示最近一次繳費回報的日期、金額、備註與主任可見的匯款後五碼，不必再切到帳務資料重查；待對帳回報會明確標示。這是唯讀摘要，不會改動付款狀態、帳單金額或收據流程。請重新整理呂承澔的課程卡確認；若仍看不到，請回覆這則訊息。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2061",
+              "rev" => "9e4a815cd9da8bc0aa2764f9ac3e501608c753c1",
+              "deploy" => "32938402333",
+            ],
             208 => [
               "reply" => "已修好：調整合購方案總堂數後，各科顯示的剩餘堂數現在會立即同步。該筆受影響的課程資料也已重新結算，目前方案總堂數為 56 堂、已使用 1 堂、剩餘 55 堂。請重新整理『今天課表／剩課可信嗎』確認；若仍有不一致，請回覆此單。",
               "rev" => "9adc3633d41126263f0025cdadd7a99cea939f4e",
