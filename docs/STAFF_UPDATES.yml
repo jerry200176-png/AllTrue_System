@@ -4,6 +4,21 @@
 
 updates:
 
+  - id: staff-2026-08-26-ops-workflow-quick-start
+    published_at: "2026-08-26"
+    audiences:
+      - director
+    importance: major
+    title: 主任常用流程更好找
+    summary: 收款核帳、排課與調課可從主任首頁直接開始。
+    items:
+      - category: improved
+        text: 主任首頁新增收款與核帳、新增排課、調課／代課三個工作入口，帳務中心與班級行事曆內也會顯示下一步。
+      - category: action_required
+        text: 帳務仍要先送出繳費回報，再由主任確認入帳；排課與調課仍會保留原有權限、衝堂與堂次安全檢查。
+    source_refs:
+      - "changelog:2026-08-26:ops-workflow-quick-start"
+
   - id: staff-2026-08-26-course-payment-summary
     published_at: "2026-08-26"
     audiences:

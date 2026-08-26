@@ -326,9 +326,9 @@
         @navigate="onNavigateFromNotifications"
         @unread-change="onUnreadChange"
       />
-      <SmartCalendar v-if="!isPasswordChangeLocked && active === 'calendar'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" :initial-teacher-id="initialTeacherIdForNav" :reset-week-token="calendarResetToken" @clear-initial-teacher="initialTeacherIdForNav = null" />
+      <SmartCalendar v-if="!isPasswordChangeLocked && active === 'calendar'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" :initial-teacher-id="initialTeacherIdForNav" :reset-week-token="calendarResetToken" :initial-intent="calendarInitialIntent" @clear-initial-teacher="initialTeacherIdForNav = null" @clear-initial-intent="calendarInitialIntent = ''" />
       <StudentsList v-if="!isPasswordChangeLocked && isDirector && active === 'students'" :branch-id="currentBranch" />
-      <TuitionCollectionPage v-if="!isPasswordChangeLocked && isDirector && active === 'tuition-collect'" :branch-id="currentBranch" />
+      <TuitionCollectionPage v-if="!isPasswordChangeLocked && isDirector && active === 'tuition-collect'" :branch-id="currentBranch" :initial-tab="tuitionInitialTab" @clear-initial-tab="tuitionInitialTab = ''" />
       <TuitionReportPage v-if="!isPasswordChangeLocked && isDirector && active === 'tuition-report' && !pinModalActive" :branch-id="currentBranch" />
       <ParttimePayrollPage v-if="!isPasswordChangeLocked && isDirector && active === 'parttime-payroll' && !pinModalActive" :branch-id="currentBranch" :user-role="role" />
       <TeacherEligibilityPage v-if="!isPasswordChangeLocked && isDirector && active === 'teacher-eligibility' && !pinModalActive" :branch-id="currentBranch" :user-role="role" />
@@ -924,6 +924,8 @@ const mobileTabItems = computed(() => {
 const mobileTabPages = computed(() => new Set(mobileTabItems.value.filter(t => t.page !== 'more').map(t => t.page)));
 const initialTeacherIdForNav = ref(null);
 const calendarResetToken = ref(0);
+const calendarInitialIntent = ref('');
+const tuitionInitialTab = ref('');
 const unreadNotificationCount = ref(0);
 const urgentNotificationCount = ref(0);
 const inboxNeedsAttentionCount = ref(0);
@@ -1043,7 +1045,7 @@ function onPopStateDeepLink() {
   applyDeepLinkFromUrl();
 }
 
-function onNavigateFromNotifications({ target, recordId, focus, section, workflowId }) {
+function onNavigateFromNotifications({ target, recordId, focus, section, workflowId, intent }) {
   if (isPasswordChangeLocked.value) {
     active.value = 'profile';
     return;
@@ -1051,6 +1053,14 @@ function onNavigateFromNotifications({ target, recordId, focus, section, workflo
   if (!target) return;
   if (target === 'calendar') {
     calendarResetToken.value += 1;
+    calendarInitialIntent.value = intent || '';
+  } else {
+    calendarInitialIntent.value = '';
+  }
+  if (target === 'tuition-collect') {
+    tuitionInitialTab.value = intent || '';
+  } else {
+    tuitionInitialTab.value = '';
   }
   if (target === 'learning' && recordId) {
     learningTargetRecordId.value = Number(recordId);

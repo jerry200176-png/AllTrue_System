@@ -11,6 +11,16 @@
       </button>
     </div>
 
+    <OperationsQuickStart
+      compact
+      eyebrow="帳務處理流程"
+      heading="照順序完成，不用記入口"
+      description="先找到對象，再送出回報，最後由主任確認入帳。"
+      :current-id="billingFlowCurrentId"
+      :steps="billingFlowSteps"
+      @select="selectBillingFlowStep"
+    />
+
     <div class="acct-tabs" role="tablist" aria-label="帳務中心分頁">
       <button
         v-for="tab in ACCOUNTING_TABS"
@@ -846,6 +856,7 @@ import PaymentSlipModal from '../components/PaymentSlipModal.vue';
 import PaymentEntryModal from '../components/PaymentEntryModal.vue';
 import ReceiptModal from '../components/ReceiptModal.vue';
 import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
+import OperationsQuickStart from '../components/OperationsQuickStart.vue';
 import {
   formatTuitionSettleSummary,
   formatTuitionNewerCourseHint,
@@ -862,9 +873,10 @@ import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 
 const props = defineProps({
   branchId: { type: [Number, String], default: null },
+  initialTab: { type: String, default: '' },
 });
 
-const emit = defineEmits(['navigate']);
+const emit = defineEmits(['navigate', 'clear-initial-tab']);
 
 const loading = ref(false);
 const error = ref('');
@@ -1003,6 +1015,25 @@ const TAB_DEFS = [
   { key: 'pending_report', label: '待對帳' },
   { key: 'renewal', label: '續課/將到期' },
 ];
+
+const billingFlowCurrentId = computed(() => {
+  if (activeTab.value === 'pending_report') return 'confirm';
+  if (activeTab.value === 'unpaid' || activeTab.value === 'overdue') return 'report';
+  return 'queue';
+});
+
+const billingFlowSteps = [
+  { id: 'queue', icon: 'playlist_add_check', title: '查看待處理', description: '先依學生與狀態找到課程。', action: '查看全部' },
+  { id: 'report', icon: 'mark_email_read', title: '登記繳費回報', description: '家長已付款時先登記回報。', action: '查看未繳' },
+  { id: 'confirm', icon: 'verified', title: '確認入帳與收據', description: '核對資料後才建立正式入帳。', action: '查看待對帳' },
+];
+
+function selectBillingFlowStep(stepId) {
+  activeAccountingTab.value = 'receivables';
+  if (stepId === 'report') activeTab.value = 'unpaid';
+  else if (stepId === 'confirm') activeTab.value = 'pending_report';
+  else activeTab.value = 'all';
+}
 
 const selectedIds = ref([]);
 const batchBusy = ref(false);
@@ -1906,6 +1937,18 @@ async function openSessionDetail(row) {
 watch(() => props.branchId, () => {
   refreshActiveTab();
 }, { flush: 'post' });
+
+watch(() => props.initialTab, (tab) => {
+  if (!tab) return;
+  if (tab === 'pending') {
+    activeAccountingTab.value = 'receivables';
+    activeTab.value = 'pending_report';
+  } else if (tab === 'unpaid') {
+    activeAccountingTab.value = 'receivables';
+    activeTab.value = 'unpaid';
+  }
+  emit('clear-initial-tab');
+}, { immediate: true });
 
 watch(activeAccountingTab, (tab) => {
   if (tab === 'receivables') {
