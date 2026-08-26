@@ -5,7 +5,7 @@
   "task_id": "attendance-422-root-fix-20260826",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
   "base_sha": "bcbc2bd9039809495758c6279b48e7eba35bd717",
-  "branch": "chore/task-attendance-422-root-fix-20260826",
+  "branch": "docs/attendance-422-root-fix-20260826-release-notes",
   "worktree_path": "/home/jerry/workspace/tasks/alltrue/attendance-422-root-fix-20260826",
   "started_at": "2026-08-26T02:02:55Z",
   "production_mutation": false,

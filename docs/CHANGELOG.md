@@ -1,3 +1,10 @@
+## 2026-08-26 — fix(attendance): 待點名列表遇到歷史衝突仍可載入
+
+<!-- release-notes: silent_ship=silent-2026-08-26-read-side-session-conflict -->
+
+- 讀取分校待點名堂次時，單一歷史重疊衝突不再讓整份列表失敗；衝突堂次維持不強制建立，並留下不含個資的伺服器診斷紀錄。
+- 正式建立或調整堂次的學生重疊防護維持不變，並補上主任／分校讀取回歸測試。
+
 ## 2026-08-25 — fix(course): 有歷史證據的取消堂次可受控恢復並移轉
 
 <!-- release-notes: staff_update=staff-2026-08-25-cancelled-session-recovery-transfer -->
