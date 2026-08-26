@@ -138,4 +138,6 @@ $out = [
     'generated_at' => gmdate('c'),
 ];
 
-echo json_encode($out, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), PHP_EOL;
+// Keep the workflow transport one-line so the runner can parse it without
+// accidentally treating a pretty-printed nested object as a new document.
+echo json_encode($out, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), PHP_EOL;
