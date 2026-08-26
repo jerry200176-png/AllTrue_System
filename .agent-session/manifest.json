@@ -5,7 +5,7 @@
   "task_id": "attendance-root-fix-20260826",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
   "base_sha": "795119ada066c056f89646d28bcf7820fce08c03",
-  "branch": "chore/task-attendance-root-fix-20260826",
+  "branch": "fix/attendance-root-fix-20260826-verify",
   "worktree_path": "/home/jerry/workspace/tasks/alltrue/attendance-root-fix-20260826",
   "started_at": "2026-08-26T04:32:59Z",
   "production_mutation": false,
