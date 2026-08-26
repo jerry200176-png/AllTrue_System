@@ -104,6 +104,7 @@
           <tr
             class="student-row"
             :class="[{ expanded: expandedId === student.id }, 'status-' + (student.status || 'active')]"
+            :data-student-id="student.id"
             @click="toggleExpand(student)"
           >
             <td class="student-select-cell" @click.stop>
@@ -745,7 +746,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch, computed } from 'vue';
+import { ref, onMounted, watch, computed, nextTick } from 'vue';
 import { supabase } from '../supabase';
 import { GRADES, SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
@@ -771,8 +772,8 @@ import AtButton from '../components/design-system/AtButton.vue';
 import AtIconButton from '../components/design-system/AtIconButton.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
 
-const props = defineProps({ branchId: [String, Number] });
-const emit = defineEmits(['navigate']);
+const props = defineProps({ branchId: [String, Number], initialStudentId: [String, Number] });
+const emit = defineEmits(['navigate', 'clear-initial-student']);
 
 // --- State ---
 const subjectOptions = ref([...SUBJECTS]);
@@ -813,6 +814,8 @@ const editingCourseRaw = ref(null);
 const editFormRef = ref(null);
 const toastRef = ref(null);
 const selectedStudent = ref(null);
+const initialStudentFocusInFlight = ref(false);
+const handledInitialStudentId = ref(null);
 const isLaravelCourse = (course) => (
   course?.data_source === 'laravel'
   || course?.branch_name != null
@@ -1539,6 +1542,30 @@ const toggleExpand = async (student) => {
   } else {
     expandedId.value = student.id;
     await loadStudentCourses(student.id);
+  }
+};
+
+const focusInitialStudent = async () => {
+  const targetId = Number(props.initialStudentId);
+  if (!Number.isSafeInteger(targetId) || targetId <= 0 || initialStudentFocusInFlight.value || handledInitialStudentId.value === targetId) return;
+  const student = students.value.find((candidate) => Number(candidate?._laravelId ?? candidate?.id ?? 0) === targetId);
+  if (!student) return;
+
+  initialStudentFocusInFlight.value = true;
+  try {
+    if (expandedId.value !== student.id) {
+      expandedId.value = student.id;
+      await loadStudentCourses(student.id);
+    }
+    await nextTick();
+    const row = typeof document !== 'undefined'
+      ? document.querySelector(`[data-student-id="${student.id}"]`)
+      : null;
+    row?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+    handledInitialStudentId.value = targetId;
+    emit('clear-initial-student');
+  } finally {
+    initialStudentFocusInFlight.value = false;
   }
 };
 
@@ -2838,6 +2865,11 @@ const importStudents = async (event) => {
 };
 
 watch(() => props.branchId, () => { loadStudents(); loadTeachers(); loadAllStudentCourses(); });
+watch(() => props.initialStudentId, () => {
+  handledInitialStudentId.value = null;
+  focusInitialStudent();
+}, { immediate: true });
+watch(students, focusInitialStudent, { flush: 'post' });
 watch(displayStudents, () => {
   syncSelectedStudentIdsWithCurrentList();
   if (expandedId.value != null && !displayStudents.value.some((s) => s.id === expandedId.value)) {

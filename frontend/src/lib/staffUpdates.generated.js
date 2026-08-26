@@ -412,6 +412,43 @@ export const staffUpdates = [
     "version": "2026.08.26"
   },
   {
+    "id": "staff-2026-08-26-course-student-focus",
+    "publishedAt": "2026-08-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "從課程管理直接定位學生",
+    "summary": "從學生群組前往學生管理時，會直接展開同一位學生。",
+    "items": [
+      "在課程管理展開學生群組後選擇新增課程，系統會帶到學生管理並定位該學生，接著即可在學生主檔處理課程。",
+      "定位只會在目前分校已載入的學生清單中生效；一般前往學生管理仍維持完整清單，不改付款、堂數或權限規則。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "在課程管理展開學生群組後選擇新增課程，系統會帶到學生管理並定位該學生，接著即可在學生主檔處理課程。"
+        ]
+      },
+      {
+        "title": "我們修好了",
+        "items": [
+          "定位只會在目前分校已載入的學生清單中生效；一般前往學生管理仍維持完整清單，不改付款、堂數或權限規則。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-26:course-student-focus"
+    ],
+    "date": "2026-08-26",
+    "version": "2026.08.26"
+  },
+  {
     "id": "staff-2026-08-26-course-create-entry",
     "publishedAt": "2026-08-26",
     "effectiveAt": null,
