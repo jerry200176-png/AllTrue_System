@@ -1,6 +1,9 @@
 name: Attendance Case Diagnose (read-only)
 
 on:
+  push:
+    branches:
+      - 'chore/task-attendance-root-fix-**'
   workflow_dispatch:
     inputs:
       campus_id:
@@ -37,9 +40,9 @@ jobs:
 
       - name: Validate inputs
         env:
-          CAMPUS_ID: ${{ inputs.campus_id }}
-          DATE_FROM: ${{ inputs.date_from }}
-          DATE_TO: ${{ inputs.date_to }}
+          CAMPUS_ID: ${{ inputs.campus_id || '9' }}
+          DATE_FROM: ${{ inputs.date_from || '2026-08-08' }}
+          DATE_TO: ${{ inputs.date_to || '2026-08-22' }}
         run: |
           set -euo pipefail
           [[ "$CAMPUS_ID" =~ ^[0-9]+$ ]] || { echo 'campus_id must be numeric'; exit 1; }
@@ -67,10 +70,10 @@ jobs:
         env:
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
-          CAMPUS_ID: ${{ inputs.campus_id }}
-          DATE_FROM: ${{ inputs.date_from }}
-          DATE_TO: ${{ inputs.date_to }}
-          STUDENT_NAME: ${{ inputs.student_name }}
+          CAMPUS_ID: ${{ inputs.campus_id || '9' }}
+          DATE_FROM: ${{ inputs.date_from || '2026-08-08' }}
+          DATE_TO: ${{ inputs.date_to || '2026-08-22' }}
+          STUDENT_NAME: ${{ inputs.student_name || '' }}
         run: |
           set -euo pipefail
           mkdir -p out
