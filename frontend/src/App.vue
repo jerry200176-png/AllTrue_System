@@ -228,6 +228,17 @@
           class="build-stamp-bar"
           :title="`部署時間 ${buildTimeDisplay}`"
         >建置 {{ buildTimeDisplay }}</span>
+        <button
+          v-if="dashboardReturnContext"
+          type="button"
+          class="dashboard-return-button"
+          :title="dashboardReturnContext.label"
+          :aria-label="dashboardReturnContext.label"
+          @click="returnToDashboard"
+        >
+          <span class="material-symbols-outlined" aria-hidden="true">arrow_back</span>
+          {{ dashboardReturnContext.label }}
+        </button>
         <div class="main-topbar-spacer"></div>
         <AmbientMusicPlayer
           v-if="perfFlags.AMBIENT_MUSIC_ENABLED && (isDirector || isTeacher)"
@@ -539,6 +550,7 @@ import {
   PIN_IDLE_LOCK_MS,
 } from './lib/pinGate';
 import { getMobileTabItems, getNavigationGroups } from './lib/navigationRegistry';
+import { createDashboardReturnContext } from './lib/dashboardReturnContext';
 
 // Detect standalone parent portal access via URL hash, query param, or LIFF context
 const liffParentOverride = ref(false);
@@ -862,6 +874,7 @@ function onWindowResizeGuideFab() {
 }
 
 const active = ref('director');
+const dashboardReturnContext = ref(null);
 const currentBranch = ref(null); // Will be set after branches load
 const learningTargetRecordId = ref(null);
 const learningTargetSession = ref(null);
@@ -1041,6 +1054,7 @@ function onNavigateFromNotifications({ target, recordId, focus, section, workflo
     return;
   }
   if (!target) return;
+  dashboardReturnContext.value = createDashboardReturnContext({ fromPage: active.value, target });
   if (target === 'calendar') {
     calendarResetToken.value += 1;
     calendarInitialIntent.value = intent || '';
@@ -1128,6 +1142,7 @@ function onNavigateLearningFromTeacherHome(payload = {}) {
 }
 
 function setActivePage(page) {
+  dashboardReturnContext.value = null;
   const prev = active.value;
   if (isPasswordChangeLocked.value && page !== 'profile') {
     active.value = 'profile';
@@ -1166,6 +1181,10 @@ function setActivePage(page) {
   if (page === 'teacher-home' && isTeacher.value) {
     window.dispatchEvent(new CustomEvent('alltrue-teacher-learning-progress-refresh'));
   }
+}
+
+function returnToDashboard() {
+  setActivePage('director');
 }
 
 function isNavItemDisabled(page) {
@@ -2464,6 +2483,27 @@ function formatBuildTime(rawIso) {
   flex: 1;
 }
 
+.dashboard-return-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid var(--ds-hairline);
+  border-radius: var(--ds-radius-pill);
+  background: var(--ds-canvas);
+  color: var(--ds-ink);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dashboard-return-button:hover,
+.dashboard-return-button:focus-visible {
+  border-color: var(--ds-primary);
+  color: var(--ds-primary-deep);
+}
+
 .account-menu {
   position: relative;
   z-index: 20;
@@ -2820,6 +2860,17 @@ function formatBuildTime(rawIso) {
 
   .main-topbar {
     margin-bottom: 6px;
+  }
+
+  .build-stamp-bar {
+    max-width: 24vw;
+  }
+
+  .dashboard-return-button {
+    max-width: 44vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .account-menu-trigger {

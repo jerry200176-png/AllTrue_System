@@ -112,6 +112,43 @@ export const staffUpdates = [
     "version": "2026.08.26"
   },
   {
+    "id": "staff-2026-08-26-dashboard-return-context",
+    "publishedAt": "2026-08-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "待辦處理後可返回主任工作台",
+    "summary": "從主任待辦進入工作頁後，可一鍵回到今日待辦。",
+    "items": [
+      "從今日工作進入帳務、點名、評量或課表處理後，頂端會保留「回到主任今日工作」入口，減少重新找待辦的操作。",
+      "這是暫時的導覽脈絡提示；帳務、排課、點名與權限規則維持原流程。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "從今日工作進入帳務、點名、評量或課表處理後，頂端會保留「回到主任今日工作」入口，減少重新找待辦的操作。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "這是暫時的導覽脈絡提示；帳務、排課、點名與權限規則維持原流程。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-26:dashboard-return-context"
+    ],
+    "date": "2026-08-26",
+    "version": "2026.08.26"
+  },
+  {
     "id": "staff-2026-08-26-course-payment-summary",
     "publishedAt": "2026-08-26",
     "effectiveAt": null,
