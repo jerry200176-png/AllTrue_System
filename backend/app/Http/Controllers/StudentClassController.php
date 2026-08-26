@@ -195,6 +195,46 @@ class StudentClassController extends Controller
                 ])
                 ->all()
             : [];
+        // Keep the course-management card useful without making the page open a
+        // second billing screen: expose the latest non-rejected payment report as
+        // a read-only summary. Account last-five follows the existing invoices
+        // endpoint privacy rule and is hidden from teachers.
+        $latestPaymentSummaryByClassId = [];
+        if (!empty($classIds)) {
+            $latestReportIds = DB::table('payment_reports')
+                ->whereIn('StudentClassID', $classIds)
+                ->whereIn('status', ['pending', 'confirmed'])
+                ->select('StudentClassID', DB::raw('MAX(id) as latest_id'))
+                ->groupBy('StudentClassID')
+                ->pluck('latest_id');
+            $latestPaymentReports = DB::table('payment_reports')
+                ->whereIn('id', $latestReportIds)
+                ->get([
+                    'id',
+                    'StudentClassID',
+                    'status',
+                    'payment_date',
+                    'reported_amount',
+                    'account_last5',
+                    'note',
+                ]);
+
+            foreach ($latestPaymentReports as $report) {
+                $classId = (int) $report->StudentClassID;
+                if (isset($latestPaymentSummaryByClassId[$classId])) {
+                    continue;
+                }
+
+                $latestPaymentSummaryByClassId[$classId] = [
+                    'report_id' => (int) $report->id,
+                    'status' => (string) $report->status,
+                    'payment_date' => $report->payment_date ? substr((string) $report->payment_date, 0, 10) : null,
+                    'amount' => $report->reported_amount !== null ? (float) $report->reported_amount : null,
+                    'account_last5' => $role === 'teacher' ? null : ($report->account_last5 ?: null),
+                    'note' => trim((string) ($report->note ?? '')),
+                ];
+            }
+        }
 
         $packageIds = $classes->getCollection()
             ->pluck('PackageID')->filter(fn ($id) => $id > 0)->unique()->values()->all();
@@ -256,7 +296,7 @@ class StudentClassController extends Controller
             }
         }
 
-        $classes->getCollection()->transform(function ($class) use ($courseNames, $subjectNames, $teacherNames, $userStatuses, $observedUsedByClass, $usageDiagnosticsByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap, $invoiceAggMap, $pendingReportByClassId, $packageMap) {
+        $classes->getCollection()->transform(function ($class) use ($courseNames, $subjectNames, $teacherNames, $userStatuses, $observedUsedByClass, $usageDiagnosticsByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap, $invoiceAggMap, $pendingReportByClassId, $latestPaymentSummaryByClassId, $packageMap) {
             $class->subject_name = $courseNames[$class->SubjectID]
                 ?? $subjectNames[$class->SubjectID]
                 ?? null;
@@ -485,6 +525,7 @@ class StudentClassController extends Controller
                     $effectiveCharge
                 ) ? 'paid' : 'unpaid');
             $class->latest_payment_report_id = $pendingReportId;
+            $class->latest_payment_summary = $latestPaymentSummaryByClassId[(int) $class->ID] ?? null;
             $class->paid_at = $directPaidAt;
             $class->last_paid_at = $invoicePaidAt ?? $directPaidAt;
             $class->status = empty($class->Stop) ? 'active' : 'inactive';

@@ -600,6 +600,83 @@ class StudentClassPaidStatusTest extends TestCase
         $this->assertSame($report->id, $match['latest_payment_report_id']);
     }
 
+    public function test_index_includes_latest_payment_report_summary_for_course_card(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent();
+        $sc = $this->createStudentClass($student->id, ['Charge' => 32028]);
+
+        $report = PaymentReport::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'reported_by_name' => $student->name,
+            'payment_date' => '2026-08-25',
+            'payment_method' => 'transfer',
+            'reported_amount' => 32028,
+            'account_last5' => '25311',
+            'note' => '繳費日期:8/25 金額:$32028 後5碼:25311',
+            'status' => 'confirmed',
+            'report_token_hash' => hash('sha256', 'course-card-payment-summary'),
+            'token_expires_at' => now()->addDay(),
+        ]);
+
+        $res = $this->getJson(
+            '/api/v1/student-classes?branch_id=1',
+            ['Authorization' => "Bearer {$token}"]
+        );
+
+        $res->assertOk();
+        $data = $res->json('data') ?? $res->json();
+        $match = collect($data)->first(fn ($course) => (int) ($course['ID'] ?? $course['id'] ?? 0) === (int) $sc->ID);
+
+        $this->assertNotNull($match);
+        $this->assertSame($report->id, $match['latest_payment_summary']['report_id']);
+        $this->assertSame('2026-08-25', $match['latest_payment_summary']['payment_date']);
+        $this->assertEquals(32028, $match['latest_payment_summary']['amount']);
+        $this->assertSame('25311', $match['latest_payment_summary']['account_last5']);
+        $this->assertSame('繳費日期:8/25 金額:$32028 後5碼:25311', $match['latest_payment_summary']['note']);
+    }
+
+    public function test_index_hides_payment_account_last5_from_teacher_summary(): void
+    {
+        $teacherId = $this->createTeacher();
+        $token = bin2hex(random_bytes(16));
+        AuthToken::create([
+            'user_id' => $teacherId,
+            'token' => $token,
+            'expires_at' => now()->addDay(),
+        ]);
+        $student = $this->createStudent();
+        $sc = $this->createStudentClass($student->id, ['TeacherID' => $teacherId]);
+
+        PaymentReport::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'reported_by_name' => $student->name,
+            'payment_date' => '2026-08-25',
+            'payment_method' => 'transfer',
+            'reported_amount' => 1000,
+            'account_last5' => '25311',
+            'note' => '家長備註',
+            'status' => 'confirmed',
+            'report_token_hash' => hash('sha256', 'course-card-teacher-privacy'),
+            'token_expires_at' => now()->addDay(),
+        ]);
+
+        $res = $this->getJson(
+            '/api/v1/student-classes?branch_id=1',
+            ['Authorization' => "Bearer {$token}"]
+        );
+
+        $res->assertOk();
+        $data = $res->json('data') ?? $res->json();
+        $match = collect($data)->first(fn ($course) => (int) ($course['ID'] ?? $course['id'] ?? 0) === (int) $sc->ID);
+
+        $this->assertNotNull($match);
+        $this->assertNull($match['latest_payment_summary']['account_last5']);
+        $this->assertSame('家長備註', $match['latest_payment_summary']['note']);
+    }
+
     /**
      * When a legacy StudentClass.PayDate differs from invoice payment records,
      * the list display should use the auditable Payment.PaidAt date.

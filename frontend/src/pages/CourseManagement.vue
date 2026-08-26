@@ -292,6 +292,9 @@
                         </template>
                       </div>
                       <div v-if="courseMemo(c)" class="memo-line">備註：{{ courseMemo(c) }}</div>
+                      <div v-if="coursePaymentSummary(c)" class="payment-summary-line" role="note">
+                        <span class="payment-summary-label">最近繳費：</span>{{ formatPaymentSummary(c.latest_payment_summary) }}
+                      </div>
                     </td>
                     <td>{{ c.teacher_name || '待指派' }}</td>
                     <td class="cell-schedule">
@@ -3275,6 +3278,19 @@ const courseMemo = (course) => {
   const text = String(course?.memo ?? course?.Memo ?? '').trim();
   return text || '';
 };
+const coursePaymentSummary = (course) => course?.latest_payment_summary || null;
+const formatPaymentSummary = (summary) => {
+  if (!summary) return '';
+  const parts = [];
+  if (summary.payment_date) parts.push(`日期 ${summary.payment_date}`);
+  if (summary.amount !== null && summary.amount !== undefined && summary.amount !== '') {
+    parts.push(`金額 $${formatMoney(summary.amount)}`);
+  }
+  if (summary.account_last5) parts.push(`後5碼 ${summary.account_last5}`);
+  if (summary.note) parts.push(`備註 ${summary.note}`);
+  if (summary.status === 'pending') parts.push('待對帳');
+  return parts.join(' · ') || '已有繳費回報';
+};
 
 const CLASS_CAPACITY = { one_on_one: 1, one_on_two: 2, one_on_three: 3, tutoring: 4, trial: 1 };
 function getCapacityForClassType(type) { return CLASS_CAPACITY[type] ?? 1; }
@@ -5775,6 +5791,18 @@ onUnmounted(() => {
   color: #64748b;
   line-height: 1.4;
   word-break: break-word;
+}
+
+.payment-summary-line {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--ds-success);
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.payment-summary-label {
+  font-weight: 800;
 }
 
 .price-sep {

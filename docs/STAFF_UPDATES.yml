@@ -4,6 +4,21 @@
 
 updates:
 
+  - id: staff-2026-08-26-course-payment-summary
+    published_at: "2026-08-26"
+    audiences:
+      - director
+    importance: major
+    title: 課程卡顯示最近繳費備註
+    summary: 課程管理可直接看到最近繳費回報內容。
+    items:
+      - category: improved
+        text: 課程管理學生課程卡會顯示最近繳費的日期、金額、備註與主任可見的匯款後五碼。
+      - category: action_required
+        text: 待對帳資料會標示「待對帳」；付款狀態與收據仍依帳務中心流程處理。
+    source_refs:
+      - "changelog:2026-08-26:course-payment-summary"
+
   - id: staff-2026-08-26-payment-shortcuts
     published_at: "2026-08-26"
     audiences:
