@@ -37,5 +37,6 @@ describe('operations quick-start UX contract', () => {
     for (const marker of ['排課處理流程', '調課', '換代課', 'clear-initial-intent']) {
       expect(calendar).toContain(marker);
     }
+    expect(calendar).toContain('v-if="!isTeacher"');
   });
 });
