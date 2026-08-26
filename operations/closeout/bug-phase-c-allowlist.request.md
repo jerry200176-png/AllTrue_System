@@ -1,5 +1,7 @@
 # Request: Phase-C allowlist resolve
 
+# kickoff 2026-08-26T06:34:00Z — Phase C write-back for in-app #242/#243: production revision `9e4a815cd9da8bc0aa2764f9ac3e501608c753c1`, Deploy to Pi run `32938402333` succeeded. #242 read-side HTTP 422 fix is on production; #243 latest payment report summary is on the CourseManagement and StudentsList course cards. Public replies request reporter verification; no production business-data mutation.
+
 # kickoff 2026-08-17T10:47:00Z — Phase C write-back for #238: same-day second-reschedule occupancy fix PR #1886 merged as `2d7ae86a043edbe226765c92476e5883ed06dd49`, Deploy to Pi run `32021552314` succeeded. The fix only changes occupancy filtering (leftover scheduled rows after a same-day move no longer occupy); no production course, quota, receipt, payment, or configuration mutation is authorized or required. Public reply links GitHub issue #1885 and requests reporter verification.
 
 # kickoff 2026-08-17T09:40:00Z — Phase C write-back for #237: course attended-count fix PR #1877 merged as `a69d1d0f5a43f736dfa12f918670fed382be9b1d`, Deploy to Pi run `32015729177` succeeded. The fix only changes client-side attended-count / expand refetch / session-mode detection; no production course, quota, receipt, payment, or configuration mutation is authorized or required. Public reply links GitHub issue #1834 and requests reporter verification.
