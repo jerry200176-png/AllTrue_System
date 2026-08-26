@@ -110,6 +110,146 @@ class ClassSessionsTeacherAutoMaterializeCountTest extends TestCase
         }
     }
 
+    public function test_director_same_day_index_skips_student_overlap_in_read_side_materialization(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-06-20 09:00:00', 'Asia/Taipei'));
+        try {
+            $campusId = 1;
+            $director = User::create([
+                'LoginName' => 'director-count-conflict@example.com',
+                'Name' => '衝突補建主任',
+                'PSW' => 'secret',
+                'type' => 'A',
+                'phone' => '0911000112',
+                'MustChangePassword' => false,
+            ]);
+            UserCampus::create([
+                'CampusID' => $campusId,
+                'UserID' => $director->id,
+                'Admin' => 1,
+                'Approved' => 1,
+            ]);
+            $token = bin2hex(random_bytes(16));
+            AuthToken::create([
+                'user_id' => $director->id,
+                'token' => $token,
+                'expires_at' => now()->addDay(),
+            ]);
+
+            $teacher = User::create([
+                'LoginName' => 'teacher-count-conflict@example.com',
+                'Name' => '衝突補建老師',
+                'PSW' => 'secret',
+                'type' => 'T',
+                'phone' => '0911000113',
+                'MustChangePassword' => false,
+            ]);
+            UserCampus::create([
+                'CampusID' => $campusId,
+                'UserID' => $teacher->id,
+                'Admin' => 0,
+                'Approved' => 1,
+            ]);
+
+            $student = Student::create([
+                'name' => '跨課程衝突學生',
+                'CampusID' => $campusId,
+                'ClassID' => 1,
+                'enable' => 1,
+                'MDT' => now(),
+                'Notify_Token' => '',
+            ]);
+
+            $course = StudentClass::create([
+                'StudentID' => $student->id,
+                'GradeID' => 1,
+                'SubjectID' => 1,
+                'TeacherID' => $teacher->id,
+                'by1' => 1,
+                'Period' => 4,
+                'StartDate' => '2026-06-06',
+                'TotalHours' => 24,
+                'Charge' => 0,
+                'Paid' => 1,
+                'Rate' => 500,
+                'MDate' => now(),
+                'Stop' => 0,
+                'ScheduleMode' => 'count',
+                'SessionCount' => 12,
+                'SessionDuration' => 120,
+                'RemainingSessions' => 10,
+                'UsedSessions' => 2,
+                'ClassType' => 'one_on_one',
+                'week' => 6,
+                'time' => '10:00:00',
+            ]);
+            foreach (['2026-06-06', '2026-06-13'] as $date) {
+                ClassSession::create([
+                    'StudentClassID' => $course->ID,
+                    'SessionDate' => $date,
+                    'StartTime' => '10:00:00',
+                    'EndTime' => '12:00:00',
+                    'Status' => 'attended',
+                ]);
+            }
+
+            $conflictingCourse = StudentClass::create([
+                'StudentID' => $student->id,
+                'GradeID' => 1,
+                'SubjectID' => 1,
+                'TeacherID' => $teacher->id,
+                'by1' => 1,
+                'Period' => 4,
+                'StartDate' => '2026-06-06',
+                'TotalHours' => 24,
+                'Charge' => 0,
+                'Paid' => 1,
+                'Rate' => 500,
+                'MDate' => now(),
+                'Stop' => 0,
+                'ScheduleMode' => 'count',
+                'SessionCount' => 12,
+                'SessionDuration' => 120,
+                'RemainingSessions' => 10,
+                'UsedSessions' => 2,
+                'ClassType' => 'one_on_one',
+                'week' => 6,
+                'time' => '10:00:00',
+            ]);
+
+            // Seed a legacy conflicting row without weakening the production
+            // overlap guard. The read-side repair must leave it untouched.
+            ClassSession::withoutEvents(function () use ($conflictingCourse): void {
+                ClassSession::create([
+                    'StudentClassID' => $conflictingCourse->ID,
+                    'SessionDate' => '2026-06-20',
+                    'StartTime' => '10:00:00',
+                    'EndTime' => '12:00:00',
+                    'Status' => 'scheduled',
+                ]);
+            });
+
+            $response = $this->withHeaders([
+                'Authorization' => 'Bearer ' . $token,
+                'Accept' => 'application/json',
+            ])->getJson('/api/v1/class-sessions?start=2026-06-20&end=2026-06-20&per_page=100&branch_id=1');
+
+            $response->assertOk();
+            $this->assertDatabaseHas('ClassSession', [
+                'StudentClassID' => $conflictingCourse->ID,
+                'SessionDate' => '2026-06-20',
+                'StartTime' => '10:00:00',
+            ]);
+            $this->assertDatabaseMissing('ClassSession', [
+                'StudentClassID' => $course->ID,
+                'SessionDate' => '2026-06-20',
+                'StartTime' => '10:00:00',
+            ]);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     public function test_auto_materialize_skips_shared_package_members(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-06-20 09:00:00', 'Asia/Taipei'));
