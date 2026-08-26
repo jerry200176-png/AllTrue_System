@@ -512,6 +512,7 @@ import {
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
 import OperationsQuickStart from '../components/OperationsQuickStart.vue';
 import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
+import { adoptionErrorType, trackWorkflowEvent } from '../lib/adoptionTelemetry.js';
 import SubstituteTeacherPickerModal from '../components/substitute/SubstituteTeacherPickerModal.vue';
 
 import TeacherLeaveBatchModal from '../components/substitute/TeacherLeaveBatchModal.vue';
@@ -669,7 +670,23 @@ const calendarFlowSteps = [
   { id: 'reschedule', icon: 'event_repeat', title: '調課', description: '點課卡後更換日期與時間。', action: '開始調課' },
   { id: 'substitute', icon: 'swap_horiz', title: '換代課', description: '點課卡後指定代課老師。', action: '選擇老師' },
 ];
+const calendarWorkflowStarts = new Map();
+function startCalendarWorkflow(step) {
+  const startedAt = Date.now();
+  calendarWorkflowStarts.set(step, startedAt);
+  void trackWorkflowEvent('calendar', 'started', props.branchId, { step }, startedAt);
+  return startedAt;
+}
+function finishCalendarWorkflow(step, phase = 'completed', meta = {}) {
+  const startedAt = calendarWorkflowStarts.get(step);
+  calendarWorkflowStarts.delete(step);
+  void trackWorkflowEvent('calendar', phase, props.branchId, { step, ...meta }, startedAt);
+}
+function calendarWorkflowError(step, errorOrStatus) {
+  finishCalendarWorkflow(step, 'error', { error_type: adoptionErrorType(errorOrStatus) });
+}
 function selectCalendarFlowStep(stepId) {
+  startCalendarWorkflow(stepId);
   calendarWorkflowIntent.value = stepId;
   if (stepId === 'create') {
     calendarWorkflowHint.value = '';
@@ -950,7 +967,7 @@ const {
 const {
   showRescheduleModal, rescheduleForm, rescheduleDisplay, computedRescheduleNewEnd,
   reschedulePreview, rescheduleSubmitting, rescheduleError,
-  onRescheduleNewStartChange, openRescheduleModal, submitReschedule,
+  onRescheduleNewStartChange, openRescheduleModal, submitReschedule: submitRescheduleCore,
 } = useCalendarReschedule({
   supabase,
   branchId: computed(() => props.branchId),
@@ -964,6 +981,22 @@ const {
   exceptions,
   getSubjectLabel,
 });
+
+async function submitReschedule() {
+  const workflowStep = 'reschedule';
+  if (!calendarWorkflowStarts.has(workflowStep)) startCalendarWorkflow(workflowStep);
+  try {
+    await submitRescheduleCore();
+    if (rescheduleError.value) {
+      calendarWorkflowError(workflowStep, 'validation');
+    } else if (!showRescheduleModal.value) {
+      finishCalendarWorkflow(workflowStep);
+      void trackWorkflowEvent('calendar', 'returned', props.branchId, { step: workflowStep, target: 'calendar' });
+    }
+  } catch (error) {
+    calendarWorkflowError(workflowStep, error);
+  }
+}
 
 const prevWeek = () => { weekOffset.value -= 1; };
 const nextWeek = () => { weekOffset.value += 1; };
@@ -1891,8 +1924,12 @@ const currentSessionChargeDisplay = computed(() => {
 });
 
 const handleUniversalSchedulerSuccess = async () => {
+  const workflowStep = 'create';
+  if (!calendarWorkflowStarts.has(workflowStep)) startCalendarWorkflow(workflowStep);
   showModal.value = false;
   await loadCourses();
+  finishCalendarWorkflow(workflowStep);
+  void trackWorkflowEvent('calendar', 'returned', props.branchId, { step: workflowStep, target: 'calendar' });
 };
 
 const showDuplicateInterceptModal = ref(false);
@@ -1918,6 +1955,7 @@ async function forceCreateCourse() {
     showDuplicateInterceptModal.value = false;
     return;
   }
+  if (!calendarWorkflowStarts.has('create')) startCalendarWorkflow('create');
   forceSubmitting.value = true;
   try {
     const result = await createUniversalClassSchedule({ ...payload, force: true });
@@ -1927,8 +1965,11 @@ async function forceCreateCourse() {
     const created = Number(result?.created_confirmed_sessions ?? 0) + Number(result?.created_future_sessions ?? 0);
     alert(`已強制建立 ${created} 堂課`);
     await loadCourses();
+    finishCalendarWorkflow('create', 'completed', { result: 'forced' });
+    void trackWorkflowEvent('calendar', 'returned', props.branchId, { step: 'create', target: 'calendar' });
   } catch (err) {
     alert(err?.message || '強制建立失敗，請稍後再試');
+    calendarWorkflowError('create', err);
   } finally {
     forceSubmitting.value = false;
   }
@@ -1936,6 +1977,7 @@ async function forceCreateCourse() {
 
 // --- Modal Actions ---
 const openQuickAdd = () => {
+  if (!calendarWorkflowStarts.has('create')) startCalendarWorkflow('create');
   editingCourseId.value = null;
   conflictWarning.value = '';
   const start = '16:00';
