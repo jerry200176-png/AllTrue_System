@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\SlotOccupiedException;
 use App\Models\ClassSession;
 use App\Models\ClassSessionReassignment;
 use App\Models\CourseContractGroupMember;
@@ -846,7 +847,15 @@ class ClassSessionController extends Controller
         $studentClassController = app(StudentClassController::class);
         foreach ($classes as $studentClass) {
             $preloaded = collect($existingSessionsByClass[(int) $studentClass->ID] ?? []);
-            $studentClassController->extendSessionsIfNeeded($studentClass, (int) $studentClass->SessionCount, $preloaded);
+            try {
+                $studentClassController->extendSessionsIfNeeded($studentClass, (int) $studentClass->SessionCount, $preloaded);
+            } catch (SlotOccupiedException $e) {
+                // This is a best-effort read-side projection. A legacy or
+                // cross-course student overlap must not make the whole branch's
+                // attendance list fail with 422; leave the conflicting slot
+                // absent and let the existing data-quality guard remain intact.
+                $this->logReadSideMaterializationConflict('count', $studentClass, $e);
+            }
         }
     }
 
@@ -940,21 +949,45 @@ class ClassSessionController extends Controller
                     continue;
                 }
 
-                app(ClassSessionMaterializationService::class)->upsertSlot([
-                    '_student_class'     => $studentClass,
-                    'StudentClassID'      => (int) $studentClass->ID,
-                    'SubjectID'           => $studentClass->SubjectID ?: null,
-                    'SessionDate'         => $targetDate,
-                    'StartTime'           => (string) $slot['start_time'],
-                    'EndTime'             => (string) $slot['end_time'],
-                    'Status'              => 'scheduled',
-                    'Note'                => 'projected-monthly-materialized-auto',
-                    'IsContractException' => 0,
-                ]);
-                // 同一請求內避免重複建立（多 slot 同時段時的防呆，等同原 exists() 在建立後轉真）。
-                $existingSet[$key] = true;
+                try {
+                    app(ClassSessionMaterializationService::class)->upsertSlot([
+                        '_student_class'     => $studentClass,
+                        'StudentClassID'      => (int) $studentClass->ID,
+                        'SubjectID'           => $studentClass->SubjectID ?: null,
+                        'SessionDate'         => $targetDate,
+                        'StartTime'           => (string) $slot['start_time'],
+                        'EndTime'             => (string) $slot['end_time'],
+                        'Status'              => 'scheduled',
+                        'Note'                => 'projected-monthly-materialized-auto',
+                        'IsContractException' => 0,
+                    ]);
+                    // 同一請求內避免重複建立（多 slot 同時段時的防呆，等同原 exists() 在建立後轉真）。
+                    $existingSet[$key] = true;
+                } catch (SlotOccupiedException $e) {
+                    $this->logReadSideMaterializationConflict('monthly', $studentClass, $e);
+                }
             }
         }
+    }
+
+    /**
+     * Read-side projection conflicts are actionable data-quality signals, but
+     * not request-level validation failures. Keep logs free of student PII.
+     */
+    private function logReadSideMaterializationConflict(
+        string $source,
+        StudentClass $studentClass,
+        SlotOccupiedException $exception,
+    ): void {
+        Log::warning('class_session.read_materialization_conflict', [
+            'source' => $source,
+            'student_class_id' => (int) $studentClass->getAttribute('ID'),
+            'session_date' => $exception->sessionDate,
+            'start_time' => substr($exception->startTime, 0, 5),
+            'conflict_session_id' => $exception->conflictSessionId,
+            'conflict_status' => $exception->conflictStatus,
+            'response_code' => $exception->responseCode,
+        ]);
     }
 
     /**
