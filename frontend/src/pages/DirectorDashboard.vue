@@ -241,7 +241,18 @@
               <section class="surface-panel" aria-labelledby="director-discrepancy-title"><header class="surface-panel__header"><div><h3 id="director-discrepancy-title">課表回報</h3><p>老師回報的差異需要主任留下處理結果。</p></div><span class="surface-panel__count">{{ sdSummary.pending }}</span></header><div v-if="sdLoading" class="director-state director-state--compact" role="status">載入中…</div><div v-else-if="sdSummary.pending" class="director-state director-state--compact"><span>{{ sdSummary.pending }} 筆待確認</span><button type="button" class="text-action" @click="goToScheduleDiscrepancy">查看回報</button></div><div v-else class="director-state director-state--compact"><span class="material-symbols-outlined" aria-hidden="true">task_alt</span><span>目前沒有待確認的課表回報。</span></div></section>
               <section id="notifications-sec" class="surface-panel" aria-labelledby="director-notifications-title"><header class="surface-panel__header"><div><h3 id="director-notifications-title">通知摘要</h3><p>只顯示未讀通知的最新幾筆。</p></div><span class="surface-panel__count">{{ unreadNotificationCount }}</span></header><div v-if="!notificationSummary.length" class="director-state director-state--compact"><span>目前沒有未讀通知。</span></div><div v-else class="director-notification-list"><div v-for="notification in notificationSummary" :key="notification.id"><strong>{{ notification.title }}</strong><span>{{ notification.typeLabel }}</span></div></div><footer class="surface-panel__footer"><button type="button" class="text-action" @click="goToNotifications">前往通知中心</button></footer></section>
               <section v-if="directorTodoCards.length" class="surface-panel" aria-labelledby="director-other-work-title"><header class="surface-panel__header"><div><h3 id="director-other-work-title">其他營運工作</h3><p>需要追蹤的項目，不佔用今天的主佇列。</p></div><span class="surface-panel__count">{{ directorTodoCards.length }}</span></header><div v-if="adoptionTaskLoading" class="director-state director-state--compact" role="status">載入中…</div><div v-else class="director-other-work-list"><button v-for="work in directorTodoCards.slice(0, 6)" :key="work.id" type="button" @click="handleDirectorTodoClick(work)"><span>{{ work.title }}</span><small>{{ work.description }}</small><span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span></button></div></section>
-              <details class="director-analysis"><summary>近期紀錄與分析</summary><div class="director-analysis__body"><RecentSubstitutesCard :branch-id="branchId" :fetch-recent="fetchRecentSubstitutes" /><p>老師填寫率、操作履歷與科目統計已在完整營運中延遲載入。</p></div></details>
+              <details class="director-analysis" @toggle="analysisOpen = $event.currentTarget.open">
+                <summary>近期紀錄與分析</summary>
+                <div class="director-analysis__body">
+                  <RecentSubstitutesCard v-if="analysisOpen" :branch-id="branchId" :fetch-recent="fetchRecentSubstitutes" />
+                  <TeacherAssessmentFillRateCard
+                    v-if="analysisOpen"
+                    :branch-id="branchId"
+                    :fetch-report="fetchTeacherAssessmentFillRates"
+                    @view-learning="emit('navigate', { target: 'learning' })"
+                  />
+                </div>
+              </details>
             </aside>
           </div>
         </section>
@@ -284,6 +295,7 @@ import { getBranchName } from '../lib/useBranches';
 import { getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchDiscrepancySummary } from '../lib/scheduleDiscrepanciesApi';
 import RecentSubstitutesCard from '../components/substitute/RecentSubstitutesCard.vue';
+import TeacherAssessmentFillRateCard from '../components/TeacherAssessmentFillRateCard.vue';
 import OperationsQuickStart from '../components/OperationsQuickStart.vue';
 import PaymentSlipModal from '../components/PaymentSlipModal.vue';
 import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
@@ -412,6 +424,7 @@ const dashboardPrimaryError = ref('');
 const dashboardLastUpdated = ref('');
 const secondaryLoading = ref(false);
 const secondaryLoaded = ref(false);
+const analysisOpen = ref(false);
 // Returning to the dashboard always starts at today's work. Full operations is
 // an intentional, in-session drill-down and should never become the next
 // session's default just because it was opened once.
@@ -1181,6 +1194,16 @@ const loadSecondaryData = async () => {
   secondaryLoading.value = false;
 };
 
+const fetchTeacherAssessmentFillRates = async ({ branch_id, days = 14 }) => {
+  const params = new URLSearchParams({ branch_id: String(branch_id), days: String(days) });
+  const res = await fetch(`${getBaseUrl()}/v1/reports/teacher-learning-fill-rates?${params}`, {
+    headers: { Authorization: `Bearer ${getToken()}`, Accept: 'application/json' },
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json?.message || '評量完成率載入失敗');
+  return json;
+};
+
 const refreshDashboard = async () => {
   secondaryLoaded.value = false;
   await loadData();
@@ -1393,6 +1416,7 @@ watch(() => [props.focusWorkflowId, props.focusSection, exceptionWorkflows.value
 watch(() => props.branchId, () => {
   teardownTrustImpressions();
   secondaryLoaded.value = false;
+  analysisOpen.value = false;
   adoptionTaskRows.value = [];
   adoptionActivityRows.value = [];
   adoptionWeeklyMetrics.value = null;
@@ -3067,7 +3091,20 @@ onBeforeUnmount(() => {
   .director-workbench-v2__primary > .surface-panel__header::before { left: 12px; top: 17px; bottom: 14px; }
   .director-task { grid-template-columns: 28px minmax(0, 1fr); gap: 10px; align-items: start; margin-inline: -6px; padding: 15px 6px; }
   .director-task__title-row h3 { white-space: normal; }
-  .director-task__action { grid-column: 2; justify-self: start; margin-top: 3px; }
+  /* Mobile primary actions must look and measure like actions, not inline links.
+     Keep the task hierarchy intact while guaranteeing a comfortable touch target. */
+  .director-task__action {
+    grid-column: 2;
+    justify-self: start;
+    min-height: 44px;
+    margin-top: 3px;
+    padding: 9px 12px;
+    border: 1px solid var(--ds-cta);
+    border-radius: 7px;
+    background: var(--ds-cta);
+    color: var(--ds-on-cta);
+  }
+  .director-task__action:hover { border-color: var(--ds-cta-hover); background: var(--ds-cta-hover); color: var(--ds-on-cta); }
   .director-workbench-v2__more { margin-left: 54px; margin-right: 16px; }
   .director-summary-list { padding-inline: 16px; }
   .director-schedule-row { grid-template-columns: 48px minmax(0, 1fr) auto; gap: 7px; }

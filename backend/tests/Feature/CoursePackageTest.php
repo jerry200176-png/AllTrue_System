@@ -897,4 +897,43 @@ class CoursePackageTest extends TestCase
         $res->assertStatus(422);
         $this->assertStringContainsString('無法解析科目', $res->json('message'));
     }
+
+    public function test_used_paid_course_converts_to_shared_pool_without_moving_history(): void
+    {
+        $student = $this->makeStudent();
+        $teacher = $this->makeTeacher();
+        UserCampus::create(['CampusID' => 1, 'UserID' => $teacher->id, 'Admin' => 0, 'Approved' => 1]);
+        $course = $this->makePlainCourse($student->id, $teacher->id, [
+            'SessionCount' => 8, 'RemainingSessions' => 5, 'UsedSessions' => 3,
+            'Paid' => 1, 'PayDate' => '2026-08-01', 'Rate' => 500,
+        ]);
+        foreach ([1, 2, 3] as $days) {
+            ClassSession::create([
+                'StudentClassID' => $course->ID,
+                'SessionDate' => Carbon::today()->subDays($days)->toDateString(),
+                'StartTime' => '16:00:00', 'EndTime' => '18:00:00', 'Status' => 'completed',
+            ]);
+        }
+
+        $response = $this->withHeaders([
+            'Authorization' => 'Bearer ' . $this->createDirectorToken([1]),
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/student-classes/{$course->ID}/convert-to-package", [
+            'name' => '歷史保留共用方案',
+            'additional_subject' => ['subject_id' => 2, 'teacher_id' => $teacher->id],
+        ]);
+
+        if ($response->status() !== 201) {
+            $this->fail('conversion response: ' . $response->getContent());
+        }
+        $response->assertCreated()->assertJsonPath('package.total_sessions', 8)
+            ->assertJsonPath('package.used_sessions', 3)
+            ->assertJsonPath('package.remaining_sessions', 5);
+        $packageId = (int) $response->json('package.id');
+        $this->assertSame(2, StudentClass::where('PackageID', $packageId)->count());
+        $this->assertSame(3, PackageSessionLedger::where('package_id', $packageId)
+            ->where('reason', 'conversion_seed')->count());
+        $this->assertSame(1, (int) $course->fresh()->Paid);
+        $this->assertSame(3, ClassSession::where('StudentClassID', $course->ID)->count());
+    }
 }

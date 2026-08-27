@@ -6129,7 +6129,7 @@ parameters:
 		-
 			message: '#^Comparison operation "\<=" between int\<1, max\> and 0 is always false\.$#'
 			identifier: smallerOrEqual.alwaysFalse
-			count: 2
+			count: 1
 			path: app/Services/ManualSessionBookingService.php
 
 		-

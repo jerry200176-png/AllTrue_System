@@ -9,7 +9,7 @@
             <span class="course-lens-badge">唯讀營運視圖</span>
           </div>
           <h2 class="page-title">課程管理</h2>
-          <p class="ref-hint">先找出需要處理的課程，再回到學生管理完成變更。</p>
+          <p class="ref-hint">查找課程、編輯月結日期與新增堂次，都在這一頁完成。</p>
           <div class="meta-pills">
             <span class="meta-pill">{{ groupedCourses.length }} 位學生</span>
             <span v-if="pagination.lastPage > 1" class="meta-pill">第 {{ pagination.page }} / {{ pagination.lastPage }} 頁</span>
@@ -35,7 +35,7 @@
         <span class="material-symbols-outlined course-lens-guidance__icon" aria-hidden="true">near_me</span>
         <div>
           <strong>這一頁適合查找與分流</strong>
-          <span>建立、編輯、續報與加購課程，請從「學生管理」的學生主檔進入，避免同一筆合約在不同頁面產生兩套狀態。</span>
+          <span>建立、續報與加購課程仍從「學生管理」的學生主檔進入；本頁可直接編輯既有課程、設定月結日期與新增堂次。</span>
         </div>
       </div>
 
@@ -337,33 +337,33 @@
                     </td>
                     <td class="cell-actions">
                       <div class="action-btns-row">
-                        <button class="small primary course-primary-action" @click="navigateToStudentCourse(c)">編輯</button>
+                        <button class="small primary course-primary-action" @click="editCourse(c)">編輯</button>
                         <button
                           v-if="isManualOccurrenceCourse(c)"
                           class="small btn-add-session manual-occurrence-action"
                           @click="openManualSessionModal(c)"
                         >＋新增下一堂</button>
                         <button
-                          v-if="isSessionMode(c) && !isManualOccurrenceCourse(c)"
+                          v-if="(isSessionMode(c) || isMonthlyMode(c)) && !isManualOccurrenceCourse(c)"
                           class="small btn-add-session manual-occurrence-action"
                           @click="openManualSessionModal(c)"
-                        >排課</button>
+                        >{{ isMonthlyMode(c) ? '排月結' : '排課' }}</button>
                         <button class="small ghost btn-toggle" @click="toggleDatesAndMakeups(c)">
                           {{ expandedDates.has(c.id) ? '收起' : '詳情' }}
                         </button>
                         <div class="action-menu-wrapper">
                           <button class="small ghost action-menu-trigger" @click.stop="toggleActionMenu(c.id)" title="其他課程操作" aria-haspopup="menu" :aria-expanded="activeActionMenu === c.id">更多 ▾</button>
                           <div v-if="activeActionMenu === c.id" class="action-dropdown" role="menu" aria-label="其他課程操作" @click.stop>
-                            <p v-if="isSessionMode(c)" class="action-section-label">排課與課堂</p>
+                            <p v-if="isSessionMode(c) || isMonthlyMode(c)" class="action-section-label">排課與課堂</p>
                             <button
-                              v-if="isSessionMode(c) && !isManualOccurrenceCourse(c)"
+                              v-if="(isSessionMode(c) || isMonthlyMode(c)) && !isManualOccurrenceCourse(c)"
                               class="action-dropdown-item action-dropdown-add-session-mobile"
                               role="menuitem"
-                              :class="{ 'action-dropdown-item--disabled': !canQuickAddSession(c) }"
-                              :disabled="!canQuickAddSession(c)"
-                              :title="canQuickAddSession(c) ? '' : quickAddDisabledReason(c)"
-                              @click="canQuickAddSession(c) && (openQuickAddSessionModal(c), closeActionMenu())"
-                            ><span class="material-symbols-outlined action-icon" aria-hidden="true">add_task</span> 補課 / 補登</button>
+                              :class="{ 'action-dropdown-item--disabled': isSessionMode(c) && !canQuickAddSession(c) }"
+                              :disabled="isSessionMode(c) && !canQuickAddSession(c)"
+                              :title="isMonthlyMode(c) ? '在課程起訖日內新增月結堂次' : (canQuickAddSession(c) ? '' : quickAddDisabledReason(c))"
+                              @click="isMonthlyMode(c) ? (openMonthlySessionModal(c), closeActionMenu()) : (canQuickAddSession(c) && (openQuickAddSessionModal(c), closeActionMenu()))"
+                            ><span class="material-symbols-outlined action-icon" aria-hidden="true">add_task</span> {{ isMonthlyMode(c) ? '新增月結堂次' : '補課 / 補登' }}</button>
                             <p class="action-section-label">帳務與合約</p>
                             <button class="action-dropdown-item" role="menuitem" @click="openInvoiceModal(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">receipt_long</span> 帳單與對帳</button>
                             <button
@@ -779,8 +779,8 @@
             v-if="packageConversionPreview && !packageConversionPreviewLoading"
             class="primary"
             type="button"
-            @click="goToNewPackageFromPreview"
-          >前往建立多科方案</button>
+            @click="packageConversionPreview.can_convert ? continuePackageConversionFromPreview() : goToNewPackageFromPreview()"
+          >{{ packageConversionPreview.can_convert ? '繼續轉成多科共用方案' : '前往建立多科方案' }}</button>
         </div>
       </div>
     </div>
@@ -885,11 +885,45 @@
       :result="manualSessionCheck"
       :checking="manualSessionChecking"
       :submitting="manualSessionSubmitting"
+      :is-monthly="isMonthlyMode(manualSessionCourse)"
       :today="todayYmd"
       @close="showManualSessionModal = false"
       @check="runManualSessionCheck"
       @submit="submitManualSession"
+      @edit-course="editManualSessionCourse"
     />
+
+    <div v-if="showPackageConversionModal" class="modal-overlay" @click.self="!packageConversionSubmitting && (showPackageConversionModal = false)">
+      <div class="modal course-modal package-conversion-modal" role="dialog" aria-modal="true" aria-labelledby="package-conversion-title">
+        <h3 id="package-conversion-title" class="modal-title">轉成多科共用</h3>
+        <p class="modal-desc">原合約、已上課與帳務紀錄會保留；只有未使用堂數會放入共用池，不會重新收費。</p>
+        <div class="package-conversion-summary">
+          <strong>{{ packageConversionCourse?.student_name || '學生' }}／{{ packageConversionCourse?.subject_name || packageConversionCourse?.subject || '目前科目' }}</strong>
+          <span>總堂數 {{ getPurchasedSessions(packageConversionCourse) }} 堂</span>
+          <span>已上 {{ getUsedSessions(packageConversionCourse) }} 堂</span>
+          <span>可共用 {{ Math.max(0, getPurchasedSessions(packageConversionCourse) - getUsedSessions(packageConversionCourse)) }} 堂</span>
+        </div>
+        <label class="form-group">方案名稱
+          <input v-model="packageConversionForm.name" type="text" maxlength="128" placeholder="例如：學生多科共用方案" />
+        </label>
+        <label class="form-group">加入第二科目
+          <select v-model="packageConversionForm.subject_name">
+            <option value="">請選擇科目</option>
+            <option v-for="subject in packageConversionSubjects" :key="String(subject.id ?? subject.value)" :value="subject.label || subject.value">{{ subject.label || subject.value }}</option>
+          </select>
+        </label>
+        <label class="form-group">第二科目老師
+          <select v-model="packageConversionForm.teacher_id">
+            <option value="">請選擇老師</option>
+            <option v-for="teacher in teachers" :key="teacher.id" :value="String(teacher.id)">{{ teacher.username || teacher.name || teacher.Name || `老師 #${teacher.id}` }}</option>
+          </select>
+        </label>
+        <div class="actions">
+          <button class="ghost" :disabled="packageConversionSubmitting" @click="showPackageConversionModal = false">取消</button>
+          <button class="primary" :disabled="packageConversionSubmitting" @click="submitPackageConversion">{{ packageConversionSubmitting ? '建立中…' : '確認建立共用方案' }}</button>
+        </div>
+      </div>
+    </div>
 
     <LeaveModal
       :show="showLeaveModal"
@@ -1246,7 +1280,7 @@ import {
   humanizeDocumentRef,
 } from '../lib/studentClassDisplay.js';
 import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
-import { previewSingleCoursePackageConversion, updatePackage } from '../lib/coursePackagesApi';
+import { convertSingleCourseToPackage, previewSingleCoursePackageConversion, updatePackage } from '../lib/coursePackagesApi';
 import { buildEditTeacherOptions, shouldClearTeacherSelection } from '../lib/courseTeacherOptions';
 import { computePackageNextTotal, packageMemberSessionSummary } from '../lib/packageSessions';
 import {
@@ -2062,6 +2096,12 @@ function goToNewPackageFromPreview() {
     intent: 'new_package',
   });
 }
+
+function continuePackageConversionFromPreview() {
+  const course = packageConversionPreviewCourse.value;
+  closePackageConversionPreview();
+  if (course) openPackageConversion(course);
+}
 /** 開啟編輯時的排課指紋；儲存時若變更則自動 force_partial_rebuild 同步未上預排堂次 */
 const editScheduleBaseline = ref(null);
 const originalFirstClassDate = ref('');
@@ -2339,6 +2379,14 @@ const manualSessionCheck = ref(null);
 const manualSessionChecking = ref(false);
 const manualSessionSubmitting = ref(false);
 const manualSessionForm = ref({ session_date: '', start_time: '16:00' });
+const showPackageConversionModal = ref(false);
+const packageConversionCourse = ref(null);
+const packageConversionSubmitting = ref(false);
+const packageConversionForm = ref({ name: '', subject_name: '', teacher_id: '' });
+const packageConversionSubjects = computed(() => {
+  const source = String(packageConversionCourse.value?.subject_name || packageConversionCourse.value?.subject || '').trim();
+  return (subjectOptions.value || []).filter((subject) => String(subject?.label || subject?.value || '').trim() !== source);
+});
 const isManualOccurrenceCourse = (course) => String(course?.scheduling_policy || 'auto_recurrence') === 'manual_occurrence';
 const pauseConfirmTarget = ref(null);
 const pauseConfirmSubmitting = ref(false);
@@ -2418,14 +2466,17 @@ async function confirmCoursePause() {
 function canCloseCourse(c) {
   return c.status !== 'inactive'
     && isSessionMode(c)
-    && c.payment_status === 'paid'
-    && Number(c.remaining_sessions ?? 0) <= 0;
+    && c.payment_status === 'paid';
 }
 
 async function closeCourseNoRenew(course) {
   const studentName = course.student_name || '學生';
   const subject = getSubjectLabel(course.subject);
-  if (!confirm(`確定要結案「${studentName}」的 ${subject} 課程嗎？\n\n結案後此課程將不再出現在繳費／續課提醒中。\n（等同暫停課程，之後仍可手動恢復。）`)) return;
+  const remaining = Math.max(0, Number(course.remaining_sessions ?? 0));
+  const balanceWarning = remaining > 0
+    ? `\n\n目前還有 ${remaining} 堂未使用。結案會取消未來排課，並放棄這 ${remaining} 堂剩餘額度。`
+    : '';
+  if (!confirm(`確定要結案「${studentName}」的 ${subject} 課程嗎？${balanceWarning}\n\n結案後此課程不再出現在繳費／續課提醒中，已繳費與已上課紀錄仍會保留。`)) return;
 
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
@@ -2436,7 +2487,11 @@ async function closeCourseNoRenew(course) {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ action: 'pause', reason: 'completed' }),
+      body: JSON.stringify({
+        action: 'pause',
+        reason: 'settled',
+        ...(remaining > 0 ? { forfeit_remaining: true } : {}),
+      }),
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -2860,6 +2915,52 @@ function openManualSessionModal(course) {
   };
   showManualSessionModal.value = true;
   runManualSessionCheck();
+}
+
+function openMonthlySessionModal(course) {
+  openManualSessionModal(course);
+}
+
+function editManualSessionCourse() {
+  const course = manualSessionCourse.value;
+  showManualSessionModal.value = false;
+  if (course?.id) editCourse(course);
+}
+
+function openPackageConversion(course) {
+  packageConversionCourse.value = course;
+  packageConversionForm.value = {
+    name: `${course?.student_name || '學生'}多科共用方案`,
+    subject_name: '',
+    teacher_id: '',
+  };
+  packageConversionSubmitting.value = false;
+  showPackageConversionModal.value = true;
+}
+
+async function submitPackageConversion() {
+  const course = packageConversionCourse.value;
+  const form = packageConversionForm.value;
+  const courseId = Number(course?.id ?? course?.ID ?? 0);
+  if (!courseId || !form.name.trim() || !form.subject_name || !form.teacher_id) {
+    alert('請填寫方案名稱、第二科目與老師');
+    return;
+  }
+  if (!confirm('確認建立共用方案？原合約與已收款紀錄會保留，不會再次收費。')) return;
+  packageConversionSubmitting.value = true;
+  try {
+    const result = await convertSingleCourseToPackage(courseId, {
+      name: form.name.trim(),
+      additional_subject: { subject_name: form.subject_name, teacher_id: Number(form.teacher_id) },
+    });
+    showPackageConversionModal.value = false;
+    await loadCourses();
+    alert(`${result?.message || '已轉成多科共用方案'}\n${result?.next_step || ''}`);
+  } catch (error) {
+    alert(error?.message || '建立共用方案失敗，資料未變更');
+  } finally {
+    packageConversionSubmitting.value = false;
+  }
 }
 
 async function runManualSessionCheck() {
@@ -6389,6 +6490,9 @@ button.danger:disabled {
   max-height: 90vh;
   overflow-y: auto;
 }
+.package-conversion-modal { max-width: 520px; }
+.package-conversion-summary { display: grid; gap: 4px; margin: 0 0 14px; padding: 12px; border-radius: 10px; background: var(--ds-info-wash); color: var(--ds-ink); font-size: 13px; }
+.package-conversion-summary span { color: var(--ds-ink-mute); }
 
 .package-conversion-preview-modal {
   width: 100%;

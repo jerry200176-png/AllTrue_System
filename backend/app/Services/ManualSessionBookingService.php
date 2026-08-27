@@ -16,9 +16,9 @@ use Illuminate\Support\Facades\Schema;
 /**
  * Authoritative writer for the flexible/逐堂手動排課 flow.
  *
- * Billing remains on StudentClass.ScheduleMode=count and RemainingSessions is
- * still consumption-derived. A future scheduled ClassSession reserves one
- * unit for booking purposes, but attendance remains the only deduction path.
+ * Count courses still use RemainingSessions for booking capacity. Date-mode
+ * monthly courses use their explicit StartDate/EndDate and are billed from
+ * actual attendance; attendance remains the only deduction path.
  */
 class ManualSessionBookingService
 {
@@ -38,6 +38,7 @@ class ManualSessionBookingService
         $end = $start->copy()->addMinutes($duration);
         $packageId = (int) $course->getAttribute('PackageID');
         $studentId = (int) $course->getAttribute('StudentID');
+        $isMonthly = (string) ($course->getAttribute('ScheduleMode') ?? 'count') === 'date';
 
         $package = null;
         if ($packageId > 0) {
@@ -57,6 +58,8 @@ class ManualSessionBookingService
             'end_time' => $end->format('H:i'),
             'duration_minutes' => $duration,
             'reserved_sessions' => 0,
+            'billing_mode' => $isMonthly ? 'monthly' : 'count',
+            'monthly' => $isMonthly,
             'remaining_sessions' => $package
                 ? max(0, (int) $package->computeRemainingFromLedger())
                 : max(0, (int) ($course->RemainingSessions ?? 0)),
@@ -71,8 +74,8 @@ class ManualSessionBookingService
 
         // Validate the course contract before idempotency. A stale matching row
         // must not let an auto-recurrence, stopped, or package course use this API.
-        if (!in_array((string) ($course->ScheduleMode ?? 'count'), ['count'], true)) {
-            return $this->blocked($base, 'not_count_course', 'Manual occurrence scheduling requires a session course');
+        if (!$isMonthly && (string) ($course->ScheduleMode ?? 'count') !== 'count') {
+            return $this->blocked($base, 'not_count_course', '逐堂排課目前只適用堂數制或已設定區間的月結課程');
         }
         if (!in_array((string) ($course->scheduling_policy ?? 'auto_recurrence'), [self::POLICY, 'auto_recurrence'], true)) {
             return $this->blocked($base, 'manual_policy_required', 'Course is not configured for manual occurrence scheduling');
@@ -85,8 +88,11 @@ class ManualSessionBookingService
                 return $this->blocked($base, 'course_stopped', 'Course is stopped');
             }
         }
-        if ((int) ($course->SessionCount ?? 0) <= 0) {
+        if (!$isMonthly && (int) ($course->SessionCount ?? 0) <= 0) {
             return $this->blocked($base, 'session_count_missing', 'Course has no purchased session count');
+        }
+        if ($isMonthly && (!$course->getAttribute('StartDate') || !$course->getAttribute('EndDate'))) {
+            return $this->blocked($base, 'monthly_date_range_required', '月結課程請先設定開始日與結束日，再新增堂次');
         }
 
         $existing = ClassSession::query()
@@ -105,7 +111,7 @@ class ManualSessionBookingService
             ]);
         }
 
-        if (!in_array((string) ($course->ScheduleMode ?? 'count'), ['count'], true)) {
+        if (!$isMonthly && (string) ($course->ScheduleMode ?? 'count') !== 'count') {
             return $this->blocked($base, 'not_count_course', '逐堂手動排課目前只適用堂數制課程');
         }
         if (!in_array((string) ($course->scheduling_policy ?? 'auto_recurrence'), [self::POLICY, 'auto_recurrence'], true)) {
@@ -116,7 +122,7 @@ class ManualSessionBookingService
                 return $this->blocked($base, 'course_stopped', '課程已停用，不能新增堂次');
             }
         }
-        if ((int) ($course->SessionCount ?? 0) <= 0) {
+        if (!$isMonthly && (int) ($course->SessionCount ?? 0) <= 0) {
             return $this->blocked($base, 'session_count_missing', '課程尚未設定購買堂數');
         }
 
@@ -130,16 +136,21 @@ class ManualSessionBookingService
         if ($startDate && $date < $startDate) {
             return $this->blocked($base, 'before_course_start', '堂次日期不可早於課程開始日');
         }
-        if ($endDate && $date > $endDate && (int) $base['remaining_sessions'] <= 0) {
-            return $this->blocked($base, 'after_course_end', '堂次日期不可超過課程到期日');
+        if ($endDate && $date > $endDate) {
+            if ($isMonthly) {
+                return $this->blocked($base, 'after_course_end', '堂次日期不可超過課程到期日');
+            }
+            if ((int) $base['remaining_sessions'] <= 0) {
+                return $this->blocked($base, 'after_course_end', '堂次日期不可超過課程到期日');
+            }
         }
 
-        $reserved = $this->reservedSessionCount($course, $now->toDateString());
+        $reserved = $isMonthly ? 0 : $this->reservedSessionCount($course, $now->toDateString());
         $remaining = (int) $base['remaining_sessions'];
-        $available = max(0, $remaining - $reserved);
+        $available = $isMonthly ? null : max(0, $remaining - $reserved);
         $base['reserved_sessions'] = $reserved;
         $base['available_sessions'] = $available;
-        if ($available <= 0) {
+        if (!$isMonthly && $available <= 0) {
             return $this->blocked($base, 'reservation_limit', '剩餘堂數已被既有未來排課占用，請先完成、取消或調整既有堂次');
         }
 

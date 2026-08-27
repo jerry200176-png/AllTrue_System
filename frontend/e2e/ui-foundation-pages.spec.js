@@ -415,6 +415,10 @@ test.describe('UI foundation — real Vue page evidence', () => {
       await expect(page.getByRole('tab', { name: '今天', exact: true })).toHaveAttribute('aria-selected', 'true');
       if (layout.primaryCtaCount > 0) {
         await expect(page.locator('.director-task__action').first()).toBeVisible();
+        if (vp.width <= 768) {
+          const ctaBox = await page.locator('.director-task__action').first().boundingBox();
+          expect(ctaBox?.height || 0, '手機主任待辦主要操作必須有至少 44px 觸控高度').toBeGreaterThanOrEqual(44);
+        }
       }
       expect(secondaryRequests).toEqual([]);
       fs.mkdirSync(outDir, { recursive: true });

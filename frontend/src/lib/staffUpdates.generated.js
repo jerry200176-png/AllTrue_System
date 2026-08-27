@@ -4,6 +4,140 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-27-paid-course-settlement",
+    "publishedAt": "2026-08-27",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "已繳費課程可明確結案",
+    "summary": "已確認收款的堂數制課程，即使還有未使用堂數，也能在確認放棄餘額後完成結案。",
+    "items": [
+      "課程管理與學生管理都會顯示已繳費課程的結案入口，不再因剩餘堂數而把入口隱藏。",
+      "若仍有未使用堂數，確認視窗會先列出堂數；確認後才會取消未來排課並結清剩餘額度，已繳費與已上課紀錄保留。",
+      "若這些堂數是請假順延或仍要上課，請先排完再結案；只有確定不再使用時才確認放棄餘額。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "課程管理與學生管理都會顯示已繳費課程的結案入口，不再因剩餘堂數而把入口隱藏。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "若仍有未使用堂數，確認視窗會先列出堂數；確認後才會取消未來排課並結清剩餘額度，已繳費與已上課紀錄保留。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "若這些堂數是請假順延或仍要上課，請先排完再結案；只有確定不再使用時才確認放棄餘額。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-27:paid-course-settlement"
+    ],
+    "date": "2026-08-27",
+    "version": "2026.08.27"
+  },
+  {
+    "id": "staff-2026-08-27-course-management-inline-scheduling",
+    "publishedAt": "2026-08-27",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "課程查找可同頁編輯與新增堂次",
+    "summary": "編輯月結結束日與新增今天堂次都留在課程查找，不再在學生管理與課程查找之間來回切換。",
+    "items": [
+      "課程查找的「編輯」會開啟同頁課程編輯視窗；月結課程可直接設定開始日與結束日並儲存。",
+      "月結可同頁設定起訖日與新增日期時間；缺少或逾期會提供設定入口。",
+      "新增下午五點到七點前，請確認課程時長與月結結束日；已過時段或衝堂時請改選時間。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "課程查找的「編輯」會開啟同頁課程編輯視窗；月結課程可直接設定開始日與結束日並儲存。"
+        ]
+      },
+      {
+        "title": "我們修好了",
+        "items": [
+          "月結可同頁設定起訖日與新增日期時間；缺少或逾期會提供設定入口。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "新增下午五點到七點前，請確認課程時長與月結結束日；已過時段或衝堂時請改選時間。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-27:course-management-inline-scheduling"
+    ],
+    "date": "2026-08-27",
+    "version": "2026.08.27"
+  },
+  {
+    "id": "staff-2026-08-27-teacher-assessment-engagement",
+    "publishedAt": "2026-08-27",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "評量完成率可追蹤",
+    "summary": "主任可看待跟進評量，老師不以公開排名比較。",
+    "items": [
+      "完整營運的近期紀錄與分析新增評量完成率，可切換近 7／14／30 天查看已填、應填與待跟進狀態。",
+      "少於五堂會標示資料累積中，不直接判定表現；既有分校權限、代課歸屬與請假排除規則維持不變。",
+      "老師仍請以完整且有用的課後進度回饋為準，填寫率只代表是否有有效進度文字，不等於內容品質分數。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "完整營運的近期紀錄與分析新增評量完成率，可切換近 7／14／30 天查看已填、應填與待跟進狀態。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "少於五堂會標示資料累積中，不直接判定表現；既有分校權限、代課歸屬與請假排除規則維持不變。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "老師仍請以完整且有用的課後進度回饋為準，填寫率只代表是否有有效進度文字，不等於內容品質分數。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-27:teacher-assessment-engagement"
+    ],
+    "date": "2026-08-27",
+    "version": "2026.08.27"
+  },
+  {
     "id": "staff-2026-08-26-reschedule-preflight",
     "publishedAt": "2026-08-26",
     "effectiveAt": null,
