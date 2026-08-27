@@ -1111,16 +1111,18 @@ const toggleHistoryCourses = (studentId) => {
 };
 
 const canCloseCourse = (course) => {
-  const remaining = getCourseRemainingSessions(course);
   return course?.payment_type === 'session'
     && isCourseSettled(course)
-    && remaining != null && remaining <= 0
     && String(course?.status || '').toLowerCase() !== 'inactive';
 };
 
 async function closeCourseNoRenew(course, studentName) {
   const subject = getSubjectLabel(course?.subject);
-  if (!confirm(`確定要結案「${studentName || '學生'}」的 ${subject} 課程嗎？\n\n結案後此課程將不再出現在繳費／續課提醒中。\n（等同暫停課程，之後仍可手動恢復。）`)) return;
+  const remaining = Math.max(0, Number(getCourseRemainingSessions(course) ?? 0));
+  const balanceWarning = remaining > 0
+    ? `\n\n目前還有 ${remaining} 堂未使用。結案會取消未來排課，並放棄這 ${remaining} 堂剩餘額度。`
+    : '';
+  if (!confirm(`確定要結案「${studentName || '學生'}」的 ${subject} 課程嗎？${balanceWarning}\n\n結案後此課程不再出現在繳費／續課提醒中，已繳費與已上課紀錄仍會保留。`)) return;
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
@@ -1128,7 +1130,11 @@ async function closeCourseNoRenew(course, studentName) {
     const res = await fetch(`/api/v1/student-classes/${course.id}/pause`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ action: 'pause', reason: 'completed' }),
+      body: JSON.stringify({
+        action: 'pause',
+        reason: 'settled',
+        ...(remaining > 0 ? { forfeit_remaining: true } : {}),
+      }),
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) { alert('結案失敗：' + (json.message || res.statusText)); return; }

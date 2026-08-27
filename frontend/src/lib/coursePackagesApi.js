@@ -76,3 +76,12 @@ export async function bindCoursesToPackage(id, studentClassIds, dryRun = false) 
   });
   return handleResponse(res);
 }
+
+export async function convertSingleCourseToPackage(studentClassId, payload) {
+  const res = await fetch(`${API_BASE}/student-classes/${studentClassId}/convert-to-package`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Idempotency-Key': `course-conversion-${studentClassId}` },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res);
+}

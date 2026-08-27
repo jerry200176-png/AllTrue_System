@@ -61,7 +61,7 @@
   "devDependencies": {
     "@playwright/test": "^1.62.1",
     "@vitejs/plugin-vue": "^6.0.8",
-    "@vitest/coverage-v8": "^4.1.10",
+    "@vitest/coverage-v8": "^4.1.11",
     "@vue/test-utils": "^2.4.11",
     "eslint": "^9.39.5",
     "eslint-plugin-vue": "^9.33.0",
@@ -74,6 +74,6 @@
     "vue-eslint-parser": "^9.4.3"
   },
   "optionalDependencies": {
-    "@rollup/rollup-linux-arm64-gnu": "^4.62.4"
+    "@rollup/rollup-linux-arm64-gnu": "^4.62.5"
   }
 }
