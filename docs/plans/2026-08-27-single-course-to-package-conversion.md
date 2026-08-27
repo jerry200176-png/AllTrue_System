@@ -1,10 +1,10 @@
 # PRD：單科堂數制轉多科共用方案安全流程
 
 > **版本**：v1 Draft（2026-08-27）  
-> **狀態**：設計／預檢階段；尚未改動 production 資料  
+> **狀態**：設計完成；唯讀預檢與既有綁定後端守門已在 PR #2088 實作；尚未改動 production 資料
 > **風險**：T3（堂數、付款、發票、出席歸戶）  
 > **目標角色**：主任、admin、super_admin；家長只讀  
-> **關聯**：`CoursePackageController`、`CourseContinuity` #1382、`DIRECTOR_PAYMENT_ALERT_RULES.md`
+> **關聯**：PR #2088（實作）、`CoursePackageController`、`CourseContinuity` #1382、`DIRECTOR_PAYMENT_ALERT_RULES.md`
 
 ## 1. 決策與範圍
 
