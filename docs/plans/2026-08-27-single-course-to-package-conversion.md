@@ -1,7 +1,7 @@
 # PRD：單科堂數制轉多科共用方案安全流程
 
 > **版本**：v1 Draft（2026-08-27）  
-> **狀態**：設計／預檢階段；尚未改動 production 資料  
+> **狀態**：設計完成；唯讀預檢已實作於功能分支，尚未改動 production 資料
 > **風險**：T3（堂數、付款、發票、出席歸戶）  
 > **目標角色**：主任、admin、super_admin；家長只讀  
 > **關聯**：`CoursePackageController`、`CourseContinuity` #1382、`DIRECTOR_PAYMENT_ALERT_RULES.md`
@@ -81,8 +81,11 @@
 
 ### AC-001：預檢為唯讀
 
-- `GET` 預檢只讀取合約、出席、學習紀錄、發票、付款回報、帳本與方案關聯。
+- `GET /api/v1/student-classes/{studentClass}/package-conversion-preview` 只讀取合約、出席、學習紀錄、發票、付款回報、帳本與方案關聯。
 - 預檢失敗或權限不足時，資料庫中的所有來源資料均不變。
+
+目前功能分支已提供上述唯讀端點與「更多 → 轉多科方案預檢」入口；它只回傳
+`read_only`、`can_convert`、穩定原因碼與下一步，不執行綁定或建立方案。
 
 ### AC-002：安全可轉換條件
 
