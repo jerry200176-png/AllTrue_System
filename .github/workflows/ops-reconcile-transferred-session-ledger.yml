@@ -70,9 +70,14 @@ jobs:
             "$PI_SSH_USER@$PI_SSH_HOST" MODE="$MODE" DRY_RUN_ID="$DRY_RUN_ID" RUN_ID="$RUN_ID" 'bash -s' <<'REMOTE' | tee out/repair.log
           set -euo pipefail
           cd /home/admin/backend
-          REQUIRED_SHA=0affd2c1
+          # Squash merge creates a new main commit, so the feature branch SHA
+          # is not necessarily an ancestor of the deployed commit. Keep the
+          # production baseline gate and verify the repair command is present.
+          REQUIRED_SHA=80284c634dfff684151cd6241b6b380e5c4fb06b
           PROD_SHA=$(git rev-parse HEAD)
           git merge-base --is-ancestor "$REQUIRED_SHA" "$PROD_SHA"
+          test -f app/Console/Commands/RepairTransferredSessionLedger.php
+          php artisan list --format=txt | grep -q 'repair:transferred-session-ledger'
           ARGS=(--source-class=2688 --target-class=3401 --session-ids=24169,30440,30441,30442,31820
             --reason='吳艾潼堂次轉移後同步扣堂台帳' --actor="github-actions:wuaitong-ledger:$RUN_ID" --actor-user-id=4)
           php artisan repair:transferred-session-ledger "${ARGS[@]}"
