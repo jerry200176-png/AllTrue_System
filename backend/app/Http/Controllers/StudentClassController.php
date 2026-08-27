@@ -14,6 +14,7 @@ use App\Models\SecurityAuditEvent;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
+use App\Models\SessionDeductionLedger;
 use App\Models\UserCampus;
 use App\Models\CoursePackage;
 use App\Support\SessionStatus;
@@ -3838,9 +3839,18 @@ class StudentClassController extends Controller
 
             LearningRecord::whereIn('ClassSessionID', $foundIds)->update(['StudentClassID' => $target->ID]);
             StudentSignIn::whereIn('ClassSessionID', $foundIds)->update(['StudentClassID' => $target->ID]);
+            // A transfer changes the entitlement owner as well as the display
+            // owner.  Leaving ledger rows on the source makes both courses
+            // report contradictory usage and blocks safe settlement.
+            SessionDeductionLedger::whereIn('class_session_id', $foundIds)->update([
+                'student_class_id' => $target->ID,
+                'updated_at' => now(),
+            ]);
+            SessionDeductionService::recomputeCounters((int) $source->ID);
+            SessionDeductionService::recomputeCounters((int) $target->ID);
 
             return response()->json([
-                'message' => "已轉移 " . count($foundIds) . " 堂課程紀錄（含已填評量／點名），計費堂數與金額請照原流程人工對帳。",
+                'message' => "已轉移 " . count($foundIds) . " 堂課程紀錄（含評量／點名／扣堂台帳），兩邊堂數已同步。",
                 'transferred_session_ids' => $foundIds,
                 'source_course_id' => (int) $source->ID,
                 'target_course_id' => (int) $target->ID,

@@ -4,6 +4,21 @@
 
 updates:
 
+  - id: staff-2026-08-27-transfer-ledger-reconciliation
+    published_at: "2026-08-27"
+    audiences:
+      - director
+    importance: action_required
+    title: 堂次轉移會同步扣堂
+    summary: 已上課堂次轉到新合約後，扣堂台帳與堂數會一起更新。
+    items:
+      - category: fixed
+        text: 轉移已上課堂次時，點名、評量、扣堂台帳與來源／目標堂數會同步更新。
+      - category: action_required
+        text: 若看到既有轉移造成的待對帳，請重新整理後依畫面提示處理，不要自行修改堂數欄位。
+    source_refs:
+      - "changelog:2026-08-27:transfer-ledger-reconciliation"
+
   - id: staff-2026-08-27-course-management-inline-scheduling
     published_at: "2026-08-27"
     audiences:

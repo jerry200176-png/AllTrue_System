@@ -1,0 +1,51 @@
+id: TKT-20260827-200034-BPF2
+title: "\u4FEE\u5FA9\u5433\u827E\u6F7C\u5802\u6B21\u8F49\u79FB\u6263\u5802\u53F0\u5E33\
+  \u4E0D\u4E00\u81F4"
+intent: "\u4FEE\u5FA9\u5433\u827E\u6F7C\u5802\u6B21\u8F49\u79FB\u6263\u5802\u53F0\u5E33\
+  \u4E0D\u4E00\u81F4"
+kind: task
+parent_id: INT-20260827-171548-YSLP
+boundary: "\u53EA\u4FEE\u6B63\u5802\u6B21\u8F49\u79FB\u7684\u6263\u5802\u53F0\u5E33\
+  \u6B78\u5C6C\u8207\u8A08\u6578\u540C\u6B65\uFF1B\u4E0D\u5F97\u6539\u4ED8\u6B3E\u91D1\
+  \u984D\u3001Paid\u3001Invoice\u3001\u5DF2\u4E0A\u8AB2\u6B77\u53F2\u6216\u672A\u5217\
+  \u5165 allowlist \u7684 production \u8CC7\u6599\u3002"
+success_condition: "\u8F49\u79FB\u5DF2\u4E0A\u8AB2\u5802\u6B21\u6703\u540C\u6B65 ClassSession\u3001\
+  \u9EDE\u540D\u3001\u8A55\u91CF\u8207\u6263\u5802\u53F0\u5E33\uFF1B\u5433\u827E\u6F7C\
+  \u6307\u5B9A\u8CC7\u6599\u53EF\u7531 dry-run/apply \u53D7\u63A7\u4FEE\u5FA9\uFF0C\
+  \u4FEE\u5FA9\u5F8C\u6B0A\u5A01\u8A08\u6578\u4E00\u81F4\uFF1BCI\u3001\u90E8\u7F72\
+  \u8207 smoke evidence \u5B8C\u6574\u3002"
+priority: 0
+labels: []
+scope:
+  allow:
+  - backend/app/Http/Controllers/StudentClassController.php
+  - backend/app/Console/Commands/RepairTransferredSessionLedger.php
+  - backend/tests/Feature/StudentClassTransferSessionsTest.php
+  - .github/workflows/ops-reconcile-transferred-session-ledger.yml
+  - docs/CHANGELOG.md
+  - docs/AI_REGRESSION_LESSONS.md
+  - docs/STAFF_UPDATES.yml
+  - frontend/src/lib/changelogDraft.generated.js
+  - frontend/src/lib/staffUpdates.generated.js
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - backend/database/**
+budgets:
+  max_files_changed: 12
+  max_loc_changed: 400
+checks:
+- vendor/bin/phpunit
+type: feature
+status: active
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-27T20:00:34+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default

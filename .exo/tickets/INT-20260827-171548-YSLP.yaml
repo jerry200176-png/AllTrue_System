@@ -59,5 +59,6 @@ spec_ref: null
 notes: []
 blockers: []
 created_at: '2026-08-27T17:15:48+08:00'
-children: []
+children:
+- TKT-20260827-200034-BPF2
 resource_profile: default
