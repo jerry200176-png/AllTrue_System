@@ -1203,6 +1203,7 @@ import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
 import EnrollmentConflictDecisionModal from '../components/EnrollmentConflictDecisionModal.vue';
 import { buildForceOverrideFields } from '../lib/enrollmentConflictDecision';
 import { isPendingWorkflowStatus } from '../lib/exceptionWorkflowFocus.js';
+import { nextManualSessionDate } from '../lib/manualSessionDate.js';
 import PurchaseSessionsModal from '../components/course-management/PurchaseSessionsModal.vue';
 import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal.vue';
 import TransferSessionsModal from '../components/course-management/TransferSessionsModal.vue';
@@ -2258,25 +2259,6 @@ const localTodayYmd = () => {
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 };
-
-function nextManualSessionDate(course) {
-  const today = localTodayYmd();
-  const configuredDays = Array.isArray(course?.days_of_week) && course.days_of_week.length
-    ? course.days_of_week
-    : (course?.day_of_week ? [course.day_of_week] : []);
-  const days = new Set(configuredDays.map(Number).filter((day) => day >= 1 && day <= 7));
-  const currentTime = `${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`;
-  const startTime = String(course?.start_time || '').slice(0, 5);
-
-  for (let offset = 0; offset <= 7; offset += 1) {
-    const date = addDays(today, offset);
-    const isToday = offset === 0;
-    const isValidWeekday = days.size === 0 || days.has(dayOfWeekFromDate(date));
-    const isStillUpcoming = !isToday || !startTime || startTime > currentTime;
-    if (isValidWeekday && isStillUpcoming) return date;
-  }
-  return addDays(today, 1);
-}
 
 function requestCoursePause(course) {
   pauseCancelRemaining.value = true;
