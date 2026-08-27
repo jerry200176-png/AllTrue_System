@@ -5,7 +5,11 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pagePath = resolve(__dirname, '../../pages/CourseManagement.vue');
+const studentsPagePath = resolve(__dirname, '../../pages/StudentsList.vue');
+const manualSessionModalPath = resolve(__dirname, '../course-management/ManualSessionModal.vue');
 const source = readFileSync(pagePath, 'utf8');
+const studentsSource = readFileSync(studentsPagePath, 'utf8');
+const manualSessionModalSource = readFileSync(manualSessionModalPath, 'utf8');
 const activeActionsStart = source.indexOf('<td class="cell-actions">');
 const activeActionsEnd = source.indexOf('<tr v-if="expandedDates.has(c.id)"', activeActionsStart);
 const activeActions = source.slice(activeActionsStart, activeActionsEnd);
@@ -14,8 +18,11 @@ const activeMoreMenu = activeActions.slice(activeActions.indexOf('class="action-
 describe('CourseManagement action hierarchy', () => {
   it('keeps core course work visible and groups secondary operations in More', () => {
     expect(activeActions).toContain('course-primary-action');
-    expect(activeActions).toContain('@click="navigateToStudentCourse(c)"');
+    expect(activeActions).toContain('@click="editCourse(c)"');
+    expect(source).toContain('navigateToStudentCourse(hc)');
     expect(activeActions).toContain('manual-occurrence-action');
+    expect(source).toContain('@edit-course="editManualSessionCourse"');
+    expect(manualSessionModalSource).toContain('先設定月結結束日');
     expect(activeActions).toContain('btn-toggle');
     expect(activeActions).toContain('更多 ▾');
     expect(activeActions).toContain('排課與課堂');
@@ -35,5 +42,16 @@ describe('CourseManagement action hierarchy', () => {
     expect(activeActions).toContain('@click="openInvoiceModal(c); closeActionMenu()"');
     expect(activeActions).toContain('@click="openContractAdjustmentModal(c); closeActionMenu()"');
     expect(activeActions).toContain('@click="duplicateCourseForTeacher(c); closeActionMenu()"');
+  });
+
+  it('offers explicit settlement for paid courses with remaining balance in both director entry points', () => {
+    expect(source).toContain("&& c.payment_status === 'paid';");
+    expect(studentsSource).toContain("&& isCourseSettled(course)");
+    expect(source).toContain("reason: 'settled'");
+    expect(studentsSource).toContain("reason: 'settled'");
+    expect(source).toContain('forfeit_remaining: true');
+    expect(studentsSource).toContain('forfeit_remaining: true');
+    expect(source).toContain('放棄這 ${remaining} 堂剩餘額度');
+    expect(studentsSource).toContain('放棄這 ${remaining} 堂剩餘額度');
   });
 });

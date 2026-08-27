@@ -821,7 +821,7 @@
             <span class="material-symbols-outlined" style="font-size:22px;color:var(--primary)">task_alt</span>
             確認結案此課程
           </h3>
-          <p class="tc-dialog-desc">結案後此課程將從催繳名單移除，不再追蹤。</p>
+          <p class="tc-dialog-desc">結案後此課程將從催繳名單移除，不再追蹤；已繳費與已上課紀錄會保留。</p>
           <div class="tc-dialog-info" v-if="settleTarget">
             <div style="margin-bottom:4px"><strong>{{ settleTarget.student_name }}</strong> — {{ settleTarget.subject }}</div>
             <div style="font-size:12px;color:var(--text-light)">{{ settleSummary.primary }}</div>
@@ -829,7 +829,7 @@
           </div>
           <div v-if="settleTargetStillOwesSessions" class="tc-settle-warn-info">
             <span class="material-symbols-outlined" style="font-size:16px;color:var(--ds-warning)">info</span>
-            <span>還有 {{ Number(settleTarget.remaining_sessions) }} 堂未上，請先到課程管理把請假順延的堂次排好，不能直接結案。</span>
+            <span>還有 {{ Number(settleTarget.remaining_sessions) }} 堂未上；確認結案會取消未來排課並放棄這些剩餘額度。若仍要上課，請先取消並改從課程管理排課。</span>
           </div>
           <div v-if="settleTarget?.has_newer_course" class="tc-settle-newer-info">
             <span class="material-symbols-outlined" style="font-size:16px;color:var(--ds-success)">check_circle</span>
@@ -841,7 +841,7 @@
           </div>
           <div class="tc-dialog-btns">
             <button class="tc-btn tc-btn--ghost" @click="settleDialogOpen = false" :disabled="settleLoading">取消</button>
-            <button class="tc-btn tc-btn--primary" @click="confirmSettle" :disabled="settleLoading || settleTargetStillOwesSessions">
+            <button class="tc-btn tc-btn--primary" @click="confirmSettle" :disabled="settleLoading">
               <span v-if="settleLoading" class="material-symbols-outlined spin" style="font-size:15px">progress_activity</span>
               確認結案
             </button>
@@ -2074,17 +2074,18 @@ function overlapWarningLabel(row) {
 async function confirmSettle() {
   if (!settleTarget.value) return;
   const row = settleTarget.value;
-  if (Number(row.remaining_sessions ?? 0) > 0) {
-    showToast(`還有 ${Number(row.remaining_sessions)} 堂未上，請先排課後再結案`, 'warning');
-    return;
-  }
+  const remaining = Math.max(0, Number(row.remaining_sessions ?? 0));
   settleLoading.value = row.id;
   try {
     const token = getToken();
     const resp = await fetch(`/api/v1/student-classes/${row.id}/pause`, {
       method: 'POST',
       headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'pause', reason: 'settled' }),
+      body: JSON.stringify({
+        action: 'pause',
+        reason: 'settled',
+        ...(remaining > 0 ? { forfeit_remaining: true } : {}),
+      }),
     });
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));

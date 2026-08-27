@@ -1,3 +1,17 @@
+## 2026-08-27 — improved(ux): 課程查找同頁編輯與新增堂次
+
+<!-- release-notes: staff_update=staff-2026-08-27-course-management-inline-scheduling -->
+
+- 課程查找的「編輯」改為在原頁開啟課程編輯視窗；月結課程可直接設定結束日，不再跳到學生管理後再返回。
+- 月結課程設定有效日期區間後，可在同一頁使用「排月結／新增月結堂次」建立指定日期與時間的堂次；後端仍檢查日期有效性、老師／教室與學生衝堂。
+
+## 2026-08-27 — fix(billing): 已繳費課程結案入口與餘額確認
+
+<!-- release-notes: staff_update=staff-2026-08-27-paid-course-settlement -->
+
+- 課程管理與學生管理不再把「已繳費但仍有未使用堂數」的結案入口隱藏；主任可在確認視窗看見將放棄的堂數後完成結案。
+- 結案請求統一使用 `closed_reason=settled` 語意；只有主任明確確認放棄餘額時，才會取消未來排課，已繳費與已上課紀錄不變。
+
 ## 2026-08-26 — improved(ux): 待辦直接定位帳務與課表
 
 <!-- release-notes: staff_update=staff-2026-08-26-director-contextual-actions -->

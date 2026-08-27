@@ -18,9 +18,16 @@
       <div v-if="checking" class="manual-session-state">檢查額度與衝堂中…</div>
       <div v-else-if="result" class="manual-session-result" :class="result.can_add ? 'ok' : 'error'">
         <strong>{{ result.can_add ? '可以預約' : (result.message || '無法預約') }}</strong>
-        <span>課程時長 {{ result.duration_minutes }} 分鐘；{{ isMonthly ? '月結會依實際上課計費' : `可預約額度 ${result.available_sessions ?? 0} 堂` }}</span>
+        <span>預計時段 {{ result.start_time }}–{{ result.end_time }}（{{ result.duration_minutes }} 分鐘）；{{ isMonthly ? '月結會依實際上課計費' : `可預約額度 ${result.available_sessions ?? 0} 堂` }}</span>
         <span v-if="result.conflict_detail">衝堂詳情：{{ result.conflict_detail.message || result.conflict_detail.type || '已有其他排課' }}</span>
       </div>
+
+      <button
+        v-if="isMonthly && ['monthly_date_range_required', 'after_course_end'].includes(result?.error_code)"
+        type="button"
+        class="ghost small manual-session-edit-course"
+        @click="$emit('edit-course')"
+      >先設定月結結束日</button>
 
       <div class="actions">
         <button type="button" class="ghost" :disabled="submitting" @click="$emit('close')">取消</button>
@@ -42,7 +49,7 @@ defineProps({
   isMonthly: Boolean,
   today: { type: String, required: true },
 });
-defineEmits(['close', 'check', 'submit']);
+defineEmits(['close', 'check', 'submit', 'edit-course']);
 </script>
 
 <style scoped>
@@ -53,5 +60,6 @@ defineEmits(['close', 'check', 'submit']);
 .manual-session-state, .manual-session-result { margin-top: 14px; padding: 12px; border-radius: 10px; display: grid; gap: 4px; font-size: .88rem; }
 .manual-session-result.ok { background: var(--ds-success-wash); color: var(--ds-success); }
 .manual-session-result.error { background: var(--ds-danger-wash); color: var(--ds-danger); }
+.manual-session-edit-course { margin-top: 10px; width: 100%; }
 @media (max-width: 560px) { .manual-session-grid { grid-template-columns: 1fr; } }
 </style>
