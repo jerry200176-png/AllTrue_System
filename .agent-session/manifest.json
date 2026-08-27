@@ -5,7 +5,7 @@
   "task_id": "course-settlement-scheduling-fix-20260827",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
   "base_sha": "e17281f9323125644cb4ad45c28e3d384d75cfe9",
-  "branch": "fix/course-settlement-scheduling-fix-20260827",
+  "branch": "chore/task-course-payment-slip-entry-20260827",
   "worktree_path": "/home/jerry/workspace/tasks/alltrue/course-settlement-scheduling-fix-20260827",
   "started_at": "2026-08-27T10:08:21Z",
   "production_mutation": false,
