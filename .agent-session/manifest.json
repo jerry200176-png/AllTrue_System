@@ -5,7 +5,7 @@
   "task_id": "wuaitong-course-ops-20260827",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
   "base_sha": "4f402fff1298d02e25d7ccce606ad720da3dc0aa",
-  "branch": "fix/monthly-add-session-capacity",
+  "branch": "fix/wuaitong-course-ops-20260827-monthly-capacity",
   "worktree_path": "/home/jerry/workspace/tasks/alltrue/wuaitong-course-ops-20260827",
   "started_at": "2026-08-27T11:11:59Z",
   "production_mutation": false,
