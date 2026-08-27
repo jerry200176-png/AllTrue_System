@@ -61,18 +61,18 @@ class RepairTransferredSessionLedger extends Command
             'command' => self::class,
             'captured_at' => now()->toIso8601String(),
             'plan' => $plan,
-            'ledger' => SessionDeductionLedger::whereIn('class_session_id', $sessionIds)->get()->toArray(),
+            'ledger' => SessionDeductionLedger::query()->whereIn('class_session_id', $sessionIds)->get()->toArray(),
         ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
 
         $result = DB::transaction(function () use ($sourceId, $targetId, $sessionIds) {
-            StudentClass::whereIn('ID', [$sourceId, $targetId])->lockForUpdate()->get();
-            foreach (ClassSession::whereIn('id', $sessionIds)->lockForUpdate()->get() as $session) {
+            StudentClass::query()->whereIn('ID', [$sourceId, $targetId])->lockForUpdate()->get();
+            foreach (ClassSession::query()->whereIn('id', $sessionIds)->lockForUpdate()->get() as $session) {
                 if ((int) $session->StudentClassID !== $targetId) {
                     throw new RuntimeException('session owner changed during repair');
                 }
-                LearningRecord::where('ClassSessionID', $session->id)->update(['StudentClassID' => $targetId]);
-                StudentSignIn::where('ClassSessionID', $session->id)->update(['StudentClassID' => $targetId]);
-                SessionDeductionLedger::where('class_session_id', $session->id)->update([
+                LearningRecord::query()->where('ClassSessionID', $session->id)->update(['StudentClassID' => $targetId]);
+                StudentSignIn::query()->where('ClassSessionID', $session->id)->update(['StudentClassID' => $targetId]);
+                SessionDeductionLedger::query()->where('class_session_id', $session->id)->update([
                     'student_class_id' => $targetId,
                     'updated_at' => now(),
                 ]);
@@ -81,7 +81,7 @@ class RepairTransferredSessionLedger extends Command
             SessionDeductionService::recomputeCounters($targetId);
             $diagnostics = SessionDeductionService::batchExpectedUsedSessionDiagnostics([$sourceId, $targetId]);
             foreach ($diagnostics as $id => $diagnostic) {
-                $course = StudentClass::find($id);
+                $course = StudentClass::query()->where('ID', $id)->first();
                 if (!$course || (int) $course->UsedSessions !== (int) $diagnostic['expected_used']) {
                     throw new RuntimeException("counter verification failed for course {$id}");
                 }
@@ -90,7 +90,7 @@ class RepairTransferredSessionLedger extends Command
         });
 
         SecurityAuditEvent::append('student_class.transferred_session_ledger_reconciled', 'success', [
-            'campus_id' => StudentClass::find($targetId)?->student?->CampusID,
+            'campus_id' => StudentClass::query()->where('ID', $targetId)->first()?->student?->CampusID,
             'actor_type' => 'repair', 'actor_id' => $this->option('actor-user-id'),
             'subject_type' => 'student_class', 'subject_id' => $targetId,
         ], [
@@ -106,19 +106,19 @@ class RepairTransferredSessionLedger extends Command
     private function plan(int $sourceId, int $targetId, array $sessionIds): array
     {
         $errors = [];
-        $source = StudentClass::find($sourceId);
-        $target = StudentClass::find($targetId);
+        $source = StudentClass::query()->where('ID', $sourceId)->first();
+        $target = StudentClass::query()->where('ID', $targetId)->first();
         if (!$source || !$target) $errors[] = 'source or target course not found';
         if ($source && $target && (int) $source->StudentID !== (int) $target->StudentID) $errors[] = 'student mismatch';
         if ($source && $target && (int) $source->SubjectID !== (int) $target->SubjectID) $errors[] = 'subject mismatch';
-        $sessions = ClassSession::whereIn('id', $sessionIds)->get();
+        $sessions = ClassSession::query()->whereIn('id', $sessionIds)->get();
         $found = $sessions->pluck('id')->map(fn ($id) => (int) $id)->all();
         if (array_diff($sessionIds, $found)) $errors[] = 'session allowlist contains missing IDs';
         foreach ($sessions as $session) {
             if ((int) $session->StudentClassID !== $targetId) $errors[] = "session {$session->id} is not owned by target";
             if (!in_array(strtolower((string) $session->Status), ['attended', 'completed', 'late'], true)) $errors[] = "session {$session->id} is not attended-like";
         }
-        $ledger = SessionDeductionLedger::whereIn('class_session_id', $sessionIds)->get();
+        $ledger = SessionDeductionLedger::query()->whereIn('class_session_id', $sessionIds)->get();
         $drift = $ledger->filter(fn ($row) => (int) $row->student_class_id !== $targetId)->count();
         return ['ok' => $errors === [], 'errors' => $errors, 'source_class' => $sourceId, 'target_class' => $targetId,
             'session_ids' => $sessionIds, 'ledger_rows' => $ledger->count(), 'ledger_owner_drift' => $drift];
