@@ -9,7 +9,7 @@
             <span class="course-lens-badge">唯讀營運視圖</span>
           </div>
           <h2 class="page-title">課程管理</h2>
-          <p class="ref-hint">先找出需要處理的課程，再回到學生管理完成變更。</p>
+          <p class="ref-hint">查找課程、編輯月結日期與新增堂次，都在這一頁完成。</p>
           <div class="meta-pills">
             <span class="meta-pill">{{ groupedCourses.length }} 位學生</span>
             <span v-if="pagination.lastPage > 1" class="meta-pill">第 {{ pagination.page }} / {{ pagination.lastPage }} 頁</span>
@@ -35,7 +35,7 @@
         <span class="material-symbols-outlined course-lens-guidance__icon" aria-hidden="true">near_me</span>
         <div>
           <strong>這一頁適合查找與分流</strong>
-          <span>建立、編輯、續報與加購課程，請從「學生管理」的學生主檔進入，避免同一筆合約在不同頁面產生兩套狀態。</span>
+          <span>建立、續報與加購課程仍從「學生管理」的學生主檔進入；本頁可直接編輯既有課程、設定月結日期與新增堂次。</span>
         </div>
       </div>
 
@@ -337,7 +337,7 @@
                     </td>
                     <td class="cell-actions">
                       <div class="action-btns-row">
-                        <button class="small primary course-primary-action" @click="navigateToStudentCourse(c)">編輯</button>
+                        <button class="small primary course-primary-action" @click="editCourse(c)">編輯</button>
                         <button
                           v-if="isManualOccurrenceCourse(c)"
                           class="small btn-add-session manual-occurrence-action"
@@ -834,6 +834,7 @@
       @close="showManualSessionModal = false"
       @check="runManualSessionCheck"
       @submit="submitManualSession"
+      @edit-course="editManualSessionCourse"
     />
 
     <div v-if="showPackageConversionModal" class="modal-overlay" @click.self="!packageConversionSubmitting && (showPackageConversionModal = false)">
@@ -2348,14 +2349,17 @@ async function confirmCoursePause() {
 function canCloseCourse(c) {
   return c.status !== 'inactive'
     && isSessionMode(c)
-    && c.payment_status === 'paid'
-    && Number(c.remaining_sessions ?? 0) <= 0;
+    && c.payment_status === 'paid';
 }
 
 async function closeCourseNoRenew(course) {
   const studentName = course.student_name || '學生';
   const subject = getSubjectLabel(course.subject);
-  if (!confirm(`確定要結案「${studentName}」的 ${subject} 課程嗎？\n\n結案後此課程將不再出現在繳費／續課提醒中。\n（等同暫停課程，之後仍可手動恢復。）`)) return;
+  const remaining = Math.max(0, Number(course.remaining_sessions ?? 0));
+  const balanceWarning = remaining > 0
+    ? `\n\n目前還有 ${remaining} 堂未使用。結案會取消未來排課，並放棄這 ${remaining} 堂剩餘額度。`
+    : '';
+  if (!confirm(`確定要結案「${studentName}」的 ${subject} 課程嗎？${balanceWarning}\n\n結案後此課程不再出現在繳費／續課提醒中，已繳費與已上課紀錄仍會保留。`)) return;
 
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
@@ -2366,7 +2370,11 @@ async function closeCourseNoRenew(course) {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ action: 'pause', reason: 'completed' }),
+      body: JSON.stringify({
+        action: 'pause',
+        reason: 'settled',
+        ...(remaining > 0 ? { forfeit_remaining: true } : {}),
+      }),
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -2794,6 +2802,12 @@ function openManualSessionModal(course) {
 
 function openMonthlySessionModal(course) {
   openManualSessionModal(course);
+}
+
+function editManualSessionCourse() {
+  const course = manualSessionCourse.value;
+  showManualSessionModal.value = false;
+  if (course?.id) editCourse(course);
 }
 
 function openPackageConversion(course) {
