@@ -4,6 +4,52 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-27-teacher-assessment-engagement",
+    "publishedAt": "2026-08-27",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "評量完成率可追蹤",
+    "summary": "主任可看待跟進評量，老師不以公開排名比較。",
+    "items": [
+      "完整營運的近期紀錄與分析新增評量完成率，可切換近 7／14／30 天查看已填、應填與待跟進狀態。",
+      "少於五堂會標示資料累積中，不直接判定表現；既有分校權限、代課歸屬與請假排除規則維持不變。",
+      "老師仍請以完整且有用的課後進度回饋為準，填寫率只代表是否有有效進度文字，不等於內容品質分數。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "完整營運的近期紀錄與分析新增評量完成率，可切換近 7／14／30 天查看已填、應填與待跟進狀態。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "少於五堂會標示資料累積中，不直接判定表現；既有分校權限、代課歸屬與請假排除規則維持不變。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "老師仍請以完整且有用的課後進度回饋為準，填寫率只代表是否有有效進度文字，不等於內容品質分數。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-27:teacher-assessment-engagement"
+    ],
+    "date": "2026-08-27",
+    "version": "2026.08.27"
+  },
+  {
     "id": "staff-2026-08-26-reschedule-preflight",
     "publishedAt": "2026-08-26",
     "effectiveAt": null,
