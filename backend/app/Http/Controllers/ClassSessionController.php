@@ -19,12 +19,14 @@ use App\Services\ClassSessionMaterializationService;
 use App\Services\ContractScheduleMatcher;
 use App\Services\CourseLeaveCascadeService;
 use App\Services\EnrollmentService;
+use App\Services\LearningRecordBackfillService;
 use App\Services\LearningRecordResurrectionPolicy;
 use App\Services\ScheduleGuardService;
 use App\Services\SessionDeductionService;
 use App\Services\SessionProjectionReadService;
 use App\Services\SubstituteService;
 use App\Support\TeacherProfileDirectory;
+use App\Support\AttendanceStatus;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
@@ -2013,6 +2015,11 @@ class ClassSessionController extends Controller
     private function sessionUpdateResponse(ClassSession $session, string $message)
     {
         $session->refresh();
+        if (in_array(strtolower((string) ($session->Status ?? '')), [
+            'attended', 'late', 'completed', 'trial', 'tutoring_attend',
+        ], true)) {
+            app(LearningRecordBackfillService::class)->ensureForAttendanceSession($session);
+        }
         return response()->json([
             'message' => $message,
             'session' => $this->sessionPayload($session),
@@ -3601,8 +3608,10 @@ class ClassSessionController extends Controller
             ->where('s.CampusID', $branchId)
             ->where('cs.SessionDate', '>=', $start->toDateString())
             ->where('cs.SessionDate', '<=', $end->toDateString())
-            // completed is a past attended-equivalent used by schedule reconcile; omit it and substitute fill-rate silently drops those rows.
-            ->whereRaw('LOWER(cs.Status) IN ("attended", "late", "completed")')
+            // The same registry drives attendance writes and the denominator. This
+            // keeps trial/tutoring attendance included while absent/leave/cancelled
+            // sessions never become evaluation work by accident.
+            ->whereIn(DB::raw('LOWER(cs.Status)'), AttendanceStatus::requiresLogSessionStatuses())
             ->select([
                 DB::raw('COALESCE(sub_sched.teacher_id, sc.TeacherID) AS teacher_id'),
                 DB::raw('lr.id AS learning_record_id'),
@@ -3617,6 +3626,7 @@ class ClassSessionController extends Controller
             ->select([
                 'teacher_id',
                 DB::raw('COUNT(*) AS session_total'),
+                DB::raw('SUM(CASE WHEN learning_record_id IS NOT NULL THEN 1 ELSE 0 END) AS recorded'),
                 DB::raw('SUM(CASE WHEN learning_record_id IS NOT NULL AND TRIM(IFNULL(learning_record_progress, "")) != "" THEN 1 ELSE 0 END) AS filled'),
             ])
             ->groupBy('teacher_id')
@@ -3635,14 +3645,20 @@ class ClassSessionController extends Controller
         $teachers = $rows->map(static function ($row) use ($nameMap) {
             $tid = (int) ($row->teacher_id ?? 0);
             $total = (int) ($row->session_total ?? 0);
+            $recorded = min($total, max(0, (int) ($row->recorded ?? 0)));
             $filled = (int) ($row->filled ?? 0);
             $pct = $total > 0 ? (int) round(100 * $filled / $total) : 0;
+            $incomplete = max(0, $total - $filled);
+            $missing = max(0, $total - $recorded);
 
             return [
                 'teacher_id'               => $tid,
                 'teacher_name'             => $nameMap->get($tid, '未知'),
                 'sessions_attended'        => $total,
+                'learning_records_present' => $recorded,
                 'learning_records_filled'  => $filled,
+                'missing_evaluations'      => $missing,
+                'pending_evaluations'      => max(0, $incomplete - $missing),
                 'fill_rate_pct'            => $pct,
             ];
         })->values();
@@ -3662,8 +3678,11 @@ class ClassSessionController extends Controller
             'teachers'                => $teachers,
             'overall'                 => [
                 'sessions_attended' => $sessionTotal,
+                'learning_records_present' => (int) $teachers->sum('learning_records_present'),
                 'learning_records_filled' => $filledTotal,
                 'pending' => max(0, $sessionTotal - $filledTotal),
+                'missing_evaluations' => (int) $teachers->sum('missing_evaluations'),
+                'pending_evaluations' => (int) $teachers->sum('pending_evaluations'),
                 'fill_rate_pct' => $sessionTotal > 0 ? (int) round(100 * $filledTotal / $sessionTotal) : 0,
                 'follow_up_teachers' => $followUpTeachers,
             ],

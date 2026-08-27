@@ -20,6 +20,8 @@ test('samples below the threshold stay neutral even when no record is filled', (
     teacherName: '老師甲',
     sessions: 2,
     filled: 0,
+    recordsPresent: 2,
+    missing: 0,
     pending: 2,
     fillRate: 0,
     status: 'building',
@@ -47,6 +49,22 @@ test('clamps inconsistent API counts and identifies follow-up work', () => {
     fill_rate_pct: 20,
   });
   assert.equal(needsFollowUp.status, 'follow_up');
+});
+
+test('separates missing assessment forms from existing forms that are not complete', () => {
+  const row = normalizeTeacherAssessmentFillRate({
+    teacher_name: '老師丁',
+    sessions_attended: 10,
+    learning_records_present: 8,
+    learning_records_filled: 6,
+    missing_evaluations: 2,
+    pending_evaluations: 2,
+  });
+
+  assert.equal(row.missing, 2);
+  assert.equal(row.pending, 2);
+  assert.equal(row.recordsPresent, 8);
+  assert.equal(row.status, 'follow_up');
 });
 
 test('sorts actionable rows first without presenting a competitive rank', () => {

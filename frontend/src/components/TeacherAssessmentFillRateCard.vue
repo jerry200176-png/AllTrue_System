@@ -4,7 +4,7 @@
       <div>
         <div class="tafr-card__eyebrow">教學品質追蹤</div>
         <h3 id="teacher-assessment-fill-rate-title">老師評量完成率</h3>
-        <p>用來安排協助與提醒，不是公開排名。代課堂次會歸給實際授課老師。</p>
+        <p>位置：主任總覽 → 教學品質追蹤。這是協助主任改善流程，不是公開排名。</p>
       </div>
       <label class="tafr-period">
         <span>統計區間</span>
@@ -28,9 +28,15 @@
     <template v-else>
       <div class="tafr-summary" aria-label="評量完成率摘要">
         <div><strong>{{ overall.fillRate }}%</strong><span>本分校填寫率</span></div>
-        <div><strong>{{ overall.pending }}</strong><span>待填評量</span></div>
-        <div><strong>{{ overall.followUpTeachers }}</strong><span>需要主任跟進</span></div>
-        <div><strong>{{ rows.length }}</strong><span>位有上課紀錄</span></div>
+        <div class="tafr-summary__alert"><strong>{{ overall.missing }}</strong><span>缺評量表</span></div>
+        <div><strong>{{ overall.pending }}</strong><span>待完成評量</span></div>
+        <div><strong>{{ overall.followUpTeachers }}</strong><span>需主任跟進老師</span></div>
+      </div>
+      <div class="tafr-guidance" :class="{ 'tafr-guidance--alert': overall.missing > 0 }" role="status">
+        <strong>主任下一步</strong>
+        <span v-if="overall.missing > 0">有 {{ overall.missing }} 堂已上課但沒有評量表，這是資料一致性異常；先按「前往評量審核」確認，勿要求家長重新操作。</span>
+        <span v-else-if="overall.pending > 0">評量表都有建立，但仍有 {{ overall.pending }} 堂尚未完成；請依老師列出的狀態提醒或協助。</span>
+        <span v-else>目前已上課堂次都有評量表，且沒有待完成項目；持續維持即可。</span>
       </div>
       <div class="tafr-table-wrap">
         <table class="tafr-table">
@@ -40,13 +46,13 @@
             <tr v-for="row in rows" :key="row.teacherId || row.teacherName">
               <th scope="row"><span class="tafr-teacher">{{ row.teacherName }}</span><small v-if="row.status === 'building'">樣本 {{ row.sessions }} 堂</small></th>
               <td><strong class="tafr-rate">{{ row.fillRate }}%</strong><div class="tafr-progress" aria-hidden="true"><span :style="{ width: `${row.fillRate}%` }" /></div></td>
-              <td>{{ row.filled }}／{{ row.sessions }}<small v-if="row.pending">待填 {{ row.pending }} 堂</small></td>
+              <td>{{ row.filled }}／{{ row.sessions }}<small v-if="row.missing || row.pending">缺表 {{ row.missing }} · 待完成 {{ row.pending }}</small></td>
               <td><span class="tafr-status" :class="`tafr-status--${statusFor(row).tone}`">{{ statusFor(row).label }}</span><small>{{ statusFor(row).description }}</small></td>
             </tr>
           </tbody>
         </table>
       </div>
-      <p class="tafr-note">口徑：已到班、遲到、已完成堂次；取消與請假不列入。填寫率只代表是否有有效進度文字，主任仍應查看內容品質。</p>
+      <p class="tafr-note">口徑：已到班、遲到、已完成與其他「有到課」堂次；缺席、取消與請假不列入。完成率只代表有有效進度文字，主任仍應查看內容品質。</p>
       <footer class="tafr-card__footer"><button type="button" class="text-action" @click="$emit('view-learning')">前往評量審核</button></footer>
     </template>
   </section>
@@ -77,15 +83,25 @@ const periodLabel = computed(() => `近 ${selectedDays.value} 天`);
 const overall = computed(() => {
   const sessions = rows.value.reduce((sum, row) => sum + row.sessions, 0);
   const filled = rows.value.reduce((sum, row) => sum + row.filled, 0);
+  const missing = rows.value.reduce((sum, row) => sum + row.missing, 0);
+  const pending = rows.value.reduce((sum, row) => sum + row.pending, 0);
   return {
     fillRate: sessions ? Math.round((filled / sessions) * 100) : 0,
-    pending: Math.max(0, sessions - filled),
+    missing,
+    pending,
     followUpTeachers: followUpCount.value,
   };
 });
 
 function statusFor(row) {
-  return getTeacherAssessmentFillRateStatus(row.status);
+  const status = getTeacherAssessmentFillRateStatus(row.status);
+  if (row.missing > 0) {
+    return { ...status, description: `有 ${row.missing} 堂已上課沒有評量表，請先確認資料。` };
+  }
+  if (row.pending > 0) {
+    return { ...status, description: `有 ${row.pending} 堂評量尚未完成，請提醒或協助老師。` };
+  }
+  return status;
 }
 
 async function load() {
@@ -124,6 +140,8 @@ defineExpose({ reload: load });
 .tafr-period select { min-width: 100px; border: 1px solid var(--ds-hairline-input); border-radius: 8px; padding: 7px 8px; background: var(--ds-canvas); color: var(--ds-ink); font: inherit; }
 .tafr-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
 .tafr-summary div { padding: 10px 12px; border: 1px solid var(--ds-hairline); border-radius: 9px; background: var(--ds-canvas-soft); }
+.tafr-summary__alert { border-color: color-mix(in srgb, var(--ds-danger) 35%, var(--ds-hairline)) !important; }
+.tafr-summary__alert strong { color: var(--ds-danger); }
 .tafr-summary strong, .tafr-summary span { display: block; }
 .tafr-summary strong { color: var(--ds-ink); font-size: 20px; font-variant-numeric: tabular-nums; }
 .tafr-summary span { margin-top: 2px; color: var(--ds-ink-mute); font-size: 11px; }
@@ -143,6 +161,9 @@ defineExpose({ reload: load });
 .tafr-status--danger { background: var(--ds-danger-wash); color: var(--ds-danger); }
 .tafr-status--neutral { background: var(--ds-canvas-soft); color: var(--ds-ink-secondary); }
 .tafr-note { padding-top: 2px; font-size: 11px !important; }
+.tafr-guidance { display: flex; align-items: baseline; gap: 8px; padding: 10px 12px; border-left: 3px solid var(--ds-primary); background: var(--ds-canvas-soft); color: var(--ds-ink-secondary); font-size: 12px; line-height: 1.5; }
+.tafr-guidance strong { flex: 0 0 auto; color: var(--ds-ink); }
+.tafr-guidance--alert { border-left-color: var(--ds-danger); background: var(--ds-danger-wash); }
 .tafr-card__footer { display: flex; justify-content: flex-end; }
 .tafr-state { display: flex; align-items: center; gap: 8px; min-height: 80px; color: var(--ds-ink-secondary); font-size: 13px; }
 .tafr-state--error { justify-content: space-between; color: var(--ds-danger); }

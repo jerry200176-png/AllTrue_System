@@ -16,7 +16,16 @@
 | `director_activation_rate_pct` | distinct director/admin users with at least one core action in 7 days / total director/admin users × 100 | `LearningRecord.ApprovedBy`, `bug_report_status_logs.changed_by` | Core actions: approval or defect workflow action |
 | `activation_funnel.teacher.activation_within_24h_pct` | teacher activated users / teacher opened users × 100 (v1 proxy) | `user_login_activities`, activation aggregates | v1 uses 7-day open/activation proxy for same-day completion trend |
 | `activation_funnel.director.activation_within_24h_pct` | director activated users / director opened users × 100 (v1 proxy) | `user_login_activities`, activation aggregates | used by mission-center adoption review |
-| `system_completion_rate_pct` | `learning_records_filled / attended_sessions × 100` | `LearningRecord`, `ClassSession` | Guard zero denominator |
+| `system_completion_rate_pct` | `learning_records_filled / attended_sessions × 100` | `LearningRecord`, `ClassSession` | `attended_sessions` uses `AttendanceStatus.requiresLogSessionStatuses()`; guard zero denominator |
+| `evaluation_integrity_missing_count` | attended/log-required sessions with no active `LearningRecord` | `ClassSession` left join active `LearningRecord` | System data anomaly; shown as **缺評量表** in the first-screen Director Dashboard quality card |
+| `evaluation_pending_count` | attended/log-required sessions with an active record but no trimmed `Progress` | `ClassSession`, `LearningRecord` | Teacher follow-up; shown separately from missing forms so a director knows whether to repair data or remind a teacher |
+| `evaluation_follow_up_teacher_count` | teachers with at least 5 log-required sessions and fill rate `< 70%` | `ClassSession`, effective teacher, `LearningRecord` | Supportive operational signal, not a public ranking |
+
+The Director Dashboard places these indicators immediately after the overview
+tabs, before the detailed work queues. Each row includes `filled / expected`,
+`missing`, and `pending` counts; the card's next-step link goes to the existing
+Learning Records review page. Cancelled, leave-family, and absent sessions are
+not in the denominator.
 
 ---
 

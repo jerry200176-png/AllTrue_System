@@ -37,6 +37,24 @@ class ClassSessionUpdateTest extends TestCase
                 ->where('event_type', 'deduct')
                 ->exists()
         );
+
+        $this->assertDatabaseHas('LearningRecord', [
+            'ClassSessionID' => $session->id,
+            'Status' => 'pending',
+            'VoidedAt' => null,
+        ]);
+    }
+
+    public function test_scheduled_to_leave_does_not_create_learning_record(): void
+    {
+        [$token, $courseId, $session] = $this->setupCourseWithSession('scheduled');
+
+        $this->patchSession($token, $session->id, ['status' => 'leave'])
+            ->assertOk();
+
+        $this->assertDatabaseMissing('LearningRecord', [
+            'ClassSessionID' => $session->id,
+        ]);
     }
 
     public function test_scheduled_to_leave_succeeds(): void

@@ -134,6 +134,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 17. **側欄資訊架構與 UX 重構（提案，2026-08-20）**：[`plans/2026-08-20-sidebar-ia-ux-restructure.md`](plans/2026-08-20-sidebar-ia-ux-restructure.md) · [`research/2026-08-20-sidebar-ux-research.md`](research/2026-08-20-sidebar-ux-research.md) — 導航 registry、角色／分校情境、學生／課程／行事曆責任邊界、responsive drawer、無障礙與分階段 rollout。
 18. **學習檢測 MVP（#1934，Slice 1）**：[`architecture/RFC_LEARNING_ASSESSMENT_MVP.md`](architecture/RFC_LEARNING_ASSESSMENT_MVP.md) · [`research/2026-08-learning-assessment-mvp.md`](research/2026-08-learning-assessment-mvp.md) — 獨立於點名／學習紀錄／扣堂的檢測定義、結果登錄、主任審核與 audit；先不做線上題庫與家長端。
 19. **單科堂數制轉多科方案安全流程（2026-08-27，Draft，T3）**：[`plans/2026-08-27-single-course-to-package-conversion.md`](plans/2026-08-27-single-course-to-package-conversion.md) — 預檢、零歷史安全轉換、既有歷史導向新方案；不搬移付款／發票／出席／評量帳本。
+20. **出勤／評量一致性與主任指標（2026-08-28，Implementation slice）**：[`architecture/RFC_ATTENDANCE_ASSESSMENT_INTEGRITY.md`](architecture/RFC_ATTENDANCE_ASSESSMENT_INTEGRITY.md) — ClassSession 單一事件來源、到課必有評量、請假／缺席／取消不產生，主任首屏分開顯示缺表與待完成。
 
 ### 後端開發
 | 需要什麼 | 去哪裡找 |

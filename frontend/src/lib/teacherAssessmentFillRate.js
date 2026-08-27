@@ -7,13 +7,20 @@ const clampPercent = (value) => Math.min(100, Math.max(0, Math.round(Number(valu
 export function normalizeTeacherAssessmentFillRate(row = {}, minimumSessions = 5) {
   const sessions = Math.max(0, Number(row.sessions_attended) || 0);
   const filled = Math.min(sessions, Math.max(0, Number(row.learning_records_filled) || 0));
+  const recordsPresent = Math.min(sessions, Math.max(0, Number(
+    row.learning_records_present ?? (sessions - (Number(row.missing_evaluations) || 0)),
+  ) || 0));
   const fillRate = clampPercent(row.fill_rate_pct ?? (sessions ? (filled / sessions) * 100 : 0));
-  const pending = sessions - filled;
+  const incomplete = sessions - filled;
+  const missing = Math.min(incomplete, Math.max(0, Number(
+    row.missing_evaluations ?? (sessions - recordsPresent),
+  ) || 0));
+  const pending = Math.max(0, incomplete - missing);
 
   let status = 'building';
   if (sessions >= minimumSessions) {
     if (pending === 0) status = 'on_track';
-    else if (fillRate < 70) status = 'follow_up';
+    else if (fillRate < 70 || missing / Math.max(1, sessions) >= 0.3) status = 'follow_up';
     else if (fillRate < 90) status = 'watch';
     else status = 'on_track';
   }
@@ -23,6 +30,8 @@ export function normalizeTeacherAssessmentFillRate(row = {}, minimumSessions = 5
     teacherName: String(row.teacher_name || '未命名老師'),
     sessions,
     filled,
+    recordsPresent,
+    missing,
     pending,
     fillRate,
     status,
