@@ -51,7 +51,7 @@ class NightlyReconcile extends Command
             $recorded = (int) ($c->UsedSessions ?? 0);
             $sourceConflict = (int) ($diagnostic['cancelled_usage_artifacts'] ?? 0) > 0;
             $sourceDiff = $sourceConflict
-                ? abs($actual - (int) ($diagnostic['observed_used'] ?? 0))
+                ? abs($actual - (int) ($diagnostic['ledger_used'] ?? $diagnostic['observed_used'] ?? 0))
                 : 0;
             $diff       = max(abs($expected - $recorded), $sourceDiff);
             // A source conflict with no count difference belongs to the

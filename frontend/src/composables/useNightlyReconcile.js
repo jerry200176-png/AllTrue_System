@@ -29,6 +29,18 @@ export function useNightlyReconcile(tokenRef) {
     return report.value.mismatches.filter((row) => Math.abs(Number(row.diff) || 0) > threshold);
   });
 
+  const hiddenMismatchCounts = computed(() => {
+    if (!report.value || !Array.isArray(report.value.mismatches)) return {};
+    const threshold = Math.max(0, Number(report.value.threshold) || 0);
+    return report.value.mismatches.reduce((counts, row) => {
+      if (Math.abs(Number(row.diff) || 0) <= threshold) {
+        const category = row.category || 'unknown';
+        counts[category] = (counts[category] || 0) + 1;
+      }
+      return counts;
+    }, {});
+  });
+
   /** 套用當前篩選後 */
   const filteredMismatches = computed(() => {
     let rows = [...mismatches.value];
@@ -81,10 +93,15 @@ export function useNightlyReconcile(tokenRef) {
     return {
       checked_at: report.value.checked_at,
       total_checked: report.value.total_checked,
-      mismatch_count: mismatches.value.length,
-      cause_counts: mismatches.value.reduce((counts, row) => {
-        const category = row.category || 'unknown';
-        counts[category] = (counts[category] || 0) + 1;
+      // Keep report-level totals (which include rows beyond the 200-row detail
+      // cap), while removing stale zero-difference rows that are still present
+      // in an older snapshot.
+      mismatch_count: Math.max(
+        0,
+        (Number(report.value.mismatch_count) || 0) - Object.values(hiddenMismatchCounts.value).reduce((sum, count) => sum + count, 0)
+      ),
+      cause_counts: Object.entries(report.value.cause_counts || {}).reduce((counts, [category, count]) => {
+        counts[category] = Math.max(0, Number(count) - Number(hiddenMismatchCounts.value[category] || 0));
         return counts;
       }, {}),
     };

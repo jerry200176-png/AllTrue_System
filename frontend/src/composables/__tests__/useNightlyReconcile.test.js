@@ -71,6 +71,7 @@ describe('useNightlyReconcile', () => {
         { student_class_id: 2, diff: 2, category: 'attendance_ahead' },
       ],
       mismatch_count: 2,
+      cause_counts: { source_conflict: 1, attendance_ahead: 1 },
     }));
     const { filteredMismatches, summary, loadReport } = setup();
     await loadReport();
