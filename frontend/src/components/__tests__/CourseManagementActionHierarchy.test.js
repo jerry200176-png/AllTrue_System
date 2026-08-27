@@ -45,7 +45,10 @@ describe('CourseManagement action hierarchy', () => {
   });
 
   it('offers explicit settlement for paid courses with remaining balance in both director entry points', () => {
+    expect(source).toContain("&& (isSessionMode(c) || isMonthlyMode(c))");
     expect(source).toContain("&& c.payment_status === 'paid';");
+    expect(source).toContain('>結案（不續報）</button>');
+    expect(studentsSource).toContain("['session', 'monthly'].includes");
     expect(studentsSource).toContain("&& isCourseSettled(course)");
     expect(source).toContain("reason: 'settled'");
     expect(studentsSource).toContain("reason: 'settled'");
@@ -53,5 +56,12 @@ describe('CourseManagement action hierarchy', () => {
     expect(studentsSource).toContain('forfeit_remaining: true');
     expect(source).toContain('放棄這 ${remaining} 堂剩餘額度');
     expect(studentsSource).toContain('放棄這 ${remaining} 堂剩餘額度');
+  });
+
+  it('normalizes legacy course IDs and gives monthly scheduling failures a visible result', () => {
+    expect(source).toContain('id: Number(c?.id ?? c?.ID ?? 0)');
+    expect(source).toContain('const courseIdForAction = (course) => Number(course?.id ?? course?.ID ?? 0);');
+    expect(source).toContain("manualSessionCheck.value = { can_add: false, message: '課程資料不完整，請重新整理後再試' }");
+    expect(source).toContain('/api/v1/student-classes/${courseId}/manual-sessions/check');
   });
 });

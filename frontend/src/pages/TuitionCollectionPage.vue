@@ -400,17 +400,17 @@
                         <span class="material-symbols-outlined">undo</span>
                         撤銷
                       </button>
-                      <template v-if="r.payment_status === 'renew_needed'">
+                      <template v-if="r.payment_status === 'renew_needed' || r.payment_status === 'monthly_due_soon'">
                         <span
-                          v-if="r.has_newer_course"
+                          v-if="r.payment_status === 'renew_needed' && r.has_newer_course"
                           class="tc-newer-badge"
                           :title="newerCourseBadgeTitle(r)"
                         >{{ newerCourseBadgeLabel(r) }}</span>
-                        <span v-else class="tc-renew-hint">需續課</span>
-                        <button class="tc-btn tc-btn--settle" @click="openSettleDialog(r)" :disabled="settleLoading === r.id" title="確認舊課程已被新課程取代，點此關閉">
+                        <span v-else class="tc-renew-hint">{{ r.payment_status === 'monthly_due_soon' ? '月結本期' : '需續課' }}</span>
+                        <button class="tc-btn tc-btn--settle" @click="openSettleDialog(r)" :disabled="settleLoading === r.id" title="結案且不續報">
                           <span v-if="settleLoading === r.id" class="material-symbols-outlined spin" style="font-size:15px">progress_activity</span>
                           <span v-else class="material-symbols-outlined">task_alt</span>
-                          結案
+                          結案（不續報）
                         </button>
                       </template>
                     </template>

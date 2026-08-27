@@ -1111,12 +1111,14 @@ const toggleHistoryCourses = (studentId) => {
 };
 
 const canCloseCourse = (course) => {
-  return course?.payment_type === 'session'
+  return ['session', 'monthly'].includes(String(course?.payment_type || '').toLowerCase())
     && isCourseSettled(course)
     && String(course?.status || '').toLowerCase() !== 'inactive';
 };
 
 async function closeCourseNoRenew(course, studentName) {
+  const courseId = Number(course?.id ?? course?.ID ?? 0);
+  if (!courseId) { alert('課程資料缺少識別碼，請重新整理後再試'); return; }
   const subject = getSubjectLabel(course?.subject);
   const remaining = Math.max(0, Number(getCourseRemainingSessions(course) ?? 0));
   const balanceWarning = remaining > 0
@@ -1127,7 +1129,7 @@ async function closeCourseNoRenew(course, studentName) {
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
     if (!token) { alert('請重新登入'); return; }
-    const res = await fetch(`/api/v1/student-classes/${course.id}/pause`, {
+    const res = await fetch(`/api/v1/student-classes/${courseId}/pause`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
       body: JSON.stringify({

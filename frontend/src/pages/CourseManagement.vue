@@ -339,6 +339,11 @@
                       <div class="action-btns-row">
                         <button class="small primary course-primary-action" @click="editCourse(c)">編輯</button>
                         <button
+                          v-if="canCloseCourse(c)"
+                          class="small ghost course-settle-action"
+                          @click="closeCourseNoRenew(c)"
+                        >結案（不續報）</button>
+                        <button
                           v-if="isManualOccurrenceCourse(c)"
                           class="small btn-add-session manual-occurrence-action"
                           @click="openManualSessionModal(c)"
@@ -2270,6 +2275,7 @@ const packageConversionSubjects = computed(() => {
   const source = String(packageConversionCourse.value?.subject_name || packageConversionCourse.value?.subject || '').trim();
   return (subjectOptions.value || []).filter((subject) => String(subject?.label || subject?.value || '').trim() !== source);
 });
+const courseIdForAction = (course) => Number(course?.id ?? course?.ID ?? 0);
 const isManualOccurrenceCourse = (course) => String(course?.scheduling_policy || 'auto_recurrence') === 'manual_occurrence';
 const pauseConfirmTarget = ref(null);
 const pauseConfirmSubmitting = ref(false);
@@ -2348,11 +2354,14 @@ async function confirmCoursePause() {
 
 function canCloseCourse(c) {
   return c.status !== 'inactive'
-    && isSessionMode(c)
+    && !isPackageMember(c)
+    && (isSessionMode(c) || isMonthlyMode(c))
     && c.payment_status === 'paid';
 }
 
 async function closeCourseNoRenew(course) {
+  const courseId = courseIdForAction(course);
+  if (!courseId) { alert('課程資料缺少識別碼，請重新整理後再試'); return; }
   const studentName = course.student_name || '學生';
   const subject = getSubjectLabel(course.subject);
   const remaining = Math.max(0, Number(course.remaining_sessions ?? 0));
@@ -2366,7 +2375,7 @@ async function closeCourseNoRenew(course) {
     const token = sess?.access_token;
     if (!token) { alert('請重新登入'); return; }
 
-    const res = await fetch(`/api/v1/student-classes/${course.id}/pause`, {
+    const res = await fetch(`/api/v1/student-classes/${courseId}/pause`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -2789,8 +2798,9 @@ async function submitQuickAddSession() {
 }
 // ----- Leave (請假) -----
 function openManualSessionModal(course) {
-  if (!course?.id) return;
-  manualSessionCourse.value = course;
+  const courseId = courseIdForAction(course);
+  if (!courseId) { alert('課程資料缺少識別碼，請重新整理後再試'); return; }
+  manualSessionCourse.value = { ...course, id: courseId };
   manualSessionCheck.value = null;
   manualSessionForm.value = {
     session_date: localTodayYmd(),
@@ -2849,13 +2859,17 @@ async function submitPackageConversion() {
 async function runManualSessionCheck() {
   const course = manualSessionCourse.value;
   const form = manualSessionForm.value;
-  if (!course?.id || !form.session_date || !form.start_time) return;
+  const courseId = courseIdForAction(course);
+  if (!courseId || !form.session_date || !form.start_time) {
+    manualSessionCheck.value = { can_add: false, message: '課程資料不完整，請重新整理後再試' };
+    return;
+  }
   manualSessionChecking.value = true;
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
     if (!token) throw new Error('請先登入');
-    const res = await fetch(`/api/v1/student-classes/${course.id}/manual-sessions/check`, {
+    const res = await fetch(`/api/v1/student-classes/${courseId}/manual-sessions/check`, {
       method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ session_date: form.session_date, start_time: form.start_time }),
@@ -2871,13 +2885,14 @@ async function runManualSessionCheck() {
 async function submitManualSession() {
   const course = manualSessionCourse.value;
   const form = manualSessionForm.value;
-  if (!course?.id || !manualSessionCheck.value?.can_add) return;
+  const courseId = courseIdForAction(course);
+  if (!courseId || !manualSessionCheck.value?.can_add) return;
   manualSessionSubmitting.value = true;
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
     if (!token) throw new Error('請先登入');
-    const res = await fetch(`/api/v1/student-classes/${course.id}/manual-sessions`, {
+    const res = await fetch(`/api/v1/student-classes/${courseId}/manual-sessions`, {
       method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ session_date: form.session_date, start_time: form.start_time }),
@@ -3702,6 +3717,7 @@ const loadCourses = async (page = 1) => {
         const arr = Array.isArray(list) ? list : (list?.data ?? []);
         const result = arr.map(c => ({
           ...c,
+          id: Number(c?.id ?? c?.ID ?? 0),
           data_source: 'laravel',
           student_name: c.student_name ?? '—',
           teacher_name: c.teacher_name ?? '',
@@ -3736,6 +3752,7 @@ const loadCourses = async (page = 1) => {
   const { data } = await query;
   let result = (data || []).map(c => ({
     ...c,
+    id: Number(c?.id ?? c?.ID ?? 0),
     data_source: 'supabase',
     student_name: c.student?.name || '—',
     teacher_name: c.teacher_name || c.teacher?.username || '',
