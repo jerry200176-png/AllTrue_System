@@ -60,6 +60,46 @@ export function sanitizeAdoptionMeta(meta = {}) {
   return out;
 }
 
+const WORKFLOW_NAMES = new Set(['billing', 'calendar']);
+const WORKFLOW_PHASES = new Set(['started', 'completed', 'returned', 'error']);
+
+/** Keep workflow telemetry finite, predictable, and safe to aggregate. */
+export function workflowEventName(workflow, phase) {
+  const safeWorkflow = String(workflow || '').toLowerCase();
+  const safePhase = String(phase || '').toLowerCase();
+  if (!WORKFLOW_NAMES.has(safeWorkflow) || !WORKFLOW_PHASES.has(safePhase)) return '';
+  return `workflow_${safeWorkflow}_${safePhase}`;
+}
+
+export function workflowDurationMs(startedAt, endedAt = Date.now()) {
+  const start = Number(startedAt);
+  const end = Number(endedAt);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return undefined;
+  return Math.min(300000, Math.max(0, Math.round(end - start)));
+}
+
+/** Classify without sending the original error or response body to telemetry. */
+export function adoptionErrorType(errorOrStatus) {
+  if (errorOrStatus === 'validation') return 'validation';
+  const status = typeof errorOrStatus === 'number'
+    ? errorOrStatus
+    : Number(errorOrStatus?.status);
+  if (Number.isFinite(status)) {
+    if (status >= 500) return 'http_5xx';
+    if (status >= 400) return 'http_4xx';
+  }
+  return 'network';
+}
+
+export function trackWorkflowEvent(workflow, phase, branchId, meta = {}, startedAt = null) {
+  const event = workflowEventName(workflow, phase);
+  if (!event) return Promise.resolve(false);
+  const duration = workflowDurationMs(startedAt);
+  const payload = { workflow, phase, ...meta };
+  if (duration !== undefined) payload.duration_ms = duration;
+  return trackAdoptionEvent(event, branchId, payload).then(() => true);
+}
+
 /** Once per campus + session + calendar day + event (+ optional decision key). */
 export function claimTrustTelemetryOnce(event, branchId, decisionKey = '') {
   try {

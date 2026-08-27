@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\SlotOccupiedException;
 use App\Models\ClassSession;
 use App\Models\ClassSessionReassignment;
 use App\Models\CourseContractGroupMember;
@@ -342,6 +343,8 @@ class ClassSessionController extends Controller
                 'si.SignInDT as attendance_sign_in_at',
                 'si.Memo as attendance_memo',
                 DB::raw('COALESCE(rbu.Name, siu.Name, "") as recorded_by_name'),
+                DB::raw('EXISTS (SELECT 1 FROM LearningRecord lr_history WHERE lr_history.ClassSessionID = cs.id) as learning_record_history'),
+                DB::raw('EXISTS (SELECT 1 FROM StudentSingIn si_history WHERE si_history.ClassSessionID = cs.id) as attendance_history'),
             ]);
 
         if ($role === 'teacher') {
@@ -474,6 +477,10 @@ class ClassSessionController extends Controller
         $row->learning_record_status = $row->learning_record_status ?? 'missing';
         $row->learning_record_body_filled = $row->learning_record_id !== null && trim((string) ($row->learning_record_progress ?? '')) !== '';
         $row->learning_record_teacher_id = $row->learning_record_teacher_id !== null ? (int) $row->learning_record_teacher_id : null;
+        $row->has_learning_record_history = (bool) ($row->learning_record_history ?? false);
+        $row->has_attendance_history = (bool) ($row->attendance_history ?? false);
+        $row->recoverable_cancelled = strtolower((string) ($row->Status ?? '')) === 'cancelled'
+            && ($row->has_learning_record_history || $row->has_attendance_history);
         unset($row->learning_record_progress);
         $row->attendance_sign_in_at = $row->attendance_sign_in_at ?: null;
         $row->attendance_memo = $row->attendance_memo ?: '';
@@ -498,6 +505,8 @@ class ClassSessionController extends Controller
             $row->Status,
             $row->IsContractException,
             $row->effective_status,
+            $row->learning_record_history,
+            $row->attendance_history,
             $row->Note,
             $row->sc_rate,
             $row->sc_session_duration,
@@ -838,7 +847,15 @@ class ClassSessionController extends Controller
         $studentClassController = app(StudentClassController::class);
         foreach ($classes as $studentClass) {
             $preloaded = collect($existingSessionsByClass[(int) $studentClass->ID] ?? []);
-            $studentClassController->extendSessionsIfNeeded($studentClass, (int) $studentClass->SessionCount, $preloaded);
+            try {
+                $studentClassController->extendSessionsIfNeeded($studentClass, (int) $studentClass->SessionCount, $preloaded);
+            } catch (SlotOccupiedException $e) {
+                // This is a best-effort read-side projection. A legacy or
+                // cross-course student overlap must not make the whole branch's
+                // attendance list fail with 422; leave the conflicting slot
+                // absent and let the existing data-quality guard remain intact.
+                $this->logReadSideMaterializationConflict('count', $studentClass, $e);
+            }
         }
     }
 
@@ -932,21 +949,45 @@ class ClassSessionController extends Controller
                     continue;
                 }
 
-                app(ClassSessionMaterializationService::class)->upsertSlot([
-                    '_student_class'     => $studentClass,
-                    'StudentClassID'      => (int) $studentClass->ID,
-                    'SubjectID'           => $studentClass->SubjectID ?: null,
-                    'SessionDate'         => $targetDate,
-                    'StartTime'           => (string) $slot['start_time'],
-                    'EndTime'             => (string) $slot['end_time'],
-                    'Status'              => 'scheduled',
-                    'Note'                => 'projected-monthly-materialized-auto',
-                    'IsContractException' => 0,
-                ]);
-                // 同一請求內避免重複建立（多 slot 同時段時的防呆，等同原 exists() 在建立後轉真）。
-                $existingSet[$key] = true;
+                try {
+                    app(ClassSessionMaterializationService::class)->upsertSlot([
+                        '_student_class'     => $studentClass,
+                        'StudentClassID'      => (int) $studentClass->ID,
+                        'SubjectID'           => $studentClass->SubjectID ?: null,
+                        'SessionDate'         => $targetDate,
+                        'StartTime'           => (string) $slot['start_time'],
+                        'EndTime'             => (string) $slot['end_time'],
+                        'Status'              => 'scheduled',
+                        'Note'                => 'projected-monthly-materialized-auto',
+                        'IsContractException' => 0,
+                    ]);
+                    // 同一請求內避免重複建立（多 slot 同時段時的防呆，等同原 exists() 在建立後轉真）。
+                    $existingSet[$key] = true;
+                } catch (SlotOccupiedException $e) {
+                    $this->logReadSideMaterializationConflict('monthly', $studentClass, $e);
+                }
             }
         }
+    }
+
+    /**
+     * Read-side projection conflicts are actionable data-quality signals, but
+     * not request-level validation failures. Keep logs free of student PII.
+     */
+    private function logReadSideMaterializationConflict(
+        string $source,
+        StudentClass $studentClass,
+        SlotOccupiedException $exception,
+    ): void {
+        Log::warning('class_session.read_materialization_conflict', [
+            'source' => $source,
+            'student_class_id' => (int) $studentClass->getAttribute('ID'),
+            'session_date' => $exception->sessionDate,
+            'start_time' => substr($exception->startTime, 0, 5),
+            'conflict_session_id' => $exception->conflictSessionId,
+            'conflict_status' => $exception->conflictStatus,
+            'response_code' => $exception->responseCode,
+        ]);
     }
 
     /**

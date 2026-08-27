@@ -303,4 +303,58 @@ class ManualSessionBookingTest extends TestCase
         $this->assertDatabaseCount('ClassSession', 1);
         $this->assertSame(3, (int) $this->course->fresh()->RemainingSessions);
     }
+
+    public function test_monthly_course_can_add_an_occurrence_inside_its_date_range_without_session_quota(): void
+    {
+        $this->course->ScheduleMode = 'date';
+        $this->course->scheduling_policy = 'auto_recurrence';
+        $this->course->SessionCount = 0;
+        $this->course->StartDate = Carbon::today()->toDateString();
+        $this->course->EndDate = Carbon::today()->addDays(30)->toDateString();
+        $this->course->save();
+
+        $payload = [
+            'session_date' => Carbon::today()->addDays(7)->toDateString(),
+            'start_time' => '16:00',
+        ];
+
+        $this->withHeaders($this->headers())
+            ->postJson("/api/v1/student-classes/{$this->course->ID}/manual-sessions/check", $payload)
+            ->assertOk()
+            ->assertJsonPath('can_add', true)
+            ->assertJsonPath('billing_mode', 'monthly')
+            ->assertJsonPath('monthly', true)
+            ->assertJsonPath('available_sessions', null);
+
+        $this->withHeaders($this->headers())
+            ->postJson("/api/v1/student-classes/{$this->course->ID}/manual-sessions", $payload)
+            ->assertCreated()
+            ->assertJsonPath('created', true);
+
+        $this->assertDatabaseCount('ClassSession', 1);
+
+        $this->withHeaders($this->headers())
+            ->postJson("/api/v1/student-classes/{$this->course->ID}/manual-sessions/check", [
+                'session_date' => Carbon::today()->addDays(31)->toDateString(),
+                'start_time' => '16:00',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('error_code', 'AFTER_COURSE_END');
+    }
+
+    public function test_monthly_course_requires_an_explicit_end_date(): void
+    {
+        $this->course->ScheduleMode = 'date';
+        $this->course->SessionCount = 0;
+        $this->course->EndDate = null;
+        $this->course->save();
+
+        $this->withHeaders($this->headers())
+            ->postJson("/api/v1/student-classes/{$this->course->ID}/manual-sessions/check", [
+                'session_date' => Carbon::today()->addDays(7)->toDateString(),
+                'start_time' => '16:00',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('error_code', 'MONTHLY_DATE_RANGE_REQUIRED');
+    }
 }

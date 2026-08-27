@@ -304,6 +304,8 @@ class AlertController extends Controller
                     'invoice_amount_source'    => $invoiceProjection['amount_source'] ?? null,
                     'invoice_amount_discrepancy' => $invoiceProjection['amount_discrepancy'] ?? false,
                     'invoice_period_sessions' => $invoiceProjection['period_sessions'] ?? null,
+                    'course_start_date'         => $sc?->StartDate ? substr((string) $sc->StartDate, 0, 10) : null,
+                    'course_end_date'           => $sc?->EndDate ? substr((string) $sc->EndDate, 0, 10) : null,
                 ];
             })
             ->filter(fn ($row) => ($row['charge'] ?? 0) > 0)

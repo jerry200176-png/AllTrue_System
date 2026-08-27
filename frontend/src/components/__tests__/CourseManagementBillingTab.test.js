@@ -27,4 +27,12 @@ describe('CourseManagement student billing tab', () => {
     expect(source).toContain('登記已回報');
     expect(source).not.toMatch(/openPaymentEntryForInvoice\(inv\)\s*>核帳</);
   });
+
+  it('shows the latest payment report summary on the course card', () => {
+    expect(source).toContain('coursePaymentSummary(c)');
+    expect(source).toContain('formatPaymentSummary(c.latest_payment_summary)');
+    expect(source).toContain('最近繳費：');
+    expect(source).toContain('summary.note');
+    expect(source).toContain('summary.account_last5');
+  });
 });

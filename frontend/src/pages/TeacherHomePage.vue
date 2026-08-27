@@ -310,7 +310,12 @@
               <span class="th-overdue-subject">{{ ev.subject || '' }}</span>
               <span v-if="ev.formStatus === 'changes_requested'" class="th-form-chip th-form-changes_requested">需修改</span>
             </div>
-            <button class="th-fill-btn" @click="goFillRecord(ev)" title="填寫評量">
+            <button
+              class="th-fill-btn"
+              @click="goFillRecord(ev)"
+              title="填寫評量"
+              :aria-label="ev.formStatus === 'changes_requested' ? '開啟需修改的評量' : '開啟待填評量'"
+            >
               <span class="material-symbols-outlined">edit_note</span>
             </button>
           </div>
@@ -418,6 +423,7 @@
                 class="th-fill-btn"
                 @click="goFillRecord(ev)"
                 title="填寫評量"
+                :aria-label="ev.formStatus === 'changes_requested' ? '開啟需修改的評量' : '開啟待填評量'"
               >
                 <span class="material-symbols-outlined">edit_note</span>
               </button>

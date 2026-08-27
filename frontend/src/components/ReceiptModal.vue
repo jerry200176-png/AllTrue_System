@@ -110,6 +110,10 @@
                 <span class="receipt-doc-label">收款方式</span>
                 <span class="receipt-doc-value">{{ paymentMethodLabel(snapshot.method) }}</span>
               </div>
+              <div v-if="snapshot.note" class="receipt-doc-row receipt-doc-note-row">
+                <span class="receipt-doc-label">備註</span>
+                <span class="receipt-doc-value">{{ snapshot.note }}</span>
+              </div>
 
               <div class="receipt-doc-refund" v-if="snapshot.refund_policy">
                 <div class="receipt-doc-label">退費規定</div>
@@ -140,10 +144,23 @@
 
         <!-- Actions -->
         <div class="receipt-actions">
+          <button data-testid="copy-receipt-image" class="primary" type="button" :disabled="copyState === 'copying'" @click="copyReceiptImage">
+            <span class="material-symbols-outlined">image</span>
+            {{ copyState === 'copied-image' ? '已複製圖片' : '複製圖片' }}
+          </button>
+          <button data-testid="copy-receipt-text" class="ghost" type="button" :disabled="copyState === 'copying'" @click="copyReceiptText">
+            <span class="material-symbols-outlined">content_copy</span>
+            {{ copyState === 'copied-text' ? '已複製文字' : '複製文字' }}
+          </button>
+          <button data-testid="download-receipt-image" class="ghost" type="button" :disabled="copyState === 'copying'" @click="downloadReceiptImage">
+            <span class="material-symbols-outlined">download</span>
+            下載圖片
+          </button>
           <button class="ghost" type="button" @click="printReceipt">
             <span class="material-symbols-outlined">print</span>
             列印
           </button>
+          <span v-if="copyState === 'error'" class="receipt-copy-error" role="status">{{ copyError }}</span>
         </div>
       </template>
     </div>
@@ -156,9 +173,11 @@
 import { ref, computed, watch } from 'vue';
 import {
   adaptPaymentReportReceipt,
+  buildReceiptCopyText,
   paymentReportReceiptUrl,
   parsePositiveReportId,
 } from '../lib/paymentReportReceipt.js';
+import { receiptImageBlob } from '../lib/receiptImage.js';
 
 const props = defineProps({
   show: Boolean,
@@ -170,6 +189,8 @@ const loading = ref(false);
 const error = ref('');
 const receipt = ref(null);
 const receiptPrintRef = ref(null);
+const copyState = ref('idle');
+const copyError = ref('');
 
 const snapshot = computed(() => receipt.value?.content_snapshot || {});
 const schoolName = computed(() => snapshot.value.school_name || '台北全真一對一補習班');
@@ -233,8 +254,84 @@ function printReceipt() {
   window.print();
 }
 
+async function copyReceiptImage() {
+  if (!receipt.value) return;
+  copyState.value = 'copying';
+  copyError.value = '';
+  try {
+    if (typeof navigator.clipboard?.write !== 'function' || typeof window.ClipboardItem !== 'function') {
+      throw new Error('image_clipboard_unsupported');
+    }
+    const blob = await receiptImageBlob({
+      source: receiptPrintRef.value,
+      snapshot: snapshot.value,
+      receiptNumber: receipt.value.receipt_number,
+    });
+    await navigator.clipboard.write([new window.ClipboardItem({ 'image/png': blob })]);
+    copyState.value = 'copied-image';
+  } catch (error) {
+    copyState.value = 'error';
+    copyError.value = error.message === 'image_clipboard_unsupported'
+      ? '此瀏覽器不支援直接複製圖片，請按「下載圖片」後再傳給家長。'
+      : '複製圖片失敗，請按「下載圖片」後再傳給家長。';
+  }
+}
+
+async function copyReceiptText() {
+  if (!receipt.value) return;
+  copyState.value = 'copying';
+  copyError.value = '';
+  const text = buildReceiptCopyText(snapshot.value, receipt.value.receipt_number);
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      if (!document.execCommand('copy')) throw new Error('copy_failed');
+      textarea.remove();
+    }
+    copyState.value = 'copied-text';
+  } catch {
+    copyState.value = 'error';
+    copyError.value = '複製文字失敗，請改用列印或手動選取收據內容。';
+  }
+}
+
+async function downloadReceiptImage() {
+  if (!receipt.value) return;
+  copyState.value = 'copying';
+  copyError.value = '';
+  try {
+    const blob = await receiptImageBlob({
+      source: receiptPrintRef.value,
+      snapshot: snapshot.value,
+      receiptNumber: receipt.value.receipt_number,
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `電子收據-${receipt.value.receipt_number || 'receipt'}.png`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    copyState.value = 'downloaded';
+  } catch {
+    copyState.value = 'error';
+    copyError.value = '下載圖片失敗，請改用列印或手動截圖。';
+  }
+}
+
 watch(() => [props.show, props.reportId], async ([visible]) => {
   if (!visible) return;
+  copyState.value = 'idle';
+  copyError.value = '';
   await loadReceipt();
 }, { immediate: true });
 </script>
@@ -318,6 +415,7 @@ watch(() => [props.show, props.reportId], async ([visible]) => {
 
 .receipt-actions { display: flex; gap: 8px; justify-content: center; margin-top: 16px; flex-wrap: wrap; align-items: center; }
 .receipt-actions button { display: inline-flex; align-items: center; gap: 6px; }
+.receipt-copy-error { flex-basis: 100%; color: var(--ds-danger); font-size: 12px; text-align: center; }
 .receipt-pdf-format { display: flex; gap: 12px; margin-right: 8px; }
 .receipt-format-label { font-size: 12px; display: flex; align-items: center; gap: 4px; cursor: pointer; }
 .receipt-btn-void { color: var(--ds-danger); }

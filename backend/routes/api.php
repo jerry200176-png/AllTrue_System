@@ -499,6 +499,7 @@ Route::prefix('v1')->group(function () {
         Route::post('student-classes/{studentClass}/billing-correction', [StudentClassController::class, 'billingCorrection']);
         Route::post('student-classes/{studentClass}/split-contract/preview', [StudentClassController::class, 'splitContractPreview']);
         Route::post('student-classes/{studentClass}/split-contract', [StudentClassController::class, 'splitContract']);
+        Route::post('student-classes/{studentClass}/recover-transfer-sessions', [StudentClassController::class, 'recoverAndTransferSessions']);
         Route::get('student-identities', [StudentIdentityController::class, 'index']);
         Route::post('student-identities/link', [StudentIdentityController::class, 'link']);
         Route::delete('student-identities/members/{studentId}', [StudentIdentityController::class, 'unlink']);
@@ -538,6 +539,7 @@ Route::prefix('v1')->group(function () {
         Route::get('student-classes', [StudentClassController::class, 'index']);
         Route::post('student-classes', [StudentClassController::class, 'store']);
         Route::get('student-classes/{studentClass}/editability', [StudentClassController::class, 'editability']);
+        Route::post('student-classes/{studentClass}/convert-to-package', [\App\Http\Controllers\CoursePackageController::class, 'convertToPackage']);
         Route::get('student-classes/{studentClass}', [StudentClassController::class, 'show']);
         Route::put('student-classes/{studentClass}', [StudentClassController::class, 'update']);
         Route::post('student-classes/{studentClass}/confirm-payment', [StudentClassController::class, 'confirmPayment']);

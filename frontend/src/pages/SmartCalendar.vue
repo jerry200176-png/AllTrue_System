@@ -24,6 +24,22 @@
           </div>
         </div>
       </div>
+      <OperationsQuickStart
+        v-if="!isTeacher"
+        compact
+        eyebrow="排課處理流程"
+        heading="先選工作，再操作課表"
+        description="新增排課請用快速排課；既有課程請先點課卡，再選調課或換代課。"
+        :current-id="calendarWorkflowIntent"
+        :steps="calendarFlowSteps"
+        @select="selectCalendarFlowStep"
+      />
+      <p v-if="!isTeacher && calendarWorkflowHint" class="calendar-workflow-hint" role="status">{{ calendarWorkflowHint }}</p>
+      <p v-if="!isTeacher && calendarFocusMessage" class="calendar-focus-context" role="status">
+        <span class="material-symbols-outlined" aria-hidden="true">my_location</span>
+        <span>{{ calendarFocusMessage }}</span>
+        <button type="button" @click="clearCalendarFocus">清除定位</button>
+      </p>
       <div v-if="viewMode === 'week'" class="smart-cal-toolbar" data-guide="calendar-toolbar">
         <div class="toolbar-row toolbar-row-primary">
           <div class="toolbar-group">
@@ -194,7 +210,7 @@
                 <div
                   v-for="(course, cIdx) in getCoursesForTeacherAt(teacher.id, h)"
                   :key="course.id"
-                  class="course-block"
+                  :class="['course-block', { 'course-block--focused': focusedCalendarCourseId === Number(course.id) }]"
                   :style="getTeacherCourseBlockStyle(course, teacher.id, h, cIdx)"
                   :draggable="!isTeacher"
                   @click.stop="!isTeacher && onCourseClick(course, selectedDateStr)"
@@ -250,7 +266,7 @@
                 <div
                   v-for="(course, cIdx) in getCoursesForWeekCell(idx + 1, h)"
                   :key="course.id"
-                  class="course-block"
+                  :class="['course-block', { 'course-block--focused': focusedCalendarCourseId === Number(course.id) }]"
                   :style="getWeekCourseBlockStyle(course, idx + 1, h, cIdx)"
                   :draggable="!isTeacher"
                   @click.stop="!isTeacher && onCourseClick(course, getDisplayDateFull(idx + 1))"
@@ -465,6 +481,7 @@
       :subject-label="rescheduleDisplay.subjectLabel"
       :original-slot-label="rescheduleDisplay.originalSlot"
       :new-end-time="computedRescheduleNewEnd"
+      :preview="reschedulePreview"
       :time-options="timeOptions30"
       :error="rescheduleError"
       :submitting="rescheduleSubmitting"
@@ -498,7 +515,9 @@ import {
   isRangeWithinFetchedBounds,
 } from '../lib/calendarLoadPerformance';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
+import OperationsQuickStart from '../components/OperationsQuickStart.vue';
 import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
+import { adoptionErrorType, trackWorkflowEvent } from '../lib/adoptionTelemetry.js';
 import SubstituteTeacherPickerModal from '../components/substitute/SubstituteTeacherPickerModal.vue';
 
 import TeacherLeaveBatchModal from '../components/substitute/TeacherLeaveBatchModal.vue';
@@ -548,15 +567,20 @@ import { useCalendarDataLoad } from '../composables/calendar/useCalendarDataLoad
 import { useCalendarLeaveExtra } from '../composables/calendar/useCalendarLeaveExtra.js';
 import { useCalendarSubstitute } from '../composables/calendar/useCalendarSubstitute.js';
 import { useCalendarReschedule } from '../composables/calendar/useCalendarReschedule.js';
+import { courseIdOf, resolveCalendarFocusCourse } from '../lib/workflowNavigationContext.js';
 
 const props = defineProps({
   branchId: [String, Number],
   userRole: String,
   userId: [String, Number],
   initialTeacherId: [String, Number],
+  initialStudentId: [String, Number],
+  initialCourseId: [String, Number],
+  initialDate: String,
   resetWeekToken: [String, Number],
+  initialIntent: String,
 });
-const emit = defineEmits(['clear-initial-teacher']);
+const emit = defineEmits(['clear-initial-teacher', 'clear-initial-intent', 'clear-initial-context']);
 
 const isTeacher = computed(() => props.userRole === 'teacher');
 const currentTeacherId = computed(() => {
@@ -648,6 +672,40 @@ const weekOffset = ref(0); // 上週/下週偏移
 const jumpToDate = ref(formatLocalDate(new Date()));
 // courses / exceptions / loaders → useCalendarDataLoad（#740 Step 7，見 getCalendarDataFetchBoundsYmd 之後）
 const filterTeacherId = ref('');
+const calendarWorkflowIntent = ref('');
+const calendarWorkflowHint = ref('');
+const calendarFlowSteps = [
+  { id: 'create', icon: 'event_available', title: '新增排課', description: '建立學生、老師與固定時段。', action: '快速排課' },
+  { id: 'reschedule', icon: 'event_repeat', title: '調課', description: '點課卡後更換日期與時間。', action: '開始調課' },
+  { id: 'substitute', icon: 'swap_horiz', title: '換代課', description: '點課卡後指定代課老師。', action: '選擇老師' },
+];
+const calendarWorkflowStarts = new Map();
+function startCalendarWorkflow(step) {
+  const startedAt = Date.now();
+  calendarWorkflowStarts.set(step, startedAt);
+  void trackWorkflowEvent('calendar', 'started', props.branchId, { step }, startedAt);
+  return startedAt;
+}
+function finishCalendarWorkflow(step, phase = 'completed', meta = {}) {
+  const startedAt = calendarWorkflowStarts.get(step);
+  calendarWorkflowStarts.delete(step);
+  void trackWorkflowEvent('calendar', phase, props.branchId, { step, ...meta }, startedAt);
+}
+function calendarWorkflowError(step, errorOrStatus) {
+  finishCalendarWorkflow(step, 'error', { error_type: adoptionErrorType(errorOrStatus) });
+}
+function selectCalendarFlowStep(stepId) {
+  startCalendarWorkflow(stepId);
+  calendarWorkflowIntent.value = stepId;
+  if (stepId === 'create') {
+    calendarWorkflowHint.value = '';
+    openQuickAdd();
+  } else if (stepId === 'reschedule') {
+    calendarWorkflowHint.value = '請先在課表點選要調整的課，再選新的日期與時間。';
+  } else if (stepId === 'substitute') {
+    calendarWorkflowHint.value = '請先點選課程，再選換代課老師；如同時換時間，會一起送出。';
+  }
+}
 const showModal = ref(false);
 const editingCourseId = ref(null);
 /** 點擊的那一堂的實際日期（僅編輯單堂時有值），用於限定只能做請假/調課/加課 */
@@ -671,6 +729,41 @@ const selectedDateStr = computed(() => getDisplayDateFull(selectedDow.value));
 const roomFilter = ref('');
 const teacherSearch = ref('');
 const studentSearch = ref('');
+const focusedCalendarCourseId = ref(null);
+const calendarFocusMessage = ref('');
+const consumedCalendarFocusKey = ref('');
+
+function calendarFocusKey() {
+  return `${props.initialStudentId || ''}:${props.initialCourseId || ''}:${props.initialDate || ''}`;
+}
+
+function clearCalendarFocus() {
+  focusedCalendarCourseId.value = null;
+  calendarFocusMessage.value = '';
+  consumedCalendarFocusKey.value = calendarFocusKey();
+  emit('clear-initial-context');
+}
+
+function applyCalendarFocus() {
+  const key = calendarFocusKey();
+  if (!key || key === '::' || key === consumedCalendarFocusKey.value || !courses.value.length) return;
+  consumedCalendarFocusKey.value = key;
+  const course = resolveCalendarFocusCourse(courses.value, {
+    studentId: props.initialStudentId,
+    courseId: props.initialCourseId,
+  });
+  if (!course) {
+    focusedCalendarCourseId.value = null;
+    calendarFocusMessage.value = '通知對象目前不在這份課表，請重新整理或確認分校。';
+    emit('clear-initial-context');
+    return;
+  }
+  focusedCalendarCourseId.value = courseIdOf(course);
+  studentSearch.value = course.student_name || '';
+  if (props.initialDate) jumpToDateWeek(props.initialDate);
+  calendarFocusMessage.value = `已定位：${course.student_name || '指定學生'}${course.subject ? `／${course.subject}` : ''}`;
+  emit('clear-initial-context');
+}
 // 日檢視：是否隱藏「當日無課」的老師欄（純覽模式；開啟後無法點空格快速排課）
 const HIDE_EMPTY_TEACHERS_KEY = 'smart_calendar_hide_empty_teachers';
 const hideEmptyTeacherColumns = ref((() => {
@@ -917,8 +1010,8 @@ const {
 
 const {
   showRescheduleModal, rescheduleForm, rescheduleDisplay, computedRescheduleNewEnd,
-  rescheduleSubmitting, rescheduleError,
-  onRescheduleNewStartChange, openRescheduleModal, submitReschedule,
+  reschedulePreview, rescheduleSubmitting, rescheduleError,
+  onRescheduleNewStartChange, openRescheduleModal, submitReschedule: submitRescheduleCore,
 } = useCalendarReschedule({
   supabase,
   branchId: computed(() => props.branchId),
@@ -933,12 +1026,29 @@ const {
   getSubjectLabel,
 });
 
+async function submitReschedule() {
+  const workflowStep = 'reschedule';
+  if (!calendarWorkflowStarts.has(workflowStep)) startCalendarWorkflow(workflowStep);
+  try {
+    await submitRescheduleCore();
+    if (rescheduleError.value) {
+      calendarWorkflowError(workflowStep, 'validation');
+    } else if (!showRescheduleModal.value) {
+      finishCalendarWorkflow(workflowStep);
+      void trackWorkflowEvent('calendar', 'returned', props.branchId, { step: workflowStep, target: 'calendar' });
+    }
+  } catch (error) {
+    calendarWorkflowError(workflowStep, error);
+  }
+}
+
 const prevWeek = () => { weekOffset.value -= 1; };
 const nextWeek = () => { weekOffset.value += 1; };
 
-const jumpToDateWeek = () => {
-  const ymd = String(jumpToDate.value || '').slice(0, 10);
+const jumpToDateWeek = (dateValue = jumpToDate.value) => {
+  const ymd = String(dateValue || '').slice(0, 10);
   if (!ymd) return;
+  jumpToDate.value = ymd;
   const target = new Date(ymd + 'T12:00:00');
   if (Number.isNaN(target.getTime())) return;
 
@@ -1859,8 +1969,12 @@ const currentSessionChargeDisplay = computed(() => {
 });
 
 const handleUniversalSchedulerSuccess = async () => {
+  const workflowStep = 'create';
+  if (!calendarWorkflowStarts.has(workflowStep)) startCalendarWorkflow(workflowStep);
   showModal.value = false;
   await loadCourses();
+  finishCalendarWorkflow(workflowStep);
+  void trackWorkflowEvent('calendar', 'returned', props.branchId, { step: workflowStep, target: 'calendar' });
 };
 
 const showDuplicateInterceptModal = ref(false);
@@ -1886,6 +2000,7 @@ async function forceCreateCourse() {
     showDuplicateInterceptModal.value = false;
     return;
   }
+  if (!calendarWorkflowStarts.has('create')) startCalendarWorkflow('create');
   forceSubmitting.value = true;
   try {
     const result = await createUniversalClassSchedule({ ...payload, force: true });
@@ -1895,8 +2010,11 @@ async function forceCreateCourse() {
     const created = Number(result?.created_confirmed_sessions ?? 0) + Number(result?.created_future_sessions ?? 0);
     alert(`已強制建立 ${created} 堂課`);
     await loadCourses();
+    finishCalendarWorkflow('create', 'completed', { result: 'forced' });
+    void trackWorkflowEvent('calendar', 'returned', props.branchId, { step: 'create', target: 'calendar' });
   } catch (err) {
     alert(err?.message || '強制建立失敗，請稍後再試');
+    calendarWorkflowError('create', err);
   } finally {
     forceSubmitting.value = false;
   }
@@ -1904,6 +2022,7 @@ async function forceCreateCourse() {
 
 // --- Modal Actions ---
 const openQuickAdd = () => {
+  if (!calendarWorkflowStarts.has('create')) startCalendarWorkflow('create');
   editingCourseId.value = null;
   conflictWarning.value = '';
   const start = '16:00';
@@ -2330,6 +2449,16 @@ watch(() => props.initialTeacherId, (id) => {
     emit('clear-initial-teacher');
   }
 }, { immediate: true });
+watch(() => props.initialIntent, (intent) => {
+  if (!intent) return;
+  if (intent === 'quick-add') selectCalendarFlowStep('create');
+  else if (intent === 'reschedule') selectCalendarFlowStep('reschedule');
+  emit('clear-initial-intent');
+}, { immediate: true });
+watch(() => [props.initialStudentId, props.initialCourseId, props.initialDate, courses.value.length], () => {
+  if (!props.initialStudentId && !props.initialCourseId && !props.initialDate) consumedCalendarFocusKey.value = '';
+  applyCalendarFocus();
+}, { immediate: true });
 watch(visibleTeachers, (list) => {
   if (!Array.isArray(list) || list.length === 0) {
     weekViewTeacherIds.value = [];
@@ -2467,6 +2596,38 @@ onMounted(() => {
   color: var(--text-light, var(--ds-ink-mute));
   font-size: 13px;
   line-height: 1.4;
+}
+.calendar-workflow-hint {
+  margin: -12px 0 16px;
+  padding: 9px 12px;
+  border-left: 3px solid var(--ds-cta);
+  border-radius: 0 var(--ds-radius-sm, 6px) var(--ds-radius-sm, 6px) 0;
+  background: var(--ds-canvas-soft);
+  color: var(--ds-ink-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.calendar-focus-context {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -8px 0 16px;
+  padding: 9px 12px;
+  border: 1px solid color-mix(in srgb, var(--ds-cta) 35%, var(--ds-hairline));
+  border-radius: var(--ds-radius-sm, 6px);
+  background: var(--ds-primary-wash, var(--ds-canvas-soft));
+  color: var(--ds-ink-secondary);
+  font-size: 12px;
+}
+.calendar-focus-context .material-symbols-outlined { color: var(--ds-cta); font-size: 18px; }
+.calendar-focus-context button {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: var(--ds-cta);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
 }
 .smart-cal-header-actions {
   display: flex;
@@ -2849,6 +3010,11 @@ onMounted(() => {
 .course-block:hover {
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+.course-block--focused {
+  outline: 3px solid var(--ds-cta);
+  outline-offset: 2px;
+  z-index: 4;
 }
 /* var(--ds-warning) Step 5：.cb-student / .cb-detail / .cb-type 已搬移至 CourseBlockContent.vue */
 .rc-tag {

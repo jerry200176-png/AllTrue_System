@@ -31,6 +31,7 @@ class AttendanceController extends Controller
     {
         $query = DB::table('StudentSingIn as si')
             ->leftJoin('StudentClass as sc', 'sc.ID', '=', 'si.StudentClassID')
+            ->leftJoin('ClassSession as cs', 'cs.id', '=', 'si.ClassSessionID')
             ->leftJoin('Student as st', 'st.id', '=', 'si.StudentID')
             ->leftJoin('User as u', 'u.id', '=', 'si.TeacherID')
             ->leftJoin('User as rbu', 'rbu.id', '=', 'si.RecordedByUserID')
@@ -101,6 +102,20 @@ class AttendanceController extends Controller
         if ($request->filled('student_class_id')) {
             $query->where('si.StudentClassID', $request->input('student_class_id'));
         }
+
+        // ClassSession is the authoritative occurrence identity for course
+        // attendance. A cancelled session must not keep an active-looking
+        // StudentSignIn in the operational list (for example after a stale
+        // repair or a concurrent schedule change). Preserve self-study and
+        // legacy ad-hoc rows, which intentionally have no ClassSessionID.
+        $query->where(function ($q) {
+            $q->whereNull('si.ClassSessionID')
+                ->orWhere(function ($withSession) {
+                    $withSession->whereNotNull('cs.id')
+                        ->whereColumn('cs.StudentClassID', 'si.StudentClassID')
+                        ->whereRaw("LOWER(COALESCE(cs.Status, '')) <> ?", ['cancelled']);
+                });
+        });
 
         // Date filtering: single `date` (legacy/single-day) OR `start_date`/`end_date` range.
         // When nothing is provided, default to the last 7 days so admins can see recent

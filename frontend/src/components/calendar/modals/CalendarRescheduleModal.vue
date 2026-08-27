@@ -34,10 +34,17 @@
         <label>預計新結束時間</label>
         <p class="computed-time">{{ newEndTime }}</p>
       </div>
+      <div v-if="preview && preview.status === 'ready'" class="preview-box" :class="{ 'preview-box--blocked': preview.blocked }" role="status">
+        <strong>{{ preview.blocked ? '送出前檢查：請先處理衝堂' : '送出前檢查' }}</strong>
+        <p>{{ preview.message }}</p>
+        <ul v-if="preview.blocked && preview.conflicts.length">
+          <li v-for="item in preview.conflicts" :key="item">{{ item }}</li>
+        </ul>
+      </div>
       <div v-if="error" class="dialog-error" role="alert">{{ error }}</div>
       <div class="actions">
         <button class="ghost" type="button" :disabled="submitting" @click="$emit('close')">取消</button>
-        <button class="primary" type="button" :disabled="submitting || !form.new_date" @click="$emit('submit')">
+        <button class="primary" type="button" :disabled="submitting || !form.new_date || preview?.blocked" @click="$emit('submit')">
           {{ submitting ? '調課中…' : '確認調課' }}
         </button>
       </div>
@@ -56,6 +63,7 @@ defineProps({
   subjectLabel: { type: String, default: '—' },
   originalSlotLabel: { type: String, default: '—' },
   newEndTime: { type: String, default: '--:--' },
+  preview: { type: Object, default: null },
   timeOptions: { type: Array, default: () => [] },
   error: { type: String, default: '' },
   submitting: { type: Boolean, default: false },
@@ -85,4 +93,20 @@ const rescheduleDesc = RESCHEDULE_ACTION_DESC;
   font-size: 13px;
   line-height: 1.45;
 }
+.preview-box {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--ds-success, var(--success));
+  border-radius: 8px;
+  background: var(--ds-success-wash, var(--ds-canvas-soft));
+  color: var(--ds-ink);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.preview-box--blocked {
+  border-color: var(--ds-danger);
+  background: var(--ds-danger-wash);
+}
+.preview-box p { margin: 4px 0 0; }
+.preview-box ul { margin: 4px 0 0; padding-left: 18px; }
 </style>
