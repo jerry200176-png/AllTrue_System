@@ -1505,7 +1505,7 @@ class ClassSessionController extends Controller
             $authUser = $request->attributes->get('auth_user');
             ScheduleAuditLog::query()->create([
                 'session_id' => $session->getKey(),
-                'action_type' => 'restore',
+                'action_type' => 'update',
                 'description' => "復原課堂 #{$session->getKey()}：{$reason}",
                 'operator_id' => (int) ($authUser->id ?? 0) ?: null,
                 'branch_id' => (int) (Student::query()->where('id', $studentClass->getAttribute('StudentID'))->value('CampusID') ?: 0) ?: null,

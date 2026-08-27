@@ -113,7 +113,7 @@ class ClassSessionUpdateTest extends TestCase
         ]);
         $this->assertDatabaseHas('schedule_audit_logs', [
             'session_id' => $session->id,
-            'action_type' => 'restore',
+            'action_type' => 'update',
         ]);
     }
 
