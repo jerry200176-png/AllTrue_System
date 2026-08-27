@@ -25,7 +25,8 @@ export function useNightlyReconcile(tokenRef) {
   /** 所有 mismatches 或空陣列 */
   const mismatches = computed(() => {
     if (!report.value || !Array.isArray(report.value.mismatches)) return [];
-    return report.value.mismatches;
+    const threshold = Math.max(0, Number(report.value.threshold) || 0);
+    return report.value.mismatches.filter((row) => Math.abs(Number(row.diff) || 0) > threshold);
   });
 
   /** 套用當前篩選後 */
@@ -80,8 +81,12 @@ export function useNightlyReconcile(tokenRef) {
     return {
       checked_at: report.value.checked_at,
       total_checked: report.value.total_checked,
-      mismatch_count: report.value.mismatch_count,
-      cause_counts: report.value.cause_counts || {},
+      mismatch_count: mismatches.value.length,
+      cause_counts: mismatches.value.reduce((counts, row) => {
+        const category = row.category || 'unknown';
+        counts[category] = (counts[category] || 0) + 1;
+        return counts;
+      }, {}),
     };
   });
 
@@ -158,6 +163,7 @@ export function useNightlyReconcile(tokenRef) {
     loading,
     error,
     filters,
+    mismatches,
     filteredMismatches,
     campusOptions,
     subjectOptions,

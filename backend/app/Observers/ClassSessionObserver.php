@@ -5,6 +5,7 @@ namespace App\Observers;
 use App\Models\ClassSession;
 use App\Models\ScheduleAuditLog;
 use App\Services\ContractScheduleMatcher;
+use App\Services\CourseLeaveCascadeService;
 
 class ClassSessionObserver
 {
@@ -139,6 +140,16 @@ class ClassSessionObserver
 
     public function updated(ClassSession $session): void
     {
+        // A session may be cancelled by schedule, reschedule, duplicate-cleanup,
+        // or course-reflow code that does not pass through the status controller.
+        // Keep every model-save path from leaving a live evaluation behind.
+        if (strtolower((string) ($session->Status ?? '')) === 'cancelled') {
+            CourseLeaveCascadeService::voidLiveArtifactsForNonAttendance(
+                (int) $session->id,
+                CourseLeaveCascadeService::VOID_REASON_CANCELLED
+            );
+        }
+
         $key = (string) $session->getKey();
         $old = self::$oldSnapshots[$key] ?? null;
         unset(self::$oldSnapshots[$key]);

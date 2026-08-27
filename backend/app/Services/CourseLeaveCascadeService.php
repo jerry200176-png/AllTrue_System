@@ -26,6 +26,7 @@ class CourseLeaveCascadeService
      * the literal.
      */
     public const VOID_REASON_LEAVE = '一般請假';
+    public const VOID_REASON_CANCELLED = '課堂已取消';
 
     public const POLICY_KEEP_FUTURE_DATES_APPEND_TAIL = 'KEEP_FUTURE_DATES_APPEND_TAIL';
     public const POLICY_SHIFT_FUTURE_DATES_APPEND_TAIL = 'SHIFT_FUTURE_DATES_APPEND_TAIL';
@@ -45,19 +46,34 @@ class CourseLeaveCascadeService
      */
     public static function voidLiveArtifactsForLeave(int $classSessionId): void
     {
+        self::voidLiveArtifactsForNonAttendance($classSessionId, self::VOID_REASON_LEAVE);
+    }
+
+    /**
+     * Void live attendance/evaluation artifacts for a non-attended session.
+     *
+     * A cancelled session cannot be a source of a new evaluation or attendance
+     * evidence. Keeping this in the same service as leave cascading prevents
+     * cancellation paths from leaving a pending LearningRecord behind.
+     */
+    public static function voidLiveArtifactsForNonAttendance(
+        int $classSessionId,
+        string $reason,
+        ?int $actorUserId = null
+    ): void {
         LearningRecord::where('ClassSessionID', $classSessionId)
             ->active()
             ->update([
                 'VoidedAt'       => now(),
-                'VoidedByUserID' => null,
-                'VoidReason'     => self::VOID_REASON_LEAVE,
+                'VoidedByUserID' => $actorUserId ?: null,
+                'VoidReason'     => $reason,
             ]);
         StudentSignIn::where('ClassSessionID', $classSessionId)
             ->active()
             ->update([
                 'VoidedAt'       => now(),
-                'VoidedByUserID' => null,
-                'VoidReason'     => self::VOID_REASON_LEAVE,
+                'VoidedByUserID' => $actorUserId ?: null,
+                'VoidReason'     => $reason,
             ]);
     }
 
@@ -75,15 +91,52 @@ class CourseLeaveCascadeService
      */
     public static function sweepStaleLiveArtifactsForLeave(): int
     {
-        $sessionIds = DB::table('ClassSession as cs')
-            ->join('LearningRecord as lr', 'lr.ClassSessionID', '=', 'cs.id')
-            ->whereIn(DB::raw('LOWER(cs.Status)'), ['leave', 'leave_adjusted'])
-            ->whereNull('lr.VoidedAt')
-            ->distinct()
-            ->pluck('cs.id');
+        return self::sweepStaleLiveArtifactsForStatuses(['leave', 'leave_adjusted']);
+    }
 
-        foreach ($sessionIds as $sessionId) {
-            self::voidLiveArtifactsForLeave((int) $sessionId);
+    /**
+     * Self-heal live artifacts on any ClassSession that cannot have attendance
+     * evidence. The scan includes cancelled sessions because cancellation can
+     * happen after a teacher has already opened an evaluation form.
+     *
+     * @return int number of ClassSession rows that had at least one live artifact voided
+     */
+    public static function sweepStaleLiveArtifactsForNonAttendance(): int
+    {
+        return self::sweepStaleLiveArtifactsForStatuses([
+            'cancelled', 'leave', 'leave_adjusted', 'excused',
+        ]);
+    }
+
+    /**
+     * @param array<int,string> $statuses
+     */
+    private static function sweepStaleLiveArtifactsForStatuses(array $statuses): int
+    {
+        $sessionIds = DB::table('ClassSession as cs')
+            ->whereIn(DB::raw('LOWER(cs.Status)'), $statuses)
+            ->where(function ($query): void {
+                $query->whereExists(function ($sub): void {
+                    $sub->selectRaw('1')
+                        ->from('LearningRecord as lr')
+                        ->whereColumn('lr.ClassSessionID', 'cs.id')
+                        ->whereNull('lr.VoidedAt');
+                })->orWhereExists(function ($sub): void {
+                    $sub->selectRaw('1')
+                        ->from('StudentSingIn as si')
+                        ->whereColumn('si.ClassSessionID', 'cs.id')
+                        ->whereNull('si.VoidedAt');
+                });
+            })
+            ->distinct()
+            ->get(['cs.id', 'cs.Status']);
+
+        foreach ($sessionIds as $session) {
+            $status = strtolower((string) $session->Status);
+            $reason = $status === 'cancelled'
+                ? self::VOID_REASON_CANCELLED
+                : self::VOID_REASON_LEAVE;
+            self::voidLiveArtifactsForNonAttendance((int) $session->id, $reason);
         }
 
         return $sessionIds->count();

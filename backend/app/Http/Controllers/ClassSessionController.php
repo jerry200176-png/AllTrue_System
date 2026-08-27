@@ -16,6 +16,7 @@ use App\Models\User;
 use App\Models\UserCampus;
 use App\Services\ClassSessionMaterializationService;
 use App\Services\ContractScheduleMatcher;
+use App\Services\CourseLeaveCascadeService;
 use App\Services\EnrollmentService;
 use App\Services\LearningRecordResurrectionPolicy;
 use App\Services\ScheduleGuardService;
@@ -1236,6 +1237,17 @@ class ClassSessionController extends Controller
         $newStatus = strtolower(trim((string) $data['status']));
 
         if ($currentStatus === $newStatus) {
+            if (in_array($newStatus, ['cancelled', 'leave', 'leave_adjusted', 'excused'], true)) {
+                $sameStatusReason = trim((string) ($data['reason'] ?? ''))
+                    ?: ($newStatus === 'cancelled'
+                        ? CourseLeaveCascadeService::VOID_REASON_CANCELLED
+                        : '單堂標記請假');
+                $this->voidAttendanceArtifacts(
+                    $session,
+                    $authUserId,
+                    $sameStatusReason
+                );
+            }
             $this->applyTimeAndNoteUpdates($session, $data);
             $this->syncLearningRecordTime($session, $data);
             return $this->sessionUpdateResponse($session, '堂次已更新');
@@ -1348,18 +1360,7 @@ class ClassSessionController extends Controller
 
                 // --- Transition: scheduled → leave ---
                 if ($currentStatus === 'scheduled' && $newStatus === 'leave') {
-                    LearningRecord::where('ClassSessionID', $session->id)
-                        ->active()
-                        ->update([
-                            'VoidedAt' => now(), 'VoidedByUserID' => $authUserId ?: null,
-                            'VoidReason' => $reason ?: '單堂標記請假',
-                        ]);
-                    StudentSignIn::where('ClassSessionID', $session->id)
-                        ->active()
-                        ->update([
-                            'VoidedAt' => now(), 'VoidedByUserID' => $authUserId ?: null,
-                            'VoidReason' => $reason ?: '單堂標記請假',
-                        ]);
+                    $this->voidAttendanceArtifacts($session, $authUserId, $reason ?: '單堂標記請假');
 
                     $session->Status = 'leave';
                     $session->Note = $this->appendSessionNote($session->Note, 'leave');
@@ -1375,6 +1376,13 @@ class ClassSessionController extends Controller
                 }
 
                 // --- Generic safe transitions ---
+                if ($newStatus === 'cancelled') {
+                    $this->voidAttendanceArtifacts(
+                        $session,
+                        $authUserId,
+                        $reason ?: CourseLeaveCascadeService::VOID_REASON_CANCELLED
+                    );
+                }
                 $session->Status = $newStatus;
                 $this->applyTimeAndNoteUpdates($session, $data);
                 $session->save();
@@ -3476,12 +3484,26 @@ class ClassSessionController extends Controller
             ];
         })->values();
 
+        $sessionTotal = (int) $teachers->sum('sessions_attended');
+        $filledTotal = (int) $teachers->sum('learning_records_filled');
+        $followUpTeachers = $teachers->filter(static function (array $teacher): bool {
+            return $teacher['sessions_attended'] >= 5
+                && $teacher['learning_records_filled'] / max(1, $teacher['sessions_attended']) < 0.7;
+        })->count();
+
         return response()->json([
             'start'                  => $start->toDateString(),
             'end'                    => $end->toDateString(),
             'days'                   => $days,
             'branch_id'               => $branchId,
             'teachers'                => $teachers,
+            'overall'                 => [
+                'sessions_attended' => $sessionTotal,
+                'learning_records_filled' => $filledTotal,
+                'pending' => max(0, $sessionTotal - $filledTotal),
+                'fill_rate_pct' => $sessionTotal > 0 ? (int) round(100 * $filledTotal / $sessionTotal) : 0,
+                'follow_up_teachers' => $followUpTeachers,
+            ],
         ]);
     }
 

@@ -261,6 +261,7 @@ const {
   loading,
   error,
   filters,
+  mismatches,
   filteredMismatches,
   campusOptions,
   subjectOptions,
@@ -275,12 +276,6 @@ const {
   diffColorClass,
   categoryLabel,
 } = useNightlyReconcile(tokenRef);
-
-// 取得 mismatches 原始陣列（供篩選後空狀態判斷）
-const mismatches = computed(() => {
-  if (!report.value || !Array.isArray(report.value.mismatches)) return [];
-  return report.value.mismatches;
-});
 
 function clearFilters() {
   setFilter('campus', '');

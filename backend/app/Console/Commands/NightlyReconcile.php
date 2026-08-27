@@ -54,7 +54,11 @@ class NightlyReconcile extends Command
                 ? abs($actual - (int) ($diagnostic['observed_used'] ?? 0))
                 : 0;
             $diff       = max(abs($expected - $recorded), $sourceDiff);
-            if ($diff > $threshold || $sourceConflict) {
+            // A source conflict with no count difference belongs to the
+            // non-attendance artifact sweep, not this numeric count report.
+            // Otherwise the panel shows a misleading "差異 0" row after the
+            // actual counter values are already aligned.
+            if ($diff > $threshold) {
                 $category = $this->classifyMismatch($recorded, $diagnostic);
                 $causeCounts[$category] = ($causeCounts[$category] ?? 0) + 1;
                 $mismatches[] = [

@@ -1480,3 +1480,11 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **現象**：舊版轉移流程只搬 `ClassSession`、評量與點名，`session_deduction_ledger` 仍留在來源合約，造成新合約已上堂數與扣堂紀錄不一致，並使課程被標為待對帳。
 - **強制規則**：轉移以 `ClassSession` 所屬合約為唯一擁有者；同一交易內同步評量、點名、扣堂台帳，最後只能透過 `SessionDeductionService` 重算來源／目標計數。既有資料修復須使用明確 allowlist、dry-run、備份、交易與 post-check，不得直接改 `UsedSessions`。
 - **測試必補**：轉移含扣堂 ledger 的已上課堂次後，ledger owner 與來源／目標 `UsedSessions` 必須一致；目標同時段衝突或來源／目標學生科目不符時整批不變。
+
+### R128. 取消或請假堂次的評量必須在寫入與既有資料掃描兩層清理（2026-08-27）
+
+- **現象**：堂次已取消或請假，行事曆與課程不再列為有效上課，但仍殘留 pending `LearningRecord`；夜間堂數對帳因把來源衝突當成差異，可能顯示「差異 0」的項目。
+- **根因**：部分取消路徑只更新 `ClassSession.Status`，未同步作廢評量；對帳報告又把非數字的來源完整性問題混進數字差異清單，且已寫出的快照不會因資料修復自動重寫。
+- **強制規則**：取消／請假／停課的 model-save 與 nightly sweep 都必須作廢 live 評量／簽到；`attended`／`completed`／`late` 才是評量填寫率的有效分母。夜間堂數對帳只呈現 `abs(expected-recorded) > threshold` 的數字差異，其他資料完整性問題走獨立清理與稽核。
+- **防再犯**：主任總覽的填寫率要顯示整體分母、待填堂數與需跟進老師，並放在預設可見的位置；不能只放在折疊的「近期分析」或只顯示百分比。
+- **測試必補**：scheduled→cancelled、同狀態 cancelled 重送、nightly stale sweep、API 既有快照零差異過濾，以及評量填寫率排除取消／請假並保留遲到／完成案例。

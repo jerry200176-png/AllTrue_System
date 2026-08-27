@@ -64,6 +64,21 @@ describe('useNightlyReconcile', () => {
     expect(report.value).toEqual(rep);
   });
 
+  it('hides rows whose difference is already zero', async () => {
+    api.getReconcileLatest.mockResolvedValue(makeReport({
+      mismatches: [
+        { student_class_id: 1, diff: 0, category: 'source_conflict' },
+        { student_class_id: 2, diff: 2, category: 'attendance_ahead' },
+      ],
+      mismatch_count: 2,
+    }));
+    const { filteredMismatches, summary, loadReport } = setup();
+    await loadReport();
+    expect(filteredMismatches.value.map((row) => row.student_class_id)).toEqual([2]);
+    expect(summary.value.mismatch_count).toBe(1);
+    expect(summary.value.cause_counts).toEqual({ attendance_ahead: 1 });
+  });
+
   it('loadReport sets report=null on 404', async () => {
     api.getReconcileLatest.mockResolvedValue(null);
     const { report, loading, error, loadReport } = setup();

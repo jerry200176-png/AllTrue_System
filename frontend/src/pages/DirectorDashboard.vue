@@ -52,6 +52,14 @@
           </button>
         </nav>
 
+        <section class="surface-panel director-fill-rate-panel" aria-label="老師評量完成率">
+          <TeacherAssessmentFillRateCard
+            :branch-id="branchId"
+            :fetch-report="fetchTeacherAssessmentFillRates"
+            @view-learning="emit('navigate', { target: 'learning' })"
+          />
+        </section>
+
         <OperationsQuickStart
           eyebrow="主任工作流程"
           heading="從這裡開始今天的工作"
@@ -245,12 +253,6 @@
                 <summary>近期紀錄與分析</summary>
                 <div class="director-analysis__body">
                   <RecentSubstitutesCard v-if="analysisOpen" :branch-id="branchId" :fetch-recent="fetchRecentSubstitutes" />
-                  <TeacherAssessmentFillRateCard
-                    v-if="analysisOpen"
-                    :branch-id="branchId"
-                    :fetch-report="fetchTeacherAssessmentFillRates"
-                    @view-learning="emit('navigate', { target: 'learning' })"
-                  />
                 </div>
               </details>
             </aside>

@@ -27,8 +27,9 @@
     </div>
     <template v-else>
       <div class="tafr-summary" aria-label="評量完成率摘要">
-        <div><strong>{{ followUpCount }}</strong><span>位需要跟進</span></div>
-        <div><strong>{{ watchCount }}</strong><span>位提醒關注</span></div>
+        <div><strong>{{ overall.fillRate }}%</strong><span>本分校填寫率</span></div>
+        <div><strong>{{ overall.pending }}</strong><span>待填評量</span></div>
+        <div><strong>{{ overall.followUpTeachers }}</strong><span>需要主任跟進</span></div>
         <div><strong>{{ rows.length }}</strong><span>位有上課紀錄</span></div>
       </div>
       <div class="tafr-table-wrap">
@@ -72,8 +73,16 @@ const error = ref('');
 const rows = ref([]);
 
 const followUpCount = computed(() => rows.value.filter((row) => row.status === 'follow_up').length);
-const watchCount = computed(() => rows.value.filter((row) => row.status === 'watch').length);
 const periodLabel = computed(() => `近 ${selectedDays.value} 天`);
+const overall = computed(() => {
+  const sessions = rows.value.reduce((sum, row) => sum + row.sessions, 0);
+  const filled = rows.value.reduce((sum, row) => sum + row.filled, 0);
+  return {
+    fillRate: sessions ? Math.round((filled / sessions) * 100) : 0,
+    pending: Math.max(0, sessions - filled),
+    followUpTeachers: followUpCount.value,
+  };
+});
 
 function statusFor(row) {
   return getTeacherAssessmentFillRateStatus(row.status);
@@ -113,7 +122,7 @@ defineExpose({ reload: load });
 .tafr-card p { margin: 0; color: var(--ds-ink-secondary); font-size: 12px; line-height: 1.5; }
 .tafr-period { display: flex; flex-direction: column; gap: 5px; flex: 0 0 auto; color: var(--ds-ink-mute); font-size: 11px; font-weight: 700; }
 .tafr-period select { min-width: 100px; border: 1px solid var(--ds-hairline-input); border-radius: 8px; padding: 7px 8px; background: var(--ds-canvas); color: var(--ds-ink); font: inherit; }
-.tafr-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.tafr-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
 .tafr-summary div { padding: 10px 12px; border: 1px solid var(--ds-hairline); border-radius: 9px; background: var(--ds-canvas-soft); }
 .tafr-summary strong, .tafr-summary span { display: block; }
 .tafr-summary strong { color: var(--ds-ink); font-size: 20px; font-variant-numeric: tabular-nums; }
@@ -138,5 +147,5 @@ defineExpose({ reload: load });
 .tafr-state { display: flex; align-items: center; gap: 8px; min-height: 80px; color: var(--ds-ink-secondary); font-size: 13px; }
 .tafr-state--error { justify-content: space-between; color: var(--ds-danger); }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
-@media (max-width: 720px) { .tafr-card__header { flex-direction: column; } .tafr-period { flex-direction: row; align-items: center; } .tafr-summary { grid-template-columns: 1fr; } .tafr-progress { display: none; } }
+@media (max-width: 720px) { .tafr-card__header { flex-direction: column; } .tafr-period { flex-direction: row; align-items: center; } .tafr-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } .tafr-progress { display: none; } }
 </style>

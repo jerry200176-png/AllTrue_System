@@ -1,0 +1,49 @@
+id: TKT-20260827-202205-1MZT
+title: "\u4FEE\u6B63\u53D6\u6D88\u8A55\u91CF\u6B98\u7559\u8207\u96F6\u5DEE\u7570\u5C0D\
+  \u5E33\u986F\u793A"
+intent: "\u4FEE\u6B63\u53D6\u6D88\u8A55\u91CF\u6B98\u7559\u8207\u96F6\u5DEE\u7570\u5C0D\
+  \u5E33\u986F\u793A"
+kind: task
+parent_id: INT-20260827-202158-4H5K
+boundary: "\u53EA\u6539\u53D6\u6D88\uFF0F\u8ACB\u5047\u8AB2\u5802\u8A55\u91CF\u4F5C\
+  \u5EE2\u3001\u6307\u5B9A\u65E2\u6709\u8A55\u91CF\u6B98\u7559\u8CC7\u6599\u4FEE\u5FA9\
+  \u3001\u591C\u9593\u5802\u6578\u5C0D\u5E33\u96F6\u5DEE\u7570\u986F\u793A\uFF1B\u4E0D\
+  \u6539\u4ED8\u6B3E\u3001\u6709\u6548\u51FA\u5E2D\u6B77\u53F2\u3001\u6B0A\u9650\u3001\
+  \u884C\u4E8B\u66C6\u6B0A\u5A01\u8CC7\u6599\u3002"
+success_condition: "\u53D6\u6D88\u6216\u8ACB\u5047\u5802\u6B21\u6C92\u6709 live \u8A55\
+  \u91CF\uFF1B\u6709\u78BA\u8A8D\u51FA\u5E2D\u7684\u5802\u6B21\u4FDD\u7559\u8A55\u91CF\
+  \uFF1B\u5DEE\u75700\u4E0D\u986F\u793A\u70BA\u5F85\u8655\u7406\uFF1B\u6307\u5B9A\u8CC7\
+  \u6599\u5728\u90E8\u7F72\u5F8C\u9A57\u8B49\u3002"
+priority: 1
+labels:
+- attendance
+scope:
+  allow:
+  - backend/app/**
+  - backend/tests/**
+  - frontend/src/**
+  - docs/**
+  - .github/workflows/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 12
+  max_loc_changed: 400
+checks:
+- vendor/bin/phpunit
+- npm run test:unit
+- npm run build
+type: feature
+status: active
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-27T20:22:05+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default
