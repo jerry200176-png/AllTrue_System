@@ -44,6 +44,23 @@ describe('CourseManagement action hierarchy', () => {
     expect(activeActions).toContain('@click="duplicateCourseForTeacher(c); closeActionMenu()"');
   });
 
+  it('does not let an earlier manual-session check overwrite the latest selection', () => {
+    expect(source).toContain('let manualSessionCheckVersion = 0;');
+    expect(source).toContain('const requestVersion = ++manualSessionCheckVersion;');
+    expect(source).toContain('if (requestVersion !== manualSessionCheckVersion) return;');
+    expect(source).toContain("import { nextManualSessionDate } from '../lib/manualSessionDate.js';");
+    expect(source).toContain('session_date: nextManualSessionDate(course)');
+    expect(source).toContain('let quickAddCheckVersion = 0;');
+    expect(source).toContain('const requestVersion = ++quickAddCheckVersion;');
+    expect(source).toContain('Disable submit during the debounce window');
+    expect(source).toContain('let quickAddCheckController = null;');
+    expect(source).toContain('quickAddCheckController?.abort();');
+    expect(source).toContain('signal: controller.signal');
+    expect(source).toContain("if (error?.name === 'AbortError') return;");
+    expect(source).toContain('function closeManualSessionModal()');
+    expect(source).toContain('let manualSessionCheckController = null;');
+  });
+
   it('offers explicit settlement for paid courses with remaining balance in both director entry points', () => {
     expect(source).toContain("&& c.payment_status === 'paid';");
     expect(studentsSource).toContain("&& isCourseSettled(course)");
