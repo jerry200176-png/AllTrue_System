@@ -367,6 +367,12 @@
                             <p class="action-section-label">帳務與合約</p>
                             <button class="action-dropdown-item" role="menuitem" @click="openInvoiceModal(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">receipt_long</span> 帳單與對帳</button>
                             <button
+                              v-if="isSessionMode(c) && !c.PackageID"
+                              class="action-dropdown-item"
+                              role="menuitem"
+                              @click="openPackageConversion(c); closeActionMenu()"
+                            ><span class="material-symbols-outlined action-icon" aria-hidden="true">account_tree</span> 轉多科共用</button>
+                            <button
                               :class="['action-dropdown-item', { 'action-dropdown-renew': purchaseActionIsRenew(c) }]"
                               role="menuitem"
                               :title="purchaseActionTitle(c)"
@@ -829,6 +835,38 @@
       @submit="submitManualSession"
     />
 
+    <div v-if="showPackageConversionModal" class="modal-overlay" @click.self="!packageConversionSubmitting && (showPackageConversionModal = false)">
+      <div class="modal course-modal package-conversion-modal" role="dialog" aria-modal="true" aria-labelledby="package-conversion-title">
+        <h3 id="package-conversion-title" class="modal-title">轉成多科共用</h3>
+        <p class="modal-desc">原合約、已上課與帳務紀錄會保留；只有未使用堂數會放入共用池，不會重新收費。</p>
+        <div class="package-conversion-summary">
+          <strong>{{ packageConversionCourse?.student_name || '學生' }}／{{ packageConversionCourse?.subject_name || packageConversionCourse?.subject || '目前科目' }}</strong>
+          <span>總堂數 {{ getPurchasedSessions(packageConversionCourse) }} 堂</span>
+          <span>已上 {{ getUsedSessions(packageConversionCourse) }} 堂</span>
+          <span>可共用 {{ Math.max(0, getPurchasedSessions(packageConversionCourse) - getUsedSessions(packageConversionCourse)) }} 堂</span>
+        </div>
+        <label class="form-group">方案名稱
+          <input v-model="packageConversionForm.name" type="text" maxlength="128" placeholder="例如：學生多科共用方案" />
+        </label>
+        <label class="form-group">加入第二科目
+          <select v-model="packageConversionForm.subject_name">
+            <option value="">請選擇科目</option>
+            <option v-for="subject in packageConversionSubjects" :key="String(subject.id ?? subject.value)" :value="subject.label || subject.value">{{ subject.label || subject.value }}</option>
+          </select>
+        </label>
+        <label class="form-group">第二科目老師
+          <select v-model="packageConversionForm.teacher_id">
+            <option value="">請選擇老師</option>
+            <option v-for="teacher in teachers" :key="teacher.id" :value="String(teacher.id)">{{ teacher.username || teacher.name || teacher.Name || `老師 #${teacher.id}` }}</option>
+          </select>
+        </label>
+        <div class="actions">
+          <button class="ghost" :disabled="packageConversionSubmitting" @click="showPackageConversionModal = false">取消</button>
+          <button class="primary" :disabled="packageConversionSubmitting" @click="submitPackageConversion">{{ packageConversionSubmitting ? '建立中…' : '確認建立共用方案' }}</button>
+        </div>
+      </div>
+    </div>
+
     <LeaveModal
       :show="showLeaveModal"
       :form="leaveForm"
@@ -1184,7 +1222,7 @@ import {
   humanizeDocumentRef,
 } from '../lib/studentClassDisplay.js';
 import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
-import { updatePackage } from '../lib/coursePackagesApi';
+import { convertSingleCourseToPackage, updatePackage } from '../lib/coursePackagesApi';
 import { buildEditTeacherOptions, shouldClearTeacherSelection } from '../lib/courseTeacherOptions';
 import { computePackageNextTotal, packageMemberSessionSummary } from '../lib/packageSessions';
 import {
@@ -2222,6 +2260,14 @@ const manualSessionCheck = ref(null);
 const manualSessionChecking = ref(false);
 const manualSessionSubmitting = ref(false);
 const manualSessionForm = ref({ session_date: '', start_time: '16:00' });
+const showPackageConversionModal = ref(false);
+const packageConversionCourse = ref(null);
+const packageConversionSubmitting = ref(false);
+const packageConversionForm = ref({ name: '', subject_name: '', teacher_id: '' });
+const packageConversionSubjects = computed(() => {
+  const source = String(packageConversionCourse.value?.subject_name || packageConversionCourse.value?.subject || '').trim();
+  return (subjectOptions.value || []).filter((subject) => String(subject?.label || subject?.value || '').trim() !== source);
+});
 const isManualOccurrenceCourse = (course) => String(course?.scheduling_policy || 'auto_recurrence') === 'manual_occurrence';
 const pauseConfirmTarget = ref(null);
 const pauseConfirmSubmitting = ref(false);
@@ -2743,6 +2789,42 @@ function openManualSessionModal(course) {
   };
   showManualSessionModal.value = true;
   runManualSessionCheck();
+}
+
+function openPackageConversion(course) {
+  packageConversionCourse.value = course;
+  packageConversionForm.value = {
+    name: `${course?.student_name || '學生'}多科共用方案`,
+    subject_name: '',
+    teacher_id: '',
+  };
+  packageConversionSubmitting.value = false;
+  showPackageConversionModal.value = true;
+}
+
+async function submitPackageConversion() {
+  const course = packageConversionCourse.value;
+  const form = packageConversionForm.value;
+  const courseId = Number(course?.id ?? course?.ID ?? 0);
+  if (!courseId || !form.name.trim() || !form.subject_name || !form.teacher_id) {
+    alert('請填寫方案名稱、第二科目與老師');
+    return;
+  }
+  if (!confirm('確認建立共用方案？原合約與已收款紀錄會保留，不會再次收費。')) return;
+  packageConversionSubmitting.value = true;
+  try {
+    const result = await convertSingleCourseToPackage(courseId, {
+      name: form.name.trim(),
+      additional_subject: { subject_name: form.subject_name, teacher_id: Number(form.teacher_id) },
+    });
+    showPackageConversionModal.value = false;
+    await loadCourses();
+    alert(`${result?.message || '已轉成多科共用方案'}\n${result?.next_step || ''}`);
+  } catch (error) {
+    alert(error?.message || '建立共用方案失敗，資料未變更');
+  } finally {
+    packageConversionSubmitting.value = false;
+  }
 }
 
 async function runManualSessionCheck() {
@@ -6272,6 +6354,9 @@ button.danger:disabled {
   max-height: 90vh;
   overflow-y: auto;
 }
+.package-conversion-modal { max-width: 520px; }
+.package-conversion-summary { display: grid; gap: 4px; margin: 0 0 14px; padding: 12px; border-radius: 10px; background: var(--ds-info-wash, #eef6ff); color: var(--ds-ink); font-size: 13px; }
+.package-conversion-summary span { color: var(--ds-ink-mute); }
 
 .editability-action-panel {
   display: grid;

@@ -13,6 +13,8 @@ use App\Services\ClassSessionMaterializationService;
 use App\Services\EnrollmentService;
 use App\Services\FrontendSubjectIdResolver;
 use App\Services\PackageDeductionService;
+use App\Services\SessionDeductionService;
+use App\Models\UserCampus;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -630,6 +632,165 @@ class CoursePackageController extends Controller
 
         $message = $dryRun ? 'Dry-run 完成（未寫入）' : 'Ledger 已重建';
         return response()->json(array_merge(['message' => $message], $result));
+    }
+
+    /**
+     * POST /api/v1/student-classes/{studentClass}/convert-to-package
+     *
+     * The source course remains the historical contract. Its authoritative
+     * used count is seeded into the package ledger, so only the unused balance
+     * becomes shared entitlement. No invoice, payment, attendance or session
+     * row is moved or deleted.
+     */
+    public function convertToPackage(Request $request, StudentClass $studentClass): JsonResponse
+    {
+        $role = $request->attributes->get('auth_role');
+        if (!in_array($role, ['director', 'admin', 'super_admin'], true)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $data = $request->validate([
+            'name' => 'required|string|max:128',
+            'additional_subject' => 'required|array',
+            'additional_subject.subject_id' => 'nullable|integer',
+            'additional_subject.subject_name' => 'nullable|string|max:64',
+            'additional_subject.teacher_id' => 'required|integer|exists:User,id',
+        ]);
+
+        $campusId = (int) Student::where('id', (int) $studentClass->StudentID)->value('CampusID');
+        $campusIds = $role === 'super_admin' ? [] : (array) $request->attributes->get('auth_campus_ids', []);
+        if ($campusId <= 0 || (!empty($campusIds) && !in_array($campusId, array_map('intval', $campusIds), true))) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $additional = $data['additional_subject'];
+        $subjectId = (int) ($additional['subject_id'] ?? 0);
+        if ($subjectId <= 0 && !empty($additional['subject_name'])) {
+            $subjectId = (int) (FrontendSubjectIdResolver::resolve($additional['subject_name']) ?? 0);
+        }
+        if ($subjectId <= 0) {
+            return response()->json(['message' => '請選擇要加入的第二科目'], 422);
+        }
+        if ($subjectId === (int) $studentClass->SubjectID) {
+            return response()->json(['message' => '第二科目不可與原課程相同'], 422);
+        }
+        if (!UserCampus::where('UserID', (int) $additional['teacher_id'])
+            ->where('CampusID', $campusId)->where('Approved', 1)->exists()) {
+            return response()->json(['message' => '第二科目老師尚未指派至學生所在分校'], 422);
+        }
+
+        try {
+            $result = DB::transaction(function () use ($request, $studentClass, $data, $additional, $subjectId, $campusId) {
+                $source = StudentClass::where('ID', (int) $studentClass->ID)->lockForUpdate()->firstOrFail();
+                if ((int) ($source->PackageID ?? 0) > 0) {
+                    $package = CoursePackage::find((int) $source->PackageID);
+                    if ($package) return ['package' => $package, 'member' => $source, 'idempotent' => true];
+                    throw new \RuntimeException('來源課程的共用方案不存在，請聯絡管理員檢查。');
+                }
+                if ((string) ($source->ScheduleMode ?? 'count') !== 'count') {
+                    throw new \InvalidArgumentException('只有堂數制課程可以轉成堂數共用方案');
+                }
+                if ((int) ($source->Stop ?? 0) !== 0) {
+                    throw new \InvalidArgumentException('課程已停用，不能轉換');
+                }
+
+                $total = max(0, (int) ($source->SessionCount ?? 0));
+                $diagnostic = SessionDeductionService::batchExpectedUsedSessionDiagnostics([(int) $source->ID])[(int) $source->ID] ?? [];
+                $used = max(0, (int) ($diagnostic['expected_used'] ?? 0));
+                $remaining = max(0, $total - $used);
+                if ($total <= 0 || $remaining <= 0) {
+                    throw new \InvalidArgumentException('此合約沒有可轉入共用池的剩餘堂數');
+                }
+
+                $package = CoursePackage::create([
+                    'student_id' => (int) $source->StudentID,
+                    'campus_id' => $campusId,
+                    'name' => trim($data['name']),
+                    'billing_mode' => 'count',
+                    'total_sessions' => $total,
+                    'remaining_sessions' => $remaining,
+                    'used_sessions' => $used,
+                    'rate' => (float) ($source->Rate ?? 0),
+                    'rate_unit' => (string) ($source->rate_unit ?: 'session'),
+                    'class_type' => (string) ($source->ClassType ?: 'one_on_one'),
+                    'paid' => (int) ($source->Paid ?? 0) === 1,
+                    'paid_at' => $source->PayDate ?: null,
+                    'stop' => false,
+                    'enabled' => true,
+                ]);
+
+                $operator = $request->attributes->get('auth_user');
+                $operatorId = is_object($operator) ? (int) ($operator->id ?? 0) : null;
+                $requestId = (string) ($request->header('Idempotency-Key') ?: ('course-conversion-' . $source->ID . '-' . $package->id));
+                $note = '單科轉多科共用；保留原合約及帳務；方案 #' . $package->id;
+                $sessions = ClassSession::where('StudentClassID', (int) $source->ID)
+                    ->whereIn('Status', ['attended', 'completed', 'late'])
+                    ->orderBy('SessionDate')->orderBy('StartTime')->orderBy('id')->get(['id']);
+                foreach ($sessions as $session) {
+                    PackageDeductionService::deductForSession(
+                        (int) $package->id, (int) $source->ID, (int) $session->id,
+                        'conversion_seed', $operatorId ?: null, $note, $requestId
+                    );
+                }
+                for ($i = 0; $i < max(0, $used - $sessions->count()); $i++) {
+                    PackageDeductionService::deductForSession(
+                        (int) $package->id, (int) $source->ID, null,
+                        'conversion_seed_orphan', $operatorId ?: null,
+                        $note . '；歷史無綁定堂次', $requestId . '-' . $i
+                    );
+                }
+
+                $source->PackageID = (int) $package->id;
+                $source->PackageTotalSessions = $total;
+                $source->PackageName = $package->name;
+                $source->save();
+                $package->recomputeCounters();
+
+                $member = StudentClass::create([
+                    'StudentID' => (int) $source->StudentID,
+                    'GradeID' => (int) ($source->GradeID ?: 1),
+                    'SubjectID' => $subjectId,
+                    'TeacherID' => (int) $additional['teacher_id'],
+                    'by1' => (int) ($source->by1 ?: 1),
+                    'Period' => (int) ($source->Period ?: 4),
+                    'StartDate' => $source->StartDate ?: Carbon::today()->toDateString(),
+                    'EndDate' => $source->EndDate,
+                    'SessionDuration' => (int) ($source->SessionDuration ?: 120),
+                    'ScheduleMode' => 'count', 'scheduling_policy' => 'auto_recurrence',
+                    'SessionCount' => $total, 'RemainingSessions' => $remaining, 'UsedSessions' => 0,
+                    'ClassType' => (string) ($source->ClassType ?: 'one_on_one'),
+                    'Rate' => (float) ($source->Rate ?? 0), 'rate_unit' => (string) ($source->rate_unit ?: 'session'),
+                    'Charge' => 0, 'Pay' => 0, 'Paid' => 1, 'PayDate' => $source->PayDate ?: null, 'Stop' => 0,
+                    'PackageID' => (int) $package->id, 'PackageTotalSessions' => $total, 'PackageName' => $package->name,
+                ]);
+
+                Log::info('CoursePackage convert-to-package', [
+                    'source_student_class_id' => (int) $source->ID,
+                    'package_id' => (int) $package->id,
+                    'additional_student_class_id' => (int) $member->ID,
+                    'used_sessions_seeded' => $used,
+                    'by_user' => $operatorId,
+                ]);
+                return ['package' => $package->fresh(), 'member' => $member, 'idempotent' => false];
+            });
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 409);
+        }
+
+        return response()->json([
+            'message' => $result['idempotent'] ? '此課程已完成轉換，未重複建立' : '已轉成多科共用方案',
+            'idempotent' => $result['idempotent'],
+            'package' => [
+                'id' => (int) $result['package']->id,
+                'name' => $result['package']->name,
+                'total_sessions' => (int) $result['package']->total_sessions,
+                'used_sessions' => (int) $result['package']->used_sessions,
+                'remaining_sessions' => (int) $result['package']->remaining_sessions,
+            ],
+            'next_step' => '原科目與第二科目共用剩餘堂數；請到新科目課程卡按「排課」加入時間。',
+        ], $result['idempotent'] ? 200 : 201);
     }
 
     /**
