@@ -610,8 +610,8 @@ class CoursePackageTest extends TestCase
             'TotalHours'       => 0,
             'ScheduleMode'     => 'count',
             'SessionCount'     => 10,
-            'RemainingSessions' => 8,
-            'UsedSessions'     => 2,
+            'RemainingSessions' => 10,
+            'UsedSessions'     => 0,
             'SessionDuration'  => 120,
             'ClassType'        => 'one_on_one',
             'Rate'             => 500,
@@ -649,6 +649,27 @@ class CoursePackageTest extends TestCase
         $this->assertEquals($pkg->id, (int) $sc->PackageID);
     }
 
+    public function test_bind_courses_rejects_a_course_with_usage_history(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->makeStudent(1);
+        $teacher = $this->makeTeacher();
+        $pkg = $this->makePackage($student->id, 1, 20);
+        $course = $this->makePlainCourse($student->id, $teacher->id);
+
+        $response = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/course-packages/{$pkg->id}/bind-courses", [
+            'student_class_ids' => [$course->ID],
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertContains('usage_history_exists', $response->json('blocked.0.reasons'));
+        $course->refresh();
+        $this->assertNull($course->PackageID, 'A used course must never be bound by the migration endpoint');
+    }
+
     public function test_bind_courses_rejects_cross_student_cross_campus_monthly_and_stopped_courses(): void
     {
         $token = $this->createDirectorToken([1]);
@@ -658,7 +679,11 @@ class CoursePackageTest extends TestCase
         $teacher = $this->makeTeacher();
         $pkg = $this->makePackage($student->id, 1, 20);
 
-        $valid = $this->makePlainCourse($student->id, $teacher->id);
+        $valid = $this->makePlainCourse($student->id, $teacher->id, [
+            'SessionCount' => 10,
+            'RemainingSessions' => 10,
+            'UsedSessions' => 0,
+        ]);
         $crossStudent = $this->makePlainCourse($otherStudent->id, $teacher->id);
         $crossCampus = $this->makePlainCourse($otherCampusStudent->id, $teacher->id);
         $monthly = $this->makePlainCourse($student->id, $teacher->id, ['ScheduleMode' => 'date']);

@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\ClassSession;
 use App\Models\CoursePackage;
-use App\Models\LearningRecord;
 use App\Models\PackageSessionLedger;
 use App\Models\Student;
 use App\Models\StudentClass;
@@ -873,6 +872,19 @@ class CoursePackageController extends Controller
                 $reasons[] = 'different_package';
             }
 
+            // The legacy migration endpoint must share the conversion safety
+            // gate.  It may only bind a genuinely unused, unbilled course;
+            // existing history is never made safe by calling dry_run=false.
+            // Do not inspect another student's/campus's history after the
+            // identity gate has already failed.
+            if (empty($reasons)) {
+                $conversionInspection = $this->inspectPackageConversion($sc, false);
+                foreach ($conversionInspection['blocking_reasons'] as $reason) {
+                    $reasons[] = $reason['code'];
+                }
+            }
+            $reasons = array_values(array_unique($reasons));
+
             $report[] = [
                 'student_class_id'    => $sc->ID,
                 'subject'             => $sc->displaySubjectName(),
@@ -932,6 +944,148 @@ class CoursePackageController extends Controller
         return response()->json([
             'message' => '已綁定',
             'report'  => $report,
+        ]);
+    }
+
+    /** Build the shared safety evidence used by both preview and legacy binding. */
+    private function inspectPackageConversion(StudentClass $studentClass, bool $includePackageMembership = true): array
+    {
+        $classId = (int) $studentClass->getAttribute('ID');
+        $attendanceCount = DB::table('StudentSingIn')->where('StudentClassID', $classId)->count();
+        $learningRecordCount = DB::table('LearningRecord')->where('StudentClassID', $classId)->count();
+        $deductionLedgerCount = DB::table('session_deduction_ledger')->where('student_class_id', $classId)->count();
+        $classSessionCount = DB::table('ClassSession')->where('StudentClassID', $classId)
+            ->where(function ($query) {
+                $query->whereNull('Status')
+                    ->orWhereRaw("LOWER(Status) NOT IN ('cancelled', 'voided')");
+            })
+            ->count();
+        $classSessionTotal = DB::table('ClassSession')->where('StudentClassID', $classId)->count();
+        $directInvoiceIds = DB::table('Invoice')->where('StudentClassID', $classId)->pluck('id');
+        $itemInvoiceIds = DB::table('InvoiceItem')->where('StudentClassID', $classId)->pluck('InvoiceID');
+        $invoiceIds = $directInvoiceIds->merge($itemInvoiceIds)->unique()->values();
+        $invoiceCount = $invoiceIds->count();
+        $invoicePaymentCount = $invoiceIds->isEmpty()
+            ? 0
+            : DB::table('Payment')->whereIn('InvoiceID', $invoiceIds)->count();
+        $invoiceItemCount = DB::table('InvoiceItem')->where('StudentClassID', $classId)->count();
+        $paymentReportCount = DB::table('payment_reports')->where('StudentClassID', $classId)->count();
+        $packageLedgerCount = DB::table('package_session_ledger')->where('student_class_id', $classId)->count();
+        $studentCampusId = (int) (DB::table('Student')->where('id', (int) $studentClass->getAttribute('StudentID'))->value('CampusID') ?? 0);
+
+        $reasons = [];
+        $addReason = static function (array &$target, string $code, string $message): void {
+            $target[] = ['code' => $code, 'message' => $message];
+        };
+
+        if ($includePackageMembership && (int) ($studentClass->getAttribute('PackageID') ?? 0) > 0) {
+            $addReason($reasons, 'already_in_package', '這門課已屬於其他共用方案。');
+        }
+        if ((string) ($studentClass->getAttribute('ScheduleMode') ?? 'count') !== 'count') {
+            $addReason($reasons, 'not_count_mode', '只有單科堂數制可以進入此預檢。');
+        }
+        if ((int) ($studentClass->getAttribute('Stop') ?? 0) !== 0) {
+            $addReason($reasons, 'course_inactive', '課程目前已停用，不能轉換。');
+        }
+        if ($studentClass->isUsageSettlementLocked()) {
+            $addReason($reasons, 'usage_settled', '課程已結算鎖定，必須保留原合約。');
+        }
+        if ((int) ($studentClass->getAttribute('UsedSessions') ?? 0) > 0
+            || $attendanceCount > 0
+            || $deductionLedgerCount > 0
+            || $packageLedgerCount > 0) {
+            $addReason($reasons, 'usage_history_exists', '已有上課、點名或扣堂歷史，不能直接改寫合約歸屬。');
+        }
+        if ($classSessionCount > 0) {
+            $addReason($reasons, 'class_sessions_exist', '已有排課堂次，請保留原課程並建立新的多科方案。');
+        }
+        if ($learningRecordCount > 0) {
+            $addReason($reasons, 'learning_records_exist', '已有學習紀錄，必須保留原合約。');
+        }
+        if ($invoiceCount > 0) {
+            $addReason($reasons, 'invoice_exists', '已有帳單資料，不能直接轉換。');
+        }
+        if ($paymentReportCount > 0) {
+            $addReason($reasons, 'payment_report_exists', '已有繳費回報，必須先完成帳務處理。');
+        }
+        if ((int) ($studentClass->getAttribute('Paid') ?? 0) !== 0
+            || !empty($studentClass->getAttribute('PayDate'))
+            || (float) ($studentClass->getAttribute('Pay') ?? 0) > 0) {
+            $addReason($reasons, 'payment_state_exists', '課程已有付款狀態，不能直接轉換。');
+        }
+        if ((int) ($studentClass->getAttribute('SessionCount') ?? 0) <= 0
+            || (int) ($studentClass->getAttribute('RemainingSessions') ?? 0) <= 0) {
+            $addReason($reasons, 'no_remaining_entitlement', '沒有可轉入方案池的剩餘堂數。');
+        }
+
+        return [
+            'student_campus_id' => $studentCampusId,
+            'blocking_reasons' => $reasons,
+            'evidence' => [
+                'attendance_records' => $attendanceCount,
+                'class_session_history' => $classSessionCount,
+                'class_sessions_total' => $classSessionTotal,
+                'learning_records' => $learningRecordCount,
+                'deduction_ledger_entries' => $deductionLedgerCount,
+                'package_ledger_entries' => $packageLedgerCount,
+                'invoices' => $invoiceCount,
+                'invoice_items' => $invoiceItemCount,
+                'invoice_payments' => $invoicePaymentCount,
+                'payment_reports' => $paymentReportCount,
+                'legacy_payment_state' => (int) ($studentClass->getAttribute('Paid') ?? 0) !== 0
+                    || !empty($studentClass->getAttribute('PayDate'))
+                    || (float) ($studentClass->getAttribute('Pay') ?? 0) > 0,
+            ],
+        ];
+    }
+
+    /**
+     * GET /api/v1/student-classes/{studentClass}/package-conversion-preview
+     *
+     * Read-only safety gate for the proposed single-course → shared-package
+     * workflow.  This endpoint deliberately does not bind, copy, or mutate any
+     * contract/ledger row.  A clean result means the future conversion command
+     * may be considered; it is not itself an authorization to perform it.
+     */
+    public function conversionPreview(Request $request, StudentClass $studentClass): JsonResponse
+    {
+        $role = $request->attributes->get('auth_role');
+        if (!in_array($role, ['director', 'admin', 'super_admin'], true)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $studentCampusId = (int) (DB::table('Student')->where('id', (int) $studentClass->getAttribute('StudentID'))->value('CampusID') ?? 0);
+        $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
+        if (!empty($campusIds)
+            && !in_array($studentCampusId, array_map('intval', (array) $campusIds), true)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $inspection = $this->inspectPackageConversion($studentClass);
+        $studentCampusId = $inspection['student_campus_id'];
+        $classId = (int) $studentClass->getAttribute('ID');
+        $reasons = $inspection['blocking_reasons'];
+        $evidence = $inspection['evidence'];
+        $canConvert = empty($reasons);
+        return response()->json([
+            'read_only' => true,
+            'mode' => 'single_course_to_shared_package_preview',
+            'can_convert' => $canConvert,
+            'recommendation' => $canConvert ? 'conversion_ready_for_review' : 'create_new_package',
+            'student_class' => [
+                'id' => $classId,
+                'student_id' => (int) $studentClass->getAttribute('StudentID'),
+                'campus_id' => $studentCampusId,
+                'schedule_mode' => (string) ($studentClass->getAttribute('ScheduleMode') ?? 'count'),
+                'session_count' => (int) ($studentClass->getAttribute('SessionCount') ?? 0),
+                'remaining_sessions' => (int) ($studentClass->getAttribute('RemainingSessions') ?? 0),
+                'used_sessions' => (int) ($studentClass->getAttribute('UsedSessions') ?? 0),
+            ],
+            'evidence' => $evidence,
+            'blocking_reasons' => $reasons,
+            'next_step' => $canConvert
+                ? '由受控轉換流程建立多科方案，並保留原始課程識別與稽核紀錄。'
+                : '請保留原單科合約，另建立多科合併方案；不要使用 bind-courses 直接改綁。',
         ]);
     }
 
