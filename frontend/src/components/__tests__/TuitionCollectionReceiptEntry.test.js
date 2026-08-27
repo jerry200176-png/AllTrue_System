@@ -105,4 +105,11 @@ describe('TuitionCollectionPage receipt entry paths', () => {
     expect(source).toContain(':disabled="settleLoading"');
     expect(source).not.toContain('請先排課後再結案');
   });
+
+  it('offers no-renew settlement for the paid monthly reminder state', () => {
+    expect(source).toContain("r.payment_status === 'renew_needed' || r.payment_status === 'monthly_due_soon'");
+    expect(source).toContain("r.payment_status === 'monthly_due_soon' ? '月結本期' : '需續課'");
+    expect(source).toContain('title="結案且不續報"');
+    expect(source).toContain('結案（不續報）');
+  });
 });

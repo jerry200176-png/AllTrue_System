@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.08.27",
     "date": "2026-08-27",
     "title": "2026.08.27 草稿（未發布）",
-    "summary": "已繳費課程結案入口與餘額確認；課程查找同頁編輯與新增堂次",
+    "summary": "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。；課程查找同頁編輯與新增堂次",
     "audience": [
       "teacher",
       "director"
@@ -18,7 +18,7 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
-          "已繳費課程結案入口與餘額確認"
+          "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。"
         ]
       },
       {
@@ -29,7 +29,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
-      "已繳費課程結案入口與餘額確認",
+      "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。",
       "課程查找同頁編輯與新增堂次"
     ]
   },
