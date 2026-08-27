@@ -1443,8 +1443,8 @@ class ClassSessionController extends Controller
 
         return response()->json([
             'available' => true,
-            'audit_id' => (int) $audit->id,
-            'previous_status' => strtolower((string) data_get($audit->old_data, 'Status')),
+            'audit_id' => (int) $audit->getKey(),
+            'previous_status' => strtolower((string) data_get($audit->getAttribute('old_data'), 'Status')),
         ]);
     }
 
@@ -1464,20 +1464,23 @@ class ClassSessionController extends Controller
             return $found;
         }
         [, $studentClass] = $found;
+        if ($studentClass->isUsageSettlementLocked()) {
+            return response()->json(['message' => '此課程已結算鎖定，請先由帳務流程解除鎖定後再復原。'], 422);
+        }
 
         return DB::transaction(function () use ($id, $studentClass, $data, $reason, $request) {
-            $session = ClassSession::query()->whereKey($id)->lockForUpdate()->first();
+            $session = ClassSession::query()->where('id', $id)->lockForUpdate()->first();
             $audit = $session ? $this->latestCancellationAudit($session) : null;
-            if (!$session || !$audit || (int) $audit->id !== (int) $data['expected_audit_id']) {
+            if (!$session || !$audit || (int) $audit->getKey() !== (int) $data['expected_audit_id']) {
                 return response()->json(['message' => '這堂課已有新變更，請重新整理後再確認。'], 409);
             }
 
-            $previousStatus = strtolower((string) data_get($audit->old_data, 'Status'));
+            $previousStatus = strtolower((string) data_get($audit->getAttribute('old_data'), 'Status'));
             $conflict = ClassSession::query()
-                ->where('StudentClassID', $session->StudentClassID)
-                ->whereDate('SessionDate', $session->SessionDate)
-                ->where('StartTime', $session->StartTime)
-                ->where('id', '!=', $session->id)
+                ->where('StudentClassID', $session->getAttribute('StudentClassID'))
+                ->whereDate('SessionDate', $session->getAttribute('SessionDate'))
+                ->where('StartTime', $session->getAttribute('StartTime'))
+                ->where('id', '!=', $session->getKey())
                 ->where(function ($query) {
                     $query->whereNull('Status')->orWhere('Status', '!=', 'cancelled');
                 })->exists();
@@ -1486,26 +1489,26 @@ class ClassSessionController extends Controller
             }
 
             $before = $this->sessionSnapshot($session);
-            $session->Status = $previousStatus;
+            $session->setAttribute('Status', $previousStatus);
             if ($previousStatus === 'scheduled') {
                 app(ClassSessionMaterializationService::class)->assertStudentSlotAvailableForSession($session);
             }
-            $session->Note = $this->appendSessionNote($session->Note, 'recovered-cancelled');
+            $session->setAttribute('Note', $this->appendSessionNote($session->getAttribute('Note'), 'recovered-cancelled'));
             $session->save();
 
             if (in_array($previousStatus, self::ATTENDED_STATUSES, true)) {
                 $this->restoreCancelledAttendanceArtifacts($session);
-                SessionDeductionService::deductOnAttendance($studentClass, null, (int) $session->id);
+                SessionDeductionService::deductOnAttendance($studentClass, null, (int) $session->getKey());
             }
-            SessionDeductionService::recomputeCounters((int) $studentClass->ID);
+            SessionDeductionService::recomputeCounters((int) $studentClass->getKey());
 
             $authUser = $request->attributes->get('auth_user');
-            ScheduleAuditLog::create([
-                'session_id' => $session->id,
+            ScheduleAuditLog::query()->create([
+                'session_id' => $session->getKey(),
                 'action_type' => 'restore',
-                'description' => "復原課堂 #{$session->id}：{$reason}",
+                'description' => "復原課堂 #{$session->getKey()}：{$reason}",
                 'operator_id' => (int) ($authUser->id ?? 0) ?: null,
-                'branch_id' => (int) (Student::whereKey($studentClass->StudentID)->value('CampusID') ?: 0) ?: null,
+                'branch_id' => (int) (Student::query()->where('id', $studentClass->getAttribute('StudentID'))->value('CampusID') ?: 0) ?: null,
                 'old_data' => $before,
                 'new_data' => $this->sessionSnapshot($session),
             ]);
@@ -1517,19 +1520,20 @@ class ClassSessionController extends Controller
         }, 3);
     }
 
+    /** @return array{0: ClassSession, 1: StudentClass}|\Symfony\Component\HttpFoundation\Response */
     private function findAccessibleSession(Request $request, int $id)
     {
-        $session = ClassSession::query()->find($id);
+        $session = ClassSession::query()->where('id', $id)->first();
         if (!$session) {
             return response()->json(['message' => '找不到該堂次'], 404);
         }
-        $studentClass = StudentClass::query()->where('ID', $session->StudentClassID)->first();
+        $studentClass = StudentClass::query()->where('ID', $session->getAttribute('StudentClassID'))->first();
         if (!$studentClass) {
             return response()->json(['message' => '找不到對應課程'], 404);
         }
         $role = $request->attributes->get('auth_role');
         $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
-        $campusId = (int) (Student::whereKey($studentClass->StudentID)->value('CampusID') ?? 0);
+        $campusId = (int) (Student::query()->where('id', $studentClass->getAttribute('StudentID'))->value('CampusID') ?? 0);
         if (!empty($campusIds) && !in_array($campusId, $campusIds, true)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
@@ -1539,23 +1543,32 @@ class ClassSessionController extends Controller
     private function latestCancellationAudit(ClassSession $session): ?ScheduleAuditLog
     {
         $audit = ScheduleAuditLog::query()
-            ->where('session_id', $session->id)
+            ->where('session_id', $session->getKey())
             ->where('action_type', 'update')
             ->latest('id')
             ->first();
-        $oldStatus = strtolower((string) data_get($audit?->old_data, 'Status'));
-        $newStatus = strtolower((string) data_get($audit?->new_data, 'Status'));
-        if (!$audit || !$audit->operator_id || strtolower((string) $session->Status) !== 'cancelled'
+        $oldStatus = strtolower((string) data_get($audit?->getAttribute('old_data'), 'Status'));
+        $newStatus = strtolower((string) data_get($audit?->getAttribute('new_data'), 'Status'));
+        if (!$audit || !$audit->getAttribute('operator_id') || strtolower((string) $session->getAttribute('Status')) !== 'cancelled'
             || $newStatus !== 'cancelled' || !in_array($oldStatus, ['scheduled', 'attended', 'completed', 'late', 'absent'], true)) {
             return null;
         }
         return $audit;
     }
 
+    /** @return array<string, mixed> */
+    private function sessionSnapshot(ClassSession $session): array
+    {
+        return $session->only([
+            'id', 'StudentClassID', 'SubjectID', 'SessionDate', 'StartTime', 'EndTime',
+            'Status', 'Note', 'IsContractException', 'session_charge',
+        ]);
+    }
+
     private function restoreCancelledAttendanceArtifacts(ClassSession $session): void
     {
         $reasons = [CourseLeaveCascadeService::VOID_REASON_CANCELLED, '由已上調整狀態'];
-        LearningRecord::query()->where('ClassSessionID', $session->id)->whereNotNull('VoidedAt')
+        LearningRecord::query()->where('ClassSessionID', $session->getKey())->whereNotNull('VoidedAt')
             ->lockForUpdate()->get()->each(function ($record) use ($reasons) {
                 if (in_array((string) $record->VoidReason, $reasons, true)) {
                     $record->VoidedAt = null;
@@ -1564,7 +1577,7 @@ class ClassSessionController extends Controller
                     $record->save();
                 }
             });
-        StudentSignIn::query()->where('ClassSessionID', $session->id)->whereNotNull('VoidedAt')
+        StudentSignIn::query()->where('ClassSessionID', $session->getKey())->whereNotNull('VoidedAt')
             ->lockForUpdate()->get()->each(function ($signIn) use ($reasons) {
                 if (in_array((string) $signIn->VoidReason, $reasons, true)) {
                     $signIn->VoidedAt = null;
