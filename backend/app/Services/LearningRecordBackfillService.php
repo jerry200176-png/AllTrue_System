@@ -114,7 +114,7 @@ class LearningRecordBackfillService
      */
     public function ensureForAttendanceSession(ClassSession $cs): bool
     {
-        $sc = StudentClass::where('ID', (int) $cs->StudentClassID)->first();
+        $sc = StudentClass::query()->where('ID', (int) $cs->StudentClassID)->first();
         if (!$sc) {
             return false;
         }
