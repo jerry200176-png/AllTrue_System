@@ -14,7 +14,7 @@ declare(strict_types=1);
  * and an already-existing exact occurrence.
  */
 
-use AppHttpControllers\StudentClassController;
+use App\Http\Controllers\StudentClassController;
 use App\Models\ClassSession;
 use App\Models\Student;
 use App\Models\StudentClass;
@@ -65,7 +65,6 @@ if ($settleCourses->count() !== count($settleIds) || !$addCourse) {
 foreach ($settleIds as $courseId) {
     $course = $settleCourses->get($courseId);
     if ((int) $course->StudentID !== $studentId
-        || (int) $course->CampusID !== 0 && (int) $student->CampusID !== $campusId
         || (int) $course->Paid !== 1
         || (string) $course->ScheduleMode !== 'date'
         || (int) $course->PackageID > 0
