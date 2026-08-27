@@ -812,7 +812,7 @@
       :time-options="TIME_OPTIONS_30"
       :conflict="quickAddConflict"
       :checking="quickAddChecking"
-      @close="showQuickAddSessionModal = false"
+      @close="closeQuickAddSessionModal"
       @submit="submitQuickAddSession"
       @check="runQuickAddCheck"
     />
@@ -824,7 +824,7 @@
       :checking="manualSessionChecking"
       :submitting="manualSessionSubmitting"
       :today="todayYmd"
-      @close="showManualSessionModal = false"
+      @close="closeManualSessionModal"
       @check="runManualSessionCheck"
       @submit="submitManualSession"
     />
@@ -2209,6 +2209,7 @@ const quickAddSessionCourse = ref(null);
 const quickAddConflict = ref(null);
 const quickAddChecking = ref(false);
 let quickAddCheckVersion = 0;
+let quickAddCheckController = null;
 const quickAddSessionForm = ref({
   session_date: '',
   start_time: '16:00',
@@ -2226,6 +2227,7 @@ const manualSessionSubmitting = ref(false);
 const manualSessionForm = ref({ session_date: '', start_time: '16:00' });
 // 每次檢查都帶版本，避免較早發出的 422 覆蓋主任剛選好的有效日期結果。
 let manualSessionCheckVersion = 0;
+let manualSessionCheckController = null;
 const isManualOccurrenceCourse = (course) => String(course?.scheduling_policy || 'auto_recurrence') === 'manual_occurrence';
 const pauseConfirmTarget = ref(null);
 const pauseConfirmSubmitting = ref(false);
@@ -2631,6 +2633,16 @@ function openQuickAddSessionModal(course, prefill = null) {
 }
 
 let _quickAddCheckTimer = null;
+function closeQuickAddSessionModal() {
+  clearTimeout(_quickAddCheckTimer);
+  _quickAddCheckTimer = null;
+  quickAddCheckVersion += 1;
+  quickAddCheckController?.abort();
+  quickAddCheckController = null;
+  quickAddChecking.value = false;
+  showQuickAddSessionModal.value = false;
+}
+
 async function runQuickAddCheck(courseIdOverride) {
   const courseId = courseIdOverride || quickAddSessionCourse.value?.id;
   if (!courseId) return;
@@ -2641,9 +2653,13 @@ async function runQuickAddCheck(courseIdOverride) {
   // request; otherwise the previous check could briefly authorize new input.
   quickAddChecking.value = true;
   quickAddConflict.value = null;
+  quickAddCheckController?.abort();
+  quickAddCheckController = null;
   clearTimeout(_quickAddCheckTimer);
   _quickAddCheckTimer = setTimeout(async () => {
     quickAddChecking.value = true;
+    const controller = new AbortController();
+    quickAddCheckController = controller;
     try {
       const { data: { session: sess } } = await supabase.auth.getSession();
       const token = sess?.access_token;
@@ -2652,15 +2668,18 @@ async function runQuickAddCheck(courseIdOverride) {
         method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ session_date: form.session_date, start_time: form.start_time }),
+        signal: controller.signal,
       });
       const json = await res.json().catch(() => ({}));
       if (requestVersion !== quickAddCheckVersion) return;
       quickAddConflict.value = json;
-    } catch (_) {
+    } catch (error) {
+      if (error?.name === 'AbortError') return;
       if (requestVersion !== quickAddCheckVersion) return;
       quickAddConflict.value = null;
     } finally {
       if (requestVersion === quickAddCheckVersion) quickAddChecking.value = false;
+      if (quickAddCheckController === controller) quickAddCheckController = null;
     }
   }, 300);
 }
@@ -2730,7 +2749,7 @@ async function submitQuickAddSession() {
       }
       return;
     }
-    showQuickAddSessionModal.value = false;
+    closeQuickAddSessionModal();
     quickAddConflict.value = null;
     const movedFrom = String(json?.moved_from_date || '').slice(0, 10);
     const defaultMsg = movedFrom
@@ -2755,11 +2774,22 @@ function openManualSessionModal(course) {
   runManualSessionCheck();
 }
 
+function closeManualSessionModal() {
+  manualSessionCheckVersion += 1;
+  manualSessionCheckController?.abort();
+  manualSessionCheckController = null;
+  manualSessionChecking.value = false;
+  showManualSessionModal.value = false;
+}
+
 async function runManualSessionCheck() {
   const course = manualSessionCourse.value;
   const form = manualSessionForm.value;
   if (!course?.id || !form.session_date || !form.start_time) return;
   const requestVersion = ++manualSessionCheckVersion;
+  manualSessionCheckController?.abort();
+  const controller = new AbortController();
+  manualSessionCheckController = controller;
   manualSessionChecking.value = true;
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
@@ -2769,15 +2799,18 @@ async function runManualSessionCheck() {
       method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ session_date: form.session_date, start_time: form.start_time }),
+      signal: controller.signal,
     });
     const result = await res.json().catch(() => ({ can_add: false, message: '檢查失敗' }));
     if (requestVersion !== manualSessionCheckVersion) return;
     manualSessionCheck.value = result;
   } catch (e) {
+    if (e?.name === 'AbortError') return;
     if (requestVersion !== manualSessionCheckVersion) return;
     manualSessionCheck.value = { can_add: false, message: e?.message || '檢查失敗' };
   } finally {
     if (requestVersion === manualSessionCheckVersion) manualSessionChecking.value = false;
+    if (manualSessionCheckController === controller) manualSessionCheckController = null;
   }
 }
 
@@ -2800,7 +2833,7 @@ async function submitManualSession() {
       manualSessionCheck.value = json;
       return;
     }
-    showManualSessionModal.value = false;
+    closeManualSessionModal();
     alert(json.created === false ? '這一堂已存在，未重複建立。' : '下一堂已建立，已加入課表。');
     await loadCourses();
   } catch (e) {
@@ -4841,6 +4874,9 @@ onMounted(() => {
 });
 onUnmounted(() => {
   document.removeEventListener('click', closeActionMenu);
+  clearTimeout(_quickAddCheckTimer);
+  quickAddCheckController?.abort();
+  manualSessionCheckController?.abort();
   // #143：聚焦單一學生時會 lockScroll（body position:fixed/overflow:hidden）。
   // 若使用者在「聚焦中」直接切換頁面，元件卸載不會觸發 focusedStudentKey watcher，
   // scroll lock 會洩漏並殘留在 body，導致之後的頁面看起來像蓋了一層灰白遮罩、無法點選/捲動。

@@ -45,5 +45,11 @@ describe('CourseManagement action hierarchy', () => {
     expect(source).toContain('let quickAddCheckVersion = 0;');
     expect(source).toContain('const requestVersion = ++quickAddCheckVersion;');
     expect(source).toContain('Disable submit during the debounce window');
+    expect(source).toContain('let quickAddCheckController = null;');
+    expect(source).toContain('quickAddCheckController?.abort();');
+    expect(source).toContain('signal: controller.signal');
+    expect(source).toContain("if (error?.name === 'AbortError') return;");
+    expect(source).toContain('function closeManualSessionModal()');
+    expect(source).toContain('let manualSessionCheckController = null;');
   });
 });
