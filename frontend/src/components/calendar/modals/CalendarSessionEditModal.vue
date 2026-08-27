@@ -420,14 +420,14 @@ defineEmits([
   padding: 12px;
   border: 1px solid var(--ds-success);
   border-radius: 8px;
-  background: var(--ds-success-wash, #eefaf1);
+  background: var(--ds-success-wash);
   color: var(--ds-ink);
   font-size: 13px;
 }
 .session-recovery--loading { color: var(--ds-ink-mute); border-color: var(--ds-hairline); background: var(--ds-canvas); }
 .session-recovery-impact { color: var(--ds-ink-mute); }
 .session-recovery input { width: 100%; padding: 8px 10px; border: 1px solid var(--ds-hairline); border-radius: 6px; }
-.restore-session { background: var(--ds-success-wash, #eefaf1); color: var(--ds-success); border-color: var(--ds-success); }
+.restore-session { background: var(--ds-success-wash); color: var(--ds-success); border-color: var(--ds-success); }
 .restore-session:disabled { opacity: 0.6; cursor: not-allowed; }
 .eval-summary-box {
   margin-top: 16px;
