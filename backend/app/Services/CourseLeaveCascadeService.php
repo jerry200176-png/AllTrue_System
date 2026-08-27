@@ -103,9 +103,7 @@ class CourseLeaveCascadeService
      */
     public static function sweepStaleLiveArtifactsForNonAttendance(): int
     {
-        return self::sweepStaleLiveArtifactsForStatuses([
-            'cancelled', 'leave', 'leave_adjusted', 'excused',
-        ]);
+        return self::sweepStaleLiveArtifactsForStatuses(self::NON_BILLABLE_STATUSES);
     }
 
     /**
