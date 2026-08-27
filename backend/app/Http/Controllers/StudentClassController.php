@@ -3842,7 +3842,7 @@ class StudentClassController extends Controller
             // A transfer changes the entitlement owner as well as the display
             // owner.  Leaving ledger rows on the source makes both courses
             // report contradictory usage and blocks safe settlement.
-            SessionDeductionLedger::whereIn('class_session_id', $foundIds)->update([
+            SessionDeductionLedger::query()->whereIn('class_session_id', $foundIds)->update([
                 'student_class_id' => $target->ID,
                 'updated_at' => now(),
             ]);

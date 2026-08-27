@@ -60,7 +60,7 @@ class StudentClassTransferSessionsTest extends TestCase
         );
         $this->assertSame(
             (int) $target->ID,
-            (int) SessionDeductionLedger::where('class_session_id', $sessionId)->value('student_class_id')
+            (int) SessionDeductionLedger::query()->where('class_session_id', $sessionId)->value('student_class_id')
         );
 
         // Contract fields stay untouched while derived usage follows ownership.
