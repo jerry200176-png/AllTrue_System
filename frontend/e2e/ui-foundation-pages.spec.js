@@ -64,6 +64,7 @@ function fakeStudents(count, { longName = false } = {}) {
 
 async function installApiMocks(page, mode, pageName = '') {
   const hang = mode === 'loading';
+  let manualBookingCheckCount = 0;
   let releaseHang;
   const hangPromise = hang
     ? new Promise((resolve) => { releaseHang = resolve; })
@@ -73,6 +74,26 @@ async function installApiMocks(page, mode, pageName = '') {
     const url = new URL(route.request().url());
     const p = url.pathname;
     const method = route.request().method();
+
+    if (pageName === 'course' && mode === 'booking-race' && method === 'POST' && p.includes('/manual-sessions/check')) {
+      manualBookingCheckCount += 1;
+      if (manualBookingCheckCount === 1) {
+        // Reproduce the stale response that used to overwrite the director's
+        // newer date selection with an old 422 error.
+        await new Promise((resolve) => setTimeout(resolve, 180));
+        return route.fulfill({
+          status: 422,
+          contentType: 'application/json',
+          body: JSON.stringify({ can_add: false, message: '舊日期檢查失敗', conflict_type: 'past_session' }),
+        });
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ can_add: true, message: '可以預約', duration_minutes: 120, available_sessions: 1, conflict_type: 'none' }),
+      });
+    }
 
     if (method !== 'GET') {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
@@ -175,6 +196,35 @@ async function installApiMocks(page, mode, pageName = '') {
     if (pageName === 'course' && p.includes('/student-classes')) {
       if (mode === 'empty') {
         return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [], total: 0 }) });
+      }
+      if (mode === 'booking-race') {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: [{
+              id: 5201,
+              student_id: 2000,
+              student_name: '測試學生甲',
+              subject: '英文',
+              teacher_id: 3000,
+              teacher_name: '測試老師',
+              class_type: 'one_on_three',
+              scheduling_policy: 'manual_occurrence',
+              payment_type: 'session',
+              sessions_purchased: 8,
+              sessions_used: 7,
+              remaining_sessions: 1,
+              status: 'active',
+              day_of_week: 6,
+              start_time: '13:00',
+              end_time: '15:00',
+              duration_hours: 2,
+              branch_id: 1,
+            }],
+            total: 1,
+          }),
+        });
       }
       return route.fulfill({
         status: 200,
@@ -477,6 +527,35 @@ test.describe('UI foundation — real Vue page evidence', () => {
       });
     }
   }
+
+  test('manual booking keeps the latest date after a stale 422 response', async ({ page }) => {
+    await openPilot(page, { pageName: 'course', mode: 'booking-race', viewport: { width: 1440, height: 900 } });
+
+    const addNextButton = page.locator('button.manual-occurrence-action').filter({ hasText: '新增下一堂' }).first();
+    await expect(addNextButton).toBeVisible({ timeout: 10_000 });
+    await addNextButton.click();
+
+    const dateInput = page.locator('.manual-session-modal input[type="date"]');
+    await expect(dateInput).toBeVisible();
+    // Ensure the initial request is in flight before changing the date.
+    await expect.poll(() => page.locator('.manual-session-state').count()).toBeGreaterThan(0);
+
+    const latestDate = await dateInput.inputValue().then((value) => {
+      const date = new Date(`${value}T12:00:00`);
+      date.setDate(date.getDate() + 1);
+      return date.toISOString().slice(0, 10);
+    });
+    await dateInput.fill(latestDate);
+    await dateInput.press('Tab');
+
+    await expect(page.getByText('可以預約', { exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('button', { name: '建立這一堂', exact: true })).toBeEnabled();
+    // Let the deliberately delayed old 422 complete; it must not replace the
+    // result for the date the director currently sees.
+    await page.waitForTimeout(240);
+    await expect(page.getByText('可以預約', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '建立這一堂', exact: true })).toBeEnabled();
+  });
 
   for (const vp of [
     { name: '390', width: 390, height: 844 },
