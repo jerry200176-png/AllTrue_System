@@ -3224,8 +3224,12 @@ class StudentClassController extends Controller
             $authUserId = is_object($authUser) ? (int) ($authUser->id ?? 0) : 0;
             $hasLearningRecordSessionDeducted = Schema::hasColumn('LearningRecord', 'SessionDeducted');
             $classId = (int) $studentClass->ID;
-            $isSessionMode = ((string) ($studentClass->ScheduleMode ?? 'count') === 'count')
-                || ((int) ($studentClass->SessionCount ?? 0) > 0);
+            // Date-mode monthly contracts are bounded by StartDate/EndDate and
+            // billed from actual attendance. Legacy rows may still carry a
+            // positive SessionCount, but that field must not turn a monthly
+            // contract into a prepaid capacity check (renewMonthly creates
+            // exactly such rows).
+            $isSessionMode = (string) ($studentClass->ScheduleMode ?? 'count') === 'count';
             $sessionCount = max(0, (int) ($studentClass->SessionCount ?? 0));
             $movedFromDate = null;
             $todayYmd = Carbon::now()->toDateString();
