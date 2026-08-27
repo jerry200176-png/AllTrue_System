@@ -138,6 +138,43 @@ export const staffUpdates = [
     "version": "2026.08.27"
   },
   {
+    "id": "staff-2026-08-27-course-payment-slip",
+    "publishedAt": "2026-08-27",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "課程管理直達繳費通知",
+    "summary": "未繳課程可直接開通知單。",
+    "items": [
+      "課程管理的帳務資料與更多選單可直接開啟繳費通知單，預覽後即可複製給家長。",
+      "只對未繳、部分繳與待對帳課程顯示；已繳費課程不顯示，且不改付款或收據流程。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "課程管理的帳務資料與更多選單可直接開啟繳費通知單，預覽後即可複製給家長。"
+        ]
+      },
+      {
+        "title": "我們修好了",
+        "items": [
+          "只對未繳、部分繳與待對帳課程顯示；已繳費課程不顯示，且不改付款或收據流程。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-27:course-payment-slip"
+    ],
+    "date": "2026-08-27",
+    "version": "2026.08.27"
+  },
+  {
     "id": "staff-2026-08-26-reschedule-preflight",
     "publishedAt": "2026-08-26",
     "effectiveAt": null,

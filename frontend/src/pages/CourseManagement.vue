@@ -378,6 +378,14 @@
                               @click="openPackageConversionPreview(c); closeActionMenu()"
                             ><span class="material-symbols-outlined action-icon" aria-hidden="true">account_tree</span> 轉多科方案預檢</button>
                             <button
+                              v-if="isPaymentNoticeAvailable(c)"
+                              class="action-dropdown-item"
+                              data-testid="course-payment-slip-action"
+                              role="menuitem"
+                              title="產生繳費通知單"
+                              @click="openPaymentSlip(c); closeActionMenu()"
+                            ><span class="material-symbols-outlined action-icon" aria-hidden="true">description</span> 繳費通知</button>
+                            <button
                               :class="['action-dropdown-item', { 'action-dropdown-renew': purchaseActionIsRenew(c) }]"
                               role="menuitem"
                               :title="purchaseActionTitle(c)"
@@ -619,6 +627,14 @@
                         type="button"
                         @click="togglePaymentStatus(row.course)"
                       >登記已回報</button>
+                      <button
+                        v-if="isPaymentNoticeAvailable(row.course)"
+                        class="small ghost btn-payment-slip"
+                        data-testid="billing-payment-slip-action"
+                        type="button"
+                        title="產生繳費通知單"
+                        @click="openPaymentSlip(row.course)"
+                      >繳費通知</button>
                       <button class="small ghost btn-invoices" type="button" @click="openInvoiceModal(row.course)">帳單與對帳</button>
                     </div>
                   </td>
@@ -1048,6 +1064,12 @@
       @confirmed="onPaymentEntryConfirmed"
     />
 
+    <PaymentSlipModal
+      :show="paymentSlipOpen"
+      :student-class-id="paymentSlipStudentClassId"
+      @close="closePaymentSlip"
+    />
+
     <AccountingLedgerModal
       :show="ledgerOpen"
       :student-class-id="ledgerStudentClassId"
@@ -1318,6 +1340,7 @@ import MakeupSlotsModal from '../components/course-management/MakeupSlotsModal.v
 import SessionEditModal from '../components/course-management/SessionEditModal.vue';
 import SubstituteTeacherPickerModal from '../components/substitute/SubstituteTeacherPickerModal.vue';
 import PaymentEntryModal from '../components/PaymentEntryModal.vue';
+import PaymentSlipModal from '../components/PaymentSlipModal.vue';
 import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
 import ToastWithUndo from '../components/substitute/ToastWithUndo.vue';
 import { fetchTeacherAvailability, undoSubstitute } from '../lib/substituteApi.js';
@@ -4632,6 +4655,23 @@ const invoiceVoidTarget = ref(null);
 const invoiceVoidReason = ref('');
 const invoiceVoidMode = ref('direct');
 const invoiceVoidSubmitting = ref(false);
+const paymentSlipOpen = ref(false);
+const paymentSlipStudentClassId = ref(null);
+
+const isPaymentNoticeAvailable = (course) =>
+  ['unpaid', 'partial', 'pending_report'].includes(course?.payment_status);
+
+const openPaymentSlip = (course) => {
+  const studentClassId = Number(course?.id || 0);
+  if (!isPaymentNoticeAvailable(course) || !studentClassId) return;
+  paymentSlipStudentClassId.value = studentClassId;
+  paymentSlipOpen.value = true;
+};
+
+const closePaymentSlip = () => {
+  paymentSlipOpen.value = false;
+  paymentSlipStudentClassId.value = null;
+};
 
 const closeInvoiceModal = () => {
   invoiceModalOpen.value = false;

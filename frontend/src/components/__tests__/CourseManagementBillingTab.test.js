@@ -28,6 +28,16 @@ describe('CourseManagement student billing tab', () => {
     expect(source).not.toMatch(/openPaymentEntryForInvoice\(inv\)\s*>核帳</);
   });
 
+  it('offers a read-only payment notice from the billing context', () => {
+    expect(source).toContain("import PaymentSlipModal from '../components/PaymentSlipModal.vue';");
+    expect(source).toContain('const isPaymentNoticeAvailable = (course)');
+    expect(source).toContain("['unpaid', 'partial', 'pending_report'].includes(course?.payment_status)");
+    expect(source).toContain('data-testid="billing-payment-slip-action"');
+    expect(source).toContain('@click="openPaymentSlip(row.course)"');
+    expect(source).toContain(':student-class-id="paymentSlipStudentClassId"');
+    expect(source).toContain('@close="closePaymentSlip"');
+  });
+
   it('shows the latest payment report summary on the course card', () => {
     expect(source).toContain('coursePaymentSummary(c)');
     expect(source).toContain('formatPaymentSummary(c.latest_payment_summary)');
