@@ -2637,10 +2637,13 @@ async function runQuickAddCheck(courseIdOverride) {
   const form = quickAddSessionForm.value;
   if (!form.session_date || !form.start_time) return;
   const requestVersion = ++quickAddCheckVersion;
+  // Disable submit during the debounce window as well as during the network
+  // request; otherwise the previous check could briefly authorize new input.
+  quickAddChecking.value = true;
+  quickAddConflict.value = null;
   clearTimeout(_quickAddCheckTimer);
   _quickAddCheckTimer = setTimeout(async () => {
     quickAddChecking.value = true;
-    quickAddConflict.value = null;
     try {
       const { data: { session: sess } } = await supabase.auth.getSession();
       const token = sess?.access_token;
