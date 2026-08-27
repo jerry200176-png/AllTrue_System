@@ -114,7 +114,7 @@ class LearningRecordBackfillService
      */
     public function ensureForAttendanceSession(ClassSession $cs): bool
     {
-        $sc = StudentClass::find((int) $cs->StudentClassID);
+        $sc = StudentClass::where('ID', (int) $cs->StudentClassID)->first();
         if (!$sc) {
             return false;
         }
@@ -145,7 +145,10 @@ class LearningRecordBackfillService
         if (!in_array($status, self::requiredSessionStatuses(), true)) {
             return false;
         }
-        if (!LearningRecordResurrectionPolicy::isEligibleForResurrect($voided->VoidReason, $status)) {
+        if (!LearningRecordResurrectionPolicy::isEligibleForResurrect(
+            $voided->getAttribute('VoidReason'),
+            $status
+        )) {
             return false;
         }
 
