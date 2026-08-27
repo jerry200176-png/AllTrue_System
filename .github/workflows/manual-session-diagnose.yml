@@ -1,0 +1,136 @@
+name: Manual session booking diagnose (read-only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      student_class_id:
+        description: 'Production StudentClass.ID'
+        required: true
+        type: string
+      date:
+        description: 'Target date YYYY-MM-DD'
+        required: true
+        type: string
+      start_time:
+        description: 'Target start time HH:MM'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: manual-session-diagnose
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate inputs
+        env:
+          COURSE_ID: ${{ inputs.student_class_id }}
+          TARGET_DATE: ${{ inputs.date }}
+          START_TIME: ${{ inputs.start_time }}
+        run: |
+          set -euo pipefail
+          [[ "$COURSE_ID" =~ ^[0-9]+$ ]] || { echo 'student_class_id must be numeric'; exit 1; }
+          [[ "$TARGET_DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || { echo 'date must be YYYY-MM-DD'; exit 1; }
+          [[ "$START_TIME" =~ ^[0-9]{2}:[0-9]{2}$ ]] || { echo 'start_time must be HH:MM'; exit 1; }
+
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$PI_SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Run deployed booking check (read-only)
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          COURSE_ID: ${{ inputs.student_class_id }}
+          TARGET_DATE: ${{ inputs.date }}
+          START_TIME: ${{ inputs.start_time }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes \
+            "$PI_SSH_USER@$PI_SSH_HOST" \
+            COURSE_ID="$COURSE_ID" TARGET_DATE="$TARGET_DATE" START_TIME="$START_TIME" 'bash -s' <<'REMOTE' | tee out/manual-session-diagnose.log
+          set -euo pipefail
+          cd /home/admin/backend
+          php artisan tinker --execute='
+          $courseId = (int) getenv("COURSE_ID");
+          $date = (string) getenv("TARGET_DATE");
+          $start = (string) getenv("START_TIME");
+          $course = \App\Models\StudentClass::query()->where("ID", $courseId)->first();
+          if (!$course) {
+              echo json_encode(["ok" => false, "read_only" => true, "error" => "course_not_found"], JSON_UNESCAPED_UNICODE), PHP_EOL;
+              return;
+          }
+          $result = app(\App\Services\ManualSessionBookingService::class)->check($course, $date, $start);
+          $detail = is_array($result["conflict_detail"] ?? null) ? $result["conflict_detail"] : [];
+          $safeDetail = array_intersect_key($detail, array_flip([
+              "type", "message", "current_students", "allowed_students", "room_id", "room_name",
+              "day_of_week", "start_time", "end_time"
+          ]));
+          $out = [
+              "ok" => true,
+              "read_only" => true,
+              "student_class_id" => $courseId,
+              "date" => $date,
+              "start_time" => substr($start, 0, 5),
+              "course_type" => (string) ($course->ClassType ?: "one_on_one"),
+              "course_room_id" => $course->room_id ? (int) $course->room_id : null,
+              "course_stop" => (int) ($course->Stop ?? 0),
+              "schedule_mode" => (string) ($course->ScheduleMode ?? ""),
+              "session_count" => (int) ($course->SessionCount ?? 0),
+              "used_sessions" => (int) ($course->UsedSessions ?? 0),
+              "remaining_sessions_contract" => (int) ($course->RemainingSessions ?? 0),
+              "can_add" => (bool) ($result["can_add"] ?? false),
+              "conflict_type" => $result["conflict_type"] ?? null,
+              "error_code" => $result["error_code"] ?? null,
+              "message" => $result["message"] ?? null,
+              "reserved_sessions" => (int) ($result["reserved_sessions"] ?? 0),
+              "remaining_sessions" => (int) ($result["remaining_sessions"] ?? 0),
+              "available_sessions" => (int) ($result["available_sessions"] ?? 0),
+              "existing_session_id" => $result["existing_session_id"] ?? null,
+              "conflict_detail" => $safeDetail,
+          ];
+          echo json_encode($out, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), PHP_EOL;
+          '
+          REMOTE
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          text = Path('out/manual-session-diagnose.log').read_text(encoding='utf-8', errors='replace')
+          obj = next((json.loads(line) for line in text.splitlines() if line.lstrip().startswith('{')), None)
+          if not obj or not obj.get('read_only'):
+              raise SystemExit('probe did not return read-only JSON')
+          Path('out/manual-session-diagnose.json').write_text(json.dumps(obj, ensure_ascii=False, indent=2), encoding='utf-8')
+          print('parsed bounded read-only manual session check')
+          PY
+
+      - name: Upload evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: manual-session-diagnose
+          path: out/manual-session-diagnose.json
+          retention-days: 14
+
+      - name: Job summary
+        run: |
+          {
+            echo '### Manual session booking diagnose (read-only)'
+            echo '```json'
+            cat out/manual-session-diagnose.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
