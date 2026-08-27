@@ -55,6 +55,20 @@ updates:
         text: 老師仍請以完整且有用的課後進度回饋為準，填寫率只代表是否有有效進度文字，不等於內容品質分數。
     source_refs:
       - "changelog:2026-08-27:teacher-assessment-engagement"
+  - id: staff-2026-08-27-course-payment-slip
+    published_at: "2026-08-27"
+    audiences:
+      - director
+    importance: digest
+    title: 課程管理直達繳費通知
+    summary: 未繳課程可直接開通知單。
+    items:
+      - category: improved
+        text: 課程管理的帳務資料與更多選單可直接開啟繳費通知單，預覽後即可複製給家長。
+      - category: fixed
+        text: 只對未繳、部分繳與待對帳課程顯示；已繳費課程不顯示，且不改付款或收據流程。
+    source_refs:
+      - "changelog:2026-08-27:course-payment-slip"
 
   - id: staff-2026-08-26-director-contextual-actions
     published_at: "2026-08-26"
