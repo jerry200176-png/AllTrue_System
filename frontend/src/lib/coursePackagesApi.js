@@ -35,6 +35,17 @@ export async function listPackages({ branchId, studentId, activeOnly } = {}) {
   return handleResponse(res);
 }
 
+/**
+ * Read-only safety check before offering a single-course → shared-package
+ * conversion.  A positive result is only a preflight; it never mutates data.
+ */
+export async function previewSingleCoursePackageConversion(studentClassId) {
+  const res = await fetch(`${API_BASE}/student-classes/${studentClassId}/package-conversion-preview`, {
+    headers: authHeaders(),
+  });
+  return handleResponse(res);
+}
+
 export async function getPackage(id) {
   const res = await fetch(`${API_BASE}/course-packages/${id}`, {
     headers: authHeaders(),

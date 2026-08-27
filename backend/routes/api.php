@@ -539,6 +539,7 @@ Route::prefix('v1')->group(function () {
         Route::get('student-classes', [StudentClassController::class, 'index']);
         Route::post('student-classes', [StudentClassController::class, 'store']);
         Route::get('student-classes/{studentClass}/editability', [StudentClassController::class, 'editability']);
+        Route::get('student-classes/{studentClass}/package-conversion-preview', [\App\Http\Controllers\CoursePackageController::class, 'conversionPreview']);
         Route::get('student-classes/{studentClass}', [StudentClassController::class, 'show']);
         Route::put('student-classes/{studentClass}', [StudentClassController::class, 'update']);
         Route::post('student-classes/{studentClass}/confirm-payment', [StudentClassController::class, 'confirmPayment']);

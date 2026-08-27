@@ -367,6 +367,12 @@
                             <p class="action-section-label">帳務與合約</p>
                             <button class="action-dropdown-item" role="menuitem" @click="openInvoiceModal(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">receipt_long</span> 帳單與對帳</button>
                             <button
+                              v-if="isSessionMode(c) && !c.PackageID"
+                              class="action-dropdown-item action-dropdown-package-preview"
+                              role="menuitem"
+                              @click="openPackageConversionPreview(c); closeActionMenu()"
+                            ><span class="material-symbols-outlined action-icon" aria-hidden="true">account_tree</span> 轉多科方案預檢</button>
+                            <button
                               :class="['action-dropdown-item', { 'action-dropdown-renew': purchaseActionIsRenew(c) }]"
                               role="menuitem"
                               :title="purchaseActionTitle(c)"
@@ -719,6 +725,62 @@
         <div class="actions">
           <button class="ghost" @click="showEditModal = false">取消</button>
           <button class="primary" :disabled="editFormRef?.hasErrors || editabilityLoading" @click="submitEdit">儲存</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Read-only single-course → shared-package safety preview -->
+    <div v-if="showPackageConversionPreview" class="modal-overlay" @click.self="!packageConversionPreviewLoading && closePackageConversionPreview()">
+      <div
+        class="modal package-conversion-preview-modal"
+        data-testid="package-conversion-preview"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="package-conversion-preview-title"
+        tabindex="-1"
+        @keydown.esc="closePackageConversionPreview"
+      >
+        <h3 id="package-conversion-preview-title" class="modal-title">轉成多科共用方案</h3>
+        <p class="package-conversion-preview__lead">
+          先檢查這門單科堂數制是否有上課、點名、學習或帳務歷史；這個畫面只讀取資料，不會修改合約。
+        </p>
+        <AtInlineAlert v-if="packageConversionPreviewLoading" tone="info" title="正在進行唯讀預檢">
+          <p>正在確認合約、帳務與扣堂紀錄…</p>
+        </AtInlineAlert>
+        <AtInlineAlert v-else-if="packageConversionPreviewError" tone="warning" title="預檢失敗">
+          <p>{{ packageConversionPreviewError }}</p>
+        </AtInlineAlert>
+        <template v-else-if="packageConversionPreview">
+          <div class="package-conversion-preview__source">
+            <strong>{{ packageConversionPreviewCourse?.subject_name || packageConversionPreviewCourse?.subject || '目前課程' }}</strong>
+            <span v-if="packageConversionPreviewCourse?.student_name">／{{ packageConversionPreviewCourse.student_name }}</span>
+            <span> · {{ packageConversionPreview.student_class?.remaining_sessions ?? 0 }} 堂剩餘</span>
+          </div>
+          <AtInlineAlert v-if="packageConversionPreview.can_convert" tone="success" title="通過安全預檢">
+            <p>目前沒有發現已使用或帳務歷史。真正轉換仍須由受控流程執行，原課程識別與稽核紀錄會保留。</p>
+          </AtInlineAlert>
+          <AtInlineAlert v-else tone="warning" title="不建議直接轉換">
+            <p>為避免堂數、點名或帳務歷史被改寫，請保留原合約並建立新的多科方案。</p>
+            <ul class="package-conversion-preview__reasons">
+              <li v-for="reason in packageConversionPreview.blocking_reasons" :key="reason.code">{{ reason.message }}</li>
+            </ul>
+          </AtInlineAlert>
+          <p class="package-conversion-preview__next-step">{{ packageConversionPreview.next_step }}</p>
+        </template>
+        <div class="actions">
+          <button class="ghost" :disabled="packageConversionPreviewLoading" @click="closePackageConversionPreview">關閉</button>
+          <button
+            v-if="packageConversionPreviewError && !packageConversionPreviewLoading"
+            class="ghost"
+            type="button"
+            @click="retryPackageConversionPreview"
+          >重新檢查</button>
+          <button
+            v-if="packageConversionPreview && !packageConversionPreviewLoading"
+            class="primary"
+            type="button"
+            @click="goToNewPackageFromPreview"
+          >前往建立多科方案</button>
         </div>
       </div>
     </div>
@@ -1184,7 +1246,7 @@ import {
   humanizeDocumentRef,
 } from '../lib/studentClassDisplay.js';
 import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
-import { updatePackage } from '../lib/coursePackagesApi';
+import { previewSingleCoursePackageConversion, updatePackage } from '../lib/coursePackagesApi';
 import { buildEditTeacherOptions, shouldClearTeacherSelection } from '../lib/courseTeacherOptions';
 import { computePackageNextTotal, packageMemberSessionSummary } from '../lib/packageSessions';
 import {
@@ -1855,6 +1917,12 @@ const editability = ref(null);
 const editabilityLoading = ref(false);
 const editabilityError = ref('');
 let editabilityRequestId = 0;
+const showPackageConversionPreview = ref(false);
+const packageConversionPreview = ref(null);
+const packageConversionPreviewCourse = ref(null);
+const packageConversionPreviewLoading = ref(false);
+const packageConversionPreviewError = ref('');
+let packageConversionPreviewRequestId = 0;
 const editPackageInfo = computed(() => {
   const c = editingCourseRaw.value;
   if (!c?.PackageID) return null;
@@ -1944,6 +2012,55 @@ async function loadCourseEditability(courseId) {
   } finally {
     if (requestId === editabilityRequestId) editabilityLoading.value = false;
   }
+}
+
+async function openPackageConversionPreview(course) {
+  const courseId = Number(course?.id ?? course?.ID ?? 0);
+  if (!Number.isSafeInteger(courseId) || courseId <= 0) return;
+  const requestId = ++packageConversionPreviewRequestId;
+  packageConversionPreviewCourse.value = course;
+  packageConversionPreview.value = null;
+  packageConversionPreviewError.value = '';
+  packageConversionPreviewLoading.value = true;
+  showPackageConversionPreview.value = true;
+  try {
+    const result = await previewSingleCoursePackageConversion(courseId);
+    if (requestId === packageConversionPreviewRequestId) packageConversionPreview.value = result;
+  } catch (error) {
+    if (requestId === packageConversionPreviewRequestId) {
+      packageConversionPreviewError.value = error?.message || '無法完成轉換預檢。';
+    }
+  } finally {
+    if (requestId === packageConversionPreviewRequestId) packageConversionPreviewLoading.value = false;
+  }
+}
+
+function closePackageConversionPreview() {
+  if (packageConversionPreviewLoading.value) return;
+  packageConversionPreviewRequestId += 1;
+  showPackageConversionPreview.value = false;
+  packageConversionPreview.value = null;
+  packageConversionPreviewCourse.value = null;
+  packageConversionPreviewError.value = '';
+}
+
+function retryPackageConversionPreview() {
+  if (packageConversionPreviewCourse.value) {
+    void openPackageConversionPreview(packageConversionPreviewCourse.value);
+  }
+}
+
+function goToNewPackageFromPreview() {
+  const studentId = Number(packageConversionPreviewCourse.value?.student_id
+    ?? packageConversionPreviewCourse.value?.StudentID
+    ?? packageConversionPreview.value?.student_class?.student_id
+    ?? 0);
+  closePackageConversionPreview();
+  emit('navigate', {
+    target: 'students',
+    studentId: Number.isSafeInteger(studentId) && studentId > 0 ? studentId : null,
+    intent: 'new_package',
+  });
 }
 /** 開啟編輯時的排課指紋；儲存時若變更則自動 force_partial_rebuild 同步未上預排堂次 */
 const editScheduleBaseline = ref(null);
@@ -6272,6 +6389,30 @@ button.danger:disabled {
   max-height: 90vh;
   overflow-y: auto;
 }
+
+.package-conversion-preview-modal {
+  width: 100%;
+  max-width: 560px;
+}
+.package-conversion-preview__lead,
+.package-conversion-preview__next-step {
+  color: var(--text-light);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.package-conversion-preview__source {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin: 0 0 12px;
+  color: var(--text);
+  font-size: 14px;
+}
+.package-conversion-preview__reasons {
+  margin: 8px 0 0;
+  padding-left: 20px;
+}
+.package-conversion-preview__reasons li + li { margin-top: 4px; }
 
 .editability-action-panel {
   display: grid;
