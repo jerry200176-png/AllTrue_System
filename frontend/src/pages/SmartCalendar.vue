@@ -406,6 +406,7 @@
       @show-cancel-confirm="cancelState.show = true"
       @dismiss-cancel-confirm="cancelState.show = false"
       @confirm-cancel="doConfirmCancelSession"
+      @restore-session="restoreCancelledSession"
       @delete-exception="deleteException"
       @delete-course="deleteCourse"
       @cancel-makeup="cancelMakeupClass"
@@ -2069,6 +2070,8 @@ const onCourseClick = (course, fullDateStr) => {
   editingCourseId.value = baseId;
   editingActionDate.value = fullDateStr || '';
   editingException.value = course.is_exception ? course : null;
+  const clickedSession = findSessionRowForCell(course, fullDateStr);
+  sessionRecovery.value = makeSessionRecovery();
   conflictWarning.value = '';
   const start = normalizeTimeTo30(course.start_time || '16:00');
   const baseCourse = courses.value.find(c => c.id === baseId) || course;
@@ -2097,6 +2100,7 @@ const onCourseClick = (course, fullDateStr) => {
   };
   syncRatePer2hFromModel();
   showModal.value = true;
+  void loadSessionRecovery(clickedSession?.id);
   // Load evaluation records for this course
   loadCourseEvalRecords(baseId);
 };
@@ -2276,6 +2280,11 @@ const cancelMakeupClass = async () => {
 // ===== Cancel single session (取消本堂) =====
 
 const cancelState = ref({ show: false, loading: false });
+const makeSessionRecovery = (loading = false) => ({
+  loading, available: false, audit_id: null, previous_status: '',
+  previousStatusLabel: '', reason: '主任誤取消', submitting: false,
+});
+const sessionRecovery = ref(makeSessionRecovery());
 
 const cancelTargetSession = computed(() => {
   if (!editingCourseId.value) return null;
@@ -2304,6 +2313,7 @@ const sessionEditSession = computed(() => ({
   featureSubstituteV2,
   canCancelSession: canCancelSelectedSession.value,
   cancelState: cancelState.value,
+  recovery: sessionRecovery.value,
   editingException: !!editingException.value,
   editingExceptionIsExtra: editingExceptionIsExtra.value,
   evalRecords: courseEvalRecords.value,
@@ -2343,6 +2353,70 @@ const doConfirmCancelSession = async () => {
   } catch (e) {
     cancelState.value.loading = false;
     alert(e.message || '取消失敗，請重試');
+  }
+};
+
+const loadSessionRecovery = async (sessionId) => {
+  sessionRecovery.value = makeSessionRecovery(true);
+  if (!sessionId) {
+    sessionRecovery.value.loading = false;
+    return;
+  }
+  try {
+    const token = await getToken();
+    const res = await fetch('/api/v1/class-sessions/' + sessionId + '/recovery', {
+      headers: token ? { Authorization: 'Bearer ' + token } : {},
+    });
+    const data = await res.json();
+    const labels = {
+      scheduled: '排程中', attended: '已上課', completed: '已完成',
+      late: '遲到', absent: '缺席', leave: '請假',
+    };
+    sessionRecovery.value = {
+      ...sessionRecovery.value,
+      ...data,
+      previousStatusLabel: labels[data.previous_status] || data.previous_status || '',
+      loading: false,
+    };
+  } catch (e) {
+    sessionRecovery.value.loading = false;
+  }
+};
+
+const restoreCancelledSession = async () => {
+  const row = cancelTargetSession.value;
+  const recovery = sessionRecovery.value;
+  if (!row?.id || !recovery.available || recovery.submitting || !recovery.reason?.trim()) return;
+  if (!confirm('確定復原這堂課到取消前狀態？系統會同步評量／點名與堂數。')) return;
+  recovery.submitting = true;
+  try {
+    const token = await getToken();
+    const res = await fetch('/api/v1/class-sessions/' + row.id + '/restore', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + token,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({
+        expected_audit_id: recovery.audit_id,
+        reason: recovery.reason.trim(),
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.message || 'HTTP ' + res.status);
+    const rows = sessionDatesByCourseId.value[String(editingCourseId.value)];
+    const index = Array.isArray(rows)
+      ? rows.findIndex((item) => Number(item.id) === Number(row.id))
+      : -1;
+    if (index >= 0) rows[index] = { ...rows[index], ...(data.session || {}) };
+    sessionRecovery.value = { ...sessionRecovery.value, available: false, submitting: false };
+    showModal.value = false;
+    await loadCourses();
+    alert(data.message || '已復原');
+  } catch (e) {
+    recovery.submitting = false;
+    alert(e.message || '復原失敗，請重新整理後再試');
   }
 };
 
@@ -2485,6 +2559,7 @@ watch(
 watch(showModal, (v) => {
   if (!v) {
     cancelState.value = { show: false, loading: false };
+    sessionRecovery.value = makeSessionRecovery();
   }
 });
 

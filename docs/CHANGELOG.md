@@ -1,3 +1,10 @@
+## 2026-08-28 — improved(ux): 排課操作提供安全復原
+
+<!-- release-notes: staff_update=staff-2026-08-28-schedule-safe-recovery -->
+
+- 主任取消單堂課後，重新開啟該堂會看到「復原上一個變更」；系統只在有可驗證的最近操作、且沒有新衝堂時允許復原。
+- 復原要求原因並以交易同步排課狀態、必要的評量／點名與堂數，所有操作保留稽核紀錄。
+
 ## 2026-08-27 — fix(attendance,billing): 堂次轉移同步扣堂台帳
 
 <!-- release-notes: staff_update=staff-2026-08-27-transfer-ledger-reconciliation -->

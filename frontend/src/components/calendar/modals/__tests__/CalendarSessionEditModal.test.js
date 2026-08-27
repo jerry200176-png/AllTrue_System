@@ -55,4 +55,30 @@ describe('CalendarSessionEditModal', () => {
     expect(w.emitted('substitute-v2')).toHaveLength(1);
   });
 
+  it('shows a guarded recovery action only for a server-approved candidate', async () => {
+    const w = mount(CalendarSessionEditModal, {
+      props: {
+        show: true,
+        form,
+        session: {
+          ...session,
+          recovery: {
+            loading: false,
+            available: true,
+            previousStatus: 'scheduled',
+            previousStatusLabel: '排程中',
+            reason: '主任誤取消',
+            submitting: false,
+          },
+        },
+        options: {},
+      },
+      global: { stubs: { SearchableSelect: true } },
+    });
+    expect(w.text()).toContain('這堂課可安全復原');
+    await w.find('#session-recovery-reason').setValue('主任誤取消');
+    await w.find('.restore-session').trigger('click');
+    expect(w.emitted('restore-session')).toHaveLength(1);
+  });
+
 });

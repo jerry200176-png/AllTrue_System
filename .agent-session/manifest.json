@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "04854d4413574933b9fdf0cd9acb9c39",
+  "session_id": "e68893886e2346ff857022d70022a18a",
   "project": "alltrue",
-  "task_id": "reconcile-evaluation-integrity-20260827",
+  "task_id": "INT-20260828-recovery-ux",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "5e9fead9564d7f9cab52d7381f0b61e7a5b23d8c",
-  "branch": "chore/task-reconcile-evaluation-integrity-20260827",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/reconcile-evaluation-integrity-20260827",
-  "started_at": "2026-08-27T12:21:00Z",
+  "base_sha": "247ab1db7f22e0ec36822fdb60739c81af44cb97",
+  "branch": "chore/task-INT-20260828-recovery-ux",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/INT-20260828-recovery-ux",
+  "started_at": "2026-08-27T16:12:02Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": null,
+  "agent_cli": "codex",
   "gateway_version": "0.5.0"
 }

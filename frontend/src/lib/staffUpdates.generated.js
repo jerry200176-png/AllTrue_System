@@ -4,6 +4,43 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-28-schedule-safe-recovery",
+    "publishedAt": "2026-08-28",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "取消課堂可安全復原",
+    "summary": "誤取消單堂課後，可在同一堂次檢視視窗復原上一個狀態。",
+    "items": [
+      "取消堂次重新開啟後，只有系統確認是最近一次主任操作且沒有衝堂時才會顯示復原按鈕。",
+      "復原前請確認日期與時段並填寫原因；系統會同步排課、必要評量／點名與堂數。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "取消堂次重新開啟後，只有系統確認是最近一次主任操作且沒有衝堂時才會顯示復原按鈕。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "復原前請確認日期與時段並填寫原因；系統會同步排課、必要評量／點名與堂數。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-28:schedule-safe-recovery"
+    ],
+    "date": "2026-08-28",
+    "version": "2026.08.28"
+  },
+  {
     "id": "staff-2026-08-27-transfer-ledger-reconciliation",
     "publishedAt": "2026-08-27",
     "effectiveAt": null,

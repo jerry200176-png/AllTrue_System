@@ -56,13 +56,24 @@
           >🚫 取消本堂</button>
         </div>
         <div v-if="session.cancelState.show" class="cancel-session-confirm">
-          <p>確定取消這堂課？<br><small>此操作無法自動還原（可至課程管理手動設回「排程中」）。</small></p>
+          <p>確定取消這堂課？<br><small>取消後仍可從本視窗安全復原；系統會先檢查是否有新變更或衝堂。</small></p>
           <div class="cancel-session-confirm-btns">
             <button class="action-btn" style="background:var(--ds-canvas-soft);color:var(--ds-ink);" @click="$emit('dismiss-cancel-confirm')">不取消</button>
             <button class="action-btn cancel-session" :disabled="session.cancelState.loading" @click="$emit('confirm-cancel')">
               {{ session.cancelState.loading ? '處理中...' : '確定取消本堂' }}
             </button>
           </div>
+        </div>
+        <div v-if="session.recovery?.loading" class="session-recovery session-recovery--loading">正在檢查是否可安全復原…</div>
+        <div v-else-if="session.recovery?.available" class="session-recovery" role="status">
+          <strong>這堂課可安全復原</strong>
+          <span>取消前狀態：{{ session.recovery.previousStatusLabel || session.recovery.previous_status }}</span>
+          <span class="session-recovery-impact">會同步排課、評量／點名與堂數</span>
+          <label for="session-recovery-reason">復原原因</label>
+          <input id="session-recovery-reason" v-model="session.recovery.reason" maxlength="255" placeholder="例如：主任誤取消" />
+          <button class="action-btn restore-session" :disabled="!session.recovery.reason?.trim() || session.recovery.submitting" @click="$emit('restore-session')">
+            {{ session.recovery.submitting ? '復原中...' : '↩ 復原上一個變更' }}
+          </button>
         </div>
       </div>
 
@@ -199,6 +210,7 @@ const props = defineProps({
       featureSubstituteV2: false,
       canCancelSession: false,
       cancelState: { show: false, loading: false },
+      recovery: { loading: false, available: false, reason: '', submitting: false },
       editingException: false,
       editingExceptionIsExtra: false,
       evalRecords: [],
@@ -218,6 +230,7 @@ const props = defineProps({
 defineEmits([
   'close', 'leave', 'reschedule', 'substitute', 'substitute-v2',
   'show-cancel-confirm', 'dismiss-cancel-confirm', 'confirm-cancel',
+  'restore-session',
   'delete-exception', 'delete-course', 'cancel-makeup', 'teacher-change',
 ]);
 </script>
@@ -400,6 +413,22 @@ defineEmits([
 .cancel-session-confirm p { margin: 0 0 10px; line-height: 1.5; }
 .cancel-session-confirm small { color: var(--ds-ink); }
 .cancel-session-confirm-btns { display: flex; gap: 8px; }
+.session-recovery {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--ds-success);
+  border-radius: 8px;
+  background: var(--ds-success-wash, #eefaf1);
+  color: var(--ds-ink);
+  font-size: 13px;
+}
+.session-recovery--loading { color: var(--ds-ink-mute); border-color: var(--ds-hairline); background: var(--ds-canvas); }
+.session-recovery-impact { color: var(--ds-ink-mute); }
+.session-recovery input { width: 100%; padding: 8px 10px; border: 1px solid var(--ds-hairline); border-radius: 6px; }
+.restore-session { background: var(--ds-success-wash, #eefaf1); color: var(--ds-success); border-color: var(--ds-success); }
+.restore-session:disabled { opacity: 0.6; cursor: not-allowed; }
 .eval-summary-box {
   margin-top: 16px;
   padding: 12px;
