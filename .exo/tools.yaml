@@ -39,3 +39,14 @@ tools:
   used_by: []
   last_used: ''
   created_at: '2026-08-23T18:32:05+08:00'
+- id: scripts.check-eslint-unused-baseline.mjs:main
+  module: scripts/check-eslint-unused-baseline.mjs
+  function: main
+  description: Run the frontend no-unused-vars per-file baseline ratchet and fail
+    only on newly added debt
+  signature: ''
+  tags: []
+  created_by: ''
+  used_by: []
+  last_used: '2026-08-27T12:43:47+08:00'
+  created_at: '2026-08-27T12:43:44+08:00'
