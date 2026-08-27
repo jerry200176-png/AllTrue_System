@@ -26,8 +26,9 @@ const latest = notesForRole('director')[0];
 assert.ok(/^\d+\.\d+\.\d+$/.test(latest.version));
 assert.ok(latest.id && latest.publishedAt && latest.sections?.length);
 assert.ok(['digest', 'major', 'action_required'].includes(latest.importance));
-  assert.strictEqual(latest.publishedAt, '2026-08-26');
+  assert.strictEqual(latest.publishedAt, '2026-08-27');
   for (const id of [
+    'staff-2026-08-27-teacher-assessment-engagement',
     'staff-2026-08-26-bug-report-image-paste',
     'staff-2026-08-19-receipt-line-clarity',
     'staff-2026-08-19-accounting-receipt-pin-gap',
