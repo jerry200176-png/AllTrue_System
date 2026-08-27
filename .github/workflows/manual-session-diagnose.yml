@@ -1,6 +1,9 @@
 name: Manual session booking diagnose (read-only)
 
 on:
+  push:
+    branches:
+      - 'chore/task-manual-session-diagnose-**'
   workflow_dispatch:
     inputs:
       student_class_id:
@@ -32,9 +35,9 @@ jobs:
 
       - name: Validate inputs
         env:
-          COURSE_ID: ${{ inputs.student_class_id }}
-          TARGET_DATE: ${{ inputs.date }}
-          START_TIME: ${{ inputs.start_time }}
+          COURSE_ID: ${{ inputs.student_class_id || '2081' }}
+          TARGET_DATE: ${{ inputs.date || '2026-08-29' }}
+          START_TIME: ${{ inputs.start_time || '13:00' }}
         run: |
           set -euo pipefail
           [[ "$COURSE_ID" =~ ^[0-9]+$ ]] || { echo 'student_class_id must be numeric'; exit 1; }
@@ -56,9 +59,9 @@ jobs:
         env:
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
-          COURSE_ID: ${{ inputs.student_class_id }}
-          TARGET_DATE: ${{ inputs.date }}
-          START_TIME: ${{ inputs.start_time }}
+          COURSE_ID: ${{ inputs.student_class_id || '2081' }}
+          TARGET_DATE: ${{ inputs.date || '2026-08-29' }}
+          START_TIME: ${{ inputs.start_time || '13:00' }}
         run: |
           set -euo pipefail
           mkdir -p out
