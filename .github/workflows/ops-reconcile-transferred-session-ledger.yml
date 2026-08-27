@@ -1,0 +1,103 @@
+name: Reconcile transferred session ledger (allowlisted)
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: dry-run is read-only; apply repairs one exact transfer set
+        required: true
+        default: dry-run
+        type: choice
+        options: [dry-run, apply]
+      approved_dry_run_id:
+        description: Successful dry-run GitHub run ID required for apply
+        required: false
+        type: string
+      confirm:
+        description: For apply, type APPROVE_WU_AITONG_TRANSFER_LEDGER_20260827
+        required: false
+        type: string
+
+concurrency:
+  group: reconcile-transferred-session-ledger-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate exact scope
+        env:
+          MODE: ${{ inputs.mode }}
+          DRY_RUN_ID: ${{ inputs.approved_dry_run_id }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          if [ "$MODE" = apply ]; then
+            [[ "$DRY_RUN_ID" =~ ^[0-9]+$ ]]
+            test "$CONFIRM" = APPROVE_WU_AITONG_TRANSFER_LEDGER_20260827
+          fi
+          echo 'scope=student:178 campus:16 source:2688 target:3401' >> "$GITHUB_STEP_SUMMARY"
+          echo 'session_ids=24169,30440,30441,30442,31820' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$PI_SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Run guarded production reconciliation
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          MODE: ${{ inputs.mode }}
+          DRY_RUN_ID: ${{ inputs.approved_dry_run_id }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes \
+            "$PI_SSH_USER@$PI_SSH_HOST" MODE="$MODE" DRY_RUN_ID="$DRY_RUN_ID" RUN_ID="$RUN_ID" 'bash -s' <<'REMOTE' | tee out/repair.log
+          set -euo pipefail
+          cd /home/admin/backend
+          REQUIRED_SHA=0affd2c1
+          PROD_SHA=$(git rev-parse HEAD)
+          git merge-base --is-ancestor "$REQUIRED_SHA" "$PROD_SHA"
+          ARGS=(--source-class=2688 --target-class=3401 --session-ids=24169,30440,30441,30442,31820
+            --reason='吳艾潼堂次轉移後同步扣堂台帳' --actor="github-actions:wuaitong-ledger:$RUN_ID" --actor-user-id=4)
+          php artisan repair:transferred-session-ledger "${ARGS[@]}"
+          if [ "$MODE" = dry-run ]; then exit 0; fi
+          TS=$(date -u '+%Y%m%dT%H%M%SZ')
+          BACKUP_DIR=/home/admin/backups/emergency
+          SNAPSHOT_DIR=/home/admin/backend/storage/app/repair-snapshots
+          mkdir -p "$BACKUP_DIR" "$SNAPSHOT_DIR"
+          DB_USER=$(grep '^DB_USERNAME=' .env | cut -d= -f2-)
+          DB_PASSWORD=$(grep '^DB_PASSWORD=' .env | cut -d= -f2-)
+          DB_BACKUP="$BACKUP_DIR/db_pre_wuaitong_ledger_reconcile_${RUN_ID}_${TS}.sql.gz"
+          mysqldump -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASSWORD" --single-transaction \
+            AllTrue ClassSession LearningRecord StudentSingIn session_deduction_ledger StudentClass security_audit_events | gzip > "$DB_BACKUP"
+          unset DB_PASSWORD
+          test -s "$DB_BACKUP"
+          export ALLOW_PROD_REPAIR=1
+          php artisan repair:transferred-session-ledger "${ARGS[@]}" --execute --force \
+            --snapshot="$SNAPSHOT_DIR/wuaitong-ledger-reconcile-${RUN_ID}-${TS}.json"
+          unset ALLOW_PROD_REPAIR
+          php artisan repair:transferred-session-ledger "${ARGS[@]}"
+          REMOTE
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: wuaitong-transferred-ledger-reconcile-${{ github.run_id }}
+          path: out/repair.log
+          retention-days: 90
