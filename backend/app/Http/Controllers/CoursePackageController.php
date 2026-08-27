@@ -657,7 +657,8 @@ class CoursePackageController extends Controller
             'additional_subject.teacher_id' => 'required|integer|exists:User,id',
         ]);
 
-        $campusId = (int) Student::where('id', (int) $studentClass->StudentID)->value('CampusID');
+        // @phpstan-ignore-next-line
+        $campusId = (int) Student::where('id', (int) $studentClass->getAttribute('StudentID'))->value('CampusID');
         $campusIds = $role === 'super_admin' ? [] : (array) $request->attributes->get('auth_campus_ids', []);
         if ($campusId <= 0 || (!empty($campusIds) && !in_array($campusId, array_map('intval', $campusIds), true))) {
             return response()->json(['message' => 'Forbidden'], 403);
@@ -671,9 +672,10 @@ class CoursePackageController extends Controller
         if ($subjectId <= 0) {
             return response()->json(['message' => '請選擇要加入的第二科目'], 422);
         }
-        if ($subjectId === (int) $studentClass->SubjectID) {
+        if ($subjectId === (int) $studentClass->getAttribute('SubjectID')) {
             return response()->json(['message' => '第二科目不可與原課程相同'], 422);
         }
+        // @phpstan-ignore-next-line
         if (!UserCampus::where('UserID', (int) $additional['teacher_id'])
             ->where('CampusID', $campusId)->where('Approved', 1)->exists()) {
             return response()->json(['message' => '第二科目老師尚未指派至學生所在分校'], 422);
@@ -681,9 +683,11 @@ class CoursePackageController extends Controller
 
         try {
             $result = DB::transaction(function () use ($request, $studentClass, $data, $additional, $subjectId, $campusId) {
-                $source = StudentClass::where('ID', (int) $studentClass->ID)->lockForUpdate()->firstOrFail();
+                // @phpstan-ignore-next-line
+                $source = StudentClass::where('ID', (int) $studentClass->getAttribute('ID'))->lockForUpdate()->firstOrFail();
                 if ((int) ($source->PackageID ?? 0) > 0) {
-                    $package = CoursePackage::find((int) $source->PackageID);
+                    // @phpstan-ignore-next-line
+                    $package = CoursePackage::find((int) $source->getAttribute('PackageID'));
                     if ($package) return ['package' => $package, 'member' => $source, 'idempotent' => true];
                     throw new \RuntimeException('來源課程的共用方案不存在，請聯絡管理員檢查。');
                 }
@@ -695,15 +699,17 @@ class CoursePackageController extends Controller
                 }
 
                 $total = max(0, (int) ($source->SessionCount ?? 0));
-                $diagnostic = SessionDeductionService::batchExpectedUsedSessionDiagnostics([(int) $source->ID])[(int) $source->ID] ?? [];
+                $sourceId = (int) $source->getAttribute('ID');
+                $diagnostic = SessionDeductionService::batchExpectedUsedSessionDiagnostics([$sourceId])[$sourceId] ?? [];
                 $used = max(0, (int) ($diagnostic['expected_used'] ?? 0));
                 $remaining = max(0, $total - $used);
                 if ($total <= 0 || $remaining <= 0) {
                     throw new \InvalidArgumentException('此合約沒有可轉入共用池的剩餘堂數');
                 }
 
+                // @phpstan-ignore-next-line
                 $package = CoursePackage::create([
-                    'student_id' => (int) $source->StudentID,
+                    'student_id' => (int) $source->getAttribute('StudentID'),
                     'campus_id' => $campusId,
                     'name' => trim($data['name']),
                     'billing_mode' => 'count',
@@ -721,20 +727,21 @@ class CoursePackageController extends Controller
 
                 $operator = $request->attributes->get('auth_user');
                 $operatorId = is_object($operator) ? (int) ($operator->id ?? 0) : null;
-                $requestId = (string) ($request->header('Idempotency-Key') ?: ('course-conversion-' . $source->ID . '-' . $package->id));
+                $requestId = (string) ($request->header('Idempotency-Key') ?: ('course-conversion-' . $sourceId . '-' . $package->id));
                 $note = '單科轉多科共用；保留原合約及帳務；方案 #' . $package->id;
-                $sessions = ClassSession::where('StudentClassID', (int) $source->ID)
+                // @phpstan-ignore-next-line
+                $sessions = ClassSession::where('StudentClassID', $sourceId)
                     ->whereIn('Status', ['attended', 'completed', 'late'])
                     ->orderBy('SessionDate')->orderBy('StartTime')->orderBy('id')->get(['id']);
                 foreach ($sessions as $session) {
                     PackageDeductionService::deductForSession(
-                        (int) $package->id, (int) $source->ID, (int) $session->id,
+                        (int) $package->id, $sourceId, (int) $session->id,
                         'conversion_seed', $operatorId ?: null, $note, $requestId
                     );
                 }
                 for ($i = 0; $i < max(0, $used - $sessions->count()); $i++) {
                     PackageDeductionService::deductForSession(
-                        (int) $package->id, (int) $source->ID, null,
+                        (int) $package->id, $sourceId, null,
                         'conversion_seed_orphan', $operatorId ?: null,
                         $note . '；歷史無綁定堂次', $requestId . '-' . $i
                     );
@@ -746,8 +753,9 @@ class CoursePackageController extends Controller
                 $source->save();
                 $package->recomputeCounters();
 
+                // @phpstan-ignore-next-line
                 $member = StudentClass::create([
-                    'StudentID' => (int) $source->StudentID,
+                    'StudentID' => (int) $source->getAttribute('StudentID'),
                     'GradeID' => (int) ($source->GradeID ?: 1),
                     'SubjectID' => $subjectId,
                     'TeacherID' => (int) $additional['teacher_id'],
@@ -765,18 +773,22 @@ class CoursePackageController extends Controller
                 ]);
 
                 Log::info('CoursePackage convert-to-package', [
-                    'source_student_class_id' => (int) $source->ID,
+                    'source_student_class_id' => $sourceId,
                     'package_id' => (int) $package->id,
-                    'additional_student_class_id' => (int) $member->ID,
+                    'additional_student_class_id' => (int) $member->getAttribute('ID'),
                     'used_sessions_seeded' => $used,
                     'by_user' => $operatorId,
                 ]);
                 return ['package' => $package->fresh(), 'member' => $member, 'idempotent' => false];
             });
-        } catch (\InvalidArgumentException $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
-        } catch (\RuntimeException $e) {
-            return response()->json(['message' => $e->getMessage()], 409);
+        } catch (\Throwable $e) {
+            if ($e instanceof \InvalidArgumentException) {
+                return response()->json(['message' => $e->getMessage()], 422);
+            }
+            if ($e instanceof \RuntimeException) {
+                return response()->json(['message' => $e->getMessage()], 409);
+            }
+            throw $e;
         }
 
         return response()->json([

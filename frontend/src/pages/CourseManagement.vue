@@ -6355,7 +6355,7 @@ button.danger:disabled {
   overflow-y: auto;
 }
 .package-conversion-modal { max-width: 520px; }
-.package-conversion-summary { display: grid; gap: 4px; margin: 0 0 14px; padding: 12px; border-radius: 10px; background: var(--ds-info-wash, #eef6ff); color: var(--ds-ink); font-size: 13px; }
+.package-conversion-summary { display: grid; gap: 4px; margin: 0 0 14px; padding: 12px; border-radius: 10px; background: var(--ds-info-wash); color: var(--ds-ink); font-size: 13px; }
 .package-conversion-summary span { color: var(--ds-ink-mute); }
 
 .editability-action-panel {
