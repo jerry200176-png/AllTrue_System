@@ -344,26 +344,26 @@
                           @click="openManualSessionModal(c)"
                         >＋新增下一堂</button>
                         <button
-                          v-if="isSessionMode(c) && !isManualOccurrenceCourse(c)"
+                          v-if="(isSessionMode(c) || isMonthlyMode(c)) && !isManualOccurrenceCourse(c)"
                           class="small btn-add-session manual-occurrence-action"
                           @click="openManualSessionModal(c)"
-                        >排課</button>
+                        >{{ isMonthlyMode(c) ? '排月結' : '排課' }}</button>
                         <button class="small ghost btn-toggle" @click="toggleDatesAndMakeups(c)">
                           {{ expandedDates.has(c.id) ? '收起' : '詳情' }}
                         </button>
                         <div class="action-menu-wrapper">
                           <button class="small ghost action-menu-trigger" @click.stop="toggleActionMenu(c.id)" title="其他課程操作" aria-haspopup="menu" :aria-expanded="activeActionMenu === c.id">更多 ▾</button>
                           <div v-if="activeActionMenu === c.id" class="action-dropdown" role="menu" aria-label="其他課程操作" @click.stop>
-                            <p v-if="isSessionMode(c)" class="action-section-label">排課與課堂</p>
+                            <p v-if="isSessionMode(c) || isMonthlyMode(c)" class="action-section-label">排課與課堂</p>
                             <button
-                              v-if="isSessionMode(c) && !isManualOccurrenceCourse(c)"
+                              v-if="(isSessionMode(c) || isMonthlyMode(c)) && !isManualOccurrenceCourse(c)"
                               class="action-dropdown-item action-dropdown-add-session-mobile"
                               role="menuitem"
-                              :class="{ 'action-dropdown-item--disabled': !canQuickAddSession(c) }"
-                              :disabled="!canQuickAddSession(c)"
-                              :title="canQuickAddSession(c) ? '' : quickAddDisabledReason(c)"
-                              @click="canQuickAddSession(c) && (openQuickAddSessionModal(c), closeActionMenu())"
-                            ><span class="material-symbols-outlined action-icon" aria-hidden="true">add_task</span> 補課 / 補登</button>
+                              :class="{ 'action-dropdown-item--disabled': isSessionMode(c) && !canQuickAddSession(c) }"
+                              :disabled="isSessionMode(c) && !canQuickAddSession(c)"
+                              :title="isMonthlyMode(c) ? '在課程起訖日內新增月結堂次' : (canQuickAddSession(c) ? '' : quickAddDisabledReason(c))"
+                              @click="isMonthlyMode(c) ? (openMonthlySessionModal(c), closeActionMenu()) : (canQuickAddSession(c) && (openQuickAddSessionModal(c), closeActionMenu()))"
+                            ><span class="material-symbols-outlined action-icon" aria-hidden="true">add_task</span> {{ isMonthlyMode(c) ? '新增月結堂次' : '補課 / 補登' }}</button>
                             <p class="action-section-label">帳務與合約</p>
                             <button class="action-dropdown-item" role="menuitem" @click="openInvoiceModal(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">receipt_long</span> 帳單與對帳</button>
                             <button
@@ -829,6 +829,7 @@
       :result="manualSessionCheck"
       :checking="manualSessionChecking"
       :submitting="manualSessionSubmitting"
+      :is-monthly="isMonthlyMode(manualSessionCourse)"
       :today="todayYmd"
       @close="showManualSessionModal = false"
       @check="runManualSessionCheck"
@@ -2789,6 +2790,10 @@ function openManualSessionModal(course) {
   };
   showManualSessionModal.value = true;
   runManualSessionCheck();
+}
+
+function openMonthlySessionModal(course) {
+  openManualSessionModal(course);
 }
 
 function openPackageConversion(course) {
