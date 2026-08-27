@@ -2222,6 +2222,8 @@ const manualSessionCheck = ref(null);
 const manualSessionChecking = ref(false);
 const manualSessionSubmitting = ref(false);
 const manualSessionForm = ref({ session_date: '', start_time: '16:00' });
+// 每次檢查都帶版本，避免較早發出的 422 覆蓋主任剛選好的有效日期結果。
+let manualSessionCheckVersion = 0;
 const isManualOccurrenceCourse = (course) => String(course?.scheduling_policy || 'auto_recurrence') === 'manual_occurrence';
 const pauseConfirmTarget = ref(null);
 const pauseConfirmSubmitting = ref(false);
@@ -2256,6 +2258,25 @@ const localTodayYmd = () => {
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 };
+
+function nextManualSessionDate(course) {
+  const today = localTodayYmd();
+  const configuredDays = Array.isArray(course?.days_of_week) && course.days_of_week.length
+    ? course.days_of_week
+    : (course?.day_of_week ? [course.day_of_week] : []);
+  const days = new Set(configuredDays.map(Number).filter((day) => day >= 1 && day <= 7));
+  const currentTime = `${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`;
+  const startTime = String(course?.start_time || '').slice(0, 5);
+
+  for (let offset = 0; offset <= 7; offset += 1) {
+    const date = addDays(today, offset);
+    const isToday = offset === 0;
+    const isValidWeekday = days.size === 0 || days.has(dayOfWeekFromDate(date));
+    const isStillUpcoming = !isToday || !startTime || startTime > currentTime;
+    if (isValidWeekday && isStillUpcoming) return date;
+  }
+  return addDays(today, 1);
+}
 
 function requestCoursePause(course) {
   pauseCancelRemaining.value = true;
@@ -2738,7 +2759,7 @@ function openManualSessionModal(course) {
   manualSessionCourse.value = course;
   manualSessionCheck.value = null;
   manualSessionForm.value = {
-    session_date: localTodayYmd(),
+    session_date: nextManualSessionDate(course),
     start_time: String(course.start_time || '16:00').slice(0, 5),
   };
   showManualSessionModal.value = true;
@@ -2749,6 +2770,7 @@ async function runManualSessionCheck() {
   const course = manualSessionCourse.value;
   const form = manualSessionForm.value;
   if (!course?.id || !form.session_date || !form.start_time) return;
+  const requestVersion = ++manualSessionCheckVersion;
   manualSessionChecking.value = true;
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
@@ -2759,11 +2781,14 @@ async function runManualSessionCheck() {
       headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ session_date: form.session_date, start_time: form.start_time }),
     });
-    manualSessionCheck.value = await res.json().catch(() => ({ can_add: false, message: '檢查失敗' }));
+    const result = await res.json().catch(() => ({ can_add: false, message: '檢查失敗' }));
+    if (requestVersion !== manualSessionCheckVersion) return;
+    manualSessionCheck.value = result;
   } catch (e) {
+    if (requestVersion !== manualSessionCheckVersion) return;
     manualSessionCheck.value = { can_add: false, message: e?.message || '檢查失敗' };
   } finally {
-    manualSessionChecking.value = false;
+    if (requestVersion === manualSessionCheckVersion) manualSessionChecking.value = false;
   }
 }
 

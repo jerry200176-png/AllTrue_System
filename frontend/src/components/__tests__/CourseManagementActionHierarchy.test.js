@@ -35,4 +35,11 @@ describe('CourseManagement action hierarchy', () => {
     expect(activeActions).toContain('@click="openContractAdjustmentModal(c); closeActionMenu()"');
     expect(activeActions).toContain('@click="duplicateCourseForTeacher(c); closeActionMenu()"');
   });
+
+  it('does not let an earlier manual-session check overwrite the latest selection', () => {
+    expect(source).toContain('let manualSessionCheckVersion = 0;');
+    expect(source).toContain('const requestVersion = ++manualSessionCheckVersion;');
+    expect(source).toContain('if (requestVersion !== manualSessionCheckVersion) return;');
+    expect(source).toContain('session_date: nextManualSessionDate(course)');
+  });
 });

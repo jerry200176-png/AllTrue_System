@@ -377,9 +377,14 @@ class AddSessionConflictTest extends TestCase
             ->assertCreated()
             ->assertJsonPath('student_class_id', $sc->ID);
 
-        $this->assertSame(8, ClassSession::where('StudentClassID', $sc->ID)
+        $this->assertSame(7, ClassSession::where('StudentClassID', $sc->ID)
             ->where('Status', 'attended')
             ->count());
+        $this->assertSame(1, ClassSession::where('StudentClassID', $sc->ID)
+            ->whereDate('SessionDate', $targetDate)
+            ->where('Status', 'scheduled')
+            ->count());
+        $this->assertSame(1, (int) $sc->fresh()->RemainingSessions);
     }
 
     // --- check endpoint: full capacity ---
