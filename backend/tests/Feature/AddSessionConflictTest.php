@@ -315,6 +315,78 @@ class AddSessionConflictTest extends TestCase
             ->assertJsonPath('conflict_type', 'none');
     }
 
+    /**
+     * Regression: a count contract with seven attended sessions and one
+     * remaining session must still accept its eighth occurrence. Cancelled
+     * leave dates are historical exceptions, not additional active sessions.
+     * This mirrors the Xindian 周芮緗 8-session contract reported on 2026-08-27.
+     */
+    public function test_eighth_session_is_not_rejected_as_full_after_cancelled_leave_dates(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $targetDate = Carbon::today()->addDays(2)->toDateString();
+        $sc = $this->createStudentClass($student->id, [
+            'SessionCount' => 8,
+            'RemainingSessions' => 1,
+            'UsedSessions' => 7,
+            'ClassType' => 'one_on_three',
+        ]);
+
+        foreach ([-23, -16, -9, -2, 5, 12, 19] as $offset) {
+            ClassSession::create([
+                'StudentClassID' => $sc->ID,
+                'SessionDate' => Carbon::parse($targetDate)->addDays($offset)->toDateString(),
+                'StartTime' => '13:00:00',
+                'EndTime' => '15:00:00',
+                'Status' => 'attended',
+            ]);
+        }
+
+        foreach ([-16, -9, -2, 5, 12] as $offset) {
+            ClassSession::create([
+                'StudentClassID' => $sc->ID,
+                'SessionDate' => Carbon::parse($targetDate)->addDays($offset)->toDateString(),
+                'StartTime' => '13:00:00',
+                'EndTime' => '15:00:00',
+                'Status' => 'cancelled',
+            ]);
+        }
+
+        $headers = [
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ];
+
+        $this->withHeaders($headers)
+            ->postJson("/api/v1/student-classes/{$sc->ID}/add-session/check", [
+                'session_date' => $targetDate,
+                'start_time' => '13:00',
+            ])
+            ->assertOk()
+            ->assertJsonPath('can_add', true)
+            ->assertJsonPath('conflict_type', 'none');
+
+        $this->withHeaders($headers)
+            ->postJson("/api/v1/student-classes/{$sc->ID}/add-session", [
+                'session_date' => $targetDate,
+                'start_time' => '13:00',
+                'duration_minutes' => 120,
+                'auto_approve' => false,
+            ])
+            ->assertCreated()
+            ->assertJsonPath('student_class_id', $sc->ID);
+
+        $this->assertSame(7, ClassSession::where('StudentClassID', $sc->ID)
+            ->where('Status', 'attended')
+            ->count());
+        $this->assertSame(1, ClassSession::where('StudentClassID', $sc->ID)
+            ->whereDate('SessionDate', $targetDate)
+            ->where('Status', 'scheduled')
+            ->count());
+        $this->assertSame(1, (int) $sc->fresh()->RemainingSessions);
+    }
+
     // --- check endpoint: full capacity ---
     public function test_check_endpoint_returns_full_capacity(): void
     {
