@@ -3067,7 +3067,20 @@ onBeforeUnmount(() => {
   .director-workbench-v2__primary > .surface-panel__header::before { left: 12px; top: 17px; bottom: 14px; }
   .director-task { grid-template-columns: 28px minmax(0, 1fr); gap: 10px; align-items: start; margin-inline: -6px; padding: 15px 6px; }
   .director-task__title-row h3 { white-space: normal; }
-  .director-task__action { grid-column: 2; justify-self: start; margin-top: 3px; }
+  /* Mobile primary actions must look and measure like actions, not inline links.
+     Keep the task hierarchy intact while guaranteeing a comfortable touch target. */
+  .director-task__action {
+    grid-column: 2;
+    justify-self: start;
+    min-height: 44px;
+    margin-top: 3px;
+    padding: 9px 12px;
+    border: 1px solid var(--ds-cta);
+    border-radius: 7px;
+    background: var(--ds-cta);
+    color: var(--ds-on-cta);
+  }
+  .director-task__action:hover { border-color: var(--ds-cta-hover); background: var(--ds-cta-hover); color: var(--ds-on-cta); }
   .director-workbench-v2__more { margin-left: 54px; margin-right: 16px; }
   .director-summary-list { padding-inline: 16px; }
   .director-schedule-row { grid-template-columns: 48px minmax(0, 1fr) auto; gap: 7px; }
