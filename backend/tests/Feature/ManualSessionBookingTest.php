@@ -342,11 +342,10 @@ class ManualSessionBookingTest extends TestCase
             ->assertJsonPath('error_code', 'AFTER_COURSE_END');
     }
 
-    public function test_monthly_course_requires_an_explicit_start_and_end_date(): void
+    public function test_monthly_course_requires_an_explicit_end_date(): void
     {
         $this->course->ScheduleMode = 'date';
         $this->course->SessionCount = 0;
-        $this->course->StartDate = null;
         $this->course->EndDate = null;
         $this->course->save();
 
