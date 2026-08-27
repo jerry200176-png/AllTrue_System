@@ -36,6 +36,7 @@
         <ul v-if="conflict.suggested_actions && conflict.suggested_actions.length" class="conflict-actions">
           <li v-for="action in conflict.suggested_actions" :key="action">{{ action }}</li>
         </ul>
+        <button type="button" class="ghost conflict-retry" @click="$emit('check')">重新檢查</button>
       </div>
 
       <div v-if="showAutoApproveWarning" class="conflict-banner auto-approve-banner">
@@ -98,5 +99,6 @@ function handleSubmit() {
 }
 .conflict-msg { color: var(--ds-primary); font-size: 13px; font-weight: 600; margin: 0 0 6px; line-height: 1.5; }
 .conflict-actions { margin: 0; padding-left: 18px; color: var(--ds-danger); font-size: 12px; line-height: 1.6; }
+.conflict-retry { margin-top: 8px; }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>

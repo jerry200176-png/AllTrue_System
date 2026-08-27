@@ -42,5 +42,7 @@ describe('CourseManagement action hierarchy', () => {
     expect(source).toContain('if (requestVersion !== manualSessionCheckVersion) return;');
     expect(source).toContain("import { nextManualSessionDate } from '../lib/manualSessionDate.js';");
     expect(source).toContain('session_date: nextManualSessionDate(course)');
+    expect(source).toContain('let quickAddCheckVersion = 0;');
+    expect(source).toContain('const requestVersion = ++quickAddCheckVersion;');
   });
 });

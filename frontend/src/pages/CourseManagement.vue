@@ -2208,6 +2208,7 @@ const showQuickAddSessionModal = ref(false);
 const quickAddSessionCourse = ref(null);
 const quickAddConflict = ref(null);
 const quickAddChecking = ref(false);
+let quickAddCheckVersion = 0;
 const quickAddSessionForm = ref({
   session_date: '',
   start_time: '16:00',
@@ -2617,7 +2618,7 @@ function openQuickAddSessionModal(course, prefill = null) {
     if (Number.isFinite(mins) && mins >= 30) durationMinutes = mins;
   }
   quickAddSessionForm.value = {
-    session_date: prefillDate || localTodayYmd(),
+    session_date: prefillDate || nextManualSessionDate(course),
     start_time: prefillStart || normalizeTo30Min(course?.start_time || '16:00'),
     duration_minutes: durationMinutes,
     note: '',
@@ -2635,6 +2636,7 @@ async function runQuickAddCheck(courseIdOverride) {
   if (!courseId) return;
   const form = quickAddSessionForm.value;
   if (!form.session_date || !form.start_time) return;
+  const requestVersion = ++quickAddCheckVersion;
   clearTimeout(_quickAddCheckTimer);
   _quickAddCheckTimer = setTimeout(async () => {
     quickAddChecking.value = true;
@@ -2649,11 +2651,13 @@ async function runQuickAddCheck(courseIdOverride) {
         body: JSON.stringify({ session_date: form.session_date, start_time: form.start_time }),
       });
       const json = await res.json().catch(() => ({}));
+      if (requestVersion !== quickAddCheckVersion) return;
       quickAddConflict.value = json;
     } catch (_) {
+      if (requestVersion !== quickAddCheckVersion) return;
       quickAddConflict.value = null;
     } finally {
-      quickAddChecking.value = false;
+      if (requestVersion === quickAddCheckVersion) quickAddChecking.value = false;
     }
   }, 300);
 }
