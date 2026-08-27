@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Models\UserCampus;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class CoursePackageConversionPreviewTest extends TestCase
@@ -23,7 +24,7 @@ class CoursePackageConversionPreviewTest extends TestCase
     {
         $student = $this->createStudent(1);
         $course = $this->createCountCourse($student->id);
-        $before = $course->getAttributes();
+        $before = (array) DB::table('StudentClass')->where('ID', $course->ID)->first();
 
         $response = $this->getPreview($this->createDirectorToken([1]), $course);
 
@@ -41,7 +42,8 @@ class CoursePackageConversionPreviewTest extends TestCase
             ],
         ]);
         $course->refresh();
-        $this->assertSame($before, $course->getAttributes(), 'Read-only preview must not mutate the source contract');
+        $after = (array) DB::table('StudentClass')->where('ID', $course->ID)->first();
+        $this->assertSame($before, $after, 'Read-only preview must not mutate the source contract');
     }
 
     public function test_preview_blocks_usage_and_financial_history_with_actionable_reasons(): void
