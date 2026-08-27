@@ -22,6 +22,7 @@ use App\Services\UserEngagementXpAwardService;
 use App\Services\SessionDeductionService;
 use App\Services\RescheduleSessionService;
 use App\Services\SubstituteScheduleService;
+use App\Support\AttendanceStatus;
 use App\Support\TeacherProfileDirectory;
 use App\Support\Utf8mb3SearchSanitizer;
 use Illuminate\Database\Eloquent\Builder;
@@ -1058,6 +1059,14 @@ class LearningRecordController extends Controller
                     'existing_id' => $eid,
                     'existing_record_id' => $eid,
                 ], 409);
+            }
+
+            $sessionStatus = strtolower((string) ($classSession->Status ?? ''));
+            if (!in_array($sessionStatus, AttendanceStatus::requiresLogSessionStatuses(), true)) {
+                return response()->json([
+                    'message' => '這堂課尚未確認為已到課，請先完成出缺勤點名；請假、缺席與取消堂次不建立評量表。',
+                    'code' => 'learning_record_requires_attendance',
+                ], 422);
             }
 
             $authUser = request()->attributes->get('auth_user');
