@@ -128,6 +128,33 @@ class AddSessionConflictTest extends TestCase
             ->assertJsonPath('conflict_type', 'full_capacity');
     }
 
+    public function test_date_mode_course_with_legacy_session_count_is_not_capacity_limited(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createStudentClass($student->id, [
+            'ScheduleMode' => 'date',
+            'SessionCount' => 4,
+            'RemainingSessions' => 0,
+            'UsedSessions' => 8,
+            'StartDate' => Carbon::today()->subDays(10)->toDateString(),
+            'EndDate' => Carbon::today()->addDays(10)->toDateString(),
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/student-classes/{$sc->ID}/add-session", [
+            'session_date' => Carbon::today()->addDays(2)->toDateString(),
+            'start_time' => '10:00',
+            'duration_minutes' => 60,
+            'auto_approve' => false,
+        ]);
+
+        $res->assertStatus(201)
+            ->assertJsonPath('student_class_id', $sc->ID);
+    }
+
     public function test_shared_package_quick_add_uses_pool_capacity_when_member_is_full(): void
     {
         $token = $this->createDirectorToken([1]);
