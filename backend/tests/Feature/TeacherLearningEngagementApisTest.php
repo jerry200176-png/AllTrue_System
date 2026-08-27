@@ -266,6 +266,12 @@ class TeacherLearningEngagementApisTest extends TestCase
         $this->assertSame(1, (int) $rowB['sessions_attended']);
         $this->assertSame(0, (int) $rowB['learning_records_filled']);
 
+        $res->assertJsonPath('overall.sessions_attended', 3)
+            ->assertJsonPath('overall.learning_records_filled', 1)
+            ->assertJsonPath('overall.pending', 2)
+            ->assertJsonPath('overall.fill_rate_pct', 33)
+            ->assertJsonPath('overall.follow_up_teachers', 0);
+
         Carbon::setTestNow();
     }
 

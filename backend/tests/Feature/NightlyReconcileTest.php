@@ -164,6 +164,38 @@ class NightlyReconcileTest extends TestCase
         $this->assertSame(['source_conflict' => 1], $report['cause_counts']);
     }
 
+    public function test_reconcile_does_not_report_zero_count_difference_for_cancelled_artifact(): void
+    {
+        $courseId = $this->bootstrapCourse(8, 0);
+        $sessionId = DB::table('ClassSession')->insertGetId([
+            'StudentClassID' => $courseId,
+            'SessionDate' => Carbon::now()->subDay()->toDateString(),
+            'StartTime' => '16:00',
+            'EndTime' => '18:00',
+            'Status' => 'cancelled',
+        ]);
+        DB::table('LearningRecord')->insert([
+            'StudentClassID' => $courseId,
+            'ClassSessionID' => $sessionId,
+            'TeacherID' => 1,
+            'Content' => '',
+            'Subject' => '數學',
+            'SessionDate' => Carbon::now()->subDay()->toDateString(),
+            'StartTime' => '16:00',
+            'EndTime' => '18:00',
+            'Status' => 'pending',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->artisan('reconcile:nightly', ['--dry-run' => true])
+            ->assertExitCode(0);
+
+        $report = $this->readReport();
+        $this->assertSame(0, $report['mismatch_count']);
+        $this->assertSame([], $report['mismatches']);
+    }
+
     public function test_reconcile_classifies_fractional_minute_drift(): void
     {
         $courseId = $this->bootstrapCourse(6, 0);

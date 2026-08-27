@@ -48,6 +48,47 @@ class ClassSessionUpdateTest extends TestCase
             ->assertJsonPath('session.status', 'leave');
     }
 
+    public function test_cancelling_session_voids_pending_learning_record(): void
+    {
+        [$token, $courseId, $session] = $this->setupCourseWithSession('scheduled');
+        $recordId = DB::table('LearningRecord')->insertGetId([
+            'StudentClassID' => $courseId,
+            'ClassSessionID' => $session->id,
+            'TeacherID' => 1,
+            'Content' => '',
+            'Subject' => '數學',
+            'SessionDate' => $session->SessionDate,
+            'StartTime' => $session->StartTime,
+            'EndTime' => $session->EndTime,
+            'Status' => 'pending',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->patchSession($token, $session->id, ['status' => 'cancelled'])
+            ->assertOk()
+            ->assertJsonPath('session.status', 'cancelled');
+
+        $this->assertNotNull(DB::table('LearningRecord')->where('id', $recordId)->value('VoidedAt'));
+        $this->assertSame('課堂已取消', DB::table('LearningRecord')->where('id', $recordId)->value('VoidReason'));
+    }
+
+    public function test_repeating_cancelled_status_also_clears_a_stale_learning_record(): void
+    {
+        [$token, $courseId, $session] = $this->setupCourseWithSession('cancelled');
+        $recordId = DB::table('LearningRecord')->insertGetId([
+            'StudentClassID' => $courseId, 'ClassSessionID' => $session->id, 'TeacherID' => 1,
+            'Content' => '', 'Subject' => '數學', 'SessionDate' => $session->SessionDate,
+            'StartTime' => $session->StartTime, 'EndTime' => $session->EndTime,
+            'Status' => 'pending', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $this->patchSession($token, $session->id, ['status' => 'cancelled'])
+            ->assertOk();
+
+        $this->assertNotNull(DB::table('LearningRecord')->where('id', $recordId)->value('VoidedAt'));
+    }
+
     public function test_attended_to_leave_adjusted_succeeds(): void
     {
         [$token, $courseId, $session] = $this->setupCourseWithSession('attended');

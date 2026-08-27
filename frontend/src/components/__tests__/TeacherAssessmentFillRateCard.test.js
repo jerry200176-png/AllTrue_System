@@ -21,6 +21,8 @@ describe('TeacherAssessmentFillRateCard', () => {
     expect(wrapper.text()).toContain('需要跟進');
     expect(wrapper.find('tbody tr:first-child th').text()).toContain('待跟進老師');
     expect(wrapper.text()).toContain('穩定完成');
+    expect(wrapper.text()).toContain('本分校填寫率');
+    expect(wrapper.text()).toContain('待填評量');
   });
 
   it('shows a retry state when the report endpoint fails', async () => {

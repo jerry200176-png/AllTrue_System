@@ -41,6 +41,52 @@ export const staffUpdates = [
     "version": "2026.08.27"
   },
   {
+    "id": "staff-2026-08-27-session-evaluation-integrity",
+    "publishedAt": "2026-08-27",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "major",
+    "title": "評量與課堂狀態一致",
+    "summary": "取消或請假的堂次不再要求填評量；主任總覽可直接看出哪位老師需要跟進。",
+    "items": [
+      "評量只列入已上課、完成或遲到；取消、請假與停課不留待填評量，夜間對帳只顯示仍有差異的項目。",
+      "主任總覽上方新增教學品質追蹤，直接顯示分校整體填寫率、待填堂數、需要跟進的老師與每位老師的已填／應填數。",
+      "看到「需要跟進」時，請從「前往評量審核」確認未填堂次與內容品質；填寫率是提醒指標，不是公開排名。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "評量只列入已上課、完成或遲到；取消、請假與停課不留待填評量，夜間對帳只顯示仍有差異的項目。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "主任總覽上方新增教學品質追蹤，直接顯示分校整體填寫率、待填堂數、需要跟進的老師與每位老師的已填／應填數。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "看到「需要跟進」時，請從「前往評量審核」確認未填堂次與內容品質；填寫率是提醒指標，不是公開排名。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-27:session-evaluation-integrity"
+    ],
+    "date": "2026-08-27",
+    "version": "2026.08.27"
+  },
+  {
     "id": "staff-2026-08-27-paid-course-settlement",
     "publishedAt": "2026-08-27",
     "effectiveAt": null,

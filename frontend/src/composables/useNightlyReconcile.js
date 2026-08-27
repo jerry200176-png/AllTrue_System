@@ -25,7 +25,20 @@ export function useNightlyReconcile(tokenRef) {
   /** 所有 mismatches 或空陣列 */
   const mismatches = computed(() => {
     if (!report.value || !Array.isArray(report.value.mismatches)) return [];
-    return report.value.mismatches;
+    const threshold = Math.max(0, Number(report.value.threshold) || 0);
+    return report.value.mismatches.filter((row) => Math.abs(Number(row.diff) || 0) > threshold);
+  });
+
+  const hiddenMismatchCounts = computed(() => {
+    if (!report.value || !Array.isArray(report.value.mismatches)) return {};
+    const threshold = Math.max(0, Number(report.value.threshold) || 0);
+    return report.value.mismatches.reduce((counts, row) => {
+      if (Math.abs(Number(row.diff) || 0) <= threshold) {
+        const category = row.category || 'unknown';
+        counts[category] = (counts[category] || 0) + 1;
+      }
+      return counts;
+    }, {});
   });
 
   /** 套用當前篩選後 */
@@ -80,8 +93,18 @@ export function useNightlyReconcile(tokenRef) {
     return {
       checked_at: report.value.checked_at,
       total_checked: report.value.total_checked,
-      mismatch_count: report.value.mismatch_count,
-      cause_counts: report.value.cause_counts || {},
+      // Keep report-level totals (which include rows beyond the 200-row detail
+      // cap), while removing stale zero-difference rows that are still present
+      // in an older snapshot.
+      mismatch_count: Math.max(
+        0,
+        (Number(report.value.mismatch_count) || 0) - Object.values(hiddenMismatchCounts.value).reduce((sum, count) => sum + count, 0)
+      ),
+      cause_counts: Object.entries(report.value.cause_counts || {}).reduce((counts, [category, count]) => {
+        const visibleCount = Math.max(0, Number(count) - Number(hiddenMismatchCounts.value[category] || 0));
+        if (visibleCount > 0) counts[category] = visibleCount;
+        return counts;
+      }, {}),
     };
   });
 
@@ -158,6 +181,7 @@ export function useNightlyReconcile(tokenRef) {
     loading,
     error,
     filters,
+    mismatches,
     filteredMismatches,
     campusOptions,
     subjectOptions,
