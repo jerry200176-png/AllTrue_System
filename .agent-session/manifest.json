@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "c30d5f7ccc794750a3e64adb4cee82ad",
+  "session_id": "b078c3e12f89408d918f6e2605c4dd54",
   "project": "alltrue",
-  "task_id": "wuaitong-course-ops-20260827",
+  "task_id": "wuaitong-entitlement-reconcile-20260827",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "4f402fff1298d02e25d7ccce606ad720da3dc0aa",
-  "branch": "fix/wuaitong-course-ops-20260827-monthly-capacity",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/wuaitong-course-ops-20260827",
-  "started_at": "2026-08-27T11:11:59Z",
+  "base_sha": "80284c634dfff684151cd6241b6b380e5c4fb06b",
+  "branch": "chore/task-wuaitong-entitlement-reconcile-20260827",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/wuaitong-entitlement-reconcile-20260827",
+  "started_at": "2026-08-27T11:59:27Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": "codex",
+  "agent_cli": null,
   "gateway_version": "0.5.0"
 }

@@ -7,6 +7,7 @@ use App\Models\LearningRecord;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
+use App\Models\SessionDeductionLedger;
 use App\Models\User;
 use App\Models\UserCampus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -31,6 +32,12 @@ class StudentClassTransferSessionsTest extends TestCase
         $sessionId = $this->createClassSession((int) $source->ID, '2026-08-02');
         $this->createLearningRecord((int) $source->ID, $sessionId);
         $this->createSignIn((int) $source->ID, $sessionId);
+        SessionDeductionLedger::create([
+            'student_class_id' => $source->ID,
+            'class_session_id' => $sessionId,
+            'event_type' => 'deduct',
+            'source' => 'attendance',
+        ]);
 
         $res = $this->postJson(
             "/api/v1/student-classes/{$source->ID}/transfer-sessions",
@@ -51,10 +58,17 @@ class StudentClassTransferSessionsTest extends TestCase
             (int) $target->ID,
             (int) StudentSignIn::where('ClassSessionID', $sessionId)->value('StudentClassID')
         );
+        $this->assertSame(
+            (int) $target->ID,
+            (int) SessionDeductionLedger::query()->where('class_session_id', $sessionId)->value('student_class_id')
+        );
 
-        // Source course's own billing fields are untouched.
+        // Contract fields stay untouched while derived usage follows ownership.
         $source->refresh();
+        $target->refresh();
         $this->assertSame(8, (int) $source->SessionCount);
+        $this->assertSame(0, (int) $source->UsedSessions);
+        $this->assertSame(1, (int) $target->UsedSessions);
     }
 
     // IDOR regression: authorizeStudentClassAccess() was only ever called on

@@ -1,3 +1,9 @@
+## 2026-08-27 — fix(attendance,billing): 堂次轉移同步扣堂台帳
+
+<!-- release-notes: staff_update=staff-2026-08-27-transfer-ledger-reconciliation -->
+
+- 已上課堂次轉移到新合約時，現在會同步點名、評量、扣堂台帳與衍生堂數；另提供受控對帳流程修復既有轉移造成的台帳漂移。
+
 ## 2026-08-27 — improved(ux): 課程查找同頁編輯與新增堂次
 
 <!-- release-notes: staff_update=staff-2026-08-27-course-management-inline-scheduling -->

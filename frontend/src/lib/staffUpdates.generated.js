@@ -4,6 +4,43 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-27-transfer-ledger-reconciliation",
+    "publishedAt": "2026-08-27",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "堂次轉移會同步扣堂",
+    "summary": "已上課堂次轉到新合約後，扣堂台帳與堂數會一起更新。",
+    "items": [
+      "轉移已上課堂次時，點名、評量、扣堂台帳與來源／目標堂數會同步更新。",
+      "若看到既有轉移造成的待對帳，請重新整理後依畫面提示處理，不要自行修改堂數欄位。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "轉移已上課堂次時，點名、評量、扣堂台帳與來源／目標堂數會同步更新。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "若看到既有轉移造成的待對帳，請重新整理後依畫面提示處理，不要自行修改堂數欄位。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-27:transfer-ledger-reconciliation"
+    ],
+    "date": "2026-08-27",
+    "version": "2026.08.27"
+  },
+  {
     "id": "staff-2026-08-27-paid-course-settlement",
     "publishedAt": "2026-08-27",
     "effectiveAt": null,
