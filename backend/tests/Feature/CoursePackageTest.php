@@ -898,6 +898,9 @@ class CoursePackageTest extends TestCase
             'additional_subject' => ['subject_id' => 2, 'teacher_id' => $teacher->id],
         ]);
 
+        if ($response->status() !== 201) {
+            $this->fail('conversion response: ' . $response->getContent());
+        }
         $response->assertCreated()->assertJsonPath('package.total_sessions', 8)
             ->assertJsonPath('package.used_sessions', 3)
             ->assertJsonPath('package.remaining_sessions', 5);
