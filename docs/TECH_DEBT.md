@@ -616,13 +616,13 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
+| 狀態 | In Progress（`no-unused-vars` baseline ratchet 已接入 build；完整 recommended ruleset 仍待分階段清償） |
 | 優先級 | P2 |
 | 發現日期 | 2026-07-29 |
 | 發現來源 | 課程管理頁 P0 事故修復時，順手加了 `frontend/eslint.config.js`（`no-undef` only, blocking, 已接進 `npm run build` 第一步） |
 | 影響模組 | `frontend/eslint.config.js`、`frontend/package.json`（`lint:no-undef` script） |
 | 描述 | `no-undef` 已驗證能攔住今天這類「引用未宣告變數」的 bug（用今天的實際 diff 反向驗證過：加回壞的那行會被抓到，`git stash` 復原）。但 `no-unused-vars` 試跑時在既有程式碼上噴了 134 個 false positive——原因是這批 `<script setup>` 裡宣告的 function/變數大多是給 `<template>` 用的，而目前 config 沒接 `eslint-plugin-vue` 的 template 分析（需要 `vue/setup-compiler-macros` 或走它的 recommended flat config + `vue-eslint-parser` 完整串接，而不是只用 parser 而已），單純開 `no-unused-vars` 會大量誤判既有程式碼有問題。 |
-| 建議做法 | 分階段：(1) 先接上 `eslint-plugin-vue` 的 `flat/recommended`（或至少讓 template 內的識別字使用能正確標記為「已使用」），跑一次看 false positive 是否消失。(2) 若跑出來是「真的未使用」的 dead code（不是 false positive），比照 `phpstan-baseline.neon`／`docs/design-hex-baseline-2026-06-06.json` 的既有模式做 baseline-gate（只擋新增，不強制清歷史債），避免一次性巨大 diff。(3) 之後再視情況評估是否導入完整 `eslint:recommended` 或 TypeScript（後者成本高很多，需要另外立案）。 |
+| 建議做法 | 已先完成分階段第 2 步：`eslint-unused-baseline.json` 以檔案為單位記錄既有 223 筆，`lint:no-unused-baseline` 在 build 中只阻擋單一檔案的新增未使用問題，不要求一次清掉歷史債。後續仍需先接上 `eslint-plugin-vue` 的 `flat/recommended` 並重新分類 template false positive，再逐檔清償，最後才評估完整 `eslint:recommended` 或 TypeScript。 |
 | 清償成本估計 | 中（vue-eslint-parser + eslint-plugin-vue 完整串接約半天；baseline 產生腳本仿造既有 hex/phpstan 模式再半天） |
 | 不做的代價 | 目前只防得住「引用未宣告變數」這一種錯誤；同一類「宣告了但沒接上」的殘留變數（例如 import 進來卻沒用、重構後留下的 dead helper）仍然只能靠 code review 肉眼抓 |
 
