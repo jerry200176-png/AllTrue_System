@@ -4,15 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\ClassSession;
 use App\Models\CoursePackage;
-use App\Models\Invoice;
-use App\Models\InvoiceItem;
-use App\Models\LearningRecord;
 use App\Models\PackageSessionLedger;
-use App\Models\PaymentReport;
-use App\Models\SessionDeductionLedger;
 use App\Models\Student;
 use App\Models\StudentClass;
-use App\Models\StudentSignIn;
 use App\Models\Subject;
 use App\Services\ClassSessionMaterializationService;
 use App\Services\EnrollmentService;
@@ -782,48 +776,47 @@ class CoursePackageController extends Controller
     /** Build the shared safety evidence used by both preview and legacy binding. */
     private function inspectPackageConversion(StudentClass $studentClass, bool $includePackageMembership = true): array
     {
-        $classId = (int) $studentClass->ID;
-        $attendanceCount = StudentSignIn::where('StudentClassID', $classId)->count();
-        $learningRecordCount = LearningRecord::where('StudentClassID', $classId)->count();
-        $deductionLedgerCount = SessionDeductionLedger::where('student_class_id', $classId)->count();
-        $classSessionCount = ClassSession::where('StudentClassID', $classId)
+        $classId = (int) $studentClass->getAttribute('ID');
+        $attendanceCount = DB::table('StudentSingIn')->where('StudentClassID', $classId)->count();
+        $learningRecordCount = DB::table('LearningRecord')->where('StudentClassID', $classId)->count();
+        $deductionLedgerCount = DB::table('session_deduction_ledger')->where('student_class_id', $classId)->count();
+        $classSessionCount = DB::table('ClassSession')->where('StudentClassID', $classId)
             ->where(function ($query) {
                 $query->whereNull('Status')
                     ->orWhereRaw("LOWER(Status) NOT IN ('cancelled', 'voided')");
             })
             ->count();
-        $classSessionTotal = ClassSession::where('StudentClassID', $classId)->count();
-        $directInvoiceIds = Invoice::where('StudentClassID', $classId)->pluck('id');
-        $itemInvoiceIds = InvoiceItem::where('StudentClassID', $classId)->pluck('InvoiceID');
+        $classSessionTotal = DB::table('ClassSession')->where('StudentClassID', $classId)->count();
+        $directInvoiceIds = DB::table('Invoice')->where('StudentClassID', $classId)->pluck('id');
+        $itemInvoiceIds = DB::table('InvoiceItem')->where('StudentClassID', $classId)->pluck('InvoiceID');
         $invoiceIds = $directInvoiceIds->merge($itemInvoiceIds)->unique()->values();
-        $invoiceRows = $invoiceIds->isEmpty()
-            ? collect()
-            : Invoice::withCount('payments')
-                ->whereIn('id', $invoiceIds)
-                ->get(['id', 'Status', 'TotalAmount', 'PaidAmount']);
-        $invoiceItemCount = InvoiceItem::where('StudentClassID', $classId)->count();
-        $paymentReportCount = PaymentReport::where('StudentClassID', $classId)->count();
-        $packageLedgerCount = PackageSessionLedger::where('student_class_id', $classId)->count();
-        $studentCampusId = (int) (Student::where('id', (int) $studentClass->StudentID)->value('CampusID') ?? 0);
+        $invoiceCount = $invoiceIds->count();
+        $invoicePaymentCount = $invoiceIds->isEmpty()
+            ? 0
+            : DB::table('Payment')->whereIn('InvoiceID', $invoiceIds)->count();
+        $invoiceItemCount = DB::table('InvoiceItem')->where('StudentClassID', $classId)->count();
+        $paymentReportCount = DB::table('payment_reports')->where('StudentClassID', $classId)->count();
+        $packageLedgerCount = DB::table('package_session_ledger')->where('student_class_id', $classId)->count();
+        $studentCampusId = (int) (DB::table('Student')->where('id', (int) $studentClass->getAttribute('StudentID'))->value('CampusID') ?? 0);
 
         $reasons = [];
         $addReason = static function (array &$target, string $code, string $message): void {
             $target[] = ['code' => $code, 'message' => $message];
         };
 
-        if ($includePackageMembership && (int) ($studentClass->PackageID ?? 0) > 0) {
+        if ($includePackageMembership && (int) ($studentClass->getAttribute('PackageID') ?? 0) > 0) {
             $addReason($reasons, 'already_in_package', '這門課已屬於其他共用方案。');
         }
-        if ((string) ($studentClass->ScheduleMode ?? 'count') !== 'count') {
+        if ((string) ($studentClass->getAttribute('ScheduleMode') ?? 'count') !== 'count') {
             $addReason($reasons, 'not_count_mode', '只有單科堂數制可以進入此預檢。');
         }
-        if ((int) ($studentClass->Stop ?? 0) !== 0) {
+        if ((int) ($studentClass->getAttribute('Stop') ?? 0) !== 0) {
             $addReason($reasons, 'course_inactive', '課程目前已停用，不能轉換。');
         }
         if ($studentClass->isUsageSettlementLocked()) {
             $addReason($reasons, 'usage_settled', '課程已結算鎖定，必須保留原合約。');
         }
-        if ((int) ($studentClass->UsedSessions ?? 0) > 0
+        if ((int) ($studentClass->getAttribute('UsedSessions') ?? 0) > 0
             || $attendanceCount > 0
             || $deductionLedgerCount > 0
             || $packageLedgerCount > 0) {
@@ -835,19 +828,19 @@ class CoursePackageController extends Controller
         if ($learningRecordCount > 0) {
             $addReason($reasons, 'learning_records_exist', '已有學習紀錄，必須保留原合約。');
         }
-        if ($invoiceRows->isNotEmpty()) {
+        if ($invoiceCount > 0) {
             $addReason($reasons, 'invoice_exists', '已有帳單資料，不能直接轉換。');
         }
         if ($paymentReportCount > 0) {
             $addReason($reasons, 'payment_report_exists', '已有繳費回報，必須先完成帳務處理。');
         }
-        if ((int) ($studentClass->Paid ?? 0) !== 0
-            || !empty($studentClass->PayDate)
-            || (float) ($studentClass->Pay ?? 0) > 0) {
+        if ((int) ($studentClass->getAttribute('Paid') ?? 0) !== 0
+            || !empty($studentClass->getAttribute('PayDate'))
+            || (float) ($studentClass->getAttribute('Pay') ?? 0) > 0) {
             $addReason($reasons, 'payment_state_exists', '課程已有付款狀態，不能直接轉換。');
         }
-        if ((int) ($studentClass->SessionCount ?? 0) <= 0
-            || (int) ($studentClass->RemainingSessions ?? 0) <= 0) {
+        if ((int) ($studentClass->getAttribute('SessionCount') ?? 0) <= 0
+            || (int) ($studentClass->getAttribute('RemainingSessions') ?? 0) <= 0) {
             $addReason($reasons, 'no_remaining_entitlement', '沒有可轉入方案池的剩餘堂數。');
         }
 
@@ -861,13 +854,13 @@ class CoursePackageController extends Controller
                 'learning_records' => $learningRecordCount,
                 'deduction_ledger_entries' => $deductionLedgerCount,
                 'package_ledger_entries' => $packageLedgerCount,
-                'invoices' => $invoiceRows->count(),
+                'invoices' => $invoiceCount,
                 'invoice_items' => $invoiceItemCount,
-                'invoice_payments' => (int) $invoiceRows->sum('payments_count'),
+                'invoice_payments' => $invoicePaymentCount,
                 'payment_reports' => $paymentReportCount,
-                'legacy_payment_state' => (int) ($studentClass->Paid ?? 0) !== 0
-                    || !empty($studentClass->PayDate)
-                    || (float) ($studentClass->Pay ?? 0) > 0,
+                'legacy_payment_state' => (int) ($studentClass->getAttribute('Paid') ?? 0) !== 0
+                    || !empty($studentClass->getAttribute('PayDate'))
+                    || (float) ($studentClass->getAttribute('Pay') ?? 0) > 0,
             ],
         ];
     }
@@ -887,7 +880,7 @@ class CoursePackageController extends Controller
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
-        $studentCampusId = (int) (Student::where('id', (int) $studentClass->StudentID)->value('CampusID') ?? 0);
+        $studentCampusId = (int) (DB::table('Student')->where('id', (int) $studentClass->getAttribute('StudentID'))->value('CampusID') ?? 0);
         $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
         if (!empty($campusIds)
             && !in_array($studentCampusId, array_map('intval', (array) $campusIds), true)) {
@@ -896,7 +889,7 @@ class CoursePackageController extends Controller
 
         $inspection = $this->inspectPackageConversion($studentClass);
         $studentCampusId = $inspection['student_campus_id'];
-        $classId = (int) $studentClass->ID;
+        $classId = (int) $studentClass->getAttribute('ID');
         $reasons = $inspection['blocking_reasons'];
         $evidence = $inspection['evidence'];
         $canConvert = empty($reasons);
@@ -907,12 +900,12 @@ class CoursePackageController extends Controller
             'recommendation' => $canConvert ? 'conversion_ready_for_review' : 'create_new_package',
             'student_class' => [
                 'id' => $classId,
-                'student_id' => (int) $studentClass->StudentID,
+                'student_id' => (int) $studentClass->getAttribute('StudentID'),
                 'campus_id' => $studentCampusId,
-                'schedule_mode' => (string) ($studentClass->ScheduleMode ?? 'count'),
-                'session_count' => (int) ($studentClass->SessionCount ?? 0),
-                'remaining_sessions' => (int) ($studentClass->RemainingSessions ?? 0),
-                'used_sessions' => (int) ($studentClass->UsedSessions ?? 0),
+                'schedule_mode' => (string) ($studentClass->getAttribute('ScheduleMode') ?? 'count'),
+                'session_count' => (int) ($studentClass->getAttribute('SessionCount') ?? 0),
+                'remaining_sessions' => (int) ($studentClass->getAttribute('RemainingSessions') ?? 0),
+                'used_sessions' => (int) ($studentClass->getAttribute('UsedSessions') ?? 0),
             ],
             'evidence' => $evidence,
             'blocking_reasons' => $reasons,
