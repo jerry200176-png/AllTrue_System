@@ -763,6 +763,7 @@ class CoursePackageController extends Controller
                     'Period' => (int) ($source->Period ?: 4),
                     'StartDate' => $source->StartDate ?: Carbon::today()->toDateString(),
                     'EndDate' => $source->EndDate,
+                    'TotalHours' => 0,
                     'SessionDuration' => (int) ($source->SessionDuration ?: 120),
                     'ScheduleMode' => 'count', 'scheduling_policy' => 'auto_recurrence',
                     'SessionCount' => $total, 'RemainingSessions' => $remaining, 'UsedSessions' => 0,
