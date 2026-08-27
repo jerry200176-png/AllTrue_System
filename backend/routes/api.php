@@ -614,7 +614,9 @@ Route::prefix('v1')->group(function () {
         Route::post('class-sessions/ensure-projected', [ClassSessionController::class, 'ensureProjected'])
             ->middleware('role:director,super_admin');
         Route::get('schedule-audit', [ScheduleAuditController::class, 'index']);
+        Route::get('class-sessions/{id}/recovery', [ClassSessionController::class, 'recovery'])->whereNumber('id');
         Route::patch('class-sessions/{id}', [ClassSessionController::class, 'update']);
+        Route::post('class-sessions/{id}/restore', [ClassSessionController::class, 'restore'])->whereNumber('id');
         // Contract renewal pain point (#1382 prior art) — super_admin only (highest admin tier).
         Route::get('class-sessions/{id}/reassign-contract-targets', [ClassSessionController::class, 'reassignContractTargets'])
             ->whereNumber('id')

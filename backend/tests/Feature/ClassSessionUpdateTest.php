@@ -89,6 +89,34 @@ class ClassSessionUpdateTest extends TestCase
         $this->assertNotNull(DB::table('LearningRecord')->where('id', $recordId)->value('VoidedAt'));
     }
 
+    public function test_director_can_restore_the_last_cancelled_session_with_a_reason(): void
+    {
+        [$token, $courseId, $session] = $this->setupCourseWithSession('scheduled');
+
+        $this->patchSession($token, $session->id, ['status' => 'cancelled'])
+            ->assertOk();
+
+        $recovery = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson("/api/v1/class-sessions/{$session->id}/recovery")
+            ->assertOk()
+            ->assertJsonPath('available', true);
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson("/api/v1/class-sessions/{$session->id}/restore", [
+                'expected_audit_id' => $recovery->json('audit_id'),
+                'reason' => '主任誤取消',
+            ])->assertOk()->assertJsonPath('session.status', 'scheduled');
+
+        $this->assertDatabaseHas('ClassSession', [
+            'id' => $session->id,
+            'Status' => 'scheduled',
+        ]);
+        $this->assertDatabaseHas('schedule_audit_logs', [
+            'session_id' => $session->id,
+            'action_type' => 'update',
+        ]);
+    }
+
     public function test_attended_to_leave_adjusted_succeeds(): void
     {
         [$token, $courseId, $session] = $this->setupCourseWithSession('attended');
