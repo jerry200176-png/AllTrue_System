@@ -1,8 +1,8 @@
 <template>
   <div v-if="show" class="modal-overlay" @click.self="$emit('close')">
     <div class="modal course-modal manual-session-modal" role="dialog" aria-modal="true">
-      <h3 class="modal-title">新增下一堂</h3>
-      <p class="modal-desc">逐堂手動排課：每次只新增一堂，課程時長沿用課程設定。</p>
+      <h3 class="modal-title">{{ isMonthly ? '新增月結堂次' : '新增下一堂' }}</h3>
+      <p class="modal-desc">{{ isMonthly ? '補入區間內的單堂課；月結依實際上課計費，不會扣除購買堂數。' : '逐堂手動排課：每次只新增一堂，課程時長沿用課程設定。' }}</p>
 
       <div class="manual-session-grid">
         <label class="form-group">
@@ -18,7 +18,7 @@
       <div v-if="checking" class="manual-session-state">檢查額度與衝堂中…</div>
       <div v-else-if="result" class="manual-session-result" :class="result.can_add ? 'ok' : 'error'">
         <strong>{{ result.can_add ? '可以預約' : (result.message || '無法預約') }}</strong>
-        <span>課程時長 {{ result.duration_minutes }} 分鐘；可預約額度 {{ result.available_sessions ?? 0 }} 堂</span>
+        <span>課程時長 {{ result.duration_minutes }} 分鐘；{{ isMonthly ? '月結會依實際上課計費' : `可預約額度 ${result.available_sessions ?? 0} 堂` }}</span>
         <span v-if="result.conflict_detail">衝堂詳情：{{ result.conflict_detail.message || result.conflict_detail.type || '已有其他排課' }}</span>
       </div>
 
@@ -39,6 +39,7 @@ defineProps({
   result: { type: Object, default: null },
   checking: Boolean,
   submitting: Boolean,
+  isMonthly: Boolean,
   today: { type: String, required: true },
 });
 defineEmits(['close', 'check', 'submit']);
