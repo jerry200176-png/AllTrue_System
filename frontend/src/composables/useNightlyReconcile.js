@@ -101,7 +101,8 @@ export function useNightlyReconcile(tokenRef) {
         (Number(report.value.mismatch_count) || 0) - Object.values(hiddenMismatchCounts.value).reduce((sum, count) => sum + count, 0)
       ),
       cause_counts: Object.entries(report.value.cause_counts || {}).reduce((counts, [category, count]) => {
-        counts[category] = Math.max(0, Number(count) - Number(hiddenMismatchCounts.value[category] || 0));
+        const visibleCount = Math.max(0, Number(count) - Number(hiddenMismatchCounts.value[category] || 0));
+        if (visibleCount > 0) counts[category] = visibleCount;
         return counts;
       }, {}),
     };
