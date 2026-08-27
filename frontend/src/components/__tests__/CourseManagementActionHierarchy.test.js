@@ -27,7 +27,8 @@ describe('CourseManagement action hierarchy', () => {
     expect(activeActions).toContain('更多 ▾');
     expect(activeActions).toContain('排課與課堂');
     expect(activeActions).toContain('帳務與合約');
-    expect(activeActions).toContain('轉多科共用');
+    expect(activeActions).toContain('轉多科方案預檢');
+    expect(source).toContain('繼續轉成多科共用方案');
     expect(activeActions).toContain('合約／堂次調整');
     expect(activeActions).not.toContain('btn-invoices');
     expect(activeActions).not.toContain('>+ 補課</button>');
