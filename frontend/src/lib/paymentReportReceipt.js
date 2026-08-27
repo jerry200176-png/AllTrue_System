@@ -52,6 +52,7 @@ export function adaptPaymentReportReceipt(api, reportId) {
       total_amount: api?.amount,
       paid_at: api?.payment_date || null,
       method: api?.payment_method || null,
+      note: api?.note || '',
       confirmed_at: api?.confirmed_at || null,
       confirmed_by: api?.confirmed_by || null,
       session_dates: Array.isArray(api?.session_dates) ? api.session_dates : [],
@@ -83,4 +84,45 @@ export function paymentReportReceiptUrl(reportId) {
     throw new Error('invalid_report_id');
   }
   return `/api/v1/payment-reports/${id}/receipt`;
+}
+
+const RECEIPT_METHOD_LABELS = {
+  cash: '現金',
+  transfer: '匯款',
+  card: '信用卡',
+  line_pay: 'LINE Pay',
+  backfill: '現金（補建）',
+};
+
+function receiptAmount(value) {
+  if (value == null || value === '' || Number.isNaN(Number(value))) return '—';
+  return `NT$ ${Number(value).toLocaleString('zh-TW')}`;
+}
+
+/** Build the same human-readable fields shown in ReceiptModal. */
+export function buildReceiptCopyText(snapshot = {}, receiptNumber = '—') {
+  const lines = ['電子收據'];
+  if (snapshot.student_name) lines.push(`學生姓名：${snapshot.student_name}`);
+  if (snapshot.campus_name) lines.push(`分校：${snapshot.campus_name}`);
+  if (snapshot.study_period) {
+    lines.push(`修業期間：${snapshot.study_period.start || '—'} ~ ${snapshot.study_period.end || '—'}`);
+  }
+  lines.push(`收據號碼：${receiptNumber || '—'}`);
+
+  const items = Array.isArray(snapshot.items) ? snapshot.items : [];
+  if (items.length) {
+    lines.push('收費項目：');
+    items.forEach((item) => lines.push(`- ${item.description || '課程費用'}：${receiptAmount(item.amount)}`));
+  }
+  lines.push(`合計：${receiptAmount(snapshot.total_amount)}`);
+
+  const sessionDates = Array.isArray(snapshot.session_dates) ? snapshot.session_dates : [];
+  if (sessionDates.length) {
+    lines.push(`上課日期：${sessionDates.slice(0, 16).map((session) => `${session.date || '—'}${session.expected ? '（尚未上）' : ''}`).join('、')}`);
+    if (sessionDates.length > 16) lines.push(`上課日期：共 ${sessionDates.length} 堂`);
+  }
+  lines.push(`收款日期：${snapshot.paid_at || '—'}`);
+  lines.push(`收款方式：${RECEIPT_METHOD_LABELS[snapshot.method] || snapshot.method || '—'}`);
+  if (snapshot.note) lines.push(`備註：${snapshot.note}`);
+  return lines.join('\n');
 }

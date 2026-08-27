@@ -502,7 +502,12 @@ const goToTarget = (type, item) => {
   const payload = item ? payloadOf(item) : {};
   const recordId = type === 'learning_review' ? (payload.record_id || null) : null;
   const studentId = payload.student_id || null;
-  emit('navigate', { target, recordId, studentId });
+  const courseId = payload.student_class_id || payload.course_id || payload.studentClassId || null;
+  const date = payload.session_date || payload.schedule_date || payload.date || '';
+  const intent = target === 'tuition-collect'
+    ? (type === 'low_sessions' ? 'renewal' : 'unpaid')
+    : (target === 'calendar' ? 'reschedule' : '');
+  emit('navigate', { target, recordId, studentId, courseId, date, intent });
 };
 
 const goToNotificationSettings = () => {

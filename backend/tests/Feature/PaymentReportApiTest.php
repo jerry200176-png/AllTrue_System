@@ -401,9 +401,11 @@ class PaymentReportApiTest extends TestCase
             'payment_date' => '2026-04-28',
             'payment_method' => 'cash',
             'amount' => 3000,
+            'note' => '8/23現金繳費收據號碼:016272',
         ]);
         $record->assertOk();
         $reportId = $record->json('report_id');
+        $this->assertSame('8/23現金繳費收據號碼:016272', (string) PaymentReport::findOrFail($reportId)->note);
 
         $this->withHeaders($headers)
             ->getJson("/api/v1/payment-reports/{$reportId}/receipt")
@@ -413,9 +415,22 @@ class PaymentReportApiTest extends TestCase
             ->putJson("/api/v1/payment-reports/{$reportId}/confirm")
             ->assertOk();
 
+        $this->assertSame(
+            '8/23現金繳費收據號碼:016272',
+            (string) Payment::where('payment_report_id', $reportId)->value('Note')
+        );
+
         $this->withHeaders($headers)
             ->getJson("/api/v1/payment-reports/{$reportId}/receipt")
-            ->assertOk();
+            ->assertOk()
+            ->assertJsonPath('note', '8/23現金繳費收據號碼:016272');
+
+        $students = $this->withHeaders($headers)
+            ->getJson('/api/v1/students?branch_id=1&per_page=all')
+            ->assertOk()
+            ->json();
+        $studentRow = collect($students)->firstWhere('id', $student->id);
+        $this->assertSame('8/23現金繳費收據號碼:016272', $studentRow['latest_payment_note'] ?? null);
     }
 
     public function test_reject_pending_director_record_keeps_course_unpaid(): void
@@ -944,6 +959,22 @@ class PaymentReportApiTest extends TestCase
 
     // ── confirm ────────────────────────────────────────────────────
 
+    public function test_payment_note_column_matches_payment_report_note_capacity(): void
+    {
+        if (\Illuminate\Support\Facades\DB::connection()->getDriverName() !== 'mysql') {
+            $this->markTestSkipped('column type assertion requires MySQL');
+        }
+
+        $row = \Illuminate\Support\Facades\DB::selectOne(
+            'SELECT DATA_TYPE AS data_type
+             FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?',
+            [\Illuminate\Support\Facades\DB::getDatabaseName(), 'Payment', 'Note']
+        );
+
+        $this->assertContains(strtolower((string) ($row->data_type ?? '')), ['text', 'mediumtext', 'longtext']);
+    }
+
     public function test_director_can_confirm_report(): void
     {
         $token = $this->createDirectorToken([1]);
@@ -983,6 +1014,68 @@ class PaymentReportApiTest extends TestCase
 
         $sc->refresh();
         $this->assertEquals(1, $sc->Paid);
+    }
+
+    public function test_confirm_preserves_maximum_length_payment_report_note(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, ['Paid' => 0, 'Charge' => 8800]);
+        $note = str_repeat('付款說明', 125);
+
+        $report = PaymentReport::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'reported_by_name' => $student->name,
+            'payment_date' => Carbon::today(),
+            'payment_method' => 'transfer',
+            'reported_amount' => 8800,
+            'note' => $note,
+            'status' => 'pending',
+            'report_token_hash' => hash('sha256', 'test-confirm-long-note'),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->putJson("/api/v1/payment-reports/{$report->id}/confirm")
+            ->assertOk();
+
+        $this->assertSame($note, (string) Payment::where('payment_report_id', $report->id)->value('Note'));
+        $this->assertSame(1, Payment::where('payment_report_id', $report->id)->count());
+        $this->assertSame('confirmed', (string) $report->fresh()->status);
+    }
+
+    public function test_confirm_retry_does_not_create_a_second_payment(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, ['Paid' => 0, 'Charge' => 8800]);
+        $report = PaymentReport::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'reported_by_name' => $student->name,
+            'payment_date' => Carbon::today(),
+            'payment_method' => 'cash',
+            'reported_amount' => 8800,
+            'status' => 'pending',
+            'report_token_hash' => hash('sha256', 'test-confirm-retry'),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+        $headers = [
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ];
+
+        $this->withHeaders($headers)
+            ->putJson("/api/v1/payment-reports/{$report->id}/confirm")
+            ->assertOk();
+        $this->withHeaders($headers)
+            ->putJson("/api/v1/payment-reports/{$report->id}/confirm")
+            ->assertStatus(422);
+
+        $this->assertSame(1, Payment::where('payment_report_id', $report->id)->count());
     }
 
     public function test_cannot_confirm_already_confirmed(): void

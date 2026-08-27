@@ -1,0 +1,44 @@
+id: TKT-20260826-120625-JOON
+title: "\u7E73\u8CBB\u901A\u77E5\u8207\u7E73\u8CBB\u660E\u7D30\u5165\u53E3 UI"
+intent: "\u7E73\u8CBB\u901A\u77E5\u8207\u7E73\u8CBB\u660E\u7D30\u5165\u53E3 UI"
+kind: task
+parent_id: INT-20260826-120619-L693
+boundary: "\u53EA\u505A\u65E2\u6709\u5E33\u52D9 modal \u7684 UI \u76F4\u9054\u5165\
+  \u53E3\uFF1B\u4E0D\u6539\u5F8C\u7AEF\u8CC7\u6599\u3001\u4ED8\u6B3E\u72C0\u614B\u3001\
+  \u63D0\u9192\u689D\u4EF6\u8207 production DB\u3002"
+success_condition: "\u4E3B\u4EFB\u7E3D\u89BD\u53CA\u5E33\u52D9\u4E2D\u5FC3\u5747\u6709\
+  \u6E05\u695A\u4E14\u53EF\u64CD\u4F5C\u7684\u7E73\u8CBB\u901A\u77E5\uFF0F\u7E73\u8CBB\
+  \u660E\u7D30\u5165\u53E3\uFF0C\u65E2\u6709\u72C0\u614B\u6A5F\u8207 API \u4E0D\u8B8A\
+  \uFF0C\u6E2C\u8A66\u8207\u90E8\u7F72\u9A57\u8B49\u901A\u904E\u3002"
+priority: 3
+labels: []
+scope:
+  allow:
+  - frontend/src/pages/DirectorDashboard.vue
+  - frontend/src/pages/TuitionCollectionPage.vue
+  - frontend/src/components/__tests__/**
+  - docs/**
+  - .agent-session/**
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 12
+  max_loc_changed: 400
+checks:
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: active
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-26T12:06:25+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default

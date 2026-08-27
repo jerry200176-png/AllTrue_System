@@ -4,6 +4,330 @@
 
 updates:
 
+  - id: staff-2026-08-26-director-contextual-actions
+    published_at: "2026-08-26"
+    audiences:
+      - director
+    importance: major
+    title: 待辦直接定位帳務與課表
+    summary: 從通知中心進入帳務或排課時，會帶入對應學生／課程脈絡。
+    items:
+      - category: improved
+        text: 帳務通知會自動定位並高亮對應課程，排課／代課通知會切到通知日期並高亮對應課卡，主任不必再重新搜尋。
+      - category: fixed
+        text: 只在目前分校已載入且可驗證的資料中定位；找不到時顯示提示，不跨分校猜測、不自動寫入，付款、堂次與權限規則不變。
+    source_refs:
+      - "changelog:2026-08-26:director-contextual-actions"
+
+  - id: staff-2026-08-26-course-edit-master-record
+    published_at: "2026-08-26"
+    audiences:
+      - director
+    importance: digest
+    title: 課程編輯集中到學生主檔
+    summary: 從課程管理編輯課程時，會直接開啟學生管理中同一門課的編輯表單。
+    items:
+      - category: improved
+        text: 課程管理的編輯入口會帶到同一位學生與同一門課，主任不必再重新找學生或判斷要用哪個編輯畫面。
+      - category: fixed
+        text: 只有目前分校清單中能驗證的學生與課程才會開啟；付款、堂數、出缺勤、資料與權限規則不變。
+    source_refs:
+      - "changelog:2026-08-26:course-edit-master-record"
+
+  - id: staff-2026-08-26-course-student-focus
+    published_at: "2026-08-26"
+    audiences:
+      - director
+    importance: digest
+    title: 從課程管理直接定位學生
+    summary: 從學生群組前往學生管理時，會直接展開同一位學生。
+    items:
+      - category: improved
+        text: 在課程管理展開學生群組後選擇新增課程，系統會帶到學生管理並定位該學生，接著即可在學生主檔處理課程。
+      - category: fixed
+        text: 定位只會在目前分校已載入的學生清單中生效；一般前往學生管理仍維持完整清單，不改付款、堂數或權限規則。
+    source_refs:
+      - "changelog:2026-08-26:course-student-focus"
+
+  - id: staff-2026-08-26-course-create-entry
+    published_at: "2026-08-26"
+    audiences:
+      - director
+    importance: digest
+    title: 課程建立回到學生管理
+    summary: 建立新課程請從學生管理的學生主檔進入，課程管理專心做查找與分流。
+    items:
+      - category: improved
+        text: 課程管理展開學生資料後，新增課程會帶到學生管理；建立、編輯與合約操作集中在同一個學生主檔。
+      - category: fixed
+        text: 課程查找、排課、調課與換師複製維持原流程，資料、堂數、付款與權限規則不變。
+    source_refs:
+      - "changelog:2026-08-26:course-create-entry"
+
+  - id: staff-2026-08-26-course-action-dedup
+    published_at: "2026-08-26"
+    audiences:
+      - director
+    importance: digest
+    title: 課程管理排課入口更清楚
+    summary: 每列只保留一個主要排課入口，其他課堂操作集中在更多選單。
+    items:
+      - category: improved
+        text: 「排課／新增下一堂」不再同時出現在主要操作與更多選單；「補課／補登」仍可從更多選單使用。
+      - category: fixed
+        text: 這次只整理畫面入口，既有排課、堂數、付款、資料與權限規則不變。
+    source_refs:
+      - "changelog:2026-08-26:course-action-dedup"
+
+  - id: staff-2026-08-26-billing-batch-preview
+    published_at: "2026-08-26"
+    audiences:
+      - director
+    importance: major
+    title: 批次帳務先看摘要
+    summary: 批次回報與確認入帳前，先核對選取資料。
+    items:
+      - category: improved
+        text: 批次操作會先顯示筆數、金額、付款方式與逐筆課程摘要，確認後才送出。
+      - category: action_required
+        text: 批次回報送出後仍是待對帳；只有確認入帳後才會成為已繳費並開收據。
+    source_refs:
+      - "changelog:2026-08-26:billing-batch-preview"
+
+  - id: staff-2026-08-26-ops-workflow-telemetry
+    published_at: "2026-08-26"
+    audiences:
+      - director
+    importance: digest
+    title: 報帳與排課流程開始量測
+    summary: 系統會用不含個資的方式記錄流程完成與錯誤，作為下一輪簡化依據。
+    items:
+      - category: improved
+        text: 帳務回報、確認入帳、新增排課與調課會記錄開始、完成、返回工作區、錯誤類型與耗時。
+      - category: fixed
+        text: 只記錄固定流程欄位，不記錄姓名、學號、課程 ID、金額、備註、電話或錯誤原文；紀錄服務異常不會阻塞日常操作。
+    source_refs:
+      - "changelog:2026-08-26:ops-workflow-telemetry"
+
+  - id: staff-2026-08-26-attendance-session-trust
+    published_at: "2026-08-26"
+    audiences:
+      - director
+      - teacher
+    importance: major
+    title: 出缺勤只顯示有效堂次
+    summary: 已取消或對不上堂次的舊點名不會再混進作業清單。
+    items:
+      - category: fixed
+        text: 出缺勤清單會先確認點名對應的堂次仍有效；已取消堂次或合約不一致的殘留資料不再顯示成今天的有效出勤。
+      - category: improved
+        text: 自修與舊式臨時點名沒有堂次編號時仍照常保留；付款、扣堂與權限規則不變。
+    source_refs:
+      - "changelog:2026-08-26:attendance-session-trust"
+
+  - id: staff-2026-08-26-billing-action-queue
+    published_at: "2026-08-26"
+    audiences:
+      - director
+    importance: major
+    title: 帳務中心先顯示待處理
+    summary: 開啟帳務中心後，會先看到未繳、部分付款與待對帳工作。
+    items:
+      - category: improved
+        text: 預設待處理佇列集中主任現在要做的工作；完整提醒、逾期與續課仍可從其他分類查看。
+      - category: action_required
+        text: 待處理中請分開勾選未繳費回報或待對帳確認；已回報仍須確認入帳後才算已繳費並開收據。
+    source_refs:
+      - "changelog:2026-08-26:billing-action-queue"
+
+  - id: staff-2026-08-26-reschedule-preflight
+    published_at: "2026-08-26"
+    audiences:
+      - director
+    importance: major
+    title: 調課前先看衝堂結果
+    summary: 選好新日期與時間後，系統會先提示目前課表是否可能衝堂。
+    items:
+      - category: improved
+        text: 調課視窗會依目前已載入的老師、日期、時段與班型，先顯示可安排或已達上限的結果，已知衝堂時不能誤按確認。
+      - category: action_required
+        text: 這是送出前提示，最後仍以系統送出時的權限、房間與衝堂檢查為準；若其他人同時改課，請依最新訊息重新選擇。
+    source_refs:
+      - "changelog:2026-08-26:reschedule-preflight"
+
+  - id: staff-2026-08-26-dashboard-return-context
+    published_at: "2026-08-26"
+    audiences:
+      - director
+    importance: major
+    title: 待辦處理後可返回主任工作台
+    summary: 從主任待辦進入工作頁後，可一鍵回到今日待辦。
+    items:
+      - category: improved
+        text: 從今日工作進入帳務、點名、評量或課表處理後，頂端會保留「回到主任今日工作」入口，減少重新找待辦的操作。
+      - category: action_required
+        text: 這是暫時的導覽脈絡提示；帳務、排課、點名與權限規則維持原流程。
+    source_refs:
+      - "changelog:2026-08-26:dashboard-return-context"
+
+  - id: staff-2026-08-26-navigation-registry
+    published_at: "2026-08-26"
+    audiences:
+      - director
+      - teacher
+    importance: major
+    title: 導覽入口統一
+    summary: 桌面、手機與更多功能選單現在使用同一份角色導覽。
+    items:
+      - category: improved
+        text: 桌面側欄、手機底部導覽與更多功能會依身分顯示相同的頁面入口，減少找不到功能或看到錯誤入口的情況。
+      - category: action_required
+        text: 帳務、排課、點名與資料權限仍依原本後端規則；本次只改善導覽與目前位置提示。
+    source_refs:
+      - "changelog:2026-08-26:navigation-registry"
+
+  - id: staff-2026-08-26-ops-workflow-quick-start
+    published_at: "2026-08-26"
+    audiences:
+      - director
+    importance: major
+    title: 主任常用流程更好找
+    summary: 收款核帳、排課與調課可從主任首頁直接開始。
+    items:
+      - category: improved
+        text: 主任首頁新增收款與核帳、新增排課、調課／代課三個工作入口，帳務中心與班級行事曆內也會顯示下一步。
+      - category: action_required
+        text: 帳務仍要先送出繳費回報，再由主任確認入帳；排課與調課仍會保留原有權限、衝堂與堂次安全檢查。
+    source_refs:
+      - "changelog:2026-08-26:ops-workflow-quick-start"
+
+  - id: staff-2026-08-26-course-payment-summary
+    published_at: "2026-08-26"
+    audiences:
+      - director
+    importance: major
+    title: 課程卡顯示最近繳費備註
+    summary: 課程管理可直接看到最近繳費回報內容。
+    items:
+      - category: improved
+        text: 課程管理學生課程卡會顯示最近繳費的日期、金額、備註與主任可見的匯款後五碼。
+      - category: action_required
+        text: 待對帳資料會標示「待對帳」；付款狀態與收據仍依帳務中心流程處理。
+    source_refs:
+      - "changelog:2026-08-26:course-payment-summary"
+
+  - id: staff-2026-08-26-payment-shortcuts
+    published_at: "2026-08-26"
+    audiences:
+      - director
+    importance: major
+    title: 繳費通知與明細直達
+    summary: 主任提醒可直接開通知單與繳費明細。
+    items:
+      - category: improved
+        text: 主任總覽每筆繳費提醒可直接開啟繳費通知單、查看繳費明細，並複製通知給家長。
+      - category: improved
+        text: 帳務中心的對帳入口改名為繳費明細，帳單、收款與收據時間線仍沿用原本流程。
+    source_refs:
+      - "changelog:2026-08-26:payment-shortcuts"
+
+  - id: staff-2026-08-26-bug-report-image-paste
+    published_at: "2026-08-26"
+    audiences:
+      - director
+      - teacher
+    importance: major
+    title: Bug 回報可直接貼圖
+    summary: 回報問題可直接貼截圖，不必先另存檔案。
+    items:
+      - category: improved
+        text: Bug 回報視窗現在可直接貼上截圖、拖曳圖片或點擊選檔，加入後會顯示預覽並可逐張移除。
+      - category: action_required
+        text: 附件數量與大小有限制；若貼上後格式或大小不符，請改用 JPEG、PNG、GIF 或 WebP 圖片。
+    source_refs:
+      - "changelog:2026-08-26:bug-report-image-paste"
+
+  - id: staff-2026-08-25-cancelled-session-recovery-transfer
+    published_at: "2026-08-25"
+    audiences:
+      - director
+    importance: action_required
+    title: 已取消堂次可受控恢復
+    summary: 有評量或點名紀錄的取消堂次可填原因後恢復並移轉。
+    items:
+      - category: fixed
+        text: 合約／堂次調整會辨識仍有歷史證據的取消堂次；送出原因後同步恢復評量、點名與扣堂資料，沒有證據的取消堂次仍不可移轉。
+    source_refs:
+      - "changelog:2026-08-25:cancelled-session-recovery-transfer"
+      - "github:pull/2050"
+
+  - id: staff-2026-08-25-receipt-image-copy
+    published_at: "2026-08-25"
+    audiences:
+      - director
+    importance: major
+    title: 電子收據可複製圖片
+    summary: 收據可直接複製圖片貼給家長。
+    items:
+      - category: improved
+        text: 電子收據新增「複製圖片」與「下載圖片」，可直接貼到 LINE 或下載後傳給家長；文字複製仍保留。
+      - category: action_required
+        text: 若瀏覽器不支援圖片剪貼簿，請按「下載圖片」，再把 PNG 圖檔傳給家長。
+    source_refs:
+      - "changelog:2026-08-25:receipt-image-copy"
+      - "github:pull/2046"
+
+  - id: staff-2026-08-25-course-list-pending-report
+    published_at: "2026-08-25"
+    audiences:
+      - director
+    importance: major
+    title: 課程列表顯示待對帳
+    summary: 已回報未核帳不再誤顯示未繳費。
+    items:
+      - category: fixed
+        text: 課程管理與學生課程列表會把尚未核帳的回報顯示為「待對帳」，避免主任重複送出。
+      - category: action_required
+        text: 主任仍需在帳務中心確認入帳；確認後才會變成「已繳費」並開立電子收據。
+    source_refs:
+      - "changelog:2026-08-25:course-list-pending-report"
+      - "github:pull/2045"
+
+  - id: staff-2026-08-25-transfer-slot-conflict-preflight
+    published_at: "2026-08-25"
+    audiences:
+      - director
+    importance: action_required
+    title: 堂次轉移先檢查衝突
+    summary: 相同日期時段會先提示，不再只顯示 Server Error。
+    items:
+      - category: fixed
+        text: 轉移堂次前會先檢查目標課程是否已有相同日期／時段；有衝突會列出日期，且不會搬動任何來源資料。
+      - category: action_required
+        text: 若出現衝突，請先處理目標課程的重複堂次，再選擇沒有相同時段的目標課程重新操作。
+    source_refs:
+      - "changelog:2026-08-25:transfer-slot-conflict-preflight"
+      - "github:pull/2042"
+
+  - id: staff-2026-08-25-payment-report-reconciliation
+    published_at: "2026-08-25"
+    audiences:
+      - director
+    importance: major
+    title: 帳務回報流程更清楚
+    summary: 現金回報先待對帳，課程與備註資訊會一路保留。
+    items:
+      - category: fixed
+        text: 現金或匯款送出後會先進「待對帳」；確認入帳後才變成已繳費並開立收據，重複送出會直接帶到待對帳。
+      - category: improved
+        text: 同一學生同科目有多筆課程時，帳務列會顯示課程編號與日期，避免把已繳與未繳課程看成同一筆。
+      - category: improved
+        text: 回報備註會自動保留在對帳、電子收據與學生編輯頁的最近入帳備註，不必重複輸入；收據也可直接複製。
+    source_refs:
+      - "changelog:2026-08-25:payment-report-reconciliation"
+      - "github:pull/2039"
+
+
   - id: staff-2026-08-24-branch-health-v1
     published_at: "2026-08-24"
     audiences:

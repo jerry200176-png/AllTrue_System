@@ -27,7 +27,11 @@ async function installTeacherMocks(page, mode = 'normal') {
         { id: 102, class_session_id: 102, student_id: 402, student_class_id: 202, branch_id: 1, session_date: localToday, start_time: '10:30', end_time: '11:30', student_name: '測試學生乙', subject_name: '英文', status: 'scheduled', learning_record_status: 'missing' },
         { id: 103, class_session_id: 103, student_id: 403, student_class_id: 203, branch_id: 1, session_date: localToday, start_time: '13:00', end_time: '14:00', student_name: '請假學生', subject_name: '自然', status: 'leave_requested', learning_record_status: 'missing' },
       ];
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: rows }) });
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ api_kind: 'projection', completeness: 'full', data: rows, by_class: {} }),
+      });
     }
     if (path.includes('/teacher-attendance/today')) {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'normal', sign_in_dt: `${localToday} 08:40:00`, first_class_start_time: '09:00' }) });

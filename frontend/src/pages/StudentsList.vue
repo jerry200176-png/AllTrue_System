@@ -104,6 +104,7 @@
           <tr
             class="student-row"
             :class="[{ expanded: expandedId === student.id }, 'status-' + (student.status || 'active')]"
+            :data-student-id="student.id"
             @click="toggleExpand(student)"
           >
             <td class="student-select-cell" @click.stop>
@@ -230,6 +231,9 @@
                           {{ classTypeLabel(course.class_type) }}
                         </span>
                         <div v-if="courseMemo(course)" class="course-memo-line">備註：{{ courseMemo(course) }}</div>
+                        <div v-if="coursePaymentSummary(course)" class="course-payment-summary" role="note">
+                          <span class="course-payment-summary__label">最近繳費：</span>{{ formatPaymentSummary(course.latest_payment_summary) }}
+                        </div>
                       </td>
                       <td>
                         <div v-if="course.payment_type === 'session'" class="sessions-cell">
@@ -438,6 +442,14 @@
         <div class="form-group">
           <label>備註</label>
           <textarea v-model="studentForm.notes" rows="2" placeholder="特殊需求、過敏、家長偏好等..." style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit; resize: vertical;"></textarea>
+          <div v-if="studentForm.latest_payment_note" class="student-latest-payment-note" role="note">
+            <span class="material-symbols-outlined" aria-hidden="true">receipt_long</span>
+            <div>
+              <strong>最近已確認入帳備註（自動）</strong>
+              <p>{{ studentForm.latest_payment_note }}</p>
+              <small>由帳務回報自動帶入，不會覆蓋上方的學生長期備註。</small>
+            </div>
+          </div>
         </div>
 
         <div class="actions">
@@ -734,7 +746,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch, computed } from 'vue';
+import { ref, onMounted, watch, computed, nextTick } from 'vue';
 import { supabase } from '../supabase';
 import { GRADES, SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
@@ -760,8 +772,13 @@ import AtButton from '../components/design-system/AtButton.vue';
 import AtIconButton from '../components/design-system/AtIconButton.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
 
-const props = defineProps({ branchId: [String, Number] });
-const emit = defineEmits(['navigate']);
+const props = defineProps({
+  branchId: [String, Number],
+  initialStudentId: [String, Number],
+  initialCourseId: [String, Number],
+  initialStudentIntent: String,
+});
+const emit = defineEmits(['navigate', 'clear-initial-student']);
 
 // --- State ---
 const subjectOptions = ref([...SUBJECTS]);
@@ -788,7 +805,7 @@ const identityError = ref('');
 // Student modal
 const showStudentModal = ref(false);
 const editingStudentId = ref(null);
-const studentForm = ref({ name: '', grade: 'J1', phone: '', school: '', parent_name: '', parent_phone: '', status: 'active', notes: '' });
+const studentForm = ref({ name: '', grade: 'J1', phone: '', school: '', parent_name: '', parent_phone: '', status: 'active', notes: '', latest_payment_note: '' });
 
 // LINE bindings (in edit modal)
 const lineBindings = ref([]);
@@ -802,6 +819,8 @@ const editingCourseRaw = ref(null);
 const editFormRef = ref(null);
 const toastRef = ref(null);
 const selectedStudent = ref(null);
+const initialStudentFocusInFlight = ref(false);
+const handledInitialFocusKey = ref(null);
 const isLaravelCourse = (course) => (
   course?.data_source === 'laravel'
   || course?.branch_name != null
@@ -954,6 +973,19 @@ const classTypeLabel = (type) => {
 const courseMemo = (course) => {
   const text = String(course?.memo ?? course?.Memo ?? '').trim();
   return text || '';
+};
+const coursePaymentSummary = (course) => course?.latest_payment_summary || null;
+const formatPaymentSummary = (summary) => {
+  if (!summary) return '';
+  const parts = [];
+  if (summary.payment_date) parts.push(`日期 ${summary.payment_date}`);
+  if (summary.amount !== null && summary.amount !== undefined && summary.amount !== '') {
+    parts.push(`金額 $${Number(summary.amount).toLocaleString('zh-TW')}`);
+  }
+  if (summary.account_last5) parts.push(`後5碼 ${summary.account_last5}`);
+  if (summary.note) parts.push(`備註 ${summary.note}`);
+  if (summary.status === 'pending') parts.push('待對帳');
+  return parts.join(' · ') || '已有繳費回報';
 };
 const dayLabel = (d) => {
   const days = ['', '週一', '週二', '週三', '週四', '週五', '週六', '週日'];
@@ -1518,10 +1550,42 @@ const toggleExpand = async (student) => {
   }
 };
 
+const focusInitialStudent = async () => {
+  const targetId = Number(props.initialStudentId);
+  const targetCourseId = Number(props.initialCourseId);
+  const focusKey = `${targetId}:${Number.isSafeInteger(targetCourseId) && targetCourseId > 0 ? targetCourseId : ''}:${props.initialStudentIntent || ''}`;
+  if (!Number.isSafeInteger(targetId) || targetId <= 0 || initialStudentFocusInFlight.value || handledInitialFocusKey.value === focusKey) return;
+  const student = students.value.find((candidate) => Number(candidate?._laravelId ?? candidate?.id ?? 0) === targetId);
+  if (!student) return;
+
+  initialStudentFocusInFlight.value = true;
+  try {
+    if (expandedId.value !== student.id) {
+      expandedId.value = student.id;
+      await loadStudentCourses(student.id);
+    }
+    await nextTick();
+    const row = typeof document !== 'undefined'
+      ? document.querySelector(`[data-student-id="${student.id}"]`)
+      : null;
+    row?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+    const targetCourse = Number.isSafeInteger(targetCourseId) && targetCourseId > 0
+      ? (studentCourses.value[student.id] || []).find((course) => Number(course?.id) === targetCourseId)
+      : null;
+    if (props.initialStudentIntent === 'edit' && targetCourse) {
+      editCourse(targetCourse);
+    }
+    handledInitialFocusKey.value = focusKey;
+    emit('clear-initial-student');
+  } finally {
+    initialStudentFocusInFlight.value = false;
+  }
+};
+
 // --- Student CRUD ---
 const openAddStudent = () => {
   editingStudentId.value = null;
-  studentForm.value = { name: '', grade: 'J1', phone: '', school: '', parent_name: '', parent_phone: '', status: 'active', notes: '', rfid: '' };
+  studentForm.value = { name: '', grade: 'J1', phone: '', school: '', parent_name: '', parent_phone: '', status: 'active', notes: '', latest_payment_note: '', rfid: '' };
   showStudentModal.value = true;
 };
 
@@ -1536,6 +1600,7 @@ const editStudent = (student) => {
     parent_phone: student.parent_phone || '',
     status: student.status || 'active',
     notes: student.notes || '',
+    latest_payment_note: student.latest_payment_note || '',
     rfid: student.rfid || ''
   };
   showStudentModal.value = true;
@@ -2813,6 +2878,11 @@ const importStudents = async (event) => {
 };
 
 watch(() => props.branchId, () => { loadStudents(); loadTeachers(); loadAllStudentCourses(); });
+watch(() => [props.initialStudentId, props.initialCourseId, props.initialStudentIntent], () => {
+  handledInitialFocusKey.value = null;
+  focusInitialStudent();
+}, { immediate: true });
+watch(students, focusInitialStudent, { flush: 'post' });
 watch(displayStudents, () => {
   syncSelectedStudentIdsWithCurrentList();
   if (expandedId.value != null && !displayStudents.value.some((s) => s.id === expandedId.value)) {
@@ -3269,6 +3339,27 @@ table th { font-size: 12.5px; }
 .student-note-label {
   font-weight: 700;
 }
+.student-latest-payment-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 9px 10px;
+  border: 1px solid var(--ds-hairline);
+  border-radius: 8px;
+  background: var(--ds-success-wash);
+  color: var(--ds-ink-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.student-latest-payment-note > .material-symbols-outlined {
+  flex: 0 0 auto;
+  color: var(--ds-success);
+  font-size: 17px;
+}
+.student-latest-payment-note strong { color: var(--ds-success); }
+.student-latest-payment-note p { margin: 2px 0; white-space: pre-wrap; word-break: break-word; }
+.student-latest-payment-note small { color: var(--ds-ink-mute); }
 .course-inner-table {
   width: 100%;
   border-collapse: collapse;
@@ -3297,6 +3388,14 @@ table th { font-size: 12.5px; }
   line-height: 1.4;
   word-break: break-word;
 }
+.course-payment-summary {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--ds-success);
+  line-height: 1.45;
+  word-break: break-word;
+}
+.course-payment-summary__label { font-weight: 800; }
 
 .cell-schedule-slots .schedule-slot-lines {
   display: flex;

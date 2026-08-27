@@ -59,11 +59,18 @@
 
       <nav class="sidebar-nav" data-guide="app-sidebar-nav">
         <template v-if="sidebarNavGroups.length > 0">
-          <details v-for="group in sidebarNavGroups" :key="group.key" class="nav-group" :open="group.defaultOpen !== false">
+          <details
+            v-for="group in sidebarNavGroups"
+            :key="group.key"
+            class="nav-group"
+            :open="isSidebarGroupOpen(group)"
+            @toggle="onSidebarGroupToggle(group.key, $event)"
+          >
             <summary
               class="nav-group-summary"
               v-show="!sidebarCollapsed"
               :aria-controls="`sidebar-group-${group.key}`"
+              :aria-expanded="String(isSidebarGroupOpen(group))"
             >
               <span class="nav-group-title">{{ group.title.replace(/^[A-Z]\s*組：\s*/i, '') }}</span>
               <span class="nav-group-chevron">▾</span>
@@ -221,6 +228,17 @@
           class="build-stamp-bar"
           :title="`部署時間 ${buildTimeDisplay}`"
         >建置 {{ buildTimeDisplay }}</span>
+        <button
+          v-if="dashboardReturnContext"
+          type="button"
+          class="dashboard-return-button"
+          :title="dashboardReturnContext.label"
+          :aria-label="dashboardReturnContext.label"
+          @click="returnToDashboard"
+        >
+          <span class="material-symbols-outlined" aria-hidden="true">arrow_back</span>
+          {{ dashboardReturnContext.label }}
+        </button>
         <div class="main-topbar-spacer"></div>
         <AmbientMusicPlayer
           v-if="perfFlags.AMBIENT_MUSIC_ENABLED && (isDirector || isTeacher)"
@@ -326,9 +344,9 @@
         @navigate="onNavigateFromNotifications"
         @unread-change="onUnreadChange"
       />
-      <SmartCalendar v-if="!isPasswordChangeLocked && active === 'calendar'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" :initial-teacher-id="initialTeacherIdForNav" :reset-week-token="calendarResetToken" @clear-initial-teacher="initialTeacherIdForNav = null" />
-      <StudentsList v-if="!isPasswordChangeLocked && isDirector && active === 'students'" :branch-id="currentBranch" />
-      <TuitionCollectionPage v-if="!isPasswordChangeLocked && isDirector && active === 'tuition-collect'" :branch-id="currentBranch" />
+      <SmartCalendar v-if="!isPasswordChangeLocked && active === 'calendar'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" :initial-teacher-id="initialTeacherIdForNav" :initial-student-id="calendarInitialStudentId" :initial-course-id="calendarInitialCourseId" :initial-date="calendarInitialDate" :reset-week-token="calendarResetToken" :initial-intent="calendarInitialIntent" @clear-initial-teacher="initialTeacherIdForNav = null" @clear-initial-intent="calendarInitialIntent = ''" @clear-initial-context="clearCalendarNavigationContext" />
+      <StudentsList v-if="!isPasswordChangeLocked && isDirector && active === 'students'" :branch-id="currentBranch" :initial-student-id="studentFocusIdForNav" :initial-course-id="studentFocusCourseIdForNav" :initial-student-intent="studentFocusIntentForNav" @clear-initial-student="clearStudentNavigationContext" />
+      <TuitionCollectionPage v-if="!isPasswordChangeLocked && isDirector && active === 'tuition-collect'" :branch-id="currentBranch" :initial-tab="tuitionInitialTab" :initial-student-id="tuitionInitialStudentId" :initial-course-id="tuitionInitialCourseId" @clear-initial-tab="tuitionInitialTab = ''" @clear-initial-context="clearTuitionNavigationContext" />
       <TuitionReportPage v-if="!isPasswordChangeLocked && isDirector && active === 'tuition-report' && !pinModalActive" :branch-id="currentBranch" />
       <ParttimePayrollPage v-if="!isPasswordChangeLocked && isDirector && active === 'parttime-payroll' && !pinModalActive" :branch-id="currentBranch" :user-role="role" />
       <TeacherEligibilityPage v-if="!isPasswordChangeLocked && isDirector && active === 'teacher-eligibility' && !pinModalActive" :branch-id="currentBranch" :user-role="role" />
@@ -531,6 +549,8 @@ import {
   PIN_UNLOCK_TTL_MS,
   PIN_IDLE_LOCK_MS,
 } from './lib/pinGate';
+import { getMobileTabItems, getNavigationGroups } from './lib/navigationRegistry';
+import { createDashboardReturnContext } from './lib/dashboardReturnContext';
 
 // Detect standalone parent portal access via URL hash, query param, or LIFF context
 const liffParentOverride = ref(false);
@@ -854,6 +874,7 @@ function onWindowResizeGuideFab() {
 }
 
 const active = ref('director');
+const dashboardReturnContext = ref(null);
 const currentBranch = ref(null); // Will be set after branches load
 const learningTargetRecordId = ref(null);
 const learningTargetSession = ref(null);
@@ -901,29 +922,21 @@ function toggleSidebarCollapsed() {
 // Mobile bottom nav: 5 tabs + More
 const showMoreMenu = ref(false);
 const mobileTabItems = computed(() => {
-  if (isDirector.value) {
-    return [
-      { page: 'director', label: '儀表板', icon: 'dashboard' },
-      { page: 'calendar', label: '行事曆', icon: 'calendar_today' },
-      { page: 'students', label: '學生', icon: 'groups' },
-      { page: 'attendance', label: '出勤', icon: 'fact_check', badgeTypes: ['pending_swipe', 'attendance'] },
-      { page: 'more', label: '更多', icon: 'apps' },
-    ];
-  }
-  if (isTeacher.value) {
-    return [
-      { page: 'teacher-home', label: '工作台', icon: 'space_dashboard' },
-      { page: 'attendance', label: '出勤', icon: 'fact_check' },
-      { page: 'learning', label: '評量', icon: 'assignment', badgeTypes: ['teacher_learning_pending', 'parent_feedback'] },
-      { page: 'chat', label: '聊天', icon: 'forum', badgeTypes: ['chat'] },
-      { page: 'more', label: '更多', icon: 'apps' },
-    ];
-  }
-  return [];
+  return getMobileTabItems(role.value);
 });
 const mobileTabPages = computed(() => new Set(mobileTabItems.value.filter(t => t.page !== 'more').map(t => t.page)));
 const initialTeacherIdForNav = ref(null);
+const studentFocusIdForNav = ref(null);
+const studentFocusCourseIdForNav = ref(null);
+const studentFocusIntentForNav = ref('');
 const calendarResetToken = ref(0);
+const calendarInitialIntent = ref('');
+const calendarInitialStudentId = ref(null);
+const calendarInitialCourseId = ref(null);
+const calendarInitialDate = ref('');
+const tuitionInitialTab = ref('');
+const tuitionInitialStudentId = ref(null);
+const tuitionInitialCourseId = ref(null);
 const unreadNotificationCount = ref(0);
 const urgentNotificationCount = ref(0);
 const inboxNeedsAttentionCount = ref(0);
@@ -1043,19 +1056,66 @@ function onPopStateDeepLink() {
   applyDeepLinkFromUrl();
 }
 
-function onNavigateFromNotifications({ target, recordId, focus, section, workflowId }) {
+function normalizeNavigationId(value) {
+  const id = Number(value);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
+function clearCalendarNavigationContext() {
+  calendarInitialStudentId.value = null;
+  calendarInitialCourseId.value = null;
+  calendarInitialDate.value = '';
+}
+
+function clearTuitionNavigationContext() {
+  tuitionInitialStudentId.value = null;
+  tuitionInitialCourseId.value = null;
+  tuitionInitialTab.value = '';
+}
+
+function onNavigateFromNotifications({ target, recordId, studentId, courseId, date, focus, section, workflowId, intent } = {}) {
   if (isPasswordChangeLocked.value) {
     active.value = 'profile';
     return;
   }
   if (!target) return;
+  dashboardReturnContext.value = createDashboardReturnContext({ fromPage: active.value, target });
   if (target === 'calendar') {
     calendarResetToken.value += 1;
+    calendarInitialIntent.value = intent || '';
+    calendarInitialStudentId.value = normalizeNavigationId(studentId);
+    calendarInitialCourseId.value = normalizeNavigationId(courseId);
+    calendarInitialDate.value = typeof date === 'string' ? date.slice(0, 10) : '';
+  } else {
+    calendarInitialIntent.value = '';
+    clearCalendarNavigationContext();
+  }
+  if (target === 'tuition-collect') {
+    tuitionInitialTab.value = intent || '';
+    tuitionInitialStudentId.value = normalizeNavigationId(studentId);
+    tuitionInitialCourseId.value = normalizeNavigationId(courseId);
+  } else {
+    clearTuitionNavigationContext();
   }
   if (target === 'learning' && recordId) {
     learningTargetRecordId.value = Number(recordId);
   } else {
     learningTargetRecordId.value = null;
+  }
+  if (target === 'students') {
+    const normalizedStudentId = Number(studentId);
+    const normalizedCourseId = Number(courseId);
+    studentFocusIdForNav.value = Number.isSafeInteger(normalizedStudentId) && normalizedStudentId > 0
+      ? normalizedStudentId
+      : null;
+    studentFocusCourseIdForNav.value = Number.isSafeInteger(normalizedCourseId) && normalizedCourseId > 0
+      ? normalizedCourseId
+      : null;
+    studentFocusIntentForNav.value = intent === 'edit' ? 'edit' : '';
+  } else {
+    studentFocusIdForNav.value = null;
+    studentFocusCourseIdForNav.value = null;
+    studentFocusIntentForNav.value = '';
   }
   if (target === 'learning' && focus === 'feedback') {
     learningFeedbackFocusToken.value += 1;
@@ -1090,6 +1150,12 @@ function onNavigateFromCourseManagement(payload) {
     return;
   }
   onNavigateFromNotifications(payload || {});
+}
+
+function clearStudentNavigationContext() {
+  studentFocusIdForNav.value = null;
+  studentFocusCourseIdForNav.value = null;
+  studentFocusIntentForNav.value = '';
 }
 
 let skipTeacherNavSfxOnce = false;
@@ -1128,6 +1194,10 @@ function onNavigateLearningFromTeacherHome(payload = {}) {
 }
 
 function setActivePage(page) {
+  dashboardReturnContext.value = null;
+  if (page !== 'students') clearStudentNavigationContext();
+  if (page !== 'calendar') clearCalendarNavigationContext();
+  if (page !== 'tuition-collect') clearTuitionNavigationContext();
   const prev = active.value;
   if (isPasswordChangeLocked.value && page !== 'profile') {
     active.value = 'profile';
@@ -1166,6 +1236,10 @@ function setActivePage(page) {
   if (page === 'teacher-home' && isTeacher.value) {
     window.dispatchEvent(new CustomEvent('alltrue-teacher-learning-progress-refresh'));
   }
+}
+
+function returnToDashboard() {
+  setActivePage('director');
 }
 
 function isNavItemDisabled(page) {
@@ -1303,123 +1377,18 @@ const avatarLetter = computed(() => {
 });
 const avatarUrl = computed(() => userProfile.value?.avatar_url || '');
 
-const sidebarNavGroups = computed(() => {
-  if (isDirector.value) {
-    const systemItems = [
-      { page: 'line-integration', label: '家長 LINE 通知', icon: 'chat' },
-      { page: 'binding-management', label: 'LINE 綁定管理', icon: 'link' },
-      { page: 'binding-conflicts', label: '綁定衝突審查', icon: 'gpp_maybe' },
-      { page: 'binding-health', label: '綁定健康度', icon: 'monitor_heart' },
-    ];
-    if (role.value === 'super_admin') {
-      systemItems.push({
-        page: 'director-accounts',
-        label: '主任審核',
-        icon: 'admin_panel_settings',
-        badgeTypes: ['director_pending'],
-      });
-      systemItems.push({
-        page: 'branch-management',
-        label: '分校管理',
-        icon: 'store',
-      });
-      systemItems.push({
-        page: 'branch-health-board',
-        label: '分校健康',
-        icon: 'monitor_heart',
-      });
-      systemItems.push({
-        page: 'nightly-reconcile',
-        label: '夜間堂數對帳',
-        icon: 'receipt_long',
-      });
-    }
-    return [
-      {
-        key: 'overview',
-        title: '今日工作',
-        defaultOpen: true,
-        items: [
-          { page: 'director', label: '今日工作台', icon: 'dashboard' },
-          { page: 'notifications', label: '待處理收件匣', icon: 'inbox' },
-          { page: 'chat', label: '內部訊息', icon: 'forum', badgeTypes: ['chat'] },
-          // GH-943 (in-app 179): moved out of the collapsed「系統設定」group so
-          // 主任 can find Bug 回報 without expanding settings.
-          { page: 'bugs', label: 'Bug 回報', icon: 'bug_report', badgeTypes: ['bugs'] },
-        ],
-      },
-      {
-        key: 'teaching',
-        title: '教學現場',
-        defaultOpen: true,
-        items: [
-          { page: 'calendar', label: '班級行事曆', icon: 'calendar_today' },
-          { page: 'attendance', label: '出缺勤', icon: 'fact_check', badgeTypes: ['pending_swipe', 'attendance'] },
-          { page: 'schedule-discrepancy', label: '課表回報管理', icon: 'flag', badgeTypes: ['schedule_discrepancy'] },
-          { page: 'learning', label: '學習評量', icon: 'assignment', badgeTypes: ['learning_review', 'parent_feedback'] },
-          { page: 'assessments', label: '學習檢測', icon: 'grading' },
-          { page: 'question-banks', label: '題庫管理', icon: 'quiz' },
-          { page: 'duplicate-review', label: '重疊課程審核', icon: 'compare_arrows' },
-        ],
-      },
-      {
-        key: 'students-courses',
-        title: '學生與課程',
-        defaultOpen: true,
-        items: [
-          { page: 'students', label: '學生管理', icon: 'groups' },
-          { page: 'course-mgmt', label: '課程查找', icon: 'menu_book', badgeTypes: ['tuition'] },
-        ],
-      },
-      {
-        key: 'finance',
-        title: '財務與人事',
-        defaultOpen: true,
-        items: [
-          { page: 'tuition-collect', label: '帳務中心', icon: 'payments' },
-          { page: 'tuition-report', label: '當月學收', icon: 'bar_chart' },
-          { page: 'subject-units', label: '科目數統計', icon: 'calculate' },
-          { page: 'parttime-payroll', label: '兼職薪資', icon: 'account_balance_wallet' },
-          { page: 'teacher-eligibility', label: '正職薪資要件', icon: 'rule' },
-          { page: 'teachers', label: '老師管理', icon: 'badge', badgeTypes: ['pending_teachers'] },
-        ],
-      },
-      {
-        key: 'settings',
-        title: '設定與資源',
-        defaultOpen: false,
-        items: [
-          { page: 'classroom', label: '教室管理', icon: 'meeting_room' },
-          { page: 'subject-settings', label: '科目管理', icon: 'library_books' },
-          ...systemItems,
-        ],
-      },
-    ];
-  }
+const sidebarGroupOpen = ref({});
+const sidebarNavGroups = computed(() => getNavigationGroups(role.value));
 
-  if (isTeacher.value) {
-    return [
-      {
-        key: 'teaching',
-        title: '今日教學',
-        defaultOpen: true,
-        items: [
-          { page: 'teacher-home', label: '教學工作台', icon: 'space_dashboard' },
-          { page: 'calendar', label: '我的課表', icon: 'calendar_today' },
-          { page: 'attendance', label: '出缺勤', icon: 'fact_check', badgeTypes: ['attendance'] },
-          { page: 'learning', label: '課表與評量', icon: 'assignment', badgeTypes: ['teacher_learning_pending', 'parent_feedback'] },
-          { page: 'assessments', label: '學習檢測', icon: 'grading' },
-          { page: 'question-banks', label: '題庫管理', icon: 'quiz' },
-          { page: 'subject-units', label: '科目數統計', icon: 'calculate' },
-          { page: 'chat', label: '內部聊天', icon: 'forum', badgeTypes: ['chat'] },
-          { page: 'bugs', label: 'Bug 回報', icon: 'bug_report', badgeTypes: ['bugs'] },
-        ],
-      },
-    ];
-  }
+function isSidebarGroupOpen(group) {
+  return Object.prototype.hasOwnProperty.call(sidebarGroupOpen.value, group.key)
+    ? sidebarGroupOpen.value[group.key]
+    : group.defaultOpen !== false;
+}
 
-  return [];
-});
+function onSidebarGroupToggle(key, event) {
+  sidebarGroupOpen.value = { ...sidebarGroupOpen.value, [key]: event.target.open };
+}
 
 /** 底欄「更多」：加總未固定在底欄的選項之未讀（含主任收件匣）。 */
 const moreMenuBadgeCount = computed(() => {
@@ -2569,6 +2538,27 @@ function formatBuildTime(rawIso) {
   flex: 1;
 }
 
+.dashboard-return-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid var(--ds-hairline);
+  border-radius: var(--ds-radius-pill);
+  background: var(--ds-canvas);
+  color: var(--ds-ink);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dashboard-return-button:hover,
+.dashboard-return-button:focus-visible {
+  border-color: var(--ds-primary);
+  color: var(--ds-primary-deep);
+}
+
 .account-menu {
   position: relative;
   z-index: 20;
@@ -2925,6 +2915,17 @@ function formatBuildTime(rawIso) {
 
   .main-topbar {
     margin-bottom: 6px;
+  }
+
+  .build-stamp-bar {
+    max-width: 24vw;
+  }
+
+  .dashboard-return-button {
+    max-width: 44vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .account-menu-trigger {

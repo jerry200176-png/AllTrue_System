@@ -1,6 +1,6 @@
 # AllTrue 側欄資訊架構與 UX 重構計畫
 
-> 狀態：提案，待 Founder／產品驗收後分階段實作
+> 狀態：Phase 1 實作完成，Phase 2–5 依驗收數據分階段推進
 > 
 > 日期：2026-08-20
 > 
@@ -120,7 +120,7 @@ registry 只負責顯示與導覽；後端 API 的 permission、branch scope、�
 
 風險：低。回滾：刪除文件，不改 production。
 
-### Phase 1：單一 registry 與無障礙底座（T1）
+### Phase 1：單一 registry 與無障礙底座（T1）— 已完成（2026-08-26）
 
 交付：集中式 registry、共用 renderer、桌面／手機／More 使用同一語意資料、`aria-current`、`aria-expanded`、icon accessible name、鍵盤與 focus 測試。
 
@@ -128,7 +128,7 @@ registry 只負責顯示與導覽；後端 API 的 permission、branch scope、�
 
 驗收：頁面清單只存在一份；每個角色只能看到授權項目；active 項在桌面、收合、手機一致；沒有水平捲軸；現有 UI Smoke 與課程／行事曆 smoke 全綠。
 
-回滾：feature flag 回到現有 `sidebarNavGroups` renderer；registry 不改後端資料。
+回滾：回退本次前端 PR；registry 不改後端資料。已驗證桌面側欄、手機底部與 More renderer 共用角色導覽資料，保留舊 page key 與 badge 語意。
 
 ### Phase 2：視覺與外殼（T1）
 
@@ -217,4 +217,3 @@ registry 只負責顯示與導覽；後端 API 的 permission、branch scope、�
 2. 老師是否需要看到「學生管理」的個人化版本，還是所有老師入口都從「我的課表」開始？
 3. 「課程查找」這個名稱是否比「課程管理」更符合主任語言；若不符合，候選名稱是「課程總覽」或「課程帳務」。
 4. 分校切換是每日高頻操作還是登入後固定一次？這決定它放在品牌區還是 utility footer。
-
