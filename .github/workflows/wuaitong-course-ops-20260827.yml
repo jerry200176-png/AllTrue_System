@@ -87,9 +87,25 @@ jobs:
           echo "$SCRIPT_B64" | base64 -d > /tmp/ops-wuaitong-course-ops-20260827.php
           chmod 600 /tmp/ops-wuaitong-course-ops-20260827.php
 
-          # The script always performs the current-state preflight first.
-          MODE="$MODE" DRY_RUN_ID="$DRY_RUN_ID" RUN_ID="$RUN_ID" ACTOR="$ACTOR" \
+          # Always repeat the read-only preflight immediately before any
+          # production write, even when the approval run is older.
+          MODE=dry-run DRY_RUN_ID="$DRY_RUN_ID" RUN_ID="$RUN_ID" ACTOR="$ACTOR" \
             php /tmp/ops-wuaitong-course-ops-20260827.php
+          if [ "$MODE" = execute ]; then
+            TS=$(date -u '+%Y%m%dT%H%M%SZ')
+            BACKUP_DIR=/home/admin/backups/emergency
+            BACKUP="$BACKUP_DIR/db_pre_wuaitong_course_ops_\${RUN_ID}_\${TS}.sql.gz"
+            mkdir -p "$BACKUP_DIR"
+            DB_USER=$(grep '^DB_USERNAME=' .env | cut -d= -f2-)
+            DB_PASSWORD=$(grep '^DB_PASSWORD=' .env | cut -d= -f2-)
+            mysqldump -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASSWORD" \
+              --single-transaction AllTrue | gzip > "$BACKUP"
+            unset DB_PASSWORD
+            test -s "$BACKUP"
+            echo "BACKUP_OK path=$BACKUP size=$(wc -c < "$BACKUP")"
+            MODE=execute DRY_RUN_ID="$DRY_RUN_ID" RUN_ID="$RUN_ID" ACTOR="$ACTOR" \
+              php /tmp/ops-wuaitong-course-ops-20260827.php
+          fi
           rm -f /tmp/ops-wuaitong-course-ops-20260827.php
           REMOTE
 
