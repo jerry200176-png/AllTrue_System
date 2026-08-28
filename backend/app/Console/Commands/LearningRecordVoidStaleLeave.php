@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands;
 
-use App\Services\CourseLeaveCascadeService;
+use App\Services\AttendanceLearningRecordIntegrityService;
 use Illuminate\Console\Command;
 
 /**
@@ -17,10 +17,18 @@ class LearningRecordVoidStaleLeave extends Command
 
     protected $description = 'Void stale live LearningRecord/StudentSignIn rows left on non-attendance sessions.';
 
-    public function handle(): int
+    public function handle(AttendanceLearningRecordIntegrityService $integrity): int
     {
-        $voided = CourseLeaveCascadeService::sweepStaleLiveArtifactsForNonAttendance();
-        $this->info(sprintf('learning-records:void-stale-leave — total voided: %d.', $voided));
+        $result = $integrity->repair();
+        $this->info(sprintf(
+            'learning-records:void-stale-leave — total voided: %d, created: %d.',
+            $result['voided'],
+            $result['created']
+        ));
+        if ($result['blocked'] !== []) {
+            $this->error('LearningRecord integrity repair blocked for session IDs: ' . implode(',', $result['blocked']));
+            return self::FAILURE;
+        }
 
         return self::SUCCESS;
     }

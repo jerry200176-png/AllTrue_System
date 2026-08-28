@@ -135,6 +135,32 @@ class LearningRecordBackfillService
     }
 
     /**
+     * Enforce the attendance/evaluation boundary inside the same write
+     * transaction as the attendance status change. A failed best-effort
+     * backfill must never leave a session marked attended/late without an
+     * active LearningRecord that the teacher can fill.
+     */
+    public function ensureRequiredForAttendanceSession(ClassSession $cs): void
+    {
+        $status = strtolower((string) ($cs->Status ?? ''));
+        if (!in_array($status, self::requiredSessionStatuses(), true)) {
+            return;
+        }
+
+        $this->ensureForAttendanceSession($cs);
+        $hasActiveRecord = LearningRecord::query()
+            ->where('ClassSessionID', (int) $cs->id)
+            ->whereNull('VoidedAt')
+            ->exists();
+
+        if (!$hasActiveRecord) {
+            throw new \RuntimeException(
+                'attendance_learning_record_integrity_failed:' . (int) $cs->id
+            );
+        }
+    }
+
+    /**
      * Restore a system-voided LR when the ClassSession is again fillable.
      * Mirrors LearningRecordController::ensurePastRecords un-void branch so interactive
      * and scheduled paths stay aligned. Does not insert (unique ClassSessionID).

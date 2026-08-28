@@ -75,7 +75,7 @@ class AttendanceEffectsService
 
         LearningRecordResurrectionPolicy::restoreEligibleForSession($session);
         if (AttendanceStatus::requiresLog($attendanceStatus)) {
-            app(LearningRecordBackfillService::class)->ensureForAttendanceSession($session);
+            app(LearningRecordBackfillService::class)->ensureRequiredForAttendanceSession($session);
         }
 
         Log::info('[attendance_effects] classsession_status_updated', [

@@ -2014,7 +2014,7 @@ class ClassSessionController extends Controller
         if (in_array(strtolower((string) ($session->Status ?? '')), [
             'attended', 'late', 'completed', 'trial', 'tutoring_attend',
         ], true)) {
-            app(LearningRecordBackfillService::class)->ensureForAttendanceSession($session);
+            app(LearningRecordBackfillService::class)->ensureRequiredForAttendanceSession($session);
         }
         return response()->json([
             'message' => $message,
@@ -2463,7 +2463,7 @@ class ClassSessionController extends Controller
             // LearningRecordDriftCheck), relied on by billing/approval queries
             // across StudentClassController — must stay in sync, same as the
             // existing transfer-sessions endpoint (StudentClassController::transferSessions).
-            LearningRecord::where('ClassSessionID', $session->id)
+            LearningRecord::where('ClassSessionID', $session->id)->getQuery()
                 ->update(['StudentClassID' => $new->ID]);
 
             SessionDeductionService::recomputeCounters((int) $old->ID);

@@ -856,7 +856,7 @@ class AttendanceController extends Controller
         $classSession->save();
         LearningRecordResurrectionPolicy::restoreEligibleForSession($classSession);
         if (AttendanceStatus::requiresLog($status)) {
-            app(LearningRecordBackfillService::class)->ensureForAttendanceSession($classSession);
+            app(LearningRecordBackfillService::class)->ensureRequiredForAttendanceSession($classSession);
         }
     }
 

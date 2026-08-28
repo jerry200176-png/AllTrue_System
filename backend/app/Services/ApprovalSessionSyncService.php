@@ -7,6 +7,7 @@ use App\Models\LearningRecord;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
+use App\Services\LearningRecordBackfillService;
 use Carbon\Carbon;
 
 class ApprovalSessionSyncService
@@ -79,6 +80,7 @@ class ApprovalSessionSyncService
         $cs->save();
 
         SessionDeductionService::deductOnAttendance($sc, $signIn);
+        app(LearningRecordBackfillService::class)->ensureRequiredForAttendanceSession($cs);
     }
 
     /**
