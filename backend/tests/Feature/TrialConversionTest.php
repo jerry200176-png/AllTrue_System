@@ -21,7 +21,6 @@ class TrialConversionTest extends TestCase
         parent::setUp();
         Carbon::setTestNow(Carbon::parse('2026-08-28 10:00:00', 'Asia/Taipei'));
     }
-
     protected function tearDown(): void
     {
         Carbon::setTestNow();
@@ -87,7 +86,6 @@ class TrialConversionTest extends TestCase
             'EndTime' => '18:00:00',
             'Status' => 'scheduled',
         ]);
-
         $response = $this->withHeaders(['Authorization' => "Bearer {$token}"])
             ->postJson("/api/v1/student-classes/{$trial->ID}/convert-trial", [
                 'sessions' => 8,
