@@ -1,21 +1,15 @@
 <template>
   <div class="nightly-reconcile" role="region" aria-label="夜間堂數對帳異常面板">
-    <!-- 頁首 -->
-    <div class="nr-header">
-      <div>
-        <h1 class="nr-title">夜間堂數對帳</h1>
-        <p class="nr-subtitle">每天 02:00 比對課程「已用堂數」與權威扣堂口徑（出勤／扣堂帳本）。這不是銀行或學費入帳勾稽。本頁只診斷，不改數字。</p>
-      </div>
-      <button
-        class="nr-refresh-btn"
-        :disabled="loading"
-        @click="loadReport"
-        :aria-label="'重新載入對帳報告'"
-      >
-        <span class="material-symbols-outlined" aria-hidden="true" style="font-size:18px">refresh</span>
-        重新載入
-      </button>
-    </div>
+    <AtPageHeader
+      title="夜間堂數對帳"
+      description="每天 02:00 比對已用堂數與出勤／扣堂帳本；本頁只診斷，不直接改數字。"
+      icon="receipt_long"
+      data-guide="nightly-reconcile-header"
+    >
+      <template #actions>
+        <AtButton shape="rect" variant="ghost" icon="refresh" :loading="loading" @click="loadReport">重新載入</AtButton>
+      </template>
+    </AtPageHeader>
 
     <!-- Loading -->
     <div v-if="loading" class="nr-loading" role="status" aria-live="polite">
@@ -248,6 +242,8 @@
 
 <script setup>
 import { onMounted, computed } from 'vue';
+import AtButton from '../components/design-system/AtButton.vue';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import { useNightlyReconcile } from '../composables/useNightlyReconcile';
 
 const props = defineProps({
