@@ -20,15 +20,23 @@
       </template>
     </AtPageHeader>
 
-    <OperationsQuickStart
-      compact
-      eyebrow="帳務處理流程"
-      heading="照順序完成，不用記入口"
-      description="先找到對象，再送出回報，最後由主任確認入帳。"
-      :current-id="billingFlowCurrentId"
-      :steps="billingFlowSteps"
-      @select="selectBillingFlowStep"
-    />
+    <details class="tc-process-disclosure">
+      <summary>
+        <span class="material-symbols-outlined" aria-hidden="true">route</span>
+        <span class="tc-process-disclosure__title">帳務處理流程</span>
+        <span class="tc-process-disclosure__hint">先找到對象，再回報，最後確認入帳</span>
+        <span class="material-symbols-outlined" aria-hidden="true">expand_more</span>
+      </summary>
+      <OperationsQuickStart
+        compact
+        eyebrow="帳務處理流程"
+        heading="照順序完成，不用記入口"
+        description="先找到對象，再送出回報，最後由主任確認入帳。"
+        :current-id="billingFlowCurrentId"
+        :steps="billingFlowSteps"
+        @select="selectBillingFlowStep"
+      />
+    </details>
 
     <div class="acct-tabs" role="tablist" aria-label="帳務中心分頁">
       <button
@@ -83,35 +91,42 @@
     </div>
 
     <template v-else>
-      <!-- Compact metric strip (Carbon/Fluent ops density) -->
-      <div class="tc-summary tc-summary--strip" v-if="rows.length" aria-label="催繳摘要">
-        <div class="tc-card tc-card--total">
-          <span class="tc-card-num">{{ rows.length }}</span>
-          <span class="tc-card-label">筆提醒</span>
-        </div>
-        <div class="tc-card tc-card--danger">
-          <span class="tc-card-num">{{ statusCounts.unpaid + statusCounts.partial }}</span>
-          <span class="tc-card-label">未繳費</span>
-        </div>
-        <div class="tc-card tc-card--overdue">
-          <span class="tc-card-num">{{ overdueRows.length }}</span>
-          <span class="tc-card-label">逾期 {{ formatCurrency(overdueTotal) }}</span>
-        </div>
-        <div class="tc-card tc-card--warn">
-          <span class="tc-card-num">{{ statusCounts.pending_report }}</span>
-          <span class="tc-card-label">待對帳</span>
-        </div>
-        <div class="tc-card tc-card--outstanding">
-          <span class="tc-card-num">{{ formatCurrency(totalOutstanding) }}</span>
-          <span class="tc-card-label">
-            未結清
-            <span v-if="collectionRate !== null" class="tc-rate" :style="{ color: collectionRateColor(collectionRate) }">
-              收款率 {{ collectionRate }}%
+      <!-- The row-level queue is the primary surface; totals remain available on demand. -->
+      <details class="tc-summary-disclosure" v-if="rows.length">
+        <summary>
+          <span>收款摘要</span>
+          <span class="tc-summary-disclosure__hint">{{ rows.length }} 筆提醒・未結清 {{ formatCurrency(totalOutstanding) }}</span>
+          <span class="material-symbols-outlined" aria-hidden="true">expand_more</span>
+        </summary>
+        <div class="tc-summary tc-summary--strip" aria-label="催繳摘要">
+          <div class="tc-card tc-card--total">
+            <span class="tc-card-num">{{ rows.length }}</span>
+            <span class="tc-card-label">筆提醒</span>
+          </div>
+          <div class="tc-card tc-card--danger">
+            <span class="tc-card-num">{{ statusCounts.unpaid + statusCounts.partial }}</span>
+            <span class="tc-card-label">未繳費</span>
+          </div>
+          <div class="tc-card tc-card--overdue">
+            <span class="tc-card-num">{{ overdueRows.length }}</span>
+            <span class="tc-card-label">逾期 {{ formatCurrency(overdueTotal) }}</span>
+          </div>
+          <div class="tc-card tc-card--warn">
+            <span class="tc-card-num">{{ statusCounts.pending_report }}</span>
+            <span class="tc-card-label">待對帳</span>
+          </div>
+          <div class="tc-card tc-card--outstanding">
+            <span class="tc-card-num">{{ formatCurrency(totalOutstanding) }}</span>
+            <span class="tc-card-label">
+              未結清
+              <span v-if="collectionRate !== null" class="tc-rate" :style="{ color: collectionRateColor(collectionRate) }">
+                收款率 {{ collectionRate }}%
+              </span>
+              <span v-else class="tc-rate">收款率 —</span>
             </span>
-            <span v-else class="tc-rate">收款率 —</span>
-          </span>
+          </div>
         </div>
-      </div>
+      </details>
 
       <div v-if="rows.length" class="tc-action-queue" role="region" aria-label="主任待處理佇列">
         <div>
@@ -2241,6 +2256,44 @@ loadAlerts();
   padding: 24px;
   box-shadow: 0 1px 4px rgba(0,0,0,0.06);
 }
+.tc-process-disclosure,
+.tc-summary-disclosure {
+  margin-bottom: 16px;
+  border: 1px solid var(--ds-hairline);
+  border-radius: 10px;
+  background: var(--ds-canvas-soft);
+}
+.tc-process-disclosure summary,
+.tc-summary-disclosure summary {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 13px;
+  color: var(--ds-ink-secondary);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  list-style: none;
+}
+.tc-process-disclosure summary::-webkit-details-marker,
+.tc-summary-disclosure summary::-webkit-details-marker { display: none; }
+.tc-process-disclosure summary > .material-symbols-outlined,
+.tc-summary-disclosure summary > .material-symbols-outlined { color: var(--ds-ink-mute); font-size: 18px; }
+.tc-process-disclosure summary > .material-symbols-outlined:last-child,
+.tc-summary-disclosure summary > .material-symbols-outlined:last-child { transition: transform 160ms ease; }
+.tc-process-disclosure[open] summary > .material-symbols-outlined:last-child,
+.tc-summary-disclosure[open] summary > .material-symbols-outlined:last-child { transform: rotate(180deg); }
+.tc-process-disclosure summary:focus-visible,
+.tc-summary-disclosure summary:focus-visible { outline: 3px solid var(--ds-info-wash); outline-offset: 2px; border-radius: 5px; }
+.tc-process-disclosure__title,
+.tc-summary-disclosure summary > span:first-child { color: var(--ds-ink); }
+.tc-process-disclosure__hint,
+.tc-summary-disclosure__hint { overflow: hidden; color: var(--ds-ink-mute); font-size: 11px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.tc-process-disclosure > .operations-quick-start { margin: 0 12px 12px; }
+.tc-summary-disclosure { margin-top: 4px; margin-bottom: 10px; }
+.tc-summary-disclosure .tc-summary { margin: 0; padding: 0 10px 10px; }
 
 /* ─── Accounting center tabs ─── */
 .acct-tabs {

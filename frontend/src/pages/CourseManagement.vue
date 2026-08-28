@@ -34,21 +34,31 @@
 
     <div class="card course-header-card">
 
-      <div class="course-lens-guidance" role="note" data-testid="course-lens-guidance">
-        <span class="material-symbols-outlined course-lens-guidance__icon" aria-hidden="true">near_me</span>
-        <div>
-          <strong>這一頁適合查找與分流</strong>
-          <span>建立、續報與加購課程仍從「學生管理」的學生主檔進入；本頁可直接編輯既有課程、設定月結日期與新增堂次。</span>
-        </div>
-      </div>
+      <details class="course-context-disclosure">
+        <summary>
+          <span class="material-symbols-outlined" aria-hidden="true">info</span>
+          <span class="course-context-disclosure__title">先看懂這一頁</span>
+          <span class="course-context-disclosure__hint">查找與分流；建立、續報與加購請從學生管理進入</span>
+          <span class="material-symbols-outlined" aria-hidden="true">expand_more</span>
+        </summary>
+        <div class="course-context-disclosure__body">
+          <div class="course-lens-guidance" role="note" data-testid="course-lens-guidance">
+            <span class="material-symbols-outlined course-lens-guidance__icon" aria-hidden="true">near_me</span>
+            <div>
+              <strong>這一頁適合查找與分流</strong>
+              <span>建立、續報與加購課程仍從「學生管理」的學生主檔進入；本頁可直接編輯既有課程、設定月結日期與新增堂次。</span>
+            </div>
+          </div>
 
-      <div class="course-lens-summary" aria-label="課程管理摘要" data-testid="course-lens-summary">
-        <article v-for="metric in courseLensMetrics" :key="metric.key" class="course-lens-metric" :class="`course-lens-metric--${metric.tone}`">
-          <span class="course-lens-metric__label">{{ metric.label }}</span>
-          <strong class="course-lens-metric__value">{{ metric.value }}</strong>
-          <span class="course-lens-metric__hint">{{ metric.hint }}</span>
-        </article>
-      </div>
+          <div class="course-lens-summary" aria-label="課程管理摘要" data-testid="course-lens-summary">
+            <article v-for="metric in courseLensMetrics" :key="metric.key" class="course-lens-metric" :class="`course-lens-metric--${metric.tone}`">
+              <span class="course-lens-metric__label">{{ metric.label }}</span>
+              <strong class="course-lens-metric__value">{{ metric.value }}</strong>
+              <span class="course-lens-metric__hint">{{ metric.hint }}</span>
+            </article>
+          </div>
+        </div>
+      </details>
 
       <!-- Filters -->
       <div class="filter-bar grid" data-guide="course-mgmt-filters">
@@ -85,29 +95,35 @@
         </button>
       </div>
 
-      <!-- Performance cockpit stats -->
-      <div class="stats-strip" aria-label="本頁課程類型分布">
-        <span class="stats-orb stats-orb-total">
-          <span class="stats-orb-label">課程總覽</span>
-          <span class="stats-orb-num">{{ courses.length }}</span>
-          <span class="stats-orb-caption">筆課程在線</span>
-        </span>
-        <span class="stats-orb"><span class="stats-orb-label">1:1</span><span class="stats-orb-num">{{ coursesByType.one_on_one }}</span><span class="stats-orb-caption">一對一</span></span>
-        <span class="stats-orb"><span class="stats-orb-label">1:2</span><span class="stats-orb-num">{{ coursesByType.one_on_two }}</span><span class="stats-orb-caption">一對二</span></span>
-        <span class="stats-orb"><span class="stats-orb-label">1:3</span><span class="stats-orb-num">{{ coursesByType.one_on_three }}</span><span class="stats-orb-caption">一對三</span></span>
-        <span class="stats-orb"><span class="stats-orb-label">輔導</span><span class="stats-orb-num">{{ coursesByType.tutoring }}</span><span class="stats-orb-caption">輔導</span></span>
-        <span class="stats-orb"><span class="stats-orb-label">試聽</span><span class="stats-orb-num">{{ coursesByType.trial }}</span><span class="stats-orb-caption">試聽</span></span>
-        <template v-if="coursesBySubject.length">
-          <span class="stats-subject-deck">
-            <span class="stats-subject-title">科目</span>
-            <span
-              v-for="s in coursesBySubject"
-              :key="s.subject"
-              class="stats-strip-subject"
-            >{{ s.label }} {{ s.count }}</span>
+      <details class="course-stats-disclosure">
+        <summary>
+          <span>課程分布</span>
+          <span class="course-stats-disclosure__hint">{{ courses.length }} 筆課程・依類型查看</span>
+          <span class="material-symbols-outlined" aria-hidden="true">expand_more</span>
+        </summary>
+        <div class="stats-strip" aria-label="本頁課程類型分布">
+          <span class="stats-orb stats-orb-total">
+            <span class="stats-orb-label">課程總覽</span>
+            <span class="stats-orb-num">{{ courses.length }}</span>
+            <span class="stats-orb-caption">筆課程在線</span>
           </span>
-        </template>
-      </div>
+          <span class="stats-orb"><span class="stats-orb-label">1:1</span><span class="stats-orb-num">{{ coursesByType.one_on_one }}</span><span class="stats-orb-caption">一對一</span></span>
+          <span class="stats-orb"><span class="stats-orb-label">1:2</span><span class="stats-orb-num">{{ coursesByType.one_on_two }}</span><span class="stats-orb-caption">一對二</span></span>
+          <span class="stats-orb"><span class="stats-orb-label">1:3</span><span class="stats-orb-num">{{ coursesByType.one_on_three }}</span><span class="stats-orb-caption">一對三</span></span>
+          <span class="stats-orb"><span class="stats-orb-label">輔導</span><span class="stats-orb-num">{{ coursesByType.tutoring }}</span><span class="stats-orb-caption">輔導</span></span>
+          <span class="stats-orb"><span class="stats-orb-label">試聽</span><span class="stats-orb-num">{{ coursesByType.trial }}</span><span class="stats-orb-caption">試聽</span></span>
+          <template v-if="coursesBySubject.length">
+            <span class="stats-subject-deck">
+              <span class="stats-subject-title">科目</span>
+              <span
+                v-for="s in coursesBySubject"
+                :key="s.subject"
+                class="stats-strip-subject"
+              >{{ s.label }} {{ s.count }}</span>
+            </span>
+          </template>
+        </div>
+      </details>
     </div>
 
     <!-- Post-creation success banner -->
@@ -5184,6 +5200,44 @@ onUnmounted(() => {
   box-shadow: var(--ds-shadow-1);
   color: var(--ds-ink);
 }
+.course-context-disclosure,
+.course-stats-disclosure {
+  border: 1px solid var(--ds-hairline);
+  border-radius: var(--ds-radius-lg);
+  background: var(--ds-canvas-soft);
+}
+.course-context-disclosure summary,
+.course-stats-disclosure summary {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 12px;
+  color: var(--ds-ink-secondary);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  list-style: none;
+}
+.course-context-disclosure summary::-webkit-details-marker,
+.course-stats-disclosure summary::-webkit-details-marker { display: none; }
+.course-context-disclosure summary > .material-symbols-outlined,
+.course-stats-disclosure summary > .material-symbols-outlined { color: var(--ds-ink-mute); font-size: 18px; }
+.course-context-disclosure summary > .material-symbols-outlined:last-child,
+.course-stats-disclosure summary > .material-symbols-outlined:last-child { transition: transform 160ms ease; }
+.course-context-disclosure[open] summary > .material-symbols-outlined:last-child,
+.course-stats-disclosure[open] summary > .material-symbols-outlined:last-child { transform: rotate(180deg); }
+.course-context-disclosure summary:focus-visible,
+.course-stats-disclosure summary:focus-visible { outline: 3px solid var(--ds-info-wash); outline-offset: 2px; border-radius: 5px; }
+.course-context-disclosure__title { color: var(--ds-ink); }
+.course-context-disclosure__hint,
+.course-stats-disclosure__hint { overflow: hidden; color: var(--ds-ink-mute); font-size: 11px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.course-context-disclosure__body { display: grid; gap: 14px; padding: 0 12px 12px; }
+.course-context-disclosure .course-lens-guidance { margin-top: 0; }
+.course-context-disclosure .course-lens-summary { margin-top: 0; }
+.course-stats-disclosure { margin-top: 12px; }
+.course-stats-disclosure .stats-strip { margin: 0 12px 12px; }
 
 .header-actions {
   position: relative;
