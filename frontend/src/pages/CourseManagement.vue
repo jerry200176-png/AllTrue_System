@@ -20,14 +20,22 @@
             <span class="material-symbols-outlined btn-icon" aria-hidden="true">person_search</span>
             前往學生管理
           </button>
-          <button class="btn-soft" @click="expandAllGroups"><span class="material-symbols-outlined btn-icon" aria-hidden="true">unfold_more</span>全部展開</button>
-          <button class="btn-soft" @click="collapseAllGroups"><span class="material-symbols-outlined btn-icon" aria-hidden="true">unfold_less</span>全部收合</button>
-          <button class="btn-soft" @click="showBulkLeaveModal = true">
-            <span class="material-symbols-outlined btn-icon" aria-hidden="true">event_busy</span> 連假批次請假
-          </button>
-          <button class="btn-soft" @click="emit('navigate', 'subject-settings')">
-            <span class="material-symbols-outlined btn-icon" aria-hidden="true">library_books</span> 管理科目
-          </button>
+          <details class="course-tools-menu">
+            <summary class="btn-soft course-tools-menu__summary">
+              <span class="material-symbols-outlined btn-icon" aria-hidden="true">more_horiz</span>
+              課務工具
+            </summary>
+            <div class="course-tools-menu__panel">
+              <button class="btn-soft" type="button" @click="expandAllGroups"><span class="material-symbols-outlined btn-icon" aria-hidden="true">unfold_more</span>全部展開</button>
+              <button class="btn-soft" type="button" @click="collapseAllGroups"><span class="material-symbols-outlined btn-icon" aria-hidden="true">unfold_less</span>全部收合</button>
+              <button class="btn-soft" type="button" @click="showBulkLeaveModal = true">
+                <span class="material-symbols-outlined btn-icon" aria-hidden="true">event_busy</span>連假批次請假
+              </button>
+              <button class="btn-soft" type="button" @click="emit('navigate', 'subject-settings')">
+                <span class="material-symbols-outlined btn-icon" aria-hidden="true">library_books</span>管理科目
+              </button>
+            </div>
+          </details>
         </div>
       </div>
 
@@ -5454,6 +5462,59 @@ onUnmounted(() => {
   justify-content: flex-end;
 }
 
+.course-tools-menu {
+  position: relative;
+}
+
+.course-tools-menu__summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  list-style: none;
+}
+
+.course-tools-menu__summary::-webkit-details-marker {
+  display: none;
+}
+
+.course-tools-menu__summary::after {
+  content: '▾';
+  font-size: 11px;
+  transition: transform 0.15s ease;
+}
+
+.course-tools-menu[open] .course-tools-menu__summary::after {
+  transform: rotate(180deg);
+}
+
+.course-tools-menu__panel {
+  position: absolute;
+  z-index: 8;
+  top: calc(100% + 6px);
+  right: 0;
+  display: grid;
+  gap: 4px;
+  min-width: 180px;
+  padding: 6px;
+  border: 1px solid var(--ds-hairline);
+  border-radius: 12px;
+  background: var(--ds-canvas);
+  box-shadow: var(--ds-shadow-md, 0 8px 24px rgba(15, 23, 42, 0.12));
+}
+
+.course-tools-menu__panel .btn-soft {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  border: 0;
+  border-radius: 8px;
+  text-align: left;
+}
+
+.course-tools-menu__panel .btn-soft:hover {
+  background: var(--ds-canvas-soft);
+}
+
 .btn-soft {
   border: 1px solid var(--ds-hairline);
   background: var(--ds-canvas);
@@ -6919,6 +6980,20 @@ button.danger:disabled {
 
   .header-buttons {
     justify-content: flex-start;
+  }
+
+  .course-tools-menu {
+    width: 100%;
+  }
+
+  .course-tools-menu__summary {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .course-tools-menu__panel {
+    position: static;
+    margin-top: 6px;
   }
 
   .course-header-card {
