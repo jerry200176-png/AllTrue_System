@@ -109,6 +109,16 @@
   --ds-surface-0: var(--ds-canvas-soft);
   --ds-surface-1: var(--ds-canvas);
   --ds-surface-2: #eef2f6;
+  /* Compatibility aliases used by older ops surfaces; all resolve back to DS tokens. */
+  --ds-surface: var(--ds-canvas);
+  --ds-surface-subtle: var(--ds-surface-2);
+  --ds-border: var(--ds-hairline);
+  --ds-accent: var(--ds-primary);
+  --ds-ink-soft: var(--ds-ink-mute);
+  --ds-warning-ink: var(--ds-warning);
+  --ds-warning-border: var(--ds-warning);
+  --ds-danger-border: var(--ds-danger);
+  --ds-shadow-md: var(--ds-shadow-2);
   --ds-text-primary: var(--ds-ink);
   --ds-text-secondary: var(--ds-ink-secondary);
   --ds-text-tertiary: var(--ds-ink-mute);
@@ -567,7 +577,7 @@ body {
   align-items: center;
   gap: 12px;
   width: 100%;
-  padding: 11px 12px;
+  padding: 9px 10px;
   border: none;
   background: transparent;
   color: #c7d2e5;
@@ -576,7 +586,7 @@ body {
   cursor: pointer;
   transition: var(--transition);
   text-align: left;
-  border-radius: 12px;
+  border-radius: 8px;
   font-family: inherit;
   position: relative;
 }
@@ -626,15 +636,15 @@ body {
 
 .sidebar-footer {
   margin-top: 6px;
-  padding: 14px 12px;
+  padding: 12px 8px 8px;
   border-top: 1px solid rgba(148, 163, 184, 0.16);
-  background: rgba(15, 23, 42, 0.55);
-  border-radius: 14px;
+  background: transparent;
+  border-radius: 0;
 }
 @media (min-width: 641px) {
   .sidebar-footer {
-    background: rgba(15, 23, 42, 0.38);
-    backdrop-filter: blur(4px);
+    background: transparent;
+    backdrop-filter: none;
   }
 }
 
@@ -705,17 +715,17 @@ body {
 }
 
 .sidebar-footer .branch-btn:hover {
-  background: rgba(83, 58, 253, 0.22);
-  border-color: rgba(165, 180, 252, 0.5);
+  background: rgba(239, 108, 0, 0.16);
+  border-color: rgba(245, 124, 0, 0.5);
   color: #f8fafc;
 }
 
 .sidebar-footer .branch-btn.active {
-  background: linear-gradient(135deg, #4434d4, #533afd);
-  border-color: transparent;
+  background: var(--sidebar-active-wash);
+  border-color: var(--sidebar-active-bar);
   color: #fff;
   font-weight: 700;
-  box-shadow: 0 6px 12px rgba(83, 58, 253, 0.38);
+  box-shadow: none;
 }
 
 .sidebar-footer .logout-btn {

@@ -23,6 +23,14 @@ describe('sidebar navigation UX contract', () => {
     expect(appSource).toContain('type="button"');
   });
 
+  it('keeps personal display tools out of the navigation rail', () => {
+    expect(appSource).not.toContain('class="shortcut-hint"');
+    expect(appSource).not.toContain('class="theme-switcher"');
+    expect(appSource).toContain('class="account-menu-tools"');
+    expect(appSource).toContain('class="account-menu-shortcuts"');
+    expect(appSource).toContain('material-symbols-outlined theme-btn-icon');
+  });
+
   it('does not duplicate course management in the teaching group', () => {
     const teachingGroup = getNavigationGroups('director').find(group => group.key === 'teaching');
     expect(teachingGroup.items.map(item => item.page)).not.toContain('course-mgmt');
