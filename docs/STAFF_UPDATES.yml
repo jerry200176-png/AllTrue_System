@@ -3,6 +3,23 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-28-ops-ui-sweep
+    published_at: "2026-08-28"
+    audiences:
+      - director
+      - teacher
+    importance: major
+    title: 側欄與工作頁更清楚
+    summary: 常用工作先顯示，低頻功能仍可展開使用。
+    items:
+      - category: improved
+        text: 側欄將每日工作、教學現場、學生課程與財務人事分組；進階工具、報表薪資、訊息回報改為需要時再展開。
+      - category: improved
+        text: 出缺勤、教學工作台、老師管理與帳務中心統一頁首與摘要，重新整理時會顯示一致的載入狀態。
+      - category: action_required
+        text: 找不到低頻功能時，請展開對應區段；原有功能入口與資料操作沒有刪除。
+    source_refs:
+      - "changelog:2026-08-28:ops-ui-sweep"
 
   - id: staff-2026-08-28-schedule-safe-recovery
     published_at: "2026-08-28"
