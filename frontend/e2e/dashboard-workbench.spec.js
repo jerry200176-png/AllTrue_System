@@ -49,6 +49,8 @@ for (const viewport of VIEWPORTS) {
     expect(layout.legacyWorkbenchVisible).toBe(false);
     expect(layout.primaryDecisionCount).toBeLessThanOrEqual(7);
     await expect(page.getByRole('tab', { name: '今天', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('tab', { name: '今天', exact: true })).toHaveAttribute('aria-controls', 'director-workbench-panel-focus');
+    await expect(page.locator('#director-workbench-panel-focus')).toHaveAttribute('aria-labelledby', 'director-workbench-tab-focus');
     if (layout.taskCount > 0) {
       await expect(page.locator('.director-task__action').first()).toBeVisible();
     }
@@ -58,6 +60,8 @@ for (const viewport of VIEWPORTS) {
     await fullView.click();
     await expect.poll(() => secondaryRequests.length, { timeout: 10_000 }).toBeGreaterThan(0);
     await expect(page.locator('.director-workbench-v2__full')).toBeVisible();
+    await expect(fullView).toHaveAttribute('aria-controls', 'director-workbench-panel-full');
+    await expect(page.locator('#director-workbench-panel-full')).toHaveAttribute('aria-labelledby', 'director-workbench-tab-full');
     await expect(page.getByText('近期紀錄與分析', { exact: true })).toBeVisible();
 
     expect(errors, `頁面 JS 錯誤：\n${errors.join('\n')}`).toEqual([]);

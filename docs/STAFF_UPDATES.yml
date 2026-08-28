@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-29-director-view-switcher-a11y
+    published_at: "2026-08-29"
+    audiences:
+      - director
+    importance: digest
+    title: 主任總覽檢視切換更清楚
+    summary: 今天與完整營運兩個工作區的切換關係更容易理解。
+    items:
+      - category: improved
+        text: 主任總覽的檢視分頁會清楚連到對應內容區，鍵盤與螢幕閱讀器能辨識目前工作區。
+      - category: improved
+        text: 今日待辦優先、完整營運按需載入與原有導頁、資料、權限行為維持不變。
+    source_refs:
+      - "changelog:2026-08-29:director-view-switcher-a11y"
+
   - id: staff-2026-08-29-students-row-disclosure
     published_at: "2026-08-29"
     audiences:

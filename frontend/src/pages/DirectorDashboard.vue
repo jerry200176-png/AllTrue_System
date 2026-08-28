@@ -35,6 +35,8 @@
           <button
             type="button"
             role="tab"
+            id="director-workbench-tab-focus"
+            aria-controls="director-workbench-panel-focus"
             :aria-selected="dashboardViewMode === 'focus'"
             :class="{ 'is-active': dashboardViewMode === 'focus' }"
             @click="setDashboardViewMode('focus')"
@@ -44,6 +46,8 @@
           <button
             type="button"
             role="tab"
+            id="director-workbench-tab-full"
+            aria-controls="director-workbench-panel-full"
             :aria-selected="dashboardViewMode === 'full'"
             :class="{ 'is-active': dashboardViewMode === 'full' }"
             @click="setDashboardViewMode('full')"
@@ -52,7 +56,14 @@
           </button>
         </nav>
 
-        <section v-if="dashboardViewMode === 'focus'" class="director-workbench-v2__focus" aria-label="今天的主任工作">
+        <section
+          v-if="dashboardViewMode === 'focus'"
+          id="director-workbench-panel-focus"
+          class="director-workbench-v2__focus"
+          role="tabpanel"
+          aria-labelledby="director-workbench-tab-focus"
+          tabindex="0"
+        >
           <TodayProgressCard
             :completed="attendedCount"
             :total="todaySchedules.length"
@@ -176,7 +187,14 @@
           </aside>
         </section>
 
-        <section v-else class="director-workbench-v2__full" aria-labelledby="director-full-title">
+        <section
+          v-else
+          id="director-workbench-panel-full"
+          class="director-workbench-v2__full"
+          role="tabpanel"
+          aria-labelledby="director-workbench-tab-full"
+          tabindex="0"
+        >
           <header class="director-workbench-v2__subheader">
             <div><h2 id="director-full-title">完整營運</h2><p>需要查完整課表、案件、帳務與分析時，再從這裡展開。</p></div>
             <span v-if="secondaryLoading" class="director-workbench-v2__updated" role="status">載入營運資料中…</span>
