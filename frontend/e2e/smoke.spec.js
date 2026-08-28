@@ -48,6 +48,18 @@ async function login(page, role, creds) {
  */
 async function navTo(page, navLabel) {
   await dismissOverlays(page);
+  // 側欄低頻項目收在可展開群組內；先展開對應群組，再找可及按鈕。
+  const navGroupByLabel = {
+    '科目數統計': '教學工具',
+  };
+  const navGroup = navGroupByLabel[navLabel];
+  if (navGroup) {
+    const summary = page.locator('summary.nav-group-summary').filter({ hasText: navGroup }).first();
+    if (await summary.count()) {
+      const group = summary.locator('..');
+      if ((await group.getAttribute('open')) === null) await summary.click();
+    }
+  }
   // 側欄項目是 <button>，可及名稱含 nav-label 文字；可能尾隨 badge 數字故用 substring。
   const navBtn = page.getByRole('button', { name: navLabel, exact: false }).first();
   await navBtn.click();
