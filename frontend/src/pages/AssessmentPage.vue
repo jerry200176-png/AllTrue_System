@@ -1,20 +1,23 @@
 <template>
   <section class="assessment-page">
-    <div class="page-header assessment-header">
-      <div>
-        <h2>學習檢測</h2>
-        <p class="page-desc">建立檢測、記錄學生多次結果，與課後評量分開管理。</p>
-      </div>
-      <button class="primary" type="button" @click="openCreate">＋建立檢測</button>
-    </div>
+    <AtPageHeader
+      title="學習檢測"
+      description="建立檢測、記錄學生多次結果，與課後評量分開管理。"
+      icon="fact_check"
+      data-guide="assessment-header"
+    >
+      <template #actions>
+        <AtButton variant="primary" shape="rect" icon="add" @click="openCreate">建立檢測</AtButton>
+      </template>
+    </AtPageHeader>
 
     <div class="assessment-summary-grid">
-      <article class="card summary-card"><span>檢測數</span><strong>{{ summary.assessment_count }}</strong></article>
-      <article class="card summary-card"><span>結果筆數</span><strong>{{ summary.result_count }}</strong></article>
-      <article class="card summary-card"><span>平均分數</span><strong>{{ summary.average_percent == null ? '—' : `${summary.average_percent}%` }}</strong></article>
-      <article class="card summary-card"><span>已審核結果</span><strong>{{ summary.reviewed_count }}</strong></article>
-      <article class="card summary-card"><span>待補強</span><strong>{{ summary.remediation_open_count }}</strong></article>
-      <article class="card summary-card"><span>逾期補強</span><strong>{{ summary.remediation_overdue_count }}</strong></article>
+      <AtMetric label="檢測數" :value="summary.assessment_count" />
+      <AtMetric label="結果筆數" :value="summary.result_count" />
+      <AtMetric label="平均分數" :value="summary.average_percent == null ? '—' : `${summary.average_percent}%`" />
+      <AtMetric label="已審核結果" :value="summary.reviewed_count" />
+      <AtMetric label="待補強" :value="summary.remediation_open_count" delta-tone="negative" />
+      <AtMetric label="逾期補強" :value="summary.remediation_overdue_count" delta-tone="negative" />
     </div>
 
     <div class="card assessment-list-card">
@@ -132,6 +135,9 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { answerMapFromAttempt, attemptStatusLabel, buildAnswerPayload } from '../lib/assessmentRunner.js';
+import AtButton from '../components/design-system/AtButton.vue';
+import AtMetric from '../components/design-system/AtMetric.vue';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 
 const props = defineProps({ branchId: [String, Number], userRole: String });
 const base = `${import.meta.env.VITE_API_BASE || '/api'}/v1`;
