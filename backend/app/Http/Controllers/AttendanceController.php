@@ -538,61 +538,69 @@ class AttendanceController extends Controller
 
             // ── leave + 既有堂次 → KEEP dates + append tail（同課程管理 POST schedules leave）
             if ($status === 'leave' && !empty($data['ClassSessionID'])) {
-                $leaveDate = Carbon::parse($classSession->SessionDate)->toDateString();
-                $branchId = (int) ($student->CampusID ?? 0);
-                $subjectName = DB::table('Subject')
-                    ->where('id', (int) ($studentClass->SubjectID ?? 0))
-                    ->value('Subject_Name') ?? '';
+                try {
+                    $leaveDate = Carbon::parse($classSession->SessionDate)->toDateString();
+                    $branchId = (int) ($student->CampusID ?? 0);
+                    $subjectName = DB::table('Subject')
+                        ->where('id', (int) ($studentClass->SubjectID ?? 0))
+                        ->value('Subject_Name') ?? '';
 
-                Schedule::create([
-                    'student_id'        => (int) $data['StudentID'],
-                    'teacher_id'        => $effectiveTeacherId > 0 ? $effectiveTeacherId : null,
-                    'subject'           => $subjectName,
-                    'day_of_week'       => Carbon::parse($leaveDate)->dayOfWeekIso,
-                    'start_time'        => $classSession->StartTime ? substr((string) $classSession->StartTime, 0, 5) : '16:00',
-                    'end_time'          => $classSession->EndTime ? substr((string) $classSession->EndTime, 0, 5) : '18:00',
-                    'class_type'        => (string) ($studentClass->ClassType ?: 'one_on_one'),
-                    'status'            => 'leave',
-                    'type'              => 'normal',
-                    'deduction'         => 0,
-                    'branch_id'         => $branchId,
-                    'schedule_date'     => $leaveDate,
-                    'student_course_id' => (int) $studentClass->ID,
-                ]);
+                    Schedule::create([
+                        'student_id'        => (int) $data['StudentID'],
+                        'teacher_id'        => $effectiveTeacherId > 0 ? $effectiveTeacherId : null,
+                        'subject'           => $subjectName,
+                        'day_of_week'       => Carbon::parse($leaveDate)->dayOfWeekIso,
+                        'start_time'        => $classSession->StartTime ? substr((string) $classSession->StartTime, 0, 5) : '16:00',
+                        'end_time'          => $classSession->EndTime ? substr((string) $classSession->EndTime, 0, 5) : '18:00',
+                        'class_type'        => (string) ($studentClass->ClassType ?: 'one_on_one'),
+                        'status'            => 'leave',
+                        'type'              => 'normal',
+                        'deduction'         => 0,
+                        'branch_id'         => $branchId,
+                        'schedule_date'     => $leaveDate,
+                        'student_course_id' => (int) $studentClass->ID,
+                    ]);
 
-                [$rows, $extendedEndDate, $leaveSessionDate] =
-                    CourseLeaveCascadeService::applyLeaveCascade((int) $studentClass->ID, $leaveDate);
+                    [$rows, $extendedEndDate, $leaveSessionDate] =
+                        CourseLeaveCascadeService::applyLeaveCascade((int) $studentClass->ID, $leaveDate);
 
-                $this->leaveAttendanceService->createClosedForSession(
-                    $classSession,
-                    $studentClass,
-                    $recordedByUserId,
-                    $effectiveTeacherId,
-                    (int) ($student->CampusID ?? 0)
-                );
+                    $this->leaveAttendanceService->createClosedForSession(
+                        $classSession,
+                        $studentClass,
+                        $recordedByUserId,
+                        $effectiveTeacherId,
+                        (int) ($student->CampusID ?? 0)
+                    );
 
-                return response()->json([
-                    'message'            => '已請假：未來既有上課日不變，並於尾端補上堂次',
-                    'policy'             => CourseLeaveCascadeService::POLICY_KEEP_FUTURE_DATES_APPEND_TAIL,
-                    'status_label'       => '請假',
-                    'person_name'        => $student->name ?? '',
-                    'person_type_label'  => '學生',
-                    'leave_session_date' => $leaveSessionDate,
-                    'extended_end_date'  => $extendedEndDate,
-                    'class_sessions'     => $rows,
-                ], 201);
+                    return response()->json([
+                        'message'            => '已請假：未來既有上課日不變，並於尾端補上堂次',
+                        'policy'             => CourseLeaveCascadeService::POLICY_KEEP_FUTURE_DATES_APPEND_TAIL,
+                        'status_label'       => '請假',
+                        'person_name'        => $student->name ?? '',
+                        'person_type_label'  => '學生',
+                        'leave_session_date' => $leaveSessionDate,
+                        'extended_end_date'  => $extendedEndDate,
+                        'class_sessions'     => $rows,
+                    ], 201);
+                } catch (\InvalidArgumentException $e) {
+                    throw $e;
+                }
             }
 
             // ── 一般出缺勤；無輸入 ClassSessionID 的 leave 仍須走同一個
             // closed-interval producer，但不觸發上方的課程請假 cascade。
             if ($status === 'leave') {
-                $signIn = $this->leaveAttendanceService->createClosedForSession(
-                    $classSession,
-                    $studentClass,
-                    $recordedByUserId,
-                    $effectiveTeacherId,
-                    (int) ($student->CampusID ?? 0)
-                );
+                try {
+                    $signIn = $this->leaveAttendanceService->createClosedForSession(
+                        $classSession,
+                        $studentClass,
+                        $recordedByUserId,
+                        $effectiveTeacherId,
+                        (int) ($student->CampusID ?? 0)
+                    );
+                } catch (\InvalidArgumentException $e) {
+                    throw $e;
+                }
             } else {
                 [$signInDT, $signOutDT, $hours] = $this->resolveTimes($data, $classSession);
 
