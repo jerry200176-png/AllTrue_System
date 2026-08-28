@@ -3,6 +3,23 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-28-leave-trial-conversion
+    published_at: "2026-08-28"
+    audiences:
+      - director
+    importance: action_required
+    title: 請假可安全撤銷，試聽可直接轉正式
+    summary: 請假不必再用已上再改回未上的繞路；試聽轉正式也不必手動搬堂次。
+    items:
+      - category: fixed
+        text: 請假堂次請使用「取消請假」；系統會同步復原該堂與請假紀錄，禁止直接改成已上或未上造成資料不同步。
+      - category: added
+        text: 試聽確定入班時，請按「轉為正式課程」並選擇正式堂數與開始日；試聽堂與評量會保留，未來試聽排課會取消，不會重複計堂。
+      - category: action_required
+        text: 若看到缺少順延尾堂的提示，請依畫面到合約／堂次調整做對帳；系統不會自行刪除其他堂次。
+    source_refs:
+      - "changelog:2026-08-28:leave-trial-conversion"
+
   - id: staff-2026-08-28-learning-review-queues
     published_at: "2026-08-28"
     audiences:

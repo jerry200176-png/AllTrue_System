@@ -1271,6 +1271,21 @@ class ClassSessionController extends Controller
             ], 422);
         }
 
+        // A leave changes the course's tail/end-date contract. It must be
+        // undone through /schedules/undo-leave-by-session so the cascade,
+        // linked schedule row, and leave-owned artifacts are reversed together.
+        // Blocking direct leave→attended→scheduled also removes the old
+        // workaround that could silently leave an extra tail behind.
+        if (
+            $currentStatus === 'leave'
+            && in_array($newStatus, ['scheduled', 'attended', 'late', 'absent'], true)
+        ) {
+            return response()->json([
+                'message' => '請先使用「取消請假」，系統會同步回復順延堂次；不可直接改成已上或未上。',
+                'code' => 'leave_requires_cascade_undo',
+            ], 422);
+        }
+
         // leave_adjusted requires director+
         if ($newStatus === 'leave_adjusted') {
             if (!in_array($role, self::LEAVE_ADJUSTED_REQUIRES, true)) {
@@ -1394,25 +1409,6 @@ class ClassSessionController extends Controller
                 }
 
                 SessionDeductionService::syncCounters($studentClass);
-
-                // If leave → attended/late/absent/completed: the LR was voided by the leave
-                // cascade. Restore it so teachers can fill it in.
-                if (
-                    $currentStatus === 'leave' &&
-                    in_array($newStatus, ['attended', 'late', 'absent', 'completed'], true)
-                ) {
-                    $this->restoreVoidedLearningRecord($session);
-
-                    // Bug (in-app 木柵/吳艾潼 2026-08-20): unlike the dedicated
-                    // scheduled->attended branch above, this generic fallback never
-                    // synced the StudentSignIn row still sitting at Status='leave'.
-                    // scopeExcludeLeaveSessionPendingReview() treats any active
-                    // (VoidedAt IS NULL) 'leave'-status StudentSignIn on this session
-                    // as authoritative over ClassSession.Status, so the just-restored
-                    // LearningRecord stayed invisible in every eval list/panel even
-                    // though ClassSession.Status was correctly 'attended'.
-                    $this->syncStudentSignInStatus($session->id, $newStatus);
-                }
 
                 $msg = '狀態已更新為' . $newStatus;
                 if ($newStatus === 'cancelled') {

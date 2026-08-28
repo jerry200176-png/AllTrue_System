@@ -531,6 +531,9 @@ class StudentClassController extends Controller
             $class->last_paid_at = $invoicePaidAt ?? $directPaidAt;
             $class->status = empty($class->Stop) ? 'active' : 'inactive';
             $class->closed_reason = $class->closed_reason ?? null;
+            $class->trial_converted_to_id = $class->trial_converted_to_id
+                ? (int) $class->trial_converted_to_id
+                : null;
             $class->first_class_date = $class->StartDate ? (\Carbon\Carbon::parse($class->StartDate)->toDateString()) : null;
 
             return $class;
@@ -692,7 +695,7 @@ class StudentClassController extends Controller
                         continue;
                     }
                     $status = strtolower((string) ($row->Status ?? ''));
-                    if (in_array($status, ['cancelled', 'leave'], true)) {
+                    if ($status === 'cancelled' || $status === 'leave') {
                         continue;
                     }
                     if (!isset($sessionDatesByClass[$id])) {
@@ -945,7 +948,7 @@ class StudentClassController extends Controller
                             continue;
                         }
                         $status = strtolower((string) ($row->Status ?? ''));
-                        if (in_array($status, ['cancelled', 'leave'], true)) {
+                        if ($status === 'cancelled' || $status === 'leave') {
                             continue;
                         }
                         $d = $row->SessionDate ? Carbon::parse($row->SessionDate)->toDateString() : null;
@@ -1015,7 +1018,7 @@ class StudentClassController extends Controller
                         continue;
                     }
                     $status = strtolower((string) ($row->Status ?? ''));
-                    if (in_array($status, ['cancelled', 'leave'], true)) {
+                    if ($status === 'cancelled' || $status === 'leave') {
                         continue;
                     }
                     $d = $row->SessionDate ? Carbon::parse($row->SessionDate)->toDateString() : null;
@@ -2959,6 +2962,7 @@ class StudentClassController extends Controller
             'sessions' => 'required|integer|min:1|max:500',
             'start_date' => 'required|date',
             'mode' => 'nullable|in:new_purchase',
+            'class_type' => 'nullable|in:one_on_one,one_on_two,one_on_three,tutoring',
         ]);
 
         $mode = (string) ($data['mode'] ?? 'new_purchase');
@@ -2973,8 +2977,9 @@ class StudentClassController extends Controller
 
         $sessions = (int) $data['sessions'];
         $startDate = Carbon::parse($data['start_date'])->toDateString();
+        $newClassType = (string) ($data['class_type'] ?? $studentClass->getAttribute('ClassType') ?: 'one_on_one');
 
-        return DB::transaction(function () use ($studentClass, $sessions, $startDate, $mode) {
+        return DB::transaction(function () use ($studentClass, $sessions, $startDate, $mode, $newClassType) {
             $studentClass = StudentClass::where('ID', $studentClass->ID)
                 ->lockForUpdate()
                 ->firstOrFail();
@@ -3066,7 +3071,7 @@ class StudentClassController extends Controller
                 'SessionCount' => $sessions,
                 'SessionDuration' => $globalDur,
                 'RemainingSessions' => $sessions,
-                'ClassType' => $studentClass->ClassType ?: 'one_on_one',
+                'ClassType' => $newClassType,
                 'UsedSessions' => 0,
             ];
 
@@ -3152,6 +3157,139 @@ class StudentClassController extends Controller
                     'first_session_date' => $this->normalizeDateString($firstSessionDate),
                     'last_session_date' => $this->normalizeDateString($lastSessionDate),
                 ],
+            ], 201);
+        });
+    }
+
+    public function convertTrial(Request $request, StudentClass $studentClass)
+    {
+        if ($auth = $this->authorizeStudentClassAccess($studentClass)) {
+            return $auth;
+        }
+
+        $data = $request->validate([
+            'sessions' => 'required|integer|min:1|max:500',
+            'start_date' => 'required|date',
+            'class_type' => 'nullable|in:one_on_one,one_on_two,one_on_three,tutoring',
+        ]);
+
+        if (strtolower((string) ($studentClass->getAttribute('ClassType') ?? '')) !== 'trial') {
+            return response()->json([
+                'message' => '只有試聽課程可以使用「轉為正式課程」。',
+                'code' => 'not_a_trial_course',
+            ], 422);
+        }
+        if (!empty($studentClass->getAttribute('trial_converted_to_id'))) {
+            return response()->json([
+                'message' => '這筆試聽已轉為正式課程，請直接開啟既有正式課程。',
+                'code' => 'trial_already_converted',
+                'new_course_id' => (int) $studentClass->getAttribute('trial_converted_to_id'),
+            ], 409);
+        }
+        if ((int) ($studentClass->getAttribute('Paid') ?? 0) === 1) {
+            return response()->json([
+                'message' => '試聽課程已有收款紀錄，請先由帳務流程處理後再轉正式。',
+                'code' => 'trial_payment_locked',
+            ], 422);
+        }
+
+        $sessions = (int) $data['sessions'];
+        $startDate = Carbon::parse($data['start_date'])->toDateString();
+        $newClassType = (string) ($data['class_type'] ?? 'one_on_one');
+
+        return DB::transaction(function () use ($request, $studentClass, $sessions, $startDate, $newClassType) {
+            $source = StudentClass::where('ID', $studentClass->getAttribute('ID'))
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if (strtolower((string) ($source->getAttribute('ClassType') ?? '')) !== 'trial') {
+                return response()->json(['message' => '來源課程已不是試聽課程，請重新整理後再試。'], 409);
+            }
+            if (!empty($source->getAttribute('trial_converted_to_id'))) {
+                return response()->json([
+                    'message' => '這筆試聽已轉為正式課程，請直接開啟既有正式課程。',
+                    'code' => 'trial_already_converted',
+                    'new_course_id' => (int) $source->getAttribute('trial_converted_to_id'),
+                ], 409);
+            }
+
+            $slots = $this->resolveScheduleSlotsForRebuild($source);
+            if (empty($slots)) {
+                $isoDow = (int) Carbon::parse($startDate)->dayOfWeekIso;
+                $fallbackTime = $this->normalizeSessionTime($source->getAttribute('time') ?? null, '16:00');
+                $slots = [['weekday' => $isoDow, 'time' => substr($fallbackTime, 0, 5)]];
+            }
+            $duration = max(30, (int) ($source->getAttribute('SessionDuration') ?? 120));
+            $previewSessions = $this->buildSessionsForCount(0, $startDate, $sessions, $slots, $duration);
+            if (count($previewSessions) !== $sessions) {
+                return response()->json([
+                    'message' => '無法依目前固定時段排出完整正式課程，請先補齊試聽課程的星期與時段。',
+                    'code' => 'trial_schedule_incomplete',
+                ], 422);
+            }
+
+            // Remove the source trial from occupancy before checking the new
+            // contract. The transaction rolls this back if another course is
+            // actually occupying one of the proposed slots.
+            $cancelledTrialSessions = $this->cancelFutureScheduledSessions($source, 'trial_conversion');
+            $source->setAttribute('Stop', 1);
+            $source->setAttribute('closed_reason', 'converted_trial');
+            $source->save();
+
+            $studentCampusId = (int) (optional($source->student)->getAttribute('CampusID') ?: 0);
+            $conflicts = $this->detectTeacherConflicts(
+                (int) ($source->getAttribute('TeacherID') ?? 0),
+                $previewSessions,
+                $newClassType,
+                $source->getAttribute('room_id') ? (int) $source->getAttribute('room_id') : null,
+                $studentCampusId
+            );
+            if (!empty($conflicts)) {
+                return response()->json([
+                    'message' => '正式課程的固定時段與其他課程衝堂，試聽紀錄未變更。',
+                    'code' => 'trial_conversion_schedule_conflict',
+                    'conflicts' => $conflicts,
+                ], 409);
+            }
+
+            $originalInput = $request->all();
+            $request->replace([
+                'sessions' => $sessions,
+                'start_date' => $startDate,
+                'mode' => 'new_purchase',
+                'class_type' => $newClassType,
+            ]);
+            try {
+                $response = $this->purchaseBatch($request, $source);
+            } finally {
+                $request->replace($originalInput);
+            }
+
+            if ($response->getStatusCode() >= 400) {
+                return $response;
+            }
+
+            $result = method_exists($response, 'getData') ? $response->getData(true) : [];
+            $newCourseId = (int) ($result['new_course']['id'] ?? 0);
+            if ($newCourseId <= 0) {
+                return response()->json(['message' => '正式課程建立失敗，試聽紀錄未完成轉換。'], 500);
+            }
+
+            $source->setAttribute('trial_converted_to_id', $newCourseId);
+            $source->save();
+
+            return response()->json([
+                'message' => '試聽已保留為歷史紀錄，正式課程已建立；未來試聽排課已取消，不需再轉移堂次。',
+                'source_course' => [
+                    'id' => (int) $source->getAttribute('ID'),
+                    'closed_reason' => $source->getAttribute('closed_reason'),
+                    'cancelled_future_sessions' => $cancelledTrialSessions,
+                    'preserved_attended_sessions' => (int) ClassSession::where('StudentClassID', $source->getAttribute('ID'))
+                        ->whereIn('Status', ['attended', 'completed', 'late', 'absent'])
+                        ->count(),
+                ],
+                'new_course' => $result['new_course'],
+                'next_actions' => ['record_payment', 'open_new_course'],
             ], 201);
         });
     }
@@ -6881,7 +7019,11 @@ class StudentClassController extends Controller
     private function cancelFutureScheduledSessions(StudentClass $studentClass, ?string $reason): int
     {
         $today = Carbon::today()->toDateString();
-        $noteTag = $reason === 'settled' ? '[結案取消]' : '[暫停取消]';
+        $noteTag = match ($reason) {
+            'settled' => '[結案取消]',
+            'trial_conversion' => '[試聽轉正式]',
+            default => '[暫停取消]',
+        };
 
         return ClassSession::where('StudentClassID', $studentClass->getAttribute('ID'))
             ->where('SessionDate', '>=', $today)
