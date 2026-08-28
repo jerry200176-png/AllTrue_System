@@ -1,3 +1,11 @@
+## 2026-08-29 — improved(ux): 老師工作台先做一件事
+
+<!-- release-notes: staff_update=staff-2026-08-29-teacher-next-action -->
+
+- 老師工作台會把排序後的第一個待辦獨立標示為「現在先做」，直接提供對應的行動按鈕，減少第一眼判斷負擔。
+- 其餘待辦仍保留在「接著處理」清單；請假待審堂次、原有資料、導頁與權限行為不變。
+- 手機版主行動會在同一張卡片內完整堆疊，維持可讀寬度與鍵盤／螢幕閱讀器可操作性。
+
 ## 2026-08-29 — improved(ux): 學生課程總覽更容易判斷下一步
 
 <!-- release-notes: staff_update=staff-2026-08-29-student-course-overview -->
