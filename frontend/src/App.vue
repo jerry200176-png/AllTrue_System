@@ -138,33 +138,6 @@
           </div>
         </div>
 
-        <!-- 電腦快捷鍵提示（主任限定，側欄展開時顯示） -->
-        <details v-if="!sidebarCollapsed" class="shortcut-hint">
-          <summary class="shortcut-hint__toggle">⌨️ 快捷鍵提示</summary>
-          <ul class="shortcut-hint__list">
-            <li><kbd>Win</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> <span>截圖</span></li>
-            <li><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> <span>更新網頁</span></li>
-            <li><kbd>Ctrl</kbd>+<kbd>C</kbd> <span>複製</span></li>
-            <li><kbd>Ctrl</kbd>+<kbd>V</kbd> <span>貼上</span></li>
-          </ul>
-        </details>
-
-        <!-- 主題切換 -->
-        <div class="theme-switcher" :title="sidebarCollapsed ? '切換顯示模式' : ''">
-          <div class="theme-switcher-label" v-show="!sidebarCollapsed">顯示模式</div>
-          <div class="theme-buttons" :class="{ 'theme-buttons-collapsed': sidebarCollapsed }">
-            <button
-              v-for="opt in themeOptions"
-              :key="opt.value"
-              :class="['theme-btn', { active: themePreference === opt.value }]"
-              :title="opt.label"
-              @click="setTheme(opt.value)"
-            >
-              <span>{{ opt.icon }}</span>
-              <span v-show="!sidebarCollapsed" class="theme-btn-label">{{ opt.label }}</span>
-            </button>
-          </div>
-        </div>
       </div>
     </aside>
 
@@ -273,6 +246,33 @@
               <span class="material-symbols-outlined" aria-hidden="true">logout</span>
               <span>登出系統</span>
             </button>
+            <div class="account-menu-divider" aria-hidden="true"></div>
+            <div class="account-menu-tools">
+              <span class="account-menu-tools-label">顯示模式</span>
+              <div class="theme-buttons">
+                <button
+                  v-for="opt in themeOptions"
+                  :key="opt.value"
+                  type="button"
+                  :class="['theme-btn', { active: themePreference === opt.value }]"
+                  :title="opt.label"
+                  :aria-label="`切換為${opt.label}模式`"
+                  @click="setTheme(opt.value)"
+                >
+                  <span class="material-symbols-outlined theme-btn-icon" aria-hidden="true">{{ opt.icon }}</span>
+                  <span class="theme-btn-label">{{ opt.label }}</span>
+                </button>
+              </div>
+            </div>
+            <details class="account-menu-shortcuts">
+              <summary><span class="material-symbols-outlined" aria-hidden="true">keyboard</span>快捷鍵提示</summary>
+              <ul class="shortcut-hint__list">
+                <li><kbd>Win</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> <span>截圖</span></li>
+                <li><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> <span>更新網頁</span></li>
+                <li><kbd>Ctrl</kbd>+<kbd>C</kbd> <span>複製</span></li>
+                <li><kbd>Ctrl</kbd>+<kbd>V</kbd> <span>貼上</span></li>
+              </ul>
+            </details>
           </div>
         </details>
       </div>
@@ -888,9 +888,9 @@ const sidebarCollapsed = ref(localStorage.getItem('sidebar_collapsed') === 'true
 // ===== 主題模式（日間 / 夜間 / 系統） =====
 const THEME_KEY = 'app_color_scheme';
 const themeOptions = [
-  { value: 'light',  icon: '☀️', label: '日間' },
-  { value: 'dark',   icon: '🌙', label: '夜間' },
-  { value: 'system', icon: '💻', label: '系統' },
+  { value: 'light',  icon: 'light_mode', label: '日間' },
+  { value: 'dark',   icon: 'dark_mode', label: '夜間' },
+  { value: 'system', icon: 'desktop_windows', label: '系統' },
 ];
 const themePreference = ref(localStorage.getItem(THEME_KEY) || 'system');
 
@@ -2443,14 +2443,14 @@ function formatBuildTime(rawIso) {
 }
 
 .nav-group {
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  border-radius: 12px;
-  background: rgba(15, 23, 42, 0.28);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   overflow: hidden;
 }
 
 .nav-group + .nav-group {
-  margin-top: 12px;
+  margin-top: 14px;
 }
 
 .nav-group-summary {
@@ -2458,11 +2458,11 @@ function formatBuildTime(rawIso) {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 10px 12px;
+  padding: 8px 10px 5px;
   list-style: none;
   cursor: pointer;
   user-select: none;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+  border-bottom: 0;
 }
 
 .nav-group-summary::-webkit-details-marker {
@@ -2470,9 +2470,9 @@ function formatBuildTime(rawIso) {
 }
 
 .nav-group-title {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
-  color: #cbd5e1;
+  color: #94a3b8;
   text-transform: uppercase;
   letter-spacing: 0.07em;
 }
@@ -2490,8 +2490,72 @@ function formatBuildTime(rawIso) {
 .nav-group-list {
   display: grid;
   gap: 3px;
-  padding: 6px;
+  padding: 2px 0 0;
 }
+
+.nav-group-summary:focus-visible,
+.sidebar-nav button:focus-visible,
+.sidebar-collapse-btn:focus-visible,
+.branch-btn:focus-visible,
+.theme-btn:focus-visible,
+.account-menu-trigger:focus-visible,
+.account-menu-btn:focus-visible,
+.account-menu-shortcuts summary:focus-visible {
+  outline: 2px solid var(--ds-primary-soft);
+  outline-offset: 2px;
+}
+
+.account-menu-divider {
+  height: 1px;
+  margin: 4px 4px 2px;
+  background: var(--border);
+}
+
+.account-menu-tools {
+  display: grid;
+  gap: 6px;
+  padding: 4px 4px 2px;
+}
+
+.account-menu-tools-label {
+  color: var(--text-light);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.account-menu-tools .theme-buttons {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.account-menu-tools .theme-btn {
+  min-width: 0;
+  padding: 7px 4px;
+}
+
+.theme-btn-icon {
+  font-size: 17px;
+  line-height: 1;
+}
+
+.account-menu-shortcuts {
+  margin: 2px 4px 0;
+  border-top: 0;
+}
+
+.account-menu-shortcuts summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 4px;
+  color: var(--text-light);
+  font-size: 11px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.account-menu-shortcuts summary::-webkit-details-marker { display: none; }
+.account-menu-shortcuts summary .material-symbols-outlined { font-size: 16px; }
+.account-menu-shortcuts[open] summary { color: var(--text); }
 
 .nav-icon {
   width: 22px;
