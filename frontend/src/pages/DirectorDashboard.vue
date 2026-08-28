@@ -53,6 +53,14 @@
         </nav>
 
         <section v-if="dashboardViewMode === 'focus'" class="director-workbench-v2__focus" aria-label="今天的主任工作">
+          <TodayProgressCard
+            :completed="attendedCount"
+            :total="todaySchedules.length"
+            :next-task="dashboardPrimaryTasks[0] || null"
+            :loading="dashboardLoading"
+            @next="openDashboardTask"
+          />
+
           <section class="director-workbench-v2__primary surface-panel" aria-labelledby="director-focus-title">
             <header class="surface-panel__header">
               <div>
@@ -311,6 +319,7 @@ import { supabase } from '../supabase';
 import { getBranchName } from '../lib/useBranches';
 import { getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchDiscrepancySummary } from '../lib/scheduleDiscrepanciesApi';
+import TodayProgressCard from '../components/TodayProgressCard.vue';
 import RecentSubstitutesCard from '../components/substitute/RecentSubstitutesCard.vue';
 import TeacherAssessmentFillRateCard from '../components/TeacherAssessmentFillRateCard.vue';
 import OperationsQuickStart from '../components/OperationsQuickStart.vue';
