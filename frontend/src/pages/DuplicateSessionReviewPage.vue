@@ -1,13 +1,15 @@
 <template>
   <div class="dsr-page">
-    <!-- Header -->
-    <header class="page-header dsr-header">
-      <div>
-        <h2>重複課程審核</h2>
-        <p class="page-desc">跨合約重複時段需逐筆確認保留哪一側，送出後系統自動取消非保留側堂次。</p>
-      </div>
-      <button class="primary" type="button" @click="refresh">重新整理</button>
-    </header>
+    <AtPageHeader
+      title="重複課程審核"
+      description="跨合約重複時段需逐筆確認保留哪一側；送出後系統自動取消非保留側堂次。"
+      icon="compare_arrows"
+      data-guide="duplicate-review-header"
+    >
+      <template #actions>
+        <AtButton shape="rect" variant="ghost" icon="refresh" @click="refresh">重新整理</AtButton>
+      </template>
+    </AtPageHeader>
 
     <!-- Trust focus banner (from Decision Center deep-link, in-app #200) -->
     <div v-if="trustFocusLabel" class="dsr-focus-banner" role="status">
@@ -447,6 +449,8 @@
 </template>
 
 <script setup>
+import AtButton from '../components/design-system/AtButton.vue';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import { ref, computed, watch, onMounted, reactive } from 'vue';
 import { branches } from '../lib/useBranches';
 import { useDuplicateReview, groupKey } from '../composables/useDuplicateReview';

@@ -1,13 +1,17 @@
 <template>
-  <div>
+  <div class="subject-settings-page">
+    <AtPageHeader
+      title="科目管理"
+      description="管理目前分校可選用的科目；共用科目由系統預設。"
+      icon="library_books"
+      data-guide="subject-settings-header"
+    >
+      <template #actions>
+        <AtButton shape="rect" variant="primary" icon="add" @click="openAdd">新增科目</AtButton>
+      </template>
+    </AtPageHeader>
+
     <div class="card">
-      <div class="header-actions">
-        <div>
-          <h2>科目管理</h2>
-          <p class="ref-hint">管理此分校可選用的科目，共用科目由系統預設、各分校均可使用</p>
-        </div>
-        <button class="primary" @click="openAdd">+ 新增科目</button>
-      </div>
 
       <div v-if="loading" class="hint">載入中...</div>
       <table v-else-if="subjects.length" class="subject-table">
@@ -82,6 +86,8 @@
 
 <script setup>
 import { ref, watch, onMounted } from 'vue';
+import AtButton from '../components/design-system/AtButton.vue';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import { fetchSubjectOptions, createSubject, updateSubject, deleteSubject } from '../lib/subjectsApi';
 
 const props = defineProps({

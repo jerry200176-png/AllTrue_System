@@ -1,11 +1,16 @@
 <template>
   <div class="chat-page" @click="closeContextMenu">
-    <div class="page-header" data-guide="chat-header">
-      <h2><span class="material-symbols-outlined header-icon">forum</span> 內部聊天</h2>
-      <div class="page-desc">校區人員即時訊息</div>
-      <div v-if="superAdmin" class="page-desc-sub">您的列表會包含所有曾參與的分校對話（與左上角分校切換無關）。若仍為空，代表尚無聊天室或載入失敗。</div>
-      <div v-else class="page-desc-sub">對話紀錄依「左上角目前分校」篩選；在別校開過的對話，需切回該分校才會出現在列表。</div>
-    </div>
+    <AtPageHeader
+      title="內部聊天"
+      description="校區人員即時訊息。"
+      icon="forum"
+      data-guide="chat-header"
+    >
+      <template #meta>
+        <span v-if="superAdmin">列表包含所有曾參與的分校對話；若為空，代表尚無聊天室或載入失敗。</span>
+        <span v-else>對話依左上角目前分校篩選；切回原分校即可查看該校對話。</span>
+      </template>
+    </AtPageHeader>
 
     <div v-if="branchId == null" class="card empty-card">
       請先選擇分校後再使用聊天功能。
@@ -410,6 +415,7 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import {
   fetchThreads, createDm, createGroup, fetchMessages,
   sendMessage, markThreadRead, fetchStaffList,

@@ -1,9 +1,11 @@
 <template>
   <div class="bugs-page">
-    <div class="page-header" data-guide="bugs-header">
-      <h2><span class="material-symbols-outlined header-icon">bug_report</span> {{ pageTitle }}</h2>
-      <div class="page-desc">{{ pageDesc }}</div>
-    </div>
+    <AtPageHeader
+      :title="pageTitle"
+      :description="pageDesc"
+      icon="bug_report"
+      data-guide="bugs-header"
+    />
 
     <div v-if="branchId == null" class="card empty-card">
       請先選擇分校後再查看 Bug 回報。
@@ -455,6 +457,7 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import {
   fetchBugReports, fetchBugDetail, addBugComment,
   updateBugStatus, updateBugCommentVisibility, reporterVerifyBug,

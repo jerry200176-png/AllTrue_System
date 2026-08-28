@@ -1,23 +1,22 @@
 <template>
   <div class="eligibility-page">
-    <div class="page-header">
-      <div class="page-header-left">
-        <div class="page-icon"><span class="material-symbols-outlined">payments</span></div>
-        <div class="title-group">
-          <h2>正職薪資要件</h2>
-          <p class="title-sub">115.07 正職結算：本薪＋16段課獎金＋科目數／一對三獎金×教師倍率</p>
-        </div>
+    <AtPageHeader
+      title="正職薪資要件"
+      description="依結算月份檢視本薪、獎金與待人工確認項目。"
+      icon="payments"
+      data-guide="eligibility-header"
+    >
+      <template #meta>
         <span class="privilege-chip">高權限存取區</span>
-      </div>
-      <div class="header-actions">
-        <button class="btn-primary" :disabled="loading || isLocked" @click="loadData">
-          <span class="material-symbols-outlined">refresh</span>{{ isLocked ? '已鎖定' : '重新結算' }}
-        </button>
-        <button class="btn-outline" :disabled="loading || !props.branchId" @click="exportCsv">匯出 Excel</button>
-        <button v-if="!isLocked" class="btn-outline" :disabled="loading || !props.branchId || reviewCount > 0" @click="lockMonth">鎖定本月</button>
-        <button v-else-if="isHq" class="btn-outline" :disabled="loading" @click="reopenMonth">重開結算</button>
-      </div>
-    </div>
+        <span>制度 {{ policyVersion }} · {{ lockLabel }}</span>
+      </template>
+      <template #actions>
+        <AtButton shape="rect" variant="primary" icon="refresh" :loading="loading" :disabled="isLocked" @click="loadData">{{ isLocked ? '已鎖定' : '重新結算' }}</AtButton>
+        <AtButton shape="rect" variant="ghost" icon="download" :disabled="loading || !props.branchId" @click="exportCsv">匯出 Excel</AtButton>
+        <AtButton v-if="!isLocked" shape="rect" variant="secondary" icon="lock" :disabled="loading || !props.branchId || reviewCount > 0" @click="lockMonth">鎖定本月</AtButton>
+        <AtButton v-else-if="isHq" shape="rect" variant="secondary" icon="lock_open" :disabled="loading" @click="reopenMonth">重開結算</AtButton>
+      </template>
+    </AtPageHeader>
 
     <div class="eligibility-card filters">
       <label>結算月份
@@ -147,6 +146,8 @@
 
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue';
+import AtButton from '../components/design-system/AtButton.vue';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import { fetchTeacherEligibility, saveTeacherSalaryProfile, approveTeacherSalaryProfile, lockFulltimePayroll, reopenFulltimePayroll, exportFulltimePayrollCsv } from '../lib/teacherEligibilityApi.js';
 import TeacherEligibilityInputPanel from '../components/TeacherEligibilityInputPanel.vue';
 import {
