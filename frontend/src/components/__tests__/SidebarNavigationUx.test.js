@@ -20,6 +20,9 @@ describe('sidebar navigation UX contract', () => {
     expect(appSource).toContain(":aria-label=\"sidebarCollapsed ? item.label : undefined\"");
     expect(appSource).toContain(":aria-current=\"tab.page !== 'more' && active === tab.page ? 'page' : undefined\"");
     expect(appSource).toContain(':aria-expanded="String(isSidebarGroupOpen(group))"');
+    expect(appSource).toContain('class="sidebar-more-trigger"');
+    expect(appSource).toContain('aria-controls="sidebar-more-panel"');
+    expect(appSource).toContain('class="sidebar-more-panel"');
     expect(appSource).toContain('type="button"');
   });
 

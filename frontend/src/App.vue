@@ -60,7 +60,7 @@
       <nav class="sidebar-nav" data-guide="app-sidebar-nav">
         <template v-if="sidebarNavGroups.length > 0">
           <details
-            v-for="group in sidebarNavGroups"
+            v-for="group in sidebarPrimaryGroups"
             :key="group.key"
             class="nav-group"
             :open="isSidebarGroupOpen(group)"
@@ -97,6 +97,24 @@
               </button>
             </div>
           </details>
+          <button
+            type="button"
+            class="sidebar-more-trigger"
+            :class="{ active: activeInSidebarMore || showSidebarMore }"
+            :aria-expanded="String(showSidebarMore)"
+            aria-controls="sidebar-more-panel"
+            :aria-label="sidebarCollapsed ? '開啟更多功能' : undefined"
+            @click="showSidebarMore = !showSidebarMore"
+          >
+            <span class="material-symbols-outlined nav-icon" aria-hidden="true">apps</span>
+            <span class="nav-label" v-show="!sidebarCollapsed">更多功能</span>
+            <span
+              v-if="sidebarMoreBadgeCount > 0"
+              class="nav-badge"
+              v-show="!sidebarCollapsed"
+            >{{ sidebarMoreBadgeCount > 99 ? '99+' : sidebarMoreBadgeCount }}</span>
+            <span class="sidebar-more-trigger-chevron" v-show="!sidebarCollapsed" aria-hidden="true">›</span>
+          </button>
         </template>
         <template v-else>
           <div class="nav-no-role-hint">無選單（身分未設定）</div>
@@ -140,6 +158,64 @@
 
       </div>
     </aside>
+
+    <!-- Desktop low-frequency navigation: keep the daily workspace visible and reveal the rest on demand. -->
+    <div
+      v-if="showSidebarMore"
+      class="sidebar-more-overlay"
+      @click.self="showSidebarMore = false"
+    >
+      <section
+        id="sidebar-more-panel"
+        class="sidebar-more-panel"
+        :style="{ '--sidebar-more-left': sidebarCollapsed ? '64px' : 'var(--sidebar-w)' }"
+        role="dialog"
+        aria-modal="false"
+        aria-labelledby="sidebar-more-title"
+        @keydown.esc="showSidebarMore = false"
+      >
+        <div class="sidebar-more-header">
+          <div>
+            <span class="sidebar-more-kicker">工作工具</span>
+            <h2 id="sidebar-more-title">更多功能</h2>
+          </div>
+          <button
+            type="button"
+            class="sidebar-more-close"
+            aria-label="關閉更多功能"
+            title="關閉"
+            @click="showSidebarMore = false"
+          >
+            <span class="material-symbols-outlined" aria-hidden="true">close</span>
+          </button>
+        </div>
+        <p class="sidebar-more-description">不常用的報表、教學工具與系統設定集中在這裡。</p>
+        <div class="sidebar-more-groups">
+          <div v-for="group in sidebarMoreGroups" :key="group.key" class="sidebar-more-group">
+            <div class="sidebar-more-group-title">{{ group.title }}</div>
+            <div class="sidebar-more-items">
+              <button
+                v-for="item in group.items"
+                :key="item.page"
+                type="button"
+                class="sidebar-more-item"
+                :class="{ active: active === item.page }"
+                :disabled="isNavItemDisabled(item.page)"
+                :aria-current="active === item.page ? 'page' : undefined"
+                @click="setActivePage(item.page)"
+              >
+                <span class="material-symbols-outlined" aria-hidden="true">{{ item.icon }}</span>
+                <span class="sidebar-more-item-label">{{ item.label }}</span>
+                <span
+                  v-if="getItemBadgeCount(item) > 0"
+                  :class="['sidebar-more-item-badge', { 'nav-badge-urgent': isItemBadgeUrgent(item) }]"
+                >{{ getItemBadgeCount(item) > 99 ? '99+' : getItemBadgeCount(item) }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
 
     <!-- Bug Report Launcher (floating button, all staff pages) -->
     <BugReportLauncher
@@ -482,7 +558,7 @@
 </template>
 
 <script setup>
-import { computed, defineAsyncComponent, ref, watch, onMounted, onBeforeUnmount } from 'vue';
+import { computed, defineAsyncComponent, nextTick, ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import { supabase } from './supabase';
 import {
   branches,
@@ -921,6 +997,7 @@ function toggleSidebarCollapsed() {
 
 // Mobile bottom nav: 5 tabs + More
 const showMoreMenu = ref(false);
+const showSidebarMore = ref(false);
 const mobileTabItems = computed(() => {
   return getMobileTabItems(role.value);
 });
@@ -1194,6 +1271,7 @@ function onNavigateLearningFromTeacherHome(payload = {}) {
 }
 
 function setActivePage(page) {
+  showSidebarMore.value = false;
   dashboardReturnContext.value = null;
   if (page !== 'students') clearStudentNavigationContext();
   if (page !== 'calendar') clearCalendarNavigationContext();
@@ -1379,6 +1457,15 @@ const avatarUrl = computed(() => userProfile.value?.avatar_url || '');
 
 const sidebarGroupOpen = ref({});
 const sidebarNavGroups = computed(() => getNavigationGroups(role.value));
+const sidebarPrimaryGroups = computed(() => sidebarNavGroups.value.filter(group => group.primary !== false));
+const sidebarMoreGroups = computed(() => sidebarNavGroups.value.filter(group => group.primary === false));
+const activeInSidebarMore = computed(() => sidebarMoreGroups.value.some(
+  group => group.items.some(item => item.page === active.value),
+));
+const sidebarMoreBadgeCount = computed(() => sidebarMoreGroups.value.reduce(
+  (sum, group) => sum + group.items.reduce((groupSum, item) => groupSum + getItemBadgeCount(item), 0),
+  0,
+));
 
 function isSidebarGroupOpen(group) {
   return Object.prototype.hasOwnProperty.call(sidebarGroupOpen.value, group.key)
@@ -1652,6 +1739,11 @@ watch(showMoreMenu, (open) => {
   else unlockScroll();
 });
 
+watch(showSidebarMore, (open) => {
+  if (!open) return;
+  nextTick(() => document.querySelector('.sidebar-more-close')?.focus());
+});
+
 watch(currentBranch, (value, previous) => {
   localStorage.setItem('app_branch', value);
   if (previous != null && value !== previous) {
@@ -1669,6 +1761,7 @@ watch([active, isStandaloneParent], async ([p]) => {
   // #143 防護：切換頁面時強制清除任何殘留的 scroll lock（body position:fixed/overflow:hidden）
   // 與行動版選單，避免某頁洩漏的鎖讓下一頁看起來被灰白遮罩蓋住、無法點選。
   showMoreMenu.value = false;
+  showSidebarMore.value = false;
   forceUnlockScroll();
   if (p !== 'bugs' || !session.value?.access_token || !currentBranch.value) return;
   if (role.value !== 'super_admin') return;

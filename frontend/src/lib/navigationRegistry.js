@@ -20,14 +20,14 @@ function directorGroups(role) {
   }
   return [
     {
-      key: 'overview', title: '今日工作', defaultOpen: true,
+      key: 'overview', title: '今日工作', defaultOpen: true, primary: true,
       items: [
         { page: 'director', label: '今日工作台', icon: 'dashboard' },
         { page: 'notifications', label: '待處理收件匣', icon: 'inbox' },
       ],
     },
     {
-      key: 'teaching', title: '教學現場', defaultOpen: true,
+      key: 'teaching', title: '教學現場', defaultOpen: true, primary: true,
       items: [
         { page: 'calendar', label: '班級行事曆', icon: 'calendar_today' },
         { page: 'attendance', label: '出缺勤', icon: 'fact_check', badgeTypes: ['pending_swipe', 'attendance'] },
@@ -36,7 +36,7 @@ function directorGroups(role) {
       ],
     },
     {
-      key: 'teaching-tools', title: '進階教學工具', defaultOpen: false,
+      key: 'teaching-tools', title: '進階教學工具', defaultOpen: false, primary: false,
       items: [
         { page: 'assessments', label: '學習檢測', icon: 'grading' },
         { page: 'question-banks', label: '題庫管理', icon: 'quiz' },
@@ -44,21 +44,21 @@ function directorGroups(role) {
       ],
     },
     {
-      key: 'students-courses', title: '學生與課程', defaultOpen: true,
+      key: 'students-courses', title: '學生與課程', defaultOpen: true, primary: true,
       items: [
         { page: 'students', label: '學生管理', icon: 'groups' },
         { page: 'course-mgmt', label: '課程查找', icon: 'menu_book', badgeTypes: ['tuition'] },
       ],
     },
     {
-      key: 'finance', title: '財務與人事', defaultOpen: true,
+      key: 'finance', title: '財務與人事', defaultOpen: true, primary: true,
       items: [
         { page: 'tuition-collect', label: '帳務中心', icon: 'payments' },
         { page: 'teachers', label: '老師管理', icon: 'badge', badgeTypes: ['pending_teachers'] },
       ],
     },
     {
-      key: 'reports-payroll', title: '報表與薪資', defaultOpen: false,
+      key: 'reports-payroll', title: '報表與薪資', defaultOpen: false, primary: false,
       items: [
         { page: 'tuition-report', label: '當月學收', icon: 'bar_chart' },
         { page: 'subject-units', label: '科目數統計', icon: 'calculate' },
@@ -67,14 +67,14 @@ function directorGroups(role) {
       ],
     },
     {
-      key: 'communication', title: '訊息與回報', defaultOpen: false,
+      key: 'communication', title: '訊息與回報', defaultOpen: false, primary: false,
       items: [
         { page: 'chat', label: '內部訊息', icon: 'forum', badgeTypes: ['chat'] },
         { page: 'bugs', label: 'Bug 回報', icon: 'bug_report', badgeTypes: ['bugs'] },
       ],
     },
     {
-      key: 'settings', title: '設定與資源', defaultOpen: false,
+      key: 'settings', title: '設定與資源', defaultOpen: false, primary: false,
       items: [
         { page: 'classroom', label: '教室管理', icon: 'meeting_room' },
         { page: 'subject-settings', label: '科目管理', icon: 'library_books' },
@@ -86,7 +86,7 @@ function directorGroups(role) {
 
 function teacherGroups() {
   return [{
-    key: 'teaching', title: '今日教學', defaultOpen: true,
+    key: 'teaching', title: '今日教學', defaultOpen: true, primary: true,
     items: [
       { page: 'teacher-home', label: '教學工作台', icon: 'space_dashboard' },
       { page: 'calendar', label: '我的課表', icon: 'calendar_today' },
@@ -94,14 +94,14 @@ function teacherGroups() {
       { page: 'learning', label: '課表與評量', icon: 'assignment', badgeTypes: ['teacher_learning_pending', 'parent_feedback'] },
     ],
   }, {
-    key: 'teaching-tools', title: '教學工具', defaultOpen: false,
+    key: 'teaching-tools', title: '教學工具', defaultOpen: false, primary: false,
     items: [
       { page: 'assessments', label: '學習檢測', icon: 'grading' },
       { page: 'question-banks', label: '題庫管理', icon: 'quiz' },
       { page: 'subject-units', label: '科目數統計', icon: 'calculate' },
     ],
   }, {
-    key: 'communication', title: '訊息與回報', defaultOpen: false,
+    key: 'communication', title: '訊息與回報', defaultOpen: false, primary: false,
     items: [
       { page: 'chat', label: '內部聊天', icon: 'forum', badgeTypes: ['chat'] },
       { page: 'bugs', label: 'Bug 回報', icon: 'bug_report', badgeTypes: ['bugs'] },

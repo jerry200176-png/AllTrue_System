@@ -634,6 +634,194 @@ body {
   animation: navBadgePulse 1.4s ease-in-out infinite;
 }
 
+/* Keep daily work visible; reveal low-frequency destinations as one focused panel. */
+.sidebar-more-trigger {
+  border-top: 1px solid rgba(148, 163, 184, 0.16) !important;
+  margin-top: 8px;
+  padding-top: 13px !important;
+  color: #aebbd0 !important;
+}
+
+.sidebar-more-trigger:hover,
+.sidebar-more-trigger.active {
+  color: #ffffff !important;
+}
+
+.sidebar-more-trigger.active {
+  background: rgba(148, 163, 184, 0.14) !important;
+  box-shadow: inset 3px 0 0 var(--sidebar-active-bar);
+}
+
+.sidebar-more-trigger-chevron {
+  margin-left: auto;
+  color: #94a3b8;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.sidebar-more-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 85;
+  background: rgba(15, 23, 42, 0.18);
+}
+
+.sidebar-more-panel {
+  position: fixed;
+  top: 76px;
+  left: var(--sidebar-more-left);
+  bottom: 24px;
+  width: min(360px, calc(100vw - var(--sidebar-more-left) - 24px));
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
+  padding: 20px;
+  color: var(--ds-ink);
+  background: var(--ds-canvas);
+  border: 1px solid var(--ds-hairline);
+  border-radius: 0 16px 16px 0;
+  box-shadow: 0 12px 32px rgba(0, 55, 112, 0.16);
+  animation: sidebarMorePanelIn 160ms ease-out;
+}
+
+@keyframes sidebarMorePanelIn {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.sidebar-more-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--ds-hairline);
+}
+
+.sidebar-more-kicker {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--ds-primary-deep);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.sidebar-more-header h2 {
+  margin: 0;
+  color: var(--ds-ink);
+  font-size: 20px;
+  line-height: 1.3;
+}
+
+.sidebar-more-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  color: var(--ds-ink-secondary);
+  background: var(--ds-canvas-soft);
+  border: 1px solid var(--ds-hairline);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.sidebar-more-close:hover {
+  color: var(--ds-cta);
+  border-color: var(--ds-primary);
+}
+
+.sidebar-more-description {
+  margin: 14px 0 18px;
+  color: var(--ds-ink-mute);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.sidebar-more-group + .sidebar-more-group {
+  margin-top: 18px;
+}
+
+.sidebar-more-group-title {
+  margin-bottom: 7px;
+  color: var(--ds-ink-mute);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+}
+
+.sidebar-more-items {
+  display: grid;
+  gap: 4px;
+}
+
+.sidebar-more-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 10px;
+  color: var(--ds-ink-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sidebar-more-item:hover,
+.sidebar-more-item.active {
+  color: var(--ds-ink);
+  background: var(--ds-primary-wash);
+  border-color: rgba(239, 108, 0, 0.22);
+}
+
+.sidebar-more-item:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.sidebar-more-item .material-symbols-outlined {
+  width: 22px;
+  color: var(--ds-primary-deep);
+  font-size: 20px;
+  text-align: center;
+}
+
+.sidebar-more-item-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-more-item-badge {
+  min-width: 22px;
+  margin-left: auto;
+  padding: 1px 6px;
+  color: #ffffff;
+  background: var(--sidebar-badge-bg);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.sidebar-more-item-badge.nav-badge-urgent {
+  background: var(--ds-danger);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-more-panel {
+    animation: none;
+  }
+}
+
 .sidebar-footer {
   margin-top: 6px;
   padding: 12px 8px 8px;
