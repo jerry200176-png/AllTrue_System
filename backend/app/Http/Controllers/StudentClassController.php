@@ -3161,15 +3161,6 @@ class StudentClassController extends Controller
         });
     }
 
-    /**
-     * Convert a one-occurrence trial into a paid count course without moving
-     * the trial occurrence. The trial remains a teaching/billing history row;
-     * only future scheduled trial rows are cancelled. This avoids the old
-     * "renew then transfer" path which duplicated the attended trial session
-     * and made the new contract look over-scheduled.
-     *
-     * POST /api/v1/student-classes/{studentClass}/convert-trial
-     */
     public function convertTrial(Request $request, StudentClass $studentClass)
     {
         if ($auth = $this->authorizeStudentClassAccess($studentClass)) {
