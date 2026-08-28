@@ -125,6 +125,7 @@ class TrialConversionTest extends TestCase
             'TeacherID' => 1, 'ClassType' => 'trial', 'by1' => 1, 'Period' => 4,
             'StartDate' => '2026-08-25', 'SessionCount' => 1,
             'SessionDuration' => 120, 'RemainingSessions' => 1, 'UsedSessions' => 0,
+            'TotalHours' => 0,
             'Charge' => 0, 'Paid' => 0, 'Rate' => 800, 'Stop' => 1,
             'closed_reason' => 'converted_trial', 'trial_converted_to_id' => 999,
             'MDate' => now(), 'ScheduleMode' => 'count', 'week' => 2, 'time' => '16:00:00',
