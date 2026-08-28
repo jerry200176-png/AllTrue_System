@@ -192,6 +192,38 @@ export const staffUpdates = [
     "version": "2026.08.28"
   },
   {
+    "id": "staff-2026-08-28-student-course-summary",
+    "publishedAt": "2026-08-28",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "學生課程資訊更清楚",
+    "summary": "一眼看到課程進度與下一步。",
+    "items": [
+      "學生課程會先顯示剩餘堂數、上課安排與下一步操作。",
+      "付款、帳單、結案與刪除等較少使用的操作集中在更多操作。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "學生課程會先顯示剩餘堂數、上課安排與下一步操作。",
+          "付款、帳單、結案與刪除等較少使用的操作集中在更多操作。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-28:student-course-summary"
+    ],
+    "date": "2026-08-28",
+    "version": "2026.08.28"
+  },
+  {
     "id": "staff-2026-08-28-sidebar-focus",
     "publishedAt": "2026-08-28",
     "effectiveAt": null,
