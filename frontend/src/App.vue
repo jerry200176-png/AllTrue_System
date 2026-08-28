@@ -100,11 +100,12 @@
           <button
             type="button"
             class="sidebar-more-trigger"
+            id="sidebar-more-trigger"
             :class="{ active: activeInSidebarMore || showSidebarMore }"
             :aria-expanded="String(showSidebarMore)"
             aria-controls="sidebar-more-panel"
             :aria-label="sidebarCollapsed ? '開啟更多功能' : undefined"
-            @click="showSidebarMore = !showSidebarMore"
+            @click="toggleSidebarMore"
           >
             <span class="material-symbols-outlined nav-icon" aria-hidden="true">apps</span>
             <span class="nav-label" v-show="!sidebarCollapsed">更多功能</span>
@@ -163,7 +164,7 @@
     <div
       v-if="showSidebarMore"
       class="sidebar-more-overlay"
-      @click.self="showSidebarMore = false"
+      @click.self="closeSidebarMore()"
     >
       <section
         id="sidebar-more-panel"
@@ -172,7 +173,8 @@
         role="dialog"
         aria-modal="false"
         aria-labelledby="sidebar-more-title"
-        @keydown.esc="showSidebarMore = false"
+        tabindex="-1"
+        @keydown.esc.prevent="closeSidebarMore()"
       >
         <div class="sidebar-more-header">
           <div>
@@ -184,7 +186,7 @@
             class="sidebar-more-close"
             aria-label="關閉更多功能"
             title="關閉"
-            @click="showSidebarMore = false"
+            @click="closeSidebarMore()"
           >
             <span class="material-symbols-outlined" aria-hidden="true">close</span>
           </button>
@@ -230,9 +232,12 @@
         v-for="tab in mobileTabItems"
         :key="tab.page"
         type="button"
-        :class="['mob-tab', { active: tab.page === 'more' ? showMoreMenu : active === tab.page }]"
+        :id="tab.page === 'more' ? 'mobile-more-trigger' : undefined"
+        :class="['mob-tab', { 'mob-tab-more': tab.page === 'more', active: tab.page === 'more' ? showMoreMenu : active === tab.page }]"
         :aria-current="tab.page !== 'more' && active === tab.page ? 'page' : undefined"
-        @click="tab.page === 'more' ? (showMoreMenu = !showMoreMenu) : (setActivePage(tab.page), showMoreMenu = false)"
+        :aria-expanded="tab.page === 'more' ? String(showMoreMenu) : undefined"
+        :aria-controls="tab.page === 'more' ? 'mobile-more-sheet' : undefined"
+        @click="tab.page === 'more' ? toggleMoreMenu() : (setActivePage(tab.page), closeMoreMenu(false))"
       >
         <span class="material-symbols-outlined mob-tab-icon">{{ tab.icon }}</span>
         <span class="mob-tab-label">{{ tab.label }}</span>
@@ -244,10 +249,24 @@
     </nav>
 
     <!-- More Menu Bottom Sheet -->
-    <div class="more-overlay" v-if="showMoreMenu" @click="showMoreMenu = false"></div>
-    <div class="more-sheet" :class="{ open: showMoreMenu }">
-      <div class="more-sheet-handle" @click="showMoreMenu = false"></div>
-      <div class="more-sheet-title">更多功能</div>
+    <div class="more-overlay" v-if="showMoreMenu" @click="closeMoreMenu()"></div>
+    <section
+      v-if="showMoreMenu"
+      id="mobile-more-sheet"
+      class="more-sheet open"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="mobile-more-title"
+      tabindex="-1"
+      @keydown.esc.prevent="closeMoreMenu()"
+    >
+      <div class="more-sheet-handle" aria-hidden="true"></div>
+      <div class="more-sheet-header">
+        <h2 id="mobile-more-title" class="more-sheet-title">更多功能</h2>
+        <button type="button" class="more-sheet-close" aria-label="關閉更多功能" @click="closeMoreMenu()">
+          <span class="material-symbols-outlined" aria-hidden="true">close</span>
+        </button>
+      </div>
       <div v-for="group in sidebarNavGroups" :key="group.key" class="more-group">
         <div class="more-group-label">{{ group.title }}</div>
         <div class="more-group-items">
@@ -257,7 +276,7 @@
             type="button"
             :class="['more-item', { active: active === item.page }]"
             :aria-current="active === item.page ? 'page' : undefined"
-            @click="setActivePage(item.page); showMoreMenu = false"
+            @click="setActivePage(item.page); closeMoreMenu(false)"
           >
             <span class="material-symbols-outlined">{{ item.icon }}</span>
             <span>{{ item.label }}</span>
@@ -268,7 +287,7 @@
           </button>
         </div>
       </div>
-    </div>
+    </section>
 
     <!-- Main Content -->
     <div class="main-content">
@@ -1271,7 +1290,8 @@ function onNavigateLearningFromTeacherHome(payload = {}) {
 }
 
 function setActivePage(page) {
-  showSidebarMore.value = false;
+  closeSidebarMore(false);
+  closeMoreMenu(false);
   dashboardReturnContext.value = null;
   if (page !== 'students') clearStudentNavigationContext();
   if (page !== 'calendar') clearCalendarNavigationContext();
@@ -1466,6 +1486,38 @@ const sidebarMoreBadgeCount = computed(() => sidebarMoreGroups.value.reduce(
   (sum, group) => sum + group.items.reduce((groupSum, item) => groupSum + getItemBadgeCount(item), 0),
   0,
 ));
+
+function toggleSidebarMore() {
+  if (showSidebarMore.value) {
+    closeSidebarMore();
+    return;
+  }
+  showSidebarMore.value = true;
+}
+
+function closeSidebarMore(restoreFocus = true) {
+  const wasOpen = showSidebarMore.value;
+  showSidebarMore.value = false;
+  if (restoreFocus && wasOpen) {
+    nextTick(() => document.querySelector('#sidebar-more-trigger')?.focus());
+  }
+}
+
+function toggleMoreMenu() {
+  if (showMoreMenu.value) {
+    closeMoreMenu();
+    return;
+  }
+  showMoreMenu.value = true;
+}
+
+function closeMoreMenu(restoreFocus = true) {
+  const wasOpen = showMoreMenu.value;
+  showMoreMenu.value = false;
+  if (restoreFocus && wasOpen) {
+    nextTick(() => document.querySelector('#mobile-more-trigger')?.focus());
+  }
+}
 
 function isSidebarGroupOpen(group) {
   return Object.prototype.hasOwnProperty.call(sidebarGroupOpen.value, group.key)
@@ -1737,11 +1789,14 @@ const logout = async () => {
 watch(showMoreMenu, (open) => {
   if (open) lockScroll();
   else unlockScroll();
+  if (open) {
+    nextTick(() => document.querySelector('#mobile-more-sheet')?.focus());
+  }
 });
 
 watch(showSidebarMore, (open) => {
   if (!open) return;
-  nextTick(() => document.querySelector('.sidebar-more-close')?.focus());
+  nextTick(() => document.querySelector('#sidebar-more-panel')?.focus());
 });
 
 watch(currentBranch, (value, previous) => {

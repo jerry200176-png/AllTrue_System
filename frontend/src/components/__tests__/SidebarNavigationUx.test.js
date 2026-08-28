@@ -21,9 +21,25 @@ describe('sidebar navigation UX contract', () => {
     expect(appSource).toContain(":aria-current=\"tab.page !== 'more' && active === tab.page ? 'page' : undefined\"");
     expect(appSource).toContain(':aria-expanded="String(isSidebarGroupOpen(group))"');
     expect(appSource).toContain('class="sidebar-more-trigger"');
+    expect(appSource).toContain('id="sidebar-more-trigger"');
     expect(appSource).toContain('aria-controls="sidebar-more-panel"');
     expect(appSource).toContain('class="sidebar-more-panel"');
+    expect(appSource).toContain('tabindex="-1"');
+    expect(appSource).toContain('id="mobile-more-sheet"');
+    expect(appSource).toContain('aria-labelledby="mobile-more-title"');
+    expect(appSource).toContain(':aria-expanded="tab.page === \'more\' ? String(showMoreMenu) : undefined"');
     expect(appSource).toContain('type="button"');
+  });
+
+  it('gives both More surfaces a predictable open, dismiss, and focus-return contract', () => {
+    expect(appSource).toContain('function toggleSidebarMore()');
+    expect(appSource).toContain('function closeSidebarMore(restoreFocus = true)');
+    expect(appSource).toContain('function toggleMoreMenu()');
+    expect(appSource).toContain('function closeMoreMenu(restoreFocus = true)');
+    expect(appSource).toContain("@keydown.esc.prevent=\"closeSidebarMore()\"");
+    expect(appSource).toContain("@keydown.esc.prevent=\"closeMoreMenu()\"");
+    expect(appSource).toContain("document.querySelector('#sidebar-more-trigger')?.focus()");
+    expect(appSource).toContain("document.querySelector('#mobile-more-trigger')?.focus()");
   });
 
   it('keeps personal display tools out of the navigation rail', () => {
