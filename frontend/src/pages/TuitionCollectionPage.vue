@@ -46,6 +46,8 @@
         class="acct-tab"
         :class="{ active: activeAccountingTab === tab.key }"
         role="tab"
+        :id="`tuition-accounting-tab-${tab.key}`"
+        :aria-controls="`tuition-accounting-panel-${tab.key}`"
         :aria-selected="activeAccountingTab === tab.key"
         @click="activeAccountingTab = tab.key"
       >
@@ -60,7 +62,13 @@
       <button type="button" class="tc-focus-context__clear" @click="clearTuitionFocus">清除定位</button>
     </div>
 
-    <section v-if="activeAccountingTab === 'receivables'">
+    <section
+      v-if="activeAccountingTab === 'receivables'"
+      id="tuition-accounting-panel-receivables"
+      role="tabpanel"
+      aria-labelledby="tuition-accounting-tab-receivables"
+      tabindex="0"
+    >
     <!-- Skeleton loading -->
     <div v-if="loading && !rows.length" class="tc-skeleton-area">
       <div class="tc-summary">
@@ -449,7 +457,14 @@
     </template>
     </section>
 
-    <section v-else class="acct-panel">
+    <section
+      v-else-if="activeAccountingTab === 'payments'"
+      id="tuition-accounting-panel-payments"
+      class="acct-panel"
+      role="tabpanel"
+      aria-labelledby="tuition-accounting-tab-payments"
+      tabindex="0"
+    >
       <div class="acct-filter-card">
         <div class="acct-filter-grid">
           <label>
@@ -650,7 +665,14 @@
       </template>
     </section>
 
-    <section v-if="activeAccountingTab === 'settled'" class="acct-section">
+    <section
+      v-if="activeAccountingTab === 'settled'"
+      id="tuition-accounting-panel-settled"
+      class="acct-section"
+      role="tabpanel"
+      aria-labelledby="tuition-accounting-tab-settled"
+      tabindex="0"
+    >
       <div class="acct-filter-bar">
         <div class="acct-filters">
           <label>學生<input v-model="accountingFilters.student" type="text" placeholder="搜尋學生姓名" /></label>

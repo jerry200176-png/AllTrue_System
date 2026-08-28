@@ -206,6 +206,45 @@ export const staffUpdates = [
     "version": "2026.08.29"
   },
   {
+    "id": "staff-2026-08-29-billing-tab-panels",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "帳務分頁只顯示目前工作區",
+    "summary": "帳務中心切換分頁後，畫面會只保留目前要處理的帳務內容。",
+    "items": [
+      "「待處理／已結清課程彙總／收據紀錄」不會再同時顯示彼此的工作區，主任切換後能直接聚焦目前任務。",
+      "三個帳務分頁與內容區補上鍵盤與螢幕閱讀器的控制關係，降低誤判目前工作區的機會。",
+      "付款規則、收據資料、API、權限與既有手機版布局維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "「待處理／已結清課程彙總／收據紀錄」不會再同時顯示彼此的工作區，主任切換後能直接聚焦目前任務。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "三個帳務分頁與內容區補上鍵盤與螢幕閱讀器的控制關係，降低誤判目前工作區的機會。",
+          "付款規則、收據資料、API、權限與既有手機版布局維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:billing-tab-panels"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
     "id": "staff-2026-08-28-schedule-safe-recovery",
     "publishedAt": "2026-08-28",
     "effectiveAt": null,

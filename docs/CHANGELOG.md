@@ -1,3 +1,11 @@
+## 2026-08-29 — fixed(billing,ux): 帳務分頁只顯示目前工作區
+
+<!-- release-notes: staff_update=staff-2026-08-29-billing-tab-panels -->
+
+- 帳務中心的「待處理／已結清課程彙總／收據紀錄」現在只會顯示目前選定的內容區，避免切到已結清時同時看到收據工作區。
+- 三個分頁補上清楚的鍵盤與螢幕閱讀器控制關係，讓主任能更快判斷目前正在處理哪一種帳務。
+- 不改付款規則、收據資料、API 或權限行為；手機版維持原有可讀布局。
+
 ## 2026-08-29 — improved(ux): 學生列表展開更容易操作
 
 <!-- release-notes: staff_update=staff-2026-08-29-students-row-disclosure -->

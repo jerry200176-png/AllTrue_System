@@ -8,13 +8,19 @@ export const changelogDraftNotes = [
     "version": "2026.08.29",
     "date": "2026-08-29",
     "title": "2026.08.29 草稿（未發布）",
-    "summary": "學生列表展開更容易操作；課程查找操作層級更清楚",
+    "summary": "帳務分頁只顯示目前工作區；學生列表展開更容易操作",
     "audience": [
       "teacher",
       "director"
     ],
     "draft": true,
     "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "帳務分頁只顯示目前工作區"
+        ]
+      },
       {
         "title": "其他改善",
         "items": [
@@ -28,6 +34,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "帳務分頁只顯示目前工作區",
       "學生列表展開更容易操作",
       "課程查找操作層級更清楚",
       "老師工作台先做一件事",
