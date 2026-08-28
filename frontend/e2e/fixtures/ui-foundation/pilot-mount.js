@@ -33,6 +33,7 @@ const pageModules = {
   inbox: () => import('../../../src/pages/NotificationsCenter.vue'),
   students: () => import('../../../src/pages/StudentsList.vue'),
   director: () => import('../../../src/pages/DirectorDashboard.vue'),
+  tuition: () => import('../../../src/pages/TuitionCollectionPage.vue'),
   learning: () => import('../../../src/pages/LearningRecordsPage.vue'),
   course: () => import('../../../src/pages/CourseManagement.vue'),
   calendar: () => import('../../../src/pages/SmartCalendar.vue'),
@@ -52,6 +53,9 @@ createApp({
       return () => h(PageComponent, { branchId: 1 });
     }
     if (page === 'director') {
+      return () => h(PageComponent, { branchId: 1 });
+    }
+    if (page === 'tuition') {
       return () => h(PageComponent, { branchId: 1 });
     }
     if (page === 'learning') {

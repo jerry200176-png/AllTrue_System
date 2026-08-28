@@ -148,6 +148,30 @@ async function installApiMocks(page, mode, pageName = '') {
       });
     }
 
+    if (pageName === 'tuition' && p.includes('/alerts/tuition')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([{ id: 701, student_name: '測試學生甲', subject: '數學', payment_status: 'unpaid', charge: 12000, paid_amount: 0, outstanding: 12000, schedule_mode: 'count', remaining_sessions: 4, course_start_date: '2026-08-01', course_end_date: '2026-10-31', days_until_settlement: 2 }]),
+      });
+    }
+
+    if (pageName === 'tuition' && p.includes('/accounting/settled-courses')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [{ student_class_id: 701, course_ref: '測試課程 #701', student_name: '測試學生甲', subject: '數學', schedule_mode: 'count', paid_amount: 12000, last_paid_at: '2026-08-20', legacy_paid_without_invoice: false, has_exception: false, overpaid_total: 0 }], summary: { course_count: 1, paid_total: 12000, legacy_count: 0, exception_count: 0, overpaid_total: 0 } }),
+      });
+    }
+
+    if (pageName === 'tuition' && p.includes('/accounting/payments')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [], summary: { total_count: 0, total_amount: 0 } }),
+      });
+    }
+
     if (mode === 'dashboard' && p.includes('/director/operations-trust')) {
       return route.fulfill({
         status: 200,
@@ -823,6 +847,28 @@ test.describe('UI foundation — real Vue page evidence', () => {
 
     await expect(page.locator('#payments-sec .surface-panel__count')).toHaveText('1');
     await expect(page.locator('#payments-sec .director-payment-row')).toHaveCount(1);
+  });
+
+  test('billing top-level tabs show one selected panel', async ({ page }) => {
+    await openPilot(page, { pageName: 'tuition', mode: 'normal', viewport: { width: 1440, height: 900 } });
+
+    const receivables = page.locator('#tuition-accounting-tab-receivables');
+    const settled = page.locator('#tuition-accounting-tab-settled');
+    const payments = page.locator('#tuition-accounting-tab-payments');
+
+    await expect(receivables).toHaveAttribute('aria-controls', 'tuition-accounting-panel-receivables');
+    await expect(page.locator('#tuition-accounting-panel-receivables')).toHaveCount(1);
+    await expect(page.locator('#tuition-accounting-panel-payments')).toHaveCount(0);
+    await expect(page.locator('#tuition-accounting-panel-settled')).toHaveCount(0);
+
+    await settled.click();
+    await expect(page.locator('#tuition-accounting-panel-settled')).toBeVisible();
+    await expect(page.locator('#tuition-accounting-panel-payments')).toHaveCount(0);
+    await expect(page.locator('#tuition-accounting-panel-receivables')).toHaveCount(0);
+
+    await payments.click();
+    await expect(page.locator('#tuition-accounting-panel-payments')).toBeVisible();
+    await expect(page.locator('#tuition-accounting-panel-settled')).toHaveCount(0);
   });
 
   test('director attendance keeps the action queue ahead of secondary context', async ({ page }) => {
