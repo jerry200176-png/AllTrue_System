@@ -87,6 +87,35 @@ class AddSessionConflictTest extends TestCase
         $res->assertStatus(201);
     }
 
+    public function test_check_endpoint_identifies_existing_scheduled_occurrence_as_idempotent(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createStudentClass($student->id, [
+            'SessionCount' => 8,
+            'RemainingSessions' => 1,
+            'UsedSessions' => 7,
+        ]);
+        $session = ClassSession::create([
+            'StudentClassID' => $sc->ID,
+            'SessionDate' => '2026-08-29',
+            'StartTime' => '13:00:00',
+            'EndTime' => '15:00:00',
+            'Status' => 'scheduled',
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/student-classes/{$sc->ID}/add-session/check", [
+            'session_date' => '2026-08-29',
+            'start_time' => '13:00',
+        ])->assertOk()
+            ->assertJsonPath('can_add', true)
+            ->assertJsonPath('conflict_type', 'none')
+            ->assertJsonPath('existing_session_id', $session->id);
+    }
+
     // --- add-session: full capacity, no movable session ---
     public function test_add_session_returns_full_capacity_when_all_slots_used(): void
     {

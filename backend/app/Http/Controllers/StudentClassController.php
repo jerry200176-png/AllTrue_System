@@ -3628,6 +3628,12 @@ class StudentClassController extends Controller
             'has_attendance' => $result['has_attendance'] ?? false,
             'has_approved_learning_record' => $result['has_approved_learning_record'] ?? false,
             'conflict_session_id' => $result['conflict_session_id'] ?? null,
+            // A scheduled occurrence at the requested slot is an idempotent
+            // update target, not a new reservation. Expose it so the director
+            // can understand why this action will not increase the contract.
+            'existing_session_id' => isset($result['_existing_session']) && $result['_existing_session']
+                ? (int) $result['_existing_session']->id
+                : null,
             'suggested_actions' => $result['suggested_actions'] ?? [],
             // R-quickadd-confirm: this slot's end time has already passed —
             // add-session will silently mark it completed + auto-approve the
