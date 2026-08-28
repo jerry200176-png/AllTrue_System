@@ -9,8 +9,13 @@ const activeCourseSlice = source.slice(source.indexOf('<!-- Phase 2A:'), source.
 
 describe('StudentsList course summary UX', () => {
   it('keeps the active course view task-first and progressively disclosed', () => {
-    ['student-course-cards', 'student-course-card', '更多操作', '<details'].forEach((marker) => expect(activeCourseSlice).toContain(marker));
+    ['student-course-detail', '目前課程工作區', 'student-course-cards', 'student-course-card', '更多操作', '<details'].forEach((marker) => expect(activeCourseSlice).toContain(marker));
     expect(activeCourseSlice).not.toContain('course-inner-table');
+  });
+
+  it('keeps history as an explicit accessible disclosure below active work', () => {
+    ['sl-history-toggle', ':aria-expanded="expandedHistoryCourses.has(student.id)"', ':aria-controls="`student-history-${student.id}`"', ':id="`student-history-${student.id}`"']
+      .forEach((marker) => expect(source).toContain(marker));
   });
 
   it('puts course count, attention count, and selectable next action before detail', () => {

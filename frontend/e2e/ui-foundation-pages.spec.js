@@ -489,6 +489,7 @@ test.describe('UI foundation — real Vue page evidence', () => {
       await expect(workspace).toBeVisible({ timeout: 10_000 });
       await expect.poll(() => tableWrap.evaluate((el) => el.scrollLeft)).toBeLessThan(initialScrollLeft + 8);
       await expect(workspace.getByText('先看需要處理的課程')).toBeVisible();
+      await expect(workspace.getByRole('heading', { name: '查看選定課程的完整資料' })).toBeVisible();
       await expect(workspace.locator('.student-course-overview__metric')).toHaveCount(3);
       await expect(workspace.locator('.student-course-overview__metric:nth-child(3) strong')).toHaveText('1');
 
@@ -497,6 +498,12 @@ test.describe('UI foundation — real Vue page evidence', () => {
       await expect(english.locator('button')).toHaveAttribute('aria-pressed', 'true');
       await expect(math.locator('button')).toHaveAttribute('aria-pressed', 'false');
       await expect(workspace.locator('article.student-course-card[data-course-id="5002"]')).toBeVisible();
+
+      const historyToggle = page.locator('tr.course-detail-row').first().locator('.sl-history-toggle');
+      await expect(historyToggle).toHaveAttribute('aria-expanded', 'false');
+      await historyToggle.click();
+      await expect(historyToggle).toHaveAttribute('aria-expanded', 'true');
+      await expect(page.locator('tr.course-detail-row').first().locator('.sl-history-body')).toBeVisible();
 
       await math.locator('button').click();
       await expect(math.locator('button')).toHaveAttribute('aria-pressed', 'true');

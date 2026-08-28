@@ -254,7 +254,15 @@
 
                   <!-- Active courses: task-first card keeps the next action visible without
                        changing any existing course or payment handlers. -->
-                  <div class="student-course-cards" data-testid="student-course-cards">
+                  <section class="student-course-detail" aria-labelledby="student-course-detail-title">
+                    <div class="student-course-detail__heading">
+                      <div>
+                        <span class="student-course-detail__eyebrow">目前課程工作區</span>
+                        <h5 id="student-course-detail-title">查看選定課程的完整資料</h5>
+                      </div>
+                      <span class="student-course-detail__hint">下一步與更多操作都在這裡</span>
+                    </div>
+                    <div class="student-course-cards" data-testid="student-course-cards">
                   <template v-for="course in getActiveStudentCourses(student.id)" :key="course.id">
                   <article
                     v-if="getFocusedStudentCourse(student.id)?.id === course.id"
@@ -370,7 +378,8 @@
                     </details>
                   </article>
                   </template>
-                  </div>
+                    </div>
+                  </section>
                 </div>
                 <div v-else-if="getHistoryStudentCourses(student.id).length > 0" class="sl-empty-active">
                   <span class="material-symbols-outlined sl-empty-active__icon" aria-hidden="true">school</span>
@@ -379,13 +388,23 @@
 
                 <!-- History courses collapsible section -->
                 <div v-if="getHistoryStudentCourses(student.id).length > 0" class="sl-history-section">
-                  <button class="sl-history-toggle" @click.stop="toggleHistoryCourses(student.id)">
+                  <button
+                    type="button"
+                    class="sl-history-toggle"
+                    :aria-expanded="expandedHistoryCourses.has(student.id)"
+                    :aria-controls="`student-history-${student.id}`"
+                    @click.stop="toggleHistoryCourses(student.id)"
+                  >
                     <span class="material-symbols-outlined sl-history-toggle__icon" aria-hidden="true">inventory_2</span>
                     <span>歷史課程</span>
                     <span class="sl-history-toggle__count">{{ getHistoryStudentCourses(student.id).length }} 筆</span>
                     <span class="sl-history-toggle__chevron">{{ expandedHistoryCourses.has(student.id) ? '▲' : '▼' }}</span>
                   </button>
-                  <div v-if="expandedHistoryCourses.has(student.id)" class="sl-history-body">
+                  <div
+                    v-if="expandedHistoryCourses.has(student.id)"
+                    :id="`student-history-${student.id}`"
+                    class="sl-history-body"
+                  >
                     <div v-for="hc in getHistoryStudentCourses(student.id)" :key="hc.id" class="sl-history-card">
                       <div class="sl-history-card__header">
                         <span class="tag sl-history-card__subject">{{ getSubjectLabel(hc.subject) }}</span>
@@ -1184,7 +1203,9 @@ const getActiveStudentCourses = (id) => {
   return getStudentCourses(id).filter(c => !isHistoryCourseByReason(c));
 };
 const getHistoryStudentCourses = (id) => {
-  return getStudentCourses(id).filter(c => isHistoryCourseByReason(c));
+  // History is a detail disclosure inside an expanded student, so it must remain
+  // available even when the top-level list is showing active courses only.
+  return getStudentAllCourses(id).filter(c => isHistoryCourseByReason(c));
 };
 const getStudentHistoryCourseCount = (id) => (
   getStudentAllCourses(id).filter(c => isHistoryCourseByReason(c)).length
@@ -3654,6 +3675,37 @@ table th { font-size: 12.5px; }
   grid-column: 2;
   grid-row: 1 / span 2;
 }
+.student-course-detail {
+  display: grid;
+  gap: 10px;
+}
+.student-course-detail__heading {
+  align-items: baseline;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 2px 2px 0;
+}
+.student-course-detail__eyebrow {
+  color: var(--ds-primary-deep);
+  display: block;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  margin-bottom: 2px;
+}
+.student-course-detail__heading h5 {
+  color: var(--ds-ink);
+  font-size: 15px;
+  line-height: 1.4;
+  margin: 0;
+}
+.student-course-detail__hint {
+  color: var(--ds-ink-mute);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: right;
+}
 .student-course-cards {
   display: grid;
   gap: 12px;
@@ -4011,6 +4063,15 @@ table th { font-size: 12.5px; }
     display: block;
   }
   .student-course-overview__hint {
+    display: block;
+    margin-top: 4px;
+    text-align: left;
+  }
+  .student-course-detail__heading {
+    align-items: flex-start;
+    display: block;
+  }
+  .student-course-detail__hint {
     display: block;
     margin-top: 4px;
     text-align: left;
