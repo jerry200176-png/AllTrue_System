@@ -4,6 +4,40 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-29-teachers-list-status",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "老師狀態與識別資訊更清楚",
+    "summary": "老師管理的狀態切換、提醒色與 RFID 識別碼更容易閱讀。",
+    "items": [
+      "「正式老師／待審核／停用」分頁會清楚連到目前內容區，主任切換後能直接聚焦該狀態的老師。",
+      "待審核與停用的數字提醒色，以及老師卡片上的狀態標籤，現在使用一致的語意顏色與文字。",
+      "RFID 識別碼使用穩定的等寬數字呈現；老師資料、帳號、綁定、權限與既有操作行為維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "「正式老師／待審核／停用」分頁會清楚連到目前內容區，主任切換後能直接聚焦該狀態的老師。",
+          "待審核與停用的數字提醒色，以及老師卡片上的狀態標籤，現在使用一致的語意顏色與文字。",
+          "RFID 識別碼使用穩定的等寬數字呈現；老師資料、帳號、綁定、權限與既有操作行為維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:teachers-list-status"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
     "id": "staff-2026-08-29-teacher-next-action",
     "publishedAt": "2026-08-29",
     "effectiveAt": null,
