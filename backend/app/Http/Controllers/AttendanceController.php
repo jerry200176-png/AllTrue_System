@@ -582,7 +582,7 @@ class AttendanceController extends Controller
                         'extended_end_date'  => $extendedEndDate,
                         'class_sessions'     => $rows,
                     ], 201);
-                } catch (\InvalidArgumentException $e) { // @phpstan-ignore catch.neverThrown
+                } catch (\InvalidArgumentException $e) {
                     throw $e;
                 }
             }
@@ -598,7 +598,7 @@ class AttendanceController extends Controller
                         $effectiveTeacherId,
                         (int) ($student->CampusID ?? 0)
                     );
-                } catch (\InvalidArgumentException $e) { // @phpstan-ignore catch.neverThrown
+                } catch (\InvalidArgumentException $e) {
                     throw $e;
                 }
             } else {
@@ -833,7 +833,7 @@ class AttendanceController extends Controller
                 return response()->json(['message' => 'Attendance already recorded'], 409);
             }
             throw $e;
-        } catch (\InvalidArgumentException $e) {
+        } catch (\InvalidArgumentException $e) { // @phpstan-ignore catch.neverThrown
             return response()->json(['message' => $e->getMessage()], 422);
         }
     }
