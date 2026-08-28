@@ -28,11 +28,15 @@
     <section class="th-companion" data-guide="teacher-home-companion" aria-labelledby="teacher-companion-title">
       <div class="th-companion__copy">
         <p class="th-companion__eyebrow">今天的節奏</p>
-        <h3 id="teacher-companion-title">{{ teacherTasksLoading ? '先準備今天的課務' : (teacherTasks.length ? '先完成最重要的一件事' : '今天的課務完成了') }}</h3>
+        <h3 id="teacher-companion-title">{{ teacherTasksLoading ? '先準備今天的課務' : (teacherTasksError ? '今天的工作需要重新整理' : (teacherTasks.length ? '先完成最重要的一件事' : '今天的課務完成了')) }}</h3>
         <p class="th-companion__description">
-          {{ teacherTasksLoading ? '正在整理今天的任務，等一下就會顯示。' : (teacherTasks.length ? `還有 ${teacherTasks.length} 項工作，完成一項就更接近下課。` : '可以放心查看本週課表，準備下一堂課。') }}
+          {{ teacherTasksLoading ? '正在整理今天的任務，等一下就會顯示。' : (teacherTasksError ? '部分工作資料暫時無法載入，請重新整理後再開始處理。' : (teacherTasks.length ? `還有 ${teacherTasks.length} 項工作，完成一項就更接近下課。` : '可以放心查看本週課表，準備下一堂課。')) }}
         </p>
-        <a class="th-companion__action" href="#teacher-work-queue-title">
+        <button v-if="teacherTasksError" type="button" class="th-companion__action" :disabled="refreshing" @click="refreshAll">
+          <span>{{ refreshing ? '重新整理中…' : '重新整理今日任務' }}</span>
+          <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
+        </button>
+        <a v-else class="th-companion__action" href="#teacher-work-queue-title">
           <span>{{ teacherTasks.length || teacherTasksLoading ? '查看今日任務' : '查看今日摘要' }}</span>
           <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
         </a>
@@ -108,7 +112,7 @@
           <h3 id="teacher-work-queue-title">今天要完成</h3>
           <p class="th-work-queue__description">依照期限與影響排序；完成後會從清單移除。</p>
         </div>
-        <span class="th-work-queue__count" aria-live="polite">{{ teacherTasks.length }} 項</span>
+        <span class="th-work-queue__count" aria-live="polite">{{ teacherTasksError ? '待確認' : `${teacherTasks.length} 項` }}</span>
       </div>
 
       <details v-if="!teacherTasksLoading && teacherTasks.length" class="th-priority-disclosure">
@@ -138,6 +142,16 @@
 
       <div v-if="teacherTasksLoading" class="th-work-queue__list" aria-label="今日工作載入中">
         <div v-for="i in 3" :key="i" class="th-work-task th-work-task--skeleton"></div>
+      </div>
+      <div v-else-if="teacherTasksError" class="th-work-queue__error" role="alert">
+        <span class="material-symbols-outlined" aria-hidden="true">cloud_off</span>
+        <div>
+          <strong>今天的工作清單尚未完整載入</strong>
+          <p>為避免漏掉點名或評量，暫時不把空白清單當成已完成。</p>
+        </div>
+        <button type="button" class="ghost small" :disabled="refreshing" @click="refreshAll">
+          {{ refreshing ? '整理中…' : '重新整理' }}
+        </button>
       </div>
       <div v-else-if="teacherTasks.length === 0" class="th-work-queue__empty">
         <span class="material-symbols-outlined" aria-hidden="true">task_alt</span>
@@ -836,6 +850,7 @@ const feedbackAnalytics = ref(null);
 const feedbackAnalyticsLoading = ref(false);
 const awaitingReplyCount = ref(0);
 const awaitingReplyLoading = ref(false);
+const awaitingReplyLoadError = ref('');
 
 // ── Chat unread count ──
 const chatUnreadCount   = ref(0);
@@ -884,6 +899,7 @@ async function fetchChatUnread() {
 const loadingAttendance = ref(true);
 const pendingAttendanceCount = ref(0);
 const todayAllSessions = ref([]);
+const attendanceLoadError = ref('');
 
 function localTodayYmd() {
   const d = new Date();
@@ -892,15 +908,21 @@ function localTodayYmd() {
 
 async function fetchPendingAttendance() {
   loadingAttendance.value = true;
+  attendanceLoadError.value = '';
   try {
     const token = await getToken();
-    if (!token) return;
+    if (!token) {
+      attendanceLoadError.value = '今日點名資料暫時無法載入';
+      return;
+    }
     const today = localTodayYmd();
     const result = await fetchClassSessions({ token, start: today, end: today, perPage: 500 });
     const rows = result.items || [];
     pendingAttendanceCount.value = rows.filter((r) => String(r?.status || '').toLowerCase() === 'scheduled').length;
     todayAllSessions.value = rows;
-  } catch { /* ignore */ } finally {
+  } catch {
+    attendanceLoadError.value = '今日點名資料暫時無法載入';
+  } finally {
     loadingAttendance.value = false;
   }
 }
@@ -956,20 +978,26 @@ async function fetchFeedbackAnalytics() {
 
 async function fetchAwaitingReplyCount() {
   awaitingReplyLoading.value = true;
+  awaitingReplyLoadError.value = '';
   try {
     const token = await getToken();
-    if (!token) return;
+    if (!token) {
+      awaitingReplyLoadError.value = '家長回覆資料暫時無法載入';
+      return;
+    }
     const res = await fetch('/api/v1/me/awaiting-reply-count', {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
     });
     if (!res.ok) {
       awaitingReplyCount.value = 0;
+      awaitingReplyLoadError.value = '家長回覆資料暫時無法載入';
       return;
     }
     const json = await res.json().catch(() => ({}));
     awaitingReplyCount.value = Number(json?.awaiting_reply_count || 0);
   } catch {
     awaitingReplyCount.value = 0;
+    awaitingReplyLoadError.value = '家長回覆資料暫時無法載入';
   } finally {
     awaitingReplyLoading.value = false;
   }
@@ -1014,12 +1042,14 @@ function openMissionTask(task) {
 // ── Overdue learning records (past 7 days, attended but missing) ──
 const loadingOverdue = ref(false);
 const overdueRecords = ref([]);
+const overdueLoadError = ref('');
 const overdueCount = computed(() => overdueRecords.value.length);
 
 // ── Today's pending learning records（與 GET me/learning-pending-summary 一致 + 逾期待補堂次）──
 const loadingLearning = ref(true);
 const pendingSummaryTotal = ref(0);
 const changesRequestedLearningCount = ref(0);
+const learningLoadError = ref('');
 const pendingLearningCount = computed(() => pendingSummaryTotal.value + overdueCount.value);
 const pendingTodoTotal = computed(
   () => Number(pendingAttendanceCount.value || 0)
@@ -1035,19 +1065,28 @@ const isPendingSoundSnoozedToday = computed(
 
 async function fetchPendingLearningSummary() {
   loadingLearning.value = true;
+  learningLoadError.value = '';
   try {
     const token = await getToken();
-    if (!token) return;
+    if (!token) {
+      learningLoadError.value = '學習評量資料暫時無法載入';
+      return;
+    }
     const params = new URLSearchParams();
     if (props.branchId) params.set('branch_id', String(props.branchId));
     const res = await fetch(`/api/v1/me/learning-pending-summary?${params}`, {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
     });
-    if (!res.ok) return;
+    if (!res.ok) {
+      learningLoadError.value = '學習評量資料暫時無法載入';
+      return;
+    }
     const json = await res.json();
     pendingSummaryTotal.value = Number(json.total || 0);
     changesRequestedLearningCount.value = Number(json.changes_requested_learning_records ?? 0);
-  } catch { /* ignore */ } finally {
+  } catch {
+    learningLoadError.value = '學習評量資料暫時無法載入';
+  } finally {
     loadingLearning.value = false;
   }
 }
@@ -1111,9 +1150,13 @@ async function fetchLearningProgress() {
 
 async function fetchOverdueLearning() {
   loadingOverdue.value = true;
+  overdueLoadError.value = '';
   try {
     const token = await getToken();
-    if (!token) return;
+    if (!token) {
+      overdueLoadError.value = '補填提醒資料暫時無法載入';
+      return;
+    }
 
     const today = new Date();
     const sevenDaysAgo = new Date(today);
@@ -1138,6 +1181,9 @@ async function fetchOverdueLearning() {
           fetchClassSessions({ token, branchId: bid, start: startStr, end: endStr, perPage: 200 })
         )
       );
+      if (results.every(result => result.status === 'rejected')) {
+        throw new Error('all branch overdue requests failed');
+      }
       const seenIds = new Set();
       results.forEach(r => {
         if (r.status === 'fulfilled') {
@@ -1161,7 +1207,9 @@ async function fetchOverdueLearning() {
 
     missing.sort((a, b) => b.date.localeCompare(a.date) || b.startTime.localeCompare(a.startTime));
     overdueRecords.value = missing;
-  } catch { /* silent */ } finally {
+  } catch {
+    overdueLoadError.value = '補填提醒資料暫時無法載入';
+  } finally {
     loadingOverdue.value = false;
   }
 }
@@ -1325,7 +1373,14 @@ const teacherTasks = computed(() => buildTeacherTasks({
 }));
 
 const teacherTasksLoading = computed(() => (
-  loadingAttendance.value || loadingOverdue.value || loadingWeek.value || awaitingReplyLoading.value
+  loadingAttendance.value || loadingLearning.value || loadingOverdue.value || loadingWeek.value || awaitingReplyLoading.value
+));
+const teacherTasksError = computed(() => (
+  attendanceLoadError.value
+  || learningLoadError.value
+  || overdueLoadError.value
+  || weekLoadError.value
+  || awaitingReplyLoadError.value
 ));
 
 function teacherTaskTypeLabel(type) {
@@ -1757,6 +1812,11 @@ onBeforeUnmount(() => {
 .th-work-queue__empty strong { color: var(--ds-ink); }
 .th-work-queue__empty p { margin: 4px 0 0; font-size: 13px; }
 .th-work-queue__empty button { margin-left: auto; }
+.th-work-queue__error { display: flex; align-items: flex-start; gap: 12px; padding: 16px 0 2px; color: var(--ds-ink-secondary); }
+.th-work-queue__error > .material-symbols-outlined { flex: 0 0 auto; color: var(--ds-danger); font-size: 24px; }
+.th-work-queue__error strong { color: var(--ds-ink); }
+.th-work-queue__error p { margin: 4px 0 0; font-size: 13px; line-height: 1.5; }
+.th-work-queue__error button { flex: 0 0 auto; margin-left: auto; }
 .th-work-task--skeleton { height: 72px; border-radius: 8px; background: var(--ds-canvas-soft); animation: th-work-skeleton 1.2s ease-in-out infinite alternate; }
 @keyframes th-work-skeleton { to { opacity: 0.55; } }
 .th-secondary { margin-top: 14px; border: 1px solid var(--ds-hairline); border-radius: 12px; background: var(--ds-canvas); }
@@ -1786,6 +1846,8 @@ onBeforeUnmount(() => {
   .th-work-task__cta { width: 100%; }
   .th-work-queue__empty { align-items: flex-start; flex-wrap: wrap; }
   .th-work-queue__empty button { width: 100%; margin-left: 38px; }
+  .th-work-queue__error { align-items: flex-start; flex-wrap: wrap; }
+  .th-work-queue__error button { width: 100%; margin-left: 36px; }
   .th-secondary__grid { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) { .th-work-task--skeleton { animation: none; } }
@@ -1854,12 +1916,18 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--ds-cta);
+  font-family: inherit;
   font-size: 13px;
   font-weight: 800;
   text-decoration: none;
+  cursor: pointer;
 }
 .th-companion__action:hover { color: var(--ds-cta-hover); text-decoration: underline; }
+.th-companion__action:disabled { cursor: wait; opacity: 0.65; }
 .th-companion__action:focus-visible { outline: 3px solid var(--ds-focus-ring); outline-offset: 4px; border-radius: 6px; }
 .th-companion__action .material-symbols-outlined { font-size: 18px; }
 .th-companion__art {
