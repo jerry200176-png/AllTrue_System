@@ -1,3 +1,11 @@
+## 2026-08-29 — improved(ux): 課程查找操作層級更清楚
+
+<!-- release-notes: staff_update=staff-2026-08-29-course-management-hierarchy -->
+
+- 課程查找的學生群組改用清楚分離的展開按鈕與「專注此學生」操作，避免把兩個不同動作混在同一個可點區域。
+- 課程資料、帳務資料與歷史課程的展開狀態補上完整的鍵盤／螢幕閱讀器關係；原有課程、帳務、排課與權限行為不變。
+- 延續目前的淺色、navy、暖橘設計語言，手機版維持單欄與可讀寬度。
+
 ## 2026-08-29 — improved(ux): 老師工作台先做一件事
 
 <!-- release-notes: staff_update=staff-2026-08-29-teacher-next-action -->
