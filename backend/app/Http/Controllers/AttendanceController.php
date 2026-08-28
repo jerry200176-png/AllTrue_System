@@ -527,6 +527,14 @@ class AttendanceController extends Controller
                 $status = 'leave';
             }
 
+            // Attendance writes must not revive a leave/cancelled occurrence
+            // through this endpoint.  The only valid recovery path is the
+            // dedicated leave/session recovery flow, which also handles its
+            // tail and evaluation artifacts atomically.
+            if ($status !== 'leave') {
+                AttendanceEffectsService::assertCanRecordAttendance($classSession, $status);
+            }
+
             // ── leave + 既有堂次 → KEEP dates + append tail（同課程管理 POST schedules leave）
             if ($status === 'leave' && !empty($data['ClassSessionID'])) {
                 try {
@@ -786,6 +794,7 @@ class AttendanceController extends Controller
                 }
 
                 $status = $this->resolveSwipeStatus($matchedSession, $swipeAt);
+                AttendanceEffectsService::assertCanRecordAttendance($matchedSession, $status);
 
                 $signIn = StudentSignIn::create([
                     'StudentClassID' => $studentClass->ID,
@@ -823,6 +832,8 @@ class AttendanceController extends Controller
                 return response()->json(['message' => 'Attendance already recorded'], 409);
             }
             throw $e;
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
         }
     }
 
