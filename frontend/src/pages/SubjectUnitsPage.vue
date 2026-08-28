@@ -198,6 +198,7 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import { supabase } from '../supabase';
 import { branches, loadBranches } from '../lib/useBranches';
+import { formatSubjectCount } from '../lib/subjectUnitsDisplay';
 import AtMetric from '../components/design-system/AtMetric.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 
@@ -334,8 +335,8 @@ const loadData = async () => {
       totalHours: t.total_hours || 0,
       totalUnitsWithTutoring: t.weighted_with_tutoring || 0,
       totalUnitsWithoutTutoring: t.weighted_without_tutoring || 0,
-      subjectCountWith: (t.subject_count_with || 0).toFixed(2),
-      subjectCountWithout: (t.subject_count_without || 0).toFixed(2),
+      subjectCountWith: formatSubjectCount(t.subject_count_with),
+      subjectCountWithout: formatSubjectCount(t.subject_count_without),
     };
   } catch (e) {
     console.error('Failed to load subject units:', e);

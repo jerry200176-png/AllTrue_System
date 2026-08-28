@@ -126,6 +126,38 @@ export const staffUpdates = [
     "version": "2026.08.28"
   },
   {
+    "id": "staff-2026-08-28-subject-units-summary",
+    "publishedAt": "2026-08-28",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "科目數統計摘要顯示修正",
+    "summary": "上方摘要卡會正確顯示科目數，不再因資料格式造成顯示異常或載入失敗。",
+    "items": [
+      "科目數統計遇到 API 數字以文字格式回傳時，現在仍會正確轉換並顯示，和下方老師明細保持一致。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "科目數統計遇到 API 數字以文字格式回傳時，現在仍會正確轉換並顯示，和下方老師明細保持一致。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-28:subject-units-summary"
+    ],
+    "date": "2026-08-28",
+    "version": "2026.08.28"
+  },
+  {
     "id": "staff-2026-08-28-learning-review-queues",
     "publishedAt": "2026-08-28",
     "effectiveAt": null,
