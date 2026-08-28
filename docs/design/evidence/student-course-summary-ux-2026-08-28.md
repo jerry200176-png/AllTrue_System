@@ -40,9 +40,7 @@ The bounded public Duolingo read was unauthenticated; the retry was rate limited
 ## Interaction rules
 
 1. Header answers course and status; one primary button exposes `續報加購` for low session balance, otherwise `編輯課程`.
-2. Session courses show verified remaining/total units and an accessible
-   progressbar. Missing totals show `堂數未設定，請編輯課程確認。`; monthly
-   courses show cadence and never receive a fake percentage.
+2. Session courses show verified remaining/total units and an accessible progressbar; missing totals show `堂數未設定，請編輯課程確認。`, while monthly courses show cadence and never receive a fake percentage.
 3. Payment, invoice, payment information, settlement, and delete remain in
    native keyboard-accessible `更多操作`; hiding visual noise does not remove
    capability.
