@@ -126,6 +126,40 @@ export const staffUpdates = [
     "version": "2026.08.28"
   },
   {
+    "id": "staff-2026-08-28-attendance-learning-record-integrity",
+    "publishedAt": "2026-08-28",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "major",
+    "title": "出缺勤與學習評量表一致性修正",
+    "summary": "已上／遲到一定會有可填的學習評量表；請假、取消與未上不會再出現幽靈評量表。",
+    "items": [
+      "出缺勤狀態與學習評量表改由同一個後端一致性流程處理，失敗會回滾，不再留下半完成資料。",
+      "系統會掃描並修復已上／遲到缺評量，以及請假／取消／未上的幽靈評量，並保留稽核紀錄。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "出缺勤狀態與學習評量表改由同一個後端一致性流程處理，失敗會回滾，不再留下半完成資料。",
+          "系統會掃描並修復已上／遲到缺評量，以及請假／取消／未上的幽靈評量，並保留稽核紀錄。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-28:attendance-learning-record-integrity"
+    ],
+    "date": "2026-08-28",
+    "version": "2026.08.28"
+  },
+  {
     "id": "staff-2026-08-28-subject-units-summary",
     "publishedAt": "2026-08-28",
     "effectiveAt": null,

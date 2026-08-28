@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Support\AttendanceStatus;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
@@ -31,6 +32,11 @@ class VerifyBugReproductions extends Command
      */
     private function conditions(): array
     {
+        $fillableStatuses = implode(",", array_map(
+            static fn (string $status): string => "'" . addslashes($status) . "'",
+            AttendanceStatus::requiresLogSessionStatuses()
+        ));
+
         return [
             [
                 'key' => 'attended_session_without_learning_record',
@@ -38,7 +44,7 @@ class VerifyBugReproductions extends Command
                 'issue' => '#1078/#188', 'enforced' => true,
                 'sql' => "SELECT COUNT(*) AS c FROM ClassSession cs
                           JOIN StudentClass sc ON sc.ID = cs.StudentClassID
-                          WHERE LOWER(cs.Status) IN ('attended','late','absent')
+                          WHERE LOWER(cs.Status) IN ({$fillableStatuses})
                             AND CONCAT(cs.SessionDate, ' ', COALESCE(cs.StartTime, '00:00:00')) <= NOW()
                             AND NOT EXISTS (SELECT 1 FROM LearningRecord lr
                                             WHERE lr.ClassSessionID = cs.id AND lr.VoidedAt IS NULL)",
@@ -48,10 +54,10 @@ class VerifyBugReproductions extends Command
                 'label' => 'Leave sessions carrying a live LearningRecord (wrongly in 待審核評量)',
                 'issue' => '#170', 'enforced' => true,
                 'sql' => "SELECT COUNT(*) AS c FROM ClassSession cs
-                          WHERE LOWER(cs.Status) IN ('leave','leave_adjusted')
+                          WHERE LOWER(cs.Status) IN ('scheduled','absent','leave','leave_adjusted','excused','cancelled','suspended')
                             AND EXISTS (SELECT 1 FROM LearningRecord lr
                                         WHERE lr.ClassSessionID = cs.id AND lr.VoidedAt IS NULL
-                                          AND LOWER(lr.Status) <> 'approved')",
+                                          )",
             ],
             [
                 'key' => 'stranded_prepaid_course',

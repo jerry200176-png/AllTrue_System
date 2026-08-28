@@ -2014,7 +2014,7 @@ class ClassSessionController extends Controller
         if (in_array(strtolower((string) ($session->Status ?? '')), [
             'attended', 'late', 'completed', 'trial', 'tutoring_attend',
         ], true)) {
-            app(LearningRecordBackfillService::class)->ensureForAttendanceSession($session);
+            app(LearningRecordBackfillService::class)->ensureRequiredForAttendanceSession($session);
         }
         return response()->json([
             'message' => $message,
