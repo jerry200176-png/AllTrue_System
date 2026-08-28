@@ -71,6 +71,13 @@ test.describe('Teacher daily workflow real Vue page', () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/pilot-mount.html?page=teacher');
     await expect(page.getByRole('heading', { name: '今天要完成' })).toBeVisible();
+    const priorityDisclosure = page.locator('.th-priority-disclosure');
+    await expect(priorityDisclosure.getByText('查看排序規則')).toBeVisible();
+    await expect(priorityDisclosure.locator('.th-priority-rules')).toBeHidden();
+    await priorityDisclosure.locator('summary').click();
+    await expect(priorityDisclosure.getByRole('heading', { name: '今天的處理順序' })).toBeVisible();
+    await expect(priorityDisclosure.locator('.th-priority-rules__item')).toHaveCount(3);
+    await expect(priorityDisclosure.locator('.th-work-task')).toHaveCount(0);
     await expect(page.getByRole('button', { name: '修改評量' })).toBeVisible();
     await expect(page.getByRole('button', { name: '開始點名' }).first()).toBeVisible();
     await expect(page.locator('.th-work-task').getByText('請假學生')).toHaveCount(0);

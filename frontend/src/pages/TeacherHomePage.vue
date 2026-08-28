@@ -84,18 +84,26 @@
         <span class="th-work-queue__count" aria-live="polite">{{ teacherTasks.length }} 項</span>
       </div>
 
-      <details v-if="!teacherTasksLoading && teacherTopPriorities.length" class="th-priority-disclosure">
+      <details v-if="!teacherTasksLoading && teacherTasks.length" class="th-priority-disclosure">
         <summary>
-          <span>查看今天的優先順序</span>
-          <strong>{{ teacherTopPriorities.length }} 項高優先</strong>
+          <span>查看排序規則</span>
+          <strong>依期限與影響</strong>
           <span class="material-symbols-outlined" aria-hidden="true">expand_more</span>
         </summary>
-        <section class="th-top-priorities" aria-labelledby="th-top-priorities-title">
-          <h4 id="th-top-priorities-title">排序依據</h4>
-          <ol>
-            <li v-for="task in teacherTopPriorities" :key="`top-${task.id}`" :class="`th-top-priorities__item th-top-priorities__item--${task.severity}`">
-              <strong>{{ task.title }}</strong>
-              <span>{{ task.summary }}</span>
+        <section class="th-priority-rules-panel" aria-labelledby="th-priority-rules-title">
+          <h4 id="th-priority-rules-title">今天的處理順序</h4>
+          <ol class="th-priority-rules">
+            <li class="th-priority-rules__item">
+              <strong>先處理需修改或逾期</strong>
+              <span>先排除會影響後續工作的項目。</span>
+            </li>
+            <li class="th-priority-rules__item">
+              <strong>再處理今天尚未完成</strong>
+              <span>包含點名與學習評量。</span>
+            </li>
+            <li class="th-priority-rules__item">
+              <strong>最後查看家長回覆</strong>
+              <span>需要回覆的訊息會保留在工作列。</span>
             </li>
           </ol>
         </section>
@@ -1259,15 +1267,6 @@ const teacherTasks = computed(() => buildTeacherTasks({
   awaitingReplies: [{ count: Math.max(Number(props.unreadFeedbackCount || 0), Number(awaitingReplyCount.value || 0)) }],
 }));
 
-// Top 3 things to look at first: urgent-severity tasks take priority, falling
-// back to the first 3 of the already-priority-sorted full list so an all-normal
-// day still shows something. Answers "what matters most in the next 5 seconds"
-// without requiring the teacher to scan the full queue.
-const teacherTopPriorities = computed(() => {
-  const urgent = teacherTasks.value.filter((task) => task.severity === 'urgent');
-  return (urgent.length > 0 ? urgent : teacherTasks.value).slice(0, 3);
-});
-
 const teacherTasksLoading = computed(() => (
   loadingAttendance.value || loadingOverdue.value || loadingWeek.value || awaitingReplyLoading.value
 ));
@@ -1650,13 +1649,12 @@ onBeforeUnmount(() => {
 .th-priority-disclosure[open] summary::after { content: '−'; }
 .th-priority-disclosure summary strong { color: var(--ds-warning); font-size: 11px; }
 .th-priority-disclosure summary:focus-visible { outline: 3px solid var(--ds-info-wash); outline-offset: 2px; border-radius: 4px; }
-.th-top-priorities { margin: 12px 0 4px; padding: 14px 16px; border: 1px solid var(--ds-hairline); border-radius: 12px; background: var(--ds-canvas-soft); }
-.th-top-priorities h4 { margin: 0 0 8px; color: var(--ds-ink-secondary); font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.02em; }
-.th-top-priorities ol { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
-.th-top-priorities__item { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 8px; background: var(--ds-canvas); border-left: 3px solid var(--ds-ink-mute); }
-.th-top-priorities__item strong { color: var(--ds-ink); font-size: 13px; font-weight: 700; }
-.th-top-priorities__item span { color: var(--ds-ink-mute); font-size: 12px; }
-.th-top-priorities__item--urgent { border-left-color: var(--ds-danger); }
+.th-priority-rules-panel { margin: 12px 0 4px; padding: 14px 16px; border: 1px solid var(--ds-hairline); border-radius: 12px; background: var(--ds-canvas-soft); }
+.th-priority-rules-panel h4 { margin: 0 0 8px; color: var(--ds-ink-secondary); font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.02em; }
+.th-priority-rules { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.th-priority-rules__item { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 8px; background: var(--ds-canvas); border-left: 3px solid var(--ds-primary); }
+.th-priority-rules__item strong { color: var(--ds-ink); font-size: 13px; }
+.th-priority-rules__item span { color: var(--ds-ink-mute); font-size: 12px; }
 .th-work-queue__list { display: grid; gap: 8px; padding-top: 12px; }
 .th-work-task { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-width: 0; padding: 14px 0; border-bottom: 1px solid var(--ds-hairline); }
 .th-work-task:last-child { border-bottom: 0; }
