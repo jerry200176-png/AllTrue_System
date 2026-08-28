@@ -1,23 +1,31 @@
 <template>
   <div class="teachers-page">
   <div class="card teachers-card">
-    <div class="header-actions" data-guide="teachers-header">
-      <div class="title-group">
-        <h2>老師管理</h2>
-        <p class="title-sub">管理老師資料、分校配置與登入帳號操作</p>
-      </div>
+    <AtPageHeader
+      title="老師管理"
+      description="管理老師資料、分校配置與登入帳號操作。"
+      icon="groups"
+      data-guide="teachers-header"
+    >
+      <template #meta>
+        <span>共 {{ teachers.length }} 位</span>
+        <span>目前列表 {{ filteredTeachers.length }} 位</span>
+      </template>
+      <template #actions>
+        <AtButton variant="ghost" shape="rect" icon="upload_file" @click="openBulkModal">批次新增老師</AtButton>
+        <AtButton variant="primary" shape="rect" icon="add" @click="showAddModal = true">新增老師</AtButton>
+      </template>
+    </AtPageHeader>
+
+    <div class="teachers-view-tabs" role="tablist" aria-label="老師狀態">
       <div class="tabs">
-          <button :class="{ active: tab === 'active' }" @click="tab = 'active'">正式老師</button>
-          <button :class="{ active: tab === 'pending' }" @click="tab = 'pending'">待審核 <span v-if="pendingCount > 0" class="badge">{{ pendingCount }}</span></button>
-          <button :class="{ active: tab === 'suspended' }" @click="tab = 'suspended'">停用 <span v-if="suspendedCount > 0" class="badge">{{ suspendedCount }}</span></button>
-      </div>
-      <div class="header-btns">
-        <button class="ghost" @click="openBulkModal">批次新增老師</button>
-        <button class="primary" @click="showAddModal = true">+ 新增老師</button>
+        <button type="button" role="tab" :aria-selected="tab === 'active'" :class="{ active: tab === 'active' }" @click="tab = 'active'">正式老師</button>
+        <button type="button" role="tab" :aria-selected="tab === 'pending'" :class="{ active: tab === 'pending' }" @click="tab = 'pending'">待審核 <span v-if="pendingCount > 0" class="badge">{{ pendingCount }}</span></button>
+        <button type="button" role="tab" :aria-selected="tab === 'suspended'" :class="{ active: tab === 'suspended' }" @click="tab = 'suspended'">停用 <span v-if="suspendedCount > 0" class="badge">{{ suspendedCount }}</span></button>
       </div>
     </div>
 
-    <div class="filter-row" data-guide="teachers-filters">
+    <AtFilterBar label="老師篩選" data-guide="teachers-filters">
       <div class="filter-item filter-item-search">
         <label>搜尋（姓名／電話）</label>
         <input v-model="searchQ" placeholder="輸入姓名或電話..." @input="debouncedLoad" />
@@ -33,12 +41,12 @@
       </div>
       <div class="filter-item">
         <label>科目</label>
-        <select v-model="filterSubjectId">
+        <select v-model="filterSubjectId" aria-label="依科目篩選">
           <option value="">全部</option>
           <option v-for="s in subjects" :key="s.id" :value="s.id">{{ s.name }}</option>
         </select>
       </div>
-    </div>
+    </AtFilterBar>
 
     <div v-if="teachers.length > 0" class="teacher-chips-row" role="group" aria-label="快速篩選老師（可多選）">
       <span class="teacher-chips-label">老師</span>
@@ -56,26 +64,13 @@
       <button v-if="selectedTeacherIds.length > 0" type="button" class="teacher-chip-clear" @click="selectedTeacherIds = []">全清除</button>
     </div>
 
-    <div class="teacher-summary">
-      <div class="summary-card">
-        <div class="summary-label">全部老師</div>
-        <div class="summary-value">{{ teachers.length }}</div>
-      </div>
-      <div class="summary-card">
-        <div class="summary-label">正式老師</div>
-        <div class="summary-value active">{{ activeTeachersCount }}</div>
-      </div>
-      <div class="summary-card">
-        <div class="summary-label">待審核</div>
-        <div class="summary-value pending">{{ pendingCount }}</div>
-      </div>
-      <div class="summary-card">
-        <div class="summary-label">目前列表</div>
-        <div class="summary-value">{{ filteredTeachers.length }}</div>
-      </div>
+    <div class="teacher-summary" aria-label="老師狀態摘要">
+      <AtMetric label="正式老師" :value="activeTeachersCount" accent="var(--ds-success)" />
+      <AtMetric label="待審核" :value="pendingCount" accent="var(--ds-primary)" />
+      <AtMetric label="停用" :value="suspendedCount" accent="var(--ds-ink-mute)" />
     </div>
 
-    <div v-if="loading" class="hint">Loading...</div>
+    <AtSkeleton v-if="loading" rows="4" aria-label="老師資料載入中" />
     <div v-else-if="filteredTeachers.length === 0" class="empty-state">
       目前沒有符合條件的老師資料。
     </div>
@@ -392,7 +387,7 @@
         <div v-if="bulkResult" class="bulk-result">
           <div class="bulk-result-header">
             <strong>結果：{{ bulkResult.summary?.created || 0 }} 成功 / {{ bulkResult.summary?.failed || 0 }} 失敗</strong>
-            <div class="header-btns">
+            <div class="bulk-result-actions">
               <button class="small" @click="copyBulkCredentials" :disabled="!bulkResult.created?.length">複製帳密</button>
               <button class="small" @click="downloadBulkCredentialsCsv" :disabled="!bulkResult.created?.length">下載 CSV</button>
               <button class="small ghost" @click="refillBulkWithFailedRows" :disabled="!bulkResult.failed?.length">僅保留失敗筆</button>
@@ -455,6 +450,11 @@ import { ref, onMounted, computed, watch } from 'vue';
 import { supabase } from '../supabase';
 import { branches as BRANCHES, getBranchName as _getBranchName } from '../lib/useBranches';
 import RocRankBadge from '../components/RocRankBadge.vue';
+import AtButton from '../components/design-system/AtButton.vue';
+import AtFilterBar from '../components/design-system/AtFilterBar.vue';
+import AtMetric from '../components/design-system/AtMetric.vue';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
+import AtSkeleton from '../components/design-system/AtSkeleton.vue';
 
 const API_BASE = (import.meta.env.VITE_API_BASE || '/api') + '/v1';
 
@@ -1558,73 +1558,18 @@ watch(showBulkModal, (opened) => {
   border: 1px solid var(--ds-hairline);
 }
 
-.header-actions {
+.teachers-view-tabs {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 18px;
-  gap: 16px;
-}
-
-.title-group h2 {
-  margin: 0;
-  font-size: 24px;
-  line-height: 1.2;
-  font-weight: 700;
-  color: var(--ds-ink);
-}
-
-.title-sub {
-  margin-top: 4px;
-  font-size: 13px;
-  color: var(--ds-ink-mute);
-}
-
-.header-btns {
-  display: flex;
-  gap: 10px;
-  align-items: center;
+  margin-bottom: var(--ds-space-3);
+  border-bottom: 1px solid var(--ds-hairline);
 }
 
 .teacher-summary {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.summary-card {
-  border: 1px solid var(--ds-hairline);
-  border-radius: 12px;
-  background: linear-gradient(180deg, var(--ds-canvas) 0%, var(--ds-canvas-soft) 100%);
-  padding: 12px 14px;
-}
-
-.summary-label {
-  font-size: 12px;
-  color: var(--ds-ink-mute);
-}
-
-.summary-value {
-  font-size: 24px;
-  line-height: 1.25;
-  font-weight: 700;
-  color: var(--ds-ink);
-}
-
-.summary-value.active { color: var(--ds-success); }
-.summary-value.pending { color: var(--ds-primary); }
-
-.filter-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: flex-end;
-  margin-bottom: 12px;
-  padding: 12px;
-  border: 1px solid var(--ds-hairline);
-  border-radius: 12px;
-  background: var(--ds-canvas-soft);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--ds-space-3);
+  margin-bottom: var(--ds-space-4);
 }
 
 .teacher-chips-row {
@@ -1923,20 +1868,11 @@ watch(showBulkModal, (opened) => {
   font-size: 12px;
   font-weight: 600;
 }
-.filter-row label {
-  display: block;
-  font-size: 12px;
-  color: var(--ds-ink-mute);
-  margin-bottom: 6px;
-  font-weight: 600;
+.teachers-card :deep(.at-filter-bar) {
+  margin-bottom: var(--ds-space-3);
 }
-.filter-row input, .filter-row select {
-  padding: 9px 12px;
-  border: 1px solid var(--ds-hairline);
-  border-radius: 10px;
-  min-width: 140px;
-  font-size: 14px;
-  background: var(--ds-canvas);
+.teachers-card :deep(.filter-item-search) {
+  min-width: min(260px, 100%);
 }
 
 .tabs {
@@ -1957,6 +1893,13 @@ watch(showBulkModal, (opened) => {
     color: var(--ds-warning);
     background: var(--ds-warning-wash);
     font-weight: 700;
+}
+
+.bulk-result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
 }
 
 
@@ -2217,15 +2160,6 @@ button.small.danger {
 @media (max-width: 960px) {
   .teacher-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .header-actions {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .header-btns {
-    width: 100%;
   }
 
   .action-group {
