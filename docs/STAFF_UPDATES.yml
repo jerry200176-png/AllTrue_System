@@ -3,6 +3,23 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-29-teacher-card-a11y
+    published_at: "2026-08-29"
+    audiences:
+      - teacher
+    importance: digest
+    title: 老師工作台的控制項更穩定
+    summary: 今日打卡與本週課表的操作更容易用鍵盤、觸控與螢幕閱讀器理解。
+    items:
+      - category: improved
+        text: 今日打卡狀態卡片現在是清楚的原生按鈕，會說明目前狀態並保留前往出缺勤管理的行為。
+      - category: improved
+        text: 本週課表的上一週／下一週與課表圖示操作都有明確名稱，不必只依賴圖示或滑鼠提示。
+      - category: improved
+        text: 出缺勤、課表、評量資料、API、權限與既有導頁行為維持不變。
+    source_refs:
+      - "changelog:2026-08-29:teacher-card-a11y"
+
   - id: staff-2026-08-29-attendance-tab-status-a11y
     published_at: "2026-08-29"
     audiences:

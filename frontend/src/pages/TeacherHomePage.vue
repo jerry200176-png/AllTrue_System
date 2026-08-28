@@ -45,9 +45,14 @@
     </section>
 
     <!-- Clock-in Status Card -->
-    <div class="th-clockin-card card" :class="clockinCardClass"
-      @click="goAttendance" role="button" tabindex="0"
-      @keydown.enter="goAttendance" aria-label="查看今日打卡狀態">
+    <button
+      type="button"
+      class="th-clockin-card card"
+      :class="clockinCardClass"
+      @click="goAttendance"
+      aria-labelledby="teacher-clockin-title"
+      aria-describedby="teacher-clockin-status"
+    >
 
       <!-- Header row: icon + title + badge + arrow -->
       <div class="th-clockin-header">
@@ -55,8 +60,8 @@
           <span class="material-symbols-outlined">fingerprint</span>
         </div>
         <div class="th-clockin-title-group">
-          <span class="th-clockin-title">今日打卡狀態</span>
-          <span class="th-clockin-badge" :class="clockinBadgeClass">{{ clockinBadgeLabel }}</span>
+          <span id="teacher-clockin-title" class="th-clockin-title">今日打卡狀態</span>
+          <span id="teacher-clockin-status" class="th-clockin-badge" :class="clockinBadgeClass" aria-live="polite">{{ clockinBadgeLabel }}</span>
         </div>
         <span class="material-symbols-outlined th-clockin-arrow">chevron_right</span>
       </div>
@@ -93,7 +98,7 @@
         <span class="material-symbols-outlined" style="font-size:13px;vertical-align:-2px">schedule</span>
         第一堂課：{{ clockinRecord.first_class_start_time }}
       </div>
-    </div>
+    </button>
 
     <!-- Single source of truth for today's work. Secondary metrics stay below the fold. -->
     <section id="teacher-work-queue" class="th-work-queue card" data-guide="teacher-home-work-queue" aria-labelledby="teacher-work-queue-title">
@@ -373,6 +378,7 @@
               <span v-if="ev.formStatus === 'changes_requested'" class="th-form-chip th-form-changes_requested">需修改</span>
             </div>
             <button
+              type="button"
               class="th-fill-btn"
               @click="goFillRecord(ev)"
               title="填寫評量"
@@ -382,7 +388,7 @@
             </button>
           </div>
         </div>
-        <button v-if="todayPendingEvents.length > 4" class="th-overdue-more" @click="goLearning">
+        <button v-if="todayPendingEvents.length > 4" type="button" class="th-overdue-more" @click="goLearning">
           前往評量頁查看全部
           <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle">arrow_forward</span>
         </button>
@@ -408,12 +414,12 @@
             <span class="th-overdue-subject">{{ item.subjectName || item.subject || '' }}</span>
             <span v-if="campusIdFrom(item.branchId)" class="th-branch-chip" :style="{ background: branchColor(item.branchId) }">{{ branchShortName(item.branchId) }}</span>
           </div>
-          <button class="th-fill-btn" @click="goFillRecord({ branchId: item.branchId, recordId: null, classSessionId: item.id, sessionDate: item.date })" title="填寫評量">
+          <button type="button" class="th-fill-btn" @click="goFillRecord({ branchId: item.branchId, recordId: null, classSessionId: item.id, sessionDate: item.date })" title="填寫評量" aria-label="開啟待填評量">
             <span class="material-symbols-outlined">edit_note</span>
           </button>
         </div>
       </div>
-      <button v-if="overdueRecords.length > 5" class="th-overdue-more" @click="goLearning">
+      <button v-if="overdueRecords.length > 5" type="button" class="th-overdue-more" @click="goLearning">
         查看全部 {{ overdueRecords.length }} 筆
         <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle">arrow_forward</span>
       </button>
@@ -429,9 +435,9 @@
           <span class="th-week-badge" v-if="allBranchNames.length > 1">{{ allBranchNames.length }} 校合併</span>
         </h3>
         <div class="th-week-nav">
-          <button class="ghost small icon-btn" @click="weekOffset--" title="上一週">‹</button>
+          <button type="button" class="ghost small icon-btn" @click="weekOffset--" title="上一週" aria-label="上一週">‹</button>
           <span class="th-week-label">{{ weekLabel }}</span>
-          <button class="ghost small icon-btn" @click="weekOffset++" title="下一週">›</button>
+          <button type="button" class="ghost small icon-btn" @click="weekOffset++" title="下一週" aria-label="下一週">›</button>
         </div>
       </div>
 
@@ -441,7 +447,7 @@
       <div v-else-if="weekLoadError" class="th-error">
         <span class="material-symbols-outlined">error_outline</span>
         {{ weekLoadError }}
-        <button class="ghost small" @click="loadWeekSchedule">重試</button>
+        <button type="button" class="ghost small" @click="loadWeekSchedule">重試</button>
       </div>
       <div v-else-if="weekDays.length === 0" class="th-empty">本週無排課</div>
 
@@ -482,6 +488,7 @@
               </div>
               <button
                 v-if="!ev.isProjected && (ev.formStatus === 'missing' || ev.formStatus === 'changes_requested')"
+                type="button"
                 class="th-fill-btn"
                 @click="goFillRecord(ev)"
                 title="填寫評量"
@@ -492,9 +499,11 @@
               <span v-else-if="ev.formStatus === 'approved'" class="th-check-icon material-symbols-outlined">check_circle</span>
               <button
                 v-if="!ev.isProjected"
+                type="button"
                 class="th-report-btn"
                 :class="{ 'th-report-btn--active': activeReportMap[ev.id] }"
                 :title="activeReportMap[ev.id] ? '查看課表回報' : '回報課表有誤'"
+                :aria-label="activeReportMap[ev.id] ? '查看課表回報' : '回報課表有誤'"
                 @click.stop="openReport(ev)"
               >
                 <span
@@ -566,19 +575,19 @@
     <!-- C. Quick Links -->
     <div class="th-links card" data-guide="teacher-home-links">
       <!-- Chat entry card -->
-      <button class="th-link-btn th-chat-btn" @click="$emit('navigate', 'chat')" style="position:relative">
+      <button type="button" class="th-link-btn th-chat-btn" @click="$emit('navigate', 'chat')" style="position:relative">
         <span class="material-symbols-outlined" style="color:var(--primary)">forum</span>
         <span>內部聊天</span>
         <span v-if="chatUnreadLoading" class="th-chat-badge-skeleton"></span>
         <span v-else-if="chatUnreadCount > 0" class="th-chat-badge">{{ chatUnreadCount > 99 ? '99+' : chatUnreadCount }}</span>
         <span v-else class="th-link-sub">目前沒有未讀訊息</span>
       </button>
-      <button class="th-link-btn" @click="$emit('navigate', 'subject-units')">
+      <button type="button" class="th-link-btn" @click="$emit('navigate', 'subject-units')">
         <span class="material-symbols-outlined">calculate</span>
         <span>科目數統計</span>
         <span class="th-link-sub" v-if="allBranchNames.length > 1">可切換分校</span>
       </button>
-      <button class="th-link-btn" @click="$emit('navigate', 'calendar')">
+      <button type="button" class="th-link-btn" @click="$emit('navigate', 'calendar')">
         <span class="material-symbols-outlined">calendar_today</span>
         <span>班級行事曆</span>
       </button>
@@ -2410,12 +2419,13 @@ onBeforeUnmount(() => {
   display: flex; flex-direction: column; gap: 10px;
   padding: 14px 16px; cursor: pointer; min-height: 72px;
   border: 1px solid var(--border); border-left-width: 4px; border-radius: 12px;
+  width: 100%; text-align: left; font: inherit; color: var(--text); background: var(--card-bg);
   transition: background 0.15s, transform 0.1s;
   margin-bottom: 12px;
 }
 .th-clockin-card:hover  { background: var(--ds-canvas-soft); }
 .th-clockin-card:active { transform: scale(0.99); }
-.th-clockin-card:focus-visible { outline: 2px solid var(--primary); }
+.th-clockin-card:focus-visible { outline: 3px solid var(--ds-focus-ring); outline-offset: 2px; }
 
 /* Status: left border colour */
 .th-ckin-empty   { border-left-color: var(--border); }

@@ -83,6 +83,9 @@ createApp({
         userRole: 'teacher',
         teacherBranchIds: [1],
         unreadFeedbackCount: mode === 'empty' ? 0 : 1,
+        onNavigate: (payload) => {
+          window.__pilotLastNavigation = payload;
+        },
       });
     }
     if (page === 'teachers') {

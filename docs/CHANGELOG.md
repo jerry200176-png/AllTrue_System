@@ -1,3 +1,11 @@
+## 2026-08-29 — improved(ux): 老師工作台控制項更穩定
+
+<!-- release-notes: staff_update=staff-2026-08-29-teacher-card-a11y -->
+
+- 今日打卡狀態卡片改用原生按鈕，保留原有導向 attendance 行為，並補上狀態標籤、即時狀態宣告與清楚的鍵盤焦點。
+- 本週課表的上一週／下一週，以及課表中的圖示操作，補上明確的按鈕類型與可讀名稱，避免只看圖示或 hover 提示才能理解。
+- 不改出缺勤、課表、評量資料、API、權限或既有導頁行為；這次只改善控制項語意與操作穩定性。
+
 ## 2026-08-29 — improved(ux): 出缺勤工作區的切換與狀態更容易理解
 
 <!-- release-notes: staff_update=staff-2026-08-29-attendance-tab-status-a11y -->
