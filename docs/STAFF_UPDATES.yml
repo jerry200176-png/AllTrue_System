@@ -3,6 +3,23 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-29-teacher-next-action
+    published_at: "2026-08-29"
+    audiences:
+      - teacher
+    importance: digest
+    title: 老師工作台先做一件事
+    summary: 第一個待辦會清楚標示現在先做，其餘工作保留在接著處理。
+    items:
+      - category: improved
+        text: 工作台依照既有期限與影響排序，將第一個待辦獨立標示為「現在先做」，並直接提供對應的行動按鈕。
+      - category: improved
+        text: 其他待辦仍會保留在「接著處理」清單；請假待審堂次不會被誤列為老師要處理的工作。
+      - category: improved
+        text: 手機版主行動會在同一張卡片內完整呈現，原有導頁、權限與資料行為不變。
+    source_refs:
+      - "changelog:2026-08-29:teacher-next-action"
+
   - id: staff-2026-08-29-student-course-overview
     published_at: "2026-08-29"
     audiences:

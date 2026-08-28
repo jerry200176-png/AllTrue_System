@@ -143,19 +143,44 @@
         <button type="button" class="ghost small" @click="scrollToWeekSchedule">查看本週課表</button>
       </div>
       <div v-else class="th-work-queue__list">
-        <article v-for="task in teacherTasks" :key="task.id" class="th-work-task">
-          <div class="th-work-task__main">
-            <div class="th-work-task__title-row">
-              <span class="th-work-task__type">{{ teacherTaskTypeLabel(task.type) }}</span>
-              <strong>{{ task.title }}</strong>
-            </div>
-            <p>{{ task.summary }}</p>
-            <small>期限：{{ task.dueAt || '今天' }}</small>
+        <article
+          class="th-next-action"
+          data-guide="teacher-next-action"
+          aria-labelledby="teacher-next-action-title"
+        >
+          <div class="th-next-action__marker" aria-hidden="true">
+            <span class="material-symbols-outlined">arrow_forward</span>
           </div>
-          <button type="button" class="primary small th-work-task__cta" @click="openTeacherTask(task)">
-            {{ task.actionLabel }}
+          <div class="th-next-action__content">
+            <p class="th-next-action__eyebrow">現在先做</p>
+            <div class="th-next-action__title-row">
+              <span class="th-work-task__type">{{ teacherTaskTypeLabel(teacherTasks[0].type) }}</span>
+              <h4 id="teacher-next-action-title">{{ teacherTasks[0].title }}</h4>
+            </div>
+            <p class="th-next-action__summary">{{ teacherTasks[0].summary }}</p>
+            <small>期限：{{ teacherTasks[0].dueAt || '今天' }}</small>
+          </div>
+          <button type="button" class="primary small th-next-action__cta" @click="openTeacherTask(teacherTasks[0])">
+            {{ teacherTasks[0].actionLabel }}
           </button>
         </article>
+
+        <div v-if="teacherTasks.length > 1" class="th-work-queue__remaining" data-guide="teacher-secondary-actions">
+          <p class="th-work-queue__remaining-label">接著處理</p>
+          <article v-for="task in teacherTasks.slice(1)" :key="task.id" class="th-work-task">
+            <div class="th-work-task__main">
+              <div class="th-work-task__title-row">
+                <span class="th-work-task__type">{{ teacherTaskTypeLabel(task.type) }}</span>
+                <strong>{{ task.title }}</strong>
+              </div>
+              <p>{{ task.summary }}</p>
+              <small>期限：{{ task.dueAt || '今天' }}</small>
+            </div>
+            <button type="button" class="primary small th-work-task__cta" @click="openTeacherTask(task)">
+              {{ task.actionLabel }}
+            </button>
+          </article>
+        </div>
       </div>
     </section>
 
@@ -1679,6 +1704,36 @@ onBeforeUnmount(() => {
 .th-priority-rules__item strong { color: var(--ds-ink); font-size: 13px; }
 .th-priority-rules__item span { color: var(--ds-ink-mute); font-size: 12px; }
 .th-work-queue__list { display: grid; gap: 8px; padding-top: 12px; }
+.th-next-action {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--ds-primary-soft);
+  border-radius: 12px;
+  background: var(--ds-primary-wash);
+}
+.th-next-action__marker {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--ds-primary);
+  color: var(--ds-canvas);
+}
+.th-next-action__marker .material-symbols-outlined { font-size: 20px; }
+.th-next-action__content { min-width: 0; }
+.th-next-action__eyebrow { margin: 0 0 4px; color: var(--ds-primary-deep); font-size: 12px; font-weight: 800; letter-spacing: 0.04em; }
+.th-next-action__title-row { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; }
+.th-next-action__title-row h4 { margin: 0; color: var(--ds-ink); font-size: 16px; }
+.th-next-action__summary { margin: 5px 0 0; color: var(--ds-ink-secondary); font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
+.th-next-action__content small { display: block; margin-top: 5px; color: var(--ds-ink-mute); font-size: 12px; font-variant-numeric: tabular-nums; }
+.th-next-action__cta { flex: 0 0 auto; min-width: 104px; }
+.th-work-queue__remaining { display: grid; gap: 0; padding-top: 4px; }
+.th-work-queue__remaining-label { margin: 4px 0 0; color: var(--ds-ink-mute); font-size: 12px; font-weight: 800; }
 .th-work-task { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-width: 0; padding: 14px 0; border-bottom: 1px solid var(--ds-hairline); }
 .th-work-task:last-child { border-bottom: 0; }
 .th-work-task__main { min-width: 0; }
@@ -1716,6 +1771,8 @@ onBeforeUnmount(() => {
   .th-work-queue { padding: 16px; }
   .th-work-queue__header { gap: 10px; }
   .th-work-queue__description { max-width: 260px; }
+  .th-next-action { grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 10px 12px; }
+  .th-next-action__cta { grid-column: 1 / -1; width: 100%; }
   .th-work-task { align-items: stretch; flex-direction: column; gap: 10px; }
   .th-work-task__cta { width: 100%; }
   .th-work-queue__empty { align-items: flex-start; flex-wrap: wrap; }

@@ -18,8 +18,8 @@ import { findUserFacingCopyIssues } from '../../../scripts/lib/userFacingCopyGat
 assert.strictEqual(allStaffUpdates, staffUpdates);
 assert.ok(notesForRole('director').length >= 1);
 assert.ok(notesForRole('teacher').length > 0);
-assert.strictEqual(notesForRole('super_admin').length, notesForRole('director').length);
-assert.strictEqual(notesForRole('admin').length, notesForRole('director').length);
+assert.ok(notesForRole('super_admin').length >= notesForRole('director').length);
+assert.equal(notesForRole('admin').length, notesForRole('super_admin').length);
 assert.ok(latestReleaseVersionForRole('super_admin'));
 
 const latest = notesForRole('director')[0];

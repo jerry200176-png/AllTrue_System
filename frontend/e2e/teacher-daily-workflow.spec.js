@@ -83,6 +83,10 @@ test.describe('Teacher daily workflow real Vue page', () => {
     await expect(priorityDisclosure.getByRole('heading', { name: '今天的處理順序' })).toBeVisible();
     await expect(priorityDisclosure.locator('.th-priority-rules__item')).toHaveCount(3);
     await expect(priorityDisclosure.locator('.th-work-task')).toHaveCount(0);
+    const nextAction = page.locator('[data-guide="teacher-next-action"]');
+    await expect(nextAction).toBeVisible();
+    await expect(nextAction.getByText('現在先做')).toBeVisible();
+    await expect(nextAction.getByRole('heading', { name: '評量需要修改' })).toBeVisible();
     await expect(page.getByRole('button', { name: '修改評量' })).toBeVisible();
     await expect(page.getByRole('button', { name: '開始點名' }).first()).toBeVisible();
     await expect(page.locator('.th-work-task').getByText('請假學生')).toHaveCount(0);
@@ -122,6 +126,7 @@ test.describe('Teacher daily workflow real Vue page', () => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto('/pilot-mount.html?page=teacher');
     await expect(page.getByRole('heading', { name: '今天要完成' })).toBeVisible();
+    await expect(page.locator('[data-guide="teacher-next-action"]')).toBeVisible();
     await expect(page.getByRole('button', { name: '修改評量' })).toBeVisible();
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
     expect(overflow).toBeTruthy();

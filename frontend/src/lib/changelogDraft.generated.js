@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.08.29",
     "date": "2026-08-29",
     "title": "2026.08.29 草稿（未發布）",
-    "summary": "學生課程總覽更容易判斷下一步",
+    "summary": "老師工作台先做一件事；學生課程總覽更容易判斷下一步",
     "audience": [
       "teacher",
       "director"
@@ -18,11 +18,13 @@ export const changelogDraftNotes = [
       {
         "title": "其他改善",
         "items": [
+          "老師工作台先做一件事",
           "學生課程總覽更容易判斷下一步"
         ]
       }
     ],
     "items": [
+      "老師工作台先做一件事",
       "學生課程總覽更容易判斷下一步"
     ]
   },

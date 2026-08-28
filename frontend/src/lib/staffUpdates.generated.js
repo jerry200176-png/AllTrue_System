@@ -4,6 +4,40 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-29-teacher-next-action",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "teacher"
+    ],
+    "audience": [
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "老師工作台先做一件事",
+    "summary": "第一個待辦會清楚標示現在先做，其餘工作保留在接著處理。",
+    "items": [
+      "工作台依照既有期限與影響排序，將第一個待辦獨立標示為「現在先做」，並直接提供對應的行動按鈕。",
+      "其他待辦仍會保留在「接著處理」清單；請假待審堂次不會被誤列為老師要處理的工作。",
+      "手機版主行動會在同一張卡片內完整呈現，原有導頁、權限與資料行為不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "工作台依照既有期限與影響排序，將第一個待辦獨立標示為「現在先做」，並直接提供對應的行動按鈕。",
+          "其他待辦仍會保留在「接著處理」清單；請假待審堂次不會被誤列為老師要處理的工作。",
+          "手機版主行動會在同一張卡片內完整呈現，原有導頁、權限與資料行為不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:teacher-next-action"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
     "id": "staff-2026-08-29-student-course-overview",
     "publishedAt": "2026-08-29",
     "effectiveAt": null,
