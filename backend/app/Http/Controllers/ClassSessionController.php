@@ -2463,7 +2463,7 @@ class ClassSessionController extends Controller
             // LearningRecordDriftCheck), relied on by billing/approval queries
             // across StudentClassController — must stay in sync, same as the
             // existing transfer-sessions endpoint (StudentClassController::transferSessions).
-            DB::table('LearningRecord')->where('ClassSessionID', $session->id)
+            LearningRecord::where('ClassSessionID', $session->id)->getQuery()
                 ->update(['StudentClassID' => $new->ID]);
 
             SessionDeductionService::recomputeCounters((int) $old->ID);
