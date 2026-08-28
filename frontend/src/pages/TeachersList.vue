@@ -48,27 +48,37 @@
       </div>
     </AtFilterBar>
 
-    <div v-if="teachers.length > 0" class="teacher-chips-row" role="group" aria-label="快速篩選老師（可多選）">
-      <span class="teacher-chips-label">老師</span>
-      <div class="teacher-chips-scroll">
-        <button
-          v-for="t in chipTeacherOptions"
-          :key="t.id"
-          type="button"
-          :aria-pressed="selectedTeacherIdSet.has(String(t.id))"
-          :class="['teacher-chip', { active: selectedTeacherIdSet.has(String(t.id)) }]"
-          :style="selectedTeacherIdSet.has(String(t.id)) ? { background: teacherAvatarColor(t.id), borderColor: teacherAvatarColor(t.id), color: 'var(--ds-on-primary)' } : {}"
-          @click="toggleTeacherChip(t.id)"
-        >{{ t.name }}</button>
-      </div>
-      <button v-if="selectedTeacherIds.length > 0" type="button" class="teacher-chip-clear" @click="selectedTeacherIds = []">全清除</button>
-    </div>
+    <details class="teachers-insights-disclosure">
+      <summary>
+        <span class="material-symbols-outlined" aria-hidden="true">tune</span>
+        <span class="teachers-insights-disclosure__title">快速篩選與統計</span>
+        <span class="teachers-insights-disclosure__hint">依老師快速定位，查看目前狀態數量</span>
+        <span class="material-symbols-outlined" aria-hidden="true">expand_more</span>
+      </summary>
+      <div class="teachers-insights-disclosure__body">
+        <div v-if="teachers.length > 0" class="teacher-chips-row" role="group" aria-label="快速篩選老師（可多選）">
+          <span class="teacher-chips-label">老師</span>
+          <div class="teacher-chips-scroll">
+            <button
+              v-for="t in chipTeacherOptions"
+              :key="t.id"
+              type="button"
+              :aria-pressed="selectedTeacherIdSet.has(String(t.id))"
+              :class="['teacher-chip', { active: selectedTeacherIdSet.has(String(t.id)) }]"
+              :style="selectedTeacherIdSet.has(String(t.id)) ? { background: teacherAvatarColor(t.id), borderColor: teacherAvatarColor(t.id), color: 'var(--ds-on-primary)' } : {}"
+              @click="toggleTeacherChip(t.id)"
+            >{{ t.name }}</button>
+          </div>
+          <button v-if="selectedTeacherIds.length > 0" type="button" class="teacher-chip-clear" @click="selectedTeacherIds = []">全清除</button>
+        </div>
 
-    <div class="teacher-summary" aria-label="老師狀態摘要">
-      <AtMetric label="正式老師" :value="activeTeachersCount" accent="var(--ds-success)" />
-      <AtMetric label="待審核" :value="pendingCount" accent="var(--ds-primary)" />
-      <AtMetric label="停用" :value="suspendedCount" accent="var(--ds-ink-mute)" />
-    </div>
+        <div class="teacher-summary" aria-label="老師狀態摘要">
+          <AtMetric label="正式老師" :value="activeTeachersCount" accent="var(--ds-success)" />
+          <AtMetric label="待審核" :value="pendingCount" accent="var(--ds-primary)" />
+          <AtMetric label="停用" :value="suspendedCount" accent="var(--ds-ink-mute)" />
+        </div>
+      </div>
+    </details>
 
     <AtSkeleton v-if="loading" rows="4" aria-label="老師資料載入中" />
     <div v-else-if="filteredTeachers.length === 0" class="empty-state">
@@ -1874,6 +1884,35 @@ watch(showBulkModal, (opened) => {
 .teachers-card :deep(.filter-item-search) {
   min-width: min(260px, 100%);
 }
+.teachers-insights-disclosure {
+  margin: 0 0 var(--ds-space-3);
+  border: 1px solid var(--ds-hairline);
+  border-radius: var(--ds-radius-lg, 12px);
+  background: var(--ds-canvas-soft);
+}
+.teachers-insights-disclosure summary {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 13px;
+  color: var(--ds-ink-secondary);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  list-style: none;
+}
+.teachers-insights-disclosure summary::-webkit-details-marker { display: none; }
+.teachers-insights-disclosure summary > .material-symbols-outlined { color: var(--ds-ink-mute); font-size: 18px; }
+.teachers-insights-disclosure summary > .material-symbols-outlined:last-child { transition: transform 160ms ease; }
+.teachers-insights-disclosure[open] summary > .material-symbols-outlined:last-child { transform: rotate(180deg); }
+.teachers-insights-disclosure summary:focus-visible { outline: 3px solid var(--ds-info-wash); outline-offset: 2px; border-radius: 5px; }
+.teachers-insights-disclosure__title { color: var(--ds-ink); }
+.teachers-insights-disclosure__hint { overflow: hidden; color: var(--ds-ink-mute); font-size: 11px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.teachers-insights-disclosure__body { display: grid; gap: 12px; padding: 0 13px 13px; }
+.teachers-insights-disclosure .teacher-chips-row { margin: 0; }
+.teachers-insights-disclosure .teacher-summary { margin: 0; }
 
 .tabs {
     display: flex;
