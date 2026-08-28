@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-28-learning-review-queues
+    published_at: "2026-08-28"
+    audiences:
+      - director
+    importance: digest
+    title: 評量審核佇列更清楚
+    summary: 待核准與需修改分開顯示，主任一眼知道下一步。
+    items:
+      - category: improved
+        text: 學習評量頁將「待主任核准」與「老師需修改」拆開，不必在同一個待審清單中判斷兩種工作。
+      - category: improved
+        text: 分頁數字、狀態篩選與空白提示同步對齊；目前工作佇列下方會直接說明該頁要做什麼。
+    source_refs:
+      - "changelog:2026-08-28:learning-review-queues"
+
   - id: staff-2026-08-28-in-app-bug-report
     published_at: "2026-08-28"
     audiences:

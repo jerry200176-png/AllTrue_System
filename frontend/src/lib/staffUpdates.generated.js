@@ -82,6 +82,38 @@ export const staffUpdates = [
     "version": "2026.08.28"
   },
   {
+    "id": "staff-2026-08-28-learning-review-queues",
+    "publishedAt": "2026-08-28",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "評量審核佇列更清楚",
+    "summary": "待核准與需修改分開顯示，主任一眼知道下一步。",
+    "items": [
+      "學習評量頁將「待主任核准」與「老師需修改」拆開，不必在同一個待審清單中判斷兩種工作。",
+      "分頁數字、狀態篩選與空白提示同步對齊；目前工作佇列下方會直接說明該頁要做什麼。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "學習評量頁將「待主任核准」與「老師需修改」拆開，不必在同一個待審清單中判斷兩種工作。",
+          "分頁數字、狀態篩選與空白提示同步對齊；目前工作佇列下方會直接說明該頁要做什麼。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-28:learning-review-queues"
+    ],
+    "date": "2026-08-28",
+    "version": "2026.08.28"
+  },
+  {
     "id": "staff-2026-08-28-in-app-bug-report",
     "publishedAt": "2026-08-28",
     "effectiveAt": null,

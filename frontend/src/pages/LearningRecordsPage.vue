@@ -51,10 +51,10 @@
     <div v-if="isDirectorRole && pageMode === 'records'" class="lr-review-tabs card" data-guide="learning-director-review-tabs">
       <div class="lr-tabs-row">
         <button :class="['lr-tab', { active: reviewTab === 'pending' }]" @click="reviewTab = 'pending'; exitSelectionMode()">
-          待審佇列 <span v-if="serverPendingBadge > 0" class="lr-tab-count warn">{{ serverPendingBadge }}</span>
+          待主任核准 <span v-if="serverPendingBadge > 0" class="lr-tab-count warn">{{ serverPendingBadge }}</span>
         </button>
         <button :class="['lr-tab', { active: reviewTab === 'changes_requested' }]" @click="reviewTab = 'changes_requested'; exitSelectionMode()">
-          需修改追蹤 <span v-if="serverChangesBadge > 0" class="lr-tab-count warn">{{ serverChangesBadge }}</span>
+          老師需修改 <span v-if="serverChangesBadge > 0" class="lr-tab-count warn">{{ serverChangesBadge }}</span>
         </button>
         <button :class="['lr-tab', { active: reviewTab === 'approved' }]" @click="reviewTab = 'approved'; exitSelectionMode()">
           已核准 <span class="lr-tab-count ok">{{ serverApprovedBadge }}</span>
@@ -95,9 +95,10 @@
         >{{ selectionMode ? '取消選取' : '批次操作' }}</button>
       </div>
 
-      <div class="lr-status-explainer" role="note">
-        <span><strong>填寫狀態</strong>：未填／已填</span>
-        <span><strong>審核狀態</strong>：待審／需修改／已核准／已退回</span>
+      <div v-if="isDirectorRole" class="lr-status-explainer" role="note">
+        <strong>{{ directorReviewHint }}</strong>
+        <span>填寫：未填／已填</span>
+        <span>審核：待核准／需修改／已核准／已退回</span>
       </div>
 
       <!-- Selection toolbar: select-all + batch actions, only visible in selection mode.
@@ -544,7 +545,7 @@
           </template>
           <template v-else-if="hasActiveFilters">找不到符合條件的評量記錄</template>
           <template v-else-if="isUsingDefaultWindow">近 {{ defaultWindowDays }} 天無評量記錄</template>
-          <template v-else-if="isDirectorRole && reviewTab === 'pending'">目前沒有待審評量</template>
+          <template v-else-if="isDirectorRole && reviewTab === 'pending'">目前沒有待主任核准的評量</template>
           <template v-else>尚無評量資料</template>
         </div>
         <div
@@ -1921,8 +1922,8 @@ const rejectedCount = computed(() => (records.value || []).filter(r => r.Status 
 // 載入前以 client 計數 fallback，避免閃爍。
 const serverStatusCounts = ref(null);
 const serverPendingBadge = computed(() => {
-  if (!serverStatusCounts.value) return pendingCount.value;
-  return Number(serverStatusCounts.value.pending || 0) + Number(serverStatusCounts.value.changes_requested || 0);
+  if (!serverStatusCounts.value) return kpiPendingOnlyCount.value;
+  return Number(serverStatusCounts.value.pending || 0);
 });
 const serverChangesBadge = computed(() => {
   if (!serverStatusCounts.value) return changesRequestedCount.value;
@@ -1938,6 +1939,13 @@ const kpiUnfilledCount = computed(() =>
     return r.Status === 'pending' || r.Status === 'changes_requested' || r.Status === 'approved';
   }).length
 );
+const directorReviewHint = computed(() => ({
+  pending: '確認內容後核准；空白評量先請老師補填。',
+  changes_requested: '依主任意見追蹤老師修改，完成後會回到待主任核准。',
+  approved: '這裡只供查閱已完成審核的評量。',
+  rejected: '這裡查看已退回紀錄，必要時再開啟處理。',
+  all: '跨狀態查閱全部評量。',
+}[reviewTab.value] || ''));
 const parentFeedbackUnread = (record) => {
   const fb = record?.parent_feedback;
   return isTeacher.value ? !!fb?.unread_for_teacher : !!fb?.unread_for_director;
@@ -2093,7 +2101,7 @@ const hiddenByTabCount = computed(() => {
   }
   if (isDirectorRole.value) {
     if (reviewTab.value === 'pending') {
-      return all.length - all.filter(r => r.Status === 'pending' || r.Status === 'changes_requested').length;
+      return all.length - all.filter(r => r.Status === 'pending').length;
     }
     if (reviewTab.value === 'changes_requested') {
       return all.length - all.filter(r => r.Status === 'changes_requested').length;
@@ -2120,8 +2128,8 @@ const currentTabLabel = computed(() => {
   }
   if (isDirectorRole.value) {
     return ({
-      pending: '待審佇列',
-      changes_requested: '需修改追蹤',
+      pending: '待主任核准',
+      changes_requested: '老師需修改',
       approved: '已核准',
       rejected: '已退回',
     })[reviewTab.value] || '';
@@ -2142,7 +2150,7 @@ const isStatusInCurrentTab = (status) => {
   if (isDirectorRole.value) {
     const t = reviewTab.value;
     if (t === 'all') return true;
-    if (t === 'pending') return status === 'pending' || status === 'changes_requested';
+    if (t === 'pending') return status === 'pending';
     return t === status;
   }
   return true;
@@ -3243,10 +3251,10 @@ const _buildRecordsParams = (page = 1, { beforeId = null } = {}) => {
   if (feedbackFilter.value === 'has' || feedbackFilter.value === 'unread' || feedbackFilter.value === 'awaiting_reply') {
     params.set('feedback', feedbackFilter.value);
   }
-  // 主任審核分頁改走伺服器端 status 篩選，讓列表＝該狀態全量（分頁載入），與 badge/總覽一致（#139/#595）。
+  // 主任審核分頁改走伺服器端 status 篩選，讓列表＝該工作佇列全量（分頁載入）。
   if (isDirectorRole.value && !isTeacher.value) {
     const tabStatus = {
-      pending: 'pending,changes_requested',
+      pending: 'pending',
       changes_requested: 'changes_requested',
       approved: 'approved',
       rejected: 'rejected',
