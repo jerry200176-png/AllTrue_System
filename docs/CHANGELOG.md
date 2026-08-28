@@ -1,3 +1,11 @@
+## 2026-08-29 — improved(ux): 出缺勤工作區的切換與狀態更容易理解
+
+<!-- release-notes: staff_update=staff-2026-08-29-attendance-tab-status-a11y -->
+
+- 主任的「學生點名／老師打卡」分頁現在會明確連到目前內容區，切換後螢幕閱讀器與鍵盤使用者都能辨識工作區。
+- 待點名堂次的到班狀態按鈕補上可讀的選取狀態與鍵盤焦點提示，不再只依賴顏色或視覺 active 樣式。
+- 不改點名資料、扣堂、RFID、API、權限或既有送出行為；老師模式維持原有單一學生點名工作區。
+
 ## 2026-08-29 — improved(ux): 老師狀態與識別資訊更清楚
 
 <!-- release-notes: staff_update=staff-2026-08-29-teachers-list-status -->

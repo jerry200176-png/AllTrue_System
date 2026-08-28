@@ -15,6 +15,8 @@
     <!-- Tab Switcher（director/super_admin 才顯示） -->
     <div v-if="!isTeacher" class="att-tabs" role="tablist" aria-label="出缺勤工作區">
       <button
+        id="attendance-tab-student"
+        type="button"
         class="att-tab-btn"
         :class="{ active: activeTab === 'student' }"
         role="tab"
@@ -23,6 +25,8 @@
         @click="switchTab('student')"
       >學生點名 <span class="att-tab-note">主任</span></button>
       <button
+        id="attendance-tab-teacher"
+        type="button"
         class="att-tab-btn"
         :class="{ active: activeTab === 'teacher' }"
         role="tab"
@@ -33,7 +37,7 @@
     </div>
 
     <!-- ═══ Teacher Attendance Tab ═══ -->
-    <div v-if="activeTab === 'teacher' && !isTeacher" id="attendance-teacher-panel" role="tabpanel" aria-label="老師打卡">
+    <div v-if="activeTab === 'teacher' && !isTeacher" id="attendance-teacher-panel" role="tabpanel" aria-labelledby="attendance-tab-teacher" tabindex="0">
       <section class="att-workspace-intro" aria-labelledby="teacher-attendance-focus-title">
         <div>
           <p class="att-workspace-eyebrow">老師打卡工作區</p>
@@ -184,7 +188,15 @@
     </div>
 
     <!-- ═══ Student Attendance Tab（原有內容） ═══ -->
-    <div v-if="activeTab === 'student' || isTeacher" id="attendance-student-panel" role="tabpanel" aria-label="學生點名">
+    <div
+      v-if="activeTab === 'student' || isTeacher"
+      id="attendance-student-panel"
+      role="tabpanel"
+      :aria-labelledby="isTeacher ? 'attendance-student-panel-title' : 'attendance-tab-student'"
+      tabindex="0"
+    >
+
+    <h2 id="attendance-student-panel-title" class="sr-only">學生點名</h2>
 
     <!-- Teacher first-run summary: one decision, one next action. -->
     <section v-if="isTeacher" class="att-teacher-snapshot card" aria-labelledby="att-teacher-snapshot-title">
@@ -284,6 +296,8 @@
                   <div class="att-status-group">
                     <button
                       v-for="opt in statusOptions" :key="opt.value"
+                      type="button"
+                      :aria-pressed="pendingMarkStatus[s.class_session_id] === opt.value"
                       :class="['att-status-btn', `att-st-${opt.value}`, { active: pendingMarkStatus[s.class_session_id] === opt.value }]"
                       @click="setStatus(s.class_session_id, opt.value)"
                     >{{ opt.short }}</button>
@@ -347,6 +361,8 @@
               <div class="att-status-group att-status-group-mobile">
                 <button
                   v-for="opt in statusOptions" :key="opt.value"
+                  type="button"
+                  :aria-pressed="pendingMarkStatus[s.class_session_id] === opt.value"
                   :class="['att-status-btn', `att-st-${opt.value}`, { active: pendingMarkStatus[s.class_session_id] === opt.value }]"
                   @click="setStatus(s.class_session_id, opt.value)"
                 >{{ opt.label }}</button>
@@ -3128,6 +3144,8 @@ watch(() => props.branchId, () => {
   min-height: 44px;
 }
 .att-tab-btn:hover { color: var(--ds-ink); }
+.att-tab-btn:focus-visible,
+.att-status-btn:focus-visible { outline: 3px solid var(--ds-info-wash); outline-offset: 2px; }
 .att-tab-btn.active {
   color: var(--ds-primary);
   border-bottom-color: var(--ds-primary);
