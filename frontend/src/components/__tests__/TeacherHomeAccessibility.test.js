@@ -23,4 +23,12 @@ describe('TeacherHome controls accessibility', () => {
     expect(source).toContain(':aria-label="activeReportMap[ev.id] ? \'查看課表回報\' : \'回報課表有誤\'"');
     expect(source).toContain('type="button"\n                class="th-report-btn"');
   });
+
+  it('does not present an incomplete work queue as an all-clear state', () => {
+    expect(source).toContain('const teacherTasksError = computed');
+    expect(source).toContain('今天的工作清單尚未完整載入');
+    expect(source).toContain('為避免漏掉點名或評量，暫時不把空白清單當成已完成。');
+    expect(source).toContain('role="alert"');
+    expect(source).toContain('重新整理今日任務');
+  });
 });

@@ -145,6 +145,9 @@ test.describe('Teacher daily workflow real Vue page', () => {
     await page.goto('/pilot-mount.html?page=teacher');
     await expect(page.getByRole('heading', { name: '今天要完成' })).toBeVisible();
     await expect(page.getByText('無法載入課表，請稍後重試')).toBeVisible();
+    await expect(page.getByRole('alert')).toContainText('今天的工作清單尚未完整載入');
+    await expect(page.getByText('今天沒有待完成工作')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '重新整理今日任務' })).toBeVisible();
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
     expect(overflow).toBeTruthy();
   });
