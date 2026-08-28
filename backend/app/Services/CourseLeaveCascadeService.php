@@ -67,6 +67,7 @@ class CourseLeaveCascadeService
                 'VoidedAt'       => now(),
                 'VoidedByUserID' => $actorUserId ?: null,
                 'VoidReason'     => $reason,
+                'updated_at'     => now(),
             ]);
         StudentSignIn::where('ClassSessionID', $classSessionId)
             ->active()
