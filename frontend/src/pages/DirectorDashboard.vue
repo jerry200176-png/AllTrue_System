@@ -61,6 +61,7 @@
           id="director-workbench-panel-focus"
           class="director-workbench-v2__focus"
           role="tabpanel"
+          aria-label="今天的主任工作"
           aria-labelledby="director-workbench-tab-focus"
           tabindex="0"
         >
