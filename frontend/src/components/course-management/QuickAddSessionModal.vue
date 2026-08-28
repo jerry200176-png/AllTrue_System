@@ -39,6 +39,13 @@
         <button type="button" class="ghost conflict-retry" @click="$emit('check')">重新檢查</button>
       </div>
 
+      <div v-else-if="conflict && conflict.existing_session_id" class="existing-session-banner">
+        <p class="conflict-msg">
+          這個日期／時段已經有一堂課（未上課）。送出只會更新這一堂，不會重複新增，也不會增加購買堂數。
+        </p>
+        <p class="existing-session-hint">如果是要完成點名，請在上課後到「出缺勤」處理。</p>
+      </div>
+
       <div v-if="showAutoApproveWarning" class="conflict-banner auto-approve-banner">
         <p class="conflict-msg">
           此時段已經過去，送出後這堂會直接標記為「已上課」，評量也會自動核准，不會再進入審核清單。請確認日期／時間沒有選錯。
@@ -97,6 +104,11 @@ function handleSubmit() {
   background: var(--ds-warning-wash); border: 1px solid var(--ds-warning); border-radius: 8px;
   padding: 10px 14px; margin: 12px 0;
 }
+.existing-session-banner {
+  background: var(--ds-info-wash); border: 1px solid var(--ds-info); border-radius: 8px;
+  padding: 10px 14px; margin: 12px 0;
+}
+.existing-session-hint { color: var(--text-light); font-size: 12px; margin: 4px 0 0; line-height: 1.5; }
 .conflict-msg { color: var(--ds-primary); font-size: 13px; font-weight: 600; margin: 0 0 6px; line-height: 1.5; }
 .conflict-actions { margin: 0; padding-left: 18px; color: var(--ds-danger); font-size: 12px; line-height: 1.6; }
 .conflict-retry { margin-top: 8px; }

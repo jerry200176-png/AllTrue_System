@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.08.28",
     "date": "2026-08-28",
     "title": "2026.08.28 草稿（未發布）",
-    "summary": "請假安全撤銷與試聽轉正式；評量審核佇列分工更清楚",
+    "summary": "請假安全撤銷與試聽轉正式；科目數統計摘要不再誤顯示 0",
     "audience": [
       "teacher",
       "director"
@@ -18,7 +18,8 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
-          "請假安全撤銷與試聽轉正式"
+          "請假安全撤銷與試聽轉正式",
+          "科目數統計摘要不再誤顯示 0"
         ]
       },
       {
@@ -34,6 +35,7 @@ export const changelogDraftNotes = [
     ],
     "items": [
       "請假安全撤銷與試聽轉正式",
+      "科目數統計摘要不再誤顯示 0",
       "評量審核佇列分工更清楚",
       "問題回報更穩定",
       "出缺勤工作區先處理異常",
