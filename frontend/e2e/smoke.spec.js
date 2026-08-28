@@ -63,9 +63,7 @@ async function navTo(page, navLabel) {
     }
   }
   // 側欄項目是 <button>，可及名稱含 nav-label 文字；可能尾隨 badge 數字故用 substring。
-  const navBtn = navGroup
-    ? page.locator('.sidebar-more-item').filter({ hasText: navLabel }).first()
-    : page.getByRole('button', { name: navLabel, exact: false }).first();
+  const navBtn = page.getByRole('button', { name: navLabel, exact: false }).first();
   await navBtn.click({ force: true });
   await page.waitForLoadState('networkidle').catch(() => {});
   await expect(navGroup ? page.locator('.sidebar-more-trigger') : navBtn).toHaveClass(/active/, { timeout: 10_000 });
