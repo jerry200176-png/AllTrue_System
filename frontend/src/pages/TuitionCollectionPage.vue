@@ -1,15 +1,24 @@
 <template>
   <div class="tc-page">
-    <div class="tc-header">
-      <div>
-        <h2>帳務中心</h2>
-        <p class="tc-subtitle">未繳待收、待對帳、續課提醒，以及已結清課程彙總與收據流水</p>
-      </div>
-      <button class="tc-refresh-btn" @click="refreshActiveTab()" :disabled="activeTabLoading">
-        <span class="material-symbols-outlined" style="font-size:17px">refresh</span>
-        重新整理
-      </button>
-    </div>
+    <AtPageHeader
+      title="帳務中心"
+      description="處理未繳待收、待對帳、續課提醒與已結清課程。"
+      icon="account_balance"
+      data-guide="tuition-header"
+    >
+      <template #meta><span>先確認對象，再完成回報或入帳</span></template>
+      <template #actions>
+        <AtButton
+          variant="ghost"
+          shape="rect"
+          icon="refresh"
+          :loading="activeTabLoading"
+          @click="refreshActiveTab()"
+        >
+          重新整理
+        </AtButton>
+      </template>
+    </AtPageHeader>
 
     <OperationsQuickStart
       compact
@@ -933,6 +942,8 @@ import PaymentEntryModal from '../components/PaymentEntryModal.vue';
 import ReceiptModal from '../components/ReceiptModal.vue';
 import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
 import OperationsQuickStart from '../components/OperationsQuickStart.vue';
+import AtButton from '../components/design-system/AtButton.vue';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import { adoptionErrorType, trackWorkflowEvent } from '../lib/adoptionTelemetry.js';
 import {
   formatTuitionSettleSummary,
@@ -2230,47 +2241,6 @@ loadAlerts();
   padding: 24px;
   box-shadow: 0 1px 4px rgba(0,0,0,0.06);
 }
-
-/* ─── Header ─── */
-.tc-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 20px;
-}
-.tc-header h2 {
-  margin: 0;
-  font-size: 20px;
-  letter-spacing: -0.01em;
-}
-.tc-subtitle {
-  color: var(--text-light);
-  font-size: 13px;
-  margin-top: 2px;
-}
-.tc-refresh-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 7px 14px;
-  border: 1px solid var(--border);
-  background: var(--card-bg);
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text);
-  transition: all 0.15s;
-  font-family: inherit;
-}
-.tc-refresh-btn:hover:not(:disabled) {
-  background: var(--bg);
-  border-color: var(--primary-light);
-  color: var(--primary);
-}
-.tc-refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ─── Accounting center tabs ─── */
 .acct-tabs {
