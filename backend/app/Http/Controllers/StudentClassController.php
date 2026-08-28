@@ -948,7 +948,7 @@ class StudentClassController extends Controller
                             continue;
                         }
                         $status = strtolower((string) ($row->Status ?? ''));
-                        if (in_array($status, ['cancelled', 'leave'], true)) {
+                        if ($status === 'cancelled' || $status === 'leave') {
                             continue;
                         }
                         $d = $row->SessionDate ? Carbon::parse($row->SessionDate)->toDateString() : null;
@@ -1018,7 +1018,7 @@ class StudentClassController extends Controller
                         continue;
                     }
                     $status = strtolower((string) ($row->Status ?? ''));
-                    if (in_array($status, ['cancelled', 'leave'], true)) {
+                    if ($status === 'cancelled' || $status === 'leave') {
                         continue;
                     }
                     $d = $row->SessionDate ? Carbon::parse($row->SessionDate)->toDateString() : null;
