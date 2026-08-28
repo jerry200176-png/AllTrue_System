@@ -550,6 +550,9 @@ test.describe('UI foundation — real Vue page evidence', () => {
       expect(layout.hiddenLegacyWorkbench).toBe(false);
       expect(layout.primaryDecisionCount).toBeLessThanOrEqual(7);
       await expect(page.getByRole('tab', { name: '今天', exact: true })).toHaveAttribute('aria-selected', 'true');
+      await expect(page.getByRole('tab', { name: '今天', exact: true })).toHaveAttribute('aria-controls', 'director-workbench-panel-focus');
+      await expect(page.locator('#director-workbench-panel-focus')).toHaveAttribute('role', 'tabpanel');
+      await expect(page.locator('#director-workbench-panel-focus')).toHaveAttribute('aria-labelledby', 'director-workbench-tab-focus');
       if (layout.primaryCtaCount > 0) {
         await expect(page.locator('.director-task__action').first()).toBeVisible();
         if (vp.width <= 768) {
@@ -564,6 +567,9 @@ test.describe('UI foundation — real Vue page evidence', () => {
       const fullView = page.getByRole('tab', { name: '完整營運', exact: true });
       await fullView.click();
       await expect(page.locator('.director-workbench-v2__full')).toBeVisible();
+      await expect(fullView).toHaveAttribute('aria-controls', 'director-workbench-panel-full');
+      await expect(page.locator('#director-workbench-panel-full')).toHaveAttribute('role', 'tabpanel');
+      await expect(page.locator('#director-workbench-panel-full')).toHaveAttribute('aria-labelledby', 'director-workbench-tab-full');
       await expect.poll(() => secondaryRequests.length).toBeGreaterThan(0);
       await expect(page.getByText('近期紀錄與分析', { exact: true })).toBeVisible();
       await page.locator('.director-workbench-v2').screenshot({ path: path.join(outDir, `vue-director-v2-full-${vp.name}.png`) });

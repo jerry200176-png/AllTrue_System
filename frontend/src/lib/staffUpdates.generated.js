@@ -140,6 +140,38 @@ export const staffUpdates = [
     "version": "2026.08.29"
   },
   {
+    "id": "staff-2026-08-29-director-view-switcher-a11y",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "主任總覽檢視切換更清楚",
+    "summary": "今天與完整營運兩個工作區的切換關係更容易理解。",
+    "items": [
+      "主任總覽的檢視分頁會清楚連到對應內容區，鍵盤與螢幕閱讀器能辨識目前工作區。",
+      "今日待辦優先、完整營運按需載入與原有導頁、資料、權限行為維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "主任總覽的檢視分頁會清楚連到對應內容區，鍵盤與螢幕閱讀器能辨識目前工作區。",
+          "今日待辦優先、完整營運按需載入與原有導頁、資料、權限行為維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:director-view-switcher-a11y"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
     "id": "staff-2026-08-29-course-management-hierarchy",
     "publishedAt": "2026-08-29",
     "effectiveAt": null,
