@@ -53,4 +53,17 @@ describe('operations quick-start UX contract', () => {
     expect(director).toContain('營運指標與常用入口');
     expect(director).toContain('@toggle="secondaryToolsOpen = $event.currentTarget.open"');
   });
+
+  it('keeps course, billing, and calendar primary work ahead of guidance panels', () => {
+    const course = pageSource('CourseManagement.vue');
+    const billing = pageSource('TuitionCollectionPage.vue');
+    const calendar = pageSource('SmartCalendar.vue');
+
+    expect(course).toContain('class="course-context-disclosure"');
+    expect(course).toContain('class="course-stats-disclosure"');
+    expect(billing).toContain('class="tc-process-disclosure"');
+    expect(billing).toContain('class="tc-summary-disclosure"');
+    expect(calendar).toContain('class="calendar-process-disclosure"');
+    expect(calendar).toContain('data-guide="calendar-toolbar"');
+  });
 });

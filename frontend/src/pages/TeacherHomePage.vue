@@ -84,15 +84,22 @@
         <span class="th-work-queue__count" aria-live="polite">{{ teacherTasks.length }} 項</span>
       </div>
 
-      <section v-if="!teacherTasksLoading && teacherTopPriorities.length" class="th-top-priorities" aria-labelledby="th-top-priorities-title">
-        <h4 id="th-top-priorities-title">今天最重要的事</h4>
-        <ol>
-          <li v-for="task in teacherTopPriorities" :key="`top-${task.id}`" :class="`th-top-priorities__item th-top-priorities__item--${task.severity}`">
-            <strong>{{ task.title }}</strong>
-            <span>{{ task.summary }}</span>
-          </li>
-        </ol>
-      </section>
+      <details v-if="!teacherTasksLoading && teacherTopPriorities.length" class="th-priority-disclosure">
+        <summary>
+          <span>查看今天的優先順序</span>
+          <strong>{{ teacherTopPriorities.length }} 項高優先</strong>
+          <span class="material-symbols-outlined" aria-hidden="true">expand_more</span>
+        </summary>
+        <section class="th-top-priorities" aria-labelledby="th-top-priorities-title">
+          <h4 id="th-top-priorities-title">排序依據</h4>
+          <ol>
+            <li v-for="task in teacherTopPriorities" :key="`top-${task.id}`" :class="`th-top-priorities__item th-top-priorities__item--${task.severity}`">
+              <strong>{{ task.title }}</strong>
+              <span>{{ task.summary }}</span>
+            </li>
+          </ol>
+        </section>
+      </details>
 
       <div v-if="teacherTasksLoading" class="th-work-queue__list" aria-label="今日工作載入中">
         <div v-for="i in 3" :key="i" class="th-work-task th-work-task--skeleton"></div>
@@ -1636,6 +1643,13 @@ onBeforeUnmount(() => {
 .th-work-queue h3 { margin: 0; color: var(--ds-ink); font-size: 20px; }
 .th-work-queue__description { margin: 5px 0 0; color: var(--ds-ink-mute); font-size: 13px; }
 .th-work-queue__count { flex: 0 0 auto; color: var(--ds-ink); font-size: 18px; font-variant-numeric: tabular-nums; font-weight: 700; white-space: nowrap; }
+.th-priority-disclosure { margin: 12px 0 4px; border-top: 1px solid var(--ds-hairline); border-bottom: 1px solid var(--ds-hairline); }
+.th-priority-disclosure summary { display: flex; align-items: center; gap: 10px; min-height: 42px; color: var(--ds-ink-secondary); font-size: 11px; font-weight: 800; cursor: pointer; list-style: none; }
+.th-priority-disclosure summary::-webkit-details-marker { display: none; }
+.th-priority-disclosure summary::after { content: '＋'; margin-left: auto; color: var(--ds-ink-mute); font-size: 15px; }
+.th-priority-disclosure[open] summary::after { content: '−'; }
+.th-priority-disclosure summary strong { color: var(--ds-warning); font-size: 11px; }
+.th-priority-disclosure summary:focus-visible { outline: 3px solid var(--ds-info-wash); outline-offset: 2px; border-radius: 4px; }
 .th-top-priorities { margin: 12px 0 4px; padding: 14px 16px; border: 1px solid var(--ds-hairline); border-radius: 12px; background: var(--ds-canvas-soft); }
 .th-top-priorities h4 { margin: 0 0 8px; color: var(--ds-ink-secondary); font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.02em; }
 .th-top-priorities ol { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }

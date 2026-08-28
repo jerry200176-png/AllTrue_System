@@ -24,16 +24,23 @@
           </div>
         </template>
       </AtPageHeader>
-      <OperationsQuickStart
-        v-if="!isTeacher"
-        compact
-        eyebrow="排課處理流程"
-        heading="先選工作，再操作課表"
-        description="新增排課請用快速排課；既有課程請先點課卡，再選調課或換代課。"
-        :current-id="calendarWorkflowIntent"
-        :steps="calendarFlowSteps"
-        @select="selectCalendarFlowStep"
-      />
+      <details v-if="!isTeacher" class="calendar-process-disclosure">
+        <summary>
+          <span class="material-symbols-outlined" aria-hidden="true">route</span>
+          <span class="calendar-process-disclosure__title">排課處理流程</span>
+          <span class="calendar-process-disclosure__hint">新增排課用快速排課；既有課程先點課卡</span>
+          <span class="material-symbols-outlined" aria-hidden="true">expand_more</span>
+        </summary>
+        <OperationsQuickStart
+          compact
+          eyebrow="排課處理流程"
+          heading="先選工作，再操作課表"
+          description="新增排課請用快速排課；既有課程請先點課卡，再選調課或換代課。"
+          :current-id="calendarWorkflowIntent"
+          :steps="calendarFlowSteps"
+          @select="selectCalendarFlowStep"
+        />
+      </details>
       <p v-if="!isTeacher && calendarWorkflowHint" class="calendar-workflow-hint" role="status">{{ calendarWorkflowHint }}</p>
       <p v-if="!isTeacher && calendarFocusMessage" class="calendar-focus-context" role="status">
         <span class="material-symbols-outlined" aria-hidden="true">my_location</span>
@@ -2644,6 +2651,33 @@ onMounted(() => {
   max-width: 100%;
   min-width: 0;
 }
+.calendar-process-disclosure {
+  margin: 0 0 16px;
+  border: 1px solid var(--ds-hairline);
+  border-radius: var(--ds-radius-lg, 12px);
+  background: var(--ds-canvas-soft);
+}
+.calendar-process-disclosure summary {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 13px;
+  color: var(--ds-ink-secondary);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  list-style: none;
+}
+.calendar-process-disclosure summary::-webkit-details-marker { display: none; }
+.calendar-process-disclosure summary > .material-symbols-outlined { color: var(--ds-ink-mute); font-size: 18px; }
+.calendar-process-disclosure summary > .material-symbols-outlined:last-child { transition: transform 160ms ease; }
+.calendar-process-disclosure[open] summary > .material-symbols-outlined:last-child { transform: rotate(180deg); }
+.calendar-process-disclosure summary:focus-visible { outline: 3px solid var(--ds-info-wash); outline-offset: 2px; border-radius: 5px; }
+.calendar-process-disclosure__title { color: var(--ds-ink); }
+.calendar-process-disclosure__hint { overflow: hidden; color: var(--ds-ink-mute); font-size: 11px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.calendar-process-disclosure > .operations-quick-start { margin: 0 12px 12px; }
 .smart-cal-header {
   display: flex;
   align-items: flex-end;
