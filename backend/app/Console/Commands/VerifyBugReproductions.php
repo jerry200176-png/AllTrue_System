@@ -58,6 +58,7 @@ class VerifyBugReproductions extends Command
                           WHERE LOWER(cs.Status) IN ({$nonAttendanceStatuses})
                             AND EXISTS (SELECT 1 FROM LearningRecord lr
                                         WHERE lr.ClassSessionID = cs.id AND lr.VoidedAt IS NULL
+                                          AND LOWER(lr.Status) <> 'approved'
                                           )",
             ],
             [
