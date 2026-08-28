@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.08.28",
     "date": "2026-08-28",
     "title": "2026.08.28 草稿（未發布）",
-    "summary": "問題回報更穩定；出缺勤工作區先處理異常",
+    "summary": "評量審核佇列分工更清楚；問題回報更穩定",
     "audience": [
       "teacher",
       "director"
@@ -18,6 +18,7 @@ export const changelogDraftNotes = [
       {
         "title": "其他改善",
         "items": [
+          "評量審核佇列分工更清楚",
           "問題回報更穩定",
           "出缺勤工作區先處理異常",
           "排課操作提供安全復原",
@@ -26,6 +27,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "評量審核佇列分工更清楚",
       "問題回報更穩定",
       "出缺勤工作區先處理異常",
       "排課操作提供安全復原",
