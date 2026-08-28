@@ -1,10 +1,15 @@
 <template>
   <div class="profile-center-page">
-    <div class="page-header" data-guide="profile-header">
-      <h2>個人資料管理</h2>
-      <div class="page-desc">統一管理個人資料、安全設定與通知偏好。</div>
-      <div v-if="forcePasswordChange" class="force-banner">首次登入需先修改密碼，完成前其他功能將暫時鎖定。</div>
-    </div>
+    <AtPageHeader
+      title="個人資料管理"
+      description="統一管理個人資料、安全設定與通知偏好。"
+      icon="manage_accounts"
+      data-guide="profile-header"
+    >
+      <template v-if="forcePasswordChange" #meta>
+        <span class="force-banner">首次登入需先修改密碼，完成前其他功能將暫時鎖定。</span>
+      </template>
+    </AtPageHeader>
 
     <div class="profile-tabs card" data-guide="profile-tabs">
       <button :class="['tab-btn', { active: activeTab === 'profile' }]" :disabled="forcePasswordChange" @click="setActiveTab('profile')">基本資料</button>
@@ -346,6 +351,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AvatarCropModal from '../components/AvatarCropModal.vue';
 import {
   getMe,

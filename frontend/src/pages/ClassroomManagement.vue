@@ -1,11 +1,17 @@
 <template>
-  <div>
+  <div class="classroom-page">
+    <AtPageHeader
+      title="教室管理"
+      description="管理目前分校的教室，供排課時選擇地點。"
+      icon="meeting_room"
+      data-guide="classroom-header"
+    >
+      <template #actions>
+        <AtButton shape="rect" variant="primary" icon="add" @click="openAdd">新增教室</AtButton>
+      </template>
+    </AtPageHeader>
+
     <div class="card">
-      <div class="header-actions" data-guide="classroom-header">
-        <h2>教室管理</h2>
-        <p class="ref-hint">管理當前分校的教室，供排課時選擇地點</p>
-        <button class="primary" @click="openAdd">+ 新增教室</button>
-      </div>
 
       <div v-if="loading" class="hint">載入中...</div>
       <table v-else-if="rooms.length" class="room-table" data-guide="classroom-table">
@@ -90,6 +96,8 @@
 
 <script setup>
 import { ref, watch, onMounted } from 'vue';
+import AtButton from '../components/design-system/AtButton.vue';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import { supabase } from '../supabase';
 
 const props = defineProps({

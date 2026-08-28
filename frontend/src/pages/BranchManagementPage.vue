@@ -1,12 +1,15 @@
 <template>
   <div class="branch-mgmt">
-    <div class="branch-mgmt__header">
-      <div>
-        <h1 class="branch-mgmt__title">分校管理</h1>
-        <p class="branch-mgmt__sub">管理所有分校設定，僅超級管理員可操作</p>
-      </div>
-      <button class="btn-primary" @click="openCreate">＋ 新增分校</button>
-    </div>
+    <AtPageHeader
+      title="分校管理"
+      description="管理所有分校設定，僅超級管理員可操作。"
+      icon="store"
+      data-guide="branch-management-header"
+    >
+      <template #actions>
+        <AtButton shape="rect" variant="primary" icon="add" @click="openCreate">新增分校</AtButton>
+      </template>
+    </AtPageHeader>
 
     <div v-if="loading" class="branch-mgmt__loading">載入中…</div>
     <div v-else-if="error" class="branch-mgmt__error">{{ error }}</div>
@@ -153,6 +156,8 @@
 </template>
 
 <script setup>
+import AtButton from '../components/design-system/AtButton.vue';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import { ref, onMounted } from 'vue';
 
 const props = defineProps({ token: String });
