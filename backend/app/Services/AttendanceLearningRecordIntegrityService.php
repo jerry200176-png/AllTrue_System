@@ -21,7 +21,6 @@ class AttendanceLearningRecordIntegrityService
     {
         return array_merge(['scheduled', 'absent'], CourseLeaveCascadeService::NON_BILLABLE_STATUSES, ['suspended']);
     }
-
     public function scan(?int $campusId = null, int $limit = 500): array
     {
         $limit = max(1, min($limit, 2000));
