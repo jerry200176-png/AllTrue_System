@@ -35,7 +35,6 @@ class AttendanceLearningRecordIntegrityTest extends TestCase
         $this->assertSame(1, DB::table('LearningRecord')->where('ClassSessionID', $sessionId)->whereNull('VoidedAt')->count());
         $this->assertSame($studentId, (int) DB::table('StudentClass')->where('ID', $classId)->value('StudentID'));
     }
-
     public function test_repair_voids_record_on_non_attendance_session_and_is_idempotent(): void
     {
         [, $classId] = $this->studentAndClass();
@@ -70,7 +69,6 @@ class AttendanceLearningRecordIntegrityTest extends TestCase
         $this->assertSame(0, $second['voided']);
         $this->assertSame($firstVoidedAt, DB::table('LearningRecord')->where('id', $lrId)->value('VoidedAt'));
     }
-
     public function test_strict_attendance_ensure_fails_if_no_active_record_can_be_restored(): void
     {
         [, $classId] = $this->studentAndClass();
@@ -103,7 +101,6 @@ class AttendanceLearningRecordIntegrityTest extends TestCase
             \App\Models\ClassSession::findOrFail($sessionId)
         );
     }
-
     /** @return array{0:int,1:int} */
     private function studentAndClass(): array
     {

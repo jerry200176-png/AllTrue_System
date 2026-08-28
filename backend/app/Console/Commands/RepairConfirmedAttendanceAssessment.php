@@ -137,7 +137,7 @@ class RepairConfirmedAttendanceAssessment extends Command
             'date' => $target['date'],
             'start' => $target['start'],
             'end' => $target['end'],
-            'current_status' => $session ? strtolower((string) $session->Status) : null,
+            'current_status' => $session ? strtolower((string) $session->getAttribute('Status')) : null,
             'active_learning_records' => $active,
             'all_learning_records' => $all,
             'expected_status' => $target['expected_status'],

@@ -141,7 +141,7 @@ class AttendanceLearningRecordIntegrityService
         foreach ($before['missing_learning_records'] as $row) {
             $sessionId = (int) ($row['session_id'] ?? 0);
             $session = ClassSession::query()->find($sessionId);
-            $sc = $session ? StudentClass::query()->find((int) $session->StudentClassID) : null;
+            $sc = $session ? StudentClass::query()->find((int) $session->getAttribute('StudentClassID')) : null;
             if (!$session || !$sc) {
                 $blocked[] = $sessionId;
                 continue;
