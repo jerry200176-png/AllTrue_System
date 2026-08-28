@@ -95,7 +95,7 @@ test.describe('Teacher daily workflow real Vue page', () => {
   test('keeps the first attendance action visible on mobile', async ({ page }) => {
     await installTeacherMocks(page);
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto('/pilot-mount.html?page=attendance');
+    await page.goto('/pilot-mount.html?page=attendance&role=teacher');
     await expect(page.getByRole('heading', { name: '先完成今日點名' })).toBeVisible();
     await expect(page.getByRole('button', { name: '開始點名' }).first()).toBeVisible();
     await expect(page.locator('[data-guide="attendance-pending-list"]')).toBeVisible();

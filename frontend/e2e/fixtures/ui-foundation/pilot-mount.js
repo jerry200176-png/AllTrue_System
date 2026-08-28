@@ -84,7 +84,7 @@ createApp({
       return () => h(PageComponent, {
         branchId: 1,
         userId: 9001,
-        userRole: 'teacher',
+        userRole: role,
       });
     }
     return () => h(PageComponent, { branchId: 1 });

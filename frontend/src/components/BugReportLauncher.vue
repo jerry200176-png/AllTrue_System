@@ -16,15 +16,16 @@
     </button>
 
     <!-- Submit dialog -->
-    <div v-if="showForm" class="modal-overlay">
-      <div
-        class="modal-card"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="bug-report-title"
-        @paste="onPaste"
-      >
-        <h3 id="bug-report-title"><span class="material-symbols-outlined">bug_report</span> 回報系統問題</h3>
+    <AtDialog
+      :open="showForm"
+      title="回報系統問題"
+      size="md"
+      panel-class="bug-report-dialog"
+      :close-on-backdrop="!submitting"
+      close-label="關閉回報視窗"
+      @close="!submitting && closeForm()"
+    >
+      <div class="bug-report-form" @paste="onPaste">
 
         <label>問題標題 <span class="optional">（選填，自動帶入頁面）</span></label>
         <input v-model="title" class="form-input" placeholder="簡述問題（留空則自動填入）" maxlength="200" />
@@ -85,24 +86,24 @@
           將自動附帶當前頁面：<strong>{{ currentPageKey || '未知' }}</strong>
         </div>
 
-        <div class="form-actions">
-          <button class="btn-cancel" @click="closeForm">取消</button>
-          <button class="btn-submit" :disabled="!canSubmit || submitting" @click="doSubmit">
-            {{ submitting ? '提交中...' : '提交回報' }}
-          </button>
-        </div>
-
         <div v-if="submitSuccess" class="success-msg">
           <span class="material-symbols-outlined">check_circle</span> 已提交，感謝回報！
         </div>
         <div v-if="submitError" class="error-msg">{{ submitError }}</div>
       </div>
-    </div>
+      <template #actions>
+        <button class="btn-cancel" :disabled="submitting" @click="closeForm">取消</button>
+        <button class="btn-submit" :disabled="!canSubmit || submitting" @click="doSubmit">
+          {{ submitting ? '提交中...' : '提交回報' }}
+        </button>
+      </template>
+    </AtDialog>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import AtDialog from './design-system/AtDialog.vue';
 import { submitBugReport } from '../lib/bugReportsApi';
 import {
   extractImageFiles,
@@ -425,16 +426,7 @@ async function doSubmit() {
 .fab.dragging { cursor: grabbing; transform: none; transition: none; }
 .fab .material-symbols-outlined { font-size: 26px; }
 
-.modal-overlay {
-  position: fixed; inset: 0; background: rgba(0,0,0,0.4);
-  display: flex; align-items: center; justify-content: center; z-index: 1000;
-}
-.modal-card {
-  background: var(--card-bg); border-radius: var(--radius); padding: 24px;
-  width: 480px; max-width: 90vw; max-height: 80vh; overflow-y: auto;
-  box-shadow: var(--shadow-hover);
-}
-.modal-card h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 16px; font-size: 18px; }
+.bug-report-form { min-width: 0; }
 
 label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; margin-top: 12px; }
 .required { color: var(--danger); }
@@ -491,7 +483,6 @@ label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; m
 }
 .context-info .material-symbols-outlined { font-size: 18px; }
 
-.form-actions { display: flex; gap: 8px; margin-top: 20px; justify-content: flex-end; }
 .btn-cancel {
   padding: 8px 20px; border: 1px solid var(--border); border-radius: 8px;
   background: var(--card-bg); font-size: 14px; cursor: pointer;
