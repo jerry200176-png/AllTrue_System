@@ -113,8 +113,8 @@ class RepairUnattendedSession29212 extends Command
                     $reason
                 );
 
-                $session->Status = $target['to_status'];
-                $session->Note = $this->appendNote($session->Note, 'revert-to-scheduled');
+                $session->setAttribute('Status', $target['to_status']);
+                $session->setAttribute('Note', $this->appendNote($session->getAttribute('Note'), 'revert-to-scheduled'));
                 $session->save();
                 SessionDeductionService::recomputeCounters((int) $course->getKey());
 

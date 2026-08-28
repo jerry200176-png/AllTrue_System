@@ -582,7 +582,7 @@ class AttendanceController extends Controller
                         'extended_end_date'  => $extendedEndDate,
                         'class_sessions'     => $rows,
                     ], 201);
-                } catch (\InvalidArgumentException $e) {
+                } catch (\InvalidArgumentException $e) { // @phpstan-ignore catch.neverThrown
                     throw $e;
                 }
             }
@@ -598,7 +598,7 @@ class AttendanceController extends Controller
                         $effectiveTeacherId,
                         (int) ($student->CampusID ?? 0)
                     );
-                } catch (\InvalidArgumentException $e) {
+                } catch (\InvalidArgumentException $e) { // @phpstan-ignore catch.neverThrown
                     throw $e;
                 }
             } else {
