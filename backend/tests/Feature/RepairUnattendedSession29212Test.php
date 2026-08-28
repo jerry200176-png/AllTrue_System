@@ -23,7 +23,7 @@ class RepairUnattendedSession29212Test extends TestCase
             'by1' => 1, 'Period' => 4, 'TotalHours' => 0,
             'StartDate' => '2026-08-01 00:00:00', 'EndDate' => '2026-08-28 00:00:00',
             'Charge' => 11000, 'Pay' => 0, 'Paid' => 1, 'Rate' => 2750,
-            'SessionDuration' => 120, 'ScheduleMode' => 'date', 'SessionCount' => 4,
+            'SessionDuration' => 120, 'ScheduleMode' => 'count', 'SessionCount' => 4,
             'UsedSessions' => 1, 'RemainingSessions' => 3, 'Stop' => 0,
         ]);
         DB::table('ClassSession')->insert([

@@ -4,7 +4,6 @@ namespace App\Console\Commands;
 
 use App\Models\ClassSession;
 use App\Models\LearningRecord;
-use App\Models\ScheduleAuditLog;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
 use App\Services\CourseLeaveCascadeService;
@@ -98,7 +97,6 @@ class RepairUnattendedSession29212 extends Command
                     throw new \RuntimeException('TARGET_STATUS_CHANGED_BEFORE_APPLY');
                 }
 
-                $before = $this->snapshotRows($session, $course);
                 $reason = self::REF . ' — 主任確認該堂未上課';
                 CourseLeaveCascadeService::voidLiveArtifactsForNonAttendance(
                     (int) $session->id,
@@ -117,17 +115,6 @@ class RepairUnattendedSession29212 extends Command
                 $session->setAttribute('Note', $this->appendNote($session->getAttribute('Note'), 'revert-to-scheduled'));
                 $session->save();
                 SessionDeductionService::recomputeCounters((int) $course->getKey());
-
-                $branchId = (int) (DB::table('Student')->where('id', $target['student_id'])->value('CampusID') ?? 0);
-                ScheduleAuditLog::query()->create([
-                    'session_id' => $session->id,
-                    'action_type' => 'update',
-                    'description' => '資料修復：' . $reason,
-                    'operator_id' => $this->actorId(),
-                    'branch_id' => $branchId ?: null,
-                    'old_data' => $before['session'],
-                    'new_data' => $this->sessionSnapshot($session->fresh()),
-                ]);
 
                 $after = $this->plan();
                 if ($after['error'] !== null || ! $after['already_aligned']) {
