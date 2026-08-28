@@ -1,43 +1,38 @@
 <template>
   <div class="course-page">
-    <!-- Top Bar -->
-    <div class="card course-header-card" data-guide="course-mgmt-header">
-      <div class="header-actions">
-        <div class="page-title-block">
-          <div class="course-lens-kicker">
-            <p class="command-kicker">課務營運</p>
-            <span class="course-lens-badge">唯讀營運視圖</span>
+    <AtPageHeader
+      title="課程查找"
+      description="查找課程、編輯月結日期與新增堂次，都在這一頁完成。"
+      icon="menu_book"
+      data-guide="course-mgmt-header"
+    >
+      <template #meta>
+        <span>目前列表 {{ groupedCourses.length }} 位學生</span>
+        <span v-if="pagination.lastPage > 1">第 {{ pagination.page }} / {{ pagination.lastPage }} 頁</span>
+        <span class="course-lens-badge">唯讀營運視圖</span>
+      </template>
+      <template #actions>
+        <AtButton class="course-lens-primary-action" shape="rect" variant="primary" icon="person_search" @click="emit('navigate', 'students')">前往學生管理</AtButton>
+        <details class="course-tools-menu">
+          <summary class="btn-soft course-tools-menu__summary">
+            <span class="material-symbols-outlined btn-icon" aria-hidden="true">more_horiz</span>
+            課務工具
+          </summary>
+          <div class="course-tools-menu__panel">
+            <button class="btn-soft" type="button" @click="expandAllGroups"><span class="material-symbols-outlined btn-icon" aria-hidden="true">unfold_more</span>全部展開</button>
+            <button class="btn-soft" type="button" @click="collapseAllGroups"><span class="material-symbols-outlined btn-icon" aria-hidden="true">unfold_less</span>全部收合</button>
+            <button class="btn-soft" type="button" @click="showBulkLeaveModal = true">
+              <span class="material-symbols-outlined btn-icon" aria-hidden="true">event_busy</span>連假批次請假
+            </button>
+            <button class="btn-soft" type="button" @click="emit('navigate', 'subject-settings')">
+              <span class="material-symbols-outlined btn-icon" aria-hidden="true">library_books</span>管理科目
+            </button>
           </div>
-          <h2 class="page-title">課程管理</h2>
-          <p class="ref-hint">查找課程、編輯月結日期與新增堂次，都在這一頁完成。</p>
-          <div class="meta-pills">
-            <span class="meta-pill">{{ groupedCourses.length }} 位學生</span>
-            <span v-if="pagination.lastPage > 1" class="meta-pill">第 {{ pagination.page }} / {{ pagination.lastPage }} 頁</span>
-          </div>
-        </div>
-        <div class="header-buttons">
-          <button class="course-lens-primary-action" type="button" @click="emit('navigate', 'students')">
-            <span class="material-symbols-outlined btn-icon" aria-hidden="true">person_search</span>
-            前往學生管理
-          </button>
-          <details class="course-tools-menu">
-            <summary class="btn-soft course-tools-menu__summary">
-              <span class="material-symbols-outlined btn-icon" aria-hidden="true">more_horiz</span>
-              課務工具
-            </summary>
-            <div class="course-tools-menu__panel">
-              <button class="btn-soft" type="button" @click="expandAllGroups"><span class="material-symbols-outlined btn-icon" aria-hidden="true">unfold_more</span>全部展開</button>
-              <button class="btn-soft" type="button" @click="collapseAllGroups"><span class="material-symbols-outlined btn-icon" aria-hidden="true">unfold_less</span>全部收合</button>
-              <button class="btn-soft" type="button" @click="showBulkLeaveModal = true">
-                <span class="material-symbols-outlined btn-icon" aria-hidden="true">event_busy</span>連假批次請假
-              </button>
-              <button class="btn-soft" type="button" @click="emit('navigate', 'subject-settings')">
-                <span class="material-symbols-outlined btn-icon" aria-hidden="true">library_books</span>管理科目
-              </button>
-            </div>
-          </details>
-        </div>
-      </div>
+        </details>
+      </template>
+    </AtPageHeader>
+
+    <div class="card course-header-card">
 
       <div class="course-lens-guidance" role="note" data-testid="course-lens-guidance">
         <span class="material-symbols-outlined course-lens-guidance__icon" aria-hidden="true">near_me</span>
@@ -1298,6 +1293,8 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import AtButton from '../components/design-system/AtButton.vue';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import { supabase } from '../supabase';
 import { lockScroll, unlockScroll } from '../lib/useScrollLock';
 import { SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
