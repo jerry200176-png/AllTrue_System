@@ -168,8 +168,6 @@ class AttendanceLearningRecordIntegrityService
                     return 0;
                 }
                 $status = strtolower((string) $session->Status);
-                // Preserve the canonical reasons used by the existing leave/cancel
-                // workflow. Reports and undo-leave depend on these exact values.
                 if ($status === 'cancelled') {
                     $reason = CourseLeaveCascadeService::VOID_REASON_CANCELLED;
                 } elseif (in_array($status, ['leave', 'leave_adjusted', 'excused'], true)) {
