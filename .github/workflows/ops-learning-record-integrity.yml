@@ -1,8 +1,5 @@
 name: LearningRecord integrity repair (gated)
 
-# One controlled path for the confirmed attendance incident plus the full
-# attendance/evaluation consistency sweep. Execute is always preceded by a
-# dry-run and a production database backup.
 on:
   workflow_dispatch:
     inputs:

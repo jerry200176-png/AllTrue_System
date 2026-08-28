@@ -12,12 +12,6 @@ use App\Services\SessionDeductionService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
-/**
- * Controlled incident repair for the confirmed 2026-08-28 attendance case.
- *
- * The target is deliberately fixed in code and validated before every write;
- * this command cannot be turned into an arbitrary production row editor.
- */
 class RepairConfirmedAttendanceAssessment extends Command
 {
     protected $signature = 'repair:confirmed-attendance-assessment

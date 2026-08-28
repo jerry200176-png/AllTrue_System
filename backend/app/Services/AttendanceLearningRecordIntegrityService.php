@@ -8,14 +8,6 @@ use App\Models\StudentClass;
 use App\Support\AttendanceStatus;
 use Illuminate\Support\Facades\DB;
 
-/**
- * Canonical audit and self-healing boundary for attendance-linked evaluations.
- *
- * A ClassSession status is authoritative. Fillable attendance statuses must
- * have one active LearningRecord; every non-attendance status must have no
- * active LearningRecord or StudentSignIn. This service is intentionally
- * idempotent and emits IDs only, so it is safe for scheduled evidence jobs.
- */
 class AttendanceLearningRecordIntegrityService
 {
     /** @return list<string> */
@@ -30,15 +22,6 @@ class AttendanceLearningRecordIntegrityService
         return ['scheduled', 'absent', 'leave', 'leave_adjusted', 'excused', 'cancelled', 'suspended'];
     }
 
-    /**
-     * @return array{
-     *   generated_at:string,
-     *   counts:array{missing_learning_records:int,ghost_learning_records:int,duplicate_active_learning_records:int},
-     *   missing_learning_records:list<array<string,mixed>>,
-     *   ghost_learning_records:list<array<string,mixed>>,
-     *   duplicate_active_learning_records:list<array<string,mixed>>
-     * }
-     */
     public function scan(?int $campusId = null, int $limit = 500): array
     {
         $limit = max(1, min($limit, 2000));
@@ -147,13 +130,6 @@ class AttendanceLearningRecordIntegrityService
         ];
     }
 
-    /**
-     * Repair only rows selected by the canonical scan. The method does not
-     * promote a scheduled session to attended; confirmed attendance must come
-     * from an explicit attendance action or an allowlisted incident repair.
-     *
-     * @return array{created:int,voided:int,blocked:list<int>,after:array<string,mixed>}
-     */
     public function repair(int $actorUserId = 0): array
     {
         $before = $this->scan();
