@@ -3,6 +3,24 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-28-attendance-workspace-focus
+    published_at: "2026-08-28"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 出缺勤先看要處理的工作
+    summary: 學生點名與老師打卡分開整理，摘要和完整紀錄需要時再展開。
+    items:
+      - category: improved
+        text: 主任在「學生點名」先看到待點名堂次，在「老師打卡」先看到遲到、漏刷與需要補卡的項目。
+      - category: improved
+        text: 到班統計、行政出勤、系統待比對與完整打卡匯出仍可使用，但不再和主要處理工作同時搶畫面。
+      - category: action_required
+        text: 需要查完整紀錄或匯出月報時，請展開「查看完整打卡紀錄與匯出」；既有點名、補卡與補登流程不變。
+    source_refs:
+      - "changelog:2026-08-28:attendance-workspace-focus"
+
   - id: staff-2026-08-28-ops-ui-sweep
     published_at: "2026-08-28"
     audiences:
