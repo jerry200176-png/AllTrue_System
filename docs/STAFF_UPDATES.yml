@@ -3,6 +3,23 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-29-notifications-dialog-a11y
+    published_at: "2026-08-29"
+    audiences:
+      - director
+    importance: digest
+    title: 主任收件匣工作區更穩定
+    summary: 收件匣分頁與核帳登記更容易理解，也更適合鍵盤操作。
+    items:
+      - category: improved
+        text: 「待辦案件／營運通知」分頁會清楚連到目前內容區，切換後能直接聚焦正在處理的工作區。
+      - category: improved
+        text: 核帳登記使用一致的對話框操作，支援關閉按鈕、Escape 與初始鍵盤焦點；通知操作不會意外送出表單。
+      - category: improved
+        text: 付款資料、核帳規則、API、權限與既有導頁行為維持不變。
+    source_refs:
+      - "changelog:2026-08-29:notifications-dialog-a11y"
+
   - id: staff-2026-08-29-teacher-card-a11y
     published_at: "2026-08-29"
     audiences:
