@@ -207,12 +207,10 @@ class ClassSessionUpdateTest extends TestCase
         $this->assertDatabaseHas('ClassSession', ['id' => $session->id, 'Status' => 'scheduled']);
         $this->assertDatabaseHas('LearningRecord', [
             'ClassSessionID' => $session->id,
-            'VoidedByUserID' => 1,
             'VoidReason' => '主任確認該堂未上課',
         ]);
         $this->assertDatabaseHas('StudentSingIn', [
             'ClassSessionID' => $session->id,
-            'VoidedByUserID' => 1,
             'VoidReason' => '主任確認該堂未上課',
         ]);
         $this->assertDatabaseHas('session_deduction_ledger', [

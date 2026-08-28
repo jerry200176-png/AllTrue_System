@@ -33,7 +33,7 @@ class RepairUnattendedSession29212Test extends TestCase
         ]);
         DB::table('LearningRecord')->insert([
             'id' => 17922, 'StudentID' => 9, 'StudentClassID' => 3112, 'ClassSessionID' => 29212,
-            'TeacherID' => 49, 'Subject' => '社會', 'SessionDate' => '2026-08-28',
+            'TeacherID' => 49, 'Content' => '', 'Subject' => '社會', 'SessionDate' => '2026-08-28',
             'StartTime' => '13:00:00', 'EndTime' => '15:00:00', 'Status' => 'pending',
             'created_at' => now(), 'updated_at' => now(),
         ]);

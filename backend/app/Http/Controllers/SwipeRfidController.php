@@ -185,33 +185,6 @@ class SwipeRfidController extends Controller
                 ], 200);
             }
 
-            // Fail closed before creating even a self-study row: a scheduled
-            // occurrence that was explicitly changed to leave/cancelled is
-            // authoritative for this student and time window.
-            $blockedSession = ClassSession::query()
-                ->whereDate('SessionDate', $today)
-                ->whereIn(DB::raw('LOWER(Status)'), [
-                    \App\Support\SessionStatus::CANCELLED,
-                    ...\App\Support\SessionStatus::leaveFamily(),
-                ])
-                ->whereIn('StudentClassID', StudentClass::query()
-                    ->where('StudentID', $student->getKey())
-                    ->where('Stop', 0)
-                    ->select('ID')
-                )
-                ->get()
-                ->first(function (ClassSession $session) use ($swipeAt) {
-                    if (!$session->EndTime) {
-                        return false;
-                    }
-                    $start = Carbon::parse($session->SessionDate . ' ' . $session->StartTime);
-                    $end = Carbon::parse($session->SessionDate . ' ' . $session->EndTime);
-                    return $swipeAt->between($start->copy()->subMinutes(30), $end);
-                });
-            if ($blockedSession) {
-                AttendanceEffectsService::assertCanRecordAttendance($blockedSession, 'present');
-            }
-
             [$studentClass, $hours, $classSessionId] = $this->findMatchingClass($student, $swipeAt);
 
             // TD-007: duplicate sign-in guard — 若同一個 ClassSession 當天已有未作廢的記錄則不重複建立

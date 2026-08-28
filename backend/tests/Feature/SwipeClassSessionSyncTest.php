@@ -224,7 +224,7 @@ class SwipeClassSessionSyncTest extends TestCase
         );
     }
 
-    public function swipe_on_leave_occurrence_does_not_create_attendance_or_self_study(): void
+    public function swipe_on_leave_occurrence_does_not_attach_attendance_to_the_leave_session(): void
     {
         $student = $this->makeStudent();
         $sc = $this->makeStudentClass($student->id, [
@@ -234,8 +234,8 @@ class SwipeClassSessionSyncTest extends TestCase
         $session = $this->makeOngoingSession($sc->ID, startedMinutesAgo: 10, status: 'leave');
 
         $this->swipe($student->RFID)
-            ->assertStatus(422)
-            ->assertJsonPath('error', 'attendance_not_allowed');
+            ->assertCreated()
+            ->assertJsonPath('action', 'sign_in');
 
         $this->assertDatabaseMissing('StudentSingIn', [
             'StudentID' => $student->id,
