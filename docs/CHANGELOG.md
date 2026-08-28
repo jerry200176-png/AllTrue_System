@@ -1,3 +1,11 @@
+## 2026-08-28 — improved(ux): in-app 問題回報更穩定
+
+<!-- release-notes: staff_update=staff-2026-08-28-in-app-bug-report -->
+
+- Bug 回報視窗改用共用對話框，支援 Esc 關閉、手機底部抽屜、背景捲動鎖定與一致的關閉按鈕；貼圖、拖曳、選檔與送出流程保留。
+- Bug 詳情的狀態更新、留言、可見性與回報者驗收失敗時，改在原位置顯示可關閉的錯誤提示，不再用瀏覽器 alert 打斷操作。
+- UI／營運改善清單不再作為產品頁面提供；工程規劃改由 GitHub Issue／PR／設計文件追蹤，產品側只保留實際業務功能。
+
 ## 2026-08-28 — improved(ux): 出缺勤工作區先處理異常
 
 <!-- release-notes: staff_update=staff-2026-08-28-attendance-workspace-focus -->

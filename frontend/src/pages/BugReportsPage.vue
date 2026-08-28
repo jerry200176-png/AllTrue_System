@@ -312,6 +312,11 @@
           </button>
         </div>
 
+        <div v-if="actionFeedback" class="att-msg bugs-action-feedback" :class="actionFeedback.tone" :role="actionFeedback.tone === 'error' ? 'alert' : 'status'">
+          <span>{{ actionFeedback.text }}</span>
+          <button type="button" class="btn-sm btn-ghost" @click="actionFeedback = null">關閉</button>
+        </div>
+
         <div v-if="loadingDetail" class="loading-box">載入詳情...</div>
         <div v-else-if="detailError" class="att-msg error bugs-error-banner" style="margin-bottom:12px">
           {{ detailError }}
@@ -501,6 +506,7 @@ const deployRunId = ref('');
 const newComment = ref('');
 const commentIsInternal = ref(false);
 const updatingCommentVisibilityIds = ref(new Set());
+const actionFeedback = ref(null);
 
 // ── Unread tracking ──────────────────────────────────────────────────────
 // localStorage key → { [bugId]: ISO timestamp of last view }
@@ -559,9 +565,10 @@ async function doReporterVerify(verdict) {
   try {
     const res = await reporterVerifyBug(detail.value.id, verdict, '', props.branchId);
     detail.value = { ...detail.value, status: res.new_status };
+    actionFeedback.value = { tone: 'success', text: verdict === 'confirmed' ? '已確認問題修復。' : '已重新開啟此問題，開發者會繼續處理。' };
     await loadBugs();
   } catch (e) {
-    alert(e.message || '操作失敗，請重試');
+    actionFeedback.value = { tone: 'error', text: e.message || '操作失敗，請重試。' };
   } finally {
     verifying.value = false;
   }
@@ -812,6 +819,7 @@ async function selectBug(bug) {
   productionRevision.value = '';
   deployRunId.value = '';
   newComment.value = '';
+  actionFeedback.value = null;
   // 手機單欄時 detail 排在長列表之後，選取後要滑過整個列表才看到詳情（in-app 166）。
   // 窄螢幕選取後把詳情捲入視野；桌面（list/detail 並排）不干擾。
   if (typeof window !== 'undefined' && window.matchMedia?.('(max-width: 720px)').matches) {
@@ -840,9 +848,10 @@ async function doUpdateStatus() {
       deploy_run_id: deployRunId.value.trim() || null,
     });
     await selectBug(activeBug.value);
+    actionFeedback.value = { tone: 'success', text: '狀態已更新。' };
     loadBugs();
   } catch (e) {
-    alert('更新失敗：' + e.message);
+    actionFeedback.value = { tone: 'error', text: '更新失敗：' + e.message };
   }
 }
 
@@ -854,7 +863,7 @@ async function doAddComment() {
     commentIsInternal.value = false;
     await selectBug(activeBug.value);
   } catch (e) {
-    alert('留言失敗：' + e.message);
+    actionFeedback.value = { tone: 'error', text: '留言失敗：' + e.message };
   }
 }
 
@@ -870,7 +879,7 @@ async function toggleCommentVisibility(comment) {
     await updateBugCommentVisibility(activeBug.value.id, comment.id, nextValue);
     await selectBug(activeBug.value);
   } catch (e) {
-    alert('更新留言可見性失敗：' + e.message);
+    actionFeedback.value = { tone: 'error', text: '更新留言可見性失敗：' + e.message };
   } finally {
     updatingCommentVisibilityIds.value.delete(comment.id);
   }
@@ -1266,6 +1275,13 @@ function formatDate(iso) {
 .detail-card { position: relative; }
 .detail-header { display: flex; justify-content: space-between; align-items: flex-start; }
 .detail-header h3 { margin: 0; font-size: 18px; }
+.bugs-action-feedback {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 12px 0 0;
+}
 .btn-close-detail { background: none; border: none; cursor: pointer; color: var(--text-light); }
 
 /* Resolution banner */

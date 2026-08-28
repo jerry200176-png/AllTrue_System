@@ -3,6 +3,24 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-28-in-app-bug-report
+    published_at: "2026-08-28"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: in-app 問題回報更穩定
+    summary: 回報問題、看處理進度與遇到錯誤時，都能在系統內完成。
+    items:
+      - category: improved
+        text: 回報視窗支援 Esc、手機底部抽屜與背景捲動鎖定；截圖貼上、拖曳、選檔與送出方式不變。
+      - category: fixed
+        text: 狀態更新、留言、留言可見性與回報者驗收失敗時，會在 Bug 詳情原位置顯示原因，不再跳瀏覽器 alert。
+      - category: improved
+        text: UI／營運改善清單移到 GitHub Issue、PR 與設計文件追蹤，系統側欄只保留實際業務功能。
+    source_refs:
+      - "changelog:2026-08-28:in-app-bug-report"
+
   - id: staff-2026-08-28-attendance-workspace-focus
     published_at: "2026-08-28"
     audiences:

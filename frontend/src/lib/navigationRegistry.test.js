@@ -12,6 +12,7 @@ describe('navigation registry', () => {
     expect(pages('super_admin')).toEqual(expect.arrayContaining([
       'director-accounts', 'branch-management', 'branch-health-board', 'nightly-reconcile',
     ]));
+    expect(pages('super_admin')).not.toContain('ui-improvements');
     expect(pages('student')).toEqual([]);
   });
 

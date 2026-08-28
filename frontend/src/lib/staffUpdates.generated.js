@@ -82,6 +82,47 @@ export const staffUpdates = [
     "version": "2026.08.28"
   },
   {
+    "id": "staff-2026-08-28-in-app-bug-report",
+    "publishedAt": "2026-08-28",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "in-app 問題回報更穩定",
+    "summary": "回報問題、看處理進度與遇到錯誤時，都能在系統內完成。",
+    "items": [
+      "回報視窗支援 Esc、手機底部抽屜與背景捲動鎖定；截圖貼上、拖曳、選檔與送出方式不變。",
+      "狀態更新、留言、留言可見性與回報者驗收失敗時，會在 Bug 詳情原位置顯示原因，不再跳瀏覽器 alert。",
+      "UI／營運改善清單移到 GitHub Issue、PR 與設計文件追蹤，系統側欄只保留實際業務功能。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "回報視窗支援 Esc、手機底部抽屜與背景捲動鎖定；截圖貼上、拖曳、選檔與送出方式不變。",
+          "UI／營運改善清單移到 GitHub Issue、PR 與設計文件追蹤，系統側欄只保留實際業務功能。"
+        ]
+      },
+      {
+        "title": "我們修好了",
+        "items": [
+          "狀態更新、留言、留言可見性與回報者驗收失敗時，會在 Bug 詳情原位置顯示原因，不再跳瀏覽器 alert。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-28:in-app-bug-report"
+    ],
+    "date": "2026-08-28",
+    "version": "2026.08.28"
+  },
+  {
     "id": "staff-2026-08-28-attendance-workspace-focus",
     "publishedAt": "2026-08-28",
     "effectiveAt": null,
