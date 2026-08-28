@@ -16,7 +16,6 @@ On baseline `c44ea6aff907d79f8ea80da56edd06619e899e32`, the expanded student rec
 老師 林老師 · 週二 18:00–20:00 · 大安
 付款／費用／備註／其他操作（按需展開）           [更多操作]
 ```
-
 ## Four-layer evidence and adaptation
 
 - Official/product: Duolingo describes a guided home path and daily-goal progress. We adapt “clear next step + explicit progress”, not XP, streaks, leaderboards, or invented operational scores:
@@ -36,7 +35,6 @@ On baseline `c44ea6aff907d79f8ea80da56edd06619e899e32`, the expanded student rec
 - Target repository: local baseline, design tokens, copy rules, and UI foundation tests are the source of truth for AllTrue behavior.
 
 The bounded public Duolingo read was unauthenticated; the retry was rate limited with HTTP 429. No private account behavior or credentials were used.
-
 ## Interaction rules
 
 1. Header answers course and status; one primary button exposes `續報加購` for low session balance, otherwise `編輯課程`.
