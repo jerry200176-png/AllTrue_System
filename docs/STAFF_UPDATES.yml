@@ -3,6 +3,23 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-29-student-course-disclosure
+    published_at: "2026-08-29"
+    audiences:
+      - director
+    importance: digest
+    title: 學生課程細節分層更清楚
+    summary: 目前課程與歷史課程分開，先處理選定課程再查看舊資料。
+    items:
+      - category: improved
+        text: 學生課程頁會明確標示目前課程工作區，選定課程的完整資料與下一步集中在同一區域。
+      - category: improved
+        text: 歷史課程維持在獨立的按需展開區，不會和目前課程混在同一個工作層級。
+      - category: improved
+        text: 歷史區補上鍵盤與螢幕閱讀器需要的展開狀態，原有編輯與刪除操作不變。
+    source_refs:
+      - "changelog:2026-08-29:student-course-disclosure"
+
   - id: staff-2026-08-29-teacher-next-action
     published_at: "2026-08-29"
     audiences:

@@ -72,6 +72,40 @@ export const staffUpdates = [
     "version": "2026.08.29"
   },
   {
+    "id": "staff-2026-08-29-student-course-disclosure",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "學生課程細節分層更清楚",
+    "summary": "目前課程與歷史課程分開，先處理選定課程再查看舊資料。",
+    "items": [
+      "學生課程頁會明確標示目前課程工作區，選定課程的完整資料與下一步集中在同一區域。",
+      "歷史課程維持在獨立的按需展開區，不會和目前課程混在同一個工作層級。",
+      "歷史區補上鍵盤與螢幕閱讀器需要的展開狀態，原有編輯與刪除操作不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "學生課程頁會明確標示目前課程工作區，選定課程的完整資料與下一步集中在同一區域。",
+          "歷史課程維持在獨立的按需展開區，不會和目前課程混在同一個工作層級。",
+          "歷史區補上鍵盤與螢幕閱讀器需要的展開狀態，原有編輯與刪除操作不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:student-course-disclosure"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
     "id": "staff-2026-08-28-schedule-safe-recovery",
     "publishedAt": "2026-08-28",
     "effectiveAt": null,
