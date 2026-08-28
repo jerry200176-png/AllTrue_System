@@ -1,21 +1,27 @@
 <template>
   <div :class="['lr-page', { 'lr-page--teacher': isTeacher }]">
     <!-- Page Header -->
-    <div class="page-header lr-header enterprise-page-header" data-guide="learning-header">
-      <div>
-        <h2>{{ pageMode === 'parent_messages' ? '家長留言' : (isTeacher ? '我的課表 & 評量' : '學習評量表') }}</h2>
-        <p class="page-desc">{{ pageMode === 'parent_messages' ? (isTeacher ? '查看範圍：我的所有分校' : '查看範圍：目前分校（可改）') : (isTeacher ? '先處理本週未填與需修改的評量；已核准僅供檢視' : '先處理待審與需修改的評量；已核准僅供查閱') }}</p>
-      </div>
-      <div style="display:flex; gap:8px; flex-wrap:wrap;">
-        <button v-if="isTeacher && pageMode !== 'parent_messages'" class="ghost lr-draft-list-btn enterprise-touch-target" @click="openDraftPanel">
-          <span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px">drafts</span>
-          草稿
-          <span v-if="draftList.length > 0" class="lr-draft-badge">{{ draftList.length }}</span>
-        </button>
-        <button v-if="pageMode !== 'parent_messages'" class="ghost enterprise-touch-target" @click="openExportModal">匯出評量圖</button>
-        <button v-if="isTeacher && pageMode !== 'parent_messages'" class="primary enterprise-touch-target" @click="focusTeacherSchedule">從課表填寫</button>
-      </div>
-    </div>
+    <AtPageHeader
+      :title="pageMode === 'parent_messages' ? '家長留言' : (isTeacher ? '我的課表 & 評量' : '學習評量表')"
+      :description="pageMode === 'parent_messages' ? (isTeacher ? '查看範圍：我的所有分校' : '查看範圍：目前分校（可改）') : (isTeacher ? '先處理本週未填與需修改的評量；已核准僅供檢視' : '先處理待審與需修改的評量；已核准僅供查閱')"
+      icon="fact_check"
+      data-guide="learning-header"
+    >
+      <template #actions>
+        <AtButton
+          v-if="isTeacher && pageMode !== 'parent_messages'"
+          variant="ghost"
+          shape="rect"
+          icon="drafts"
+          class="lr-draft-list-btn"
+          @click="openDraftPanel"
+        >
+          草稿<span v-if="draftList.length > 0" class="lr-draft-badge">{{ draftList.length }}</span>
+        </AtButton>
+        <AtButton v-if="pageMode !== 'parent_messages'" variant="ghost" shape="rect" icon="download" @click="openExportModal">匯出評量圖</AtButton>
+        <AtButton v-if="isTeacher && pageMode !== 'parent_messages'" variant="primary" shape="rect" icon="edit_note" @click="focusTeacherSchedule">從課表填寫</AtButton>
+      </template>
+    </AtPageHeader>
 
     <div v-if="isTeacher || isDirectorRole" class="lr-mode-tabs card" role="tablist" aria-label="學習評量與家長留言">
       <button type="button" role="tab" :class="['lr-tab', { active: pageMode === 'records' }]" :aria-selected="pageMode === 'records'" @click="setPageMode('records')">學習評量</button>
@@ -1371,6 +1377,8 @@ import { ref, onMounted, onBeforeUnmount, reactive, computed, watch, nextTick } 
 import { supabase } from '../supabase';
 import SearchableSelect from '../components/SearchableSelect.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
+import AtButton from '../components/design-system/AtButton.vue';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import FeedbackInlinePreview from '../components/learning-records/FeedbackInlinePreview.vue';
 import LearningRecordPreview from '../components/learning-records/LearningRecordPreview.vue';
 import { formatParentFeedbackTime } from '../lib/parentFeedbackFormat';
