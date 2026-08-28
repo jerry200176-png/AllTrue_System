@@ -105,9 +105,14 @@
             class="student-row"
             :class="[{ expanded: expandedId === student.id }, 'status-' + (student.status || 'active')]"
             :data-student-id="student.id"
+            tabindex="0"
+            :aria-expanded="expandedId === student.id"
+            :aria-controls="`student-course-detail-${student.id}`"
             @click="toggleExpand(student, $event)"
+            @keydown.enter.prevent="toggleExpand(student, $event)"
+            @keydown.space.prevent="toggleExpand(student, $event)"
           >
-            <td class="student-select-cell" @click.stop>
+            <td class="student-select-cell" @click.stop @keydown.stop>
               <input
                 class="student-select-checkbox"
                 type="checkbox"
@@ -170,7 +175,7 @@
               </div>
               <span class="hint" v-else>尚未設定</span>
             </td>
-            <td @click.stop class="action-cell">
+            <td @click.stop @keydown.stop class="action-cell">
               <div class="action-cell-buttons">
                 <AtIconButton icon="edit" label="編輯" @click="editStudent(student)" />
                 <AtIconButton icon="delete" label="刪除" variant="danger" @click="deleteStudent(student)" />
@@ -179,7 +184,7 @@
           </tr>
 
           <!-- Expanded Course Detail -->
-          <tr v-if="expandedId === student.id" class="course-detail-row">
+          <tr v-if="expandedId === student.id" :id="`student-course-detail-${student.id}`" class="course-detail-row">
             <td colspan="10">
               <div class="course-panel">
                 <div class="course-panel-header">

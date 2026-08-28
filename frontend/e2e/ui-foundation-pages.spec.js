@@ -484,7 +484,13 @@ test.describe('UI foundation — real Vue page evidence', () => {
 
       const tableWrap = page.locator('.table-scroll-wrap');
       const initialScrollLeft = await tableWrap.evaluate((el) => el.scrollLeft);
-      await page.locator('tr.student-row').first().click();
+      const studentRow = page.locator('tr.student-row').first();
+      await expect(studentRow).toHaveAttribute('tabindex', '0');
+      await expect(studentRow).toHaveAttribute('aria-expanded', 'false');
+      await expect(studentRow).toHaveAttribute('aria-controls', /student-course-detail-/);
+      await studentRow.focus();
+      await studentRow.press('Enter');
+      await expect(studentRow).toHaveAttribute('aria-expanded', 'true');
       const workspace = page.getByTestId('student-course-workspace');
       await expect(workspace).toBeVisible({ timeout: 10_000 });
       await expect.poll(() => tableWrap.evaluate((el) => el.scrollLeft)).toBeLessThan(initialScrollLeft + 8);

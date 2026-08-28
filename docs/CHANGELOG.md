@@ -1,3 +1,11 @@
+## 2026-08-29 — improved(ux): 學生列表展開更容易操作
+
+<!-- release-notes: staff_update=staff-2026-08-29-students-row-disclosure -->
+
+- 學生列表的資料列現在可用 Enter 或 Space 展開／收合，並明確連到下方課程工作區。
+- 勾選、編輯與刪除等既有操作維持獨立，不會因資料列取得鍵盤焦點而誤觸展開。
+- 保留原有學生、課程、付款、權限與導頁行為，手機版維持既有可讀寬度。
+
 ## 2026-08-29 — improved(ux): 課程查找操作層級更清楚
 
 <!-- release-notes: staff_update=staff-2026-08-29-course-management-hierarchy -->

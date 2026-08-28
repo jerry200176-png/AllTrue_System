@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.08.29",
     "date": "2026-08-29",
     "title": "2026.08.29 草稿（未發布）",
-    "summary": "課程查找操作層級更清楚；老師工作台先做一件事",
+    "summary": "學生列表展開更容易操作；課程查找操作層級更清楚",
     "audience": [
       "teacher",
       "director"
@@ -18,6 +18,7 @@ export const changelogDraftNotes = [
       {
         "title": "其他改善",
         "items": [
+          "學生列表展開更容易操作",
           "課程查找操作層級更清楚",
           "老師工作台先做一件事",
           "學生課程細節分層更清楚",
@@ -26,6 +27,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "學生列表展開更容易操作",
       "課程查找操作層級更清楚",
       "老師工作台先做一件事",
       "學生課程細節分層更清楚",
