@@ -1,3 +1,11 @@
+## 2026-08-28 — improved(ux): 側欄常用功能更聚焦
+
+<!-- release-notes: staff_update=staff-2026-08-28-sidebar-focus -->
+
+- 主任側欄保留今日工作、教學現場、學生與課程、財務與人事四個高頻工作區，進入系統後更容易找到每天要處理的事。
+- 報表、進階教學工具、訊息回報與設定仍完整保留，集中到「更多功能」面板；目前頁面、徽章與權限行為不變。
+- 「更多功能」支援明確的 active 狀態、Escape 關閉、收合側欄與鍵盤操作，手機版維持原本的 More 抽屜。
+
 ## 2026-08-28 — improved(ux): 評量審核佇列分工更清楚
 
 <!-- release-notes: staff_update=staff-2026-08-28-learning-review-queues -->

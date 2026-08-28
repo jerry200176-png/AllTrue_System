@@ -192,6 +192,42 @@ export const staffUpdates = [
     "version": "2026.08.28"
   },
   {
+    "id": "staff-2026-08-28-sidebar-focus",
+    "publishedAt": "2026-08-28",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "側欄功能更清楚",
+    "summary": "常用工作先顯示，其他功能集中在更多功能。",
+    "items": [
+      "每日工作、教學現場、學生與課程、財務人事保留在側欄主畫面，主任與老師可更快找到常用入口。",
+      "報表、進階工具、訊息回報與設定仍可使用，統一收進「更多功能」面板，不刪除原有頁面。",
+      "「更多功能」支援目前頁面提示、待辦徽章、Escape 關閉與鍵盤操作；手機版使用方式不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "每日工作、教學現場、學生與課程、財務人事保留在側欄主畫面，主任與老師可更快找到常用入口。",
+          "報表、進階工具、訊息回報與設定仍可使用，統一收進「更多功能」面板，不刪除原有頁面。",
+          "「更多功能」支援目前頁面提示、待辦徽章、Escape 關閉與鍵盤操作；手機版使用方式不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-28:sidebar-focus"
+    ],
+    "date": "2026-08-28",
+    "version": "2026.08.28"
+  },
+  {
     "id": "staff-2026-08-28-learning-review-queues",
     "publishedAt": "2026-08-28",
     "effectiveAt": null,

@@ -36,10 +36,23 @@ describe('navigation registry', () => {
 
   it('keeps low-frequency tools available without opening every sidebar group by default', () => {
     const groups = getNavigationGroups('director');
+    expect(groups.filter(group => group.primary !== false).map(group => group.key)).toEqual([
+      'overview', 'teaching', 'students-courses', 'finance',
+    ]);
+    expect(groups.filter(group => group.primary === false).map(group => group.key)).toEqual([
+      'teaching-tools', 'reports-payroll', 'communication', 'settings',
+    ]);
     expect(groups.find(group => group.key === 'teaching-tools').defaultOpen).toBe(false);
     expect(groups.find(group => group.key === 'reports-payroll').defaultOpen).toBe(false);
     expect(groups.flatMap(group => group.items.map(item => item.page))).toEqual(expect.arrayContaining([
       'assessments', 'question-banks', 'tuition-report', 'teacher-eligibility', 'chat', 'bugs',
     ]));
+  });
+
+  it('keeps every page unique across primary and More destinations', () => {
+    for (const role of ['director', 'super_admin', 'teacher']) {
+      const rolePages = pages(role);
+      expect(new Set(rolePages).size).toBe(rolePages.length);
+    }
   });
 });
