@@ -58,6 +58,8 @@ async function navTo(page, navLabel) {
     if (await summary.count()) {
       const group = summary.locator('..');
       if ((await group.getAttribute('open')) === null) await summary.click();
+    } else {
+      await page.getByRole('button', { name: '更多功能', exact: false }).first().click();
     }
   }
   // 側欄項目是 <button>，可及名稱含 nav-label 文字；可能尾隨 badge 數字故用 substring。

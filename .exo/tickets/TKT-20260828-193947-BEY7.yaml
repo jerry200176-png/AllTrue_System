@@ -23,6 +23,7 @@ scope:
   - docs/STAFF_UPDATES.yml
   - frontend/src/lib/changelogDraft.generated.js
   - frontend/src/lib/staffUpdates.generated.js
+  - frontend/e2e/smoke.spec.js
   - .exo/cache/**
   - .exo/memory/**
   - .exo/locks/**
