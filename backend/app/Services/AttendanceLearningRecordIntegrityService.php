@@ -131,7 +131,10 @@ class AttendanceLearningRecordIntegrityService
 
     public function repair(int $actorUserId = 0): array
     {
-        $before = $this->scan();
+        // A repair run must sweep the complete bounded scan, not only the
+        // default report page. Otherwise a large historical drift silently
+        // survives after a successful command (the report limit is 500).
+        $before = $this->scan(null, 2000);
         $created = 0;
         $voided = 0;
         $blocked = [];
