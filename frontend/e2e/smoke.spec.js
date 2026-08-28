@@ -165,7 +165,7 @@ test.describe('UI smoke — teacher 關鍵業務路徑', () => {
     await login(page, 'teacher', TEACHER);
     await navTo(page, '科目數統計');
 
-    await expect(page.getByText('科目數', { exact: false }).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('[data-guide="subject-units-header"]')).toBeVisible({ timeout: 15_000 });
     expect(errors, `頁面 JS 錯誤：\n${errors.join('\n')}`).toEqual([]);
   });
 });
