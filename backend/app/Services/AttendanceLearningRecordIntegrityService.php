@@ -19,7 +19,7 @@ class AttendanceLearningRecordIntegrityService
     /** @return list<string> */
     public static function nonAttendanceStatuses(): array
     {
-        return ['scheduled', 'absent', 'leave', 'leave_adjusted', 'excused', 'cancelled', 'suspended'];
+        return array_merge(['scheduled', 'absent'], CourseLeaveCascadeService::NON_BILLABLE_STATUSES, ['suspended']);
     }
 
     public function scan(?int $campusId = null, int $limit = 500): array
@@ -170,7 +170,7 @@ class AttendanceLearningRecordIntegrityService
                 $status = strtolower((string) $session->Status);
                 if ($status === 'cancelled') {
                     $reason = CourseLeaveCascadeService::VOID_REASON_CANCELLED;
-                } elseif (in_array($status, ['leave', 'leave_adjusted', 'excused'], true)) {
+                } elseif (in_array($status, CourseLeaveCascadeService::NON_BILLABLE_STATUSES, true)) {
                     $reason = CourseLeaveCascadeService::VOID_REASON_LEAVE;
                 } else {
                     $reason = '未到課狀態：評量一致性修復';
