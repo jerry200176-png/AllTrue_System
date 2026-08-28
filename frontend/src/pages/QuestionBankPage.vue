@@ -1,9 +1,14 @@
 <template>
   <section class="question-bank-page">
-    <div class="page-header qb-header">
-      <div><h2>題庫管理</h2><p class="page-desc">建立可重用題目，送主任審核後才可進入正式檢測。</p></div>
-      <button class="primary" type="button" @click="showBankForm = !showBankForm">＋新增題庫</button>
-    </div>
+    <AtPageHeader
+      title="題庫管理"
+      description="建立可重用題目，送主任審核後才可進入正式檢測。"
+      icon="library_books"
+    >
+      <template #actions>
+        <AtButton variant="primary" shape="rect" icon="add" @click="showBankForm = !showBankForm">新增題庫</AtButton>
+      </template>
+    </AtPageHeader>
 
     <div v-if="showBankForm" class="card qb-form-card">
       <h3>新增題庫</h3>
@@ -29,6 +34,8 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
+import AtButton from '../components/design-system/AtButton.vue';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 
 const props = defineProps({ branchId: [String, Number], userRole: String });
 const base = `${import.meta.env.VITE_API_BASE || '/api'}/v1`;

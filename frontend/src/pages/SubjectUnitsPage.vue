@@ -1,9 +1,13 @@
 <template>
   <div>
     <!-- Month Filter -->
-    <div class="card" style="margin-bottom: 20px;" data-guide="subject-units-header">
-      <div class="header-actions">
-        <h2>📐 科目數統計</h2>
+    <AtPageHeader
+      title="科目數統計"
+      description="查看所選月份與分校的老師授課時數及加權科目數。"
+      icon="calculate"
+      data-guide="subject-units-header"
+    >
+      <template #actions>
         <div class="header-controls">
           <div class="branch-selector">
             <label>分校</label>
@@ -23,8 +27,8 @@
           <button class="ghost small" @click="changeMonth(1)">▶</button>
           </div>
         </div>
-      </div>
-    </div>
+      </template>
+    </AtPageHeader>
 
     <!-- Empty State -->
     <div v-if="!loading && teacherList.length === 0" class="card">
@@ -38,23 +42,23 @@
 
     <!-- Summary Cards -->
     <div v-if="teacherList.length > 0" class="summary-cards" data-guide="subject-units-summary">
-      <div class="summary-card">
-        <div class="summary-label">總上課時數</div>
-        <div class="summary-value">{{ totals.totalHours }}</div>
-        <div class="summary-sub">
-          一對一 {{ totals.oneOnOneHours }}h ｜ 一對二 {{ totals.oneOnTwoHours }}h ｜ 一對三 {{ totals.oneOnThreeHours }}h ｜ 輔導 {{ totals.tutoringHours }}h
-        </div>
-      </div>
-      <div class="summary-card accent">
-      <div class="summary-label">本校總科目數（含輔導）</div>
-        <div class="summary-value">{{ totals.subjectCountWith }}</div>
-        <div class="summary-sub">加權總分: {{ totals.totalUnitsWithTutoring }}</div>
-      </div>
-      <div class="summary-card primary">
-        <div class="summary-label">本校總科目數（不含輔導）</div>
-        <div class="summary-value">{{ totals.subjectCountWithout }}</div>
-        <div class="summary-sub">加權總分: {{ totals.totalUnitsWithoutTutoring }}</div>
-      </div>
+      <AtMetric
+        label="總上課時數"
+        :value="`${totals.totalHours}h`"
+        :delta="`一對一 ${totals.oneOnOneHours}h · 一對二 ${totals.oneOnTwoHours}h · 一對三 ${totals.oneOnThreeHours}h · 輔導 ${totals.tutoringHours}h`"
+      />
+      <AtMetric
+        label="本校總科目數（含輔導）"
+        :value="totals.subjectCountWith"
+        :delta="`加權總分 ${totals.totalUnitsWithTutoring}`"
+        delta-tone="positive"
+      />
+      <AtMetric
+        label="本校總科目數（不含輔導）"
+        :value="totals.subjectCountWithout"
+        :delta="`加權總分 ${totals.totalUnitsWithoutTutoring}`"
+        delta-tone="positive"
+      />
     </div>
 
     <!-- Subject-count calculation (matches GET /api/v1/finance/subject-units) -->
@@ -194,6 +198,8 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import { supabase } from '../supabase';
 import { branches, loadBranches } from '../lib/useBranches';
+import AtMetric from '../components/design-system/AtMetric.vue';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 
 const props = defineProps({
   branchId: [String, Number],
