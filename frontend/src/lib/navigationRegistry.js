@@ -25,8 +25,6 @@ function directorGroups(role) {
       items: [
         { page: 'director', label: '今日工作台', icon: 'dashboard' },
         { page: 'notifications', label: '待處理收件匣', icon: 'inbox' },
-        { page: 'chat', label: '內部訊息', icon: 'forum', badgeTypes: ['chat'] },
-        { page: 'bugs', label: 'Bug 回報', icon: 'bug_report', badgeTypes: ['bugs'] },
       ],
     },
     {
@@ -36,6 +34,11 @@ function directorGroups(role) {
         { page: 'attendance', label: '出缺勤', icon: 'fact_check', badgeTypes: ['pending_swipe', 'attendance'] },
         { page: 'schedule-discrepancy', label: '課表回報管理', icon: 'flag', badgeTypes: ['schedule_discrepancy'] },
         { page: 'learning', label: '學習評量', icon: 'assignment', badgeTypes: ['learning_review', 'parent_feedback'] },
+      ],
+    },
+    {
+      key: 'teaching-tools', title: '進階教學工具', defaultOpen: false,
+      items: [
         { page: 'assessments', label: '學習檢測', icon: 'grading' },
         { page: 'question-banks', label: '題庫管理', icon: 'quiz' },
         { page: 'duplicate-review', label: '重疊課程審核', icon: 'compare_arrows' },
@@ -52,11 +55,23 @@ function directorGroups(role) {
       key: 'finance', title: '財務與人事', defaultOpen: true,
       items: [
         { page: 'tuition-collect', label: '帳務中心', icon: 'payments' },
+        { page: 'teachers', label: '老師管理', icon: 'badge', badgeTypes: ['pending_teachers'] },
+      ],
+    },
+    {
+      key: 'reports-payroll', title: '報表與薪資', defaultOpen: false,
+      items: [
         { page: 'tuition-report', label: '當月學收', icon: 'bar_chart' },
         { page: 'subject-units', label: '科目數統計', icon: 'calculate' },
         { page: 'parttime-payroll', label: '兼職薪資', icon: 'account_balance_wallet' },
         { page: 'teacher-eligibility', label: '正職薪資要件', icon: 'rule' },
-        { page: 'teachers', label: '老師管理', icon: 'badge', badgeTypes: ['pending_teachers'] },
+      ],
+    },
+    {
+      key: 'communication', title: '訊息與回報', defaultOpen: false,
+      items: [
+        { page: 'chat', label: '內部訊息', icon: 'forum', badgeTypes: ['chat'] },
+        { page: 'bugs', label: 'Bug 回報', icon: 'bug_report', badgeTypes: ['bugs'] },
       ],
     },
     {
@@ -78,9 +93,17 @@ function teacherGroups() {
       { page: 'calendar', label: '我的課表', icon: 'calendar_today' },
       { page: 'attendance', label: '出缺勤', icon: 'fact_check', badgeTypes: ['attendance'] },
       { page: 'learning', label: '課表與評量', icon: 'assignment', badgeTypes: ['teacher_learning_pending', 'parent_feedback'] },
+    ],
+  }, {
+    key: 'teaching-tools', title: '教學工具', defaultOpen: false,
+    items: [
       { page: 'assessments', label: '學習檢測', icon: 'grading' },
       { page: 'question-banks', label: '題庫管理', icon: 'quiz' },
       { page: 'subject-units', label: '科目數統計', icon: 'calculate' },
+    ],
+  }, {
+    key: 'communication', title: '訊息與回報', defaultOpen: false,
+    items: [
       { page: 'chat', label: '內部聊天', icon: 'forum', badgeTypes: ['chat'] },
       { page: 'bugs', label: 'Bug 回報', icon: 'bug_report', badgeTypes: ['bugs'] },
     ],
