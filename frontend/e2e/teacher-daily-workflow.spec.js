@@ -70,6 +70,11 @@ test.describe('Teacher daily workflow real Vue page', () => {
     });
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/pilot-mount.html?page=teacher');
+    const companion = page.locator('[data-guide="teacher-home-companion"]');
+    await expect(companion).toBeVisible();
+    await expect(companion.getByRole('heading', { name: '先完成最重要的一件事' })).toBeVisible();
+    await expect(companion.locator('img')).toHaveAttribute('alt', '');
+    await expect(companion.getByRole('link', { name: '查看今日任務' })).toHaveAttribute('href', '#teacher-work-queue-title');
     await expect(page.getByRole('heading', { name: '今天要完成' })).toBeVisible();
     const priorityDisclosure = page.locator('.th-priority-disclosure');
     await expect(priorityDisclosure.getByText('查看排序規則')).toBeVisible();
@@ -93,6 +98,8 @@ test.describe('Teacher daily workflow real Vue page', () => {
     await installTeacherMocks(page, 'empty');
     await page.setViewportSize({ width: 412, height: 915 });
     await page.goto('/pilot-mount.html?page=teacher&mode=empty');
+    await expect(page.locator('[data-guide="teacher-home-companion"]')).toContainText('今天的課務完成了');
+    await expect(page.locator('[data-guide="teacher-home-companion"]').getByRole('link', { name: '查看今日摘要' })).toBeVisible();
     await expect(page.getByText('今天沒有待完成工作')).toBeVisible();
     await expect(page.getByRole('button', { name: '查看本週課表' })).toBeVisible();
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);

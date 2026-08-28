@@ -22,6 +22,28 @@
       </template>
     </AtPageHeader>
 
+    <!-- A small brand moment: warm and encouraging, without competing with the
+      operational queue below. The illustration is decorative; all action copy
+      remains available as real text and a keyboard-focusable link. -->
+    <section class="th-companion" data-guide="teacher-home-companion" aria-labelledby="teacher-companion-title">
+      <div class="th-companion__copy">
+        <p class="th-companion__eyebrow">今天的節奏</p>
+        <h3 id="teacher-companion-title">{{ teacherTasksLoading ? '先準備今天的課務' : (teacherTasks.length ? '先完成最重要的一件事' : '今天的課務完成了') }}</h3>
+        <p class="th-companion__description">
+          {{ teacherTasksLoading ? '正在整理今天的任務，等一下就會顯示。' : (teacherTasks.length ? `還有 ${teacherTasks.length} 項工作，完成一項就更接近下課。` : '可以放心查看本週課表，準備下一堂課。') }}
+        </p>
+        <a class="th-companion__action" href="#teacher-work-queue-title">
+          <span>{{ teacherTasks.length || teacherTasksLoading ? '查看今日任務' : '查看今日摘要' }}</span>
+          <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
+        </a>
+      </div>
+      <div class="th-companion__art" aria-hidden="true">
+        <span class="th-companion__spark th-companion__spark--one">✦</span>
+        <span class="th-companion__spark th-companion__spark--two">✦</span>
+        <img :src="learningCompanionUrl" alt="" width="180" height="198" fetchpriority="high" />
+      </div>
+    </section>
+
     <!-- Clock-in Status Card -->
     <div class="th-clockin-card card" :class="clockinCardClass"
       @click="goAttendance" role="button" tabindex="0"
@@ -74,7 +96,7 @@
     </div>
 
     <!-- Single source of truth for today's work. Secondary metrics stay below the fold. -->
-    <section class="th-work-queue card" data-guide="teacher-home-work-queue" aria-labelledby="teacher-work-queue-title">
+    <section id="teacher-work-queue" class="th-work-queue card" data-guide="teacher-home-work-queue" aria-labelledby="teacher-work-queue-title">
       <div class="th-work-queue__header">
         <div>
           <p class="th-work-queue__eyebrow">今天</p>
@@ -553,6 +575,7 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
+import learningCompanionUrl from '../assets/alltrue-learning-companion.png';
 import { supabase } from '../supabase';
 import { branches, campusIdFrom, getBranchName } from '../lib/useBranches';
 import { fetchClassSessions, fetchClassSessionsProjection } from '../lib/classSessionsApi';
@@ -1703,6 +1726,111 @@ onBeforeUnmount(() => {
 
 /* ──────── Page Layout ──────── */
 .th-page { max-width: 720px; margin: 0 auto; padding-bottom: 80px; }
+
+/* Brand moment: a contained illustration surface keeps ops data calm while
+   giving the daily workflow the warmth and emotional feedback of a learning
+   product. The image is decorative; the copy and link carry the meaning. */
+.th-companion {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  min-height: 164px;
+  margin-bottom: 12px;
+  padding: 24px 22px 20px 24px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--ds-primary) 24%, var(--ds-hairline));
+  border-radius: 20px;
+  background: linear-gradient(112deg, var(--ds-primary-wash) 0%, var(--ds-canvas) 58%, color-mix(in srgb, var(--ds-primary-soft) 18%, var(--ds-canvas)) 100%);
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--ds-cta) 12%, transparent);
+}
+.th-companion::before {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 6px;
+  content: '';
+  background: var(--ds-brand-gradient);
+}
+.th-companion::after {
+  position: absolute;
+  right: 86px;
+  bottom: -50px;
+  width: 150px;
+  height: 150px;
+  content: '';
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--ds-primary-soft) 24%, transparent);
+}
+.th-companion__copy { position: relative; z-index: 1; min-width: 0; }
+.th-companion__eyebrow {
+  margin: 0 0 5px;
+  color: var(--ds-primary-deep);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+.th-companion h3 {
+  margin: 0;
+  color: var(--ds-ink);
+  font-size: clamp(19px, 3vw, 24px);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+.th-companion__description {
+  max-width: 34ch;
+  margin: 7px 0 14px;
+  color: var(--ds-ink-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.th-companion__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ds-cta);
+  font-size: 13px;
+  font-weight: 800;
+  text-decoration: none;
+}
+.th-companion__action:hover { color: var(--ds-cta-hover); text-decoration: underline; }
+.th-companion__action:focus-visible { outline: 3px solid var(--ds-focus-ring); outline-offset: 4px; border-radius: 6px; }
+.th-companion__action .material-symbols-outlined { font-size: 18px; }
+.th-companion__art {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  align-self: stretch;
+  flex: 0 0 164px;
+  margin: -16px -8px -20px 0;
+}
+.th-companion__art img {
+  display: block;
+  width: 150px;
+  height: 164px;
+  object-fit: contain;
+  object-position: center bottom;
+  filter: drop-shadow(0 8px 5px rgba(94, 46, 14, 0.14));
+}
+.th-companion__spark { position: absolute; color: var(--ds-brand-orange); font-size: 18px; line-height: 1; }
+.th-companion__spark--one { top: 24px; right: 24px; }
+.th-companion__spark--two { top: 54px; left: 14px; color: var(--ds-primary-soft); font-size: 13px; }
+
+[data-theme="dark"] .th-companion {
+  border-color: color-mix(in srgb, var(--ds-primary) 40%, var(--ds-hairline));
+  background: linear-gradient(112deg, color-mix(in srgb, var(--ds-primary-deep) 28%, var(--ds-canvas)) 0%, var(--ds-canvas) 62%, color-mix(in srgb, var(--ds-primary) 18%, var(--ds-canvas)) 100%);
+}
+
+@media (max-width: 480px) {
+  .th-companion { min-height: 146px; padding: 22px 14px 18px 16px; gap: 6px; border-radius: 18px; }
+  .th-companion__description { margin-bottom: 11px; max-width: 28ch; }
+  .th-companion__art { flex-basis: 116px; margin-right: -12px; }
+  .th-companion__art img { width: 116px; height: 136px; }
+  .th-companion__spark--one { top: 28px; right: 8px; }
+  .th-companion__spark--two { left: 0; }
+}
 
 .th-streak-chip {
   display: inline-flex;

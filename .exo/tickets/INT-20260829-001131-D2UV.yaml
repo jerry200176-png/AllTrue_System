@@ -1,0 +1,48 @@
+id: INT-20260829-001131-D2UV
+title: AllTrue visual companion dashboard slice
+intent: AllTrue visual companion dashboard slice
+kind: intent
+brain_dump: "\u4F7F\u7528\u539F\u5275 image-model \u89D2\u8272\u8207 AllTrue amber/navy\
+  \ design tokens\uFF0C\u5C07 TeacherHome \u7684\u4ECA\u65E5\u4EFB\u52D9\u5340\u505A\
+  \u6210\u66F4\u6709\u6EAB\u5EA6\u3001\u6E05\u695A\u3001\u6709\u5B8C\u6210\u611F\u7684\
+  \ dashboard hero\uFF1B\u4FDD\u7559\u65E2\u6709\u8CC7\u6599\u3001\u6B0A\u9650\u8207\
+  \ CTA \u884C\u70BA\uFF0C\u4E0D\u6A21\u4EFF Duolingo \u54C1\u724C\u8CC7\u7522\u3002"
+boundary: "\u53EA\u6539 TeacherHome \u8996\u89BA\u5448\u73FE\u8207\u524D\u7AEF asset/e2e\
+  \ evidence\uFF1B\u7981\u6B62 API\u3001auth\u3001billing\u3001attendance\u3001leave\u3001\
+  learning-record\u3001scheduling\u3001DB\u3001production data\u3002"
+success_condition: "TeacherHome \u986F\u793A\u53EF\u8FA8\u8B58\u7684\u539F\u5275 learning\
+  \ companion hero\uFF0C\u5728\u684C\u9762\u8207\u624B\u6A5F\u4E0D\u6EA2\u51FA\u3001\
+  \u53EF\u8B80\u3001\u6E1B\u5C11\u52D5\u614B\u6548\u679C\u53EF\u7528\uFF0C\u65E2\u6709\
+  \u4EFB\u52D9 CTA \u8207\u7A7A/\u8F09\u5165\u72C0\u614B\u4FDD\u6301\u53EF\u64CD\u4F5C\
+  \uFF0CCI \u8207 UI foundation evidence \u901A\u904E\u3002"
+risk: low
+priority: 2
+labels:
+- uiux
+scope:
+  allow:
+  - frontend/src/pages/TeacherHomePage.vue
+  - frontend/src/assets/alltrue-learning-companion.png
+  - frontend/e2e/teacher-daily-workflow.spec.js
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 4
+  max_loc_changed: 220
+checks:
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-29T00:11:31+08:00'
+children:
+- TKT-20260829-001138-KK5R
+resource_profile: default
