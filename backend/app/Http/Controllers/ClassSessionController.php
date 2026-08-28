@@ -1614,13 +1614,25 @@ class ClassSessionController extends Controller
 
     private function voidAttendanceArtifacts(ClassSession $session, int $authUserId, string $reason): void
     {
-        // Keep every non-attendance transition on the same artifact cascade
-        // used by leave, cancellation, RFID and the allowlisted repair command.
-        CourseLeaveCascadeService::voidLiveArtifactsForNonAttendance(
-            (int) $session->id,
-            $reason,
-            $authUserId
-        );
+        StudentSignIn::where('ClassSessionID', $session->id)
+            ->active()
+            ->get()
+            ->each(function ($si) use ($authUserId, $reason) {
+                $si->VoidedAt = now();
+                $si->VoidedByUserID = $authUserId ?: null;
+                $si->VoidReason = $reason;
+                $si->save();
+            });
+
+        LearningRecord::where('ClassSessionID', $session->id)
+            ->active()
+            ->get()
+            ->each(function ($lr) use ($authUserId, $reason) {
+                $lr->VoidedAt = now();
+                $lr->VoidedByUserID = $authUserId ?: null;
+                $lr->VoidReason = $reason;
+                $lr->save();
+            });
     }
 
     /**

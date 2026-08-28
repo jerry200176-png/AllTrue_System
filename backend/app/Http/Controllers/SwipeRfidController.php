@@ -194,9 +194,10 @@ class SwipeRfidController extends Controller
                     \App\Support\SessionStatus::CANCELLED,
                     ...\App\Support\SessionStatus::leaveFamily(),
                 ])
-                ->whereHas('studentClass', fn ($q) => $q
-                    ->where('StudentID', $student->id)
+                ->whereIn('StudentClassID', StudentClass::query()
+                    ->where('StudentID', $student->getKey())
                     ->where('Stop', 0)
+                    ->select('ID')
                 )
                 ->get()
                 ->first(function (ClassSession $session) use ($swipeAt) {
@@ -383,7 +384,10 @@ class SwipeRfidController extends Controller
             // self-study attendance row for a non-attendance occurrence.
             ->whereNotIn('ID', ClassSession::query()
                 ->whereDate('SessionDate', $swipeAt->toDateString())
-                ->whereHas('studentClass', fn ($q) => $q->where('StudentID', $student->id))
+                ->whereIn('StudentClassID', StudentClass::query()
+                    ->where('StudentID', $student->getKey())
+                    ->select('ID')
+                )
                 ->pluck('StudentClassID'))
             ->get();
 

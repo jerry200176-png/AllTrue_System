@@ -86,12 +86,14 @@ class RepairUnattendedSession29212 extends Command
         try {
             $result = DB::transaction(function (): array {
                 $target = self::TARGET;
+                /** @var ClassSession|null $session */
                 $session = ClassSession::query()->whereKey($target['session_id'])->lockForUpdate()->first();
+                /** @var StudentClass|null $course */
                 $course = StudentClass::query()->whereKey($target['class_id'])->lockForUpdate()->first();
                 if (! $session || ! $course || ! $this->matchesTarget($session, $course)) {
                     throw new \RuntimeException('TARGET_CHANGED_BEFORE_APPLY');
                 }
-                $currentStatus = strtolower((string) $session->Status);
+                $currentStatus = strtolower((string) $session->getAttribute('Status'));
                 if (! in_array($currentStatus, [$target['from_status'], $target['to_status']], true)) {
                     throw new \RuntimeException('TARGET_STATUS_CHANGED_BEFORE_APPLY');
                 }
@@ -104,7 +106,7 @@ class RepairUnattendedSession29212 extends Command
                     $this->actorId()
                 );
                 SessionDeductionService::reverseForSession(
-                    (int) $course->ID,
+                    (int) $course->getKey(),
                     (int) $session->id,
                     'status_adjust',
                     $this->actorId(),
@@ -114,7 +116,7 @@ class RepairUnattendedSession29212 extends Command
                 $session->Status = $target['to_status'];
                 $session->Note = $this->appendNote($session->Note, 'revert-to-scheduled');
                 $session->save();
-                SessionDeductionService::recomputeCounters((int) $course->ID);
+                SessionDeductionService::recomputeCounters((int) $course->getKey());
 
                 $branchId = (int) (DB::table('Student')->where('id', $target['student_id'])->value('CampusID') ?? 0);
                 ScheduleAuditLog::query()->create([
@@ -138,8 +140,8 @@ class RepairUnattendedSession29212 extends Command
                     'active_learning_records_after' => $after['active_learning_records'],
                     'active_sign_ins_after' => $after['active_sign_ins'],
                     'session_ledger_net_after' => $after['session_ledger_net'],
-                    'used_sessions_after' => (int) $course->fresh()->UsedSessions,
-                    'remaining_sessions_after' => (int) $course->fresh()->RemainingSessions,
+                    'used_sessions_after' => (int) $course->fresh()->getAttribute('UsedSessions'),
+                    'remaining_sessions_after' => (int) $course->fresh()->getAttribute('RemainingSessions'),
                 ];
             });
         } catch (\Throwable $exception) {
@@ -155,10 +157,12 @@ class RepairUnattendedSession29212 extends Command
     private function plan(): array
     {
         $target = self::TARGET;
+        /** @var ClassSession|null $session */
         $session = ClassSession::query()->find($target['session_id']);
+        /** @var StudentClass|null $course */
         $course = StudentClass::query()->find($target['class_id']);
         $identityMatches = $session && $course && $this->matchesTarget($session, $course);
-        $status = $session ? strtolower((string) $session->Status) : null;
+        $status = $session ? strtolower((string) $session->getAttribute('Status')) : null;
         $activeLearningRecords = (int) LearningRecord::query()
             ->where('ClassSessionID', $target['session_id'])->whereNull('VoidedAt')->count();
         $activeSignIns = (int) StudentSignIn::query()
@@ -189,20 +193,20 @@ class RepairUnattendedSession29212 extends Command
             'active_learning_records' => $activeLearningRecords,
             'active_sign_ins' => $activeSignIns,
             'session_ledger_net' => $sessionLedgerNet,
-            'course_used_sessions' => $course ? (int) $course->UsedSessions : null,
-            'course_remaining_sessions' => $course ? (int) $course->RemainingSessions : null,
+            'course_used_sessions' => $course ? (int) $course->getAttribute('UsedSessions') : null,
+            'course_remaining_sessions' => $course ? (int) $course->getAttribute('RemainingSessions') : null,
         ];
     }
 
     private function matchesTarget(ClassSession $session, StudentClass $course): bool
     {
         $target = self::TARGET;
-        return (int) $course->StudentID === $target['student_id']
-            && (int) $course->SubjectID === $target['subject_id']
-            && (int) $session->StudentClassID === $target['class_id']
-            && substr((string) $session->SessionDate, 0, 10) === $target['date']
-            && substr((string) $session->StartTime, 0, 5) === $target['start']
-            && substr((string) $session->EndTime, 0, 5) === $target['end'];
+        return (int) $course->getAttribute('StudentID') === $target['student_id']
+            && (int) $course->getAttribute('SubjectID') === $target['subject_id']
+            && (int) $session->getAttribute('StudentClassID') === $target['class_id']
+            && substr((string) $session->getAttribute('SessionDate'), 0, 10) === $target['date']
+            && substr((string) $session->getAttribute('StartTime'), 0, 5) === $target['start']
+            && substr((string) $session->getAttribute('EndTime'), 0, 5) === $target['end'];
     }
 
     /** @return array<string,mixed> */
@@ -222,7 +226,9 @@ class RepairUnattendedSession29212 extends Command
     private function snapshotTargetRows(): array
     {
         $target = self::TARGET;
+        /** @var ClassSession|null $session */
         $session = ClassSession::query()->find($target['session_id']);
+        /** @var StudentClass|null $course */
         $course = StudentClass::query()->find($target['class_id']);
 
         if (! $session || ! $course) {
