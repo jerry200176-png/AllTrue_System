@@ -36,6 +36,7 @@ class VerifyBugReproductions extends Command
             static fn (string $status): string => "'" . addslashes($status) . "'",
             AttendanceStatus::requiresLogSessionStatuses()
         ));
+        $nonAttendanceStatuses = implode(",", array_map(static fn (string $status): string => "'" . addslashes($status) . "'", \App\Services\AttendanceLearningRecordIntegrityService::nonAttendanceStatuses()));
 
         return [
             [
@@ -54,7 +55,7 @@ class VerifyBugReproductions extends Command
                 'label' => 'Leave sessions carrying a live LearningRecord (wrongly in 待審核評量)',
                 'issue' => '#170', 'enforced' => true,
                 'sql' => "SELECT COUNT(*) AS c FROM ClassSession cs
-                          WHERE LOWER(cs.Status) NOT IN ({$fillableStatuses})
+                          WHERE LOWER(cs.Status) IN ({$nonAttendanceStatuses})
                             AND EXISTS (SELECT 1 FROM LearningRecord lr
                                         WHERE lr.ClassSessionID = cs.id AND lr.VoidedAt IS NULL
                                           )",
