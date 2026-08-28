@@ -52,41 +52,31 @@
           </button>
         </nav>
 
-        <section class="surface-panel director-fill-rate-panel" aria-label="老師評量完成率">
-          <TeacherAssessmentFillRateCard
-            :branch-id="branchId"
-            :fetch-report="fetchTeacherAssessmentFillRates"
-            @view-learning="emit('navigate', { target: 'learning' })"
-          />
-        </section>
-
-        <OperationsQuickStart
-          eyebrow="主任工作流程"
-          heading="從這裡開始今天的工作"
-          description="每個入口都會帶你到正確的下一步；帳務與排課的資料規則維持原本安全流程。"
-          :steps="directorQuickStartSteps"
-          @select="openQuickStart"
-        />
-
         <section v-if="dashboardViewMode === 'focus'" class="director-workbench-v2__focus" aria-label="今天的主任工作">
           <section class="director-workbench-v2__primary surface-panel" aria-labelledby="director-focus-title">
             <header class="surface-panel__header">
               <div>
                 <h2 id="director-focus-title">今天要處理的事</h2>
-                <p>依影響、期限與主任責任排序</p>
+                <p>只列出需要主任做決定或跟進的工作，依影響與期限排序。</p>
               </div>
               <span class="surface-panel__count">{{ dashboardPrimaryTasks.length }} 項</span>
             </header>
 
-            <section v-if="!dashboardLoading && dashboardTopRisks.length" class="director-top-risks" aria-labelledby="director-top-risks-title">
-              <h3 id="director-top-risks-title">今日營運風險 Top {{ dashboardTopRisks.length }}</h3>
-              <ol>
-                <li v-for="risk in dashboardTopRisks" :key="`risk-${risk.id}`" :class="`director-top-risks__item director-top-risks__item--${risk.severity}`">
-                  <strong>{{ risk.title }}</strong>
-                  <span>{{ risk.summary }}</span>
-                </li>
-              </ol>
-            </section>
+            <details v-if="!dashboardLoading && dashboardTopRisks.length" class="director-risk-disclosure">
+              <summary>
+                <span>查看為什麼這些工作排在前面</span>
+                <strong>{{ dashboardTopRisks.length }} 項高優先</strong>
+              </summary>
+              <section class="director-top-risks" aria-labelledby="director-top-risks-title">
+                <h3 id="director-top-risks-title">排序依據</h3>
+                <ol>
+                  <li v-for="risk in dashboardTopRisks" :key="`risk-${risk.id}`" :class="`director-top-risks__item director-top-risks__item--${risk.severity}`">
+                    <strong>{{ risk.title }}</strong>
+                    <span>{{ risk.summary }}</span>
+                  </li>
+                </ol>
+              </section>
+            </details>
 
             <div v-if="dashboardLoading" class="director-task-list" aria-live="polite" aria-label="正在載入今日待辦">
               <div v-for="n in 3" :key="n" class="director-task director-task--loading" aria-hidden="true">
@@ -180,9 +170,34 @@
 
         <section v-else class="director-workbench-v2__full" aria-labelledby="director-full-title">
           <header class="director-workbench-v2__subheader">
-            <div><h2 id="director-full-title">完整營運</h2><p>課表、待處理案件與近期紀錄集中在這裡。</p></div>
+            <div><h2 id="director-full-title">完整營運</h2><p>需要查完整課表、案件、帳務與分析時，再從這裡展開。</p></div>
             <span v-if="secondaryLoading" class="director-workbench-v2__updated" role="status">載入營運資料中…</span>
           </header>
+
+          <details class="director-secondary-tools" @toggle="secondaryToolsOpen = $event.currentTarget.open">
+            <summary>
+              <span class="director-secondary-tools__title">營運指標與常用入口</span>
+              <span class="director-secondary-tools__hint">評量完成率、收款、排課與調課</span>
+              <span class="material-symbols-outlined" aria-hidden="true">expand_more</span>
+            </summary>
+            <div v-if="secondaryToolsOpen" class="director-secondary-tools__body">
+              <section class="surface-panel director-fill-rate-panel" aria-label="老師評量完成率">
+                <TeacherAssessmentFillRateCard
+                  :branch-id="branchId"
+                  :fetch-report="fetchTeacherAssessmentFillRates"
+                  @view-learning="emit('navigate', { target: 'learning' })"
+                />
+              </section>
+              <OperationsQuickStart
+                compact
+                eyebrow="常用流程"
+                heading="直接前往工作入口"
+                description="只在需要時使用，日常待辦請先處理上方案件。"
+                :steps="directorQuickStartSteps"
+                @select="openQuickStart"
+              />
+            </div>
+          </details>
 
           <div class="director-workbench-v2__full-grid">
             <div class="director-workbench-v2__full-main">
@@ -426,6 +441,7 @@ const dashboardPrimaryError = ref('');
 const dashboardLastUpdated = ref('');
 const secondaryLoading = ref(false);
 const secondaryLoaded = ref(false);
+const secondaryToolsOpen = ref(false);
 const analysisOpen = ref(false);
 // Returning to the dashboard always starts at today's work. Full operations is
 // an intentional, in-session drill-down and should never become the next
@@ -2972,6 +2988,14 @@ onBeforeUnmount(() => {
 .director-state--compact { display: flex; align-items: center; gap: 9px; min-height: 52px; padding: 18px 22px; }
 .director-state--error strong, .director-inline-error { color: var(--ds-danger); }
 .director-inline-error { margin: 0 22px 16px; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--ds-danger) 35%, var(--ds-hairline)); border-radius: 6px; background: var(--ds-danger-wash); font-size: 12px; }
+.director-risk-disclosure { margin: 0 22px 10px; border-top: 1px solid var(--ds-hairline); border-bottom: 1px solid var(--ds-hairline); }
+.director-risk-disclosure summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 42px; color: var(--ds-ink-secondary); font-size: 11px; font-weight: 800; cursor: pointer; list-style: none; }
+.director-risk-disclosure summary::-webkit-details-marker { display: none; }
+.director-risk-disclosure summary::after { content: '＋'; color: var(--ds-ink-mute); font-size: 15px; }
+.director-risk-disclosure[open] summary::after { content: '−'; }
+.director-risk-disclosure summary strong { color: var(--ds-warning); font-size: 11px; font-weight: 800; }
+.director-risk-disclosure summary:focus-visible,
+.director-secondary-tools summary:focus-visible { outline: 3px solid var(--ds-info-wash); outline-offset: 2px; border-radius: 4px; }
 .text-action { display: inline-flex; align-items: center; min-height: 32px; padding: 4px 0; border: 0; border-bottom: 1px solid transparent; background: transparent; color: var(--ds-cta); font-size: 12px; font-weight: 800; }
 .text-action:hover { border-bottom-color: currentColor; }
 .director-workbench-v2__more { display: inline-flex; align-items: center; gap: 7px; margin: 2px 22px 19px 70px; padding: 8px 0; border: 0; border-bottom: 1px solid var(--ds-hairline-input); background: transparent; color: var(--ds-ink-secondary); font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; }
@@ -3007,6 +3031,16 @@ onBeforeUnmount(() => {
 .director-workbench-v2__full { padding-top: 24px; }
 .director-workbench-v2__subheader { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; margin-bottom: 18px; }
 .director-workbench-v2__subheader h2 { font-size: 22px; font-weight: 800; }
+.director-secondary-tools { margin-bottom: 20px; border: 1px solid var(--ds-hairline); border-radius: 10px; background: var(--ds-canvas-soft); }
+.director-secondary-tools summary { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 48px; padding: 0 16px; color: var(--ds-ink-secondary); cursor: pointer; list-style: none; }
+.director-secondary-tools summary::-webkit-details-marker { display: none; }
+.director-secondary-tools summary > .material-symbols-outlined { color: var(--ds-ink-mute); font-size: 19px; transition: transform 160ms ease; }
+.director-secondary-tools[open] summary > .material-symbols-outlined { transform: rotate(180deg); }
+.director-secondary-tools__title { color: var(--ds-ink); font-size: 13px; font-weight: 800; }
+.director-secondary-tools__hint { overflow: hidden; color: var(--ds-ink-mute); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.director-secondary-tools__body { display: grid; gap: 16px; padding: 0 16px 16px; }
+.director-secondary-tools__body .surface-panel { box-shadow: none; }
+.director-secondary-tools__body .operations-quick-start { margin-top: 0; }
 .director-workbench-v2__full-grid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.75fr); gap: 20px; align-items: start; }
 .director-workbench-v2__full-main, .director-workbench-v2__full-side { display: grid; gap: 18px; min-width: 0; }
 .director-schedule-list { padding: 0 22px; }
@@ -3086,6 +3120,7 @@ onBeforeUnmount(() => {
   .director-workbench-v2__header { align-items: flex-start; flex-direction: column; gap: 14px; }
   .director-workbench-v2__header-actions { width: 100%; justify-content: space-between; }
   .director-workbench-v2__focus, .director-workbench-v2__full { padding-top: 16px; }
+  .director-risk-disclosure { margin-inline: 16px; }
   .director-workbench-v2__aside { grid-template-columns: 1fr; gap: 12px; }
   .surface-panel__header { padding: 17px 16px 14px; }
   .director-task-list, .director-schedule-list, .director-evaluation-list, .director-payment-list, .director-notification-list, .director-other-work-list { padding-inline: 16px; }
@@ -3123,6 +3158,8 @@ onBeforeUnmount(() => {
   .director-evaluation-row > div:last-child { width: 100%; }
   .director-modal-backdrop { padding: 12px; }
   .director-modal { padding: 21px 18px; }
+  .director-secondary-tools summary { grid-template-columns: auto minmax(0, 1fr) auto; padding-inline: 12px; }
+  .director-secondary-tools__body { padding-inline: 12px; }
 }
 @media (max-width: 860px) {
   .workbench__layout { grid-template-columns: 1fr; }

@@ -78,8 +78,8 @@ test.describe('UI smoke — director', () => {
     await dismissOverlays(page);
     await navTo(page, '課程查找');
 
-    // TODO: 可於 CourseManagement 根容器補 data-testid="course-mgmt-page" 讓斷言更穩。
-    await expect(page.getByText('課程管理', { exact: false }).first()).toBeVisible();
+    // 課程查找頁的標題保持與側欄導航一致；不要依賴舊的內部元件名稱。
+    await expect(page.getByRole('heading', { name: '課程查找', exact: true })).toBeVisible();
     // 「帳務資料」tab 只在有學生分組時渲染；smoke 帳號可能無學生，不能硬性要求。
     const billingTab = page.getByRole('tab', { name: '帳務資料' });
     if (await billingTab.count()) {
