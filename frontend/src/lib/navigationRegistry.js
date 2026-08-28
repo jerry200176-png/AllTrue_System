@@ -16,6 +16,7 @@ function directorGroups(role) {
       { page: 'branch-management', label: '分校管理', icon: 'store' },
       { page: 'branch-health-board', label: '分校健康', icon: 'monitor_heart' },
       { page: 'nightly-reconcile', label: '夜間堂數對帳', icon: 'receipt_long' },
+      { page: 'ui-improvements', label: 'UI／營運改善', icon: 'tune' },
     );
   }
   return [
@@ -125,4 +126,3 @@ export function getMobileTabItems(role) {
   }
   return [];
 }
-
