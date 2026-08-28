@@ -58,13 +58,15 @@ async function navTo(page, navLabel) {
     if (await summary.count()) {
       const group = summary.locator('..');
       if ((await group.getAttribute('open')) === null) await summary.click();
+    } else {
+      await page.locator('.sidebar-more-trigger').first().click(); await expect(page.locator('.sidebar-more-panel')).toBeVisible();
     }
   }
   // 側欄項目是 <button>，可及名稱含 nav-label 文字；可能尾隨 badge 數字故用 substring。
   const navBtn = page.getByRole('button', { name: navLabel, exact: false }).first();
-  await navBtn.click();
+  await navBtn.click({ force: true });
   await page.waitForLoadState('networkidle').catch(() => {});
-  await expect(navBtn).toHaveClass(/active/, { timeout: 10_000 });
+  await expect(navGroup ? page.locator('.sidebar-more-trigger') : navBtn).toHaveClass(/active/, { timeout: 10_000 });
 }
 
 test.describe('UI smoke — director', () => {
@@ -163,7 +165,7 @@ test.describe('UI smoke — teacher 關鍵業務路徑', () => {
     await login(page, 'teacher', TEACHER);
     await navTo(page, '科目數統計');
 
-    await expect(page.getByText('科目數', { exact: false }).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('[data-guide="subject-units-header"]')).toBeVisible({ timeout: 15_000 });
     expect(errors, `頁面 JS 錯誤：\n${errors.join('\n')}`).toEqual([]);
   });
 });

@@ -202,120 +202,124 @@
                 </div>
 
                 <template v-else>
-                <!-- Active courses table -->
-                <table v-if="getActiveStudentCourses(student.id).length > 0" class="course-inner-table">
-                  <thead>
-                    <tr>
-                      <th>科目</th>
-                      <th>老師</th>
-                      <th>類型</th>
-                      <th>剩餘 / 已購</th>
-                      <th>一堂課費用</th>
-                      <th>時長</th>
-                      <th>排課時段</th>
-                      <th>地點</th>
-                      <th>操作</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="course in getActiveStudentCourses(student.id)" :key="course.id">
-                      <td>
-                        <span class="tag">{{ getSubjectLabel(course.subject) }}</span>
-                        <span v-if="course.PackageID" class="tag tag-package" :title="course.PackageName || '多科方案'">方案</span>
-                        <span v-if="course.status === 'inactive'" class="tag tag-paused-sm">已暫停</span>
-                        <span v-else-if="course.payment_type === 'session' && !effectiveClosedReason(course) && (course.PackageID ? (course.package_remaining_sessions ?? 0) <= 2 : (course.remaining_sessions ?? 0) <= 2)" class="tag tag-expiring">即將用完</span>
-                      </td>
-                      <td>{{ course.teacher_name || '待指派' }}</td>
-                      <td>
-                        <span class="status-tag" :class="course.class_type">
-                          {{ classTypeLabel(course.class_type) }}
-                        </span>
-                        <div v-if="courseMemo(course)" class="course-memo-line">備註：{{ courseMemo(course) }}</div>
-                        <div v-if="coursePaymentSummary(course)" class="course-payment-summary" role="note">
-                          <span class="course-payment-summary__label">最近繳費：</span>{{ formatPaymentSummary(course.latest_payment_summary) }}
+                <!-- Active courses: task-first cards keep the next action visible without
+                     changing any existing course or payment handlers. -->
+                <div v-if="getActiveStudentCourses(student.id).length > 0" class="student-course-cards" data-testid="student-course-cards">
+                  <article
+                    v-for="course in getActiveStudentCourses(student.id)"
+                    :key="course.id"
+                    class="student-course-card"
+                    :class="{ 'student-course-card--attention': isSessionPaymentLowRemaining(course) }"
+                    :data-course-id="course.id"
+                  >
+                    <header class="student-course-card__header">
+                      <div class="student-course-card__identity">
+                        <span class="student-course-card__eyebrow">學生課程</span>
+                        <h5>{{ getSubjectLabel(course.subject) }}</h5>
+                        <div class="student-course-card__badges">
+                          <span class="status-tag" :class="course.class_type">{{ classTypeLabel(course.class_type) }}</span>
+                          <span v-if="course.PackageID" class="tag tag-package" :title="course.PackageName || '多科方案'">方案</span>
+                          <span v-if="course.status === 'inactive'" class="tag tag-paused-sm">已暫停</span>
+                          <span v-else-if="isSessionPaymentLowRemaining(course)" class="tag tag-expiring">即將用完</span>
                         </div>
-                      </td>
-                      <td>
-                        <div v-if="course.payment_type === 'session'" class="sessions-cell">
-                          <div class="mini-progress">
-                            <div class="mini-progress-fill" :style="{
-                              width: course.PackageID
-                                ? Math.min(100, Math.round(((course.package_used_sessions ?? 0) / Math.max(course.package_total_sessions ?? 1, 1)) * 100)) + '%'
-                                : Math.min(100, Math.round(((course.used_sessions || 0) / Math.max(course.sessions_purchased || 1, 1)) * 100)) + '%',
-                              background: course.PackageID
-                                ? ((course.package_remaining_sessions ?? 0) <= 2 ? '#c62828' : (course.package_remaining_sessions ?? 0) <= 4 ? '#f57c00' : '#2e7d32')
-                                : ((course.remaining_sessions ?? 0) <= 2 ? '#c62828' : (course.remaining_sessions ?? 0) <= 4 ? '#f57c00' : '#2e7d32')
-                            }"></div>
-                          </div>
-                          <span :class="{ 'text-red': course.PackageID ? (course.package_remaining_sessions ?? 0) <= 2 : course.remaining_sessions <= 2 }">
-                            <template v-if="course.PackageID">
-                              <strong>{{ course.package_remaining_sessions ?? 0 }}</strong> / {{ course.package_total_sessions ?? 0 }} 堂
-                              <span class="tag tag-package-hint">（方案共用）</span>
-                            </template>
-                            <template v-else>
-                              <strong>{{ course.remaining_sessions ?? 0 }}</strong> / {{ course.sessions_purchased || 0 }} 堂
-                            </template>
-                          </span>
-                        </div>
-                        <span v-else class="hint">
-                          月結<span v-if="course.settlement_day">（每月{{ course.settlement_day }}號）</span>
-                          <template v-if="parseCourseNumber(course.monthly_sessions) != null && parseCourseNumber(course.monthly_sessions) > 0">
-                            <span v-if="course.settlement_day"> · </span>
-                            <span v-else> </span>
-                            每月<strong>{{ parseCourseNumber(course.monthly_sessions) }}</strong>堂
-                          </template>
-                        </span>
-                      </td>
-                      <td style="font-weight: 600;">${{ sessionFeeDisplay(course) }}</td>
-                      <td>{{ course.duration_hours }} 小時</td>
-                      <td class="cell-schedule-slots">
-                        <div v-if="scheduleDisplayLines(course).length > 0" class="schedule-slot-lines">
-                          <div
-                            v-for="(line, sidx) in scheduleDisplayLines(course)"
-                            :key="`${course.id}-sch-${sidx}`"
-                            class="schedule-slot-line"
-                          >
-                            {{ line }}
-                          </div>
-                        </div>
-                        <span v-else-if="course.days_of_week && course.days_of_week.length">
-                          {{ scheduleDisplay(course) }}
-                        </span>
-                        <span v-else-if="course.day_of_week">
-                          {{ dayLabel(course.day_of_week) }} {{ scheduleTimeRange(course) }}
-                        </span>
-                        <span v-else class="hint">未排定</span>
-                      </td>
-                      <td>
-                        <span v-if="course.branch_name || course.room_name">
-                          {{ [course.branch_name, course.room_name].filter(Boolean).join(' － ') }}
-                        </span>
-                        <span v-else class="hint">—</span>
-                      </td>
-                      <td>
+                      </div>
+                      <button
+                        v-if="isSessionPaymentLowRemaining(course)"
+                        type="button"
+                        class="student-course-card__primary btn-renew-warn"
+                        @click="openAddSessionsForCourse(course)"
+                      >續報加購</button>
+                      <button
+                        v-else
+                        type="button"
+                        class="student-course-card__primary primary"
+                        @click="editCourse(course)"
+                      >編輯課程</button>
+                    </header>
+
+                    <section v-if="courseProgress(course)" class="student-course-card__progress" aria-label="課程堂數進度">
+                      <div class="student-course-card__progress-head">
+                        <span>課程進度</span>
+                        <strong>{{ courseProgress(course).remaining }} / {{ courseProgress(course).total }} 堂剩餘</strong>
+                      </div>
+                      <div
+                        class="student-course-card__progress-track"
+                        role="progressbar"
+                        :aria-valuemin="0"
+                        :aria-valuemax="courseProgress(course).total"
+                        :aria-valuenow="courseProgress(course).used"
+                        :aria-label="`已使用 ${courseProgress(course).used} 堂，共 ${courseProgress(course).total} 堂`"
+                      >
+                        <span class="student-course-card__progress-fill" :style="{ width: `${courseProgress(course).percent}%` }"></span>
+                      </div>
+                      <span class="student-course-card__progress-caption">已使用 {{ courseProgress(course).used }} 堂<span v-if="course.PackageID"> · 方案共用堂數</span></span>
+                    </section>
+                    <div v-else-if="String(course.payment_type || '').toLowerCase() === 'session'" class="student-course-card__progress-empty" role="status">
+                      堂數未設定，請編輯課程確認。
+                    </div>
+                    <div v-else class="student-course-card__cadence">
+                      <span class="material-symbols-outlined" aria-hidden="true">event_repeat</span>
+                      <strong>月結</strong>
+                      <span v-if="course.settlement_day">每月{{ course.settlement_day }}號結算</span>
+                      <span v-if="parseCourseNumber(course.monthly_sessions) != null && parseCourseNumber(course.monthly_sessions) > 0">每月 {{ parseCourseNumber(course.monthly_sessions) }} 堂</span>
+                    </div>
+
+                    <dl class="student-course-card__meta">
+                      <div>
+                        <dt>老師</dt>
+                        <dd>{{ course.teacher_name || '待指派' }}</dd>
+                      </div>
+                      <div>
+                        <dt>上課時段</dt>
+                        <dd>
+                          <span v-if="scheduleDisplayLines(course).length > 0">{{ scheduleDisplayLines(course).join('、') }}</span>
+                          <span v-else-if="course.days_of_week && course.days_of_week.length">{{ scheduleDisplay(course) }}</span>
+                          <span v-else-if="course.day_of_week">{{ dayLabel(course.day_of_week) }} {{ scheduleTimeRange(course) }}</span>
+                          <span v-else class="hint">未排定</span>
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>地點</dt>
+                        <dd>{{ [course.branch_name, course.room_name].filter(Boolean).join(' － ') || '尚未指定' }}</dd>
+                      </div>
+                      <div>
+                        <dt>費用</dt>
+                        <dd class="student-course-card__money">${{ sessionFeeDisplay(course) }}／堂 · {{ course.duration_hours }} 小時</dd>
+                      </div>
+                      <div>
+                        <dt>付款</dt>
+                        <dd>
+                          <span :class="['student-course-card__payment', `student-course-card__payment--${course.payment_status || 'unpaid'}`]">{{ paymentStatusButtonLabel(course) }}</span>
+                          <span v-if="course.last_paid_at" class="paid-date-hint">{{ course.last_paid_at }}</span>
+                        </dd>
+                      </div>
+                    </dl>
+
+                    <div v-if="courseMemo(course) || coursePaymentSummary(course)" class="student-course-card__context" role="note">
+                      <div v-if="courseMemo(course)"><strong>備註</strong>{{ courseMemo(course) }}</div>
+                      <div v-if="coursePaymentSummary(course)"><strong>最近繳費：</strong>{{ formatPaymentSummary(course.latest_payment_summary) }}</div>
+                    </div>
+
+                    <details class="student-course-card__actions">
+                      <summary>更多操作</summary>
+                      <div class="student-course-card__actions-body">
                         <button
+                          type="button"
                           :class="['small', paymentStatusButtonClass(course)]"
                           title="點擊切換繳費狀態"
                           :disabled="isPaymentStatusPending(course.id)"
                           @click="togglePaymentStatus(course, student.name)"
-                          style="font-size: 12px;"
-                        >
-                          {{ paymentStatusButtonLabel(course) }}
-                        </button>
-                        <span v-if="course.last_paid_at" class="paid-date-hint">{{ course.last_paid_at }}</span>
-                        <button
-                          :class="['small', course.payment_type === 'session' && (course.PackageID ? (course.package_remaining_sessions ?? 0) <= 2 : (course.remaining_sessions ?? 0) <= 2) ? 'btn-renew-warn' : 'ghost']"
-                          @click="openAddSessionsForCourse(course)"
-                        >{{ course.payment_type === 'session' && (course.PackageID ? (course.package_remaining_sessions ?? 0) <= 2 : (course.remaining_sessions ?? 0) <= 2) ? '續報加購' : '加購' }}</button>
-                        <button v-if="course.payment_type === 'monthly'" class="small ghost" @click="openInvoiceModal(course)">帳單</button>
-                        <button class="small ghost" @click="openLatestPaymentInfo(course, student.name)">繳費資訊</button>
-                        <button class="small ghost" @click="editCourse(course)">編輯</button>
-                        <button v-if="canCloseCourse(course)" class="small close-btn" @click="closeCourseNoRenew(course, student.name)">結案</button>
-                        <button class="small danger" @click="deleteCourse(course)">刪除</button>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
+                        >{{ paymentStatusButtonLabel(course) }}</button>
+                        <button type="button" class="small ghost" @click="openAddSessionsForCourse(course)">{{ isSessionPaymentLowRemaining(course) ? '再次續報加購' : '加購' }}</button>
+                        <button v-if="course.payment_type === 'monthly'" type="button" class="small ghost" @click="openInvoiceModal(course)">帳單</button>
+                        <button type="button" class="small ghost" @click="openLatestPaymentInfo(course, student.name)">繳費資訊</button>
+                        <button v-if="isSessionPaymentLowRemaining(course)" type="button" class="small ghost" @click="editCourse(course)">編輯課程</button>
+                        <button v-if="canCloseCourse(course)" type="button" class="small close-btn" @click="closeCourseNoRenew(course, student.name)">結案</button>
+                        <button type="button" class="small danger" @click="deleteCourse(course)">刪除</button>
+                      </div>
+                    </details>
+                  </article>
+                </div>
                 <div v-else-if="getHistoryStudentCourses(student.id).length > 0" class="sl-empty-active">
                   <span class="material-symbols-outlined sl-empty-active__icon" aria-hidden="true">school</span>
                   <span>目前沒有進行中的課程</span>
@@ -1037,6 +1041,34 @@ const parseCourseNumber = (value) => {
 const getCourseRemainingSessions = (course) => (
   parseCourseNumber(course?.remaining_sessions ?? course?.RemainingSessions)
 );
+/** 堂數制才顯示可驗證的進度；月結制不把月份或剩餘欄位誤換算成百分比。 */
+const courseProgress = (course) => {
+  if (String(course?.payment_type || '').toLowerCase() === 'monthly') return null;
+
+  const total = parseCourseNumber(
+    course?.PackageID ? course?.package_total_sessions : course?.sessions_purchased,
+  );
+  const remaining = parseCourseNumber(
+    course?.PackageID
+      ? course?.package_remaining_sessions
+      : (course?.remaining_sessions ?? course?.RemainingSessions),
+  );
+  if (total == null || total <= 0 || remaining == null || remaining < 0) return null;
+
+  const reportedUsed = parseCourseNumber(
+    course?.PackageID
+      ? course?.package_used_sessions
+      : (course?.used_sessions ?? course?.sessions_used),
+  );
+  const used = Math.max(0, reportedUsed == null ? total - remaining : reportedUsed);
+  const boundedUsed = Math.min(total, used);
+  return {
+    total,
+    remaining,
+    used: boundedUsed,
+    percent: Math.min(100, Math.max(0, Math.round((boundedUsed / total) * 100))),
+  };
+};
 /** 列表小徽章：僅堂數制用「剩餘 ≤2」標紅；月結制不以 RemainingSessions（常為 0）判斷。
  *  方案課程（PackageID）改以 package_remaining_sessions（方案池剩餘）判斷，
  *  與主要「剩餘堂數」顯示一致。 */
@@ -3368,6 +3400,218 @@ table th { font-size: 12.5px; }
 .student-latest-payment-note strong { color: var(--ds-success); }
 .student-latest-payment-note p { margin: 2px 0; white-space: pre-wrap; word-break: break-word; }
 .student-latest-payment-note small { color: var(--ds-ink-mute); }
+.student-course-cards {
+  display: grid;
+  gap: 12px;
+}
+.student-course-card {
+  background: var(--ds-canvas);
+  border: 1px solid var(--ds-hairline);
+  border-radius: 12px;
+  box-shadow: var(--ds-shadow-1);
+  padding: 16px;
+}
+.student-course-card--attention {
+  border-color: var(--ds-warning);
+  box-shadow: 0 0 0 1px var(--ds-warning-wash), var(--ds-shadow-1);
+}
+.student-course-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.student-course-card__identity {
+  min-width: 0;
+}
+.student-course-card__eyebrow {
+  display: block;
+  color: var(--ds-ink-mute);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin-bottom: 2px;
+}
+.student-course-card__identity h5 {
+  color: var(--ds-ink);
+  font-size: 17px;
+  line-height: 1.35;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.student-course-card__badges {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 7px;
+}
+.student-course-card__badges .tag-expiring,
+.student-course-card__badges .tag-paused-sm {
+  margin-left: 0;
+}
+.student-course-card__primary {
+  flex: 0 0 auto;
+  min-height: 44px;
+  min-width: 112px;
+  white-space: nowrap;
+}
+.student-course-card__progress {
+  margin-top: 16px;
+}
+.student-course-card__progress-head {
+  align-items: baseline;
+  color: var(--ds-ink-secondary);
+  display: flex;
+  font-size: 13px;
+  justify-content: space-between;
+  gap: 12px;
+}
+.student-course-card__progress-head strong,
+.student-course-card__progress-caption,
+.student-course-card__money {
+  font-variant-numeric: tabular-nums;
+}
+.student-course-card__progress-head strong {
+  color: var(--ds-ink);
+  font-size: 14px;
+}
+.student-course-card__progress-track {
+  background: var(--ds-canvas-soft);
+  border: 1px solid var(--ds-hairline);
+  border-radius: 999px;
+  height: 10px;
+  margin-top: 8px;
+  overflow: hidden;
+}
+.student-course-card__progress-fill {
+  background: var(--ds-primary);
+  border-radius: inherit;
+  display: block;
+  height: 100%;
+  transition: width 180ms ease;
+}
+.student-course-card--attention .student-course-card__progress-fill {
+  background: var(--ds-warning);
+}
+.student-course-card__progress-caption {
+  color: var(--ds-ink-mute);
+  display: block;
+  font-size: 12px;
+  margin-top: 5px;
+}
+.student-course-card__progress-empty,
+.student-course-card__cadence {
+  align-items: center;
+  background: var(--ds-canvas-soft);
+  border-radius: 8px;
+  color: var(--ds-ink-secondary);
+  display: flex;
+  gap: 7px;
+  font-size: 13px;
+  line-height: 1.5;
+  margin-top: 16px;
+  padding: 10px 12px;
+}
+.student-course-card__progress-empty {
+  color: var(--ds-warning);
+}
+.student-course-card__cadence .material-symbols-outlined {
+  color: var(--ds-primary);
+  font-size: 19px;
+}
+.student-course-card__meta {
+  border-top: 1px solid var(--ds-hairline);
+  display: grid;
+  gap: 12px 18px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 16px 0 0;
+  padding-top: 14px;
+}
+.student-course-card__meta > div {
+  min-width: 0;
+}
+.student-course-card__meta dt {
+  color: var(--ds-ink-mute);
+  font-size: 11px;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+.student-course-card__meta dd {
+  color: var(--ds-ink-secondary);
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.student-course-card__money {
+  color: var(--ds-ink) !important;
+  font-weight: 700;
+}
+.student-course-card__payment {
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
+  padding: 3px 8px;
+}
+.student-course-card__payment--paid {
+  background: var(--ds-success-wash);
+  color: var(--ds-success);
+}
+.student-course-card__payment--unpaid,
+.student-course-card__payment--pending {
+  background: var(--ds-warning-wash);
+  color: var(--ds-warning);
+}
+.student-course-card__payment--overdue {
+  background: var(--ds-danger-wash);
+  color: var(--ds-danger);
+}
+.student-course-card__context {
+  background: var(--ds-canvas-soft);
+  border-left: 3px solid var(--ds-hairline-input);
+  color: var(--ds-ink-secondary);
+  display: grid;
+  font-size: 12px;
+  gap: 4px;
+  line-height: 1.5;
+  margin-top: 14px;
+  padding: 9px 12px;
+}
+.student-course-card__context strong {
+  color: var(--ds-ink-mute);
+  margin-right: 7px;
+}
+.student-course-card__actions {
+  border-top: 1px solid var(--ds-hairline);
+  margin-top: 14px;
+  padding-top: 10px;
+}
+.student-course-card__actions summary {
+  color: var(--ds-primary-deep);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  min-height: 32px;
+  padding: 6px 0;
+}
+.student-course-card__actions summary:focus-visible {
+  border-radius: 4px;
+  outline: 3px solid var(--ds-primary-wash);
+  outline-offset: 2px;
+}
+.student-course-card__actions-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 10px;
+}
+.student-course-card__actions-body button {
+  min-height: 44px;
+}
 .course-inner-table {
   width: 100%;
   border-collapse: collapse;
@@ -3494,6 +3738,22 @@ table th { font-size: 12.5px; }
 
 /* ═══ Mobile Responsive ═══ */
 @media (max-width: 768px) {
+  .course-panel {
+    padding: 16px;
+  }
+  .student-course-card__header {
+    display: block;
+  }
+  .student-course-card__primary {
+    margin-top: 12px;
+    width: 100%;
+  }
+  .student-course-card__meta {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .student-course-card__actions-body button {
+    flex: 1 1 calc(50% - 8px);
+  }
   .header-actions {
     flex-direction: column;
     gap: 10px;
