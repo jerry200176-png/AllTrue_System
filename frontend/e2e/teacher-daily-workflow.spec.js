@@ -90,6 +90,13 @@ test.describe('Teacher daily workflow real Vue page', () => {
     await expect(page.getByRole('button', { name: '修改評量' })).toBeVisible();
     await expect(page.getByRole('button', { name: '開始點名' }).first()).toBeVisible();
     await expect(page.locator('.th-work-task').getByText('請假學生')).toHaveCount(0);
+    const clockinCard = page.getByRole('button', { name: /今日打卡狀態/ });
+    await expect(clockinCard).toHaveAttribute('type', 'button');
+    await expect(clockinCard).toHaveAttribute('aria-describedby', 'teacher-clockin-status');
+    await clockinCard.press('Space');
+    await expect.poll(() => page.evaluate(() => window.__pilotLastNavigation)).toBe('attendance');
+    await expect(page.getByRole('button', { name: '上一週' })).toHaveAttribute('aria-label', '上一週');
+    await expect(page.getByRole('button', { name: '下一週' })).toHaveAttribute('aria-label', '下一週');
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
     expect(overflow).toBeTruthy();
     expect(await page.locator('.th-work-task__cta').first().isVisible()).toBeTruthy();

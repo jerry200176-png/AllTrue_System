@@ -72,6 +72,40 @@ export const staffUpdates = [
     "version": "2026.08.29"
   },
   {
+    "id": "staff-2026-08-29-teacher-card-a11y",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "teacher"
+    ],
+    "audience": [
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "老師工作台的控制項更穩定",
+    "summary": "今日打卡與本週課表的操作更容易用鍵盤、觸控與螢幕閱讀器理解。",
+    "items": [
+      "今日打卡狀態卡片現在是清楚的原生按鈕，會說明目前狀態並保留前往出缺勤管理的行為。",
+      "本週課表的上一週／下一週與課表圖示操作都有明確名稱，不必只依賴圖示或滑鼠提示。",
+      "出缺勤、課表、評量資料、API、權限與既有導頁行為維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "今日打卡狀態卡片現在是清楚的原生按鈕，會說明目前狀態並保留前往出缺勤管理的行為。",
+          "本週課表的上一週／下一週與課表圖示操作都有明確名稱，不必只依賴圖示或滑鼠提示。",
+          "出缺勤、課表、評量資料、API、權限與既有導頁行為維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:teacher-card-a11y"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
     "id": "staff-2026-08-29-students-row-disclosure",
     "publishedAt": "2026-08-29",
     "effectiveAt": null,
