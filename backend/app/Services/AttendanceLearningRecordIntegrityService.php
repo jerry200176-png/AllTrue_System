@@ -172,7 +172,12 @@ class AttendanceLearningRecordIntegrityService
                 } elseif (in_array($status, CourseLeaveCascadeService::NON_BILLABLE_STATUSES, true)) {
                     $reason = CourseLeaveCascadeService::VOID_REASON_LEAVE;
                 } else {
-                    $reason = '未到課狀態：評量一致性修復';
+                    // scheduled/absent rows are not attendance evidence, but the
+                    // original LR may need to be restored if a director later
+                    // confirms that session as attended. Reuse the existing
+                    // system-adjustment reason so resurrection policy can do so
+                    // without creating a second row (ClassSessionID is unique).
+                    $reason = '由已上調整狀態';
                 }
                 $beforeCount = LearningRecord::query()->where('ClassSessionID', $sessionId)->whereNull('VoidedAt')->count();
                 CourseLeaveCascadeService::voidLiveArtifactsForNonAttendance($sessionId, $reason, $actorUserId > 0 ? $actorUserId : null);
