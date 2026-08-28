@@ -1,14 +1,21 @@
 <template>
   <div class="li-page">
 
+    <AtPageHeader
+      title="家長 LINE 通知設定"
+      description="設定完成後，家長加入官方帳號即可收到學習報告連結。"
+      icon="chat"
+      data-guide="line-header"
+    >
+      <template #actions>
+        <AtButton shape="rect" variant="ghost" icon="refresh" :disabled="loading" @click="loadStatus">重新整理</AtButton>
+      </template>
+    </AtPageHeader>
+
     <!-- 狀態總覽 -->
     <div class="card" data-guide="line-status">
       <div class="li-top">
-        <div>
-          <h2>家長 LINE 通知設定</h2>
-          <p class="sub">設定完成後，家長加入官方帳號即可收到學習報告連結</p>
-        </div>
-        <button class="ghost small" @click="loadStatus" :disabled="loading">↻ 重新整理</button>
+        <h3>目前連線狀態</h3>
       </div>
 
       <div v-if="status" class="status-row">
@@ -176,6 +183,8 @@
 
 <script setup>
 import { ref, onMounted, watch, computed } from 'vue';
+import AtButton from '../components/design-system/AtButton.vue';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import { supabase } from '../supabase';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
 
