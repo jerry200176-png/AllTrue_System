@@ -1,0 +1,47 @@
+id: TKT-20260828-190801-8TY7
+title: Deliver director daily progress UX
+intent: Deliver director daily progress UX
+kind: task
+parent_id: INT-20260828-190711-0W96
+boundary: "\u53EA\u505A AllTrue director dashboard \u7684 bounded UI/progress cue\
+  \ \u8207 evidence\uFF1B\u4E0D\u6539 API\u3001auth\u3001billing\u3001schedule\u3001\
+  attendance semantics\u3001production data \u6216 deploy\u3002"
+success_condition: "lint\u3001build \u8207 UI foundation regression \u5DF2\u901A\u904E\
+  \uFF0C\u4E26\u4EE5 Draft PR \u63D0\u4F9B review\uFF1Bproduction \u4E0A\u7DDA\u9808\
+  \u53E6\u7D93 required checks \u8207 governed merge/deploy\u3002"
+priority: 2
+labels:
+- ui
+scope:
+  allow:
+  - frontend/src/pages/DirectorDashboard.vue
+  - frontend/src/components/TodayProgressCard.vue
+  - frontend/src/components/__tests__/TodayProgressCard.test.js
+  - frontend/src/lib/dailyWorkProgress.js
+  - frontend/src/lib/dailyWorkProgress.test.js
+  - docs/design/evidence/daily-progress-ux-2026-08-28.md
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - '**/.env*'
+  - backend/**
+  - supabase/**
+budgets:
+  max_files_changed: 12
+  max_loc_changed: 400
+checks:
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: todo
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-28T19:08:01+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default
