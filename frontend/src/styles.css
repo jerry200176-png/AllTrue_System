@@ -683,6 +683,10 @@ body {
   animation: sidebarMorePanelIn 160ms ease-out;
 }
 
+.sidebar-more-panel:focus {
+  outline: none;
+}
+
 @keyframes sidebarMorePanelIn {
   from { opacity: 0; transform: translateX(-8px); }
   to { opacity: 1; transform: translateX(0); }
@@ -1129,6 +1133,11 @@ body {
   }
   .more-sheet.open {
     transform: translate3d(0, 0, 0);
+    animation: moreSheetIn 0.3s ease;
+  }
+  @keyframes moreSheetIn {
+    from { transform: translate3d(0, 100%, 0); }
+    to { transform: translate3d(0, 0, 0); }
   }
   .more-sheet-handle {
     width: 36px;
@@ -1136,13 +1145,39 @@ body {
     background: rgba(148, 163, 184, 0.4);
     border-radius: 2px;
     margin: 4px auto 12px;
-    cursor: pointer;
+  }
+  .more-sheet:focus { outline: none; }
+  .more-sheet-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
   }
   .more-sheet-title {
     font-size: 14px;
     font-weight: 700;
     color: #f8fafc;
-    margin-bottom: 12px;
+    margin: 0;
+  }
+  .more-sheet-close {
+    display: inline-grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    flex: 0 0 auto;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.1);
+    color: #cbd5e1;
+    cursor: pointer;
+  }
+  .more-sheet-close:hover,
+  .more-sheet-close:focus-visible {
+    color: #ffffff;
+    border-color: rgba(165, 180, 252, 0.6);
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(165, 180, 252, 0.24);
   }
   .more-group {
     margin-bottom: 14px;
@@ -1192,6 +1227,14 @@ body {
   .more-item:active {
     background: rgba(148, 163, 184, 0.2);
     color: #f8fafc;
+  }
+  .more-item:focus-visible,
+  .mob-tab:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(165, 180, 252, 0.34);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .more-sheet.open { animation: none; }
   }
   .more-item.active {
     background: rgba(83, 58, 253, 0.2);
