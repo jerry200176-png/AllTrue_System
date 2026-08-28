@@ -106,6 +106,40 @@ export const staffUpdates = [
     "version": "2026.08.29"
   },
   {
+    "id": "staff-2026-08-29-course-management-hierarchy",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "課程查找操作層級更清楚",
+    "summary": "學生群組、課程／帳務分頁與歷史資料的操作關係更明確。",
+    "items": [
+      "學生群組的展開與「專注此學生」改成兩個清楚分開的操作，鍵盤可以直接使用 Enter 或 Space 展開與收合。",
+      "課程資料與帳務資料分頁補上明確的控制關係；切換分頁會自動保留原有資料與操作流程。",
+      "歷史課程維持按需展開，並補上展開狀態與可控制區域，讓螢幕閱讀器能理解目前看到的內容。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "學生群組的展開與「專注此學生」改成兩個清楚分開的操作，鍵盤可以直接使用 Enter 或 Space 展開與收合。",
+          "課程資料與帳務資料分頁補上明確的控制關係；切換分頁會自動保留原有資料與操作流程。",
+          "歷史課程維持按需展開，並補上展開狀態與可控制區域，讓螢幕閱讀器能理解目前看到的內容。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:course-management-hierarchy"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
     "id": "staff-2026-08-28-schedule-safe-recovery",
     "publishedAt": "2026-08-28",
     "effectiveAt": null,

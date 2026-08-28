@@ -189,30 +189,32 @@
           class="student-group-card"
           :class="{ 'student-group-has-paused': groupHasPausedCourse(group) }"
         >
-          <div
-            class="student-group-header"
-            role="button"
-            tabindex="0"
-            :aria-expanded="expandedStudentGroups.has(group.key)"
-            @click="toggleStudentGroup(group.key)"
-            @keydown.enter.prevent="toggleStudentGroup(group.key)"
-            @keydown.space.prevent="toggleStudentGroup(group.key)"
-          >
-            <span class="student-group-left">
-              <span class="expand-indicator">{{ expandedStudentGroups.has(group.key) ? '▼' : '▶' }}</span>
-              <span class="cell-student">{{ group.student_name }}</span>
-              <span v-if="groupHasPausedCourse(group)" class="student-group-paused-badge">含暫停課程</span>
-            </span>
-            <span class="student-group-meta">
-              <span>{{ activeCourses(group).length }} 筆進行中</span>
-              <span v-if="historyCourses(group).length" class="student-group-history-count">{{ historyCourses(group).length }} 筆歷史</span>
-            </span>
+          <div class="student-group-header">
+            <button
+              type="button"
+              class="student-group-toggle"
+              :id="studentGroupToggleId(group.key)"
+              :aria-expanded="expandedStudentGroups.has(group.key)"
+              :aria-controls="studentGroupPanelId(group.key, studentGroupTab(group.key))"
+              @click="toggleStudentGroup(group.key)"
+            >
+              <span class="student-group-left">
+                <span class="expand-indicator" aria-hidden="true">{{ expandedStudentGroups.has(group.key) ? '▼' : '▶' }}</span>
+                <span class="cell-student">{{ group.student_name }}</span>
+                <span v-if="groupHasPausedCourse(group)" class="student-group-paused-badge">含暫停課程</span>
+              </span>
+              <span class="student-group-meta">
+                <span>{{ activeCourses(group).length }} 筆進行中</span>
+                <span v-if="historyCourses(group).length" class="student-group-history-count">{{ historyCourses(group).length }} 筆歷史</span>
+              </span>
+            </button>
             <div class="student-group-header-actions">
               <button
+                type="button"
                 class="focus-btn"
                 :class="{ active: focusedStudentKey === group.key }"
                 @click="focusStudent(group, $event)"
-                @keydown.stop
+                :aria-label="focusedStudentKey === group.key ? `取消專注 ${group.student_name}` : `專注 ${group.student_name}`"
                 :title="focusedStudentKey === group.key ? '取消專注' : '專注此學生'"
               >⊙</button>
             </div>
@@ -230,8 +232,10 @@
               class="student-group-view-tab"
               :class="{ active: studentGroupTab(group.key) === 'courses' }"
               role="tab"
+              :id="studentGroupTabId(group.key, 'courses')"
               data-testid="student-tab-courses"
               :aria-selected="studentGroupTab(group.key) === 'courses'"
+              :aria-controls="studentGroupPanelId(group.key, 'courses')"
               @click.stop="selectStudentGroupTab(group, 'courses', $event)"
             >課程資料</button>
             <button
@@ -239,8 +243,10 @@
               class="student-group-view-tab"
               :class="{ active: studentGroupTab(group.key) === 'billing' }"
               role="tab"
+              :id="studentGroupTabId(group.key, 'billing')"
               data-testid="student-tab-billing"
               :aria-selected="studentGroupTab(group.key) === 'billing'"
+              :aria-controls="studentGroupPanelId(group.key, 'billing')"
               @click.stop="selectStudentGroupTab(group, 'billing', $event)"
             >帳務資料</button>
           </div>
@@ -250,7 +256,14 @@
               到學生管理新增課程
             </button>
           </div>
-          <div v-if="expandedStudentGroups.has(group.key) && studentGroupTab(group.key) === 'courses'" class="table-wrap group-table-wrap">
+          <div
+            v-if="expandedStudentGroups.has(group.key) && studentGroupTab(group.key) === 'courses'"
+            :id="studentGroupPanelId(group.key, 'courses')"
+            class="table-wrap group-table-wrap"
+            role="tabpanel"
+            tabindex="0"
+            :aria-labelledby="studentGroupTabId(group.key, 'courses')"
+          >
             <table class="course-table">
               <thead>
                 <tr>
@@ -530,13 +543,23 @@
             </table>
             <!-- History courses collapsible section -->
             <div v-if="historyCourses(group).length" class="history-section">
-              <button class="history-section__toggle" @click="toggleHistoryGroup(group.key)">
+              <button
+                type="button"
+                class="history-section__toggle"
+                :aria-expanded="expandedHistoryGroups.has(group.key)"
+                :aria-controls="historyGroupPanelId(group.key)"
+                @click="toggleHistoryGroup(group.key)"
+              >
                 <span class="material-symbols-outlined history-section__icon" aria-hidden="true">inventory_2</span>
                 <span class="history-section__label">歷史課程</span>
                 <span class="history-section__count">{{ historyCourses(group).length }} 筆</span>
                 <span class="history-section__chevron">{{ expandedHistoryGroups.has(group.key) ? '▲' : '▼' }}</span>
               </button>
-              <div v-if="expandedHistoryGroups.has(group.key)" class="history-section__body">
+              <div
+                v-if="expandedHistoryGroups.has(group.key)"
+                :id="historyGroupPanelId(group.key)"
+                class="history-section__body"
+              >
                 <div v-for="hc in historyCourses(group)" :key="hc.id" class="history-course-card">
                   <div class="history-course-card__header">
                     <span class="tag subject-tag history-course-card__subject">{{ getSubjectLabel(hc.subject) }}</span>
@@ -597,7 +620,11 @@
           </div>
           <div
             v-if="expandedStudentGroups.has(group.key) && studentGroupTab(group.key) === 'billing'"
+            :id="studentGroupPanelId(group.key, 'billing')"
             class="table-wrap group-table-wrap student-billing-wrap"
+            role="tabpanel"
+            tabindex="0"
+            :aria-labelledby="studentGroupTabId(group.key, 'billing')"
           >
             <div v-if="studentBillingState[group.key]?.loading" class="student-billing-state">載入帳務中…</div>
             <div v-else-if="studentBillingState[group.key]?.error" class="student-billing-state student-billing-error" role="alert">
@@ -3748,6 +3775,14 @@ const groupCoursesByStudent = (list = []) => {
 
 const groupedCourses = computed(() => groupCoursesByStudent(courses.value));
 
+// Keep disclosure and tab relationships stable without exposing student names
+// (which may contain spaces or punctuation) in DOM ids.
+const domKey = (key) => String(key ?? '').replace(/[^a-zA-Z0-9_-]/g, '-');
+const studentGroupToggleId = (key) => `student-group-toggle-${domKey(key)}`;
+const studentGroupPanelId = (key, tab) => `student-group-panel-${tab}-${domKey(key)}`;
+const studentGroupTabId = (key, tab) => `student-group-tab-${tab}-${domKey(key)}`;
+const historyGroupPanelId = (key) => `student-history-panel-${domKey(key)}`;
+
 const resetExpandedStudentGroups = (groups = groupedCourses.value) => {
   expandedStudentGroups.value = new Set(groups.map((g) => g.key));
 };
@@ -5968,15 +6003,29 @@ onUnmounted(() => {
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 10px;
-  cursor: pointer;
 }
 
 .student-group-header:hover {
   background: var(--ds-canvas-soft);
 }
-.student-group-header:focus-visible {
+.student-group-toggle {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.student-group-toggle:focus-visible {
   outline: 3px solid color-mix(in srgb, var(--ds-primary) 28%, transparent);
-  outline-offset: -3px;
+  outline-offset: 4px;
 }
 
 .student-group-left {
@@ -6101,6 +6150,11 @@ onUnmounted(() => {
   font-weight: 700;
   padding: 11px 12px;
   cursor: pointer;
+}
+.student-group-view-tab:focus-visible,
+.history-section__toggle:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--ds-primary) 28%, transparent);
+  outline-offset: -3px;
 }
 .student-group-view-tab.active {
   color: var(--ds-ink);

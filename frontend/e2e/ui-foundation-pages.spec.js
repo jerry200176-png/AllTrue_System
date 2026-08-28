@@ -642,6 +642,31 @@ test.describe('UI foundation — real Vue page evidence', () => {
     await expect(page.getByRole('button', { name: '建立這一堂', exact: true })).toBeEnabled();
   });
 
+  test('course management keeps disclosure and tab focus relationships explicit', async ({ page }) => {
+    await openPilot(page, { pageName: 'course', mode: 'normal', viewport: { width: 1440, height: 900 } });
+
+    const groupToggle = page.locator('.student-group-toggle').first();
+    await expect(groupToggle).toBeVisible({ timeout: 10_000 });
+    await expect(groupToggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(groupToggle).toHaveAttribute('aria-controls', /student-group-panel-courses/);
+    await expect(page.getByRole('button', { name: '專注 測試學生甲', exact: true })).toBeVisible();
+
+    await groupToggle.press('Space');
+    await expect(groupToggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.locator('[role="tabpanel"]')).toHaveCount(0);
+    await groupToggle.press('Enter');
+    await expect(groupToggle).toHaveAttribute('aria-expanded', 'true');
+
+    const courseTab = page.getByRole('tab', { name: '課程資料', exact: true }).first();
+    const billingTab = page.getByRole('tab', { name: '帳務資料', exact: true }).first();
+    await expect(courseTab).toHaveAttribute('aria-selected', 'true');
+    await expect(courseTab).toHaveAttribute('aria-controls', /student-group-panel-courses/);
+    await expect(page.locator('[role="tabpanel"]')).toBeVisible();
+    await billingTab.click();
+    await expect(billingTab).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('[role="tabpanel"]')).toHaveAttribute('aria-labelledby', /student-group-tab-billing/);
+  });
+
   for (const vp of [
     { name: '390', width: 390, height: 844 },
     { name: '412', width: 412, height: 915 },

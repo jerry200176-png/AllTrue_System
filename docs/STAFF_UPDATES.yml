@@ -3,6 +3,23 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-29-course-management-hierarchy
+    published_at: "2026-08-29"
+    audiences:
+      - director
+    importance: digest
+    title: 課程查找操作層級更清楚
+    summary: 學生群組、課程／帳務分頁與歷史資料的操作關係更明確。
+    items:
+      - category: improved
+        text: 學生群組的展開與「專注此學生」改成兩個清楚分開的操作，鍵盤可以直接使用 Enter 或 Space 展開與收合。
+      - category: improved
+        text: 課程資料與帳務資料分頁補上明確的控制關係；切換分頁會自動保留原有資料與操作流程。
+      - category: improved
+        text: 歷史課程維持按需展開，並補上展開狀態與可控制區域，讓螢幕閱讀器能理解目前看到的內容。
+    source_refs:
+      - "changelog:2026-08-29:course-management-hierarchy"
+
   - id: staff-2026-08-29-student-course-disclosure
     published_at: "2026-08-29"
     audiences:
