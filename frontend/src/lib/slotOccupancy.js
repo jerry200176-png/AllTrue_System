@@ -137,6 +137,24 @@ export function timesOverlap(aStart, aEnd, bStart, bEnd) {
   return aS < bE && bS < aE;
 }
 
+function ymd(value) {
+  const match = String(value || '').match(/^\d{4}-\d{2}-\d{2}/);
+  return match ? match[0] : '';
+}
+
+function dateRangesOverlap(a, b) {
+  const aStart = ymd(a?.conflict_start_date ?? a?.start_date ?? a?.first_class_date ?? a?.StartDate);
+  const aEnd = ymd(a?.conflict_end_date ?? a?.end_date ?? a?.EndDate);
+  const bStart = ymd(b?.conflict_start_date ?? b?.start_date ?? b?.first_class_date ?? b?.StartDate);
+  const bEnd = ymd(b?.conflict_end_date ?? b?.end_date ?? b?.EndDate);
+
+  // Legacy rows may not expose a date range. Keep the historical conservative
+  // behavior for those rows; once either side has a complete range, use it to
+  // avoid flagging renewals whose actual periods do not intersect.
+  if (!aStart || !aEnd || !bStart || !bEnd) return true;
+  return aStart <= bEnd && bStart <= aEnd;
+}
+
 /**
  * #2007/#2006: flag courses that silently double-book the same teacher slot —
  * typically a renewal that left the old course open (root cause of #2006).
@@ -162,6 +180,7 @@ export function coursesWithSlotConflicts(courses = []) {
       if (!daysA.some((d) => daysB.includes(d))) continue;
 
       if (!timesOverlap(a?.start_time, a?.end_time, b?.start_time, b?.end_time)) continue;
+      if (!dateRangesOverlap(a, b)) continue;
 
       const idA = a?.id ?? a?.ID;
       const idB = b?.id ?? b?.ID;

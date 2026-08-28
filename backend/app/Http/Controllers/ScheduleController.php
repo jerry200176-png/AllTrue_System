@@ -519,11 +519,14 @@ class ScheduleController extends Controller
         // 與請假建立時間無關，主任因此可隨時取消尚未產生後續上課記錄的請假。
         try {
             return DB::transaction(function () use ($schedule, $courseId, $scheduleDate) {
-                [$rows, $extendedEndDate, $leaveSessionDate] = CourseLeaveCascadeService::undoLeaveCascade($courseId, $scheduleDate);
+                [$rows, $extendedEndDate, $leaveSessionDate, $recoveryWarning] = CourseLeaveCascadeService::undoLeaveCascade($courseId, $scheduleDate);
                 $schedule->delete();
 
                 return response()->json([
-                    'message' => '已撤銷請假，堂次與順延排程已回復',
+                    'message' => $recoveryWarning === 'tail_missing'
+                        ? '已撤銷請假；找不到原順延尾堂，系統未改動其他堂次，請再做堂數對帳。'
+                        : '已撤銷請假，堂次與順延排程已回復',
+                    'warning' => $recoveryWarning,
                     'leave_session_date' => $leaveSessionDate,
                     'extended_end_date' => $extendedEndDate,
                     'class_sessions' => $rows,
@@ -591,7 +594,7 @@ class ScheduleController extends Controller
 
                 if ($csStatus === 'leave') {
                     // 正常請假：走 cascade 反轉（含下游已上課護欄、回復順延尾堂）。
-                    [$rows, $extendedEndDate, $leaveSessionDate] =
+                    [$rows, $extendedEndDate, $leaveSessionDate, $recoveryWarning] =
                         CourseLeaveCascadeService::undoLeaveCascade($courseId, $sessionDate);
                 } else {
                     // Desync：請假只記在簽到、ClassSession 仍非 leave、未產生順延。
@@ -618,7 +621,10 @@ class ScheduleController extends Controller
                     ->delete();
 
                 return response()->json([
-                    'message' => '已撤銷請假，堂次與順延排程已回復',
+                    'message' => ($recoveryWarning ?? null) === 'tail_missing'
+                        ? '已撤銷請假；找不到原順延尾堂，系統未改動其他堂次，請再做堂數對帳。'
+                        : '已撤銷請假，堂次與順延排程已回復',
+                    'warning' => $recoveryWarning ?? null,
                     'leave_session_date' => $leaveSessionDate,
                     'extended_end_date' => $extendedEndDate,
                     'class_sessions' => $rows,

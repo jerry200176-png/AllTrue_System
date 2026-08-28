@@ -63,7 +63,11 @@ export function useSessionEditFlow({
     const current = sessionEditForm.value.current_status || '';
     const allowed = SESSION_STATUS_TRANSITIONS[current] || [];
     const hiddenPrimary = new Set(['scheduled', 'leave', 'leave_adjusted']);
-    return allowed.filter((s) => !hiddenPrimary.has(s));
+    const leaveRequiresUndo = new Set(['attended', 'late', 'absent']);
+    return allowed.filter((s) => (
+      !hiddenPrimary.has(s)
+      && !(current === 'leave' && leaveRequiresUndo.has(s))
+    ));
   });
 
   // Unified actionable dialog (replaces native alert dead-ends).
@@ -373,7 +377,10 @@ export function useSessionEditFlow({
       const event = (form.current_status !== 'scheduled' && newStatus === 'scheduled') ? 'flow_undone' : 'flow_submitted';
       trackAdoptionEvent(event, bid, { flow: 'session_status', from: form.current_status, to: newStatus });
       closeSessionEdit();
-      alert(json.message || (isUndoLeave ? '已取消請假' : '狀態已更新'));
+      const successMessage = json.message || (isUndoLeave ? '已取消請假' : '狀態已更新');
+      alert(json.warning === 'tail_missing'
+        ? `${successMessage}\n\n請到合約／堂次調整確認剩餘堂數。`
+        : successMessage);
       await loadCourses();
     } catch (e) {
       alert('操作失敗：' + (e?.message || '請稍後再試'));

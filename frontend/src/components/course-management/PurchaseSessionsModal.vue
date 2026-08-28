@@ -5,7 +5,7 @@
         <span class="premium-modal-icon">＋</span>
         <div>
           <p class="premium-kicker">Renewal Batch</p>
-          <h3 class="modal-title">{{ isPackageMode ? '調整共用方案堂數' : '加購堂數' }}</h3>
+          <h3 class="modal-title">{{ isTrialMode ? '試聽轉正式課程' : (isPackageMode ? '調整共用方案堂數' : '加購堂數') }}</h3>
           <p class="modal-desc">{{ form.student_name }} - {{ subjectLabel }}</p>
         </div>
       </div>
@@ -58,14 +58,15 @@ const props = defineProps({
   form: Object,
   submitting: { type: Boolean, default: false },
   isPackageMode: { type: Boolean, default: false },
+  isTrialMode: { type: Boolean, default: false },
   currentTotal: { type: Number, default: 0 },
   usedSessions: { type: Number, default: 0 },
 });
 defineEmits(['close', 'submit']);
 const subjectLabel = computed(() => getSubjectLabel(props.form?.subject));
 const isSetMode = computed(() => props.isPackageMode && props.form?.package_op === 'set');
-const sessionsLabel = computed(() => (isSetMode.value ? '設定後的總堂數' : '加購堂數'));
-const submitLabel = computed(() => (isSetMode.value ? '確認設定' : '確認加購'));
+const sessionsLabel = computed(() => (props.isTrialMode ? '正式課程堂數' : (isSetMode.value ? '設定後的總堂數' : '加購堂數')));
+const submitLabel = computed(() => (props.isTrialMode ? '確認轉為正式' : (isSetMode.value ? '確認設定' : '確認加購')));
 function selectOp(op) {
   if (!props.form || props.form.package_op === op) return;
   props.form.package_op = op;
@@ -74,6 +75,9 @@ function selectOp(op) {
   props.form.sessions = op === 'set' ? (Number(props.currentTotal) || 0) : 8;
 }
 const packageNote = computed(() => {
+  if (props.isTrialMode) {
+    return '試聽堂次與評量會保留在歷史紀錄；未來試聽排課會取消，正式課程從你選的日期重新排 8 堂。不會搬移或重複計算試聽堂次。';
+  }
   if (!props.isPackageMode) {
     return '加購會建立一筆新的未繳課程批次，並在新批次詳情顯示上課日期；原課程堂數不會被改寫。';
   }

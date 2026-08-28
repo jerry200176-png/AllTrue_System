@@ -289,16 +289,16 @@
                   </tr>
                   <tr :class="['course-row', courseRowClass(c)]">
                     <td class="td-subject">
-                      <div v-if="effectiveClosedReason(c) === 'settled' || effectiveClosedReason(c) === 'completed'" class="settled-course-callout" role="status">
+                      <div v-if="['settled', 'completed', 'converted_trial'].includes(effectiveClosedReason(c))" class="settled-course-callout" role="status">
                         <span class="settled-course-callout__icon" aria-hidden="true">✅</span>
                         <span class="settled-course-callout__main">已結案</span>
-                        <span class="settled-course-callout__sub">{{ effectiveClosedReason(c) === 'settled' ? '手動結案，無需續報' : '堂數已用完' }}</span>
+                        <span class="settled-course-callout__sub">{{ effectiveClosedReason(c) === 'converted_trial' ? '已轉正式，試聽紀錄保留' : (effectiveClosedReason(c) === 'settled' ? '手動結案，無需續報' : '堂數已用完') }}</span>
                       </div>
                       <div class="subject-line">
                         <span class="tag subject-tag" :class="{ 'subject-tag--paused': c.status === 'inactive' }">{{ getSubjectLabel(c.subject) }}</span>
                         <span class="status-tag" :class="c.class_type">{{ classTypeLabel(c.class_type) }}</span>
                         <span v-if="c.PackageID" class="tag tag-package" :title="c.PackageName || '多科方案'">方案</span>
-                        <span v-else-if="effectiveClosedReason(c) === 'settled' || effectiveClosedReason(c) === 'completed'" class="tag tag-settled">已結案</span>
+                        <span v-else-if="['settled', 'completed', 'converted_trial'].includes(effectiveClosedReason(c))" class="tag tag-settled">已結案</span>
                       </div>
                       <div class="price-line">
                         <span>每堂 ${{ sessionPrice(c) }}</span>
@@ -542,7 +542,8 @@
                     <span class="tag subject-tag history-course-card__subject">{{ getSubjectLabel(hc.subject) }}</span>
                     <span class="status-tag" :class="hc.class_type">{{ classTypeLabel(hc.class_type) }}</span>
                     <span v-if="hc.PackageID" class="tag tag-package" :title="hc.PackageName || '多科方案'">方案</span>
-                    <span v-if="effectiveClosedReason(hc) === 'settled'" class="tag tag-history tag-history--settled">已結算</span>
+                    <span v-if="effectiveClosedReason(hc) === 'converted_trial'" class="tag tag-history tag-history--settled">已轉正式</span>
+                    <span v-else-if="effectiveClosedReason(hc) === 'settled'" class="tag tag-history tag-history--settled">已結算</span>
                     <span v-else class="tag tag-history tag-history--completed">已完課</span>
                   </div>
                   <div class="history-course-card__details">
@@ -869,6 +870,7 @@
       :form="purchaseForm"
       :submitting="purchaseSubmitting"
       :is-package-mode="isPackageMember(purchaseCourse)"
+      :is-trial-mode="purchaseCourse?.class_type === 'trial'"
       :current-total="getPackageTotalSessions(purchaseCourse)"
       :used-sessions="getPackageUsedSessions(purchaseCourse)"
       @close="!purchaseSubmitting && (showPurchaseModal = false)"
@@ -2593,6 +2595,7 @@ function duplicateCourseForTeacher(course) {
 // 月結課程的此入口其實是「結算／續約下月」（開 RenewMonthlyModal），
 // 但舊標籤「加購堂數」對月結語意不通，主任找不到結算功能（in-app #141）。
 function purchaseActionLabel(c) {
+  if (c?.class_type === 'trial') return '轉為正式課程';
   if (!isSessionMode(c)) return '結算 / 續約下月';
   return Number(displayRemainingSessions(c) ?? 0) <= 2 ? '續報加購' : '加購堂數';
 }
@@ -2601,6 +2604,7 @@ function purchaseActionIsRenew(c) {
   return Number(displayRemainingSessions(c) ?? 0) <= 2;
 }
 function purchaseActionTitle(c) {
+  if (c?.class_type === 'trial') return '保留試聽紀錄並建立正式堂數課程';
   return isSessionMode(c) ? '加購／續報堂數' : '月結課程結算本期並續約下個月';
 }
 
@@ -2629,6 +2633,9 @@ function openPurchaseModal(course) {
     subject: course?.subject || 'Math',
     package_op: 'add', // 'add' (加購) | 'set' (設定總堂數) — package members only (#553)
   };
+  if (course?.class_type === 'trial') {
+    purchaseForm.value.start_date = nextManualSessionDate(course) || localTodayYmd();
+  }
   showPurchaseModal.value = true;
 }
 
@@ -2689,6 +2696,48 @@ async function submitPurchaseSessions() {
   }
   purchaseSubmitting.value = true;
   try {
+    if (course?.class_type === 'trial') {
+      const { data: { session: trialSession } } = await supabase.auth.getSession();
+      const trialToken = trialSession?.access_token;
+      if (!trialToken) {
+        alert('請重新登入後再試');
+        return;
+      }
+      const res = await fetch(`/api/v1/student-classes/${course.id}/convert-trial`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          Authorization: `Bearer ${trialToken}`,
+        },
+        body: JSON.stringify({
+          sessions: Number(purchaseForm.value.sessions),
+          start_date: purchaseForm.value.start_date,
+          class_type: 'one_on_one',
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const details = json?.conflicts?.map((c) => c.message).filter(Boolean).join(' ') || '';
+        alert(details || json?.message || '試聽轉正式失敗');
+        return;
+      }
+      showPurchaseModal.value = false;
+      await loadCourses();
+      const groupKey = course?.student_id != null ? `sid:${course.student_id}` : null;
+      if (groupKey) {
+        expandedStudentGroups.value = new Set([...expandedStudentGroups.value, groupKey]);
+        focusedStudentKey.value = groupKey;
+      }
+      toastRef.value?.show?.({
+        title: '試聽已轉為正式課程',
+        description: json?.message || '試聽紀錄已保留，正式課程已建立。',
+        variant: 'success',
+        durationMs: 7000,
+      });
+      return;
+    }
     if (isPackage) {
       const packageId = Number(course.PackageID ?? course.package_id);
       const op = purchaseForm.value.package_op === 'set' ? 'set' : 'add';

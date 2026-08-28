@@ -1271,6 +1271,21 @@ class ClassSessionController extends Controller
             ], 422);
         }
 
+        // A leave changes the course's tail/end-date contract. It must be
+        // undone through /schedules/undo-leave-by-session so the cascade,
+        // linked schedule row, and leave-owned artifacts are reversed together.
+        // Blocking direct leave→attended→scheduled also removes the old
+        // workaround that could silently leave an extra tail behind.
+        if (
+            $currentStatus === 'leave'
+            && in_array($newStatus, ['scheduled', 'attended', 'late', 'absent'], true)
+        ) {
+            return response()->json([
+                'message' => '請先使用「取消請假」，系統會同步回復順延堂次；不可直接改成已上或未上。',
+                'code' => 'leave_requires_cascade_undo',
+            ], 422);
+        }
+
         // leave_adjusted requires director+
         if ($newStatus === 'leave_adjusted') {
             if (!in_array($role, self::LEAVE_ADJUSTED_REQUIRES, true)) {
