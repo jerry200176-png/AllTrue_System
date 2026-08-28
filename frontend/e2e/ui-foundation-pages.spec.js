@@ -932,11 +932,20 @@ test.describe('UI foundation — real Vue page evidence', () => {
   test('director attendance keeps the action queue ahead of secondary context', async ({ page }) => {
     await openPilot(page, { pageName: 'attendance', mode: 'empty', viewport: { width: 1440, height: 900 } });
 
-    await expect(page.getByRole('tab', { name: '學生點名 主任', exact: true })).toHaveAttribute('aria-selected', 'true');
+    const studentTab = page.locator('#attendance-tab-student');
+    const teacherTab = page.locator('#attendance-tab-teacher');
+    await expect(studentTab).toHaveAttribute('aria-selected', 'true');
+    await expect(studentTab).toHaveAttribute('aria-controls', 'attendance-student-panel');
+    await expect(page.locator('#attendance-student-panel')).toHaveAttribute('aria-labelledby', 'attendance-tab-student');
+    await expect(page.locator('#attendance-student-panel')).toHaveAttribute('tabindex', '0');
     await expect(page.getByText('今日待點名堂次', { exact: true })).toBeVisible();
     await expect(page.locator('#attendance-student-panel > .att-secondary-summary')).not.toHaveAttribute('open', '');
 
-    await page.getByRole('tab', { name: '老師打卡 主任', exact: true }).click();
+    await teacherTab.click();
+    await expect(teacherTab).toHaveAttribute('aria-selected', 'true');
+    await expect(teacherTab).toHaveAttribute('aria-controls', 'attendance-teacher-panel');
+    await expect(page.locator('#attendance-teacher-panel')).toHaveAttribute('aria-labelledby', 'attendance-tab-teacher');
+    await expect(page.locator('#attendance-teacher-panel')).toHaveAttribute('tabindex', '0');
     await expect(page.getByRole('heading', { name: '先處理課表異常', exact: true })).toBeVisible();
     await expect(page.getByText('課表異常待處理', { exact: true })).toBeVisible();
     await expect(page.locator('#attendance-teacher-panel > .att-secondary-summary')).toHaveCount(2);

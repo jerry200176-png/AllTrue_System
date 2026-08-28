@@ -1,0 +1,29 @@
+import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const source = readFileSync(resolve(__dirname, '../../pages/AttendancePage.vue'), 'utf8');
+
+describe('AttendancePage workspace accessibility', () => {
+  it('connects director tabs to exactly one keyboard-focusable panel', () => {
+    expect(source).toContain('id="attendance-tab-student"');
+    expect(source).toContain('id="attendance-tab-teacher"');
+    expect(source).toContain('id="attendance-tab-student"\n        type="button"');
+    expect(source).toContain('id="attendance-tab-teacher"\n        type="button"');
+    expect(source).toContain('aria-controls="attendance-student-panel"');
+    expect(source).toContain('aria-controls="attendance-teacher-panel"');
+    expect(source).toContain('aria-labelledby="attendance-tab-teacher"');
+    expect(source).toContain(':aria-labelledby="isTeacher ? \'attendance-student-panel-title\' : \'attendance-tab-student\'"');
+    expect(source).toContain('id="attendance-student-panel"');
+    expect(source).toContain('id="attendance-teacher-panel"');
+    expect(source).toContain('role="tabpanel"');
+    expect(source).toContain('tabindex="0"');
+  });
+
+  it('announces pending attendance status controls as pressed buttons', () => {
+    expect(source).toContain('type="button"');
+    expect(source).toContain(':aria-pressed="pendingMarkStatus[s.class_session_id] === opt.value"');
+  });
+});

@@ -279,6 +279,42 @@ export const staffUpdates = [
     "version": "2026.08.29"
   },
   {
+    "id": "staff-2026-08-29-attendance-tab-status-a11y",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "出缺勤工作區切換更清楚",
+    "summary": "點名與打卡工作區，以及每堂到班狀態，都更容易用鍵盤與螢幕閱讀器理解。",
+    "items": [
+      "主任的「學生點名／老師打卡」分頁會清楚連到目前內容區，切換後能直接知道正在處理哪一個工作區。",
+      "待點名堂次的到班狀態按鈕會公告目前選取狀態，鍵盤焦點也更明顯，不再只依賴顏色判斷。",
+      "點名資料、扣堂、RFID、API、權限與既有送出行為維持不變；老師仍使用原有學生點名工作區。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "主任的「學生點名／老師打卡」分頁會清楚連到目前內容區，切換後能直接知道正在處理哪一個工作區。",
+          "待點名堂次的到班狀態按鈕會公告目前選取狀態，鍵盤焦點也更明顯，不再只依賴顏色判斷。",
+          "點名資料、扣堂、RFID、API、權限與既有送出行為維持不變；老師仍使用原有學生點名工作區。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:attendance-tab-status-a11y"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
     "id": "staff-2026-08-28-schedule-safe-recovery",
     "publishedAt": "2026-08-28",
     "effectiveAt": null,
