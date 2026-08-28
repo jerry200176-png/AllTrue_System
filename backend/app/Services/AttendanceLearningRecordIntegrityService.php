@@ -191,9 +191,16 @@ class AttendanceLearningRecordIntegrityService
                 if (!$session || in_array(strtolower((string) $session->Status), self::fillableStatuses(), true)) {
                     return 0;
                 }
-                $reason = strtolower((string) $session->Status) === 'cancelled'
-                    ? '課堂已取消：評量一致性修復'
-                    : '未到課狀態：評量一致性修復';
+                $status = strtolower((string) $session->Status);
+                // Preserve the canonical reasons used by the existing leave/cancel
+                // workflow. Reports and undo-leave depend on these exact values.
+                if ($status === 'cancelled') {
+                    $reason = CourseLeaveCascadeService::VOID_REASON_CANCELLED;
+                } elseif (in_array($status, ['leave', 'leave_adjusted', 'excused'], true)) {
+                    $reason = CourseLeaveCascadeService::VOID_REASON_LEAVE;
+                } else {
+                    $reason = '未到課狀態：評量一致性修復';
+                }
                 $beforeCount = LearningRecord::query()->where('ClassSessionID', $sessionId)->whereNull('VoidedAt')->count();
                 CourseLeaveCascadeService::voidLiveArtifactsForNonAttendance($sessionId, $reason, $actorUserId > 0 ? $actorUserId : null);
                 return $beforeCount > 0 ? 1 : 0;
