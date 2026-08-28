@@ -1,17 +1,14 @@
 <template>
-  <div class="rn-page card">
-    <div class="rn-hero">
-      <div>
-        <span class="rn-kicker">AllTrue 更新公告</span>
-        <h2>版本更新</h2>
-        <p>這裡用白話整理近期會影響你工作的改變。完整工程紀錄仍保留在 CHANGELOG。</p>
-      </div>
-      <div v-if="latestNote" class="rn-latest">
-        <span>最新更新</span>
-        <strong>{{ latestNote.version }}</strong>
-        <small>{{ latestNote.date }}</small>
-      </div>
-    </div>
+  <div class="rn-page">
+    <AtPageHeader title="版本更新" description="用白話整理近期會影響工作的改變；完整工程紀錄仍保留在 CHANGELOG。" icon="new_releases">
+      <template #meta>
+        <span v-if="latestNote">最新版本 <strong>{{ latestNote.version }}</strong></span>
+        <span>{{ notes.length }} 則公告</span>
+      </template>
+      <template #actions>
+        <a class="rn-changelog-link" :href="changelogUrl" target="_blank" rel="noopener noreferrer">查看完整 CHANGELOG</a>
+      </template>
+    </AtPageHeader>
 
     <div v-if="latestNote" class="rn-featured">
       <span class="rn-version rn-version--large">{{ latestNote.version }}</span>
@@ -30,7 +27,7 @@
           已於 {{ latestNote.effectiveAt }} 生效
         </small>
       </div>
-      <a :href="changelogUrl" target="_blank" rel="noopener noreferrer">完整 CHANGELOG</a>
+      <span class="rn-featured-label">最近一次更新</span>
     </div>
 
     <div v-if="notes.length === 0" class="rn-empty">目前尚無可顯示的更新內容。</div>
@@ -68,6 +65,7 @@
 <script setup>
 import { computed } from 'vue';
 import { notesForRole } from '../lib/releaseNotes';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 
 const props = defineProps({
   userRole: { type: String, default: '' },
@@ -97,68 +95,6 @@ function importanceLabel(importance) {
 .rn-page {
   max-width: 980px;
   margin: 0 auto;
-  padding: 22px;
-}
-
-.rn-hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 190px;
-  gap: 18px;
-  align-items: stretch;
-  padding: 22px;
-  border-radius: 18px;
-  background:
-    radial-gradient(circle at top right, rgba(245, 158, 11, 0.18), transparent 34%),
-    linear-gradient(135deg, #ffffff, #f8fafc);
-  border: 1px solid var(--border);
-}
-
-.rn-kicker {
-  display: inline-block;
-  margin-bottom: 8px;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  color: var(--accent);
-  text-transform: uppercase;
-}
-
-.rn-hero h2 {
-  margin: 0;
-  font-size: 30px;
-  color: var(--text);
-}
-
-.rn-hero p {
-  max-width: 62ch;
-  margin: 8px 0 0;
-  color: var(--text-light);
-  line-height: 1.7;
-}
-
-.rn-latest {
-  display: grid;
-  align-content: center;
-  justify-items: start;
-  gap: 4px;
-  border-radius: 16px;
-  padding: 16px;
-  color: #fff;
-  background: linear-gradient(135deg, #111827, #334155);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.12);
-}
-
-.rn-latest span,
-.rn-latest small {
-  color: rgba(255,255,255,0.72);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.rn-latest strong {
-  font-size: 28px;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
 }
 
 .rn-featured {
@@ -166,11 +102,11 @@ function importanceLabel(importance) {
   grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 14px;
   align-items: center;
-  margin-top: 14px;
+  margin-top: 0;
   padding: 16px;
-  border-radius: 16px;
-  border: 1px solid rgba(245, 158, 11, 0.26);
-  background: #fffbeb;
+  border-radius: var(--ds-radius-lg);
+  border: 1px solid color-mix(in srgb, var(--ds-warning) 26%, transparent);
+  background: var(--ds-warning-wash);
 }
 
 .rn-title-row {
@@ -188,15 +124,19 @@ function importanceLabel(importance) {
 
 .rn-featured p {
   margin: 0;
-  color: #92400e;
+  color: var(--ds-warning);
   line-height: 1.55;
 }
 
-.rn-featured a {
-  color: #b45309;
+.rn-featured-label {
+  grid-column: 1 / -1;
+  color: var(--ds-warning);
+  font-size: 11px;
   font-weight: 800;
-  white-space: nowrap;
+  letter-spacing: .04em;
 }
+
+.rn-changelog-link { color: var(--ds-primary-deep); font-size: 13px; font-weight: 700; }
 
 .rn-effective {
   display: block;
@@ -228,11 +168,11 @@ function importanceLabel(importance) {
 
 .rn-item {
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: var(--ds-radius-lg);
   padding: 16px;
   margin-top: 14px;
   background: var(--card-bg);
-  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.05);
+  box-shadow: var(--ds-shadow-1);
 }
 
 .rn-item-head {
@@ -261,7 +201,7 @@ function importanceLabel(importance) {
   justify-content: center;
   font-size: 12px;
   color: #fff;
-  background: var(--accent);
+  background: var(--ds-cta);
   border-radius: 999px;
   padding: 4px 10px;
   font-weight: 800;
@@ -291,7 +231,7 @@ function importanceLabel(importance) {
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: 12px 14px;
-  background: rgba(248, 250, 252, 0.72);
+  background: var(--ds-surface-0);
 }
 
 .rn-section h4 {
@@ -316,17 +256,13 @@ function importanceLabel(importance) {
 
 @media (max-width: 720px) {
   .rn-page {
-    padding: 16px;
+    width: 100%;
   }
-  .rn-hero,
   .rn-featured {
     grid-template-columns: 1fr;
   }
-  .rn-latest {
-    justify-items: start;
-  }
-  .rn-featured a {
-    justify-self: start;
+  .rn-featured-label {
+    grid-column: auto;
   }
 }
 </style>
