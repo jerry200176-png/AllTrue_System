@@ -519,11 +519,7 @@ class ScheduleController extends Controller
         // 與請假建立時間無關，主任因此可隨時取消尚未產生後續上課記錄的請假。
         try {
             return DB::transaction(function () use ($schedule, $courseId, $scheduleDate) {
-                [$rows, $extendedEndDate, $leaveSessionDate, $recoveryWarning] = array_pad(
-                    CourseLeaveCascadeService::undoLeaveCascade($courseId, $scheduleDate),
-                    4,
-                    null
-                );
+                [$rows, $extendedEndDate, $leaveSessionDate, $recoveryWarning] = CourseLeaveCascadeService::undoLeaveCascade($courseId, $scheduleDate);
                 $schedule->delete();
 
                 return response()->json([
@@ -598,11 +594,7 @@ class ScheduleController extends Controller
 
                 if ($csStatus === 'leave') {
                     // 正常請假：走 cascade 反轉（含下游已上課護欄、回復順延尾堂）。
-                    [$rows, $extendedEndDate, $leaveSessionDate, $recoveryWarning] = array_pad(
-                        CourseLeaveCascadeService::undoLeaveCascade($courseId, $sessionDate),
-                        4,
-                        null
-                    );
+                    [$rows, $extendedEndDate, $leaveSessionDate, $recoveryWarning] = CourseLeaveCascadeService::undoLeaveCascade($courseId, $sessionDate);
                 } else {
                     // Desync：請假只記在簽到、ClassSession 仍非 leave、未產生順延。
                     // 作廢請假簽到並確保堂次回到 scheduled 即完成撤銷（無 cascade 需反轉）。

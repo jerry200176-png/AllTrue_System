@@ -736,7 +736,7 @@ class CourseLeaveCascadeService
      *
      * Must be called inside DB::transaction.
      *
-     * @return array{0:array,1:?string,2:string,3?:string}
+     * @return array{0:array,1:?string,2:string,3:?string}
      */
     public static function undoLeaveCascade(int $courseId, string $leaveDate): array
     {
@@ -767,7 +767,7 @@ class CourseLeaveCascadeService
         if ((string) ($course->scheduling_policy ?? 'auto_recurrence') === 'manual_occurrence') {
             self::restoreLeaveSession($leaveSession);
             $end = ClassSession::where('StudentClassID', $courseId)->max('SessionDate');
-            return [self::fetchCourseSessionRows($courseId), $end ? Carbon::parse($end)->toDateString() : null, $normalizedLeaveDate];
+            return [self::fetchCourseSessionRows($courseId), $end ? Carbon::parse($end)->toDateString() : null, $normalizedLeaveDate, null];
         }
 
         $blockedStatusSet = ['attended', 'completed', 'late', 'present', 'absent', 'leave_adjusted'];
@@ -791,7 +791,7 @@ class CourseLeaveCascadeService
         if (self::leaveCascadeDoesNotRequireTail($course, $sessions, $leaveSession, $normalizedLeaveDate)) {
             self::restoreLeaveSession($leaveSession);
             $end = $course->EndDate ? Carbon::parse($course->EndDate)->toDateString() : null;
-            return [self::fetchCourseSessionRows($courseId), $end, $normalizedLeaveDate];
+            return [self::fetchCourseSessionRows($courseId), $end, $normalizedLeaveDate, null];
         }
 
         $appendedSession = $sessions
@@ -880,7 +880,7 @@ class CourseLeaveCascadeService
         }
 
         $rows = self::fetchCourseSessionRows($courseId);
-        return [$rows, $extendedEndDate ? substr((string) $extendedEndDate, 0, 10) : null, $normalizedLeaveDate];
+        return [$rows, $extendedEndDate ? substr((string) $extendedEndDate, 0, 10) : null, $normalizedLeaveDate, null];
     }
 
     // ── helpers ──────────────────────────────────────────────────────
