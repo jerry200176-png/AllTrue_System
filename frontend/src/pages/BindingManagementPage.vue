@@ -147,22 +147,23 @@
     </div>
 
     <!-- 解除綁定二次確認 -->
-    <Teleport to="body">
-      <div v-if="unbindTarget" class="bmp-overlay" @click.self="closeUnbindDialog">
-        <div class="bmp-dialog" role="dialog" aria-modal="true" :aria-labelledby="unbindTitleId">
-          <h3 :id="unbindTitleId">解除 LINE 綁定</h3>
-          <p>
-            確定要解除學生 <strong>{{ unbindTarget.student_name || `#${unbindTarget.student_id}` }}</strong>
-            的 LINE 綁定嗎？解除後家長將無法再收到該學生的學習通知連結。
-          </p>
-          <div class="bmp-dialog-actions">
-            <AtButton shape="rect" variant="ghost" :disabled="unbinding" @click="closeUnbindDialog">取消</AtButton>
-            <AtButton shape="rect" variant="danger" :loading="unbinding" @click="confirmUnbind">確認解除</AtButton>
-          </div>
-          <p v-if="unbindError" class="bmp-dialog-error">{{ unbindError }}</p>
-        </div>
-      </div>
-    </Teleport>
+    <AtDialog
+      :open="Boolean(unbindTarget)"
+      title="解除 LINE 綁定"
+      size="sm"
+      panel-class="bmp-dialog"
+      @close="closeUnbindDialog"
+    >
+      <p>
+        確定要解除學生 <strong>{{ unbindTarget?.student_name || `#${unbindTarget?.student_id}` }}</strong>
+        的 LINE 綁定嗎？解除後家長將無法再收到該學生的學習通知連結。
+      </p>
+      <p v-if="unbindError" class="bmp-dialog-error">{{ unbindError }}</p>
+      <template #actions>
+        <AtButton shape="rect" variant="ghost" :disabled="unbinding" @click="closeUnbindDialog">取消</AtButton>
+        <AtButton shape="rect" variant="danger" :loading="unbinding" @click="confirmUnbind">確認解除</AtButton>
+      </template>
+    </AtDialog>
   </div>
 </template>
 
@@ -176,6 +177,7 @@ import {
 } from '../lib/bindingsApi';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AtButton from '../components/design-system/AtButton.vue';
+import AtDialog from '../components/design-system/AtDialog.vue';
 import AtMetric from '../components/design-system/AtMetric.vue';
 import AtFilterBar from '../components/design-system/AtFilterBar.vue';
 import AtSkeleton from '../components/design-system/AtSkeleton.vue';
