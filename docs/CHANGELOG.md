@@ -1,3 +1,11 @@
+## 2026-08-29 — improved(ux): 老師狀態與識別資訊更清楚
+
+<!-- release-notes: staff_update=staff-2026-08-29-teachers-list-status -->
+
+- 老師管理的「正式老師／待審核／停用」分頁現在會明確連到目前內容區，切換後只聚焦該狀態的老師。
+- 待審核與停用數字改用對應的提醒色，和老師卡片上的在職／待審核／停用標籤一致，降低把一般狀態誤判成危險警示的機會。
+- RFID 識別碼改用較穩定、低噪音的等寬數字呈現；不改老師資料、帳號、RFID 綁定、權限或既有操作行為。
+
 ## 2026-08-29 — fixed(billing,ux): 帳務分頁只顯示目前工作區
 
 <!-- release-notes: staff_update=staff-2026-08-29-billing-tab-panels -->

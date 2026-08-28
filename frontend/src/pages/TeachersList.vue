@@ -19,9 +19,9 @@
 
     <div class="teachers-view-tabs" role="tablist" aria-label="老師狀態">
       <div class="tabs">
-        <button type="button" role="tab" :aria-selected="tab === 'active'" :class="{ active: tab === 'active' }" @click="tab = 'active'">正式老師</button>
-        <button type="button" role="tab" :aria-selected="tab === 'pending'" :class="{ active: tab === 'pending' }" @click="tab = 'pending'">待審核 <span v-if="pendingCount > 0" class="badge">{{ pendingCount }}</span></button>
-        <button type="button" role="tab" :aria-selected="tab === 'suspended'" :class="{ active: tab === 'suspended' }" @click="tab = 'suspended'">停用 <span v-if="suspendedCount > 0" class="badge">{{ suspendedCount }}</span></button>
+        <button id="teachers-tab-active" type="button" role="tab" aria-controls="teachers-panel-active" :aria-selected="tab === 'active'" :class="{ active: tab === 'active' }" @click="tab = 'active'">正式老師</button>
+        <button id="teachers-tab-pending" type="button" role="tab" aria-controls="teachers-panel-pending" :aria-selected="tab === 'pending'" :class="{ active: tab === 'pending' }" @click="tab = 'pending'">待審核 <span v-if="pendingCount > 0" class="badge badge--pending">{{ pendingCount }}</span></button>
+        <button id="teachers-tab-suspended" type="button" role="tab" aria-controls="teachers-panel-suspended" :aria-selected="tab === 'suspended'" :class="{ active: tab === 'suspended' }" @click="tab = 'suspended'">停用 <span v-if="suspendedCount > 0" class="badge badge--suspended">{{ suspendedCount }}</span></button>
       </div>
     </div>
 
@@ -80,16 +80,22 @@
       </div>
     </details>
 
-    <AtSkeleton v-if="loading" rows="4" aria-label="老師資料載入中" />
-    <div v-else-if="filteredTeachers.length === 0" class="empty-state">
-      目前沒有符合條件的老師資料。
-    </div>
-
-    <div
-      v-else
-      class="teacher-card-grid"
-      data-guide="teachers-cards"
+    <section
+      :id="`teachers-panel-${tab}`"
+      role="tabpanel"
+      :aria-labelledby="`teachers-tab-${tab}`"
+      tabindex="0"
     >
+      <AtSkeleton v-if="loading" rows="4" aria-label="老師資料載入中" />
+      <div v-else-if="filteredTeachers.length === 0" class="empty-state">
+        目前沒有符合條件的老師資料。
+      </div>
+
+      <div
+        v-else
+        class="teacher-card-grid"
+        data-guide="teachers-cards"
+      >
       <article
         v-for="teacher in filteredTeachers"
         :key="'tc-' + teacher.id"
@@ -191,7 +197,8 @@
           <button type="button" class="small danger" @click="deleteTeacher(teacher)">刪除</button>
         </footer>
       </article>
-    </div>
+      </div>
+    </section>
 
 
     <!-- Modal -->
@@ -1928,9 +1935,9 @@ watch(showBulkModal, (opened) => {
     color: var(--ds-ink-mute);
 }
 .tabs button.active {
-    border-color: var(--ds-warning);
-    color: var(--ds-warning);
-    background: var(--ds-warning-wash);
+    border-color: var(--ds-primary);
+    color: var(--ds-primary-deep);
+    background: var(--ds-primary-wash);
     font-weight: 700;
 }
 
@@ -1962,7 +1969,7 @@ watch(showBulkModal, (opened) => {
     font-size: 0.8em;
 }
 .status-tag.active { background: var(--ds-success-wash); color: var(--ds-success); }
-.status-tag.pending { background: var(--ds-warning-wash); color: var(--ds-primary); }
+.status-tag.pending { background: var(--ds-warning-wash); color: var(--ds-warning); }
 .status-tag.suspended { background: var(--ds-danger-wash); color: var(--ds-danger); }
 .status-tag.tpc-parttime { background: var(--ds-canvas-soft); color: var(--ds-ink-mute); margin-left: 4px; }
 
@@ -1979,11 +1986,27 @@ button.small.danger {
 }
 
 .badge {
-    background: var(--ds-danger);
-    color: white;
-    border-radius: 50%;
-    padding: 2px 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    min-height: 20px;
+    padding: 0 6px;
+    border: 1px solid transparent;
+    border-radius: 999px;
     font-size: 0.75em;
+    font-weight: 700;
+    line-height: 1;
+}
+.badge--pending {
+    background: var(--ds-warning-wash);
+    border-color: color-mix(in srgb, var(--ds-warning) 28%, transparent);
+    color: var(--ds-warning);
+}
+.badge--suspended {
+    background: var(--ds-danger-wash);
+    border-color: color-mix(in srgb, var(--ds-danger) 28%, transparent);
+    color: var(--ds-danger);
 }
 
 /* Modal styles reused */
@@ -2107,7 +2130,9 @@ button.small.danger {
 .rfid-tag {
   font-size: 0.8em;
   font-family: monospace;
-  color: var(--primary);
+  color: var(--ds-ink-secondary);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
 }
 
 .chip-checkbox {

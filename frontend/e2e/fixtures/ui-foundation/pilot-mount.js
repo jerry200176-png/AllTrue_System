@@ -39,6 +39,7 @@ const pageModules = {
   calendar: () => import('../../../src/pages/SmartCalendar.vue'),
   discrepancy: () => import('../../../src/pages/ScheduleDiscrepancyPage.vue'),
   teacher: () => import('../../../src/pages/TeacherHomePage.vue'),
+  teachers: () => import('../../../src/pages/TeachersList.vue'),
   attendance: () => import('../../../src/pages/AttendancePage.vue'),
 };
 const loadPage = pageModules[page] || pageModules.inbox;
@@ -83,6 +84,9 @@ createApp({
         teacherBranchIds: [1],
         unreadFeedbackCount: mode === 'empty' ? 0 : 1,
       });
+    }
+    if (page === 'teachers') {
+      return () => h(PageComponent, { branchId: 1 });
     }
     if (page === 'attendance') {
       return () => h(PageComponent, {

@@ -172,6 +172,34 @@ async function installApiMocks(page, mode, pageName = '') {
       });
     }
 
+    if (pageName === 'teachers' && p.includes('/teachers')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [
+          { id: 7101, username: '測試老師甲', account: 'teacher-a', phone: '0912-345-678', branch_id: 1, branch_ids: [1, 2], status: 'active', employment_type: 'full_time', subject_ids: [1], subject_names: ['數學'], subject_level_scopes: [{ subject_id: 1, level: 'junior' }], rfid_by_branch: { '1': 'TEACHER-A-001', '2': 'TEACHER-A-002' } },
+          { id: 7102, username: '測試老師乙', account: 'teacher-b', phone: '', branch_id: 1, branch_ids: [1], status: 'pending', employment_type: 'part_time', subject_ids: [], subject_names: [], subject_level_scopes: [], rfid: null },
+          { id: 7103, username: '測試老師丙', account: 'teacher-c', phone: '', branch_id: 1, branch_ids: [1], status: 'suspended', employment_type: 'full_time', subject_ids: [], subject_names: [], subject_level_scopes: [], rfid: null },
+        ] }),
+      });
+    }
+
+    if (pageName === 'teachers' && p.includes('/subjects')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([{ id: 1, name: '數學' }]),
+      });
+    }
+
+    if (pageName === 'teachers' && p.includes('/branches')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([{ id: 1, name: '大安分校' }, { id: 2, name: '石牌分校' }]),
+      });
+    }
+
     if (mode === 'dashboard' && p.includes('/director/operations-trust')) {
       return route.fulfill({
         status: 200,
@@ -869,6 +897,36 @@ test.describe('UI foundation — real Vue page evidence', () => {
     await payments.click();
     await expect(page.locator('#tuition-accounting-panel-payments')).toBeVisible();
     await expect(page.locator('#tuition-accounting-panel-settled')).toHaveCount(0);
+  });
+
+  test('teacher list tabs keep status workspace and RFID readable', async ({ page }) => {
+    await openPilot(page, { pageName: 'teachers', mode: 'normal', viewport: { width: 390, height: 844 } });
+
+    const active = page.locator('#teachers-tab-active');
+    const pending = page.locator('#teachers-tab-pending');
+    const suspended = page.locator('#teachers-tab-suspended');
+
+    await expect(active).toHaveAttribute('aria-controls', 'teachers-panel-active');
+    await expect(page.locator('#teachers-panel-active')).toBeVisible();
+    await expect(page.locator('#teachers-panel-active')).toContainText('測試老師甲');
+    await expect(page.locator('.status-tag.active')).toContainText('在職');
+    await expect(page.locator('.rfid-tag').first()).toHaveText('TEACHER-A-001');
+    const hasHorizontalOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+    );
+    expect(hasHorizontalOverflow).toBe(false);
+
+    await pending.click();
+    await expect(page.locator('#teachers-panel-pending')).toBeVisible();
+    await expect(page.locator('#teachers-panel-pending')).toContainText('測試老師乙');
+    await expect(page.locator('#teachers-panel-active')).toHaveCount(0);
+    await expect(page.locator('.status-tag.pending')).toContainText('待審核');
+
+    await suspended.click();
+    await expect(page.locator('#teachers-panel-suspended')).toBeVisible();
+    await expect(page.locator('#teachers-panel-suspended')).toContainText('測試老師丙');
+    await expect(page.locator('#teachers-panel-pending')).toHaveCount(0);
+    await expect(page.locator('.status-tag.suspended')).toContainText('停用');
   });
 
   test('director attendance keeps the action queue ahead of secondary context', async ({ page }) => {
