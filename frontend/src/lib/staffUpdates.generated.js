@@ -38,6 +38,40 @@ export const staffUpdates = [
     "version": "2026.08.29"
   },
   {
+    "id": "staff-2026-08-29-students-row-disclosure",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "學生列表展開更容易操作",
+    "summary": "學生資料列可用鍵盤展開，並清楚連到課程工作區。",
+    "items": [
+      "在學生列表將焦點放到資料列後，可以使用 Enter 或 Space 展開／收合課程工作區。",
+      "學生資料列會明確告知目前展開狀態與下方課程工作區的關係，螢幕閱讀器更容易理解。",
+      "勾選、編輯與刪除仍是獨立操作，不會被資料列的鍵盤展開行為誤觸。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "在學生列表將焦點放到資料列後，可以使用 Enter 或 Space 展開／收合課程工作區。",
+          "學生資料列會明確告知目前展開狀態與下方課程工作區的關係，螢幕閱讀器更容易理解。",
+          "勾選、編輯與刪除仍是獨立操作，不會被資料列的鍵盤展開行為誤觸。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:students-row-disclosure"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
     "id": "staff-2026-08-29-student-course-overview",
     "publishedAt": "2026-08-29",
     "effectiveAt": null,
