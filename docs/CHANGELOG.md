@@ -1,3 +1,11 @@
+## 2026-08-29 — improved(ux): 主任收件匣工作區更穩定
+
+<!-- release-notes: staff_update=staff-2026-08-29-notifications-dialog-a11y -->
+
+- 主任收件匣的「待辦案件／營運通知」分頁現在會清楚連到目前內容區，切換後只聚焦正在處理的工作區。
+- 核帳登記改用共用對話框，支援一致的關閉按鈕、Escape、初始鍵盤焦點與捲動鎖定；通知操作也不會意外觸發表單送出。
+- 不改付款資料、核帳規則、API、權限或既有導頁行為；這次只改善介面語意與操作穩定性。
+
 ## 2026-08-29 — improved(ux): 老師工作台控制項更穩定
 
 <!-- release-notes: staff_update=staff-2026-08-29-teacher-card-a11y -->

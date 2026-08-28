@@ -208,6 +208,40 @@ export const staffUpdates = [
     "version": "2026.08.29"
   },
   {
+    "id": "staff-2026-08-29-notifications-dialog-a11y",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "主任收件匣工作區更穩定",
+    "summary": "收件匣分頁與核帳登記更容易理解，也更適合鍵盤操作。",
+    "items": [
+      "「待辦案件／營運通知」分頁會清楚連到目前內容區，切換後能直接聚焦正在處理的工作區。",
+      "核帳登記使用一致的對話框操作，支援關閉按鈕、Escape 與初始鍵盤焦點；通知操作不會意外送出表單。",
+      "付款資料、核帳規則、API、權限與既有導頁行為維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "「待辦案件／營運通知」分頁會清楚連到目前內容區，切換後能直接聚焦正在處理的工作區。",
+          "核帳登記使用一致的對話框操作，支援關閉按鈕、Escape 與初始鍵盤焦點；通知操作不會意外送出表單。",
+          "付款資料、核帳規則、API、權限與既有導頁行為維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:notifications-dialog-a11y"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
     "id": "staff-2026-08-29-director-view-switcher-a11y",
     "publishedAt": "2026-08-29",
     "effectiveAt": null,

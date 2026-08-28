@@ -347,7 +347,23 @@ async function installApiMocks(page, mode, pageName = '') {
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ data: [], unread_count: mode === 'dashboard' ? 2 : 0, current_page: 1, last_page: 1, total: 0 }),
+        body: JSON.stringify({
+          data: mode === 'dialog' ? [{
+            id: 'notification-tuition-1',
+            Type: 'tuition',
+            Title: '測試繳費通知',
+            Body: '家長已回報繳費，請登記後等待對帳。',
+            SourceType: 'Invoice',
+            Severity: 'high',
+            read_at: null,
+            ResolvedAt: null,
+            Payload: { student_id: 2000, student_name: '測試學生甲', subject: '數學', charge: 1200 },
+          }] : [],
+          unread_count: mode === 'dashboard' || mode === 'dialog' ? 1 : 0,
+          current_page: 1,
+          last_page: 1,
+          total: mode === 'dialog' ? 1 : 0,
+        }),
       });
     }
 
@@ -525,6 +541,50 @@ test.describe('UI foundation — real Vue page evidence', () => {
       });
     }
   }
+
+  test('inbox tabs expose a linked keyboard workspace', async ({ page }) => {
+    await openPilot(page, {
+      pageName: 'inbox',
+      mode: 'normal',
+      viewport: { width: 390, height: 844 },
+    });
+
+    const casesTab = page.getByRole('tab', { name: '待辦案件' });
+    const opsTab = page.getByRole('tab', { name: '營運通知' });
+    await expect(casesTab).toHaveAttribute('id', 'notifications-tab-cases');
+    await expect(casesTab).toHaveAttribute('aria-controls', 'notifications-panel-cases');
+    await expect(casesTab).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('#notifications-panel-cases')).toHaveAttribute('role', 'tabpanel');
+    await expect(page.locator('#notifications-panel-cases')).toHaveAttribute('aria-labelledby', 'notifications-tab-cases');
+
+    await opsTab.focus();
+    await opsTab.press('Enter');
+    await expect(opsTab).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('#notifications-panel-ops')).toHaveAttribute('role', 'tabpanel');
+    await expect(page.locator('#notifications-panel-ops')).toHaveAttribute('aria-labelledby', 'notifications-tab-ops');
+  });
+
+  test('inbox tuition report uses the shared modal contract', async ({ page }) => {
+    await openPilot(page, {
+      pageName: 'inbox',
+      mode: 'dialog',
+      viewport: { width: 390, height: 844 },
+    });
+
+    await page.getByRole('tab', { name: '營運通知' }).click();
+    const reportButton = page.getByRole('button', { name: '標記已繳費' }).first();
+    await expect(reportButton).toBeVisible();
+    await reportButton.click();
+
+    const dialog = page.getByRole('dialog', { name: '登記已回報' });
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toHaveAttribute('aria-modal', 'true');
+    await expect(dialog).toBeFocused();
+    await expect(dialog.getByRole('button', { name: '關閉登記已回報視窗' })).toBeVisible();
+
+    await dialog.press('Escape');
+    await expect(dialog).toBeHidden();
+  });
 
   for (const vp of [
     { name: '390', width: 390, height: 844 },
