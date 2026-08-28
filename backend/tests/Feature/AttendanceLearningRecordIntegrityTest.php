@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Campus;
+use App\Models\ClassSession;
 use App\Services\AttendanceLearningRecordIntegrityService;
 use App\Services\LearningRecordBackfillService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -69,6 +70,50 @@ class AttendanceLearningRecordIntegrityTest extends TestCase
         $this->assertSame(0, $second['voided']);
         $this->assertSame($firstVoidedAt, DB::table('LearningRecord')->where('id', $lrId)->value('VoidedAt'));
     }
+
+    public function test_repair_marks_scheduled_record_as_system_adjustment_and_it_can_be_restored(): void
+    {
+        [, $classId] = $this->studentAndClass();
+        $sessionId = DB::table('ClassSession')->insertGetId([
+            'StudentClassID' => $classId,
+            'SessionDate' => '2026-08-28',
+            'StartTime' => '13:00',
+            'EndTime' => '15:00',
+            'Status' => 'scheduled',
+        ]);
+        $lrId = DB::table('LearningRecord')->insertGetId([
+            'StudentClassID' => $classId,
+            'ClassSessionID' => $sessionId,
+            'TeacherID' => 1,
+            'Content' => '',
+            'Subject' => '數學',
+            'SessionDate' => '2026-08-28',
+            'StartTime' => '13:00',
+            'EndTime' => '15:00',
+            'Status' => 'pending',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $service = app(AttendanceLearningRecordIntegrityService::class);
+        $result = $service->repair(4);
+
+        $this->assertSame(1, $result['voided']);
+        $this->assertSame('由已上調整狀態', DB::table('LearningRecord')->where('id', $lrId)->value('VoidReason'));
+
+        $session = ClassSession::findOrFail($sessionId);
+        $session->Status = 'attended';
+        $session->save();
+        app(LearningRecordBackfillService::class)->ensureRequiredForAttendanceSession($session);
+
+        $this->assertDatabaseHas('LearningRecord', [
+            'id' => $lrId,
+            'VoidedAt' => null,
+            'VoidReason' => null,
+            'Status' => 'pending',
+        ]);
+    }
+
     public function test_strict_attendance_ensure_fails_if_no_active_record_can_be_restored(): void
     {
         [, $classId] = $this->studentAndClass();
