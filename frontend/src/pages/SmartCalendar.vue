@@ -8,22 +8,22 @@
     </div>
     <!-- Top Bar -->
     <div class="smart-cal-top" data-guide="calendar-header">
-      <div class="smart-cal-header">
-        <div class="smart-cal-heading-copy">
-          <p class="smart-cal-kicker">排課與調課</p>
-          <h1 class="smart-cal-title">{{ isTeacher ? '我的課表' : '班級行事曆 / 課表' }}</h1>
-          <p class="smart-cal-context" aria-live="polite">
-            {{ currentCalendarViewLabel }} · {{ visibleWeekRangeLabel }} · {{ weekCourseCount }} 堂
-          </p>
-        </div>
-        <div class="smart-cal-header-actions">
-          <button type="button" class="calendar-today-btn" @click="focusCalendarToday" aria-label="回到今天的課表">今天</button>
+      <AtPageHeader
+        :title="isTeacher ? '我的課表' : '班級行事曆 / 課表'"
+        description="排課與調課"
+        icon="calendar_month"
+      >
+        <template #meta>
+          <span aria-live="polite">{{ currentCalendarViewLabel }} · {{ visibleWeekRangeLabel }} · {{ weekCourseCount }} 堂</span>
+        </template>
+        <template #actions>
+          <AtButton shape="rect" variant="secondary" @click="focusCalendarToday" aria-label="回到今天的課表">今天</AtButton>
           <div class="view-tabs" role="tablist" aria-label="課表檢視方式">
             <button type="button" role="tab" :aria-selected="viewMode === 'week'" :class="{ active: viewMode === 'week' }" @click="viewMode = 'week'">課表</button>
             <button v-if="!isTeacher" type="button" role="tab" :aria-selected="viewMode === 'teacher'" :class="{ active: viewMode === 'teacher' }" @click="viewMode = 'teacher'">老師清單</button>
           </div>
-        </div>
-      </div>
+        </template>
+      </AtPageHeader>
       <OperationsQuickStart
         v-if="!isTeacher"
         compact
@@ -506,6 +506,8 @@
 
 <script setup>
 import { ref, computed, onMounted, watch, nextTick } from 'vue';
+import AtButton from '../components/design-system/AtButton.vue';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import { supabase } from '../supabase';
 import { SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
