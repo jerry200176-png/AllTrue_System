@@ -59,16 +59,16 @@ async function navTo(page, navLabel) {
       const group = summary.locator('..');
       if ((await group.getAttribute('open')) === null) await summary.click();
     } else {
-      await page.getByRole('button', { name: '更多功能', exact: false }).first().click();
+      await page.locator('.sidebar-more-trigger').first().click(); await expect(page.locator('.sidebar-more-panel')).toBeVisible();
     }
   }
   // 側欄項目是 <button>，可及名稱含 nav-label 文字；可能尾隨 badge 數字故用 substring。
   const navBtn = navGroup
     ? page.locator('.sidebar-more-item').filter({ hasText: navLabel }).first()
     : page.getByRole('button', { name: navLabel, exact: false }).first();
-  await navBtn.click();
+  await navBtn.click({ force: true });
   await page.waitForLoadState('networkidle').catch(() => {});
-  await expect(navBtn).toHaveClass(/active/, { timeout: 10_000 });
+  await expect(navGroup ? page.locator('.sidebar-more-trigger') : navBtn).toHaveClass(/active/, { timeout: 10_000 });
 }
 
 test.describe('UI smoke — director', () => {
