@@ -327,8 +327,46 @@ async function installApiMocks(page, mode, pageName = '') {
               student_id: 2000,
               subject: 'Math',
               remaining_sessions: 8,
+              sessions_purchased: 12,
+              sessions_used: 4,
               payment_type: 'session',
+              payment_status: 'paid',
+              teacher_name: '測試老師甲',
+              days_of_week: [1],
+              branch_name: '測試分校',
+              room_name: '101教室',
               status: 'active',
+            },
+            {
+              id: 5002,
+              student_id: 2000,
+              subject: 'English',
+              remaining_sessions: 1,
+              sessions_purchased: 8,
+              sessions_used: 7,
+              payment_type: 'session',
+              payment_status: 'paid',
+              teacher_name: '測試老師乙',
+              days_of_week: [2],
+              branch_name: '測試分校',
+              room_name: '202教室',
+              status: 'active',
+            },
+            {
+              id: 5003,
+              student_id: 2000,
+              subject: 'Science',
+              remaining_sessions: 0,
+              sessions_purchased: 8,
+              sessions_used: 8,
+              payment_type: 'session',
+              payment_status: 'paid',
+              teacher_name: '測試老師丙',
+              days_of_week: [3],
+              branch_name: '測試分校',
+              room_name: '303教室',
+              status: 'inactive',
+              closed_reason: 'completed',
             },
           ],
         }),
@@ -434,6 +472,42 @@ test.describe('UI foundation — real Vue page evidence', () => {
         });
       });
     }
+  }
+
+  for (const vp of [
+    { name: '390', width: 390, height: 844 },
+    { name: '1440', width: 1440, height: 900 },
+  ]) {
+    test(`students course overview selects the next action @${vp.name}`, async ({ page }) => {
+      fs.mkdirSync(outDir, { recursive: true });
+      await openPilot(page, { pageName: 'students', mode: 'normal', viewport: vp });
+
+      const tableWrap = page.locator('.table-scroll-wrap');
+      const initialScrollLeft = await tableWrap.evaluate((el) => el.scrollLeft);
+      await page.locator('tr.student-row').first().click();
+      const workspace = page.getByTestId('student-course-workspace');
+      await expect(workspace).toBeVisible({ timeout: 10_000 });
+      await expect.poll(() => tableWrap.evaluate((el) => el.scrollLeft)).toBeLessThan(initialScrollLeft + 8);
+      await expect(workspace.getByText('先看需要處理的課程')).toBeVisible();
+      await expect(workspace.locator('.student-course-overview__metric')).toHaveCount(3);
+      await expect(workspace.locator('.student-course-overview__metric:nth-child(3) strong')).toHaveText('1');
+
+      const english = workspace.locator('.student-course-picker__item[data-course-id="5002"]');
+      const math = workspace.locator('.student-course-picker__item[data-course-id="5001"]');
+      await expect(english.locator('button')).toHaveAttribute('aria-pressed', 'true');
+      await expect(math.locator('button')).toHaveAttribute('aria-pressed', 'false');
+      await expect(workspace.locator('article.student-course-card[data-course-id="5002"]')).toBeVisible();
+
+      await math.locator('button').click();
+      await expect(math.locator('button')).toHaveAttribute('aria-pressed', 'true');
+      await expect(english.locator('button')).toHaveAttribute('aria-pressed', 'false');
+      await expect(workspace.locator('article.student-course-card[data-course-id="5001"]')).toBeVisible();
+      await expect.poll(() => tableWrap.evaluate((el) => el.scrollLeft)).toBeLessThan(initialScrollLeft + 8);
+
+      await page.locator('.students-page').screenshot({
+        path: path.join(outDir, `vue-students-course-overview-${vp.name}.png`),
+      });
+    });
   }
 
   for (const vp of [

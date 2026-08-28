@@ -3,6 +3,23 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-29-student-course-overview
+    published_at: "2026-08-29"
+    audiences:
+      - director
+    importance: digest
+    title: 學生課程總覽更容易判斷下一步
+    summary: 展開學生後先看到課程摘要，並優先選出需要處理的課程。
+    items:
+      - category: improved
+        text: 課程總覽會摘要顯示進行中、需要注意與歷史課程數量，減少在多門課程間反覆尋找。
+      - category: improved
+        text: 課程選擇器會優先帶出需要處理的課程；切換課程時保留既有課程操作與資料行為。
+      - category: improved
+        text: 手機版主要課程工作區維持可讀寬度，學生列表的次要欄位仍可水平查閱。
+    source_refs:
+      - "changelog:2026-08-29:student-course-overview"
+
   - id: staff-2026-08-28-student-course-summary
     published_at: "2026-08-28"
     audiences:

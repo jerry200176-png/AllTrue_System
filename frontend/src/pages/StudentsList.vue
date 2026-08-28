@@ -105,7 +105,7 @@
             class="student-row"
             :class="[{ expanded: expandedId === student.id }, 'status-' + (student.status || 'active')]"
             :data-student-id="student.id"
-            @click="toggleExpand(student)"
+            @click="toggleExpand(student, $event)"
           >
             <td class="student-select-cell" @click.stop>
               <input
@@ -202,13 +202,63 @@
                 </div>
 
                 <template v-else>
-                <!-- Active courses: task-first cards keep the next action visible without
-                     changing any existing course or payment handlers. -->
-                <div v-if="getActiveStudentCourses(student.id).length > 0" class="student-course-cards" data-testid="student-course-cards">
+                <!-- Phase 2A: make the record answer count / attention / next action before
+                     exposing one course's full detail. Existing course and payment handlers
+                     remain on the focused card and are not changed. -->
+                <div v-if="getActiveStudentCourses(student.id).length > 0" class="student-course-workspace" data-testid="student-course-workspace">
+                  <section class="student-course-overview" aria-labelledby="student-course-overview-title">
+                    <div class="student-course-overview__header">
+                      <div>
+                        <span class="student-course-overview__eyebrow">課程總覽</span>
+                        <h5 id="student-course-overview-title">先看需要處理的課程</h5>
+                      </div>
+                      <span class="student-course-overview__hint">選一門查看完整資料</span>
+                    </div>
+                    <div class="student-course-overview__metrics" role="list" aria-label="課程摘要">
+                      <div role="listitem" class="student-course-overview__metric">
+                        <strong>{{ getActiveStudentCourses(student.id).length }}</strong>
+                        <span>進行中</span>
+                      </div>
+                      <div role="listitem" class="student-course-overview__metric" :class="{ 'student-course-overview__metric--attention': getStudentCourseAttentionCount(student.id) > 0 }">
+                        <strong>{{ getStudentCourseAttentionCount(student.id) }}</strong>
+                        <span>需要處理</span>
+                      </div>
+                      <div role="listitem" class="student-course-overview__metric">
+                        <strong>{{ getStudentHistoryCourseCount(student.id) }}</strong>
+                        <span>歷史</span>
+                      </div>
+                    </div>
+                    <div class="student-course-picker" role="list" aria-label="進行中的課程">
+                      <div
+                        v-for="course in getActiveStudentCourses(student.id)"
+                        :key="`picker-${course.id}`"
+                        class="student-course-picker__item"
+                        :class="{ 'student-course-picker__item--selected': getFocusedStudentCourse(student.id)?.id === course.id, 'student-course-picker__item--attention': isCourseNeedsAttention(course) }"
+                        :data-course-id="course.id"
+                        role="listitem"
+                      >
+                        <button
+                          type="button"
+                          class="student-course-picker__button"
+                          :aria-pressed="getFocusedStudentCourse(student.id)?.id === course.id"
+                          @click.stop="selectStudentCourse(student.id, course.id, $event)"
+                        >
+                          <span class="student-course-picker__subject">{{ getSubjectLabel(course.subject) }}</span>
+                          <span class="student-course-picker__status">{{ getCourseAttentionLabel(course) }}</span>
+                          <span class="student-course-picker__detail">{{ getCourseProgressSummary(course) }}</span>
+                          <span class="student-course-picker__chevron material-symbols-outlined" aria-hidden="true">chevron_right</span>
+                        </button>
+                      </div>
+                    </div>
+                  </section>
+
+                  <!-- Active courses: task-first card keeps the next action visible without
+                       changing any existing course or payment handlers. -->
+                  <div class="student-course-cards" data-testid="student-course-cards">
+                  <template v-for="course in getActiveStudentCourses(student.id)" :key="course.id">
                   <article
-                    v-for="course in getActiveStudentCourses(student.id)"
-                    :key="course.id"
-                    class="student-course-card"
+                    v-if="getFocusedStudentCourse(student.id)?.id === course.id"
+                    class="student-course-card student-course-card--focused"
                     :class="{ 'student-course-card--attention': isSessionPaymentLowRemaining(course) }"
                     :data-course-id="course.id"
                   >
@@ -319,6 +369,8 @@
                       </div>
                     </details>
                   </article>
+                  </template>
+                  </div>
                 </div>
                 <div v-else-if="getHistoryStudentCourses(student.id).length > 0" class="sl-empty-active">
                   <span class="material-symbols-outlined sl-empty-active__icon" aria-hidden="true">school</span>
@@ -1134,6 +1186,73 @@ const getActiveStudentCourses = (id) => {
 const getHistoryStudentCourses = (id) => {
   return getStudentCourses(id).filter(c => isHistoryCourseByReason(c));
 };
+const getStudentHistoryCourseCount = (id) => (
+  getStudentAllCourses(id).filter(c => isHistoryCourseByReason(c)).length
+);
+const selectedCourseIdByStudent = ref(new Map());
+const hasCourseSchedule = (course) => (
+  scheduleDisplayLines(course).length > 0
+  || (Array.isArray(course?.days_of_week) && course.days_of_week.length > 0)
+  || Boolean(course?.day_of_week)
+);
+const isCourseNeedsAttention = (course) => {
+  const paymentStatus = String(course?.payment_status || '').toLowerCase();
+  const courseStatus = String(course?.status || '').toLowerCase();
+  return isSessionPaymentLowRemaining(course)
+    || ['overdue', 'unpaid', 'pending'].includes(paymentStatus)
+    || courseStatus === 'inactive'
+    || !course?.teacher_name
+    || !hasCourseSchedule(course)
+    || !course?.branch_name
+    || !course?.room_name;
+};
+const getCourseAttentionLabel = (course) => {
+  if (isSessionPaymentLowRemaining(course)) return '需要續報';
+  const paymentStatus = String(course?.payment_status || '').toLowerCase();
+  if (['overdue', 'unpaid', 'pending'].includes(paymentStatus)) return '付款待確認';
+  if (String(course?.status || '').toLowerCase() === 'inactive') return '已暫停';
+  if (!course?.teacher_name || !hasCourseSchedule(course) || !course?.branch_name || !course?.room_name) {
+    return '資料待確認';
+  }
+  return '進行中';
+};
+const getCourseProgressSummary = (course) => {
+  const progress = courseProgress(course);
+  if (progress) return `剩餘 ${progress.remaining} / ${progress.total} 堂`;
+  if (String(course?.payment_type || '').toLowerCase() === 'monthly') {
+    const monthlySessions = parseCourseNumber(course?.monthly_sessions);
+    return monthlySessions ? `月結 · 每月 ${monthlySessions} 堂` : '月結課程';
+  }
+  return '堂數待確認';
+};
+const getStudentCourseAttentionCount = (studentId) => (
+  getActiveStudentCourses(studentId).filter(isCourseNeedsAttention).length
+);
+const restoreTableScroll = (scrollWrap, scrollLeft) => {
+  if (!scrollWrap) return;
+  nextTick(() => {
+    scrollWrap.scrollLeft = scrollLeft;
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(() => { scrollWrap.scrollLeft = scrollLeft; });
+    }
+  });
+};
+const getFocusedStudentCourse = (studentId) => {
+  const activeCourses = getActiveStudentCourses(studentId);
+  if (!activeCourses.length) return null;
+  const selectedId = selectedCourseIdByStudent.value.get(studentId);
+  return activeCourses.find((course) => String(course.id) === String(selectedId))
+    || activeCourses.find(isCourseNeedsAttention)
+    || activeCourses[0];
+};
+const selectStudentCourse = (studentId, courseId, event) => {
+  const scrollWrap = event?.currentTarget?.closest?.('.table-scroll-wrap');
+  const scrollLeft = scrollWrap?.scrollLeft ?? 0;
+  const selected = new Map(selectedCourseIdByStudent.value);
+  selected.set(studentId, courseId);
+  selectedCourseIdByStudent.value = selected;
+  restoreTableScroll(scrollWrap, scrollLeft);
+};
 const expandedHistoryCourses = ref(new Set());
 const toggleHistoryCourses = (studentId) => {
   const s = new Set(expandedHistoryCourses.value);
@@ -1581,13 +1700,16 @@ const loadAllStudentCourses = async () => {
 const debouncedLoad = () => setTimeout(loadStudents, 300);
 
 // --- Expand ---
-const toggleExpand = async (student) => {
+const toggleExpand = async (student, event) => {
+  const scrollWrap = event?.currentTarget?.closest?.('.table-scroll-wrap');
+  const scrollLeft = scrollWrap?.scrollLeft ?? 0;
   if (expandedId.value === student.id) {
     expandedId.value = null;
   } else {
     expandedId.value = student.id;
     await loadStudentCourses(student.id);
   }
+  restoreTableScroll(scrollWrap, scrollLeft);
 };
 
 const focusInitialStudent = async () => {
@@ -3400,6 +3522,138 @@ table th { font-size: 12.5px; }
 .student-latest-payment-note strong { color: var(--ds-success); }
 .student-latest-payment-note p { margin: 2px 0; white-space: pre-wrap; word-break: break-word; }
 .student-latest-payment-note small { color: var(--ds-ink-mute); }
+.student-course-workspace {
+  display: grid;
+  gap: 12px;
+}
+.student-course-overview {
+  background: var(--ds-canvas-soft);
+  border: 1px solid var(--ds-hairline);
+  border-radius: 12px;
+  padding: 16px;
+}
+.student-course-overview__header {
+  align-items: flex-start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+.student-course-overview__eyebrow {
+  color: var(--ds-primary-deep);
+  display: block;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  margin-bottom: 2px;
+}
+.student-course-overview h5 {
+  color: var(--ds-ink);
+  font-size: 16px;
+  line-height: 1.4;
+  margin: 0;
+}
+.student-course-overview__hint {
+  color: var(--ds-ink-mute);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: right;
+}
+.student-course-overview__metrics {
+  border-bottom: 1px solid var(--ds-hairline);
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 14px;
+  padding-bottom: 14px;
+}
+.student-course-overview__metric {
+  align-items: baseline;
+  color: var(--ds-ink-mute);
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+.student-course-overview__metric strong {
+  color: var(--ds-ink);
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+.student-course-overview__metric span {
+  font-size: 12px;
+  white-space: nowrap;
+}
+.student-course-overview__metric--attention strong,
+.student-course-overview__metric--attention span {
+  color: var(--ds-warning);
+}
+.student-course-picker {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  margin-top: 12px;
+}
+.student-course-picker__item {
+  min-width: 0;
+}
+.student-course-picker__button {
+  align-items: center;
+  background: var(--ds-canvas);
+  border: 1px solid var(--ds-hairline);
+  border-radius: 8px;
+  color: var(--ds-ink);
+  cursor: pointer;
+  display: grid;
+  gap: 3px 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 68px;
+  padding: 10px 12px;
+  text-align: left;
+  transition: border-color var(--ds-motion-fast, 120ms) var(--ds-ease-standard, ease), background-color var(--ds-motion-fast, 120ms) var(--ds-ease-standard, ease), box-shadow var(--ds-motion-fast, 120ms) var(--ds-ease-standard, ease);
+  width: 100%;
+}
+.student-course-picker__button:hover {
+  background: var(--ds-canvas);
+  border-color: var(--ds-primary);
+}
+.student-course-picker__button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ds-focus-ring);
+}
+.student-course-picker__item--selected .student-course-picker__button {
+  background: var(--ds-primary-wash);
+  border-color: var(--ds-primary);
+  box-shadow: inset 3px 0 0 var(--ds-primary);
+}
+.student-course-picker__item--attention:not(.student-course-picker__item--selected) .student-course-picker__button {
+  border-color: var(--ds-warning);
+}
+.student-course-picker__subject {
+  font-size: 13px;
+  font-weight: 800;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.student-course-picker__status {
+  color: var(--ds-ink-mute);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.student-course-picker__item--attention .student-course-picker__status {
+  color: var(--ds-warning);
+}
+.student-course-picker__detail {
+  color: var(--ds-ink-secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  grid-column: 1;
+}
+.student-course-picker__chevron {
+  color: var(--ds-ink-mute);
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
 .student-course-cards {
   display: grid;
   gap: 12px;
@@ -3414,6 +3668,12 @@ table th { font-size: 12.5px; }
 .student-course-card--attention {
   border-color: var(--ds-warning);
   box-shadow: 0 0 0 1px var(--ds-warning-wash), var(--ds-shadow-1);
+}
+.student-course-card--focused {
+  box-shadow: 0 0 0 2px var(--ds-primary-wash), var(--ds-shadow-1);
+}
+.student-course-card--focused.student-course-card--attention {
+  box-shadow: 0 0 0 2px var(--ds-warning-wash), var(--ds-shadow-1);
 }
 .student-course-card__header {
   display: flex;
@@ -3739,7 +3999,33 @@ table th { font-size: 12.5px; }
 /* ═══ Mobile Responsive ═══ */
 @media (max-width: 768px) {
   .course-panel {
+    box-sizing: border-box;
     padding: 16px;
+    max-width: calc(100vw - 32px);
+    width: calc(100vw - 32px);
+  }
+  .student-course-overview {
+    padding: 14px;
+  }
+  .student-course-overview__header {
+    display: block;
+  }
+  .student-course-overview__hint {
+    display: block;
+    margin-top: 4px;
+    text-align: left;
+  }
+  .student-course-overview__metrics {
+    gap: 4px;
+  }
+  .student-course-overview__metric {
+    align-items: flex-start;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .student-course-picker {
+    grid-template-columns: minmax(0, 1fr);
   }
   .student-course-card__header {
     display: block;

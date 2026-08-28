@@ -1,3 +1,11 @@
+## 2026-08-29 — improved(ux): 學生課程總覽更容易判斷下一步
+
+<!-- release-notes: staff_update=staff-2026-08-29-student-course-overview -->
+
+- 展開學生後先看到課程總覽，摘要顯示進行中、需要注意與歷史課程數量，減少在多門課程間反覆尋找。
+- 課程選擇器會優先帶出需要處理的課程，並保留課程進度、付款、排課與課程操作；切換課程不改變既有資料與權限行為。
+- 手機版將主要課程工作區維持在可讀寬度，學生列表的次要欄位仍可水平查閱。
+
 ## 2026-08-28 — improved(ux): 學生課程資訊更清楚
 
 <!-- release-notes: staff_update=staff-2026-08-28-student-course-summary -->

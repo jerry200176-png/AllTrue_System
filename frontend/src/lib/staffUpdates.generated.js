@@ -4,6 +4,40 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-29-student-course-overview",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "學生課程總覽更容易判斷下一步",
+    "summary": "展開學生後先看到課程摘要，並優先選出需要處理的課程。",
+    "items": [
+      "課程總覽會摘要顯示進行中、需要注意與歷史課程數量，減少在多門課程間反覆尋找。",
+      "課程選擇器會優先帶出需要處理的課程；切換課程時保留既有課程操作與資料行為。",
+      "手機版主要課程工作區維持可讀寬度，學生列表的次要欄位仍可水平查閱。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "課程總覽會摘要顯示進行中、需要注意與歷史課程數量，減少在多門課程間反覆尋找。",
+          "課程選擇器會優先帶出需要處理的課程；切換課程時保留既有課程操作與資料行為。",
+          "手機版主要課程工作區維持可讀寬度，學生列表的次要欄位仍可水平查閱。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:student-course-overview"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
     "id": "staff-2026-08-28-schedule-safe-recovery",
     "publishedAt": "2026-08-28",
     "effectiveAt": null,
