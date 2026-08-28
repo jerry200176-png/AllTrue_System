@@ -41,6 +41,47 @@ export const staffUpdates = [
     "version": "2026.08.28"
   },
   {
+    "id": "staff-2026-08-28-ops-ui-sweep",
+    "publishedAt": "2026-08-28",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "major",
+    "title": "側欄與工作頁更清楚",
+    "summary": "常用工作先顯示，低頻功能仍可展開使用。",
+    "items": [
+      "側欄將每日工作、教學現場、學生課程與財務人事分組；進階工具、報表薪資、訊息回報改為需要時再展開。",
+      "出缺勤、教學工作台、老師管理與帳務中心統一頁首與摘要，重新整理時會顯示一致的載入狀態。",
+      "找不到低頻功能時，請展開對應區段；原有功能入口與資料操作沒有刪除。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "側欄將每日工作、教學現場、學生課程與財務人事分組；進階工具、報表薪資、訊息回報改為需要時再展開。",
+          "出缺勤、教學工作台、老師管理與帳務中心統一頁首與摘要，重新整理時會顯示一致的載入狀態。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "找不到低頻功能時，請展開對應區段；原有功能入口與資料操作沒有刪除。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-28:ops-ui-sweep"
+    ],
+    "date": "2026-08-28",
+    "version": "2026.08.28"
+  },
+  {
     "id": "staff-2026-08-27-transfer-ledger-reconciliation",
     "publishedAt": "2026-08-27",
     "effectiveAt": null,
