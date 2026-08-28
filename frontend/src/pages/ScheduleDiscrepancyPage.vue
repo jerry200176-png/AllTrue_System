@@ -1,14 +1,14 @@
 <template>
   <div class="sdp-page">
-    <header class="page-header sdp-header">
-      <div>
-        <h2>課表回報管理</h2>
-        <p class="page-desc">老師回報的課表與實際不符情形。處理後系統會留下稽核紀錄。</p>
-      </div>
-      <div class="sdp-header-btns">
-        <button class="primary" type="button" @click="refresh">重新整理</button>
-      </div>
-    </header>
+    <AtPageHeader
+      title="課表回報管理"
+      description="老師回報的課表與實際不符情形。處理後系統會留下稽核紀錄。"
+      icon="rule"
+    >
+      <template #actions>
+        <AtButton variant="ghost" shape="rect" icon="refresh" @click="refresh">重新整理</AtButton>
+      </template>
+    </AtPageHeader>
 
     <!-- Tabs -->
     <nav class="sdp-tabs" role="tablist" aria-label="回報狀態">
@@ -288,6 +288,8 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import AtButton from '../components/design-system/AtButton.vue';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import { fetchDiscrepancies, fetchDiscrepancySummary, updateDiscrepancyStatus, STATUS_LABELS } from '../lib/scheduleDiscrepanciesApi';
 import { scheduleDiscrepancyActionLabel } from '../lib/calendarViewDisplay.js';
 
