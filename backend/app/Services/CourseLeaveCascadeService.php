@@ -783,12 +783,9 @@ class CourseLeaveCascadeService
             throw new \InvalidArgumentException('後續堂次已出現已上課/補請假等狀態，無法自動撤銷');
         }
 
-        // A leave does not always create a tail: paused courses, date-based
-        // courses without a purchased-session commitment, and already
-        // over-provisioned count courses intentionally keep their current
-        // schedule. Undo must therefore restore the target session directly
-        // instead of treating the missing tail as corruption.
-        if (self::leaveCascadeDoesNotRequireTail($course, $sessions, $leaveSession, $normalizedLeaveDate)) {
+        // A leave does not always create a tail for paused or date-based
+        // courses without a purchased-session commitment.
+        if (self::leaveCascadeDoesNotRequireTail($course)) {
             self::restoreLeaveSession($leaveSession);
             $end = $course->EndDate ? Carbon::parse($course->EndDate)->toDateString() : null;
             return [self::fetchCourseSessionRows($courseId), $end, $normalizedLeaveDate, null];
@@ -921,12 +918,8 @@ class CourseLeaveCascadeService
      * missing-tail recovery below: the latter also restores only the selected
      * occurrence, but reports an explicit reconciliation warning.
      */
-    private static function leaveCascadeDoesNotRequireTail(
-        StudentClass $course,
-        $sessions,
-        ClassSession $leaveSession,
-        string $leaveDate
-    ): bool {
+    private static function leaveCascadeDoesNotRequireTail(StudentClass $course): bool
+    {
         if ((string) ($course->scheduling_policy ?? 'auto_recurrence') === 'manual_occurrence') {
             return true;
         }
@@ -934,29 +927,11 @@ class CourseLeaveCascadeService
             return true;
         }
 
-        $purchased = max(0, (int) ($course->SessionCount ?? 0));
         $scheduleMode = strtolower((string) ($course->ScheduleMode ?? 'count'));
-        if ($scheduleMode === 'date' && $purchased <= 0) {
+        if ($scheduleMode === 'date' && (int) ($course->SessionCount ?? 0) <= 0) {
             return true;
         }
-
-        $weekdays = self::resolveCourseWeekdays(
-            $course,
-            (int) Carbon::parse($leaveSession->SessionDate)->dayOfWeekIso
-        );
-        $sessionRows = $sessions->map(fn ($session) => [
-            'id' => (int) $session->id,
-            'date' => Carbon::parse($session->SessionDate)->toDateString(),
-            'status' => (string) ($session->Status ?? ''),
-        ])->all();
-
-        return (int) self::computeAppendOnlyPlan(
-            $sessionRows,
-            $leaveDate,
-            $weekdays,
-            (int) $leaveSession->id,
-            $purchased
-        )['append_count'] === 0;
+        return false;
     }
 
     /** @return array<int> */
