@@ -338,6 +338,7 @@
       <DirectorAccountsPage v-if="!isPasswordChangeLocked && role === 'super_admin' && active === 'director-accounts'" :token="session?.access_token ?? ''" />
       <BranchManagementPage v-if="!isPasswordChangeLocked && role === 'super_admin' && active === 'branch-management'" :token="session?.access_token ?? ''" />
       <NightlyReconcilePanel v-if="!isPasswordChangeLocked && role === 'super_admin' && active === 'nightly-reconcile'" :token="session?.access_token ?? ''" />
+      <UIImprovementCenter v-if="!isPasswordChangeLocked && role === 'super_admin' && active === 'ui-improvements'" @navigate="setActivePage" />
       <ChatPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'chat'" :branch-id="currentBranch" :user-id="session?.user?.id" :avatar-url="avatarUrl" :super-admin="role === 'super_admin'" :user-role="role" />
       <BugReportsPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'bugs'" :branch-id="currentBranch" :user-role="role" />
       <ScheduleDiscrepancyPage v-if="!isPasswordChangeLocked && isDirector && active === 'schedule-discrepancy'" :branch-id="currentBranch" />
@@ -477,6 +478,7 @@ const ScheduleDiscrepancyPage = defineAsyncComponent(() => import('./pages/Sched
 const ReleaseNotesPage      = defineAsyncComponent(() => import('./pages/ReleaseNotesPage.vue'));
 const NightlyReconcilePanel  = defineAsyncComponent(() => import('./pages/NightlyReconcilePanel.vue'));
 const DuplicateSessionReviewPage = defineAsyncComponent(() => import('./pages/DuplicateSessionReviewPage.vue'));
+const UIImprovementCenter    = defineAsyncComponent(() => import('./pages/UIImprovementCenter.vue'));
 import AmbientMusicPlayer from './components/AmbientMusicPlayer.vue';
 import BugReportLauncher from './components/BugReportLauncher.vue';
 import PinLockModal from './components/PinLockModal.vue';
@@ -1287,6 +1289,11 @@ const sidebarNavGroups = computed(() => {
         page: 'nightly-reconcile',
         label: '夜間對帳',
         icon: 'receipt_long',
+      });
+      systemItems.push({
+        page: 'ui-improvements',
+        label: 'UI／營運改善',
+        icon: 'tune',
       });
     }
     return [
