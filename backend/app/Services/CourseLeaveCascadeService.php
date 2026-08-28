@@ -892,8 +892,11 @@ class CourseLeaveCascadeService
      */
     private static function restoreLeaveSession(ClassSession $leaveSession): void
     {
-        $leaveSession->Status = 'scheduled';
-        $leaveSession->Note = self::appendNote($leaveSession->Note, self::NOTE_REVERT_TO_SCHEDULED);
+        $leaveSession->setAttribute('Status', 'scheduled');
+        $leaveSession->setAttribute(
+            'Note',
+            self::appendNote((string) ($leaveSession->getAttribute('Note') ?? ''), self::NOTE_REVERT_TO_SCHEDULED)
+        );
         $leaveSession->save();
 
         LearningRecord::where('ClassSessionID', (int) $leaveSession->id)

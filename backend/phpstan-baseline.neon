@@ -4083,7 +4083,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 20
+			count: 21
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
@@ -4173,7 +4173,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 8
+			count: 9
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
@@ -4191,12 +4191,6 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\StudentSignIn\:\:whereIn\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 1
-			path: app/Http/Controllers/StudentClassController.php
-
-		-
-			message: '#^Method App\\Http\\Controllers\\StudentClassController\:\:detectTeacherConflicts\(\) is unused\.$#'
-			identifier: method.unused
 			count: 1
 			path: app/Http/Controllers/StudentClassController.php
 
@@ -5289,13 +5283,13 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\LearningRecord\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 5
+			count: 4
 			path: app/Services/CourseLeaveCascadeService.php
 
 		-
 			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 3
+			count: 2
 			path: app/Services/CourseLeaveCascadeService.php
 
 		-
