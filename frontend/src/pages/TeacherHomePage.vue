@@ -1,26 +1,26 @@
 <template>
   <div class="th-page">
     <!-- Page Header -->
-    <div class="page-header th-header enterprise-page-header">
-      <div>
-        <h2>教學工作台</h2>
-        <p class="page-desc">今日待辦一覽、本週跨分校課表</p>
-        <p v-if="streakChipVisible" class="th-streak-chip" role="status">
+    <AtPageHeader
+      title="教學工作台"
+      description="今日待辦一覽、本週跨分校課表。"
+      icon="today"
+      data-guide="teacher-home-header"
+    >
+      <template #meta>
+        <span v-if="streakChipVisible" class="th-streak-chip" role="status">
           <span class="material-symbols-outlined th-streak-icon" aria-hidden="true">local_fire_department</span>
           連續使用 <strong>{{ streakCurrent }}</strong> 天
           <span v-if="streakLongest > streakCurrent" class="th-streak-longest">（累積最高 {{ streakLongest }}）</span>
-        </p>
-        <p v-if="engagementChipVisible" class="th-engagement-chip" role="status">
+        </span>
+        <span v-if="engagementChipVisible" class="th-engagement-chip" role="status">
           <EngagementRankStrip :engagement="effectiveEngagement" :reduced-motion="engagementReducedMotion" />
-        </p>
-      </div>
-      <div class="th-header-actions">
-        <button class="ghost small enterprise-touch-target" @click="refreshAll" :disabled="refreshing">
-          <span class="material-symbols-outlined" style="font-size:18px;vertical-align:middle">refresh</span>
-          重新整理
-        </button>
-      </div>
-    </div>
+        </span>
+      </template>
+      <template #actions>
+        <AtButton variant="ghost" shape="rect" icon="refresh" :loading="refreshing" @click="refreshAll">重新整理</AtButton>
+      </template>
+    </AtPageHeader>
 
     <!-- Clock-in Status Card -->
     <div class="th-clockin-card card" :class="clockinCardClass"
@@ -547,6 +547,8 @@ import ReportDiscrepancyModal from '../components/ReportDiscrepancyModal.vue';
 import EngagementRankStrip from '../components/EngagementRankStrip.vue';
 import RocRankBadge from '../components/RocRankBadge.vue';
 import SystemTrustPanel from '../components/SystemTrustPanel.vue';
+import AtButton from '../components/design-system/AtButton.vue';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import { fetchMe } from '../lib/meClient';
 import {
   isUserEngagementRankDisplayEnabled,
@@ -1689,9 +1691,6 @@ onBeforeUnmount(() => {
 
 /* ──────── Page Layout ──────── */
 .th-page { max-width: 720px; margin: 0 auto; padding-bottom: 80px; }
-
-.th-header { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
-.th-header-actions { display: flex; gap: 8px; }
 
 .th-streak-chip {
   display: inline-flex;

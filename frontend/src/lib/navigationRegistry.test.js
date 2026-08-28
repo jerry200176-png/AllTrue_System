@@ -27,10 +27,18 @@ describe('navigation registry', () => {
   it('returns fresh nested data so renderers cannot mutate the source model', () => {
     const first = getNavigationGroups('director');
     first[0].items[0].label = 'changed';
-    first[0].items[2].badgeTypes.push('changed');
+    first.find(group => group.key === 'communication').items[0].badgeTypes.push('changed');
     const second = getNavigationGroups('director');
     expect(second[0].items[0].label).toBe('今日工作台');
-    expect(second[0].items[2].badgeTypes).toEqual(['chat']);
+    expect(second.find(group => group.key === 'communication').items[0].badgeTypes).toEqual(['chat']);
+  });
+
+  it('keeps low-frequency tools available without opening every sidebar group by default', () => {
+    const groups = getNavigationGroups('director');
+    expect(groups.find(group => group.key === 'teaching-tools').defaultOpen).toBe(false);
+    expect(groups.find(group => group.key === 'reports-payroll').defaultOpen).toBe(false);
+    expect(groups.flatMap(group => group.items.map(item => item.page))).toEqual(expect.arrayContaining([
+      'assessments', 'question-banks', 'tuition-report', 'teacher-eligibility', 'chat', 'bugs',
+    ]));
   });
 });
-

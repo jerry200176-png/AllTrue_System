@@ -1,16 +1,16 @@
 <template>
   <div class="att-page">
-    <div class="page-header att-header enterprise-page-header">
-      <div>
-        <h2>出缺勤管理</h2>
-        <p class="page-desc">
-          {{ isTeacher ? '查看你今日堂次並即時點名，也可補登過去堂次' : '追蹤學生到班狀態、點名核課、補登過往堂次' }}
-        </p>
-      </div>
-      <div class="att-header-btns">
-        <button class="primary enterprise-touch-target" @click="refreshAll">重新整理今日堂次</button>
-      </div>
-    </div>
+    <AtPageHeader
+      title="出缺勤管理"
+      :description="isTeacher ? '查看今日堂次並完成點名，也可補登過去堂次。' : '追蹤學生到班狀態、點名核課與補登過往堂次。'"
+      icon="fact_check"
+      data-guide="attendance-header"
+    >
+      <template #meta><span>{{ isTeacher ? '老師工作台' : '主任工作台' }}</span><span>以今日待處理為主</span></template>
+      <template #actions>
+        <AtButton variant="ghost" shape="rect" icon="refresh" @click="refreshAll">重新整理今日堂次</AtButton>
+      </template>
+    </AtPageHeader>
 
     <!-- Tab Switcher（director/super_admin 才顯示） -->
     <div v-if="!isTeacher" class="att-tabs">
@@ -29,23 +29,11 @@
     <!-- ═══ Teacher Attendance Tab ═══ -->
     <template v-if="activeTab === 'teacher' && !isTeacher">
       <!-- Teacher Stats -->
-      <div class="att-stats">
-        <div class="att-stat-card">
-          <div class="att-stat-num">{{ teacherStats.total }}</div>
-          <div class="att-stat-label">今日到班</div>
-        </div>
-        <div class="att-stat-card">
-          <div class="att-stat-num">{{ teacherOnDuty.length }}</div>
-          <div class="att-stat-label">行政出勤</div>
-        </div>
-        <div class="att-stat-card stat-late">
-          <div class="att-stat-num">{{ teacherStats.late }}</div>
-          <div class="att-stat-label">遲到</div>
-        </div>
-        <div class="att-stat-card stat-absent">
-          <div class="att-stat-num">{{ teacherStats.anomaly }}</div>
-          <div class="att-stat-label">課表異常</div>
-        </div>
+      <div class="att-stats" aria-label="老師打卡摘要">
+        <AtMetric label="今日到班" :value="teacherStats.total" accent="var(--ds-success)" />
+        <AtMetric label="行政出勤" :value="teacherOnDuty.length" accent="var(--ds-primary)" />
+        <AtMetric label="遲到" :value="teacherStats.late" accent="var(--ds-warning)" />
+        <AtMetric label="課表異常" :value="teacherStats.anomaly" accent="var(--ds-danger)" />
       </div>
 
       <!-- Anomaly List：只顯示 late / missed（真正需要人工介入的） -->
@@ -193,23 +181,11 @@
     </section>
 
     <!-- Stats Summary -->
-    <div v-else class="att-stats">
-      <div class="att-stat-card">
-        <div class="att-stat-num">{{ markedSessionsCount }}</div>
-        <div class="att-stat-label">已點名 / 今日課表 {{ todaySessionTotal }}</div>
-      </div>
-      <div class="att-stat-card stat-present">
-        <div class="att-stat-num">{{ stats.present }}</div>
-        <div class="att-stat-label">到班</div>
-      </div>
-      <div class="att-stat-card stat-late">
-        <div class="att-stat-num">{{ stats.late }}</div>
-        <div class="att-stat-label">遲到</div>
-      </div>
-      <div class="att-stat-card stat-absent">
-        <div class="att-stat-num">{{ stats.absent + stats.excused }}</div>
-        <div class="att-stat-label">缺席/請假</div>
-      </div>
+    <div v-else class="att-stats" aria-label="今日出缺勤摘要">
+      <AtMetric label="已點名" :value="markedSessionsCount" :delta="`今日課表 ${todaySessionTotal} 堂`" delta-tone="neutral" accent="var(--ds-primary)" />
+      <AtMetric label="到班" :value="stats.present" accent="var(--ds-success)" />
+      <AtMetric label="遲到" :value="stats.late" accent="var(--ds-warning)" />
+      <AtMetric label="缺席／請假" :value="stats.absent + stats.excused" accent="var(--ds-danger)" />
     </div>
 
     <div v-if="fetchError" class="att-msg error" style="margin-bottom:12px">{{ fetchError }}</div>
@@ -1036,6 +1012,9 @@ import { supabase } from '../supabase';
 import SearchableSelect from '../components/SearchableSelect.vue';
 import ReportDiscrepancyModal from '../components/ReportDiscrepancyModal.vue';
 import TeacherAdjustModal from '../components/TeacherAdjustModal.vue';
+import AtButton from '../components/design-system/AtButton.vue';
+import AtMetric from '../components/design-system/AtMetric.vue';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import { fetchMyDiscrepancies, STATUS_LABELS as DISCREPANCY_STATUS_LABELS } from '../lib/scheduleDiscrepanciesApi';
 import { classifyAttendanceSessionRows } from '../lib/sessionConsistency';
 import { attendanceMarkConfirmHint } from '../lib/attendanceMarkConfirmHint';
@@ -2458,25 +2437,10 @@ watch(() => props.branchId, () => {
   .att-teacher-snapshot .primary { width: 100%; }
 }
 
-.att-header {
-  display: flex; justify-content: space-between; align-items: flex-start;
-  flex-wrap: wrap; gap: 12px;
-}
-.att-header-btns { display: flex; gap: 8px; flex-wrap: wrap; }
-
 /* Stats */
 .att-stats {
   display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px;
 }
-.att-stat-card {
-  background: var(--ds-canvas); border-radius: 12px; padding: 16px 20px; text-align: center;
-  border: 1px solid rgba(148,163,184,0.18); box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-}
-.att-stat-num { font-size: 28px; font-weight: 800; color: var(--ds-ink); }
-.att-stat-label { font-size: 12px; font-weight: 600; color: var(--ds-ink-mute); margin-top: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
-.stat-present .att-stat-num { color: var(--ds-success); }
-.stat-late .att-stat-num { color: var(--ds-warning); }
-.stat-absent .att-stat-num { color: var(--ds-danger); }
 
 /* Section */
 .att-section-title {
@@ -2716,9 +2680,6 @@ watch(() => props.branchId, () => {
   .att-records-header { flex-direction: column; align-items: stretch; }
   .att-records-controls { flex-direction: column; }
   .att-search-input, .att-filter-select { width: 100%; }
-  .att-header { flex-direction: column; }
-  .att-header-btns button { width: 100%; }
-
   .att-desktop-only { display: none; }
   .att-mobile-only { display: flex; }
   .att-sticky-batch { display: flex; }
@@ -2761,8 +2722,6 @@ watch(() => props.branchId, () => {
 
 @media (max-width: 480px) {
   .att-stats { grid-template-columns: repeat(2, 1fr); gap: 8px; }
-  .att-stat-card { padding: 12px; }
-  .att-stat-num { font-size: 22px; }
   .att-checkin-card, .att-records-card, .att-pending-card { padding: 16px; }
   .att-card { padding: 12px; }
   .att-status-group-mobile .att-status-btn { padding: 8px 2px; font-size: 12px; }
