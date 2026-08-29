@@ -152,4 +152,30 @@ describe('bug report attachments', () => {
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:bug-preview-1');
     wrapper.unmount();
   });
+
+  it('includes optional occurrence context without changing the user description', async () => {
+    const wrapper = await openLauncher();
+    const textarea = bodyElement('#bug-description');
+    textarea.value = '帳務列表顯示錯誤';
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+
+    const occurrenceAt = bodyElement('#bug-occurrence-at');
+    occurrenceAt.value = '2026-08-29T14:30';
+    occurrenceAt.dispatchEvent(new Event('input', { bubbles: true }));
+    const relatedReference = bodyElement('#bug-related-reference');
+    relatedReference.value = '學生 271／課堂 32570';
+    relatedReference.dispatchEvent(new Event('input', { bubbles: true }));
+    await nextTick();
+
+    bodyElement('.btn-submit').click();
+    await nextTick();
+
+    const payload = submitBugReport.mock.calls.at(-1)[0];
+    expect(payload.description).toBe('帳務列表顯示錯誤');
+    expect(JSON.parse(payload.client_info)).toMatchObject({
+      occurrenceAt: '2026-08-29T14:30',
+      relatedReference: '學生 271／課堂 32570',
+    });
+    wrapper.unmount();
+  });
 });

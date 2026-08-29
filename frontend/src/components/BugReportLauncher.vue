@@ -27,11 +27,27 @@
     >
       <div class="bug-report-form" @paste="onPaste">
 
-        <label>問題標題 <span class="optional">（選填，自動帶入頁面）</span></label>
-        <input v-model="title" class="form-input" placeholder="簡述問題（留空則自動填入）" maxlength="200" />
+        <label for="bug-title">問題標題 <span class="optional">（選填，自動帶入頁面）</span></label>
+        <input id="bug-title" v-model="title" class="form-input" placeholder="簡述問題（留空則自動填入）" maxlength="200" />
 
-        <label>詳細描述 <span class="required">*</span></label>
-        <textarea v-model="description" class="form-textarea" placeholder="發生什麼問題？在什麼情況下？" rows="4" maxlength="5000"></textarea>
+        <label for="bug-description">詳細描述 <span class="required">*</span></label>
+        <textarea id="bug-description" v-model="description" class="form-textarea" placeholder="請描述：做了什麼、實際看到什麼、原本預期什麼？" rows="4" maxlength="5000"></textarea>
+        <p class="description-hint">若問題只在特定資料出現，請在下方補充時間或資料編號；請勿填寫密碼。</p>
+
+        <div class="triage-context" aria-label="協助定位問題的補充資訊">
+          <label for="bug-occurrence-at">發生時間 <span class="optional">（選填）</span></label>
+          <input id="bug-occurrence-at" v-model="occurrenceAt" class="form-input" type="datetime-local" />
+
+          <label for="bug-related-reference">相關資料 <span class="optional">（選填）</span></label>
+          <input
+            id="bug-related-reference"
+            v-model="relatedReference"
+            class="form-input"
+            maxlength="300"
+            autocomplete="off"
+            placeholder="例如：學生／課程／課堂／發票編號"
+          />
+        </div>
 
         <label>截圖（選填，最多 {{ maxFiles }} 張，每張 ≤5MB）</label>
         <input
@@ -121,6 +137,8 @@ const props = defineProps({
 const showForm = ref(false);
 const title = ref('');
 const description = ref('');
+const occurrenceAt = ref('');
+const relatedReference = ref('');
 const severity = ref('medium');
 const submitting = ref(false);
 const submitSuccess = ref(false);
@@ -317,6 +335,8 @@ function closeForm() {
   clearAttachments();
   title.value = '';
   description.value = '';
+  occurrenceAt.value = '';
+  relatedReference.value = '';
   severity.value = 'medium';
   submitError.value = '';
   attachmentError.value = '';
@@ -383,6 +403,8 @@ async function doSubmit() {
       userAgent: navigator.userAgent,
       screenSize: `${window.innerWidth}x${window.innerHeight}`,
       timestamp: new Date().toISOString(),
+      occurrenceAt: occurrenceAt.value || null,
+      relatedReference: relatedReference.value.trim() || null,
     });
 
     await submitBugReport({
@@ -399,6 +421,8 @@ async function doSubmit() {
     submitSuccess.value = true;
     title.value = '';
     description.value = '';
+    occurrenceAt.value = '';
+    relatedReference.value = '';
     severity.value = 'medium';
     clearAttachments();
     window.dispatchEvent(new CustomEvent('alltrue-refresh-badges'));
@@ -436,6 +460,14 @@ label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; m
   border-radius: 8px; font-size: 14px; font-family: inherit;
 }
 .form-textarea { resize: vertical; }
+.description-hint {
+  margin: 5px 0 0; color: var(--ds-ink-mute); font-size: 12px; line-height: 1.5;
+}
+.triage-context {
+  margin-top: 12px; padding: 2px 12px 10px; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--ds-canvas-soft);
+}
+.triage-context label:first-child { margin-top: 8px; }
 
 .sr-only {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;

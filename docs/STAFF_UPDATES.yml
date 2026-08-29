@@ -3,6 +3,22 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-29-bug-report-triage-context
+    published_at: "2026-08-29"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 回報問題時更容易提供線索
+    summary: 可補充發生時間與相關資料，幫助更快找到問題。
+    items:
+      - category: improved
+        text: 回報視窗可選填發生時間，以及學生、課程、課堂或發票編號等相關資料。
+      - category: improved
+        text: 描述欄提供簡短提示；欄位不會要求密碼，也不改既有操作或資料。
+    source_refs:
+      - "changelog:2026-08-29:bug-report-triage-context"
+
   - id: staff-2026-08-29-schedule-orphan-prevention
     published_at: "2026-08-29"
     audiences:
