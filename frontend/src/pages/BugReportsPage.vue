@@ -14,12 +14,28 @@
     <template v-else>
 
       <!-- Super Admin: 頁面層級 Tab（Bug 回報 / 家長回饋）-->
-      <div v-if="isSuperAdmin" class="bugs-page-tabs">
-        <button :class="['bugs-page-tab', { active: pageTab === 'bugs' }]" @click="pageTab = 'bugs'">
+      <div v-if="isSuperAdmin" class="bugs-page-tabs" role="tablist" aria-label="Bug 回報與家長回饋">
+        <button
+          id="bugs-tab"
+          type="button"
+          role="tab"
+          aria-controls="bugs-panel"
+          :aria-selected="pageTab === 'bugs'"
+          :class="['bugs-page-tab', { active: pageTab === 'bugs' }]"
+          @click="pageTab = 'bugs'"
+        >
           <span class="material-symbols-outlined">bug_report</span>
           Bug 回報
         </button>
-        <button :class="['bugs-page-tab', { active: pageTab === 'feedback' }]" @click="switchToFeedbackTab">
+        <button
+          id="feedback-tab"
+          type="button"
+          role="tab"
+          aria-controls="feedback-panel"
+          :aria-selected="pageTab === 'feedback'"
+          :class="['bugs-page-tab', { active: pageTab === 'feedback' }]"
+          @click="switchToFeedbackTab"
+        >
           <span class="material-symbols-outlined">chat</span>
           家長回饋
           <span v-if="pfUnreadCount > 0" class="bugs-page-tab-badge">{{ pfUnreadCount }}</span>
@@ -27,7 +43,14 @@
       </div>
 
       <!-- ═══ 家長回饋 Tab（super_admin only）═══ -->
-      <div v-if="isSuperAdmin && pageTab === 'feedback'" class="card pf-admin-card">
+      <div
+        v-if="isSuperAdmin && pageTab === 'feedback'"
+        id="feedback-panel"
+        class="card pf-admin-card"
+        role="tabpanel"
+        aria-labelledby="feedback-tab"
+        tabindex="0"
+      >
         <!-- 篩選 -->
         <div class="pf-filter-row">
           <select v-model="pfCategoryFilter" class="pf-select">
@@ -92,40 +115,49 @@
         </div>
       </div>
 
-      <!-- Quick filter tabs（Bug 回報，pageTab === 'bugs' 或非 super_admin） -->
-      <div v-if="!isSuperAdmin || pageTab === 'bugs'" class="card quick-filter-card" data-guide="bugs-quick-filter">
-        <div class="quick-tabs">
+      <div
+        v-if="!isSuperAdmin || pageTab === 'bugs'"
+        id="bugs-panel"
+        class="bugs-tab-panel"
+        role="tabpanel"
+        :aria-labelledby="isSuperAdmin ? 'bugs-tab' : undefined"
+        :aria-label="isSuperAdmin ? undefined : 'Bug 回報'"
+        tabindex="0"
+      >
+      <!-- Quick filter buttons（Bug 回報；篩選狀態而非頁面分頁） -->
+      <div class="card quick-filter-card" data-guide="bugs-quick-filter">
+        <div class="quick-tabs" role="group" aria-label="Bug 狀態篩選">
           <!-- Super admin tabs: 待處理 first (their default action queue) -->
           <template v-if="isSuperAdmin">
-            <button class="quick-tab" :class="{ active: quickFilter === 'pending' }" @click="setQuickFilter('pending')">
+            <button type="button" class="quick-tab" :aria-pressed="quickFilter === 'pending'" :class="{ active: quickFilter === 'pending' }" @click="setQuickFilter('pending')">
               <span class="material-symbols-outlined tab-icon">pending_actions</span>
               待處理
             </button>
-            <button class="quick-tab" :class="{ active: quickFilter === 'all' }" @click="setQuickFilter('all')">
+            <button type="button" class="quick-tab" :aria-pressed="quickFilter === 'all'" :class="{ active: quickFilter === 'all' }" @click="setQuickFilter('all')">
               <span class="material-symbols-outlined tab-icon">list</span>
               全部
             </button>
-            <button class="quick-tab" :class="{ active: quickFilter === 'closed' }" @click="setQuickFilter('closed')">
+            <button type="button" class="quick-tab" :aria-pressed="quickFilter === 'closed'" :class="{ active: quickFilter === 'closed' }" @click="setQuickFilter('closed')">
               <span class="material-symbols-outlined tab-icon">check_circle</span>
               已關閉
             </button>
           </template>
           <!-- Reporter tabs: 全部 first (see all progress), then filtering by status -->
           <template v-else>
-            <button class="quick-tab" :class="{ active: quickFilter === 'all' }" @click="setQuickFilter('all')">
+            <button type="button" class="quick-tab" :aria-pressed="quickFilter === 'all'" :class="{ active: quickFilter === 'all' }" @click="setQuickFilter('all')">
               <span class="material-symbols-outlined tab-icon">list</span>
               全部
               <span v-if="unreadCount > 0" class="unread-badge">{{ unreadCount }}</span>
             </button>
-            <button class="quick-tab" :class="{ active: quickFilter === 'pending' }" @click="setQuickFilter('pending')">
+            <button type="button" class="quick-tab" :aria-pressed="quickFilter === 'pending'" :class="{ active: quickFilter === 'pending' }" @click="setQuickFilter('pending')">
               <span class="material-symbols-outlined tab-icon">pending_actions</span>
               處理中
             </button>
-            <button class="quick-tab" :class="{ active: quickFilter === 'resolved' }" @click="setQuickFilter('resolved')">
+            <button type="button" class="quick-tab" :aria-pressed="quickFilter === 'resolved'" :class="{ active: quickFilter === 'resolved' }" @click="setQuickFilter('resolved')">
               <span class="material-symbols-outlined tab-icon">task_alt</span>
               已解決
             </button>
-            <button class="quick-tab" :class="{ active: quickFilter === 'closed' }" @click="setQuickFilter('closed')">
+            <button type="button" class="quick-tab" :aria-pressed="quickFilter === 'closed'" :class="{ active: quickFilter === 'closed' }" @click="setQuickFilter('closed')">
               <span class="material-symbols-outlined tab-icon">check_circle</span>
               已關閉
             </button>
@@ -467,6 +499,7 @@
           <span class="material-symbols-outlined">arrow_upward</span>
         </button>
       </transition>
+      </div>
     </template>
   </div>
 </template>

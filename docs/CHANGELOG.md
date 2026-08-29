@@ -1,3 +1,10 @@
+## 2026-08-29 — improved(ux): Bug 回報工作區頁籤更容易辨識
+
+<!-- release-notes: silent_ship=silent-2026-08-29-bug-reports-tabs-a11y -->
+
+- Bug 回報與家長回饋的工作區頁籤補上明確的鍵盤與螢幕閱讀器語意；狀態篩選也會讀出目前選取項目。
+- 不改回報內容、狀態流轉、留言權限、API 或資料；本次只改善內部支援工作區的操作辨識度。
+
 ## 2026-08-29 — improved(ux): 學生管理視窗更容易辨識
 
 <!-- release-notes: staff_update=staff-2026-08-29-students-modal-semantics -->
