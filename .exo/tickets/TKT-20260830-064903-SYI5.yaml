@@ -1,0 +1,40 @@
+id: TKT-20260830-064903-SYI5
+title: Label attendance record filters
+intent: Label attendance record filters
+kind: task
+parent_id: INT-20260830-064858-OHWJ
+boundary: No attendance data/API/state/permission/billing/session/leave/production
+  changes.
+success_condition: Record date, search, and status controls have explicit accessible
+  names with regression coverage; full frontend checks pass.
+priority: 2
+labels:
+- ui
+scope:
+  allow:
+  - frontend/src/pages/AttendancePage.vue
+  - frontend/src/components/__tests__/AttendancePageAccessibility.test.js
+  - .agent-session/manifest.json
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 5
+  max_loc_changed: 100
+checks:
+- npm run test:unit
+- npm run build
+type: feature
+status: todo
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-30T06:49:03+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default

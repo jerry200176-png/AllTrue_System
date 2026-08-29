@@ -1,0 +1,44 @@
+id: INT-20260830-064858-OHWJ
+title: Attendance filter control names
+intent: Attendance filter control names
+kind: intent
+brain_dump: Improve the high-frequency attendance workflow by giving the records date,
+  name search, and status filter controls explicit accessible names. Keep existing
+  date range behavior, status semantics, API calls, branch isolation, and attendance
+  actions unchanged. Add a source contract regression.
+boundary: Do not change attendance data, backend API, state/status logic, permissions,
+  billing, sessions, leave behavior, or production/deploy.
+success_condition: Every records filter/date control has a stable accessible name
+  visible to assistive technology; targeted regression and full frontend checks pass.
+risk: medium
+priority: 2
+labels:
+- ui
+scope:
+  allow:
+  - frontend/src/pages/AttendancePage.vue
+  - frontend/src/components/__tests__/AttendancePageAccessibility.test.js
+  - .agent-session/manifest.json
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 5
+  max_loc_changed: 100
+checks:
+- npm run test:unit
+- npm run build
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-30T06:48:58+08:00'
+children:
+- TKT-20260830-064903-SYI5
+resource_profile: default
