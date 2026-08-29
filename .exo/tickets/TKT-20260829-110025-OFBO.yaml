@@ -1,0 +1,43 @@
+id: TKT-20260829-110025-OFBO
+title: "\u6728\u67F5\u6848\u4F8B\u65E2\u6709\u9632\u8B77\u7F3A\u53E3\u8207\u9810\u89BD\
+  \u6D41\u7A0B"
+intent: "\u6728\u67F5\u6848\u4F8B\u65E2\u6709\u9632\u8B77\u7F3A\u53E3\u8207\u9810\u89BD\
+  \u6D41\u7A0B"
+kind: task
+parent_id: INT-20260829-110018-M2ZO
+boundary: "\u53EA\u8655\u7406\u6728\u67F5 leave/makeup \u8DE8\u5408\u7D04\u885D\u5802\
+  \ bounded context\uFF1B\u7981\u6B62 production data\u3001migration\u3001deploy\u3001\
+  \u4ED8\u6B3E\u91D1\u984D\u6539\u5BEB\u3001parallel/trial override\u3002"
+success_condition: "\u5B8C\u6210 origin/main/Issue/PR/deployment evidence revalidation\uFF0C\
+  \u5BE6\u4F5C\u6700\u5C0F\u7F3A\u53E3\u8207\u6E2C\u8A66\uFF0C\u4E26\u5728 production\
+  \ protected boundary \u524D\u6E96\u5099\u5B8C\u6574 evidence\u3002"
+priority: 1
+labels:
+- founder-intent
+scope:
+  allow:
+  - '**'
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 12
+  max_loc_changed: 400
+checks:
+- vendor/bin/phpunit
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: paused
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-29T11:00:25+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default

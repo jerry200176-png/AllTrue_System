@@ -4,6 +4,45 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-29-cross-contract-makeup-conflict",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "補課候選會先避開跨合約衝堂",
+    "summary": "安排補課前會先檢查同一學生其他合約的已排時段。",
+    "items": [
+      "搜尋補課時段會排除同一學生在其他合約已有的正式堂次，不會先顯示確認後才被擋的時段。",
+      "尚未物化但已預約的排課也會納入檢查；若搜尋後時段被占用，確認時會清楚提示並保留原案件。",
+      "付款、出席、扣堂歷史與合約日期不會因補課衝堂檢查被自動改寫。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "搜尋補課時段會排除同一學生在其他合約已有的正式堂次，不會先顯示確認後才被擋的時段。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "尚未物化但已預約的排課也會納入檢查；若搜尋後時段被占用，確認時會清楚提示並保留原案件。",
+          "付款、出席、扣堂歷史與合約日期不會因補課衝堂檢查被自動改寫。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:cross-contract-makeup-conflict"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
     "id": "staff-2026-08-29-teachers-list-status",
     "publishedAt": "2026-08-29",
     "effectiveAt": null,
