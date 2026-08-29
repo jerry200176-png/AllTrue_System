@@ -6,6 +6,20 @@ last_reviewed: 2026-06-06
 
 # AI／工程師防再犯紀錄（必讀）
 
+### R131. 新增課程「去加購」必須同時認 `id` 與 `existing_course_id`（2026-08-29）
+
+- **現象**：學生管理 → 新增課程 → 衝突視窗點「去加購」沒有反應，視窗直接關掉。
+- **根因**：`GET /students/{id}/active-courses` 回傳 `id`；排課 409 回傳 `existing_course_id`。前端只用 `c.id === conflict.existing_course_id`，對不到就靜默 return。
+- **強制規則**：攔截後要加購時必須走 `resolveConflictCourseId` / `findCourseForPurchase`（兩種欄位 + 數字比對）。找不到課程要提示，禁止靜默關閉。
+- **測試必補**：active-courses `{ id }` 能對到課程列 `{ id: "42" }`；`StudentsList.vue` / `CourseManagement.vue` 不得再出現 `c.id === conflict.existing_course_id`。
+
+### R130. `/me` profile refresh 不可覆寫使用者已選頁面（2026-08-29）
+
+- **現象**：登入後立刻點側欄「我的課表／課程查找」，畫面停在教學工作台／主任總覽；UI smoke 斷言 nav `active` 失敗。
+- **根因**：`fetchProfile`（含 `onAuthStateChange` 再取 `/me`）無條件把 `active` 設回 `teacher-home`／`director`，蓋掉剛完成的導航。
+- **強制規則**：profile refresh 只允許 (1) 強制改密 → `profile`、(2) bootstrap `director` → 老師首頁、(3) 角色不符的 `teacher-home` → 主任首頁。其餘保留 `currentActive`。邏輯集中在 `resolveActiveAfterProfileLoad`。
+- **測試必補**：`resolveActiveAfterProfileLoad.test.js` 覆蓋 calendar／course-mgmt 不被 clobber；UI smoke `navTo` 限定側欄並短重試。
+
 ### R129. 請假復原不可用一般狀態修改繞過 cascade；試聽轉正式不可搬移已上堂次（2026-08-28）
 
 - **現象**：請假堂次因缺少順延尾堂而無法撤銷，主任改用「已上→未上」繞過；試聽續報再轉移試聽堂，造成正式合約超排與重疊警告。
@@ -1149,7 +1163,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | 課表回報 | §2026-04-17 回報系統（14 條禁止項） |
 | 排課 | §start_time 格式、§智慧排課誤標取消、§R25（請假優先於 scheduled 例外）、§R29（請假不可 fallback 只寫 schedules）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R47（rescheduled 幽靈不可蓋掉同日 ClassSession）、§R49（同學生同時段去重不可用 StudentClassID 當唯一 key）、§R50（行事曆載入不可 REST 成功後再跑 fallback）、§R69（bulk reflow 先 snapshot schedule IDs，禁止 mutable natural key 連鎖更新）、§R71（mutation contract／slot idempotency／兩階段補償）、**§R80（排課摘要補登堂數≠天數；須與 session_plan 同源 expand）**、§R83（調課後 IsContractException 防 realign）、**§R84（IsContractException 結構性保證，不再靠呼叫者記得）**、**§R116（混班型剩餘依即將加入班型；禁止較嚴上限蓋一對三）** |
 | 出缺勤 / 分校隔離 | §SEC-001、§分校隔離後端強制、§R12（查詢日期寫死今天）、§R14（submitQuickAttend 缺 StudentID）、§R15（出勤頁預設只顯示今天，歷史到班紀錄不可見）、§R16（`script setup` const TDZ 初始化順序 → 整頁空白）、**§R86（composable return 引用未宣告識別字 → ReferenceError 整頁空白；鏡像測試攔不住）**、§R33（老師每分校 RFID 優先）、§R36（個別資料有課但老師今日名單缺漏）、§R40（點名扣堂不可只用 ClassSessionID 防重）、§R41（補請假不可只用課程+日期找堂次）、§R42（行事曆堂次顯示老師不可被舊評量老師覆蓋）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R71（請假寫入即封閉 interval；禁止留待隔夜 repair）、**§R107（projected 堂次必須帶 branch_id；教師首頁禁 Branch #N）**|
-| 月結制 / 加購 / 多科固定時段 | §b3 inactive 歷史、§b4 加購分流、§R21（堂數制加購是新批次）、§R22（月結詳情不可只依賴 ClassSession）、§R23（推算日期不可成為 dead-end chip）、§R24（多科固定時段優先走一般課程）、§R26（月結續報與堂數額度不可混在同一語意）、§R38（家長端繳費提醒不可套主任續課提醒） |
+| 月結制 / 加購 / 多科固定時段 | §b3 inactive 歷史、§b4 加購分流、§R21（堂數制加購是新批次）、§R22（月結詳情不可只依賴 ClassSession）、§R23（推算日期不可成為 dead-end chip）、§R24（多科固定時段優先走一般課程）、§R26（月結續報與堂數額度不可混在同一語意）、§R38（家長端繳費提醒不可套主任續課提醒）、**§R130（去加購必須同時認 `id` 與 `existing_course_id`，禁止靜默關閉）** |
 | routes/api.php | §AI 靜默回退路由（改前必讀完整檔案 + route:list） |
 | 備份 / nightly | §nightly 覆蓋修正、§備份還原演練、§R34（備份新鮮度不可只看 mtime）、§R71（repair 與 producer prevention 分離；同日全日期 health aggregate） |
 | Bug 回報 / 附件存檔 | §R11 storage symlink（Archive）、§R51（分診前必查 attachments + reporter 歷史 + 跨分校）、§R53（上線後必回 in-app）、`docs/CHAT_BUG_SYSTEM.md` §3.6–§3.7、**§R108（utf8mb3 姓名 LIKE 禁 4-byte）**、**§R111（課程備註長度 TEXT+422，禁 SQL 500）** |

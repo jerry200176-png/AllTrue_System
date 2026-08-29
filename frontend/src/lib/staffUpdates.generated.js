@@ -281,6 +281,45 @@ export const staffUpdates = [
     "version": "2026.08.29"
   },
   {
+    "id": "staff-2026-08-29-profile-nav-clobber",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "登入後側欄切頁更穩定",
+    "summary": "登入後立刻點側欄，不會再被系統拉回首頁。",
+    "items": [
+      "個人資料載入完成後，不會把你剛切好的頁面（例如我的課表、課程查找）強制拉回工作台／總覽。",
+      "強制改密與角色首頁冷啟動行為維持不變；權限、分校與各頁業務邏輯也不變。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "個人資料載入完成後，不會把你剛切好的頁面（例如我的課表、課程查找）強制拉回工作台／總覽。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "強制改密與角色首頁冷啟動行為維持不變；權限、分校與各頁業務邏輯也不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:profile-nav-clobber"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
     "id": "staff-2026-08-29-notifications-dialog-a11y",
     "publishedAt": "2026-08-29",
     "effectiveAt": null,
@@ -310,6 +349,79 @@ export const staffUpdates = [
     ],
     "sourceRefs": [
       "changelog:2026-08-29:notifications-dialog-a11y"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-learning-review-tabs-a11y",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "評量審核佇列更容易辨識",
+    "summary": "評量分頁現在會清楚連到目前清單，切換後只聚焦該審核狀態。",
+    "items": [
+      "主任與老師的審核狀態分頁補上清楚的選取狀態，並連到評量清單工作區。",
+      "審核規則、核准同步點名／扣堂、API、權限與批次操作維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "主任與老師的審核狀態分頁補上清楚的選取狀態，並連到評量清單工作區。",
+          "審核規則、核准同步點名／扣堂、API、權限與批次操作維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:learning-review-tabs-a11y"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-goto-purchase",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "新增課程可直接加購",
+    "summary": "學生已有課程時，點「去加購」會打開加購堂數。",
+    "items": [
+      "學生管理新增課程後，點「去加購」會打開該課的加購視窗。",
+      "系統對不到課程時會提示重新整理，不再沒有反應。",
+      "課程資料、加購規則、權限與既有課程列「加購」維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "學生管理新增課程後，點「去加購」會打開該課的加購視窗。",
+          "系統對不到課程時會提示重新整理，不再沒有反應。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "課程資料、加購規則、權限與既有課程列「加購」維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:goto-purchase"
     ],
     "date": "2026-08-29",
     "version": "2026.08.29"
