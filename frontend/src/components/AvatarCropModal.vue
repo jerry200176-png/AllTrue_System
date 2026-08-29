@@ -1,7 +1,13 @@
 <template>
   <div v-if="modelValue" class="crop-overlay" @click.self="onCancel">
-    <div class="crop-modal" @click.stop>
-      <h3>調整頭像呈現範圍</h3>
+    <div
+      class="crop-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="avatar-crop-title"
+      @click.stop
+    >
+      <h3 id="avatar-crop-title">調整頭像呈現範圍</h3>
       <p class="crop-hint">
         拖曳照片對準要顯示的區域，並用滑桿縮放。確認後會輸出正方形圖檔，與左下角側欄的顯示方式一致。
       </p>
@@ -22,8 +28,8 @@
         />
       </div>
       <div class="zoom-row">
-        <label>縮放 {{ Math.round(zoom * 100) }}%</label>
-        <input v-model.number="zoom" type="range" min="1" max="3" step="0.02" @input="clampPan" />
+        <label for="avatar-crop-zoom">縮放 {{ Math.round(zoom * 100) }}%</label>
+        <input id="avatar-crop-zoom" v-model.number="zoom" type="range" min="1" max="3" step="0.02" @input="clampPan" />
       </div>
       <div class="crop-actions">
         <button type="button" class="btn-cancel" @click="onCancel">取消</button>

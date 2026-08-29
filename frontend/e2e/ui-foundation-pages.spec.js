@@ -6,6 +6,7 @@
  * Static HTML harness under e2e/fixtures is design exploration only.
  */
 import { test, expect } from '@playwright/test';
+import { dismissOverlays } from './fixtures/dismissOverlays.js';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -74,6 +75,7 @@ async function installApiMocks(page, mode, pageName = '') {
     const url = new URL(route.request().url());
     const p = url.pathname;
     const method = route.request().method();
+    const requestedPage = Number(url.searchParams.get('page') || 1);
 
     if (pageName === 'course' && mode === 'booking-race' && method === 'POST' && p.includes('/manual-sessions/check')) {
       manualBookingCheckCount += 1;
@@ -325,20 +327,24 @@ async function installApiMocks(page, mode, pageName = '') {
           }),
         });
       }
-      const cases = mode === 'long' ? [CASE_LONG, CASE_NORMAL] : [CASE_NORMAL, { ...CASE_NORMAL, id: 'case-1003', student_name: '測試學生乙', overdue: true, priority: 'overdue' }];
+      const cases = mode === 'disabled' && requestedPage === 3
+        ? [{ ...CASE_NORMAL, id: 'case-1051', student_name: '測試學生第 51 筆', title: '第 51 筆請假申請' }]
+        : mode === 'long'
+          ? [CASE_LONG, CASE_NORMAL]
+          : [CASE_NORMAL, { ...CASE_NORMAL, id: 'case-1003', student_name: '測試學生乙', overdue: true, priority: 'overdue' }];
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
           cases: {
             data: cases,
-            total: cases.length,
-            current_page: 1,
+            total: mode === 'disabled' ? 51 : cases.length,
+            current_page: mode === 'disabled' ? requestedPage : 1,
             last_page: mode === 'disabled' ? 3 : 1,
             per_page: 20,
-            has_more: mode === 'disabled',
+            has_more: mode === 'disabled' && requestedPage < 3,
           },
-          summary: { cases_unresolved: cases.length, cases_candidate_ready: 1 },
+          summary: { cases_unresolved: mode === 'disabled' ? 51 : cases.length, cases_candidate_ready: 1 },
         }),
       });
     }
@@ -562,6 +568,25 @@ test.describe('UI foundation — real Vue page evidence', () => {
     await expect(opsTab).toHaveAttribute('aria-selected', 'true');
     await expect(page.locator('#notifications-panel-ops')).toHaveAttribute('role', 'tabpanel');
     await expect(page.locator('#notifications-panel-ops')).toHaveAttribute('aria-labelledby', 'notifications-tab-ops');
+  });
+
+  test('inbox case pager reaches page 3 and item 51 after overlay dismissal', async ({ page }) => {
+    await openPilot(page, {
+      pageName: 'inbox',
+      mode: 'disabled',
+      viewport: { width: 390, height: 844 },
+    });
+    await dismissOverlays(page);
+
+    const pager = page.getByTestId('case-pager');
+    await expect(pager).toContainText('第 1 / 3 頁（共 51）');
+    const next = pager.getByRole('button', { name: '下一頁', exact: true });
+    await next.click();
+    await expect(pager).toContainText('第 2 / 3 頁（共 51）');
+    await next.click();
+    await expect(pager).toContainText('第 3 / 3 頁（共 51）');
+    await expect(page.getByText('測試學生第 51 筆', { exact: true })).toBeVisible();
+    await expect(next).toBeDisabled();
   });
 
   test('inbox tuition report uses the shared modal contract', async ({ page }) => {
@@ -789,10 +814,18 @@ test.describe('UI foundation — real Vue page evidence', () => {
     const billingTab = page.getByRole('tab', { name: '帳務資料', exact: true }).first();
     await expect(courseTab).toHaveAttribute('aria-selected', 'true');
     await expect(courseTab).toHaveAttribute('aria-controls', /student-group-panel-courses/);
+    await expect(courseTab).toHaveAttribute('tabindex', '0');
+    await expect(billingTab).toHaveAttribute('tabindex', '-1');
     await expect(page.locator('[role="tabpanel"]')).toBeVisible();
-    await billingTab.click();
+    await courseTab.press('ArrowRight');
     await expect(billingTab).toHaveAttribute('aria-selected', 'true');
+    await expect(billingTab).toBeFocused();
+    await expect(courseTab).toHaveAttribute('tabindex', '-1');
+    await expect(billingTab).toHaveAttribute('tabindex', '0');
     await expect(page.locator('[role="tabpanel"]')).toHaveAttribute('aria-labelledby', /student-group-tab-billing/);
+    await billingTab.press('ArrowLeft');
+    await expect(courseTab).toBeFocused();
+    await expect(courseTab).toHaveAttribute('aria-selected', 'true');
   });
 
   for (const vp of [

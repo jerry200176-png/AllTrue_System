@@ -3,7 +3,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap" rel="stylesheet" />
 
     <!-- LIFF auto-login loading -->
-    <div class="pp-card pp-loading-card enterprise-loading" v-if="liffLoading">
+    <div class="pp-card pp-loading-card enterprise-loading" v-if="liffLoading" role="status" aria-live="polite">
       <div class="pp-spinner"></div>
       <p class="pp-loading-text">正在透過 LINE 驗證身分…</p>
     </div>
@@ -27,22 +27,22 @@
       </div>
       <div class="pp-login-form">
         <div class="pp-field">
-          <label>
+          <label for="parent-login-name">
             <span class="material-symbols-outlined pp-field-icon">person</span>
             學生姓名
           </label>
-          <input v-model="loginForm.Name" type="text" placeholder="請輸入學生姓名" />
+          <input id="parent-login-name" v-model="loginForm.Name" type="text" placeholder="請輸入學生姓名" />
         </div>
         <div class="pp-field">
-          <label>
+          <label for="parent-login-phone">
             <span class="material-symbols-outlined pp-field-icon">phone</span>
             聯絡手機號碼
           </label>
-          <input v-model="loginForm.Phone" type="tel" placeholder="請輸入手機號碼" />
+          <input id="parent-login-phone" v-model="loginForm.Phone" type="tel" placeholder="請輸入手機號碼" />
         </div>
       </div>
       <div class="pp-login-actions">
-        <button class="pp-btn pp-btn-primary" @click="login" :disabled="loginLoading">
+        <button type="button" class="pp-btn pp-btn-primary" @click="login" :disabled="loginLoading">
           <template v-if="loginLoading">
             <div class="pp-spinner-inline"></div>
             登入中…
@@ -52,11 +52,11 @@
             登入
           </template>
         </button>
-        <button class="pp-btn pp-btn-line" @click="loginWithLine" v-if="liffAvailable">
+        <button type="button" class="pp-btn pp-btn-line" @click="loginWithLine" v-if="liffAvailable">
           <span style="font-weight:700;">LINE 登入</span>
         </button>
       </div>
-      <p class="pp-error" v-if="loginError">{{ loginError }}</p>
+      <p class="pp-error" v-if="loginError" role="alert">{{ loginError }}</p>
     </div>
 
     <!-- Skeleton loader while dashboard is loading (token exists but no data yet) -->
@@ -99,7 +99,7 @@
               <span v-if="dashboard.student?.campus_name" class="pp-tag pp-tag-campus">{{ dashboard.student.campus_name }}</span>
             </div>
           </div>
-          <button @click="logout" class="pp-btn-logout" title="登出">
+          <button type="button" @click="logout" class="pp-btn-logout" title="登出" aria-label="登出">
             <span class="material-symbols-outlined">logout</span>
           </button>
         </div>
@@ -111,14 +111,16 @@
           </div>
           <div class="pp-switcher-chips">
             <button v-for="s in students" :key="s.id"
+              type="button"
               class="pp-chip"
               :class="{ active: s.id === dashboard.student?.id }"
+              :aria-pressed="s.id === dashboard.student?.id"
               :disabled="switchingStudent"
               @click="switchStudent(s.id)">
               {{ s.name }}
             </button>
           </div>
-          <p class="pp-error" v-if="switchError" style="margin-top:6px;">{{ switchError }}</p>
+          <p class="pp-error" v-if="switchError" role="alert" style="margin-top:6px;">{{ switchError }}</p>
         </div>
         <div class="pp-campus-switcher" v-if="(dashboard.enrollments || []).length > 1">
           <label class="pp-switcher-label" for="parent-campus-scope">
@@ -258,17 +260,17 @@
       </div>
 
       <!-- ═══ Tab Bar ═══ -->
-      <div class="pp-tab-bar">
-        <button :class="['pp-tab', { active: activeTab === 'learning' }]" @click="activeTab = 'learning'">
+      <div class="pp-tab-bar" role="tablist" aria-label="家長入口分頁">
+        <button id="parent-tab-learning" type="button" role="tab" aria-controls="parent-panel-learning" :aria-selected="activeTab === 'learning'" :tabindex="activeTab === 'learning' ? 0 : -1" :class="['pp-tab', { active: activeTab === 'learning' }]" @click="activeTab = 'learning'" @keydown="onParentTabKeydown($event, 'learning')">
           <span class="material-symbols-outlined">assignment</span>
           學習
           <span v-if="lrRecordsMissingFeedbackCount > 0" class="pp-tab-badge pp-tab-badge--soft" :title="`有 ${lrRecordsMissingFeedbackCount} 堂尚未留言`">{{ lrRecordsMissingFeedbackCount > 9 ? '9+' : lrRecordsMissingFeedbackCount }}</span>
         </button>
-        <button :class="['pp-tab', { active: activeTab === 'schedule' }]" @click="activeTab = 'schedule'">
+        <button id="parent-tab-schedule" type="button" role="tab" aria-controls="parent-panel-schedule" :aria-selected="activeTab === 'schedule'" :tabindex="activeTab === 'schedule' ? 0 : -1" :class="['pp-tab', { active: activeTab === 'schedule' }]" @click="activeTab = 'schedule'" @keydown="onParentTabKeydown($event, 'schedule')">
           <span class="material-symbols-outlined">calendar_today</span>
           課表
         </button>
-        <button :class="['pp-tab', { active: activeTab === 'billing' }]" @click="activeTab = 'billing'">
+        <button id="parent-tab-billing" type="button" role="tab" aria-controls="parent-panel-billing" :aria-selected="activeTab === 'billing'" :tabindex="activeTab === 'billing' ? 0 : -1" :class="['pp-tab', { active: activeTab === 'billing' }]" @click="activeTab = 'billing'" @keydown="onParentTabKeydown($event, 'billing')">
           <span class="material-symbols-outlined">receipt_long</span>
           帳務
           <span v-if="billingBadgeCount > 0" class="pp-tab-badge">{{ billingBadgeCount }}</span>
@@ -277,6 +279,7 @@
 
       <!-- ═══ Tab: 學習（預設首頁） ═══ -->
       <template v-if="activeTab === 'learning'">
+        <div id="parent-panel-learning" class="pp-tab-panel" role="tabpanel" aria-labelledby="parent-tab-learning">
 
         <!-- Announcements -->
         <div class="pp-card" v-if="(dashboard.announcements || []).length > 0">
@@ -467,7 +470,7 @@
                 ></textarea>
                 <div class="pp-feedback-actions">
                   <span :class="['pp-feedback-count', { warn: feedbackLength(record) >= 480 }]">{{ feedbackLength(record) }}/500</span>
-                  <button class="pp-btn pp-btn-primary pp-feedback-submit" :disabled="record._feedbackSaving || !canSubmitFeedback(record)" @click="submitFeedback(record)">
+                  <button type="button" class="pp-btn pp-btn-primary pp-feedback-submit" :disabled="record._feedbackSaving || !canSubmitFeedback(record)" @click="submitFeedback(record)">
                     {{ record._feedbackSaving ? '送出中...' : (record.parent_feedback ? '更新回饋' : '送出回饋') }}
                   </button>
                 </div>
@@ -503,7 +506,7 @@
                   ></textarea>
                   <div class="pp-feedback-actions">
                     <span :class="['pp-feedback-count', { warn: (record._replyDraft || '').length >= 480 }]">{{ (record._replyDraft || '').length }}/500</span>
-                    <button class="pp-btn pp-btn-primary pp-feedback-submit" :disabled="!crossCampusActionsEnabled || record._replySaving || !(record._replyDraft || '').trim()" @click.stop="submitParentReply(record)">
+                    <button type="button" class="pp-btn pp-btn-primary pp-feedback-submit" :disabled="!crossCampusActionsEnabled || record._replySaving || !(record._replyDraft || '').trim()" @click.stop="submitParentReply(record)">
                       {{ record._replySaving ? '送出中...' : '回覆老師' }}
                     </button>
                   </div>
@@ -515,7 +518,7 @@
             </section>
           </template>
         </template>
-        <button v-if="lrHasMore" class="pp-btn-more" @click="loadMoreRecords" :disabled="lrLoading">
+        <button v-if="lrHasMore" type="button" class="pp-btn-more" @click="loadMoreRecords" :disabled="lrLoading">
           <template v-if="lrLoading">
             <div class="pp-spinner-inline"></div>
             載入中…
@@ -559,7 +562,7 @@
                 </div>
               </div>
             </div>
-            <button v-if="dashboard.attendance_history.length > 10 && !showAllAttendance"
+            <button v-if="dashboard.attendance_history.length > 10 && !showAllAttendance" type="button"
                     class="pp-btn-more" @click="showAllAttendance = true">
               <span class="material-symbols-outlined">expand_more</span>
               顯示更多（共 {{ dashboard.attendance_history.length }} 筆）
@@ -631,9 +634,10 @@
               {{ fbContent.length }} / 500
             </div>
 
-            <p v-if="fbError" class="pp-error">{{ fbError }}</p>
+            <p v-if="fbError" class="pp-error" role="alert">{{ fbError }}</p>
 
             <button
+              type="button"
               class="pp-voice-submit"
               :disabled="!fbCanSubmit"
               @click="submitFeedbackForm">
@@ -643,11 +647,13 @@
           </template>
         </div>
 
+        </div>
       </template>
       <!-- ／學習 Tab -->
 
       <!-- ═══ Tab: 課表 ═══ -->
       <template v-if="activeTab === 'schedule'">
+        <div id="parent-panel-schedule" class="pp-tab-panel" role="tabpanel" aria-labelledby="parent-tab-schedule">
 
         <!-- Remaining Sessions by Subject -->
         <div class="pp-card" v-if="dashboard.remaining_by_subject && Object.keys(dashboard.remaining_by_subject).length">
@@ -776,11 +782,13 @@
           </div>
         </div>
 
+        </div>
       </template>
       <!-- ／課表 Tab -->
 
       <!-- ═══ Tab: 帳務 ═══ -->
       <template v-if="activeTab === 'billing'">
+        <div id="parent-panel-billing" class="pp-tab-panel" role="tabpanel" aria-labelledby="parent-tab-billing">
 
         <!-- Payment Alerts (soft info style, not alarming orange) -->
         <div class="pp-card pp-info-card" v-if="(dashboard.payment_alerts || []).length > 0">
@@ -867,6 +875,7 @@
           </label>
         </div>
 
+        </div>
       </template>
       <!-- ／帳務 Tab -->
 
@@ -947,6 +956,7 @@ const notificationPrefsError = ref('');
 const expandedRecords = reactive(new Set());
 const showAllAttendance = ref(false);
 const activeTab = ref('learning');
+const parentTabKeys = ['learning', 'schedule', 'billing'];
 const leaveSessionId = ref(null);
 const leaveReason = ref('');
 const leaveSubmitting = ref(false);
@@ -997,6 +1007,22 @@ function gotoParentTarget(target, source = 'hub_card') {
     card: source,
     target: resolved,
   });
+}
+
+function onParentTabKeydown(event, currentTab) {
+  const { key } = event;
+  const currentIndex = parentTabKeys.indexOf(currentTab);
+  if (currentIndex < 0 || !['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(key)) return;
+
+  event.preventDefault();
+  const nextIndex = key === 'Home'
+    ? 0
+    : key === 'End'
+      ? parentTabKeys.length - 1
+      : (currentIndex + (key === 'ArrowRight' ? 1 : -1) + parentTabKeys.length) % parentTabKeys.length;
+  const nextTab = parentTabKeys[nextIndex];
+  activeTab.value = nextTab;
+  nextTick(() => document.getElementById(`parent-tab-${nextTab}`)?.focus());
 }
 
 function openReleaseNote(note) {
