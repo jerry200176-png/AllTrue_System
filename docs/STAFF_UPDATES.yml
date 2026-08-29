@@ -13,13 +13,7 @@ updates:
     items:
       - category: improved
         text: 老師工作台現在以「今天要完成」作為唯一主要待辦入口，舊的隱藏待辦、提示音與重複捷徑不再干擾畫面。
-      - category: improved
-        text: 本週跨分校課表直接顯示；今天沒有待辦時，也能從完成狀態直接查看本週課表。
-      - category: improved
-        text: 點名、評量、家長回覆、課表與問題回報的既有資料、導頁、權限與操作流程維持不變。
-    source_refs:
-      - "changelog:2026-08-30:teacher-home-single-surface"
-
+    source_refs: ["changelog:2026-08-30:teacher-home-single-surface"]
   - id: staff-2026-08-29-learning-filter-chips-a11y
     published_at: "2026-08-29"
     audiences:

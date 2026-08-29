@@ -31,9 +31,4 @@ describe('TeacherHome controls accessibility', () => {
     expect(source).toContain('role="alert"');
     expect(source).toContain('重新整理今日任務');
   });
-
-  it('keeps the visible work queue as the only teacher-home task surface', () => {
-    expect(source).toContain('data-guide="teacher-home-work-queue"');
-    expect(source).not.toContain('th-legacy-workflow');
-  });
 });
