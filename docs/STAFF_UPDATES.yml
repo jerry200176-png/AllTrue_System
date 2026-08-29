@@ -3,6 +3,23 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-29-cross-contract-makeup-conflict
+    published_at: "2026-08-29"
+    audiences:
+      - director
+    importance: major
+    title: 補課候選會先避開跨合約衝堂
+    summary: 安排補課前會先檢查同一學生其他合約的已排時段。
+    items:
+      - category: fixed
+        text: 搜尋補課時段會排除同一學生在其他合約已有的正式堂次，不會先顯示確認後才被擋的時段。
+      - category: improved
+        text: 尚未物化但已預約的排課也會納入檢查；若搜尋後時段被占用，確認時會清楚提示並保留原案件。
+      - category: improved
+        text: 付款、出席、扣堂歷史與合約日期不會因補課衝堂檢查被自動改寫。
+    source_refs:
+      - "changelog:2026-08-29:cross-contract-makeup-conflict"
+
   - id: staff-2026-08-29-learning-review-tabs-a11y
     published_at: "2026-08-29"
     audiences:
@@ -51,7 +68,6 @@ updates:
         text: 強制改密與角色首頁冷啟動行為維持不變；權限、分校與各頁業務邏輯也不變。
     source_refs:
       - "changelog:2026-08-29:profile-nav-clobber"
-
   - id: staff-2026-08-29-student-course-next-action
     published_at: "2026-08-29"
     audiences:

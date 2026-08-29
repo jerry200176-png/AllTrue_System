@@ -1,3 +1,11 @@
+## 2026-08-29 — fixed(schedule): 補課候選先排除同學生跨合約衝堂
+
+<!-- release-notes: staff_update=staff-2026-08-29-cross-contract-makeup-conflict -->
+
+- 家長請假案件搜尋補課時段時，現在會同時檢查同一學生其他合約已物化的正式堂次，以及尚未物化但已預約的排課，避免先顯示不可能成立的候選。
+- 確認補課時仍由後端 ClassSession 寫入防線做最後一次衝堂檢查；若搜尋後被其他操作占用，回傳可理解的衝堂錯誤且整筆交易回滾。
+- 不改付款金額、既有出席／扣堂歷史、合約日期或試聽／平行課程語意。
+
 ## 2026-08-29 — improved(ux): 評量審核佇列分頁語意更清楚
 
 <!-- release-notes: staff_update=staff-2026-08-29-learning-review-tabs-a11y -->
