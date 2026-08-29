@@ -7,6 +7,7 @@ import {
   GOV_CODES,
 } from './gov-codes.mjs';
 import { validateBranchName, slashPrefixRegexSource } from './branch-policy.mjs';
+import { claimedSessionFiles, shouldBindAgentSession } from './session-claim.mjs';
 
 test('taxonomy labels unique and include required classes', () => {
   assert.ok(TAXONOMY.includes('UNKNOWN'));
@@ -40,6 +41,14 @@ test('branch policy accepts sec/design/cursor/claude/revert; rejects agent/ops',
   assert.equal(validateBranchName('ops/x').ok, false);
   assert.match(slashPrefixRegexSource(), /sec/);
   assert.match(slashPrefixRegexSource(), /claude/);
+});
+
+test('inherited session files are not a claim; only diff paths bind', () => {
+  assert.deepEqual(claimedSessionFiles([]), { agent: false, human: false });
+  assert.equal(shouldBindAgentSession(claimedSessionFiles([])), false);
+  assert.equal(shouldBindAgentSession(claimedSessionFiles(['README.md'])), false);
+  assert.equal(shouldBindAgentSession(claimedSessionFiles(['.agent-session/manifest.json'])), true);
+  assert.equal(shouldBindAgentSession(claimedSessionFiles(['.agent-session/human-authored.json'])), false);
 });
 
 test('stable gov codes', () => {
