@@ -26,7 +26,7 @@ budgets:
   max_files_changed: 4
   max_loc_changed: 190
 checks:
-- vendor/bin/phpunit
+- bash scripts/phpunit-isolated.sh
 type: feature
 status: review
 spec_ref: null
