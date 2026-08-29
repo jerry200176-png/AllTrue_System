@@ -3,6 +3,23 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-29-goto-purchase
+    published_at: "2026-08-29"
+    audiences:
+      - director
+    importance: digest
+    title: 新增課程可直接加購
+    summary: 學生已有課程時，點「去加購」會打開加購堂數。
+    items:
+      - category: fixed
+        text: 學生管理新增課程後，點「去加購」會打開該課的加購視窗。
+      - category: fixed
+        text: 系統對不到課程時會提示重新整理，不再沒有反應。
+      - category: improved
+        text: 課程資料、加購規則、權限與既有課程列「加購」維持不變。
+    source_refs:
+      - "changelog:2026-08-29:goto-purchase"
+
   - id: staff-2026-08-29-profile-nav-clobber
     published_at: "2026-08-29"
     audiences:
