@@ -36,7 +36,7 @@
           <span>{{ refreshing ? '重新整理中…' : '重新整理今日任務' }}</span>
           <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
         </button>
-        <a v-else class="th-companion__action" href="#teacher-work-queue-title">
+        <a v-else class="th-companion__action" href="#teacher-work-queue-title" @click="focusTeacherWorkQueue">
           <span>{{ teacherTasks.length || teacherTasksLoading ? '查看今日任務' : '查看今日摘要' }}</span>
           <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
         </a>
@@ -109,7 +109,7 @@
       <div class="th-work-queue__header">
         <div>
           <p class="th-work-queue__eyebrow">今天</p>
-          <h3 id="teacher-work-queue-title">今天要完成</h3>
+          <h3 id="teacher-work-queue-title" tabindex="-1">今天要完成</h3>
           <p class="th-work-queue__description">依照期限與影響排序；完成後會從清單移除。</p>
         </div>
         <span class="th-work-queue__count" aria-live="polite">{{ teacherTasksError ? '待確認' : `${teacherTasks.length} 項` }}</span>
@@ -223,12 +223,19 @@
             v-if="pendingTodoTotal > 0 && !isPendingSoundSnoozedToday"
             class="th-sound-toggle"
             type="button"
+            aria-label="今日靜音待辦提示音"
             @click="snoozePendingSoundToday"
           >
             <span class="material-symbols-outlined">snooze</span>
             今日靜音
           </button>
-          <button class="th-sound-toggle" type="button" @click="togglePendingSound">
+          <button
+            class="th-sound-toggle"
+            type="button"
+            :aria-pressed="warningSoundEnabled ? 'true' : 'false'"
+            :aria-label="warningSoundEnabled ? '關閉待辦提示音' : '開啟待辦提示音'"
+            @click="togglePendingSound"
+          >
             <span class="material-symbols-outlined">{{ warningSoundEnabled ? 'notifications_active' : 'notifications_off' }}</span>
             {{ warningSoundEnabled ? '提示音開啟' : '提示音關閉' }}
           </button>
@@ -264,6 +271,7 @@
         <button
           class="th-action-btn th-action-attendance"
           :class="{ 'th-done': pendingAttendanceCount === 0 && !loadingAttendance }"
+          type="button"
           @click="goAttendance"
         >
           <div class="th-action-icon-wrap">
@@ -1404,6 +1412,13 @@ const teacherTasksPartialError = computed(() => (
 
 function teacherTaskTypeLabel(type) {
   return ({ attendance: '出缺勤', learning: '學習評量', feedback: '家長回饋' }[type] || '待辦');
+}
+
+function focusTeacherWorkQueue(event) {
+  event.preventDefault();
+  const target = document.getElementById('teacher-work-queue-title');
+  target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  target?.focus({ preventScroll: true });
 }
 
 function openTeacherTask(task) {

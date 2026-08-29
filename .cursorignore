@@ -1,0 +1,3 @@
+# Broken Laravel public storage symlink (not source; Glob/Grep storms).
+# vendor/ and node_modules/ are already in .gitignore.
+backend/public/storage
