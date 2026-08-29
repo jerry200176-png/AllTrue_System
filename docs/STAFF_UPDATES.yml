@@ -16,6 +16,8 @@ updates:
         text: 回報視窗可選填發生時間，以及學生、課程、課堂或發票編號等相關資料。
       - category: improved
         text: 描述欄提供簡短提示；欄位不會要求密碼，也不改既有操作或資料。
+      - category: improved
+        text: 處理人員查看詳情時會直接看到這些補充線索，減少另外查找回報內容的步驟。
     source_refs:
       - "changelog:2026-08-29:bug-report-triage-context"
 

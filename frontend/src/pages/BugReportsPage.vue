@@ -369,6 +369,15 @@
             <p>{{ detail.description }}</p>
           </div>
 
+          <div v-if="isSuperAdmin && triageContext" class="triage-context-card">
+            <strong>回報補充（僅處理人員可見）</strong>
+            <div v-if="triageContext.occurrenceAt"><b>發生時間：</b>{{ triageContext.occurrenceAt }}<span v-if="triageContext.timeZone">（{{ triageContext.timeZone }}）</span></div>
+            <div v-if="triageContext.relatedReference"><b>相關資料：</b>{{ triageContext.relatedReference }}</div>
+            <div v-if="triageContext.screenSize || triageContext.timeZone">
+              <b>裝置：</b>{{ triageContext.screenSize || '未知尺寸' }}<span v-if="triageContext.timeZone"> · {{ triageContext.timeZone }}</span>
+            </div>
+          </div>
+
           <!-- 回覆／留言：移到描述下方、截圖與歷程之上，讓回報者（多為手機）
                點開即可讀開發者回覆，免往下長滑（in-app 166）。 -->
           <div class="comments-section">
@@ -468,6 +477,7 @@ import {
   updateBugStatus, updateBugCommentVisibility, reporterVerifyBug,
   getToken,
 } from '../lib/bugReportsApi';
+import { parseBugReportClientInfo } from '../lib/bugReportContext';
 import { getParentFeedbackList, getParentFeedbackUnreadCount, markParentFeedbackRead } from '../api';
 
 const props = defineProps({
@@ -644,6 +654,8 @@ const resolutionNote = computed(() => {
     .find(l => terminal.includes(l.to_status));
   return log?.note || '';
 });
+
+const triageContext = computed(() => parseBugReportClientInfo(detail.value?.client_info));
 
 const pageTitle = computed(() => {
   if (isSuperAdmin.value) return 'Bug 回報（處理中心）';
@@ -1330,6 +1342,12 @@ function formatDate(iso) {
 .detail-description { margin: 12px 0; }
 .detail-description strong { display: block; margin-bottom: 4px; }
 .detail-description p { background: var(--ds-canvas); padding: 12px; border-radius: 8px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; }
+.triage-context-card {
+  margin: 12px 0; padding: 10px 12px; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--ds-canvas-soft); font-size: 13px; line-height: 1.6;
+}
+.triage-context-card > strong { display: block; margin-bottom: 4px; }
+.triage-context-card b { font-weight: 600; }
 
 .detail-attachments { margin: 16px 0; }
 .detail-attachments strong { display: block; margin-bottom: 8px; }

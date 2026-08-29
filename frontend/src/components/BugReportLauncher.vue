@@ -403,6 +403,7 @@ async function doSubmit() {
       userAgent: navigator.userAgent,
       screenSize: `${window.innerWidth}x${window.innerHeight}`,
       timestamp: new Date().toISOString(),
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || null,
       occurrenceAt: occurrenceAt.value || null,
       relatedReference: relatedReference.value.trim() || null,
     });
