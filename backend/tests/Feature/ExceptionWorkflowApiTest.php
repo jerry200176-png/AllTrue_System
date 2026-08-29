@@ -14,6 +14,7 @@ use App\Services\CourseLeaveCascadeService;
 use App\Services\ExceptionWorkflowService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class ExceptionWorkflowApiTest extends TestCase
