@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-29-schedule-orphan-prevention
+    published_at: "2026-08-29"
+    audiences:
+      - director
+    importance: digest
+    title: 調課錯誤更容易處理
+    summary: 找不到原堂次時不會留下日曆無法操作的調課目標。
+    items:
+      - category: fixed
+        text: 跨日調課若缺少原堂次，會在寫入前明確提示，不再留下孤兒排程。
+      - category: improved
+        text: 已有原堂次的合法調課流程維持不變；本次不改既有資料。
+    source_refs:
+      - "changelog:2026-08-29:schedule-orphan-prevention"
+
   - id: staff-2026-08-29-reflow-duplicate-target
     published_at: "2026-08-29"
     audiences:

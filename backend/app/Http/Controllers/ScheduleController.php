@@ -245,6 +245,23 @@ class ScheduleController extends Controller
                         'code'    => 'no_class_session',
                     ], 422);
                 }
+            } elseif ($origSched && $origSched->schedule_date !== $data['schedule_date']) {
+                // Cross-date legacy clients write the destination marker before
+                // calling reschedule-session to move the source ClassSession.
+                // Without a source row, that second call cannot succeed and the
+                // marker becomes the orphan schedule-only occurrence from #2002.
+                $sourceSessionExists = ClassSession::query()
+                    ->where('StudentClassID', $courseId)
+                    ->whereDate('SessionDate', $origSched->schedule_date)
+                    ->whereRaw('SUBSTRING(StartTime, 1, 5) = ?', [substr((string) $origSched->start_time, 0, 5)])
+                    ->whereNotIn('Status', ['cancelled', 'voided'])
+                    ->exists();
+                if (!$sourceSessionExists) {
+                    return response()->json([
+                        'message' => '原日期尚無可移動的課堂紀錄，無法建立調課目標。',
+                        'code' => 'source_class_session_missing',
+                    ], 422);
+                }
             }
         }
 

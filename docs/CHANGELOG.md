@@ -5,6 +5,13 @@
 - `repair:transfer-session-entitlement` 與轉移服務在寫入前檢查 `reason`／`decision_reference`／`actor` 不可超過 128 字，避免 DB 截斷錯誤導致整筆交易失敗且訊息難讀。
 - 不改轉移語意、堂數計算、帳單或 production 啟用流程；過長輸入只回明確錯誤、不寫入。
 
+## 2026-08-29 — fix(schedule): 不再建立沒有原堂次的調課目標
+
+<!-- release-notes: staff_update=staff-2026-08-29-schedule-orphan-prevention -->
+
+- 舊版跨日調課若找不到原日期的有效課堂紀錄，現在會在寫入目標排程前清楚拒絕，不會留下日曆無法操作的孤兒排程。
+- 保留已有原堂次的合法跨日調課流程；未執行任何既有資料修復或生產啟用。
+
 ## 2026-08-29 — fix(schedule): 重複補排目標改回可理解錯誤
 
 <!-- release-notes: staff_update=staff-2026-08-29-reflow-duplicate-target -->

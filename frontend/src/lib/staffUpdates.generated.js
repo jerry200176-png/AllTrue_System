@@ -313,6 +313,43 @@ export const staffUpdates = [
     "version": "2026.08.29"
   },
   {
+    "id": "staff-2026-08-29-schedule-orphan-prevention",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "調課錯誤更容易處理",
+    "summary": "找不到原堂次時不會留下日曆無法操作的調課目標。",
+    "items": [
+      "跨日調課若缺少原堂次，會在寫入前明確提示，不再留下孤兒排程。",
+      "已有原堂次的合法調課流程維持不變；本次不改既有資料。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "跨日調課若缺少原堂次，會在寫入前明確提示，不再留下孤兒排程。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "已有原堂次的合法調課流程維持不變；本次不改既有資料。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:schedule-orphan-prevention"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
     "id": "staff-2026-08-29-reflow-duplicate-target",
     "publishedAt": "2026-08-29",
     "effectiveAt": null,
