@@ -186,6 +186,27 @@ describe('bug report attachments', () => {
     });
     wrapper.unmount();
   });
+
+  it('clears the previous success state when the composer is closed and reopened', async () => {
+    const wrapper = await openLauncher();
+    const textarea = bodyElement('#bug-report-description');
+    textarea.value = '提交後立即關閉視窗';
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    await nextTick();
+
+    bodyElement('.btn-submit').click();
+    await flushPromises();
+    await nextTick();
+    expect(bodyElement('.success-msg').textContent).toContain('已提交');
+
+    bodyElement('.btn-cancel').click();
+    await nextTick();
+    await wrapper.find('.fab').trigger('click');
+    await nextTick();
+
+    expect(document.body.querySelector('.success-msg')).toBeNull();
+    wrapper.unmount();
+  });
 });
 
 describe('bug report composer accessibility', () => {

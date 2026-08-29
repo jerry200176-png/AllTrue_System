@@ -295,6 +295,7 @@ function removeAttachment(index) {
 function openForm() {
   showForm.value = true;
   submitError.value = '';
+  submitSuccess.value = false;
   attachmentError.value = '';
   submittedBugId.value = null;
 }
@@ -344,6 +345,7 @@ function closeForm() {
   occurrenceAt.value = '';
   relatedReference.value = '';
   submittedBugId.value = null;
+  submitSuccess.value = false;
   severity.value = 'medium';
   submitError.value = '';
   attachmentError.value = '';
