@@ -415,9 +415,9 @@
           <div class="bulk-result-header">
             <strong>結果：{{ bulkResult.summary?.created || 0 }} 成功 / {{ bulkResult.summary?.failed || 0 }} 失敗</strong>
             <div class="bulk-result-actions">
-              <button class="small" @click="copyBulkCredentials" :disabled="!bulkResult.created?.length">複製帳密</button>
-              <button class="small" @click="downloadBulkCredentialsCsv" :disabled="!bulkResult.created?.length">下載 CSV</button>
-              <button class="small ghost" @click="refillBulkWithFailedRows" :disabled="!bulkResult.failed?.length">僅保留失敗筆</button>
+              <button type="button" class="small" @click="copyBulkCredentials" :disabled="!bulkResult.created?.length">複製帳密</button>
+              <button type="button" class="small" @click="downloadBulkCredentialsCsv" :disabled="!bulkResult.created?.length">下載 CSV</button>
+              <button type="button" class="small ghost" @click="refillBulkWithFailedRows" :disabled="!bulkResult.failed?.length">僅保留失敗筆</button>
             </div>
           </div>
 
@@ -461,8 +461,8 @@
         </div>
 
         <div class="actions">
-          <button @click="closeBulkModal">關閉</button>
-          <button class="primary" @click="submitBulkTeachers" :disabled="bulkSubmitting">
+          <button type="button" @click="closeBulkModal">關閉</button>
+          <button type="button" class="primary" @click="submitBulkTeachers" :disabled="bulkSubmitting">
             {{ bulkSubmitting ? '送出中...' : '送出批次建立' }}
           </button>
         </div>

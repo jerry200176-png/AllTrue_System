@@ -40,5 +40,10 @@ describe('TeachersList status workspace accessibility', () => {
     expect((source.match(/aria-modal="true"/g) || []).length).toBe(2);
     expect(source).toContain('<button type="button" @click="closeModal">取消</button>');
     expect(source).toContain('<button type="button" class="primary" @click="submitForm">儲存</button>');
+    expect(source).toContain('<button type="button" class="small" @click="copyBulkCredentials"');
+    expect(source).toContain('<button type="button" class="small" @click="downloadBulkCredentialsCsv"');
+    expect(source).toContain('<button type="button" class="small ghost" @click="refillBulkWithFailedRows"');
+    expect(source).toContain('<button type="button" @click="closeBulkModal">關閉</button>');
+    expect(source).toContain('<button type="button" class="primary" @click="submitBulkTeachers"');
   });
 });
