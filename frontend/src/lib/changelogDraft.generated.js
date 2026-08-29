@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.08.29",
     "date": "2026-08-29",
     "title": "2026.08.29 草稿（未發布）",
-    "summary": "帳務分頁只顯示目前工作區；學生課程下一步更明確",
+    "summary": "新增課程「去加購」不再沒反應；帳務分頁只顯示目前工作區",
     "audience": [
       "teacher",
       "director"
@@ -18,6 +18,7 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "新增課程「去加購」不再沒反應",
           "帳務分頁只顯示目前工作區"
         ]
       },
@@ -34,6 +35,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "新增課程「去加購」不再沒反應",
       "帳務分頁只顯示目前工作區",
       "學生課程下一步更明確",
       "主任收件匣工作區更穩定",

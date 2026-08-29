@@ -1374,7 +1374,7 @@ import CourseEditForm from '../components/CourseEditForm.vue';
 import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
 import EnrollmentConflictDecisionModal from '../components/EnrollmentConflictDecisionModal.vue';
-import { buildForceOverrideFields } from '../lib/enrollmentConflictDecision';
+import { buildForceOverrideFields, findCourseForPurchase } from '../lib/enrollmentConflictDecision';
 import { isPendingWorkflowStatus } from '../lib/exceptionWorkflowFocus.js';
 import { nextManualSessionDate } from '../lib/manualSessionDate.js';
 import PurchaseSessionsModal from '../components/course-management/PurchaseSessionsModal.vue';
@@ -1985,10 +1985,12 @@ async function onEnrollmentConflictDecision(decision) {
 
 function interceptGoToPurchaseCM(conflict) {
   showDuplicateInterceptModal.value = false;
-  const target = courses.value.find(c => c.id === conflict.existing_course_id);
+  const target = findCourseForPurchase(courses.value, conflict);
   if (target) {
     openPurchaseModal(target);
+    return;
   }
+  alert('找不到要加購的課程，請重新整理後再從課程列點「加購」。');
 }
 
 async function handleUniversalBackfillSuccess(result) {

@@ -1,3 +1,11 @@
+## 2026-08-29 — fix: 新增課程「去加購」不再沒反應
+
+<!-- release-notes: staff_update=staff-2026-08-29-goto-purchase -->
+
+- 學生管理點「新增課程」後，若學生已有進行中課程，再點「去加購」會打開該課的加購堂數視窗。
+- 先前衝突視窗只認 `existing_course_id`，但新增課程預檢回傳的是 `id`，對不到課程就靜默關閉。
+- 找不到課程時會提示重新整理，不再沒有畫面反應。
+
 ## 2026-08-29 — improved(ux): 學生課程下一步更明確
 
 <!-- release-notes: staff_update=staff-2026-08-29-student-course-next-action -->

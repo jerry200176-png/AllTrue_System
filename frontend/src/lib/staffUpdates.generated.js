@@ -276,6 +276,45 @@ export const staffUpdates = [
     "version": "2026.08.29"
   },
   {
+    "id": "staff-2026-08-29-goto-purchase",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "新增課程可直接加購",
+    "summary": "學生已有課程時，點「去加購」會打開加購堂數。",
+    "items": [
+      "學生管理新增課程後，點「去加購」會打開該課的加購視窗。",
+      "系統對不到課程時會提示重新整理，不再沒有反應。",
+      "課程資料、加購規則、權限與既有課程列「加購」維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "學生管理新增課程後，點「去加購」會打開該課的加購視窗。",
+          "系統對不到課程時會提示重新整理，不再沒有反應。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "課程資料、加購規則、權限與既有課程列「加購」維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:goto-purchase"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
     "id": "staff-2026-08-29-director-view-switcher-a11y",
     "publishedAt": "2026-08-29",
     "effectiveAt": null,
