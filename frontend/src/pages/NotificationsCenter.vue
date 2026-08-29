@@ -116,7 +116,7 @@
 
       <AtSection class="controls-card" data-guide="notifications-controls">
         <!-- 主 tabs：待辦案件 / 營運通知（全部僅次要 overview，不作為預設） -->
-        <div class="type-tabs" role="tablist" aria-label="收件匣分類">
+        <div class="type-tabs" role="tablist" aria-label="收件匣分類" aria-orientation="horizontal">
           <button
             v-for="tab in typeTabs"
             :key="tab.value"
@@ -126,8 +126,10 @@
             role="tab"
             :aria-selected="typeFilter === tab.value"
             :aria-controls="tab.panelId"
+            :tabindex="typeFilter === tab.value ? 0 : -1"
             :class="{ active: typeFilter === tab.value }"
             @click="onTabClick(tab.value)"
+            @keydown="onTypeTabKeydown($event, tab.value)"
           >
             {{ tab.label }}
             <span v-if="tab.count > 0" class="tab-badge" aria-label="數量">{{ tab.count }}</span>
@@ -360,7 +362,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import {
   casePriorityLabel,
   extractCaseItems,
@@ -485,6 +487,25 @@ const onTabClick = (value) => {
   laneFilter.value = value === 'lane:case' ? 'case' : 'ops';
   if (laneFilter.value === 'case') casesPage.value = 1;
   loadNotifications(1);
+};
+
+const onTypeTabKeydown = (event, currentValue) => {
+  const navigationKeys = ['ArrowRight', 'ArrowLeft', 'Home', 'End'];
+  if (!navigationKeys.includes(event.key)) return;
+
+  event.preventDefault();
+  const currentIndex = typeTabs.value.findIndex((tab) => tab.value === currentValue);
+  if (currentIndex < 0) return;
+
+  let nextIndex = currentIndex;
+  if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % typeTabs.value.length;
+  if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + typeTabs.value.length) % typeTabs.value.length;
+  if (event.key === 'Home') nextIndex = 0;
+  if (event.key === 'End') nextIndex = typeTabs.value.length - 1;
+
+  const nextTab = typeTabs.value[nextIndex];
+  onTabClick(nextTab.value);
+  nextTick(() => document.getElementById(nextTab.id)?.focus());
 };
 
 const retryLoad = () => loadNotifications(currentPage.value || 1);

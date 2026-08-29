@@ -52,3 +52,14 @@ failure_modes:
       \u6613\u56DE\u6EFE\u3002"
   severity: medium
   frequency: recurring
+- id: FM-20260829-210837-JIC3
+  name: inline Markdown backticks in gh --body commands
+  detection:
+    signal: inline Markdown backticks in gh --body commands
+    source: reflection:REF-20260829-210837-Q2BN
+  mitigation:
+    practice: Use a body file or a subprocess argument array for GitHub comments;
+      shell command substitution can corrupt evidence text even when no production
+      action is intended.
+  severity: medium
+  frequency: recurring

@@ -27,12 +27,12 @@
 
     <AtFilterBar label="老師篩選" data-guide="teachers-filters">
       <div class="filter-item filter-item-search">
-        <label>搜尋（姓名／電話）</label>
-        <input v-model="searchQ" placeholder="輸入姓名或電話..." @input="debouncedLoad" />
+        <label for="teachers-search">搜尋（姓名／電話）</label>
+        <input id="teachers-search" v-model="searchQ" placeholder="輸入姓名或電話..." @input="debouncedLoad" />
       </div>
       <div class="filter-item">
-        <label>狀態</label>
-        <select v-model="filterStatus" @change="loadTeachers">
+        <label for="teachers-status-filter">狀態</label>
+        <select id="teachers-status-filter" v-model="filterStatus" @change="loadTeachers">
           <option value="">全部</option>
           <option value="active">在職</option>
           <option value="pending">待審核</option>
@@ -40,8 +40,8 @@
         </select>
       </div>
       <div class="filter-item">
-        <label>科目</label>
-        <select v-model="filterSubjectId" aria-label="依科目篩選">
+        <label for="teachers-subject-filter">科目</label>
+        <select id="teachers-subject-filter" v-model="filterSubjectId" aria-label="依科目篩選">
           <option value="">全部</option>
           <option v-for="s in subjects" :key="s.id" :value="s.id">{{ s.name }}</option>
         </select>
@@ -203,8 +203,13 @@
 
     <!-- Modal -->
     <div v-if="showModal || showAddModal" class="modal-overlay">
-      <div class="modal">
-        <h3>{{ isEditing ? '編輯老師' : '新增老師' }}</h3>
+      <div
+        class="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="teacher-modal-title"
+      >
+        <h3 id="teacher-modal-title">{{ isEditing ? '編輯老師' : '新增老師' }}</h3>
         
         <div class="form-group">
           <label>登入帳號</label>
@@ -334,15 +339,20 @@
         <div v-if="formError" class="form-error">{{ formError }}</div>
 
         <div class="actions">
-          <button @click="closeModal">取消</button>
-          <button class="primary" @click="submitForm">儲存</button>
+          <button type="button" @click="closeModal">取消</button>
+          <button type="button" class="primary" @click="submitForm">儲存</button>
         </div>
       </div>
     </div>
 
     <div v-if="showBulkModal" class="modal-overlay">
-      <div class="modal modal-wide">
-        <h3>批次新增老師</h3>
+      <div
+        class="modal modal-wide"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="teachers-bulk-modal-title"
+      >
+        <h3 id="teachers-bulk-modal-title">批次新增老師</h3>
         <p class="hint">貼上資料或 CSV（建議欄位：帳號、姓名、電話、主分校、可授科目、兼職分校、LINE、狀態）。未填主分校時，會用下方預設主分校。</p>
 
         <div class="bulk-row">
@@ -405,9 +415,9 @@
           <div class="bulk-result-header">
             <strong>結果：{{ bulkResult.summary?.created || 0 }} 成功 / {{ bulkResult.summary?.failed || 0 }} 失敗</strong>
             <div class="bulk-result-actions">
-              <button class="small" @click="copyBulkCredentials" :disabled="!bulkResult.created?.length">複製帳密</button>
-              <button class="small" @click="downloadBulkCredentialsCsv" :disabled="!bulkResult.created?.length">下載 CSV</button>
-              <button class="small ghost" @click="refillBulkWithFailedRows" :disabled="!bulkResult.failed?.length">僅保留失敗筆</button>
+              <button type="button" class="small" @click="copyBulkCredentials" :disabled="!bulkResult.created?.length">複製帳密</button>
+              <button type="button" class="small" @click="downloadBulkCredentialsCsv" :disabled="!bulkResult.created?.length">下載 CSV</button>
+              <button type="button" class="small ghost" @click="refillBulkWithFailedRows" :disabled="!bulkResult.failed?.length">僅保留失敗筆</button>
             </div>
           </div>
 
@@ -451,8 +461,8 @@
         </div>
 
         <div class="actions">
-          <button @click="closeBulkModal">關閉</button>
-          <button class="primary" @click="submitBulkTeachers" :disabled="bulkSubmitting">
+          <button type="button" @click="closeBulkModal">關閉</button>
+          <button type="button" class="primary" @click="submitBulkTeachers" :disabled="bulkSubmitting">
             {{ bulkSubmitting ? '送出中...' : '送出批次建立' }}
           </button>
         </div>
