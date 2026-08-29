@@ -18,7 +18,7 @@
             <input type="file" @change="importStudents" accept=".csv,.xlsx" style="display: none;" />
           </label>
           <AtButton shape="rect" variant="primary" icon="add" @click="openAddStudent">新增學生</AtButton>
-          <button class="small ghost" @click="openIdentityModal">
+          <button type="button" class="small ghost" @click="openIdentityModal">
             <span class="material-symbols-outlined btn-icon">merge</span>
             跨分校身份
           </button>
@@ -192,7 +192,7 @@
                     <span class="material-symbols-outlined" style="font-size:18px;vertical-align:middle;">menu_book</span>
                     {{ student.name }} 的課程安排
                   </h4>
-                  <button class="primary small" @click="openAddCourse(student)">
+                  <button type="button" class="primary small" @click="openAddCourse(student)">
                     <span class="material-symbols-outlined btn-icon">add</span>
                     新增課程
                   </button>
@@ -434,8 +434,8 @@
                         <span v-if="hc.last_paid_at"><span class="sl-history-card__label">繳費</span>{{ hc.last_paid_at }}</span>
                       </div>
                       <div class="sl-history-card__actions">
-                        <button class="small ghost" @click="editCourse(hc)">編輯</button>
-                        <button class="small danger" @click="deleteCourse(hc)">刪除</button>
+                        <button type="button" class="small ghost" @click="editCourse(hc)">編輯</button>
+                        <button type="button" class="small danger" @click="deleteCourse(hc)">刪除</button>
                       </div>
                     </div>
                   </div>
@@ -542,8 +542,8 @@
         </div>
 
         <div class="actions">
-          <button class="ghost" @click="closeStudentModal">取消</button>
-          <button class="primary" @click="submitStudent">儲存</button>
+          <button type="button" class="ghost" @click="closeStudentModal">取消</button>
+          <button type="button" class="primary" @click="submitStudent">儲存</button>
         </div>
       </div>
     </div>
@@ -571,8 +571,8 @@
         </div>
 
         <div class="actions">
-          <button class="ghost" @click="closeCourseModal">取消</button>
-          <button class="primary" :disabled="editFormRef?.hasErrors" @click="submitCourse">儲存</button>
+          <button type="button" class="ghost" @click="closeCourseModal">取消</button>
+          <button type="button" class="primary" :disabled="editFormRef?.hasErrors" @click="submitCourse">儲存</button>
         </div>
       </div>
     </div>
@@ -676,7 +676,7 @@
         </table>
 
         <div class="actions" style="margin-top: 20px;">
-          <button class="ghost" @click="showInvoiceModal = false">關閉</button>
+          <button type="button" class="ghost" @click="showInvoiceModal = false">關閉</button>
         </div>
       </div>
     </div>
@@ -719,8 +719,8 @@
           </template>
         </p>
         <div class="actions">
-          <button class="ghost" @click="showSessionsModal = false">取消</button>
-          <button class="primary" @click="submitAddSessions">
+          <button type="button" class="ghost" @click="showSessionsModal = false">取消</button>
+          <button type="button" class="primary" @click="submitAddSessions">
             確認加購
           </button>
         </div>
@@ -766,8 +766,8 @@
         </div>
         <div v-else class="empty-text">沒有在學中的學生</div>
         <div class="actions">
-          <button class="ghost" @click="showGradePromotion = false">取消</button>
-          <button class="primary" @click="executeGradePromotion" :disabled="promotionPreview.length === 0">確認升級</button>
+          <button type="button" class="ghost" @click="showGradePromotion = false">取消</button>
+          <button type="button" class="primary" @click="executeGradePromotion" :disabled="promotionPreview.length === 0">確認升級</button>
         </div>
       </div>
     </div>
@@ -777,12 +777,12 @@
       <div class="modal" style="width: 680px; max-width: calc(100vw - 32px);">
         <div class="modal-header-row">
           <h3 id="identity-modal-title">跨分校學生身份關聯</h3>
-          <button class="ghost small" @click="closeIdentityModal">關閉</button>
+          <button type="button" class="ghost small" @click="closeIdentityModal">關閉</button>
         </div>
         <p class="hint">只把主任已確認為同一位學生的兩筆分校資料關聯；姓名或手機相同不會自動合併。</p>
         <div class="identity-search-row">
           <input v-model="identityQuery" placeholder="搜尋學生姓名" @keyup.enter="searchIdentityStudents" />
-          <button class="small ghost" @click="searchIdentityStudents" :disabled="identityLoading">搜尋</button>
+          <button type="button" class="small ghost" @click="searchIdentityStudents" :disabled="identityLoading">搜尋</button>
         </div>
         <div v-if="identityError" class="error-text">{{ identityError }}</div>
         <div v-if="identityLoading" class="empty-text">載入中…</div>
@@ -802,8 +802,8 @@
         </div>
         <div class="identity-selected-summary">已選 {{ selectedIdentityStudentIds.length }} / 2 筆</div>
         <div class="actions">
-          <button class="ghost" @click="closeIdentityModal">取消</button>
-          <button class="primary" :disabled="selectedIdentityStudentIds.length !== 2 || identitySaving" @click="linkIdentityStudents">
+          <button type="button" class="ghost" @click="closeIdentityModal">取消</button>
+          <button type="button" class="primary" :disabled="selectedIdentityStudentIds.length !== 2 || identitySaving" @click="linkIdentityStudents">
             {{ identitySaving ? '建立中…' : '建立身份關聯' }}
           </button>
         </div>
@@ -824,7 +824,7 @@
                 {{ member.name }} · {{ member.campus_name || `分校 ${member.campus_id}` }}
               </span>
             </div>
-            <button class="small ghost" @click="loadIdentityAudit(group.id)">查看稽核紀錄</button>
+            <button type="button" class="small ghost" @click="loadIdentityAudit(group.id)">查看稽核紀錄</button>
           </div>
         </div>
         <pre v-if="identityAudit.length" class="identity-audit">{{ JSON.stringify(identityAudit, null, 2) }}</pre>
