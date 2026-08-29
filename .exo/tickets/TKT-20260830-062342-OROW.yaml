@@ -1,0 +1,39 @@
+id: TKT-20260830-062342-OROW
+title: Lock class-sessions response envelope
+intent: Lock class-sessions response envelope
+kind: task
+parent_id: INT-20260830-062334-F5UY
+boundary: Test only. No controller/API/routes/migrations/schema/auth/permissions/production
+  data/billing/scheduling/deploy changes.
+success_condition: 'Feature test covers current class-sessions envelope and row shape;
+  vendor/bin/phpunit result is recorded, with local DB access limitation separated
+  from code correctness if present; PR linked to #992.'
+priority: 2
+labels:
+- api-contract
+scope:
+  allow:
+  - backend/tests/Feature/ClassSessionApiTest.php
+  - .agent-session/manifest.json
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 4
+  max_loc_changed: 190
+checks:
+- vendor/bin/phpunit
+type: feature
+status: review
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-30T06:23:42+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default
