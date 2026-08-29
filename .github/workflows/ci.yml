@@ -175,6 +175,9 @@ jobs:
         working-directory: backend
         run: composer install --no-interaction --prefer-dist --optimize-autoloader
 
+      - name: Verify generated API route reference
+        run: bash scripts/generate-ref-api-routes.sh --check
+
       - name: Composer audit (security)
         working-directory: backend
         run: |
