@@ -197,16 +197,19 @@
           <button
             type="button"
             :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'awaiting_reply' }]"
+            :aria-pressed="feedbackFilter === 'awaiting_reply' ? 'true' : 'false'"
             @click="feedbackFilter = 'awaiting_reply'"
           >尚未回覆</button>
           <button
             type="button"
             :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'unread' }]"
+            :aria-pressed="feedbackFilter === 'unread' ? 'true' : 'false'"
             @click="feedbackFilter = 'unread'"
           >新留言 <span v-if="unreadParentFeedbackCount > 0" class="lr-tab-count warn">{{ unreadParentFeedbackCount }}</span></button>
           <button
             type="button"
             :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'has' }]"
+            :aria-pressed="feedbackFilter === 'has' ? 'true' : 'false'"
             @click="feedbackFilter = 'has'"
           >全部留言</button>
           <span class="lr-feedback-filter-label">{{ isTeacher ? '查看範圍：我的所有分校' : '查看範圍：目前分校' }}</span>
@@ -214,14 +217,18 @@
         <template v-else>
           <button
             v-if="(isTeacher ? weekTotalMissingCount : kpiUnfilledCount) > 0"
+            type="button"
             :class="['lr-feedback-filter-chip', 'lr-unfilled-shortcut', { active: isTeacher ? teacherPriorityFilter === 'unfilled' : onlyUnfilled }]"
+            :aria-pressed="(isTeacher ? teacherPriorityFilter === 'unfilled' : onlyUnfilled) ? 'true' : 'false'"
             @click="toggleUnfilledShortcut()"
           >
             未填 <span class="lr-tab-count warn">{{ isTeacher ? weekTotalMissingCount : kpiUnfilledCount }}</span>
           </button>
           <button
             v-if="unreadParentFeedbackCount > 0"
+            type="button"
             :class="['lr-feedback-filter-chip', 'lr-unread-shortcut', { active: feedbackFilter === 'unread' }]"
+            :aria-pressed="feedbackFilter === 'unread' ? 'true' : 'false'"
             @click="feedbackFilter = feedbackFilter === 'unread' ? 'all' : 'unread'; showMoreFilters = true"
           >
             新留言 <span class="lr-tab-count warn">{{ unreadParentFeedbackCount }}</span>
@@ -243,21 +250,21 @@
       <div v-show="pageMode === 'records' && showMoreFilters" class="lr-filters-panel">
         <div v-if="isTeacher" class="lr-filter-group">
           <span class="lr-feedback-filter-label">優先</span>
-          <button :class="['lr-feedback-filter-chip', { active: teacherPriorityFilter === 'all' }]" @click="teacherPriorityFilter = 'all'">全部</button>
-          <button :class="['lr-feedback-filter-chip', { active: teacherPriorityFilter === 'unfilled' }]" @click="teacherPriorityFilter = 'unfilled'">未填優先</button>
-          <button :class="['lr-feedback-filter-chip', { active: teacherPriorityFilter === 'changes_requested' }]" @click="teacherPriorityFilter = 'changes_requested'">需修改</button>
-          <button :class="['lr-feedback-filter-chip', { active: teacherPriorityFilter === 'overdue' }]" @click="teacherPriorityFilter = 'overdue'">逾期</button>
+          <button type="button" :class="['lr-feedback-filter-chip', { active: teacherPriorityFilter === 'all' }]" :aria-pressed="teacherPriorityFilter === 'all' ? 'true' : 'false'" @click="teacherPriorityFilter = 'all'">全部</button>
+          <button type="button" :class="['lr-feedback-filter-chip', { active: teacherPriorityFilter === 'unfilled' }]" :aria-pressed="teacherPriorityFilter === 'unfilled' ? 'true' : 'false'" @click="teacherPriorityFilter = 'unfilled'">未填優先</button>
+          <button type="button" :class="['lr-feedback-filter-chip', { active: teacherPriorityFilter === 'changes_requested' }]" :aria-pressed="teacherPriorityFilter === 'changes_requested' ? 'true' : 'false'" @click="teacherPriorityFilter = 'changes_requested'">需修改</button>
+          <button type="button" :class="['lr-feedback-filter-chip', { active: teacherPriorityFilter === 'overdue' }]" :aria-pressed="teacherPriorityFilter === 'overdue' ? 'true' : 'false'" @click="teacherPriorityFilter = 'overdue'">逾期</button>
         </div>
         <div class="lr-filter-group">
           <span class="lr-feedback-filter-label">家長留言</span>
-          <button :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'all' }]" @click="feedbackFilter = 'all'">全部</button>
-          <button :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'has' }]" @click="feedbackFilter = 'has'">
+          <button type="button" :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'all' }]" :aria-pressed="feedbackFilter === 'all' ? 'true' : 'false'" @click="feedbackFilter = 'all'">全部</button>
+          <button type="button" :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'has' }]" :aria-pressed="feedbackFilter === 'has' ? 'true' : 'false'" @click="feedbackFilter = 'has'">
             有留言 <span v-if="parentFeedbackCount > 0" class="lr-tab-count">{{ parentFeedbackCount }}</span>
           </button>
-          <button :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'unread' }]" @click="feedbackFilter = 'unread'">
+          <button type="button" :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'unread' }]" :aria-pressed="feedbackFilter === 'unread' ? 'true' : 'false'" @click="feedbackFilter = 'unread'">
             新留言 <span v-if="unreadParentFeedbackCount > 0" class="lr-tab-count warn">{{ unreadParentFeedbackCount }}</span>
           </button>
-          <button :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'awaiting_reply' }]" @click="feedbackFilter = 'awaiting_reply'">尚未回覆</button>
+          <button type="button" :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'awaiting_reply' }]" :aria-pressed="feedbackFilter === 'awaiting_reply' ? 'true' : 'false'" @click="feedbackFilter = 'awaiting_reply'">尚未回覆</button>
         </div>
       </div>
     </div>

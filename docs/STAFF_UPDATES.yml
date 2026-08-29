@@ -3,6 +3,22 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-29-learning-filter-chips-a11y
+    published_at: "2026-08-29"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 評量快捷篩選狀態更清楚
+    summary: 未填、需修改與家長留言篩選會清楚說明目前是否選取。
+    items:
+      - category: improved
+        text: 評量頁快捷篩選改用明確的按鈕與選取狀態，鍵盤與螢幕閱讀器更容易辨識目前篩選。
+      - category: improved
+        text: 原有篩選條件、排序、資料、權限與審核流程維持不變。
+    source_refs:
+      - "changelog:2026-08-29:learning-filter-chips-a11y"
+
   - id: staff-2026-08-29-schedule-orphan-prevention
     published_at: "2026-08-29"
     audiences:
