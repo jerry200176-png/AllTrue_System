@@ -1,3 +1,10 @@
+## 2026-08-29 — fix(schedule): 重複補排目標改回可理解錯誤
+
+<!-- release-notes: staff_update=staff-2026-08-29-reflow-duplicate-target -->
+
+- 固定排課重整若產生兩筆相同日期／時段的目標，會在任何堂次移動前回傳可理解的時段衝突，不再讓資料庫唯一索引錯誤直接變成 500。
+- 保留原子交易與唯一索引防線；不改既有堂次、扣堂、評量或排課資料。
+
 ## 2026-08-29 — fix(ops): 錯誤處理路徑恢復正常記錄
 
 <!-- release-notes: staff_update=staff-2026-08-29-logging-facade-runtime -->

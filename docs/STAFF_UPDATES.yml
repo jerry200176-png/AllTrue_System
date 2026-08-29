@@ -3,6 +3,23 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-29-reflow-duplicate-target
+    published_at: "2026-08-29"
+    audiences:
+      - director
+    importance: digest
+    title: 重整排課遇到重複時段會清楚提示
+    summary: 固定排課設定產生相同目標時段時，不會再顯示不明確的伺服器錯誤。
+    items:
+      - category: fixed
+        text: 系統會在移動堂次前攔截重複的日期／時間目標，並回傳時段衝突提示。
+      - category: improved
+        text: 原子交易與唯一時段防線維持不變，錯誤時不會留下半套重整結果。
+      - category: improved
+        text: 既有堂次、扣堂、評量與排課資料不會因這次防線被自動改寫。
+    source_refs:
+      - "changelog:2026-08-29:reflow-duplicate-target"
+
   - id: staff-2026-08-29-logging-facade-runtime
     published_at: "2026-08-29"
     audiences:
