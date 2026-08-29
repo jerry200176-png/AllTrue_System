@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.08.29",
     "date": "2026-08-29",
     "title": "2026.08.29 草稿（未發布）",
-    "summary": "重複補排目標改回可理解錯誤；主任可以更快確認補課候選時段",
+    "summary": "不再建立沒有原堂次的調課目標；重複補排目標改回可理解錯誤",
     "audience": [
       "teacher",
       "director"
@@ -18,6 +18,7 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "不再建立沒有原堂次的調課目標",
           "重複補排目標改回可理解錯誤",
           "主任可以更快確認補課候選時段",
           "新增課程「去加購」不再沒反應",
@@ -38,6 +39,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "不再建立沒有原堂次的調課目標",
       "重複補排目標改回可理解錯誤",
       "主任可以更快確認補課候選時段",
       "新增課程「去加購」不再沒反應",
