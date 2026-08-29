@@ -175,6 +175,38 @@ export const staffUpdates = [
     "version": "2026.08.29"
   },
   {
+    "id": "staff-2026-08-29-teacher-home-notification-a11y",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "teacher"
+    ],
+    "audience": [
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "待辦提示音狀態更清楚",
+    "summary": "教師可清楚知道待辦提示音是否開啟，也能辨識今日靜音操作。",
+    "items": [
+      "提示音開關會標示目前開啟／關閉狀態，鍵盤與螢幕閱讀器也能取得相同資訊。",
+      "今日靜音按鈕補上明確用途名稱；待辦排序、點名導頁與資料流程不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "提示音開關會標示目前開啟／關閉狀態，鍵盤與螢幕閱讀器也能取得相同資訊。",
+          "今日靜音按鈕補上明確用途名稱；待辦排序、點名導頁與資料流程不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:teacher-home-notification-a11y"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
     "id": "staff-2026-08-29-teacher-card-a11y",
     "publishedAt": "2026-08-29",
     "effectiveAt": null,
