@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-29-teacher-home-notification-a11y
+    published_at: "2026-08-29"
+    audiences:
+      - teacher
+    importance: digest
+    title: 待辦提示音狀態更清楚
+    summary: 教師可清楚知道待辦提示音是否開啟，也能辨識今日靜音操作。
+    items:
+      - category: improved
+        text: 提示音開關會標示目前開啟／關閉狀態，鍵盤與螢幕閱讀器也能取得相同資訊。
+      - category: improved
+        text: 今日靜音按鈕補上明確用途名稱；待辦排序、點名導頁與資料流程不變。
+    source_refs:
+      - "changelog:2026-08-29:teacher-home-notification-a11y"
+
   - id: staff-2026-08-29-teachers-modal-semantics
     published_at: "2026-08-29"
     audiences:
