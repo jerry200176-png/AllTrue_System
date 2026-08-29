@@ -645,6 +645,7 @@ import {
   PIN_IDLE_LOCK_MS,
 } from './lib/pinGate';
 import { getMobileTabItems, getNavigationGroups } from './lib/navigationRegistry';
+import { resolveActiveAfterProfileLoad } from './lib/resolveActiveAfterProfileLoad';
 import { createDashboardReturnContext } from './lib/dashboardReturnContext';
 
 // Detect standalone parent portal access via URL hash, query param, or LIFF context
@@ -1710,16 +1711,19 @@ const fetchProfile = async (_uid) => {
           localStorage.setItem('alltrue_session', JSON.stringify(session.value));
         }
 
-        if (mustChangePassword) {
-          active.value = 'profile';
-          return;
-        }
-
+        // Profile refresh must not yank the user back to role home after they
+        // already navigated (login → onAuthStateChange /me race). Only seed
+        // bootstrap / role-mismatch landings via resolveActiveAfterProfileLoad.
+        const nextActive = resolveActiveAfterProfileLoad({
+          role: me.role,
+          mustChangePassword,
+          currentActive: active.value,
+        });
+        if (nextActive !== active.value) active.value = nextActive;
+        if (mustChangePassword) return;
         if (me.role === 'teacher') {
-            active.value = 'teacher-home';
             ensureTeacherBranch();
-        } else if (me.role === 'director' || me.role === 'super_admin') {
-            active.value = 'director';
+        } else if (me.role === 'director' || me.role === 'admin' || me.role === 'super_admin') {
             applyDeepLinkFromUrl();
         }
     } catch {

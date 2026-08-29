@@ -1,3 +1,11 @@
+## 2026-08-29 — fixed(ux): 登入後點側欄不再被拉回首頁
+
+<!-- release-notes: staff_update=staff-2026-08-29-profile-nav-clobber -->
+
+- 登入後若 `/me` 個人資料稍晚才回來，側欄切到「我的課表」「課程查找」等頁面時，不會再被強制拉回教學工作台／主任總覽。
+- 個人資料重新整理仍會處理強制改密與角色首頁冷啟動；不改權限、分校、API 或各頁業務邏輯。
+- UI smoke 側欄導航改為限定側欄並短重試，降低把此競態誤判成按鈕失效。
+
 ## 2026-08-29 — improved(ux): 學生課程下一步更明確
 
 <!-- release-notes: staff_update=staff-2026-08-29-student-course-next-action -->
