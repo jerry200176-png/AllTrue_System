@@ -252,7 +252,7 @@
               class="bug-item"
               :class="{ active: activeBug?.id === bug.id, unread: isUnread(bug) }"
               :aria-pressed="activeBug?.id === bug.id"
-              @click="selectBug(bug)"
+              @click="selectBug(bug, $event)"
             >
               <span class="severity-dot" :class="bug.severity"></span>
               <div class="bug-item-info">
@@ -308,7 +308,7 @@
       <!-- Bug detail -->
       <div v-if="activeBug" ref="detailCardEl" class="card detail-card">
         <div class="detail-header">
-          <h3>{{ detail?.title || activeBug.title }}</h3>
+          <h3 ref="detailTitleEl" tabindex="-1">{{ detail?.title || activeBug.title }}</h3>
           <button class="btn-close-detail" @click="closeDetail">
             <span class="material-symbols-outlined">close</span>
           </button>
@@ -480,6 +480,7 @@ const props = defineProps({
 const bugs = ref([]);
 const activeBug = ref(null);
 const detailCardEl = ref(null);
+const detailTitleEl = ref(null);
 const detail = ref(null);
 const loading = ref(false);
 const loadingDetail = ref(false);
@@ -811,8 +812,11 @@ function closeDetail() {
   detailError.value = '';
 }
 
-async function selectBug(bug) {
+async function selectBug(bug, event = null) {
   if (!bug) return;
+  // Keyboard activation should move the screen-reader cursor into the loaded
+  // detail; mouse users keep their pointer context in the list.
+  const focusDetail = event?.detail === 0;
   activeBug.value = bug;
   loadingDetail.value = true;
   detailError.value = '';
@@ -838,6 +842,10 @@ async function selectBug(bug) {
     detailError.value = bugLoadErrorMessage(e, '無法載入詳情，請稍後再試');
   } finally {
     loadingDetail.value = false;
+    if (focusDetail) {
+      await nextTick();
+      detailTitleEl.value?.focus({ preventScroll: true });
+    }
     window.dispatchEvent(new CustomEvent('alltrue-refresh-badges'));
   }
 }

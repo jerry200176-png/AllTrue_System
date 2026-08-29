@@ -7,8 +7,11 @@ const listBlock = source.slice(source.indexOf('class="bug-list"'), source.indexO
 
 assert.match(listBlock, /<button[^>]*v-for="bug in bugs"[^>]*type="button"[^>]*>/);
 assert.match(listBlock, /<button[^>]*v-for="bug in bugs"[^>]*:aria-pressed="activeBug\?\.id === bug\.id"[^>]*>/);
-assert.match(listBlock, /<button[^>]*v-for="bug in bugs"[^>]*@click="selectBug\(bug\)"[^>]*>/);
+assert.match(listBlock, /<button[^>]*v-for="bug in bugs"[^>]*@click="selectBug\(bug, \$event\)"[^>]*>/);
 assert.match(source, /\.bug-item:focus-visible\s*\{/);
 assert.doesNotMatch(listBlock, /<div(?=[^>]*v-for="bug in bugs")[^>]*>/);
+assert.match(source, /<h3 ref="detailTitleEl" tabindex="-1">/);
+assert.match(source, /const focusDetail = event\?\.detail === 0;/);
+assert.match(source, /detailTitleEl\.value\?\.focus\(\{ preventScroll: true \}\)/);
 
 console.log('bugReportsListA11y.test.js: all assertions passed');
