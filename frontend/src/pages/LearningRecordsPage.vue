@@ -30,17 +30,49 @@
 
     <!-- Teacher quick-filter tabs -->
     <div v-if="isTeacher && pageMode === 'records'" class="lr-review-tabs card" data-guide="learning-teacher-tabs">
-      <div class="lr-tabs-row">
-        <button :class="['lr-tab', { active: teacherFilterTab === 'all' }]" @click="teacherFilterTab = 'all'">
+      <div class="lr-tabs-row" role="tablist" aria-label="老師評量審核狀態">
+        <button
+          id="lr-teacher-tab-all"
+          type="button"
+          role="tab"
+          aria-controls="lr-review-panel"
+          :aria-selected="teacherFilterTab === 'all'"
+          :class="['lr-tab', { active: teacherFilterTab === 'all' }]"
+          @click="teacherFilterTab = 'all'"
+        >
           全部 <span class="lr-tab-count">{{ (records || []).length }}</span>
         </button>
-        <button :class="['lr-tab', { active: teacherFilterTab === 'pending' }]" @click="teacherFilterTab = 'pending'">
+        <button
+          id="lr-teacher-tab-pending"
+          type="button"
+          role="tab"
+          aria-controls="lr-review-panel"
+          :aria-selected="teacherFilterTab === 'pending'"
+          :class="['lr-tab', { active: teacherFilterTab === 'pending' }]"
+          @click="teacherFilterTab = 'pending'"
+        >
           待審核 <span v-if="kpiPendingOnlyCount > 0" class="lr-tab-count">{{ kpiPendingOnlyCount }}</span>
         </button>
-        <button :class="['lr-tab', { active: teacherFilterTab === 'changes_requested' }]" @click="teacherFilterTab = 'changes_requested'">
+        <button
+          id="lr-teacher-tab-changes_requested"
+          type="button"
+          role="tab"
+          aria-controls="lr-review-panel"
+          :aria-selected="teacherFilterTab === 'changes_requested'"
+          :class="['lr-tab', { active: teacherFilterTab === 'changes_requested' }]"
+          @click="teacherFilterTab = 'changes_requested'"
+        >
           需修改 <span v-if="changesRequestedCount > 0" class="lr-tab-count warn">{{ changesRequestedCount }}</span>
         </button>
-        <button :class="['lr-tab', { active: teacherFilterTab === 'approved' }]" @click="teacherFilterTab = 'approved'">
+        <button
+          id="lr-teacher-tab-approved"
+          type="button"
+          role="tab"
+          aria-controls="lr-review-panel"
+          :aria-selected="teacherFilterTab === 'approved'"
+          :class="['lr-tab', { active: teacherFilterTab === 'approved' }]"
+          @click="teacherFilterTab = 'approved'"
+        >
           已核准 <span class="lr-tab-count ok">{{ approvedCount }}</span>
         </button>
       </div>
@@ -49,20 +81,60 @@
 
     <!-- Director review queue tabs -->
     <div v-if="isDirectorRole && pageMode === 'records'" class="lr-review-tabs card" data-guide="learning-director-review-tabs">
-      <div class="lr-tabs-row">
-        <button :class="['lr-tab', { active: reviewTab === 'pending' }]" @click="reviewTab = 'pending'; exitSelectionMode()">
+      <div class="lr-tabs-row" role="tablist" aria-label="主任評量審核佇列">
+        <button
+          id="lr-review-tab-pending"
+          type="button"
+          role="tab"
+          aria-controls="lr-review-panel"
+          :aria-selected="reviewTab === 'pending'"
+          :class="['lr-tab', { active: reviewTab === 'pending' }]"
+          @click="reviewTab = 'pending'; exitSelectionMode()"
+        >
           待主任核准 <span v-if="serverPendingBadge > 0" class="lr-tab-count warn">{{ serverPendingBadge }}</span>
         </button>
-        <button :class="['lr-tab', { active: reviewTab === 'changes_requested' }]" @click="reviewTab = 'changes_requested'; exitSelectionMode()">
+        <button
+          id="lr-review-tab-changes_requested"
+          type="button"
+          role="tab"
+          aria-controls="lr-review-panel"
+          :aria-selected="reviewTab === 'changes_requested'"
+          :class="['lr-tab', { active: reviewTab === 'changes_requested' }]"
+          @click="reviewTab = 'changes_requested'; exitSelectionMode()"
+        >
           老師需修改 <span v-if="serverChangesBadge > 0" class="lr-tab-count warn">{{ serverChangesBadge }}</span>
         </button>
-        <button :class="['lr-tab', { active: reviewTab === 'approved' }]" @click="reviewTab = 'approved'; exitSelectionMode()">
+        <button
+          id="lr-review-tab-approved"
+          type="button"
+          role="tab"
+          aria-controls="lr-review-panel"
+          :aria-selected="reviewTab === 'approved'"
+          :class="['lr-tab', { active: reviewTab === 'approved' }]"
+          @click="reviewTab = 'approved'; exitSelectionMode()"
+        >
           已核准 <span class="lr-tab-count ok">{{ serverApprovedBadge }}</span>
         </button>
-        <button :class="['lr-tab', { active: reviewTab === 'rejected' }]" @click="reviewTab = 'rejected'; exitSelectionMode()">
+        <button
+          id="lr-review-tab-rejected"
+          type="button"
+          role="tab"
+          aria-controls="lr-review-panel"
+          :aria-selected="reviewTab === 'rejected'"
+          :class="['lr-tab', { active: reviewTab === 'rejected' }]"
+          @click="reviewTab = 'rejected'; exitSelectionMode()"
+        >
           已退回
         </button>
-        <button :class="['lr-tab', { active: reviewTab === 'all' }]" @click="reviewTab = 'all'; exitSelectionMode()">
+        <button
+          id="lr-review-tab-all"
+          type="button"
+          role="tab"
+          aria-controls="lr-review-panel"
+          :aria-selected="reviewTab === 'all'"
+          :class="['lr-tab', { active: reviewTab === 'all' }]"
+          @click="reviewTab = 'all'; exitSelectionMode()"
+        >
           全部
         </button>
       </div>
@@ -515,8 +587,14 @@
         <span v-if="isNarrowViewport" class="lr-mobile-view-hint">手機版自動使用卡片</span>
       </div>
 
-    <div class="card lr-table-card" data-guide="learning-table">
-      <div v-if="recordsPagination.loading && records.length === 0" class="lr-record-skeleton-grid" aria-hidden="true">
+    <div
+      class="card lr-table-card"
+      data-guide="learning-table"
+      :id="pageMode === 'records' ? 'lr-review-panel' : undefined"
+      :role="pageMode === 'records' ? 'tabpanel' : undefined"
+      :tabindex="pageMode === 'records' ? 0 : undefined"
+      :aria-labelledby="pageMode === 'records' ? (isDirectorRole ? `lr-review-tab-${reviewTab}` : `lr-teacher-tab-${teacherFilterTab}`) : undefined"
+    >      <div v-if="recordsPagination.loading && records.length === 0" class="lr-record-skeleton-grid" aria-hidden="true">
         <div v-for="i in 5" :key="i" class="lr-record-skeleton-card">
           <div class="lr-skel-line lr-skel-title"></div>
           <div class="lr-skel-line"></div>

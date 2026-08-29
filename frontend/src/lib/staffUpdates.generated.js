@@ -354,6 +354,40 @@ export const staffUpdates = [
     "version": "2026.08.29"
   },
   {
+    "id": "staff-2026-08-29-learning-review-tabs-a11y",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "評量審核佇列更容易辨識",
+    "summary": "評量分頁現在會清楚連到目前清單，切換後只聚焦該審核狀態。",
+    "items": [
+      "主任與老師的審核狀態分頁補上清楚的選取狀態，並連到評量清單工作區。",
+      "審核規則、核准同步點名／扣堂、API、權限與批次操作維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "主任與老師的審核狀態分頁補上清楚的選取狀態，並連到評量清單工作區。",
+          "審核規則、核准同步點名／扣堂、API、權限與批次操作維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:learning-review-tabs-a11y"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
     "id": "staff-2026-08-29-goto-purchase",
     "publishedAt": "2026-08-29",
     "effectiveAt": null,
