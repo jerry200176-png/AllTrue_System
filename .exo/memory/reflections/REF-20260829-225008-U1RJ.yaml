@@ -1,0 +1,13 @@
+id: REF-20260829-225008-U1RJ
+pattern: Vue template accessibility contract test failed before checking product behavior
+insight: When adding a static contract for multiline Vue button tags, verify the regex
+  against the actual source before interpreting a zero-match failure; run the targeted
+  Vitest from frontend so Vite Vue transforms are loaded.
+severity: medium
+scope: global
+actor: human
+session_id: ''
+created_at: '2026-08-29T22:50:08+08:00'
+status: active
+tags: []
+hit_count: 0

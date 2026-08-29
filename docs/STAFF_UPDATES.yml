@@ -3,6 +3,182 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-29-learning-filter-chips-a11y
+    published_at: "2026-08-29"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 評量快捷篩選狀態更清楚
+    summary: 未填、需修改與家長留言篩選會清楚說明目前是否選取。
+    items:
+      - category: improved
+        text: 評量頁快捷篩選改用明確的按鈕與選取狀態，鍵盤與螢幕閱讀器更容易辨識目前篩選。
+      - category: improved
+        text: 原有篩選條件、排序、資料、權限與審核流程維持不變。
+    source_refs:
+      - "changelog:2026-08-29:learning-filter-chips-a11y"
+
+  - id: staff-2026-08-29-learning-schedule-a11y
+    published_at: "2026-08-29"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 評量課表檢視控制更清楚
+    summary: 今日／本週、週次切換與填寫操作會以清楚的按鈕語意呈現。
+    items:
+      - category: improved
+        text: 評量頁課表的今日／本週切換與週次前後按鈕補上明確名稱，鍵盤與螢幕閱讀器更容易操作。
+      - category: improved
+        text: 原有課表資料、填寫導向、評量內容、權限與 API 維持不變。
+    source_refs:
+      - "changelog:2026-08-29:learning-schedule-a11y"
+
+  - id: staff-2026-08-29-learning-view-actions-a11y
+    published_at: "2026-08-29"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 評量檢視與操作狀態更清楚
+    summary: 切換檢視模式與執行評量操作時，控制項的目前狀態與用途更明確。
+    items:
+      - category: improved
+        text: 列表／卡片與內容預覽會標示目前選取狀態，鍵盤與螢幕閱讀器更容易辨識檢視模式。
+      - category: improved
+        text: 批次審核、單筆操作、匯出、草稿與彈窗按鈕補上正確語意；既有資料與權限流程不變。
+    source_refs:
+      - "changelog:2026-08-29:learning-view-actions-a11y"
+
+  - id: staff-2026-08-29-assessment-actions-a11y
+    published_at: "2026-08-29"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 學習檢測操作更不容易誤觸
+    summary: 建立、結果、作答與補強操作的按鈕用途更明確。
+    items:
+      - category: improved
+        text: 檢測建立、發布、結果、作答與補強按鈕補上正確語意，表單情境不會因隱含型別誤送出。
+      - category: improved
+        text: 建立檢測與查看結果彈窗會清楚標示工作階段與標題，鍵盤與螢幕閱讀器更容易掌握上下文。
+      - category: improved
+        text: 原有檢測資料、主任複核、補強追蹤、權限與 API 流程維持不變。
+    source_refs:
+      - "changelog:2026-08-29:assessment-actions-a11y"
+
+  - id: staff-2026-08-29-bug-report-triage-context
+    published_at: "2026-08-29"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 回報問題時更容易提供線索
+    summary: 可補充發生時間與相關資料，幫助更快找到問題。
+    items:
+      - category: improved
+        text: 回報視窗可選填發生時間，以及學生、課程、課堂或發票編號等相關資料。
+      - category: improved
+        text: 描述欄提供簡短提示；欄位不會要求密碼，也不改既有操作或資料。
+      - category: improved
+        text: 處理人員查看詳情時會直接看到這些補充線索，送出成功也會顯示回報編號，減少另外查找回報內容的步驟。
+    source_refs:
+      - "changelog:2026-08-29:bug-report-triage-context"
+
+  - id: staff-2026-08-29-teacher-home-notification-a11y
+    published_at: "2026-08-29"
+    audiences:
+      - teacher
+    importance: digest
+    title: 待辦提示音狀態更清楚
+    summary: 教師可清楚知道待辦提示音是否開啟，也能辨識今日靜音操作。
+    items:
+      - category: improved
+        text: 提示音開關會標示目前開啟／關閉狀態，鍵盤與螢幕閱讀器也能取得相同資訊。
+      - category: improved
+        text: 今日靜音按鈕補上明確用途名稱；待辦排序、點名導頁與資料流程不變。
+    source_refs:
+      - "changelog:2026-08-29:teacher-home-notification-a11y"
+
+  - id: staff-2026-08-29-teachers-modal-semantics
+    published_at: "2026-08-29"
+    audiences:
+      - director
+    importance: digest
+    title: 老師管理彈窗上下文更清楚
+    summary: 新增、編輯與批次新增老師時，鍵盤與螢幕閱讀器能辨識目前工作階段。
+    items:
+      - category: improved
+        text: 老師管理的新增、編輯與批次新增彈窗清楚標示工作階段與標題，鍵盤與螢幕閱讀器更容易掌握上下文。
+      - category: improved
+        text: 老師管理彈窗的取消、儲存與批次結果操作按鈕補上正確型別，表單操作更不容易被誤判為送出。
+      - category: improved
+        text: 老師管理的搜尋、狀態與科目篩選補上欄位標籤關聯，鍵盤操作時更容易知道目前控制項用途。
+    source_refs:
+      - "changelog:2026-08-29:teachers-modal-semantics"
+
+  - id: staff-2026-08-29-course-tabs-keyboard
+    published_at: "2026-08-29"
+    audiences:
+      - director
+    importance: digest
+    title: 課程查找分頁更適合鍵盤操作
+    summary: 每位學生的課程／帳務分頁可用方向鍵切換，焦點會跟著目前工作區移動。
+    items:
+      - category: improved
+        text: 在課程查找展開學生後，可用左右鍵或上下鍵切換「課程資料／帳務資料」，不用逐一 Tab 經過每個選項。
+      - category: improved
+        text: 目前分頁保留單一鍵盤焦點入口，切換後會聚焦新的工作區；課程、帳務資料與權限維持不變。
+    source_refs:
+      - "changelog:2026-08-29:course-tabs-keyboard"
+  - id: staff-2026-08-29-bug-list-keyboard
+    published_at: "2026-08-29"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: Bug 回報可以用鍵盤快速查看
+    summary: 在回報列表中可直接用鍵盤選取問題並開啟詳情。
+    items:
+      - category: improved
+        text: 聚焦回報項目後按 Enter 或 Space，即可查看問題詳情。
+      - category: improved
+        text: 目前選取的回報會有清楚的輔助標示；原有滑鼠操作維持不變。
+    source_refs:
+      - "changelog:2026-08-29:bug-list-keyboard"
+
+  - id: staff-2026-08-29-teacher-queue-focus
+    published_at: "2026-08-29"
+    audiences:
+      - teacher
+    importance: digest
+    title: 查看今日任務會直接進入工作區
+    summary: 老師從工作台捷徑進入今日任務時，焦點會跟著移到「今天要完成」。
+    items:
+      - category: improved
+        text: 點「查看今日任務」後會捲到今日工作佇列，鍵盤焦點也會落在工作區標題。
+      - category: improved
+        text: 任務排序、點名／評量內容、導頁、資料與權限維持不變。
+    source_refs:
+      - "changelog:2026-08-29:teacher-queue-focus"
+
+  - id: staff-2026-08-29-students-modal-semantics
+    published_at: "2026-08-29"
+    audiences:
+      - director
+    importance: digest
+    title: 學生管理視窗更容易辨識
+    summary: 新增／編輯學生與課程等視窗現在會清楚告訴鍵盤與螢幕閱讀器目前工作區。
+    items:
+      - category: improved
+        text: 學生管理的新增／編輯學生、課程、帳單、加購、年級升級與跨分校身份視窗補上清楚的對話框標題。
+      - category: improved
+        text: 既有資料、操作流程、帳務規則與權限維持不變；本次只改善視窗語意。
+    source_refs:
+      - "changelog:2026-08-29:students-modal-semantics"
+
   - id: staff-2026-08-29-schedule-orphan-prevention
     published_at: "2026-08-29"
     audiences:

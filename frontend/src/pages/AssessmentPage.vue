@@ -29,7 +29,7 @@
         <button class="ghost" type="button" :disabled="loading" @click="loadAll">重新整理</button>
       </div>
       <div v-if="loading" class="assessment-empty">載入中…</div>
-      <div v-else-if="error" class="assessment-error" role="alert">{{ error }} <button class="ghost small" @click="loadAll">重試</button></div>
+      <div v-else-if="error" class="assessment-error" role="alert">{{ error }} <button type="button" class="ghost small" @click="loadAll">重試</button></div>
       <div v-else-if="!assessments.length" class="assessment-empty">目前還沒有檢測。先建立一份基準檢測。</div>
       <div v-else class="assessment-table-wrap">
         <table class="assessment-table">
@@ -53,8 +53,13 @@
     </div>
 
     <div v-if="showCreate" class="modal-overlay" @click.self="showCreate = false">
-      <div class="modal assessment-modal">
-        <h3>建立學習檢測</h3>
+      <div
+        class="modal assessment-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="assessment-create-title"
+      >
+        <h3 id="assessment-create-title">建立學習檢測</h3>
         <p class="muted">先建立檢測定義，再發布後登錄學生結果。</p>
         <label>檢測名稱<input v-model.trim="createForm.title" maxlength="120" placeholder="例如：英文單字基準檢測" /></label>
         <label>課程範圍
@@ -70,38 +75,43 @@
         </div>
         <label>說明<textarea v-model.trim="createForm.description" maxlength="10000" rows="3" placeholder="記錄檢測範圍或教學目的（選填）" /></label>
         <p v-if="formError" class="assessment-error">{{ formError }}</p>
-        <div class="modal-actions"><button class="ghost" @click="showCreate = false">取消</button><button class="primary" :disabled="saving || !createForm.title" @click="createAssessment">{{ saving ? '建立中…' : '建立' }}</button></div>
+        <div class="modal-actions"><button type="button" class="ghost" @click="showCreate = false">取消</button><button type="button" class="primary" :disabled="saving || !createForm.title" @click="createAssessment">{{ saving ? '建立中…' : '建立' }}</button></div>
       </div>
     </div>
 
     <div v-if="selectedAssessment" class="modal-overlay" @click.self="selectedAssessment = null">
-      <div class="modal assessment-modal assessment-result-modal">
-        <div class="assessment-modal-head"><div><h3>{{ selectedAssessment.title }}</h3><p class="muted">滿分 {{ selectedAssessment.max_score }} · {{ statusLabel(selectedAssessment.status) }}</p></div><button class="ghost" @click="selectedAssessment = null">關閉</button></div>
+      <div
+        class="modal assessment-modal assessment-result-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="assessment-result-title"
+      >
+        <div class="assessment-modal-head"><div><h3 id="assessment-result-title">{{ selectedAssessment.title }}</h3><p class="muted">滿分 {{ selectedAssessment.max_score }} · {{ statusLabel(selectedAssessment.status) }}</p></div><button type="button" class="ghost" @click="selectedAssessment = null">關閉</button></div>
         <div v-if="resultsLoading" class="assessment-empty">結果載入中…</div>
         <template v-else>
           <section v-if="selectedAssessment.status === 'draft'" class="question-builder">
-            <div class="assessment-modal-head"><div><h4>配置檢測題目</h4><p class="muted">只可選擇已核准題目；發布後會固定題目版本。</p></div><button class="ghost small" :disabled="questionLoading" @click="loadQuestionCatalog">重新載入題庫</button></div>
+            <div class="assessment-modal-head"><div><h4>配置檢測題目</h4><p class="muted">只可選擇已核准題目；發布後會固定題目版本。</p></div><button type="button" class="ghost small" :disabled="questionLoading" @click="loadQuestionCatalog">重新載入題庫</button></div>
             <p v-if="questionError" class="assessment-error">{{ questionError }}</p>
             <div v-if="questionLoading" class="assessment-empty compact-empty">題庫載入中…</div>
             <div v-else-if="!questionCatalog.length" class="assessment-empty compact-empty">目前沒有可用的已核准題目，請先到題庫完成核准。</div>
             <div v-else class="question-picker">
               <label v-for="question in questionCatalog" :key="question.id" class="question-picker-row"><input v-model="selectedQuestionIds" type="checkbox" :value="Number(question.id)" /><span><strong>{{ question.prompt }}</strong><small>{{ question.bank_name }} · {{ question.knowledge_tag }} · 難度 {{ question.difficulty }}</small></span></label>
             </div>
-            <button class="primary" :disabled="savingQuestions || !selectedQuestionIds.length || questionRows.length" @click="configureQuestions">{{ questionRows.length ? `已配置 ${questionRows.length} 題` : (savingQuestions ? '配置中…' : `配置 ${selectedQuestionIds.length} 題`) }}</button>
+            <button type="button" class="primary" :disabled="savingQuestions || !selectedQuestionIds.length || questionRows.length" @click="configureQuestions">{{ questionRows.length ? `已配置 ${questionRows.length} 題` : (savingQuestions ? '配置中…' : `配置 ${selectedQuestionIds.length} 題`) }}</button>
           </section>
           <div v-if="!results.length" class="assessment-empty">尚未登錄結果。</div>
-          <table v-else class="assessment-table compact"><thead><tr><th>學生</th><th>次數</th><th>分數</th><th>狀態</th><th>補強</th><th>操作</th></tr></thead><tbody><tr v-for="result in results" :key="result.id"><td>{{ result.student_name || result.student_id }}</td><td>第 {{ result.attempt_no }} 次</td><td>{{ result.score }}/{{ result.max_score }}（{{ result.percent }}%）</td><td>{{ result.status === 'reviewed' ? '已審核' : '待審' }}</td><td><button class="ghost small" @click="openRemediation(result)">{{ result.remediation_count || 0 }} 筆</button></td><td><button v-if="isDirector && result.status === 'submitted'" class="primary small" @click="reviewResult(result)">審核</button></td></tr></tbody></table>
+          <table v-else class="assessment-table compact"><thead><tr><th>學生</th><th>次數</th><th>分數</th><th>狀態</th><th>補強</th><th>操作</th></tr></thead><tbody><tr v-for="result in results" :key="result.id"><td>{{ result.student_name || result.student_id }}</td><td>第 {{ result.attempt_no }} 次</td><td>{{ result.score }}/{{ result.max_score }}（{{ result.percent }}%）</td><td>{{ result.status === 'reviewed' ? '已審核' : '待審' }}</td><td><button type="button" class="ghost small" @click="openRemediation(result)">{{ result.remediation_count || 0 }} 筆</button></td><td><button v-if="isDirector && result.status === 'submitted'" type="button" class="primary small" @click="reviewResult(result)">審核</button></td></tr></tbody></table>
           <section v-if="selectedAssessment.status === 'published' && questionRows.length" class="attempt-panel">
             <div class="assessment-modal-head"><div><h4>數位作答</h4><p class="muted">教職員代學生開啟作答；客觀題自動評分，簡答題送主任複核。</p></div><span class="status-pill status-published">{{ questionRows.length }} 題</span></div>
-            <div class="assessment-form-grid attempt-start"><label>學生／課程<select v-model="attemptForm.student_class_id" @change="syncAttemptStudent"><option value="">請選擇</option><option v-for="item in assessmentStudents" :key="item.student_class_id" :value="String(item.student_class_id)">{{ item.name }}</option></select></label><button class="primary" :disabled="attemptSaving || !attemptForm.student_class_id" @click="startAttempt">{{ attemptSaving ? '建立中…' : '開始一次作答' }}</button></div>
+            <div class="assessment-form-grid attempt-start"><label>學生／課程<select v-model="attemptForm.student_class_id" @change="syncAttemptStudent"><option value="">請選擇</option><option v-for="item in assessmentStudents" :key="item.student_class_id" :value="String(item.student_class_id)">{{ item.name }}</option></select></label><button type="button" class="primary" :disabled="attemptSaving || !attemptForm.student_class_id" @click="startAttempt">{{ attemptSaving ? '建立中…' : '開始一次作答' }}</button></div>
             <p v-if="attemptError" class="assessment-error">{{ attemptError }}</p>
-            <div v-if="attempts.length" class="attempt-list"><div v-for="attempt in attempts" :key="attempt.id" class="attempt-row"><div><strong>{{ attempt.student_name || attempt.student_id }}</strong><small>第 {{ attempt.attempt_no }} 次 · {{ attemptStatusLabel(attempt.status) }}</small></div><span>{{ attempt.score == null ? '尚未計分' : `${attempt.score}/${attempt.max_score}（${attempt.percent}%）` }}</span><button class="ghost small" @click="openAttempt(attempt.id)">{{ attempt.status === 'submitted' && isDirector ? '複核' : '檢視' }}</button></div></div>
+            <div v-if="attempts.length" class="attempt-list"><div v-for="attempt in attempts" :key="attempt.id" class="attempt-row"><div><strong>{{ attempt.student_name || attempt.student_id }}</strong><small>第 {{ attempt.attempt_no }} 次 · {{ attemptStatusLabel(attempt.status) }}</small></div><span>{{ attempt.score == null ? '尚未計分' : `${attempt.score}/${attempt.max_score}（${attempt.percent}%）` }}</span><button type="button" class="ghost small" @click="openAttempt(attempt.id)">{{ attempt.status === 'submitted' && isDirector ? '複核' : '檢視' }}</button></div></div>
             <div v-if="attemptLoading" class="assessment-empty compact-empty">作答資料載入中…</div>
-            <div v-if="activeAttempt" class="attempt-editor"><div class="assessment-modal-head"><h4>{{ activeAttempt.student_name || activeAttempt.student_id }} · 第 {{ activeAttempt.attempt_no }} 次</h4><span class="status-pill" :class="'status-' + activeAttempt.status">{{ attemptStatusLabel(activeAttempt.status) }}</span></div><div v-for="question in activeAttempt.questions" :key="question.id" class="attempt-question"><p><strong>{{ question.position }}. {{ question.prompt }}</strong><small>{{ question.knowledge_tag }} · 難度 {{ question.difficulty }}</small></p><div v-if="question.question_type === 'single_choice' || question.question_type === 'true_false'" class="choice-list"><label v-for="choice in (question.choices || (question.question_type === 'true_false' ? ['true', 'false'] : []))" :key="choice"><input v-model="answerDraft[String(question.id)]" type="radio" :name="'q-' + question.id" :value="choice" :disabled="activeAttempt.status !== 'in_progress'" />{{ choice }}</label></div><div v-else-if="question.question_type === 'multiple_choice'" class="choice-list"><label v-for="choice in (question.choices || [])" :key="choice"><input v-model="answerDraft[String(question.id)]" type="checkbox" :value="choice" :disabled="activeAttempt.status !== 'in_progress'" />{{ choice }}</label></div><textarea v-else v-model="answerDraft[String(question.id)]" rows="2" :disabled="activeAttempt.status !== 'in_progress'" placeholder="填寫學生答案" /></div><div v-if="activeAttempt.status === 'in_progress'" class="modal-actions"><button class="ghost" :disabled="attemptSaving" @click="saveAttempt(false)">儲存草稿</button><button class="primary" :disabled="attemptSaving" @click="saveAttempt(true)">{{ attemptSaving ? '送出中…' : '送出作答' }}</button></div><div v-if="isDirector && activeAttempt.status === 'submitted'" class="review-editor"><h4>簡答人工複核</h4><div v-for="answer in activeAttempt.answers.filter((row) => row.status === 'needs_review')" :key="answer.id" class="review-row"><div><strong>{{ answer.position }}. {{ answer.prompt }}</strong><small>學生答案：{{ answer.answer || '未作答' }}</small></div><input v-model.number="reviewScores[answer.id]" type="number" min="0" :max="answer.max_score" step="0.01" placeholder="分數" /></div><button class="primary" :disabled="attemptSaving" @click="reviewAttempt">{{ attemptSaving ? '送出中…' : '完成人工複核' }}</button></div></div>
+            <div v-if="activeAttempt" class="attempt-editor"><div class="assessment-modal-head"><h4>{{ activeAttempt.student_name || activeAttempt.student_id }} · 第 {{ activeAttempt.attempt_no }} 次</h4><span class="status-pill" :class="'status-' + activeAttempt.status">{{ attemptStatusLabel(activeAttempt.status) }}</span></div><div v-for="question in activeAttempt.questions" :key="question.id" class="attempt-question"><p><strong>{{ question.position }}. {{ question.prompt }}</strong><small>{{ question.knowledge_tag }} · 難度 {{ question.difficulty }}</small></p><div v-if="question.question_type === 'single_choice' || question.question_type === 'true_false'" class="choice-list"><label v-for="choice in (question.choices || (question.question_type === 'true_false' ? ['true', 'false'] : []))" :key="choice"><input v-model="answerDraft[String(question.id)]" type="radio" :name="'q-' + question.id" :value="choice" :disabled="activeAttempt.status !== 'in_progress'" />{{ choice }}</label></div><div v-else-if="question.question_type === 'multiple_choice'" class="choice-list"><label v-for="choice in (question.choices || [])" :key="choice"><input v-model="answerDraft[String(question.id)]" type="checkbox" :value="choice" :disabled="activeAttempt.status !== 'in_progress'" />{{ choice }}</label></div><textarea v-else v-model="answerDraft[String(question.id)]" rows="2" :disabled="activeAttempt.status !== 'in_progress'" placeholder="填寫學生答案" /></div><div v-if="activeAttempt.status === 'in_progress'" class="modal-actions"><button type="button" class="ghost" :disabled="attemptSaving" @click="saveAttempt(false)">儲存草稿</button><button type="button" class="primary" :disabled="attemptSaving" @click="saveAttempt(true)">{{ attemptSaving ? '送出中…' : '送出作答' }}</button></div><div v-if="isDirector && activeAttempt.status === 'submitted'" class="review-editor"><h4>簡答人工複核</h4><div v-for="answer in activeAttempt.answers.filter((row) => row.status === 'needs_review')" :key="answer.id" class="review-row"><div><strong>{{ answer.position }}. {{ answer.prompt }}</strong><small>學生答案：{{ answer.answer || '未作答' }}</small></div><input v-model.number="reviewScores[answer.id]" type="number" min="0" :max="answer.max_score" step="0.01" placeholder="分數" /></div><button type="button" class="primary" :disabled="attemptSaving" @click="reviewAttempt">{{ attemptSaving ? '送出中…' : '完成人工複核' }}</button></div></div>
           </section>
           <div v-else-if="selectedAssessment.status === 'published'" class="assessment-empty compact-empty">尚未配置題目；此檢測仍可使用下方的紙本結果登錄。</div>
           <div v-if="selectedResult" class="remediation-panel">
-            <div class="assessment-modal-head"><div><h4>補強追蹤：{{ selectedResult.student_name || selectedResult.student_id }}</h4><p class="muted">從檢測結果建立知識缺口與後續行動。</p></div><button class="ghost small" @click="selectedResult = null">收合</button></div>
+            <div class="assessment-modal-head"><div><h4>補強追蹤：{{ selectedResult.student_name || selectedResult.student_id }}</h4><p class="muted">從檢測結果建立知識缺口與後續行動。</p></div><button type="button" class="ghost small" @click="selectedResult = null">收合</button></div>
             <div v-if="remediationLoading" class="assessment-empty">補強資料載入中…</div>
             <template v-else>
               <p v-if="remediationError" class="assessment-error">{{ remediationError }}</p>
@@ -109,13 +119,13 @@
               <div v-for="action in remediationActions" :key="action.id" class="remediation-row">
                 <div><strong>{{ action.knowledge_tag }}</strong><small>{{ action.plan || '未填寫計畫' }}<span v-if="action.due_date"> · 到期 {{ action.due_date }}</span></small></div>
                 <span :class="['status-pill', 'status-' + action.status]">{{ remediationStatusLabel(action.status) }}</span>
-                <button v-if="action.status === 'open'" class="ghost small" @click="updateRemediation(action, 'in_progress')">開始</button>
-                <button v-if="action.status === 'in_progress'" class="primary small" @click="updateRemediation(action, 'completed')">完成</button>
+                <button v-if="action.status === 'open'" type="button" class="ghost small" @click="updateRemediation(action, 'in_progress')">開始</button>
+                <button v-if="action.status === 'in_progress'" type="button" class="primary small" @click="updateRemediation(action, 'completed')">完成</button>
               </div>
               <div class="remediation-form">
                 <div class="assessment-form-grid"><label>知識缺口<input v-model.trim="remediationForm.knowledge_tag" maxlength="120" placeholder="例如：英文／過去式" /></label><label>行動類型<select v-model="remediationForm.action_type"><option value="practice">練習</option><option value="retake">重測</option><option value="teacher_followup">老師追蹤</option><option value="other">其他</option></select></label><label>預計完成<input v-model="remediationForm.due_date" type="date" /></label></div>
                 <label>補強計畫<textarea v-model.trim="remediationForm.plan" rows="2" maxlength="10000" placeholder="描述學生下一步要完成的練習或教學安排" /></label>
-                <button class="primary" :disabled="savingRemediation || !remediationForm.knowledge_tag" @click="createRemediation">{{ savingRemediation ? '建立中…' : '建立補強行動' }}</button>
+                <button type="button" class="primary" :disabled="savingRemediation || !remediationForm.knowledge_tag" @click="createRemediation">{{ savingRemediation ? '建立中…' : '建立補強行動' }}</button>
               </div>
             </template>
           </div>
@@ -124,7 +134,7 @@
             <div class="assessment-form-grid"><label>學生／課程<select v-model="resultForm.student_class_id" @change="syncStudent"><option value="">請選擇</option><option v-for="item in assessmentStudents" :key="item.student_class_id" :value="String(item.student_class_id)">{{ item.name }}</option></select></label><label>分數<input v-model.number="resultForm.score" type="number" min="0" :max="selectedAssessment.max_score" step="0.01" /></label></div>
             <label>備註<textarea v-model.trim="resultForm.notes" rows="2" maxlength="10000" /></label>
             <p v-if="resultError" class="assessment-error">{{ resultError }}</p>
-            <button class="primary" :disabled="savingResult || !resultForm.student_id || resultForm.score === ''" @click="saveResult">{{ savingResult ? '儲存中…' : '儲存結果' }}</button>
+            <button type="button" class="primary" :disabled="savingResult || !resultForm.student_id || resultForm.score === ''" @click="saveResult">{{ savingResult ? '儲存中…' : '儲存結果' }}</button>
           </div>
         </template>
       </div>
