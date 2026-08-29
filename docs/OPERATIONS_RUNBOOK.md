@@ -259,7 +259,7 @@ Wrapper 會為每個 process 啟動只綁定 `127.0.0.1` 的非特權 ephemeral 
 
 ### B5. Solo + AI GitHub 週期 SOP（一人團隊 × 大廠 baseline）
 
-**適用**：CEO + AI agents；無第二位 maintainer。CI 取代 human review；Issue/PR 是唯一工作佇列。
+**適用**：CEO + AI agents；無第二位 maintainer。Issue/PR 是唯一工作佇列；CI 是 required evidence，不能取代 T2 independent review。
 
 **啟用（必做）**
 

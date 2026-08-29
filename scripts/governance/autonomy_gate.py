@@ -80,6 +80,8 @@ ACTIVE_POLICY_FILES = ADAPTER_FILES + (
     "docs/REF_GITHUB_RULESET_BASELINE.md",
     "docs/governance/DECISION_RECORD_2026-08-07_TECH_DEBT_BATCH.md",
     ".github/workflows/high-risk-test-gate.yml",
+    "docs/SYSTEM_TECH_GUIDE.md",
+    "docs/TECH_DEBT.md",
 )
 
 STALE_AUTONOMY_MARKERS = (
@@ -88,6 +90,8 @@ STALE_AUTONOMY_MARKERS = (
     "高風險模組（堂數扣除、繳費計算）必須標記「需使用者確認」",
     "以「自動代理人 + 強制檢查」近似第二雙眼",
     "CI = 自動 reviewer",
+    "CI 取代 human review",
+    "沒有第二位強制 reviewer，只能靠自動化代理與自我檢查表近似補位",
     "CEO 批准後；docs-only 亦同",
     "觸發時 CEO 自審即可",
     "等使用者批准後才 DEV",
