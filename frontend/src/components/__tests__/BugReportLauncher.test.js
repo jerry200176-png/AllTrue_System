@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import BugReportLauncher from '../BugReportLauncher.vue';
 import {
   extractImageFiles,
@@ -146,9 +146,11 @@ describe('bug report attachments', () => {
     textarea.dispatchEvent(new Event('input', { bubbles: true }));
     await nextTick();
     bodyElement('.btn-submit').click();
+    await flushPromises();
     await nextTick();
 
     expect(submitBugReport).toHaveBeenCalledWith(expect.objectContaining({ files: [image] }));
+    expect(document.body.textContent).toContain('編號 #1');
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:bug-preview-1');
     wrapper.unmount();
   });

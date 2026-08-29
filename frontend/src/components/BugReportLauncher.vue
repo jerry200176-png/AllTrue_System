@@ -103,7 +103,8 @@
         </div>
 
         <div v-if="submitSuccess" class="success-msg">
-          <span class="material-symbols-outlined">check_circle</span> 已提交，感謝回報！
+          <span class="material-symbols-outlined">check_circle</span>
+          已提交<span v-if="submittedBugId">（編號 #{{ submittedBugId }}）</span>，可到 Bug 回報查看進度。
         </div>
         <div v-if="submitError" class="error-msg">{{ submitError }}</div>
       </div>
@@ -142,6 +143,7 @@ const relatedReference = ref('');
 const severity = ref('medium');
 const submitting = ref(false);
 const submitSuccess = ref(false);
+const submittedBugId = ref(null);
 const submitError = ref('');
 const attachmentError = ref('');
 const attachmentFiles = ref([]);
@@ -291,6 +293,7 @@ function openForm() {
   showForm.value = true;
   submitError.value = '';
   attachmentError.value = '';
+  submittedBugId.value = null;
 }
 
 function openFilePicker() {
@@ -337,6 +340,7 @@ function closeForm() {
   description.value = '';
   occurrenceAt.value = '';
   relatedReference.value = '';
+  submittedBugId.value = null;
   severity.value = 'medium';
   submitError.value = '';
   attachmentError.value = '';
@@ -408,7 +412,7 @@ async function doSubmit() {
       relatedReference: relatedReference.value.trim() || null,
     });
 
-    await submitBugReport({
+    const result = await submitBugReport({
       branch_id: Number(props.branchId),
       title: title.value.trim() || `[${props.currentPageKey || '未知頁面'}] ${new Date().toLocaleString('zh-TW')}`,
       description: description.value.trim(),
@@ -419,6 +423,7 @@ async function doSubmit() {
       files: attachmentFiles.value.map((entry) => entry.file),
     });
 
+    submittedBugId.value = result?.id ?? null;
     submitSuccess.value = true;
     title.value = '';
     description.value = '';
