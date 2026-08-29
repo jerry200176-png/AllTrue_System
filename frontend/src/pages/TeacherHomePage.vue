@@ -223,12 +223,19 @@
             v-if="pendingTodoTotal > 0 && !isPendingSoundSnoozedToday"
             class="th-sound-toggle"
             type="button"
+            aria-label="今日靜音待辦提示音"
             @click="snoozePendingSoundToday"
           >
             <span class="material-symbols-outlined">snooze</span>
             今日靜音
           </button>
-          <button class="th-sound-toggle" type="button" @click="togglePendingSound">
+          <button
+            class="th-sound-toggle"
+            type="button"
+            :aria-pressed="warningSoundEnabled ? 'true' : 'false'"
+            :aria-label="warningSoundEnabled ? '關閉待辦提示音' : '開啟待辦提示音'"
+            @click="togglePendingSound"
+          >
             <span class="material-symbols-outlined">{{ warningSoundEnabled ? 'notifications_active' : 'notifications_off' }}</span>
             {{ warningSoundEnabled ? '提示音開啟' : '提示音關閉' }}
           </button>
@@ -264,6 +271,7 @@
         <button
           class="th-action-btn th-action-attendance"
           :class="{ 'th-done': pendingAttendanceCount === 0 && !loadingAttendance }"
+          type="button"
           @click="goAttendance"
         >
           <div class="th-action-icon-wrap">

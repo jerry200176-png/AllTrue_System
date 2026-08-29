@@ -1,19 +1,13 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 363 api/* routes · generated 2026-08-16
+> Source: `php artisan route:list --json` · 435 api/* routes · generated 2026-08-29
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
 > ⚠️ `public` means no auth *middleware* — some public routes carry inline guards
 > (X-Deploy-Secret, LINE channel signature, ParentSession bearer). Verify the route
 > closure/controller before treating a `public` row as exposed (R60 checks belong in CI).
-
-## /api/fix-db (1)
-
-| Method | URI | Action | Auth |
-|--------|-----|--------|------|
-| GET | `api/fix-db` | `Closure` | public |
 
 ## /api/health (1)
 
@@ -44,10 +38,11 @@
 | GET | `api/v1/action-inbox/cases/{id}` | `ActionInboxController@showCase` | role+campus |
 | GET | `api/v1/action-inbox/count` | `ActionInboxController@count` | role+campus |
 
-## /api/v1/admin (18)
+## /api/v1/admin (19)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
+| GET | `api/v1/admin/branch-health` | `BranchHealthController@index` | role |
 | GET | `api/v1/admin/bug-reports` | `BugReportController@index` | role |
 | GET | `api/v1/admin/business-digest` | `BusinessDigestController@index` | role |
 | GET | `api/v1/admin/campuses` | `AdminCampusController@index` | role |
@@ -92,6 +87,61 @@
 | POST | `api/v1/api-clients` | `ApiClientController@store` | role+campus |
 | POST | `api/v1/api-clients/{apiClient}/revoke` | `ApiClientController@revoke` | role+campus |
 
+## /api/v1/assessment-attempts (4)
+
+| Method | URI | Action | Auth |
+|--------|-----|--------|------|
+| GET | `api/v1/assessment-attempts/{assessmentAttempt}` | `AssessmentController@showAttempt` | role+campus |
+| PATCH | `api/v1/assessment-attempts/{assessmentAttempt}/answers` | `AssessmentController@saveAttemptAnswers` | role+campus |
+| POST | `api/v1/assessment-attempts/{assessmentAttempt}/review` | `AssessmentController@reviewAttempt` | role+campus |
+| POST | `api/v1/assessment-attempts/{assessmentAttempt}/submit` | `AssessmentController@submitAttempt` | role+campus |
+
+## /api/v1/assessment-options (1)
+
+| Method | URI | Action | Auth |
+|--------|-----|--------|------|
+| GET | `api/v1/assessment-options/classes` | `AssessmentController@classOptions` | role+campus |
+
+## /api/v1/assessment-remediation-actions (1)
+
+| Method | URI | Action | Auth |
+|--------|-----|--------|------|
+| PATCH | `api/v1/assessment-remediation-actions/{remediationAction}` | `AssessmentController@updateRemediationAction` | role+campus |
+
+## /api/v1/assessment-reports (1)
+
+| Method | URI | Action | Auth |
+|--------|-----|--------|------|
+| GET | `api/v1/assessment-reports/summary` | `AssessmentController@summary` | role+campus |
+
+## /api/v1/assessment-results (5)
+
+| Method | URI | Action | Auth |
+|--------|-----|--------|------|
+| PATCH | `api/v1/assessment-results/{assessmentResult}` | `AssessmentController@updateResult` | role+campus |
+| GET | `api/v1/assessment-results/{assessmentResult}/remediation-actions` | `AssessmentController@remediationActions` | role+campus |
+| POST | `api/v1/assessment-results/{assessmentResult}/remediation-actions` | `AssessmentController@storeRemediationAction` | role+campus |
+| POST | `api/v1/assessment-results/{assessmentResult}/review` | `AssessmentController@reviewResult` | role+campus |
+| POST | `api/v1/assessment-results/{assessmentResult}/void` | `AssessmentController@voidResult` | role+campus |
+
+## /api/v1/assessments (13)
+
+| Method | URI | Action | Auth |
+|--------|-----|--------|------|
+| GET | `api/v1/assessments` | `AssessmentController@index` | role+campus |
+| POST | `api/v1/assessments` | `AssessmentController@store` | role+campus |
+| GET | `api/v1/assessments/{assessment}` | `AssessmentController@show` | role+campus |
+| PATCH | `api/v1/assessments/{assessment}` | `AssessmentController@update` | role+campus |
+| GET | `api/v1/assessments/{assessment}/attempts` | `AssessmentController@attempts` | role+campus |
+| POST | `api/v1/assessments/{assessment}/attempts` | `AssessmentController@storeAttempt` | role+campus |
+| POST | `api/v1/assessments/{assessment}/close` | `AssessmentController@close` | role+campus |
+| POST | `api/v1/assessments/{assessment}/publish` | `AssessmentController@publish` | role+campus |
+| GET | `api/v1/assessments/{assessment}/questions` | `AssessmentController@questions` | role+campus |
+| POST | `api/v1/assessments/{assessment}/questions` | `AssessmentController@configureQuestions` | role+campus |
+| GET | `api/v1/assessments/{assessment}/results` | `AssessmentController@results` | role+campus |
+| POST | `api/v1/assessments/{assessment}/results` | `AssessmentController@storeResult` | role+campus |
+| GET | `api/v1/assessments/{assessment}/students` | `AssessmentController@students` | role+campus |
+
 ## /api/v1/attendance (8)
 
 | Method | URI | Action | Auth |
@@ -127,6 +177,18 @@
 | POST | `api/v1/bank-reconciliation/import` | `BankReconciliationController@importCsv` | role+campus |
 | POST | `api/v1/bank-reconciliation/{id}/reconcile` | `BankReconciliationController@reconcile` | role+campus |
 | GET | `api/v1/bank-reconciliation/{id}/suggest` | `BankReconciliationController@suggestMatches` | role+campus |
+
+## /api/v1/bindings (7)
+
+| Method | URI | Action | Auth |
+|--------|-----|--------|------|
+| GET | `api/v1/bindings` | `BindingController@index` | auth |
+| POST | `api/v1/bindings` | `BindingController@store` | auth |
+| GET | `api/v1/bindings/conflicts` | `BindingConflictController@index` | role+campus |
+| POST | `api/v1/bindings/conflicts/{id}/resolve` | `BindingConflictController@resolve` | role+campus |
+| GET | `api/v1/bindings/metrics` | `BindingController@metrics` | auth |
+| GET | `api/v1/bindings/{id}` | `BindingController@show` | auth |
+| DELETE | `api/v1/bindings/{id}` | `BindingController@destroy` | auth |
 
 ## /api/v1/branches (1)
 
@@ -177,7 +239,7 @@
 | POST | `api/v1/chat/threads/{threadId}/typing` | `ChatController@typing` | role+campus |
 | GET | `api/v1/chat/unread-count` | `ChatController@unreadCount` | role+campus |
 
-## /api/v1/class-sessions (7)
+## /api/v1/class-sessions (11)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -186,6 +248,10 @@
 | POST | `api/v1/class-sessions/ensure-projected` | `ClassSessionController@ensureProjected` | role+campus |
 | GET | `api/v1/class-sessions/projection` | `ClassSessionController@projection` | role+campus |
 | PATCH | `api/v1/class-sessions/{id}` | `ClassSessionController@update` | role+campus |
+| POST | `api/v1/class-sessions/{id}/reassign-contract` | `ClassSessionController@reassignContract` | role+campus |
+| GET | `api/v1/class-sessions/{id}/reassign-contract-targets` | `ClassSessionController@reassignContractTargets` | role+campus |
+| GET | `api/v1/class-sessions/{id}/recovery` | `ClassSessionController@recovery` | role+campus |
+| POST | `api/v1/class-sessions/{id}/restore` | `ClassSessionController@restore` | role+campus |
 | POST | `api/v1/class-sessions/{id}/substitute` | `ClassSessionController@substitute` | role+campus |
 | POST | `api/v1/class-sessions/{id}/substitute/undo` | `SubstituteController@undo` | role+campus |
 
@@ -267,7 +333,7 @@
 | POST | `api/v1/exception-workflows/{id}/reject` | `ExceptionWorkflowController@reject` | role+campus |
 | POST | `api/v1/exception-workflows/{id}/waive` | `ExceptionWorkflowController@waive` | role+campus |
 
-## /api/v1/finance (40)
+## /api/v1/finance (54)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -299,6 +365,16 @@
 | PUT | `api/v1/finance/teacher-eligibility/achievements/{id}` | `TeacherEligibilityInputController@updateAchievement` | role+campus+pin |
 | POST | `api/v1/finance/teacher-eligibility/achievements/{id}/verify` | `TeacherEligibilityInputController@verifyAchievement` | role+campus+pin |
 | POST | `api/v1/finance/teacher-eligibility/achievements/{id}/withdraw` | `TeacherEligibilityInputController@withdrawAchievement` | role+campus+pin |
+| POST | `api/v1/finance/teacher-eligibility/admin-allowances` | `TeacherEligibilityInputController@storeAdminAllowance` | role+campus+pin |
+| PUT | `api/v1/finance/teacher-eligibility/admin-allowances/{id}` | `TeacherEligibilityInputController@updateAdminAllowance` | role+campus+pin |
+| POST | `api/v1/finance/teacher-eligibility/admin-allowances/{id}/approve` | `TeacherEligibilityInputController@approveAdminAllowance` | role+campus+pin |
+| POST | `api/v1/finance/teacher-eligibility/admin-allowances/{id}/confirm` | `TeacherEligibilityInputController@confirmAdminAllowance` | role+campus+pin |
+| POST | `api/v1/finance/teacher-eligibility/admin-allowances/{id}/withdraw` | `TeacherEligibilityInputController@withdrawAdminAllowance` | role+campus+pin |
+| POST | `api/v1/finance/teacher-eligibility/cash-adjustments` | `TeacherEligibilityInputController@storeCashAdjustment` | role+campus+pin |
+| PUT | `api/v1/finance/teacher-eligibility/cash-adjustments/{id}` | `TeacherEligibilityInputController@updateCashAdjustment` | role+campus+pin |
+| POST | `api/v1/finance/teacher-eligibility/cash-adjustments/{id}/approve` | `TeacherEligibilityInputController@approveCashAdjustment` | role+campus+pin |
+| POST | `api/v1/finance/teacher-eligibility/cash-adjustments/{id}/confirm` | `TeacherEligibilityInputController@confirmCashAdjustment` | role+campus+pin |
+| POST | `api/v1/finance/teacher-eligibility/cash-adjustments/{id}/withdraw` | `TeacherEligibilityInputController@withdrawCashAdjustment` | role+campus+pin |
 | POST | `api/v1/finance/teacher-eligibility/deductions` | `TeacherEligibilityInputController@storeDeduction` | role+campus+pin |
 | PUT | `api/v1/finance/teacher-eligibility/deductions/{id}` | `TeacherEligibilityInputController@updateDeduction` | role+campus+pin |
 | POST | `api/v1/finance/teacher-eligibility/deductions/{id}/approve` | `TeacherEligibilityInputController@approveDeduction` | role+campus+pin |
@@ -308,8 +384,12 @@
 | PUT | `api/v1/finance/teacher-eligibility/events/{id}` | `TeacherEligibilityInputController@updateEvent` | role+campus+pin |
 | POST | `api/v1/finance/teacher-eligibility/events/{id}/approve` | `TeacherEligibilityInputController@approveEvent` | role+campus+pin |
 | POST | `api/v1/finance/teacher-eligibility/events/{id}/withdraw` | `TeacherEligibilityInputController@withdrawEvent` | role+campus+pin |
+| GET | `api/v1/finance/teacher-eligibility/export` | `TeacherEligibilityController@export` | role+campus+pin |
 | GET | `api/v1/finance/teacher-eligibility/inputs` | `TeacherEligibilityInputController@index` | role+campus+pin |
+| POST | `api/v1/finance/teacher-eligibility/lock` | `TeacherEligibilityController@lock` | role+campus+pin |
+| POST | `api/v1/finance/teacher-eligibility/reopen` | `TeacherEligibilityController@reopen` | role+campus+pin |
 | POST | `api/v1/finance/teacher-eligibility/salary-profiles` | `TeacherEligibilityInputController@storeSalaryProfile` | role+campus+pin |
+| POST | `api/v1/finance/teacher-eligibility/salary-profiles/{id}/approve` | `TeacherEligibilityInputController@approveSalaryProfile` | role+campus+pin |
 | GET | `api/v1/finance/teacher-payroll` | `FinanceController@teacherPayroll` | role+campus+pin |
 
 ## /api/v1/github (1)
@@ -460,12 +540,14 @@
 | PUT | `api/v1/part-time-rate-cards/{id}` | `PartTimeRateCardController@update` | role+campus+pin |
 | DELETE | `api/v1/part-time-rate-cards/{id}` | `PartTimeRateCardController@destroy` | role+campus+pin |
 
-## /api/v1/payment-reports (6)
+## /api/v1/payment-reports (8)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
 | GET | `api/v1/payment-reports` | `PaymentReportController@index` | role+campus |
+| POST | `api/v1/payment-reports/confirm-batch` | `PaymentReportController@confirmBatch` | role+campus |
 | POST | `api/v1/payment-reports/director-record` | `PaymentReportController@directorRecord` | role+campus |
+| POST | `api/v1/payment-reports/director-record-batch` | `PaymentReportController@directorRecordBatch` | role+campus |
 | PUT | `api/v1/payment-reports/{id}/confirm` | `PaymentReportController@confirm` | role+campus |
 | GET | `api/v1/payment-reports/{id}/receipt` | `PaymentReportController@receipt` | role+campus |
 | PUT | `api/v1/payment-reports/{id}/reject` | `PaymentReportController@reject` | role+campus |
@@ -490,6 +572,27 @@
 | PUT | `api/v1/profiles/{id}` | `ProfileController@update` | role+campus |
 | DELETE | `api/v1/profiles/{id}` | `ProfileController@destroy` | role+campus |
 | POST | `api/v1/profiles/{id}/reset-password` | `ProfileController@resetPassword` | role+campus |
+
+## /api/v1/question-bank-items (5)
+
+| Method | URI | Action | Auth |
+|--------|-----|--------|------|
+| PATCH | `api/v1/question-bank-items/{questionBankItem}` | `QuestionBankController@updateItem` | role+campus |
+| POST | `api/v1/question-bank-items/{questionBankItem}/approve` | `QuestionBankController@approve` | role+campus |
+| POST | `api/v1/question-bank-items/{questionBankItem}/retire` | `QuestionBankController@retire` | role+campus |
+| POST | `api/v1/question-bank-items/{questionBankItem}/submit-review` | `QuestionBankController@submitReview` | role+campus |
+| GET | `api/v1/question-bank-items/{questionBankItem}/versions` | `QuestionBankController@versions` | role+campus |
+
+## /api/v1/question-banks (6)
+
+| Method | URI | Action | Auth |
+|--------|-----|--------|------|
+| GET | `api/v1/question-banks` | `QuestionBankController@index` | role+campus |
+| POST | `api/v1/question-banks` | `QuestionBankController@store` | role+campus |
+| GET | `api/v1/question-banks/{questionBank}` | `QuestionBankController@show` | role+campus |
+| GET | `api/v1/question-banks/{questionBank}/items` | `QuestionBankController@items` | role+campus |
+| POST | `api/v1/question-banks/{questionBank}/items` | `QuestionBankController@storeItem` | role+campus |
+| POST | `api/v1/question-banks/{questionBank}/items/import` | `QuestionBankController@importItems` | role+campus |
 
 ## /api/v1/recent-unknown-rfids (1)
 
@@ -552,7 +655,7 @@
 | POST | `api/v1/schedules/{schedule}/cancel-makeup` | `ScheduleController@cancelMakeup` | role+campus |
 | POST | `api/v1/schedules/{schedule}/undo-leave` | `ScheduleController@undoLeave` | role+campus |
 
-## /api/v1/student-classes (22)
+## /api/v1/student-classes (30)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -568,16 +671,24 @@
 | DELETE | `api/v1/student-classes/{studentClass}` | `StudentClassController@destroy` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/add-session` | `StudentClassController@addSession` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/add-session/check` | `StudentClassController@checkAddSession` | role+campus |
-| POST | `api/v1/student-classes/{studentClass}/billing-correction` | `StudentClassController@billingCorrection` | director/super_admin+campus |
+| POST | `api/v1/student-classes/{studentClass}/billing-correction` | `StudentClassController@billingCorrection` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/confirm-payment` | `StudentClassController@confirmPayment` | role+campus |
+| POST | `api/v1/student-classes/{studentClass}/convert-to-package` | `CoursePackageController@convertToPackage` | role+campus |
+| POST | `api/v1/student-classes/{studentClass}/convert-trial` | `StudentClassController@convertTrial` | role+campus |
+| GET | `api/v1/student-classes/{studentClass}/editability` | `StudentClassController@editability` | role+campus |
 | GET | `api/v1/student-classes/{studentClass}/invoices` | `StudentClassController@invoices` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/manual-sessions` | `StudentClassController@createManualSession` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/manual-sessions/check` | `StudentClassController@checkManualSession` | role+campus |
+| GET | `api/v1/student-classes/{studentClass}/package-conversion-preview` | `CoursePackageController@conversionPreview` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/pause` | `StudentClassController@togglePause` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/purchase-batch` | `StudentClassController@purchaseBatch` | role+campus |
+| POST | `api/v1/student-classes/{studentClass}/recover-transfer-sessions` | `StudentClassController@recoverAndTransferSessions` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/renew-monthly` | `StudentClassController@renewMonthly` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/renewal-confirm` | `StudentClassController@renewalConfirm` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/renewal-preview` | `StudentClassController@renewalPreview` | role+campus |
+| POST | `api/v1/student-classes/{studentClass}/split-contract` | `StudentClassController@splitContract` | role+campus |
+| POST | `api/v1/student-classes/{studentClass}/split-contract/preview` | `StudentClassController@splitContractPreview` | role+campus |
+| POST | `api/v1/student-classes/{studentClass}/transfer-sessions` | `StudentClassController@transferSessions` | role+campus |
 
 ## /api/v1/student-identities (5)
 

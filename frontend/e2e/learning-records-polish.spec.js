@@ -48,7 +48,7 @@ for (const viewport of viewports) {
   test(`learning records director polish @${viewport.name}`, async ({ page }) => {
     await openLearningPilot(page, viewport);
     await expect(page.getByText('學習評量表', { exact: true })).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByRole('button', { name: '待主任核准', exact: false }).first()).toBeVisible();
+    await expect(page.getByRole('tab', { name: '待主任核准', exact: false }).first()).toBeVisible();
     await expect(page.locator('.lr-group, .lr-record-card').first()).toBeVisible({ timeout: 15_000 });
     const layout = await page.evaluate(() => ({
       scrollWidth: document.documentElement.scrollWidth,
