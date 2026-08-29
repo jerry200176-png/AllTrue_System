@@ -82,7 +82,7 @@ reply itself.
 When this happens: hand the human (or any session with `workflow_dispatch`
 access) the exact three inputs — `bug_id`, `github_issue_url`, and a
 §3.8-compliant `public_reply` that contains the issue URL verbatim (the
-workflow rejects the run otherwise) — rather than leaving Phase A half-done
+workflow rejects malformed URLs or copy otherwise) — rather than leaving Phase A half-done
 or silently skipping the write-back. `bug-phase-c-allowlist.yml` is the one
 exception with a `push` fallback, but it is explicitly scoped to bugs whose
 fix is *already deployed* (Phase C) — never repurpose it for a fresh,

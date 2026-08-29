@@ -65,7 +65,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$BUG_ID" =~ ^[0-9]+$ ]] || { echo "invalid bug_id"; exit 1; }
-          [[ "$GITHUB_ISSUE_URL" == https://github.com/*/issues/* ]] || { echo "invalid github_issue_url"; exit 1; }
+          [[ "$GITHUB_ISSUE_URL" =~ ^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+$ ]] || { echo "invalid github_issue_url"; exit 1; }
           [[ "$PUBLIC_REPLY" == *"$GITHUB_ISSUE_URL"* ]] || { echo "public reply must contain github_issue_url"; exit 1; }
           ssh -i ~/.ssh/deploy_key \
             -o IdentitiesOnly=yes \
