@@ -1,0 +1,3 @@
+# Historical Cursor plans only. Agent can still Read / @-mention them.
+# Active plans under .cursor/plans/*.md stay in the index.
+.cursor/plans/archive/
