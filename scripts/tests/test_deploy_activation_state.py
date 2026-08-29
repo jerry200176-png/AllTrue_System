@@ -220,6 +220,7 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("ACTIVATE_PRODUCTION:<target_sha>", self.workflow)
         self.assertIn("environment:", self.workflow)
         self.assertIn("name: production-activation", self.workflow)
+        self.assertIn("Checkout target revision for gate policy", self.workflow)
         self.assertIn("production environment protection is not configured", self.workflow)
 
     def test_manual_workflow_revision_is_canonical_main(self):
@@ -253,6 +254,8 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("actions/workflows/ci.yml/runs?branch=main&head_sha=", self.workflow)
         self.assertIn('run.get("name") == "CI — PHPUnit Tests"', self.workflow)
         self.assertIn('run.get("conclusion") == "success"', self.workflow)
+        self.assertIn("Final exact-main gate before production executor", self.workflow)
+        self.assertIn("REMOTE_MAIN_SHA=$(git rev-parse refs/remotes/origin/main)", self.workflow)
 
     def test_contract_test_runs_before_target_resolution(self):
         self.assertIn("contract-test:", self.workflow)

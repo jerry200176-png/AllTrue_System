@@ -354,6 +354,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
+      - name: Checkout target revision for gate policy
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve-target.outputs.target_sha }}
+
       - name: Verify production environment protection
         env:
           GH_TOKEN: ${{ github.token }}
@@ -448,6 +453,33 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Final exact-main gate before production executor
+        env:
+          TARGET_SHA: ${{ needs.resolve-target.outputs.target_sha }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          MAIN_SHA="$(gh api "/repos/${REPO}/git/ref/heads/main" --jq '.object.sha')"
+          if [[ "$TARGET_SHA" != "$MAIN_SHA" ]]; then
+            echo "::error::Production executor refused stale target ${TARGET_SHA}; current main is ${MAIN_SHA}."
+            exit 1
+          fi
+          CI_RUNS="$(gh api "/repos/${REPO}/actions/workflows/ci.yml/runs?branch=main&head_sha=${TARGET_SHA}&status=completed&per_page=100")"
+          CI_OK="$(CI_RUNS="$CI_RUNS" python3 - <<'PY'
+          import json
+          import os
+
+          runs = json.loads(os.environ["CI_RUNS"]).get("workflow_runs", [])
+          print(any(run.get("name") == "CI — PHPUnit Tests" and run.get("conclusion") == "success" for run in runs))
+          PY
+          )"
+          [[ "$CI_OK" == "True" ]] || {
+            echo "::error::Production executor refused target without successful exact-main CI."
+            exit 1
+          }
+          echo "Final exact-main gate passed for ${TARGET_SHA}."
+
       - name: Setup SSH
         env:
           PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
@@ -492,6 +524,11 @@ jobs:
           git config --local --unset-all http.sslbackend 2>/dev/null || true
           if ! git fetch origin main; then
             echo "❌ git fetch 失敗 — 中止部署（不得以舊 code 假裝成功）"
+            exit 1
+          fi
+          REMOTE_MAIN_SHA=$(git rev-parse refs/remotes/origin/main)
+          if [ "$REMOTE_MAIN_SHA" != "$TARGET_SHA" ]; then
+            echo "❌ main 在 activation 後已前進：origin/main=$REMOTE_MAIN_SHA ≠ target=$TARGET_SHA — 中止部署"
             exit 1
           fi
           git reset --hard "$TARGET_SHA"
