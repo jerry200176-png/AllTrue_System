@@ -1,3 +1,10 @@
+## 2026-08-29 — fix(ops): 堂次轉移 reason 過長改為明確擋下
+
+<!-- release-notes: silent_ship=silent-2026-08-29-entitlement-reason-length -->
+
+- `repair:transfer-session-entitlement` 與轉移服務在寫入前檢查 `reason`／`decision_reference`／`actor` 不可超過 128 字，避免 DB 截斷錯誤導致整筆交易失敗且訊息難讀。
+- 不改轉移語意、堂數計算、帳單或 production 啟用流程；過長輸入只回明確錯誤、不寫入。
+
 ## 2026-08-29 — fix(schedule): 重複補排目標改回可理解錯誤
 
 <!-- release-notes: staff_update=staff-2026-08-29-reflow-duplicate-target -->
