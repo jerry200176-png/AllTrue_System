@@ -10,7 +10,7 @@
     "vendor/bin/phpunit"
   ],
   "coherence_rules": [],
-  "composed_at": "2026-08-29T10:59:19+08:00",
+  "composed_at": "2026-08-29T12:01:57+08:00",
   "deny_patterns": [
     "**/.env",
     "**/.env.*.local",
@@ -97,7 +97,7 @@
     ]
   },
   "hooks_hash": "",
-  "integrity_hash": "ab8985b644f6b49e040a421a2427b58fc76c74cde4008ce619e8de1af480f389",
+  "integrity_hash": "c948cb4e26acfb5f9c05528f9f11d58722fb51479bf42d3b3a3ffdcc4ac68457",
   "scope_deny_from_features": [],
   "sources": {
     "config": "404842546484550fe5ae8de4255229ccc5e5c06378c54d21bc9fd874ce8e10cc",

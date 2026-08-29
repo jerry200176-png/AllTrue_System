@@ -34,7 +34,7 @@ budgets:
 checks:
 - npm run build
 type: feature
-status: todo
+status: review
 spec_ref: null
 notes: []
 blockers: []
@@ -43,3 +43,6 @@ brain_dump: ''
 risk: medium
 children: []
 resource_profile: default
+commits:
+- 4245268843e5f592b9f0fe200638b03162cdd2d8
+- 1596505dbc6102066b91c9a8697e8490bba1970f
