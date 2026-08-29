@@ -64,5 +64,14 @@ failure_modes:
       character can truncate v-if expressions such as count > 0 and create false missing-type
       failures. Match complete button elements or use a Vue-aware parser, and verify
       the contract against the actual source before diagnosing product behavior.
+- id: FM-20260829-210837-JIC3
+  name: inline Markdown backticks in gh --body commands
+  detection:
+    signal: inline Markdown backticks in gh --body commands
+    source: reflection:REF-20260829-210837-Q2BN
+  mitigation:
+    practice: Use a body file or a subprocess argument array for GitHub comments;
+      shell command substitution can corrupt evidence text even when no production
+      action is intended.
   severity: medium
   frequency: recurring
