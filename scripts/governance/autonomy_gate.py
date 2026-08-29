@@ -162,8 +162,8 @@ def classify_scope(paths: list[str], patch: str = "") -> dict[str, Any]:
 
 
 def parse_declaration(body: str) -> tuple[int | None, str | None]:
-    risk = re.search(r"Risk-Class:\s*R([0-3])", body or "", re.IGNORECASE)
-    tier = re.search(r"Autonomy-Tier:\s*T([0-3])", body or "", re.IGNORECASE)
+    risk = re.search(r"Risk-Class:\*{0,2}\s*R([0-3])", body or "", re.IGNORECASE)
+    tier = re.search(r"Autonomy-Tier:\*{0,2}\s*T([0-3])", body or "", re.IGNORECASE)
     return (int(risk.group(1)) if risk else None, f"T{tier.group(1)}" if tier else None)
 
 
@@ -290,6 +290,7 @@ def self_test() -> int:
     assert classify_scope(["backend/app/Services/SessionDeductionService.php"])["tier"] == 3
     assert classify_scope(["unknown.bin"])["autonomous_merge_possible"] is False
     assert parse_declaration("Risk-Class: R2\nAutonomy-Tier: T2") == (2, "T2")
+    assert parse_declaration("**Risk-Class:** R2\n**Autonomy-Tier:** T2") == (2, "T2")
     reviews = [{"user": {"login": "author"}, "state": "APPROVED", "commit_id": "head", "submitted_at": "2"}]
     assert independent_review(reviews, "author", "head")["ok"] is False
     reviews.append({"user": {"login": "verifier"}, "state": "APPROVED", "commit_id": "head", "submitted_at": "3"})
