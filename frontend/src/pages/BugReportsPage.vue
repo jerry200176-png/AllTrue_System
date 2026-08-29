@@ -245,11 +245,13 @@
             共 {{ total }} 筆，第 {{ currentPage }}/{{ lastPage }} 頁
           </div>
           <div class="bug-list">
-            <div
+            <button
               v-for="bug in bugs"
               :key="bug.id"
+              type="button"
               class="bug-item"
               :class="{ active: activeBug?.id === bug.id, unread: isUnread(bug) }"
+              :aria-pressed="activeBug?.id === bug.id"
               @click="selectBug(bug)"
             >
               <span class="severity-dot" :class="bug.severity"></span>
@@ -276,7 +278,7 @@
                   </span>
                 </div>
               </div>
-            </div>
+            </button>
           </div>
 
           <!-- Pagination -->
@@ -1172,11 +1174,17 @@ function formatDate(iso) {
 .bug-list { display: flex; flex-direction: column; }
 .bug-item {
   display: flex; align-items: flex-start; gap: 10px; padding: 12px;
-  border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.15s;
+  width: 100%; border: 0; border-bottom: 1px solid var(--border);
+  background: transparent; color: inherit; font: inherit; text-align: left;
+  cursor: pointer; transition: background 0.15s;
 }
 .bug-item:last-child { border-bottom: none; }
 .bug-item:hover { background: var(--primary-bg); }
 .bug-item.active { background: var(--primary-bg); }
+.bug-item:focus-visible {
+  outline: 2px solid var(--ds-primary);
+  outline-offset: -2px;
+}
 
 .severity-dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
 .severity-dot.critical { background: var(--danger); }
