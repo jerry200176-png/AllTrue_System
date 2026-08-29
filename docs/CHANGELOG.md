@@ -1,3 +1,10 @@
+## 2026-08-29 — improved(ux): 課程查找的學生分頁更適合鍵盤操作
+
+<!-- release-notes: staff_update=staff-2026-08-29-course-tabs-keyboard -->
+
+- 課程查找中每位學生的「課程資料／帳務資料」分頁現在可用左右鍵或上下鍵切換，焦點會跟著目前工作區移動。
+- 不改帳務資料、載入流程、課程操作、權限或 API；本次只改善既有分頁的鍵盤操作與辨識度。
+
 ## 2026-08-29 — fix(ops): 堂次轉移 reason 過長改為明確擋下
 
 <!-- release-notes: silent_ship=silent-2026-08-29-entitlement-reason-length -->

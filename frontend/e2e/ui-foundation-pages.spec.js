@@ -814,10 +814,18 @@ test.describe('UI foundation — real Vue page evidence', () => {
     const billingTab = page.getByRole('tab', { name: '帳務資料', exact: true }).first();
     await expect(courseTab).toHaveAttribute('aria-selected', 'true');
     await expect(courseTab).toHaveAttribute('aria-controls', /student-group-panel-courses/);
+    await expect(courseTab).toHaveAttribute('tabindex', '0');
+    await expect(billingTab).toHaveAttribute('tabindex', '-1');
     await expect(page.locator('[role="tabpanel"]')).toBeVisible();
-    await billingTab.click();
+    await courseTab.press('ArrowRight');
     await expect(billingTab).toHaveAttribute('aria-selected', 'true');
+    await expect(billingTab).toBeFocused();
+    await expect(courseTab).toHaveAttribute('tabindex', '-1');
+    await expect(billingTab).toHaveAttribute('tabindex', '0');
     await expect(page.locator('[role="tabpanel"]')).toHaveAttribute('aria-labelledby', /student-group-tab-billing/);
+    await billingTab.press('ArrowLeft');
+    await expect(courseTab).toBeFocused();
+    await expect(courseTab).toHaveAttribute('aria-selected', 'true');
   });
 
   for (const vp of [
