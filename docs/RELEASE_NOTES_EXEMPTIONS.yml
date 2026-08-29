@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-08-29-entitlement-reason-length
+    changelog_date: "2026-08-29"
+    changelog_title: "fix(ops): 堂次轉移 reason 過長改為明確擋下"
+    reason: 僅修復維運轉移命令的欄位長度預檢；教職員畫面與堂次／帳務語意不變。
+
   - id: silent-2026-08-26-payment-report-long-note
     changelog_date: "2026-08-26"
     changelog_title: "fix(billing): 長備註確認入帳不再失敗"

@@ -237,6 +237,46 @@ class ScheduleStoreOrphanPreventionTest extends TestCase
         ]);
     }
 
+    public function test_cross_date_schedule_without_source_class_session_is_rejected(): void
+    {
+        $anchorSchedule = Schedule::create([
+            'student_id' => $this->studentId,
+            'teacher_id' => $this->teacherId,
+            'day_of_week' => 3,
+            'start_time' => '10:00',
+            'end_time' => '12:00',
+            'branch_id' => $this->campusId,
+            'schedule_date' => '2026-05-01',
+            'status' => 'rescheduled',
+            'class_type' => 'one_on_one',
+            'student_course_id' => $this->courseId,
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$this->dirToken}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/schedules', [
+            'student_id' => $this->studentId,
+            'teacher_id' => $this->teacherId,
+            'day_of_week' => 4,
+            'start_time' => '14:00',
+            'end_time' => '16:00',
+            'branch_id' => $this->campusId,
+            'schedule_date' => '2026-05-02',
+            'status' => 'scheduled',
+            'class_type' => 'one_on_one',
+            'student_course_id' => $this->courseId,
+            'original_schedule_id' => $anchorSchedule->id,
+        ])->assertStatus(422)
+            ->assertJsonFragment(['code' => 'source_class_session_missing']);
+
+        $this->assertDatabaseMissing('schedules', [
+            'student_course_id' => $this->courseId,
+            'schedule_date' => '2026-05-02',
+            'status' => 'scheduled',
+        ]);
+    }
+
     /**
      * Case 3: status=leave は FR-001 の検証対象外（FR-003）
      * 既存の leave フローが通過することを確認。

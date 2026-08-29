@@ -8,6 +8,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GOV_CODES, formatGovError, classifyStepFailure, classifySameShaRerun } from './ci/gov-codes.mjs';
 import { validateBranchName } from './ci/branch-policy.mjs';
+import {
+  AGENT_SESSION_FILE, HUMAN_AUTHORED_FILE, claimedSessionFiles, shouldBindAgentSession,
+} from './ci/session-claim.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const selfTest = process.argv.includes('--self-test');
@@ -53,11 +56,27 @@ function checkBranch(errors) {
   }
 }
 
+function sessionFilesInDiff() {
+  try {
+    return git(['diff', '--name-only', `${resolveBase()}...HEAD`, '--', AGENT_SESSION_FILE, HUMAN_AUTHORED_FILE])
+      .split('\n')
+      .filter(Boolean);
+  } catch {
+    return null;
+  }
+}
+
 function checkProvenance(errors, warnings) {
-  const used = exists('.agent-session/manifest.json')
-    ? '.agent-session/manifest.json'
-    : exists('.agent-session/human-authored.json') ? '.agent-session/human-authored.json' : null;
+  const diffNames = sessionFilesInDiff();
+  const claimed = diffNames ? claimedSessionFiles(diffNames) : { agent: exists(AGENT_SESSION_FILE), human: exists(HUMAN_AUTHORED_FILE) };
+  if (diffNames && !claimed.agent && !claimed.human) {
+    return;
+  }
+  const used = claimed.agent && exists(AGENT_SESSION_FILE)
+    ? AGENT_SESSION_FILE
+    : claimed.human && exists(HUMAN_AUTHORED_FILE) ? HUMAN_AUTHORED_FILE : null;
   if (!used) {
+    if (diffNames) return;
     errors.push(formatGovError({
       code: GOV_CODES.PROV_PARSE, message: 'Missing provenance manifest', actual: null,
       policy: 'scripts/check-agent-provenance.sh',
@@ -91,7 +110,7 @@ function checkProvenance(errors, warnings) {
   }
   let branch = process.env.GITHUB_HEAD_REF || '';
   try { if (!branch) branch = git(['rev-parse', '--abbrev-ref', 'HEAD']); } catch { /* */ }
-  if (parsed.provenance_type === 'agent-session' && parsed.branch && branch && parsed.branch !== branch) {
+  if (shouldBindAgentSession(claimed) && parsed.provenance_type === 'agent-session' && parsed.branch && branch && parsed.branch !== branch) {
     errors.push(formatGovError({
       code: GOV_CODES.PROV_CONSISTENCY, message: 'manifest.branch != git branch',
       actual: `${parsed.branch} != ${branch}`, policy: 'check-agent-provenance.sh',

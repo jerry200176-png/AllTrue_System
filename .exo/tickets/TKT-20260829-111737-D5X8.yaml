@@ -1,0 +1,41 @@
+id: TKT-20260829-111737-D5X8
+title: "\u6728\u67F5\u88DC\u8AB2\u885D\u5802\u7368\u7ACB\u5BE9\u67E5"
+intent: "\u6728\u67F5\u88DC\u8AB2\u885D\u5802\u7368\u7ACB\u5BE9\u67E5"
+kind: task
+parent_id: INT-20260829-110018-M2ZO
+boundary: "\u4E0D\u5F97\u90E8\u7F72\u3001\u4E0D\u5F97\u4FEE\u6539 production data\u3001\
+  \u4E0D\u5F97\u57F7\u884C migration\uFF1B\u53EA\u7522\u51FA\u5BE9\u67E5\u7D50\u8AD6"
+success_condition: "\u5B8C\u6210\u5C0D\u672C\u6B21 commit \u7684\u7368\u7ACB adversarial\
+  \ review\uFF0C\u5217\u51FA blocker \u6216\u660E\u78BA\u7121 blocker"
+priority: 1
+labels:
+- verifier
+scope:
+  allow:
+  - backend/**
+  - docs/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - backend/database/migrations/**
+budgets:
+  max_files_changed: 12
+  max_loc_changed: 400
+checks:
+- vendor/bin/phpunit
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: paused
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-29T11:17:37+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default

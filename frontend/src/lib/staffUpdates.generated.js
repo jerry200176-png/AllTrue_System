@@ -4,6 +4,45 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-29-cross-contract-makeup-conflict",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "補課候選會先避開跨合約衝堂",
+    "summary": "安排補課前會先檢查同一學生其他合約的已排時段。",
+    "items": [
+      "搜尋補課時段會排除同一學生在其他合約已有的正式堂次，不會先顯示確認後才被擋的時段。",
+      "尚未物化但已預約的排課也會納入檢查；若搜尋後時段被占用，確認時會清楚提示並保留原案件。",
+      "付款、出席、扣堂歷史與合約日期不會因補課衝堂檢查被自動改寫。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "搜尋補課時段會排除同一學生在其他合約已有的正式堂次，不會先顯示確認後才被擋的時段。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "尚未物化但已預約的排課也會納入檢查；若搜尋後時段被占用，確認時會清楚提示並保留原案件。",
+          "付款、出席、扣堂歷史與合約日期不會因補課衝堂檢查被自動改寫。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:cross-contract-makeup-conflict"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
     "id": "staff-2026-08-29-teachers-list-status",
     "publishedAt": "2026-08-29",
     "effectiveAt": null,
@@ -33,6 +72,70 @@ export const staffUpdates = [
     ],
     "sourceRefs": [
       "changelog:2026-08-29:teachers-list-status"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-teacher-secondary-cta",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "teacher"
+    ],
+    "audience": [
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "今天先做的那一件事更清楚",
+    "summary": "今日工作佇列只保留一顆主行動，其餘待辦改為次要按鈕。",
+    "items": [
+      "「現在先做」仍是清楚的主按鈕；「接著處理」改為次要樣式，比較不會搶走視線。",
+      "任務排序、點名／評量導頁、資料與權限維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "「現在先做」仍是清楚的主按鈕；「接著處理」改為次要樣式，比較不會搶走視線。",
+          "任務排序、點名／評量導頁、資料與權限維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:teacher-secondary-cta"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-teacher-partial-queue-error",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "teacher"
+    ],
+    "audience": [
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "工作台不會被單一資料失敗卡住",
+    "summary": "家長回覆暫時無法載入時，已載入的點名與評量工作仍可繼續處理。",
+    "items": [
+      "家長回覆資料失敗會顯示部分待辦提示，不會隱藏仍可處理的工作。",
+      "點名／評量等關鍵資料失敗時仍會防止誤判為全部完成。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "家長回覆資料失敗會顯示部分待辦提示，不會隱藏仍可處理的工作。",
+          "點名／評量等關鍵資料失敗時仍會防止誤判為全部完成。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:teacher-partial-queue-error"
     ],
     "date": "2026-08-29",
     "version": "2026.08.29"
@@ -242,6 +345,121 @@ export const staffUpdates = [
     "version": "2026.08.29"
   },
   {
+    "id": "staff-2026-08-29-schedule-orphan-prevention",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "調課錯誤更容易處理",
+    "summary": "找不到原堂次時不會留下日曆無法操作的調課目標。",
+    "items": [
+      "跨日調課若缺少原堂次，會在寫入前明確提示，不再留下孤兒排程。",
+      "已有原堂次的合法調課流程維持不變；本次不改既有資料。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "跨日調課若缺少原堂次，會在寫入前明確提示，不再留下孤兒排程。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "已有原堂次的合法調課流程維持不變；本次不改既有資料。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:schedule-orphan-prevention"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-reflow-duplicate-target",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "重整排課遇到重複時段會清楚提示",
+    "summary": "固定排課設定產生相同目標時段時，不會再顯示不明確的伺服器錯誤。",
+    "items": [
+      "系統會在移動堂次前攔截重複的日期／時間目標，並回傳時段衝突提示。",
+      "原子交易與唯一時段防線維持不變，錯誤時不會留下半套重整結果。",
+      "既有堂次、扣堂、評量與排課資料不會因這次防線被自動改寫。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "系統會在移動堂次前攔截重複的日期／時間目標，並回傳時段衝突提示。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "原子交易與唯一時段防線維持不變，錯誤時不會留下半套重整結果。",
+          "既有堂次、扣堂、評量與排課資料不會因這次防線被自動改寫。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:reflow-duplicate-target"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-profile-nav-clobber",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "登入後側欄切頁更穩定",
+    "summary": "登入後立刻點側欄，不會再被系統拉回首頁。",
+    "items": [
+      "個人資料載入完成後，不會把你剛切好的頁面（例如我的課表、課程查找）強制拉回工作台／總覽。",
+      "強制改密與角色首頁冷啟動行為維持不變；權限、分校與各頁業務邏輯也不變。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "個人資料載入完成後，不會把你剛切好的頁面（例如我的課表、課程查找）強制拉回工作台／總覽。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "強制改密與角色首頁冷啟動行為維持不變；權限、分校與各頁業務邏輯也不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:profile-nav-clobber"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
     "id": "staff-2026-08-29-notifications-dialog-a11y",
     "publishedAt": "2026-08-29",
     "effectiveAt": null,
@@ -271,6 +489,118 @@ export const staffUpdates = [
     ],
     "sourceRefs": [
       "changelog:2026-08-29:notifications-dialog-a11y"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-logging-facade-runtime",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "錯誤處理更穩定",
+    "summary": "分校選擇與工作台的例外處理不會因記錄錯誤而變成第二個系統錯誤。",
+    "items": [
+      "公開分校清單遇到暫時性結構／資料庫問題時，會保留清楚的空清單回應，不再出現額外的伺服器錯誤。",
+      "排課與薪資的例外記錄會正確寫入，方便追查問題並保留原本的安全備援。",
+      "本次不改學生資料、帳務、排課規則、權限或既有成功流程。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "公開分校清單遇到暫時性結構／資料庫問題時，會保留清楚的空清單回應，不再出現額外的伺服器錯誤。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "排課與薪資的例外記錄會正確寫入，方便追查問題並保留原本的安全備援。",
+          "本次不改學生資料、帳務、排課規則、權限或既有成功流程。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:logging-facade-runtime"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-learning-review-tabs-a11y",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "評量審核佇列更容易辨識",
+    "summary": "評量分頁現在會清楚連到目前清單，切換後只聚焦該審核狀態。",
+    "items": [
+      "主任與老師的審核狀態分頁補上清楚的選取狀態，並連到評量清單工作區。",
+      "審核規則、核准同步點名／扣堂、API、權限與批次操作維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "主任與老師的審核狀態分頁補上清楚的選取狀態，並連到評量清單工作區。",
+          "審核規則、核准同步點名／扣堂、API、權限與批次操作維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:learning-review-tabs-a11y"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-goto-purchase",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "新增課程可直接加購",
+    "summary": "學生已有課程時，點「去加購」會打開加購堂數。",
+    "items": [
+      "學生管理新增課程後，點「去加購」會打開該課的加購視窗。",
+      "系統對不到課程時會提示重新整理，不再沒有反應。",
+      "課程資料、加購規則、權限與既有課程列「加購」維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "學生管理新增課程後，點「去加購」會打開該課的加購視窗。",
+          "系統對不到課程時會提示重新整理，不再沒有反應。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "課程資料、加購規則、權限與既有課程列「加購」維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:goto-purchase"
     ],
     "date": "2026-08-29",
     "version": "2026.08.29"
@@ -308,6 +638,38 @@ export const staffUpdates = [
     "version": "2026.08.29"
   },
   {
+    "id": "staff-2026-08-29-course-tabs-keyboard",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "課程查找分頁更適合鍵盤操作",
+    "summary": "每位學生的課程／帳務分頁可用方向鍵切換，焦點會跟著目前工作區移動。",
+    "items": [
+      "在課程查找展開學生後，可用左右鍵或上下鍵切換「課程資料／帳務資料」，不用逐一 Tab 經過每個選項。",
+      "目前分頁保留單一鍵盤焦點入口，切換後會聚焦新的工作區；課程、帳務資料與權限維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "在課程查找展開學生後，可用左右鍵或上下鍵切換「課程資料／帳務資料」，不用逐一 Tab 經過每個選項。",
+          "目前分頁保留單一鍵盤焦點入口，切換後會聚焦新的工作區；課程、帳務資料與權限維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:course-tabs-keyboard"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
     "id": "staff-2026-08-29-course-management-hierarchy",
     "publishedAt": "2026-08-29",
     "effectiveAt": null,
@@ -337,6 +699,40 @@ export const staffUpdates = [
     ],
     "sourceRefs": [
       "changelog:2026-08-29:course-management-hierarchy"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-bug-list-keyboard",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "Bug 回報可以用鍵盤快速查看",
+    "summary": "在回報列表中可直接用鍵盤選取問題並開啟詳情。",
+    "items": [
+      "聚焦回報項目後按 Enter 或 Space，即可查看問題詳情。",
+      "目前選取的回報會有清楚的輔助標示；原有滑鼠操作維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "聚焦回報項目後按 Enter 或 Space，即可查看問題詳情。",
+          "目前選取的回報會有清楚的輔助標示；原有滑鼠操作維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:bug-list-keyboard"
     ],
     "date": "2026-08-29",
     "version": "2026.08.29"

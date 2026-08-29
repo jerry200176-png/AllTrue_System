@@ -17,6 +17,14 @@ class SessionEntitlementTransferTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // RefreshDatabase's migrate:fresh binds a Mockery OutputStyle; Artisan::output()
+        // stays empty until we clear it for command assertions in this suite.
+        $this->withoutMockingConsoleOutput();
+    }
+
     public function test_repair_command_defaults_to_read_only_preview(): void
     {
         $student = Student::create(['name' => '命令預覽測試生', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
@@ -236,6 +244,49 @@ class SessionEntitlementTransferTest extends TestCase
         $this->assertNotNull($transfer['transfer']->fresh()->rolled_back_at);
         $this->assertDatabaseHas('session_entitlement_transfers', ['id' => $transfer['transfer']->id]);
         $this->assertTrue(app(SessionEntitlementTransferService::class)->verify($transfer['transfer']->id)['ok']);
+    }
+
+    public function test_transfer_rejects_overlong_reason_without_mutating(): void
+    {
+        $student = Student::create(['name' => '原因長度測試生', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+        $source = $this->course($student->id, ['UsedSessions' => 1, 'RemainingSessions' => 7]);
+        $target = $this->course($student->id);
+        $session = ClassSession::create(['StudentClassID' => $source->ID, 'SessionDate' => '2026-08-05', 'StartTime' => '19:30:00', 'EndTime' => '21:30:00', 'Status' => 'attended']);
+        $overlong = str_repeat('理', SessionEntitlementTransferService::AUDIT_STRING_MAX + 1);
+
+        try {
+            app(SessionEntitlementTransferService::class)->transfer($source->ID, $target->ID, $session->id, $overlong, 'P0-REASON-LEN');
+            $this->fail('Expected overlong reason to throw');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('reason 不可超過', $e->getMessage());
+        }
+
+        $this->assertSame($source->ID, (int) $session->refresh()->StudentClassID);
+        $this->assertDatabaseCount('session_entitlement_transfers', 0);
+    }
+
+    public function test_repair_command_rejects_overlong_reason_before_execute(): void
+    {
+        $student = Student::create(['name' => '命令原因長度測試生', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);
+        $source = $this->course($student->id);
+        $target = $this->course($student->id);
+        $session = ClassSession::create(['StudentClassID' => $source->ID, 'SessionDate' => '2026-08-05', 'StartTime' => '19:30:00', 'EndTime' => '21:30:00', 'Status' => 'attended']);
+        $snapshot = sys_get_temp_dir() . '/entitlement-reason-len-' . uniqid('', true) . '.json';
+
+        $exit = Artisan::call('repair:transfer-session-entitlement', [
+            '--source-class' => $source->ID,
+            '--target-class' => $target->ID,
+            '--session-id' => $session->id,
+            '--reason' => str_repeat('x', SessionEntitlementTransferService::AUDIT_STRING_MAX + 1),
+            '--execute' => true,
+            '--snapshot' => $snapshot,
+        ]);
+
+        $this->assertSame(1, $exit);
+        $this->assertStringContainsString('reason exceeds', Artisan::output());
+        $this->assertSame($source->ID, (int) $session->refresh()->StudentClassID);
+        $this->assertDatabaseCount('session_entitlement_transfers', 0);
+        $this->assertFileDoesNotExist($snapshot);
     }
 
     private function course(int $studentId, array $overrides = []): StudentClass

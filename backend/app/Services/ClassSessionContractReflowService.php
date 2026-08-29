@@ -34,6 +34,24 @@ class ClassSessionContractReflowService
      */
     public function move(int $courseId, array $reflowIds, array $moves): int
     {
+        // A malformed or duplicated contract slot can make two unlocked rows
+        // converge on the same active unique-index key. Detect that before the
+        // parking transaction so the caller gets the same actionable 422 as an
+        // externally occupied slot, rather than a raw 1062 during placement.
+        $claimedTargets = [];
+        foreach ($moves as $move) {
+            $targetKey = (string) $move['newDate'] . '|' . substr((string) $move['newStart'], 0, 5);
+            if (isset($claimedTargets[$targetKey])) {
+                throw SlotOccupiedException::fromConflict(
+                    $courseId,
+                    (string) $move['newDate'],
+                    (string) $move['newStart'],
+                    $claimedTargets[$targetKey]
+                );
+            }
+            $claimedTargets[$targetKey] = $move['session'];
+        }
+
         foreach ($moves as $move) {
             $conflict = $this->slotService->findActiveSlotConflict(
                 $courseId,

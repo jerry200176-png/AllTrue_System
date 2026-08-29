@@ -22,4 +22,10 @@ describe('DirectorDashboard view switcher accessibility', () => {
     expect(source).toContain('role="tabpanel"');
     expect(source).toContain('tabindex="0"');
   });
+
+  it('keeps no-candidate leave cases actionable', () => {
+    const waiveButton = source.split('\n').find((line) => line.includes('核准不補課'));
+    expect(waiveButton).toBeDefined();
+    expect(waiveButton).not.toContain('v-if=');
+  });
 });

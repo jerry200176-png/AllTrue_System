@@ -847,7 +847,12 @@ import { updatePackage } from '../lib/coursePackagesApi';
 import CourseEditForm from '../components/CourseEditForm.vue';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
 import EnrollmentConflictDecisionModal from '../components/EnrollmentConflictDecisionModal.vue';
-import { buildForceOverrideFields } from '../lib/enrollmentConflictDecision';
+import {
+  buildForceOverrideFields,
+  collectStudentCourses,
+  findCourseForPurchase,
+  normalizeActiveCourseConflicts,
+} from '../lib/enrollmentConflictDecision';
 import QuickAddSessionModal from '../components/course-management/QuickAddSessionModal.vue';
 import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal.vue';
 import ToastWithUndo from '../components/substitute/ToastWithUndo.vue';
@@ -2307,7 +2312,7 @@ const openAddCourse = async (student) => {
           const json = await res.json();
           const active = json?.courses || [];
           if (active.length > 0) {
-            duplicateConflicts.value = active;
+            duplicateConflicts.value = normalizeActiveCourseConflicts(active);
             interceptPendingStudent.value = student;
             showDuplicateInterceptModal.value = true;
             return;
@@ -2371,13 +2376,19 @@ async function onEnrollmentConflictDecision(decision) {
 const interceptGoToPurchase = (conflict) => {
   showDuplicateInterceptModal.value = false;
   const student = interceptPendingStudent.value;
-  if (!student) return;
-  const sid = Number(student?._laravelId ?? student?.id ?? 0);
-  const courses = getStudentAllCourses(sid);
-  const target = courses.find(c => c.id === conflict.existing_course_id);
+  if (!student) {
+    alert('找不到這位學生，請重新整理後再試。');
+    return;
+  }
+  const target = findCourseForPurchase(
+    collectStudentCourses(studentCourses.value, student),
+    conflict,
+  );
   if (target) {
     openAddSessionsForCourse(target);
+    return;
   }
+  alert('找不到要加購的課程，請重新整理後再從課程列點「加購」。');
 };
 
 const editCourse = (course) => {

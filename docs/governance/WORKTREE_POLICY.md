@@ -23,7 +23,12 @@ bash scripts/check-agent-provenance.sh
 make production-identity
 ```
 
-PR must include `.agent-session/manifest.json` (Agent) or `.agent-session/human-authored.json` (human).
+A PR that claims a session must **add or update** `.agent-session/manifest.json`
+(Agent) or `.agent-session/human-authored.json` (human) **in that PR's diff**.
+CI validates that claim (branch / task_id / `base_sha` ancestor / no
+`production_mutation`). An inherited singleton from `main` is leftover from a
+previous task and is not evidence for this PR — do not rewrite it just to
+satisfy CI. Self-authored JSON is not a substitute for git evidence.
 
 ## WIP protection
 

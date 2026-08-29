@@ -225,7 +225,7 @@
             aria-label="學生課程與帳務"
             data-testid="student-group-view-tabs"
             @click.stop
-            @keydown.stop
+            @keydown="handleStudentGroupTabKeydown(group, $event)"
           >
             <button
               type="button"
@@ -236,6 +236,7 @@
               data-testid="student-tab-courses"
               :aria-selected="studentGroupTab(group.key) === 'courses'"
               :aria-controls="studentGroupPanelId(group.key, 'courses')"
+              :tabindex="studentGroupTab(group.key) === 'courses' ? 0 : -1"
               @click.stop="selectStudentGroupTab(group, 'courses', $event)"
             >課程資料</button>
             <button
@@ -247,6 +248,7 @@
               data-testid="student-tab-billing"
               :aria-selected="studentGroupTab(group.key) === 'billing'"
               :aria-controls="studentGroupPanelId(group.key, 'billing')"
+              :tabindex="studentGroupTab(group.key) === 'billing' ? 0 : -1"
               @click.stop="selectStudentGroupTab(group, 'billing', $event)"
             >帳務資料</button>
           </div>
@@ -1374,7 +1376,7 @@ import CourseEditForm from '../components/CourseEditForm.vue';
 import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
 import EnrollmentConflictDecisionModal from '../components/EnrollmentConflictDecisionModal.vue';
-import { buildForceOverrideFields } from '../lib/enrollmentConflictDecision';
+import { buildForceOverrideFields, findCourseForPurchase } from '../lib/enrollmentConflictDecision';
 import { isPendingWorkflowStatus } from '../lib/exceptionWorkflowFocus.js';
 import { nextManualSessionDate } from '../lib/manualSessionDate.js';
 import PurchaseSessionsModal from '../components/course-management/PurchaseSessionsModal.vue';
@@ -1985,10 +1987,12 @@ async function onEnrollmentConflictDecision(decision) {
 
 function interceptGoToPurchaseCM(conflict) {
   showDuplicateInterceptModal.value = false;
-  const target = courses.value.find(c => c.id === conflict.existing_course_id);
+  const target = findCourseForPurchase(courses.value, conflict);
   if (target) {
     openPurchaseModal(target);
+    return;
   }
+  alert('找不到要加購的課程，請重新整理後再從課程列點「加購」。');
 }
 
 async function handleUniversalBackfillSuccess(result) {
@@ -4797,6 +4801,34 @@ const selectStudentGroupTab = async (group, tab, event) => {
   next.add(group.key);
   expandedStudentGroups.value = next;
   await setStudentGroupTab(group, tab);
+};
+
+const handleStudentGroupTabKeydown = async (group, event) => {
+  event.stopPropagation();
+  const tablist = event.currentTarget;
+  const tabKeys = ['courses', 'billing'];
+  const currentTab = studentGroupTab(group.key);
+  const currentIndex = tabKeys.indexOf(currentTab);
+  if (currentIndex < 0) return;
+
+  let nextIndex = currentIndex;
+  if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+    nextIndex = (currentIndex + 1) % tabKeys.length;
+  } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+    nextIndex = (currentIndex - 1 + tabKeys.length) % tabKeys.length;
+  } else if (event.key === 'Home') {
+    nextIndex = 0;
+  } else if (event.key === 'End') {
+    nextIndex = tabKeys.length - 1;
+  } else {
+    return;
+  }
+
+  event.preventDefault();
+  const nextTab = tabKeys[nextIndex];
+  await selectStudentGroupTab(group, nextTab);
+  await nextTick();
+  tablist?.querySelector(`[data-testid="student-tab-${nextTab}"]`)?.focus();
 };
 
 const loadStudentGroupBilling = async (group) => {

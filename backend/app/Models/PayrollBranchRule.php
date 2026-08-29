@@ -47,7 +47,7 @@ class PayrollBranchRule extends Model
         }
 
         // Fallback to config (transitional / dev only)
-        \Log::warning("PayrollBranchRule: no DB rule for branch {$branchId}, falling back to config");
+        \Illuminate\Support\Facades\Log::warning("PayrollBranchRule: no DB rule for branch {$branchId}, falling back to config");
         return [
             'base_rates'      => config('payroll.base_rates', []),
             'headcount_bonus' => config('payroll.headcount_bonus', 50),

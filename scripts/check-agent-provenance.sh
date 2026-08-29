@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
-# Validate Agent / human PR provenance for AllTrue.
-# Passes when .agent-session/manifest.json (agent-session) or human-authored.json exists.
+# Validate a session claim in THIS change set.
+#
+# Security property: if this PR adds or updates an agent/human session file,
+# that claim must be internally consistent with git (branch, task_id, base_sha
+# ancestor) and must not enable production_mutation or embed secrets.
+# An inherited .agent-session/manifest.json from main is leftover from a
+# previous task. Treating it as this PR's evidence is a false invariant and
+# forces unrelated PRs to rewrite a shared singleton. Leftover files are not
+# validated as a session claim.
+#
+# This does not prove worktree path (self-authored). Path bans stay on
+# agent-start / local preflight.
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
@@ -11,14 +21,60 @@ EVENT_NAME="${GITHUB_EVENT_NAME:-local}"
 fail() { echo "provenance: FAIL: $*" >&2; exit 1; }
 ok() { echo "provenance: OK: $*"; }
 
+resolve_base() {
+  if [ -n "${PR_BASE_SHA:-}" ]; then
+    printf '%s\n' "$PR_BASE_SHA"
+  elif [ -n "${GITHUB_BASE_SHA:-}" ]; then
+    printf '%s\n' "$GITHUB_BASE_SHA"
+  elif [ -n "${GITHUB_BASE_REF:-}" ]; then
+    printf 'origin/%s\n' "${GITHUB_BASE_REF#refs/heads/}"
+  else
+    printf '%s\n' "origin/main"
+  fi
+}
+
+file_in_diff() {
+  local base="$1" file="$2"
+  git rev-parse --verify "$base" >/dev/null 2>&1 || return 2
+  git diff --name-only "${base}...HEAD" -- "$file" | grep -qx "$file"
+}
+
+BASE="$(resolve_base)"
+AGENT_FILE=".agent-session/manifest.json"
+HUMAN_FILE=".agent-session/human-authored.json"
+
+AGENT_CLAIMED=0
+HUMAN_CLAIMED=0
+agent_rc=0
+file_in_diff "$BASE" "$AGENT_FILE" || agent_rc=$?
+if [ "$agent_rc" -eq 0 ]; then
+  AGENT_CLAIMED=1
+elif [ "$agent_rc" -eq 2 ]; then
+  # Cannot see the merge-base: keep the old required-file behavior.
+  if [ ! -f "$AGENT_FILE" ] && [ ! -f "$HUMAN_FILE" ]; then
+    fail "missing $AGENT_FILE or $HUMAN_FILE (base $BASE unreadable)"
+  fi
+  AGENT_CLAIMED=1
+fi
+human_rc=0
+file_in_diff "$BASE" "$HUMAN_FILE" || human_rc=$?
+if [ "$human_rc" -eq 0 ]; then
+  HUMAN_CLAIMED=1
+fi
+
+if [ "$AGENT_CLAIMED" -eq 0 ] && [ "$HUMAN_CLAIMED" -eq 0 ]; then
+  ok "no session claim in ${BASE}...HEAD; inherited .agent-session/ is not evidence for this PR"
+  exit 0
+fi
+
 MANIFEST=""
-TYPE=""
-if [[ -f .agent-session/manifest.json ]]; then
-  MANIFEST=.agent-session/manifest.json
-elif [[ -f .agent-session/human-authored.json ]]; then
-  MANIFEST=.agent-session/human-authored.json
+if [ "$AGENT_CLAIMED" -eq 1 ] && [ -f "$AGENT_FILE" ]; then
+  MANIFEST="$AGENT_FILE"
+elif [ "$HUMAN_CLAIMED" -eq 1 ] && [ -f "$HUMAN_FILE" ]; then
+  MANIFEST="$HUMAN_FILE"
 else
-  fail "missing .agent-session/manifest.json or .agent-session/human-authored.json"
+  ok "session path listed in diff but absent at HEAD (deleted leftover); no claim"
+  exit 0
 fi
 
 python3 - "$MANIFEST" "$TASK_ROOT" "$EVENT_NAME" <<'PY'
@@ -51,7 +107,6 @@ if not re.match(r'^[0-9a-f]{40}$', m["base_sha"]): raise SystemExit('bad base_sh
 wp=m["worktree_path"]
 if not wp.startswith(task_root):
     raise SystemExit(f'worktree_path not under {task_root}: {wp}')
-# forbidden classes
 for bad in ("/home/jerry/alltrue", "actions-runner", "workspace-backups", "/mnt/c/", "AllTrue_System-clean", "/workspace/repos/"):
     if bad == "/home/jerry/alltrue":
         if wp.rstrip("/") == "/home/jerry/alltrue":
@@ -60,14 +115,12 @@ for bad in ("/home/jerry/alltrue", "actions-runner", "workspace-backups", "/mnt/
         raise SystemExit(f'forbidden worktree class {bad}')
 
 branch=subprocess.check_output(["git","rev-parse","--abbrev-ref","HEAD"], text=True).strip()
-# On CI PR, GITHUB_HEAD_REF is the branch
 branch=os.environ.get("GITHUB_HEAD_REF") or branch
 if m["task_id"] not in branch:
     raise SystemExit(f'task_id {m["task_id"]} not reflected in branch {branch}')
 if m.get("branch") and m["branch"] != branch:
     raise SystemExit(f'manifest branch {m["branch"]} != git branch {branch}')
 
-# base_sha must be ancestor of HEAD
 head=subprocess.check_output(["git","rev-parse","HEAD"], text=True).strip()
 rc=subprocess.call(["git","merge-base","--is-ancestor", m["base_sha"], head])
 if rc!=0:
@@ -75,7 +128,6 @@ if rc!=0:
 
 blob=json.dumps(m)
 if re.search(r'(api[_-]?key|token|password|secret|BEGIN PRIVATE)', blob, re.I):
-    # allow production_mutation key only
     for k,v in m.items():
         if k=="production_mutation":
             continue
@@ -87,5 +139,5 @@ if re.search(r'(api[_-]?key|token|password|secret|BEGIN PRIVATE)', blob, re.I):
 print('agent-session-ok')
 PY
 
-ok "manifest=$MANIFEST type validated"
+ok "manifest=$MANIFEST type validated (claimed in ${BASE}...HEAD)"
 exit 0

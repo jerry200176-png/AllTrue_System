@@ -1,0 +1,19 @@
+id: REF-20260829-111204-MLFD
+pattern: "\u88DC\u8AB2\u9810\u89BD\u53EA\u770B\u8001\u5E2B\u5BB9\u91CF\u800C\u6F0F\
+  \u6389\u540C\u5B78\u751F\u5176\u4ED6\u5408\u7D04\u7684\u6642\u6BB5"
+insight: "\u88DC\u8AB2\u5019\u9078\u5FC5\u9808\u5148\u4EE5\u5B78\u751F\u3001\u65E5\
+  \u671F\u3001\u91CD\u758A\u6642\u9593\u5340\u9593\u6AA2\u67E5\u5176\u4ED6\u5408\u7D04\
+  \u7684 active ClassSession \u8207\u5C1A\u672A\u7269\u5316\u7684 scheduled schedules\uFF1B\
+  \u5019\u9078\u662F\u5FEB\u7167\uFF0C\u78BA\u8A8D\u6642\u4ECD\u7531 ClassSession\
+  \ \u5BEB\u5165 guard \u6700\u7D42\u91CD\u9A57\u4E26\u4EE5\u4EA4\u6613\u56DE\u6EFE\
+  \u3002"
+severity: medium
+scope: TKT-20260829-110025-OFBO
+actor: human
+session_id: SES-20260829110029-45005494
+created_at: '2026-08-29T11:12:04+08:00'
+status: active
+tags:
+- scheduling
+- makeup
+hit_count: 0

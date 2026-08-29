@@ -162,6 +162,13 @@
         <button type="button" class="ghost small" @click="scrollToWeekSchedule">查看本週課表</button>
       </div>
       <div v-else class="th-work-queue__list">
+        <div v-if="teacherTasksPartialError" class="th-work-queue__partial-error" role="alert">
+          <span class="material-symbols-outlined" aria-hidden="true">info</span>
+          <div>
+            <strong>部分待辦尚未載入</strong>
+            <p>{{ teacherTasksPartialError }}其他工作仍可繼續處理。</p>
+          </div>
+        </div>
         <article
           class="th-next-action"
           data-guide="teacher-next-action"
@@ -195,7 +202,7 @@
               <p>{{ task.summary }}</p>
               <small>期限：{{ task.dueAt || '今天' }}</small>
             </div>
-            <button type="button" class="primary small th-work-task__cta" @click="openTeacherTask(task)">
+            <button type="button" class="ghost small th-work-task__cta" @click="openTeacherTask(task)">
               {{ task.actionLabel }}
             </button>
           </article>
@@ -1375,12 +1382,24 @@ const teacherTasks = computed(() => buildTeacherTasks({
 const teacherTasksLoading = computed(() => (
   loadingAttendance.value || loadingLearning.value || loadingOverdue.value || loadingWeek.value || awaitingReplyLoading.value
 ));
-const teacherTasksError = computed(() => (
+// Reply counts are useful queue context, but they must not block valid attendance
+// or assessment actions. Critical task sources still fail closed to avoid a false
+// all-clear state; a reply-only failure is partial when other work is available.
+const teacherTasksCriticalError = computed(() => (
   attendanceLoadError.value
   || learningLoadError.value
   || overdueLoadError.value
   || weekLoadError.value
-  || awaitingReplyLoadError.value
+));
+const teacherTasksHasNonFeedbackWork = computed(() => teacherTasks.value.some((task) => task.type !== 'feedback'));
+const teacherTasksError = computed(() => (
+  teacherTasksCriticalError.value
+  || (awaitingReplyLoadError.value && !teacherTasksHasNonFeedbackWork.value)
+));
+const teacherTasksPartialError = computed(() => (
+  !teacherTasksCriticalError.value && awaitingReplyLoadError.value && teacherTasksHasNonFeedbackWork.value
+    ? '家長回覆資料暫時無法載入。'
+    : ''
 ));
 
 function teacherTaskTypeLabel(type) {
@@ -1817,6 +1836,10 @@ onBeforeUnmount(() => {
 .th-work-queue__error strong { color: var(--ds-ink); }
 .th-work-queue__error p { margin: 4px 0 0; font-size: 13px; line-height: 1.5; }
 .th-work-queue__error button { flex: 0 0 auto; margin-left: auto; }
+.th-work-queue__partial-error { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--ds-warning); border-radius: 8px; background: var(--ds-warning-wash); color: var(--ds-ink-secondary); }
+.th-work-queue__partial-error > .material-symbols-outlined { flex: 0 0 auto; color: var(--ds-warning); font-size: 20px; }
+.th-work-queue__partial-error strong { color: var(--ds-ink); }
+.th-work-queue__partial-error p { margin: 3px 0 0; font-size: 13px; line-height: 1.45; }
 .th-work-task--skeleton { height: 72px; border-radius: 8px; background: var(--ds-canvas-soft); animation: th-work-skeleton 1.2s ease-in-out infinite alternate; }
 @keyframes th-work-skeleton { to { opacity: 0.55; } }
 .th-secondary { margin-top: 14px; border: 1px solid var(--ds-hairline); border-radius: 12px; background: var(--ds-canvas); }
