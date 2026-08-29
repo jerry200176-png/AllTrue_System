@@ -30,4 +30,29 @@ describe('TeachersList status workspace accessibility', () => {
     expect(source).toContain('color: var(--ds-ink-secondary);');
     expect(source).toContain('font-variant-numeric: tabular-nums;');
   });
+
+  it('labels teacher management modal surfaces as dialogs', () => {
+    expect(source).toContain('aria-labelledby="teacher-modal-title"');
+    expect(source).toContain('id="teacher-modal-title"');
+    expect(source).toContain('aria-labelledby="teachers-bulk-modal-title"');
+    expect(source).toContain('id="teachers-bulk-modal-title"');
+    expect((source.match(/role="dialog"/g) || []).length).toBe(2);
+    expect((source.match(/aria-modal="true"/g) || []).length).toBe(2);
+    expect(source).toContain('<button type="button" @click="closeModal">取消</button>');
+    expect(source).toContain('<button type="button" class="primary" @click="submitForm">儲存</button>');
+    expect(source).toContain('<button type="button" class="small" @click="copyBulkCredentials"');
+    expect(source).toContain('<button type="button" class="small" @click="downloadBulkCredentialsCsv"');
+    expect(source).toContain('<button type="button" class="small ghost" @click="refillBulkWithFailedRows"');
+    expect(source).toContain('<button type="button" @click="closeBulkModal">關閉</button>');
+    expect(source).toContain('<button type="button" class="primary" @click="submitBulkTeachers"');
+  });
+
+  it('associates teacher filters with their visible labels', () => {
+    expect(source).toContain('<label for="teachers-search">搜尋（姓名／電話）</label>');
+    expect(source).toContain('id="teachers-search"');
+    expect(source).toContain('<label for="teachers-status-filter">狀態</label>');
+    expect(source).toContain('id="teachers-status-filter"');
+    expect(source).toContain('<label for="teachers-subject-filter">科目</label>');
+    expect(source).toContain('id="teachers-subject-filter"');
+  });
 });

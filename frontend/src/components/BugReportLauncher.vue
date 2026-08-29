@@ -2,6 +2,7 @@
   <div class="bug-launcher">
     <!-- Floating button -->
     <button
+      type="button"
       class="fab"
       :class="{ dragging: fabDragging }"
       :style="fabStyle"
@@ -10,6 +11,7 @@
       @pointerup="onFabPointerUp"
       @pointercancel="onFabPointerUp"
       @click="onFabClick"
+      aria-label="回報系統問題"
       title="回報問題（可拖曳）"
     >
       <span class="material-symbols-outlined">bug_report</span>
@@ -27,11 +29,11 @@
     >
       <div class="bug-report-form" @paste="onPaste">
 
-        <label for="bug-title">問題標題 <span class="optional">（選填，自動帶入頁面）</span></label>
-        <input id="bug-title" v-model="title" class="form-input" placeholder="簡述問題（留空則自動填入）" maxlength="200" />
+        <label for="bug-report-title">問題標題 <span class="optional">（選填，自動帶入頁面）</span></label>
+        <input id="bug-report-title" v-model="title" class="form-input" placeholder="簡述問題（留空則自動填入）" maxlength="200" />
 
-        <label for="bug-description">詳細描述 <span class="required">*</span></label>
-        <textarea id="bug-description" v-model="description" class="form-textarea" placeholder="請描述：做了什麼、實際看到什麼、原本預期什麼？" rows="4" maxlength="5000"></textarea>
+        <label for="bug-report-description">詳細描述 <span class="required">*</span></label>
+        <textarea id="bug-report-description" v-model="description" class="form-textarea" placeholder="請描述：做了什麼、實際看到什麼、原本預期什麼？" rows="4" maxlength="5000" aria-required="true"></textarea>
         <p class="description-hint">若問題只在特定資料出現，請在下方補充時間或資料編號；請勿填寫密碼。</p>
 
         <div class="triage-context" aria-label="協助定位問題的補充資訊">
@@ -49,7 +51,7 @@
           />
         </div>
 
-        <label>截圖（選填，最多 {{ maxFiles }} 張，每張 ≤5MB）</label>
+        <label for="bug-file-input">截圖（選填，最多 {{ maxFiles }} 張，每張 ≤5MB）</label>
         <input
           ref="fileInputRef"
           type="file"
@@ -64,6 +66,7 @@
           :class="{ 'is-dragging': attachmentDragging }"
           role="button"
           tabindex="0"
+          aria-label="新增截圖"
           aria-controls="bug-file-input"
           @click="openFilePicker"
           @keydown.enter.prevent="openFilePicker"
@@ -89,8 +92,8 @@
         </div>
         <div class="attachment-count" aria-live="polite">已加入 {{ attachmentFiles.length }} / {{ maxFiles }} 張</div>
 
-        <label>嚴重程度</label>
-        <select v-model="severity" class="form-select">
+        <label for="bug-report-severity">嚴重程度</label>
+        <select id="bug-report-severity" v-model="severity" class="form-select">
           <option value="low">低 — 不影響使用</option>
           <option value="medium">中 — 有些不方便</option>
           <option value="high">高 — 影響工作</option>
@@ -102,15 +105,15 @@
           將自動附帶當前頁面：<strong>{{ currentPageKey || '未知' }}</strong>
         </div>
 
-        <div v-if="submitSuccess" class="success-msg">
+        <div v-if="submitSuccess" class="success-msg" role="status" aria-live="polite">
           <span class="material-symbols-outlined">check_circle</span>
           已提交<span v-if="submittedBugId">（編號 #{{ submittedBugId }}）</span>，可到 Bug 回報查看進度。
         </div>
-        <div v-if="submitError" class="error-msg">{{ submitError }}</div>
+        <div v-if="submitError" class="error-msg" role="alert">{{ submitError }}</div>
       </div>
       <template #actions>
-        <button class="btn-cancel" :disabled="submitting" @click="closeForm">取消</button>
-        <button class="btn-submit" :disabled="!canSubmit || submitting" @click="doSubmit">
+        <button type="button" class="btn-cancel" :disabled="submitting" @click="closeForm">取消</button>
+        <button type="button" class="btn-submit" :disabled="!canSubmit || submitting" @click="doSubmit">
           {{ submitting ? '提交中...' : '提交回報' }}
         </button>
       </template>

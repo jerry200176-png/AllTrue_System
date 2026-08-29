@@ -41,6 +41,7 @@ const pageModules = {
   teacher: () => import('../../../src/pages/TeacherHomePage.vue'),
   teachers: () => import('../../../src/pages/TeachersList.vue'),
   attendance: () => import('../../../src/pages/AttendancePage.vue'),
+  parent: () => import('../../../src/pages/ParentPortal.vue'),
 };
 const loadPage = pageModules[page] || pageModules.inbox;
 const PageComponent = (await loadPage()).default;
@@ -97,6 +98,9 @@ createApp({
         userId: 9001,
         userRole: role,
       });
+    }
+    if (page === 'parent') {
+      return () => h(PageComponent, { standalone: true });
     }
     return () => h(PageComponent, { branchId: 1 });
   },

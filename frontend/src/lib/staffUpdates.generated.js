@@ -43,6 +43,40 @@ export const staffUpdates = [
     "version": "2026.08.29"
   },
   {
+    "id": "staff-2026-08-29-teachers-modal-semantics",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "老師管理彈窗上下文更清楚",
+    "summary": "新增、編輯與批次新增老師時，鍵盤與螢幕閱讀器能辨識目前工作階段。",
+    "items": [
+      "老師管理的新增、編輯與批次新增彈窗清楚標示工作階段與標題，鍵盤與螢幕閱讀器更容易掌握上下文。",
+      "老師管理彈窗的取消、儲存與批次結果操作按鈕補上正確型別，表單操作更不容易被誤判為送出。",
+      "老師管理的搜尋、狀態與科目篩選補上欄位標籤關聯，鍵盤操作時更容易知道目前控制項用途。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "老師管理的新增、編輯與批次新增彈窗清楚標示工作階段與標題，鍵盤與螢幕閱讀器更容易掌握上下文。",
+          "老師管理彈窗的取消、儲存與批次結果操作按鈕補上正確型別，表單操作更不容易被誤判為送出。",
+          "老師管理的搜尋、狀態與科目篩選補上欄位標籤關聯，鍵盤操作時更容易知道目前控制項用途。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:teachers-modal-semantics"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
     "id": "staff-2026-08-29-teachers-list-status",
     "publishedAt": "2026-08-29",
     "effectiveAt": null,
@@ -170,6 +204,38 @@ export const staffUpdates = [
     ],
     "sourceRefs": [
       "changelog:2026-08-29:teacher-next-action"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-teacher-home-notification-a11y",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "teacher"
+    ],
+    "audience": [
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "待辦提示音狀態更清楚",
+    "summary": "教師可清楚知道待辦提示音是否開啟，也能辨識今日靜音操作。",
+    "items": [
+      "提示音開關會標示目前開啟／關閉狀態，鍵盤與螢幕閱讀器也能取得相同資訊。",
+      "今日靜音按鈕補上明確用途名稱；待辦排序、點名導頁與資料流程不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "提示音開關會標示目前開啟／關閉狀態，鍵盤與螢幕閱讀器也能取得相同資訊。",
+          "今日靜音按鈕補上明確用途名稱；待辦排序、點名導頁與資料流程不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:teacher-home-notification-a11y"
     ],
     "date": "2026-08-29",
     "version": "2026.08.29"
@@ -638,6 +704,38 @@ export const staffUpdates = [
     "version": "2026.08.29"
   },
   {
+    "id": "staff-2026-08-29-course-tabs-keyboard",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "課程查找分頁更適合鍵盤操作",
+    "summary": "每位學生的課程／帳務分頁可用方向鍵切換，焦點會跟著目前工作區移動。",
+    "items": [
+      "在課程查找展開學生後，可用左右鍵或上下鍵切換「課程資料／帳務資料」，不用逐一 Tab 經過每個選項。",
+      "目前分頁保留單一鍵盤焦點入口，切換後會聚焦新的工作區；課程、帳務資料與權限維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "在課程查找展開學生後，可用左右鍵或上下鍵切換「課程資料／帳務資料」，不用逐一 Tab 經過每個選項。",
+          "目前分頁保留單一鍵盤焦點入口，切換後會聚焦新的工作區；課程、帳務資料與權限維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:course-tabs-keyboard"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
     "id": "staff-2026-08-29-course-management-hierarchy",
     "publishedAt": "2026-08-29",
     "effectiveAt": null,
@@ -703,6 +801,40 @@ export const staffUpdates = [
     ],
     "sourceRefs": [
       "changelog:2026-08-29:bug-report-triage-context"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-bug-list-keyboard",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "Bug 回報可以用鍵盤快速查看",
+    "summary": "在回報列表中可直接用鍵盤選取問題並開啟詳情。",
+    "items": [
+      "聚焦回報項目後按 Enter 或 Space，即可查看問題詳情。",
+      "目前選取的回報會有清楚的輔助標示；原有滑鼠操作維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "聚焦回報項目後按 Enter 或 Space，即可查看問題詳情。",
+          "目前選取的回報會有清楚的輔助標示；原有滑鼠操作維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:bug-list-keyboard"
     ],
     "date": "2026-08-29",
     "version": "2026.08.29"
