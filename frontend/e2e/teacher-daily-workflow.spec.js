@@ -77,7 +77,10 @@ test.describe('Teacher daily workflow real Vue page', () => {
     await expect(companion).toBeVisible();
     await expect(companion.getByRole('heading', { name: '先完成最重要的一件事' })).toBeVisible();
     await expect(companion.locator('img')).toHaveAttribute('alt', '');
-    await expect(companion.getByRole('link', { name: '查看今日任務' })).toHaveAttribute('href', '#teacher-work-queue-title');
+    const queueLink = companion.getByRole('link', { name: '查看今日任務' });
+    await expect(queueLink).toHaveAttribute('href', '#teacher-work-queue-title');
+    await queueLink.click();
+    await expect(page.locator('#teacher-work-queue-title')).toBeFocused();
     await expect(page.getByRole('heading', { name: '今天要完成' })).toBeVisible();
     const priorityDisclosure = page.locator('.th-priority-disclosure');
     await expect(priorityDisclosure.getByText('查看排序規則')).toBeVisible();

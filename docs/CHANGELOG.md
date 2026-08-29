@@ -1,3 +1,10 @@
+## 2026-08-29 — improved(ux): 老師工作台捷徑會帶入目前工作區
+
+<!-- release-notes: staff_update=staff-2026-08-29-teacher-queue-focus -->
+
+- 從「查看今日任務」進入老師工作佇列時，畫面會捲到工作區並把鍵盤焦點交給「今天要完成」，讓下一步更明確。
+- 不改任務排序、點名／評量資料、導頁、API 或權限；本次只改善既有捷徑的焦點銜接。
+
 ## 2026-08-29 — fix(ops): 堂次轉移 reason 過長改為明確擋下
 
 <!-- release-notes: silent_ship=silent-2026-08-29-entitlement-reason-length -->
