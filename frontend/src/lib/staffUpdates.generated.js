@@ -533,6 +533,40 @@ export const staffUpdates = [
     "version": "2026.08.29"
   },
   {
+    "id": "staff-2026-08-29-learning-view-actions-a11y",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "評量檢視與操作狀態更清楚",
+    "summary": "切換檢視模式與執行評量操作時，控制項的目前狀態與用途更明確。",
+    "items": [
+      "列表／卡片與內容預覽會標示目前選取狀態，鍵盤與螢幕閱讀器更容易辨識檢視模式。",
+      "批次審核、單筆操作、匯出、草稿與彈窗按鈕補上正確語意；既有資料與權限流程不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "列表／卡片與內容預覽會標示目前選取狀態，鍵盤與螢幕閱讀器更容易辨識檢視模式。",
+          "批次審核、單筆操作、匯出、草稿與彈窗按鈕補上正確語意；既有資料與權限流程不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:learning-view-actions-a11y"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
     "id": "staff-2026-08-29-learning-review-tabs-a11y",
     "publishedAt": "2026-08-29",
     "effectiveAt": null,
