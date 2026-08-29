@@ -7,7 +7,6 @@ use App\Models\Campus;
 use App\Models\User;
 use App\Models\UserCampus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class CampusControllerTest extends TestCase
@@ -40,9 +39,19 @@ class CampusControllerTest extends TestCase
 
     public function test_list_public_returns_empty_array_when_schema_probe_fails(): void
     {
-        Schema::shouldReceive('hasColumn')
+        $database = $this->app['db'];
+        $connection = $database->connection();
+        $schema = \Mockery::mock($connection->getSchemaBuilder())->makePartial();
+        $schema->shouldReceive('hasColumn')
             ->once()
             ->andThrow(new \RuntimeException('simulated schema failure'));
+
+        $connection = \Mockery::mock($connection)->makePartial();
+        $connection->shouldReceive('getSchemaBuilder')->andReturn($schema);
+
+        $database = \Mockery::mock($database)->makePartial();
+        $database->shouldReceive('connection')->andReturn($connection);
+        $this->app->instance('db', $database);
 
         $res = $this->getJson('/api/v1/branches');
 
