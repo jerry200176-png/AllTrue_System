@@ -1,3 +1,10 @@
+## 2026-08-29 — improved(ux): 學生管理視窗更容易辨識
+
+<!-- release-notes: staff_update=staff-2026-08-29-students-modal-semantics -->
+
+- 學生管理的新增／編輯學生、課程、帳單、加購、年級升級與跨分校身份視窗補上清楚的對話框與標題語意，鍵盤與螢幕閱讀器能辨識目前工作區。
+- 不改學生、課程、帳務、身份關聯資料、權限或 API；本次只改善既有視窗的操作辨識度。
+
 ## 2026-08-29 — fix(ops): 堂次轉移 reason 過長改為明確擋下
 
 <!-- release-notes: silent_ship=silent-2026-08-29-entitlement-reason-length -->

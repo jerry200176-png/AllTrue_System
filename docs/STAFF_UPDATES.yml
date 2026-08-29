@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-29-students-modal-semantics
+    published_at: "2026-08-29"
+    audiences:
+      - director
+    importance: digest
+    title: 學生管理視窗更容易辨識
+    summary: 新增／編輯學生與課程等視窗現在會清楚告訴鍵盤與螢幕閱讀器目前工作區。
+    items:
+      - category: improved
+        text: 學生管理的新增／編輯學生、課程、帳單、加購、年級升級與跨分校身份視窗補上清楚的對話框標題。
+      - category: improved
+        text: 既有資料、操作流程、帳務規則與權限維持不變；本次只改善視窗語意。
+    source_refs:
+      - "changelog:2026-08-29:students-modal-semantics"
+
   - id: staff-2026-08-29-schedule-orphan-prevention
     published_at: "2026-08-29"
     audiences:
