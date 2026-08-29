@@ -118,7 +118,7 @@ test.describe('Teacher daily workflow real Vue page', () => {
     expect(overflow).toBeTruthy();
     expect(await page.locator('.th-work-task__cta').first().isVisible()).toBeTruthy();
     expect(secondaryRequests).toHaveLength(0);
-    await expect(page.locator('.th-secondary')).toHaveCount(0);
+    await expect(page.locator('[data-guide="teacher-secondary-actions"]')).toBeVisible();
   });
 
   test('shows a clear empty state without horizontal overflow', async ({ page }) => {
