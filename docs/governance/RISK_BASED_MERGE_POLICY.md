@@ -64,7 +64,7 @@ This repo currently has **one** human maintainer (Jerry), who is not a universal
 |---|---|---|
 | `required_approving_review_count` (ruleset `main-protection`) | `0` | `1` |
 | `require_code_owner_review` | `false` | `true` — CODEOWNERS becomes a real blocking gate, not just a review request |
-| T2 review | Independent review context plus implementing Agent evidence | A human second maintainer or separately-launched verifier Agent, plus implementing Agent evidence |
+| T2 review | Current-head GitHub approval from a distinct authorized identity **or** separately-launched verifier Agent attestation, plus implementing Agent evidence | A human second maintainer or separately-launched verifier Agent, plus implementing Agent evidence |
 | T3 boundary | Founder decision before protected action; review does not replace the gate | Same protected boundary, with the additional human review if ruleset policy later requires it |
 | `dismiss_stale_reviews_on_push` | `false` | `true` — a stale approval shouldn't survive a force-push-equivalent re-push |
 
