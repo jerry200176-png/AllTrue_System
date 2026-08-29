@@ -272,7 +272,7 @@
                   <article
                     v-if="getFocusedStudentCourse(student.id)?.id === course.id"
                     class="student-course-card student-course-card--focused"
-                    :class="{ 'student-course-card--attention': isSessionPaymentLowRemaining(course) }"
+                    :class="{ 'student-course-card--attention': isCourseNeedsAttention(course) }"
                     :data-course-id="course.id"
                   >
                     <header class="student-course-card__header">
@@ -287,18 +287,27 @@
                         </div>
                       </div>
                       <button
-                        v-if="isSessionPaymentLowRemaining(course)"
                         type="button"
-                        class="student-course-card__primary btn-renew-warn"
-                        @click="openAddSessionsForCourse(course)"
-                      >續報加購</button>
-                      <button
-                        v-else
-                        type="button"
-                        class="student-course-card__primary primary"
-                        @click="editCourse(course)"
-                      >編輯課程</button>
+                        :class="['student-course-card__primary', getCoursePrimaryAction(course).tone === 'warning' ? 'btn-renew-warn' : 'primary']"
+                        @click="openCoursePrimaryAction(course, student.name)"
+                      >
+                        <span class="material-symbols-outlined" aria-hidden="true">{{ getCoursePrimaryAction(course).icon }}</span>
+                        {{ getCoursePrimaryAction(course).label }}
+                      </button>
                     </header>
+
+                    <div
+                      class="student-course-card__next-step"
+                      :class="{ 'student-course-card__next-step--attention': isCourseNeedsAttention(course) }"
+                      role="note"
+                    >
+                      <span class="material-symbols-outlined" aria-hidden="true">{{ getCoursePrimaryAction(course).icon }}</span>
+                      <div>
+                        <span class="student-course-card__next-step-label">現在先處理</span>
+                        <strong>{{ getCoursePrimaryAction(course).title }}</strong>
+                        <p>{{ getCoursePrimaryAction(course).description }}</p>
+                      </div>
+                    </div>
 
                     <section v-if="courseProgress(course)" class="student-course-card__progress" aria-label="課程堂數進度">
                       <div class="student-course-card__progress-head">
@@ -1241,6 +1250,63 @@ const getCourseAttentionLabel = (course) => {
     return '資料待確認';
   }
   return '進行中';
+};
+const getCoursePrimaryAction = (course) => {
+  if (isSessionPaymentLowRemaining(course)) {
+    return {
+      key: 'renew',
+      icon: 'add_circle',
+      label: '續報加購',
+      title: '先處理課程續報',
+      description: `剩餘 ${getCourseRemainingSessions(course)} 堂，先補充堂數可避免後續排課中斷。`,
+      tone: 'warning',
+    };
+  }
+  const paymentStatus = String(course?.payment_status || '').toLowerCase();
+  if (['overdue', 'unpaid', 'pending'].includes(paymentStatus)) {
+    return {
+      key: 'payment',
+      icon: 'receipt_long',
+      label: '查看繳費資訊',
+      title: '先確認付款狀態',
+      description: '付款狀態尚未確認，先查看繳費資訊再進行後續處理。',
+      tone: 'warning',
+    };
+  }
+  if (String(course?.status || '').toLowerCase() === 'inactive') {
+    return {
+      key: 'edit',
+      icon: 'pause_circle',
+      label: '查看課程設定',
+      title: '先確認課程狀態',
+      description: '這門課目前已暫停，請查看課程設定。',
+      tone: 'warning',
+    };
+  }
+  if (!course?.teacher_name || !hasCourseSchedule(course) || !course?.branch_name || !course?.room_name) {
+    return {
+      key: 'edit',
+      icon: 'fact_check',
+      label: '補齊課程資料',
+      title: '先補齊課程資料',
+      description: '老師、時段或地點尚未完整，請補齊後再安排後續工作。',
+      tone: 'warning',
+    };
+  }
+  return {
+    key: 'edit',
+    icon: 'edit',
+    label: '編輯課程',
+    title: '課程資料已齊全',
+    description: '目前沒有待處理提醒；需要調整時可編輯課程。',
+    tone: 'primary',
+  };
+};
+const openCoursePrimaryAction = (course, studentName = '') => {
+  const action = getCoursePrimaryAction(course);
+  if (action.key === 'renew') return openAddSessionsForCourse(course);
+  if (action.key === 'payment') return openLatestPaymentInfo(course, studentName);
+  return editCourse(course);
 };
 const getCourseProgressSummary = (course) => {
   const progress = courseProgress(course);
@@ -3768,10 +3834,60 @@ table th { font-size: 12.5px; }
   margin-left: 0;
 }
 .student-course-card__primary {
+  align-items: center;
   flex: 0 0 auto;
+  gap: 6px;
   min-height: 44px;
   min-width: 112px;
   white-space: nowrap;
+}
+.student-course-card__primary .material-symbols-outlined {
+  font-size: 18px;
+}
+.student-course-card__next-step {
+  align-items: flex-start;
+  background: var(--ds-canvas-soft);
+  border: 1px solid var(--ds-hairline);
+  border-radius: 10px;
+  color: var(--ds-ink-secondary);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto minmax(0, 1fr);
+  margin-top: 14px;
+  padding: 12px 14px;
+}
+.student-course-card__next-step--attention {
+  background: var(--ds-warning-wash);
+  border-color: var(--ds-warning-wash);
+}
+.student-course-card__next-step > .material-symbols-outlined {
+  color: var(--ds-primary);
+  font-size: 21px;
+  margin-top: 1px;
+}
+.student-course-card__next-step--attention > .material-symbols-outlined {
+  color: var(--ds-warning);
+}
+.student-course-card__next-step-label {
+  color: var(--ds-ink-mute);
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+}
+.student-course-card__next-step strong {
+  color: var(--ds-ink);
+  display: block;
+  font-size: 14px;
+  line-height: 1.4;
+  margin-top: 1px;
+}
+.student-course-card__next-step p {
+  color: var(--ds-ink-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 3px 0 0;
 }
 .student-course-card__progress {
   margin-top: 16px;

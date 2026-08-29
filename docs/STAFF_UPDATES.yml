@@ -3,6 +3,23 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-29-student-course-next-action
+    published_at: "2026-08-29"
+    audiences:
+      - director
+    importance: digest
+    title: 學生課程下一步更明確
+    summary: 課程工作區會清楚說明現在該處理什麼，主行動也會對應目前狀態。
+    items:
+      - category: improved
+        text: 「現在先處理」會說明續報、付款待確認、資料待補或一般課程的下一步，不必只靠顏色猜測。
+      - category: improved
+        text: 主行動會依既有課程狀態前往續報加購、繳費資訊或編輯課程，並保留原有操作行為。
+      - category: improved
+        text: 課程資料、付款、排課、權限、API 與手機版可讀布局維持不變。
+    source_refs:
+      - "changelog:2026-08-29:student-course-next-action"
+
   - id: staff-2026-08-29-notifications-dialog-a11y
     published_at: "2026-08-29"
     audiences:
