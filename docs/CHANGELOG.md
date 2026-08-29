@@ -2419,6 +2419,12 @@ Fixed：班級行事曆若週次篩選暫時隱藏某課程，已實際存在的
 
 - 課程管理與學生課程列表遇到尚未核帳的繳費回報時，會顯示「待對帳」，不再誤顯示「未繳費」或讓主任重複送出回報。
 - 回報仍須由主任在帳務中心確認入帳；確認後才會變成「已繳費」並開立電子收據。
+# 2026-08-27 — chore(quality): 前端未使用程式碼新增 baseline ratchet
+
+<!-- release-notes: silent_ship=silent-2026-08-27-eslint-unused-ratchet -->
+
+- 以既有 ESLint 規則建立每檔 baseline，build 會阻擋新增的 `no-unused-vars` 問題，同時允許逐步清理歷史債。
+- 這是工程品質防線，不改變主任、老師、家長的畫面或操作流程。
 # 2026-08-27 — improved(ux): 主任可追蹤老師評量完成率
 
 <!-- release-notes: staff_update=staff-2026-08-27-teacher-assessment-engagement -->

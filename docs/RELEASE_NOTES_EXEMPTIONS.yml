@@ -2,6 +2,10 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-08-27-eslint-unused-ratchet
+    changelog_date: "2026-08-27"
+    changelog_title: "chore(quality): 前端未使用程式碼新增 baseline ratchet"
+    reason: 僅新增前端 ESLint 歷史債 baseline 與 build 防線；不改變主任、老師、家長的畫面、資料或操作流程。
   - id: silent-2026-08-29-bug-reports-tabs-a11y
     changelog_date: "2026-08-29"
     changelog_title: "improved(ux): Bug 回報工作區頁籤更容易辨識"

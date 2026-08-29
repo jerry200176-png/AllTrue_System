@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "c046bb7f31c9453c8c2ab3a3a11328cd",
+  "session_id": "0ac96e6b2f4a4b52a93c7f3d5b9aee38",
   "project": "alltrue",
-  "task_id": "bug-reports-tabs-ux-20260829",
+  "task_id": "frontend-eslint-unused-ratchet-20260827",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "9faf67ced7131a7118761fab3dd878cf78028109",
-  "branch": "chore/task-bug-reports-tabs-ux-20260829",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/bug-reports-tabs-ux-20260829",
-  "started_at": "2026-08-29T13:53:25Z",
+  "base_sha": "5e6598052299386bbf13e12ae320b90186022348",
+  "branch": "chore/task-frontend-eslint-unused-ratchet-20260827",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/frontend-eslint-unused-ratchet-20260827",
+  "started_at": "2026-08-27T04:31:38Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": null,
+  "agent_cli": "codex",
   "gateway_version": "0.5.0"
 }
