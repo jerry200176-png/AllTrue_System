@@ -533,6 +533,40 @@ export const staffUpdates = [
     "version": "2026.08.29"
   },
   {
+    "id": "staff-2026-08-29-learning-schedule-a11y",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "評量課表檢視控制更清楚",
+    "summary": "今日／本週、週次切換與填寫操作會以清楚的按鈕語意呈現。",
+    "items": [
+      "評量頁課表的今日／本週切換與週次前後按鈕補上明確名稱，鍵盤與螢幕閱讀器更容易操作。",
+      "原有課表資料、填寫導向、評量內容、權限與 API 維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "評量頁課表的今日／本週切換與週次前後按鈕補上明確名稱，鍵盤與螢幕閱讀器更容易操作。",
+          "原有課表資料、填寫導向、評量內容、權限與 API 維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:learning-schedule-a11y"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
     "id": "staff-2026-08-29-learning-review-tabs-a11y",
     "publishedAt": "2026-08-29",
     "effectiveAt": null,

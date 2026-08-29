@@ -274,14 +274,24 @@
     <div v-if="isTeacher && pageMode === 'records'" class="teacher-schedule card" data-guide="learning-teacher-schedule">
       <div class="ts-header">
         <h3>課表</h3>
-        <div class="ts-tabs ts-tabs--ios">
-          <button :class="{ active: scheduleView === 'today' }" @click="scheduleView = 'today'">今日</button>
-          <button :class="{ active: scheduleView === 'week' }" @click="scheduleView = 'week'">本週</button>
+        <div class="ts-tabs ts-tabs--ios" role="group" aria-label="課表檢視">
+          <button
+            type="button"
+            :class="{ active: scheduleView === 'today' }"
+            :aria-pressed="scheduleView === 'today' ? 'true' : 'false'"
+            @click="scheduleView = 'today'"
+          >今日</button>
+          <button
+            type="button"
+            :class="{ active: scheduleView === 'week' }"
+            :aria-pressed="scheduleView === 'week' ? 'true' : 'false'"
+            @click="scheduleView = 'week'"
+          >本週</button>
         </div>
         <div class="ts-nav" v-if="scheduleView === 'week'">
-          <button class="icon-btn" @click="weekOffset--">‹</button>
+          <button type="button" class="icon-btn" aria-label="上一週" @click="weekOffset--">‹</button>
           <span class="ts-week-label">{{ weekLabel }}</span>
-          <button class="icon-btn" @click="weekOffset++">›</button>
+          <button type="button" class="icon-btn" aria-label="下一週" @click="weekOffset++">›</button>
         </div>
       </div>
 
@@ -303,6 +313,7 @@
             </div>
           </div>
           <button
+            type="button"
             class="ts-fill-btn"
             :disabled="(!ev.recordId && ev.fillLocked) || ev.isLeave || ev.isCancelled"
             :title="(ev.isLeave || ev.isCancelled) ? ev.fillLockReason : (!ev.recordId && ev.fillLocked ? ev.fillLockReason : '')"
@@ -333,6 +344,10 @@
           <div
             v-for="ev in day.events"
             :key="ev.key"
+            role="button"
+            tabindex="0"
+            :aria-disabled="(ev.isLeave || ev.isCancelled) ? 'true' : 'false'"
+            :aria-label="`${ev.timeRange} ${ev.studentName} ${ev.subjectName}，${scheduleActionLabel(ev)}`"
             class="ts-event ts-event-sm"
             :class="{
               locked: !ev.recordId && ev.fillLocked && !ev.isLeave && !ev.isCancelled,
@@ -341,6 +356,8 @@
               'ts-event-cancelled': ev.isCancelled,
             }"
             @click="openFromScheduleMaybe(ev)"
+            @keydown.enter.prevent="openFromScheduleMaybe(ev)"
+            @keydown.space.prevent="openFromScheduleMaybe(ev)"
           >
             <div class="ts-time">{{ ev.timeRange }}</div>
             <div class="ts-info">
@@ -5404,6 +5421,14 @@ watch([reviewTab, resolvedDefaultWindowStart], ([rt, win], [prt, pwin]) => {
 .ts-tabs button.active {
   background: var(--primary);
   color: var(--ds-canvas);
+}
+
+.ts-tabs button:focus-visible,
+.icon-btn:focus-visible,
+.ts-fill-btn:focus-visible,
+.ts-event[role="button"]:focus-visible {
+  outline: 3px solid var(--ds-focus-ring);
+  outline-offset: 2px;
 }
 
 .ts-nav {
