@@ -77,6 +77,38 @@ export const staffUpdates = [
     "version": "2026.08.29"
   },
   {
+    "id": "staff-2026-08-29-teacher-secondary-cta",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "teacher"
+    ],
+    "audience": [
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "今天先做的那一件事更清楚",
+    "summary": "今日工作佇列只保留一顆主行動，其餘待辦改為次要按鈕。",
+    "items": [
+      "「現在先做」仍是清楚的主按鈕；「接著處理」改為次要樣式，比較不會搶走視線。",
+      "任務排序、點名／評量導頁、資料與權限維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "「現在先做」仍是清楚的主按鈕；「接著處理」改為次要樣式，比較不會搶走視線。",
+          "任務排序、點名／評量導頁、資料與權限維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:teacher-secondary-cta"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
     "id": "staff-2026-08-29-teacher-next-action",
     "publishedAt": "2026-08-29",
     "effectiveAt": null,

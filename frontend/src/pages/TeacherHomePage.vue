@@ -195,7 +195,7 @@
               <p>{{ task.summary }}</p>
               <small>期限：{{ task.dueAt || '今天' }}</small>
             </div>
-            <button type="button" class="primary small th-work-task__cta" @click="openTeacherTask(task)">
+            <button type="button" class="ghost small th-work-task__cta" @click="openTeacherTask(task)">
               {{ task.actionLabel }}
             </button>
           </article>

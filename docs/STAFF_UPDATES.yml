@@ -37,6 +37,21 @@ updates:
     source_refs:
       - "changelog:2026-08-29:logging-facade-runtime"
 
+  - id: staff-2026-08-29-teacher-secondary-cta
+    published_at: "2026-08-29"
+    audiences:
+      - teacher
+    importance: digest
+    title: 今天先做的那一件事更清楚
+    summary: 今日工作佇列只保留一顆主行動，其餘待辦改為次要按鈕。
+    items:
+      - category: improved
+        text: 「現在先做」仍是清楚的主按鈕；「接著處理」改為次要樣式，比較不會搶走視線。
+      - category: improved
+        text: 任務排序、點名／評量導頁、資料與權限維持不變。
+    source_refs:
+      - "changelog:2026-08-29:teacher-secondary-cta"
+
   - id: staff-2026-08-29-cross-contract-makeup-conflict
     published_at: "2026-08-29"
     audiences:
