@@ -3,7 +3,8 @@
 namespace Tests\Feature;
 
 use Illuminate\Support\Facades\Route;
-use Tests\TestCase;
+use Illuminate\Foundation\Testing\TestCase;
+use Tests\CreatesApplication;
 
 /**
  * Contract test: verifies that the 7 schedule-discrepancies routes are registered in api.php.
@@ -17,6 +18,120 @@ use Tests\TestCase;
  */
 class RouteRegistrationTest extends TestCase
 {
+    use CreatesApplication;
+
+    /**
+     * These are the stable entry points for the domains that are most costly
+     * to discover broken at runtime. Keep this list intentionally small; the
+     * generated route reference remains the inventory, while this test pins
+     * the contracts that must not silently drift.
+     */
+    public static function coreApiRouteProvider(): array
+    {
+        return [
+            'auth login'       => ['POST', 'api/v1/auth/login', 'App\\Http\\Controllers\\AuthController@login'],
+            'auth register'    => ['POST', 'api/v1/auth/register', 'App\\Http\\Controllers\\AuthController@register'],
+            'rfid swipe'       => ['POST', 'api/v1/swipe-rfid', 'App\\Http\\Controllers\\SwipeRfidController@swipe'],
+            'student classes'  => ['GET', 'api/v1/student-classes', 'App\\Http\\Controllers\\StudentClassController@index'],
+            'class sessions'   => ['GET', 'api/v1/class-sessions', 'App\\Http\\Controllers\\ClassSessionController@index'],
+            'schedules read'   => ['GET', 'api/v1/schedules', 'App\\Http\\Controllers\\ScheduleController@index'],
+            'schedules create' => ['POST', 'api/v1/schedules', 'App\\Http\\Controllers\\ScheduleController@store'],
+        ];
+    }
+
+    /**
+     * @dataProvider coreApiRouteProvider
+     */
+    public function test_core_api_route_contract_is_registered(
+        string $method,
+        string $uri,
+        string $action
+    ): void {
+        $routes = collect(Route::getRoutes()->getRoutes())
+            ->filter(fn ($route) => $route->uri() === ltrim($uri, '/'))
+            ->filter(fn ($route) => in_array(strtoupper($method), $route->methods(), true));
+
+        $this->assertCount(1, $routes, "Expected exactly one route for [{$method} {$uri}].");
+        $route = $routes->first();
+
+        $this->assertSame(
+            $action,
+            $route->getActionName(),
+            "Route [{$method} {$uri}] must keep its public controller action."
+        );
+    }
+
+    /**
+     * The core staff domains must retain all three gates. A route can still
+     * exist and return data while silently losing one of these protections.
+     */
+    public static function protectedCoreApiRouteProvider(): array
+    {
+        return [
+            'student classes' => ['GET', 'api/v1/student-classes'],
+            'class sessions'  => ['GET', 'api/v1/class-sessions'],
+            'schedules read'  => ['GET', 'api/v1/schedules'],
+            'schedules create' => ['POST', 'api/v1/schedules'],
+        ];
+    }
+
+    /**
+     * @dataProvider protectedCoreApiRouteProvider
+     */
+    public function test_core_staff_routes_keep_role_campus_and_password_gates(
+        string $method,
+        string $uri
+    ): void {
+        $route = $this->findRoute($method, $uri);
+        $this->assertNotNull($route, "Route [{$method} {$uri}] must be registered before checking its gates.");
+
+        $middleware = $route->gatherMiddleware();
+
+        foreach (['role:director,teacher', 'require_campus', 'require_password_change'] as $required) {
+            $this->assertContains(
+                $required,
+                $middleware,
+                "Route [{$method} {$uri}] must retain middleware [{$required}]."
+            );
+        }
+    }
+
+    /**
+     * Public device/account entry points still need their explicit abuse
+     * throttles, even though they intentionally have no role middleware.
+     */
+    public static function publicCoreApiRouteProvider(): array
+    {
+        return [
+            'auth register' => ['POST', 'api/v1/auth/register', 'throttle:10,10'],
+            'rfid swipe'    => ['POST', 'api/v1/swipe-rfid', 'throttle:30,1'],
+        ];
+    }
+
+    /**
+     * @dataProvider publicCoreApiRouteProvider
+     */
+    public function test_public_core_routes_keep_explicit_throttle(
+        string $method,
+        string $uri,
+        string $throttle
+    ): void {
+        $route = $this->findRoute($method, $uri);
+        $this->assertNotNull($route, "Route [{$method} {$uri}] must be registered before checking its throttle.");
+        $this->assertContains($throttle, $route->gatherMiddleware());
+    }
+
+    private function findRoute(string $method, string $uri): ?\Illuminate\Routing\Route
+    {
+        foreach (Route::getRoutes()->getRoutes() as $route) {
+            if ($route->uri() === ltrim($uri, '/') && in_array(strtoupper($method), $route->methods(), true)) {
+                return $route;
+            }
+        }
+
+        return null;
+    }
+
     /**
      * @dataProvider scheduleDiscrepancyRouteProvider
      */
