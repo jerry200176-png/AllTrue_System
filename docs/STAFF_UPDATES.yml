@@ -15,6 +15,8 @@ updates:
         text: 老師管理的新增、編輯與批次新增彈窗清楚標示工作階段與標題，鍵盤與螢幕閱讀器更容易掌握上下文。
       - category: improved
         text: 老師管理彈窗的取消、儲存與批次結果操作按鈕補上正確型別，表單操作更不容易被誤判為送出。
+      - category: improved
+        text: 老師管理的搜尋、狀態與科目篩選補上欄位標籤關聯，鍵盤操作時更容易知道目前控制項用途。
     source_refs:
       - "changelog:2026-08-29:teachers-modal-semantics"
 

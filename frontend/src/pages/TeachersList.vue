@@ -27,12 +27,12 @@
 
     <AtFilterBar label="老師篩選" data-guide="teachers-filters">
       <div class="filter-item filter-item-search">
-        <label>搜尋（姓名／電話）</label>
-        <input v-model="searchQ" placeholder="輸入姓名或電話..." @input="debouncedLoad" />
+        <label for="teachers-search">搜尋（姓名／電話）</label>
+        <input id="teachers-search" v-model="searchQ" placeholder="輸入姓名或電話..." @input="debouncedLoad" />
       </div>
       <div class="filter-item">
-        <label>狀態</label>
-        <select v-model="filterStatus" @change="loadTeachers">
+        <label for="teachers-status-filter">狀態</label>
+        <select id="teachers-status-filter" v-model="filterStatus" @change="loadTeachers">
           <option value="">全部</option>
           <option value="active">在職</option>
           <option value="pending">待審核</option>
@@ -40,8 +40,8 @@
         </select>
       </div>
       <div class="filter-item">
-        <label>科目</label>
-        <select v-model="filterSubjectId" aria-label="依科目篩選">
+        <label for="teachers-subject-filter">科目</label>
+        <select id="teachers-subject-filter" v-model="filterSubjectId" aria-label="依科目篩選">
           <option value="">全部</option>
           <option v-for="s in subjects" :key="s.id" :value="s.id">{{ s.name }}</option>
         </select>
