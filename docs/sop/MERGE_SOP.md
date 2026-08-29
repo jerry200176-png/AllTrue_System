@@ -2,27 +2,29 @@
 
 **Owner:** Founder / CTO Agent  
 **Canonical policy:** [`docs/governance/RISK_BASED_MERGE_POLICY.md`](../governance/RISK_BASED_MERGE_POLICY.md)  
-**Fleet capability:** [portfolio-ops `AUTONOMY_POLICY`](https://github.com/jerry200176-png/portfolio-ops/blob/main/governance/AUTONOMY_POLICY.md) — AllTrue does not add a Founder rubber-stamp.  
-**Last verified:** 2026-08-15  
+**Fleet capability:** [portfolio-ops `AUTONOMY_POLICY`](https://github.com/jerry200176-png/portfolio-ops/blob/main/governance/AUTONOMY_POLICY.md) — AllTrue applies its stricter T3/protected product boundary.
+**Last verified:** 2026-08-29
 
 ## Before opening a PR
 
 1. Run `make agent-preflight` in a **non-forbidden** worktree.  
-2. Classify **Risk-Class** (R0–R3); when unsure, pick higher.  
+2. Classify **Risk-Class** (R0–R3) and **Autonomy-Tier** (T0–T3); when unsure, pick higher.
 3. Ensure tests match risk (R1+ needs regression coverage for the bug/path).
 
 ## Before merge
 
 | Class | Checklist |
 |-------|-----------|
-| R0 | CI green; no production behavior change |
-| R1 | CI green; test; independent verifier comment; rollback one-liner |
-| R2 | CI green (all required checks) + documented self-review checklist in PR body + resolve all bot/reviewer threads + prod verification plan in PR; solo mode: **no separate verifier needed** (Founder Decision 2026-08-14) |
-| R3 | Required checks + Repair Manifest in the PR + recovery point + verifier Agent note; implementing Agent merges |
+| R0/T0 | Required checks and docs/link checks; no production behavior change |
+| R1/T1 | Required CI, regression test, review, and rollback one-liner |
+| R2/T2 | Required CI, independent review, risk/rollback/production-verification checklist, and resolved bot/reviewer threads |
+| R3/T3 | Evidence package, dry-run/recovery plan, and Repair Manifest where applicable; stop before protected execution or activation for Founder approval |
 
-## After required checks (R0–R3)
+## After required checks (R0–R2 only)
 
-The implementing Agent squash-merges. Do not wait for a human click.
+The implementing Agent may squash-merge when the applicable risk gates pass and
+the merge does not cross a T3/protected boundary. Do not wait for a blanket
+human approval.
 
 ```bash
 gh pr merge --squash --delete-branch
@@ -40,6 +42,6 @@ Never `--admin`. If a **code** merge to `main` starts `deploy.yml`, that is the 
 
 - Force-push `main`.  
 - Bypass required checks (`--admin`).  
-- Wait for a human merge click when checks are already green.  
+- Wait for a human merge click when checks are already green and no T3/protected boundary is involved.
 - Re-enable known CI-storm / autonomous-loop workflows without R3.  
 - Use a fake second identity to satisfy R2/R3.  
