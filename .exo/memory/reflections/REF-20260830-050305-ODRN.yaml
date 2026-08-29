@@ -1,0 +1,16 @@
+id: REF-20260830-050305-ODRN
+pattern: UI simplification removed a disclosure but its E2E test still clicked the
+  deleted selector
+insight: When a workflow intentionally removes a progressive-disclosure block, update
+  its E2E contract in the same change to assert the block is absent and no obsolete
+  lazy-fetch occurs; do not restore removed UI just to satisfy stale tests.
+severity: medium
+scope: global
+actor: human
+session_id: SES-20260830050048-6EB78B05
+created_at: '2026-08-30T05:03:05+08:00'
+status: active
+tags:
+- ui
+- testing
+hit_count: 0
