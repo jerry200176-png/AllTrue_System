@@ -1,0 +1,41 @@
+id: TKT-20260830-061056-4LIH
+title: 'Pin #247 mixed-capacity picker payload regression'
+intent: 'Pin #247 mixed-capacity picker payload regression'
+kind: task
+parent_id: INT-20260830-061049-WX5G
+boundary: No runtime scheduling/API/backend/auth/permissions/billing/database/production-data/deploy
+  changes; only exact regression test and existing plan evidence.
+success_condition: 'Focused #247 test is present on current main, frontend unit/lint/build
+  and Exo checks pass, and the PR is processed with evidence.'
+priority: 1
+labels:
+- regression
+scope:
+  allow:
+  - frontend/src/components/substitute/__tests__/SubstituteTeacherPickerModal.test.js
+  - docs/plans/2026-08-29-in-app-247-mixed-capacity.md
+  - .agent-session/manifest.json
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 5
+  max_loc_changed: 220
+checks:
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: todo
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-30T06:10:56+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default

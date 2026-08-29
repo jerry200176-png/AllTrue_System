@@ -1,0 +1,46 @@
+id: INT-20260830-061049-WX5G
+title: 'Calendar #247 regression prevention'
+intent: 'Calendar #247 regression prevention'
+kind: intent
+brain_dump: 'Add deterministic regression coverage for the investigated in-app #247
+  / GitHub #2179 mixed-capacity substitute picker payload. Preserve current behavior;
+  do not change scheduling semantics or production data.'
+boundary: Only frontend test and the required bug plan/release evidence may change.
+  Do not modify runtime scheduling logic, API, backend, auth, permissions, billing,
+  database, production data, or deploy configuration.
+success_condition: 'The exact reported production payload is covered by a focused
+  test; frontend unit/lint/build checks and governed checks pass; a PR links #2179
+  and records that this is regression prevention, not a speculative runtime fix.'
+risk: low
+priority: 1
+labels:
+- regression
+scope:
+  allow:
+  - frontend/src/components/substitute/__tests__/SubstituteTeacherPickerModal.test.js
+  - docs/plans/2026-08-29-in-app-247-mixed-capacity.md
+  - .agent-session/manifest.json
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 5
+  max_loc_changed: 220
+checks:
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-30T06:10:50+08:00'
+children:
+- TKT-20260830-061056-4LIH
+resource_profile: default
