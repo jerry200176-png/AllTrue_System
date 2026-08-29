@@ -8,13 +8,19 @@ export const changelogDraftNotes = [
     "version": "2026.08.30",
     "date": "2026-08-30",
     "title": "2026.08.30 草稿（未發布）",
-    "summary": "老師工作台聚焦今天與本週",
+    "summary": "回報視窗不殘留上一筆提交提示；老師工作台聚焦今天與本週",
     "audience": [
       "teacher",
       "director"
     ],
     "draft": true,
     "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "回報視窗不殘留上一筆提交提示"
+        ]
+      },
       {
         "title": "其他改善",
         "items": [
@@ -23,6 +29,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "回報視窗不殘留上一筆提交提示",
       "老師工作台聚焦今天與本週"
     ]
   },

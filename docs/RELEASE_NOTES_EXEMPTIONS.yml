@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-08-30-bug-composer-success-reset
+    changelog_date: "2026-08-30"
+    changelog_title: "fix(ux): Bug 回報視窗不殘留上一筆提交提示"
+    reason: 僅修正回報視窗關閉／重開時的暫態提示清理；沒有新增教職員流程或改變回報資料語意。
+
   - id: silent-2026-08-27-eslint-unused-ratchet
     changelog_date: "2026-08-27"
     changelog_title: "chore(quality): 前端未使用程式碼新增 baseline ratchet"
