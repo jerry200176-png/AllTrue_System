@@ -1,7 +1,10 @@
 ---
 description: >-
   前端變更後的 deploy 規則 — 必須經過 CI 全綠 + PR merge，再由 deploy.yml 自動部署
-alwaysApply: true
+globs:
+  - "frontend/**"
+  - ".github/workflows/deploy.yml"
+alwaysApply: false
 ---
 
 # 前端 Deploy 規則（SOP 優先）
