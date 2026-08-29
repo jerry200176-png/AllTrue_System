@@ -76,6 +76,7 @@ ADAPTER_FILES = (
 STALE_AUTONOMY_MARKERS = (
     "approval:human",
     "governance requires explicit human approval",
+    "高風險模組（堂數扣除、繳費計算）必須標記「需使用者確認」",
     "等使用者批准後才 DEV",
     "使用者批准後才實作",
     "每個 Phase 結束必列 Exit Checklist，問使用者",

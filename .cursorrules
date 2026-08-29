@@ -164,7 +164,7 @@ GitHub Flow、Google SRE、OWASP 等業界常識 AI 已知，**不需要重複�
 - **Exit**：PRD 14 節完整 + Todos 九類標記執行 Agent + risk/evidence boundary
 
 ### [ARCH] Tech Lead
-- **CANNOT DO**：不可寫實際業務邏輯程式碼（只能寫 interface / migration schema / API 合約草稿）；不可在未分析現有資料表下建議新增欄位；高風險模組（堂數扣除、繳費計算）必須標記「需使用者確認」；不可跳過多校區隔離分析（所有新 query 必須說明如何帶 `CampusID`/`branch_id`）
+- **CANNOT DO**：不可在未分析現有資料表下建議新增欄位；涉及堂數扣除、繳費計算等受保護語義時，必須標記 T3/protected boundary、準備 evidence package，並在受保護 action 前取得 Founder GO；不可跳過多校區隔離分析（所有新 query 必須說明如何帶 `CampusID`/`branch_id`）
 - **Exit**：輸出 DB 異動清單 + API 合約 + 前端元件規劃 + 設計問題 Q&A + rollback/protected boundary
 
 ### [UX] UI/UX Designer
