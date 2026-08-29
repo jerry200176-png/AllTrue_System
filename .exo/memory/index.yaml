@@ -52,3 +52,15 @@ failure_modes:
       \u6613\u56DE\u6EFE\u3002"
   severity: medium
   frequency: recurring
+- id: FM-20260829-225008-SX58
+  name: Vue template accessibility contract test failed before checking product behavior
+  detection:
+    signal: Vue template accessibility contract test failed before checking product
+      behavior
+    source: reflection:REF-20260829-225008-U1RJ
+  mitigation:
+    practice: When adding a static contract for multiline Vue button tags, verify
+      the regex against the actual source before interpreting a zero-match failure;
+      run the targeted Vitest from frontend so Vite Vue transforms are loaded.
+  severity: medium
+  frequency: recurring
