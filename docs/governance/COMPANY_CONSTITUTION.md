@@ -1,8 +1,8 @@
 # Company Constitution
 
-**Version:** 0.2.0
+**Version:** 0.1.0
 **Effective:** 2026-07-18  
-**Revised:** 2026-08-29 (Founder T0–T3 autonomy decision)
+**Revised:** 2026-08-29 (Founder T0–T3 autonomy decision; overlay pin remains 0.1.0)
 **Owner:** Founder / CTO Agent  
 **Scope:** AllTrue System + sunrise-cafe (portfolio)  
 **Canonical:** This file is tool-neutral. Cursor Rules / CLAUDE.md / Skills are adapters only.
