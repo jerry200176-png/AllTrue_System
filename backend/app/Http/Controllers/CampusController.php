@@ -47,7 +47,7 @@ class CampusController extends Controller
 
             return response()->json($query->orderBy('id', 'asc')->get());
         } catch (\Throwable $e) {
-            \Log::error('[CampusController::listPublic] ' . $e->getMessage());
+            \Illuminate\Support\Facades\Log::error('[CampusController::listPublic] ' . $e->getMessage());
             return response()->json([]);
         }
     }

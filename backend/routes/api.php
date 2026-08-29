@@ -139,7 +139,7 @@ Route::post('/internal/opcache-reset', function (\Illuminate\Http\Request $req) 
         \Illuminate\Support\Facades\DB::purge($connection);
         \Illuminate\Support\Facades\DB::connection($connection)->select('SELECT 1');
     } catch (\Throwable $e) {
-        \Log::error('[internal/opcache-reset] database connection refresh failed: ' . $e->getMessage());
+        \Illuminate\Support\Facades\Log::error('[internal/opcache-reset] database connection refresh failed: ' . $e->getMessage());
 
         return response()->json(['error' => 'Database connection refresh failed'], 503);
     }

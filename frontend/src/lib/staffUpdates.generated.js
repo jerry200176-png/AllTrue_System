@@ -354,6 +354,45 @@ export const staffUpdates = [
     "version": "2026.08.29"
   },
   {
+    "id": "staff-2026-08-29-logging-facade-runtime",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "錯誤處理更穩定",
+    "summary": "分校選擇與工作台的例外處理不會因記錄錯誤而變成第二個系統錯誤。",
+    "items": [
+      "公開分校清單遇到暫時性結構／資料庫問題時，會保留清楚的空清單回應，不再出現額外的伺服器錯誤。",
+      "排課與薪資的例外記錄會正確寫入，方便追查問題並保留原本的安全備援。",
+      "本次不改學生資料、帳務、排課規則、權限或既有成功流程。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "公開分校清單遇到暫時性結構／資料庫問題時，會保留清楚的空清單回應，不再出現額外的伺服器錯誤。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "排課與薪資的例外記錄會正確寫入，方便追查問題並保留原本的安全備援。",
+          "本次不改學生資料、帳務、排課規則、權限或既有成功流程。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:logging-facade-runtime"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
     "id": "staff-2026-08-29-learning-review-tabs-a11y",
     "publishedAt": "2026-08-29",
     "effectiveAt": null,
