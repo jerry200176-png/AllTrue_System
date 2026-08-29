@@ -234,11 +234,15 @@ jobs:
               else:
                   risk = risk_match.group(1)
                   tier = tier_match.group(1)
-                  files = json.loads(subprocess.check_output(
-                      ["gh", "api", f"/repos/{repo}/pulls/{pr_number}/files?per_page=100"],
+                  file_pages = json.loads(subprocess.check_output(
+                      [
+                          "gh", "api", "--paginate", "--slurp",
+                          f"/repos/{repo}/pulls/{pr_number}/files?per_page=100",
+                      ],
                       env={**os.environ, "GH_TOKEN": os.environ["GH_TOKEN"]},
                       text=True,
                   ))
+                  files = [item for page in file_pages for item in page]
                   workflow_change = any(
                       item.get("filename", "").startswith(".github/workflows/")
                       for item in files

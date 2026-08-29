@@ -43,6 +43,7 @@ class DeployActivationStateContractTest(unittest.TestCase):
         )
         self.assertIn("mode == 'auto'", self.workflow)
         self.assertIn('changes a workflow; production activation is held', self.workflow)
+        self.assertIn('"gh", "api", "--paginate", "--slurp"', self.workflow)
 
     def test_deploy_job_cannot_run_without_auto_or_approved_manual_gate(self):
         self.assertIn("needs: [resolve-target, detect-deployable, classify-activation, production-activation]", self.workflow)
