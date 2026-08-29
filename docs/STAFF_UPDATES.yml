@@ -20,6 +20,21 @@ updates:
     source_refs:
       - "changelog:2026-08-29:reflow-duplicate-target"
 
+  - id: staff-2026-08-29-teacher-partial-queue-error
+    published_at: "2026-08-29"
+    audiences:
+      - teacher
+    importance: digest
+    title: 工作台不會被單一資料失敗卡住
+    summary: 家長回覆暫時無法載入時，已載入的點名與評量工作仍可繼續處理。
+    items:
+      - category: improved
+        text: 家長回覆資料失敗會顯示部分待辦提示，不會隱藏仍可處理的工作。
+      - category: improved
+        text: 點名／評量等關鍵資料失敗時仍會防止誤判為全部完成。
+    source_refs:
+      - "changelog:2026-08-29:teacher-partial-queue-error"
+
   - id: staff-2026-08-29-logging-facade-runtime
     published_at: "2026-08-29"
     audiences:

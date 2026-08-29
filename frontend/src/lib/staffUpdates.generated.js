@@ -109,6 +109,38 @@ export const staffUpdates = [
     "version": "2026.08.29"
   },
   {
+    "id": "staff-2026-08-29-teacher-partial-queue-error",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "teacher"
+    ],
+    "audience": [
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "工作台不會被單一資料失敗卡住",
+    "summary": "家長回覆暫時無法載入時，已載入的點名與評量工作仍可繼續處理。",
+    "items": [
+      "家長回覆資料失敗會顯示部分待辦提示，不會隱藏仍可處理的工作。",
+      "點名／評量等關鍵資料失敗時仍會防止誤判為全部完成。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "家長回覆資料失敗會顯示部分待辦提示，不會隱藏仍可處理的工作。",
+          "點名／評量等關鍵資料失敗時仍會防止誤判為全部完成。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:teacher-partial-queue-error"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
     "id": "staff-2026-08-29-teacher-next-action",
     "publishedAt": "2026-08-29",
     "effectiveAt": null,
