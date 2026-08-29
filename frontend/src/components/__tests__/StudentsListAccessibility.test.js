@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const source = readFileSync(resolve(__dirname, '../../pages/StudentsList.vue'), 'utf8');
+const nativeButtonTags = [...source.matchAll(/<button\b(?:[^>"']|"[^"]*"|'[^']*')*>/g)].map(([tag]) => tag);
 
 describe('StudentsList row disclosure accessibility', () => {
   it('makes the student row keyboard-operable with an explicit detail relationship', () => {
@@ -20,5 +21,10 @@ describe('StudentsList row disclosure accessibility', () => {
   it('keeps row-level keyboard handling away from selection and destructive actions', () => {
     expect(source).toContain('class="student-select-cell" @click.stop @keydown.stop');
     expect(source).toContain('@click.stop @keydown.stop class="action-cell"');
+  });
+
+  it('keeps every native management action explicit as a non-submit control', () => {
+    expect(nativeButtonTags.length).toBeGreaterThan(20);
+    expect(nativeButtonTags.filter((tag) => !/\btype\s*=\s*["']button["']/.test(tag))).toEqual([]);
   });
 });

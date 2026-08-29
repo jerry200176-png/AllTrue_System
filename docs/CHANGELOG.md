@@ -1,3 +1,8 @@
+## 2026-08-30 — improved(ux): 學生管理操作按鈕語意更穩定
+<!-- release-notes: silent_ship=silent-2026-08-30-students-button-semantics -->
+- 學生管理頁的新增、編輯、課程、身份關聯與視窗操作現在明確標示為一般按鈕，避免未來被表單情境誤當成送出。
+- 不改學生、課程、帳務、身份資料、權限、API 或既有操作流程。
+
 ## 2026-08-30 — improved(ux): 出缺勤操作按鈕語意更穩定
 <!-- release-notes: silent_ship=silent-2026-08-30-attendance-button-semantics -->
 - 出缺勤頁的補卡、點名、查詢、修改與對話框操作現在明確標示為一般按鈕，避免未來被表單情境誤當成送出。
