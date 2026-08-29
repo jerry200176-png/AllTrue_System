@@ -672,6 +672,38 @@ export const staffUpdates = [
     "version": "2026.08.29"
   },
   {
+    "id": "staff-2026-08-29-course-tabs-keyboard",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "課程查找分頁更適合鍵盤操作",
+    "summary": "每位學生的課程／帳務分頁可用方向鍵切換，焦點會跟著目前工作區移動。",
+    "items": [
+      "在課程查找展開學生後，可用左右鍵或上下鍵切換「課程資料／帳務資料」，不用逐一 Tab 經過每個選項。",
+      "目前分頁保留單一鍵盤焦點入口，切換後會聚焦新的工作區；課程、帳務資料與權限維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "在課程查找展開學生後，可用左右鍵或上下鍵切換「課程資料／帳務資料」，不用逐一 Tab 經過每個選項。",
+          "目前分頁保留單一鍵盤焦點入口，切換後會聚焦新的工作區；課程、帳務資料與權限維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:course-tabs-keyboard"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
     "id": "staff-2026-08-29-course-management-hierarchy",
     "publishedAt": "2026-08-29",
     "effectiveAt": null,
@@ -701,6 +733,40 @@ export const staffUpdates = [
     ],
     "sourceRefs": [
       "changelog:2026-08-29:course-management-hierarchy"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-bug-list-keyboard",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "Bug 回報可以用鍵盤快速查看",
+    "summary": "在回報列表中可直接用鍵盤選取問題並開啟詳情。",
+    "items": [
+      "聚焦回報項目後按 Enter 或 Space，即可查看問題詳情。",
+      "目前選取的回報會有清楚的輔助標示；原有滑鼠操作維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "聚焦回報項目後按 Enter 或 Space，即可查看問題詳情。",
+          "目前選取的回報會有清楚的輔助標示；原有滑鼠操作維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:bug-list-keyboard"
     ],
     "date": "2026-08-29",
     "version": "2026.08.29"

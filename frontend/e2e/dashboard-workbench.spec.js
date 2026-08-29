@@ -29,8 +29,12 @@ for (const viewport of VIEWPORTS) {
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     const errors = [];
     const secondaryRequests = [];
+    let tuitionAlertsResponse;
     page.on('request', (request) => {
       if (/\/v1\/adoption\/(task-tracker|activity-log|weekly-metrics)/.test(request.url())) secondaryRequests.push(request.url());
+    });
+    page.on('response', (response) => {
+      if (/\/v1\/alerts\/tuition(?:\?|$)/.test(response.url())) tuitionAlertsResponse = response;
     });
     page.on('pageerror', (error) => errors.push(String(error)));
 
@@ -59,6 +63,8 @@ for (const viewport of VIEWPORTS) {
     await expect.poll(() => secondaryRequests.length, { timeout: 10_000 }).toBeGreaterThan(0);
     await expect(page.locator('.director-workbench-v2__full')).toBeVisible();
     await expect(page.getByText('近期紀錄與分析', { exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '繳費與續課', exact: true })).toBeVisible();
+    await expect.poll(() => tuitionAlertsResponse?.status()).toBe(200);
 
     expect(errors, `頁面 JS 錯誤：\n${errors.join('\n')}`).toEqual([]);
   });
