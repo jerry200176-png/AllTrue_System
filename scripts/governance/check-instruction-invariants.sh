@@ -13,6 +13,7 @@ ok() { echo "invariants: OK: $*"; }
 [[ -f AGENTS.md ]] || fail "missing AGENTS.md"
 [[ -f CLAUDE.md ]] || fail "missing CLAUDE.md"
 [[ -f scripts/agent-preflight.sh ]] || fail "missing agent-preflight.sh"
+[[ -f scripts/governance/autonomy_gate.py ]] || fail "missing autonomy_gate.py"
 
 grep -q '/home/jerry/alltrue' docs/governance/WORKTREE_POLICY.md || fail "WORKTREE_POLICY missing forbidden path"
 grep -q 'WORKTREE_POLICY' AGENTS.md || fail "AGENTS.md must cite WORKTREE_POLICY"
@@ -44,6 +45,12 @@ grep -q 'CI green alone\|CI green' docs/governance/EVIDENCE_CONTRACT.md || fail 
 for sk in agent-preflight knowledge-graph-link; do
   [[ -f ".cursor/skills/$sk/SKILL.md" ]] || fail "missing skill .cursor/skills/$sk/SKILL.md"
 done
+
+if [[ -f scripts/governance/autonomy_gate.py ]]; then
+  if ! python3 scripts/governance/autonomy_gate.py --check-instructions; then
+    fail "stale/conflicting autonomy instructions detected"
+  fi
+fi
 
 if [[ "$errors" -gt 0 ]]; then
   echo "invariants: FAIL count=$errors"

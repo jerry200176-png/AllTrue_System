@@ -10,7 +10,7 @@
     "vendor/bin/phpunit"
   ],
   "coherence_rules": [],
-  "composed_at": "2026-08-29T10:59:19+08:00",
+  "composed_at": "2026-08-29T11:54:02+08:00",
   "deny_patterns": [
     "**/.env",
     "**/.env.*.local",
@@ -74,12 +74,13 @@
       },
       {
         "governance_requires": [
-          "approval:human"
+          "policy:current"
         ],
         "id": "RULE-EVO-001",
-        "message": "Practice is mutable, governance requires explicit human approval.",
+        "message": "T0/T1 autonomous after checks; T2 requires independent review; T3 stops at protected boundaries.",
         "practice_requires": [
-          "approval:any(human|trusted_agent)"
+          "risk:classified",
+          "checks:required"
         ],
         "type": "evolution_gate"
       },
@@ -97,11 +98,11 @@
     ]
   },
   "hooks_hash": "",
-  "integrity_hash": "ab8985b644f6b49e040a421a2427b58fc76c74cde4008ce619e8de1af480f389",
+  "integrity_hash": "37cf9abcbb8e37818dabec0d84c124073f0e534884184dd94d3b32889e33d45a",
   "scope_deny_from_features": [],
   "sources": {
     "config": "404842546484550fe5ae8de4255229ccc5e5c06378c54d21bc9fd874ce8e10cc",
-    "constitution": "f36ea664fa045696a839dcda1d02d893a4ebae3c58fa30e67429a0da5d058516",
+    "constitution": "ee4a26a1635176e558f73729d6b55ebc99423f15fadd8990be49d93e01f054aa",
     "features": "",
     "requirements": ""
   },

@@ -147,10 +147,10 @@ GitHub Flow、Google SRE、OWASP 等業界常識 AI 已知，**不需要重複�
 2. 小型 Fire-and-forget（錯字、README 日期、單一 docs 小修）→ 直接回答或累積 docs batch，不啟動全流程
 3. 新功能 / 高風險 / Decision-requiring → 進 **[PLAN]**，先產計畫書再寫程式
 4. 先判斷 Risk Tier：T0 docs-only、T1 low-risk code、T2 product workflow、T3 safety-critical；Tier 決定是否需要 SEC/OPS/DBA gate
-5. 每個 Phase 結束必列 Exit Checklist，問使用者「是否批准進入下一 Phase？」
-6. 使用者說「批准」/「繼續」/指定 Phase 後，才可推進
+5. 每個 Phase 結束必列 Exit Checklist；不把逐階段 Founder approval 當成一般流程 gate
+6. 只有 `RISK_BASED_MERGE_POLICY.md` 定義的 protected boundary 才需要 Founder GO
 7. 每個角色都有 CANNOT DO，違反即視為錯誤
-8. 使用者可明確跳 Phase（「直接做 DEV」）
+8. Agent 可在不跨越風險 boundary 的前提下直接執行；不得用聊天指令繞過 required checks 或 protected gate
 9. Bug 修復走獨立 [BUG] 流程，不進入主線
 10. 多 agent / 多 PR 只用 artifact handoff（API contract、DB diff、test result、decision log），不要求下游讀完整推理過程；詳見 `AGENTS.md` §Agent Orchestration SOP
 
@@ -160,12 +160,12 @@ GitHub Flow、Google SRE、OWASP 等業界常識 AI 已知，**不需要重複�
 
 ### [PLAN] Product Manager
 → 完整規格：`.cursor/rules/plan-as-prd-cross-functional.mdc`
-- **CANNOT DO**：不可直接寫程式、不可在批准前進入其他 Phase、不可自行縮減範疇
-- **Exit**：PRD 14 節完整 + Todos 九類標記執行 Agent → 等使用者批准
+- **CANNOT DO**：不可越過實際 diff 對應的 T0–T3 boundary、不可自行縮減範疇
+- **Exit**：PRD 14 節完整 + Todos 九類標記執行 Agent + risk/evidence boundary
 
 ### [ARCH] Tech Lead
 - **CANNOT DO**：不可寫實際業務邏輯程式碼（只能寫 interface / migration schema / API 合約草稿）；不可在未分析現有資料表下建議新增欄位；高風險模組（堂數扣除、繳費計算）必須標記「需使用者確認」；不可跳過多校區隔離分析（所有新 query 必須說明如何帶 `CampusID`/`branch_id`）
-- **Exit**：輸出 DB 異動清單 + API 合約 + 前端元件規劃 + 設計問題 Q&A → 等使用者批准
+- **Exit**：輸出 DB 異動清單 + API 合約 + 前端元件規劃 + 設計問題 Q&A + rollback/protected boundary
 
 ### [UX] UI/UX Designer
 → 詳細規格：`.cursor/rules/module-frontend.mdc`
@@ -178,7 +178,7 @@ GitHub Flow、Google SRE、OWASP 等業界常識 AI 已知，**不需要重複�
 - **Exit**：DB 異動清單 + 執行風險評估 + down() 回滾確認
 
 ### [DEV] 全端工程師
-- **CANNOT DO**：不可無 ARCH 設計文件自行決定 API 結構；不可直接修改高風險檔案（`AlertController::tuition`、`ApprovalSessionSyncService`、`SessionDeductionService`）；不可只完成後端宣告完成；不可新增無 `CampusID` 的跨校 query；不可跳過 `docs/AI_REGRESSION_LESSONS.md` 已知坑區
+- **CANNOT DO**：不可無 ARCH 設計文件自行決定 API 結構；不可在未具 authoritative semantics、測試與 required review 時修改高風險檔案；不可只完成後端宣告完成；不可新增無 `CampusID` 的跨校 query；不可跳過 `docs/AI_REGRESSION_LESSONS.md` 已知坑區
 - **Exit**：後端 + 前端全部完成 + PR CI GREEN；merge 後由 `deploy.yml` 自動部署（若有 deployable diff）→ 列出 QA 重點場景
 
 ### [TEST] QA 工程師
@@ -194,7 +194,7 @@ GitHub Flow、Google SRE、OWASP 等業界常識 AI 已知，**不需要重複�
 ### [REVIEW] Staff Engineer
 - **CANNOT DO**：不可只看 happy path；Critical 問題不可批准；不可略過多校區隔離
 - **重點審查**：`role:*` + `require_campus` middleware、堂數/繳費/評量邏輯一致性、N+1 Query、Breaking Change
-- **Exit**：Critical 清空，結論 LGTM → 等使用者批准
+- **Exit**：Critical 清空，結論 LGTM；T2 檢查 independent review，T3 在 protected boundary 停下
 
 ### [DOCS] Technical Writer
 - **CANNOT DO**：不可只改操作手冊而忘記 `docs/AI_REGRESSION_LESSONS.md`
@@ -242,7 +242,7 @@ GitHub Flow、Google SRE、OWASP 等業界常識 AI 已知，**不需要重複�
 - 維度：時間 / 分校 / 老師 / 科目；指標：出席率、收款率、科目數
 
 <!-- exo:governance:begin -->
-<!-- Governance hash: f45f0f00b0698aa4 -->
+<!-- Governance hash: ee4a26a1635176e5 -->
 # ExoProtocol — Governed Repository
 
 This repository uses ExoProtocol governance. All work must go through the session lifecycle.
@@ -250,19 +250,19 @@ This repository uses ExoProtocol governance. All work must go through the sessio
 ## ExoProtocol Governance
 
 - kernel: exo-kernel 0.1.0
-- lock hash: `f45f0f00b0698aa4...`
-- generated: 2026-08-15T14:50:36+08:00
+- lock hash: `ee4a26a1635176e5...`
+- generated: 2026-08-29T11:53:59+08:00
 
 ### Filesystem Deny Rules
 
-- **RULE-SEC-001**: deny read, write on `~/.aws/**`, `~/.ssh/**`, `**/.env*`
+- **RULE-SEC-001**: deny read, write on `~/.aws/**`, `~/.ssh/**`, `**/.env`, `**/.env.local`, `**/.env.*.local`, `**/.env.production`, `**/.env.staging`, `**/.env.development`, `**/.env.test`
 - **RULE-GIT-001**: deny read, write, delete on `.git/**`
 
 ### Structural Rules
 
 - **RULE-LOCK-001** (require_lock): Blocked by RULE-LOCK-001 (acquire a ticket lock first).
 - **RULE-CHECK-001** (require_checks): Blocked by RULE-CHECK-001 (checks must pass before done).
-- **RULE-EVO-001** (evolution_gate): Practice is mutable, governance requires explicit human approval.
+- **RULE-EVO-001** (evolution_gate): T0/T1 autonomous after checks; T2 requires independent review; T3 stops at protected boundaries.
 - **RULE-EVO-002** (patch_first): Patch-first evolution required.
 
 ### Default Budgets
@@ -271,11 +271,30 @@ This repository uses ExoProtocol governance. All work must go through the sessio
 
 ### Approved Checks
 
-- `npm test`
-- `npm run lint`
-- `pytest`
-- `python -m pytest`
-- `python3 -m pytest`
+- `npm run test:unit`
+- `npm run lint:no-undef`
+- `npm run build`
+- `vendor/bin/phpunit`
+
+### Active Intents
+
+- **INT-20260826-113539-5KZM**: Improve in-app bug report image attachment UX — boundary: *Do not change bug lifecycle permissions, status transitions, storage authorization, or unrelated chat behavior; do not alter production data.*
+  - TKT-20260826-113654-Q9VF: Implement direct image paste and drop in bug reports [allow: frontend/src/components/BugReportLauncher.vue, frontend/src/components/__tests__/BugReportLauncher.test.js, frontend/src/lib/bugReportsApi.js, frontend/src/lib/bugReportAttachments.js, docs/**, .agent-session/**, .exo/**, .exo/cache/**, .exo/memory/**, .exo/locks/**, .exo/tickets/**, .exo/logs/**]
+- **INT-20260826-120619-L693**: 主任繳費通知與明細直達 — boundary: *不修改 AlertController、PaymentReport 狀態機、帳務金額計算、production DB、排課與出缺勤資料；不新增第二套帳務 API。*
+  - TKT-20260826-120625-JOON: 繳費通知與繳費明細入口 UI [allow: frontend/src/pages/DirectorDashboard.vue, frontend/src/pages/TuitionCollectionPage.vue, frontend/src/components/__tests__/**, docs/**, .agent-session/**, .exo/**, .exo/cache/**, .exo/memory/**, .exo/locks/**, .exo/tickets/**, .exo/logs/**]
+- **INT-20260827-171548-YSLP**: 已繳費課程無法結算修復 — boundary: *只修改 AllTrue_System 的課程/帳務結算相關程式、測試與必要治理文件；禁止 production SSH、artisan、直接 SQL、秘密或個資輸出；保留已繳費與已上課歷史，不改付款語義。*
+  - TKT-20260827-200034-BPF2: 修復吳艾潼堂次轉移扣堂台帳不一致 [allow: backend/app/Http/Controllers/StudentClassController.php, backend/app/Console/Commands/RepairTransferredSessionLedger.php, backend/tests/Feature/StudentClassTransferSessionsTest.php, .github/workflows/ops-reconcile-transferred-session-ledger.yml, docs/CHANGELOG.md, docs/AI_REGRESSION_LESSONS.md, docs/STAFF_UPDATES.yml, frontend/src/lib/changelogDraft.generated.js, frontend/src/lib/staffUpdates.generated.js, .exo/cache/**, .exo/memory/**, .exo/locks/**, .exo/tickets/**, .exo/logs/**; deny: backend/database/**]
+- **INT-20260827-202158-4H5K**: 取消或請假課堂不應保留評量表 — boundary: *只調整取消／請假課堂的評量表一致性、既有指定異常資料修復與夜間堂數對帳零差異顯示；不改付款金額、既有有效出席歷史、帳務狀態、權限或行事曆的權威資料。*
+  - TKT-20260827-202205-1MZT: 修正取消評量殘留與零差異對帳顯示 [allow: backend/app/**, backend/tests/**, frontend/src/**, docs/**, .github/workflows/**, .exo/cache/**, .exo/memory/**, .exo/locks/**, .exo/tickets/**, .exo/logs/**]
+- **INT-20260828-190711-0W96**: Director daily progress UX — boundary: *只做 AllTrue director dashboard 的 bounded UI/progress cue 與 evidence；不改 API、auth、billing、schedule、attendance semantics、production data 或 deploy。*
+  - TKT-20260828-190801-8TY7: Deliver director daily progress UX [allow: frontend/src/pages/DirectorDashboard.vue, frontend/src/components/TodayProgressCard.vue, frontend/src/components/__tests__/TodayProgressCard.test.js, frontend/src/lib/dailyWorkProgress.js, frontend/src/lib/dailyWorkProgress.test.js, docs/design/evidence/daily-progress-ux-2026-08-28.md, .exo/cache/**, .exo/memory/**, .exo/locks/**, .exo/tickets/**, .exo/logs/**; deny: **/.env*, backend/**, supabase/**]
+- **INT-20260828-193940-H0FQ**: Student course page clarity UX — boundary: *Only frontend presentation and tests/docs. Do not change API endpoints, payloads, auth/permissions, branch isolation, billing/payment semantics, attendance, scheduling, course mutations, database, or production data. Preserve every existing action handler and route.*
+  - TKT-20260828-193947-BEY7: Implement student course summary slice [allow: frontend/src/pages/StudentsList.vue, frontend/src/components/__tests__/StudentCourse*, docs/research/**, docs/design/evidence/**, docs/CHANGELOG.md, docs/STAFF_UPDATES.yml, frontend/src/lib/changelogDraft.generated.js, frontend/src/lib/staffUpdates.generated.js, frontend/e2e/smoke.spec.js, .exo/cache/**, .exo/memory/**, .exo/locks/**, .exo/tickets/**, .exo/logs/**]
+- **INT-20260828-233910-QOQA**: Teacher daily queue clarity — boundary: *Only frontend TeacherHome presentation, tests, and required staff-facing documentation. Do not change API payloads, authorization, branch isolation, attendance, leave, learning-record semantics, scheduling, billing, database, or production data.*
+  - TKT-20260828-233917-4VHZ: Implement teacher queue priority explanation [allow: frontend/src/pages/TeacherHomePage.vue, frontend/e2e/teacher-daily-workflow.spec.js, docs/CHANGELOG.md, docs/STAFF_UPDATES.yml, .exo/cache/**, .exo/memory/**, .exo/locks/**, .exo/tickets/**, .exo/logs/**]
+- **INT-20260829-001131-D2UV**: AllTrue visual companion dashboard slice — boundary: *只改 TeacherHome 視覺呈現與前端 asset/e2e evidence；禁止 API、auth、billing、attendance、leave、learning-record、scheduling、DB、production data。*
+  - TKT-20260829-001138-KK5R: Implement original learning companion hero [allow: frontend/src/pages/TeacherHomePage.vue, frontend/src/assets/alltrue-learning-companion.png, frontend/e2e/teacher-daily-workflow.spec.js, .exo/cache/**, .exo/memory/**, .exo/locks/**, .exo/tickets/**, .exo/logs/**]
+- **INT-20260829-105203-Y3JI**: Converge AllTrue autonomy policy — boundary: *Only modify governance/PORTFOLIO_AGENT_CONTRACT.md, codex.md, AGENTS.md, CLAUDE.md, docs/governance/RISK_BASED_MERGE_POLICY.md, docs/governance/COMPANY_CONSTITUTION.md, docs/sop/MERGE_SOP.md, docs/governance/GOVERNANCE_CHANGELOG.md, .github/pull_request_template.md, .agent-session/manifest.json, and .exo/policy.sealed.json. Do not modify application code, CI workflows, production, credentials, or issue/PR state.*
 
 ### Source of Truth
 
@@ -336,6 +355,12 @@ After building a reusable utility, REGISTER it:
 
 Mark a tool as used when you import/call it:
   `exo tool-use <tool_id>`
+
+**Registered Tools (4):**
+- `frontend.src.lib.parentAssessmentProgress.js:formatAssessmentProgressDate`: Format reviewed parent assessment dates for display.
+- `frontend.src.lib.parentAssessmentProgress.js:assessmentProgressScoreLabel`: Format safe parent assessment score labels.
+- `frontend.src.lib.parentAssessmentProgress.js:assessmentProgressPercentLabel`: Format safe parent assessment percentage labels.
+- `frontend.src.lib.dashboardLoadPlan.js:runDashboardLoaders`: Run independent dashboard loaders concurrently with isolated failures
 
 
 ## Session Lifecycle

@@ -51,16 +51,16 @@ Edit these rules to match your project's needs, then run `exo build-governance` 
 }
 ```
 
-## Article: Practice is mutable, governance is sacred
-[RULE-EVO-001] Practice changes may use lightweight approval; governance changes require human approval.
+## Article: Risk-based autonomous delivery
+[RULE-EVO-001] T0/T1 work is autonomous after required checks; T2 requires verifiable independent review; T3 may be prepared autonomously but stops at protected boundaries.
 
 ```yaml exo-policy
 {
   "id": "RULE-EVO-001",
   "type": "evolution_gate",
-  "practice_requires": ["approval:any(human|trusted_agent)"],
-  "governance_requires": ["approval:human"],
-  "message": "Practice is mutable, governance requires explicit human approval."
+  "practice_requires": ["risk:classified", "checks:required"],
+  "governance_requires": ["policy:current"],
+  "message": "T0/T1 autonomous after checks; T2 requires independent review; T3 stops at protected boundaries."
 }
 ```
 

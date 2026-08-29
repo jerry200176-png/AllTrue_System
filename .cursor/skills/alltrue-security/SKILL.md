@@ -24,7 +24,7 @@ description: >-
 2. 確認新路由在 `role` + `require_campus` 群組內（R60）
 3. 檢查：token/PII 不可進 URL query、log、公開留言
 4. 多校區：每個 query 帶 `CampusID` / `branch_id`
-5. HIGH 風險 → 停線等使用者批准
+5. 依 `docs/governance/RISK_BASED_MERGE_POLICY.md` 分級：T2 需 independent review；T3 可準備實作但在 protected action 前停下等 Founder GO
 6. 可選：啟動 `review-security` subagent
 
 ## 4. Forbidden actions
@@ -42,5 +42,5 @@ description: >-
 ## 6. Exit criteria
 
 - [ ] STRIDE 六維度有結論（RED/YELLOW/GREEN）
-- [ ] HIGH 已清空或已明確延期 + 使用者批准
+- [ ] T3/protected boundary 已停止並準備 Founder evidence；T2 已完成 independent review
 - [ ] 無 token/PII 洩漏路徑

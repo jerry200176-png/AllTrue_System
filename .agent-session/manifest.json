@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "2aae5d474406459ea0ba18985c1db21a",
+  "session_id": "b27f2de237884778aaf845ee50008619",
   "project": "alltrue",
-  "task_id": "governance-autonomy-convergence-20260829",
+  "task_id": "governance-autonomy-enforcement-20260829",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "ace97deb458b77c2db555b79bfd93852c4c6687d",
-  "branch": "chore/task-governance-autonomy-convergence-20260829",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/governance-autonomy-convergence-20260829",
-  "started_at": "2026-08-29T02:48:54Z",
+  "base_sha": "476028e11f9f8fc920f90f23df92c2678484bea9",
+  "branch": "chore/task-governance-autonomy-enforcement-20260829",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/governance-autonomy-enforcement-20260829",
+  "started_at": "2026-08-29T03:47:07Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": null,
+  "agent_cli": "codex",
   "gateway_version": "0.5.0"
 }
