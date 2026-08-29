@@ -1,0 +1,47 @@
+id: INT-20260830-055426-IF3Q
+title: Teacher overdue partial-failure UX
+intent: Teacher overdue partial-failure UX
+kind: intent
+brain_dump: Fix the concrete TeacherHomePage failure where the optional past-7-days
+  overdue-learning fetch is treated as a critical queue error and hides valid current
+  attendance/assessment actions. Preserve fail-closed behavior when no other work
+  is known, but expose known current work with an explicit partial warning when overdue
+  data alone fails; add a real Vue Playwright regression mode.
+boundary: Only frontend/src/pages/TeacherHomePage.vue, frontend/e2e/teacher-daily-workflow.spec.js,
+  and required Exo/session artifacts. Do not modify APIs, backend, permissions, attendance/assessment/scheduling/billing
+  semantics, database, production data, or deploy workflows.
+success_condition: A real Vue E2E case makes only the overdue request fail and proves
+  current actionable work remains visible with a partial-data alert; existing critical-failure
+  and normal workflow tests remain green.
+risk: low
+priority: 2
+labels:
+- ui
+scope:
+  allow:
+  - frontend/src/pages/TeacherHomePage.vue
+  - frontend/e2e/teacher-daily-workflow.spec.js
+  - .agent-session/manifest.json
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 5
+  max_loc_changed: 240
+checks:
+- npm run test:unit
+- npm run build
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-30T05:54:26+08:00'
+children:
+- TKT-20260830-055433-A4MH
+resource_profile: default

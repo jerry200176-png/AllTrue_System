@@ -740,24 +740,30 @@ const teacherTasks = computed(() => buildTeacherTasks({
 const teacherTasksLoading = computed(() => (
   loadingAttendance.value || loadingOverdue.value || loadingWeek.value || awaitingReplyLoading.value
 ));
-// Reply counts are useful queue context, but they must not block valid attendance
-// or assessment actions. Critical task sources still fail closed to avoid a false
-// all-clear state; a reply-only failure is partial when other work is available.
+// Attendance and weekly projection are critical task sources: if either fails,
+// fail closed to avoid a false all-clear state. Overdue reminders and reply
+// counts are supplemental; when another known task exists, surface their
+// failure without hiding actionable attendance or assessment work.
 const teacherTasksCriticalError = computed(() => (
   attendanceLoadError.value
-  || overdueLoadError.value
   || weekLoadError.value
 ));
 const teacherTasksHasNonFeedbackWork = computed(() => teacherTasks.value.some((task) => task.type !== 'feedback'));
 const teacherTasksError = computed(() => (
   teacherTasksCriticalError.value
+  || (overdueLoadError.value && teacherTasks.value.length === 0)
   || (awaitingReplyLoadError.value && !teacherTasksHasNonFeedbackWork.value)
 ));
-const teacherTasksPartialError = computed(() => (
-  !teacherTasksCriticalError.value && awaitingReplyLoadError.value && teacherTasksHasNonFeedbackWork.value
-    ? '家長回覆資料暫時無法載入。'
-    : ''
-));
+const teacherTasksPartialError = computed(() => {
+  if (teacherTasksCriticalError.value || teacherTasks.value.length === 0) return '';
+
+  const messages = [];
+  if (overdueLoadError.value) messages.push(overdueLoadError.value);
+  if (awaitingReplyLoadError.value && teacherTasksHasNonFeedbackWork.value) {
+    messages.push(awaitingReplyLoadError.value);
+  }
+  return messages.length > 0 ? `${messages.join('。')}。` : '';
+});
 
 function teacherTaskTypeLabel(type) {
   return ({ attendance: '出缺勤', learning: '學習評量', feedback: '家長回饋' }[type] || '待辦');

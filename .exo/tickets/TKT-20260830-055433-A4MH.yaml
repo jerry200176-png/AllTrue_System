@@ -1,0 +1,44 @@
+id: TKT-20260830-055433-A4MH
+title: Keep TeacherHome actions visible when overdue fetch fails
+intent: Keep TeacherHome actions visible when overdue fetch fails
+kind: task
+parent_id: INT-20260830-055426-IF3Q
+boundary: Only adjust TeacherHome partial-error classification and its real Vue E2E
+  fixture. Preserve critical-source fail-closed behavior; do not change API, data,
+  permissions, or production configuration.
+success_condition: When only the overdue-learning request fails, known attendance/assessment
+  tasks and their CTA remain visible, a partial-data alert appears, and no false all-clear
+  is shown; existing failure cases remain covered.
+priority: 2
+labels:
+- ui
+scope:
+  allow:
+  - frontend/src/pages/TeacherHomePage.vue
+  - frontend/e2e/teacher-daily-workflow.spec.js
+  - .agent-session/manifest.json
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 5
+  max_loc_changed: 240
+checks:
+- npm run test:unit
+- npm run build
+type: feature
+status: review
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-30T05:54:33+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default
+commits:
+- 8555e46af0a1ff9c8b067de12ce7f5b7e94844d0

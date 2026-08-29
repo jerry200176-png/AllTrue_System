@@ -18,6 +18,12 @@ async function installTeacherMocks(page, mode = 'normal') {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
     }
     const path = new URL(request.url()).pathname;
+    const url = new URL(request.url());
+    if (mode === 'overdue-error'
+      && path.endsWith('/class-sessions')
+      && url.searchParams.get('end') !== localToday) {
+      return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: '補填提醒資料暫時無法載入' }) });
+    }
     if (mode === 'error' && path.includes('/class-sessions')) {
       return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: '今日課表暫時無法載入' }) });
     }
@@ -171,6 +177,17 @@ test.describe('Teacher daily workflow real Vue page', () => {
     await expect(page.locator('[data-guide="teacher-next-action"]')).toBeVisible();
     await expect(page.getByRole('button', { name: '修改評量' })).toBeVisible();
     await expect(page.getByRole('alert')).toContainText('家長回覆資料暫時無法載入');
+    await expect(page.getByText('其他工作仍可繼續處理')).toBeVisible();
+    await expect(page.getByText('今天的工作清單尚未完整載入')).toHaveCount(0);
+  });
+
+  test('keeps current actions visible when overdue learning data fails', async ({ page }) => {
+    await installTeacherMocks(page, 'overdue-error');
+    await page.setViewportSize({ width: 412, height: 915 });
+    await page.goto('/pilot-mount.html?page=teacher');
+    await expect(page.locator('[data-guide="teacher-next-action"]')).toBeVisible();
+    await expect(page.getByRole('button', { name: '修改評量' })).toBeVisible();
+    await expect(page.getByRole('alert')).toContainText('補填提醒資料暫時無法載入');
     await expect(page.getByText('其他工作仍可繼續處理')).toBeVisible();
     await expect(page.getByText('今天的工作清單尚未完整載入')).toHaveCount(0);
   });
