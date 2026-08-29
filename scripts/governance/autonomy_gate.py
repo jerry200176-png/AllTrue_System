@@ -382,12 +382,14 @@ def self_test() -> int:
     assert classify_scope(["frontend/src/pages/TeacherHomePage.vue"], "copy and spacing")["machine_minimum_tier"] == 1
     assert classify_scope(["backend/app/Services/CalendarHelper.php"], "isolated null guard")["machine_minimum_tier"] == 1
     assert classify_scope(["backend/app/Services/ScheduleService.php"], "fix schedule collision")["machine_minimum_tier"] == 2
+    assert classify_scope(["backend/app/Services/BillingService.php"], "fix payment settlement calculation")["machine_minimum_tier"] == 2
     assert classify_scope(["backend/database/migrations/2026_add_index.php"], "Schema::table add index")["machine_minimum_tier"] == 2
     assert classify_scope(["backend/database/migrations/2026_add_column.php"], "up add column; public function down() {}")["machine_minimum_tier"] == 2
     assert classify_scope(["backend/database/migrations/2026_drop_column.php"], "drop column")["machine_minimum_tier"] == 3
     assert classify_scope(["scripts/repair/reconcile.py"], "repair data")["machine_minimum_tier"] == 3
     assert classify_scope([".github/workflows/ci.yml"], "run tests")["machine_minimum_tier"] == 2
     assert classify_scope([".github/workflows/deploy.yml"], "ssh deploy")["machine_minimum_tier"] == 3
+    assert classify_scope([".github/workflows/production-activation.yml"], "ACTIVATE_PRODUCTION: true")["machine_minimum_tier"] == 3
     assert classify_scope(["unknown.bin"])["protected_boundary"] is True
 
     assert parse_declaration("Risk-Class: R2\nAutonomy-Tier: T2") == (2, 2)
