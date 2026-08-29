@@ -1,3 +1,10 @@
+## 2026-08-29 — fix(ops): 錯誤處理路徑恢復正常記錄
+
+<!-- release-notes: staff_update=staff-2026-08-29-logging-facade-runtime -->
+
+- 修正公開分校清單與排課／薪資例外處理中的 Laravel 記錄器呼叫；發生錯誤時會保留原本的 fallback 或錯誤回應，不會因記錄器名稱錯誤再觸發第二個 500。
+- 未改資料、帳務、排課、權限或部署啟用流程。
+
 ## 2026-08-29 — improved(ux): 學生課程下一步更明確
 
 <!-- release-notes: staff_update=staff-2026-08-29-student-course-next-action -->

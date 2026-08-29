@@ -1502,3 +1502,10 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **強制規則**：`attended`／`late`／`completed` → `scheduled` 必須在同一交易內作廢該堂 live 評量與點名、以原扣堂分鐘寫入一次反向台帳、重算課程計數並留下稽核快照；不得直接改 `UsedSessions`，不得產生第二筆評量。固定事故修復只能使用 allowlist 命令，身份、日期、時段與目前狀態任一漂移就停止。
 - **防再犯**：正常狀態 API 與受控資料修復都要共用「非出席不得有 live 評量／點名」不變式；請假撤銷只能走專用 cascade，不得用「先改已上再改未上」繞過流程。
 - **測試必補**：反向交易乾跑不寫入；執行後狀態、評量、點名、台帳與課程堂數一致；重跑不增加 reverse 或稽核列；目標身份／狀態漂移時整批不變。
+
+### R130. Laravel 記錄器呼叫必須走 Facade namespace，錯誤處理不可因記錄失敗再崩潰（GitHub #1959/#1967，2026-08-29）
+
+- **現象**：Sentry 連續記錄 `Class "Log" not found`；公開分校清單與內部 opcache／排課／薪資例外路徑在原始錯誤發生後，又因呼叫全域 `\\Log` 而拋出第二個錯誤，遮蔽原始原因並把預期 fallback 變成 HTTP 500。
+- **根因層級**：應用程式 namespace／錯誤處理的工程一致性缺口；Laravel 的 `Log` 是 `Illuminate\\Support\\Facades\\Log`，裸 `\\Log` 不是可攜的 framework facade。
+- **強制規則**：`backend/app` 與 `backend/routes` 的記錄呼叫必須使用明確的 Laravel facade（import 或完整 namespace）；全域 `\\Log::` 禁止重新出現。錯誤路徑至少要有一個測試證明原本的 fallback／錯誤回應仍可返回。
+- **測試必補**：`LoggingFacadeNamespaceTest` 掃描應用程式與 API route；`CampusControllerTest::test_list_public_returns_empty_array_when_schema_probe_fails` 固定 public branch fallback 不被 logging exception 破壞。

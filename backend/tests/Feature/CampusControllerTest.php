@@ -7,6 +7,7 @@ use App\Models\Campus;
 use App\Models\User;
 use App\Models\UserCampus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class CampusControllerTest extends TestCase
@@ -35,6 +36,17 @@ class CampusControllerTest extends TestCase
         $res = $this->getJson('/api/v1/branches');
         $res->assertOk();
         $this->assertIsArray($res->json());
+    }
+
+    public function test_list_public_returns_empty_array_when_schema_probe_fails(): void
+    {
+        Schema::shouldReceive('hasColumn')
+            ->once()
+            ->andThrow(new \RuntimeException('simulated schema failure'));
+
+        $res = $this->getJson('/api/v1/branches');
+
+        $res->assertOk()->assertExactJson([]);
     }
 
     public function test_authenticated_campuses_endpoint_requires_auth(): void

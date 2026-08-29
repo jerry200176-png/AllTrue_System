@@ -3716,7 +3716,7 @@ class ClassSessionController extends Controller
                 }
             }
             if ($effective !== (int) $purchased) {
-                \Log::channel('daily')->info('session_count_mismatch', [
+                \Illuminate\Support\Facades\Log::channel('daily')->info('session_count_mismatch', [
                     'course_id' => $courseId,
                     'branch_id' => $branchId,
                     'purchased' => (int) $purchased,

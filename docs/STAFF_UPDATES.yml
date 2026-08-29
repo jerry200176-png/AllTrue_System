@@ -3,6 +3,23 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-29-logging-facade-runtime
+    published_at: "2026-08-29"
+    audiences:
+      - director
+    importance: digest
+    title: 錯誤處理更穩定
+    summary: 分校選擇與工作台的例外處理不會因記錄錯誤而變成第二個系統錯誤。
+    items:
+      - category: fixed
+        text: 公開分校清單遇到暫時性結構／資料庫問題時，會保留清楚的空清單回應，不再出現額外的伺服器錯誤。
+      - category: improved
+        text: 排課與薪資的例外記錄會正確寫入，方便追查問題並保留原本的安全備援。
+      - category: improved
+        text: 本次不改學生資料、帳務、排課規則、權限或既有成功流程。
+    source_refs:
+      - "changelog:2026-08-29:logging-facade-runtime"
+
   - id: staff-2026-08-29-student-course-next-action
     published_at: "2026-08-29"
     audiences:
