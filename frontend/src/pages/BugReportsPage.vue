@@ -245,20 +245,22 @@
             共 {{ total }} 筆，第 {{ currentPage }}/{{ lastPage }} 頁
           </div>
           <div class="bug-list">
-            <div
+            <button
               v-for="bug in bugs"
               :key="bug.id"
+              type="button"
               class="bug-item"
               :class="{ active: activeBug?.id === bug.id, unread: isUnread(bug) }"
-              @click="selectBug(bug)"
+              :aria-current="activeBug?.id === bug.id ? 'true' : undefined"
+              @click="selectBug(bug, $event)"
             >
               <span class="severity-dot" :class="bug.severity"></span>
-              <div class="bug-item-info">
-                <div class="bug-title">
+              <span class="bug-item-info">
+                <span class="bug-title">
                   {{ bug.title }}
                   <span v-if="isUnread(bug)" class="unread-dot" title="有新動態"></span>
-                </div>
-                <div class="bug-meta">
+                </span>
+                <span class="bug-meta">
                   <span class="status-tag" :class="bug.status">{{ statusLabel(bug.status) }}</span>
                   <span v-if="isUnread(bug) && !isSuperAdmin" class="new-activity-tag">新動態</span>
                   <span v-if="bug.attachments_count > 0" class="bug-attach-hint" title="含截圖">
@@ -274,9 +276,9 @@
                     <span class="material-symbols-outlined">update</span>
                     {{ formatDate(bug.updated_at) }}
                   </span>
-                </div>
-              </div>
-            </div>
+                </span>
+              </span>
+            </button>
           </div>
 
           <!-- Pagination -->
@@ -306,7 +308,7 @@
       <!-- Bug detail -->
       <div v-if="activeBug" ref="detailCardEl" class="card detail-card">
         <div class="detail-header">
-          <h3>{{ detail?.title || activeBug.title }}</h3>
+          <h3 ref="detailTitleEl" tabindex="-1">{{ detail?.title || activeBug.title }}</h3>
           <button class="btn-close-detail" @click="closeDetail">
             <span class="material-symbols-outlined">close</span>
           </button>
@@ -367,6 +369,15 @@
           <div class="detail-description">
             <strong>問題描述</strong>
             <p>{{ detail.description }}</p>
+          </div>
+
+          <div v-if="isSuperAdmin && triageContext" class="triage-context-card">
+            <strong>回報補充（僅處理人員可見）</strong>
+            <div v-if="triageContext.occurrenceAt"><b>發生時間：</b>{{ triageContext.occurrenceAt }}<span v-if="triageContext.timeZone">（{{ triageContext.timeZone }}）</span></div>
+            <div v-if="triageContext.relatedReference"><b>相關資料：</b>{{ triageContext.relatedReference }}</div>
+            <div v-if="triageContext.screenSize || triageContext.timeZone">
+              <b>裝置：</b>{{ triageContext.screenSize || '未知尺寸' }}<span v-if="triageContext.timeZone"> · {{ triageContext.timeZone }}</span>
+            </div>
           </div>
 
           <!-- 回覆／留言：移到描述下方、截圖與歷程之上，讓回報者（多為手機）
@@ -468,6 +479,7 @@ import {
   updateBugStatus, updateBugCommentVisibility, reporterVerifyBug,
   getToken,
 } from '../lib/bugReportsApi';
+import { parseBugReportClientInfo } from '../lib/bugReportContext';
 import { getParentFeedbackList, getParentFeedbackUnreadCount, markParentFeedbackRead } from '../api';
 
 const props = defineProps({
@@ -478,6 +490,7 @@ const props = defineProps({
 const bugs = ref([]);
 const activeBug = ref(null);
 const detailCardEl = ref(null);
+const detailTitleEl = ref(null);
 const detail = ref(null);
 const loading = ref(false);
 const loadingDetail = ref(false);
@@ -645,6 +658,8 @@ const resolutionNote = computed(() => {
   return log?.note || '';
 });
 
+const triageContext = computed(() => parseBugReportClientInfo(detail.value?.client_info));
+
 const pageTitle = computed(() => {
   if (isSuperAdmin.value) return 'Bug 回報（處理中心）';
   return '我的 Bug 回報';
@@ -809,8 +824,11 @@ function closeDetail() {
   detailError.value = '';
 }
 
-async function selectBug(bug) {
+async function selectBug(bug, event = null) {
   if (!bug) return;
+  // Keyboard activation should move the screen-reader cursor into the loaded
+  // detail; mouse users keep their pointer context in the list.
+  const focusDetail = event?.detail === 0;
   activeBug.value = bug;
   loadingDetail.value = true;
   detailError.value = '';
@@ -836,6 +854,10 @@ async function selectBug(bug) {
     detailError.value = bugLoadErrorMessage(e, '無法載入詳情，請稍後再試');
   } finally {
     loadingDetail.value = false;
+    if (focusDetail) {
+      await nextTick();
+      detailTitleEl.value?.focus({ preventScroll: true });
+    }
     window.dispatchEvent(new CustomEvent('alltrue-refresh-badges'));
   }
 }
@@ -1172,11 +1194,17 @@ function formatDate(iso) {
 .bug-list { display: flex; flex-direction: column; }
 .bug-item {
   display: flex; align-items: flex-start; gap: 10px; padding: 12px;
-  border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.15s;
+  width: 100%; border: 0; border-bottom: 1px solid var(--border);
+  background: transparent; color: inherit; font: inherit; text-align: left;
+  cursor: pointer; transition: background 0.15s;
 }
 .bug-item:last-child { border-bottom: none; }
 .bug-item:hover { background: var(--primary-bg); }
 .bug-item.active { background: var(--primary-bg); }
+.bug-item:focus-visible {
+  outline: 2px solid var(--ds-primary);
+  outline-offset: -2px;
+}
 
 .severity-dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
 .severity-dot.critical { background: var(--danger); }
@@ -1186,6 +1214,7 @@ function formatDate(iso) {
 
 .bug-item.unread { border-left: 3px solid var(--primary); padding-left: 9px; }
 
+.bug-item-info { display: block; flex: 1; min-width: 0; }
 .bug-title { font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 6px; }
 
 /* Unread dot — inline with title */
@@ -1330,6 +1359,12 @@ function formatDate(iso) {
 .detail-description { margin: 12px 0; }
 .detail-description strong { display: block; margin-bottom: 4px; }
 .detail-description p { background: var(--ds-canvas); padding: 12px; border-radius: 8px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; }
+.triage-context-card {
+  margin: 12px 0; padding: 10px 12px; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--ds-canvas-soft); font-size: 13px; line-height: 1.6;
+}
+.triage-context-card > strong { display: block; margin-bottom: 4px; }
+.triage-context-card b { font-weight: 600; }
 
 .detail-attachments { margin: 16px 0; }
 .detail-attachments strong { display: block; margin-bottom: 8px; }

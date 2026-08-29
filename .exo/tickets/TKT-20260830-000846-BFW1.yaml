@@ -1,0 +1,43 @@
+id: TKT-20260830-000846-BFW1
+title: Implement parent portal navigation semantics
+intent: Implement parent portal navigation semantics
+kind: task
+parent_id: INT-20260830-000840-7MNX
+boundary: Only change frontend ParentPortal presentation semantics and regression
+  tests; preserve login, LINE authentication, token handling, parent projection, permissions,
+  campus scope, billing, attendance, leave, API payloads, and production data.
+success_condition: Focused accessibility contract coverage passes alongside lint and
+  build.
+priority: 2
+labels:
+- ux
+scope:
+  allow:
+  - frontend/src/pages/ParentPortal.vue
+  - frontend/src/components/__tests__/ParentPortalNavigationAccessibility.test.js
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - backend/**
+  - frontend/src/api*
+budgets:
+  max_files_changed: 4
+  max_loc_changed: 260
+checks:
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: review
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-30T00:08:46+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default
+commits:
+- ec3b8d3300620664faf816fde0da1caf57496b3a

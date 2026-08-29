@@ -184,9 +184,9 @@
           <span class="lr-batch-count">已選 {{ selectedRecordIds.size }} 筆</span>
         </div>
         <div class="lr-batch-bar__actions">
-          <button class="primary xs" :disabled="batchOperating || selectedRecordIds.size === 0" @click="batchApproveSelected">批次核准</button>
-          <button class="ghost xs" :disabled="batchOperating || selectedRecordIds.size === 0" @click="batchRequestChangesSelected">批次需修改</button>
-          <button class="danger xs" :disabled="batchOperating || selectedRecordIds.size === 0" @click="batchRejectSelected">批次退回</button>
+          <button type="button" class="primary xs" :disabled="batchOperating || selectedRecordIds.size === 0" @click="batchApproveSelected">批次核准</button>
+          <button type="button" class="ghost xs" :disabled="batchOperating || selectedRecordIds.size === 0" @click="batchRequestChangesSelected">批次需修改</button>
+          <button type="button" class="danger xs" :disabled="batchOperating || selectedRecordIds.size === 0" @click="batchRejectSelected">批次退回</button>
         </div>
       </div>
     </div>
@@ -274,21 +274,31 @@
         <h3>老師填寫入口</h3>
         <p>評量與課程綁定，老師登入後可直接從課表點堂次填寫，不需手動輸入學生、老師與時段。</p>
       </div>
-      <button class="primary" @click="switchToTeacherLogin">切換到老師登入</button>
+      <button type="button" class="primary" @click="switchToTeacherLogin">切換到老師登入</button>
     </div>
 
     <!-- ===== TEACHER: Week Schedule Widget ===== -->
     <div v-if="isTeacher && pageMode === 'records'" class="teacher-schedule card" data-guide="learning-teacher-schedule">
       <div class="ts-header">
         <h3>課表</h3>
-        <div class="ts-tabs ts-tabs--ios">
-          <button :class="{ active: scheduleView === 'today' }" @click="scheduleView = 'today'">今日</button>
-          <button :class="{ active: scheduleView === 'week' }" @click="scheduleView = 'week'">本週</button>
+        <div class="ts-tabs ts-tabs--ios" role="group" aria-label="課表檢視">
+          <button
+            type="button"
+            :class="{ active: scheduleView === 'today' }"
+            :aria-pressed="scheduleView === 'today' ? 'true' : 'false'"
+            @click="scheduleView = 'today'"
+          >今日</button>
+          <button
+            type="button"
+            :class="{ active: scheduleView === 'week' }"
+            :aria-pressed="scheduleView === 'week' ? 'true' : 'false'"
+            @click="scheduleView = 'week'"
+          >本週</button>
         </div>
         <div class="ts-nav" v-if="scheduleView === 'week'">
-          <button class="icon-btn" @click="weekOffset--">‹</button>
+          <button type="button" class="icon-btn" aria-label="上一週" @click="weekOffset--">‹</button>
           <span class="ts-week-label">{{ weekLabel }}</span>
-          <button class="icon-btn" @click="weekOffset++">›</button>
+          <button type="button" class="icon-btn" aria-label="下一週" @click="weekOffset++">›</button>
         </div>
       </div>
 
@@ -310,6 +320,7 @@
             </div>
           </div>
           <button
+            type="button"
             class="ts-fill-btn"
             :disabled="(!ev.recordId && ev.fillLocked) || ev.isLeave || ev.isCancelled"
             :title="(ev.isLeave || ev.isCancelled) ? ev.fillLockReason : (!ev.recordId && ev.fillLocked ? ev.fillLockReason : '')"
@@ -340,6 +351,10 @@
           <div
             v-for="ev in day.events"
             :key="ev.key"
+            role="button"
+            tabindex="0"
+            :aria-disabled="(ev.isLeave || ev.isCancelled) ? 'true' : 'false'"
+            :aria-label="`${ev.timeRange} ${ev.studentName} ${ev.subjectName}，${scheduleActionLabel(ev)}`"
             class="ts-event ts-event-sm"
             :class="{
               locked: !ev.recordId && ev.fillLocked && !ev.isLeave && !ev.isCancelled,
@@ -348,6 +363,8 @@
               'ts-event-cancelled': ev.isCancelled,
             }"
             @click="openFromScheduleMaybe(ev)"
+            @keydown.enter.prevent="openFromScheduleMaybe(ev)"
+            @keydown.space.prevent="openFromScheduleMaybe(ev)"
           >
             <div class="ts-time">{{ ev.timeRange }}</div>
             <div class="ts-info">
@@ -369,7 +386,7 @@
       <div class="lr-modal" style="max-width: 600px;">
         <div class="lr-modal-header">
           <h3>一鍵補登</h3>
-          <button class="ghost icon" @click="showBulkModal = false">✕</button>
+          <button type="button" class="ghost icon" @click="showBulkModal = false">✕</button>
         </div>
         <div class="lr-form">
           <p style="color:var(--ds-ink-mute); font-size:13px; margin-bottom:12px;">選擇課程後，系統會先核准歷史堂次評量，並依固定星期自動往未來推算剩餘未排課堂次。</p>
@@ -395,7 +412,7 @@
           <div v-if="bulkDateList.length > 0 && !bulkDatesLoading" style="margin-top:12px;">
             <div style="font-size:13px; font-weight:600; margin-bottom:8px;">
               應上課日期（今日前共 {{ bulkDateList.length }} 堂，已勾選 {{ bulkSelectedDates.length }} 堂）
-              <button class="ghost" style="margin-left:8px; padding:2px 10px; font-size:12px;" @click="toggleSelectAllDates">
+              <button type="button" class="ghost" style="margin-left:8px; padding:2px 10px; font-size:12px;" @click="toggleSelectAllDates">
                 {{ bulkSelectedDates.length === bulkDateList.length ? '取消全選' : '全選' }}
               </button>
             </div>
@@ -409,8 +426,8 @@
           </div>
 
           <div class="lr-form-actions" style="margin-top:16px;">
-            <button class="ghost" @click="showBulkModal = false">取消</button>
-            <button class="primary" :disabled="bulkSelectedDates.length === 0 || bulkSubmitting" @click="submitBulkBackfill">
+            <button type="button" class="ghost" @click="showBulkModal = false">取消</button>
+            <button type="button" class="primary" :disabled="bulkSelectedDates.length === 0 || bulkSubmitting" @click="submitBulkBackfill">
               {{ bulkSubmitting ? '補登中…' : `確認補登 ${bulkSelectedDates.length} 堂` }}
             </button>
           </div>
@@ -568,6 +585,7 @@
           type="button"
           v-if="!isNarrowViewport"
           :class="['lr-view-btn', { active: effectiveViewMode === 'table' }]"
+          :aria-pressed="effectiveViewMode === 'table' ? 'true' : 'false'"
           @click="viewMode = 'table'"
         >
           <span class="material-symbols-outlined" aria-hidden="true">view_list</span>
@@ -576,6 +594,7 @@
         <button
           type="button"
           :class="['lr-view-btn', { active: effectiveViewMode === 'card' }]"
+          :aria-pressed="effectiveViewMode === 'card' ? 'true' : 'false'"
           @click="viewMode = 'card'"
         >
           <span class="material-symbols-outlined" aria-hidden="true">grid_view</span>
@@ -643,8 +662,8 @@
         </div>
         <div v-else-if="hasActiveFilters" class="lr-empty-desc">試著調整日期範圍、科目或清除篩選條件</div>
         <div v-else-if="isUsingDefaultWindow" class="lr-empty-desc">若要查看更早的記錄，請點擊下方按鈕。</div>
-        <button v-if="hasActiveFilters" class="primary lr-empty-cta" @click="clearAllFilters">清除篩選條件</button>
-        <button v-else-if="isUsingDefaultWindow" class="primary lr-empty-cta" @click="clearDefaultWindow">查看全部歷史</button>
+        <button v-if="hasActiveFilters" type="button" class="primary lr-empty-cta" @click="clearAllFilters">清除篩選條件</button>
+        <button v-else-if="isUsingDefaultWindow" type="button" class="primary lr-empty-cta" @click="clearDefaultWindow">查看全部歷史</button>
       </div>
 
       <div v-else-if="effectiveViewMode === 'card'" class="lr-card-view">
@@ -728,11 +747,11 @@
               />
               <LearningRecordPreview v-if="showContentPreview" :record="record" />
               <div class="lr-record-card__actions" @click.stop>
-                <button class="ghost xs" @click="openRecordAction(record)">{{ primaryActionLabel(record) }}</button>
-                <button v-if="isDirectorRole && record.id" class="ghost xs lr-btn-director-note" @click="openDirectorNoteModal(record)">主任評語</button>
-                <button v-if="canApprove(record)" class="primary xs" @click="approveRecord(record)">核准</button>
-                <button v-if="canRequestChanges(record)" class="ghost xs" @click="requestChangesRecord(record)">需修改</button>
-                <button v-if="canReject(record)" class="danger xs" @click="rejectRecord(record)">退回</button>
+                <button type="button" class="ghost xs" @click="openRecordAction(record)">{{ primaryActionLabel(record) }}</button>
+                <button v-if="isDirectorRole && record.id" type="button" class="ghost xs lr-btn-director-note" @click="openDirectorNoteModal(record)">主任評語</button>
+                <button v-if="canApprove(record)" type="button" class="primary xs" @click="approveRecord(record)">核准</button>
+                <button v-if="canRequestChanges(record)" type="button" class="ghost xs" @click="requestChangesRecord(record)">需修改</button>
+                <button v-if="canReject(record)" type="button" class="danger xs" @click="rejectRecord(record)">退回</button>
               </div>
             </article>
           </div>
@@ -888,15 +907,15 @@
                       </td>
                       <td class="lr-actions" @click.stop>
                         <div class="lr-actions-inner">
-                          <button class="ghost xs" @click="openRecordAction(record)">{{ primaryActionLabel(record) }}</button>
-                          <button v-if="isDirectorRole && record.id" class="ghost xs lr-btn-director-note" @click="openDirectorNoteModal(record)">主任評語</button>
-                          <button v-if="canChangeTeacher(record)" class="ghost xs" @click="openChangeTeacherModal(record)">換老師</button>
+                          <button type="button" class="ghost xs" @click="openRecordAction(record)">{{ primaryActionLabel(record) }}</button>
+                          <button v-if="isDirectorRole && record.id" type="button" class="ghost xs lr-btn-director-note" @click="openDirectorNoteModal(record)">主任評語</button>
+                          <button v-if="canChangeTeacher(record)" type="button" class="ghost xs" @click="openChangeTeacherModal(record)">換老師</button>
                           <span v-if="showTimeLockHint(record)" class="lr-lock-hint">未開放</span>
-                          <button v-if="canApprove(record)" class="primary xs" @click="approveRecord(record)">核准</button>
-                          <button v-if="canRequestChanges(record)" class="ghost xs" @click="requestChangesRecord(record)">需修改</button>
-                          <button v-if="canReject(record)" class="danger xs" @click="rejectRecord(record)">退回</button>
-                          <button v-if="canRollbackApproval(record)" class="ghost xs" @click="rollbackApproval(record)">退回待審</button>
-                          <button v-if="canDelete(record)" class="danger xs" @click="deleteRecord(record)">刪除</button>
+                          <button v-if="canApprove(record)" type="button" class="primary xs" @click="approveRecord(record)">核准</button>
+                          <button v-if="canRequestChanges(record)" type="button" class="ghost xs" @click="requestChangesRecord(record)">需修改</button>
+                          <button v-if="canReject(record)" type="button" class="danger xs" @click="rejectRecord(record)">退回</button>
+                          <button v-if="canRollbackApproval(record)" type="button" class="ghost xs" @click="rollbackApproval(record)">退回待審</button>
+                          <button v-if="canDelete(record)" type="button" class="danger xs" @click="deleteRecord(record)">刪除</button>
                         </div>
                       </td>
                     </tr>
@@ -961,7 +980,7 @@
       <div class="modal lr-modal" style="max-width: 520px;">
         <div class="lr-modal-header">
           <h3>更換授課老師</h3>
-          <button class="lr-modal-close" @click="closeChangeTeacherModal">&times;</button>
+          <button type="button" class="lr-modal-close" @click="closeChangeTeacherModal">&times;</button>
         </div>
 
         <div class="lr-form">
@@ -1020,6 +1039,7 @@
           <div class="lr-modal-header-actions">
             <button
               v-if="isReadOnly"
+              type="button"
               class="lr-download-btn"
               :disabled="downloadingPng"
               @click="downloadSingleRecord"
@@ -1028,7 +1048,7 @@
               <span class="material-symbols-outlined">download</span>
               <span class="lr-download-label">{{ downloadingPng ? '下載中…' : '下載圖檔' }}</span>
             </button>
-            <button class="lr-modal-close" @click="closeModal">&times;</button>
+            <button type="button" class="lr-modal-close" @click="closeModal">&times;</button>
           </div>
           <Transition name="lr-toast">
             <div v-if="downloadToast" class="lr-download-toast" :class="{ 'lr-toast-error': downloadToast.includes('失敗') }">
@@ -1339,7 +1359,7 @@
       <div class="lr-modal" style="max-width: 480px;">
         <div class="lr-modal-header">
           <h3>匯出學習評量圖</h3>
-          <button class="ghost icon" @click="showExportModal = false">✕</button>
+          <button type="button" class="ghost icon" @click="showExportModal = false">✕</button>
         </div>
         <div class="lr-form">
           <p style="color:var(--ds-ink-mute); font-size:13px; margin-bottom:16px;">
@@ -1375,9 +1395,10 @@
           </div>
 
           <div class="lr-form-actions" style="margin-top:16px;">
-            <button class="ghost" @click="showExportModal = false">{{ exportForm.status === 'done' ? '關閉' : '取消' }}</button>
+            <button type="button" class="ghost" @click="showExportModal = false">{{ exportForm.status === 'done' ? '關閉' : '取消' }}</button>
             <button
               v-if="exportForm.status !== 'loading'"
+              type="button"
               class="primary"
               :disabled="!exportForm.startDate || !exportForm.endDate"
               @click="executeExport"
@@ -1397,7 +1418,7 @@
             <span class="material-symbols-outlined" style="font-size:20px;vertical-align:-4px;margin-right:4px">drafts</span>
             未完成草稿
           </h3>
-          <button class="lr-modal-close" @click="closeDraftPanel">&times;</button>
+          <button type="button" class="lr-modal-close" @click="closeDraftPanel">&times;</button>
         </div>
         <div class="lr-draft-panel-body">
           <div v-if="draftList.length === 0" class="lr-draft-empty">
@@ -1416,7 +1437,7 @@
                 </div>
                 <div class="lr-draft-item-time">儲存於 {{ formatDraftTime(d.savedAt) }}</div>
               </div>
-              <button class="lr-draft-item-delete" @click.stop="deleteDraftFromList(d)" title="清除此草稿">
+              <button type="button" class="lr-draft-item-delete" @click.stop="deleteDraftFromList(d)" title="清除此草稿">
                 <span class="material-symbols-outlined">delete_outline</span>
               </button>
             </div>
@@ -5411,6 +5432,14 @@ watch([reviewTab, resolvedDefaultWindowStart], ([rt, win], [prt, pwin]) => {
 .ts-tabs button.active {
   background: var(--primary);
   color: var(--ds-canvas);
+}
+
+.ts-tabs button:focus-visible,
+.icon-btn:focus-visible,
+.ts-fill-btn:focus-visible,
+.ts-event[role="button"]:focus-visible {
+  outline: 3px solid var(--ds-focus-ring);
+  outline-offset: 2px;
 }
 
 .ts-nav {

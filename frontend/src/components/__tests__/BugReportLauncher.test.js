@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
+import { readFileSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import BugReportLauncher from '../BugReportLauncher.vue';
 import {
   extractImageFiles,
@@ -13,6 +16,9 @@ import { submitBugReport } from '../../lib/bugReportsApi';
 vi.mock('../../lib/bugReportsApi', () => ({
   submitBugReport: vi.fn(() => Promise.resolve({ id: 1 })),
 }));
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const source = readFileSync(resolve(__dirname, '../BugReportLauncher.vue'), 'utf8');
 
 let previewCounter = 0;
 
@@ -146,10 +152,63 @@ describe('bug report attachments', () => {
     textarea.dispatchEvent(new Event('input', { bubbles: true }));
     await nextTick();
     bodyElement('.btn-submit').click();
+    await flushPromises();
     await nextTick();
 
     expect(submitBugReport).toHaveBeenCalledWith(expect.objectContaining({ files: [image] }));
+    expect(document.body.textContent).toContain('編號 #1');
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:bug-preview-1');
     wrapper.unmount();
+  });
+
+  it('includes optional occurrence context without changing the user description', async () => {
+    const wrapper = await openLauncher();
+    const textarea = bodyElement('#bug-report-description');
+    textarea.value = '帳務列表顯示錯誤';
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+
+    const occurrenceAt = bodyElement('#bug-occurrence-at');
+    occurrenceAt.value = '2026-08-29T14:30';
+    occurrenceAt.dispatchEvent(new Event('input', { bubbles: true }));
+    const relatedReference = bodyElement('#bug-related-reference');
+    relatedReference.value = '學生 271／課堂 32570';
+    relatedReference.dispatchEvent(new Event('input', { bubbles: true }));
+    await nextTick();
+
+    bodyElement('.btn-submit').click();
+    await nextTick();
+
+    const payload = submitBugReport.mock.calls.at(-1)[0];
+    expect(payload.description).toBe('帳務列表顯示錯誤');
+    expect(JSON.parse(payload.client_info)).toMatchObject({
+      occurrenceAt: '2026-08-29T14:30',
+      relatedReference: '學生 271／課堂 32570',
+    });
+    wrapper.unmount();
+  });
+});
+
+describe('bug report composer accessibility', () => {
+  it('associates visible field labels with stable controls', () => {
+    expect(source).toContain('for="bug-report-title"');
+    expect(source).toContain('id="bug-report-title"');
+    expect(source).toContain('for="bug-report-description"');
+    expect(source).toContain('id="bug-report-description"');
+    expect(source).toContain('for="bug-file-input"');
+    expect(source).toContain('for="bug-report-severity"');
+    expect(source).toContain('id="bug-report-severity"');
+  });
+
+  it('gives the attachment trigger and submit feedback explicit semantics', () => {
+    expect(source).toContain('aria-label="回報系統問題"');
+    expect(source).toContain('aria-label="新增截圖"');
+    expect(source).toContain('class="success-msg" role="status" aria-live="polite"');
+    expect(source).toContain('class="error-msg" role="alert"');
+  });
+
+  it('keeps the composer actions explicit non-submit buttons', () => {
+    expect(source).toMatch(/<button\s+type="button"\s+class="fab"/);
+    expect(source).toMatch(/<button type="button" class="btn-cancel"/);
+    expect(source).toMatch(/<button type="button" class="btn-submit"/);
   });
 });
