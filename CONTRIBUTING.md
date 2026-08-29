@@ -47,9 +47,9 @@
 
 ### Risk-based review evidence（#736）
 
-GitHub global `required_approving_review_count` 維持 `0`，以保留 T0/T1 autonomy；這不會豁免 T2 的 per-diff independent-review gate。T2 必須由 distinct GitHub identity 對 current PR head 提交可驗證的 `APPROVED` review。
+GitHub global `required_approving_review_count` 維持 `0`，以保留 T0/T1 autonomy；這不會豁免 T2 的 per-diff independent-review gate。T2 必須有 distinct current-head GitHub `APPROVED` review，或 separately launched verifier Agent 的 current-head attestation，且其 Agent/Exo provenance 可由 CI 驗證。
 
-1. **Independent review**：T2 PR 必須有非作者、針對 current head SHA 的 GitHub approval；無法驗證時 fail closed。
+1. **Independent review**：T2 PR 必須有非作者、針對 current head SHA 的 GitHub approval，或可驗證的 independent Agent/Exo attestation；無法驗證時 fail closed。
 2. **高風險檔強制測試（required）**：[`.github/workflows/high-risk-test-gate.yml`](.github/workflows/high-risk-test-gate.yml)——觸碰堂數扣除 / 繳費 / 刷卡 / 核准同步 / migration 但同 PR 無 `backend/tests/**` 時**擋 merge**。例外需加 label `risk-ack-no-test` 並於描述說明。設為 required：Settings → Branches → main → Require status checks → 勾 `High-risk change requires tests`。
 3. **Supplemental evidence**：自動 AI review、`Agent Session Provenance`、其他 required checks 與 PR self-review checklist 可補強證據，但不能冒充 T2 independent review。
 
@@ -58,7 +58,7 @@ GitHub global `required_approving_review_count` 維持 `0`，以保留 T0/T1 aut
 ### 再靠近一點大廠（選配、不強制）
 
 - **Merge queue**：多人協作時在 **Settings → Rules** 開啟，減少「綠燈但合併後 main 紅」。
-- **Required reviewers**：global ruleset 不要求所有 PR 一律 approval；T2 由 per-diff autonomy gate 要求 distinct current-head approval。未來若 maintainer 組成或風險政策改變，再另行調整 ruleset。
+- **Required reviewers**：global ruleset 不要求所有 PR 一律 approval；T2 由 per-diff autonomy gate 要求 current-head independent review evidence。未來若 maintainer 組成或風險政策改變，再另行調整 ruleset。
 - **Staging**：單機 Pi 可維持現狀；若要 staging，另備環境與 deploy workflow 分流（屬架構決策）。
 
 延伸閱讀（deploy 邊界、merge queue、Golden 自動化）：[`docs/archive/ENTERPRISE_WORKFLOW_ALIGNMENT.md`](docs/archive/ENTERPRISE_WORKFLOW_ALIGNMENT.md)。

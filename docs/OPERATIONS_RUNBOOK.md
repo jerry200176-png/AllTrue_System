@@ -259,7 +259,7 @@ Wrapper 會為每個 process 啟動只綁定 `127.0.0.1` 的非特權 ephemeral 
 
 ### B5. Solo + AI GitHub 週期 SOP（一人團隊 × 大廠 baseline）
 
-**適用**：CEO + AI agents；無第二位 maintainer。Issue/PR 是唯一工作佇列；CI 是 required evidence，不能取代 T2 independent review。
+**適用**：CEO + AI agents；無第二位 maintainer。Issue/PR 是唯一工作佇列；CI 是 required evidence，不能取代 T2 independent review context。
 
 **啟用（必做）**
 
@@ -269,7 +269,7 @@ Wrapper 會為每個 process 啟動只綁定 `127.0.0.1` 的非特權 ephemeral 
 | Required approvals | **0**（單人）| 避免自己卡自己；§R 稽核 `reviews` 應為 0 |
 | Auto-delete head branches | Settings → General | 減少 stale branch |
 | Squash merge | 預設 squash；一 PR 一議題 | 大廠 trunk-based 習慣 |
-| Presubmit + CI gate | AI **必須**等 checks completed；T2 另須 distinct current-head approval，T3 停在 protected boundary | CI 是 required evidence，不取代 T2 independent review |
+| Presubmit + CI gate | AI **必須**等 checks completed；T2 另須 current-head GitHub approval 或可驗證 verifier attestation；T3 依 merge/activation separation 停在 protected boundary | CI 是 required evidence，不取代 T2 independent review |
 | CODEOWNERS | 保留作 routing / context；不把作者自審當成 T2 independent review | 高風險路徑提醒 |
 | Dependabot SLA | §B0 / §T | 供應鏈 |
 | Branch hygiene | `branch-hygiene.yml` + `./scripts/branch-hygiene.sh` | 每週清理 |
@@ -279,7 +279,7 @@ Wrapper 會為每個 process 啟動只綁定 `127.0.0.1` 的非特權 ephemeral 
 | 項目 | 原因 |
 |------|------|
 | Merge queue | 單人無並行 merge 競態 |
-| Global required 1+ approval | 保留 T0/T1 autonomy；T2 由 Presubmit 依實際 diff 要求 distinct review |
+| Global required 1+ approval | 保留 T0/T1 autonomy；T2 由 Presubmit 依實際 diff 要求 independent review evidence |
 | GitHub Projects 當 Jira | Issue + labels 已夠 |
 | GitHub Discussions | 決策寫 docs / issue |
 | Mandatory signed commits | 維護成本 > 效益 |
@@ -293,7 +293,7 @@ git checkout -b feat|fix|chore/<slug>
 git push -u origin HEAD
 gh pr create --fill
 gh pr checks --watch          # 等到全綠或自己修
-gh pr merge --squash --delete-branch   # T0/T1 gates pass；T2 另須 independent review；T3 不在此處 merge
+gh pr merge --squash --delete-branch   # T0/T1 gates pass；T2 另須 independent review；T3 僅在 activation 已解耦且 evidence 完整時 merge
 bash scripts/post-merge-smoke.sh       # deploy 後必跑（取代手動點 UI）
 curl -sk https://daan.lifenet.com.tw/api/v1/health | python3 -m json.tool
 ```

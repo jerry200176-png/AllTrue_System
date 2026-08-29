@@ -42,11 +42,13 @@ Preserve autonomous delivery for low-risk changes while requiring independent re
 
 ## Review checklist (R2/T2)
 
-R2/T2 requires an independent review context, required CI, a documented risk/rollback/production-verification checklist, and resolved bot/reviewer threads. The implementing Agent remains responsible for the final evidence and may merge autonomously when no T3/protected action is involved.
+R2/T2 requires an independent review context, required CI, a documented risk/rollback/production-verification checklist, and resolved bot/reviewer threads. Independent review evidence is either a current-head GitHub `APPROVED` review from a distinct authorized identity or a current-head attestation from a separately launched verifier Agent whose Agent/Exo provenance passes the repository's machine checks. The implementing Agent remains responsible for the final evidence and may merge autonomously when no protected activation is coupled to the merge.
+
+The repository attestation form is `.agent-session/independent-review.json`. It must state the exact base and head SHAs, `decision: approved`, and carry a separately launched `agent-session` manifest plus its SHA-256 digest. `scripts/governance/autonomy_gate.py` validates these fields; a PR-body claim, AI comment, same-session self-check, stale SHA, or unverifiable manifest is not independent review evidence.
 
 ## T3/protected boundary
 
-Independent review and required checks do not authorize protected execution. The Agent may prepare the complete evidence package, but must stop before the protected action and request Founder approval with the exact action, worst credible downside, rollback/reversibility, and post-action verification.
+Independent review and required checks do not authorize protected execution. The Agent may prepare the complete evidence package and, once merge is decoupled from activation, may merge a T3 change after required evidence. It must stop before production activation, mutation/repair, migration/schema cutover, billing/entitlement semantics, identity/authz decisions, destructive action, backup restore, security-sensitive credential change, or major product/brand direction, and request Founder approval with the exact action, worst credible downside, rollback/reversibility, and post-action verification.
 
 ## Rollback
 

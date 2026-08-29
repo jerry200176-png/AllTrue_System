@@ -495,15 +495,13 @@ backfill 補建的 StudentSingIn `SignInDT` 設為 session.StartTime（非實際
 - 前端集合類資料（列表、月曆、快取）優先用「按 id/key 合併」，只有明確要清空重抓時才整包 replace。
 - 同一條業務規則如果發現在兩支 controller/service 裡都有實作，**先合併成一份再繼續改**，不要兩邊分別修。
 
-> 本節的 review 缺口描述截至 2026-08-29 前；現行 T2 PR 必須通過 `scripts/governance/autonomy_gate.py` 的 distinct current-head review 驗證。以下 duplicate-logic detector 的技術債仍未清償。
-
 ### 12.4 更深層的根因：為什麼是這裡、大公司又是靠什麼機制不常見
 
 12.1 只回答了「每個 bug 對應哪個反模式」，這節回答更根本的問題：**為什麼這幾個反模式會在這個專案發生、卻不常見於成熟工程組織？**
 
 先說清楚一個容易誤解的前提：**大公司工程師並不會少寫重複邏輯或 magic string**——這是任何規模的程式碼庫都會自然發生的事，跟寫程式的人是誰無關。真正的差異不在「有沒有寫出來」，而在**有沒有東西在合併前把它攔下來**。成熟組織通常同時具備三層攔截，這個專案目前三層都不完整：
 
-1. **強制的第二人 code review（且審查者有跨域記憶）**。一個沒參與這次改動、但看過相鄰程式碼的人，天然會問「這個 `tryExtendOnLeave` 跟 `appendTailAfterLeave` 是不是同一件事？」——這正是 code review 存在的核心價值之一，不是抓格式，是抓「這是不是已經有人做過」。本段記錄的是 2026-08-29 前的 solo-mode review 缺口；現行 T2 PR 由 `scripts/governance/autonomy_gate.py` 驗證 distinct identity 對 current head SHA 的 `APPROVED` review。這仍不能自動偵測所有語意重複——PHPStan、Bugbot 也不是重複邏輯分析器——所以本節的 duplicate-logic 技術債仍成立。
+1. **強制的第二人 code review（且審查者有跨域記憶）**。一個沒參與這次改動、但看過相鄰程式碼的人，天然會問「這個 `tryExtendOnLeave` 跟 `appendTailAfterLeave` 是不是同一件事？」——這正是 code review 存在的核心價值之一，不是抓格式，是抓「這是不是已經有人做過」。本專案的 PR 模板自己就寫明是「單人 repo Review Gate」（`.github/pull_request_template.md`）：沒有第二位強制 reviewer，只能靠自動化代理與自我檢查表近似補位，這個近似補位**目前補不到「語意重複」這一類問題**——PHPStan、Bugbot 都是抓型別/明顯錯誤，不是抓「這段邏輯是不是抄自另一支檔案」。
 2. **自動化的重複邏輯／magic string 偵測，且是合併門檻而非文件建議**。SonarQube、CodeClimate、`phpcpd`（PHP Copy/Paste Detector）等工具在成熟 CI pipeline 裡是標配，能在合併前直接標出「這段程式碼跟另一個檔案裡的某段高度相似」，把「請不要重複實作」從一句寫在文件裡容易被忘記的提醒，變成建置會失敗、人力無法略過的硬門檻。本專案目前完全沒有這一層——`phpstan-baseline.neon` 能防型別誤用，防不了兩支語意重複但寫法不同的函式。
 3. **明確的領域歸屬（domain ownership）**。在有清楚模組 owner 的組織，「請假／排課」這類核心業務規則只有一個團隊有權改動，新人要改這塊必須先過那個團隊，重複實作在審查階段就會被「這是我們的地盤，你怎麼沒找我們」攔下來。本專案沒有這種邊界——任何一次修 bug 都可能直接在最近的 controller 裡加一段新邏輯，不會有人被動觸發「這裡是不是已經有人管」的警覺。
 

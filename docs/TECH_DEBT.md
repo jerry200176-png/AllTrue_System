@@ -654,8 +654,6 @@
 | 清償成本估計 | 中（`phpcpd` 導入 + baseline 產生腳本約 1 天；grep-based magic-string presubmit 檢查約半天；SonarQube 等級整合需另外評估） |
 | 不做的代價 | 同一類「兩份獨立實作互不知情，各自正確但合起來錯」或「業務字串被複製後其中一份損毀」的 bug，會持續只能等使用者（家長帳單異常、老師操作卡住）回報才發現，且每次都要重新做一次根因調查才找得到，而非在 PR 合併前就被機器攔下來 |
 
-> TD-073 中的「單人 repo、只能依賴 review」描述是 2026-08-29 前的背景；現行 T2 PR 已由 `scripts/governance/autonomy_gate.py` 驗證 distinct current-head review。這不等於已有 duplicate-logic detector，故 TD-073 仍保持 Open。
-
 ### TD-074：`LearningRecord`（評量記錄）完全沒有審計/歷史版本機制，內容一旦覆蓋或刪除無法還原
 
 | 欄位 | 內容 |

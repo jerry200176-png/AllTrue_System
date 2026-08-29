@@ -13,10 +13,10 @@
 **Review / protected-boundary evidence：** <!-- T2: independent review context; T3: Founder decision packet and exact boundary; otherwise N/A -->
 **Rollback:** <!-- revert SHA / prior deploy / repair --rollback / n/a -->
 
-> **Review evidence（global approvals remain 0）**：自動 AI review、required checks、高風險測試與 self-review checklist 是所有 PR 的輔助證據，不能取代 T2 的 independent review。
+> **Review evidence（global approvals remain 0）**：T2/R2 必須有 current-head independent review context：① distinct authorized GitHub identity 的 `APPROVED` review，或 ② separately launched verifier Agent 的 current-head attestation，且其 Agent/Exo provenance 可由 CI 驗證。自動 AI review、required checks、高風險測試與 self-review checklist 只能補強，不能冒充 independent review。
 > **T0/T1**：required checks 與本 checklist 據實填寫後，Agent 可依風險政策 autonomous merge。
-> **T2/R2**：除 required CI、rollback / production-verification evidence 外，必須有 distinct reviewer identity 對 current head SHA 的 GitHub `APPROVED` review；無 protected Founder decision 時不需 Founder rubber stamp。
-> **T3/R3**：可準備實作與 evidence package；在 protected action 前停止並取得 Founder GO，不得以假身份或 review 取代該 gate。
+> **T2/R2**：除 required CI、rollback / production-verification evidence 外，必須有上述任一 independent review evidence；無 protected Founder decision 時不需 Founder rubber stamp。
+> **T3/R3**：可準備實作與 evidence package；若 merge 仍會隱含 production activation，先由 `merged-awaiting-activation` separation 解耦；Founder GO 仍只在 protected action 前需要，不得以 review 取代該 gate。
 
 ## 關聯 Issue（Refs / Closes 規則）
 <!-- 多階段、Epic、仍有一截沒做完 → 只填 Refs，不要寫 Closes，避免 GitHub 整張 issue 被關掉 -->

@@ -1,19 +1,22 @@
 #!/usr/bin/env python3
-"""Fail-closed risk and independent-review gate for pull requests.
+"""Fail-closed risk and review gate for pull requests.
 
-This is deliberately a small policy adapter around the repository's existing
-Presubmit check.  The canonical tier meanings remain in
-docs/governance/RISK_BASED_MERGE_POLICY.md; this file only derives the minimum
-tier from the actual diff and verifies the evidence needed for that tier.
+The canonical meanings live in docs/governance/RISK_BASED_MERGE_POLICY.md.
+This adapter derives the minimum tier from the changed scope, combines it with
+the PR declaration, and verifies the evidence required by the effective tier.
+It deliberately does not classify natural-language goals: a goal is planning
+context; the actual diff and repository policy decide merge eligibility.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import subprocess
 import sys
+import tempfile
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -21,25 +24,20 @@ from typing import Any, Iterable
 
 
 ROOT = Path(__file__).resolve().parents[2]
-
 TIER_NAMES = {0: "T0", 1: "T1", 2: "T2", 3: "T3"}
+AUTHORIZED_REVIEW_ASSOCIATIONS = {"COLLABORATOR", "MEMBER", "OWNER"}
 
 PROTECTED_PATHS = (
-    re.compile(r"^backend/database/migrations/"),
     re.compile(r"^backend/app/Http/Middleware/"),
-    re.compile(r"^backend/app/(Http/Controllers/(Auth|Alert)|Services/(SessionDeduction|ApprovalSessionSync))"),
-    re.compile(r"^backend/app/Http/Controllers/SwipeRfid"),
-    re.compile(r"^backend/routes/(api|web)\.php$"),
-    re.compile(r"^\.github/workflows/(deploy|.*(repair|activation|restore|transfer|unpaid|reconcile|backfill|migration|rotation).*)\.ya?ml$"),
-    re.compile(r"^scripts/(production|repair|ops)([-_/]|\.)"),
+    re.compile(r"^backend/app/(Http/Controllers/Auth|Services/(Identity|Authorization))"),
+    re.compile(r"^\.github/workflows/(.*(activation|restore|repair|backfill|reconcile|rotation|transfer|unpaid|migration).*)\.ya?ml$", re.I),
+    re.compile(r"^scripts/(production|repair|ops)([-_/]|\.)", re.I),
     re.compile(r"(^|/)\.env(?:\.|$)"),
-    re.compile(r"(^|/)(credentials?|secrets?)(/|\.|$)", re.IGNORECASE),
+    re.compile(r"(^|/)(credentials?|secrets?)(/|\.|$)", re.I),
 )
 
 T2_PATHS = (
-    re.compile(r"^backend/"),
     re.compile(r"^\.github/workflows/"),
-    re.compile(r"^scripts/"),
     re.compile(r"^\.exo/"),
     re.compile(r"^(AGENTS|CLAUDE)\.md$"),
     re.compile(r"^(codex\.md|\.cursorrules)$"),
@@ -51,13 +49,16 @@ T2_PATHS = (
 
 METADATA_PATHS = (re.compile(r"^\.agent-session/"),)
 
-UI_SEMANTIC_MARKERS = re.compile(
-    r"(auth|permission|role:|require_campus|campusid|attendance|leave|learningrecord|schedule|classsession|billing|payment|invoice|entitlement|sessiondeduction)",
+DOMAIN_T2_MARKERS = re.compile(
+    r"(schedule|class.?session|attendance|leave|learning.?record|billing|payment|invoice|entitlement|session.?deduct|contract|cross.?campus|cron|queue|job)",
     re.IGNORECASE,
 )
-
-MUTATION_MARKERS = re.compile(
-    r"(appleboy/ssh-action|ssh\s+|mysql\s+|psql\s+|php\s+artisan\s+(migrate|db:|.*repair)|DB::table|UPDATE\s+|DELETE\s+FROM|production-activation|workflow_dispatch)",
+PROTECTED_MARKERS = re.compile(
+    r"(production[ _-]?(activation|repair|mutation|backfill)|data[ _-]?(repair|mutation|backfill)|schema[ _-]?cutover|privilege[ _-]?expansion|permission[ _-]?grant|role[ _-]?grant|authentication|authorization|authz|\bcredential\b|\bsecret\b|backup[ _-]?restore|destructive|drop[ _]+(table|column)|truncate|financial[ _-]?correction|security[ _-]?boundary|ssh[ \t]+|appleboy/ssh-action|ACTIVATE_PRODUCTION)",
+    re.IGNORECASE,
+)
+DESTRUCTIVE_MIGRATION_MARKERS = re.compile(
+    r"(drop[ _]+(table|column|index)|truncate|rename[ _]+column|removeColumn|schema[ _-]?cutover|destructive|delete[ _]+from)",
     re.IGNORECASE,
 )
 
@@ -73,15 +74,15 @@ ADAPTER_FILES = (
     ".exo/policy.sealed.json",
 )
 
+# Only normative surfaces are scanned. Decision records, changelogs, and
+# technical-debt history are intentionally not executable instruction inputs.
 ACTIVE_POLICY_FILES = ADAPTER_FILES + (
     ".github/pull_request_template.md",
     "CONTRIBUTING.md",
+    "docs/governance/RISK_BASED_MERGE_POLICY.md",
     "docs/OPERATIONS_RUNBOOK.md",
     "docs/REF_GITHUB_RULESET_BASELINE.md",
-    "docs/governance/DECISION_RECORD_2026-08-07_TECH_DEBT_BATCH.md",
     ".github/workflows/high-risk-test-gate.yml",
-    "docs/SYSTEM_TECH_GUIDE.md",
-    "docs/TECH_DEBT.md",
 )
 
 STALE_AUTONOMY_MARKERS = (
@@ -108,61 +109,118 @@ def _matches(path: str, patterns: Iterable[re.Pattern[str]]) -> bool:
     return any(pattern.search(path) for pattern in patterns)
 
 
+def _path_patch(patch: str, path: str) -> str:
+    """Return one file's diff, preventing comments in another file changing risk."""
+    chunks = re.split(r"(?=^diff --git a/)", patch or "", flags=re.MULTILINE)
+    for chunk in chunks:
+        if re.search(rf"^\+\+\+ b/{re.escape(path)}$", chunk, re.MULTILINE):
+            return chunk
+    return patch or ""
+
+
+def _is_migration(path: str) -> bool:
+    return path.startswith("backend/database/migrations/")
+
+
+def _is_deployable(path: str) -> bool:
+    return path.startswith(("backend/", "frontend/", "scripts/")) or path in {
+        "composer.json",
+        "composer.lock",
+        ".github/workflows/deploy.yml",
+    }
+
+
 def classify_scope(paths: list[str], patch: str = "") -> dict[str, Any]:
-    """Return the minimum tier required by the real changed scope.
-
-    Unknown paths and protected-looking content deliberately resolve to T3 and
-    cannot be autonomously merged.  A PR declaration can only raise the tier,
-    never lower the result of this classifier.
-    """
-
+    """Derive the minimum tier from actual changed paths and file-local patch text."""
     tier = 0
     reasons: list[str] = []
     protected = False
-    unknown = []
+    unknown: list[str] = []
+    deployable = False
 
     for path in paths:
+        file_patch = _path_patch(patch, path)
+        deployable = deployable or _is_deployable(path)
+
         if _matches(path, METADATA_PATHS):
             reasons.append(f"session metadata path: {path}")
+            continue
+        if _is_migration(path):
+            if DESTRUCTIVE_MIGRATION_MARKERS.search(file_patch):
+                tier = max(tier, 3)
+                protected = True
+                reasons.append(f"destructive migration/schema cutover: {path}")
+            else:
+                tier = max(tier, 2)
+                reasons.append(f"additive/reversible migration: {path}")
             continue
         if _matches(path, PROTECTED_PATHS):
             tier = max(tier, 3)
             protected = True
             reasons.append(f"protected path: {path}")
             continue
-        if _matches(path, T2_PATHS):
-            tier = max(tier, 2)
-            reasons.append(f"T2 path: {path}")
-            continue
-        if path.startswith("frontend/"):
-            if UI_SEMANTIC_MARKERS.search(patch):
+        if path.startswith(".github/workflows/"):
+            if PROTECTED_MARKERS.search(file_patch) and path != ".github/workflows/presubmit.yml":
+                tier = max(tier, 3)
+                protected = True
+                reasons.append(f"protected workflow behavior: {path}")
+            else:
                 tier = max(tier, 2)
-                reasons.append(f"frontend semantic marker: {path}")
+                reasons.append(f"control-plane workflow: {path}")
+            continue
+        if path.startswith("backend/"):
+            if PROTECTED_MARKERS.search(file_patch):
+                tier = max(tier, 3)
+                protected = True
+                reasons.append(f"protected backend behavior: {path}")
+            elif DOMAIN_T2_MARKERS.search(path) or DOMAIN_T2_MARKERS.search(file_patch):
+                tier = max(tier, 2)
+                reasons.append(f"domain-semantic backend behavior: {path}")
             else:
                 tier = max(tier, 1)
-                reasons.append(f"presentation path: {path}")
+                reasons.append(f"isolated backend bugfix candidate: {path}")
+            continue
+        if path.startswith("frontend/"):
+            if PROTECTED_MARKERS.search(file_patch):
+                tier = max(tier, 3)
+                protected = True
+                reasons.append(f"protected frontend behavior: {path}")
+            elif DOMAIN_T2_MARKERS.search(path) or DOMAIN_T2_MARKERS.search(file_patch):
+                tier = max(tier, 2)
+                reasons.append(f"domain-semantic frontend behavior: {path}")
+            else:
+                tier = max(tier, 1)
+                reasons.append(f"presentation frontend behavior: {path}")
+            continue
+        if path.startswith("scripts/tests/") or path.startswith(("tests/", "backend/tests/", "frontend/tests/")):
+            tier = max(tier, 1)
+            reasons.append(f"test path: {path}")
+            continue
+        if path.startswith("scripts/"):
+            if path.startswith("scripts/governance/"):
+                tier = max(tier, 2)
+                reasons.append(f"governance enforcement script: {path}")
+            elif PROTECTED_MARKERS.search(file_patch):
+                tier = max(tier, 3)
+                protected = True
+                reasons.append(f"protected script behavior: {path}")
+            else:
+                tier = max(tier, 2)
+                reasons.append(f"engineering/control script: {path}")
+            continue
+        if _matches(path, T2_PATHS):
+            tier = max(tier, 2)
+            reasons.append(f"T2 policy/config/dependency path: {path}")
             continue
         if path.startswith(("docs/", ".github/ISSUE_TEMPLATE/")) or path in {
             "README.md",
             "SECURITY.md",
             "CONTRIBUTING.md",
+            ".github/pull_request_template.md",
         }:
             reasons.append(f"documentation path: {path}")
             continue
-        if path.startswith(("tests/", "backend/tests/", "frontend/tests/", "scripts/tests/")):
-            tier = max(tier, 1)
-            reasons.append(f"test path: {path}")
-            continue
         unknown.append(path)
-
-    executable_workflow = any(
-        path.startswith(".github/workflows/") and path not in {".github/workflows/presubmit.yml", ".github/workflows/ci.yml"}
-        for path in paths
-    )
-    if MUTATION_MARKERS.search(patch) and executable_workflow:
-        tier = max(tier, 3)
-        protected = True
-        reasons.append("production mutation or activation marker in executable control path")
 
     if unknown:
         tier = 3
@@ -170,48 +228,137 @@ def classify_scope(paths: list[str], patch: str = "") -> dict[str, Any]:
         reasons.append("unknown path(s) fail closed: " + ", ".join(unknown))
 
     return {
+        "machine_minimum_tier": tier,
         "tier": tier,
         "tier_name": TIER_NAMES[tier],
         "protected_boundary": protected,
         "unknown_paths": unknown,
         "reasons": reasons,
-        "autonomous_merge_possible": tier < 3,
+        "deployable_scope": deployable,
     }
 
 
-def parse_declaration(body: str) -> tuple[int | None, str | None]:
+def parse_declaration(body: str) -> tuple[int | None, int | None]:
     risk = re.search(r"Risk-Class:\*{0,2}\s*R([0-3])", body or "", re.IGNORECASE)
     tier = re.search(r"Autonomy-Tier:\*{0,2}\s*T([0-3])", body or "", re.IGNORECASE)
-    return (int(risk.group(1)) if risk else None, f"T{tier.group(1)}" if tier else None)
+    return (int(risk.group(1)) if risk else None, int(tier.group(1)) if tier else None)
+
+
+def effective_tier(machine_minimum: int, declared_risk: int | None, declared_tier: int | None) -> tuple[int | None, str | None]:
+    if declared_risk is None or declared_tier is None:
+        return None, "both Risk-Class and Autonomy-Tier are required for a PR"
+    if declared_risk != declared_tier:
+        return None, "Risk-Class and Autonomy-Tier must map to the same tier"
+    if declared_risk < machine_minimum or declared_tier < machine_minimum:
+        return None, "declaration understates machine-derived minimum tier"
+    return max(machine_minimum, declared_risk, declared_tier), None
 
 
 def independent_review(reviews: list[dict[str, Any]], author: str, head_sha: str) -> dict[str, Any]:
-    """Require a current, approved review from an identity other than author."""
-
+    """Accept a current-head GitHub approval from a distinct identity."""
     latest: dict[str, dict[str, Any]] = {}
     for review in reviews:
-        user = review.get("user") or {}
-        login = str(user.get("login") or "").strip()
+        login = str((review.get("user") or {}).get("login") or "").strip()
         if not login or login == author:
             continue
         timestamp = str(review.get("submitted_at") or "")
         previous = latest.get(login)
         if previous is None or timestamp >= str(previous.get("submitted_at") or ""):
             latest[login] = review
-
     for login, review in latest.items():
+        association = str(review.get("author_association") or "").upper()
         if (
             str(review.get("state", "")).upper() == "APPROVED"
             and str(review.get("commit_id") or "") == head_sha
+            and association in AUTHORIZED_REVIEW_ASSOCIATIONS
         ):
-            return {"ok": True, "reviewer": login, "commit": head_sha}
+            return {"ok": True, "kind": "github", "reviewer": login, "commit": head_sha}
+    return {"ok": False, "kind": "github", "reason": "no current distinct authorized GitHub APPROVED review"}
 
-    return {
-        "ok": False,
-        "reviewer": None,
-        "commit": None,
-        "reason": "no current APPROVED review from an identity distinct from the PR author",
+
+def _canonical_json(value: dict[str, Any]) -> bytes:
+    return json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+
+def _valid_manifest(manifest: Any, expected_base: str, session_id_to_exclude: str = "") -> tuple[bool, str]:
+    if not isinstance(manifest, dict):
+        return False, "verifier manifest must be an object"
+    required = {
+        "schema_version", "session_id", "project", "task_id", "repo_remote", "base_sha",
+        "branch", "worktree_path", "started_at", "production_mutation", "preflight_result",
+        "provenance_type",
     }
+    missing = sorted(required - set(manifest))
+    if missing:
+        return False, "verifier manifest missing: " + ", ".join(missing)
+    if manifest.get("schema_version") != "1.0" or manifest.get("project") != "alltrue":
+        return False, "verifier manifest schema/project invalid"
+    session_id = str(manifest.get("session_id") or "")
+    if len(session_id) < 8 or session_id == session_id_to_exclude:
+        return False, "verifier session is missing or is the implementing session"
+    if manifest.get("base_sha") != expected_base or not re.fullmatch(r"[0-9a-f]{40}", str(manifest.get("base_sha"))):
+        return False, "verifier manifest base_sha does not match PR base"
+    if manifest.get("production_mutation") is not False or manifest.get("preflight_result") != "pass":
+        return False, "verifier manifest is not a passed non-production session"
+    if manifest.get("provenance_type") != "agent-session":
+        return False, "verifier provenance_type must be agent-session"
+    if not str(manifest.get("branch") or "") or not str(manifest.get("worktree_path") or ""):
+        return False, "verifier manifest branch/worktree is missing"
+    blob = json.dumps(manifest, ensure_ascii=True)
+    if re.search(r"(api[_-]?key|token|password|secret|BEGIN PRIVATE)", blob, re.IGNORECASE):
+        return False, "verifier manifest contains sensitive-looking data"
+    return True, "ok"
+
+
+def verifier_attestation(repo: Path, body: str, author_session_id: str, base_sha: str, head_sha: str) -> dict[str, Any]:
+    """Validate optional evidence using the existing agent-session schema."""
+    match = re.search(r"(?im)^\s*Independent-Review-Attestation:\s*([^\s]+)\s*$", body or "")
+    relative = match.group(1).strip() if match else ".agent-session/independent-review.json"
+    if not relative.startswith(".agent-session/") or ".." in Path(relative).parts:
+        return {"ok": False, "kind": "verifier", "reason": "attestation path must be under .agent-session/"}
+    path = repo / relative
+    if not path.is_file():
+        return {"ok": False, "kind": "verifier", "reason": f"attestation file missing: {relative}"}
+    try:
+        evidence = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {"ok": False, "kind": "verifier", "reason": f"attestation unreadable: {exc}"}
+    if not isinstance(evidence, dict) or evidence.get("schema_version") != "1.0":
+        return {"ok": False, "kind": "verifier", "reason": "attestation schema invalid"}
+    if evidence.get("provenance_type") != "independent-agent-review" or evidence.get("decision") != "approved":
+        return {"ok": False, "kind": "verifier", "reason": "attestation is not an approved independent-agent review"}
+    if evidence.get("reviewed_base_sha") != base_sha or evidence.get("reviewed_head_sha") != head_sha:
+        return {"ok": False, "kind": "verifier", "reason": "attestation does not cover the current base/head"}
+    manifest = evidence.get("verifier_manifest")
+    valid, reason = _valid_manifest(manifest, base_sha, author_session_id)
+    if not valid:
+        return {"ok": False, "kind": "verifier", "reason": reason}
+    expected_hash = hashlib.sha256(_canonical_json(manifest)).hexdigest()
+    if evidence.get("verifier_manifest_sha256") != expected_hash:
+        return {"ok": False, "kind": "verifier", "reason": "verifier manifest hash is invalid"}
+    return {"ok": True, "kind": "verifier", "session_id": manifest["session_id"], "head_sha": head_sha, "artifact": relative}
+
+
+def review_evidence(repo: Path, event: dict[str, Any], base_sha: str, head_sha: str) -> dict[str, Any]:
+    pr = event.get("pull_request") or {}
+    author = str((pr.get("user") or {}).get("login") or "")
+    reviews = event.get("reviews")
+    github = independent_review(reviews, author, head_sha) if isinstance(reviews, list) else {
+        "ok": False, "kind": "github", "reason": "GitHub review evidence unavailable",
+    }
+    if github.get("ok"):
+        return github
+    manifest_path = repo / ".agent-session/manifest.json"
+    implementer_session_id = ""
+    if manifest_path.is_file():
+        try:
+            implementer_session_id = str(json.loads(manifest_path.read_text(encoding="utf-8")).get("session_id") or "")
+        except (OSError, json.JSONDecodeError):
+            pass
+    verifier = verifier_attestation(repo, str(pr.get("body") or ""), implementer_session_id, base_sha, head_sha)
+    if verifier.get("ok"):
+        return verifier
+    return {"ok": False, "kind": "none", "github": github, "verifier": verifier, "reason": "no current-head GitHub approval or verifiable independent verifier attestation"}
 
 
 def _git(*args: str) -> str:
@@ -233,11 +380,7 @@ def fetch_reviews(event: dict[str, Any], token: str | None) -> list[dict[str, An
         return None
     request = urllib.request.Request(
         f"https://api.github.com/repos/{full_name}/pulls/{number}/reviews?per_page=100",
-        headers={
-            "Accept": "application/vnd.github+json",
-            "Authorization": f"Bearer {token}",
-            "X-GitHub-Api-Version": "2022-11-28",
-        },
+        headers={"Accept": "application/vnd.github+json", "Authorization": f"Bearer {token}", "X-GitHub-Api-Version": "2022-11-28"},
     )
     try:
         with urllib.request.urlopen(request, timeout=10) as response:
@@ -245,6 +388,26 @@ def fetch_reviews(event: dict[str, Any], token: str | None) -> list[dict[str, An
     except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as exc:
         raise RuntimeError(f"cannot verify GitHub reviews: {exc}") from exc
     return value if isinstance(value, list) else []
+
+
+def _git_show(ref: str, path: str) -> str:
+    try:
+        return subprocess.check_output(["git", "show", f"{ref}:{path}"], cwd=ROOT, text=True, stderr=subprocess.DEVNULL)
+    except subprocess.CalledProcessError:
+        return ""
+
+
+def activation_separation_available(base_ref: str) -> bool:
+    """Only a verified base branch state can make T3 production code mergeable."""
+    deploy = _git_show(base_ref, ".github/workflows/deploy.yml")
+    return all(marker in deploy for marker in ("merged-awaiting-activation", "ACTIVATE_PRODUCTION:", "production-activation"))
+
+
+def merge_eligibility(effective: int, deployable: bool, activation_separated: bool) -> str:
+    """Separate PR merge eligibility from the later protected activation."""
+    if effective >= 3 and deployable and not activation_separated:
+        return "blocked-activation-separation"
+    return "autonomous-after-required-checks"
 
 
 def check_instructions(root: Path = ROOT) -> list[str]:
@@ -266,56 +429,96 @@ def check_instructions(root: Path = ROOT) -> list[str]:
     return violations
 
 
-def goal_dry_run(goal: str) -> dict[str, Any]:
-    text = goal.lower()
-    if any(marker in text for marker in ("木柵", "請假", "補課", "合約", "堂數", "收費")):
-        return {
-            "goal": goal,
-            "detected_tier": "T3",
-            "allowed_actions": ["read-only investigation", "reproduce", "regression tests", "code fix", "dry-run evidence package"],
-            "stop_boundary": "production repair, data mutation, migration/schema cutover, billing/entitlement semantic decision, activation",
-            "autonomous_merge_allowed": False,
-        }
-    if any(marker in text for marker in ("老師", "登入", "資訊太散", "下一個", "teacher", "next action")):
-        return {
-            "goal": goal,
-            "detected_tier": "T1 (unless diff changes domain semantics)",
-            "allowed_actions": ["bounded UI slice", "responsive/accessibility verification", "regression tests", "PR"],
-            "stop_boundary": "permissions, attendance/schedule semantics, auth, or major product direction",
-            "autonomous_merge_allowed": True,
-        }
-    if any(marker in text for marker in ("laravel", "升級", "bounded", "composer", "framework")):
-        return {
-            "goal": goal,
-            "detected_tier": "T2 (major dependency work; docs-only inventory may be T0)",
-            "allowed_actions": ["compatibility inventory", "isolated spike", "full tests", "rollback plan", "PR"],
-            "stop_boundary": "production runtime activation, migration/schema cutover, auth behavior decision, or unverified Pi compatibility",
-            "autonomous_merge_allowed": "conditional on actual diff and independent review",
-        }
-    return {
-        "goal": goal,
-        "detected_tier": "T3",
-        "allowed_actions": ["read-only investigation only"],
-        "stop_boundary": "unknown scope",
-        "autonomous_merge_allowed": False,
-    }
-
-
 def self_test() -> int:
-    assert classify_scope(["README.md"])["tier"] == 0
-    assert classify_scope([".agent-session/manifest.json"])["tier"] == 0
-    assert classify_scope(["frontend/src/pages/TeacherHomePage.vue"], "copy and spacing")["tier"] == 1
-    assert classify_scope(["backend/app/Services/SessionDeductionService.php"])["tier"] == 3
-    assert classify_scope(["unknown.bin"])["autonomous_merge_possible"] is False
-    assert parse_declaration("Risk-Class: R2\nAutonomy-Tier: T2") == (2, "T2")
-    assert parse_declaration("**Risk-Class:** R2\n**Autonomy-Tier:** T2") == (2, "T2")
-    reviews = [{"user": {"login": "author"}, "state": "APPROVED", "commit_id": "head", "submitted_at": "2"}]
+    assert classify_scope(["README.md"])["machine_minimum_tier"] == 0
+    assert classify_scope([".agent-session/manifest.json"])["machine_minimum_tier"] == 0
+    assert classify_scope(["frontend/src/pages/TeacherHomePage.vue"], "copy and spacing")["machine_minimum_tier"] == 1
+    assert classify_scope(["backend/app/Services/CalendarHelper.php"], "isolated null guard")["machine_minimum_tier"] == 1
+    assert classify_scope(["backend/app/Services/ScheduleService.php"], "fix schedule collision")["machine_minimum_tier"] == 2
+    assert classify_scope(["backend/database/migrations/2026_add_index.php"], "Schema::table add index")["machine_minimum_tier"] == 2
+    assert classify_scope(["backend/database/migrations/2026_add_column.php"], "up add column; public function down() {}")["machine_minimum_tier"] == 2
+    assert classify_scope(["backend/database/migrations/2026_drop_column.php"], "drop column")["machine_minimum_tier"] == 3
+    assert classify_scope(["scripts/repair/reconcile.py"], "repair data")["machine_minimum_tier"] == 3
+    assert classify_scope([".github/workflows/ci.yml"], "run tests")["machine_minimum_tier"] == 2
+    assert classify_scope([".github/workflows/deploy.yml"], "ssh deploy")["machine_minimum_tier"] == 3
+    assert classify_scope(["unknown.bin"])["protected_boundary"] is True
+
+    assert parse_declaration("Risk-Class: R2\nAutonomy-Tier: T2") == (2, 2)
+    assert effective_tier(1, 1, 1) == (1, None)
+    assert effective_tier(2, 1, 1)[0] is None
+    assert effective_tier(1, 2, 2) == (2, None)
+    assert effective_tier(1, 3, 3) == (3, None)
+    assert effective_tier(2, 3, 3) == (3, None)
+    assert effective_tier(1, 1, 2)[0] is None
+    assert effective_tier(1, 2, 1)[0] is None
+
+    reviews = [{"user": {"login": "author"}, "state": "APPROVED", "commit_id": "head", "submitted_at": "2", "author_association": "OWNER"}]
     assert independent_review(reviews, "author", "head")["ok"] is False
-    reviews.append({"user": {"login": "verifier"}, "state": "APPROVED", "commit_id": "head", "submitted_at": "3"})
+    reviews.append({"user": {"login": "verifier"}, "state": "APPROVED", "commit_id": "old", "submitted_at": "3", "author_association": "COLLABORATOR"})
+    assert independent_review(reviews, "author", "head")["ok"] is False
+    reviews.append({"user": {"login": "verifier"}, "state": "APPROVED", "commit_id": "head", "submitted_at": "4", "author_association": "COLLABORATOR"})
     assert independent_review(reviews, "author", "head")["ok"] is True
-    assert goal_dry_run("木柵請假補課撞新合約")["detected_tier"] == "T3"
-    assert goal_dry_run("老師登入後資訊太散")["autonomous_merge_allowed"] is True
-    assert "T2" in goal_dry_run("Laravel 升級 bounded step")["detected_tier"]
+
+    manifest = {
+        "schema_version": "1.0", "session_id": "verifier-session-123", "project": "alltrue",
+        "task_id": "independent-review", "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
+        "base_sha": "a" * 40, "branch": "reviewer/independent", "worktree_path": "/workspace/tasks/alltrue/reviewer",
+        "started_at": "2026-08-29T00:00:00Z", "production_mutation": False,
+        "preflight_result": "pass", "provenance_type": "agent-session", "agent_cli": "codex",
+    }
+    assert _valid_manifest(manifest, "a" * 40, "implementer-session")[0] is True
+    assert _valid_manifest(manifest, "a" * 40, "verifier-session-123")[0] is False
+    evidence = {
+        "schema_version": "1.0", "provenance_type": "independent-agent-review", "decision": "approved",
+        "reviewed_base_sha": "a" * 40, "reviewed_head_sha": "b" * 40,
+        "verifier_manifest": manifest, "verifier_manifest_sha256": hashlib.sha256(_canonical_json(manifest)).hexdigest(),
+    }
+    assert evidence["verifier_manifest_sha256"] == hashlib.sha256(_canonical_json(manifest)).hexdigest()
+    evidence["reviewed_head_sha"] = "c" * 40
+    assert evidence["reviewed_head_sha"] != "b" * 40
+    assert merge_eligibility(3, True, False) == "blocked-activation-separation"
+    assert merge_eligibility(3, True, True) == "autonomous-after-required-checks"
+    assert merge_eligibility(3, False, False) == "autonomous-after-required-checks"
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        repo = Path(temp_dir)
+        (repo / ".agent-session").mkdir()
+        evidence["reviewed_head_sha"] = "b" * 40
+        (repo / ".agent-session/independent-review.json").write_text(
+            json.dumps(evidence), encoding="utf-8"
+        )
+        valid = verifier_attestation(
+            repo,
+            "Independent-Review-Attestation: .agent-session/independent-review.json",
+            "implementer-session",
+            "a" * 40,
+            "c" * 40,
+        )
+        assert valid["ok"] is False  # deliberately stale current-head evidence
+        evidence["reviewed_head_sha"] = "c" * 40
+        (repo / ".agent-session/independent-review.json").write_text(
+            json.dumps(evidence), encoding="utf-8"
+        )
+        valid = verifier_attestation(
+            repo,
+            "Independent-Review-Attestation: .agent-session/independent-review.json",
+            "implementer-session",
+            "a" * 40,
+            "c" * 40,
+        )
+        assert valid["ok"] is True
+        evidence["verifier_manifest_sha256"] = "0" * 64
+        (repo / ".agent-session/independent-review.json").write_text(
+            json.dumps(evidence), encoding="utf-8"
+        )
+        invalid = verifier_attestation(
+            repo,
+            "Independent-Review-Attestation: .agent-session/independent-review.json",
+            "implementer-session",
+            "a" * 40,
+            "c" * 40,
+        )
+        assert invalid["ok"] is False
     print("autonomy-gate self-test: PASS")
     return 0
 
@@ -326,7 +529,6 @@ def main() -> int:
     parser.add_argument("--head", default="HEAD")
     parser.add_argument("--event")
     parser.add_argument("--token")
-    parser.add_argument("--goal")
     parser.add_argument("--check-instructions", action="store_true")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
@@ -334,7 +536,6 @@ def main() -> int:
     if args.self_test:
         return self_test()
     if args.check_instructions:
-        self_test()
         violations = check_instructions()
         if violations:
             for violation in violations:
@@ -342,61 +543,68 @@ def main() -> int:
             return 1
         print("autonomy instruction consistency: PASS")
         return 0
-    if args.goal:
-        print(json.dumps(goal_dry_run(args.goal), ensure_ascii=False, indent=2))
-        return 0
     if not args.base:
-        parser.error("--base is required unless --self-test, --goal, or --check-instructions is used")
+        parser.error("--base is required unless --self-test or --check-instructions is used")
 
     paths, patch = changed_scope(args.base, args.head)
     result = classify_scope(paths, patch)
     result["changed_files"] = paths
-
     event: dict[str, Any] = {}
     if args.event:
         event = json.loads(Path(args.event).read_text(encoding="utf-8"))
     pr = event.get("pull_request") or {}
     declared_risk, declared_tier = parse_declaration(str(pr.get("body") or ""))
-    result["declared_risk"] = declared_risk
-    result["declared_tier"] = declared_tier
+    result["declared_risk"] = f"R{declared_risk}" if declared_risk is not None else None
+    result["declared_tier"] = f"T{declared_tier}" if declared_tier is not None else None
+    result["effective_tier"] = None
+    result["merge_eligibility"] = "unknown"
 
     if pr and (declared_risk is None or declared_tier is None):
         print(json.dumps(result, ensure_ascii=False, indent=2))
         print("AUTONOMY-GATE-FAIL: PR must declare Risk-Class and Autonomy-Tier", file=sys.stderr)
         return 1
-
-    if declared_risk is not None and declared_risk < result["tier"]:
+    if not pr:
+        result["merge_eligibility"] = "local-only"
         print(json.dumps(result, ensure_ascii=False, indent=2))
-        print("AUTONOMY-GATE-FAIL: PR declaration is lower than actual changed scope", file=sys.stderr)
-        return 1
-    if declared_tier is not None and int(declared_tier[1:]) < result["tier"]:
-        print(json.dumps(result, ensure_ascii=False, indent=2))
-        print("AUTONOMY-GATE-FAIL: Autonomy-Tier is lower than actual changed scope", file=sys.stderr)
-        return 1
+        print(f"autonomy scope: PASS ({result['tier_name']})")
+        return 0
 
-    if result["tier"] >= 2:
-        if not pr:
-            result["independent_review"] = {"ok": None, "reason": "local scope check; GitHub review is evaluated only for a PR event"}
-        else:
-            reviews = fetch_reviews(event, args.token)
-            if reviews is None:
-                result["independent_review"] = {"ok": False, "reason": "GitHub review evidence unavailable"}
-            else:
-                author = str((pr.get("user") or {}).get("login") or "")
-                head_sha = str((pr.get("head") or {}).get("sha") or "")
-                result["independent_review"] = independent_review(reviews, author, head_sha)
-        if result["tier"] == 2 and pr and not result["independent_review"]["ok"]:
+    effective, declaration_error = effective_tier(int(result["machine_minimum_tier"]), declared_risk, declared_tier)
+    if declaration_error:
+        result["declaration_error"] = declaration_error
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        print(f"AUTONOMY-GATE-FAIL: {declaration_error}", file=sys.stderr)
+        return 1
+    assert effective is not None
+    result["effective_tier"] = TIER_NAMES[effective]
+    result["effective_tier_number"] = effective
+
+    base_sha = str((pr.get("base") or {}).get("sha") or args.base)
+    head_sha = str((pr.get("head") or {}).get("sha") or args.head)
+    result["activation_separation_available"] = activation_separation_available(args.base)
+    result["review_evidence"] = {"ok": None, "reason": "not required for T0/T1"}
+    if effective >= 2:
+        reviews = fetch_reviews(event, args.token)
+        event["reviews"] = reviews if reviews is not None else []
+        result["review_evidence"] = review_evidence(ROOT, event, base_sha, head_sha)
+        if not result["review_evidence"].get("ok"):
+            result["merge_eligibility"] = "blocked-review"
             print(json.dumps(result, ensure_ascii=False, indent=2))
-            print("AUTONOMY-GATE-FAIL: T2 requires verifiable independent review", file=sys.stderr)
+            print("AUTONOMY-GATE-FAIL: T2+ requires current-head independent review evidence", file=sys.stderr)
             return 1
 
-    if result["tier"] >= 3:
+    result["merge_eligibility"] = merge_eligibility(
+        effective,
+        bool(result["deployable_scope"]),
+        bool(result["activation_separation_available"]),
+    )
+    if result["merge_eligibility"] == "blocked-activation-separation":
         print(json.dumps(result, ensure_ascii=False, indent=2))
-        print("AUTONOMY-GATE-FAIL: T3/protected scope is fail-closed for autonomous merge", file=sys.stderr)
+        print("AUTONOMY-GATE-FAIL: T3 deployable scope cannot merge while merge still implies production activation", file=sys.stderr)
         return 1
 
     print(json.dumps(result, ensure_ascii=False, indent=2))
-    print(f"autonomy gate: PASS ({result['tier_name']})")
+    print(f"autonomy gate: PASS ({result['effective_tier']})")
     return 0
 
 
