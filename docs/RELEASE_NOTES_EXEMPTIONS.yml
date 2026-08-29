@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-08-29-bug-reports-tabs-a11y
+    changelog_date: "2026-08-29"
+    changelog_title: "improved(ux): Bug 回報工作區頁籤更容易辨識"
+    reason: 僅改善 super admin 內部 Bug 回報／家長回饋支援工作區的鍵盤與螢幕閱讀器語意；沒有新增教職員操作流程或改變回報資料語意。
+
   - id: silent-2026-08-29-entitlement-reason-length
     changelog_date: "2026-08-29"
     changelog_title: "fix(ops): 堂次轉移 reason 過長改為明確擋下"
