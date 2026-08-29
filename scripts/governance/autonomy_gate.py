@@ -24,6 +24,9 @@ from typing import Any, Iterable
 ROOT = Path(__file__).resolve().parents[2]
 TIER_NAMES = {0: "T0", 1: "T1", 2: "T2", 3: "T3"}
 AUTHORIZED_REVIEW_ASSOCIATIONS = {"COLLABORATOR", "MEMBER", "OWNER"}
+# Existing external verifier App. This is deliberately narrow and is not a
+# repository-authored attestation or a substitute GitHub identity.
+TRUSTED_VERIFIER_APP = {"slug": "cursor", "id": 1210556, "check_name": "Cursor Bugbot"}
 
 PROTECTED_PATHS = (
     re.compile(r"^backend/app/Http/Middleware/"),
@@ -274,6 +277,41 @@ def independent_review(reviews: list[dict[str, Any]], author: str, head_sha: str
     return {"ok": False, "kind": "github", "reason": "no current distinct authorized GitHub APPROVED review"}
 
 
+def independent_verifier_check(check_runs: list[dict[str, Any]], head_sha: str) -> dict[str, Any]:
+    """Accept only a trusted external verifier's successful check on this HEAD."""
+    matching = [
+        check for check in check_runs
+        if str(check.get("name") or "") == TRUSTED_VERIFIER_APP["check_name"]
+        and str(check.get("head_sha") or "") == head_sha
+        and str((check.get("app") or {}).get("slug") or "") == TRUSTED_VERIFIER_APP["slug"]
+        and str((check.get("app") or {}).get("id") or "") == str(TRUSTED_VERIFIER_APP["id"])
+    ]
+    if not matching:
+        return {"ok": False, "kind": "verifier-check", "reason": "no current-head check from the trusted verifier App"}
+    latest = max(
+        matching,
+        key=lambda check: str(check.get("completed_at") or check.get("started_at") or ""),
+    )
+    status = str(latest.get("status") or "").lower()
+    conclusion = str(latest.get("conclusion") or "").lower()
+    if status != "completed" or conclusion != "success":
+        return {
+            "ok": False,
+            "kind": "verifier-check",
+            "reason": f"trusted verifier check is not successful ({status}/{conclusion})",
+            "check_run_id": latest.get("id"),
+            "commit": head_sha,
+        }
+    return {
+        "ok": True,
+        "kind": "verifier-check",
+        "verifier": TRUSTED_VERIFIER_APP["check_name"],
+        "app_id": TRUSTED_VERIFIER_APP["id"],
+        "check_run_id": latest.get("id"),
+        "commit": head_sha,
+    }
+
+
 def review_evidence(repo: Path, event: dict[str, Any], base_sha: str, head_sha: str) -> dict[str, Any]:
     pr = event.get("pull_request") or {}
     author = str((pr.get("user") or {}).get("login") or "")
@@ -283,18 +321,19 @@ def review_evidence(repo: Path, event: dict[str, Any], base_sha: str, head_sha: 
     }
     if github.get("ok"):
         return github
+    check_runs = event.get("check_runs")
+    verifier = independent_verifier_check(check_runs, head_sha) if isinstance(check_runs, list) else {
+        "ok": False,
+        "kind": "verifier-check",
+        "reason": "GitHub check-run evidence unavailable",
+    }
+    if verifier.get("ok"):
+        return verifier
     return {
         "ok": False,
         "kind": "none",
         "github": github,
-        "verifier": {
-            "ok": False,
-            "kind": "verifier",
-            "reason": (
-                "no trusted machine-verifiable independent verifier adapter is available "
-                "in repository/CI; agent-session manifests are structural provenance only"
-            ),
-        },
+        "verifier": verifier,
         "reason": "no current-head GitHub approval or trusted independent verifier attestation",
     }
 
@@ -326,6 +365,25 @@ def fetch_reviews(event: dict[str, Any], token: str | None) -> list[dict[str, An
     except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as exc:
         raise RuntimeError(f"cannot verify GitHub reviews: {exc}") from exc
     return value if isinstance(value, list) else []
+
+
+def fetch_check_runs(event: dict[str, Any], token: str | None, head_sha: str) -> list[dict[str, Any]] | None:
+    """Fetch GitHub's immutable, exact-commit check-run records."""
+    repo = event.get("repository") or {}
+    full_name = repo.get("full_name")
+    if not token or not full_name or not head_sha:
+        return None
+    request = urllib.request.Request(
+        f"https://api.github.com/repos/{full_name}/commits/{head_sha}/check-runs?per_page=100",
+        headers={"Accept": "application/vnd.github+json", "Authorization": f"Bearer {token}", "X-GitHub-Api-Version": "2022-11-28"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            value = json.load(response)
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as exc:
+        raise RuntimeError(f"cannot verify GitHub check runs: {exc}") from exc
+    runs = value.get("check_runs") if isinstance(value, dict) else None
+    return runs if isinstance(runs, list) else []
 
 
 def _git_show(ref: str, path: str) -> str:
@@ -408,6 +466,31 @@ def self_test() -> int:
     reviews.append({"user": {"login": "verifier"}, "state": "APPROVED", "commit_id": "head", "submitted_at": "4", "author_association": "COLLABORATOR"})
     assert independent_review(reviews, "author", "head")["ok"] is True
 
+    verifier_check = {
+        "id": 123,
+        "name": "Cursor Bugbot",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "head",
+        "completed_at": "2026-08-29T00:00:00Z",
+        "app": {"slug": "cursor", "id": 1210556},
+    }
+    assert independent_verifier_check([verifier_check], "head")["ok"] is True
+    assert independent_verifier_check([verifier_check], "stale")["ok"] is False
+    neutral_check = {**verifier_check, "conclusion": "neutral", "completed_at": "2026-08-29T01:00:00Z"}
+    assert independent_verifier_check([verifier_check, neutral_check], "head")["ok"] is False
+    foreign_check = {**verifier_check, "app": {"slug": "other-bot", "id": 42}}
+    assert independent_verifier_check([foreign_check], "head")["ok"] is False
+
+    accepted_verifier = review_evidence(
+        ROOT,
+        {"pull_request": {"user": {"login": "author"}}, "reviews": [], "check_runs": [verifier_check]},
+        "a" * 40,
+        "head",
+    )
+    assert accepted_verifier["ok"] is True
+    assert accepted_verifier["kind"] == "verifier-check"
+
     unsupported_verifier = review_evidence(
         ROOT,
         {
@@ -416,12 +499,14 @@ def self_test() -> int:
                 "body": "Independent-Review-Attestation: .agent-session/independent-review.json",
             },
             "reviews": [],
+            "check_runs": [],
         },
         "a" * 40,
         "b" * 40,
     )
     assert unsupported_verifier["ok"] is False
-    assert "trusted machine-verifiable" in unsupported_verifier["verifier"]["reason"]
+    assert unsupported_verifier["verifier"]["kind"] == "verifier-check"
+    assert "current-head" in unsupported_verifier["verifier"]["reason"]
 
     assert merge_eligibility(3, True, False) == "blocked-activation-separation"
     assert merge_eligibility(3, True, True) == "autonomous-after-required-checks"
@@ -495,6 +580,8 @@ def main() -> int:
     if effective >= 2:
         reviews = fetch_reviews(event, args.token)
         event["reviews"] = reviews if reviews is not None else []
+        check_runs = fetch_check_runs(event, args.token, head_sha)
+        event["check_runs"] = check_runs if check_runs is not None else []
         result["review_evidence"] = review_evidence(ROOT, event, base_sha, head_sha)
         if not result["review_evidence"].get("ok"):
             result["merge_eligibility"] = "blocked-review"

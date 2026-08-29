@@ -13,7 +13,7 @@
 **Review / protected-boundary evidence：** <!-- T2: independent review context; T3: Founder decision packet and exact boundary; otherwise N/A -->
 **Rollback:** <!-- revert SHA / prior deploy / repair --rollback / n/a -->
 
-> **Review evidence（global approvals remain 0）**：T2/R2 必須有 current-head independent review context。政策允許 distinct authorized GitHub identity 的 `APPROVED` review，或由可信 machine-checkable Agent/Exo provenance 支持的 separately launched verifier Agent attestation；目前 repository/CI 尚無可信的第二種 adapter，因此 unverifiable verifier claims 會 fail closed。自動 AI review、required checks、高風險測試與 self-review checklist 只能補強，不能冒充 independent review，也不要求 Founder 建立第二個 GitHub identity。
+> **Review evidence（global approvals remain 0）**：T2/R2 必須有 current-head independent review context。可接受 distinct authorized GitHub identity 的 `APPROVED` review，或現有 Cursor Bugbot GitHub App 對 exact HEAD 的 completed `success` check（slug `cursor`、App ID `1210556`）；缺少、過期、`neutral`、失敗或未驗證的 verifier evidence 一律 fail closed。一般自動 checks、高風險測試與 self-review checklist 只能補強，不能冒充 independent review，也不要求 Founder 建立第二個 GitHub identity。
 > **T0/T1**：required checks 與本 checklist 據實填寫後，Agent 可依風險政策 autonomous merge。
 > **T2/R2**：除 required CI、rollback / production-verification evidence 外，必須有上述任一 independent review evidence；無 protected Founder decision 時不需 Founder rubber stamp。
 > **T3/R3**：可準備實作與 evidence package；若 merge 仍會隱含 production activation，先由 `merged-awaiting-activation` separation 解耦；Founder GO 仍只在 protected action 前需要，不得以 review 取代該 gate。
