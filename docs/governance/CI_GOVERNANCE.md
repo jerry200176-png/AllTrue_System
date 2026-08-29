@@ -8,6 +8,8 @@
 
 `GOV-BRANCH-001` branch · `GOV-PROV-001/002/003` provenance/markers · `GOV-GENERATED-001` drift · `GOV-SIZE-001` legacy ≤700 · `GOV-WORKFLOW-001` YAML · `GOV-BASE-001` stacked base · `GOV-SECRET-001` secrets.
 
+Provenance `GOV-PROV-003` binds `manifest.branch` / `task_id` only when this PR's diff claims `.agent-session/manifest.json`. An inherited singleton from `main` is not a session claim.
+
 ## Branch prefixes
 
 Accepted: `feat|fix|hotfix|refactor|test|docs|chore|ci|build|perf|exp|sec|audit|revert|release|design|cursor` + `td-batchN-*` `dependabot/*` `cubelv-cli-*`.  
