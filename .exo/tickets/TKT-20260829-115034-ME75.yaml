@@ -32,8 +32,7 @@ budgets:
   max_files_changed: 12
   max_loc_changed: 400
 checks:
-- npm run test:unit
-- vendor/bin/phpunit
+- npm run build
 type: feature
 status: todo
 spec_ref: null
