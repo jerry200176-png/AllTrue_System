@@ -6,12 +6,19 @@ last_reviewed: 2026-06-06
 
 # AI／工程師防再犯紀錄（必讀）
 
-### R130. 新增課程「去加購」必須同時認 `id` 與 `existing_course_id`（2026-08-29）
+### R131. 新增課程「去加購」必須同時認 `id` 與 `existing_course_id`（2026-08-29）
 
 - **現象**：學生管理 → 新增課程 → 衝突視窗點「去加購」沒有反應，視窗直接關掉。
 - **根因**：`GET /students/{id}/active-courses` 回傳 `id`；排課 409 回傳 `existing_course_id`。前端只用 `c.id === conflict.existing_course_id`，對不到就靜默 return。
 - **強制規則**：攔截後要加購時必須走 `resolveConflictCourseId` / `findCourseForPurchase`（兩種欄位 + 數字比對）。找不到課程要提示，禁止靜默關閉。
 - **測試必補**：active-courses `{ id }` 能對到課程列 `{ id: "42" }`；`StudentsList.vue` / `CourseManagement.vue` 不得再出現 `c.id === conflict.existing_course_id`。
+
+### R130. `/me` profile refresh 不可覆寫使用者已選頁面（2026-08-29）
+
+- **現象**：登入後立刻點側欄「我的課表／課程查找」，畫面停在教學工作台／主任總覽；UI smoke 斷言 nav `active` 失敗。
+- **根因**：`fetchProfile`（含 `onAuthStateChange` 再取 `/me`）無條件把 `active` 設回 `teacher-home`／`director`，蓋掉剛完成的導航。
+- **強制規則**：profile refresh 只允許 (1) 強制改密 → `profile`、(2) bootstrap `director` → 老師首頁、(3) 角色不符的 `teacher-home` → 主任首頁。其餘保留 `currentActive`。邏輯集中在 `resolveActiveAfterProfileLoad`。
+- **測試必補**：`resolveActiveAfterProfileLoad.test.js` 覆蓋 calendar／course-mgmt 不被 clobber；UI smoke `navTo` 限定側欄並短重試。
 
 ### R129. 請假復原不可用一般狀態修改繞過 cascade；試聽轉正式不可搬移已上堂次（2026-08-28）
 

@@ -242,6 +242,45 @@ export const staffUpdates = [
     "version": "2026.08.29"
   },
   {
+    "id": "staff-2026-08-29-profile-nav-clobber",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "登入後側欄切頁更穩定",
+    "summary": "登入後立刻點側欄，不會再被系統拉回首頁。",
+    "items": [
+      "個人資料載入完成後，不會把你剛切好的頁面（例如我的課表、課程查找）強制拉回工作台／總覽。",
+      "強制改密與角色首頁冷啟動行為維持不變；權限、分校與各頁業務邏輯也不變。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "個人資料載入完成後，不會把你剛切好的頁面（例如我的課表、課程查找）強制拉回工作台／總覽。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "強制改密與角色首頁冷啟動行為維持不變；權限、分校與各頁業務邏輯也不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:profile-nav-clobber"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
     "id": "staff-2026-08-29-notifications-dialog-a11y",
     "publishedAt": "2026-08-29",
     "effectiveAt": null,

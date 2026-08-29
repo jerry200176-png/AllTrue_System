@@ -20,6 +20,22 @@ updates:
     source_refs:
       - "changelog:2026-08-29:goto-purchase"
 
+  - id: staff-2026-08-29-profile-nav-clobber
+    published_at: "2026-08-29"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 登入後側欄切頁更穩定
+    summary: 登入後立刻點側欄，不會再被系統拉回首頁。
+    items:
+      - category: fixed
+        text: 個人資料載入完成後，不會把你剛切好的頁面（例如我的課表、課程查找）強制拉回工作台／總覽。
+      - category: improved
+        text: 強制改密與角色首頁冷啟動行為維持不變；權限、分校與各頁業務邏輯也不變。
+    source_refs:
+      - "changelog:2026-08-29:profile-nav-clobber"
+
   - id: staff-2026-08-29-student-course-next-action
     published_at: "2026-08-29"
     audiences:
