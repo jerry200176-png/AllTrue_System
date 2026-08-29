@@ -42,9 +42,9 @@ Preserve autonomous delivery for low-risk changes while requiring independent re
 
 ## Review checklist (R2/T2)
 
-R2/T2 requires an independent review context, required CI, a documented risk/rollback/production-verification checklist, and resolved bot/reviewer threads. Independent review evidence is either a current-head GitHub `APPROVED` review from a distinct authorized identity or a current-head attestation from a separately launched verifier Agent whose Agent/Exo provenance passes the repository's machine checks. The implementing Agent remains responsible for the final evidence and may merge autonomously when no protected activation is coupled to the merge.
+R2/T2 requires an independent review context, required CI, a documented risk/rollback/production-verification checklist, and resolved bot/reviewer threads. Policy-defined evidence is either a current-head GitHub `APPROVED` review from a distinct authorized identity or a current-head attestation from a separately launched verifier Agent whose Agent/Exo provenance passes a trusted machine check. The implementing Agent remains responsible for the final evidence and may merge autonomously when no protected activation is coupled to the merge.
 
-The repository attestation form is `.agent-session/independent-review.json`. It must state the exact base and head SHAs, `decision: approved`, and carry a separately launched `agent-session` manifest plus its SHA-256 digest. `scripts/governance/autonomy_gate.py` validates these fields; a PR-body claim, AI comment, same-session self-check, stale SHA, or unverifiable manifest is not independent review evidence.
+The current repository/CI adapter has no trusted current-head Agent/Exo attestation channel: `.agent-session` manifests are structural provenance only, and the existing Exo graph is not connected to external agents. Therefore the adapter accepts the GitHub form and fail-closes unverifiable verifier claims. This is a capability gap, not a requirement for the Founder to create a second GitHub identity.
 
 ## T3/protected boundary
 
@@ -64,7 +64,7 @@ This repo currently has **one** human maintainer (Jerry), who is not a universal
 |---|---|---|
 | `required_approving_review_count` (ruleset `main-protection`) | `0` | `1` |
 | `require_code_owner_review` | `false` | `true` — CODEOWNERS becomes a real blocking gate, not just a review request |
-| T2 review | Current-head GitHub approval from a distinct authorized identity **or** separately-launched verifier Agent attestation, plus implementing Agent evidence | A human second maintainer or separately-launched verifier Agent, plus implementing Agent evidence |
+| T2 review | Current-head GitHub approval from a distinct authorized identity; an independently attested Agent/Exo form is policy-valid only once a trusted repository/CI adapter exists | A human second maintainer or separately-launched verifier Agent, plus implementing Agent evidence |
 | T3 boundary | Founder decision before protected action; review does not replace the gate | Same protected boundary, with the additional human review if ruleset policy later requires it |
 | `dismiss_stale_reviews_on_push` | `false` | `true` — a stale approval shouldn't survive a force-push-equivalent re-push |
 

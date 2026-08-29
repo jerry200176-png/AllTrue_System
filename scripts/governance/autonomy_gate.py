@@ -11,12 +11,10 @@ context; the actual diff and repository policy decide merge eligibility.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import re
 import subprocess
 import sys
-import tempfile
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -276,69 +274,6 @@ def independent_review(reviews: list[dict[str, Any]], author: str, head_sha: str
     return {"ok": False, "kind": "github", "reason": "no current distinct authorized GitHub APPROVED review"}
 
 
-def _canonical_json(value: dict[str, Any]) -> bytes:
-    return json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("utf-8")
-
-
-def _valid_manifest(manifest: Any, expected_base: str, session_id_to_exclude: str = "") -> tuple[bool, str]:
-    if not isinstance(manifest, dict):
-        return False, "verifier manifest must be an object"
-    required = {
-        "schema_version", "session_id", "project", "task_id", "repo_remote", "base_sha",
-        "branch", "worktree_path", "started_at", "production_mutation", "preflight_result",
-        "provenance_type",
-    }
-    missing = sorted(required - set(manifest))
-    if missing:
-        return False, "verifier manifest missing: " + ", ".join(missing)
-    if manifest.get("schema_version") != "1.0" or manifest.get("project") != "alltrue":
-        return False, "verifier manifest schema/project invalid"
-    session_id = str(manifest.get("session_id") or "")
-    if len(session_id) < 8 or session_id == session_id_to_exclude:
-        return False, "verifier session is missing or is the implementing session"
-    if manifest.get("base_sha") != expected_base or not re.fullmatch(r"[0-9a-f]{40}", str(manifest.get("base_sha"))):
-        return False, "verifier manifest base_sha does not match PR base"
-    if manifest.get("production_mutation") is not False or manifest.get("preflight_result") != "pass":
-        return False, "verifier manifest is not a passed non-production session"
-    if manifest.get("provenance_type") != "agent-session":
-        return False, "verifier provenance_type must be agent-session"
-    if not str(manifest.get("branch") or "") or not str(manifest.get("worktree_path") or ""):
-        return False, "verifier manifest branch/worktree is missing"
-    blob = json.dumps(manifest, ensure_ascii=True)
-    if re.search(r"(api[_-]?key|token|password|secret|BEGIN PRIVATE)", blob, re.IGNORECASE):
-        return False, "verifier manifest contains sensitive-looking data"
-    return True, "ok"
-
-
-def verifier_attestation(repo: Path, body: str, author_session_id: str, base_sha: str, head_sha: str) -> dict[str, Any]:
-    """Validate optional evidence using the existing agent-session schema."""
-    match = re.search(r"(?im)^\s*Independent-Review-Attestation:\s*([^\s]+)\s*$", body or "")
-    relative = match.group(1).strip() if match else ".agent-session/independent-review.json"
-    if not relative.startswith(".agent-session/") or ".." in Path(relative).parts:
-        return {"ok": False, "kind": "verifier", "reason": "attestation path must be under .agent-session/"}
-    path = repo / relative
-    if not path.is_file():
-        return {"ok": False, "kind": "verifier", "reason": f"attestation file missing: {relative}"}
-    try:
-        evidence = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        return {"ok": False, "kind": "verifier", "reason": f"attestation unreadable: {exc}"}
-    if not isinstance(evidence, dict) or evidence.get("schema_version") != "1.0":
-        return {"ok": False, "kind": "verifier", "reason": "attestation schema invalid"}
-    if evidence.get("provenance_type") != "independent-agent-review" or evidence.get("decision") != "approved":
-        return {"ok": False, "kind": "verifier", "reason": "attestation is not an approved independent-agent review"}
-    if evidence.get("reviewed_base_sha") != base_sha or evidence.get("reviewed_head_sha") != head_sha:
-        return {"ok": False, "kind": "verifier", "reason": "attestation does not cover the current base/head"}
-    manifest = evidence.get("verifier_manifest")
-    valid, reason = _valid_manifest(manifest, base_sha, author_session_id)
-    if not valid:
-        return {"ok": False, "kind": "verifier", "reason": reason}
-    expected_hash = hashlib.sha256(_canonical_json(manifest)).hexdigest()
-    if evidence.get("verifier_manifest_sha256") != expected_hash:
-        return {"ok": False, "kind": "verifier", "reason": "verifier manifest hash is invalid"}
-    return {"ok": True, "kind": "verifier", "session_id": manifest["session_id"], "head_sha": head_sha, "artifact": relative}
-
-
 def review_evidence(repo: Path, event: dict[str, Any], base_sha: str, head_sha: str) -> dict[str, Any]:
     pr = event.get("pull_request") or {}
     author = str((pr.get("user") or {}).get("login") or "")
@@ -348,17 +283,20 @@ def review_evidence(repo: Path, event: dict[str, Any], base_sha: str, head_sha: 
     }
     if github.get("ok"):
         return github
-    manifest_path = repo / ".agent-session/manifest.json"
-    implementer_session_id = ""
-    if manifest_path.is_file():
-        try:
-            implementer_session_id = str(json.loads(manifest_path.read_text(encoding="utf-8")).get("session_id") or "")
-        except (OSError, json.JSONDecodeError):
-            pass
-    verifier = verifier_attestation(repo, str(pr.get("body") or ""), implementer_session_id, base_sha, head_sha)
-    if verifier.get("ok"):
-        return verifier
-    return {"ok": False, "kind": "none", "github": github, "verifier": verifier, "reason": "no current-head GitHub approval or verifiable independent verifier attestation"}
+    return {
+        "ok": False,
+        "kind": "none",
+        "github": github,
+        "verifier": {
+            "ok": False,
+            "kind": "verifier",
+            "reason": (
+                "no trusted machine-verifiable independent verifier adapter is available "
+                "in repository/CI; agent-session manifests are structural provenance only"
+            ),
+        },
+        "reason": "no current-head GitHub approval or trusted independent verifier attestation",
+    }
 
 
 def _git(*args: str) -> str:
@@ -468,67 +406,26 @@ def self_test() -> int:
     reviews.append({"user": {"login": "verifier"}, "state": "APPROVED", "commit_id": "head", "submitted_at": "4", "author_association": "COLLABORATOR"})
     assert independent_review(reviews, "author", "head")["ok"] is True
 
-    manifest = {
-        "schema_version": "1.0", "session_id": "verifier-session-123", "project": "alltrue",
-        "task_id": "independent-review", "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-        "base_sha": "a" * 40, "branch": "reviewer/independent", "worktree_path": "/workspace/tasks/alltrue/reviewer",
-        "started_at": "2026-08-29T00:00:00Z", "production_mutation": False,
-        "preflight_result": "pass", "provenance_type": "agent-session", "agent_cli": "codex",
-    }
-    assert _valid_manifest(manifest, "a" * 40, "implementer-session")[0] is True
-    assert _valid_manifest(manifest, "a" * 40, "verifier-session-123")[0] is False
-    evidence = {
-        "schema_version": "1.0", "provenance_type": "independent-agent-review", "decision": "approved",
-        "reviewed_base_sha": "a" * 40, "reviewed_head_sha": "b" * 40,
-        "verifier_manifest": manifest, "verifier_manifest_sha256": hashlib.sha256(_canonical_json(manifest)).hexdigest(),
-    }
-    assert evidence["verifier_manifest_sha256"] == hashlib.sha256(_canonical_json(manifest)).hexdigest()
-    evidence["reviewed_head_sha"] = "c" * 40
-    assert evidence["reviewed_head_sha"] != "b" * 40
+    unsupported_verifier = review_evidence(
+        ROOT,
+        {
+            "pull_request": {
+                "user": {"login": "author"},
+                "body": "Independent-Review-Attestation: .agent-session/independent-review.json",
+            },
+            "reviews": [],
+        },
+        "a" * 40,
+        "b" * 40,
+    )
+    assert unsupported_verifier["ok"] is False
+    assert "trusted machine-verifiable" in unsupported_verifier["verifier"]["reason"]
+
     assert merge_eligibility(3, True, False) == "blocked-activation-separation"
     assert merge_eligibility(3, True, True) == "autonomous-after-required-checks"
     assert merge_eligibility(3, False, False) == "autonomous-after-required-checks"
     assert merge_eligibility(3, False, True, unknown_scope=True) == "blocked-unknown-scope"
 
-    with tempfile.TemporaryDirectory() as temp_dir:
-        repo = Path(temp_dir)
-        (repo / ".agent-session").mkdir()
-        evidence["reviewed_head_sha"] = "b" * 40
-        (repo / ".agent-session/independent-review.json").write_text(
-            json.dumps(evidence), encoding="utf-8"
-        )
-        valid = verifier_attestation(
-            repo,
-            "Independent-Review-Attestation: .agent-session/independent-review.json",
-            "implementer-session",
-            "a" * 40,
-            "c" * 40,
-        )
-        assert valid["ok"] is False  # deliberately stale current-head evidence
-        evidence["reviewed_head_sha"] = "c" * 40
-        (repo / ".agent-session/independent-review.json").write_text(
-            json.dumps(evidence), encoding="utf-8"
-        )
-        valid = verifier_attestation(
-            repo,
-            "Independent-Review-Attestation: .agent-session/independent-review.json",
-            "implementer-session",
-            "a" * 40,
-            "c" * 40,
-        )
-        assert valid["ok"] is True
-        evidence["verifier_manifest_sha256"] = "0" * 64
-        (repo / ".agent-session/independent-review.json").write_text(
-            json.dumps(evidence), encoding="utf-8"
-        )
-        invalid = verifier_attestation(
-            repo,
-            "Independent-Review-Attestation: .agent-session/independent-review.json",
-            "implementer-session",
-            "a" * 40,
-            "c" * 40,
-        )
-        assert invalid["ok"] is False
     print("autonomy-gate self-test: PASS")
     return 0
 

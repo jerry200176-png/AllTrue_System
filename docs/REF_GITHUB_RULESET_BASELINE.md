@@ -34,4 +34,4 @@ Applies to: `refs/tags/v*` (the CalVer release tag pattern used by `release.yml`
 ## Known gaps (not this doc's job to fix, tracked elsewhere)
 
 - No `merge_queue` rule on `main-protection` — see #871 (separately tracked, higher-risk change to merge mechanics, not bundled into this baseline pass).
-- `required_approving_review_count: 0` remains intentional so T0/T1 do not deadlock. It is separate from the executable per-diff T2 gate in `scripts/governance/autonomy_gate.py`, which requires current-head independent review evidence (GitHub approval or verifiable Agent/Exo attestation) for T2+ PRs.
+- `required_approving_review_count: 0` remains intentional so T0/T1 do not deadlock. It is separate from the executable per-diff T2 gate in `scripts/governance/autonomy_gate.py`, which requires current-head independent review evidence. The policy permits Agent/Exo attestation in principle, but the current repository/CI adapter has no trusted channel for it and rejects unverifiable claims.

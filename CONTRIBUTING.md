@@ -47,9 +47,9 @@
 
 ### Risk-based review evidence（#736）
 
-GitHub global `required_approving_review_count` 維持 `0`，以保留 T0/T1 autonomy；這不會豁免 T2 的 per-diff independent-review gate。T2 必須有 distinct current-head GitHub `APPROVED` review，或 separately launched verifier Agent 的 current-head attestation，且其 Agent/Exo provenance 可由 CI 驗證。
+GitHub global `required_approving_review_count` 維持 `0`，以保留 T0/T1 autonomy；這不會豁免 T2 的 per-diff independent-review gate。政策允許 distinct current-head GitHub `APPROVED` review，或由可信 Agent/Exo provenance 支持的 separately launched verifier attestation；目前 repository/CI 沒有可信的第二種 adapter，未驗證的 claim 會 fail closed，也不要求 Founder 建立第二個 GitHub identity。
 
-1. **Independent review**：T2 PR 必須有非作者、針對 current head SHA 的 GitHub approval，或可驗證的 independent Agent/Exo attestation；無法驗證時 fail closed。
+1. **Independent review**：T2 PR 必須有非作者、針對 current head SHA 的 GitHub approval，或未來由可信 machine-checkable Agent/Exo adapter 驗證的 independent attestation；目前無法驗證的 verifier claim 一律 fail closed。
 2. **高風險檔強制測試（required）**：[`.github/workflows/high-risk-test-gate.yml`](.github/workflows/high-risk-test-gate.yml)——觸碰堂數扣除 / 繳費 / 刷卡 / 核准同步 / migration 但同 PR 無 `backend/tests/**` 時**擋 merge**。例外需加 label `risk-ack-no-test` 並於描述說明。設為 required：Settings → Branches → main → Require status checks → 勾 `High-risk change requires tests`。
 3. **Supplemental evidence**：自動 AI review、`Agent Session Provenance`、其他 required checks 與 PR self-review checklist 可補強證據，但不能冒充 T2 independent review。
 

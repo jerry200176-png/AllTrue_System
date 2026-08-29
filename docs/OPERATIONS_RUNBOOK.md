@@ -269,7 +269,7 @@ Wrapper 會為每個 process 啟動只綁定 `127.0.0.1` 的非特權 ephemeral 
 | Required approvals | **0**（單人）| 避免自己卡自己；§R 稽核 `reviews` 應為 0 |
 | Auto-delete head branches | Settings → General | 減少 stale branch |
 | Squash merge | 預設 squash；一 PR 一議題 | 大廠 trunk-based 習慣 |
-| Presubmit + CI gate | AI **必須**等 checks completed；T2 另須 current-head GitHub approval 或可驗證 verifier attestation；T3 依 merge/activation separation 停在 protected boundary | CI 是 required evidence，不取代 T2 independent review |
+| Presubmit + CI gate | AI **必須**等 checks completed；T2 另須 current-head GitHub approval，或目前尚未可用的可信 verifier adapter；T3 依 merge/activation separation 停在 protected boundary | CI 是 required evidence，不取代 T2 independent review |
 | CODEOWNERS | 保留作 routing / context；不把作者自審當成 T2 independent review | 高風險路徑提醒 |
 | Dependabot SLA | §B0 / §T | 供應鏈 |
 | Branch hygiene | `branch-hygiene.yml` + `./scripts/branch-hygiene.sh` | 每週清理 |
