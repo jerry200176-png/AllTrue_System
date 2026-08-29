@@ -2,7 +2,7 @@
 
 <!-- release-notes: silent_ship=silent-2026-08-29-bug-reply-copy-gate -->
 
-- Phase-A triage 與 follow-up comment workflow 現在會在 SSH 與任何寫回前，執行既有的公開文案禁用詞檢查；遇到內部識別名、工程黑話或空白留言會 fail closed。
+- Phase-A triage、follow-up comment 與 Phase-C allowlist workflow 現在會在 SSH 與任何寫回前，執行既有的公開文案禁用詞檢查；遇到內部識別名、工程黑話或空白留言會 fail closed。
 - 不會把提交的留言內容或命中片段寫入 Actions log，也不改 bug 狀態語意、留言寫入權限或 production 啟用流程。
 
 ## 2026-08-29 — fix(ops): 堂次轉移 reason 過長改為明確擋下

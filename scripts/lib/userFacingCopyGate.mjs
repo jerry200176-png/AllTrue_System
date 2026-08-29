@@ -12,9 +12,10 @@ const FORBIDDEN_PATTERNS = [
   { id: 'pascal_ident', re: /\b(?:IsContractException|RemainingSessions|StudentClass|ClassSession|VoidReason|StudentSingIn)\b/, hint: '內部欄位/識別名' },
   { id: 'api_path', re: /\b(?:GET|POST|PUT|PATCH|DELETE)\s+\/[A-Za-z0-9_/?&=.-]+|\/api\/v\d+\//i, hint: 'API path' },
   { id: 'file_ext', re: /\b[\w./-]+\.(?:vue|js|mjs|php|md|yml|json|cjs)\b/i, hint: '原始碼檔名' },
+  { id: 'internal_tooling', re: /\b(?:SELECT|SQL|Laravel|Vue|PHPUnit|PHP|CI|CD|migration)\b|deploy\.yml|production\s+smoke|smoke\s+(?:test|check)|\bHTTP\s+\d{3}\b/i, hint: 'SQL/框架/工具/HTTP 內部術語' },
   { id: 'impl_en', re: /\b(?:refactor|fallback|payload|middleware|DTO|enum|handler|pool coverage|design system tokens?|DS tokens?|read-only|default-off|dry-run)\b/i, hint: '英文實作黑話' },
   { id: 'mvp_phase_zh', re: /群組\s*MVP|continuity\s*policy|planner|observability/i, hint: '工程縮寫/規劃語' },
-  { id: 'truncated_leading', re: /(?:^|[：:，,\s])(?:\d{1,3}|[A-Za-z])\s*[\u4e00-\u9fff]/, hint: '疑似被截斷的殘詞（如「55 復活」「eview…」）' },
+  { id: 'truncated_leading', re: /\b\d{1,3}\s*復活|(?:^|[\s：:，,])e?view(?:\.\.\.|…)/i, hint: '疑似被截斷的殘詞（如「55 復活」「eview…」）' },
   { id: 'empty_praise', re: /^(?:優化系統(?:使用)?體驗|改善使用體驗|修正若干問題|提升穩定性|內部調整|效能改善)[。．]?$/, hint: '無資訊空話' },
 ];
 

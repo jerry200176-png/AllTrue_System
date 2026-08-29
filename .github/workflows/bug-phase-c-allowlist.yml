@@ -22,6 +22,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - name: Checkout public reply policy
+        uses: actions/checkout@v7
+
+      - name: Validate Phase-C public replies
+        run: node scripts/ci/validate-phase-c-public-replies.mjs
+
       - name: Setup SSH
         env:
           PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
@@ -67,7 +73,7 @@ jobs:
           // Allowlist: in-app id => [public reply, production_revision, deploy_run_id optional]
           $items = [
             242 => [
-              "reply" => "已修好並上線：讀取待點名堂次時，遇到歷史重疊資料不會再讓整份列表回傳 HTTP 422；衝突資料會保留供後續處理，其他可點名堂次會正常載入。請重新整理待點名頁確認；若仍無法載入，請回覆這則訊息。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2060",
+              "reply" => "已修好並上線：讀取待點名堂次時，遇到少數歷史資料不一致，不會再讓整份列表無法載入；其他可以處理的堂次會正常顯示。請重新整理待點名頁確認；若仍無法載入，請回覆這則訊息。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2060",
               "rev" => "9e4a815cd9da8bc0aa2764f9ac3e501608c753c1",
               "deploy" => "32938402333",
             ],
@@ -107,7 +113,7 @@ jobs:
               "deploy" => "",
             ],
             212 => [
-              "reply" => "已完成修正並上線：批次核准現在只會處理畫面明確勾選的評量；若選取資料與目前狀態或權限不一致，系統會整批停止，不會擴大核准範圍。已通過回歸測試、正式 CI 與 production smoke。",
+              "reply" => "已完成修正並上線：批次核准現在只會處理畫面明確勾選的評量；若選取資料與目前狀態或權限不一致，系統會整批停止，不會擴大核准範圍。上線後檢查已完成。",
               "rev" => "80d6a95b71f7c45bef0f6f376e8d3d0a319d0c23",
               "deploy" => "30676657509",
             ],
@@ -117,7 +123,7 @@ jobs:
               "deploy" => "30686603039",
             ],
             213 => [
-              "reply" => "已完成修正並上線：月結帳單現在依該帳單月份的實際已上課堂計算，並顯示原始金額與差異警示；已通過正式 CI、production smoke 與唯讀業務驗收。",
+              "reply" => "已完成修正並上線：月結帳單現在依該帳單月份的實際已上課堂計算，並顯示原始金額與差異警示；上線後檢查與帳務畫面確認已完成。",
               "rev" => "80d6a95b71f7c45bef0f6f376e8d3d0a319d0c23",
               "deploy" => "30676657509",
             ],

@@ -88,11 +88,13 @@ exception with a `push` fallback, but it is explicitly scoped to bugs whose
 fix is *already deployed* (Phase C) — never repurpose it for a fresh,
 unverified Phase A triage.
 
-Before any SSH setup or write-back, both workflows also run
-`scripts/ci/validate-public-bug-reply.mjs`, which reuses the maintained
-`userFacingCopyGate` and fails closed on internal identifiers, implementation
-jargon, source filenames, or empty copy. The check reports rule IDs and hints
-only; it does not print the submitted reply into the Actions log.
+Before any SSH setup or write-back, all three workflows run a public-copy
+gate. Phase A and follow-up use `scripts/ci/validate-public-bug-reply.mjs`;
+Phase C uses `scripts/ci/validate-phase-c-public-replies.mjs` to check every
+hardcoded allowlist reply. Both reuse the maintained `userFacingCopyGate` and
+fail closed on internal identifiers, implementation jargon, source filenames,
+or empty copy. The checks report rule IDs and hints only; they do not print
+submitted or allowlisted reply text into the Actions log.
 
 The validator intentionally fails when the queue is stale, the IDs differ, the
 bug is no longer open, or the reporter-history evidence is absent. This prevents
