@@ -30,7 +30,7 @@ checks:
 - npm run lint:no-undef
 - npm run build
 type: feature
-status: todo
+status: review
 spec_ref: null
 notes: []
 blockers: []
@@ -39,3 +39,5 @@ brain_dump: ''
 risk: medium
 children: []
 resource_profile: default
+commits:
+- 5277e6a719c0e999a8287f9e94683d372e4e58df
