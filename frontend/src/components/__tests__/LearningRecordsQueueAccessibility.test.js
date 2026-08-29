@@ -31,4 +31,16 @@ describe('LearningRecords review queue accessibility', () => {
     expect(source).toContain(":tabindex=\"pageMode === 'records' ? 0 : undefined\"");
     expect(source).toContain(":aria-labelledby=\"pageMode === 'records' ? (isDirectorRole ? `lr-review-tab-${reviewTab}` : `lr-teacher-tab-${teacherFilterTab}`) : undefined\"");
   });
+
+  it('exposes every quick filter chip as a real toggle button', () => {
+    const filterButtons = [...source.matchAll(/<button[\s\S]*?>/g)]
+      .map((match) => match[0])
+      .filter((openingTag) => openingTag.includes('lr-feedback-filter-chip'));
+
+    expect(filterButtons.length).toBeGreaterThan(0);
+    for (const openingTag of filterButtons) {
+      expect(openingTag).toContain('type="button"');
+      expect(openingTag).toContain(':aria-pressed=');
+    }
+  });
 });

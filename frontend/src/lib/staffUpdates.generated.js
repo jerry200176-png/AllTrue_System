@@ -701,6 +701,40 @@ export const staffUpdates = [
     "version": "2026.08.29"
   },
   {
+    "id": "staff-2026-08-29-learning-filter-chips-a11y",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "評量快捷篩選狀態更清楚",
+    "summary": "未填、需修改與家長留言篩選會清楚說明目前是否選取。",
+    "items": [
+      "評量頁快捷篩選改用明確的按鈕與選取狀態，鍵盤與螢幕閱讀器更容易辨識目前篩選。",
+      "原有篩選條件、排序、資料、權限與審核流程維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "評量頁快捷篩選改用明確的按鈕與選取狀態，鍵盤與螢幕閱讀器更容易辨識目前篩選。",
+          "原有篩選條件、排序、資料、權限與審核流程維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:learning-filter-chips-a11y"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
     "id": "staff-2026-08-29-goto-purchase",
     "publishedAt": "2026-08-29",
     "effectiveAt": null,
