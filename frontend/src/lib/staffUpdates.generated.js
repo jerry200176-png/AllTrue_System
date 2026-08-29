@@ -915,6 +915,42 @@ export const staffUpdates = [
     "version": "2026.08.29"
   },
   {
+    "id": "staff-2026-08-29-assessment-actions-a11y",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "學習檢測操作更不容易誤觸",
+    "summary": "建立、結果、作答與補強操作的按鈕用途更明確。",
+    "items": [
+      "檢測建立、發布、結果、作答與補強按鈕補上正確語意，表單情境不會因隱含型別誤送出。",
+      "建立檢測與查看結果彈窗會清楚標示工作階段與標題，鍵盤與螢幕閱讀器更容易掌握上下文。",
+      "原有檢測資料、主任複核、補強追蹤、權限與 API 流程維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "檢測建立、發布、結果、作答與補強按鈕補上正確語意，表單情境不會因隱含型別誤送出。",
+          "建立檢測與查看結果彈窗會清楚標示工作階段與標題，鍵盤與螢幕閱讀器更容易掌握上下文。",
+          "原有檢測資料、主任複核、補強追蹤、權限與 API 流程維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:assessment-actions-a11y"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
     "id": "staff-2026-08-28-schedule-safe-recovery",
     "publishedAt": "2026-08-28",
     "effectiveAt": null,
