@@ -21,6 +21,9 @@ final class SessionEntitlementTransferService
     private const MOVABLE_STATUSES = ['attended', 'completed', 'late'];
     private const CAPACITY_STATUSES = ['scheduled', 'attended', 'completed', 'late'];
 
+    /** Matches session_entitlement_transfers.reason / decision_reference / *_actor varchar(128). */
+    public const AUDIT_STRING_MAX = 128;
+
     /** @return array<string,mixed> */
     public function preview(int $sourceClassId, int $targetClassId, int $sessionId): array
     {
@@ -92,6 +95,8 @@ final class SessionEntitlementTransferService
         ?int $decidedByUserId = null,
         ?string $actor = null
     ): array {
+        $this->assertAuditStringsFit($reason, $decisionReference, $actor);
+
         return DB::transaction(function () use ($sourceClassId, $targetClassId, $sessionId, $reason, $decisionReference, $decidedByUserId, $actor) {
             $source = $this->lockedStudentClass($sourceClassId);
             $target = $this->lockedStudentClass($targetClassId);
@@ -332,5 +337,19 @@ final class SessionEntitlementTransferService
         $model = SessionEntitlementTransfer::query()->where('id', $id)->lockForUpdate()->first();
         if (!$model instanceof SessionEntitlementTransfer) throw new RuntimeException("SessionEntitlementTransfer {$id} not found");
         return $model;
+    }
+
+    private function assertAuditStringsFit(string $reason, string $decisionReference, ?string $actor): void
+    {
+        $max = self::AUDIT_STRING_MAX;
+        if (mb_strlen($reason) > $max) {
+            throw new RuntimeException("ENTITLEMENT_TRANSFER_BLOCKED: reason 不可超過 {$max} 字（目前 " . mb_strlen($reason) . '）');
+        }
+        if (mb_strlen($decisionReference) > $max) {
+            throw new RuntimeException("ENTITLEMENT_TRANSFER_BLOCKED: decision_reference 不可超過 {$max} 字（目前 " . mb_strlen($decisionReference) . '）');
+        }
+        if ($actor !== null && mb_strlen($actor) > $max) {
+            throw new RuntimeException("ENTITLEMENT_TRANSFER_BLOCKED: decided_by_actor 不可超過 {$max} 字（目前 " . mb_strlen($actor) . '）');
+        }
     }
 }

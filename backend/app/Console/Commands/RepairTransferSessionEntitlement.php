@@ -51,6 +51,17 @@ class RepairTransferSessionEntitlement extends Command
         }
         if (!$this->productionWriteAllowed()) return self::FAILURE;
 
+        $reason = trim((string) ($this->option('reason') ?: '已確認請假補課被誤計入原購買批次'));
+        $reference = trim((string) ($this->option('reference') ?: 'P0-SESSION-ENTITLEMENT-TRANSFER'));
+        $actor = (string) ($this->option('actor') ?: 'artisan:repair:transfer-session-entitlement');
+        $max = SessionEntitlementTransferService::AUDIT_STRING_MAX;
+        foreach (['reason' => $reason, 'reference' => $reference, 'actor' => $actor] as $label => $value) {
+            if (mb_strlen($value) > $max) {
+                $this->error("{$label} exceeds {$max} characters (got " . mb_strlen($value) . ')');
+                return self::FAILURE;
+            }
+        }
+
         $snapshotPath = trim((string) ($this->option('snapshot') ?: ''));
         if ($snapshotPath === '') {
             $this->error('Transfer requires --snapshot');
@@ -67,10 +78,10 @@ class RepairTransferSessionEntitlement extends Command
             $source,
             $target,
             $session,
-            trim((string) ($this->option('reason') ?: '已確認請假補課被誤計入原購買批次')),
-            trim((string) ($this->option('reference') ?: 'P0-SESSION-ENTITLEMENT-TRANSFER')),
+            $reason,
+            $reference,
             $this->option('actor-user-id') ? (int) $this->option('actor-user-id') : null,
-            (string) ($this->option('actor') ?: 'artisan:repair:transfer-session-entitlement')
+            $actor
         );
         $transferId = (int) $result['transfer']->getKey();
         $verification = $service->verify($transferId);
