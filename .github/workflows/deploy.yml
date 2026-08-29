@@ -13,11 +13,16 @@ on:
         required: true
         type: choice
         options:
+          - application-deploy
           - phase1-create
           - phase2-cutover
           - phase3-lock
+      target_sha:
+        description: "Exact current main SHA for Founder-approved application activation"
+        required: false
+        type: string
       confirm:
-        description: "Type the phase-specific confirmation phrase from the runbook"
+        description: "Type the phase-specific confirmation phrase from the runbook; application deploy uses ACTIVATE_PRODUCTION:<target_sha>"
         required: true
         type: string
 
@@ -28,14 +33,80 @@ concurrency:
 permissions:
   contents: read
   actions: read
+  pull-requests: read
 
 jobs:
+  contract-test:
+    name: Merge/activation contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Checkout workflow revision
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Verify deploy state-machine contract
+        run: python3 scripts/tests/test_deploy_activation_state.py
+
+  resolve-target:
+    name: Resolve exact activation target
+    needs: contract-test
+    if: ${{ needs.contract-test.result == 'success' && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || (github.event_name == 'workflow_dispatch' && inputs.phase == 'application-deploy')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      target_sha: ${{ steps.resolve.outputs.target_sha }}
+    steps:
+      - name: Validate target SHA and CI evidence
+        id: resolve
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          TARGET_SHA_INPUT: ${{ github.event.workflow_run.head_sha || inputs.target_sha }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TARGET_SHA="${TARGET_SHA_INPUT,,}"
+          if [[ ! "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Activation requires a full 40-character commit SHA."
+            exit 1
+          fi
+
+          gh api "/repos/${REPO}/commits/${TARGET_SHA}" >/dev/null
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            MAIN_SHA="$(gh api "/repos/${REPO}/git/ref/heads/main" --jq '.object.sha')"
+            if [[ "$TARGET_SHA" != "$MAIN_SHA" ]]; then
+              echo "::error::Manual activation must target the current main SHA; requested ${TARGET_SHA}, current ${MAIN_SHA}."
+              exit 1
+            fi
+
+            CI_RUNS="$(gh api "/repos/${REPO}/actions/workflows/ci.yml/runs?branch=main&head_sha=${TARGET_SHA}&status=completed&per_page=100")"
+            CI_OK="$(CI_RUNS="$CI_RUNS" python3 - <<'PY'
+          import json
+          import os
+
+          runs = json.loads(os.environ["CI_RUNS"]).get("workflow_runs", [])
+          print(sum(1 for run in runs if run.get("name") == "CI — PHPUnit Tests" and run.get("conclusion") == "success"))
+          PY
+          )"
+            if [[ "$CI_OK" -lt 1 ]]; then
+              echo "::error::The exact target SHA has no successful main CI run; activation refused."
+              exit 1
+            fi
+          fi
+
+          echo "target_sha=${TARGET_SHA}" >> "$GITHUB_OUTPUT"
+          echo "Resolved activation target: ${TARGET_SHA}"
+
   detect-deployable:
     name: Detect deployable changes
+    needs: resolve-target
+    if: ${{ needs.resolve-target.result == 'success' }}
     # Current topology: GitHub-hosted. See docs/REF_CI_RUNNER_TOPOLOGY.md.
     runs-on: ubuntu-latest
     timeout-minutes: 3
-    if: github.event.workflow_run.conclusion == 'success'
     outputs:
       deployable: ${{ steps.detect.outputs.deployable }}
     steps:
@@ -44,7 +115,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
-          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          HEAD_SHA: ${{ needs.resolve-target.outputs.target_sha }}
         run: |
           python3 - <<'PYEOF'
           import json
@@ -89,12 +160,159 @@ jobs:
               f.write(f"deployable={str(deployable).lower()}\n")
           PYEOF
 
+  classify-activation:
+    name: Classify merge/activation state
+    needs: [resolve-target, detect-deployable]
+    if: ${{ needs.resolve-target.result == 'success' && needs.detect-deployable.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      mode: ${{ steps.classify.outputs.mode }}
+      tier: ${{ steps.classify.outputs.tier }}
+      pr_number: ${{ steps.classify.outputs.pr_number }}
+      reason: ${{ steps.classify.outputs.reason }}
+    steps:
+      - name: Classify activation policy
+        id: classify
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DEPLOYABLE: ${{ needs.detect-deployable.outputs.deployable }}
+          TARGET_SHA: ${{ needs.resolve-target.outputs.target_sha }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$DEPLOYABLE" != "true" ]]; then
+            {
+              echo "mode=no-op"
+              echo "tier=none"
+              echo "pr_number=none"
+              echo "reason=non-deployable change"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            {
+              echo "mode=manual"
+              echo "tier=protected"
+              echo "pr_number=manual"
+              echo "reason=Founder exact-SHA activation requested"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          PR_JSON="$(gh api "/repos/${REPO}/commits/${TARGET_SHA}/pulls" --header 'Accept: application/vnd.github+json')"
+          PR_JSON="$PR_JSON" REPO="$REPO" GH_TOKEN="$GH_TOKEN" python3 - <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+
+          repo = os.environ["REPO"]
+          prs = json.loads(os.environ["PR_JSON"])
+          merged = [
+              pr for pr in prs
+              if pr.get("base", {}).get("ref") == "main" and pr.get("merged_at")
+          ]
+          merged.sort(key=lambda pr: pr.get("merged_at", ""), reverse=True)
+
+          mode = "awaiting-activation"
+          tier = "unknown"
+          pr_number = "none"
+          reason = "no merged PR provenance or valid tier declaration; fail closed"
+
+          if merged:
+              pr = merged[0]
+              pr_number = str(pr.get("number", "unknown"))
+              body = pr.get("body") or ""
+              risk_match = re.search(r"(?m)^\*\*Risk-Class:\*\*\s*(R[0-3])\s*$", body)
+              tier_match = re.search(r"(?m)^\*\*Autonomy-Tier:\*\*\s*(T[0-3])\s*$", body)
+              if not risk_match or not tier_match:
+                  reason = f"PR #{pr_number} has no machine-readable Risk-Class and Autonomy-Tier"
+              else:
+                  risk = risk_match.group(1)
+                  tier = tier_match.group(1)
+                  files = json.loads(subprocess.check_output(
+                      ["gh", "api", f"/repos/{repo}/pulls/{pr_number}/files?per_page=100"],
+                      env={**os.environ, "GH_TOKEN": os.environ["GH_TOKEN"]},
+                      text=True,
+                  ))
+                  workflow_change = any(
+                      item.get("filename", "").startswith(".github/workflows/")
+                      for item in files
+                  )
+                  if tier in {"T0", "T1"} and risk == ("R0" if tier == "T0" else "R1") and not workflow_change:
+                      mode = "auto"
+                      reason = f"PR #{pr_number} explicitly declares {risk}/{tier} and has no workflow change"
+                  elif workflow_change:
+                      reason = f"PR #{pr_number} changes a workflow; production activation is held"
+                  else:
+                      reason = f"PR #{pr_number} declares {risk}/{tier}; production activation requires Founder GO"
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"mode={mode}\n")
+              output.write(f"tier={tier}\n")
+              output.write(f"pr_number={pr_number}\n")
+              output.write(f"reason={reason}\n")
+          PY
+
+  merged-awaiting-activation:
+    name: Merged — awaiting production activation
+    needs: [resolve-target, detect-deployable, classify-activation]
+    if: ${{ always() && needs.classify-activation.result == 'success' && needs.classify-activation.outputs.mode == 'awaiting-activation' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Record protected boundary
+        env:
+          TARGET_SHA: ${{ needs.resolve-target.outputs.target_sha }}
+          TIER: ${{ needs.classify-activation.outputs.tier }}
+          PR_NUMBER: ${{ needs.classify-activation.outputs.pr_number }}
+          REASON: ${{ needs.classify-activation.outputs.reason }}
+        run: |
+          set -euo pipefail
+          {
+            echo "## merged-awaiting-activation"
+            echo ""
+            echo "- target SHA: `${TARGET_SHA}`"
+            echo "- source PR: `${PR_NUMBER}`"
+            echo "- declared tier: `${TIER}`"
+            echo "- reason: ${REASON}"
+            echo ""
+            echo "No production SSH, migration, frontend build, or data mutation was executed."
+            echo "Founder activation must dispatch `Deploy to Pi` with phase `application-deploy`, the exact current main SHA, and confirmation `ACTIVATE_PRODUCTION:<target_sha>`."
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+  production-activation:
+    name: Founder production activation gate
+    needs: [resolve-target, detect-deployable, classify-activation]
+    if: ${{ always() && needs.classify-activation.result == 'success' && needs.classify-activation.outputs.mode == 'manual' }}
+    environment:
+      name: production-activation
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Require exact typed activation confirmation
+        env:
+          TARGET_SHA: ${{ needs.resolve-target.outputs.target_sha }}
+          CONFIRM_INPUT: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          EXPECTED="ACTIVATE_PRODUCTION:${TARGET_SHA}"
+          if [[ "$CONFIRM_INPUT" != "$EXPECTED" ]]; then
+            echo "::error::Activation confirmation must exactly match ACTIVATE_PRODUCTION:<target_sha>; no production action was executed."
+            exit 1
+          fi
+          echo "Founder activation confirmation accepted for exact SHA ${TARGET_SHA}."
+
   deploy:
     name: Deploy to Production
-    needs: detect-deployable
+    needs: [resolve-target, detect-deployable, classify-activation, production-activation]
+    if: ${{ always() && needs.resolve-target.result == 'success' && needs.detect-deployable.result == 'success' && needs.classify-activation.result == 'success' && needs.detect-deployable.outputs.deployable == 'true' && (needs.classify-activation.outputs.mode == 'auto' || (needs.classify-activation.outputs.mode == 'manual' && needs.production-activation.result == 'success')) }}
     # Production credentials remain on the ephemeral GitHub-hosted runner.
     runs-on: ubuntu-latest
-    if: github.event.workflow_run.conclusion == 'success' && needs.detect-deployable.outputs.deployable == 'true'
 
     steps:
       - name: Setup SSH
@@ -117,7 +335,7 @@ jobs:
           PREV_COMMIT=$(git rev-parse HEAD)
           MIGRATION_RAN=0
           MIGRATION_FAILED=0
-          TARGET_SHA="${{ github.event.workflow_run.head_sha }}"
+          TARGET_SHA="${{ needs.resolve-target.outputs.target_sha }}"
 
           echo "=== [0b/7] Backup storage/app/public（#1124 防呆） ==="
           # backend/storage/app/public 正在從 git-tracked 轉為 untracked

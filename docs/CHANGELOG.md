@@ -1,3 +1,13 @@
+## 2026-08-29 — changed(operations): separate merge from production activation
+
+- `Deploy to Pi` now keeps policy-permitted T0/T1 auto-deploy behavior while
+  holding T2/T3 or unknown-tier deployable merges in an explicit
+  `merged-awaiting-activation` state.
+- Held commits require an exact current-main SHA, successful CI evidence, typed
+  Founder activation, and the existing `production-activation` Environment
+  before production execution. No production data or live settings were
+  changed by this preparation.
+
 ## 2026-08-29 — improved(ux): 學生課程下一步更明確
 
 <!-- release-notes: staff_update=staff-2026-08-29-student-course-next-action -->
