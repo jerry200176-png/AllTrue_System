@@ -770,6 +770,42 @@ export const staffUpdates = [
     "version": "2026.08.29"
   },
   {
+    "id": "staff-2026-08-29-bug-report-triage-context",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "回報問題時更容易提供線索",
+    "summary": "可補充發生時間與相關資料，幫助更快找到問題。",
+    "items": [
+      "回報視窗可選填發生時間，以及學生、課程、課堂或發票編號等相關資料。",
+      "描述欄提供簡短提示；欄位不會要求密碼，也不改既有操作或資料。",
+      "處理人員查看詳情時會直接看到這些補充線索，送出成功也會顯示回報編號，減少另外查找回報內容的步驟。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "回報視窗可選填發生時間，以及學生、課程、課堂或發票編號等相關資料。",
+          "描述欄提供簡短提示；欄位不會要求密碼，也不改既有操作或資料。",
+          "處理人員查看詳情時會直接看到這些補充線索，送出成功也會顯示回報編號，減少另外查找回報內容的步驟。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:bug-report-triage-context"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
     "id": "staff-2026-08-29-bug-list-keyboard",
     "publishedAt": "2026-08-29",
     "effectiveAt": null,

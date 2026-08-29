@@ -33,7 +33,23 @@
         <input id="bug-report-title" v-model="title" class="form-input" placeholder="簡述問題（留空則自動填入）" maxlength="200" />
 
         <label for="bug-report-description">詳細描述 <span class="required">*</span></label>
-        <textarea id="bug-report-description" v-model="description" class="form-textarea" placeholder="發生什麼問題？在什麼情況下？" rows="4" maxlength="5000" aria-required="true"></textarea>
+        <textarea id="bug-report-description" v-model="description" class="form-textarea" placeholder="請描述：做了什麼、實際看到什麼、原本預期什麼？" rows="4" maxlength="5000" aria-required="true"></textarea>
+        <p class="description-hint">若問題只在特定資料出現，請在下方補充時間或資料編號；請勿填寫密碼。</p>
+
+        <div class="triage-context" aria-label="協助定位問題的補充資訊">
+          <label for="bug-occurrence-at">發生時間 <span class="optional">（選填）</span></label>
+          <input id="bug-occurrence-at" v-model="occurrenceAt" class="form-input" type="datetime-local" />
+
+          <label for="bug-related-reference">相關資料 <span class="optional">（選填）</span></label>
+          <input
+            id="bug-related-reference"
+            v-model="relatedReference"
+            class="form-input"
+            maxlength="300"
+            autocomplete="off"
+            placeholder="例如：學生／課程／課堂／發票編號"
+          />
+        </div>
 
         <label for="bug-file-input">截圖（選填，最多 {{ maxFiles }} 張，每張 ≤5MB）</label>
         <input
@@ -90,7 +106,8 @@
         </div>
 
         <div v-if="submitSuccess" class="success-msg" role="status" aria-live="polite">
-          <span class="material-symbols-outlined">check_circle</span> 已提交，感謝回報！
+          <span class="material-symbols-outlined">check_circle</span>
+          已提交<span v-if="submittedBugId">（編號 #{{ submittedBugId }}）</span>，可到 Bug 回報查看進度。
         </div>
         <div v-if="submitError" class="error-msg" role="alert">{{ submitError }}</div>
       </div>
@@ -124,9 +141,12 @@ const props = defineProps({
 const showForm = ref(false);
 const title = ref('');
 const description = ref('');
+const occurrenceAt = ref('');
+const relatedReference = ref('');
 const severity = ref('medium');
 const submitting = ref(false);
 const submitSuccess = ref(false);
+const submittedBugId = ref(null);
 const submitError = ref('');
 const attachmentError = ref('');
 const attachmentFiles = ref([]);
@@ -276,6 +296,7 @@ function openForm() {
   showForm.value = true;
   submitError.value = '';
   attachmentError.value = '';
+  submittedBugId.value = null;
 }
 
 function openFilePicker() {
@@ -320,6 +341,9 @@ function closeForm() {
   clearAttachments();
   title.value = '';
   description.value = '';
+  occurrenceAt.value = '';
+  relatedReference.value = '';
+  submittedBugId.value = null;
   severity.value = 'medium';
   submitError.value = '';
   attachmentError.value = '';
@@ -386,9 +410,12 @@ async function doSubmit() {
       userAgent: navigator.userAgent,
       screenSize: `${window.innerWidth}x${window.innerHeight}`,
       timestamp: new Date().toISOString(),
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || null,
+      occurrenceAt: occurrenceAt.value || null,
+      relatedReference: relatedReference.value.trim() || null,
     });
 
-    await submitBugReport({
+    const result = await submitBugReport({
       branch_id: Number(props.branchId),
       title: title.value.trim() || `[${props.currentPageKey || '未知頁面'}] ${new Date().toLocaleString('zh-TW')}`,
       description: description.value.trim(),
@@ -399,9 +426,12 @@ async function doSubmit() {
       files: attachmentFiles.value.map((entry) => entry.file),
     });
 
+    submittedBugId.value = result?.id ?? null;
     submitSuccess.value = true;
     title.value = '';
     description.value = '';
+    occurrenceAt.value = '';
+    relatedReference.value = '';
     severity.value = 'medium';
     clearAttachments();
     window.dispatchEvent(new CustomEvent('alltrue-refresh-badges'));
@@ -439,6 +469,14 @@ label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; m
   border-radius: 8px; font-size: 14px; font-family: inherit;
 }
 .form-textarea { resize: vertical; }
+.description-hint {
+  margin: 5px 0 0; color: var(--ds-ink-mute); font-size: 12px; line-height: 1.5;
+}
+.triage-context {
+  margin-top: 12px; padding: 2px 12px 10px; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--ds-canvas-soft);
+}
+.triage-context label:first-child { margin-top: 8px; }
 
 .sr-only {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
