@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-08-30-attendance-button-semantics
+    changelog_date: "2026-08-30"
+    changelog_title: "improved(ux): 出缺勤操作按鈕語意更穩定"
+    reason: 僅補上原生按鈕的非送出語意與回歸測試；沒有新增教職員流程或改變出缺勤資料與狀態。
+
   - id: silent-2026-08-30-bug-composer-success-reset
     changelog_date: "2026-08-30"
     changelog_title: "fix(ux): Bug 回報視窗不殘留上一筆提交提示"
