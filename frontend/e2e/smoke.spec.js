@@ -45,28 +45,42 @@ async function login(page, role, creds) {
 /**
  * 點側欄導航切頁（SPA 用 active ref，無 Vue Router）。點 <button>（label span 為 pointer 容器），
  * 先清覆蓋層；點完斷言該 nav 按鈕進入 active，確保確實切頁而非空點。
+ *
+ * 登入後 /me 可能仍在飛行中；舊版會把 active 拉回角色首頁。這裡限定側欄、並短重試，
+ * 避免把「點了卻被 profile refresh 蓋掉」誤判成按鈕壞掉。
  */
 async function navTo(page, navLabel) {
   await dismissOverlays(page);
+  const sidebar = page.locator('nav.sidebar-nav');
   // 側欄低頻項目收在可展開群組內；先展開對應群組，再找可及按鈕。
   const navGroupByLabel = {
     '科目數統計': '教學工具',
   };
   const navGroup = navGroupByLabel[navLabel];
   if (navGroup) {
-    const summary = page.locator('summary.nav-group-summary').filter({ hasText: navGroup }).first();
+    const summary = sidebar.locator('summary.nav-group-summary').filter({ hasText: navGroup }).first();
     if (await summary.count()) {
       const group = summary.locator('..');
       if ((await group.getAttribute('open')) === null) await summary.click();
     } else {
-      await page.locator('.sidebar-more-trigger').first().click(); await expect(page.locator('.sidebar-more-panel')).toBeVisible();
+      await sidebar.locator('.sidebar-more-trigger').first().click();
+      await expect(page.locator('.sidebar-more-panel')).toBeVisible();
     }
   }
   // 側欄項目是 <button>，可及名稱含 nav-label 文字；可能尾隨 badge 數字故用 substring。
-  const navBtn = page.getByRole('button', { name: navLabel, exact: false }).first();
-  await navBtn.click({ force: true });
-  await page.waitForLoadState('networkidle').catch(() => {});
-  await expect(navGroup ? page.locator('.sidebar-more-trigger') : navBtn).toHaveClass(/active/, { timeout: 10_000 });
+  const navBtn = sidebar.getByRole('button', { name: navLabel, exact: false }).first();
+  const activeTarget = navGroup ? sidebar.locator('.sidebar-more-trigger') : navBtn;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await navBtn.click({ force: true });
+    await page.waitForLoadState('networkidle').catch(() => {});
+    const activeClass = await activeTarget.getAttribute('class').catch(() => '');
+    const ariaCurrent = await activeTarget.getAttribute('aria-current').catch(() => null);
+    if ((activeClass && /(?:^|\s)active(?:\s|$)/.test(activeClass)) || ariaCurrent === 'page') {
+      return;
+    }
+    await page.waitForTimeout(400);
+  }
+  await expect(activeTarget).toHaveClass(/active/, { timeout: 10_000 });
 }
 
 test.describe('UI smoke — director', () => {

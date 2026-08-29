@@ -6,6 +6,13 @@ last_reviewed: 2026-06-06
 
 # AI／工程師防再犯紀錄（必讀）
 
+### R130. `/me` profile refresh 不可覆寫使用者已選頁面（2026-08-29）
+
+- **現象**：登入後立刻點側欄「我的課表／課程查找」，畫面停在教學工作台／主任總覽；UI smoke 斷言 nav `active` 失敗。
+- **根因**：`fetchProfile`（含 `onAuthStateChange` 再取 `/me`）無條件把 `active` 設回 `teacher-home`／`director`，蓋掉剛完成的導航。
+- **強制規則**：profile refresh 只允許 (1) 強制改密 → `profile`、(2) bootstrap `director` → 老師首頁、(3) 角色不符的 `teacher-home` → 主任首頁。其餘保留 `currentActive`。邏輯集中在 `resolveActiveAfterProfileLoad`。
+- **測試必補**：`resolveActiveAfterProfileLoad.test.js` 覆蓋 calendar／course-mgmt 不被 clobber；UI smoke `navTo` 限定側欄並短重試。
+
 ### R129. 請假復原不可用一般狀態修改繞過 cascade；試聽轉正式不可搬移已上堂次（2026-08-28）
 
 - **現象**：請假堂次因缺少順延尾堂而無法撤銷，主任改用「已上→未上」繞過；試聽續報再轉移試聽堂，造成正式合約超排與重疊警告。
