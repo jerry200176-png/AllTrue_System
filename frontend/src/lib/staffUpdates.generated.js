@@ -143,6 +143,38 @@ export const staffUpdates = [
     "version": "2026.08.29"
   },
   {
+    "id": "staff-2026-08-29-teacher-queue-focus",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "teacher"
+    ],
+    "audience": [
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "查看今日任務會直接進入工作區",
+    "summary": "老師從工作台捷徑進入今日任務時，焦點會跟著移到「今天要完成」。",
+    "items": [
+      "點「查看今日任務」後會捲到今日工作佇列，鍵盤焦點也會落在工作區標題。",
+      "任務排序、點名／評量內容、導頁、資料與權限維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "點「查看今日任務」後會捲到今日工作佇列，鍵盤焦點也會落在工作區標題。",
+          "任務排序、點名／評量內容、導頁、資料與權限維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:teacher-queue-focus"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
     "id": "staff-2026-08-29-teacher-partial-queue-error",
     "publishedAt": "2026-08-29",
     "effectiveAt": null,
