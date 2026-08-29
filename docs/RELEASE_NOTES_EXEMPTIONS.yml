@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-08-29-bug-reply-copy-gate
+    changelog_date: "2026-08-29"
+    changelog_title: "fix(governance): bug 公開留言在寫回前執行白話檢查"
+    reason: 僅強化 bug workflow 的公開留言寫回前檢查；不新增教職員操作流程，也不改 production 資料或啟用流程。
+
   - id: silent-2026-08-29-entitlement-reason-length
     changelog_date: "2026-08-29"
     changelog_title: "fix(ops): 堂次轉移 reason 過長改為明確擋下"

@@ -29,6 +29,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - name: Checkout public reply policy
+        uses: actions/checkout@v7
+
+      - name: Validate public reply copy
+        env:
+          PUBLIC_REPLY: ${{ inputs.public_reply }}
+        run: node scripts/ci/validate-public-bug-reply.mjs
+
       - name: Setup SSH
         env:
           PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}

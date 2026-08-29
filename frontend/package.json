@@ -39,7 +39,7 @@
     "test:unit:cov": "vitest run --coverage",
     "test:e2e": "playwright test",
     "test:e2e:ui-foundation": "playwright test -c playwright.ui-foundation.config.js",
-    "test:release-notes": "node ../scripts/lib/userFacingCopyGate.test.mjs && node src/lib/releaseNotes.test.js",
+    "test:release-notes": "node ../scripts/lib/userFacingCopyGate.test.mjs && node ../scripts/ci/validate-public-bug-reply.test.mjs && node src/lib/releaseNotes.test.js",
     "test:release-notes-coverage": "node ../scripts/check-release-notes-coverage.mjs --self-test && node ../scripts/check-release-notes-coverage.mjs --base origin/main --head HEAD",
     "test:pin-gate": "node src/lib/pinGate.test.js",
     "test:teacher-eligibility-display": "node src/lib/teacherEligibilityDisplay.test.js",
