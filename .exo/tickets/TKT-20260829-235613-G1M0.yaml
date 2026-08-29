@@ -1,0 +1,41 @@
+id: TKT-20260829-235613-G1M0
+title: Complete bug report composer accessibility semantics
+intent: Complete bug report composer accessibility semantics
+kind: task
+parent_id: INT-20260826-113539-5KZM
+boundary: Only improve composer accessibility semantics and focused tests; do not
+  change bug lifecycle permissions, status transitions, storage authorization, multipart
+  payloads, or unrelated chat behavior.
+success_condition: The bug-report FAB and composer fields/statuses expose stable accessible
+  names and explicit button types; focused attachment and accessibility tests, frontend
+  lint, build, generated check, and preflight pass.
+priority: 2
+labels:
+- bug-report
+scope:
+  allow:
+  - frontend/src/components/BugReportLauncher.vue
+  - frontend/src/components/__tests__/BugReportLauncher.test.js
+  - .agent-session/manifest.json
+  - .exo/cache/**
+  - .exo/locks/**
+  - .exo/logs/**
+  - .exo/tickets/**
+  - .exo/memory/**
+  deny: []
+budgets:
+  max_files_changed: 8
+  max_loc_changed: 220
+checks:
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: todo
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-29T23:56:13+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default
