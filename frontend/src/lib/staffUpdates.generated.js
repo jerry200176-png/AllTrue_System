@@ -313,6 +313,45 @@ export const staffUpdates = [
     "version": "2026.08.29"
   },
   {
+    "id": "staff-2026-08-29-reflow-duplicate-target",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "重整排課遇到重複時段會清楚提示",
+    "summary": "固定排課設定產生相同目標時段時，不會再顯示不明確的伺服器錯誤。",
+    "items": [
+      "系統會在移動堂次前攔截重複的日期／時間目標，並回傳時段衝突提示。",
+      "原子交易與唯一時段防線維持不變，錯誤時不會留下半套重整結果。",
+      "既有堂次、扣堂、評量與排課資料不會因這次防線被自動改寫。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "系統會在移動堂次前攔截重複的日期／時間目標，並回傳時段衝突提示。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "原子交易與唯一時段防線維持不變，錯誤時不會留下半套重整結果。",
+          "既有堂次、扣堂、評量與排課資料不會因這次防線被自動改寫。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:reflow-duplicate-target"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
     "id": "staff-2026-08-29-profile-nav-clobber",
     "publishedAt": "2026-08-29",
     "effectiveAt": null,

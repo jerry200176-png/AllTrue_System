@@ -1529,3 +1529,10 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **根因層級**：應用程式 namespace／錯誤處理的工程一致性缺口；Laravel 的 `Log` 是 `Illuminate\\Support\\Facades\\Log`，裸 `\\Log` 不是可攜的 framework facade。
 - **強制規則**：`backend/app` 與 `backend/routes` 的記錄呼叫必須使用明確的 Laravel facade（import 或完整 namespace）；全域 `\\Log::` 禁止重新出現。錯誤路徑至少要有一個測試證明原本的 fallback／錯誤回應仍可返回。
 - **測試必補**：`LoggingFacadeNamespaceTest` 掃描應用程式與 API route；`CampusControllerTest::test_list_public_returns_empty_array_when_schema_probe_fails` 固定 public branch fallback 不被 logging exception 破壞。
+
+### R131. 固定排課重整必須先攔截重複目標，不能把唯一索引錯誤當成正常流程（GitHub #2043，2026-08-29）
+
+- **現象**：固定排課重整產生兩筆相同日期／開始時間的移動目標時，兩階段暫存雖能避免交換碰撞，第二筆落位仍會觸發 `uq_class_session_slot` 的 raw 1062，主任只看到伺服器錯誤。
+- **根因層級**：排課設定輸入與批次重整邊界缺少「批次內目標唯一」前置不變式；外部已佔用檢查不會看見同一批次中另一筆尚未落位的目標。
+- **強制規則**：`ClassSessionContractReflowService` 在任何暫存／寫入前，必須以課程、日期、開始時間檢查批次目標唯一；重複目標走既有可理解的時段衝突 422，不能放寬資料庫唯一索引或讓交易部分提交。
+- **測試必補**：兩筆未鎖定堂次收斂到同一目標時，測試必須證明回傳 `SlotOccupiedException`，且來源日期與所有關聯資料維持原狀；移除前置檢查後測試應重現 `uq_class_session_slot` 1062。
