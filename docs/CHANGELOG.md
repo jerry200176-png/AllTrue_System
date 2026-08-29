@@ -5,6 +5,13 @@
 - 修正公開分校清單與排課／薪資例外處理中的 Laravel 記錄器呼叫；發生錯誤時會保留原本的 fallback 或錯誤回應，不會因記錄器名稱錯誤再觸發第二個 500。
 - 未改資料、帳務、排課、權限或部署啟用流程。
 
+## 2026-08-29 — improved(ux): 老師今日佇列只保留一顆主行動
+
+<!-- release-notes: staff_update=staff-2026-08-29-teacher-secondary-cta -->
+
+- 「現在先做」維持實心主按鈕；「接著處理」改為次要按鈕，避免同一區塊多顆橘黃主行動搶注意力。
+- 不改任務排序、導頁、點名／評量資料、API 或權限；手機版次要行動仍維持滿寬可點。
+
 ## 2026-08-29 — fixed(schedule): 補課候選先排除同學生跨合約衝堂
 
 <!-- release-notes: staff_update=staff-2026-08-29-cross-contract-makeup-conflict -->
