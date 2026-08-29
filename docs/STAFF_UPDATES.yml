@@ -3,6 +3,22 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-29-learning-schedule-a11y
+    published_at: "2026-08-29"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 評量課表檢視控制更清楚
+    summary: 今日／本週、週次切換與填寫操作會以清楚的按鈕語意呈現。
+    items:
+      - category: improved
+        text: 評量頁課表的今日／本週切換與週次前後按鈕補上明確名稱，鍵盤與螢幕閱讀器更容易操作。
+      - category: improved
+        text: 原有課表資料、填寫導向、評量內容、權限與 API 維持不變。
+    source_refs:
+      - "changelog:2026-08-29:learning-schedule-a11y"
+
   - id: staff-2026-08-29-learning-view-actions-a11y
     published_at: "2026-08-29"
     audiences:
