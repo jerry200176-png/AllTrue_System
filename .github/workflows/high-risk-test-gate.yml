@@ -1,13 +1,14 @@
 name: High-Risk Test Gate
 
-# #736（Review 線 V1）：單人 repo 無第二位強制 reviewer，以「高風險檔強制附測試」
-# 作為 review 的硬護欄。當 PR 觸碰下列高風險邏輯但同 PR 沒有對應測試時，**擋下 merge**。
+# #736（Review 線 V1）：高風險檔強制附測試是 T2 independent review 的 supplemental
+# 硬護欄。當 PR 觸碰下列高風險邏輯但同 PR 沒有對應測試時，**擋下 merge**。
 #
 # 與 missing-tests-warn.yml 的差異：
 #   - missing-tests-warn：所有 production code 無測試 → 只「提醒」(advisory)
 #   - high-risk-test-gate：僅限堂數扣除／繳費／刷卡／核准同步／migration → 「阻擋」(required)
 #
-# 逃生門（罕用，需明確理由）：PR 加 label `risk-ack-no-test` 即放行（仍留紀錄）。
+# 逃生門（罕用，需明確理由）：PR 加 label `risk-ack-no-test` 即放行（仍留紀錄）；
+# 這不會繞過 T2 independent-review 或 T3 protected boundary。
 # 設為 required check：Settings → Branches → main → Require status checks → 勾選本 job。
 
 on:

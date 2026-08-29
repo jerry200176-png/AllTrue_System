@@ -73,10 +73,23 @@ ADAPTER_FILES = (
     ".exo/policy.sealed.json",
 )
 
+ACTIVE_POLICY_FILES = ADAPTER_FILES + (
+    ".github/pull_request_template.md",
+    "CONTRIBUTING.md",
+    "docs/OPERATIONS_RUNBOOK.md",
+    "docs/REF_GITHUB_RULESET_BASELINE.md",
+    "docs/governance/DECISION_RECORD_2026-08-07_TECH_DEBT_BATCH.md",
+    ".github/workflows/high-risk-test-gate.yml",
+)
+
 STALE_AUTONOMY_MARKERS = (
     "approval:human",
     "governance requires explicit human approval",
     "高風險模組（堂數扣除、繳費計算）必須標記「需使用者確認」",
+    "以「自動代理人 + 強制檢查」近似第二雙眼",
+    "CI = 自動 reviewer",
+    "CEO 批准後；docs-only 亦同",
+    "觸發時 CEO 自審即可",
     "等使用者批准後才 DEV",
     "使用者批准後才實作",
     "每個 Phase 結束必列 Exit Checklist，問使用者",
@@ -232,7 +245,7 @@ def fetch_reviews(event: dict[str, Any], token: str | None) -> list[dict[str, An
 
 def check_instructions(root: Path = ROOT) -> list[str]:
     violations: list[str] = []
-    for relative in ADAPTER_FILES:
+    for relative in ACTIVE_POLICY_FILES:
         path = root / relative
         if not path.is_file():
             violations.append(f"missing instruction source: {relative}")

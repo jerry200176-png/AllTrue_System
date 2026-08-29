@@ -21,18 +21,18 @@ For every issue: **Decision** (adopt / adopt-phased / defer-with-reason) → **R
 **Phase 2 (needs GitHub Settings UI, Founder):** Create the Ruleset from this baseline; add a monthly calendar reminder to export/diff it (`gh api repos/:owner/:repo/rulesets`) against this doc to catch drift.
 
 ### #876 CODEOWNERS / review ownership
-**Decision:** Adopt-phased. Google/Meta-style ownership matrices assume >1 reviewer; this is a solo-maintainer repo, so **required-approvals stays at 0** (per the repo's own Founder Decision 3 — "no universal rubber-stamp bottleneck"), and CODEOWNERS remains a **routing/reminder** signal, not a hard gate.
+**Decision:** Adopt-phased. Google/Meta-style ownership matrices assume >1 reviewer; this remains a solo-maintainer repo, so global **required-approvals stays at 0** (no universal rubber-stamp bottleneck). The 2026-08-29 Founder T0–T3 decision supersedes the old solo-mode substitution: T2 PRs now require a distinct reviewer identity approving the current head through the executable autonomy gate, while CODEOWNERS remains a routing/reminder signal rather than a global hard gate.
 **Reference:** GitHub CODEOWNERS + two-person review for high-risk paths (deferred until there's a second maintainer).
 **Phase 1 (this doc):** Ownership matrix below — the trigger to flip to `required_approving_review_count: 1` is **hiring/adding a second maintainer**, not a calendar date.
 
-| High-risk path | Owner | Solo-mode substitute for a 2nd reviewer |
+| High-risk path | Owner | Required evidence under current T0–T3 policy |
 |---|---|---|
-| `backend/app/Http/Controllers/*Billing*`, `AlertController.php` | Founder | Bugbot/Cursor AI review + PR Threat Note + required `High-Risk Test Gate` check |
-| `.github/workflows/*.yml`, `deploy.yml` | Founder | `Agent Session Provenance` + `Presubmit Checks` required checks |
-| `backend/database/migrations/*` | Founder | Migration Compatibility section in PR template + expand/contract review |
-| `docs/governance/*` | Founder | Self-review checklist (already in PR template) |
+| `backend/app/Http/Controllers/*Billing*`, `AlertController.php` | Founder | T2 independent current-head review + PR Threat Note + required `High-Risk Test Gate` check; protected action remains T3/Founder-gated |
+| `.github/workflows/*.yml`, `deploy.yml` | Founder | T2 independent current-head review + `Agent Session Provenance` + `Presubmit Checks`; protected activation remains Founder-gated |
+| `backend/database/migrations/*` | Founder | T3 protected boundary; Migration Compatibility evidence and dry run may be prepared, execution requires Founder GO |
+| `docs/governance/*` | Founder | T2 independent current-head review + self-review checklist |
 
-**Phase 2:** When a second maintainer joins, flip required-approvals to 1 for the paths above via the Ruleset from #880.
+**Phase 2:** If the maintainer model or risk policy changes, revisit global ruleset approvals via #880; this is not required for the current T2 per-diff gate.
 
 ### #875 GitHub Environments (production/staging secrets)
 **Decision:** Adopt-phased.

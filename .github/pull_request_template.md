@@ -13,9 +13,9 @@
 **Review / protected-boundary evidence：** <!-- T2: independent review context; T3: Founder decision packet and exact boundary; otherwise N/A -->
 **Rollback:** <!-- revert SHA / prior deploy / repair --rollback / n/a -->
 
-> **單人 repo Review Gate（#736）**：無第二位強制 reviewer 時，以「自動代理人 + 強制檢查」近似第二雙眼——
-> ①自動 AI review 留言（Bugbot/Copilot review，repo 設定啟用，**merge 前需 resolve 所有 thread**）②高風險檔強制附測試（required check `High-Risk Test Gate`）③下方 self-review checklist。  
-> **T2/R2**：CI 全綠 + independent review + 本 checklist 據實填寫即可由 Agent merge，無 protected Founder decision 時不需人類橡皮圖章。
+> **Review evidence（global approvals remain 0）**：自動 AI review、required checks、高風險測試與 self-review checklist 是所有 PR 的輔助證據，不能取代 T2 的 independent review。
+> **T0/T1**：required checks 與本 checklist 據實填寫後，Agent 可依風險政策 autonomous merge。
+> **T2/R2**：除 required CI、rollback / production-verification evidence 外，必須有 distinct reviewer identity 對 current head SHA 的 GitHub `APPROVED` review；無 protected Founder decision 時不需 Founder rubber stamp。
 > **T3/R3**：可準備實作與 evidence package；在 protected action 前停止並取得 Founder GO，不得以假身份或 review 取代該 gate。
 
 ## 關聯 Issue（Refs / Closes 規則）

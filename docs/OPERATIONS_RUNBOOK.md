@@ -269,17 +269,17 @@ Wrapper 會為每個 process 啟動只綁定 `127.0.0.1` 的非特權 ephemeral 
 | Required approvals | **0**（單人）| 避免自己卡自己；§R 稽核 `reviews` 應為 0 |
 | Auto-delete head branches | Settings → General | 減少 stale branch |
 | Squash merge | 預設 squash；一 PR 一議題 | 大廠 trunk-based 習慣 |
-| Presubmit + CI gate | AI **必須**等 checks completed 再報告可 merge | CI = 自動 reviewer |
-| CODEOWNERS | 保留；觸發時 CEO 自審即可 | 高風險路徑提醒 |
+| Presubmit + CI gate | AI **必須**等 checks completed；T2 另須 distinct current-head approval，T3 停在 protected boundary | CI 是 required evidence，不取代 T2 independent review |
+| CODEOWNERS | 保留作 routing / context；不把作者自審當成 T2 independent review | 高風險路徑提醒 |
 | Dependabot SLA | §B0 / §T | 供應鏈 |
 | Branch hygiene | `branch-hygiene.yml` + `./scripts/branch-hygiene.sh` | 每週清理 |
 
-**刻意不開（等第二人再加入）**
+**Global ruleset 刻意不開（不等於 T2 per-diff gate 關閉）**
 
 | 項目 | 原因 |
 |------|------|
 | Merge queue | 單人無並行 merge 競態 |
-| Required 1+ approval | 會 dead-lock |
+| Global required 1+ approval | 保留 T0/T1 autonomy；T2 由 Presubmit 依實際 diff 要求 distinct review |
 | GitHub Projects 當 Jira | Issue + labels 已夠 |
 | GitHub Discussions | 決策寫 docs / issue |
 | Mandatory signed commits | 維護成本 > 效益 |
@@ -293,7 +293,7 @@ git checkout -b feat|fix|chore/<slug>
 git push -u origin HEAD
 gh pr create --fill
 gh pr checks --watch          # 等到全綠或自己修
-gh pr merge --squash --delete-branch   # CEO 批准後；docs-only 亦同
+gh pr merge --squash --delete-branch   # T0/T1 gates pass；T2 另須 independent review；T3 不在此處 merge
 bash scripts/post-merge-smoke.sh       # deploy 後必跑（取代手動點 UI）
 curl -sk https://daan.lifenet.com.tw/api/v1/health | python3 -m json.tool
 ```
@@ -320,7 +320,7 @@ gh api repos/jerry200176-png/AllTrue_System/branches/main/protection \
 |------|------|
 | Open PR 全綠但 behind main | `gh api -X PUT repos/jerry200176-png/AllTrue_System/pulls/<N>/update-branch` |
 | Dependabot 堆積 | 依 §T SLA merge 或 `@dependabot rebase` |
-| `reviews` ≠ 0 | Settings → Branch protection → 0 approval |
+| global `required_approving_review_count` ≠ 0 | 回復 0；T2 review 仍由 Presubmit 依實際 diff 驗證 |
 | Runner offline | §B4 recovery |
 
 **每月 1 日**：`mempalace-monthly.yml` → WSL2 執行 `bash scripts/mempalace-maintain.sh`；`node scripts/docs-integrity-check.mjs --strict`；SSH 輪替月 → §S。

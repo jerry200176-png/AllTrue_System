@@ -45,20 +45,20 @@
 | **工作流** | `.github/workflows/`：`ci.yml`、`presubmit.yml`、`deploy.yml` 等；deploy 僅在合併後且有 deployable diff 時執行。 |
 | **Dependency Review** | [`.github/workflows/dependency-review.yml`](.github/workflows/dependency-review.yml)：可選用 GitHub 官方的 **dependency-review**（與 `npm audit` / `composer audit` 互補）。需 **Dependency graph + GitHub Advanced Security**（私人 repo 常需付費方案）；啟用後在 **Repo settings → Variables → Actions** 設 `ENABLE_DEPENDENCY_REVIEW=true`，否則 workflow 只發 notice、不阻擋合併。主線供應鏈 gate 仍以 `ci.yml` 的 audit 為準。 |
 
-### 單人 repo 的 Review 替代機制（#736）
+### Risk-based review evidence（#736）
 
-無第二位強制 reviewer 時，用三層「自動代理人 + 強制檢查」近似大廠「每個 CL 至少一個 reviewer + 高風險 owner 把關」：
+GitHub global `required_approving_review_count` 維持 `0`，以保留 T0/T1 autonomy；這不會豁免 T2 的 per-diff independent-review gate。T2 必須由 distinct GitHub identity 對 current PR head 提交可驗證的 `APPROVED` review。
 
-1. **自動 AI review**：每個 PR 由 AI bot（Bugbot / Copilot review）自動留 review comment（repo Settings 端啟用，屬一次性管理者設定）。
+1. **Independent review**：T2 PR 必須有非作者、針對 current head SHA 的 GitHub approval；無法驗證時 fail closed。
 2. **高風險檔強制測試（required）**：[`.github/workflows/high-risk-test-gate.yml`](.github/workflows/high-risk-test-gate.yml)——觸碰堂數扣除 / 繳費 / 刷卡 / 核准同步 / migration 但同 PR 無 `backend/tests/**` 時**擋 merge**。例外需加 label `risk-ack-no-test` 並於描述說明。設為 required：Settings → Branches → main → Require status checks → 勾 `High-risk change requires tests`。
-3. **Self-review checklist**：PR 模板的 Checklist / Design System / Threat Note 三段，提交者以 reviewer 視角逐項自審（多校區隔離、tabular-nums、一區一 CTA、無 raw hex）。
+3. **Supplemental evidence**：自動 AI review、`Agent Session Provenance`、其他 required checks 與 PR self-review checklist 可補強證據，但不能冒充 T2 independent review。
 
 > `missing-tests-warn.yml` 仍對「所有 production code 無測試」做 advisory 提醒；`high-risk-test-gate.yml` 則對高風險子集做 blocking。兩者互補。
 
 ### 再靠近一點大廠（選配、不強制）
 
 - **Merge queue**：多人協作時在 **Settings → Rules** 開啟，減少「綠燈但合併後 main 紅」。
-- **Required reviewers**：第二位 maintainer 出現後，對 `main` 要求至少 1 approve。
+- **Required reviewers**：global ruleset 不要求所有 PR 一律 approval；T2 由 per-diff autonomy gate 要求 distinct current-head approval。未來若 maintainer 組成或風險政策改變，再另行調整 ruleset。
 - **Staging**：單機 Pi 可維持現狀；若要 staging，另備環境與 deploy workflow 分流（屬架構決策）。
 
 延伸閱讀（deploy 邊界、merge queue、Golden 自動化）：[`docs/archive/ENTERPRISE_WORKFLOW_ALIGNMENT.md`](docs/archive/ENTERPRISE_WORKFLOW_ALIGNMENT.md)。
