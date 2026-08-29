@@ -3,6 +3,17 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-30-teacher-home-single-surface
+    published_at: "2026-08-30"
+    audiences:
+      - teacher
+    importance: digest
+    title: 老師工作台更聚焦下一步
+    summary: 今天的待辦集中在一個工作佇列，本週課表直接可見，減少在多個區塊間猜下一步。
+    items:
+      - category: improved
+        text: 老師工作台現在以「今天要完成」作為唯一主要待辦入口，舊的隱藏待辦、提示音與重複捷徑不再干擾畫面。
+    source_refs: ["changelog:2026-08-30:teacher-home-single-surface"]
   - id: staff-2026-08-29-learning-filter-chips-a11y
     published_at: "2026-08-29"
     audiences:

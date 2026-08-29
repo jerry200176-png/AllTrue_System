@@ -5,6 +5,28 @@
  */
 export const changelogDraftNotes = [
   {
+    "version": "2026.08.30",
+    "date": "2026-08-30",
+    "title": "2026.08.30 草稿（未發布）",
+    "summary": "老師工作台聚焦今天與本週",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "其他改善",
+        "items": [
+          "老師工作台聚焦今天與本週"
+        ]
+      }
+    ],
+    "items": [
+      "老師工作台聚焦今天與本週"
+    ]
+  },
+  {
     "version": "2026.08.29",
     "date": "2026-08-29",
     "title": "2026.08.29 草稿（未發布）",
@@ -582,28 +604,6 @@ export const changelogDraftNotes = [
     "items": [
       "建立堂次跨續購批次轉移的可稽核核心",
       "排課、收費與收據顯示修正"
-    ]
-  },
-  {
-    "version": "2026.08.09",
-    "date": "2026-08-09",
-    "title": "2026.08.09 草稿（未發布）",
-    "summary": "正職薪資假日假與常態排課規則對齊",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "修正內容",
-        "items": [
-          "正職薪資假日假與常態排課規則對齊"
-        ]
-      }
-    ],
-    "items": [
-      "正職薪資假日假與常態排課規則對齊"
     ]
   }
 ];

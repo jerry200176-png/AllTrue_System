@@ -1,3 +1,8 @@
+## 2026-08-30 — improved(ux): 老師工作台聚焦今天與本週
+<!-- release-notes: staff_update=staff-2026-08-30-teacher-home-single-surface -->
+- 今天待辦集中在單一工作佇列，移除不會顯示的舊待辦、提示音與重複捷徑。
+- 本週跨分校課表直接可見；既有資料、導頁、API、權限與生產啟用流程不變。
+
 ## 2026-08-29 — improved(ux): Bug 回報工作區頁籤更容易辨識
 
 <!-- release-notes: silent_ship=silent-2026-08-29-bug-reports-tabs-a11y -->

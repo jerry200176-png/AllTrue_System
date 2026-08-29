@@ -4,6 +4,34 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-30-teacher-home-single-surface",
+    "publishedAt": "2026-08-30",
+    "effectiveAt": null,
+    "audiences": [
+      "teacher"
+    ],
+    "audience": [
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "老師工作台更聚焦下一步",
+    "summary": "今天的待辦集中在一個工作佇列，本週課表直接可見，減少在多個區塊間猜下一步。",
+    "items": [
+      "老師工作台現在以「今天要完成」作為唯一主要待辦入口，舊的隱藏待辦、提示音與重複捷徑不再干擾畫面。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "老師工作台現在以「今天要完成」作為唯一主要待辦入口，舊的隱藏待辦、提示音與重複捷徑不再干擾畫面。"
+        ]
+      }
+    ],
+    "sourceRefs": [],
+    "date": "2026-08-30",
+    "version": "2026.08.30"
+  },
+  {
     "id": "staff-2026-08-29-cross-contract-makeup-conflict",
     "publishedAt": "2026-08-29",
     "effectiveAt": null,

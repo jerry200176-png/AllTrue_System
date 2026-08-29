@@ -46,10 +46,6 @@ assert.equal(source.includes('isProjected: !!s.isProjected'), true,
 assert.equal(source.includes('!ev.isProjected'), true,
   'projected weekly slots must not invoke ClassSession-only actions before materialization');
 
-assert.equal(source.includes('o.branch_id'), false, 'overdue evaluation actions must use SessionViewModel branchId');
-assert.equal(source.includes('o.session_date'), false, 'overdue evaluation actions must use SessionViewModel date');
-assert.match(source, /branchId: o\.branchId[\s\S]*sessionDate: o\.date/);
-
 // #236: a reactive week reload must retain the last good projection while the
 // next request is loading, and must not let an older response replace it.
 assert.equal(source.includes('weekSessions.value = [];'), false,
