@@ -98,9 +98,18 @@ describe('TuitionCollectionPage receipt entry paths', () => {
     expect(source).toMatch(/receiptReportId\.value\s*=\s*match\.id/);
   });
 
-  it('blocks settle when remaining sessions are still owed (#1839)', () => {
+  it('requires explicit forfeiture when settling with remaining sessions (#1839)', () => {
     expect(source).toContain('settleTargetStillOwesSessions');
-    expect(source).toContain('還有 ${Number(row.remaining_sessions)} 堂未上，請先排課後再結案');
-    expect(source).toContain(':disabled="settleLoading || settleTargetStillOwesSessions"');
+    expect(source).toContain('確認結案會取消未來排課並放棄這些剩餘額度');
+    expect(source).toContain('forfeit_remaining: true');
+    expect(source).toContain(':disabled="settleLoading"');
+    expect(source).not.toContain('請先排課後再結案');
+  });
+
+  it('offers no-renew settlement for the paid monthly reminder state', () => {
+    expect(source).toContain("r.payment_status === 'renew_needed' || r.payment_status === 'monthly_due_soon'");
+    expect(source).toContain("r.payment_status === 'monthly_due_soon' ? '月結本期' : '需續課'");
+    expect(source).toContain('title="結案且不續報"');
+    expect(source).toContain('結案（不續報）');
   });
 });

@@ -1,0 +1,117 @@
+name: LearningRecord integrity repair (gated)
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: dry-run (default) | execute | verify
+        required: true
+        default: dry-run
+        type: choice
+        options: [dry-run, execute, verify]
+      confirm_environment:
+        description: Must be PRODUCTION for execute
+        required: true
+        default: ''
+        type: string
+      confirm_phrase:
+        description: For execute, type I_APPROVE_LEARNING_RECORD_INTEGRITY
+        required: false
+        type: string
+      actor:
+        description: Executor audit label
+        required: true
+        default: gha:learning-record-integrity
+        type: string
+      actor_user_id:
+        description: Existing super-admin user id recorded in audit rows
+        required: true
+        default: '4'
+        type: string
+
+concurrency:
+  group: repair-learning-record-integrity
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate gates
+        env:
+          MODE: ${{ inputs.mode }}
+          ENV_CONFIRM: ${{ inputs.confirm_environment }}
+          PHRASE: ${{ inputs.confirm_phrase }}
+          ACTOR_ID: ${{ inputs.actor_user_id }}
+        run: |
+          set -euo pipefail
+          test "$ACTOR_ID" -gt 0
+          if [ "$MODE" = execute ]; then
+            test "$ENV_CONFIRM" = PRODUCTION
+            test "$PHRASE" = I_APPROVE_LEARNING_RECORD_INTEGRITY
+          fi
+
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$PI_SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Run integrity repair on production
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          MODE: ${{ inputs.mode }}
+          ACTOR: ${{ inputs.actor }}
+          ACTOR_ID: ${{ inputs.actor_user_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes \
+            "$PI_SSH_USER@$PI_SSH_HOST" \
+            MODE="$MODE" ACTOR="$ACTOR" ACTOR_ID="$ACTOR_ID" 'bash -s' <<'REMOTE' | tee out/repair.log
+          set -euo pipefail
+          cd /home/admin/backend
+          COMMON="--actor=$ACTOR --actor-user-id=$ACTOR_ID"
+          if [ "$MODE" = verify ]; then
+            php artisan learning-records:integrity-scan --limit=2000
+            exit 0
+          fi
+
+          php artisan repair:confirmed-attendance-assessment --dry-run $COMMON
+          if [ "$MODE" = dry-run ]; then
+            exit 0
+          fi
+
+          TS=$(date '+%Y-%m-%d_%H%M%S')
+          mkdir -p /home/admin/backups/emergency storage/app/repair-snapshots
+          DB_USER="$(grep '^DB_USERNAME=' .env | cut -d= -f2-)"
+          DB_PASS="$(grep '^DB_PASSWORD=' .env | cut -d= -f2-)"
+          mysqldump -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASS" --single-transaction \
+            AllTrue ClassSession LearningRecord StudentSingIn session_deduction_ledger schedule_audit_logs \
+            | gzip > "/home/admin/backups/emergency/db_pre_learning_record_integrity_${TS}.sql.gz"
+          test -s "/home/admin/backups/emergency/db_pre_learning_record_integrity_${TS}.sql.gz"
+          export ALLOW_PROD_REPAIR=1
+          php artisan repair:confirmed-attendance-assessment --execute --force $COMMON \
+            | tee /tmp/learning-record-integrity-execute.log
+          unset ALLOW_PROD_REPAIR
+          php artisan learning-records:integrity-scan --limit=2000
+          REMOTE
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: learning-record-integrity-audit
+          path: out/repair.log
+          retention-days: 90

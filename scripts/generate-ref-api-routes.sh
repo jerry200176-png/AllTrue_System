@@ -3,9 +3,25 @@
 # Usage: bash scripts/generate-ref-api-routes.sh   (from repo root; backend vendor installed)
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+case "${1:-}" in
+    '') ;;
+    --check) export REF_API_ROUTES_CHECK=1 ;;
+    *) echo "Usage: bash scripts/generate-ref-api-routes.sh [--check]" >&2; exit 2 ;;
+esac
+if [[ $# -gt 1 ]]; then
+    echo "Usage: bash scripts/generate-ref-api-routes.sh [--check]" >&2
+    exit 2
+fi
+
 php backend/artisan route:list --json > /tmp/ref-routes.json
 python3 - <<'PY'
-import json, datetime, collections
+import collections
+import datetime
+import json
+import os
+import re
+import sys
 
 routes = json.load(open('/tmp/ref-routes.json'))
 api = [r for r in routes if (r.get('uri') or '').startswith('api/')]
@@ -81,6 +97,22 @@ for prefix, rs in groups.items():
         lines.append(f"| {method} | `{r['uri']}` | `{action}` | {auth_summary(r.get('middleware'))} |")
     lines.append('')
 
-open('docs/REF_API_ROUTES.md', 'w', encoding='utf-8').write('\n'.join(lines) + '\n')
-print(f"wrote docs/REF_API_ROUTES.md ({len(api)} routes, {len(groups)} groups)")
+# Keep the generated artifact to one terminal newline so generic diff checks
+# do not treat the final group separator as an extra blank line.
+generated = '\n'.join(lines).rstrip() + '\n'
+output_path = 'docs/REF_API_ROUTES.md'
+
+if os.environ.get('REF_API_ROUTES_CHECK') == '1':
+    existing = open(output_path, encoding='utf-8').read()
+    # The generated date is useful in the committed reference but should not
+    # make a later CI check fail when the route set is unchanged.
+    date_line = re.compile(r'(generated )\d{4}-\d{2}-\d{2}')
+    normalize = lambda value: date_line.sub(r'\1DATE', value)
+    if normalize(existing) != normalize(generated):
+        print('REF_API_ROUTES.md is stale; run bash scripts/generate-ref-api-routes.sh', file=sys.stderr)
+        sys.exit(1)
+    print(f"REF_API_ROUTES.md is up to date ({len(api)} routes, {len(groups)} groups)")
+else:
+    open(output_path, 'w', encoding='utf-8').write(generated)
+    print(f"wrote {output_path} ({len(api)} routes, {len(groups)} groups)")
 PY

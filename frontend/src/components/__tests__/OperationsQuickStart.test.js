@@ -39,4 +39,31 @@ describe('operations quick-start UX contract', () => {
     }
     expect(calendar).toContain('v-if="!isTeacher"');
   });
+
+  it('keeps the director first viewport task-first and progressively discloses secondary tools', () => {
+    const director = pageSource('DirectorDashboard.vue');
+    const focusIndex = director.indexOf('aria-label="今天的主任工作"');
+    const fillRateIndex = director.indexOf('aria-label="老師評量完成率"');
+    const quickStartIndex = director.indexOf('class="director-secondary-tools"');
+
+    expect(focusIndex).toBeGreaterThan(-1);
+    expect(quickStartIndex).toBeGreaterThan(focusIndex);
+    expect(fillRateIndex).toBeGreaterThan(quickStartIndex);
+    expect(director).toContain('查看為什麼這些工作排在前面');
+    expect(director).toContain('營運指標與常用入口');
+    expect(director).toContain('@toggle="secondaryToolsOpen = $event.currentTarget.open"');
+  });
+
+  it('keeps course, billing, and calendar primary work ahead of guidance panels', () => {
+    const course = pageSource('CourseManagement.vue');
+    const billing = pageSource('TuitionCollectionPage.vue');
+    const calendar = pageSource('SmartCalendar.vue');
+
+    expect(course).toContain('class="course-context-disclosure"');
+    expect(course).toContain('class="course-stats-disclosure"');
+    expect(billing).toContain('class="tc-process-disclosure"');
+    expect(billing).toContain('class="tc-summary-disclosure"');
+    expect(calendar).toContain('class="calendar-process-disclosure"');
+    expect(calendar).toContain('data-guide="calendar-toolbar"');
+  });
 });

@@ -17,6 +17,8 @@ const START = process.env.SMOKE_START_DATE || '2026-08-05';
 const END = process.env.SMOKE_END_DATE || '2026-08-07';
 const CALENDAR_NAV_LABEL = '班級行事曆';
 const COURSE_NAV_LABEL = '課程查找';
+const CALENDAR_PAGE_TITLE = '班級行事曆 / 課表';
+const COURSE_PAGE_TITLE = '課程查找';
 // Keep the returning-user fixture aligned with the same STAFF_UPDATES source
 // that drives the production release nudge. A hard-coded version makes this
 // read-only acceptance fail as soon as a newer staff update is published.
@@ -55,6 +57,11 @@ function valueOf(row, ...keys) {
   return null;
 }
 
+function pageHeading(page, label) {
+  const name = label.includes('行事曆') ? CALENDAR_PAGE_TITLE : COURSE_PAGE_TITLE;
+  return page.getByRole('heading', { name, exact: true }).first();
+}
+
 function slotKey(courseId, date, start) {
   return `${String(courseId)}|${ymd(date)}|${hm(start)}`;
 }
@@ -88,7 +95,7 @@ async function navigate(page, label) {
     await expect(button).toBeVisible({ timeout: 15_000 });
     await button.click();
     await expect(page.locator('.more-sheet.open')).toHaveCount(0, { timeout: 15_000 });
-    await expect(page.locator('.smart-cal-title')).toBeVisible({ timeout: 15_000 });
+    await expect(pageHeading(page, label)).toBeVisible({ timeout: 15_000 });
     return;
   }
   if (isMobile && label === COURSE_NAV_LABEL) {
@@ -99,7 +106,7 @@ async function navigate(page, label) {
     await expect(button).toBeVisible({ timeout: 15_000 });
     await button.click();
     await expect(page.locator('.more-sheet.open')).toHaveCount(0, { timeout: 15_000 });
-    await expect(page.locator('.course-page .page-title')).toBeVisible({ timeout: 15_000 });
+    await expect(pageHeading(page, label)).toBeVisible({ timeout: 15_000 });
     return;
   }
   const button = page.getByRole('button', { name: label, exact: false }).first();
@@ -109,9 +116,7 @@ async function navigate(page, label) {
 }
 
 async function assertResponsive(page, label) {
-  const title = label.includes('行事曆')
-    ? page.locator('.smart-cal-title').first()
-    : page.locator('.course-page .page-title').first();
+  const title = pageHeading(page, label);
   await expect(title).toBeVisible({ timeout: 15_000 });
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
   expect(overflow, `${label} has horizontal overflow`).toBeFalsy();

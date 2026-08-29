@@ -6,11 +6,13 @@
   "scripts": {
     "dev": "vite",
     "test:calendar": "node src/lib/scheduleOccurrencePhase0.lock.test.js && node src/lib/sessionOccurrenceFilter.test.js && node src/lib/slotOccupancy.test.js && node src/lib/calendarExceptionMerge.test.js && node src/lib/calendarOccurrenceMerge.test.js && node src/lib/calendarLoadPerformance.test.js && node src/lib/calendarCourseLoad.test.js && node src/lib/classSessionPick.test.js && node src/lib/classSessionsApi.test.js && node src/lib/useBranches.test.js && node src/lib/teacherHomeSessionContract.test.js && node src/lib/calendarDateUtils.test.js && node src/lib/calendarFormat.test.js && node src/lib/calendarDropRouting.test.js && node src/lib/teacherColor.test.js && npx vitest run src/composables/__tests__/supabaseMutationContract.test.js && npx vitest run src/components/substitute/__tests__/SubstituteTeacherPickerModal.test.js && npx vitest run src/composables/course-management/__tests__/useRescheduleAndMakeup.test.js && npx vitest run src/composables/calendar/__tests__/useCalendarLeaveExtra.test.js && npx vitest run src/composables/calendar/__tests__/useCalendarSubstitute.test.js && npx vitest run src/composables/calendar/__tests__/useCalendarReschedule.test.js",
+    "test:subject-units-display": "node src/lib/subjectUnitsDisplay.test.js",
     "test:teacher-streak": "node src/lib/teacherLoginStreak.test.js",
     "test:engagement-progress": "node src/lib/engagementRankProgress.test.js",
     "test:exception-workflow-focus": "node src/lib/exceptionWorkflowFocus.test.js",
     "test:session-consistency": "node src/lib/sessionConsistency.test.js",
     "test:teacher-daily-workflow": "node src/lib/teacherDailyWorkflow.test.js",
+    "test:teacher-home-notification-a11y": "vitest run src/components/__tests__/TeacherHomeNotificationAccessibility.test.js",
     "test:session-occurrence-filter": "node src/lib/sessionOccurrenceFilter.test.js",
     "test:slot-occupancy": "node src/lib/slotOccupancy.test.js",
     "test:package-sessions": "node src/lib/packageSessions.test.js",
@@ -19,9 +21,13 @@
     "test:universal-scheduler-api": "node src/lib/universalSchedulerApi.test.js",
     "test:enrollment-conflict-decision": "node src/lib/enrollmentConflictDecision.test.js",
     "test:learning-records-window": "node src/lib/learningRecordsWindow.test.js",
+    "test:learning-records-queue-a11y": "vitest run src/components/__tests__/LearningRecordsQueueAccessibility.test.js",
+    "test:learning-records-schedule-a11y": "vitest run src/components/__tests__/LearningRecordsScheduleAccessibility.test.js",
     "test:learning-record-target": "node src/lib/learningRecordTarget.test.js",
     "test:learning-record-sort": "node src/lib/learningRecordSort.test.js",
     "test:learning-record-preview": "node src/lib/learningRecordPreview.test.js",
+    "test:learning-records-view-actions-a11y": "vitest run src/components/__tests__/LearningRecordsViewActionsAccessibility.test.js",
+    "test:assessment-actions-a11y": "vitest run src/components/__tests__/AssessmentActionsAccessibility.test.js",
     "test:trust-decision-display": "node src/lib/trustDecisionDisplay.test.js",
     "test:student-class-display": "node src/lib/studentClassDisplay.test.js",
     "test:schedule-display": "node src/lib/scheduleDisplay.test.js",
@@ -33,6 +39,10 @@
     "test:course-pricing": "node src/lib/coursePricing.test.js",
     "test:scheduler-session-expand": "node src/lib/schedulerSessionExpand.test.js",
     "test:lesson-coverage": "node src/lib/lessonCoverage.test.js && vitest run src/components/__tests__/UniversalClassSchedulerActualDuration.test.js",
+    "test:bug-reports-tabs-a11y": "node src/lib/bugReportsPageA11y.test.js",
+    "test:students-modal-a11y": "node src/lib/studentsModalA11y.test.js",
+    "test:teacher-queue-focus-a11y": "node src/lib/teacherQueueFocusA11y.test.js",
+    "test:course-management-tabs-a11y": "node src/lib/courseManagementTabsA11y.test.js",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
     "test:unit:cov": "vitest run --coverage",
@@ -42,13 +52,15 @@
     "test:release-notes-coverage": "node ../scripts/check-release-notes-coverage.mjs --self-test && node ../scripts/check-release-notes-coverage.mjs --base origin/main --head HEAD",
     "test:pin-gate": "node src/lib/pinGate.test.js",
     "test:teacher-eligibility-display": "node src/lib/teacherEligibilityDisplay.test.js",
+    "test:bug-report-context": "node src/lib/bugReportContext.test.js",
+    "test:bug-reports-list-a11y": "node src/lib/bugReportsListA11y.test.js",
     "sync-release-notes": "node ../scripts/changelog-to-release-notes.mjs && node ../scripts/staff-updates-to-js.mjs && node ../scripts/parent-updates-to-js.mjs",
     "metrics:design-hex": "bash ../scripts/design-hex-count.sh",
     "lint:design": "bash ../scripts/check-no-raw-hex.sh",
     "lint:ui-fixtures": "bash ../scripts/check-no-public-ui-fixtures.sh",
     "lint:no-undef": "eslint src --no-warn-ignored",
     "lint:no-unused-baseline": "node ../scripts/check-eslint-unused-baseline.mjs",
-    "build": "npm run lint:no-undef && npm run lint:no-unused-baseline && npm run sync-release-notes && npm run test:session-consistency && npm run test:session-occurrence-filter && npm run test:slot-occupancy && npm run test:package-sessions && npm run test:session-planning-status && npm run test:course-teacher-options && npm run test:universal-scheduler-api && npm run test:enrollment-conflict-decision && npm run test:schedule-display && npm run test:attendance-source-display && npm run test:attendance-mark-confirm-hint && npm run test:director-facing-id-leak && npm run test:learning-records-window && npm run test:learning-record-target && npm run test:learning-record-sort && npm run test:learning-record-preview && npm run test:trust-decision-display && npm run test:student-class-display && npm run test:parent-notification-preferences && npm run test:scroll-lock && npm run test:course-pricing && npm run test:scheduler-session-expand && npm run test:lesson-coverage && npm run test:pin-gate && npm run test:teacher-eligibility-display && vite build && npm run lint:ui-fixtures",
+    "build": "npm run lint:no-undef && npm run lint:no-unused-baseline && npm run sync-release-notes && npm run test:session-consistency && npm run test:session-occurrence-filter && npm run test:slot-occupancy && npm run test:package-sessions && npm run test:session-planning-status && npm run test:course-teacher-options && npm run test:universal-scheduler-api && npm run test:enrollment-conflict-decision && npm run test:schedule-display && npm run test:attendance-source-display && npm run test:attendance-mark-confirm-hint && npm run test:director-facing-id-leak && npm run test:learning-records-window && npm run test:learning-records-queue-a11y && npm run test:learning-records-schedule-a11y && npm run test:learning-records-view-actions-a11y && npm run test:assessment-actions-a11y && npm run test:teacher-home-notification-a11y && npm run test:bug-report-context && npm run test:trust-decision-display && npm run test:student-class-display && npm run test:parent-notification-preferences && npm run test:scroll-lock && npm run test:course-pricing && npm run test:scheduler-session-expand && npm run test:lesson-coverage && npm run test:bug-reports-tabs-a11y && npm run test:students-modal-a11y && npm run test:teacher-queue-focus-a11y && npm run test:course-management-tabs-a11y && npm run test:pin-gate && npm run test:teacher-eligibility-display && npm run test:bug-reports-list-a11y && npm run test:subject-units-display && vite build && npm run lint:ui-fixtures",
     "preview": "vite preview",
     "deploy": "npm run build && node scripts/copy-to-backend.cjs",
     "deploy:pack": "npm run build && node scripts/pack-deploy.cjs",
@@ -62,7 +74,7 @@
   "devDependencies": {
     "@playwright/test": "^1.62.1",
     "@vitejs/plugin-vue": "^6.0.8",
-    "@vitest/coverage-v8": "^4.1.10",
+    "@vitest/coverage-v8": "^4.1.11",
     "@vue/test-utils": "^2.4.11",
     "eslint": "^9.39.5",
     "eslint-plugin-vue": "^9.33.0",
@@ -75,6 +87,6 @@
     "vue-eslint-parser": "^9.4.3"
   },
   "optionalDependencies": {
-    "@rollup/rollup-linux-arm64-gnu": "^4.62.4"
+    "@rollup/rollup-linux-arm64-gnu": "^4.62.5"
   }
 }

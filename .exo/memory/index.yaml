@@ -29,5 +29,71 @@ failure_modes:
       build \u53EA\u963B\u64CB\u55AE\u6A94\u65B0\u589E no-unused-vars\uFF1B\u5148\u63A7\
       \u5236\u65B0\u589E\u50B5\uFF0C\u518D\u9010\u6B65\u63A5 Vue recommended \u8207\
       \u6E05\u511F\u6B77\u53F2\u50B5\u3002"
+- id: FM-20260827-121303-XTOY
+  name: "\u4E3B\u4EFB\u5728\u8AB2\u7A0B\u7BA1\u7406\u770B\u5230\u672A\u7E73\u8CBB\u8AB2\
+    \u7A0B\u4ECD\u9700\u5207\u63DB\u5230\u5E33\u52D9\u4E2D\u5FC3\u7522\u751F\u901A\
+    \u77E5"
+  detection:
+    signal: "\u4E3B\u4EFB\u5728\u8AB2\u7A0B\u7BA1\u7406\u770B\u5230\u672A\u7E73\u8CBB\
+      \u8AB2\u7A0B\u4ECD\u9700\u5207\u63DB\u5230\u5E33\u52D9\u4E2D\u5FC3\u7522\u751F\
+      \u901A\u77E5"
+    source: reflection:REF-20260827-121303-5KZH
+  mitigation:
+    practice: "\u65E2\u6709 PaymentSlipModal \u8207\u552F\u8B80\u901A\u77E5 API \u5DF2\
+      \u53EF\u652F\u63F4\u901A\u77E5\u55AE\u7522\u751F\uFF1B\u6539\u5584\u9019\u985E\
+      \u8DE8\u9801\u5F80\u8FD4\u6642\uFF0C\u512A\u5148\u628A\u65E2\u6709\u552F\u8B80\
+      \u5143\u4EF6\u639B\u5230\u7576\u4E0B\u5DF2\u9A57\u8B49\u7684\u8AB2\u7A0B\u8108\
+      \u7D61\uFF0C\u4E26\u6CBF\u7528\u540C\u4E00\u7D44\u4ED8\u6B3E\u72C0\u614B\u689D\
+      \u4EF6\uFF0C\u907F\u514D\u91CD\u8907\u5E33\u52D9\u908F\u8F2F\u8207\u72C0\u614B\
+      \u5206\u6B67\u3002"
+  severity: medium
+  frequency: recurring
+- id: FM-20260829-111204-N25X
+  name: "\u88DC\u8AB2\u9810\u89BD\u53EA\u770B\u8001\u5E2B\u5BB9\u91CF\u800C\u6F0F\u6389\
+    \u540C\u5B78\u751F\u5176\u4ED6\u5408\u7D04\u7684\u6642\u6BB5"
+  detection:
+    signal: "\u88DC\u8AB2\u9810\u89BD\u53EA\u770B\u8001\u5E2B\u5BB9\u91CF\u800C\u6F0F\
+      \u6389\u540C\u5B78\u751F\u5176\u4ED6\u5408\u7D04\u7684\u6642\u6BB5"
+    source: reflection:REF-20260829-111204-MLFD
+  mitigation:
+    practice: "\u88DC\u8AB2\u5019\u9078\u5FC5\u9808\u5148\u4EE5\u5B78\u751F\u3001\u65E5\
+      \u671F\u3001\u91CD\u758A\u6642\u9593\u5340\u9593\u6AA2\u67E5\u5176\u4ED6\u5408\
+      \u7D04\u7684 active ClassSession \u8207\u5C1A\u672A\u7269\u5316\u7684 scheduled\
+      \ schedules\uFF1B\u5019\u9078\u662F\u5FEB\u7167\uFF0C\u78BA\u8A8D\u6642\u4ECD\
+      \u7531 ClassSession \u5BEB\u5165 guard \u6700\u7D42\u91CD\u9A57\u4E26\u4EE5\u4EA4\
+      \u6613\u56DE\u6EFE\u3002"
+  severity: medium
+  frequency: recurring
+- id: FM-20260829-225008-SX58
+  name: Vue template accessibility contract test failed before checking product behavior
+  detection:
+    signal: Vue template accessibility contract test failed before checking product
+      behavior
+    source: reflection:REF-20260829-225008-U1RJ
+  mitigation:
+    practice: When adding a static contract for multiline Vue button tags, verify
+      the regex against the actual source before interpreting a zero-match failure;
+      run the targeted Vitest from frontend so Vite Vue transforms are loaded.
+- id: FM-20260829-230724-HW6W
+  name: Static Vue accessibility contracts misread opening tags when attribute expressions
+    contain greater-than operators
+  detection:
+    signal: Static Vue accessibility contracts misread opening tags when attribute
+      expressions contain greater-than operators
+    source: reflection:REF-20260829-230724-T7WR
+  mitigation:
+    practice: For Vue template button contracts, a regex that stops at the first greater-than
+      character can truncate v-if expressions such as count > 0 and create false missing-type
+      failures. Match complete button elements or use a Vue-aware parser, and verify
+      the contract against the actual source before diagnosing product behavior.
+- id: FM-20260829-210837-JIC3
+  name: inline Markdown backticks in gh --body commands
+  detection:
+    signal: inline Markdown backticks in gh --body commands
+    source: reflection:REF-20260829-210837-Q2BN
+  mitigation:
+    practice: Use a body file or a subprocess argument array for GitHub comments;
+      shell command substitution can corrupt evidence text even when no production
+      action is intended.
   severity: medium
   frequency: recurring

@@ -1135,12 +1135,6 @@ parameters:
 			path: app/Http/Controllers/BugReportController.php
 
 		-
-			message: '#^Call to static method error\(\) on an unknown class Log\.$#'
-			identifier: class.notFound
-			count: 1
-			path: app/Http/Controllers/CampusController.php
-
-		-
 			message: '#^Access to an undefined property App\\Models\\ChatThread\:\:\$CampusID\.$#'
 			identifier: property.notFound
 			count: 2
@@ -1251,7 +1245,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\LearningRecord\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 5
+			count: 4
 			path: app/Http/Controllers/ClassSessionController.php
 
 		-
@@ -1311,7 +1305,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\StudentSignIn\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 3
+			count: 2
 			path: app/Http/Controllers/ClassSessionController.php
 
 		-
@@ -1323,12 +1317,6 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\UserCampus\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 1
-			path: app/Http/Controllers/ClassSessionController.php
-
-		-
-			message: '#^Call to static method channel\(\) on an unknown class Log\.$#'
-			identifier: class.notFound
 			count: 1
 			path: app/Http/Controllers/ClassSessionController.php
 
@@ -4083,7 +4071,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 20
+			count: 21
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
@@ -4173,7 +4161,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 8
+			count: 9
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
@@ -4191,12 +4179,6 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\StudentSignIn\:\:whereIn\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 1
-			path: app/Http/Controllers/StudentClassController.php
-
-		-
-			message: '#^Method App\\Http\\Controllers\\StudentClassController\:\:detectTeacherConflicts\(\) is unused\.$#'
-			identifier: method.unused
 			count: 1
 			path: app/Http/Controllers/StudentClassController.php
 
@@ -4873,12 +4855,6 @@ parameters:
 			path: app/Models/PayrollBranchRule.php
 
 		-
-			message: '#^Call to static method warning\(\) on an unknown class Log\.$#'
-			identifier: class.notFound
-			count: 1
-			path: app/Models/PayrollBranchRule.php
-
-		-
 			message: '#^Access to an undefined property App\\Models\\PayrollTeacherBranchRule\:\:\$base_rates\.$#'
 			identifier: property.notFound
 			count: 1
@@ -5289,7 +5265,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\LearningRecord\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 5
+			count: 4
 			path: app/Services/CourseLeaveCascadeService.php
 
 		-
@@ -5301,7 +5277,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\StudentSignIn\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 3
+			count: 2
 			path: app/Services/CourseLeaveCascadeService.php
 
 		-
@@ -6129,7 +6105,7 @@ parameters:
 		-
 			message: '#^Comparison operation "\<=" between int\<1, max\> and 0 is always false\.$#'
 			identifier: smallerOrEqual.alwaysFalse
-			count: 2
+			count: 1
 			path: app/Services/ManualSessionBookingService.php
 
 		-

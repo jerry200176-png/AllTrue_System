@@ -1,5 +1,27 @@
 # Governance changelog
 
+## 2026-08-29 — Provenance gate binds this PR's claim only
+
+- `scripts/check-agent-provenance.sh` and `ci:preflight` no longer treat the
+  inherited `.agent-session/manifest.json` on `main` as the current PR's
+  session. Binding leftover `task_id`/`branch` to every new branch was a false
+  invariant and forced unrelated PRs to rewrite a shared singleton.
+- A changed agent/human session file in the PR diff is still fully validated
+  (schema, secrets, `production_mutation`, branch/`task_id`, `base_sha`
+  ancestor). Worktree path bans remain on `agent-start` / local preflight.
+
+## 2026-08-29 — Founder T0–T3 autonomy convergence
+
+- Reconciled the portable governance overlay and Codex adapter with the
+  risk-based operating model: T0/T1 autonomous after required gates, T2 with
+  independent review, and T3/protected work stopping before protected
+  execution or activation for Founder approval.
+- Removed the obsolete universal human-approval requirement from the product
+  adapter without weakening required checks, rollback evidence, product P0,
+  or the public in-app bug closure path.
+- Clarified that AllTrue remains in active but bounded development; the draft
+  Learning Assessment spinout RFC does not impose a global feature freeze.
+
 ## 2026-08-16 — Constitution/Control Plane scope clarification + cool-off rule (pin stays 0.1.0)
 
 - `CONTROL_PLANE_CONTRACT.md`'s "Supersedes: all other docs" banner now scoped to

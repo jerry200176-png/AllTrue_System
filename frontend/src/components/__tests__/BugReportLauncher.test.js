@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
+import { readFileSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import BugReportLauncher from '../BugReportLauncher.vue';
 import {
   extractImageFiles,
@@ -13,6 +16,9 @@ import { submitBugReport } from '../../lib/bugReportsApi';
 vi.mock('../../lib/bugReportsApi', () => ({
   submitBugReport: vi.fn(() => Promise.resolve({ id: 1 })),
 }));
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const source = readFileSync(resolve(__dirname, '../BugReportLauncher.vue'), 'utf8');
 
 let previewCounter = 0;
 
@@ -46,6 +52,16 @@ async function openLauncher() {
   });
   await wrapper.find('.fab').trigger('click');
   return wrapper;
+}
+
+function bodyElement(selector) {
+  const element = document.body.querySelector(selector);
+  if (!element) throw new Error(`Expected ${selector} in teleported dialog`);
+  return element;
+}
+
+function bodyCount(selector) {
+  return document.body.querySelectorAll(selector).length;
 }
 
 describe('bug report attachments', () => {
@@ -94,49 +110,105 @@ describe('bug report attachments', () => {
     const image = makeFile('screen.png');
     const imageEvent = makeEvent('paste', makeTransfer([image]));
 
-    expect(wrapper.find('.modal-card').element.dispatchEvent(imageEvent)).toBe(false);
+    expect(bodyElement('.bug-report-form').dispatchEvent(imageEvent)).toBe(false);
     await nextTick();
-    expect(wrapper.findAll('.att-row')).toHaveLength(1);
-    expect(wrapper.find('.att-preview').attributes('src')).toMatch(/^blob:/);
-    expect(wrapper.text()).toContain('已加入 1 / 5 張');
+    expect(bodyCount('.att-row')).toBe(1);
+    expect(bodyElement('.att-preview').getAttribute('src')).toMatch(/^blob:/);
+    expect(document.body.textContent).toContain('已加入 1 / 5 張');
 
     const textEvent = makeEvent('paste', makeTransfer([], [{
       kind: 'string', type: 'text/plain', getAsFile: () => null,
     }]));
-    expect(wrapper.find('.modal-card').element.dispatchEvent(textEvent)).toBe(true);
-    expect(wrapper.findAll('.att-row')).toHaveLength(1);
+    expect(bodyElement('.bug-report-form').dispatchEvent(textEvent)).toBe(true);
+    expect(bodyCount('.att-row')).toBe(1);
     wrapper.unmount();
   });
 
   it('accepts dropped images and reports unsupported files', async () => {
     const wrapper = await openLauncher();
-    const dropzone = wrapper.find('.attachment-dropzone');
+    const dropzone = bodyElement('.attachment-dropzone');
     const image = makeFile('dropped.webp', 'image/webp');
 
-    await dropzone.element.dispatchEvent(makeEvent('dragenter', makeTransfer([image])));
-    expect(dropzone.classes()).toContain('is-dragging');
-    await dropzone.element.dispatchEvent(makeEvent('drop', makeTransfer([image])));
+    await dropzone.dispatchEvent(makeEvent('dragenter', makeTransfer([image])));
+    expect(dropzone.classList.contains('is-dragging')).toBe(true);
+    await dropzone.dispatchEvent(makeEvent('drop', makeTransfer([image])));
     await nextTick();
-    expect(dropzone.classes()).not.toContain('is-dragging');
-    expect(wrapper.findAll('.att-row')).toHaveLength(1);
+    expect(dropzone.classList.contains('is-dragging')).toBe(false);
+    expect(bodyCount('.att-row')).toBe(1);
 
-    await dropzone.element.dispatchEvent(makeEvent('drop', makeTransfer([makeFile('notes.txt', 'text/plain')])));
+    await dropzone.dispatchEvent(makeEvent('drop', makeTransfer([makeFile('notes.txt', 'text/plain')])));
     await nextTick();
-    expect(wrapper.find('.attachment-error').text()).toContain('支援的圖片格式');
+    expect(bodyElement('.attachment-error').textContent).toContain('支援的圖片格式');
     wrapper.unmount();
   });
 
   it('submits the original files and revokes preview URLs on removal', async () => {
     const wrapper = await openLauncher();
     const image = makeFile('screen.jpg', 'image/jpeg');
-    await wrapper.find('.modal-card').element.dispatchEvent(makeEvent('paste', makeTransfer([image])));
+    await bodyElement('.bug-report-form').dispatchEvent(makeEvent('paste', makeTransfer([image])));
     await nextTick();
-    await wrapper.find('textarea').setValue('畫面無法載入');
-    await wrapper.find('.btn-submit').trigger('click');
+    const textarea = bodyElement('textarea');
+    textarea.value = '畫面無法載入';
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    await nextTick();
+    bodyElement('.btn-submit').click();
+    await flushPromises();
     await nextTick();
 
     expect(submitBugReport).toHaveBeenCalledWith(expect.objectContaining({ files: [image] }));
+    expect(document.body.textContent).toContain('編號 #1');
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:bug-preview-1');
     wrapper.unmount();
+  });
+
+  it('includes optional occurrence context without changing the user description', async () => {
+    const wrapper = await openLauncher();
+    const textarea = bodyElement('#bug-report-description');
+    textarea.value = '帳務列表顯示錯誤';
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+
+    const occurrenceAt = bodyElement('#bug-occurrence-at');
+    occurrenceAt.value = '2026-08-29T14:30';
+    occurrenceAt.dispatchEvent(new Event('input', { bubbles: true }));
+    const relatedReference = bodyElement('#bug-related-reference');
+    relatedReference.value = '學生 271／課堂 32570';
+    relatedReference.dispatchEvent(new Event('input', { bubbles: true }));
+    await nextTick();
+
+    bodyElement('.btn-submit').click();
+    await nextTick();
+
+    const payload = submitBugReport.mock.calls.at(-1)[0];
+    expect(payload.description).toBe('帳務列表顯示錯誤');
+    expect(JSON.parse(payload.client_info)).toMatchObject({
+      occurrenceAt: '2026-08-29T14:30',
+      relatedReference: '學生 271／課堂 32570',
+    });
+    wrapper.unmount();
+  });
+});
+
+describe('bug report composer accessibility', () => {
+  it('associates visible field labels with stable controls', () => {
+    expect(source).toContain('for="bug-report-title"');
+    expect(source).toContain('id="bug-report-title"');
+    expect(source).toContain('for="bug-report-description"');
+    expect(source).toContain('id="bug-report-description"');
+    expect(source).toContain('for="bug-file-input"');
+    expect(source).toContain('for="bug-report-severity"');
+    expect(source).toContain('id="bug-report-severity"');
+  });
+
+  it('gives the attachment trigger and submit feedback explicit semantics', () => {
+    expect(source).toContain('aria-label="回報系統問題"');
+    expect(source).toContain('aria-label="新增截圖"');
+    expect(source).toContain('class="success-msg" role="status" aria-live="polite"');
+    expect(source).toContain('class="error-msg" role="alert"');
+  });
+
+  it('keeps the composer actions explicit non-submit buttons', () => {
+    expect(source).toMatch(/<button\s+type="button"\s+class="fab"/);
+    expect(source).toMatch(/<button type="button" class="btn-cancel"/);
+    expect(source).toMatch(/<button type="button" class="btn-submit"/);
   });
 });

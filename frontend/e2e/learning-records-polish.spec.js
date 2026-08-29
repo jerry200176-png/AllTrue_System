@@ -28,6 +28,7 @@ async function openLearningPilot(page, viewport) {
           total: 3,
           current_page: 1,
           last_page: 1,
+          status_counts: { pending: 1, changes_requested: 1, approved: 1, rejected: 0 },
         }),
       });
     }
@@ -47,7 +48,7 @@ for (const viewport of viewports) {
   test(`learning records director polish @${viewport.name}`, async ({ page }) => {
     await openLearningPilot(page, viewport);
     await expect(page.getByText('學習評量表', { exact: true })).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByRole('button', { name: '待審佇列', exact: false }).first()).toBeVisible();
+    await expect(page.getByRole('tab', { name: '待主任核准', exact: false }).first()).toBeVisible();
     await expect(page.locator('.lr-group, .lr-record-card').first()).toBeVisible({ timeout: 15_000 });
     const layout = await page.evaluate(() => ({
       scrollWidth: document.documentElement.scrollWidth,

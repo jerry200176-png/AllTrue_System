@@ -1,11 +1,17 @@
 <template>
-  <div>
+  <div class="classroom-page">
+    <AtPageHeader
+      title="教室管理"
+      description="管理目前分校的教室，供排課時選擇地點。"
+      icon="meeting_room"
+      data-guide="classroom-header"
+    >
+      <template #actions>
+        <AtButton shape="rect" variant="primary" icon="add" @click="openAdd">新增教室</AtButton>
+      </template>
+    </AtPageHeader>
+
     <div class="card">
-      <div class="header-actions" data-guide="classroom-header">
-        <h2>教室管理</h2>
-        <p class="ref-hint">管理當前分校的教室，供排課時選擇地點</p>
-        <button class="primary" @click="openAdd">+ 新增教室</button>
-      </div>
 
       <div v-if="loading" class="hint">載入中...</div>
       <table v-else-if="rooms.length" class="room-table" data-guide="classroom-table">
@@ -29,11 +35,11 @@
               </span>
             </td>
             <td>
-              <button class="small" @click="openEdit(r)">編輯</button>
-              <button class="small" @click="toggleActive(r)">
+              <button type="button" class="small" @click="openEdit(r)">編輯</button>
+              <button type="button" class="small" @click="toggleActive(r)">
                 {{ r.is_active ? '停用' : '啟用' }}
               </button>
-              <button class="small ghost" @click="confirmDelete(r)">刪除</button>
+              <button type="button" class="small ghost" @click="confirmDelete(r)">刪除</button>
             </td>
           </tr>
         </tbody>
@@ -41,55 +47,63 @@
       <div v-else class="empty-text">目前此分校尚無教室，請點「新增教室」。</div>
     </div>
 
-    <!-- Add/Edit Modal -->
-    <div v-if="showModal" class="modal-overlay" @click.self="showModal = false">
-      <div class="modal">
-        <h3>{{ editingId ? '編輯教室' : '新增教室' }}</h3>
+    <!-- Add/Edit dialog -->
+    <AtDialog
+      :open="showModal"
+      :title="editingId ? '編輯教室' : '新增教室'"
+      panel-class="classroom-dialog"
+      @close="showModal = false"
+    >
         <div class="form-group">
-          <label>教室名稱 <span class="required">*</span></label>
-          <input v-model="form.name" placeholder="例如：教室1、201" maxlength="64" />
+          <label for="classroom-name">教室名稱 <span class="required">*</span></label>
+          <input id="classroom-name" v-model="form.name" placeholder="例如：教室1、201" maxlength="64" />
         </div>
         <div class="form-group">
-          <label>容量（人） <span class="required">*</span></label>
-          <input v-model.number="form.capacity" type="number" min="1" placeholder="1" />
+          <label for="classroom-capacity">容量（人） <span class="required">*</span></label>
+          <input id="classroom-capacity" v-model.number="form.capacity" type="number" min="1" placeholder="1" />
         </div>
         <div class="form-group">
-          <label>備註</label>
-          <textarea v-model="form.memo" rows="2" placeholder="選填" maxlength="512" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px; resize:vertical;"></textarea>
+          <label for="classroom-memo">備註</label>
+          <textarea id="classroom-memo" v-model="form.memo" rows="2" placeholder="選填" maxlength="512" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px; resize:vertical;"></textarea>
         </div>
         <div class="form-group" v-if="editingId">
           <label>
-            <input type="checkbox" v-model="form.is_active" /> 啟用
+            <input id="classroom-active-edit" type="checkbox" v-model="form.is_active" /> 啟用
           </label>
         </div>
         <div v-else class="form-group">
           <label>
-            <input type="checkbox" v-model="form.is_active" /> 啟用（預設勾選）
+            <input id="classroom-active-create" type="checkbox" v-model="form.is_active" /> 啟用（預設勾選）
           </label>
         </div>
-        <div class="actions">
-          <button class="ghost" @click="showModal = false">取消</button>
-          <button class="primary" @click="submit" :disabled="!form.name || !form.capacity || form.capacity < 1">儲存</button>
-        </div>
-      </div>
-    </div>
+        <template #actions>
+          <AtButton shape="rect" variant="ghost" @click="showModal = false">取消</AtButton>
+          <AtButton shape="rect" variant="primary" @click="submit" :disabled="!form.name || !form.capacity || form.capacity < 1">儲存</AtButton>
+        </template>
+    </AtDialog>
 
-    <!-- Delete confirm -->
-    <div v-if="deletingRoom" class="modal-overlay" @click.self="deletingRoom = null">
-      <div class="modal">
-        <h3>確認刪除</h3>
+    <!-- Delete confirmation dialog -->
+    <AtDialog
+      :open="Boolean(deletingRoom)"
+      title="確認刪除"
+      size="sm"
+      panel-class="classroom-dialog"
+      @close="deletingRoom = null"
+    >
         <p>確定要刪除教室「{{ deletingRoom.name }}」嗎？此操作無法復原。</p>
-        <div class="actions">
-          <button class="ghost" @click="deletingRoom = null">取消</button>
-          <button class="primary" style="background:#c62828;" @click="doDelete">刪除</button>
-        </div>
-      </div>
-    </div>
+        <template #actions>
+          <AtButton shape="rect" variant="ghost" @click="deletingRoom = null">取消</AtButton>
+          <AtButton shape="rect" variant="danger" @click="doDelete">刪除</AtButton>
+        </template>
+    </AtDialog>
   </div>
 </template>
 
 <script setup>
 import { ref, watch, onMounted } from 'vue';
+import AtButton from '../components/design-system/AtButton.vue';
+import AtDialog from '../components/design-system/AtDialog.vue';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import { supabase } from '../supabase';
 
 const props = defineProps({

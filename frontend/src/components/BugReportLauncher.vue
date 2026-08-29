@@ -2,6 +2,7 @@
   <div class="bug-launcher">
     <!-- Floating button -->
     <button
+      type="button"
       class="fab"
       :class="{ dragging: fabDragging }"
       :style="fabStyle"
@@ -10,29 +11,47 @@
       @pointerup="onFabPointerUp"
       @pointercancel="onFabPointerUp"
       @click="onFabClick"
+      aria-label="回報系統問題"
       title="回報問題（可拖曳）"
     >
       <span class="material-symbols-outlined">bug_report</span>
     </button>
 
     <!-- Submit dialog -->
-    <div v-if="showForm" class="modal-overlay">
-      <div
-        class="modal-card"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="bug-report-title"
-        @paste="onPaste"
-      >
-        <h3 id="bug-report-title"><span class="material-symbols-outlined">bug_report</span> 回報系統問題</h3>
+    <AtDialog
+      :open="showForm"
+      title="回報系統問題"
+      size="md"
+      panel-class="bug-report-dialog"
+      :close-on-backdrop="!submitting"
+      close-label="關閉回報視窗"
+      @close="!submitting && closeForm()"
+    >
+      <div class="bug-report-form" @paste="onPaste">
 
-        <label>問題標題 <span class="optional">（選填，自動帶入頁面）</span></label>
-        <input v-model="title" class="form-input" placeholder="簡述問題（留空則自動填入）" maxlength="200" />
+        <label for="bug-report-title">問題標題 <span class="optional">（選填，自動帶入頁面）</span></label>
+        <input id="bug-report-title" v-model="title" class="form-input" placeholder="簡述問題（留空則自動填入）" maxlength="200" />
 
-        <label>詳細描述 <span class="required">*</span></label>
-        <textarea v-model="description" class="form-textarea" placeholder="發生什麼問題？在什麼情況下？" rows="4" maxlength="5000"></textarea>
+        <label for="bug-report-description">詳細描述 <span class="required">*</span></label>
+        <textarea id="bug-report-description" v-model="description" class="form-textarea" placeholder="請描述：做了什麼、實際看到什麼、原本預期什麼？" rows="4" maxlength="5000" aria-required="true"></textarea>
+        <p class="description-hint">若問題只在特定資料出現，請在下方補充時間或資料編號；請勿填寫密碼。</p>
 
-        <label>截圖（選填，最多 {{ maxFiles }} 張，每張 ≤5MB）</label>
+        <div class="triage-context" aria-label="協助定位問題的補充資訊">
+          <label for="bug-occurrence-at">發生時間 <span class="optional">（選填）</span></label>
+          <input id="bug-occurrence-at" v-model="occurrenceAt" class="form-input" type="datetime-local" />
+
+          <label for="bug-related-reference">相關資料 <span class="optional">（選填）</span></label>
+          <input
+            id="bug-related-reference"
+            v-model="relatedReference"
+            class="form-input"
+            maxlength="300"
+            autocomplete="off"
+            placeholder="例如：學生／課程／課堂／發票編號"
+          />
+        </div>
+
+        <label for="bug-file-input">截圖（選填，最多 {{ maxFiles }} 張，每張 ≤5MB）</label>
         <input
           ref="fileInputRef"
           type="file"
@@ -47,6 +66,7 @@
           :class="{ 'is-dragging': attachmentDragging }"
           role="button"
           tabindex="0"
+          aria-label="新增截圖"
           aria-controls="bug-file-input"
           @click="openFilePicker"
           @keydown.enter.prevent="openFilePicker"
@@ -72,8 +92,8 @@
         </div>
         <div class="attachment-count" aria-live="polite">已加入 {{ attachmentFiles.length }} / {{ maxFiles }} 張</div>
 
-        <label>嚴重程度</label>
-        <select v-model="severity" class="form-select">
+        <label for="bug-report-severity">嚴重程度</label>
+        <select id="bug-report-severity" v-model="severity" class="form-select">
           <option value="low">低 — 不影響使用</option>
           <option value="medium">中 — 有些不方便</option>
           <option value="high">高 — 影響工作</option>
@@ -85,24 +105,25 @@
           將自動附帶當前頁面：<strong>{{ currentPageKey || '未知' }}</strong>
         </div>
 
-        <div class="form-actions">
-          <button class="btn-cancel" @click="closeForm">取消</button>
-          <button class="btn-submit" :disabled="!canSubmit || submitting" @click="doSubmit">
-            {{ submitting ? '提交中...' : '提交回報' }}
-          </button>
+        <div v-if="submitSuccess" class="success-msg" role="status" aria-live="polite">
+          <span class="material-symbols-outlined">check_circle</span>
+          已提交<span v-if="submittedBugId">（編號 #{{ submittedBugId }}）</span>，可到 Bug 回報查看進度。
         </div>
-
-        <div v-if="submitSuccess" class="success-msg">
-          <span class="material-symbols-outlined">check_circle</span> 已提交，感謝回報！
-        </div>
-        <div v-if="submitError" class="error-msg">{{ submitError }}</div>
+        <div v-if="submitError" class="error-msg" role="alert">{{ submitError }}</div>
       </div>
-    </div>
+      <template #actions>
+        <button type="button" class="btn-cancel" :disabled="submitting" @click="closeForm">取消</button>
+        <button type="button" class="btn-submit" :disabled="!canSubmit || submitting" @click="doSubmit">
+          {{ submitting ? '提交中...' : '提交回報' }}
+        </button>
+      </template>
+    </AtDialog>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import AtDialog from './design-system/AtDialog.vue';
 import { submitBugReport } from '../lib/bugReportsApi';
 import {
   extractImageFiles,
@@ -120,9 +141,12 @@ const props = defineProps({
 const showForm = ref(false);
 const title = ref('');
 const description = ref('');
+const occurrenceAt = ref('');
+const relatedReference = ref('');
 const severity = ref('medium');
 const submitting = ref(false);
 const submitSuccess = ref(false);
+const submittedBugId = ref(null);
 const submitError = ref('');
 const attachmentError = ref('');
 const attachmentFiles = ref([]);
@@ -272,6 +296,7 @@ function openForm() {
   showForm.value = true;
   submitError.value = '';
   attachmentError.value = '';
+  submittedBugId.value = null;
 }
 
 function openFilePicker() {
@@ -316,6 +341,9 @@ function closeForm() {
   clearAttachments();
   title.value = '';
   description.value = '';
+  occurrenceAt.value = '';
+  relatedReference.value = '';
+  submittedBugId.value = null;
   severity.value = 'medium';
   submitError.value = '';
   attachmentError.value = '';
@@ -382,9 +410,12 @@ async function doSubmit() {
       userAgent: navigator.userAgent,
       screenSize: `${window.innerWidth}x${window.innerHeight}`,
       timestamp: new Date().toISOString(),
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || null,
+      occurrenceAt: occurrenceAt.value || null,
+      relatedReference: relatedReference.value.trim() || null,
     });
 
-    await submitBugReport({
+    const result = await submitBugReport({
       branch_id: Number(props.branchId),
       title: title.value.trim() || `[${props.currentPageKey || '未知頁面'}] ${new Date().toLocaleString('zh-TW')}`,
       description: description.value.trim(),
@@ -395,9 +426,12 @@ async function doSubmit() {
       files: attachmentFiles.value.map((entry) => entry.file),
     });
 
+    submittedBugId.value = result?.id ?? null;
     submitSuccess.value = true;
     title.value = '';
     description.value = '';
+    occurrenceAt.value = '';
+    relatedReference.value = '';
     severity.value = 'medium';
     clearAttachments();
     window.dispatchEvent(new CustomEvent('alltrue-refresh-badges'));
@@ -425,16 +459,7 @@ async function doSubmit() {
 .fab.dragging { cursor: grabbing; transform: none; transition: none; }
 .fab .material-symbols-outlined { font-size: 26px; }
 
-.modal-overlay {
-  position: fixed; inset: 0; background: rgba(0,0,0,0.4);
-  display: flex; align-items: center; justify-content: center; z-index: 1000;
-}
-.modal-card {
-  background: var(--card-bg); border-radius: var(--radius); padding: 24px;
-  width: 480px; max-width: 90vw; max-height: 80vh; overflow-y: auto;
-  box-shadow: var(--shadow-hover);
-}
-.modal-card h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 16px; font-size: 18px; }
+.bug-report-form { min-width: 0; }
 
 label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; margin-top: 12px; }
 .required { color: var(--danger); }
@@ -444,6 +469,14 @@ label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; m
   border-radius: 8px; font-size: 14px; font-family: inherit;
 }
 .form-textarea { resize: vertical; }
+.description-hint {
+  margin: 5px 0 0; color: var(--ds-ink-mute); font-size: 12px; line-height: 1.5;
+}
+.triage-context {
+  margin-top: 12px; padding: 2px 12px 10px; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--ds-canvas-soft);
+}
+.triage-context label:first-child { margin-top: 8px; }
 
 .sr-only {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
@@ -491,7 +524,6 @@ label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; m
 }
 .context-info .material-symbols-outlined { font-size: 18px; }
 
-.form-actions { display: flex; gap: 8px; margin-top: 20px; justify-content: flex-end; }
 .btn-cancel {
   padding: 8px 20px; border: 1px solid var(--border); border-radius: 8px;
   background: var(--card-bg); font-size: 14px; cursor: pointer;

@@ -6,6 +6,33 @@ last_reviewed: 2026-06-06
 
 # AI／工程師防再犯紀錄（必讀）
 
+### R131. 新增課程「去加購」必須同時認 `id` 與 `existing_course_id`（2026-08-29）
+
+- **現象**：學生管理 → 新增課程 → 衝突視窗點「去加購」沒有反應，視窗直接關掉。
+- **根因**：`GET /students/{id}/active-courses` 回傳 `id`；排課 409 回傳 `existing_course_id`。前端只用 `c.id === conflict.existing_course_id`，對不到就靜默 return。
+- **強制規則**：攔截後要加購時必須走 `resolveConflictCourseId` / `findCourseForPurchase`（兩種欄位 + 數字比對）。找不到課程要提示，禁止靜默關閉。
+- **測試必補**：active-courses `{ id }` 能對到課程列 `{ id: "42" }`；`StudentsList.vue` / `CourseManagement.vue` 不得再出現 `c.id === conflict.existing_course_id`。
+
+### R130. `/me` profile refresh 不可覆寫使用者已選頁面（2026-08-29）
+
+- **現象**：登入後立刻點側欄「我的課表／課程查找」，畫面停在教學工作台／主任總覽；UI smoke 斷言 nav `active` 失敗。
+- **根因**：`fetchProfile`（含 `onAuthStateChange` 再取 `/me`）無條件把 `active` 設回 `teacher-home`／`director`，蓋掉剛完成的導航。
+- **強制規則**：profile refresh 只允許 (1) 強制改密 → `profile`、(2) bootstrap `director` → 老師首頁、(3) 角色不符的 `teacher-home` → 主任首頁。其餘保留 `currentActive`。邏輯集中在 `resolveActiveAfterProfileLoad`。
+- **測試必補**：`resolveActiveAfterProfileLoad.test.js` 覆蓋 calendar／course-mgmt 不被 clobber；UI smoke `navTo` 限定側欄並短重試。
+
+### R129. 請假復原不可用一般狀態修改繞過 cascade；試聽轉正式不可搬移已上堂次（2026-08-28）
+
+- **現象**：請假堂次因缺少順延尾堂而無法撤銷，主任改用「已上→未上」繞過；試聽續報再轉移試聽堂，造成正式合約超排與重疊警告。
+- **根因層級**：F1 狀態收尾與 F3 排課生成的流程邊界缺口；一般 PATCH 沒有封鎖 leave→attendance-like，續報也沒有「試聽轉換」這個明確生命週期動作。
+- **強制規則**：leave 只能透過專用撤銷端點復原；缺尾堂時只復原目標堂並回報對帳警示。試聽轉正式須保留原堂歷史、取消未來試聽排課、建立不含試聽堂的正式課程，且必須具備冪等來源關聯。
+- **測試必補**：直接 leave→attended/scheduled 回 422；缺尾堂專用撤銷成功且不刪其他堂；試聽轉正式保留已上試聽堂、取消未來試聽堂、正式課程堂數與實際排課一致，重送回 409。
+
+### R130. 補課候選預覽必須先檢查學生跨合約占用（2026-08-29）
+
+- **現象**：舊合約請假後，補課候選只檢查教師容量；新合約若由另一位教師在同日同時段已有堂次，主任仍會先看到可選，直到確認建立 ClassSession 才被最後防線擋下。
+- **強制規則**：補課候選預覽必須以學生＋日期＋重疊時間區間檢查其他合約的 active ClassSession 與尚未物化的 schedules；同一共享方案的平行科目仍依既有 package 邊界處理。候選只是快照，確認時仍必須重新驗證並維持原子交易。
+- **測試必補**：不同教師的跨合約已物化堂次不應出現在候選；預覽後才新增衝突堂次時，確認回 student_slot_conflict，案件／原請假堂不變且不得留下半筆補課 schedule。
+
 本檔記錄**已發生過的產品／實作缺口**，避免下次改壞或改漏。  
 **任何 AI Agent 或新進開發者**：請與 `AGENTS.md` 的 First-read 順序一併閱讀；修改下列模組前**先對照本檔**。
 
@@ -1136,7 +1163,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | 課表回報 | §2026-04-17 回報系統（14 條禁止項） |
 | 排課 | §start_time 格式、§智慧排課誤標取消、§R25（請假優先於 scheduled 例外）、§R29（請假不可 fallback 只寫 schedules）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R47（rescheduled 幽靈不可蓋掉同日 ClassSession）、§R49（同學生同時段去重不可用 StudentClassID 當唯一 key）、§R50（行事曆載入不可 REST 成功後再跑 fallback）、§R69（bulk reflow 先 snapshot schedule IDs，禁止 mutable natural key 連鎖更新）、§R71（mutation contract／slot idempotency／兩階段補償）、**§R80（排課摘要補登堂數≠天數；須與 session_plan 同源 expand）**、§R83（調課後 IsContractException 防 realign）、**§R84（IsContractException 結構性保證，不再靠呼叫者記得）**、**§R116（混班型剩餘依即將加入班型；禁止較嚴上限蓋一對三）** |
 | 出缺勤 / 分校隔離 | §SEC-001、§分校隔離後端強制、§R12（查詢日期寫死今天）、§R14（submitQuickAttend 缺 StudentID）、§R15（出勤頁預設只顯示今天，歷史到班紀錄不可見）、§R16（`script setup` const TDZ 初始化順序 → 整頁空白）、**§R86（composable return 引用未宣告識別字 → ReferenceError 整頁空白；鏡像測試攔不住）**、§R33（老師每分校 RFID 優先）、§R36（個別資料有課但老師今日名單缺漏）、§R40（點名扣堂不可只用 ClassSessionID 防重）、§R41（補請假不可只用課程+日期找堂次）、§R42（行事曆堂次顯示老師不可被舊評量老師覆蓋）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R71（請假寫入即封閉 interval；禁止留待隔夜 repair）、**§R107（projected 堂次必須帶 branch_id；教師首頁禁 Branch #N）**|
-| 月結制 / 加購 / 多科固定時段 | §b3 inactive 歷史、§b4 加購分流、§R21（堂數制加購是新批次）、§R22（月結詳情不可只依賴 ClassSession）、§R23（推算日期不可成為 dead-end chip）、§R24（多科固定時段優先走一般課程）、§R26（月結續報與堂數額度不可混在同一語意）、§R38（家長端繳費提醒不可套主任續課提醒） |
+| 月結制 / 加購 / 多科固定時段 | §b3 inactive 歷史、§b4 加購分流、§R21（堂數制加購是新批次）、§R22（月結詳情不可只依賴 ClassSession）、§R23（推算日期不可成為 dead-end chip）、§R24（多科固定時段優先走一般課程）、§R26（月結續報與堂數額度不可混在同一語意）、§R38（家長端繳費提醒不可套主任續課提醒）、**§R130（去加購必須同時認 `id` 與 `existing_course_id`，禁止靜默關閉）** |
 | routes/api.php | §AI 靜默回退路由（改前必讀完整檔案 + route:list） |
 | 備份 / nightly | §nightly 覆蓋修正、§備份還原演練、§R34（備份新鮮度不可只看 mtime）、§R71（repair 與 producer prevention 分離；同日全日期 health aggregate） |
 | Bug 回報 / 附件存檔 | §R11 storage symlink（Archive）、§R51（分診前必查 attachments + reporter 歷史 + 跨分校）、§R53（上線後必回 in-app）、`docs/CHAT_BUG_SYSTEM.md` §3.6–§3.7、**§R108（utf8mb3 姓名 LIKE 禁 4-byte）**、**§R111（課程備註長度 TEXT+422，禁 SQL 500）** |
@@ -1475,3 +1502,52 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **對標**：Stripe 的付款狀態生命週期與 idempotent retry、Laravel Cashier Stripe 與 Saleor 的受控交易／狀態模型都要求狀態轉換可重試且不可重複；本系統以 Payment.Note TEXT 保留完整來源備註，並在確認 transaction 內 `lockForUpdate`，不截斷、不重複入帳。
 - **強制規則**：任何付款回報可接受的備註長度，所有下游付款紀錄欄位都必須可承載；確認請求必須在 transaction 內鎖定 PaymentReport 並重新確認 pending。migration rollback 不得為了回復 VARCHAR 而截斷帳務備註。
 - **測試必補**：500 字中文備註可確認且 Payment.Note 完整相等；確認重試回 422 且 payment_report_id 只有一筆 Payment；交易失敗後 PaymentReport／Payment／Invoice／Paid 維持原子狀態。
+### R127. 堂次轉移必須同步扣堂台帳與衍生計數（2026-08-27）
+
+- **現象**：舊版轉移流程只搬 `ClassSession`、評量與點名，`session_deduction_ledger` 仍留在來源合約，造成新合約已上堂數與扣堂紀錄不一致，並使課程被標為待對帳。
+- **強制規則**：轉移以 `ClassSession` 所屬合約為唯一擁有者；同一交易內同步評量、點名、扣堂台帳，最後只能透過 `SessionDeductionService` 重算來源／目標計數。既有資料修復須使用明確 allowlist、dry-run、備份、交易與 post-check，不得直接改 `UsedSessions`。
+- **測試必補**：轉移含扣堂 ledger 的已上課堂次後，ledger owner 與來源／目標 `UsedSessions` 必須一致；目標同時段衝突或來源／目標學生科目不符時整批不變。
+
+### R128. 取消或請假堂次的評量必須在寫入與既有資料掃描兩層清理（2026-08-27）
+
+- **現象**：堂次已取消或請假，行事曆與課程不再列為有效上課，但仍殘留 pending `LearningRecord`；夜間堂數對帳因把來源衝突當成差異，可能顯示「差異 0」的項目。
+- **根因**：部分取消路徑只更新 `ClassSession.Status`，未同步作廢評量；對帳報告又把非數字的來源完整性問題混進數字差異清單，且已寫出的快照不會因資料修復自動重寫。
+- **強制規則**：取消／請假／停課的 model-save 與 nightly sweep 都必須作廢 live 評量／簽到；`attended`／`completed`／`late` 才是評量填寫率的有效分母。夜間堂數對帳只呈現 `abs(expected-recorded) > threshold` 的數字差異，其他資料完整性問題走獨立清理與稽核。
+- **防再犯**：主任總覽的填寫率要顯示整體分母、待填堂數與需跟進老師，並放在預設可見的位置；不能只放在折疊的「近期分析」或只顯示百分比。
+- **測試必補**：scheduled→cancelled、同狀態 cancelled 重送、nightly stale sweep、API 既有快照零差異過濾，以及評量填寫率排除取消／請假並保留遲到／完成案例。
+
+### R129. 已上誤改回未上必須是完整的可稽核反向交易（2026-08-28）
+
+- **現象**：同一堂課在請假、未上、已上之間被反覆操作時，若只改 `ClassSession.Status`，評量、點名與扣堂台帳會留在舊狀態，進而污染已上堂數與科目／評量統計。
+- **強制規則**：`attended`／`late`／`completed` → `scheduled` 必須在同一交易內作廢該堂 live 評量與點名、以原扣堂分鐘寫入一次反向台帳、重算課程計數並留下稽核快照；不得直接改 `UsedSessions`，不得產生第二筆評量。固定事故修復只能使用 allowlist 命令，身份、日期、時段與目前狀態任一漂移就停止。
+- **防再犯**：正常狀態 API 與受控資料修復都要共用「非出席不得有 live 評量／點名」不變式；請假撤銷只能走專用 cascade，不得用「先改已上再改未上」繞過流程。
+- **測試必補**：反向交易乾跑不寫入；執行後狀態、評量、點名、台帳與課程堂數一致；重跑不增加 reverse 或稽核列；目標身份／狀態漂移時整批不變。
+
+### R132. 跨日調課目標必須先確認原堂次存在，避免留下日曆孤兒（GitHub #2002，2026-08-29）
+
+- **現象**：舊版跨日調課先寫入 `schedules.status=scheduled` 目標，再由另一個請求移動 `ClassSession`；若原堂次不存在或後續請求失敗，會留下有 `original_schedule_id` 但沒有對應 `ClassSession` 的排程。日曆為避免提供無法點名／代課的 ghost，會刻意不顯示它，造成排課與衝堂讀取結果不一致。
+- **根因層級**：跨請求的兩階段寫入沒有在第一個寫入邊界驗證可移動的原堂次；讀側隱藏 ghost 是必要防護，但不能取代寫入前的不變式。
+- **強制規則**：跨日 `scheduled` 目標只有在 `original_schedule_id` 指向的原日期／開始時間存在未取消、未作廢的 `ClassSession` 時才能寫入；沒有原堂次時回傳可理解的 422，且不得留下目標排程。已有原堂次的合法 legacy flow 維持相容。
+- **安全邊界**：本修復只攔截新的無效寫入，不修復或刪除既有 production orphan；既有日曆仍不把無 `ClassSession` 的跨日目標畫成可操作課卡。
+- **測試必補**：無原堂次的跨日目標回 `source_class_session_missing` 且無 schedule row；有原堂次仍回 201；移除 guard 後前者必須失敗。
+
+### R130. Laravel 記錄器呼叫必須走 Facade namespace，錯誤處理不可因記錄失敗再崩潰（GitHub #1959/#1967，2026-08-29）
+
+- **現象**：Sentry 連續記錄 `Class "Log" not found`；公開分校清單與內部 opcache／排課／薪資例外路徑在原始錯誤發生後，又因呼叫全域 `\\Log` 而拋出第二個錯誤，遮蔽原始原因並把預期 fallback 變成 HTTP 500。
+- **根因層級**：應用程式 namespace／錯誤處理的工程一致性缺口；Laravel 的 `Log` 是 `Illuminate\\Support\\Facades\\Log`，裸 `\\Log` 不是可攜的 framework facade。
+- **強制規則**：`backend/app` 與 `backend/routes` 的記錄呼叫必須使用明確的 Laravel facade（import 或完整 namespace）；全域 `\\Log::` 禁止重新出現。錯誤路徑至少要有一個測試證明原本的 fallback／錯誤回應仍可返回。
+- **測試必補**：`LoggingFacadeNamespaceTest` 掃描應用程式與 API route；`CampusControllerTest::test_list_public_returns_empty_array_when_schema_probe_fails` 固定 public branch fallback 不被 logging exception 破壞。
+
+### R131. 固定排課重整必須先攔截重複目標，不能把唯一索引錯誤當成正常流程（GitHub #2043，2026-08-29）
+
+- **現象**：固定排課重整產生兩筆相同日期／開始時間的移動目標時，兩階段暫存雖能避免交換碰撞，第二筆落位仍會觸發 `uq_class_session_slot` 的 raw 1062，主任只看到伺服器錯誤。
+- **根因層級**：排課設定輸入與批次重整邊界缺少「批次內目標唯一」前置不變式；外部已佔用檢查不會看見同一批次中另一筆尚未落位的目標。
+- **強制規則**：`ClassSessionContractReflowService` 在任何暫存／寫入前，必須以課程、日期、開始時間檢查批次目標唯一；重複目標走既有可理解的時段衝突 422，不能放寬資料庫唯一索引或讓交易部分提交。
+- **測試必補**：兩筆未鎖定堂次收斂到同一目標時，測試必須證明回傳 `SlotOccupiedException`，且來源日期與所有關聯資料維持原狀；移除前置檢查後測試應重現 `uq_class_session_slot` 1062。
+
+### R132. 工作台部分資料失敗不得隱藏仍可處理的待辦（GitHub #1618，2026-08-29）
+
+- **現象**：老師今日點名／評量資料正常，但家長回覆計數 endpoint 回傳 500 時，工作台把所有待辦誤顯示為「待確認」，連仍可執行的「修改評量」也被隱藏。
+- **根因層級**：不同重要性的資料來源共用一個 OR 錯誤旗標；可選的回覆摘要失敗被當成整個主要工作佇列失敗。
+- **強制規則**：點名、評量、逾期補填與今日課表等關鍵來源失敗時仍須 fail closed，不能顯示全清；回覆摘要單獨失敗且已有其他待辦時，必須保留可行動項目並顯示部分載入提示；只有在沒有其他可行動項目時才顯示不完整狀態。
+- **測試必補**：real Vue Playwright 必須覆蓋「只有回覆計數失敗」情境，證明主待辦與 CTA 仍可見、部分錯誤可讀，且不誤顯示「今天沒有待完成工作」。

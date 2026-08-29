@@ -3,6 +3,791 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-29-learning-filter-chips-a11y
+    published_at: "2026-08-29"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 評量快捷篩選狀態更清楚
+    summary: 未填、需修改與家長留言篩選會清楚說明目前是否選取。
+    items:
+      - category: improved
+        text: 評量頁快捷篩選改用明確的按鈕與選取狀態，鍵盤與螢幕閱讀器更容易辨識目前篩選。
+      - category: improved
+        text: 原有篩選條件、排序、資料、權限與審核流程維持不變。
+    source_refs:
+      - "changelog:2026-08-29:learning-filter-chips-a11y"
+
+  - id: staff-2026-08-29-learning-schedule-a11y
+    published_at: "2026-08-29"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 評量課表檢視控制更清楚
+    summary: 今日／本週、週次切換與填寫操作會以清楚的按鈕語意呈現。
+    items:
+      - category: improved
+        text: 評量頁課表的今日／本週切換與週次前後按鈕補上明確名稱，鍵盤與螢幕閱讀器更容易操作。
+      - category: improved
+        text: 原有課表資料、填寫導向、評量內容、權限與 API 維持不變。
+    source_refs:
+      - "changelog:2026-08-29:learning-schedule-a11y"
+
+  - id: staff-2026-08-29-learning-view-actions-a11y
+    published_at: "2026-08-29"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 評量檢視與操作狀態更清楚
+    summary: 切換檢視模式與執行評量操作時，控制項的目前狀態與用途更明確。
+    items:
+      - category: improved
+        text: 列表／卡片與內容預覽會標示目前選取狀態，鍵盤與螢幕閱讀器更容易辨識檢視模式。
+      - category: improved
+        text: 批次審核、單筆操作、匯出、草稿與彈窗按鈕補上正確語意；既有資料與權限流程不變。
+    source_refs:
+      - "changelog:2026-08-29:learning-view-actions-a11y"
+
+  - id: staff-2026-08-29-assessment-actions-a11y
+    published_at: "2026-08-29"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 學習檢測操作更不容易誤觸
+    summary: 建立、結果、作答與補強操作的按鈕用途更明確。
+    items:
+      - category: improved
+        text: 檢測建立、發布、結果、作答與補強按鈕補上正確語意，表單情境不會因隱含型別誤送出。
+      - category: improved
+        text: 建立檢測與查看結果彈窗會清楚標示工作階段與標題，鍵盤與螢幕閱讀器更容易掌握上下文。
+      - category: improved
+        text: 原有檢測資料、主任複核、補強追蹤、權限與 API 流程維持不變。
+    source_refs:
+      - "changelog:2026-08-29:assessment-actions-a11y"
+
+  - id: staff-2026-08-29-bug-report-triage-context
+    published_at: "2026-08-29"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 回報問題時更容易提供線索
+    summary: 可補充發生時間與相關資料，幫助更快找到問題。
+    items:
+      - category: improved
+        text: 回報視窗可選填發生時間，以及學生、課程、課堂或發票編號等相關資料。
+      - category: improved
+        text: 描述欄提供簡短提示；欄位不會要求密碼，也不改既有操作或資料。
+      - category: improved
+        text: 處理人員查看詳情時會直接看到這些補充線索，送出成功也會顯示回報編號，減少另外查找回報內容的步驟。
+    source_refs:
+      - "changelog:2026-08-29:bug-report-triage-context"
+
+  - id: staff-2026-08-29-teacher-home-notification-a11y
+    published_at: "2026-08-29"
+    audiences:
+      - teacher
+    importance: digest
+    title: 待辦提示音狀態更清楚
+    summary: 教師可清楚知道待辦提示音是否開啟，也能辨識今日靜音操作。
+    items:
+      - category: improved
+        text: 提示音開關會標示目前開啟／關閉狀態，鍵盤與螢幕閱讀器也能取得相同資訊。
+      - category: improved
+        text: 今日靜音按鈕補上明確用途名稱；待辦排序、點名導頁與資料流程不變。
+    source_refs:
+      - "changelog:2026-08-29:teacher-home-notification-a11y"
+
+  - id: staff-2026-08-29-teachers-modal-semantics
+    published_at: "2026-08-29"
+    audiences:
+      - director
+    importance: digest
+    title: 老師管理彈窗上下文更清楚
+    summary: 新增、編輯與批次新增老師時，鍵盤與螢幕閱讀器能辨識目前工作階段。
+    items:
+      - category: improved
+        text: 老師管理的新增、編輯與批次新增彈窗清楚標示工作階段與標題，鍵盤與螢幕閱讀器更容易掌握上下文。
+      - category: improved
+        text: 老師管理彈窗的取消、儲存與批次結果操作按鈕補上正確型別，表單操作更不容易被誤判為送出。
+      - category: improved
+        text: 老師管理的搜尋、狀態與科目篩選補上欄位標籤關聯，鍵盤操作時更容易知道目前控制項用途。
+    source_refs:
+      - "changelog:2026-08-29:teachers-modal-semantics"
+
+  - id: staff-2026-08-29-course-tabs-keyboard
+    published_at: "2026-08-29"
+    audiences:
+      - director
+    importance: digest
+    title: 課程查找分頁更適合鍵盤操作
+    summary: 每位學生的課程／帳務分頁可用方向鍵切換，焦點會跟著目前工作區移動。
+    items:
+      - category: improved
+        text: 在課程查找展開學生後，可用左右鍵或上下鍵切換「課程資料／帳務資料」，不用逐一 Tab 經過每個選項。
+      - category: improved
+        text: 目前分頁保留單一鍵盤焦點入口，切換後會聚焦新的工作區；課程、帳務資料與權限維持不變。
+    source_refs:
+      - "changelog:2026-08-29:course-tabs-keyboard"
+  - id: staff-2026-08-29-bug-list-keyboard
+    published_at: "2026-08-29"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: Bug 回報可以用鍵盤快速查看
+    summary: 在回報列表中可直接用鍵盤選取問題並開啟詳情。
+    items:
+      - category: improved
+        text: 聚焦回報項目後按 Enter 或 Space，即可查看問題詳情。
+      - category: improved
+        text: 目前選取的回報會有清楚的輔助標示；原有滑鼠操作維持不變。
+    source_refs:
+      - "changelog:2026-08-29:bug-list-keyboard"
+
+  - id: staff-2026-08-29-teacher-queue-focus
+    published_at: "2026-08-29"
+    audiences:
+      - teacher
+    importance: digest
+    title: 查看今日任務會直接進入工作區
+    summary: 老師從工作台捷徑進入今日任務時，焦點會跟著移到「今天要完成」。
+    items:
+      - category: improved
+        text: 點「查看今日任務」後會捲到今日工作佇列，鍵盤焦點也會落在工作區標題。
+      - category: improved
+        text: 任務排序、點名／評量內容、導頁、資料與權限維持不變。
+    source_refs:
+      - "changelog:2026-08-29:teacher-queue-focus"
+
+  - id: staff-2026-08-29-students-modal-semantics
+    published_at: "2026-08-29"
+    audiences:
+      - director
+    importance: digest
+    title: 學生管理視窗更容易辨識
+    summary: 新增／編輯學生與課程等視窗現在會清楚告訴鍵盤與螢幕閱讀器目前工作區。
+    items:
+      - category: improved
+        text: 學生管理的新增／編輯學生、課程、帳單、加購、年級升級與跨分校身份視窗補上清楚的對話框標題。
+      - category: improved
+        text: 既有資料、操作流程、帳務規則與權限維持不變；本次只改善視窗語意。
+    source_refs:
+      - "changelog:2026-08-29:students-modal-semantics"
+
+  - id: staff-2026-08-29-schedule-orphan-prevention
+    published_at: "2026-08-29"
+    audiences:
+      - director
+    importance: digest
+    title: 調課錯誤更容易處理
+    summary: 找不到原堂次時不會留下日曆無法操作的調課目標。
+    items:
+      - category: fixed
+        text: 跨日調課若缺少原堂次，會在寫入前明確提示，不再留下孤兒排程。
+      - category: improved
+        text: 已有原堂次的合法調課流程維持不變；本次不改既有資料。
+    source_refs:
+      - "changelog:2026-08-29:schedule-orphan-prevention"
+
+  - id: staff-2026-08-29-reflow-duplicate-target
+    published_at: "2026-08-29"
+    audiences:
+      - director
+    importance: digest
+    title: 重整排課遇到重複時段會清楚提示
+    summary: 固定排課設定產生相同目標時段時，不會再顯示不明確的伺服器錯誤。
+    items:
+      - category: fixed
+        text: 系統會在移動堂次前攔截重複的日期／時間目標，並回傳時段衝突提示。
+      - category: improved
+        text: 原子交易與唯一時段防線維持不變，錯誤時不會留下半套重整結果。
+      - category: improved
+        text: 既有堂次、扣堂、評量與排課資料不會因這次防線被自動改寫。
+    source_refs:
+      - "changelog:2026-08-29:reflow-duplicate-target"
+
+  - id: staff-2026-08-29-teacher-partial-queue-error
+    published_at: "2026-08-29"
+    audiences:
+      - teacher
+    importance: digest
+    title: 工作台不會被單一資料失敗卡住
+    summary: 家長回覆暫時無法載入時，已載入的點名與評量工作仍可繼續處理。
+    items:
+      - category: improved
+        text: 家長回覆資料失敗會顯示部分待辦提示，不會隱藏仍可處理的工作。
+      - category: improved
+        text: 點名／評量等關鍵資料失敗時仍會防止誤判為全部完成。
+    source_refs:
+      - "changelog:2026-08-29:teacher-partial-queue-error"
+
+  - id: staff-2026-08-29-logging-facade-runtime
+    published_at: "2026-08-29"
+    audiences:
+      - director
+    importance: digest
+    title: 錯誤處理更穩定
+    summary: 分校選擇與工作台的例外處理不會因記錄錯誤而變成第二個系統錯誤。
+    items:
+      - category: fixed
+        text: 公開分校清單遇到暫時性結構／資料庫問題時，會保留清楚的空清單回應，不再出現額外的伺服器錯誤。
+      - category: improved
+        text: 排課與薪資的例外記錄會正確寫入，方便追查問題並保留原本的安全備援。
+      - category: improved
+        text: 本次不改學生資料、帳務、排課規則、權限或既有成功流程。
+    source_refs:
+      - "changelog:2026-08-29:logging-facade-runtime"
+
+  - id: staff-2026-08-29-teacher-secondary-cta
+    published_at: "2026-08-29"
+    audiences:
+      - teacher
+    importance: digest
+    title: 今天先做的那一件事更清楚
+    summary: 今日工作佇列只保留一顆主行動，其餘待辦改為次要按鈕。
+    items:
+      - category: improved
+        text: 「現在先做」仍是清楚的主按鈕；「接著處理」改為次要樣式，比較不會搶走視線。
+      - category: improved
+        text: 任務排序、點名／評量導頁、資料與權限維持不變。
+    source_refs:
+      - "changelog:2026-08-29:teacher-secondary-cta"
+
+  - id: staff-2026-08-29-cross-contract-makeup-conflict
+    published_at: "2026-08-29"
+    audiences:
+      - director
+    importance: major
+    title: 補課候選會先避開跨合約衝堂
+    summary: 安排補課前會先檢查同一學生其他合約的已排時段。
+    items:
+      - category: fixed
+        text: 搜尋補課時段會排除同一學生在其他合約已有的正式堂次，不會先顯示確認後才被擋的時段。
+      - category: improved
+        text: 尚未物化但已預約的排課也會納入檢查；若搜尋後時段被占用，確認時會清楚提示並保留原案件。
+      - category: improved
+        text: 付款、出席、扣堂歷史與合約日期不會因補課衝堂檢查被自動改寫。
+    source_refs:
+      - "changelog:2026-08-29:cross-contract-makeup-conflict"
+
+  - id: staff-2026-08-29-learning-review-tabs-a11y
+    published_at: "2026-08-29"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 評量審核佇列更容易辨識
+    summary: 評量分頁現在會清楚連到目前清單，切換後只聚焦該審核狀態。
+    items:
+      - category: improved
+        text: 主任與老師的審核狀態分頁補上清楚的選取狀態，並連到評量清單工作區。
+      - category: improved
+        text: 審核規則、核准同步點名／扣堂、API、權限與批次操作維持不變。
+    source_refs:
+      - "changelog:2026-08-29:learning-review-tabs-a11y"
+
+  - id: staff-2026-08-29-goto-purchase
+    published_at: "2026-08-29"
+    audiences:
+      - director
+    importance: digest
+    title: 新增課程可直接加購
+    summary: 學生已有課程時，點「去加購」會打開加購堂數。
+    items:
+      - category: fixed
+        text: 學生管理新增課程後，點「去加購」會打開該課的加購視窗。
+      - category: fixed
+        text: 系統對不到課程時會提示重新整理，不再沒有反應。
+      - category: improved
+        text: 課程資料、加購規則、權限與既有課程列「加購」維持不變。
+    source_refs:
+      - "changelog:2026-08-29:goto-purchase"
+
+  - id: staff-2026-08-29-profile-nav-clobber
+    published_at: "2026-08-29"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 登入後側欄切頁更穩定
+    summary: 登入後立刻點側欄，不會再被系統拉回首頁。
+    items:
+      - category: fixed
+        text: 個人資料載入完成後，不會把你剛切好的頁面（例如我的課表、課程查找）強制拉回工作台／總覽。
+      - category: improved
+        text: 強制改密與角色首頁冷啟動行為維持不變；權限、分校與各頁業務邏輯也不變。
+    source_refs:
+      - "changelog:2026-08-29:profile-nav-clobber"
+  - id: staff-2026-08-29-student-course-next-action
+    published_at: "2026-08-29"
+    audiences:
+      - director
+    importance: digest
+    title: 學生課程下一步更明確
+    summary: 課程工作區會清楚說明現在該處理什麼，主行動也會對應目前狀態。
+    items:
+      - category: improved
+        text: 「現在先處理」會說明續報、付款待確認、資料待補或一般課程的下一步，不必只靠顏色猜測。
+      - category: improved
+        text: 主行動會依既有課程狀態前往續報加購、繳費資訊或編輯課程，並保留原有操作行為。
+      - category: improved
+        text: 課程資料、付款、排課、權限、API 與手機版可讀布局維持不變。
+    source_refs:
+      - "changelog:2026-08-29:student-course-next-action"
+
+  - id: staff-2026-08-29-notifications-dialog-a11y
+    published_at: "2026-08-29"
+    audiences:
+      - director
+    importance: digest
+    title: 主任收件匣工作區更穩定
+    summary: 收件匣分頁與核帳登記更容易理解，也更適合鍵盤操作。
+    items:
+      - category: improved
+        text: 「待辦案件／營運通知」分頁會清楚連到目前內容區，切換後能直接聚焦正在處理的工作區。
+      - category: improved
+        text: 核帳登記使用一致的對話框操作，支援關閉按鈕、Escape 與初始鍵盤焦點；通知操作不會意外送出表單。
+      - category: improved
+        text: 付款資料、核帳規則、API、權限與既有導頁行為維持不變。
+    source_refs:
+      - "changelog:2026-08-29:notifications-dialog-a11y"
+
+  - id: staff-2026-08-29-teacher-card-a11y
+    published_at: "2026-08-29"
+    audiences:
+      - teacher
+    importance: digest
+    title: 老師工作台的控制項更穩定
+    summary: 今日打卡與本週課表的操作更容易用鍵盤、觸控與螢幕閱讀器理解。
+    items:
+      - category: improved
+        text: 今日打卡狀態卡片現在是清楚的原生按鈕，會說明目前狀態並保留前往出缺勤管理的行為。
+      - category: improved
+        text: 本週課表的上一週／下一週與課表圖示操作都有明確名稱，不必只依賴圖示或滑鼠提示。
+      - category: improved
+        text: 出缺勤、課表、評量資料、API、權限與既有導頁行為維持不變。
+    source_refs:
+      - "changelog:2026-08-29:teacher-card-a11y"
+
+  - id: staff-2026-08-29-attendance-tab-status-a11y
+    published_at: "2026-08-29"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 出缺勤工作區切換更清楚
+    summary: 點名與打卡工作區，以及每堂到班狀態，都更容易用鍵盤與螢幕閱讀器理解。
+    items:
+      - category: improved
+        text: 主任的「學生點名／老師打卡」分頁會清楚連到目前內容區，切換後能直接知道正在處理哪一個工作區。
+      - category: improved
+        text: 待點名堂次的到班狀態按鈕會公告目前選取狀態，鍵盤焦點也更明顯，不再只依賴顏色判斷。
+      - category: improved
+        text: 點名資料、扣堂、RFID、API、權限與既有送出行為維持不變；老師仍使用原有學生點名工作區。
+    source_refs:
+      - "changelog:2026-08-29:attendance-tab-status-a11y"
+
+  - id: staff-2026-08-29-teachers-list-status
+    published_at: "2026-08-29"
+    audiences:
+      - director
+    importance: digest
+    title: 老師狀態與識別資訊更清楚
+    summary: 老師管理的狀態切換、提醒色與 RFID 識別碼更容易閱讀。
+    items:
+      - category: improved
+        text: 「正式老師／待審核／停用」分頁會清楚連到目前內容區，主任切換後能直接聚焦該狀態的老師。
+      - category: improved
+        text: 待審核與停用的數字提醒色，以及老師卡片上的狀態標籤，現在使用一致的語意顏色與文字。
+      - category: improved
+        text: RFID 識別碼使用穩定的等寬數字呈現；老師資料、帳號、綁定、權限與既有操作行為維持不變。
+    source_refs:
+      - "changelog:2026-08-29:teachers-list-status"
+
+  - id: staff-2026-08-29-billing-tab-panels
+    published_at: "2026-08-29"
+    audiences:
+      - director
+    importance: digest
+    title: 帳務分頁只顯示目前工作區
+    summary: 帳務中心切換分頁後，畫面會只保留目前要處理的帳務內容。
+    items:
+      - category: fixed
+        text: 「待處理／已結清課程彙總／收據紀錄」不會再同時顯示彼此的工作區，主任切換後能直接聚焦目前任務。
+      - category: improved
+        text: 三個帳務分頁與內容區補上鍵盤與螢幕閱讀器的控制關係，降低誤判目前工作區的機會。
+      - category: improved
+        text: 付款規則、收據資料、API、權限與既有手機版布局維持不變。
+    source_refs:
+      - "changelog:2026-08-29:billing-tab-panels"
+
+  - id: staff-2026-08-29-director-view-switcher-a11y
+    published_at: "2026-08-29"
+    audiences:
+      - director
+    importance: digest
+    title: 主任總覽檢視切換更清楚
+    summary: 今天與完整營運兩個工作區的切換關係更容易理解。
+    items:
+      - category: improved
+        text: 主任總覽的檢視分頁會清楚連到對應內容區，鍵盤與螢幕閱讀器能辨識目前工作區。
+      - category: improved
+        text: 今日待辦優先、完整營運按需載入與原有導頁、資料、權限行為維持不變。
+    source_refs:
+      - "changelog:2026-08-29:director-view-switcher-a11y"
+
+  - id: staff-2026-08-29-students-row-disclosure
+    published_at: "2026-08-29"
+    audiences:
+      - director
+    importance: digest
+    title: 學生列表展開更容易操作
+    summary: 學生資料列可用鍵盤展開，並清楚連到課程工作區。
+    items:
+      - category: improved
+        text: 在學生列表將焦點放到資料列後，可以使用 Enter 或 Space 展開／收合課程工作區。
+      - category: improved
+        text: 學生資料列會明確告知目前展開狀態與下方課程工作區的關係，螢幕閱讀器更容易理解。
+      - category: improved
+        text: 勾選、編輯與刪除仍是獨立操作，不會被資料列的鍵盤展開行為誤觸。
+    source_refs:
+      - "changelog:2026-08-29:students-row-disclosure"
+
+  - id: staff-2026-08-29-course-management-hierarchy
+    published_at: "2026-08-29"
+    audiences:
+      - director
+    importance: digest
+    title: 課程查找操作層級更清楚
+    summary: 學生群組、課程／帳務分頁與歷史資料的操作關係更明確。
+    items:
+      - category: improved
+        text: 學生群組的展開與「專注此學生」改成兩個清楚分開的操作，鍵盤可以直接使用 Enter 或 Space 展開與收合。
+      - category: improved
+        text: 課程資料與帳務資料分頁補上明確的控制關係；切換分頁會自動保留原有資料與操作流程。
+      - category: improved
+        text: 歷史課程維持按需展開，並補上展開狀態與可控制區域，讓螢幕閱讀器能理解目前看到的內容。
+    source_refs:
+      - "changelog:2026-08-29:course-management-hierarchy"
+
+  - id: staff-2026-08-29-student-course-disclosure
+    published_at: "2026-08-29"
+    audiences:
+      - director
+    importance: digest
+    title: 學生課程細節分層更清楚
+    summary: 目前課程與歷史課程分開，先處理選定課程再查看舊資料。
+    items:
+      - category: improved
+        text: 學生課程頁會明確標示目前課程工作區，選定課程的完整資料與下一步集中在同一區域。
+      - category: improved
+        text: 歷史課程維持在獨立的按需展開區，不會和目前課程混在同一個工作層級。
+      - category: improved
+        text: 歷史區補上鍵盤與螢幕閱讀器需要的展開狀態，原有編輯與刪除操作不變。
+    source_refs:
+      - "changelog:2026-08-29:student-course-disclosure"
+
+  - id: staff-2026-08-29-teacher-next-action
+    published_at: "2026-08-29"
+    audiences:
+      - teacher
+    importance: digest
+    title: 老師工作台先做一件事
+    summary: 第一個待辦會清楚標示現在先做，其餘工作保留在接著處理。
+    items:
+      - category: improved
+        text: 工作台依照既有期限與影響排序，將第一個待辦獨立標示為「現在先做」，並直接提供對應的行動按鈕。
+      - category: improved
+        text: 其他待辦仍會保留在「接著處理」清單；請假待審堂次不會被誤列為老師要處理的工作。
+      - category: improved
+        text: 手機版主行動會在同一張卡片內完整呈現，原有導頁、權限與資料行為不變。
+    source_refs:
+      - "changelog:2026-08-29:teacher-next-action"
+
+  - id: staff-2026-08-29-student-course-overview
+    published_at: "2026-08-29"
+    audiences:
+      - director
+    importance: digest
+    title: 學生課程總覽更容易判斷下一步
+    summary: 展開學生後先看到課程摘要，並優先選出需要處理的課程。
+    items:
+      - category: improved
+        text: 課程總覽會摘要顯示進行中、需要注意與歷史課程數量，減少在多門課程間反覆尋找。
+      - category: improved
+        text: 課程選擇器會優先帶出需要處理的課程；切換課程時保留既有課程操作與資料行為。
+      - category: improved
+        text: 手機版主要課程工作區維持可讀寬度，學生列表的次要欄位仍可水平查閱。
+    source_refs:
+      - "changelog:2026-08-29:student-course-overview"
+
+  - id: staff-2026-08-28-student-course-summary
+    published_at: "2026-08-28"
+    audiences:
+      - director
+    importance: digest
+    title: 學生課程資訊更清楚
+    summary: 一眼看到課程進度與下一步。
+    items:
+      - category: improved
+        text: 學生課程會先顯示剩餘堂數、上課安排與下一步操作。
+      - category: improved
+        text: 付款、帳單、結案與刪除等較少使用的操作集中在更多操作。
+    source_refs:
+      - "changelog:2026-08-28:student-course-summary"
+
+  - id: staff-2026-08-28-sidebar-focus
+    published_at: "2026-08-28"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 側欄功能更清楚
+    summary: 常用工作先顯示，其他功能集中在更多功能。
+    items:
+      - category: improved
+        text: 每日工作、教學現場、學生與課程、財務人事保留在側欄主畫面，主任與老師可更快找到常用入口。
+      - category: improved
+        text: 報表、進階工具、訊息回報與設定仍可使用，統一收進「更多功能」面板，不刪除原有頁面。
+      - category: improved
+        text: 「更多功能」支援目前頁面提示、待辦徽章、Escape 關閉與鍵盤操作；手機版使用方式不變。
+    source_refs:
+      - "changelog:2026-08-28:sidebar-focus"
+
+  - id: staff-2026-08-28-attendance-learning-record-integrity
+    published_at: "2026-08-28"
+    audiences:
+      - director
+      - teacher
+    importance: major
+    title: 出缺勤與學習評量表一致性修正
+    summary: 已上／遲到一定會有可填的學習評量表；請假、取消與未上不會再出現幽靈評量表。
+    items:
+      - category: fixed
+        text: 出缺勤狀態與學習評量表改由同一個後端一致性流程處理，失敗會回滾，不再留下半完成資料。
+      - category: fixed
+        text: 系統會掃描並修復已上／遲到缺評量，以及請假／取消／未上的幽靈評量，並保留稽核紀錄。
+    source_refs:
+      - "changelog:2026-08-28:attendance-learning-record-integrity"
+
+  - id: staff-2026-08-28-subject-units-summary
+    published_at: "2026-08-28"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 科目數統計摘要顯示修正
+    summary: 上方摘要卡會正確顯示科目數，不再因資料格式造成顯示異常或載入失敗。
+    items:
+      - category: fixed
+        text: 科目數統計遇到 API 數字以文字格式回傳時，現在仍會正確轉換並顯示，和下方老師明細保持一致。
+    source_refs:
+      - "changelog:2026-08-28:subject-units-summary"
+
+  - id: staff-2026-08-28-leave-trial-conversion
+    published_at: "2026-08-28"
+    audiences:
+      - director
+    importance: action_required
+    title: 請假可安全撤銷，試聽可直接轉正式
+    summary: 請假不必再用已上再改回未上的繞路；試聽轉正式也不必手動搬堂次。
+    items:
+      - category: fixed
+        text: 請假堂次請使用「取消請假」；系統會同步復原該堂與請假紀錄，禁止直接改成已上或未上造成資料不同步。
+      - category: added
+        text: 試聽確定入班時，請按「轉為正式課程」並選擇正式堂數與開始日；試聽堂與評量會保留，未來試聽排課會取消，不會重複計堂。
+      - category: action_required
+        text: 若看到缺少順延尾堂的提示，請依畫面到合約／堂次調整做對帳；系統不會自行刪除其他堂次。
+    source_refs:
+      - "changelog:2026-08-28:leave-trial-conversion"
+
+  - id: staff-2026-08-28-learning-review-queues
+    published_at: "2026-08-28"
+    audiences:
+      - director
+    importance: digest
+    title: 評量審核佇列更清楚
+    summary: 待核准與需修改分開顯示，主任一眼知道下一步。
+    items:
+      - category: improved
+        text: 學習評量頁將「待主任核准」與「老師需修改」拆開，不必在同一個待審清單中判斷兩種工作。
+      - category: improved
+        text: 分頁數字、狀態篩選與空白提示同步對齊；目前工作佇列下方會直接說明該頁要做什麼。
+    source_refs:
+      - "changelog:2026-08-28:learning-review-queues"
+
+  - id: staff-2026-08-28-in-app-bug-report
+    published_at: "2026-08-28"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: in-app 問題回報更穩定
+    summary: 回報問題、看處理進度與遇到錯誤時，都能在系統內完成。
+    items:
+      - category: improved
+        text: 回報視窗支援 Esc、手機底部抽屜與背景捲動鎖定；截圖貼上、拖曳、選檔與送出方式不變。
+      - category: fixed
+        text: 狀態更新、留言、留言可見性與回報者驗收失敗時，會在 Bug 詳情原位置顯示原因，不再跳瀏覽器 alert。
+      - category: improved
+        text: UI／營運改善清單移到 GitHub Issue、PR 與設計文件追蹤，系統側欄只保留實際業務功能。
+    source_refs:
+      - "changelog:2026-08-28:in-app-bug-report"
+
+  - id: staff-2026-08-28-attendance-workspace-focus
+    published_at: "2026-08-28"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 出缺勤先看要處理的工作
+    summary: 學生點名與老師打卡分開整理，摘要和完整紀錄需要時再展開。
+    items:
+      - category: improved
+        text: 主任在「學生點名」先看到待點名堂次，在「老師打卡」先看到遲到、漏刷與需要補卡的項目。
+      - category: improved
+        text: 到班統計、行政出勤、系統待比對與完整打卡匯出仍可使用，但不再和主要處理工作同時搶畫面。
+      - category: action_required
+        text: 需要查完整紀錄或匯出月報時，請展開「查看完整打卡紀錄與匯出」；既有點名、補卡與補登流程不變。
+    source_refs:
+      - "changelog:2026-08-28:attendance-workspace-focus"
+
+  - id: staff-2026-08-28-ops-ui-sweep
+    published_at: "2026-08-28"
+    audiences:
+      - director
+      - teacher
+    importance: major
+    title: 側欄與工作頁更清楚
+    summary: 常用工作先顯示，低頻功能仍可展開使用。
+    items:
+      - category: improved
+        text: 側欄將每日工作、教學現場、學生課程與財務人事分組；進階工具、報表薪資、訊息回報改為需要時再展開。
+      - category: improved
+        text: 出缺勤、教學工作台、老師管理與帳務中心統一頁首與摘要，重新整理時會顯示一致的載入狀態。
+      - category: action_required
+        text: 找不到低頻功能時，請展開對應區段；原有功能入口與資料操作沒有刪除。
+    source_refs:
+      - "changelog:2026-08-28:ops-ui-sweep"
+
+  - id: staff-2026-08-28-schedule-safe-recovery
+    published_at: "2026-08-28"
+    audiences:
+      - director
+    importance: action_required
+    title: 取消課堂可安全復原
+    summary: 誤取消單堂課後，可在同一堂次檢視視窗復原上一個狀態。
+    items:
+      - category: added
+        text: 取消堂次重新開啟後，只有系統確認是最近一次主任操作且沒有衝堂時才會顯示復原按鈕。
+      - category: action_required
+        text: 復原前請確認日期與時段並填寫原因；系統會同步排課、必要評量／點名與堂數。
+    source_refs:
+      - "changelog:2026-08-28:schedule-safe-recovery"
+
+  - id: staff-2026-08-27-transfer-ledger-reconciliation
+    published_at: "2026-08-27"
+    audiences:
+      - director
+    importance: action_required
+    title: 堂次轉移會同步扣堂
+    summary: 已上課堂次轉到新合約後，扣堂台帳與堂數會一起更新。
+    items:
+      - category: fixed
+        text: 轉移已上課堂次時，點名、評量、扣堂台帳與來源／目標堂數會同步更新。
+      - category: action_required
+        text: 若看到既有轉移造成的待對帳，請重新整理後依畫面提示處理，不要自行修改堂數欄位。
+    source_refs:
+      - "changelog:2026-08-27:transfer-ledger-reconciliation"
+
+  - id: staff-2026-08-27-session-evaluation-integrity
+    published_at: "2026-08-27"
+    audiences:
+      - director
+      - teacher
+    importance: major
+    title: 評量與課堂狀態一致
+    summary: 取消或請假的堂次不再要求填評量；主任總覽可直接看出哪位老師需要跟進。
+    items:
+      - category: fixed
+        text: 評量只列入已上課、完成或遲到；取消、請假與停課不留待填評量，夜間對帳只顯示仍有差異的項目。
+      - category: improved
+        text: 主任總覽上方新增教學品質追蹤，直接顯示分校整體填寫率、待填堂數、需要跟進的老師與每位老師的已填／應填數。
+      - category: action_required
+        text: 看到「需要跟進」時，請從「前往評量審核」確認未填堂次與內容品質；填寫率是提醒指標，不是公開排名。
+    source_refs:
+      - "changelog:2026-08-27:session-evaluation-integrity"
+
+  - id: staff-2026-08-27-course-management-inline-scheduling
+    published_at: "2026-08-27"
+    audiences:
+      - director
+    importance: major
+    title: 課程查找可同頁編輯與新增堂次
+    summary: 編輯月結結束日與新增今天堂次都留在課程查找，不再在學生管理與課程查找之間來回切換。
+    items:
+      - category: improved
+        text: 課程查找的「編輯」會開啟同頁課程編輯視窗；月結課程可直接設定開始日與結束日並儲存。
+      - category: fixed
+        text: 月結可同頁設定起訖日與新增日期時間；缺少或逾期會提供設定入口。
+      - category: action_required
+        text: 新增下午五點到七點前，請確認課程時長與月結結束日；已過時段或衝堂時請改選時間。
+    source_refs:
+      - "changelog:2026-08-27:course-management-inline-scheduling"
+
+  - id: staff-2026-08-27-paid-course-settlement
+    published_at: "2026-08-27"
+    audiences:
+      - director
+    importance: major
+    title: 已繳費課程可明確結案
+    summary: 已確認收款的堂數制與月結課程，都能直接選擇結案不續報；排月結失敗也會顯示原因。
+    items:
+      - category: fixed
+        text: 三個入口都可直接「結案（不續報）」，保留付款與已上課紀錄。
+      - category: improved
+        text: 有剩餘堂數會先提示；確認後取消未來排課。月結也可結案。
+      - category: action_required
+        text: 若這些堂數是請假順延或仍要上課，請先排完再結案；只有確定不再使用時才確認放棄餘額。
+    source_refs:
+      - "changelog:2026-08-27:paid-course-settlement"
+
+  - id: staff-2026-08-27-teacher-assessment-engagement
+    published_at: "2026-08-27"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 評量完成率可追蹤
+    summary: 主任可看待跟進評量，老師不以公開排名比較。
+    items:
+      - category: added
+        text: 完整營運的近期紀錄與分析新增評量完成率，可切換近 7／14／30 天查看已填、應填與待跟進狀態。
+      - category: improved
+        text: 少於五堂會標示資料累積中，不直接判定表現；既有分校權限、代課歸屬與請假排除規則維持不變。
+      - category: action_required
+        text: 老師仍請以完整且有用的課後進度回饋為準，填寫率只代表是否有有效進度文字，不等於內容品質分數。
+    source_refs:
+      - "changelog:2026-08-27:teacher-assessment-engagement"
+  - id: staff-2026-08-27-course-payment-slip
+    published_at: "2026-08-27"
+    audiences:
+      - director
+    importance: digest
+    title: 課程管理直達繳費通知
+    summary: 未繳課程可直接開通知單。
+    items:
+      - category: improved
+        text: 課程管理的帳務資料與更多選單可直接開啟繳費通知單，預覽後即可複製給家長。
+      - category: fixed
+        text: 只對未繳、部分繳與待對帳課程顯示；已繳費課程不顯示，且不改付款或收據流程。
+    source_refs:
+      - "changelog:2026-08-27:course-payment-slip"
 
   - id: staff-2026-08-26-director-contextual-actions
     published_at: "2026-08-26"

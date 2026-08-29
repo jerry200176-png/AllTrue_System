@@ -1,9 +1,11 @@
 <template>
   <div class="director-accounts-page">
-    <div data-guide="director-accounts-header">
-      <h2>主任管理</h2>
-      <p class="page-desc">管理主任帳號，包含審核申請、重設密碼與刪除帳號。</p>
-    </div>
+    <AtPageHeader
+      title="主任管理"
+      description="管理主任帳號，包含審核申請、重設密碼與刪除帳號。"
+      icon="admin_panel_settings"
+      data-guide="director-accounts-header"
+    />
 
     <div v-if="msg" :class="['msg', msg.type]">{{ msg.text }}</div>
 
@@ -101,6 +103,7 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 
 const props = defineProps({
   token: { type: String, default: '' },

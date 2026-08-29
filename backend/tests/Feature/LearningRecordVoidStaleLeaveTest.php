@@ -111,6 +111,32 @@ class LearningRecordVoidStaleLeaveTest extends TestCase
         );
     }
 
+    public function test_sweep_voids_live_learning_record_on_cancelled_session(): void
+    {
+        $campus = Campus::factory()->create();
+        $student = Student::create([
+            'name' => '取消堂次評量測試生', 'CampusID' => $campus->id, 'ClassID' => 1,
+            'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $scId = DB::table('StudentClass')->insertGetId($this->scRow((int) $student->id));
+        $sessionId = DB::table('ClassSession')->insertGetId([
+            'StudentClassID' => $scId, 'SessionDate' => '2026-07-06', 'StartTime' => '15:00',
+            'EndTime' => '17:00', 'Status' => 'cancelled',
+        ]);
+        $lrId = DB::table('LearningRecord')->insertGetId([
+            'StudentClassID' => $scId, 'ClassSessionID' => $sessionId, 'TeacherID' => 1,
+            'Content' => '', 'Subject' => '數學', 'SessionDate' => '2026-07-06',
+            'StartTime' => '15:00', 'EndTime' => '17:00', 'Status' => 'pending',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        Artisan::call('learning-records:void-stale-leave');
+
+        $lr = DB::table('LearningRecord')->where('id', $lrId)->first();
+        $this->assertNotNull($lr->VoidedAt);
+        $this->assertSame(CourseLeaveCascadeService::VOID_REASON_CANCELLED, $lr->VoidReason);
+    }
+
     public function test_sweep_does_not_touch_live_learning_record_on_non_leave_session(): void
     {
         $campus = Campus::factory()->create();

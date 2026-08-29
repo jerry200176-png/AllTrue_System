@@ -1,52 +1,52 @@
 <template>
   <div class="att-page">
-    <div class="page-header att-header enterprise-page-header">
-      <div>
-        <h2>出缺勤管理</h2>
-        <p class="page-desc">
-          {{ isTeacher ? '查看你今日堂次並即時點名，也可補登過去堂次' : '追蹤學生到班狀態、點名核課、補登過往堂次' }}
-        </p>
-      </div>
-      <div class="att-header-btns">
-        <button class="primary enterprise-touch-target" @click="refreshAll">重新整理今日堂次</button>
-      </div>
-    </div>
+    <AtPageHeader
+      title="出缺勤管理"
+      :description="isTeacher ? '查看今日堂次並完成點名，也可補登過去堂次。' : '追蹤學生到班狀態、點名核課與補登過往堂次。'"
+      icon="fact_check"
+      data-guide="attendance-header"
+    >
+      <template #meta><span>{{ isTeacher ? '老師工作台' : '主任工作台' }}</span><span>以今日待處理為主</span></template>
+      <template #actions>
+        <AtButton variant="ghost" shape="rect" icon="refresh" @click="refreshAll">重新整理今日堂次</AtButton>
+      </template>
+    </AtPageHeader>
 
     <!-- Tab Switcher（director/super_admin 才顯示） -->
-    <div v-if="!isTeacher" class="att-tabs">
+    <div v-if="!isTeacher" class="att-tabs" role="tablist" aria-label="出缺勤工作區">
       <button
+        id="attendance-tab-student"
+        type="button"
         class="att-tab-btn"
         :class="{ active: activeTab === 'student' }"
+        role="tab"
+        :aria-selected="activeTab === 'student'"
+        aria-controls="attendance-student-panel"
         @click="switchTab('student')"
-      >學生出缺勤</button>
+      >學生點名 <span class="att-tab-note">主任</span></button>
       <button
+        id="attendance-tab-teacher"
+        type="button"
         class="att-tab-btn"
         :class="{ active: activeTab === 'teacher' }"
+        role="tab"
+        :aria-selected="activeTab === 'teacher'"
+        aria-controls="attendance-teacher-panel"
         @click="switchTab('teacher')"
-      >老師打卡</button>
+      >老師打卡 <span class="att-tab-note">主任</span></button>
     </div>
 
     <!-- ═══ Teacher Attendance Tab ═══ -->
-    <template v-if="activeTab === 'teacher' && !isTeacher">
-      <!-- Teacher Stats -->
-      <div class="att-stats">
-        <div class="att-stat-card">
-          <div class="att-stat-num">{{ teacherStats.total }}</div>
-          <div class="att-stat-label">今日到班</div>
+    <div v-if="activeTab === 'teacher' && !isTeacher" id="attendance-teacher-panel" role="tabpanel" aria-labelledby="attendance-tab-teacher" tabindex="0">
+      <section class="att-workspace-intro" aria-labelledby="teacher-attendance-focus-title">
+        <div>
+          <p class="att-workspace-eyebrow">老師打卡工作區</p>
+          <h2 id="teacher-attendance-focus-title">先處理課表異常</h2>
+          <p>只列出需要主任介入的遲到或漏刷；正常到班與完整紀錄收在下方。</p>
         </div>
-        <div class="att-stat-card">
-          <div class="att-stat-num">{{ teacherOnDuty.length }}</div>
-          <div class="att-stat-label">行政出勤</div>
-        </div>
-        <div class="att-stat-card stat-late">
-          <div class="att-stat-num">{{ teacherStats.late }}</div>
-          <div class="att-stat-label">遲到</div>
-        </div>
-        <div class="att-stat-card stat-absent">
-          <div class="att-stat-num">{{ teacherStats.anomaly }}</div>
-          <div class="att-stat-label">課表異常</div>
-        </div>
-      </div>
+        <span v-if="teacherAnomalies.length" class="att-focus-count">{{ teacherAnomalies.length }} 筆待處理</span>
+        <span v-else class="att-focus-count is-clear">今日無待處理</span>
+      </section>
 
       <!-- Anomaly List：只顯示 late / missed（真正需要人工介入的） -->
       <div class="card att-checkin-card">
@@ -69,6 +69,29 @@
           </div>
         </div>
 
+      </div>
+
+      <div v-if="teacherUnclosed.length" class="card att-followup-card">
+        <div class="att-checkin-header">
+          <div class="att-section-title">需要補卡的未簽退</div>
+          <span class="att-badge att-badge-warn">{{ teacherUnclosed.length }}</span>
+        </div>
+        <p class="att-hint">截止時間前未簽退的老師，請確認後補卡。</p>
+        <div v-for="u in teacherUnclosed" :key="u.teacher_id" class="ta-unclosed-row">
+          {{ u.teacher_name }}
+          <span class="ta-time">簽到 {{ u.sign_in_dt?.slice(11, 16) }}</span>
+          <button class="ghost small" @click="openAdjust(u)">補卡</button>
+        </div>
+      </div>
+
+      <details class="att-secondary-summary">
+        <summary>查看今日打卡摘要 <span>到班 {{ teacherStats.total }} · 行政出勤 {{ teacherOnDuty.length }} · 系統待比對 {{ teacherSystemPending.length }}</span></summary>
+        <div class="att-stats" aria-label="老師打卡摘要">
+          <AtMetric label="今日到班" :value="teacherStats.total" accent="var(--ds-success)" />
+          <AtMetric label="行政出勤" :value="teacherOnDuty.length" accent="var(--ds-primary)" />
+          <AtMetric label="遲到" :value="teacherStats.late" accent="var(--ds-warning)" />
+          <AtMetric label="課表異常" :value="teacherStats.anomaly" accent="var(--ds-danger)" />
+        </div>
         <!-- 行政出勤區：有刷卡但無排課，正常到班，不需處理 -->
         <div v-if="!teacherLoading && teacherOnDuty.length" class="ta-onduty-section">
           <div class="ta-onduty-title">
@@ -81,16 +104,17 @@
             </span>
           </div>
         </div>
-
         <!-- 系統待確認：排課資料查詢失敗，不是人工缺失 -->
         <div v-if="!teacherLoading && teacherSystemPending.length" class="ta-sys-pending">
           <span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">info</span>
           {{ teacherSystemPending.length }} 筆排課資料待比對（系統自動確認，無需人工操作）
         </div>
-      </div>
+      </details>
 
       <!-- Full Records Table -->
-      <div class="card att-checkin-card" style="margin-top:12px">
+      <details class="att-secondary-summary att-records-disclosure">
+        <summary>查看完整打卡紀錄與匯出 <span>今日 {{ teacherRecords.length }} 筆</span></summary>
+        <div class="card att-checkin-card">
         <div class="att-checkin-header">
           <div class="att-section-title">今日完整打卡記錄</div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -151,20 +175,8 @@
             </tbody>
           </table>
         </div>
-      </div>
-
-      <!-- Unclosed reminder -->
-      <div v-if="teacherUnclosed.length" class="card" style="margin-top:12px;padding:14px 16px">
-        <div class="att-section-title" style="margin-bottom:8px">
-          <span class="material-symbols-outlined" style="font-size:18px;vertical-align:middle;color:var(--ds-warning)">warning</span>
-          截止時間前未簽退（{{ teacherUnclosed.length }}）
         </div>
-        <div v-for="u in teacherUnclosed" :key="u.teacher_id" class="ta-unclosed-row">
-          {{ u.teacher_name }}
-          <span class="ta-time">簽到 {{ u.sign_in_dt?.slice(11, 16) }}</span>
-          <button class="ghost small" @click="openAdjust(u)">補卡</button>
-        </div>
-      </div>
+      </details>
 
       <!-- Adjust Modal -->
       <TeacherAdjustModal
@@ -173,10 +185,18 @@
         @close="adjustModal.visible = false"
         @submitted="onAdjustSubmitted"
       />
-    </template>
+    </div>
 
     <!-- ═══ Student Attendance Tab（原有內容） ═══ -->
-    <template v-if="activeTab === 'student' || isTeacher">
+    <div
+      v-if="activeTab === 'student' || isTeacher"
+      id="attendance-student-panel"
+      role="tabpanel"
+      :aria-labelledby="isTeacher ? 'attendance-student-panel-title' : 'attendance-tab-student'"
+      tabindex="0"
+    >
+
+    <h2 id="attendance-student-panel-title" class="sr-only">學生點名</h2>
 
     <!-- Teacher first-run summary: one decision, one next action. -->
     <section v-if="isTeacher" class="att-teacher-snapshot card" aria-labelledby="att-teacher-snapshot-title">
@@ -193,24 +213,15 @@
     </section>
 
     <!-- Stats Summary -->
-    <div v-else class="att-stats">
-      <div class="att-stat-card">
-        <div class="att-stat-num">{{ markedSessionsCount }}</div>
-        <div class="att-stat-label">已點名 / 今日課表 {{ todaySessionTotal }}</div>
+    <details v-else class="att-secondary-summary">
+      <summary>查看今日點名摘要 <span>已點名 {{ markedSessionsCount }} · 待處理 {{ pendingSessions.length }}</span></summary>
+      <div class="att-stats" aria-label="今日出缺勤摘要">
+        <AtMetric label="已點名" :value="markedSessionsCount" :delta="`今日課表 ${todaySessionTotal} 堂`" delta-tone="neutral" accent="var(--ds-primary)" />
+        <AtMetric label="到班" :value="stats.present" accent="var(--ds-success)" />
+        <AtMetric label="遲到" :value="stats.late" accent="var(--ds-warning)" />
+        <AtMetric label="缺席／請假" :value="stats.absent + stats.excused" accent="var(--ds-danger)" />
       </div>
-      <div class="att-stat-card stat-present">
-        <div class="att-stat-num">{{ stats.present }}</div>
-        <div class="att-stat-label">到班</div>
-      </div>
-      <div class="att-stat-card stat-late">
-        <div class="att-stat-num">{{ stats.late }}</div>
-        <div class="att-stat-label">遲到</div>
-      </div>
-      <div class="att-stat-card stat-absent">
-        <div class="att-stat-num">{{ stats.absent + stats.excused }}</div>
-        <div class="att-stat-label">缺席/請假</div>
-      </div>
-    </div>
+    </details>
 
     <div v-if="fetchError" class="att-msg error" style="margin-bottom:12px">{{ fetchError }}</div>
 
@@ -285,6 +296,8 @@
                   <div class="att-status-group">
                     <button
                       v-for="opt in statusOptions" :key="opt.value"
+                      type="button"
+                      :aria-pressed="pendingMarkStatus[s.class_session_id] === opt.value"
                       :class="['att-status-btn', `att-st-${opt.value}`, { active: pendingMarkStatus[s.class_session_id] === opt.value }]"
                       @click="setStatus(s.class_session_id, opt.value)"
                     >{{ opt.short }}</button>
@@ -348,6 +361,8 @@
               <div class="att-status-group att-status-group-mobile">
                 <button
                   v-for="opt in statusOptions" :key="opt.value"
+                  type="button"
+                  :aria-pressed="pendingMarkStatus[s.class_session_id] === opt.value"
                   :class="['att-status-btn', `att-st-${opt.value}`, { active: pendingMarkStatus[s.class_session_id] === opt.value }]"
                   @click="setStatus(s.class_session_id, opt.value)"
                 >{{ opt.label }}</button>
@@ -860,7 +875,7 @@
       </div>
     </div>
 
-    </template><!-- end student tab wrapper -->
+    </div><!-- end student tab wrapper -->
   </div>
 
   <!-- Teleport to body so z-index beats the fixed bottom nav (z:10000) -->
@@ -1036,6 +1051,9 @@ import { supabase } from '../supabase';
 import SearchableSelect from '../components/SearchableSelect.vue';
 import ReportDiscrepancyModal from '../components/ReportDiscrepancyModal.vue';
 import TeacherAdjustModal from '../components/TeacherAdjustModal.vue';
+import AtButton from '../components/design-system/AtButton.vue';
+import AtMetric from '../components/design-system/AtMetric.vue';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import { fetchMyDiscrepancies, STATUS_LABELS as DISCREPANCY_STATUS_LABELS } from '../lib/scheduleDiscrepanciesApi';
 import { classifyAttendanceSessionRows } from '../lib/sessionConsistency';
 import { attendanceMarkConfirmHint } from '../lib/attendanceMarkConfirmHint';
@@ -2458,25 +2476,94 @@ watch(() => props.branchId, () => {
   .att-teacher-snapshot .primary { width: 100%; }
 }
 
-.att-header {
-  display: flex; justify-content: space-between; align-items: flex-start;
-  flex-wrap: wrap; gap: 12px;
-}
-.att-header-btns { display: flex; gap: 8px; flex-wrap: wrap; }
-
 /* Stats */
 .att-stats {
   display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px;
 }
-.att-stat-card {
-  background: var(--ds-canvas); border-radius: 12px; padding: 16px 20px; text-align: center;
-  border: 1px solid rgba(148,163,184,0.18); box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+
+/* Workspace hierarchy: action first, context on demand. */
+.att-workspace-intro {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--ds-hairline);
+  border-radius: 10px;
+  background: var(--ds-canvas);
 }
-.att-stat-num { font-size: 28px; font-weight: 800; color: var(--ds-ink); }
-.att-stat-label { font-size: 12px; font-weight: 600; color: var(--ds-ink-mute); margin-top: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
-.stat-present .att-stat-num { color: var(--ds-success); }
-.stat-late .att-stat-num { color: var(--ds-warning); }
-.stat-absent .att-stat-num { color: var(--ds-danger); }
+.att-workspace-intro h2 {
+  margin: 0;
+  color: var(--ds-ink);
+  font-size: 17px;
+  line-height: 1.3;
+}
+.att-workspace-intro p:last-child {
+  margin: 4px 0 0;
+  color: var(--ds-ink-secondary);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.att-workspace-eyebrow {
+  margin: 0 0 3px;
+  color: var(--ds-primary-deep);
+  font-size: 12px;
+  font-weight: 700;
+}
+.att-focus-count {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--ds-danger-wash);
+  color: var(--ds-danger);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.att-focus-count.is-clear {
+  background: var(--ds-success-wash);
+  color: var(--ds-success);
+}
+.att-followup-card {
+  margin-top: 12px;
+  padding: 16px 20px;
+  border-left: 3px solid var(--ds-warning);
+}
+.att-secondary-summary {
+  margin-top: 12px;
+  border: 1px solid var(--ds-hairline);
+  border-radius: 10px;
+  background: var(--ds-canvas);
+}
+.att-secondary-summary > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 46px;
+  padding: 10px 14px;
+  color: var(--ds-ink);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  list-style-position: inside;
+}
+.att-secondary-summary > summary::marker { color: var(--ds-primary); }
+.att-secondary-summary > summary span {
+  color: var(--ds-ink-mute);
+  font-size: 12px;
+  font-weight: 500;
+}
+.att-secondary-summary[open] > summary { border-bottom: 1px solid var(--ds-hairline); }
+.att-secondary-summary > .att-stats { margin: 14px; }
+.att-secondary-summary .ta-onduty-section,
+.att-secondary-summary .ta-sys-pending { margin: 0 14px 14px; }
+.att-records-disclosure .att-checkin-card {
+  margin: 0;
+  border: 0;
+  box-shadow: none;
+}
 
 /* Section */
 .att-section-title {
@@ -2716,9 +2803,6 @@ watch(() => props.branchId, () => {
   .att-records-header { flex-direction: column; align-items: stretch; }
   .att-records-controls { flex-direction: column; }
   .att-search-input, .att-filter-select { width: 100%; }
-  .att-header { flex-direction: column; }
-  .att-header-btns button { width: 100%; }
-
   .att-desktop-only { display: none; }
   .att-mobile-only { display: flex; }
   .att-sticky-batch { display: flex; }
@@ -2761,8 +2845,6 @@ watch(() => props.branchId, () => {
 
 @media (max-width: 480px) {
   .att-stats { grid-template-columns: repeat(2, 1fr); gap: 8px; }
-  .att-stat-card { padding: 12px; }
-  .att-stat-num { font-size: 22px; }
   .att-checkin-card, .att-records-card, .att-pending-card { padding: 16px; }
   .att-card { padding: 12px; }
   .att-status-group-mobile .att-status-btn { padding: 8px 2px; font-size: 12px; }
@@ -3062,10 +3144,25 @@ watch(() => props.branchId, () => {
   min-height: 44px;
 }
 .att-tab-btn:hover { color: var(--ds-ink); }
+.att-tab-btn:focus-visible,
+.att-status-btn:focus-visible { outline: 3px solid var(--ds-info-wash); outline-offset: 2px; }
 .att-tab-btn.active {
   color: var(--ds-primary);
   border-bottom-color: var(--ds-primary);
   font-weight: 700;
+}
+.att-tab-note {
+  margin-left: 4px;
+  color: var(--ds-ink-mute);
+  font-size: 11px;
+  font-weight: 500;
+}
+.att-tab-btn.active .att-tab-note { color: var(--ds-primary); }
+
+@media (max-width: 640px) {
+  .att-workspace-intro { align-items: flex-start; flex-direction: column; gap: 10px; }
+  .att-focus-count { align-self: flex-start; }
+  .att-secondary-summary > summary { align-items: flex-start; flex-direction: column; gap: 3px; }
 }
 
 /* ──────── Teacher Tab Content ──────── */

@@ -9,6 +9,7 @@ use App\Models\CourseContractGroupMember;
 use App\Models\LearningRecord;
 use App\Models\LearningRecordTeacherChange;
 use App\Models\Schedule;
+use App\Models\ScheduleAuditLog;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
@@ -16,13 +17,16 @@ use App\Models\User;
 use App\Models\UserCampus;
 use App\Services\ClassSessionMaterializationService;
 use App\Services\ContractScheduleMatcher;
+use App\Services\CourseLeaveCascadeService;
 use App\Services\EnrollmentService;
+use App\Services\LearningRecordBackfillService;
 use App\Services\LearningRecordResurrectionPolicy;
 use App\Services\ScheduleGuardService;
 use App\Services\SessionDeductionService;
 use App\Services\SessionProjectionReadService;
 use App\Services\SubstituteService;
 use App\Support\TeacherProfileDirectory;
+use App\Support\AttendanceStatus;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
@@ -1236,6 +1240,17 @@ class ClassSessionController extends Controller
         $newStatus = strtolower(trim((string) $data['status']));
 
         if ($currentStatus === $newStatus) {
+            if (in_array($newStatus, ['cancelled', 'leave', 'leave_adjusted', 'excused'], true)) {
+                $sameStatusReason = trim((string) ($data['reason'] ?? ''))
+                    ?: ($newStatus === 'cancelled'
+                        ? CourseLeaveCascadeService::VOID_REASON_CANCELLED
+                        : '單堂標記請假');
+                $this->voidAttendanceArtifacts(
+                    $session,
+                    $authUserId,
+                    $sameStatusReason
+                );
+            }
             $this->applyTimeAndNoteUpdates($session, $data);
             $this->syncLearningRecordTime($session, $data);
             return $this->sessionUpdateResponse($session, '堂次已更新');
@@ -1253,6 +1268,21 @@ class ClassSessionController extends Controller
             return response()->json([
                 'message' => "狀態轉移不允許：{$currentStatus} → {$newStatus}",
                 'allowed' => $allowed,
+            ], 422);
+        }
+
+        // A leave changes the course's tail/end-date contract. It must be
+        // undone through /schedules/undo-leave-by-session so the cascade,
+        // linked schedule row, and leave-owned artifacts are reversed together.
+        // Blocking direct leave→attended→scheduled also removes the old
+        // workaround that could silently leave an extra tail behind.
+        if (
+            $currentStatus === 'leave'
+            && in_array($newStatus, ['scheduled', 'attended', 'late', 'absent'], true)
+        ) {
+            return response()->json([
+                'message' => '請先使用「取消請假」，系統會同步回復順延堂次；不可直接改成已上或未上。',
+                'code' => 'leave_requires_cascade_undo',
             ], 422);
         }
 
@@ -1348,18 +1378,7 @@ class ClassSessionController extends Controller
 
                 // --- Transition: scheduled → leave ---
                 if ($currentStatus === 'scheduled' && $newStatus === 'leave') {
-                    LearningRecord::where('ClassSessionID', $session->id)
-                        ->active()
-                        ->update([
-                            'VoidedAt' => now(), 'VoidedByUserID' => $authUserId ?: null,
-                            'VoidReason' => $reason ?: '單堂標記請假',
-                        ]);
-                    StudentSignIn::where('ClassSessionID', $session->id)
-                        ->active()
-                        ->update([
-                            'VoidedAt' => now(), 'VoidedByUserID' => $authUserId ?: null,
-                            'VoidReason' => $reason ?: '單堂標記請假',
-                        ]);
+                    $this->voidAttendanceArtifacts($session, $authUserId, $reason ?: '單堂標記請假');
 
                     $session->Status = 'leave';
                     $session->Note = $this->appendSessionNote($session->Note, 'leave');
@@ -1375,6 +1394,13 @@ class ClassSessionController extends Controller
                 }
 
                 // --- Generic safe transitions ---
+                if ($newStatus === 'cancelled') {
+                    $this->voidAttendanceArtifacts(
+                        $session,
+                        $authUserId,
+                        $reason ?: CourseLeaveCascadeService::VOID_REASON_CANCELLED
+                    );
+                }
                 $session->Status = $newStatus;
                 $this->applyTimeAndNoteUpdates($session, $data);
                 $session->save();
@@ -1383,25 +1409,6 @@ class ClassSessionController extends Controller
                 }
 
                 SessionDeductionService::syncCounters($studentClass);
-
-                // If leave → attended/late/absent/completed: the LR was voided by the leave
-                // cascade. Restore it so teachers can fill it in.
-                if (
-                    $currentStatus === 'leave' &&
-                    in_array($newStatus, ['attended', 'late', 'absent', 'completed'], true)
-                ) {
-                    $this->restoreVoidedLearningRecord($session);
-
-                    // Bug (in-app 木柵/吳艾潼 2026-08-20): unlike the dedicated
-                    // scheduled->attended branch above, this generic fallback never
-                    // synced the StudentSignIn row still sitting at Status='leave'.
-                    // scopeExcludeLeaveSessionPendingReview() treats any active
-                    // (VoidedAt IS NULL) 'leave'-status StudentSignIn on this session
-                    // as authoritative over ClassSession.Status, so the just-restored
-                    // LearningRecord stayed invisible in every eval list/panel even
-                    // though ClassSession.Status was correctly 'attended'.
-                    $this->syncStudentSignInStatus($session->id, $newStatus);
-                }
 
                 $msg = '狀態已更新為' . $newStatus;
                 if ($newStatus === 'cancelled') {
@@ -1415,6 +1422,168 @@ class ClassSessionController extends Controller
         } catch (\InvalidArgumentException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
+    }
+
+    public function recovery(Request $request, int $id)
+    {
+        $found = $this->findAccessibleSession($request, $id);
+        if ($found instanceof \Symfony\Component\HttpFoundation\Response) {
+            return $found;
+        }
+        [$session] = $found;
+        $audit = $this->latestCancellationAudit($session);
+        if (!$audit) {
+            return response()->json([
+                'available' => false,
+                'message' => '這堂課沒有可驗證的最近取消紀錄，系統不提供盲目復原。',
+            ]);
+        }
+
+        return response()->json([
+            'available' => true,
+            'audit_id' => (int) $audit->getKey(),
+            'previous_status' => strtolower((string) data_get($audit->getAttribute('old_data'), 'Status')),
+        ]);
+    }
+
+    public function restore(Request $request, int $id)
+    {
+        $data = $request->validate([
+            'expected_audit_id' => 'required|integer|min:1',
+            'reason' => 'required|string|max:255',
+        ]);
+        $reason = trim((string) $data['reason']);
+        if ($reason === '') {
+            return response()->json(['message' => '復原原因不可為空白。'], 422);
+        }
+
+        $found = $this->findAccessibleSession($request, $id);
+        if ($found instanceof \Symfony\Component\HttpFoundation\Response) {
+            return $found;
+        }
+        [, $studentClass] = $found;
+        if ($studentClass->isUsageSettlementLocked()) {
+            return response()->json(['message' => '此課程已結算鎖定，請先由帳務流程解除鎖定後再復原。'], 422);
+        }
+
+        return DB::transaction(function () use ($id, $studentClass, $data, $reason, $request) {
+            $session = ClassSession::query()->where('id', $id)->lockForUpdate()->first();
+            $audit = $session ? $this->latestCancellationAudit($session) : null;
+            if (!$session || !$audit || (int) $audit->getKey() !== (int) $data['expected_audit_id']) {
+                return response()->json(['message' => '這堂課已有新變更，請重新整理後再確認。'], 409);
+            }
+
+            $previousStatus = strtolower((string) data_get($audit->getAttribute('old_data'), 'Status'));
+            $conflict = ClassSession::query()
+                ->where('StudentClassID', $session->getAttribute('StudentClassID'))
+                ->whereDate('SessionDate', $session->getAttribute('SessionDate'))
+                ->where('StartTime', $session->getAttribute('StartTime'))
+                ->where('id', '!=', $session->getKey())
+                ->where(function ($query) {
+                    $query->whereNull('Status')->orWhere('Status', '!=', 'cancelled');
+                })->exists();
+            if ($conflict) {
+                return response()->json(['message' => '取消期間同一日期／時段已有其他有效堂次，為避免重複排課，未復原。'], 422);
+            }
+
+            $before = $this->sessionSnapshot($session);
+            $session->setAttribute('Status', $previousStatus);
+            if ($previousStatus === 'scheduled') {
+                app(ClassSessionMaterializationService::class)->assertStudentSlotAvailableForSession($session);
+            }
+            $session->setAttribute('Note', $this->appendSessionNote($session->getAttribute('Note'), 'recovered-cancelled'));
+            $session->save();
+
+            if (in_array($previousStatus, self::ATTENDED_STATUSES, true)) {
+                $this->restoreCancelledAttendanceArtifacts($session);
+                SessionDeductionService::deductOnAttendance($studentClass, null, (int) $session->getKey());
+            }
+            SessionDeductionService::recomputeCounters((int) $studentClass->getKey());
+
+            $authUser = $request->attributes->get('auth_user');
+            ScheduleAuditLog::query()->create([
+                'session_id' => $session->getKey(),
+                'action_type' => 'update',
+                'description' => "復原課堂 #{$session->getKey()}：{$reason}",
+                'operator_id' => (int) ($authUser->id ?? 0) ?: null,
+                'branch_id' => (int) (Student::query()->where('id', $studentClass->getAttribute('StudentID'))->value('CampusID') ?: 0) ?: null,
+                'old_data' => $before,
+                'new_data' => $this->sessionSnapshot($session),
+            ]);
+
+            return response()->json([
+                'message' => '已復原取消前狀態，排課與堂數已重新計算。',
+                'session' => $this->sessionPayload($session),
+            ]);
+        }, 3);
+    }
+
+    /** @return array{0: ClassSession, 1: StudentClass}|\Symfony\Component\HttpFoundation\Response */
+    private function findAccessibleSession(Request $request, int $id)
+    {
+        $session = ClassSession::query()->where('id', $id)->first();
+        if (!$session) {
+            return response()->json(['message' => '找不到該堂次'], 404);
+        }
+        $studentClass = StudentClass::query()->where('ID', $session->getAttribute('StudentClassID'))->first();
+        if (!$studentClass) {
+            return response()->json(['message' => '找不到對應課程'], 404);
+        }
+        $role = $request->attributes->get('auth_role');
+        $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
+        $campusId = (int) (Student::query()->where('id', $studentClass->getAttribute('StudentID'))->value('CampusID') ?? 0);
+        if (!empty($campusIds) && !in_array($campusId, $campusIds, true)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+        return [$session, $studentClass];
+    }
+
+    private function latestCancellationAudit(ClassSession $session): ?ScheduleAuditLog
+    {
+        $audit = ScheduleAuditLog::query()
+            ->where('session_id', $session->getKey())
+            ->where('action_type', 'update')
+            ->latest('id')
+            ->first();
+        $oldStatus = strtolower((string) data_get($audit?->getAttribute('old_data'), 'Status'));
+        $newStatus = strtolower((string) data_get($audit?->getAttribute('new_data'), 'Status'));
+        if (!$audit || !$audit->getAttribute('operator_id') || strtolower((string) $session->getAttribute('Status')) !== 'cancelled'
+            || $newStatus !== 'cancelled' || !in_array($oldStatus, ['scheduled', 'attended', 'completed', 'late', 'absent'], true)) {
+            return null;
+        }
+        return $audit;
+    }
+
+    /** @return array<string, mixed> */
+    private function sessionSnapshot(ClassSession $session): array
+    {
+        return $session->only([
+            'id', 'StudentClassID', 'SubjectID', 'SessionDate', 'StartTime', 'EndTime',
+            'Status', 'Note', 'IsContractException', 'session_charge',
+        ]);
+    }
+
+    private function restoreCancelledAttendanceArtifacts(ClassSession $session): void
+    {
+        $reasons = [CourseLeaveCascadeService::VOID_REASON_CANCELLED, '由已上調整狀態'];
+        LearningRecord::query()->where('ClassSessionID', $session->getKey())->whereNotNull('VoidedAt')
+            ->lockForUpdate()->get()->each(function ($record) use ($reasons) {
+                if (in_array((string) $record->VoidReason, $reasons, true)) {
+                    $record->VoidedAt = null;
+                    $record->VoidedByUserID = null;
+                    $record->VoidReason = null;
+                    $record->save();
+                }
+            });
+        StudentSignIn::query()->where('ClassSessionID', $session->getKey())->whereNotNull('VoidedAt')
+            ->lockForUpdate()->get()->each(function ($signIn) use ($reasons) {
+                if (in_array((string) $signIn->VoidReason, $reasons, true)) {
+                    $signIn->VoidedAt = null;
+                    $signIn->VoidedByUserID = null;
+                    $signIn->VoidReason = null;
+                    $signIn->save();
+                }
+            });
     }
 
     private function handleRetroLeaveTransition(ClassSession $session, StudentClass $studentClass, int $authUserId, string $reason)
@@ -1842,6 +2011,11 @@ class ClassSessionController extends Controller
     private function sessionUpdateResponse(ClassSession $session, string $message)
     {
         $session->refresh();
+        if (in_array(strtolower((string) ($session->Status ?? '')), [
+            'attended', 'late', 'completed', 'trial', 'tutoring_attend',
+        ], true)) {
+            app(LearningRecordBackfillService::class)->ensureRequiredForAttendanceSession($session);
+        }
         return response()->json([
             'message' => $message,
             'session' => $this->sessionPayload($session),
@@ -2289,7 +2463,7 @@ class ClassSessionController extends Controller
             // LearningRecordDriftCheck), relied on by billing/approval queries
             // across StudentClassController — must stay in sync, same as the
             // existing transfer-sessions endpoint (StudentClassController::transferSessions).
-            LearningRecord::where('ClassSessionID', $session->id)
+            LearningRecord::where('ClassSessionID', $session->id)->getQuery()
                 ->update(['StudentClassID' => $new->ID]);
 
             SessionDeductionService::recomputeCounters((int) $old->ID);
@@ -3430,8 +3604,10 @@ class ClassSessionController extends Controller
             ->where('s.CampusID', $branchId)
             ->where('cs.SessionDate', '>=', $start->toDateString())
             ->where('cs.SessionDate', '<=', $end->toDateString())
-            // completed is a past attended-equivalent used by schedule reconcile; omit it and substitute fill-rate silently drops those rows.
-            ->whereRaw('LOWER(cs.Status) IN ("attended", "late", "completed")')
+            // The same registry drives attendance writes and the denominator. This
+            // keeps trial/tutoring attendance included while absent/leave/cancelled
+            // sessions never become evaluation work by accident.
+            ->whereIn(DB::raw('LOWER(cs.Status)'), AttendanceStatus::requiresLogSessionStatuses())
             ->select([
                 DB::raw('COALESCE(sub_sched.teacher_id, sc.TeacherID) AS teacher_id'),
                 DB::raw('lr.id AS learning_record_id'),
@@ -3446,6 +3622,7 @@ class ClassSessionController extends Controller
             ->select([
                 'teacher_id',
                 DB::raw('COUNT(*) AS session_total'),
+                DB::raw('SUM(CASE WHEN learning_record_id IS NOT NULL THEN 1 ELSE 0 END) AS recorded'),
                 DB::raw('SUM(CASE WHEN learning_record_id IS NOT NULL AND TRIM(IFNULL(learning_record_progress, "")) != "" THEN 1 ELSE 0 END) AS filled'),
             ])
             ->groupBy('teacher_id')
@@ -3464,17 +3641,30 @@ class ClassSessionController extends Controller
         $teachers = $rows->map(static function ($row) use ($nameMap) {
             $tid = (int) ($row->teacher_id ?? 0);
             $total = (int) ($row->session_total ?? 0);
+            $recorded = min($total, max(0, (int) ($row->recorded ?? 0)));
             $filled = (int) ($row->filled ?? 0);
             $pct = $total > 0 ? (int) round(100 * $filled / $total) : 0;
+            $incomplete = max(0, $total - $filled);
+            $missing = max(0, $total - $recorded);
 
             return [
                 'teacher_id'               => $tid,
                 'teacher_name'             => $nameMap->get($tid, '未知'),
                 'sessions_attended'        => $total,
+                'learning_records_present' => $recorded,
                 'learning_records_filled'  => $filled,
+                'missing_evaluations'      => $missing,
+                'pending_evaluations'      => max(0, $incomplete - $missing),
                 'fill_rate_pct'            => $pct,
             ];
         })->values();
+
+        $sessionTotal = (int) $teachers->sum('sessions_attended');
+        $filledTotal = (int) $teachers->sum('learning_records_filled');
+        $followUpTeachers = $teachers->filter(static function (array $teacher): bool {
+            return $teacher['sessions_attended'] >= 5
+                && $teacher['learning_records_filled'] / max(1, $teacher['sessions_attended']) < 0.7;
+        })->count();
 
         return response()->json([
             'start'                  => $start->toDateString(),
@@ -3482,6 +3672,16 @@ class ClassSessionController extends Controller
             'days'                   => $days,
             'branch_id'               => $branchId,
             'teachers'                => $teachers,
+            'overall'                 => [
+                'sessions_attended' => $sessionTotal,
+                'learning_records_present' => (int) $teachers->sum('learning_records_present'),
+                'learning_records_filled' => $filledTotal,
+                'pending' => max(0, $sessionTotal - $filledTotal),
+                'missing_evaluations' => (int) $teachers->sum('missing_evaluations'),
+                'pending_evaluations' => (int) $teachers->sum('pending_evaluations'),
+                'fill_rate_pct' => $sessionTotal > 0 ? (int) round(100 * $filledTotal / $sessionTotal) : 0,
+                'follow_up_teachers' => $followUpTeachers,
+            ],
         ]);
     }
 
@@ -3516,7 +3716,7 @@ class ClassSessionController extends Controller
                 }
             }
             if ($effective !== (int) $purchased) {
-                \Log::channel('daily')->info('session_count_mismatch', [
+                \Illuminate\Support\Facades\Log::channel('daily')->info('session_count_mismatch', [
                     'course_id' => $courseId,
                     'branch_id' => $branchId,
                     'purchased' => (int) $purchased,

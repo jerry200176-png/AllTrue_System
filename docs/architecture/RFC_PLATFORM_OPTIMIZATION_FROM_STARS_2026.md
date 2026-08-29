@@ -5,6 +5,8 @@
 > **Scope**: AllTrue System（主）＋ Sunrise Cafe（附錄）  
 > **Companion**: [#1382 Course Continuity](https://github.com/jerry200176-png/AllTrue_System/issues/1382)、`docs/MODULE_PRODUCT_ENGINEERING_MATURITY_ROADMAP.md`、`docs/POLICY_AI_NATIVE_ROADMAP.md`、`docs/RULE_DESIGN_SYSTEM.md`
 
+> **Current Star source:** [`STARRED_REPOSITORY_REFERENCE_INDEX.md`](STARRED_REPOSITORY_REFERENCE_INDEX.md). This RFC is a planning record and contains historical references; entries here may no longer be starred. Do not use this file alone to decide whether a repository is currently in the reference shelf.
+
 ---
 
 ## 0. How to read 「參考」欄

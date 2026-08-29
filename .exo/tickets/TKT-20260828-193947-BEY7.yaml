@@ -1,0 +1,50 @@
+id: TKT-20260828-193947-BEY7
+title: Implement student course summary slice
+intent: Implement student course summary slice
+kind: task
+parent_id: INT-20260828-193940-H0FQ
+boundary: Presentation-only changes in StudentsList.vue and focused frontend tests/evidence.
+  Preserve all existing event handlers and API payloads. Do not touch backend, API,
+  auth, permissions, billing, attendance, scheduling, database, or production data.
+success_condition: Active student courses render as task-first summary cards with
+  clear progress, status, schedule, and one primary action at all required widths;
+  secondary actions remain keyboard accessible; loading/empty/history behavior and
+  existing handlers are covered by tests; lint/build pass.
+priority: 2
+labels:
+- ux
+scope:
+  allow:
+  - frontend/src/pages/StudentsList.vue
+  - frontend/src/components/__tests__/StudentCourse*
+  - docs/research/**
+  - docs/design/evidence/**
+  - docs/CHANGELOG.md
+  - docs/STAFF_UPDATES.yml
+  - frontend/src/lib/changelogDraft.generated.js
+  - frontend/src/lib/staffUpdates.generated.js
+  - frontend/e2e/smoke.spec.js
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 12
+  max_loc_changed: 650
+checks:
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: todo
+spec_ref: null
+notes:
+- Expanded LOC budget from 400 to 650 to cover the presentation-only card CSS,
+  required staff release-note source, and generated release-note artifacts.
+blockers: []
+created_at: '2026-08-28T19:39:47+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default

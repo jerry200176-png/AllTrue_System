@@ -1,11 +1,13 @@
 <template>
-  <div class="card">
-    <div class="tr-header">
-      <div>
-        <h2>當月學收</h2>
-        <p class="tr-subtitle">依已上課堂數 × 費率試算各學生當月學收</p>
-      </div>
-      <div class="tr-controls">
+  <div class="card tuition-report-page">
+    <AtPageHeader
+      title="當月學收"
+      description="依已上課堂數 × 費率試算各學生當月學收。"
+      icon="payments"
+      data-guide="tuition-report-header"
+    >
+      <template #actions>
+        <div class="tr-controls">
         <div class="tr-month-picker">
           <button class="tr-arrow" @click="prevMonth" title="上一月">
             <span class="material-symbols-outlined">chevron_left</span>
@@ -23,8 +25,9 @@
           <span class="material-symbols-outlined" style="font-size:18px">download</span>
           匯出 CSV
         </button>
-      </div>
-    </div>
+        </div>
+      </template>
+    </AtPageHeader>
 
     <div v-if="loading" class="tr-loading">
       <span class="material-symbols-outlined spin">progress_activity</span>
@@ -106,6 +109,7 @@
 
 <script setup>
 import { ref, watch } from 'vue';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 
 const props = defineProps({
   branchId: { type: [Number, String], default: null },

@@ -6,6 +6,7 @@ use App\Models\ClassSession;
 use App\Models\LearningRecord;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Support\AttendanceStatus;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -33,8 +34,17 @@ use Illuminate\Support\Facades\DB;
  */
 class LearningRecordBackfillService
 {
-    /** Session statuses that require a fillable (non-voided) LearningRecord. */
-    private const FILLABLE_SESSION_STATUSES = ['attended', 'completed', 'late', 'absent'];
+    /**
+     * ClassSession statuses that represent a student actually taking part in a
+     * lesson and therefore require a LearningRecord.
+     *
+     * Keep this derived from AttendanceStatus. In particular, `absent` and
+     * every leave/cancelled status must not create an assessment form.
+     */
+    private static function requiredSessionStatuses(): array
+    {
+        return AttendanceStatus::requiresLogSessionStatuses();
+    }
 
     /**
      * Ensure a fillable `pending` LearningRecord exists for one past session.
@@ -44,6 +54,10 @@ class LearningRecordBackfillService
      */
     public function createPendingForSession(StudentClass $sc, ClassSession $cs, array $subjectNameMap): bool
     {
+        if (!in_array(strtolower((string) ($cs->Status ?? '')), self::requiredSessionStatuses(), true)) {
+            return false;
+        }
+
         $existing = LearningRecord::query()
             ->where('ClassSessionID', $cs->id)
             ->orderByDesc('id')
@@ -66,19 +80,84 @@ class LearningRecordBackfillService
             $cs->StartTime
         );
 
-        LearningRecord::query()->create([
-            'StudentClassID' => $scId,
-            'ClassSessionID' => $cs->id,
-            'TeacherID' => $tid > 0 ? $tid : (int) ($sc->TeacherID ?? 0),
-            'Content' => '',
-            'Subject' => $subjectName,
-            'SessionDate' => $cs->SessionDate,
-            'StartTime' => $cs->StartTime,
-            'EndTime' => $cs->EndTime,
-            'Status' => 'pending',
-        ]);
+        try {
+            LearningRecord::query()->create([
+                'StudentClassID' => $scId,
+                'ClassSessionID' => $cs->id,
+                'TeacherID' => $tid > 0 ? $tid : (int) ($sc->TeacherID ?? 0),
+                'Content' => '',
+                'Subject' => $subjectName,
+                'SessionDate' => $cs->SessionDate,
+                'StartTime' => $cs->StartTime,
+                'EndTime' => $cs->EndTime,
+                'Status' => 'pending',
+            ]);
+        } catch (\Illuminate\Database\QueryException $e) {
+            // A concurrent attendance writer may have created the unique
+            // ClassSessionID row after the read above. The other transaction
+            // owns the desired result, so keep this request idempotent.
+            if (($e->errorInfo[1] ?? null) === 1062) {
+                return false;
+            }
+            throw $e;
+        }
 
         return true;
+    }
+
+    /**
+     * Ensure the assessment form exists immediately after an attendance event.
+     *
+     * This is intentionally idempotent so manual attendance, RFID, and a
+     * scheduled repair can all use the same rule without racing into a second
+     * LearningRecord (ClassSessionID is unique).
+     */
+    public function ensureForAttendanceSession(ClassSession $cs): bool
+    {
+        $sc = StudentClass::query()->where('ID', (int) $cs->StudentClassID)->first();
+        if (!$sc) {
+            return false;
+        }
+
+        $subjectName = DB::table('Subject')
+            ->where('id', (int) ($sc->SubjectID ?? 0))
+            ->value('Subject_Name');
+        if (!$subjectName) {
+            $subjectName = DB::table('BaseData')
+                ->where('Name', '課程')
+                ->where('id', (int) ($sc->SubjectID ?? 0))
+                ->value('Val');
+        }
+
+        return $this->createPendingForSession($sc, $cs, [
+            (int) ($sc->SubjectID ?? 0) => $subjectName ?: '未知',
+        ]);
+    }
+
+    /**
+     * Enforce the attendance/evaluation boundary inside the same write
+     * transaction as the attendance status change. A failed best-effort
+     * backfill must never leave a session marked attended/late without an
+     * active LearningRecord that the teacher can fill.
+     */
+    public function ensureRequiredForAttendanceSession(ClassSession $cs): void
+    {
+        $status = strtolower((string) ($cs->Status ?? ''));
+        if (!in_array($status, self::requiredSessionStatuses(), true)) {
+            return;
+        }
+
+        $this->ensureForAttendanceSession($cs);
+        $hasActiveRecord = LearningRecord::query()
+            ->where('ClassSessionID', (int) $cs->id)
+            ->whereNull('VoidedAt')
+            ->exists();
+
+        if (!$hasActiveRecord) {
+            throw new \RuntimeException(
+                'attendance_learning_record_integrity_failed:' . (int) $cs->id
+            );
+        }
     }
 
     /**
@@ -89,7 +168,13 @@ class LearningRecordBackfillService
     private function restoreVoidedForFillableSession(LearningRecord $voided, ClassSession $cs): bool
     {
         $status = strtolower((string) ($cs->Status ?? ''));
-        if (!in_array($status, self::FILLABLE_SESSION_STATUSES, true)) {
+        if (!in_array($status, self::requiredSessionStatuses(), true)) {
+            return false;
+        }
+        if (!LearningRecordResurrectionPolicy::isEligibleForResurrect(
+            $voided->getAttribute('VoidReason'),
+            $status
+        )) {
             return false;
         }
 
@@ -130,10 +215,10 @@ class LearningRecordBackfillService
                     $courseStopped = (int) ($sc->Stop ?? 0) === 1;
 
                     ClassSession::query()->where('StudentClassID', $sc->ID)
-                        ->whereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted'])
+                        ->whereIn('Status', self::requiredSessionStatuses())
                         ->whereRaw("CONCAT(SessionDate, ' ', COALESCE(StartTime, '00:00:00')) <= ?", [$now])
                         ->when($courseStopped, function ($query) {
-                            $query->whereIn('Status', ['attended', 'late', 'absent']);
+                            $query->whereIn('Status', self::requiredSessionStatuses());
                         })
                         ->chunkById(500, function ($sessions) use ($sc, $subjectNameMap, &$created) {
                             foreach ($sessions as $cs) {

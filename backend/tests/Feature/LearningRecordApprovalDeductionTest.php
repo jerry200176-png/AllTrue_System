@@ -116,16 +116,9 @@ class LearningRecordApprovalDeductionTest extends TestCase
         $this->assertSame(4, (int) $afterAttendance->RemainingSessions);
         $this->assertSame(1, (int) $afterAttendance->UsedSessions);
 
-        $record = LearningRecord::create([
-            'StudentClassID' => $courseId,
-            'ClassSessionID' => $classSession->id,
-            'TeacherID' => $teacherId,
-            'Content' => '待審評量',
-            'Status' => 'pending',
-            'SessionDate' => $classSession->SessionDate,
-            'StartTime' => $classSession->StartTime,
-            'EndTime' => $classSession->EndTime,
-        ]);
+        $record = LearningRecord::query()
+            ->where('ClassSessionID', $classSession->id)
+            ->firstOrFail();
 
         $this->withHeaders([
             'Authorization' => "Bearer {$token}",
@@ -1100,16 +1093,9 @@ class LearningRecordApprovalDeductionTest extends TestCase
         $afterAttB = StudentClass::findOrFail($courseBId);
         $this->assertSame(5, (int) $afterAttB->RemainingSessions);
 
-        $recordB = LearningRecord::create([
-            'StudentClassID' => $courseBId,
-            'ClassSessionID' => $csB->id,
-            'TeacherID' => $teacherId,
-            'Content' => '先點名再核准',
-            'Status' => 'pending',
-            'SessionDate' => $csB->SessionDate,
-            'StartTime' => '17:00',
-            'EndTime' => '19:00',
-        ]);
+        $recordB = LearningRecord::query()
+            ->where('ClassSessionID', $csB->id)
+            ->firstOrFail();
 
         $this->withHeaders([
             'Authorization' => "Bearer {$token}",

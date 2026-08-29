@@ -8,32 +8,39 @@
     </div>
     <!-- Top Bar -->
     <div class="smart-cal-top" data-guide="calendar-header">
-      <div class="smart-cal-header">
-        <div class="smart-cal-heading-copy">
-          <p class="smart-cal-kicker">排課與調課</p>
-          <h1 class="smart-cal-title">{{ isTeacher ? '我的課表' : '班級行事曆 / 課表' }}</h1>
-          <p class="smart-cal-context" aria-live="polite">
-            {{ currentCalendarViewLabel }} · {{ visibleWeekRangeLabel }} · {{ weekCourseCount }} 堂
-          </p>
-        </div>
-        <div class="smart-cal-header-actions">
-          <button type="button" class="calendar-today-btn" @click="focusCalendarToday" aria-label="回到今天的課表">今天</button>
+      <AtPageHeader
+        :title="isTeacher ? '我的課表' : '班級行事曆 / 課表'"
+        description="排課與調課"
+        icon="calendar_month"
+      >
+        <template #meta>
+          <span aria-live="polite">{{ currentCalendarViewLabel }} · {{ visibleWeekRangeLabel }} · {{ weekCourseCount }} 堂</span>
+        </template>
+        <template #actions>
+          <AtButton shape="rect" variant="secondary" @click="focusCalendarToday" aria-label="回到今天的課表">今天</AtButton>
           <div class="view-tabs" role="tablist" aria-label="課表檢視方式">
             <button type="button" role="tab" :aria-selected="viewMode === 'week'" :class="{ active: viewMode === 'week' }" @click="viewMode = 'week'">課表</button>
             <button v-if="!isTeacher" type="button" role="tab" :aria-selected="viewMode === 'teacher'" :class="{ active: viewMode === 'teacher' }" @click="viewMode = 'teacher'">老師清單</button>
           </div>
-        </div>
-      </div>
-      <OperationsQuickStart
-        v-if="!isTeacher"
-        compact
-        eyebrow="排課處理流程"
-        heading="先選工作，再操作課表"
-        description="新增排課請用快速排課；既有課程請先點課卡，再選調課或換代課。"
-        :current-id="calendarWorkflowIntent"
-        :steps="calendarFlowSteps"
-        @select="selectCalendarFlowStep"
-      />
+        </template>
+      </AtPageHeader>
+      <details v-if="!isTeacher" class="calendar-process-disclosure">
+        <summary>
+          <span class="material-symbols-outlined" aria-hidden="true">route</span>
+          <span class="calendar-process-disclosure__title">排課處理流程</span>
+          <span class="calendar-process-disclosure__hint">新增排課用快速排課；既有課程先點課卡</span>
+          <span class="material-symbols-outlined" aria-hidden="true">expand_more</span>
+        </summary>
+        <OperationsQuickStart
+          compact
+          eyebrow="排課處理流程"
+          heading="先選工作，再操作課表"
+          description="新增排課請用快速排課；既有課程請先點課卡，再選調課或換代課。"
+          :current-id="calendarWorkflowIntent"
+          :steps="calendarFlowSteps"
+          @select="selectCalendarFlowStep"
+        />
+      </details>
       <p v-if="!isTeacher && calendarWorkflowHint" class="calendar-workflow-hint" role="status">{{ calendarWorkflowHint }}</p>
       <p v-if="!isTeacher && calendarFocusMessage" class="calendar-focus-context" role="status">
         <span class="material-symbols-outlined" aria-hidden="true">my_location</span>
@@ -406,6 +413,7 @@
       @show-cancel-confirm="cancelState.show = true"
       @dismiss-cancel-confirm="cancelState.show = false"
       @confirm-cancel="doConfirmCancelSession"
+      @restore-session="restoreCancelledSession"
       @delete-exception="deleteException"
       @delete-course="deleteCourse"
       @cancel-makeup="cancelMakeupClass"
@@ -505,6 +513,8 @@
 
 <script setup>
 import { ref, computed, onMounted, watch, nextTick } from 'vue';
+import AtButton from '../components/design-system/AtButton.vue';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import { supabase } from '../supabase';
 import { SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
@@ -2069,6 +2079,8 @@ const onCourseClick = (course, fullDateStr) => {
   editingCourseId.value = baseId;
   editingActionDate.value = fullDateStr || '';
   editingException.value = course.is_exception ? course : null;
+  const clickedSession = findSessionRowForCell(course, fullDateStr);
+  sessionRecovery.value = makeSessionRecovery();
   conflictWarning.value = '';
   const start = normalizeTimeTo30(course.start_time || '16:00');
   const baseCourse = courses.value.find(c => c.id === baseId) || course;
@@ -2097,6 +2109,7 @@ const onCourseClick = (course, fullDateStr) => {
   };
   syncRatePer2hFromModel();
   showModal.value = true;
+  void loadSessionRecovery(clickedSession?.id);
   // Load evaluation records for this course
   loadCourseEvalRecords(baseId);
 };
@@ -2276,6 +2289,11 @@ const cancelMakeupClass = async () => {
 // ===== Cancel single session (取消本堂) =====
 
 const cancelState = ref({ show: false, loading: false });
+const makeSessionRecovery = (loading = false) => ({
+  loading, available: false, audit_id: null, previous_status: '',
+  previousStatusLabel: '', reason: '主任誤取消', submitting: false,
+});
+const sessionRecovery = ref(makeSessionRecovery());
 
 const cancelTargetSession = computed(() => {
   if (!editingCourseId.value) return null;
@@ -2304,6 +2322,7 @@ const sessionEditSession = computed(() => ({
   featureSubstituteV2,
   canCancelSession: canCancelSelectedSession.value,
   cancelState: cancelState.value,
+  recovery: sessionRecovery.value,
   editingException: !!editingException.value,
   editingExceptionIsExtra: editingExceptionIsExtra.value,
   evalRecords: courseEvalRecords.value,
@@ -2343,6 +2362,70 @@ const doConfirmCancelSession = async () => {
   } catch (e) {
     cancelState.value.loading = false;
     alert(e.message || '取消失敗，請重試');
+  }
+};
+
+const loadSessionRecovery = async (sessionId) => {
+  sessionRecovery.value = makeSessionRecovery(true);
+  if (!sessionId) {
+    sessionRecovery.value.loading = false;
+    return;
+  }
+  try {
+    const token = await getToken();
+    const res = await fetch('/api/v1/class-sessions/' + sessionId + '/recovery', {
+      headers: token ? { Authorization: 'Bearer ' + token } : {},
+    });
+    const data = await res.json();
+    const labels = {
+      scheduled: '排程中', attended: '已上課', completed: '已完成',
+      late: '遲到', absent: '缺席', leave: '請假',
+    };
+    sessionRecovery.value = {
+      ...sessionRecovery.value,
+      ...data,
+      previousStatusLabel: labels[data.previous_status] || data.previous_status || '',
+      loading: false,
+    };
+  } catch (e) {
+    sessionRecovery.value.loading = false;
+  }
+};
+
+const restoreCancelledSession = async () => {
+  const row = cancelTargetSession.value;
+  const recovery = sessionRecovery.value;
+  if (!row?.id || !recovery.available || recovery.submitting || !recovery.reason?.trim()) return;
+  if (!confirm('確定復原這堂課到取消前狀態？系統會同步評量／點名與堂數。')) return;
+  recovery.submitting = true;
+  try {
+    const token = await getToken();
+    const res = await fetch('/api/v1/class-sessions/' + row.id + '/restore', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + token,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({
+        expected_audit_id: recovery.audit_id,
+        reason: recovery.reason.trim(),
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.message || 'HTTP ' + res.status);
+    const rows = sessionDatesByCourseId.value[String(editingCourseId.value)];
+    const index = Array.isArray(rows)
+      ? rows.findIndex((item) => Number(item.id) === Number(row.id))
+      : -1;
+    if (index >= 0) rows[index] = { ...rows[index], ...(data.session || {}) };
+    sessionRecovery.value = { ...sessionRecovery.value, available: false, submitting: false };
+    showModal.value = false;
+    await loadCourses();
+    alert(data.message || '已復原');
+  } catch (e) {
+    recovery.submitting = false;
+    alert(e.message || '復原失敗，請重新整理後再試');
   }
 };
 
@@ -2485,6 +2568,7 @@ watch(
 watch(showModal, (v) => {
   if (!v) {
     cancelState.value = { show: false, loading: false };
+    sessionRecovery.value = makeSessionRecovery();
   }
 });
 
@@ -2567,6 +2651,33 @@ onMounted(() => {
   max-width: 100%;
   min-width: 0;
 }
+.calendar-process-disclosure {
+  margin: 0 0 16px;
+  border: 1px solid var(--ds-hairline);
+  border-radius: var(--ds-radius-lg, 12px);
+  background: var(--ds-canvas-soft);
+}
+.calendar-process-disclosure summary {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 13px;
+  color: var(--ds-ink-secondary);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  list-style: none;
+}
+.calendar-process-disclosure summary::-webkit-details-marker { display: none; }
+.calendar-process-disclosure summary > .material-symbols-outlined { color: var(--ds-ink-mute); font-size: 18px; }
+.calendar-process-disclosure summary > .material-symbols-outlined:last-child { transition: transform 160ms ease; }
+.calendar-process-disclosure[open] summary > .material-symbols-outlined:last-child { transform: rotate(180deg); }
+.calendar-process-disclosure summary:focus-visible { outline: 3px solid var(--ds-info-wash); outline-offset: 2px; border-radius: 5px; }
+.calendar-process-disclosure__title { color: var(--ds-ink); }
+.calendar-process-disclosure__hint { overflow: hidden; color: var(--ds-ink-mute); font-size: 11px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.calendar-process-disclosure > .operations-quick-start { margin: 0 12px 12px; }
 .smart-cal-header {
   display: flex;
   align-items: flex-end;

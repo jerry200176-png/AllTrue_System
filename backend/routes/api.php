@@ -139,7 +139,7 @@ Route::post('/internal/opcache-reset', function (\Illuminate\Http\Request $req) 
         \Illuminate\Support\Facades\DB::purge($connection);
         \Illuminate\Support\Facades\DB::connection($connection)->select('SELECT 1');
     } catch (\Throwable $e) {
-        \Log::error('[internal/opcache-reset] database connection refresh failed: ' . $e->getMessage());
+        \Illuminate\Support\Facades\Log::error('[internal/opcache-reset] database connection refresh failed: ' . $e->getMessage());
 
         return response()->json(['error' => 'Database connection refresh failed'], 503);
     }
@@ -539,12 +539,15 @@ Route::prefix('v1')->group(function () {
         Route::get('student-classes', [StudentClassController::class, 'index']);
         Route::post('student-classes', [StudentClassController::class, 'store']);
         Route::get('student-classes/{studentClass}/editability', [StudentClassController::class, 'editability']);
+        Route::get('student-classes/{studentClass}/package-conversion-preview', [\App\Http\Controllers\CoursePackageController::class, 'conversionPreview']);
+        Route::post('student-classes/{studentClass}/convert-to-package', [\App\Http\Controllers\CoursePackageController::class, 'convertToPackage']);
         Route::get('student-classes/{studentClass}', [StudentClassController::class, 'show']);
         Route::put('student-classes/{studentClass}', [StudentClassController::class, 'update']);
         Route::post('student-classes/{studentClass}/confirm-payment', [StudentClassController::class, 'confirmPayment']);
         Route::post('student-classes/{studentClass}/renewal-preview', [StudentClassController::class, 'renewalPreview']);
         Route::post('student-classes/{studentClass}/renewal-confirm', [StudentClassController::class, 'renewalConfirm']);
         Route::post('student-classes/{studentClass}/purchase-batch', [StudentClassController::class, 'purchaseBatch']);
+        Route::post('student-classes/{studentClass}/convert-trial', [StudentClassController::class, 'convertTrial']);
         Route::post('student-classes/{studentClass}/renew-monthly', [StudentClassController::class, 'renewMonthly']);
         Route::get('student-classes/{studentClass}/invoices', [StudentClassController::class, 'invoices']);
         Route::post('student-classes/{studentClass}/add-session', [StudentClassController::class, 'addSession']);
@@ -612,7 +615,9 @@ Route::prefix('v1')->group(function () {
         Route::post('class-sessions/ensure-projected', [ClassSessionController::class, 'ensureProjected'])
             ->middleware('role:director,super_admin');
         Route::get('schedule-audit', [ScheduleAuditController::class, 'index']);
+        Route::get('class-sessions/{id}/recovery', [ClassSessionController::class, 'recovery'])->whereNumber('id');
         Route::patch('class-sessions/{id}', [ClassSessionController::class, 'update']);
+        Route::post('class-sessions/{id}/restore', [ClassSessionController::class, 'restore'])->whereNumber('id');
         // Contract renewal pain point (#1382 prior art) — super_admin only (highest admin tier).
         Route::get('class-sessions/{id}/reassign-contract-targets', [ClassSessionController::class, 'reassignContractTargets'])
             ->whereNumber('id')

@@ -1,51 +1,64 @@
 <template>
   <div class="course-page">
-    <!-- Top Bar -->
-    <div class="card course-header-card" data-guide="course-mgmt-header">
-      <div class="header-actions">
-        <div class="page-title-block">
-          <div class="course-lens-kicker">
-            <p class="command-kicker">課務營運</p>
-            <span class="course-lens-badge">唯讀營運視圖</span>
+    <AtPageHeader
+      title="課程查找"
+      description="查找課程、編輯月結日期與新增堂次，都在這一頁完成。"
+      icon="menu_book"
+      data-guide="course-mgmt-header"
+    >
+      <template #meta>
+        <span>目前列表 {{ groupedCourses.length }} 位學生</span>
+        <span v-if="pagination.lastPage > 1">第 {{ pagination.page }} / {{ pagination.lastPage }} 頁</span>
+        <span class="course-lens-badge">唯讀營運視圖</span>
+      </template>
+      <template #actions>
+        <AtButton class="course-lens-primary-action" shape="rect" variant="primary" icon="person_search" @click="emit('navigate', 'students')">前往學生管理</AtButton>
+        <details class="course-tools-menu">
+          <summary class="btn-soft course-tools-menu__summary">
+            <span class="material-symbols-outlined btn-icon" aria-hidden="true">more_horiz</span>
+            課務工具
+          </summary>
+          <div class="course-tools-menu__panel">
+            <button class="btn-soft" type="button" @click="expandAllGroups"><span class="material-symbols-outlined btn-icon" aria-hidden="true">unfold_more</span>全部展開</button>
+            <button class="btn-soft" type="button" @click="collapseAllGroups"><span class="material-symbols-outlined btn-icon" aria-hidden="true">unfold_less</span>全部收合</button>
+            <button class="btn-soft" type="button" @click="showBulkLeaveModal = true">
+              <span class="material-symbols-outlined btn-icon" aria-hidden="true">event_busy</span>連假批次請假
+            </button>
+            <button class="btn-soft" type="button" @click="emit('navigate', 'subject-settings')">
+              <span class="material-symbols-outlined btn-icon" aria-hidden="true">library_books</span>管理科目
+            </button>
           </div>
-          <h2 class="page-title">課程管理</h2>
-          <p class="ref-hint">先找出需要處理的課程，再回到學生管理完成變更。</p>
-          <div class="meta-pills">
-            <span class="meta-pill">{{ groupedCourses.length }} 位學生</span>
-            <span v-if="pagination.lastPage > 1" class="meta-pill">第 {{ pagination.page }} / {{ pagination.lastPage }} 頁</span>
+        </details>
+      </template>
+    </AtPageHeader>
+
+    <div class="card course-header-card">
+
+      <details class="course-context-disclosure">
+        <summary>
+          <span class="material-symbols-outlined" aria-hidden="true">info</span>
+          <span class="course-context-disclosure__title">先看懂這一頁</span>
+          <span class="course-context-disclosure__hint">查找與分流；建立、續報與加購請從學生管理進入</span>
+          <span class="material-symbols-outlined" aria-hidden="true">expand_more</span>
+        </summary>
+        <div class="course-context-disclosure__body">
+          <div class="course-lens-guidance" role="note" data-testid="course-lens-guidance">
+            <span class="material-symbols-outlined course-lens-guidance__icon" aria-hidden="true">near_me</span>
+            <div>
+              <strong>這一頁適合查找與分流</strong>
+              <span>建立、續報與加購課程仍從「學生管理」的學生主檔進入；本頁可直接編輯既有課程、設定月結日期與新增堂次。</span>
+            </div>
+          </div>
+
+          <div class="course-lens-summary" aria-label="課程管理摘要" data-testid="course-lens-summary">
+            <article v-for="metric in courseLensMetrics" :key="metric.key" class="course-lens-metric" :class="`course-lens-metric--${metric.tone}`">
+              <span class="course-lens-metric__label">{{ metric.label }}</span>
+              <strong class="course-lens-metric__value">{{ metric.value }}</strong>
+              <span class="course-lens-metric__hint">{{ metric.hint }}</span>
+            </article>
           </div>
         </div>
-        <div class="header-buttons">
-          <button class="course-lens-primary-action" type="button" @click="emit('navigate', 'students')">
-            <span class="material-symbols-outlined btn-icon" aria-hidden="true">person_search</span>
-            前往學生管理
-          </button>
-          <button class="btn-soft" @click="expandAllGroups"><span class="material-symbols-outlined btn-icon" aria-hidden="true">unfold_more</span>全部展開</button>
-          <button class="btn-soft" @click="collapseAllGroups"><span class="material-symbols-outlined btn-icon" aria-hidden="true">unfold_less</span>全部收合</button>
-          <button class="btn-soft" @click="showBulkLeaveModal = true">
-            <span class="material-symbols-outlined btn-icon" aria-hidden="true">event_busy</span> 連假批次請假
-          </button>
-          <button class="btn-soft" @click="emit('navigate', 'subject-settings')">
-            <span class="material-symbols-outlined btn-icon" aria-hidden="true">library_books</span> 管理科目
-          </button>
-        </div>
-      </div>
-
-      <div class="course-lens-guidance" role="note" data-testid="course-lens-guidance">
-        <span class="material-symbols-outlined course-lens-guidance__icon" aria-hidden="true">near_me</span>
-        <div>
-          <strong>這一頁適合查找與分流</strong>
-          <span>建立、編輯、續報與加購課程，請從「學生管理」的學生主檔進入，避免同一筆合約在不同頁面產生兩套狀態。</span>
-        </div>
-      </div>
-
-      <div class="course-lens-summary" aria-label="課程管理摘要" data-testid="course-lens-summary">
-        <article v-for="metric in courseLensMetrics" :key="metric.key" class="course-lens-metric" :class="`course-lens-metric--${metric.tone}`">
-          <span class="course-lens-metric__label">{{ metric.label }}</span>
-          <strong class="course-lens-metric__value">{{ metric.value }}</strong>
-          <span class="course-lens-metric__hint">{{ metric.hint }}</span>
-        </article>
-      </div>
+      </details>
 
       <!-- Filters -->
       <div class="filter-bar grid" data-guide="course-mgmt-filters">
@@ -82,29 +95,35 @@
         </button>
       </div>
 
-      <!-- Performance cockpit stats -->
-      <div class="stats-strip" aria-label="本頁課程類型分布">
-        <span class="stats-orb stats-orb-total">
-          <span class="stats-orb-label">課程總覽</span>
-          <span class="stats-orb-num">{{ courses.length }}</span>
-          <span class="stats-orb-caption">筆課程在線</span>
-        </span>
-        <span class="stats-orb"><span class="stats-orb-label">1:1</span><span class="stats-orb-num">{{ coursesByType.one_on_one }}</span><span class="stats-orb-caption">一對一</span></span>
-        <span class="stats-orb"><span class="stats-orb-label">1:2</span><span class="stats-orb-num">{{ coursesByType.one_on_two }}</span><span class="stats-orb-caption">一對二</span></span>
-        <span class="stats-orb"><span class="stats-orb-label">1:3</span><span class="stats-orb-num">{{ coursesByType.one_on_three }}</span><span class="stats-orb-caption">一對三</span></span>
-        <span class="stats-orb"><span class="stats-orb-label">輔導</span><span class="stats-orb-num">{{ coursesByType.tutoring }}</span><span class="stats-orb-caption">輔導</span></span>
-        <span class="stats-orb"><span class="stats-orb-label">試聽</span><span class="stats-orb-num">{{ coursesByType.trial }}</span><span class="stats-orb-caption">試聽</span></span>
-        <template v-if="coursesBySubject.length">
-          <span class="stats-subject-deck">
-            <span class="stats-subject-title">科目</span>
-            <span
-              v-for="s in coursesBySubject"
-              :key="s.subject"
-              class="stats-strip-subject"
-            >{{ s.label }} {{ s.count }}</span>
+      <details class="course-stats-disclosure">
+        <summary>
+          <span>課程分布</span>
+          <span class="course-stats-disclosure__hint">{{ courses.length }} 筆課程・依類型查看</span>
+          <span class="material-symbols-outlined" aria-hidden="true">expand_more</span>
+        </summary>
+        <div class="stats-strip" aria-label="本頁課程類型分布">
+          <span class="stats-orb stats-orb-total">
+            <span class="stats-orb-label">課程總覽</span>
+            <span class="stats-orb-num">{{ courses.length }}</span>
+            <span class="stats-orb-caption">筆課程在線</span>
           </span>
-        </template>
-      </div>
+          <span class="stats-orb"><span class="stats-orb-label">1:1</span><span class="stats-orb-num">{{ coursesByType.one_on_one }}</span><span class="stats-orb-caption">一對一</span></span>
+          <span class="stats-orb"><span class="stats-orb-label">1:2</span><span class="stats-orb-num">{{ coursesByType.one_on_two }}</span><span class="stats-orb-caption">一對二</span></span>
+          <span class="stats-orb"><span class="stats-orb-label">1:3</span><span class="stats-orb-num">{{ coursesByType.one_on_three }}</span><span class="stats-orb-caption">一對三</span></span>
+          <span class="stats-orb"><span class="stats-orb-label">輔導</span><span class="stats-orb-num">{{ coursesByType.tutoring }}</span><span class="stats-orb-caption">輔導</span></span>
+          <span class="stats-orb"><span class="stats-orb-label">試聽</span><span class="stats-orb-num">{{ coursesByType.trial }}</span><span class="stats-orb-caption">試聽</span></span>
+          <template v-if="coursesBySubject.length">
+            <span class="stats-subject-deck">
+              <span class="stats-subject-title">科目</span>
+              <span
+                v-for="s in coursesBySubject"
+                :key="s.subject"
+                class="stats-strip-subject"
+              >{{ s.label }} {{ s.count }}</span>
+            </span>
+          </template>
+        </div>
+      </details>
     </div>
 
     <!-- Post-creation success banner -->
@@ -170,30 +189,32 @@
           class="student-group-card"
           :class="{ 'student-group-has-paused': groupHasPausedCourse(group) }"
         >
-          <div
-            class="student-group-header"
-            role="button"
-            tabindex="0"
-            :aria-expanded="expandedStudentGroups.has(group.key)"
-            @click="toggleStudentGroup(group.key)"
-            @keydown.enter.prevent="toggleStudentGroup(group.key)"
-            @keydown.space.prevent="toggleStudentGroup(group.key)"
-          >
-            <span class="student-group-left">
-              <span class="expand-indicator">{{ expandedStudentGroups.has(group.key) ? '▼' : '▶' }}</span>
-              <span class="cell-student">{{ group.student_name }}</span>
-              <span v-if="groupHasPausedCourse(group)" class="student-group-paused-badge">含暫停課程</span>
-            </span>
-            <span class="student-group-meta">
-              <span>{{ activeCourses(group).length }} 筆進行中</span>
-              <span v-if="historyCourses(group).length" class="student-group-history-count">{{ historyCourses(group).length }} 筆歷史</span>
-            </span>
+          <div class="student-group-header">
+            <button
+              type="button"
+              class="student-group-toggle"
+              :id="studentGroupToggleId(group.key)"
+              :aria-expanded="expandedStudentGroups.has(group.key)"
+              :aria-controls="studentGroupPanelId(group.key, studentGroupTab(group.key))"
+              @click="toggleStudentGroup(group.key)"
+            >
+              <span class="student-group-left">
+                <span class="expand-indicator" aria-hidden="true">{{ expandedStudentGroups.has(group.key) ? '▼' : '▶' }}</span>
+                <span class="cell-student">{{ group.student_name }}</span>
+                <span v-if="groupHasPausedCourse(group)" class="student-group-paused-badge">含暫停課程</span>
+              </span>
+              <span class="student-group-meta">
+                <span>{{ activeCourses(group).length }} 筆進行中</span>
+                <span v-if="historyCourses(group).length" class="student-group-history-count">{{ historyCourses(group).length }} 筆歷史</span>
+              </span>
+            </button>
             <div class="student-group-header-actions">
               <button
+                type="button"
                 class="focus-btn"
                 :class="{ active: focusedStudentKey === group.key }"
                 @click="focusStudent(group, $event)"
-                @keydown.stop
+                :aria-label="focusedStudentKey === group.key ? `取消專注 ${group.student_name}` : `專注 ${group.student_name}`"
                 :title="focusedStudentKey === group.key ? '取消專注' : '專注此學生'"
               >⊙</button>
             </div>
@@ -204,15 +225,18 @@
             aria-label="學生課程與帳務"
             data-testid="student-group-view-tabs"
             @click.stop
-            @keydown.stop
+            @keydown="handleStudentGroupTabKeydown(group, $event)"
           >
             <button
               type="button"
               class="student-group-view-tab"
               :class="{ active: studentGroupTab(group.key) === 'courses' }"
               role="tab"
+              :id="studentGroupTabId(group.key, 'courses')"
               data-testid="student-tab-courses"
               :aria-selected="studentGroupTab(group.key) === 'courses'"
+              :aria-controls="studentGroupPanelId(group.key, 'courses')"
+              :tabindex="studentGroupTab(group.key) === 'courses' ? 0 : -1"
               @click.stop="selectStudentGroupTab(group, 'courses', $event)"
             >課程資料</button>
             <button
@@ -220,8 +244,11 @@
               class="student-group-view-tab"
               :class="{ active: studentGroupTab(group.key) === 'billing' }"
               role="tab"
+              :id="studentGroupTabId(group.key, 'billing')"
               data-testid="student-tab-billing"
               :aria-selected="studentGroupTab(group.key) === 'billing'"
+              :aria-controls="studentGroupPanelId(group.key, 'billing')"
+              :tabindex="studentGroupTab(group.key) === 'billing' ? 0 : -1"
               @click.stop="selectStudentGroupTab(group, 'billing', $event)"
             >帳務資料</button>
           </div>
@@ -231,7 +258,14 @@
               到學生管理新增課程
             </button>
           </div>
-          <div v-if="expandedStudentGroups.has(group.key) && studentGroupTab(group.key) === 'courses'" class="table-wrap group-table-wrap">
+          <div
+            v-if="expandedStudentGroups.has(group.key) && studentGroupTab(group.key) === 'courses'"
+            :id="studentGroupPanelId(group.key, 'courses')"
+            class="table-wrap group-table-wrap"
+            role="tabpanel"
+            tabindex="0"
+            :aria-labelledby="studentGroupTabId(group.key, 'courses')"
+          >
             <table class="course-table">
               <thead>
                 <tr>
@@ -270,16 +304,16 @@
                   </tr>
                   <tr :class="['course-row', courseRowClass(c)]">
                     <td class="td-subject">
-                      <div v-if="effectiveClosedReason(c) === 'settled' || effectiveClosedReason(c) === 'completed'" class="settled-course-callout" role="status">
+                      <div v-if="['settled', 'completed', 'converted_trial'].includes(effectiveClosedReason(c))" class="settled-course-callout" role="status">
                         <span class="settled-course-callout__icon" aria-hidden="true">✅</span>
                         <span class="settled-course-callout__main">已結案</span>
-                        <span class="settled-course-callout__sub">{{ effectiveClosedReason(c) === 'settled' ? '手動結案，無需續報' : '堂數已用完' }}</span>
+                        <span class="settled-course-callout__sub">{{ effectiveClosedReason(c) === 'converted_trial' ? '已轉正式，試聽紀錄保留' : (effectiveClosedReason(c) === 'settled' ? '手動結案，無需續報' : '堂數已用完') }}</span>
                       </div>
                       <div class="subject-line">
                         <span class="tag subject-tag" :class="{ 'subject-tag--paused': c.status === 'inactive' }">{{ getSubjectLabel(c.subject) }}</span>
                         <span class="status-tag" :class="c.class_type">{{ classTypeLabel(c.class_type) }}</span>
                         <span v-if="c.PackageID" class="tag tag-package" :title="c.PackageName || '多科方案'">方案</span>
-                        <span v-else-if="effectiveClosedReason(c) === 'settled' || effectiveClosedReason(c) === 'completed'" class="tag tag-settled">已結案</span>
+                        <span v-else-if="['settled', 'completed', 'converted_trial'].includes(effectiveClosedReason(c))" class="tag tag-settled">已結案</span>
                       </div>
                       <div class="price-line">
                         <span>每堂 ${{ sessionPrice(c) }}</span>
@@ -337,35 +371,54 @@
                     </td>
                     <td class="cell-actions">
                       <div class="action-btns-row">
-                        <button class="small primary course-primary-action" @click="navigateToStudentCourse(c)">編輯</button>
+                        <button class="small primary course-primary-action" @click="editCourse(c)">編輯</button>
+                        <button
+                          v-if="canCloseCourse(c)"
+                          class="small ghost course-settle-action"
+                          @click="closeCourseNoRenew(c)"
+                        >結案（不續報）</button>
                         <button
                           v-if="isManualOccurrenceCourse(c)"
                           class="small btn-add-session manual-occurrence-action"
                           @click="openManualSessionModal(c)"
                         >＋新增下一堂</button>
                         <button
-                          v-if="isSessionMode(c) && !isManualOccurrenceCourse(c)"
+                          v-if="(isSessionMode(c) || isMonthlyMode(c)) && !isManualOccurrenceCourse(c)"
                           class="small btn-add-session manual-occurrence-action"
                           @click="openManualSessionModal(c)"
-                        >排課</button>
+                        >{{ isMonthlyMode(c) ? '排月結' : '排課' }}</button>
                         <button class="small ghost btn-toggle" @click="toggleDatesAndMakeups(c)">
                           {{ expandedDates.has(c.id) ? '收起' : '詳情' }}
                         </button>
                         <div class="action-menu-wrapper">
                           <button class="small ghost action-menu-trigger" @click.stop="toggleActionMenu(c.id)" title="其他課程操作" aria-haspopup="menu" :aria-expanded="activeActionMenu === c.id">更多 ▾</button>
                           <div v-if="activeActionMenu === c.id" class="action-dropdown" role="menu" aria-label="其他課程操作" @click.stop>
-                            <p v-if="isSessionMode(c)" class="action-section-label">排課與課堂</p>
+                            <p v-if="isSessionMode(c) || isMonthlyMode(c)" class="action-section-label">排課與課堂</p>
                             <button
-                              v-if="isSessionMode(c) && !isManualOccurrenceCourse(c)"
+                              v-if="(isSessionMode(c) || isMonthlyMode(c)) && !isManualOccurrenceCourse(c)"
                               class="action-dropdown-item action-dropdown-add-session-mobile"
                               role="menuitem"
-                              :class="{ 'action-dropdown-item--disabled': !canQuickAddSession(c) }"
-                              :disabled="!canQuickAddSession(c)"
-                              :title="canQuickAddSession(c) ? '' : quickAddDisabledReason(c)"
-                              @click="canQuickAddSession(c) && (openQuickAddSessionModal(c), closeActionMenu())"
-                            ><span class="material-symbols-outlined action-icon" aria-hidden="true">add_task</span> 補課 / 補登</button>
+                              :class="{ 'action-dropdown-item--disabled': isSessionMode(c) && !canQuickAddSession(c) }"
+                              :disabled="isSessionMode(c) && !canQuickAddSession(c)"
+                              :title="isMonthlyMode(c) ? '在課程起訖日內新增月結堂次' : (canQuickAddSession(c) ? '' : quickAddDisabledReason(c))"
+                              @click="isMonthlyMode(c) ? (openMonthlySessionModal(c), closeActionMenu()) : (canQuickAddSession(c) && (openQuickAddSessionModal(c), closeActionMenu()))"
+                            ><span class="material-symbols-outlined action-icon" aria-hidden="true">add_task</span> {{ isMonthlyMode(c) ? '新增月結堂次' : '補課 / 補登' }}</button>
                             <p class="action-section-label">帳務與合約</p>
                             <button class="action-dropdown-item" role="menuitem" @click="openInvoiceModal(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">receipt_long</span> 帳單與對帳</button>
+                            <button
+                              v-if="isSessionMode(c) && !c.PackageID"
+                              class="action-dropdown-item action-dropdown-package-preview"
+                              role="menuitem"
+                              @click="openPackageConversionPreview(c); closeActionMenu()"
+                            ><span class="material-symbols-outlined action-icon" aria-hidden="true">account_tree</span> 轉多科方案預檢</button>
+                            <button
+                              v-if="isPaymentNoticeAvailable(c)"
+                              class="action-dropdown-item"
+                              data-testid="course-payment-slip-action"
+                              role="menuitem"
+                              title="產生繳費通知單"
+                              @click="openPaymentSlip(c); closeActionMenu()"
+                            ><span class="material-symbols-outlined action-icon" aria-hidden="true">description</span> 繳費通知</button>
                             <button
                               :class="['action-dropdown-item', { 'action-dropdown-renew': purchaseActionIsRenew(c) }]"
                               role="menuitem"
@@ -492,19 +545,30 @@
             </table>
             <!-- History courses collapsible section -->
             <div v-if="historyCourses(group).length" class="history-section">
-              <button class="history-section__toggle" @click="toggleHistoryGroup(group.key)">
+              <button
+                type="button"
+                class="history-section__toggle"
+                :aria-expanded="expandedHistoryGroups.has(group.key)"
+                :aria-controls="historyGroupPanelId(group.key)"
+                @click="toggleHistoryGroup(group.key)"
+              >
                 <span class="material-symbols-outlined history-section__icon" aria-hidden="true">inventory_2</span>
                 <span class="history-section__label">歷史課程</span>
                 <span class="history-section__count">{{ historyCourses(group).length }} 筆</span>
                 <span class="history-section__chevron">{{ expandedHistoryGroups.has(group.key) ? '▲' : '▼' }}</span>
               </button>
-              <div v-if="expandedHistoryGroups.has(group.key)" class="history-section__body">
+              <div
+                v-if="expandedHistoryGroups.has(group.key)"
+                :id="historyGroupPanelId(group.key)"
+                class="history-section__body"
+              >
                 <div v-for="hc in historyCourses(group)" :key="hc.id" class="history-course-card">
                   <div class="history-course-card__header">
                     <span class="tag subject-tag history-course-card__subject">{{ getSubjectLabel(hc.subject) }}</span>
                     <span class="status-tag" :class="hc.class_type">{{ classTypeLabel(hc.class_type) }}</span>
                     <span v-if="hc.PackageID" class="tag tag-package" :title="hc.PackageName || '多科方案'">方案</span>
-                    <span v-if="effectiveClosedReason(hc) === 'settled'" class="tag tag-history tag-history--settled">已結算</span>
+                    <span v-if="effectiveClosedReason(hc) === 'converted_trial'" class="tag tag-history tag-history--settled">已轉正式</span>
+                    <span v-else-if="effectiveClosedReason(hc) === 'settled'" class="tag tag-history tag-history--settled">已結算</span>
                     <span v-else class="tag tag-history tag-history--completed">已完課</span>
                   </div>
                   <div class="history-course-card__details">
@@ -558,7 +622,11 @@
           </div>
           <div
             v-if="expandedStudentGroups.has(group.key) && studentGroupTab(group.key) === 'billing'"
+            :id="studentGroupPanelId(group.key, 'billing')"
             class="table-wrap group-table-wrap student-billing-wrap"
+            role="tabpanel"
+            tabindex="0"
+            :aria-labelledby="studentGroupTabId(group.key, 'billing')"
           >
             <div v-if="studentBillingState[group.key]?.loading" class="student-billing-state">載入帳務中…</div>
             <div v-else-if="studentBillingState[group.key]?.error" class="student-billing-state student-billing-error" role="alert">
@@ -608,6 +676,14 @@
                         type="button"
                         @click="togglePaymentStatus(row.course)"
                       >登記已回報</button>
+                      <button
+                        v-if="isPaymentNoticeAvailable(row.course)"
+                        class="small ghost btn-payment-slip"
+                        data-testid="billing-payment-slip-action"
+                        type="button"
+                        title="產生繳費通知單"
+                        @click="openPaymentSlip(row.course)"
+                      >繳費通知</button>
                       <button class="small ghost btn-invoices" type="button" @click="openInvoiceModal(row.course)">帳單與對帳</button>
                     </div>
                   </td>
@@ -723,6 +799,62 @@
       </div>
     </div>
 
+    <!-- Read-only single-course → shared-package safety preview -->
+    <div v-if="showPackageConversionPreview" class="modal-overlay" @click.self="!packageConversionPreviewLoading && closePackageConversionPreview()">
+      <div
+        class="modal package-conversion-preview-modal"
+        data-testid="package-conversion-preview"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="package-conversion-preview-title"
+        tabindex="-1"
+        @keydown.esc="closePackageConversionPreview"
+      >
+        <h3 id="package-conversion-preview-title" class="modal-title">轉成多科共用方案</h3>
+        <p class="package-conversion-preview__lead">
+          先檢查這門單科堂數制是否有上課、點名、學習或帳務歷史；這個畫面只讀取資料，不會修改合約。
+        </p>
+        <AtInlineAlert v-if="packageConversionPreviewLoading" tone="info" title="正在進行唯讀預檢">
+          <p>正在確認合約、帳務與扣堂紀錄…</p>
+        </AtInlineAlert>
+        <AtInlineAlert v-else-if="packageConversionPreviewError" tone="warning" title="預檢失敗">
+          <p>{{ packageConversionPreviewError }}</p>
+        </AtInlineAlert>
+        <template v-else-if="packageConversionPreview">
+          <div class="package-conversion-preview__source">
+            <strong>{{ packageConversionPreviewCourse?.subject_name || packageConversionPreviewCourse?.subject || '目前課程' }}</strong>
+            <span v-if="packageConversionPreviewCourse?.student_name">／{{ packageConversionPreviewCourse.student_name }}</span>
+            <span> · {{ packageConversionPreview.student_class?.remaining_sessions ?? 0 }} 堂剩餘</span>
+          </div>
+          <AtInlineAlert v-if="packageConversionPreview.can_convert" tone="success" title="通過安全預檢">
+            <p>目前沒有發現已使用或帳務歷史。真正轉換仍須由受控流程執行，原課程識別與稽核紀錄會保留。</p>
+          </AtInlineAlert>
+          <AtInlineAlert v-else tone="warning" title="不建議直接轉換">
+            <p>為避免堂數、點名或帳務歷史被改寫，請保留原合約並建立新的多科方案。</p>
+            <ul class="package-conversion-preview__reasons">
+              <li v-for="reason in packageConversionPreview.blocking_reasons" :key="reason.code">{{ reason.message }}</li>
+            </ul>
+          </AtInlineAlert>
+          <p class="package-conversion-preview__next-step">{{ packageConversionPreview.next_step }}</p>
+        </template>
+        <div class="actions">
+          <button class="ghost" :disabled="packageConversionPreviewLoading" @click="closePackageConversionPreview">關閉</button>
+          <button
+            v-if="packageConversionPreviewError && !packageConversionPreviewLoading"
+            class="ghost"
+            type="button"
+            @click="retryPackageConversionPreview"
+          >重新檢查</button>
+          <button
+            v-if="packageConversionPreview && !packageConversionPreviewLoading"
+            class="primary"
+            type="button"
+            @click="packageConversionPreview.can_convert ? continuePackageConversionFromPreview() : goToNewPackageFromPreview()"
+          >{{ packageConversionPreview.can_convert ? '繼續轉成多科共用方案' : '前往建立多科方案' }}</button>
+        </div>
+      </div>
+    </div>
+
     <ContractAdjustmentChoiceModal
       :show="showContractAdjustmentModal"
       :student-name="contractAdjustmentCourse?.student_name || ''"
@@ -767,6 +899,7 @@
       :form="purchaseForm"
       :submitting="purchaseSubmitting"
       :is-package-mode="isPackageMember(purchaseCourse)"
+      :is-trial-mode="purchaseCourse?.class_type === 'trial'"
       :current-total="getPackageTotalSessions(purchaseCourse)"
       :used-sessions="getPackageUsedSessions(purchaseCourse)"
       @close="!purchaseSubmitting && (showPurchaseModal = false)"
@@ -812,7 +945,7 @@
       :time-options="TIME_OPTIONS_30"
       :conflict="quickAddConflict"
       :checking="quickAddChecking"
-      @close="showQuickAddSessionModal = false"
+      @close="closeQuickAddSessionModal"
       @submit="submitQuickAddSession"
       @check="runQuickAddCheck"
     />
@@ -823,11 +956,45 @@
       :result="manualSessionCheck"
       :checking="manualSessionChecking"
       :submitting="manualSessionSubmitting"
+      :is-monthly="isMonthlyMode(manualSessionCourse)"
       :today="todayYmd"
-      @close="showManualSessionModal = false"
+      @close="closeManualSessionModal"
       @check="runManualSessionCheck"
       @submit="submitManualSession"
+      @edit-course="editManualSessionCourse"
     />
+
+    <div v-if="showPackageConversionModal" class="modal-overlay" @click.self="!packageConversionSubmitting && (showPackageConversionModal = false)">
+      <div class="modal course-modal package-conversion-modal" role="dialog" aria-modal="true" aria-labelledby="package-conversion-title">
+        <h3 id="package-conversion-title" class="modal-title">轉成多科共用</h3>
+        <p class="modal-desc">原合約、已上課與帳務紀錄會保留；只有未使用堂數會放入共用池，不會重新收費。</p>
+        <div class="package-conversion-summary">
+          <strong>{{ packageConversionCourse?.student_name || '學生' }}／{{ packageConversionCourse?.subject_name || packageConversionCourse?.subject || '目前科目' }}</strong>
+          <span>總堂數 {{ getPurchasedSessions(packageConversionCourse) }} 堂</span>
+          <span>已上 {{ getUsedSessions(packageConversionCourse) }} 堂</span>
+          <span>可共用 {{ Math.max(0, getPurchasedSessions(packageConversionCourse) - getUsedSessions(packageConversionCourse)) }} 堂</span>
+        </div>
+        <label class="form-group">方案名稱
+          <input v-model="packageConversionForm.name" type="text" maxlength="128" placeholder="例如：學生多科共用方案" />
+        </label>
+        <label class="form-group">加入第二科目
+          <select v-model="packageConversionForm.subject_name">
+            <option value="">請選擇科目</option>
+            <option v-for="subject in packageConversionSubjects" :key="String(subject.id ?? subject.value)" :value="subject.label || subject.value">{{ subject.label || subject.value }}</option>
+          </select>
+        </label>
+        <label class="form-group">第二科目老師
+          <select v-model="packageConversionForm.teacher_id">
+            <option value="">請選擇老師</option>
+            <option v-for="teacher in teachers" :key="teacher.id" :value="String(teacher.id)">{{ teacher.username || teacher.name || teacher.Name || `老師 #${teacher.id}` }}</option>
+          </select>
+        </label>
+        <div class="actions">
+          <button class="ghost" :disabled="packageConversionSubmitting" @click="showPackageConversionModal = false">取消</button>
+          <button class="primary" :disabled="packageConversionSubmitting" @click="submitPackageConversion">{{ packageConversionSubmitting ? '建立中…' : '確認建立共用方案' }}</button>
+        </div>
+      </div>
+    </div>
 
     <LeaveModal
       :show="showLeaveModal"
@@ -945,6 +1112,12 @@
       :row="paymentEntryRow"
       @close="paymentEntryOpen = false"
       @confirmed="onPaymentEntryConfirmed"
+    />
+
+    <PaymentSlipModal
+      :show="paymentSlipOpen"
+      :student-class-id="paymentSlipStudentClassId"
+      @close="closePaymentSlip"
     />
 
     <AccountingLedgerModal
@@ -1167,6 +1340,8 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import AtButton from '../components/design-system/AtButton.vue';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import { supabase } from '../supabase';
 import { lockScroll, unlockScroll } from '../lib/useScrollLock';
 import { SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
@@ -1184,7 +1359,7 @@ import {
   humanizeDocumentRef,
 } from '../lib/studentClassDisplay.js';
 import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
-import { updatePackage } from '../lib/coursePackagesApi';
+import { convertSingleCourseToPackage, previewSingleCoursePackageConversion, updatePackage } from '../lib/coursePackagesApi';
 import { buildEditTeacherOptions, shouldClearTeacherSelection } from '../lib/courseTeacherOptions';
 import { computePackageNextTotal, packageMemberSessionSummary } from '../lib/packageSessions';
 import {
@@ -1201,8 +1376,9 @@ import CourseEditForm from '../components/CourseEditForm.vue';
 import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
 import EnrollmentConflictDecisionModal from '../components/EnrollmentConflictDecisionModal.vue';
-import { buildForceOverrideFields } from '../lib/enrollmentConflictDecision';
+import { buildForceOverrideFields, findCourseForPurchase } from '../lib/enrollmentConflictDecision';
 import { isPendingWorkflowStatus } from '../lib/exceptionWorkflowFocus.js';
+import { nextManualSessionDate } from '../lib/manualSessionDate.js';
 import PurchaseSessionsModal from '../components/course-management/PurchaseSessionsModal.vue';
 import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal.vue';
 import TransferSessionsModal from '../components/course-management/TransferSessionsModal.vue';
@@ -1216,6 +1392,7 @@ import MakeupSlotsModal from '../components/course-management/MakeupSlotsModal.v
 import SessionEditModal from '../components/course-management/SessionEditModal.vue';
 import SubstituteTeacherPickerModal from '../components/substitute/SubstituteTeacherPickerModal.vue';
 import PaymentEntryModal from '../components/PaymentEntryModal.vue';
+import PaymentSlipModal from '../components/PaymentSlipModal.vue';
 import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
 import ToastWithUndo from '../components/substitute/ToastWithUndo.vue';
 import { fetchTeacherAvailability, undoSubstitute } from '../lib/substituteApi.js';
@@ -1810,10 +1987,12 @@ async function onEnrollmentConflictDecision(decision) {
 
 function interceptGoToPurchaseCM(conflict) {
   showDuplicateInterceptModal.value = false;
-  const target = courses.value.find(c => c.id === conflict.existing_course_id);
+  const target = findCourseForPurchase(courses.value, conflict);
   if (target) {
     openPurchaseModal(target);
+    return;
   }
+  alert('找不到要加購的課程，請重新整理後再從課程列點「加購」。');
 }
 
 async function handleUniversalBackfillSuccess(result) {
@@ -1855,6 +2034,12 @@ const editability = ref(null);
 const editabilityLoading = ref(false);
 const editabilityError = ref('');
 let editabilityRequestId = 0;
+const showPackageConversionPreview = ref(false);
+const packageConversionPreview = ref(null);
+const packageConversionPreviewCourse = ref(null);
+const packageConversionPreviewLoading = ref(false);
+const packageConversionPreviewError = ref('');
+let packageConversionPreviewRequestId = 0;
 const editPackageInfo = computed(() => {
   const c = editingCourseRaw.value;
   if (!c?.PackageID) return null;
@@ -1944,6 +2129,61 @@ async function loadCourseEditability(courseId) {
   } finally {
     if (requestId === editabilityRequestId) editabilityLoading.value = false;
   }
+}
+
+async function openPackageConversionPreview(course) {
+  const courseId = Number(course?.id ?? course?.ID ?? 0);
+  if (!Number.isSafeInteger(courseId) || courseId <= 0) return;
+  const requestId = ++packageConversionPreviewRequestId;
+  packageConversionPreviewCourse.value = course;
+  packageConversionPreview.value = null;
+  packageConversionPreviewError.value = '';
+  packageConversionPreviewLoading.value = true;
+  showPackageConversionPreview.value = true;
+  try {
+    const result = await previewSingleCoursePackageConversion(courseId);
+    if (requestId === packageConversionPreviewRequestId) packageConversionPreview.value = result;
+  } catch (error) {
+    if (requestId === packageConversionPreviewRequestId) {
+      packageConversionPreviewError.value = error?.message || '無法完成轉換預檢。';
+    }
+  } finally {
+    if (requestId === packageConversionPreviewRequestId) packageConversionPreviewLoading.value = false;
+  }
+}
+
+function closePackageConversionPreview() {
+  if (packageConversionPreviewLoading.value) return;
+  packageConversionPreviewRequestId += 1;
+  showPackageConversionPreview.value = false;
+  packageConversionPreview.value = null;
+  packageConversionPreviewCourse.value = null;
+  packageConversionPreviewError.value = '';
+}
+
+function retryPackageConversionPreview() {
+  if (packageConversionPreviewCourse.value) {
+    void openPackageConversionPreview(packageConversionPreviewCourse.value);
+  }
+}
+
+function goToNewPackageFromPreview() {
+  const studentId = Number(packageConversionPreviewCourse.value?.student_id
+    ?? packageConversionPreviewCourse.value?.StudentID
+    ?? packageConversionPreview.value?.student_class?.student_id
+    ?? 0);
+  closePackageConversionPreview();
+  emit('navigate', {
+    target: 'students',
+    studentId: Number.isSafeInteger(studentId) && studentId > 0 ? studentId : null,
+    intent: 'new_package',
+  });
+}
+
+function continuePackageConversionFromPreview() {
+  const course = packageConversionPreviewCourse.value;
+  closePackageConversionPreview();
+  if (course) openPackageConversion(course);
 }
 /** 開啟編輯時的排課指紋；儲存時若變更則自動 force_partial_rebuild 同步未上預排堂次 */
 const editScheduleBaseline = ref(null);
@@ -2207,6 +2447,8 @@ const showQuickAddSessionModal = ref(false);
 const quickAddSessionCourse = ref(null);
 const quickAddConflict = ref(null);
 const quickAddChecking = ref(false);
+let quickAddCheckVersion = 0;
+let quickAddCheckController = null;
 const quickAddSessionForm = ref({
   session_date: '',
   start_time: '16:00',
@@ -2222,6 +2464,18 @@ const manualSessionCheck = ref(null);
 const manualSessionChecking = ref(false);
 const manualSessionSubmitting = ref(false);
 const manualSessionForm = ref({ session_date: '', start_time: '16:00' });
+// 每次檢查都帶版本，避免較早發出的 422 覆蓋主任剛選好的有效日期結果。
+let manualSessionCheckVersion = 0;
+let manualSessionCheckController = null;
+const showPackageConversionModal = ref(false);
+const packageConversionCourse = ref(null);
+const packageConversionSubmitting = ref(false);
+const packageConversionForm = ref({ name: '', subject_name: '', teacher_id: '' });
+const packageConversionSubjects = computed(() => {
+  const source = String(packageConversionCourse.value?.subject_name || packageConversionCourse.value?.subject || '').trim();
+  return (subjectOptions.value || []).filter((subject) => String(subject?.label || subject?.value || '').trim() !== source);
+});
+const courseIdForAction = (course) => Number(course?.id ?? course?.ID ?? 0);
 const isManualOccurrenceCourse = (course) => String(course?.scheduling_policy || 'auto_recurrence') === 'manual_occurrence';
 const pauseConfirmTarget = ref(null);
 const pauseConfirmSubmitting = ref(false);
@@ -2300,26 +2554,36 @@ async function confirmCoursePause() {
 
 function canCloseCourse(c) {
   return c.status !== 'inactive'
-    && isSessionMode(c)
-    && c.payment_status === 'paid'
-    && Number(c.remaining_sessions ?? 0) <= 0;
+    && !isPackageMember(c)
+    && (isSessionMode(c) || isMonthlyMode(c))
+    && c.payment_status === 'paid';
 }
 
 async function closeCourseNoRenew(course) {
+  const courseId = courseIdForAction(course);
+  if (!courseId) { alert('課程資料缺少識別碼，請重新整理後再試'); return; }
   const studentName = course.student_name || '學生';
   const subject = getSubjectLabel(course.subject);
-  if (!confirm(`確定要結案「${studentName}」的 ${subject} 課程嗎？\n\n結案後此課程將不再出現在繳費／續課提醒中。\n（等同暫停課程，之後仍可手動恢復。）`)) return;
+  const remaining = Math.max(0, Number(course.remaining_sessions ?? 0));
+  const balanceWarning = remaining > 0
+    ? `\n\n目前還有 ${remaining} 堂未使用。結案會取消未來排課，並放棄這 ${remaining} 堂剩餘額度。`
+    : '';
+  if (!confirm(`確定要結案「${studentName}」的 ${subject} 課程嗎？${balanceWarning}\n\n結案後此課程不再出現在繳費／續課提醒中，已繳費與已上課紀錄仍會保留。`)) return;
 
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
     if (!token) { alert('請重新登入'); return; }
 
-    const res = await fetch(`/api/v1/student-classes/${course.id}/pause`, {
+    const res = await fetch(`/api/v1/student-classes/${courseId}/pause`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ action: 'pause', reason: 'completed' }),
+      body: JSON.stringify({
+        action: 'pause',
+        reason: 'settled',
+        ...(remaining > 0 ? { forfeit_remaining: true } : {}),
+      }),
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -2362,6 +2626,7 @@ function duplicateCourseForTeacher(course) {
 // 月結課程的此入口其實是「結算／續約下月」（開 RenewMonthlyModal），
 // 但舊標籤「加購堂數」對月結語意不通，主任找不到結算功能（in-app #141）。
 function purchaseActionLabel(c) {
+  if (c?.class_type === 'trial') return '轉為正式課程';
   if (!isSessionMode(c)) return '結算 / 續約下月';
   return Number(displayRemainingSessions(c) ?? 0) <= 2 ? '續報加購' : '加購堂數';
 }
@@ -2370,6 +2635,7 @@ function purchaseActionIsRenew(c) {
   return Number(displayRemainingSessions(c) ?? 0) <= 2;
 }
 function purchaseActionTitle(c) {
+  if (c?.class_type === 'trial') return '保留試聽紀錄並建立正式堂數課程';
   return isSessionMode(c) ? '加購／續報堂數' : '月結課程結算本期並續約下個月';
 }
 
@@ -2398,6 +2664,9 @@ function openPurchaseModal(course) {
     subject: course?.subject || 'Math',
     package_op: 'add', // 'add' (加購) | 'set' (設定總堂數) — package members only (#553)
   };
+  if (course?.class_type === 'trial') {
+    purchaseForm.value.start_date = nextManualSessionDate(course) || localTodayYmd();
+  }
   showPurchaseModal.value = true;
 }
 
@@ -2458,6 +2727,48 @@ async function submitPurchaseSessions() {
   }
   purchaseSubmitting.value = true;
   try {
+    if (course?.class_type === 'trial') {
+      const { data: { session: trialSession } } = await supabase.auth.getSession();
+      const trialToken = trialSession?.access_token;
+      if (!trialToken) {
+        alert('請重新登入後再試');
+        return;
+      }
+      const res = await fetch(`/api/v1/student-classes/${course.id}/convert-trial`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          Authorization: `Bearer ${trialToken}`,
+        },
+        body: JSON.stringify({
+          sessions: Number(purchaseForm.value.sessions),
+          start_date: purchaseForm.value.start_date,
+          class_type: 'one_on_one',
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const details = json?.conflicts?.map((c) => c.message).filter(Boolean).join(' ') || '';
+        alert(details || json?.message || '試聽轉正式失敗');
+        return;
+      }
+      showPurchaseModal.value = false;
+      await loadCourses();
+      const groupKey = course?.student_id != null ? `sid:${course.student_id}` : null;
+      if (groupKey) {
+        expandedStudentGroups.value = new Set([...expandedStudentGroups.value, groupKey]);
+        focusedStudentKey.value = groupKey;
+      }
+      toastRef.value?.show?.({
+        title: '試聽已轉為正式課程',
+        description: json?.message || '試聽紀錄已保留，正式課程已建立。',
+        variant: 'success',
+        durationMs: 7000,
+      });
+      return;
+    }
     if (isPackage) {
       const packageId = Number(course.PackageID ?? course.package_id);
       const op = purchaseForm.value.package_op === 'set' ? 'set' : 'add';
@@ -2614,7 +2925,7 @@ function openQuickAddSessionModal(course, prefill = null) {
     if (Number.isFinite(mins) && mins >= 30) durationMinutes = mins;
   }
   quickAddSessionForm.value = {
-    session_date: prefillDate || localTodayYmd(),
+    session_date: prefillDate || nextManualSessionDate(course),
     start_time: prefillStart || normalizeTo30Min(course?.start_time || '16:00'),
     duration_minutes: durationMinutes,
     note: '',
@@ -2627,15 +2938,33 @@ function openQuickAddSessionModal(course, prefill = null) {
 }
 
 let _quickAddCheckTimer = null;
+function closeQuickAddSessionModal() {
+  clearTimeout(_quickAddCheckTimer);
+  _quickAddCheckTimer = null;
+  quickAddCheckVersion += 1;
+  quickAddCheckController?.abort();
+  quickAddCheckController = null;
+  quickAddChecking.value = false;
+  showQuickAddSessionModal.value = false;
+}
+
 async function runQuickAddCheck(courseIdOverride) {
   const courseId = courseIdOverride || quickAddSessionCourse.value?.id;
   if (!courseId) return;
   const form = quickAddSessionForm.value;
   if (!form.session_date || !form.start_time) return;
+  const requestVersion = ++quickAddCheckVersion;
+  // Disable submit during the debounce window as well as during the network
+  // request; otherwise the previous check could briefly authorize new input.
+  quickAddChecking.value = true;
+  quickAddConflict.value = null;
+  quickAddCheckController?.abort();
+  quickAddCheckController = null;
   clearTimeout(_quickAddCheckTimer);
   _quickAddCheckTimer = setTimeout(async () => {
     quickAddChecking.value = true;
-    quickAddConflict.value = null;
+    const controller = new AbortController();
+    quickAddCheckController = controller;
     try {
       const { data: { session: sess } } = await supabase.auth.getSession();
       const token = sess?.access_token;
@@ -2644,13 +2973,18 @@ async function runQuickAddCheck(courseIdOverride) {
         method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ session_date: form.session_date, start_time: form.start_time }),
+        signal: controller.signal,
       });
       const json = await res.json().catch(() => ({}));
+      if (requestVersion !== quickAddCheckVersion) return;
       quickAddConflict.value = json;
-    } catch (_) {
+    } catch (error) {
+      if (error?.name === 'AbortError') return;
+      if (requestVersion !== quickAddCheckVersion) return;
       quickAddConflict.value = null;
     } finally {
-      quickAddChecking.value = false;
+      if (requestVersion === quickAddCheckVersion) quickAddChecking.value = false;
+      if (quickAddCheckController === controller) quickAddCheckController = null;
     }
   }, 300);
 }
@@ -2720,7 +3054,7 @@ async function submitQuickAddSession() {
       }
       return;
     }
-    showQuickAddSessionModal.value = false;
+    closeQuickAddSessionModal();
     quickAddConflict.value = null;
     const movedFrom = String(json?.moved_from_date || '').slice(0, 10);
     const defaultMsg = movedFrom
@@ -2734,49 +3068,119 @@ async function submitQuickAddSession() {
 }
 // ----- Leave (請假) -----
 function openManualSessionModal(course) {
-  if (!course?.id) return;
-  manualSessionCourse.value = course;
+  const courseId = courseIdForAction(course);
+  if (!courseId) { alert('課程資料缺少識別碼，請重新整理後再試'); return; }
+  manualSessionCourse.value = { ...course, id: courseId };
   manualSessionCheck.value = null;
   manualSessionForm.value = {
-    session_date: localTodayYmd(),
+    session_date: nextManualSessionDate(course),
     start_time: String(course.start_time || '16:00').slice(0, 5),
   };
   showManualSessionModal.value = true;
   runManualSessionCheck();
 }
 
+function closeManualSessionModal() {
+  manualSessionCheckVersion += 1;
+  manualSessionCheckController?.abort();
+  manualSessionCheckController = null;
+  manualSessionChecking.value = false;
+  showManualSessionModal.value = false;
+}
+
+function openMonthlySessionModal(course) {
+  openManualSessionModal(course);
+}
+
+function editManualSessionCourse() {
+  const course = manualSessionCourse.value;
+  showManualSessionModal.value = false;
+  if (course?.id) editCourse(course);
+}
+
+function openPackageConversion(course) {
+  packageConversionCourse.value = course;
+  packageConversionForm.value = {
+    name: `${course?.student_name || '學生'}多科共用方案`,
+    subject_name: '',
+    teacher_id: '',
+  };
+  packageConversionSubmitting.value = false;
+  showPackageConversionModal.value = true;
+}
+
+async function submitPackageConversion() {
+  const course = packageConversionCourse.value;
+  const form = packageConversionForm.value;
+  const courseId = Number(course?.id ?? course?.ID ?? 0);
+  if (!courseId || !form.name.trim() || !form.subject_name || !form.teacher_id) {
+    alert('請填寫方案名稱、第二科目與老師');
+    return;
+  }
+  if (!confirm('確認建立共用方案？原合約與已收款紀錄會保留，不會再次收費。')) return;
+  packageConversionSubmitting.value = true;
+  try {
+    const result = await convertSingleCourseToPackage(courseId, {
+      name: form.name.trim(),
+      additional_subject: { subject_name: form.subject_name, teacher_id: Number(form.teacher_id) },
+    });
+    showPackageConversionModal.value = false;
+    await loadCourses();
+    alert(`${result?.message || '已轉成多科共用方案'}\n${result?.next_step || ''}`);
+  } catch (error) {
+    alert(error?.message || '建立共用方案失敗，資料未變更');
+  } finally {
+    packageConversionSubmitting.value = false;
+  }
+}
+
 async function runManualSessionCheck() {
   const course = manualSessionCourse.value;
   const form = manualSessionForm.value;
-  if (!course?.id || !form.session_date || !form.start_time) return;
+  const courseId = courseIdForAction(course);
+  if (!courseId || !form.session_date || !form.start_time) {
+    manualSessionCheck.value = { can_add: false, message: '課程資料不完整，請重新整理後再試' };
+    return;
+  }
+  const requestVersion = ++manualSessionCheckVersion;
+  manualSessionCheckController?.abort();
+  const controller = new AbortController();
+  manualSessionCheckController = controller;
   manualSessionChecking.value = true;
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
     if (!token) throw new Error('請先登入');
-    const res = await fetch(`/api/v1/student-classes/${course.id}/manual-sessions/check`, {
+    const res = await fetch(`/api/v1/student-classes/${courseId}/manual-sessions/check`, {
       method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ session_date: form.session_date, start_time: form.start_time }),
+      signal: controller.signal,
     });
-    manualSessionCheck.value = await res.json().catch(() => ({ can_add: false, message: '檢查失敗' }));
+    const result = await res.json().catch(() => ({ can_add: false, message: '檢查失敗' }));
+    if (requestVersion !== manualSessionCheckVersion) return;
+    manualSessionCheck.value = result;
   } catch (e) {
+    if (e?.name === 'AbortError') return;
+    if (requestVersion !== manualSessionCheckVersion) return;
     manualSessionCheck.value = { can_add: false, message: e?.message || '檢查失敗' };
   } finally {
-    manualSessionChecking.value = false;
+    if (requestVersion === manualSessionCheckVersion) manualSessionChecking.value = false;
+    if (manualSessionCheckController === controller) manualSessionCheckController = null;
   }
 }
 
 async function submitManualSession() {
   const course = manualSessionCourse.value;
   const form = manualSessionForm.value;
-  if (!course?.id || !manualSessionCheck.value?.can_add) return;
+  const courseId = courseIdForAction(course);
+  if (!courseId || !manualSessionCheck.value?.can_add) return;
   manualSessionSubmitting.value = true;
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
     if (!token) throw new Error('請先登入');
-    const res = await fetch(`/api/v1/student-classes/${course.id}/manual-sessions`, {
+    const res = await fetch(`/api/v1/student-classes/${courseId}/manual-sessions`, {
       method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ session_date: form.session_date, start_time: form.start_time }),
@@ -2786,7 +3190,7 @@ async function submitManualSession() {
       manualSessionCheck.value = json;
       return;
     }
-    showManualSessionModal.value = false;
+    closeManualSessionModal();
     alert(json.created === false ? '這一堂已存在，未重複建立。' : '下一堂已建立，已加入課表。');
     await loadCourses();
   } catch (e) {
@@ -3375,6 +3779,14 @@ const groupCoursesByStudent = (list = []) => {
 
 const groupedCourses = computed(() => groupCoursesByStudent(courses.value));
 
+// Keep disclosure and tab relationships stable without exposing student names
+// (which may contain spaces or punctuation) in DOM ids.
+const domKey = (key) => String(key ?? '').replace(/[^a-zA-Z0-9_-]/g, '-');
+const studentGroupToggleId = (key) => `student-group-toggle-${domKey(key)}`;
+const studentGroupPanelId = (key, tab) => `student-group-panel-${tab}-${domKey(key)}`;
+const studentGroupTabId = (key, tab) => `student-group-tab-${tab}-${domKey(key)}`;
+const historyGroupPanelId = (key) => `student-history-panel-${domKey(key)}`;
+
 const resetExpandedStudentGroups = (groups = groupedCourses.value) => {
   expandedStudentGroups.value = new Set(groups.map((g) => g.key));
 };
@@ -3601,6 +4013,7 @@ const loadCourses = async (page = 1) => {
         const arr = Array.isArray(list) ? list : (list?.data ?? []);
         const result = arr.map(c => ({
           ...c,
+          id: Number(c?.id ?? c?.ID ?? 0),
           data_source: 'laravel',
           student_name: c.student_name ?? '—',
           teacher_name: c.teacher_name ?? '',
@@ -3635,6 +4048,7 @@ const loadCourses = async (page = 1) => {
   const { data } = await query;
   let result = (data || []).map(c => ({
     ...c,
+    id: Number(c?.id ?? c?.ID ?? 0),
     data_source: 'supabase',
     student_name: c.student?.name || '—',
     teacher_name: c.teacher_name || c.teacher?.username || '',
@@ -4350,6 +4764,23 @@ const invoiceVoidTarget = ref(null);
 const invoiceVoidReason = ref('');
 const invoiceVoidMode = ref('direct');
 const invoiceVoidSubmitting = ref(false);
+const paymentSlipOpen = ref(false);
+const paymentSlipStudentClassId = ref(null);
+
+const isPaymentNoticeAvailable = (course) =>
+  ['unpaid', 'partial', 'pending_report'].includes(course?.payment_status);
+
+const openPaymentSlip = (course) => {
+  const studentClassId = Number(course?.id || 0);
+  if (!isPaymentNoticeAvailable(course) || !studentClassId) return;
+  paymentSlipStudentClassId.value = studentClassId;
+  paymentSlipOpen.value = true;
+};
+
+const closePaymentSlip = () => {
+  paymentSlipOpen.value = false;
+  paymentSlipStudentClassId.value = null;
+};
 
 const closeInvoiceModal = () => {
   invoiceModalOpen.value = false;
@@ -4370,6 +4801,34 @@ const selectStudentGroupTab = async (group, tab, event) => {
   next.add(group.key);
   expandedStudentGroups.value = next;
   await setStudentGroupTab(group, tab);
+};
+
+const handleStudentGroupTabKeydown = async (group, event) => {
+  event.stopPropagation();
+  const tablist = event.currentTarget;
+  const tabKeys = ['courses', 'billing'];
+  const currentTab = studentGroupTab(group.key);
+  const currentIndex = tabKeys.indexOf(currentTab);
+  if (currentIndex < 0) return;
+
+  let nextIndex = currentIndex;
+  if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+    nextIndex = (currentIndex + 1) % tabKeys.length;
+  } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+    nextIndex = (currentIndex - 1 + tabKeys.length) % tabKeys.length;
+  } else if (event.key === 'Home') {
+    nextIndex = 0;
+  } else if (event.key === 'End') {
+    nextIndex = tabKeys.length - 1;
+  } else {
+    return;
+  }
+
+  event.preventDefault();
+  const nextTab = tabKeys[nextIndex];
+  await selectStudentGroupTab(group, nextTab);
+  await nextTick();
+  tablist?.querySelector(`[data-testid="student-tab-${nextTab}"]`)?.focus();
 };
 
 const loadStudentGroupBilling = async (group) => {
@@ -4827,6 +5286,9 @@ onMounted(() => {
 });
 onUnmounted(() => {
   document.removeEventListener('click', closeActionMenu);
+  clearTimeout(_quickAddCheckTimer);
+  quickAddCheckController?.abort();
+  manualSessionCheckController?.abort();
   // #143：聚焦單一學生時會 lockScroll（body position:fixed/overflow:hidden）。
   // 若使用者在「聚焦中」直接切換頁面，元件卸載不會觸發 focusedStudentKey watcher，
   // scroll lock 會洩漏並殘留在 body，導致之後的頁面看起來像蓋了一層灰白遮罩、無法點選/捲動。
@@ -4854,6 +5316,44 @@ onUnmounted(() => {
   box-shadow: var(--ds-shadow-1);
   color: var(--ds-ink);
 }
+.course-context-disclosure,
+.course-stats-disclosure {
+  border: 1px solid var(--ds-hairline);
+  border-radius: var(--ds-radius-lg);
+  background: var(--ds-canvas-soft);
+}
+.course-context-disclosure summary,
+.course-stats-disclosure summary {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 12px;
+  color: var(--ds-ink-secondary);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  list-style: none;
+}
+.course-context-disclosure summary::-webkit-details-marker,
+.course-stats-disclosure summary::-webkit-details-marker { display: none; }
+.course-context-disclosure summary > .material-symbols-outlined,
+.course-stats-disclosure summary > .material-symbols-outlined { color: var(--ds-ink-mute); font-size: 18px; }
+.course-context-disclosure summary > .material-symbols-outlined:last-child,
+.course-stats-disclosure summary > .material-symbols-outlined:last-child { transition: transform 160ms ease; }
+.course-context-disclosure[open] summary > .material-symbols-outlined:last-child,
+.course-stats-disclosure[open] summary > .material-symbols-outlined:last-child { transform: rotate(180deg); }
+.course-context-disclosure summary:focus-visible,
+.course-stats-disclosure summary:focus-visible { outline: 3px solid var(--ds-info-wash); outline-offset: 2px; border-radius: 5px; }
+.course-context-disclosure__title { color: var(--ds-ink); }
+.course-context-disclosure__hint,
+.course-stats-disclosure__hint { overflow: hidden; color: var(--ds-ink-mute); font-size: 11px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.course-context-disclosure__body { display: grid; gap: 14px; padding: 0 12px 12px; }
+.course-context-disclosure .course-lens-guidance { margin-top: 0; }
+.course-context-disclosure .course-lens-summary { margin-top: 0; }
+.course-stats-disclosure { margin-top: 12px; }
+.course-stats-disclosure .stats-strip { margin: 0 12px 12px; }
 
 .header-actions {
   position: relative;
@@ -5127,6 +5627,59 @@ onUnmounted(() => {
   flex-shrink: 0;
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+.course-tools-menu {
+  position: relative;
+}
+
+.course-tools-menu__summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  list-style: none;
+}
+
+.course-tools-menu__summary::-webkit-details-marker {
+  display: none;
+}
+
+.course-tools-menu__summary::after {
+  content: '▾';
+  font-size: 11px;
+  transition: transform 0.15s ease;
+}
+
+.course-tools-menu[open] .course-tools-menu__summary::after {
+  transform: rotate(180deg);
+}
+
+.course-tools-menu__panel {
+  position: absolute;
+  z-index: 8;
+  top: calc(100% + 6px);
+  right: 0;
+  display: grid;
+  gap: 4px;
+  min-width: 180px;
+  padding: 6px;
+  border: 1px solid var(--ds-hairline);
+  border-radius: 12px;
+  background: var(--ds-canvas);
+  box-shadow: var(--ds-shadow-md, 0 8px 24px rgba(15, 23, 42, 0.12));
+}
+
+.course-tools-menu__panel .btn-soft {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  border: 0;
+  border-radius: 8px;
+  text-align: left;
+}
+
+.course-tools-menu__panel .btn-soft:hover {
+  background: var(--ds-canvas-soft);
 }
 
 .btn-soft {
@@ -5482,15 +6035,29 @@ onUnmounted(() => {
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 10px;
-  cursor: pointer;
 }
 
 .student-group-header:hover {
   background: var(--ds-canvas-soft);
 }
-.student-group-header:focus-visible {
+.student-group-toggle {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.student-group-toggle:focus-visible {
   outline: 3px solid color-mix(in srgb, var(--ds-primary) 28%, transparent);
-  outline-offset: -3px;
+  outline-offset: 4px;
 }
 
 .student-group-left {
@@ -5615,6 +6182,11 @@ onUnmounted(() => {
   font-weight: 700;
   padding: 11px 12px;
   cursor: pointer;
+}
+.student-group-view-tab:focus-visible,
+.history-section__toggle:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--ds-primary) 28%, transparent);
+  outline-offset: -3px;
 }
 .student-group-view-tab.active {
   color: var(--ds-ink);
@@ -6272,6 +6844,33 @@ button.danger:disabled {
   max-height: 90vh;
   overflow-y: auto;
 }
+.package-conversion-modal { max-width: 520px; }
+.package-conversion-summary { display: grid; gap: 4px; margin: 0 0 14px; padding: 12px; border-radius: 10px; background: var(--ds-info-wash); color: var(--ds-ink); font-size: 13px; }
+.package-conversion-summary span { color: var(--ds-ink-mute); }
+
+.package-conversion-preview-modal {
+  width: 100%;
+  max-width: 560px;
+}
+.package-conversion-preview__lead,
+.package-conversion-preview__next-step {
+  color: var(--text-light);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.package-conversion-preview__source {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin: 0 0 12px;
+  color: var(--text);
+  font-size: 14px;
+}
+.package-conversion-preview__reasons {
+  margin: 8px 0 0;
+  padding-left: 20px;
+}
+.package-conversion-preview__reasons li + li { margin-top: 4px; }
 
 .editability-action-panel {
   display: grid;
@@ -6567,6 +7166,20 @@ button.danger:disabled {
 
   .header-buttons {
     justify-content: flex-start;
+  }
+
+  .course-tools-menu {
+    width: 100%;
+  }
+
+  .course-tools-menu__summary {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .course-tools-menu__panel {
+    position: static;
+    margin-top: 6px;
   }
 
   .course-header-card {

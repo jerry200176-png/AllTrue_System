@@ -1,28 +1,16 @@
 <template>
   <div class="payroll-page">
-    <!-- Page Header -->
-    <div class="page-header">
-      <div class="page-header-left">
-        <div class="page-icon">
-          <span class="material-symbols-outlined">payments</span>
-        </div>
-        <div class="title-group">
-          <h2>兼職老師薪資</h2>
-          <p class="title-sub">依有效到班點名計薪；評量表不影響薪資計算</p>
-        </div>
-      </div>
-      <div class="header-btns">
-        <button class="btn-outline" :disabled="loading" @click="openRulesModal">
-          <span class="material-symbols-outlined">tune</span>
-          薪資計算設定
-        </button>
-        <button class="btn-outline" :disabled="exporting || loading" @click="doExport">
-          <span v-if="exporting" class="material-symbols-outlined spin">progress_activity</span>
-          <span v-else class="material-symbols-outlined">download</span>
-          {{ exporting ? '匯出中...' : '匯出 CSV' }}
-        </button>
-      </div>
-    </div>
+    <AtPageHeader
+      title="兼職老師薪資"
+      description="依有效到班點名計薪；評量表不影響薪資計算。"
+      icon="payments"
+      data-guide="payroll-header"
+    >
+      <template #actions>
+        <AtButton shape="rect" variant="ghost" icon="tune" :disabled="loading" @click="openRulesModal">薪資計算設定</AtButton>
+        <AtButton shape="rect" variant="secondary" icon="download" :loading="exporting" :disabled="loading" @click="doExport">匯出 CSV</AtButton>
+      </template>
+    </AtPageHeader>
 
     <div class="payroll-card">
       <!-- Filters -->
@@ -506,6 +494,8 @@
 
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue';
+import AtButton from '../components/design-system/AtButton.vue';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import {
   fetchPayrollSummary,
   fetchTeacherSessions,

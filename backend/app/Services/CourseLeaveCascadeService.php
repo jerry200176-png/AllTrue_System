@@ -26,6 +26,7 @@ class CourseLeaveCascadeService
      * the literal.
      */
     public const VOID_REASON_LEAVE = '一般請假';
+    public const VOID_REASON_CANCELLED = '課堂已取消';
 
     public const POLICY_KEEP_FUTURE_DATES_APPEND_TAIL = 'KEEP_FUTURE_DATES_APPEND_TAIL';
     public const POLICY_SHIFT_FUTURE_DATES_APPEND_TAIL = 'SHIFT_FUTURE_DATES_APPEND_TAIL';
@@ -45,19 +46,35 @@ class CourseLeaveCascadeService
      */
     public static function voidLiveArtifactsForLeave(int $classSessionId): void
     {
+        self::voidLiveArtifactsForNonAttendance($classSessionId, self::VOID_REASON_LEAVE);
+    }
+
+    /**
+     * Void live attendance/evaluation artifacts for a non-attended session.
+     *
+     * A cancelled session cannot be a source of a new evaluation or attendance
+     * evidence. Keeping this in the same service as leave cascading prevents
+     * cancellation paths from leaving a pending LearningRecord behind.
+     */
+    public static function voidLiveArtifactsForNonAttendance(
+        int $classSessionId,
+        string $reason,
+        ?int $actorUserId = null
+    ): void {
         LearningRecord::where('ClassSessionID', $classSessionId)
             ->active()
             ->update([
                 'VoidedAt'       => now(),
-                'VoidedByUserID' => null,
-                'VoidReason'     => self::VOID_REASON_LEAVE,
+                'VoidedByUserID' => $actorUserId ?: null,
+                'VoidReason'     => $reason,
+                'updated_at'     => now(),
             ]);
         StudentSignIn::where('ClassSessionID', $classSessionId)
             ->active()
             ->update([
                 'VoidedAt'       => now(),
-                'VoidedByUserID' => null,
-                'VoidReason'     => self::VOID_REASON_LEAVE,
+                'VoidedByUserID' => $actorUserId ?: null,
+                'VoidReason'     => $reason,
             ]);
     }
 
@@ -75,15 +92,50 @@ class CourseLeaveCascadeService
      */
     public static function sweepStaleLiveArtifactsForLeave(): int
     {
-        $sessionIds = DB::table('ClassSession as cs')
-            ->join('LearningRecord as lr', 'lr.ClassSessionID', '=', 'cs.id')
-            ->whereIn(DB::raw('LOWER(cs.Status)'), ['leave', 'leave_adjusted'])
-            ->whereNull('lr.VoidedAt')
-            ->distinct()
-            ->pluck('cs.id');
+        return self::sweepStaleLiveArtifactsForStatuses(['leave', 'leave_adjusted']);
+    }
 
-        foreach ($sessionIds as $sessionId) {
-            self::voidLiveArtifactsForLeave((int) $sessionId);
+    /**
+     * Self-heal live artifacts on any ClassSession that cannot have attendance
+     * evidence. The scan includes cancelled sessions because cancellation can
+     * happen after a teacher has already opened an evaluation form.
+     *
+     * @return int number of ClassSession rows that had at least one live artifact voided
+     */
+    public static function sweepStaleLiveArtifactsForNonAttendance(): int
+    {
+        return self::sweepStaleLiveArtifactsForStatuses(self::NON_BILLABLE_STATUSES);
+    }
+
+    /**
+     * @param array<int,string> $statuses
+     */
+    private static function sweepStaleLiveArtifactsForStatuses(array $statuses): int
+    {
+        $sessionIds = DB::table('ClassSession as cs')
+            ->whereIn(DB::raw('LOWER(cs.Status)'), $statuses)
+            ->where(function ($query): void {
+                $query->whereExists(function ($sub): void {
+                    $sub->selectRaw('1')
+                        ->from('LearningRecord as lr')
+                        ->whereColumn('lr.ClassSessionID', 'cs.id')
+                        ->whereNull('lr.VoidedAt');
+                })->orWhereExists(function ($sub): void {
+                    $sub->selectRaw('1')
+                        ->from('StudentSingIn as si')
+                        ->whereColumn('si.ClassSessionID', 'cs.id')
+                        ->whereNull('si.VoidedAt');
+                });
+            })
+            ->distinct()
+            ->get(['cs.id', 'cs.Status']);
+
+        foreach ($sessionIds as $session) {
+            $status = strtolower((string) $session->Status);
+            $reason = $status === 'cancelled'
+                ? self::VOID_REASON_CANCELLED
+                : self::VOID_REASON_LEAVE;
+            self::voidLiveArtifactsForNonAttendance((int) $session->id, $reason);
         }
 
         return $sessionIds->count();
@@ -685,7 +737,7 @@ class CourseLeaveCascadeService
      *
      * Must be called inside DB::transaction.
      *
-     * @return array{0:array,1:?string,2:string}
+     * @return array{0:array,1:?string,2:string,3:?string}
      */
     public static function undoLeaveCascade(int $courseId, string $leaveDate): array
     {
@@ -714,17 +766,9 @@ class CourseLeaveCascadeService
         }
 
         if ((string) ($course->scheduling_policy ?? 'auto_recurrence') === 'manual_occurrence') {
-            $leaveSession->Status = 'scheduled';
-            $leaveSession->Note = self::appendNote($leaveSession->Note, self::NOTE_REVERT_TO_SCHEDULED);
-            $leaveSession->save();
-            LearningRecord::where('ClassSessionID', (int) $leaveSession->id)
-                ->where('VoidReason', self::VOID_REASON_LEAVE)
-                ->update(['VoidedAt' => null, 'VoidedByUserID' => null, 'VoidReason' => null]);
-            StudentSignIn::where('ClassSessionID', (int) $leaveSession->id)
-                ->where('VoidReason', self::VOID_REASON_LEAVE)
-                ->update(['VoidedAt' => null, 'VoidedByUserID' => null, 'VoidReason' => null]);
+            self::restoreLeaveSession($leaveSession);
             $end = ClassSession::where('StudentClassID', $courseId)->max('SessionDate');
-            return [self::fetchCourseSessionRows($courseId), $end ? Carbon::parse($end)->toDateString() : null, $normalizedLeaveDate];
+            return [self::fetchCourseSessionRows($courseId), $end ? Carbon::parse($end)->toDateString() : null, $normalizedLeaveDate, null];
         }
 
         $blockedStatusSet = ['attended', 'completed', 'late', 'present', 'absent', 'leave_adjusted'];
@@ -740,6 +784,14 @@ class CourseLeaveCascadeService
             throw new \InvalidArgumentException('後續堂次已出現已上課/補請假等狀態，無法自動撤銷');
         }
 
+        // A leave does not always create a tail for paused or date-based
+        // courses without a purchased-session commitment.
+        if (self::leaveCascadeDoesNotRequireTail($course)) {
+            self::restoreLeaveSession($leaveSession);
+            $end = $course->EndDate ? Carbon::parse($course->EndDate)->toDateString() : null;
+            return [self::fetchCourseSessionRows($courseId), $end, $normalizedLeaveDate, null];
+        }
+
         $appendedSession = $sessions
             ->filter(function ($session) use ($normalizedLeaveDate) {
                 $sessionDate = Carbon::parse($session->SessionDate)->toDateString();
@@ -752,7 +804,15 @@ class CourseLeaveCascadeService
             ->sortByDesc('SessionDate')
             ->first();
         if (!$appendedSession) {
-            throw new \InvalidArgumentException('找不到可回復的順延尾堂');
+            // A legacy/manual repair may leave the leave row without its
+            // auto-tail. Undoing the leave is still safe: restore only the
+            // selected occurrence and its own leave artifacts, never shift or
+            // delete another occurrence. The caller receives the warning so
+            // the course can be reconciled separately instead of trapping the
+            // director in the old "attended -> scheduled" workaround.
+            self::restoreLeaveSession($leaveSession);
+            $end = $course->EndDate ? Carbon::parse($course->EndDate)->toDateString() : null;
+            return [self::fetchCourseSessionRows($courseId), $end, $normalizedLeaveDate, 'tail_missing'];
         }
 
         // KEEP undo: do not reverse-shift future dates. Legacy SHIFT rows keep
@@ -805,8 +865,36 @@ class CourseLeaveCascadeService
             }
         }
 
-        $leaveSession->Status = 'scheduled';
-        $leaveSession->Note = self::appendNote($leaveSession->Note, self::NOTE_REVERT_TO_SCHEDULED);
+        self::restoreLeaveSession($leaveSession);
+
+        $appendedSession->delete();
+
+        $extendedEndDate = ClassSession::where('StudentClassID', $courseId)
+            ->max('SessionDate');
+        if ($extendedEndDate) {
+            DB::table('StudentClass')
+                ->where('ID', $courseId)
+                ->update(['EndDate' => substr((string) $extendedEndDate, 0, 10)]);
+        }
+
+        $rows = self::fetchCourseSessionRows($courseId);
+        return [$rows, $extendedEndDate ? substr((string) $extendedEndDate, 0, 10) : null, $normalizedLeaveDate, null];
+    }
+
+    // ── helpers ──────────────────────────────────────────────────────
+
+    /**
+     * Restore the target session and only the leave-cascade artifacts owned by
+     * this service. Keeping this operation centralized prevents one undo path
+     * from resurrecting unrelated manually-voided attendance/evaluation rows.
+     */
+    private static function restoreLeaveSession(ClassSession $leaveSession): void
+    {
+        $leaveSession->setAttribute('Status', 'scheduled');
+        $leaveSession->setAttribute(
+            'Note',
+            self::appendNote((string) ($leaveSession->getAttribute('Note') ?? ''), self::NOTE_REVERT_TO_SCHEDULED)
+        );
         $leaveSession->save();
 
         LearningRecord::where('ClassSessionID', (int) $leaveSession->id)
@@ -823,22 +911,29 @@ class CourseLeaveCascadeService
                 'VoidedByUserID' => null,
                 'VoidReason' => null,
             ]);
-
-        $appendedSession->delete();
-
-        $extendedEndDate = ClassSession::where('StudentClassID', $courseId)
-            ->max('SessionDate');
-        if ($extendedEndDate) {
-            DB::table('StudentClass')
-                ->where('ID', $courseId)
-                ->update(['EndDate' => substr((string) $extendedEndDate, 0, 10)]);
-        }
-
-        $rows = self::fetchCourseSessionRows($courseId);
-        return [$rows, $extendedEndDate ? substr((string) $extendedEndDate, 0, 10) : null, $normalizedLeaveDate];
     }
 
-    // ── helpers ──────────────────────────────────────────────────────
+    /**
+     * Return true when the append writer would intentionally create no tail
+     * for the current course/session state. This is separate from the legacy
+     * missing-tail recovery below: the latter also restores only the selected
+     * occurrence, but reports an explicit reconciliation warning.
+     */
+    private static function leaveCascadeDoesNotRequireTail(StudentClass $course): bool
+    {
+        if ((string) ($course->scheduling_policy ?? 'auto_recurrence') === 'manual_occurrence') {
+            return true;
+        }
+        if ((int) ($course->Stop ?? 0) === 1) {
+            return true;
+        }
+
+        $scheduleMode = strtolower((string) ($course->ScheduleMode ?? 'count'));
+        if ($scheduleMode === 'date' && (int) ($course->SessionCount ?? 0) <= 0) {
+            return true;
+        }
+        return false;
+    }
 
     /** @return array<int> */
     public static function resolveCourseWeekdays(StudentClass $course, int $fallbackIsoDow): array

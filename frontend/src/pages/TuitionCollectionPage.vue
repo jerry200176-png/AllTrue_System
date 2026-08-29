@@ -1,25 +1,42 @@
 <template>
   <div class="tc-page">
-    <div class="tc-header">
-      <div>
-        <h2>帳務中心</h2>
-        <p class="tc-subtitle">未繳待收、待對帳、續課提醒，以及已結清課程彙總與收據流水</p>
-      </div>
-      <button class="tc-refresh-btn" @click="refreshActiveTab()" :disabled="activeTabLoading">
-        <span class="material-symbols-outlined" style="font-size:17px">refresh</span>
-        重新整理
-      </button>
-    </div>
+    <AtPageHeader
+      title="帳務中心"
+      description="處理未繳待收、待對帳、續課提醒與已結清課程。"
+      icon="account_balance"
+      data-guide="tuition-header"
+    >
+      <template #meta><span>先確認對象，再完成回報或入帳</span></template>
+      <template #actions>
+        <AtButton
+          variant="ghost"
+          shape="rect"
+          icon="refresh"
+          :loading="activeTabLoading"
+          @click="refreshActiveTab()"
+        >
+          重新整理
+        </AtButton>
+      </template>
+    </AtPageHeader>
 
-    <OperationsQuickStart
-      compact
-      eyebrow="帳務處理流程"
-      heading="照順序完成，不用記入口"
-      description="先找到對象，再送出回報，最後由主任確認入帳。"
-      :current-id="billingFlowCurrentId"
-      :steps="billingFlowSteps"
-      @select="selectBillingFlowStep"
-    />
+    <details class="tc-process-disclosure">
+      <summary>
+        <span class="material-symbols-outlined" aria-hidden="true">route</span>
+        <span class="tc-process-disclosure__title">帳務處理流程</span>
+        <span class="tc-process-disclosure__hint">先找到對象，再回報，最後確認入帳</span>
+        <span class="material-symbols-outlined" aria-hidden="true">expand_more</span>
+      </summary>
+      <OperationsQuickStart
+        compact
+        eyebrow="帳務處理流程"
+        heading="照順序完成，不用記入口"
+        description="先找到對象，再送出回報，最後由主任確認入帳。"
+        :current-id="billingFlowCurrentId"
+        :steps="billingFlowSteps"
+        @select="selectBillingFlowStep"
+      />
+    </details>
 
     <div class="acct-tabs" role="tablist" aria-label="帳務中心分頁">
       <button
@@ -29,6 +46,8 @@
         class="acct-tab"
         :class="{ active: activeAccountingTab === tab.key }"
         role="tab"
+        :id="`tuition-accounting-tab-${tab.key}`"
+        :aria-controls="`tuition-accounting-panel-${tab.key}`"
         :aria-selected="activeAccountingTab === tab.key"
         @click="activeAccountingTab = tab.key"
       >
@@ -43,7 +62,13 @@
       <button type="button" class="tc-focus-context__clear" @click="clearTuitionFocus">清除定位</button>
     </div>
 
-    <section v-if="activeAccountingTab === 'receivables'">
+    <section
+      v-if="activeAccountingTab === 'receivables'"
+      id="tuition-accounting-panel-receivables"
+      role="tabpanel"
+      aria-labelledby="tuition-accounting-tab-receivables"
+      tabindex="0"
+    >
     <!-- Skeleton loading -->
     <div v-if="loading && !rows.length" class="tc-skeleton-area">
       <div class="tc-summary">
@@ -74,35 +99,42 @@
     </div>
 
     <template v-else>
-      <!-- Compact metric strip (Carbon/Fluent ops density) -->
-      <div class="tc-summary tc-summary--strip" v-if="rows.length" aria-label="催繳摘要">
-        <div class="tc-card tc-card--total">
-          <span class="tc-card-num">{{ rows.length }}</span>
-          <span class="tc-card-label">筆提醒</span>
-        </div>
-        <div class="tc-card tc-card--danger">
-          <span class="tc-card-num">{{ statusCounts.unpaid + statusCounts.partial }}</span>
-          <span class="tc-card-label">未繳費</span>
-        </div>
-        <div class="tc-card tc-card--overdue">
-          <span class="tc-card-num">{{ overdueRows.length }}</span>
-          <span class="tc-card-label">逾期 {{ formatCurrency(overdueTotal) }}</span>
-        </div>
-        <div class="tc-card tc-card--warn">
-          <span class="tc-card-num">{{ statusCounts.pending_report }}</span>
-          <span class="tc-card-label">待對帳</span>
-        </div>
-        <div class="tc-card tc-card--outstanding">
-          <span class="tc-card-num">{{ formatCurrency(totalOutstanding) }}</span>
-          <span class="tc-card-label">
-            未結清
-            <span v-if="collectionRate !== null" class="tc-rate" :style="{ color: collectionRateColor(collectionRate) }">
-              收款率 {{ collectionRate }}%
+      <!-- The row-level queue is the primary surface; totals remain available on demand. -->
+      <details class="tc-summary-disclosure" v-if="rows.length">
+        <summary>
+          <span>收款摘要</span>
+          <span class="tc-summary-disclosure__hint">{{ rows.length }} 筆提醒・未結清 {{ formatCurrency(totalOutstanding) }}</span>
+          <span class="material-symbols-outlined" aria-hidden="true">expand_more</span>
+        </summary>
+        <div class="tc-summary tc-summary--strip" aria-label="催繳摘要">
+          <div class="tc-card tc-card--total">
+            <span class="tc-card-num">{{ rows.length }}</span>
+            <span class="tc-card-label">筆提醒</span>
+          </div>
+          <div class="tc-card tc-card--danger">
+            <span class="tc-card-num">{{ statusCounts.unpaid + statusCounts.partial }}</span>
+            <span class="tc-card-label">未繳費</span>
+          </div>
+          <div class="tc-card tc-card--overdue">
+            <span class="tc-card-num">{{ overdueRows.length }}</span>
+            <span class="tc-card-label">逾期 {{ formatCurrency(overdueTotal) }}</span>
+          </div>
+          <div class="tc-card tc-card--warn">
+            <span class="tc-card-num">{{ statusCounts.pending_report }}</span>
+            <span class="tc-card-label">待對帳</span>
+          </div>
+          <div class="tc-card tc-card--outstanding">
+            <span class="tc-card-num">{{ formatCurrency(totalOutstanding) }}</span>
+            <span class="tc-card-label">
+              未結清
+              <span v-if="collectionRate !== null" class="tc-rate" :style="{ color: collectionRateColor(collectionRate) }">
+                收款率 {{ collectionRate }}%
+              </span>
+              <span v-else class="tc-rate">收款率 —</span>
             </span>
-            <span v-else class="tc-rate">收款率 —</span>
-          </span>
+          </div>
         </div>
-      </div>
+      </details>
 
       <div v-if="rows.length" class="tc-action-queue" role="region" aria-label="主任待處理佇列">
         <div>
@@ -400,17 +432,17 @@
                         <span class="material-symbols-outlined">undo</span>
                         撤銷
                       </button>
-                      <template v-if="r.payment_status === 'renew_needed'">
+                      <template v-if="r.payment_status === 'renew_needed' || r.payment_status === 'monthly_due_soon'">
                         <span
-                          v-if="r.has_newer_course"
+                          v-if="r.payment_status === 'renew_needed' && r.has_newer_course"
                           class="tc-newer-badge"
                           :title="newerCourseBadgeTitle(r)"
                         >{{ newerCourseBadgeLabel(r) }}</span>
-                        <span v-else class="tc-renew-hint">需續課</span>
-                        <button class="tc-btn tc-btn--settle" @click="openSettleDialog(r)" :disabled="settleLoading === r.id" title="確認舊課程已被新課程取代，點此關閉">
+                        <span v-else class="tc-renew-hint">{{ r.payment_status === 'monthly_due_soon' ? '月結本期' : '需續課' }}</span>
+                        <button class="tc-btn tc-btn--settle" @click="openSettleDialog(r)" :disabled="settleLoading === r.id" title="結案且不續報">
                           <span v-if="settleLoading === r.id" class="material-symbols-outlined spin" style="font-size:15px">progress_activity</span>
                           <span v-else class="material-symbols-outlined">task_alt</span>
-                          結案
+                          結案（不續報）
                         </button>
                       </template>
                     </template>
@@ -425,7 +457,14 @@
     </template>
     </section>
 
-    <section v-else class="acct-panel">
+    <section
+      v-else-if="activeAccountingTab === 'payments'"
+      id="tuition-accounting-panel-payments"
+      class="acct-panel"
+      role="tabpanel"
+      aria-labelledby="tuition-accounting-tab-payments"
+      tabindex="0"
+    >
       <div class="acct-filter-card">
         <div class="acct-filter-grid">
           <label>
@@ -626,7 +665,14 @@
       </template>
     </section>
 
-    <section v-if="activeAccountingTab === 'settled'" class="acct-section">
+    <section
+      v-if="activeAccountingTab === 'settled'"
+      id="tuition-accounting-panel-settled"
+      class="acct-section"
+      role="tabpanel"
+      aria-labelledby="tuition-accounting-tab-settled"
+      tabindex="0"
+    >
       <div class="acct-filter-bar">
         <div class="acct-filters">
           <label>學生<input v-model="accountingFilters.student" type="text" placeholder="搜尋學生姓名" /></label>
@@ -821,7 +867,7 @@
             <span class="material-symbols-outlined" style="font-size:22px;color:var(--primary)">task_alt</span>
             確認結案此課程
           </h3>
-          <p class="tc-dialog-desc">結案後此課程將從催繳名單移除，不再追蹤。</p>
+          <p class="tc-dialog-desc">結案後此課程將從催繳名單移除，不再追蹤；已繳費與已上課紀錄會保留。</p>
           <div class="tc-dialog-info" v-if="settleTarget">
             <div style="margin-bottom:4px"><strong>{{ settleTarget.student_name }}</strong> — {{ settleTarget.subject }}</div>
             <div style="font-size:12px;color:var(--text-light)">{{ settleSummary.primary }}</div>
@@ -829,7 +875,7 @@
           </div>
           <div v-if="settleTargetStillOwesSessions" class="tc-settle-warn-info">
             <span class="material-symbols-outlined" style="font-size:16px;color:var(--ds-warning)">info</span>
-            <span>還有 {{ Number(settleTarget.remaining_sessions) }} 堂未上，請先到課程管理把請假順延的堂次排好，不能直接結案。</span>
+            <span>還有 {{ Number(settleTarget.remaining_sessions) }} 堂未上；確認結案會取消未來排課並放棄這些剩餘額度。若仍要上課，請先取消並改從課程管理排課。</span>
           </div>
           <div v-if="settleTarget?.has_newer_course" class="tc-settle-newer-info">
             <span class="material-symbols-outlined" style="font-size:16px;color:var(--ds-success)">check_circle</span>
@@ -841,7 +887,7 @@
           </div>
           <div class="tc-dialog-btns">
             <button class="tc-btn tc-btn--ghost" @click="settleDialogOpen = false" :disabled="settleLoading">取消</button>
-            <button class="tc-btn tc-btn--primary" @click="confirmSettle" :disabled="settleLoading || settleTargetStillOwesSessions">
+            <button class="tc-btn tc-btn--primary" @click="confirmSettle" :disabled="settleLoading">
               <span v-if="settleLoading" class="material-symbols-outlined spin" style="font-size:15px">progress_activity</span>
               確認結案
             </button>
@@ -933,6 +979,8 @@ import PaymentEntryModal from '../components/PaymentEntryModal.vue';
 import ReceiptModal from '../components/ReceiptModal.vue';
 import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
 import OperationsQuickStart from '../components/OperationsQuickStart.vue';
+import AtButton from '../components/design-system/AtButton.vue';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import { adoptionErrorType, trackWorkflowEvent } from '../lib/adoptionTelemetry.js';
 import {
   formatTuitionSettleSummary,
@@ -2074,17 +2122,18 @@ function overlapWarningLabel(row) {
 async function confirmSettle() {
   if (!settleTarget.value) return;
   const row = settleTarget.value;
-  if (Number(row.remaining_sessions ?? 0) > 0) {
-    showToast(`還有 ${Number(row.remaining_sessions)} 堂未上，請先排課後再結案`, 'warning');
-    return;
-  }
+  const remaining = Math.max(0, Number(row.remaining_sessions ?? 0));
   settleLoading.value = row.id;
   try {
     const token = getToken();
     const resp = await fetch(`/api/v1/student-classes/${row.id}/pause`, {
       method: 'POST',
       headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'pause', reason: 'settled' }),
+      body: JSON.stringify({
+        action: 'pause',
+        reason: 'settled',
+        ...(remaining > 0 ? { forfeit_remaining: true } : {}),
+      }),
     });
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
@@ -2229,47 +2278,44 @@ loadAlerts();
   padding: 24px;
   box-shadow: 0 1px 4px rgba(0,0,0,0.06);
 }
-
-/* ─── Header ─── */
-.tc-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 20px;
+.tc-process-disclosure,
+.tc-summary-disclosure {
+  margin-bottom: 16px;
+  border: 1px solid var(--ds-hairline);
+  border-radius: 10px;
+  background: var(--ds-canvas-soft);
 }
-.tc-header h2 {
-  margin: 0;
-  font-size: 20px;
-  letter-spacing: -0.01em;
-}
-.tc-subtitle {
-  color: var(--text-light);
-  font-size: 13px;
-  margin-top: 2px;
-}
-.tc-refresh-btn {
-  display: inline-flex;
+.tc-process-disclosure summary,
+.tc-summary-disclosure summary {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 5px;
-  padding: 7px 14px;
-  border: 1px solid var(--border);
-  background: var(--card-bg);
-  border-radius: 8px;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 13px;
+  color: var(--ds-ink-secondary);
+  font-size: 12px;
+  font-weight: 800;
   cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text);
-  transition: all 0.15s;
-  font-family: inherit;
+  list-style: none;
 }
-.tc-refresh-btn:hover:not(:disabled) {
-  background: var(--bg);
-  border-color: var(--primary-light);
-  color: var(--primary);
-}
-.tc-refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.tc-process-disclosure summary::-webkit-details-marker,
+.tc-summary-disclosure summary::-webkit-details-marker { display: none; }
+.tc-process-disclosure summary > .material-symbols-outlined,
+.tc-summary-disclosure summary > .material-symbols-outlined { color: var(--ds-ink-mute); font-size: 18px; }
+.tc-process-disclosure summary > .material-symbols-outlined:last-child,
+.tc-summary-disclosure summary > .material-symbols-outlined:last-child { transition: transform 160ms ease; }
+.tc-process-disclosure[open] summary > .material-symbols-outlined:last-child,
+.tc-summary-disclosure[open] summary > .material-symbols-outlined:last-child { transform: rotate(180deg); }
+.tc-process-disclosure summary:focus-visible,
+.tc-summary-disclosure summary:focus-visible { outline: 3px solid var(--ds-info-wash); outline-offset: 2px; border-radius: 5px; }
+.tc-process-disclosure__title,
+.tc-summary-disclosure summary > span:first-child { color: var(--ds-ink); }
+.tc-process-disclosure__hint,
+.tc-summary-disclosure__hint { overflow: hidden; color: var(--ds-ink-mute); font-size: 11px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.tc-process-disclosure > .operations-quick-start { margin: 0 12px 12px; }
+.tc-summary-disclosure { margin-top: 4px; margin-bottom: 10px; }
+.tc-summary-disclosure .tc-summary { margin: 0; padding: 0 10px 10px; }
 
 /* ─── Accounting center tabs ─── */
 .acct-tabs {

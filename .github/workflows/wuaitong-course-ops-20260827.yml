@@ -1,0 +1,129 @@
+name: 吳艾潼課程結算與補登（guarded one-off）
+
+# One-off production operation requested on 2026-08-27.
+# Allowlist is intentionally exact: Student 178 / campus 16 / teacher 17;
+# settle StudentClass 1040 and 1390; add one 2026-08-27 17:00-19:00
+# occurrence to StudentClass 2688.  This workflow must never be widened into
+# a generic student operation.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: dry-run（唯讀）或 execute（備份後執行）
+        required: true
+        default: dry-run
+        type: choice
+        options: [dry-run, execute]
+      approved_dry_run_id:
+        description: execute 必須填入已審閱的 dry-run GitHub run ID
+        required: false
+        type: string
+      confirm_phrase:
+        description: execute 請輸入 I_APPROVE_WUAITONG_COURSE_OPS_20260827
+        required: false
+        type: string
+
+concurrency:
+  group: wuaitong-course-ops-20260827
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  operate:
+    name: ${{ inputs.mode }} 吳艾潼課程操作
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate immutable scope and execute gate
+        env:
+          MODE: ${{ inputs.mode }}
+          DRY_RUN_ID: ${{ inputs.approved_dry_run_id }}
+          CONFIRM: ${{ inputs.confirm_phrase }}
+        run: |
+          set -euo pipefail
+          test "$MODE" = dry-run || test "$MODE" = execute
+          if [ "$MODE" = execute ]; then
+            [[ "$DRY_RUN_ID" =~ ^[0-9]+$ ]] || { echo '::error::execute requires approved_dry_run_id'; exit 1; }
+            test "$CONFIRM" = I_APPROVE_WUAITONG_COURSE_OPS_20260827 || {
+              echo '::error::execute requires the exact confirmation phrase'; exit 1;
+            }
+          fi
+          echo "scope=student:178 campus:16 teacher:17 settle:1040,1390 add:2688 date:2026-08-27 slot:17:00-19:00" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$PI_SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Inspect, then execute only after all gates pass
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          MODE: ${{ inputs.mode }}
+          DRY_RUN_ID: ${{ inputs.approved_dry_run_id }}
+          RUN_ID: ${{ github.run_id }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          SCRIPT_B64=$(base64 -w0 scripts/ops-wuaitong-course-ops-20260827.php)
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes \
+            "$PI_SSH_USER@$PI_SSH_HOST" \
+            MODE="$MODE" DRY_RUN_ID="$DRY_RUN_ID" RUN_ID="$RUN_ID" ACTOR="$ACTOR" SCRIPT_B64="$SCRIPT_B64" \
+            'bash -s' <<'REMOTE' | tee out/operation.txt
+          set -euo pipefail
+          cd /home/admin/backend
+          echo "$SCRIPT_B64" | base64 -d > /tmp/ops-wuaitong-course-ops-20260827.php
+          chmod 600 /tmp/ops-wuaitong-course-ops-20260827.php
+
+          # Always repeat the read-only preflight immediately before any
+          # production write, even when the approval run is older.
+          MODE=dry-run DRY_RUN_ID="$DRY_RUN_ID" RUN_ID="$RUN_ID" ACTOR="$ACTOR" \
+            php /tmp/ops-wuaitong-course-ops-20260827.php
+          if [ "$MODE" = execute ]; then
+            TS=$(date -u '+%Y%m%dT%H%M%SZ')
+            BACKUP_DIR=/home/admin/backups/emergency
+            BACKUP="$BACKUP_DIR/db_pre_wuaitong_course_ops_\${RUN_ID}_\${TS}.sql.gz"
+            mkdir -p "$BACKUP_DIR"
+            DB_USER=$(grep '^DB_USERNAME=' .env | cut -d= -f2-)
+            DB_PASSWORD=$(grep '^DB_PASSWORD=' .env | cut -d= -f2-)
+            mysqldump -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASSWORD" \
+              --single-transaction AllTrue | gzip > "$BACKUP"
+            unset DB_PASSWORD
+            test -s "$BACKUP"
+            echo "BACKUP_OK path=$BACKUP size=$(wc -c < "$BACKUP")"
+            MODE=execute DRY_RUN_ID="$DRY_RUN_ID" RUN_ID="$RUN_ID" ACTOR="$ACTOR" \
+              php /tmp/ops-wuaitong-course-ops-20260827.php
+          fi
+          rm -f /tmp/ops-wuaitong-course-ops-20260827.php
+          REMOTE
+
+      - name: Upload operation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wuaitong-course-ops-${{ inputs.mode }}-${{ github.run_id }}
+          path: out/operation.txt
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo '### 吳艾潼課程操作證據'
+            echo '```text'
+            cat out/operation.txt 2>/dev/null || echo 'No operation output was captured.'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

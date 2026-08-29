@@ -11,8 +11,10 @@ use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
 use App\Services\ClassSessionMaterializationService;
+use App\Services\AttendanceEffectsService;
 use App\Services\CourseLeaveCascadeService;
 use App\Services\LeaveAttendanceService;
+use App\Services\LearningRecordBackfillService;
 use App\Services\LearningRecordResurrectionPolicy;
 use App\Services\SessionDeductionService;
 use App\Services\SubstituteScheduleService;
@@ -526,6 +528,14 @@ class AttendanceController extends Controller
                 $status = 'leave';
             }
 
+            // Attendance writes must not revive a leave/cancelled occurrence
+            // through this endpoint.  The only valid recovery path is the
+            // dedicated leave/session recovery flow, which also handles its
+            // tail and evaluation artifacts atomically.
+            if ($status !== 'leave') {
+                AttendanceEffectsService::assertCanRecordAttendance($classSession, $status);
+            }
+
             // ── leave + 既有堂次 → KEEP dates + append tail（同課程管理 POST schedules leave）
             if ($status === 'leave' && !empty($data['ClassSessionID'])) {
                 try {
@@ -785,6 +795,7 @@ class AttendanceController extends Controller
                 }
 
                 $status = $this->resolveSwipeStatus($matchedSession, $swipeAt);
+                AttendanceEffectsService::assertCanRecordAttendance($matchedSession, $status);
 
                 $signIn = StudentSignIn::create([
                     'StudentClassID' => $studentClass->ID,
@@ -822,6 +833,8 @@ class AttendanceController extends Controller
                 return response()->json(['message' => 'Attendance already recorded'], 409);
             }
             throw $e;
+        } catch (\InvalidArgumentException $e) { // @phpstan-ignore catch.neverThrown
+            return response()->json(['message' => $e->getMessage()], 422);
         }
     }
 
@@ -854,6 +867,9 @@ class AttendanceController extends Controller
         $classSession->Status = $sessionStatus;
         $classSession->save();
         LearningRecordResurrectionPolicy::restoreEligibleForSession($classSession);
+        if (AttendanceStatus::requiresLog($status)) {
+            app(LearningRecordBackfillService::class)->ensureRequiredForAttendanceSession($classSession);
+        }
     }
 
     private function activeAttendanceExistsForSessionSlot(ClassSession $classSession): bool

@@ -60,7 +60,7 @@
       <nav class="sidebar-nav" data-guide="app-sidebar-nav">
         <template v-if="sidebarNavGroups.length > 0">
           <details
-            v-for="group in sidebarNavGroups"
+            v-for="group in sidebarPrimaryGroups"
             :key="group.key"
             class="nav-group"
             :open="isSidebarGroupOpen(group)"
@@ -97,6 +97,25 @@
               </button>
             </div>
           </details>
+          <button
+            type="button"
+            class="sidebar-more-trigger"
+            id="sidebar-more-trigger"
+            :class="{ active: activeInSidebarMore || showSidebarMore }"
+            :aria-expanded="String(showSidebarMore)"
+            aria-controls="sidebar-more-panel"
+            :aria-label="sidebarCollapsed ? '開啟更多功能' : undefined"
+            @click="toggleSidebarMore"
+          >
+            <span class="material-symbols-outlined nav-icon" aria-hidden="true">apps</span>
+            <span class="nav-label" v-show="!sidebarCollapsed">更多功能</span>
+            <span
+              v-if="sidebarMoreBadgeCount > 0"
+              class="nav-badge"
+              v-show="!sidebarCollapsed"
+            >{{ sidebarMoreBadgeCount > 99 ? '99+' : sidebarMoreBadgeCount }}</span>
+            <span class="sidebar-more-trigger-chevron" v-show="!sidebarCollapsed" aria-hidden="true">›</span>
+          </button>
         </template>
         <template v-else>
           <div class="nav-no-role-hint">無選單（身分未設定）</div>
@@ -138,35 +157,67 @@
           </div>
         </div>
 
-        <!-- 電腦快捷鍵提示（主任限定，側欄展開時顯示） -->
-        <details v-if="!sidebarCollapsed" class="shortcut-hint">
-          <summary class="shortcut-hint__toggle">⌨️ 快捷鍵提示</summary>
-          <ul class="shortcut-hint__list">
-            <li><kbd>Win</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> <span>截圖</span></li>
-            <li><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> <span>更新網頁</span></li>
-            <li><kbd>Ctrl</kbd>+<kbd>C</kbd> <span>複製</span></li>
-            <li><kbd>Ctrl</kbd>+<kbd>V</kbd> <span>貼上</span></li>
-          </ul>
-        </details>
-
-        <!-- 主題切換 -->
-        <div class="theme-switcher" :title="sidebarCollapsed ? '切換顯示模式' : ''">
-          <div class="theme-switcher-label" v-show="!sidebarCollapsed">顯示模式</div>
-          <div class="theme-buttons" :class="{ 'theme-buttons-collapsed': sidebarCollapsed }">
-            <button
-              v-for="opt in themeOptions"
-              :key="opt.value"
-              :class="['theme-btn', { active: themePreference === opt.value }]"
-              :title="opt.label"
-              @click="setTheme(opt.value)"
-            >
-              <span>{{ opt.icon }}</span>
-              <span v-show="!sidebarCollapsed" class="theme-btn-label">{{ opt.label }}</span>
-            </button>
-          </div>
-        </div>
       </div>
     </aside>
+
+    <!-- Desktop low-frequency navigation: keep the daily workspace visible and reveal the rest on demand. -->
+    <div
+      v-if="showSidebarMore"
+      class="sidebar-more-overlay"
+      @click.self="closeSidebarMore()"
+    >
+      <section
+        id="sidebar-more-panel"
+        class="sidebar-more-panel"
+        :style="{ '--sidebar-more-left': sidebarCollapsed ? '64px' : 'var(--sidebar-w)' }"
+        role="dialog"
+        aria-modal="false"
+        aria-labelledby="sidebar-more-title"
+        tabindex="-1"
+        @keydown.esc.prevent="closeSidebarMore()"
+      >
+        <div class="sidebar-more-header">
+          <div>
+            <span class="sidebar-more-kicker">工作工具</span>
+            <h2 id="sidebar-more-title">更多功能</h2>
+          </div>
+          <button
+            type="button"
+            class="sidebar-more-close"
+            aria-label="關閉更多功能"
+            title="關閉"
+            @click="closeSidebarMore()"
+          >
+            <span class="material-symbols-outlined" aria-hidden="true">close</span>
+          </button>
+        </div>
+        <p class="sidebar-more-description">不常用的報表、教學工具與系統設定集中在這裡。</p>
+        <div class="sidebar-more-groups">
+          <div v-for="group in sidebarMoreGroups" :key="group.key" class="sidebar-more-group">
+            <div class="sidebar-more-group-title">{{ group.title }}</div>
+            <div class="sidebar-more-items">
+              <button
+                v-for="item in group.items"
+                :key="item.page"
+                type="button"
+                class="sidebar-more-item"
+                :class="{ active: active === item.page }"
+                :disabled="isNavItemDisabled(item.page)"
+                :aria-current="active === item.page ? 'page' : undefined"
+                @click="setActivePage(item.page)"
+              >
+                <span class="material-symbols-outlined" aria-hidden="true">{{ item.icon }}</span>
+                <span class="sidebar-more-item-label">{{ item.label }}</span>
+                <span
+                  v-if="getItemBadgeCount(item) > 0"
+                  :class="['sidebar-more-item-badge', { 'nav-badge-urgent': isItemBadgeUrgent(item) }]"
+                >{{ getItemBadgeCount(item) > 99 ? '99+' : getItemBadgeCount(item) }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
 
     <!-- Bug Report Launcher (floating button, all staff pages) -->
     <BugReportLauncher
@@ -181,9 +232,12 @@
         v-for="tab in mobileTabItems"
         :key="tab.page"
         type="button"
-        :class="['mob-tab', { active: tab.page === 'more' ? showMoreMenu : active === tab.page }]"
+        :id="tab.page === 'more' ? 'mobile-more-trigger' : undefined"
+        :class="['mob-tab', { 'mob-tab-more': tab.page === 'more', active: tab.page === 'more' ? showMoreMenu : active === tab.page }]"
         :aria-current="tab.page !== 'more' && active === tab.page ? 'page' : undefined"
-        @click="tab.page === 'more' ? (showMoreMenu = !showMoreMenu) : (setActivePage(tab.page), showMoreMenu = false)"
+        :aria-expanded="tab.page === 'more' ? String(showMoreMenu) : undefined"
+        :aria-controls="tab.page === 'more' ? 'mobile-more-sheet' : undefined"
+        @click="tab.page === 'more' ? toggleMoreMenu() : (setActivePage(tab.page), closeMoreMenu(false))"
       >
         <span class="material-symbols-outlined mob-tab-icon">{{ tab.icon }}</span>
         <span class="mob-tab-label">{{ tab.label }}</span>
@@ -195,10 +249,24 @@
     </nav>
 
     <!-- More Menu Bottom Sheet -->
-    <div class="more-overlay" v-if="showMoreMenu" @click="showMoreMenu = false"></div>
-    <div class="more-sheet" :class="{ open: showMoreMenu }">
-      <div class="more-sheet-handle" @click="showMoreMenu = false"></div>
-      <div class="more-sheet-title">更多功能</div>
+    <div class="more-overlay" v-if="showMoreMenu" @click="closeMoreMenu()"></div>
+    <section
+      v-if="showMoreMenu"
+      id="mobile-more-sheet"
+      class="more-sheet open"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="mobile-more-title"
+      tabindex="-1"
+      @keydown.esc.prevent="closeMoreMenu()"
+    >
+      <div class="more-sheet-handle" aria-hidden="true"></div>
+      <div class="more-sheet-header">
+        <h2 id="mobile-more-title" class="more-sheet-title">更多功能</h2>
+        <button type="button" class="more-sheet-close" aria-label="關閉更多功能" @click="closeMoreMenu()">
+          <span class="material-symbols-outlined" aria-hidden="true">close</span>
+        </button>
+      </div>
       <div v-for="group in sidebarNavGroups" :key="group.key" class="more-group">
         <div class="more-group-label">{{ group.title }}</div>
         <div class="more-group-items">
@@ -208,7 +276,7 @@
             type="button"
             :class="['more-item', { active: active === item.page }]"
             :aria-current="active === item.page ? 'page' : undefined"
-            @click="setActivePage(item.page); showMoreMenu = false"
+            @click="setActivePage(item.page); closeMoreMenu(false)"
           >
             <span class="material-symbols-outlined">{{ item.icon }}</span>
             <span>{{ item.label }}</span>
@@ -219,7 +287,7 @@
           </button>
         </div>
       </div>
-    </div>
+    </section>
 
     <!-- Main Content -->
     <div class="main-content">
@@ -273,6 +341,33 @@
               <span class="material-symbols-outlined" aria-hidden="true">logout</span>
               <span>登出系統</span>
             </button>
+            <div class="account-menu-divider" aria-hidden="true"></div>
+            <div class="account-menu-tools">
+              <span class="account-menu-tools-label">顯示模式</span>
+              <div class="theme-buttons">
+                <button
+                  v-for="opt in themeOptions"
+                  :key="opt.value"
+                  type="button"
+                  :class="['theme-btn', { active: themePreference === opt.value }]"
+                  :title="opt.label"
+                  :aria-label="`切換為${opt.label}模式`"
+                  @click="setTheme(opt.value)"
+                >
+                  <span class="material-symbols-outlined theme-btn-icon" aria-hidden="true">{{ opt.icon }}</span>
+                  <span class="theme-btn-label">{{ opt.label }}</span>
+                </button>
+              </div>
+            </div>
+            <details class="account-menu-shortcuts">
+              <summary><span class="material-symbols-outlined" aria-hidden="true">keyboard</span>快捷鍵提示</summary>
+              <ul class="shortcut-hint__list">
+                <li><kbd>Win</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> <span>截圖</span></li>
+                <li><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> <span>更新網頁</span></li>
+                <li><kbd>Ctrl</kbd>+<kbd>C</kbd> <span>複製</span></li>
+                <li><kbd>Ctrl</kbd>+<kbd>V</kbd> <span>貼上</span></li>
+              </ul>
+            </details>
           </div>
         </details>
       </div>
@@ -482,7 +577,7 @@
 </template>
 
 <script setup>
-import { computed, defineAsyncComponent, ref, watch, onMounted, onBeforeUnmount } from 'vue';
+import { computed, defineAsyncComponent, nextTick, ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import { supabase } from './supabase';
 import {
   branches,
@@ -550,6 +645,7 @@ import {
   PIN_IDLE_LOCK_MS,
 } from './lib/pinGate';
 import { getMobileTabItems, getNavigationGroups } from './lib/navigationRegistry';
+import { resolveActiveAfterProfileLoad } from './lib/resolveActiveAfterProfileLoad';
 import { createDashboardReturnContext } from './lib/dashboardReturnContext';
 
 // Detect standalone parent portal access via URL hash, query param, or LIFF context
@@ -886,9 +982,9 @@ const sidebarCollapsed = ref(localStorage.getItem('sidebar_collapsed') === 'true
 // ===== 主題模式（日間 / 夜間 / 系統） =====
 const THEME_KEY = 'app_color_scheme';
 const themeOptions = [
-  { value: 'light',  icon: '☀️', label: '日間' },
-  { value: 'dark',   icon: '🌙', label: '夜間' },
-  { value: 'system', icon: '💻', label: '系統' },
+  { value: 'light',  icon: 'light_mode', label: '日間' },
+  { value: 'dark',   icon: 'dark_mode', label: '夜間' },
+  { value: 'system', icon: 'desktop_windows', label: '系統' },
 ];
 const themePreference = ref(localStorage.getItem(THEME_KEY) || 'system');
 
@@ -921,6 +1017,7 @@ function toggleSidebarCollapsed() {
 
 // Mobile bottom nav: 5 tabs + More
 const showMoreMenu = ref(false);
+const showSidebarMore = ref(false);
 const mobileTabItems = computed(() => {
   return getMobileTabItems(role.value);
 });
@@ -1194,6 +1291,8 @@ function onNavigateLearningFromTeacherHome(payload = {}) {
 }
 
 function setActivePage(page) {
+  closeSidebarMore(false);
+  closeMoreMenu(false);
   dashboardReturnContext.value = null;
   if (page !== 'students') clearStudentNavigationContext();
   if (page !== 'calendar') clearCalendarNavigationContext();
@@ -1379,6 +1478,47 @@ const avatarUrl = computed(() => userProfile.value?.avatar_url || '');
 
 const sidebarGroupOpen = ref({});
 const sidebarNavGroups = computed(() => getNavigationGroups(role.value));
+const sidebarPrimaryGroups = computed(() => sidebarNavGroups.value.filter(group => group.primary !== false));
+const sidebarMoreGroups = computed(() => sidebarNavGroups.value.filter(group => group.primary === false));
+const activeInSidebarMore = computed(() => sidebarMoreGroups.value.some(
+  group => group.items.some(item => item.page === active.value),
+));
+const sidebarMoreBadgeCount = computed(() => sidebarMoreGroups.value.reduce(
+  (sum, group) => sum + group.items.reduce((groupSum, item) => groupSum + getItemBadgeCount(item), 0),
+  0,
+));
+
+function toggleSidebarMore() {
+  if (showSidebarMore.value) {
+    closeSidebarMore();
+    return;
+  }
+  showSidebarMore.value = true;
+}
+
+function closeSidebarMore(restoreFocus = true) {
+  const wasOpen = showSidebarMore.value;
+  showSidebarMore.value = false;
+  if (restoreFocus && wasOpen) {
+    nextTick(() => document.querySelector('#sidebar-more-trigger')?.focus());
+  }
+}
+
+function toggleMoreMenu() {
+  if (showMoreMenu.value) {
+    closeMoreMenu();
+    return;
+  }
+  showMoreMenu.value = true;
+}
+
+function closeMoreMenu(restoreFocus = true) {
+  const wasOpen = showMoreMenu.value;
+  showMoreMenu.value = false;
+  if (restoreFocus && wasOpen) {
+    nextTick(() => document.querySelector('#mobile-more-trigger')?.focus());
+  }
+}
 
 function isSidebarGroupOpen(group) {
   return Object.prototype.hasOwnProperty.call(sidebarGroupOpen.value, group.key)
@@ -1571,16 +1711,19 @@ const fetchProfile = async (_uid) => {
           localStorage.setItem('alltrue_session', JSON.stringify(session.value));
         }
 
-        if (mustChangePassword) {
-          active.value = 'profile';
-          return;
-        }
-
+        // Profile refresh must not yank the user back to role home after they
+        // already navigated (login → onAuthStateChange /me race). Only seed
+        // bootstrap / role-mismatch landings via resolveActiveAfterProfileLoad.
+        const nextActive = resolveActiveAfterProfileLoad({
+          role: me.role,
+          mustChangePassword,
+          currentActive: active.value,
+        });
+        if (nextActive !== active.value) active.value = nextActive;
+        if (mustChangePassword) return;
         if (me.role === 'teacher') {
-            active.value = 'teacher-home';
             ensureTeacherBranch();
-        } else if (me.role === 'director' || me.role === 'super_admin') {
-            active.value = 'director';
+        } else if (me.role === 'director' || me.role === 'admin' || me.role === 'super_admin') {
             applyDeepLinkFromUrl();
         }
     } catch {
@@ -1650,6 +1793,14 @@ const logout = async () => {
 watch(showMoreMenu, (open) => {
   if (open) lockScroll();
   else unlockScroll();
+  if (open) {
+    nextTick(() => document.querySelector('#mobile-more-sheet')?.focus());
+  }
+});
+
+watch(showSidebarMore, (open) => {
+  if (!open) return;
+  nextTick(() => document.querySelector('#sidebar-more-panel')?.focus());
 });
 
 watch(currentBranch, (value, previous) => {
@@ -1669,6 +1820,7 @@ watch([active, isStandaloneParent], async ([p]) => {
   // #143 防護：切換頁面時強制清除任何殘留的 scroll lock（body position:fixed/overflow:hidden）
   // 與行動版選單，避免某頁洩漏的鎖讓下一頁看起來被灰白遮罩蓋住、無法點選。
   showMoreMenu.value = false;
+  showSidebarMore.value = false;
   forceUnlockScroll();
   if (p !== 'bugs' || !session.value?.access_token || !currentBranch.value) return;
   if (role.value !== 'super_admin') return;
@@ -2441,14 +2593,14 @@ function formatBuildTime(rawIso) {
 }
 
 .nav-group {
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  border-radius: 12px;
-  background: rgba(15, 23, 42, 0.28);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   overflow: hidden;
 }
 
 .nav-group + .nav-group {
-  margin-top: 12px;
+  margin-top: 14px;
 }
 
 .nav-group-summary {
@@ -2456,11 +2608,11 @@ function formatBuildTime(rawIso) {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 10px 12px;
+  padding: 8px 10px 5px;
   list-style: none;
   cursor: pointer;
   user-select: none;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+  border-bottom: 0;
 }
 
 .nav-group-summary::-webkit-details-marker {
@@ -2468,9 +2620,9 @@ function formatBuildTime(rawIso) {
 }
 
 .nav-group-title {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
-  color: #cbd5e1;
+  color: #94a3b8;
   text-transform: uppercase;
   letter-spacing: 0.07em;
 }
@@ -2488,8 +2640,72 @@ function formatBuildTime(rawIso) {
 .nav-group-list {
   display: grid;
   gap: 3px;
-  padding: 6px;
+  padding: 2px 0 0;
 }
+
+.nav-group-summary:focus-visible,
+.sidebar-nav button:focus-visible,
+.sidebar-collapse-btn:focus-visible,
+.branch-btn:focus-visible,
+.theme-btn:focus-visible,
+.account-menu-trigger:focus-visible,
+.account-menu-btn:focus-visible,
+.account-menu-shortcuts summary:focus-visible {
+  outline: 2px solid var(--ds-primary-soft);
+  outline-offset: 2px;
+}
+
+.account-menu-divider {
+  height: 1px;
+  margin: 4px 4px 2px;
+  background: var(--border);
+}
+
+.account-menu-tools {
+  display: grid;
+  gap: 6px;
+  padding: 4px 4px 2px;
+}
+
+.account-menu-tools-label {
+  color: var(--text-light);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.account-menu-tools .theme-buttons {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.account-menu-tools .theme-btn {
+  min-width: 0;
+  padding: 7px 4px;
+}
+
+.theme-btn-icon {
+  font-size: 17px;
+  line-height: 1;
+}
+
+.account-menu-shortcuts {
+  margin: 2px 4px 0;
+  border-top: 0;
+}
+
+.account-menu-shortcuts summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 4px;
+  color: var(--text-light);
+  font-size: 11px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.account-menu-shortcuts summary::-webkit-details-marker { display: none; }
+.account-menu-shortcuts summary .material-symbols-outlined { font-size: 16px; }
+.account-menu-shortcuts[open] summary { color: var(--text); }
 
 .nav-icon {
   width: 22px;

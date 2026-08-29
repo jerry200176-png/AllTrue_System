@@ -45,9 +45,14 @@
 
     <template v-else>
       <!-- 登記已回報 Modal（待對帳，非立刻已繳） -->
-      <div v-if="tuitionModal.visible" class="modal-overlay" @click.self="tuitionModal.visible = false">
-        <div class="modal-box payment-modal">
-          <h3>登記已回報</h3>
+      <AtDialog
+        :open="tuitionModal.visible"
+        title="登記已回報"
+        title-id="tuition-report-dialog-title"
+        panel-class="payment-modal"
+        close-label="關閉登記已回報視窗"
+        @close="tuitionModal.visible = false"
+      >
           <p class="modal-desc">依家長回報填寫；送出後仍是未繳費，對到帳後由主任按確認入帳才開收據。</p>
           <div class="modal-item-name">
             <span><strong>學生</strong>{{ tuitionPaymentRow.student_name || '-' }}</span>
@@ -107,20 +112,24 @@
               </AtButton>
             </div>
           </form>
-        </div>
-      </div>
+      </AtDialog>
 
       <AtSection class="controls-card" data-guide="notifications-controls">
         <!-- 主 tabs：待辦案件 / 營運通知（全部僅次要 overview，不作為預設） -->
-        <div class="type-tabs" role="tablist" aria-label="收件匣分類">
+        <div class="type-tabs" role="tablist" aria-label="收件匣分類" aria-orientation="horizontal">
           <button
             v-for="tab in typeTabs"
             :key="tab.value"
+            :id="tab.id"
+            type="button"
             class="type-tab"
             role="tab"
             :aria-selected="typeFilter === tab.value"
+            :aria-controls="tab.panelId"
+            :tabindex="typeFilter === tab.value ? 0 : -1"
             :class="{ active: typeFilter === tab.value }"
             @click="onTabClick(tab.value)"
+            @keydown="onTypeTabKeydown($event, tab.value)"
           >
             {{ tab.label }}
             <span v-if="tab.count > 0" class="tab-badge" aria-label="數量">{{ tab.count }}</span>
@@ -194,7 +203,16 @@
       </AtInlineAlert>
       <AtInlineAlert v-else-if="errorMessage" tone="danger">{{ errorMessage }}</AtInlineAlert>
 
-      <AtSection flush class="list-card" data-guide="notifications-list">
+      <AtSection
+        :id="activeNotificationPanelId"
+        flush
+        class="list-card"
+        data-guide="notifications-list"
+        role="tabpanel"
+        :aria-labelledby="activeNotificationTabId"
+        tabindex="0"
+        :aria-busy="loading ? 'true' : 'false'"
+      >
         <AtSkeleton v-if="loading && visibleCaseItems.length === 0 && notifications.length === 0" :rows="4" />
         <AtEmpty
           v-else-if="laneFilter === 'case' && caseLaneError && visibleCaseItems.length === 0"
@@ -272,17 +290,18 @@
                 <span v-if="notificationSummary(item)" class="notification-context">{{ notificationSummary(item) }}</span>
               </div>
               <div class="urgent-actions">
-                <button v-if="!item.read_at" class="small" @click="markRead(item.id)">標記已讀</button>
+                <button v-if="!item.read_at" type="button" class="small" @click="markRead(item.id)">標記已讀</button>
                 <button
                   v-if="canMarkTuitionPaid(item)"
+                  type="button"
                   class="small primary"
                   :disabled="isMarkingTuitionPaid(item.id)"
                   @click="openTuitionModal(item)"
                 >
                   {{ isMarkingTuitionPaid(item.id) ? '處理中...' : '標記已繳費' }}
                 </button>
-                <button v-if="canCopyTuition(item)" class="small ghost" @click="copyTuitionMessage(item)">複製繳費通知</button>
-                <button v-if="targetPage(item.Type)" class="small ghost" @click="goToTarget(item.Type, item)">前往處理</button>
+                <button v-if="canCopyTuition(item)" type="button" class="small ghost" @click="copyTuitionMessage(item)">複製繳費通知</button>
+                <button v-if="targetPage(item.Type)" type="button" class="small ghost" @click="goToTarget(item.Type, item)">前往處理</button>
               </div>
             </div>
           </div>
@@ -315,17 +334,18 @@
             </div>
 
             <div class="item-actions">
-              <button v-if="!item.read_at" class="small" @click="markRead(item.id)">標記已讀</button>
+              <button v-if="!item.read_at" type="button" class="small" @click="markRead(item.id)">標記已讀</button>
               <button
                 v-if="canMarkTuitionPaid(item)"
+                type="button"
                 class="small primary"
                 :disabled="isMarkingTuitionPaid(item.id)"
                 @click="openTuitionModal(item)"
               >
                 {{ isMarkingTuitionPaid(item.id) ? '處理中...' : '標記已繳費' }}
               </button>
-              <button v-if="canCopyTuition(item)" class="small ghost" @click="copyTuitionMessage(item)">複製繳費通知</button>
-              <button v-if="targetPage(item.Type)" class="small ghost" @click="goToTarget(item.Type, item)">前往處理</button>
+              <button v-if="canCopyTuition(item)" type="button" class="small ghost" @click="copyTuitionMessage(item)">複製繳費通知</button>
+              <button v-if="targetPage(item.Type)" type="button" class="small ghost" @click="goToTarget(item.Type, item)">前往處理</button>
             </div>
           </div>
           </template>
@@ -342,7 +362,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import {
   casePriorityLabel,
   extractCaseItems,
@@ -359,6 +379,7 @@ import AtSection from '../components/design-system/AtSection.vue';
 import AtFilterBar from '../components/design-system/AtFilterBar.vue';
 import AtToolbar from '../components/design-system/AtToolbar.vue';
 import AtButton from '../components/design-system/AtButton.vue';
+import AtDialog from '../components/design-system/AtDialog.vue';
 import AtBadge from '../components/design-system/AtBadge.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
 import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
@@ -447,9 +468,13 @@ const TYPE_META = {
 const typeLabel = (type) => TYPE_META[type]?.label || type || '其他';
 
 const typeTabs = computed(() => [
-  { value: 'lane:case', label: '待辦案件', count: casesOpenCount.value },
-  { value: '', label: '營運通知', count: unreadCount.value },
+  { value: 'lane:case', id: 'notifications-tab-cases', panelId: 'notifications-panel-cases', label: '待辦案件', count: casesOpenCount.value },
+  { value: '', id: 'notifications-tab-ops', panelId: 'notifications-panel-ops', label: '營運通知', count: unreadCount.value },
 ]);
+
+const activeNotificationTab = computed(() => typeTabs.value.find((tab) => tab.value === typeFilter.value) || typeTabs.value[0]);
+const activeNotificationTabId = computed(() => activeNotificationTab.value.id);
+const activeNotificationPanelId = computed(() => activeNotificationTab.value.panelId);
 
 const visibleCaseItems = computed(() => (
   shouldShowCachedCases({ scopeKey: inboxScopeKey(props.branchId), cachedScopeKey: caseItemsScopeKey.value })
@@ -462,6 +487,25 @@ const onTabClick = (value) => {
   laneFilter.value = value === 'lane:case' ? 'case' : 'ops';
   if (laneFilter.value === 'case') casesPage.value = 1;
   loadNotifications(1);
+};
+
+const onTypeTabKeydown = (event, currentValue) => {
+  const navigationKeys = ['ArrowRight', 'ArrowLeft', 'Home', 'End'];
+  if (!navigationKeys.includes(event.key)) return;
+
+  event.preventDefault();
+  const currentIndex = typeTabs.value.findIndex((tab) => tab.value === currentValue);
+  if (currentIndex < 0) return;
+
+  let nextIndex = currentIndex;
+  if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % typeTabs.value.length;
+  if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + typeTabs.value.length) % typeTabs.value.length;
+  if (event.key === 'Home') nextIndex = 0;
+  if (event.key === 'End') nextIndex = typeTabs.value.length - 1;
+
+  const nextTab = typeTabs.value[nextIndex];
+  onTabClick(nextTab.value);
+  nextTick(() => document.getElementById(nextTab.id)?.focus());
 };
 
 const retryLoad = () => loadNotifications(currentPage.value || 1);
@@ -1158,33 +1202,8 @@ onUnmounted(() => {
   color: var(--text-light);
 }
 
-/* ── Modal ── */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 9999;
-}
-
-.modal-box {
-  background: var(--ds-canvas);
-  border-radius: 14px;
-  padding: 24px 28px;
-  max-width: 380px;
-  width: 90%;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
-}
-
-.payment-modal {
+:global(.payment-modal) {
   max-width: 460px;
-}
-
-.modal-box h3 {
-  margin: 0 0 8px;
-  font-size: 17px;
 }
 
 .modal-desc {

@@ -1,0 +1,51 @@
+id: INT-20260828-190711-0W96
+title: Director daily progress UX
+intent: Director daily progress UX
+kind: intent
+brain_dump: "\u628A AllTrue \u4E3B\u4EFB\u5DE5\u4F5C\u53F0\u505A\u6210 task-first\
+  \ \u7684\u4ECA\u65E5\u9032\u5EA6\u9AD4\u9A57\uFF0C\u4E26\u4EE5 GitHub/\u5DE5\u4F5C\
+  \u5340\u6574\u7406\u4F5C\u70BA\u53EF\u8FFD\u8E64\u4EA4\u4ED8\u3002"
+boundary: "\u53EA\u505A AllTrue director dashboard \u7684 bounded UI/progress cue\
+  \ \u8207 evidence\uFF1B\u4E0D\u6539 API\u3001auth\u3001billing\u3001schedule\u3001\
+  attendance semantics\u3001production data \u6216 deploy\u3002"
+success_condition: "focused tests\u3001lint\u3001build\u3001UI foundation regression\
+  \ \u901A\u904E\uFF0C\u4E26\u4EE5 Draft PR \u63D0\u4F9B review\uFF1Bproduction \u4E0A\
+  \u7DDA\u9808\u53E6\u7D93 required checks \u8207 governed merge/deploy\u3002"
+risk: medium
+priority: 2
+labels:
+- ui
+scope:
+  allow:
+  - frontend/src/pages/DirectorDashboard.vue
+  - frontend/src/components/TodayProgressCard.vue
+  - frontend/src/components/__tests__/TodayProgressCard.test.js
+  - frontend/src/lib/dailyWorkProgress.js
+  - frontend/src/lib/dailyWorkProgress.test.js
+  - docs/design/evidence/daily-progress-ux-2026-08-28.md
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - '**/.env*'
+  - backend/**
+  - supabase/**
+budgets:
+  max_files_changed: 12
+  max_loc_changed: 400
+checks:
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-28T19:07:11+08:00'
+children:
+- TKT-20260828-190801-8TY7
+resource_profile: default

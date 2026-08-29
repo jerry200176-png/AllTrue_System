@@ -33,12 +33,15 @@ const pageModules = {
   inbox: () => import('../../../src/pages/NotificationsCenter.vue'),
   students: () => import('../../../src/pages/StudentsList.vue'),
   director: () => import('../../../src/pages/DirectorDashboard.vue'),
+  tuition: () => import('../../../src/pages/TuitionCollectionPage.vue'),
   learning: () => import('../../../src/pages/LearningRecordsPage.vue'),
   course: () => import('../../../src/pages/CourseManagement.vue'),
   calendar: () => import('../../../src/pages/SmartCalendar.vue'),
   discrepancy: () => import('../../../src/pages/ScheduleDiscrepancyPage.vue'),
   teacher: () => import('../../../src/pages/TeacherHomePage.vue'),
+  teachers: () => import('../../../src/pages/TeachersList.vue'),
   attendance: () => import('../../../src/pages/AttendancePage.vue'),
+  parent: () => import('../../../src/pages/ParentPortal.vue'),
 };
 const loadPage = pageModules[page] || pageModules.inbox;
 const PageComponent = (await loadPage()).default;
@@ -52,6 +55,9 @@ createApp({
       return () => h(PageComponent, { branchId: 1 });
     }
     if (page === 'director') {
+      return () => h(PageComponent, { branchId: 1 });
+    }
+    if (page === 'tuition') {
       return () => h(PageComponent, { branchId: 1 });
     }
     if (page === 'learning') {
@@ -78,14 +84,23 @@ createApp({
         userRole: 'teacher',
         teacherBranchIds: [1],
         unreadFeedbackCount: mode === 'empty' ? 0 : 1,
+        onNavigate: (payload) => {
+          window.__pilotLastNavigation = payload;
+        },
       });
+    }
+    if (page === 'teachers') {
+      return () => h(PageComponent, { branchId: 1 });
     }
     if (page === 'attendance') {
       return () => h(PageComponent, {
         branchId: 1,
         userId: 9001,
-        userRole: 'teacher',
+        userRole: role,
       });
+    }
+    if (page === 'parent') {
+      return () => h(PageComponent, { standalone: true });
     }
     return () => h(PageComponent, { branchId: 1 });
   },
