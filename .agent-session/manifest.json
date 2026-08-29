@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "0c73b39d830d43229a92dd8c59062e06",
+  "session_id": "5e00ffed74194cf6b9f5f4ee7f9330e8",
   "project": "alltrue",
-  "task_id": "bug-list-keyboard-20260829",
+  "task_id": "api-route-reference-refresh-20260829",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "9faf67ced7131a7118761fab3dd878cf78028109",
-  "branch": "chore/task-bug-list-keyboard-20260829",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/bug-list-keyboard-20260829",
-  "started_at": "2026-08-29T14:24:37Z",
+  "base_sha": "49120fa9845194e129941dda17affbb4658e6bf7",
+  "branch": "chore/task-api-route-reference-refresh-20260829",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/api-route-reference-refresh-20260829",
+  "started_at": "2026-08-29T08:50:46Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": null,
+  "agent_cli": "codex",
   "gateway_version": "0.5.0"
 }
