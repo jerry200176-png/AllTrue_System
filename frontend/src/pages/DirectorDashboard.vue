@@ -271,7 +271,7 @@
                     <div class="director-leave-case__actions">
                       <button v-if="!workflowCandidates[workflow.id]?.length" type="button" class="button button--primary" :disabled="workflowActionId === workflow.id" @click="generateCandidates(workflow)"><span class="material-symbols-outlined" aria-hidden="true">search</span>{{ workflowActionId === workflow.id ? '搜尋中…' : '尋找補課時段' }}</button>
                       <button v-else type="button" class="button button--primary" :disabled="workflowActionId === workflow.id || !selectedWorkflowCandidates[workflow.id]" @click="openWorkflowDecision('candidate', workflow)">確認補課</button>
-                      <button v-if="workflowCandidates[workflow.id]?.length" type="button" class="button button--quiet" :disabled="workflowActionId === workflow.id" @click="openWorkflowDecision('waive', workflow)">核准不補課</button>
+                      <button type="button" class="button button--quiet" :disabled="workflowActionId === workflow.id" @click="openWorkflowDecision('waive', workflow)">核准不補課</button>
                       <button type="button" class="button button--danger" :disabled="workflowActionId === workflow.id" @click="openWorkflowDecision('reject', workflow)">退回</button>
                     </div>
                   </article>
