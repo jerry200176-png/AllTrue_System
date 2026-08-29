@@ -19,4 +19,13 @@ describe('Assessment action accessibility', () => {
     expect(source).toContain('@click="saveResult"');
     expect(source).toContain('@click="updateRemediation(action, \'completed\')"');
   });
+
+  it('labels both assessment modal surfaces as dialogs', () => {
+    expect(source).toContain('aria-labelledby="assessment-create-title"');
+    expect(source).toContain('id="assessment-create-title"');
+    expect(source).toContain('aria-labelledby="assessment-result-title"');
+    expect(source).toContain('id="assessment-result-title"');
+    expect((source.match(/role="dialog"/g) || []).length).toBe(2);
+    expect((source.match(/aria-modal="true"/g) || []).length).toBe(2);
+  });
 });

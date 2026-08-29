@@ -53,8 +53,13 @@
     </div>
 
     <div v-if="showCreate" class="modal-overlay" @click.self="showCreate = false">
-      <div class="modal assessment-modal">
-        <h3>建立學習檢測</h3>
+      <div
+        class="modal assessment-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="assessment-create-title"
+      >
+        <h3 id="assessment-create-title">建立學習檢測</h3>
         <p class="muted">先建立檢測定義，再發布後登錄學生結果。</p>
         <label>檢測名稱<input v-model.trim="createForm.title" maxlength="120" placeholder="例如：英文單字基準檢測" /></label>
         <label>課程範圍
@@ -75,8 +80,13 @@
     </div>
 
     <div v-if="selectedAssessment" class="modal-overlay" @click.self="selectedAssessment = null">
-      <div class="modal assessment-modal assessment-result-modal">
-        <div class="assessment-modal-head"><div><h3>{{ selectedAssessment.title }}</h3><p class="muted">滿分 {{ selectedAssessment.max_score }} · {{ statusLabel(selectedAssessment.status) }}</p></div><button type="button" class="ghost" @click="selectedAssessment = null">關閉</button></div>
+      <div
+        class="modal assessment-modal assessment-result-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="assessment-result-title"
+      >
+        <div class="assessment-modal-head"><div><h3 id="assessment-result-title">{{ selectedAssessment.title }}</h3><p class="muted">滿分 {{ selectedAssessment.max_score }} · {{ statusLabel(selectedAssessment.status) }}</p></div><button type="button" class="ghost" @click="selectedAssessment = null">關閉</button></div>
         <div v-if="resultsLoading" class="assessment-empty">結果載入中…</div>
         <template v-else>
           <section v-if="selectedAssessment.status === 'draft'" class="question-builder">
