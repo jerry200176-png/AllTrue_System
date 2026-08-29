@@ -403,9 +403,18 @@ def activation_separation_available(base_ref: str) -> bool:
     return all(marker in deploy for marker in ("merged-awaiting-activation", "ACTIVATE_PRODUCTION:", "production-activation"))
 
 
-def merge_eligibility(effective: int, deployable: bool, activation_separated: bool) -> str:
+def merge_eligibility(
+    effective: int,
+    deployable: bool,
+    activation_separated: bool,
+    *,
+    unknown_scope: bool = False,
+    protected_boundary: bool = False,
+) -> str:
     """Separate PR merge eligibility from the later protected activation."""
-    if effective >= 3 and deployable and not activation_separated:
+    if unknown_scope:
+        return "blocked-unknown-scope"
+    if effective >= 3 and (deployable or protected_boundary) and not activation_separated:
         return "blocked-activation-separation"
     return "autonomous-after-required-checks"
 
@@ -479,6 +488,7 @@ def self_test() -> int:
     assert merge_eligibility(3, True, False) == "blocked-activation-separation"
     assert merge_eligibility(3, True, True) == "autonomous-after-required-checks"
     assert merge_eligibility(3, False, False) == "autonomous-after-required-checks"
+    assert merge_eligibility(3, False, True, unknown_scope=True) == "blocked-unknown-scope"
 
     with tempfile.TemporaryDirectory() as temp_dir:
         repo = Path(temp_dir)
@@ -597,7 +607,13 @@ def main() -> int:
         effective,
         bool(result["deployable_scope"]),
         bool(result["activation_separation_available"]),
+        unknown_scope=bool(result["unknown_paths"]),
+        protected_boundary=bool(result["protected_boundary"]),
     )
+    if result["merge_eligibility"] == "blocked-unknown-scope":
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        print("AUTONOMY-GATE-FAIL: unknown scope is fail-closed", file=sys.stderr)
+        return 1
     if result["merge_eligibility"] == "blocked-activation-separation":
         print(json.dumps(result, ensure_ascii=False, indent=2))
         print("AUTONOMY-GATE-FAIL: T3 deployable scope cannot merge while merge still implies production activation", file=sys.stderr)
