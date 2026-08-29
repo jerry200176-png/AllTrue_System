@@ -3,6 +3,36 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-29-course-tabs-keyboard
+    published_at: "2026-08-29"
+    audiences:
+      - director
+    importance: digest
+    title: 課程查找分頁更適合鍵盤操作
+    summary: 每位學生的課程／帳務分頁可用方向鍵切換，焦點會跟著目前工作區移動。
+    items:
+      - category: improved
+        text: 在課程查找展開學生後，可用左右鍵或上下鍵切換「課程資料／帳務資料」，不用逐一 Tab 經過每個選項。
+      - category: improved
+        text: 目前分頁保留單一鍵盤焦點入口，切換後會聚焦新的工作區；課程、帳務資料與權限維持不變。
+    source_refs:
+      - "changelog:2026-08-29:course-tabs-keyboard"
+  - id: staff-2026-08-29-bug-list-keyboard
+    published_at: "2026-08-29"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: Bug 回報可以用鍵盤快速查看
+    summary: 在回報列表中可直接用鍵盤選取問題並開啟詳情。
+    items:
+      - category: improved
+        text: 聚焦回報項目後按 Enter 或 Space，即可查看問題詳情。
+      - category: improved
+        text: 目前選取的回報會有清楚的輔助標示；原有滑鼠操作維持不變。
+    source_refs:
+      - "changelog:2026-08-29:bug-list-keyboard"
+
   - id: staff-2026-08-29-schedule-orphan-prevention
     published_at: "2026-08-29"
     audiences:
