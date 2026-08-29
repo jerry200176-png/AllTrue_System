@@ -203,8 +203,13 @@
 
     <!-- Modal -->
     <div v-if="showModal || showAddModal" class="modal-overlay">
-      <div class="modal">
-        <h3>{{ isEditing ? '編輯老師' : '新增老師' }}</h3>
+      <div
+        class="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="teacher-modal-title"
+      >
+        <h3 id="teacher-modal-title">{{ isEditing ? '編輯老師' : '新增老師' }}</h3>
         
         <div class="form-group">
           <label>登入帳號</label>
@@ -334,15 +339,20 @@
         <div v-if="formError" class="form-error">{{ formError }}</div>
 
         <div class="actions">
-          <button @click="closeModal">取消</button>
-          <button class="primary" @click="submitForm">儲存</button>
+          <button type="button" @click="closeModal">取消</button>
+          <button type="button" class="primary" @click="submitForm">儲存</button>
         </div>
       </div>
     </div>
 
     <div v-if="showBulkModal" class="modal-overlay">
-      <div class="modal modal-wide">
-        <h3>批次新增老師</h3>
+      <div
+        class="modal modal-wide"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="teachers-bulk-modal-title"
+      >
+        <h3 id="teachers-bulk-modal-title">批次新增老師</h3>
         <p class="hint">貼上資料或 CSV（建議欄位：帳號、姓名、電話、主分校、可授科目、兼職分校、LINE、狀態）。未填主分校時，會用下方預設主分校。</p>
 
         <div class="bulk-row">

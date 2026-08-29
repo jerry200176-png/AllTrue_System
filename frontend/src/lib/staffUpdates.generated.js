@@ -43,6 +43,38 @@ export const staffUpdates = [
     "version": "2026.08.29"
   },
   {
+    "id": "staff-2026-08-29-teachers-modal-semantics",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "老師管理彈窗上下文更清楚",
+    "summary": "新增、編輯與批次新增老師時，鍵盤與螢幕閱讀器能辨識目前工作階段。",
+    "items": [
+      "老師管理的新增、編輯與批次新增彈窗清楚標示工作階段與標題，鍵盤與螢幕閱讀器更容易掌握上下文。",
+      "老師管理彈窗的取消與儲存按鈕補上正確型別，表單操作更不容易被誤判為送出。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "老師管理的新增、編輯與批次新增彈窗清楚標示工作階段與標題，鍵盤與螢幕閱讀器更容易掌握上下文。",
+          "老師管理彈窗的取消與儲存按鈕補上正確型別，表單操作更不容易被誤判為送出。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:teachers-modal-semantics"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
     "id": "staff-2026-08-29-teachers-list-status",
     "publishedAt": "2026-08-29",
     "effectiveAt": null,
