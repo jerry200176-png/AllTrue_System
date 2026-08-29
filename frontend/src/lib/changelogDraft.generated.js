@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.08.30",
     "date": "2026-08-30",
     "title": "2026.08.30 草稿（未發布）",
-    "summary": "回報視窗不殘留上一筆提交提示；老師工作台聚焦今天與本週",
+    "summary": "回報視窗不殘留上一筆提交提示；出缺勤操作按鈕語意更穩定",
     "audience": [
       "teacher",
       "director"
@@ -24,12 +24,14 @@ export const changelogDraftNotes = [
       {
         "title": "其他改善",
         "items": [
+          "出缺勤操作按鈕語意更穩定",
           "老師工作台聚焦今天與本週"
         ]
       }
     ],
     "items": [
       "回報視窗不殘留上一筆提交提示",
+      "出缺勤操作按鈕語意更穩定",
       "老師工作台聚焦今天與本週"
     ]
   },

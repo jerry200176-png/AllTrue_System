@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const source = readFileSync(resolve(__dirname, '../../pages/AttendancePage.vue'), 'utf8');
+const nativeButtonTags = [...source.matchAll(/<button\b(?:[^>"']|"[^"]*"|'[^']*')*>/g)].map(([tag]) => tag);
 
 describe('AttendancePage workspace accessibility', () => {
   it('connects director tabs to exactly one keyboard-focusable panel', () => {
@@ -25,5 +26,10 @@ describe('AttendancePage workspace accessibility', () => {
   it('announces pending attendance status controls as pressed buttons', () => {
     expect(source).toContain('type="button"');
     expect(source).toContain(':aria-pressed="pendingMarkStatus[s.class_session_id] === opt.value"');
+  });
+
+  it('keeps every native action button explicit as a non-submit control', () => {
+    expect(nativeButtonTags.length).toBeGreaterThan(20);
+    expect(nativeButtonTags.filter((tag) => !/\btype\s*=\s*["']button["']/.test(tag))).toEqual([]);
   });
 });

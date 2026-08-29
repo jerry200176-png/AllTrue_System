@@ -65,7 +65,7 @@
               <span class="ta-time">{{ r.sign_in_dt?.slice(11, 16) ?? '—' }}</span>
               <span class="att-status-badge" :class="teacherStatusClass(r.status)">{{ teacherStatusLabel(r.status) }}</span>
             </div>
-            <button class="primary small" @click="openAdjust(r)">補卡</button>
+            <button type="button" class="primary small" @click="openAdjust(r)">補卡</button>
           </div>
         </div>
 
@@ -80,7 +80,7 @@
         <div v-for="u in teacherUnclosed" :key="u.teacher_id" class="ta-unclosed-row">
           {{ u.teacher_name }}
           <span class="ta-time">簽到 {{ u.sign_in_dt?.slice(11, 16) }}</span>
-          <button class="ghost small" @click="openAdjust(u)">補卡</button>
+          <button type="button" class="ghost small" @click="openAdjust(u)">補卡</button>
         </div>
       </div>
 
@@ -127,6 +127,7 @@
             />
             <button
               class="ghost small"
+              type="button"
               :disabled="exportMonthLoading"
               @click="exportTeacherMonthly"
               title="匯出老師月度出缺勤 XLSX"
@@ -136,7 +137,7 @@
               月報
             </button>
             <input type="date" v-model="teacherDate" class="att-date-input" @change="fetchTeacherRecords" />
-            <button class="ghost small" @click="exportTeacherCsv" title="匯出 CSV">
+            <button type="button" class="ghost small" @click="exportTeacherCsv" title="匯出 CSV">
               <span class="material-symbols-outlined" style="font-size:18px">download</span>
             </button>
           </div>
@@ -169,7 +170,7 @@
                 </td>
                 <td class="ta-cell-muted">{{ r.first_class_start_time ?? '—' }}</td>
                 <td>
-                  <button class="ghost small" @click="openAdjust(r)">補卡</button>
+                  <button type="button" class="ghost small" @click="openAdjust(r)">補卡</button>
                 </td>
               </tr>
             </tbody>
@@ -249,6 +250,7 @@
           <button
             v-if="selectedIds.length > 0"
             class="primary small"
+            type="button"
             :disabled="batchSubmitting"
             @click="batchMarkAllPresent"
           >
@@ -307,6 +309,7 @@
                   <div class="att-ops-stack">
                     <button
                       class="primary small"
+                      type="button"
                       :disabled="pendingMarkSubmitting[s.class_session_id]"
                       @click="submitPendingMark(s)"
                     >
@@ -379,6 +382,7 @@
                 </button>
                 <button
                   class="primary small att-card-submit"
+                  type="button"
                   :disabled="pendingMarkSubmitting[s.class_session_id]"
                   @click="submitPendingMark(s)"
                 >
@@ -392,7 +396,7 @@
         <!-- Sticky batch bar (mobile) -->
         <div v-if="selectedIds.length > 0" class="att-sticky-batch att-mobile-only">
           <span>已選 {{ selectedIds.length }} 堂</span>
-          <button class="primary small" :disabled="batchSubmitting" @click="batchMarkAllPresent">
+          <button type="button" class="primary small" :disabled="batchSubmitting" @click="batchMarkAllPresent">
             {{ batchSubmitting ? '送出中…' : '全部到班' }}
           </button>
         </div>
@@ -571,7 +575,7 @@
           </div>
           <div class="form-group att-submit-wrap">
             <label>&nbsp;</label>
-            <button class="primary" :disabled="dirSubmitting" @click="submitDirQuick">
+            <button type="button" class="primary" :disabled="dirSubmitting" @click="submitDirQuick">
               <span v-if="dirSubmitting" class="material-symbols-outlined att-spin">progress_activity</span>
               {{ dirSubmitting ? '送出中…' : '補建並點名' }}
             </button>
@@ -611,7 +615,7 @@
           </div>
           <div class="form-group att-submit-wrap">
             <label>&nbsp;</label>
-            <button class="primary" @click="submitManual">登記</button>
+            <button type="button" class="primary" @click="submitManual">登記</button>
           </div>
         </div>
 
@@ -633,10 +637,12 @@
             <div class="att-mode-toggle">
               <button
                 :class="['att-mode-btn', { active: recordsMode === 'day' }]"
+                type="button"
                 @click="recordsMode = 'day'; recordsDate = localTodayYmd(); fetchRecords()"
               >今天</button>
               <button
                 :class="['att-mode-btn', { active: recordsMode === 'week' }]"
+                type="button"
                 @click="recordsMode = 'week'; recordsDate = localTodayYmd(); fetchRecords()"
               >最近 7 天</button>
             </div>
@@ -722,12 +728,14 @@
                   <button
                     v-if="isDirectorOrAdmin"
                     class="ghost xs"
+                    type="button"
                     style="color:var(--color-primary)"
                     @click="openConvertModal(record)"
                   >轉換為到班</button>
                   <button
                     v-if="isDirectorOrAdmin"
                     class="ghost xs"
+                    type="button"
                     style="color:var(--ds-danger);margin-left:4px"
                     :title="'刪除此記錄'"
                     @click="openDeleteDialog(record)"
@@ -735,10 +743,11 @@
                 </template>
                 <!-- 一般記錄，未進入編輯 -->
                 <template v-else-if="!record._editing">
-                  <button class="ghost xs" @click="record._editing = true; record._newStatus = record.Status">修改</button>
+                  <button type="button" class="ghost xs" @click="record._editing = true; record._newStatus = record.Status">修改</button>
                   <button
                     v-if="isDirectorOrAdmin"
                     class="ghost xs"
+                    type="button"
                     style="color:var(--ds-danger);margin-left:4px"
                     :title="'刪除此記錄'"
                     @click="openDeleteDialog(record)"
@@ -752,10 +761,10 @@
                     <option value="leave">請假</option>
                     <option value="absent">缺席</option>
                   </select>
-                  <button class="primary xs" :disabled="record._saving" @click="saveStatusEdit(record)">
+                  <button type="button" class="primary xs" :disabled="record._saving" @click="saveStatusEdit(record)">
                     {{ record._saving ? '…' : '✓' }}
                   </button>
-                  <button class="ghost xs" @click="record._editing = false">✕</button>
+                  <button type="button" class="ghost xs" @click="record._editing = false">✕</button>
                 </div>
               </td>
             </tr>
@@ -795,7 +804,7 @@
         </div>
         <div class="form-group att-submit-wrap">
           <label>&nbsp;</label>
-          <button class="primary" :disabled="makeupLoading" @click="fetchMakeupSessions">查詢</button>
+          <button type="button" class="primary" :disabled="makeupLoading" @click="fetchMakeupSessions">查詢</button>
         </div>
       </div>
       <div v-if="!isTeacher && !branchId" class="att-empty enterprise-empty">請先選擇分校</div>
@@ -832,6 +841,7 @@
               <td style="text-align:right">
                 <button
                   class="primary small"
+                  type="button"
                   :disabled="makeupMarkSubmitting[s.class_session_id]"
                   @click="submitMakeupMark(s)"
                 >
@@ -842,7 +852,7 @@
           </tbody>
         </table>
         <div v-if="makeupHasMore" class="att-load-more">
-          <button class="ghost small" :disabled="makeupLoading" @click="fetchMakeupSessions(makeupPage + 1)">載入更多</button>
+          <button type="button" class="ghost small" :disabled="makeupLoading" @click="fetchMakeupSessions(makeupPage + 1)">載入更多</button>
         </div>
       </div>
       <p v-if="makeupMsg" class="att-msg" :class="makeupMsgType">{{ makeupMsg }}</p>
@@ -867,7 +877,7 @@
               <td class="att-rfid">{{ maskRfid(swipe.RFID) }}</td>
               <td>{{ reasonLabel(swipe.Reason) }}</td>
               <td style="text-align:right">
-                <button class="ghost xs" @click="handleDismiss(swipe.id)">忽略</button>
+                <button type="button" class="ghost xs" @click="handleDismiss(swipe.id)">忽略</button>
               </td>
             </tr>
           </tbody>
@@ -886,8 +896,8 @@
         <div class="att-confirm-body">{{ confirmDialog.body }}</div>
         <div v-if="confirmDialog.error" class="att-msg error" style="margin-bottom:12px;font-size:13px">{{ confirmDialog.error }}</div>
         <div class="att-confirm-actions">
-          <button class="ghost" :disabled="confirmDialog.submitting" @click="confirmDialog.visible = false">取消</button>
-          <button class="primary" :disabled="confirmDialog.submitting" @click="handleConfirmSubmit">
+          <button type="button" class="ghost" :disabled="confirmDialog.submitting" @click="confirmDialog.visible = false">取消</button>
+          <button type="button" class="primary" :disabled="confirmDialog.submitting" @click="handleConfirmSubmit">
             {{ confirmDialog.submitting ? '送出中…' : '確認送出' }}
           </button>
         </div>
@@ -970,9 +980,10 @@
           ></textarea>
         </div>
         <div class="att-dialog-actions">
-          <button class="ghost small" @click="closeDeleteDialog" :disabled="deleteDialog.loading">取消</button>
+          <button type="button" class="ghost small" @click="closeDeleteDialog" :disabled="deleteDialog.loading">取消</button>
           <button
             class="primary small danger"
+            type="button"
             :disabled="deleteDialog.reason.trim().length < 2 || deleteDialog.loading"
             @click="confirmDelete"
           >
@@ -1030,10 +1041,11 @@
           </div>
         </template>
         <div class="att-dialog-actions" style="margin-top:16px">
-          <button class="ghost small" @click="closeConvertModal" :disabled="convertModal.loading">取消</button>
+          <button type="button" class="ghost small" @click="closeConvertModal" :disabled="convertModal.loading">取消</button>
           <button
             v-if="convertModal.courses.length > 0"
             class="primary small"
+            type="button"
             :disabled="!convertModal.selectedId || convertModal.loading"
             @click="confirmConvert"
           >

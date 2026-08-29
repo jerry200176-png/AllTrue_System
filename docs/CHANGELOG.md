@@ -1,3 +1,8 @@
+## 2026-08-30 — improved(ux): 出缺勤操作按鈕語意更穩定
+<!-- release-notes: silent_ship=silent-2026-08-30-attendance-button-semantics -->
+- 出缺勤頁的補卡、點名、查詢、修改與對話框操作現在明確標示為一般按鈕，避免未來被表單情境誤當成送出。
+- 不改出缺勤狀態、資料、權限、API 或既有操作流程。
+
 ## 2026-08-30 — fix(ux): Bug 回報視窗不殘留上一筆提交提示
 <!-- release-notes: silent_ship=silent-2026-08-30-bug-composer-success-reset -->
 - Bug 回報成功後若立即關閉再重開，現在會回到乾淨的新回報視窗，不會誤顯示上一筆已提交訊息。
