@@ -34,25 +34,7 @@ alwaysApply: true
 | `teacher` | 教學工作台（預設首頁）、出缺勤、學習評量、行事曆、科目數、帳號設定 |
 | 家長 | ParentPortal 獨立入口（學生姓名+手機 或 LINE 登入） |
 
-## 前端頁面（`frontend/src/pages/`）
-
-| 頁面 active key | 檔案 | 功能 |
-|---|---|---|
-| `teacher-home` | TeacherHomePage.vue | 老師預設：今日待辦、跨分校本週課表 |
-| `director` | DirectorDashboard.vue | 總覽：繳費提醒、今日排課、待審評量 |
-| `calendar` | SmartCalendar.vue | 智慧排課：週/日、拖曳、請假/調課 |
-| `students` | StudentsList.vue | 學生管理、課程建立、CSV 匯入 |
-| `teachers` | TeachersList.vue | 老師管理、RFID 綁定 |
-| `course-mgmt` | CourseManagement.vue | 費率、排課、請假、調課、補課空檔 |
-| `attendance` | AttendancePage.vue | 出缺勤點名、刷卡記錄 |
-| `learning` | LearningRecordsPage.vue | 學習評量表（填寫、審核） |
-| `parent` | ParentPortal.vue | 家長入口（獨立，無側欄） |
-| `subject-units` | SubjectUnitsPage.vue | 科目數統計 |
-| `classroom` | ClassroomManagement.vue | 教室管理 |
-| `director-accounts` | DirectorAccountsPage.vue | 主任申請審核（super_admin 限定） |
-
-**共用**：`HelpGuide.vue`（說明欄）、`SearchableSelect.vue`（可搜尋下拉）
-**Lib**：`constants.js`、`sessionDates.js`（排課計算）、`useBranches.js`（分校 store）
+頁面與元件在 `frontend/src/pages/`；開那些檔時由 `module-frontend.mdc` 載入。
 
 ## 分校
 
