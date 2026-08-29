@@ -611,6 +611,20 @@ test.describe('UI foundation — real Vue page evidence', () => {
     await expect(dialog).toBeHidden();
   });
 
+  test('student management labels its add-student workspace as a dialog', async ({ page }) => {
+    await openPilot(page, {
+      pageName: 'students',
+      mode: 'normal',
+      viewport: { width: 390, height: 844 },
+    });
+
+    await page.getByRole('button', { name: '新增學生', exact: true }).first().click();
+    const dialog = page.getByRole('dialog', { name: '新增學生', exact: true });
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toHaveAttribute('aria-modal', 'true');
+    await expect(dialog.getByRole('heading', { name: '新增學生', exact: true })).toBeVisible();
+  });
+
   for (const vp of [
     { name: '390', width: 390, height: 844 },
     { name: '1440', width: 1440, height: 900 },

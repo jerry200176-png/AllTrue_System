@@ -460,9 +460,9 @@
     </div>
 
     <!-- Add/Edit Student Modal -->
-    <div v-if="showStudentModal" class="modal-overlay" @click.self="closeStudentModal">
+    <div v-if="showStudentModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="student-modal-title" @click.self="closeStudentModal">
       <div class="modal" style="width: 520px;">
-        <h3>{{ editingStudentId ? '編輯學生' : '新增學生' }}</h3>
+        <h3 id="student-modal-title">{{ editingStudentId ? '編輯學生' : '新增學生' }}</h3>
         
         <div class="form-section-title">基本資料</div>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
@@ -549,9 +549,9 @@
     </div>
 
     <!-- Edit Course Modal -->
-    <div v-if="showCourseModal && editingCourseId" class="modal-overlay" @click.self="closeCourseModal">
+    <div v-if="showCourseModal && editingCourseId" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="course-modal-title" @click.self="closeCourseModal">
       <div class="modal" style="width: 520px;">
-        <h3>編輯課程</h3>
+        <h3 id="course-modal-title">編輯課程</h3>
         <CourseEditForm
           ref="editFormRef"
           v-model="courseForm"
@@ -635,9 +635,9 @@
     />
 
     <!-- 月結帳單記錄 Modal -->
-    <div v-if="showInvoiceModal" class="modal-overlay" @click.self="showInvoiceModal = false">
+    <div v-if="showInvoiceModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="invoice-modal-title" @click.self="showInvoiceModal = false">
       <div class="modal" style="max-width: 480px;">
-        <h3 style="margin-bottom: 4px;">月結帳單記錄</h3>
+        <h3 id="invoice-modal-title" style="margin-bottom: 4px;">月結帳單記錄</h3>
         <p class="invoice-modal-subtitle">
           {{ invoiceModalCourse?.student_name || '' }} — {{ getSubjectLabel(invoiceModalCourse?.subject) }}
         </p>
@@ -682,9 +682,9 @@
     </div>
 
     <!-- Add Sessions Modal -->
-    <div v-if="showSessionsModal" class="modal-overlay" @click.self="showSessionsModal = false">
+    <div v-if="showSessionsModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="sessions-modal-title" @click.self="showSessionsModal = false">
       <div class="modal">
-        <h3>加購堂數 — {{ getSubjectLabel(selectedCourse?.subject) }}</h3>
+        <h3 id="sessions-modal-title">加購堂數 — {{ getSubjectLabel(selectedCourse?.subject) }}</h3>
         <div class="form-group">
           <label>學生</label>
           <p style="font-weight: 600;">{{ selectedStudent?.name }}</p>
@@ -738,9 +738,9 @@
       @decision="onEnrollmentConflictDecision"
     />
     <!-- Grade Promotion Modal -->
-    <div v-if="showGradePromotion" class="modal-overlay" @click.self="showGradePromotion = false">
+    <div v-if="showGradePromotion" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="grade-promotion-modal-title" @click.self="showGradePromotion = false">
       <div class="modal" style="width: 500px;">
-        <h3>年級升級</h3>
+        <h3 id="grade-promotion-modal-title">年級升級</h3>
         <p class="hint">一鍵將所有在學中的學生年級 +1（例如 J1 → J2）。H3 學生會被標記為已畢業。</p>
         <div v-if="promotionPreview.length > 0" style="max-height: 300px; overflow-y: auto; margin: 16px 0;">
           <table class="course-inner-table">
@@ -773,10 +773,10 @@
     </div>
 
     <!-- Cross-campus identity bridge: explicit director confirmation only. -->
-    <div v-if="showIdentityModal" class="modal-overlay" @click.self="closeIdentityModal">
+    <div v-if="showIdentityModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="identity-modal-title" @click.self="closeIdentityModal">
       <div class="modal" style="width: 680px; max-width: calc(100vw - 32px);">
         <div class="modal-header-row">
-          <h3>跨分校學生身份關聯</h3>
+          <h3 id="identity-modal-title">跨分校學生身份關聯</h3>
           <button class="ghost small" @click="closeIdentityModal">關閉</button>
         </div>
         <p class="hint">只把主任已確認為同一位學生的兩筆分校資料關聯；姓名或手機相同不會自動合併。</p>

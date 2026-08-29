@@ -341,6 +341,38 @@ export const staffUpdates = [
     "version": "2026.08.29"
   },
   {
+    "id": "staff-2026-08-29-students-modal-semantics",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "學生管理視窗更容易辨識",
+    "summary": "新增／編輯學生與課程等視窗現在會清楚告訴鍵盤與螢幕閱讀器目前工作區。",
+    "items": [
+      "學生管理的新增／編輯學生、課程、帳單、加購、年級升級與跨分校身份視窗補上清楚的對話框標題。",
+      "既有資料、操作流程、帳務規則與權限維持不變；本次只改善視窗語意。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "學生管理的新增／編輯學生、課程、帳單、加購、年級升級與跨分校身份視窗補上清楚的對話框標題。",
+          "既有資料、操作流程、帳務規則與權限維持不變；本次只改善視窗語意。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:students-modal-semantics"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
     "id": "staff-2026-08-29-student-course-overview",
     "publishedAt": "2026-08-29",
     "effectiveAt": null,
