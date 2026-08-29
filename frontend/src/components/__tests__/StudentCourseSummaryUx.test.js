@@ -32,6 +32,14 @@ describe('StudentsList course summary UX', () => {
     expect(source).not.toContain('連續天數');
   });
 
+  it('makes the primary next step explicit for each existing course state', () => {
+    ['student-course-card__next-step', '現在先處理', 'getCoursePrimaryAction(course)', 'openCoursePrimaryAction(course, student.name)']
+      .forEach((marker) => expect(activeCourseSlice).toContain(marker));
+    ['查看繳費資訊', '補齊課程資料'].forEach((marker) => expect(source).toContain(marker));
+    expect(source).toContain("if (action.key === 'renew') return openAddSessionsForCourse(course);");
+    expect(source).toContain("if (action.key === 'payment') return openLatestPaymentInfo(course, studentName);");
+  });
+
   it('shows honest session progress and a separate monthly cadence state', () => {
     ['role="progressbar"', ':aria-valuemax="courseProgress(course).total"', '堂數未設定，請編輯課程確認。', '月結'].forEach((marker) => expect(activeCourseSlice).toContain(marker));
     expect(source).toContain('const courseProgress = (course) =>');

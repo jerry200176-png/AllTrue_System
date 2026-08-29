@@ -174,6 +174,40 @@ export const staffUpdates = [
     "version": "2026.08.29"
   },
   {
+    "id": "staff-2026-08-29-student-course-next-action",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "學生課程下一步更明確",
+    "summary": "課程工作區會清楚說明現在該處理什麼，主行動也會對應目前狀態。",
+    "items": [
+      "「現在先處理」會說明續報、付款待確認、資料待補或一般課程的下一步，不必只靠顏色猜測。",
+      "主行動會依既有課程狀態前往續報加購、繳費資訊或編輯課程，並保留原有操作行為。",
+      "課程資料、付款、排課、權限、API 與手機版可讀布局維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "「現在先處理」會說明續報、付款待確認、資料待補或一般課程的下一步，不必只靠顏色猜測。",
+          "主行動會依既有課程狀態前往續報加購、繳費資訊或編輯課程，並保留原有操作行為。",
+          "課程資料、付款、排課、權限、API 與手機版可讀布局維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:student-course-next-action"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
     "id": "staff-2026-08-29-student-course-disclosure",
     "publishedAt": "2026-08-29",
     "effectiveAt": null,

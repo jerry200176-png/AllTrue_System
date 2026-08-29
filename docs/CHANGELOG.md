@@ -1,3 +1,11 @@
+## 2026-08-29 — improved(ux): 學生課程下一步更明確
+
+<!-- release-notes: staff_update=staff-2026-08-29-student-course-next-action -->
+
+- 學生課程工作區會用「現在先處理」清楚說明續報、付款待確認、資料待補與一般課程的下一步，主任不必只靠顏色或猜按鈕用途。
+- 主行動會依現有課程狀態導向續報加購、繳費資訊或編輯課程，並保留原有 handler；卡片提醒狀態與文字保持一致。
+- 不改課程資料、付款、排課、權限或 API 行為；手機版主行動維持滿寬可讀與鍵盤可操作。
+
 ## 2026-08-29 — improved(ux): 主任收件匣工作區更穩定
 
 <!-- release-notes: staff_update=staff-2026-08-29-notifications-dialog-a11y -->

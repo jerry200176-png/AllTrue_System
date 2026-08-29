@@ -616,6 +616,8 @@ test.describe('UI foundation — real Vue page evidence', () => {
       await expect(english.locator('button')).toHaveAttribute('aria-pressed', 'true');
       await expect(math.locator('button')).toHaveAttribute('aria-pressed', 'false');
       await expect(workspace.locator('article.student-course-card[data-course-id="5002"]')).toBeVisible();
+      await expect(workspace.locator('.student-course-card__next-step')).toContainText('先處理課程續報');
+      await expect(workspace.getByRole('button', { name: '續報加購' })).toBeVisible();
 
       const historyToggle = page.locator('tr.course-detail-row').first().locator('.sl-history-toggle');
       await expect(historyToggle).toHaveAttribute('aria-expanded', 'false');
@@ -627,6 +629,8 @@ test.describe('UI foundation — real Vue page evidence', () => {
       await expect(math.locator('button')).toHaveAttribute('aria-pressed', 'true');
       await expect(english.locator('button')).toHaveAttribute('aria-pressed', 'false');
       await expect(workspace.locator('article.student-course-card[data-course-id="5001"]')).toBeVisible();
+      await expect(workspace.locator('.student-course-card__next-step')).toContainText('課程資料已齊全');
+      await expect(workspace.getByRole('button', { name: '編輯課程' })).toBeVisible();
       await expect.poll(() => tableWrap.evaluate((el) => el.scrollLeft)).toBeLessThan(initialScrollLeft + 8);
 
       await page.locator('.students-page').screenshot({
