@@ -704,6 +704,40 @@ export const staffUpdates = [
     "version": "2026.08.29"
   },
   {
+    "id": "staff-2026-08-29-bug-list-keyboard",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "Bug 回報可以用鍵盤快速查看",
+    "summary": "在回報列表中可直接用鍵盤選取問題並開啟詳情。",
+    "items": [
+      "聚焦回報項目後按 Enter 或 Space，即可查看問題詳情。",
+      "目前選取的回報會有清楚的輔助標示；原有滑鼠操作維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "聚焦回報項目後按 Enter 或 Space，即可查看問題詳情。",
+          "目前選取的回報會有清楚的輔助標示；原有滑鼠操作維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:bug-list-keyboard"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
     "id": "staff-2026-08-29-billing-tab-panels",
     "publishedAt": "2026-08-29",
     "effectiveAt": null,
