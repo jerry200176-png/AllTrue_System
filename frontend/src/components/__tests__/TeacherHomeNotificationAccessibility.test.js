@@ -6,18 +6,13 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const source = readFileSync(resolve(__dirname, '../../pages/TeacherHomePage.vue'), 'utf8');
 
-describe('TeacherHome notification controls accessibility', () => {
-  it('announces the current pending-sound setting as a pressed toggle', () => {
-    expect(source).toContain(':aria-pressed="warningSoundEnabled ? \'true\' : \'false\'"');
-    expect(source).toContain(':aria-label="warningSoundEnabled ? \'關閉待辦提示音\' : \'開啟待辦提示音\'"');
-    expect(source).toContain('@click="togglePendingSound"');
-  });
-
-  it('names the daily snooze action and keeps the attendance CTA a button', () => {
-    expect(source).toContain('aria-label="今日靜音待辦提示音"');
-    expect(source).toContain('class="th-action-btn th-action-attendance"');
+describe('TeacherHome action accessibility', () => {
+  it('keeps the primary actions as named, keyboard-accessible buttons', () => {
+    expect(source).toContain('data-guide="teacher-home-work-queue"');
+    expect(source).toContain('class="th-clockin-card card"');
     expect(source).toContain('@click="goAttendance"');
-    const attendanceBlock = source.match(/<button[\s\S]*?class="th-action-btn th-action-attendance"[\s\S]*?<\/button>/)?.[0] || '';
+    const attendanceBlock = source.match(/<button[\s\S]*?class="th-clockin-card card"[\s\S]*?<\/button>/)?.[0] || '';
     expect(attendanceBlock).toContain('type="button"');
+    expect(attendanceBlock).toContain('aria-labelledby="teacher-clockin-title"');
   });
 });
