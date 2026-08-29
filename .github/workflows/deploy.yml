@@ -62,6 +62,7 @@ jobs:
         id: resolve
         env:
           EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_REF: ${{ github.ref }}
           TARGET_SHA_INPUT: ${{ github.event.workflow_run.head_sha || inputs.target_sha }}
           REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
@@ -70,6 +71,11 @@ jobs:
           TARGET_SHA="${TARGET_SHA_INPUT,,}"
           if [[ ! "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]; then
             echo "::error::Activation requires a full 40-character commit SHA."
+            exit 1
+          fi
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" && "$WORKFLOW_REF" != "refs/heads/main" ]]; then
+            echo "::error::Manual application activation must be dispatched from refs/heads/main; got ${WORKFLOW_REF}."
             exit 1
           fi
 
@@ -172,6 +178,11 @@ jobs:
       pr_number: ${{ steps.classify.outputs.pr_number }}
       reason: ${{ steps.classify.outputs.reason }}
     steps:
+      - name: Checkout target revision
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve-target.outputs.target_sha }}
+
       - name: Classify activation policy
         id: classify
         env:
@@ -182,6 +193,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+
+          hold() {
+            {
+              echo "mode=awaiting-activation"
+              echo "tier=${1:-unknown}"
+              echo "pr_number=${2:-none}"
+              echo "reason=${3}"
+            } >> "$GITHUB_OUTPUT"
+          }
 
           if [[ "$DEPLOYABLE" != "true" ]]; then
             {
@@ -203,63 +223,99 @@ jobs:
             exit 0
           fi
 
-          PR_JSON="$(gh api "/repos/${REPO}/commits/${TARGET_SHA}/pulls" --header 'Accept: application/vnd.github+json')"
-          PR_JSON="$PR_JSON" REPO="$REPO" GH_TOKEN="$GH_TOKEN" python3 - <<'PY'
+          if [[ ! -f scripts/governance/autonomy_gate.py ]]; then
+            hold "unknown" "none" "authoritative classifier unavailable; fail closed (depends on #2180)"
+            exit 0
+          fi
+
+          REPO="$REPO" TARGET_SHA="$TARGET_SHA" GH_TOKEN="$GH_TOKEN" python3 - <<'PY'
           import json
           import os
-          import re
           import subprocess
+          import sys
+
+          def gh_api(path, *extra):
+              return json.loads(subprocess.check_output(
+                  ["gh", "api", path, *extra],
+                  text=True,
+                  env=os.environ.copy(),
+              ))
+
+          def pages(value):
+              if isinstance(value, list):
+                  result = []
+                  for page in value:
+                      result.extend(page if isinstance(page, list) else [page])
+                  return result
+              return value if isinstance(value, list) else []
+
+          def emit(mode, tier, pr_number, reason):
+              with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+                  output.write(f"mode={mode}\n")
+                  output.write(f"tier={tier}\n")
+                  output.write(f"pr_number={pr_number}\n")
+                  output.write(f"reason={reason}\n")
 
           repo = os.environ["REPO"]
-          prs = json.loads(os.environ["PR_JSON"])
-          merged = [
-              pr for pr in prs
-              if pr.get("base", {}).get("ref") == "main" and pr.get("merged_at")
-          ]
-          merged.sort(key=lambda pr: pr.get("merged_at", ""), reverse=True)
+          target = os.environ["TARGET_SHA"]
+          try:
+              from scripts.governance.autonomy_gate import classify_scope, effective_tier, parse_declaration
 
-          mode = "awaiting-activation"
-          tier = "unknown"
-          pr_number = "none"
-          reason = "no merged PR provenance or valid tier declaration; fail closed"
+              merged = [
+                  pr for pr in gh_api(
+                      f"/repos/{repo}/commits/{target}/pulls",
+                      "--header", "Accept: application/vnd.github+json",
+                  )
+                  if pr.get("base", {}).get("ref") == "main" and pr.get("merged_at")
+              ]
+              merged.sort(key=lambda pr: pr.get("merged_at", ""), reverse=True)
+              if not merged:
+                  emit("awaiting-activation", "unknown", "none", "no merged PR provenance; fail closed")
+                  sys.exit(0)
 
-          if merged:
               pr = merged[0]
               pr_number = str(pr.get("number", "unknown"))
-              body = pr.get("body") or ""
-              risk_match = re.search(r"(?m)^\*\*Risk-Class:\*\*\s*(R[0-3])\s*$", body)
-              tier_match = re.search(r"(?m)^\*\*Autonomy-Tier:\*\*\s*(T[0-3])\s*$", body)
-              if not risk_match or not tier_match:
-                  reason = f"PR #{pr_number} has no machine-readable Risk-Class and Autonomy-Tier"
-              else:
-                  risk = risk_match.group(1)
-                  tier = tier_match.group(1)
-                  file_pages = json.loads(subprocess.check_output(
-                      [
-                          "gh", "api", "--paginate", "--slurp",
-                          f"/repos/{repo}/pulls/{pr_number}/files?per_page=100",
-                      ],
-                      env={**os.environ, "GH_TOKEN": os.environ["GH_TOKEN"]},
-                      text=True,
-                  ))
-                  files = [item for page in file_pages for item in page]
-                  workflow_change = any(
-                      item.get("filename", "").startswith(".github/workflows/")
-                      for item in files
+              file_pages = gh_api(
+                  f"/repos/{repo}/pulls/{pr_number}/files?per_page=100",
+                  "--paginate", "--slurp",
+              )
+              files = pages(file_pages)
+              paths = [item.get("filename", "") for item in files]
+              patch_parts = []
+              for item in files:
+                  path = item.get("filename", "")
+                  patch_parts.append(
+                      f"diff --git a/{path} b/{path}\n+++ b/{path}\n{item.get('patch') or ''}"
                   )
-                  if tier in {"T0", "T1"} and risk == ("R0" if tier == "T0" else "R1") and not workflow_change:
-                      mode = "auto"
-                      reason = f"PR #{pr_number} explicitly declares {risk}/{tier} and has no workflow change"
-                  elif workflow_change:
-                      reason = f"PR #{pr_number} changes a workflow; production activation is held"
-                  else:
-                      reason = f"PR #{pr_number} declares {risk}/{tier}; production activation requires Founder GO"
+              scope = classify_scope(paths, "\n".join(patch_parts))
+              machine_tier = scope.get("tier_name")
+              body = pr.get("body") or ""
+              declared_risk, declared_tier = parse_declaration(body)
+              declaration_risk = f"R{declared_risk}" if declared_risk is not None else None
+              declaration_tier = f"T{declared_tier}" if declared_tier is not None else None
+              _, declaration_error = effective_tier(
+                  int(scope["machine_minimum_tier"]), declared_risk, declared_tier
+              )
+              if declaration_error:
+                  emit(
+                      "awaiting-activation", machine_tier, pr_number,
+                      f"PR #{pr_number}: {declaration_error}; fail closed",
+                  )
+                  sys.exit(0)
 
-          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
-              output.write(f"mode={mode}\n")
-              output.write(f"tier={tier}\n")
-              output.write(f"pr_number={pr_number}\n")
-              output.write(f"reason={reason}\n")
+              workflow_change = any(path.startswith(".github/workflows/") for path in paths)
+              decision = __import__(
+                  "scripts.tests.test_deploy_activation_state",
+                  fromlist=["decide_activation"],
+              ).decide_activation(
+                  event_name=os.environ["EVENT_NAME"], deployable=True,
+                  classifier_available=True, machine_validated=True,
+                  machine_tier=machine_tier, declared_risk=declaration_risk,
+                  declared_tier=declaration_tier, workflow_change=workflow_change,
+              )
+              emit(decision["decision"], decision["effective_tier"], pr_number, decision["reason"])
+          except Exception:
+              emit("awaiting-activation", "unknown", "none", "activation policy evaluation failed; fail closed")
           PY
 
   merged-awaiting-activation:
@@ -298,6 +354,43 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
+      - name: Verify production environment protection
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          REPO="$REPO" GH_TOKEN="$GH_TOKEN" python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+
+          repo = os.environ["REPO"]
+          base = f"/repos/{repo}/environments/production-activation"
+
+          def api(path):
+              return json.loads(subprocess.check_output(["gh", "api", path], text=True))
+
+          environment = api(base)
+          rules = environment.get("protection_rules") or []
+          reviewers = [rule for rule in rules if rule.get("type") == "required_reviewers"]
+          if not reviewers or not all(rule.get("reviewers") for rule in reviewers):
+              raise SystemExit("production environment protection is not configured: Founder required reviewer missing")
+          if not all(rule.get("prevent_self_review") is True for rule in reviewers):
+              raise SystemExit("production environment protection is not configured: prevent self-review must be enabled")
+          if environment.get("can_admins_bypass") is not False:
+              raise SystemExit("production environment protection is not configured: administrator bypass must be disabled")
+
+          branch_policy = environment.get("deployment_branch_policy") or {}
+          if branch_policy.get("custom_branch_policies") is not True or branch_policy.get("protected_branches") is not False:
+              raise SystemExit("production environment protection is not configured: custom main-only deployment policy required")
+          policies = api(f"{base}/deployment-branch-policies").get("branch_policies") or []
+          names = sorted(str(policy.get("name")) for policy in policies)
+          if names != ["main"]:
+              raise SystemExit(f"production environment protection is not configured: expected only main branch, got {names}")
+          print("production-activation protection verified: required reviewer, no self-review, no admin bypass, main only")
+          PY
+
       - name: Require exact typed activation confirmation
         env:
           TARGET_SHA: ${{ needs.resolve-target.outputs.target_sha }}
@@ -310,6 +403,42 @@ jobs:
             exit 1
           fi
           echo "Founder activation confirmation accepted for exact SHA ${TARGET_SHA}."
+
+      - name: Revalidate exact-main activation gate
+        env:
+          WORKFLOW_REF: ${{ github.ref }}
+          TARGET_SHA: ${{ needs.resolve-target.outputs.target_sha }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          MAIN_SHA="$(gh api "/repos/${REPO}/git/ref/heads/main" --jq '.object.sha')"
+          CI_RUNS="$(gh api "/repos/${REPO}/actions/workflows/ci.yml/runs?branch=main&head_sha=${TARGET_SHA}&status=completed&per_page=100")"
+          CI_OK="$(CI_RUNS="$CI_RUNS" python3 - <<'PY'
+          import json
+          import os
+
+          runs = json.loads(os.environ["CI_RUNS"]).get("workflow_runs", [])
+          print(any(run.get("name") == "CI — PHPUnit Tests" and run.get("conclusion") == "success" for run in runs))
+          PY
+          )"
+          POLICY_RESULT="$(PYTHONPATH=. WORKFLOW_REF="$WORKFLOW_REF" TARGET_SHA="$TARGET_SHA" MAIN_SHA="$MAIN_SHA" CI_OK="$CI_OK" python3 - <<'PY'
+          import os
+          from scripts.tests.test_deploy_activation_state import decide_manual_activation
+
+          result = decide_manual_activation(
+              workflow_ref=os.environ["WORKFLOW_REF"],
+              target_sha=os.environ["TARGET_SHA"],
+              current_main_sha=os.environ["MAIN_SHA"],
+              ci_success=os.environ["CI_OK"] == "True",
+              founder_gate_reached=True,
+          )
+          print(result["decision"])
+          if result["decision"] != "activation-gate-reached":
+              raise SystemExit(result["reason"])
+          PY
+          )"
+          echo "Manual activation policy result: ${POLICY_RESULT}"
 
   deploy:
     name: Deploy to Production
