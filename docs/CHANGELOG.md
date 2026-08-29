@@ -1,3 +1,10 @@
+## 2026-08-29 — improved(ux): 評量審核佇列分頁語意更清楚
+
+<!-- release-notes: staff_update=staff-2026-08-29-learning-review-tabs-a11y -->
+
+- 主任「待核准／需修改／已核准／已退回／全部」與老師「全部／待審核／需修改／已核准」分頁改為明確的 tab 語意，並連到評量清單工作區。
+- 切換後鍵盤與螢幕閱讀器能辨識目前佇列；不改審核規則、核准同步點名／扣堂、API、權限或既有批次操作。
+
 ## 2026-08-29 — fix: 新增課程「去加購」不再沒反應
 
 <!-- release-notes: staff_update=staff-2026-08-29-goto-purchase -->
