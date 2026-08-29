@@ -1,0 +1,47 @@
+id: INT-20260830-002003-3NQN
+title: Notifications tab keyboard semantics
+intent: Notifications tab keyboard semantics
+kind: intent
+brain_dump: Improve the director notification center tabs so keyboard and assistive-technology
+  users can identify the active lane, move between tabs with standard arrow/Home/End
+  keys, and land on the associated panel. Preserve notification loading, mark-read,
+  tuition, leave-case, API, auth, branch scope, billing semantics, and production
+  data.
+boundary: Only change frontend presentation semantics and focused tests for NotificationsCenter.vue
+  plus governed evidence. Do not change notification or billing data flow, API payloads,
+  auth/permissions, branch isolation, leave/case decisions, production data, deployment,
+  or unrelated pages.
+success_condition: Focused accessibility tests, frontend lint, build, generated-file
+  check, diff check, and agent preflight pass; submit a Draft PR with evidence and
+  no production mutation.
+risk: low
+priority: 2
+labels:
+- ui
+scope:
+  allow:
+  - frontend/src/pages/NotificationsCenter.vue
+  - frontend/src/components/__tests__/NotificationsCenterAccessibility.test.js
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/logs/**
+  - .exo/tickets/**
+  deny: []
+budgets:
+  max_files_changed: 8
+  max_loc_changed: 300
+checks:
+- npm run lint:no-undef
+- npm run build
+- npm run test:unit
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-30T00:20:03+08:00'
+children:
+- TKT-20260830-002010-38UM
+resource_profile: default
