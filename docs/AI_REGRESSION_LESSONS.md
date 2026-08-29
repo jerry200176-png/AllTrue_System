@@ -1523,6 +1523,14 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **防再犯**：正常狀態 API 與受控資料修復都要共用「非出席不得有 live 評量／點名」不變式；請假撤銷只能走專用 cascade，不得用「先改已上再改未上」繞過流程。
 - **測試必補**：反向交易乾跑不寫入；執行後狀態、評量、點名、台帳與課程堂數一致；重跑不增加 reverse 或稽核列；目標身份／狀態漂移時整批不變。
 
+### R132. 跨日調課目標必須先確認原堂次存在，避免留下日曆孤兒（GitHub #2002，2026-08-29）
+
+- **現象**：舊版跨日調課先寫入 `schedules.status=scheduled` 目標，再由另一個請求移動 `ClassSession`；若原堂次不存在或後續請求失敗，會留下有 `original_schedule_id` 但沒有對應 `ClassSession` 的排程。日曆為避免提供無法點名／代課的 ghost，會刻意不顯示它，造成排課與衝堂讀取結果不一致。
+- **根因層級**：跨請求的兩階段寫入沒有在第一個寫入邊界驗證可移動的原堂次；讀側隱藏 ghost 是必要防護，但不能取代寫入前的不變式。
+- **強制規則**：跨日 `scheduled` 目標只有在 `original_schedule_id` 指向的原日期／開始時間存在未取消、未作廢的 `ClassSession` 時才能寫入；沒有原堂次時回傳可理解的 422，且不得留下目標排程。已有原堂次的合法 legacy flow 維持相容。
+- **安全邊界**：本修復只攔截新的無效寫入，不修復或刪除既有 production orphan；既有日曆仍不把無 `ClassSession` 的跨日目標畫成可操作課卡。
+- **測試必補**：無原堂次的跨日目標回 `source_class_session_missing` 且無 schedule row；有原堂次仍回 201；移除 guard 後前者必須失敗。
+
 ### R130. Laravel 記錄器呼叫必須走 Facade namespace，錯誤處理不可因記錄失敗再崩潰（GitHub #1959/#1967，2026-08-29）
 
 - **現象**：Sentry 連續記錄 `Class "Log" not found`；公開分校清單與內部 opcache／排課／薪資例外路徑在原始錯誤發生後，又因呼叫全域 `\\Log` 而拋出第二個錯誤，遮蔽原始原因並把預期 fallback 變成 HTTP 500。

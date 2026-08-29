@@ -1,3 +1,10 @@
+## 2026-08-29 — fix(schedule): 不再建立沒有原堂次的調課目標
+
+<!-- release-notes: staff_update=staff-2026-08-29-schedule-orphan-prevention -->
+
+- 舊版跨日調課若找不到原日期的有效課堂紀錄，現在會在寫入目標排程前清楚拒絕，不會留下日曆無法操作的孤兒排程。
+- 保留已有原堂次的合法跨日調課流程；未執行任何既有資料修復或生產啟用。
+
 ## 2026-08-29 — fix(ops): 錯誤處理路徑恢復正常記錄
 
 <!-- release-notes: staff_update=staff-2026-08-29-logging-facade-runtime -->
