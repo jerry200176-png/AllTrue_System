@@ -147,6 +147,47 @@ class RealignReflowTwoPhaseTest extends TestCase
         $this->invokeReflow($unlocked, $slots, 120);
     }
 
+    public function test_duplicate_reflow_targets_are_rejected_without_writes(): void
+    {
+        $courseId = $this->seedCourse();
+
+        foreach (['2026-04-20', '2026-04-21'] as $date) {
+            ClassSession::create([
+                'StudentClassID' => $courseId, 'SessionDate' => $date,
+                'StartTime' => '13:00:00', 'EndTime' => '15:00:00', 'Status' => 'scheduled',
+            ]);
+        }
+
+        // Two identical contract slots produce two reflow moves onto the same
+        // active unique-index key. The operation must reject that target before
+        // parking or changing either source row.
+        $unlocked = ClassSession::where('StudentClassID', $courseId)
+            ->where('Status', 'scheduled')
+            ->orderBy('SessionDate')
+            ->get();
+        $slots = [
+            ['weekday' => 6, 'time' => '13:00', 'duration_minutes' => 120],
+            ['weekday' => 6, 'time' => '13:00', 'duration_minutes' => 120],
+        ];
+
+        try {
+            $this->invokeReflow($unlocked, $slots, 120);
+            $this->fail('Duplicate reflow targets must be rejected.');
+        } catch (\App\Exceptions\SlotOccupiedException $exception) {
+            $this->assertSame('2026-04-18', $exception->sessionDate);
+            $this->assertSame('13:00:00', $exception->startTime);
+        }
+
+        $this->assertSame(
+            ['2026-04-20', '2026-04-21'],
+            ClassSession::where('StudentClassID', $courseId)
+                ->orderBy('SessionDate')
+                ->pluck('SessionDate')
+                ->map(fn ($date) => substr((string) $date, 0, 10))
+                ->all()
+        );
+    }
+
     // ── helpers ──
 
     private function invokeReflow($unlockedSorted, array $slots, int $durationMinutes): int
