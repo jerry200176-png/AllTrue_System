@@ -1,0 +1,46 @@
+id: TKT-20260830-190554-CS6E
+title: Resolve bootstrap Founder activation gate contradiction
+intent: Resolve bootstrap Founder activation gate contradiction
+kind: task
+parent_id: INT-20260830-172420-9P5U
+boundary: Allow only explicit manually dispatched Founder bootstrap application activation
+  to use the required-review environment while self-review prevention is temporarily disabled;
+  preserve required reviewer, no admin bypass, main-only, exact SHA, successful CI,
+  typed confirmation, health, smoke, rollback, and all non-bootstrap/high-risk hard
+  stops.
+success_condition: The exact bootstrap activation path can pass its protected environment
+  verification after Founder approval without disabling required review or weakening
+  automatic/high-risk governance; regression tests cover both bootstrap exception
+  and ordinary fail-closed paths.
+priority: 1
+labels:
+- governance
+- deployment
+scope:
+  allow:
+  - .github/workflows/deploy.yml
+  - scripts/tests/test_deploy_activation_state.py
+  - docs/governance/RISK_BASED_MERGE_POLICY.md
+  - docs/governance/GOVERNANCE_CHANGELOG.md
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 4
+  max_loc_changed: 160
+checks:
+- npm run test:unit
+- npm run build
+type: feature
+status: todo
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-30T19:05:54+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default

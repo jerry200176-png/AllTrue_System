@@ -60,6 +60,16 @@ behavior remain mandatory. T2/T3, unknown classifications,
 workflow/governance/security-boundary changes, and irreversible operations stay
 held for risk-appropriate review or the protected Founder boundary.
 
+For the solo-Founder bootstrap activation only, an explicit
+`workflow_dispatch` of the `application-deploy` phase may use the
+required-review environment while self-review prevention is temporarily
+disabled so the configured Founder can approve the run. This exception does not remove the
+required reviewer, administrator-bypass prohibition, main-only policy,
+exact-SHA/current-main check, successful CI requirement, typed confirmation,
+health/smoke verification, or rollback. Automatic runs and staged
+principal/data mutation phases still require the normal no-self-review setting
+and fail closed when it is absent.
+
 This governance change itself is T3: it must pass the governance cool-off and
 protected review process before its new capability is used in production.
 
