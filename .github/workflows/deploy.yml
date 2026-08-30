@@ -502,6 +502,70 @@ jobs:
           MIGRATION_FAILED=0
           TARGET_SHA="${{ needs.resolve-target.outputs.target_sha }}"
 
+          write_deployment_manifest() {
+            python3 /home/admin/scripts/write-deployment-manifest.py \
+              --target-sha "$1" \
+              --version-file /home/admin/backend/public/version.json \
+              --output /home/admin/backend/public/deployment.json
+          }
+
+          rollback_deploy() {
+            local rollback_failed=0
+            local health2
+
+            echo "=== [7/7] ❌ Deployment failed, starting automatic rollback ==="
+            echo "回滾到 $PREV_COMMIT ..."
+
+            cd /home/admin
+            if ! git reset --hard "$PREV_COMMIT"; then
+              echo "⚠️ git reset 失敗"
+              rollback_failed=1
+            fi
+
+            if [ "${FRONTEND_CHANGED:-0}" -gt 0 ]; then
+              if ! (cd /home/admin/frontend && npm run deploy); then
+                echo "⚠️ 前端 rollback build 失敗"
+                rollback_failed=1
+              fi
+            fi
+
+            if ! write_deployment_manifest "$PREV_COMMIT"; then
+              echo "⚠️ rollback deployment manifest 寫入失敗"
+              rollback_failed=1
+            fi
+
+            if ! (cd /home/admin/backend && php artisan optimize); then
+              echo "⚠️ rollback optimize 失敗"
+              rollback_failed=1
+            fi
+
+            if [ "${MIGRATION_RAN:-0}" -eq 1 ]; then
+              echo "回滾 migration..."
+              if ! (cd /home/admin/backend && php artisan migrate:rollback --step=1 --force); then
+                echo "⚠️ migrate:rollback 失敗"
+                rollback_failed=1
+              fi
+            fi
+
+            echo "Rollback health check..."
+            health2=$(curl -sk https://daan.lifenet.com.tw/api/v1/health \
+              | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status','?'))" \
+              2>/dev/null || echo "error")
+            if [ "$rollback_failed" -ne 0 ] || [ "$health2" != "ok" ]; then
+              echo "❌ Rollback 未完成：health=$health2 rollback_failed=$rollback_failed — 需要人工介入"
+              return 1
+            fi
+            echo "✅ Rollback 成功，系統已恢復到 $PREV_COMMIT"
+          }
+
+          abort_deploy() {
+            echo "❌ $1"
+            if ! rollback_deploy; then
+              echo "❌ 自動 rollback 也失敗 — deploy run 必須標紅"
+            fi
+            exit 1
+          }
+
           echo "=== [0b/7] Backup storage/app/public（#1124 防呆） ==="
           # backend/storage/app/public 正在從 git-tracked 轉為 untracked
           # （#1124）。轉換那次 reset 會把 git 裡已刪除的 tracked 檔案從
@@ -512,7 +576,10 @@ jobs:
           UPLOADS_BACKUP_FILE="${UPLOADS_BACKUP_DIR}/storage-app-public-predeploy-${UPLOADS_TS}.tar.gz"
           if [ -d /home/admin/backend/storage/app/public ] && [ -n "$(find /home/admin/backend/storage/app/public -type f -print -quit)" ]; then
             mkdir -p "$UPLOADS_BACKUP_DIR"
-            tar -czf "$UPLOADS_BACKUP_FILE" -C /home/admin/backend storage/app/public
+            if ! tar -czf "$UPLOADS_BACKUP_FILE" -C /home/admin/backend storage/app/public; then
+              echo "❌ storage/app/public backup 失敗 — 中止部署"
+              exit 1
+            fi
             echo "✅ Backup: $UPLOADS_BACKUP_FILE"
           else
             echo "storage/app/public 空或不存在，略過備份"
@@ -531,10 +598,12 @@ jobs:
             echo "❌ main 在 activation 後已前進：origin/main=$REMOTE_MAIN_SHA ≠ target=$TARGET_SHA — 中止部署"
             exit 1
           fi
-          git reset --hard "$TARGET_SHA"
+          if ! git reset --hard "$TARGET_SHA"; then
+            abort_deploy "git reset 到 target SHA 失敗"
+          fi
           if [ "$(git rev-parse HEAD)" != "$TARGET_SHA" ]; then
             echo "❌ 部署目標不符：HEAD=$(git rev-parse HEAD) ≠ CI head=$TARGET_SHA — 中止"
-            exit 1
+            abort_deploy "部署目標 SHA 驗證失敗"
           fi
           echo "✅ production HEAD == CI 驗證版本（$TARGET_SHA）"
 
@@ -575,7 +644,9 @@ jobs:
           fi
 
           echo "=== [2/7] Composer dependencies ==="
-          cd /home/admin/backend && composer install --no-interaction --prefer-dist --optimize-autoloader
+          if ! (cd /home/admin/backend && composer install --no-interaction --prefer-dist --optimize-autoloader); then
+            abort_deploy "Composer install 失敗"
+          fi
           echo "✅ Composer 完成"
 
           echo "=== [2b/7] Storage symlink + 權限 ==="
@@ -593,8 +664,10 @@ jobs:
             BACKUP_FILE="/home/admin/backups/emergency/db_pre_migration_${TS}.sql.gz"
             mkdir -p /home/admin/backups/emergency
             DB_USER="$(grep '^DB_USERNAME=' /home/admin/backend/.env | cut -d= -f2-)"
-            mysqldump -h 127.0.0.1 -u "$DB_USER" -p"$(grep '^DB_PASSWORD=' /home/admin/backend/.env | cut -d= -f2-)" \
-              --single-transaction AllTrue | gzip > "$BACKUP_FILE"
+            if ! mysqldump -h 127.0.0.1 -u "$DB_USER" -p"$(grep '^DB_PASSWORD=' /home/admin/backend/.env | cut -d= -f2-)" \
+              --single-transaction AllTrue | gzip > "$BACKUP_FILE"; then
+              abort_deploy "migration 前 DB backup 失敗"
+            fi
             echo "✅ 備份完成：$BACKUP_FILE"
             # R67：migration 失敗絕不可被吞（無 -e 的 SSH script 會照走並印成功）
             # 失敗時繼續部署已驗證 code（migration 皆須 expand/contract 前向相容），
@@ -622,12 +695,13 @@ jobs:
 
           echo "=== [3c/7] 一次性 APP_KEY containment（issue #1007） ==="
           if ! bash /home/admin/scripts/production-operations/rotate-app-key-2026-07-19.sh; then
-            echo "❌ APP_KEY containment 失敗 — 中止部署，不得進入快取重建"
-            exit 1
+            abort_deploy "APP_KEY containment 失敗 — 不得進入快取重建"
           fi
 
           # 前端：Vite 只從 .env 檔讀取，寫入暫時的 .env.production.local 再 build
-          echo "VITE_SENTRY_DSN=${{ secrets.SENTRY_DSN }}" > /home/admin/frontend/.env.production.local
+          if ! echo "VITE_SENTRY_DSN=${{ secrets.SENTRY_DSN }}" > /home/admin/frontend/.env.production.local; then
+            abort_deploy "frontend temporary environment 寫入失敗"
+          fi
           echo "✅ frontend .env.production.local 已寫入"
 
           echo "=== [4/7] 前端變動偵測 ==="
@@ -638,27 +712,30 @@ jobs:
           [ ! -f /home/admin/backend/public/index.html ] && ASSETS_MISSING=1
           if [ "$FRONTEND_CHANGED" -gt 0 ] || [ "$ASSETS_MISSING" -eq 1 ]; then
             echo "前端有 $FRONTEND_CHANGED 個檔案變動 / assets 不存在（${ASSETS_MISSING}），執行 build + deploy..."
-            cd /home/admin/frontend && npm install --prefer-offline && npm run deploy
+            if ! (cd /home/admin/frontend && npm install --prefer-offline && npm run deploy); then
+              rm -f /home/admin/frontend/.env.production.local || true
+              abort_deploy "frontend build/deploy 失敗"
+            fi
             # build 完後刪除含 DSN 的暫時 env 檔
-            rm -f /home/admin/frontend/.env.production.local
+            if ! rm -f /home/admin/frontend/.env.production.local; then
+              abort_deploy "frontend temporary environment 清理失敗"
+            fi
             # version.json 由 Vite build 產生（vite.config.js），只在前端有重 build 時更新
             # → backend-only deploy 不更新時間戳，使用者不會看到多餘的「請重新整理」通知
             echo "✅ version.json 已由 Vite build 更新"
           else
             echo "✅ 前端無變動且 assets 存在，跳過 build（version.json 不更新）"
-            rm -f /home/admin/frontend/.env.production.local
+            if ! rm -f /home/admin/frontend/.env.production.local; then
+              abort_deploy "frontend temporary environment 清理失敗"
+            fi
           fi
 
           # Keep runtime identity separate from the frontend build artifact.
           # version.json may intentionally remain old during backend-only deploys;
           # deployment.json always records the backend commit actually activated.
-          write_deployment_manifest() {
-            python3 /home/admin/scripts/write-deployment-manifest.py \
-              --target-sha "$1" \
-              --version-file /home/admin/backend/public/version.json \
-              --output /home/admin/backend/public/deployment.json
-          }
-          write_deployment_manifest "$TARGET_SHA"
+          if ! write_deployment_manifest "$TARGET_SHA"; then
+            abort_deploy "deployment manifest 寫入失敗"
+          fi
 
           echo "=== [5/7] 重建 Laravel 快取 + 重載 PHP-FPM ==="
           # ⛔ 禁止用 optimize:clear / config:clear（事故 B 教訓：清除會造成短暫 auth 錯亂）
@@ -666,7 +743,9 @@ jobs:
           # ✅ optimize 直接重建快取（config:cache + route:cache + event:cache），不留空窗期
           cd /home/admin/backend
           rm -f bootstrap/cache/packages.php bootstrap/cache/services.php
-          php artisan optimize
+          if ! php artisan optimize; then
+            abort_deploy "Laravel optimize 失敗"
+          fi
           # Read-only probe using the same Laravel config that the web process
           # will load. Keep the authentication error visible without ever
           # printing DB_PASSWORD; this distinguishes a remaining credential
@@ -687,7 +766,7 @@ jobs:
             echo "✅ Laravel DB probe passed"
           else
             echo "❌ Laravel DB probe failed (password redacted): $DB_PROBE_OUTPUT"
-            exit 1
+            abort_deploy "Laravel DB probe 失敗"
           fi
           # ✅ 清除 OPcache（mod_php 架構，用自製 artisan 指令，不需 sudo）
           cd /home/admin/backend && php artisan opcache:reset 2>/dev/null \
@@ -704,15 +783,16 @@ jobs:
             exit 1
           fi
           for attempt in $(seq 1 16); do
-            OPCACHE_RESPONSE=$(curl -skf -X POST \
-              https://daan.lifenet.com.tw/api/internal/opcache-reset \
-              -H "X-Deploy-Secret: ${DEPLOY_SECRET}" \
-              -H "Connection: close" \
-              -H "Content-Type: application/json")
+            if ! OPCACHE_RESPONSE=$(curl -skf -X POST \
+                https://daan.lifenet.com.tw/api/internal/opcache-reset \
+                -H "X-Deploy-Secret: ${DEPLOY_SECRET}" \
+                -H "Connection: close" \
+                -H "Content-Type: application/json"); then
+              abort_deploy "FPM web-process refresh request failed on attempt ${attempt}"
+            fi
             if ! echo "$OPCACHE_RESPONSE" | grep -q '"ok":true' || \
                ! echo "$OPCACHE_RESPONSE" | grep -q '"db_connection_refreshed":true'; then
-              echo "❌ FPM web-process refresh failed on attempt ${attempt}"
-              exit 1
+              abort_deploy "FPM web-process refresh failed on attempt ${attempt}"
             fi
           done
           unset DEPLOY_SECRET OPCACHE_RESPONSE
@@ -751,40 +831,7 @@ jobs:
               echo "❌ Smoke test 失敗，啟動 Rollback"
             fi
           fi
-          # ⬇ health check 或 smoke test 失敗才往下走
-          true
-
-          echo "=== [7/7] ❌ Health check 失敗，啟動自動 Rollback ==="
-          echo "回滾到 $PREV_COMMIT ..."
-
-          cd /home/admin
-          git reset --hard "$PREV_COMMIT" || echo "⚠️ git reset 失敗"
-
-          if [ "$FRONTEND_CHANGED" -gt 0 ]; then
-            cd /home/admin/frontend && npm run deploy || echo "⚠️ 前端 rollback build 失敗"
-          fi
-
-          write_deployment_manifest "$PREV_COMMIT"
-
-          cd /home/admin/backend
-          php artisan optimize || echo "⚠️ optimize 失敗"
-
-          if [ "$MIGRATION_RAN" -eq 1 ]; then
-            echo "回滾 migration..."
-            php artisan migrate:rollback --step=1 --force || echo "⚠️ migrate:rollback 失敗"
-          fi
-
-          echo "Rollback health check..."
-          HEALTH2=$(curl -sk https://daan.lifenet.com.tw/api/v1/health \
-            | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status','?'))" \
-            2>/dev/null || echo "error")
-          if [ "$HEALTH2" = "ok" ]; then
-            echo "✅ Rollback 成功，系統已恢復到 $PREV_COMMIT"
-          else
-            echo "❌ Rollback 後 health check 仍失敗：$HEALTH2 — 需要人工介入"
-          fi
-
-          exit 1
+          abort_deploy "health check 或 smoke test 失敗"
           ENDSSH
   staged_principal_rotation:
     name: Staged DB principal rotation (one phase)

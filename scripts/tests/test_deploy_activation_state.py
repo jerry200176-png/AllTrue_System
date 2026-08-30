@@ -309,6 +309,20 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("Final exact-main gate before production executor", self.workflow)
         self.assertIn("REMOTE_MAIN_SHA=$(git rev-parse refs/remotes/origin/main)", self.workflow)
 
+    def test_deploy_failures_are_fail_closed_and_share_rollback(self):
+        self.assertIn("rollback_deploy()", self.workflow)
+        self.assertIn("abort_deploy()", self.workflow)
+        self.assertIn('if ! (cd /home/admin/backend && composer install', self.workflow)
+        self.assertIn('if ! (cd /home/admin/frontend && npm install', self.workflow)
+        self.assertIn('if ! write_deployment_manifest "$TARGET_SHA"', self.workflow)
+        self.assertIn('if ! php artisan optimize; then', self.workflow)
+        self.assertIn('if ! rm -f /home/admin/frontend/.env.production.local; then', self.workflow)
+        self.assertIn('if ! OPCACHE_RESPONSE=$(curl -skf -X POST', self.workflow)
+        self.assertIn('abort_deploy "health check 或 smoke test 失敗"', self.workflow)
+        self.assertIn('rollback_failed=1', self.workflow)
+        self.assertIn('health=$health2 rollback_failed=$rollback_failed', self.workflow)
+        self.assertNotIn('git reset --hard "$PREV_COMMIT" || echo', self.workflow)
+
     def test_contract_test_runs_before_target_resolution(self):
         self.assertIn("contract-test:", self.workflow)
         self.assertIn("needs: contract-test", self.workflow)
