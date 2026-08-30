@@ -1,0 +1,43 @@
+id: TKT-20260830-090322-XG90
+title: Lock student-class response envelope
+intent: Lock student-class response envelope
+kind: task
+parent_id: INT-20260830-090315-6SUX
+boundary: Do not modify controllers, routes, auth, billing, scheduling, migrations,
+  production data, deployment workflows, or existing governance gates.
+success_condition: Focused tests lock stable pagination metadata, row keys/types,
+  normalized schedule fields, read-only payment summary masking for teachers, and
+  cross-campus scope; isolated PHPUnit and governed checks pass.
+priority: 3
+labels: []
+scope:
+  allow:
+  - backend/tests/Feature/StudentClassResponseContractTest.php
+  - .agent-session/manifest.json
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - backend/app/**
+  - backend/routes/**
+  - backend/database/**
+  - frontend/**
+  - .github/workflows/**
+budgets:
+  max_files_changed: 4
+  max_loc_changed: 280
+checks:
+- bash scripts/phpunit-isolated.sh
+type: feature
+status: todo
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-30T09:03:22+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default
