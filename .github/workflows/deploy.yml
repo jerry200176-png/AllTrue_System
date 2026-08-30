@@ -330,13 +330,13 @@ jobs:
           {
             echo "## merged-awaiting-activation"
             echo ""
-            echo "- target SHA: `${TARGET_SHA}`"
-            echo "- source PR: `${PR_NUMBER}`"
-            echo "- declared tier: `${TIER}`"
+            echo "- target SHA: ${TARGET_SHA}"
+            echo "- source PR: ${PR_NUMBER}"
+            echo "- declared tier: ${TIER}"
             echo "- reason: ${REASON}"
             echo ""
             echo "No production SSH, migration, frontend build, or data mutation was executed."
-            echo "Founder activation must dispatch `Deploy to Pi` with phase `application-deploy`, the exact current main SHA, and confirmation `ACTIVATE_PRODUCTION:<target_sha>`."
+            echo "Founder activation must dispatch Deploy to Pi with phase application-deploy, the exact current main SHA, and confirmation ACTIVATE_PRODUCTION:<target_sha>."
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
   production-activation:
