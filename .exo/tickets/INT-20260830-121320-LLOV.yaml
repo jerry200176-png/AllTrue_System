@@ -1,0 +1,48 @@
+id: INT-20260830-121320-LLOV
+title: Auth and RFID response contract coverage
+intent: Auth and RFID response contract coverage
+kind: intent
+brain_dump: 'Continue GitHub issue #992 by locking the stable response contracts of
+  the high-frequency authentication and RFID attendance entry points, starting with
+  the current auth login and swipe-rfid success/error envelopes. This is regression
+  prevention only: inspect current behavior, add focused feature contracts, and preserve
+  runtime behavior.'
+boundary: Test-only. Do not modify controllers, routes, middleware, auth semantics,
+  token handling, RFID attendance behavior, billing, scheduling, database schema,
+  production data, deployment workflows, or governance gates.
+success_condition: 'Focused feature tests assert the current auth login and swipe-rfid
+  response envelopes and stable scalar/row types without changing runtime code; isolated
+  PHPUnit and governed checks pass; a reviewable PR links evidence to #992.'
+risk: medium
+priority: 2
+labels:
+- api-contract
+scope:
+  allow:
+  - backend/tests/Feature/AuthResponseContractTest.php
+  - .agent-session/manifest.json
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - backend/app/**
+  - backend/routes/**
+  - backend/database/**
+  - .github/workflows/**
+budgets:
+  max_files_changed: 4
+  max_loc_changed: 260
+checks:
+- bash scripts/phpunit-isolated.sh
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-30T12:13:20+08:00'
+children: []
+resource_profile: default
