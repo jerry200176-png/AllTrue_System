@@ -398,12 +398,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          PHASE: ${{ inputs.phase }}
         run: |
           set -euo pipefail
-          REPO="$REPO" GH_TOKEN="$GH_TOKEN" python3 - <<'PY'
+          REPO="$REPO" GH_TOKEN="$GH_TOKEN" EVENT_NAME="$EVENT_NAME" PHASE="$PHASE" PYTHONPATH=. python3 - <<'PY'
           import json
           import os
           import subprocess
+
+          from scripts.tests.test_deploy_activation_state import environment_protection_is_valid
 
           repo = os.environ["REPO"]
           base = f"/repos/{repo}/environments/production-activation"
@@ -416,8 +420,16 @@ jobs:
           reviewers = [rule for rule in rules if rule.get("type") == "required_reviewers"]
           if not reviewers or not all(rule.get("reviewers") for rule in reviewers):
               raise SystemExit("production environment protection is not configured: Founder required reviewer missing")
-          if not all(rule.get("prevent_self_review") is True for rule in reviewers):
-              raise SystemExit("production environment protection is not configured: prevent self-review must be enabled")
+          prevent_self_review = all(rule.get("prevent_self_review") is True for rule in reviewers)
+          if not environment_protection_is_valid(
+              event_name=os.environ["EVENT_NAME"],
+              phase=os.environ.get("PHASE", ""),
+              prevent_self_review=prevent_self_review,
+          ):
+              raise SystemExit(
+                  "production environment protection is not configured: "
+                  "prevent self-review must be enabled outside explicit application activation"
+              )
           if environment.get("can_admins_bypass") is not False:
               raise SystemExit("production environment protection is not configured: administrator bypass must be disabled")
 
@@ -428,7 +440,10 @@ jobs:
           names = sorted(str(policy.get("name")) for policy in policies)
           if names != ["main"]:
               raise SystemExit(f"production environment protection is not configured: expected only main branch, got {names}")
-          print("production-activation protection verified: required reviewer, no self-review, no admin bypass, main only")
+          if prevent_self_review:
+              print("production-activation protection verified: required reviewer, no self-review, no admin bypass, main only")
+          else:
+              print("production-activation bootstrap exception verified: required reviewer, explicit application phase, no admin bypass, main only")
           PY
 
       - name: Require exact typed activation confirmation
