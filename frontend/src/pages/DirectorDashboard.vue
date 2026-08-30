@@ -259,12 +259,14 @@
                     </p>
                     <div v-if="workflowCandidates[workflow.id]?.length" class="director-candidate-picker">
                       <div class="director-candidate-dates" role="tablist" :aria-label="`${workflow.student?.name || '學生'}可補課日期`">
-                        <button v-for="date in workflowCandidateGroups[workflow.id]?.dates" :key="date" type="button" role="tab" class="director-candidate-date" :class="{ 'is-selected': selectedWorkflowCandidateDates[workflow.id] === date }" :aria-selected="selectedWorkflowCandidateDates[workflow.id] === date" @click="selectCandidateDate(workflow.id, date)">
+                        <button v-for="date in workflowCandidateGroups[workflow.id]?.dates" :key="date" :id="`director-candidate-date-${workflow.id}-${date}`" type="button" role="tab" class="director-candidate-date" :class="{ 'is-selected': selectedWorkflowCandidateDates[workflow.id] === date }" :aria-controls="`director-candidate-panel-${workflow.id}`" :aria-selected="selectedWorkflowCandidateDates[workflow.id] === date" @click="selectCandidateDate(workflow.id, date)">
                           {{ candidateDateLabel(date) }}
                         </button>
                       </div>
-                      <div class="director-candidate-list" role="radiogroup" :aria-label="`${workflow.student?.name || '學生'}補課候選`">
-                        <label v-for="candidate in (workflowCandidateGroups[workflow.id]?.byDate[selectedWorkflowCandidateDates[workflow.id]] || [])" :key="candidate.id" class="director-candidate" :class="{ 'is-selected': selectedWorkflowCandidates[workflow.id] === candidate.id }"><input v-model="selectedWorkflowCandidates[workflow.id]" type="radio" :name="`leave-candidate-${workflow.id}`" :value="candidate.id" :disabled="workflowActionId === workflow.id" /><span><strong>{{ candidate.start_time }}–{{ candidate.end_time }}</strong><small v-if="candidate.status === 'warning'">已有其他課程</small></span></label>
+                      <div :id="`director-candidate-panel-${workflow.id}`" class="director-candidate-panel" role="tabpanel" :aria-labelledby="`director-candidate-date-${workflow.id}-${selectedWorkflowCandidateDates[workflow.id]}`" tabindex="0">
+                        <div class="director-candidate-list" role="radiogroup" :aria-label="`${workflow.student?.name || '學生'}補課候選`">
+                          <label v-for="candidate in (workflowCandidateGroups[workflow.id]?.byDate[selectedWorkflowCandidateDates[workflow.id]] || [])" :key="candidate.id" class="director-candidate" :class="{ 'is-selected': selectedWorkflowCandidates[workflow.id] === candidate.id }"><input v-model="selectedWorkflowCandidates[workflow.id]" type="radio" :name="`leave-candidate-${workflow.id}`" :value="candidate.id" :disabled="workflowActionId === workflow.id" /><span><strong>{{ candidate.start_time }}–{{ candidate.end_time }}</strong><small v-if="candidate.status === 'warning'">已有其他課程</small></span></label>
+                        </div>
                       </div>
                     </div>
                     <p v-else class="director-leave-case__hint"><span class="material-symbols-outlined" aria-hidden="true">lightbulb</span>先搜尋沒有衝堂的可用時段，也可以直接核准不補課。</p>
