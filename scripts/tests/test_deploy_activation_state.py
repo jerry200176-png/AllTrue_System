@@ -172,6 +172,14 @@ class DeployActivationPolicyTest(unittest.TestCase):
         )
         self.assertEqual(scope["tier_name"], "T0")
 
+    def test_deploy_queue_uses_runtime_manifest_and_full_undeployed_range(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("/deployment.json", workflow)
+        self.assertIn("compare/{deployed}...{head}", workflow)
+        self.assertIn("runtime_base_sha", workflow)
+        self.assertIn("production deployment identity unavailable; classifier must fail closed", workflow)
+        self.assertNotIn('base = parents[0]["sha"]', workflow)
+
     def test_classifier_holds_protected_paths_and_semantics(self):
         cases = [
             ([".github/workflows/deploy.yml"], "", "T3"),
