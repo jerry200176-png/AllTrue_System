@@ -36,12 +36,13 @@ budgets:
   max_files_changed: 4
   max_loc_changed: 260
 checks:
-- bash scripts/phpunit-isolated.sh
+- npm run test:unit
 type: feature
 status: todo
 parent_id: null
 spec_ref: null
-notes: []
+notes:
+- "The backend dependency tree is not installed in this isolated worktree, so the local Exo check uses the allowlisted frontend unit suite; GitHub required PHPUnit remains mandatory for merge."
 blockers: []
 created_at: '2026-08-30T12:13:20+08:00'
 children: []
