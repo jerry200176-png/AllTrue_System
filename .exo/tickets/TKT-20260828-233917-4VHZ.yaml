@@ -31,9 +31,11 @@ checks:
 - npm run lint:no-undef
 - npm run build
 type: feature
-status: todo
+status: done
 spec_ref: null
-notes: []
+notes:
+- "Completed on main via 3b25af9c (#2191), 9faf67ce (#2194), 08eda99f (#2223), and 3f2bff38 (#2233)."
+- "Evidence: teacher queue regression/accessibility checks, no-undef lint, and Vite build passed; no second task list or API contract change was introduced."
 blockers: []
 created_at: '2026-08-28T23:39:17+08:00'
 brain_dump: ''
