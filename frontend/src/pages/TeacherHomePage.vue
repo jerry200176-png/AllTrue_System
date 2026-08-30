@@ -30,7 +30,7 @@
         <p class="th-companion__eyebrow">今天的節奏</p>
         <h3 id="teacher-companion-title">{{ teacherTasksLoading ? '先準備今天的課務' : (teacherTasksError ? '今天的工作需要重新整理' : (teacherTasks.length ? '先完成最重要的一件事' : '今天的課務完成了')) }}</h3>
         <p class="th-companion__description">
-          {{ teacherTasksLoading ? '正在整理今天的任務，等一下就會顯示。' : (teacherTasksError ? '部分工作資料暫時無法載入，請重新整理後再開始處理。' : (teacherTasks.length ? `還有 ${teacherTasks.length} 項工作，完成一項就更接近下課。` : '可以放心查看本週課表，準備下一堂課。')) }}
+          {{ teacherTasksLoading ? '正在整理今天的任務，等一下就會顯示。' : (teacherTasksError ? '部分工作資料暫時無法載入，請重新整理後再開始處理。' : (teacherTasks.length ? `還有 ${teacherTaskCount} 項工作，完成一項就更接近下課。` : '可以放心查看本週課表，準備下一堂課。')) }}
         </p>
         <button v-if="teacherTasksError" type="button" class="th-companion__action" :disabled="refreshing" @click="refreshAll">
           <span>{{ refreshing ? '重新整理中…' : '重新整理今日任務' }}</span>
@@ -112,7 +112,7 @@
           <h3 id="teacher-work-queue-title" tabindex="-1">今天要完成</h3>
           <p class="th-work-queue__description">依照期限與影響排序；完成後會從清單移除。</p>
         </div>
-        <span class="th-work-queue__count" aria-live="polite">{{ teacherTasksError ? '待確認' : `${teacherTasks.length} 項` }}</span>
+        <span class="th-work-queue__count" aria-live="polite">{{ teacherTasksLoading ? '載入中…' : (teacherTasksError ? '待確認' : `${teacherTaskCount} 項`) }}</span>
       </div>
 
       <details v-if="!teacherTasksLoading && teacherTasks.length" class="th-priority-disclosure">
@@ -335,7 +335,7 @@ import {
 } from '../lib/userEngagementDisplay';
 import { fetchActiveForSession } from '../lib/scheduleDiscrepanciesApi.js';
 import { trackAdoptionEvent } from '../lib/adoptionTelemetry';
-import { buildTeacherTasks } from '../lib/teacherDailyWorkflow.js';
+import { buildTeacherTasks, countTeacherTasks } from '../lib/teacherDailyWorkflow.js';
 import {
   readTeacherStreak,
   isTeacherStreakDisplayEnabled,
@@ -736,6 +736,7 @@ const teacherTasks = computed(() => buildTeacherTasks({
   overdueLearning: overdueRecords.value,
   awaitingReplies: [{ count: Math.max(Number(props.unreadFeedbackCount || 0), Number(awaitingReplyCount.value || 0)) }],
 }));
+const teacherTaskCount = computed(() => countTeacherTasks(teacherTasks.value));
 
 const teacherTasksLoading = computed(() => (
   loadingAttendance.value || loadingOverdue.value || loadingWeek.value || awaitingReplyLoading.value
