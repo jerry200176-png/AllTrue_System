@@ -63,11 +63,26 @@
 
     <!-- Subject-count calculation (matches GET /api/v1/finance/subject-units) -->
     <div v-if="teacherList.length > 0" class="card calc-guide" data-guide="subject-units-formula">
-      <div class="calc-guide-header" @click="showCalcGuide = !showCalcGuide">
-        <h3>📎 科目數計算方式</h3>
-        <button type="button" class="ghost small">{{ showCalcGuide ? '收合 ▲' : '展開 ▼' }}</button>
+      <div class="calc-guide-header">
+        <h3 id="subject-units-calc-guide-title">
+          <button
+            type="button"
+            class="ghost small calc-guide-toggle"
+            :aria-expanded="showCalcGuide"
+            aria-controls="subject-units-calc-guide-body"
+            @click="showCalcGuide = !showCalcGuide"
+          >
+            <span>📎 科目數計算方式</span>
+            <span aria-hidden="true">{{ showCalcGuide ? '收合 ▲' : '展開 ▼' }}</span>
+          </button>
+        </h3>
       </div>
-      <div v-if="showCalcGuide" class="calc-guide-body">
+      <div
+        v-show="showCalcGuide"
+        id="subject-units-calc-guide-body"
+        class="calc-guide-body"
+        aria-labelledby="subject-units-calc-guide-title"
+      >
         <p class="calc-guide-lead">
           本頁「科目數」與「加權總分」由後端依下列規則計算，與薪資報表口徑一致。
         </p>
@@ -153,12 +168,26 @@
 
     <!-- Level Breakdown -->
     <div v-if="levelBreakdownTotals.length > 0" class="card" style="margin-top: 20px;">
-      <div class="level-breakdown-header" @click="showLevelBreakdown = !showLevelBreakdown">
-        <h3>📊 學段分解（國小/國中/高中）</h3>
-        <button class="ghost small">{{ showLevelBreakdown ? '收合 ▲' : '展開 ▼' }}</button>
+      <div class="level-breakdown-header">
+        <h3 id="subject-units-level-breakdown-title">
+          <button
+            type="button"
+            class="ghost small level-breakdown-toggle"
+            :aria-expanded="showLevelBreakdown"
+            aria-controls="subject-units-level-breakdown-body"
+            @click="showLevelBreakdown = !showLevelBreakdown"
+          >
+            <span>📊 學段分解（國小/國中/高中）</span>
+            <span aria-hidden="true">{{ showLevelBreakdown ? '收合 ▲' : '展開 ▼' }}</span>
+          </button>
+        </h3>
       </div>
 
-      <div v-if="showLevelBreakdown">
+      <div
+        v-show="showLevelBreakdown"
+        id="subject-units-level-breakdown-body"
+        aria-labelledby="subject-units-level-breakdown-title"
+      >
         <div class="level-summary-cards">
           <div v-for="lb in levelBreakdownTotals" :key="'lvl-total-'+lb.level" class="summary-card level-card">
             <div class="summary-label">{{ lb.levelLabel }}</div>
@@ -511,10 +540,27 @@ table tfoot td {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  cursor: pointer;
 }
+.calc-guide-header h3,
 .level-breakdown-header h3 {
   margin: 0;
+}
+.calc-guide-header .calc-guide-toggle,
+.level-breakdown-header .level-breakdown-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.calc-guide-toggle:focus-visible,
+.level-breakdown-toggle:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
 }
 
 .level-summary-cards {
@@ -537,7 +583,6 @@ table tfoot td {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  cursor: pointer;
   user-select: none;
 }
 
