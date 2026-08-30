@@ -36,9 +36,11 @@ checks:
 - npm run lint:no-undef
 - npm run build
 type: feature
-status: todo
+status: done
 spec_ref: null
-notes: []
+notes:
+- "Completed on main via 2e1d0cd2 (#2154), with dashboard integration retained by 992ea734 and 0e182c0b."
+- "Evidence: focused frontend tests, no-undef lint, and Vite build passed; no API, permission, billing, schedule, attendance, or production-data change was included."
 blockers: []
 created_at: '2026-08-28T19:08:01+08:00'
 brain_dump: ''
