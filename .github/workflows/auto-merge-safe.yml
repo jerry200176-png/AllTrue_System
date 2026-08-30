@@ -1,0 +1,118 @@
+name: Autonomous safe merge
+
+# This workflow runs in the base-repository context and never checks out or
+# executes pull-request code. It only reads the PR diff, classifies it using
+# the classifier already on main, and asks GitHub to enable server-side
+# auto-merge for T0/T1 work. GitHub still enforces the required status checks
+# and branch rules before the merge is actually performed.
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: read
+
+concurrency:
+  group: autonomous-safe-merge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  classify:
+    name: Autonomous safe merge gate
+    if: >-
+      !github.event.pull_request.draft &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      decision: ${{ steps.classify.outputs.decision }}
+      tier: ${{ steps.classify.outputs.tier }}
+    steps:
+      - name: Checkout base revision only
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+
+      - name: Classify pull request without executing its code
+        id: classify
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          PR_JSON="$(gh api "/repos/${REPO}/pulls/${PR_NUMBER}")"
+          FILES_JSON="$(gh api "/repos/${REPO}/pulls/${PR_NUMBER}/files?per_page=100" --paginate --slurp)"
+          PR_JSON="$PR_JSON" FILES_JSON="$FILES_JSON" EVENT_HEAD_SHA="$EVENT_HEAD_SHA" python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          from scripts.governance.autonomy_gate import (
+              classify_scope,
+              effective_tier,
+              parse_declaration,
+          )
+
+          pr = json.loads(os.environ["PR_JSON"])
+          pages = json.loads(os.environ["FILES_JSON"])
+          files = []
+          for page in pages if isinstance(pages, list) else []:
+              files.extend(page if isinstance(page, list) else [page])
+
+          if pr.get("head", {}).get("sha") != os.environ["EVENT_HEAD_SHA"]:
+              raise SystemExit("PR head changed during evaluation; fail closed")
+
+          paths = [item.get("filename", "") for item in files]
+          patch = "\n".join(
+              f"diff --git a/{item.get('filename', '')} b/{item.get('filename', '')}\n"
+              f"{item.get('patch') or ''}"
+              for item in files
+          )
+          scope = classify_scope(paths, patch)
+          declared_risk, declared_tier = parse_declaration(pr.get("body") or "")
+          tier, error = effective_tier(
+              int(scope["machine_minimum_tier"]), declared_risk, declared_tier
+          )
+
+          output = Path(os.environ["GITHUB_OUTPUT"])
+          if error:
+              output.write_text(
+                  f"decision=hold\ntier={scope['tier_name']}\n",
+                  encoding="utf-8",
+              )
+              print(f"Autonomous merge held: {error}; machine tier={scope['tier_name']}")
+          elif tier in (0, 1):
+              output.write_text(f"decision=auto\ntier=T{tier}\n", encoding="utf-8")
+              print(f"Autonomous merge eligible: T{tier}; required checks remain authoritative")
+          else:
+              output.write_text(f"decision=hold\ntier=T{tier}\n", encoding="utf-8")
+              print(f"Autonomous merge held: T{tier} requires risk-appropriate review/protected handling")
+          PY
+
+  enable-auto-merge:
+    name: Enable GitHub auto-merge for safe PR
+    needs: classify
+    if: ${{ needs.classify.result == 'success' && needs.classify.outputs.decision == 'auto' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Enable server-side squash auto-merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          CURRENT_HEAD_SHA="$(gh api "/repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.sha')"
+          if [[ "$CURRENT_HEAD_SHA" != "$EVENT_HEAD_SHA" ]]; then
+            echo "PR head changed before auto-merge; fail closed" >&2
+            exit 1
+          fi
+          gh pr merge "$PR_NUMBER" --repo "$REPO" --auto --squash --delete-branch
+          echo "GitHub will merge only after required checks and branch rules pass."

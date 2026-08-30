@@ -26,10 +26,6 @@ on:
         required: true
         type: string
 
-concurrency:
-  group: production-deploy
-  cancel-in-progress: false
-
 permissions:
   contents: read
   actions: read
@@ -116,6 +112,11 @@ jobs:
     outputs:
       deployable: ${{ steps.detect.outputs.deployable }}
     steps:
+      - name: Checkout target revision
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve-target.outputs.target_sha }}
+
       - name: Check changed files
         id: detect
         env:
@@ -127,6 +128,8 @@ jobs:
           import json
           import os
           import subprocess
+
+          from scripts.governance.autonomy_gate import is_deployable_path
 
           repo = os.environ["REPO"]
           head = os.environ["HEAD_SHA"]
@@ -148,16 +151,7 @@ jobs:
               text=True,
           ))
           files = [item.get("filename", "") for item in comparison.get("files", [])]
-          deployable_prefixes = ("backend/", "frontend/", "scripts/")
-          deployable_exact = {
-              "composer.json",
-              "composer.lock",
-              ".github/workflows/deploy.yml",
-          }
-          deployable = any(
-              path.startswith(deployable_prefixes) or path in deployable_exact
-              for path in files
-          )
+          deployable = any(is_deployable_path(path) for path in files)
           print("Changed files:")
           for path in files:
               print(f"- {path}")
@@ -224,7 +218,7 @@ jobs:
           fi
 
           if [[ ! -f scripts/governance/autonomy_gate.py ]]; then
-            hold "unknown" "none" "authoritative classifier unavailable; fail closed (depends on #2180)"
+            hold "unknown" "none" "authoritative classifier unavailable; fail closed"
             exit 0
           fi
 
@@ -451,6 +445,12 @@ jobs:
     if: ${{ always() && needs.resolve-target.result == 'success' && needs.detect-deployable.result == 'success' && needs.classify-activation.result == 'success' && needs.detect-deployable.outputs.deployable == 'true' && (needs.classify-activation.outputs.mode == 'auto' || (needs.classify-activation.outputs.mode == 'manual' && needs.production-activation.result == 'success')) }}
     # Production credentials remain on the ephemeral GitHub-hosted runner.
     runs-on: ubuntu-latest
+    # Serialize only the side-effecting executor. Read-only preflight and
+    # activation classification must remain schedulable when an old deploy is
+    # pending in GitHub's queue.
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
 
     steps:
       - name: Final exact-main gate before production executor
@@ -791,6 +791,13 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && (inputs.phase == 'phase1-create' || inputs.phase == 'phase2-cutover' || inputs.phase == 'phase3-lock')
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # Principal rotation is a production side effect and must remain mutually
+    # exclusive with application deployment.
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
+    environment:
+      name: production-activation
     steps:
       - name: Require phase-specific typed confirmation
         env:

@@ -1,6 +1,6 @@
 # Risk-Based Merge Policy
 
-**Version:** 1.5.0
+**Version:** 1.6.0
 **Effective:** 2026-08-29 (Founder T0–T3 autonomy decision; supersedes the prior solo-mode R2/R3 merge wording)
 **Owner:** Founder / CTO Agent  
 **Status:** Canonical  
@@ -39,6 +39,27 @@ Preserve autonomous delivery for low-risk changes while requiring independent re
 | This policy + Merge SOP | Human/Agent behavior contract |
 
 **Not required:** GitHub “all PRs need Founder approving review.” T0–T2 use risk-appropriate review and required checks; T3 uses a Founder decision at the protected action boundary, not a blanket PR approval rule.
+
+## Autonomous delivery path
+
+For same-repository, non-draft PRs, `.github/workflows/auto-merge-safe.yml` evaluates
+the diff from the base revision using `scripts/governance/autonomy_gate.py`.
+Only an exact, declared, machine-validated T0/T1 result can enable GitHub
+server-side squash auto-merge. GitHub still waits for every required status
+check and branch rule, and the workflow rechecks the PR head SHA immediately
+before requesting auto-merge.
+
+After merge, `deploy.yml` remains the only application production executor. Its
+deploy and principal-rotation jobs have their own non-cancelling production
+concurrency lock, so preflight/classification runs cannot occupy the deployment
+queue. T0/T1 deploys do not reference the protected `production-activation`
+environment; deploy health checks, runtime smoke checks, exact-SHA checks, and
+rollback/fail-closed behavior remain mandatory. T2/T3, unknown classifications,
+workflow/governance/security-boundary changes, and irreversible operations stay
+held for risk-appropriate review or the protected Founder boundary.
+
+This governance change itself is T3: it must pass the governance cool-off and
+protected review process before its new capability is used in production.
 
 ## Review checklist (R2/T2)
 
