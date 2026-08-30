@@ -148,3 +148,14 @@ failure_modes:
       leave the parent container clickable around the button.
   severity: low
   frequency: recurring
+- id: FM-20260831-010449-G4BI
+  name: Styled label hides the student import file input
+  detection:
+    signal: Styled label hides the student import file input
+    source: reflection:REF-20260831-010449-IM1T
+  mitigation:
+    practice: Use a visible native button to trigger a visually clipped file input
+      via ref; keep the existing change handler and API, and give the button an explicit
+      accessible name so keyboard users do not depend on a non-focusable label.
+  severity: low
+  frequency: recurring
