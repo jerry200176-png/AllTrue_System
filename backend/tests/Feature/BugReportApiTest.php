@@ -15,6 +15,81 @@ class BugReportApiTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_bug_intake_and_triage_response_contract(): void
+    {
+        [$reporterToken, $reporter] = $this->createUserToken([1], 'contractReporter@test.com', 'T');
+        [$adminToken] = $this->createUserToken([1], 'contractAdmin@test.com', 'S');
+        $reporterHeaders = [
+            'Authorization' => "Bearer {$reporterToken}",
+            'Accept' => 'application/json',
+        ];
+        $adminHeaders = [
+            'Authorization' => "Bearer {$adminToken}",
+            'Accept' => 'application/json',
+        ];
+
+        $created = $this->withHeaders($reporterHeaders)->postJson('/api/v1/bugs', [
+            'title' => 'Response contract',
+            'description' => 'Keep the bug intake payload stable.',
+            'severity' => 'high',
+            'page_key' => 'bug-reports',
+            'branch_id' => 1,
+        ]);
+        $created->assertCreated()->assertJsonStructure([
+            'id', 'status', 'created_at', 'attachment_errors',
+        ])->assertJsonPath('status', 'new');
+        $bugId = (int) $created->json('id');
+        $this->assertGreaterThan(0, $bugId);
+        $this->assertIsString($created->json('created_at'));
+        $this->assertIsInt($created->json('attachment_errors'));
+
+        $list = $this->withHeaders($reporterHeaders)->getJson('/api/v1/bugs?branch_id=1');
+        $list->assertOk()->assertJsonStructure([
+            'current_page', 'data' => [[
+                'id', 'campus_id', 'reporter_user_id', 'title', 'severity', 'status',
+                'page_key', 'attachments_count', 'comments_count', 'created_at', 'updated_at',
+            ]], 'last_page', 'per_page', 'total',
+        ]);
+        $this->assertSame($bugId, $list->json('data.0.id'));
+
+        $detail = $this->withHeaders($reporterHeaders)->getJson("/api/v1/bugs/{$bugId}");
+        $detail->assertOk()->assertJsonStructure([
+            'id', 'campus_id', 'reporter_user_id', 'reporter_name', 'title', 'description',
+            'severity', 'status', 'page_key', 'url', 'client_info', 'created_at', 'updated_at',
+            'comments', 'status_logs', 'attachments',
+        ]);
+        $this->assertSame($reporter->id, $detail->json('reporter_user_id'));
+
+        $comment = $this->withHeaders($reporterHeaders)->postJson("/api/v1/bugs/{$bugId}/comments", [
+            'body' => '已補充可重現步驟。',
+        ]);
+        $comment->assertCreated()->assertJsonStructure(['id', 'created_at']);
+
+        $triaged = $this->withHeaders($adminHeaders)->postJson("/api/v1/bugs/{$bugId}/status", [
+            'status' => 'triaged',
+        ]);
+        $triaged->assertOk()->assertJson(['ok' => true]);
+
+        $this->withHeaders($adminHeaders)->postJson("/api/v1/bugs/{$bugId}/status", [
+            'status' => 'in_progress',
+        ])->assertOk()->assertJson(['ok' => true]);
+        $resolved = $this->withHeaders($adminHeaders)->postJson("/api/v1/bugs/{$bugId}/status", [
+            'status' => 'resolved',
+            'production_revision' => 'abcdef1',
+            'deploy_run_id' => '123456',
+        ]);
+        $resolved->assertOk()->assertJson(['ok' => true]);
+
+        $verified = $this->withHeaders($reporterHeaders)->postJson("/api/v1/bugs/{$bugId}/reporter-verify", [
+            'verdict' => 'confirmed',
+        ]);
+        $verified->assertOk()->assertJson(['ok' => true, 'new_status' => 'closed']);
+
+        $badge = $this->withHeaders($reporterHeaders)->getJson('/api/v1/bugs/unread-badge?branch_id=1');
+        $badge->assertOk()->assertJsonStructure(['unread_count']);
+        $this->assertIsInt($badge->json('unread_count'));
+    }
+
     public function test_submit_bug_report(): void
     {
         [$token, $user] = $this->createUserToken([1], 'bug1@test.com', 'T');

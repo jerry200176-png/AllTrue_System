@@ -1,0 +1,38 @@
+id: TKT-20260830-114504-KXE9
+title: Lock bug report response contract
+intent: Lock bug report response contract
+kind: task
+parent_id: INT-20260830-114458-0F1N
+boundary: No runtime code, auth/permissions, status semantics, storage, production
+  data, deploy, workflow dispatch, or credentials.
+success_condition: Bug report intake and triage response fields are contract-tested
+  and isolated PHPUnit/build checks pass.
+priority: 2
+labels:
+- bug
+scope:
+  allow:
+  - backend/tests/Feature/BugReportApiTest.php
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 3
+  max_loc_changed: 120
+checks:
+- bash scripts/phpunit-isolated.sh
+- npm run build
+type: feature
+status: todo
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-30T11:45:04+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default
