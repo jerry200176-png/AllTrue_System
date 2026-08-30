@@ -1,0 +1,13 @@
+id: REF-20260830-062448-II7Y
+pattern: backend feature tests blocked at RefreshDatabase by local MySQL credential
+insight: Keep backend contract tests governed and let GitHub CI provide database-backed
+  evidence when local MySQL admin@localhost credentials are unavailable; record the
+  environment failure separately and never weaken RefreshDatabase or bypass the test.
+severity: medium
+scope: alltrue
+actor: human
+session_id: ''
+created_at: '2026-08-30T06:24:48+08:00'
+status: active
+tags: []
+hit_count: 0

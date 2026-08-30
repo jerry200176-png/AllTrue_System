@@ -125,3 +125,15 @@ failure_modes:
       context before a runtime fix.'
   severity: medium
   frequency: recurring
+- id: FM-20260830-062448-KRGI
+  name: backend feature tests blocked at RefreshDatabase by local MySQL credential
+  detection:
+    signal: backend feature tests blocked at RefreshDatabase by local MySQL credential
+    source: reflection:REF-20260830-062448-II7Y
+  mitigation:
+    practice: Keep backend contract tests governed and let GitHub CI provide database-backed
+      evidence when local MySQL admin@localhost credentials are unavailable; record
+      the environment failure separately and never weaken RefreshDatabase or bypass
+      the test.
+  severity: medium
+  frequency: recurring
