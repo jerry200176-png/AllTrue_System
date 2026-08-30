@@ -437,31 +437,39 @@
 
     <!-- Filters: collapsed by default (expands automatically if a filter is already active) -->
     <div class="card lr-filters" data-guide="learning-filters">
-      <button
-        type="button"
-        class="lr-filters-header lr-filters-header-toggle"
-        :aria-expanded="showAdvancedFilters ? 'true' : 'false'"
-        @click="showAdvancedFilters = !showAdvancedFilters"
-      >
-        <div class="lr-filters-title">
-          <svg class="lr-filters-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
-          </svg>
-          <span>篩選條件</span>
-          <span v-if="activeFilterCount > 0" class="lr-filters-badge" :title="`共 ${activeFilterCount} 個篩選條件已啟用`">{{ activeFilterCount }}</span>
-        </div>
+      <div class="lr-filters-header">
+        <button
+          type="button"
+          class="lr-filters-header-toggle"
+          :aria-expanded="showAdvancedFilters ? 'true' : 'false'"
+          @click="showAdvancedFilters = !showAdvancedFilters"
+        >
+          <div class="lr-filters-title">
+            <svg class="lr-filters-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+            </svg>
+            <span>篩選條件</span>
+            <span v-if="activeFilterCount > 0" class="lr-filters-badge" :title="`共 ${activeFilterCount} 個篩選條件已啟用`">{{ activeFilterCount }}</span>
+          </div>
+        </button>
         <div class="lr-filters-header-right">
-          <span
+          <button
             v-if="hasActiveFilters"
-            role="button"
-            tabindex="0"
+            type="button"
             class="lr-filters-clear-link"
             @click.stop="clearAllFilters"
-            @keyup.enter.stop="clearAllFilters"
-          >清除全部</span>
-          <svg class="lr-more-filters-chev" :class="{ open: showAdvancedFilters }" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          >清除全部</button>
+          <button
+            type="button"
+            class="lr-filters-chevron-toggle"
+            :aria-expanded="showAdvancedFilters ? 'true' : 'false'"
+            aria-label="展開或收合篩選條件"
+            @click="showAdvancedFilters = !showAdvancedFilters"
+          >
+            <svg class="lr-more-filters-chev" :class="{ open: showAdvancedFilters }" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </button>
         </div>
-      </button>
+      </div>
 
       <div v-show="showAdvancedFilters" class="lr-filters-grid">
         <div class="form-group lr-field">
@@ -5800,7 +5808,9 @@ watch([reviewTab, resolvedDefaultWindowStart], ([rt, win], [prt, pwin]) => {
   border-bottom: 1px dashed var(--ds-canvas-soft);
 }
 .lr-filters-header-toggle {
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
   background: none;
   border: none;
   font: inherit;
@@ -5808,6 +5818,7 @@ watch([reviewTab, resolvedDefaultWindowStart], ([rt, win], [prt, pwin]) => {
   text-align: left;
 }
 .lr-filters-header-right {
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -5855,6 +5866,23 @@ watch([reviewTab, resolvedDefaultWindowStart], ([rt, win], [prt, pwin]) => {
   background: var(--ds-canvas-soft);
   color: var(--ds-ink);
   text-decoration: underline;
+}
+.lr-filters-chevron-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 4px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.lr-filters-chevron-toggle:hover {
+  background: var(--ds-canvas-soft);
+  color: var(--ds-ink);
 }
 
 /* Filter fields grid */

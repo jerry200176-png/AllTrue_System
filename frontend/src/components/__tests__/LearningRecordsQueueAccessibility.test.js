@@ -32,6 +32,22 @@ describe('LearningRecords review queue accessibility', () => {
     expect(source).toContain(":aria-labelledby=\"pageMode === 'records' ? (isDirectorRole ? `lr-review-tab-${reviewTab}` : `lr-teacher-tab-${teacherFilterTab}`) : undefined\"");
   });
 
+  it('keeps filter clearing separate from the expand/collapse control', () => {
+    const headerStart = source.indexOf('<div class="lr-filters-header">');
+    const headerEnd = source.indexOf('<div v-show="showAdvancedFilters"', headerStart);
+    const header = source.slice(headerStart, headerEnd);
+    const clearControl = header.match(/<button[\s\S]*?class="lr-filters-clear-link"[\s\S]*?>/);
+
+    expect(headerStart).toBeGreaterThanOrEqual(0);
+    expect(headerEnd).toBeGreaterThan(headerStart);
+    expect(header).toContain('class="lr-filters-header-toggle"');
+    expect(header).toContain('class="lr-filters-chevron-toggle"');
+    expect(clearControl).not.toBeNull();
+    expect(clearControl[0]).toContain('type="button"');
+    expect(clearControl[0]).not.toContain('role="button"');
+    expect(clearControl[0]).not.toContain('tabindex=');
+  });
+
   it('exposes every quick filter chip as a real toggle button', () => {
     const filterButtons = [...source.matchAll(/<button[\s\S]*?>/g)]
       .map((match) => match[0])
