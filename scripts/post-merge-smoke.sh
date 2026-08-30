@@ -136,10 +136,10 @@ if [[ "${SMOKE_ON_PI:-}" == "1" ]] || ssh -o BatchMode=yes -o ConnectTimeout=8 "
     fi
   done
 
-  if pi_sh "grep -q 'trust-summary' ${PI_BACKEND}/public/assets/TeacherHomePage-*.js 2>/dev/null"; then
-    pass "TeacherHome bundle contains trust-summary"
+  if pi_sh "grep -q 'director-trust-note' ${PI_BACKEND}/public/assets/DirectorDashboard-*.js 2>/dev/null"; then
+    pass "DirectorDashboard bundle contains director-trust-note"
   else
-    fail "TeacherHome bundle missing trust-summary"
+    fail "DirectorDashboard bundle missing director-trust-note"
   fi
 else
   warn "Skip Pi artifact checks (SSH unavailable)"
