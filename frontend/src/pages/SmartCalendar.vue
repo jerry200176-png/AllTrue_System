@@ -157,8 +157,8 @@
           </table>
           <p v-else class="room-empty-hint">尚未設定教室，請新增教室以啟用教室容量檢查。</p>
           <div class="room-form">
-            <input v-model="roomForm.name" type="text" placeholder="教室名稱" class="room-input" />
-            <input v-model.number="roomForm.capacity" type="number" min="1" placeholder="容量" class="room-input" style="width: 80px;" />
+            <input v-model="roomForm.name" type="text" placeholder="教室名稱" aria-label="教室名稱" class="room-input" />
+            <input v-model.number="roomForm.capacity" type="number" min="1" placeholder="容量" aria-label="教室容量" class="room-input" style="width: 80px;" />
             <button type="button" class="btn-primary btn-sm" @click="saveRoom">{{ editingRoomId ? '更新' : '新增' }}</button>
             <button v-if="editingRoomId" type="button" class="btn-secondary btn-sm" @click="cancelRoomEdit">取消</button>
           </div>
