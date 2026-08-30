@@ -140,7 +140,7 @@ GitHub Action `.github/workflows/branch-hygiene.yml` 每日跑報告，結果寫
 4. **Backend-only 不跑前端 build**：只改 `backend/**` 或 Composer 依賴時跑 PHPUnit/MySQL 與 PHPStan，不跑 Vite build。
 5. **Workflow 改動保守全跑**：修改 `.github/workflows/**` 時，CI 必須保守跑完整前後端檢查，避免 path filter 失手。
 6. **Docs-only merge 不部署**：`deploy.yml` 必須先偵測 main 最新 commit 是否含 `backend/**`、`frontend/**`、Composer 或 deploy workflow 變動；沒有 deployable diff 就跳過 production deploy。
-7. **Production deploy 不取消**：部署 workflow 使用 `concurrency: production-deploy` 且 `cancel-in-progress: false`，避免中途取消造成半部署。
+7. **Production deploy 不取消、前置檢查不佔鎖**：`deploy.yml` 只在會產生 production side effect 的 `deploy` 與 `staged_principal_rotation` job 使用 `concurrency: production-deploy` 且 `cancel-in-progress: false`；前置 contract/classification job 不得持有 production lock，避免 queue 被 pending gate 或重複 preflight 卡死。
 8. **禁止用 production Pi 省 CI minutes**：不得把 `/home/admin` production Pi 註冊為 PHPUnit/self-hosted test runner；也不得為省 minutes 在 Pi 上跑 `php artisan test` / `phpunit`。
 9. **低風險 docs 小修先累積**：README footer 日期、錯字、單一連結、排版等不影響系統行為的小修，先保留在本地 docs batch；不要單獨開 PR 觸發 Actions。
 10. **同類 docs 一次送出**：README 展示、FAQ、INDEX、Runbook、角色手冊等同日低風險文件修正，合併成一個 `chore/*` docs PR。
@@ -269,7 +269,7 @@ Wrapper 會為每個 process 啟動只綁定 `127.0.0.1` 的非特權 ephemeral 
 | Required approvals | **0**（單人）| 避免自己卡自己；§R 稽核 `reviews` 應為 0 |
 | Auto-delete head branches | Settings → General | 減少 stale branch |
 | Squash merge | 預設 squash；一 PR 一議題 | 大廠 trunk-based 習慣 |
-| Presubmit + CI gate | AI **必須**等 checks completed 再報告可 merge | CI = 自動 reviewer |
+| Presubmit + CI gate | AI **必須**等 checks completed 再報告可 merge；T0/T1 由 `auto-merge-safe.yml` 啟用 server-side auto-merge | CI + deterministic risk gate = 自動 reviewer |
 | CODEOWNERS | 保留；觸發時 CEO 自審即可 | 高風險路徑提醒 |
 | Dependabot SLA | §B0 / §T | 供應鏈 |
 | Branch hygiene | `branch-hygiene.yml` + `./scripts/branch-hygiene.sh` | 每週清理 |
@@ -293,7 +293,7 @@ git checkout -b feat|fix|chore/<slug>
 git push -u origin HEAD
 gh pr create --fill
 gh pr checks --watch          # 等到全綠或自己修
-gh pr merge --squash --delete-branch   # CEO 批准後；docs-only 亦同
+gh pr merge --squash --delete-branch   # 僅 T2/T3/保護性工作在完成對應 review/gate 後；T0/T1 由 auto-merge-safe.yml 自動啟用
 bash scripts/post-merge-smoke.sh       # deploy 後必跑（取代手動點 UI）
 curl -sk https://daan.lifenet.com.tw/api/v1/health | python3 -m json.tool
 ```

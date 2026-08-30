@@ -1,5 +1,19 @@
 # Governance changelog
 
+## 2026-08-30 — Autonomous safe delivery path (implementation pending protected activation)
+
+- Added deterministic `autonomy_gate.py` classification and a base-context
+  `auto-merge-safe.yml` workflow. Same-repository T0/T1 PRs can request
+  server-side squash auto-merge only after exact-SHA revalidation; T2/T3,
+  unknown, workflow, governance, and protected-boundary changes are held.
+- Scoped the production concurrency lock to side-effecting deploy and principal
+  rotation jobs so preflight/classification work cannot occupy the production
+  queue. The protected `production-activation` environment remains on manual
+  and principal-rotation paths.
+- This is a governance capability change and therefore remains subject to the
+  existing 24-hour cool-off and protected review process. No production
+  setting or protected environment was bypassed in this implementation step.
+
 ## 2026-08-29 — Provenance gate binds this PR's claim only
 
 - `scripts/check-agent-provenance.sh` and `ci:preflight` no longer treat the

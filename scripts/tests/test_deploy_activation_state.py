@@ -1,19 +1,27 @@
-"""Executable policy decisions and regression contracts for Deploy to Pi.
-
-The actual changed-scope classifier is owned by #2180.  This module only
-decides what the activation state machine may do with already-validated
-classifier evidence; it deliberately does not parse PR bodies or paths.
-"""
+"""Executable policy decisions and regression contracts for Deploy to Pi."""
 
 from pathlib import Path
 import re
+import sys
 import unittest
 
 
 WORKFLOW = Path(__file__).parents[2] / ".github" / "workflows" / "deploy.yml"
+AUTOMERGE_WORKFLOW = WORKFLOW.parent / "auto-merge-safe.yml"
 TIER_VALUES = {"T0": 0, "T1": 1, "T2": 2, "T3": 3}
 RISK_VALUES = {"R0": 0, "R1": 1, "R2": 2, "R3": 3}
 FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
+
+ROOT = Path(__file__).parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from scripts.governance.autonomy_gate import (  # noqa: E402
+    classify_scope,
+    effective_tier,
+    is_deployable_path,
+    parse_declaration,
+)
 
 
 def decide_activation(
@@ -155,6 +163,33 @@ class DeployActivationPolicyTest(unittest.TestCase):
         self.assertEqual(missing["decision"], "awaiting-activation")
         self.assertEqual(unavailable["decision"], "awaiting-activation")
 
+    def test_classifier_keeps_test_only_changes_out_of_production(self):
+        self.assertFalse(is_deployable_path("backend/tests/Feature/AuthResponseContractTest.php"))
+        self.assertFalse(is_deployable_path("frontend/src/pages/__tests__/BillingPage.test.js"))
+        scope = classify_scope(
+            ["backend/tests/Feature/AuthResponseContractTest.php"],
+            "assert the auth response envelope",
+        )
+        self.assertEqual(scope["tier_name"], "T0")
+
+    def test_classifier_holds_protected_paths_and_semantics(self):
+        cases = [
+            ([".github/workflows/deploy.yml"], "", "T3"),
+            (["backend/database/migrations/2026_01_add_flag.php"], "", "T3"),
+            (["backend/app/Http/Controllers/StudentsController.php"], "payment status", "T3"),
+            (["frontend/src/pages/SmartCalendar.vue"], "schedule conflict", "T2"),
+            (["frontend/src/components/Badge.vue"], "display only", "T1"),
+        ]
+        for paths, patch, expected in cases:
+            with self.subTest(paths=paths):
+                self.assertEqual(classify_scope(paths, patch)["tier_name"], expected)
+
+    def test_declaration_is_validated_against_machine_minimum(self):
+        risk, tier = parse_declaration("**Risk-Class:** R1\n**Autonomy-Tier:** T1")
+        self.assertEqual((risk, tier), (1, 1))
+        self.assertEqual(effective_tier(1, risk, tier), (1, None))
+        self.assertEqual(effective_tier(3, risk, tier)[0], None)
+
     def test_understated_and_mismatched_declarations_fail_closed(self):
         understated = decide_activation(
             event_name="workflow_run", deployable=True, classifier_available=True,
@@ -230,7 +265,7 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
 
     def test_classifier_is_authoritative_and_fail_closed_when_missing(self):
         self.assertIn("scripts/governance/autonomy_gate.py", self.workflow)
-        self.assertIn("authoritative classifier unavailable; fail closed (depends on #2180)", self.workflow)
+        self.assertIn("authoritative classifier unavailable; fail closed", self.workflow)
         self.assertIn("classify_scope", self.workflow)
         self.assertIn("parse_declaration", self.workflow)
         self.assertIn("effective_tier", self.workflow)
@@ -249,6 +284,23 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("needs.production-activation.result == 'success'", self.workflow)
         self.assertIn('TARGET_SHA="${{ needs.resolve-target.outputs.target_sha }}"', self.workflow)
 
+    def test_production_concurrency_is_scoped_to_side_effecting_jobs(self):
+        top_level = self.workflow.split("permissions:", 1)[0]
+        self.assertNotIn("concurrency:", top_level)
+        deploy_start = self.workflow.index("  deploy:\n")
+        rotation_start = self.workflow.index("  staged_principal_rotation:")
+        deploy_job = self.workflow[deploy_start:rotation_start]
+        rotation_job = self.workflow[rotation_start:]
+        for job in (deploy_job, rotation_job):
+            self.assertIn("concurrency:\n      group: production-deploy", job)
+            self.assertIn("cancel-in-progress: false", job)
+
+    def test_test_only_changes_are_not_deployable(self):
+        self.assertIn("is_deployable_path", self.workflow)
+        classifier = (ROOT / "scripts" / "governance" / "autonomy_gate.py").read_text(encoding="utf-8")
+        self.assertIn('"backend/tests/**"', classifier)
+        self.assertIn('"scripts/ci/**"', classifier)
+
     def test_manual_target_requires_current_main_and_successful_ci(self):
         self.assertIn("Manual activation must target the current main SHA", self.workflow)
         self.assertIn("actions/workflows/ci.yml/runs?branch=main&head_sha=", self.workflow)
@@ -262,6 +314,32 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("needs: contract-test", self.workflow)
         self.assertIn("python3 scripts/tests/test_deploy_activation_state.py", self.workflow)
         self.assertEqual(self.workflow.count("  detect-deployable:"), 1)
+
+
+class AutonomousMergeWorkflowContractTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.workflow = AUTOMERGE_WORKFLOW.read_text(encoding="utf-8")
+
+    def test_uses_pull_request_target_and_base_revision(self):
+        self.assertIn("pull_request_target:", self.workflow)
+        self.assertIn("pull_request.base.sha", self.workflow)
+        self.assertIn("head.repo.full_name == github.repository", self.workflow)
+
+    def test_only_machine_eligible_prs_get_server_side_auto_merge(self):
+        self.assertIn("classify_scope", self.workflow)
+        self.assertIn("gh pr merge \"$PR_NUMBER\" --repo \"$REPO\" --auto --squash --delete-branch", self.workflow)
+        self.assertIn("decision=hold", self.workflow)
+        self.assertIn("outputs.decision == 'auto'", self.workflow)
+        self.assertIn("contents: write", self.workflow)
+        self.assertIn("pull-requests: write", self.workflow)
+
+    def test_auto_merge_workflow_does_not_reference_protected_environment(self):
+        self.assertNotIn("production-activation", self.workflow)
+
+    def test_auto_merge_rechecks_head_sha_before_side_effect(self):
+        self.assertIn("CURRENT_HEAD_SHA", self.workflow)
+        self.assertIn("PR head changed before auto-merge; fail closed", self.workflow)
 
 
 if __name__ == "__main__":
