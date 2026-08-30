@@ -273,6 +273,11 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("concurrency:\n      group: production-deploy", deploy_job)
         self.assertIn("cancel-in-progress: false", deploy_job)
 
+        rotation_start = self.workflow.index("  staged_principal_rotation:\n")
+        rotation_job = self.workflow[rotation_start:]
+        self.assertIn("concurrency:\n      group: production-deploy", rotation_job)
+        self.assertIn("cancel-in-progress: false", rotation_job)
+
 
 if __name__ == "__main__":
     unittest.main()

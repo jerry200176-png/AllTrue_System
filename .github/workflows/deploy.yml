@@ -793,6 +793,11 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && (inputs.phase == 'phase1-create' || inputs.phase == 'phase2-cutover' || inputs.phase == 'phase3-lock')
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # Keep all production side effects mutually exclusive while allowing
+    # read-only preflight and activation classification to be scheduled.
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
     steps:
       - name: Require phase-specific typed confirmation
         env:
