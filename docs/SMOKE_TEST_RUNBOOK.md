@@ -28,7 +28,7 @@ Without credentials:
 - `deployment.json` backend SHA 與 Pi `git HEAD` 一致
 - `deployment.json` frontend build SHA（若存在）與 `version.json.build_sha` 對應
 - `version.json` 可在 backend-only deploy 時落後；不得單獨作為 backend runtime identity
-- 部署 bundle 含 `cancelMakeupSchedule` / `trust-summary` 等關鍵字
+- 部署 bundle 含 CourseManagement 的 `cancelMakeupSchedule` / `director-trust-note` 等目前實際渲染的關鍵字；`trust-summary` 由舊版 dead CSS 使用，不能在 TeacherHome chunk 檢查
 - Teacher `GET /system/trust-summary` → 200（#529 驗證路徑）
 - Director `GET /schedules?type=extra&status=scheduled` → 200
 - Director `POST /schedules/{id}/cancel-makeup` probe → 404（auth 正常，非 401）
