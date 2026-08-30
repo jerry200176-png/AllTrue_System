@@ -26,10 +26,6 @@ on:
         required: true
         type: string
 
-concurrency:
-  group: production-deploy
-  cancel-in-progress: false
-
 permissions:
   contents: read
   actions: read
@@ -451,6 +447,12 @@ jobs:
     if: ${{ always() && needs.resolve-target.result == 'success' && needs.detect-deployable.result == 'success' && needs.classify-activation.result == 'success' && needs.detect-deployable.outputs.deployable == 'true' && (needs.classify-activation.outputs.mode == 'auto' || (needs.classify-activation.outputs.mode == 'manual' && needs.production-activation.result == 'success')) }}
     # Production credentials remain on the ephemeral GitHub-hosted runner.
     runs-on: ubuntu-latest
+    # Serialize only the side-effecting executor.  Keeping this at job scope
+    # lets exact-SHA preflight and protected activation jobs start even when a
+    # stale executor run is pending in GitHub's queue.
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
 
     steps:
       - name: Final exact-main gate before production executor

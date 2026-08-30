@@ -263,6 +263,16 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("python3 scripts/tests/test_deploy_activation_state.py", self.workflow)
         self.assertEqual(self.workflow.count("  detect-deployable:"), 1)
 
+    def test_production_concurrency_is_scoped_to_side_effecting_executor(self):
+        top_level = self.workflow.split("permissions:", 1)[0]
+        self.assertNotIn("concurrency:", top_level)
+
+        deploy_start = self.workflow.index("  deploy:\n")
+        deploy_end = self.workflow.index("  staged_principal_rotation:", deploy_start)
+        deploy_job = self.workflow[deploy_start:deploy_end]
+        self.assertIn("concurrency:\n      group: production-deploy", deploy_job)
+        self.assertIn("cancel-in-progress: false", deploy_job)
+
 
 if __name__ == "__main__":
     unittest.main()
