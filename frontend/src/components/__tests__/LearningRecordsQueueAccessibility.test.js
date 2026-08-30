@@ -43,4 +43,18 @@ describe('LearningRecords review queue accessibility', () => {
       expect(openingTag).toContain(':aria-pressed=');
     }
   });
+
+  it('makes parent-feedback preview chips keyboard-operable disclosures', () => {
+    const feedbackButtons = [...source.matchAll(/<button[^>]*:class="\['lr-parent-feedback-chip'[^>]*>/g)]
+      .map((match) => match[0]);
+
+    expect(feedbackButtons).toHaveLength(2);
+    for (const openingTag of feedbackButtons) {
+      expect(openingTag).toContain('type="button"');
+      expect(openingTag).toContain(':aria-expanded="feedbackPreviewOpen.has(record.id) ? \'true\' : \'false\'"');
+      expect(openingTag).toContain(':aria-label=');
+      expect(openingTag).toContain('@click.stop="toggleFeedbackPreview(record)"');
+    }
+    expect(source).not.toMatch(/<span[^>]*lr-parent-feedback-chip[^>]*>/);
+  });
 });

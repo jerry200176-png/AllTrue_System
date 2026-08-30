@@ -721,14 +721,17 @@
                 <span v-if="record.session_number"> · 第{{ record.session_number }}堂</span>
               </div>
               <div class="lr-record-card__chips">
-                <span
+                <button
                   v-if="record.parent_feedback"
+                  type="button"
                   :class="['lr-parent-feedback-chip', parentFeedbackUnread(record) ? 'unread' : 'read']"
+                  :aria-expanded="feedbackPreviewOpen.has(record.id) ? 'true' : 'false'"
+                  :aria-label="feedbackPreviewOpen.has(record.id) ? '收合家長留言預覽' : (parentFeedbackUnread(record) ? '預覽新家長留言' : '預覽家長留言')"
                   @click.stop="toggleFeedbackPreview(record)"
                   :title="parentFeedbackUnread(record) ? '有新家長留言（點擊預覽）' : '家長留言（點擊預覽）'"
                 >
                   💬 {{ parentFeedbackUnread(record) ? '新留言' : (record.parent_feedback?.awaiting_staff_reply ? '尚未回覆' : '家長留言') }}
-                </span>
+                </button>
                 <span
                   v-if="record.teacher_comment"
                   :class="['lr-teacher-comment-chip', teacherCommentUnread(record) ? 'unread' : 'read']"
@@ -874,12 +877,15 @@
                           {{ record.student_class_label || record.Subject }}
                           <span v-if="record.StudentClassID" class="lr-contract-id">#{{ record.StudentClassID }}</span>
                         </div>
-                        <span
+                        <button
                           v-if="record.parent_feedback"
+                          type="button"
                           :class="['lr-parent-feedback-chip', parentFeedbackUnread(record) ? 'unread' : 'read']"
+                          :aria-expanded="feedbackPreviewOpen.has(record.id) ? 'true' : 'false'"
+                          :aria-label="feedbackPreviewOpen.has(record.id) ? '收合家長留言預覽' : (parentFeedbackUnread(record) ? '預覽新家長留言' : '預覽家長留言')"
                           @click.stop="toggleFeedbackPreview(record)"
                           :title="record.parent_feedback.content?.slice(0,60)"
-                        >💬 {{ parentFeedbackUnread(record) ? '新留言' : (record.parent_feedback?.awaiting_staff_reply ? '尚未回覆' : '家長留言') }}</span>
+                        >💬 {{ parentFeedbackUnread(record) ? '新留言' : (record.parent_feedback?.awaiting_staff_reply ? '尚未回覆' : '家長留言') }}</button>
                         <span
                           v-if="record.teacher_comment"
                           :class="['lr-teacher-comment-chip', teacherCommentUnread(record) ? 'unread' : 'read']"
@@ -6891,7 +6897,7 @@ select.lr-input {
   color: var(--text-light);
   font-size: 12px;
 }
-.lr-parent-feedback-chip { display:inline-flex; align-items:center; gap:3px; margin-top:4px; padding:3px 10px; border-radius:10px; font-size:12px; cursor:pointer; user-select:none; transition: opacity .15s; }
+.lr-parent-feedback-chip { display:inline-flex; align-items:center; gap:3px; margin-top:4px; padding:3px 10px; border-radius:10px; font:inherit; font-size:12px; cursor:pointer; user-select:none; text-align:left; appearance:none; transition: opacity .15s; }
 .lr-parent-feedback-chip:hover { opacity:.8; }
 .lr-parent-feedback-chip.unread { background:var(--ds-warning-wash); color:var(--ds-danger); font-weight:600; border:1px solid var(--ds-warning-wash); }
 .lr-parent-feedback-chip.read { background:var(--ds-canvas-soft); color:var(--ds-ink-mute); border:1px solid var(--ds-canvas-soft); }
