@@ -136,7 +136,7 @@
               <span v-else class="att-spinner" style="display:inline-block;width:16px;height:16px"></span>
               月報
             </button>
-            <input type="date" v-model="teacherDate" class="att-date-input" @change="fetchTeacherRecords" />
+            <input type="date" v-model="teacherDate" class="att-date-input" aria-label="查詢老師打卡日期" @change="fetchTeacherRecords" />
             <button type="button" class="ghost small" @click="exportTeacherCsv" title="匯出 CSV">
               <span class="material-symbols-outlined" style="font-size:18px">download</span>
             </button>
@@ -652,6 +652,7 @@
               type="date"
               :max="localTodayYmd()"
               class="att-date-input"
+              aria-label="查詢出缺勤日期"
               @change="fetchRecords"
               title="查詢指定日期的出缺勤紀錄"
             />
@@ -662,11 +663,12 @@
             type="date"
             :max="localTodayYmd()"
             class="att-date-input"
+            aria-label="查詢出缺勤日期"
             @change="fetchRecords"
             title="查詢指定日期的出缺勤紀錄"
           />
-          <input v-model="searchName" type="text" placeholder="搜尋姓名…" class="att-search-input" />
-          <select v-model="filterStatus" class="att-filter-select">
+          <input v-model="searchName" type="text" placeholder="搜尋姓名…" aria-label="搜尋學生姓名" class="att-search-input" />
+          <select v-model="filterStatus" aria-label="依出缺勤狀態篩選" class="att-filter-select">
             <option value="">全部</option>
             <option value="present">到班</option>
             <option value="late">遲到</option>
