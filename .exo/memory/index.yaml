@@ -159,3 +159,16 @@ failure_modes:
       accessible name so keyboard users do not depend on a non-focusable label.
   severity: low
   frequency: recurring
+- id: FM-20260831-012442-A29G
+  name: Attendance pending-session checkboxes lacked row context
+  detection:
+    signal: Attendance pending-session checkboxes lacked row context
+    source: reflection:REF-20260831-012442-LQEB
+  mitigation:
+    practice: In high-frequency batch workflows, every repeated selection control
+      needs a session-specific accessible name that combines the visible person, time,
+      and optional subject. Keep desktop and mobile markup aligned, preserve the existing
+      checked binding and change handler, and cover both rendered variants in one
+      focused contract.
+  severity: medium
+  frequency: recurring
