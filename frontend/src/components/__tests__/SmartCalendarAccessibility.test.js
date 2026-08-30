@@ -39,6 +39,11 @@ describe('SmartCalendar accessibility contracts', () => {
     expect(source).toContain('aria-hidden="true"');
   });
 
+  it('names the director room-manager form inputs', () => {
+    expect(source.match(/placeholder="教室名稱" aria-label="教室名稱"/g)).toHaveLength(1);
+    expect(source.match(/placeholder="容量" aria-label="教室容量"/g)).toHaveLength(1);
+  });
+
   it('keeps the existing calendar data and capacity paths intact', () => {
     expect(source).toContain('mergeWeekCalendarOccurrences');
     expect(source).toContain('getSlotOccupancy');
