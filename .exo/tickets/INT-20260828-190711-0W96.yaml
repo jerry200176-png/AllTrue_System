@@ -40,12 +40,10 @@ checks:
 - npm run lint:no-undef
 - npm run build
 type: feature
-status: done
+status: todo
 parent_id: null
 spec_ref: null
-notes:
-- "Completed on main via 2e1d0cd2 (#2154): TodayProgressCard and dailyWorkProgress provide the task-first director progress cue; later 0e182c0b preserved it while wiring dashboard tabs."
-- "Evidence: frontend unit checks, no-undef lint, and Vite build passed in the governed delivery run; production activation remains a separate governed step."
+notes: []
 blockers: []
 created_at: '2026-08-28T19:07:11+08:00'
 children:
