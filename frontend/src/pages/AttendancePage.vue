@@ -278,7 +278,12 @@
             <tbody>
               <tr v-for="s in pendingSessions" :key="s.class_session_id" :class="{ 'att-row-selected': selectedSet.has(s.class_session_id) }">
                 <td>
-                  <input type="checkbox" :checked="selectedSet.has(s.class_session_id)" @change="toggleSelect(s.class_session_id)" />
+                  <input
+                    type="checkbox"
+                    :checked="selectedSet.has(s.class_session_id)"
+                    :aria-label="'選取' + (s.student_name || '未命名學生') + ' ' + s.start_time + '–' + s.end_time + (s.subject_name ? ' ' + s.subject_name : '') + ' 的點名堂次'"
+                    @change="toggleSelect(s.class_session_id)"
+                  />
                 </td>
                 <td class="att-time-range">{{ s.start_time }}–{{ s.end_time }}</td>
                 <td>
@@ -340,7 +345,13 @@
             :class="{ 'att-card-selected': selectedSet.has(s.class_session_id) }"
           >
             <div class="att-card-top">
-              <input type="checkbox" :checked="selectedSet.has(s.class_session_id)" @change="toggleSelect(s.class_session_id)" class="att-card-check" />
+              <input
+                type="checkbox"
+                :checked="selectedSet.has(s.class_session_id)"
+                :aria-label="'選取' + (s.student_name || '未命名學生') + ' ' + s.start_time + '–' + s.end_time + (s.subject_name ? ' ' + s.subject_name : '') + ' 的點名堂次'"
+                @change="toggleSelect(s.class_session_id)"
+                class="att-card-check"
+              />
               <div class="att-card-info">
                 <div class="att-card-student">
                   {{ s.student_name || '—' }}

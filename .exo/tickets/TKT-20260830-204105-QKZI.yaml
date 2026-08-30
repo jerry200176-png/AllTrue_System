@@ -1,0 +1,46 @@
+id: TKT-20260830-204105-QKZI
+title: Split Learning Records filter controls
+intent: Split Learning Records filter controls
+kind: task
+parent_id: INT-20260830-204058-XXO7
+boundary: Only the Learning Records filter header markup/styles and focused accessibility
+  coverage; preserve every filter state, handler, query, record, assessment, API,
+  data, permission, and workflow behavior.
+success_condition: Expand/collapse and clear-all are separate native buttons with
+  clear accessible names and no nested interactive element; focused and approved checks
+  pass.
+priority: 2
+labels:
+- area:ui
+scope:
+  allow:
+  - frontend/src/pages/LearningRecordsPage.vue
+  - frontend/src/components/__tests__/LearningRecordsQueueAccessibility.test.js
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - backend/**
+  - database/**
+budgets:
+  max_files_changed: 2
+  max_loc_changed: 120
+checks:
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: review
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-30T20:41:05+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default
+commits:
+- 74f2a7f958326d66e3572635d767fd9ab8f5ffd4

@@ -35,6 +35,11 @@ describe('AttendancePage workspace accessibility', () => {
     expect(source).toContain('aria-label="依出缺勤狀態篩選"');
   });
 
+  it('names pending-session selection checkboxes in desktop and mobile views', () => {
+    expect(source.match(/:aria-label="'選取'.*' 的點名堂次'/g)).toHaveLength(2);
+    expect(source.match(/@change="toggleSelect\(s\.class_session_id\)"/g)).toHaveLength(2);
+  });
+
   it('keeps every native action button explicit as a non-submit control', () => {
     expect(nativeButtonTags.length).toBeGreaterThan(20);
     expect(nativeButtonTags.filter((tag) => !/\btype\s*=\s*["']button["']/.test(tag))).toEqual([]);

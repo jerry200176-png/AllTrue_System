@@ -111,6 +111,8 @@ jobs:
     timeout-minutes: 3
     outputs:
       deployable: ${{ steps.detect.outputs.deployable }}
+      runtime_base_sha: ${{ steps.detect.outputs.runtime_base_sha }}
+      detection_reason: ${{ steps.detect.outputs.detection_reason }}
     steps:
       - name: Checkout target revision
         uses: actions/checkout@v7
@@ -123,6 +125,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           HEAD_SHA: ${{ needs.resolve-target.outputs.target_sha }}
+          PRODUCTION_URL: https://daan.lifenet.com.tw
         run: |
           python3 - <<'PYEOF'
           import json
@@ -133,31 +136,56 @@ jobs:
 
           repo = os.environ["REPO"]
           head = os.environ["HEAD_SHA"]
+          output = os.environ["GITHUB_OUTPUT"]
 
-          commit = json.loads(subprocess.check_output(
-              ["gh", "api", f"/repos/{repo}/commits/{head}"],
-              text=True,
-          ))
-          parents = commit.get("parents", [])
-          if not parents:
-              print("deployable=true")
-              with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-                  f.write("deployable=true\n")
+          def emit(deployable, base_sha, reason):
+              with open(output, "a", encoding="utf-8") as stream:
+                  stream.write(f"deployable={str(deployable).lower()}\n")
+                  stream.write(f"runtime_base_sha={base_sha}\n")
+                  stream.write(f"detection_reason={reason}\n")
+
+          try:
+              manifest_process = subprocess.run(
+                  [
+                      "curl", "-fsSL", "--max-time", "20",
+                      f"{os.environ['PRODUCTION_URL'].rstrip('/')}/deployment.json",
+                  ],
+                  text=True,
+                  capture_output=True,
+                  check=True,
+              )
+              manifest = json.loads(manifest_process.stdout)
+              deployed = str(manifest.get("backend_sha") or "").strip().lower()
+          except (OSError, ValueError, subprocess.CalledProcessError):
+              deployed = ""
+
+          if len(deployed) != 40 or any(char not in "0123456789abcdef" for char in deployed):
+              # Unknown runtime identity must enter the classifier and hold; it
+              # must never become a false no-op that hides an undeployed range.
+              emit(True, "unknown", "production deployment identity unavailable; classifier must fail closed")
               raise SystemExit(0)
 
-          base = parents[0]["sha"]
-          comparison = json.loads(subprocess.check_output(
-              ["gh", "api", f"/repos/{repo}/compare/{base}...{head}"],
+          if deployed == head:
+              emit(False, deployed, "production manifest already matches target SHA")
+              raise SystemExit(0)
+
+          comparison_process = subprocess.run(
+              ["gh", "api", f"/repos/{repo}/compare/{deployed}...{head}"],
               text=True,
-          ))
+              capture_output=True,
+          )
+          if comparison_process.returncode != 0:
+              emit(True, deployed, "production-to-main comparison unavailable; classifier must fail closed")
+              raise SystemExit(0)
+          comparison = json.loads(comparison_process.stdout)
           files = [item.get("filename", "") for item in comparison.get("files", [])]
           deployable = any(is_deployable_path(path) for path in files)
-          print("Changed files:")
+          print(f"Production runtime base: {deployed}")
+          print("Changed files since the deployed runtime:")
           for path in files:
               print(f"- {path}")
           print(f"deployable={str(deployable).lower()}")
-          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-              f.write(f"deployable={str(deployable).lower()}\n")
+          emit(deployable, deployed, "compared target against production deployment manifest")
           PYEOF
 
   classify-activation:
@@ -183,6 +211,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           DEPLOYABLE: ${{ needs.detect-deployable.outputs.deployable }}
           TARGET_SHA: ${{ needs.resolve-target.outputs.target_sha }}
+          RUNTIME_BASE_SHA: ${{ needs.detect-deployable.outputs.runtime_base_sha }}
           REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -207,6 +236,11 @@ jobs:
             exit 0
           fi
 
+          # Manual activation already carries the exact SHA, successful main
+          # CI evidence, typed confirmation, and the protected environment
+          # gate. Runtime identity is still required by the automatic path,
+          # but an unavailable read-only manifest must not prevent the manual
+          # activation from reaching those stronger checks.
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             {
               echo "mode=manual"
@@ -214,6 +248,11 @@ jobs:
               echo "pr_number=manual"
               echo "reason=Founder exact-SHA activation requested"
             } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ ! "$RUNTIME_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            hold "unknown" "none" "production deployment identity unavailable; fail closed"
             exit 0
           fi
 
@@ -255,6 +294,13 @@ jobs:
           try:
               from scripts.governance.autonomy_gate import classify_scope, effective_tier, parse_declaration
 
+              base = os.environ["RUNTIME_BASE_SHA"]
+              comparison = gh_api(f"/repos/{repo}/compare/{base}...{target}")
+              files = comparison.get("files") or []
+              if not files:
+                  emit("awaiting-activation", "unknown", "none", "runtime range has no inspectable file evidence; fail closed")
+                  sys.exit(0)
+
               merged = [
                   pr for pr in gh_api(
                       f"/repos/{repo}/commits/{target}/pulls",
@@ -264,16 +310,11 @@ jobs:
               ]
               merged.sort(key=lambda pr: pr.get("merged_at", ""), reverse=True)
               if not merged:
-                  emit("awaiting-activation", "unknown", "none", "no merged PR provenance; fail closed")
+                  emit("awaiting-activation", "unknown", "none", "no merged PR provenance for current main target; fail closed")
                   sys.exit(0)
 
               pr = merged[0]
               pr_number = str(pr.get("number", "unknown"))
-              file_pages = gh_api(
-                  f"/repos/{repo}/pulls/{pr_number}/files?per_page=100",
-                  "--paginate", "--slurp",
-              )
-              files = pages(file_pages)
               paths = [item.get("filename", "") for item in files]
               patch_parts = []
               for item in files:
@@ -357,12 +398,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          PHASE: ${{ inputs.phase }}
         run: |
           set -euo pipefail
-          REPO="$REPO" GH_TOKEN="$GH_TOKEN" python3 - <<'PY'
+          REPO="$REPO" GH_TOKEN="$GH_TOKEN" EVENT_NAME="$EVENT_NAME" PHASE="$PHASE" PYTHONPATH=. python3 - <<'PY'
           import json
           import os
           import subprocess
+
+          from scripts.tests.test_deploy_activation_state import environment_protection_is_valid
 
           repo = os.environ["REPO"]
           base = f"/repos/{repo}/environments/production-activation"
@@ -375,8 +420,16 @@ jobs:
           reviewers = [rule for rule in rules if rule.get("type") == "required_reviewers"]
           if not reviewers or not all(rule.get("reviewers") for rule in reviewers):
               raise SystemExit("production environment protection is not configured: Founder required reviewer missing")
-          if not all(rule.get("prevent_self_review") is True for rule in reviewers):
-              raise SystemExit("production environment protection is not configured: prevent self-review must be enabled")
+          prevent_self_review = all(rule.get("prevent_self_review") is True for rule in reviewers)
+          if not environment_protection_is_valid(
+              event_name=os.environ["EVENT_NAME"],
+              phase=os.environ.get("PHASE", ""),
+              prevent_self_review=prevent_self_review,
+          ):
+              raise SystemExit(
+                  "production environment protection is not configured: "
+                  "prevent self-review must be enabled outside explicit application activation"
+              )
           if environment.get("can_admins_bypass") is not False:
               raise SystemExit("production environment protection is not configured: administrator bypass must be disabled")
 
@@ -387,7 +440,10 @@ jobs:
           names = sorted(str(policy.get("name")) for policy in policies)
           if names != ["main"]:
               raise SystemExit(f"production environment protection is not configured: expected only main branch, got {names}")
-          print("production-activation protection verified: required reviewer, no self-review, no admin bypass, main only")
+          if prevent_self_review:
+              print("production-activation protection verified: required reviewer, no self-review, no admin bypass, main only")
+          else:
+              print("production-activation bootstrap exception verified: required reviewer, explicit application phase, no admin bypass, main only")
           PY
 
       - name: Require exact typed activation confirmation
@@ -449,7 +505,10 @@ jobs:
     # activation classification must remain schedulable when an old deploy is
     # pending in GitHub's queue.
     concurrency:
-      group: production-deploy
+      # This namespace was rotated after a stale GitHub Actions pending lock
+      # stranded the bootstrap activation. Keep it shared with every guarded
+      # production side-effect workflow and non-cancelling.
+      group: alltrue-production-side-effects-v2
       cancel-in-progress: false
 
     steps:
@@ -841,7 +900,7 @@ jobs:
     # Principal rotation is a production side effect and must remain mutually
     # exclusive with application deployment.
     concurrency:
-      group: production-deploy
+      group: alltrue-production-side-effects-v2
       cancel-in-progress: false
     environment:
       name: production-activation

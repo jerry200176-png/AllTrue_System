@@ -114,6 +114,13 @@ def decide_manual_activation(*, workflow_ref, target_sha, current_main_sha, ci_s
     return {"decision": "activation-gate-reached", "reason": "Founder-approved exact-main activation may proceed"}
 
 
+def environment_protection_is_valid(*, event_name, phase, prevent_self_review):
+    """Validate the protected environment for the requested activation path."""
+    if prevent_self_review is True:
+        return True
+    return event_name == "workflow_dispatch" and phase == "application-deploy"
+
+
 class DeployActivationPolicyTest(unittest.TestCase):
     def test_r0_t0_normal_change_is_auto_eligible(self):
         result = decide_activation(
@@ -171,6 +178,22 @@ class DeployActivationPolicyTest(unittest.TestCase):
             "assert the auth response envelope",
         )
         self.assertEqual(scope["tier_name"], "T0")
+
+    def test_deploy_queue_uses_runtime_manifest_and_full_undeployed_range(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("/deployment.json", workflow)
+        self.assertIn("compare/{deployed}...{head}", workflow)
+        self.assertIn("runtime_base_sha", workflow)
+        self.assertIn("production deployment identity unavailable; classifier must fail closed", workflow)
+        self.assertNotIn('base = parents[0]["sha"]', workflow)
+
+    def test_manual_activation_reaches_protected_gate_without_runtime_identity(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        classify = workflow[workflow.index("  classify-activation:"):]
+        manual_branch = classify.index('if [[ "$EVENT_NAME" == "workflow_dispatch" ]]')
+        identity_guard = classify.index('if [[ ! "$RUNTIME_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]')
+        self.assertLess(manual_branch, identity_guard)
+        self.assertIn("read-only manifest must not prevent the manual", classify)
 
     def test_classifier_holds_protected_paths_and_semantics(self):
         cases = [
@@ -238,6 +261,24 @@ class DeployActivationPolicyTest(unittest.TestCase):
         self.assertEqual(result["decision"], "activation-gate-reached")
         self.assertNotEqual(result["decision"], "auto")
 
+    def test_environment_exception_is_only_for_explicit_bootstrap_application_activation(self):
+        self.assertTrue(environment_protection_is_valid(
+            event_name="workflow_dispatch", phase="application-deploy", prevent_self_review=False,
+        ))
+        self.assertTrue(environment_protection_is_valid(
+            event_name="workflow_dispatch", phase="application-deploy", prevent_self_review=True,
+        ))
+        for event_name, phase in (
+            ("workflow_run", "application-deploy"),
+            ("workflow_dispatch", "phase1-create"),
+            ("workflow_dispatch", "phase2-cutover"),
+            ("workflow_dispatch", "phase3-lock"),
+        ):
+            with self.subTest(event_name=event_name, phase=phase):
+                self.assertFalse(environment_protection_is_valid(
+                    event_name=event_name, phase=phase, prevent_self_review=False,
+                ))
+
 
 class DeployActivationWorkflowContractTest(unittest.TestCase):
     @classmethod
@@ -257,6 +298,9 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("name: production-activation", self.workflow)
         self.assertIn("Checkout target revision for gate policy", self.workflow)
         self.assertIn("production environment protection is not configured", self.workflow)
+        self.assertIn("environment_protection_is_valid", self.workflow)
+        self.assertIn('EVENT_NAME: ${{ github.event_name }}', self.workflow)
+        self.assertIn('PHASE: ${{ inputs.phase }}', self.workflow)
 
     def test_manual_workflow_revision_is_canonical_main(self):
         self.assertIn('WORKFLOW_REF: ${{ github.ref }}', self.workflow)
@@ -292,8 +336,19 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         deploy_job = self.workflow[deploy_start:rotation_start]
         rotation_job = self.workflow[rotation_start:]
         for job in (deploy_job, rotation_job):
-            self.assertIn("concurrency:\n      group: production-deploy", job)
+            self.assertIn("group: alltrue-production-side-effects-v2", job)
             self.assertIn("cancel-in-progress: false", job)
+
+    def test_all_guarded_production_side_effects_share_rotated_queue_namespace(self):
+        for filename in (
+            "deploy.yml",
+            "1387-db-password-rotation.yml",
+            "1387-db-grant-repair.yml",
+        ):
+            workflow = (WORKFLOW.parent / filename).read_text(encoding="utf-8")
+            self.assertIn("group: alltrue-production-side-effects-v2", workflow)
+            self.assertNotIn("group: production-deploy", workflow)
+            self.assertIn("cancel-in-progress: false", workflow)
 
     def test_test_only_changes_are_not_deployable(self):
         self.assertIn("is_deployable_path", self.workflow)

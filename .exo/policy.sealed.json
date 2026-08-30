@@ -11,7 +11,7 @@
     "bash scripts/phpunit-isolated.sh"
   ],
   "coherence_rules": [],
-  "composed_at": "2026-08-30T07:07:06+08:00",
+  "composed_at": "2026-08-31T07:35:21+08:00",
   "deny_patterns": [
     "**/.env",
     "**/.env.*.local",
@@ -98,7 +98,7 @@
     ]
   },
   "hooks_hash": "",
-  "integrity_hash": "dd15c29a5ce42f9a042140b49e8129b567a2476e77618c551acaf80d1ebd0d38",
+  "integrity_hash": "69504201cb9ccc28485640d4d2cc9514c01ea18098a8b3bfab5a8f0988b2456c",
   "scope_deny_from_features": [],
   "sources": {
     "config": "d68138fb1ce852b0d28b4eb2225e099611c3ab254724f1c66c9637078a3ffc4e",

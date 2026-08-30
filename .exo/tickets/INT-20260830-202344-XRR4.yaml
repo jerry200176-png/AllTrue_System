@@ -1,0 +1,49 @@
+id: INT-20260830-202344-XRR4
+title: Director makeup candidate date tabs
+intent: Director makeup candidate date tabs
+kind: intent
+brain_dump: 'Issue #2135 UX convergence: director parent-leave makeup candidate date
+  controls are exposed as tabs, but the active candidate list is not linked to the
+  selected tab. Improve keyboard and assistive-technology orientation without changing
+  candidate generation, selection, decision, API, data, or permissions.'
+boundary: Only the director makeup candidate picker semantics and its focused accessibility
+  regression test; no business logic, API, backend, database, payment, attendance,
+  auth, or deployment changes.
+success_condition: Each candidate date tab has a stable id and aria-controls pointing
+  to a labelled, focusable tabpanel containing the existing candidate radiogroup;
+  focused accessibility coverage passes.
+risk: low
+priority: 2
+labels:
+- area:ui
+scope:
+  allow:
+  - frontend/src/pages/DirectorDashboard.vue
+  - frontend/src/components/__tests__/DirectorDashboardAccessibility.test.js
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - backend/**
+  - database/**
+  - .github/**
+budgets:
+  max_files_changed: 2
+  max_loc_changed: 100
+checks:
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-30T20:23:44+08:00'
+children:
+- TKT-20260830-202351-RQ41
+resource_profile: default

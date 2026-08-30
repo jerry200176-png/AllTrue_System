@@ -1,0 +1,49 @@
+id: TKT-20260831-012049-ELLK
+title: Name Attendance pending-session selection checkboxes
+intent: Name Attendance pending-session selection checkboxes
+kind: task
+parent_id: INT-20260831-012034-AH30
+boundary: Only AttendancePage row-selection checkbox semantics and focused accessibility
+  coverage; preserve attendance status, deduction, API, permissions, branch isolation,
+  data, and workflow behavior.
+success_condition: Desktop and mobile pending-session checkboxes expose session-specific
+  accessible names while retaining the existing checked bindings and toggleSelect
+  handler; focused and approved checks pass.
+priority: 2
+labels:
+- area:attendance
+- accessibility
+scope:
+  allow:
+  - frontend/src/pages/AttendancePage.vue
+  - frontend/src/components/__tests__/AttendancePageAccessibility.test.js
+  - .agent-session/**
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - backend/**
+  - database/**
+  - .github/**
+budgets:
+  max_files_changed: 2
+  max_loc_changed: 100
+checks:
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: review
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-31T01:20:49+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default
+commits:
+- 7c5b1e52b44bc376712666eb484675189f3a1f64

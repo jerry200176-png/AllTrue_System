@@ -1,5 +1,26 @@
 # Governance changelog
 
+## 2026-08-30 — Resolve solo-Founder bootstrap activation contradiction
+
+- Allowed only an explicit manually dispatched `application-deploy` bootstrap
+  run to pass the required-review environment when the sole configured Founder
+  must approve that run; automatic runs and staged high-risk phases remain
+  fail-closed unless self-review prevention is enabled.
+- Preserved required reviewer, no administrator bypass, main-only dispatch,
+  exact-SHA/current-main and successful-CI checks, typed confirmation,
+  health/smoke verification, and rollback behavior. No security or production
+  verification gate was weakened.
+
+## 2026-08-30 — Recover the production side-effect queue
+
+- Rotated the shared GitHub Actions concurrency namespace to
+  `alltrue-production-side-effects-v2` across application deploy, principal
+  rotation, and guarded repair workflows after a stale pending lock stranded
+  the bootstrap activation.
+- Kept the lock non-cancelling and shared across all production side effects;
+  no tests, exact-SHA checks, protected activation gate, health/smoke checks, or
+  rollback behavior were removed.
+
 ## 2026-08-30 — Autonomous safe delivery path (implementation pending protected activation)
 
 - Added deterministic `autonomy_gate.py` classification and a base-context

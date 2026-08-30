@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "d62b02ae6fa24b1781ca5a3f38b952d8",
+  "session_id": "0901b9fba74d4a09acc31ef2007c2279",
   "project": "alltrue",
-  "task_id": "INT-20260830-123400-9OAE",
+  "task_id": "bug247-evidence-refresh-20260831",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "3f2bff3872819b5f0a13eba0f280561f53a8e8e1",
-  "branch": "chore/task-INT-20260830-123400-9OAE",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/INT-20260830-123340-W15V",
-  "started_at": "2026-08-30T04:33:49Z",
+  "base_sha": "f018c5ed55f1c321ad1592ade159cbe96c0ef275",
+  "branch": "chore/task-bug247-evidence-refresh-20260831",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/bug247-evidence-refresh-20260831",
+  "started_at": "2026-08-30T23:32:46Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": "codex",
+  "agent_cli": null,
   "gateway_version": "0.5.0"
 }

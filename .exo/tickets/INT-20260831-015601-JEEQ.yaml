@@ -1,0 +1,42 @@
+id: INT-20260831-015601-JEEQ
+title: Label SmartCalendar room form
+intent: Label SmartCalendar room form
+kind: intent
+brain_dump: In the director SmartCalendar room manager, the room name and capacity
+  inputs rely only on placeholders and have no associated labels. Add explicit accessible
+  names and a focused contract test without changing room CRUD behavior.
+boundary: Do not change room validation, API payloads, scheduling, permissions, data,
+  unrelated pages, or production activation.
+success_condition: Both room-manager inputs expose stable accessible names in the
+  existing form; focused/full checks pass; governed PR is merged.
+risk: low
+priority: 2
+labels:
+- accessibility
+scope:
+  allow:
+  - frontend/src/pages/SmartCalendar.vue
+  - frontend/src/components/__tests__/SmartCalendarAccessibility.test.js
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 2
+  max_loc_changed: 20
+checks:
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-31T01:56:01+08:00'
+children:
+- TKT-20260831-015607-L7IS
+resource_profile: default
