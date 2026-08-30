@@ -1,0 +1,50 @@
+id: INT-20260830-123400-9OAE
+title: Latest payment modal control semantics
+intent: Latest payment modal control semantics
+kind: intent
+brain_dump: 'Address a concrete frontend audit finding in the high-frequency student
+  payment-information modal: its close and receipt buttons omit explicit button types.
+  Add type=button to non-submit controls and extend the existing component contract
+  test so future form embedding cannot trigger an unintended submit. Preserve payment
+  projection, receipt permission gating, API calls, billing semantics, and all handlers.'
+boundary: Only change frontend/src/components/LatestPaymentInfoModal.vue and its existing
+  focused test. Do not change payment data, receipt authorization, API calls, billing
+  semantics, backend, production data, or deployment.
+success_condition: Every non-submit button in LatestPaymentInfoModal explicitly uses
+  type=button; the existing focused component tests plus the new source/interaction
+  regression pass; frontend lint/build and governed checks pass.
+risk: low
+priority: 2
+labels:
+- ux
+scope:
+  allow:
+  - frontend/src/components/LatestPaymentInfoModal.vue
+  - frontend/src/components/__tests__/LatestPaymentInfoModal.test.js
+  - .agent-session/manifest.json
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - backend/**
+  - frontend/src/api/**
+  - .github/workflows/**
+budgets:
+  max_files_changed: 5
+  max_loc_changed: 160
+checks:
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-30T12:34:00+08:00'
+children: []
+resource_profile: default
