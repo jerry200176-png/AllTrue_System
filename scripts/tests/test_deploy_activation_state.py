@@ -308,8 +308,19 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         deploy_job = self.workflow[deploy_start:rotation_start]
         rotation_job = self.workflow[rotation_start:]
         for job in (deploy_job, rotation_job):
-            self.assertIn("concurrency:\n      group: production-deploy", job)
+            self.assertIn("group: alltrue-production-side-effects-v2", job)
             self.assertIn("cancel-in-progress: false", job)
+
+    def test_all_guarded_production_side_effects_share_rotated_queue_namespace(self):
+        for filename in (
+            "deploy.yml",
+            "1387-db-password-rotation.yml",
+            "1387-db-grant-repair.yml",
+        ):
+            workflow = (WORKFLOW.parent / filename).read_text(encoding="utf-8")
+            self.assertIn("group: alltrue-production-side-effects-v2", workflow)
+            self.assertNotIn("group: production-deploy", workflow)
+            self.assertIn("cancel-in-progress: false", workflow)
 
     def test_test_only_changes_are_not_deployable(self):
         self.assertIn("is_deployable_path", self.workflow)
