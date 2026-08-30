@@ -1,0 +1,40 @@
+id: INT-20260830-161509-PQLF
+title: Make production identity evidence transport size-safe
+intent: Make production identity evidence transport size-safe
+kind: intent
+brain_dump: Fix production-identity.sh so large GitHub API evidence is transported
+  through a bounded temporary directory rather than argv, and resolve deployed SHA
+  by exact workflow commit. Keep the script read-only and fail-closed.
+boundary: Do not change production runtime, deploy executor, credentials, SSH, data,
+  migration, auth, billing, or required CI/security/rollback gates.
+success_condition: production-identity.sh passes shell syntax, emits complete JSON
+  under current production responses, finds the exact manifest-matching deploy run,
+  and still returns RED when main has undeployed runtime changes.
+risk: medium
+priority: 2
+labels:
+- ops
+scope:
+  allow:
+  - scripts/production-identity.sh
+  - .agent-session/manifest.json
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 2
+  max_loc_changed: 100
+checks:
+- npm run test:unit
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-30T16:15:09+08:00'
+children: []
+resource_profile: default
