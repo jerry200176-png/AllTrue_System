@@ -1,0 +1,43 @@
+id: TKT-20260830-170150-BWUU
+title: Fix bug reply shell transport and run regression
+intent: Fix bug reply shell transport and run regression
+kind: task
+parent_id: INT-20260829-105203-Y3JI
+boundary: Only encode public bug reply text before SSH transport, strictly validate
+  issue URLs, and run the focused regression; do not change bug status semantics,
+  auth, storage, production data, credentials, or deploy executor.
+success_condition: Both bug write-back workflows transport arbitrary reply text literally
+  with no shell interpolation; the regression is executed by the governance test command
+  and all required CI remains green.
+priority: 1
+labels:
+- security
+scope:
+  allow:
+  - .github/workflows/bug-phase-a-triage.yml
+  - .github/workflows/bug-followup-comment.yml
+  - scripts/ci/bug-writeback-workflow.test.mjs
+  - package.json
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 6
+  max_loc_changed: 260
+checks:
+- npm run test:unit
+type: feature
+status: todo
+spec_ref: null
+notes:
+- "The focused workflow regression is wired into the required CI control-plane lint command and npm test:gov; local Exo still uses npm run test:unit because backend dependencies are not installed in this worktree."
+blockers: []
+created_at: '2026-08-30T17:01:50+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default
