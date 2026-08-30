@@ -1,0 +1,49 @@
+id: TKT-20260830-172428-ZZYG
+title: Implement undeployed-range queue and risk-based activation
+intent: Implement undeployed-range queue and risk-based activation
+kind: task
+parent_id: INT-20260830-172420-9P5U
+boundary: Do not weaken tests, security boundaries, exact-SHA verification, production
+  verification, rollback, or high-risk protected boundaries. Do not execute production
+  activation, migration, data repair, billing, identity/authz, secret changes, destructive
+  actions, or production SSH from the agent.
+success_condition: The deploy workflow evaluates all runtime changes since public
+  deployment identity, automatically deploys validated low-risk changes without routine
+  environment approval, and holds high-risk changes with clear evidence.
+priority: 1
+labels:
+- governance
+- deployment
+scope:
+  allow:
+  - .github/workflows/deploy.yml
+  - scripts/governance/autonomy_gate.py
+  - scripts/tests/test_deploy_activation_state.py
+  - docs/governance/RISK_BASED_MERGE_POLICY.md
+  - docs/OPERATIONS_RUNBOOK.md
+  - docs/governance/GOVERNANCE_CHANGELOG.md
+  - .agent-session/manifest.json
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 10
+  max_loc_changed: 500
+checks:
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: todo
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-30T17:24:28+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default

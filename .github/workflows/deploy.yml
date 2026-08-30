@@ -111,6 +111,8 @@ jobs:
     timeout-minutes: 3
     outputs:
       deployable: ${{ steps.detect.outputs.deployable }}
+      runtime_base_sha: ${{ steps.detect.outputs.runtime_base_sha }}
+      detection_reason: ${{ steps.detect.outputs.detection_reason }}
     steps:
       - name: Checkout target revision
         uses: actions/checkout@v7
@@ -123,41 +125,63 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           HEAD_SHA: ${{ needs.resolve-target.outputs.target_sha }}
+          PRODUCTION_URL: https://daan.lifenet.com.tw
         run: |
           python3 - <<'PYEOF'
           import json
           import os
           import subprocess
+          import urllib.error
+          import urllib.request
 
           from scripts.governance.autonomy_gate import is_deployable_path
 
           repo = os.environ["REPO"]
           head = os.environ["HEAD_SHA"]
+          output = os.environ["GITHUB_OUTPUT"]
 
-          commit = json.loads(subprocess.check_output(
-              ["gh", "api", f"/repos/{repo}/commits/{head}"],
-              text=True,
-          ))
-          parents = commit.get("parents", [])
-          if not parents:
-              print("deployable=true")
-              with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-                  f.write("deployable=true\n")
+          def emit(deployable, base_sha, reason):
+              with open(output, "a", encoding="utf-8") as stream:
+                  stream.write(f"deployable={str(deployable).lower()}\n")
+                  stream.write(f"runtime_base_sha={base_sha}\n")
+                  stream.write(f"detection_reason={reason}\n")
+
+          try:
+              with urllib.request.urlopen(
+                  f"{os.environ['PRODUCTION_URL'].rstrip('/')}/deployment.json", timeout=20
+              ) as response:
+                  manifest = json.load(response)
+              deployed = str(manifest.get("backend_sha") or "").strip().lower()
+          except (OSError, ValueError, urllib.error.URLError):
+              deployed = ""
+
+          if len(deployed) != 40 or any(char not in "0123456789abcdef" for char in deployed):
+              # Unknown runtime identity must enter the classifier and hold; it
+              # must never become a false no-op that hides an undeployed range.
+              emit(True, "unknown", "production deployment identity unavailable; classifier must fail closed")
               raise SystemExit(0)
 
-          base = parents[0]["sha"]
-          comparison = json.loads(subprocess.check_output(
-              ["gh", "api", f"/repos/{repo}/compare/{base}...{head}"],
+          if deployed == head:
+              emit(False, deployed, "production manifest already matches target SHA")
+              raise SystemExit(0)
+
+          comparison_process = subprocess.run(
+              ["gh", "api", f"/repos/{repo}/compare/{deployed}...{head}"],
               text=True,
-          ))
+              capture_output=True,
+          )
+          if comparison_process.returncode != 0:
+              emit(True, deployed, "production-to-main comparison unavailable; classifier must fail closed")
+              raise SystemExit(0)
+          comparison = json.loads(comparison_process.stdout)
           files = [item.get("filename", "") for item in comparison.get("files", [])]
           deployable = any(is_deployable_path(path) for path in files)
-          print("Changed files:")
+          print(f"Production runtime base: {deployed}")
+          print("Changed files since the deployed runtime:")
           for path in files:
               print(f"- {path}")
           print(f"deployable={str(deployable).lower()}")
-          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-              f.write(f"deployable={str(deployable).lower()}\n")
+          emit(deployable, deployed, "compared target against production deployment manifest")
           PYEOF
 
   classify-activation:
@@ -183,6 +207,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           DEPLOYABLE: ${{ needs.detect-deployable.outputs.deployable }}
           TARGET_SHA: ${{ needs.resolve-target.outputs.target_sha }}
+          RUNTIME_BASE_SHA: ${{ needs.detect-deployable.outputs.runtime_base_sha }}
           REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -204,6 +229,11 @@ jobs:
               echo "pr_number=none"
               echo "reason=non-deployable change"
             } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ ! "$RUNTIME_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            hold "unknown" "none" "production deployment identity unavailable; fail closed"
             exit 0
           fi
 
@@ -255,6 +285,13 @@ jobs:
           try:
               from scripts.governance.autonomy_gate import classify_scope, effective_tier, parse_declaration
 
+              base = os.environ["RUNTIME_BASE_SHA"]
+              comparison = gh_api(f"/repos/{repo}/compare/{base}...{target}")
+              files = comparison.get("files") or []
+              if not files:
+                  emit("awaiting-activation", "unknown", "none", "runtime range has no inspectable file evidence; fail closed")
+                  sys.exit(0)
+
               merged = [
                   pr for pr in gh_api(
                       f"/repos/{repo}/commits/{target}/pulls",
@@ -264,16 +301,11 @@ jobs:
               ]
               merged.sort(key=lambda pr: pr.get("merged_at", ""), reverse=True)
               if not merged:
-                  emit("awaiting-activation", "unknown", "none", "no merged PR provenance; fail closed")
+                  emit("awaiting-activation", "unknown", "none", "no merged PR provenance for current main target; fail closed")
                   sys.exit(0)
 
               pr = merged[0]
               pr_number = str(pr.get("number", "unknown"))
-              file_pages = gh_api(
-                  f"/repos/{repo}/pulls/{pr_number}/files?per_page=100",
-                  "--paginate", "--slurp",
-              )
-              files = pages(file_pages)
               paths = [item.get("filename", "") for item in files]
               patch_parts = []
               for item in files:
