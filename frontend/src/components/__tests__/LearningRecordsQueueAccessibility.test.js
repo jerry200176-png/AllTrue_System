@@ -73,4 +73,19 @@ describe('LearningRecords review queue accessibility', () => {
     }
     expect(source).not.toMatch(/<span[^>]*lr-parent-feedback-chip[^>]*>/);
   });
+
+  it('names batch-selection checkboxes with review context', () => {
+    const rowCheckboxes = [...source.matchAll(/<input[\s\S]*?type="checkbox"[\s\S]*?>/g)]
+      .map((match) => match[0])
+      .filter((openingTag) => openingTag.includes('toggleRecordSelection(record.id)'));
+
+    expect(rowCheckboxes).toHaveLength(2);
+    for (const openingTag of rowCheckboxes) {
+      expect(openingTag).toContain(':aria-label="\'選取\' + (record.student_name || \'未命名學生\')');
+      expect(openingTag).toContain('record.SessionDate');
+      expect(openingTag).toContain('record.Subject || record.student_class_label || \'未分類\'');
+    }
+
+    expect(source).toContain(':aria-label="allSelected ? \'取消全選本頁評量\' : \'全選本頁評量\'"');
+  });
 });

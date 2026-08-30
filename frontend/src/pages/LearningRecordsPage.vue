@@ -711,6 +711,7 @@
                     :checked="selectedRecordIds.has(record.id)"
                     @click.stop
                     @change="toggleRecordSelection(record.id)"
+                    :aria-label="'選取' + (record.student_name || '未命名學生') + ' ' + record.SessionDate + (record.StartTime ? ' ' + record.StartTime : '') + ' ' + (record.Subject || record.student_class_label || '未分類') + ' 的評量'"
                     title="選取以批次核准"
                   >
                   <div>
@@ -852,7 +853,7 @@
                   <thead>
                     <tr>
                       <th v-if="selectionMode && isDirectorRole && (reviewTab === 'pending' || reviewTab === 'changes_requested')" style="width:36px">
-                        <input type="checkbox" :checked="allSelected" @change="toggleSelectAll" title="全選">
+                        <input type="checkbox" :checked="allSelected" @change="toggleSelectAll" :aria-label="allSelected ? '取消全選本頁評量' : '全選本頁評量'" title="全選">
                       </th>
                       <th>日期</th>
                       <th>學生 / 班級</th>
@@ -872,6 +873,7 @@
                           type="checkbox"
                           :checked="selectedRecordIds.has(record.id)"
                           @change="toggleRecordSelection(record.id)"
+                          :aria-label="'選取' + (record.student_name || '未命名學生') + ' ' + record.SessionDate + (record.StartTime ? ' ' + record.StartTime : '') + ' ' + (record.Subject || record.student_class_label || '未分類') + ' 的評量'"
                         >
                       </td>
                       <td>
