@@ -135,3 +135,15 @@ export function buildTeacherTasks({
   return tasks.sort((a, b) => a._sortRank - b._sortRank || a._sortTime - b._sortTime)
     .map(({ _sortRank, _sortTime, ...task }) => task);
 }
+
+/**
+ * Return the number of actionable items represented by the task rows.
+ * A feedback row can group several messages, so row count is not item count.
+ */
+export function countTeacherTasks(tasks = []) {
+  if (!Array.isArray(tasks)) return 0;
+  return tasks.reduce((total, task) => {
+    const count = Number(task?.count);
+    return total + (Number.isFinite(count) ? Math.max(0, Math.trunc(count)) : 1);
+  }, 0);
+}
