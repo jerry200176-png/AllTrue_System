@@ -1,0 +1,51 @@
+id: INT-20260831-010053-BBL2
+title: StudentsList native import control
+intent: StudentsList native import control
+kind: intent
+brain_dump: The StudentsList import action is a non-focusable label containing a display:none
+  file input, so keyboard and assistive-technology users cannot reliably trigger the
+  student import workflow. Replace it with an accessible native control while preserving
+  the existing import handler and API.
+boundary: Only the StudentsList import trigger markup, its presentation styles, and
+  one focused accessibility regression test; do not change import API, file parsing,
+  auth, permissions, student data, backend, database, or unrelated controls.
+success_condition: The import action is a labelled native button that opens the existing
+  file picker, the input remains correctly associated and keyboard accessible, focused
+  and approved checks pass, and import behavior is unchanged.
+risk: low
+priority: 2
+labels:
+- area:ui
+- accessibility
+scope:
+  allow:
+  - frontend/src/pages/StudentsList.vue
+  - frontend/src/components/__tests__/StudentsListAccessibility.test.js
+  - .agent-session/**
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - backend/**
+  - database/**
+  - .github/**
+budgets:
+  max_files_changed: 2
+  max_loc_changed: 100
+checks:
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-31T01:00:53+08:00'
+children:
+- TKT-20260831-010101-YH5H
+resource_profile: default
