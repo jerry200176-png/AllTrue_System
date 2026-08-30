@@ -180,6 +180,14 @@ class DeployActivationPolicyTest(unittest.TestCase):
         self.assertIn("production deployment identity unavailable; classifier must fail closed", workflow)
         self.assertNotIn('base = parents[0]["sha"]', workflow)
 
+    def test_manual_activation_reaches_protected_gate_without_runtime_identity(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        classify = workflow[workflow.index("  classify-activation:"):]
+        manual_branch = classify.index('if [[ "$EVENT_NAME" == "workflow_dispatch" ]]')
+        identity_guard = classify.index('if [[ ! "$RUNTIME_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]')
+        self.assertLess(manual_branch, identity_guard)
+        self.assertIn("read-only manifest must not prevent the manual", classify)
+
     def test_classifier_holds_protected_paths_and_semantics(self):
         cases = [
             ([".github/workflows/deploy.yml"], "", "T3"),

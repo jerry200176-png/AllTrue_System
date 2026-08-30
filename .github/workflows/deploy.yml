@@ -131,8 +131,6 @@ jobs:
           import json
           import os
           import subprocess
-          import urllib.error
-          import urllib.request
 
           from scripts.governance.autonomy_gate import is_deployable_path
 
@@ -147,12 +145,18 @@ jobs:
                   stream.write(f"detection_reason={reason}\n")
 
           try:
-              with urllib.request.urlopen(
-                  f"{os.environ['PRODUCTION_URL'].rstrip('/')}/deployment.json", timeout=20
-              ) as response:
-                  manifest = json.load(response)
+              manifest_process = subprocess.run(
+                  [
+                      "curl", "-fsSL", "--max-time", "20",
+                      f"{os.environ['PRODUCTION_URL'].rstrip('/')}/deployment.json",
+                  ],
+                  text=True,
+                  capture_output=True,
+                  check=True,
+              )
+              manifest = json.loads(manifest_process.stdout)
               deployed = str(manifest.get("backend_sha") or "").strip().lower()
-          except (OSError, ValueError, urllib.error.URLError):
+          except (OSError, ValueError, subprocess.CalledProcessError):
               deployed = ""
 
           if len(deployed) != 40 or any(char not in "0123456789abcdef" for char in deployed):
@@ -232,11 +236,11 @@ jobs:
             exit 0
           fi
 
-          if [[ ! "$RUNTIME_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
-            hold "unknown" "none" "production deployment identity unavailable; fail closed"
-            exit 0
-          fi
-
+          # Manual activation already carries the exact SHA, successful main
+          # CI evidence, typed confirmation, and the protected environment
+          # gate. Runtime identity is still required by the automatic path,
+          # but an unavailable read-only manifest must not prevent the manual
+          # activation from reaching those stronger checks.
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             {
               echo "mode=manual"
@@ -244,6 +248,11 @@ jobs:
               echo "pr_number=manual"
               echo "reason=Founder exact-SHA activation requested"
             } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ ! "$RUNTIME_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            hold "unknown" "none" "production deployment identity unavailable; fail closed"
             exit 0
           fi
 
