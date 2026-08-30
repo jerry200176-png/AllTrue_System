@@ -28,6 +28,13 @@ describe('AttendancePage workspace accessibility', () => {
     expect(source).toContain(':aria-pressed="pendingMarkStatus[s.class_session_id] === opt.value"');
   });
 
+  it('names the high-frequency records date and filter controls', () => {
+    expect(source.match(/aria-label="查詢老師打卡日期"/g)).toHaveLength(1);
+    expect(source.match(/aria-label="查詢出缺勤日期"/g)).toHaveLength(2);
+    expect(source).toContain('aria-label="搜尋學生姓名"');
+    expect(source).toContain('aria-label="依出缺勤狀態篩選"');
+  });
+
   it('keeps every native action button explicit as a non-submit control', () => {
     expect(nativeButtonTags.length).toBeGreaterThan(20);
     expect(nativeButtonTags.filter((tag) => !/\btype\s*=\s*["']button["']/.test(tag))).toEqual([]);

@@ -9,6 +9,7 @@ checks_allowlist:
 - npm run lint:no-undef
 - npm run build
 - vendor/bin/phpunit
+- bash scripts/phpunit-isolated.sh
 global_checks: []
 do_allowlist:
 - npm run build
