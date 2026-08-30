@@ -490,7 +490,10 @@ jobs:
     # activation classification must remain schedulable when an old deploy is
     # pending in GitHub's queue.
     concurrency:
-      group: production-deploy
+      # This namespace was rotated after a stale GitHub Actions pending lock
+      # stranded the bootstrap activation. Keep it shared with every guarded
+      # production side-effect workflow and non-cancelling.
+      group: alltrue-production-side-effects-v2
       cancel-in-progress: false
 
     steps:
@@ -882,7 +885,7 @@ jobs:
     # Principal rotation is a production side effect and must remain mutually
     # exclusive with application deployment.
     concurrency:
-      group: production-deploy
+      group: alltrue-production-side-effects-v2
       cancel-in-progress: false
     environment:
       name: production-activation

@@ -50,11 +50,13 @@ check and branch rule, and the workflow rechecks the PR head SHA immediately
 before requesting auto-merge.
 
 After merge, `deploy.yml` remains the only application production executor. Its
-deploy and principal-rotation jobs have their own non-cancelling production
-concurrency lock, so preflight/classification runs cannot occupy the deployment
-queue. T0/T1 deploys do not reference the protected `production-activation`
-environment; deploy health checks, runtime smoke checks, exact-SHA checks, and
-rollback/fail-closed behavior remain mandatory. T2/T3, unknown classifications,
+deploy and principal-rotation jobs, together with the guarded repair workflows,
+share the non-cancelling `alltrue-production-side-effects-v2` concurrency lock;
+the namespace was rotated after a stale GitHub Actions pending lock and prevents
+preflight/classification runs from occupying the production queue. T0/T1 deploys
+do not reference the protected `production-activation` environment; deploy
+health checks, runtime smoke checks, exact-SHA checks, and rollback/fail-closed
+behavior remain mandatory. T2/T3, unknown classifications,
 workflow/governance/security-boundary changes, and irreversible operations stay
 held for risk-appropriate review or the protected Founder boundary.
 
