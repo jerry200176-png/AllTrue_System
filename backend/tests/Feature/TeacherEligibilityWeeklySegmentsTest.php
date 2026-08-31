@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\AuthToken;
+use App\Models\Campus;
 use App\Models\ClassSession;
 use App\Models\Student;
 use App\Models\StudentClass;
@@ -78,6 +79,40 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
             ->contains(fn ($week) => ($week['metrics']['meets_16_segments'] ?? false) === true));
     }
 
+    public function test_branch_filter_does_not_partition_a_teachers_fulltime_payroll_inputs(): void
+    {
+        $director = $this->createDirector();
+        $teacher = $this->createTeacher();
+        $otherCampus = Campus::factory()->create();
+        UserCampus::create(['CampusID' => $otherCampus->id, 'UserID' => $teacher->id, 'Admin' => 0, 'Approved' => 1]);
+
+        $this->createAttendedSession($teacher->id, 'one_on_one', '2026-08-10', '08:00', 120, 'completed', 'present', 1);
+        $crossCampusSession = $this->createAttendedSession($teacher->id, 'one_on_one', '2026-08-10', '10:00', 120, 'completed', 'present', $otherCampus->id);
+        $this->createAttendedSession($teacher->id, 'trial', '2026-08-11', '08:00', 120, 'trial', 'trial', $otherCampus->id);
+
+        DB::table('fulltime_salary_profiles')->insert([
+            'teacher_id' => $teacher->id,
+            'branch_id' => $otherCampus->id,
+            'base_salary' => 33000,
+            'status' => 'approved',
+            'effective_from' => '2026-08-01',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this->withHeaders($this->auth($director['token']))
+            ->getJson('/api/v1/finance/teacher-eligibility?period=week&start=2026-08-10&end=2026-08-16&branch_id=1');
+
+        $response->assertOk();
+        $response->assertJsonPath('teachers.0.teacher_id', $teacher->id);
+        $response->assertJsonPath('teachers.0.components.weekly_16_segments.metrics.regular_segments', 2);
+        $response->assertJsonPath('teachers.0.components.weekly_16_segments.metrics.trial_segments', 1);
+        $response->assertJsonPath('teachers.0.components.weekly_16_segments.metrics.total_segments', 3);
+        $response->assertJsonPath('teachers.0.settlement.base_salary', 33000);
+        $this->assertTrue(collect($response->json('teachers.0.components.weekly_16_segments.metrics.course_sessions'))
+            ->contains(fn ($session) => (int) ($session['class_session_id'] ?? 0) === $crossCampusSession->id));
+    }
+
     private function createDirector(): array
     {
         $user = User::create([
@@ -108,10 +143,11 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         string $start,
         int $minutes,
         string $sessionStatus = 'completed',
-        string $attendanceStatus = 'present'
+        string $attendanceStatus = 'present',
+        int $campusId = 1
     ): ClassSession {
         $student = Student::create([
-            'name' => '段數案例學生', 'CampusID' => 1, 'ClassID' => 1,
+            'name' => '段數案例學生', 'CampusID' => $campusId, 'ClassID' => 1,
             'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
         ]);
         $course = StudentClass::create([

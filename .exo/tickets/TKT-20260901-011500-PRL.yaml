@@ -1,0 +1,51 @@
+id: TKT-20260901-011500-PRL
+title: Deliver Backer parity payroll path with AllTrue-specific UI
+intent: Complete the existing full-time payroll calculation path after the weekly 16-segment release, while keeping AllTrue's director UI focused on payroll decisions instead of copying Backer fields.
+kind: task
+brain_dump: Reuse existing AllTrue payroll sources and composer. Align deterministic Backer rounding and complete/partial classification. Remove fixed-salary presentation from the AllTrue page without deleting the salary source used for payout calculation. Add an auditable manual teacher multiplier control; do not guess unresolved Backer manual adjustment semantics or create a second payroll system.
+boundary: Change the existing teacher eligibility/payroll controller, composer, tests, and director-facing TeacherEligibilityPage plus release notes. No duplicate payroll tables, no production data repair, and no activation until governed checks and required CI pass.
+success_condition: A normal employee/month with sufficient source data produces a complete payout; weekly eligibility remains based on valid ClassSession attendance; fixed salary is not shown in the director UI; manual multiplier is explicit and auditable; genuinely missing inputs remain partial/blocked.
+risk: high
+priority: 1
+labels:
+- payroll
+- parity
+- director-ui
+- release
+scope:
+  allow:
+  - backend/app/Http/Controllers/TeacherEligibilityController.php
+  - backend/app/Services/TeacherEligibilityPolicy.php
+  - backend/app/Support/FulltimeSettlementComposer.php
+  - backend/tests/**
+  - frontend/src/pages/TeacherEligibilityPage.vue
+  - frontend/src/lib/teacherEligibilityDisplay.js
+  - frontend/src/lib/*.test.js
+  - docs/**
+  - frontend/src/lib/*generated.js
+  - .agent-session/manifest.json
+  - .exo/cache/**
+  - .exo/locks/**
+  - .exo/logs/**
+  - .exo/tickets/**
+  - .exo/memory/**
+  deny:
+  - backend/database/**
+  - '**/.env*'
+budgets:
+  max_files_changed: 30
+  max_loc_changed: 750
+checks:
+- bash scripts/phpunit-isolated.sh
+- npm run test:unit
+- npm run build
+type: feature
+status: todo
+parent_id: TKT-20260831-231347-JI5L
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-01T01:15:00+08:00'
+children: []
+resource_profile: default
+commits: []

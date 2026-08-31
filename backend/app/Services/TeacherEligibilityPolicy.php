@@ -54,7 +54,7 @@ class TeacherEligibilityPolicy
             $missing = array_merge($missing, $component['missing_fields'] ?? []);
         }
 
-        $positive = ['weekly_16_segments', 'holiday_16_hours', 'weekday_afternoon', 'special_performance'];
+        $positive = ['weekly_16_segments', 'holiday_16_hours', 'weekday_afternoon', 'special_performance', 'admin_allowance'];
         $hasReview = collect($components)->contains(fn ($component) => $component['status'] === self::REVIEW);
         $hasBenefit = collect($positive)->contains(fn ($key) => ($components[$key]['rate'] ?? 0) > 0 || ($components[$key]['amount'] ?? 0) > 0);
 

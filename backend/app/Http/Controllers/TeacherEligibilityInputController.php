@@ -616,6 +616,51 @@ class TeacherEligibilityInputController extends Controller
     }
 
     /**
+     * POST /api/v1/finance/teacher-eligibility/salary-profiles/multiplier
+     * Store an effective-dated manual total multiplier without exposing or
+     * replacing the base-salary input on the director report.
+     */
+    public function storeMultiplierProfile(Request $request)
+    {
+        $data = $request->validate([
+            'teacher_id' => ['required', 'integer', 'min:1'],
+            'branch_id' => ['nullable', 'integer', 'min:1'],
+            'manual_multiplier_pct' => ['required', 'numeric', 'min:0', 'max:300'],
+            'effective_from' => ['required', 'date'],
+        ]);
+        $branchId = $this->resolveWriteBranch($request, $data['branch_id'] ?? null);
+        $this->assertTeacherScope($request, $data['teacher_id'], $branchId);
+        $this->rejectIfSalaryMonthLocked($data['teacher_id'], $branchId, $data['effective_from']);
+
+        $baseProfile = \App\Models\FulltimeSalaryProfile::query()
+            ->where('teacher_id', $data['teacher_id'])
+            ->where('status', 'approved')
+            ->where('effective_from', '<=', $data['effective_from'])
+            ->when($branchId !== null, fn ($query) => $query->where(function ($nested) use ($branchId) {
+                $nested->whereNull('branch_id')->orWhere('branch_id', $branchId);
+            }))
+            ->orderByDesc('effective_from')->orderByDesc('id')->first();
+        if (!$baseProfile) {
+            return response()->json(['message' => '尚無可用的已核准底薪來源，不能單獨建立教師倍率。'], 422);
+        }
+
+        $isHq = $request->attributes->get('auth_role') === 'super_admin';
+        $profile = \App\Models\FulltimeSalaryProfile::create([
+            'teacher_id' => $data['teacher_id'],
+            'branch_id' => $branchId,
+            'base_salary' => $baseProfile->base_salary,
+            'manual_multiplier_pct' => $data['manual_multiplier_pct'],
+            'effective_from' => $data['effective_from'],
+            'status' => $isHq ? 'approved' : 'pending',
+            'created_by' => $this->actorId($request),
+            'approved_by' => $isHq ? $this->actorId($request) : null,
+            'approved_at' => $isHq ? now() : null,
+        ]);
+
+        return response()->json($profile, 201);
+    }
+
+    /**
      * POST /api/v1/finance/teacher-eligibility/salary-profiles/{id}/approve
      * TD-078: second-person approval before a base-salary write can feed payroll.
      * super_admin only — the director who wrote it cannot also approve it.

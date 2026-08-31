@@ -103,8 +103,8 @@ class FulltimeSettlementComposerTest extends TestCase
         ]);
 
         $this->assertSame(114.5, $result['multiplier_pct']);
-        $this->assertSame(515.25, $result['weighted_bonus_amount']);
-        $this->assertSame(34515.25, $result['total_payout']);
+        $this->assertSame(515.0, $result['weighted_bonus_amount']);
+        $this->assertSame(34515.0, $result['total_payout']);
         $this->assertSame(0.0, $result['subject_count_bonus']);
         $this->assertSame(450.0, $result['one_to_three_bonus']);
         $this->assertSame([['label' => '16段課', 'amount' => 4000.0]], $result['adjustments']);
@@ -114,8 +114,9 @@ class FulltimeSettlementComposerTest extends TestCase
     {
         $result = FulltimeSettlementComposer::compose([], null);
 
-        $this->assertSame(0.0, $result['base_salary']);
-        $this->assertSame(0.0, $result['total_payout']);
+        $this->assertNull($result['base_salary']);
+        $this->assertNull($result['total_payout']);
+        $this->assertSame('blocked', $result['calculation_status']);
     }
 
     public function test_review_required_when_any_component_is_review(): void
@@ -150,5 +151,22 @@ class FulltimeSettlementComposerTest extends TestCase
         }
         $this->assertNotNull($part);
         $this->assertSame(8.0, $part['pct']);
+    }
+
+    public function test_manual_multiplier_replaces_the_automatic_total_and_keeps_backer_floor(): void
+    {
+        $result = FulltimeSettlementComposer::compose([
+            'subject_count_bonus' => [
+                'status' => 'qualifies', 'amount' => 0, 'rate' => 0,
+                'metrics' => ['subject_count' => 10, 'subject_count_bonus' => 3000, 'one_to_three_bonus' => 1],
+            ],
+            'holiday_16_hours' => ['status' => 'review', 'amount' => 0, 'rate' => null],
+        ], 33000.0, ['payroll_total' => 10], 107.0);
+
+        $this->assertSame(107.0, $result['multiplier_pct']);
+        $this->assertSame(3211.0, $result['weighted_bonus_amount']);
+        $this->assertSame(36211.0, $result['total_payout']);
+        $this->assertTrue($result['multiplier_complete']);
+        $this->assertSame('manual_teacher_multiplier', $result['multiplier_parts'][0]['key']);
     }
 }
