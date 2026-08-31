@@ -74,22 +74,31 @@ class FulltimeSettlementComposerTest extends TestCase
         $this->assertSame(100.0, $result['multiplier_pct']);
     }
 
-    public function test_missing_base_salary_defaults_to_zero_not_error(): void
+    public function test_missing_base_salary_is_unknown_and_blocks_payout_instead_of_becoming_zero(): void
     {
         $result = FulltimeSettlementComposer::compose([], null);
 
-        $this->assertSame(0.0, $result['base_salary']);
-        $this->assertSame(0.0, $result['total_payout']);
+        $this->assertNull($result['base_salary']);
+        $this->assertNull($result['calculated_payout']);
+        $this->assertSame('blocked', $result['calculation_status']);
+        $this->assertContains('base_salary', array_column($result['pending_items'], 'code'));
     }
 
-    public function test_review_required_when_any_component_is_review(): void
+    public function test_review_is_pending_without_blocking_known_core_payout(): void
     {
         $components = [
             'holiday_16_hours' => ['status' => 'review', 'amount' => 0, 'rate' => 0],
+            'subject_count_bonus' => [
+                'status' => 'qualifies', 'amount' => 0, 'rate' => 0,
+                'metrics' => ['subject_count' => 1, 'subject_count_bonus' => 0, 'one_to_three_bonus' => 100],
+            ],
         ];
 
         $result = FulltimeSettlementComposer::compose($components, 30000.0);
 
         $this->assertTrue($result['review_required']);
+        $this->assertSame('partial', $result['calculation_status']);
+        $this->assertSame(30100.0, $result['calculated_payout']);
+        $this->assertContains('holiday_16_hours', array_column($result['pending_items'], 'code'));
     }
 }

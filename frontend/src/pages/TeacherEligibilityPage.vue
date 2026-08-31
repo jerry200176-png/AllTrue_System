@@ -46,7 +46,7 @@
       <div class="eligibility-card table-wrap desktop-table">
         <table>
           <thead>
-            <tr><th>老師</th><th>整體狀態</th><th>底薪</th><th>教師倍率</th><th v-for="item in visibleComponents" :key="item.key">{{ item.label }}</th><th>總發放金額</th><th>缺少資料／原因</th></tr>
+            <tr><th>老師</th><th>整體狀態</th><th>底薪</th><th>教師倍率</th><th v-for="item in visibleComponents" :key="item.key">{{ item.label }}</th><th>每週課程明細</th><th>總發放金額</th><th>缺少資料／原因</th></tr>
           </thead>
           <tbody>
             <tr v-for="teacher in filteredTeachers" :key="teacher.teacher_id">
@@ -68,10 +68,19 @@
                 <span :class="['status', statusClass(teacher.components?.[item.key]?.status)]">{{ statusLabel(teacher.components?.[item.key]?.status) }}</span>
                 <small>{{ detail(item.key, teacher.components?.[item.key]) }}</small>
               </td>
-              <td class="total-cell"><strong>{{ formatMoney(teacher.settlement?.total_payout) }}</strong></td>
+              <td class="weekly-breakdown">
+                <template v-for="week in weeklyWeeks(teacher)" :key="week.week_start">
+                  <div><strong>{{ week.week_start }}～{{ week.week_end }}</strong>：{{ weeklySummary(week) }}</div>
+                  <details v-if="week.course_sessions?.length">
+                    <summary>查看 {{ week.course_sessions.length }} 堂實際課程</summary>
+                    <ul><li v-for="session in week.course_sessions" :key="session.class_session_id">{{ session.session_date }} {{ session.start_time }}–{{ session.end_time }}｜{{ classTypeLabel(session.class_type) }}｜{{ session.segments }}段</li></ul>
+                  </details>
+                </template>
+              </td>
+              <td class="total-cell"><strong>{{ formatMoney(teacher.settlement?.calculated_payout ?? teacher.settlement?.total_payout) }}</strong><small>{{ calculationStatusLabel(teacher.settlement) }}</small></td>
               <td class="reason-cell">{{ reasonText(teacher) }}</td>
             </tr>
-            <tr v-if="filteredTeachers.length === 0"><td :colspan="visibleComponents.length + 6" class="empty">查詢期間沒有符合條件的正職老師資料。</td></tr>
+            <tr v-if="filteredTeachers.length === 0"><td :colspan="visibleComponents.length + 7" class="empty">查詢期間沒有符合條件的正職老師資料。</td></tr>
           </tbody>
         </table>
       </div>
@@ -92,7 +101,13 @@
               </span>
             </div>
           </div>
-          <div class="component-row total-cell"><span>總發放金額</span><strong>{{ formatMoney(teacher.settlement?.total_payout) }}</strong></div>
+          <div class="component-row weekly-breakdown"><span>每週課程明細</span><span class="component-value">
+            <template v-for="week in weeklyWeeks(teacher)" :key="week.week_start">
+              <span>{{ week.week_start }}～{{ week.week_end }}：{{ weeklySummary(week) }}</span>
+              <details v-if="week.course_sessions?.length"><summary>查看實際課程</summary><ul><li v-for="session in week.course_sessions" :key="session.class_session_id">{{ session.session_date }} {{ session.start_time }}–{{ session.end_time }}｜{{ classTypeLabel(session.class_type) }}｜{{ session.segments }}段</li></ul></details>
+            </template>
+          </span></div>
+          <div class="component-row total-cell"><span>計算後發放金額</span><span class="component-value"><strong>{{ formatMoney(teacher.settlement?.calculated_payout ?? teacher.settlement?.total_payout) }}</strong><small>{{ calculationStatusLabel(teacher.settlement) }}</small></span></div>
           <p class="mobile-reason">{{ reasonText(teacher) }}</p>
         </article>
         <div v-if="filteredTeachers.length === 0" class="eligibility-card empty">查詢期間沒有符合條件的正職老師資料。</div>
@@ -153,6 +168,7 @@ const salaryDraft = ref(0);
 const savingSalary = ref(false);
 
 function formatMoney(value) {
+  if (value === null || value === undefined || value === '') return '—';
   const n = Number(value ?? 0);
   return `$${n.toLocaleString('zh-TW', { maximumFractionDigits: 0 })}`;
 }
@@ -201,9 +217,11 @@ function detail(key, component) {
     return missing.length ? `待補：${missing.join('、')}` : '待人工確認';
   }
   if (key === 'weekly_16_segments') {
-    const weeks = component.metrics?.weeks || [];
-    const attendanceSessions = weeks.reduce((total, week) => total + Number(week.attendance_sessions || 0), 0);
-    return `${component.amount ?? 0}元｜學生點名 ${attendanceSessions} 堂`;
+    const metrics = component.metrics || {};
+    const attainment = metrics.week_count === 1
+      ? (metrics.meets_16_segments ? '達16段' : '未達16段')
+      : `${metrics.qualifying_weeks ?? 0}/${metrics.week_count ?? 0}週達16段`;
+    return `${metrics.total_segments ?? 0}段（正課${metrics.regular_segments ?? 0}／試聽${metrics.trial_segments ?? 0}）｜${attainment}`;
   }
   if (key === 'holiday_16_hours') {
     const metrics = component.metrics || {};
@@ -215,6 +233,18 @@ function detail(key, component) {
   if (key === 'weekday_afternoon') return `${component.rate ?? 0}%｜有效${component.metrics?.extra_segments ?? 0}段`;
   if (key === 'deductions') return `${component.rate ?? 0}%`;
   return component.metrics?.subject_count == null ? '—' : `${component.metrics.subject_count}科`;
+}
+function weeklyWeeks(teacher) { return teacher.components?.weekly_16_segments?.metrics?.weeks || []; }
+function weeklySummary(week) {
+  const metrics = week.metrics || {};
+  return `正課${metrics.regular_segments ?? 0}段／試聽${metrics.trial_segments ?? 0}段／合計${metrics.total_segments ?? 0}段｜${metrics.meets_16_segments ? '達標' : '未達標'}`;
+}
+function classTypeLabel(type) { return { one_on_one: '1對1', one_on_two: '1對2', one_on_three: '1對3', trial: '試聽', tutoring: '輔導' }[type] || type || '正課'; }
+function calculationStatusLabel(settlement) {
+  const status = settlement?.calculation_status;
+  if (status === 'partial') return `已計算｜待確認${settlement?.pending_items?.length || 0}項`;
+  if (status === 'blocked') return '核心資料不足，尚未計算';
+  return status === 'calculated' ? '已計算' : '';
 }
 function missingLabel(field) {
   const labels = {
@@ -245,6 +275,9 @@ function reasonText(teacher) {
     if (component?.reason) reasons.push(`${item.label}：${component.reason}`);
   }
   if (teacher.missing_fields?.length) reasons.push(`缺少：${teacher.missing_fields.join('、')}`);
+  if (teacher.settlement?.pending_items?.length) {
+    reasons.push(`待確認：${teacher.settlement.pending_items.map(item => item.label).join('、')}`);
+  }
   return reasons.join('；');
 }
 

@@ -41,7 +41,9 @@ class TeacherEligibilityPolicy
             'subject_count_bonus' => $this->subjectCountBonus(
                 array_key_exists('subject_count', $input) && $input['subject_count'] !== null
                     ? (float) $input['subject_count']
-                    : null
+                    : (isset($input['subject_units']['payroll_total']) ? (float) $input['subject_units']['payroll_total'] : null),
+                isset($input['subject_units']['one_to_three']) ? (float) $input['subject_units']['one_to_three'] : null,
+                is_array($input['subject_units'] ?? null) ? $input['subject_units'] : []
             ),
         ];
 
@@ -67,6 +69,37 @@ class TeacherEligibilityPolicy
             return $this->review(['weekly_segments', 'work_hours', 'weekly_exception_context'], '缺少每週課段、工時或例外資料。');
         }
 
+        if (empty($weekly['segment_rule'])) {
+            return $this->weekly16Legacy($weekly);
+        }
+
+        $segments = $weekly['segments'] ?? null;
+        $workHours = $weekly['work_hours'] ?? null;
+        if ($segments === null) {
+            return $this->review(['weekly_segments'], '缺少每週實際課程與有效點名資料。');
+        }
+
+        $thresholdPass = (float) $segments >= (float) $this->setting('weekly_segment_threshold', 16);
+        if ($thresholdPass) {
+            return $this->result(self::QUALIFIES, '依有效實際課程達到每週16段課。', [
+                'weekly_segments' => round((float) $segments, 2),
+                'work_hours' => $workHours === null ? null : round((float) $workHours, 2),
+            ], $this->setting('weekly_segment_bonus', 1000), 0);
+        }
+
+        return $this->result(self::NOT_QUALIFIES, '有效實際課程未達每週16段課。', [
+            'weekly_segments' => round((float) $segments, 2),
+            'work_hours' => $workHours === null ? null : round((float) $workHours, 2),
+        ], 0, 0);
+    }
+
+    /**
+     * Preserve the pre-existing bonus policy API for callers that have not
+     * opted into the attendance-backed segment rule yet. The controller uses
+     * the segment_rule path above for the director-facing 16-segment slice.
+     */
+    private function weekly16Legacy(array $weekly): array
+    {
         $segments = $weekly['segments'] ?? null;
         $workHours = $weekly['work_hours'] ?? null;
         $exception = $weekly['exception'] ?? null;
@@ -92,7 +125,6 @@ class TeacherEligibilityPolicy
                 $workHours === null ? 'work_hours' : null,
             ]), '缺少每週課段或實際工時。');
         }
-
         $thresholdPass = (float) $segments >= (float) $this->setting('weekly_segment_threshold', 16)
             && (float) $workHours >= (float) $this->setting('weekly_work_hours_threshold', 40);
         if ($thresholdPass) {
@@ -110,7 +142,6 @@ class TeacherEligibilityPolicy
                 'work_hours' => round((float) $workHours, 2),
             ], $this->setting('weekly_segment_bonus', 1000), 0);
         }
-
         return $this->result(self::NOT_QUALIFIES, '未達每週16段課及40小時工時，且不符合例外規則。', [
             'weekly_segments' => round((float) $segments, 2),
             'work_hours' => round((float) $workHours, 2),
@@ -321,44 +352,100 @@ class TeacherEligibilityPolicy
         );
     }
 
-    public function subjectCountBonus(?float $subjectCount): array
+    public function subjectCountBonus(?float $subjectCount, ?float $oneToThreeCount = null, array $units = []): array
     {
         if ($subjectCount === null) {
             return $this->review(
                 ['approved_learning_records'],
-                '缺少已核准評量的科目數資料，無法套用附件表格。'
+                '缺少正課／輔導試聽／一對三科目數資料，無法套用附件表格。',
+                [
+                    'regular_subject_count' => $units['regular'] ?? null,
+                    'tutoring_trial_subject_count' => $units['tutoring_trial'] ?? null,
+                    'one_to_three_count' => $units['one_to_three'] ?? null,
+                ]
             );
         }
 
-        $subjectCount = round($subjectCount, 2);
-        if ($subjectCount < 1) {
-            return $this->result(self::QUALIFIES, '查詢期間沒有科目數獎金。', ['subject_count' => 0], 0, 0);
-        }
-
-        if (abs($subjectCount - round($subjectCount)) > 0.0001) {
+        $subjectCount = round($subjectCount, 4);
+        if ($units === [] && $oneToThreeCount === null && abs($subjectCount - round($subjectCount)) > 0.0001) {
             return $this->review(
                 ['subject_count_table'],
-                '科目數含加權小數，附件表格只有1～50整數版本，無法自行推算。',
+                '科目數含加權小數，附件表格只有1～50整數版本，需使用完整科目分流資料計算。',
                 ['subject_count' => $subjectCount]
             );
         }
+        $oneToThreeCount = round($oneToThreeCount ?? $subjectCount, 4);
+        if ($subjectCount < 1 && $oneToThreeCount < 1) {
+            return $this->result(self::QUALIFIES, '查詢期間沒有科目數獎金。', [
+                'subject_count' => 0,
+                'one_to_three_count' => 0,
+                'regular_subject_count' => $units['regular'] ?? 0,
+                'tutoring_trial_subject_count' => $units['tutoring_trial'] ?? 0,
+                'subject_count_bonus' => 0,
+                'one_to_three_bonus' => 0,
+            ], 0, 0);
+        }
 
-        $subjectCount = (int) round($subjectCount);
         $table = $this->setting('subject_count_table', []);
-        if ($subjectCount > 50) {
-            return $this->review(['subject_count_table'], '科目數超出附件表格1～50範圍。');
+        $subjectBonus = $this->interpolateTableValue($table, max(0, $subjectCount), 0);
+        $oneToThreeBonus = $this->interpolateTableValue($table, max(0, $oneToThreeCount), 1);
+        $illustrativeMultiplier = $this->interpolateTableValue($table, max($subjectCount, $oneToThreeCount), 2);
+        $illustrativeAmount = $this->interpolateTableValue($table, max($subjectCount, $oneToThreeCount), 3);
+        if ($subjectBonus === null || $oneToThreeBonus === null || $illustrativeMultiplier === null) {
+            return $this->review(
+                ['subject_count_table'],
+                '科目數超出附件表格1～50範圍。',
+                ['subject_count' => $subjectCount, 'one_to_three_count' => $oneToThreeCount]
+            );
         }
-        $row = $table[$subjectCount] ?? null;
-        if ($row === null) {
-            return $this->review(['subject_count_table'], '科目數超出附件表格1～50範圍。');
-        }
+
         return $this->result(
             self::QUALIFIES,
             '依115.07科目數及一對三獎金表計算。',
-            ['subject_count' => $subjectCount, 'subject_count_bonus' => $row[0], 'one_to_three_bonus' => $row[1], 'multiplier' => $row[2]],
-            $row[3],
-            $row[2] - 100
+            [
+                'subject_count' => $subjectCount,
+                'one_to_three_count' => $oneToThreeCount,
+                'regular_subject_count' => $units['regular'] ?? null,
+                'tutoring_trial_subject_count' => $units['tutoring_trial'] ?? null,
+                'subject_count_bonus' => $this->number(round($subjectBonus, 2)),
+                'one_to_three_bonus' => $this->number(round($oneToThreeBonus, 2)),
+                'multiplier' => $this->number(round($illustrativeMultiplier, 2)),
+            ],
+            $this->number(round($illustrativeAmount ?? 0, 2)),
+            $this->number(round($illustrativeMultiplier - 100, 2))
         );
+    }
+
+    private function interpolateTableValue(array $table, float $count, int $column): ?float
+    {
+        if ($count < 1) {
+            return 0.0;
+        }
+
+        $keys = array_map('intval', array_keys($table));
+        sort($keys);
+        if ($keys === [] || $count < $keys[0] || $count > end($keys)) {
+            return null;
+        }
+
+        $lower = (int) floor($count);
+        $upper = (int) ceil($count);
+        $lowerRow = $table[$lower] ?? null;
+        $upperRow = $table[$upper] ?? null;
+        if ($lowerRow === null || $upperRow === null) {
+            return null;
+        }
+        if ($lower === $upper) {
+            return (float) ($lowerRow[$column] ?? 0);
+        }
+
+        $fraction = $count - $lower;
+        return (float) $lowerRow[$column] + (((float) $upperRow[$column] - (float) $lowerRow[$column]) * $fraction);
+    }
+
+    private function number(float $value): int|float
+    {
+        return abs($value - round($value)) < 0.0001 ? (int) round($value) : $value;
     }
 
     private function result(string $status, string $reason, array $metrics = [], $amount = 0, $rate = 0): array
