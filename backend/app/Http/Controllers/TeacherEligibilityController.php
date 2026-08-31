@@ -102,18 +102,15 @@ class TeacherEligibilityController extends Controller
          * working at multiple campuses has one settlement, so every source
          * row for that teacher is included below.
          */
-        $branchFilter = null;
         $schedules = DB::table('schedules')
             ->whereIn('teacher_id', $teacherIds)
             ->whereBetween('schedule_date', [$effectiveStart->toDateString(), $period['end']->toDateString()])
             ->whereNotIn('status', ['cancelled', 'leave', 'leave_requested'])
-            ->when($branchFilter !== null, fn ($query) => $query->whereIn('branch_id', $branchFilter))
             ->get();
         $plannedSchedules = DB::table('schedules')
             ->whereIn('teacher_id', $teacherIds)
             ->whereBetween('schedule_date', [$effectiveStart->toDateString(), $period['end']->toDateString()])
             ->whereNotIn('status', ['cancelled'])
-            ->when($branchFilter !== null, fn ($query) => $query->whereIn('branch_id', $branchFilter))
             ->get();
 
         // Teacher RFID is still incomplete in production. Work-hours for
@@ -134,7 +131,6 @@ class TeacherEligibilityController extends Controller
                 ->whereNull('si.VoidedAt')
                 ->whereIn('si.Status', $this->weeklyAttendanceStatuses())
                 ->whereNotIn('cs.Status', ['cancelled', 'voided', 'leave', 'leave_adjusted', 'leave_requested', 'excused'])
-                ->when($branchFilter !== null, fn ($query) => $query->whereIn('st.CampusID', $branchFilter))
                 ->select([
                     'cs.id as class_session_id', 'cs.SessionDate as session_date',
                     'cs.StartTime as start_time', 'cs.EndTime as end_time',
@@ -155,11 +151,6 @@ class TeacherEligibilityController extends Controller
                 })
                 ->whereBetween('event_date', [$effectiveStart->toDateString(), $period['end']->toDateString()])
                 ->where('status', 'approved')
-                ->when($branchFilter !== null, function ($query) use ($branchFilter) {
-                    $query->where(function ($nested) use ($branchFilter) {
-                        $nested->whereNull('branch_id')->orWhereIn('branch_id', $branchFilter);
-                    });
-                })
                 ->get()
             : collect();
 
@@ -172,9 +163,6 @@ class TeacherEligibilityController extends Controller
                 ->where(function ($query) use ($period) {
                     $query->whereNull('starts_on')->orWhereDate('starts_on', '<=', $period['end']->toDateString());
                 })
-                ->when($branchFilter !== null, fn ($query) => $query->where(function ($nested) use ($branchFilter) {
-                    $nested->whereNull('branch_id')->orWhereIn('branch_id', $branchFilter);
-                }))
                 ->where('status', '!=', 'withdrawn')
                 ->get()
             : collect();
@@ -188,9 +176,6 @@ class TeacherEligibilityController extends Controller
                 ->where(function ($query) use ($period) {
                     $query->whereNull('starts_on')->orWhereDate('starts_on', '<=', $period['end']->toDateString());
                 })
-                ->when($branchFilter !== null, fn ($query) => $query->where(function ($nested) use ($branchFilter) {
-                    $nested->whereNull('branch_id')->orWhereIn('branch_id', $branchFilter);
-                }))
                 ->where('status', '!=', 'withdrawn')
                 ->get()
             : collect();
@@ -198,14 +183,14 @@ class TeacherEligibilityController extends Controller
         // Existing attendance/leave is the product's source of truth. The
         // additive payroll event table is only for policy facts that the core
         // product does not model (for example a company holiday calendar).
-        $events = $events->concat($this->existingLeaveEvents($teacherIds, $branchFilter, $effectiveStart, $period['end']));
+        $events = $events->concat($this->existingLeaveEvents($teacherIds, null, $effectiveStart, $period['end']));
         $sessionCalendarAvailable = Schema::hasTable('ClassSession');
         if ($sessionCalendarAvailable) {
             $knownHolidayDates = $events->filter(fn ($event) => $event->event_type === 'holiday')
                 ->map(fn ($event) => substr((string) $event->event_date, 0, 10))
                 ->unique()
                 ->all();
-            foreach ($this->campusClosedDates($branchFilter, $effectiveStart, $period['end']) as $date) {
+            foreach ($this->campusClosedDates(null, $effectiveStart, $period['end']) as $date) {
                 if (in_array($date, $knownHolidayDates, true)) {
                     continue;
                 }
@@ -235,9 +220,6 @@ class TeacherEligibilityController extends Controller
                 ->where(function ($query) use ($period) {
                     $query->whereNull('starts_on')->orWhereDate('starts_on', '<=', $period['end']->toDateString());
                 })
-                ->when($branchFilter !== null, fn ($query) => $query->where(function ($nested) use ($branchFilter) {
-                    $nested->whereNull('branch_id')->orWhereIn('branch_id', $branchFilter);
-                }))
                 ->where('status', '!=', 'withdrawn')
                 ->get()
             : collect();
@@ -251,20 +233,17 @@ class TeacherEligibilityController extends Controller
                 ->where(function ($query) use ($period) {
                     $query->whereNull('starts_on')->orWhereDate('starts_on', '<=', $period['end']->toDateString());
                 })
-                ->when($branchFilter !== null, fn ($query) => $query->where(function ($nested) use ($branchFilter) {
-                    $nested->whereNull('branch_id')->orWhereIn('branch_id', $branchFilter);
-                }))
                 ->where('status', '!=', 'withdrawn')
                 ->get()
             : collect();
         $cashByTeacher = $cashRows->groupBy('teacher_id');
         $cashSourceAvailable = Schema::hasTable('teacher_payroll_cash_adjustments');
         $allowanceSourceAvailable = Schema::hasTable('teacher_payroll_admin_allowances');
-        $pendingSalaryByTeacher = $this->pendingSalaryByTeacher($teacherIds, $branchFilter);
+        $pendingSalaryByTeacher = $this->pendingSalaryByTeacher($teacherIds, null);
         $eventsAvailable = $sessionCalendarAvailable || $events->isNotEmpty();
-        $subjectUnitsByTeacher = $this->subjectUnitsByTeacher($teacherIds, $branchFilter, $effectiveStart, $period['end']);
-        $salaryByTeacher = $this->salaryProfilesByTeacher($teacherIds, $branchFilter, $period['end']->toDateString());
-        $manualMultiplierByTeacher = $this->manualMultiplierByTeacher($teacherIds, $branchFilter, $period['end']->toDateString());
+        $subjectUnitsByTeacher = $this->subjectUnitsByTeacher($teacherIds, null, $effectiveStart, $period['end']);
+        $salaryByTeacher = $this->salaryProfilesByTeacher($teacherIds, null, $period['end']->toDateString());
+        $manualMultiplierByTeacher = $this->manualMultiplierByTeacher($teacherIds, null, $period['end']->toDateString());
 
         $rows = $teachers->map(function ($teacher) use ($period, $effectiveStart, $scheduleByTeacher, $plannedByTeacher, $attendanceByTeacher, $eventByTeacher, $achievementByTeacher, $deductionByTeacher, $allowanceByTeacher, $cashByTeacher, $cashSourceAvailable, $allowanceSourceAvailable, $pendingSalaryByTeacher, $eventsAvailable, $attendanceSourceAvailable, $sessionCalendarAvailable, $subjectUnitsByTeacher, $salaryByTeacher, $manualMultiplierByTeacher) {
             $teacherId = (int) $teacher->id;
@@ -701,7 +680,6 @@ class TeacherEligibilityController extends Controller
             ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
             ->join('Student as st', 'st.id', '=', 'sc.StudentID')
             ->whereBetween('cs.SessionDate', [$start->toDateString(), $end->toDateString()])
-            ->when($branchFilter !== null, fn ($query) => $query->whereIn('st.CampusID', $branchFilter))
             ->get(['cs.SessionDate as event_date', 'cs.Status as status']);
 
         return $this->campusClosedDatesFromSessionRows($rows->map(fn ($row) => [
@@ -751,7 +729,7 @@ class TeacherEligibilityController extends Controller
             ->join('Student as st', 'st.id', '=', 'sc.StudentID')
             ->whereIn('sc.TeacherID', $teacherIds)
             ->whereBetween('cs.SessionDate', [$start->toDateString(), $end->toDateString()])
-            ->when($branchFilter !== null, fn ($query) => $query->whereIn('st.CampusID', $branchFilter));
+            ;
         if (Schema::hasTable('StudentSingIn')) {
             $query->leftJoin('StudentSingIn as si', 'si.ClassSessionID', '=', 'cs.id')
                 ->where(function ($nested) {
@@ -807,7 +785,6 @@ class TeacherEligibilityController extends Controller
             $query = DB::table('LearningRecord as lr')->join('StudentClass as sc', 'sc.ID', '=', 'lr.StudentClassID')->join('Student as s', 's.id', '=', 'sc.StudentID')
                 ->whereIn('lr.TeacherID', $teacherIds)->where('lr.Status', 'approved')->whereNull('lr.VoidedAt')
                 ->whereBetween('lr.SessionDate', [$start->toDateString(), $end->toDateString()])
-                ->when($branchFilter !== null, fn ($builder) => $builder->whereIn('s.CampusID', $branchFilter))
                 ->select(['lr.TeacherID as teacher_id', 'lr.ClassSessionID as class_session_id', 'lr.StartTime as start_time', 'lr.EndTime as end_time', 'lr.SessionDate as session_date', 'sc.ClassType as class_type', 'sc.SessionDuration as session_duration', 'sc.week1', 'sc.week2', 'sc.week3', 'sc.week4', 'sc.week5', 'sc.week6', 'sc.duration1', 'sc.duration2', 'sc.duration3', 'sc.duration4', 'sc.duration5', 'sc.duration6']);
             if (Schema::hasColumn('LearningRecord', 'ExcludeFromSubjectCount')) $query->where(fn ($builder) => $builder->whereNull('lr.ExcludeFromSubjectCount')->orWhere('lr.ExcludeFromSubjectCount', 0));
             foreach ($query->get() as $row) {
@@ -820,7 +797,7 @@ class TeacherEligibilityController extends Controller
 
         if ($hasAttendance) {
             $base = fn () => DB::table('ClassSession as cs')->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')->join('StudentSingIn as si', 'si.ClassSessionID', '=', 'cs.id')->join('Student as s', 's.id', '=', 'sc.StudentID')
-                ->whereIn('sc.TeacherID', $teacherIds)->whereBetween('cs.SessionDate', [$start->toDateString(), $end->toDateString()])->whereNull('si.VoidedAt')->whereIn('si.Status', $this->weeklyAttendanceStatuses())->whereNotIn('cs.Status', ['cancelled', 'voided', 'leave', 'leave_adjusted', 'leave_requested', 'excused'])->when($branchFilter !== null, fn ($builder) => $builder->whereIn('s.CampusID', $branchFilter));
+                ->whereIn('sc.TeacherID', $teacherIds)->whereBetween('cs.SessionDate', [$start->toDateString(), $end->toDateString()])->whereNull('si.VoidedAt')->whereIn('si.Status', $this->weeklyAttendanceStatuses())->whereNotIn('cs.Status', ['cancelled', 'voided', 'leave', 'leave_adjusted', 'leave_requested', 'excused']);
             $regular = $base()->whereNotIn('sc.ClassType', ['trial', 'tutoring'])->when($logged !== [], fn ($builder) => $builder->whereNotIn('cs.id', array_values(array_unique($logged))))->select(['sc.TeacherID as teacher_id', 'cs.id as class_session_id', 'cs.StartTime as start_time', 'cs.EndTime as end_time', 'cs.SessionDate as session_date', 'sc.ClassType as class_type', 'sc.SessionDuration as session_duration', 'sc.week1', 'sc.week2', 'sc.week3', 'sc.week4', 'sc.week5', 'sc.week6', 'sc.duration1', 'sc.duration2', 'sc.duration3', 'sc.duration4', 'sc.duration5', 'sc.duration6']);
             foreach ($regular->get()->unique('class_session_id') as $row) { $type = strtolower((string) ($row->class_type ?? 'one_on_one')); $add($row, $type === 'one_on_two' ? 0.75 : ($type === 'one_on_three' ? 0.5 : 1.5), $type === 'one_on_three' ? 'one_to_three' : 'regular'); }
             foreach (['tutoring', 'trial'] as $type) {
@@ -830,7 +807,7 @@ class TeacherEligibilityController extends Controller
         }
 
         return collect($buckets)->mapWithKeys(function ($parts, $teacherId) use ($unknown) {
-            if (!empty($unknown[$teacherId])) return [$teacherId => null];
+            if (isset($unknown[$teacherId])) return [$teacherId => null];
             $regular = round($parts['regular'] / 8, 4); $tutoringTrial = round($parts['tutoring_trial'] / 8, 4); $oneToThree = round($parts['one_to_three'] / 8, 4);
             return [$teacherId => ['regular' => $regular, 'tutoring_trial' => $tutoringTrial, 'one_to_three' => $oneToThree, 'payroll_total' => round($regular + $tutoringTrial, 4)]];
         })->all();
@@ -855,9 +832,6 @@ class TeacherEligibilityController extends Controller
             ->whereIn('teacher_id', $teacherIds)
             ->where('status', 'approved') // TD-078: unapproved writes must never feed payroll
             ->where('effective_from', '<=', $onDate)
-            ->when($branchFilter !== null, fn ($query) => $query->where(function ($nested) use ($branchFilter) {
-                $nested->whereNull('branch_id')->orWhereIn('branch_id', $branchFilter);
-            }))
             ->orderBy('effective_from')
             ->orderBy('id')
             ->get(['teacher_id', 'base_salary', 'effective_from', 'id'])
@@ -878,9 +852,6 @@ class TeacherEligibilityController extends Controller
             ->where('status', 'approved')
             ->whereNotNull('manual_multiplier_pct')
             ->where('effective_from', '<=', $onDate)
-            ->when($branchFilter !== null, fn ($query) => $query->where(function ($nested) use ($branchFilter) {
-                $nested->whereNull('branch_id')->orWhereIn('branch_id', $branchFilter);
-            }))
             ->orderBy('effective_from')->orderBy('id')
             ->get(['teacher_id', 'manual_multiplier_pct'])
             ->groupBy('teacher_id')
@@ -900,9 +871,6 @@ class TeacherEligibilityController extends Controller
         return DB::table('fulltime_salary_profiles')
             ->whereIn('teacher_id', $teacherIds)
             ->where('status', 'pending')
-            ->when($branchFilter !== null, fn ($query) => $query->where(function ($nested) use ($branchFilter) {
-                $nested->whereNull('branch_id')->orWhereIn('branch_id', $branchFilter);
-            }))
             ->orderBy('id')
             ->get(['id', 'teacher_id', 'base_salary', 'manual_multiplier_pct', 'effective_from'])
             ->groupBy('teacher_id')
@@ -915,7 +883,7 @@ class TeacherEligibilityController extends Controller
             ->all();
     }
 
-    private function subjectRecordHours($row): float
+    private function subjectRecordHours($row): ?float
     {
         $weekday = null;
         if (!empty($row->session_date)) {
