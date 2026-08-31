@@ -23,3 +23,5 @@ Purpose: weekly triage sweep — pull current `new`/`triaged`/`in_progress` queu
 # kickoff 2026-08-28T04:39:59Z — user explicitly asked to process all outstanding in-app bug reports through root-cause fix, CI, production deploy, and in-app follow-up; pull a fresh authoritative queue before triage
 
 # kickoff 2026-08-31T07:34:00+08:00 — refresh the paired queue/detail evidence for in-app bug #247 before deciding whether the reported calendar capacity failure is actionable
+
+# kickoff 2026-08-31T08:09:30+08:00 — re-trigger the paired queue/detail evidence after restoring the main CI→deploy event chain; target in-app bug #247
