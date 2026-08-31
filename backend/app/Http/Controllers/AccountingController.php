@@ -103,7 +103,7 @@ class AccountingController extends Controller
             }
 
             $legacyPaid = $invoices->isEmpty() && (int) ($course->Paid ?? 0) === 1;
-            $pendingReconciliation = (string) ($course->closed_reason ?? '') === 'settled_pending';
+            $pendingReconciliation = (string) ($course->getAttribute('closed_reason') ?? '') === 'settled_pending';
             if ($pendingReconciliation && $invoices->isEmpty()) {
                 $invoiceTotal = (int) ($course->Charge ?? 0);
                 $outstandingTotal = max(0, $invoiceTotal - $appliedTotal);
@@ -133,7 +133,7 @@ class AccountingController extends Controller
                 'has_exception' => $overpaidTotal > 0,
                 'pending_reconciliation' => $pendingReconciliation,
                 'reconciliation_label' => $pendingReconciliation ? '結案待對帳' : null,
-                'closed_reason' => $course->closed_reason,
+                'closed_reason' => $course->getAttribute('closed_reason'),
             ];
         })->values();
 

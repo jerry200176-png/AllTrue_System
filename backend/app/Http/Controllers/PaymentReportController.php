@@ -351,9 +351,9 @@ class PaymentReportController extends Controller
                 $sc->update([
                     'Paid' => 1,
                     'PayDate' => Carbon::today()->toDateString(),
-                    'closed_reason' => $sc->closed_reason === 'settled_pending'
+                    'closed_reason' => $sc->getAttribute('closed_reason') === 'settled_pending'
                         ? 'settled'
-                        : $sc->closed_reason,
+                        : $sc->getAttribute('closed_reason'),
                 ]);
             }
             if ($package && $status === 'paid') {
