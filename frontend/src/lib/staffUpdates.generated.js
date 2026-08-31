@@ -4,6 +4,43 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-31-weekly-16-segments",
+    "publishedAt": "2026-08-31",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "每週16段課達標可直接查看",
+    "summary": "主任可看到每位正職老師的正課、試聽與總段數，並追溯到實際課程。",
+    "items": [
+      "正職薪資要件頁新增每週課段欄位，正課依實際課程時長換算、試聽每堂固定一段、輔導不計入，並標示是否達到十六段。",
+      "可展開查看構成課程的日期、時間、類型與段數；取消、請假、作廢或沒有有效點名的課程不會計入，也不要求先有核准的學習紀錄。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "正職薪資要件頁新增每週課段欄位，正課依實際課程時長換算、試聽每堂固定一段、輔導不計入，並標示是否達到十六段。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "可展開查看構成課程的日期、時間、類型與段數；取消、請假、作廢或沒有有效點名的課程不會計入，也不要求先有核准的學習紀錄。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-31:weekly-16-segments"
+    ],
+    "date": "2026-08-31",
+    "version": "2026.08.31"
+  },
+  {
     "id": "staff-2026-08-31-usage-balance-visibility",
     "publishedAt": "2026-08-31",
     "effectiveAt": null,

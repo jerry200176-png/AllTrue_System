@@ -73,6 +73,31 @@ class TeacherEligibilityPolicy
 
         $segments = $weekly['segments'] ?? null;
         $workHours = $weekly['work_hours'] ?? null;
+
+        // The weekly-16 vertical slice is intentionally independent from
+        // the older 40-hour/exception payroll gates. Its only qualification
+        // input is the attendance-backed segment total.
+        if (!empty($weekly['segment_rule'])) {
+            if ($segments === null) {
+                return $this->review(['weekly_segments'], '缺少有效出勤課程的每週段數。');
+            }
+
+            $threshold = (float) $this->setting('weekly_segment_threshold', 16);
+            $qualified = (float) $segments >= $threshold;
+
+            return $this->result(
+                $qualified ? self::QUALIFIES : self::NOT_QUALIFIES,
+                $qualified ? '每週有效課程段數達到16段。' : '每週有效課程段數未達16段。',
+                [
+                    'weekly_segments' => round((float) $segments, 2),
+                    'work_hours' => $workHours === null ? null : round((float) $workHours, 2),
+                    'segment_threshold' => $threshold,
+                ],
+                $qualified ? $this->setting('weekly_segment_bonus', 1000) : 0,
+                0
+            );
+        }
+
         $exception = $weekly['exception'] ?? null;
         $exceptionIncomplete = $exception !== null && (
             (array_key_exists('official_event', $exception) && $exception['official_event'] === null)

@@ -14,6 +14,11 @@
 - 行事曆調課的送出前檢查現在會與課程查找一致，排除同日期已請假、已調整請假、核准請假與取消的課程，不再把實際空出的老師時段誤判為滿段。
 - 真正有效的課程仍會被容量規則攔截；後端原子調課檢查維持為最後權威。
 
+## 2026-08-31 — feat(payroll): 主任可查看每週16段課達標與課程構成
+<!-- release-notes: staff_update=staff-2026-08-31-weekly-16-segments -->
+- 正職薪資要件頁現在以有效點名的實際課程計算週一至週日段數：正課依課程時長換算、試聽每堂 1 段、輔導 0 段，並可展開查看構成課程。
+- 每週總段數大於等於 16 段即標示達標；不要求已核准 LearningRecord，也不改變其他薪資審核或獎金規則。
+
 ## 2026-08-31 — fix(ops): Phase-A bug triage workflow accepts persisted replies
 <!-- release-notes: staff_update=staff-2026-08-31-bug-triage-result-contract -->
 - 修正 Bug 分診 workflow 將已成功寫入的公開回覆誤判為失敗；現在能正確辨識已保存的回覆與冪等略過結果，避免重跑造成誤判。
