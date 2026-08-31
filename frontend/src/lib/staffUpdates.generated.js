@@ -41,6 +41,43 @@ export const staffUpdates = [
     "version": "2026.08.31"
   },
   {
+    "id": "staff-2026-08-31-usage-balance-visibility",
+    "publishedAt": "2026-08-31",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "課程查找會直接顯示堂數待對帳",
+    "summary": "堂數資料需要人工核對時，課程名稱旁會直接出現醒目提醒，頁面摘要也會統計筆數。",
+    "items": [
+      "課堂狀態與扣堂紀錄不一致時，課程名稱旁會顯示「堂數待對帳」，不必再從上課時段欄或滑過摘要才發現。",
+      "頁面摘要會顯示待對帳課程數與原因提示；不會自動修改堂數、帳務、出勤或扣堂資料。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "課堂狀態與扣堂紀錄不一致時，課程名稱旁會顯示「堂數待對帳」，不必再從上課時段欄或滑過摘要才發現。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "頁面摘要會顯示待對帳課程數與原因提示；不會自動修改堂數、帳務、出勤或扣堂資料。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-31:usage-balance-visibility"
+    ],
+    "date": "2026-08-31",
+    "version": "2026.08.31"
+  },
+  {
     "id": "staff-2026-08-31-calendar-leave-capacity-preview",
     "publishedAt": "2026-08-31",
     "effectiveAt": null,
@@ -112,6 +149,43 @@ export const staffUpdates = [
     ],
     "sourceRefs": [
       "changelog:2026-08-31:fulltime-payroll-calculation"
+    ],
+    "date": "2026-08-31",
+    "version": "2026.08.31"
+  },
+  {
+    "id": "staff-2026-08-31-monthly-opening-date",
+    "publishedAt": "2026-08-31",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "月結開課日會正確顯示首堂",
+    "summary": "開課日與固定上課星期不同時，月結排課仍會建立開課日首堂，後續固定星期照常排課。",
+    "items": [
+      "月結單科與多科方案現在都會保留開課日首堂，不會因開課日跨星期而整堂消失。",
+      "排課預覽會標示「含開課日首堂」；付款、結算、既有出勤與扣堂歷史不變。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "月結單科與多科方案現在都會保留開課日首堂，不會因開課日跨星期而整堂消失。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "排課預覽會標示「含開課日首堂」；付款、結算、既有出勤與扣堂歷史不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-31:monthly-opening-date"
     ],
     "date": "2026-08-31",
     "version": "2026.08.31"

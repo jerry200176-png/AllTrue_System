@@ -1,3 +1,14 @@
+## 2026-08-31 — improved(ux): 課程查找明確顯示堂數待對帳
+<!-- release-notes: staff_update=staff-2026-08-31-usage-balance-visibility -->
+- 堂數扣堂與課堂狀態不一致時，課程名稱旁會直接顯示「堂數待對帳」，不再只藏在上課時段欄或多提醒摘要裡。
+- 課程查找摘要新增待對帳筆數與原因提示；不改堂數、帳務、出勤或扣堂資料。
+
+## 2026-08-31 — fix(schedule): 月結開課日跨固定星期仍建立首堂
+<!-- release-notes: staff_update=staff-2026-08-31-monthly-opening-date -->
+- 月結課程的開課日即使不在固定上課星期內，現在仍會建立並顯示為首堂；後續固定星期的排課維持原規則。
+- 單課程與多科方案共用同一個後端排課契約，並補上前端預覽與前後端回歸測試。
+- 不改付款、結算、production 資料、既有出勤或扣堂歷史。
+
 ## 2026-08-31 — fix(payroll): 正職每週16段課與完整結算計算路徑
 <!-- release-notes: staff_update=staff-2026-08-31-fulltime-payroll-calculation -->
 - 主任可直接查看每位正職老師的正課、試聽、總段數與是否達到每週16段，並展開追溯實際 ClassSession。
