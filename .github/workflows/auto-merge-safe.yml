@@ -45,9 +45,12 @@ jobs:
           EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          PR_JSON="$(gh api "/repos/${REPO}/pulls/${PR_NUMBER}")"
-          FILES_JSON="$(gh api "/repos/${REPO}/pulls/${PR_NUMBER}/files?per_page=100" --paginate --slurp)"
-          PR_JSON="$PR_JSON" FILES_JSON="$FILES_JSON" EVENT_HEAD_SHA="$EVENT_HEAD_SHA" python3 - <<'PY'
+          PR_JSON_FILE="$(mktemp)"
+          FILES_JSON_FILE="$(mktemp)"
+          trap 'rm -f "$PR_JSON_FILE" "$FILES_JSON_FILE"' EXIT
+          gh api "/repos/${REPO}/pulls/${PR_NUMBER}" >"$PR_JSON_FILE"
+          gh api "/repos/${REPO}/pulls/${PR_NUMBER}/files?per_page=100" --paginate --slurp >"$FILES_JSON_FILE"
+          PR_JSON_FILE="$PR_JSON_FILE" FILES_JSON_FILE="$FILES_JSON_FILE" EVENT_HEAD_SHA="$EVENT_HEAD_SHA" python3 - <<'PY'
           import json
           import os
           from pathlib import Path
@@ -58,8 +61,8 @@ jobs:
               parse_declaration,
           )
 
-          pr = json.loads(os.environ["PR_JSON"])
-          pages = json.loads(os.environ["FILES_JSON"])
+          pr = json.loads(Path(os.environ["PR_JSON_FILE"]).read_text(encoding="utf-8"))
+          pages = json.loads(Path(os.environ["FILES_JSON_FILE"]).read_text(encoding="utf-8"))
           files = []
           for page in pages if isinstance(pages, list) else []:
               files.extend(page if isinstance(page, list) else [page])
