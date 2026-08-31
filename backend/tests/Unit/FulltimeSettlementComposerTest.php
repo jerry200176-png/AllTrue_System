@@ -110,12 +110,14 @@ class FulltimeSettlementComposerTest extends TestCase
         $this->assertSame([['label' => '16段課', 'amount' => 4000.0]], $result['adjustments']);
     }
 
-    public function test_missing_base_salary_defaults_to_zero_not_error(): void
+    public function test_missing_base_salary_is_unknown_and_blocks_payout(): void
     {
         $result = FulltimeSettlementComposer::compose([], null);
 
-        $this->assertSame(0.0, $result['base_salary']);
-        $this->assertSame(0.0, $result['total_payout']);
+        $this->assertNull($result['base_salary']);
+        $this->assertNull($result['total_payout']);
+        $this->assertSame('blocked', $result['calculation_status']);
+        $this->assertContains('base_salary', array_column($result['pending_items'], 'code'));
     }
 
     public function test_review_required_when_any_component_is_review(): void
@@ -150,5 +152,33 @@ class FulltimeSettlementComposerTest extends TestCase
         }
         $this->assertNotNull($part);
         $this->assertSame(8.0, $part['pct']);
+    }
+
+    public function test_cash_adjustment_is_included_when_source_component_is_complete(): void
+    {
+        $result = FulltimeSettlementComposer::compose([
+            'cash_adjustments' => ['status' => 'qualifies', 'amount' => 1500, 'rate' => 0],
+        ], 33000.0);
+
+        $this->assertSame(34500.0, $result['calculated_payout']);
+        $this->assertSame(1500.0, $result['total_adjustments']);
+        $this->assertTrue($result['adjustments_complete']);
+        $this->assertSame('calculated', $result['calculation_status']);
+    }
+
+    public function test_review_cash_adjustment_is_not_reported_as_zero(): void
+    {
+        $result = FulltimeSettlementComposer::compose([
+            'cash_adjustments' => [
+                'status' => 'review', 'amount' => null, 'rate' => 0,
+                'missing_fields' => ['cash_adjustment_approval'],
+            ],
+        ], 33000.0);
+
+        $this->assertNull($result['total_adjustments']);
+        $this->assertFalse($result['adjustments_complete']);
+        $this->assertContains('cash_adjustments', array_column($result['pending_items'], 'code'));
+        $this->assertSame(33000.0, $result['calculated_payout']);
+        $this->assertSame('partial', $result['calculation_status']);
     }
 }

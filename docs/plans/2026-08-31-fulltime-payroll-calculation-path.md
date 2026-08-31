@@ -17,13 +17,17 @@ API 的 `components.weekly_16_segments.metrics` 現在提供：
 `meets_16_segments`，以及每堂課的 `class_session_id`、日期、時間、類型、
 點名狀態與貢獻段數。主任頁面可展開查看構成課程。
 
-## 原本阻斷薪資的原因
+## 本次 payroll path 修正
 
 原本流程把 eligibility 的 `overall_status=review` 與 settlement 是否能產生
-金額視為同一件事：`FulltimeSettlementComposer` 雖然可以取得底薪與部分
-獎金，仍只回傳一個被 review 狀態包住的 draft。沒有底薪時還把 `null` 轉成
-`0`，造成「資料未知」看起來像「確定零元」。科目數也只讀 approved
-`LearningRecord`，所以實際已完成但尚未補教學日誌的課程無法進入計算。
+金額視為同一件事；沒有底薪時還把 `null` 轉成 `0`，造成「資料未知」看起來
+像「確定零元」。科目數也只讀 approved `LearningRecord`，使實際完成但尚未
+補教學日誌的課程無法進入計算。
+
+這次保留現有 `FulltimeSettlementComposer`，只補現有 AllTrue source 的 adapter：
+`teacher_payroll_admin_allowances` 與已雙階段核准的
+`teacher_payroll_cash_adjustments`。不存在的 source 會是 review；source 存在
+但沒有資料則是已知零，不另建 `teacher_payroll_adjustments`。
 
 ## 現在的路徑
 
@@ -38,9 +42,10 @@ policy components ── known core values ──> calculated payout
                    └─ review-only values ─> pending_items (impact=unknown)
 ```
 
-`settlement.calculated_payout`／`total_payout` 在核心資料足夠時會有數字；
-`calculation_status` 為 `calculated` 或 `partial`。真正影響金額但無法推導的
-底薪或科目資料則為 `blocked`，金額維持 `null`，不會默默當成 0。
+`settlement.calculated_payout`／`total_payout` 在底薪、科目與必要 source
+資料足夠時會有數字；`calculation_status` 為 `calculated` 或 `partial`。
+真正影響金額但無法推導的底薪或科目資料為 `blocked`，金額維持 `null`；可獨立
+計算的值仍會保留，未知現金加扣款不會默默當成 0。
 
 ## 實際月份 fixture
 
@@ -53,11 +58,8 @@ policy components ── known core values ──> calculated payout
 - 1 堂有效輔導：0 段。
 - 另放入 cancelled、leave、voided 課程，均未計入。
 
-結果為正課 12 段、試聽 5 段、總計 17 段、達標；底薪 33,000 加既有
-16 段獎金 1,000，得到 `calculated_payout=34,000`。假日曆缺資料仍列在
-`pending_items`，但不阻斷這個已知的核心試算。
-
-目前 AllTrue main 沒有 Backer 對應的現金 `teacher_payroll_adjustments`
-資料表；因此 `adjustments` 只列已知的 16 段項目與 composer 接收到的明確
-加扣款，未知現金加扣款不應在此分支被假設為 0。若要納入該欄位，下一步應
-先建立明確的 AllTrue source/approval contract，再接入 settlement。
+結果為正課 12 段、試聽 5 段、總計 17 段、達標；底薪 33,000、既有 16 段
+獎金 1,000，加上已核准現金加扣款 1,500，endpoint proof 得到
+`calculated_payout=35,500`，且正常月份 `calculation_status=calculated`。
+fixture 沒有 approved `LearningRecord`，科目數由有效出勤課程 fallback，證明
+weekly slice 與 settlement path 共用既有課程資料，不建立第二套來源。

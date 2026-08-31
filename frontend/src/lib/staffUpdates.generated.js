@@ -4,6 +4,45 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-31-fulltime-payroll-calculation",
+    "publishedAt": "2026-08-31",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "正職每週16段與薪資計算更完整",
+    "summary": "主任可直接看每週段數與可追溯課程，已知薪資先算出，未知資料清楚列待確認。",
+    "items": [
+      "正職老師薪資要件會顯示正課段數、試聽段數、總段數與是否達到每週16段，並可展開查看實際課程。",
+      "每週段數以有效課程與點名判定；正課按時數、試聽每堂1段、輔導不計。",
+      "薪資待審核項目不會遮住已知試算金額；現金加扣款、行政加給與缺少資料會依實際狀態清楚顯示。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "正職老師薪資要件會顯示正課段數、試聽段數、總段數與是否達到每週16段，並可展開查看實際課程。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "每週段數以有效課程與點名判定；正課按時數、試聽每堂1段、輔導不計。",
+          "薪資待審核項目不會遮住已知試算金額；現金加扣款、行政加給與缺少資料會依實際狀態清楚顯示。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-31:fulltime-payroll-calculation"
+    ],
+    "date": "2026-08-31",
+    "version": "2026.08.31"
+  },
+  {
     "id": "staff-2026-08-31-bug-triage-result-contract",
     "publishedAt": "2026-08-31",
     "effectiveAt": null,

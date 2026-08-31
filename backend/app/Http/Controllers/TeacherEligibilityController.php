@@ -126,7 +126,7 @@ class TeacherEligibilityController extends Controller
                 ->whereIn('sc.TeacherID', $teacherIds)
                 ->whereBetween('cs.SessionDate', [$effectiveStart->toDateString(), $period['end']->toDateString()])
                 ->whereNull('si.VoidedAt')
-                ->whereIn('si.Status', $this->payableStudentAttendanceStatuses())
+                ->whereIn('si.Status', $this->weeklyAttendanceStatuses())
                 ->whereNotIn('cs.Status', ['cancelled', 'voided', 'leave', 'leave_adjusted', 'leave_requested', 'excused'])
                 ->when($branchFilter !== null, fn ($query) => $query->whereIn('st.CampusID', $branchFilter))
                 ->select([
@@ -137,7 +137,7 @@ class TeacherEligibilityController extends Controller
                     'sc.TeacherID as teacher_id', 'sc.ClassType as class_type',
                 ])
                 ->get()
-                ->filter(fn ($row) => $this->isEligibleTeachingAttendance($row))
+                ->filter(fn ($row) => $this->isValidWeeklyAttendance($row))
                 ->unique('class_session_id')
                 ->values();
         }
@@ -252,12 +252,14 @@ class TeacherEligibilityController extends Controller
                 ->get()
             : collect();
         $cashByTeacher = $cashRows->groupBy('teacher_id');
+        $cashSourceAvailable = Schema::hasTable('teacher_payroll_cash_adjustments');
+        $allowanceSourceAvailable = Schema::hasTable('teacher_payroll_admin_allowances');
         $pendingSalaryByTeacher = $this->pendingSalaryByTeacher($teacherIds, $branchFilter);
         $eventsAvailable = $sessionCalendarAvailable || $events->isNotEmpty();
         $subjectUnitsByTeacher = $this->subjectUnitsByTeacher($teacherIds, $branchFilter, $effectiveStart, $period['end']);
         $salaryByTeacher = $this->salaryProfilesByTeacher($teacherIds, $branchFilter, $period['end']->toDateString());
 
-        $rows = $teachers->map(function ($teacher) use ($period, $effectiveStart, $scheduleByTeacher, $plannedByTeacher, $attendanceByTeacher, $eventByTeacher, $achievementByTeacher, $deductionByTeacher, $allowanceByTeacher, $cashByTeacher, $pendingSalaryByTeacher, $eventsAvailable, $attendanceSourceAvailable, $sessionCalendarAvailable, $subjectUnitsByTeacher, $salaryByTeacher) {
+        $rows = $teachers->map(function ($teacher) use ($period, $effectiveStart, $scheduleByTeacher, $plannedByTeacher, $attendanceByTeacher, $eventByTeacher, $achievementByTeacher, $deductionByTeacher, $allowanceByTeacher, $cashByTeacher, $cashSourceAvailable, $allowanceSourceAvailable, $pendingSalaryByTeacher, $eventsAvailable, $attendanceSourceAvailable, $sessionCalendarAvailable, $subjectUnitsByTeacher, $salaryByTeacher) {
             $teacherId = (int) $teacher->id;
             $teacherSchedules = $scheduleByTeacher->get($teacherId, collect());
             $teacherPlanned = $plannedByTeacher->get($teacherId, collect());
@@ -274,7 +276,7 @@ class TeacherEligibilityController extends Controller
             $holidayDays = $this->holidayDays($teacherAttendance, $teacherPlanned, $teacherEvents, $effectiveStart, $period['end'], $holidayCalendarAvailable);
             $weekdayHours = $this->weekdayHours($teacherSchedules, $effectiveStart, $period['end']);
             $subjectUnits = $subjectUnitsByTeacher[$teacherId] ?? null;
-            $subjectCount = is_array($subjectUnits) ? ($subjectUnits['payroll_total'] ?? null) : $subjectUnits;
+            $subjectCount = is_array($subjectUnits) ? ($subjectUnits['payroll_total'] ?? null) : null;
 
             $result = $this->policy->evaluate([
                 'period_start' => $effectiveStart->toDateString(),
@@ -282,6 +284,7 @@ class TeacherEligibilityController extends Controller
                 'weekly' => [
                     'segments' => 0,
                     'work_hours' => 0,
+                    'segment_rule' => true,
                     'exception' => ['official_event' => false, 'leave_eligible' => false],
                 ],
                 'holiday_days' => $holidayDays,
@@ -309,11 +312,27 @@ class TeacherEligibilityController extends Controller
                 'subject_count' => $subjectCount,
                 'subject_units' => is_array($subjectUnits) ? $subjectUnits : [],
             ]);
+            if (!$cashSourceAvailable) {
+                $result['components']['cash_adjustments'] = [
+                    'status' => TeacherEligibilityPolicy::REVIEW,
+                    'reason' => 'AllTrue 尚未提供現金加扣款資料來源。',
+                    'metrics' => [], 'amount' => null, 'rate' => 0,
+                    'missing_fields' => ['teacher_payroll_cash_adjustments'],
+                ];
+            }
+            if (!$allowanceSourceAvailable) {
+                $result['components']['admin_allowance'] = [
+                    'status' => TeacherEligibilityPolicy::REVIEW,
+                    'reason' => 'AllTrue 尚未提供行政加給資料來源。',
+                    'metrics' => [], 'amount' => 0, 'rate' => null,
+                    'missing_fields' => ['teacher_payroll_admin_allowances'],
+                ];
+            }
             $result['components']['weekly_16_segments'] = $weeklyStatus;
             $settlement = FulltimeSettlementComposer::compose(
                 $result['components'],
                 $salaryByTeacher[$teacherId] ?? null,
-                is_array($subjectUnits) ? $subjectUnits : []
+                is_array($subjectUnits) ? $subjectUnits : null
             );
 
             return [
@@ -327,6 +346,9 @@ class TeacherEligibilityController extends Controller
                 'missing_fields' => $result['missing_fields'],
                 'review_required' => $result['overall_status'] === TeacherEligibilityPolicy::REVIEW || $settlement['review_required'],
                 'pending_salary' => $pendingSalaryByTeacher[$teacherId] ?? null,
+                'calculation_status' => $settlement['calculation_status'] ?? null,
+                'calculated_payout' => $settlement['calculated_payout'] ?? null,
+                'pending_items' => $settlement['pending_items'] ?? [],
                 'settlement' => $settlement,
             ];
         })->values()->all();
@@ -471,16 +493,25 @@ class TeacherEligibilityController extends Controller
     private function evaluateWeek(Carbon $start, Carbon $end, $schedules, $attendanceSessions, $events, bool $eventsAvailable, bool $attendanceSourceAvailable): array
     {
         $weekSchedules = $schedules->filter(fn ($row) => $row->schedule_date >= $start->toDateString() && $row->schedule_date <= $end->toDateString());
-        $segments = 0.0;
-        foreach ($weekSchedules as $row) {
-            if (!$this->isRegularAssignable($row)) continue;
-            $segments += $this->durationHours($row) / 2;
-        }
         $weekAttendance = $attendanceSessions->filter(fn ($row) => substr((string) $row->session_date, 0, 10) >= $start->toDateString() && substr((string) $row->session_date, 0, 10) <= $end->toDateString());
-        $workHours = round($weekAttendance->sum(fn ($row) => $this->studentAttendanceDurationHours($row)), 2);
-        // An empty week is a known zero when the student-attendance source is
-        // available; it must not become a missing TeacherSingIn review.
-        $workHoursKnown = $attendanceSourceAvailable;
+        // The 16-segment rule is driven by valid attended ClassSession rows,
+        // never schedules or LearningRecords. A regular session contributes
+        // actual duration once; trial contributes one fixed segment; tutoring
+        // contributes zero. ClassSession is unique even for shared classes.
+        $regularAttendance = $weekAttendance->filter(fn ($row) => $this->isEligibleTeachingAttendance($row));
+        $trialAttendance = $weekAttendance->filter(fn ($row) => strtolower((string) ($row->class_type ?? '')) === 'trial');
+        $tutoringAttendance = $weekAttendance->filter(fn ($row) => strtolower((string) ($row->class_type ?? '')) === 'tutoring');
+        $durationUnknown = $regularAttendance->contains(fn ($row) => $this->classSessionDurationHours($row) === null);
+        $regularSegments = $attendanceSourceAvailable
+            ? ($durationUnknown ? null : round($regularAttendance->sum(fn ($row) => $this->classSessionDurationHours($row)) / 2, 2))
+            : null;
+        $trialSegments = $attendanceSourceAvailable ? (float) $trialAttendance->count() : null;
+        $segments = ($regularSegments === null || $trialSegments === null)
+            ? null
+            : round($regularSegments + $trialSegments, 2);
+        $workHours = $attendanceSourceAvailable
+            ? ($durationUnknown ? null : round($regularAttendance->sum(fn ($row) => $this->classSessionDurationHours($row)), 2))
+            : null;
         $weekEvents = $events->filter(fn ($event) => $event->event_date >= $start->toDateString() && $event->event_date <= $end->toDateString());
         $official = $eventsAvailable && $weekEvents->contains(
             fn ($event) => in_array($event->event_type, ['official_closure', 'holiday'], true)
@@ -496,7 +527,8 @@ class TeacherEligibilityController extends Controller
 
         $policy = $this->policy->weekly16([
             'segments' => $segments,
-            'work_hours' => $workHoursKnown ? $workHours : null,
+            'work_hours' => $workHours,
+            'segment_rule' => true,
             'exception' => $eventsAvailable ? [
                 'official_event' => $official,
                 'leave_eligible' => $leaveEligible,
@@ -507,6 +539,27 @@ class TeacherEligibilityController extends Controller
         $policy['metrics']['week_end'] = $end->toDateString();
         $policy['metrics']['work_hours_source'] = 'student_attendance';
         $policy['metrics']['attendance_sessions'] = $weekAttendance->count();
+        $policy['metrics']['regular_segments'] = $regularSegments;
+        $policy['metrics']['trial_segments'] = $trialSegments;
+        $policy['metrics']['tutoring_sessions'] = $tutoringAttendance->count();
+        $policy['metrics']['total_segments'] = $segments;
+        $policy['metrics']['meets_16_segments'] = $segments !== null
+            ? $segments >= (float) config('teacher_salary.weekly_segment_threshold', 16)
+            : null;
+        $policy['metrics']['course_sessions'] = $weekAttendance->map(fn ($row) => [
+            'class_session_id' => (int) $row->class_session_id,
+            'session_date' => substr((string) $row->session_date, 0, 10),
+            'start_time' => (string) $row->start_time,
+            'end_time' => (string) $row->end_time,
+            'class_type' => strtolower((string) ($row->class_type ?? 'one_on_one')),
+            'attendance_status' => (string) $row->attendance_status,
+            'segment_type' => strtolower((string) ($row->class_type ?? '')) === 'trial'
+                ? 'trial_fixed'
+                : (strtolower((string) ($row->class_type ?? '')) === 'tutoring' ? 'tutoring_excluded' : 'regular_duration'),
+            'segments' => strtolower((string) ($row->class_type ?? '')) === 'trial'
+                ? 1.0
+                : (strtolower((string) ($row->class_type ?? '')) === 'tutoring' ? 0.0 : (($hours = $this->classSessionDurationHours($row)) === null ? null : round($hours / 2, 2))),
+        ])->values()->all();
         return $policy;
     }
 
@@ -516,7 +569,15 @@ class TeacherEligibilityController extends Controller
         $allPass = $weeklyRows !== [] && collect($weeklyRows)->every(fn ($row) => $row['status'] === TeacherEligibilityPolicy::QUALIFIES);
         $amount = 0;
         $months = [];
+        $courseSessions = [];
+        $regularSegments = 0.0;
+        $trialSegments = 0.0;
+        $tutoringSessions = 0;
         foreach ($weeklyRows as $row) {
+            $regularSegments += (float) ($row['metrics']['regular_segments'] ?? 0);
+            $trialSegments += (float) ($row['metrics']['trial_segments'] ?? 0);
+            $tutoringSessions += (int) ($row['metrics']['tutoring_sessions'] ?? 0);
+            $courseSessions = array_merge($courseSessions, $row['metrics']['course_sessions'] ?? []);
             if ($row['status'] !== TeacherEligibilityPolicy::QUALIFIES) continue;
             $month = substr((string) ($row['metrics']['week_start'] ?? ''), 0, 7);
             $months[$month] = ($months[$month] ?? 0) + 1;
@@ -531,6 +592,14 @@ class TeacherEligibilityController extends Controller
                 'weeks' => $weeklyRows,
                 'qualifying_weeks' => collect($weeklyRows)->where('status', TeacherEligibilityPolicy::QUALIFIES)->count(),
                 'week_count' => count($weeklyRows),
+                'regular_segments' => round($regularSegments, 2),
+                'trial_segments' => round($trialSegments, 2),
+                'total_segments' => round($regularSegments + $trialSegments, 2),
+                'tutoring_sessions' => $tutoringSessions,
+                'course_sessions' => $courseSessions,
+                'meets_16_segments' => count($weeklyRows) === 1
+                    ? collect($weeklyRows)->every(fn ($row) => ($row['metrics']['meets_16_segments'] ?? null) === true)
+                    : null,
             ],
             'amount' => $amount,
             'rate' => 0,
@@ -692,99 +761,130 @@ class TeacherEligibilityController extends Controller
     }
 
     /**
-     * Use the existing approved-LearningRecord subject-unit pipeline for the
-     * salary table. Do not derive subject count from schedules: schedules are
-     * a teaching-plan source, while subject units are an approved-assessment
-     * source (see OPERATIONS_RUNBOOK §3).
+     * Prefer approved LearningRecords for subject units, then fall back to
+     * valid attended ClassSessions. Do not derive subject count from
+     * schedules: schedules are a teaching-plan source.
      *
-     * Returns null for teachers without an approved source row so the policy
-     * can report review/missing data instead of silently turning it into zero.
+     * A source that exists but has no rows is a known zero. An unparseable
+     * duration remains unknown rather than becoming a two-hour default.
      */
     private function subjectUnitsByTeacher(array $teacherIds, ?array $branchFilter, Carbon $start, Carbon $end): array
     {
-        $query = DB::table('LearningRecord as lr')
-            ->join('StudentClass as sc', 'sc.ID', '=', 'lr.StudentClassID')
-            ->join('Student as s', 's.id', '=', 'sc.StudentID')
-            ->whereIn('lr.TeacherID', $teacherIds)
-            ->where('lr.Status', 'approved')
-            ->whereNull('lr.VoidedAt')
-            ->whereBetween('lr.SessionDate', [$start->toDateString(), $end->toDateString()])
-            ->when($branchFilter !== null, fn ($builder) => $builder->whereIn('s.CampusID', $branchFilter))
-            ->select([
-                'lr.TeacherID as teacher_id', 'lr.StartTime as start_time', 'lr.EndTime as end_time',
-                'lr.SessionDate as session_date', 'sc.ClassType as class_type',
-                'sc.SessionDuration as session_duration',
-                'sc.week1', 'sc.week2', 'sc.week3', 'sc.week4', 'sc.week5', 'sc.week6',
-                'sc.duration1', 'sc.duration2', 'sc.duration3', 'sc.duration4', 'sc.duration5', 'sc.duration6',
-            ]);
-
-        if (Schema::hasColumn('LearningRecord', 'ExcludeFromSubjectCount')) {
-            $query->where(function ($builder) {
-                $builder->whereNull('lr.ExcludeFromSubjectCount')->orWhere('lr.ExcludeFromSubjectCount', 0);
-            });
+        $hasLearningRecords = Schema::hasTable('LearningRecord');
+        $hasAttendance = Schema::hasTable('ClassSession')
+            && Schema::hasTable('StudentClass')
+            && Schema::hasTable('StudentSingIn');
+        if (!$hasLearningRecords && !$hasAttendance) {
+            return collect($teacherIds)->mapWithKeys(fn ($id) => [(int) $id => null])->all();
         }
 
-        $buckets = [];
-        foreach ($query->get() as $row) {
-            $classType = strtolower((string) ($row->class_type ?? 'one_on_one'));
-            if (in_array($classType, ['trial', 'tutoring'], true)) {
-                continue;
+        $buckets = collect($teacherIds)->mapWithKeys(fn ($id) => [(int) $id => [
+            'regular' => 0.0, 'tutoring_trial' => 0.0, 'one_to_three' => 0.0,
+        ]])->all();
+        $unknown = [];
+        $loggedSessionIds = [];
+        $addRow = function ($row, float $weight, string $bucket) use (&$buckets, &$unknown): void {
+            $teacherId = (int) $row->teacher_id;
+            if (!isset($buckets[$teacherId])) return;
+            $hours = $this->subjectRecordHours($row);
+            if ($hours === null) {
+                $unknown[$teacherId] = true;
+                return;
+            }
+            $buckets[$teacherId][$bucket] += $hours * $weight;
+        };
+
+        if ($hasLearningRecords) {
+            $query = DB::table('LearningRecord as lr')
+                ->join('StudentClass as sc', 'sc.ID', '=', 'lr.StudentClassID')
+                ->join('Student as s', 's.id', '=', 'sc.StudentID')
+                ->whereIn('lr.TeacherID', $teacherIds)
+                ->where('lr.Status', 'approved')
+                ->whereNull('lr.VoidedAt')
+                ->whereBetween('lr.SessionDate', [$start->toDateString(), $end->toDateString()])
+                ->when($branchFilter !== null, fn ($builder) => $builder->whereIn('s.CampusID', $branchFilter))
+                ->select([
+                    'lr.TeacherID as teacher_id', 'lr.ClassSessionID as class_session_id',
+                    'lr.StartTime as start_time', 'lr.EndTime as end_time', 'lr.SessionDate as session_date',
+                    'sc.ClassType as class_type', 'sc.SessionDuration as session_duration',
+                    'sc.week1', 'sc.week2', 'sc.week3', 'sc.week4', 'sc.week5', 'sc.week6',
+                    'sc.duration1', 'sc.duration2', 'sc.duration3', 'sc.duration4', 'sc.duration5', 'sc.duration6',
+                ]);
+            if (Schema::hasColumn('LearningRecord', 'ExcludeFromSubjectCount')) {
+                $query->where(function ($builder) {
+                    $builder->whereNull('lr.ExcludeFromSubjectCount')->orWhere('lr.ExcludeFromSubjectCount', 0);
+                });
+            }
+            foreach ($query->get() as $row) {
+                $classType = strtolower((string) ($row->class_type ?? 'one_on_one'));
+                if (in_array($classType, ['trial', 'tutoring'], true)) continue;
+                if ($row->class_session_id !== null) $loggedSessionIds[] = (int) $row->class_session_id;
+                $addRow($row, match ($classType) {
+                    'one_on_two' => 0.75,
+                    'one_on_three' => 0.5,
+                    default => 1.5,
+                }, $classType === 'one_on_three' ? 'one_to_three' : 'regular');
+            }
+        }
+
+        if ($hasAttendance) {
+            $query = DB::table('ClassSession as cs')
+                ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+                ->join('StudentSingIn as si', 'si.ClassSessionID', '=', 'cs.id')
+                ->join('Student as s', 's.id', '=', 'sc.StudentID')
+                ->whereIn('sc.TeacherID', $teacherIds)
+                ->whereBetween('cs.SessionDate', [$start->toDateString(), $end->toDateString()])
+                ->whereNull('si.VoidedAt')
+                ->whereIn('si.Status', $this->weeklyAttendanceStatuses())
+                ->whereNotIn('cs.Status', ['cancelled', 'voided', 'leave', 'leave_adjusted', 'leave_requested', 'excused'])
+                ->whereNotIn('sc.ClassType', ['trial', 'tutoring'])
+                ->when($branchFilter !== null, fn ($builder) => $builder->whereIn('s.CampusID', $branchFilter))
+                ->when($loggedSessionIds !== [], fn ($builder) => $builder->whereNotIn('cs.id', array_values(array_unique($loggedSessionIds))))
+                ->select([
+                    'sc.TeacherID as teacher_id', 'cs.id as class_session_id', 'cs.StartTime as start_time',
+                    'cs.EndTime as end_time', 'cs.SessionDate as session_date', 'sc.ClassType as class_type',
+                    'sc.SessionDuration as session_duration', 'sc.week1', 'sc.week2', 'sc.week3', 'sc.week4',
+                    'sc.week5', 'sc.week6', 'sc.duration1', 'sc.duration2', 'sc.duration3', 'sc.duration4',
+                    'sc.duration5', 'sc.duration6',
+                ]);
+            foreach ($query->get()->unique('class_session_id') as $row) {
+                $classType = strtolower((string) ($row->class_type ?? 'one_on_one'));
+                $addRow($row, match ($classType) {
+                    'one_on_two' => 0.75,
+                    'one_on_three' => 0.5,
+                    default => 1.5,
+                }, $classType === 'one_on_three' ? 'one_to_three' : 'regular');
             }
 
-            $hours = $this->subjectRecordHours($row) * match ($classType) {
-                'one_on_two' => 0.75,
-                'one_on_three' => 0.5,
-                default => 1.5,
-            };
-            $teacherId = (int) $row->teacher_id;
-            $bucket = $classType === 'one_on_three' ? 'one_to_three' : 'regular';
-            $buckets[$teacherId][$bucket] = ($buckets[$teacherId][$bucket] ?? 0.0) + $hours;
+            foreach (['tutoring', 'trial'] as $classType) {
+                $query = DB::table('ClassSession as cs')
+                    ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+                    ->join('StudentSingIn as si', 'si.ClassSessionID', '=', 'cs.id')
+                    ->join('Student as s', 's.id', '=', 'sc.StudentID')
+                    ->whereIn('sc.TeacherID', $teacherIds)
+                    ->where('sc.ClassType', $classType)
+                    ->whereBetween('cs.SessionDate', [$start->toDateString(), $end->toDateString()])
+                    ->whereNull('si.VoidedAt')
+                    ->whereIn('si.Status', $this->weeklyAttendanceStatuses())
+                    ->whereNotIn('cs.Status', ['cancelled', 'voided', 'leave', 'leave_adjusted', 'leave_requested', 'excused'])
+                    ->when($branchFilter !== null, fn ($builder) => $builder->whereIn('s.CampusID', $branchFilter))
+                    ->select([
+                        'sc.TeacherID as teacher_id', 'cs.id as class_session_id', 'cs.StartTime as start_time',
+                        'cs.EndTime as end_time', 'cs.SessionDate as session_date', 'sc.SessionDuration as session_duration',
+                        'sc.week1', 'sc.week2', 'sc.week3', 'sc.week4', 'sc.week5', 'sc.week6',
+                        'sc.duration1', 'sc.duration2', 'sc.duration3', 'sc.duration4', 'sc.duration5', 'sc.duration6',
+                    ]);
+                foreach ($query->get()->unique('class_session_id') as $row) {
+                    $addRow($row, 0.5, 'tutoring_trial');
+                }
+            }
         }
 
-        $tutoringQuery = DB::table('ClassSession as cs')
-            ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
-            ->join('Student as s', 's.id', '=', 'sc.StudentID')
-            ->whereIn('sc.TeacherID', $teacherIds)
-            ->where('sc.ClassType', 'tutoring')
-            ->whereIn('cs.Status', ['attended', 'completed'])
-            ->whereBetween('cs.SessionDate', [$start->toDateString(), $end->toDateString()])
-            ->when($branchFilter !== null, fn ($builder) => $builder->whereIn('s.CampusID', $branchFilter))
-            ->select([
-                'sc.TeacherID as teacher_id', 'cs.StartTime as start_time', 'cs.EndTime as end_time',
-                'cs.SessionDate as session_date', 'sc.SessionDuration as session_duration',
-                'sc.week1', 'sc.week2', 'sc.week3', 'sc.week4', 'sc.week5', 'sc.week6',
-                'sc.duration1', 'sc.duration2', 'sc.duration3', 'sc.duration4', 'sc.duration5', 'sc.duration6',
-            ]);
-
-        foreach ($tutoringQuery->get() as $row) {
-            $teacherId = (int) $row->teacher_id;
-            $buckets[$teacherId]['tutoring_trial'] = ($buckets[$teacherId]['tutoring_trial'] ?? 0.0) + ($this->subjectRecordHours($row) * 0.5);
-        }
-
-        $trialQuery = DB::table('ClassSession as cs')
-            ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
-            ->join('Student as s', 's.id', '=', 'sc.StudentID')
-            ->whereIn('sc.TeacherID', $teacherIds)
-            ->where('sc.ClassType', 'trial')
-            ->whereIn('cs.Status', ['trial', 'attended', 'completed'])
-            ->whereBetween('cs.SessionDate', [$start->toDateString(), $end->toDateString()])
-            ->when($branchFilter !== null, fn ($builder) => $builder->whereIn('s.CampusID', $branchFilter))
-            ->select([
-                'sc.TeacherID as teacher_id', 'cs.StartTime as start_time', 'cs.EndTime as end_time',
-                'cs.SessionDate as session_date', 'sc.SessionDuration as session_duration',
-                'sc.week1', 'sc.week2', 'sc.week3', 'sc.week4', 'sc.week5', 'sc.week6',
-                'sc.duration1', 'sc.duration2', 'sc.duration3', 'sc.duration4', 'sc.duration5', 'sc.duration6',
-            ]);
-
-        foreach ($trialQuery->get() as $row) {
-            $teacherId = (int) $row->teacher_id;
-            $buckets[$teacherId]['tutoring_trial'] = ($buckets[$teacherId]['tutoring_trial'] ?? 0.0) + ($this->subjectRecordHours($row) * 0.5);
-        }
-
-        return collect($buckets)->mapWithKeys(function ($parts, $teacherId) {
-            $regular = round(($parts['regular'] ?? 0) / 8, 4);
-            $tutoringTrial = round(($parts['tutoring_trial'] ?? 0) / 8, 4);
-            $oneToThree = round(($parts['one_to_three'] ?? 0) / 8, 4);
+        return collect($buckets)->mapWithKeys(function ($parts, $teacherId) use ($unknown) {
+            if (!empty($unknown[$teacherId])) return [$teacherId => null];
+            $regular = round($parts['regular'] / 8, 4);
+            $tutoringTrial = round($parts['tutoring_trial'] / 8, 4);
+            $oneToThree = round($parts['one_to_three'] / 8, 4);
             return [$teacherId => [
                 'regular' => $regular,
                 'tutoring_trial' => $tutoringTrial,
@@ -848,7 +948,7 @@ class TeacherEligibilityController extends Controller
             ->all();
     }
 
-    private function subjectRecordHours($row): float
+    private function subjectRecordHours($row): ?float
     {
         $weekday = null;
         if (!empty($row->session_date)) {
@@ -879,11 +979,11 @@ class TeacherEligibilityController extends Controller
                     return $start->diffInMinutes($end) / 60;
                 }
             } catch (\Throwable) {
-                // Fall through to the same documented default as FinanceController.
+                // Keep unknown: a missing/invalid duration must not become pay.
             }
         }
 
-        return 2.0;
+        return null;
     }
 
     private function weekdayHours($schedules, Carbon $start, Carbon $end): array
@@ -1026,6 +1126,20 @@ class TeacherEligibilityController extends Controller
         }
     }
 
+    private function classSessionDurationHours($row): ?float
+    {
+        if (!empty($row->start_time) && !empty($row->end_time)) {
+            try {
+                $start = Carbon::parse((string) $row->start_time);
+                $end = Carbon::parse((string) $row->end_time);
+                if ($end->gt($start)) return $start->diffInMinutes($end) / 60;
+            } catch (\Throwable) {
+                // Keep unknown: actual teaching time is required for a segment.
+            }
+        }
+        return null;
+    }
+
     private function studentAttendanceDurationHours($row): float
     {
         if (!empty($row->student_sign_in_at) && !empty($row->student_sign_out_at)) {
@@ -1053,6 +1167,24 @@ class TeacherEligibilityController extends Controller
             AttendanceStatus::payableCodes(),
             ['attended', 'completed']
         )));
+    }
+
+    /** @return list<string> */
+    private function weeklyAttendanceStatuses(): array
+    {
+        return array_values(array_unique(array_merge(
+            $this->payableStudentAttendanceStatuses(),
+            ['trial', 'tutoring']
+        )));
+    }
+
+    private function isValidWeeklyAttendance($row): bool
+    {
+        $status = strtolower((string) ($row->attendance_status ?? ''));
+        $classType = strtolower((string) ($row->class_type ?? ''));
+        return !in_array($status, ['absent', 'leave', 'trial_absent', 'tutoring_absent'], true)
+            && in_array($status, $this->weeklyAttendanceStatuses(), true)
+            && !in_array($classType, ['admin'], true);
     }
 
     private function isEligibleTeachingAttendance($row): bool

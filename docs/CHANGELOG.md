@@ -1,3 +1,9 @@
+## 2026-08-31 — fix(payroll): 正職每週16段課與完整結算計算路徑
+<!-- release-notes: staff_update=staff-2026-08-31-fulltime-payroll-calculation -->
+- 主任可直接查看每位正職老師的正課、試聽、總段數與是否達到每週16段，並展開追溯實際 ClassSession。
+- 每週計算改以有效點名的 ClassSession 為來源：正課依實際時數換算、試聽每堂1段、輔導不計，取消／請假／作廢／未發生排除，不要求 approved LearningRecord。
+- 正職結算接回既有現金加扣款與行政加給雙階段資料源；待審核不阻斷已知試算，真正未知欄位保留為待確認，不默認為0。
+
 ## 2026-08-31 — fix(ops): Phase-A bug triage workflow accepts persisted replies
 <!-- release-notes: staff_update=staff-2026-08-31-bug-triage-result-contract -->
 - 修正 Bug 分診 workflow 將已成功寫入的公開回覆誤判為失敗；現在能正確辨識已保存的回覆與冪等略過結果，避免重跑造成誤判。
