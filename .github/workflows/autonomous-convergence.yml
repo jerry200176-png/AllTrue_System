@@ -52,7 +52,7 @@ jobs:
             PR_NUMBER="${{ github.event.workflow_run.pull_requests[0].number }}"
             if [[ -n "$PR_NUMBER" ]]; then
               for _ in {1..24}; do
-                PR_STATE="$(gh api "/repos/${REPO}/pulls/${PR_NUMBER}" --jq '.state + ":" + (.merged_at // "")')"
+                PR_STATE="$(gh api "/repos/${REPO}/pulls/${PR_NUMBER}" --jq 'if .merged_at then "merged" else .state end')"
                 if [[ "$PR_STATE" == merged:* ]]; then
                   break
                 fi
