@@ -244,6 +244,9 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("branches: [main]", self.workflow)
 
     def test_manual_activation_is_existing_workflow_dispatch_and_environment_gate(self):
+        self.assertIn("repository_dispatch:", self.workflow)
+        self.assertIn("autonomous-production-deploy", self.workflow)
+        self.assertIn("github.event.client_payload.target_sha", self.workflow)
         self.assertIn("- application-deploy", self.workflow)
         self.assertIn("target_sha:", self.workflow)
         self.assertIn("ACTIVATE_PRODUCTION:<target_sha>", self.workflow)
