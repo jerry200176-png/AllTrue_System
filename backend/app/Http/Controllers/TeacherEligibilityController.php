@@ -285,6 +285,7 @@ class TeacherEligibilityController extends Controller
                 ])->all(),
                 'cash_adjustments' => $cashByTeacher->get($teacherId, collect())->map(fn ($row) => [
                     'amount' => (float) $row->amount,
+                    'reason' => (string) ($row->reason ?? '現金加扣款'),
                     'status' => ($row->director_confirmed_at && $row->hq_approved_at) ? 'approved' : $row->status,
                     'starts_on' => $row->starts_on,
                     'ends_on' => $row->ends_on,

@@ -69,6 +69,7 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         $response->assertJsonPath('teachers.0.settlement.calculated_payout', 35500);
         $response->assertJsonPath('teachers.0.settlement.calculation_status', 'calculated');
         $response->assertJsonPath('teachers.0.components.cash_adjustments.amount', 1500);
+        $response->assertJsonPath('teachers.0.settlement.adjustments.1.label', '完整結算路徑測試');
 
         $sessions = $response->json('teachers.0.components.weekly_16_segments.metrics.course_sessions');
         $this->assertCount(16, $sessions);

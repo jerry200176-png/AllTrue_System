@@ -28,14 +28,6 @@ payroll system，也不改底薪、倍率、加扣款、科目獎金或結算鎖
 繼續處理：保留現有 `FulltimeSettlementComposer`，接通既有的薪資來源，並
 讓真正未知的欄位維持 review／pending，而不是把未知值當成零。
 
-## Backer 正職結算欄位對照（保存頁面證據）
-
-保存頁面確認欄位為：正課科目數、輔導＋試聽科目數、核薪總科目數、一對三總計、科目數獎金、一對三獎金、教師倍率、倍率後獎金、加扣款、總發放金額；公式是本薪＋倍率後獎金＋具名正負加扣款。
-
-實際列可驗算：`33,000 + 1,364 + 2,000 + 4,000 - 1,228 = 39,136`；倍率為 100% 加上畫面列出的各項 `+%` 後一次套用。既有 `teacher_payroll_cash_adjustments` 可承接已核准具名金額，不另建 `teacher_payroll_adjustments`。
-
-分類結論：case 1 的跨分校 adapter 已修正；case 2 是 AllTrue 尚未收集人工調整正課／輔導／一對三、`item_name`／`is_recurring` 與歷史版本；case 3 是 `[全薪]` 覆蓋或加扣、人工倍率取代或疊加、recurring 是否帶入下月。後兩類未確認前維持 review／partial，不當作零元。
-
 ## 本 PR 的資料路徑
 
 ```text
