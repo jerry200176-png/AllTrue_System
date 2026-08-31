@@ -1,3 +1,8 @@
+## 2026-08-31 — fix(calendar): 調課預覽正確排除請假與取消課程
+<!-- release-notes: staff_update=staff-2026-08-31-calendar-leave-capacity-preview -->
+- 行事曆調課的送出前檢查現在會與課程查找一致，排除同日期已請假、已調整請假、核准請假與取消的課程，不再把實際空出的老師時段誤判為滿段。
+- 真正有效的課程仍會被容量規則攔截；後端原子調課檢查維持為最後權威。
+
 ## 2026-08-31 — fix(ops): Phase-A bug triage workflow accepts persisted replies
 <!-- release-notes: staff_update=staff-2026-08-31-bug-triage-result-contract -->
 - 修正 Bug 分診 workflow 將已成功寫入的公開回覆誤判為失敗；現在能正確辨識已保存的回覆與冪等略過結果，避免重跑造成誤判。

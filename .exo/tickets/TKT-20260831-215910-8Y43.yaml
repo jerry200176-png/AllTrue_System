@@ -1,0 +1,54 @@
+id: TKT-20260831-215910-8Y43
+title: "P1 \u6728\u67F5\u65E5\u66C6\u8ABF\u8AB2\u8ACB\u5047\u5BB9\u91CF\u4E00\u81F4\
+  \u6027"
+intent: "P1 \u6728\u67F5\u65E5\u66C6\u8ABF\u8AB2\u8ACB\u5047\u5BB9\u91CF\u4E00\u81F4\
+  \u6027"
+kind: task
+parent_id: INT-20260829-110018-M2ZO
+boundary: "\u53EA\u4FEE\u6B63\u65E5\u66C6\u8ABF\u8AB2\u9810\u89BD\u8207\u8ACB\u5047\
+  \u5BB9\u91CF\u7684\u4E00\u81F4\u6027\uFF1B\u7981\u6B62\u4FEE\u6539 production DB\u3001\
+  \u4ED8\u6B3E\uFF0F\u7D50\u7B97\u3001\u6B0A\u9650\u3001migration\u3001\u65E2\u6709\
+  \ attendance \u6216 deduction \u6B77\u53F2\u3002"
+success_condition: "\u65E5\u66C6\u8207\u8AB2\u7A0B\u67E5\u627E\u5C0D\u540C\u4E00\u65E5\
+  \u671F\uFF0F\u8001\u5E2B\uFF0F\u5B78\u751F\u7684\u8ACB\u5047\u3001\u6539\u671F\u3001\
+  \u53D6\u6D88\u8207\u672C\u4EBA\u6392\u9664\u898F\u5247\u4E00\u81F4\uFF1BP1 \u56DE\
+  \u6B78\u6E2C\u8A66\u8207\u524D\u7AEF CI \u901A\u904E\u3002"
+priority: 1
+labels:
+- bug
+scope:
+  allow:
+  - frontend/src/lib/reschedulePreview.js
+  - frontend/src/lib/reschedulePreview.test.js
+  - frontend/src/composables/calendar/useCalendarReschedule.js
+  - frontend/src/composables/calendar/__tests__/useCalendarReschedule.test.js
+  - frontend/src/pages/SmartCalendar.vue
+  - docs/CHANGELOG.md
+  - docs/STAFF_UPDATES.yml
+  - frontend/src/lib/changelogDraft.generated.js
+  - frontend/src/lib/staffUpdates.generated.js
+  - .agent-session/manifest.json
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - backend/**
+  - '**/.env*'
+budgets:
+  max_files_changed: 20
+  max_loc_changed: 300
+checks:
+- npm run test:unit
+- npm run build
+type: feature
+status: todo
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-31T21:59:10+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default

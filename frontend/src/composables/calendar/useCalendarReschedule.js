@@ -33,6 +33,8 @@ export function useCalendarReschedule({
   allStudents,
   getSubjectLabel,
   courses,
+  sessionDatesByCourseId,
+  exceptions,
 }) {
   const getStudentName = (sid) => {
     const s = allStudents.value.find((x) => x.id === sid);
@@ -66,6 +68,8 @@ export function useCalendarReschedule({
     startTime: rescheduleForm.value.new_start,
     endTime: computedRescheduleNewEnd.value,
     classType: rescheduleForm.value.class_type,
+    sessionDatesByCourseId: sessionDatesByCourseId?.value || {},
+    exceptions: exceptions?.value || [],
   }));
 
   const openRescheduleModal = () => {
