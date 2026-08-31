@@ -7805,9 +7805,9 @@ button.danger:disabled {
   border: 1px solid #86efac;
 }
 .tag-history--pending {
-  background: #fffbeb;
-  color: #a16207;
-  border: 1px solid #facc15;
+  background: var(--ds-warning-wash);
+  color: var(--ds-warning);
+  border: 1px solid var(--ds-warning);
 }
 .tag-history--completed {
   background: #eff6ff;
@@ -8388,9 +8388,9 @@ button.danger:disabled {
   border-color: #166534;
 }
 [data-theme="dark"] .tag-history--pending {
-  background: #422006;
-  color: #fde047;
-  border-color: #a16207;
+  background: var(--ds-warning-wash);
+  color: var(--ds-warning);
+  border-color: var(--ds-warning);
 }
 [data-theme="dark"] .tag-history--completed {
   background: #172554;
