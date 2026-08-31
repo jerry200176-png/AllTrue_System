@@ -463,7 +463,8 @@ class CoursePackageController extends Controller
                         $startDate,
                         $pkgEndDate,
                         $scheduleSlots,
-                        $durationMinutes
+                        $durationMinutes,
+                        true
                     );
                     if (!empty($sessions)) {
                         foreach ($sessions as $sessionSlot) {

@@ -1040,6 +1040,7 @@ const {
   getToken,
   allStudents,
   courses,
+  sessionDatesByCourseId,
   exceptions,
   getSubjectLabel,
 });

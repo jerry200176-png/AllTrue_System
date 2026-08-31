@@ -6801,19 +6801,30 @@ class StudentClassController extends Controller
         string $startDate,
         string $endDate,
         array $slots,
-        int $durationMinutes
+        int $durationMinutes,
+        bool $includeStartDate = false
     ): array {
         $sessions = [];
         $start = Carbon::parse($startDate)->startOfDay();
         $end = Carbon::parse($endDate)->endOfDay();
 
         for ($date = $start->copy(); $date->lte($end); $date->addDay()) {
-            foreach ($slots as $slot) {
+            $matchingSlots = array_values(array_filter($slots, function ($slot) use ($date) {
                 // Slots arrive in two conventions: ISO 1-7 (DB week columns, day_time_slots)
                 // and legacy JS 0-6 (ScheduleSlots param). Both agree on Mon-Sat (1-6);
                 // Sunday is 7 (ISO) or 0 (JS). Comparing raw dayOfWeek (0-6) silently
                 // dropped every ISO-Sunday slot (GitHub #1096: 0-amount monthly invoices).
-                if ((int) $date->dayOfWeekIso === self::isoWeekday($slot['weekday'])) {
+                return (int) $date->dayOfWeekIso === self::isoWeekday($slot['weekday']);
+            }));
+
+            // Monthly courses have an explicit opening date that is the first lesson,
+            // even when recurrence starts on a different fixed weekday. Keep the
+            // default false so date-based imports/rebuilds retain their old contract.
+            if ($includeStartDate && $date->isSameDay($start) && empty($matchingSlots) && !empty($slots)) {
+                $matchingSlots = [$slots[0]];
+            }
+
+            foreach ($matchingSlots as $slot) {
                     $startTime = Carbon::parse($date->toDateString() . ' ' . $slot['time']);
                     $slotDur = !empty($slot['duration_minutes']) ? (int) $slot['duration_minutes'] : $durationMinutes;
                     $endTime = $startTime->copy()->addMinutes($slotDur);
@@ -6828,7 +6839,6 @@ class StudentClassController extends Controller
                         'created_at' => now(),
                         'updated_at' => now(),
                     ];
-                }
             }
         }
 
