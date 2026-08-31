@@ -61,6 +61,7 @@
               <th>倍率後獎金</th>
               <th>加扣款</th>
               <th>總發放金額</th>
+              <th>每週課段</th>
             </tr>
           </thead>
           <tbody>
@@ -90,7 +91,7 @@
               <td>{{ formatMoney(teacher.settlement?.subject_count_bonus) }}</td>
               <td>{{ formatMoney(teacher.settlement?.one_to_three_bonus) }}</td>
               <td>
-                <strong>{{ teacher.settlement?.multiplier_pct ?? 100 }}%</strong>
+                <strong>{{ formatPct(teacher.settlement?.multiplier_pct) }}</strong>
                 <small v-for="part in visibleMultiplierParts(teacher)" :key="part.key">{{ part.label }} {{ formatPct(part.pct) }}</small>
               </td>
               <td>
@@ -109,8 +110,19 @@
                 <strong>{{ formatMoney(teacher.settlement?.total_payout) }}</strong>
                 <small v-if="isDraft(teacher)">試算，未可發放</small>
               </td>
+              <td class="weekly-segment-cell">
+                <strong>{{ weeklySegmentsLabel(teacher) }}</strong>
+                <small>{{ weeklyQualificationLabel(teacher) }}</small>
+                <details v-if="weeklyCourseSessions(teacher).length" class="weekly-trace">
+                  <summary>查看構成課程</summary>
+                  <div v-for="session in weeklyCourseSessions(teacher)" :key="session.class_session_id" class="course-trace-row">
+                    <span>{{ session.session_date }} {{ session.start_time }}–{{ session.end_time }}</span>
+                    <span>{{ sessionTypeLabel(session) }} {{ formatSegments(session.segments) }}段</span>
+                  </div>
+                </details>
+              </td>
             </tr>
-            <tr v-if="filteredTeachers.length === 0"><td colspan="12" class="empty">查詢期間沒有符合條件的正職老師資料。</td></tr>
+            <tr v-if="filteredTeachers.length === 0"><td colspan="13" class="empty">查詢期間沒有符合條件的正職老師資料。</td></tr>
           </tbody>
         </table>
       </div>
@@ -124,9 +136,23 @@
           <div class="component-row"><span>核薪總科目數</span><span class="component-value">{{ formatSubjects(teacher.settlement?.payroll_subject_count) }}</span></div>
           <div class="component-row"><span>科目數獎金</span><span class="component-value">{{ formatMoney(teacher.settlement?.subject_count_bonus) }}</span></div>
           <div class="component-row"><span>一對三獎金</span><span class="component-value">{{ formatMoney(teacher.settlement?.one_to_three_bonus) }}</span></div>
-          <div class="component-row"><span>教師倍率</span><span class="component-value">{{ teacher.settlement?.multiplier_pct ?? 100 }}%</span></div>
+          <div class="component-row"><span>教師倍率</span><span class="component-value">{{ formatPct(teacher.settlement?.multiplier_pct) }}</span></div>
           <div class="component-row"><span>倍率後獎金</span><span class="component-value">{{ formatMoney(teacher.settlement?.weighted_bonus_amount) }}</span></div>
           <div class="component-row total-cell"><span>總發放金額</span><strong>{{ formatMoney(teacher.settlement?.total_payout) }}</strong></div>
+          <div class="component-row weekly-segment-row">
+            <span>每週課段</span>
+            <span class="component-value">
+              <strong>{{ weeklySegmentsLabel(teacher) }}</strong>
+              <small>{{ weeklyQualificationLabel(teacher) }}</small>
+            </span>
+          </div>
+          <details v-if="weeklyCourseSessions(teacher).length" class="weekly-trace mobile-weekly-trace">
+            <summary>查看構成課程</summary>
+            <div v-for="session in weeklyCourseSessions(teacher)" :key="session.class_session_id" class="course-trace-row">
+              <span>{{ session.session_date }} {{ session.start_time }}–{{ session.end_time }}</span>
+              <span>{{ sessionTypeLabel(session) }} {{ formatSegments(session.segments) }}段</span>
+            </div>
+          </details>
           <p class="mobile-reason">{{ reasonText(teacher) }}</p>
         </article>
         <div v-if="filteredTeachers.length === 0" class="eligibility-card empty">查詢期間沒有符合條件的正職老師資料。</div>
@@ -201,6 +227,38 @@ const deductionCount = computed(() => filteredTeachers.value.filter(t => Number(
 
 function visibleMultiplierParts(teacher) {
   return (teacher.settlement?.multiplier_parts || []).filter((part) => Number(part.pct) !== 0);
+}
+
+function weeklyMetrics(teacher) {
+  return teacher.components?.weekly_16_segments?.metrics || {};
+}
+
+function formatSegments(value) {
+  if (value == null || value === '') return '—';
+  return Number(value).toLocaleString('zh-TW', { maximumFractionDigits: 2 });
+}
+
+function weeklySegmentsLabel(teacher) {
+  const metrics = weeklyMetrics(teacher);
+  return `正課 ${formatSegments(metrics.regular_segments)}｜試聽 ${formatSegments(metrics.trial_segments)}｜總計 ${formatSegments(metrics.total_segments)}`;
+}
+
+function weeklyQualificationLabel(teacher) {
+  const metrics = weeklyMetrics(teacher);
+  if (metrics.meets_16_segments === true) return '已達 16 段';
+  if (metrics.meets_16_segments === false) return '未達 16 段';
+  if (metrics.week_count) return `${metrics.qualifying_weeks || 0}/${metrics.week_count} 週達標`;
+  return teacher.components?.weekly_16_segments?.status === 'review' ? '待確認段數' : '未判定';
+}
+
+function weeklyCourseSessions(teacher) {
+  return weeklyMetrics(teacher).course_sessions || [];
+}
+
+function sessionTypeLabel(session) {
+  if (session.segment_type === 'trial_fixed') return '試聽';
+  if (session.segment_type === 'tutoring_excluded') return '輔導（不計）';
+  return '正課';
 }
 
 function isDraft(teacher) {
@@ -338,6 +396,11 @@ onMounted(loadData);
 .summary-card { padding:16px; background:var(--ds-canvas); border:1px solid var(--border); border-radius:12px; }.summary-card span { color:var(--ds-ink-mute); font-size:13px; }.summary-card strong { display:block; font-size:28px; margin-top:6px; }.summary-card.success strong { color:var(--ds-success); }.summary-card.warning strong { color:var(--ds-warning); }.summary-card.danger strong { color:var(--ds-danger); }
 .table-wrap { overflow:auto; }.table-wrap table { width:100%; border-collapse:collapse; min-width:1280px; }.table-wrap th,.table-wrap td { padding:12px 10px; border-bottom:1px solid var(--border); text-align:left; vertical-align:top; }.table-wrap th { color:var(--ds-ink-mute); font-size:13px; background:var(--ds-canvas-soft); white-space:nowrap; }.table-wrap td small { display:block; margin-top:4px; color:var(--ds-ink-mute); font-size:12px; }.status { display:inline-flex; margin-top:6px; padding:4px 8px; border-radius:999px; font-size:12px; white-space:nowrap; }.status.pass { background:var(--ds-success-wash); color:var(--ds-success); }.status.fail { background:var(--ds-danger-wash); color:var(--ds-danger); }.status.review { background:var(--ds-warning-wash); color:var(--ds-warning); }.status.unknown { background:var(--ds-canvas-soft); color:var(--ds-ink-mute); }.empty,.loading { text-align:center; color:var(--ds-ink-mute); padding:36px; }.error { color:var(--ds-danger); display:flex; align-items:center; gap:12px; }.footnote { color:var(--ds-ink-mute); font-size:13px; margin:12px 4px; }.mobile-list { display:none; }
 .salary-cell { white-space:nowrap; }
+.weekly-segment-cell { min-width: 300px; }
+.weekly-trace { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 6px; }
+.weekly-trace summary { cursor: pointer; color: var(--ds-primary); font-size: 12px; }
+.course-trace-row { display:flex; justify-content:space-between; gap:12px; padding:5px 0; font-size:12px; color:var(--ds-ink-mute); }
+.mobile-weekly-trace { margin: 8px 0 12px; }
 .pending-salary { color: var(--ds-warning); }
 .salary-input { width:90px; padding:6px 8px; border:1px solid var(--border); border-radius:6px; background:var(--ds-canvas); color:inherit; margin-right:4px; }
 .money-pos { color:var(--ds-success); font-variant-numeric:tabular-nums; }
@@ -345,6 +408,11 @@ onMounted(loadData);
 .adj-chip { display:inline-flex; margin:0 6px 6px 0; padding:3px 8px; border-radius:999px; font-size:12px; }
 .adj-chip.pos { background:var(--ds-success-wash); color:var(--ds-success); }
 .adj-chip.neg { background:var(--ds-danger-wash); color:var(--ds-danger); }
+.weekly-segment-cell { min-width: 300px; }
+.weekly-trace { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 6px; }
+.weekly-trace summary { cursor: pointer; color: var(--ds-primary); font-size: 12px; }
+.course-trace-row { display:flex; justify-content:space-between; gap:12px; padding:5px 0; font-size:12px; color:var(--ds-ink-mute); }
+.mobile-weekly-trace { margin: 8px 0 12px; }
 .teacher-card-header { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }.teacher-card-header small { display:block; margin-top:4px; color:var(--ds-ink-mute); font-size:12px; }.component-row { display:flex; justify-content:space-between; gap:12px; padding:10px 0; border-bottom:1px solid var(--border); }.component-value { display:flex; flex-direction:column; align-items:flex-end; gap:4px; }.component-value small { color:var(--ds-ink-mute); font-size:12px; }.mobile-reason { margin:12px 0 0; color:var(--ds-ink-mute); font-size:13px; line-height:1.6; }
 @media (max-width: 900px) { .eligibility-page { padding:16px; }.summary-grid { grid-template-columns:repeat(2, minmax(0,1fr)); }.policy-chip { margin-left:0; }.desktop-table { display:none; }.mobile-list { display:grid; gap:12px; } }
 </style>

@@ -1,13 +1,18 @@
-## 2026-08-31 — fix(schedule): 月結開課日跨固定星期仍建立首堂
-<!-- release-notes: staff_update=staff-2026-08-31-monthly-opening-date -->
-- 月結課程的開課日即使不在固定上課星期內，現在仍會建立並顯示為首堂；後續固定星期的排課維持原規則。
-- 單課程與多科方案共用同一個後端排課契約，並補上前端預覽與前後端回歸測試。
-- 不改付款、結算、production 資料、既有出勤或扣堂歷史。
+## 2026-08-31 — fix(payroll): 正職每週16段課與完整結算計算路徑
+<!-- release-notes: staff_update=staff-2026-08-31-fulltime-payroll-calculation -->
+- 主任可直接查看每位正職老師的正課、試聽、總段數與是否達到每週16段，並展開追溯實際 ClassSession。
+- 每週計算改以有效點名的 ClassSession 為來源：正課依實際時數換算、試聽每堂1段、輔導不計，取消／請假／作廢／未發生排除，不要求 approved LearningRecord。
+- 正職結算接回既有現金加扣款與行政加給雙階段資料源；待審核不阻斷已知試算，真正未知欄位保留為待確認，不默認為0。
 
 ## 2026-08-31 — fix(calendar): 調課預覽正確排除請假與取消課程
 <!-- release-notes: staff_update=staff-2026-08-31-calendar-leave-capacity-preview -->
 - 行事曆調課的送出前檢查現在會與課程查找一致，排除同日期已請假、已調整請假、核准請假與取消的課程，不再把實際空出的老師時段誤判為滿段。
 - 真正有效的課程仍會被容量規則攔截；後端原子調課檢查維持為最後權威。
+
+## 2026-08-31 — feat(payroll): 主任可查看每週16段課達標與課程構成
+<!-- release-notes: staff_update=staff-2026-08-31-weekly-16-segments -->
+- 正職薪資要件頁現在以有效點名的實際課程計算週一至週日段數：正課依課程時長換算、試聽每堂 1 段、輔導 0 段，並可展開查看構成課程。
+- 每週總段數大於等於 16 段即標示達標；不要求已核准 LearningRecord，也不改變其他薪資審核或獎金規則。
 
 ## 2026-08-31 — fix(ops): Phase-A bug triage workflow accepts persisted replies
 <!-- release-notes: staff_update=staff-2026-08-31-bug-triage-result-contract -->

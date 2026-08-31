@@ -4,6 +4,43 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-31-weekly-16-segments",
+    "publishedAt": "2026-08-31",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "每週16段課達標可直接查看",
+    "summary": "主任可看到每位正職老師的正課、試聽與總段數，並追溯到實際課程。",
+    "items": [
+      "正職薪資要件頁新增每週課段欄位，正課依實際課程時長換算、試聽每堂固定一段、輔導不計入，並標示是否達到十六段。",
+      "可展開查看構成課程的日期、時間、類型與段數；取消、請假、作廢或沒有有效點名的課程不會計入，也不要求先有核准的學習紀錄。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "正職薪資要件頁新增每週課段欄位，正課依實際課程時長換算、試聽每堂固定一段、輔導不計入，並標示是否達到十六段。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "可展開查看構成課程的日期、時間、類型與段數；取消、請假、作廢或沒有有效點名的課程不會計入，也不要求先有核准的學習紀錄。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-31:weekly-16-segments"
+    ],
+    "date": "2026-08-31",
+    "version": "2026.08.31"
+  },
+  {
     "id": "staff-2026-08-31-calendar-leave-capacity-preview",
     "publishedAt": "2026-08-31",
     "effectiveAt": null,
@@ -41,7 +78,7 @@ export const staffUpdates = [
     "version": "2026.08.31"
   },
   {
-    "id": "staff-2026-08-31-monthly-opening-date",
+    "id": "staff-2026-08-31-fulltime-payroll-calculation",
     "publishedAt": "2026-08-31",
     "effectiveAt": null,
     "audiences": [
@@ -50,29 +87,31 @@ export const staffUpdates = [
     "audience": [
       "director"
     ],
-    "importance": "digest",
-    "title": "月結開課日會正確顯示首堂",
-    "summary": "開課日與固定上課星期不同時，月結排課仍會建立開課日首堂，後續固定星期照常排課。",
+    "importance": "major",
+    "title": "正職每週16段與薪資計算更完整",
+    "summary": "主任可直接看每週段數與可追溯課程，已知薪資先算出，未知資料清楚列待確認。",
     "items": [
-      "月結單科與多科方案現在都會保留開課日首堂，不會因開課日跨星期而整堂消失。",
-      "排課預覽會標示「含開課日首堂」；付款、結算、既有出勤與扣堂歷史不變。"
+      "正職老師薪資要件會顯示正課段數、試聽段數、總段數與是否達到每週16段，並可展開查看實際課程。",
+      "每週段數以有效課程與點名判定；正課按時數、試聽每堂1段、輔導不計。",
+      "薪資待審核項目不會遮住已知試算金額；現金加扣款、行政加給與缺少資料會依實際狀態清楚顯示。"
     ],
     "sections": [
       {
-        "title": "我們修好了",
+        "title": "你現在可以",
         "items": [
-          "月結單科與多科方案現在都會保留開課日首堂，不會因開課日跨星期而整堂消失。"
+          "正職老師薪資要件會顯示正課段數、試聽段數、總段數與是否達到每週16段，並可展開查看實際課程。"
         ]
       },
       {
         "title": "操作更順手",
         "items": [
-          "排課預覽會標示「含開課日首堂」；付款、結算、既有出勤與扣堂歷史不變。"
+          "每週段數以有效課程與點名判定；正課按時數、試聽每堂1段、輔導不計。",
+          "薪資待審核項目不會遮住已知試算金額；現金加扣款、行政加給與缺少資料會依實際狀態清楚顯示。"
         ]
       }
     ],
     "sourceRefs": [
-      "changelog:2026-08-31:monthly-opening-date"
+      "changelog:2026-08-31:fulltime-payroll-calculation"
     ],
     "date": "2026-08-31",
     "version": "2026.08.31"
