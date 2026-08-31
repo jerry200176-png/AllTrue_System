@@ -152,6 +152,38 @@ export const staffUpdates = [
     "version": "2026.09.01"
   },
   {
+    "id": "staff-2026-09-01-teacher-week-disclosure",
+    "publishedAt": "2026-09-01",
+    "effectiveAt": null,
+    "audiences": [
+      "teacher"
+    ],
+    "audience": [
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "老師首頁先看今天的課表",
+    "summary": "本週課表預設先展開今天，其餘日期需要時再查看。",
+    "items": [
+      "老師首頁的本週課表只會預設展開今天，其他有課日期仍可點開查看。",
+      "跨分校課表、日期切換、課堂內容與評量／回報操作維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "老師首頁的本週課表只會預設展開今天，其他有課日期仍可點開查看。",
+          "跨分校課表、日期切換、課堂內容與評量／回報操作維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-01:teacher-week-disclosure"
+    ],
+    "date": "2026-09-01",
+    "version": "2026.09.01"
+  },
+  {
     "id": "staff-2026-08-31-weekly-16-segments",
     "publishedAt": "2026-08-31",
     "effectiveAt": null,
