@@ -63,6 +63,21 @@ updates:
     source_refs:
       - "changelog:2026-08-31:calendar-leave-capacity-preview"
 
+  - id: staff-2026-08-31-weekly-16-segments
+    published_at: "2026-08-31"
+    audiences:
+      - director
+    importance: action_required
+    title: 每週16段課達標可直接查看
+    summary: 主任可看到每位正職老師的正課、試聽與總段數，並追溯到實際課程。
+    items:
+      - category: added
+        text: 正職薪資要件頁新增每週課段欄位，正課依實際課程時長換算、試聽每堂固定一段、輔導不計入，並標示是否達到十六段。
+      - category: improved
+        text: 可展開查看構成課程的日期、時間、類型與段數；取消、請假、作廢或沒有有效點名的課程不會計入，也不要求先有核准的學習紀錄。
+    source_refs:
+      - "changelog:2026-08-31:weekly-16-segments"
+
   - id: staff-2026-08-31-bug-triage-result-contract
     published_at: "2026-08-31"
     audiences:
