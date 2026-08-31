@@ -41,6 +41,43 @@ export const staffUpdates = [
     "version": "2026.09.01"
   },
   {
+    "id": "staff-2026-09-01-history-usage-balance-visibility",
+    "publishedAt": "2026-09-01",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "歷史課程也會顯示堂數待對帳",
+    "summary": "已結案或完課的歷史課程若堂數需要核對，課程卡會直接顯示提醒與原因。",
+    "items": [
+      "歷史課程卡補上「堂數待對帳」醒目標籤，不會因被收進歷史區而看不到異常。",
+      "提醒可直接查看課堂狀態與扣堂紀錄的差異原因；不會自動修改堂數或帳務資料。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "歷史課程卡補上「堂數待對帳」醒目標籤，不會因被收進歷史區而看不到異常。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "提醒可直接查看課堂狀態與扣堂紀錄的差異原因；不會自動修改堂數或帳務資料。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-01:history-usage-balance-visibility"
+    ],
+    "date": "2026-09-01",
+    "version": "2026.09.01"
+  },
+  {
     "id": "staff-2026-09-01-calendar-leave-precedence",
     "publishedAt": "2026-09-01",
     "effectiveAt": null,

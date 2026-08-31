@@ -577,6 +577,12 @@
                     <span v-else-if="effectiveClosedReason(hc) === 'settled_pending'" class="tag tag-history tag-history--pending">已結算 · 待對帳</span>
                     <span v-else-if="effectiveClosedReason(hc) === 'settled'" class="tag tag-history tag-history--settled">已結算</span>
                     <span v-else class="tag tag-history tag-history--completed">已完課</span>
+                    <span
+                      v-if="hc.usage_balance_status === 'review_required'"
+                      class="tag tag-usage-review"
+                      :title="usageBalanceWarningTitle(hc)"
+                      aria-label="堂數待對帳"
+                    >⚠ 堂數待對帳</span>
                   </div>
                   <div class="history-course-card__details">
                     <span class="history-course-card__detail"><span class="history-course-card__detail-label">老師</span> {{ hc.teacher_name || '—' }}</span>
