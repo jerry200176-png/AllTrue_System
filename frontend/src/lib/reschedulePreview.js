@@ -145,7 +145,7 @@ export function buildReschedulePreview({
     blocked,
     conflicts: candidates.slice(0, 4).map(detailFor),
     message: blocked
-      ? `${reason}，請改選日期或時間。`
+      ? `目前載入的排課顯示${reason}；送出時系統會再做最後檢查。`
       : candidates.length
         ? `目前時段已有 ${uniqueStudents.size} 位學生；依${CLASS_LABEL[classType] || '課程'}規則可安排。`
         : '目前載入的排課沒有發現衝堂。送出時系統仍會再做最後檢查。',

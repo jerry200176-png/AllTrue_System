@@ -109,10 +109,11 @@ export function useCalendarReschedule({
       rescheduleError.value = '請先選擇分校';
       return;
     }
-    if (reschedulePreview.value.blocked) {
-      rescheduleError.value = reschedulePreview.value.message;
-      return;
-    }
+    // The preview only has a partial client-side projection of date-level
+    // occupancy.  In particular, a leave row can arrive after the course
+    // list/session projection or use a shape the preview cannot reconcile.
+    // Keep it as a warning; the atomic API is the authority and will reject a
+    // genuine conflict without changing data.
     const newEnd = computeEndTime(rescheduleForm.value.new_start, rescheduleForm.value.duration_hours);
     rescheduleError.value = '';
     rescheduleSubmitting.value = true;

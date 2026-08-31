@@ -78,6 +78,45 @@ export const staffUpdates = [
     "version": "2026.09.01"
   },
   {
+    "id": "staff-2026-09-01-calendar-reschedule-authority",
+    "publishedAt": "2026-09-01",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "action_required",
+    "title": "行事曆調課不再被畫面誤擋",
+    "summary": "請假資料尚在同步時，調課仍可送出由系統做最後確認；真正衝堂仍會被擋下。",
+    "items": [
+      "行事曆的送出前提示不會再因資料尚未完整載入而直接禁止調課。",
+      "確認後仍由系統做最後衝堂檢查；若確實衝堂，資料不會被變更。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "行事曆的送出前提示不會再因資料尚未完整載入而直接禁止調課。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "確認後仍由系統做最後衝堂檢查；若確實衝堂，資料不會被變更。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-01:calendar-reschedule-authority"
+    ],
+    "date": "2026-09-01",
+    "version": "2026.09.01"
+  },
+  {
     "id": "staff-2026-09-01-calendar-leave-precedence",
     "publishedAt": "2026-09-01",
     "effectiveAt": null,
