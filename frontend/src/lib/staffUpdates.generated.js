@@ -4,6 +4,43 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-31-usage-balance-visibility",
+    "publishedAt": "2026-08-31",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "課程查找會直接顯示堂數待對帳",
+    "summary": "堂數資料需要人工核對時，課程名稱旁會直接出現醒目提醒，頁面摘要也會統計筆數。",
+    "items": [
+      "課堂狀態與扣堂紀錄不一致時，課程名稱旁會顯示「堂數待對帳」，不必再從上課時段欄或滑過摘要才發現。",
+      "頁面摘要會顯示待對帳課程數與原因提示；不會自動修改堂數、帳務、出勤或扣堂資料。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "課堂狀態與扣堂紀錄不一致時，課程名稱旁會顯示「堂數待對帳」，不必再從上課時段欄或滑過摘要才發現。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "頁面摘要會顯示待對帳課程數與原因提示；不會自動修改堂數、帳務、出勤或扣堂資料。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-31:usage-balance-visibility"
+    ],
+    "date": "2026-08-31",
+    "version": "2026.08.31"
+  },
+  {
     "id": "staff-2026-08-31-calendar-leave-capacity-preview",
     "publishedAt": "2026-08-31",
     "effectiveAt": null,
