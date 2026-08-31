@@ -1,0 +1,49 @@
+id: TKT-20260831-221334-MCJX
+title: "P1 月結開課日跨固定星期仍需建立"
+intent: "P1 月結開課日跨固定星期仍需建立"
+kind: task
+parent_id: INT-20260829-110018-M2ZO
+boundary: "僅修正月結建立與顯示：開課日即使不在固定星期仍建立首堂；禁止修改付款語意、production DB、migration、權限與既有出勤／扣堂歷史。"
+success_condition: "月結單課程與多科方案在開課日不符合固定星期時，仍建立並顯示開課日首堂；固定星期後續堂次維持不變；前後端回歸測試、前端 CI 通過。"
+priority: 1
+labels:
+- bug
+scope:
+  allow:
+  - backend/app/Services/EnrollmentService.php
+  - backend/app/Http/Controllers/StudentClassController.php
+  - backend/app/Http/Controllers/CoursePackageController.php
+  - backend/tests/Feature/EnrollmentServiceMonthlyRecurringTest.php
+  - backend/tests/Feature/CoursePackageMonthlyScheduleTest.php
+  - frontend/src/components/UniversalClassScheduler.vue
+  - frontend/src/components/__tests__/UniversalClassSchedulerActualDuration.test.js
+  - frontend/src/lib/releaseNotes.test.js
+  - docs/CHANGELOG.md
+  - docs/STAFF_UPDATES.yml
+  - frontend/src/lib/changelogDraft.generated.js
+  - frontend/src/lib/staffUpdates.generated.js
+  - .agent-session/manifest.json
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - '**/.env*'
+budgets:
+  max_files_changed: 14
+  max_loc_changed: 280
+checks:
+- npm run test:unit
+- npm run build
+type: feature
+status: todo
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-31T22:13:34+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default

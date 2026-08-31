@@ -91,7 +91,8 @@ class EnrollmentService
                 $courseStart,
                 $endDate,
                 $slots,
-                $durationMinutes
+                $durationMinutes,
+                true
             );
 
             $futureDates = array_map(fn ($s) => $s['SessionDate'], $generatedSessions);

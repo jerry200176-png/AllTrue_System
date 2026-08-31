@@ -983,11 +983,12 @@ function countWeekdayOccurrences(startStr, endStr, isoWeekdays) {
   const start = new Date(startStr + 'T00:00:00');
   const end = new Date(endStr + 'T00:00:00');
   if (end < start) return 0;
-  let count = 0;
+  const openingDow = weekdayOneToSeven(start);
+  let count = isoWeekdays.includes(openingDow) ? 0 : 1;
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
     const jsDay = d.getDay();
     const isoDay = jsDay === 0 ? 7 : jsDay;
-    if (isoWeekdays.includes(isoDay)) count++;
+    if (d.getTime() !== start.getTime() && isoWeekdays.includes(isoDay)) count++;
   }
   return count;
 }
@@ -1006,7 +1007,9 @@ const monthlyPreviewText = computed(() => {
   if (n === 0) return '此期間無符合的課堂日期，請調整';
   const slot = (form.day_time_slots || []).find(Boolean);
   const timeStr = slot?.start_time || form.start_time || '16:00';
-  return `每${dayLabels} ${timeStr}，共 ${n} 堂（${startDate} ～ ${endDate}）`;
+  const openingDow = weekdayOneToSeven(new Date(`${startDate}T12:00:00`));
+  const openingHint = daysArr.includes(openingDow) ? '' : '，含開課日首堂';
+  return `每${dayLabels} ${timeStr}，共 ${n} 堂${openingHint}（${startDate} ～ ${endDate}）`;
 });
 
 function setEndDateQuickSelect(months) {
@@ -1631,7 +1634,17 @@ const monthlySystemOccurrences = computed(() => {
   if (!startStr || !endStr || daySet.size === 0 || endStr < startStr) return [];
 
   const entries = [];
+  const openingDow = weekdayOneToSeven(new Date(`${startStr}T12:00:00`));
+  if (
+    !daySet.has(openingDow)
+    && !excludedDateSet.value.has(startStr)
+    && !manualDateSet.value.has(startStr)
+  ) {
+    entries.push(...buildSessionEntriesForDate(startStr));
+  }
+
   const cursor = new Date(`${startStr}T00:00:00`);
+  cursor.setDate(cursor.getDate() + 1);
   const end = new Date(`${endStr}T00:00:00`);
   let guard = 0;
   while (cursor <= end && guard < 731) {

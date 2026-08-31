@@ -1,3 +1,9 @@
+## 2026-08-31 — fix(schedule): 月結開課日跨固定星期仍建立首堂
+<!-- release-notes: staff_update=staff-2026-08-31-monthly-opening-date -->
+- 月結課程的開課日即使不在固定上課星期內，現在仍會建立並顯示為首堂；後續固定星期的排課維持原規則。
+- 單課程與多科方案共用同一個後端排課契約，並補上前端預覽與前後端回歸測試。
+- 不改付款、結算、production 資料、既有出勤或扣堂歷史。
+
 ## 2026-08-31 — fix(ops): Phase-A bug triage workflow accepts persisted replies
 <!-- release-notes: staff_update=staff-2026-08-31-bug-triage-result-contract -->
 - 修正 Bug 分診 workflow 將已成功寫入的公開回覆誤判為失敗；現在能正確辨識已保存的回覆與冪等略過結果，避免重跑造成誤判。
