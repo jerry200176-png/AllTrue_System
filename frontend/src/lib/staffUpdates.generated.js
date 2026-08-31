@@ -115,6 +115,43 @@ export const staffUpdates = [
     "version": "2026.09.01"
   },
   {
+    "id": "staff-2026-09-01-bug-detail-target-correctness",
+    "publishedAt": "2026-09-01",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "Bug 詳情證據不再混用其他個案",
+    "summary": "分診用的 Bug 詳情資料會標明目標、適用 probe 與是否達到可判定標準。",
+    "items": [
+      "Bug 詳情 dump 只執行對應 probe；未配置則標示不適用。",
+      "需要目標證據但未配置時，會標示 decision-grade=false。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "Bug 詳情 dump 只執行對應 probe；未配置則標示不適用。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "需要目標證據但未配置時，會標示 decision-grade=false。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-01:bug-detail-target-correctness"
+    ],
+    "date": "2026-09-01",
+    "version": "2026.09.01"
+  },
+  {
     "id": "staff-2026-08-31-weekly-16-segments",
     "publishedAt": "2026-08-31",
     "effectiveAt": null,

@@ -1,3 +1,8 @@
+## 2026-09-01 — fix(ops): Bug 詳情證據改為目標相符
+<!-- release-notes: staff_update=staff-2026-09-01-bug-detail-target-correctness -->
+- Bug 詳情 read-only dump 現在只會執行與該筆 Bug 明確對應的診斷 probe；未配置的 probe 會標示不適用，不再把固定歷史個案混進其他回報。
+- 輸出新增目標 Bug、probe 適用性、產生時間、唯讀／去識別化與 decision-grade 欄位；需要目標證據但尚未配置時，workflow 會失敗並保留明確的未判定 artifact。
+
 ## 2026-09-01 — fix(course): 歷史課程顯示堂數待對帳
 <!-- release-notes: staff_update=staff-2026-09-01-history-usage-balance-visibility -->
 - 歷史課程卡現在也會直接顯示「堂數待對帳」與原因提示，不會因課程已結案／完課而藏起資料異常；不改堂數、帳務、出勤或扣堂資料。
