@@ -9,18 +9,20 @@ reference material; it does not execute production changes.
 
 `Deploy to Pi` currently receives a `workflow_run` event when `CI — PHPUnit
 Tests` completes successfully on `main`. It remains the sole production
-executor. The workflow now separates merge from activation and only permits
-automatic execution after authoritative machine classification.
+executor. The workflow separates merge from activation: merge safety remains
+conservative, while activation evaluates only the undeployed runtime and
+production-side-effect paths.
 
 ## State machine
 
 ```text
 PR checks → merged on main → main CI success
-                              ├─ authoritative #2180 classifier says T0/T1,
-                              │  declaration is valid, no workflow change
-                              │    → auto-deploy eligible
-                              └─ T2/T3, workflow change, missing/invalid evidence,
-                                 or classifier unavailable
+                              ├─ exact-SHA runtime range is reversible T0/T1,
+                              │  declaration is valid, and no protected
+                              │  production-side-effect path is present
+                              │    → automatic deploy + verify
+                              └─ T2/T3, protected executor/security/data path,
+                                 missing/invalid evidence, or classifier failure
                                    → merged-awaiting-activation
 
 merged-awaiting-activation → Founder exact-SHA dispatch
@@ -38,16 +40,19 @@ database migration semantics.
 | Tier | Merge eligibility | Auto-deploy | Activation path |
 |---|---|---|---|
 | T0/R0 | Required checks and docs gates | No-op for docs-only changes | None |
-| T1/R1 | Required checks, regression test, review, rollback evidence | Yes, only with an explicit matching declaration and no workflow change | Existing `workflow_run` |
+| T1/R1 | Required checks, regression test, review, rollback evidence | Yes, with an explicit matching declaration and no protected production side effect | Existing `workflow_run` |
 | T2/R2 | Required checks, independent review, rollback and production evidence | No | `merged-awaiting-activation` → Founder GO |
 | T3/R3 | Prepared with protected-action evidence; no autonomous protected execution | No | Founder-controlled activation / mutation boundary |
 
-The authoritative classifier is `scripts/governance/autonomy_gate.py` from
-#2180. This PR does not duplicate its path/risk parser. Until that classifier
-is present in the checked-out main revision, activation fails closed into
-`merged-awaiting-activation`. The declaration may raise effective risk but may
-never lower the machine-derived minimum; missing, mismatched, or understated
-evidence is held.
+The authoritative classifiers are both in `scripts/governance/autonomy_gate.py`.
+`classify_scope` remains the conservative PR merge classifier. The deploy
+workflow uses `classify_activation_scope` against the full production-manifest
+SHA range: tests, docs, Exo metadata, and the read-only CI scheduler cannot
+force a normal runtime release through the human gate, while `deploy.yml`,
+migrations, repairs, auth/permission, billing, credential, destructive, and
+other production-side-effect paths remain protected. A declaration may raise
+effective risk but may never lower the machine-derived minimum; missing,
+mismatched, or understated evidence is held.
 
 ## Founder boundary
 
@@ -62,8 +67,9 @@ confirm=ACTIVATE_PRODUCTION:<same exact SHA>
 The workflow must be dispatched from `refs/heads/main`, requires the exact
 current main SHA, and requires a successful `CI — PHPUnit Tests` run for that
 SHA. It refuses stale targets and revisions dispatched from another branch or
-tag. The `production-activation` GitHub Environment is attached to this manual
-gate, and the workflow fails closed unless its live protection is configured.
+tag. The `production-activation` GitHub Environment is attached only to this
+manual protected path, and the workflow fails closed unless its live protection
+is configured.
 
 The typed phrase is confirmation, not authentication. The live Environment
 must have a Founder-controlled required reviewer, prevent self-review enabled,
@@ -77,8 +83,9 @@ operation is authorized by this activation input.
 ## Live settings still outside this PR
 
 This PR does not change GitHub Rulesets, branch protection, repository secrets,
-credentials, or Environment reviewers. If `production-activation` has no
-required reviewer, has self-review enabled, permits administrator bypass, or is
-not restricted to `main`, activation fails closed with a hard boundary error.
-The Founder must configure the required reviewer and branch policy in live
-Settings before any held production activation can proceed.
+credentials, or Environment reviewers. Automatic reversible application
+deploys do not reference the Environment. For protected activations, if
+`production-activation` has no required reviewer, permits self-review, permits
+administrator bypass, or is not restricted to `main`, activation fails closed
+with a hard boundary error. The Founder must configure the required reviewer
+and branch policy in live Settings before a protected activation can proceed.
