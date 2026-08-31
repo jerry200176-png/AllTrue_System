@@ -314,6 +314,12 @@
                         <span class="status-tag" :class="c.class_type">{{ classTypeLabel(c.class_type) }}</span>
                         <span v-if="c.PackageID" class="tag tag-package" :title="c.PackageName || '多科方案'">方案</span>
                         <span v-else-if="['settled', 'completed', 'converted_trial'].includes(effectiveClosedReason(c))" class="tag tag-settled">已結案</span>
+                        <span
+                          v-if="c.usage_balance_status === 'review_required'"
+                          class="tag tag-usage-review"
+                          :title="usageBalanceWarningTitle(c)"
+                          aria-label="堂數待對帳"
+                        >⚠ 堂數待對帳</span>
                       </div>
                       <div class="price-line">
                         <span>每堂 ${{ sessionPrice(c) }}</span>
@@ -3883,6 +3889,7 @@ const courseLensMetrics = computed(() => {
       && Number(remaining) <= 2
       && !effectiveClosedReason(course);
   }).length;
+  const usageReviewCount = visibleCourses.filter((course) => course.usage_balance_status === 'review_required').length;
   const pausedCount = visibleCourses.filter((course) => course.status === 'inactive' && !effectiveClosedReason(course)).length;
 
   return [
@@ -3906,6 +3913,13 @@ const courseLensMetrics = computed(() => {
       value: attentionCount,
       hint: attentionCount ? '剩餘 2 堂以下' : '目前沒有低堂數提醒',
       tone: attentionCount ? 'warning' : 'neutral',
+    },
+    {
+      key: 'usage-review',
+      label: '堂數待對帳',
+      value: usageReviewCount,
+      hint: usageReviewCount ? '課堂狀態與扣堂紀錄不一致' : '目前沒有堂數對帳提醒',
+      tone: usageReviewCount ? 'danger' : 'neutral',
     },
     {
       key: 'paused',
@@ -6500,6 +6514,12 @@ onUnmounted(() => {
   color: var(--ds-danger);
   background: var(--ds-danger-wash);
   border: 1px solid var(--ds-hairline);
+}
+.tag-usage-review {
+  color: var(--ds-danger);
+  background: var(--ds-danger-wash);
+  border: 1px solid var(--ds-danger);
+  font-weight: 800;
 }
 
 .cell-remaining {
