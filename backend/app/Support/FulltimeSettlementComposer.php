@@ -23,20 +23,30 @@ final class FulltimeSettlementComposer
      * @param array<string, array{status:string,rate:float,amount:float,metrics:array}> $components
      * @param array{regular?:float,tutoring_trial?:float,one_to_three?:float,payroll_total?:float} $subjectUnits
      * @return array{
-     *   base_salary: float,
-     *   multiplier_pct: float,
+     *   base_salary: float|null,
+     *   multiplier_pct: float|null,
+     *   known_multiplier_pct: float,
+     *   multiplier_complete: bool,
      *   weighted_bonus_amount: float,
-     *   weekly_segment_bonus_amount: float,
-     *   total_payout: float,
+     *   weighted_bonus_complete: bool,
+     *   weekly_segment_bonus_amount: float|null,
+     *   weekly_bonus_complete: bool,
+     *   total_payout: float|null,
+     *   calculated_payout: float|null,
+     *   calculation_status: string,
      *   review_required: bool,
+     *   pending_items: list<array<string,mixed>>,
+     *   payout_is_draft: bool,
      *   regular_subject_count: float|null,
      *   tutoring_trial_subject_count: float|null,
      *   payroll_subject_count: float|null,
      *   one_to_three_count: float|null,
-     *   subject_count_bonus: float,
-     *   one_to_three_bonus: float,
+     *   subject_count_bonus: float|null,
+     *   one_to_three_bonus: float|null,
      *   multiplier_parts: list<array{key:string,label:string,pct:float}>,
-     *   adjustments: list<array{label:string,amount:float}>
+     *   adjustments: list<array{label:string,amount:float}>,
+     *   total_adjustments: float|null,
+     *   adjustments_complete: bool
      * }
      */
     public static function compose(array $components, ?float $baseSalary, ?array $subjectUnits = null): array
@@ -63,7 +73,7 @@ final class FulltimeSettlementComposer
         $multiplierComplete = true;
         foreach ($rateComponents as $key => $label) {
             $component = $components[$key] ?? null;
-            if (($component['status'] ?? null) === 'review') {
+            if ($component !== null && $component['status'] === 'review') {
                 $multiplierComplete = false;
                 $pendingItems[] = self::pendingItem($key, $label, $component);
                 continue;
@@ -77,16 +87,16 @@ final class FulltimeSettlementComposer
 
         $weightedBonus = round(($rawSubjectBonus + $rawOneToThreeBonus) * ($multiplierPct / 100.0), 2);
         $weeklyComponent = $components['weekly_16_segments'] ?? null;
-        $weeklyKnown = $weeklyComponent === null || ($weeklyComponent['status'] ?? null) !== 'review';
+        $weeklyKnown = $weeklyComponent === null || $weeklyComponent['status'] !== 'review';
         $weeklyBonus = $weeklyKnown ? (float) ($weeklyComponent['amount'] ?? 0) : 0.0;
         if (!$weeklyKnown) $pendingItems[] = self::pendingItem('weekly_16_segments', '每週16段課獎金', $weeklyComponent);
 
         $subjectComponent = $components['subject_count_bonus'] ?? null;
-        $subjectKnown = $subjectComponent === null || (($subjectComponent['status'] ?? null) !== 'review' && $subjectCount !== null);
+        $subjectKnown = $subjectComponent === null || ($subjectComponent['status'] !== 'review' && $subjectCount !== null);
         if (!$subjectKnown) $pendingItems[] = self::pendingItem('subject_count_bonus', '正課／輔導試聽／一對三科目數', $subjectComponent, true);
 
         $cashComponent = $components['cash_adjustments'] ?? null;
-        $cashKnown = $cashComponent === null || ($cashComponent['status'] ?? null) !== 'review';
+        $cashKnown = $cashComponent === null || $cashComponent['status'] !== 'review';
         $cashAmount = $cashKnown ? (float) ($cashComponent['amount'] ?? 0) : 0.0;
         if (!$cashKnown) $pendingItems[] = self::pendingItem('cash_adjustments', '現金加扣款', $cashComponent);
 
@@ -121,7 +131,7 @@ final class FulltimeSettlementComposer
             'calculated_payout' => $calculatedPayout,
             'calculation_status' => $coreBlocked ? 'blocked' : ($reviewRequired ? 'partial' : 'calculated'),
             'review_required' => $reviewRequired,
-            'pending_items' => array_values($pendingItems),
+            'pending_items' => $pendingItems,
             'payout_is_draft' => $coreBlocked || $reviewRequired,
             'regular_subject_count' => self::nullableFloat($subjectUnits['regular'] ?? $subjectMetrics['regular_subject_count'] ?? null),
             'tutoring_trial_subject_count' => self::nullableFloat($subjectUnits['tutoring_trial'] ?? $subjectMetrics['tutoring_trial_subject_count'] ?? null),

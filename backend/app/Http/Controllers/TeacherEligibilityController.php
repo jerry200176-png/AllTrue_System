@@ -346,9 +346,9 @@ class TeacherEligibilityController extends Controller
                 'missing_fields' => $result['missing_fields'],
                 'review_required' => $result['overall_status'] === TeacherEligibilityPolicy::REVIEW || $settlement['review_required'],
                 'pending_salary' => $pendingSalaryByTeacher[$teacherId] ?? null,
-                'calculation_status' => $settlement['calculation_status'] ?? null,
-                'calculated_payout' => $settlement['calculated_payout'] ?? null,
-                'pending_items' => $settlement['pending_items'] ?? [],
+                'calculation_status' => $settlement['calculation_status'],
+                'calculated_payout' => $settlement['calculated_payout'],
+                'pending_items' => $settlement['pending_items'],
                 'settlement' => $settlement,
             ];
         })->values()->all();
