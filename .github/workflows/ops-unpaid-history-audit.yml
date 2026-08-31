@@ -5,6 +5,7 @@ name: Unpaid historical course audit (read-only)
 # payment/session evidence only; no course, invoice, payment, or session writes.
 on:
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read

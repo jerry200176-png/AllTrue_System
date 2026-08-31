@@ -20,6 +20,11 @@ permissions:
   issues: write
 
 jobs:
+  unpaid_history_audit:
+    name: Unpaid historical course audit (read-only)
+    uses: ./.github/workflows/ops-unpaid-history-audit.yml
+    secrets: inherit
+
   refresh:
     runs-on: ubuntu-latest
     timeout-minutes: 20
