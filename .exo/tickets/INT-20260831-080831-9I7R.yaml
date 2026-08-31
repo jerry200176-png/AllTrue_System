@@ -1,0 +1,46 @@
+id: INT-20260831-080831-9I7R
+title: Refresh in-app bug 247 paired evidence
+intent: Refresh in-app bug 247 paired evidence
+kind: intent
+brain_dump: Refresh the authoritative queue/detail evidence for in-app bug 247 after
+  restoring the main CI event chain.
+boundary: Only refresh the two read-only evidence request markers and Exo/session
+  provenance; do not modify backend, frontend, GitHub workflows, production data,
+  in-app bug status/comments, or credentials.
+success_condition: A normal main push produces fresh paired bug queue/detail dump
+  runs within the SOP freshness window; sanitized evidence is inspected and no production
+  mutation occurs.
+risk: medium
+priority: 1
+labels:
+- bug-evidence
+scope:
+  allow:
+  - operations/closeout/bug-queue-dump.request.md
+  - operations/closeout/bug-detail-dump.request.md
+  - .exo/**
+  - .agent-session/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - backend/**
+  - frontend/**
+  - .github/workflows/**
+budgets:
+  max_files_changed: 8
+  max_loc_changed: 60
+checks:
+- npm run test:unit
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-31T08:08:31+08:00'
+children:
+- TKT-20260831-080838-ENZB
+resource_profile: default

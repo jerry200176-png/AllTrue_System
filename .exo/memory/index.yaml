@@ -172,3 +172,16 @@ failure_modes:
       focused contract.
   severity: medium
   frequency: recurring
+- id: FM-20260831-081032-QGJ2
+  name: bot auto-merge left no exact-main CI or deploy evidence
+  detection:
+    signal: bot auto-merge left no exact-main CI or deploy evidence
+    source: reflection:REF-20260831-081032-6RTU
+  mitigation:
+    practice: A bounded scheduled reconciler can query exact-main CI/deploy runs and
+      dispatch only the existing CI workflow when no active or downstream evidence
+      exists; normal main request-file pushes then restore read-only evidence workflows,
+      while non-deployable control-plane changes remain activation-gated and do not
+      deploy.
+  severity: medium
+  frequency: recurring

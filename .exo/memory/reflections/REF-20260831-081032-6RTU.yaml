@@ -1,0 +1,17 @@
+id: REF-20260831-081032-6RTU
+pattern: bot auto-merge left no exact-main CI or deploy evidence
+insight: A bounded scheduled reconciler can query exact-main CI/deploy runs and dispatch
+  only the existing CI workflow when no active or downstream evidence exists; normal
+  main request-file pushes then restore read-only evidence workflows, while non-deployable
+  control-plane changes remain activation-gated and do not deploy.
+severity: medium
+scope: global
+actor: human
+session_id: SES-20260831080842-C65EB45C
+created_at: '2026-08-31T08:10:32+08:00'
+status: active
+tags:
+- ci
+- deployment
+- evidence
+hit_count: 0
