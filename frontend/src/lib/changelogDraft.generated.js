@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.01",
     "date": "2026-09-01",
     "title": "2026.09.01 草稿（未發布）",
-    "summary": "未繳課程可結案但保留待對帳狀態",
+    "summary": "調課預覽優先採用當日請假狀態；未繳課程可結案但保留待對帳狀態",
     "audience": [
       "teacher",
       "director"
@@ -18,11 +18,13 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "調課預覽優先採用當日請假狀態",
           "未繳課程可結案但保留待對帳狀態"
         ]
       }
     ],
     "items": [
+      "調課預覽優先採用當日請假狀態",
       "未繳課程可結案但保留待對帳狀態"
     ]
   },

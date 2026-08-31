@@ -1,0 +1,50 @@
+id: TKT-20260901-043614-NV3J
+title: P1 calendar reschedule leave exception precedence
+intent: P1 calendar reschedule leave exception precedence
+kind: task
+parent_id: INT-20260829-110018-M2ZO
+boundary: "\u53EA\u4FEE\u6B63\u55AE\u6B21\u8ABF\u8AB2\u9810\u89BD\u5728 stale session\
+  \ projection \u8207\u540C\u65E5\u8ACB\u5047\u4F8B\u5916\u4E26\u5B58\u6642\u7684\u512A\
+  \u5148\u5E8F\uFF1B\u7981\u6B62\u4FEE\u6539 backend\u3001production DB\u3001\u4ED8\
+  \u6B3E\u3001\u7D50\u7B97\u3001\u6B0A\u9650\u3001migration\u3001\u65E2\u6709\u51FA\
+  \u52E4\u6216\u6263\u5802\u6B77\u53F2\u3002"
+success_condition: "\u55AE\u6B21\u8ABF\u8AB2\u9810\u89BD\u4EE5\u540C\u65E5\u8ACB\u5047\
+  \u4F8B\u5916\u91CB\u653E\u53EF\u7528\u6642\u6BB5\uFF0C\u540C\u6642\u4ECD\u6514\u622A\
+  \u771F\u5BE6\u6709\u6548\u5802\u6B21\uFF1Bfocused/full frontend tests and production-safe\
+  \ CI pass\u3002"
+priority: 1
+labels:
+- bug
+scope:
+  allow:
+  - frontend/src/lib/reschedulePreview.js
+  - frontend/src/composables/calendar/__tests__/useCalendarReschedule.test.js
+  - docs/CHANGELOG.md
+  - docs/STAFF_UPDATES.yml
+  - frontend/src/lib/changelogDraft.generated.js
+  - frontend/src/lib/staffUpdates.generated.js
+  - .agent-session/manifest.json
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - backend/**
+  - '**/.env*'
+budgets:
+  max_files_changed: 20
+  max_loc_changed: 300
+checks:
+- npm run test:unit
+- npm run build
+type: feature
+status: todo
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-01T04:36:14+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default
