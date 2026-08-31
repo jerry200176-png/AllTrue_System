@@ -63,7 +63,7 @@
                   <button class="btn-outline small" @click="startEditSalary(teacher)">改</button>
                 </template>
               </td>
-              <td>{{ teacher.settlement?.multiplier_pct ?? 100 }}%</td>
+              <td>{{ teacher.settlement?.multiplier_pct == null ? '—' : `${teacher.settlement.multiplier_pct}%` }}</td>
               <td v-for="item in visibleComponents" :key="item.key">
                 <span :class="['status', statusClass(teacher.components?.[item.key]?.status)]">{{ statusLabel(teacher.components?.[item.key]?.status) }}</span>
                 <small>{{ detail(item.key, teacher.components?.[item.key]) }}</small>
@@ -91,7 +91,7 @@
             <span :class="['status', statusClass(teacher.overall_status)]">{{ statusLabel(teacher.overall_status) }}</span>
           </div>
           <div class="component-row"><span>底薪</span><span class="component-value">{{ formatMoney(teacher.settlement?.base_salary) }}</span></div>
-          <div class="component-row"><span>教師倍率</span><span class="component-value">{{ teacher.settlement?.multiplier_pct ?? 100 }}%</span></div>
+          <div class="component-row"><span>教師倍率</span><span class="component-value">{{ teacher.settlement?.multiplier_pct == null ? '—' : `${teacher.settlement.multiplier_pct}%` }}</span></div>
           <div class="teacher-components">
             <div v-for="item in visibleComponents" :key="item.key" class="component-row">
               <span>{{ item.label }}</span>

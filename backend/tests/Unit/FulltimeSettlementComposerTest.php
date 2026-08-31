@@ -87,6 +87,7 @@ class FulltimeSettlementComposerTest extends TestCase
     public function test_review_is_pending_without_blocking_known_core_payout(): void
     {
         $components = [
+            'weekly_16_segments' => ['status' => 'qualifies', 'amount' => 0, 'rate' => 0],
             'holiday_16_hours' => ['status' => 'review', 'amount' => 0, 'rate' => 0],
             'subject_count_bonus' => [
                 'status' => 'qualifies', 'amount' => 0, 'rate' => 0,
@@ -94,11 +95,32 @@ class FulltimeSettlementComposerTest extends TestCase
             ],
         ];
 
-        $result = FulltimeSettlementComposer::compose($components, 30000.0);
+        $result = FulltimeSettlementComposer::compose($components, 30000.0, null, []);
 
         $this->assertTrue($result['review_required']);
         $this->assertSame('partial', $result['calculation_status']);
         $this->assertSame(30100.0, $result['calculated_payout']);
+        $this->assertNull($result['multiplier_pct']);
+        $this->assertSame(100.0, $result['known_multiplier_pct']);
+        $this->assertFalse($result['multiplier_complete']);
         $this->assertContains('holiday_16_hours', array_column($result['pending_items'], 'code'));
+    }
+
+    public function test_unknown_adjustment_source_is_not_reported_as_zero(): void
+    {
+        $components = [
+            'weekly_16_segments' => ['status' => 'qualifies', 'amount' => 0, 'rate' => 0],
+            'subject_count_bonus' => [
+                'status' => 'qualifies', 'amount' => 0, 'rate' => 0,
+                'metrics' => ['subject_count' => 1, 'subject_count_bonus' => 0, 'one_to_three_bonus' => 0],
+            ],
+        ];
+
+        $result = FulltimeSettlementComposer::compose($components, 30000.0);
+
+        $this->assertNull($result['total_adjustments']);
+        $this->assertFalse($result['adjustments_complete']);
+        $this->assertContains('cash_adjustments_source', array_column($result['pending_items'], 'code'));
+        $this->assertSame(30000.0, $result['calculated_payout']);
     }
 }

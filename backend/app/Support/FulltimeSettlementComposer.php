@@ -43,9 +43,11 @@ final class FulltimeSettlementComposer
         $multiplierPct = 100.0;
         $multiplierParts = [];
         $pendingItems = [];
+        $multiplierComplete = true;
         foreach ($rateComponents as $key => $label) {
             $component = $components[$key] ?? null;
             if (($component['status'] ?? null) === 'review') {
+                $multiplierComplete = false;
                 $pendingItems[] = self::pendingItem($key, $label, $component);
                 continue;
             }
@@ -60,9 +62,9 @@ final class FulltimeSettlementComposer
 
         $weightedBonus = round(($rawSubjectBonus + $rawOneToThreeBonus) * ($multiplierPct / 100.0), 2);
         $weeklyComponent = $components['weekly_16_segments'] ?? null;
-        $weeklyKnown = ($weeklyComponent['status'] ?? null) !== 'review';
+        $weeklyKnown = $weeklyComponent !== null && ($weeklyComponent['status'] ?? null) !== 'review';
         $weeklyBonus = $weeklyKnown ? (float) ($weeklyComponent['amount'] ?? 0) : 0.0;
-        if (($weeklyComponent['status'] ?? null) === 'review') {
+        if (!$weeklyKnown) {
             $pendingItems[] = self::pendingItem('weekly_16_segments', '每週16段課獎金', $weeklyComponent);
         }
 
@@ -120,13 +122,18 @@ final class FulltimeSettlementComposer
             : round((float) $baseSalary + $weeklyBonus + $weightedBonus + $cashAdjustmentTotal, 2);
         $reviewRequired = $pendingItems !== [];
         $calculationStatus = $coreBlocked ? 'blocked' : ($reviewRequired ? 'partial' : 'calculated');
+        $subjectBonusOutput = $subjectKnown ? $rawSubjectBonus : null;
+        $oneToThreeBonusOutput = $subjectKnown ? $rawOneToThreeBonus : null;
 
         return [
             'base_salary' => $baseSalary,
-            'multiplier_pct' => round($multiplierPct, 2),
-            'multiplier_complete' => !collect($pendingItems)->contains(fn ($item) => in_array($item['code'], array_keys($rateComponents), true)),
+            'multiplier_pct' => $multiplierComplete ? round($multiplierPct, 2) : null,
+            'known_multiplier_pct' => round($multiplierPct, 2),
+            'multiplier_complete' => $multiplierComplete,
             'weighted_bonus_amount' => $weightedBonus,
-            'weekly_segment_bonus_amount' => $weeklyBonus,
+            'weighted_bonus_complete' => $subjectKnown && $multiplierComplete,
+            'weekly_segment_bonus_amount' => $weeklyKnown ? $weeklyBonus : null,
+            'weekly_bonus_complete' => $weeklyKnown,
             'total_payout' => $calculatedPayout,
             'calculated_payout' => $calculatedPayout,
             'calculation_status' => $calculationStatus,
@@ -137,11 +144,12 @@ final class FulltimeSettlementComposer
             'tutoring_trial_subject_count' => self::nullableFloat($subjectUnits['tutoring_trial'] ?? $subjectMetrics['tutoring_trial_subject_count'] ?? null),
             'payroll_subject_count' => self::nullableFloat($subjectCount),
             'one_to_three_count' => self::nullableFloat($subjectUnits['one_to_three'] ?? $subjectMetrics['one_to_three_count'] ?? null),
-            'subject_count_bonus' => $rawSubjectBonus,
-            'one_to_three_bonus' => $rawOneToThreeBonus,
+            'subject_count_bonus' => $subjectBonusOutput,
+            'one_to_three_bonus' => $oneToThreeBonusOutput,
             'multiplier_parts' => $multiplierParts,
             'adjustments' => $adjustmentLines,
-            'total_adjustments' => round($cashAdjustmentTotal, 2),
+            'total_adjustments' => $adjustments === null ? null : round($cashAdjustmentTotal, 2),
+            'adjustments_complete' => $adjustments !== null,
         ];
     }
 
