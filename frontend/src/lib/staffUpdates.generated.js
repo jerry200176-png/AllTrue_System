@@ -41,6 +41,43 @@ export const staffUpdates = [
     "version": "2026.09.01"
   },
   {
+    "id": "staff-2026-09-01-calendar-leave-precedence",
+    "publishedAt": "2026-09-01",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "調課時會正確辨識已請假的時段",
+    "summary": "請假狀態同步中也不會把已空出的老師時段誤判為滿段。",
+    "items": [
+      "行事曆調課現在優先採用當日請假狀態，不會因畫面資料同步時間差而誤擋調課。",
+      "真正仍在上課的學生依然會列入容量檢查，避免誤放行衝堂。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "行事曆調課現在優先採用當日請假狀態，不會因畫面資料同步時間差而誤擋調課。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "真正仍在上課的學生依然會列入容量檢查，避免誤放行衝堂。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-01:calendar-leave-precedence"
+    ],
+    "date": "2026-09-01",
+    "version": "2026.09.01"
+  },
+  {
     "id": "staff-2026-08-31-weekly-16-segments",
     "publishedAt": "2026-08-31",
     "effectiveAt": null,
