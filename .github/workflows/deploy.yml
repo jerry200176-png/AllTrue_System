@@ -296,6 +296,8 @@ jobs:
                   classify_activation_scope,
                   effective_tier,
                   decide_activation,
+                  is_deployable_path,
+                  is_production_activation_sensitive_path,
                   parse_declaration,
               )
 
@@ -306,13 +308,45 @@ jobs:
                   emit("awaiting-activation", "unknown", "none", "runtime range has no inspectable file evidence; fail closed")
                   sys.exit(0)
 
-              merged = [
-                  pr for pr in gh_api(
-                      f"/repos/{repo}/commits/{target}/pulls",
+              # A runtime range can contain more than one merged PR. Use the
+              # declaration from the newest PR that actually contributed a
+              # runtime or protected production path; a read-only scheduler
+              # or test/docs PR must not raise an unrelated runtime release
+              # to T3. All evidence is read-only GitHub API metadata.
+              merged = []
+              seen_prs = set()
+              for commit in comparison.get("commits") or []:
+                  commit_sha = commit.get("sha")
+                  if not commit_sha:
+                      continue
+                  candidates = gh_api(
+                      f"/repos/{repo}/commits/{commit_sha}/pulls",
                       "--header", "Accept: application/vnd.github+json",
                   )
-                  if pr.get("base", {}).get("ref") == "main" and pr.get("merged_at")
-              ]
+                  for candidate in candidates:
+                      pr_number = candidate.get("number")
+                      if (
+                          not pr_number
+                          or pr_number in seen_prs
+                          or candidate.get("base", {}).get("ref") != "main"
+                          or not candidate.get("merged_at")
+                      ):
+                          continue
+                      pr_pages = gh_api(
+                          f"/repos/{repo}/pulls/{pr_number}/files?per_page=100",
+                          "--paginate", "--slurp",
+                      )
+                      pr_files = pages(pr_pages)
+                      pr_paths = [item.get("filename", "") for item in pr_files]
+                      if not any(
+                          is_deployable_path(path)
+                          or is_production_activation_sensitive_path(path)
+                          for path in pr_paths
+                      ):
+                          seen_prs.add(pr_number)
+                          continue
+                      seen_prs.add(pr_number)
+                      merged.append(candidate)
               merged.sort(key=lambda pr: pr.get("merged_at", ""), reverse=True)
               if not merged:
                   emit("awaiting-activation", "unknown", "none", "no merged PR provenance for current main target; fail closed")
