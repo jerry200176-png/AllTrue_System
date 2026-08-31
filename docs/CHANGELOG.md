@@ -1,5 +1,5 @@
 ## 2026-08-31 — fix(ops): Phase-A bug triage workflow accepts persisted replies
-<!-- release-notes: silent_ship=silent-2026-08-31-bug-phase-a-result-contract -->
+<!-- release-notes: staff_update=staff-2026-08-31-bug-triage-result-contract -->
 - 修正 Bug 分診 workflow 將已成功寫入的公開回覆誤判為失敗；現在能正確辨識已保存的回覆與冪等略過結果，避免重跑造成誤判。
 - 不改 Bug 狀態規則、回覆權限、帳務資料或產品行為。
 
