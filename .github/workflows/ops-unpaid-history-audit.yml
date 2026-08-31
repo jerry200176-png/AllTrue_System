@@ -124,7 +124,7 @@ jobs:
               "with_invoice_paid_evidence" => count(array_filter($rows, fn($r) => $r["invoice_paid_evidence"])),
             ],
             "courses" => $rows,
-          ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), PHP_EOL;
+          ], JSON_UNESCAPED_UNICODE), PHP_EOL;
           '
           REMOTE
 
