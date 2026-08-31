@@ -1,0 +1,14 @@
+id: REF-20260831-212705-YL9M
+pattern: in-app public replies cross a runner-to-remote shell boundary
+insight: 'Treat public reply text as untrusted data across every transport boundary:
+  encode it before SSH, decode only inside the remote script, and keep a literal metacharacter
+  regression for both write-back workflows. A green product test alone does not prove
+  workflow transport safety.'
+severity: high
+scope: global
+actor: human
+session_id: SES-20260831211437-DAC55E2A
+created_at: '2026-08-31T21:27:05+08:00'
+status: active
+tags: []
+hit_count: 0
