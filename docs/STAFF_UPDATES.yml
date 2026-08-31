@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-01-bug-detail-target-correctness
+    published_at: "2026-09-01"
+    audiences:
+      - director
+    importance: action_required
+    title: Bug 詳情證據不再混用其他個案
+    summary: 分診用的 Bug 詳情資料會標明目標、適用 probe 與是否達到可判定標準。
+    items:
+      - category: fixed
+        text: Bug 詳情 dump 只執行對應 probe；未配置則標示不適用。
+      - category: improved
+        text: 需要目標證據但未配置時，會標示 decision-grade=false。
+    source_refs:
+      - "changelog:2026-09-01:bug-detail-target-correctness"
+
   - id: staff-2026-09-01-history-usage-balance-visibility
     published_at: "2026-09-01"
     audiences:
