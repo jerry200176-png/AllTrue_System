@@ -1,7 +1,6 @@
 """Executable policy decisions and regression contracts for Deploy to Pi."""
 
 from pathlib import Path
-import re
 import sys
 import unittest
 
@@ -10,115 +9,21 @@ WORKFLOW = Path(__file__).parents[2] / ".github" / "workflows" / "deploy.yml"
 AUTOMERGE_WORKFLOW = WORKFLOW.parent / "auto-merge-safe.yml"
 TIER_VALUES = {"T0": 0, "T1": 1, "T2": 2, "T3": 3}
 RISK_VALUES = {"R0": 0, "R1": 1, "R2": 2, "R3": 3}
-FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
-
 ROOT = Path(__file__).parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.governance.autonomy_gate import (  # noqa: E402
+    classify_activation_scope,
     classify_scope,
+    decide_activation,
+    decide_manual_activation,
+    environment_protection_is_valid,
     effective_tier,
     is_deployable_path,
+    is_production_activation_sensitive_path,
     parse_declaration,
 )
-
-
-def decide_activation(
-    *,
-    event_name,
-    deployable,
-    classifier_available,
-    machine_validated,
-    machine_tier=None,
-    declared_risk=None,
-    declared_tier=None,
-    workflow_change=False,
-):
-    """Return the only safe state for a deployable commit.
-
-    ``machine_tier`` is supplied by the authoritative #2180 classifier.  A
-    declaration can raise the effective tier, but can never lower the
-    classifier minimum.  Missing or contradictory evidence is held.
-    """
-    if not deployable:
-        return {"decision": "no-op", "effective_tier": "none", "reason": "non-deployable change"}
-    if event_name == "workflow_dispatch":
-        return {
-            "decision": "manual",
-            "effective_tier": "protected",
-            "reason": "manual activation requires the production environment gate",
-        }
-    if not classifier_available:
-        return {
-            "decision": "awaiting-activation",
-            "effective_tier": "unknown",
-            "reason": "authoritative classifier unavailable; fail closed (depends on #2180)",
-        }
-    if not machine_validated or machine_tier not in TIER_VALUES:
-        return {
-            "decision": "awaiting-activation",
-            "effective_tier": "unknown",
-            "reason": "machine-derived tier evidence is unavailable or invalid; fail closed",
-        }
-    if declared_risk not in RISK_VALUES or declared_tier not in TIER_VALUES:
-        return {
-            "decision": "awaiting-activation",
-            "effective_tier": f"T{machine_tier}",
-            "reason": "missing or invalid risk/tier declaration; fail closed",
-        }
-    if RISK_VALUES[declared_risk] != TIER_VALUES[declared_tier]:
-        return {
-            "decision": "awaiting-activation",
-            "effective_tier": f"T{max(TIER_VALUES[declared_tier], RISK_VALUES[declared_risk])}",
-            "reason": "Risk-Class and Autonomy-Tier do not match; fail closed",
-        }
-    if TIER_VALUES[declared_tier] < TIER_VALUES[machine_tier]:
-        return {
-            "decision": "awaiting-activation",
-            "effective_tier": f"T{machine_tier}",
-            "reason": "declared tier is below the machine-derived minimum; fail closed",
-        }
-    effective = max(TIER_VALUES[declared_tier], TIER_VALUES[machine_tier])
-    if workflow_change:
-        return {
-            "decision": "awaiting-activation",
-            "effective_tier": f"T{effective}",
-            "reason": "workflow change requires production activation",
-        }
-    if effective in (0, 1):
-        return {
-            "decision": "auto",
-            "effective_tier": f"T{effective}",
-            "reason": f"machine-validated effective {declared_risk}/{declared_tier} is auto-deployable",
-        }
-    return {
-        "decision": "awaiting-activation",
-        "effective_tier": f"T{effective}",
-        "reason": f"effective tier T{effective} requires Founder activation",
-    }
-
-
-def decide_manual_activation(*, workflow_ref, target_sha, current_main_sha, ci_success, founder_gate_reached):
-    """Validate the manual gate without performing production work."""
-    if workflow_ref != "refs/heads/main":
-        return {"decision": "rejected", "reason": "manual application activation must run from refs/heads/main"}
-    if not FULL_SHA.fullmatch(target_sha or ""):
-        return {"decision": "rejected", "reason": "activation requires a full target SHA"}
-    if target_sha != current_main_sha:
-        return {"decision": "rejected", "reason": "target SHA is not the current main SHA"}
-    if not ci_success:
-        return {"decision": "rejected", "reason": "exact target SHA has no successful main CI"}
-    if not founder_gate_reached:
-        return {"decision": "awaiting-founder-approval", "reason": "production environment approval is required"}
-    return {"decision": "activation-gate-reached", "reason": "Founder-approved exact-main activation may proceed"}
-
-
-def environment_protection_is_valid(*, event_name, phase, prevent_self_review):
-    """Validate the protected environment for the requested activation path."""
-    if prevent_self_review is True:
-        return True
-    return event_name == "workflow_dispatch" and phase == "application-deploy"
 
 
 class DeployActivationPolicyTest(unittest.TestCase):
@@ -148,15 +53,45 @@ class DeployActivationPolicyTest(unittest.TestCase):
                 )
                 self.assertEqual(result["decision"], "awaiting-activation")
 
-    def test_workflow_change_is_held_even_when_declared_t0_or_t1(self):
+    def test_production_side_effect_is_held_even_when_declared_t0_or_t1(self):
         for tier, risk in (("T0", "R0"), ("T1", "R1")):
             with self.subTest(tier=tier):
                 result = decide_activation(
                     event_name="workflow_run", deployable=True, classifier_available=True,
                     machine_validated=True, machine_tier=tier,
-                    declared_risk=risk, declared_tier=tier, workflow_change=True,
+                    declared_risk=risk, declared_tier=tier, protected_activation=True,
                 )
                 self.assertEqual(result["decision"], "awaiting-activation")
+
+    def test_read_only_scheduler_does_not_block_reversible_runtime_activation(self):
+        scope = classify_activation_scope(
+            [
+                ".github/workflows/autonomous-convergence.yml",
+                "frontend/src/pages/AttendancePage.vue",
+                "frontend/src/pages/SmartCalendar.vue",
+                "frontend/src/pages/__tests__/AttendancePageAccessibility.test.js",
+                ".exo/memory/reflection.yaml",
+            ]
+        )
+        self.assertEqual(scope["tier_name"], "T1")
+        self.assertFalse(scope["protected_activation"])
+        result = decide_activation(
+            event_name="workflow_run", deployable=True, classifier_available=True,
+            machine_validated=True, machine_tier=scope["tier_name"],
+            declared_risk="R1", declared_tier="T1",
+            protected_activation=scope["protected_activation"],
+        )
+        self.assertEqual(result["decision"], "auto")
+
+    def test_production_executor_and_sensitive_paths_remain_protected(self):
+        self.assertTrue(is_production_activation_sensitive_path(".github/workflows/deploy.yml"))
+        self.assertTrue(is_production_activation_sensitive_path("backend/database/migrations/2026_01_flag.php"))
+        self.assertFalse(is_production_activation_sensitive_path(".github/workflows/autonomous-convergence.yml"))
+        scope = classify_activation_scope(
+            [".github/workflows/deploy.yml", "frontend/src/pages/StudentsList.vue"]
+        )
+        self.assertEqual(scope["tier_name"], "T3")
+        self.assertTrue(scope["protected_activation"])
 
     def test_missing_metadata_or_classifier_evidence_fails_closed(self):
         missing = decide_activation(
@@ -173,11 +108,28 @@ class DeployActivationPolicyTest(unittest.TestCase):
     def test_classifier_keeps_test_only_changes_out_of_production(self):
         self.assertFalse(is_deployable_path("backend/tests/Feature/AuthResponseContractTest.php"))
         self.assertFalse(is_deployable_path("frontend/src/pages/__tests__/BillingPage.test.js"))
+        self.assertFalse(is_deployable_path("frontend/src/components/__tests__/Widget.test.js"))
         scope = classify_scope(
             ["backend/tests/Feature/AuthResponseContractTest.php"],
             "assert the auth response envelope",
         )
         self.assertEqual(scope["tier_name"], "T0")
+
+    def test_runtime_marker_scan_ignores_test_and_governance_diffs(self):
+        paths = [
+            "frontend/src/pages/Badge.vue",
+            "frontend/src/pages/__tests__/Badge.test.js",
+            ".exo/memory/notes.md",
+        ]
+        patch = """diff --git a/frontend/src/pages/Badge.vue b/frontend/src/pages/Badge.vue
++++ b/frontend/src/pages/Badge.vue
+<span>Display only</span>
+diff --git a/frontend/src/pages/__tests__/Badge.test.js b/frontend/src/pages/__tests__/Badge.test.js
++++ b/frontend/src/pages/__tests__/Badge.test.js
++it('does not change auth, payment, or permission behavior', () => {})
+"""
+        scope = classify_activation_scope(paths, patch)
+        self.assertEqual(scope["tier_name"], "T1")
 
     def test_deploy_queue_uses_runtime_manifest_and_full_undeployed_range(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")
@@ -261,14 +213,12 @@ class DeployActivationPolicyTest(unittest.TestCase):
         self.assertEqual(result["decision"], "activation-gate-reached")
         self.assertNotEqual(result["decision"], "auto")
 
-    def test_environment_exception_is_only_for_explicit_bootstrap_application_activation(self):
-        self.assertTrue(environment_protection_is_valid(
-            event_name="workflow_dispatch", phase="application-deploy", prevent_self_review=False,
-        ))
+    def test_protected_environment_always_requires_self_review_prevention(self):
         self.assertTrue(environment_protection_is_valid(
             event_name="workflow_dispatch", phase="application-deploy", prevent_self_review=True,
         ))
         for event_name, phase in (
+            ("workflow_dispatch", "application-deploy"),
             ("workflow_run", "application-deploy"),
             ("workflow_dispatch", "phase1-create"),
             ("workflow_dispatch", "phase2-cutover"),
@@ -310,16 +260,16 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
     def test_classifier_is_authoritative_and_fail_closed_when_missing(self):
         self.assertIn("scripts/governance/autonomy_gate.py", self.workflow)
         self.assertIn("authoritative classifier unavailable; fail closed", self.workflow)
-        self.assertIn("classify_scope", self.workflow)
+        self.assertIn("classify_activation_scope", self.workflow)
+        self.assertIn("decide_activation", self.workflow)
         self.assertIn("parse_declaration", self.workflow)
         self.assertIn("effective_tier", self.workflow)
         self.assertNotIn("re.search(r\"(?m)^\\*\\*Risk-Class", self.workflow)
 
     def test_state_machine_has_fail_closed_modes(self):
-        for mode in ("no-op", "manual"):
-            self.assertIn(f'"decision": "{mode}"', Path(__file__).read_text(encoding="utf-8"))
-        for mode in ("auto", "awaiting-activation"):
-            self.assertIn(f'"decision": "{mode}"', Path(__file__).read_text(encoding="utf-8"))
+        policy = (ROOT / "scripts" / "governance" / "autonomy_gate.py").read_text(encoding="utf-8")
+        for mode in ("no-op", "manual", "auto", "awaiting-activation"):
+            self.assertIn(f'"decision": "{mode}"', policy)
         self.assertIn("No production SSH, migration, frontend build, or data mutation was executed", self.workflow)
 
     def test_deploy_job_requires_auto_or_successful_manual_gate(self):

@@ -1,6 +1,6 @@
 # Risk-Based Merge Policy
 
-**Version:** 1.6.0
+**Version:** 1.7.0
 **Effective:** 2026-08-29 (Founder T0–T3 autonomy decision; supersedes the prior solo-mode R2/R3 merge wording)
 **Owner:** Founder / CTO Agent  
 **Status:** Canonical  
@@ -18,7 +18,7 @@ Preserve autonomous delivery for low-risk changes while requiring independent re
 |-------|----------|-------------------|
 | **R0 / T0** | Docs, generated evidence, radar run artifacts, INDEX links — **no** production behavior, permissions, workflow execution, dependencies, or data | Required checks and docs/link checks; Agent may merge and close evidence-backed issues. |
 | **R1 / T1** | Display-only UX; isolated bugfix; no migration; no authz/billing/deploy change | Required CI, regression test, review, and rollback statement; Agent may merge and close when evidence is sufficient. |
-| **R2 / T2** | Scheduling domain; billing/sessions/payment; authz; cron/jobs; deploy workflows; dependency major; schema migration; cross-campus data | Required CI, independent review, documented risk/rollback/production-verification plan, and resolved bot/reviewer threads; Agent may merge only when no protected Founder decision is involved. |
+| **R2 / T2** | Scheduling domain; billing/sessions/payment; authz; cron/jobs; production-side-effect workflow; dependency major; schema migration; cross-campus data | Required CI, independent review, documented risk/rollback/production-verification plan, and resolved bot/reviewer threads; Agent may merge only when no protected Founder decision is involved. |
 | **R3 / T3** | Production data repair; destructive migration; privilege expansion; financial correction; security boundary; backup/restore; mass recalculation; protected product direction | Agent may prepare implementation, tests, dry-run, Repair Manifest, recovery plan, and evidence package. Stop for Founder approval before production activation, mutation/repair, migration/schema cutover, billing/entitlement semantics, identity/authz, destructive action, backup restore, security-sensitive credential change, or major product/brand direction. |
 
 ## How to classify (PR author)
@@ -52,23 +52,19 @@ before requesting auto-merge.
 After merge, `deploy.yml` remains the only application production executor. Its
 deploy and principal-rotation jobs, together with the guarded repair workflows,
 share the non-cancelling `alltrue-production-side-effects-v2` concurrency lock;
-the namespace was rotated after a stale GitHub Actions pending lock and prevents
-preflight/classification runs from occupying the production queue. T0/T1 deploys
-do not reference the protected `production-activation` environment; deploy
-health checks, runtime smoke checks, exact-SHA checks, and rollback/fail-closed
-behavior remain mandatory. T2/T3, unknown classifications,
-workflow/governance/security-boundary changes, and irreversible operations stay
-held for risk-appropriate review or the protected Founder boundary.
+preflight/classification runs do not occupy that side-effect queue. The deploy
+workflow compares the exact production manifest SHA to current `main` and uses
+`classify_activation_scope`: tests, docs, Exo metadata, and the read-only
+convergence scheduler do not turn an ordinary runtime release into a manual
+activation. T0/T1 deploys do not reference the protected
+`production-activation` environment; exact-SHA, required CI, preflight,
+health/smoke, rollback, and fail-closed behavior remain mandatory.
 
-For the solo-Founder bootstrap activation only, an explicit
-`workflow_dispatch` of the `application-deploy` phase may use the
-required-review environment while self-review prevention is temporarily
-disabled so the configured Founder can approve the run. This exception does not remove the
-required reviewer, administrator-bypass prohibition, main-only policy,
-exact-SHA/current-main check, successful CI requirement, typed confirmation,
-health/smoke verification, or rollback. Automatic runs and staged
-principal/data mutation phases still require the normal no-self-review setting
-and fail closed when it is absent.
+T2/T3, unknown classifications, production executor changes, security/data
+boundaries, and irreversible operations stay held for risk-appropriate review
+or the protected Founder boundary. The Environment remains unchanged and is
+used for that protected path; no fake reviewer, self-review exception, or admin
+bypass is introduced.
 
 This governance change itself is T3: it must pass the governance cool-off and
 protected review process before its new capability is used in production.

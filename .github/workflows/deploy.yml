@@ -292,7 +292,12 @@ jobs:
           repo = os.environ["REPO"]
           target = os.environ["TARGET_SHA"]
           try:
-              from scripts.governance.autonomy_gate import classify_scope, effective_tier, parse_declaration
+              from scripts.governance.autonomy_gate import (
+                  classify_activation_scope,
+                  effective_tier,
+                  decide_activation,
+                  parse_declaration,
+              )
 
               base = os.environ["RUNTIME_BASE_SHA"]
               comparison = gh_api(f"/repos/{repo}/compare/{base}...{target}")
@@ -322,7 +327,7 @@ jobs:
                   patch_parts.append(
                       f"diff --git a/{path} b/{path}\n+++ b/{path}\n{item.get('patch') or ''}"
                   )
-              scope = classify_scope(paths, "\n".join(patch_parts))
+              scope = classify_activation_scope(paths, "\n".join(patch_parts))
               machine_tier = scope.get("tier_name")
               body = pr.get("body") or ""
               declared_risk, declared_tier = parse_declaration(body)
@@ -338,15 +343,12 @@ jobs:
                   )
                   sys.exit(0)
 
-              workflow_change = any(path.startswith(".github/workflows/") for path in paths)
-              decision = __import__(
-                  "scripts.tests.test_deploy_activation_state",
-                  fromlist=["decide_activation"],
-              ).decide_activation(
+              decision = decide_activation(
                   event_name=os.environ["EVENT_NAME"], deployable=True,
                   classifier_available=True, machine_validated=True,
                   machine_tier=machine_tier, declared_risk=declaration_risk,
-                  declared_tier=declaration_tier, workflow_change=workflow_change,
+                  declared_tier=declaration_tier,
+                  protected_activation=bool(scope.get("protected_activation")),
               )
               emit(decision["decision"], decision["effective_tier"], pr_number, decision["reason"])
           except Exception:
@@ -407,7 +409,7 @@ jobs:
           import os
           import subprocess
 
-          from scripts.tests.test_deploy_activation_state import environment_protection_is_valid
+          from scripts.governance.autonomy_gate import environment_protection_is_valid
 
           repo = os.environ["REPO"]
           base = f"/repos/{repo}/environments/production-activation"
@@ -440,10 +442,7 @@ jobs:
           names = sorted(str(policy.get("name")) for policy in policies)
           if names != ["main"]:
               raise SystemExit(f"production environment protection is not configured: expected only main branch, got {names}")
-          if prevent_self_review:
-              print("production-activation protection verified: required reviewer, no self-review, no admin bypass, main only")
-          else:
-              print("production-activation bootstrap exception verified: required reviewer, explicit application phase, no admin bypass, main only")
+          print("production-activation protection verified: required reviewer, no self-review, no admin bypass, main only")
           PY
 
       - name: Require exact typed activation confirmation
@@ -479,7 +478,7 @@ jobs:
           )"
           POLICY_RESULT="$(PYTHONPATH=. WORKFLOW_REF="$WORKFLOW_REF" TARGET_SHA="$TARGET_SHA" MAIN_SHA="$MAIN_SHA" CI_OK="$CI_OK" python3 - <<'PY'
           import os
-          from scripts.tests.test_deploy_activation_state import decide_manual_activation
+          from scripts.governance.autonomy_gate import decide_manual_activation
 
           result = decide_manual_activation(
               workflow_ref=os.environ["WORKFLOW_REF"],
