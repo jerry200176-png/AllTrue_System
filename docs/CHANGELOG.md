@@ -4,6 +4,11 @@
 - 每週計算改以有效點名的 ClassSession 為來源：正課依實際時數換算、試聽每堂1段、輔導不計，取消／請假／作廢／未發生排除，不要求 approved LearningRecord。
 - 正職結算接回既有現金加扣款與行政加給雙階段資料源；待審核不阻斷已知試算，真正未知欄位保留為待確認，不默認為0。
 
+## 2026-08-31 — feat(payroll): 主任可查看每週16段課達標與課程構成
+<!-- release-notes: staff_update=staff-2026-08-31-weekly-16-segments -->
+- 正職薪資要件頁現在以有效點名的實際課程計算週一至週日段數：正課依課程時長換算、試聽每堂 1 段、輔導 0 段，並可展開查看構成課程。
+- 每週總段數大於等於 16 段即標示達標；不要求已核准 LearningRecord，也不改變其他薪資審核或獎金規則。
+
 ## 2026-08-31 — fix(ops): Phase-A bug triage workflow accepts persisted replies
 <!-- release-notes: staff_update=staff-2026-08-31-bug-triage-result-contract -->
 - 修正 Bug 分診 workflow 將已成功寫入的公開回覆誤判為失敗；現在能正確辨識已保存的回覆與冪等略過結果，避免重跑造成誤判。

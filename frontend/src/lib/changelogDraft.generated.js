@@ -8,13 +8,19 @@ export const changelogDraftNotes = [
     "version": "2026.08.31",
     "date": "2026-08-31",
     "title": "2026.08.31 草稿（未發布）",
-    "summary": "正職每週16段課與完整結算計算路徑",
+    "summary": "主任可查看每週16段課達標與課程構成；正職每週16段課與完整結算計算路徑",
     "audience": [
       "teacher",
       "director"
     ],
     "draft": true,
     "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "主任可查看每週16段課達標與課程構成"
+        ]
+      },
       {
         "title": "修正內容",
         "items": [
@@ -23,6 +29,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "主任可查看每週16段課達標與課程構成",
       "正職每週16段課與完整結算計算路徑"
     ]
   },

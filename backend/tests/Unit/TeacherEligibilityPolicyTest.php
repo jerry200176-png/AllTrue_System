@@ -39,6 +39,32 @@ class TeacherEligibilityPolicyTest extends TestCase
         $this->assertSame(0, $result['amount']);
     }
 
+    public function test_weekly_segment_rule_qualifies_without_the_legacy_forty_hour_gate(): void
+    {
+        $result = $this->policy->weekly16([
+            'segments' => 16,
+            'work_hours' => 20,
+            'segment_rule' => true,
+            'exception' => null,
+        ]);
+
+        $this->assertSame(TeacherEligibilityPolicy::QUALIFIES, $result['status']);
+        $this->assertSame(1000, $result['amount']);
+        $this->assertSame(20.0, $result['metrics']['work_hours']);
+    }
+
+    public function test_weekly_segment_rule_reviews_only_when_segment_total_is_unknown(): void
+    {
+        $result = $this->policy->weekly16([
+            'segments' => null,
+            'work_hours' => null,
+            'segment_rule' => true,
+        ]);
+
+        $this->assertSame(TeacherEligibilityPolicy::REVIEW, $result['status']);
+        $this->assertSame(['weekly_segments'], $result['missing_fields']);
+    }
+
     public function test_official_closure_can_preserve_weekly_bonus_without_signin_hours(): void
     {
         $result = $this->policy->weekly16([
