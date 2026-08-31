@@ -1,8 +1,8 @@
 name: Autonomous main convergence
 
 # Auto-merge performed by a bot can leave no push-triggered CI event. This
-# bounded reconciler restores the CI -> deploy workflow_run chain; it never
-# deploys, opens SSH, changes production, or bypasses a required check.
+# bounded reconciler restores the CI -> deploy handoff; it never opens SSH,
+# changes production directly, or bypasses a required check.
 on:
   # Auto-merge is performed by GitHub's bot and may not emit a push event
   # that starts main CI. Reconcile immediately after a merged PR; the bounded
@@ -23,7 +23,7 @@ on:
 
 permissions:
   actions: write
-  contents: read
+  contents: write
 
 concurrency:
   group: autonomous-main-convergence
@@ -38,7 +38,7 @@ jobs:
       (github.event_name == 'pull_request_target' && github.event.pull_request.merged == true) ||
       (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     env:
       GH_TOKEN: ${{ github.token }}
       REPO: ${{ github.repository }}
@@ -116,9 +116,50 @@ jobs:
           )"
 
           echo "$DECISION"
+          DISPATCHED_CI=0
           if [[ "$DECISION" == dispatch$'\n'* ]]; then
             gh workflow run ci.yml --repo "$REPO" --ref main
+            DISPATCHED_CI=1
             echo "Dispatched exact-main CI; deploy.yml remains the only production executor."
           else
             echo "No CI dispatch needed; required checks and deploy evidence remain authoritative."
+          fi
+
+          if [[ "$DISPATCHED_CI" == "1" ]]; then
+            for _ in {1..60}; do
+              CI_JSON="$(gh api "/repos/${REPO}/actions/workflows/ci.yml/runs?branch=main&head_sha=${MAIN_SHA}&event=workflow_dispatch&per_page=100")"
+              CI_STATE="$(CI_JSON="$CI_JSON" python3 - <<'PY'
+          import json
+          import os
+
+          runs = [
+              run for run in json.loads(os.environ["CI_JSON"]).get("workflow_runs", [])
+              if run.get("name") == "CI — PHPUnit Tests"
+          ]
+          runs.sort(key=lambda run: run.get("created_at", ""))
+          if not runs:
+              print("missing")
+          else:
+              run = runs[-1]
+              print(f"{run.get('status', 'unknown')}:{run.get('conclusion') or ''}")
+          PY
+              )"
+              if [[ "$CI_STATE" == "completed:success" ]]; then
+                break
+              fi
+              if [[ "$CI_STATE" == completed:* && "$CI_STATE" != "completed:success" ]]; then
+                echo "Exact-main CI did not pass (${CI_STATE}); production dispatch refused."
+                exit 1
+              fi
+              sleep 10
+            done
+            if [[ "$CI_STATE" != "completed:success" ]]; then
+              echo "Exact-main CI did not complete within the bounded window; production dispatch refused."
+              exit 1
+            fi
+            gh api --method POST "/repos/${REPO}/dispatches" \
+              -f event_type=autonomous-production-deploy \
+              -f "client_payload[target_sha]=${MAIN_SHA}" \
+              -f "client_payload[source]=autonomous-main-convergence"
+            echo "Dispatched autonomous production handoff for exact main SHA ${MAIN_SHA}; deploy.yml remains the only production executor."
           fi
