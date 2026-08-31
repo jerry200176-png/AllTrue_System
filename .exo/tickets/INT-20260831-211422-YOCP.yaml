@@ -1,0 +1,46 @@
+id: INT-20260831-211422-YOCP
+title: Secure in-app public reply transport
+intent: Secure in-app public reply transport
+kind: intent
+brain_dump: Fix shell interpolation in AllTrue in-app bug public reply workflows while
+  preserving idempotency and status guards.
+boundary: Only change the two in-app public reply/triage workflows, their focused
+  security regression, and required governance evidence. Do not change bug statuses
+  or comments through direct production access, credentials, billing/data/auth logic,
+  or production activation.
+success_condition: Both workflows transport arbitrary reply text literally without
+  remote shell evaluation; focused and required CI checks pass; merged PR has independent
+  security review evidence. No production activation is performed in this task.
+risk: high
+priority: 0
+labels:
+- security
+scope:
+  allow:
+  - .github/workflows/bug-followup-comment.yml
+  - .github/workflows/bug-phase-a-triage.yml
+  - scripts/ci/bug-writeback-workflow.test.mjs
+  - docs/**
+  - .exo/**
+  - .agent-session/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 12
+  max_loc_changed: 400
+checks:
+- npm run test:unit
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-31T21:14:22+08:00'
+children:
+- TKT-20260831-211428-A832
+resource_profile: default
