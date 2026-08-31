@@ -126,7 +126,7 @@ class TeacherEligibilityController extends Controller
                 ->whereIn('sc.TeacherID', $teacherIds)
                 ->whereBetween('cs.SessionDate', [$effectiveStart->toDateString(), $period['end']->toDateString()])
                 ->whereNull('si.VoidedAt')
-                ->whereIn('si.Status', $this->payableStudentAttendanceStatuses())
+                ->whereIn('si.Status', $this->weeklyAttendanceStatuses())
                 ->whereNotIn('cs.Status', ['cancelled', 'voided', 'leave', 'leave_adjusted', 'leave_requested', 'excused'])
                 ->when($branchFilter !== null, fn ($query) => $query->whereIn('st.CampusID', $branchFilter))
                 ->select([
@@ -137,7 +137,7 @@ class TeacherEligibilityController extends Controller
                     'sc.TeacherID as teacher_id', 'sc.ClassType as class_type',
                 ])
                 ->get()
-                ->filter(fn ($row) => $this->isEligibleTeachingAttendance($row))
+                ->filter(fn ($row) => $this->isValidWeeklyAttendance($row))
                 ->unique('class_session_id')
                 ->values();
         }
@@ -282,6 +282,7 @@ class TeacherEligibilityController extends Controller
                 'weekly' => [
                     'segments' => 0,
                     'work_hours' => 0,
+                    'segment_rule' => true,
                     'exception' => ['official_event' => false, 'leave_eligible' => false],
                 ],
                 'holiday_days' => $holidayDays,
@@ -471,16 +472,23 @@ class TeacherEligibilityController extends Controller
     private function evaluateWeek(Carbon $start, Carbon $end, $schedules, $attendanceSessions, $events, bool $eventsAvailable, bool $attendanceSourceAvailable): array
     {
         $weekSchedules = $schedules->filter(fn ($row) => $row->schedule_date >= $start->toDateString() && $row->schedule_date <= $end->toDateString());
-        $segments = 0.0;
-        foreach ($weekSchedules as $row) {
-            if (!$this->isRegularAssignable($row)) continue;
-            $segments += $this->durationHours($row) / 2;
-        }
         $weekAttendance = $attendanceSessions->filter(fn ($row) => substr((string) $row->session_date, 0, 10) >= $start->toDateString() && substr((string) $row->session_date, 0, 10) <= $end->toDateString());
-        $workHours = round($weekAttendance->sum(fn ($row) => $this->studentAttendanceDurationHours($row)), 2);
-        // An empty week is a known zero when the student-attendance source is
-        // available; it must not become a missing TeacherSingIn review.
-        $workHoursKnown = $attendanceSourceAvailable;
+        // The 16-segment rule uses valid attended ClassSession rows, not
+        // schedules or LearningRecords. Shared classes are already unique.
+        $regularAttendance = $weekAttendance->filter(fn ($row) => $this->isEligibleTeachingAttendance($row));
+        $trialAttendance = $weekAttendance->filter(fn ($row) => strtolower((string) ($row->class_type ?? '')) === 'trial');
+        $tutoringAttendance = $weekAttendance->filter(fn ($row) => strtolower((string) ($row->class_type ?? '')) === 'tutoring');
+        $durationUnknown = $regularAttendance->contains(fn ($row) => $this->classSessionDurationHours($row) === null);
+        $regularSegments = $attendanceSourceAvailable
+            ? ($durationUnknown ? null : round($regularAttendance->sum(fn ($row) => $this->classSessionDurationHours($row)) / 2, 2))
+            : null;
+        $trialSegments = $attendanceSourceAvailable ? (float) $trialAttendance->count() : null;
+        $segments = ($regularSegments === null || $trialSegments === null)
+            ? null
+            : round($regularSegments + $trialSegments, 2);
+        $workHours = $attendanceSourceAvailable
+            ? ($durationUnknown ? null : round($regularAttendance->sum(fn ($row) => $this->classSessionDurationHours($row)), 2))
+            : null;
         $weekEvents = $events->filter(fn ($event) => $event->event_date >= $start->toDateString() && $event->event_date <= $end->toDateString());
         $official = $eventsAvailable && $weekEvents->contains(
             fn ($event) => in_array($event->event_type, ['official_closure', 'holiday'], true)
@@ -496,7 +504,8 @@ class TeacherEligibilityController extends Controller
 
         $policy = $this->policy->weekly16([
             'segments' => $segments,
-            'work_hours' => $workHoursKnown ? $workHours : null,
+            'work_hours' => $workHours,
+            'segment_rule' => true,
             'exception' => $eventsAvailable ? [
                 'official_event' => $official,
                 'leave_eligible' => $leaveEligible,
@@ -507,6 +516,27 @@ class TeacherEligibilityController extends Controller
         $policy['metrics']['week_end'] = $end->toDateString();
         $policy['metrics']['work_hours_source'] = 'student_attendance';
         $policy['metrics']['attendance_sessions'] = $weekAttendance->count();
+        $policy['metrics']['regular_segments'] = $regularSegments;
+        $policy['metrics']['trial_segments'] = $trialSegments;
+        $policy['metrics']['tutoring_sessions'] = $tutoringAttendance->count();
+        $policy['metrics']['total_segments'] = $segments;
+        $policy['metrics']['meets_16_segments'] = $segments !== null
+            ? $segments >= (float) config('teacher_salary.weekly_segment_threshold', 16)
+            : null;
+        $policy['metrics']['course_sessions'] = $weekAttendance->map(fn ($row) => [
+            'class_session_id' => (int) $row->class_session_id,
+            'session_date' => substr((string) $row->session_date, 0, 10),
+            'start_time' => (string) $row->start_time,
+            'end_time' => (string) $row->end_time,
+            'class_type' => strtolower((string) ($row->class_type ?? 'one_on_one')),
+            'attendance_status' => (string) $row->attendance_status,
+            'segment_type' => strtolower((string) ($row->class_type ?? '')) === 'trial'
+                ? 'trial_fixed'
+                : (strtolower((string) ($row->class_type ?? '')) === 'tutoring' ? 'tutoring_excluded' : 'regular_duration'),
+            'segments' => strtolower((string) ($row->class_type ?? '')) === 'trial'
+                ? 1.0
+                : (strtolower((string) ($row->class_type ?? '')) === 'tutoring' ? 0.0 : (($hours = $this->classSessionDurationHours($row)) === null ? null : round($hours / 2, 2))),
+        ])->values()->all();
         return $policy;
     }
 
@@ -516,7 +546,15 @@ class TeacherEligibilityController extends Controller
         $allPass = $weeklyRows !== [] && collect($weeklyRows)->every(fn ($row) => $row['status'] === TeacherEligibilityPolicy::QUALIFIES);
         $amount = 0;
         $months = [];
+        $courseSessions = [];
+        $regularSegments = 0.0;
+        $trialSegments = 0.0;
+        $tutoringSessions = 0;
         foreach ($weeklyRows as $row) {
+            $regularSegments += (float) ($row['metrics']['regular_segments'] ?? 0);
+            $trialSegments += (float) ($row['metrics']['trial_segments'] ?? 0);
+            $tutoringSessions += (int) ($row['metrics']['tutoring_sessions'] ?? 0);
+            $courseSessions = array_merge($courseSessions, $row['metrics']['course_sessions'] ?? []);
             if ($row['status'] !== TeacherEligibilityPolicy::QUALIFIES) continue;
             $month = substr((string) ($row['metrics']['week_start'] ?? ''), 0, 7);
             $months[$month] = ($months[$month] ?? 0) + 1;
@@ -531,6 +569,14 @@ class TeacherEligibilityController extends Controller
                 'weeks' => $weeklyRows,
                 'qualifying_weeks' => collect($weeklyRows)->where('status', TeacherEligibilityPolicy::QUALIFIES)->count(),
                 'week_count' => count($weeklyRows),
+                'regular_segments' => round($regularSegments, 2),
+                'trial_segments' => round($trialSegments, 2),
+                'total_segments' => round($regularSegments + $trialSegments, 2),
+                'tutoring_sessions' => $tutoringSessions,
+                'course_sessions' => $courseSessions,
+                'meets_16_segments' => count($weeklyRows) === 1
+                    ? collect($weeklyRows)->every(fn ($row) => ($row['metrics']['meets_16_segments'] ?? null) === true)
+                    : null,
             ],
             'amount' => $amount,
             'rate' => 0,
@@ -1026,6 +1072,21 @@ class TeacherEligibilityController extends Controller
         }
     }
 
+    private function classSessionDurationHours($row): ?float
+    {
+        try {
+            $start = Carbon::parse((string) ($row->start_time ?? ''));
+            $end = Carbon::parse((string) ($row->end_time ?? ''));
+            if ($end->lte($start)) {
+                return null;
+            }
+
+            return round($start->diffInMinutes($end) / 60, 2);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
     private function studentAttendanceDurationHours($row): float
     {
         if (!empty($row->student_sign_in_at) && !empty($row->student_sign_out_at)) {
@@ -1053,6 +1114,24 @@ class TeacherEligibilityController extends Controller
             AttendanceStatus::payableCodes(),
             ['attended', 'completed']
         )));
+    }
+
+    /** @return list<string> */
+    private function weeklyAttendanceStatuses(): array
+    {
+        return array_values(array_unique(array_merge(
+            array_keys(array_filter(AttendanceStatus::META, fn ($meta) => !empty($meta['attended']))),
+            ['attended', 'completed']
+        )));
+    }
+
+    private function isValidWeeklyAttendance($row): bool
+    {
+        $attendanceStatus = strtolower(trim((string) ($row->attendance_status ?? '')));
+        $sessionStatus = strtolower(trim((string) ($row->session_status ?? '')));
+
+        return in_array($attendanceStatus, $this->weeklyAttendanceStatuses(), true)
+            && !in_array($sessionStatus, ['cancelled', 'canceled', 'leave', 'leave_adjusted', 'leave_requested', 'voided', 'excused'], true);
     }
 
     private function isEligibleTeachingAttendance($row): bool

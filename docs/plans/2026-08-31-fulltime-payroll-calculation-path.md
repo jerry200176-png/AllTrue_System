@@ -17,30 +17,29 @@ API 的 `components.weekly_16_segments.metrics` 現在提供：
 `meets_16_segments`，以及每堂課的 `class_session_id`、日期、時間、類型、
 點名狀態與貢獻段數。主任頁面可展開查看構成課程。
 
-## 原本阻斷薪資的原因
+## 本 PR 與薪資結算的邊界
 
-原本流程把 eligibility 的 `overall_status=review` 與 settlement 是否能產生
-金額視為同一件事：`FulltimeSettlementComposer` 雖然可以取得底薪與部分
-獎金，仍只回傳一個被 review 狀態包住的 draft。沒有底薪時還把 `null` 轉成
-`0`，造成「資料未知」看起來像「確定零元」。科目數也只讀 approved
-`LearningRecord`，所以實際已完成但尚未補教學日誌的課程無法進入計算。
+這個 vertical slice 只負責主任查看每週段數與課程構成；它不新增另一套
+payroll system，也不改底薪、倍率、加扣款、科目獎金或結算鎖定規則。
+`weekly_16_segments` 的狀態與其他 payroll review／bonus component 解耦，
+因此已知段數可以獨立呈現。
 
-## 現在的路徑
+原本正職薪資 calculation path 的 root-cause 工作會在後續 stacked PR
+繼續處理：保留現有 `FulltimeSettlementComposer`，接通既有的薪資來源，並
+讓真正未知的欄位維持 review／pending，而不是把未知值當成零。
+
+## 本 PR 的資料路徑
 
 ```text
 ClassSession + valid StudentSingIn
-        ├─ weekly segments (regular / trial / tutoring=0) + course trace
-        └─ subject units (approved LearningRecord preferred;
-                         attendance fallback for unapproved sessions)
-salary profile ───────────────────────────────────────────────┐
-                                                              v
-policy components ── known core values ──> calculated payout
-                   └─ review-only values ─> pending_items (impact=unknown)
+        └─ weekly segments (regular / trial / tutoring=0) + course trace
+           ├─ regular: actual duration / 2
+           ├─ trial: one fixed segment
+           └─ tutoring: zero segments
 ```
 
-`settlement.calculated_payout`／`total_payout` 在核心資料足夠時會有數字；
-`calculation_status` 為 `calculated` 或 `partial`。真正影響金額但無法推導的
-底薪或科目資料則為 `blocked`，金額維持 `null`，不會默默當成 0。
+如果有效出勤資料或正課時長不足，週段數會明確標示 review；不會以排課、
+未核准 LearningRecord 或固定 2 小時 fallback 猜測。
 
 ## 實際月份 fixture
 
@@ -53,11 +52,5 @@ policy components ── known core values ──> calculated payout
 - 1 堂有效輔導：0 段。
 - 另放入 cancelled、leave、voided 課程，均未計入。
 
-結果為正課 12 段、試聽 5 段、總計 17 段、達標；底薪 33,000 加既有
-16 段獎金 1,000，得到 `calculated_payout=34,000`。假日曆缺資料仍列在
-`pending_items`，但不阻斷這個已知的核心試算。
-
-目前 AllTrue main 沒有 Backer 對應的現金 `teacher_payroll_adjustments`
-資料表；因此 `adjustments` 只列已知的 16 段項目與 composer 接收到的明確
-加扣款，未知現金加扣款不應在此分支被假設為 0。若要納入該欄位，下一步應
-先建立明確的 AllTrue source/approval contract，再接入 settlement。
+結果為正課 12 段、試聽 5 段、總計 17 段、達標；這個 PR 只驗證段數與課程
+追溯，不把這個 fixture 的數字延伸宣稱為完整薪資結算結果。
