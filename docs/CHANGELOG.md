@@ -1,3 +1,9 @@
+## 2026-09-01 — fix(billing): 未繳課程可結案但保留待對帳狀態
+<!-- release-notes: staff_update=staff-2026-09-01-unpaid-settlement-reconciliation -->
+- 未繳費課程現在可以結案並停止後續排課，不會再被「未繳費」前置條件卡住。
+- 結案時若尚未完成收款，課程會明確標記「結案待對帳」，並留在帳務中心待處理；確認入帳後才轉為一般已結算。
+- 未改寫既有付款資料，也不會把未繳費課程誤標成已繳費。
+
 ## 2026-08-31 — improved(ux): 課程查找明確顯示堂數待對帳
 <!-- release-notes: staff_update=staff-2026-08-31-usage-balance-visibility -->
 - 堂數扣堂與課堂狀態不一致時，課程名稱旁會直接顯示「堂數待對帳」，不再只藏在上課時段欄或多提醒摘要裡。

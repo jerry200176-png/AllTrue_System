@@ -73,6 +73,16 @@ class AlertController extends Controller
 
         $countResults = $countQuery->with('student')->get();
         $dateResults  = $dateQuery->with('student')->get();
+        $pendingSettlementResults = StudentClass::query()
+            ->where('Stop', 1)
+            ->where('closed_reason', 'settled_pending')
+            ->with('student')
+            ->get();
+        if ($studentIds !== null) {
+            $pendingSettlementResults = $pendingSettlementResults
+                ->whereIn('StudentID', $studentIds)
+                ->values();
+        }
 
         $countPkgQuery = CoursePackage::query()
             ->where('billing_mode', CoursePackage::BILLING_MODE_SESSION)
@@ -101,6 +111,7 @@ class AlertController extends Controller
 
         $allClassIds = $countResults->pluck('ID')
             ->merge($dateResults->pluck('ID'))
+            ->merge($pendingSettlementResults->pluck('ID'))
             ->merge($countPkgAnchorById->pluck('ID'))
             ->unique()
             ->values()
@@ -110,9 +121,9 @@ class AlertController extends Controller
         $openMonthlyInvoiceMap = $this->openInvoiceByStudentClassIds($dateResults->pluck('ID')->unique()->values()->all());
         $pendingReportMap = self::latestPendingReportByStudentClassIds($allClassIds);
         $newerCourseMap = self::newerCourseByStudentClassIds($allClassIds);
-        $subjectNameMap = $this->subjectNameMapForCourses($countResults->merge($dateResults));
+        $subjectNameMap = $this->subjectNameMapForCourses($countResults->merge($dateResults)->merge($pendingSettlementResults));
 
-        $allResults = $countResults->merge($dateResults)->keyBy('ID');
+        $allResults = $countResults->merge($dateResults)->merge($pendingSettlementResults)->keyBy('ID');
 
         // ── Monthly billing package members: used to filter out member courses from individual alerts ──
         $monthlyPkgMemberIds = collect();
@@ -249,6 +260,9 @@ class AlertController extends Controller
                 $dateResults->filter(fn ($c) => !$monthlyPkgMemberIds->contains($c->ID))
                     ->map(fn ($c) => $this->mapMonthlyAlert($c, $today, $openMonthlyInvoiceMap[(int) $c->ID] ?? null, $subjectNameMap))->filter()
             )
+            ->merge(
+                $pendingSettlementResults->map(fn ($c) => $this->mapPendingSettlementAlert($c, $subjectNameMap))
+            )
             ->map(function ($row) use ($paidAtMap, $allResults, $invoiceAggMap, $pendingReportMap, $newerCourseMap, $today, $openMonthlyInvoiceMap) {
                 $classId = (int) $row['id'];
                 $sc = $allResults->get($classId);
@@ -266,7 +280,7 @@ class AlertController extends Controller
                     : $this->countModeCharge($sc);
                 $invoiceAgg = $invoiceAggMap[$classId] ?? null;
                 $paidAmount = $invoiceAgg ? (int) $invoiceAgg['paid_amount'] : 0;
-                $scIsPaid = (int) ($sc->Paid ?? 0) === 1;
+                $scIsPaid = $this->isFullyPaid((int) ($sc->Paid ?? 0) === 1, $paidAmount, $charge);
                 $outstanding = $scIsPaid ? 0 : max(0, $charge - $paidAmount);
 
                 $pendingReportId = $pendingReportMap[$classId] ?? null;
@@ -344,6 +358,25 @@ class AlertController extends Controller
             'days_until_settlement' => null,
             'settlement_day'     => $c->settlement_day !== null ? (int) $c->settlement_day : null,
             'due_date'           => null,
+        ];
+    }
+
+    private function mapPendingSettlementAlert(StudentClass $c, array $subjectNameMap = []): array
+    {
+        return [
+            'id' => $c->getAttribute('ID'),
+            'student_id' => (int) $c->getAttribute('StudentID'),
+            'student_name' => $c->student->name ?? 'Unknown',
+            'campus_id' => (int) ($c->student->CampusID ?? 0),
+            'subject' => $this->subjectLabel($c, $subjectNameMap),
+            'schedule_mode' => (string) (($c->ScheduleMode ?? 'count') === 'date' ? 'date' : 'count'),
+            'remaining_sessions' => max(0, (int) ($c->RemainingSessions ?? 0)),
+            'sessions_purchased' => (int) ($c->SessionCount ?? 0),
+            'paid' => false,
+            'alert_type' => 'pending_reconciliation',
+            'days_until_settlement' => null,
+            'settlement_day' => $c->getAttribute('settlement_day') ? (int) $c->getAttribute('settlement_day') : null,
+            'due_date' => null,
         ];
     }
 
@@ -755,6 +788,10 @@ class AlertController extends Controller
 
         if ($hasPendingReport) {
             return 'pending_report';
+        }
+
+        if ((string) ($sc->getAttribute('closed_reason') ?? '') === 'settled_pending') {
+            return 'pending_reconciliation';
         }
 
         $isPaid = $this->isFullyPaid((int) ($sc->Paid ?? 0) === 1, $paidAmount, $charge);

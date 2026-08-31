@@ -6960,6 +6960,9 @@ class StudentClassController extends Controller
         }
 
         $remainingOwed = (int) ($sc->getAttribute('RemainingSessions') ?? 0);
+        $pendingReconciliation = $action === 'pause'
+            && $reason === 'settled'
+            && $this->courseNeedsPaymentReconciliation($sc);
 
         // #1839: count-mode still owes sessions — do not settle/complete and wipe
         // the leave-cascade tail. Pause (no settled/completed reason) stays allowed.
@@ -6984,7 +6987,9 @@ class StudentClassController extends Controller
                 if ($reason === 'completed') {
                     $sc->closed_reason = 'completed';
                 } elseif ($reason === 'settled') {
-                    $sc->closed_reason = 'settled';
+                    $sc->closed_reason = $pendingReconciliation
+                        ? 'settled_pending'
+                        : 'settled';
                     $sc->EndDate = $today;
                 } else {
                     $sc->closed_reason = null;
@@ -6997,13 +7002,17 @@ class StudentClassController extends Controller
 
                 $labels = ['completed' => '已完課', 'settled' => '已結案'];
                 $label = $labels[$reason] ?? '已暫停';
+                $message = $pendingReconciliation
+                    ? "課程{$label}，目前尚未完成繳費，已標記待對帳。"
+                    : ($cancelRemaining
+                        ? "課程{$label}，已取消 {$cancelled} 堂未來排課。"
+                        : "課程{$label}（未取消剩餘排課）。");
                 DB::commit();
                 return response()->json([
-                    'message' => $cancelRemaining
-                        ? "課程{$label}，已取消 {$cancelled} 堂未來排課。"
-                        : "課程{$label}（未取消剩餘排課）。",
+                    'message' => $message,
                     'cancelled_count' => $cancelled,
                     'cancel_remaining' => $cancelRemaining,
+                    'pending_reconciliation' => $pendingReconciliation,
                 ]);
             } else {
                 if ($sc->isUsageSettlementLocked()) {
@@ -7030,6 +7039,27 @@ class StudentClassController extends Controller
             DB::rollBack();
             return response()->json(['message' => '操作失敗：' . $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * A course may be closed before payment is confirmed, but the history and
+     * accounting queue must retain an explicit reconciliation state.
+     */
+    private function courseNeedsPaymentReconciliation(StudentClass $studentClass): bool
+    {
+        $charge = (int) ($studentClass->Charge ?? 0);
+        if ($charge <= 0 || (int) ($studentClass->Paid ?? 0) === 1) {
+            return false;
+        }
+
+        $paidAmount = (int) Invoice::query()
+            ->where(function ($query) {
+                $query->whereNull('Status')->orWhere('Status', '!=', 'void');
+            })
+            ->where('StudentClassID', $studentClass->getAttribute('ID'))
+            ->sum('PaidAmount');
+
+        return !$studentClass->isFullyPaidWithInvoiceAmount($paidAmount, $charge);
     }
 
     private function cancelFutureScheduledSessions(StudentClass $studentClass, ?string $reason): int

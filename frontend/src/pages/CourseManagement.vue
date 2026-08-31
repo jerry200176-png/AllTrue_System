@@ -304,16 +304,16 @@
                   </tr>
                   <tr :class="['course-row', courseRowClass(c)]">
                     <td class="td-subject">
-                      <div v-if="['settled', 'completed', 'converted_trial'].includes(effectiveClosedReason(c))" class="settled-course-callout" role="status">
+                      <div v-if="['settled', 'settled_pending', 'completed', 'converted_trial'].includes(effectiveClosedReason(c))" class="settled-course-callout" role="status">
                         <span class="settled-course-callout__icon" aria-hidden="true">✅</span>
                         <span class="settled-course-callout__main">已結案</span>
-                        <span class="settled-course-callout__sub">{{ effectiveClosedReason(c) === 'converted_trial' ? '已轉正式，試聽紀錄保留' : (effectiveClosedReason(c) === 'settled' ? '手動結案，無需續報' : '堂數已用完') }}</span>
+                        <span class="settled-course-callout__sub">{{ effectiveClosedReason(c) === 'converted_trial' ? '已轉正式，試聽紀錄保留' : (effectiveClosedReason(c) === 'settled_pending' ? '尚未完成繳費，請至帳務中心對帳' : (effectiveClosedReason(c) === 'settled' ? '手動結案，無需續報' : '堂數已用完')) }}</span>
                       </div>
                       <div class="subject-line">
                         <span class="tag subject-tag" :class="{ 'subject-tag--paused': c.status === 'inactive' }">{{ getSubjectLabel(c.subject) }}</span>
                         <span class="status-tag" :class="c.class_type">{{ classTypeLabel(c.class_type) }}</span>
                         <span v-if="c.PackageID" class="tag tag-package" :title="c.PackageName || '多科方案'">方案</span>
-                        <span v-else-if="['settled', 'completed', 'converted_trial'].includes(effectiveClosedReason(c))" class="tag tag-settled">已結案</span>
+                        <span v-else-if="['settled', 'settled_pending', 'completed', 'converted_trial'].includes(effectiveClosedReason(c))" class="tag tag-settled">{{ effectiveClosedReason(c) === 'settled_pending' ? '待對帳結案' : '已結案' }}</span>
                         <span
                           v-if="c.usage_balance_status === 'review_required'"
                           class="tag tag-usage-review"
@@ -574,6 +574,7 @@
                     <span class="status-tag" :class="hc.class_type">{{ classTypeLabel(hc.class_type) }}</span>
                     <span v-if="hc.PackageID" class="tag tag-package" :title="hc.PackageName || '多科方案'">方案</span>
                     <span v-if="effectiveClosedReason(hc) === 'converted_trial'" class="tag tag-history tag-history--settled">已轉正式</span>
+                    <span v-else-if="effectiveClosedReason(hc) === 'settled_pending'" class="tag tag-history tag-history--pending">已結算 · 待對帳</span>
                     <span v-else-if="effectiveClosedReason(hc) === 'settled'" class="tag tag-history tag-history--settled">已結算</span>
                     <span v-else class="tag tag-history tag-history--completed">已完課</span>
                   </div>
@@ -2563,7 +2564,7 @@ function canCloseCourse(c) {
   return c.status !== 'inactive'
     && !isPackageMember(c)
     && (isSessionMode(c) || isMonthlyMode(c))
-    && c.payment_status === 'paid';
+    && c.closed_reason !== 'settled_pending';
 }
 
 async function closeCourseNoRenew(course) {
@@ -2572,10 +2573,13 @@ async function closeCourseNoRenew(course) {
   const studentName = course.student_name || '學生';
   const subject = getSubjectLabel(course.subject);
   const remaining = Math.max(0, Number(course.remaining_sessions ?? 0));
+  const paymentWarning = course.payment_status === 'paid'
+    ? ''
+    : '\n\n目前尚未完成繳費；結案後會標記「待對帳」，不會視為已繳費。';
   const balanceWarning = remaining > 0
     ? `\n\n目前還有 ${remaining} 堂未使用。結案會取消未來排課，並放棄這 ${remaining} 堂剩餘額度。`
     : '';
-  if (!confirm(`確定要結案「${studentName}」的 ${subject} 課程嗎？${balanceWarning}\n\n結案後此課程不再出現在繳費／續課提醒中，已繳費與已上課紀錄仍會保留。`)) return;
+  if (!confirm(`確定要結案「${studentName}」的 ${subject} 課程嗎？${paymentWarning}${balanceWarning}\n\n結案後此課程不再排課；若尚未繳費，會保留在帳務中心的「結案待對帳」佇列。已繳費與已上課紀錄仍會保留。`)) return;
 
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
@@ -2597,7 +2601,9 @@ async function closeCourseNoRenew(course) {
       alert('結案失敗：' + (json.message || res.statusText));
       return;
     }
-    alert('已結案，此課程不再出現在繳費／續課提醒中。');
+    alert(json.pending_reconciliation
+      ? '已結案，課程保留在帳務中心的「結案待對帳」佇列，尚未視為已繳費。'
+      : '已結案，此課程不再出現在繳費／續課提醒中。');
     await loadCourses();
   } catch (e) {
     alert('操作失敗：' + (e?.message || '請稍後再試'));
@@ -7798,6 +7804,11 @@ button.danger:disabled {
   color: #15803d;
   border: 1px solid #86efac;
 }
+.tag-history--pending {
+  background: var(--ds-warning-wash);
+  color: var(--ds-warning);
+  border: 1px solid var(--ds-warning);
+}
 .tag-history--completed {
   background: #eff6ff;
   color: #1d4ed8;
@@ -8375,6 +8386,11 @@ button.danger:disabled {
   background: #052e16;
   color: #4ade80;
   border-color: #166534;
+}
+[data-theme="dark"] .tag-history--pending {
+  background: var(--ds-warning-wash);
+  color: var(--ds-warning);
+  border-color: var(--ds-warning);
 }
 [data-theme="dark"] .tag-history--completed {
   background: #172554;
