@@ -96,12 +96,6 @@ class TeacherEligibilityController extends Controller
         }
 
         $teacherIds = $teachers->pluck('id')->map(fn ($id) => (int) $id)->all();
-        /*
-         * Campus selection controls which teachers the caller may see. It
-         * must not partition a full-time teacher's payroll inputs: a teacher
-         * working at multiple campuses has one settlement, so every source
-         * row for that teacher is included below.
-         */
         $schedules = DB::table('schedules')
             ->whereIn('teacher_id', $teacherIds)
             ->whereBetween('schedule_date', [$effectiveStart->toDateString(), $period['end']->toDateString()])
