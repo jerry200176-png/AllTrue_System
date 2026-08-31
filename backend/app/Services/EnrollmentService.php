@@ -201,7 +201,7 @@ class EnrollmentService
                 }
                 $wd = (int) Carbon::parse($row['date'])->dayOfWeekIso;
                 $isMonthlyOpeningDate = $monthlyOpeningDate !== null
-                    && ($row['date'] ?? '') === $monthlyOpeningDate;
+                    && $row['date'] === $monthlyOpeningDate;
                 if (!isset($allowedSet[$wd]) && !$isMonthlyOpeningDate) {
                     $label = $weekCn[$wd] ?? (string) $wd;
 
