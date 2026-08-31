@@ -757,7 +757,6 @@ class TeacherEligibilityController extends Controller
             });
     }
 
-    /** Prefer approved LearningRecords, then valid attended ClassSessions. */
     private function subjectUnitsByTeacher(array $teacherIds, ?array $branchFilter, Carbon $start, Carbon $end): array
     {
         $hasLearningRecords = Schema::hasTable('LearningRecord');
@@ -807,15 +806,6 @@ class TeacherEligibilityController extends Controller
         })->all();
     }
 
-    /**
-     * Latest approved profile at or before $onDate, per teacher.
-     *
-     * Base salary and multiplier are profile values, not additive campus
-     * amounts. When profiles exist at multiple campuses, the latest effective
-     * profile wins across the teacher's complete record.
-     *
-     * @return array<int, float>
-     */
     private function salaryProfilesByTeacher(array $teacherIds, ?array $branchFilter, string $onDate): array
     {
         if (!Schema::hasTable('fulltime_salary_profiles') || $teacherIds === []) {
@@ -834,7 +824,6 @@ class TeacherEligibilityController extends Controller
             ->all();
     }
 
-    /** @return array<int, float|null> */
     private function manualMultiplierByTeacher(array $teacherIds, ?array $branchFilter, string $onDate): array
     {
         if (!Schema::hasTable('fulltime_salary_profiles') || !Schema::hasColumn('fulltime_salary_profiles', 'manual_multiplier_pct') || $teacherIds === []) {

@@ -615,11 +615,6 @@ class TeacherEligibilityInputController extends Controller
         return response()->json($profile, 201);
     }
 
-    /**
-     * POST /api/v1/finance/teacher-eligibility/salary-profiles/multiplier
-     * Store an effective-dated manual total multiplier without exposing or
-     * replacing the base-salary input on the director report.
-     */
     public function storeMultiplierProfile(Request $request)
     {
         $data = $request->validate([

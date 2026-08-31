@@ -19,36 +19,6 @@ final class FulltimeSettlementComposer
     private const SUBJECT_COUNT_THRESHOLD = 20;
     private const SUBJECT_COUNT_MULTIPLIER_BONUS_PCT = 5.0;
 
-    /**
-     * @param array<string, array{status:string,rate:float,amount:float,metrics:array}> $components
-     * @param array{regular?:float,tutoring_trial?:float,one_to_three?:float,payroll_total?:float} $subjectUnits
-     * @return array{
-     *   base_salary: float|null,
-     *   multiplier_pct: float|null,
-     *   known_multiplier_pct: float,
-     *   multiplier_complete: bool,
-     *   weighted_bonus_amount: float,
-     *   weighted_bonus_complete: bool,
-     *   weekly_segment_bonus_amount: float|null,
-     *   weekly_bonus_complete: bool,
-     *   total_payout: float|null,
-     *   calculated_payout: float|null,
-     *   calculation_status: string,
-     *   review_required: bool,
-     *   pending_items: list<array<string,mixed>>,
-     *   payout_is_draft: bool,
-     *   regular_subject_count: float|null,
-     *   tutoring_trial_subject_count: float|null,
-     *   payroll_subject_count: float|null,
-     *   one_to_three_count: float|null,
-     *   subject_count_bonus: float|null,
-     *   one_to_three_bonus: float|null,
-     *   multiplier_parts: list<array{key:string,label:string,pct:float}>,
-     *   adjustments: list<array{label:string,amount:float}>,
-     *   total_adjustments: float|null,
-     *   adjustments_complete: bool
-     * }
-     */
     public static function compose(array $components, ?float $baseSalary, ?array $subjectUnits = null, ?float $manualMultiplierPct = null): array
     {
         $subjectUnits ??= [];
