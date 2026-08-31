@@ -185,3 +185,15 @@ failure_modes:
       deploy.
   severity: medium
   frequency: recurring
+- id: FM-20260831-212705-I0T6
+  name: in-app public replies cross a runner-to-remote shell boundary
+  detection:
+    signal: in-app public replies cross a runner-to-remote shell boundary
+    source: reflection:REF-20260831-212705-YL9M
+  mitigation:
+    practice: 'Treat public reply text as untrusted data across every transport boundary:
+      encode it before SSH, decode only inside the remote script, and keep a literal
+      metacharacter regression for both write-back workflows. A green product test
+      alone does not prove workflow transport safety.'
+  severity: high
+  frequency: recurring
