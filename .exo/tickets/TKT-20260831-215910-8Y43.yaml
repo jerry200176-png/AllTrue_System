@@ -20,6 +20,7 @@ scope:
   allow:
   - frontend/src/lib/reschedulePreview.js
   - frontend/src/lib/reschedulePreview.test.js
+  - frontend/src/lib/releaseNotes.test.js
   - frontend/src/composables/calendar/useCalendarReschedule.js
   - frontend/src/composables/calendar/__tests__/useCalendarReschedule.test.js
   - frontend/src/pages/SmartCalendar.vue
