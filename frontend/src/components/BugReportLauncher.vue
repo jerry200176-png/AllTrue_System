@@ -28,6 +28,7 @@
       @close="!submitting && closeForm()"
     >
       <div class="bug-report-form" @paste="onPaste">
+        <template v-if="!submitSuccess">
 
         <label for="bug-report-title">問題標題 <span class="optional">（選填，自動帶入頁面）</span></label>
         <input id="bug-report-title" v-model="title" class="form-input" placeholder="簡述問題（留空則自動填入）" maxlength="200" />
@@ -104,18 +105,30 @@
           <span class="material-symbols-outlined">info</span>
           將自動附帶當前頁面：<strong>{{ currentPageKey || '未知' }}</strong>
         </div>
+        </template>
 
         <div v-if="submitSuccess" class="success-msg" role="status" aria-live="polite">
-          <span class="material-symbols-outlined">check_circle</span>
-          已提交<span v-if="submittedBugId">（編號 #{{ submittedBugId }}）</span>，可到 Bug 回報查看進度。
+          <div class="submission-success">
+            <span class="material-symbols-outlined" aria-hidden="true">check_circle</span>
+            <strong>已提交<span v-if="submittedBugId">（編號 #{{ submittedBugId }}）</span></strong>
+            <p class="success-description">你可以到 Bug 回報查看處理進度與後續回覆。</p>
+            <button type="button" class="btn-submit success-track-button" @click="openSubmittedReport">
+              查看回報進度
+            </button>
+          </div>
         </div>
         <div v-if="submitError" class="error-msg" role="alert">{{ submitError }}</div>
       </div>
       <template #actions>
-        <button type="button" class="btn-cancel" :disabled="submitting" @click="closeForm">取消</button>
-        <button type="button" class="btn-submit" :disabled="!canSubmit || submitting" @click="doSubmit">
-          {{ submitting ? '提交中...' : '提交回報' }}
-        </button>
+        <template v-if="submitSuccess">
+          <button type="button" class="btn-cancel" @click="closeForm">關閉</button>
+        </template>
+        <template v-else>
+          <button type="button" class="btn-cancel" :disabled="submitting" @click="closeForm">取消</button>
+          <button type="button" class="btn-submit" :disabled="!canSubmit || submitting" @click="doSubmit">
+            {{ submitting ? '提交中...' : '提交回報' }}
+          </button>
+        </template>
       </template>
     </AtDialog>
   </div>
@@ -155,6 +168,8 @@ const maxFiles = MAX_BUG_ATTACHMENTS;
 const attachmentDragging = ref(false);
 let attachmentDragDepth = 0;
 let attachmentSequence = 0;
+
+const emit = defineEmits(['open-bugs']);
 
 const canSubmit = computed(() => description.value.trim() && props.branchId);
 
@@ -351,6 +366,11 @@ function closeForm() {
   attachmentError.value = '';
 }
 
+function openSubmittedReport() {
+  closeForm();
+  emit('open-bugs');
+}
+
 function onPaste(event) {
   const files = extractImageFiles(event.clipboardData);
   if (!files.length) return;
@@ -437,7 +457,6 @@ async function doSubmit() {
     severity.value = 'medium';
     clearAttachments();
     window.dispatchEvent(new CustomEvent('alltrue-refresh-badges'));
-    setTimeout(() => { showForm.value = false; submitSuccess.value = false; }, 1500);
   } catch (e) {
     submitError.value = '提交失敗：' + e.message;
   } finally {
@@ -537,9 +556,17 @@ label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; m
 .btn-submit:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .success-msg {
-  display: flex; align-items: center; gap: 6px; margin-top: 12px;
+  margin-top: 12px;
   color: var(--success); font-size: 14px; font-weight: 600;
 }
+.submission-success {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
+  padding: 16px; margin-top: 4px; border: 1px solid var(--success);
+  border-radius: 10px; background: var(--ds-success-wash, var(--card-bg));
+}
+.submission-success .material-symbols-outlined { font-size: 20px; }
+.success-description { margin: 0; color: var(--text-light); font-size: 13px; line-height: 1.5; }
+.success-track-button { margin-top: 2px; }
 .error-msg { margin-top: 12px; color: var(--danger); font-size: 13px; }
 
 @media (max-width: 768px) {

@@ -224,6 +224,7 @@
       v-if="session && !isStandaloneParent && (isDirector || isTeacher)"
       :branch-id="currentBranch"
       :current-page-key="active"
+      @open-bugs="setActivePage('bugs')"
     />
 
     <!-- Mobile Bottom Nav (5 tabs + More) -->

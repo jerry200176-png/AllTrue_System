@@ -3,6 +3,22 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-01-bug-report-tracking
+    published_at: "2026-09-01"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: Bug 回報送出後可直接追蹤
+    summary: 送出回報後會保留編號，並可直接前往 Bug 回報查看處理進度。
+    items:
+      - category: improved
+        text: Bug 回報成功後會保留回報編號與確認訊息，不會短暫顯示後自動消失。
+      - category: improved
+        text: 可直接點選「查看回報進度」前往 Bug 回報頁；回報狀態與資料內容維持原規則。
+    source_refs:
+      - "changelog:2026-09-01:bug-report-tracking"
+
   - id: staff-2026-09-01-teacher-week-disclosure
     published_at: "2026-09-01"
     audiences:

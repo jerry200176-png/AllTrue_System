@@ -184,6 +184,40 @@ export const staffUpdates = [
     "version": "2026.09.01"
   },
   {
+    "id": "staff-2026-09-01-bug-report-tracking",
+    "publishedAt": "2026-09-01",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "Bug 回報送出後可直接追蹤",
+    "summary": "送出回報後會保留編號，並可直接前往 Bug 回報查看處理進度。",
+    "items": [
+      "Bug 回報成功後會保留回報編號與確認訊息，不會短暫顯示後自動消失。",
+      "可直接點選「查看回報進度」前往 Bug 回報頁；回報狀態與資料內容維持原規則。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "Bug 回報成功後會保留回報編號與確認訊息，不會短暫顯示後自動消失。",
+          "可直接點選「查看回報進度」前往 Bug 回報頁；回報狀態與資料內容維持原規則。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-01:bug-report-tracking"
+    ],
+    "date": "2026-09-01",
+    "version": "2026.09.01"
+  },
+  {
     "id": "staff-2026-08-31-weekly-16-segments",
     "publishedAt": "2026-08-31",
     "effectiveAt": null,

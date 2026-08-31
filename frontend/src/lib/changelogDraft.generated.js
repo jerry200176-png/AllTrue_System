@@ -26,6 +26,7 @@ export const changelogDraftNotes = [
       {
         "title": "其他改善",
         "items": [
+          "回報提交後保留追蹤入口",
           "老師首頁先看今天的課表"
         ]
       }
@@ -34,6 +35,7 @@ export const changelogDraftNotes = [
       "歷史課程顯示堂數待對帳",
       "調課預覽優先採用當日請假狀態",
       "未繳課程可結案但保留待對帳狀態",
+      "回報提交後保留追蹤入口",
       "老師首頁先看今天的課表"
     ]
   },
