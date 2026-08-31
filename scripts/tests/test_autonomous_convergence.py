@@ -1,6 +1,10 @@
 """Regression contracts for the main-event convergence scheduler."""
 
+from pathlib import Path
 import unittest
+
+
+WORKFLOW = Path(__file__).parents[2] / ".github" / "workflows" / "autonomous-convergence.yml"
 
 
 def should_dispatch(*, active_ci, recent_dispatch, deploy_present):
@@ -10,6 +14,14 @@ def should_dispatch(*, active_ci, recent_dispatch, deploy_present):
 
 
 class AutonomousConvergenceTest(unittest.TestCase):
+    def test_merged_pr_event_reconciles_bot_merge_without_running_pr_code(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("pull_request_target:", workflow)
+        self.assertIn("types: [closed]", workflow)
+        self.assertIn("github.event.pull_request.merged == true", workflow)
+        self.assertIn("Dispatch CI when current main has no downstream evidence", workflow)
+        self.assertNotIn("ssh ", workflow)
+
     def test_dispatches_when_merge_left_no_exact_main_evidence(self):
         self.assertTrue(should_dispatch(active_ci=False, recent_dispatch=False, deploy_present=False))
 
