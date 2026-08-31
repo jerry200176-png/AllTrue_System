@@ -91,7 +91,7 @@
               <td>{{ formatMoney(teacher.settlement?.subject_count_bonus) }}</td>
               <td>{{ formatMoney(teacher.settlement?.one_to_three_bonus) }}</td>
               <td>
-                <strong>{{ formatPct(teacher.settlement?.multiplier_pct) }}</strong>
+                <strong>{{ teacher.settlement?.multiplier_pct ?? 100 }}%</strong>
                 <small v-for="part in visibleMultiplierParts(teacher)" :key="part.key">{{ part.label }} {{ formatPct(part.pct) }}</small>
               </td>
               <td>
@@ -136,7 +136,7 @@
           <div class="component-row"><span>核薪總科目數</span><span class="component-value">{{ formatSubjects(teacher.settlement?.payroll_subject_count) }}</span></div>
           <div class="component-row"><span>科目數獎金</span><span class="component-value">{{ formatMoney(teacher.settlement?.subject_count_bonus) }}</span></div>
           <div class="component-row"><span>一對三獎金</span><span class="component-value">{{ formatMoney(teacher.settlement?.one_to_three_bonus) }}</span></div>
-          <div class="component-row"><span>教師倍率</span><span class="component-value">{{ formatPct(teacher.settlement?.multiplier_pct) }}</span></div>
+          <div class="component-row"><span>教師倍率</span><span class="component-value">{{ teacher.settlement?.multiplier_pct ?? 100 }}%</span></div>
           <div class="component-row"><span>倍率後獎金</span><span class="component-value">{{ formatMoney(teacher.settlement?.weighted_bonus_amount) }}</span></div>
           <div class="component-row total-cell"><span>總發放金額</span><strong>{{ formatMoney(teacher.settlement?.total_payout) }}</strong></div>
           <div class="component-row weekly-segment-row">
@@ -408,11 +408,6 @@ onMounted(loadData);
 .adj-chip { display:inline-flex; margin:0 6px 6px 0; padding:3px 8px; border-radius:999px; font-size:12px; }
 .adj-chip.pos { background:var(--ds-success-wash); color:var(--ds-success); }
 .adj-chip.neg { background:var(--ds-danger-wash); color:var(--ds-danger); }
-.weekly-segment-cell { min-width: 300px; }
-.weekly-trace { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 6px; }
-.weekly-trace summary { cursor: pointer; color: var(--ds-primary); font-size: 12px; }
-.course-trace-row { display:flex; justify-content:space-between; gap:12px; padding:5px 0; font-size:12px; color:var(--ds-ink-mute); }
-.mobile-weekly-trace { margin: 8px 0 12px; }
 .teacher-card-header { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }.teacher-card-header small { display:block; margin-top:4px; color:var(--ds-ink-mute); font-size:12px; }.component-row { display:flex; justify-content:space-between; gap:12px; padding:10px 0; border-bottom:1px solid var(--border); }.component-value { display:flex; flex-direction:column; align-items:flex-end; gap:4px; }.component-value small { color:var(--ds-ink-mute); font-size:12px; }.mobile-reason { margin:12px 0 0; color:var(--ds-ink-mute); font-size:13px; line-height:1.6; }
 @media (max-width: 900px) { .eligibility-page { padding:16px; }.summary-grid { grid-template-columns:repeat(2, minmax(0,1fr)); }.policy-chip { margin-left:0; }.desktop-table { display:none; }.mobile-list { display:grid; gap:12px; } }
 </style>

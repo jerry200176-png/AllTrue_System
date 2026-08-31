@@ -33,23 +33,6 @@ updates:
     source_refs:
       - "changelog:2026-08-31:monthly-opening-date"
 
-  - id: staff-2026-08-31-fulltime-payroll-calculation
-    published_at: "2026-08-31"
-    audiences:
-      - director
-    importance: major
-    title: 正職每週16段與薪資計算更完整
-    summary: 主任可直接看每週段數與可追溯課程，已知薪資先算出，未知資料清楚列待確認。
-    items:
-      - category: added
-        text: 正職老師薪資要件會顯示正課段數、試聽段數、總段數與是否達到每週16段，並可展開查看實際課程。
-      - category: improved
-        text: 每週段數以有效課程與點名判定；正課按時數、試聽每堂1段、輔導不計。
-      - category: improved
-        text: 薪資待審核項目不會遮住已知試算金額；現金加扣款、行政加給與缺少資料會依實際狀態清楚顯示。
-    source_refs:
-      - "changelog:2026-08-31:fulltime-payroll-calculation"
-
   - id: staff-2026-08-31-calendar-leave-capacity-preview
     published_at: "2026-08-31"
     audiences:

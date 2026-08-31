@@ -54,7 +54,7 @@ class TeacherEligibilityPolicy
             $missing = array_merge($missing, $component['missing_fields'] ?? []);
         }
 
-        $positive = ['weekly_16_segments', 'holiday_16_hours', 'weekday_afternoon', 'special_performance', 'admin_allowance'];
+        $positive = ['weekly_16_segments', 'holiday_16_hours', 'weekday_afternoon', 'special_performance'];
         $hasReview = collect($components)->contains(fn ($component) => $component['status'] === self::REVIEW);
         $hasBenefit = collect($positive)->contains(fn ($key) => ($components[$key]['rate'] ?? 0) > 0 || ($components[$key]['amount'] ?? 0) > 0);
 
@@ -69,25 +69,6 @@ class TeacherEligibilityPolicy
     {
         if ($weekly === null) {
             return $this->review(['weekly_segments', 'work_hours', 'weekly_exception_context'], '缺少每週課段、工時或例外資料。');
-        }
-
-        if (!empty($weekly['segment_rule'])) {
-            $segments = $weekly['segments'] ?? null;
-            $workHours = $weekly['work_hours'] ?? null;
-            if ($segments === null) {
-                return $this->review(['weekly_segments'], '缺少每週實際課程與有效點名資料。');
-            }
-            $thresholdPass = (float) $segments >= (float) $this->setting('weekly_segment_threshold', 16);
-            return $this->result(
-                $thresholdPass ? self::QUALIFIES : self::NOT_QUALIFIES,
-                $thresholdPass ? '依有效實際課程達到每週16段課。' : '有效實際課程未達每週16段課。',
-                [
-                    'weekly_segments' => round((float) $segments, 2),
-                    'work_hours' => $workHours === null ? null : round((float) $workHours, 2),
-                ],
-                $thresholdPass ? $this->setting('weekly_segment_bonus', 1000) : 0,
-                0
-            );
         }
 
         $segments = $weekly['segments'] ?? null;
