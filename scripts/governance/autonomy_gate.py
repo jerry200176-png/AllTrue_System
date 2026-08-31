@@ -336,10 +336,26 @@ def decide_manual_activation(
     return {"decision": "activation-gate-reached", "reason": "Founder-approved exact-main activation may proceed"}
 
 
-def environment_protection_is_valid(*, event_name: str, phase: str, prevent_self_review: bool) -> bool:
-    """Require self-review protection for every protected production path."""
+def environment_protection_is_valid(
+    *, event_name: str, phase: str, required_reviewers_configured: bool,
+    prevent_self_review: bool,
+) -> bool:
+    """Validate the solo-Founder production environment boundary.
 
-    return prevent_self_review is True
+    Protected actions still require an explicit workflow dispatch and exact
+    typed confirmation. In solo mode, a required reviewer is an
+    unsatisfiable self-approval queue, so the Environment must not carry that
+    rule. If a reviewer rule is reintroduced, fail closed regardless of its
+    self-review setting.
+    """
+
+    if event_name != "workflow_dispatch":
+        return False
+    if phase not in {"application-deploy", "phase1-create", "phase2-cutover", "phase3-lock"}:
+        return False
+    if required_reviewers_configured:
+        return False
+    return prevent_self_review is False
 
 
 def effective_tier(

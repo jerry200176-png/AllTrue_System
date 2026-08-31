@@ -420,17 +420,17 @@ jobs:
           environment = api(base)
           rules = environment.get("protection_rules") or []
           reviewers = [rule for rule in rules if rule.get("type") == "required_reviewers"]
-          if not reviewers or not all(rule.get("reviewers") for rule in reviewers):
-              raise SystemExit("production environment protection is not configured: Founder required reviewer missing")
-          prevent_self_review = all(rule.get("prevent_self_review") is True for rule in reviewers)
+          required_reviewers_configured = bool(reviewers)
+          prevent_self_review = all(rule.get("prevent_self_review") is True for rule in reviewers) if reviewers else False
           if not environment_protection_is_valid(
               event_name=os.environ["EVENT_NAME"],
               phase=os.environ.get("PHASE", ""),
+              required_reviewers_configured=required_reviewers_configured,
               prevent_self_review=prevent_self_review,
           ):
               raise SystemExit(
                   "production environment protection is not configured: "
-                  "prevent self-review must be enabled outside explicit application activation"
+                  "solo mode requires no required-reviewer rule; self-review cannot be a hidden gate"
               )
           if environment.get("can_admins_bypass") is not False:
               raise SystemExit("production environment protection is not configured: administrator bypass must be disabled")
@@ -442,7 +442,7 @@ jobs:
           names = sorted(str(policy.get("name")) for policy in policies)
           if names != ["main"]:
               raise SystemExit(f"production environment protection is not configured: expected only main branch, got {names}")
-          print("production-activation protection verified: required reviewer, no self-review, no admin bypass, main only")
+          print("production-activation solo boundary verified: no reviewer gate, no admin bypass, main only")
           PY
 
       - name: Require exact typed activation confirmation
