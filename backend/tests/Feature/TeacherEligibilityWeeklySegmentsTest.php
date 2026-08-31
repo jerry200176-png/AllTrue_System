@@ -98,6 +98,32 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
             ->contains(fn ($week) => ($week['metrics']['meets_16_segments'] ?? false) === true));
     }
 
+    public function test_final_status_includes_review_from_attendance_backed_weekly_result(): void
+    {
+        $director = $this->createDirector();
+        $teacher = $this->createTeacher();
+        $session = $this->createAttendedSession($teacher->id, 'one_on_one', '2026-08-03', '08:00', 120);
+        DB::table('ClassSession')->where('id', $session->id)->update(['EndTime' => '07:00:00']);
+
+        DB::table('fulltime_salary_profiles')->insert([
+            'teacher_id' => $teacher->id,
+            'branch_id' => 1,
+            'base_salary' => 33000,
+            'status' => 'approved',
+            'effective_from' => '2026-08-01',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this->withHeaders($this->auth($director['token']))
+            ->getJson('/api/v1/finance/teacher-eligibility?period=week&start=2026-08-03&end=2026-08-09&branch_id=1');
+
+        $response->assertOk();
+        $response->assertJsonPath('teachers.0.components.weekly_16_segments.status', 'review');
+        $response->assertJsonPath('teachers.0.overall_status', 'review');
+        $this->assertContains('weekly_segments', $response->json('teachers.0.missing_fields'));
+    }
+
     private function createDirector(): array
     {
         $user = User::create([

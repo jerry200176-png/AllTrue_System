@@ -27,7 +27,30 @@ API 的 `components.weekly_16_segments.metrics` 現在提供：
 這次保留現有 `FulltimeSettlementComposer`，只補現有 AllTrue source 的 adapter：
 `teacher_payroll_admin_allowances` 與已雙階段核准的
 `teacher_payroll_cash_adjustments`。不存在的 source 會是 review；source 存在
-但沒有資料則是已知零，不另建 `teacher_payroll_adjustments`。
+但沒有資料則是已知零。
+
+## Backer parity audit（2026-08-31）
+
+公開 Backer Web bundle 的正職報表確認，正職月份另有下列可人工調整欄位：
+
+| Backer `item_name` 前綴 | 單位 | AllTrue 現況 |
+|---|---:|---|
+| `[全薪]` | 元 | 可由既有、雙階段核准的 `teacher_payroll_cash_adjustments` 承接，但仍需 Founder 確認兩者是否為同一業務來源 |
+| `[科目]` | 科目數 | 尚無對應 canonical source |
+| `[輔導]` | 科目數 | 尚無對應 canonical source |
+| `[一對三]` | 次數／段 | 尚無對應 canonical source |
+| `[倍率]` | 百分比 | 尚無對應 canonical source |
+
+Backer 另從 teacher profile 讀取基礎 `multiplier`，並把 `[倍率]` 調整加上
+科目數達 20 的 +5%；現有 AllTrue 則由已核准政策元件組成倍率。兩者不能在
+沒有真實資料與定稿規則時直接互換。這些欄位不以課程資料反推，也不新增一套
+平行 payroll 真相；在來源與規則確認前，結算應保留 review／partial。
+
+因此本 PR 不猜測或建立 `teacher_payroll_adjustments` 替代表。完成 Backer
+對帳前，總部需提供一筆去識別化的實際教師／月份資料（底薪、profile
+multiplier、五類調整的 period／item_name／amount／is_recurring，以及預期
+總額），並確認 `[全薪]` 是否等同現有現金加扣款、 recurring 是否自動帶入下月，
+以及 `[倍率]` 應取代還是疊加 AllTrue 現有政策倍率。
 
 ## 現在的路徑
 

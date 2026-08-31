@@ -328,7 +328,12 @@ class TeacherEligibilityController extends Controller
                     'missing_fields' => ['teacher_payroll_admin_allowances'],
                 ];
             }
+            // The policy was evaluated once with a placeholder weekly value
+            // before the attendance-backed weekly result and source-availability
+            // overrides were applied. Reclassify from the final components so
+            // review/missing fields cannot silently disappear from the API.
             $result['components']['weekly_16_segments'] = $weeklyStatus;
+            $result = $this->finalizePolicyResult($result['components']);
             $settlement = FulltimeSettlementComposer::compose(
                 $result['components'],
                 $salaryByTeacher[$teacherId] ?? null,
@@ -604,6 +609,31 @@ class TeacherEligibilityController extends Controller
             'amount' => $amount,
             'rate' => 0,
             'missing_fields' => collect($weeklyRows)->flatMap(fn ($row) => $row['missing_fields'] ?? [])->unique()->values()->all(),
+        ];
+    }
+
+    private function finalizePolicyResult(array $components): array
+    {
+        $missing = collect($components)
+            ->flatMap(fn ($component) => $component['missing_fields'] ?? [])
+            ->unique()
+            ->values()
+            ->all();
+        $hasReview = collect($components)->contains(
+            fn ($component) => ($component['status'] ?? null) === TeacherEligibilityPolicy::REVIEW
+        );
+        $positiveKeys = ['weekly_16_segments', 'holiday_16_hours', 'weekday_afternoon', 'special_performance', 'admin_allowance'];
+        $hasBenefit = collect($positiveKeys)->contains(function ($key) use ($components) {
+            $component = $components[$key] ?? [];
+            return (float) ($component['rate'] ?? 0) > 0 || (float) ($component['amount'] ?? 0) > 0;
+        });
+
+        return [
+            'overall_status' => $hasReview
+                ? TeacherEligibilityPolicy::REVIEW
+                : ($hasBenefit ? TeacherEligibilityPolicy::QUALIFIES : TeacherEligibilityPolicy::NOT_QUALIFIES),
+            'components' => $components,
+            'missing_fields' => $missing,
         ];
     }
 
