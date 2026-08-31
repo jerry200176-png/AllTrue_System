@@ -53,16 +53,16 @@ jobs:
             if [[ -n "$PR_NUMBER" ]]; then
               for _ in {1..24}; do
                 PR_STATE="$(gh api "/repos/${REPO}/pulls/${PR_NUMBER}" --jq 'if .merged_at then "merged" else .state end')"
-                if [[ "$PR_STATE" == merged:* ]]; then
+                if [[ "$PR_STATE" == "merged" ]]; then
                   break
                 fi
-                if [[ "$PR_STATE" == closed:* ]]; then
+                if [[ "$PR_STATE" == "closed" ]]; then
                   echo "Auto-merge source PR #${PR_NUMBER} closed without merge; no CI dispatch."
                   exit 0
                 fi
                 sleep 10
               done
-              if [[ "$PR_STATE" != merged:* ]]; then
+              if [[ "$PR_STATE" != "merged" ]]; then
                 echo "Auto-merge source PR #${PR_NUMBER} did not merge within the bounded window; scheduler remains fallback."
                 exit 0
               fi
