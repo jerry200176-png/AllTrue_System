@@ -1,0 +1,355 @@
+{
+  "actor": "human",
+  "bootstrap_path": ".exo/cache/sessions/human.bootstrap.md",
+  "concurrent": false,
+  "context_window_tokens": null,
+  "git_branch": "chore/task-TKT-20260831-P1-MUZHA-RESCHEDULE",
+  "git_head_sha": "98ea647de03994a7214895b61e28eb5e45686308",
+  "handoff_from": null,
+  "lock": {
+    "created_at": "2026-08-31T21:59:14+08:00",
+    "expires_at": "2026-09-01T05:59:14+08:00",
+    "fencing_token": 1,
+    "heartbeat_at": "2026-08-31T21:59:14+08:00",
+    "lease_expires_at": "2026-09-01T05:59:14+08:00",
+    "owner": "human",
+    "role": "implementer",
+    "ticket_id": "TKT-20260831-215910-8Y43",
+    "updated_at": "2026-08-31T21:59:14+08:00",
+    "workspace": {
+      "base": "main",
+      "branch": "codex/TKT-20260831-215910-8Y43"
+    }
+  },
+  "machine_snapshot": {
+    "cpu_count": 12,
+    "load_avg_1m": 0.3,
+    "ram_available_gb": 3.9,
+    "ram_total_gb": 4.8
+  },
+  "mode": "work",
+  "model": "gpt-5",
+  "pid": 1302785,
+  "pr_check": null,
+  "role": "implementer",
+  "session_id": "SES-20260831215914-587601CB",
+  "start_advisories": [
+    {
+      "detail": {
+        "actor": "human",
+        "branch": "chore/task-bug247-dump-refresh-20260831",
+        "overlapping_patterns": [
+          ".exo/**",
+          ".exo/cache/**",
+          ".exo/memory/**",
+          ".exo/locks/**",
+          ".exo/tickets/**",
+          ".exo/logs/**"
+        ],
+        "session_id": "SES-20260831080842-C65EB45C",
+        "ticket_id": "TKT-20260831-080838-ENZB"
+      },
+      "kind": "unmerged_work",
+      "message": "Unmerged work on branch chore/task-bug247-dump-refresh-20260831 (ticket=TKT-20260831-080838-ENZB, actor=human) \u2014 Refresh paired read-only evidence requests for in-app bug 247 after restoring ma",
+      "severity": "info"
+    },
+    {
+      "detail": {
+        "actor": "human",
+        "branch": "chore/task-bug247-evidence-refresh-20260831",
+        "overlapping_patterns": [
+          ".exo/cache/**",
+          ".exo/**",
+          ".exo/memory/**",
+          ".exo/locks/**",
+          ".exo/tickets/**",
+          ".exo/logs/**"
+        ],
+        "session_id": "SES-20260831073326-066ED59E",
+        "ticket_id": "TKT-20260831-073322-7VYG"
+      },
+      "kind": "unmerged_work",
+      "message": "Unmerged work on branch chore/task-bug247-evidence-refresh-20260831 (ticket=TKT-20260831-073322-7VYG, actor=human) \u2014 Refreshed the paired read-only bug dump requests for in-app bug 247, corrected t",
+      "severity": "info"
+    },
+    {
+      "detail": {
+        "actor": "human",
+        "branch": "chore/task-smart-calendar-room-form-a11y-20260831",
+        "overlapping_patterns": [
+          "frontend/src/**",
+          "frontend/src/pages/SmartCalendar.vue",
+          ".exo/cache/**",
+          ".exo/**",
+          ".exo/memory/**",
+          ".exo/locks/**",
+          ".exo/tickets/**",
+          ".exo/logs/**"
+        ],
+        "session_id": "SES-20260831015611-CACDD37D",
+        "ticket_id": "TKT-20260831-015607-L7IS"
+      },
+      "kind": "unmerged_work",
+      "message": "Unmerged work on branch chore/task-smart-calendar-room-form-a11y-20260831 (ticket=TKT-20260831-015607-L7IS, actor=human) \u2014 Added explicit accessible names to the SmartCalendar director room-manager name ",
+      "severity": "info"
+    },
+    {
+      "detail": {
+        "actor": "human",
+        "branch": "chore/task-learning-record-selection-a11y-20260831",
+        "overlapping_patterns": [
+          "frontend/src/**",
+          "frontend/src/pages/**",
+          ".exo/cache/**",
+          ".exo/**",
+          ".exo/memory/**",
+          ".exo/locks/**",
+          ".exo/tickets/**",
+          ".exo/logs/**"
+        ],
+        "session_id": "SES-20260831013801-29EC6D3E",
+        "ticket_id": "TKT-20260831-013757-EJR0"
+      },
+      "kind": "unmerged_work",
+      "message": "Unmerged work on branch chore/task-learning-record-selection-a11y-20260831 (ticket=TKT-20260831-013757-EJR0, actor=human) \u2014 Added contextual aria-labels to Learning Records director batch-selection contro",
+      "severity": "info"
+    },
+    {
+      "detail": {
+        "actor": "human",
+        "branch": "chore/task-attendance-checkbox-a11y-20260831",
+        "overlapping_patterns": [
+          "frontend/src/**",
+          "frontend/src/pages/**",
+          ".exo/**",
+          ".exo/cache/**",
+          ".exo/memory/**",
+          ".exo/locks/**",
+          ".exo/tickets/**",
+          ".exo/logs/**"
+        ],
+        "session_id": "SES-20260831012053-2F0BEEBE",
+        "ticket_id": "TKT-20260831-012049-ELLK"
+      },
+      "kind": "unmerged_work",
+      "message": "Unmerged work on branch chore/task-attendance-checkbox-a11y-20260831 (ticket=TKT-20260831-012049-ELLK, actor=human) \u2014 Named AttendancePage pending-session selection checkboxes with visible student, ",
+      "severity": "info"
+    },
+    {
+      "detail": {
+        "actor": "agent:codex",
+        "branch": "chore/task-students-import-button-a11y-20260831",
+        "overlapping_patterns": [
+          "frontend/src/**",
+          "frontend/src/pages/**",
+          ".exo/**",
+          ".exo/cache/**",
+          ".exo/memory/**",
+          ".exo/locks/**",
+          ".exo/tickets/**",
+          ".exo/logs/**"
+        ],
+        "session_id": "SES-20260831010106-C37B87B0",
+        "ticket_id": "TKT-20260831-010101-YH5H"
+      },
+      "kind": "unmerged_work",
+      "message": "Unmerged work on branch chore/task-students-import-button-a11y-20260831 (ticket=TKT-20260831-010101-YH5H, actor=agent:codex) \u2014 Replaced the non-focusable StudentsList import label with a native labelled butt",
+      "severity": "info"
+    },
+    {
+      "detail": {
+        "actor": "agent:codex",
+        "branch": "chore/task-subject-units-disclosure-a11y-20260831",
+        "overlapping_patterns": [
+          "frontend/src/**",
+          "frontend/src/pages/**",
+          ".exo/**",
+          ".exo/cache/**",
+          ".exo/memory/**",
+          ".exo/locks/**",
+          ".exo/tickets/**",
+          ".exo/logs/**"
+        ],
+        "session_id": "SES-20260831004125-6DA443E7",
+        "ticket_id": "TKT-20260831-004116-P8Z9"
+      },
+      "kind": "unmerged_work",
+      "message": "Unmerged work on branch chore/task-subject-units-disclosure-a11y-20260831 (ticket=TKT-20260831-004116-P8Z9, actor=agent:codex) \u2014 Split Subject Units disclosure controls into separate native toggles; focused ac",
+      "severity": "info"
+    },
+    {
+      "detail": {
+        "actor": "human",
+        "branch": "chore/task-learning-filters-clear-action-a11y-20260830",
+        "overlapping_patterns": [
+          "frontend/src/**",
+          "frontend/src/pages/**",
+          ".exo/**",
+          ".exo/cache/**",
+          ".exo/memory/**",
+          ".exo/locks/**",
+          ".exo/tickets/**",
+          ".exo/logs/**"
+        ],
+        "session_id": "SES-20260830204110-0C2788ED",
+        "ticket_id": "TKT-20260830-204105-QKZI"
+      },
+      "kind": "unmerged_work",
+      "message": "Unmerged work on branch chore/task-learning-filters-clear-action-a11y-20260830 (ticket=TKT-20260830-204105-QKZI, actor=human) \u2014 Split Learning Records filter controls into independent native buttons; focused ",
+      "severity": "info"
+    },
+    {
+      "detail": {
+        "actor": "human",
+        "branch": "chore/task-director-makeup-candidate-tabs-a11y-20260830",
+        "overlapping_patterns": [
+          "frontend/src/**",
+          "frontend/src/pages/**",
+          ".exo/**",
+          ".exo/cache/**",
+          ".exo/memory/**",
+          ".exo/locks/**",
+          ".exo/tickets/**",
+          ".exo/logs/**"
+        ],
+        "session_id": "SES-20260830202355-F76917BA",
+        "ticket_id": "TKT-20260830-202351-RQ41"
+      },
+      "kind": "unmerged_work",
+      "message": "Unmerged work on branch chore/task-director-makeup-candidate-tabs-a11y-20260830 (ticket=TKT-20260830-202351-RQ41, actor=human) \u2014 Connected director parent-leave makeup candidate date tabs to their active label",
+      "severity": "info"
+    },
+    {
+      "detail": {
+        "actor": "human",
+        "branch": "chore/task-learning-feedback-preview-a11y-20260830",
+        "overlapping_patterns": [
+          "frontend/src/**",
+          "frontend/src/pages/**",
+          ".exo/cache/**",
+          ".exo/**",
+          ".exo/memory/**",
+          ".exo/locks/**",
+          ".exo/tickets/**",
+          ".exo/logs/**"
+        ],
+        "session_id": "SES-20260830200626-85068257",
+        "ticket_id": "TKT-20260830-200621-56BV"
+      },
+      "kind": "unmerged_work",
+      "message": "Unmerged work on branch chore/task-learning-feedback-preview-a11y-20260830 (ticket=TKT-20260830-200621-56BV, actor=human) \u2014 Converted both Learning Records parent-feedback preview chips from non-focusable",
+      "severity": "info"
+    },
+    {
+      "detail": {
+        "actor": "agent:codex",
+        "branch": "chore/task-calendar-teacher-list-a11y-20260830",
+        "overlapping_patterns": [
+          "frontend/src/**",
+          "frontend/src/pages/SmartCalendar.vue",
+          ".exo/cache/**",
+          ".exo/**",
+          ".exo/memory/**",
+          ".exo/locks/**",
+          ".exo/tickets/**",
+          ".exo/logs/**"
+        ],
+        "session_id": "SES-20260830193606-5D0FA3BE",
+        "ticket_id": "TKT-20260830-193601-RIQ2"
+      },
+      "kind": "unmerged_work",
+      "message": "Unmerged work on branch chore/task-calendar-teacher-list-a11y-20260830 (ticket=TKT-20260830-193601-RIQ2, actor=agent:codex) \u2014 Clarified SmartCalendar view tabs and panels, calendar filter/date semantics, an",
+      "severity": "info"
+    },
+    {
+      "detail": {
+        "actor": "human",
+        "branch": "chore/task-attendance-controls-a11y-20260830",
+        "overlapping_patterns": [
+          "frontend/src/**",
+          "frontend/src/pages/**",
+          ".exo/**",
+          ".exo/cache/**",
+          ".exo/memory/**",
+          ".exo/locks/**",
+          ".exo/tickets/**",
+          ".exo/logs/**"
+        ],
+        "session_id": "SES-20260830064907-5AB0366C",
+        "ticket_id": "TKT-20260830-064903-SYI5"
+      },
+      "kind": "unmerged_work",
+      "message": "Unmerged work on branch chore/task-attendance-controls-a11y-20260830 (ticket=TKT-20260830-064903-SYI5, actor=human) \u2014 Added explicit accessible names to attendance teacher date, attendance record da",
+      "severity": "info"
+    },
+    {
+      "detail": {
+        "actor": "agent:codex",
+        "branch": "chore/task-class-session-response-envelope-20260830",
+        "overlapping_patterns": [
+          ".exo/**",
+          ".exo/cache/**",
+          ".exo/memory/**",
+          ".exo/locks/**",
+          ".exo/tickets/**",
+          ".exo/logs/**"
+        ],
+        "session_id": "SES-20260830062346-77F484B9",
+        "ticket_id": "TKT-20260830-062342-OROW"
+      },
+      "kind": "unmerged_work",
+      "message": "Unmerged work on branch chore/task-class-session-response-envelope-20260830 (ticket=TKT-20260830-062342-OROW, actor=agent:codex) \u2014 Added class-sessions response envelope, pagination, aliases, stable row keys/typ",
+      "severity": "info"
+    },
+    {
+      "detail": {
+        "actor": "agent:codex",
+        "branch": "chore/task-calendar-247-regression-20260830",
+        "overlapping_patterns": [
+          "frontend/src/**",
+          "docs/**",
+          ".exo/**",
+          ".exo/cache/**",
+          ".exo/memory/**",
+          ".exo/locks/**",
+          ".exo/tickets/**",
+          ".exo/logs/**"
+        ],
+        "session_id": "SES-20260830061100-E28BCE49",
+        "ticket_id": "TKT-20260830-061056-4LIH"
+      },
+      "kind": "unmerged_work",
+      "message": "Unmerged work on branch chore/task-calendar-247-regression-20260830 (ticket=TKT-20260830-061056-4LIH, actor=agent:codex) \u2014 Added exact #247 production-payload regression coverage for mixed-capacity subst",
+      "severity": "info"
+    },
+    {
+      "detail": {
+        "actor": "agent:codex",
+        "branch": "chore/task-teacher-overdue-partial-failure-20260830",
+        "overlapping_patterns": [
+          "frontend/src/**",
+          "frontend/**",
+          "frontend/src/pages/**",
+          ".exo/**",
+          ".exo/cache/**",
+          ".exo/memory/**",
+          ".exo/locks/**",
+          ".exo/tickets/**",
+          ".exo/logs/**"
+        ],
+        "session_id": "SES-20260830055437-8CC0259B",
+        "ticket_id": "TKT-20260830-055433-A4MH"
+      },
+      "kind": "unmerged_work",
+      "message": "Unmerged work on branch chore/task-teacher-overdue-partial-failure-20260830 (ticket=TKT-20260830-055433-A4MH, actor=agent:codex) \u2014 Fixed TeacherHome partial-failure classification: attendance and weekly projecti",
+      "severity": "info"
+    }
+  ],
+  "started_at": "2026-08-31T21:59:14+08:00",
+  "status": "active",
+  "task": "P1 calendar reschedule capacity parity regression fix",
+  "ticket_id": "TKT-20260831-215910-8Y43",
+  "topic_id": "repo:default",
+  "vendor": "openai",
+  "writing_session": null
+}

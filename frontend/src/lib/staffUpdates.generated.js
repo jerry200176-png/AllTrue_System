@@ -4,6 +4,43 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-31-calendar-leave-capacity-preview",
+    "publishedAt": "2026-08-31",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "行事曆調課不再誤判請假時段已滿",
+    "summary": "調課預覽會正確排除已請假或取消的課程，和課程查找看到相同的可用時段。",
+    "items": [
+      "行事曆調課的送出前檢查現在會排除同日期已請假、已調整請假、核准請假與取消的課程，不會再把已空出的老師時段誤判為滿段。",
+      "仍會保留有效課程的老師容量檢查，送出時也會由後端再次確認，避免只因畫面快取而放行衝堂。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "行事曆調課的送出前檢查現在會排除同日期已請假、已調整請假、核准請假與取消的課程，不會再把已空出的老師時段誤判為滿段。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "仍會保留有效課程的老師容量檢查，送出時也會由後端再次確認，避免只因畫面快取而放行衝堂。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-31:calendar-leave-capacity-preview"
+    ],
+    "date": "2026-08-31",
+    "version": "2026.08.31"
+  },
+  {
     "id": "staff-2026-08-31-bug-triage-result-contract",
     "publishedAt": "2026-08-31",
     "effectiveAt": null,
