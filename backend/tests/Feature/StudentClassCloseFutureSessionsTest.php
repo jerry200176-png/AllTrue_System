@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\AuthToken;
+use App\Models\PaymentReport;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
@@ -109,6 +110,89 @@ class StudentClassCloseFutureSessionsTest extends TestCase
             $this->assertSame('cancelled', DB::table('ClassSession')->where('id', $makeupId)->value('Status'));
             $course->refresh();
             $this->assertSame(1, (int) $course->Stop);
+            $this->assertSame('settled', $course->closed_reason);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_unpaid_settlement_is_allowed_but_marked_pending_reconciliation(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-08-08 10:00:00'));
+        try {
+            $token = $this->createDirectorToken([1]);
+            $student = $this->createStudent();
+            $course = $this->createStudentClass($student->id, [
+                'Paid' => 0,
+                'Charge' => 8000,
+                'RemainingSessions' => 0,
+                'UsedSessions' => 8,
+                'SessionCount' => 8,
+            ]);
+
+            $this->postJson(
+                "/api/v1/student-classes/{$course->ID}/pause",
+                ['action' => 'pause', 'reason' => 'settled'],
+                ['Authorization' => "Bearer {$token}"]
+            )->assertOk()
+                ->assertJsonPath('pending_reconciliation', true);
+
+            $course->refresh();
+            $this->assertSame(1, (int) $course->Stop);
+            $this->assertSame('settled_pending', $course->closed_reason);
+            $this->assertSame(0, (int) $course->Paid, '結案不應把未繳費課程改成已繳費');
+
+            $alert = $this->getJson('/api/v1/alerts/tuition?branch_id=1', [
+                'Authorization' => "Bearer {$token}",
+            ]);
+            $alert->assertOk()
+                ->assertJsonPath('0.id', $course->ID)
+                ->assertJsonPath('0.payment_status', 'pending_reconciliation');
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_pending_settlement_is_listed_for_reconciliation_and_confirming_payment_finishes_it(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-08-08 10:00:00'));
+        try {
+            $token = $this->createDirectorToken([1]);
+            $student = $this->createStudent();
+            $course = $this->createStudentClass($student->id, [
+                'Paid' => 0,
+                'Charge' => 8800,
+                'Stop' => 1,
+                'closed_reason' => 'settled_pending',
+            ]);
+
+            $settled = $this->getJson('/api/v1/accounting/settled-courses?branch_id=1', [
+                'Authorization' => "Bearer {$token}",
+            ]);
+            $settled->assertOk()
+                ->assertJsonPath('summary.pending_reconciliation_count', 1)
+                ->assertJsonPath('data.0.student_class_id', $course->ID)
+                ->assertJsonPath('data.0.pending_reconciliation', true)
+                ->assertJsonPath('data.0.outstanding_amount', 8800);
+
+            $report = PaymentReport::create([
+                'StudentID' => $student->id,
+                'StudentClassID' => $course->ID,
+                'reported_by_name' => $student->name,
+                'payment_date' => '2026-08-08',
+                'payment_method' => 'cash',
+                'reported_amount' => 8800,
+                'status' => 'pending',
+                'report_token_hash' => hash('sha256', 'test-settled-reconciliation'),
+                'token_expires_at' => now()->addDay(),
+            ]);
+
+            $this->putJson("/api/v1/payment-reports/{$report->id}/confirm", [], [
+                'Authorization' => "Bearer {$token}",
+            ])->assertOk();
+
+            $course->refresh();
+            $this->assertSame(1, (int) $course->Paid);
             $this->assertSame('settled', $course->closed_reason);
         } finally {
             Carbon::setTestNow();

@@ -64,14 +64,16 @@ describe('CourseManagement action hierarchy', () => {
     expect(source).toContain('let manualSessionCheckController = null;');
   });
 
-  it('offers explicit settlement for paid courses with remaining balance in both director entry points', () => {
+  it('offers explicit settlement for unpaid courses and preserves reconciliation messaging', () => {
     expect(source).toContain("&& (isSessionMode(c) || isMonthlyMode(c))");
-    expect(source).toContain("&& c.payment_status === 'paid';");
+    expect(source).toContain("c.closed_reason !== 'settled_pending';");
     expect(source).toContain('>結案（不續報）</button>');
     expect(studentsSource).toContain("['session', 'monthly'].includes");
-    expect(studentsSource).toContain("&& isCourseSettled(course)");
+    expect(studentsSource).toContain("course?.closed_reason !== 'settled_pending'");
     expect(source).toContain("reason: 'settled'");
     expect(studentsSource).toContain("reason: 'settled'");
+    expect(source).toContain('settled_pending');
+    expect(studentsSource).toContain('settled_pending');
     expect(source).toContain('forfeit_remaining: true');
     expect(studentsSource).toContain('forfeit_remaining: true');
     expect(source).toContain('放棄這 ${remaining} 堂剩餘額度');
