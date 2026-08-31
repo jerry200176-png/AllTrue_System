@@ -37,11 +37,13 @@ checks:
 - npm run lint:no-undef
 - npm run build
 type: feature
-status: todo
+status: done
 spec_ref: null
 notes:
+- "Completed on main via 84c9e2e6 (#2157), a567f55e (#2162), and ace97deb."
 - Expanded LOC budget from 400 to 650 to cover the presentation-only card CSS,
   required staff release-note source, and generated release-note artifacts.
+- "Evidence: StudentsList accessibility/interaction checks, no-undef lint, and Vite build passed; existing handlers and data contracts remain in place."
 blockers: []
 created_at: '2026-08-28T19:39:47+08:00'
 brain_dump: ''
