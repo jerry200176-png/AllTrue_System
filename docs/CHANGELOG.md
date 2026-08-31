@@ -1,3 +1,8 @@
+## 2026-09-01 — fix(calendar): 行事曆調課不再被不完整預判誤擋
+<!-- release-notes: staff_update=staff-2026-09-01-calendar-reschedule-authority -->
+- 行事曆調課的送出前提示改為提醒，不會因畫面尚未載入完整的請假／課堂資料而直接禁止確認。
+- 確認後仍由後端做最後衝堂檢查；真正衝堂會保留錯誤提示且不會寫入變更。
+
 ## 2026-09-01 — improved(ux): Bug 回報提交後保留追蹤入口
 <!-- release-notes: staff_update=staff-2026-09-01-bug-report-tracking -->
 - Bug 回報送出成功後會保留回報編號與確認訊息，不再短暫顯示後自動消失。

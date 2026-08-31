@@ -3,6 +3,22 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-01-calendar-reschedule-authority
+    published_at: "2026-09-01"
+    audiences:
+      - director
+      - teacher
+    importance: action_required
+    title: 行事曆調課不再被畫面誤擋
+    summary: 請假資料尚在同步時，調課仍可送出由系統做最後確認；真正衝堂仍會被擋下。
+    items:
+      - category: fixed
+        text: 行事曆的送出前提示不會再因資料尚未完整載入而直接禁止調課。
+      - category: improved
+        text: 確認後仍由系統做最後衝堂檢查；若確實衝堂，資料不會被變更。
+    source_refs:
+      - "changelog:2026-09-01:calendar-reschedule-authority"
+
   - id: staff-2026-09-01-bug-report-tracking
     published_at: "2026-09-01"
     audiences:
