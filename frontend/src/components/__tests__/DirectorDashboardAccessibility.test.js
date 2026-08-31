@@ -28,4 +28,13 @@ describe('DirectorDashboard view switcher accessibility', () => {
     expect(waiveButton).toBeDefined();
     expect(waiveButton).not.toContain('v-if=');
   });
+
+  it('connects makeup candidate date tabs to the active candidate panel', () => {
+    expect(source).toContain(':id="`director-candidate-date-${workflow.id}-${date}`"');
+    expect(source).toContain(':aria-controls="`director-candidate-panel-${workflow.id}`"');
+    expect(source).toContain('role="tabpanel"');
+    expect(source).toContain(':aria-labelledby="`director-candidate-date-${workflow.id}-${selectedWorkflowCandidateDates[workflow.id]}`"');
+    expect(source).toContain('tabindex="0"');
+    expect(source).toContain('role="radiogroup"');
+  });
 });

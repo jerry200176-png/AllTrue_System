@@ -1,0 +1,45 @@
+id: TKT-20260831-091314-LE5V
+title: Implement autonomous production activation policy
+intent: Implement autonomous production activation policy
+kind: task
+parent_id: INT-20260831-091307-AQZX
+boundary: Do not change application runtime behavior, production data, credentials,
+  GitHub environment settings, or execute SSH/artisan/migrations. Preserve protected
+  handling for true production side effects.
+success_condition: Safe exact-main runtime ranges automatically deploy and verify
+  without human click; high-risk production side effects remain on the protected environment
+  path; regression tests cover both branches.
+priority: 0
+labels:
+- production-delivery
+scope:
+  allow:
+  - scripts/governance/**
+  - scripts/tests/**
+  - .github/workflows/deploy.yml
+  - docs/RUNBOOK_MERGE_TO_ACTIVATION.md
+  - docs/governance/RISK_BASED_MERGE_POLICY.md
+  - docs/CONTROL_PLANE_CONTRACT.md
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 12
+  max_loc_changed: 400
+checks:
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: todo
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-31T09:13:14+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default

@@ -12,11 +12,24 @@
           <span>目前列表 {{ displayStudents.length }} 人</span>
         </template>
         <template #actions>
-          <label class="button-outline">
+          <button
+            type="button"
+            class="button-outline"
+            aria-label="匯入學生名單"
+            @click="openImportDialog"
+          >
             <span class="material-symbols-outlined btn-icon" aria-hidden="true">upload_file</span>
             匯入名單
-            <input type="file" @change="importStudents" accept=".csv,.xlsx" style="display: none;" />
-          </label>
+          </button>
+          <input
+            ref="importInput"
+            class="student-import-input"
+            type="file"
+            accept=".csv,.xlsx"
+            tabindex="-1"
+            aria-hidden="true"
+            @change="importStudents"
+          />
           <AtButton shape="rect" variant="primary" icon="add" @click="openAddStudent">新增學生</AtButton>
           <button type="button" class="small ghost" @click="openIdentityModal">
             <span class="material-symbols-outlined btn-icon">merge</span>
@@ -884,6 +897,7 @@ const expandedId = ref(null);
 const filters = ref({ name: '', grade: '', status: 'active' });
 const selectedStudentIds = ref([]);
 const showHistoricalCourses = ref(false);
+const importInput = ref(null);
 
 // Cross-campus identity bridge (director/super_admin API; no auto-merge).
 const showIdentityModal = ref(false);
@@ -3068,6 +3082,10 @@ function openLatestPaymentInfo(course, studentName = '') {
 }
 
 // --- CSV Import ---
+const openImportDialog = () => {
+  importInput.value?.click();
+};
+
 const importStudents = async (event) => {
   const file = event.target.files[0];
   if (!file) return;
@@ -3251,6 +3269,17 @@ table th { font-size: 12.5px; }
   align-items: center;
   gap: 4px;
   transition: background-color var(--ds-motion-fast, 120ms) var(--ds-ease-standard, ease);
+}
+.student-import-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 .button-outline:hover {
   background: var(--ds-canvas-soft);

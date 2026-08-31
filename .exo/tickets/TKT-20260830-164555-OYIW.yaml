@@ -1,0 +1,40 @@
+id: TKT-20260830-164555-OYIW
+title: Reconcile main CI events for autonomous deploy queue
+intent: Reconcile main CI events for autonomous deploy queue
+kind: task
+parent_id: INT-20260829-105203-Y3JI
+boundary: Only add a fail-closed scheduler that dispatches exact-main CI when auto-merge
+  leaves no CI event; never deploy, SSH, mutate production, alter secrets, bypass
+  required checks, or bypass T3 activation.
+success_condition: After an auto-merge, current main receives an exact-head CI run
+  when none exists; the existing deploy workflow remains the only production executor
+  and still gates on CI, classification, exact SHA, health, smoke, and rollback.
+priority: 1
+labels:
+- governance
+scope:
+  allow:
+  - .github/workflows/autonomous-convergence.yml
+  - scripts/tests/test_autonomous_convergence.py
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 4
+  max_loc_changed: 180
+checks:
+- npm run test:unit
+type: feature
+status: todo
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-30T16:45:55+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default

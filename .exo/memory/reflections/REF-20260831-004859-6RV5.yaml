@@ -1,0 +1,16 @@
+id: REF-20260831-004859-6RV5
+pattern: Disclosure header wraps a separate native button
+insight: Use one native button as the disclosure control, keep the controlled panel
+  mounted with v-show, and expose aria-expanded plus aria-controls; never leave the
+  parent container clickable around the button.
+severity: low
+scope: TKT-20260831-004116-P8Z9
+actor: agent:codex
+session_id: SES-20260831004125-6DA443E7
+created_at: '2026-08-31T00:48:59+08:00'
+status: active
+tags:
+- accessibility
+- vue
+- disclosure
+hit_count: 0

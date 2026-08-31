@@ -1,0 +1,14 @@
+id: REF-20260831-012442-LQEB
+pattern: Attendance pending-session checkboxes lacked row context
+insight: In high-frequency batch workflows, every repeated selection control needs
+  a session-specific accessible name that combines the visible person, time, and optional
+  subject. Keep desktop and mobile markup aligned, preserve the existing checked binding
+  and change handler, and cover both rendered variants in one focused contract.
+severity: medium
+scope: attendance
+actor: human
+session_id: SES-20260831012053-2F0BEEBE
+created_at: '2026-08-31T01:24:42+08:00'
+status: active
+tags: []
+hit_count: 0

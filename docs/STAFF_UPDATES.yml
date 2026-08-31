@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-31-bug-triage-result-contract
+    published_at: "2026-08-31"
+    audiences:
+      - director
+    importance: digest
+    title: Bug 回報分診結果更準確
+    summary: Bug 回報完成分診後，系統會正確記錄處理結果，避免重複操作。
+    items:
+      - category: fixed
+        text: Bug 回報分診完成後，公開回覆會被正確記錄為已完成，避免畫面已更新卻被誤判失敗而重複處理。
+      - category: improved
+        text: 不改 Bug 狀態規則、回覆權限或帳務資料；只有真正成功保存的分診結果才會被視為完成。
+    source_refs:
+      - "changelog:2026-08-31:bug-triage-result-contract"
+
   - id: staff-2026-08-30-teacher-home-single-surface
     published_at: "2026-08-30"
     audiences:

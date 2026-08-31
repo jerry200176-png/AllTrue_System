@@ -6,6 +6,9 @@ on:
     types: [completed]
     branches: [main]
 
+  repository_dispatch:
+    types: [autonomous-production-deploy]
+
   workflow_dispatch:
     inputs:
       phase:
@@ -40,7 +43,7 @@ jobs:
       - name: Checkout workflow revision
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ github.event.workflow_run.head_sha || github.event.client_payload.target_sha || github.sha }}
 
       - name: Verify deploy state-machine contract
         run: python3 scripts/tests/test_deploy_activation_state.py
@@ -48,7 +51,7 @@ jobs:
   resolve-target:
     name: Resolve exact activation target
     needs: contract-test
-    if: ${{ needs.contract-test.result == 'success' && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || (github.event_name == 'workflow_dispatch' && inputs.phase == 'application-deploy')) }}
+    if: ${{ needs.contract-test.result == 'success' && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || (github.event_name == 'workflow_dispatch' && inputs.phase == 'application-deploy') || (github.event_name == 'repository_dispatch' && github.event.action == 'autonomous-production-deploy')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 3
     outputs:
@@ -59,7 +62,7 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           WORKFLOW_REF: ${{ github.ref }}
-          TARGET_SHA_INPUT: ${{ github.event.workflow_run.head_sha || inputs.target_sha }}
+          TARGET_SHA_INPUT: ${{ github.event.workflow_run.head_sha || github.event.client_payload.target_sha || inputs.target_sha }}
           REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -77,7 +80,7 @@ jobs:
 
           gh api "/repos/${REPO}/commits/${TARGET_SHA}" >/dev/null
 
-          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+          if [[ "$EVENT_NAME" == "workflow_dispatch" || "$EVENT_NAME" == "repository_dispatch" ]]; then
             MAIN_SHA="$(gh api "/repos/${REPO}/git/ref/heads/main" --jq '.object.sha')"
             if [[ "$TARGET_SHA" != "$MAIN_SHA" ]]; then
               echo "::error::Manual activation must target the current main SHA; requested ${TARGET_SHA}, current ${MAIN_SHA}."
@@ -111,6 +114,8 @@ jobs:
     timeout-minutes: 3
     outputs:
       deployable: ${{ steps.detect.outputs.deployable }}
+      runtime_base_sha: ${{ steps.detect.outputs.runtime_base_sha }}
+      detection_reason: ${{ steps.detect.outputs.detection_reason }}
     steps:
       - name: Checkout target revision
         uses: actions/checkout@v7
@@ -123,6 +128,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           HEAD_SHA: ${{ needs.resolve-target.outputs.target_sha }}
+          PRODUCTION_URL: https://daan.lifenet.com.tw
         run: |
           python3 - <<'PYEOF'
           import json
@@ -133,31 +139,56 @@ jobs:
 
           repo = os.environ["REPO"]
           head = os.environ["HEAD_SHA"]
+          output = os.environ["GITHUB_OUTPUT"]
 
-          commit = json.loads(subprocess.check_output(
-              ["gh", "api", f"/repos/{repo}/commits/{head}"],
-              text=True,
-          ))
-          parents = commit.get("parents", [])
-          if not parents:
-              print("deployable=true")
-              with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-                  f.write("deployable=true\n")
+          def emit(deployable, base_sha, reason):
+              with open(output, "a", encoding="utf-8") as stream:
+                  stream.write(f"deployable={str(deployable).lower()}\n")
+                  stream.write(f"runtime_base_sha={base_sha}\n")
+                  stream.write(f"detection_reason={reason}\n")
+
+          try:
+              manifest_process = subprocess.run(
+                  [
+                      "curl", "-fsSL", "--max-time", "20",
+                      f"{os.environ['PRODUCTION_URL'].rstrip('/')}/deployment.json",
+                  ],
+                  text=True,
+                  capture_output=True,
+                  check=True,
+              )
+              manifest = json.loads(manifest_process.stdout)
+              deployed = str(manifest.get("backend_sha") or "").strip().lower()
+          except (OSError, ValueError, subprocess.CalledProcessError):
+              deployed = ""
+
+          if len(deployed) != 40 or any(char not in "0123456789abcdef" for char in deployed):
+              # Unknown runtime identity must enter the classifier and hold; it
+              # must never become a false no-op that hides an undeployed range.
+              emit(True, "unknown", "production deployment identity unavailable; classifier must fail closed")
               raise SystemExit(0)
 
-          base = parents[0]["sha"]
-          comparison = json.loads(subprocess.check_output(
-              ["gh", "api", f"/repos/{repo}/compare/{base}...{head}"],
+          if deployed == head:
+              emit(False, deployed, "production manifest already matches target SHA")
+              raise SystemExit(0)
+
+          comparison_process = subprocess.run(
+              ["gh", "api", f"/repos/{repo}/compare/{deployed}...{head}"],
               text=True,
-          ))
+              capture_output=True,
+          )
+          if comparison_process.returncode != 0:
+              emit(True, deployed, "production-to-main comparison unavailable; classifier must fail closed")
+              raise SystemExit(0)
+          comparison = json.loads(comparison_process.stdout)
           files = [item.get("filename", "") for item in comparison.get("files", [])]
           deployable = any(is_deployable_path(path) for path in files)
-          print("Changed files:")
+          print(f"Production runtime base: {deployed}")
+          print("Changed files since the deployed runtime:")
           for path in files:
               print(f"- {path}")
           print(f"deployable={str(deployable).lower()}")
-          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-              f.write(f"deployable={str(deployable).lower()}\n")
+          emit(deployable, deployed, "compared target against production deployment manifest")
           PYEOF
 
   classify-activation:
@@ -183,6 +214,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           DEPLOYABLE: ${{ needs.detect-deployable.outputs.deployable }}
           TARGET_SHA: ${{ needs.resolve-target.outputs.target_sha }}
+          RUNTIME_BASE_SHA: ${{ needs.detect-deployable.outputs.runtime_base_sha }}
           REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -207,6 +239,11 @@ jobs:
             exit 0
           fi
 
+          # Manual activation already carries the exact SHA, successful main
+          # CI evidence, typed confirmation, and the protected environment
+          # gate. Runtime identity is still required by the automatic path,
+          # but an unavailable read-only manifest must not prevent the manual
+          # activation from reaching those stronger checks.
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             {
               echo "mode=manual"
@@ -214,6 +251,11 @@ jobs:
               echo "pr_number=manual"
               echo "reason=Founder exact-SHA activation requested"
             } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ ! "$RUNTIME_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            hold "unknown" "none" "production deployment identity unavailable; fail closed"
             exit 0
           fi
 
@@ -253,27 +295,68 @@ jobs:
           repo = os.environ["REPO"]
           target = os.environ["TARGET_SHA"]
           try:
-              from scripts.governance.autonomy_gate import classify_scope, effective_tier, parse_declaration
+              from scripts.governance.autonomy_gate import (
+                  classify_activation_scope,
+                  effective_tier,
+                  decide_activation,
+                  is_deployable_path,
+                  is_production_activation_sensitive_path,
+                  parse_declaration,
+              )
 
-              merged = [
-                  pr for pr in gh_api(
-                      f"/repos/{repo}/commits/{target}/pulls",
+              base = os.environ["RUNTIME_BASE_SHA"]
+              comparison = gh_api(f"/repos/{repo}/compare/{base}...{target}")
+              files = comparison.get("files") or []
+              if not files:
+                  emit("awaiting-activation", "unknown", "none", "runtime range has no inspectable file evidence; fail closed")
+                  sys.exit(0)
+
+              # A runtime range can contain more than one merged PR. Use the
+              # declaration from the newest PR that actually contributed a
+              # runtime or protected production path; a read-only scheduler
+              # or test/docs PR must not raise an unrelated runtime release
+              # to T3. All evidence is read-only GitHub API metadata.
+              merged = []
+              seen_prs = set()
+              for commit in comparison.get("commits") or []:
+                  commit_sha = commit.get("sha")
+                  if not commit_sha:
+                      continue
+                  candidates = gh_api(
+                      f"/repos/{repo}/commits/{commit_sha}/pulls",
                       "--header", "Accept: application/vnd.github+json",
                   )
-                  if pr.get("base", {}).get("ref") == "main" and pr.get("merged_at")
-              ]
+                  for candidate in candidates:
+                      pr_number = candidate.get("number")
+                      if (
+                          not pr_number
+                          or pr_number in seen_prs
+                          or candidate.get("base", {}).get("ref") != "main"
+                          or not candidate.get("merged_at")
+                      ):
+                          continue
+                      pr_pages = gh_api(
+                          f"/repos/{repo}/pulls/{pr_number}/files?per_page=100",
+                          "--paginate", "--slurp",
+                      )
+                      pr_files = pages(pr_pages)
+                      pr_paths = [item.get("filename", "") for item in pr_files]
+                      if not any(
+                          is_deployable_path(path)
+                          or is_production_activation_sensitive_path(path)
+                          for path in pr_paths
+                      ):
+                          seen_prs.add(pr_number)
+                          continue
+                      seen_prs.add(pr_number)
+                      merged.append(candidate)
               merged.sort(key=lambda pr: pr.get("merged_at", ""), reverse=True)
               if not merged:
-                  emit("awaiting-activation", "unknown", "none", "no merged PR provenance; fail closed")
+                  emit("awaiting-activation", "unknown", "none", "no merged PR provenance for current main target; fail closed")
                   sys.exit(0)
 
               pr = merged[0]
               pr_number = str(pr.get("number", "unknown"))
-              file_pages = gh_api(
-                  f"/repos/{repo}/pulls/{pr_number}/files?per_page=100",
-                  "--paginate", "--slurp",
-              )
-              files = pages(file_pages)
               paths = [item.get("filename", "") for item in files]
               patch_parts = []
               for item in files:
@@ -281,7 +364,7 @@ jobs:
                   patch_parts.append(
                       f"diff --git a/{path} b/{path}\n+++ b/{path}\n{item.get('patch') or ''}"
                   )
-              scope = classify_scope(paths, "\n".join(patch_parts))
+              scope = classify_activation_scope(paths, "\n".join(patch_parts))
               machine_tier = scope.get("tier_name")
               body = pr.get("body") or ""
               declared_risk, declared_tier = parse_declaration(body)
@@ -297,15 +380,12 @@ jobs:
                   )
                   sys.exit(0)
 
-              workflow_change = any(path.startswith(".github/workflows/") for path in paths)
-              decision = __import__(
-                  "scripts.tests.test_deploy_activation_state",
-                  fromlist=["decide_activation"],
-              ).decide_activation(
+              decision = decide_activation(
                   event_name=os.environ["EVENT_NAME"], deployable=True,
                   classifier_available=True, machine_validated=True,
                   machine_tier=machine_tier, declared_risk=declaration_risk,
-                  declared_tier=declaration_tier, workflow_change=workflow_change,
+                  declared_tier=declaration_tier,
+                  protected_activation=bool(scope.get("protected_activation")),
               )
               emit(decision["decision"], decision["effective_tier"], pr_number, decision["reason"])
           except Exception:
@@ -357,12 +437,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          PHASE: ${{ inputs.phase }}
         run: |
           set -euo pipefail
-          REPO="$REPO" GH_TOKEN="$GH_TOKEN" python3 - <<'PY'
+          REPO="$REPO" GH_TOKEN="$GH_TOKEN" EVENT_NAME="$EVENT_NAME" PHASE="$PHASE" PYTHONPATH=. python3 - <<'PY'
           import json
           import os
           import subprocess
+
+          from scripts.governance.autonomy_gate import environment_protection_is_valid
 
           repo = os.environ["REPO"]
           base = f"/repos/{repo}/environments/production-activation"
@@ -373,10 +457,18 @@ jobs:
           environment = api(base)
           rules = environment.get("protection_rules") or []
           reviewers = [rule for rule in rules if rule.get("type") == "required_reviewers"]
-          if not reviewers or not all(rule.get("reviewers") for rule in reviewers):
-              raise SystemExit("production environment protection is not configured: Founder required reviewer missing")
-          if not all(rule.get("prevent_self_review") is True for rule in reviewers):
-              raise SystemExit("production environment protection is not configured: prevent self-review must be enabled")
+          required_reviewers_configured = bool(reviewers)
+          prevent_self_review = all(rule.get("prevent_self_review") is True for rule in reviewers) if reviewers else False
+          if not environment_protection_is_valid(
+              event_name=os.environ["EVENT_NAME"],
+              phase=os.environ.get("PHASE", ""),
+              required_reviewers_configured=required_reviewers_configured,
+              prevent_self_review=prevent_self_review,
+          ):
+              raise SystemExit(
+                  "production environment protection is not configured: "
+                  "solo mode requires no required-reviewer rule; self-review cannot be a hidden gate"
+              )
           if environment.get("can_admins_bypass") is not False:
               raise SystemExit("production environment protection is not configured: administrator bypass must be disabled")
 
@@ -387,7 +479,7 @@ jobs:
           names = sorted(str(policy.get("name")) for policy in policies)
           if names != ["main"]:
               raise SystemExit(f"production environment protection is not configured: expected only main branch, got {names}")
-          print("production-activation protection verified: required reviewer, no self-review, no admin bypass, main only")
+          print("production-activation solo boundary verified: no reviewer gate, no admin bypass, main only")
           PY
 
       - name: Require exact typed activation confirmation
@@ -423,7 +515,7 @@ jobs:
           )"
           POLICY_RESULT="$(PYTHONPATH=. WORKFLOW_REF="$WORKFLOW_REF" TARGET_SHA="$TARGET_SHA" MAIN_SHA="$MAIN_SHA" CI_OK="$CI_OK" python3 - <<'PY'
           import os
-          from scripts.tests.test_deploy_activation_state import decide_manual_activation
+          from scripts.governance.autonomy_gate import decide_manual_activation
 
           result = decide_manual_activation(
               workflow_ref=os.environ["WORKFLOW_REF"],
@@ -449,7 +541,10 @@ jobs:
     # activation classification must remain schedulable when an old deploy is
     # pending in GitHub's queue.
     concurrency:
-      group: production-deploy
+      # This namespace was rotated after a stale GitHub Actions pending lock
+      # stranded the bootstrap activation. Keep it shared with every guarded
+      # production side-effect workflow and non-cancelling.
+      group: alltrue-production-side-effects-v2
       cancel-in-progress: false
 
     steps:
@@ -841,7 +936,7 @@ jobs:
     # Principal rotation is a production side effect and must remain mutually
     # exclusive with application deployment.
     concurrency:
-      group: production-deploy
+      group: alltrue-production-side-effects-v2
       cancel-in-progress: false
     environment:
       name: production-activation

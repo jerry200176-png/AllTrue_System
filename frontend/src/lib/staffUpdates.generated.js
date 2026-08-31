@@ -4,6 +4,43 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-08-31-bug-triage-result-contract",
+    "publishedAt": "2026-08-31",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "Bug 回報分診結果更準確",
+    "summary": "Bug 回報完成分診後，系統會正確記錄處理結果，避免重複操作。",
+    "items": [
+      "Bug 回報分診完成後，公開回覆會被正確記錄為已完成，避免畫面已更新卻被誤判失敗而重複處理。",
+      "不改 Bug 狀態規則、回覆權限或帳務資料；只有真正成功保存的分診結果才會被視為完成。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "Bug 回報分診完成後，公開回覆會被正確記錄為已完成，避免畫面已更新卻被誤判失敗而重複處理。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "不改 Bug 狀態規則、回覆權限或帳務資料；只有真正成功保存的分診結果才會被視為完成。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-31:bug-triage-result-contract"
+    ],
+    "date": "2026-08-31",
+    "version": "2026.08.31"
+  },
+  {
     "id": "staff-2026-08-30-teacher-home-single-surface",
     "publishedAt": "2026-08-30",
     "effectiveAt": null,

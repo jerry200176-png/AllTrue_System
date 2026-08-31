@@ -32,7 +32,11 @@
 
     <div v-if="notes.length === 0" class="rn-empty">目前尚無可顯示的更新內容。</div>
 
-    <section v-for="note in notes" :key="note.id || `${note.version}-${note.title}`" class="rn-item">
+    <p v-if="olderNotes.length" class="rn-compact-hint">
+      顯示最近 {{ recentNotes.length + (latestNote ? 1 : 0) }} 則；點擊查看其他公告。
+    </p>
+
+    <section v-for="note in recentNotes" :key="note.id || `${note.version}-${note.title}`" class="rn-item">
       <div class="rn-item-head">
         <span class="rn-version">{{ note.version }}</span>
         <div>
@@ -46,19 +50,56 @@
         </div>
       </div>
       <p v-if="note.summary" class="rn-summary">{{ note.summary }}</p>
-      <div class="rn-sections">
-        <section
-          v-for="section in normalizedSections(note)"
-          :key="`${note.id || note.version}-${section.title}`"
-          class="rn-section"
-        >
-          <h4>{{ section.title }}</h4>
-          <ul class="rn-list">
-            <li v-for="row in section.items" :key="row">{{ row }}</li>
-          </ul>
-        </section>
-      </div>
+      <details class="rn-sections-details">
+        <summary>查看操作細節</summary>
+        <div class="rn-sections">
+          <section
+            v-for="section in normalizedSections(note)"
+            :key="`${note.id || note.version}-${section.title}`"
+            class="rn-section"
+          >
+            <h4>{{ section.title }}</h4>
+            <ul class="rn-list">
+              <li v-for="row in section.items" :key="row">{{ row }}</li>
+            </ul>
+          </section>
+        </div>
+      </details>
     </section>
+
+    <details v-if="olderNotes.length" class="rn-older-details">
+      <summary>查看更早公告（{{ olderNotes.length }} 則）</summary>
+      <section v-for="note in olderNotes" :key="note.id || `${note.version}-${note.title}`" class="rn-item">
+        <div class="rn-item-head">
+          <span class="rn-version">{{ note.version }}</span>
+          <div>
+            <div class="rn-title-row">
+              <span v-if="note.importance" class="rn-importance" :data-importance="note.importance">
+                {{ importanceLabel(note.importance) }}
+              </span>
+              <strong>{{ note.title }}</strong>
+            </div>
+            <small v-if="note.date">{{ note.date }}</small>
+          </div>
+        </div>
+        <p v-if="note.summary" class="rn-summary">{{ note.summary }}</p>
+        <details class="rn-sections-details">
+          <summary>查看操作細節</summary>
+          <div class="rn-sections">
+            <section
+              v-for="section in normalizedSections(note)"
+              :key="`${note.id || note.version}-${section.title}`"
+              class="rn-section"
+            >
+              <h4>{{ section.title }}</h4>
+              <ul class="rn-list">
+                <li v-for="row in section.items" :key="row">{{ row }}</li>
+              </ul>
+            </section>
+          </div>
+        </details>
+      </section>
+    </details>
   </div>
 </template>
 
@@ -76,6 +117,8 @@ const changelogUrl =
 
 const notes = computed(() => notesForRole(props.userRole));
 const latestNote = computed(() => notes.value[0] || null);
+const recentNotes = computed(() => notes.value.slice(1, 4));
+const olderNotes = computed(() => notes.value.slice(4));
 
 function normalizedSections(note) {
   if (Array.isArray(note.sections) && note.sections.length > 0) {
@@ -218,6 +261,25 @@ function importanceLabel(importance) {
   margin: 10px 0 0;
   color: var(--text-light);
   line-height: 1.65;
+}
+
+.rn-compact-hint {
+  margin: 14px 0 0;
+  color: var(--text-light);
+  font-size: 12px;
+}
+
+.rn-sections-details,
+.rn-older-details {
+  margin-top: 12px;
+}
+
+.rn-sections-details > summary,
+.rn-older-details > summary {
+  color: var(--ds-primary-deep);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .rn-sections {

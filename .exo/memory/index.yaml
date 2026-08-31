@@ -137,3 +137,51 @@ failure_modes:
       the test.
   severity: medium
   frequency: recurring
+- id: FM-20260831-004859-VQKH
+  name: Disclosure header wraps a separate native button
+  detection:
+    signal: Disclosure header wraps a separate native button
+    source: reflection:REF-20260831-004859-6RV5
+  mitigation:
+    practice: Use one native button as the disclosure control, keep the controlled
+      panel mounted with v-show, and expose aria-expanded plus aria-controls; never
+      leave the parent container clickable around the button.
+  severity: low
+  frequency: recurring
+- id: FM-20260831-010449-G4BI
+  name: Styled label hides the student import file input
+  detection:
+    signal: Styled label hides the student import file input
+    source: reflection:REF-20260831-010449-IM1T
+  mitigation:
+    practice: Use a visible native button to trigger a visually clipped file input
+      via ref; keep the existing change handler and API, and give the button an explicit
+      accessible name so keyboard users do not depend on a non-focusable label.
+  severity: low
+  frequency: recurring
+- id: FM-20260831-012442-A29G
+  name: Attendance pending-session checkboxes lacked row context
+  detection:
+    signal: Attendance pending-session checkboxes lacked row context
+    source: reflection:REF-20260831-012442-LQEB
+  mitigation:
+    practice: In high-frequency batch workflows, every repeated selection control
+      needs a session-specific accessible name that combines the visible person, time,
+      and optional subject. Keep desktop and mobile markup aligned, preserve the existing
+      checked binding and change handler, and cover both rendered variants in one
+      focused contract.
+  severity: medium
+  frequency: recurring
+- id: FM-20260831-081032-QGJ2
+  name: bot auto-merge left no exact-main CI or deploy evidence
+  detection:
+    signal: bot auto-merge left no exact-main CI or deploy evidence
+    source: reflection:REF-20260831-081032-6RTU
+  mitigation:
+    practice: A bounded scheduled reconciler can query exact-main CI/deploy runs and
+      dispatch only the existing CI workflow when no active or downstream evidence
+      exists; normal main request-file pushes then restore read-only evidence workflows,
+      while non-deployable control-plane changes remain activation-gated and do not
+      deploy.
+  severity: medium
+  frequency: recurring

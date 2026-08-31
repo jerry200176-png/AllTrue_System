@@ -19,8 +19,8 @@
         <template #actions>
           <AtButton shape="rect" variant="secondary" @click="focusCalendarToday" aria-label="回到今天的課表">今天</AtButton>
           <div class="view-tabs" role="tablist" aria-label="課表檢視方式">
-            <button type="button" role="tab" :aria-selected="viewMode === 'week'" :class="{ active: viewMode === 'week' }" @click="viewMode = 'week'">課表</button>
-            <button v-if="!isTeacher" type="button" role="tab" :aria-selected="viewMode === 'teacher'" :class="{ active: viewMode === 'teacher' }" @click="viewMode = 'teacher'">老師清單</button>
+            <button id="calendar-tab-week" type="button" role="tab" aria-controls="calendar-panel-week" :aria-selected="viewMode === 'week'" :class="{ active: viewMode === 'week' }" @click="viewMode = 'week'">課表</button>
+            <button v-if="!isTeacher" id="calendar-tab-teacher" type="button" role="tab" aria-controls="calendar-panel-teacher" :aria-selected="viewMode === 'teacher'" :class="{ active: viewMode === 'teacher' }" @click="viewMode = 'teacher'">老師清單</button>
           </div>
         </template>
       </AtPageHeader>
@@ -50,21 +50,22 @@
       <div v-if="viewMode === 'week'" class="smart-cal-toolbar" data-guide="calendar-toolbar">
         <div class="toolbar-row toolbar-row-primary">
           <div class="toolbar-group">
-            <span class="toolbar-label">月份</span>
-            <div class="month-nav">
+            <span id="calendar-month-label" class="toolbar-label">月份</span>
+            <div class="month-nav" role="group" aria-labelledby="calendar-month-label">
               <button type="button" class="icon-btn" @click="prevMonth" title="上一個月" aria-label="上一個月">‹</button>
-              <span class="month-display">{{ displayYear }} / {{ displayMonth }}</span>
+              <span class="month-display" aria-live="polite">{{ displayYear }} / {{ displayMonth }}</span>
               <button type="button" class="icon-btn" @click="nextMonth" title="下一個月" aria-label="下一個月">›</button>
             </div>
           </div>
-          <div class="toolbar-group">
-            <span class="toolbar-label">週次</span>
+          <div class="toolbar-group" role="group" aria-labelledby="calendar-week-label">
+            <span id="calendar-week-label" class="toolbar-label">週次</span>
             <!-- #740 Step 4d：週次導航剝離為 presentational 元件 -->
             <WeekNavBar v-model="displayWeek" :week-options="weekOptions" @prev="prevWeek" @next="nextWeek" />
           </div>
           <div class="toolbar-group">
-            <span class="toolbar-label">跳至日期</span>
+            <label class="toolbar-label" for="calendar-jump-date">跳至日期</label>
             <input
+              id="calendar-jump-date"
               v-model="jumpToDate"
               type="date"
               class="filter-input jump-date-input"
@@ -72,9 +73,9 @@
             />
           </div>
           <div v-if="!isTeacher" class="toolbar-group">
-            <div class="view-sub-toggle">
-              <button type="button" :class="{ active: !isWeekOverview }" @click="isWeekOverview = false">日檢視</button>
-              <button type="button" :class="{ active: isWeekOverview }" @click="isWeekOverview = true">週檢視</button>
+            <div class="view-sub-toggle" role="group" aria-label="日／週檢視">
+              <button type="button" :aria-pressed="!isWeekOverview" :class="{ active: !isWeekOverview }" @click="isWeekOverview = false">日檢視</button>
+              <button type="button" :aria-pressed="isWeekOverview" :class="{ active: isWeekOverview }" @click="isWeekOverview = true">週檢視</button>
             </div>
           </div>
           <div class="toolbar-fill"></div>
@@ -95,12 +96,12 @@
           <div class="toolbar-secondary-line toolbar-secondary-line--filters">
             <div class="toolbar-secondary-mid">
               <div class="toolbar-filters">
-                <select v-model="roomFilter" class="filter-select toolbar-room-select" title="依教室篩選老師欄">
+                <select v-model="roomFilter" class="filter-select toolbar-room-select" title="依教室篩選老師欄" aria-label="依教室篩選">
                   <option value="">全部教室</option>
                   <option v-for="r in allRoomOptions" :key="r" :value="r">教室 {{ r }}</option>
                 </select>
-                <input v-model="teacherSearch" type="search" class="filter-input toolbar-search-input" placeholder="搜尋老師…" autocomplete="off" />
-                <input v-model="studentSearch" type="search" class="filter-input toolbar-search-input" placeholder="搜尋學生…" autocomplete="off" />
+                <input v-model="teacherSearch" type="search" class="filter-input toolbar-search-input" placeholder="搜尋老師…" aria-label="搜尋老師" autocomplete="off" />
+                <input v-model="studentSearch" type="search" class="filter-input toolbar-search-input" placeholder="搜尋學生…" aria-label="搜尋學生" autocomplete="off" />
                 <button
                   v-if="featureSubstituteV2 && !isTeacher"
                   type="button"
@@ -156,8 +157,8 @@
           </table>
           <p v-else class="room-empty-hint">尚未設定教室，請新增教室以啟用教室容量檢查。</p>
           <div class="room-form">
-            <input v-model="roomForm.name" type="text" placeholder="教室名稱" class="room-input" />
-            <input v-model.number="roomForm.capacity" type="number" min="1" placeholder="容量" class="room-input" style="width: 80px;" />
+            <input v-model="roomForm.name" type="text" placeholder="教室名稱" aria-label="教室名稱" class="room-input" />
+            <input v-model.number="roomForm.capacity" type="number" min="1" placeholder="容量" aria-label="教室容量" class="room-input" style="width: 80px;" />
             <button type="button" class="btn-primary btn-sm" @click="saveRoom">{{ editingRoomId ? '更新' : '新增' }}</button>
             <button v-if="editingRoomId" type="button" class="btn-secondary btn-sm" @click="cancelRoomEdit">取消</button>
           </div>
@@ -166,7 +167,7 @@
     </div>
 
     <!-- ===== VIEW: Teacher Grid (main view) ===== -->
-    <div v-if="viewMode === 'week'" class="week-view">
+    <div v-if="viewMode === 'week'" id="calendar-panel-week" class="week-view" role="tabpanel" aria-labelledby="calendar-tab-week" tabindex="0">
 
       <!-- ── Day View (default) ── -->
       <template v-if="!isWeekOverview">
@@ -297,12 +298,19 @@
     </div>
 
     <!-- ===== VIEW: Teacher List (director only) ===== -->
-    <div v-if="viewMode === 'teacher' && !isTeacher" class="teacher-view">
+    <div v-if="viewMode === 'teacher' && !isTeacher" id="calendar-panel-teacher" class="teacher-view" role="tabpanel" aria-labelledby="calendar-tab-teacher" tabindex="0">
       <div v-if="teacherGroups.length === 0" class="teacher-empty">
         目前無排課資料，請先在「學生管理」中建立課程。
       </div>
       <div v-for="group in teacherGroups" :key="group.teacher_id" class="teacher-card">
-        <div class="teacher-card-header" @click="group.open = !group.open">
+        <button
+          :id="`teacher-toggle-${group.teacher_id}`"
+          type="button"
+          class="teacher-card-header"
+          :aria-expanded="group.open"
+          :aria-controls="`teacher-courses-${group.teacher_id}`"
+          @click="group.open = !group.open"
+        >
           <div class="teacher-info">
             <div class="teacher-avatar" :style="{ background: getTeacherColor(group.teacher_id) }">
               {{ group.teacher_name.charAt(0) }}
@@ -312,9 +320,9 @@
               <span class="teacher-count">{{ group.courses.length }} 堂</span>
             </div>
           </div>
-          <span class="expand-arrow" :aria-expanded="group.open">{{ group.open ? '▼' : '▶' }}</span>
-        </div>
-        <div v-if="group.open" class="teacher-courses">
+          <span class="expand-arrow" aria-hidden="true">{{ group.open ? '▼' : '▶' }}</span>
+        </button>
+        <div v-if="group.open" :id="`teacher-courses-${group.teacher_id}`" class="teacher-courses" role="region" :aria-labelledby="`teacher-toggle-${group.teacher_id}`">
           <table class="teacher-table">
             <thead>
               <tr>
@@ -3269,11 +3277,18 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  width: 100%;
   padding: 16px 20px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
   cursor: pointer;
   transition: background 0.15s;
 }
 .teacher-card-header:hover { background: var(--bg-muted, var(--ds-canvas-soft)); }
+.teacher-card-header:focus-visible { outline: 3px solid var(--ds-info-wash); outline-offset: -3px; }
 .teacher-info { display: flex; align-items: center; gap: 14px; }
 .teacher-avatar {
   width: 44px;
