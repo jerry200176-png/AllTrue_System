@@ -4,6 +4,12 @@ name: Autonomous main convergence
 # bounded reconciler restores the CI -> deploy workflow_run chain; it never
 # deploys, opens SSH, changes production, or bypasses a required check.
 on:
+  # Auto-merge is performed by GitHub's bot and may not emit a push event
+  # that starts main CI. Reconcile immediately after a merged PR; the bounded
+  # scheduler below remains the fallback for any missed event.
+  pull_request_target:
+    branches: [main]
+    types: [closed]
   schedule:
     - cron: '*/10 * * * *'
   workflow_dispatch:
@@ -19,7 +25,10 @@ concurrency:
 jobs:
   reconcile:
     name: Reconcile exact-main CI event
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request_target' && github.event.pull_request.merged == true)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
