@@ -9,6 +9,12 @@
 - 單課程與多科方案共用同一個後端排課契約，並補上前端預覽與前後端回歸測試。
 - 不改付款、結算、production 資料、既有出勤或扣堂歷史。
 
+## 2026-08-31 — fix(payroll): 正職每週16段課與完整結算計算路徑
+<!-- release-notes: staff_update=staff-2026-08-31-fulltime-payroll-calculation -->
+- 主任可直接查看每位正職老師的正課、試聽、總段數與是否達到每週16段，並展開追溯實際 ClassSession。
+- 每週計算改以有效點名的 ClassSession 為來源：正課依實際時數換算、試聽每堂1段、輔導不計，取消／請假／作廢／未發生排除，不要求 approved LearningRecord。
+- 正職結算接回既有現金加扣款與行政加給雙階段資料源；待審核不阻斷已知試算，真正未知欄位保留為待確認，不默認為0。
+
 ## 2026-08-31 — fix(calendar): 調課預覽正確排除請假與取消課程
 <!-- release-notes: staff_update=staff-2026-08-31-calendar-leave-capacity-preview -->
 - 行事曆調課的送出前檢查現在會與課程查找一致，排除同日期已請假、已調整請假、核准請假與取消的課程，不再把實際空出的老師時段誤判為滿段。
