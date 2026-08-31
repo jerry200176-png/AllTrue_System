@@ -6,7 +6,6 @@ boundary: Keep the existing weekly >=16-segment rule and payroll system. A branc
 success_condition: A teacher visible from one campus receives one result whose valid attended courses, adjustments, and approved salary inputs include all campuses, with traceable sessions.
 risk: high
 priority: 1
-labels: [payroll, full-time, campus-aggregation]
 scope:
   allow: [backend/app/Http/Controllers/TeacherEligibilityController.php, backend/tests/Feature/TeacherEligibilityWeeklySegmentsTest.php, .exo/tickets/**]
   deny: [backend/database/**, '**/.env*']
@@ -14,10 +13,4 @@ budgets: {max_files_changed: 30, max_loc_changed: 750}
 checks: [bash scripts/phpunit-isolated.sh, npm run build]
 type: bugfix
 status: todo
-parent_id: TKT-20260831-231347-JI5L
-spec_ref: null
-notes: []
-blockers: []
 created_at: '2026-09-01T01:15:00+08:00'
-children: []
-resource_profile: default
