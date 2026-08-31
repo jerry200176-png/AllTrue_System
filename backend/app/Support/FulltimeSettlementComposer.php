@@ -86,14 +86,7 @@ final class FulltimeSettlementComposer
         }
         $cashItems = $cashComponent['metrics']['items'] ?? [];
         if ($cashKnown && $cashAmount != 0.0) {
-            foreach (is_array($cashItems) && $cashItems !== [] ? $cashItems : [['label' => '現金加扣款', 'amount' => $cashAmount]] as $item) {
-                if ((float) ($item['amount'] ?? 0) != 0.0) {
-                    $adjustments[] = [
-                        'label' => (string) ($item['label'] ?? '現金加扣款'),
-                        'amount' => (float) $item['amount'],
-                    ];
-                }
-            }
+            foreach (is_array($cashItems) && $cashItems !== [] ? $cashItems : [['label' => '現金加扣款', 'amount' => $cashAmount]] as $item) if ((float) ($item['amount'] ?? 0) != 0.0) $adjustments[] = ['label' => (string) ($item['label'] ?? '現金加扣款'), 'amount' => (float) $item['amount']];
         }
 
         $coreBlocked = $baseSalary === null || !$subjectKnown;
