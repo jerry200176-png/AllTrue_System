@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.08.31",
     "date": "2026-08-31",
     "title": "2026.08.31 草稿（未發布）",
-    "summary": "主任可查看每週16段課達標與課程構成",
+    "summary": "主任可查看每週16段課達標與課程構成；調課預覽正確排除請假與取消課程",
     "audience": [
       "teacher",
       "director"
@@ -20,10 +20,17 @@ export const changelogDraftNotes = [
         "items": [
           "主任可查看每週16段課達標與課程構成"
         ]
+      },
+      {
+        "title": "修正內容",
+        "items": [
+          "調課預覽正確排除請假與取消課程"
+        ]
       }
     ],
     "items": [
-      "主任可查看每週16段課達標與課程構成"
+      "主任可查看每週16段課達標與課程構成",
+      "調課預覽正確排除請假與取消課程"
     ]
   },
   {

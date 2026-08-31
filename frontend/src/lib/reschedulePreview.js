@@ -14,6 +14,8 @@ const CLASS_LABEL = {
   trial: '試聽',
 };
 
+const NON_OCCUPYING_STATUSES = new Set(['cancelled', 'leave', 'leave_adjusted', 'excused']);
+
 function hm(value) {
   const match = String(value || '').match(/^(\d{1,2}):(\d{2})/);
   return match ? Number(match[1]) * 60 + Number(match[2]) : null;
@@ -53,6 +55,31 @@ function detailFor(course) {
   return end ? `${subject}（${start}～${end}）` : subject;
 }
 
+function courseIdFor(course) {
+  return String(course?.student_course_id ?? course?.id ?? '');
+}
+
+function isNonOccupyingOnDate(course, date, sessionDatesByCourseId = {}, exceptions = []) {
+  const courseId = courseIdFor(course);
+  const rows = sessionDatesByCourseId?.[courseId];
+  if (Array.isArray(rows) && rows.length > 0) {
+    const sameDate = rows.filter((row) =>
+      String(row?.session_date || row?.SessionDate || row?.date || '').slice(0, 10) === date,
+    );
+    if (sameDate.length > 0) {
+      return sameDate.every((row) =>
+        NON_OCCUPYING_STATUSES.has(String(row?.status || '').toLowerCase()),
+      );
+    }
+  }
+
+  return (Array.isArray(exceptions) ? exceptions : []).some((exception) =>
+    String(exception?.student_course_id ?? '') === courseId
+      && String(exception?.schedule_date || '').slice(0, 10) === date
+      && NON_OCCUPYING_STATUSES.has(String(exception?.status || '').toLowerCase()),
+  );
+}
+
 /**
  * Lightweight, read-only preview for the calendar reschedule dialog.
  * The API remains the final authority and performs the atomic guard again.
@@ -66,6 +93,8 @@ export function buildReschedulePreview({
   startTime,
   endTime,
   classType = 'one_on_one',
+  sessionDatesByCourseId = {},
+  exceptions = [],
 } = {}) {
   const date = String(targetDate || '').slice(0, 10);
   const day = isoDay(date);
@@ -79,6 +108,7 @@ export function buildReschedulePreview({
     if (String(course.id) === String(currentCourseId)) return false;
     if (String(course.student_id) === String(studentId) && studentId != null) return false;
     if (String(course.teacher_id) !== String(teacherId)) return false;
+    if (isNonOccupyingOnDate(course, date, sessionDatesByCourseId, exceptions)) return false;
     return courseIsOnDate(course, date, day) && overlaps(start, end, course);
   });
 
