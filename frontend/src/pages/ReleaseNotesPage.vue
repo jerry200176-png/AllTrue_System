@@ -33,7 +33,7 @@
     <div v-if="notes.length === 0" class="rn-empty">目前尚無可顯示的更新內容。</div>
 
     <p v-if="olderNotes.length" class="rn-compact-hint">
-      顯示最近 {{ recentNotes.length + (latestNote ? 1 : 0) }} 則；點擊可展開其餘公告。
+      顯示最近 {{ recentNotes.length + (latestNote ? 1 : 0) }} 則；點擊查看其餘公告。
     </p>
 
     <section v-for="note in recentNotes" :key="note.id || `${note.version}-${note.title}`" class="rn-item">
