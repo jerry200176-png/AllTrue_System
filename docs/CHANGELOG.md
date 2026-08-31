@@ -1,3 +1,8 @@
+## 2026-09-01 — improved(ux): Bug 回報提交後保留追蹤入口
+<!-- release-notes: staff_update=staff-2026-09-01-bug-report-tracking -->
+- Bug 回報送出成功後會保留回報編號與確認訊息，不再短暫顯示後自動消失。
+- 可直接點選「查看回報進度」前往 Bug 回報頁；不改回報狀態流轉、留言權限、API 或資料。
+
 ## 2026-09-01 — fix(ops): Bug 詳情證據改為目標相符
 <!-- release-notes: staff_update=staff-2026-09-01-bug-detail-target-correctness -->
 - Bug 詳情 read-only dump 現在只會執行與該筆 Bug 明確對應的診斷 probe；未配置的 probe 會標示不適用，不再把固定歷史個案混進其他回報。
