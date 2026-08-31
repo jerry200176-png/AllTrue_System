@@ -1,0 +1,159 @@
+name: Unpaid historical course audit (read-only)
+
+# Bounded production inventory for courses marked historical/stopped while still
+# unpaid. This workflow is deliberately read-only: it emits candidate IDs and
+# payment/session evidence only; no course, invoice, payment, or session writes.
+on:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ops-unpaid-history-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          PI_HOST_KEY: ${{ secrets.PI_HOST_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if ssh-keyscan -H "$PI_SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null; then
+            :
+          elif [[ -n "${PI_HOST_KEY:-}" ]]; then
+            printf '%s\n' "$PI_HOST_KEY" > ~/.ssh/known_hosts
+          else
+            echo '::error::no host key available'; exit 1
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Read-only production inventory
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "$PI_SSH_USER@$PI_SSH_HOST" bash <<'REMOTE' | tee out/unpaid-history-audit.log
+          set -euo pipefail
+          cd /home/admin/backend
+          php artisan tinker --execute='
+          $db = \Illuminate\Support\Facades\DB::class;
+          $courses = $db::table("StudentClass as sc")
+            ->leftJoin("Student as st", "st.id", "=", "sc.StudentID")
+            ->leftJoin("Subject as sub", "sub.id", "=", "sc.SubjectID")
+            ->where("sc.Stop", 1)
+            ->where(function ($q) { $q->where("sc.Paid", 0)->orWhereNull("sc.Paid"); })
+            ->orderBy("sc.ID")
+            ->get([
+              "sc.ID as course_id", "sc.StudentID as student_id", "st.CampusID as campus_id",
+              "sc.SubjectID as subject_id", "sub.Subject_Name as subject_name",
+              "sc.Charge as charge", "sc.Paid as paid", "sc.PayDate as pay_date",
+              "sc.Stop as stop", "sc.closed_reason", "sc.ScheduleMode as schedule_mode",
+              "sc.PackageID as package_id", "sc.StartDate as start_date", "sc.EndDate as end_date",
+              "sc.SessionCount as session_count", "sc.UsedSessions as used_sessions",
+              "sc.RemainingSessions as remaining_sessions",
+            ]);
+          $rows = [];
+          foreach ($courses as $c) {
+            $sessions = $db::table("ClassSession")->where("StudentClassID", (int)$c->course_id);
+            $attended = (clone $sessions)->whereIn("Status", ["attended", "completed"])->count();
+            $learningRecords = $db::table("LearningRecord as lr")
+              ->join("ClassSession as cs", "cs.id", "=", "lr.ClassSessionID")
+              ->where("cs.StudentClassID", (int)$c->course_id)->whereNull("lr.VoidedAt")->count();
+            $futureScheduled = (clone $sessions)->where("SessionDate", ">=", date("Y-m-d"))
+              ->whereRaw("LOWER(Status) NOT IN (?, ?)", ["cancelled", "voided"])->count();
+            $lastSession = (clone $sessions)->max("SessionDate");
+            $invoices = $db::table("Invoice")->where("StudentClassID", (int)$c->course_id)
+              ->get(["id", "Status as status", "TotalAmount as total_amount", "PaidAmount as paid_amount"]);
+            $confirmedReports = $db::table("payment_reports")
+              ->where("StudentClassID", (int)$c->course_id)->where("status", "confirmed")->count();
+            $invoicePaid = $invoices->contains(function ($i) {
+              return strtolower((string)$i->status) === "paid"
+                || (float)$i->paid_amount >= (float)$i->total_amount;
+            });
+            $used = (int)($c->used_sessions ?? 0) > 0 || $attended > 0 || $learningRecords > 0;
+            $rows[] = [
+              "course_id" => (int)$c->course_id,
+              "student_id" => (int)$c->student_id,
+              "campus_id" => $c->campus_id === null ? null : (int)$c->campus_id,
+              "subject_id" => $c->subject_id === null ? null : (int)$c->subject_id,
+              "subject_name" => (string)($c->subject_name ?? ""),
+              "charge" => (float)($c->charge ?? 0), "paid" => (int)($c->paid ?? 0),
+              "pay_date" => $c->pay_date, "stop" => (int)$c->stop,
+              "closed_reason" => $c->closed_reason, "schedule_mode" => (string)($c->schedule_mode ?? ""),
+              "package_id" => $c->package_id === null ? null : (int)$c->package_id,
+              "start_date" => $c->start_date, "end_date" => $c->end_date,
+              "session_count" => $c->session_count === null ? null : (int)$c->session_count,
+              "used_sessions" => $c->used_sessions === null ? null : (int)$c->used_sessions,
+              "remaining_sessions" => $c->remaining_sessions === null ? null : (int)$c->remaining_sessions,
+              "attended_or_completed_sessions" => (int)$attended,
+              "learning_records" => (int)$learningRecords,
+              "future_scheduled_sessions" => (int)$futureScheduled,
+              "last_session_date" => $lastSession,
+              "invoice_count" => $invoices->count(),
+              "confirmed_payment_reports" => (int)$confirmedReports,
+              "invoice_paid_evidence" => (bool)$invoicePaid,
+              "recovery_review_candidate" => (bool)($used || $futureScheduled > 0 || $invoicePaid),
+            ];
+          }
+          echo json_encode([
+            "ok" => true, "read_only" => true, "as_of" => now()->toIso8601String(),
+            "prod_head" => trim((string)@shell_exec("git rev-parse HEAD")),
+            "scope" => "Stop=1 and Paid=0/null; IDs are for director review only",
+            "counts" => [
+              "unpaid_historical_courses" => count($rows),
+              "recovery_review_candidates" => count(array_filter($rows, fn($r) => $r["recovery_review_candidate"])),
+              "with_used_or_learning_evidence" => count(array_filter($rows, fn($r) => $r["attended_or_completed_sessions"] > 0 || $r["learning_records"] > 0 || (int)($r["used_sessions"] ?? 0) > 0)),
+              "with_future_scheduled" => count(array_filter($rows, fn($r) => $r["future_scheduled_sessions"] > 0)),
+              "with_invoice_paid_evidence" => count(array_filter($rows, fn($r) => $r["invoice_paid_evidence"])),
+            ],
+            "courses" => $rows,
+          ], JSON_UNESCAPED_UNICODE), PHP_EOL;
+          '
+          REMOTE
+
+      - name: Parse and upload evidence
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          text = Path('out/unpaid-history-audit.log').read_text(encoding='utf-8', errors='replace')
+          objects = []
+          for line in text.splitlines():
+              line = line.strip()
+              if line.startswith('{'):
+                  try:
+                      obj = json.loads(line)
+                  except json.JSONDecodeError:
+                      continue
+                  if obj.get('read_only') is True and 'courses' in obj:
+                      objects.append(obj)
+          if len(objects) != 1:
+              raise SystemExit(f'expected one audit payload, got {len(objects)}')
+          Path('out/unpaid-history-audit.json').write_text(json.dumps(objects[0], ensure_ascii=False, indent=2), encoding='utf-8')
+          print(json.dumps(objects[0]['counts'], ensure_ascii=False))
+          print('prod_head=', objects[0].get('prod_head'))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unpaid-history-audit-${{ github.run_id }}
+          path: out/
+          retention-days: 90
