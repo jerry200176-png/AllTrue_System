@@ -191,13 +191,18 @@ class EnrollmentService
             $allowedSet = array_fill_keys($allowedWeekdays, true);
             $weekCn = ['', '一', '二', '三', '四', '五', '六', '日'];
             $today = Carbon::today()->toDateString();
+            $monthlyOpeningDate = $isMonthlyRecurring && !empty($data['course_start_date'])
+                ? Carbon::parse($data['course_start_date'])->toDateString()
+                : null;
             foreach ($sessionRows as $row) {
                 // 過去日期為歷史補登，不限固定上課星期
                 if (($row['date'] ?? '') < $today) {
                     continue;
                 }
                 $wd = (int) Carbon::parse($row['date'])->dayOfWeekIso;
-                if (!isset($allowedSet[$wd])) {
+                $isMonthlyOpeningDate = $monthlyOpeningDate !== null
+                    && ($row['date'] ?? '') === $monthlyOpeningDate;
+                if (!isset($allowedSet[$wd]) && !$isMonthlyOpeningDate) {
                     $label = $weekCn[$wd] ?? (string) $wd;
 
                     return response()->json([
