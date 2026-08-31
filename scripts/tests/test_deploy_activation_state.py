@@ -213,20 +213,23 @@ diff --git a/frontend/src/pages/__tests__/Badge.test.js b/frontend/src/pages/__t
         self.assertEqual(result["decision"], "activation-gate-reached")
         self.assertNotEqual(result["decision"], "auto")
 
-    def test_protected_environment_always_requires_self_review_prevention(self):
+    def test_solo_environment_rejects_required_reviewer_gate(self):
         self.assertTrue(environment_protection_is_valid(
-            event_name="workflow_dispatch", phase="application-deploy", prevent_self_review=True,
+            event_name="workflow_dispatch", phase="application-deploy",
+            required_reviewers_configured=False, prevent_self_review=False,
+        ))
+        self.assertFalse(environment_protection_is_valid(
+            event_name="workflow_dispatch", phase="application-deploy",
+            required_reviewers_configured=True, prevent_self_review=True,
         ))
         for event_name, phase in (
-            ("workflow_dispatch", "application-deploy"),
             ("workflow_run", "application-deploy"),
-            ("workflow_dispatch", "phase1-create"),
-            ("workflow_dispatch", "phase2-cutover"),
-            ("workflow_dispatch", "phase3-lock"),
+            ("workflow_dispatch", "unknown-phase"),
         ):
             with self.subTest(event_name=event_name, phase=phase):
                 self.assertFalse(environment_protection_is_valid(
-                    event_name=event_name, phase=phase, prevent_self_review=False,
+                    event_name=event_name, phase=phase,
+                    required_reviewers_configured=False, prevent_self_review=False,
                 ))
 
 
@@ -248,6 +251,8 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("name: production-activation", self.workflow)
         self.assertIn("Checkout target revision for gate policy", self.workflow)
         self.assertIn("production environment protection is not configured", self.workflow)
+        self.assertIn("required_reviewers_configured", self.workflow)
+        self.assertIn("solo mode requires no required-reviewer rule", self.workflow)
         self.assertIn("environment_protection_is_valid", self.workflow)
         self.assertIn('EVENT_NAME: ${{ github.event_name }}', self.workflow)
         self.assertIn('PHASE: ${{ inputs.phase }}', self.workflow)

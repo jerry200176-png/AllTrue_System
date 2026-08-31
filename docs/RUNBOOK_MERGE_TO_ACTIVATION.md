@@ -68,14 +68,17 @@ The workflow must be dispatched from `refs/heads/main`, requires the exact
 current main SHA, and requires a successful `CI — PHPUnit Tests` run for that
 SHA. It refuses stale targets and revisions dispatched from another branch or
 tag. The `production-activation` GitHub Environment is attached only to this
-manual protected path, and the workflow fails closed unless its live protection
-is configured.
+manual protected path. In solo-Founder mode it is a deployment boundary, not
+a second self-approval queue: it must have no required-reviewer rule, while
+the workflow dispatch, exact typed confirmation, main-only policy, and
+administrator-bypass prohibition remain mandatory and are verified live.
 
-The typed phrase is confirmation, not authentication. The live Environment
-must have a Founder-controlled required reviewer, prevent self-review enabled,
-administrator bypass disabled, and a custom deployment branch policy containing
-only `main`. Those Settings changes are Founder-approved actions outside this
-PR; the workflow verifies them at activation time.
+The typed phrase is confirmation, not authentication. GitHub limits
+`workflow_dispatch` to repository users with write-level permission. The live
+Environment must have no required-reviewer rule, administrator bypass
+disabled, and a custom deployment branch policy containing only `main`. The
+workflow verifies these settings at activation time; the exact typed phrase
+is the Founder decision for the protected action in solo mode.
 
 No migration, production data repair, credential change, or billing/entitlement
 operation is authorized by this activation input.
@@ -83,9 +86,10 @@ operation is authorized by this activation input.
 ## Live settings still outside this PR
 
 This PR does not change GitHub Rulesets, branch protection, repository secrets,
-credentials, or Environment reviewers. Automatic reversible application
-deploys do not reference the Environment. For protected activations, if
-`production-activation` has no required reviewer, permits self-review, permits
-administrator bypass, or is not restricted to `main`, activation fails closed
-with a hard boundary error. The Founder must configure the required reviewer
-and branch policy in live Settings before a protected activation can proceed.
+or credentials. Automatic reversible application deploys do not reference the
+Environment. For protected activations, if `production-activation` contains a
+required reviewer rule, permits administrator bypass, or is not restricted to
+`main`, activation fails closed with a hard boundary error. Solo mode requires
+the live required-reviewer rule to be removed once, as a deliberate
+Founder-authorized control-plane change; the Environment itself remains in
+use for the protected production job.
