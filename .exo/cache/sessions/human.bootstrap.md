@@ -1,31 +1,31 @@
 ╔══════════════════════════════════════════════════════╗
 ║  >>> EXO GOVERNED SESSION                            ║
 ║  protocol: ExoProtocol v1 | mode: work               ║
-║  ticket: TKT-20260831-215910-8Y43 | actor: human     ║
+║  ticket: TKT-20260901-043614-NV3J | actor: human     ║
 ║  model: codex                                        ║
-║  branch: chore/task-TKT-20260901-CALENDAR-LEAVE-CAPACITY║
+║  branch: codex/TKT-20260901-043614-NV3J              ║
 ╚══════════════════════════════════════════════════════╝
 
 # Exo Agent Session Bootstrap
 
-session_id: SES-20260901042500-FF1B05C2
+session_id: SES-20260901043639-D65CEAB6
 actor: human
 vendor: openai
 model: codex
 mode: work
 context_window_tokens: unknown
-ticket_id: TKT-20260831-215910-8Y43
-ticket_title: P1 木柵日曆調課請假容量一致性
+ticket_id: TKT-20260901-043614-NV3J
+ticket_title: P1 calendar reschedule leave exception precedence
 ticket_status: todo
 ticket_priority: 1
 topic_id: repo:default
 lock_owner: human
-git_branch: chore/task-TKT-20260901-CALENDAR-LEAVE-CAPACITY
-lock_branch: codex/TKT-20260831-215910-8Y43
-lock_expires_at: 2026-09-01T08:25:00+08:00
+git_branch: codex/TKT-20260901-043614-NV3J
+lock_branch: codex/TKT-20260901-043614-NV3J
+lock_expires_at: 2026-09-01T08:36:38+08:00
 
 ## Scope
-- allow: ["frontend/src/lib/reschedulePreview.js", "frontend/src/lib/reschedulePreview.test.js", "frontend/src/lib/releaseNotes.test.js", "frontend/src/composables/calendar/useCalendarReschedule.js", "frontend/src/composables/calendar/__tests__/useCalendarReschedule.test.js", "frontend/src/pages/SmartCalendar.vue", "docs/CHANGELOG.md", "docs/STAFF_UPDATES.yml", "frontend/src/lib/changelogDraft.generated.js", "frontend/src/lib/staffUpdates.generated.js", ".agent-session/manifest.json", ".exo/cache/**", ".exo/memory/**", ".exo/locks/**", ".exo/tickets/**", ".exo/logs/**"]
+- allow: ["frontend/src/lib/reschedulePreview.js", "frontend/src/composables/calendar/__tests__/useCalendarReschedule.test.js", "docs/CHANGELOG.md", "docs/STAFF_UPDATES.yml", "frontend/src/lib/changelogDraft.generated.js", "frontend/src/lib/staffUpdates.generated.js", ".agent-session/manifest.json", ".exo/cache/**", ".exo/memory/**", ".exo/locks/**", ".exo/tickets/**", ".exo/logs/**"]
 - deny: ["backend/**", "**/.env*"]
 
 ## Checks
@@ -38,8 +38,8 @@ lock_expires_at: 2026-09-01T08:25:00+08:00
 
 ## Machine Context
 - cpu_cores: 12
-- load_avg_1m: 0.9
-- ram: 3.3GB available / 4.8GB total
+- load_avg_1m: 1.4
+- ram: 3.4GB available / 4.8GB total
 
 ## Start Advisories
 - [INFO] Unmerged work on branch chore/task-bug247-dump-refresh-20260831 (ticket=TKT-20260831-080838-ENZB, actor=human) — Refresh paired read-only evidence requests for in-app bug 247 after restoring ma
@@ -112,10 +112,10 @@ After building a reusable utility, REGISTER it:
 - `scripts.check-eslint-unused-baseline.mjs:main`: Run the frontend no-unused-vars per-file baseline ratchet and fail only on newly added debt
 
 ## Current Task
-P1 木柵日曆調課請假容量一致性：讓單次調課與課程查找使用一致的日期感知預覽，保留固定課程編輯規則
+P1 調課預覽以同日請假例外優先於 stale session projection，避免誤判老師滿段
 
 ## Lifecycle Commands
-- heartbeat: EXO_ACTOR=human python3 -m exo.cli lease-heartbeat --ticket-id TKT-20260831-215910-8Y43 --owner human
+- heartbeat: EXO_ACTOR=human python3 -m exo.cli lease-heartbeat --ticket-id TKT-20260901-043614-NV3J --owner human
 - run worker once: EXO_ACTOR=human python3 -m exo.cli worker-poll --require-session --limit 50
 - suspend: EXO_ACTOR=human python3 -m exo.cli session-suspend --reason "<why pausing>"
-- finish: EXO_ACTOR=human python3 -m exo.cli session-finish --summary "<what changed>" --set-status review --ticket-id TKT-20260831-215910-8Y43
+- finish: EXO_ACTOR=human python3 -m exo.cli session-finish --summary "<what changed>" --set-status review --ticket-id TKT-20260901-043614-NV3J

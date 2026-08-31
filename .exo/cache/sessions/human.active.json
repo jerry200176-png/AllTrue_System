@@ -3,36 +3,36 @@
   "bootstrap_path": ".exo/cache/sessions/human.bootstrap.md",
   "concurrent": false,
   "context_window_tokens": null,
-  "git_branch": "chore/task-TKT-20260901-CALENDAR-LEAVE-CAPACITY",
-  "git_head_sha": "fe91a179f4b66278ad9455493fa94839741de65a",
+  "git_branch": "codex/TKT-20260901-043614-NV3J",
+  "git_head_sha": "122b55c30e2bfce369910f8c8ff36e78711d811c",
   "handoff_from": null,
   "lock": {
-    "created_at": "2026-09-01T04:25:00+08:00",
-    "expires_at": "2026-09-01T08:25:00+08:00",
+    "created_at": "2026-09-01T04:36:38+08:00",
+    "expires_at": "2026-09-01T08:36:38+08:00",
     "fencing_token": 1,
-    "heartbeat_at": "2026-09-01T04:25:00+08:00",
-    "lease_expires_at": "2026-09-01T08:25:00+08:00",
+    "heartbeat_at": "2026-09-01T04:36:38+08:00",
+    "lease_expires_at": "2026-09-01T08:36:38+08:00",
     "owner": "human",
     "role": "implementer",
-    "ticket_id": "TKT-20260831-215910-8Y43",
-    "updated_at": "2026-09-01T04:25:00+08:00",
+    "ticket_id": "TKT-20260901-043614-NV3J",
+    "updated_at": "2026-09-01T04:36:38+08:00",
     "workspace": {
       "base": "main",
-      "branch": "codex/TKT-20260831-215910-8Y43"
+      "branch": "codex/TKT-20260901-043614-NV3J"
     }
   },
   "machine_snapshot": {
     "cpu_count": 12,
-    "load_avg_1m": 0.9,
-    "ram_available_gb": 3.3,
+    "load_avg_1m": 1.4,
+    "ram_available_gb": 3.4,
     "ram_total_gb": 4.8
   },
   "mode": "work",
   "model": "codex",
-  "pid": 77989,
+  "pid": 87349,
   "pr_check": null,
   "role": "implementer",
-  "session_id": "SES-20260901042500-FF1B05C2",
+  "session_id": "SES-20260901043639-D65CEAB6",
   "start_advisories": [
     {
       "detail": {
@@ -79,7 +79,6 @@
         "branch": "chore/task-smart-calendar-room-form-a11y-20260831",
         "overlapping_patterns": [
           "frontend/src/**",
-          "frontend/src/pages/SmartCalendar.vue",
           ".exo/cache/**",
           ".exo/**",
           ".exo/memory/**",
@@ -100,7 +99,6 @@
         "branch": "chore/task-learning-record-selection-a11y-20260831",
         "overlapping_patterns": [
           "frontend/src/**",
-          "frontend/src/pages/**",
           ".exo/cache/**",
           ".exo/**",
           ".exo/memory/**",
@@ -121,7 +119,6 @@
         "branch": "chore/task-attendance-checkbox-a11y-20260831",
         "overlapping_patterns": [
           "frontend/src/**",
-          "frontend/src/pages/**",
           ".agent-session/**",
           ".exo/**",
           ".exo/cache/**",
@@ -143,7 +140,6 @@
         "branch": "chore/task-students-import-button-a11y-20260831",
         "overlapping_patterns": [
           "frontend/src/**",
-          "frontend/src/pages/**",
           ".agent-session/**",
           ".exo/**",
           ".exo/cache/**",
@@ -165,7 +161,6 @@
         "branch": "chore/task-subject-units-disclosure-a11y-20260831",
         "overlapping_patterns": [
           "frontend/src/**",
-          "frontend/src/pages/**",
           ".agent-session/**",
           ".exo/**",
           ".exo/cache/**",
@@ -187,7 +182,6 @@
         "branch": "chore/task-learning-filters-clear-action-a11y-20260830",
         "overlapping_patterns": [
           "frontend/src/**",
-          "frontend/src/pages/**",
           ".exo/**",
           ".exo/cache/**",
           ".exo/memory/**",
@@ -208,7 +202,6 @@
         "branch": "chore/task-director-makeup-candidate-tabs-a11y-20260830",
         "overlapping_patterns": [
           "frontend/src/**",
-          "frontend/src/pages/**",
           ".exo/**",
           ".exo/cache/**",
           ".exo/memory/**",
@@ -229,7 +222,6 @@
         "branch": "chore/task-learning-feedback-preview-a11y-20260830",
         "overlapping_patterns": [
           "frontend/src/**",
-          "frontend/src/pages/**",
           ".exo/cache/**",
           ".exo/**",
           ".exo/memory/**",
@@ -250,7 +242,6 @@
         "branch": "chore/task-calendar-teacher-list-a11y-20260830",
         "overlapping_patterns": [
           "frontend/src/**",
-          "frontend/src/pages/SmartCalendar.vue",
           ".exo/cache/**",
           ".exo/**",
           ".exo/memory/**",
@@ -271,7 +262,6 @@
         "branch": "chore/task-attendance-controls-a11y-20260830",
         "overlapping_patterns": [
           "frontend/src/**",
-          "frontend/src/pages/**",
           ".agent-session/manifest.json",
           ".exo/**",
           ".exo/cache/**",
@@ -336,7 +326,6 @@
         "overlapping_patterns": [
           "frontend/src/**",
           "frontend/**",
-          "frontend/src/pages/**",
           ".agent-session/manifest.json",
           ".exo/**",
           ".exo/cache/**",
@@ -353,10 +342,10 @@
       "severity": "info"
     }
   ],
-  "started_at": "2026-09-01T04:25:00+08:00",
+  "started_at": "2026-09-01T04:36:39+08:00",
   "status": "active",
-  "task": "P1 \u6728\u67f5\u65e5\u66c6\u8abf\u8ab2\u8acb\u5047\u5bb9\u91cf\u4e00\u81f4\u6027\uff1a\u8b93\u55ae\u6b21\u8abf\u8ab2\u8207\u8ab2\u7a0b\u67e5\u627e\u4f7f\u7528\u4e00\u81f4\u7684\u65e5\u671f\u611f\u77e5\u9810\u89bd\uff0c\u4fdd\u7559\u56fa\u5b9a\u8ab2\u7a0b\u7de8\u8f2f\u898f\u5247",
-  "ticket_id": "TKT-20260831-215910-8Y43",
+  "task": "P1 \u8abf\u8ab2\u9810\u89bd\u4ee5\u540c\u65e5\u8acb\u5047\u4f8b\u5916\u512a\u5148\u65bc stale session projection\uff0c\u907f\u514d\u8aa4\u5224\u8001\u5e2b\u6eff\u6bb5",
+  "ticket_id": "TKT-20260901-043614-NV3J",
   "topic_id": "repo:default",
   "vendor": "openai",
   "writing_session": null
