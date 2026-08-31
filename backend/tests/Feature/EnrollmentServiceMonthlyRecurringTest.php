@@ -147,7 +147,7 @@ class EnrollmentServiceMonthlyRecurringTest extends TestCase
 
     /**
      * FR-002: 多個星期幾 → 每週生成多堂。
-     * 週一+週四, 2026/05/01 ~ 2026/05/31 → 週一有 4 個 (5,12,19,26), 週四有 5 個 (1,8,15,22,29) = 共 9 堂。
+     * 週一+週四, 2026/05/01 ~ 2026/05/31 → 開課日 5/1 + 週一 4 堂 + 週四 4 堂 = 共 9 堂。
      */
     public function test_monthly_with_multiple_weekdays(): void
     {
@@ -182,7 +182,8 @@ class EnrollmentServiceMonthlyRecurringTest extends TestCase
             ->whereNotIn('Status', ['cancelled'])
             ->get();
 
-        $this->assertEquals(8, $sessions->count(), 'Mon(4) + Thu(4) = 8 sessions in May 2026');
+        $this->assertEquals(9, $sessions->count(), 'Opening date + Mon(4) + Thu(4) = 9 sessions in May 2026');
+        $this->assertSame('2026-05-01', substr((string) $sessions->sortBy('SessionDate')->first()->SessionDate, 0, 10));
     }
 
     /**

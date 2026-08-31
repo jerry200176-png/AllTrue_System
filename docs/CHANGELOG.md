@@ -1,3 +1,9 @@
+## 2026-08-31 — fix(schedule): 月結開課日跨固定星期仍建立首堂
+<!-- release-notes: staff_update=staff-2026-08-31-monthly-opening-date -->
+- 月結課程的開課日即使不在固定上課星期內，現在仍會建立並顯示為首堂；後續固定星期的排課維持原規則。
+- 單課程與多科方案共用同一個後端排課契約，並補上前端預覽與前後端回歸測試。
+- 不改付款、結算、production 資料、既有出勤或扣堂歷史。
+
 ## 2026-08-31 — fix(calendar): 調課預覽正確排除請假與取消課程
 <!-- release-notes: staff_update=staff-2026-08-31-calendar-leave-capacity-preview -->
 - 行事曆調課的送出前檢查現在會與課程查找一致，排除同日期已請假、已調整請假、核准請假與取消的課程，不再把實際空出的老師時段誤判為滿段。

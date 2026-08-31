@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.08.31",
     "date": "2026-08-31",
     "title": "2026.08.31 草稿（未發布）",
-    "summary": "調課預覽正確排除請假與取消課程",
+    "summary": "月結開課日跨固定星期仍建立首堂；調課預覽正確排除請假與取消課程",
     "audience": [
       "teacher",
       "director"
@@ -18,11 +18,13 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "月結開課日跨固定星期仍建立首堂",
           "調課預覽正確排除請假與取消課程"
         ]
       }
     ],
     "items": [
+      "月結開課日跨固定星期仍建立首堂",
       "調課預覽正確排除請假與取消課程"
     ]
   },

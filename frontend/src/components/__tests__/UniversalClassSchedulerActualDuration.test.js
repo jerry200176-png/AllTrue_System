@@ -67,6 +67,27 @@ describe('UniversalClassScheduler — 依實際時長扣堂', () => {
     wrapper.unmount();
   });
 
+  it('月結開課日不在固定星期時，仍顯示開課日首堂並保留後續固定星期', async () => {
+    const wrapper = await mountScheduler();
+    const vm = wrapper.vm;
+
+    vm.form.payment_type = 'monthly';
+    vm.form.course_start_date = '2026-05-01';
+    vm.form.end_date = '2026-05-31';
+    vm.form.days_of_week = [4];
+    vm.form.start_time = '18:00';
+    vm.form.duration_hours = 2;
+    await flushPromises();
+
+    expect(vm.monthlySystemOccurrences.map((entry) => entry.ymd)).toEqual([
+      '2026-05-01', '2026-05-07', '2026-05-14', '2026-05-21', '2026-05-28',
+    ]);
+    expect(vm.monthlyPreviewText).toContain('含開課日首堂');
+    expect(vm.monthlyPreviewText).toContain('共 5 堂');
+
+    wrapper.unmount();
+  });
+
   it('旗標開啟後，選了依實際時長才會出現標準堂長與排課次數', async () => {
     perfFlags.ACTUAL_DURATION_DEDUCTION_ENABLED = true;
     const wrapper = await mountScheduler();

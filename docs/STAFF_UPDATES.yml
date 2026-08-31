@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-08-31-monthly-opening-date
+    published_at: "2026-08-31"
+    audiences:
+      - director
+    importance: digest
+    title: 月結開課日會正確顯示首堂
+    summary: 開課日與固定上課星期不同時，月結排課仍會建立開課日首堂，後續固定星期照常排課。
+    items:
+      - category: fixed
+        text: 月結單科與多科方案現在都會保留開課日首堂，不會因開課日跨星期而整堂消失。
+      - category: improved
+        text: 排課預覽會標示「含開課日首堂」；付款、結算、既有出勤與扣堂歷史不變。
+    source_refs:
+      - "changelog:2026-08-31:monthly-opening-date"
+
   - id: staff-2026-08-31-calendar-leave-capacity-preview
     published_at: "2026-08-31"
     audiences:

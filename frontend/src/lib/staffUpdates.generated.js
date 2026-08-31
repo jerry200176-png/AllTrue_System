@@ -41,6 +41,43 @@ export const staffUpdates = [
     "version": "2026.08.31"
   },
   {
+    "id": "staff-2026-08-31-monthly-opening-date",
+    "publishedAt": "2026-08-31",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "月結開課日會正確顯示首堂",
+    "summary": "開課日與固定上課星期不同時，月結排課仍會建立開課日首堂，後續固定星期照常排課。",
+    "items": [
+      "月結單科與多科方案現在都會保留開課日首堂，不會因開課日跨星期而整堂消失。",
+      "排課預覽會標示「含開課日首堂」；付款、結算、既有出勤與扣堂歷史不變。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "月結單科與多科方案現在都會保留開課日首堂，不會因開課日跨星期而整堂消失。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "排課預覽會標示「含開課日首堂」；付款、結算、既有出勤與扣堂歷史不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-31:monthly-opening-date"
+    ],
+    "date": "2026-08-31",
+    "version": "2026.08.31"
+  },
+  {
     "id": "staff-2026-08-31-bug-triage-result-contract",
     "publishedAt": "2026-08-31",
     "effectiveAt": null,
