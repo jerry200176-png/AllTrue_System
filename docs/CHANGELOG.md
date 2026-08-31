@@ -1,3 +1,8 @@
+## 2026-08-31 — fix(ops): Phase-A bug triage workflow accepts persisted replies
+<!-- release-notes: staff_update=staff-2026-08-31-bug-triage-result-contract -->
+- 修正 Bug 分診 workflow 將已成功寫入的公開回覆誤判為失敗；現在能正確辨識已保存的回覆與冪等略過結果，避免重跑造成誤判。
+- 不改 Bug 狀態規則、回覆權限、帳務資料或產品行為。
+
 ## 2026-08-30 — improved(ux): 學生管理操作按鈕語意更穩定
 <!-- release-notes: silent_ship=silent-2026-08-30-students-button-semantics -->
 - 學生管理頁的新增、編輯、課程、身份關聯與視窗操作現在明確標示為一般按鈕，避免未來被表單情境誤當成送出。
