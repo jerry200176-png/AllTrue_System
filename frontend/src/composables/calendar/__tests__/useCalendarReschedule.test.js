@@ -97,4 +97,59 @@ describe('useCalendarReschedule', () => {
     expect(full.message).toContain('3 位學生');
     expect(buildReschedulePreview({ targetDate: '' }).status).toBe('incomplete');
   });
+
+  it.each(['leave', 'leave_adjusted', 'excused', 'cancelled'])
+    ('does not block a target slot when the existing course is %s on that date', (status) => {
+      const result = buildReschedulePreview({
+        currentCourseId: 99,
+        studentId: 10,
+        teacherId: 5,
+        targetDate: '2026-09-01',
+        startTime: '18:00',
+        endTime: '20:00',
+        classType: 'one_on_one',
+        courses: [{ id: 20, student_id: 21, teacher_id: 5, day_of_week: 2, start_time: '18:00', end_time: '20:00', class_type: 'one_on_one' }],
+        sessionDatesByCourseId: {
+          20: [{ session_date: '2026-09-01', start_time: '18:00', status }],
+        },
+      });
+
+      expect(result.blocked).toBe(false);
+      expect(result.message).toContain('沒有發現衝堂');
+    });
+
+  it('uses a schedule exception when the session projection is not loaded yet', () => {
+    const result = buildReschedulePreview({
+      currentCourseId: 99,
+      studentId: 10,
+      teacherId: 5,
+      targetDate: '2026-09-01',
+      startTime: '18:00',
+      endTime: '20:00',
+      classType: 'one_on_one',
+      courses: [{ id: 20, student_id: 21, teacher_id: 5, day_of_week: 2, start_time: '18:00', end_time: '20:00', class_type: 'one_on_one' }],
+      exceptions: [{ student_course_id: 20, schedule_date: '2026-09-01', status: 'leave_adjusted' }],
+    });
+
+    expect(result.blocked).toBe(false);
+  });
+
+  it('still blocks a genuinely active course on the target date', () => {
+    const result = buildReschedulePreview({
+      currentCourseId: 99,
+      studentId: 10,
+      teacherId: 5,
+      targetDate: '2026-09-01',
+      startTime: '18:00',
+      endTime: '20:00',
+      classType: 'one_on_one',
+      courses: [{ id: 20, student_id: 21, teacher_id: 5, day_of_week: 2, start_time: '18:00', end_time: '20:00', class_type: 'one_on_one' }],
+      sessionDatesByCourseId: {
+        20: [{ session_date: '2026-09-01', start_time: '18:00', status: 'scheduled' }],
+      },
+    });
+
+    expect(result.blocked).toBe(true);
+    expect(result.message).toContain('已有一對一');
+  });
 });
