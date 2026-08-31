@@ -7,6 +7,7 @@ import unittest
 
 WORKFLOW = Path(__file__).parents[2] / ".github" / "workflows" / "deploy.yml"
 AUTOMERGE_WORKFLOW = WORKFLOW.parent / "auto-merge-safe.yml"
+BUG_TRIAGE_WORKFLOW = WORKFLOW.parent / "bug-phase-a-triage.yml"
 TIER_VALUES = {"T0": 0, "T1": 1, "T2": 2, "T3": 3}
 RISK_VALUES = {"R0": 0, "R1": 1, "R2": 2, "R3": 3}
 ROOT = Path(__file__).parents[2]
@@ -371,6 +372,17 @@ class AutonomousMergeWorkflowContractTest(unittest.TestCase):
     def test_auto_merge_rechecks_head_sha_before_side_effect(self):
         self.assertIn("CURRENT_HEAD_SHA", self.workflow)
         self.assertIn("PR head changed before auto-merge; fail closed", self.workflow)
+
+
+class BugPhaseATriageWorkflowContractTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.workflow = BUG_TRIAGE_WORKFLOW.read_text(encoding="utf-8")
+
+    def test_accepts_persisted_comment_model_and_idempotent_result(self):
+        self.assertIn("$commentSucceeded = ($comment[\"ok\"] ?? false) || isset($comment[\"id\"]) || ($comment[\"skipped\"] ?? false);", self.workflow)
+        self.assertIn("if (!$commentSucceeded)", self.workflow)
+        self.assertNotIn('if (!($comment["ok"] ?? false))', self.workflow)
 
 
 if __name__ == "__main__":

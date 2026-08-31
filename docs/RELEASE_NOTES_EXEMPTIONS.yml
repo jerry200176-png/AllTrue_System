@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-08-31-bug-phase-a-result-contract
+    changelog_date: "2026-08-31"
+    changelog_title: "fix(ops): Phase-A bug triage workflow accepts persisted replies"
+    reason: 僅修正工程分診 workflow 對已保存公開回覆的結果判斷；不新增教職員功能或改變 Bug／帳務資料語意。
+
   - id: silent-2026-08-30-students-button-semantics
     changelog_date: "2026-08-30"
     changelog_title: "improved(ux): 學生管理操作按鈕語意更穩定"
