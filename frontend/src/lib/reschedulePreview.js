@@ -61,6 +61,18 @@ function courseIdFor(course) {
 
 function isNonOccupyingOnDate(course, date, sessionDatesByCourseId = {}, exceptions = []) {
   const courseId = courseIdFor(course);
+  if (!courseId) return false;
+  const hasNonOccupyingException = (Array.isArray(exceptions) ? exceptions : []).some((exception) =>
+    String(exception?.student_course_id ?? exception?.studentClassId ?? exception?.student_class_id ?? '') === courseId
+      && String(exception?.schedule_date || exception?.session_date || exception?.date || '').slice(0, 10) === date
+      && NON_OCCUPYING_STATUSES.has(String(exception?.status || exception?.Status || '').toLowerCase()),
+  );
+
+  // A leave exception is the date-level source of truth. The materialized
+  // session projection can briefly remain scheduled while the leave cascade
+  // is being reflected, and must not make a genuinely free seat look full.
+  if (hasNonOccupyingException) return true;
+
   const rows = sessionDatesByCourseId?.[courseId];
   if (Array.isArray(rows) && rows.length > 0) {
     const sameDate = rows.filter((row) =>
@@ -73,11 +85,7 @@ function isNonOccupyingOnDate(course, date, sessionDatesByCourseId = {}, excepti
     }
   }
 
-  return (Array.isArray(exceptions) ? exceptions : []).some((exception) =>
-    String(exception?.student_course_id ?? '') === courseId
-      && String(exception?.schedule_date || '').slice(0, 10) === date
-      && NON_OCCUPYING_STATUSES.has(String(exception?.status || '').toLowerCase()),
-  );
+  return false;
 }
 
 /**

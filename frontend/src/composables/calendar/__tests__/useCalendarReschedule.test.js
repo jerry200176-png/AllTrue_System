@@ -134,6 +134,26 @@ describe('useCalendarReschedule', () => {
     expect(result.blocked).toBe(false);
   });
 
+  it('lets a leave exception override a stale scheduled session projection', () => {
+    const result = buildReschedulePreview({
+      currentCourseId: 99,
+      studentId: 10,
+      teacherId: 5,
+      targetDate: '2026-09-01',
+      startTime: '18:00',
+      endTime: '20:00',
+      classType: 'one_on_one',
+      courses: [{ id: 20, student_id: 21, teacher_id: 5, day_of_week: 2, start_time: '18:00', end_time: '20:00', class_type: 'one_on_one' }],
+      sessionDatesByCourseId: {
+        20: [{ session_date: '2026-09-01', status: 'scheduled' }],
+      },
+      exceptions: [{ student_course_id: 20, schedule_date: '2026-09-01', status: 'leave' }],
+    });
+
+    expect(result.blocked).toBe(false);
+    expect(result.message).toContain('沒有發現衝堂');
+  });
+
   it('still blocks a genuinely active course on the target date', () => {
     const result = buildReschedulePreview({
       currentCourseId: 99,
