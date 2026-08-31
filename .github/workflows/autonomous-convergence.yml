@@ -1,0 +1,86 @@
+name: Autonomous main convergence
+
+# Auto-merge performed by a bot can leave no push-triggered CI event. This
+# bounded reconciler restores the CI -> deploy workflow_run chain; it never
+# deploys, opens SSH, changes production, or bypasses a required check.
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: autonomous-main-convergence
+  cancel-in-progress: true
+
+jobs:
+  reconcile:
+    name: Reconcile exact-main CI event
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+    steps:
+      - name: Dispatch CI when current main has no downstream evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          MAIN_SHA="$(gh api "/repos/${REPO}/git/ref/heads/main" --jq '.object.sha')"
+          CI_JSON_FILE="$(mktemp)"
+          DEPLOY_JSON_FILE="$(mktemp)"
+          trap 'rm -f "$CI_JSON_FILE" "$DEPLOY_JSON_FILE"' EXIT
+          gh api "/repos/${REPO}/actions/workflows/ci.yml/runs?branch=main&head_sha=${MAIN_SHA}&per_page=100" > "$CI_JSON_FILE"
+          gh api "/repos/${REPO}/actions/workflows/deploy.yml/runs?branch=main&head_sha=${MAIN_SHA}&per_page=100" > "$DEPLOY_JSON_FILE"
+
+          DECISION="$(MAIN_SHA="$MAIN_SHA" CI_JSON_FILE="$CI_JSON_FILE" DEPLOY_JSON_FILE="$DEPLOY_JSON_FILE" python3 - <<'PY'
+          import json
+          import os
+          from datetime import datetime, timezone
+
+          def read(path):
+              with open(path, encoding="utf-8") as handle:
+                  return json.load(handle).get("workflow_runs", [])
+
+          now = datetime.now(timezone.utc)
+          ci_runs = read(os.environ["CI_JSON_FILE"])
+          deploy_runs = read(os.environ["DEPLOY_JSON_FILE"])
+          active = any(run.get("status") in {"queued", "in_progress", "waiting"} for run in ci_runs)
+          successful = any(run.get("conclusion") == "success" for run in ci_runs)
+          deploy_present = bool(deploy_runs)
+          recent_dispatch = False
+          for run in ci_runs:
+              if run.get("event") != "workflow_dispatch":
+                  continue
+              try:
+                  age = (now - datetime.fromisoformat(run["created_at"].replace("Z", "+00:00"))).total_seconds()
+              except (KeyError, TypeError, ValueError):
+                  continue
+              if age < 900:
+                  recent_dispatch = True
+                  break
+
+          if active or recent_dispatch or deploy_present:
+              print("hold")
+          else:
+              print("dispatch")
+          print(
+              f"main_sha={os.environ['MAIN_SHA']} ci_runs={len(ci_runs)} "
+              f"successful_ci={successful} deploy_runs={len(deploy_runs)} "
+              f"active_ci={active} recent_dispatch={recent_dispatch}",
+          )
+          PY
+          )"
+
+          echo "$DECISION"
+          if [[ "$DECISION" == dispatch$'\n'* ]]; then
+            gh workflow run ci.yml --repo "$REPO" --ref main
+            echo "Dispatched exact-main CI; deploy.yml remains the only production executor."
+          else
+            echo "No CI dispatch needed; required checks and deploy evidence remain authoritative."
+          fi
