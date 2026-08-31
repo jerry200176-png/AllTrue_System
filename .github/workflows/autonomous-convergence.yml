@@ -10,6 +10,13 @@ on:
   pull_request_target:
     branches: [main]
     types: [closed]
+  # GitHub's auto-merge bot can suppress the post-merge pull_request event.
+  # The safe-merge workflow completes before the checks finish, so the job
+  # below polls only that PR's merge state for a bounded window and then
+  # reconciles the exact main SHA.
+  workflow_run:
+    workflows: ["Autonomous safe merge"]
+    types: [completed]
   schedule:
     - cron: '*/10 * * * *'
   workflow_dispatch:
@@ -28,7 +35,8 @@ jobs:
     if: >-
       github.event_name == 'schedule' ||
       github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'pull_request_target' && github.event.pull_request.merged == true)
+      (github.event_name == 'pull_request_target' && github.event.pull_request.merged == true) ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
@@ -39,6 +47,27 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "workflow_run" ]]; then
+            PR_NUMBER="${{ github.event.workflow_run.pull_requests[0].number }}"
+            if [[ -n "$PR_NUMBER" ]]; then
+              for _ in {1..24}; do
+                PR_STATE="$(gh api "/repos/${REPO}/pulls/${PR_NUMBER}" --jq '.state + ":" + (.merged_at // "")')"
+                if [[ "$PR_STATE" == merged:* ]]; then
+                  break
+                fi
+                if [[ "$PR_STATE" == closed:* ]]; then
+                  echo "Auto-merge source PR #${PR_NUMBER} closed without merge; no CI dispatch."
+                  exit 0
+                fi
+                sleep 10
+              done
+              if [[ "$PR_STATE" != merged:* ]]; then
+                echo "Auto-merge source PR #${PR_NUMBER} did not merge within the bounded window; scheduler remains fallback."
+                exit 0
+              fi
+            fi
+          fi
 
           MAIN_SHA="$(gh api "/repos/${REPO}/git/ref/heads/main" --jq '.object.sha')"
           CI_JSON_FILE="$(mktemp)"
