@@ -23,6 +23,7 @@ class AutonomousConvergenceTest(unittest.TestCase):
         self.assertIn('workflows: ["Autonomous safe merge"]', workflow)
         self.assertIn("github.event.workflow_run.conclusion == 'success'", workflow)
         self.assertIn("github.event.workflow_run.pull_requests[0].number", workflow)
+        self.assertIn("if .merged_at then \"merged\" else .state end", workflow)
         self.assertIn("bounded window", workflow)
         self.assertIn("Dispatch CI when current main has no downstream evidence", workflow)
         self.assertNotIn("ssh ", workflow)
