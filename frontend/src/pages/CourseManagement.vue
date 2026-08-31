@@ -1339,6 +1339,7 @@
 </template>
 
 <script setup>
+// Autonomous delivery canary: no runtime behavior change.
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
