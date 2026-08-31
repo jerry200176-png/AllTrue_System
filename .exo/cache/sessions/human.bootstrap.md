@@ -1,31 +1,31 @@
 ╔══════════════════════════════════════════════════════╗
 ║  >>> EXO GOVERNED SESSION                            ║
 ║  protocol: ExoProtocol v1 | mode: work               ║
-║  ticket: TKT-20260901-043614-NV3J | actor: human     ║
+║  ticket: TKT-20260901-045848-UJSJ | actor: human     ║
 ║  model: codex                                        ║
-║  branch: feat/TKT-20260901-043614-NV3J              ║
+║  branch: feat/TKT-20260901-045848-UJSJ               ║
 ╚══════════════════════════════════════════════════════╝
 
 # Exo Agent Session Bootstrap
 
-session_id: SES-20260901043639-D65CEAB6
+session_id: SES-20260901045942-87630ED6
 actor: human
 vendor: openai
 model: codex
 mode: work
 context_window_tokens: unknown
-ticket_id: TKT-20260901-043614-NV3J
-ticket_title: P1 calendar reschedule leave exception precedence
+ticket_id: TKT-20260901-045848-UJSJ
+ticket_title: P1 historical course usage reconciliation visibility
 ticket_status: todo
 ticket_priority: 1
 topic_id: repo:default
 lock_owner: human
-git_branch: feat/TKT-20260901-043614-NV3J
-lock_branch: feat/TKT-20260901-043614-NV3J
-lock_expires_at: 2026-09-01T08:36:38+08:00
+git_branch: feat/TKT-20260901-045848-UJSJ
+lock_branch: feat/TKT-20260901-045848-UJSJ
+lock_expires_at: 2026-09-01T08:59:42+08:00
 
 ## Scope
-- allow: ["frontend/src/lib/reschedulePreview.js", "frontend/src/composables/calendar/__tests__/useCalendarReschedule.test.js", "docs/CHANGELOG.md", "docs/STAFF_UPDATES.yml", "frontend/src/lib/changelogDraft.generated.js", "frontend/src/lib/staffUpdates.generated.js", ".agent-session/manifest.json", ".exo/cache/**", ".exo/memory/**", ".exo/locks/**", ".exo/tickets/**", ".exo/logs/**"]
+- allow: ["frontend/src/pages/CourseManagement.vue", "frontend/src/components/__tests__/CourseManagementLensUx.test.js", "frontend/src/lib/courseRowWarnings.js", "frontend/src/lib/courseRowWarnings.test.js", "docs/CHANGELOG.md", "docs/STAFF_UPDATES.yml", "frontend/src/lib/changelogDraft.generated.js", "frontend/src/lib/staffUpdates.generated.js", ".agent-session/manifest.json", ".exo/cache/**", ".exo/memory/**", ".exo/locks/**", ".exo/tickets/**", ".exo/logs/**"]
 - deny: ["backend/**", "**/.env*"]
 
 ## Checks
@@ -38,7 +38,7 @@ lock_expires_at: 2026-09-01T08:36:38+08:00
 
 ## Machine Context
 - cpu_cores: 12
-- load_avg_1m: 1.4
+- load_avg_1m: 0.2
 - ram: 3.4GB available / 4.8GB total
 
 ## Start Advisories
@@ -112,10 +112,10 @@ After building a reusable utility, REGISTER it:
 - `scripts.check-eslint-unused-baseline.mjs:main`: Run the frontend no-unused-vars per-file baseline ratchet and fail only on newly added debt
 
 ## Current Task
-P1 調課預覽以同日請假例外優先於 stale session projection，避免誤判老師滿段
+修正 CourseManagement 歷史課程卡遺漏堂數待對帳標籤；只做 frontend bounded visibility change，補回歸測試與精簡 release note，不改 backend、付款、出勤、扣堂或 production data。
 
 ## Lifecycle Commands
-- heartbeat: EXO_ACTOR=human python3 -m exo.cli lease-heartbeat --ticket-id TKT-20260901-043614-NV3J --owner human
+- heartbeat: EXO_ACTOR=human python3 -m exo.cli lease-heartbeat --ticket-id TKT-20260901-045848-UJSJ --owner human
 - run worker once: EXO_ACTOR=human python3 -m exo.cli worker-poll --require-session --limit 50
 - suspend: EXO_ACTOR=human python3 -m exo.cli session-suspend --reason "<why pausing>"
-- finish: EXO_ACTOR=human python3 -m exo.cli session-finish --summary "<what changed>" --set-status review --ticket-id TKT-20260901-043614-NV3J
+- finish: EXO_ACTOR=human python3 -m exo.cli session-finish --summary "<what changed>" --set-status review --ticket-id TKT-20260901-045848-UJSJ

@@ -1,3 +1,7 @@
+## 2026-09-01 — fix(course): 歷史課程顯示堂數待對帳
+<!-- release-notes: staff_update=staff-2026-09-01-history-usage-balance-visibility -->
+- 歷史課程卡現在也會直接顯示「堂數待對帳」與原因提示，不會因課程已結案／完課而藏起資料異常；不改堂數、帳務、出勤或扣堂資料。
+
 ## 2026-09-01 — fix(calendar): 調課預覽優先採用當日請假狀態
 <!-- release-notes: staff_update=staff-2026-09-01-calendar-leave-precedence -->
 - 修正請假狀態正在同步時，行事曆調課仍把老師誤判為滿段的問題；同日已請假的課程現在會正確釋放可用時段，仍保留對有效課程的衝堂檢查。
