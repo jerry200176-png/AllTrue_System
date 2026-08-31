@@ -48,7 +48,7 @@ describe('TuitionCollectionPage receipt entry paths', () => {
   it('opens on a mixed-status action queue and prevents mixed batch operations', () => {
     expect(source).toContain("{ key: 'action', label: '待處理' }");
     expect(source).toContain('aria-label="主任待處理佇列"');
-    expect(source).toContain("if (activeTab.value === 'action') return ps === 'unpaid' || ps === 'partial' || ps === 'pending_report';");
+    expect(source).toContain("if (activeTab.value === 'action') return ps === 'unpaid' || ps === 'partial' || ps === 'pending_report' || ps === 'pending_reconciliation';");
     expect(source).toContain("if (modes.size > 1) return 'mixed';");
     expect(source).toContain('請分開選取未繳費或待對帳，才能進行批次處理。');
   });

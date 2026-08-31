@@ -120,7 +120,7 @@
             <span class="tc-card-label">逾期 {{ formatCurrency(overdueTotal) }}</span>
           </div>
           <div class="tc-card tc-card--warn">
-            <span class="tc-card-num">{{ statusCounts.pending_report }}</span>
+            <span class="tc-card-num">{{ statusCounts.pending_report + statusCounts.pending_reconciliation }}</span>
             <span class="tc-card-label">待對帳</span>
           </div>
           <div class="tc-card tc-card--outstanding">
@@ -399,6 +399,19 @@
                     </span>
 
                     <template v-if="r.payment_status === 'unpaid' || r.payment_status === 'partial'">
+                      <button class="tc-btn tc-btn--slip" @click="openSlip(r)" title="產生繳費通知單">
+                        <span class="material-symbols-outlined">receipt_long</span>
+                        繳費單
+                      </button>
+                      <button class="tc-btn tc-btn--confirm" @click="openPaymentEntry(r)" title="登記已回報" :disabled="actionLoading === r.id">
+                        <span class="material-symbols-outlined">check_circle</span>
+                        登記已回報
+                      </button>
+                    </template>
+
+                    <!-- settled_pending: closed for scheduling, payment still actionable -->
+                    <template v-if="r.payment_status === 'pending_reconciliation'">
+                      <span class="tc-renew-hint">已結案，尚未完成繳費</span>
                       <button class="tc-btn tc-btn--slip" @click="openSlip(r)" title="產生繳費通知單">
                         <span class="material-symbols-outlined">receipt_long</span>
                         繳費單
@@ -693,13 +706,14 @@
 
       <template v-else>
         <div class="tc-summary">
-          <div class="tc-card tc-card--total"><span class="tc-card-num">{{ settledSummary.course_count || 0 }}</span><span class="tc-card-label">已結清課程</span></div>
+          <div class="tc-card tc-card--total"><span class="tc-card-num">{{ settledSummary.course_count || 0 }}</span><span class="tc-card-label">已結案課程</span></div>
           <div class="tc-card tc-card--success"><span class="tc-card-num">{{ formatCurrency(settledSummary.paid_total || 0) }}</span><span class="tc-card-label">已記入收款</span></div>
+          <div class="tc-card" :class="{ 'tc-card--warn': (settledSummary.pending_reconciliation_count || 0) > 0 }"><span class="tc-card-num">{{ settledSummary.pending_reconciliation_count || 0 }}</span><span class="tc-card-label">結案待對帳</span></div>
           <div class="tc-card" :class="{ 'tc-card--warn': (settledSummary.legacy_count || 0) > 0 }"><span class="tc-card-num">{{ settledSummary.legacy_count || 0 }}</span><span class="tc-card-label">舊制無帳單</span></div>
           <div class="tc-card" :class="{ 'tc-card--warn': (settledSummary.exception_count || 0) > 0 }"><span class="tc-card-num">{{ settledSummary.exception_count || 0 }}</span><span class="tc-card-label">例外待處理</span></div>
           <div class="tc-card tc-card--outstanding"><span class="tc-card-num">{{ formatCurrency(settledSummary.overpaid_total || 0) }}</span><span class="tc-card-label">多收待處理</span></div>
         </div>
-        <p class="tc-summary-note">「已結清課程」依帳單、收款、收據與課程資料彙整；「收據紀錄」是一筆筆收款與更正紀錄，兩邊統計方式不同。</p>
+        <p class="tc-summary-note">「已結案課程」包含已完成收款與仍待對帳的結案課程；「收據紀錄」是一筆筆收款與更正紀錄，兩邊統計方式不同。</p>
 
         <div v-if="settledLoading && !settledRows.length" class="tc-skeleton-area">
           <div class="tc-card tc-card--skeleton"><span class="skel skel-num"></span><span class="skel skel-label"></span></div>
@@ -726,7 +740,8 @@
                 <td>
                   <span v-if="row.legacy_paid_without_invoice" class="acct-chip acct-chip--backfill">舊制無帳單</span>
                   <span v-if="row.has_exception" class="acct-chip acct-chip--prepaid">例外待處理</span>
-                  <span v-if="!row.legacy_paid_without_invoice && !row.has_exception" class="text-light">正常</span>
+                  <span v-if="row.pending_reconciliation" class="acct-chip acct-chip--pending">結案待對帳</span>
+                  <span v-if="!row.legacy_paid_without_invoice && !row.has_exception && !row.pending_reconciliation" class="text-light">正常</span>
                 </td>
                 <td>
                   <div class="tc-actions">
@@ -1142,11 +1157,13 @@ const TAB_DEFS = [
   { key: 'unpaid', label: '未繳' },
   { key: 'overdue', label: '逾期' },
   { key: 'pending_report', label: '待對帳' },
+  { key: 'pending_reconciliation', label: '結案待對帳' },
   { key: 'renewal', label: '續課/將到期' },
 ];
 
 const billingFlowCurrentId = computed(() => {
   if (activeTab.value === 'pending_report') return 'confirm';
+  if (activeTab.value === 'pending_reconciliation') return 'report';
   if (activeTab.value === 'unpaid' || activeTab.value === 'overdue') return 'report';
   return 'queue';
 });
@@ -1197,8 +1214,9 @@ const selectedIdSet = computed(() => new Set(selectedIds.value));
 function isRowSelectable(r) {
   const ps = r?.payment_status;
   if (activeTab.value === 'pending_report') return ps === 'pending_report' && !!r.latest_payment_report_id;
-  if (activeTab.value === 'action') return ps === 'unpaid' || ps === 'partial' || ps === 'pending_report';
-  return ps === 'unpaid' || ps === 'partial';
+  if (activeTab.value === 'pending_reconciliation') return ps === 'pending_reconciliation';
+  if (activeTab.value === 'action') return ps === 'unpaid' || ps === 'partial' || ps === 'pending_report' || ps === 'pending_reconciliation';
+  return ps === 'unpaid' || ps === 'partial' || ps === 'pending_reconciliation';
 }
 
 const selectableRows = computed(() => filteredRows.value.filter(isRowSelectable));
@@ -1214,7 +1232,7 @@ const batchPreviewRows = computed(() => {
   if (batchPreviewMode.value === 'confirm') {
     return selectedRows.value.filter((r) => r.payment_status === 'pending_report' && r.latest_payment_report_id);
   }
-  return selectedRows.value.filter((r) => r.payment_status === 'unpaid' || r.payment_status === 'partial');
+  return selectedRows.value.filter((r) => r.payment_status === 'unpaid' || r.payment_status === 'partial' || r.payment_status === 'pending_reconciliation');
 });
 const batchPreviewTotal = computed(() => batchPreviewRows.value.reduce((total, row) => total + Number(row.outstanding ?? row.charge ?? 0), 0));
 const allVisibleSelected = computed(() => selectableRows.value.length > 0 && selectableRows.value.every((r) => selectedIdSet.value.has(r.id)));
@@ -1251,7 +1269,7 @@ function openBatchPreview() {
   }
   const rows = mode === 'confirm'
     ? selectedRows.value.filter((r) => r.payment_status === 'pending_report' && r.latest_payment_report_id)
-    : selectedRows.value.filter((r) => r.payment_status === 'unpaid' || r.payment_status === 'partial');
+    : selectedRows.value.filter((r) => r.payment_status === 'unpaid' || r.payment_status === 'partial' || r.payment_status === 'pending_reconciliation');
   if (!rows.length) {
     showToast(mode === 'confirm' ? '請先勾選待對帳課程' : '請先勾選未繳課程', 'warning');
     billingWorkflowError(mode === 'confirm' ? 'confirm' : 'report', 'validation');
@@ -1289,7 +1307,7 @@ watch(activeTab, () => {
 async function submitBatchReport() {
   const workflowStep = 'report';
   if (!batchPreviewOpen.value) return;
-  const rows = selectedRows.value.filter((r) => r.payment_status === 'unpaid' || r.payment_status === 'partial');
+  const rows = selectedRows.value.filter((r) => r.payment_status === 'unpaid' || r.payment_status === 'partial' || r.payment_status === 'pending_reconciliation');
   if (!rows.length) {
     showToast('請先勾選未繳課程', 'warning');
     billingWorkflowError(workflowStep, 'validation');
@@ -1386,6 +1404,7 @@ const STATUS_CONFIG = {
   unpaid:           { label: '未繳費',        cls: 'st-unpaid' },
   partial:          { label: '部分付款',      cls: 'st-partial' },
   pending_report:   { label: '待對帳',        cls: 'st-pending' },
+  pending_reconciliation: { label: '結案待對帳', cls: 'st-pending' },
   paid:             { label: '已繳費',        cls: 'st-paid' },
   renew_needed:     { label: '續課待處理',    cls: 'st-renew' },
   monthly_due_soon: { label: '月結將到期',    cls: 'st-monthly' },
@@ -1511,25 +1530,26 @@ function openLedgerForReport(row) {
 // ═══ Tab Filter counts / overdue (activeTab + TAB_DEFS declared above batch UI) ═══
 function isOverdue(r) {
   return (r.days_until_settlement != null && r.days_until_settlement < 0) &&
-    ['unpaid', 'partial', 'pending_report'].includes(r.payment_status);
+    ['unpaid', 'partial', 'pending_report', 'pending_reconciliation'].includes(r.payment_status);
 }
 
 const tabCounts = computed(() => {
-  const c = { action: 0, all: 0, unpaid: 0, overdue: 0, pending_report: 0, renewal: 0 };
+  const c = { action: 0, all: 0, unpaid: 0, overdue: 0, pending_report: 0, pending_reconciliation: 0, renewal: 0 };
   rows.value.forEach(r => {
     c.all++;
     const ps = r.payment_status;
-    if (['unpaid', 'partial', 'pending_report'].includes(ps)) c.action++;
+    if (['unpaid', 'partial', 'pending_report', 'pending_reconciliation'].includes(ps)) c.action++;
     if (isOverdue(r)) c.overdue++;
     if (ps === 'unpaid' || ps === 'partial') c.unpaid++;
     else if (ps === 'pending_report') c.pending_report++;
+    else if (ps === 'pending_reconciliation') c.pending_reconciliation++;
     else if (ps === 'paid' || ps === 'renew_needed' || ps === 'monthly_due_soon') c.renewal++;
   });
   return c;
 });
 
 const statusCounts = computed(() => {
-  const c = { unpaid: 0, partial: 0, pending_report: 0, paid: 0, renew_needed: 0, monthly_due_soon: 0 };
+  const c = { unpaid: 0, partial: 0, pending_report: 0, pending_reconciliation: 0, paid: 0, renew_needed: 0, monthly_due_soon: 0 };
   rows.value.forEach(r => {
     const ps = r.payment_status || (r.paid ? 'paid' : 'unpaid');
     if (c[ps] !== undefined) c[ps]++;
@@ -1537,7 +1557,7 @@ const statusCounts = computed(() => {
   return c;
 });
 
-const OUTSTANDING_STATUSES = ['unpaid', 'partial', 'pending_report'];
+const OUTSTANDING_STATUSES = ['unpaid', 'partial', 'pending_report', 'pending_reconciliation'];
 const totalOutstanding = computed(() => {
   return rows.value
     .filter(r => OUTSTANDING_STATUSES.includes(r.payment_status))
@@ -1591,6 +1611,7 @@ const tabFilteredRows = computed(() => {
   if (tab === 'overdue') return rows.value.filter(isOverdue);
   if (tab === 'unpaid') return rows.value.filter(r => r.payment_status === 'unpaid' || r.payment_status === 'partial');
   if (tab === 'pending_report') return rows.value.filter(r => r.payment_status === 'pending_report');
+  if (tab === 'pending_reconciliation') return rows.value.filter(r => r.payment_status === 'pending_reconciliation');
   if (tab === 'renewal') return rows.value.filter(r => ['paid', 'renew_needed', 'monthly_due_soon'].includes(r.payment_status));
   return rows.value;
 });
@@ -1674,7 +1695,7 @@ async function loadAlerts() {
     const json = await resp.json();
     const list = Array.isArray(json) ? json : [];
 
-    const statusPriority = { unpaid: 0, partial: 1, pending_report: 2, monthly_due_soon: 3, renew_needed: 4, paid: 5 };
+    const statusPriority = { unpaid: 0, partial: 1, pending_report: 2, pending_reconciliation: 2, monthly_due_soon: 3, renew_needed: 4, paid: 5 };
     rows.value = list.sort((a, b) => {
       const pa = statusPriority[a.payment_status] ?? 3;
       const pb = statusPriority[b.payment_status] ?? 3;
@@ -2408,6 +2429,10 @@ loadAlerts();
 .acct-chip--backfill {
   background: var(--ds-canvas-soft);
   color: var(--ds-ink-mute);
+}
+.acct-chip--pending {
+  background: var(--ds-warning-wash);
+  color: var(--ds-warning);
 }
 .acct-chip--type {
   background: var(--ds-primary-wash);

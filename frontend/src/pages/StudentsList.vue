@@ -437,7 +437,8 @@
                         <span class="tag sl-history-card__subject">{{ getSubjectLabel(hc.subject) }}</span>
                         <span class="status-tag" :class="hc.class_type">{{ classTypeLabel(hc.class_type) }}</span>
                         <span v-if="hc.PackageID" class="tag tag-package" :title="hc.PackageName || '多科方案'">方案</span>
-                        <span v-if="effectiveClosedReason(hc) === 'settled'" class="tag sl-tag-history sl-tag-history--settled">已結算</span>
+                        <span v-if="effectiveClosedReason(hc) === 'settled_pending'" class="tag sl-tag-history sl-tag-history--pending">已結算 · 待對帳</span>
+                        <span v-else-if="effectiveClosedReason(hc) === 'settled'" class="tag sl-tag-history sl-tag-history--settled">已結算</span>
                         <span v-else class="tag sl-tag-history sl-tag-history--completed">已完課</span>
                       </div>
                       <div class="sl-history-card__details">
@@ -1213,6 +1214,7 @@ function effectiveClosedReason(course) {
   return null;
 }
 const isHistoricalCourse = (course) => {
+  if (course?.closed_reason === 'settled_pending') return true;
   // 月結制課程 RemainingSessions 通常為 0（月結不扣堂），不可用 remaining ≤ 0 判斷歷史。
   // 月結課程只有明確停課（status=inactive，即 Stop=1）才視為歷史課程。
   if (String(course?.payment_type || '').toLowerCase() === 'monthly') {
@@ -1230,7 +1232,7 @@ const isHistoricalCourse = (course) => {
 };
 const isHistoryCourseByReason = (course) => {
   const reason = effectiveClosedReason(course);
-  return reason === 'settled' || reason === 'completed';
+  return reason === 'settled' || reason === 'settled_pending' || reason === 'completed';
 };
 const getActiveStudentCourses = (id) => {
   return getStudentCourses(id).filter(c => !isHistoryCourseByReason(c));
@@ -1374,8 +1376,8 @@ const toggleHistoryCourses = (studentId) => {
 
 const canCloseCourse = (course) => {
   return ['session', 'monthly'].includes(String(course?.payment_type || '').toLowerCase())
-    && isCourseSettled(course)
-    && String(course?.status || '').toLowerCase() !== 'inactive';
+    && String(course?.status || '').toLowerCase() !== 'inactive'
+    && course?.closed_reason !== 'settled_pending';
 };
 
 async function closeCourseNoRenew(course, studentName) {
@@ -1383,10 +1385,13 @@ async function closeCourseNoRenew(course, studentName) {
   if (!courseId) { alert('課程資料缺少識別碼，請重新整理後再試'); return; }
   const subject = getSubjectLabel(course?.subject);
   const remaining = Math.max(0, Number(getCourseRemainingSessions(course) ?? 0));
+  const paymentWarning = isCourseSettled(course)
+    ? ''
+    : '\n\n目前尚未完成繳費；結案後會標記「待對帳」，不會視為已繳費。';
   const balanceWarning = remaining > 0
     ? `\n\n目前還有 ${remaining} 堂未使用。結案會取消未來排課，並放棄這 ${remaining} 堂剩餘額度。`
     : '';
-  if (!confirm(`確定要結案「${studentName || '學生'}」的 ${subject} 課程嗎？${balanceWarning}\n\n結案後此課程不再出現在繳費／續課提醒中，已繳費與已上課紀錄仍會保留。`)) return;
+  if (!confirm(`確定要結案「${studentName || '學生'}」的 ${subject} 課程嗎？${paymentWarning}${balanceWarning}\n\n結案後此課程不再排課；若尚未繳費，會保留在帳務中心的「結案待對帳」佇列。已繳費與已上課紀錄仍會保留。`)) return;
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
@@ -1402,7 +1407,9 @@ async function closeCourseNoRenew(course, studentName) {
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) { alert('結案失敗：' + (json.message || res.statusText)); return; }
-    alert('已結案，此課程不再出現在繳費／續課提醒中。');
+    alert(json.pending_reconciliation
+      ? '已結案，課程保留在帳務中心的「結案待對帳」佇列，尚未視為已繳費。'
+      : '已結案，此課程不再出現在繳費／續課提醒中。');
     await loadAllStudentCourses();
   } catch (e) {
     alert('操作失敗：' + (e?.message || '請稍後再試'));
@@ -4449,6 +4456,11 @@ table th { font-size: 12.5px; }
   background: var(--ds-success-wash);
   color: var(--ds-success);
   border: 1px solid var(--ds-success);
+}
+.sl-tag-history--pending {
+  background: var(--ds-warning-wash);
+  color: var(--ds-warning);
+  border: 1px solid var(--ds-warning);
 }
 /* completed 藍屬多態語意色（無對應 ds token），維持 raw 待 token 擴充。 */
 .sl-tag-history--completed {

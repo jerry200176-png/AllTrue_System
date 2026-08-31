@@ -4,6 +4,43 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-01-unpaid-settlement-reconciliation",
+    "publishedAt": "2026-09-01",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "未繳課程可結案並保留待對帳",
+    "summary": "課程需要先停止排課時，不必等付款完成；未完成收款的課程會留在帳務中心待對帳。",
+    "items": [
+      "未繳費課程現在可以結案，結案不會把課程誤標成已繳費。",
+      "未完成收款的結案課程會標示「結案待對帳」，可從帳務中心登記回報、確認入帳；確認後才轉為一般已結算。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "未繳費課程現在可以結案，結案不會把課程誤標成已繳費。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "未完成收款的結案課程會標示「結案待對帳」，可從帳務中心登記回報、確認入帳；確認後才轉為一般已結算。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-01:unpaid-settlement-reconciliation"
+    ],
+    "date": "2026-09-01",
+    "version": "2026.09.01"
+  },
+  {
     "id": "staff-2026-08-31-usage-balance-visibility",
     "publishedAt": "2026-08-31",
     "effectiveAt": null,
