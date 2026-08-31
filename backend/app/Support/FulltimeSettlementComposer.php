@@ -67,7 +67,11 @@ final class FulltimeSettlementComposer
             + $subjectCountRate
             + $adminAllowanceRate;
 
-        $weightedBonus = round(($rawSubjectBonus + $rawOneToThreeBonus) * ($multiplierPct / 100.0), 2);
+        // Backer floors the multiplier-weighted bonus before adding the base
+        // salary and the existing adjustment lines. Keep this rounding local
+        // to the parity boundary; component rates and source amounts remain
+        // unchanged and continue to use AllTrue's existing sources.
+        $weightedBonus = floor(($rawSubjectBonus + $rawOneToThreeBonus) * ($multiplierPct / 100.0));
         $weeklyBonus = (float) ($components['weekly_16_segments']['amount'] ?? 0);
         $cashAmount = (float) ($components['cash_adjustments']['amount'] ?? 0);
 

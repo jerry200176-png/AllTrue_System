@@ -57,7 +57,7 @@ class FulltimeSettlementComposerTest extends TestCase
 
         // 100 + 10 + 3 + 5 - 10 + 5 (>=20) = 113
         $this->assertSame(113.0, $result['multiplier_pct']);
-        $this->assertSame(round((17500 + 6600) * 1.13, 2), $result['weighted_bonus_amount']);
+        $this->assertSame(floor((17500 + 6600) * 1.13), $result['weighted_bonus_amount']);
     }
 
     public function test_subject_count_below_threshold_gets_no_extra_multiplier(): void
@@ -103,11 +103,43 @@ class FulltimeSettlementComposerTest extends TestCase
         ]);
 
         $this->assertSame(114.5, $result['multiplier_pct']);
-        $this->assertSame(515.25, $result['weighted_bonus_amount']);
-        $this->assertSame(34515.25, $result['total_payout']);
+        $this->assertSame(515.0, $result['weighted_bonus_amount']);
+        $this->assertSame(34515.0, $result['total_payout']);
         $this->assertSame(0.0, $result['subject_count_bonus']);
         $this->assertSame(450.0, $result['one_to_three_bonus']);
         $this->assertSame([['label' => '16段課', 'amount' => 4000.0]], $result['adjustments']);
+    }
+
+    public function test_replays_deidentified_backer_row_with_floor_weighted_bonus(): void
+    {
+        $components = [
+            'weekly_16_segments' => ['status' => 'qualifies', 'amount' => 4000, 'rate' => 0],
+            'holiday_16_hours' => ['status' => 'not_qualifies', 'amount' => 0, 'rate' => 0],
+            'weekday_afternoon' => ['status' => 'qualifies', 'amount' => 0, 'rate' => 5],
+            'special_performance' => ['status' => 'qualifies', 'amount' => 0, 'rate' => 0],
+            'deductions' => ['status' => 'qualifies', 'amount' => 0, 'rate' => 0],
+            'admin_allowance' => ['status' => 'qualifies', 'amount' => 0, 'rate' => 2],
+            'cash_adjustments' => ['status' => 'qualifies', 'amount' => 772, 'rate' => 0],
+            'subject_count_bonus' => [
+                'status' => 'qualifies', 'amount' => 1275, 'rate' => 0,
+                'metrics' => [
+                    'subject_count' => 8.9688,
+                    'subject_count_bonus' => 0,
+                    'one_to_three_bonus' => 1275,
+                ],
+            ],
+        ];
+
+        $result = FulltimeSettlementComposer::compose($components, 33000.0, [
+            'regular' => 7.9375,
+            'tutoring_trial' => 1.0313,
+            'one_to_three' => 12.75,
+            'payroll_total' => 8.9688,
+        ]);
+
+        $this->assertSame(107.0, $result['multiplier_pct']);
+        $this->assertSame(1364.0, $result['weighted_bonus_amount']);
+        $this->assertSame(39136.0, $result['total_payout']);
     }
 
     public function test_missing_base_salary_defaults_to_zero_not_error(): void
