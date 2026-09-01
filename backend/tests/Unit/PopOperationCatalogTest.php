@@ -20,7 +20,6 @@ final class PopOperationCatalogTest extends TestCase
 
         self::assertSame(1, $catalog->policyVersion());
     }
-
     public function test_execution_record_schema_and_runner_boundary_are_declared(): void
     {
         $root = dirname(__DIR__, 3);
