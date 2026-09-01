@@ -656,7 +656,7 @@
 | POST | `api/v1/schedules/{schedule}/cancel-makeup` | `ScheduleController@cancelMakeup` | role+campus |
 | POST | `api/v1/schedules/{schedule}/undo-leave` | `ScheduleController@undoLeave` | role+campus |
 
-## /api/v1/student-classes (30)
+## /api/v1/student-classes (31)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -673,6 +673,7 @@
 | POST | `api/v1/student-classes/{studentClass}/add-session` | `StudentClassController@addSession` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/add-session/check` | `StudentClassController@checkAddSession` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/billing-correction` | `StudentClassController@billingCorrection` | role+campus |
+| POST | `api/v1/student-classes/{studentClass}/charge-correction` | `StudentClassController@chargeCorrection` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/confirm-payment` | `StudentClassController@confirmPayment` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/convert-to-package` | `CoursePackageController@convertToPackage` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/convert-trial` | `StudentClassController@convertTrial` | role+campus |
