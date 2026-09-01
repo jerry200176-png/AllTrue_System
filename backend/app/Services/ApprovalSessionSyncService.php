@@ -155,12 +155,22 @@ class ApprovalSessionSyncService
 
         $startTime = $lr->StartTime ? substr((string) $lr->StartTime, 0, 5) : null;
         if ($startTime) {
-            $exact = (clone $query)->where('StartTime', $startTime)->orderBy('id', 'desc')->first();
-            if ($exact) {
-                return $exact;
-            }
+            $matches = (clone $query)
+                ->where('StartTime', $startTime)
+                ->limit(2)
+                ->get();
+
+            // A slot match is safe only when it is unique. Never bind an LR to
+            // an arbitrary row when legacy duplicate data makes the identity
+            // ambiguous; the caller will leave the record unbound for review.
+            return $matches->count() === 1 ? $matches->first() : null;
         }
 
-        return $query->orderBy('id', 'desc')->first();
+        $matches = $query->limit(2)->get();
+
+        // Without StartTime, multiple sessions on the same day are equally
+        // plausible. The old id-desc fallback silently picked one and could
+        // deduct the wrong occurrence.
+        return $matches->count() === 1 ? $matches->first() : null;
     }
 }
