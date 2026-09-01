@@ -1,0 +1,38 @@
+name: POP execute
+
+on:
+  workflow_call:
+    inputs:
+      request:
+        required: true
+        type: string
+      phase:
+        required: true
+        type: string
+      commit_sha:
+        required: true
+        type: string
+    secrets:
+      POP_APPROVAL_TOKEN:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  execute:
+    runs-on: [self-hosted, alltrue-production]
+    environment: production-operations
+    env:
+      POP_REQUEST: ${{ inputs.request }}
+      POP_PHASE: ${{ inputs.phase }}
+      POP_COMMIT_SHA: ${{ inputs.commit_sha }}
+      POP_APPROVAL_TOKEN: ${{ secrets.POP_APPROVAL_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commit_sha }}
+      - name: Assert exact executor revision
+        run: test "$(git rev-parse HEAD)" = "$POP_COMMIT_SHA"
+      - name: Run catalog-bound POP phase
+        run: php backend/bin/pop execute --request="$POP_REQUEST" --phase="$POP_PHASE" --commit-sha="$POP_COMMIT_SHA" --token="$POP_APPROVAL_TOKEN"

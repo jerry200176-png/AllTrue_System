@@ -33,7 +33,7 @@ observe   classify   label   optimize    decide what    POP Executor + deploy.ym
 
 | ID | Invariant |
 |----|-----------|
-| **I1** | **Only POP Executor and `deploy.yml` may execute production changes.** POP Executor runs **approved** catalog operations (repairs, backfills, reconciles, etc.) via self-hosted runner or claimed token. `deploy.yml` runs **`application-deploy`** (code, migration, frontend). One-off SSH repair workflows are **deprecated** (K11). Runbooks describe steps; they do not execute. |
+| **I1** | **Only POP Executor and `deploy.yml` may execute production changes.** POP Executor runs **approved** catalog operations (repairs, backfills, reconciles, etc.) via self-hosted runner or claimed token. `deploy.yml` runs **`application-deploy`** (code, migration, frontend). One-off SSH repair workflows are **deprecated** (K11). Runbooks describe steps; they do not execute. The prepared `course-contract-repair` slice binds an exact catalog parameter set and commit SHA; it remains inactive until Founder activation evidence is approved. |
 | **I2** | **INDEX is registry only** — no decision logic, no deploy behavior description, no authority. |
 | **I3** | **INCIDENT docs define ALL runtime decisions** — inference, state, policy, FINAL_ACTION. No other doc may decide incident course. |
 | **I4** | **INCIDENT policy selects FINAL_ACTION; POP policy gates operation approval** — incident policy does not bypass POP approval for data operations. Execution layer runs only approved POP operations or `deploy.yml` deploy. |

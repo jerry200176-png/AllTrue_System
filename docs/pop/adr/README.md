@@ -32,6 +32,7 @@
 | Phase | Scope |
 |-------|--------|
 | **1** | ADRs, contract I1, catalog v0, schema draft, interfaces, fitness skeleton (read-only) |
-| **2** | Approval API, execution-record, dashboard RO, shadow mode |
+| **2-prepared** | One catalog-bound approval/execution slice, migration, and self-hosted adapter prepared but not activated; Founder exact-SHA boundary remains closed |
+| **2** | Approval API, execution-record, dashboard RO, shadow mode after activation gate |
 | **3** | First production execute (`supersede-renewal`) |
 | **4+** | Strategy batch migration |

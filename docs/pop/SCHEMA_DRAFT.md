@@ -1,6 +1,6 @@
-# POP Schema Draft (Phase 1 — not migrated)
+# POP Schema Draft (Phase 2-prepared — not migrated)
 
-> **Status:** Draft. Phase 1 is read-only — no production tables until Phase 2 migration PR.  
+> **Status:** Prepared. The migration is included in the Phase 2-prepared slice but must not run until the Founder activation gate is approved.
 > **Authority:** [ADR-POP-002](adr/ADR-POP-002-approval-sot.md), [ADR-POP-009](adr/ADR-POP-009-desired-observed-state.md)
 
 ## Core tables

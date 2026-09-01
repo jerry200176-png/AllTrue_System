@@ -5,7 +5,7 @@
   "task_id": "pop-execution-vertical-slice",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
   "base_sha": "6f026f3e7658b420e8f1fdc6ecc2d6a19e7854e9",
-  "branch": "feat/pop-execution-vertical-slice-service",
+  "branch": "feat/pop-execution-vertical-slice-runtime",
   "worktree_path": "/home/jerry/workspace/tasks/alltrue/pop-execution-vertical-slice",
   "started_at": "2026-09-01T08:38:38Z",
   "production_mutation": false,
