@@ -2414,10 +2414,7 @@ const interceptGoToPurchase = (conflict) => {
 };
 
 const editCourse = (course) => {
-  selectedStudent.value = students.value.find((s) => (
-    Number(s?.id) === Number(course?.student_id)
-    || Number(s?._laravelId) === Number(course?.student_id)
-  ));
+  selectedStudent.value = students.value.find((s) => Number(s?.id) === Number(course?.student_id) || Number(s?._laravelId) === Number(course?.student_id));
   editingCourseId.value = course.id;
   editingCourseRaw.value = course;
   editingCourseFromLaravel.value = isLaravelCourse(course);
