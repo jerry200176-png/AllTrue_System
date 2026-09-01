@@ -114,8 +114,13 @@ _ACTIVATION_T3_PREFIXES = tuple(
     if prefix not in {".github/workflows/", "governance/", "docs/governance/"}
 )
 _ACTIVATION_T3_PATH_TERMS = (
-    "/auth/", "/billing/", "/payment", "/identity", "/credential",
-    "/password", "/secret", "/token", "/permission",
+    "/auth/", "/role/", "/billing/", "/payment/", "/invoice/",
+    "/finance/", "/accounting/", "/salary/", "/tuition/", "/payroll/",
+    "/entitlement/", "/deduction/", "/eligibility/", "/identity/",
+    "/credential/", "/password/", "/secret/", "/token/", "/permission/",
+    "/security/", "/api/key/", "/webhook/", "/cron/", "/cross/campus/",
+    "/repair/", "/restore/", "/reset/", "/delete/", "/destroy/",
+    "/purge/", "/backfill/", "/reconcile/",
 )
 _SAFE_NON_PRODUCTION_WORKFLOWS = {
     ".github/workflows/autonomous-convergence.yml",
@@ -182,7 +187,12 @@ def is_production_activation_sensitive_path(path: str) -> bool:
         return normalized not in _SAFE_NON_PRODUCTION_WORKFLOWS
     if any(normalized.startswith(prefix) for prefix in _ACTIVATION_T3_PREFIXES):
         return True
-    lowered = f"/{normalized.lower()}/"
+    # Normalize common PHP/JS CamelCase names into path-like segments so
+    # MonthlyBillingService, StudentIdentityService, and RequireRole are
+    # protected even when the patch contains no matching English marker.
+    segmented = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "/", normalized)
+    segmented = re.sub(r"[_-]+", "/", segmented).lower()
+    lowered = f"/{segmented}/"
     return any(term in lowered for term in _ACTIVATION_T3_PATH_TERMS)
 
 

@@ -104,6 +104,15 @@ class DeployActivationPolicyTest(unittest.TestCase):
         self.assertTrue(is_production_activation_sensitive_path(".github/workflows/deploy.yml"))
         self.assertTrue(is_production_activation_sensitive_path("backend/database/migrations/2026_01_flag.php"))
         self.assertFalse(is_production_activation_sensitive_path(".github/workflows/autonomous-convergence.yml"))
+        for path in (
+            "backend/app/Services/MonthlyBillingService.php",
+            "backend/app/Services/StudentIdentityService.php",
+            "backend/app/Http/Controllers/FinanceController.php",
+            "backend/app/Http/Middleware/RequireRole.php",
+            "backend/app/Console/Commands/BackfillLegacyPayments.php",
+        ):
+            with self.subTest(path=path):
+                self.assertTrue(is_production_activation_sensitive_path(path))
         scope = classify_activation_scope(
             [".github/workflows/deploy.yml", "frontend/src/pages/StudentsList.vue"]
         )
