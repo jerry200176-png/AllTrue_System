@@ -32,5 +32,6 @@ final class PopOperationCatalogTest extends TestCase
         self::assertStringContainsString('backend/bin/pop execute', $workflow);
         self::assertStringNotContainsString('ssh ', $workflow);
         self::assertStringNotContainsString('artisan', $workflow);
+        self::assertLessThanOrEqual(20, count(file($root . '/.github/workflows/pop-execute.yml', FILE_IGNORE_NEW_LINES)));
     }
 }
