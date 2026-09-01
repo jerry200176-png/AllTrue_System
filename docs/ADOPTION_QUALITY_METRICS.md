@@ -49,6 +49,24 @@ not in the denominator.
 | `trust_contract_backlog` | `workflow_daily.due_total` | adoption workflow aggregations | Represents unresolved cross-workflow pending items |
 | `trust_contract_breached_total` | `workflow_daily.breached_total` | adoption workflow aggregations | SLA warning signal |
 
+### 3.1 Bug queue SLA snapshot
+
+`GET /api/v1/adoption/weekly-metrics?branch_id={id}` also returns the
+PII-free `data.bug_sla` block used by the Director Dashboard's full operations
+view:
+
+| Field | Meaning |
+|---|---|
+| `status_counts` | Current counts for every bug status (`new`, `triaged`, `in_progress`, `resolved`, `closed`) in the branch |
+| `open_backlog.by_status` | Current actionable queue counts by open status |
+| `open_backlog.oldest_age_hours` | Oldest age per open status; `new` uses report time, while `triaged`/`in_progress` use the first `to_status=triaged` log |
+| `open_backlog.missing_triaged_at` | Rows whose triage history is missing; these are not assigned a guessed age |
+| `triage_sla.targets_hours` | P0 = 4h, P1 = 24h, P2 = 168h; `critical`/`high`/`medium` map to P0/P1/P2 and `low` is P3 without a target |
+| `triage_sla.open_breaches` | Open `new` rows whose report-to-triage clock exceeds the applicable target |
+
+This is a read-only current snapshot, not a status transition or automatic
+closure policy. A missing status log remains visible as an evidence gap.
+
 ---
 
 ## 4) Super-admin cross-branch comparison
