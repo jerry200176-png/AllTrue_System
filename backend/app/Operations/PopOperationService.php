@@ -263,6 +263,10 @@ final class PopOperationService
                     if ($existing) {
                         return $existing;
                     }
+                    $plan = $this->safePlan($entry, $parameters);
+                    if (!(bool) ($plan['ok'] ?? false)) {
+                        return $this->record($locked, $entry, $parameters, 'execute', ['ok' => false, 'errors' => $plan['errors'] ?? ['precondition_failed'], 'plan' => $plan], $actor, $approval, $commitSha, $this->durationMs($startedAt), 'precondition_failed');
+                    }
                     $strategy = app((string) $entry['strategy_class']);
                     $result = $strategy->execute($plan, ['actor' => $actor, 'operation_id' => $locked->id]);
 
@@ -275,6 +279,10 @@ final class PopOperationService
                 $locked = DB::table('pop_operation_requests')->where('id', $requestId)->lockForUpdate()->first();
                 if (!$locked) {
                     throw new RuntimeException('POP request not found; fail closed.');
+                }
+                $plan = $this->safePlan($entry, $parameters);
+                if (!(bool) ($plan['ok'] ?? false)) {
+                    return $this->record($locked, $entry, $parameters, $phase, ['ok' => false, 'errors' => $plan['errors'] ?? ['precondition_failed'], 'plan' => $plan], $actor, $approval, $commitSha, $this->durationMs($startedAt), 'precondition_failed');
                 }
                 $execution = $this->latest($locked, 'execute');
                 if (!$execution) {
