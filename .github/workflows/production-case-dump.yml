@@ -176,6 +176,34 @@ jobs:
               'student_id'=>(int)$r->student_id, 'subject_id'=>(int)$r->subject_id,
               'charge'=>(float)$r->charge, 'paid'=>(int)$r->paid, 'pay_date'=>$r->pay_date,
               'stop'=>(int)$r->stop, 'schedule_mode'=>(string)$r->schedule_mode])->values()->all();
+            $groupsAvailable = \Illuminate\Support\Facades\Schema::hasTable('course_contract_groups')
+              && \Illuminate\Support\Facades\Schema::hasTable('course_contract_group_members');
+            $groups = $groupsAvailable && $studentIds !== []
+              ? $db::table('course_contract_groups')
+                ->whereIn('student_id', $studentIds)->where('campus_id', 9)
+                ->orderBy('id')->get(['id', 'student_id', 'campus_id', 'subject_id', 'label', 'created_by', 'created_at', 'updated_at'])
+              : collect();
+            $groupIds = $groups->pluck('id')->map(fn ($id) => (int)$id)->all();
+            $members = $groupsAvailable && $groupIds !== []
+              ? $db::table('course_contract_group_members')->whereIn('group_id', $groupIds)
+                ->whereNull('unlinked_at')->orderBy('group_id')->orderBy('sequence')->orderBy('id')
+                ->get(['id', 'group_id', 'student_class_id', 'relation_type', 'effective_from', 'sequence', 'decision_reason', 'created_by', 'created_at', 'updated_at'])
+              : collect();
+            $membersByGroup = $members->groupBy('group_id');
+            $out['course_contract_groups_available'] = $groupsAvailable;
+            $out['course_contract_groups'] = $groups->map(fn ($g) => [
+              'id'=>(int)$g->id, 'student_id'=>(int)$g->student_id, 'campus_id'=>(int)$g->campus_id,
+              'subject_id'=>$g->subject_id === null ? null : (int)$g->subject_id,
+              'label'=>$g->label, 'created_by'=>$g->created_by === null ? null : (int)$g->created_by,
+              'created_at'=>$g->created_at, 'updated_at'=>$g->updated_at,
+              'active_members'=>($membersByGroup->get($g->id, collect()))->map(fn ($m) => [
+                'id'=>(int)$m->id, 'group_id'=>(int)$m->group_id,
+                'student_class_id'=>(int)$m->student_class_id, 'relation_type'=>(string)$m->relation_type,
+                'effective_from'=>$m->effective_from, 'sequence'=>(int)$m->sequence,
+                'decision_reason'=>$m->decision_reason, 'created_by'=>$m->created_by === null ? null : (int)$m->created_by,
+                'created_at'=>$m->created_at, 'updated_at'=>$m->updated_at,
+              ])->values()->all(),
+            ])->values()->all();
             $out['payment_reports'] = $classIds === [] ? [] : $db::table('payment_reports')
               ->whereIn('StudentClassID', $classIds)->orderBy('id')
               ->get(['id', 'StudentID as student_id', 'StudentClassID as class_id', 'InvoiceID as invoice_id',
