@@ -37,7 +37,7 @@ checks:
 - npm run test:unit
 - npm run build
 type: feature
-status: todo
+status: review
 spec_ref: null
 notes: []
 blockers: []
@@ -46,3 +46,6 @@ brain_dump: ''
 risk: medium
 children: []
 resource_profile: default
+commits:
+- 1930df14872442669da0a7928761d40833610e5e
+- b0fff166e56ffd43307734fec8adc43ab95d472d
