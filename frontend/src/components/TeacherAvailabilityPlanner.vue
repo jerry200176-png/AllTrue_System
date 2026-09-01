@@ -86,12 +86,13 @@ const props = defineProps({
   daysOfWeek: { type: Array, default: () => [] },
   dayTimeSlots: { type: Array, default: () => [] },
   durationHours: { type: [Number, String], default: 2 },
+  timeOptions: { type: Array, default: () => [] },
   fetchAvailability: { type: Function, required: true },
 });
 
 const emit = defineEmits(['apply']);
 const weekdayLabelMap = { 1: '一', 2: '二', 3: '三', 4: '四', 5: '五', 6: '六', 7: '日' };
-const halfHourTimeOptions = buildHalfHourTimeOptions();
+const halfHourTimeOptions = computed(() => props.timeOptions.length ? props.timeOptions : buildHalfHourTimeOptions());
 const windowStart = ref('16:00');
 const windowEnd = ref('21:00');
 const loading = ref(false);

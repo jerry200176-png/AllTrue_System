@@ -217,6 +217,7 @@
             :days-of-week="sortedSelectedDays"
             :day-time-slots="form.day_time_slots"
             :duration-hours="form.duration_hours"
+            :time-options="timeOptions"
             :fetch-availability="fetchAvailability"
             @apply="applyAvailabilityCandidate"
           />

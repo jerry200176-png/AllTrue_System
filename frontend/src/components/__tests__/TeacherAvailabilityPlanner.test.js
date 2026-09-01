@@ -50,8 +50,7 @@ describe('TeacherAvailabilityPlanner', () => {
     expect(wrapper.find('.coordination-candidate').exists()).toBe(false);
 
     await wrapper.get('.coordination-search-button').trigger('click'); await flushPromises();
-    const latestCall = fetchAvailability.mock.calls.at(-1); expect(latestCall[0]).toBe(8);
-    expect(latestCall[2]).toEqual({ excludeStudentId: 42 });
+    const latestCall = fetchAvailability.mock.calls.at(-1); expect(latestCall[0]).toBe(8); expect(latestCall[2]).toEqual({ excludeStudentId: 42 });
   });
 
   it('is mounted by both create and edit scheduling forms', () => {
@@ -64,8 +63,7 @@ describe('TeacherAvailabilityPlanner', () => {
     const wrapper = mount(CourseEditForm, {
       props: {
         modelValue: { student_id: 42, teacher_id: 7, subject: 'Math', class_type: 'one_on_one', first_class_date: ymd(date), days_of_week: [weekday], day_time_slots: [{ day: weekday, start_time: '16:00', duration_hours: 1 }], duration_hours: 1 },
-        branchId: 3,
-        teachers: [{ id: 7, username: '老師甲', branch_ids: [3] }],
+        branchId: 3, teachers: [{ id: 7, username: '老師甲', branch_ids: [3] }],
         subjects: [{ value: 'Math', label: '數學' }],
         dayOptions: [{ value: weekday, label: weekday === 7 ? '日' : String(weekday) }],
         settlementDayOptions: [],
@@ -75,7 +73,6 @@ describe('TeacherAvailabilityPlanner', () => {
 
     await wrapper.get('.coordination-search-button').trigger('click'); await flushPromises();
     await wrapper.get('.coordination-candidate').trigger('click');
-    const updates = wrapper.emitted('update:modelValue') || [];
-    expect(updates.at(-1)?.[0]).toMatchObject({ student_id: 42, days_of_week: [weekday], start_time: '16:00' });
+    const updates = wrapper.emitted('update:modelValue') || []; expect(updates.at(-1)?.[0]).toMatchObject({ student_id: 42, days_of_week: [weekday], start_time: '16:00' });
   });
 });
