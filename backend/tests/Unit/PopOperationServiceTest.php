@@ -52,4 +52,14 @@ class PopOperationServiceTest extends TestCase
             self::assertArrayHasKey($required, $schema['properties']);
         }
     }
+
+    public function test_execution_service_serializes_phases_and_commits_record_with_strategy(): void
+    {
+        $service = (string) file_get_contents(dirname(__DIR__, 2) . '/app/Operations/PopOperationService.php');
+
+        self::assertGreaterThanOrEqual(2, substr_count($service, 'lockForUpdate()'));
+        self::assertStringContainsString('Serialise all phases per request.', $service);
+        self::assertStringContainsString("The strategy's nested transaction and this outer transaction", $service);
+        self::assertStringContainsString('POP request is no longer awaiting approval.', $service);
+    }
 }

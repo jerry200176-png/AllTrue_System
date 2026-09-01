@@ -129,6 +129,16 @@ final class PopOperationService
             if (!$locked) {
                 throw new RuntimeException('POP request not found; fail closed.');
             }
+            if (!in_array((string) $locked->status, ['awaiting_approval', 'draft'], true)) {
+                throw new RuntimeException('POP request is no longer awaiting approval.');
+            }
+            $lockedDryRun = $this->latest($locked, 'dry-run');
+            if (!$lockedDryRun || (string) $lockedDryRun->result !== 'succeeded') {
+                throw new RuntimeException('POP approval requires a successful dry-run.');
+            }
+            if ((int) $locked->catalog_version !== $this->catalog->version()) {
+                throw new RuntimeException('POP request catalog version is stale; create a new draft.');
+            }
             $sameRole = DB::table('pop_approval_events')
                 ->where('operation_id', $requestId)
                 ->where('event_type', 'approved')
@@ -212,13 +222,19 @@ final class PopOperationService
         $startedAt = microtime(true);
 
         if ($phase === 'dry-run') {
-            $existing = $this->existing($request, $phase);
-            if ($existing) {
-                return $existing;
-            }
-            $plan = $this->safePlan($entry, $parameters);
+            return DB::transaction(function () use ($requestId, $entry, $parameters, $actor, $startedAt): array {
+                $locked = DB::table('pop_operation_requests')->where('id', $requestId)->lockForUpdate()->first();
+                if (!$locked) {
+                    throw new RuntimeException('POP request not found; fail closed.');
+                }
+                $existing = $this->existing($locked, 'dry-run');
+                if ($existing) {
+                    return $existing;
+                }
+                $plan = $this->safePlan($entry, $parameters);
 
-            return $this->recordDryRun($request, $entry, $parameters, $plan, $actor, $this->durationMs($startedAt));
+                return $this->recordDryRun($locked, $entry, $parameters, $plan, $actor, $this->durationMs($startedAt));
+            });
         }
         if ((string) $entry['lifecycle'] !== 'active') {
             throw new RuntimeException('POP operation is not active; Founder activation is required.');
@@ -226,56 +242,64 @@ final class PopOperationService
         if (!$token || !$commitSha) {
             throw new RuntimeException('POP approval token is missing; fail closed.');
         }
-        $approval = $this->validApproval($request, $token, $commitSha);
-        if (!$approval) {
-            throw new RuntimeException('POP approval token is missing, expired, or not bound to this request.');
-        }
-        $existing = $this->existing($request, $phase);
-        if ($existing) {
-            return $existing;
-        }
-        $plan = $this->safePlan($entry, $parameters);
-        if (!(bool) ($plan['ok'] ?? false)) {
-            return $this->record($request, $entry, $parameters, $phase, [
-                'ok' => false,
-                'errors' => $plan['errors'] ?? ['precondition_failed'],
-                'plan' => $plan,
-            ], $actor, $approval, $commitSha, $this->durationMs($startedAt), 'precondition_failed');
-        }
-
-        try {
-            if ($phase === 'execute') {
-                $strategy = app((string) $entry['strategy_class']);
-
-                return $this->record(
-                    $request,
-                    $entry,
-                    $parameters,
-                    'execute',
-                    $strategy->execute($plan, ['actor' => $actor, 'operation_id' => $request->id]),
-                    $actor,
-                    $approval,
-                    $commitSha,
-                    $this->durationMs($startedAt)
-                );
+        return DB::transaction(function () use ($requestId, $entry, $parameters, $phase, $token, $commitSha, $actor, $startedAt): array {
+            // Serialise all phases per request. This makes the unique phase
+            // idempotency key a real execution lock, not merely an audit guard.
+            $locked = DB::table('pop_operation_requests')->where('id', $requestId)->lockForUpdate()->first();
+            if (!$locked) {
+                throw new RuntimeException('POP request not found; fail closed.');
             }
-            $execution = $this->latest($request, 'execute');
+            $approval = $this->validApproval($locked, (string) $token, (string) $commitSha);
+            if (!$approval) {
+                throw new RuntimeException('POP approval token is missing, expired, or not bound to this request.');
+            }
+            $existing = $this->existing($locked, $phase);
+            if ($existing) {
+                return $existing;
+            }
+            $plan = $this->safePlan($entry, $parameters);
+            if (!(bool) ($plan['ok'] ?? false)) {
+                return $this->record($locked, $entry, $parameters, $phase, [
+                    'ok' => false,
+                    'errors' => $plan['errors'] ?? ['precondition_failed'],
+                    'plan' => $plan,
+                ], $actor, $approval, $commitSha, $this->durationMs($startedAt), 'precondition_failed');
+            }
+
+            $strategy = app((string) $entry['strategy_class']);
+            if ($phase === 'execute') {
+                try {
+                    $result = $strategy->execute($plan, ['actor' => $actor, 'operation_id' => $locked->id]);
+                } catch (Throwable) {
+                    return $this->record($locked, $entry, $parameters, $phase, [
+                        'ok' => false,
+                        'errors' => ['execution_failed'],
+                    ], $actor, $approval, $commitSha, $this->durationMs($startedAt), 'execution_failed');
+                }
+
+                // The strategy's nested transaction and this outer transaction
+                // commit together with the durable execution record and audit.
+                return $this->record($locked, $entry, $parameters, 'execute', $result, $actor, $approval, $commitSha, $this->durationMs($startedAt));
+            }
+
+            $execution = $this->latest($locked, 'execute');
             if (!$execution) {
                 throw new RuntimeException('POP cannot verify or rollback without an execution record.');
             }
             $payload = json_decode((string) $execution->payload, true, 512, JSON_THROW_ON_ERROR);
-            $strategy = app((string) $entry['strategy_class']);
-            $result = $phase === 'verify'
-                ? $strategy->verify($plan, $payload)
-                : $strategy->rollback($payload['snapshot'] ?? [], ['actor' => $actor, 'operation_id' => $request->id]);
+            try {
+                $result = $phase === 'verify'
+                    ? $strategy->verify($plan, $payload)
+                    : $strategy->rollback($payload['snapshot'] ?? [], ['actor' => $actor, 'operation_id' => $locked->id]);
+            } catch (Throwable) {
+                return $this->record($locked, $entry, $parameters, $phase, [
+                    'ok' => false,
+                    'errors' => ['execution_failed'],
+                ], $actor, $approval, $commitSha, $this->durationMs($startedAt), 'execution_failed');
+            }
 
-            return $this->record($request, $entry, $parameters, $phase, $result, $actor, $approval, $commitSha, $this->durationMs($startedAt));
-        } catch (Throwable) {
-            return $this->record($request, $entry, $parameters, $phase, [
-                'ok' => false,
-                'errors' => ['execution_failed'],
-            ], $actor, $approval, $commitSha, $this->durationMs($startedAt), 'execution_failed');
-        }
+            return $this->record($locked, $entry, $parameters, $phase, $result, $actor, $approval, $commitSha, $this->durationMs($startedAt));
+        });
     }
 
     /** @param array<string,mixed> $parameters */
@@ -500,7 +524,7 @@ final class PopOperationService
                 'invariant_packs' => array_values(array_map('strval', (array) ($entry['invariant_packs'] ?? []))),
             ],
         ];
-        $storedPayload = $payload + $executionRecord;
+        $storedPayload = $executionRecord + $payload;
         $inserted = DB::table('pop_execution_records')->insertOrIgnore([
             'id' => $executionId,
             'operation_id' => $request->id,
