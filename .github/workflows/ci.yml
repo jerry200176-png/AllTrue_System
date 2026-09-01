@@ -7,6 +7,12 @@ on:
     branches: ["main"]
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   workflow_dispatch:
+    inputs:
+      contract_change:
+        description: "Set true only when manually validating a contract-change ref"
+        required: true
+        default: false
+        type: boolean
 
 # ⛔ 此 workflow 只跑測試，絕對不部署任何東西到生產環境
 # ⛔ 禁止在此新增任何 ssh、rsync、scp、ftp deploy 步驟
@@ -40,7 +46,7 @@ jobs:
       - name: Run control plane lint
         env:
           PR_TITLE: ${{ github.event.pull_request.title || '' }}
-          CONTRACT_CHANGE: ${{ contains(github.event.pull_request.title, '[contract-change]') && '1' || '' }}
+          CONTRACT_CHANGE: ${{ (contains(github.event.pull_request.title, '[contract-change]') || inputs.contract_change) && '1' || '' }}
         run: |
           node scripts/control-plane-lint.mjs
           node scripts/ci-cost-guard.mjs
