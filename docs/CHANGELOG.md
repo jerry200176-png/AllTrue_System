@@ -1,3 +1,8 @@
+## 2026-09-01 — improved(ux): 行事曆次要工具需要時再展開
+<!-- release-notes: staff_update=staff-2026-09-01-calendar-secondary-controls -->
+- 月份、週次、跳至日期與日／週檢視維持直接可用；教室、老師／學生篩選與排課工具收進「篩選與更多操作」，需要時再展開。
+- 展開後原有篩選、老師請假、教室管理與快速排課操作維持不變；收合時會顯示目前啟用的篩選數。
+
 ## 2026-09-01 — fix(calendar): 行事曆調課不再被不完整預判誤擋
 <!-- release-notes: staff_update=staff-2026-09-01-calendar-reschedule-authority -->
 - 行事曆調課的送出前提示改為提醒，不會因畫面尚未載入完整的請假／課堂資料而直接禁止確認。
