@@ -255,6 +255,38 @@ export const staffUpdates = [
     "version": "2026.09.01"
   },
   {
+    "id": "staff-2026-09-01-course-availability-planner",
+    "publishedAt": "2026-09-01",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "新建與編輯都能找老師空檔",
+    "summary": "編輯既有課程時也能用同一套老師空檔與容量試算。",
+    "items": [
+      "從編輯課程選擇老師、日期、星期與時段後，可直接查詢未來四次固定日期的可用候選。",
+      "條件變更後舊試算會失效並要求重新查詢；套用候選後儲存仍由後端再次檢查衝堂與教室容量。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "從編輯課程選擇老師、日期、星期與時段後，可直接查詢未來四次固定日期的可用候選。",
+          "條件變更後舊試算會失效並要求重新查詢；套用候選後儲存仍由後端再次檢查衝堂與教室容量。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-01:course-availability-planner"
+    ],
+    "date": "2026-09-01",
+    "version": "2026.09.01"
+  },
+  {
     "id": "staff-2026-09-01-calendar-secondary-controls",
     "publishedAt": "2026-09-01",
     "effectiveAt": null,

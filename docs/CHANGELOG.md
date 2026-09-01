@@ -1,3 +1,8 @@
+## 2026-09-01 — improved(ux): 新建與編輯課程共用老師空檔查詢
+<!-- release-notes: staff_update=staff-2026-09-01-course-availability-planner -->
+- 編輯既有課程時，現在可直接用與新建課程相同的老師空檔／容量試算，並將候選時段套用到固定排課欄位。
+- 更換老師、開課日、固定星期或時段後，舊試算會失效並要求重新查詢；既有後端衝堂、固定課程、recurring、權限與儲存規則不變。
+
 ## 2026-09-01 — improved(ux): 新增排課可先找可行時段
 <!-- release-notes: staff_update=staff-2026-09-01-scheduling-intersection-helper -->
 - 新增課程時可輸入學生可配合的星期／時間窗口，核對已選老師的可服務分校、未來四次（至課程結束日）固定日期空檔與容量，點選候選時段即可套用。

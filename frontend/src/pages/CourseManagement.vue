@@ -786,6 +786,7 @@
           <CourseEditForm
             ref="editFormRef"
             v-model="editForm"
+            :branch-id="props.branchId"
             :teachers="editTeacherOptions"
             :rooms="rooms"
             :subjects="subjectOptions"
@@ -4584,6 +4585,7 @@ const editCourse = (c) => {
   const existingDays = [...new Set([...existingDaysRaw, ...slotDays])].sort((a, b) => a - b);
 
   editForm.value = {
+    student_id: c.student_id ?? c.StudentID ?? '',
     subject: c.subject,
     teacher_id: c.teacher_id || '',
     class_type: c.class_type,
