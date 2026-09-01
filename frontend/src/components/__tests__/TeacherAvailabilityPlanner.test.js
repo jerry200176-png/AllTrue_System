@@ -1,8 +1,12 @@
 import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { flushPromises, mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import TeacherAvailabilityPlanner from '../TeacherAvailabilityPlanner.vue';
 import CourseEditForm from '../CourseEditForm.vue';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 function ymd(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -53,8 +57,8 @@ describe('TeacherAvailabilityPlanner', () => {
   });
 
   it('is mounted by both create and edit scheduling forms', () => {
-    for (const file of ['../UniversalClassScheduler.vue', '../CourseEditForm.vue']) expect(readFileSync(new URL(file, import.meta.url), 'utf8')).toContain('<TeacherAvailabilityPlanner');
-    expect(readFileSync(new URL('../CourseEditForm.vue', import.meta.url), 'utf8')).toContain('default: fetchTeacherAvailability');
+    for (const file of ['../UniversalClassScheduler.vue', '../CourseEditForm.vue']) expect(readFileSync(resolve(__dirname, file), 'utf8')).toContain('<TeacherAvailabilityPlanner');
+    expect(readFileSync(resolve(__dirname, '../CourseEditForm.vue'), 'utf8')).toContain('default: fetchTeacherAvailability');
   });
 
   it('lets the edit form apply a current candidate back to its schedule model', async () => {
