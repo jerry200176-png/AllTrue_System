@@ -527,6 +527,61 @@
               </label>
             </div>
             <p class="field-note">若上課日期不固定（例如寒暑假課表），可不勾選任何星期，改為直接在下方日曆逐一點選每次上課日期。</p>
+            <article class="schedule-coordination-card" aria-live="polite">
+              <div class="schedule-coordination-heading">
+                <div>
+                  <h5><span class="material-symbols-outlined" aria-hidden="true">event_available</span>先找可行時段</h5>
+                  <p>用學生可配合的窗口核對未來四次固定日期（至課程結束日為止）；只試算本次，不會寫回學生資料。</p>
+                </div>
+                <span v-if="selectedTeacher" class="coordination-branch-badge">{{ selectedTeacherBranchSummary }}</span>
+              </div>
+              <div class="schedule-coordination-controls">
+                <label>
+                  <span>可配合時間</span>
+                  <select v-model="coordinationStart" aria-label="學生可配合開始時間">
+                    <option v-for="time in halfHourTimeOptions" :key="`coord-start-${time}`" :value="time">{{ time }}</option>
+                  </select>
+                </label>
+                <span class="coordination-range-separator" aria-hidden="true">至</span>
+                <label>
+                  <select v-model="coordinationEnd" aria-label="學生可配合結束時間">
+                    <option v-for="time in halfHourTimeOptions" :key="`coord-end-${time}`" :value="time">{{ time }}</option>
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  class="ghost small coordination-search-button"
+                  :disabled="coordinationLoading || !form.teacher_id || selectedDays.length === 0"
+                  @click="findCoordinationSlots"
+                >
+                  <span v-if="coordinationLoading" class="btn-spinner material-symbols-outlined" aria-hidden="true">progress_activity</span>
+                  {{ coordinationLoading ? '比對中…' : '尋找老師空檔' }}
+                </button>
+              </div>
+              <p v-if="!form.teacher_id" class="field-note">請先選老師；目前只查詢已選老師的跨分校忙碌與容量。</p>
+              <p v-else-if="selectedDays.length === 0" class="field-note">先勾選上方學生可配合的星期。</p>
+              <p v-if="coordinationError" class="coordination-message coordination-message--error" role="alert">{{ coordinationError }}</p>
+              <div v-if="coordinationHasResults && coordinationCandidates.length > 0" class="coordination-results">
+                <div class="coordination-results-title">推薦時段 <span>點一下即可套用到下方固定排課</span></div>
+                <button
+                  v-for="candidate in coordinationCandidates"
+                  :key="`${candidate.date}-${candidate.start_time}`"
+                  type="button"
+                  class="coordination-candidate"
+                  @click="applyCoordinationCandidate(candidate)"
+                >
+                  <span class="coordination-candidate-date">{{ candidate.date.slice(5) }} 週{{ weekdayLabelMap[candidate.weekday] }}</span>
+                  <strong>{{ candidate.start_time }}–{{ candidate.end_time }}</strong>
+                  <span :class="['coordination-candidate-status', { 'is-capacity': candidate.status === 'capacity' }]">
+                    {{ candidate.status === 'capacity' ? '容量足夠' : `前${candidate.occurrenceTotal}次皆可排` }}
+                  </span>
+                </button>
+              </div>
+              <p v-else-if="coordinationHasResults && !coordinationError" class="coordination-message">
+                目前窗口沒有可直接套用的時段。{{ coordinationConflictHint }}可放寬時間窗口或改查其他老師。
+              </p>
+              <p v-if="coordinationApplied" class="coordination-message coordination-message--success">已套用 {{ coordinationApplied }}，送出時仍會由後端再次檢查衝堂與教室容量。</p>
+            </article>
             <div v-if="selectedDays.length > 0" class="weekday-slot-grid">
               <template v-for="day in selectedDays" :key="`day-${day}`">
                 <div
@@ -852,6 +907,14 @@ import { checkTeacherScope, STUDENT_CLASS_MEMO_MAX_LENGTH } from '../lib/constan
 import { calculateCoverage, lessonEquivalent } from '../lib/lessonCoverage';
 import perfFlags from '../lib/perfFlags';
 import { estimateCreateCharge } from '../lib/coursePricing';
+import { fetchTeacherAvailability } from '../lib/substituteApi.js';
+import { getBranchName } from '../lib/useBranches.js';
+import {
+  buildScheduleCandidates,
+  mergeRecurringScheduleCandidates,
+  nextOccurrenceDates,
+  rankScheduleCandidates,
+} from '../lib/scheduleCandidateSlots.js';
 import {
   countSessionsForDates,
   expandManualDatesToSessionPlan,
@@ -1277,13 +1340,31 @@ const teacherOptions = computed(() => (
       || teacher?.LoginName
       || `老師#${id || ''}`
     ).trim();
-    return { value: id, label };
+    const branchSummary = teacherBranchSummary(teacher);
+    return { value: id, label: branchSummary ? `${label} · ${branchSummary}` : label };
   }).filter((teacher) => Number.isFinite(teacher.value) && teacher.value > 0 && teacher.label)
 ));
+
+function teacherBranchIds(teacher) {
+  const ids = Array.isArray(teacher?.branch_ids)
+    ? teacher.branch_ids.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
+    : [];
+  const primary = Number(teacher?.branch_id || 0);
+  return [...new Set([...ids, ...(primary > 0 ? [primary] : [])])];
+}
+
+function teacherBranchSummary(teacher) {
+  return teacherBranchIds(teacher).map((id) => getBranchName(id)).join('、');
+}
 
 const selectedTeacher = computed(() => {
   const tid = Number(form.teacher_id);
   return tid > 0 ? (props.teachers || []).find((t) => Number(t.id) === tid) : null;
+});
+
+const selectedTeacherBranchSummary = computed(() => {
+  const summary = teacherBranchSummary(selectedTeacher.value);
+  return summary ? `可服務：${summary}` : '分校資料待確認';
 });
 
 const selectedStudent = computed(() => {
@@ -1319,6 +1400,164 @@ const safePlannedSessions = computed(() => (
 const selectedDays = computed(() => (
   [...new Set((form.days_of_week || []).map((d) => Number(d)).filter((d) => d >= 1 && d <= 7))].sort((a, b) => a - b)
 ));
+
+// 唯讀協調試算：沿用代課 API 與既有容量規則，不參與建立課程的 payload。
+const coordinationStart = ref('16:00');
+const coordinationEnd = ref('21:00');
+const coordinationLoading = ref(false);
+const coordinationSearched = ref(false);
+const coordinationError = ref('');
+const coordinationApplied = ref('');
+const coordinationBusyByDate = ref({});
+const coordinationQueriedKey = ref('');
+let coordinationRequestToken = 0;
+const coordinationOccurrenceCount = 4;
+
+const coordinationQueryKey = computed(() => JSON.stringify({
+  teacher: Number(form.teacher_id || 0),
+  startDate: String(form.course_start_date || ''),
+  days: selectedDays.value,
+  windowStart: coordinationStart.value,
+  windowEnd: coordinationEnd.value,
+  duration: Number(form.duration_hours || 0),
+  classType: String(form.class_type || ''),
+}));
+
+const coordinationHasResults = computed(() => (
+  coordinationSearched.value && coordinationQueriedKey.value === coordinationQueryKey.value
+));
+
+function coordinationDurationForDay(day) {
+  const slot = (form.day_time_slots || []).find((entry) => Number(entry?.day || 0) === Number(day));
+  return durationHoursToMinutes(slot?.duration_hours || form.duration_hours);
+}
+
+function coordinationBaseDate() {
+  const today = getCurrentTodayYmd();
+  return form.course_start_date && form.course_start_date > today ? form.course_start_date : today;
+}
+
+function coordinationDatesForDay(day) {
+  const dates = nextOccurrenceDates(coordinationBaseDate(), day, coordinationOccurrenceCount);
+  return form.payment_type === 'monthly' && form.end_date
+    ? dates.filter((date) => date <= form.end_date)
+    : dates;
+}
+
+const coordinationAllCandidates = computed(() => {
+  const all = [];
+  for (const day of selectedDays.value) {
+    const dates = coordinationDatesForDay(day);
+    if (!dates.length || dates.some((date) => !Object.prototype.hasOwnProperty.call(coordinationBusyByDate.value, date))) continue;
+    const candidatesByDate = dates.map((date) => buildScheduleCandidates({
+      date,
+      weekday: day,
+      windowStart: coordinationStart.value,
+      windowEnd: coordinationEnd.value,
+      durationMinutes: coordinationDurationForDay(day),
+      busySlots: coordinationBusyByDate.value[date],
+      classType: form.class_type,
+      branchId: Number(props.branchId || 0),
+    }));
+    all.push(...mergeRecurringScheduleCandidates(candidatesByDate));
+  }
+  return rankScheduleCandidates(all);
+});
+
+const coordinationCandidates = computed(() => (
+  coordinationAllCandidates.value
+    .filter((candidate) => candidate.status !== 'conflict')
+    .slice(0, 12)
+));
+
+const coordinationConflictHint = computed(() => {
+  const blocked = coordinationAllCandidates.value.find((candidate) => candidate.status === 'conflict');
+  return blocked?.conflictTooltip
+    ? `最近的阻塞原因：${blocked.conflictTooltip}（前${blocked.occurrenceTotal}次中${blocked.occurrenceCount}次可排）。`
+    : '';
+});
+
+function teacherSupportsBranch(teacher, branchId) {
+  const ids = teacherBranchIds(teacher);
+  const primary = Number(teacher?.branch_id || 0);
+  return !ids.length || ids.includes(Number(branchId)) || primary === Number(branchId);
+}
+
+async function findCoordinationSlots() {
+  coordinationSearched.value = false;
+  coordinationError.value = '';
+  coordinationApplied.value = '';
+  const teacher = selectedTeacher.value;
+  const branchId = Number(props.branchId || 0);
+  if (!teacher || !form.teacher_id) {
+    coordinationError.value = '請先選擇老師。';
+    return;
+  }
+  if (!selectedDays.value.length) {
+    coordinationError.value = '請先勾選學生可配合的星期。';
+    return;
+  }
+  if (!teacherSupportsBranch(teacher, branchId)) {
+    coordinationError.value = '所選老師未綁定目前分校，無法試算此分校時段。';
+    return;
+  }
+  if (coordinationStart.value >= coordinationEnd.value) {
+    coordinationError.value = '可配合時間的結束時間必須晚於開始時間。';
+    return;
+  }
+  const duration = durationHoursToMinutes(form.duration_hours);
+  if (duration < 30) {
+    coordinationError.value = '請先設定至少 0.5 小時的預設上課時長。';
+    return;
+  }
+
+  const token = ++coordinationRequestToken;
+  coordinationLoading.value = true;
+  try {
+    const dates = selectedDays.value.flatMap((day) => coordinationDatesForDay(day).map((date) => ({ day, date })));
+    const results = await Promise.all(dates.map(async ({ day, date }) => {
+      try {
+        const response = await fetchTeacherAvailability(Number(form.teacher_id), date, {
+          excludeStudentId: Number(form.student_id || 0) || undefined,
+        });
+        return { day, date, busySlots: Array.isArray(response?.busy_slots) ? response.busy_slots : [] };
+      } catch {
+        return { day, date, error: true };
+      }
+    }));
+    if (token !== coordinationRequestToken) return;
+    coordinationBusyByDate.value = Object.fromEntries(
+      results.filter((result) => !result.error).map((result) => [result.date, result.busySlots])
+    );
+    const failed = results.filter((result) => result.error).length;
+    coordinationError.value = failed === results.length
+      ? '目前無法取得老師可用性，請稍後再試。'
+      : failed > 0
+        ? `${failed} 個固定上課日期暫時無法試算；為避免誤排，該星期暫不顯示建議。`
+        : '';
+    coordinationQueriedKey.value = coordinationQueryKey.value;
+    coordinationSearched.value = true;
+  } finally {
+    if (token === coordinationRequestToken) coordinationLoading.value = false;
+  }
+}
+
+function applyCoordinationCandidate(candidate) {
+  if (!candidate) return;
+  const [startHour, startMinute] = candidate.start_time.split(':').map(Number);
+  const [endHour, endMinute] = candidate.end_time.split(':').map(Number);
+  const candidateDurationHours = ((endHour * 60 + endMinute) - (startHour * 60 + startMinute)) / 60;
+  form.days_of_week = [Number(candidate.weekday)];
+  form.day_time_slots = [{
+    day: Number(candidate.weekday),
+    start_time: candidate.start_time,
+    duration_hours: candidateDurationHours > 0 ? candidateDurationHours : form.duration_hours,
+    subject: String(form.subject || ''),
+  }];
+  form.start_time = candidate.start_time;
+  currentMonth.value = parseYmdToMonthDate(candidate.date) || currentMonth.value;
+  coordinationApplied.value = `${candidate.date.slice(5)} 起每週${weekdayLabelMap[candidate.weekday]} ${candidate.start_time}–${candidate.end_time}`;
+}
 
 // ── RFC 非標準時長扣堂 ────────────────────────────────────────────────────────
 // 只在堂數制、非課程包時提供。未開啟時，以下全部不影響原有流程。
@@ -2625,6 +2864,37 @@ async function submit() {
   font-size: 12px;
   color: var(--text-light);
 }
+
+.schedule-coordination-card {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid var(--ds-primary);
+  border-radius: 14px;
+  background: var(--ds-primary-wash);
+}
+.schedule-coordination-heading { display: flex; justify-content: space-between; gap: 12px; }
+.schedule-coordination-heading h5 { display: flex; align-items: center; gap: 5px; margin: 0; color: var(--ds-primary-deep, var(--ds-primary)); font-size: 14px; }
+.schedule-coordination-heading h5 .material-symbols-outlined { font-size: 18px; }
+.schedule-coordination-heading p { margin: 4px 0 0; color: var(--text-light); font-size: 12px; }
+.coordination-branch-badge, .coordination-candidate-status { padding: 3px 8px; border-radius: 999px; background: var(--ds-success-wash); color: var(--ds-success); font-size: 11px; font-weight: 700; }
+.schedule-coordination-controls { display: flex; align-items: flex-end; gap: 8px; margin-top: 12px; }
+.schedule-coordination-controls label { display: flex; flex: 0 1 116px; flex-direction: column; gap: 4px; color: var(--text-light); font-size: 11px; font-weight: 600; }
+.schedule-coordination-controls select { width: 100%; }
+.coordination-range-separator { padding-bottom: 9px; color: var(--text-light); font-size: 12px; }
+.coordination-search-button { white-space: nowrap; }
+.coordination-results { margin-top: 12px; }
+.coordination-results-title { margin-bottom: 7px; color: var(--ds-ink); font-size: 12px; font-weight: 700; }
+.coordination-candidate { display: inline-flex; align-items: center; gap: 8px; margin: 0 6px 6px 0; padding: 7px 10px; border: 1px solid var(--ds-success); border-radius: 9px; background: var(--ds-canvas); color: var(--ds-ink); cursor: pointer; font: inherit; font-size: 12px; text-align: left; }
+.coordination-candidate:hover, .coordination-candidate:focus-visible { border-color: var(--ds-primary); box-shadow: 0 0 0 2px var(--ds-primary-wash); }
+.coordination-candidate-date { color: var(--text-light); }
+.coordination-candidate strong { font-variant-numeric: tabular-nums; }
+.coordination-candidate-status.is-capacity {
+  background: var(--ds-warning-wash);
+  color: var(--ds-warning);
+}
+.coordination-message { margin: 10px 0 0; color: var(--text-light); font-size: 12px; line-height: 1.5; }
+.coordination-message--error { color: var(--ds-danger); }
+.coordination-message--success { color: var(--ds-success); }
 .warning-text {
   color: var(--ds-warning);
   font-weight: 600;
@@ -3143,6 +3413,14 @@ async function submit() {
   .scheduler-grid {
     grid-template-columns: 1fr;
   }
+
+  .schedule-coordination-controls {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+  .schedule-coordination-controls label { flex: 1 1 110px; }
+  .coordination-range-separator { display: none; }
+  .coordination-search-button { flex: 1 0 100%; }
 
   .summary-row {
     grid-template-columns: 1fr;
