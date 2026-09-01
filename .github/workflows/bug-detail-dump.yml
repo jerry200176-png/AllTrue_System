@@ -147,36 +147,52 @@ jobs:
             if (mb_strlen($body) > 1500) $body = mb_substr($body, 0, 1500)."…";
             $cmtOut[] = ["id"=>(int)$c->id,"author"=>(int)$c->author_user_id,"internal"=>(bool)$c->is_internal_note,"body"=>$body,"at"=>$c->created_at];
           }}
-          // #208-specific probe: package 124 (student 林立晴) + member course 2825 (English),
-          // to confirm whether the one-time POST /course-packages/124/recompute ever ran
-          // (i.e. whether course 2825's RemainingSessions is still the stale pre-edit value).
-          $pkg = $db::table("course_packages")->where("id", 124)->first([
-            "id","student_id","campus_id","total_sessions","remaining_sessions","used_sessions","paid","stop","updated_at",
-          ]);
-          $pkgMembers = $db::table("StudentClass as sc")
-            ->leftJoin("User as u", "u.id", "=", "sc.TeacherID")
-            ->leftJoin("Student as s", "s.id", "=", "sc.StudentID")
-            ->where("sc.PackageID", 124)
-            ->orderBy("sc.id")
-            ->get(["sc.id","sc.StudentID","sc.TeacherID","u.Name as teacher_name","sc.SubjectID","sc.SessionCount","sc.RemainingSessions","sc.UsedSessions","sc.PackageTotalSessions","sc.Stop","s.CampusID as campus_id","sc.MDate as updated_at"]);
-          $course2825 = $db::table("StudentClass as sc")
-            ->leftJoin("Student as s", "s.id", "=", "sc.StudentID")
-            ->where("sc.id", 2825)
-            ->first(["sc.id","sc.StudentID","sc.TeacherID","sc.SubjectID","sc.PackageID","sc.SessionCount","sc.RemainingSessions","sc.UsedSessions","sc.PackageTotalSessions","sc.Stop","s.CampusID as campus_id","sc.MDate as updated_at"]);
-          $recomputeLedger = $db::table("package_session_ledger")
-            ->where("package_id", 124)
-            ->orderByDesc("id")
-            ->limit(10)
-            ->get(["id","package_id","student_class_id","class_session_id","delta","reason","recorded_by","created_at"]);
+          // Probes are opt-in and allowlisted by bug id. Never attach a fixed
+          // historical case to an unrelated report: inapplicable probes emit
+          // metadata only and cannot make the dump decision-grade.
+          $probe208 = [
+            "applicable" => false, "read_only" => true, "decision_grade" => false,
+            "reason" => "Allowlisted only for in-app bug 208",
+          ];
+          if ($bugId === 208) {{
+            // #208-specific probe: package 124 + member course 2825, to confirm
+            // whether the one-time package recompute ran after the course edit.
+            $pkg = $db::table("course_packages")->where("id", 124)->first([
+              "id","student_id","campus_id","total_sessions","remaining_sessions","used_sessions","paid","stop","updated_at",
+            ]);
+            $pkgMembers = $db::table("StudentClass as sc")
+              ->leftJoin("User as u", "u.id", "=", "sc.TeacherID")
+              ->leftJoin("Student as s", "s.id", "=", "sc.StudentID")
+              ->where("sc.PackageID", 124)
+              ->orderBy("sc.id")
+              ->get(["sc.id","sc.StudentID","sc.TeacherID","u.Name as teacher_name","sc.SubjectID","sc.SessionCount","sc.RemainingSessions","sc.UsedSessions","sc.PackageTotalSessions","sc.Stop","s.CampusID as campus_id","sc.MDate as updated_at"]);
+            $course2825 = $db::table("StudentClass as sc")
+              ->leftJoin("Student as s", "s.id", "=", "sc.StudentID")
+              ->where("sc.id", 2825)
+              ->first(["sc.id","sc.StudentID","sc.TeacherID","sc.SubjectID","sc.PackageID","sc.SessionCount","sc.RemainingSessions","sc.UsedSessions","sc.PackageTotalSessions","sc.Stop","s.CampusID as campus_id","sc.MDate as updated_at"]);
+            $recomputeLedger = $db::table("package_session_ledger")
+              ->where("package_id", 124)
+              ->orderByDesc("id")
+              ->limit(10)
+              ->get(["id","package_id","student_class_id","class_session_id","delta","reason","recorded_by","created_at"]);
+            $probe208 = [
+              "applicable" => true, "read_only" => true, "decision_grade" => true,
+              "package_124" => $pkg, "package_124_members" => $pkgMembers,
+              "course_2825" => $course2825, "package_124_ledger_recent" => $recomputeLedger,
+            ];
+          }}
 
           // #241-specific production acceptance probe. This is deliberately
           // read-only: invoke the same projection read methods used by the
           // teacher calendar without entering the public endpoint's
           // auto-materialization boundary. Emit IDs and slot coordinates only;
           // do not export student/teacher names or descriptions.
-          $probe241 = ["enabled" => false, "read_only" => true];
+          $probe241 = [
+            "applicable" => false, "read_only" => true, "decision_grade" => false,
+            "reason" => "Allowlisted only for in-app bug 241",
+          ];
           if ($bugId === 241) {{
-            $probe241["enabled"] = true;
+            $probe241["applicable"] = true;
             $probe241["date_range"] = ["start" => "2026-08-23", "end" => "2026-08-29"];
             $probe241["target_slot"] = ["date" => "2026-08-29", "start" => "13:00", "end" => "15:00"];
             try {{
@@ -275,13 +291,39 @@ jobs:
               }}
               $probe241["teacher_projection_results"] = $teacherResults;
               $probe241["target_slot_visible"] = collect($teacherResults)->contains(fn ($result) => $result["target_slot_visible"] === true);
+              $probe241["decision_grade"] = true;
               $probe241["error"] = null;
             }} catch (\Throwable $e) {{
+              $probe241["decision_grade"] = false;
               $probe241["error"] = get_class($e).": ".substr((string)$e->getMessage(), 0, 300);
             }}
           }}
+          $probe247 = [
+            "applicable" => false, "read_only" => true, "decision_grade" => false,
+            "reason" => "No target-correct calendar probe is configured yet; collect fresh case identifiers before adding one",
+          ];
+          $probe249 = [
+            "applicable" => false, "read_only" => true, "decision_grade" => false,
+            "reason" => "No target-correct billing probe is configured yet; Founder-approved mapping is required before any billing evidence or mutation",
+          ];
+          $targetProbe = match ($bugId) {{
+            208 => $probe208,
+            241 => $probe241,
+            247 => $probe247,
+            249 => $probe249,
+            default => null,
+          }};
+          $decisionGradeRequired = in_array($bugId, [208, 241, 247, 249], true);
+          $decisionGrade = $targetProbe !== null && $targetProbe["applicable"] === true
+            && $targetProbe["decision_grade"] === true;
+          $decisionGradeReason = $decisionGrade
+            ? "Target-correct allowlisted probe completed"
+            : ($decisionGradeRequired
+              ? "Target-correct allowlisted probe is missing or failed"
+              : "No target-specific probe is configured; metadata only");
           echo json_encode([
             "ok" => true,
+            "requested_bug_id" => (int)$bugId,
             "bug" => [
               "id"=>(int)$bug->id,
               "status"=>$bug->status,
@@ -300,13 +342,21 @@ jobs:
             "reporter_history" => $reporterHistory,
             "reporter_history_comments" => $reporterComments,
             "reporter_history_status_logs" => $reporterStatusLogs,
-            "probe_208_package_recompute" => [
-              "package_124" => $pkg,
-              "package_124_members" => $pkgMembers,
-              "course_2825" => $course2825,
-              "package_124_ledger_recent" => $recomputeLedger,
+            "diagnostics" => [
+              "requested_bug_id" => (int)$bugId,
+              "probe_results" => [
+                "probe_208_package_recompute" => $probe208,
+                "probe_241_teacher_projection" => $probe241,
+                "probe_247_calendar_capacity" => $probe247,
+                "probe_249_shared_subject_payment" => $probe249,
+              ],
+              "evidence_generated_at" => gmdate("c"),
+              "read_only" => true,
+              "pii_redacted" => true,
+              "decision_grade_required" => $decisionGradeRequired,
+              "decision_grade" => $decisionGrade,
+              "decision_grade_reason" => $decisionGradeReason,
             ],
-            "probe_241_teacher_projection" => $probe241,
             "prod_head" => trim((string)@shell_exec("git rev-parse HEAD")),
             "dump_generated_at" => gmdate("c"),
           ], JSON_UNESCAPED_UNICODE), PHP_EOL;
@@ -328,20 +378,32 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import json
+          import os
           text = Path("out/bug-detail.log").read_text(encoding="utf-8", errors="replace")
-          obj = None
+          candidates = []
           for line in text.splitlines():
             line=line.strip()
             if line.startswith("{") and '"ok"' in line:
               try:
-                obj=json.loads(line)
+                candidates.append(json.loads(line))
               except Exception:
                 pass
-          Path("out/bug-detail.json").write_text(json.dumps(obj or {"ok":False,"raw_tail":text[-2000:]}, ensure_ascii=False, indent=2), encoding="utf-8")
-          print("parsed", bool(obj and obj.get("ok")))
+          if len(candidates) != 1:
+            obj = {"ok": False, "error": "expected exactly one JSON evidence envelope"}
+          else:
+            obj = candidates[0]
+          Path("out/bug-detail.json").write_text(json.dumps(obj, ensure_ascii=False, indent=2), encoding="utf-8")
+          requested_id = int(os.environ["BUG_ID"])
+          if obj.get("requested_bug_id") != requested_id:
+            raise SystemExit("requested_bug_id does not match dispatched bug_id")
+          diagnostics = obj.get("diagnostics") or {}
+          if diagnostics.get("decision_grade_required") and diagnostics.get("decision_grade") is not True:
+            raise SystemExit("target-correct probe is required; evidence is not decision-grade")
+          print("parsed", bool(obj.get("ok")), "decision_grade", diagnostics.get("decision_grade"))
           PY
 
       - name: Upload
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: bug-detail-dump

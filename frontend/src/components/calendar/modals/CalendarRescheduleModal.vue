@@ -35,7 +35,7 @@
         <p class="computed-time">{{ newEndTime }}</p>
       </div>
       <div v-if="preview && preview.status === 'ready'" class="preview-box" :class="{ 'preview-box--blocked': preview.blocked }" role="status">
-        <strong>{{ preview.blocked ? '送出前檢查：請先處理衝堂' : '送出前檢查' }}</strong>
+        <strong>{{ preview.blocked ? '送出前提醒：可能有衝堂' : '送出前檢查' }}</strong>
         <p>{{ preview.message }}</p>
         <ul v-if="preview.blocked && preview.conflicts.length">
           <li v-for="item in preview.conflicts" :key="item">{{ item }}</li>
@@ -44,7 +44,7 @@
       <div v-if="error" class="dialog-error" role="alert">{{ error }}</div>
       <div class="actions">
         <button class="ghost" type="button" :disabled="submitting" @click="$emit('close')">取消</button>
-        <button class="primary" type="button" :disabled="submitting || !form.new_date || preview?.blocked" @click="$emit('submit')">
+        <button class="primary" type="button" :disabled="submitting || !form.new_date" @click="$emit('submit')">
           {{ submitting ? '調課中…' : '確認調課' }}
         </button>
       </div>

@@ -61,6 +61,18 @@ function courseIdFor(course) {
 
 function isNonOccupyingOnDate(course, date, sessionDatesByCourseId = {}, exceptions = []) {
   const courseId = courseIdFor(course);
+  if (!courseId) return false;
+  const hasNonOccupyingException = (Array.isArray(exceptions) ? exceptions : []).some((exception) =>
+    String(exception?.student_course_id ?? exception?.studentClassId ?? exception?.student_class_id ?? '') === courseId
+      && String(exception?.schedule_date || exception?.session_date || exception?.date || '').slice(0, 10) === date
+      && NON_OCCUPYING_STATUSES.has(String(exception?.status || exception?.Status || '').toLowerCase()),
+  );
+
+  // A leave exception is the date-level source of truth. The materialized
+  // session projection can briefly remain scheduled while the leave cascade
+  // is being reflected, and must not make a genuinely free seat look full.
+  if (hasNonOccupyingException) return true;
+
   const rows = sessionDatesByCourseId?.[courseId];
   if (Array.isArray(rows) && rows.length > 0) {
     const sameDate = rows.filter((row) =>
@@ -73,11 +85,7 @@ function isNonOccupyingOnDate(course, date, sessionDatesByCourseId = {}, excepti
     }
   }
 
-  return (Array.isArray(exceptions) ? exceptions : []).some((exception) =>
-    String(exception?.student_course_id ?? '') === courseId
-      && String(exception?.schedule_date || '').slice(0, 10) === date
-      && NON_OCCUPYING_STATUSES.has(String(exception?.status || '').toLowerCase()),
-  );
+  return false;
 }
 
 /**
@@ -137,7 +145,7 @@ export function buildReschedulePreview({
     blocked,
     conflicts: candidates.slice(0, 4).map(detailFor),
     message: blocked
-      ? `${reason}，請改選日期或時間。`
+      ? `目前載入的排課顯示${reason}；送出時系統會再做最後檢查。`
       : candidates.length
         ? `目前時段已有 ${uniqueStudents.size} 位學生；依${CLASS_LABEL[classType] || '課程'}規則可安排。`
         : '目前載入的排課沒有發現衝堂。送出時系統仍會再做最後檢查。',

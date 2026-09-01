@@ -1,7 +1,13 @@
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { ref, computed } from 'vue';
 import { findExactRescheduleAnchor, useCalendarReschedule } from '../useCalendarReschedule.js';
 import { buildReschedulePreview } from '../../../lib/reschedulePreview.js';
+
+vi.mock('../../../lib/rescheduleApi.js', () => ({
+  commitReschedule: vi.fn(),
+}));
+
+import { commitReschedule } from '../../../lib/rescheduleApi.js';
 
 function makeDeps(overrides = {}) {
   return {
@@ -31,6 +37,16 @@ function makeDeps(overrides = {}) {
 }
 
 describe('useCalendarReschedule', () => {
+  beforeEach(() => {
+    commitReschedule.mockReset();
+    commitReschedule.mockResolvedValue({ committed: true });
+    vi.stubGlobal('alert', vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it('matches a reschedule anchor by exact course, date, and start time', () => {
     const rows = [
       { id: 1, status: 'leave', student_course_id: 99, schedule_date: '2026-06-11', start_time: '16:00:00' },
@@ -76,6 +92,28 @@ describe('useCalendarReschedule', () => {
     openRescheduleModal();
     expect(reschedulePreview.value.blocked).toBe(true);
     expect(reschedulePreview.value.message).toContain('已有一對一');
+  });
+
+  it('still submits a preview warning so the atomic API can account for leave state', async () => {
+    const deps = makeDeps({
+      courses: ref([{ id: 1, student_id: 20, teacher_id: 5, day_of_week: 4, start_time: '16:00', end_time: '18:00', class_type: 'one_on_one' }]),
+    });
+    const flow = useCalendarReschedule(deps);
+    flow.openRescheduleModal();
+
+    expect(flow.reschedulePreview.value.blocked).toBe(true);
+    await flow.submitReschedule();
+
+    expect(commitReschedule).toHaveBeenCalledWith(expect.objectContaining({
+      token: 'tok',
+      payload: expect.objectContaining({
+        student_class_id: 99,
+        old_date: '2026-06-11',
+        new_date: '2026-06-11',
+      }),
+    }));
+    expect(deps.loadCourses).toHaveBeenCalled();
+    expect(flow.showRescheduleModal.value).toBe(false);
   });
 
   it('keeps the preview aligned with capacity and recurring-day rules', () => {
@@ -132,6 +170,26 @@ describe('useCalendarReschedule', () => {
     });
 
     expect(result.blocked).toBe(false);
+  });
+
+  it('lets a leave exception override a stale scheduled session projection', () => {
+    const result = buildReschedulePreview({
+      currentCourseId: 99,
+      studentId: 10,
+      teacherId: 5,
+      targetDate: '2026-09-01',
+      startTime: '18:00',
+      endTime: '20:00',
+      classType: 'one_on_one',
+      courses: [{ id: 20, student_id: 21, teacher_id: 5, day_of_week: 2, start_time: '18:00', end_time: '20:00', class_type: 'one_on_one' }],
+      sessionDatesByCourseId: {
+        20: [{ session_date: '2026-09-01', status: 'scheduled' }],
+      },
+      exceptions: [{ student_course_id: 20, schedule_date: '2026-09-01', status: 'leave' }],
+    });
+
+    expect(result.blocked).toBe(false);
+    expect(result.message).toContain('沒有發現衝堂');
   });
 
   it('still blocks a genuinely active course on the target date', () => {

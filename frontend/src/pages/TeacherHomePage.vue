@@ -242,7 +242,7 @@
           :key="day.date"
           class="th-day"
           :class="{ 'th-day-today': day.isToday }"
-          :open="day.isToday || day.events.length > 0"
+          :open="day.isToday"
         >
           <summary class="th-day-summary">
             <span class="th-day-dot" :class="{ 'th-day-dot-today': day.isToday }"></span>

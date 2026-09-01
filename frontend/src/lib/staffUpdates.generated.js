@@ -41,6 +41,222 @@ export const staffUpdates = [
     "version": "2026.09.01"
   },
   {
+    "id": "staff-2026-09-01-history-usage-balance-visibility",
+    "publishedAt": "2026-09-01",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "歷史課程也會顯示堂數待對帳",
+    "summary": "已結案或完課的歷史課程若堂數需要核對，課程卡會直接顯示提醒與原因。",
+    "items": [
+      "歷史課程卡補上「堂數待對帳」醒目標籤，不會因被收進歷史區而看不到異常。",
+      "提醒可直接查看課堂狀態與扣堂紀錄的差異原因；不會自動修改堂數或帳務資料。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "歷史課程卡補上「堂數待對帳」醒目標籤，不會因被收進歷史區而看不到異常。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "提醒可直接查看課堂狀態與扣堂紀錄的差異原因；不會自動修改堂數或帳務資料。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-01:history-usage-balance-visibility"
+    ],
+    "date": "2026-09-01",
+    "version": "2026.09.01"
+  },
+  {
+    "id": "staff-2026-09-01-calendar-reschedule-authority",
+    "publishedAt": "2026-09-01",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "action_required",
+    "title": "行事曆調課不再被畫面誤擋",
+    "summary": "請假資料尚在同步時，調課仍可送出由系統做最後確認；真正衝堂仍會被擋下。",
+    "items": [
+      "行事曆的送出前提示不會再因資料尚未完整載入而直接禁止調課。",
+      "確認後仍由系統做最後衝堂檢查；若確實衝堂，資料不會被變更。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "行事曆的送出前提示不會再因資料尚未完整載入而直接禁止調課。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "確認後仍由系統做最後衝堂檢查；若確實衝堂，資料不會被變更。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-01:calendar-reschedule-authority"
+    ],
+    "date": "2026-09-01",
+    "version": "2026.09.01"
+  },
+  {
+    "id": "staff-2026-09-01-calendar-leave-precedence",
+    "publishedAt": "2026-09-01",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "調課時會正確辨識已請假的時段",
+    "summary": "請假狀態同步中也不會把已空出的老師時段誤判為滿段。",
+    "items": [
+      "行事曆調課現在優先採用當日請假狀態，不會因畫面資料同步時間差而誤擋調課。",
+      "真正仍在上課的學生依然會列入容量檢查，避免誤放行衝堂。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "行事曆調課現在優先採用當日請假狀態，不會因畫面資料同步時間差而誤擋調課。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "真正仍在上課的學生依然會列入容量檢查，避免誤放行衝堂。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-01:calendar-leave-precedence"
+    ],
+    "date": "2026-09-01",
+    "version": "2026.09.01"
+  },
+  {
+    "id": "staff-2026-09-01-bug-detail-target-correctness",
+    "publishedAt": "2026-09-01",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "Bug 詳情證據不再混用其他個案",
+    "summary": "分診用的 Bug 詳情資料會標明目標、適用 probe 與是否達到可判定標準。",
+    "items": [
+      "Bug 詳情 dump 只執行對應 probe；未配置則標示不適用。",
+      "需要目標證據但未配置時，會標示 decision-grade=false。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "Bug 詳情 dump 只執行對應 probe；未配置則標示不適用。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "需要目標證據但未配置時，會標示 decision-grade=false。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-01:bug-detail-target-correctness"
+    ],
+    "date": "2026-09-01",
+    "version": "2026.09.01"
+  },
+  {
+    "id": "staff-2026-09-01-teacher-week-disclosure",
+    "publishedAt": "2026-09-01",
+    "effectiveAt": null,
+    "audiences": [
+      "teacher"
+    ],
+    "audience": [
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "老師首頁先看今天的課表",
+    "summary": "本週課表預設先展開今天，其餘日期需要時再查看。",
+    "items": [
+      "老師首頁的本週課表只會預設展開今天，其他有課日期仍可點開查看。",
+      "跨分校課表、日期切換、課堂內容與評量／回報操作維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "老師首頁的本週課表只會預設展開今天，其他有課日期仍可點開查看。",
+          "跨分校課表、日期切換、課堂內容與評量／回報操作維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-01:teacher-week-disclosure"
+    ],
+    "date": "2026-09-01",
+    "version": "2026.09.01"
+  },
+  {
+    "id": "staff-2026-09-01-bug-report-tracking",
+    "publishedAt": "2026-09-01",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "Bug 回報送出後可直接追蹤",
+    "summary": "送出回報後會保留編號，並可直接前往 Bug 回報查看處理進度。",
+    "items": [
+      "Bug 回報成功後會保留回報編號與確認訊息，不會短暫顯示後自動消失。",
+      "可直接點選「查看回報進度」前往 Bug 回報頁；回報狀態與資料內容維持原規則。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "Bug 回報成功後會保留回報編號與確認訊息，不會短暫顯示後自動消失。",
+          "可直接點選「查看回報進度」前往 Bug 回報頁；回報狀態與資料內容維持原規則。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-01:bug-report-tracking"
+    ],
+    "date": "2026-09-01",
+    "version": "2026.09.01"
+  },
+  {
     "id": "staff-2026-08-31-weekly-16-segments",
     "publishedAt": "2026-08-31",
     "effectiveAt": null,
