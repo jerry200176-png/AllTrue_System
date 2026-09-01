@@ -576,6 +576,7 @@
           :time-options="TIME_OPTIONS_30"
           :settlement-day-options="settlementDayOptions"
           :student-grade="selectedStudent?.grade || selectedStudent?.ClassID || null"
+          :branch-id="props.branchId"
           :package-info="editPackageInfo"
           :context-title="editContextTitle"
         />
@@ -2413,11 +2414,15 @@ const interceptGoToPurchase = (conflict) => {
 };
 
 const editCourse = (course) => {
-  selectedStudent.value = students.value.find(s => s.id === course.student_id);
+  selectedStudent.value = students.value.find((s) => (
+    Number(s?.id) === Number(course?.student_id)
+    || Number(s?._laravelId) === Number(course?.student_id)
+  ));
   editingCourseId.value = course.id;
   editingCourseRaw.value = course;
   editingCourseFromLaravel.value = isLaravelCourse(course);
   courseForm.value = {
+    student_id: getLaravelStudentId(selectedStudent.value) ?? course.student_id ?? course.StudentID ?? '',
     subject: course.subject,
     teacher_id: course.teacher_id || '',
     class_type: course.class_type,

@@ -59,6 +59,9 @@ describe('TeacherAvailabilityPlanner', () => {
   it('is mounted by both create and edit scheduling forms', () => {
     for (const file of ['../UniversalClassScheduler.vue', '../CourseEditForm.vue']) expect(readFileSync(resolve(__dirname, file), 'utf8')).toContain('<TeacherAvailabilityPlanner');
     expect(readFileSync(resolve(__dirname, '../CourseEditForm.vue'), 'utf8')).toContain('default: fetchTeacherAvailability');
+    const studentsList = readFileSync(resolve(__dirname, '../../pages/StudentsList.vue'), 'utf8');
+    expect(studentsList).toContain(':branch-id="props.branchId"');
+    expect(studentsList).toContain('student_id: getLaravelStudentId(selectedStudent.value)');
   });
 
   it('lets the edit form apply a current candidate back to its schedule model', async () => {
