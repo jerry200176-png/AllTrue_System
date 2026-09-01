@@ -1,0 +1,15 @@
+#!/usr/bin/env php
+<?php
+
+// Stable self-hosted entrypoint. The runner invokes POP, never an ad-hoc
+// artisan repair command; Laravel remains an implementation detail.
+$args = $_SERVER['argv'] ?? [];
+array_shift($args);
+$subcommand = array_shift($args);
+if ($subcommand !== 'execute') {
+    fwrite(STDERR, "Usage: pop execute --request=<uuid> --phase=<phase>\n");
+    exit(64);
+}
+
+$argv = array_merge(['artisan', 'pop:execute'], $args);
+require __DIR__ . '/../artisan';
