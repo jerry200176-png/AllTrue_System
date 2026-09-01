@@ -2270,6 +2270,168 @@ class StudentClassController extends Controller
         return response()->json($result);
     }
 
+    /**
+     * Correct the stored charge for an unpaid date-mode course after sessions
+     * already exist. Date-mode billing is based on billable occurrences, so the
+     * count-based billingCorrection() contract cannot safely be reused here.
+     * This endpoint deliberately changes no session, ledger, or entitlement
+     * fields; it only synchronizes the course charge and its unpaid invoices.
+     */
+    public function chargeCorrection(Request $request, StudentClass $studentClass)
+    {
+        if ($accessError = $this->authorizeStudentClassAccess($studentClass)) {
+            return $accessError;
+        }
+
+        $payload = $request->validate([
+            'new_charge' => ['required', 'integer', 'min:0'],
+            'reason' => ['required', 'string', 'max:255'],
+        ]);
+
+        if ((string) ($studentClass->ScheduleMode ?? 'count') !== 'date') {
+            $this->auditEditBlocked($studentClass, 'charge_correction_date_mode_only', 422);
+            return response()->json([
+                'message' => '只有月結（date）課程可以使用費用更正。',
+                'code' => 'charge_correction_date_mode_only',
+            ], 422);
+        }
+
+        if ($studentClass->isPartOfPackage()) {
+            $this->auditEditBlocked($studentClass, 'charge_correction_package_forbidden', 422);
+            return response()->json([
+                'message' => '共用課程包請使用方案調整流程，不可單獨更正課程費用。',
+                'code' => 'charge_correction_package_forbidden',
+            ], 422);
+        }
+
+        if ((int) ($studentClass->Paid ?? 0) === 1) {
+            $this->auditEditBlocked($studentClass, 'charge_correction_paid_locked', 409);
+            return response()->json([
+                'message' => '此課程已標記收款，請先走帳務更正／作廢流程。',
+                'code' => 'charge_correction_paid_locked',
+            ], 409);
+        }
+
+        $classId = (int) $studentClass->getKey();
+        $activePayment = DB::table('Invoice')
+            ->leftJoin('Payment', 'Payment.InvoiceID', '=', 'Invoice.id')
+            ->where('Invoice.StudentClassID', $classId)
+            ->where(function ($q) {
+                $q->whereNull('Invoice.Status')->orWhere('Invoice.Status', '!=', 'void');
+            })
+            ->where(function ($q) {
+                $q->where('Invoice.PaidAmount', '>', 0)
+                    ->orWhere(function ($payment) {
+                        $payment->where('Payment.Amount', '>', 0)
+                            ->where(function ($method) {
+                                $method->whereNull('Payment.Method')->orWhere('Payment.Method', '!=', 'void');
+                            });
+                    });
+            })
+            ->exists();
+        if ($activePayment) {
+            $this->auditEditBlocked($studentClass, 'charge_correction_payment_locked', 409);
+            return response()->json([
+                'message' => '此課程已有有效收款紀錄，請先至帳務流程作廢或更正帳單。',
+                'code' => 'charge_correction_payment_locked',
+            ], 409);
+        }
+
+        if (PaymentReport::query()
+            ->where('StudentClassID', $classId)
+            ->whereIn('status', ['pending', 'confirmed'])
+            ->exists()) {
+            $this->auditEditBlocked($studentClass, 'charge_correction_payment_report_locked', 409);
+            return response()->json([
+                'message' => '此課程已有待處理或已確認的繳費回報，請先完成或作廢該筆回報。',
+                'code' => 'charge_correction_payment_report_locked',
+            ], 409);
+        }
+
+        $newCharge = (int) $payload['new_charge'];
+        $oldCharge = (int) ($studentClass->Charge ?? 0);
+        $reasonHash = hash('sha256', (string) $payload['reason']);
+
+        $result = DB::transaction(function () use ($classId, $newCharge, $oldCharge, $reasonHash, $payload, $studentClass) {
+            $locked = StudentClass::query()->where('ID', $classId)->lockForUpdate()->first();
+            if (!$locked) {
+                abort(404);
+            }
+            if ((int) ($locked->Paid ?? 0) === 1) {
+                abort(response()->json([
+                    'message' => '此課程在處理期間已被標記收款，請重新整理後再操作。',
+                    'code' => 'charge_correction_paid_locked',
+                ], 409));
+            }
+
+            $openInvoices = Invoice::query()
+                ->where('StudentClassID', $classId)
+                ->where(function ($q) {
+                    $q->whereNull('Status')->orWhere('Status', '!=', 'void');
+                })
+                ->lockForUpdate()
+                ->get();
+            foreach ($openInvoices as $invoice) {
+                if ((int) ($invoice->PaidAmount ?? 0) !== 0
+                    || Payment::query()
+                        ->where('InvoiceID', $invoice->id)
+                        ->where('Amount', '>', 0)
+                        ->where(function ($q) {
+                            $q->whereNull('Method')->orWhere('Method', '!=', 'void');
+                        })
+                        ->exists()) {
+                    abort(response()->json([
+                        'message' => '此課程已有有效收款紀錄，請先至帳務流程作廢或更正帳單。',
+                        'code' => 'charge_correction_payment_locked',
+                    ], 409));
+                }
+                $invoice->TotalAmount = $newCharge;
+                $invoice->save();
+                InvoiceItem::query()
+                    ->where('InvoiceID', $invoice->id)
+                    ->where('StudentClassID', $classId)
+                    ->update(['Amount' => $newCharge]);
+            }
+
+            $locked->Charge = $newCharge;
+            $locked->save();
+
+            $actor = request()->attributes->get('auth_user');
+            SecurityAuditEvent::append(
+                'student_class.date_mode_charge_correction',
+                'success',
+                [
+                    'campus_id' => $studentClass->student?->CampusID,
+                    'actor_type' => 'user',
+                    'actor_id' => $actor?->id,
+                    'subject_type' => 'student_class',
+                    'subject_id' => $classId,
+                ],
+                [
+                    'old_charge' => $oldCharge,
+                    'new_charge' => $newCharge,
+                    'reason_hash' => $reasonHash,
+                    'reason_code' => 'unpaid_date_mode_charge_correction',
+                    'outcome' => 'success',
+                ]
+            );
+
+            $fresh = $locked->fresh();
+            return [
+                'student_class_id' => $classId,
+                'old_charge' => $oldCharge,
+                'new_charge' => $newCharge,
+                'used_sessions' => (int) ($fresh->UsedSessions ?? 0),
+                'remaining_sessions' => (int) ($fresh->RemainingSessions ?? 0),
+                'payment_status' => 'unpaid',
+                'reason' => $payload['reason'],
+                'adjusted_invoice_count' => $openInvoices->count(),
+            ];
+        });
+
+        return response()->json($result);
+    }
+
     public function splitContractPreview(Request $request, StudentClass $studentClass)
     {
         if ($accessError = $this->authorizeStudentClassAccess($studentClass)) {
