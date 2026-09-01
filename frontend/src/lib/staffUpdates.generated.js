@@ -255,6 +255,38 @@ export const staffUpdates = [
     "version": "2026.09.01"
   },
   {
+    "id": "staff-2026-09-01-calendar-secondary-controls",
+    "publishedAt": "2026-09-01",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "行事曆工具列更清爽",
+    "summary": "主要日期控制常駐，其他篩選與操作需要時再展開。",
+    "items": [
+      "月份、週次、跳至日期與日／週檢視維持直接可用，其他工具集中到「篩選與更多操作」。",
+      "收合時會顯示目前啟用的篩選數；展開後原有篩選、老師請假、教室管理與快速排課維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "月份、週次、跳至日期與日／週檢視維持直接可用，其他工具集中到「篩選與更多操作」。",
+          "收合時會顯示目前啟用的篩選數；展開後原有篩選、老師請假、教室管理與快速排課維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-01:calendar-secondary-controls"
+    ],
+    "date": "2026-09-01",
+    "version": "2026.09.01"
+  },
+  {
     "id": "staff-2026-09-01-bug-report-tracking",
     "publishedAt": "2026-09-01",
     "effectiveAt": null,
