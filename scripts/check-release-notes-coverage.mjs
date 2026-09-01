@@ -20,10 +20,12 @@ const BASELINE_DATE = '2026-08-08';
 const HEADING_RE = /^## (\d{4}-\d{2}-\d{2}) — (.+)$/;
 const MARKER_RE = /<!--\s*release-notes:\s*(staff_update|silent_ship)=([A-Za-z0-9._-]+)\s*-->/i;
 const STAFF_FACING_PREFIXES = [
-  'frontend/src/pages/',
-  'frontend/src/components/',
-  'frontend/src/composables/',
-  'backend/app/Http/Controllers/',
+  // The SPA shell, shared clients, composables, styles, and libraries can all
+  // change what a director or teacher sees, even when no page/component file
+  // changes directly.
+  'frontend/src/',
+  'backend/app/Http/',
+  'backend/app/Services/',
   'backend/routes/',
 ];
 
@@ -70,6 +72,9 @@ function addedHeadings(base, head) {
 function isStaffFacingPath(file) {
   const normalized = String(file).replaceAll('\\', '/');
   if (!STAFF_FACING_PREFIXES.some((prefix) => normalized.startsWith(prefix))) return false;
+  // These are generated release-note artifacts; the source-of-truth docs are
+  // the communication change and should not recursively require themselves.
+  if (normalized.startsWith('frontend/src/lib/') && normalized.endsWith('.generated.js')) return false;
   return !normalized.includes('/__tests__/')
     && !normalized.includes('/e2e/')
     && !/(?:\.test|\.spec)\.[^.]+$/.test(normalized);
@@ -96,6 +101,12 @@ function selfTest() {
   assert.deepEqual(markerFor(entries[0]), { kind: 'staff_update', id: 'staff-sample' });
   assert.equal(markerFor(entries[1]), null);
   assert.equal(isStaffFacingPath('frontend/src/pages/SmartCalendar.vue'), true);
+  assert.equal(isStaffFacingPath('frontend/src/App.vue'), true);
+  assert.equal(isStaffFacingPath('frontend/src/api.js'), true);
+  assert.equal(isStaffFacingPath('frontend/src/lib/teacherDailyWorkflow.js'), true);
+  assert.equal(isStaffFacingPath('frontend/src/styles.css'), true);
+  assert.equal(isStaffFacingPath('frontend/src/lib/staffUpdates.generated.js'), false);
+  assert.equal(isStaffFacingPath('backend/app/Services/Scheduling/ScheduleCommitmentClassifier.php'), true);
   assert.equal(isStaffFacingPath('frontend/src/pages/__tests__/SmartCalendar.test.js'), false);
   assert.equal(meaningfulPrField('**Where:** 排課頁面', 'Where'), true);
   assert.equal(meaningfulPrField('**How to use:** <!-- fill -->', 'How to use'), false);
