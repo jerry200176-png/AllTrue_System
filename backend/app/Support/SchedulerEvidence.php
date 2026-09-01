@@ -18,6 +18,7 @@ use RuntimeException;
 final class SchedulerEvidence
 {
     public const TIMEZONE = 'Asia/Taipei';
+    public const POP_EXECUTOR_JOB = 'pop-execute-approved';
 
     /** Execution outcomes that count as "ran successfully" for SLI. */
     public const EXECUTION_OK_STATUSES = [
@@ -62,6 +63,33 @@ final class SchedulerEvidence
         self::assertKnownJob($job);
 
         return self::outputDirectory() . '/' . self::localTime($at)->format('Y-m-d') . "-{$job}.log";
+    }
+
+    public static function executorOutputPath(): string
+    {
+        return self::outputDirectory() . '/' . self::POP_EXECUTOR_JOB . '.log';
+    }
+
+    public static function recordExecutorCompletion(string $status, ?CarbonInterface $at = null): void
+    {
+        if (!in_array($status, ['succeeded', 'failed'], true)) {
+            throw new \InvalidArgumentException("Unsupported POP executor evidence status: {$status}");
+        }
+        self::ensureDirectories();
+        $local = self::localTime($at);
+        $entry = [
+            'schema_version' => 2,
+            'job_key' => self::POP_EXECUTOR_JOB,
+            'finished_at' => $local->toIso8601String(),
+            'status' => $status,
+            'exit_code' => $status === 'succeeded' ? 0 : 1,
+            'output_file' => basename(self::executorOutputPath()),
+            'evidence_timestamp' => $local->toIso8601String(),
+        ];
+        $encoded = json_encode($entry, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        if ($encoded === false || file_put_contents(self::ledgerDirectory() . '/pop-executor.jsonl', $encoded . PHP_EOL, FILE_APPEND | LOCK_EX) === false) {
+            throw new RuntimeException('Unable to write POP executor evidence');
+        }
     }
 
     public static function ledgerPath(?CarbonInterface $at = null): string

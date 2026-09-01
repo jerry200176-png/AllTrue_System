@@ -20,4 +20,15 @@ final class PopOperationCatalogTest extends TestCase
 
         self::assertSame(1, $catalog->policyVersion());
     }
+
+    public function test_course_contract_repair_is_active_and_binds_to_pi_local_execution(): void
+    {
+        $entry = (new PopOperationCatalog(dirname(__DIR__, 3) . '/operations/catalog.yaml'))->operation('course-contract-repair');
+
+        self::assertSame('active', $entry['lifecycle']);
+        self::assertSame('pop-pi-local', $entry['execution_authority']);
+        self::assertSame('critical-dual-approval', $entry['approval_policy']);
+        self::assertContains('verify', $entry['capabilities']);
+        self::assertContains('rollback', $entry['capabilities']);
+    }
 }

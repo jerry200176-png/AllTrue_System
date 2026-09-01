@@ -278,6 +278,48 @@ final class PopOperationService
         }
     }
 
+    /**
+     * Execute the next already-approved request on the production host.
+     *
+     * The raw approval token is reconstructed only inside the Pi process from
+     * its database hash and local APP_KEY; it is never returned or logged.
+     */
+    public function runApprovedLocally(?string $requestId = null): array
+    {
+        $candidate = $requestId === null
+            ? DB::table('pop_operation_requests')->where('status', 'approved')->oldest('created_at')->first()
+            : $this->request($requestId);
+        if (!$candidate) {
+            return ['ok' => true, 'status' => 'idle', 'processed' => 0];
+        }
+
+        $lockName = 'alltrue:pop:' . (string) $candidate->id;
+        $lock = DB::selectOne('SELECT GET_LOCK(?, 0) AS acquired', [$lockName]);
+        if ((int) ($lock->acquired ?? 0) !== 1) {
+            return ['ok' => true, 'status' => 'busy', 'request_id' => (string) $candidate->id];
+        }
+
+        try {
+            $request = $this->request((string) $candidate->id);
+            if ((string) $request->status !== 'approved') {
+                return ['ok' => true, 'status' => 'skipped', 'request_id' => (string) $request->id];
+            }
+            $approval = $this->localApproval($request);
+            $commitSha = (string) $approval->commit_sha;
+            $this->assertLocalDeployment($commitSha);
+            $token = $this->reconstructToken($request, $approval, $commitSha);
+            $execute = $this->run((string) $request->id, 'execute', $token, $commitSha, 'pop-pi-local');
+            if (($execute['result'] ?? null) !== 'succeeded') {
+                return $this->localSummary($request, $execute);
+            }
+            $verify = $this->run((string) $request->id, 'verify', $token, $commitSha, 'pop-pi-local');
+
+            return $this->localSummary($request, $verify, $execute);
+        } finally {
+            DB::selectOne('SELECT RELEASE_LOCK(?) AS released', [$lockName]);
+        }
+    }
+
     /** @param array<string,mixed> $parameters */
     public static function canonicalParameters(array $parameters): array
     {
@@ -418,6 +460,68 @@ final class PopOperationService
             && hash_equals($token, $this->sign($request, 'execute', $commitSha, $expiresAt))
             ? $approval
             : null;
+    }
+
+    private function localApproval(object $request): object
+    {
+        $entry = $this->catalog->operation((string) $request->operation_id);
+        $requiredRoles = $this->approvalRoles($entry);
+        $approvals = DB::table('pop_approval_events')
+            ->where('operation_id', $request->id)
+            ->where('event_type', 'approved')
+            ->get();
+        $roles = $approvals->pluck('approver_role')->map(fn ($role): string => (string) $role)->unique()->values()->all();
+        $commits = $approvals->pluck('commit_sha')->map(fn ($sha): string => (string) $sha)->unique()->values()->all();
+        $approval = $approvals->first(fn ($row): bool => (string) $row->token_hash !== '');
+        if (array_diff($requiredRoles, $roles) !== [] || count($commits) !== 1 || !$approval) {
+            throw new RuntimeException('POP local executor found incomplete approval evidence; fail closed.');
+        }
+        if ((string) $approval->parameters_hash !== (string) $request->parameters_hash) {
+            throw new RuntimeException('POP local executor found parameter hash drift; fail closed.');
+        }
+        if (Carbon::parse((string) $approval->expires_at)->isPast()) {
+            throw new RuntimeException('POP local executor found an expired approval; fail closed.');
+        }
+
+        return $approval;
+    }
+
+    private function reconstructToken(object $request, object $approval, string $commitSha): string
+    {
+        $expiresAt = Carbon::parse((string) $approval->expires_at)->timestamp;
+        $token = $this->sign($request, 'execute', $commitSha, $expiresAt);
+        if (!hash_equals((string) $approval->token_hash, hash('sha256', $token))) {
+            throw new RuntimeException('POP local executor token hash mismatch; fail closed.');
+        }
+
+        return $token;
+    }
+
+    private function assertLocalDeployment(string $commitSha): void
+    {
+        $path = base_path('public/deployment.json');
+        $manifest = is_file($path) ? json_decode((string) file_get_contents($path), true) : null;
+        $deployedSha = is_array($manifest) ? (string) ($manifest['backend_sha'] ?? '') : '';
+        if (!preg_match(self::COMMIT_SHA_PATTERN, $deployedSha) || !hash_equals(strtolower($commitSha), strtolower($deployedSha))) {
+            throw new RuntimeException('POP local executor deployment SHA does not match approval; fail closed.');
+        }
+    }
+
+    /** @return array<string,mixed> */
+    private function localSummary(object $request, array $result, ?array $execute = null): array
+    {
+        $summary = [
+            'ok' => (bool) ($result['ok'] ?? false),
+            'status' => (string) ($result['result'] ?? 'failed'),
+            'request_id' => (string) $request->id,
+            'phase' => (string) ($result['phase'] ?? ''),
+            'execution_id' => (string) ($result['execution_id'] ?? ''),
+        ];
+        if ($execute !== null) {
+            $summary['execute_id'] = (string) ($execute['execution_id'] ?? '');
+        }
+
+        return $summary;
     }
 
     /** @return array<int,string> */

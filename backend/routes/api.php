@@ -61,6 +61,7 @@ use App\Http\Controllers\TeacherEligibilityController;
 use App\Http\Controllers\TeacherEligibilityInputController;
 use App\Http\Controllers\AssessmentController;
 use App\Http\Controllers\QuestionBankController;
+use App\Http\Controllers\PopOperationController;
 
 
 if (app()->environment('local')) {
@@ -726,6 +727,9 @@ Route::prefix('v1')->group(function () {
 
     Route::middleware(['role:director,super_admin', 'require_campus', 'require_password_change'])->group(function () {
         Route::get('director/operations-trust', [DirectorOperationsTrustController::class, 'show']);
+        // POP control plane: create/approve only; execution remains Pi-local.
+        Route::post('pop/operations/{operationId}/draft', [PopOperationController::class, 'storeDraft'])->where('operationId', '[a-z0-9-]+');
+        Route::post('pop/operations/requests/{requestId}/approvals', [PopOperationController::class, 'approve'])->whereUuid('requestId');
     });
 
     Route::middleware(['super_admin', 'require_password_change'])->group(function () {
