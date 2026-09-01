@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-01-course-availability-planner
+    published_at: "2026-09-01"
+    audiences:
+      - director
+    importance: digest
+    title: 新建與編輯都能找老師空檔
+    summary: 編輯既有課程時也能用同一套老師空檔與容量試算。
+    items:
+      - category: improved
+        text: 從編輯課程選擇老師、日期、星期與時段後，可直接查詢未來四次固定日期的可用候選。
+      - category: improved
+        text: 條件變更後舊試算會失效並要求重新查詢；套用候選後儲存仍由後端再次檢查衝堂與教室容量。
+    source_refs:
+      - "changelog:2026-09-01:course-availability-planner"
+
   - id: staff-2026-09-01-scheduling-intersection-helper
     published_at: "2026-09-01"
     audiences:

@@ -205,6 +205,21 @@
               {{ d.label }}
             </label>
           </div>
+          <TeacherAvailabilityPlanner
+            :teacher-id="form.teacher_id"
+            :teacher="selectedTeacher"
+            :student-id="form.student_id"
+            :branch-id="branchId"
+            :class-type="form.class_type"
+            :payment-type="form.payment_type"
+            :start-date="form.first_class_date"
+            :end-date="form.end_date"
+            :days-of-week="sortedSelectedDays"
+            :day-time-slots="form.day_time_slots"
+            :duration-hours="form.duration_hours"
+            :fetch-availability="fetchAvailability"
+            @apply="applyAvailabilityCandidate"
+          />
           <div class="day-time-slots">
             <div
               v-for="(slot, idx) in (form.day_time_slots || [])"
@@ -275,9 +290,13 @@
 <script setup>
 import { computed, nextTick, reactive, ref, watch } from 'vue';
 import { checkTeacherScope, STUDENT_CLASS_MEMO_MAX_LENGTH } from '../lib/constants';
+import { fetchTeacherAvailability } from '../lib/substituteApi.js';
+import TeacherAvailabilityPlanner from './TeacherAvailabilityPlanner.vue';
 
 const props = defineProps({
   modelValue: { type: Object, required: true },
+  branchId: { type: [Number, String], default: 0 },
+  fetchAvailability: { type: Function, default: fetchTeacherAvailability },
   teachers: { type: Array, default: () => [] },
   rooms: { type: Array, default: () => [] },
   subjects: { type: Array, default: () => [] },
@@ -556,6 +575,20 @@ function removeSlot(idx) {
     form.days_of_week = (form.days_of_week || []).filter((d) => Number(d) !== targetDay);
   }
   syncDayTimeSlotsFromSelection();
+}
+
+function applyAvailabilityCandidate(candidate) {
+  if (!candidate) return;
+  const startMinutes = String(candidate.start_time || '').split(':').map(Number);
+  const endMinutes = String(candidate.end_time || '').split(':').map(Number);
+  const durationHours = ((endMinutes[0] * 60 + endMinutes[1]) - (startMinutes[0] * 60 + startMinutes[1])) / 60;
+  form.days_of_week = [Number(candidate.weekday)];
+  form.day_time_slots = [{
+    day: Number(candidate.weekday),
+    start_time: candidate.start_time,
+    duration_hours: durationHours > 0 ? durationHours : form.duration_hours,
+  }];
+  form.start_time = candidate.start_time;
 }
 
 function updateSlotDay(idx, dayVal) {
