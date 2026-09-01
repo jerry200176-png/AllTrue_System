@@ -137,6 +137,10 @@ export function saveTeacherSalaryProfile(payload) {
   return request('/finance/teacher-eligibility/salary-profiles', { method: 'POST', body: JSON.stringify(payload) });
 }
 
+export function saveTeacherMultiplierProfile(payload) {
+  return request('/finance/teacher-eligibility/salary-profiles/multiplier', { method: 'POST', body: JSON.stringify(payload) });
+}
+
 export function lockFulltimePayroll({ month, branchId }) {
   return request('/finance/teacher-eligibility/lock', { method: 'POST', body: JSON.stringify({ month, branch_id: Number(branchId) }) });
 }

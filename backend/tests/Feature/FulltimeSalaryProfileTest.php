@@ -128,6 +128,36 @@ class FulltimeSalaryProfileTest extends TestCase
         $this->assertSame(41000.0, $result[$teacherId]);
     }
 
+    public function test_super_admin_can_save_manual_multiplier_using_existing_salary_source(): void
+    {
+        $admin = $this->createSuperAdmin('fs-multiplier-super@test.com');
+        $teacherId = $this->createTeacher(1, 'fs-multiplier-teacher@test.com');
+
+        DB::table('fulltime_salary_profiles')->insert([
+            'teacher_id' => $teacherId, 'branch_id' => 1, 'base_salary' => 33000,
+            'effective_from' => '2026-08-01', 'status' => 'approved',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $response = $this->withHeaders([
+            'Authorization' => "Bearer {$admin['token']}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/finance/teacher-eligibility/salary-profiles/multiplier', [
+            'teacher_id' => $teacherId,
+            'branch_id' => 1,
+            'manual_multiplier_pct' => 107,
+            'effective_from' => '2026-08-01',
+        ]);
+
+        $response->assertCreated();
+        $this->assertDatabaseHas('fulltime_salary_profiles', [
+            'teacher_id' => $teacherId,
+            'base_salary' => '33000.00',
+            'manual_multiplier_pct' => '107.00',
+            'status' => 'approved',
+        ]);
+    }
+
     // TD-078: director who wrote it cannot also approve it — must be super_admin.
     public function test_director_cannot_approve_own_salary_profile(): void
     {

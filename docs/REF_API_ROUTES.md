@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 435 api/* routes · generated 2026-08-29
+> Source: `php artisan route:list --json` · 436 api/* routes · generated 2026-09-01
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -333,7 +333,7 @@
 | POST | `api/v1/exception-workflows/{id}/reject` | `ExceptionWorkflowController@reject` | role+campus |
 | POST | `api/v1/exception-workflows/{id}/waive` | `ExceptionWorkflowController@waive` | role+campus |
 
-## /api/v1/finance (54)
+## /api/v1/finance (55)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -389,6 +389,7 @@
 | POST | `api/v1/finance/teacher-eligibility/lock` | `TeacherEligibilityController@lock` | role+campus+pin |
 | POST | `api/v1/finance/teacher-eligibility/reopen` | `TeacherEligibilityController@reopen` | role+campus+pin |
 | POST | `api/v1/finance/teacher-eligibility/salary-profiles` | `TeacherEligibilityInputController@storeSalaryProfile` | role+campus+pin |
+| POST | `api/v1/finance/teacher-eligibility/salary-profiles/multiplier` | `TeacherEligibilityInputController@storeMultiplierProfile` | role+campus+pin |
 | POST | `api/v1/finance/teacher-eligibility/salary-profiles/{id}/approve` | `TeacherEligibilityInputController@approveSalaryProfile` | role+campus+pin |
 | GET | `api/v1/finance/teacher-payroll` | `FinanceController@teacherPayroll` | role+campus+pin |
 
