@@ -3104,9 +3104,9 @@ onBeforeUnmount(() => {
 .director-bug-sla-stat dt { color: var(--ds-ink-mute); font-size: 11px; }
 .director-bug-sla-stat dd { margin: 5px 0 0; color: var(--ds-ink); font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .director-bug-sla-stat--alert { border-color: var(--ds-warning-border, var(--ds-hairline)); }
-.director-bug-sla-stat--alert dd { color: var(--ds-warning, #a15c00); }
+.director-bug-sla-stat--alert dd { color: var(--ds-warning); }
 .director-bug-sla-note, .director-bug-sla-warning { margin: 12px 22px 0; color: var(--ds-ink-secondary); font-size: 11px; line-height: 1.5; }
-.director-bug-sla-warning { color: var(--ds-warning, #a15c00); }
+.director-bug-sla-warning { color: var(--ds-warning); }
 .director-workbench-v2__full-grid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.75fr); gap: 20px; align-items: start; }
 .director-workbench-v2__full-main, .director-workbench-v2__full-side { display: grid; gap: 18px; min-width: 0; }
 .director-schedule-list { padding: 0 22px; }
