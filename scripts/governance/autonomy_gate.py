@@ -40,6 +40,7 @@ _T3_PREFIXES = (
     "backend/routes/api.php",
     "scripts/ops/",
     "scripts/production",
+    "scripts/governance/",
     "governance/",
     "docs/governance/",
     ".cursorrules",
@@ -97,15 +98,15 @@ _T3_MARKERS = (
     "drop table",
     "delete from",
     "production-activation",
+    "webhook",
+    "cron",
+    "cross-campus",
 )
 
 _T2_MARKERS = (
     "schedule",
     "attendance",
     "classsession",
-    "cross-campus",
-    "webhook",
-    "cron",
 )
 
 _ACTIVATION_T3_PREFIXES = tuple(
@@ -312,8 +313,8 @@ def decide_activation(
     effective = max(TIER_VALUES[declared_tier], TIER_VALUES[machine_tier])
     if protected_activation:
         return {"decision": "awaiting-activation", "effective_tier": f"T{effective}", "reason": "production-side-effect boundary requires protected activation"}
-    if effective in (0, 1):
-        return {"decision": "auto", "effective_tier": f"T{effective}", "reason": f"validated reversible {declared_risk}/{declared_tier} change is auto-deployable"}
+    if effective <= 2:
+        return {"decision": "auto", "effective_tier": f"T{effective}", "reason": f"validated reversible non-protected {declared_risk}/{declared_tier} change is auto-deployable"}
     return {"decision": "awaiting-activation", "effective_tier": f"T{effective}", "reason": f"effective tier T{effective} requires Founder activation"}
 
 

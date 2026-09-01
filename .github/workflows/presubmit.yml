@@ -201,9 +201,27 @@ jobs:
       # CHANGELOG 每一筆近期產品變更都必須標記 STAFF_UPDATE 或 SILENT_SHIP。
       # ─────────────────────────────────────────────
       - name: "[CHECK 4A] Release-notes coverage"
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BODY: ${{ github.event.pull_request.body || '' }}
         run: |
           node scripts/check-release-notes-coverage.mjs --self-test
-          node scripts/check-release-notes-coverage.mjs --base origin/main --head HEAD
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            BODY_FILE=$(mktemp)
+            trap 'rm -f "$BODY_FILE"' EXIT
+            printf '%s' "$PR_BODY" > "$BODY_FILE"
+            node scripts/check-release-notes-coverage.mjs --base origin/main --head HEAD --pr-body-file "$BODY_FILE"
+          else
+            node scripts/check-release-notes-coverage.mjs --base origin/main --head HEAD
+          fi
+
+      # ─────────────────────────────────────────────
+      # CHECK 4B：production activation policy contract
+      # T2 is autonomous only after deterministic validation; T3/protected
+      # boundaries remain held for Founder activation.
+      # ─────────────────────────────────────────────
+      - name: "[CHECK 4B] Production activation policy"
+        run: python3 scripts/tests/test_deploy_activation_state.py
 
       # ─────────────────────────────────────────────
       # CHECK 5：禁止 CI workflow 內含 ssh/rsync/deploy 指令

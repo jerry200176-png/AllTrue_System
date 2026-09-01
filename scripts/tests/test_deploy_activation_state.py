@@ -44,18 +44,34 @@ class DeployActivationPolicyTest(unittest.TestCase):
         )
         self.assertEqual(result["decision"], "auto")
 
-    def test_t2_and_t3_are_held(self):
-        for tier in ("T2", "T3"):
-            with self.subTest(tier=tier):
-                result = decide_activation(
-                    event_name="workflow_run", deployable=True, classifier_available=True,
-                    machine_validated=True, machine_tier=tier,
-                    declared_risk=f"R{tier[-1]}", declared_tier=tier,
-                )
-                self.assertEqual(result["decision"], "awaiting-activation")
+    def test_validated_non_protected_t2_is_auto_eligible(self):
+        result = decide_activation(
+            event_name="workflow_run", deployable=True, classifier_available=True,
+            machine_validated=True, machine_tier="T2", declared_risk="R2",
+            declared_tier="T2",
+        )
+        self.assertEqual(result["decision"], "auto")
+        self.assertIn("non-protected", result["reason"])
+
+    def test_t3_is_held(self):
+        result = decide_activation(
+            event_name="workflow_run", deployable=True, classifier_available=True,
+            machine_validated=True, machine_tier="T3", declared_risk="R3",
+            declared_tier="T3",
+        )
+        self.assertEqual(result["decision"], "awaiting-activation")
+
+    def test_classifier_changes_and_production_boundaries_are_protected(self):
+        self.assertTrue(is_production_activation_sensitive_path("scripts/governance/autonomy_gate.py"))
+        for marker in ("webhook", "cron", "cross-campus"):
+            patch = "diff --git a/backend/app/Services/Example.php b/backend/app/Services/Example.php\n+++ b/backend/app/Services/Example.php\n+" + marker
+            scope = classify_activation_scope(["backend/app/Services/Example.php"], patch)
+            with self.subTest(marker=marker):
+                self.assertEqual(scope["tier_name"], "T3")
+                self.assertTrue(scope["protected_activation"])
 
     def test_production_side_effect_is_held_even_when_declared_t0_or_t1(self):
-        for tier, risk in (("T0", "R0"), ("T1", "R1")):
+        for tier, risk in (("T0", "R0"), ("T1", "R1"), ("T2", "R2")):
             with self.subTest(tier=tier):
                 result = decide_activation(
                     event_name="workflow_run", deployable=True, classifier_available=True,

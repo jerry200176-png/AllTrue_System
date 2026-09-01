@@ -19,6 +19,13 @@ const EXEMPTIONS = path.join(ROOT, 'docs', 'RELEASE_NOTES_EXEMPTIONS.yml');
 const BASELINE_DATE = '2026-08-08';
 const HEADING_RE = /^## (\d{4}-\d{2}-\d{2}) — (.+)$/;
 const MARKER_RE = /<!--\s*release-notes:\s*(staff_update|silent_ship)=([A-Za-z0-9._-]+)\s*-->/i;
+const STAFF_FACING_PREFIXES = [
+  'frontend/src/pages/',
+  'frontend/src/components/',
+  'frontend/src/composables/',
+  'backend/app/Http/Controllers/',
+  'backend/routes/',
+];
 
 function read(file) {
   return fs.readFileSync(file, 'utf8');
@@ -60,6 +67,22 @@ function addedHeadings(base, head) {
     .filter((line) => HEADING_RE.test(line));
 }
 
+function isStaffFacingPath(file) {
+  const normalized = String(file).replaceAll('\\', '/');
+  if (!STAFF_FACING_PREFIXES.some((prefix) => normalized.startsWith(prefix))) return false;
+  return !normalized.includes('/__tests__/')
+    && !normalized.includes('/e2e/')
+    && !/(?:\.test|\.spec)\.[^.]+$/.test(normalized);
+}
+
+function meaningfulPrField(body, label) {
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = String(body || '').match(new RegExp(`^\\s*\\*{0,2}${escaped}\\*{0,2}\\s*:\\s*(.+?)\\s*$`, 'im'));
+  if (!match) return false;
+  const value = match[1].replace(/<!--.*?-->/g, '').trim();
+  return value.length > 2 && !/^<?(?:fill|tbd|n\/a|none|todo)>?$/i.test(value);
+}
+
 function selfTest() {
   const entries = parseEntries([
     '## 2026-08-08 — fix: sample',
@@ -72,6 +95,10 @@ function selfTest() {
   assert.equal(entries.length, 2);
   assert.deepEqual(markerFor(entries[0]), { kind: 'staff_update', id: 'staff-sample' });
   assert.equal(markerFor(entries[1]), null);
+  assert.equal(isStaffFacingPath('frontend/src/pages/SmartCalendar.vue'), true);
+  assert.equal(isStaffFacingPath('frontend/src/pages/__tests__/SmartCalendar.test.js'), false);
+  assert.equal(meaningfulPrField('**Where:** 排課頁面', 'Where'), true);
+  assert.equal(meaningfulPrField('**How to use:** <!-- fill -->', 'How to use'), false);
   console.log('check-release-notes-coverage self-test: ok');
 }
 
@@ -87,6 +114,7 @@ function main() {
   };
   const base = argValue('--base', 'origin/main');
   const head = argValue('--head', 'HEAD');
+  const bodyFile = argValue('--pr-body-file', '');
   const changelog = read(CHANGELOG);
   const staff = read(STAFF_UPDATES);
   const exemptions = fs.existsSync(EXEMPTIONS) ? read(EXEMPTIONS) : '';
@@ -113,6 +141,34 @@ function main() {
   const newHeadings = addedHeadings(base, head);
   if (changelogChanged && (newHeadings.length > 0 || changed.includes('docs/CHANGELOG.md')) && !coverageSourceChanged) {
     errors.push('docs/CHANGELOG.md changed without docs/STAFF_UPDATES.yml or docs/RELEASE_NOTES_EXEMPTIONS.yml');
+  }
+
+  const staffFacingChanged = changed.some(isStaffFacingPath);
+  if (staffFacingChanged) {
+    if (newHeadings.length === 0) {
+      errors.push('staff-facing runtime change requires a new dated docs/CHANGELOG.md entry in the same PR');
+    }
+    if (!changed.includes('docs/STAFF_UPDATES.yml')) {
+      errors.push('staff-facing runtime change requires docs/STAFF_UPDATES.yml in the same PR');
+    }
+    const addedEntries = newHeadings.map((heading) => {
+      const match = heading.match(HEADING_RE);
+      return match ? parseEntries(changelog).find((entry) => entry.date === match[1] && entry.title === match[2]) : null;
+    }).filter(Boolean);
+    const staffMarkers = addedEntries.map(markerFor).filter(Boolean);
+    if (!staffMarkers.some((marker) => marker.kind === 'staff_update')) {
+      errors.push('staff-facing runtime change requires a release-notes: staff_update marker');
+    }
+    if (bodyFile) {
+      const body = read(bodyFile);
+      for (const field of ['Staff release note id', 'What changed', 'Where', 'How to use']) {
+        if (!meaningfulPrField(body, field)) errors.push(`PR body is missing a meaningful "${field}:" field for the staff release note`);
+      }
+      const bodyId = body.match(/^\s*\*{0,2}Staff release note id\*{0,2}\s*:\s*([A-Za-z0-9._-]+)\s*$/im)?.[1];
+      if (bodyId && !staffMarkers.some((marker) => marker.kind === 'staff_update' && marker.id === bodyId)) {
+        errors.push(`PR body Staff release note id ${bodyId} does not match a new staff_update CHANGELOG marker`);
+      }
+    }
   }
 
   if (errors.length) {

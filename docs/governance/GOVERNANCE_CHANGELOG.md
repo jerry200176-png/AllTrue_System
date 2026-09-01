@@ -1,5 +1,17 @@
 # Governance changelog
 
+## 2026-09-01 — Bounded T2 autonomous delivery and pre-merge staff release gate
+
+- Director/teacher-facing runtime changes now require a same-PR dated
+  `CHANGELOG.md` entry, matching `STAFF_UPDATES.yml` source item, and PR fields
+  for what changed, where it appears, and how to use it. Presubmit fails closed
+  when this visible release communication is missing.
+- Validated reversible non-protected T2 changes may use the existing exact-SHA
+  merge-to-deploy workflow with CI, preflight, independent review, health/smoke,
+  and rollback evidence. T3, classifier/workflow changes, webhook/cron/cross-
+  campus boundaries, and irreversible or sensitive operations remain Founder-
+  protected. No test, review, approval, or rollback gate was removed.
+
 ## 2026-08-30 — Resolve solo-Founder bootstrap activation contradiction
 
 - Allowed only an explicit manually dispatched `application-deploy` bootstrap
