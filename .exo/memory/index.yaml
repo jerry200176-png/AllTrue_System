@@ -185,14 +185,3 @@ failure_modes:
       deploy.
   severity: medium
   frequency: recurring
-- id: FM-20260901-180149-FUCZ
-  name: Repository-level PHPUnit check used the wrong working-directory assumption
-  detection:
-    signal: Repository-level PHPUnit check used the wrong working-directory assumption
-    source: reflection:REF-20260901-180149-N0VG
-  mitigation:
-    practice: When backend dependencies and tests live under backend/, govern the
-      repository check with the approved bash scripts/phpunit-isolated.sh wrapper
-      so checks create an ephemeral database and do not depend on local credentials.
-  severity: medium
-  frequency: recurring
