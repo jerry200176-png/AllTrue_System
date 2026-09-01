@@ -21,7 +21,8 @@ export function eventSubtitle(row, teacherName) {
 }
 
 export function formatMoney(value) {
-  const n = Number(value ?? 0);
+  if (value == null || value === '') return '—';
+  const n = Number(value);
   return `$${n.toLocaleString('zh-TW', { maximumFractionDigits: 0 })}`;
 }
 
@@ -31,16 +32,21 @@ export function formatSubjects(value) {
 }
 
 export function formatPct(value) {
-  const n = Number(value ?? 0);
+  if (value == null || value === '') return '—';
+  const n = Number(value);
   const sign = n > 0 ? '+' : '';
   return `${sign}${n}%`;
 }
 
 export function weightedBonusFormula(settlement) {
-  const subject = Number(settlement?.subject_count_bonus ?? 0);
-  const oneToThree = Number(settlement?.one_to_three_bonus ?? 0);
-  const multiplier = Number(settlement?.multiplier_pct ?? 100);
-  const weighted = Number(settlement?.weighted_bonus_amount ?? 0);
+  if (settlement?.subject_count_bonus == null
+    || settlement?.one_to_three_bonus == null
+    || settlement?.multiplier_pct == null
+    || settlement?.weighted_bonus_amount == null) return '—（資料尚待確認）';
+  const subject = Number(settlement.subject_count_bonus);
+  const oneToThree = Number(settlement.one_to_three_bonus);
+  const multiplier = Number(settlement.multiplier_pct);
+  const weighted = Number(settlement.weighted_bonus_amount);
   return `(${formatMoney(subject)} + ${formatMoney(oneToThree)}) × ${multiplier}% = ${formatMoney(weighted)}`;
 }
 

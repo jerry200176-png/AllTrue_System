@@ -389,6 +389,7 @@ Route::prefix('v1')->group(function () {
 
         // ── Full-time teacher base salary (正職結算底薪), feeds finance/teacher-eligibility's total_payout ──
         Route::post('finance/teacher-eligibility/salary-profiles', [TeacherEligibilityInputController::class, 'storeSalaryProfile'])->middleware('require_pin');
+        Route::post('finance/teacher-eligibility/salary-profiles/multiplier', [TeacherEligibilityInputController::class, 'storeMultiplierProfile'])->middleware('require_pin');
         Route::post('finance/teacher-eligibility/salary-profiles/{id}/approve', [TeacherEligibilityInputController::class, 'approveSalaryProfile'])->whereNumber('id')->middleware('require_pin');
         Route::post('finance/teacher-eligibility/lock', [TeacherEligibilityController::class, 'lock'])->middleware('require_pin');
         Route::post('finance/teacher-eligibility/reopen', [TeacherEligibilityController::class, 'reopen'])->middleware('require_pin');
@@ -497,6 +498,7 @@ Route::prefix('v1')->group(function () {
     // Cross-campus student identity bridge: explicit two-campus authorization only.
     Route::middleware(['role:director,super_admin', 'require_campus', 'require_password_change'])->group(function () {
         Route::post('student-classes/{studentClass}/billing-correction', [StudentClassController::class, 'billingCorrection']);
+        Route::post('student-classes/{studentClass}/charge-correction', [StudentClassController::class, 'chargeCorrection']);
         Route::post('student-classes/{studentClass}/split-contract/preview', [StudentClassController::class, 'splitContractPreview']);
         Route::post('student-classes/{studentClass}/split-contract', [StudentClassController::class, 'splitContract']);
         Route::post('student-classes/{studentClass}/recover-transfer-sessions', [StudentClassController::class, 'recoverAndTransferSessions']);

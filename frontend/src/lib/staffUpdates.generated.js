@@ -223,6 +223,38 @@ export const staffUpdates = [
     "version": "2026.09.01"
   },
   {
+    "id": "staff-2026-09-01-scheduling-intersection-helper",
+    "publishedAt": "2026-09-01",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "排課先找可行時段",
+    "summary": "排課可先核對老師未來四次固定日期的空檔與容量。",
+    "items": [
+      "勾選學生可配合的星期與時間窗口，即可查看老師可服務分校與未來四次（至課程結束日）固定日期皆可排的時段。",
+      "點選候選時段會帶入固定排課欄位；若有日期資料取不到，系統不顯示該星期建議，送出時仍由後端再次檢查衝堂與教室容量。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "勾選學生可配合的星期與時間窗口，即可查看老師可服務分校與未來四次（至課程結束日）固定日期皆可排的時段。",
+          "點選候選時段會帶入固定排課欄位；若有日期資料取不到，系統不顯示該星期建議，送出時仍由後端再次檢查衝堂與教室容量。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-01:scheduling-intersection-helper"
+    ],
+    "date": "2026-09-01",
+    "version": "2026.09.01"
+  },
+  {
     "id": "staff-2026-09-01-calendar-secondary-controls",
     "publishedAt": "2026-09-01",
     "effectiveAt": null,

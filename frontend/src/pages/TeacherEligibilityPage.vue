@@ -50,7 +50,6 @@
           <thead>
             <tr>
               <th>老師姓名</th>
-              <th>固定底薪</th>
               <th>正課科目數</th>
               <th>輔導＋試聽科目數</th>
               <th>核薪總科目數</th>
@@ -71,28 +70,26 @@
                 <small>老師</small>
                 <span :class="['status', statusClass(teacher.overall_status)]">{{ statusLabel(teacher) }}</span>
               </td>
-              <td class="salary-cell">
-                <template v-if="editingSalaryId === teacher.teacher_id">
-                  <input v-model.number="salaryDraft" type="number" min="0" step="1" class="salary-input" />
-                  <button class="btn-outline small" :disabled="savingSalary" @click="saveSalary(teacher)">存</button>
-                  <button class="btn-outline small" @click="editingSalaryId = null">取消</button>
-                </template>
-                <template v-else>
-                  <span class="money-pos">{{ formatMoney(teacher.settlement?.base_salary) }}</span>
-                  <small v-if="teacher.pending_salary" class="pending-salary">待核准 {{ formatMoney(teacher.pending_salary.base_salary) }}</small>
-                  <button v-if="!isLocked" class="btn-outline small" @click="startEditSalary(teacher)">改</button>
-                  <button v-if="isHq && teacher.pending_salary && !isLocked" class="btn-outline small" :disabled="savingSalary" @click="approveSalary(teacher)">核准底薪</button>
-                </template>
-              </td>
               <td>{{ formatSubjects(teacher.settlement?.regular_subject_count) }}</td>
               <td>{{ formatSubjects(teacher.settlement?.tutoring_trial_subject_count) }}</td>
               <td>{{ formatSubjects(teacher.settlement?.payroll_subject_count) }}</td>
               <td>{{ formatSubjects(teacher.settlement?.one_to_three_count) }}</td>
               <td>{{ formatMoney(teacher.settlement?.subject_count_bonus) }}</td>
               <td>{{ formatMoney(teacher.settlement?.one_to_three_bonus) }}</td>
-              <td>
-                <strong>{{ teacher.settlement?.multiplier_pct ?? 100 }}%</strong>
-                <small v-for="part in visibleMultiplierParts(teacher)" :key="part.key">{{ part.label }} {{ formatPct(part.pct) }}</small>
+              <td class="multiplier-cell">
+                <template v-if="editingMultiplierId === teacher.teacher_id">
+                  <input v-model.number="multiplierDraft" type="number" min="0" max="300" step="0.01" class="multiplier-input" aria-label="手動教師倍率" />
+                  <button class="btn-outline small" :disabled="savingMultiplier" @click="saveMultiplier(teacher)">存</button>
+                  <button class="btn-outline small" @click="editingMultiplierId = null">取消</button>
+                </template>
+                <template v-else>
+                  <strong>{{ formatPct(teacher.settlement?.multiplier_pct) }}</strong>
+                  <small v-if="teacher.settlement?.manual_multiplier_pct != null">手動總倍率</small>
+                  <small v-if="teacher.pending_salary?.manual_multiplier_pct != null">待核准 {{ formatPct(teacher.pending_salary.manual_multiplier_pct) }}</small>
+                  <small v-for="part in visibleMultiplierParts(teacher)" :key="part.key">{{ part.label }} {{ formatPct(part.pct) }}</small>
+                  <button v-if="!isLocked" class="btn-outline small" @click="startEditMultiplier(teacher)">改</button>
+                  <button v-if="isHq && teacher.pending_salary?.manual_multiplier_pct != null && !isLocked" class="btn-outline small" :disabled="savingMultiplier" @click="approveMultiplier(teacher)">核准倍率</button>
+                </template>
               </td>
               <td>
                 <strong>{{ formatMoney(teacher.settlement?.weighted_bonus_amount) }}</strong>
@@ -122,7 +119,7 @@
                 </details>
               </td>
             </tr>
-            <tr v-if="filteredTeachers.length === 0"><td colspan="13" class="empty">查詢期間沒有符合條件的正職老師資料。</td></tr>
+            <tr v-if="filteredTeachers.length === 0"><td colspan="12" class="empty">查詢期間沒有符合條件的正職老師資料。</td></tr>
           </tbody>
         </table>
       </div>
@@ -132,11 +129,22 @@
             <div><strong>{{ teacher.teacher_name }}</strong><small>老師</small></div>
             <span :class="['status', statusClass(teacher.overall_status)]">{{ statusLabel(teacher) }}</span>
           </div>
-          <div class="component-row"><span>固定底薪</span><span class="component-value money-pos">{{ formatMoney(teacher.settlement?.base_salary) }}</span></div>
           <div class="component-row"><span>核薪總科目數</span><span class="component-value">{{ formatSubjects(teacher.settlement?.payroll_subject_count) }}</span></div>
           <div class="component-row"><span>科目數獎金</span><span class="component-value">{{ formatMoney(teacher.settlement?.subject_count_bonus) }}</span></div>
           <div class="component-row"><span>一對三獎金</span><span class="component-value">{{ formatMoney(teacher.settlement?.one_to_three_bonus) }}</span></div>
-          <div class="component-row"><span>教師倍率</span><span class="component-value">{{ teacher.settlement?.multiplier_pct ?? 100 }}%</span></div>
+          <div class="component-row"><span>教師倍率</span><span class="component-value">
+            <template v-if="editingMultiplierId === teacher.teacher_id">
+              <input v-model.number="multiplierDraft" type="number" min="0" max="300" step="0.01" class="multiplier-input" aria-label="手動教師倍率" />
+              <button class="btn-outline small" :disabled="savingMultiplier" @click="saveMultiplier(teacher)">存</button>
+              <button class="btn-outline small" @click="editingMultiplierId = null">取消</button>
+            </template>
+            <template v-else>
+              {{ formatPct(teacher.settlement?.multiplier_pct) }}
+              <small v-if="teacher.pending_salary?.manual_multiplier_pct != null">待核准 {{ formatPct(teacher.pending_salary.manual_multiplier_pct) }}</small>
+              <button v-if="!isLocked" class="btn-outline small" @click="startEditMultiplier(teacher)">改</button>
+              <button v-if="isHq && teacher.pending_salary?.manual_multiplier_pct != null && !isLocked" class="btn-outline small" :disabled="savingMultiplier" @click="approveMultiplier(teacher)">核准倍率</button>
+            </template>
+          </span></div>
           <div class="component-row"><span>倍率後獎金</span><span class="component-value">{{ formatMoney(teacher.settlement?.weighted_bonus_amount) }}</span></div>
           <div class="component-row total-cell"><span>總發放金額</span><strong>{{ formatMoney(teacher.settlement?.total_payout) }}</strong></div>
           <div class="component-row weekly-segment-row">
@@ -174,7 +182,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
-import { fetchTeacherEligibility, saveTeacherSalaryProfile, approveTeacherSalaryProfile, lockFulltimePayroll, reopenFulltimePayroll, exportFulltimePayrollCsv } from '../lib/teacherEligibilityApi.js';
+import { fetchTeacherEligibility, saveTeacherMultiplierProfile, approveTeacherSalaryProfile, lockFulltimePayroll, reopenFulltimePayroll, exportFulltimePayrollCsv } from '../lib/teacherEligibilityApi.js';
 import TeacherEligibilityInputPanel from '../components/TeacherEligibilityInputPanel.vue';
 import {
   formatMoney,
@@ -200,9 +208,9 @@ const periodWindow = ref({ start: '', end: '' });
 const policyVersion = ref('115.07');
 const branchSubjectTotal = ref(0);
 const lockState = ref({ status: 'draft' });
-const editingSalaryId = ref(null);
-const salaryDraft = ref(0);
-const savingSalary = ref(false);
+const editingMultiplierId = ref(null);
+const multiplierDraft = ref(100);
+const savingMultiplier = ref(false);
 const componentOptions = [
   { key: 'weekly_16_segments', label: '每週16段' },
   { key: 'holiday_16_hours', label: '假日16小時' },
@@ -296,42 +304,42 @@ async function reopenMonth() {
   }
 }
 
-function startEditSalary(teacher) {
-  editingSalaryId.value = teacher.teacher_id;
-  salaryDraft.value = Math.round(Number(teacher.settlement?.base_salary ?? 0));
+function startEditMultiplier(teacher) {
+  editingMultiplierId.value = teacher.teacher_id;
+  multiplierDraft.value = Number(teacher.settlement?.manual_multiplier_pct ?? teacher.settlement?.multiplier_pct ?? 100);
 }
 
-async function saveSalary(teacher) {
-  savingSalary.value = true;
+async function saveMultiplier(teacher) {
+  savingMultiplier.value = true;
   try {
-    const saved = await saveTeacherSalaryProfile({
+    const saved = await saveTeacherMultiplierProfile({
       teacher_id: teacher.teacher_id,
       branch_id: props.branchId || null,
-      base_salary: salaryDraft.value,
+      manual_multiplier_pct: multiplierDraft.value,
       effective_from: periodWindow.value.start || `${settlementMonth.value}-01`,
     });
-    editingSalaryId.value = null;
+    editingMultiplierId.value = null;
     await loadData();
     if (saved?.status === 'pending') {
-      error.value = '底薪已送出，待總部核准後才會改結算金額。';
+      error.value = '教師倍率已送出，待總部核准後才會改結算金額。';
     }
   } catch (e) {
-    error.value = humanizeApiErrorMessage(e?.message, '底薪儲存失敗');
+    error.value = humanizeApiErrorMessage(e?.message, '教師倍率儲存失敗');
   } finally {
-    savingSalary.value = false;
+    savingMultiplier.value = false;
   }
 }
 
-async function approveSalary(teacher) {
+async function approveMultiplier(teacher) {
   if (!teacher.pending_salary?.id) return;
-  savingSalary.value = true;
+  savingMultiplier.value = true;
   try {
     await approveTeacherSalaryProfile(teacher.pending_salary.id);
     await loadData();
   } catch (e) {
-    error.value = humanizeApiErrorMessage(e?.message, '底薪核准失敗');
+    error.value = humanizeApiErrorMessage(e?.message, '教師倍率核准失敗');
   } finally {
-    savingSalary.value = false;
+    savingMultiplier.value = false;
   }
 }
 
@@ -395,14 +403,13 @@ onMounted(loadData);
 .summary-grid { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:12px; margin-bottom:18px; }
 .summary-card { padding:16px; background:var(--ds-canvas); border:1px solid var(--border); border-radius:12px; }.summary-card span { color:var(--ds-ink-mute); font-size:13px; }.summary-card strong { display:block; font-size:28px; margin-top:6px; }.summary-card.success strong { color:var(--ds-success); }.summary-card.warning strong { color:var(--ds-warning); }.summary-card.danger strong { color:var(--ds-danger); }
 .table-wrap { overflow:auto; }.table-wrap table { width:100%; border-collapse:collapse; min-width:1280px; }.table-wrap th,.table-wrap td { padding:12px 10px; border-bottom:1px solid var(--border); text-align:left; vertical-align:top; }.table-wrap th { color:var(--ds-ink-mute); font-size:13px; background:var(--ds-canvas-soft); white-space:nowrap; }.table-wrap td small { display:block; margin-top:4px; color:var(--ds-ink-mute); font-size:12px; }.status { display:inline-flex; margin-top:6px; padding:4px 8px; border-radius:999px; font-size:12px; white-space:nowrap; }.status.pass { background:var(--ds-success-wash); color:var(--ds-success); }.status.fail { background:var(--ds-danger-wash); color:var(--ds-danger); }.status.review { background:var(--ds-warning-wash); color:var(--ds-warning); }.status.unknown { background:var(--ds-canvas-soft); color:var(--ds-ink-mute); }.empty,.loading { text-align:center; color:var(--ds-ink-mute); padding:36px; }.error { color:var(--ds-danger); display:flex; align-items:center; gap:12px; }.footnote { color:var(--ds-ink-mute); font-size:13px; margin:12px 4px; }.mobile-list { display:none; }
-.salary-cell { white-space:nowrap; }
+.multiplier-cell { min-width:150px; white-space:nowrap; }
 .weekly-segment-cell { min-width: 300px; }
 .weekly-trace { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 6px; }
 .weekly-trace summary { cursor: pointer; color: var(--ds-primary); font-size: 12px; }
 .course-trace-row { display:flex; justify-content:space-between; gap:12px; padding:5px 0; font-size:12px; color:var(--ds-ink-mute); }
 .mobile-weekly-trace { margin: 8px 0 12px; }
-.pending-salary { color: var(--ds-warning); }
-.salary-input { width:90px; padding:6px 8px; border:1px solid var(--border); border-radius:6px; background:var(--ds-canvas); color:inherit; margin-right:4px; }
+.multiplier-input { width:84px; padding:6px 8px; border:1px solid var(--border); border-radius:6px; background:var(--ds-canvas); color:inherit; margin-right:4px; }
 .money-pos { color:var(--ds-success); font-variant-numeric:tabular-nums; }
 .total-cell strong { font-variant-numeric:tabular-nums; color:var(--ds-primary); }
 .adj-chip { display:inline-flex; margin:0 6px 6px 0; padding:3px 8px; border-radius:999px; font-size:12px; }
