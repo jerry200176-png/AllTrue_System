@@ -24,8 +24,9 @@ const STAFF_FACING_PREFIXES = [
   // change what a director or teacher sees, even when no page/component file
   // changes directly.
   'frontend/src/',
-  'backend/app/Http/',
-  'backend/app/Services/',
+  // Backend application code can change the staff-visible response even when
+  // the route/controller itself is unchanged.
+  'backend/app/',
   'backend/routes/',
 ];
 
@@ -72,6 +73,11 @@ function addedHeadings(base, head) {
 function isStaffFacingPath(file) {
   const normalized = String(file).replaceAll('\\', '/');
   if (!STAFF_FACING_PREFIXES.some((prefix) => normalized.startsWith(prefix))) return false;
+  // These namespaces are control-plane/bootstrap plumbing rather than
+  // director/teacher-facing application behavior.
+  if (normalized.startsWith('backend/app/Console/')
+    || normalized.startsWith('backend/app/Providers/')
+    || normalized.startsWith('backend/app/Operations/')) return false;
   // These are generated release-note artifacts; the source-of-truth docs are
   // the communication change and should not recursively require themselves.
   if (normalized.startsWith('frontend/src/lib/') && normalized.endsWith('.generated.js')) return false;
@@ -107,6 +113,9 @@ function selfTest() {
   assert.equal(isStaffFacingPath('frontend/src/styles.css'), true);
   assert.equal(isStaffFacingPath('frontend/src/lib/staffUpdates.generated.js'), false);
   assert.equal(isStaffFacingPath('backend/app/Services/Scheduling/ScheduleCommitmentClassifier.php'), true);
+  assert.equal(isStaffFacingPath('backend/app/Models/ClassSession.php'), true);
+  assert.equal(isStaffFacingPath('backend/app/Console/Commands/NightlyReconcile.php'), false);
+  assert.equal(isStaffFacingPath('backend/app/Operations/Contracts/OperationEngine.php'), false);
   assert.equal(isStaffFacingPath('frontend/src/pages/__tests__/SmartCalendar.test.js'), false);
   assert.equal(meaningfulPrField('**Where:** 排課頁面', 'Where'), true);
   assert.equal(meaningfulPrField('**How to use:** <!-- fill -->', 'How to use'), false);
