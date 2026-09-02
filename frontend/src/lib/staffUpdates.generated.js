@@ -73,6 +73,47 @@ export const staffUpdates = [
     "version": "2026.09.02"
   },
   {
+    "id": "staff-2026-09-02-fixed-slot-removal-and-teacher-workbench",
+    "publishedAt": "2026-09-02",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "固定時段移除與老師工作台修復",
+    "summary": "移除固定上課日不會再誤判衝堂，老師工作台重整更穩定且課程格可直接開啟詳情。",
+    "items": [
+      "固定課程移除既有時段時，不會把保留的自己課程誤當成新增調課；真正新增到已占用時段仍會阻擋。",
+      "老師工作台重整課表時保留已載入內容，週一至週日標題在手機與桌面捲動時維持可見，每個已建立課程格都可開啟對應詳情。",
+      "admin 與 director 的頁面、權限與既有操作不受影響。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "固定課程移除既有時段時，不會把保留的自己課程誤當成新增調課；真正新增到已占用時段仍會阻擋。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "老師工作台重整課表時保留已載入內容，週一至週日標題在手機與桌面捲動時維持可見，每個已建立課程格都可開啟對應詳情。",
+          "admin 與 director 的頁面、權限與既有操作不受影響。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-02:fixed-slot-removal-and-teacher-workbench"
+    ],
+    "date": "2026-09-02",
+    "version": "2026.09.02"
+  },
+  {
     "id": "staff-2026-09-01-unpaid-settlement-reconciliation",
     "publishedAt": "2026-09-01",
     "effectiveAt": null,

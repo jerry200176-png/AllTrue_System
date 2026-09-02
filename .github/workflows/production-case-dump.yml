@@ -10,10 +10,11 @@ on:
         options:
           - schedule_241
           - billing_huang
+          - fixed_slot_huang
           - billing_linlai
           - parent_lou
       student_name:
-        description: 'Student name for billing probe (PII is not written to the artifact)'
+        description: 'Student name for bounded case probe (PII is not written to the artifact)'
         required: false
         default: ''
         type: string
@@ -76,12 +77,12 @@ jobs:
           import os
           import json
           case = os.environ['CASE_KEY']
-          if case not in {'schedule_241', 'billing_huang', 'billing_linlai', 'parent_lou'}:
+          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou'}:
               raise SystemExit('unsupported case')
-          target_student_name = os.environ.get('TARGET_STUDENT_NAME') or ('黃品皓' if case == 'billing_huang' else '林奕安')
+          target_student_name = os.environ.get('TARGET_STUDENT_NAME') or ('黃品皓' if case in {'billing_huang', 'fixed_slot_huang'} else '林奕安')
           target_student_class_id = os.environ.get('TARGET_STUDENT_CLASS_ID') or ''
-          if target_student_class_id and (case != 'billing_huang' or not target_student_class_id.isdigit()):
-              raise SystemExit('student_class_id is only supported as a numeric billing_huang scope')
+          if target_student_class_id and (case not in {'billing_huang', 'fixed_slot_huang'} or not target_student_class_id.isdigit()):
+              raise SystemExit('student_class_id is only supported as a numeric Huang case scope')
           target_subject_name = os.environ.get('TARGET_SUBJECT_NAME', '數學') or '數學'
           print(f'''<?php
           $case = {case!r};
@@ -169,6 +170,82 @@ jobs:
                 'target_slot_visible'=>($materialized !== [] || $projectedMatches !== [])];
             }}
             $out['teacher_results'] = $teacherResults;
+          }} elseif ($case === 'fixed_slot_huang') {{
+            $campusId = 9;
+            $studentQuery = $db::table('Student')->where('CampusID', $campusId);
+            $studentIds = $targetStudentClassId !== null
+              ? $db::table('StudentClass as sc')->join('Student as st', 'st.id', '=', 'sc.StudentID')
+                ->where('sc.ID', $targetStudentClassId)->where('st.CampusID', $campusId)->pluck('sc.StudentID')
+                ->map(fn ($id) => (int)$id)->all()
+              : $studentQuery->whereRaw('TRIM(name) = ?', [$targetStudentName])->pluck('id')
+                ->map(fn ($id) => (int)$id)->all();
+            if ($studentIds === [] && $targetStudentClassId === null) {{
+              $studentIds = $db::table('Student')->where('CampusID', $campusId)
+                ->where('name', 'like', '%' . $targetStudentName . '%')->pluck('id')
+                ->map(fn ($id) => (int)$id)->all();
+            }}
+            $classes = $db::table('StudentClass as sc')->whereIn('sc.StudentID', $studentIds)
+              ->when($targetStudentClassId !== null, fn ($query) => $query->where('sc.ID', $targetStudentClassId))
+              ->orderBy('sc.ID')->get(['sc.ID as class_id', 'sc.StudentID as student_id', 'sc.SubjectID as subject_id',
+                'sc.TeacherID as teacher_id', 'sc.ScheduleMode as schedule_mode', 'sc.StartDate as start_date',
+                'sc.EndDate as end_date', 'sc.Stop as stop', 'sc.week', 'sc.time', 'sc.week1', 'sc.time1',
+                'sc.week2', 'sc.time2', 'sc.week3', 'sc.time3', 'sc.week4', 'sc.time4', 'sc.week5', 'sc.time5',
+                'sc.week6', 'sc.time6']);
+            $classIds = $classes->pluck('class_id')->map(fn ($id) => (int)$id)->all();
+            $slotFields = ['week', 'week1', 'week2', 'week3', 'week4', 'week5', 'week6'];
+            $slotsFor = function ($row) use ($slotFields) {{
+              $slots = [];
+              foreach ($slotFields as $field) {{
+                $day = (int)($row->{{$field}} ?? 0);
+                $timeField = $field === 'week' ? 'time' : str_replace('week', 'time', $field);
+                $time = substr((string)($row->{{$timeField}} ?? ''), 0, 5);
+                if ($day > 0 && $time !== '') $slots[] = ['weekday' => $day, 'time' => $time];
+              }}
+              return $slots;
+            }};
+            $approvedIds = $classIds === [] ? [] : $db::table('LearningRecords')
+              ->whereIn('StudentClassID', $classIds)->where('Status', 'approved')->whereNotNull('ClassSessionID')
+              ->pluck('ClassSessionID')->map(fn ($id) => (int)$id)->flip()->all();
+            $signedInIds = $classIds === [] ? [] : $db::table('StudentSingIn')
+              ->whereIn('StudentClassID', $classIds)->whereNotNull('ClassSessionID')
+              ->pluck('ClassSessionID')->map(fn ($id) => (int)$id)->flip()->all();
+            $lockedIds = $approvedIds + $signedInIds;
+            $today = now()->toDateString();
+            $sessions = $classIds === [] ? collect() : $db::table('ClassSession')
+              ->whereIn('StudentClassID', $classIds)->where('Status', 'scheduled')->whereDate('SessionDate', '>=', $today)
+              ->orderBy('SessionDate')->orderBy('StartTime')->get(['id', 'StudentClassID as class_id', 'SessionDate as session_date',
+                'StartTime as start_time', 'EndTime as end_time', 'Status as status']);
+            $out['campus_id'] = $campusId;
+            $out['lookup_mode'] = $targetStudentClassId !== null ? 'student_class_id' : 'student_name';
+            $out['student_count'] = count($studentIds);
+            $out['target_classes'] = $classes->map(fn ($r) => [
+              'class_id'=>(int)$r->class_id, 'student_id'=>(int)$r->student_id,
+              'teacher_id'=>$r->teacher_id === null ? null : (int)$r->teacher_id,
+              'schedule_mode'=>(string)($r->schedule_mode ?? ''), 'start_date'=>$r->start_date, 'end_date'=>$r->end_date,
+              'stop'=>(int)($r->stop ?? 0), 'fixed_slots'=>$slotsFor($r),
+            ])->values()->all();
+            $out['future_scheduled_sessions'] = $sessions->map(fn ($r) => [
+              'id'=>(int)$r->id, 'class_id'=>(int)$r->class_id, 'session_date'=>(string)$r->session_date,
+              'weekday'=>(int)\\Carbon\\Carbon::parse($r->session_date)->dayOfWeekIso,
+              'start_time'=>substr((string)$r->start_time, 0, 5), 'end_time'=>substr((string)$r->end_time, 0, 5),
+              'locked'=>isset($lockedIds[(int)$r->id]),
+            ])->values()->all();
+            $slots = $classes->flatMap($slotsFor)->values();
+            $weekdayKeys = $slots->pluck('weekday')->map(fn ($day) => (int)$day)->unique()->values()->all();
+            $out['verification'] = [
+              'student_found'=>count($studentIds) > 0,
+              'has_wednesday'=>$slots->contains(fn ($slot) => (int)$slot['weekday'] === 3),
+              'has_thursday'=>$slots->contains(fn ($slot) => (int)$slot['weekday'] === 4),
+              'target_class_has_wednesday_and_thursday'=>$classes->contains(function ($row) use ($slotsFor) {{
+                $days = collect($slotsFor($row))->pluck('weekday')->map(fn ($day) => (int)$day)->unique();
+                return $days->contains(3) && $days->contains(4);
+              }}),
+              'future_session_count'=>$sessions->count(),
+              'locked_future_session_count'=>$sessions->filter(fn ($r) => isset($lockedIds[(int)$r->id]))->count(),
+              'expected_remove_thursday_workflow'=>'pure removal must not conflict with retained locked Wednesday',
+              'read_only'=>true,
+            ];
+            $out['weekday_keys'] = $weekdayKeys;
           }} elseif ($case === 'billing_huang') {{
             $campusId = 9;
             $studentQuery = $db::table('Student')->where('CampusID', $campusId);
@@ -335,6 +412,12 @@ jobs:
           Path('out/production-case.json').write_text(json.dumps(obj or {'ok': False, 'raw_tail': text[-2000:]}, ensure_ascii=False, indent=2), encoding='utf-8')
           if not obj or not obj.get('ok'):
               raise SystemExit('probe did not return ok JSON')
+          if obj.get('case') == 'fixed_slot_huang':
+              verification = obj.get('verification') or {}
+              if not verification.get('student_found'):
+                  raise SystemExit('黃品皓 production target was not found')
+              if not verification.get('target_class_has_wednesday_and_thursday'):
+                  raise SystemExit('黃品皓 production target has no single fixed course with both Wednesday and Thursday')
           print('parsed read-only production case', obj.get('case'))
           PY
 
