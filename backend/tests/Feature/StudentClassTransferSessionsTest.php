@@ -63,7 +63,7 @@ class StudentClassTransferSessionsTest extends TestCase
                 ->pluck('SessionDate')
                 ->map(fn ($date) => substr((string) $date, 0, 10))
                 ->all();
-            $this->assertSame(['2026-08-15', '2026-08-22', '2026-08-29', '2026-09-05'], $activeDates);
+            $this->assertSame(['2026-08-15', '2026-08-22', '2026-09-05', '2026-09-12'], $activeDates);
             $this->assertSame(
                 2,
                 DB::table('ClassSession')
