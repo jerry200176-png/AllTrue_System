@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "ca767fa49d554c4fa6ab5615fcff968a",
+  "session_id": "7d47097e2e804940a23c703bf08a696f",
   "project": "alltrue",
-  "task_id": "pop-execution-vertical-slice",
+  "task_id": "issue-2327-cache-lock-diagnostic",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "6f026f3e7658b420e8f1fdc6ecc2d6a19e7854e9",
-  "branch": "feat/pop-execution-vertical-slice-service",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/pop-execution-vertical-slice",
-  "started_at": "2026-09-01T08:38:38Z",
+  "base_sha": "95a4b02d747e9eebf9629656bcbd61b0e0cb8d28",
+  "branch": "chore/task-issue-2327-cache-lock-diagnostic",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/issue-2327-cache-lock-diagnostic",
+  "started_at": "2026-09-02T03:06:49Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": "codex",
+  "agent_cli": null,
   "gateway_version": "0.5.0"
 }
