@@ -43,13 +43,15 @@ class RouteRegistrationTest extends TestCase
     {
         return [
             'draft' => ['POST', 'api/v1/pop/operations/{operationId}/draft', 'App\\Http\\Controllers\\PopOperationController@storeDraft'],
+            'dry-run' => ['POST', 'api/v1/pop/operations/requests/{requestId}/dry-run', 'App\\Http\\Controllers\\PopOperationController@dryRun'],
             'approval' => ['POST', 'api/v1/pop/operations/requests/{requestId}/approvals', 'App\\Http\\Controllers\\PopOperationController@approve'],
         ];
     }
 
     /**
-     * POP request/approval routes are control-plane entrypoints only. There is
-     * intentionally no HTTP execute route; mutation belongs to the Pi-local CLI.
+     * POP request/dry-run/approval routes are control-plane entrypoints only.
+     * There is intentionally no HTTP execute route; mutation belongs to the
+     * Pi-local CLI.
      *
      * @dataProvider popControlPlaneRouteProvider
      */
