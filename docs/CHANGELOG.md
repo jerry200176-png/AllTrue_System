@@ -1,3 +1,8 @@
+## 2026-09-02 — fix(billing): 電子收據預計堂次文案恢復
+<!-- release-notes: staff_update=staff-2026-09-02-receipt-expected-session-copy -->
+- 電子收據的未實際上課、未取消堂次恢復顯示「（預計）」；已上課堂次與其他排課／點名狀態不變。
+- 本次只調整收據畫面、複製文字與圖片輸出的文案，不改排課或後台狀態。
+
 ## 2026-09-01 — improved(ux): 新建與編輯課程共用老師空檔查詢
 <!-- release-notes: staff_update=staff-2026-09-01-course-availability-planner -->
 - 編輯既有課程時，現在可直接用與新建課程相同的老師空檔／容量試算，並將候選時段套用到固定排課欄位。

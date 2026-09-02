@@ -139,7 +139,7 @@ export function buildReceiptSvg(snapshot = {}, receiptNumber = '—', width = DE
     y += 20;
     const sessionText = snapshot.session_dates
       .slice(0, 16)
-      .map((session) => `${safeText(session?.date)}${session?.expected ? '（尚未上）' : ''}`)
+      .map((session) => `${safeText(session?.date)}${session?.expected ? '（預計）' : ''}`)
       .join('、');
     y = addWrappedText(parts, sessionText, left, y, { size: 11, fill: '#374151', maxChars: 48, lineHeight: 17 });
     if (snapshot.session_dates.length > 16) {
