@@ -31,8 +31,8 @@ jobs:
 
       - name: Run read-only presence probe
         env:
-          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
-          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          PI_USER: ${{ secrets.PI_USER }}
+          PI_HOST: ${{ secrets.PI_HOST }}
         run: |
           set -euo pipefail
           ssh -i ~/.ssh/deploy_key \
@@ -41,7 +41,7 @@ jobs:
             -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile=~/.ssh/known_hosts \
-            "${PI_SSH_USER}@${PI_SSH_HOST}" bash <<'REMOTE' > /tmp/telegram-webhook-presence.json
+            "${PI_USER}@${PI_HOST}" bash <<'REMOTE' > /tmp/telegram-webhook-presence.json
           set -euo pipefail
           cd /home/admin/backend
           php artisan tinker --execute='

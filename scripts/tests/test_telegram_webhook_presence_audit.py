@@ -16,6 +16,8 @@ class TelegramWebhookPresenceAuditTest(unittest.TestCase):
         self.assertIn("workflow_dispatch", self.workflow)
         self.assertIn("permissions:\n  contents: read", self.workflow)
         self.assertIn("PI_HOST_KEY", self.workflow)
+        self.assertIn('PI_USER: ${{ secrets.PI_USER }}', self.workflow)
+        self.assertIn('PI_HOST: ${{ secrets.PI_HOST }}', self.workflow)
         self.assertIn("StrictHostKeyChecking=yes", self.workflow)
         self.assertIn("actions/upload-artifact@v4", self.workflow)
 
