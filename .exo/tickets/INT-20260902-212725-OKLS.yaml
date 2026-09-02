@@ -1,0 +1,54 @@
+id: INT-20260902-212725-OKLS
+title: Founder-scoped POP repair approval
+intent: Founder-scoped POP repair approval
+kind: intent
+brain_dump: Re-evaluate POP dual approval deadlock for a single-student reversible
+  course-contract repair. Keep exact SHA, successful dry-run, immutable audit, Pi-local
+  executor, transaction, snapshot, verification and rollback. Change only this catalog
+  operation if and only if ordinary agents cannot use the path for other production
+  mutations. Then run Huang Yi-Kai Math repair and production verify after governed
+  release.
+boundary: Do not change general POP approval policy, other operations, ordinary agent
+  production privileges, secrets, or UI/productization. Do not mutate production before
+  the new scoped policy is released and preflight evidence is fresh.
+success_condition: A repository PR changes only the course-contract-repair approval
+  path with tests proving other operations remain dual-approval; exact-SHA/dry-run/audit/Pi-local/rollback
+  gates remain; release is production verified; Huang data is corrected and verified.
+risk: high
+priority: 1
+labels:
+- production-repair
+scope:
+  allow:
+  - operations/catalog.yaml
+  - operations/policies/default.yaml
+  - backend/app/Operations/PopOperationCatalog.php
+  - backend/app/Operations/PopOperationService.php
+  - backend/app/Http/Controllers/PopOperationController.php
+  - backend/tests/**
+  - docs/pop/**
+  - docs/CONTROL_PLANE_CONTRACT.md
+  - .github/workflows/deploy.yml
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - '**/.env*'
+  - .git/**
+budgets:
+  max_files_changed: 12
+  max_loc_changed: 400
+checks:
+- bash scripts/phpunit-isolated.sh
+- npm run test:unit
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-02T21:27:25+08:00'
+children: []
+resource_profile: default

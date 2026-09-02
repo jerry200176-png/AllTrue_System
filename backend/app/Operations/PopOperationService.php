@@ -103,6 +103,7 @@ final class PopOperationService
         }
         $this->assertCommitSha($commitSha);
         $this->assertReference($approvalReference);
+        $this->assertFounderApprovalReference($entry, $approvalReference);
         $this->assertActor($approver);
         if ($ttlMinutes < 1 || $ttlMinutes > 60) {
             throw new RuntimeException('POP approval TTL is outside the allowed range.');
@@ -433,11 +434,38 @@ final class PopOperationService
     {
         $policy = $this->catalog->approvalPolicy($entry);
         $roles = $this->catalog->requiredApprovalRoles($entry);
-        if ($policy !== 'critical-dual-approval' || !in_array('director', $roles, true) || !in_array('super_admin', $roles, true)) {
-            throw new RuntimeException('POP approval policy is not supported by this execution slice; fail closed.');
+        if ($policy === 'critical-dual-approval'
+            && in_array('director', $roles, true)
+            && in_array('super_admin', $roles, true)
+        ) {
+            return $roles;
         }
 
-        return $roles;
+        $isFounderScopedRepair = $policy === 'founder-explicit-single-repair'
+            && ($entry['id'] ?? null) === 'course-contract-repair'
+            && ($entry['founder_approval_required'] ?? false) === true
+            && ($entry['blast_radius'] ?? null) === 'single_student_contract'
+            && ($entry['reversible'] ?? false) === true
+            && ($entry['snapshot_required'] ?? false) === true
+            && ($entry['rollback_supported'] ?? false) === true
+            && ($entry['verification_required'] ?? false) === true
+            && $roles === ['super_admin'];
+        if ($isFounderScopedRepair) {
+            return $roles;
+        }
+
+        throw new RuntimeException('POP approval policy is not supported by this execution slice; fail closed.');
+    }
+
+    /** @param array<string,mixed> $entry */
+    private function assertFounderApprovalReference(array $entry, string $reference): void
+    {
+        if (($entry['approval_policy'] ?? null) !== 'founder-explicit-single-repair') {
+            return;
+        }
+        if (!str_starts_with(strtolower($reference), 'founder-go-')) {
+            throw new RuntimeException('Founder-scoped POP approval requires a founder-go reference; fail closed.');
+        }
     }
 
     private function sign(object $request, string $phase, string $commitSha, int $expiresAt): string
