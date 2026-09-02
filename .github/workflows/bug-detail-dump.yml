@@ -364,7 +364,7 @@ jobs:
                 ->havingRaw("COUNT(*) > 1");
               $probe1282["duplicate_exact_slot_groups"]["all"] = (clone $duplicateBase)->get()->count();
               $probe1282["duplicate_exact_slot_groups"]["after_deploy"] = (clone $duplicateBase)
-                ->whereExists(function ($q) {{
+                ->whereExists(function ($q) use ($db) {{
                   $q->select($db::raw("1"))->from("schedules as newer")
                     ->whereColumn("newer.student_course_id", "sch.student_course_id")
                     ->whereColumn("newer.schedule_date", "sch.schedule_date")
