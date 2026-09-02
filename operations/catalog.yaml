@@ -1,6 +1,6 @@
 # AllTrue Production Operations Catalog
 # Authority: ADR-POP-005 | Phase 2: approved catalog operations execute via Pi-local POP
-version: 1
+version: 2
 
 operations:
   course-contract-repair:
@@ -9,8 +9,9 @@ operations:
     business_owner: director-data
     technical_owner: platform-data
     owner: platform-ops
-    approver_roles: [director, super_admin]
-    approval_policy: critical-dual-approval
+    approver_roles: [super_admin]
+    approval_policy: founder-explicit-single-repair
+    founder_approval_required: true
     runbook: docs/OPERATIONS_RUNBOOK.md
     alert_group: LINE:ops-data
     escalation_policy: billing-entitlement-critical-escalation
@@ -29,7 +30,7 @@ operations:
     strategy_class: App\Operations\Strategies\CourseContractRepairStrategy
     parameter_keys: [student_id, campus_id, subject_id, source_student_class_id, target_student_class_id, preserve_session_ids, transfer_session_ids, session_expectations, expected_source_charge, expected_target_charge, source_charge, target_charge, source_invoice_id, target_invoice_id, expected_source_invoice_total, expected_target_invoice_total, reason, decision_reference]
     tags: [repair, contract, entitlement, billing]
-    notes: Founder-approved operation; execution is fail-closed to this exact catalog and deployed commit.
+    notes: Founder-approved single-student repair; the sole super_admin approval must carry a founder-go reference. Execution is fail-closed to this exact catalog and deployed commit.
 
   supersede-renewal:
     lifecycle: active
