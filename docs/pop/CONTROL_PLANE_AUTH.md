@@ -32,3 +32,22 @@ also reads it only on the Pi and sends one invalid-parameter request over the
 production HTTPS endpoint; HTTP 422 proves machine authentication reached the
 submit route before validation without creating a draft. The key remains
 host-local, and the Pi-local scheduler remains the execution boundary.
+
+## Founder Huang repair auth adapter
+
+`.github/workflows/pop-founder-scoped-repair.yml` is a one-case, protected
+adapter for the approved Huang Yikui math contract repair. It hardcodes the
+student/class/session/invoice scope and the deployed backend SHA, requires the
+typed Founder confirmation plus the `production-activation` environment, and
+uses the existing host-local, draft/dry-run-only POP machine key for the first
+two phases, then selects one short-lived `User.type=S` session on the Pi for
+approval only. Both secrets stay in the Pi shell and are unset; the runner
+receives only IDs, phase results, and PII-free audit and snapshot evidence. The
+workflow never calls an HTTP execute endpoint; the
+existing Pi-local scheduler performs execute and verify. It does not change the
+identity, permission, or approval model and does not create a long-lived token.
+
+OIDC is not introduced here because the application has no OIDC verifier. A
+future OIDC identity-model change must be separately designed and Founder
+approved; this adapter deliberately reuses the existing protected SSH path and
+short-lived human session without expanding production authority.
