@@ -4143,7 +4143,7 @@ class StudentClassController extends Controller
             // before moving rows: when the selected rows include the current
             // tail, their historical dates remain the anchor and are never
             // recreated as future sessions.
-            $sourceTail = ClassSession::where('StudentClassID', $source->ID)
+            $sourceTail = ClassSession::query()->where('StudentClassID', (int) $source->getAttribute('ID'))
                 ->orderByDesc('SessionDate')
                 ->orderByDesc('StartTime')
                 ->orderByDesc('id')
@@ -4224,7 +4224,7 @@ class StudentClassController extends Controller
         if ($replacementCount <= 0
             || (int) ($source->Stop ?? 0) === 1
             || strtolower((string) ($source->ScheduleMode ?? 'count')) !== 'count'
-            || (string) ($source->scheduling_policy ?? 'auto_recurrence') === ManualSessionBookingService::POLICY
+            || (string) ($source->getAttribute('scheduling_policy') ?? 'auto_recurrence') === ManualSessionBookingService::POLICY
         ) {
             return [];
         }
@@ -4235,7 +4235,7 @@ class StudentClassController extends Controller
         }
 
         $anchor = $this->normalizeDateString($tailDate)
-            ?: $this->normalizeDateString($source->StartDate)
+            ?: $this->normalizeDateString($source->getAttribute('StartDate'))
             ?: Carbon::today()->toDateString();
         $anchorDate = Carbon::parse($anchor)->startOfDay();
         $today = Carbon::today()->startOfDay();
@@ -4252,7 +4252,7 @@ class StudentClassController extends Controller
         }
 
         $occupied = [];
-        $existing = ClassSession::where('StudentClassID', $source->ID)
+        $existing = ClassSession::query()->where('StudentClassID', (int) $source->getAttribute('ID'))
             ->get(['SessionDate', 'StartTime']);
         foreach ($existing as $session) {
             $date = $this->normalizeDateString($session->SessionDate ?? null);
