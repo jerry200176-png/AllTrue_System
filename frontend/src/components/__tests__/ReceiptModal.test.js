@@ -8,7 +8,7 @@ import {
   paymentReportReceiptUrl,
   parsePositiveReportId,
 } from '../../lib/paymentReportReceipt.js';
-import { receiptImageBlob } from '../../lib/receiptImage.js';
+import { buildReceiptSvg, receiptImageBlob } from '../../lib/receiptImage.js';
 
 const mockToken = 'test-token';
 
@@ -111,8 +111,40 @@ describe('paymentReportReceipt helpers (#1197 closeout)', () => {
     expect(text).toContain('收據號碼：R-000123');
     expect(text).toContain('學生姓名：王小明');
     expect(text).toContain('合計：NT$ 12,000');
+    expect(text).toContain('上課日期：2026/07/03');
+    expect(text).not.toContain('（預計）');
     expect(text).toContain('收款方式：現金');
     expect(text).toContain('備註：8/23現金繳費收據號碼:016272');
+  });
+
+  it('renders all eight expected sessions as 預計 in every receipt output', async () => {
+    const eightExpectedSessions = Array.from({ length: 8 }, (_, index) => ({
+      date: `2026/09/${String(index + 3).padStart(2, '0')}`,
+      expected: true,
+    }));
+    const api = {
+      ...SAMPLE,
+      receipt_no: 'R-001622',
+      attended_dates: [],
+      session_dates: eightExpectedSessions,
+    };
+    global.fetch.mockResolvedValueOnce(ok(api));
+
+    const wrapper = mount(ReceiptModal, { props: { show: true, reportId: 1622 } });
+    await tick();
+
+    const renderedText = wrapper.find('.receipt-doc-session-list').text();
+    expect(renderedText.match(/（預計）/g)).toHaveLength(8);
+    expect(renderedText).not.toContain('尚未上');
+
+    const view = adaptPaymentReportReceipt(api, 1622);
+    const copiedText = buildReceiptCopyText(view.content_snapshot, view.receipt_number);
+    expect(copiedText.match(/（預計）/g)).toHaveLength(8);
+    expect(copiedText).not.toContain('尚未上');
+
+    const imageSvg = buildReceiptSvg(view.content_snapshot, view.receipt_number);
+    expect(imageSvg.match(/（預計）/g)).toHaveLength(8);
+    expect(imageSvg).not.toContain('尚未上');
   });
 
   it('receipt line names trial and tutoring', () => {

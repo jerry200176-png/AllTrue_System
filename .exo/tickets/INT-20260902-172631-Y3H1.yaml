@@ -1,0 +1,53 @@
+id: INT-20260902-172631-Y3H1
+title: "\u96FB\u5B50\u6536\u64DA\u9810\u8A08\u5802\u6B21\u6587\u6848\u4FEE\u6B63"
+intent: "\u96FB\u5B50\u6536\u64DA\u9810\u8A08\u5802\u6B21\u6587\u6848\u4FEE\u6B63"
+kind: intent
+brain_dump: "\u65B0\u5E97\u4E3B\u4EFB\u56DE\u5831\u96FB\u5B50\u6536\u64DA\u672A\u4E0A\
+  \u8AB2\u5802\u6B21\u986F\u793A\uFF08\u5C1A\u672A\u4E0A\uFF09\uFF0C\u9700\u6C42\u6062\
+  \u5FA9\u70BA\uFF08\u9810\u8A08\uFF09\uFF1B\u53EA\u5F71\u97FF receipt rendering\uFF0C\
+  \u4FDD\u7559\u5F8C\u7AEF status \u8A9E\u610F\uFF0C\u88DC regression test\uFF0C\u5B8C\
+  \u6210 PR\u3001merge\u3001deploy \u8207 production evidence\u3002"
+boundary: "\u53EA\u53EF\u4FEE\u6539\u96FB\u5B50\u6536\u64DA ReceiptModal\u3001paymentReportReceipt\
+  \ adapter\u3001receipt rendering tests \u8207\u5FC5\u8981 release note\uFF1B\u7981\
+  \u6B62\u5168\u57DF\u66FF\u63DB\u5C1A\u672A\u4E0A\u8AB2\uFF0C\u7981\u6B62\u4FEE\u6539\
+  \u6392\u8AB2\u3001\u9EDE\u540D\u3001\u5F8C\u53F0\u72C0\u614B\u908F\u8F2F\u8207\u8CC7\
+  \u6599\u3002"
+success_condition: "\u96FB\u5B50\u6536\u64DA\u4E2D expected session \u986F\u793A\uFF08\
+  \u9810\u8A08\uFF09\uFF0C\u5DF2\u4E0A\u8AB2\u8207\u5176\u4ED6\u72C0\u614B\u4FDD\u6301\
+  \u539F\u8A9E\u610F\uFF1B\u76F8\u95DC test/lint/build/phpunit \u901A\u904E\uFF0C\
+  PR merge/deploy \u8207 production receipt evidence \u53EF\u6838\u5BE6\u3002"
+risk: low
+priority: 1
+labels:
+- billing
+scope:
+  allow:
+  - frontend/src/components/ReceiptModal.vue
+  - frontend/src/lib/paymentReportReceipt.js
+  - frontend/src/components/__tests__/ReceiptModal.test.js
+  - docs/CHANGELOG.md
+  - docs/STAFF_UPDATES.yml
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 8
+  max_loc_changed: 200
+checks:
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+- vendor/bin/phpunit
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-02T17:26:31+08:00'
+children:
+- TKT-20260902-172742-BI8Y
+resource_profile: default
