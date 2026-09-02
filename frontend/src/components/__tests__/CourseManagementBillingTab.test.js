@@ -45,4 +45,12 @@ describe('CourseManagement student billing tab', () => {
     expect(source).toContain('summary.note');
     expect(source).toContain('summary.account_last5');
   });
+
+  it('uses the persisted rate unit for edit round-trip and course lookup pricing', () => {
+    expect(source).toContain("import { getPerSessionFee, getCourseTotalFee, getRateUnitDisplayLabel } from '../lib/coursePricing';");
+    expect(source).toContain('rate_unit: c.rate_unit || \'session\'');
+    expect(source).toContain('rate_unit: form.rate_unit || \'session\'');
+    expect(source).toContain('{{ getRateUnitDisplayLabel(c) }} ${{ sessionPrice(c) }}');
+    expect(source).toContain('{{ getRateUnitDisplayLabel(hc) }} ${{ sessionPrice(hc) }}');
+  });
 });

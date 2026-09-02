@@ -322,7 +322,7 @@
                         >⚠ 堂數待對帳</span>
                       </div>
                       <div class="price-line">
-                        <span>每堂 ${{ sessionPrice(c) }}</span>
+                        <span>{{ getRateUnitDisplayLabel(c) }} ${{ sessionPrice(c) }}</span>
                         <span class="price-sep">｜</span>
                         <template v-if="isMonthlyMode(c)">
                           <span>已上堂費用 ${{ monthlyAttendedFee(c) }}</span>
@@ -450,7 +450,7 @@
                     <td colspan="6">
                       <div class="detail-panel">
                         <div class="detail-meta">
-                          <span class="detail-item"><span class="detail-label">每堂</span> ${{ sessionPrice(c) }}</span>
+                          <span class="detail-item"><span class="detail-label">{{ getRateUnitDisplayLabel(c) }}</span> ${{ sessionPrice(c) }}</span>
                           <span class="detail-item">
                             <span class="detail-label">{{ isMonthlyMode(c) ? '已上堂費用' : '總費用' }}</span>
                             <strong>${{ isMonthlyMode(c) ? monthlyAttendedFee(c) : totalPrice(c) }}</strong>
@@ -586,7 +586,7 @@
                   </div>
                   <div class="history-course-card__details">
                     <span class="history-course-card__detail"><span class="history-course-card__detail-label">老師</span> {{ hc.teacher_name || '—' }}</span>
-                    <span class="history-course-card__detail"><span class="history-course-card__detail-label">費用</span> ${{ totalPrice(hc) }}（每堂 ${{ sessionPrice(hc) }}）</span>
+                    <span class="history-course-card__detail"><span class="history-course-card__detail-label">費用</span> ${{ totalPrice(hc) }}（{{ getRateUnitDisplayLabel(hc) }} ${{ sessionPrice(hc) }}）</span>
                     <span class="history-course-card__detail"><span class="history-course-card__detail-label">堂數</span> <template v-if="hc.PackageID">已上 {{ getCompletedSessionCount(hc) }} 堂｜方案共用 {{ getPackageTotalSessions(hc) }} 堂</template><template v-else>已上 {{ getCompletedSessionCount(hc) }}<template v-if="isSessionMode(hc)"> / 購買 {{ getPurchasedSessions(hc) }}</template> 堂</template></span>
                     <span class="history-course-card__detail" v-if="hc.last_paid_at"><span class="history-course-card__detail-label">繳費</span> {{ hc.last_paid_at }}</span>
                   </div>
@@ -1363,7 +1363,7 @@ import { SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
 import { fetchClassSessions, normalizeClassSessionsPayload, sessionViewModelPatchFromApi } from '../lib/classSessionsApi';
 import { buildTransferableSessionOption } from '../lib/sessionTransferEligibility';
-import { getPerSessionFee, getCourseTotalFee } from '../lib/coursePricing';
+import { getPerSessionFee, getCourseTotalFee, getRateUnitDisplayLabel } from '../lib/coursePricing';
 import { coursesWithSlotConflicts } from '../lib/slotOccupancy';
 import { courseRowWarningSummary } from '../lib/courseRowWarnings';
 import {
@@ -4590,6 +4590,7 @@ const editCourse = (c) => {
     teacher_id: c.teacher_id || '',
     class_type: c.class_type,
     rate_per_30min: c.rate_per_30min,
+    rate_unit: c.rate_unit || 'session',
     duration_hours: c.duration_hours ?? 2,
     sessions_purchased: c.sessions_purchased ?? 8,
     remaining_sessions: c.remaining_sessions ?? 0,
@@ -4656,6 +4657,7 @@ const submitEdit = async () => {
           teacher_id: form.teacher_id || null,
           class_type: form.class_type,
           rate_per_30min: form.rate_per_30min,
+          rate_unit: form.rate_unit || 'session',
           sessions_purchased: form.sessions_purchased,
           ...(isPackageCourse ? {} : { remaining_sessions: form.remaining_sessions }),
           payment_type: form.payment_type,

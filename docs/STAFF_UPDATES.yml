@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-02-course-rate-unit-consistency
+    published_at: "2026-09-02"
+    audiences:
+      - director
+    importance: action_required
+    title: 課程查找計費單位同步
+    summary: 按時計費課程現在會顯示每小時費用並正確計算總額。
+    items:
+      - category: fixed
+        text: 編輯課程切換按堂／按時計費後，課程查找會同步顯示正確的每堂或每小時單價。
+      - category: fixed
+        text: 按時計費總費用會依課程實際總時數計算；按堂課程仍依購買堂數計算。
+    source_refs:
+      - "changelog:2026-09-02:course-rate-unit-consistency"
+
   - id: staff-2026-09-02-receipt-expected-session-copy
     published_at: "2026-09-02"
     audiences:

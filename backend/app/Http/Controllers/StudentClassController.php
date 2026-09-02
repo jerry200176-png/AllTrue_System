@@ -344,6 +344,7 @@ class StudentClassController extends Controller
             $class->subject = $reverseSubjectMap[$subjectNameKey] ?? 'Math';
             $class->class_type = $class->ClassType ?? 'one_on_one';
             $class->rate_per_30min = $class->Rate ?? 0;
+            $class->total_hours = (int) ($class->TotalHours ?? 0);
             $class->duration_hours = $class->SessionDuration ? round($class->SessionDuration / 60, 1) : 2;
             // 固定排課多日（如 一四）：從 week + week1..week6 彙總成 days_of_week（寫入時第一日在 week，其餘在 week1..week6）
             $weekFields = ['week', 'week1', 'week2', 'week3', 'week4', 'week5', 'week6'];
@@ -1576,6 +1577,16 @@ class StudentClassController extends Controller
         }
 
         $mapped = $this->mapFrontendPayload($request);
+        if (array_key_exists('rate_unit', $mapped)) {
+            $rateUnit = strtolower(trim((string) $mapped['rate_unit']));
+            if (!in_array($rateUnit, ['session', 'hour'], true)) {
+                return response()->json([
+                    'message' => 'Invalid rate unit',
+                    'errors' => ['rate_unit' => ['rate_unit 必須是 session 或 hour。']],
+                ], 422);
+            }
+            $mapped['rate_unit'] = $rateUnit;
+        }
         if (array_key_exists('scheduling_policy', $mapped)
             && !in_array($mapped['scheduling_policy'], ['auto_recurrence', ManualSessionBookingService::POLICY], true)
         ) {
@@ -1712,7 +1723,7 @@ class StudentClassController extends Controller
         // 避免老師／主任調漲調降課程費率時，把已經手動微調過的金額一併洗掉。
         // #798：delta 只在課程實際存在單堂時間調整（session_charge）時才保留；
         // 否則視為錯誤存量資料，直接以 費率×數量 重算，讓主任能從 UI 改回正確金額。
-        if (isset($mapped['Rate']) || isset($mapped['SessionCount'])) {
+        if (isset($mapped['Rate']) || isset($mapped['SessionCount']) || array_key_exists('rate_unit', $mapped)) {
             $oldBase = $oldRateUnitSnapshot === 'hour'
                 ? (int) round($oldRateSnapshot * $oldTotalHoursSnapshot)
                 : (int) round($oldRateSnapshot * $oldSessionCountSnapshot);
@@ -5079,7 +5090,7 @@ class StudentClassController extends Controller
             $mappedData['scheduling_policy'] = (string) $input['scheduling_policy'];
         }
         if (isset($input['rate_per_30min'])) $mappedData['Rate'] = $input['rate_per_30min'];
-        if (isset($input['rate_unit'])) $mappedData['rate_unit'] = $input['rate_unit'];
+        if (array_key_exists('rate_unit', $input)) $mappedData['rate_unit'] = $input['rate_unit'];
         if (isset($input['duration_hours'])) $mappedData['SessionDuration'] = (int) round((float) $input['duration_hours'] * 60);
         // RFC non-standard duration D1/D2: the billing standard is its own per-course
         // field, kept separate from SessionDuration (the scheduling default).
