@@ -4,6 +4,43 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-02-receipt-expected-session-copy",
+    "publishedAt": "2026-09-02",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "電子收據預計堂次文案恢復",
+    "summary": "收據上的未上課堂次現在恢復顯示「（預計）」。",
+    "items": [
+      "電子收據中尚未實際上課且未取消的堂次會顯示「（預計）」；已上課堂次不加狀態字樣。",
+      "收據畫面、複製文字與複製／下載圖片的文案一致；排課、點名與其他後台狀態不受影響。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "電子收據中尚未實際上課且未取消的堂次會顯示「（預計）」；已上課堂次不加狀態字樣。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "收據畫面、複製文字與複製／下載圖片的文案一致；排課、點名與其他後台狀態不受影響。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-02:receipt-expected-session-copy"
+    ],
+    "date": "2026-09-02",
+    "version": "2026.09.02"
+  },
+  {
     "id": "staff-2026-09-01-unpaid-settlement-reconciliation",
     "publishedAt": "2026-09-01",
     "effectiveAt": null,

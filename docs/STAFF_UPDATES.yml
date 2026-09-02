@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-02-receipt-expected-session-copy
+    published_at: "2026-09-02"
+    audiences:
+      - director
+    importance: digest
+    title: 電子收據預計堂次文案恢復
+    summary: 收據上的未上課堂次現在恢復顯示「（預計）」。
+    items:
+      - category: fixed
+        text: 電子收據中尚未實際上課且未取消的堂次會顯示「（預計）」；已上課堂次不加狀態字樣。
+      - category: improved
+        text: 收據畫面、複製文字與複製／下載圖片的文案一致；排課、點名與其他後台狀態不受影響。
+    source_refs:
+      - "changelog:2026-09-02:receipt-expected-session-copy"
+
   - id: staff-2026-09-01-course-availability-planner
     published_at: "2026-09-01"
     audiences:
