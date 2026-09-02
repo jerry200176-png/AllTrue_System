@@ -450,8 +450,101 @@ jobs:
           }}
           $probe249 = [
             "applicable" => false, "read_only" => true, "decision_grade" => false,
-            "reason" => "No target-correct billing probe is configured yet; Founder-approved mapping is required before any billing evidence or mutation",
+            "reason" => "Allowlisted only for in-app bug 249",
           ];
+          if ($bugId === 249) {{
+            // #249-specific production mapping probe. Resolve the exact
+            // reported student within the reported campus, then aggregate the
+            // English/Math course and payment relationships. This is read-only
+            // and emits no names, contact data, notes, or row identifiers.
+            $probe249["applicable"] = true;
+            $probe249["case"] = "shared_subject_payment_249";
+            $probe249["target_scope"] = ["campus_id" => 17, "subject_keys" => ["english", "math"]];
+            $subjectKey249 = function ($value) {{
+              $normalized = mb_strtolower(trim((string)$value));
+              if (str_contains($normalized, "英") || str_contains($normalized, "english")) return "english";
+              if (str_contains($normalized, "數") || str_contains($normalized, "math")) return "math";
+              return "other";
+            }};
+            $countBy249 = function ($rows, string $field) {{
+              return $rows->groupBy($field)->map(fn ($items) => $items->count())->all();
+            }};
+            try {{
+              $students249 = $db::table("Student")
+                ->where("CampusID", 17)
+                ->whereRaw("TRIM(name) = ?", ["樓兆瑄"])
+                ->get(["id"]);
+              $studentIds249 = $students249->pluck("id")->map(fn ($id) => (int)$id)->filter()->unique()->values()->all();
+              $probe249["matched_student_count"] = count($studentIds249);
+              if (count($studentIds249) !== 1) {{
+                throw new \RuntimeException("exact target student match count must be 1");
+              }}
+
+              $classes249 = $db::table("StudentClass as sc")
+                ->leftJoin("Subject as sub", "sub.id", "=", "sc.SubjectID")
+                ->whereIn("sc.StudentID", $studentIds249)
+                ->get([
+                  "sc.ID as class_id", "sc.StudentID as student_id", "sc.SubjectID as subject_id",
+                  "sc.PackageID as package_id", "sc.Charge as charge", "sc.Paid as paid",
+                  "sc.PayDate as pay_date", "sc.Stop as stop", "sub.Subject_Name as subject_name",
+                ]);
+              $classes249 = $classes249->filter(fn ($row) => in_array($subjectKey249($row->subject_name ?? ""), ["english", "math"], true))->values();
+              $classIds249 = $classes249->pluck("class_id")->map(fn ($id) => (int)$id)->filter()->unique()->values()->all();
+              $probe249["target_class_count"] = count($classIds249);
+
+              $reports249 = $classIds249 === [] ? collect() : $db::table("payment_reports")
+                ->whereIn("StudentClassID", $classIds249)
+                ->get(["StudentClassID as class_id", "status", "reported_amount", "InvoiceID as invoice_id", "payment_id"]);
+              $invoices249 = $classIds249 === [] ? collect() : $db::table("Invoice")
+                ->whereIn("StudentClassID", $classIds249)
+                ->get(["StudentClassID as class_id", "Status as status", "TotalAmount as total_amount", "PaidAmount as paid_amount"]);
+              $payments249 = $classIds249 === [] ? collect() : $db::table("Payment as p")
+                ->join("Invoice as i", "i.id", "=", "p.InvoiceID")
+                ->whereIn("i.StudentClassID", $classIds249)
+                ->get(["i.StudentClassID as class_id", "p.Amount as amount", "p.payment_report_id"]);
+
+              $subjectSummaries249 = [];
+              foreach (["english", "math"] as $subjectKey) {{
+                $subjectClasses = $classes249->filter(fn ($row) => $subjectKey249($row->subject_name ?? "") === $subjectKey)->values();
+                $subjectClassIds = $subjectClasses->pluck("class_id")->map(fn ($id) => (int)$id)->all();
+                $subjectReports = $reports249->whereIn("class_id", $subjectClassIds)->values();
+                $subjectInvoices = $invoices249->whereIn("class_id", $subjectClassIds)->values();
+                $subjectPayments = $payments249->whereIn("class_id", $subjectClassIds)->values();
+                $subjectSummaries249[$subjectKey] = [
+                  "class_count" => $subjectClasses->count(),
+                  "paid_flag_1_count" => $subjectClasses->where("paid", 1)->count(),
+                  "package_id_present_count" => $subjectClasses->filter(fn ($row) => (int)($row->package_id ?? 0) > 0)->count(),
+                  "payment_report_count" => $subjectReports->count(),
+                  "payment_report_status_counts" => $countBy249($subjectReports, "status"),
+                  "reported_amount_total" => round((float)$subjectReports->sum(fn ($row) => (float)($row->reported_amount ?? 0)), 2),
+                  "invoice_count" => $subjectInvoices->count(),
+                  "invoice_status_counts" => $countBy249($subjectInvoices, "status"),
+                  "invoice_total_amount" => round((float)$subjectInvoices->sum(fn ($row) => (float)($row->total_amount ?? 0)), 2),
+                  "invoice_paid_amount" => round((float)$subjectInvoices->sum(fn ($row) => (float)($row->paid_amount ?? 0)), 2),
+                  "payment_count" => $subjectPayments->count(),
+                  "linked_payment_report_count" => $subjectPayments->filter(fn ($row) => $row->payment_report_id !== null)->count(),
+                ];
+              }}
+              $packageIds249 = $classes249->pluck("package_id")->map(fn ($id) => (int)$id)->filter()->unique()->values()->all();
+              $packageMemberCount249 = $packageIds249 === [] ? 0 : $db::table("StudentClass")
+                ->whereIn("PackageID", $packageIds249)->count();
+              $packageClassCounts249 = $classes249->filter(fn ($row) => (int)($row->package_id ?? 0) > 0)
+                ->groupBy("package_id")->map(fn ($rows) => $rows->count());
+              $probe249["subject_summaries"] = $subjectSummaries249;
+              $probe249["shared_package_count"] = count($packageIds249);
+              $probe249["target_classes_in_shared_packages"] = $packageClassCounts249->filter(fn ($count) => $count > 1)->sum();
+              $probe249["shared_package_member_count"] = $packageMemberCount249;
+              $probe249["target_subjects_present"] = $subjectSummaries249["english"]["class_count"] > 0
+                && $subjectSummaries249["math"]["class_count"] > 0;
+              $probe249["decision_grade"] = count($studentIds249) === 1
+                && $probe249["target_class_count"] >= 2
+                && $probe249["target_subjects_present"];
+              $probe249["error"] = null;
+            }} catch (\Throwable $e) {{
+              $probe249["decision_grade"] = false;
+              $probe249["error"] = get_class($e).": ".substr((string)$e->getMessage(), 0, 300);
+            }}
+          }}
           $targetProbe = match ($bugId) {{
             208 => $probe208,
             241 => $probe241,
