@@ -75,6 +75,7 @@ jobs:
               json.dump(snapshot, handle, ensure_ascii=False, indent=2)
               handle.write("\\n")
           '
+          REMOTE
           set -euo pipefail
           cd /home/admin/backend
           php artisan tinker --execute='
