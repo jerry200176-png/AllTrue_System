@@ -118,6 +118,55 @@ class DunningTest extends TestCase
         $this->assertEmpty($monthlyEvents, '已繳費月結課程不應再建立催繳/到期提醒');
     }
 
+    public function test_dunning_command_dry_run_does_not_persist_events(): void
+    {
+        [, $campus] = $this->seedDirector();
+        $student = Student::create([
+            'name' => 'Dry Run Student', 'CampusID' => $campus->id, 'ClassID' => 0, 'SchoolName' => 'T',
+        ]);
+        StudentClass::create([
+            'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 1,
+            'TeacherID' => 1, 'ClassType' => 'one_on_one',
+            'by1' => 1, 'Period' => 4, 'StartDate' => now()->subDays(10)->toDateString(),
+            'TotalHours' => 10, 'SessionCount' => 5, 'SessionDuration' => 120,
+            'RemainingSessions' => 5, 'UsedSessions' => 0,
+            'Charge' => 5000, 'Pay' => 0, 'Paid' => 0, 'Rate' => 100, 'Stop' => 0,
+            'MDate' => now(), 'ScheduleMode' => 'count',
+        ]);
+
+        $this->artisan('dunning:run', [
+            '--campus' => (string) $campus->id,
+            '--dry-run' => true,
+        ])->assertExitCode(0);
+
+        $this->assertDatabaseCount('dunning_events', 0);
+    }
+
+    public function test_dunning_dry_run_simulates_weekly_cap_without_writing(): void
+    {
+        [, $campus] = $this->seedDirector();
+        $student = Student::create([
+            'name' => 'Dry Run Cap Student', 'CampusID' => $campus->id, 'ClassID' => 0, 'SchoolName' => 'T',
+        ]);
+
+        foreach ([1, 2] as $subjectId) {
+            StudentClass::create([
+                'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => $subjectId,
+                'TeacherID' => 1, 'ClassType' => 'one_on_one',
+                'by1' => 1, 'Period' => 4, 'StartDate' => now()->subDays(10)->toDateString(),
+                'TotalHours' => 10, 'SessionCount' => 5, 'SessionDuration' => 120,
+                'RemainingSessions' => 1, 'UsedSessions' => 4,
+                'Charge' => 5000, 'Pay' => 0, 'Paid' => 0, 'Rate' => 100, 'Stop' => 0,
+                'MDate' => now(), 'ScheduleMode' => 'count',
+            ]);
+        }
+
+        $events = (new \App\Services\DunningService())->evaluateAll($campus->id, false);
+
+        $this->assertCount(3, $events);
+        $this->assertDatabaseCount('dunning_events', 0);
+    }
+
     private function seedDirector(): array
     {
         $campus = CampusFactory::new()->create();
