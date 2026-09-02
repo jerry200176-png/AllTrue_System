@@ -33,6 +33,9 @@ GitHub-hosted → Pi SSH couples execution to secrets hop and blocks Cloud Agent
 
 ## Consequences
 
+- The authenticated control plane exposes only draft, dry-run, and approval
+  entrypoints. Dry-run is read-only and records the exact plan required before
+  approval; no HTTP execute endpoint exists.
 - The scheduler command is the only local production mutation adapter; it reconstructs the short-lived token from DB evidence and the host-only `APP_KEY`.
 - `withoutOverlapping` plus a MySQL named lock prevents duplicate claims. Missing approval, expired token, malformed manifest, or deployed SHA mismatch fails closed.
 - Executor heartbeat remains a Meta Controller concern (ADR-POP-011).

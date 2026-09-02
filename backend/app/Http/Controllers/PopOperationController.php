@@ -63,6 +63,25 @@ final class PopOperationController extends Controller
         return response()->json(['data' => $approval], $approval['ready'] ? 200 : 202);
     }
 
+    public function dryRun(Request $request, string $requestId, PopOperationService $service)
+    {
+        $user = $request->attributes->get('auth_user');
+        if (!$user) return response()->json(['message' => 'Unauthenticated'], 401);
+
+        try {
+            $result = $service->runDryRun(
+                $requestId,
+                'user:' . (int) $user->id,
+                (int) $user->id,
+                (string) $request->attributes->get('auth_role')
+            );
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => 'POP dry-run rejected', 'reason_code' => $e->getMessage()], $this->errorStatus($e));
+        }
+
+        return response()->json(['data' => $result], ($result['result'] ?? null) === 'succeeded' ? 200 : 422);
+    }
+
     private function errorStatus(RuntimeException $error): int
     {
         $reason = $error->getMessage();
