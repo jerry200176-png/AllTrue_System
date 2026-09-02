@@ -322,29 +322,27 @@ jobs:
             ];
             try {{
               $campusId = (int)$bug->CampusID;
-              $targetTeacherIds = $db::table("User")
-                ->where("Name", "like", "%芝琳%")
-                ->pluck("id")->map(fn ($id) => (int)$id)->all();
-              if ($targetTeacherIds === []) {{
-                throw new \RuntimeException("target teacher not found");
-              }}
-
-              $candidateClassIds = $db::table("schedules as sch")
+              $scheduleClassIds = $db::table("schedules as sch")
                 ->join("StudentClass as sc", "sc.ID", "=", "sch.student_course_id")
                 ->join("Student as s", "s.id", "=", "sc.StudentID")
                 ->where("sch.branch_id", $campusId)
                 ->whereDate("sch.schedule_date", "2026-07-14")
                 ->whereRaw("TIME(sch.start_time) = ?", ["18:00:00"])
-                ->where(function ($q) use ($targetTeacherIds) {{
-                  $q->whereIn("sch.teacher_id", $targetTeacherIds)
-                    ->orWhereIn("sc.TeacherID", $targetTeacherIds);
-                }})
                 ->where("s.CampusID", $campusId)
                 ->pluck("sch.student_course_id")
                 ->map(fn ($id) => (int)$id)->filter()->unique()->values()->all();
+              $sessionClassIds = $db::table("ClassSession as cs")
+                ->join("StudentClass as sc", "sc.ID", "=", "cs.StudentClassID")
+                ->join("Student as s", "s.id", "=", "sc.StudentID")
+                ->whereDate("cs.SessionDate", "2026-07-14")
+                ->whereRaw("TIME(cs.StartTime) = ?", ["18:00:00"])
+                ->where("s.CampusID", $campusId)
+                ->pluck("cs.StudentClassID")
+                ->map(fn ($id) => (int)$id)->filter()->unique()->values()->all();
+              $candidateClassIds = array_values(array_unique(array_merge($scheduleClassIds, $sessionClassIds)));
               $probe1282["candidate_class_count"] = count($candidateClassIds);
               if ($candidateClassIds === []) {{
-                throw new \RuntimeException("target case has no matching course in the fixed window");
+                throw new \RuntimeException("target case has no matching course or session in the fixed window");
               }}
 
               $scheduleBase = $db::table("schedules as sch")
