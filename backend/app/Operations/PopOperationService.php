@@ -196,8 +196,22 @@ final class PopOperationService
         });
     }
 
+    /** Run the authenticated, read-only planning phase for the control plane. */
+    public function runDryRun(string $requestId, string $actor, ?int $actorId = null, ?string $actorRole = null): array
+    {
+        return $this->run($requestId, 'dry-run', null, null, $actor, $actorId, $actorRole);
+    }
+
     /** @return array<string,mixed> */
-    public function run(string $requestId, string $phase, ?string $token = null, ?string $commitSha = null, string $actor = 'pop-runner'): array
+    public function run(
+        string $requestId,
+        string $phase,
+        ?string $token = null,
+        ?string $commitSha = null,
+        string $actor = 'pop-runner',
+        ?int $actorId = null,
+        ?string $actorRole = null
+    ): array
     {
         $request = $this->request($requestId);
         $entry = $this->catalog->operation((string) $request->operation_id);
@@ -218,7 +232,7 @@ final class PopOperationService
             }
             $plan = $this->safePlan($entry, $parameters);
 
-            return $this->recordDryRun($request, $entry, $parameters, $plan, $actor, $this->durationMs($startedAt));
+            return $this->recordDryRun($request, $entry, $parameters, $plan, $actor, $this->durationMs($startedAt), $actorId, $actorRole);
         }
         if ((string) $entry['lifecycle'] !== 'active') {
             throw new RuntimeException('POP operation is not active; Founder activation is required.');
@@ -551,12 +565,21 @@ final class PopOperationService
     }
 
     /** @param array<string,mixed> $entry @param array<string,mixed> $parameters @param array<string,mixed> $plan */
-    private function recordDryRun(object $request, array $entry, array $parameters, array $plan, string $actor, int $durationMs): array
+    private function recordDryRun(
+        object $request,
+        array $entry,
+        array $parameters,
+        array $plan,
+        string $actor,
+        int $durationMs,
+        ?int $actorId = null,
+        ?string $actorRole = null
+    ): array
     {
         return $this->record($request, $entry, $parameters, 'dry-run', [
             'ok' => (bool) ($plan['ok'] ?? false),
             'plan' => $plan,
-        ], $actor, null, null, $durationMs);
+        ], $actor, null, null, $durationMs, null, $actorId, $actorRole);
     }
 
     /** @param array<string,mixed> $entry @param array<string,mixed> $parameters @param array<string,mixed> $payload */
@@ -570,7 +593,9 @@ final class PopOperationService
         ?object $approval,
         ?string $commitSha,
         int $durationMs,
-        ?string $failureReason = null
+        ?string $failureReason = null,
+        ?int $actorId = null,
+        ?string $actorRole = null
     ): array {
         $executionId = (string) Str::uuid();
         $correlationId = (string) Str::uuid();
@@ -629,7 +654,7 @@ final class PopOperationService
             if ($status !== null) {
                 DB::table('pop_operation_requests')->where('id', $request->id)->update(['status' => $status, 'updated_at' => now()]);
             }
-            $this->audit($request, $phase, $result === 'succeeded' || $result === 'rolled_back' ? 'success' : 'failure', $parameters, null, null, $correlationId);
+            $this->audit($request, $phase, $result === 'succeeded' || $result === 'rolled_back' ? 'success' : 'failure', $parameters, $actorId, $actorRole, $correlationId);
         }
 
         return json_decode((string) $stored->payload, true, 512, JSON_THROW_ON_ERROR) + ['execution_id' => $stored->execution_id, 'phase' => $phase];
