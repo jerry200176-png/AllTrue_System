@@ -1,0 +1,47 @@
+id: INT-20260902-180251-61RQ
+title: Issue 1282 target-specific read-only acceptance probe
+intent: Issue 1282 target-specific read-only acceptance probe
+kind: intent
+brain_dump: 'Continue AllTrue open-issue convergence: revalidate GitHub #1282 using
+  a committed, allowlisted, read-only production probe for in-app #201/#202. Reporter
+  status logs now show resolved-to-closed by the reporter, but the prior evidence
+  workflow is metadata-only and does not prove absence of duplicate exact-slot markers,
+  NULL substitute anchors, or destination ghost sessions.'
+boundary: Do not mutate production data, do not run Pi tests/phpunit, do not change
+  app business logic, do not include names/descriptions/tokens/raw production identifiers
+  in artifacts, do not add mutation or auto-close paths.
+success_condition: 'A bounded workflow probe for only #201/#202 emits redacted aggregate
+  target-specific invariant results, has regression/static safety coverage, passes
+  required checks, and is dispatched successfully; update #1282 based on actual results.'
+risk: high
+priority: 1
+labels:
+- issue-1282
+scope:
+  allow:
+  - .github/workflows/bug-detail-dump.yml
+  - backend/tests/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - backend/app/**
+  - backend/database/**
+  - '**/.env*'
+budgets:
+  max_files_changed: 3
+  max_loc_changed: 220
+checks:
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-02T18:02:51+08:00'
+children: []
+resource_profile: default

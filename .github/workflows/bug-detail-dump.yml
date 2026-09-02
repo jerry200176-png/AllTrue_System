@@ -302,6 +302,109 @@ jobs:
             "applicable" => false, "read_only" => true, "decision_grade" => false,
             "reason" => "No target-correct calendar probe is configured yet; collect fresh case identifiers before adding one",
           ];
+          $probe1282 = [
+            "applicable" => false, "read_only" => true, "decision_grade" => false,
+            "reason" => "No target-correct cross-teacher drag probe is configured",
+          ];
+          if (in_array($bugId, [201, 202], true)) {{
+            // #1282 / in-app #201/#202: fixed historical case window from the
+            // report. Emit only aggregate counts; never export names or row IDs.
+            $probe1282 = [
+              "applicable" => true, "read_only" => true, "decision_grade" => false,
+              "case" => "cross_teacher_drag_201_202",
+              "target_window" => ["date" => "2026-07-14", "start" => "18:00", "end" => "20:00"],
+              "deploy_cutoff" => "2026-07-18 11:45:00",
+              "candidate_class_count" => 0,
+              "schedule_row_count" => ["all" => 0, "after_deploy" => 0],
+              "duplicate_exact_slot_groups" => ["all" => 0, "after_deploy" => 0],
+              "null_substitute_anchor_rows" => ["all" => 0, "after_deploy" => 0],
+              "destination_ghost_session_rows" => ["all" => 0, "after_deploy" => 0],
+            ];
+            try {{
+              $campusId = (int)$bug->CampusID;
+              $targetTeacherIds = $db::table("User")
+                ->where("Name", "like", "%芝琳%")
+                ->pluck("id")->map(fn ($id) => (int)$id)->all();
+              if ($targetTeacherIds === []) {{
+                throw new \RuntimeException("target teacher not found");
+              }}
+
+              $candidateClassIds = $db::table("schedules as sch")
+                ->join("StudentClass as sc", "sc.ID", "=", "sch.student_course_id")
+                ->join("Student as s", "s.id", "=", "sc.StudentID")
+                ->where("sch.branch_id", $campusId)
+                ->whereDate("sch.schedule_date", "2026-07-14")
+                ->whereRaw("TIME(sch.start_time) = ?", ["18:00:00"])
+                ->where(function ($q) use ($targetTeacherIds) {{
+                  $q->whereIn("sch.teacher_id", $targetTeacherIds)
+                    ->orWhereIn("sc.TeacherID", $targetTeacherIds);
+                }})
+                ->where("s.CampusID", $campusId)
+                ->pluck("sch.student_course_id")
+                ->map(fn ($id) => (int)$id)->filter()->unique()->values()->all();
+              $probe1282["candidate_class_count"] = count($candidateClassIds);
+              if ($candidateClassIds === []) {{
+                throw new \RuntimeException("target case has no matching course in the fixed window");
+              }}
+
+              $scheduleBase = $db::table("schedules as sch")
+                ->join("StudentClass as sc", "sc.ID", "=", "sch.student_course_id")
+                ->whereIn("sch.student_course_id", $candidateClassIds)
+                ->whereDate("sch.schedule_date", "2026-07-14")
+                ->whereRaw("TIME(sch.start_time) = ?", ["18:00:00"]);
+              $probe1282["schedule_row_count"]["all"] = (clone $scheduleBase)->count();
+              $probe1282["schedule_row_count"]["after_deploy"] = (clone $scheduleBase)
+                ->where("sch.created_at", ">=", "2026-07-18 11:45:00")->count();
+
+              $duplicateBase = $db::table("schedules as sch")
+                ->whereIn("sch.student_course_id", $candidateClassIds)
+                ->whereDate("sch.schedule_date", "2026-07-14")
+                ->whereRaw("TIME(sch.start_time) = ?", ["18:00:00"])
+                ->where("sch.status", "scheduled")
+                ->select("sch.student_course_id", "sch.schedule_date", "sch.start_time")
+                ->groupBy("sch.student_course_id", "sch.schedule_date", "sch.start_time")
+                ->havingRaw("COUNT(*) > 1");
+              $probe1282["duplicate_exact_slot_groups"]["all"] = (clone $duplicateBase)->get()->count();
+              $probe1282["duplicate_exact_slot_groups"]["after_deploy"] = (clone $duplicateBase)
+                ->whereExists(function ($q) {{
+                  $q->select($db::raw("1"))->from("schedules as newer")
+                    ->whereColumn("newer.student_course_id", "sch.student_course_id")
+                    ->whereColumn("newer.schedule_date", "sch.schedule_date")
+                    ->whereColumn("newer.start_time", "sch.start_time")
+                    ->where("newer.status", "scheduled")
+                    ->where("newer.created_at", ">=", "2026-07-18 11:45:00");
+                }})
+                ->get()->count();
+
+              $nullAnchorBase = $db::table("schedules as sch")
+                ->join("StudentClass as sc", "sc.ID", "=", "sch.student_course_id")
+                ->whereIn("sch.student_course_id", $candidateClassIds)
+                ->whereDate("sch.schedule_date", "2026-07-14")
+                ->whereRaw("TIME(sch.start_time) = ?", ["18:00:00"])
+                ->where("sch.status", "scheduled")
+                ->whereNotNull("sch.teacher_id")
+                ->whereColumn("sch.teacher_id", "!=", "sc.TeacherID")
+                ->whereNull("sch.original_schedule_id");
+              $probe1282["null_substitute_anchor_rows"]["all"] = (clone $nullAnchorBase)->count();
+              $probe1282["null_substitute_anchor_rows"]["after_deploy"] = (clone $nullAnchorBase)
+                ->where("sch.created_at", ">=", "2026-07-18 11:45:00")->count();
+
+              $ghostBase = $db::table("ClassSession as cs")
+                ->whereIn("cs.StudentClassID", $candidateClassIds)
+                ->whereDate("cs.SessionDate", "2026-07-14")
+                ->whereRaw("TIME(cs.StartTime) = ?", ["18:00:00"])
+                ->where("cs.Status", "cancelled")
+                ->where("cs.Note", "like", "%cancelled-duplicate-reschedule-placeholder%");
+              $probe1282["destination_ghost_session_rows"]["all"] = (clone $ghostBase)->count();
+              $probe1282["destination_ghost_session_rows"]["after_deploy"] = (clone $ghostBase)
+                ->where("cs.created_at", ">=", "2026-07-18 11:45:00")->count();
+              $probe1282["decision_grade"] = true;
+              $probe1282["error"] = null;
+            }} catch (\Throwable $e) {{
+              $probe1282["decision_grade"] = false;
+              $probe1282["error"] = get_class($e);
+            }}
+          }}
           $probe249 = [
             "applicable" => false, "read_only" => true, "decision_grade" => false,
             "reason" => "No target-correct billing probe is configured yet; Founder-approved mapping is required before any billing evidence or mutation",
@@ -309,11 +412,12 @@ jobs:
           $targetProbe = match ($bugId) {{
             208 => $probe208,
             241 => $probe241,
+            201, 202 => $probe1282,
             247 => $probe247,
             249 => $probe249,
             default => null,
           }};
-          $decisionGradeRequired = in_array($bugId, [208, 241, 247, 249], true);
+          $decisionGradeRequired = in_array($bugId, [201, 202, 208, 241, 247, 249], true);
           $decisionGrade = $targetProbe !== null && $targetProbe["applicable"] === true
             && $targetProbe["decision_grade"] === true;
           $decisionGradeReason = $decisionGrade
@@ -347,6 +451,7 @@ jobs:
               "probe_results" => [
                 "probe_208_package_recompute" => $probe208,
                 "probe_241_teacher_projection" => $probe241,
+                "probe_1282_cross_teacher_drag" => $probe1282,
                 "probe_247_calendar_capacity" => $probe247,
                 "probe_249_shared_subject_payment" => $probe249,
               ],
