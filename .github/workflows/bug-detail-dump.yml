@@ -300,8 +300,53 @@ jobs:
           }}
           $probe247 = [
             "applicable" => false, "read_only" => true, "decision_grade" => false,
-            "reason" => "No target-correct calendar probe is configured yet; collect fresh case identifiers before adding one",
+            "reason" => "Allowlisted only for in-app bug 247",
           ];
+          if ($bugId === 247) {{
+            // #247-specific production acceptance probe. Invoke the same
+            // read-only capacity service used by the availability endpoint for
+            // the exact historical window. Emit only aggregate counts and
+            // capacity values; never export row, student, teacher, or class IDs.
+            $probe247["applicable"] = true;
+            $probe247["case"] = "mixed_capacity_teacher_availability_247";
+            $probe247["target_window"] = ["date" => "2026-08-29", "start" => "13:00", "end" => "15:00"];
+            $summarize247 = function (array $slots) {{
+              $matching = collect($slots)->filter(function ($slot) {{
+                return (string)($slot["start_time"] ?? "") === "13:00"
+                  && (string)($slot["end_time"] ?? "") === "15:00";
+              }})->values();
+              $oneOnThree = $matching->filter(fn ($slot) => (string)($slot["class_type"] ?? "") === "one_on_three");
+              $expected = $oneOnThree->filter(function ($slot) {{
+                return (int)($slot["campus_id"] ?? 0) === 9
+                  && (int)($slot["student_count"] ?? -1) === 1
+                  && (int)($slot["remaining_capacity"] ?? -1) === 2;
+              }});
+              return [
+                "slot_count" => count($slots),
+                "exact_window_slot_count" => $matching->count(),
+                "exact_window_one_on_three_count" => $oneOnThree->count(),
+                "exact_window_campus_9_count" => $matching->filter(fn ($slot) => (int)($slot["campus_id"] ?? 0) === 9)->count(),
+                "expected_capacity_match_count" => $expected->count(),
+                "one_on_three_remaining_capacity_min" => $oneOnThree->isEmpty() ? null : (int)$oneOnThree->min(fn ($slot) => (int)($slot["remaining_capacity"] ?? 0)),
+                "one_on_three_remaining_capacity_max" => $oneOnThree->isEmpty() ? null : (int)$oneOnThree->max(fn ($slot) => (int)($slot["remaining_capacity"] ?? 0)),
+              ];
+            }};
+            try {{
+              $service247 = app(\App\Services\SubstituteService::class);
+              $withReportedStudent = $service247->collectTeacherBusySlotsWithCapacity(30, "2026-08-29", [], null);
+              $excludingReportedStudent = $service247->collectTeacherBusySlotsWithCapacity(30, "2026-08-29", [], 271);
+              $probe247["with_reported_student"] = $summarize247($withReportedStudent);
+              $probe247["excluding_reported_student"] = $summarize247($excludingReportedStudent);
+              $withExpected = (int)$probe247["with_reported_student"]["expected_capacity_match_count"] > 0;
+              $withoutExpected = (int)$probe247["excluding_reported_student"]["expected_capacity_match_count"] > 0;
+              $probe247["same_expected_capacity_match"] = $withExpected && $withoutExpected;
+              $probe247["decision_grade"] = $probe247["same_expected_capacity_match"];
+              $probe247["error"] = null;
+            }} catch (\Throwable $e) {{
+              $probe247["decision_grade"] = false;
+              $probe247["error"] = get_class($e).": ".substr((string)$e->getMessage(), 0, 300);
+            }}
+          }}
           $probe1282 = [
             "applicable" => false, "read_only" => true, "decision_grade" => false,
             "reason" => "No target-correct cross-teacher drag probe is configured",
