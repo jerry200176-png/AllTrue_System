@@ -1,0 +1,159 @@
+name: TD-076 collision evidence scan (read-only)
+
+# R0 evidence for issue #1995. This workflow reuses the deployed TD-076 plan,
+# then reads only bounded, PII-minimized relation metadata for each collision.
+# It has no repair, execute-backfill, cutover, or Telegram/API write path.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  evidence:
+    name: Production TD-076 collision evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Setup pinned SSH identity
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_HOST_KEY: ${{ secrets.PI_HOST_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$PI_SSH_KEY"
+          test -n "$PI_HOST_KEY"
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          printf '%s\n' "$PI_HOST_KEY" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/deploy_key ~/.ssh/known_hosts
+
+      - name: Collect aggregate-only collision evidence
+        env:
+          PI_USER: ${{ secrets.PI_USER }}
+          PI_HOST: ${{ secrets.PI_HOST }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key \
+            -o BatchMode=yes \
+            -o ConnectTimeout=20 \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${PI_USER}@${PI_HOST}" bash <<'REMOTE' > /tmp/td076-collision-evidence.json
+          set -euo pipefail
+          cd /home/admin/backend
+          php artisan tinker --execute='
+          $plan = app(\App\Services\BackfillScheduleOccurrenceIdentityService::class)->plan();
+          $collisions = collect($plan["collisions"] ?? []);
+          $rows = $collisions->flatMap(static fn ($group) => $group["rows"] ?? [])->values();
+          $ids = $rows->pluck("id")->map(static fn ($id) => (int) $id)->unique()->values();
+          $courseIds = $rows->pluck("student_course_id")->map(static fn ($id) => (int) $id)->unique()->values();
+          $dates = $rows->pluck("schedule_date")->filter()->values();
+          $minDate = $dates->min();
+          $maxDate = $dates->max();
+          $schedules = \Illuminate\Support\Facades\DB::table("schedules")
+              ->whereIn("id", $ids)
+              ->get(["id", "student_course_id", "original_schedule_id", "status", "type"])
+              ->keyBy("id");
+          $sessions = \Illuminate\Support\Facades\DB::table("ClassSession")
+              ->whereIn("StudentClassID", $courseIds)
+              ->when($minDate !== null, static fn ($q) => $q->whereDate("SessionDate", ">=", $minDate))
+              ->when($maxDate !== null, static fn ($q) => $q->whereDate("SessionDate", "<=", $maxDate))
+              ->get(["id", "StudentClassID", "SessionDate", "StartTime", "Status"]);
+          $sessionIds = $sessions->pluck("id")->values();
+          $learning = $sessionIds->isEmpty() ? collect() : \Illuminate\Support\Facades\DB::table("LearningRecord")
+              ->whereIn("ClassSessionID", $sessionIds)->get(["ClassSessionID", "Status", "VoidedAt"]);
+          $attendance = $sessionIds->isEmpty() ? collect() : \Illuminate\Support\Facades\DB::table("StudentSingIn")
+              ->whereIn("ClassSessionID", $sessionIds)->get(["ClassSessionID", "Status", "VoidedAt"]);
+          $logs = $ids->isEmpty() ? collect() : \Illuminate\Support\Facades\DB::table("schedule_change_log")
+              ->whereIn("schedule_id", $ids)->get(["schedule_id", "reason"]);
+          $invoices = $courseIds->isEmpty() ? collect() : \Illuminate\Support\Facades\DB::table("Invoice")
+              ->whereIn("StudentClassID", $courseIds)->get(["id", "StudentClassID", "Status"]);
+          $payments = $courseIds->isEmpty() ? collect() : \Illuminate\Support\Facades\DB::table("Payment as p")
+              ->join("Invoice as i", "i.id", "=", "p.InvoiceID")
+              ->whereIn("i.StudentClassID", $courseIds)->get(["i.StudentClassID as course_id", "p.id"]);
+          $sessionByKey = $sessions->groupBy(static fn ($s) => (int) $s->StudentClassID . "|" . substr((string) $s->SessionDate, 0, 10) . "|" . substr((string) $s->StartTime, 0, 5));
+          $learningBySession = $learning->groupBy(static fn ($r) => (int) $r->ClassSessionID);
+          $attendanceBySession = $attendance->groupBy(static fn ($r) => (int) $r->ClassSessionID);
+          $logsBySchedule = $logs->groupBy(static fn ($r) => (int) $r->schedule_id);
+          $invoicesByCourse = $invoices->groupBy(static fn ($r) => (int) $r->StudentClassID);
+          $paymentsByCourse = $payments->groupBy(static fn ($r) => (int) $r->course_id);
+          $groups = [];
+          foreach ($collisions as $index => $group) {
+              $groupRows = collect($group["rows"] ?? []);
+              $scheduled = $groupRows->filter(static fn ($r) => strtolower((string) ($r["status"] ?? "")) === "scheduled")->count();
+              $shape = $groupRows->pluck("status")->map(static fn ($s) => strtolower((string) $s))->sort()->implode("+");
+              $evidenceRows = $groupRows->map(static function (array $row) use ($schedules, $sessionByKey, $learningBySession, $attendanceBySession, $logsBySchedule) {
+                  $course = (int) ($row["student_course_id"] ?? 0);
+                  $currentKey = $course . "|" . substr((string) ($row["schedule_date"] ?? ""), 0, 10) . "|" . substr((string) ($row["start_time"] ?? ""), 0, 5);
+                  $identityKey = $course . "|" . (string) ($row["identity_date"] ?? "") . "|" . (string) ($row["identity_time"] ?? "");
+                  $current = $sessionByKey->get($currentKey, collect());
+                  $identity = $sessionByKey->get($identityKey, collect());
+                  $identitySessionIds = $identity->pluck("id")->map(static fn ($id) => (int) $id);
+                  $lr = $identitySessionIds->flatMap(static fn ($id) => $learningBySession->get($id, collect()));
+                  $si = $identitySessionIds->flatMap(static fn ($id) => $attendanceBySession->get($id, collect()));
+                  $schedule = $schedules->get((int) ($row["id"] ?? 0));
+                  return [
+                      "schedule_id" => (int) ($row["id"] ?? 0),
+                      "student_course_id" => $course,
+                      "status" => strtolower((string) ($row["status"] ?? "")),
+                      "schedule_date" => $row["schedule_date"] ?? null,
+                      "start_time" => substr((string) ($row["start_time"] ?? ""), 0, 5),
+                      "identity_date" => $row["identity_date"] ?? null,
+                      "identity_time" => $row["identity_time"] ?? null,
+                      "original_schedule_id" => $schedule ? (int) ($schedule->original_schedule_id ?? 0) : null,
+                      "current_class_session_count" => $current->count(),
+                      "identity_class_session_count" => $identity->count(),
+                      "identity_class_session_statuses" => $identity->pluck("Status")->map(static fn ($s) => strtolower((string) $s))->countBy()->all(),
+                      "identity_learning_record_count" => $lr->count(),
+                      "identity_live_learning_record_count" => $lr->filter(static fn ($r) => $r->VoidedAt === null)->count(),
+                      "identity_attendance_count" => $si->count(),
+                      "identity_live_attendance_count" => $si->filter(static fn ($r) => $r->VoidedAt === null)->count(),
+                      "schedule_change_log_count" => $logsBySchedule->get((int) ($row["id"] ?? 0), collect())->count(),
+                  ];
+              })->values()->all();
+              $course = (int) ($groupRows->first()["student_course_id"] ?? 0);
+              $groups[] = [
+                  "collision_index" => (int) $index + 1,
+                  "student_course_id" => $course,
+                  "identity_date" => $groupRows->first()["identity_date"] ?? null,
+                  "identity_time" => $groupRows->first()["identity_time"] ?? null,
+                  "shape" => $shape,
+                  "classification" => $scheduled === 0 ? "leave_only" : ($scheduled === 1 ? "leave_plus_scheduled" : "scheduled_collision"),
+                  "keeper_decision" => "UNDECIDED_REQUIRES_CHAIN_AND_OWNER_REVIEW",
+                  "invoice_count" => $invoicesByCourse->get($course, collect())->count(),
+                  "payment_count" => $paymentsByCourse->get($course, collect())->count(),
+                  "rows" => $evidenceRows,
+              ];
+          }
+          $scheduledGroups = collect($groups)->filter(static fn ($g) => $g["classification"] === "scheduled_collision")->count();
+          echo json_encode([
+              "read_only" => true,
+              "generated_at" => gmdate("c"),
+              "source" => "schedules:backfill-occurrence-identity plan()",
+              "summary" => [
+                  "stampable" => (int) ($plan["candidates"] ? count($plan["candidates"]) : 0),
+                  "collision_groups" => count($groups),
+                  "collision_rows" => $rows->count(),
+                  "scheduled_collision_groups" => $scheduledGroups,
+                  "groups_with_keeper_decision" => 0,
+              ],
+              "safe_next_step" => "Per-group chain and owner review; no execute path is authorized by this artifact.",
+              "groups" => $groups,
+          ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), PHP_EOL;
+          '
+          REMOTE
+          test -s /tmp/td076-collision-evidence.json
+          grep -q '"read_only": true' /tmp/td076-collision-evidence.json
+
+      - name: Upload collision evidence artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: td076-collision-evidence
+          path: /tmp/td076-collision-evidence.json
+          retention-days: 90
+
+      - name: Remove local key material and result
+        if: always()
+        run: rm -f ~/.ssh/deploy_key /tmp/td076-collision-evidence.json
