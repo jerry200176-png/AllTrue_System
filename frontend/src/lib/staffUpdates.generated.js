@@ -4,6 +4,38 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-02-course-rate-unit-consistency",
+    "publishedAt": "2026-09-02",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "課程查找計費單位同步",
+    "summary": "按時計費課程現在會顯示每小時費用並正確計算總額。",
+    "items": [
+      "編輯課程切換按堂／按時計費後，課程查找會同步顯示正確的每堂或每小時單價。",
+      "按時計費總費用會依課程實際總時數計算；按堂課程仍依購買堂數計算。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "編輯課程切換按堂／按時計費後，課程查找會同步顯示正確的每堂或每小時單價。",
+          "按時計費總費用會依課程實際總時數計算；按堂課程仍依購買堂數計算。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-02:course-rate-unit-consistency"
+    ],
+    "date": "2026-09-02",
+    "version": "2026.09.02"
+  },
+  {
     "id": "staff-2026-09-02-receipt-expected-session-copy",
     "publishedAt": "2026-09-02",
     "effectiveAt": null,

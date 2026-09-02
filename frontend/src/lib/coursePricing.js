@@ -44,11 +44,31 @@ export const getPerSessionFee = (course) => {
 };
 
 export const getRateUnit = (course) => {
-  return (course?.rate_unit || 'session');
+  return String(course?.rate_unit || 'session').toLowerCase() === 'hour' ? 'hour' : 'session';
 };
 
 export const getRateLabel = (course) => {
   return getRateUnit(course) === 'hour' ? '每小時費用' : '單堂費用';
+};
+
+export const getRateUnitDisplayLabel = (course) => (
+  getRateUnit(course) === 'hour' ? '每小時' : '每堂'
+);
+
+const getCourseTotalHours = (course, purchased) => {
+  const persistedTotalHours = toNumber(course?.total_hours ?? course?.TotalHours);
+  if (persistedTotalHours != null && persistedTotalHours > 0) return persistedTotalHours;
+
+  const slots = Array.isArray(course?.day_time_slots) ? course.day_time_slots : [];
+  const globalDur = Number(course?.duration_hours) || 2;
+  if (slots.length > 0) {
+    const hoursPerOccurrence = slots.reduce(
+      (total, slot) => total + (Number(slot?.duration_hours) || globalDur),
+      0,
+    ) / slots.length;
+    return hoursPerOccurrence * purchased;
+  }
+  return globalDur * purchased;
 };
 
 /**
@@ -83,14 +103,19 @@ export const getCourseTotalFee = (course) => {
   const paymentType = String(course?.payment_type || '').toLowerCase();
   const purchased = Math.max(0, Number(course?.sessions_purchased ?? course?.SessionCount ?? 0) || 0);
 
-  // AllTrue pricing contract:
-  // session payment mode always treats Rate as per-session fee.
+  const rateUnit = getRateUnit(course);
+
+  // Payment cadence and price unit are separate dimensions. A session-paid
+  // course may explicitly be priced by the hour.
   if (paymentType === 'session') {
+    if (rateUnit === 'hour') {
+      const rate = toNumber(course.rate_per_30min ?? course.Rate) ?? 0;
+      return rate > 0 ? Math.round(rate * getCourseTotalHours(course, purchased)) : 0;
+    }
     const perSession = getPerSessionFee(course);
     return perSession * purchased;
   }
 
-  const rateUnit = getRateUnit(course);
   const rate = toNumber(course.rate_per_30min ?? course.Rate) ?? 0;
 
   if (rateUnit === 'hour' && rate > 0) {
@@ -111,4 +136,3 @@ export const getCourseTotalFee = (course) => {
   const perSession = getPerSessionFee(course);
   return perSession * purchased;
 };
-

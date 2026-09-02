@@ -9,12 +9,13 @@ on:
         type: choice
         options:
           - schedule_241
+          - billing_huang
           - billing_linlai
           - parent_lou
       student_name:
         description: 'Student name for billing probe (PII is not written to the artifact)'
         required: false
-        default: '林奕安'
+        default: ''
         type: string
       subject_name:
         description: 'Subject name for billing probe (PII is not written to the artifact)'
@@ -69,9 +70,9 @@ jobs:
           import os
           import json
           case = os.environ['CASE_KEY']
-          if case not in {'schedule_241', 'billing_linlai', 'parent_lou'}:
+          if case not in {'schedule_241', 'billing_huang', 'billing_linlai', 'parent_lou'}:
               raise SystemExit('unsupported case')
-          target_student_name = os.environ.get('TARGET_STUDENT_NAME', '林奕安') or '林奕安'
+          target_student_name = os.environ.get('TARGET_STUDENT_NAME') or ('黃品皓' if case == 'billing_huang' else '林奕安')
           target_subject_name = os.environ.get('TARGET_SUBJECT_NAME', '數學') or '數學'
           print(f'''<?php
           $case = {case!r};
@@ -158,6 +159,36 @@ jobs:
                 'target_slot_visible'=>($materialized !== [] || $projectedMatches !== [])];
             }}
             $out['teacher_results'] = $teacherResults;
+          }} elseif ($case === 'billing_huang') {{
+            $campusId = 9;
+            $students = $db::table('Student')->where('CampusID', $campusId)
+              ->whereRaw('TRIM(name) = ?', [$targetStudentName])
+              ->get(['id', 'CampusID as campus_id']);
+            $studentIds = $students->pluck('id')->map(fn ($id) => (int)$id)->all();
+            $classes = $db::table('StudentClass as sc')->whereIn('sc.StudentID', $studentIds)
+              ->orderBy('sc.ID')->get(['sc.ID as class_id', 'sc.StudentID as student_id', 'sc.SubjectID as subject_id',
+                'sc.Rate as rate', 'sc.rate_unit as rate_unit', 'sc.SessionCount as session_count',
+                'sc.TotalHours as total_hours', 'sc.SessionDuration as session_duration', 'sc.Charge as charge',
+                'sc.Paid as paid', 'sc.Stop as stop', 'sc.ScheduleMode as schedule_mode']);
+            $classIds = $classes->pluck('class_id')->map(fn ($id) => (int)$id)->all();
+            $sessionHours = $classIds === [] ? collect() : $db::table('ClassSession')
+              ->whereIn('StudentClassID', $classIds)->whereIn('Status', ['scheduled', 'attended', 'completed'])
+              ->selectRaw('StudentClassID as class_id, ROUND(SUM(TIMESTAMPDIFF(MINUTE, StartTime, EndTime)) / 60, 2) as actual_hours')
+              ->groupBy('StudentClassID')->pluck('actual_hours', 'class_id');
+            $out['campus_id'] = $campusId;
+            $out['student_count'] = count($studentIds);
+            $out['target_class_count'] = count($classIds);
+            $out['target_classes'] = $classes->map(fn ($r) => [
+              'class_id'=>(int)$r->class_id, 'student_id'=>(int)$r->student_id, 'subject_id'=>(int)$r->subject_id,
+              'rate'=>(float)$r->rate, 'rate_unit'=>(string)($r->rate_unit ?: 'session'),
+              'session_count'=>(int)($r->session_count ?? 0), 'total_hours'=>(float)($r->total_hours ?? 0),
+              'session_duration'=>(int)($r->session_duration ?? 0), 'charge'=>(float)$r->charge,
+              'expected_charge'=>(string)($r->rate_unit ?: 'session') === 'hour'
+                ? (float)round((float)$r->rate * (float)($r->total_hours ?? 0))
+                : (float)round((float)$r->rate * (int)($r->session_count ?? 0)),
+              'actual_session_hours'=>(float)($sessionHours->get($r->class_id) ?? 0),
+              'paid'=>(int)$r->paid, 'stop'=>(int)$r->stop, 'schedule_mode'=>(string)$r->schedule_mode,
+            ])->values()->all();
           }} elseif ($case === 'billing_linlai') {{
             $students = $db::table('Student')->where('CampusID', 9)->where('name', 'like', '%' . $targetStudentName . '%')
               ->get(['id', 'CampusID as campus_id']);

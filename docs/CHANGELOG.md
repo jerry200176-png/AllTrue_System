@@ -1,3 +1,9 @@
+## 2026-09-02 — fix(billing): 課程查找同步按堂／按時計費單位
+<!-- release-notes: staff_update=staff-2026-09-02-course-rate-unit-consistency -->
+- 修正課程編輯由按堂切換為按時計費後，`rate_unit` 未完整送回與總費用仍按堂計算的問題。
+- 課程查找現在依最新計費單位顯示「每堂／每小時」與正確總費用；按堂課程計價維持不變。
+- 未新增資料庫欄位、不批次改寫既有付款資料；補上前後端 full-chain regression test。
+
 ## 2026-09-02 — fix(billing): 電子收據預計堂次文案恢復
 <!-- release-notes: staff_update=staff-2026-09-02-receipt-expected-session-copy -->
 - 電子收據的未實際上課、未取消堂次恢復顯示「（預計）」；已上課堂次與其他排課／點名狀態不變。

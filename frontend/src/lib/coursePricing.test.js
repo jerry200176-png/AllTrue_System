@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
-import { estimateCreateCharge } from './coursePricing.js';
+import {
+  estimateCreateCharge,
+  getCourseTotalFee,
+  getRateUnitDisplayLabel,
+} from './coursePricing.js';
 
 // session 模式：Charge = round(price × sessions)
 assert.deepEqual(
@@ -46,5 +50,29 @@ assert.deepEqual(
   { charge: 0, totalHours: 0 },
   '堂數為 0 回傳 0'
 );
+
+// Existing course lookup row: payment cadence is session, but explicit price
+// unit is hourly. The total must use persisted course hours, not session count.
+const hourlyCourse = {
+  payment_type: 'session',
+  rate_unit: 'hour',
+  rate_per_30min: 750,
+  sessions_purchased: 8,
+  total_hours: 16,
+  duration_hours: 2,
+};
+assert.equal(getRateUnitDisplayLabel(hourlyCourse), '每小時');
+assert.equal(getCourseTotalFee(hourlyCourse), 12000, '每小時 750 × 16 小時 = 12,000');
+
+const sessionCourse = {
+  payment_type: 'session',
+  rate_unit: 'session',
+  rate_per_30min: 750,
+  sessions_purchased: 8,
+  total_hours: 16,
+  duration_hours: 2,
+};
+assert.equal(getRateUnitDisplayLabel(sessionCourse), '每堂');
+assert.equal(getCourseTotalFee(sessionCourse), 6000, '每堂 750 × 8 堂 = 6,000');
 
 console.error('coursePricing.test: OK');
