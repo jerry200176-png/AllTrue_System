@@ -131,6 +131,47 @@ jobs:
             CRITICALS="${CRITICALS}🔴 ${SCHED_LOG} 不存在 — Laravel scheduler 無 driver（見 #1127）\n"
           fi
 
+          # ── 3b.1. Cache lock permission diagnostic (#2327) ─────────────
+          # Read-only by contract: inspect metadata and use test -w under the
+          # observed/probable runtime identities. Never create, truncate, or
+          # delete a cache file from a health check.
+          CACHE_ROOT="/home/admin/backend/storage/framework/cache"
+          CACHE_PATHS=(
+            "$CACHE_ROOT"
+            "$CACHE_ROOT/data"
+            "$CACHE_ROOT/data/d0/cc"
+          )
+          SCHEDULER_USER="$(id -un)"
+          echo "cache_permission_diagnostic=read-only"
+          echo "scheduler_shell_user=${SCHEDULER_USER}"
+          for CACHE_PATH in "${CACHE_PATHS[@]}"; do
+            if [ ! -e "$CACHE_PATH" ]; then
+              echo "cache_path=${CACHE_PATH} exists=false"
+              continue
+            fi
+            stat -c 'cache_path=%n exists=true mode=%a owner=%U group=%G' "$CACHE_PATH"
+            for PROBE_USER in "$SCHEDULER_USER" www-data; do
+              if ! id "$PROBE_USER" >/dev/null 2>&1; then
+                echo "cache_access user=${PROBE_USER} path=${CACHE_PATH} result=identity_missing"
+                continue
+              fi
+              if [ "$PROBE_USER" = "$SCHEDULER_USER" ]; then
+                if test -w "$CACHE_PATH"; then
+                  echo "cache_access user=${PROBE_USER} path=${CACHE_PATH} result=writable"
+                else
+                  echo "cache_access user=${PROBE_USER} path=${CACHE_PATH} result=not_writable"
+                  WARNINGS="${WARNINGS}⚠️ cache path not writable by scheduler shell user ${PROBE_USER}: ${CACHE_PATH}\n"
+                fi
+              elif command -v sudo >/dev/null 2>&1 && sudo -n -u "$PROBE_USER" test -w "$CACHE_PATH" 2>/dev/null; then
+                echo "cache_access user=${PROBE_USER} path=${CACHE_PATH} result=writable"
+              elif command -v sudo >/dev/null 2>&1; then
+                echo "cache_access user=${PROBE_USER} path=${CACHE_PATH} result=not_writable_or_probe_denied"
+              else
+                echo "cache_access user=${PROBE_USER} path=${CACHE_PATH} result=probe_unavailable"
+              fi
+            done
+          done
+
           # ── 3c. 夜間任務輸出證據（#1127 / Phase 1）──────────────────
           # Exit code = execution_healthy only. Reconciliation residuals → WARNINGS
           # (must not conflate no-run / failed job with expected zero-work / data baseline).
