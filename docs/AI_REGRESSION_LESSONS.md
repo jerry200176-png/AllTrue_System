@@ -6,6 +6,14 @@ last_reviewed: 2026-06-06
 
 # AI／工程師防再犯紀錄（必讀）
 
+### R132. 課程查找 billing unit 必須從編輯 round-trip 到總額計算（2026-09-02）
+
+- **現象**：大安黃品皓課程切換為每小時 750 後，課程查找仍顯示「每堂 750」，總費用也以堂數計算。
+- **根因層級**：F7 繳費金額／狀態雙真相家族的架構設計缺口；`rate_unit` 已存在於 DB，但課程查找編輯 hydration／PUT payload 遺漏，後端只在 Rate／堂數變更時重算，前端又以 `payment_type=session` 蓋掉 hour 單位。
+- **強制規則**：billing cadence 與 price unit 必須分開；`rate_unit` 是 canonical contract，須從 DB → API → 編輯 round-trip → UI label → total fee calculator 全程保留。`hour` 使用實際總課程時數，`session` 使用購買堂數；不得只改文字或 hardcode 個案。
+- **測試必補**：`StudentClassRateUnitUpdateTest` 覆蓋 PUT／DB／index 的 hour 與 session 對照；`coursePricing.test.js` 覆蓋每小時 750 × 16 小時與每堂 750 × 8 堂；課程查找 contract test 鎖定 form payload 與 label helper。
+- **參考**：#509、#798、§R76；Stripe Price 將 unit amount 與 quantity 的語意分離，AllTrue 對應為 `rate_unit` 與計價數量 basis。
+
 ### R131. 新增課程「去加購」必須同時認 `id` 與 `existing_course_id`（2026-08-29）
 
 - **現象**：學生管理 → 新增課程 → 衝突視窗點「去加購」沒有反應，視窗直接關掉。
