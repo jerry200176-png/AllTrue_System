@@ -20,6 +20,7 @@ class TelegramWebhookPresenceAuditTest(unittest.TestCase):
         self.assertIn('PI_HOST: ${{ secrets.PI_HOST }}', self.workflow)
         self.assertIn("StrictHostKeyChecking=yes", self.workflow)
         self.assertIn("actions/upload-artifact@v4", self.workflow)
+        self.assertEqual(self.workflow.count("REMOTE"), 2)
 
     def test_reports_only_presence_metadata_for_campus_15(self):
         self.assertIn('"campus_15_has_telegram_token"', self.workflow)
