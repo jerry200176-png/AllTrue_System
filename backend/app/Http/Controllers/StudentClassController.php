@@ -6108,7 +6108,7 @@ class StudentClassController extends Controller
         $oldKeys = array_values(array_unique(array_map($slotKey, $previousSlots)));
         $newKeys = array_values(array_unique(array_map($slotKey, $newSlots)));
 
-        return $newKeys !== [] && array_diff($newKeys, $oldKeys) === [];
+        return count(array_diff($newKeys, $oldKeys)) === 0;
     }
 
     /**
