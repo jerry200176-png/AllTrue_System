@@ -1,0 +1,41 @@
+id: TKT-20260902-111131-V7A0
+title: 'Implement #2327 cache permission diagnostic'
+intent: 'Implement #2327 cache permission diagnostic'
+kind: task
+parent_id: INT-20260902-111122-E6YJ
+boundary: No production filesystem writes, permission changes, migrations, data repair,
+  secret access, or application behavior changes.
+success_condition: pi-health contains a read-only metadata and test-w check for the
+  scheduler cache path; syntax and required CI checks pass.
+priority: 1
+labels:
+- issue-2327
+scope:
+  allow:
+  - .github/workflows/pi-health.yml
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - backend/**
+  - frontend/**
+budgets:
+  max_files_changed: 2
+  max_loc_changed: 120
+checks:
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+- vendor/bin/phpunit
+type: feature
+status: todo
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-02T11:11:31+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default
