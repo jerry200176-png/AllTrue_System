@@ -40,6 +40,8 @@ class WeeklyBugSlaReportContractTest(unittest.TestCase):
     def test_remote_command_is_read_only(self):
         self.assertIn("bash <<'REMOTE'", self.workflow)
         self.assertIn("\n          REMOTE\n", self.workflow)
+        self.assertIn('REPORT="$(ssh -i ~/.ssh/deploy_key', self.workflow)
+        self.assertIn('printf \'%s\\n\' "$REPORT" | python3 -c', self.workflow)
         for forbidden in ("->update(", "->delete(", "->insert(", "close-stale", "reporter-verify", "cache:clear"):
             self.assertNotIn(forbidden, self.workflow)
         self.assertIn('source" => "production:bug_reports+bug_report_status_logs"', self.workflow)
