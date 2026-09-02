@@ -390,7 +390,7 @@ jobs:
                   ->where(function ($q) use ($classIds250) {{
                     $q->whereIn("source_student_class_id", $classIds250)
                       ->orWhereIn("target_student_class_id", $classIds250);
-                  })->count();
+                  }})->count();
               }}
 
               $classSummaries250 = [];
