@@ -4155,11 +4155,15 @@ class StudentClassController extends Controller
             SessionDeductionService::recomputeCounters((int) $source->ID);
             SessionDeductionService::recomputeCounters((int) $target->ID);
 
+            $source->refresh();
+            $scheduleSync = $this->extendSessionsAfterTransfer($source);
+
             return response()->json([
                 'message' => "已轉移 " . count($foundIds) . " 堂課程紀錄（含評量／點名／扣堂台帳），兩邊堂數已同步。",
                 'transferred_session_ids' => $foundIds,
                 'source_course_id' => (int) $source->ID,
                 'target_course_id' => (int) $target->ID,
+                'schedule_sync' => $scheduleSync,
             ]);
             });
         } catch (QueryException $exception) {
@@ -4177,6 +4181,124 @@ class StudentClassController extends Controller
 
             throw $exception;
         }
+    }
+
+    /**
+     * Keep a count-mode source course's schedule commitment after used sessions
+     * are transferred to another contract. This is intentionally append-only:
+     * transferred dates now belong to the target contract and must not be
+     * recreated as historical source rows.
+     *
+     * @return array{created_sessions:int,target_session_count:int,active_session_count:int,reason?:string}
+     */
+    private function extendSessionsAfterTransfer(StudentClass $studentClass): array
+    {
+        if ((string) ($studentClass->ScheduleMode ?? 'count') !== 'count'
+            || (int) ($studentClass->Stop ?? 0) !== 0
+            || (string) ($studentClass->scheduling_policy ?? 'auto_recurrence') === ManualSessionBookingService::POLICY
+        ) {
+            return [
+                'created_sessions' => 0,
+                'target_session_count' => max(0, (int) ($studentClass->SessionCount ?? 0)),
+                'active_session_count' => 0,
+                'reason' => 'source_not_auto_recurrence_count_mode',
+            ];
+        }
+
+        $targetCount = max(0, (int) ($studentClass->SessionCount ?? 0));
+        $slots = $this->resolveScheduleSlotsForRebuild($studentClass);
+        $nonQuotaStatuses = ['cancelled', 'leave', 'leave_adjusted', 'excused'];
+        $existingSessions = ClassSession::query()
+            ->where('StudentClassID', (int) $studentClass->getAttribute('ID'))
+            ->orderBy('SessionDate')
+            ->orderBy('StartTime')
+            ->orderBy('id')
+            ->get();
+        $activeCount = $existingSessions->filter(function ($session) use ($nonQuotaStatuses): bool {
+            return !in_array(strtolower((string) ($session->Status ?? '')), $nonQuotaStatuses, true);
+        })->count();
+
+        if ($targetCount <= 0 || empty($slots) || $activeCount >= $targetCount) {
+            return [
+                'created_sessions' => 0,
+                'target_session_count' => $targetCount,
+                'active_session_count' => $activeCount,
+                'reason' => empty($slots) ? 'fixed_schedule_missing' : 'already_at_target',
+            ];
+        }
+
+        $missing = $targetCount - $activeCount;
+        $lastSession = $existingSessions->sortBy([
+            ['SessionDate', 'desc'],
+            ['StartTime', 'desc'],
+            ['id', 'desc'],
+        ])->first();
+        $today = Carbon::today()->startOfDay();
+        $startFrom = $lastSession
+            ? Carbon::parse($lastSession->SessionDate)->addDay()->startOfDay()
+            : Carbon::parse($studentClass->StartDate ?? $today->toDateString())->startOfDay();
+        if ($startFrom->lt($today)) {
+            $startFrom = $today->copy();
+        }
+
+        $validWeekdays = array_values(array_unique(array_map(
+            fn (array $slot): int => self::isoWeekday((int) $slot['weekday']),
+            $slots
+        )));
+        $guard = 0;
+        while (!in_array((int) $startFrom->dayOfWeekIso, $validWeekdays, true) && $guard < 7) {
+            $startFrom->addDay();
+            $guard++;
+        }
+        if (!in_array((int) $startFrom->dayOfWeekIso, $validWeekdays, true)) {
+            return [
+                'created_sessions' => 0,
+                'target_session_count' => $targetCount,
+                'active_session_count' => $activeCount,
+                'reason' => 'fixed_schedule_weekday_missing',
+            ];
+        }
+
+        $expectedSessions = $this->buildSessionsForCount(
+            (int) $studentClass->getAttribute('ID'),
+            $startFrom->toDateString(),
+            $missing,
+            $slots,
+            max(30, (int) ($studentClass->SessionDuration ?? 120))
+        );
+        $occupiedKeys = [];
+        foreach ($existingSessions as $session) {
+            $date = $this->normalizeDateString($session->SessionDate ?? null);
+            $start = substr((string) ($session->StartTime ?? ''), 0, 5);
+            if ($date && $start !== '') {
+                $occupiedKeys[$date . '|' . $start] = true;
+            }
+        }
+
+        $created = 0;
+        foreach ($expectedSessions as $session) {
+            $date = $this->normalizeDateString($session['SessionDate'] ?? null);
+            $start = substr((string) ($session['StartTime'] ?? ''), 0, 5);
+            if (!$date || $start === '' || isset($occupiedKeys[$date . '|' . $start])) {
+                continue;
+            }
+            $session['Status'] = 'scheduled';
+            $session['Note'] = '系統補建堂次（轉移後維持原合約堂數）';
+            $result = app(ClassSessionMaterializationService::class)->upsertSlot($session);
+            if (($result['created'] ?? false) === true) {
+                $created++;
+            }
+            $occupiedKeys[$date . '|' . $start] = true;
+            if ($created >= $missing) {
+                break;
+            }
+        }
+
+        return [
+            'created_sessions' => $created,
+            'target_session_count' => $targetCount,
+            'active_session_count' => $activeCount + $created,
+        ];
     }
 
     /**

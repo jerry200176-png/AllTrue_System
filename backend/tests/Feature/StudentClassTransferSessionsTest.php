@@ -19,9 +19,85 @@ use Tests\TestCase;
 // StudentClass so a teacher does not have to refill evaluations after a
 // course split. Deliberately never touches SessionCount/Charge/deduction
 // fields on either course — those stay BillingContractLockGuard's job.
+use Carbon\Carbon;
+
 class StudentClassTransferSessionsTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_transfer_replenishes_source_schedule_at_the_tail_without_recreating_transferred_dates(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-02 08:00:00', 'Asia/Taipei'));
+
+        try {
+            $token = $this->createDirectorToken([1]);
+            $student = $this->createStudent(1);
+            $source = $this->createCourse($student->id, 1, [
+                'StartDate' => '2026-08-01',
+                'SessionCount' => 4,
+                'RemainingSessions' => 4,
+                'week' => 6,
+                'time' => '15:00:00',
+            ]);
+            $target = $this->createCourse($student->id, 1);
+            $sessionIds = [];
+            foreach (['2026-08-01', '2026-08-08', '2026-08-15', '2026-08-22'] as $date) {
+                $sessionIds[] = $this->createClassSession((int) $source->ID, $date, 'attended', '15:00', '17:00');
+            }
+
+            $response = $this->postJson(
+                "/api/v1/student-classes/{$source->ID}/transfer-sessions",
+                ['session_ids' => [$sessionIds[0], $sessionIds[1]], 'target_student_class_id' => $target->ID],
+                ['Authorization' => "Bearer {$token}"]
+            );
+
+            $response->assertOk()
+                ->assertJsonPath('schedule_sync.created_sessions', 2)
+                ->assertJsonPath('schedule_sync.target_session_count', 4)
+                ->assertJsonPath('schedule_sync.active_session_count', 4);
+
+            $activeDates = DB::table('ClassSession')
+                ->where('StudentClassID', $source->ID)
+                ->whereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted', 'excused'])
+                ->orderBy('SessionDate')
+                ->pluck('SessionDate')
+                ->map(fn ($date) => substr((string) $date, 0, 10))
+                ->all();
+            $this->assertSame(['2026-08-15', '2026-08-22', '2026-09-05', '2026-09-12'], $activeDates);
+            $this->assertSame(
+                2,
+                DB::table('ClassSession')
+                    ->where('StudentClassID', $target->ID)
+                    ->whereIn('id', [$sessionIds[0], $sessionIds[1]])
+                    ->count()
+            );
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_transfer_does_not_replenish_manual_occurrence_source(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $source = $this->createCourse($student->id, 1, [
+            'scheduling_policy' => 'manual_occurrence',
+            'SessionCount' => 4,
+            'RemainingSessions' => 4,
+            'week' => 6,
+            'time' => '15:00:00',
+        ]);
+        $target = $this->createCourse($student->id, 1);
+        $sessionId = $this->createClassSession((int) $source->ID, '2026-08-08', 'attended', '15:00', '17:00');
+
+        $this->postJson(
+            "/api/v1/student-classes/{$source->ID}/transfer-sessions",
+            ['session_ids' => [$sessionId], 'target_student_class_id' => $target->ID],
+            ['Authorization' => "Bearer {$token}"]
+        )->assertOk()->assertJsonPath('schedule_sync.created_sessions', 0);
+
+        $this->assertSame(0, DB::table('ClassSession')->where('StudentClassID', $source->ID)->count());
+    }
 
     public function test_transfers_session_and_carries_learning_record_and_signin(): void
     {
@@ -426,13 +502,19 @@ class StudentClassTransferSessionsTest extends TestCase
         ], $overrides));
     }
 
-    private function createClassSession(int $courseId, string $date, string $status = 'attended'): int
+    private function createClassSession(
+        int $courseId,
+        string $date,
+        string $status = 'attended',
+        string $start = '23:00',
+        string $end = '23:30'
+    ): int
     {
         return DB::table('ClassSession')->insertGetId([
             'StudentClassID' => $courseId,
             'SessionDate' => $date,
-            'StartTime' => '23:00',
-            'EndTime' => '23:30',
+            'StartTime' => $start,
+            'EndTime' => $end,
             'Status' => $status,
         ]);
     }
