@@ -28,7 +28,7 @@ checks:
 - npm run test:unit
 - npm run lint:no-undef
 - npm run build
-- vendor/bin/phpunit
+- bash scripts/phpunit-isolated.sh
 type: feature
 status: todo
 spec_ref: null
