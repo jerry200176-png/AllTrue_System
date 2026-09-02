@@ -73,6 +73,7 @@ jobs:
                   : null,
           ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), PHP_EOL;
           '
+          REMOTE
           test -s /tmp/telegram-webhook-presence.json
           grep -q '"ok": true' /tmp/telegram-webhook-presence.json
 
