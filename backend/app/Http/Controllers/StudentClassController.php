@@ -4149,6 +4149,22 @@ class StudentClassController extends Controller
                 ], 422);
             }
 
+            // Preserve the source contract's scheduled commitment without
+            // changing any billing/entitlement fields. Capture the tail
+            // before moving rows: when the selected rows include the current
+            // tail, their historical dates remain the anchor and are never
+            // recreated as future sessions.
+            $sourceTail = ClassSession::query()->where('StudentClassID', (int) $source->getAttribute('ID'))
+                ->orderByDesc('SessionDate')
+                ->orderByDesc('StartTime')
+                ->orderByDesc('id')
+                ->first();
+            $replacementPlan = $this->planSourceScheduleTail(
+                $source,
+                count($foundIds),
+                $sourceTail?->SessionDate
+            );
+
             foreach ($sessions as $session) {
                 $session->StudentClassID = $target->ID;
                 $session->save(); // fires assertCourseIsMutable() against the TARGET course
@@ -4166,9 +4182,19 @@ class StudentClassController extends Controller
             SessionDeductionService::recomputeCounters((int) $source->ID);
             SessionDeductionService::recomputeCounters((int) $target->ID);
 
+            $replenishedIds = [];
+            foreach ($replacementPlan as $replacement) {
+                $upsert = app(ClassSessionMaterializationService::class)->upsertSlot($replacement);
+                if ($upsert['created']) {
+                    $replenishedIds[] = (int) $upsert['session']->id;
+                }
+            }
+
             return response()->json([
-                'message' => "已轉移 " . count($foundIds) . " 堂課程紀錄（含評量／點名／扣堂台帳），兩邊堂數已同步。",
+                'message' => "已轉移 " . count($foundIds) . " 堂課程紀錄（含評量／點名／扣堂台帳），兩邊堂數已同步；來源合約補回 " . count($replenishedIds) . " 堂未來排程。",
                 'transferred_session_ids' => $foundIds,
+                'replenished_source_session_ids' => $replenishedIds,
+                'replenished_source_session_count' => count($replenishedIds),
                 'source_course_id' => (int) $source->ID,
                 'target_course_id' => (int) $target->ID,
             ]);
@@ -4188,6 +4214,97 @@ class StudentClassController extends Controller
 
             throw $exception;
         }
+    }
+
+    /**
+     * Plan only the replacement tail for a completed session transfer.
+     *
+     * The transfer endpoint moves historical rows but must not reinterpret
+     * SessionCount/RemainingSessions or invoke the broad gap filler. This
+     * planner requires an active count-mode automatic recurrence, uses the
+     * source's explicit fixed schedule fields, and starts strictly after the
+     * last source row that existed before the move.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function planSourceScheduleTail(
+        StudentClass $source,
+        int $replacementCount,
+        mixed $tailDate
+    ): array {
+        if ($replacementCount <= 0
+            || (int) ($source->Stop ?? 0) === 1
+            || strtolower((string) ($source->ScheduleMode ?? 'count')) !== 'count'
+            || (string) ($source->getAttribute('scheduling_policy') ?? 'auto_recurrence') === ManualSessionBookingService::POLICY
+        ) {
+            return [];
+        }
+
+        $slots = $this->resolveScheduleSlotsForRebuild($source);
+        if (empty($slots)) {
+            return [];
+        }
+
+        $anchor = $this->normalizeDateString($tailDate)
+            ?: $this->normalizeDateString($source->getAttribute('StartDate'))
+            ?: Carbon::today()->toDateString();
+        $anchorDate = Carbon::parse($anchor)->startOfDay();
+        $today = Carbon::today()->startOfDay();
+        if ($anchorDate->lt($today)) {
+            $anchorDate = $today;
+        }
+
+        $slotsByWeekday = $this->buildSlotsByWeekdayMap(
+            $slots,
+            max(30, (int) ($source->SessionDuration ?? 120))
+        );
+        if (empty($slotsByWeekday)) {
+            return [];
+        }
+
+        $occupied = [];
+        $existing = ClassSession::query()->where('StudentClassID', (int) $source->getAttribute('ID'))
+            ->get(['SessionDate', 'StartTime']);
+        foreach ($existing as $session) {
+            $date = $this->normalizeDateString($session->SessionDate ?? null);
+            $start = substr((string) ($session->StartTime ?? ''), 0, 5);
+            if ($date && $start !== '') {
+                $occupied[$date . '|' . $start] = true;
+            }
+        }
+
+        $planned = [];
+        $cursor = $anchorDate->copy()->addDay();
+        $guard = 0;
+        while (count($planned) < $replacementCount && $guard < 731) {
+            $guard++;
+            $daySlots = $slotsByWeekday[(int) $cursor->dayOfWeekIso] ?? [];
+            foreach ($daySlots as $slot) {
+                if (count($planned) >= $replacementCount) {
+                    break;
+                }
+
+                $start = Carbon::parse($cursor->toDateString() . ' ' . $slot['time']);
+                $key = $cursor->toDateString() . '|' . $start->format('H:i');
+                if (isset($occupied[$key])) {
+                    continue;
+                }
+
+                $end = $start->copy()->addMinutes((int) $slot['dur']);
+                $planned[] = [
+                    'StudentClassID' => (int) $source->getAttribute('ID'),
+                    'SessionDate' => $cursor->toDateString(),
+                    'StartTime' => $start->format('H:i:s'),
+                    'EndTime' => $end->format('H:i:s'),
+                    'Status' => 'scheduled',
+                    'Note' => '轉移已上堂次後補回來源合約尾端堂次',
+                ];
+                $occupied[$key] = true;
+            }
+            $cursor->addDay();
+        }
+
+        return $planned;
     }
 
     /**

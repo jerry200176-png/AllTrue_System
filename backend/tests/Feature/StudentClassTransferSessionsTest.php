@@ -10,6 +10,7 @@ use App\Models\StudentSignIn;
 use App\Models\SessionDeductionLedger;
 use App\Models\User;
 use App\Models\UserCampus;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -17,8 +18,8 @@ use Tests\TestCase;
 // Interim workaround for in-app #1901/#1902/#1904: move already-materialized
 // ClassSession rows (and their LearningRecord/StudentSignIn) to a different
 // StudentClass so a teacher does not have to refill evaluations after a
-// course split. Deliberately never touches SessionCount/Charge/deduction
-// fields on either course — those stay BillingContractLockGuard's job.
+// course split. Deliberately never touches SessionCount/Charge or billing
+// fields; derived usage follows the existing ledger/counter rules.
 class StudentClassTransferSessionsTest extends TestCase
 {
     use RefreshDatabase;
@@ -205,6 +206,142 @@ class StudentClassTransferSessionsTest extends TestCase
             (int) DB::table('ClassSession')->where('id', $sourceSessionId)->value('StudentClassID')
         );
     }
+
+    public function test_replenishes_source_tail_for_active_count_mode_auto_recurrence(): void
+    {
+        Carbon::setTestNow('2026-08-12 12:00:00');
+        try {
+            $token = $this->createDirectorToken([1]);
+            $student = $this->createStudent(1);
+            $source = $this->createCourse($student->id, 1, [
+                'StartDate' => '2026-08-03',
+                'week' => 1,
+                'time' => '23:00',
+                'SessionDuration' => 30,
+                'SessionCount' => 3,
+                'RemainingSessions' => 2,
+                'Charge' => 3300,
+                'Paid' => 1,
+            ]);
+            $target = $this->createCourse($student->id, 1);
+            $this->createClassSession((int) $source->ID, '2026-08-03');
+            $sessionId = $this->createClassSession((int) $source->ID, '2026-08-10');
+
+            $response = $this->postJson(
+                "/api/v1/student-classes/{$source->ID}/transfer-sessions",
+                ['session_ids' => [$sessionId], 'target_student_class_id' => $target->ID],
+                ['Authorization' => "Bearer {$token}"]
+            );
+
+            $response->assertOk()->assertJsonPath('replenished_source_session_count', 1);
+            $this->assertSame(
+                (int) $target->ID,
+                (int) DB::table('ClassSession')->where('id', $sessionId)->value('StudentClassID')
+            );
+            $this->assertDatabaseHas('ClassSession', [
+                'StudentClassID' => $source->ID,
+                'SessionDate' => '2026-08-03',
+                'StartTime' => '23:00',
+            ]);
+            $this->assertDatabaseHas('ClassSession', [
+                'StudentClassID' => $source->ID,
+                'SessionDate' => '2026-08-17',
+                'StartTime' => '23:00:00',
+                'EndTime' => '23:30:00',
+                'Status' => 'scheduled',
+            ]);
+            $this->assertDatabaseMissing('ClassSession', [
+                'StudentClassID' => $source->ID,
+                'SessionDate' => '2026-08-10',
+            ]);
+
+            $source->refresh();
+            $this->assertSame(3, (int) $source->SessionCount);
+            $this->assertSame(3300, (int) $source->Charge);
+            $this->assertSame(1, (int) $source->Paid);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    /**
+     * @dataProvider sourceScheduleModesThatMustNotBeReplenished
+     */
+    public function test_does_not_replenish_manual_date_or_stopped_sources(array $overrides): void
+    {
+        Carbon::setTestNow('2026-08-12 12:00:00');
+        try {
+            $token = $this->createDirectorToken([1]);
+            $student = $this->createStudent(1);
+            $source = $this->createCourse($student->id, 1, array_merge([
+                'StartDate' => '2026-08-03',
+                'week' => 1,
+                'time' => '23:00',
+                'SessionDuration' => 30,
+            ], $overrides));
+            $target = $this->createCourse($student->id, 1);
+            $sessionId = $this->createClassSession((int) $source->ID, '2026-08-10');
+
+            $this->postJson(
+                "/api/v1/student-classes/{$source->ID}/transfer-sessions",
+                ['session_ids' => [$sessionId], 'target_student_class_id' => $target->ID],
+                ['Authorization' => "Bearer {$token}"]
+            )->assertOk()->assertJsonPath('replenished_source_session_count', 0);
+
+            $this->assertDatabaseMissing('ClassSession', [
+                'StudentClassID' => $source->ID,
+                'SessionDate' => '2026-08-17',
+            ]);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public static function sourceScheduleModesThatMustNotBeReplenished(): array
+    {
+        return [
+            'manual occurrence' => [['scheduling_policy' => 'manual_occurrence']],
+            'date mode' => [['ScheduleMode' => 'date']],
+            'stopped course' => [['Stop' => 1]],
+        ];
+    }
+
+    public function test_replenishment_conflict_rolls_back_the_transfer(): void
+    {
+        Carbon::setTestNow('2026-08-12 12:00:00');
+        try {
+            $token = $this->createDirectorToken([1]);
+            $student = $this->createStudent(1);
+            $source = $this->createCourse($student->id, 1, [
+                'StartDate' => '2026-08-03',
+                'week' => 1,
+                'time' => '23:00',
+                'SessionDuration' => 30,
+            ]);
+            $target = $this->createCourse($student->id, 1);
+            $conflictCourse = $this->createCourse($student->id, 1);
+            $sessionId = $this->createClassSession((int) $source->ID, '2026-08-10');
+            $this->createClassSession((int) $conflictCourse->ID, '2026-08-17', 'scheduled');
+
+            $this->postJson(
+                "/api/v1/student-classes/{$source->ID}/transfer-sessions",
+                ['session_ids' => [$sessionId], 'target_student_class_id' => $target->ID],
+                ['Authorization' => "Bearer {$token}"]
+            )->assertStatus(422)->assertJsonPath('code', 'student_slot_conflict');
+
+            $this->assertSame(
+                (int) $source->ID,
+                (int) DB::table('ClassSession')->where('id', $sessionId)->value('StudentClassID')
+            );
+            $this->assertDatabaseMissing('ClassSession', [
+                'StudentClassID' => $source->ID,
+                'SessionDate' => '2026-08-17',
+            ]);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     public function test_recovers_evidence_backed_cancelled_session_and_transfers_all_artifacts(): void
     {
         $token = $this->createDirectorToken([1]);
