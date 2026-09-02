@@ -4281,7 +4281,7 @@ class StudentClassController extends Controller
 
                 $end = $start->copy()->addMinutes((int) $slot['dur']);
                 $planned[] = [
-                    'StudentClassID' => (int) $source->ID,
+                    'StudentClassID' => (int) $source->getAttribute('ID'),
                     'SessionDate' => $cursor->toDateString(),
                     'StartTime' => $start->format('H:i:s'),
                     'EndTime' => $end->format('H:i:s'),
