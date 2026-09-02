@@ -1024,17 +1024,36 @@ jobs:
           umask 077
           cd /home/admin/backend
           command -v php >/dev/null
-          php artisan list | grep -q 'pop:bootstrap-machine' || {
-            echo "::error::Deployed backend does not expose pop:bootstrap-machine; refusing bootstrap."
-            exit 1
-          }
-          php artisan pop:bootstrap-machine \
-            --campus-id="$CAMPUS_ID" \
-            --name='POP Pi executor' \
-            --key-file=storage/app/private/pop-machine.key \
-            --confirm=POP_BOOTSTRAP_MACHINE
-
           KEY_FILE=/home/admin/backend/storage/app/private/pop-machine.key
+          if [[ -f "$KEY_FILE" ]]; then
+            # A prior run may have persisted the identity before a later
+            # validation-only probe failed. Verify metadata and reuse the
+            # existing host-local key; never regenerate or overwrite it.
+            CAMPUS_ID="$CAMPUS_ID" php artisan tinker --execute='
+            $client = \App\Models\ApiClient::query()
+                ->where("Name", "POP Pi executor")
+                ->where("CampusID", (int) getenv("CAMPUS_ID"))
+                ->where("Purpose", "pop_control_plane")
+                ->where("Active", 1)
+                ->first();
+            $scopes = $client && is_array($client->Scopes) ? array_map("strval", $client->Scopes) : [];
+            if (!$client || !in_array("pop:draft", $scopes, true) || !in_array("pop:dry-run", $scopes, true)) {
+                throw new RuntimeException("existing POP identity metadata is not the expected scoped identity");
+            }
+            echo "existing POP machine identity verified: client_id=" . (int) $client->id . ", campus_id=" . (int) $client->CampusID . PHP_EOL;
+            '
+          else
+            php artisan list | grep -q 'pop:bootstrap-machine' || {
+              echo "::error::Deployed backend does not expose pop:bootstrap-machine; refusing bootstrap."
+              exit 1
+            }
+            php artisan pop:bootstrap-machine \
+              --campus-id="$CAMPUS_ID" \
+              --name='POP Pi executor' \
+              --key-file=storage/app/private/pop-machine.key \
+              --confirm=POP_BOOTSTRAP_MACHINE
+          fi
+
           test -f "$KEY_FILE"
           [[ "$(stat -c '%a' "$KEY_FILE")" == "600" ]] || {
             echo "::error::POP key file is not mode 600; refusing submit verification."
@@ -1052,6 +1071,7 @@ jobs:
           STATUS="$(curl -skS -o /dev/null -w '%{http_code}' \
             --connect-timeout 10 --max-time 20 \
             -H "X-POP-MACHINE-KEY: ${KEY}" \
+            -H 'Accept: application/json' \
             -H 'Content-Type: application/json' \
             --data '{"parameters":null,"idempotency_key":"bootstrap-auth-probe"}' \
             https://daan.lifenet.com.tw/api/v1/pop/machine/operations/course-contract-repair/draft)"
