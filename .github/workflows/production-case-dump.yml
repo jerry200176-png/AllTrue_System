@@ -17,6 +17,11 @@ on:
         required: false
         default: ''
         type: string
+      student_class_id:
+        description: 'Optional StudentClass ID for billing probe (scopes the read-only case without exporting PII)'
+        required: false
+        default: ''
+        type: string
       subject_name:
         description: 'Subject name for billing probe (PII is not written to the artifact)'
         required: false
@@ -62,6 +67,7 @@ jobs:
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
           CASE_KEY: ${{ inputs.case_key }}
           TARGET_STUDENT_NAME: ${{ inputs.student_name }}
+          TARGET_STUDENT_CLASS_ID: ${{ inputs.student_class_id }}
           TARGET_SUBJECT_NAME: ${{ inputs.subject_name }}
         run: |
           set -euo pipefail
@@ -73,10 +79,14 @@ jobs:
           if case not in {'schedule_241', 'billing_huang', 'billing_linlai', 'parent_lou'}:
               raise SystemExit('unsupported case')
           target_student_name = os.environ.get('TARGET_STUDENT_NAME') or ('黃品皓' if case == 'billing_huang' else '林奕安')
+          target_student_class_id = os.environ.get('TARGET_STUDENT_CLASS_ID') or ''
+          if target_student_class_id and (case != 'billing_huang' or not target_student_class_id.isdigit()):
+              raise SystemExit('student_class_id is only supported as a numeric billing_huang scope')
           target_subject_name = os.environ.get('TARGET_SUBJECT_NAME', '數學') or '數學'
           print(f'''<?php
           $case = {case!r};
           $targetStudentName = {json.dumps(target_student_name, ensure_ascii=False)};
+          $targetStudentClassId = {int(target_student_class_id) if target_student_class_id else 'null'};
           $targetSubjectName = {json.dumps(target_subject_name, ensure_ascii=False)};
           $db = \\Illuminate\\Support\\Facades\\DB::class;
           $out = ['ok' => true, 'case' => $case, 'read_only' => true,
@@ -161,21 +171,25 @@ jobs:
             $out['teacher_results'] = $teacherResults;
           }} elseif ($case === 'billing_huang') {{
             $campusId = 9;
-            $students = $db::table('Student')->where('CampusID', $campusId)
-              ->whereRaw('TRIM(name) = ?', [$targetStudentName])
-              ->get(['id', 'CampusID as campus_id']);
-            $studentIds = $students->pluck('id')->map(fn ($id) => (int)$id)->all();
-            $classes = $db::table('StudentClass as sc')->whereIn('sc.StudentID', $studentIds)
-              ->orderBy('sc.ID')->get(['sc.ID as class_id', 'sc.StudentID as student_id', 'sc.SubjectID as subject_id',
+            $classQuery = $db::table('StudentClass as sc')->join('Student as st', 'st.id', '=', 'sc.StudentID')
+              ->where('st.CampusID', $campusId);
+            if ($targetStudentClassId !== null) {{
+              $classQuery->where('sc.ID', $targetStudentClassId);
+            }} else {{
+              $classQuery->whereRaw('TRIM(st.name) = ?', [$targetStudentName]);
+            }}
+            $classes = $classQuery->orderBy('sc.ID')->get(['sc.ID as class_id', 'sc.StudentID as student_id', 'sc.SubjectID as subject_id',
                 'sc.Rate as rate', 'sc.rate_unit as rate_unit', 'sc.SessionCount as session_count',
                 'sc.TotalHours as total_hours', 'sc.SessionDuration as session_duration', 'sc.Charge as charge',
                 'sc.Paid as paid', 'sc.Stop as stop', 'sc.ScheduleMode as schedule_mode']);
+            $studentIds = $classes->pluck('student_id')->unique()->map(fn ($id) => (int)$id)->values()->all();
             $classIds = $classes->pluck('class_id')->map(fn ($id) => (int)$id)->all();
             $sessionHours = $classIds === [] ? collect() : $db::table('ClassSession')
               ->whereIn('StudentClassID', $classIds)->whereIn('Status', ['scheduled', 'attended', 'completed'])
               ->selectRaw('StudentClassID as class_id, ROUND(SUM(TIMESTAMPDIFF(MINUTE, StartTime, EndTime)) / 60, 2) as actual_hours')
               ->groupBy('StudentClassID')->pluck('actual_hours', 'class_id');
             $out['campus_id'] = $campusId;
+            $out['lookup_mode'] = $targetStudentClassId === null ? 'student_name' : 'student_class_id';
             $out['student_count'] = count($studentIds);
             $out['target_class_count'] = count($classIds);
             $out['target_classes'] = $classes->map(fn ($r) => [
