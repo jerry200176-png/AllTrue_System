@@ -6,8 +6,14 @@ only pop:draft/pop:dry-run scopes through dedicated routes. It is never mapped
 to a human user or approval role; actor and campus are audited.
 
 Attendance-device clients remain unable to authenticate POP. Revoke the
-ApiClient to disable it. There is no HTTP execute route; dual approval and the
-existing Pi-local scheduler remain the execution boundary.
+ApiClient to disable it. There is no HTTP execute route; approval and the
+existing Pi-local scheduler remain the execution boundary. The
+`course-contract-repair` catalog operation is the only Founder-scoped
+exception: it requires one authenticated `super_admin` approval carrying a
+`founder-go-...` reference, and remains restricted by its exact
+`single_student_contract`, reversible, snapshot, rollback, and verification
+catalog invariants. All other operations retain their catalog-defined quorum;
+the machine identity still cannot approve or execute.
 
 One-time bootstrap, after deployment, remains host-local. The approved
 execution path is the existing `Deploy to Pi` workflow's protected

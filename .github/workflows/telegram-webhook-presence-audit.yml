@@ -1,0 +1,97 @@
+name: Telegram Webhook Presence Audit (read-only)
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: telegram-webhook-presence-audit
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: Production Telegram webhook presence scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Setup pinned SSH identity
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_HOST_KEY: ${{ secrets.PI_HOST_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$PI_SSH_KEY"
+          test -n "$PI_HOST_KEY"
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          printf '%s\n' "$PI_HOST_KEY" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/deploy_key ~/.ssh/known_hosts
+
+      - name: Run read-only presence probe
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key \
+            -o BatchMode=yes \
+            -o ConnectTimeout=20 \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" bash <<'REMOTE' > /tmp/telegram-webhook-presence.json
+          set -euo pipefail
+          cd /home/admin/backend
+          php artisan tinker --execute='
+          $campuses = \App\Models\Campus::query()
+              ->get(["id", "TelegramToken", "TelegramWebhookSecret"]);
+          $withBotToken = $campuses->filter(
+              static fn ($campus): bool => trim((string) $campus->TelegramToken) !== ""
+          );
+          $withWebhookSecret = $campuses->filter(
+              static fn ($campus): bool => trim((string) $campus->TelegramWebhookSecret) !== ""
+          );
+          $missingSecretWithBot = $withBotToken->filter(
+              static fn ($campus): bool => trim((string) $campus->TelegramWebhookSecret) === ""
+          );
+          $campus15 = $campuses->firstWhere("id", 15);
+
+          echo json_encode([
+              "ok" => true,
+              "generated_at" => gmdate("c"),
+              "campus_count" => $campuses->count(),
+              "telegram_token_configured_count" => $withBotToken->count(),
+              "webhook_secret_configured_count" => $withWebhookSecret->count(),
+              "webhook_secret_missing_with_token_count" => $missingSecretWithBot->count(),
+              "campus_15_has_telegram_token" => $campus15
+                  ? trim((string) $campus15->TelegramToken) !== ""
+                  : null,
+              "campus_15_has_webhook_secret" => $campus15
+                  ? trim((string) $campus15->TelegramWebhookSecret) !== ""
+                  : null,
+          ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), PHP_EOL;
+          '
+          test -s /tmp/telegram-webhook-presence.json
+          grep -q '"ok": true' /tmp/telegram-webhook-presence.json
+
+      - name: Upload aggregate artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: telegram-webhook-presence-audit
+          path: /tmp/telegram-webhook-presence.json
+          retention-days: 14
+
+      - name: Job summary
+        run: |
+          {
+            echo '### Telegram webhook presence audit'
+            echo '```'
+            cat /tmp/telegram-webhook-presence.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove local key material and result
+        if: always()
+        run: rm -f ~/.ssh/deploy_key /tmp/telegram-webhook-presence.json
