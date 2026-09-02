@@ -1,0 +1,48 @@
+id: TKT-20260903-020040-CO1K
+title: Execute in-app bug closeout
+intent: Execute in-app bug closeout
+kind: task
+parent_id: INT-20260903-020024-X0IB
+boundary: No direct production data mutation or SSH edits; no payment semantics, billing
+  status, permissions, credentials, or control-plane authority changes.
+success_condition: '#250 evidence/lifecycle complete as legally allowed; #247 observability
+  and regression coverage deployed; #249 evidence/Founder decision package ready;
+  checks pass.'
+priority: 3
+labels: []
+scope:
+  allow:
+  - backend/app/Http/Controllers/SubstituteController.php
+  - backend/app/Services/SubstituteService.php
+  - backend/tests/Feature/*Availability*
+  - backend/tests/Feature/*Substitute*
+  - frontend/src/lib/substituteApi.js
+  - frontend/src/components/substitute/**
+  - .github/workflows/bug-detail-dump.yml
+  - .github/workflows/bug-phase-c-allowlist.yml
+  - docs/CHANGELOG.md
+  - docs/AI_REGRESSION_LESSONS.md
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 12
+  max_loc_changed: 400
+checks:
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+- vendor/bin/phpunit
+type: feature
+status: todo
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-03T02:00:40+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default
