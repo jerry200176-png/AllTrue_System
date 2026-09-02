@@ -171,14 +171,26 @@ jobs:
             $out['teacher_results'] = $teacherResults;
           }} elseif ($case === 'billing_huang') {{
             $campusId = 9;
-            $classQuery = $db::table('StudentClass as sc')->join('Student as st', 'st.id', '=', 'sc.StudentID')
-              ->where('st.CampusID', $campusId);
+            $studentQuery = $db::table('Student')->where('CampusID', $campusId);
+            $lookupMode = 'student_name_exact';
             if ($targetStudentClassId !== null) {{
-              $classQuery->where('sc.ID', $targetStudentClassId);
+              $studentIds = $db::table('StudentClass as sc')->join('Student as st', 'st.id', '=', 'sc.StudentID')
+                ->where('sc.ID', $targetStudentClassId)->where('st.CampusID', $campusId)->pluck('sc.StudentID')
+                ->map(fn ($id) => (int)$id)->all();
+              $lookupMode = 'student_class_id';
             }} else {{
-              $classQuery->whereRaw('TRIM(st.name) = ?', [$targetStudentName]);
+              $studentIds = $studentQuery->whereRaw('TRIM(name) = ?', [$targetStudentName])->pluck('id')
+                ->map(fn ($id) => (int)$id)->all();
+              if ($studentIds === []) {{
+                $studentIds = $db::table('Student')->where('CampusID', $campusId)
+                  ->where('name', 'like', '%' . $targetStudentName . '%')->pluck('id')
+                  ->map(fn ($id) => (int)$id)->all();
+                $lookupMode = 'student_name_contains';
+              }}
             }}
-            $classes = $classQuery->orderBy('sc.ID')->get(['sc.ID as class_id', 'sc.StudentID as student_id', 'sc.SubjectID as subject_id',
+            $classes = $db::table('StudentClass as sc')->whereIn('sc.StudentID', $studentIds)
+              ->when($targetStudentClassId !== null, fn ($query) => $query->where('sc.ID', $targetStudentClassId))
+              ->orderBy('sc.ID')->get(['sc.ID as class_id', 'sc.StudentID as student_id', 'sc.SubjectID as subject_id',
                 'sc.Rate as rate', 'sc.rate_unit as rate_unit', 'sc.SessionCount as session_count',
                 'sc.TotalHours as total_hours', 'sc.SessionDuration as session_duration', 'sc.Charge as charge',
                 'sc.Paid as paid', 'sc.Stop as stop', 'sc.ScheduleMode as schedule_mode']);
@@ -189,7 +201,7 @@ jobs:
               ->selectRaw('StudentClassID as class_id, ROUND(SUM(TIMESTAMPDIFF(MINUTE, StartTime, EndTime)) / 60, 2) as actual_hours')
               ->groupBy('StudentClassID')->pluck('actual_hours', 'class_id');
             $out['campus_id'] = $campusId;
-            $out['lookup_mode'] = $targetStudentClassId === null ? 'student_name' : 'student_class_id';
+            $out['lookup_mode'] = $lookupMode;
             $out['student_count'] = count($studentIds);
             $out['target_class_count'] = count($classIds);
             $out['target_classes'] = $classes->map(fn ($r) => [
