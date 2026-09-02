@@ -197,8 +197,19 @@ final class PopOperationService
     }
 
     /** Run the authenticated, read-only planning phase for the control plane. */
-    public function runDryRun(string $requestId, string $actor, ?int $actorId = null, ?string $actorRole = null): array
+    /** @param array<int,int> $actorCampusIds */
+    public function runDryRun(
+        string $requestId,
+        string $actor,
+        ?int $actorId = null,
+        ?string $actorRole = null,
+        array $actorCampusIds = []
+    ): array
     {
+        $request = $this->request($requestId);
+        $parameters = json_decode((string) $request->parameters, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertCampusScope($parameters, $actorRole, $actorCampusIds);
+
         return $this->run($requestId, 'dry-run', null, null, $actor, $actorId, $actorRole);
     }
 

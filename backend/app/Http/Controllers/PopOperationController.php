@@ -73,7 +73,8 @@ final class PopOperationController extends Controller
                 $requestId,
                 'user:' . (int) $user->id,
                 (int) $user->id,
-                (string) $request->attributes->get('auth_role')
+                (string) $request->attributes->get('auth_role'),
+                (array) $request->attributes->get('auth_campus_ids', [])
             );
         } catch (RuntimeException $e) {
             return response()->json(['message' => 'POP dry-run rejected', 'reason_code' => $e->getMessage()], $this->errorStatus($e));
