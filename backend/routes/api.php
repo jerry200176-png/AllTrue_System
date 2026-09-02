@@ -733,6 +733,15 @@ Route::prefix('v1')->group(function () {
         Route::post('pop/operations/requests/{requestId}/approvals', [PopOperationController::class, 'approve'])->whereUuid('requestId');
     });
 
+    // Machine control-plane entrypoints only. A POP machine can submit and
+    // plan a request within its campus; approvals remain human dual approval.
+    Route::middleware(['pop_machine:pop:draft', 'role:pop_machine'])->group(function () {
+        Route::post('pop/machine/operations/{operationId}/draft', [PopOperationController::class, 'storeMachineDraft'])->where('operationId', '[a-z0-9-]+');
+    });
+    Route::middleware(['pop_machine:pop:dry-run', 'role:pop_machine'])->group(function () {
+        Route::post('pop/machine/operations/requests/{requestId}/dry-run', [PopOperationController::class, 'machineDryRun'])->whereUuid('requestId');
+    });
+
     Route::middleware(['super_admin', 'require_password_change'])->group(function () {
         Route::get('adoption/cross-branch-metrics', [AdoptionInsightsController::class, 'crossBranchMetrics']);
     });

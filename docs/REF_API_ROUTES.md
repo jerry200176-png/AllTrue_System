@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 440 api/* routes · generated 2026-09-02
+> Source: `php artisan route:list --json` · 442 api/* routes · generated 2026-09-02
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -563,10 +563,12 @@
 | POST | `api/v1/pending-swipes/{pendingSwipe}/assign-student` | `PendingSwipeController@assignStudent` | role+campus |
 | POST | `api/v1/pending-swipes/{pendingSwipe}/match` | `PendingSwipeController@match` | role+campus |
 
-## /api/v1/pop (3)
+## /api/v1/pop (5)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
+| POST | `api/v1/pop/machine/operations/requests/{requestId}/dry-run` | `PopOperationController@machineDryRun` | role |
+| POST | `api/v1/pop/machine/operations/{operationId}/draft` | `PopOperationController@storeMachineDraft` | role |
 | POST | `api/v1/pop/operations/requests/{requestId}/approvals` | `PopOperationController@approve` | role+campus |
 | POST | `api/v1/pop/operations/requests/{requestId}/dry-run` | `PopOperationController@dryRun` | role+campus |
 | POST | `api/v1/pop/operations/{operationId}/draft` | `PopOperationController@storeDraft` | role+campus |

@@ -381,7 +381,10 @@ final class PopOperationService
     /** @param array<string,mixed> $parameters @param array<int,int> $campusIds */
     private function assertCampusScope(array $parameters, ?string $role, array $campusIds): void
     {
-        if ($role === null || $role === 'super_admin') {
+        if ($role === null) {
+            throw new RuntimeException('POP actor role is required; fail closed.');
+        }
+        if ($role === 'super_admin') {
             return;
         }
         $campusId = (int) ($parameters['campus_id'] ?? 0);
