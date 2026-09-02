@@ -4,6 +4,12 @@
 - 課程查找現在依最新計費單位顯示「每堂／每小時」與正確總費用；按堂課程計價維持不變。
 - 未新增資料庫欄位、不批次改寫既有付款資料；補上前後端 full-chain regression test。
 
+## 2026-09-02 — fix(schedule): 移除固定時段不再誤判自己衝堂
+<!-- release-notes: staff_update=staff-2026-09-02-fixed-slot-removal-and-teacher-workbench -->
+- 固定課程由週三＋週四移除週四時，不會再把保留的週三既有堂次當成新增調課目標；只有真正新增或變更到新時段才做衝堂檢查。
+- 老師工作台重整課表時保留上次成功資料，課程格可開啟對應課程詳情，週一至週日標題在手機與桌面捲動時維持可見；admin／director 頁面與權限路徑不變。
+- 補上固定時段移除、真正衝堂、老師事件導向與工作台更新狀態回歸測試；production 驗證採唯讀 workflow，不直接修改個案資料。
+
 ## 2026-09-02 — fix(billing): 電子收據預計堂次文案恢復
 <!-- release-notes: staff_update=staff-2026-09-02-receipt-expected-session-copy -->
 - 電子收據的未實際上課、未取消堂次恢復顯示「（預計）」；已上課堂次與其他排課／點名狀態不變。

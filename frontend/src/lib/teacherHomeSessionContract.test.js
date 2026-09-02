@@ -52,5 +52,9 @@ assert.equal(source.includes('weekSessions.value = [];'), false,
   'week reload must not blank the schedule before the replacement is ready');
 assert.match(source, /const requestSequence = \+\+weekLoadSequence[\s\S]*requestSequence === weekLoadSequence/,
   'week reload must guard against stale async responses');
+assert.equal(source.includes('weekLoadedOnce.value = true'), true,
+  'a successful projection must mark the retained schedule as ready');
+assert.equal(source.includes('weekLoadError && weekLoadedOnce'), true,
+  'a failed refresh must preserve visible schedule data and expose retry state');
 
 console.log('teacher home SessionViewModel contract tests passed');

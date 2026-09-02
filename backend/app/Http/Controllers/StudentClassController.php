@@ -1536,6 +1536,10 @@ class StudentClassController extends Controller
         // 前端一律透過 PaymentEntryModal 走 /api/v1/payment-reports/director-record，
         // 不應直接用 payment_status=paid 切換狀態，避免 PayDate 空白、帳務無從查核。
         $rawInput = $request->all();
+        // Snapshot the pre-edit fixed-slot contract. Later we must distinguish
+        // a pure removal from a slot that was added or moved: deleting a slot
+        // must not validate a retained locked occurrence as a new booking.
+        $previousScheduleSlots = $this->resolveScheduleSlotsForRebuild($studentClass);
         if (($rawInput['payment_status'] ?? null) === 'paid'
             && (!array_key_exists('paid_at', $rawInput) || empty($rawInput['paid_at']))) {
             return response()->json([
@@ -1786,7 +1790,8 @@ class StudentClassController extends Controller
                 $updatedCount = $this->syncFutureScheduledSessionTimes(
                     (int) $studentClass->ID,
                     $slots,
-                    $durationMinutes
+                    $durationMinutes,
+                    $previousScheduleSlots
                 );
                 return response()->json(array_merge($studentClass->fresh()->toArray(), [
                     'session_sync' => [
@@ -1804,7 +1809,8 @@ class StudentClassController extends Controller
             $previousStartDate,
             $mapped,
             $scheduleSlotsForRebuild,
-            (bool) $request->boolean('force_rebuild_if_mismatch', false)
+            (bool) $request->boolean('force_rebuild_if_mismatch', false),
+            $previousScheduleSlots
         );
 
         // When the request explicitly carries fixed schedule fields, those
@@ -5591,7 +5597,8 @@ class StudentClassController extends Controller
         ?string $previousStartDate,
         array $mapped,
         array $scheduleSlots = [],
-        bool $forceRebuildIfMismatch = false
+        bool $forceRebuildIfMismatch = false,
+        array $previousScheduleSlots = []
     ): array {
         $scheduleFields = [
             'week', 'week1', 'week2', 'week3', 'week4', 'week5', 'week6',
@@ -5625,7 +5632,8 @@ class StudentClassController extends Controller
                 $updatedCount = $this->syncFutureScheduledSessionTimes(
                     $classId,
                     $slots,
-                    $durationMinutes
+                    $durationMinutes,
+                    $previousScheduleSlots
                 );
 
                 return [
@@ -5755,7 +5763,8 @@ class StudentClassController extends Controller
                         $updatedCount = $this->syncFutureScheduledSessionTimes(
                             (int) $studentClass->ID,
                             $slots,
-                            $durationMinutes
+                            $durationMinutes,
+                            $previousScheduleSlots
                         );
                         return [
                             'rebuilt' => false,
@@ -5777,7 +5786,8 @@ class StudentClassController extends Controller
                     $updatedCount = $this->syncFutureScheduledSessionTimes(
                         (int) $studentClass->ID,
                         $slots,
-                        $durationMinutes
+                        $durationMinutes,
+                        $previousScheduleSlots
                     );
                     return [
                         'rebuilt'                => false,
@@ -5987,7 +5997,12 @@ class StudentClassController extends Controller
      * @param  \Illuminate\Support\Collection<int, ClassSession>  $unlockedSorted
      * @param  array<int, array{weekday:int,time:string,duration_minutes?:int}>  $slots
      */
-    private function remapFutureScheduledSessionsToContract($unlockedSorted, array $slots, int $durationMinutes): int
+    private function remapFutureScheduledSessionsToContract(
+        $unlockedSorted,
+        array $slots,
+        int $durationMinutes,
+        array $skipOccupiedTargetKeys = []
+    ): int
     {
         $k = $unlockedSorted->count();
         if ($k <= 0) {
@@ -6002,7 +6017,24 @@ class StudentClassController extends Controller
             return 0;
         }
         $snapped = $this->snapDateToContractWeekday($anchor, $slotsByWeekday);
-        $proposed = $this->buildSessionsForCount(0, $snapped, $k, $slots, $durationMinutes);
+        // A pure removal may compress an unlocked removed-day row onto a
+        // retained locked row (e.g. Wed+Thu -> Wed). That is not a new
+        // booking conflict. Generate enough cadence candidates to skip the
+        // retained occurrence and place the row on the next valid occurrence.
+        $candidateCount = $k + count($skipOccupiedTargetKeys);
+        $candidateSessions = $this->buildSessionsForCount(0, $snapped, $candidateCount, $slots, $durationMinutes);
+        $proposed = [];
+        foreach ($candidateSessions as $candidate) {
+            $date = $this->normalizeDateString($candidate['SessionDate'] ?? null);
+            $start = $this->normalizeSessionTime($candidate['StartTime'] ?? null, '16:00:00');
+            if (!$date || isset($skipOccupiedTargetKeys["{$date}|" . substr($start, 0, 5)])) {
+                continue;
+            }
+            $proposed[] = $candidate;
+            if (count($proposed) >= $k) {
+                break;
+            }
+        }
 
         // Collect only the rows whose slot actually changes.
         $reflowIds = [];
@@ -6055,6 +6087,28 @@ class StudentClassController extends Controller
         // non-reflow live session (e.g. a locked/attended row) cannot be reflowed
         // onto — surface a clean 422 instead of a raw 1062.
         return $this->contractSessionReflowService->move($courseId, $reflowIds, $moves);
+    }
+
+    /**
+     * Return true only when every submitted fixed slot is an unchanged old
+     * slot and at least one old slot was removed. Any added or moved slot must
+     * retain the normal conflict validation path.
+     *
+     * @param  array<int, array{weekday:int,time:string}>  $previousSlots
+     * @param  array<int, array{weekday:int,time:string}>  $newSlots
+     */
+    private function isPureFixedSlotRemoval(array $previousSlots, array $newSlots): bool
+    {
+        if (empty($previousSlots) || empty($newSlots) || count($newSlots) >= count($previousSlots)) {
+            return false;
+        }
+
+        $slotKey = static fn (array $slot): string => (int) ($slot['weekday'] ?? 0)
+            . '|' . substr((string) ($slot['time'] ?? ''), 0, 5);
+        $oldKeys = array_values(array_unique(array_map($slotKey, $previousSlots)));
+        $newKeys = array_values(array_unique(array_map($slotKey, $newSlots)));
+
+        return count(array_diff($newKeys, $oldKeys)) === 0;
     }
 
     /**
@@ -6317,7 +6371,12 @@ class StudentClassController extends Controller
      *
      * @param  array<int, array{weekday:int,time:string,duration_minutes?:int}>  $slots
      */
-    private function syncFutureScheduledSessionTimes(int $studentClassId, array $slots, int $durationMinutes): int
+    private function syncFutureScheduledSessionTimes(
+        int $studentClassId,
+        array $slots,
+        int $durationMinutes,
+        array $previousScheduleSlots = []
+    ): int
     {
         if ($studentClassId <= 0 || empty($slots)) {
             return 0;
@@ -6402,7 +6461,33 @@ class StudentClassController extends Controller
         }
 
         if ($needsRemap && $unlocked->isNotEmpty()) {
-            return $this->remapFutureScheduledSessionsToContract($unlocked, $slots, $durationMinutes);
+            $removalOnly = $this->isPureFixedSlotRemoval($previousScheduleSlots, $slots);
+            $lockedTargetKeys = $removalOnly
+                ? $sessions->filter(function ($session) use ($lockedBySessionId, $slotsByWeekday) {
+                    if (!isset($lockedBySessionId[(int) $session->id]) || !empty($session->IsContractException)) {
+                        return false;
+                    }
+                    $date = $this->normalizeDateString($session->SessionDate ?? null);
+                    $start = $session->StartTime ? substr((string) $session->StartTime, 0, 5) : '';
+                    if (!$date || $start === '') {
+                        return false;
+                    }
+                    $weekday = (int) Carbon::parse($date)->dayOfWeekIso;
+                    return collect($slotsByWeekday[$weekday] ?? [])
+                        ->contains(fn ($slot) => substr((string) ($slot['time'] ?? ''), 0, 5) === $start);
+                })->mapWithKeys(function ($session) {
+                    $date = $this->normalizeDateString($session->SessionDate ?? null);
+                    $start = $session->StartTime ? substr((string) $session->StartTime, 0, 5) : '';
+                    return $date && $start ? ["{$date}|{$start}" => true] : [];
+                })->all()
+                : [];
+
+            return $this->remapFutureScheduledSessionsToContract(
+                $unlocked,
+                $slots,
+                $durationMinutes,
+                $lockedTargetKeys
+            );
         }
 
         $sessionsByDate = [];
