@@ -158,7 +158,7 @@ jobs:
               raise SystemExit("snapshot safety markers are invalid")
           with open("out/bug-sla-weekly.json", "w", encoding="utf-8") as handle:
               json.dump(snapshot, handle, ensure_ascii=False, indent=2)
-              handle.write("\\n")
+              handle.write("\n")
           '
 
       - name: Validate artifact shape
