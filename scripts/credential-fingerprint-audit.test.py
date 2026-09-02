@@ -54,6 +54,25 @@ class CredentialFingerprintAuditTest(unittest.TestCase):
         self.assertIn("MATCH_ROTATION_REQUIRED", output.getvalue())
         self.assertNotIn(digest, output.getvalue())
 
+    def test_compare_can_scope_db_audit_without_unrelated_kinds(self):
+        leaked_digest = hashlib.sha256(b"historical-ci-password").hexdigest()
+        production_digest = hashlib.sha256(b"current-production-password").hexdigest()
+        with tempfile.TemporaryDirectory() as directory:
+            leaked = Path(directory) / "leaked.tsv"
+            production = Path(directory) / "production.tsv"
+            leaked.write_text(f"DB_PASSWORD\t{leaked_digest}\n", encoding="utf-8")
+            production.write_text(
+                f"DB_PASSWORD\t{production_digest}\n", encoding="utf-8"
+            )
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                result = AUDIT.compare(leaked, production, ("DB_PASSWORD",))
+
+        self.assertEqual(result, 0)
+        self.assertIn("DB_PASSWORD\tDIFFERENT\tleaked=1\tproduction=1", output.getvalue())
+        self.assertNotIn(leaked_digest, output.getvalue())
+        self.assertNotIn(production_digest, output.getvalue())
+
     def test_extracts_db_password_shapes_without_returning_raw_values(self):
         yaml_pw = "sw0rdfish-ci-only-1234"
         xml_pw = "another-fake-pw-5678"
