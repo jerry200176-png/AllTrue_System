@@ -400,7 +400,7 @@ jobs:
               $probe1282["error"] = null;
             }} catch (\Throwable $e) {{
               $probe1282["decision_grade"] = false;
-              $probe1282["error"] = get_class($e);
+              $probe1282["error"] = get_class($e).": ".substr((string)$e->getMessage(), 0, 240);
             }}
           }}
           $probe249 = [
