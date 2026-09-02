@@ -88,6 +88,10 @@ for (const viewport of viewports) {
   test(`teacher can preview learning records without opening each form @${viewport.name}`, async ({ page }) => {
     await openLearning(page, viewport, 'teacher');
 
+    await expect(page.locator('#lr-teacher-tab-pending')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByText('完成分數與比例的應用題', { exact: true })).toHaveCount(0);
+    await page.locator('#lr-teacher-tab-all').click();
+    await expect(page.locator('#lr-teacher-tab-all')).toHaveAttribute('aria-selected', 'true');
     await expect(page.getByText('內容預覽', { exact: true }).first()).toBeVisible();
     await expect(page.getByText('完成分數與比例的應用題', { exact: true }).first()).toBeVisible();
     await expect(page.getByText('第 3 單元', { exact: true }).first()).toBeVisible();

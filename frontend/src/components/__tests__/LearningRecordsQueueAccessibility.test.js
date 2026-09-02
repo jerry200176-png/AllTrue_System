@@ -25,6 +25,10 @@ describe('LearningRecords review queue accessibility', () => {
     expect(source).toContain('id="lr-teacher-tab-approved"');
   });
 
+  it('opens the teacher review queue on actionable pending work', () => {
+    expect(source).toContain("const teacherFilterTab = ref('pending');");
+  });
+
   it('keeps the shared review list in one labelled tabpanel', () => {
     expect(source).toContain(":id=\"pageMode === 'records' ? 'lr-review-panel' : undefined\"");
     expect(source).toContain(":role=\"pageMode === 'records' ? 'tabpanel' : undefined\"");

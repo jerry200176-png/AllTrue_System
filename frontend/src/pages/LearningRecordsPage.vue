@@ -1714,7 +1714,9 @@ const activeFilterCount = computed(() => {
 });
 
 const reviewTab = ref('pending');
-const teacherFilterTab = ref('all');
+// Teachers land on actionable assessment work first; historical/approved rows
+// remain available through the explicit status tabs below.
+const teacherFilterTab = ref('pending');
 const teacherPriorityFilter = ref('all');
 const feedbackFilter = ref('all');
 const pageMode = ref('records'); // 'records' | 'parent_messages'
