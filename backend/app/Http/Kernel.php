@@ -29,10 +29,10 @@ class Kernel extends HttpKernel
         'role'           => \App\Http\Middleware\RequireRole::class,
         'super_admin'    => \App\Http\Middleware\RequireSuperAdmin::class,
         'api_key'        => \App\Http\Middleware\ApiKeyAuth::class,
+        'pop_machine'    => \App\Http\Middleware\PopMachineAuth::class,
         'require_campus' => \App\Http\Middleware\RequireCampus::class,
         'require_password_change' => \App\Http\Middleware\RequirePasswordChange::class,
         'require_pin'    => \App\Http\Middleware\RequirePin::class,
         'throttle'       => \App\Http\Middleware\ThrottleRequestsByIp::class,
     ];
 }
-

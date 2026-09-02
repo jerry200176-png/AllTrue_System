@@ -35,6 +35,33 @@ final class PopOperationController extends Controller
         return response()->json(['data' => $draft], 201);
     }
 
+    public function storeMachineDraft(Request $request, string $operationId, PopOperationService $service)
+    {
+        $validated = $request->validate([
+            'parameters' => ['required', 'array'],
+            'idempotency_key' => ['required', 'string', 'max:128', 'regex:/^[A-Za-z0-9:_-]{1,128}$/'],
+        ]);
+        if ($request->attributes->get('auth_principal_type') !== 'machine') {
+            return response()->json(['message' => 'Unauthorized'], 401);
+        }
+
+        try {
+            $draft = $service->createDraft(
+                $operationId,
+                $validated['parameters'],
+                $validated['idempotency_key'],
+                (string) $request->attributes->get('auth_actor'),
+                'pop_machine',
+                (array) $request->attributes->get('auth_campus_ids', []),
+                (int) $request->attributes->get('api_client_id')
+            );
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => 'POP draft rejected', 'reason_code' => $e->getMessage()], $this->errorStatus($e));
+        }
+
+        return response()->json(['data' => $draft], 201);
+    }
+
     public function approve(Request $request, string $requestId, PopOperationService $service)
     {
         $validated = $request->validate([
@@ -74,6 +101,27 @@ final class PopOperationController extends Controller
                 'user:' . (int) $user->id,
                 (int) $user->id,
                 (string) $request->attributes->get('auth_role'),
+                (array) $request->attributes->get('auth_campus_ids', [])
+            );
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => 'POP dry-run rejected', 'reason_code' => $e->getMessage()], $this->errorStatus($e));
+        }
+
+        return response()->json(['data' => $result], ($result['result'] ?? null) === 'succeeded' ? 200 : 422);
+    }
+
+    public function machineDryRun(Request $request, string $requestId, PopOperationService $service)
+    {
+        if ($request->attributes->get('auth_principal_type') !== 'machine') {
+            return response()->json(['message' => 'Unauthorized'], 401);
+        }
+
+        try {
+            $result = $service->runDryRun(
+                $requestId,
+                (string) $request->attributes->get('auth_actor'),
+                (int) $request->attributes->get('api_client_id'),
+                'pop_machine',
                 (array) $request->attributes->get('auth_campus_ids', [])
             );
         } catch (RuntimeException $e) {
