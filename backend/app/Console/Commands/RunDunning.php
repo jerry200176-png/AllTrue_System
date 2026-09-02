@@ -21,10 +21,11 @@ class RunDunning extends Command
         }
 
         $service = new DunningService();
-        $events = $service->evaluateAll($campusId);
+        $events = $service->evaluateAll($campusId, !$dryRun);
 
         $count = count($events);
-        $this->info("Dunning evaluation complete: {$count} events " . ($dryRun ? 'would be' : '') . " created.");
+        $verb = $dryRun ? 'would create' : 'created';
+        $this->info("Dunning evaluation complete: {$count} events {$verb}.");
 
         if ($count > 0) {
             foreach ($events as $e) {
@@ -32,7 +33,9 @@ class RunDunning extends Command
             }
         }
 
-        Log::info("[dunning:run] Created {$count} events" . ($campusId ? " for campus {$campusId}" : ''));
+        Log::info("[dunning:run] {$verb} {$count} events" . ($campusId ? " for campus {$campusId}" : ''), [
+            'dry_run' => $dryRun,
+        ]);
 
         return self::SUCCESS;
     }
