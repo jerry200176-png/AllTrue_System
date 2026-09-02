@@ -67,6 +67,21 @@ view:
 This is a read-only current snapshot, not a status transition or automatic
 closure policy. A missing status log remains visible as an evidence gap.
 
+### 3.1.1 Durable weekly artifact
+
+The `Weekly Bug SLA Report` workflow emits `bug-sla-weekly.json` every Monday
+at 09:00 Asia/Taipei and on manual dispatch. The artifact is retained for 90
+days and uses schema `bug-sla-weekly-v1`. It contains the same aggregate
+status, open-backlog aging, missing-triaged-history, and P0/P1/P2 breach
+fields described above, plus `generated_at`, `timezone`, `read_only`,
+`pii_redacted`, and `source` markers.
+
+The production query is SELECT-only and emits no bug IDs, titles, reporter
+identifiers, attachment identifiers, campus identifiers, URLs, or free text.
+The workflow does not assign owners, send reminders, change bug status, close
+stale reports, or modify production data. Those policy and ownership decisions
+remain outside this artifact slice.
+
 ---
 
 ## 4) Super-admin cross-branch comparison

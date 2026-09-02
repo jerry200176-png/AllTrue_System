@@ -1,0 +1,185 @@
+name: Weekly Bug SLA Report
+
+on:
+  schedule:
+    # Monday 09:00 Asia/Taipei; GitHub cron is UTC.
+    - cron: "0 1 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: bug-sla-weekly-report
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  report:
+    name: Export redacted bug SLA snapshot
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          PI_HOST_KEY: ${{ secrets.PI_HOST_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if ssh-keyscan -H "$PI_SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null; then
+            echo "keyscan ok"
+          elif [[ -n "${PI_HOST_KEY:-}" ]]; then
+            printf '%s\n' "$PI_HOST_KEY" > ~/.ssh/known_hosts
+          else
+            echo "::error::no host key"; exit 1
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Query production (read-only, PII-redacted)
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          ssh -i ~/.ssh/deploy_key \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            -o ConnectTimeout=20 \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" bash <<'REMOTE' | python3 -c '
+          import json
+          import sys
+
+          candidates = []
+          for line in sys.stdin:
+              line = line.strip()
+              if not line.startswith("{"):
+                  continue
+              try:
+                  value = json.loads(line)
+              except json.JSONDecodeError:
+                  continue
+              if value.get("schema_version") == "bug-sla-weekly-v1":
+                  candidates.append(value)
+          if len(candidates) != 1:
+              raise SystemExit("expected exactly one redacted SLA snapshot")
+          snapshot = candidates[0]
+          if snapshot.get("read_only") is not True or snapshot.get("pii_redacted") is not True:
+              raise SystemExit("snapshot safety markers are invalid")
+          with open("out/bug-sla-weekly.json", "w", encoding="utf-8") as handle:
+              json.dump(snapshot, handle, ensure_ascii=False, indent=2)
+              handle.write("\\n")
+          '
+          set -euo pipefail
+          cd /home/admin/backend
+          php artisan tinker --execute='
+          $statuses = ["new", "triaged", "in_progress", "resolved", "closed"];
+          $statusCounts = array_fill_keys($statuses, 0);
+          foreach (\Illuminate\Support\Facades\DB::table("bug_reports")
+              ->select("status", \Illuminate\Support\Facades\DB::raw("COUNT(*) as aggregate"))
+              ->groupBy("status")
+              ->get() as $row) {
+              $status = (string) $row->status;
+              if (array_key_exists($status, $statusCounts)) $statusCounts[$status] = (int) $row->aggregate;
+          }
+          $openStatuses = ["new", "triaged", "in_progress"];
+          $openByStatus = array_fill_keys($openStatuses, 0);
+          $oldestAgeHours = array_fill_keys($openStatuses, null);
+          $missingTriagedAt = 0;
+          $openBreaches = ["p0" => 0, "p1" => 0, "p2" => 0, "p3" => 0];
+          $bugs = \Illuminate\Support\Facades\DB::table("bug_reports")
+              ->whereIn("status", $openStatuses)
+              ->get(["id", "status", "severity", "created_at"]);
+          $bugIds = $bugs->pluck("id")->map(fn ($id) => (int) $id)->all();
+          $triagedAt = [];
+          if ($bugIds) {
+              foreach (\Illuminate\Support\Facades\DB::table("bug_report_status_logs")
+                  ->whereIn("bug_report_id", $bugIds)
+                  ->where("to_status", "triaged")
+                  ->orderBy("created_at")
+                  ->orderBy("id")
+                  ->get(["bug_report_id", "created_at"]) as $log) {
+                  $id = (int) $log->bug_report_id;
+                  if (!array_key_exists($id, $triagedAt)) $triagedAt[$id] = (string) $log->created_at;
+              }
+          }
+          $now = \Carbon\Carbon::now();
+          foreach ($bugs as $bug) {
+              $status = (string) $bug->status;
+              $openByStatus[$status]++;
+              $triagedTimestamp = $triagedAt[(int) $bug->id] ?? null;
+              $ageAnchor = $status === "new" ? (string) $bug->created_at : $triagedTimestamp;
+              $ageHours = $ageAnchor ? round($now->diffInSeconds(\Carbon\Carbon::parse($ageAnchor), true) / 3600, 2) : null;
+              if ($ageHours !== null) {
+                  $oldestAgeHours[$status] = $oldestAgeHours[$status] === null ? $ageHours : max($oldestAgeHours[$status], $ageHours);
+              } elseif ($status !== "new") {
+                  $missingTriagedAt++;
+              }
+              if ($status !== "new" || $ageHours === null) continue;
+              $tier = match ((string) $bug->severity) {
+                  "critical" => "p0",
+                  "high" => "p1",
+                  "medium" => "p2",
+                  default => "p3",
+              };
+              $targetHours = ["critical" => 4, "high" => 24, "medium" => 168][(string) $bug->severity] ?? null;
+              if ($targetHours !== null && $ageHours > $targetHours) $openBreaches[$tier]++;
+          }
+          echo json_encode([
+              "schema_version" => "bug-sla-weekly-v1",
+              "generated_at" => \Carbon\Carbon::now()->toIso8601String(),
+              "timezone" => config("app.timezone"),
+              "read_only" => true,
+              "pii_redacted" => true,
+              "source" => "production:bug_reports+bug_report_status_logs",
+              "status_counts" => $statusCounts,
+              "open_backlog" => [
+                  "total" => array_sum($openByStatus),
+                  "by_status" => $openByStatus,
+                  "oldest_age_hours" => $oldestAgeHours,
+                  "age_basis" => [
+                      "new" => "created_at_until_triaged",
+                      "triaged" => "first_status_log_to_triaged",
+                      "in_progress" => "first_status_log_to_triaged",
+                  ],
+                  "missing_triaged_at" => $missingTriagedAt,
+              ],
+              "triage_sla" => [
+                  "targets_hours" => ["p0" => 4, "p1" => 24, "p2" => 168],
+                  "severity_to_tier" => ["critical" => "p0", "high" => "p1", "medium" => "p2", "low" => "p3"],
+                  "open_breaches" => $openBreaches,
+                  "open_breach_total" => array_sum($openBreaches),
+              ],
+          ], JSON_UNESCAPED_UNICODE), PHP_EOL;
+          '
+
+      - name: Validate artifact shape
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          snapshot = json.loads(Path("out/bug-sla-weekly.json").read_text(encoding="utf-8"))
+          required = {
+              "schema_version", "generated_at", "timezone", "read_only",
+              "pii_redacted", "source", "status_counts", "open_backlog", "triage_sla",
+          }
+          if not required.issubset(snapshot):
+              raise SystemExit("weekly SLA artifact is missing required fields")
+          if snapshot["read_only"] is not True or snapshot["pii_redacted"] is not True:
+              raise SystemExit("weekly SLA artifact safety markers are invalid")
+          print("weekly_bug_sla_artifact=validated")
+          PY
+
+      - name: Upload weekly report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bug-sla-weekly
+          path: out/bug-sla-weekly.json
+          retention-days: 90
