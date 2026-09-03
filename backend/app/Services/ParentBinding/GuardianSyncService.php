@@ -179,10 +179,14 @@ final class GuardianSyncService
         DB::transaction(function () use ($link) {
             $wasPrimary = (bool) $link->is_primary;
             $studentId = (int) $link->student_id;
+            $link->loadMissing('guardian');
             $link->status = StudentGuardian::STATUS_REVOKED;
             $link->is_primary = false;
             $link->revoked_at = now();
             $link->save();
+
+            // PB-04: revoke → immediate ParentSession invalidate for this relationship.
+            app(ParentGuardianAccessService::class)->invalidateSessionsForLink($link);
 
             if ($wasPrimary) {
                 $next = StudentGuardian::query()
