@@ -189,7 +189,9 @@ import AtIconButton from '../components/design-system/AtIconButton.vue';
 const props = defineProps({
   branchId: { type: [Number, String], default: null },
   userRole: { type: String, default: 'director' },
+  initialStudentName: { type: String, default: '' },
 });
+const emit = defineEmits(['clear-initial-student']);
 
 const isSuperAdmin = computed(() => props.userRole === 'super_admin');
 const allBranches = computed(() => branches.value);
@@ -329,6 +331,20 @@ watch(() => props.branchId, () => {
   page.value = 1;
   refresh();
 });
+
+watch(
+  () => props.initialStudentName,
+  (name) => {
+    const trimmed = String(name || '').trim();
+    if (!trimmed) return;
+    filters.value.studentName = trimmed.slice(0, 40);
+    page.value = 1;
+    load();
+    emit('clear-initial-student');
+  },
+  { immediate: true },
+);
+
 onMounted(() => { load(); loadStats(); });
 </script>
 

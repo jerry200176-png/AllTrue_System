@@ -364,11 +364,8 @@
                       </template>
                     </td>
                     <td>
-                      <button
-                        :class="['small', 'btn-status', paymentStatusButtonClass(c)]"
-                        title="點擊切換繳費狀態"
-                        @click="togglePaymentStatus(c)"
-                      >{{ paymentStatusButtonLabel(c) }}</button>
+                      <span :class="['small', 'btn-status', paymentStatusButtonClass(c)]">{{ paymentStatusButtonLabel(c) }}</span>
+                      <button type="button" class="small ghost" style="margin-left:6px;" @click="goToTuitionBilling(c)">帳務</button>
                       <div v-if="c.last_paid_at" class="paid-date-hint">{{ c.last_paid_at }}</div>
                     </td>
                     <td :class="{ 'cell-remaining': true, 'low': isSessionMode(c) && Number(displayRemainingSessions(c) ?? 0) <= 2 }">
@@ -381,7 +378,7 @@
                         <button
                           v-if="canCloseCourse(c)"
                           class="small ghost course-settle-action"
-                          @click="closeCourseNoRenew(c)"
+                          @click="goToStudentsCommercial(c, 'close')"
                         >結案（不續報）</button>
                         <button
                           v-if="isManualOccurrenceCourse(c)"
@@ -410,7 +407,7 @@
                               @click="isMonthlyMode(c) ? (openMonthlySessionModal(c), closeActionMenu()) : (canQuickAddSession(c) && (openQuickAddSessionModal(c), closeActionMenu()))"
                             ><span class="material-symbols-outlined action-icon" aria-hidden="true">add_task</span> {{ isMonthlyMode(c) ? '新增月結堂次' : '補課 / 補登' }}</button>
                             <p class="action-section-label">帳務與合約</p>
-                            <button class="action-dropdown-item" role="menuitem" @click="openInvoiceModal(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">receipt_long</span> 帳單與對帳</button>
+                            <button class="action-dropdown-item" role="menuitem" @click="openInvoiceModal(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">receipt_long</span> 帳單（唯讀）</button>
                             <button
                               v-if="isSessionMode(c) && !c.PackageID"
                               class="action-dropdown-item action-dropdown-package-preview"
@@ -429,7 +426,7 @@
                               :class="['action-dropdown-item', { 'action-dropdown-renew': purchaseActionIsRenew(c) }]"
                               role="menuitem"
                               :title="purchaseActionTitle(c)"
-                              @click="openPurchaseModal(c); closeActionMenu()"
+                              @click="openCommercialPurchaseEntry(c); closeActionMenu()"
                             ><span class="material-symbols-outlined action-icon" aria-hidden="true">shopping_cart</span> {{ purchaseActionLabel(c) }}</button>
                             <button class="action-dropdown-item action-dropdown-adjustment" role="menuitem" title="依情境選擇更正未付款堂數或轉移已上課紀錄" @click="openContractAdjustmentModal(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">edit_note</span> 合約／堂次調整</button>
                             <p class="action-section-label">其他操作</p>
@@ -437,7 +434,7 @@
                             <p class="action-section-label">狀態管理</p>
                             <button v-if="c.status !== 'inactive'" class="action-dropdown-item" role="menuitem" @click="requestCoursePause(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">pause_circle</span> 暫停課程</button>
                             <button v-if="c.status === 'inactive'" class="action-dropdown-item action-dropdown-resume" role="menuitem" @click="requestCoursePause(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">play_circle</span> 恢復課程</button>
-                            <button v-if="canCloseCourse(c)" class="action-dropdown-item action-dropdown-close" role="menuitem" @click="closeCourseNoRenew(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">check_circle</span> 結案（不續報）</button>
+                            <button v-if="canCloseCourse(c)" class="action-dropdown-item action-dropdown-close" role="menuitem" @click="goToStudentsCommercial(c, 'close'); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">check_circle</span> 結案（不續報）</button>
                             <hr class="action-dropdown-divider" />
                             <p class="action-section-label action-section-label--danger">危險操作</p>
                             <button class="action-dropdown-item action-dropdown-danger" role="menuitem" @click="confirmDeleteTarget = c; closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">delete</span> 刪除課程</button>
@@ -684,12 +681,6 @@
                   <td class="cell-actions">
                     <div class="action-btns-row">
                       <button
-                        v-if="row.course.payment_status !== 'paid' && row.course.payment_status !== 'pending_report'"
-                        class="small primary"
-                        type="button"
-                        @click="togglePaymentStatus(row.course)"
-                      >登記已回報</button>
-                      <button
                         v-if="isPaymentNoticeAvailable(row.course)"
                         class="small ghost btn-payment-slip"
                         data-testid="billing-payment-slip-action"
@@ -697,7 +688,8 @@
                         title="產生繳費通知單"
                         @click="openPaymentSlip(row.course)"
                       >繳費通知</button>
-                      <button class="small ghost btn-invoices" type="button" @click="openInvoiceModal(row.course)">帳單與對帳</button>
+                      <button class="small ghost btn-invoices" type="button" @click="openInvoiceModal(row.course)">帳單（唯讀）</button>
+                      <button class="small primary" type="button" @click="goToTuitionBilling(row.course)">前往帳務中心</button>
                     </div>
                   </td>
                 </tr>
@@ -1120,14 +1112,6 @@
     />
     <ToastWithUndo ref="toastRef" />
 
-    <!-- Payment Entry Modal — 登記已回報（待對帳，確認入帳後才已繳費） -->
-    <PaymentEntryModal
-      :show="paymentEntryOpen"
-      :row="paymentEntryRow"
-      @close="paymentEntryOpen = false"
-      @confirmed="onPaymentEntryConfirmed"
-    />
-
     <PaymentSlipModal
       :show="paymentSlipOpen"
       :student-class-id="paymentSlipStudentClassId"
@@ -1222,24 +1206,10 @@
                 <td>
                   <div class="invoice-row-actions">
                     <button
-                      v-if="inv.status !== 'paid'"
                       class="small primary invoice-pay-btn"
                       type="button"
-                      @click="openPaymentEntryForInvoice(inv)"
-                    >登記已回報</button>
-                    <button
-                      v-if="canVoidInvoice(inv)"
-                      class="small ghost invoice-void-btn"
-                      type="button"
-                      @click="openInvoiceVoidDialog(inv)"
-                    >作廢</button>
-                    <button
-                      v-else-if="canExceptionVoidInvoice(inv)"
-                      class="small ghost invoice-void-btn invoice-void-btn--exception"
-                      type="button"
-                      @click="openInvoiceExceptionVoidDialog(inv)"
-                    >更正並作廢</button>
-                    <span v-if="inv.status === 'paid' && !canVoidInvoice(inv) && !canExceptionVoidInvoice(inv)" class="hint">—</span>
+                      @click="goToTuitionBilling(invoiceModalCourse)"
+                    >前往帳務中心</button>
                   </div>
                 </td>
               </tr>
@@ -1249,6 +1219,7 @@
 
         <div class="actions invoice-modal-actions">
           <button class="ghost" type="button" @click="closeInvoiceModal">關閉</button>
+          <button class="small primary" type="button" @click="goToTuitionBilling(invoiceModalCourse); closeInvoiceModal()">前往帳務中心</button>
         </div>
       </div>
     </div>
@@ -1406,10 +1377,14 @@ import RescheduleModal from '../components/course-management/RescheduleModal.vue
 import MakeupSlotsModal from '../components/course-management/MakeupSlotsModal.vue';
 import SessionEditModal from '../components/course-management/SessionEditModal.vue';
 import SubstituteTeacherPickerModal from '../components/substitute/SubstituteTeacherPickerModal.vue';
-import PaymentEntryModal from '../components/PaymentEntryModal.vue';
 import PaymentSlipModal from '../components/PaymentSlipModal.vue';
 import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
 import ToastWithUndo from '../components/substitute/ToastWithUndo.vue';
+import {
+  buildTuitionCollectNav,
+  buildStudentsCommercialNav,
+  tuitionIntentForPaymentStatus,
+} from '../lib/authoritativeMutationRoutes.js';
 import { fetchTeacherAvailability, undoSubstitute } from '../lib/substituteApi.js';
 import { listExceptionWorkflows } from '../api';
 import {
@@ -1481,8 +1456,23 @@ function addDays(ymd, days) {
   return toYmd(d);
 }
 
-const props = defineProps({ branchId: [String, Number], initialTeacherId: [String, Number] });
-const emit = defineEmits(['clear-initial-teacher', 'navigate']);
+const props = defineProps({
+  branchId: [String, Number],
+  initialTeacherId: [String, Number],
+  initialStudentId: [String, Number],
+  initialStudentName: { type: String, default: '' },
+});
+const emit = defineEmits(['clear-initial-teacher', 'clear-initial-student', 'navigate']);
+
+const goToTuitionBilling = (course) => {
+  emit('navigate', buildTuitionCollectNav(course, {
+    intent: tuitionIntentForPaymentStatus(course?.payment_status),
+  }));
+};
+
+const goToStudentsCommercial = (course, intent = 'edit') => {
+  emit('navigate', buildStudentsCommercialNav(course, { intent }));
+};
 
 const courses = ref([]);
 const coursesLoading = ref(false);
@@ -2004,7 +1994,7 @@ function interceptGoToPurchaseCM(conflict) {
   showDuplicateInterceptModal.value = false;
   const target = findCourseForPurchase(courses.value, conflict);
   if (target) {
-    openPurchaseModal(target);
+    openCommercialPurchaseEntry(target);
     return;
   }
   alert('找不到要加購的課程，請重新整理後再從課程列點「加購」。');
@@ -2111,7 +2101,7 @@ function openEditabilityAction(action) {
   } else if (action === 'transfer_sessions') {
     openTransferSessionsModal(course);
   } else if (action === 'void_payment' || action === 'payment_report') {
-    void openInvoiceModal(course);
+    goToTuitionBilling(course);
   } else if (action === 'package_adjustment') {
     openPackageAdjustmentModal(course);
   } else if (action === 'reconcile_usage') {
@@ -2586,47 +2576,8 @@ function canCloseCourse(c) {
     && c.closed_reason !== 'settled_pending';
 }
 
-async function closeCourseNoRenew(course) {
-  const courseId = courseIdForAction(course);
-  if (!courseId) { alert('課程資料缺少識別碼，請重新整理後再試'); return; }
-  const studentName = course.student_name || '學生';
-  const subject = getSubjectLabel(course.subject);
-  const remaining = Math.max(0, Number(course.remaining_sessions ?? 0));
-  const paymentWarning = course.payment_status === 'paid'
-    ? ''
-    : '\n\n目前尚未完成繳費；結案後會標記「待對帳」，不會視為已繳費。';
-  const balanceWarning = remaining > 0
-    ? `\n\n目前還有 ${remaining} 堂未使用。結案會取消未來排課，並放棄這 ${remaining} 堂剩餘額度。`
-    : '';
-  if (!confirm(`確定要結案「${studentName}」的 ${subject} 課程嗎？${paymentWarning}${balanceWarning}\n\n結案後此課程不再排課；若尚未繳費，會保留在帳務中心的「結案待對帳」佇列。已繳費與已上課紀錄仍會保留。`)) return;
-
-  try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
-    if (!token) { alert('請重新登入'); return; }
-
-    const res = await fetch(`/api/v1/student-classes/${courseId}/pause`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({
-        action: 'pause',
-        reason: 'settled',
-        ...(remaining > 0 ? { forfeit_remaining: true } : {}),
-      }),
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      alert('結案失敗：' + (json.message || res.statusText));
-      return;
-    }
-    alert(json.pending_reconciliation
-      ? '已結案，課程保留在帳務中心的「結案待對帳」佇列，尚未視為已繳費。'
-      : '已結案，此課程不再出現在繳費／續課提醒中。');
-    await loadCourses();
-  } catch (e) {
-    alert('操作失敗：' + (e?.message || '請稍後再試'));
-  }
+function closeCourseNoRenew(course) {
+  goToStudentsCommercial(course, 'close');
 }
 
 function duplicateCourseForTeacher(course) {
@@ -2672,6 +2623,7 @@ function purchaseActionTitle(c) {
 }
 
 function openPurchaseModal(course) {
+  // Local only for trial convert-trial and package set-total (distinct semantics from students purchase-batch).
   if (!isSessionMode(course)) {
     renewMonthlyCourse.value = course;
     renewMonthlyForm.value = {
@@ -2694,7 +2646,7 @@ function openPurchaseModal(course) {
     start_date: localTodayYmd(),
     student_name: course?.student_name || '—',
     subject: course?.subject || 'Math',
-    package_op: 'add', // 'add' (加購) | 'set' (設定總堂數) — package members only (#553)
+    package_op: 'add',
   };
   if (course?.class_type === 'trial') {
     purchaseForm.value.start_date = nextManualSessionDate(course) || localTodayYmd();
@@ -2702,7 +2654,17 @@ function openPurchaseModal(course) {
   showPurchaseModal.value = true;
 }
 
+/** Commercial renew/purchase entry: trial stays local (convert-trial); others deep-link to students. */
+function openCommercialPurchaseEntry(course) {
+  if (course?.class_type === 'trial') {
+    openPurchaseModal(course);
+    return;
+  }
+  goToStudentsCommercial(course, 'purchase');
+}
+
 function openPackageAdjustmentModal(course) {
+  // Package set-total is not the same as students add-sessions; keep local modal.
   openPurchaseModal(course);
   if (!isPackageMember(course)) return;
   purchaseForm.value.package_op = 'set';
@@ -4359,79 +4321,11 @@ const onSubstituteV2Submit = async (submitPayload) => {
   }
 };
 
-const togglePaymentStatus = async (c) => {
-  if (!c?.id) return;
-
-  if (c.payment_status === 'pending_report') {
-    alert('此課程已有待對帳回報，請到帳務中心確認入帳或退回後再登錄。');
-    return;
-  }
-
-  // 未繳費 → 已回報：走登記 Modal（強制填繳款日期）；確認入帳後才變已繳費
-  if (c.payment_status !== 'paid') {
-    paymentEntryRow.value = {
-      id: c.id,
-      student_name: c.student_name || '此學生',
-      subject: c.subject_name || c.subject || '',
-      charge: c.Charge ?? c.charge ?? 0,
-    };
-    paymentEntryOpen.value = true;
-    return;
-  }
-
-  // 已繳費 → 未繳費：保留原有 confirm 流程
-  if (!confirm(`確定將「${c.student_name || '此學生'}」課程改為「未繳費」嗎？`)) return;
-
-  try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
-    if (!token) {
-      alert('登入狀態已過期，請重新登入後再試。');
-      return;
-    }
-    const res = await fetch(`/api/v1/student-classes/${c.id}`, {
-      method: 'PUT',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ payment_status: 'unpaid', paid_at: null }),
-    });
-    // #799 阻擋＋導引：有收款入帳紀錄時後端回 409，提示去收費頁作廢，不再靜默回跳
-    if (res.status === 409) {
-      const errBody = await res.json().catch(() => ({}));
-      const w = errBody?.warnings || {};
-      const amount = Number(w.total_paid_amount || 0).toLocaleString();
-      alert(errBody?.message || [
-        `此課程已有收款入帳紀錄（${w.last_paid_at || ''} 共 NT$ ${amount}），無法直接改為未繳費。`,
-        '若該筆收款是誤登錄，請至「收費」頁將該帳單作廢，狀態會自動恢復為未繳費。',
-      ].join('\n'));
-      return;
-    }
-    if (!res.ok) {
-      const errBody = await res.json().catch(() => ({}));
-      alert(errBody?.message || '改為未繳費失敗，請稍後再試。');
-      return;
-    }
-    c.payment_status = 'unpaid';
-    c.paid_at = null;
-    c.last_paid_at = null;
-  } catch (_) {
-    alert('網路連線異常，狀態尚未變更，請稍後再試。');
-  }
+const togglePaymentStatus = (c) => {
+  goToTuitionBilling(c);
 };
 
-const onPaymentEntryConfirmed = async () => {
-  paymentEntryOpen.value = false;
-  if (invoiceModalOpen.value) {
-    closeInvoiceModal();
-  }
-  alert('已送出待對帳。請到帳務中心按確認入帳後才會開電子收據。');
-  await loadCourses();
-  for (const group of visibleGroups.value || []) {
-    if (studentGroupTab(group.key) === 'billing') {
-      await loadStudentGroupBilling(group);
-    }
-  }
-};
+
 
 const loadStudents = async () => {
   const branchId = props.branchId != null ? String(props.branchId) : '';
@@ -4792,8 +4686,6 @@ const submitEdit = async () => {
 
 const confirmDeleteTarget = ref(null);
 const deleteCourseSubmitting = ref(false);
-const paymentEntryOpen = ref(false);
-const paymentEntryRow = ref(null);
 const ledgerOpen = ref(false);
 const ledgerStudentClassId = ref(null);
 const studentGroupTabs = ref({});
@@ -5059,20 +4951,10 @@ const submitInvoiceVoid = async () => {
   }
 };
 
-const openPaymentEntryForInvoice = (invoice) => {
-  const course = invoiceModalCourse.value;
-  if (!course?.id || !invoice?.id) return;
-  paymentEntryRow.value = {
-    id: course.id,
-    invoice_id: invoice.id,
-    student_name: course.student_name || '此學生',
-    subject: course.subject_name || course.subject || '',
-    billing_period: formatBillingPeriod(invoice.billing_period),
-    charge: Number(invoice.total_amount ?? course.Charge ?? course.charge ?? 0) || 0,
-  };
-  invoiceModalOpen.value = false;
-  paymentEntryOpen.value = true;
+const openPaymentEntryForInvoice = (_invoice) => {
+  goToTuitionBilling(invoiceModalCourse.value);
 };
+
 
 const executeDeleteCourse = async () => {
   if (deleteCourseSubmitting.value) return;
@@ -5309,6 +5191,18 @@ watch(
     }
     loadCourses(1);
     emit('clear-initial-teacher');
+  },
+  { immediate: true },
+);
+watch(
+  () => [props.initialStudentId, props.initialStudentName],
+  () => {
+    const name = String(props.initialStudentName || '').trim();
+    const sid = props.initialStudentId;
+    if (!name && (sid == null || sid === '')) return;
+    if (name) filters.value.name = name.slice(0, 40);
+    loadCourses(1);
+    emit('clear-initial-student');
   },
   { immediate: true },
 );
