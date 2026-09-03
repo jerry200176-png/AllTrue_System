@@ -196,11 +196,14 @@ final class GuardianSyncService
         }
 
         return DB::transaction(function () use ($student, $studentId, $link, $attrs, $source, $phone, $normalized, $lineUserId, $name) {
-            /** @var StudentGuardian $currentLink */
+            /** @var StudentGuardian|null $currentLink */
             $currentLink = StudentGuardian::query()
                 ->whereKey((int) $link->getKey())
                 ->lockForUpdate()
-                ->firstOrFail();
+                ->first();
+            if (!$currentLink) {
+                throw new \RuntimeException('guardian link not found');
+            }
             $currentLink->load('guardian');
 
             $currentGuardian = $currentLink->guardian;
@@ -281,21 +284,22 @@ final class GuardianSyncService
                     ->update(['is_primary' => false]);
             }
 
+            $shouldBePrimary = $makePrimary
+                ? true
+                : (
+                    (bool) $targetLink->is_primary ||
+                    !StudentGuardian::query()
+                        ->where('student_id', $studentId)
+                        ->where('status', '!=', StudentGuardian::STATUS_REVOKED)
+                        ->where('id', '!=', (int) $targetLink->getKey())
+                        ->where('is_primary', true)
+                        ->exists()
+                );
+
             $targetLink->fill([
                 'campus_id' => (int) ($student->CampusID ?? 0) ?: null,
                 'role' => (string) ($attrs['role'] ?? $targetLink->role ?: StudentGuardian::ROLE_GUARDIAN),
-                'is_primary' => $makePrimary || (
-                    !$makePrimary &&
-                    (
-                        (bool) $targetLink->is_primary ||
-                        !StudentGuardian::query()
-                            ->where('student_id', $studentId)
-                            ->where('status', '!=', StudentGuardian::STATUS_REVOKED)
-                            ->where('id', '!=', (int) $targetLink->getKey())
-                            ->where('is_primary', true)
-                            ->exists()
-                    )
-                ),
+                'is_primary' => $shouldBePrimary,
                 'status' => StudentGuardian::STATUS_ACTIVE,
                 'notify_learning_feedback' => array_key_exists('notify_learning_feedback', $attrs)
                     ? (bool) $attrs['notify_learning_feedback']
