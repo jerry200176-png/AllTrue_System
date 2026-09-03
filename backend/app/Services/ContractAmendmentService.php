@@ -8,6 +8,7 @@ use App\Models\SecurityAuditEvent;
 use App\Models\StudentClass;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Validation\ValidationException;
 
 final class ContractAmendmentService
@@ -24,7 +25,7 @@ final class ContractAmendmentService
         $futureSchedules = $this->futureSchedules($classId);
         return [
             'student_class_id' => $classId,
-            'student_id' => (int) $course->StudentID,
+            'student_id' => (int) $course->getAttribute('StudentID'),
             'subject_id' => (int) ($course->SubjectID ?? 0),
             'original_session_count' => (int) ($course->SessionCount ?? 0),
             'new_session_count' => $newCount,
@@ -48,8 +49,10 @@ final class ContractAmendmentService
             throw ValidationException::withMessages(['reason' => '提前結束／堂數調整必須填寫原因。']);
         }
         return DB::transaction(function () use ($course, $newCount, $actorId, $reason): array {
-            /** @var StudentClass $locked */
-            $locked = StudentClass::query()->where('ID', $course->getKey())->lockForUpdate()->firstOrFail();
+            $locked = StudentClass::query()->where('ID', $course->getKey())->lockForUpdate()->first();
+            if ($locked === null) {
+                throw (new ModelNotFoundException())->setModel(StudentClass::class, [$course->getKey()]);
+            }
             $preview = $this->preview($locked, $newCount);
             $before = $this->contractSnapshot($locked);
             $cancelledIds = [];
@@ -77,13 +80,13 @@ final class ContractAmendmentService
                 ]);
             }
 
-            $locked->SessionCount = $newCount;
-            $locked->UsedSessions = (int) $preview['completed_sessions'];
-            $locked->RemainingSessions = 0;
-            $locked->Stop = 1;
-            $locked->closed_reason = self::CLOSED_REASON;
-            $locked->EndDate = Carbon::today()->toDateString();
-            $locked->settlement_snapshot = json_encode([
+            $locked->setAttribute('SessionCount', $newCount);
+            $locked->setAttribute('UsedSessions', (int) $preview['completed_sessions']);
+            $locked->setAttribute('RemainingSessions', 0);
+            $locked->setAttribute('Stop', 1);
+            $locked->setAttribute('closed_reason', self::CLOSED_REASON);
+            $locked->setAttribute('EndDate', Carbon::today()->toDateString());
+            $locked->setAttribute('settlement_snapshot', json_encode([
                 'kind' => self::CLOSED_REASON,
                 'before' => $before,
                 'after' => [
@@ -99,7 +102,7 @@ final class ContractAmendmentService
                 'actor_user_id' => $actorId ?: null,
                 'at' => now()->toIso8601String(),
                 'financial_mutation' => 'none',
-            ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+            ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
             $locked->save();
 
             SecurityAuditEvent::append(
@@ -176,9 +179,9 @@ final class ContractAmendmentService
             ->orderBy('schedule_date')->orderBy('start_time')->orderBy('id')->get(['id', 'schedule_date', 'start_time', 'end_time'])
             ->map(static fn (Schedule $schedule): array => [
                 'schedule_id' => (int) $schedule->getKey(),
-                'date' => substr((string) $schedule->schedule_date, 0, 10),
-                'start_time' => substr((string) $schedule->start_time, 0, 5),
-                'end_time' => substr((string) $schedule->end_time, 0, 5),
+                'date' => substr((string) $schedule->getAttribute('schedule_date'), 0, 10),
+                'start_time' => substr((string) $schedule->getAttribute('start_time'), 0, 5),
+                'end_time' => substr((string) $schedule->getAttribute('end_time'), 0, 5),
             ])->values()->all();
     }
 
@@ -201,7 +204,7 @@ final class ContractAmendmentService
             'charge' => (int) ($course->Charge ?? 0),
             'paid' => (int) ($course->Paid ?? 0),
             'stop' => (int) ($course->Stop ?? 0),
-            'closed_reason' => $course->closed_reason,
+            'closed_reason' => $course->getAttribute('closed_reason'),
         ];
     }
 }

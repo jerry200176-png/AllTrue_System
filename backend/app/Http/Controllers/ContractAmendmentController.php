@@ -58,11 +58,11 @@ final class ContractAmendmentController extends Controller
     private function authorizeCourse(StudentClass $course)
     {
         $role = request()->attributes->get('auth_role');
-        if ($role === 'teacher' && (int) $course->TeacherID !== (int) request()->attributes->get('auth_teacher_id')) {
+        if ($role === 'teacher' && (int) $course->getAttribute('TeacherID') !== (int) request()->attributes->get('auth_teacher_id')) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
         $campusIds = $role === 'super_admin' ? [] : request()->attributes->get('auth_campus_ids', []);
-        if ($campusIds !== [] && !Student::whereIn('CampusID', $campusIds)->whereKey($course->StudentID)->exists()) {
+        if ($campusIds !== [] && !Student::query()->whereIn('CampusID', $campusIds)->where('id', $course->getAttribute('StudentID'))->exists()) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
         return null;
