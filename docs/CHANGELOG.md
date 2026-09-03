@@ -11,6 +11,12 @@
 - `parent_phone` 與 SLB 表保留作投影／相容；flag 關閉可 rollback 且仍可經 SLB／legacy 手機登入。
 - Cutover：deploy 後先 `cutover_audit`，有 orphan 先 `repair_slb`，不可硬切。
 
+## 2026-09-03 — fix(pop): 失敗 dry-run 支援受控重試並保留歷史 attempt
+<!-- release-notes: silent_ship=silent-2026-09-03-pop-dry-run-retry -->
+- 相同 request 的成功 dry-run 維持冪等 replay；失敗 dry-run 在 request、參數、catalog 與 context 未漂移且策略恢復後可追加 retry。
+- 每次 retry 使用 append-only execution attempt identity，不改 caller idempotency key；execute／verify／rollback 的 mutation replay gate 維持不變。
+- 補上 payload／catalog／production context drift fail-closed 與 mutation non-repeat regression tests；本次不執行任何 Huang repair。
+
 ## 2026-09-03 — feat(parent): Parent Portal multi-guardian dual-read authZ
 <!-- release-notes: silent_ship=silent-2026-09-03-multi-guardian-portal-authz -->
 - Parent Portal LINE login／切換學生在 `PERF_MULTI_GUARDIAN` 開啟時改走 `guardians` + `student_guardians`（active／read_only）dual-read；flag 關閉仍僅 verified SLB。

@@ -27,6 +27,7 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "失敗 dry-run 支援受控重試並保留歷史 attempt",
           "多家長 LINE 綁定通知與偏好一致性"
         ]
       },
@@ -42,6 +43,7 @@ export const changelogDraftNotes = [
       "Portal multi-guardian dual-read authZ",
       "學生管理多家長 CRUD（flag 閘控）",
       "多 Guardian 加法模型與雙寫雙讀（dark launch）",
+      "失敗 dry-run 支援受控重試並保留歷史 attempt",
       "多家長 LINE 綁定通知與偏好一致性",
       "Guardian 正式版（Staff CRUD + Portal authZ + cutover）"
     ]
