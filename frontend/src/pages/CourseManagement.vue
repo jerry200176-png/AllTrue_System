@@ -7572,6 +7572,14 @@ button.danger:disabled {
   border-color: #d1d5db;
   color: #6b7280;
 }
+.date-chip.scheduled-capacity-full {
+  background: var(--ds-canvas-soft);
+  border-color: var(--ds-hairline);
+  color: var(--ds-ink-mute);
+}
+.date-chip.scheduled-capacity-full .chip-date {
+  color: var(--ds-ink-mute);
+}
 .date-chip.exception {
   background: #eef2ff;
   border-color: #a5b4fc;
