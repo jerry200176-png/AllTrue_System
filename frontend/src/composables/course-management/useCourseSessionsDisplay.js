@@ -52,6 +52,7 @@ export function useCourseSessionsDisplay({
         branchId: branchId.value ?? branchId,
         studentClassId: cid,
         perPage: 2000,
+        excludeHistoryFuture: true,
       });
       const rows = Array.isArray(byClass?.[cid]) ? byClass[cid] : [];
       sessionsByCourse.value = mergeSessionsByCourse(sessionsByCourse.value, { [cid]: rows });
@@ -84,6 +85,7 @@ export function useCourseSessionsDisplay({
         branchId: branchId.value ?? branchId,
         studentClassId: cid,
         perPage: 2000,
+        excludeHistoryFuture: true,
       });
       const rows = Array.isArray(byClass?.[cid]) ? byClass[cid] : [];
       sessionsByCourse.value = mergeSessionsByCourse(sessionsByCourse.value, { [cid]: rows });
@@ -119,7 +121,15 @@ export function useCourseSessionsDisplay({
       });
       const start = `${rangeStart.getFullYear()}-${String(rangeStart.getMonth() + 1).padStart(2, '0')}-01`;
       const end = `${rangeEnd.getFullYear()}-${String(rangeEnd.getMonth() + 1).padStart(2, '0')}-${String(rangeEnd.getDate()).padStart(2, '0')}`;
-      const { byClass } = await fetchClassSessionsFn({ token, branchId: bid, studentClassIds: ids, start, end, perPage: 2000 });
+      const { byClass } = await fetchClassSessionsFn({
+        token,
+        branchId: bid,
+        studentClassIds: ids,
+        start,
+        end,
+        perPage: 2000,
+        excludeHistoryFuture: true,
+      });
       sessionsByCourse.value = byClass || {};
       return true;
     } catch (_) {

@@ -21,6 +21,11 @@ class Invoice extends Model
         'reconciled_at',
         'reconciled_by',
         'billing_period',
+        'billing_snapshot',
+    ];
+
+    protected $casts = [
+        'billing_snapshot' => 'array',
     ];
 
     public function scopeNotVoided($query)

@@ -10,6 +10,7 @@ use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\Subject;
 use App\Support\AccountingCourseClarity;
+use App\Services\MonthlyBillingService;
 use App\Services\PaymentReportTokenService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -18,6 +19,10 @@ use Illuminate\Support\Facades\Log;
 
 class PaymentReportController extends Controller
 {
+    public function __construct(private MonthlyBillingService $monthlyBilling)
+    {
+    }
+
     /**
      * POST /api/v1/payment-reports/generate-link
      * Director generates a payment report link for a student class.
@@ -37,13 +42,19 @@ class PaymentReportController extends Controller
         $link = $baseUrl . '/pay-report?token=' . urlencode($result['token']);
 
         $subjectName = $sc->subjectRecord->Subject_Name ?? '課程';
-        $charge = $sc->Charge ?? 0;
+        $billingPeriod = $sc->getAttribute('ScheduleMode') === 'date'
+            ? Carbon::today()->format('Y-m')
+            : null;
+        $billing = $billingPeriod
+            ? $this->monthlyBilling->summarizePeriod($sc, $billingPeriod)
+            : null;
+        $charge = $billing['charge'] ?? ($sc->Charge ?? 0);
 
         $periodStart = null;
         $periodEnd = null;
-        if ($sc->ScheduleMode === 'date') {
-            $periodStart = Carbon::today()->startOfMonth()->toDateString();
-            $periodEnd = Carbon::today()->endOfMonth()->toDateString();
+        if ($sc->getAttribute('ScheduleMode') === 'date') {
+            $periodStart = $billing['period_start'] ?? Carbon::today()->startOfMonth()->toDateString();
+            $periodEnd = $billing['period_end'] ?? Carbon::today()->endOfMonth()->toDateString();
         } else {
             $periodStart = $sc->StartDate;
             $periodEnd = $sc->EndDate;
@@ -59,6 +70,11 @@ class PaymentReportController extends Controller
             'session_count'     => $sc->SessionCount,
             'remaining_sessions' => $sc->RemainingSessions,
             'charge'            => $charge,
+            'billing_period'    => $billingPeriod,
+            'period_sessions'   => $billing['period_sessions'] ?? null,
+            'sessions'          => $billingPeriod
+                ? $this->monthlyBilling->billableSessionDetailsForPeriod($sc, $billingPeriod)
+                : [],
             'period_start'      => $periodStart,
             'period_end'        => $periodEnd,
         ]);
@@ -94,9 +110,15 @@ class PaymentReportController extends Controller
 
         $periodStart = null;
         $periodEnd = null;
+        $billingPeriod = $sc->ScheduleMode === 'date'
+            ? Carbon::today()->format('Y-m')
+            : null;
+        $billing = $billingPeriod
+            ? $this->monthlyBilling->summarizePeriod($sc, $billingPeriod)
+            : null;
         if ($sc->ScheduleMode === 'date') {
-            $periodStart = Carbon::today()->startOfMonth()->format('Y/m/d');
-            $periodEnd = Carbon::today()->endOfMonth()->format('Y/m/d');
+            $periodStart = $billing['period_start'] ?? Carbon::today()->startOfMonth()->format('Y/m/d');
+            $periodEnd = $billing['period_end'] ?? Carbon::today()->endOfMonth()->format('Y/m/d');
         } else {
             $periodStart = $sc->StartDate ? Carbon::parse($sc->StartDate)->format('Y/m/d') : null;
             $periodEnd = $sc->EndDate ? Carbon::parse($sc->EndDate)->format('Y/m/d') : null;
@@ -107,7 +129,12 @@ class PaymentReportController extends Controller
             'subject'            => $subjectName,
             'session_count'      => $sc->SessionCount,
             'remaining_sessions' => $sc->RemainingSessions,
-            'charge'             => $sc->Charge ?? 0,
+            'charge'             => $billing['charge'] ?? ($sc->Charge ?? 0),
+            'period_sessions'    => $billing['period_sessions'] ?? null,
+            'billing_period'     => $billingPeriod,
+            'sessions'           => $billingPeriod
+                ? $this->monthlyBilling->billableSessionDetailsForPeriod($sc, $billingPeriod)
+                : [],
             'period_start'       => $periodStart,
             'period_end'         => $periodEnd,
             'schedule_mode'      => $sc->ScheduleMode,
@@ -326,7 +353,44 @@ class PaymentReportController extends Controller
                     'Status'         => 'unpaid',
                     'ScheduleModeAtIssue' => $sc->ScheduleMode ?? null,
                     'Note'           => '',
+                    'billing_period' => $sc?->ScheduleMode === 'date' && $report->payment_date
+                        ? Carbon::parse($report->payment_date)->format('Y-m')
+                        : null,
                 ]);
+            }
+
+            // Monthly confirmation is the settlement boundary. Freeze the
+            // exact billable-session set on the invoice before any later
+            // schedule edit can change what a receipt would display.
+            if ($sc && $sc->ScheduleMode === 'date') {
+                $billingPeriod = preg_match('/^\d{4}-\d{2}$/', (string) $invoice->billing_period)
+                    ? (string) $invoice->billing_period
+                    : Carbon::parse($report->payment_date)->format('Y-m');
+                $billing = $this->monthlyBilling->summarizePeriod($sc, $billingPeriod);
+
+                if (
+                    (string) ($invoice->Status ?? 'unpaid') === 'unpaid'
+                    && (int) ($invoice->PaidAmount ?? 0) === 0
+                    && $billing['source'] === 'billable_sessions'
+                ) {
+                    $invoice->TotalAmount = (int) $billing['charge'];
+                }
+
+                if (empty($invoice->billing_snapshot)) {
+                    $invoice->billing_period = $billingPeriod;
+                    $invoice->billing_snapshot = [
+                        'version' => 1,
+                        'source' => 'monthly_billable_sessions',
+                        'billing_period' => $billingPeriod,
+                        'period_start' => $billing['period_start'],
+                        'period_end' => $billing['period_end'],
+                        'period_sessions' => (int) $billing['period_sessions'],
+                        'charge' => (int) $billing['charge'],
+                        'sessions' => $this->monthlyBilling
+                            ->billableSessionDetailsForPeriod($sc, $billingPeriod),
+                    ];
+                    $invoice->save();
+                }
             }
 
             $payment = Payment::create([
@@ -471,6 +535,26 @@ class PaymentReportController extends Controller
 
             if (! $invoice && ((int) ($sc->Paid ?? 0) === 1 || $hasPaidInvoice)) {
                 return $this->duplicateCoursePaymentResponse();
+            }
+
+            if ($sc->getAttribute('ScheduleMode') === 'date') {
+                $billingPeriod = $invoice && preg_match('/^\d{4}-\d{2}$/', (string) $invoice->billing_period)
+                    ? (string) $invoice->billing_period
+                    : Carbon::parse($data['payment_date'])->format('Y-m');
+                $billing = $this->monthlyBilling->summarizePeriod($sc, $billingPeriod);
+                $expectedAmount = (int) $billing['charge'];
+                if ($invoice && (string) $invoice->Status === 'partial') {
+                    $expectedAmount = max(0, $expectedAmount - (int) ($invoice->PaidAmount ?? 0));
+                }
+                if ((int) $data['amount'] !== $expectedAmount) {
+                    return response()->json([
+                        'message' => sprintf('月結本期應收為 NT$%d，請重新載入繳費通知後再登記。', $expectedAmount),
+                        'code' => 'monthly_amount_stale',
+                        'expected_amount' => $expectedAmount,
+                        'billing_period' => $billingPeriod,
+                        'period_sessions' => (int) $billing['period_sessions'],
+                    ], 422);
+                }
             }
 
             $existingPending = PaymentReport::where('StudentClassID', $sc->ID)
@@ -817,11 +901,52 @@ class PaymentReportController extends Controller
         $periodStart = null;
         $periodEnd = null;
         $attendedDates = [];
+        $invoice = $report->getRelationValue('invoice');
+        if (! $invoice instanceof Invoice) {
+            $invoice = null;
+        }
+        $invoiceBillingSnapshot = $invoice ? $invoice->getAttribute('billing_snapshot') : null;
+        $billingSnapshot = is_array($invoiceBillingSnapshot)
+            ? $invoiceBillingSnapshot
+            : null;
+        $invoiceBillingPeriod = $invoice ? $invoice->getAttribute('billing_period') : null;
+        $snapshotSessionRows = is_array($billingSnapshot['sessions'] ?? null)
+            ? $billingSnapshot['sessions']
+            : [];
+        $receiptSubject = (string) ($snapshotSessionRows[0]['subject'] ?? $subjectName);
         // (#554) 收據上課日期：除了已上課（attended）日期外，堂數制再補列「已購但尚未上課」
         // 的預期堂次，補足到已購堂數，讓家長看到的堂數與實付堂數一致。
         // 結構：[{ date: 'Y/m/d', expected: bool }]。attended_dates 保留供既有相容。
         $sessionDates = [];
-        if ($sc) {
+        if ($sc && $billingSnapshot && $sc->ScheduleMode === 'date') {
+            $formatSnapshotDate = static function ($date): ?string {
+                if (!$date) {
+                    return null;
+                }
+                try {
+                    return Carbon::parse((string) $date)->format('Y/m/d');
+                } catch (\Throwable) {
+                    return null;
+                }
+            };
+            $periodStart = $formatSnapshotDate($billingSnapshot['period_start'] ?? null);
+            $periodEnd = $formatSnapshotDate($billingSnapshot['period_end'] ?? null);
+            $sessionDates = collect($snapshotSessionRows)
+                ->map(fn (array $session) => [
+                    'date' => Carbon::parse((string) ($session['date'] ?? ''))->format('Y/m/d'),
+                    'start_time' => $session['start_time'] ?? null,
+                    'end_time' => $session['end_time'] ?? null,
+                    'subject' => $session['subject'] ?? $receiptSubject,
+                    'lesson' => (int) ($session['lesson'] ?? 0),
+                    'expected' => false,
+                ])
+                ->values()
+                ->all();
+            $attendedDates = array_values(array_map(
+                fn (array $session) => $session['date'],
+                $sessionDates
+            ));
+        } elseif ($sc) {
             if ($sc->ScheduleMode === 'date') {
                 $periodStart = $report->payment_date ? Carbon::parse($report->payment_date)->startOfMonth()->format('Y/m/d') : null;
                 $periodEnd = $report->payment_date ? Carbon::parse($report->payment_date)->endOfMonth()->format('Y/m/d') : null;
@@ -915,8 +1040,10 @@ class PaymentReportController extends Controller
             'receipt_no'       => 'R-' . str_pad($report->id, 6, '0', STR_PAD_LEFT),
             'student_name'     => $report->student?->name ?? $report->reported_by_name,
             'campus_name'      => $campusName,
-            'subject'          => $subjectName,
+            'subject'          => $receiptSubject,
             'session_count'    => $sc?->SessionCount,
+            'period_sessions'  => $billingSnapshot['period_sessions'] ?? null,
+            'billing_period'   => $billingSnapshot['billing_period'] ?? $invoiceBillingPeriod,
             'period_start'     => $periodStart,
             'period_end'       => $periodEnd,
             'attended_dates'   => $attendedDates,
@@ -941,7 +1068,7 @@ class PaymentReportController extends Controller
             // #934: course's billing mode (count/date) changed since this receipt
             // was issued — the amount/period shown may no longer reflect the
             // current contract. Display-only flag; no ledger figure is touched.
-            'billing_mode_changed' => (bool) $report->invoice?->billingModeChangedSinceIssue(),
+            'billing_mode_changed' => (bool) $invoice?->billingModeChangedSinceIssue(),
         ]);
     }
 }

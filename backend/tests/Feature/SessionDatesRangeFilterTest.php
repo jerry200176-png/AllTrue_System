@@ -7,6 +7,7 @@ use App\Models\ClassSession;
 use App\Models\Student;
 use App\Models\User;
 use App\Models\UserCampus;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -23,6 +24,12 @@ use Tests\TestCase;
 class SessionDatesRangeFilterTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
+    }
 
     private function makeToken(array $campusIds): string
     {
@@ -207,5 +214,60 @@ class SessionDatesRangeFilterTest extends TestCase
         )));
         $this->assertNotContains('2026-04-11', $dates, 'Cancelled session must not appear');
         $this->assertContains('2026-04-18', $dates, 'Attended session must appear');
+    }
+
+    public function test_stopped_monthly_history_does_not_project_future_scheduled_dates(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-03 09:00:00'));
+        $token = $this->makeToken([1]);
+        $student = Student::create([
+            'name' => '月結歷史測試', 'CampusID' => 1, 'ClassID' => 1,
+            'enable' => 1, 'SchoolName' => 'Test',
+        ]);
+        $courseId = $this->makeCourse($student->id, 1, [
+            'ScheduleMode' => 'date',
+            'Stop' => 1,
+            'closed_reason' => 'completed',
+            'StartDate' => '2026-08-01',
+        ]);
+
+        ClassSession::create([
+            'StudentClassID' => $courseId, 'SessionDate' => '2026-08-27',
+            'StartTime' => '15:00', 'EndTime' => '16:00', 'Status' => 'attended',
+        ]);
+        ClassSession::create([
+            'StudentClassID' => $courseId, 'SessionDate' => '2026-09-10',
+            'StartTime' => '15:00', 'EndTime' => '16:00', 'Status' => 'scheduled',
+        ]);
+        ClassSession::create([
+            'StudentClassID' => $courseId, 'SessionDate' => '2026-09-17',
+            'StartTime' => '15:00', 'EndTime' => '16:00', 'Status' => 'rescheduled',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/student-classes/session-dates', [
+            'branch_id' => 1,
+            'range_start' => '2026-08-01',
+            'range_end' => '2026-09-30',
+            'courses' => [[
+                'id' => $courseId,
+                'first_class_date' => '2026-08-01',
+                'sessions_purchased' => 20,
+                'days_of_week' => [4],
+            ]],
+        ]);
+
+        $res->assertOk();
+        $payload = $res->json((string) $courseId) ?? [];
+        $dates = array_values(array_unique(array_merge(
+            array_column($payload['materialized'] ?? [], 'session_date'),
+            array_column($payload['projected'] ?? [], 'session_date')
+        )));
+
+        $this->assertContains('2026-08-27', $dates);
+        $this->assertNotContains('2026-09-10', $dates);
+        $this->assertNotContains('2026-09-17', $dates);
     }
 }
