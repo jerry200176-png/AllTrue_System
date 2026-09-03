@@ -48,7 +48,6 @@ budgets:
   max_loc_changed: 400
 max_loc_changed: 600
 checks:
-- vendor/bin/phpunit
 - bash scripts/phpunit-isolated.sh
 type: feature
 status: review
