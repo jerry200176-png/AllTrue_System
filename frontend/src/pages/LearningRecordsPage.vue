@@ -1524,6 +1524,12 @@ import { resolveDeepLinkBranchId, shouldLiftDefaultWindowForDate, feedbackFocusS
 import { compareLearningRecords } from '../lib/learningRecordSort';
 import { deduplicateLearningRecordSessions } from '../lib/learningRecordSessionPolicy';
 import {
+  addMinutesToTime,
+  dayOfWeekFromYmd,
+  formatLocalDate,
+  localTodayYmd,
+} from '../lib/learningRecordDate';
+import {
   saveDraft as _saveDraftToStorage,
   loadDraft as _loadDraftFromStorage,
   applyDraftToForm,
@@ -1551,32 +1557,6 @@ const toggleFeedbackPreview = (record) => {
 };
 
 const perf = createPerfTracker('LearningRecordsPage');
-
-const formatLocalDate = (date) => {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-};
-
-const localTodayYmd = () => formatLocalDate(new Date());
-
-const dayOfWeekFromYmd = (ymd) => {
-  if (!ymd) return 1;
-  const d = new Date(`${ymd}T12:00:00`);
-  const n = d.getDay();
-  return n === 0 ? 7 : n; // 1=Mon ... 7=Sun
-};
-
-const addMinutesToTime = (timeStr, minutes) => {
-  const [hRaw, mRaw] = String(timeStr || '').split(':');
-  const h = Number(hRaw);
-  const m = Number(mRaw);
-  if (!Number.isFinite(h) || !Number.isFinite(m)) return '';
-  const d = new Date(2000, 0, 1, h, m, 0, 0);
-  d.setMinutes(d.getMinutes() + minutes);
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-};
 
 const isTeacher = computed(() => props.userRole === 'teacher');
 const isDirectorRole = computed(() => ['director', 'admin', 'super_admin'].includes(String(props.userRole || '')));
