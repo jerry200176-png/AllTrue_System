@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "3a50012c34854ea6956d477dee7ca604",
+  "session_id": "699ba91d367246d183db46bd2266eaa7",
   "project": "alltrue",
-  "task_id": "transfer-contract-integrity-20260903",
+  "task_id": "multi-guardian-portal-authz-20260903",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "2f5a82ee5e488dd087c23bcdd60756bf0f2b1952",
-  "branch": "chore/task-transfer-contract-integrity-20260903-v2",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/transfer-contract-integrity-20260903",
-  "started_at": "2026-09-03T08:50:45Z",
+  "base_sha": "e17687c253238872555f93a7f20bb6dc4155e8b1",
+  "branch": "chore/task-multi-guardian-portal-authz-20260903",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/multi-guardian-portal-authz-20260903",
+  "started_at": "2026-09-03T09:56:13Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": "codex",
+  "agent_cli": null,
   "gateway_version": "0.5.0"
 }
