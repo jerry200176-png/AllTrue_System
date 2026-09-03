@@ -29,6 +29,24 @@ describe('useCourseSessionsDisplay', () => {
     expect(display.primarySessionUnits({ id: 1 })).toEqual([]);
   });
 
+  it('requests the backend history filter when loading completed dates', async () => {
+    const fetchClassSessionsFn = vi.fn().mockResolvedValue({ byClass: { '1': [] } });
+    const supabase = { auth: { getSession: vi.fn().mockResolvedValue({ data: { session: { access_token: 'token' } } }) } };
+    const display = useCourseSessionsDisplay({
+      sessionsByCourse: ref({}),
+      completedSessionDatesByCourse: ref({}),
+      fetchClassSessionsFn,
+      supabase,
+      branchId: ref(1),
+    });
+
+    await display.ensureCompletedSessionDatesLoaded({ id: 1 });
+    expect(fetchClassSessionsFn).toHaveBeenCalledWith(expect.objectContaining({
+      studentClassId: '1',
+      excludeHistoryFuture: true,
+    }));
+  });
+
   /**
    * Production incident 2026-08-08, 木柵吳艾潼 SC#2688 (月結/monthly billing):
    * StudentClassController always sets `sessions_purchased = SessionCount`

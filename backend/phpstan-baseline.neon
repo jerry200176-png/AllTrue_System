@@ -549,7 +549,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model\:\:\$ID\.$#'
 			identifier: property.notFound
-			count: 3
+			count: 2
 			path: app/Http/Controllers/AlertController.php
 
 		-
@@ -3242,12 +3242,6 @@ parameters:
 
 		-
 			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model\:\:\$ScheduleMode\.$#'
-			identifier: property.notFound
-			count: 2
-			path: app/Http/Controllers/PaymentReportController.php
-
-		-
-			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model\:\:\$invoice\.$#'
 			identifier: property.notFound
 			count: 1
 			path: app/Http/Controllers/PaymentReportController.php

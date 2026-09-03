@@ -602,8 +602,23 @@ class AlertController extends Controller
         $remaining = max(0, (int) ($sc->RemainingSessions ?? 0));
         $mode = $sc->ScheduleMode ?? 'count';
         $today = Carbon::today();
+        $studentClassId = (int) $sc->getAttribute('ID');
+        $openInvoice = $mode === 'date'
+            ? Invoice::query()
+                ->where('StudentClassID', $studentClassId)
+                ->whereIn('Status', ['unpaid', 'partial'])
+                ->orderByDesc('billing_period')
+                ->orderByDesc('id')
+                ->first(['id', 'billing_period'])
+            : null;
+        $openBillingPeriod = $openInvoice ? $openInvoice->getAttribute('billing_period') : null;
+        $billingPeriod = $mode === 'date'
+            ? (preg_match('/^\d{4}-\d{2}$/', (string) ($openBillingPeriod ?? ''))
+                ? (string) $openBillingPeriod
+                : $today->format('Y-m'))
+            : null;
         $billing = $mode === 'date'
-            ? $this->monthlyBilling->summarize($sc, $today)
+            ? $this->monthlyBilling->summarizePeriod($sc, $billingPeriod)
             : [
                 'charge' => max(0, (int) ($sc->Charge ?? 0)),
                 'period_sessions' => null,
@@ -649,14 +664,17 @@ class AlertController extends Controller
             'billing_period_start' => $billing['period_start'],
             'billing_period_end' => $billing['period_end'],
             'charge'           => $charge,
+            'billing_period'   => $billingPeriod,
             'due_date'         => $dueDate,
             'days_until_settlement' => $daysUntilSettlement,
             'note'             => $sc->Memo ?? '',
-            'sessions' => ClassSession::sessionsForPaymentSlip(
-                [(int) $sc->ID],
-                $billing['period_start'],
-                $billing['period_end']
-            ),
+            'sessions' => $mode === 'date'
+                ? $this->monthlyBilling->billableSessionDetailsForPeriod($sc, $billingPeriod)
+                : ClassSession::sessionsForPaymentSlip(
+                    [$studentClassId],
+                    $billing['period_start'],
+                    $billing['period_end']
+                ),
         ]);
     }
 
