@@ -1,19 +1,13 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 447 api/* routes · generated 2026-09-03
+> Source: `php artisan route:list --json` · 446 api/* routes · generated 2026-09-03
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
 > ⚠️ `public` means no auth *middleware* — some public routes carry inline guards
 > (X-Deploy-Secret, LINE channel signature, ParentSession bearer). Verify the route
 > closure/controller before treating a `public` row as exposed (R60 checks belong in CI).
-
-## /api/fix-db (1)
-
-| Method | URI | Action | Auth |
-|--------|-----|--------|------|
-| GET | `api/fix-db` | `Closure` | public |
 
 ## /api/health (1)
 
