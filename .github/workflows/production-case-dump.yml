@@ -284,8 +284,8 @@ jobs:
                 'sc.ClassType as class_type', 'sc.PackageID as package_id']);
             $excludedStatuses = ['cancelled', 'voided', 'leave', 'leave_adjusted', 'excused'];
             $overlaps = [];
-            foreach ($sessionRows as $left) {
-              foreach ($sessionRows as $right) {
+            foreach ($sessionRows as $left) {{
+              foreach ($sessionRows as $right) {{
                 if ((int)$left->id >= (int)$right->id || (int)$left->class_id === (int)$right->class_id
                   || in_array(strtolower((string)$left->status), $excludedStatuses, true)
                   || in_array(strtolower((string)$right->status), $excludedStatuses, true)
@@ -300,8 +300,8 @@ jobs:
                     'left_end'=>(string)$left->end_time, 'right_start'=>(string)$right->start_time,
                     'right_end'=>(string)$right->end_time, 'reason'=>'class_session_student_overlap_guard'];
                 }
-              }
-            }
+              }}
+            }}
             $out['campus_id'] = $campusId;
             $out['lookup_mode'] = $targetStudentClassId !== null ? 'student_class_id' : 'student_name';
             $out['probe_dates'] = $probeDates;
