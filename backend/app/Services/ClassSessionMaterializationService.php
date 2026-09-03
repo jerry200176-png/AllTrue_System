@@ -209,6 +209,16 @@ class ClassSessionMaterializationService
             ->where(function ($query) {
                 $query->where('sc.Stop', 0)->orWhereNull('sc.Stop');
             })
+            // Legacy ClassSession rows outside the other contract's effective
+            // period are historical residue and must not block a new slot.
+            ->where(function ($query) use ($sessionDate) {
+                $query->whereNull('sc.StartDate')
+                    ->orWhereDate('sc.StartDate', '<=', $sessionDate);
+            })
+            ->where(function ($query) use ($sessionDate) {
+                $query->whereNull('sc.EndDate')
+                    ->orWhereDate('sc.EndDate', '>=', $sessionDate);
+            })
             ->whereNotIn('cs.Status', $activeStatuses)
             ->whereRaw("LOWER(COALESCE(sc.ClassType, '')) <> ?", ['trial'])
             ->where('cs.StartTime', '<', $endTime)
@@ -257,6 +267,16 @@ class ClassSessionMaterializationService
                 $query->whereNull('sc.ID')
                     ->orWhere('sc.Stop', 0)
                     ->orWhereNull('sc.Stop');
+            })
+            // Apply the same contract-period boundary to schedule-only rows;
+            // otherwise stale future plans can look like a live conflict.
+            ->where(function ($query) use ($sessionDate) {
+                $query->whereNull('sc.StartDate')
+                    ->orWhereDate('sc.StartDate', '<=', $sessionDate);
+            })
+            ->where(function ($query) use ($sessionDate) {
+                $query->whereNull('sc.EndDate')
+                    ->orWhereDate('sc.EndDate', '>=', $sessionDate);
             })
             ->where('s.start_time', '<', substr($endTime, 0, 5))
             ->where('s.end_time', '>', substr($startTime, 0, 5))

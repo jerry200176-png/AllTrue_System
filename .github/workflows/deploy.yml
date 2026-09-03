@@ -122,6 +122,7 @@ jobs:
       deployable: ${{ steps.detect.outputs.deployable }}
       runtime_base_sha: ${{ steps.detect.outputs.runtime_base_sha }}
       detection_reason: ${{ steps.detect.outputs.detection_reason }}
+      runtime_state: ${{ steps.detect.outputs.runtime_state }}
     steps:
       - name: Checkout target revision
         uses: actions/checkout@v7
@@ -142,17 +143,54 @@ jobs:
           import os
           import subprocess
 
-          from scripts.governance.autonomy_gate import is_deployable_path
+          from scripts.governance.autonomy_gate import (
+              classify_production_runtime,
+              is_deployable_path,
+          )
 
           repo = os.environ["REPO"]
           head = os.environ["HEAD_SHA"]
           output = os.environ["GITHUB_OUTPUT"]
+          manifest_source = None
 
-          def emit(deployable, base_sha, reason):
+          def emit(deployable, base_sha, reason, runtime_state="invalid-evidence"):
               with open(output, "a", encoding="utf-8") as stream:
                   stream.write(f"deployable={str(deployable).lower()}\n")
                   stream.write(f"runtime_base_sha={base_sha}\n")
                   stream.write(f"detection_reason={reason}\n")
+                  stream.write(f"runtime_state={runtime_state}\n")
+
+          def successful_deploy_provenance(sha):
+              try:
+                  runs = json.loads(subprocess.check_output(
+                      [
+                          "gh", "api",
+                          f"/repos/{repo}/actions/workflows/deploy.yml/runs?branch=main&head_sha={sha}&status=completed&per_page=100",
+                      ],
+                      text=True,
+                  )).get("workflow_runs", [])
+              except (OSError, ValueError, subprocess.CalledProcessError):
+                  return None
+              for run in runs:
+                  if run.get("conclusion") != "success" or not run.get("id"):
+                      continue
+                  try:
+                      jobs = json.loads(subprocess.check_output(
+                          [
+                              "gh", "api",
+                              f"/repos/{repo}/actions/runs/{run['id']}/jobs?per_page=100",
+                          ],
+                          text=True,
+                      )).get("jobs", [])
+                  except (OSError, ValueError, subprocess.CalledProcessError):
+                      continue
+                  if any(
+                      job.get("name") == "Deploy to Production"
+                      and job.get("conclusion") == "success"
+                      for job in jobs
+                  ):
+                      return str(run.get("head_sha") or "").strip().lower()
+              return None
 
           try:
               manifest_process = subprocess.run(
@@ -166,24 +204,31 @@ jobs:
               )
               manifest = json.loads(manifest_process.stdout)
               deployed = str(manifest.get("backend_sha") or "").strip().lower()
+              manifest_source = str(manifest.get("source") or "").strip()
           except (OSError, ValueError, subprocess.CalledProcessError):
               deployed = ""
 
           if len(deployed) != 40 or any(char not in "0123456789abcdef" for char in deployed):
               # Unknown runtime identity must enter the classifier and hold; it
               # must never become a false no-op that hides an undeployed range.
-              emit(True, "unknown", "production deployment identity unavailable; classifier must fail closed")
+              emit(
+                  True,
+                  "unknown",
+                  "production deployment identity unavailable; classifier must fail closed",
+                  "invalid-evidence",
+              )
               raise SystemExit(0)
 
           if os.environ.get("PHASE") == "pop-bootstrap":
               # Bootstrap is a protected host-local identity action. It must
               # reach the existing executor even when the application
               # manifest already matches the requested workflow revision.
-              emit(True, deployed, "explicit POP machine bootstrap requested; protected host-local executor required")
-              raise SystemExit(0)
-
-          if deployed == head:
-              emit(False, deployed, "production manifest already matches target SHA")
+              emit(
+                  True,
+                  deployed,
+                  "explicit POP machine bootstrap requested; protected host-local executor required",
+                  "pop-bootstrap",
+              )
               raise SystemExit(0)
 
           comparison_process = subprocess.run(
@@ -192,9 +237,34 @@ jobs:
               capture_output=True,
           )
           if comparison_process.returncode != 0:
-              emit(True, deployed, "production-to-main comparison unavailable; classifier must fail closed")
+              emit(
+                  True,
+                  deployed,
+                  "production-to-main comparison unavailable; classifier must fail closed",
+                  "invalid-evidence",
+              )
               raise SystemExit(0)
-          comparison = json.loads(comparison_process.stdout)
+          try:
+              comparison = json.loads(comparison_process.stdout)
+          except ValueError:
+              emit(True, deployed, "production-to-main comparison was invalid; classifier must fail closed", "invalid-evidence")
+              raise SystemExit(0)
+          runtime = classify_production_runtime(
+              production_sha=deployed,
+              target_sha=head,
+              comparison_status=comparison.get("status"),
+              provenance_sha=successful_deploy_provenance(deployed),
+              manifest_source=manifest_source,
+          )
+          runtime_state = str(runtime["state"])
+          print(f"Production runtime state: {runtime_state} ({runtime['reason']})")
+          if runtime_state == "current":
+              emit(False, deployed, str(runtime["reason"]), runtime_state)
+              raise SystemExit(0)
+          if runtime_state != "normal-version-lag":
+              emit(True, deployed, str(runtime["reason"]), runtime_state)
+              raise SystemExit(0)
+
           files = [item.get("filename", "") for item in comparison.get("files", [])]
           deployable = any(is_deployable_path(path) for path in files)
           print(f"Production runtime base: {deployed}")
@@ -202,7 +272,7 @@ jobs:
           for path in files:
               print(f"- {path}")
           print(f"deployable={str(deployable).lower()}")
-          emit(deployable, deployed, "compared target against production deployment manifest")
+          emit(deployable, deployed, "normal version lag: compared target against verified production deployment", runtime_state)
           PYEOF
 
   classify-activation:
@@ -226,9 +296,11 @@ jobs:
         id: classify
         env:
           EVENT_NAME: ${{ github.event_name }}
+          PHASE: ${{ inputs.phase }}
           DEPLOYABLE: ${{ needs.detect-deployable.outputs.deployable }}
           TARGET_SHA: ${{ needs.resolve-target.outputs.target_sha }}
           RUNTIME_BASE_SHA: ${{ needs.detect-deployable.outputs.runtime_base_sha }}
+          RUNTIME_STATE: ${{ needs.detect-deployable.outputs.runtime_state }}
           REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -253,12 +325,11 @@ jobs:
             exit 0
           fi
 
-          # Manual activation already carries the exact SHA, successful main
-          # CI evidence, typed confirmation, and the protected environment
-          # gate. Runtime identity is still required by the automatic path,
-          # but an unavailable read-only manifest must not prevent the manual
-          # activation from reaching those stronger checks.
-          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+          # POP bootstrap is a separate host-local identity action. Preserve
+          # its protected path even when the application runtime manifest is
+          # unavailable; the bootstrap executor performs its own identity
+          # checks before any host-local side effect.
+          if [[ "$EVENT_NAME" == "workflow_dispatch" && "$PHASE" == "pop-bootstrap" ]]; then
             {
               echo "mode=manual"
               echo "tier=protected"
@@ -270,6 +341,24 @@ jobs:
 
           if [[ ! "$RUNTIME_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
             hold "unknown" "none" "production deployment identity unavailable; fail closed"
+            exit 0
+          fi
+
+          # A verified deployed ancestor is normal version lag while a
+          # deployment is pending. It still reaches the existing protected
+          # activation gate, but it must not require a second Founder
+          # authorization merely because production has not caught up yet.
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            if [[ "$RUNTIME_STATE" != "normal-version-lag" && "$RUNTIME_STATE" != "current" ]]; then
+              hold "unknown" "none" "read-only manifest evidence must be valid before manual activation: ${RUNTIME_STATE}"
+              exit 0
+            fi
+            {
+              echo "mode=manual"
+              echo "tier=protected"
+              echo "pr_number=manual"
+              echo "reason=Founder exact-SHA activation requested; runtime_state=${RUNTIME_STATE}"
+            } >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
