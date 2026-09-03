@@ -126,13 +126,7 @@ class MonthlyBillingService
         ];
     }
 
-    /**
-     * The settlement ledger's dated source. Every monthly billing surface must
-     * use this exact status/date predicate; schedules are intentionally not a
-     * billing source because they include future, leave, and cancelled rows.
-     *
-     * @return Collection<int, ClassSession>
-     */
+    /** @return Collection<int, ClassSession> */
     public function billableSessionsForPeriod(Model $course, string $billingPeriod): Collection
     {
         try {
@@ -154,12 +148,7 @@ class MonthlyBillingService
             ->get(['id', 'SessionDate', 'StartTime', 'EndTime', 'Status', 'session_charge']);
     }
 
-    /**
-     * Stable display snapshot fields for notifications and receipts. The
-     * ordinal is based on the same billable collection used for the charge.
-     *
-     * @return list<array{class_session_id:int,date:string,start_time:?string,end_time:?string,subject:string,lesson:int,status:string}>
-     */
+    /** @return list<array{class_session_id:int,date:string,start_time:?string,end_time:?string,subject:string,lesson:int,status:string}> */
     public function billableSessionDetailsForPeriod(Model $course, string $billingPeriod): array
     {
         $subject = method_exists($course, 'displaySubjectName')

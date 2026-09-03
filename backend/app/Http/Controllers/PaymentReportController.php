@@ -359,9 +359,6 @@ class PaymentReportController extends Controller
                 ]);
             }
 
-            // Monthly confirmation is the settlement boundary. Freeze the
-            // exact billable-session set on the invoice before any later
-            // schedule edit can change what a receipt would display.
             if ($sc && $sc->ScheduleMode === 'date') {
                 $billingPeriod = preg_match('/^\d{4}-\d{2}$/', (string) $invoice->billing_period)
                     ? (string) $invoice->billing_period
