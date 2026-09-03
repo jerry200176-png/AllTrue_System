@@ -10,15 +10,10 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
-/**
- * Independent contract entitlement amendment. It is deliberately not a
- * transfer workflow and deliberately does not invent an accounting action.
- */
 final class ContractAmendmentService
 {
     public const CLOSED_REASON = 'contract_amended';
 
-    /** @return array<string, mixed> */
     public function preview(StudentClass $course, int $newCount): array
     {
         $this->assertRequest($course, $newCount);
@@ -48,7 +43,6 @@ final class ContractAmendmentService
         ];
     }
 
-    /** @return array<string, mixed> */
     public function execute(StudentClass $course, int $newCount, int $actorId, string $reason): array
     {
         $reason = trim($reason);
@@ -165,7 +159,6 @@ final class ContractAmendmentService
         }
     }
 
-    /** @return list<array<string, mixed>> */
     private function futureScheduled(int $classId): array
     {
         return ClassSession::query()->where('StudentClassID', $classId)->where('Status', 'scheduled')
@@ -179,7 +172,6 @@ final class ContractAmendmentService
             ])->values()->all();
     }
 
-    /** @return list<array<string, mixed>> */
     private function futureSchedules(int $classId): array
     {
         return Schedule::query()->where('student_course_id', $classId)->where('status', 'scheduled')
@@ -193,7 +185,6 @@ final class ContractAmendmentService
             ])->values()->all();
     }
 
-    /** @return array<string, int> */
     private function financialSummary(int $classId): array
     {
         return [
@@ -203,7 +194,6 @@ final class ContractAmendmentService
         ];
     }
 
-    /** @return array<string, mixed> */
     private function contractSnapshot(StudentClass $course): array
     {
         return [
