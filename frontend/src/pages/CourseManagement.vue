@@ -1224,46 +1224,6 @@
       </div>
     </div>
 
-    <div v-if="invoiceVoidTarget" class="modal-overlay" @click.self="!invoiceVoidSubmitting && closeInvoiceVoidDialog()">
-      <div class="modal course-modal invoice-void-modal">
-        <div class="premium-danger-header">
-          <span class="premium-danger-icon">!</span>
-          <div>
-            <p class="premium-danger-kicker">Accounting Control</p>
-            <h3 class="modal-title">{{ invoiceVoidMode === 'exception' ? '更正並作廢帳單' : '作廢帳單' }}</h3>
-            <p class="modal-desc">
-              {{ formatLedgerInvoiceLabel(invoiceVoidTarget) }} · {{ formatLedgerCourseLabel({ course_ref: invoiceVoidTarget.course_ref, subject: invoiceModalCourse?.subject_name || invoiceModalCourse?.subject }) }} · {{ formatBillingPeriod(invoiceVoidTarget.billing_period) }}
-            </p>
-          </div>
-        </div>
-        <div class="invoice-void-warning">
-          <template v-if="invoiceVoidMode === 'exception'">
-            這張帳單已有收款，或已繳足但狀態異常。系統會建立更正紀錄、保留原始收款與收據，並將帳單標記作廢後不再列入應收。
-          </template>
-          <template v-else>
-            這會將帳單標記作廢，並從家長應收、課程帳單與催繳名單排除。已收款或部分收款的帳單不可在此作廢，請改走「撤銷收款」。
-          </template>
-        </div>
-        <label class="field-label" for="invoice-void-reason">作廢原因（必填）</label>
-        <textarea
-          id="invoice-void-reason"
-          v-model.trim="invoiceVoidReason"
-          class="invoice-void-reason"
-          rows="4"
-          maxlength="255"
-          placeholder="例：歷史錯帳，不應產生 2026年5月這筆應收"
-          :disabled="invoiceVoidSubmitting"
-        ></textarea>
-        <p class="modal-desc">原因會寫入帳單稽核紀錄，之後可追查。</p>
-        <div class="actions">
-          <button class="ghost" type="button" :disabled="invoiceVoidSubmitting" @click="closeInvoiceVoidDialog">取消</button>
-          <button class="danger-btn" type="button" :disabled="invoiceVoidSubmitting || invoiceVoidReason.trim().length < 3" @click="submitInvoiceVoid">
-            {{ invoiceVoidSubmitting ? '處理中…' : (invoiceVoidMode === 'exception' ? '確認更正並作廢' : '確認作廢') }}
-          </button>
-        </div>
-      </div>
-    </div>
-
     <div v-if="pauseConfirmTarget" class="modal-overlay" @click.self="!pauseConfirmSubmitting && (pauseConfirmTarget = null)">
       <div class="modal course-modal pause-confirm-modal">
         <div class="pause-confirm-header">
@@ -2574,10 +2534,6 @@ function canCloseCourse(c) {
     && !isPackageMember(c)
     && (isSessionMode(c) || isMonthlyMode(c))
     && c.closed_reason !== 'settled_pending';
-}
-
-function closeCourseNoRenew(course) {
-  goToStudentsCommercial(course, 'close');
 }
 
 function duplicateCourseForTeacher(course) {
@@ -4321,12 +4277,6 @@ const onSubstituteV2Submit = async (submitPayload) => {
   }
 };
 
-const togglePaymentStatus = (c) => {
-  goToTuitionBilling(c);
-};
-
-
-
 const loadStudents = async () => {
   const branchId = props.branchId != null ? String(props.branchId) : '';
   if (!branchId) {
@@ -4695,10 +4645,6 @@ const invoiceModalCourse = ref(null);
 const invoiceModalList = ref([]);
 const invoiceModalLoading = ref(false);
 const invoiceModalError = ref('');
-const invoiceVoidTarget = ref(null);
-const invoiceVoidReason = ref('');
-const invoiceVoidMode = ref('direct');
-const invoiceVoidSubmitting = ref(false);
 const paymentSlipOpen = ref(false);
 const paymentSlipStudentClassId = ref(null);
 
@@ -4845,116 +4791,6 @@ const openInvoiceModal = async (course) => {
     invoiceModalLoading.value = false;
   }
 };
-
-const canVoidInvoice = (invoice) => {
-  if (!invoice) return false;
-  if (invoice.can_direct_void === true) return true;
-  const status = String(invoice.status || '').toLowerCase();
-  const paidAmount = Number(invoice.paid_amount ?? 0) || 0;
-  const hasPayment = Array.isArray(invoice.payments)
-    ? invoice.payments.some((payment) => Number(payment?.amount ?? 0) > 0 && String(payment?.method || '') !== 'void')
-    : Number(invoice.payment_count ?? 0) > 0;
-  return !['paid', 'partial', 'void'].includes(status) && paidAmount === 0 && !hasPayment;
-};
-const canExceptionVoidInvoice = (invoice) => {
-  if (!invoice) return false;
-  const status = String(invoice.status || '').toLowerCase();
-  return status !== 'void' && invoice.can_exception_void === true;
-};
-
-const openInvoiceVoidDialog = (invoice) => {
-  if (!canVoidInvoice(invoice)) {
-    toastRef.value?.show?.({
-      title: '不可直接作廢',
-      description: '此帳單已有收款或狀態不是未繳，請改走「撤銷收款」。',
-      variant: 'warning',
-      durationMs: 5000,
-    });
-    return;
-  }
-  invoiceVoidTarget.value = invoice;
-  invoiceVoidMode.value = 'direct';
-  invoiceVoidReason.value = '';
-};
-
-const openInvoiceExceptionVoidDialog = (invoice) => {
-  if (!canExceptionVoidInvoice(invoice)) {
-    toastRef.value?.show?.({
-      title: '不可更正並作廢',
-      description: '此帳單沒有收款痕跡或不是帳務例外，請使用一般作廢流程。',
-      variant: 'warning',
-      durationMs: 5000,
-    });
-    return;
-  }
-  invoiceVoidTarget.value = invoice;
-  invoiceVoidMode.value = 'exception';
-  invoiceVoidReason.value = '';
-};
-
-const closeInvoiceVoidDialog = () => {
-  if (invoiceVoidSubmitting.value) return;
-  invoiceVoidTarget.value = null;
-  invoiceVoidReason.value = '';
-  invoiceVoidMode.value = 'direct';
-};
-
-const submitInvoiceVoid = async () => {
-  const invoice = invoiceVoidTarget.value;
-  const reason = invoiceVoidReason.value.trim();
-  if (!invoice?.id || reason.length < 3 || invoiceVoidSubmitting.value) return;
-
-  invoiceVoidSubmitting.value = true;
-  try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
-    if (!token) {
-      toastRef.value?.show?.({ title: '請重新登入', description: '登入逾時，請重新登入後再作廢帳單。', variant: 'error', durationMs: 5000 });
-      return;
-    }
-
-    const path = invoiceVoidMode.value === 'exception' ? 'exception-void' : 'void';
-    const res = await fetch(`/api/v1/invoices/${invoice.id}/${path}`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ reason }),
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      toastRef.value?.show?.({ title: '作廢失敗', description: json?.message || '帳單作廢失敗，請稍後再試。', variant: 'error', durationMs: 6000 });
-      return;
-    }
-
-    const periodLabel = formatBillingPeriod(invoice.billing_period);
-    toastRef.value?.show?.({
-      title: invoiceVoidMode.value === 'exception' ? '已更正並作廢帳單' : '已作廢帳單',
-      description: `${periodLabel} 帳單已作廢並排除應收。`,
-      variant: 'success',
-      durationMs: 5000,
-    });
-    invoiceVoidTarget.value = null;
-    invoiceVoidReason.value = '';
-    invoiceVoidMode.value = 'direct';
-    if (invoiceModalCourse.value) {
-      await openInvoiceModal(invoiceModalCourse.value);
-    }
-    await loadCourses(pagination.value.page || 1);
-  } catch (e) {
-    toastRef.value?.show?.({ title: '作廢失敗', description: e?.message || '帳單作廢失敗，請稍後再試。', variant: 'error', durationMs: 6000 });
-  } finally {
-    invoiceVoidSubmitting.value = false;
-  }
-};
-
-const openPaymentEntryForInvoice = (_invoice) => {
-  goToTuitionBilling(invoiceModalCourse.value);
-};
-
 
 const executeDeleteCourse = async () => {
   if (deleteCourseSubmitting.value) return;

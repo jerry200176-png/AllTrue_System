@@ -27,7 +27,9 @@ describe('CourseManagement student billing tab', () => {
     expect(source).toContain('goToTuitionBilling');
     expect(source).not.toContain('PaymentEntryModal');
     expect(source).not.toContain('>登記已回報</button>');
-    expect(source).not.toMatch(/openPaymentEntryForInvoice\(inv\)\s*>核帳</);
+    expect(source).not.toContain('openPaymentEntryForInvoice');
+    expect(source).not.toContain('submitInvoiceVoid');
+    expect(source).not.toContain('/api/v1/invoices/${invoice.id}/${path}');
   });
 
   it('offers a read-only payment notice from the billing context', () => {

@@ -14,6 +14,8 @@ describe('authoritative mutation ownership (slice 3: course-mgmt + calendar + bi
     expect(courseMgmt).toContain('goToTuitionBilling');
     expect(courseMgmt).toContain('前往帳務中心');
     expect(courseMgmt).not.toContain('>登記已回報</button>');
+    expect(courseMgmt).not.toContain('submitInvoiceVoid');
+    expect(courseMgmt).not.toContain('closeCourseNoRenew');
   });
 
   it('routes commercial renew/close to students while keeping trial convert local', () => {
