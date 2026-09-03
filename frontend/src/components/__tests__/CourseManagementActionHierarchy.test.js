@@ -70,13 +70,12 @@ describe('CourseManagement action hierarchy', () => {
     expect(source).toContain('>結案（不續報）</button>');
     expect(studentsSource).toContain("['session', 'monthly'].includes");
     expect(studentsSource).toContain("course?.closed_reason !== 'settled_pending'");
-    expect(source).toContain("reason: 'settled'");
+    // course-mgmt deep-links commercial settle to students; mutation stays authoritative there
+    expect(source).toContain("goToStudentsCommercial(c, 'close')");
     expect(studentsSource).toContain("reason: 'settled'");
     expect(source).toContain('settled_pending');
     expect(studentsSource).toContain('settled_pending');
-    expect(source).toContain('forfeit_remaining: true');
     expect(studentsSource).toContain('forfeit_remaining: true');
-    expect(source).toContain('放棄這 ${remaining} 堂剩餘額度');
     expect(studentsSource).toContain('放棄這 ${remaining} 堂剩餘額度');
   });
 
