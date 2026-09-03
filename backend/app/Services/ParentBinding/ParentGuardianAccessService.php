@@ -39,8 +39,7 @@ final class ParentGuardianAccessService
                 // Campus preference only reorders below; do not drop other
                 // active/read_only children (multi-child switcher).
                 $ids = $ids->merge(
-                    StudentGuardian::query()
-                        ->activeAccess()
+                    StudentGuardian::activeAccess()
                         ->where('guardian_id', (int) $guardian->getKey())
                         ->pluck('student_id')
                 );

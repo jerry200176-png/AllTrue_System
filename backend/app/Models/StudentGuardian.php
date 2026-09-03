@@ -20,6 +20,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property \Illuminate\Support\Carbon|null $revoked_at
  * @property-read Guardian|null $guardian
  * @property-read Student|null $student
+ * @method static \Illuminate\Database\Eloquent\Builder|StudentGuardian activeAccess()
+ * @method static \Illuminate\Database\Eloquent\Builder|StudentGuardian notRevoked()
  */
 class StudentGuardian extends Model
 {
