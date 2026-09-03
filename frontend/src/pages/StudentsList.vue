@@ -496,8 +496,8 @@
           </div>
         </div>
 
-        <div class="form-section-title">家長資訊</div>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+        <div v-if="showLegacyParentFields" class="form-section-title">家長資訊</div>
+        <div v-if="showLegacyParentFields" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
           <div class="form-group">
             <label>家長姓名</label>
             <input v-model="studentForm.parent_name" placeholder="請輸入家長姓名" />
@@ -530,12 +530,21 @@
           </div>
         </div>
 
-        <div v-if="editingStudentId && multiGuardianEnabled" class="form-section-title">監護人（多家長）</div>
+        <div v-if="editingStudentId && multiGuardianEnabled" class="form-section-title">家長／監護人</div>
         <div v-if="editingStudentId && multiGuardianEnabled" class="line-bindings-section">
+          <p class="line-bindings-empty" style="margin:0 0 8px;">
+            主要聯絡人的姓名與手機即為本學生家長資訊來源；請在此維護，勿再另填一組家長欄位。
+          </p>
           <div v-if="guardiansLoading" class="line-bindings-empty">載入中…</div>
+          <div v-else-if="guardians.length === 0" class="line-bindings-empty">
+            尚無監護人紀錄
+            <span v-if="studentForm.parent_name || studentForm.parent_phone">
+              （既有家長：{{ studentForm.parent_name || '—' }}／{{ studentForm.parent_phone || '—' }}，請新增為監護人）
+            </span>
+          </div>
           <div v-else class="line-bindings-list">
             <div v-for="g in guardians" :key="g.id" class="line-binding-row">
-              <span class="line-binding-id">{{ g.display_name || '未命名' }} · {{ g.role }}{{ g.is_primary ? ' · 主要' : '' }}</span>
+              <span class="line-binding-id">{{ g.display_name || '未命名' }} · {{ g.role }}{{ g.is_primary ? ' · 主要聯絡人' : '' }}</span>
               <span class="line-binding-time">{{ g.phone || g.line_user_id_masked || '—' }}</span>
               <button type="button" class="line-binding-remove" @click="removeGuardian(g.id)">解除</button>
             </div>
@@ -948,6 +957,8 @@ const studentForm = ref({ name: '', grade: 'J1', phone: '', school: '', parent_n
 const lineBindings = ref([]);
 const lineBindingsLoading = ref(false);
 const multiGuardianEnabled = ref(false);
+/** Edit + multi-guardian: guardians are SSOT — hide duplicate parent_name/phone editors. */
+const showLegacyParentFields = computed(() => !editingStudentId.value || !multiGuardianEnabled.value);
 const guardians = ref([]);
 const guardiansLoading = ref(false);
 const guardianError = ref('');
@@ -1986,6 +1997,15 @@ const fetchGuardians = async (studentId) => {
     multiGuardianEnabled.value = true;
     const json = await res.json();
     guardians.value = json.guardians || [];
+    // Prefill add form from legacy parent_* when no guardians yet (compat import path).
+    if (guardians.value.length === 0 && (studentForm.value.parent_name || studentForm.value.parent_phone)) {
+      guardianForm.value = {
+        display_name: studentForm.value.parent_name || '',
+        phone: studentForm.value.parent_phone || '',
+        role: 'guardian',
+        is_primary: true,
+      };
+    }
   } catch {
     multiGuardianEnabled.value = false;
   } finally {
@@ -2320,10 +2340,13 @@ const submitStudent = async () => {
     grade: studentForm.value.grade,
     phone: studentForm.value.phone,
     school: studentForm.value.school,
-    parent_name: studentForm.value.parent_name,
-    parent_phone: studentForm.value.parent_phone,
     notes: studentForm.value.notes
   };
+  // Guardians SSOT when multi-guardian edit UI is active: do not POST stale parent_* fields.
+  if (showLegacyParentFields.value) {
+    payload.parent_name = studentForm.value.parent_name;
+    payload.parent_phone = studentForm.value.parent_phone;
+  }
   if (studentForm.value.rfid) payload.rfid = studentForm.value.rfid;
   if (editingStudentId.value) {
     payload.status = studentForm.value.status;
