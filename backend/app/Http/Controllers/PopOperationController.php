@@ -14,6 +14,7 @@ final class PopOperationController extends Controller
         $validated = $request->validate([
             'parameters' => ['required', 'array'],
             'idempotency_key' => ['required', 'string', 'max:128', 'regex:/^[A-Za-z0-9:_-]{1,128}$/'],
+            'context' => ['sometimes', 'nullable', 'array'],
         ]);
         $user = $request->attributes->get('auth_user');
         if (!$user) return response()->json(['message' => 'Unauthenticated'], 401);
@@ -26,7 +27,8 @@ final class PopOperationController extends Controller
                 'user:' . (int) $user->id,
                 (string) $request->attributes->get('auth_role'),
                 (array) $request->attributes->get('auth_campus_ids', []),
-                (int) $user->id
+                (int) $user->id,
+                $validated['context'] ?? null
             );
         } catch (RuntimeException $e) {
             return response()->json(['message' => 'POP draft rejected', 'reason_code' => $e->getMessage()], $this->errorStatus($e));
@@ -40,6 +42,7 @@ final class PopOperationController extends Controller
         $validated = $request->validate([
             'parameters' => ['required', 'array'],
             'idempotency_key' => ['required', 'string', 'max:128', 'regex:/^[A-Za-z0-9:_-]{1,128}$/'],
+            'context' => ['sometimes', 'nullable', 'array'],
         ]);
         if ($request->attributes->get('auth_principal_type') !== 'machine') {
             return response()->json(['message' => 'Unauthorized'], 401);
@@ -53,7 +56,8 @@ final class PopOperationController extends Controller
                 (string) $request->attributes->get('auth_actor'),
                 'pop_machine',
                 (array) $request->attributes->get('auth_campus_ids', []),
-                (int) $request->attributes->get('api_client_id')
+                (int) $request->attributes->get('api_client_id'),
+                $validated['context'] ?? null
             );
         } catch (RuntimeException $e) {
             return response()->json(['message' => 'POP draft rejected', 'reason_code' => $e->getMessage()], $this->errorStatus($e));
@@ -92,6 +96,9 @@ final class PopOperationController extends Controller
 
     public function dryRun(Request $request, string $requestId, PopOperationService $service)
     {
+        $validated = $request->validate([
+            'context' => ['sometimes', 'nullable', 'array'],
+        ]);
         $user = $request->attributes->get('auth_user');
         if (!$user) return response()->json(['message' => 'Unauthenticated'], 401);
 
@@ -101,7 +108,8 @@ final class PopOperationController extends Controller
                 'user:' . (int) $user->id,
                 (int) $user->id,
                 (string) $request->attributes->get('auth_role'),
-                (array) $request->attributes->get('auth_campus_ids', [])
+                (array) $request->attributes->get('auth_campus_ids', []),
+                $validated['context'] ?? null
             );
         } catch (RuntimeException $e) {
             return response()->json(['message' => 'POP dry-run rejected', 'reason_code' => $e->getMessage()], $this->errorStatus($e));
@@ -112,6 +120,9 @@ final class PopOperationController extends Controller
 
     public function machineDryRun(Request $request, string $requestId, PopOperationService $service)
     {
+        $validated = $request->validate([
+            'context' => ['sometimes', 'nullable', 'array'],
+        ]);
         if ($request->attributes->get('auth_principal_type') !== 'machine') {
             return response()->json(['message' => 'Unauthorized'], 401);
         }
@@ -122,7 +133,8 @@ final class PopOperationController extends Controller
                 (string) $request->attributes->get('auth_actor'),
                 (int) $request->attributes->get('api_client_id'),
                 'pop_machine',
-                (array) $request->attributes->get('auth_campus_ids', [])
+                (array) $request->attributes->get('auth_campus_ids', []),
+                $validated['context'] ?? null
             );
         } catch (RuntimeException $e) {
             return response()->json(['message' => 'POP dry-run rejected', 'reason_code' => $e->getMessage()], $this->errorStatus($e));
