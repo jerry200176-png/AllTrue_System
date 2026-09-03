@@ -135,10 +135,28 @@ jobs:
           echo "request created/reused: request_id=$REQUEST_ID operation=course-contract-repair"
           dry_run="$WORK_DIR/dry-run.json"
           dry_status="$(post_machine "/api/v1/pop/machine/operations/requests/$REQUEST_ID/dry-run" '{}' "$dry_run")"
-          [[ "$dry_status" == 200 ]] || {
-            echo "::error::POP dry-run rejected with HTTP $dry_status"
+          if [[ "$dry_status" != 200 ]]; then
+            dry_error_summary="$(python3 - "$dry_run" <<'PY'
+          import json, re, sys
+          try:
+              body = json.load(open(sys.argv[1]))
+          except (OSError, ValueError):
+              body = {}
+          data = body.get('data') or {}
+          plan = data.get('plan') or {}
+          raw_errors = plan.get('errors') or data.get('errors') or []
+          safe_errors = [
+              str(error) for error in raw_errors
+              if re.fullmatch(r'[A-Za-z0-9_:-]{1,96}', str(error))
+          ]
+          if not safe_errors:
+              safe_errors = ['unreported_reason']
+          print('reason_codes=' + ','.join(safe_errors[:32]))
+          PY
+            )"
+            echo "::error::POP dry-run rejected with HTTP $dry_status $dry_error_summary"
             exit 1
-          }
+          fi
           dry_summary="$(python3 - "$dry_run" <<'PY'
           import json, sys
           data = json.load(open(sys.argv[1])).get('data', {})
