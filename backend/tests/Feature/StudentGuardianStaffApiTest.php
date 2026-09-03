@@ -148,6 +148,62 @@ class StudentGuardianStaffApiTest extends TestCase
         $this->assertSame('0912333444', $student->parent_phone);
     }
 
+    public function test_update_guardian_edits_existing_link_in_place(): void
+    {
+        config(['perfflags.multi_guardian_enabled' => true]);
+        $token = $this->directorToken();
+        $student = $this->student([
+            'parent_name' => '舊家長',
+            'parent_phone' => '0912111000',
+        ]);
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->postJson("/api/v1/students/{$student->id}/guardians", [
+                'display_name' => '原主要',
+                'phone' => '0912333444',
+                'role' => 'father',
+                'is_primary' => true,
+            ])
+            ->assertCreated();
+
+        $other = $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->postJson("/api/v1/students/{$student->id}/guardians", [
+                'display_name' => '原次要',
+                'phone' => '0912444555',
+                'role' => 'mother',
+                'is_primary' => false,
+            ])
+            ->assertCreated();
+        $otherId = (int) $other->json('id');
+
+        $updated = $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->putJson("/api/v1/students/{$student->id}/guardians/{$otherId}", [
+                'display_name' => '新主要',
+                'phone' => '0912555666',
+                'role' => 'mother',
+                'is_primary' => true,
+            ]);
+        $updated->assertOk();
+        $this->assertSame($otherId, (int) $updated->json('id'));
+
+        $active = StudentGuardian::query()
+            ->where('student_id', $student->id)
+            ->where('status', '!=', StudentGuardian::STATUS_REVOKED)
+            ->orderBy('id')
+            ->get();
+        $this->assertCount(2, $active);
+        $this->assertSame(1, $active->where('is_primary', true)->count());
+
+        $edited = StudentGuardian::with('guardian')->findOrFail($otherId);
+        $this->assertSame('新主要', $edited->guardian->display_name);
+        $this->assertSame('0912555666', $edited->guardian->phone);
+        $this->assertTrue((bool) $edited->is_primary);
+
+        $student->refresh();
+        $this->assertSame('新主要', $student->parent_name);
+        $this->assertSame('0912555666', $student->parent_phone);
+    }
+
     public function test_student_update_without_parent_fields_preserves_legacy_columns(): void
     {
         config(['perfflags.multi_guardian_enabled' => true]);
