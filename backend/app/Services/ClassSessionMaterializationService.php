@@ -209,6 +209,16 @@ class ClassSessionMaterializationService
             ->where(function ($query) {
                 $query->where('sc.Stop', 0)->orWhereNull('sc.Stop');
             })
+            // Legacy ClassSession rows outside the other contract's effective
+            // period are historical residue and must not block a new slot.
+            ->where(function ($query) use ($sessionDate) {
+                $query->whereNull('sc.StartDate')
+                    ->orWhereDate('sc.StartDate', '<=', $sessionDate);
+            })
+            ->where(function ($query) use ($sessionDate) {
+                $query->whereNull('sc.EndDate')
+                    ->orWhereDate('sc.EndDate', '>=', $sessionDate);
+            })
             ->whereNotIn('cs.Status', $activeStatuses)
             ->whereRaw("LOWER(COALESCE(sc.ClassType, '')) <> ?", ['trial'])
             ->where('cs.StartTime', '<', $endTime)
@@ -225,6 +235,7 @@ class ClassSessionMaterializationService
                 $sessionConflict->getAttribute('Status') !== null
                     ? (string) $sessionConflict->getAttribute('Status')
                     : null,
+                (int) ($sessionConflict->getAttribute('StudentClassID') ?? 0),
             );
         }
 
@@ -245,6 +256,15 @@ class ClassSessionMaterializationService
                 $query->whereNull('s.student_course_id')
                     ->orWhere('s.student_course_id', '!=', $studentClassId);
             })
+            // A linked schedule whose StudentClass was deleted is orphaned
+            // metadata, not a current student booking. It is invisible in
+            // course details and must not block materialization. Genuine
+            // schedule-only makeup rows keep the NULL course id and remain
+            // authoritative occupancy evidence.
+            ->where(function ($query) {
+                $query->whereNull('s.student_course_id')
+                    ->orWhereNotNull('sc.ID');
+            })
             // An original_schedule_id row is a substitute/reschedule history
             // anchor. Its live ClassSession is checked above; the anchor itself
             // must not block a valid renewal at the same student time.
@@ -258,6 +278,16 @@ class ClassSessionMaterializationService
                     ->orWhere('sc.Stop', 0)
                     ->orWhereNull('sc.Stop');
             })
+            // Apply the same contract-period boundary to schedule-only rows;
+            // otherwise stale future plans can look like a live conflict.
+            ->where(function ($query) use ($sessionDate) {
+                $query->whereNull('sc.StartDate')
+                    ->orWhereDate('sc.StartDate', '<=', $sessionDate);
+            })
+            ->where(function ($query) use ($sessionDate) {
+                $query->whereNull('sc.EndDate')
+                    ->orWhereDate('sc.EndDate', '>=', $sessionDate);
+            })
             ->where('s.start_time', '<', substr($endTime, 0, 5))
             ->where('s.end_time', '>', substr($startTime, 0, 5))
             ->orderBy('s.id')
@@ -270,12 +300,11 @@ class ClassSessionMaterializationService
             ->rejectStale($scheduleConflicts, $sessionDate)[0] ?? null;
 
         if ($scheduleConflict) {
-            throw SlotOccupiedException::fromStudentConflict(
+            throw SlotOccupiedException::fromStudentScheduleConflict(
                 $studentClassId,
                 $sessionDate,
                 $startTime,
-                null,
-                $scheduleConflict->status !== null ? (string) $scheduleConflict->status : null,
+                $scheduleConflict,
             );
         }
     }

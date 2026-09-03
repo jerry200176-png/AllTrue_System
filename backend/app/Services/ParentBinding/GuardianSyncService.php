@@ -170,6 +170,95 @@ final class GuardianSyncService
         });
     }
 
+    public function revoke(StudentGuardian $link): void
+    {
+        if (!self::dualWriteEnabled()) {
+            return;
+        }
+
+        DB::transaction(function () use ($link) {
+            $wasPrimary = (bool) $link->is_primary;
+            $studentId = (int) $link->student_id;
+            $link->loadMissing('guardian');
+            $link->status = StudentGuardian::STATUS_REVOKED;
+            $link->is_primary = false;
+            $link->revoked_at = now();
+            $link->save();
+
+            // PB-04: revoke → immediate ParentSession invalidate for this relationship.
+            app(ParentGuardianAccessService::class)->invalidateSessionsForLink($link);
+
+            if ($wasPrimary) {
+                $next = StudentGuardian::query()
+                    ->where('student_id', $studentId)
+                    ->where('status', '!=', StudentGuardian::STATUS_REVOKED)
+                    ->orderByDesc('id')
+                    ->first();
+                if ($next) {
+                    $next->is_primary = true;
+                    $next->save();
+                    /** @var Student|null $student */
+                    $student = Student::query()->whereKey($studentId)->first();
+                    if ($student instanceof Student) {
+                        $this->mirrorPrimaryToLegacyStudent($student, $next->guardian);
+                    }
+                }
+            }
+        });
+    }
+
+    public function linkFromLineBinding(Student $student, string $lineUserId, int $bindingId): ?StudentGuardian
+    {
+        if (!self::dualWriteEnabled()) {
+            return null;
+        }
+        if ($lineUserId === '') {
+            return null;
+        }
+
+        $phone = trim((string) ($student->getAttribute('parent_phone') ?? ''));
+        if ($phone === '') {
+            $phone = trim((string) ($student->getAttribute('Phone') ?? ''));
+        }
+        $name = trim((string) ($student->getAttribute('parent_name') ?? ''));
+        $studentId = (int) $student->getKey();
+
+        return DB::transaction(function () use ($student, $studentId, $lineUserId, $bindingId, $phone, $name) {
+            $guardian = $this->findOrCreateGuardian(
+                $name !== '' ? $name : null,
+                $phone !== '' ? $phone : null,
+                Guardian::normalizePhone($phone),
+                $lineUserId
+            );
+
+            $hasPrimary = StudentGuardian::query()
+                ->where('student_id', $studentId)
+                ->where('status', '!=', StudentGuardian::STATUS_REVOKED)
+                ->where('is_primary', true)
+                ->exists();
+
+            /** @var StudentGuardian $link */
+            $link = StudentGuardian::query()->firstOrNew([
+                'student_id' => $studentId,
+                'guardian_id' => $guardian->getKey(),
+            ]);
+            $link->fill([
+                'campus_id' => (int) ($student->CampusID ?? 0) ?: null,
+                'role' => $link->exists ? ($link->role ?: StudentGuardian::ROLE_GUARDIAN) : StudentGuardian::ROLE_GUARDIAN,
+                'is_primary' => $link->exists ? (bool) $link->is_primary : !$hasPrimary,
+                'status' => StudentGuardian::STATUS_ACTIVE,
+                'notify_learning_feedback' => $link->exists ? (bool) $link->notify_learning_feedback : true,
+                'notify_tuition' => $link->exists ? (bool) $link->notify_tuition : true,
+                'source' => StudentGuardian::SOURCE_LINE_BINDING,
+                'student_line_binding_id' => $bindingId,
+                'revoked_at' => null,
+            ]);
+            $link->save();
+
+            return $link->fresh(['guardian']);
+        });
+    }
+
     /** @return list<StudentGuardian> */
     public function listForStudent(int $studentId): array
     {

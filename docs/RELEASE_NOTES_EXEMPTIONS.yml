@@ -2,6 +2,16 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-03-multi-guardian-portal-authz
+    changelog_date: "2026-09-03"
+    changelog_title: "feat(parent): Parent Portal multi-guardian dual-read authZ"
+    reason: 僅家長 Portal LINE 登入／切換與 revoke→session 路徑；教職員畫面無新操作。rollback 為關 PERF_MULTI_GUARDIAN；不 cutover parent_phone。
+
+  - id: silent-2026-09-03-multi-guardian-staff-crud
+    changelog_date: "2026-09-03"
+    changelog_title: "feat(parent): 學生管理多家長 CRUD（flag 閘控）"
+    reason: 多家長 CRUD 僅在 PERF_MULTI_GUARDIAN 開啟時可見；預設關閉時 API 404。production flag enable 另需 Founder GO。
+
   - id: silent-2026-09-03-multi-parent-line-notify
     changelog_date: "2026-09-03"
     changelog_title: "fix(parent): 多家長 LINE 綁定通知與偏好一致性"
