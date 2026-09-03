@@ -385,7 +385,7 @@ jobs:
                 ->whereIn("StudentClassID", $classIds250)
                 ->get(["StudentClassID as class_id", "SessionDate as session_date", "Status as status"]);
               $transferCount250 = 0;
-              if (\Illuminate\Support\Schema::hasTable("session_entitlement_transfers")) {{
+              if ($db::getSchemaBuilder()->hasTable("session_entitlement_transfers")) {{
                 $transferCount250 = (int)$db::table("session_entitlement_transfers")
                   ->where(function ($q) use ($classIds250) {{
                     $q->whereIn("source_student_class_id", $classIds250)
