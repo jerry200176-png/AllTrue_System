@@ -293,13 +293,13 @@ jobs:
                   || strtolower(trim((string)($left->class_type ?? ''))) === 'trial'
                   || strtolower(trim((string)($right->class_type ?? ''))) === 'trial'
                   || ((int)($left->package_id ?? 0) > 0 && (int)$left->package_id === (int)($right->package_id ?? 0))) continue;
-                if ((string)$left->start_time < (string)$right->end_time && (string)$left->end_time > (string)$right->start_time) {
+                if ((string)$left->start_time < (string)$right->end_time && (string)$left->end_time > (string)$right->start_time) {{
                   $overlaps[] = ['left_session_id'=>(int)$left->id, 'left_class_id'=>(int)$left->class_id,
                     'right_session_id'=>(int)$right->id, 'right_class_id'=>(int)$right->class_id,
                     'session_date'=>(string)$left->session_date, 'left_start'=>(string)$left->start_time,
                     'left_end'=>(string)$left->end_time, 'right_start'=>(string)$right->start_time,
                     'right_end'=>(string)$right->end_time, 'reason'=>'class_session_student_overlap_guard'];
-                }
+                }}
               }}
             }}
             $out['campus_id'] = $campusId;
