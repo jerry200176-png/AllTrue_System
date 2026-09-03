@@ -6,6 +6,7 @@ use App\Models\LearningRecord;
 use App\Models\LearningRecordFeedback;
 use App\Models\ParentSession;
 use App\Services\ParentBinding\ParentBindingObservability;
+use App\Services\ParentBinding\ParentGuardianAccessService;
 use App\Support\ParentBinding\ParentBindingCodes;
 use App\Models\ParentCrossCampusAccess;
 use App\Models\StudentIdentityMember;
@@ -325,26 +326,14 @@ class ParentPortalController extends Controller
             return response()->json(['message' => 'Invalid LINE authentication'], 401);
         }
 
-        $studentIds = StudentLineBinding::query()
-            ->whereNotNull('verified_at')
-            ->where('line_user_id', $lineUserId)
-            ->pluck('student_id');
-        $students = $studentIds->isNotEmpty()
-            ? Student::whereIn('id', $studentIds)->get()
-            : collect();
+        $preferredCampusId = !empty($data['campus_id']) ? (int) $data['campus_id'] : null;
+        $students = app(ParentGuardianAccessService::class)
+            ->studentsForLineUser($lineUserId, $preferredCampusId);
         if ($students->isEmpty()) {
             SecurityAuditEvent::append('parent.auth', 'failure', [
                 'campus_id' => (int) ($data['campus_id'] ?? 0),
             ], ['method' => 'line', 'reason_code' => 'binding_not_found']);
             return response()->json(['message' => '尚未綁定學生帳號（此入口僅供家長/學生）。請透過 LINE 官方帳號輸入「綁定 學生姓名 手機號碼」完成綁定'], 404);
-        }
-
-        // If a campus_id was provided (e.g. from a branch-specific portal link),
-        // prioritise students from that campus so the first session matches the link's branch.
-        // Families with the same child enrolled in multiple campuses benefit from this ordering.
-        $preferredCampusId = !empty($data['campus_id']) ? (int) $data['campus_id'] : null;
-        if ($preferredCampusId) {
-            $students = $students->sortByDesc(fn ($s) => (int) $s->CampusID === $preferredCampusId)->values();
         }
 
         // Create session for the first student (frontend can switch later)
@@ -403,32 +392,25 @@ class ParentPortalController extends Controller
             $allowed = true;
         }
 
-        if ($currentStudent) {
-            // Prefer the LINE identity on this session (multi-parent safe).
-            // Fall back to any verified binding on the current student for legacy
-            // phone-login sessions that never stored line_user_id.
-            $sessionLineId = trim((string) ($session->getAttribute('line_user_id') ?? ''));
-            if ($sessionLineId !== '' && $this->isValidLineUserId($sessionLineId)) {
+        $sessionLineId = trim((string) ($session->getAttribute('line_user_id') ?? ''));
+        if (!$allowed && $sessionLineId !== '' && $this->isValidLineUserId($sessionLineId)) {
+            // Guardian dual-read path (multi-guardian / multi-child) + SLB legacy.
+            $allowed = app(ParentGuardianAccessService::class)
+                ->lineMayAccessStudent($sessionLineId, (int) $targetStudent->id);
+        } elseif (!$allowed && $currentStudent) {
+            // Legacy phone-login sessions without line_user_id: shared verified SLB only.
+            $currentLineIds = StudentLineBinding::where('student_id', $currentStudent->id)
+                ->verified()
+                ->pluck('line_user_id')
+                ->filter(fn ($id) => $this->isValidLineUserId($id));
+            if ($currentLineIds->isNotEmpty()) {
                 $allowed = StudentLineBinding::query()
                     ->whereNotNull('verified_at')
                     ->where('student_id', $targetStudent->id)
-                    ->where('line_user_id', $sessionLineId)
+                    ->whereIn('line_user_id', $currentLineIds)
                     ->exists();
-            } else {
-                $currentLineIds = StudentLineBinding::where('student_id', $currentStudent->id)
-                    ->verified()
-                    ->pluck('line_user_id')
-                    ->filter(fn ($id) => $this->isValidLineUserId($id));
-                if ($currentLineIds->isNotEmpty()) {
-                    $allowed = StudentLineBinding::query()
-                        ->whereNotNull('verified_at')
-                        ->where('student_id', $targetStudent->id)
-                        ->whereIn('line_user_id', $currentLineIds)
-                        ->exists();
-                }
             }
             // PRD-B FR-B-001: 不再以「相同 Phone」允許切換，避免跨家庭 PII 洩漏。
-            // 若需共用入口，家長需透過 LINE 綁定明確連結多位學生。
         }
 
         if (!$allowed) {
@@ -1911,9 +1893,27 @@ class ParentPortalController extends Controller
 
         $hash = hash('sha256', $token);
 
-        return ParentSession::where('TokenHash', $hash)
+        $session = ParentSession::where('TokenHash', $hash)
             ->where('ExpiresAt', '>', Carbon::now())
             ->first();
+        if (!$session) {
+            return null;
+        }
+
+        // When portal dual-read is on, a revoked guardian link must fail closed
+        // even if ExpiresAt has not been swept yet.
+        $lineUserId = trim((string) ($session->getAttribute('line_user_id') ?? ''));
+        if ($lineUserId !== ''
+            && $this->isValidLineUserId($lineUserId)
+            && ParentGuardianAccessService::portalDualReadEnabled()
+            && !app(ParentGuardianAccessService::class)->lineMayAccessStudent($lineUserId, (int) $session->StudentID)
+        ) {
+            $session->ExpiresAt = Carbon::now();
+            $session->save();
+            return null;
+        }
+
+        return $session;
     }
 
     private function trimToHM(?string $time): string

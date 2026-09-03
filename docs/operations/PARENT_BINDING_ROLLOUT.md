@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| Status | **ADR Accepted**; PB-00 **IMPLEMENTED / DEPLOYED — PRODUCTION ACTIVATION PENDING** (code merged #1446; activation / `effective=true` / 7-day baseline pending privileged Pi ops) |
+| Status | **ADR Accepted**; PB-00 **IMPLEMENTED / DEPLOYED** (#1446). PB-00 no longer hard-blocks PB-04 (Founder GO 2026-09-03). Relationship slice via `guardians`/`student_guardians`; portal dual-read under `PERF_MULTI_GUARDIAN`. |
 | OTP | **Not in Phase 0–2** |
 
 Success = KPIs, not “shipped”. Expand-contract; flags+rollback; CI→PR→merge→deploy; no schedule/billing/leave mix-in.
