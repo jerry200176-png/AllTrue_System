@@ -235,6 +235,7 @@ class ClassSessionMaterializationService
                 $sessionConflict->getAttribute('Status') !== null
                     ? (string) $sessionConflict->getAttribute('Status')
                     : null,
+                (int) ($sessionConflict->getAttribute('StudentClassID') ?? 0),
             );
         }
 
@@ -254,6 +255,15 @@ class ClassSessionMaterializationService
             ->where(function ($query) use ($studentClassId) {
                 $query->whereNull('s.student_course_id')
                     ->orWhere('s.student_course_id', '!=', $studentClassId);
+            })
+            // A linked schedule whose StudentClass was deleted is orphaned
+            // metadata, not a current student booking. It is invisible in
+            // course details and must not block materialization. Genuine
+            // schedule-only makeup rows keep the NULL course id and remain
+            // authoritative occupancy evidence.
+            ->where(function ($query) {
+                $query->whereNull('s.student_course_id')
+                    ->orWhereNotNull('sc.ID');
             })
             // An original_schedule_id row is a substitute/reschedule history
             // anchor. Its live ClassSession is checked above; the anchor itself
@@ -290,12 +300,11 @@ class ClassSessionMaterializationService
             ->rejectStale($scheduleConflicts, $sessionDate)[0] ?? null;
 
         if ($scheduleConflict) {
-            throw SlotOccupiedException::fromStudentConflict(
+            throw SlotOccupiedException::fromStudentScheduleConflict(
                 $studentClassId,
                 $sessionDate,
                 $startTime,
-                null,
-                $scheduleConflict->status !== null ? (string) $scheduleConflict->status : null,
+                $scheduleConflict,
             );
         }
     }
