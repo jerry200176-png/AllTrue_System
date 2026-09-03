@@ -185,7 +185,7 @@ jobs:
                 ->where('name', 'like', '%' . $targetStudentName . '%')->pluck('id')
                 ->map(fn ($id) => (int)$id)->all();
             }}
-            $classes = $db::table('StudentClass as sc')->join('Student as st', 'st.id', '=', 'sc.StudentID')->whereIn('sc.StudentID', $studentIds)
+            $classes = $db::table('StudentClass as sc')->whereIn('sc.StudentID', $studentIds)
               ->when($targetStudentClassId !== null, fn ($query) => $query->where('sc.ID', $targetStudentClassId))
               ->orderBy('sc.ID')->get(['sc.ID as class_id', 'sc.StudentID as student_id', 'sc.SubjectID as subject_id',
                 'sc.TeacherID as teacher_id', 'sc.ScheduleMode as schedule_mode', 'sc.StartDate as start_date',
@@ -254,7 +254,7 @@ jobs:
             if ($studentIds === [] && $targetStudentClassId === null) {{
               $studentIds = $db::table('Student')->where('name', 'like', '%' . $targetStudentName . '%')->pluck('id')->map(fn ($id) => (int)$id)->all();
             }}
-            $classes = $db::table('StudentClass as sc')->whereIn('sc.StudentID', $studentIds)
+            $classes = $db::table('StudentClass as sc')->join('Student as st', 'st.id', '=', 'sc.StudentID')->whereIn('sc.StudentID', $studentIds)
               ->when($targetStudentClassId !== null, fn ($query) => $query->where('sc.ID', $targetStudentClassId))
               ->orderBy('sc.ID')->get(['sc.ID as class_id', 'sc.StudentID as student_id', 'st.CampusID as campus_id',
                 'sc.SubjectID as subject_id', 'sc.ScheduleMode as schedule_mode', 'sc.SessionCount as session_count',
