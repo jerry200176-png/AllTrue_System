@@ -291,8 +291,9 @@ class LineWebhookController extends Controller
             ],
             ['method' => 'line_webhook', 'verification_method' => 'contact_phone']
         );
-        // Keep Student.LineID in sync for backward compatibility
-        $student->update(['LineID' => $lineUserId]);
+        // Canonical parent LINE identity is student_line_bindings (multi-parent).
+        // Do not overwrite legacy Student.LineID — last-writer-wins misleads when
+        // dad and mom both bind the same student.
     }
 
     private function isAlreadyBound(int $studentId, string $lineUserId): bool

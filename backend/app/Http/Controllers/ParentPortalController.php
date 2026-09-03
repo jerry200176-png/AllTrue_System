@@ -349,7 +349,12 @@ class ParentPortalController extends Controller
 
         // Create session for the first student (frontend can switch later)
         $firstStudent = $students->first();
-        $result = $this->createSession($firstStudent, null, StudentContactPhone::normalizedDigits($firstStudent));
+        $result = $this->createSession(
+            $firstStudent,
+            null,
+            StudentContactPhone::normalizedDigits($firstStudent),
+            $lineUserId
+        );
         SecurityAuditEvent::append('parent.auth', 'success', [
             'campus_id' => (int) ($firstStudent->CampusID ?? 0),
             'subject_type' => 'student',
@@ -399,17 +404,28 @@ class ParentPortalController extends Controller
         }
 
         if ($currentStudent) {
-            // Check via student_line_bindings: any shared *valid* line_user_id
-            $currentLineIds = StudentLineBinding::where('student_id', $currentStudent->id)
-                ->verified()
-                ->pluck('line_user_id')
-                ->filter(fn ($id) => $this->isValidLineUserId($id));
-            if ($currentLineIds->isNotEmpty()) {
+            // Prefer the LINE identity on this session (multi-parent safe).
+            // Fall back to any verified binding on the current student for legacy
+            // phone-login sessions that never stored line_user_id.
+            $sessionLineId = trim((string) ($session->getAttribute('line_user_id') ?? ''));
+            if ($sessionLineId !== '' && $this->isValidLineUserId($sessionLineId)) {
                 $allowed = StudentLineBinding::query()
                     ->whereNotNull('verified_at')
                     ->where('student_id', $targetStudent->id)
-                    ->whereIn('line_user_id', $currentLineIds)
+                    ->where('line_user_id', $sessionLineId)
                     ->exists();
+            } else {
+                $currentLineIds = StudentLineBinding::where('student_id', $currentStudent->id)
+                    ->verified()
+                    ->pluck('line_user_id')
+                    ->filter(fn ($id) => $this->isValidLineUserId($id));
+                if ($currentLineIds->isNotEmpty()) {
+                    $allowed = StudentLineBinding::query()
+                        ->whereNotNull('verified_at')
+                        ->where('student_id', $targetStudent->id)
+                        ->whereIn('line_user_id', $currentLineIds)
+                        ->exists();
+                }
             }
             // PRD-B FR-B-001: 不再以「相同 Phone」允許切換，避免跨家庭 PII 洩漏。
             // 若需共用入口，家長需透過 LINE 綁定明確連結多位學生。
@@ -423,7 +439,7 @@ class ParentPortalController extends Controller
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
-        // Create new session for the target student
+        // Create new session for the target student (preserve LINE subject)
         SecurityAuditEvent::append('parent.sibling_switch', 'success', [
             'campus_id' => (int) ($targetStudent->CampusID ?? 0),
             'subject_type' => 'student', 'subject_id' => $targetStudent->id,
@@ -431,7 +447,8 @@ class ParentPortalController extends Controller
         return response()->json($this->createSession(
             $targetStudent,
             $targetGroup?->id,
-            StudentContactPhone::normalizedDigits($targetStudent)
+            StudentContactPhone::normalizedDigits($targetStudent),
+            $session->getAttribute('line_user_id')
         ));
     }
 
@@ -1447,7 +1464,8 @@ class ParentPortalController extends Controller
 
     /**
      * 家長通知偏好：學習回饋 LINE 推播開關（個資退出權）。
-     * 以目前 session 的學生 binding 為單位（per-student）；預設開啟。
+     * 以目前 session 的 LINE binding 為單位（per-binding）；預設開啟。
+     * 多家長同學生時，不得以 student_id 一次改寫其他家長的偏好。
      */
     public function getNotificationPreferences(Request $request)
     {
@@ -1456,14 +1474,29 @@ class ParentPortalController extends Controller
             return response()->json(['message' => 'Unauthorized'], 401);
         }
 
-        $bindings = StudentLineBinding::where('student_id', $session->StudentID)->verified()->get();
-        $enabled = $bindings->isEmpty()
-            ? true
-            : $bindings->every(fn ($b) => (bool) ($b->notify_learning_feedback ?? true));
+        $binding = $this->sessionScopedBinding($session);
+        if ($binding === null) {
+            $anyLinked = StudentLineBinding::where('student_id', $session->StudentID)->verified()->exists();
+            // Phone login with multiple LINE parents: no safe single preference.
+            if ($anyLinked && !$this->sessionLineUserId($session)) {
+                return response()->json([
+                    'learning_feedback_push' => true,
+                    'line_linked' => true,
+                    'binding_scoped' => false,
+                ]);
+            }
+
+            return response()->json([
+                'learning_feedback_push' => true,
+                'line_linked' => false,
+                'binding_scoped' => false,
+            ]);
+        }
 
         return response()->json([
-            'learning_feedback_push' => (bool) $enabled,
-            'line_linked' => $bindings->isNotEmpty(),
+            'learning_feedback_push' => (bool) ($binding->notify_learning_feedback ?? true),
+            'line_linked' => true,
+            'binding_scoped' => true,
         ]);
     }
 
@@ -1475,13 +1508,38 @@ class ParentPortalController extends Controller
         }
 
         $data = $request->validate(['learning_feedback_push' => 'required|boolean']);
-        StudentLineBinding::where('student_id', $session->StudentID)
-            ->verified()
-            ->update(['notify_learning_feedback' => $data['learning_feedback_push'] ? 1 : 0]);
+        $binding = $this->sessionScopedBinding($session);
+
+        if ($binding === null) {
+            $verifiedCount = StudentLineBinding::where('student_id', $session->StudentID)->verified()->count();
+            if ($verifiedCount > 1 && !$this->sessionLineUserId($session)) {
+                return response()->json([
+                    'message' => '此學生有多位 LINE 家長綁定，請改以 LINE 登入後再調整通知設定',
+                ], 422);
+            }
+            if ($verifiedCount === 0) {
+                return response()->json([
+                    'message' => '綁定 LINE 後才可調整推播通知',
+                ], 422);
+            }
+            // Exactly one verified binding and no session LINE id (legacy phone login):
+            // update that sole binding only — still never fan-out by student_id.
+            $binding = StudentLineBinding::where('student_id', $session->StudentID)->verified()->first();
+        }
+
+        if (!$binding) {
+            return response()->json([
+                'message' => '綁定 LINE 後才可調整推播通知',
+            ], 422);
+        }
+
+        $binding->notify_learning_feedback = $data['learning_feedback_push'] ? 1 : 0;
+        $binding->save();
 
         return response()->json([
             'ok' => true,
             'learning_feedback_push' => (bool) $data['learning_feedback_push'],
+            'binding_scoped' => true,
         ]);
     }
 
@@ -1662,8 +1720,12 @@ class ParentPortalController extends Controller
 
     // ── Helpers ───────────────────────────────────────────────────────────
 
-    private function createSession(Student $student, ?int $identityGroupId = null, ?string $verifiedPhone = null): array
-    {
+    private function createSession(
+        Student $student,
+        ?int $identityGroupId = null,
+        ?string $verifiedPhone = null,
+        ?string $lineUserId = null
+    ): array {
         $token = Str::random(48);
         $hash = hash('sha256', $token);
 
@@ -1672,9 +1734,15 @@ class ParentPortalController extends Controller
             $identityGroupId = null;
         }
 
+        $normalizedLineUserId = null;
+        if (is_string($lineUserId) && $this->isValidLineUserId($lineUserId)) {
+            $normalizedLineUserId = $lineUserId;
+        }
+
         ParentSession::create([
             'StudentID' => $student->id,
             'identity_group_id' => $identityGroupId,
+            'line_user_id' => $normalizedLineUserId,
             'TokenHash' => $hash,
             'ExpiresAt' => Carbon::now()->addDays(30),
         ]);
@@ -1687,6 +1755,39 @@ class ParentPortalController extends Controller
             ],
             'identity_group_id' => $identityGroupId ? (int) $identityGroupId : null,
         ];
+    }
+
+    private function sessionLineUserId(ParentSession $session): ?string
+    {
+        $lineUserId = trim((string) ($session->getAttribute('line_user_id') ?? ''));
+        if ($lineUserId === '' || !$this->isValidLineUserId($lineUserId)) {
+            return null;
+        }
+
+        return $lineUserId;
+    }
+
+    /**
+     * Resolve the verified SLB row owned by this parent session.
+     * LINE login sessions match (student_id, line_user_id).
+     * Phone-login sessions with exactly one verified binding may use that sole row.
+     */
+    private function sessionScopedBinding(ParentSession $session): ?StudentLineBinding
+    {
+        $lineUserId = $this->sessionLineUserId($session);
+        if ($lineUserId !== null) {
+            return StudentLineBinding::where('student_id', $session->StudentID)
+                ->where('line_user_id', $lineUserId)
+                ->verified()
+                ->first();
+        }
+
+        $bindings = StudentLineBinding::where('student_id', $session->StudentID)->verified()->get();
+        if ($bindings->count() === 1) {
+            return $bindings->first();
+        }
+
+        return null;
     }
 
     private function identityGroupPhoneVerified(int $groupId, string $phoneNorm): bool

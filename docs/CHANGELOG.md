@@ -1,3 +1,10 @@
+## 2026-09-03 — fix(parent): 多家長 LINE 綁定通知與偏好一致性
+<!-- release-notes: silent_ship=silent-2026-09-03-multi-parent-line-notify -->
+- 學費催繳改為推播給該學生所有已驗證 LINE bindings，不再只取第一筆。
+- 家長通知偏好改為只更新目前登入的 LINE binding；同學生其他家長偏好不受影響。
+- 停止在 LINE 綁定時覆寫 legacy `Student.LineID`（canonical 為 `student_line_bindings`）。
+- 不新增第二家長手機欄、不改綁定驗證規則、不做 ParentIdentity／GSR 架構擴張。
+
 ## 2026-09-02 — fix(billing): 課程查找同步按堂／按時計費單位
 <!-- release-notes: staff_update=staff-2026-09-02-course-rate-unit-consistency -->
 - 修正課程編輯由按堂切換為按時計費後，`rate_unit` 未完整送回與總費用仍按堂計算的問題。
