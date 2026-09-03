@@ -1,3 +1,10 @@
+## 2026-09-03 — release(parent): Multi-Guardian 正式版（Staff CRUD + Portal authZ + cutover）
+<!-- release-notes: staff_update=staff-2026-09-03-multi-guardian-ga -->
+- **正式版**：一位學生可有多位監護人；家長 Portal 以 `guardians` / `student_guardians` 為授權來源（active／read_only）；支援多子女與跨分校切換。
+- Staff 可新增／解除監護人；**revoke 立即失效對應 ParentSession，並取消該 LINE 的 verified SLB**，legacy 路徑不可繞過。
+- `parent_phone` 與 SLB 表保留作投影／相容；flag 關閉可 rollback 且仍可經 SLB／legacy 手機登入。
+- Cutover：deploy 後先 `cutover_audit`，有 orphan 先 `repair_slb`，不可硬切。
+
 ## 2026-09-03 — feat(parent): Parent Portal multi-guardian dual-read authZ
 <!-- release-notes: silent_ship=silent-2026-09-03-multi-guardian-portal-authz -->
 - Parent Portal LINE login／切換學生在 `PERF_MULTI_GUARDIAN` 開啟時改走 `guardians` + `student_guardians`（active／read_only）dual-read；flag 關閉仍僅 verified SLB。
