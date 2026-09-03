@@ -1,0 +1,48 @@
+id: TKT-20260903-201621-S30M
+title: Implement POP failed dry-run controlled retry
+intent: Implement POP failed dry-run controlled retry
+kind: task
+parent_id: INT-20260903-201612-MCRM
+boundary: Modify only POP request/execution retry semantics, their schema/tests, and
+  required release/governance notes. Never execute Huang repair or change any repair
+  payload, approval gate, mutation path, credential, SSH, or unrelated product.
+success_condition: Add append-only dry-run attempt history with controlled retry of
+  failed attempts, immutable request/context validation, regression coverage for retry/replay/drift/execute
+  idempotency, and pass governed check.
+priority: 3
+labels: []
+scope:
+  allow:
+  - backend/app/Http/Controllers/PopOperationController.php
+  - backend/app/Operations/**
+  - backend/database/migrations/*pop*
+  - backend/tests/Feature/Pop*
+  - backend/tests/Unit/Pop*
+  - docs/CHANGELOG.md
+  - docs/AI_REGRESSION_LESSONS.md
+  - docs/RELEASE_NOTES_EXEMPTIONS.yml
+  - frontend/src/lib/changelogDraft.generated.js
+  - .agent-session/manifest.json
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - '**/.env*'
+  - .github/workflows/pop-founder-scoped-repair.yml
+budgets:
+  max_files_changed: 10
+  max_loc_changed: 500
+checks:
+- bash scripts/phpunit-isolated.sh
+type: feature
+status: todo
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-03T20:16:21+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default
