@@ -322,13 +322,13 @@ class ClassSessionController extends Controller
                 'cs.IsContractException',
                 DB::raw("CASE
                     WHEN si.id IS NOT NULL AND LOWER(cs.Status) IN ('scheduled','absent')
-                        AND (cs.SessionDate < CURRENT_DATE OR (cs.SessionDate = CURRENT_DATE AND cs.EndTime <= CURRENT_TIME))
+                        AND cs.SessionDate <= CURRENT_DATE
                         AND LOWER(si.Status) = 'present' THEN 'attended'
                     WHEN si.id IS NOT NULL AND LOWER(cs.Status) IN ('scheduled','absent')
-                        AND (cs.SessionDate < CURRENT_DATE OR (cs.SessionDate = CURRENT_DATE AND cs.EndTime <= CURRENT_TIME))
+                        AND cs.SessionDate <= CURRENT_DATE
                         AND LOWER(si.Status) = 'late' THEN 'late'
                     WHEN si.id IS NOT NULL AND LOWER(cs.Status) IN ('scheduled','absent')
-                        AND (cs.SessionDate < CURRENT_DATE OR (cs.SessionDate = CURRENT_DATE AND cs.EndTime <= CURRENT_TIME))
+                        AND cs.SessionDate <= CURRENT_DATE
                         AND LOWER(si.Status) IN ('leave','excused') THEN 'leave'
                     ELSE cs.Status
                 END AS effective_status"),
