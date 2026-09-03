@@ -114,7 +114,9 @@ jobs:
 
           docker cp "alltrue-pitr-mariadb:/var/lib/mysql/$BINLOG_FILE" "$BINLOG_DIR/$BINLOG_FILE"
 
-          mysqlbinlog --rewrite-db="$SOURCE_DB->$DRILL_DB" \
+          BINLOG_READER="$(command -v mariadb-binlog || command -v mysqlbinlog || true)"
+          [ -n "$BINLOG_READER" ] || { echo 'No MariaDB/MySQL binlog reader found' >&2; exit 1; }
+          "$BINLOG_READER" --rewrite-db="$SOURCE_DB->$DRILL_DB" \
             --start-position="$BINLOG_POS" \
             --stop-datetime="$TARGET_TIME" \
             "$BINLOG_DIR/$BINLOG_FILE" \
