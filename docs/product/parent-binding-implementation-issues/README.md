@@ -2,24 +2,24 @@
 
 | Field | Value |
 |-------|-------|
-| Status | ADR Accepted; PB-00 **IMPLEMENTED / DEPLOYED** (#1446); **PB-00 hard-block on PB-04 lifted** (Founder GO 2026-09-03). PB-04 relationship slice shipped via `guardians` / `student_guardians` (no duplicate ParentIdentity tables). Portal dual-read authZ under `PERF_MULTI_GUARDIAN`. PB-01–03, PB-05–09 remain backlog. |
+| Status | ADR Accepted; PB-00 **IMPLEMENTED / DEPLOYED** (#1446). PB-04/07 Multi-Guardian **SHIPPED / CUTOVER** via `guardians`/`student_guardians` (canonical Portal authZ under `PERF_MULTI_GUARDIAN`). `parent_phone` retained as projection (no column drop). PB-01–03, PB-05–06, PB-08–09 remain backlog. |
 | Date | 2026-07-26 (status sync 2026-09-03) |
 | ADR | [`ADR-PARENT-STUDENT-BINDING.md`](../../adr/ADR-PARENT-STUDENT-BINDING.md) **Accepted** |
 | Design PR | https://github.com/jerry200176-png/AllTrue_System/pull/1434 |
 | PB-00 PR | https://github.com/jerry200176-png/AllTrue_System/pull/1446 |
 
-Global non-scope: schedule/billing/leave/RFID/learning-approval; **OTP not Phase 0–2**; no full Portal rewrite; **no `parent_phone` cutover** in this slice. Do not start PB-05–09 without Founder schedule.
+Global non-scope: schedule/billing/leave/RFID/learning-approval; **OTP not Phase 0–2**; no full Portal rewrite. Do not start PB-05/06/08/09 without Founder schedule.
 
 | ID | GH | Title | Phase | Risk | Depends | Board |
 |----|----|-------|-------|------|---------|-------|
-| [PB-00](./PB-00-observability.md) | [#1436](https://github.com/jerry200176-png/AllTrue_System/issues/1436) | Observability & reason codes | 0 | T1 | — | **IMPLEMENTED / DEPLOYED** (#1446; #1436 closed by merge). **No longer hard-blocks PB-04** (Founder GO 2026-09-03). |
+| [PB-00](./PB-00-observability.md) | [#1436](https://github.com/jerry200176-png/AllTrue_System/issues/1436) | Observability & reason codes | 0 | T1 | — | **IMPLEMENTED / DEPLOYED** (#1446). **No longer hard-blocks PB-04** |
 | [PB-01](./PB-01-safe-copy.md) | [#1437](https://github.com/jerry200176-png/AllTrue_System/issues/1437) | Safe copy & reason mapping | 1 | T1 | PB-00 | backlog |
 | [PB-02](./PB-02-completeness-ui.md) | [#1438](https://github.com/jerry200176-png/AllTrue_System/issues/1438) | Completeness UI | 1 | T1 | PB-00 | backlog |
 | [PB-03](./PB-03-inbox-cases.md) | [#1439](https://github.com/jerry200176-png/AllTrue_System/issues/1439) | Inbox binding cases | 1 | T2 | PB-00,02 | backlog |
-| [PB-04](./PB-04-relationship-model.md) | [#1440](https://github.com/jerry200176-png/AllTrue_System/issues/1440) | ParentIdentity + GSR | 2 | T3 | PB-00 | **PARTIAL / IN PROGRESS** — `guardians`≈ParentIdentity, `student_guardians`≈GSR; portal dual-read + revoke→session |
+| [PB-04](./PB-04-relationship-model.md) | [#1440](https://github.com/jerry200176-png/AllTrue_System/issues/1440) | ParentIdentity + GSR | 2 | T3 | PB-00 | **SHIPPED / CUTOVER** |
 | [PB-05](./PB-05-pairing-credential.md) | [#1441](https://github.com/jerry200176-png/AllTrue_System/issues/1441) | Pairing credential | 2 | T3 | PB-04 | blocked |
 | [PB-06](./PB-06-manual-approval.md) | [#1442](https://github.com/jerry200176-png/AllTrue_System/issues/1442) | BindingRequest self-serve | 2 | T2 | PB-04,03 | blocked |
-| [PB-07](./PB-07-migration-backfill.md) | [#1443](https://github.com/jerry200176-png/AllTrue_System/issues/1443) | Backfill + dual-write | 2 | T3 | PB-04,05 | blocked |
+| [PB-07](./PB-07-migration-backfill.md) | [#1443](https://github.com/jerry200176-png/AllTrue_System/issues/1443) | Backfill + dual-write | 2 | T3 | PB-04,05 | **SHIPPED (partial)** — no table drop |
 | [PB-08](./PB-08-e2e-security.md) | [#1444](https://github.com/jerry200176-png/AllTrue_System/issues/1444) | E2E + security matrix | 2–3 | T2 | PB-05,06,07 | blocked |
 | [PB-09](./PB-09-legacy-sunset.md) | [#1445](https://github.com/jerry200176-png/AllTrue_System/issues/1445) | Legacy sunset (KPI; no hard date) | 3 | T3 | PB-08+Founder | blocked |
 
