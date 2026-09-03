@@ -54,7 +54,10 @@ zcat "pitr_baseline_${TS}.sql.gz" | grep -m1 "CHANGE MASTER TO"
 
 ```bash
 mysql -u root -p AllTrue_staging -e "INSERT INTO ClassSession (...) VALUES (...);"
-TARGET_TIME=$(date '+%Y-%m-%d %H:%M:%S')   # "just before" the next destructive statement
+# Ask the drill server for its own wall clock so client/server timezone
+# differences cannot move the recovery point across the destructive event.
+TARGET_TIME=$(mysql -u root -p -Nse \
+  "SELECT DATE_FORMAT(DATE_ADD(NOW(), INTERVAL 1 SECOND), '%Y-%m-%d %H:%i:%s')")
 sleep 2
 mysql -u root -p AllTrue_staging -e "DELETE FROM ClassSession WHERE id = <the row just inserted>;"
 ```
@@ -65,18 +68,27 @@ inserted row should exist afterward, the delete should not have replayed.
 ## 4. Restore: baseline + binlog replay to the target time
 
 ```bash
-mysql -u root -p -e "CREATE DATABASE AllTrue_pitr_drill;"
-zcat "pitr_baseline_${TS}.sql.gz" | mysql -u root -p AllTrue_pitr_drill
+SOURCE_DB=AllTrue_staging
+DRILL_DB=AllTrue_pitr_drill
+mysql -u root -p -e "CREATE DATABASE \`${DRILL_DB}\`;"
+
+# mysqldump contains a USE for SOURCE_DB. Rewrite that context before loading
+# into the disposable database; otherwise the baseline is loaded back into
+# the source database instead of the drill database.
+zcat "pitr_baseline_${TS}.sql.gz" \
+  | sed "s/\\\`${SOURCE_DB}\\\`/\\\`${DRILL_DB}\\\`/g" \
+  | mysql -u root -p "${DRILL_DB}"
 
 BINLOG_FILE=$(zcat "pitr_baseline_${TS}.sql.gz" | grep -m1 "CHANGE MASTER TO" \
   | sed -n "s/.*MASTER_LOG_FILE='\([^']*\)'.*/\1/p")
 BINLOG_POS=$(zcat "pitr_baseline_${TS}.sql.gz" | grep -m1 "CHANGE MASTER TO" \
   | sed -n "s/.*MASTER_LOG_POS=\([0-9]*\).*/\1/p")
 
-mysqlbinlog --start-position="$BINLOG_POS" \
+mysqlbinlog --rewrite-db="${SOURCE_DB}->${DRILL_DB}" \
+  --start-position="$BINLOG_POS" \
   --stop-datetime="$TARGET_TIME" \
   "/var/log/mysql/${BINLOG_FILE}" \
-  | mysql -u root -p AllTrue_pitr_drill
+  | mysql -u root -p "${DRILL_DB}"
 ```
 
 ## 5. Verify
@@ -116,7 +128,7 @@ Record every real drill run here (append, do not overwrite):
 
 | Date | Baseline backup | Target recovery time | Binlog file:pos | Result | Notes |
 |---|---|---|---|---|---|
-| _(none yet — first drill pending)_ | | | | | |
+| 2026-09-03 | disposable local MariaDB 10.11 synthetic baseline (removed after run) | 2026-09-03 19:28:01 (drill server time) | `mysql-bin.000001:694` | PASS | `PitrMarker` insert restored; post-target delete absent; `--rewrite-db` used for the drill database; temporary datadir/socket removed. Staging/Pi drill remains pending. |
 
 ## Refs
 
