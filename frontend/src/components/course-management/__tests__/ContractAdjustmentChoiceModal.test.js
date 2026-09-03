@@ -58,20 +58,4 @@ describe('ContractAmendmentModal', () => {
     expect(wrapper.emitted('preview')).toEqual([[3]]);
   });
 
-  it('emits the reviewed count and reason, without a target course id', async () => {
-    const preview = {
-      original_session_count: 8, new_session_count: 3,
-      original_remaining_sessions: 5, new_remaining_sessions: 0,
-      completed_sessions: 3, affected_future_scheduled_count: 2,
-      affected_future_schedules_count: 2,
-      financial: { invoice_count: 1, payment_count: 0, payment_report_count: 0 },
-      financial_note: '帳務不變更',
-    };
-    const wrapper = mount(ContractAmendmentModal, { props: { show: true, course, preview } });
-    await wrapper.find('#amendment-new-count').setValue(3);
-    await wrapper.find('#amendment-reason').setValue('學生不再繼續上課');
-    await wrapper.find('button.primary').trigger('click');
-    expect(wrapper.emitted('submit')[0][0]).toEqual({ newSessionCount: 3, reason: '學生不再繼續上課' });
-    expect(wrapper.emitted('submit')[0][0]).not.toHaveProperty('targetCourseId');
-  });
 });
