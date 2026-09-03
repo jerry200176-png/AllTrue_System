@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\PaymentReport;
 use App\Models\StudentSignIn;
 use App\Operations\Strategies\CourseContractRepairStrategy;
+use App\Services\CourseContinuityService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -21,6 +22,12 @@ final class CourseContractRepairStrategySchemaTest extends TestCase
         self::assertTrue(Schema::hasTable('StudentSingIn'));
         self::assertSame('StudentSingIn', (new StudentSignIn())->getTable());
 
+        DB::table('Student')->insert([
+            'id' => 30,
+            'name' => '黃奕暟',
+            'CampusID' => 9,
+            'ClassID' => 1,
+        ]);
         DB::table('StudentClass')->insert([
             $this->course(2531, 4400, 2),
             $this->course(3379, 5200, 5),
@@ -94,6 +101,18 @@ final class CourseContractRepairStrategySchemaTest extends TestCase
         self::assertTrue($plan['ok'], implode('; ', $plan['errors']));
         self::assertSame([], $plan['errors']);
         self::assertSame([26552, 21910, 24805, 26006, 29478], $plan['transfer_session_ids']);
+        self::assertSame(1, (int) DB::table('StudentClass')->where('ID', 2531)->value('by1'));
+
+        $group = app(CourseContinuityService::class)->createGroup([
+            'student_id' => 30,
+            'campus_id' => 9,
+            'subject_id' => 66,
+            'members' => [
+                ['student_class_id' => 2531, 'relation_type' => 'original'],
+                ['student_class_id' => 3379, 'relation_type' => 'renewal'],
+            ],
+        ], null, ['mode' => 'all', 'campus_ids' => []]);
+        self::assertSame([2531, 3379], $group->activeMembers->pluck('student_class_id')->map(fn ($id): int => (int) $id)->sort()->values()->all());
     }
 
     /** @return array<string, int|string> */
@@ -105,7 +124,7 @@ final class CourseContractRepairStrategySchemaTest extends TestCase
             'GradeID' => 1,
             'SubjectID' => 66,
             'TeacherID' => 1,
-            'by1' => 9,
+            'by1' => 1,
             'StartDate' => '2026-06-01 00:00:00',
             'TotalHours' => $sessionCount * 2,
             'Charge' => $charge,
