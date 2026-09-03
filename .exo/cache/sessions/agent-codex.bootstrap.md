@@ -1,35 +1,35 @@
 ╔══════════════════════════════════════════════════════╗
 ║  >>> EXO GOVERNED SESSION                            ║
 ║  protocol: ExoProtocol v1 | mode: work               ║
-║  ticket: TKT-20260903-020040-CO1K | actor: agent:codex║
+║  ticket: TKT-20260903-155417-MUVF | actor: agent:codex║
 ║  model: gpt-5                                        ║
-║  branch: chore/task-fix-remove-fixed-slot-conflict-20260902║
+║  branch: chore/task-contract-session-date-overlap-20260903-final║
 ╚══════════════════════════════════════════════════════╝
 
 # Exo Agent Session Bootstrap
 
-session_id: SES-20260903020112-8495332B
+session_id: SES-20260903155423-38602524
 actor: agent:codex
 vendor: openai
 model: gpt-5
 mode: work
 context_window_tokens: unknown
-ticket_id: TKT-20260903-020040-CO1K
-ticket_title: Execute in-app bug closeout
+ticket_id: TKT-20260903-155417-MUVF
+ticket_title: Deliver contract-period ghost conflict fix
 ticket_status: todo
-ticket_priority: 3
+ticket_priority: 1
 topic_id: repo:default
 lock_owner: agent:codex
-git_branch: chore/task-fix-remove-fixed-slot-conflict-20260902
-lock_branch: codex/TKT-20260903-020040-CO1K
-lock_expires_at: 2026-09-03T10:01:12+08:00
+git_branch: chore/task-contract-session-date-overlap-20260903-final
+lock_branch: codex/TKT-20260903-155417-MUVF
+lock_expires_at: 2026-09-03T19:54:23+08:00
 
 ## Scope
-- allow: ["backend/app/Http/Controllers/SubstituteController.php", "backend/app/Services/SubstituteService.php", "backend/tests/Feature/*Availability*", "backend/tests/Feature/*Substitute*", "frontend/src/lib/substituteApi.js", "frontend/src/components/substitute/**", ".github/workflows/bug-detail-dump.yml", ".github/workflows/bug-phase-c-allowlist.yml", "docs/CHANGELOG.md", "docs/AI_REGRESSION_LESSONS.md", ".exo/cache/**", ".exo/memory/**", ".exo/locks/**", ".exo/tickets/**", ".exo/logs/**"]
+- allow: ["backend/app/Services/ClassSessionMaterializationService.php", "backend/tests/Feature/StudentClassTransferSessionsTest.php", ".exo/cache/**", ".exo/memory/**", ".exo/locks/**", ".exo/tickets/**", ".exo/logs/**"]
 - deny: []
 
 ## Checks
-- ["npm run test:unit", "npm run lint:no-undef", "npm run build", "vendor/bin/phpunit"]
+- ["bash scripts/phpunit-isolated.sh"]
 
 ## Git Workflow
 - Before pushing, rebase on base branch: `git pull --rebase origin main`
@@ -38,14 +38,14 @@ lock_expires_at: 2026-09-03T10:01:12+08:00
 
 ## Machine Context
 - cpu_cores: 12
-- load_avg_1m: 0.5
-- ram: 3.4GB available / 4.8GB total
+- load_avg_1m: 2.3
+- ram: 2.4GB available / 4.8GB total
 
 ## Sibling Sessions (other agents working concurrently)
-- human: ticket=TKT-20260901-045848-UJSJ on feat/TKT-20260901-045848-UJSJ (session=SES-20260901045942-87630ED6, age=45.0h)
+- human: ticket=TKT-20260901-045848-UJSJ on feat/TKT-20260901-045848-UJSJ (session=SES-20260901045942-87630ED6, age=58.9h)
 
 ## Start Advisories
-- [WARNING] human working on TKT-20260901-045848-UJSJ on feat/TKT-20260901-045848-UJSJ — overlapping scope: frontend/src/**, frontend/src/lib/**, frontend/src/components/**, docs/CHANGELOG.md, docs/**, .exo/cache/**, .exo/**, .exo/memory/**, .exo/locks/**, .exo/tickets/**, .exo/logs/**
+- [WARNING] human working on TKT-20260901-045848-UJSJ on feat/TKT-20260901-045848-UJSJ — overlapping scope: .exo/cache/**, .exo/**, .exo/memory/**, .exo/locks/**, .exo/tickets/**, .exo/logs/**
 - [INFO] Unmerged work on branch chore/task-bug247-dump-refresh-20260831 (ticket=TKT-20260831-080838-ENZB, actor=human) — Refresh paired read-only evidence requests for in-app bug 247 after restoring ma
 - [INFO] Unmerged work on branch chore/task-bug247-evidence-refresh-20260831 (ticket=TKT-20260831-073322-7VYG, actor=human) — Refreshed the paired read-only bug dump requests for in-app bug 247, corrected t
 - [INFO] Unmerged work on branch chore/task-smart-calendar-room-form-a11y-20260831 (ticket=TKT-20260831-015607-L7IS, actor=human) — Added explicit accessible names to the SmartCalendar director room-manager name 
@@ -116,10 +116,10 @@ After building a reusable utility, REGISTER it:
 - `scripts.check-eslint-unused-baseline.mjs:main`: Run the frontend no-unused-vars per-file baseline ratchet and fail only on newly added debt
 
 ## Current Task
-Complete in-app bugs #250 #247 #249 with production evidence, observability, decision package, and governed deployment
+Deliver contract-period ghost conflict fix
 
 ## Lifecycle Commands
-- heartbeat: EXO_ACTOR=agent:codex python3 -m exo.cli lease-heartbeat --ticket-id TKT-20260903-020040-CO1K --owner agent:codex
+- heartbeat: EXO_ACTOR=agent:codex python3 -m exo.cli lease-heartbeat --ticket-id TKT-20260903-155417-MUVF --owner agent:codex
 - run worker once: EXO_ACTOR=agent:codex python3 -m exo.cli worker-poll --require-session --limit 50
 - suspend: EXO_ACTOR=agent:codex python3 -m exo.cli session-suspend --reason "<why pausing>"
-- finish: EXO_ACTOR=agent:codex python3 -m exo.cli session-finish --summary "<what changed>" --set-status review --ticket-id TKT-20260903-020040-CO1K
+- finish: EXO_ACTOR=agent:codex python3 -m exo.cli session-finish --summary "<what changed>" --set-status review --ticket-id TKT-20260903-155417-MUVF
