@@ -1,0 +1,445 @@
+name: Multi-Guardian Activation (Founder-gated)
+
+# Founder-gated control plane for Multi-Guardian production activation.
+# Prerequisites: guardians tables migrated; guardians:sync-from-legacy deployed.
+# Does NOT change portal identity/permission semantics or cut over parent_phone.
+#
+# Actions:
+#   dry_run          — read-only backfill plan
+#   apply_backfill   — ALLOW_PROD_REPAIR write (confirm phrase + expected SHA)
+#   verify           — missing / multi-primary / phone mismatch integrity
+#   enable_flag      — PERF_MULTI_GUARDIAN=true (reversible; confirm + SHA)
+#   disable_flag     — PERF_MULTI_GUARDIAN=false (primary rollback)
+#   staff_acceptance — authenticated staff guardian CRUD + legacy parent_phone intact
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "dry_run | apply_backfill | verify | enable_flag | disable_flag | staff_acceptance"
+        required: true
+        type: choice
+        options:
+          - dry_run
+          - apply_backfill
+          - verify
+          - enable_flag
+          - disable_flag
+          - staff_acceptance
+      confirm:
+        description: 'apply_backfill: "APPLY MULTI GUARDIAN BACKFILL". enable_flag: "ENABLE MULTI GUARDIAN". disable_flag: "DISABLE MULTI GUARDIAN". staff_acceptance: "RUN MULTI GUARDIAN STAFF ACCEPTANCE".'
+        required: false
+      expected_head_sha:
+        description: "Mutating actions: full 40-char production HEAD SHA that must already match."
+        required: false
+      limit:
+        description: "Max students to scan for dry_run/apply/verify (default 20000)"
+        required: false
+        default: "20000"
+      student_id:
+        description: "staff_acceptance only: optional Student id (blank = auto-pick one with parent_phone)"
+        required: false
+        default: ""
+
+concurrency:
+  group: multi-guardian-activation
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    name: Validate action + confirmation
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    environment: production-activation
+    steps:
+      - name: Require exact phrase for mutating actions
+        env:
+          ACTION: ${{ github.event.inputs.action }}
+          CONFIRM: ${{ github.event.inputs.confirm }}
+          EXPECTED_HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
+        run: |
+          set -euo pipefail
+          need_sha=0
+          case "$ACTION" in
+            apply_backfill)
+              [ "$CONFIRM" = "APPLY MULTI GUARDIAN BACKFILL" ] || { echo "::error::confirm must be exactly 'APPLY MULTI GUARDIAN BACKFILL'"; exit 1; }
+              need_sha=1
+              ;;
+            enable_flag)
+              [ "$CONFIRM" = "ENABLE MULTI GUARDIAN" ] || { echo "::error::confirm must be exactly 'ENABLE MULTI GUARDIAN'"; exit 1; }
+              need_sha=1
+              ;;
+            disable_flag)
+              [ "$CONFIRM" = "DISABLE MULTI GUARDIAN" ] || { echo "::error::confirm must be exactly 'DISABLE MULTI GUARDIAN'"; exit 1; }
+              ;;
+            staff_acceptance)
+              [ "$CONFIRM" = "RUN MULTI GUARDIAN STAFF ACCEPTANCE" ] || { echo "::error::confirm must be exactly 'RUN MULTI GUARDIAN STAFF ACCEPTANCE'"; exit 1; }
+              need_sha=1
+              ;;
+            dry_run|verify)
+              echo "Read-only action ($ACTION)"
+              ;;
+            *)
+              echo "::error::Unknown action: $ACTION"; exit 1
+              ;;
+          esac
+          if [ "$need_sha" = "1" ]; then
+            printf '%s' "$EXPECTED_HEAD_SHA" | grep -Eq '^[0-9a-f]{40}$' || {
+              echo "::error::expected_head_sha must be exact 40-char hex"
+              exit 1
+            }
+          fi
+          echo "✅ guard passed for action=$ACTION"
+
+  dry_run:
+    name: Dry-run backfill plan
+    needs: guard
+    if: github.event.inputs.action == 'dry_run'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+      - name: Run dry-run on production
+        env:
+          LIMIT: ${{ github.event.inputs.limit }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" \
+            env LIMIT="$LIMIT" bash -s <<'ENDSSH' | tee /tmp/mg-dryrun.txt
+          set -euo pipefail
+          cd /home/admin/backend
+          echo "head=$(git -C /home/admin rev-parse HEAD)"
+          php artisan guardians:sync-from-legacy --dry-run "--limit=${LIMIT}"
+          ENDSSH
+          grep -q '"mode":"dry-run"' /tmp/mg-dryrun.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: multi-guardian-dryrun-${{ github.run_id }}
+          path: /tmp/mg-dryrun.txt
+          retention-days: 90
+
+  apply_backfill:
+    name: Apply backfill (audited)
+    needs: guard
+    if: github.event.inputs.action == 'apply_backfill'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+      - name: Apply then verify
+        env:
+          LIMIT: ${{ github.event.inputs.limit }}
+          EXPECTED_HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" \
+            env LIMIT="$LIMIT" EXPECTED_HEAD_SHA="$EXPECTED_HEAD_SHA" bash -s <<'ENDSSH' | tee /tmp/mg-apply.txt
+          set -euo pipefail
+          cd /home/admin
+          ACTUAL="$(git rev-parse HEAD)"
+          if [ "$ACTUAL" != "$EXPECTED_HEAD_SHA" ]; then
+            echo "❌ HEAD $ACTUAL != expected $EXPECTED_HEAD_SHA"
+            echo "apply-result=REFUSED-WRONG-HEAD"
+            exit 1
+          fi
+          cd /home/admin/backend
+          echo "=== APPLY ==="
+          export ALLOW_PROD_REPAIR=1
+          php artisan guardians:sync-from-legacy --apply --force "--limit=${LIMIT}"
+          unset ALLOW_PROD_REPAIR
+          echo "=== VERIFY ==="
+          php artisan guardians:sync-from-legacy --verify "--limit=${LIMIT}"
+          echo "apply-result=SUCCESS"
+          ENDSSH
+          grep -q '^apply-result=SUCCESS$' /tmp/mg-apply.txt
+          grep -q 'VERIFY_OK' /tmp/mg-apply.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: multi-guardian-apply-${{ github.run_id }}
+          path: /tmp/mg-apply.txt
+          retention-days: 90
+
+  verify:
+    name: Integrity verify
+    needs: guard
+    if: github.event.inputs.action == 'verify'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+      - name: Verify
+        env:
+          LIMIT: ${{ github.event.inputs.limit }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" \
+            env LIMIT="$LIMIT" bash -s <<'ENDSSH' | tee /tmp/mg-verify.txt
+          set -euo pipefail
+          cd /home/admin/backend
+          echo "head=$(git -C /home/admin rev-parse HEAD)"
+          php artisan guardians:sync-from-legacy --verify "--limit=${LIMIT}"
+          ENDSSH
+          grep -q 'VERIFY_OK' /tmp/mg-verify.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: multi-guardian-verify-${{ github.run_id }}
+          path: /tmp/mg-verify.txt
+          retention-days: 90
+
+  enable_flag:
+    name: Enable PERF_MULTI_GUARDIAN
+    needs: guard
+    if: github.event.inputs.action == 'enable_flag'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+      - name: Enable flag with auto-rollback on failure
+        env:
+          EXPECTED_HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
+          SMOKE_TEACHER_LOGIN: ${{ secrets.SMOKE_TEACHER_LOGIN }}
+          SMOKE_TEACHER_PASSWORD: ${{ secrets.SMOKE_TEACHER_PASSWORD }}
+          SMOKE_BRANCH_ID: ${{ secrets.SMOKE_BRANCH_ID }}
+        run: |
+          set -uo pipefail
+          ssh -i ~/.ssh/deploy_key "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" \
+            env EXPECTED_HEAD_SHA="$EXPECTED_HEAD_SHA" \
+                SMOKE_TEACHER_LOGIN="$SMOKE_TEACHER_LOGIN" \
+                SMOKE_TEACHER_PASSWORD="$SMOKE_TEACHER_PASSWORD" \
+                SMOKE_BRANCH_ID="$SMOKE_BRANCH_ID" \
+                SMOKE_BASE_URL="https://daan.lifenet.com.tw" SMOKE_ON_PI=1 \
+            bash -s <<'ENDSSH' | tee /tmp/mg-enable.txt
+          set -uo pipefail
+          cd /home/admin
+          ACTUAL="$(git rev-parse HEAD)"
+          if [ "$ACTUAL" != "$EXPECTED_HEAD_SHA" ]; then
+            echo "❌ HEAD mismatch"; echo "enable-result=REFUSED-WRONG-HEAD"; exit 1
+          fi
+          cd /home/admin/backend
+          STAMP="$(date -u '+%Y-%m-%d_%H%M%SZ')"
+          BACKUP_DIR="/home/admin/backups/perfflag-activation"
+          mkdir -p "$BACKUP_DIR"
+          BACKUP_FILE="$BACKUP_DIR/env_pre_multi_guardian_enable_${STAMP}.bak"
+          cp .env "$BACKUP_FILE"
+          chmod 600 "$BACKUP_FILE"
+          echo "backup-file=$(basename "$BACKUP_FILE")"
+          KEY_COUNT_BEFORE="$(grep -c '^PERF_MULTI_GUARDIAN=' .env || true)"
+          if [ "$KEY_COUNT_BEFORE" -gt 1 ]; then
+            echo "❌ dirty .env"; echo "enable-result=REFUSED-DIRTY-ENV"; exit 1
+          fi
+          if [ "$KEY_COUNT_BEFORE" -eq 1 ]; then
+            sed -i 's|^PERF_MULTI_GUARDIAN=.*|PERF_MULTI_GUARDIAN=true|' .env
+          else
+            [ -n "$(tail -c1 .env)" ] && echo >> .env
+            echo 'PERF_MULTI_GUARDIAN=true' >> .env
+          fi
+          KEY_COUNT_AFTER="$(grep -c '^PERF_MULTI_GUARDIAN=' .env || true)"
+          if [ "$KEY_COUNT_AFTER" -ne 1 ]; then
+            cp "$BACKUP_FILE" .env
+            echo "enable-result=FAILED-DUPLICATE-KEY-ROLLED-BACK"; exit 1
+          fi
+          rollback() {
+            cp "$BACKUP_FILE" .env
+            rm -f bootstrap/cache/packages.php bootstrap/cache/services.php
+            php artisan optimize
+            php artisan opcache:reset 2>/dev/null || true
+            echo "rollback-performed=true"
+          }
+          rm -f bootstrap/cache/packages.php bootstrap/cache/services.php
+          php artisan optimize
+          php artisan opcache:reset 2>/dev/null || true
+          EFFECTIVE="$(php artisan tinker --execute="echo config('perfflags.multi_guardian_enabled') ? 'true' : 'false';" 2>/dev/null | tail -1)"
+          echo "effective-config-value=$EFFECTIVE"
+          if [ "$EFFECTIVE" != "true" ]; then
+            rollback; echo "enable-result=FAILED-CONFIG-NOT-EFFECTIVE-ROLLED-BACK"; exit 1
+          fi
+          HEALTH="$(curl -sk https://daan.lifenet.com.tw/api/v1/health | python3 -c "import sys,json;print(json.load(sys.stdin).get('status','?'))" 2>/dev/null || echo error)"
+          echo "health-status=$HEALTH"
+          if [ "$HEALTH" != "ok" ]; then
+            rollback; echo "enable-result=FAILED-HEALTH-ROLLED-BACK"; exit 1
+          fi
+          if ! bash /home/admin/scripts/post-merge-smoke.sh; then
+            rollback; echo "enable-result=FAILED-SMOKE-ROLLED-BACK"; exit 1
+          fi
+          echo "enable-result=SUCCESS"
+          ENDSSH
+          grep -q '^enable-result=SUCCESS$' /tmp/mg-enable.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: multi-guardian-enable-${{ github.run_id }}
+          path: /tmp/mg-enable.txt
+          retention-days: 90
+
+  disable_flag:
+    name: Disable PERF_MULTI_GUARDIAN
+    needs: guard
+    if: github.event.inputs.action == 'disable_flag'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+      - name: Disable flag
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" bash -s <<'ENDSSH' | tee /tmp/mg-disable.txt
+          set -euo pipefail
+          cd /home/admin/backend
+          STAMP="$(date -u '+%Y-%m-%d_%H%M%SZ')"
+          BACKUP_DIR="/home/admin/backups/perfflag-activation"
+          mkdir -p "$BACKUP_DIR"
+          cp .env "$BACKUP_DIR/env_pre_multi_guardian_disable_${STAMP}.bak"
+          KEY_COUNT="$(grep -c '^PERF_MULTI_GUARDIAN=' .env || true)"
+          if [ "$KEY_COUNT" -gt 1 ]; then echo "❌ dirty .env"; exit 1; fi
+          if [ "$KEY_COUNT" -eq 1 ]; then
+            sed -i 's|^PERF_MULTI_GUARDIAN=.*|PERF_MULTI_GUARDIAN=false|' .env
+          else
+            [ -n "$(tail -c1 .env)" ] && echo >> .env
+            echo 'PERF_MULTI_GUARDIAN=false' >> .env
+          fi
+          rm -f bootstrap/cache/packages.php bootstrap/cache/services.php
+          php artisan optimize
+          php artisan opcache:reset 2>/dev/null || true
+          EFFECTIVE="$(php artisan tinker --execute="echo config('perfflags.multi_guardian_enabled') ? 'true' : 'false';" 2>/dev/null | tail -1)"
+          echo "effective-config-value=$EFFECTIVE"
+          [ "$EFFECTIVE" = "false" ]
+          echo "disable-result=SUCCESS"
+          ENDSSH
+          grep -q '^disable-result=SUCCESS$' /tmp/mg-disable.txt
+
+  staff_acceptance:
+    name: Staff multi-guardian UX acceptance
+    needs: guard
+    if: github.event.inputs.action == 'staff_acceptance'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+      - name: Staff CRUD + legacy intact
+        env:
+          EXPECTED_HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
+          STUDENT_ID: ${{ github.event.inputs.student_id }}
+          ACCEPTANCE_TEACHER_LOGIN: ${{ secrets.ACCEPTANCE_TEACHER_LOGIN }}
+          ACCEPTANCE_TEACHER_PASSWORD: ${{ secrets.ACCEPTANCE_TEACHER_PASSWORD }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" \
+            env EXPECTED_HEAD_SHA="$EXPECTED_HEAD_SHA" STUDENT_ID="$STUDENT_ID" \
+                ACCEPTANCE_TEACHER_LOGIN="$ACCEPTANCE_TEACHER_LOGIN" \
+                ACCEPTANCE_TEACHER_PASSWORD="$ACCEPTANCE_TEACHER_PASSWORD" \
+            bash -s <<'ENDSSH' | tee /tmp/mg-staff.txt
+          set -euo pipefail
+          cd /home/admin
+          ACTUAL="$(git rev-parse HEAD)"
+          [ "$ACTUAL" = "$EXPECTED_HEAD_SHA" ] || { echo "❌ HEAD mismatch"; exit 1; }
+          cd /home/admin/backend
+          EFFECTIVE="$(php artisan tinker --execute="echo config('perfflags.multi_guardian_enabled') ? 'true' : 'false';" 2>/dev/null | tail -1)"
+          echo "effective-flag=$EFFECTIVE"
+          [ "$EFFECTIVE" = "true" ] || { echo "❌ flag not enabled"; exit 1; }
+
+          # Login as acceptance director (same secret used by actual-duration acceptance)
+          API="https://daan.lifenet.com.tw/api/v1"
+          LOGIN_JSON="$(python3 - <<'PY'
+          import json,os
+          print(json.dumps({"account":os.environ["ACCEPTANCE_TEACHER_LOGIN"],"password":os.environ["ACCEPTANCE_TEACHER_PASSWORD"],"role":"director"}))
+          PY
+          )"
+          TOKEN="$(curl -sk -X POST "$API/auth/login" -H 'Content-Type: application/json' -H 'Accept: application/json' -d "$LOGIN_JSON" \
+            | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('access_token') or d.get('token') or '')")"
+          [ -n "$TOKEN" ] || { echo "❌ login failed"; exit 1; }
+          AUTH=(-H "Authorization: Bearer $TOKEN" -H 'Accept: application/json' -H 'Content-Type: application/json')
+
+          if [ -z "${STUDENT_ID:-}" ]; then
+            STUDENT_ID="$(php artisan tinker --execute="echo App\\Models\\Student::query()->whereNotNull('parent_phone')->where('parent_phone','!=','')->where('enable',1)->orderByDesc('id')->value('id') ?? '';" 2>/dev/null | tail -1)"
+          fi
+          echo "student_id=$STUDENT_ID"
+          [ -n "$STUDENT_ID" ] || { echo "❌ no student"; exit 1; }
+
+          LEGACY_BEFORE="$(php artisan tinker --execute="\$s=App\\Models\\Student::find($STUDENT_ID); echo trim((string)(\$s->parent_phone ?? ''));" 2>/dev/null | tail -1)"
+          echo "legacy_parent_phone_before=$LEGACY_BEFORE"
+
+          LIST_CODE="$(curl -sk -o /tmp/glist.json -w '%{http_code}' "${AUTH[@]}" "$API/students/${STUDENT_ID}/guardians")"
+          echo "list_status=$LIST_CODE"
+          [ "$LIST_CODE" = "200" ] || { echo "❌ list failed"; cat /tmp/glist.json; exit 1; }
+
+          UNIQUE_PHONE="0988$(printf '%06d' $((RANDOM % 1000000)))"
+          CREATE_CODE="$(curl -sk -o /tmp/gcreate.json -w '%{http_code}' -X POST "${AUTH[@]}" \
+            -d "{\"display_name\":\"驗收媽媽\",\"phone\":\"${UNIQUE_PHONE}\",\"role\":\"mother\",\"is_primary\":false,\"notify_tuition\":false}" \
+            "$API/students/${STUDENT_ID}/guardians")"
+          echo "create_status=$CREATE_CODE"
+          [ "$CREATE_CODE" = "201" ] || { echo "❌ create failed"; cat /tmp/gcreate.json; exit 1; }
+          GID="$(python3 -c "import json; print(json.load(open('/tmp/gcreate.json'))['id'])")"
+          echo "created_link_id=$GID"
+
+          PATCH_CODE="$(curl -sk -o /tmp/gpatch.json -w '%{http_code}' -X PUT "${AUTH[@]}" \
+            -d '{"notify_learning_feedback":false,"display_name":"驗收媽媽-改"}' \
+            "$API/students/${STUDENT_ID}/guardians/${GID}")"
+          echo "update_status=$PATCH_CODE"
+          [ "$PATCH_CODE" = "200" ] || { echo "❌ update failed"; cat /tmp/gpatch.json; exit 1; }
+
+          DEL_CODE="$(curl -sk -o /tmp/gdel.json -w '%{http_code}' -X DELETE "${AUTH[@]}" \
+            "$API/students/${STUDENT_ID}/guardians/${GID}")"
+          echo "revoke_status=$DEL_CODE"
+          [ "$DEL_CODE" = "200" ] || { echo "❌ revoke failed"; cat /tmp/gdel.json; exit 1; }
+
+          LEGACY_AFTER="$(php artisan tinker --execute="\$s=App\\Models\\Student::find($STUDENT_ID); echo trim((string)(\$s->parent_phone ?? ''));" 2>/dev/null | tail -1)"
+          echo "legacy_parent_phone_after=$LEGACY_AFTER"
+          [ "$LEGACY_BEFORE" = "$LEGACY_AFTER" ] || { echo "❌ legacy parent_phone changed unexpectedly"; exit 1; }
+
+          echo "staff-acceptance-result=SUCCESS"
+          ENDSSH
+          grep -q '^staff-acceptance-result=SUCCESS$' /tmp/mg-staff.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: multi-guardian-staff-${{ github.run_id }}
+          path: /tmp/mg-staff.txt
+          retention-days: 90

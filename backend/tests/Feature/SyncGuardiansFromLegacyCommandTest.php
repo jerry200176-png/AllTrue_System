@@ -75,4 +75,25 @@ class SyncGuardiansFromLegacyCommandTest extends TestCase
             StudentGuardian::where('student_id', $student->id)->where('status', '!=', 'revoked')->count()
         );
     }
+
+    public function test_verify_ok_after_apply(): void
+    {
+        config(['perfflags.multi_guardian_enabled' => false]);
+        $this->student();
+        $this->artisan('guardians:sync-from-legacy', ['--apply' => true])->assertExitCode(0);
+
+        $this->artisan('guardians:sync-from-legacy', ['--verify' => true])
+            ->expectsOutput('VERIFY_OK')
+            ->assertExitCode(0);
+    }
+
+    public function test_verify_fails_when_primary_missing(): void
+    {
+        config(['perfflags.multi_guardian_enabled' => false]);
+        $this->student();
+
+        $this->artisan('guardians:sync-from-legacy', ['--verify' => true])
+            ->expectsOutput('VERIFY_FAILED')
+            ->assertExitCode(1);
+    }
 }
