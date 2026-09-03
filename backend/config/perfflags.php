@@ -58,4 +58,9 @@ return [
     // actual_duration still behaves exactly like fixed_session, so turning the flag
     // back off is a complete rollback with no data migration.
     'actual_duration_deduction_enabled' => (bool) env('PERF_ACTUAL_DURATION_DEDUCTION', false),
+
+    // Multi-guardian (Student 1:N). DARK LAUNCH: default OFF for dual-read / staff UX.
+    // Dual-write to guardians + student_guardians runs whenever tables exist (additive,
+    // reversible). Flag off ⇒ StudentContactPhone and Portal/LINE keep legacy parent_phone.
+    'multi_guardian_enabled' => (bool) env('PERF_MULTI_GUARDIAN', false),
 ];
