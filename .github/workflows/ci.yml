@@ -45,6 +45,7 @@ jobs:
           node scripts/control-plane-lint.mjs
           node scripts/ci-cost-guard.mjs
           node scripts/ci-cost-guard.mjs --self-test
+          node scripts/ci/bug-writeback-workflow.test.mjs
 
       - name: Test credential fingerprint audit
         run: python3 scripts/credential-fingerprint-audit.test.py
