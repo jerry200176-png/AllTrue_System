@@ -3,6 +3,23 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-03-multi-guardian-ga
+    published_at: "2026-09-03"
+    audiences:
+      - director
+    importance: action_required
+    title: 多監護人正式上線
+    summary: 一位學生可維護多位家長／監護人；解除後該家長立即無法再進家長入口。
+    items:
+      - category: added
+        text: 學生編輯可新增多位監護人、指定主要聯絡人；家長 Portal 依監護關係登入與切換子女（含跨分校）。
+      - category: action_required
+        text: 解除監護人後會立即登出該家長相關工作階段；請先確認對象正確再操作。
+      - category: improved
+        text: 既有家長手機欄位仍保留作相容；關旗可回退。排課／繳費／堂次流程不變。
+    source_refs:
+      - "changelog:2026-09-03:multi-guardian-ga"
+
   - id: staff-2026-09-02-course-rate-unit-consistency
     published_at: "2026-09-02"
     audiences:
