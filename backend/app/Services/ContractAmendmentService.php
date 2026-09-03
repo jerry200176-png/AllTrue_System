@@ -22,7 +22,6 @@ final class ContractAmendmentService
         $used = max((int) ($diagnostic['expected_used'] ?? 0), (int) ($diagnostic['uncapped_used'] ?? 0));
         $future = $this->futureScheduled($classId);
         $futureSchedules = $this->futureSchedules($classId);
-
         return [
             'student_class_id' => $classId,
             'student_id' => (int) $course->StudentID,
@@ -49,7 +48,6 @@ final class ContractAmendmentService
         if ($reason === '') {
             throw ValidationException::withMessages(['reason' => '提前結束／堂數調整必須填寫原因。']);
         }
-
         return DB::transaction(function () use ($course, $newCount, $actorId, $reason): array {
             /** @var StudentClass $locked */
             $locked = StudentClass::query()->where('ID', $course->getKey())->lockForUpdate()->firstOrFail();
