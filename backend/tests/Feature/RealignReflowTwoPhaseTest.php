@@ -147,6 +147,33 @@ class RealignReflowTwoPhaseTest extends TestCase
         $this->invokeReflow($unlocked, $slots, 120);
     }
 
+    public function test_reflow_uses_edited_contract_start_date_as_lower_bound(): void
+    {
+        $courseId = $this->seedCourse();
+        foreach (['2026-04-19', '2026-04-26'] as $date) {
+            ClassSession::create([
+                'StudentClassID' => $courseId, 'SessionDate' => $date,
+                'StartTime' => '13:00:00', 'EndTime' => '15:00:00', 'Status' => 'scheduled',
+            ]);
+        }
+
+        $unlocked = ClassSession::where('StudentClassID', $courseId)
+            ->where('Status', 'scheduled')
+            ->orderBy('SessionDate')
+            ->get();
+        $slots = [['weekday' => 6, 'time' => '13:00', 'duration_minutes' => 120]];
+
+        $this->assertSame(2, $this->invokeReflow($unlocked, $slots, 120, [], '2026-04-20'));
+        $this->assertSame(
+            ['2026-04-25', '2026-05-02'],
+            ClassSession::where('StudentClassID', $courseId)
+                ->orderBy('SessionDate')
+                ->pluck('SessionDate')
+                ->map(fn ($date) => substr((string) $date, 0, 10))
+                ->all()
+        );
+    }
+
     public function test_duplicate_reflow_targets_are_rejected_without_writes(): void
     {
         $courseId = $this->seedCourse();
@@ -190,12 +217,12 @@ class RealignReflowTwoPhaseTest extends TestCase
 
     // ── helpers ──
 
-    private function invokeReflow($unlockedSorted, array $slots, int $durationMinutes): int
+    private function invokeReflow($unlockedSorted, array $slots, int $durationMinutes, array $skipKeys = [], ?string $startDate = null): int
     {
         $controller = app(StudentClassController::class);
         $method = new \ReflectionMethod(StudentClassController::class, 'remapFutureScheduledSessionsToContract');
         $method->setAccessible(true);
-        return (int) $method->invoke($controller, $unlockedSorted, $slots, $durationMinutes);
+        return (int) $method->invoke($controller, $unlockedSorted, $slots, $durationMinutes, $skipKeys, $startDate);
     }
 
     private function seedCourse(): int
