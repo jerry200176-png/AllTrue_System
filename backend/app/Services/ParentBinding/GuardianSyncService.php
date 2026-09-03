@@ -170,6 +170,156 @@ final class GuardianSyncService
         });
     }
 
+    /**
+     * Update a specific student_guardian relationship in place when possible.
+     * If the guardian identity is shared and the edit would affect other
+     * students, safely re-point only this relationship.
+     *
+     * @param  array{display_name?:?string,phone?:?string,line_user_id?:?string,role?:string,is_primary?:bool,notify_learning_feedback?:bool,notify_tuition?:bool}  $attrs
+     */
+    public function updateRelationship(Student $student, StudentGuardian $link, array $attrs, string $source = StudentGuardian::SOURCE_STAFF): StudentGuardian
+    {
+        if (!self::dualWriteEnabled()) {
+            throw new \RuntimeException('guardian tables unavailable');
+        }
+
+        $studentId = (int) $student->getKey();
+        $phone = trim((string) ($attrs['phone'] ?? ''));
+        $normalized = Guardian::normalizePhone($phone);
+        $lineUserId = trim((string) ($attrs['line_user_id'] ?? ''));
+        $lineUserId = $lineUserId !== '' ? $lineUserId : null;
+        $name = trim((string) ($attrs['display_name'] ?? ''));
+        $name = $name !== '' ? $name : null;
+
+        if ($normalized === '' && $lineUserId === null) {
+            throw new \InvalidArgumentException('guardian requires phone or line_user_id');
+        }
+
+        return DB::transaction(function () use ($student, $studentId, $link, $attrs, $source, $phone, $normalized, $lineUserId, $name) {
+            /** @var StudentGuardian|null $currentLink */
+            $currentLink = StudentGuardian::query()
+                ->whereKey((int) $link->getKey())
+                ->lockForUpdate()
+                ->first();
+            if (!$currentLink) {
+                throw new \RuntimeException('guardian link not found');
+            }
+            $currentLink->load('guardian');
+
+            $currentGuardian = $currentLink->guardian;
+            $targetGuardian = $currentGuardian;
+
+            if (!$currentGuardian) {
+                $targetGuardian = $this->findOrCreateGuardian($name, $phone !== '' ? $phone : null, $normalized, $lineUserId);
+            } else {
+                $currentNormalized = Guardian::normalizePhone(trim((string) ($currentGuardian->phone ?? '')));
+                $currentLineUserId = trim((string) ($currentGuardian->line_user_id ?? ''));
+                $currentLineUserId = $currentLineUserId !== '' ? $currentLineUserId : null;
+
+                $identityChanged =
+                    ($normalized !== '' && $normalized !== $currentNormalized) ||
+                    ($lineUserId !== null && $lineUserId !== $currentLineUserId);
+
+                if ($identityChanged) {
+                    $isShared = StudentGuardian::query()
+                        ->where('guardian_id', (int) $currentGuardian->getKey())
+                        ->where('id', '!=', (int) $currentLink->getKey())
+                        ->where('status', '!=', StudentGuardian::STATUS_REVOKED)
+                        ->exists();
+
+                    if ($isShared) {
+                        $targetGuardian = $this->findOrCreateGuardian($name, $phone !== '' ? $phone : null, $normalized, $lineUserId);
+                    }
+                }
+
+                if ($targetGuardian && (int) $targetGuardian->getKey() === (int) $currentGuardian->getKey()) {
+                    if ($name !== null) {
+                        $currentGuardian->display_name = $name;
+                    }
+                    if ($phone !== '') {
+                        $currentGuardian->phone = $phone;
+                        $currentGuardian->phone_normalized = $normalized;
+                    }
+                    if ($lineUserId !== null) {
+                        $existingLine = trim((string) ($currentGuardian->line_user_id ?? ''));
+                        if ($existingLine !== '' && $existingLine !== $lineUserId) {
+                            throw new \InvalidArgumentException('line_user_id already belongs to another guardian');
+                        }
+                        $currentGuardian->line_user_id = $lineUserId;
+                    }
+                    $currentGuardian->save();
+                    $targetGuardian = $currentGuardian;
+                }
+            }
+
+            $targetLink = $currentLink;
+            if ($targetGuardian && (int) $targetGuardian->getKey() !== (int) $currentLink->guardian_id) {
+                /** @var StudentGuardian|null $existingLink */
+                $existingLink = StudentGuardian::query()
+                    ->where('student_id', $studentId)
+                    ->where('guardian_id', (int) $targetGuardian->getKey())
+                    ->where('status', '!=', StudentGuardian::STATUS_REVOKED)
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($existingLink) {
+                    $currentLink->status = StudentGuardian::STATUS_REVOKED;
+                    $currentLink->is_primary = false;
+                    $currentLink->revoked_at = now();
+                    $currentLink->save();
+                    $targetLink = $existingLink;
+                } else {
+                    $currentLink->guardian_id = (int) $targetGuardian->getKey();
+                    $targetLink = $currentLink;
+                }
+            }
+
+            $makePrimary = (bool) ($attrs['is_primary'] ?? false);
+            if ($makePrimary) {
+                StudentGuardian::query()
+                    ->where('student_id', $studentId)
+                    ->where('status', '!=', StudentGuardian::STATUS_REVOKED)
+                    ->where('id', '!=', (int) $targetLink->getKey())
+                    ->where('is_primary', true)
+                    ->update(['is_primary' => false]);
+            }
+
+            $shouldBePrimary = $makePrimary
+                ? true
+                : (
+                    (bool) $targetLink->is_primary ||
+                    !StudentGuardian::query()
+                        ->where('student_id', $studentId)
+                        ->where('status', '!=', StudentGuardian::STATUS_REVOKED)
+                        ->where('id', '!=', (int) $targetLink->getKey())
+                        ->where('is_primary', true)
+                        ->exists()
+                );
+
+            $targetLink->fill([
+                'campus_id' => (int) ($student->CampusID ?? 0) ?: null,
+                'role' => (string) ($attrs['role'] ?? $targetLink->role ?: StudentGuardian::ROLE_GUARDIAN),
+                'is_primary' => $shouldBePrimary,
+                'status' => StudentGuardian::STATUS_ACTIVE,
+                'notify_learning_feedback' => array_key_exists('notify_learning_feedback', $attrs)
+                    ? (bool) $attrs['notify_learning_feedback']
+                    : ($targetLink->exists ? (bool) $targetLink->notify_learning_feedback : true),
+                'notify_tuition' => array_key_exists('notify_tuition', $attrs)
+                    ? (bool) $attrs['notify_tuition']
+                    : ($targetLink->exists ? (bool) $targetLink->notify_tuition : true),
+                'source' => $source,
+                'revoked_at' => null,
+            ]);
+            $targetLink->save();
+
+            if ($targetLink->is_primary) {
+                $this->mirrorPrimaryToLegacyStudent($student, $targetGuardian);
+            }
+
+            return $targetLink->fresh(['guardian']);
+        });
+    }
+
     public function revoke(StudentGuardian $link): void
     {
         if (!self::dualWriteEnabled()) {
