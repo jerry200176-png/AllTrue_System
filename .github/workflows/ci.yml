@@ -52,6 +52,9 @@ jobs:
       - name: Test bug detail dump contract
         run: python3 scripts/tests/test_bug_detail_dump.py
 
+      - name: Test production identity evidence transport
+        run: python3 scripts/tests/test_production_identity.py
+
       - name: Test bundle budget chunk classification (#1273)
         run: node --test scripts/bundle-budget.test.mjs
 
