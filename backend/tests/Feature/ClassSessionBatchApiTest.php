@@ -190,12 +190,12 @@ class ClassSessionBatchApiTest extends TestCase
     /**
      * TD-060 cleanup: this used to invoke ClassSessionController::recalculateSessionCounters()
      * (dead code, zero callers, confirmed unused by PHPStan) via reflection. That method
-     * duplicated a simpler, count-only version of this same "legacy attended status counts
-     * toward used sessions" rule outside the authoritative SessionDeductionService — exactly
-     * the kind of orphaned duplicate that let R83's IsContractException gap happen. Deleted
-     * the dead method; this test now asserts the real behavior through the actual authority.
+     * duplicated a simpler, count-only version of the attendance rule outside the
+     * authoritative SessionDeductionService — exactly the kind of orphaned duplicate that
+     * let R83's IsContractException gap happen. Deleted the dead method; this test now
+     * asserts the real future-reservation behavior through the actual authority.
      */
-    public function test_recompute_counters_counts_legacy_attended_for_compatibility(): void
+    public function test_recompute_counters_does_not_count_future_attendance_residue(): void
     {
         $token = $this->createUserToken('A', [1], 'director-batch-compat-a@example.com');
         $teacherId = $this->createTeacher(1, 'teacher-batch-compat-a@example.com');
@@ -274,8 +274,8 @@ class ClassSessionBatchApiTest extends TestCase
         $this->assertDatabaseHas('StudentClass', [
             'ID' => $studentClassId,
             'SessionCount' => 3,
-            'UsedSessions' => 2,
-            'RemainingSessions' => 1,
+            'UsedSessions' => 1,
+            'RemainingSessions' => 2,
         ]);
     }
 
@@ -1037,4 +1037,3 @@ class ClassSessionBatchApiTest extends TestCase
         ]);
     }
 }
-
