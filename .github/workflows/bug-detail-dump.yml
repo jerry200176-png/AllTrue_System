@@ -347,6 +347,89 @@ jobs:
               $probe247["error"] = get_class($e).": ".substr((string)$e->getMessage(), 0, 300);
             }}
           }}
+          $probe250 = [
+            "applicable" => false, "read_only" => true, "decision_grade" => false,
+            "reason" => "Allowlisted only for in-app bug 250",
+          ];
+          if ($bugId === 250) {{
+            // #250-specific production acceptance probe for the exact
+            // contract-transfer report. Keep the query target-correct by
+            // requiring the reported campus and exact student name, then
+            // emit only aggregate course/session state and no names, notes, or
+            // row-level identifiers. This is read-only.
+            $probe250["applicable"] = true;
+            $probe250["case"] = "transfer_sessions_replenish_source_tail_250";
+            $probe250["target_dates"] = ["2026-07-18", "2026-07-25"];
+            try {{
+              $campusId250 = (int)$bug->CampusID;
+              $students250 = $db::table("Student")
+                ->where("CampusID", $campusId250)
+                ->whereRaw("TRIM(name) = ?", ["陳品承"])
+                ->get(["id"]);
+              $studentIds250 = $students250->pluck("id")->map(fn ($id) => (int)$id)->filter()->unique()->values()->all();
+              $probe250["matched_student_count"] = count($studentIds250);
+              if (count($studentIds250) !== 1) {{
+                throw new \RuntimeException("exact target student match count must be 1");
+              }}
+
+              $classes250 = $db::table("StudentClass")
+                ->whereIn("StudentID", $studentIds250)
+                ->get([
+                  "ID as class_id", "SessionCount as session_count", "RemainingSessions as remaining_sessions",
+                  "UsedSessions as used_sessions", "Stop as stop", "ScheduleMode as schedule_mode",
+                  "scheduling_policy", "StartDate as start_date", "week", "time", "SessionDuration as duration",
+                ]);
+              $classIds250 = $classes250->pluck("class_id")->map(fn ($id) => (int)$id)->filter()->unique()->values()->all();
+              $probe250["target_class_count"] = count($classIds250);
+              $sessions250 = $classIds250 === [] ? collect() : $db::table("ClassSession")
+                ->whereIn("StudentClassID", $classIds250)
+                ->get(["StudentClassID as class_id", "SessionDate as session_date", "Status as status"]);
+              $transferCount250 = 0;
+              if ($db::getSchemaBuilder()->hasTable("session_entitlement_transfers")) {{
+                $transferCount250 = (int)$db::table("session_entitlement_transfers")
+                  ->where(function ($q) use ($classIds250) {{
+                    $q->whereIn("source_student_class_id", $classIds250)
+                      ->orWhereIn("target_student_class_id", $classIds250);
+                  }})->count();
+              }}
+
+              $classSummaries250 = [];
+              foreach ($classes250 as $class250) {{
+                $classId250 = (int)$class250->class_id;
+                $classSessions250 = $sessions250->where("class_id", $classId250)->values();
+                $activeSessions250 = $classSessions250->filter(fn ($row) => strtolower((string)$row->status) !== "cancelled");
+                $reportedDateRows250 = $classSessions250->filter(fn ($row) => in_array(substr((string)$row->session_date, 0, 10), ["2026-07-18", "2026-07-25"], true));
+                $autoCountMode250 = strtolower((string)($class250->schedule_mode ?? "count")) === "count"
+                  && (int)($class250->stop ?? 0) !== 1
+                  && (string)($class250->scheduling_policy ?? "auto_recurrence") !== "manual_date_booking";
+                $classSummaries250[] = [
+                  "class_id" => $classId250,
+                  "session_count" => (int)($class250->session_count ?? 0),
+                  "materialized_active_session_count" => $activeSessions250->count(),
+                  "remaining_sessions" => (int)($class250->remaining_sessions ?? 0),
+                  "used_sessions" => (int)($class250->used_sessions ?? 0),
+                  "reported_date_row_count" => $reportedDateRows250->count(),
+                  "active_count_mode_auto_recurrence" => $autoCountMode250,
+                  "underfilled_against_contract" => $autoCountMode250
+                    && (int)($class250->session_count ?? 0) > $activeSessions250->count(),
+                  "fixed_schedule_fields_present" => ($class250->week !== null && (string)$class250->week !== "")
+                    || ($class250->time !== null && (string)$class250->time !== ""),
+                ];
+              }}
+              $probe250["class_summaries"] = $classSummaries250;
+              $probe250["transfer_audit_row_count"] = $transferCount250;
+              $probe250["reported_date_row_count"] = collect($classSummaries250)->sum("reported_date_row_count");
+              $probe250["underfilled_count_mode_auto_recurrence_count"] = collect($classSummaries250)
+                ->where("underfilled_against_contract", true)->count();
+              $probe250["decision_grade"] = count($studentIds250) === 1
+                && count($classIds250) > 0
+                && (int)$probe250["reported_date_row_count"] > 0;
+              $probe250["error"] = null;
+            }} catch (\Throwable $e) {{
+              $probe250["decision_grade"] = false;
+              $probe250["error"] = get_class($e).": ".substr((string)$e->getMessage(), 0, 300);
+            }}
+          }}
           $probe1282 = [
             "applicable" => false, "read_only" => true, "decision_grade" => false,
             "reason" => "No target-correct cross-teacher drag probe is configured",
@@ -550,10 +633,11 @@ jobs:
             241 => $probe241,
             201, 202 => $probe1282,
             247 => $probe247,
+            250 => $probe250,
             249 => $probe249,
             default => null,
           }};
-          $decisionGradeRequired = in_array($bugId, [201, 202, 208, 241, 247, 249], true);
+          $decisionGradeRequired = in_array($bugId, [201, 202, 208, 241, 247, 249, 250], true);
           $decisionGrade = $targetProbe !== null && $targetProbe["applicable"] === true
             && $targetProbe["decision_grade"] === true;
           $decisionGradeReason = $decisionGrade
@@ -590,6 +674,7 @@ jobs:
                 "probe_1282_cross_teacher_drag" => $probe1282,
                 "probe_247_calendar_capacity" => $probe247,
                 "probe_249_shared_subject_payment" => $probe249,
+                "probe_250_transfer_sessions" => $probe250,
               ],
               "evidence_generated_at" => gmdate("c"),
               "read_only" => true,

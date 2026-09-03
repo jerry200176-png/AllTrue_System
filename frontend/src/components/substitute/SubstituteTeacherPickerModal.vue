@@ -144,6 +144,12 @@
                 </span>
                 <span v-if="t.teachesSubject === true" class="stp-tag stp-tag--subject">授此科</span>
                 <span v-else-if="t.teachesSubject === false" class="stp-tag stp-tag--subject-muted">—</span>
+                <span
+                  v-if="t.availabilityTraceId"
+                  class="stp-tag stp-tag--trace"
+                  :data-availability-trace-id="t.availabilityTraceId"
+                  title="提供給系統診斷用的可用性查詢編號"
+                >診斷碼 {{ t.availabilityTraceId }}</span>
               </div>
             </div>
             <div class="stp-card__pick">
@@ -287,6 +293,7 @@ const inlineError = ref('');
 const inlineErrorType = ref('error'); // 'error' | 'warning' — controls colour of inline message
 const loadingAvailability = ref(false);
 const teacherBusyMap = ref({}); // teacherId -> busy_slots (now includes remaining_capacity)
+const teacherAvailabilityTraceMap = ref({}); // teacherId -> middleware X-Trace-Id
 
 // PRD f0cce4d5：「同時調整上課時間」狀態
 const showReschedule = ref(false);
@@ -382,8 +389,11 @@ async function refreshAvailability() {
         try {
           const r = await props.fetchAvailability(t.id, date, {
             excludeStudentId: Number(props.context?.student_id || 0) || undefined,
+            classType: props.context?.class_type || undefined,
+            startTime: effectiveStart.value || undefined,
+            endTime: effectiveEnd.value || undefined,
           });
-          return [t.id, Array.isArray(r?.busy_slots) ? r.busy_slots : []];
+          return [t.id, Array.isArray(r?.busy_slots) ? r.busy_slots : [], r?.diagnostic_trace_id || null];
         } catch (e) {
           return [t.id, []];
         }
@@ -392,13 +402,16 @@ async function refreshAvailability() {
     // 若在請求期間又觸發新的 refresh，捨棄本次結果避免 race condition
     if (token !== availabilityReqToken) return;
     const out = {};
+    const traces = {};
     for (const r of results) {
       if (r.status === 'fulfilled' && Array.isArray(r.value)) {
-        const [tid, slots] = r.value;
+        const [tid, slots, traceId] = r.value;
         out[tid] = slots;
+        if (traceId) traces[tid] = traceId;
       }
     }
     teacherBusyMap.value = out;
+    teacherAvailabilityTraceMap.value = traces;
   } finally {
     if (token === availabilityReqToken) {
       loadingAvailability.value = false;
@@ -462,6 +475,7 @@ const enriched = computed(() => {
         capacityWarn,
         hasAvailabilityData,
         teachesSubject,
+        availabilityTraceId: teacherAvailabilityTraceMap.value[t.id] || '',
       };
     });
 });

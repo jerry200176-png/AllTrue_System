@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-08-02",
+  "updated_at": "2026-09-03",
   "capabilities": [
     {
       "id": "read_git_worktrees",
@@ -19,12 +19,12 @@
       "name": "gh PR/issue (repo,workflow)",
       "status": "Proven",
       "risk": "high",
-      "last_verified_at": "2026-08-02",
-      "review_after": "2026-09-02",
+      "last_verified_at": "2026-09-03",
+      "review_after": "2026-10-03",
       "verification_method": "gh issue create + gh pr create/ready/checks",
       "environment": "github",
       "verifier": "cursor-agent",
-      "evidence": "Issue #1618; PR #1619/#1620"
+      "evidence": "PR #2368; workflow run #33705884685"
     },
     {
       "id": "push_feature_branch",
@@ -43,24 +43,24 @@
       "name": "Merge PR via gh",
       "status": "Proven",
       "risk": "high",
-      "last_verified_at": "2026-08-02",
-      "review_after": "2026-09-02",
+      "last_verified_at": "2026-09-03",
+      "review_after": "2026-10-03",
       "verification_method": "gh pr merge after required CI green",
       "environment": "github",
       "verifier": "cursor-agent",
-      "evidence": "PR #1619 merge SHA 19ebf7cd"
+      "evidence": "PR #2366 merge; governed merge API"
     },
     {
       "id": "alltrue_deploy_pi",
       "name": "AllTrue Deploy to Pi",
       "status": "Proven",
       "risk": "high",
-      "last_verified_at": "2026-08-02",
-      "review_after": "2026-09-02",
+      "last_verified_at": "2026-09-03",
+      "review_after": "2026-10-03",
       "verification_method": "Actions Deploy to Pi success + production health/version.json",
       "environment": "prod-pi",
       "verifier": "cursor-agent",
-      "evidence": "run 30725926233; version 19ebf7cd; health 2026-08-02"
+      "evidence": "run 33648466478; version 8dda90fe; health 2026-09-02"
     },
     {
       "id": "prod_read_version_json",

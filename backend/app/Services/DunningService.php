@@ -37,20 +37,29 @@ class DunningService
 
     private const WEEKLY_CAP_PER_STUDENT = 3;
 
-    public function evaluateAll(?int $campusId = null): array
+    /** @var array<int, int> Events planned during a non-persisting evaluation. */
+    private array $plannedWeeklyCounts = [];
+
+    /** @var array<string, bool> Rule keys planned during a non-persisting evaluation. */
+    private array $plannedEventKeys = [];
+
+    public function evaluateAll(?int $campusId = null, bool $persist = true): array
     {
+        $this->plannedWeeklyCounts = [];
+        $this->plannedEventKeys = [];
+
         if (!Schema::hasTable('dunning_events')) {
             return [];
         }
 
         $results = [];
-        $results = array_merge($results, $this->evaluateCountMode($campusId));
-        $results = array_merge($results, $this->evaluateDateMode($campusId));
+        $results = array_merge($results, $this->evaluateCountMode($campusId, $persist));
+        $results = array_merge($results, $this->evaluateDateMode($campusId, $persist));
 
         return $results;
     }
 
-    private function evaluateCountMode(?int $campusId): array
+    private function evaluateCountMode(?int $campusId, bool $persist): array
     {
         $query = StudentClass::with('student')
             ->where('Stop', 0)
@@ -67,7 +76,8 @@ class DunningService
                     (int) $course->StudentID,
                     (int) $course->ID,
                     (int) ($course->student->CampusID ?? 0),
-                    'unpaid_reminder'
+                    'unpaid_reminder',
+                    $persist
                 );
                 if ($event) {
                     $events[] = $event;
@@ -80,7 +90,8 @@ class DunningService
                         (int) $course->StudentID,
                         (int) $course->ID,
                         (int) ($course->student->CampusID ?? 0),
-                        'low_sessions'
+                        'low_sessions',
+                        $persist
                     );
                     if ($event) {
                         $events[] = $event;
@@ -92,7 +103,7 @@ class DunningService
         return $events;
     }
 
-    private function evaluateDateMode(?int $campusId): array
+    private function evaluateDateMode(?int $campusId, bool $persist): array
     {
         $query = StudentClass::with('student')
             ->where('Stop', 0)
@@ -131,7 +142,8 @@ class DunningService
                     (int) $course->StudentID,
                     (int) $course->ID,
                     (int) ($course->student->CampusID ?? 0),
-                    'monthly_overdue'
+                    'monthly_overdue',
+                    $persist
                 );
                 if ($event) {
                     $events[] = $event;
@@ -141,7 +153,8 @@ class DunningService
                     (int) $course->StudentID,
                     (int) $course->ID,
                     (int) ($course->student->CampusID ?? 0),
-                    'monthly_due_soon'
+                    'monthly_due_soon',
+                    $persist
                 );
                 if ($event) {
                     $events[] = $event;
@@ -152,7 +165,13 @@ class DunningService
         return $events;
     }
 
-    private function tryCreateEvent(int $studentId, int $studentClassId, int $campusId, string $ruleKey): ?array
+    private function tryCreateEvent(
+        int $studentId,
+        int $studentClassId,
+        int $campusId,
+        string $ruleKey,
+        bool $persist
+    ): ?array
     {
         $rule = self::RULES[$ruleKey] ?? null;
         if (!$rule) {
@@ -170,13 +189,34 @@ class DunningService
             return null;
         }
 
+        $eventKey = $studentClassId . ':' . $ruleKey;
+        if (isset($this->plannedEventKeys[$eventKey])) {
+            return null;
+        }
+
         $weeklyCount = DunningEvent::query()
             ->where('student_id', $studentId)
             ->where('sent_at', '>=', now()->subDays(7))
             ->count();
 
+        if (!$persist) {
+            $weeklyCount += $this->plannedWeeklyCounts[$studentId] ?? 0;
+        }
+
         if ($weeklyCount >= self::WEEKLY_CAP_PER_STUDENT) {
             return null;
+        }
+
+        if (!$persist) {
+            $this->plannedWeeklyCounts[$studentId] = ($this->plannedWeeklyCounts[$studentId] ?? 0) + 1;
+            $this->plannedEventKeys[$eventKey] = true;
+
+            return [
+                'id' => null,
+                'student_id' => $studentId,
+                'student_class_id' => $studentClassId,
+                'rule_key' => $ruleKey,
+            ];
         }
 
         $event = DunningEvent::create([

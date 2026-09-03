@@ -1,0 +1,57 @@
+id: INT-20260903-020024-X0IB
+title: 'In-app bug closeout #250 #247 #249'
+intent: 'In-app bug closeout #250 #247 #249'
+kind: intent
+brain_dump: 'Complete #250 production activation/evidence and in-app lifecycle; add
+  minimal #247 availability observability and regression coverage without changing
+  capacity semantics; prepare #249 production accounting evidence and Founder decision
+  package; use governed PR/CI/deploy workflows only; no direct production DB mutation
+  or SSH edits.'
+boundary: Only modify AllTrue application code, focused regression tests, closeout
+  workflow/evidence files, and required changelog/lessons. Do not directly modify
+  production data, payment semantics, billing status, permissions, credentials, or
+  control-plane authority.
+success_condition: '#250 has target-correct production evidence on deployed fix and
+  legal in-app resolution; #247 has reproducible diagnostic trace/context and regression
+  coverage; #249 has target-correct evidence and only the minimum unresolved Founder
+  accounting decision; all code changes pass required checks and are deployable through
+  deploy.yml.'
+risk: high
+priority: 3
+labels: []
+scope:
+  allow:
+  - backend/app/Http/Controllers/SubstituteController.php
+  - backend/app/Services/SubstituteService.php
+  - backend/tests/Feature/*Availability*
+  - backend/tests/Feature/*Substitute*
+  - frontend/src/lib/substituteApi.js
+  - frontend/src/components/substitute/**
+  - .github/workflows/bug-detail-dump.yml
+  - .github/workflows/bug-phase-c-allowlist.yml
+  - docs/CHANGELOG.md
+  - docs/AI_REGRESSION_LESSONS.md
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 12
+  max_loc_changed: 400
+checks:
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+- vendor/bin/phpunit
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-03T02:00:24+08:00'
+children:
+- TKT-20260903-020040-CO1K
+resource_profile: default
