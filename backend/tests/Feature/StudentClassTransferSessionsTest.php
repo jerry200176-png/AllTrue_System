@@ -573,6 +573,51 @@ class StudentClassTransferSessionsTest extends TestCase
         }
     }
 
+    public function test_transfer_ignores_target_scheduled_reservations_when_used_capacity_is_available(): void
+    {
+        Carbon::setTestNow('2026-08-12 12:00:00');
+        try {
+            $token = $this->createDirectorToken([1]);
+            $student = $this->createStudent(1);
+            $source = $this->createCourse($student->id, 1, [
+                'SessionCount' => 2,
+                'RemainingSessions' => 2,
+            ]);
+            $target = $this->createCourse($student->id, 1, [
+                'SessionCount' => 8,
+                'RemainingSessions' => 2,
+            ]);
+
+            foreach (['2026-07-06', '2026-07-13', '2026-07-20', '2026-07-27', '2026-08-03', '2026-08-10'] as $date) {
+                $this->createClassSession((int) $target->ID, $date, 'attended');
+            }
+            $this->createClassSession((int) $target->ID, '2026-08-17', 'scheduled');
+            $this->createClassSession((int) $target->ID, '2026-08-24', 'scheduled');
+            $firstTransferredId = $this->createClassSession((int) $source->ID, '2026-08-12');
+            $secondTransferredId = $this->createClassSession((int) $source->ID, '2026-08-13');
+
+            $this->postJson(
+                "/api/v1/student-classes/{$source->ID}/transfer-sessions",
+                [
+                    'session_ids' => [$firstTransferredId, $secondTransferredId],
+                    'target_student_class_id' => $target->ID,
+                ],
+                ['Authorization' => "Bearer {$token}"]
+            )->assertOk()
+                ->assertJsonPath('transferred_session_ids.0', $firstTransferredId)
+                ->assertJsonPath('transferred_session_ids.1', $secondTransferredId);
+
+            $target->refresh();
+            $this->assertSame(8, (int) $target->UsedSessions);
+            $this->assertSame(2, (int) DB::table('ClassSession')
+                ->where('StudentClassID', $target->ID)
+                ->where('Status', 'scheduled')
+                ->count());
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     public function test_recovers_evidence_backed_cancelled_session_and_transfers_all_artifacts(): void
     {
         $token = $this->createDirectorToken([1]);
