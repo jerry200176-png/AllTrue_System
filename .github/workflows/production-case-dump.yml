@@ -13,6 +13,7 @@ on:
           - fixed_slot_huang
           - billing_linlai
           - parent_lou
+          - contract_session_chen
       student_name:
         description: 'Student name for bounded case probe (PII is not written to the artifact)'
         required: false
@@ -77,12 +78,12 @@ jobs:
           import os
           import json
           case = os.environ['CASE_KEY']
-          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou'}:
+          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'contract_session_chen'}:
               raise SystemExit('unsupported case')
-          target_student_name = os.environ.get('TARGET_STUDENT_NAME') or ('黃品皓' if case in {'billing_huang', 'fixed_slot_huang'} else '林奕安')
+          target_student_name = os.environ.get('TARGET_STUDENT_NAME') or ('黃品皓' if case in {'billing_huang', 'fixed_slot_huang'} else ('陳嘉軒' if case == 'contract_session_chen' else '林奕安'))
           target_student_class_id = os.environ.get('TARGET_STUDENT_CLASS_ID') or ''
-          if target_student_class_id and (case not in {'billing_huang', 'fixed_slot_huang'} or not target_student_class_id.isdigit()):
-              raise SystemExit('student_class_id is only supported as a numeric Huang case scope')
+          if target_student_class_id and (case not in {'billing_huang', 'fixed_slot_huang', 'contract_session_chen'} or not target_student_class_id.isdigit()):
+              raise SystemExit('student_class_id is only supported as a numeric scoped case')
           target_subject_name = os.environ.get('TARGET_SUBJECT_NAME', '數學') or '數學'
           print(f'''<?php
           $case = {case!r};
@@ -246,6 +247,88 @@ jobs:
               'read_only'=>true,
             ];
             $out['weekday_keys'] = $weekdayKeys;
+          }} elseif ($case === 'contract_session_chen') {{
+            $campusId = 9;
+            $probeDates = ['2026-06-07', '2026-06-21'];
+            $studentQuery = $db::table('Student')->where('CampusID', $campusId);
+            $studentIds = $targetStudentClassId !== null
+              ? $db::table('StudentClass as sc')->join('Student as st', 'st.id', '=', 'sc.StudentID')
+                ->where('sc.ID', $targetStudentClassId)->where('st.CampusID', $campusId)->pluck('sc.StudentID')
+                ->map(fn ($id) => (int)$id)->all()
+              : $studentQuery->whereRaw('TRIM(name) = ?', [$targetStudentName])->pluck('id')
+                ->map(fn ($id) => (int)$id)->all();
+            if ($studentIds === [] && $targetStudentClassId === null) {
+              $studentIds = $db::table('Student')->where('CampusID', $campusId)
+                ->where('name', 'like', '%' . $targetStudentName . '%')->pluck('id')
+                ->map(fn ($id) => (int)$id)->all();
+            }
+            $classes = $db::table('StudentClass as sc')->whereIn('sc.StudentID', $studentIds)
+              ->when($targetStudentClassId !== null, fn ($query) => $query->where('sc.ID', $targetStudentClassId))
+              ->orderBy('sc.ID')->get(['sc.ID as class_id', 'sc.StudentID as student_id', 'sc.SubjectID as subject_id',
+                'sc.TeacherID as teacher_id', 'sc.PackageID as package_id', 'sc.ClassType as class_type',
+                'sc.ScheduleMode as schedule_mode', 'sc.StartDate as start_date', 'sc.EndDate as end_date', 'sc.Stop as stop']);
+            $classIds = $classes->pluck('class_id')->map(fn ($id) => (int)$id)->all();
+            $sessionRows = $classIds === [] ? collect() : $db::table('ClassSession as cs')
+              ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+              ->whereIn('cs.StudentClassID', $classIds)->whereIn('cs.SessionDate', $probeDates)
+              ->orderBy('cs.SessionDate')->orderBy('cs.StartTime')->orderBy('cs.id')
+              ->get(['cs.id', 'cs.StudentClassID as class_id', 'cs.SessionDate as session_date', 'cs.StartTime as start_time',
+                'cs.EndTime as end_time', 'cs.Status as status', 'sc.StartDate as class_start_date', 'sc.EndDate as class_end_date',
+                'sc.Stop as class_stop', 'sc.ClassType as class_type', 'sc.PackageID as package_id']);
+            $scheduleRows = $classIds === [] ? collect() : $db::table('schedules as s')
+              ->leftJoin('StudentClass as sc', 'sc.ID', '=', 's.student_course_id')
+              ->where('s.student_id', $studentIds[0] ?? 0)->whereIn('s.schedule_date', $probeDates)
+              ->orderBy('s.schedule_date')->orderBy('s.start_time')->orderBy('s.id')
+              ->get(['s.id', 's.student_course_id as class_id', 's.schedule_date as session_date', 's.start_time', 's.end_time',
+                's.status', 's.original_schedule_id', 'sc.StartDate as class_start_date', 'sc.Stop as class_stop',
+                'sc.ClassType as class_type', 'sc.PackageID as package_id']);
+            $excludedStatuses = ['cancelled', 'voided', 'leave', 'leave_adjusted', 'excused'];
+            $overlaps = [];
+            foreach ($sessionRows as $left) {
+              foreach ($sessionRows as $right) {
+                if ((int)$left->id >= (int)$right->id || (int)$left->class_id === (int)$right->class_id
+                  || in_array(strtolower((string)$left->status), $excludedStatuses, true)
+                  || in_array(strtolower((string)$right->status), $excludedStatuses, true)
+                  || (int)($left->class_stop ?? 0) === 1 || (int)($right->class_stop ?? 0) === 1
+                  || strtolower(trim((string)($left->class_type ?? ''))) === 'trial'
+                  || strtolower(trim((string)($right->class_type ?? ''))) === 'trial'
+                  || ((int)($left->package_id ?? 0) > 0 && (int)$left->package_id === (int)($right->package_id ?? 0))) continue;
+                if ((string)$left->start_time < (string)$right->end_time && (string)$left->end_time > (string)$right->start_time) {
+                  $overlaps[] = ['left_session_id'=>(int)$left->id, 'left_class_id'=>(int)$left->class_id,
+                    'right_session_id'=>(int)$right->id, 'right_class_id'=>(int)$right->class_id,
+                    'session_date'=>(string)$left->session_date, 'left_start'=>(string)$left->start_time,
+                    'left_end'=>(string)$left->end_time, 'right_start'=>(string)$right->start_time,
+                    'right_end'=>(string)$right->end_time, 'reason'=>'class_session_student_overlap_guard'];
+                }
+              }
+            }
+            $out['campus_id'] = $campusId;
+            $out['lookup_mode'] = $targetStudentClassId !== null ? 'student_class_id' : 'student_name';
+            $out['probe_dates'] = $probeDates;
+            $out['student_ids'] = $studentIds;
+            $out['student_count'] = count($studentIds);
+            $out['target_classes'] = $classes->map(fn ($r) => ['class_id'=>(int)$r->class_id, 'student_id'=>(int)$r->student_id,
+              'subject_id'=>(int)$r->subject_id, 'teacher_id'=>$r->teacher_id === null ? null : (int)$r->teacher_id,
+              'package_id'=>$r->package_id === null ? null : (int)$r->package_id, 'class_type'=>(string)($r->class_type ?? ''),
+              'schedule_mode'=>(string)($r->schedule_mode ?? ''), 'start_date'=>$r->start_date, 'end_date'=>$r->end_date,
+              'stop'=>(int)($r->stop ?? 0)])->values()->all();
+            $out['class_sessions'] = $sessionRows->map(fn ($r) => ['id'=>(int)$r->id, 'class_id'=>(int)$r->class_id,
+              'session_date'=>(string)$r->session_date, 'start_time'=>substr((string)$r->start_time, 0, 8),
+              'end_time'=>substr((string)$r->end_time, 0, 8), 'status'=>(string)$r->status,
+              'class_start_date'=>$r->class_start_date, 'class_end_date'=>$r->class_end_date,
+              'class_stop'=>(int)($r->class_stop ?? 0), 'class_type'=>(string)($r->class_type ?? ''),
+              'package_id'=>$r->package_id === null ? null : (int)$r->package_id])->values()->all();
+            $out['schedules'] = $scheduleRows->map(fn ($r) => ['id'=>(int)$r->id, 'class_id'=>$r->class_id === null ? null : (int)$r->class_id,
+              'session_date'=>(string)$r->session_date, 'start_time'=>substr((string)$r->start_time, 0, 8),
+              'end_time'=>substr((string)$r->end_time, 0, 8), 'status'=>(string)$r->status,
+              'original_schedule_id'=>$r->original_schedule_id === null ? null : (int)$r->original_schedule_id,
+              'class_start_date'=>$r->class_start_date, 'class_stop'=>$r->class_stop === null ? null : (int)$r->class_stop,
+              'class_type'=>(string)($r->class_type ?? ''), 'package_id'=>$r->package_id === null ? null : (int)$r->package_id])->values()->all();
+            $out['student_overlap_candidates'] = $overlaps;
+            $out['verification'] = ['student_found'=>count($studentIds) > 0, 'read_only'=>true,
+              'reported_dates_present'=>$sessionRows->pluck('session_date')->unique()->values()->all(),
+              'actual_class_session_overlap_count'=>count($overlaps),
+              'target_start_date_source'=>'StudentClass.StartDate (not inferred from first moved session)'];
           }} elseif ($case === 'billing_huang') {{
             $campusId = 9;
             $studentQuery = $db::table('Student')->where('CampusID', $campusId);
