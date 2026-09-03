@@ -870,6 +870,8 @@ class StudentClassController extends Controller
                     'week6',
                     'time6',
                     'SessionDuration',
+                    'Stop',
+                    'closed_reason',
                     'duration1',
                     'duration2',
                     'duration3',
@@ -923,6 +925,14 @@ class StudentClassController extends Controller
                     && ($class->ScheduleMode ?? '') === 'count'
                     && (int) ($class->SessionCount ?? 0) > 0
                     && (string) ($class->scheduling_policy ?? 'auto_recurrence') !== ManualSessionBookingService::POLICY;
+                $classRangeEnd = $rangeEnd;
+                if (
+                    $class
+                    && ((int) ($class->Stop ?? 0) === 1
+                        || in_array((string) ($class->closed_reason ?? ''), ['settled', 'completed', 'usage_settled'], true))
+                ) {
+                    $classRangeEnd = min($rangeEnd, Carbon::today()->toDateString());
+                }
                 $startDate = $class && $class->StartDate ? Carbon::parse($class->StartDate)->toDateString() : null;
 
                 $weekFields = ['week', 'week1', 'week2', 'week3', 'week4', 'week5', 'week6'];
@@ -953,7 +963,7 @@ class StudentClassController extends Controller
                             continue;
                         }
                         $d = $row->SessionDate ? Carbon::parse($row->SessionDate)->toDateString() : null;
-                        if ($d) {
+                        if ($d && $d <= $classRangeEnd) {
                             $actualSessionSet[$d] = true;
                         }
                     }
@@ -1008,7 +1018,7 @@ class StudentClassController extends Controller
                         $sessions,
                         $class,
                         $rangeStart,
-                        $rangeEnd
+                        $classRangeEnd
                     );
                     continue;
                 }
@@ -1045,7 +1055,7 @@ class StudentClassController extends Controller
                 if ($class && ($class->ScheduleMode ?? '') === 'date') {
                     $leaveSet = $leaveByClass[$id] ?? [];
                     $scheduledSet = $scheduledByClass[$id] ?? [];
-                    $list = $this->computeMonthlyEffectiveSessionDates($class, $rangeStart, $rangeEnd, $leaveSet, $scheduledSet, $set);
+                    $list = $this->computeMonthlyEffectiveSessionDates($class, $rangeStart, $classRangeEnd, $leaveSet, $scheduledSet, $set);
                     $result[(string) $id] = $this->buildSessionDatesSplit(
                         $projectionReader,
                         $id,
@@ -1053,7 +1063,7 @@ class StudentClassController extends Controller
                         $sessions,
                         $class,
                         $rangeStart,
-                        $rangeEnd
+                        $classRangeEnd
                     );
                     continue;
                 }
@@ -1069,7 +1079,7 @@ class StudentClassController extends Controller
                     $sessions,
                     $class,
                     $rangeStart,
-                    $rangeEnd
+                    $classRangeEnd
                 );
             }
         } catch (\Throwable $e) {
@@ -5962,7 +5972,7 @@ class StudentClassController extends Controller
      * the immediate week when changing weekday (e.g. Sun -> Sat should pick previous day).
      * Never return a date earlier than today.
      */
-    private function snapDateToContractWeekday(string $ymd, array $slotsByWeekday): string
+    private function snapDateToContractWeekday(string $ymd, array $slotsByWeekday, bool $notBeforeAnchor = false): string
     {
         if ($ymd === '' || empty($slotsByWeekday)) {
             return $ymd;
@@ -5972,6 +5982,15 @@ class StudentClassController extends Controller
 
         if (isset($slotsByWeekday[(int) $anchor->dayOfWeekIso]) && $anchor->greaterThanOrEqualTo($today)) {
             return $anchor->toDateString();
+        }
+
+        if ($notBeforeAnchor) {
+            for ($offset = 1; $offset <= 7; $offset++) {
+                $next = $anchor->copy()->addDays($offset);
+                if ($next->greaterThanOrEqualTo($today) && isset($slotsByWeekday[(int) $next->dayOfWeekIso])) {
+                    return $next->toDateString();
+                }
+            }
         }
 
         for ($offset = 1; $offset <= 7; $offset++) {
@@ -5996,19 +6015,27 @@ class StudentClassController extends Controller
      *
      * @param  \Illuminate\Support\Collection<int, ClassSession>  $unlockedSorted
      * @param  array<int, array{weekday:int,time:string,duration_minutes?:int}>  $slots
+     * @param  string|null  $contractStartDate  The course start date, when known.
      */
     private function remapFutureScheduledSessionsToContract(
         $unlockedSorted,
         array $slots,
         int $durationMinutes,
-        array $skipOccupiedTargetKeys = []
+        array $skipOccupiedTargetKeys = [],
+        ?string $contractStartDate = null
     ): int
     {
         $k = $unlockedSorted->count();
         if ($k <= 0) {
             return 0;
         }
-        $anchor = $this->normalizeDateString($unlockedSorted->first()->SessionDate ?? null);
+        $firstSessionDate = $this->normalizeDateString($unlockedSorted->first()->SessionDate ?? null);
+        $anchor = $firstSessionDate;
+        $startDateIsAnchor = false;
+        if ($contractStartDate !== null && $contractStartDate !== '') {
+            $anchor = max($firstSessionDate ?: $contractStartDate, $contractStartDate);
+            $startDateIsAnchor = $firstSessionDate === null || $contractStartDate > $firstSessionDate;
+        }
         if ($anchor === null || $anchor === '') {
             return 0;
         }
@@ -6016,7 +6043,7 @@ class StudentClassController extends Controller
         if (empty($slotsByWeekday)) {
             return 0;
         }
-        $snapped = $this->snapDateToContractWeekday($anchor, $slotsByWeekday);
+        $snapped = $this->snapDateToContractWeekday($anchor, $slotsByWeekday, $startDateIsAnchor);
         // A pure removal may compress an unlocked removed-day row onto a
         // retained locked row (e.g. Wed+Thu -> Wed). That is not a new
         // booking conflict. Generate enough cadence candidates to skip the
@@ -6482,11 +6509,16 @@ class StudentClassController extends Controller
                 })->all()
                 : [];
 
+            $contractStartDate = $this->normalizeDateString(
+                StudentClass::where('ID', $studentClassId)->value('StartDate')
+            );
+
             return $this->remapFutureScheduledSessionsToContract(
                 $unlocked,
                 $slots,
                 $durationMinutes,
-                $lockedTargetKeys
+                $lockedTargetKeys,
+                $contractStartDate
             );
         }
 
