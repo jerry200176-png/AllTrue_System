@@ -37,7 +37,7 @@ describe('StudentsList course summary UX', () => {
       .forEach((marker) => expect(activeCourseSlice).toContain(marker));
     ['查看繳費資訊', '補齊課程資料'].forEach((marker) => expect(source).toContain(marker));
     expect(source).toContain("if (action.key === 'renew') return openAddSessionsForCourse(course);");
-    expect(source).toContain("if (action.key === 'payment') return openLatestPaymentInfo(course, studentName);");
+    expect(source).toContain("if (action.key === 'payment') return goToTuitionBilling(course);");
   });
 
   it('shows honest session progress and a separate monthly cadence state', () => {
@@ -47,7 +47,9 @@ describe('StudentsList course summary UX', () => {
   });
 
   it('preserves the existing course actions behind the disclosure', () => {
-    ['togglePaymentStatus(course, student.name)', 'openAddSessionsForCourse(course)', 'openInvoiceModal(course)', 'openLatestPaymentInfo(course, student.name)', 'editCourse(course)', 'closeCourseNoRenew(course, student.name)', 'deleteCourse(course)']
+    ['goToTuitionBilling(course)', 'openAddSessionsForCourse(course)', 'openInvoiceModal(course)', 'editCourse(course)', 'closeCourseNoRenew(course, student.name)', 'deleteCourse(course)']
       .forEach((handler) => expect(activeCourseSlice).toContain(handler));
+    expect(activeCourseSlice).not.toContain('togglePaymentStatus');
+    expect(activeCourseSlice).not.toContain('openLatestPaymentInfo');
   });
 });

@@ -32,7 +32,9 @@ describe('student focus navigation contract', () => {
     expect(studentsSource).toContain('initialStudentIntent: String');
     expect(studentsSource).toContain('candidate?._laravelId ?? candidate?.id');
     expect(studentsSource).toContain("find((course) => Number(course?.id) === targetCourseId)");
-    expect(studentsSource).toContain("if (props.initialStudentIntent === 'edit' && targetCourse)");
+    expect(studentsSource).toContain("if (props.initialStudentIntent === 'edit') editCourse(targetCourse);");
+    expect(studentsSource).toContain("else if (props.initialStudentIntent === 'purchase' || props.initialStudentIntent === 'renew')");
+    expect(studentsSource).toContain("else if (props.initialStudentIntent === 'close') closeCourseNoRenew(targetCourse, student.name);");
     expect(studentsSource).toContain("emit('clear-initial-student')");
     expect(studentsSource).toContain(':data-student-id="student.id"');
   });
