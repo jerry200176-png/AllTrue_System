@@ -591,8 +591,30 @@ class StudentClassTransferSessionsTest extends TestCase
             foreach (['2026-07-06', '2026-07-13', '2026-07-20', '2026-07-27', '2026-08-03', '2026-08-10'] as $date) {
                 $this->createClassSession((int) $target->ID, $date, 'attended');
             }
-            $this->createClassSession((int) $target->ID, '2026-08-17', 'scheduled');
-            $this->createClassSession((int) $target->ID, '2026-08-24', 'scheduled');
+            $futureSessionIds = [
+                $this->createClassSession((int) $target->ID, '2026-08-17', 'scheduled'),
+                $this->createClassSession((int) $target->ID, '2026-08-24', 'scheduled'),
+            ];
+            // Legacy RFID/ledger residue can mark a future reservation as
+            // deducted. It is not a completed lesson and must not consume
+            // transfer capacity.
+            foreach ($futureSessionIds as $futureSessionId) {
+                DB::table('StudentSingIn')->insert([
+                    'StudentClassID' => $target->ID,
+                    'ClassSessionID' => $futureSessionId,
+                    'StudentID' => $student->id,
+                    'TeacherID' => 1,
+                    'Status' => 'present',
+                    'SessionDeducted' => 1,
+                    'SignInDT' => now(),
+                ]);
+                SessionDeductionLedger::create([
+                    'student_class_id' => $target->ID,
+                    'class_session_id' => $futureSessionId,
+                    'event_type' => 'deduct',
+                    'source' => 'attendance',
+                ]);
+            }
             $firstTransferredId = $this->createClassSession((int) $source->ID, '2026-08-12');
             $secondTransferredId = $this->createClassSession((int) $source->ID, '2026-08-13');
 

@@ -13,6 +13,7 @@ on:
           - fixed_slot_huang
           - billing_linlai
           - parent_lou
+          - transfer_capacity_chen
       student_name:
         description: 'Student name for bounded case probe (PII is not written to the artifact)'
         required: false
@@ -77,12 +78,12 @@ jobs:
           import os
           import json
           case = os.environ['CASE_KEY']
-          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou'}:
+          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'transfer_capacity_chen'}:
               raise SystemExit('unsupported case')
-          target_student_name = os.environ.get('TARGET_STUDENT_NAME') or ('黃品皓' if case in {'billing_huang', 'fixed_slot_huang'} else '林奕安')
+          target_student_name = os.environ.get('TARGET_STUDENT_NAME') or ('陳嘉軒' if case == 'transfer_capacity_chen' else ('黃品皓' if case in {'billing_huang', 'fixed_slot_huang'} else '林奕安'))
           target_student_class_id = os.environ.get('TARGET_STUDENT_CLASS_ID') or ''
-          if target_student_class_id and (case not in {'billing_huang', 'fixed_slot_huang'} or not target_student_class_id.isdigit()):
-              raise SystemExit('student_class_id is only supported as a numeric Huang case scope')
+          if target_student_class_id and (case not in {'billing_huang', 'fixed_slot_huang', 'transfer_capacity_chen'} or not target_student_class_id.isdigit()):
+              raise SystemExit('student_class_id is only supported as a numeric scoped case')
           target_subject_name = os.environ.get('TARGET_SUBJECT_NAME', '數學') or '數學'
           print(f'''<?php
           $case = {case!r};
@@ -184,7 +185,7 @@ jobs:
                 ->where('name', 'like', '%' . $targetStudentName . '%')->pluck('id')
                 ->map(fn ($id) => (int)$id)->all();
             }}
-            $classes = $db::table('StudentClass as sc')->whereIn('sc.StudentID', $studentIds)
+            $classes = $db::table('StudentClass as sc')->join('Student as st', 'st.id', '=', 'sc.StudentID')->whereIn('sc.StudentID', $studentIds)
               ->when($targetStudentClassId !== null, fn ($query) => $query->where('sc.ID', $targetStudentClassId))
               ->orderBy('sc.ID')->get(['sc.ID as class_id', 'sc.StudentID as student_id', 'sc.SubjectID as subject_id',
                 'sc.TeacherID as teacher_id', 'sc.ScheduleMode as schedule_mode', 'sc.StartDate as start_date',
@@ -246,6 +247,45 @@ jobs:
               'read_only'=>true,
             ];
             $out['weekday_keys'] = $weekdayKeys;
+          }} elseif ($case === 'transfer_capacity_chen') {{
+            $studentIds = $targetStudentClassId !== null
+              ? $db::table('StudentClass as sc')->where('sc.ID', $targetStudentClassId)->pluck('sc.StudentID')->map(fn ($id) => (int)$id)->all()
+              : $db::table('Student')->whereRaw('TRIM(name) = ?', [$targetStudentName])->pluck('id')->map(fn ($id) => (int)$id)->all();
+            if ($studentIds === [] && $targetStudentClassId === null) {{
+              $studentIds = $db::table('Student')->where('name', 'like', '%' . $targetStudentName . '%')->pluck('id')->map(fn ($id) => (int)$id)->all();
+            }}
+            $classes = $db::table('StudentClass as sc')->whereIn('sc.StudentID', $studentIds)
+              ->when($targetStudentClassId !== null, fn ($query) => $query->where('sc.ID', $targetStudentClassId))
+              ->orderBy('sc.ID')->get(['sc.ID as class_id', 'sc.StudentID as student_id', 'st.CampusID as campus_id',
+                'sc.SubjectID as subject_id', 'sc.ScheduleMode as schedule_mode', 'sc.SessionCount as session_count',
+                'sc.UsedSessions as persisted_used', 'sc.RemainingSessions as persisted_remaining', 'sc.Stop as stop']);
+            $classIds = $classes->pluck('class_id')->map(fn ($id) => (int)$id)->all();
+            $diagnostics = $classIds === [] ? [] : \App\Services\SessionDeductionService::batchExpectedUsedSessionDiagnostics($classIds);
+            $sessions = $classIds === [] ? collect() : $db::table('ClassSession')->whereIn('StudentClassID', $classIds)
+              ->orderBy('StudentClassID')->orderBy('SessionDate')->orderBy('StartTime')->get(['id', 'StudentClassID as class_id', 'SessionDate as session_date', 'StartTime as start_time', 'EndTime as end_time', 'Status as status']);
+            $signins = $classIds === [] ? collect() : $db::table('StudentSingIn')->whereIn('StudentClassID', $classIds)->whereNull('VoidedAt')
+              ->get(['id', 'StudentClassID as class_id', 'ClassSessionID as session_id', 'SessionDeducted as session_deducted', 'Status as status']);
+            $ledger = $classIds === [] ? collect() : $db::table('session_deduction_ledger')->whereIn('student_class_id', $classIds)
+              ->whereIn('source', ['attendance', 'retro_leave', 'status_adjust', 'duplicate_session'])
+              ->get(['id', 'student_class_id as class_id', 'class_session_id as session_id', 'event_type', 'source', 'minutes']);
+            $out['student_ids'] = $studentIds;
+            $out['student_count'] = count($studentIds);
+            $out['target_classes'] = $classes->map(fn ($r) => ['class_id'=>(int)$r->class_id, 'student_id'=>(int)$r->student_id,
+              'campus_id'=>$r->campus_id === null ? null : (int)$r->campus_id, 'subject_id'=>(int)$r->subject_id,
+              'schedule_mode'=>(string)($r->schedule_mode ?? ''), 'session_count'=>(int)($r->session_count ?? 0),
+              'persisted_used'=>(int)($r->persisted_used ?? 0), 'persisted_remaining'=>(int)($r->persisted_remaining ?? 0),
+              'diagnostic'=>$diagnostics[(int)$r->class_id] ?? null, 'stop'=>(int)($r->stop ?? 0)])->values()->all();
+            $out['class_sessions'] = $sessions->map(fn ($r) => ['id'=>(int)$r->id, 'class_id'=>(int)$r->class_id,
+              'session_date'=>(string)$r->session_date, 'start_time'=>substr((string)$r->start_time, 0, 5),
+              'end_time'=>substr((string)$r->end_time, 0, 5), 'status'=>(string)$r->status])->values()->all();
+            $out['active_signins'] = $signins->map(fn ($r) => ['id'=>(int)$r->id, 'class_id'=>(int)$r->class_id,
+              'session_id'=>$r->session_id === null ? null : (int)$r->session_id, 'session_deducted'=>(bool)$r->session_deducted,
+              'status'=>(string)($r->status ?? '')])->values()->all();
+            $out['deduction_ledger'] = $ledger->map(fn ($r) => ['id'=>(int)$r->id, 'class_id'=>(int)$r->class_id,
+              'session_id'=>$r->session_id === null ? null : (int)$r->session_id, 'event_type'=>(string)$r->event_type,
+              'source'=>(string)$r->source, 'minutes'=>$r->minutes === null ? null : (int)$r->minutes])->values()->all();
+            $out['verification'] = ['student_found'=>count($studentIds) > 0, 'read_only'=>true,
+              'future_scheduled_session_ids'=>$sessions->filter(fn ($r) => strtolower((string)$r->status) === 'scheduled' && (string)$r->session_date > now()->toDateString())->pluck('id')->map(fn ($id) => (int)$id)->values()->all()];
           }} elseif ($case === 'billing_huang') {{
             $campusId = 9;
             $studentQuery = $db::table('Student')->where('CampusID', $campusId);
