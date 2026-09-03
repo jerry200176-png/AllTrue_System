@@ -1,0 +1,52 @@
+id: TKT-20260901-071650-O1TO
+title: "\u884C\u4E8B\u66C6\u8ACB\u5047\u5F8C\u8ABF\u8AB2\u8AA4\u64CB\u4FEE\u5FA9"
+intent: "\u884C\u4E8B\u66C6\u8ACB\u5047\u5F8C\u8ABF\u8AB2\u8AA4\u64CB\u4FEE\u5FA9"
+kind: task
+parent_id: INT-20260829-110018-M2ZO
+boundary: "\u53EA\u4FEE\u884C\u4E8B\u66C6\u8ABF\u8AB2\u524D\u7AEF\u9810\u5224\u8207\
+  \u6E2C\u8A66\uFF1B\u4FDD\u7559\u5F8C\u7AEF\u539F\u5B50\u885D\u5802\u6AA2\u67E5\uFF0C\
+  \u4E0D\u6539\u5E33\u52D9\u3001\u51FA\u52E4\u3001\u8CC7\u6599\u8207 occurrence identity\u3002"
+success_condition: "\u8ACB\u5047\u5F8C\u76EE\u6A19\u6642\u6BB5\u4E0D\u518D\u88AB\u524D\
+  \u7AEF\u9810\u5224\u76F4\u63A5\u7981\u6B62\uFF1B\u5BE6\u969B\u9001\u51FA\u4ECD\u7531\
+  \u5F8C\u7AEF\u5224\u5B9A\uFF1B\u771F\u885D\u5802\u4ECD\u986F\u793A\u5F8C\u7AEF\u932F\
+  \u8AA4\uFF1Bfocused/unit tests \u7DA0\u3002"
+priority: 1
+labels:
+- bug-fix
+scope:
+  allow:
+  - frontend/src/composables/calendar/useCalendarReschedule.js
+  - frontend/src/lib/reschedulePreview.js
+  - docs/CHANGELOG.md
+  - docs/STAFF_UPDATES.yml
+  - frontend/src/lib/changelogDraft.generated.js
+  - frontend/src/lib/staffUpdates.generated.js
+  - frontend/src/components/calendar/modals/CalendarRescheduleModal.vue
+  - frontend/src/composables/calendar/__tests__/useCalendarReschedule.test.js
+  - frontend/src/components/calendar/modals/__tests__/CalendarRescheduleModal.test.js
+  - .agent-session/manifest.json
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - backend/**
+  - production/**
+budgets:
+  max_files_changed: 10
+  max_loc_changed: 400
+checks:
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: todo
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-01T07:16:50+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default

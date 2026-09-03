@@ -1522,6 +1522,7 @@ import {
 import { resolveLearningRecordsDefaultWindowStart } from '../lib/learningRecordsWindow';
 import { resolveDeepLinkBranchId, shouldLiftDefaultWindowForDate, feedbackFocusState } from '../lib/learningRecordTarget';
 import { compareLearningRecords } from '../lib/learningRecordSort';
+import { deduplicateLearningRecordSessions } from '../lib/learningRecordSessionPolicy';
 import {
   saveDraft as _saveDraftToStorage,
   loadDraft as _loadDraftFromStorage,
@@ -1713,7 +1714,9 @@ const activeFilterCount = computed(() => {
 });
 
 const reviewTab = ref('pending');
-const teacherFilterTab = ref('all');
+// Teachers land on actionable assessment work first; historical/approved rows
+// remain available through the explicit status tabs below.
+const teacherFilterTab = ref('pending');
 const teacherPriorityFilter = ref('all');
 const feedbackFilter = ref('all');
 const pageMode = ref('records'); // 'records' | 'parent_messages'
@@ -2885,43 +2888,6 @@ const scheduleStatusLabel = learningSessionStatusLabel;
 // 必須同步更新，避免語意漂移。
 const LEAVE_STATUSES = new Set(['leave', 'leave_adjusted', 'excused']);
 
-const SESSION_STATUS_PRIORITY = {
-  attended: 0, completed: 0, late: 0, absent: 0,
-  scheduled: 1,
-  leave: 2, leave_adjusted: 2, excused: 2,
-  cancelled: 3,
-};
-
-function pickBestSession(candidates) {
-  if (!candidates.length) return null;
-  if (candidates.length === 1) return candidates[0];
-  return candidates.slice().sort((a, b) => {
-    const sa = String(a?.status || a?.Status || '').toLowerCase();
-    const sb = String(b?.status || b?.Status || '').toLowerCase();
-    const pa = SESSION_STATUS_PRIORITY[sa] ?? 2;
-    const pb = SESSION_STATUS_PRIORITY[sb] ?? 2;
-    if (pa !== pb) return pa - pb;
-    return (Number(b.id) || 0) - (Number(a.id) || 0);
-  })[0];
-}
-
-function deduplicateSessionsBySlot(sessions) {
-  const groups = {};
-  for (const s of sessions) {
-    if (s?.isProjected) continue;
-    const id = Number(s?.id || 0);
-    const date = String(s?.date || '').slice(0, 10);
-    const time = normalizeTime(s?.startTime) || '';
-    // Keep different ClassSession IDs even when they share the same slot:
-    // a legitimate reschedule-to-past can produce two lessons on the same date/time.
-    // Grouping only by date|time would hide one and block teacher fill flow.
-    const key = id > 0 ? `id:${id}` : `slot:${date}|${time}`;
-    if (!groups[key]) groups[key] = [];
-    groups[key].push(s);
-  }
-  return Object.values(groups).map((g) => pickBestSession(g));
-}
-
 const recordLookup = computed(() => {
   const map = new Map();
   for (const record of records.value || []) {
@@ -3064,7 +3030,7 @@ const buildEvents = (targetDates) => {
     const classId = Number(sc.id || sc.ID || 0);
     if (!classId) continue;
     const allSessions = sessionDatesByClassId.value[String(classId)] || [];
-    const rawSessions = deduplicateSessionsBySlot(allSessions);
+    const rawSessions = deduplicateLearningRecordSessions(allSessions, normalizeTime);
     for (const rawSession of rawSessions) {
       if (rawSession?.isProjected) continue;
       const dateStr = String(rawSession?.date || '').slice(0, 10);

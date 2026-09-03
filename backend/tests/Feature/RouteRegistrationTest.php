@@ -39,6 +39,40 @@ class RouteRegistrationTest extends TestCase
         ];
     }
 
+    public static function popControlPlaneRouteProvider(): array
+    {
+        return [
+            'draft' => ['POST', 'api/v1/pop/operations/{operationId}/draft', 'App\\Http\\Controllers\\PopOperationController@storeDraft'],
+            'dry-run' => ['POST', 'api/v1/pop/operations/requests/{requestId}/dry-run', 'App\\Http\\Controllers\\PopOperationController@dryRun'],
+            'approval' => ['POST', 'api/v1/pop/operations/requests/{requestId}/approvals', 'App\\Http\\Controllers\\PopOperationController@approve'],
+        ];
+    }
+
+    /**
+     * POP request/dry-run/approval routes are control-plane entrypoints only.
+     * There is intentionally no HTTP execute route; mutation belongs to the
+     * Pi-local CLI.
+     *
+     * @dataProvider popControlPlaneRouteProvider
+     */
+    public function test_pop_control_plane_routes_are_role_campus_password_gated(
+        string $method,
+        string $uri,
+        string $action
+    ): void {
+        $route = $this->findRoute($method, $uri);
+        $this->assertNotNull($route);
+        $this->assertSame($action, $route->getActionName());
+        foreach (['role:director,super_admin', 'require_campus', 'require_password_change'] as $required) {
+            $this->assertContains($required, $route->gatherMiddleware());
+        }
+    }
+
+    public function test_pop_has_no_http_execute_entrypoint(): void
+    {
+        $this->assertNull($this->findRoute('POST', 'api/v1/pop/operations/requests/{requestId}/execute'));
+    }
+
     /**
      * @dataProvider coreApiRouteProvider
      */

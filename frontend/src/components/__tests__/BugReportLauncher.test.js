@@ -187,6 +187,28 @@ describe('bug report attachments', () => {
     wrapper.unmount();
   });
 
+  it('keeps the report acknowledgement open and opens bug tracking from the CTA', async () => {
+    const wrapper = await openLauncher();
+    const textarea = bodyElement('#bug-report-description');
+    textarea.value = '測試回報內容';
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    await nextTick();
+
+    bodyElement('.btn-submit').click();
+    await flushPromises();
+    await nextTick();
+
+    expect(bodyElement('.submission-success').textContent).toContain('編號 #1');
+    expect(bodyElement('.success-track-button').textContent).toContain('查看回報進度');
+    expect(document.body.querySelector('#bug-report-description')).toBeNull();
+
+    bodyElement('.success-track-button').click();
+    await nextTick();
+    expect(wrapper.emitted('open-bugs')).toEqual([[]]);
+    expect(document.body.querySelector('.at-dialog-overlay')).toBeNull();
+    wrapper.unmount();
+  });
+
   it('clears the previous success state when the composer is closed and reopened', async () => {
     const wrapper = await openLauncher();
     const textarea = bodyElement('#bug-report-description');

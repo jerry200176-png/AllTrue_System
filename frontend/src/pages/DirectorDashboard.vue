@@ -215,6 +215,23 @@
                   @view-learning="emit('navigate', { target: 'learning' })"
                 />
               </section>
+              <section v-if="bugSlaSummary" class="surface-panel director-bug-sla-panel" aria-labelledby="director-bug-sla-title">
+                <header class="surface-panel__header">
+                  <div>
+                    <h3 id="director-bug-sla-title">Bug 回報 SLA</h3>
+                    <p>只顯示分校的狀態數量、待處理年齡與分診門檻。</p>
+                  </div>
+                  <span class="surface-panel__count">{{ bugSlaSummary.open_backlog.total }} 件待處理</span>
+                </header>
+                <dl class="director-bug-sla-grid">
+                  <div class="director-bug-sla-stat"><dt>新回報</dt><dd>{{ bugSlaSummary.open_backlog.by_status.new }}</dd></div>
+                  <div class="director-bug-sla-stat"><dt>已分診</dt><dd>{{ bugSlaSummary.open_backlog.by_status.triaged }}</dd></div>
+                  <div class="director-bug-sla-stat"><dt>處理中</dt><dd>{{ bugSlaSummary.open_backlog.by_status.in_progress }}</dd></div>
+                  <div class="director-bug-sla-stat director-bug-sla-stat--alert"><dt>逾期分診</dt><dd>{{ bugSlaSummary.triage_sla.open_breach_total }}</dd></div>
+                </dl>
+                <p class="director-bug-sla-note">目前最久待處理 {{ oldestBugAgeLabel }}；分診 SLA：P1 {{ bugSlaSummary.triage_sla.targets_hours.p1 }} 小時、P2 {{ bugSlaSummary.triage_sla.targets_hours.p2 }} 小時。</p>
+                <p v-if="bugSlaSummary.open_backlog.missing_triaged_at" class="director-bug-sla-warning" role="status">{{ bugSlaSummary.open_backlog.missing_triaged_at }} 筆既有回報缺少分診歷程，年齡未用推算值取代。</p>
+              </section>
               <OperationsQuickStart
                 compact
                 eyebrow="常用流程"
@@ -666,6 +683,17 @@ const workflowDailySummary = computed(() => ({
   done_total: Number(adoptionWeeklyMetrics.value?.workflow_daily?.done_total || 0),
   breached_total: Number(adoptionWeeklyMetrics.value?.workflow_daily?.breached_total || 0),
 }));
+
+const bugSlaSummary = computed(() => adoptionWeeklyMetrics.value?.bug_sla || null);
+
+const oldestBugAgeLabel = computed(() => {
+  const ages = Object.values(bugSlaSummary.value?.open_backlog?.oldest_age_hours || {})
+    .filter((value) => Number.isFinite(Number(value)))
+    .map(Number);
+  if (!ages.length) return '無可驗證資料';
+  const hours = Math.max(...ages);
+  return hours >= 24 ? `${(hours / 24).toFixed(1)} 天` : `${Math.round(hours)} 小時`;
+});
 
 const decisionCenter = computed(() => {
   const dc = operationsTrust.value?.decision_center;
@@ -3071,6 +3099,14 @@ onBeforeUnmount(() => {
 .director-secondary-tools__body { display: grid; gap: 16px; padding: 0 16px 16px; }
 .director-secondary-tools__body .surface-panel { box-shadow: none; }
 .director-secondary-tools__body .operations-quick-start { margin-top: 0; }
+.director-bug-sla-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 0 22px; }
+.director-bug-sla-stat { padding: 12px; border: 1px solid var(--ds-hairline); border-radius: 8px; background: var(--ds-canvas-soft); }
+.director-bug-sla-stat dt { color: var(--ds-ink-mute); font-size: 11px; }
+.director-bug-sla-stat dd { margin: 5px 0 0; color: var(--ds-ink); font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.director-bug-sla-stat--alert { border-color: var(--ds-warning-border, var(--ds-hairline)); }
+.director-bug-sla-stat--alert dd { color: var(--ds-warning); }
+.director-bug-sla-note, .director-bug-sla-warning { margin: 12px 22px 0; color: var(--ds-ink-secondary); font-size: 11px; line-height: 1.5; }
+.director-bug-sla-warning { color: var(--ds-warning); }
 .director-workbench-v2__full-grid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.75fr); gap: 20px; align-items: start; }
 .director-workbench-v2__full-main, .director-workbench-v2__full-side { display: grid; gap: 18px; min-width: 0; }
 .director-schedule-list { padding: 0 22px; }
@@ -3190,6 +3226,8 @@ onBeforeUnmount(() => {
   .director-modal { padding: 21px 18px; }
   .director-secondary-tools summary { grid-template-columns: auto minmax(0, 1fr) auto; padding-inline: 12px; }
   .director-secondary-tools__body { padding-inline: 12px; }
+  .director-bug-sla-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-inline: 16px; }
+  .director-bug-sla-note, .director-bug-sla-warning { margin-inline: 16px; }
 }
 @media (max-width: 860px) {
   .workbench__layout { grid-template-columns: 1fr; }

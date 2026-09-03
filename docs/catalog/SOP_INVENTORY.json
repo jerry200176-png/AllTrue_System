@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "generated_on": "2026-09-01",
+  "scope": "Committed docs/**/*.md files that declare review_cycle metadata; plans and RFCs are included when they carry the same lifecycle metadata.",
+  "records": [
+    {"document":"docs/AI_REGRESSION_LESSONS.md","owner":"jerry (CEO)","review_cycle":"quarterly","last_reviewed":"2026-06-06","next_review":"2026-09-06","last_drill_evidence_link":null,"review_status":"current"},
+    {"document":"docs/CHAT_BUG_SYSTEM.md","owner":"jerry (CEO)","review_cycle":"quarterly","last_reviewed":"2026-08-23","next_review":"2026-11-23","last_drill_evidence_link":null,"review_status":"current"},
+    {"document":"docs/DANGEROUS_OPERATIONS.md","owner":"jerry (CEO)","review_cycle":"quarterly","last_reviewed":"2026-08-23","next_review":"2026-11-23","last_drill_evidence_link":null,"review_status":"current"},
+    {"document":"docs/DIRECTOR_PAYMENT_ALERT_RULES.md","owner":"jerry (CEO)","review_cycle":"quarterly","last_reviewed":"2026-08-16","next_review":"2026-11-16","last_drill_evidence_link":null,"review_status":"current"},
+    {"document":"docs/OPERATIONS_RUNBOOK.md","owner":"jerry (CEO)","review_cycle":"quarterly","last_reviewed":"2026-08-23","next_review":"2026-11-23","last_drill_evidence_link":null,"review_status":"current"},
+    {"document":"docs/PRICING_CONTRACT.md","owner":"jerry (CEO)","review_cycle":"quarterly","last_reviewed":"2026-06-06","next_review":"2026-09-06","last_drill_evidence_link":null,"review_status":"current"},
+    {"document":"docs/ROLE_PLAYBOOK.md","owner":"jerry (CEO)","review_cycle":"quarterly","last_reviewed":"2026-06-06","next_review":"2026-09-06","last_drill_evidence_link":null,"review_status":"current"},
+    {"document":"docs/RULE_DESIGN_SYSTEM.md","owner":"jerry (CEO)","review_cycle":"quarterly","last_reviewed":"2026-07-24","next_review":"2026-10-24","last_drill_evidence_link":null,"review_status":"current"},
+    {"document":"docs/RUNBOOK_ACTUAL_DURATION_ACTIVATION.md","owner":"platform","review_cycle":"quarterly","last_reviewed":"2026-07-31","next_review":"2026-10-31","last_drill_evidence_link":null,"review_status":"current"},
+    {"document":"docs/RUNBOOK_ROLLBACK.md","owner":"jerry (CEO)","review_cycle":"quarterly","last_reviewed":"2026-06-07","next_review":"2026-09-07","last_drill_evidence_link":null,"review_status":"current"},
+    {"document":"docs/SRE_POLICY.md","owner":"jerry (CEO)","review_cycle":"quarterly","last_reviewed":"2026-08-23","next_review":"2026-11-23","last_drill_evidence_link":null,"review_status":"current"},
+    {"document":"docs/architecture/RFC_NONSTANDARD_SESSION_DURATION_BILLING.md","owner":"jerry (CEO)","review_cycle":"on next founder review","last_reviewed":"2026-07-31","next_review":null,"last_drill_evidence_link":null,"review_status":"not_scheduled"},
+    {"document":"docs/architecture/RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md","owner":"jerry (CEO)","review_cycle":"as-needed","last_reviewed":"2026-08-16","next_review":null,"last_drill_evidence_link":null,"review_status":"not_scheduled"},
+    {"document":"docs/design/ALLTRUE_UI_FOUNDATION.md","owner":"jerry (CEO)","review_cycle":"quarterly","last_reviewed":"2026-07-26","next_review":"2026-10-26","last_drill_evidence_link":null,"review_status":"current"},
+    {"document":"docs/design/DASHBOARD_VISUAL_RESEARCH_2026-08-01.md","owner":"jerry (CEO)","review_cycle":"quarterly","last_reviewed":"2026-08-01","next_review":"2026-11-01","last_drill_evidence_link":null,"review_status":"current"},
+    {"document":"docs/design/LEARNING_RECORDS_VISUAL_RESEARCH_2026-08-01.md","owner":"jerry (CEO)","review_cycle":"quarterly","last_reviewed":"2026-08-01","next_review":"2026-11-01","last_drill_evidence_link":null,"review_status":"current"},
+    {"document":"docs/plans/2026-08-17-mixed-class-type-occupancy.md","owner":"jerry (CEO)","review_cycle":"as-needed","last_reviewed":"2026-08-17","next_review":null,"last_drill_evidence_link":null,"review_status":"not_scheduled"},
+    {"document":"docs/plans/2026-08-20-course-ia-consolidation.md","owner":"jerry (CEO)","review_cycle":"as-needed","last_reviewed":"2026-08-20","next_review":null,"last_drill_evidence_link":null,"review_status":"not_scheduled"},
+    {"document":"docs/security/AUDIT_LOG_COVERAGE_MATRIX.md","owner":"jerry (CEO)","review_cycle":"quarterly","last_reviewed":"2026-08-08","next_review":"2026-11-08","last_drill_evidence_link":null,"review_status":"current"},
+    {"document":"docs/security/IAM_ACCESS_REVIEW.md","owner":"jerry (CEO)","review_cycle":"quarterly","last_reviewed":"2026-08-08","next_review":"2026-11-08","last_drill_evidence_link":null,"review_status":"current"},
+    {"document":"docs/security/PII_DATA_INVENTORY.md","owner":"jerry (CEO)","review_cycle":"quarterly","last_reviewed":"2026-08-08","next_review":"2026-11-08","last_drill_evidence_link":null,"review_status":"current"},
+    {"document":"docs/security/PRODUCTION_AGENT_EXCEPTION_HERMES_2026-08.md","owner":"jerry (CEO)","review_cycle":"14 days","last_reviewed":"2026-08-09","next_review":"2026-08-23","last_drill_evidence_link":null,"review_status":"overdue"},
+    {"document":"docs/security/RUNBOOK_HOST_HARDENING_VERIFICATION.md","owner":"jerry (CEO)","review_cycle":"quarterly","last_reviewed":"2026-08-08","next_review":"2026-11-08","last_drill_evidence_link":null,"review_status":"current"}
+  ]
+}

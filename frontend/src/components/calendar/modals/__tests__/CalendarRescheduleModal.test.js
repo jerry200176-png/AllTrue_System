@@ -38,7 +38,7 @@ describe('CalendarRescheduleModal', () => {
     expect(w.find('button.primary').text()).toContain('調課中');
   });
 
-  it('shows the preflight result and disables a known conflicting target', () => {
+  it('shows a possible conflict as a warning while leaving the final check to the API', () => {
     const w = mount(CalendarRescheduleModal, {
       props: {
         show: true,
@@ -47,8 +47,9 @@ describe('CalendarRescheduleModal', () => {
         preview: { status: 'ready', blocked: true, message: '已有一對一課程，請改選日期或時間。', conflicts: ['英文（16:00～18:00）'] },
       },
     });
-    expect(w.text()).toContain('送出前檢查');
+    expect(w.text()).toContain('送出前提醒');
     expect(w.text()).toContain('英文（16:00～18:00）');
-    expect(w.find('button.primary').attributes('disabled')).toBeDefined();
+    expect(w.text()).toContain('可能有衝堂');
+    expect(w.find('button.primary').attributes('disabled')).toBeUndefined();
   });
 });

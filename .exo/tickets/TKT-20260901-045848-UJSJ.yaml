@@ -1,0 +1,51 @@
+id: TKT-20260901-045848-UJSJ
+title: P1 historical course usage reconciliation visibility
+intent: P1 historical course usage reconciliation visibility
+kind: task
+parent_id: INT-20260829-110018-M2ZO
+boundary: "\u53EA\u88DC\u8AB2\u7A0B\u7BA1\u7406\u6B77\u53F2\u8AB2\u7A0B\u5361\u7684\
+  \u5802\u6578\u5F85\u5C0D\u5E33\u53EF\u898B\u6027\uFF1B\u7981\u6B62\u4FEE\u6539 production\
+  \ DB\u3001\u4ED8\u6B3E\u3001\u51FA\u52E4\u3001\u6263\u5802\u8CC7\u6599\u3001backend\u3001\
+  migration \u6216\u81EA\u52D5\u4FEE\u5E33\u3002"
+success_condition: "\u6B77\u53F2\u8AB2\u7A0B\u82E5\u6709 review_required \u5FC5\u9808\
+  \u660E\u78BA\u986F\u793A\u5802\u6578\u5F85\u5C0D\u5E33\u8207\u539F\u56E0\u5165\u53E3\
+  \uFF1Bactive \u8207 history \u986F\u793A\u4E00\u81F4\uFF1B\u524D\u7AEF regression\u3001\
+  unit\u3001build\u3001CI \u8207 production verification \u901A\u904E\u3002"
+priority: 1
+labels:
+- bug
+scope:
+  allow:
+  - frontend/src/pages/CourseManagement.vue
+  - frontend/src/components/__tests__/CourseManagementLensUx.test.js
+  - frontend/src/lib/courseRowWarnings.js
+  - frontend/src/lib/courseRowWarnings.test.js
+  - docs/CHANGELOG.md
+  - docs/STAFF_UPDATES.yml
+  - frontend/src/lib/changelogDraft.generated.js
+  - frontend/src/lib/staffUpdates.generated.js
+  - .agent-session/manifest.json
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - backend/**
+  - '**/.env*'
+budgets:
+  max_files_changed: 12
+  max_loc_changed: 180
+checks:
+- npm run test:unit
+- npm run build
+type: feature
+status: todo
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-01T04:58:48+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default

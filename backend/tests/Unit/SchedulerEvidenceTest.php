@@ -97,6 +97,20 @@ class SchedulerEvidenceTest extends TestCase
         }
     }
 
+    public function test_pop_executor_is_a_local_minute_schedule_with_private_output(): void
+    {
+        $events = array_values(array_filter(
+            app(Schedule::class)->events(),
+            static fn ($event): bool => str_contains($event->command, 'pop:execute-approved')
+        ));
+
+        $this->assertCount(1, $events);
+        $this->assertSame(SchedulerEvidence::TIMEZONE, $events[0]->timezone);
+        $this->assertTrue($events[0]->withoutOverlapping);
+        $this->assertSame('* * * * *', $events[0]->expression);
+        $this->assertStringContainsString('pop-execute-approved.log', $events[0]->output);
+    }
+
     private function outputFor(string $job): string
     {
         $outputs = [

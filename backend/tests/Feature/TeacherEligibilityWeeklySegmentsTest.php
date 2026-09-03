@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\AuthToken;
+use App\Models\Campus;
 use App\Models\ClassSession;
 use App\Models\Student;
 use App\Models\StudentClass;
@@ -21,11 +22,13 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
     {
         $director = $this->createDirector();
         $teacher = $this->createTeacher();
+        $otherCampus = Campus::factory()->create();
+        UserCampus::create(['CampusID' => $otherCampus->id, 'UserID' => $teacher->id, 'Admin' => 0, 'Approved' => 1]);
 
         // 8 x 2h regular = 8 segments; 1v2 and 1v3 x 4h = 4 segments;
         // 5 attended trials = 5 fixed segments; total = 17. Tutoring is 0.
         foreach (['08:00', '08:10', '08:20', '08:30', '08:40', '08:50', '09:00', '09:10'] as $start) {
-            $this->createAttendedSession($teacher->id, 'one_on_one', '2026-08-03', $start, 120);
+            $this->createAttendedSession($teacher->id, 'one_on_one', '2026-08-03', $start, 120, 'completed', 'present', $otherCampus->id);
         }
         $this->createAttendedSession($teacher->id, 'one_on_two', '2026-08-04', '10:00', 240);
         $this->createAttendedSession($teacher->id, 'one_on_three', '2026-08-05', '10:00', 240);
@@ -44,13 +47,14 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
 
         DB::table('fulltime_salary_profiles')->insert([
             'teacher_id' => $teacher->id,
-            'branch_id' => 1,
+            'branch_id' => $otherCampus->id,
             'base_salary' => 33000,
             'status' => 'approved',
             'effective_from' => '2026-08-01',
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+        DB::table('teacher_payroll_cash_adjustments')->insert(['teacher_id' => $teacher->id, 'branch_id' => $otherCampus->id, 'amount' => 1500, 'reason' => '完整結算路徑測試', 'status' => 'approved', 'starts_on' => '2026-08-01', 'ends_on' => '2026-08-31', 'created_at' => now(), 'updated_at' => now()]);
 
         $response = $this->withHeaders($this->auth($director['token']))
             ->getJson('/api/v1/finance/teacher-eligibility?period=week&start=2026-08-03&end=2026-08-09&branch_id=1');
@@ -62,6 +66,10 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         $response->assertJsonPath('teachers.0.components.weekly_16_segments.metrics.trial_segments', 5);
         $response->assertJsonPath('teachers.0.components.weekly_16_segments.metrics.total_segments', 17);
         $response->assertJsonPath('teachers.0.components.weekly_16_segments.metrics.meets_16_segments', true);
+        $response->assertJsonPath('teachers.0.settlement.calculated_payout', 35500);
+        $response->assertJsonPath('teachers.0.settlement.calculation_status', 'calculated');
+        $response->assertJsonPath('teachers.0.components.cash_adjustments.amount', 1500);
+        $response->assertJsonPath('teachers.0.settlement.adjustments.1.label', '完整結算路徑測試');
 
         $sessions = $response->json('teachers.0.components.weekly_16_segments.metrics.course_sessions');
         $this->assertCount(16, $sessions);
@@ -73,6 +81,8 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         $monthResponse = $this->withHeaders($this->auth($director['token']))
             ->getJson('/api/v1/finance/teacher-eligibility?period=month&start=2026-08-01&end=2026-08-31&branch_id=1');
         $monthResponse->assertOk();
+        $monthResponse->assertJsonPath('teachers.0.settlement.calculated_payout', 35500);
+        $monthResponse->assertJsonPath('teachers.0.settlement.calculation_status', 'calculated');
         $monthResponse->assertJsonPath('teachers.0.components.weekly_16_segments.metrics.total_segments', 17);
         $this->assertTrue(collect($monthResponse->json('teachers.0.components.weekly_16_segments.metrics.weeks'))
             ->contains(fn ($week) => ($week['metrics']['meets_16_segments'] ?? false) === true));
@@ -108,10 +118,11 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         string $start,
         int $minutes,
         string $sessionStatus = 'completed',
-        string $attendanceStatus = 'present'
+        string $attendanceStatus = 'present',
+        int $campusId = 1
     ): ClassSession {
         $student = Student::create([
-            'name' => '段數案例學生', 'CampusID' => 1, 'ClassID' => 1,
+            'name' => '段數案例學生', 'CampusID' => $campusId, 'ClassID' => 1,
             'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
         ]);
         $course = StudentClass::create([

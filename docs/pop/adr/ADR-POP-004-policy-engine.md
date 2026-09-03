@@ -18,6 +18,10 @@ Hard-coded approval rules (e.g. all critical → founder) do not scale across st
 - Policies in `operations/policies/*.yaml`, loaded to immutable versioned blobs in DB.
 - Evaluator inputs: risk, blast_radius, campus, time, strategy capabilities, DAG outcomes.
 - Outputs: approvers, windows, max_parallel, retries, auto_rollback, deny.
+- A Founder-explicit single-repair rule may reduce quorum only when the
+  catalog operation itself proves a single-student blast radius, reversibility,
+  snapshot, rollback, and verification. This is an operation-specific policy,
+  not a general Founder or Agent production privilege.
 
 ## Alternatives
 

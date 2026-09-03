@@ -74,12 +74,20 @@ def load_fingerprints(path: Path) -> dict[str, set[str]]:
     return result
 
 
-def compare(leaked_path: Path, production_path: Path) -> int:
+def compare(
+    leaked_path: Path,
+    production_path: Path,
+    kinds: list[str] | tuple[str, ...] | None = None,
+) -> int:
     leaked = load_fingerprints(leaked_path)
     production = load_fingerprints(production_path)
+    selected_kinds = tuple(PATTERNS) if kinds is None else tuple(kinds)
+    unknown_kinds = set(selected_kinds) - set(PATTERNS)
+    if unknown_kinds:
+        raise ValueError(f"unknown fingerprint kind(s): {sorted(unknown_kinds)}")
     matched = False
     incomplete = False
-    for kind in PATTERNS:
+    for kind in selected_kinds:
         old = leaked.get(kind, set())
         live = production.get(kind, set())
         if not old:
@@ -129,6 +137,13 @@ def main() -> int:
     compare_parser = subparsers.add_parser("compare")
     compare_parser.add_argument("leaked", type=Path)
     compare_parser.add_argument("production", type=Path)
+    compare_parser.add_argument(
+        "--kind",
+        dest="kinds",
+        action="append",
+        choices=tuple(PATTERNS),
+        help="Only compare the selected fingerprint kind(s); default: all kinds",
+    )
     select_parser = subparsers.add_parser("select-blobs")
     select_parser.add_argument("metadata", nargs="+", type=Path)
     select_parser.add_argument("--anchor", action="append", default=[])
@@ -150,7 +165,7 @@ def main() -> int:
             print(f"incident metadata error: {exc}", file=sys.stderr)
             return 5
     try:
-        return compare(args.leaked, args.production)
+        return compare(args.leaked, args.production, args.kinds)
     except (OSError, ValueError) as exc:
         print(f"audit input error: {exc}", file=sys.stderr)
         return 4

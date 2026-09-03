@@ -13,5 +13,12 @@ class ApiClient extends Model
         'ApiKeyHash',
         'CampusID',
         'Active',
+        'Purpose',
+        'Scopes',
+    ];
+
+    protected $casts = [
+        'Active' => 'boolean',
+        'Scopes' => 'array',
     ];
 }

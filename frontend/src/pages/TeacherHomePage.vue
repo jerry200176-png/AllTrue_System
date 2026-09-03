@@ -225,24 +225,29 @@
           <button type="button" class="ghost small icon-btn" @click="weekOffset++" title="下一週" aria-label="下一週">›</button>
         </div>
       </div>
+      <div v-if="weekLoadError && weekLoadedOnce" class="th-week-refresh-error" role="status">
+        <span class="material-symbols-outlined" aria-hidden="true">cloud_off</span>
+        <span>{{ weekLoadError }}，目前仍顯示上次成功載入的課表。</span>
+        <button type="button" class="ghost small" @click="loadWeekSchedule">重試</button>
+      </div>
 
-      <div v-if="loadingWeek" class="th-loading">
+      <div v-if="loadingWeek && !weekLoadedOnce" class="th-loading">
         <div class="th-skeleton" v-for="i in 3" :key="i"></div>
       </div>
-      <div v-else-if="weekLoadError" class="th-error">
+      <div v-else-if="weekLoadError && !weekLoadedOnce" class="th-error">
         <span class="material-symbols-outlined">error_outline</span>
         {{ weekLoadError }}
         <button type="button" class="ghost small" @click="loadWeekSchedule">重試</button>
       </div>
       <div v-else-if="weekDays.length === 0" class="th-empty">本週無排課</div>
 
-      <div v-else class="th-days">
+      <div v-else class="th-days" :aria-busy="loadingWeek ? 'true' : 'false'">
         <details
           v-for="day in weekDays"
           :key="day.date"
           class="th-day"
           :class="{ 'th-day-today': day.isToday }"
-          :open="day.isToday || day.events.length > 0"
+          :open="day.isToday"
         >
           <summary class="th-day-summary">
             <span class="th-day-dot" :class="{ 'th-day-dot-today': day.isToday }"></span>
@@ -263,14 +268,22 @@
               }"
             >
               <div class="th-event-time">{{ ev.startTime }}<br>{{ ev.endTime }}</div>
-              <div class="th-event-info">
-                <div class="th-event-student">{{ ev.studentName }}</div>
-                <div class="th-event-meta">
-                  <span class="th-event-subject">{{ ev.subject }}</span>
-                  <span v-if="campusIdFrom(ev.branchId)" class="th-branch-chip" :style="{ background: branchColor(ev.branchId) }">{{ branchShortName(ev.branchId) }}</span>
-                  <span v-if="ev.formStatus && ev.formStatus !== 'missing'" :class="['th-form-chip', `th-form-${ev.formStatus}`]">{{ formStatusLabel(ev.formStatus) }}</span>
-                </div>
-              </div>
+              <button
+                type="button"
+                class="th-event-details"
+                @click="openCourseDetails(ev)"
+                :aria-label="`查看${ev.studentName}的${ev.subject}課程詳情`"
+              >
+                <span class="th-event-info">
+                  <span class="th-event-student">{{ ev.studentName }}</span>
+                  <span class="th-event-meta">
+                    <span class="th-event-subject">{{ ev.subject }}</span>
+                    <span v-if="campusIdFrom(ev.branchId)" class="th-branch-chip" :style="{ background: branchColor(ev.branchId) }">{{ branchShortName(ev.branchId) }}</span>
+                    <span v-if="ev.formStatus && ev.formStatus !== 'missing'" :class="['th-form-chip', `th-form-${ev.formStatus}`]">{{ formStatusLabel(ev.formStatus) }}</span>
+                  </span>
+                </span>
+                <span class="material-symbols-outlined th-event-details-icon" aria-hidden="true">open_in_new</span>
+              </button>
               <button
                 v-if="!ev.isProjected && (ev.formStatus === 'missing' || ev.formStatus === 'changes_requested')"
                 type="button"
@@ -297,7 +310,7 @@
                 >hourglass_empty</span>
                 <span v-else class="material-symbols-outlined">flag</span>
               </button>
-              <span v-else class="th-form-chip th-form-pending">待建立堂次</span>
+                <span v-else class="th-form-chip th-form-pending">待建立堂次</span>
             </div>
           </div>
         </details>
@@ -604,6 +617,7 @@ function formatDateUtil(d) {
 // ── Weekly schedule (merged across ALL teacher branches) ──
 const weekOffset = ref(0);
 const loadingWeek = ref(true);
+const weekLoadedOnce = ref(false);
 const weekLoadError = ref('');
 const weekSessions = ref([]);
 let weekLoadSequence = 0;
@@ -673,6 +687,7 @@ async function loadWeekSchedule() {
       return (a.branchId || 0) - (b.branchId || 0);
     });
     if (requestSequence === weekLoadSequence) weekSessions.value = items;
+    if (requestSequence === weekLoadSequence) weekLoadedOnce.value = true;
   } catch {
     if (requestSequence !== weekLoadSequence) return;
     weekLoadError.value = '無法載入課表，請稍後重試';
@@ -698,10 +713,14 @@ const weekDays = computed(() => {
         return {
           key: `${s.studentClassId}-${s.date}-${s.startTime}-${campusIdFrom(s.branchId) || 'none'}`,
           id: s.id,
+          classSessionId: s.id,
+          studentId: s.studentId,
           studentClassId: s.studentClassId,
           studentName: s.studentName || '—',
           subject: s.subjectName || s.subject || (s.teacherName ? `${s.teacherName}` : '—'),
+          classId: s.studentClassId,
           date: s.date || dateStr,
+          sessionDate: s.date || dateStr,
           startTime: s.startTime || '—',
           endTime: s.endTime || '',
           branchId: campusIdFrom(s.branchId),
@@ -739,7 +758,7 @@ const teacherTasks = computed(() => buildTeacherTasks({
 const teacherTaskCount = computed(() => countTeacherTasks(teacherTasks.value));
 
 const teacherTasksLoading = computed(() => (
-  loadingAttendance.value || loadingOverdue.value || loadingWeek.value || awaitingReplyLoading.value
+  loadingAttendance.value || loadingOverdue.value || (loadingWeek.value && !weekLoadedOnce.value) || awaitingReplyLoading.value
 ));
 // Attendance and weekly projection are critical task sources: if either fails,
 // fail closed to avoid a false all-clear state. Overdue reminders and reply
@@ -849,6 +868,11 @@ function goFillRecord(ev) {
     classSessionId: ev.classSessionId || null,
     sessionDate: ev.sessionDate || null,
   });
+}
+
+function openCourseDetails(ev) {
+  if (!ev?.id) return;
+  goFillRecord(ev);
 }
 
 // ── Lifecycle ──
@@ -1252,6 +1276,13 @@ onBeforeUnmount(() => {
   padding: 24px 0; text-align: center; color: var(--text-light); font-size: 14px;
 }
 .th-error { color: var(--danger); display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.th-week-refresh-error {
+  display: flex; align-items: center; gap: 8px; margin: 8px 0 10px; padding: 8px 10px;
+  border: 1px solid var(--ds-warning); border-radius: 8px; background: var(--ds-warning-wash);
+  color: var(--ds-ink-secondary); font-size: 12px;
+}
+.th-week-refresh-error .material-symbols-outlined { color: var(--ds-warning); font-size: 18px; }
+.th-week-refresh-error button { flex: 0 0 auto; margin-left: auto; }
 .th-skeleton {
   height: 52px; border-radius: 10px; background: var(--border); opacity: 0.4;
   margin-bottom: 8px; animation: th-pulse 1.2s ease-in-out infinite;
@@ -1260,11 +1291,13 @@ onBeforeUnmount(() => {
 
 /* Day accordion */
 .th-days { display: flex; flex-direction: column; gap: 2px; }
-.th-day { border-radius: 10px; overflow: hidden; }
+.th-day { border-radius: 10px; }
 .th-day-summary {
+  position: sticky; top: 0; z-index: 2;
   display: flex; align-items: center; gap: 8px; padding: 10px 12px;
   cursor: pointer; user-select: none; font-size: 14px; font-weight: 600;
   color: var(--text); list-style: none; border-radius: 10px;
+  background: var(--card-bg);
   transition: background 0.15s;
 }
 .th-day-summary:hover { background: rgba(0,0,0,0.03); }
@@ -1302,6 +1335,14 @@ onBeforeUnmount(() => {
   font-variant-numeric: tabular-nums;
 }
 .th-event-info { flex: 1; min-width: 0; }
+.th-event-details {
+  display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;
+  padding: 0; border: 0; color: inherit; background: transparent; font: inherit;
+  text-align: left; cursor: pointer;
+}
+.th-event-details:hover { color: var(--primary); }
+.th-event-details:focus-visible { outline: 3px solid var(--ds-focus-ring); outline-offset: 3px; border-radius: 6px; }
+.th-event-details-icon { flex: 0 0 auto; color: var(--text-light); font-size: 18px; }
 .th-event-student { font-size: 14px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .th-event-meta { display: flex; align-items: center; gap: 6px; margin-top: 2px; flex-wrap: wrap; }
 .th-event-subject { font-size: 12px; color: var(--text-light); }

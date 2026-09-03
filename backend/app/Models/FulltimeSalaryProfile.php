@@ -20,13 +20,14 @@ class FulltimeSalaryProfile extends Model
     protected $table = 'fulltime_salary_profiles';
 
     protected $fillable = [
-        'teacher_id', 'branch_id', 'base_salary', 'effective_from', 'status',
+        'teacher_id', 'branch_id', 'base_salary', 'manual_multiplier_pct', 'effective_from', 'status',
         'created_by', 'approved_by', 'approved_at',
     ];
 
     protected $casts = [
         'effective_from' => 'date:Y-m-d',
         'base_salary' => 'decimal:2',
+        'manual_multiplier_pct' => 'decimal:2',
     ];
 
     /**

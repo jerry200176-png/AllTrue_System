@@ -19,6 +19,18 @@ class AdoptionInsightsController extends Controller
 {
     private const SLA_WARNING_HOURS = 4;
 
+    /**
+     * In-app bug reports store severity rather than P0/P1/P2 priority. Keep
+     * the existing, documented mapping explicit at the reporting boundary:
+     * critical= P0, high=P1, medium=P2, low=P3.
+     */
+    private const BUG_TRIAGE_SLA_HOURS = [
+        'critical' => 4,
+        'high' => 24,
+        'medium' => 168,
+        'low' => null,
+    ];
+
     public function taskTracker(Request $request)
     {
         $branchId = $this->resolveBranchId($request);
@@ -652,6 +664,7 @@ class AdoptionInsightsController extends Controller
 
         $parentMetrics = $this->buildParentFeedbackMetrics($branchId, $from, $to);
         $qualityMetrics = $this->buildQualityMetrics($branchId, $from, $to, $todaySummary);
+        $bugSlaMetrics = $this->buildBugSlaMetrics($branchId);
 
         return [
             'window' => ['start' => $from->toDateString(), 'end' => $to->toDateString()],
@@ -691,6 +704,7 @@ class AdoptionInsightsController extends Controller
             'p1p0_median_lead_hours' => $qualityMetrics['p1p0_median_lead_hours'],
             'trust_contract_backlog' => $qualityMetrics['trust_contract_backlog'],
             'quality' => $qualityMetrics,
+            'bug_sla' => $bugSlaMetrics,
             'comparison' => [
                 'previous_window' => ['start' => $prevFrom->toDateString(), 'end' => $prevTo->toDateString()],
                 'teacher_open_rate_pct' => $prevTeacherRate,
@@ -699,6 +713,125 @@ class AdoptionInsightsController extends Controller
                 'delta_director_open_rate_pct' => round($directorRate - $prevDirectorRate, 1),
             ],
         ];
+    }
+
+    /**
+     * Build a PII-free bug queue/SLA snapshot for the director's weekly view.
+     *
+     * The status counts and age clocks come from the current bug rows and the
+     * append-only status log. Missing triage history is reported explicitly;
+     * it is never silently replaced with report time for a triaged bug.
+     */
+    private function buildBugSlaMetrics(int $branchId): array
+    {
+        $statuses = ['new', 'triaged', 'in_progress', 'resolved', 'closed'];
+        $statusCounts = array_fill_keys($statuses, 0);
+
+        $countRows = DB::table('bug_reports')
+            ->where('CampusID', $branchId)
+            ->select('status', DB::raw('COUNT(*) as aggregate'))
+            ->groupBy('status')
+            ->get();
+        foreach ($countRows as $row) {
+            $status = (string) $row->status;
+            if (array_key_exists($status, $statusCounts)) {
+                $statusCounts[$status] = (int) $row->aggregate;
+            }
+        }
+
+        $bugs = DB::table('bug_reports')
+            ->where('CampusID', $branchId)
+            ->whereIn('status', ['new', 'triaged', 'in_progress'])
+            ->get(['id', 'status', 'severity', 'created_at']);
+        $bugIds = $bugs->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $triagedAt = [];
+
+        if ($bugIds) {
+            foreach (DB::table('bug_report_status_logs')
+                ->whereIn('bug_report_id', $bugIds)
+                ->where('to_status', 'triaged')
+                ->orderBy('created_at')
+                ->orderBy('id')
+                ->get(['bug_report_id', 'created_at']) as $log) {
+                $id = (int) $log->bug_report_id;
+                $triagedAt[$id] ??= (string) $log->created_at;
+            }
+        }
+
+        $now = Carbon::now();
+        $openStatuses = ['new', 'triaged', 'in_progress'];
+        $openByStatus = array_fill_keys($openStatuses, 0);
+        $oldestAgeHours = array_fill_keys($openStatuses, null);
+        $missingTriagedAt = 0;
+        $openBreaches = ['p0' => 0, 'p1' => 0, 'p2' => 0, 'p3' => 0];
+
+        foreach ($bugs as $bug) {
+            $status = (string) $bug->status;
+            if (!in_array($status, $openStatuses, true)) {
+                continue;
+            }
+            $openByStatus[$status]++;
+
+            $triagedTimestamp = $triagedAt[(int) $bug->id] ?? null;
+            $ageAnchor = $status === 'new' ? (string) $bug->created_at : $triagedTimestamp;
+            $ageHours = $this->elapsedHours($ageAnchor, $now);
+            if ($ageHours !== null) {
+                $oldestAgeHours[$status] = $oldestAgeHours[$status] === null
+                    ? $ageHours
+                    : max($oldestAgeHours[$status], $ageHours);
+            } elseif ($status !== 'new') {
+                $missingTriagedAt++;
+            }
+
+            // Only a `new` row has an outstanding triage clock. Once triaged,
+            // the backlog clock is reported separately above.
+            if ($status !== 'new') {
+                continue;
+            }
+            $tier = match ((string) $bug->severity) {
+                'critical' => 'p0',
+                'high' => 'p1',
+                'medium' => 'p2',
+                default => 'p3',
+            };
+            $targetHours = self::BUG_TRIAGE_SLA_HOURS[(string) $bug->severity] ?? null;
+            if ($targetHours !== null && $ageHours !== null && $ageHours > $targetHours) {
+                $openBreaches[$tier]++;
+            }
+        }
+
+        return [
+            'status_counts' => $statusCounts,
+            'open_backlog' => [
+                'total' => array_sum($openByStatus),
+                'by_status' => $openByStatus,
+                'oldest_age_hours' => $oldestAgeHours,
+                'age_basis' => [
+                    'new' => 'created_at_until_triaged',
+                    'triaged' => 'first_status_log_to_triaged',
+                    'in_progress' => 'first_status_log_to_triaged',
+                ],
+                'missing_triaged_at' => $missingTriagedAt,
+            ],
+            'triage_sla' => [
+                'targets_hours' => ['p0' => 4, 'p1' => 24, 'p2' => 168],
+                'severity_to_tier' => ['critical' => 'p0', 'high' => 'p1', 'medium' => 'p2', 'low' => 'p3'],
+                'open_breaches' => $openBreaches,
+                'open_breach_total' => array_sum($openBreaches),
+            ],
+        ];
+    }
+
+    private function elapsedHours(?string $timestamp, Carbon $now): ?float
+    {
+        if (!$timestamp) {
+            return null;
+        }
+        try {
+            return round(max(0, Carbon::parse($timestamp)->diffInMinutes($now, false) / 60), 1);
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     private function countTeacherActivatedUsers(int $branchId, Carbon $from, Carbon $to): int
@@ -849,4 +982,3 @@ class AdoptionInsightsController extends Controller
         ];
     }
 }
-

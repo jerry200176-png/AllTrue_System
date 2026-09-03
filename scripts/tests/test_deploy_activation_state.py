@@ -219,6 +219,10 @@ diff --git a/frontend/src/pages/__tests__/Badge.test.js b/frontend/src/pages/__t
             event_name="workflow_dispatch", phase="application-deploy",
             required_reviewers_configured=False, prevent_self_review=False,
         ))
+        self.assertTrue(environment_protection_is_valid(
+            event_name="workflow_dispatch", phase="pop-bootstrap",
+            required_reviewers_configured=False, prevent_self_review=False,
+        ))
         self.assertFalse(environment_protection_is_valid(
             event_name="workflow_dispatch", phase="application-deploy",
             required_reviewers_configured=True, prevent_self_review=True,
@@ -249,6 +253,9 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("autonomous-production-deploy", self.workflow)
         self.assertIn("github.event.client_payload.target_sha", self.workflow)
         self.assertIn("- application-deploy", self.workflow)
+        self.assertIn("- pop-bootstrap", self.workflow)
+        self.assertIn("campus_id:", self.workflow)
+        self.assertIn("BOOTSTRAP_POP_MACHINE:<target_sha>:CAMPUS:<campus_id>", self.workflow)
         self.assertIn("target_sha:", self.workflow)
         self.assertIn("ACTIVATE_PRODUCTION:<target_sha>", self.workflow)
         self.assertIn("environment:", self.workflow)
@@ -297,6 +304,21 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("needs.classify-activation.outputs.mode == 'auto'", self.workflow)
         self.assertIn("needs.production-activation.result == 'success'", self.workflow)
         self.assertIn('TARGET_SHA="${{ needs.resolve-target.outputs.target_sha }}"', self.workflow)
+
+    def test_pop_bootstrap_is_a_protected_host_local_executor(self):
+        self.assertIn("  pop-bootstrap:", self.workflow)
+        self.assertIn("name: Bootstrap POP machine on Pi", self.workflow)
+        self.assertIn("inputs.phase == 'pop-bootstrap'", self.workflow)
+        self.assertIn("group: alltrue-production-side-effects-v2", self.workflow)
+        self.assertIn("php artisan pop:bootstrap-machine", self.workflow)
+        self.assertIn("--confirm=POP_BOOTSTRAP_MACHINE", self.workflow)
+        self.assertIn("existing POP machine identity verified", self.workflow)
+        self.assertIn("never regenerate or overwrite it", self.workflow)
+        self.assertIn("-H 'Accept: application/json'", self.workflow)
+        self.assertIn("Authenticated POP submit boundary expected HTTP 422", self.workflow)
+        self.assertIn("neither its content nor the request body is emitted", self.workflow)
+        self.assertIn("[[ \"$(stat -c '%a' \"$KEY_FILE\")\" == \"600\" ]]", self.workflow)
+        self.assertIn("if: ${{ always() && inputs.phase != 'pop-bootstrap'", self.workflow)
 
     def test_production_concurrency_is_scoped_to_side_effecting_jobs(self):
         top_level = self.workflow.split("permissions:", 1)[0]

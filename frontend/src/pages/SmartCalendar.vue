@@ -80,59 +80,68 @@
           </div>
           <div class="toolbar-fill"></div>
         </div>
-        <div v-if="!isTeacher" class="toolbar-row toolbar-row-secondary">
-          <div class="toolbar-secondary-line toolbar-secondary-line--meta">
-            <div class="toolbar-secondary-meta">
-              <span class="week-stat">本日 <b>{{ getDayCourseCount(selectedDow) }}</b> 堂 / 本週 <b>{{ weekCourseCount }}</b> 堂</span>
-              <span class="rc-legend"><span class="rc-tag rc-done">✓</span>已點 <span class="rc-tag rc-missed">!</span>漏點 <span class="rc-tag rc-leave">假</span>請假 <span class="rc-tag rc-eval-missing">評</span>未填評量</span>
-              <span v-if="viewMode === 'day'" class="rc-legend capacity-legend" title="每格右上角顯示：此時段學生人數 / 班型上限">
-                <span class="capacity-legend-label">班型容量</span>
-                <span class="capacity-legend-chip capacity-legend-chip--ok">1/3</span>可加
-                <span class="capacity-legend-chip capacity-legend-chip--warn">2/3</span>剩 1 位
-                <span class="capacity-legend-chip capacity-legend-chip--full">3/3</span>已滿
-              </span>
-            </div>
-          </div>
-          <div class="toolbar-secondary-line toolbar-secondary-line--filters">
-            <div class="toolbar-secondary-mid">
-              <div class="toolbar-filters">
-                <select v-model="roomFilter" class="filter-select toolbar-room-select" title="依教室篩選老師欄" aria-label="依教室篩選">
-                  <option value="">全部教室</option>
-                  <option v-for="r in allRoomOptions" :key="r" :value="r">教室 {{ r }}</option>
-                </select>
-                <input v-model="teacherSearch" type="search" class="filter-input toolbar-search-input" placeholder="搜尋老師…" aria-label="搜尋老師" autocomplete="off" />
-                <input v-model="studentSearch" type="search" class="filter-input toolbar-search-input" placeholder="搜尋學生…" aria-label="搜尋學生" autocomplete="off" />
-                <button
-                  v-if="featureSubstituteV2 && !isTeacher"
-                  type="button"
-                  class="filter-input toolbar-teacher-leave-btn"
-                  title="老師請假一次處理當日多堂代課"
-                  @click="openTeacherLeaveBatch"
-                ><span class="material-symbols-outlined btn-icon">event_busy</span>老師請假</button>
-                <label
-                  v-if="!isWeekOverview && !isTeacher"
-                  class="filter-toggle toolbar-hide-empty-toggle"
-                  title="開啟後只顯示今日有排課的老師欄；此模式下無法點空格快速排課"
-                >
-                  <input type="checkbox" v-model="hideEmptyTeacherColumns" />
-                  <span>只看有課老師</span>
-                </label>
+        <details v-if="!isTeacher" class="calendar-secondary-controls-disclosure">
+          <summary class="calendar-secondary-controls-summary">
+            <span class="material-symbols-outlined" aria-hidden="true">tune</span>
+            <span class="calendar-secondary-controls-summary__title">篩選與更多操作</span>
+            <span class="calendar-secondary-controls-summary__hint">教室、老師、學生與排課工具</span>
+            <span class="calendar-secondary-controls-summary__status">{{ calendarSecondaryControlsSummary }}</span>
+            <span class="material-symbols-outlined calendar-secondary-controls-summary__icon" aria-hidden="true">expand_more</span>
+          </summary>
+          <div class="toolbar-row toolbar-row-secondary">
+            <div class="toolbar-secondary-line toolbar-secondary-line--meta">
+              <div class="toolbar-secondary-meta">
+                <span class="week-stat">本日 <b>{{ getDayCourseCount(selectedDow) }}</b> 堂 / 本週 <b>{{ weekCourseCount }}</b> 堂</span>
+                <span class="rc-legend"><span class="rc-tag rc-done">✓</span>已點 <span class="rc-tag rc-missed">!</span>漏點 <span class="rc-tag rc-leave">假</span>請假 <span class="rc-tag rc-eval-missing">評</span>未填評量</span>
+                <span v-if="viewMode === 'day'" class="rc-legend capacity-legend" title="每格右上角顯示：此時段學生人數 / 班型上限">
+                  <span class="capacity-legend-label">班型容量</span>
+                  <span class="capacity-legend-chip capacity-legend-chip--ok">1/3</span>可加
+                  <span class="capacity-legend-chip capacity-legend-chip--warn">2/3</span>剩 1 位
+                  <span class="capacity-legend-chip capacity-legend-chip--full">3/3</span>已滿
+                </span>
               </div>
-              <!-- #740 Step 4c：老師篩選 chips 剝離為 presentational 元件 -->
-              <WeekTeacherChips
-                v-if="visibleTeachers.length > 1 && !isTeacher"
-                :teachers="teacherChips"
-                :selected-ids="selectedTeacherChipIds"
-                @toggle="toggleTeacherSelection"
-                @clear="clearTeacherSelection"
-              />
             </div>
-            <div class="toolbar-secondary-actions">
-              <button type="button" class="btn-secondary btn-icon-text toolbar-action-btn" @click="showRoomManager = !showRoomManager" title="管理教室"><span class="material-symbols-outlined btn-icon">meeting_room</span><span class="btn-text">教室</span></button>
-              <button type="button" class="btn-primary btn-icon-text toolbar-action-btn" data-guide="calendar-quick-add" @click="openQuickAdd"><span class="material-symbols-outlined btn-icon">add_circle</span><span class="btn-text">快速排課</span></button>
+            <div class="toolbar-secondary-line toolbar-secondary-line--filters">
+              <div class="toolbar-secondary-mid">
+                <div class="toolbar-filters">
+                  <select v-model="roomFilter" class="filter-select toolbar-room-select" title="依教室篩選老師欄" aria-label="依教室篩選">
+                    <option value="">全部教室</option>
+                    <option v-for="r in allRoomOptions" :key="r" :value="r">教室 {{ r }}</option>
+                  </select>
+                  <input v-model="teacherSearch" type="search" class="filter-input toolbar-search-input" placeholder="搜尋老師…" aria-label="搜尋老師" autocomplete="off" />
+                  <input v-model="studentSearch" type="search" class="filter-input toolbar-search-input" placeholder="搜尋學生…" aria-label="搜尋學生" autocomplete="off" />
+                  <button
+                    v-if="featureSubstituteV2 && !isTeacher"
+                    type="button"
+                    class="filter-input toolbar-teacher-leave-btn"
+                    title="老師請假一次處理當日多堂代課"
+                    @click="openTeacherLeaveBatch"
+                  ><span class="material-symbols-outlined btn-icon">event_busy</span>老師請假</button>
+                  <label
+                    v-if="!isWeekOverview && !isTeacher"
+                    class="filter-toggle toolbar-hide-empty-toggle"
+                    title="開啟後只顯示今日有排課的老師欄；此模式下無法點空格快速排課"
+                  >
+                    <input type="checkbox" v-model="hideEmptyTeacherColumns" />
+                    <span>只看有課老師</span>
+                  </label>
+                </div>
+                <!-- #740 Step 4c：老師篩選 chips 剝離為 presentational 元件 -->
+                <WeekTeacherChips
+                  v-if="visibleTeachers.length > 1 && !isTeacher"
+                  :teachers="teacherChips"
+                  :selected-ids="selectedTeacherChipIds"
+                  @toggle="toggleTeacherSelection"
+                  @clear="clearTeacherSelection"
+                />
+              </div>
+              <div class="toolbar-secondary-actions">
+                <button type="button" class="btn-secondary btn-icon-text toolbar-action-btn" @click="showRoomManager = !showRoomManager" title="管理教室"><span class="material-symbols-outlined btn-icon">meeting_room</span><span class="btn-text">教室</span></button>
+                <button type="button" class="btn-primary btn-icon-text toolbar-action-btn" data-guide="calendar-quick-add" @click="openQuickAdd"><span class="material-symbols-outlined btn-icon">add_circle</span><span class="btn-text">快速排課</span></button>
+              </div>
             </div>
           </div>
-        </div>
+        </details>
       </div>
 
       <!-- Room Manager Panel -->
@@ -1635,6 +1644,17 @@ const teacherChips = computed(() => visibleTeachers.value.map(t => ({
   color: getTeacherColor(t.id),
 })));
 const selectedTeacherChipIds = computed(() => weekViewTeacherIds.value.map(String));
+const calendarSecondaryControlsSummary = computed(() => {
+  const activeFilters = [
+    roomFilter.value,
+    teacherSearch.value.trim(),
+    studentSearch.value.trim(),
+    filterTeacherId.value,
+    weekViewTeacherIds.value.length > 0 ? 'teacher-selection' : '',
+    !isWeekOverview.value && hideEmptyTeacherColumns.value ? 'hide-empty' : '',
+  ].filter(Boolean).length;
+  return activeFilters > 0 ? `已啟用 ${activeFilters} 項篩選` : '目前顯示全部老師';
+});
 
 const dayViewTeacherColumns = computed(() => {
   if (isWeekOverview.value) return visibleTeachers.value;
@@ -2812,6 +2832,47 @@ onMounted(() => {
   max-width: 100%;
   overflow-x: hidden;
 }
+.calendar-secondary-controls-disclosure {
+  min-width: 0;
+  max-width: 100%;
+}
+.calendar-secondary-controls-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 4px;
+  color: var(--text-color, var(--ds-ink));
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.calendar-secondary-controls-summary::-webkit-details-marker { display: none; }
+.calendar-secondary-controls-summary:focus-visible {
+  outline: 2px solid var(--primary, var(--ds-ink-mute));
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+.calendar-secondary-controls-summary__title {
+  font-size: 13px;
+  font-weight: 700;
+}
+.calendar-secondary-controls-summary__hint,
+.calendar-secondary-controls-summary__status {
+  font-size: 12px;
+  color: var(--text-light, var(--ds-ink-mute));
+}
+.calendar-secondary-controls-summary__status {
+  margin-left: auto;
+  white-space: nowrap;
+}
+.calendar-secondary-controls-summary__icon {
+  color: var(--text-light, var(--ds-ink-mute));
+  transition: transform 0.2s ease;
+}
+.calendar-secondary-controls-disclosure[open] .calendar-secondary-controls-summary__icon {
+  transform: rotate(180deg);
+}
 .toolbar-row-primary {
   display: flex;
   flex-wrap: wrap;
@@ -3428,6 +3489,17 @@ onMounted(() => {
 }
 
 @media (max-width: 600px) {
+  .calendar-secondary-controls-summary {
+    flex-wrap: wrap;
+    gap: 4px 8px;
+  }
+  .calendar-secondary-controls-summary__hint {
+    flex-basis: calc(100% - 32px);
+    margin-left: 32px;
+  }
+  .calendar-secondary-controls-summary__status {
+    margin-left: auto;
+  }
   .toolbar-secondary-line--filters {
     grid-template-columns: 1fr;
   }

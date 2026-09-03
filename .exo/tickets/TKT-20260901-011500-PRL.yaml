@@ -1,0 +1,16 @@
+id: TKT-20260901-011500-PRL
+title: Aggregate full-time payroll inputs across campuses
+intent: Remove campus isolation from the existing full-time teacher payroll eligibility calculation; aggregate all records for the same teacher.
+kind: task
+boundary: Keep the existing weekly >=16-segment rule and payroll system. A branch filter may limit visible teachers, but never that teacher's payroll source rows. No production data repair or activation.
+success_condition: A teacher visible from one campus receives one result whose valid attended courses, adjustments, and approved salary inputs include all campuses, with traceable sessions.
+risk: high
+priority: 1
+scope:
+  allow: [backend/app/Http/Controllers/TeacherEligibilityController.php, backend/tests/Feature/TeacherEligibilityWeeklySegmentsTest.php, .exo/tickets/**]
+  deny: [backend/database/**, '**/.env*']
+budgets: {max_files_changed: 30, max_loc_changed: 750}
+checks: [bash scripts/phpunit-isolated.sh, npm run build]
+type: bugfix
+status: todo
+created_at: '2026-09-01T01:15:00+08:00'

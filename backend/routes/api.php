@@ -61,6 +61,7 @@ use App\Http\Controllers\TeacherEligibilityController;
 use App\Http\Controllers\TeacherEligibilityInputController;
 use App\Http\Controllers\AssessmentController;
 use App\Http\Controllers\QuestionBankController;
+use App\Http\Controllers\PopOperationController;
 
 
 if (app()->environment('local')) {
@@ -389,6 +390,7 @@ Route::prefix('v1')->group(function () {
 
         // ── Full-time teacher base salary (正職結算底薪), feeds finance/teacher-eligibility's total_payout ──
         Route::post('finance/teacher-eligibility/salary-profiles', [TeacherEligibilityInputController::class, 'storeSalaryProfile'])->middleware('require_pin');
+        Route::post('finance/teacher-eligibility/salary-profiles/multiplier', [TeacherEligibilityInputController::class, 'storeMultiplierProfile'])->middleware('require_pin');
         Route::post('finance/teacher-eligibility/salary-profiles/{id}/approve', [TeacherEligibilityInputController::class, 'approveSalaryProfile'])->whereNumber('id')->middleware('require_pin');
         Route::post('finance/teacher-eligibility/lock', [TeacherEligibilityController::class, 'lock'])->middleware('require_pin');
         Route::post('finance/teacher-eligibility/reopen', [TeacherEligibilityController::class, 'reopen'])->middleware('require_pin');
@@ -497,6 +499,7 @@ Route::prefix('v1')->group(function () {
     // Cross-campus student identity bridge: explicit two-campus authorization only.
     Route::middleware(['role:director,super_admin', 'require_campus', 'require_password_change'])->group(function () {
         Route::post('student-classes/{studentClass}/billing-correction', [StudentClassController::class, 'billingCorrection']);
+        Route::post('student-classes/{studentClass}/charge-correction', [StudentClassController::class, 'chargeCorrection']);
         Route::post('student-classes/{studentClass}/split-contract/preview', [StudentClassController::class, 'splitContractPreview']);
         Route::post('student-classes/{studentClass}/split-contract', [StudentClassController::class, 'splitContract']);
         Route::post('student-classes/{studentClass}/recover-transfer-sessions', [StudentClassController::class, 'recoverAndTransferSessions']);
@@ -724,6 +727,19 @@ Route::prefix('v1')->group(function () {
 
     Route::middleware(['role:director,super_admin', 'require_campus', 'require_password_change'])->group(function () {
         Route::get('director/operations-trust', [DirectorOperationsTrustController::class, 'show']);
+        // POP control plane: draft/dry-run/approve only; execution remains Pi-local.
+        Route::post('pop/operations/{operationId}/draft', [PopOperationController::class, 'storeDraft'])->where('operationId', '[a-z0-9-]+');
+        Route::post('pop/operations/requests/{requestId}/dry-run', [PopOperationController::class, 'dryRun'])->whereUuid('requestId');
+        Route::post('pop/operations/requests/{requestId}/approvals', [PopOperationController::class, 'approve'])->whereUuid('requestId');
+    });
+
+    // Machine control-plane entrypoints only. A POP machine can submit and
+    // plan a request within its campus; approvals remain human dual approval.
+    Route::middleware(['pop_machine:pop:draft', 'role:pop_machine'])->group(function () {
+        Route::post('pop/machine/operations/{operationId}/draft', [PopOperationController::class, 'storeMachineDraft'])->where('operationId', '[a-z0-9-]+');
+    });
+    Route::middleware(['pop_machine:pop:dry-run', 'role:pop_machine'])->group(function () {
+        Route::post('pop/machine/operations/requests/{requestId}/dry-run', [PopOperationController::class, 'machineDryRun'])->whereUuid('requestId');
     });
 
     Route::middleware(['super_admin', 'require_password_change'])->group(function () {

@@ -10,4 +10,11 @@ describe('CourseManagement lens UX', () => {
       expect(source).toContain(marker);
     }
   });
+
+  it('keeps the usage reconciliation warning visible in history cards', () => {
+    const historySection = source.slice(source.indexOf('class="history-section"'));
+    expect(historySection).toContain("hc.usage_balance_status === 'review_required'");
+    expect(historySection).toContain('usageBalanceWarningTitle(hc)');
+    expect(historySection).toContain('堂數待對帳');
+  });
 });

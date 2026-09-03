@@ -118,7 +118,7 @@ export function buildReceiptCopyText(snapshot = {}, receiptNumber = '—') {
 
   const sessionDates = Array.isArray(snapshot.session_dates) ? snapshot.session_dates : [];
   if (sessionDates.length) {
-    lines.push(`上課日期：${sessionDates.slice(0, 16).map((session) => `${session.date || '—'}${session.expected ? '（尚未上）' : ''}`).join('、')}`);
+    lines.push(`上課日期：${sessionDates.slice(0, 16).map((session) => `${session.date || '—'}${session.expected ? '（預計）' : ''}`).join('、')}`);
     if (sessionDates.length > 16) lines.push(`上課日期：共 ${sessionDates.length} 堂`);
   }
   lines.push(`收款日期：${snapshot.paid_at || '—'}`);
