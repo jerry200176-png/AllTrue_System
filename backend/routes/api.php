@@ -63,6 +63,7 @@ use App\Http\Controllers\TeacherEligibilityInputController;
 use App\Http\Controllers\AssessmentController;
 use App\Http\Controllers\QuestionBankController;
 use App\Http\Controllers\PopOperationController;
+use App\Http\Controllers\ContractAmendmentController;
 
 
 if (app()->environment('local')) {
@@ -504,6 +505,8 @@ Route::prefix('v1')->group(function () {
     // Cross-campus student identity bridge: explicit two-campus authorization only.
     Route::middleware(['role:director,super_admin', 'require_campus', 'require_password_change'])->group(function () {
         Route::post('student-classes/{studentClass}/billing-correction', [StudentClassController::class, 'billingCorrection']);
+        Route::post('student-classes/{studentClass}/contract-amendment/preview', [ContractAmendmentController::class, 'preview']);
+        Route::post('student-classes/{studentClass}/contract-amendment', [ContractAmendmentController::class, 'execute']);
         Route::post('student-classes/{studentClass}/charge-correction', [StudentClassController::class, 'chargeCorrection']);
         Route::post('student-classes/{studentClass}/split-contract/preview', [StudentClassController::class, 'splitContractPreview']);
         Route::post('student-classes/{studentClass}/split-contract', [StudentClassController::class, 'splitContract']);

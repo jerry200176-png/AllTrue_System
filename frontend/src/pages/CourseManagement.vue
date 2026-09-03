@@ -869,6 +869,18 @@
       @choose="chooseContractAdjustment"
     />
 
+    <ContractAmendmentModal
+      :show="showContractAmendmentModal"
+      :course="contractAmendmentCourse"
+      :preview="contractAmendmentPreview"
+      :loading-preview="contractAmendmentPreviewLoading"
+      :submitting="contractAmendmentSubmitting"
+      :error-message="contractAmendmentError"
+      @close="closeContractAmendmentModal"
+      @preview="previewContractAmendment"
+      @submit="submitContractAmendment"
+    />
+
     <!-- Unpaid post-deduction billing correction -->
     <div v-if="showBillingCorrectionModal" class="modal-overlay" @click.self="!billingCorrectionSubmitting && (showBillingCorrectionModal = false)">
       <div class="modal course-modal billing-correction-modal">
@@ -923,6 +935,7 @@
 
     <TransferSessionsModal
       :show="showTransferSessionsModal"
+      :source-course="transferSessionsCourse"
       :student-name="transferSessionsCourse?.student_name || ''"
       :subject="transferSessionsCourse?.subject_name || transferSessionsCourse?.subject || ''"
       :sessions="transferSessionsSessionOptions"
@@ -1329,6 +1342,7 @@ import PurchaseSessionsModal from '../components/course-management/PurchaseSessi
 import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal.vue';
 import TransferSessionsModal from '../components/course-management/TransferSessionsModal.vue';
 import ContractAdjustmentChoiceModal from '../components/course-management/ContractAdjustmentChoiceModal.vue';
+import ContractAmendmentModal from '../components/course-management/ContractAmendmentModal.vue';
 import QuickAddSessionModal from '../components/course-management/QuickAddSessionModal.vue';
 import ManualSessionModal from '../components/course-management/ManualSessionModal.vue';
 import LeaveModal from '../components/course-management/LeaveModal.vue';
@@ -2175,6 +2189,12 @@ let transferTargetCoursesRequest = 0;
 const showBillingCorrectionModal = ref(false);
 const showContractAdjustmentModal = ref(false);
 const contractAdjustmentCourse = ref(null);
+const showContractAmendmentModal = ref(false);
+const contractAmendmentCourse = ref(null);
+const contractAmendmentPreview = ref(null);
+const contractAmendmentPreviewLoading = ref(false);
+const contractAmendmentSubmitting = ref(false);
+const contractAmendmentError = ref('');
 const billingCorrectionCourse = ref(null);
 const billingCorrectionSubmitting = ref(false);
 const billingCorrectionForm = ref({ new_session_count: 1, new_charge: 0, reason: '' });
@@ -2214,7 +2234,7 @@ function usageBalanceWarningTitle(course) {
 
 function openContractAdjustmentModal(course) {
   contractAdjustmentCourse.value = course;
-  if (!isUnpaidCountCourse(course)) {
+  if (!isSessionMode(course) || course?.PackageID) {
     openTransferSessionsModal(course);
     return;
   }
@@ -2227,6 +2247,82 @@ function chooseContractAdjustment(action) {
   if (!course) return;
   if (action === 'billing') openBillingCorrectionModal(course);
   if (action === 'transfer') openTransferSessionsModal(course);
+  if (action === 'amendment') openContractAmendmentModal(course);
+}
+
+function openContractAmendmentModal(course) {
+  contractAmendmentCourse.value = course;
+  contractAmendmentPreview.value = null;
+  contractAmendmentError.value = '';
+  showContractAmendmentModal.value = true;
+}
+
+function closeContractAmendmentModal() {
+  if (contractAmendmentSubmitting.value || contractAmendmentPreviewLoading.value) return;
+  showContractAmendmentModal.value = false;
+  contractAmendmentPreview.value = null;
+  contractAmendmentError.value = '';
+}
+
+async function previewContractAmendment(newSessionCount) {
+  const course = contractAmendmentCourse.value;
+  if (!course?.id || contractAmendmentPreviewLoading.value) return;
+  contractAmendmentPreviewLoading.value = true;
+  contractAmendmentError.value = '';
+  contractAmendmentPreview.value = null;
+  try {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    const token = sess?.access_token;
+    if (!token) throw new Error('登入狀態已失效，請重新登入。');
+    const res = await fetch(`/api/v1/student-classes/${course.id}/contract-amendment/preview`, {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ new_session_count: Number(newSessionCount) }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body?.message || '無法預覽合約調整。');
+    contractAmendmentPreview.value = body;
+  } catch (error) {
+    contractAmendmentError.value = error?.message || '無法預覽合約調整。';
+  } finally {
+    contractAmendmentPreviewLoading.value = false;
+  }
+}
+
+async function submitContractAmendment({ newSessionCount, reason }) {
+  const course = contractAmendmentCourse.value;
+  if (!course?.id || !contractAmendmentPreview.value || contractAmendmentSubmitting.value) return;
+  if (Number(contractAmendmentPreview.value.new_session_count) !== Number(newSessionCount)) {
+    contractAmendmentError.value = '預覽已過期，請重新預覽後再送出。';
+    contractAmendmentPreview.value = null;
+    return;
+  }
+  contractAmendmentSubmitting.value = true;
+  contractAmendmentError.value = '';
+  try {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    const token = sess?.access_token;
+    if (!token) throw new Error('登入狀態已失效，請重新登入。');
+    const res = await fetch(`/api/v1/student-classes/${course.id}/contract-amendment`, {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ new_session_count: Number(newSessionCount), reason }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body?.message || '合約調整失敗。');
+    showContractAmendmentModal.value = false;
+    contractAmendmentPreview.value = null;
+    await loadCourses();
+    toastRef.value?.show?.({
+      title: '合約已提前結束',
+      description: body?.message || `已調整為 ${newSessionCount} 堂；已上課紀錄保留，帳務未變更。`,
+      variant: 'success', durationMs: 7000,
+    });
+  } catch (error) {
+    contractAmendmentError.value = error?.message || '合約調整失敗。';
+  } finally {
+    contractAmendmentSubmitting.value = false;
+  }
 }
 
 async function submitBillingCorrection() {
@@ -2349,6 +2445,9 @@ async function loadTransferTargetCourses(sourceCourse) {
         subject_name: course?.subject_name ?? '',
         teacher_name: course?.teacher_name ?? course?.teacher?.name ?? course?.teacher?.username ?? '',
         start_date: course?.start_date ?? course?.StartDate ?? '',
+        remaining_sessions: course?.remaining_sessions ?? course?.RemainingSessions ?? 0,
+        start_time: course?.start_time ?? course?.time ?? '',
+        end_time: course?.end_time ?? '',
       }))
       .filter((course) => Number.isFinite(course.id) && course.id > 0)
       .filter((course) => course.id !== Number(sourceCourse.id))
