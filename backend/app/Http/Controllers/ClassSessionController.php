@@ -356,7 +356,11 @@ class ClassSessionController extends Controller
         $query->selectRaw(
             "CASE
                 WHEN si.id IS NOT NULL AND LOWER(cs.Status) IN ('scheduled','absent')
-                    AND (cs.SessionDate < ? OR (cs.SessionDate = ? AND cs.EndTime <= ?))
+                    AND (
+                        cs.SessionDate < ?
+                        OR (cs.SessionDate = ? AND cs.EndTime <= ?)
+                        OR COALESCE(si.SessionDeducted, 0) = 0
+                    )
                 THEN CASE
                     WHEN LOWER(si.Status) = 'present' THEN 'attended'
                     WHEN LOWER(si.Status) = 'late' THEN 'late'

@@ -616,7 +616,72 @@ class StudentClassTransferSessionsTest extends TestCase
                 ]);
             }
             $firstTransferredId = $this->createClassSession((int) $source->ID, '2026-08-12');
-            $secondTransferredId = $this->createClassSession((int) $source->ID, '2026-08-13');
+            $secondTransferredId = $this->createClassSession((int) $source->ID, '2026-08-11');
+
+            $response = $this->postJson(
+                "/api/v1/student-classes/{$source->ID}/transfer-sessions",
+                [
+                    'session_ids' => [$firstTransferredId, $secondTransferredId],
+                    'target_student_class_id' => $target->ID,
+                ],
+                ['Authorization' => "Bearer {$token}"]
+            );
+            $response->assertOk();
+            $this->assertEqualsCanonicalizing(
+                [$firstTransferredId, $secondTransferredId],
+                $response->json('transferred_session_ids')
+            );
+
+            $target->refresh();
+            $this->assertSame(8, (int) $target->UsedSessions);
+            $this->assertSame(2, (int) DB::table('ClassSession')
+                ->where('StudentClassID', $target->ID)
+                ->where('Status', 'scheduled')
+                ->count());
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_transfer_ignores_future_attendance_residue_and_keeps_target_at_capacity(): void
+    {
+        Carbon::setTestNow('2026-09-03 12:00:00');
+        try {
+            $token = $this->createDirectorToken([1]);
+            $student = $this->createStudent(1);
+            $source = $this->createCourse($student->id, 1, [
+                'SessionCount' => 2,
+                'RemainingSessions' => 2,
+            ]);
+            $target = $this->createCourse($student->id, 1, [
+                'SessionCount' => 8,
+                'RemainingSessions' => 2,
+            ]);
+
+            foreach (range(1, 6) as $day) {
+                $this->createClassSession((int) $target->ID, "2026-08-{$day}", 'attended');
+            }
+            foreach (['2026-09-10', '2026-09-17'] as $date) {
+                $futureId = $this->createClassSession((int) $target->ID, $date, 'attended');
+                DB::table('StudentSingIn')->insert([
+                    'StudentClassID' => $target->ID,
+                    'ClassSessionID' => $futureId,
+                    'StudentID' => $student->id,
+                    'TeacherID' => 1,
+                    'Status' => 'present',
+                    'SessionDeducted' => 1,
+                    'SignInDT' => now(),
+                ]);
+                SessionDeductionLedger::create([
+                    'student_class_id' => $target->ID,
+                    'class_session_id' => $futureId,
+                    'event_type' => 'deduct',
+                    'source' => 'attendance',
+                ]);
+            }
+
+            $firstTransferredId = $this->createClassSession((int) $source->ID, '2026-08-20');
+            $secondTransferredId = $this->createClassSession((int) $source->ID, '2026-08-21');
 
             $this->postJson(
                 "/api/v1/student-classes/{$source->ID}/transfer-sessions",
@@ -625,15 +690,15 @@ class StudentClassTransferSessionsTest extends TestCase
                     'target_student_class_id' => $target->ID,
                 ],
                 ['Authorization' => "Bearer {$token}"]
-            )->assertOk()
-                ->assertJsonPath('transferred_session_ids.0', $firstTransferredId)
-                ->assertJsonPath('transferred_session_ids.1', $secondTransferredId);
+            )->assertOk();
 
             $target->refresh();
             $this->assertSame(8, (int) $target->UsedSessions);
+            $this->assertSame(0, (int) $target->RemainingSessions);
             $this->assertSame(2, (int) DB::table('ClassSession')
                 ->where('StudentClassID', $target->ID)
-                ->where('Status', 'scheduled')
+                ->where('Status', 'attended')
+                ->whereDate('SessionDate', '>', '2026-09-03')
                 ->count());
         } finally {
             Carbon::setTestNow();
