@@ -41,7 +41,6 @@ final class ContractAmendmentService
             'executable' => true,
         ];
     }
-
     public function execute(StudentClass $course, int $newCount, int $actorId, string $reason): array
     {
         $reason = trim($reason);
