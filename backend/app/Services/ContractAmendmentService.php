@@ -1,5 +1,4 @@
 <?php
-
 namespace App\Services;
 
 use App\Models\ClassSession;
@@ -14,7 +13,6 @@ use Illuminate\Validation\ValidationException;
 final class ContractAmendmentService
 {
     public const CLOSED_REASON = 'contract_amended';
-
     public function preview(StudentClass $course, int $newCount): array
     {
         $this->assertRequest($course, $newCount);
@@ -79,7 +77,6 @@ final class ContractAmendmentService
                     'updated_at' => now(),
                 ]);
             }
-
             $locked->setAttribute('SessionCount', $newCount);
             $locked->setAttribute('UsedSessions', (int) $preview['completed_sessions']);
             $locked->setAttribute('RemainingSessions', 0);
@@ -104,7 +101,6 @@ final class ContractAmendmentService
                 'financial_mutation' => 'none',
             ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
             $locked->save();
-
             SecurityAuditEvent::append(
                 'student_class.contract_amendment',
                 'success',
@@ -125,7 +121,6 @@ final class ContractAmendmentService
                     'outcome' => 'success',
                 ]
             );
-
             return [
                 'message' => "合約已調整為 {$newCount} 堂、剩餘 0 堂；已上課紀錄保留，未來預排已取消。帳務資料未變更。",
                 'preview' => $preview,
@@ -136,7 +131,6 @@ final class ContractAmendmentService
             ];
         });
     }
-
     private function assertRequest(StudentClass $course, int $newCount): void
     {
         if ((string) ($course->ScheduleMode ?? 'count') !== 'count') {
@@ -158,7 +152,6 @@ final class ContractAmendmentService
             throw ValidationException::withMessages(['new_session_count' => "新總堂數不可低於已完成 {$used} 堂。"]);
         }
     }
-
     private function futureScheduled(int $classId): array
     {
         return ClassSession::query()->where('StudentClassID', $classId)->where('Status', 'scheduled')
@@ -171,7 +164,6 @@ final class ContractAmendmentService
                 'end_time' => substr((string) $s->EndTime, 0, 5),
             ])->values()->all();
     }
-
     private function futureSchedules(int $classId): array
     {
         return Schedule::query()->where('student_course_id', $classId)->where('status', 'scheduled')
