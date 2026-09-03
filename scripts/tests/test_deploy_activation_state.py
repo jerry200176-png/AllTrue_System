@@ -16,6 +16,7 @@ if str(ROOT) not in sys.path:
 
 from scripts.governance.autonomy_gate import (  # noqa: E402
     classify_activation_scope,
+    classify_production_runtime,
     classify_scope,
     decide_activation,
     decide_manual_activation,
@@ -140,13 +141,20 @@ diff --git a/frontend/src/pages/__tests__/Badge.test.js b/frontend/src/pages/__t
         self.assertIn("production deployment identity unavailable; classifier must fail closed", workflow)
         self.assertNotIn('base = parents[0]["sha"]', workflow)
 
-    def test_manual_activation_reaches_protected_gate_without_runtime_identity(self):
+    def test_manual_activation_holds_unknown_runtime_identity(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         classify = workflow[workflow.index("  classify-activation:"):]
-        manual_branch = classify.index('if [[ "$EVENT_NAME" == "workflow_dispatch" ]]')
+        pop_branch = classify.index('if [[ "$EVENT_NAME" == "workflow_dispatch" && "$PHASE" == "pop-bootstrap" ]]')
+        manual_branch = classify.index('if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then')
         identity_guard = classify.index('if [[ ! "$RUNTIME_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]')
-        self.assertLess(manual_branch, identity_guard)
-        self.assertIn("read-only manifest must not prevent the manual", classify)
+        runtime_state_guard = classify.index('if [[ "$RUNTIME_STATE" != "normal-version-lag"')
+        manual_mode = classify.index('echo "mode=manual"', runtime_state_guard)
+        self.assertLess(pop_branch, identity_guard)
+        self.assertLess(identity_guard, manual_branch)
+        self.assertLess(manual_branch, runtime_state_guard)
+        self.assertLess(runtime_state_guard, manual_mode)
+        self.assertIn("normal-version-lag", classify)
+        self.assertIn("read-only manifest evidence must be valid before manual activation", classify)
 
     def test_classifier_holds_protected_paths_and_semantics(self):
         cases = [
@@ -213,6 +221,54 @@ diff --git a/frontend/src/pages/__tests__/Badge.test.js b/frontend/src/pages/__t
         )
         self.assertEqual(result["decision"], "activation-gate-reached")
         self.assertNotEqual(result["decision"], "auto")
+
+    def test_verified_deployed_ancestor_is_normal_version_lag_and_retryable(self):
+        production = "a" * 40
+        target = "b" * 40
+        result = classify_production_runtime(
+            production_sha=production,
+            target_sha=target,
+            comparison_status="ahead",
+            provenance_sha=production,
+            manifest_source="github-actions:deploy.yml",
+        )
+        self.assertEqual(result["state"], "normal-version-lag")
+        self.assertTrue(result["retry_allowed"])
+
+    def test_unexpected_third_sha_is_blocked(self):
+        production = "a" * 40
+        target = "b" * 40
+        result = classify_production_runtime(
+            production_sha=production,
+            target_sha=target,
+            comparison_status="diverged",
+            provenance_sha=production,
+            manifest_source="github-actions:deploy.yml",
+        )
+        self.assertEqual(result["state"], "unexpected-production-sha")
+        self.assertFalse(result["retry_allowed"])
+
+    def test_unknown_provenance_and_invalid_evidence_are_blocked(self):
+        production = "a" * 40
+        target = "b" * 40
+        unknown_provenance = classify_production_runtime(
+            production_sha=production,
+            target_sha=target,
+            comparison_status="ahead",
+            provenance_sha=None,
+            manifest_source="github-actions:deploy.yml",
+        )
+        invalid_manifest = classify_production_runtime(
+            production_sha=production,
+            target_sha=target,
+            comparison_status="ahead",
+            provenance_sha=production,
+            manifest_source="manual",
+        )
+        self.assertEqual(unknown_provenance["state"], "provenance-unknown")
+        self.assertEqual(invalid_manifest["state"], "provenance-unknown")
+        self.assertFalse(unknown_provenance["retry_allowed"])
+        self.assertFalse(invalid_manifest["retry_allowed"])
 
     def test_solo_environment_rejects_required_reviewer_gate(self):
         self.assertTrue(environment_protection_is_valid(
@@ -348,6 +404,17 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn('run.get("conclusion") == "success"', self.workflow)
         self.assertIn("Final exact-main gate before production executor", self.workflow)
         self.assertIn("REMOTE_MAIN_SHA=$(git rev-parse refs/remotes/origin/main)", self.workflow)
+
+    def test_runtime_gate_distinguishes_version_lag_from_unexpected_drift(self):
+        self.assertIn("runtime_state", self.workflow)
+        self.assertIn("classify_production_runtime", self.workflow)
+        self.assertIn("normal-version-lag", self.workflow)
+        self.assertIn("Deploy to Production", self.workflow)
+        self.assertIn("actions/runs/", self.workflow)
+        self.assertIn("/jobs?per_page=100", self.workflow)
+        policy = (ROOT / "scripts" / "governance" / "autonomy_gate.py").read_text(encoding="utf-8")
+        self.assertIn("unexpected-production-sha", policy)
+        self.assertIn("provenance-unknown", policy)
 
     def test_deploy_failures_are_fail_closed_and_share_rollback(self):
         self.assertIn("rollback_deploy()", self.workflow)
