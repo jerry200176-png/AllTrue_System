@@ -8,6 +8,8 @@ name: Multi-Guardian Activation (Founder-gated)
 #   dry_run          — read-only backfill plan
 #   apply_backfill   — ALLOW_PROD_REPAIR write (confirm phrase + expected SHA)
 #   verify           — missing / multi-primary / phone mismatch integrity
+#   cutover_audit    — SLB orphan / revoked+verified SLB readiness (read-only)
+#   repair_slb       — link SLB orphans + unverify revoked SLB (confirm + SHA)
 #   enable_flag      — PERF_MULTI_GUARDIAN=true (reversible; confirm + SHA)
 #   disable_flag     — PERF_MULTI_GUARDIAN=false (primary rollback)
 #   staff_acceptance — authenticated staff guardian CRUD + legacy parent_phone intact
@@ -16,18 +18,20 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: "dry_run | apply_backfill | verify | enable_flag | disable_flag | staff_acceptance"
+        description: "dry_run | apply_backfill | verify | cutover_audit | repair_slb | enable_flag | disable_flag | staff_acceptance"
         required: true
         type: choice
         options:
           - dry_run
           - apply_backfill
           - verify
+          - cutover_audit
+          - repair_slb
           - enable_flag
           - disable_flag
           - staff_acceptance
       confirm:
-        description: 'apply_backfill: "APPLY MULTI GUARDIAN BACKFILL". enable_flag: "ENABLE MULTI GUARDIAN". disable_flag: "DISABLE MULTI GUARDIAN". staff_acceptance: "RUN MULTI GUARDIAN STAFF ACCEPTANCE".'
+        description: 'apply_backfill: "APPLY MULTI GUARDIAN BACKFILL". repair_slb: "REPAIR MULTI GUARDIAN SLB". enable_flag: "ENABLE MULTI GUARDIAN". disable_flag: "DISABLE MULTI GUARDIAN". staff_acceptance: "RUN MULTI GUARDIAN STAFF ACCEPTANCE".'
         required: false
       expected_head_sha:
         description: "Mutating actions: full 40-char production HEAD SHA that must already match."
@@ -68,6 +72,10 @@ jobs:
               [ "$CONFIRM" = "APPLY MULTI GUARDIAN BACKFILL" ] || { echo "::error::confirm must be exactly 'APPLY MULTI GUARDIAN BACKFILL'"; exit 1; }
               need_sha=1
               ;;
+            repair_slb)
+              [ "$CONFIRM" = "REPAIR MULTI GUARDIAN SLB" ] || { echo "::error::confirm must be exactly 'REPAIR MULTI GUARDIAN SLB'"; exit 1; }
+              need_sha=1
+              ;;
             enable_flag)
               [ "$CONFIRM" = "ENABLE MULTI GUARDIAN" ] || { echo "::error::confirm must be exactly 'ENABLE MULTI GUARDIAN'"; exit 1; }
               need_sha=1
@@ -79,13 +87,13 @@ jobs:
               [ "$CONFIRM" = "RUN MULTI GUARDIAN STAFF ACCEPTANCE" ] || { echo "::error::confirm must be exactly 'RUN MULTI GUARDIAN STAFF ACCEPTANCE'"; exit 1; }
               need_sha=1
               ;;
-            dry_run|verify)
+            dry_run|verify|cutover_audit)
               echo "Read-only action ($ACTION)"
               ;;
             *)
               echo "::error::Unknown action: $ACTION"; exit 1
               ;;
-          esac
+            esac
           if [ "$need_sha" = "1" ]; then
             printf '%s' "$EXPECTED_HEAD_SHA" | grep -Eq '^[0-9a-f]{40}$' || {
               echo "::error::expected_head_sha must be exact 40-char hex"
@@ -211,6 +219,82 @@ jobs:
         with:
           name: multi-guardian-verify-${{ github.run_id }}
           path: /tmp/mg-verify.txt
+          retention-days: 90
+
+  cutover_audit:
+    name: Cutover readiness audit
+    needs: guard
+    if: github.event.inputs.action == 'cutover_audit'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+      - name: Cutover audit
+        env:
+          LIMIT: ${{ github.event.inputs.limit }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" \
+            env LIMIT="$LIMIT" bash -s <<'ENDSSH' | tee /tmp/mg-cutover-audit.txt
+          set -euo pipefail
+          cd /home/admin/backend
+          echo "head=$(git -C /home/admin rev-parse HEAD)"
+          php artisan guardians:cutover-audit "--limit=${LIMIT}"
+          ENDSSH
+          grep -q 'CUTOVER_AUDIT_OK' /tmp/mg-cutover-audit.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: multi-guardian-cutover-audit-${{ github.run_id }}
+          path: /tmp/mg-cutover-audit.txt
+          retention-days: 90
+
+  repair_slb:
+    name: Repair SLB orphans (audited)
+    needs: guard
+    if: github.event.inputs.action == 'repair_slb'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+      - name: Repair then re-audit
+        env:
+          EXPECTED_HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
+          LIMIT: ${{ github.event.inputs.limit }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" \
+            env EXPECTED_HEAD_SHA="$EXPECTED_HEAD_SHA" LIMIT="$LIMIT" bash -s <<'ENDSSH' | tee /tmp/mg-repair-slb.txt
+          set -euo pipefail
+          cd /home/admin
+          ACTUAL="$(git rev-parse HEAD)"
+          if [ "$ACTUAL" != "$EXPECTED_HEAD_SHA" ]; then
+            echo "❌ HEAD mismatch"; exit 1
+          fi
+          cd /home/admin/backend
+          export ALLOW_PROD_REPAIR=1
+          php artisan guardians:cutover-audit --repair-slb --force "--limit=${LIMIT}"
+          ENDSSH
+          grep -q 'CUTOVER_REPAIR_OK' /tmp/mg-repair-slb.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: multi-guardian-repair-slb-${{ github.run_id }}
+          path: /tmp/mg-repair-slb.txt
           retention-days: 90
 
   enable_flag:

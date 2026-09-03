@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "7008ed213f43422380ccbbde6e523e79",
+  "session_id": "1f8621171d0245e3885144765b885b58",
   "project": "alltrue",
-  "task_id": "TKT-20260903-PITR-DRILL",
+  "task_id": "multi-guardian-cutover-release-20260903",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "0c1cde9f5b486303410ab45623763afe27744b38",
-  "branch": "chore/task-TKT-20260903-PITR-DRILL",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/TKT-20260903-PITR-DRILL",
-  "started_at": "2026-09-03T11:25:11Z",
+  "base_sha": "4ab1368c29768ec96c6afed3c9ea9e6d85bb55b8",
+  "branch": "chore/task-multi-guardian-cutover-release-20260903",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/multi-guardian-cutover-release-20260903",
+  "started_at": "2026-09-03T12:09:44Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": "codex",
+  "agent_cli": null,
   "gateway_version": "0.5.0"
 }
