@@ -296,7 +296,7 @@ class LineWebhookController extends Controller
         // Do not overwrite legacy Student.LineID — last-writer-wins misleads when
         // dad and mom both bind the same student.
         try {
-            app(GuardianSyncService::class)->linkFromLineBinding($student, $lineUserId, (int) $binding->id);
+            app(GuardianSyncService::class)->linkFromLineBinding($student, $lineUserId, (int) $binding->getKey());
         } catch (\Throwable $e) {
             Log::warning('guardian.dual_write.line_bind_failed', [
                 'student_id' => (int) $student->getKey(),
