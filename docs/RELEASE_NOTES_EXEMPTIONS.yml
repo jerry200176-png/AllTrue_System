@@ -5,7 +5,7 @@ exemptions:
   - id: silent-2026-09-03-multi-parent-line-notify
     changelog_date: "2026-09-03"
     changelog_title: "fix(parent): 多家長 LINE 綁定通知與偏好一致性"
-    reason: 僅後端家長 LINE 推播 fan-out、偏好 scope 與停止覆寫 legacy LineID；主任畫面與綁定驗證規則不變，家長入口無新操作流程。
+    reason: 僅後端家長 LINE 推播 fan-out、偏好 scope 與停止覆寫 legacy LineID；merge 不授權 production migrate。主任畫面與綁定驗證規則不變，家長入口無新操作流程。
 
   - id: silent-2026-08-30-students-button-semantics
     changelog_date: "2026-08-30"

@@ -2,8 +2,9 @@
 <!-- release-notes: silent_ship=silent-2026-09-03-multi-parent-line-notify -->
 - 學費催繳改為推播給該學生所有已驗證 LINE bindings，不再只取第一筆。
 - 家長通知偏好改為只更新目前登入的 LINE binding；同學生其他家長偏好不受影響。
+- 若 session 帶 `line_user_id` 但該 binding 已撤銷，偏好更新 fail closed（422），不 fallback 到其他家長。
 - 停止在 LINE 綁定時覆寫 legacy `Student.LineID`（canonical 為 `student_line_bindings`）。
-- 不新增第二家長手機欄、不改綁定驗證規則、不做 ParentIdentity／GSR 架構擴張。
+- **Merge ≠ migrate**：合併至 main 不授權 production migration；`ParentSession.line_user_id` 欄位於 production 僅在 Founder activation GO 後套用。不新增第二家長手機欄、不做 ParentIdentity／GSR 架構擴張。
 
 ## 2026-09-02 — fix(billing): 課程查找同步按堂／按時計費單位
 <!-- release-notes: staff_update=staff-2026-09-02-course-rate-unit-consistency -->

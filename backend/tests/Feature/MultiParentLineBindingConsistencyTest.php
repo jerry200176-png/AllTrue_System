@@ -289,4 +289,29 @@ class MultiParentLineBindingConsistencyTest extends TestCase
         $this->assertTrue((bool) StudentLineBinding::where('line_user_id', $dad)->value('notify_learning_feedback'));
         $this->assertTrue((bool) StudentLineBinding::where('line_user_id', $mom)->value('notify_learning_feedback'));
     }
+
+    public function test_stale_line_session_cannot_update_remaining_parent_preferences(): void
+    {
+        $campus = $this->campusWithToken();
+        $student = $this->studentWithPhone($campus, '失效綁定偏好生', '0911222333');
+        $dad = 'Ueeeeeeeeeeeeeeeeeeeeeeeeeeeeeee5';
+        $mom = 'Ufffffffffffffffffffffffffffffff6';
+        $dadBinding = $this->bind($student, $campus, $dad, true);
+        $this->bind($student, $campus, $mom, true);
+
+        $dadToken = $this->loginLine($dad);
+        $dadBinding->delete();
+
+        $this->putJson('/api/v1/parent/notification-preferences', [
+            'learning_feedback_push' => false,
+        ], [
+            'Authorization' => 'Bearer ' . $dadToken,
+        ])->assertStatus(422);
+
+        $this->assertTrue(
+            (bool) StudentLineBinding::where('line_user_id', $mom)->value('notify_learning_feedback'),
+            'Revoked LINE session must not mutate the remaining parent binding'
+        );
+        $this->assertSame(1, StudentLineBinding::where('student_id', $student->id)->verified()->count());
+    }
 }

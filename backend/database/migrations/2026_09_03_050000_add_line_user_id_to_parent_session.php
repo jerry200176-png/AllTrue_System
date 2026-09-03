@@ -7,6 +7,9 @@ use Illuminate\Support\Facades\Schema;
 /**
  * Scope parent notification preferences to the LINE identity that logged in.
  * Nullable: phone-login sessions have no LINE subject; no production backfill.
+ *
+ * Governance: merge to main ≠ production migration activation. Applying this
+ * migration in production requires an explicit Founder activation GO.
  */
 return new class extends Migration
 {

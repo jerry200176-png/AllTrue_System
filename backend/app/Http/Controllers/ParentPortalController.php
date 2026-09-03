@@ -1511,8 +1511,16 @@ class ParentPortalController extends Controller
         $binding = $this->sessionScopedBinding($session);
 
         if ($binding === null) {
+            // Stale LINE session (line_user_id set but binding revoked): fail closed.
+            // Never fall back to another parent's verified binding.
+            if ($this->sessionLineUserId($session) !== null) {
+                return response()->json([
+                    'message' => '此 LINE 綁定已失效，請重新以 LINE 登入或完成綁定後再調整通知設定',
+                ], 422);
+            }
+
             $verifiedCount = StudentLineBinding::where('student_id', $session->StudentID)->verified()->count();
-            if ($verifiedCount > 1 && !$this->sessionLineUserId($session)) {
+            if ($verifiedCount > 1) {
                 return response()->json([
                     'message' => '此學生有多位 LINE 家長綁定，請改以 LINE 登入後再調整通知設定',
                 ], 422);
@@ -1522,7 +1530,7 @@ class ParentPortalController extends Controller
                     'message' => '綁定 LINE 後才可調整推播通知',
                 ], 422);
             }
-            // Exactly one verified binding and no session LINE id (legacy phone login):
+            // Exactly one verified binding and phone-login session (no line_user_id):
             // update that sole binding only — still never fan-out by student_id.
             $binding = StudentLineBinding::where('student_id', $session->StudentID)->verified()->first();
         }
