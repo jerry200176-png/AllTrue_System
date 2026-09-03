@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "2c5ebd77ccf7496e9b17d8007d2c010b",
+  "session_id": "d3b5fd37b26b49f4a1349caa7df13f0f",
   "project": "alltrue",
-  "task_id": "fix-remove-fixed-slot-conflict-20260902",
+  "task_id": "contract-session-date-overlap-20260903",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "5742c48c1d6b09acac7975d1bdcfc65a7d8d1ab5",
-  "branch": "chore/task-fix-remove-fixed-slot-conflict-20260902",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/fix-remove-fixed-slot-conflict-20260902",
-  "started_at": "2026-09-02T14:19:33Z",
+  "base_sha": "582f6f3f9b5d8f4326e8ea817bc5b9819150ad4b",
+  "branch": "chore/task-contract-session-date-overlap-20260903",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/contract-session-date-overlap-20260903",
+  "started_at": "2026-09-03T03:14:18Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": null,
+  "agent_cli": "codex",
   "gateway_version": "0.5.0"
 }
