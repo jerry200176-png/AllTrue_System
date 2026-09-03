@@ -22,11 +22,13 @@ final class CourseContractRepairStrategy
         if ((int) $parameters['source_charge'] < 0 || (int) $parameters['target_charge'] < 0) $errors[] = 'desired_charge_invalid';
         $source = DB::table('StudentClass')->where('ID', $sourceId)->first();
         $target = DB::table('StudentClass')->where('ID', $targetId)->first();
+        $sourceCampusId = $source ? DB::table('Student')->where('id', (int) $source->StudentID)->value('CampusID') : null;
+        $targetCampusId = $target ? DB::table('Student')->where('id', (int) $target->StudentID)->value('CampusID') : null;
         if (!$source || !$target) $errors[] = 'source_or_target_course_missing';
         if ($source && (int) $source->StudentID !== (int) $parameters['student_id']) $errors[] = 'source_student_mismatch';
         if ($target && (int) $target->StudentID !== (int) $parameters['student_id']) $errors[] = 'target_student_mismatch';
-        if ($source && (int) $source->by1 !== (int) $parameters['campus_id']) $errors[] = 'source_campus_mismatch';
-        if ($target && (int) $target->by1 !== (int) $parameters['campus_id']) $errors[] = 'target_campus_mismatch';
+        if ($source && (int) $sourceCampusId !== (int) $parameters['campus_id']) $errors[] = 'source_campus_mismatch';
+        if ($target && (int) $targetCampusId !== (int) $parameters['campus_id']) $errors[] = 'target_campus_mismatch';
         if ($source && (int) $source->SubjectID !== (int) $parameters['subject_id']) $errors[] = 'source_subject_mismatch';
         if ($target && (int) $target->SubjectID !== (int) $parameters['subject_id']) $errors[] = 'target_subject_mismatch';
         if ($source && (int) ($source->Charge ?? 0) !== (int) $parameters['expected_source_charge']) $errors[] = 'source_charge_drifted';
@@ -36,12 +38,13 @@ final class CourseContractRepairStrategy
         if ($this->hasPaymentEvidence([$sourceId, $targetId])) $errors[] = 'payment_evidence_present';
         if ($this->hasActiveGroup($sourceId, $targetId)) $errors[] = 'contract_group_already_exists';
         if ($source && $target) {
-            $unexpected = DB::table('StudentClass')
-                ->where('StudentID', (int) $parameters['student_id'])
-                ->where('SubjectID', (int) $parameters['subject_id'])
-                ->where('by1', (int) $parameters['campus_id'])
+            $unexpected = DB::table('StudentClass as sc')
+                ->join('Student as st', 'st.id', '=', 'sc.StudentID')
+                ->where('sc.StudentID', (int) $parameters['student_id'])
+                ->where('sc.SubjectID', (int) $parameters['subject_id'])
+                ->where('st.CampusID', (int) $parameters['campus_id'])
                 ->where(function ($query) use ($sourceId, $targetId): void {
-                    $query->whereNotIn('ID', [$sourceId, $targetId]);
+                    $query->whereNotIn('sc.ID', [$sourceId, $targetId]);
                 })
                 ->where(function ($query): void {
                     $query->where('Stop', 0)->orWhereNull('Stop');
@@ -49,7 +52,7 @@ final class CourseContractRepairStrategy
                 ->where(function ($query): void {
                     $query->whereNull('PackageID')->orWhere('PackageID', 0);
                 })
-                ->pluck('ID')
+                ->pluck('sc.ID')
                 ->map(fn ($id): int => (int) $id)
                 ->all();
             if ($unexpected !== []) $errors[] = 'unexpected_active_contracts';
