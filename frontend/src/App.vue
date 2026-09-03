@@ -440,14 +440,14 @@
         @navigate="onNavigateFromNotifications"
         @unread-change="onUnreadChange"
       />
-      <SmartCalendar v-if="!isPasswordChangeLocked && active === 'calendar'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" :initial-teacher-id="initialTeacherIdForNav" :initial-student-id="calendarInitialStudentId" :initial-course-id="calendarInitialCourseId" :initial-date="calendarInitialDate" :reset-week-token="calendarResetToken" :initial-intent="calendarInitialIntent" @clear-initial-teacher="initialTeacherIdForNav = null" @clear-initial-intent="calendarInitialIntent = ''" @clear-initial-context="clearCalendarNavigationContext" />
-      <StudentsList v-if="!isPasswordChangeLocked && isDirector && active === 'students'" :branch-id="currentBranch" :initial-student-id="studentFocusIdForNav" :initial-course-id="studentFocusCourseIdForNav" :initial-student-intent="studentFocusIntentForNav" @clear-initial-student="clearStudentNavigationContext" />
+      <SmartCalendar v-if="!isPasswordChangeLocked && active === 'calendar'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" :initial-teacher-id="initialTeacherIdForNav" :initial-student-id="calendarInitialStudentId" :initial-course-id="calendarInitialCourseId" :initial-date="calendarInitialDate" :reset-week-token="calendarResetToken" :initial-intent="calendarInitialIntent" @clear-initial-teacher="initialTeacherIdForNav = null" @clear-initial-intent="calendarInitialIntent = ''" @clear-initial-context="clearCalendarNavigationContext" @navigate="onNavigateFromNotifications" />
+      <StudentsList v-if="!isPasswordChangeLocked && isDirector && active === 'students'" :branch-id="currentBranch" :initial-student-id="studentFocusIdForNav" :initial-course-id="studentFocusCourseIdForNav" :initial-student-intent="studentFocusIntentForNav" @clear-initial-student="clearStudentNavigationContext" @navigate="onNavigateFromNotifications" />
       <TuitionCollectionPage v-if="!isPasswordChangeLocked && isDirector && active === 'tuition-collect'" :branch-id="currentBranch" :initial-tab="tuitionInitialTab" :initial-student-id="tuitionInitialStudentId" :initial-course-id="tuitionInitialCourseId" @clear-initial-tab="tuitionInitialTab = ''" @clear-initial-context="clearTuitionNavigationContext" />
       <TuitionReportPage v-if="!isPasswordChangeLocked && isDirector && active === 'tuition-report' && !pinModalActive" :branch-id="currentBranch" />
       <ParttimePayrollPage v-if="!isPasswordChangeLocked && isDirector && active === 'parttime-payroll' && !pinModalActive" :branch-id="currentBranch" :user-role="role" />
       <TeacherEligibilityPage v-if="!isPasswordChangeLocked && isDirector && active === 'teacher-eligibility' && !pinModalActive" :branch-id="currentBranch" :user-role="role" />
       <TeachersList v-if="!isPasswordChangeLocked && isDirector && active === 'teachers' && !pinModalActive" :branch-id="currentBranch" @navigate-to-schedule="onNavigateToSchedule" />
-      <CourseManagement v-if="!isPasswordChangeLocked && isDirector && active === 'course-mgmt'" :branch-id="currentBranch" :initial-teacher-id="initialTeacherIdForNav" @clear-initial-teacher="initialTeacherIdForNav = null" @navigate="onNavigateFromCourseManagement" />
+      <CourseManagement v-if="!isPasswordChangeLocked && isDirector && active === 'course-mgmt'" :branch-id="currentBranch" :initial-teacher-id="initialTeacherIdForNav" :initial-student-id="courseMgmtFocusStudentId" :initial-student-name="courseMgmtFocusStudentName" @clear-initial-teacher="initialTeacherIdForNav = null" @clear-initial-student="clearCourseMgmtNavigationContext" @navigate="onNavigateFromCourseManagement" />
       <ClassroomManagement v-if="!isPasswordChangeLocked && isDirector && active === 'classroom'" :branch-id="currentBranch" />
       <SubjectSettingsPage v-if="!isPasswordChangeLocked && isDirector && active === 'subject-settings'" :branch-id="currentBranch" :user-role="role" />
       <SubjectUnitsPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'subject-units'" :branch-id="currentBranch" :user-role="role" />
@@ -477,7 +477,7 @@
       />
       <ParentPortal v-if="!isPasswordChangeLocked && active === 'parent'" />
       <LineIntegration v-if="!isPasswordChangeLocked && isDirector && active === 'line-integration'" :branch-id="currentBranch" />
-      <BindingManagementPage v-if="!isPasswordChangeLocked && isDirector && active === 'binding-management'" :branch-id="currentBranch" :user-role="role" />
+      <BindingManagementPage v-if="!isPasswordChangeLocked && isDirector && active === 'binding-management'" :branch-id="currentBranch" :user-role="role" :initial-student-name="bindingMgmtFocusStudentName" @clear-initial-student="bindingMgmtFocusStudentName = ''" />
       <BindingConflictReviewPage v-if="!isPasswordChangeLocked && isDirector && active === 'binding-conflicts'" :branch-id="currentBranch" :user-role="role" />
       <BindingHealthDashboard v-if="!isPasswordChangeLocked && isDirector && active === 'binding-health'" :branch-id="currentBranch" :user-role="role" />
       <DirectorAccountsPage v-if="!isPasswordChangeLocked && role === 'super_admin' && active === 'director-accounts'" :token="session?.access_token ?? ''" />
@@ -1035,6 +1035,9 @@ const calendarInitialDate = ref('');
 const tuitionInitialTab = ref('');
 const tuitionInitialStudentId = ref(null);
 const tuitionInitialCourseId = ref(null);
+const courseMgmtFocusStudentId = ref(null);
+const courseMgmtFocusStudentName = ref('');
+const bindingMgmtFocusStudentName = ref('');
 const unreadNotificationCount = ref(0);
 const urgentNotificationCount = ref(0);
 const inboxNeedsAttentionCount = ref(0);
@@ -1171,7 +1174,20 @@ function clearTuitionNavigationContext() {
   tuitionInitialTab.value = '';
 }
 
-function onNavigateFromNotifications({ target, recordId, studentId, courseId, date, focus, section, workflowId, intent } = {}) {
+function onNavigateFromNotifications(payload = {}) {
+  const {
+    target,
+    recordId,
+    studentId,
+    courseId,
+    date,
+    focus,
+    section,
+    workflowId,
+    intent,
+    studentName,
+    teacherId,
+  } = payload;
   if (isPasswordChangeLocked.value) {
     active.value = 'profile';
     return;
@@ -1209,11 +1225,27 @@ function onNavigateFromNotifications({ target, recordId, studentId, courseId, da
     studentFocusCourseIdForNav.value = Number.isSafeInteger(normalizedCourseId) && normalizedCourseId > 0
       ? normalizedCourseId
       : null;
-    studentFocusIntentForNav.value = intent === 'edit' ? 'edit' : '';
+    studentFocusIntentForNav.value = typeof intent === 'string' ? intent : '';
   } else {
     studentFocusIdForNav.value = null;
     studentFocusCourseIdForNav.value = null;
     studentFocusIntentForNav.value = '';
+  }
+  if (target === 'course-mgmt') {
+    courseMgmtFocusStudentId.value = normalizeNavigationId(studentId);
+    courseMgmtFocusStudentName.value = typeof studentName === 'string' ? studentName.trim() : '';
+    if (teacherId != null && teacherId !== '') {
+      initialTeacherIdForNav.value = normalizeNavigationId(teacherId);
+    }
+  } else {
+    clearCourseMgmtNavigationContext();
+  }
+  if (target === 'binding-management') {
+    bindingMgmtFocusStudentName.value = typeof studentName === 'string'
+      ? studentName.trim()
+      : '';
+  } else {
+    bindingMgmtFocusStudentName.value = '';
   }
   if (target === 'learning' && focus === 'feedback') {
     learningFeedbackFocusToken.value += 1;
@@ -1254,6 +1286,11 @@ function clearStudentNavigationContext() {
   studentFocusIdForNav.value = null;
   studentFocusCourseIdForNav.value = null;
   studentFocusIntentForNav.value = '';
+}
+
+function clearCourseMgmtNavigationContext() {
+  courseMgmtFocusStudentId.value = null;
+  courseMgmtFocusStudentName.value = '';
 }
 
 let skipTeacherNavSfxOnce = false;
@@ -1298,6 +1335,7 @@ function setActivePage(page) {
   if (page !== 'students') clearStudentNavigationContext();
   if (page !== 'calendar') clearCalendarNavigationContext();
   if (page !== 'tuition-collect') clearTuitionNavigationContext();
+  if (page !== 'course-mgmt') clearCourseMgmtNavigationContext();
   const prev = active.value;
   if (isPasswordChangeLocked.value && page !== 'profile') {
     active.value = 'profile';
