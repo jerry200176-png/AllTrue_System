@@ -589,7 +589,7 @@ test.describe('UI foundation — real Vue page evidence', () => {
     await expect(next).toBeDisabled();
   });
 
-  test('inbox tuition report uses the shared modal contract', async ({ page }) => {
+  test('inbox tuition report deep-links to tuition-collect instead of local mutation modal', async ({ page }) => {
     await openPilot(page, {
       pageName: 'inbox',
       mode: 'dialog',
@@ -597,18 +597,10 @@ test.describe('UI foundation — real Vue page evidence', () => {
     });
 
     await page.getByRole('tab', { name: '營運通知' }).click();
-    const reportButton = page.getByRole('button', { name: '標記已繳費' }).first();
-    await expect(reportButton).toBeVisible();
-    await reportButton.click();
-
-    const dialog = page.getByRole('dialog', { name: '登記已回報' });
-    await expect(dialog).toBeVisible();
-    await expect(dialog).toHaveAttribute('aria-modal', 'true');
-    await expect(dialog).toBeFocused();
-    await expect(dialog.getByRole('button', { name: '關閉登記已回報視窗' })).toBeVisible();
-
-    await dialog.press('Escape');
-    await expect(dialog).toBeHidden();
+    const billingButton = page.getByRole('button', { name: '前往帳務中心' }).first();
+    await expect(billingButton).toBeVisible();
+    await expect(page.getByRole('button', { name: '標記已繳費' })).toHaveCount(0);
+    await expect(page.getByRole('dialog', { name: '登記已回報' })).toHaveCount(0);
   });
 
   test('student management labels its add-student workspace as a dialog', async ({ page }) => {
