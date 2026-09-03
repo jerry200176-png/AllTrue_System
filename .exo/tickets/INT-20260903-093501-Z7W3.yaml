@@ -1,0 +1,26 @@
+id: INT-20260903-093501-Z7W3
+status: todo
+kind: intent
+created_at: '2026-09-03T09:35:01+08:00'
+type: feature
+priority: 3
+parent_id: null
+spec_ref: null
+scope:
+  allow:
+  - '**'
+  deny: []
+budgets:
+  max_files_changed: 12
+  max_loc_changed: 400
+checks: []
+notes: []
+blockers: []
+labels: []
+brain_dump: ''
+boundary: ''
+success_condition: ''
+risk: medium
+children:
+- TKT-20260903-093523-1MGE
+resource_profile: default

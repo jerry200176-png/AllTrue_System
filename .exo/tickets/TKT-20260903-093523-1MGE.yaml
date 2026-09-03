@@ -1,0 +1,39 @@
+id: TKT-20260903-093523-1MGE
+title: '#1080 evidence freshness contract'
+intent: '#1080 evidence freshness contract'
+kind: task
+parent_id: INT-20260903-093501-Z7W3
+boundary: No production data, mutation workflows, UI, billing truth, issue state,
+  deployment configuration, or unrelated files.
+success_condition: Scheduler evidence output exposes explicit observation timestamps
+  and ages for live DB checks and per-job ledger evidence; unit tests prove deterministic
+  separation of live checks from ledger freshness.
+priority: 2
+labels:
+- issue-1080
+scope:
+  allow:
+  - backend/app/Console/Commands/SchedulerEvidenceSummary.php
+  - backend/app/Support/SchedulerEvidence.php
+  - backend/tests/Unit/SchedulerEvidenceTest.php
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 3
+  max_loc_changed: 180
+checks:
+- vendor/bin/phpunit
+type: feature
+status: todo
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-03T09:35:23+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default
