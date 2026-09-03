@@ -4162,13 +4162,12 @@ class StudentClassController extends Controller
             // workflow instead of this per-course count check.
             if (!$target->isPartOfPackage()
                 && strtolower((string) ($target->ScheduleMode ?? 'count')) === 'count') {
-                $targetCommitted = ClassSession::query()
-                    ->where('StudentClassID', (int) $target->ID)
-                    ->where(function ($query) {
-                        $query->whereNull('Status')
-                            ->orWhereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted', 'excused']);
-                    })
-                    ->count();
+                // Capacity is an entitlement check, so use the same
+                // authoritative used-session calculation as the counters and
+                // billing surfaces. A scheduled ClassSession is only a future
+                // reservation; it must not consume the target's used quota.
+                $targetDiagnostic = SessionDeductionService::batchExpectedUsedSessionDiagnostics([(int) $target->ID])[(int) $target->ID] ?? null;
+                $targetCommitted = (int) ($targetDiagnostic['expected_used'] ?? 0);
                 $targetCapacity = max(0, (int) ($target->SessionCount ?? 0));
                 $transferCount = count($foundIds);
                 if ($targetCapacity <= 0 || $targetCommitted + $transferCount > $targetCapacity) {
