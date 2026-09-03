@@ -140,7 +140,8 @@ class CourseContinuityService
         if ((int) $sc->getAttribute('StudentID') !== (int) $group->student_id) {
             throw ValidationException::withMessages(['student_class_id' => '不可跨學生加入同一群組']);
         }
-        if ((int) $sc->getAttribute('by1') !== (int) $group->campus_id) {
+        $studentCampusId = DB::table('Student')->where('id', (int) $sc->getAttribute('StudentID'))->value('CampusID');
+        if ((int) $studentCampusId !== (int) $group->campus_id) {
             throw ValidationException::withMessages(['student_class_id' => '不可跨校區加入同一群組']);
         }
         if (!empty($sc->getAttribute('PackageID'))) {
