@@ -20,23 +20,6 @@ jobs:
     name: Full backup and binlog replay (disposable MariaDB)
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    services:
-      mariadb:
-        image: mariadb:10.11
-        env:
-          MARIADB_ROOT_PASSWORD: rootpw
-          MARIADB_DATABASE: pitr_source
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd="mariadb-admin ping -h 127.0.0.1 -uroot -prootpw"
-          --health-interval=5s
-          --health-timeout=5s
-          --health-retries=20
-          --log-bin=/var/lib/mysql/mysql-bin
-          --server-id=881
-          --binlog-format=ROW
-          --binlog-expire-logs-seconds=604800
 
     steps:
       - name: Checkout
@@ -46,6 +29,22 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes mariadb-client
+
+      - name: Start disposable MariaDB
+        run: |
+          docker run --detach --name alltrue-pitr-mariadb \
+            --publish 3306:3306 \
+            --health-cmd='mariadb-admin ping -h 127.0.0.1 -uroot -prootpw' \
+            --health-interval=5s \
+            --health-timeout=5s \
+            --health-retries=20 \
+            --env MARIADB_ROOT_PASSWORD=rootpw \
+            --env MARIADB_DATABASE=pitr_source \
+            mariadb:10.11 \
+            --log-bin=/var/lib/mysql/mysql-bin \
+            --server-id=881 \
+            --binlog-format=ROW \
+            --binlog-expire-logs-seconds=604800
 
       - name: Wait for MariaDB
         env:
@@ -113,9 +112,7 @@ jobs:
           sed "s/\\\`$SOURCE_DB\\\`/\\\`$DRILL_DB\\\`/g" "$BASELINE" \
             | mysql --protocol=TCP -h 127.0.0.1 -u root "$DRILL_DB"
 
-          DB_CONTAINER="$(docker ps --filter ancestor=mariadb:10.11 --format '{{.ID}}' | head -1)"
-          [ -n "$DB_CONTAINER" ] || { echo 'MariaDB service container not found' >&2; exit 1; }
-          docker cp "$DB_CONTAINER:/var/lib/mysql/$BINLOG_FILE" "$BINLOG_DIR/$BINLOG_FILE"
+          docker cp "alltrue-pitr-mariadb:/var/lib/mysql/$BINLOG_FILE" "$BINLOG_DIR/$BINLOG_FILE"
 
           mysqlbinlog --rewrite-db="$SOURCE_DB->$DRILL_DB" \
             --start-position="$BINLOG_POS" \
@@ -140,3 +137,7 @@ jobs:
             echo ''
             echo 'Disposable MariaDB 10.11 only; no staging/Pi or production database is contacted.'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove disposable MariaDB
+        if: always()
+        run: docker rm --force alltrue-pitr-mariadb >/dev/null 2>&1 || true
