@@ -13,16 +13,17 @@
 3. **Dual-write / dual-read** — write when tables exist; read primary guardian only when flag on
 4. **Staff CRUD** — `/api/v1/students/{id}/guardians` + StudentsList section (visible only when flag on)
 5. **LINE consistency (pre-GSR)** — tuition fan-out; prefs per `ParentSession.line_user_id`; no `Student.LineID` overwrite
+6. **LINE → Guardian dual-write** — verified LINE bind upserts Guardian + StudentGuardian (`source=line_binding`) without changing Portal login rules
 
 ## Founder gates (stop here for decision)
 
 - **Migration activation on production** (run migrate)
-- **Identity / permission semantics** for Portal login when multiple guardians have different phones (Phase 5)
+- **Identity / permission semantics** for Portal login when multiple guardians have different phones (Phase 5 auth cutover)
 - **Production rollout** of `PERF_MULTI_GUARDIAN` and later cutover of legacy `parent_phone` / `LineID`
 
-## Next (auto-continue after this PR)
+## Next after Founder decisions
 
-5. LINE / Portal bind to Guardian identity (link SLB ↔ student_guardians)
+5b. Portal login / session scoped to Guardian identity (needs semantics decision)
 6. Notify / prefs / authZ fully per-guardian (beyond SLB)
 7. Backfill command + reconciliation + broader regression
 8. Small-campus flag rollout → Founder cutover approval

@@ -191,4 +191,25 @@ class MultiGuardianFoundationTest extends TestCase
             StudentGuardian::where('student_id', $id)->where('is_primary', true)->notRevoked()->exists()
         );
     }
+
+    public function test_line_binding_dual_writes_guardian_with_line_user_id(): void
+    {
+        $student = $this->student(['parent_phone' => '0912555666', 'parent_name' => 'LINE爸']);
+        $lineId = 'Ueeeeeeeeeeeeeeeeeeeeeeeeeeeeeee5';
+        $binding = \App\Models\StudentLineBinding::create([
+            'student_id' => $student->id,
+            'line_user_id' => $lineId,
+            'campus_id' => 1,
+            'bound_at' => now(),
+            'verified_at' => now(),
+            'verification_method' => 'contact_phone',
+        ]);
+
+        $link = app(GuardianSyncService::class)->linkFromLineBinding($student, $lineId, (int) $binding->id);
+
+        $this->assertNotNull($link);
+        $this->assertSame($lineId, $link->guardian->line_user_id);
+        $this->assertSame((int) $binding->id, (int) $link->student_line_binding_id);
+        $this->assertSame(StudentGuardian::SOURCE_LINE_BINDING, $link->source);
+    }
 }

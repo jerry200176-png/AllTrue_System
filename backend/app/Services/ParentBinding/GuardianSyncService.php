@@ -196,6 +196,54 @@ final class GuardianSyncService
         });
     }
 
+    public function linkFromLineBinding(Student $student, string $lineUserId, int $bindingId): ?StudentGuardian
+    {
+        if (!self::dualWriteEnabled()) {
+            return null;
+        }
+        if ($lineUserId === '') {
+            return null;
+        }
+
+        $phone = trim((string) StudentContactPhone::forStudent($student));
+        $name = trim((string) ($student->parent_name ?? ''));
+
+        return DB::transaction(function () use ($student, $lineUserId, $bindingId, $phone, $name) {
+            $guardian = $this->findOrCreateGuardian(
+                $name !== '' ? $name : null,
+                $phone !== '' ? $phone : null,
+                Guardian::normalizePhone($phone),
+                $lineUserId
+            );
+
+            $hasPrimary = StudentGuardian::query()
+                ->where('student_id', $student->id)
+                ->notRevoked()
+                ->where('is_primary', true)
+                ->exists();
+
+            /** @var StudentGuardian $link */
+            $link = StudentGuardian::query()->firstOrNew([
+                'student_id' => $student->id,
+                'guardian_id' => $guardian->id,
+            ]);
+            $link->fill([
+                'campus_id' => (int) ($student->CampusID ?? 0) ?: null,
+                'role' => $link->exists ? ($link->role ?: StudentGuardian::ROLE_GUARDIAN) : StudentGuardian::ROLE_GUARDIAN,
+                'is_primary' => $link->exists ? (bool) $link->is_primary : !$hasPrimary,
+                'status' => StudentGuardian::STATUS_ACTIVE,
+                'notify_learning_feedback' => $link->exists ? (bool) $link->notify_learning_feedback : true,
+                'notify_tuition' => $link->exists ? (bool) $link->notify_tuition : true,
+                'source' => StudentGuardian::SOURCE_LINE_BINDING,
+                'student_line_binding_id' => $bindingId,
+                'revoked_at' => null,
+            ]);
+            $link->save();
+
+            return $link->fresh(['guardian']);
+        });
+    }
+
     /** @return list<StudentGuardian> */
     public function listForStudent(int $studentId): array
     {
