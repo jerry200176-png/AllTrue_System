@@ -44,6 +44,8 @@ describe('CourseManagement high-risk flow characterization', () => {
     const lookup = section('async function loadTransferTargetCourses(sourceCourse)', 'async function submitTransferSessions');
 
     expect(lookup).toContain('per_page: \'100\'');
+    expect(lookup).toContain('params.set(\'student_id\', String(studentId));');
+    expect(lookup).not.toContain('branch_id: String(props.branchId)');
     expect(lookup).toContain('.filter((course) => course.id !== Number(sourceCourse.id))');
     expect(lookup).toContain('.filter((course) => sameCourseStudent(sourceCourse, course))');
     expect(lookup).toContain('.filter((course) => sameCourseSubject(sourceCourse, course))');
@@ -61,6 +63,8 @@ describe('CourseManagement high-risk flow characterization', () => {
     expect(flow).toContain('session_ids: sessionIds,');
     expect(flow).toContain('target_student_class_id: targetCourseId,');
     expect(flow).toContain('...(hasRecovery ? { reason } : {}),');
+    expect(flow).toContain('json?.conflict_session_id');
+    expect(flow).toContain('json?.conflict_schedule_id');
     expect(flow).toContain('showTransferSessionsModal.value = false;');
     expect(flow).toContain('await loadCourses();');
   });

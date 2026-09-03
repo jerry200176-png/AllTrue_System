@@ -86,7 +86,7 @@ class StudentClassBillingCorrectionTest extends TestCase
                 'Status' => 'attended',
             ]);
         }
-        ClassSession::create([
+        $futureScheduled = ClassSession::create([
             'StudentClassID' => $course->ID,
             'SessionDate' => '2026-10-17',
             'StartTime' => '15:00',
@@ -114,6 +114,36 @@ class StudentClassBillingCorrectionTest extends TestCase
             'Description' => '高中理化',
             'Amount' => 5500,
         ]);
+
+        $response = $this->withToken($token)->postJson(
+            "/api/v1/student-classes/{$course->ID}/billing-correction",
+            [
+                'new_session_count' => 4,
+                'new_charge' => 4400,
+                'reason' => '主任確認本期理化實際上四堂',
+            ]
+        );
+
+        $response->assertStatus(422)
+            ->assertJsonPath('code', 'billing_correction_future_schedule_over_capacity')
+            ->assertJsonPath('affected_scheduled_sessions.0.session_id', $futureScheduled->id)
+            ->assertJsonPath('next_step', 'handle_affected_scheduled_sessions_then_retry');
+
+        $this->assertDatabaseHas('StudentClass', [
+            'ID' => $course->ID,
+            'SessionCount' => 5,
+            'Charge' => 5500,
+        ]);
+        $this->assertDatabaseHas('ClassSession', [
+            'StudentClassID' => $course->ID,
+            'SessionDate' => '2026-10-17',
+            'Status' => 'scheduled',
+        ]);
+
+        DB::table('ClassSession')
+            ->where('StudentClassID', $course->ID)
+            ->where('SessionDate', '2026-10-17')
+            ->update(['Status' => 'cancelled']);
 
         $response = $this->withToken($token)->postJson(
             "/api/v1/student-classes/{$course->ID}/billing-correction",
