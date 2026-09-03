@@ -62,8 +62,9 @@ jobs:
           set -euo pipefail
           [[ "$BUG_ID" =~ ^[0-9]+$ ]] || { echo "invalid bug_id"; exit 1; }
           [[ "$EXPECTED_STATUS" =~ ^(triaged|in_progress|resolved)$ ]] || { echo "invalid expected_status"; exit 1; }
-          [[ "$GITHUB_ISSUE_URL" == https://github.com/*/issues/* ]] || { echo "invalid github_issue_url"; exit 1; }
+          [[ "$GITHUB_ISSUE_URL" =~ ^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+$ ]] || { echo "invalid github_issue_url"; exit 1; }
           [[ "$PUBLIC_REPLY" == *"$GITHUB_ISSUE_URL"* ]] || { echo "public reply must contain github_issue_url"; exit 1; }
+          PUBLIC_REPLY_B64="$(printf '%s' "$PUBLIC_REPLY" | base64 | tr -d '\n')"
           ssh -i ~/.ssh/deploy_key \
             -o IdentitiesOnly=yes \
             -o BatchMode=yes \
@@ -71,9 +72,10 @@ jobs:
             -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile=~/.ssh/known_hosts \
             "${PI_SSH_USER}@${PI_SSH_HOST}" \
-            "BUG_ID='$BUG_ID' EXPECTED_STATUS='$EXPECTED_STATUS' GITHUB_ISSUE_URL='$GITHUB_ISSUE_URL' PUBLIC_REPLY=\$(printf %q \"$PUBLIC_REPLY\") bash -s" <<'REMOTE'
+            "BUG_ID='$BUG_ID' EXPECTED_STATUS='$EXPECTED_STATUS' GITHUB_ISSUE_URL='$GITHUB_ISSUE_URL' PUBLIC_REPLY_B64='$PUBLIC_REPLY_B64' bash -s" <<'REMOTE'
           set -euo pipefail
           cd /home/admin/backend
+          PUBLIC_REPLY="$(printf '%s' "$PUBLIC_REPLY_B64" | base64 -d)"
           export BUG_ID EXPECTED_STATUS GITHUB_ISSUE_URL PUBLIC_REPLY
           php artisan tinker --execute='
           $bugId = (int)getenv("BUG_ID");
