@@ -1986,7 +1986,7 @@ const fetchGuardians = async (studentId) => {
     multiGuardianEnabled.value = true;
     const json = await res.json();
     guardians.value = json.guardians || [];
-  } catch (_) {
+  } catch {
     multiGuardianEnabled.value = false;
   } finally {
     guardiansLoading.value = false;
@@ -2040,7 +2040,9 @@ const removeGuardian = async (guardianLinkId) => {
     if (res.ok) {
       await fetchGuardians(laravelId);
     }
-  } catch (_) {}
+  } catch {
+    /* ignore network errors; list refresh will surface state */
+  }
 };
 
 const removeLineBinding = async (bindingId) => {
