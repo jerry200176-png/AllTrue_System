@@ -9,7 +9,9 @@ use App\Models\StudentClass;
 use App\Models\User;
 use App\Models\UserCampus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Log;
 use Tests\TestCase;
+use Mockery;
 
 /**
  * FR-005 テスト：GET /api/v1/teachers/{id}/availability の容量情報レスポンス
@@ -146,6 +148,42 @@ class AvailabilityCapacityTest extends TestCase
         $response->assertJson([
             'busy_slots' => [],
         ]);
+    }
+
+    /**
+     * #247 regression: retain the exact availability decision context and
+     * response trace without exposing student/course identifiers.
+     */
+    public function test_availability_emits_traceable_decision_context(): void
+    {
+        $teacher = $this->createTeacher('teacher-avail-observability@example.com');
+
+        Log::spy();
+        $response = $this->withHeaders([
+            'Authorization' => "Bearer {$this->dirToken}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/teachers/{$teacher->id}/availability?date=2026-05-17&class_type=one_on_three&start_time=13:00&end_time=15:00");
+
+        $response->assertOk();
+        $traceId = $response->headers->get('X-Trace-Id');
+        $this->assertNotEmpty($traceId);
+        Log::shouldHaveReceived('info')->once()->with(
+            'substitute.availability_decision',
+            Mockery::on(function (array $context) use ($teacher, $traceId): bool {
+                $this->assertSame($traceId, $context['trace_id']);
+                $this->assertSame($teacher->id, $context['teacher_id']);
+                $this->assertSame('one_on_three', $context['requested_class_type']);
+                $this->assertSame('13:00', $context['requested_start_time']);
+                $this->assertSame('15:00', $context['requested_end_time']);
+                $this->assertFalse($context['exclude_student_present']);
+                $this->assertArrayNotHasKey('student_id', $context);
+                foreach ($context['busy_slots'] as $slot) {
+                    $this->assertArrayNotHasKey('student_id', $slot);
+                    $this->assertArrayNotHasKey('class_id', $slot);
+                }
+                return true;
+            })
+        );
     }
 
     /**

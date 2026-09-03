@@ -60,6 +60,11 @@ class SubstituteController extends Controller
         $data = $request->validate([
             'date' => 'required|date',
             'exclude_student_id' => 'nullable|integer|min:1',
+            // Optional, non-PII context used only to correlate a future
+            // reproduction with the exact availability check.
+            'class_type' => 'nullable|string|max:40',
+            'start_time' => 'nullable|date_format:H:i',
+            'end_time' => 'nullable|date_format:H:i',
         ]);
 
         $managedCampusIds = $role === 'super_admin'
@@ -98,6 +103,21 @@ class SubstituteController extends Controller
             'class_type'         => (string) ($s['class_type'] ?? 'one_on_one'),
             'remaining_capacity' => (int) ($s['remaining_capacity'] ?? 0),
         ], $busy);
+
+        // #247: preserve enough decision context to diagnose a future
+        // capacity mismatch. Do not log student/course identifiers or names;
+        // the middleware already assigns the response's X-Trace-Id.
+        Log::info('substitute.availability_decision', [
+            'trace_id' => $request->attributes->get('trace_id'),
+            'teacher_id' => $teacherId,
+            'date' => Carbon::parse($data['date'])->toDateString(),
+            'requested_class_type' => $data['class_type'] ?? null,
+            'requested_start_time' => $data['start_time'] ?? null,
+            'requested_end_time' => $data['end_time'] ?? null,
+            'exclude_student_present' => $excludeStudentId !== null,
+            'busy_slot_count' => count($response),
+            'busy_slots' => $response,
+        ]);
 
         return response()->json([
             'teacher_id' => $teacherId,
