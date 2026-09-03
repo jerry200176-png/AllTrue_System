@@ -5,6 +5,52 @@
  */
 export const changelogDraftNotes = [
   {
+    "version": "2026.09.03",
+    "date": "2026-09-03",
+    "title": "2026.09.03 草稿（未發布）",
+    "summary": "Guardian canonical Portal cutover；Portal multi-guardian dual-read authZ",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "Guardian canonical Portal cutover",
+          "Portal multi-guardian dual-read authZ",
+          "學生管理多家長 CRUD（flag 閘控）",
+          "多 Guardian 加法模型與雙寫雙讀（dark launch）"
+        ]
+      },
+      {
+        "title": "修正內容",
+        "items": [
+          "學生頁家長欄與監護人 SSOT（去重）",
+          "失敗 dry-run 支援受控重試並保留歷史 attempt",
+          "多家長 LINE 綁定通知與偏好一致性"
+        ]
+      },
+      {
+        "title": "其他改善",
+        "items": [
+          "Guardian 正式版（Staff CRUD + Portal authZ + cutover）"
+        ]
+      }
+    ],
+    "items": [
+      "Guardian canonical Portal cutover",
+      "Portal multi-guardian dual-read authZ",
+      "學生管理多家長 CRUD（flag 閘控）",
+      "多 Guardian 加法模型與雙寫雙讀（dark launch）",
+      "學生頁家長欄與監護人 SSOT（去重）",
+      "失敗 dry-run 支援受控重試並保留歷史 attempt",
+      "多家長 LINE 綁定通知與偏好一致性",
+      "Guardian 正式版（Staff CRUD + Portal authZ + cutover）"
+    ]
+  },
+  {
     "version": "2026.09.02",
     "date": "2026-09-02",
     "title": "2026.09.02 草稿（未發布）",
@@ -612,34 +658,6 @@ export const changelogDraftNotes = [
       "正職薪資要件改為 115.07 結算表",
       "回報提示改請主任確認入帳",
       "帳務中心不擋 PIN，確認入帳由主任完成"
-    ]
-  },
-  {
-    "version": "2026.08.15",
-    "date": "2026-08-15",
-    "title": "2026.08.15 草稿（未發布）",
-    "summary": "已核准可退回，全校放假改讀課程管理；陳姝彣收帳顯示改回合約金額",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "修正內容",
-        "items": [
-          "已核准可退回，全校放假改讀課程管理",
-          "陳姝彣收帳顯示改回合約金額",
-          "搜尋含表情符號不再讓學生名單崩潰",
-          "未來堂次帶分校，不再顯示 Branch"
-        ]
-      }
-    ],
-    "items": [
-      "已核准可退回，全校放假改讀課程管理",
-      "陳姝彣收帳顯示改回合約金額",
-      "搜尋含表情符號不再讓學生名單崩潰",
-      "未來堂次帶分校，不再顯示 Branch"
     ]
   }
 ];

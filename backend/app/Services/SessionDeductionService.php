@@ -27,17 +27,31 @@ class SessionDeductionService
             return [];
         }
 
+        $today = Carbon::today()->toDateString();
+
         $deducted = StudentSignIn::query()
-            ->whereIn('StudentClassID', $ids)
             ->active()
+            ->leftJoin('ClassSession as sign_in_cs', 'sign_in_cs.id', '=', 'StudentSingIn.ClassSessionID')
+            ->whereIn('StudentSingIn.StudentClassID', $ids)
             ->where('SessionDeducted', true)
-            ->groupBy('StudentClassID')
-            ->selectRaw('StudentClassID, COUNT(DISTINCT COALESCE(NULLIF(ClassSessionID, 0), id)) as c')
+            ->where(function ($query) use ($today) {
+                $query->whereNull('sign_in_cs.id')
+                    ->orWhere(function ($linked) use ($today) {
+                        $linked->whereDate('sign_in_cs.SessionDate', '<=', $today)
+                            ->whereIn('sign_in_cs.Status', [
+                                'completed', 'attended', 'late', 'cancelled',
+                                'scheduled', 'rescheduled', 'absent',
+                            ]);
+                    });
+            })
+            ->groupBy('StudentSingIn.StudentClassID')
+            ->selectRaw('StudentSingIn.StudentClassID, COUNT(DISTINCT COALESCE(NULLIF(StudentSingIn.ClassSessionID, 0), StudentSingIn.id)) as c')
             ->pluck('c', 'StudentClassID');
 
         $completedSessions = ClassSession::query()
             ->whereIn('StudentClassID', $ids)
             ->whereIn('Status', ['completed', 'attended', 'late'])
+            ->whereDate('SessionDate', '<=', $today)
             ->groupBy('StudentClassID')
             ->selectRaw('StudentClassID, COUNT(*) as c')
             ->pluck('c', 'StudentClassID');
@@ -112,6 +126,7 @@ class SessionDeductionService
             return [];
         }
 
+        $today = Carbon::today()->toDateString();
         $courses = StudentClass::query()
             ->whereIn('ID', $ids)
             ->get(['ID', 'ScheduleMode', 'SessionCount', 'SessionDuration'])
@@ -134,6 +149,7 @@ class SessionDeductionService
             ->from('ClassSession as cancelled_cs')
             ->whereIn('cancelled_cs.StudentClassID', $ids)
             ->whereRaw("LOWER(cancelled_cs.Status) = 'cancelled'")
+            ->whereDate('cancelled_cs.SessionDate', '<=', $today)
             ->where(function ($q) {
                 $q->whereExists(function ($sub) {
                     $sub->selectRaw('1')
@@ -162,8 +178,19 @@ class SessionDeductionService
         $ledger = SessionDeductionLedger::query()
             ->from('session_deduction_ledger as ledger')
             ->join('StudentClass as sc', 'sc.ID', '=', 'ledger.student_class_id')
+            ->leftJoin('ClassSession as ledger_cs', 'ledger_cs.id', '=', 'ledger.class_session_id')
             ->whereIn('ledger.student_class_id', $ids)
             ->whereIn('ledger.source', ['attendance', 'retro_leave', 'status_adjust', 'duplicate_session'])
+            ->where(function ($query) use ($today) {
+                $query->whereNull('ledger_cs.id')
+                    ->orWhere(function ($linked) use ($today) {
+                        $linked->whereDate('ledger_cs.SessionDate', '<=', $today)
+                            ->where(function ($status) {
+                                $status->whereIn('ledger_cs.Status', ['completed', 'attended', 'late', 'cancelled'])
+                                    ->orWhereIn('ledger_cs.Status', ['scheduled', 'rescheduled', 'absent']);
+                            });
+                    });
+            })
             ->groupBy('ledger.student_class_id')
             ->selectRaw('ledger.student_class_id')
             ->selectRaw(
@@ -350,18 +377,24 @@ class SessionDeductionService
             if (!$sc) {
                 return;
             }
-
+            $today = Carbon::today()->toDateString();
             $attendanceUsed = StudentSignIn::query()
-                ->where('StudentClassID', $studentClassId)
+                ->leftJoin('ClassSession as sign_in_cs', 'sign_in_cs.id', '=', 'StudentSingIn.ClassSessionID')
+                ->where('StudentSingIn.StudentClassID', $studentClassId)
                 ->active()
                 ->where('SessionDeducted', true)
-                ->selectRaw('COUNT(DISTINCT COALESCE(NULLIF(ClassSessionID, 0), id)) as aggregate_count')
+                ->where(function ($query) use ($today) {
+                    $query->whereNull('sign_in_cs.id')
+                        ->orWhereDate('sign_in_cs.SessionDate', '<=', $today);
+                })
+                ->selectRaw('COUNT(DISTINCT COALESCE(NULLIF(StudentSingIn.ClassSessionID, 0), StudentSingIn.id)) as aggregate_count')
                 ->value('aggregate_count');
             $attendanceUsed = max(0, (int) ($attendanceUsed ?? 0));
 
             $classSessionUsed = ClassSession::query()
                 ->where('StudentClassID', $studentClassId)
                 ->whereIn('Status', ['completed', 'attended', 'late'])
+                ->whereDate('SessionDate', '<=', $today)
                 ->count();
             $classSessionUsed = max(0, (int) $classSessionUsed);
 
@@ -383,8 +416,13 @@ class SessionDeductionService
             // (e.g. status transitions that may temporarily not have sign-in rows).
             // Bound approved LRs (ClassSessionID set) do not add used count: 堂數以點名／堂次狀態為準。
             $ledgerUsed = SessionDeductionLedger::query()
+                ->leftJoin('ClassSession as ledger_cs', 'ledger_cs.id', '=', 'session_deduction_ledger.class_session_id')
                 ->where('student_class_id', $studentClassId)
                 ->whereIn('source', ['attendance', 'retro_leave', 'status_adjust', 'duplicate_session'])
+                ->where(function ($query) use ($today) {
+                    $query->whereNull('ledger_cs.id')
+                        ->orWhereDate('ledger_cs.SessionDate', '<=', $today);
+                })
                 ->selectRaw("SUM(CASE WHEN event_type = 'deduct' THEN 1 ELSE 0 END) - SUM(CASE WHEN event_type = 'reverse' THEN 1 ELSE 0 END) as net")
                 ->value('net');
             $ledgerUsed = max(0, (int) ($ledgerUsed ?? 0));
@@ -401,16 +439,26 @@ class SessionDeductionService
                 // 否 → 完全沿用既有 count-based 邏輯（行為 byte-identical），僅補寫衍生分鐘欄。
                 // 是 → 分鐘為權威，RemainingSessions 改為 ROUND_HALF_UP 衍生顯示值。
                 $hasPartial = SessionDeductionLedger::query()
+                    ->leftJoin('ClassSession as ledger_cs', 'ledger_cs.id', '=', 'session_deduction_ledger.class_session_id')
                     ->where('student_class_id', $studentClassId)
                     ->whereIn('source', ['attendance', 'retro_leave', 'status_adjust', 'duplicate_session'])
+                    ->where(function ($query) use ($today) {
+                        $query->whereNull('ledger_cs.id')
+                            ->orWhereDate('ledger_cs.SessionDate', '<=', $today);
+                    })
                     ->whereNotNull('minutes')
                     ->where('minutes', '!=', $perSession)
                     ->exists();
 
                 if ($hasPartial) {
                     $netMinutes = (int) (SessionDeductionLedger::query()
+                        ->leftJoin('ClassSession as ledger_cs', 'ledger_cs.id', '=', 'session_deduction_ledger.class_session_id')
                         ->where('student_class_id', $studentClassId)
                         ->whereIn('source', ['attendance', 'retro_leave', 'status_adjust', 'duplicate_session'])
+                        ->where(function ($query) use ($today) {
+                            $query->whereNull('ledger_cs.id')
+                                ->orWhereDate('ledger_cs.SessionDate', '<=', $today);
+                        })
                         ->selectRaw(
                             "SUM(CASE WHEN event_type = 'deduct' THEN COALESCE(minutes, ?) "
                             . "ELSE -COALESCE(minutes, ?) END) as net",

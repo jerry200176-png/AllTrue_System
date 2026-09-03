@@ -6,6 +6,13 @@ last_reviewed: 2026-06-06
 
 # AI／工程師防再犯紀錄（必讀）
 
+### R135. POP 失敗 dry-run 必須可在不改 caller key 下受控重試（2026-09-03）
+
+- **現象**：策略暫時失敗的 dry-run 被相同 idempotency key 永久 replay，策略恢復後仍無法重新產生 plan。
+- **根因層級**：request identity 與 execution attempt identity 共用同一個唯一鍵；失敗結果被誤當成成功結果的冪等快取。
+- **強制規則**：成功 dry-run 才能 replay；失敗 dry-run 必須在 request／operation／strategy／參數 hash／catalog version／必要 context 未漂移時，以 append-only attempt identity 受控重試。caller idempotency key 不得改寫；execute／verify／rollback 仍只能 exact replay mutation attempt。
+- **測試必補**：失敗後策略恢復可成功、成功不重跑、payload／catalog／context drift fail closed，以及 execute 不可重複 mutation。
+
 ### R132. 課程查找 billing unit 必須從編輯 round-trip 到總額計算（2026-09-02）
 
 - **現象**：大安黃品皓課程切換為每小時 750 後，課程查找仍顯示「每堂 750」，總費用也以堂數計算。
@@ -174,6 +181,13 @@ UI「家長手機」欄 → 儲存到 Student.parent_phone
 - **正確**：`resolveContactPhone()` 優先 `parent_phone`，空才 fallback `Phone`
 - **LINE OA 綁定**（2026-06-28）：`LineWebhookController` 的「綁定 姓名 手機」也必須走同一邏輯（`StudentContactPhone`），不可只查 `Phone`
 - 修復：PR #38，2026-04-24；LINE bind 對齊 PR #1037
+
+### R10b. 多家長 LINE：通知 fan-out、偏好 per-binding、勿把 `Student.LineID` 當真相
+
+- **DB**：`student_line_bindings` UNIQUE `(student_id, line_user_id)` → 同一學生可有多位 verified LINE 家長
+- **禁止**：重要推播（學費等）對 bindings `->first()`；通知偏好 `where(student_id)->update` 一次改掉所有家長
+- **正確**：推播遍歷該生 campus 內所有 verified bindings；偏好只改 session 的 `line_user_id` 對應 binding；canonical 是 SLB，綁定時不要覆寫 legacy `Student.LineID`
+- 回歸：`MultiParentLineBindingConsistencyTest`
 
 ### R9. deploy.yml `git pull` 改為 `git fetch + reset --hard`
 

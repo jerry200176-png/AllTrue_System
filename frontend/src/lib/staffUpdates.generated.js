@@ -4,6 +4,82 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-03-multi-guardian-ga",
+    "publishedAt": "2026-09-03",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "多監護人正式上線",
+    "summary": "一位學生可維護多位家長／監護人；解除後該家長立即無法再進家長入口。",
+    "items": [
+      "學生編輯可新增多位監護人、指定主要聯絡人；家長 Portal 依監護關係登入與切換子女（含跨分校）。",
+      "解除監護人後會立即登出該家長相關工作階段；請先確認對象正確再操作。",
+      "既有家長手機欄位仍保留作相容；關旗可回退。排課／繳費／堂次流程不變。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "學生編輯可新增多位監護人、指定主要聯絡人；家長 Portal 依監護關係登入與切換子女（含跨分校）。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "解除監護人後會立即登出該家長相關工作階段；請先確認對象正確再操作。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "既有家長手機欄位仍保留作相容；關旗可回退。排課／繳費／堂次流程不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-03:multi-guardian-ga"
+    ],
+    "date": "2026-09-03",
+    "version": "2026.09.03"
+  },
+  {
+    "id": "staff-2026-09-03-guardian-ssot-ui",
+    "publishedAt": "2026-09-03",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "學生頁家長資料改由監護人維護",
+    "summary": "編輯學生時不再重複填家長姓名／手機；請在「家長／監護人」設定主要聯絡人。",
+    "items": [
+      "多監護人功能開啟後，編輯畫面以監護人列表為家長資料來源，主要聯絡人即顯示用家長資訊。",
+      "新增學生仍可先填家長姓名／手機；LINE 綁定與 RFID 綁卡方式不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "多監護人功能開啟後，編輯畫面以監護人列表為家長資料來源，主要聯絡人即顯示用家長資訊。",
+          "新增學生仍可先填家長姓名／手機；LINE 綁定與 RFID 綁卡方式不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-03:guardian-ssot-ui"
+    ],
+    "date": "2026-09-03",
+    "version": "2026.09.03"
+  },
+  {
     "id": "staff-2026-09-02-course-rate-unit-consistency",
     "publishedAt": "2026-09-02",
     "effectiveAt": null,

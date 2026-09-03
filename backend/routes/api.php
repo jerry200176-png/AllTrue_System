@@ -23,6 +23,7 @@ use App\Http\Controllers\ParentFeedbackController;
 use App\Http\Controllers\ParentPortalController;
 use App\Http\Controllers\StudentClassController;
 use App\Http\Controllers\StudentController;
+use App\Http\Controllers\StudentGuardianController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\TeacherBranchController;
@@ -326,6 +327,10 @@ Route::prefix('v1')->group(function () {
         Route::post('students/{student}/bind-card', [StudentController::class, 'bindCard'])->whereNumber('student');
         Route::get('students/{student}/line-bindings', [StudentController::class, 'lineBindings'])->whereNumber('student');
         Route::delete('students/{student}/line-bindings/{binding}', [StudentController::class, 'removeLineBinding'])->whereNumber('student');
+        Route::get('students/{student}/guardians', [StudentGuardianController::class, 'index'])->whereNumber('student');
+        Route::post('students/{student}/guardians', [StudentGuardianController::class, 'store'])->whereNumber('student');
+        Route::put('students/{student}/guardians/{studentGuardian}', [StudentGuardianController::class, 'update'])->whereNumber('student')->whereNumber('studentGuardian');
+        Route::delete('students/{student}/guardians/{studentGuardian}', [StudentGuardianController::class, 'destroy'])->whereNumber('student')->whereNumber('studentGuardian');
 
         Route::post('student-classes/import', [ImportController::class, 'studentClasses']);
         Route::get('student-classes/export', [ExportController::class, 'studentClasses']);

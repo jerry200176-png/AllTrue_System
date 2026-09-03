@@ -23,6 +23,9 @@ class SlotOccupiedException extends RuntimeException
         public readonly string $startTime,
         public readonly ?int $conflictSessionId = null,
         public readonly ?string $conflictStatus = null,
+        public readonly ?string $conflictSource = null,
+        public readonly ?int $conflictCourseId = null,
+        public readonly ?int $conflictScheduleId = null,
         string $message = '該時段已有課程，無法調課至此時段（請先取消原時段的課或改選其他時段）',
         public readonly string $responseCode = 'slot_occupied'
     ) {
@@ -50,6 +53,7 @@ class SlotOccupiedException extends RuntimeException
         string $startTime,
         ?int $conflictSessionId = null,
         ?string $conflictStatus = null,
+        ?int $conflictCourseId = null,
     ): self {
         return new self(
             courseId: $courseId,
@@ -57,7 +61,32 @@ class SlotOccupiedException extends RuntimeException
             startTime: $startTime,
             conflictSessionId: $conflictSessionId,
             conflictStatus: $conflictStatus,
+            conflictSource: 'class_session',
+            conflictCourseId: $conflictCourseId,
             message: '學生在此時段已有其他課程，無法建立重疊課程（請改選其他日期／時間）',
+            responseCode: 'student_slot_conflict',
+        );
+    }
+
+    public static function fromStudentScheduleConflict(
+        int $courseId,
+        string $sessionDate,
+        string $startTime,
+        object $conflict,
+    ): self {
+        $status = $conflict->status ?? null;
+        $scheduleId = (int) ($conflict->id ?? 0);
+        $conflictCourseId = (int) ($conflict->student_course_id ?? 0);
+
+        return new self(
+            courseId: $courseId,
+            sessionDate: $sessionDate,
+            startTime: $startTime,
+            conflictStatus: $status !== null ? (string) $status : null,
+            conflictSource: 'schedule',
+            conflictCourseId: $conflictCourseId > 0 ? $conflictCourseId : null,
+            conflictScheduleId: $scheduleId > 0 ? $scheduleId : null,
+            message: '學生在此時段已有其他預排課程，無法建立重疊課程（請改選其他日期／時間）',
             responseCode: 'student_slot_conflict',
         );
     }
@@ -70,6 +99,9 @@ class SlotOccupiedException extends RuntimeException
             'code' => $this->responseCode,
             'conflict_session_id' => $this->conflictSessionId,
             'conflict_status' => $this->conflictStatus,
+            'conflict_source' => $this->conflictSource,
+            'conflict_course_id' => $this->conflictCourseId,
+            'conflict_schedule_id' => $this->conflictScheduleId,
             'session_date' => $this->sessionDate,
             'start_time' => substr($this->startTime, 0, 5),
         ];

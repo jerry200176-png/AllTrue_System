@@ -58,4 +58,10 @@ return [
     // actual_duration still behaves exactly like fixed_session, so turning the flag
     // back off is a complete rollback with no data migration.
     'actual_duration_deduction_enabled' => (bool) env('PERF_ACTUAL_DURATION_DEDUCTION', false),
+
+    // Multi-guardian (Student 1:N). Flag gates staff UX + Portal canonical authZ
+    // (guardians/student_guardians). Dual-write runs whenever tables exist.
+    // Flag off ⇒ Portal/LINE auth falls back to verified SLB + legacy parent_phone.
+    // Rollback: PERF_MULTI_GUARDIAN=false (tables retained; login still works).
+    'multi_guardian_enabled' => (bool) env('PERF_MULTI_GUARDIAN', false),
 ];

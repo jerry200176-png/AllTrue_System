@@ -496,8 +496,8 @@
           </div>
         </div>
 
-        <div class="form-section-title">家長資訊</div>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+        <div v-if="showLegacyParentFields" class="form-section-title">家長資訊</div>
+        <div v-if="showLegacyParentFields" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
           <div class="form-group">
             <label>家長姓名</label>
             <input v-model="studentForm.parent_name" placeholder="請輸入家長姓名" />
@@ -528,6 +528,42 @@
               <button type="button" class="line-binding-remove" @click="removeLineBinding(b.id)">解除</button>
             </div>
           </div>
+        </div>
+
+        <div v-if="editingStudentId && multiGuardianEnabled" class="form-section-title">家長／監護人</div>
+        <div v-if="editingStudentId && multiGuardianEnabled" class="line-bindings-section">
+          <p class="line-bindings-empty" style="margin:0 0 8px;">
+            主要聯絡人的姓名與手機即為本學生家長資訊來源；請在此維護，勿再另填一組家長欄位。
+          </p>
+          <div v-if="guardiansLoading" class="line-bindings-empty">載入中…</div>
+          <div v-else-if="guardians.length === 0" class="line-bindings-empty">
+            尚無監護人紀錄
+            <span v-if="studentForm.parent_name || studentForm.parent_phone">
+              （既有家長：{{ studentForm.parent_name || '—' }}／{{ studentForm.parent_phone || '—' }}，請新增為監護人）
+            </span>
+          </div>
+          <div v-else class="line-bindings-list">
+            <div v-for="g in guardians" :key="g.id" class="line-binding-row">
+              <span class="line-binding-id">{{ g.display_name || '未命名' }} · {{ g.role }}{{ g.is_primary ? ' · 主要聯絡人' : '' }}</span>
+              <span class="line-binding-time">{{ g.phone || g.line_user_id_masked || '—' }}</span>
+              <button type="button" class="line-binding-remove" @click="removeGuardian(g.id)">解除</button>
+            </div>
+          </div>
+          <div class="guardian-add-row" style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;margin-top:8px;">
+            <input v-model="guardianForm.display_name" placeholder="姓名" />
+            <input v-model="guardianForm.phone" placeholder="手機" />
+            <select v-model="guardianForm.role">
+              <option value="father">爸爸</option>
+              <option value="mother">媽媽</option>
+              <option value="guardian">監護人</option>
+              <option value="other">其他</option>
+            </select>
+            <button type="button" class="small" @click="addGuardian">新增</button>
+          </div>
+          <label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:13px;">
+            <input type="checkbox" v-model="guardianForm.is_primary" /> 設為主要聯絡人
+          </label>
+          <p v-if="guardianError" class="line-bindings-empty" style="color:#b00020;">{{ guardianError }}</p>
         </div>
 
         <div class="form-section-title">其他</div>
@@ -920,6 +956,18 @@ const studentForm = ref({ name: '', grade: 'J1', phone: '', school: '', parent_n
 // LINE bindings (in edit modal)
 const lineBindings = ref([]);
 const lineBindingsLoading = ref(false);
+const multiGuardianEnabled = ref(false);
+/** Edit + multi-guardian: guardians are SSOT — hide duplicate parent_name/phone editors. */
+const showLegacyParentFields = computed(() => !editingStudentId.value || !multiGuardianEnabled.value);
+const guardians = ref([]);
+const guardiansLoading = ref(false);
+const guardianError = ref('');
+const guardianForm = ref({
+  display_name: '',
+  phone: '',
+  role: 'father',
+  is_primary: false,
+});
 
 // Course modal
 const showCourseModal = ref(false);
@@ -1886,13 +1934,19 @@ const editStudent = (student) => {
   };
   showStudentModal.value = true;
   const laravelId = student._laravelId ?? student.id;
-  if (laravelId) fetchLineBindings(laravelId);
+  if (laravelId) {
+    fetchLineBindings(laravelId);
+    fetchGuardians(laravelId);
+  }
 };
 
 const closeStudentModal = () => {
   showStudentModal.value = false;
   editingStudentId.value = null;
   lineBindings.value = [];
+  guardians.value = [];
+  guardianError.value = '';
+  multiGuardianEnabled.value = false;
 };
 
 const fetchLineBindings = async (studentId) => {
@@ -1912,6 +1966,103 @@ const fetchLineBindings = async (studentId) => {
     }
   } catch (_) {}
   lineBindingsLoading.value = false;
+};
+
+const sessionAuthHeaders = () => {
+  const sess = JSON.parse(localStorage.getItem('alltrue_session') || '{}');
+  const token = sess?.access_token;
+  if (!token) return null;
+  return {
+    Authorization: `Bearer ${token}`,
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+  };
+};
+
+const fetchGuardians = async (studentId) => {
+  if (!studentId) return;
+  guardiansLoading.value = true;
+  guardians.value = [];
+  guardianError.value = '';
+  multiGuardianEnabled.value = false;
+  try {
+    const headers = sessionAuthHeaders();
+    if (!headers) return;
+    const res = await fetch(`/api/v1/students/${studentId}/guardians`, { headers });
+    if (res.status === 404) {
+      multiGuardianEnabled.value = false;
+      return;
+    }
+    if (!res.ok) return;
+    multiGuardianEnabled.value = true;
+    const json = await res.json();
+    guardians.value = json.guardians || [];
+    // Prefill add form from legacy parent_* when no guardians yet (compat import path).
+    if (guardians.value.length === 0 && (studentForm.value.parent_name || studentForm.value.parent_phone)) {
+      guardianForm.value = {
+        display_name: studentForm.value.parent_name || '',
+        phone: studentForm.value.parent_phone || '',
+        role: 'guardian',
+        is_primary: true,
+      };
+    }
+  } catch {
+    multiGuardianEnabled.value = false;
+  } finally {
+    guardiansLoading.value = false;
+  }
+};
+
+const addGuardian = async () => {
+  const studentId = editingStudentId.value;
+  const st = students.value.find(s => s.id === studentId);
+  const laravelId = st?._laravelId ?? st?.id;
+  if (!laravelId) return;
+  guardianError.value = '';
+  try {
+    const headers = sessionAuthHeaders();
+    if (!headers) return;
+    const res = await fetch(`/api/v1/students/${laravelId}/guardians`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        display_name: guardianForm.value.display_name || null,
+        phone: guardianForm.value.phone || null,
+        role: guardianForm.value.role,
+        is_primary: !!guardianForm.value.is_primary,
+      }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      guardianError.value = json.message || '新增監護人失敗';
+      return;
+    }
+    guardianForm.value = { display_name: '', phone: '', role: 'father', is_primary: false };
+    await fetchGuardians(laravelId);
+  } catch (e) {
+    guardianError.value = e?.message || '新增監護人失敗';
+  }
+};
+
+const removeGuardian = async (guardianLinkId) => {
+  if (!confirm('確定要解除此監護人關係？')) return;
+  const studentId = editingStudentId.value;
+  const st = students.value.find(s => s.id === studentId);
+  const laravelId = st?._laravelId ?? st?.id;
+  if (!laravelId) return;
+  try {
+    const headers = sessionAuthHeaders();
+    if (!headers) return;
+    const res = await fetch(`/api/v1/students/${laravelId}/guardians/${guardianLinkId}`, {
+      method: 'DELETE',
+      headers,
+    });
+    if (res.ok) {
+      await fetchGuardians(laravelId);
+    }
+  } catch {
+    /* ignore network errors; list refresh will surface state */
+  }
 };
 
 const removeLineBinding = async (bindingId) => {
@@ -2189,10 +2340,13 @@ const submitStudent = async () => {
     grade: studentForm.value.grade,
     phone: studentForm.value.phone,
     school: studentForm.value.school,
-    parent_name: studentForm.value.parent_name,
-    parent_phone: studentForm.value.parent_phone,
     notes: studentForm.value.notes
   };
+  // Guardians SSOT when multi-guardian edit UI is active: do not POST stale parent_* fields.
+  if (showLegacyParentFields.value) {
+    payload.parent_name = studentForm.value.parent_name;
+    payload.parent_phone = studentForm.value.parent_phone;
+  }
   if (studentForm.value.rfid) payload.rfid = studentForm.value.rfid;
   if (editingStudentId.value) {
     payload.status = studentForm.value.status;

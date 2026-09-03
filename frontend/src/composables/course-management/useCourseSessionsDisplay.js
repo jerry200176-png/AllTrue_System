@@ -348,6 +348,10 @@ export function useCourseSessionsDisplay({
     if (statuses.has('cancelled')) return { label: '取消', className: 'cancelled' };
     if (rows.some((row) => isContractException(row))) return { label: '例外堂', className: 'exception' };
     if (rows.some((row) => isOverQuotaSession(course, row))) return { label: '超排', className: 'over-quota' };
+    if ((statuses.has('scheduled') || statuses.has('rescheduled')) && isSessionMode(course)
+      && !course?.PackageID && getRawRemainingSessions(course) === 0) {
+      return { label: '預排', className: 'scheduled-capacity-full' };
+    }
     if (statuses.has('scheduled')) return null;
     return null;
   };

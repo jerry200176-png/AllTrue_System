@@ -18,7 +18,7 @@ on:
         description: Exact backend SHA already present in production
         required: true
         type: string
-        default: d21ed8de1a2a80034aee50d214ac68b7944f3251
+        default: 98aadbbb380712fa389bce9f5a5806cbf14fa0f8
 permissions:
   contents: read
 concurrency:
@@ -35,7 +35,7 @@ jobs:
           MODE: ${{ inputs.mode }}
           CONFIRM: ${{ inputs.confirm }}
           INPUT_SHA: ${{ inputs.deployed_backend_sha }}
-          EXPECTED_SHA: d21ed8de1a2a80034aee50d214ac68b7944f3251
+          EXPECTED_SHA: 98aadbbb380712fa389bce9f5a5806cbf14fa0f8
         run: |
           set -euo pipefail
           [[ "$MODE" == dry-run || "$MODE" == approve ]] || exit 1
@@ -79,7 +79,7 @@ jobs:
           umask 077
           cd /home/admin/backend
           BASE_URL=https://daan.lifenet.com.tw
-          TARGET_SHA=d21ed8de1a2a80034aee50d214ac68b7944f3251
+          TARGET_SHA=98aadbbb380712fa389bce9f5a5806cbf14fa0f8
           MODE='${{ inputs.mode }}'
           WORK_DIR="$(mktemp -d /tmp/pop-founder-huang.XXXXXX)"
           TOKEN='' MACHINE_KEY=''
@@ -228,7 +228,7 @@ jobs:
               -H 'Accept: application/json' -H 'Content-Type: application/json' --data "$body" -o "$output" -w '%{http_code}' "$BASE_URL$path"
           }
           approval="$WORK_DIR/approval.json"
-          approval_body='{"approval_reference":"founder-go-huang-yikui-math-20260902","commit_sha":"d21ed8de1a2a80034aee50d214ac68b7944f3251","ttl_minutes":15}'
+          approval_body='{"approval_reference":"founder-go-huang-yikui-math-20260902","commit_sha":"98aadbbb380712fa389bce9f5a5806cbf14fa0f8","ttl_minutes":15}'
           approval_status="$(post_human "/api/v1/pop/operations/requests/$REQUEST_ID/approvals" "$approval_body" "$approval")"
           [[ "$approval_status" == 200 ]] || {
             echo "::error::POP approval rejected with HTTP $approval_status"

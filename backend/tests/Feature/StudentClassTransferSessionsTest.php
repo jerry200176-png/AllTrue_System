@@ -8,6 +8,7 @@ use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
 use App\Models\SessionDeductionLedger;
+use App\Models\Schedule;
 use App\Models\User;
 use App\Models\UserCampus;
 use Carbon\Carbon;
@@ -321,13 +322,17 @@ class StudentClassTransferSessionsTest extends TestCase
             $target = $this->createCourse($student->id, 1);
             $conflictCourse = $this->createCourse($student->id, 1);
             $sessionId = $this->createClassSession((int) $source->ID, '2026-08-10');
-            $this->createClassSession((int) $conflictCourse->ID, '2026-08-17', 'scheduled');
+            $conflictSessionId = $this->createClassSession((int) $conflictCourse->ID, '2026-08-17', 'scheduled');
 
             $this->postJson(
                 "/api/v1/student-classes/{$source->ID}/transfer-sessions",
                 ['session_ids' => [$sessionId], 'target_student_class_id' => $target->ID],
                 ['Authorization' => "Bearer {$token}"]
-            )->assertStatus(422)->assertJsonPath('code', 'student_slot_conflict');
+            )->assertStatus(422)
+                ->assertJsonPath('code', 'student_slot_conflict')
+                ->assertJsonPath('conflict_source', 'class_session')
+                ->assertJsonPath('conflict_session_id', $conflictSessionId)
+                ->assertJsonPath('conflict_course_id', $conflictCourse->ID);
 
             $this->assertSame(
                 (int) $source->ID,
@@ -337,6 +342,401 @@ class StudentClassTransferSessionsTest extends TestCase
                 'StudentClassID' => $source->ID,
                 'SessionDate' => '2026-08-17',
             ]);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_stale_schedule_exception_does_not_block_source_replenishment(): void
+    {
+        Carbon::setTestNow('2026-08-12 12:00:00');
+        try {
+            $token = $this->createDirectorToken([1]);
+            $student = $this->createStudent(1);
+            $source = $this->createCourse($student->id, 1, [
+                'StartDate' => '2026-08-03', 'week' => 1, 'time' => '23:00',
+                'SessionDuration' => 30,
+            ]);
+            $target = $this->createCourse($student->id, 1);
+            $conflictCourse = $this->createCourse($student->id, 2);
+            $sessionId = $this->createClassSession((int) $source->ID, '2026-08-10');
+            $this->createClassSession((int) $conflictCourse->ID, '2026-08-17', 'cancelled');
+            $this->createSchedule((int) $conflictCourse->ID, $student->id, '2026-08-17', 'normal');
+
+            $this->postJson(
+                "/api/v1/student-classes/{$source->ID}/transfer-sessions",
+                ['session_ids' => [$sessionId], 'target_student_class_id' => $target->ID],
+                ['Authorization' => "Bearer {$token}"]
+            )->assertOk()->assertJsonPath('replenished_source_session_count', 1);
+
+            $this->assertDatabaseHas('ClassSession', [
+                'StudentClassID' => $source->ID, 'SessionDate' => '2026-08-17',
+                'StartTime' => '23:00:00', 'Status' => 'scheduled',
+            ]);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_schedule_before_target_contract_start_does_not_block_source_replenishment(): void
+    {
+        Carbon::setTestNow('2026-08-12 12:00:00');
+        try {
+            $token = $this->createDirectorToken([1]);
+            $student = $this->createStudent(1);
+            $source = $this->createCourse($student->id, 1, [
+                'StartDate' => '2026-08-03', 'week' => 1, 'time' => '23:00',
+                'SessionDuration' => 30,
+            ]);
+            $target = $this->createCourse($student->id, 1, [
+                'StartDate' => '2026-08-18',
+            ]);
+            $sessionId = $this->createClassSession((int) $source->ID, '2026-08-10');
+
+            // This schedule is outside the target contract's effective period.
+            $this->createSchedule((int) $target->ID, $student->id, '2026-08-17', 'normal');
+
+            $this->postJson(
+                "/api/v1/student-classes/{$source->ID}/transfer-sessions",
+                ['session_ids' => [$sessionId], 'target_student_class_id' => $target->ID],
+                ['Authorization' => "Bearer {$token}"]
+            )->assertOk()->assertJsonPath('replenished_source_session_count', 1);
+
+            $this->assertDatabaseHas('ClassSession', [
+                'StudentClassID' => $source->ID, 'SessionDate' => '2026-08-17',
+                'StartTime' => '23:00:00', 'Status' => 'scheduled',
+            ]);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_active_session_before_target_contract_start_does_not_block_source_replenishment(): void
+    {
+        Carbon::setTestNow('2026-08-12 12:00:00');
+        try {
+            $token = $this->createDirectorToken([1]);
+            $student = $this->createStudent(1);
+            $source = $this->createCourse($student->id, 1, [
+                'StartDate' => '2026-08-03', 'week' => 1, 'time' => '23:00',
+                'SessionDuration' => 30,
+            ]);
+            $target = $this->createCourse($student->id, 1, [
+                'StartDate' => '2026-08-18',
+            ]);
+            $sessionId = $this->createClassSession((int) $source->ID, '2026-08-10');
+
+            // An old materialized row can be hidden from course details but is
+            // still dangerous if the conflict query ignores contract dates.
+            $this->createClassSession((int) $target->ID, '2026-08-17', 'scheduled');
+
+            $this->postJson(
+                "/api/v1/student-classes/{$source->ID}/transfer-sessions",
+                ['session_ids' => [$sessionId], 'target_student_class_id' => $target->ID],
+                ['Authorization' => "Bearer {$token}"]
+            )->assertOk()->assertJsonPath('replenished_source_session_count', 1);
+
+            $this->assertDatabaseHas('ClassSession', [
+                'StudentClassID' => $source->ID, 'SessionDate' => '2026-08-17',
+                'StartTime' => '23:00:00', 'Status' => 'scheduled',
+            ]);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_schedule_only_makeup_still_blocks_source_replenishment(): void
+    {
+        Carbon::setTestNow('2026-08-12 12:00:00');
+        try {
+            $token = $this->createDirectorToken([1]);
+            $student = $this->createStudent(1);
+            $source = $this->createCourse($student->id, 1, [
+                'StartDate' => '2026-08-03', 'week' => 1, 'time' => '23:00',
+                'SessionDuration' => 30,
+            ]);
+            $target = $this->createCourse($student->id, 1);
+            $conflictCourse = $this->createCourse($student->id, 2);
+            $sessionId = $this->createClassSession((int) $source->ID, '2026-08-10');
+            $scheduleId = $this->createSchedule((int) $conflictCourse->ID, $student->id, '2026-08-17', 'extra');
+
+            $this->postJson(
+                "/api/v1/student-classes/{$source->ID}/transfer-sessions",
+                ['session_ids' => [$sessionId], 'target_student_class_id' => $target->ID],
+                ['Authorization' => "Bearer {$token}"]
+            )->assertStatus(422)
+                ->assertJsonPath('code', 'student_slot_conflict')
+                ->assertJsonPath('conflict_source', 'schedule')
+                ->assertJsonPath('conflict_schedule_id', $scheduleId)
+                ->assertJsonPath('conflict_course_id', $conflictCourse->ID);
+
+            $this->assertSame((int) $source->ID, (int) DB::table('ClassSession')
+                ->where('id', $sessionId)->value('StudentClassID'));
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_orphan_linked_schedule_does_not_block_source_replenishment(): void
+    {
+        Carbon::setTestNow('2026-08-12 12:00:00');
+        try {
+            $token = $this->createDirectorToken([1]);
+            $student = $this->createStudent(1);
+            $source = $this->createCourse($student->id, 1, [
+                'StartDate' => '2026-08-03', 'week' => 1, 'time' => '23:00',
+                'SessionDuration' => 30,
+            ]);
+            $target = $this->createCourse($student->id, 1);
+            $sessionId = $this->createClassSession((int) $source->ID, '2026-08-10');
+
+            // The course detail no longer exists, so this legacy schedule row
+            // cannot be a current student booking.
+            $this->createSchedule(999999999, $student->id, '2026-08-17', 'normal');
+
+            $this->postJson(
+                "/api/v1/student-classes/{$source->ID}/transfer-sessions",
+                ['session_ids' => [$sessionId], 'target_student_class_id' => $target->ID],
+                ['Authorization' => "Bearer {$token}"]
+            )->assertOk()->assertJsonPath('replenished_source_session_count', 1);
+
+            $this->assertDatabaseHas('ClassSession', [
+                'StudentClassID' => $source->ID, 'SessionDate' => '2026-08-17',
+                'StartTime' => '23:00:00', 'Status' => 'scheduled',
+            ]);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_does_not_replenish_when_source_was_already_over_capacity(): void
+    {
+        Carbon::setTestNow('2026-08-12 12:00:00');
+        try {
+            $token = $this->createDirectorToken([1]);
+            $student = $this->createStudent(1);
+            $source = $this->createCourse($student->id, 1, [
+                'StartDate' => '2026-08-03', 'week' => 1, 'time' => '23:00',
+                'SessionDuration' => 30, 'SessionCount' => 2,
+            ]);
+            $target = $this->createCourse($student->id, 1);
+            $this->createClassSession((int) $source->ID, '2026-08-03');
+            $sessionId = $this->createClassSession((int) $source->ID, '2026-08-10');
+            $this->createClassSession((int) $source->ID, '2026-08-17', 'scheduled');
+
+            $this->postJson(
+                "/api/v1/student-classes/{$source->ID}/transfer-sessions",
+                ['session_ids' => [$sessionId], 'target_student_class_id' => $target->ID],
+                ['Authorization' => "Bearer {$token}"]
+            )->assertOk()->assertJsonPath('replenished_source_session_count', 0);
+
+            $this->assertDatabaseMissing('ClassSession', [
+                'StudentClassID' => $source->ID,
+                'SessionDate' => '2026-08-24',
+            ]);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_transfer_rejects_target_that_would_exceed_count_capacity(): void
+    {
+        Carbon::setTestNow('2026-08-12 12:00:00');
+        try {
+            $token = $this->createDirectorToken([1]);
+            $student = $this->createStudent(1);
+            $source = $this->createCourse($student->id, 1);
+            $target = $this->createCourse($student->id, 1, [
+                'SessionCount' => 1,
+                'RemainingSessions' => 0,
+            ]);
+            $sessionId = $this->createClassSession((int) $source->ID, '2026-08-10');
+            $this->createClassSession((int) $target->ID, '2026-08-03', 'attended');
+
+            $this->postJson(
+                "/api/v1/student-classes/{$source->ID}/transfer-sessions",
+                ['session_ids' => [$sessionId], 'target_student_class_id' => $target->ID],
+                ['Authorization' => "Bearer {$token}"]
+            )->assertStatus(422)
+                ->assertJsonPath('code', 'target_capacity_exceeded')
+                ->assertJsonPath('target_session_count', 1)
+                ->assertJsonPath('target_committed_sessions', 1)
+                ->assertJsonPath('transfer_count', 1)
+                ->assertJsonPath('available_sessions', 0);
+
+            $this->assertSame(
+                (int) $source->ID,
+                (int) DB::table('ClassSession')->where('id', $sessionId)->value('StudentClassID')
+            );
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_transfer_ignores_target_scheduled_reservations_when_used_capacity_is_available(): void
+    {
+        Carbon::setTestNow('2026-08-12 12:00:00');
+        try {
+            $token = $this->createDirectorToken([1]);
+            $student = $this->createStudent(1);
+            $source = $this->createCourse($student->id, 1, [
+                'SessionCount' => 2,
+                'RemainingSessions' => 2,
+            ]);
+            $target = $this->createCourse($student->id, 1, [
+                'SessionCount' => 8,
+                'RemainingSessions' => 2,
+            ]);
+
+            foreach (['2026-07-06', '2026-07-13', '2026-07-20', '2026-07-27', '2026-08-03', '2026-08-10'] as $date) {
+                $this->createClassSession((int) $target->ID, $date, 'attended');
+            }
+            $futureSessionIds = [
+                $this->createClassSession((int) $target->ID, '2026-08-17', 'scheduled'),
+                $this->createClassSession((int) $target->ID, '2026-08-24', 'scheduled'),
+            ];
+            // Legacy RFID/ledger residue can mark a future reservation as
+            // deducted. It is not a completed lesson and must not consume
+            // transfer capacity.
+            foreach ($futureSessionIds as $futureSessionId) {
+                DB::table('StudentSingIn')->insert([
+                    'StudentClassID' => $target->ID,
+                    'ClassSessionID' => $futureSessionId,
+                    'StudentID' => $student->id,
+                    'TeacherID' => 1,
+                    'Status' => 'present',
+                    'SessionDeducted' => 1,
+                    'SignInDT' => now(),
+                ]);
+                SessionDeductionLedger::create([
+                    'student_class_id' => $target->ID,
+                    'class_session_id' => $futureSessionId,
+                    'event_type' => 'deduct',
+                    'source' => 'attendance',
+                ]);
+            }
+            $firstTransferredId = $this->createClassSession((int) $source->ID, '2026-08-12');
+            $secondTransferredId = $this->createClassSession((int) $source->ID, '2026-08-11');
+
+            $response = $this->postJson(
+                "/api/v1/student-classes/{$source->ID}/transfer-sessions",
+                [
+                    'session_ids' => [$firstTransferredId, $secondTransferredId],
+                    'target_student_class_id' => $target->ID,
+                ],
+                ['Authorization' => "Bearer {$token}"]
+            );
+            $response->assertOk();
+            $this->assertEqualsCanonicalizing(
+                [$firstTransferredId, $secondTransferredId],
+                $response->json('transferred_session_ids')
+            );
+
+            $target->refresh();
+            $this->assertSame(8, (int) $target->UsedSessions);
+            $this->assertSame(2, (int) DB::table('ClassSession')
+                ->where('StudentClassID', $target->ID)
+                ->where('Status', 'scheduled')
+                ->count());
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_transfer_ignores_future_attendance_residue_and_keeps_target_at_capacity(): void
+    {
+        Carbon::setTestNow('2026-09-03 12:00:00');
+        try {
+            $token = $this->createDirectorToken([1]);
+            $student = $this->createStudent(1);
+            $source = $this->createCourse($student->id, 1, [
+                'SessionCount' => 2,
+                'RemainingSessions' => 2,
+            ]);
+            $target = $this->createCourse($student->id, 1, [
+                'SessionCount' => 8,
+                'RemainingSessions' => 2,
+            ]);
+
+            foreach (range(1, 6) as $day) {
+                $this->createClassSession((int) $target->ID, "2026-08-{$day}", 'attended');
+            }
+            foreach (['2026-09-10', '2026-09-17'] as $date) {
+                $futureId = $this->createClassSession((int) $target->ID, $date, 'attended');
+                DB::table('StudentSingIn')->insert([
+                    'StudentClassID' => $target->ID,
+                    'ClassSessionID' => $futureId,
+                    'StudentID' => $student->id,
+                    'TeacherID' => 1,
+                    'Status' => 'present',
+                    'SessionDeducted' => 1,
+                    'SignInDT' => now(),
+                ]);
+                SessionDeductionLedger::create([
+                    'student_class_id' => $target->ID,
+                    'class_session_id' => $futureId,
+                    'event_type' => 'deduct',
+                    'source' => 'attendance',
+                ]);
+            }
+
+            $firstTransferredId = $this->createClassSession((int) $source->ID, '2026-08-20');
+            $secondTransferredId = $this->createClassSession((int) $source->ID, '2026-08-21');
+
+            $this->postJson(
+                "/api/v1/student-classes/{$source->ID}/transfer-sessions",
+                [
+                    'session_ids' => [$firstTransferredId, $secondTransferredId],
+                    'target_student_class_id' => $target->ID,
+                ],
+                ['Authorization' => "Bearer {$token}"]
+            )->assertOk();
+
+            $target->refresh();
+            $this->assertSame(8, (int) $target->UsedSessions);
+            $this->assertSame(0, (int) $target->RemainingSessions);
+            $this->assertSame(2, (int) DB::table('ClassSession')
+                ->where('StudentClassID', $target->ID)
+                ->where('Status', 'attended')
+                ->whereDate('SessionDate', '>', '2026-09-03')
+                ->count());
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_session_dates_does_not_project_future_reservations_after_count_capacity_is_used(): void
+    {
+        Carbon::setTestNow('2026-09-03 12:00:00');
+        try {
+            $token = $this->createDirectorToken([1]);
+            $student = $this->createStudent(1);
+            $course = $this->createCourse($student->id, 1);
+            foreach (range(1, 8) as $offset) {
+                $this->createClassSession(
+                    (int) $course->ID,
+                    Carbon::parse('2026-08-01')->addDays($offset)->toDateString()
+                );
+            }
+            $this->createClassSession((int) $course->ID, '2026-09-10', 'scheduled');
+
+            $res = $this->postJson('/api/v1/student-classes/session-dates', [
+                'branch_id' => 1,
+                'range_start' => '2026-08-01',
+                'range_end' => '2026-09-30',
+                'courses' => [[
+                    'id' => $course->ID,
+                    'first_class_date' => '2026-08-01',
+                    'sessions_purchased' => 8,
+                    'days_of_week' => [1],
+                ]],
+            ], ['Authorization' => "Bearer {$token}"]);
+
+            $res->assertOk();
+            $payload = $res->json((string) $course->ID);
+            $this->assertCount(8, $payload['materialized']);
+            $this->assertCount(0, $payload['projected']);
+            $this->assertNotContains('2026-09-10', collect($payload['materialized'])->pluck('date')->all());
         } finally {
             Carbon::setTestNow();
         }
@@ -572,6 +972,18 @@ class StudentClassTransferSessionsTest extends TestCase
             'EndTime' => '23:30',
             'Status' => $status,
         ]);
+    }
+
+    private function createSchedule(int $courseId, int $studentId, string $date, string $type): int
+    {
+        return (int) Schedule::create([
+            'student_id' => $studentId, 'teacher_id' => 2, 'subject' => '數學',
+            'day_of_week' => Carbon::parse($date)->dayOfWeekIso,
+            'start_time' => '23:00', 'end_time' => '23:30', 'duration_hours' => 0.5,
+            'class_type' => 'one_on_one', 'status' => 'scheduled', 'type' => $type,
+            'deduction' => 1, 'branch_id' => 1, 'schedule_date' => $date,
+            'student_course_id' => $courseId,
+        ])->id;
     }
 
     private function createLearningRecord(int $courseId, int $sessionId): void

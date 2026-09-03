@@ -275,6 +275,10 @@ class ClassSessionController extends Controller
             $campusIds = [$requestedCampus];
         }
 
+        $attendanceAsOf = Carbon::now();
+        $attendanceAsOfDate = $attendanceAsOf->toDateString();
+        $attendanceAsOfTime = $attendanceAsOf->format('H:i:s');
+
         $query = DB::table('ClassSession as cs')
             ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
             ->join('Student as s', 's.id', '=', 'sc.StudentID')
@@ -320,12 +324,6 @@ class ClassSessionController extends Controller
                 'cs.EndTime',
                 'cs.Status',
                 'cs.IsContractException',
-                DB::raw("CASE
-                    WHEN si.id IS NOT NULL AND LOWER(cs.Status) IN ('scheduled','absent') AND LOWER(si.Status) = 'present' THEN 'attended'
-                    WHEN si.id IS NOT NULL AND LOWER(cs.Status) IN ('scheduled','absent') AND LOWER(si.Status) = 'late' THEN 'late'
-                    WHEN si.id IS NOT NULL AND LOWER(cs.Status) IN ('scheduled','absent') AND LOWER(si.Status) IN ('leave','excused') THEN 'leave'
-                    ELSE cs.Status
-                END AS effective_status"),
                 'cs.Note',
                 'cs.session_charge',
                 'sc.StudentID',
@@ -350,6 +348,29 @@ class ClassSessionController extends Controller
                 DB::raw('EXISTS (SELECT 1 FROM LearningRecord lr_history WHERE lr_history.ClassSessionID = cs.id) as learning_record_history'),
                 DB::raw('EXISTS (SELECT 1 FROM StudentSingIn si_history WHERE si_history.ClassSessionID = cs.id) as attendance_history'),
             ]);
+
+        // Use the application's Taipei clock rather than the DB server clock.
+        // Production DBs may run in UTC; CURRENT_DATE/CURRENT_TIME therefore
+        // made a Taiwan "today" session look like a future reservation. Future
+        // scheduled rows still remain scheduled until their slot has ended.
+        $query->selectRaw(
+            "CASE
+                WHEN si.id IS NOT NULL AND LOWER(cs.Status) IN ('scheduled','absent')
+                    AND (
+                        cs.SessionDate < ?
+                        OR (cs.SessionDate = ? AND cs.EndTime <= ?)
+                        OR COALESCE(si.SessionDeducted, 0) = 0
+                    )
+                THEN CASE
+                    WHEN LOWER(si.Status) = 'present' THEN 'attended'
+                    WHEN LOWER(si.Status) = 'late' THEN 'late'
+                    WHEN LOWER(si.Status) IN ('leave','excused') THEN 'leave'
+                    ELSE cs.Status
+                END
+                ELSE cs.Status
+            END AS effective_status",
+            [$attendanceAsOfDate, $attendanceAsOfDate, $attendanceAsOfTime]
+        );
 
         if ($role === 'teacher') {
             $query->where(function ($q) use ($teacherId) {
@@ -429,8 +450,18 @@ class ClassSessionController extends Controller
 
         if ($request->boolean('exclude_history_future')) {
             $query->whereRaw(
-                "NOT ((COALESCE(sc.Stop, 0) = 1 OR LOWER(COALESCE(sc.closed_reason, '')) IN ('settled', 'completed', 'usage_settled')) AND cs.SessionDate > ? AND LOWER(cs.Status) IN ('scheduled', 'rescheduled'))",
-                [Carbon::today()->toDateString()]
+                "NOT (
+                    ((COALESCE(sc.Stop, 0) = 1 OR LOWER(COALESCE(sc.closed_reason, '')) IN ('settled', 'completed', 'usage_settled'))
+                        AND cs.SessionDate > ? AND LOWER(cs.Status) IN ('scheduled', 'rescheduled'))
+                    OR (LOWER(COALESCE(sc.ScheduleMode, 'count')) = 'count'
+                        AND COALESCE(sc.SessionCount, 0) > 0
+                        AND cs.SessionDate > ?
+                        AND LOWER(cs.Status) IN ('scheduled', 'rescheduled')
+                        AND (SELECT COUNT(*) FROM ClassSession AS used_cs
+                             WHERE used_cs.StudentClassID = cs.StudentClassID
+                               AND LOWER(used_cs.Status) IN ('completed', 'attended', 'late')) >= sc.SessionCount)
+                )",
+                [Carbon::today()->toDateString(), Carbon::today()->toDateString()]
             );
         }
 

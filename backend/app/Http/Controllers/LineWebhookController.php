@@ -7,6 +7,7 @@ use App\Models\StudentLineBinding;
 use App\Models\SecurityAuditEvent;
 use App\Models\SystemSetting;
 use App\Services\ParentBinding\ParentBindingObservability;
+use App\Services\ParentBinding\GuardianSyncService;
 use App\Support\ParentBinding\ParentBindingCodes;
 use App\Support\StudentContactPhone;
 use Illuminate\Http\Request;
@@ -291,8 +292,18 @@ class LineWebhookController extends Controller
             ],
             ['method' => 'line_webhook', 'verification_method' => 'contact_phone']
         );
-        // Keep Student.LineID in sync for backward compatibility
-        $student->update(['LineID' => $lineUserId]);
+        // Canonical parent LINE identity is student_line_bindings (multi-parent).
+        // Do not overwrite legacy Student.LineID — last-writer-wins misleads when
+        // dad and mom both bind the same student.
+        try {
+            app(GuardianSyncService::class)->linkFromLineBinding($student, $lineUserId, (int) $binding->getKey());
+        } catch (\Throwable $e) {
+            Log::warning('guardian.dual_write.line_bind_failed', [
+                'student_id' => (int) $student->getKey(),
+                'binding_id' => (int) $binding->getKey(),
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     private function isAlreadyBound(int $studentId, string $lineUserId): bool

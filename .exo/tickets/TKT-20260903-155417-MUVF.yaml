@@ -1,0 +1,41 @@
+id: TKT-20260903-155417-MUVF
+title: Deliver contract-period ghost conflict fix
+intent: Deliver contract-period ghost conflict fix
+kind: task
+parent_id: INT-20260829-110018-M2ZO
+boundary: No production data mutation; preserve effective-period active conflict validation.
+success_condition: Transfer of historical sessions succeeds when only out-of-period
+  residue exists; active in-period conflicts remain blocked; CI, merge, deploy, and
+  read-only production verification complete.
+priority: 1
+labels:
+- bug
+scope:
+  allow:
+  - backend/app/Services/ClassSessionMaterializationService.php
+  - backend/tests/Feature/StudentClassTransferSessionsTest.php
+  - .agent-session/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/policy.sealed.json
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 2
+  max_loc_changed: 120
+checks:
+- bash scripts/phpunit-isolated.sh
+type: feature
+status: review
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-03T15:54:17+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default
+commits:
+- 2a190b7e51a8b2928346ae591e4f77c4af8e6352
