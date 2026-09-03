@@ -1,0 +1,47 @@
+id: INT-20260903-100227-IBX6
+title: Characterize CourseManagement purchase and monthly-renewal flows
+intent: Characterize CourseManagement purchase and monthly-renewal flows
+kind: intent
+brain_dump: 'For GitHub issue #968, add only frontend characterization tests for the
+  existing purchase-batch and renew-monthly action contracts in CourseManagement.vue.
+  Preserve current behavior; no application code, API, billing semantics, production,
+  or data changes.'
+boundary: Only add the focused frontend test file and Exo/session provenance artifacts.
+  Do not modify CourseManagement.vue, billing logic, API routes, generated docs, production,
+  credentials, or data.
+success_condition: Focused tests assert existing auth, validation, endpoint, payload,
+  loading guard, and reload contracts for purchase-batch and renew-monthly; npm run
+  test:unit, npm run lint:no-undef, npm run build, diff check, and governed push pass.
+risk: low
+priority: 2
+labels:
+- issue-968
+scope:
+  allow:
+  - frontend/src/components/__tests__/CourseManagementHighRiskFlows.test.js
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - backend/**
+  - frontend/src/pages/**
+  - .github/workflows/**
+budgets:
+  max_files_changed: 2
+  max_loc_changed: 140
+checks:
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-03T10:02:27+08:00'
+children:
+- TKT-20260903-100236-XZWH
+resource_profile: default

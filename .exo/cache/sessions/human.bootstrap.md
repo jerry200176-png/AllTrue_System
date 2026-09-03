@@ -1,35 +1,35 @@
 ╔══════════════════════════════════════════════════════╗
 ║  >>> EXO GOVERNED SESSION                            ║
 ║  protocol: ExoProtocol v1 | mode: work               ║
-║  ticket: TKT-20260901-045848-UJSJ | actor: human     ║
-║  model: codex                                        ║
-║  branch: feat/TKT-20260901-045848-UJSJ               ║
+║  ticket: TKT-20260903-100236-XZWH | actor: human     ║
+║  model: gpt-5                                        ║
+║  branch: chore/task-968-course-characterization-purchase-renew-20260903║
 ╚══════════════════════════════════════════════════════╝
 
 # Exo Agent Session Bootstrap
 
-session_id: SES-20260901045942-87630ED6
+session_id: SES-20260903100243-2C24BDA2
 actor: human
-vendor: openai
-model: codex
+vendor: codex
+model: gpt-5
 mode: work
 context_window_tokens: unknown
-ticket_id: TKT-20260901-045848-UJSJ
-ticket_title: P1 historical course usage reconciliation visibility
+ticket_id: TKT-20260903-100236-XZWH
+ticket_title: Add purchase and monthly-renewal characterization tests for #968
 ticket_status: todo
-ticket_priority: 1
+ticket_priority: 2
 topic_id: repo:default
 lock_owner: human
-git_branch: feat/TKT-20260901-045848-UJSJ
-lock_branch: feat/TKT-20260901-045848-UJSJ
-lock_expires_at: 2026-09-01T08:59:42+08:00
+git_branch: chore/task-968-course-characterization-purchase-renew-20260903
+lock_branch: codex/TKT-20260903-100236-XZWH
+lock_expires_at: 2026-09-03T12:02:42+08:00
 
 ## Scope
-- allow: ["frontend/src/pages/CourseManagement.vue", "frontend/src/components/__tests__/CourseManagementLensUx.test.js", "frontend/src/lib/courseRowWarnings.js", "frontend/src/lib/courseRowWarnings.test.js", "docs/CHANGELOG.md", "docs/STAFF_UPDATES.yml", "frontend/src/lib/changelogDraft.generated.js", "frontend/src/lib/staffUpdates.generated.js", ".agent-session/manifest.json", ".exo/cache/**", ".exo/memory/**", ".exo/locks/**", ".exo/tickets/**", ".exo/logs/**"]
-- deny: ["backend/**", "**/.env*"]
+- allow: ["frontend/src/components/__tests__/CourseManagementHighRiskFlows.test.js", ".exo/cache/**", ".exo/memory/**", ".exo/locks/**", ".exo/tickets/**", ".exo/logs/**"]
+- deny: ["backend/**", "frontend/src/pages/**", ".github/workflows/**"]
 
 ## Checks
-- ["npm run test:unit", "npm run build"]
+- ["npm run test:unit", "npm run lint:no-undef", "npm run build"]
 
 ## Git Workflow
 - Before pushing, rebase on base branch: `git pull --rebase origin main`
@@ -38,10 +38,15 @@ lock_expires_at: 2026-09-01T08:59:42+08:00
 
 ## Machine Context
 - cpu_cores: 12
-- load_avg_1m: 0.2
-- ram: 3.4GB available / 4.8GB total
+- load_avg_1m: 7.6
+- ram: 0.5GB available / 4.8GB total
+
+## Sibling Sessions (other agents working concurrently)
+- agent:codex: ticket=TKT-20260903-020040-CO1K on chore/task-fix-remove-fixed-slot-conflict-20260902 (session=SES-20260903020112-8495332B, age=8.0h)
 
 ## Start Advisories
+- [WARNING] agent:codex working on TKT-20260903-020040-CO1K on chore/task-fix-remove-fixed-slot-conflict-20260902 — overlapping scope: frontend/src/**, frontend/src/components/**, .exo/cache/**, .exo/**, .exo/memory/**, .exo/locks/**, .exo/tickets/**, .exo/logs/**
+- [WARNING] System under load (RAM 0.5GB available). Prefer sequential execution. 1 sibling session(s) also running.
 - [INFO] Unmerged work on branch chore/task-bug247-dump-refresh-20260831 (ticket=TKT-20260831-080838-ENZB, actor=human) — Refresh paired read-only evidence requests for in-app bug 247 after restoring ma
 - [INFO] Unmerged work on branch chore/task-bug247-evidence-refresh-20260831 (ticket=TKT-20260831-073322-7VYG, actor=human) — Refreshed the paired read-only bug dump requests for in-app bug 247, corrected t
 - [INFO] Unmerged work on branch chore/task-smart-calendar-room-form-a11y-20260831 (ticket=TKT-20260831-015607-L7IS, actor=human) — Added explicit accessible names to the SmartCalendar director room-manager name 
@@ -112,10 +117,10 @@ After building a reusable utility, REGISTER it:
 - `scripts.check-eslint-unused-baseline.mjs:main`: Run the frontend no-unused-vars per-file baseline ratchet and fail only on newly added debt
 
 ## Current Task
-修正 CourseManagement 歷史課程卡遺漏堂數待對帳標籤；只做 frontend bounded visibility change，補回歸測試與精簡 release note，不改 backend、付款、出勤、扣堂或 production data。
+Add test-only CourseManagement purchase and monthly-renewal characterization coverage for #968
 
 ## Lifecycle Commands
-- heartbeat: EXO_ACTOR=human python3 -m exo.cli lease-heartbeat --ticket-id TKT-20260901-045848-UJSJ --owner human
+- heartbeat: EXO_ACTOR=human python3 -m exo.cli lease-heartbeat --ticket-id TKT-20260903-100236-XZWH --owner human
 - run worker once: EXO_ACTOR=human python3 -m exo.cli worker-poll --require-session --limit 50
 - suspend: EXO_ACTOR=human python3 -m exo.cli session-suspend --reason "<why pausing>"
-- finish: EXO_ACTOR=human python3 -m exo.cli session-finish --summary "<what changed>" --set-status review --ticket-id TKT-20260901-045848-UJSJ
+- finish: EXO_ACTOR=human python3 -m exo.cli session-finish --summary "<what changed>" --set-status review --ticket-id TKT-20260903-100236-XZWH
