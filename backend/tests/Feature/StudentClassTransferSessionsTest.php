@@ -640,6 +640,43 @@ class StudentClassTransferSessionsTest extends TestCase
         }
     }
 
+    public function test_session_dates_does_not_project_future_reservations_after_count_capacity_is_used(): void
+    {
+        Carbon::setTestNow('2026-09-03 12:00:00');
+        try {
+            $token = $this->createDirectorToken([1]);
+            $student = $this->createStudent(1);
+            $course = $this->createCourse($student->id, 1);
+            foreach (range(1, 8) as $offset) {
+                $this->createClassSession(
+                    (int) $course->ID,
+                    Carbon::parse('2026-08-01')->addDays($offset)->toDateString()
+                );
+            }
+            $this->createClassSession((int) $course->ID, '2026-09-10', 'scheduled');
+
+            $res = $this->postJson('/api/v1/student-classes/session-dates', [
+                'branch_id' => 1,
+                'range_start' => '2026-08-01',
+                'range_end' => '2026-09-30',
+                'courses' => [[
+                    'id' => $course->ID,
+                    'first_class_date' => '2026-08-01',
+                    'sessions_purchased' => 8,
+                    'days_of_week' => [1],
+                ]],
+            ], ['Authorization' => "Bearer {$token}"]);
+
+            $res->assertOk();
+            $payload = $res->json((string) $course->ID);
+            $this->assertCount(8, $payload['materialized']);
+            $this->assertCount(0, $payload['projected']);
+            $this->assertNotContains('2026-09-10', collect($payload['materialized'])->pluck('date')->all());
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     public function test_recovers_evidence_backed_cancelled_session_and_transfers_all_artifacts(): void
     {
         $token = $this->createDirectorToken([1]);

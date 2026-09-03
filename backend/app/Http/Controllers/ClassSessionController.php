@@ -321,9 +321,15 @@ class ClassSessionController extends Controller
                 'cs.Status',
                 'cs.IsContractException',
                 DB::raw("CASE
-                    WHEN si.id IS NOT NULL AND LOWER(cs.Status) IN ('scheduled','absent') AND LOWER(si.Status) = 'present' THEN 'attended'
-                    WHEN si.id IS NOT NULL AND LOWER(cs.Status) IN ('scheduled','absent') AND LOWER(si.Status) = 'late' THEN 'late'
-                    WHEN si.id IS NOT NULL AND LOWER(cs.Status) IN ('scheduled','absent') AND LOWER(si.Status) IN ('leave','excused') THEN 'leave'
+                    WHEN si.id IS NOT NULL AND LOWER(cs.Status) IN ('scheduled','absent')
+                        AND (cs.SessionDate < CURRENT_DATE OR (cs.SessionDate = CURRENT_DATE AND cs.EndTime <= CURRENT_TIME))
+                        AND LOWER(si.Status) = 'present' THEN 'attended'
+                    WHEN si.id IS NOT NULL AND LOWER(cs.Status) IN ('scheduled','absent')
+                        AND (cs.SessionDate < CURRENT_DATE OR (cs.SessionDate = CURRENT_DATE AND cs.EndTime <= CURRENT_TIME))
+                        AND LOWER(si.Status) = 'late' THEN 'late'
+                    WHEN si.id IS NOT NULL AND LOWER(cs.Status) IN ('scheduled','absent')
+                        AND (cs.SessionDate < CURRENT_DATE OR (cs.SessionDate = CURRENT_DATE AND cs.EndTime <= CURRENT_TIME))
+                        AND LOWER(si.Status) IN ('leave','excused') THEN 'leave'
                     ELSE cs.Status
                 END AS effective_status"),
                 'cs.Note',
@@ -429,8 +435,18 @@ class ClassSessionController extends Controller
 
         if ($request->boolean('exclude_history_future')) {
             $query->whereRaw(
-                "NOT ((COALESCE(sc.Stop, 0) = 1 OR LOWER(COALESCE(sc.closed_reason, '')) IN ('settled', 'completed', 'usage_settled')) AND cs.SessionDate > ? AND LOWER(cs.Status) IN ('scheduled', 'rescheduled'))",
-                [Carbon::today()->toDateString()]
+                "NOT (
+                    ((COALESCE(sc.Stop, 0) = 1 OR LOWER(COALESCE(sc.closed_reason, '')) IN ('settled', 'completed', 'usage_settled'))
+                        AND cs.SessionDate > ? AND LOWER(cs.Status) IN ('scheduled', 'rescheduled'))
+                    OR (LOWER(COALESCE(sc.ScheduleMode, 'count')) = 'count'
+                        AND COALESCE(sc.SessionCount, 0) > 0
+                        AND cs.SessionDate > ?
+                        AND LOWER(cs.Status) IN ('scheduled', 'rescheduled')
+                        AND (SELECT COUNT(*) FROM ClassSession AS used_cs
+                             WHERE used_cs.StudentClassID = cs.StudentClassID
+                               AND LOWER(used_cs.Status) IN ('completed', 'attended', 'late')) >= sc.SessionCount)
+                )",
+                [Carbon::today()->toDateString(), Carbon::today()->toDateString()]
             );
         }
 
