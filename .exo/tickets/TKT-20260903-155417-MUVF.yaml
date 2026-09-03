@@ -14,9 +14,11 @@ scope:
   allow:
   - backend/app/Services/ClassSessionMaterializationService.php
   - backend/tests/Feature/StudentClassTransferSessionsTest.php
+  - .agent-session/**
   - .exo/cache/**
   - .exo/memory/**
   - .exo/locks/**
+  - .exo/policy.sealed.json
   - .exo/tickets/**
   - .exo/logs/**
   deny: []
@@ -26,7 +28,7 @@ budgets:
 checks:
 - bash scripts/phpunit-isolated.sh
 type: feature
-status: todo
+status: review
 spec_ref: null
 notes: []
 blockers: []
@@ -35,3 +37,5 @@ brain_dump: ''
 risk: medium
 children: []
 resource_profile: default
+commits:
+- 2a190b7e51a8b2928346ae591e4f77c4af8e6352
