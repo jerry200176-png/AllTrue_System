@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.03",
     "date": "2026-09-03",
     "title": "2026.09.03 草稿（未發布）",
-    "summary": "Portal multi-guardian dual-read authZ；學生管理多家長 CRUD（flag 閘控）",
+    "summary": "Guardian canonical Portal cutover；Portal multi-guardian dual-read authZ",
     "audience": [
       "teacher",
       "director"
@@ -18,6 +18,7 @@ export const changelogDraftNotes = [
       {
         "title": "新增內容",
         "items": [
+          "Guardian canonical Portal cutover",
           "Portal multi-guardian dual-read authZ",
           "學生管理多家長 CRUD（flag 閘控）",
           "多 Guardian 加法模型與雙寫雙讀（dark launch）"
@@ -28,13 +29,21 @@ export const changelogDraftNotes = [
         "items": [
           "多家長 LINE 綁定通知與偏好一致性"
         ]
+      },
+      {
+        "title": "其他改善",
+        "items": [
+          "Guardian 正式版（Staff CRUD + Portal authZ + cutover）"
+        ]
       }
     ],
     "items": [
+      "Guardian canonical Portal cutover",
       "Portal multi-guardian dual-read authZ",
       "學生管理多家長 CRUD（flag 閘控）",
       "多 Guardian 加法模型與雙寫雙讀（dark launch）",
-      "多家長 LINE 綁定通知與偏好一致性"
+      "多家長 LINE 綁定通知與偏好一致性",
+      "Guardian 正式版（Staff CRUD + Portal authZ + cutover）"
     ]
   },
   {

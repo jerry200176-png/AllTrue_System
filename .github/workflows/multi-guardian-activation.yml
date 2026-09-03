@@ -8,6 +8,7 @@ name: Multi-Guardian Activation (Founder-gated)
 #   dry_run          — read-only backfill plan
 #   apply_backfill   — ALLOW_PROD_REPAIR write (confirm phrase + expected SHA)
 #   verify           — missing / multi-primary / phone mismatch integrity
+#   verify           — also runs guardians:cutover-audit (SLB orphans)
 #   enable_flag      — PERF_MULTI_GUARDIAN=true (reversible; confirm + SHA)
 #   disable_flag     — PERF_MULTI_GUARDIAN=false (primary rollback)
 #   staff_acceptance — authenticated staff guardian CRUD + legacy parent_phone intact
@@ -85,7 +86,7 @@ jobs:
             *)
               echo "::error::Unknown action: $ACTION"; exit 1
               ;;
-          esac
+            esac
           if [ "$need_sha" = "1" ]; then
             printf '%s' "$EXPECTED_HEAD_SHA" | grep -Eq '^[0-9a-f]{40}$' || {
               echo "::error::expected_head_sha must be exact 40-char hex"
@@ -204,8 +205,10 @@ jobs:
           cd /home/admin/backend
           echo "head=$(git -C /home/admin rev-parse HEAD)"
           php artisan guardians:sync-from-legacy --verify "--limit=${LIMIT}"
+          php artisan guardians:cutover-audit "--limit=${LIMIT}"
           ENDSSH
           grep -q 'VERIFY_OK' /tmp/mg-verify.txt
+          grep -q 'CUTOVER_AUDIT_OK' /tmp/mg-verify.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:

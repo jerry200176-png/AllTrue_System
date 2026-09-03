@@ -4,6 +4,17 @@
  */
 export const parentUpdates = [
   {
+    "id": "parent-update-2026-09-03-multi-guardian",
+    "kind": "improvement",
+    "title": "多位家長可各自登入",
+    "summary": "同一位學生的爸爸、媽媽或其他監護人可各自用自己的 LINE 或手機進入家長入口，並切換查看其他子女。",
+    "details": "若校方解除您的監護關係，您將無法再登入該學生資料。課表、請假與學習內容的操作方式不變。",
+    "publishedAt": "2026-09-03",
+    "expiresAt": "2026-10-03",
+    "date": "2026-09-03",
+    "version": "2026.09.03"
+  },
+  {
     "id": "parent-update-2026-08-20-attention-summary",
     "kind": "improvement",
     "title": "首頁先告訴您需要留意的事",

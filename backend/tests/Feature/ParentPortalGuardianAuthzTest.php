@@ -303,4 +303,118 @@ class ParentPortalGuardianAuthzTest extends TestCase
         $session->refresh();
         $this->assertTrue($session->ExpiresAt->gt(now()), 'phone-login sessions must survive phoneless guardian revoke');
     }
+
+    public function test_revoke_unverifies_matching_slb(): void
+    {
+        config(['perfflags.multi_guardian_enabled' => true]);
+        $line = $this->lineId('a');
+        $child = $this->student();
+        $guardian = Guardian::create(['display_name' => '爸', 'line_user_id' => $line]);
+        $link = StudentGuardian::create([
+            'student_id' => $child->id,
+            'guardian_id' => $guardian->id,
+            'campus_id' => 1,
+            'role' => StudentGuardian::ROLE_FATHER,
+            'is_primary' => true,
+            'status' => StudentGuardian::STATUS_ACTIVE,
+            'notify_learning_feedback' => true,
+            'notify_tuition' => true,
+            'source' => StudentGuardian::SOURCE_STAFF,
+        ]);
+        StudentLineBinding::create([
+            'student_id' => $child->id,
+            'line_user_id' => $line,
+            'campus_id' => 1,
+            'verified_at' => now(),
+            'bound_at' => now(),
+        ]);
+
+        app(GuardianSyncService::class)->revoke($link->fresh(['guardian']));
+
+        $this->assertNull(
+            StudentLineBinding::query()->where('student_id', $child->id)->where('line_user_id', $line)->value('verified_at')
+        );
+        $this->assertFalse(app(ParentGuardianAccessService::class)->lineMayAccessStudent($line, (int) $child->id));
+    }
+
+    public function test_canonical_ignores_slb_only_sibling_when_guardian_exists(): void
+    {
+        config(['perfflags.multi_guardian_enabled' => true]);
+        $line = $this->lineId('b');
+        $linked = $this->student(['name' => '有連結']);
+        $slbOnly = $this->student(['name' => '僅SLB']);
+        $guardian = Guardian::create(['display_name' => '爸', 'line_user_id' => $line]);
+        StudentGuardian::create([
+            'student_id' => $linked->id,
+            'guardian_id' => $guardian->id,
+            'campus_id' => 1,
+            'role' => StudentGuardian::ROLE_FATHER,
+            'is_primary' => true,
+            'status' => StudentGuardian::STATUS_ACTIVE,
+            'notify_learning_feedback' => true,
+            'notify_tuition' => true,
+            'source' => StudentGuardian::SOURCE_STAFF,
+        ]);
+        foreach ([$linked, $slbOnly] as $child) {
+            StudentLineBinding::create([
+                'student_id' => $child->id,
+                'line_user_id' => $line,
+                'campus_id' => 1,
+                'verified_at' => now(),
+                'bound_at' => now(),
+            ]);
+        }
+
+        $svc = app(ParentGuardianAccessService::class);
+        $this->assertTrue($svc->lineMayAccessStudent($line, (int) $linked->id));
+        $this->assertFalse($svc->lineMayAccessStudent($line, (int) $slbOnly->id));
+    }
+
+    public function test_secondary_guardian_phone_login_match(): void
+    {
+        config(['perfflags.multi_guardian_enabled' => true]);
+        $child = $this->student(['parent_phone' => '0912111000']);
+        $dad = Guardian::create([
+            'display_name' => '爸',
+            'phone' => '0912111000',
+            'phone_normalized' => '0912111000',
+        ]);
+        $mom = Guardian::create([
+            'display_name' => '媽',
+            'phone' => '0912222000',
+            'phone_normalized' => '0912222000',
+        ]);
+        foreach ([$dad, $mom] as $i => $g) {
+            StudentGuardian::create([
+                'student_id' => $child->id,
+                'guardian_id' => $g->id,
+                'campus_id' => 1,
+                'role' => $i === 0 ? StudentGuardian::ROLE_FATHER : StudentGuardian::ROLE_MOTHER,
+                'is_primary' => $i === 0,
+                'status' => StudentGuardian::STATUS_ACTIVE,
+                'notify_learning_feedback' => true,
+                'notify_tuition' => true,
+                'source' => StudentGuardian::SOURCE_STAFF,
+            ]);
+        }
+
+        $this->assertTrue(\App\Support\StudentContactPhone::matchesNormalizedInput($child, '0912222000'));
+        $this->assertFalse(\App\Support\StudentContactPhone::matchesNormalizedInput($child, '0912333000'));
+    }
+
+    public function test_find_or_create_does_not_steal_line_across_guardians(): void
+    {
+        config(['perfflags.multi_guardian_enabled' => true]);
+        $child = $this->student(['parent_phone' => '0912444555']);
+        $dadLine = $this->lineId('d');
+        $momLine = $this->lineId('e');
+        $sync = app(GuardianSyncService::class);
+        $dadLink = $sync->linkFromLineBinding($child, $dadLine, 101);
+        $momLink = $sync->linkFromLineBinding($child, $momLine, 102);
+        $this->assertNotNull($dadLink);
+        $this->assertNotNull($momLink);
+        $this->assertNotSame((int) $dadLink->guardian_id, (int) $momLink->guardian_id);
+        $this->assertSame($dadLine, $dadLink->guardian->line_user_id);
+        $this->assertSame($momLine, $momLink->guardian->line_user_id);
+    }
 }

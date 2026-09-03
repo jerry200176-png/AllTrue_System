@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-03-multi-guardian-cutover
+    changelog_date: "2026-09-03"
+    changelog_title: "feat(parent): Multi-Guardian canonical Portal cutover"
+    reason: 家長 Portal 授權路徑與 revoke/SLB  hardening；教職員公告已由 GA release notes 覆蓋。rollback 為關 PERF_MULTI_GUARDIAN。
+
   - id: silent-2026-09-03-multi-guardian-portal-authz
     changelog_date: "2026-09-03"
     changelog_title: "feat(parent): Parent Portal multi-guardian dual-read authZ"

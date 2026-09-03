@@ -13,6 +13,7 @@ use App\Models\StudentIdentityMember;
 use App\Support\StudentContactPhone;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Models\StudentGuardian;
 use App\Models\StudentLineBinding;
 use App\Models\SecurityAuditEvent;
 use App\Models\StudentSignIn;
@@ -87,16 +88,17 @@ class ParentPortalController extends Controller
 
         if ($hasStudentId) {
             $candidate = Student::find((int) $data['StudentID']);
-            if ($candidate && empty(trim($this->resolveContactPhone($candidate)))) {
-                $obs->observe($cid, ParentBindingCodes::CHANNEL_PORTAL, $method, $obs->classifier()->classifyPortalStudentId($candidate, $phoneNorm, $rawName), $phoneNorm);
-                return response()->json(['message' => '此學生尚未設定聯絡手機，請聯繫分校補登後再登入'], 401);
-            }
-            $contactPhone = $candidate ? $this->resolveContactPhone($candidate) : '';
             if ($candidate
-                && !empty($contactPhone)
-                && $this->normalizePhone($contactPhone) === $phoneNorm
+                && StudentContactPhone::matchesNormalizedInput($candidate, $phoneNorm)
                 && ($rawName === '' || trim((string) $candidate->name) === $rawName)) {
                 $student = $candidate;
+            } elseif ($candidate && empty(trim($this->resolveContactPhone($candidate)))
+                && !StudentGuardian::activeAccess()
+                    ->where('student_id', (int) $candidate->id)
+                    ->whereHas('guardian', fn ($q) => $q->whereNotNull('phone_normalized')->where('phone_normalized', '!=', ''))
+                    ->exists()) {
+                $obs->observe($cid, ParentBindingCodes::CHANNEL_PORTAL, $method, $obs->classifier()->classifyPortalStudentId($candidate, $phoneNorm, $rawName), $phoneNorm);
+                return response()->json(['message' => '此學生尚未設定聯絡手機，請聯繫分校補登後再登入'], 401);
             }
         } else {
             $allByName = Student::whereRaw('TRIM(name) = ?', [$rawName])->get();
@@ -110,8 +112,7 @@ class ParentPortalController extends Controller
             ]);
             $candidates = $allByName
                 ->filter(function ($s) use ($phoneNorm) {
-                    $contact = $this->resolveContactPhone($s);
-                    return !empty($contact) && $this->normalizePhone($contact) === $phoneNorm;
+                    return StudentContactPhone::matchesNormalizedInput($s, $phoneNorm);
                 })
                 ->values();
 
@@ -394,21 +395,29 @@ class ParentPortalController extends Controller
 
         $sessionLineId = trim((string) ($session->getAttribute('line_user_id') ?? ''));
         if (!$allowed && $sessionLineId !== '' && $this->isValidLineUserId($sessionLineId)) {
-            // Guardian dual-read path (multi-guardian / multi-child) + SLB legacy.
+            // Canonical guardian path (multi-guardian / multi-child) + SLB orphan fallback.
             $allowed = app(ParentGuardianAccessService::class)
                 ->lineMayAccessStudent($sessionLineId, (int) $targetStudent->id);
         } elseif (!$allowed && $currentStudent) {
-            // Legacy phone-login sessions without line_user_id: shared verified SLB only.
-            $currentLineIds = StudentLineBinding::where('student_id', $currentStudent->id)
-                ->verified()
-                ->pluck('line_user_id')
-                ->filter(fn ($id) => $this->isValidLineUserId($id));
-            if ($currentLineIds->isNotEmpty()) {
-                $allowed = StudentLineBinding::query()
-                    ->whereNotNull('verified_at')
-                    ->where('student_id', $targetStudent->id)
-                    ->whereIn('line_user_id', $currentLineIds)
-                    ->exists();
+            $access = app(ParentGuardianAccessService::class);
+            if (ParentGuardianAccessService::portalDualReadEnabled()) {
+                // Phone-login multi-child: shared active/read_only guardians (not SLB).
+                $allowed = $access->studentsSharingActiveGuardians((int) $currentStudent->id)
+                    ->contains(fn ($s) => (int) $s->id === (int) $targetStudent->id);
+            }
+            if (!$allowed) {
+                // Flag-off / no guardian links: legacy shared verified SLB only.
+                $currentLineIds = StudentLineBinding::where('student_id', $currentStudent->id)
+                    ->verified()
+                    ->pluck('line_user_id')
+                    ->filter(fn ($id) => $this->isValidLineUserId($id));
+                if ($currentLineIds->isNotEmpty()) {
+                    $allowed = StudentLineBinding::query()
+                        ->whereNotNull('verified_at')
+                        ->where('student_id', $targetStudent->id)
+                        ->whereIn('line_user_id', $currentLineIds)
+                        ->exists();
+                }
             }
             // PRD-B FR-B-001: 不再以「相同 Phone」允許切換，避免跨家庭 PII 洩漏。
         }

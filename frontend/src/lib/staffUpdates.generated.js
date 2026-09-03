@@ -4,6 +4,50 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-03-multi-guardian-ga",
+    "publishedAt": "2026-09-03",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "多監護人正式上線",
+    "summary": "一位學生可維護多位家長／監護人；解除後該家長立即無法再進家長入口。",
+    "items": [
+      "學生編輯可新增多位監護人、指定主要聯絡人；家長 Portal 依監護關係登入與切換子女（含跨分校）。",
+      "解除監護人後會立即登出該家長相關工作階段；請先確認對象正確再操作。",
+      "既有家長手機欄位仍保留作相容；關旗可回退。排課／繳費／堂次流程不變。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "學生編輯可新增多位監護人、指定主要聯絡人；家長 Portal 依監護關係登入與切換子女（含跨分校）。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "解除監護人後會立即登出該家長相關工作階段；請先確認對象正確再操作。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "既有家長手機欄位仍保留作相容；關旗可回退。排課／繳費／堂次流程不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-03:multi-guardian-ga"
+    ],
+    "date": "2026-09-03",
+    "version": "2026.09.03"
+  },
+  {
     "id": "staff-2026-09-02-course-rate-unit-consistency",
     "publishedAt": "2026-09-02",
     "effectiveAt": null,
