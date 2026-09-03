@@ -111,7 +111,7 @@ class StudentGuardianController extends Controller
             'notify_tuition' => $link->notify_tuition,
         ], array_filter($data, fn ($v) => $v !== null));
 
-        $updated = app(GuardianSyncService::class)->upsertRelationship($student, $payload, StudentGuardian::SOURCE_STAFF);
+        $updated = app(GuardianSyncService::class)->updateRelationship($student, $link, $payload, StudentGuardian::SOURCE_STAFF);
 
         return response()->json($this->transform($updated));
     }
