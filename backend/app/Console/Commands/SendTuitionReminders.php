@@ -11,6 +11,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class SendTuitionReminders extends Command
 {
@@ -26,11 +27,12 @@ class SendTuitionReminders extends Command
         $overdueDays = max(1, (int) $this->option('overdue-days'));
         $cutoff = now()->subDays($overdueDays)->toDateString();
 
-        // Find active unpaid courses created before the cutoff date
-        $unpaidCourses = StudentClass::with(['student'])
+            // Prefer created_at when present; legacy rows / test schemas use MDate.
+            $overdueColumn = Schema::hasColumn('StudentClass', 'created_at') ? 'created_at' : 'MDate';
+            $unpaidCourses = StudentClass::with(['student'])
             ->where('Stop', 0)
             ->where('Paid', 0)
-            ->whereDate('created_at', '<=', $cutoff)
+            ->whereDate($overdueColumn, '<=', $cutoff)
             ->get();
 
         if ($unpaidCourses->isEmpty()) {
@@ -52,16 +54,20 @@ class SendTuitionReminders extends Command
 
             $byCampus[$campusId][] = $student->name ?? 'Unknown';
 
-            // Find LINE binding for this student
-            $binding = StudentLineBinding::where('student_id', $student->id)
+            // Fan-out to every verified LINE binding (dad + mom), not first() only.
+            $bindings = StudentLineBinding::where('student_id', $student->id)
                 ->verified()
                 ->where('campus_id', $campusId)
-                ->first();
+                ->get();
 
-            if (!$binding) continue;
+            if ($bindings->isEmpty()) {
+                continue;
+            }
 
             $campus = DB::table('Campus')->where('id', $campusId)->first();
-            if (!$campus || empty($campus->messaging_channel_token)) continue;
+            if (!$campus || empty($campus->messaging_channel_token)) {
+                continue;
+            }
 
             $subjectLabel = $this->subjectLabel($course);
             $msg = "親愛的家長您好，\n\n"
@@ -69,9 +75,12 @@ class SendTuitionReminders extends Command
                 . "請盡速聯繫補習班完成繳費，以確保課程正常進行。\n\n"
                 . "如已繳費請忽略此訊息，謝謝！";
 
-            if ($dryRun) {
-                $this->line("[dry-run] Would send LINE to {$binding->line_user_id} ({$student->name}): {$msg}");
-            } else {
+            foreach ($bindings as $binding) {
+                if ($dryRun) {
+                    $this->line("[dry-run] Would send LINE to {$binding->line_user_id} ({$student->name}): {$msg}");
+                    continue;
+                }
+
                 $delivered = $this->pushLine($binding->line_user_id, $msg, $campus->messaging_channel_token, $campus->name ?? '');
                 SecurityAuditEvent::append('notification.delivery', $delivered ? 'success' : 'failure', [
                     'campus_id' => $campusId,
