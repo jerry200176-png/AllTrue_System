@@ -336,6 +336,60 @@ def decide_manual_activation(
     return {"decision": "activation-gate-reached", "reason": "Founder-approved exact-main activation may proceed"}
 
 
+def classify_production_runtime(
+    *,
+    production_sha: str,
+    target_sha: str,
+    comparison_status: str | None,
+    provenance_sha: str | None,
+    manifest_source: str | None,
+) -> dict[str, object]:
+    """Classify the deployed runtime relative to an exact activation target.
+
+    A verified deployed ancestor is expected version lag while a deployment is
+    pending. It must remain behind the protected activation boundary, but it
+    must not be mistaken for an unexpected production fork. Any missing or
+    contradictory identity evidence fails closed.
+    """
+
+    full_shas = (production_sha, target_sha)
+    if any(not _FULL_SHA_RE.fullmatch(value or "") for value in full_shas):
+        return {
+            "state": "invalid-evidence",
+            "retry_allowed": False,
+            "reason": "production or target SHA is invalid",
+        }
+    if manifest_source != "github-actions:deploy.yml":
+        return {
+            "state": "provenance-unknown",
+            "retry_allowed": False,
+            "reason": "production manifest provenance is unknown",
+        }
+    if not _FULL_SHA_RE.fullmatch(provenance_sha or "") or provenance_sha != production_sha:
+        return {
+            "state": "provenance-unknown",
+            "retry_allowed": False,
+            "reason": "no successful deploy provenance matches the production SHA",
+        }
+    if production_sha == target_sha and comparison_status == "identical":
+        return {
+            "state": "current",
+            "retry_allowed": False,
+            "reason": "production already matches the activation target",
+        }
+    if production_sha != target_sha and comparison_status == "ahead":
+        return {
+            "state": "normal-version-lag",
+            "retry_allowed": True,
+            "reason": "production is a verified deployed ancestor of the target",
+        }
+    return {
+        "state": "unexpected-production-sha",
+        "retry_allowed": False,
+        "reason": "production SHA is not a verified ancestor of the target",
+    }
+
+
 def environment_protection_is_valid(
     *, event_name: str, phase: str, required_reviewers_configured: bool,
     prevent_self_review: bool,
@@ -381,6 +435,7 @@ __all__ = [
     "classify_scope",
     "decide_activation",
     "decide_manual_activation",
+    "classify_production_runtime",
     "environment_protection_is_valid",
     "effective_tier",
     "is_deployable_path",
