@@ -96,25 +96,22 @@ final class ParentGuardianAccessService
 
     /**
      * Immediately expire ParentSessions for a revoked relationship (PB-04 AC).
+     * Scoped to the guardian's LINE subject. Phone-only guardians (no LINE)
+     * are a no-op here so we never fan out to unrelated phoneless sessions.
      */
     public function invalidateSessionsForLink(StudentGuardian $link): int
     {
         $studentId = (int) $link->student_id;
         $guardian = $link->relationLoaded('guardian') ? $link->guardian : $link->guardian()->first();
         $lineUserId = $guardian !== null ? trim((string) ($guardian->line_user_id ?? '')) : '';
-
-        $query = \App\Models\ParentSession::query()
-            ->where('StudentID', $studentId)
-            ->where('ExpiresAt', '>', now());
-
-        if ($lineUserId !== '') {
-            $query->where('line_user_id', $lineUserId);
-        } else {
-            $query->where(function ($q) {
-                $q->whereNull('line_user_id')->orWhere('line_user_id', '');
-            });
+        if ($lineUserId === '') {
+            return 0;
         }
 
-        return $query->update(['ExpiresAt' => now()]);
+        return \App\Models\ParentSession::query()
+            ->where('StudentID', $studentId)
+            ->where('line_user_id', $lineUserId)
+            ->where('ExpiresAt', '>', now())
+            ->update(['ExpiresAt' => now()]);
     }
 }

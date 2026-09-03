@@ -268,4 +268,39 @@ class ParentPortalGuardianAuthzTest extends TestCase
             'line_user_id' => $line,
         ]);
     }
+
+    public function test_phoneless_guardian_revoke_does_not_kill_phone_login_sessions(): void
+    {
+        config(['perfflags.multi_guardian_enabled' => true]);
+        $child = $this->student();
+        $guardian = Guardian::create([
+            'display_name' => '僅手機爸',
+            'phone' => '0912999888',
+            'phone_normalized' => '0912999888',
+            'line_user_id' => null,
+        ]);
+        $link = StudentGuardian::create([
+            'student_id' => $child->id,
+            'guardian_id' => $guardian->id,
+            'campus_id' => 1,
+            'role' => StudentGuardian::ROLE_FATHER,
+            'is_primary' => true,
+            'status' => StudentGuardian::STATUS_ACTIVE,
+            'notify_learning_feedback' => true,
+            'notify_tuition' => true,
+            'source' => StudentGuardian::SOURCE_STAFF,
+        ]);
+        $raw = Str::random(48);
+        $session = ParentSession::create([
+            'StudentID' => $child->id,
+            'line_user_id' => null,
+            'TokenHash' => hash('sha256', $raw),
+            'ExpiresAt' => now()->addDays(30),
+        ]);
+
+        app(GuardianSyncService::class)->revoke($link->fresh(['guardian']));
+
+        $session->refresh();
+        $this->assertTrue($session->ExpiresAt->gt(now()), 'phone-login sessions must survive phoneless guardian revoke');
+    }
 }
