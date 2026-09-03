@@ -23,7 +23,7 @@ class StudentGuardianController extends Controller
             return response()->json(['message' => 'Multi-guardian is not enabled', 'guardians' => []], 404);
         }
 
-        $rows = app(GuardianSyncService::class)->listForStudent((int) $student->id);
+        $rows = app(GuardianSyncService::class)->listForStudent((int) $student->getKey());
 
         return response()->json([
             'guardians' => array_map([$this, 'transform'], $rows),
@@ -78,8 +78,8 @@ class StudentGuardianController extends Controller
 
         $link = StudentGuardian::query()
             ->where('id', $studentGuardianId)
-            ->where('student_id', $student->id)
-            ->notRevoked()
+            ->where('student_id', (int) $student->getKey())
+            ->where('status', '!=', StudentGuardian::STATUS_REVOKED)
             ->first();
         if (!$link) {
             return response()->json(['message' => 'Guardian link not found'], 404);
@@ -100,10 +100,11 @@ class StudentGuardianController extends Controller
             'notify_tuition' => 'nullable|boolean',
         ]);
 
+        $guardian = $link->guardian;
         $payload = array_merge([
-            'display_name' => $link->guardian?->display_name,
-            'phone' => $link->guardian?->phone,
-            'line_user_id' => $link->guardian?->line_user_id,
+            'display_name' => $guardian !== null ? $guardian->display_name : null,
+            'phone' => $guardian !== null ? $guardian->phone : null,
+            'line_user_id' => $guardian !== null ? $guardian->line_user_id : null,
             'role' => $link->role,
             'is_primary' => $link->is_primary,
             'notify_learning_feedback' => $link->notify_learning_feedback,
@@ -126,8 +127,8 @@ class StudentGuardianController extends Controller
 
         $link = StudentGuardian::query()
             ->where('id', $studentGuardianId)
-            ->where('student_id', $student->id)
-            ->notRevoked()
+            ->where('student_id', (int) $student->getKey())
+            ->where('status', '!=', StudentGuardian::STATUS_REVOKED)
             ->first();
         if (!$link) {
             return response()->json(['message' => 'Guardian link not found'], 404);
@@ -152,9 +153,10 @@ class StudentGuardianController extends Controller
     private function transform(StudentGuardian $link): array
     {
         $g = $link->guardian;
+        $lineUserId = $g !== null ? (string) ($g->line_user_id ?? '') : '';
 
         return [
-            'id' => (int) $link->id,
+            'id' => (int) $link->getKey(),
             'student_id' => (int) $link->student_id,
             'guardian_id' => (int) $link->guardian_id,
             'campus_id' => $link->campus_id !== null ? (int) $link->campus_id : null,
@@ -164,9 +166,9 @@ class StudentGuardianController extends Controller
             'notify_learning_feedback' => (bool) $link->notify_learning_feedback,
             'notify_tuition' => (bool) $link->notify_tuition,
             'source' => (string) $link->source,
-            'display_name' => $g?->display_name,
-            'phone' => $g?->phone,
-            'line_user_id_masked' => $this->maskLineUserId((string) ($g?->line_user_id ?? '')),
+            'display_name' => $g !== null ? $g->display_name : null,
+            'phone' => $g !== null ? $g->phone : null,
+            'line_user_id_masked' => $this->maskLineUserId($lineUserId),
         ];
     }
 
