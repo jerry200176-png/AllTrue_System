@@ -132,7 +132,7 @@ class ClassSession extends Model
         $ids = StudentClass::query()
             ->where(function ($query) {
                 $query->whereNotNull('settlement_locked_at')
-                    ->orWhere('closed_reason', 'usage_settled');
+                    ->orWhereIn('closed_reason', ['usage_settled', 'contract_amended']);
             })
             ->pluck('ID')
             ->all();
