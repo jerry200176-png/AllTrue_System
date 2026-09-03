@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-03-pop-dry-run-retry
+    changelog_date: "2026-09-03"
+    changelog_title: "fix(pop): 失敗 dry-run 支援受控重試並保留歷史 attempt"
+    reason: 僅修復 POP 內部控制平面失敗 dry-run 的 append-only retry 與 drift fail-closed；不新增主任操作流程、不執行 Huang repair，execute／verify／rollback mutation gate 維持不變。
+
   - id: silent-2026-09-03-multi-guardian-portal-authz
     changelog_date: "2026-09-03"
     changelog_title: "feat(parent): Parent Portal multi-guardian dual-read authZ"
