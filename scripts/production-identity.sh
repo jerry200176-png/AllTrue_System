@@ -19,17 +19,47 @@ VERSION_RAW="$(curl -sk --max-time 20 "${PROD_URL}/version.json" || true)"
 DEPLOYMENT_RAW="$(curl -sk --max-time 20 "${PROD_URL}/deployment.json" || true)"
 HEALTH_CODE="$(curl -sk -o /dev/null -w '%{http_code}' --max-time 20 "${PROD_URL}/api/v1/health" || echo 000)"
 
-DEPLOY_JSON="$(gh run list -R "$REPO" --workflow=deploy.yml --limit 20 --json databaseId,conclusion,status,headSha,createdAt,url,displayTitle 2>/dev/null || echo '[]')"
 PI_HEALTH_JSON="$(gh run list -R "$REPO" --workflow=pi-health.yml --limit 1 --json databaseId,conclusion,status,createdAt,url,displayTitle 2>/dev/null || echo '[]')"
 DEPLOYMENT_BACKEND_SHA="$(python3 -c 'import json,sys; print((json.loads(sys.stdin.read() or "{}") or {}).get("backend_sha") or "")' <<< "$DEPLOYMENT_RAW" 2>/dev/null || true)"
+DEPLOY_JSON="$(gh run list -R "$REPO" --workflow=deploy.yml --limit 20 --json databaseId,conclusion,status,headSha,createdAt,url,displayTitle 2>/dev/null || echo '[]')"
+MATCHING_DEPLOY_JSON='[]'
+if [[ -n "$DEPLOYMENT_BACKEND_SHA" ]]; then
+    MATCHING_DEPLOY_JSON="$(gh run list -R "$REPO" --workflow=deploy.yml --commit "$DEPLOYMENT_BACKEND_SHA" --limit 20 --json databaseId,conclusion,status,headSha,createdAt,url,displayTitle 2>/dev/null || echo '[]')"
+fi
 COMPARE_JSON='{}'
 if [[ -n "$DEPLOYMENT_BACKEND_SHA" && -n "$REMOTE_MAIN" ]]; then
     COMPARE_JSON="$(gh api "/repos/${REPO}/compare/${DEPLOYMENT_BACKEND_SHA}...${REMOTE_MAIN}" 2>/dev/null || echo '{}')"
 fi
 
-python3 - "$REMOTE_MAIN" "$HEALTH_RAW" "$VERSION_RAW" "$DEPLOYMENT_RAW" "$HEALTH_CODE" "$DEPLOY_JSON" "$PI_HEALTH_JSON" "$COMPARE_JSON" "$PROD_URL" "$REPO" <<'PY'
+IDENTITY_TMP_DIR="$(mktemp -d)"
+trap 'rm -rf -- "$IDENTITY_TMP_DIR"' EXIT
+umask 077
+printf '%s' "$HEALTH_RAW" > "$IDENTITY_TMP_DIR/health.json"
+printf '%s' "$VERSION_RAW" > "$IDENTITY_TMP_DIR/version.json"
+printf '%s' "$DEPLOYMENT_RAW" > "$IDENTITY_TMP_DIR/deployment.json"
+printf '%s' "$DEPLOY_JSON" > "$IDENTITY_TMP_DIR/deploy-runs.json"
+printf '%s' "$MATCHING_DEPLOY_JSON" > "$IDENTITY_TMP_DIR/matching-deploy-runs.json"
+printf '%s' "$PI_HEALTH_JSON" > "$IDENTITY_TMP_DIR/pi-health.json"
+printf '%s' "$COMPARE_JSON" > "$IDENTITY_TMP_DIR/compare.json"
+
+# Keep large API responses out of argv. Apart from avoiding the host's
+# ARG_MAX limit, this keeps evidence transport independent of response size.
+python3 - "$REMOTE_MAIN" "$IDENTITY_TMP_DIR/health.json" "$IDENTITY_TMP_DIR/version.json" "$IDENTITY_TMP_DIR/deployment.json" "$HEALTH_CODE" "$IDENTITY_TMP_DIR/deploy-runs.json" "$IDENTITY_TMP_DIR/matching-deploy-runs.json" "$IDENTITY_TMP_DIR/pi-health.json" "$IDENTITY_TMP_DIR/compare.json" "$PROD_URL" "$REPO" <<'PY'
 import json,sys,datetime
-remote_main, health_raw, version_raw, deployment_raw, health_code, deploy_json, pi_json, compare_json, prod_url, repo = sys.argv[1:11]
+from pathlib import Path
+
+remote_main, health_path, version_path, deployment_path, health_code, deploy_path, matching_deploy_path, pi_path, compare_path, prod_url, repo = sys.argv[1:12]
+
+def read_raw(path):
+    return Path(path).read_text(encoding="utf-8")
+
+health_raw = read_raw(health_path)
+version_raw = read_raw(version_path)
+deployment_raw = read_raw(deployment_path)
+deploy_json = read_raw(deploy_path)
+matching_deploy_json = read_raw(matching_deploy_path)
+pi_json = read_raw(pi_path)
+compare_json = read_raw(compare_path)
 
 def parse(raw, default=None):
     try:
@@ -41,6 +71,7 @@ health = parse(health_raw, {})
 version = parse(version_raw, {})
 deployment = parse(deployment_raw, {})
 deploy_runs = parse(deploy_json, []) or []
+matching_deploy_runs = parse(matching_deploy_json, []) or []
 pi = (parse(pi_json, []) or [None])[0]
 compare = parse(compare_json, {}) or {}
 
@@ -63,7 +94,9 @@ successful_deploy_runs = [
 # whose head actually matches that manifest instead of blindly taking the
 # newest workflow trigger.
 deploy = next(
-    (run for run in successful_deploy_runs if run.get('headSha') == deployment_backend_sha),
+    (run for run in matching_deploy_runs
+     if run.get('status') == 'completed' and run.get('conclusion') == 'success'
+     and run.get('headSha') == deployment_backend_sha),
     None,
 )
 deploy_sha = (deploy or {}).get('headSha')
