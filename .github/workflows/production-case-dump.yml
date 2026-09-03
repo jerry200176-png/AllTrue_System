@@ -181,7 +181,7 @@ jobs:
               : $studentQuery->whereRaw('TRIM(name) = ?', [$targetStudentName])->pluck('id')
                 ->map(fn ($id) => (int)$id)->all();
             if ($studentIds === [] && $targetStudentClassId === null) {{
-              $studentIds = $db::table('Student')->where('CampusID', $campusId)
+              $studentIds = $db::table('Student')
                 ->where('name', 'like', '%' . $targetStudentName . '%')->pluck('id')
                 ->map(fn ($id) => (int)$id)->all();
             }}
@@ -250,7 +250,7 @@ jobs:
           }} elseif ($case === 'contract_session_chen') {{
             $campusId = 9;
             $probeDates = ['2026-06-07', '2026-06-21'];
-            $studentQuery = $db::table('Student')->where('CampusID', $campusId);
+            $studentQuery = $db::table('Student');
             $studentIds = $targetStudentClassId !== null
               ? $db::table('StudentClass as sc')->join('Student as st', 'st.id', '=', 'sc.StudentID')
                 ->where('sc.ID', $targetStudentClassId)->where('st.CampusID', $campusId)->pluck('sc.StudentID')
@@ -258,7 +258,7 @@ jobs:
               : $studentQuery->whereRaw('TRIM(name) = ?', [$targetStudentName])->pluck('id')
                 ->map(fn ($id) => (int)$id)->all();
             if ($studentIds === [] && $targetStudentClassId === null) {{
-              $studentIds = $db::table('Student')->where('CampusID', $campusId)
+              $studentIds = $db::table('Student')
                 ->where('name', 'like', '%' . $targetStudentName . '%')->pluck('id')
                 ->map(fn ($id) => (int)$id)->all();
             }}
