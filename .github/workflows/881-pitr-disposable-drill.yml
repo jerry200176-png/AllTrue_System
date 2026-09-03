@@ -1,0 +1,142 @@
+name: Isolated PITR Drill
+
+on:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/881-pitr-disposable-drill.yml"
+      - "docs/runbooks/MYSQL_PITR_DRILL_RUNBOOK.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pitr-disposable-drill-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  drill:
+    name: Full backup and binlog replay (disposable MariaDB)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: rootpw
+          MARIADB_DATABASE: pitr_source
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -uroot -prootpw"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+          --log-bin=/var/lib/mysql/mysql-bin
+          --server-id=881
+          --binlog-format=ROW
+          --binlog-expire-logs-seconds=604800
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install MariaDB client tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes mariadb-client
+
+      - name: Wait for MariaDB
+        env:
+          MYSQL_PWD: rootpw
+        run: |
+          for attempt in $(seq 1 30); do
+            if mysql --protocol=TCP -h 127.0.0.1 -u root -e 'SELECT 1' >/dev/null 2>&1; then
+              echo 'MariaDB ready'
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              echo 'MariaDB did not become ready' >&2
+              exit 1
+            fi
+            sleep 2
+          done
+
+      - name: Execute disposable PITR drill
+        env:
+          MYSQL_PWD: rootpw
+        run: |
+          set -euo pipefail
+
+          SOURCE_DB='pitr_source'
+          DRILL_DB='pitr_drill'
+          BASELINE="$RUNNER_TEMP/pitr_baseline.sql"
+          BINLOG_DIR="$RUNNER_TEMP/pitr-binlog"
+          mkdir -p "$BINLOG_DIR"
+
+          cleanup() {
+            mysql --protocol=TCP -h 127.0.0.1 -u root -e \
+              "DROP DATABASE IF EXISTS \`$DRILL_DB\`;" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          mysql --protocol=TCP -h 127.0.0.1 -u root "$SOURCE_DB" <<'SQL'
+          CREATE TABLE pitr_marker (
+            id INT PRIMARY KEY,
+            note VARCHAR(100) NOT NULL
+          );
+          SQL
+
+          mysqldump --protocol=TCP -h 127.0.0.1 -u root \
+            --single-transaction --routines --triggers --master-data=2 \
+            "$SOURCE_DB" > "$BASELINE"
+
+          ANCHOR_FILE="$(grep -m1 'CHANGE MASTER TO' "$BASELINE")"
+          BINLOG_FILE="$(printf '%s\n' "$ANCHOR_FILE" | sed -n "s/.*MASTER_LOG_FILE='\\([^']*\\)'.*/\\1/p")"
+          BINLOG_POS="$(printf '%s\n' "$ANCHOR_FILE" | sed -n 's/.*MASTER_LOG_POS=\\([0-9]*\\).*/\\1/p')"
+          [ -n "$BINLOG_FILE" ] || { echo 'Missing binlog file anchor' >&2; exit 1; }
+          [ -n "$BINLOG_POS" ] || { echo 'Missing binlog position anchor' >&2; exit 1; }
+
+          mysql --protocol=TCP -h 127.0.0.1 -u root "$SOURCE_DB" \
+            -e "INSERT INTO pitr_marker (id, note) VALUES (1, 'before-target');"
+          TARGET_TIME="$(mysql --protocol=TCP -h 127.0.0.1 -u root -Nse \
+            "SELECT DATE_FORMAT(DATE_ADD(NOW(), INTERVAL 1 SECOND), '%Y-%m-%d %H:%i:%s')")"
+          sleep 2
+          mysql --protocol=TCP -h 127.0.0.1 -u root "$SOURCE_DB" \
+            -e 'DELETE FROM pitr_marker WHERE id = 1;'
+
+          mysql --protocol=TCP -h 127.0.0.1 -u root -e \
+            "CREATE DATABASE \`$DRILL_DB\`;"
+
+          # The dump's USE context must point at the disposable database.
+          sed "s/\\\`$SOURCE_DB\\\`/\\\`$DRILL_DB\\\`/g" "$BASELINE" \
+            | mysql --protocol=TCP -h 127.0.0.1 -u root "$DRILL_DB"
+
+          DB_CONTAINER="$(docker ps --filter ancestor=mariadb:10.11 --format '{{.ID}}' | head -1)"
+          [ -n "$DB_CONTAINER" ] || { echo 'MariaDB service container not found' >&2; exit 1; }
+          docker cp "$DB_CONTAINER:/var/lib/mysql/$BINLOG_FILE" "$BINLOG_DIR/$BINLOG_FILE"
+
+          mysqlbinlog --rewrite-db="$SOURCE_DB->$DRILL_DB" \
+            --start-position="$BINLOG_POS" \
+            --stop-datetime="$TARGET_TIME" \
+            "$BINLOG_DIR/$BINLOG_FILE" \
+            | mysql --protocol=TCP -h 127.0.0.1 -u root "$DRILL_DB"
+
+          RESTORED="$(mysql --protocol=TCP -h 127.0.0.1 -u root -Nse \
+            "SELECT COUNT(*) FROM \`$DRILL_DB\`.pitr_marker WHERE id = 1;")"
+          SOURCE_COUNT="$(mysql --protocol=TCP -h 127.0.0.1 -u root -Nse \
+            "SELECT COUNT(*) FROM \`$SOURCE_DB\`.pitr_marker WHERE id = 1;")"
+          [ "$RESTORED" = '1' ] || { echo "Expected restored marker, got $RESTORED" >&2; exit 1; }
+          [ "$SOURCE_COUNT" = '0' ] || { echo "Expected source delete, got $SOURCE_COUNT" >&2; exit 1; }
+
+          echo "PITR DRILL PASS: baseline_anchor=$BINLOG_FILE:$BINLOG_POS target=$TARGET_TIME restored_marker=$RESTORED source_after_delete=$SOURCE_COUNT"
+
+      - name: Publish drill summary
+        if: always()
+        run: |
+          {
+            echo '### Isolated PITR drill'
+            echo ''
+            echo 'Disposable MariaDB 10.11 only; no staging/Pi or production database is contacted.'
+          } >> "$GITHUB_STEP_SUMMARY"
