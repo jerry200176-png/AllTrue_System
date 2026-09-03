@@ -1,0 +1,52 @@
+id: INT-20260828-193940-H0FQ
+title: Student course page clarity UX
+intent: Student course page clarity UX
+kind: intent
+brain_dump: 'Improve AllTrue student course page information hierarchy for issue #2007.
+  Replace dense expanded course table presentation with a task-first course summary
+  that makes progress, next action, schedule, teacher, payment status, and secondary
+  actions scannable. Use Duolingo-like clarity and motivation cues without introducing
+  streaks, points, gamification, or invented operational data.'
+boundary: Only frontend presentation and tests/docs. Do not change API endpoints,
+  payloads, auth/permissions, branch isolation, billing/payment semantics, attendance,
+  scheduling, course mutations, database, or production data. Preserve every existing
+  action handler and route.
+success_condition: On the student master page, active courses are readable as task-first
+  summaries at 390/412/768/1280/1440px; progress has honest units and accessible semantics;
+  one primary action is clear while secondary actions remain available; empty/loading/history
+  states remain correct; existing action handlers and data contracts are unchanged;
+  lint/build/UI smoke pass.
+risk: low
+priority: 2
+labels:
+- ux
+scope:
+  allow:
+  - frontend/src/pages/StudentsList.vue
+  - frontend/src/components/__tests__/StudentCourse*
+  - docs/research/**
+  - docs/design/evidence/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 8
+  max_loc_changed: 400
+checks:
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: done
+parent_id: null
+spec_ref: null
+notes:
+- "Completed on main via 84c9e2e6 (#2157), a567f55e (#2162), and ace97deb: active course summaries expose progress, next action, schedule, teacher, and payment status without changing API contracts."
+- "Evidence: StudentsList accessibility/interaction checks, no-undef lint, and Vite build passed; production activation remains separately governed."
+blockers: []
+created_at: '2026-08-28T19:39:40+08:00'
+children:
+- TKT-20260828-193947-BEY7
+resource_profile: default

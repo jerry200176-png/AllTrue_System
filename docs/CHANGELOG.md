@@ -1,3 +1,552 @@
+## 2026-09-03 — feat(parent): Parent Portal multi-guardian dual-read authZ
+<!-- release-notes: silent_ship=silent-2026-09-03-multi-guardian-portal-authz -->
+- Parent Portal LINE login／切換學生在 `PERF_MULTI_GUARDIAN` 開啟時改走 `guardians` + `student_guardians`（active／read_only）dual-read；flag 關閉仍僅 verified SLB。
+- Staff revoke 監護關係後立即失效對應 `ParentSession`；revoked 優先於殘留 SLB。不新建 ParentIdentity 表、不 cutover `parent_phone`。
+- PB-00 對 PB-04 的過期硬阻擋已解除（Founder GO）；rollback = 關 flag。
+
+## 2026-09-03 — feat(parent): 學生管理多家長 CRUD（flag 閘控）
+<!-- release-notes: silent_ship=silent-2026-09-03-multi-guardian-staff-crud -->
+- 主任可在學生編輯（`PERF_MULTI_GUARDIAN` 開啟時）新增／解除多位監護人並指定主要聯絡人。
+- API 在 flag 關閉時回 404；**production flag enable 仍需 Founder GO**。預設畫面與 `parent_phone` 行為不變。
+
+## 2026-09-03 — fix(parent): 多家長 LINE 綁定通知與偏好一致性
+<!-- release-notes: silent_ship=silent-2026-09-03-multi-parent-line-notify -->
+- 學費催繳改為推播給該學生所有已驗證 LINE bindings，不再只取第一筆。
+- 家長通知偏好改為只更新目前登入的 LINE binding；同學生其他家長偏好不受影響。
+- 若 session 帶 `line_user_id` 但該 binding 已撤銷，偏好更新 fail closed（422），不 fallback 到其他家長。
+- 停止在 LINE 綁定時覆寫 legacy `Student.LineID`（canonical 為 `student_line_bindings`）。
+- **Merge ≠ migrate**：合併至 main 不授權 production migration；`ParentSession.line_user_id` 欄位於 production 僅在 Founder activation GO 後套用。不新增第二家長手機欄、不做 ParentIdentity／GSR 架構擴張。
+
+## 2026-09-03 — feat(parent): 多 Guardian 加法模型與雙寫雙讀（dark launch）
+<!-- release-notes: silent_ship=silent-2026-09-03-multi-guardian-foundation -->
+- 新增 `guardians` / `student_guardians`（Student 1:N），保留 `parent_phone`；dual-write 在表存在時啟用，dual-read 由 `PERF_MULTI_GUARDIAN`（預設關）控制。
+- Dual-write 以 legacy `parent_phone`／`parent_name` 為唯一寫入來源，避免 flag 開啟後讀回 Guardian 舊值造成 stale sync。
+- **Merge ≠ migrate**：合併至 main 不授權 production migration；production migrate／activation 僅在 Founder GO 後執行。不加 `parent_phone_2`、不做 big-bang cutover。
+
+## 2026-09-02 — fix(billing): 課程查找同步按堂／按時計費單位
+<!-- release-notes: staff_update=staff-2026-09-02-course-rate-unit-consistency -->
+- 修正課程編輯由按堂切換為按時計費後，`rate_unit` 未完整送回與總費用仍按堂計算的問題。
+- 課程查找現在依最新計費單位顯示「每堂／每小時」與正確總費用；按堂課程計價維持不變。
+- 未新增資料庫欄位、不批次改寫既有付款資料；補上前後端 full-chain regression test。
+
+## 2026-09-02 — fix(schedule): 移除固定時段不再誤判自己衝堂
+<!-- release-notes: staff_update=staff-2026-09-02-fixed-slot-removal-and-teacher-workbench -->
+- 固定課程由週三＋週四移除週四時，不會再把保留的週三既有堂次當成新增調課目標；只有真正新增或變更到新時段才做衝堂檢查。
+- 老師工作台重整課表時保留上次成功資料，課程格可開啟對應課程詳情，週一至週日標題在手機與桌面捲動時維持可見；admin／director 頁面與權限路徑不變。
+- 補上固定時段移除、真正衝堂、老師事件導向與工作台更新狀態回歸測試；production 驗證採唯讀 workflow，不直接修改個案資料。
+
+## 2026-09-02 — fix(billing): 電子收據預計堂次文案恢復
+<!-- release-notes: staff_update=staff-2026-09-02-receipt-expected-session-copy -->
+- 電子收據的未實際上課、未取消堂次恢復顯示「（預計）」；已上課堂次與其他排課／點名狀態不變。
+- 本次只調整收據畫面、複製文字與圖片輸出的文案，不改排課或後台狀態。
+
+## 2026-09-01 — improved(ux): 新建與編輯課程共用老師空檔查詢
+<!-- release-notes: staff_update=staff-2026-09-01-course-availability-planner -->
+- 編輯既有課程時，現在可直接用與新建課程相同的老師空檔／容量試算，並將候選時段套用到固定排課欄位。
+- 更換老師、開課日、固定星期或時段後，舊試算會失效並要求重新查詢；既有後端衝堂、固定課程、recurring、權限與儲存規則不變。
+
+## 2026-09-01 — improved(ux): 新增排課可先找可行時段
+<!-- release-notes: staff_update=staff-2026-09-01-scheduling-intersection-helper -->
+- 新增課程時可輸入學生可配合的星期／時間窗口，核對已選老師的可服務分校、未來四次（至課程結束日）固定日期空檔與容量，點選候選時段即可套用。
+- 試算沿用既有跨分校可用性資料與後端衝堂檢查；資料不完整時不提供候選，不寫回學生資料，也不改建立課程規則。
+
+## 2026-09-01 — improved(ux): 行事曆次要工具需要時再展開
+<!-- release-notes: staff_update=staff-2026-09-01-calendar-secondary-controls -->
+- 月份、週次、跳至日期與日／週檢視維持直接可用；教室、老師／學生篩選與排課工具收進「篩選與更多操作」，需要時再展開。
+- 展開後原有篩選、老師請假、教室管理與快速排課操作維持不變；收合時會顯示目前啟用的篩選數。
+
+## 2026-09-01 — fix(calendar): 行事曆調課不再被不完整預判誤擋
+<!-- release-notes: staff_update=staff-2026-09-01-calendar-reschedule-authority -->
+- 行事曆調課的送出前提示改為提醒，不會因畫面尚未載入完整的請假／課堂資料而直接禁止確認。
+- 確認後仍由後端做最後衝堂檢查；真正衝堂會保留錯誤提示且不會寫入變更。
+
+## 2026-09-01 — improved(ux): Bug 回報提交後保留追蹤入口
+<!-- release-notes: staff_update=staff-2026-09-01-bug-report-tracking -->
+- Bug 回報送出成功後會保留回報編號與確認訊息，不再短暫顯示後自動消失。
+- 可直接點選「查看回報進度」前往 Bug 回報頁；不改回報狀態流轉、留言權限、API 或資料。
+
+## 2026-09-01 — fix(ops): Bug 詳情證據改為目標相符
+<!-- release-notes: staff_update=staff-2026-09-01-bug-detail-target-correctness -->
+- Bug 詳情 read-only dump 現在只會執行與該筆 Bug 明確對應的診斷 probe；未配置的 probe 會標示不適用，不再把固定歷史個案混進其他回報。
+- 輸出新增目標 Bug、probe 適用性、產生時間、唯讀／去識別化與 decision-grade 欄位；需要目標證據但尚未配置時，workflow 會失敗並保留明確的未判定 artifact。
+
+## 2026-09-01 — improved(ux): 老師首頁先看今天的課表
+<!-- release-notes: staff_update=staff-2026-09-01-teacher-week-disclosure -->
+- 老師首頁的本週課表預設只展開今天，其餘日期仍可點開查看，減少一進頁面就同時展開大量課堂。
+- 保留跨分校課表、日期切換、課堂內容與既有評量／回報操作；本次只調整預設資訊呈現。
+
+## 2026-09-01 — fix(course): 歷史課程顯示堂數待對帳
+<!-- release-notes: staff_update=staff-2026-09-01-history-usage-balance-visibility -->
+- 歷史課程卡現在也會直接顯示「堂數待對帳」與原因提示，不會因課程已結案／完課而藏起資料異常；不改堂數、帳務、出勤或扣堂資料。
+
+## 2026-09-01 — fix(calendar): 調課預覽優先採用當日請假狀態
+<!-- release-notes: staff_update=staff-2026-09-01-calendar-leave-precedence -->
+- 修正請假狀態正在同步時，行事曆調課仍把老師誤判為滿段的問題；同日已請假的課程現在會正確釋放可用時段，仍保留對有效課程的衝堂檢查。
+
+## 2026-09-01 — fix(billing): 未繳課程可結案但保留待對帳狀態
+<!-- release-notes: staff_update=staff-2026-09-01-unpaid-settlement-reconciliation -->
+- 未繳費課程現在可以結案並停止後續排課，不會再被「未繳費」前置條件卡住。
+- 結案時若尚未完成收款，課程會明確標記「結案待對帳」，並留在帳務中心待處理；確認入帳後才轉為一般已結算。
+- 未改寫既有付款資料，也不會把未繳費課程誤標成已繳費。
+
+## 2026-08-31 — improved(ux): 課程查找明確顯示堂數待對帳
+<!-- release-notes: staff_update=staff-2026-08-31-usage-balance-visibility -->
+- 堂數扣堂與課堂狀態不一致時，課程名稱旁會直接顯示「堂數待對帳」，不再只藏在上課時段欄或多提醒摘要裡。
+- 課程查找摘要新增待對帳筆數與原因提示；不改堂數、帳務、出勤或扣堂資料。
+
+## 2026-08-31 — fix(schedule): 月結開課日跨固定星期仍建立首堂
+<!-- release-notes: staff_update=staff-2026-08-31-monthly-opening-date -->
+- 月結課程的開課日即使不在固定上課星期內，現在仍會建立並顯示為首堂；後續固定星期的排課維持原規則。
+- 單課程與多科方案共用同一個後端排課契約，並補上前端預覽與前後端回歸測試。
+- 不改付款、結算、production 資料、既有出勤或扣堂歷史。
+
+## 2026-08-31 — fix(calendar): 調課預覽正確排除請假與取消課程
+<!-- release-notes: staff_update=staff-2026-08-31-calendar-leave-capacity-preview -->
+- 行事曆調課的送出前檢查現在會與課程查找一致，排除同日期已請假、已調整請假、核准請假與取消的課程，不再把實際空出的老師時段誤判為滿段。
+- 真正有效的課程仍會被容量規則攔截；後端原子調課檢查維持為最後權威。
+
+## 2026-08-31 — feat(payroll): 主任可查看每週16段課達標與課程構成
+<!-- release-notes: staff_update=staff-2026-08-31-weekly-16-segments -->
+- 正職薪資要件頁現在以有效點名的實際課程計算週一至週日段數：正課依課程時長換算、試聽每堂 1 段、輔導 0 段，並可展開查看構成課程。
+- 每週總段數大於等於 16 段即標示達標；不要求已核准 LearningRecord，也不改變其他薪資審核或獎金規則。
+
+## 2026-08-31 — fix(ops): Phase-A bug triage workflow accepts persisted replies
+<!-- release-notes: staff_update=staff-2026-08-31-bug-triage-result-contract -->
+- 修正 Bug 分診 workflow 將已成功寫入的公開回覆誤判為失敗；現在能正確辨識已保存的回覆與冪等略過結果，避免重跑造成誤判。
+- 不改 Bug 狀態規則、回覆權限、帳務資料或產品行為。
+
+## 2026-08-30 — improved(ux): 學生管理操作按鈕語意更穩定
+<!-- release-notes: silent_ship=silent-2026-08-30-students-button-semantics -->
+- 學生管理頁的新增、編輯、課程、身份關聯與視窗操作現在明確標示為一般按鈕，避免未來被表單情境誤當成送出。
+- 不改學生、課程、帳務、身份資料、權限、API 或既有操作流程。
+
+## 2026-08-30 — improved(ux): 出缺勤操作按鈕語意更穩定
+<!-- release-notes: silent_ship=silent-2026-08-30-attendance-button-semantics -->
+- 出缺勤頁的補卡、點名、查詢、修改與對話框操作現在明確標示為一般按鈕，避免未來被表單情境誤當成送出。
+- 不改出缺勤狀態、資料、權限、API 或既有操作流程。
+
+## 2026-08-30 — fix(ux): Bug 回報視窗不殘留上一筆提交提示
+<!-- release-notes: silent_ship=silent-2026-08-30-bug-composer-success-reset -->
+- Bug 回報成功後若立即關閉再重開，現在會回到乾淨的新回報視窗，不會誤顯示上一筆已提交訊息。
+- 不改回報內容、附件、狀態流轉、留言權限、API 或資料。
+
+## 2026-08-30 — improved(ux): 老師工作台聚焦今天與本週
+<!-- release-notes: staff_update=staff-2026-08-30-teacher-home-single-surface -->
+- 今天待辦集中在單一工作佇列，移除不會顯示的舊待辦、提示音與重複捷徑。
+- 本週跨分校課表直接可見；既有資料、導頁、API、權限與生產啟用流程不變。
+
+## 2026-08-29 — improved(ux): Bug 回報工作區頁籤更容易辨識
+
+<!-- release-notes: silent_ship=silent-2026-08-29-bug-reports-tabs-a11y -->
+
+- Bug 回報與家長回饋的工作區頁籤補上明確的鍵盤與螢幕閱讀器語意；狀態篩選也會讀出目前選取項目。
+- 不改回報內容、狀態流轉、留言權限、API 或資料；本次只改善內部支援工作區的操作辨識度。
+
+## 2026-08-29 — improved(ux): 學生管理視窗更容易辨識
+
+<!-- release-notes: staff_update=staff-2026-08-29-students-modal-semantics -->
+
+- 學生管理的新增／編輯學生、課程、帳單、加購、年級升級與跨分校身份視窗補上清楚的對話框與標題語意，鍵盤與螢幕閱讀器能辨識目前工作區。
+- 不改學生、課程、帳務、身份關聯資料、權限或 API；本次只改善既有視窗的操作辨識度。
+
+## 2026-08-29 — improved(ux): 老師工作台捷徑會帶入目前工作區
+
+<!-- release-notes: staff_update=staff-2026-08-29-teacher-queue-focus -->
+
+- 從「查看今日任務」進入老師工作佇列時，畫面會捲到工作區並把鍵盤焦點交給「今天要完成」，讓下一步更明確。
+- 不改任務排序、點名／評量資料、導頁、API 或權限；本次只改善既有捷徑的焦點銜接。
+
+## 2026-08-29 — improved(ux): 課程查找的學生分頁更適合鍵盤操作
+
+<!-- release-notes: staff_update=staff-2026-08-29-course-tabs-keyboard -->
+
+- 課程查找中每位學生的「課程資料／帳務資料」分頁現在可用左右鍵或上下鍵切換，焦點會跟著目前工作區移動。
+- 不改帳務資料、載入流程、課程操作、權限或 API；本次只改善既有分頁的鍵盤操作與辨識度。
+
+## 2026-08-29 — fix(ops): 堂次轉移 reason 過長改為明確擋下
+
+<!-- release-notes: silent_ship=silent-2026-08-29-entitlement-reason-length -->
+
+- `repair:transfer-session-entitlement` 與轉移服務在寫入前檢查 `reason`／`decision_reference`／`actor` 不可超過 128 字，避免 DB 截斷錯誤導致整筆交易失敗且訊息難讀。
+- 不改轉移語意、堂數計算、帳單或 production 啟用流程；過長輸入只回明確錯誤、不寫入。
+
+## 2026-08-29 — fix(schedule): 不再建立沒有原堂次的調課目標
+
+<!-- release-notes: staff_update=staff-2026-08-29-schedule-orphan-prevention -->
+
+- 舊版跨日調課若找不到原日期的有效課堂紀錄，現在會在寫入目標排程前清楚拒絕，不會留下日曆無法操作的孤兒排程。
+- 保留已有原堂次的合法跨日調課流程；未執行任何既有資料修復或生產啟用。
+
+## 2026-08-29 — fix(schedule): 重複補排目標改回可理解錯誤
+
+<!-- release-notes: staff_update=staff-2026-08-29-reflow-duplicate-target -->
+
+- 固定排課重整若產生兩筆相同日期／時段的目標，會在任何堂次移動前回傳可理解的時段衝突，不再讓資料庫唯一索引錯誤直接變成 500。
+- 保留原子交易與唯一索引防線；不改既有堂次、扣堂、評量或排課資料。
+
+## 2026-08-29 — improved(ux): 工作台不被單一回覆來源卡住
+
+<!-- release-notes: staff_update=staff-2026-08-29-teacher-partial-queue-error -->
+
+- 家長回覆資料暫時失敗時，老師仍可繼續處理已載入的點名／評量待辦，不會整個工作佇列誤顯示為待確認。
+- 回覆資料未完成時會明確提示部分待辦尚未載入；若關鍵的點名／評量資料失敗，仍維持防止誤判完成的完整錯誤狀態。
+- 不改任務排序、導頁、資料、API 或權限；只修正工作台的部分失敗呈現。
+
+## 2026-08-29 — fix(ops): 錯誤處理路徑恢復正常記錄
+
+<!-- release-notes: staff_update=staff-2026-08-29-logging-facade-runtime -->
+
+- 修正公開分校清單與排課／薪資例外處理中的 Laravel 記錄器呼叫；發生錯誤時會保留原本的 fallback 或錯誤回應，不會因記錄器名稱錯誤再觸發第二個 500。
+- 未改資料、帳務、排課、權限或部署啟用流程。
+
+## 2026-08-29 — improved(ux): 老師今日佇列只保留一顆主行動
+
+<!-- release-notes: staff_update=staff-2026-08-29-teacher-secondary-cta -->
+
+- 「現在先做」維持實心主按鈕；「接著處理」改為次要按鈕，避免同一區塊多顆橘黃主行動搶注意力。
+- 不改任務排序、導頁、點名／評量資料、API 或權限；手機版次要行動仍維持滿寬可點。
+
+## 2026-08-29 — fixed(schedule): 補課候選先排除同學生跨合約衝堂
+
+<!-- release-notes: staff_update=staff-2026-08-29-cross-contract-makeup-conflict -->
+
+- 家長請假案件搜尋補課時段時，現在會同時檢查同一學生其他合約已物化的正式堂次，以及尚未物化但已預約的排課，避免先顯示不可能成立的候選。
+- 確認補課時仍由後端 ClassSession 寫入防線做最後一次衝堂檢查；若搜尋後被其他操作占用，回傳可理解的衝堂錯誤且整筆交易回滾。
+- 不改付款金額、既有出席／扣堂歷史、合約日期或試聽／平行課程語意。
+
+## 2026-08-29 — improved(ux): 評量審核佇列分頁語意更清楚
+
+<!-- release-notes: staff_update=staff-2026-08-29-learning-review-tabs-a11y -->
+
+- 主任「待核准／需修改／已核准／已退回／全部」與老師「全部／待審核／需修改／已核准」分頁改為明確的 tab 語意，並連到評量清單工作區。
+- 切換後鍵盤與螢幕閱讀器能辨識目前佇列；不改審核規則、核准同步點名／扣堂、API、權限或既有批次操作。
+
+## 2026-08-29 — fix: 新增課程「去加購」不再沒反應
+
+<!-- release-notes: staff_update=staff-2026-08-29-goto-purchase -->
+
+- 學生管理點「新增課程」後，若學生已有進行中課程，再點「去加購」會打開該課的加購堂數視窗。
+- 先前衝突視窗只認 `existing_course_id`，但新增課程預檢回傳的是 `id`，對不到課程就靜默關閉。
+- 找不到課程時會提示重新整理，不再沒有畫面反應。
+
+## 2026-08-29 — fixed(ux): 登入後點側欄不再被拉回首頁
+
+<!-- release-notes: staff_update=staff-2026-08-29-profile-nav-clobber -->
+
+- 登入後若 `/me` 個人資料稍晚才回來，側欄切到「我的課表」「課程查找」等頁面時，不會再被強制拉回教學工作台／主任總覽。
+- 個人資料重新整理仍會處理強制改密與角色首頁冷啟動；不改權限、分校、API 或各頁業務邏輯。
+- UI smoke 側欄導航改為限定側欄並短重試，降低把此競態誤判成按鈕失效。
+
+## 2026-08-29 — improved(ux): 學生課程下一步更明確
+
+<!-- release-notes: staff_update=staff-2026-08-29-student-course-next-action -->
+
+- 學生課程工作區會用「現在先處理」清楚說明續報、付款待確認、資料待補與一般課程的下一步，主任不必只靠顏色或猜按鈕用途。
+- 主行動會依現有課程狀態導向續報加購、繳費資訊或編輯課程，並保留原有 handler；卡片提醒狀態與文字保持一致。
+- 不改課程資料、付款、排課、權限或 API 行為；手機版主行動維持滿寬可讀與鍵盤可操作。
+
+## 2026-08-29 — improved(ux): 主任收件匣工作區更穩定
+
+<!-- release-notes: staff_update=staff-2026-08-29-notifications-dialog-a11y -->
+
+- 主任收件匣的「待辦案件／營運通知」分頁現在會清楚連到目前內容區，切換後只聚焦正在處理的工作區。
+- 核帳登記改用共用對話框，支援一致的關閉按鈕、Escape、初始鍵盤焦點與捲動鎖定；通知操作也不會意外觸發表單送出。
+- 不改付款資料、核帳規則、API、權限或既有導頁行為；這次只改善介面語意與操作穩定性。
+
+## 2026-08-29 — improved(ux): 老師工作台控制項更穩定
+
+<!-- release-notes: staff_update=staff-2026-08-29-teacher-card-a11y -->
+
+- 今日打卡狀態卡片改用原生按鈕，保留原有導向 attendance 行為，並補上狀態標籤、即時狀態宣告與清楚的鍵盤焦點。
+- 本週課表的上一週／下一週，以及課表中的圖示操作，補上明確的按鈕類型與可讀名稱，避免只看圖示或 hover 提示才能理解。
+- 不改出缺勤、課表、評量資料、API、權限或既有導頁行為；這次只改善控制項語意與操作穩定性。
+
+## 2026-08-29 — improved(ux): 出缺勤工作區的切換與狀態更容易理解
+
+<!-- release-notes: staff_update=staff-2026-08-29-attendance-tab-status-a11y -->
+
+- 主任的「學生點名／老師打卡」分頁現在會明確連到目前內容區，切換後螢幕閱讀器與鍵盤使用者都能辨識工作區。
+- 待點名堂次的到班狀態按鈕補上可讀的選取狀態與鍵盤焦點提示，不再只依賴顏色或視覺 active 樣式。
+- 不改點名資料、扣堂、RFID、API、權限或既有送出行為；老師模式維持原有單一學生點名工作區。
+
+## 2026-08-29 — improved(ux): 老師狀態與識別資訊更清楚
+
+<!-- release-notes: staff_update=staff-2026-08-29-teachers-list-status -->
+
+- 老師管理的「正式老師／待審核／停用」分頁現在會明確連到目前內容區，切換後只聚焦該狀態的老師。
+- 待審核與停用數字改用對應的提醒色，和老師卡片上的在職／待審核／停用標籤一致，降低把一般狀態誤判成危險警示的機會。
+- RFID 識別碼改用較穩定、低噪音的等寬數字呈現；不改老師資料、帳號、RFID 綁定、權限或既有操作行為。
+
+## 2026-08-29 — fixed(billing,ux): 帳務分頁只顯示目前工作區
+
+<!-- release-notes: staff_update=staff-2026-08-29-billing-tab-panels -->
+
+- 帳務中心的「待處理／已結清課程彙總／收據紀錄」現在只會顯示目前選定的內容區，避免切到已結清時同時看到收據工作區。
+- 三個分頁補上清楚的鍵盤與螢幕閱讀器控制關係，讓主任能更快判斷目前正在處理哪一種帳務。
+- 不改付款規則、收據資料、API 或權限行為；手機版維持原有可讀布局。
+
+## 2026-08-29 — improved(ux): 學生列表展開更容易操作
+
+<!-- release-notes: staff_update=staff-2026-08-29-students-row-disclosure -->
+
+- 學生列表的資料列現在可用 Enter 或 Space 展開／收合，並明確連到下方課程工作區。
+- 勾選、編輯與刪除等既有操作維持獨立，不會因資料列取得鍵盤焦點而誤觸展開。
+- 保留原有學生、課程、付款、權限與導頁行為，手機版維持既有可讀寬度。
+
+## 2026-08-29 — improved(ux): 課程查找操作層級更清楚
+
+<!-- release-notes: staff_update=staff-2026-08-29-course-management-hierarchy -->
+
+- 課程查找的學生群組改用清楚分離的展開按鈕與「專注此學生」操作，避免把兩個不同動作混在同一個可點區域。
+- 課程資料、帳務資料與歷史課程的展開狀態補上完整的鍵盤／螢幕閱讀器關係；原有課程、帳務、排課與權限行為不變。
+- 延續目前的淺色、navy、暖橘設計語言，手機版維持單欄與可讀寬度。
+
+## 2026-08-29 — improved(ux): 老師工作台先做一件事
+
+<!-- release-notes: staff_update=staff-2026-08-29-teacher-next-action -->
+
+- 老師工作台會把排序後的第一個待辦獨立標示為「現在先做」，直接提供對應的行動按鈕，減少第一眼判斷負擔。
+- 其餘待辦仍保留在「接著處理」清單；請假待審堂次、原有資料、導頁與權限行為不變。
+- 手機版主行動會在同一張卡片內完整堆疊，維持可讀寬度與鍵盤／螢幕閱讀器可操作性。
+
+## 2026-08-29 — improved(ux): 學生課程細節分層更清楚
+
+<!-- release-notes: staff_update=staff-2026-08-29-student-course-disclosure -->
+
+- 學生課程頁將「目前課程工作區」與歷史課程明確分層，主任先看選定課程的完整資料，再按需展開歷史內容。
+- 歷史課程保留原有編輯與刪除操作，並補上展開狀態與控制關係，讓鍵盤與螢幕閱讀器能正確理解。
+- 不改課程資料、付款、排課、權限或既有操作 handler；手機版維持單欄可讀布局。
+
+## 2026-08-29 — improved(ux): 學生課程總覽更容易判斷下一步
+
+<!-- release-notes: staff_update=staff-2026-08-29-student-course-overview -->
+
+- 展開學生後先看到課程總覽，摘要顯示進行中、需要注意與歷史課程數量，減少在多門課程間反覆尋找。
+- 課程選擇器會優先帶出需要處理的課程，並保留課程進度、付款、排課與課程操作；切換課程不改變既有資料與權限行為。
+- 手機版將主要課程工作區維持在可讀寬度，學生列表的次要欄位仍可水平查閱。
+
+## 2026-08-28 — improved(ux): 學生課程資訊更清楚
+
+<!-- release-notes: staff_update=staff-2026-08-28-student-course-summary -->
+
+- 學生主檔的進行中課程改以摘要卡呈現，先顯示課程進度、老師、時段、地點、費用與付款狀態，閱讀順序更清楚。
+- 堂數制會顯示剩餘／總堂數與可讀的進度；月結課程改顯示結算週期，資料不足時不會產生誤導性的百分比。
+- 續報加購保留為低堂數課程的主要下一步，其餘付款、帳單、繳費資訊、編輯、結案與刪除集中在「更多操作」。
+
+## 2026-08-28 — improved(ux): 側欄常用功能更聚焦
+
+<!-- release-notes: staff_update=staff-2026-08-28-sidebar-focus -->
+
+- 主任側欄保留今日工作、教學現場、學生與課程、財務與人事四個高頻工作區，進入系統後更容易找到每天要處理的事。
+- 報表、進階教學工具、訊息回報與設定仍完整保留，集中到「更多功能」面板；目前頁面、徽章與權限行為不變。
+- 「更多功能」支援明確的 active 狀態、Escape 關閉、收合側欄與鍵盤操作，手機版維持原本的 More 抽屜。
+
+## 2026-08-28 — improved(ux): 評量審核佇列分工更清楚
+
+<!-- release-notes: staff_update=staff-2026-08-28-learning-review-queues -->
+
+- 主任的學習評量頁將「待主任核准」與「老師需修改」拆成兩個工作佇列，避免把不同下一步混在同一個待審清單。
+- 分頁徽章、伺服器端狀態篩選、隱藏筆數提示與空狀態同步對齊；頁面仍保留全部、已核准與已退回查閱。
+- 佇列下方直接顯示目前工作目的，主任可依提示核准、追蹤修改或查閱，不改變評量資料與權限規則。
+
+## 2026-08-28 — improved(ux): in-app 問題回報更穩定
+
+<!-- release-notes: staff_update=staff-2026-08-28-in-app-bug-report -->
+
+- Bug 回報視窗改用共用對話框，支援 Esc 關閉、手機底部抽屜、背景捲動鎖定與一致的關閉按鈕；貼圖、拖曳、選檔與送出流程保留。
+- Bug 詳情的狀態更新、留言、可見性與回報者驗收失敗時，改在原位置顯示可關閉的錯誤提示，不再用瀏覽器 alert 打斷操作。
+- UI／營運改善清單不再作為產品頁面提供；工程規劃改由 GitHub Issue／PR／設計文件追蹤，產品側只保留實際業務功能。
+
+## 2026-08-28 — improved(ux): 出缺勤工作區先處理異常
+
+<!-- release-notes: staff_update=staff-2026-08-28-attendance-workspace-focus -->
+
+- 主任進入出缺勤管理時，學生點名與老師打卡分成清楚的工作分頁；學生點名先顯示待點名堂次，老師打卡先顯示需要補卡的課表異常。
+- 到班摘要、行政出勤、系統待比對、完整打卡紀錄與匯出功能仍保留，但改為按需展開，降低主任第一眼的資訊負擔。
+- 老師工作台的開始點名、補點名與補建課堂流程不變；本次只調整頁面層級與響應式呈現。
+
+## 2026-08-28 — improved(ux): 排課操作提供安全復原
+
+<!-- release-notes: staff_update=staff-2026-08-28-schedule-safe-recovery -->
+
+- 主任取消單堂課後，重新開啟該堂會看到「復原上一個變更」；系統只在有可驗證的最近操作、且沒有新衝堂時允許復原。
+- 復原要求原因並以交易同步排課狀態、必要的評量／點名與堂數，所有操作保留稽核紀錄。
+
+## 2026-08-27 — fix(attendance,billing): 堂次轉移同步扣堂台帳
+
+<!-- release-notes: staff_update=staff-2026-08-27-transfer-ledger-reconciliation -->
+
+- 已上課堂次轉移到新合約時，現在會同步點名、評量、扣堂台帳與衍生堂數；另提供受控對帳流程修復既有轉移造成的台帳漂移。
+
+## 2026-08-27 — fix(attendance,ux): 取消堂次清理評量並隱藏零差異
+
+<!-- release-notes: staff_update=staff-2026-08-27-session-evaluation-integrity -->
+
+- 取消、請假、停課堂次不再留下待填評量；只有已上課、完成或遲到等有效出席堂次才列入評量與填寫率。
+- 夜間堂數對帳只顯示仍有數字差異的課程；已經是 0 的列不再顯示為待處理。
+- 主任總覽將老師評量填寫率移到明顯位置，直接顯示分校整體填寫率、待填堂數、需要跟進的老師與每位老師的下一步狀態。
+
+## 2026-08-27 — improved(ux): 課程查找同頁編輯與新增堂次
+
+<!-- release-notes: staff_update=staff-2026-08-27-course-management-inline-scheduling -->
+
+- 課程查找的「編輯」改為在原頁開啟課程編輯視窗；月結課程可直接設定結束日，不再跳到學生管理後再返回。
+- 月結課程設定有效日期區間後，可在同一頁使用「排月結／新增月結堂次」建立指定日期與時間的堂次；後端仍檢查日期有效性、老師／教室與學生衝堂。
+
+## 2026-08-27 — fix(billing,course): 已繳費課程可直接結案且月結排課可回饋
+
+<!-- release-notes: staff_update=staff-2026-08-27-paid-course-settlement -->
+
+- 課程管理、學生管理與帳務提醒都提供「結案（不續報）」；已繳費的堂數制／月結制不必先走續報流程，仍保留付款與已上課紀錄。
+- 堂數制仍會在確認視窗列出未使用堂數，只有主任明確確認放棄餘額時才取消未來排課；結案請求統一使用 `reason=settled` 語意。
+- 月結「排月結」統一使用正規化課程識別碼；資料不完整或後端檢查失敗時，視窗會明確顯示原因，不再無聲無息。
+## 2026-08-27 — improved(billing): 課程管理可直接開繳費通知
+
+<!-- release-notes: staff_update=staff-2026-08-27-course-payment-slip -->
+
+- 課程管理的帳務資料與「更多」選單，對未繳、部分繳及待對帳課程提供「繳費通知」入口，可直接預覽並複製通知給家長。
+- 入口只讀取既有通知單資料，不新增付款、核帳或收據寫入；已繳費課程不顯示此操作。
+
+## 2026-08-26 — improved(ux): 待辦直接定位帳務與課表
+
+<!-- release-notes: staff_update=staff-2026-08-26-director-contextual-actions -->
+
+- 通知中心的帳務與排課／代課通知會沿用既有學生、課程與日期脈絡，進入目標頁面後直接定位並高亮對應資料，主任不必再重新搜尋。
+- 帳務仍依未繳費／續課分類處理；找不到目前分校資料時會顯示提示，不跨分校猜測、不自動寫入，付款、堂次、權限與後端 API 不變。
+
+## 2026-08-26 — improved(ux): 課程編輯集中到學生主檔
+
+<!-- release-notes: staff_update=staff-2026-08-26-course-edit-master-record -->
+
+- 從課程管理編輯課程時，現在會帶到學生管理的同一位學生與同一門課，直接開啟學生主檔編輯表單，避免同一筆課程需要記住兩套編輯入口。
+- 只接受目前分校清單中可驗證的學生與課程脈絡；本次不改付款、堂數、出缺勤、後端 API、資料庫或權限規則。
+
+## 2026-08-26 — improved(ux): 課程管理導頁保留學生上下文
+
+<!-- release-notes: staff_update=staff-2026-08-26-course-student-focus -->
+
+- 從課程管理的學生群組進入學生管理時，會直接定位並展開同一位學生，主任不必重新搜尋；一般「前往學生管理」入口仍維持不指定學生的通用入口。
+- 定位只接受目前分校學生清單中的合法學生，查無資料時不會跨分校開啟；本次不改付款、堂數、出缺勤、後端 API 或權限規則。
+
+## 2026-08-26 — improved(ux): 課程建立回到學生管理主檔
+
+<!-- release-notes: staff_update=staff-2026-08-26-course-create-entry -->
+
+- 課程管理展開學生資料時，新增課程現在會導向「學生管理」主檔處理，避免同一筆學生／合約在課程管理另開建立流程。
+- 課程查找、排課、調課與換師複製維持原流程；本次不改變資料、堂數、付款或權限規則。
+
+## 2026-08-26 — improved(ux): 課程管理移除重複排課入口
+
+<!-- release-notes: staff_update=staff-2026-08-26-course-action-dedup -->
+
+- 課程管理每列的「排課／新增下一堂」現在只保留一個主要入口；「補課／補登」仍集中在「更多」選單，減少主任誤判操作差異。
+- 本次只整理操作入口，不改變排課、堂數、付款、資料或權限規則。
+
+## 2026-08-26 — improved(billing): 批次帳務送出前先看摘要
+
+<!-- release-notes: staff_update=staff-2026-08-26-billing-batch-preview -->
+
+- 帳務中心批次回報與批次確認入帳，現在會先顯示選取筆數、金額、付款方式與逐筆課程摘要；取消或返回修改都不會送出資料。
+- 回報仍先是「待對帳」，確認入帳才會走正式入帳與收據流程；既有付款狀態、權限與 API 不變。
+
+## 2026-08-26 — improved(ux): 報帳與排課流程加入無個資使用量測
+
+<!-- release-notes: staff_update=staff-2026-08-26-ops-workflow-telemetry -->
+
+- 帳務回報／確認入帳與新增排課／調課會記錄流程開始、完成、返回、錯誤類型與耗時，供後續刪減不必要步驟。
+- telemetry 僅使用固定流程欄位，並沿用後端個資過濾；不記錄姓名、學號、課程 ID、金額、備註、電話或錯誤原文，且紀錄失敗不會阻塞操作。
+
+## 2026-08-26 — fix(attendance): 過期堂次不再出現在出缺勤清單
+
+<!-- release-notes: staff_update=staff-2026-08-26-attendance-session-trust -->
+
+- 出缺勤作業清單現在以 `ClassSession` 堂次狀態為準；已取消堂次或點名與堂次合約不一致的殘留資料不再被當成有效出勤顯示。
+- 自修與既有無堂次編號的臨時點名仍保留；本次不改扣堂、付款、權限或正式資料。
+
+## 2026-08-26 — improved(billing): 帳務中心先顯示待處理佇列
+
+<!-- release-notes: staff_update=staff-2026-08-26-billing-action-queue -->
+
+- 帳務中心預設先顯示未繳費、部分付款與待對帳，主任可以直接開始今天要處理的工作；完整提醒、逾期與續課分類仍可切換查看。
+- 在待處理中同時勾選不同狀態時，系統會提示分開處理，不會把回報與確認送到錯誤流程；已回報仍不等於已入帳。
+
+## 2026-08-26 — improved(ux): 調課前先預覽衝堂
+
+<!-- release-notes: staff_update=staff-2026-08-26-reschedule-preflight -->
+
+- 主任在調課視窗選擇新日期與時間後，會先看到目前課表是否可能衝堂；已知達到老師或班型上限時，系統會停用確認並提示改選方向。
+- 這是唯讀預覽，最後仍由後端重新檢查權限、房間、跨分校與原子調課規則；付款、堂次與排課資料模型不變。
+
+## 2026-08-26 — improved(ux): 主任待辦可返回工作台
+
+<!-- release-notes: staff_update=staff-2026-08-26-dashboard-return-context -->
+
+- 從主任今日工作進入帳務、點名、評量或課表處理後，頂端會保留「回到主任今日工作」入口，完成一筆工作後不必重新尋找待辦。
+- 一般側欄切頁會清除暫時脈絡；不改變既有資料、權限、分校或帳務／排課寫入規則。
+
+## 2026-08-26 — improved(ux): 統一側欄與手機導覽入口
+
+<!-- release-notes: staff_update=staff-2026-08-26-navigation-registry -->
+
+- 桌面側欄、收合側欄、手機底部導覽與 More 選單改由同一份角色導覽定義產生，避免入口漏改或角色看到不該有的頁面。
+- 保留既有 page key、分校切換、badge 與後端權限邊界；側欄群組新增 `aria-expanded`，目前頁面維持 `aria-current`。
+
+## 2026-08-26 — improved(ux): 主任常用營運流程一站開始
+
+<!-- release-notes: staff_update=staff-2026-08-26-ops-workflow-quick-start -->
+
+- 主任首頁新增「收款與核帳」、「新增排課」、「調課／代課」三個常用流程入口；帳務中心與班級行事曆也會提示下一步。
+- 入口只簡化尋路，不改變既有權限、衝堂檢查、繳費回報與主任確認入帳規則。
+
+## 2026-08-26 — fix(billing): 長備註確認入帳不再失敗
+
+<!-- release-notes: silent_ship=silent-2026-08-26-payment-report-long-note -->
+
+- 主任確認入帳時，較長的繳費說明會完整保留，不會因歷史欄位容量不足而讓整筆核銷失敗。
+- 同一筆回報重試時會維持單一收款紀錄；付款狀態、金額與既有核帳流程不變。
+
+## 2026-08-26 — improved(billing): 主任可從提醒直接開繳費通知與明細
+
+<!-- release-notes: staff_update=staff-2026-08-26-payment-shortcuts -->
+
+- 主任總覽的繳費提醒新增「繳費通知」與「繳費明細」入口，可直接預覽既有通知單、查看帳單／收款／收據時間線，再複製通知給家長。
+- 帳務中心各列表的「對帳」入口改以「繳費明細」呈現，付款狀態、金額計算與既有核帳流程不變。
+
+## 2026-08-26 — improved(billing): 課程卡直接顯示最近繳費備註
+
+<!-- release-notes: staff_update=staff-2026-08-26-course-payment-summary -->
+
+- 課程管理的學生課程卡會直接顯示最近一次繳費回報的日期、金額、備註與（主任可見的）匯款後五碼，不必再切到帳務中心重查。
+- 摘要為唯讀資料；付款狀態、金額計算、對帳與收據流程不變。待對帳回報會明確標示「待對帳」。
+
+## 2026-08-26 — improved(ux): Bug 回報可直接貼上截圖
+
+<!-- release-notes: staff_update=staff-2026-08-26-bug-report-image-paste -->
+
+- Bug 回報視窗支援直接貼上剪貼簿截圖、拖曳圖片或點擊選檔；三種方式共用圖片格式、5MB／5 張上限與即時預覽。
+- 純文字貼上仍照常輸入描述；移除附件或關閉視窗會清理預覽資源，既有多段表單與後端附件 API 不變。
+
+## 2026-08-26 — fix(attendance): 待點名列表遇到歷史衝突仍可載入
+
+<!-- release-notes: silent_ship=silent-2026-08-26-read-side-session-conflict -->
+
+- 讀取分校待點名堂次時，單一歷史重疊衝突不再讓整份列表失敗；衝突堂次維持不強制建立，並留下不含個資的伺服器診斷紀錄。
+- 正式建立或調整堂次的學生重疊防護維持不變，並補上主任／分校讀取回歸測試。
+
+## 2026-08-25 — fix(course): 有歷史證據的取消堂次可受控恢復並移轉
+
+<!-- release-notes: staff_update=staff-2026-08-25-cancelled-session-recovery-transfer -->
+
+- 課程管理的「合約／堂次調整」會辨識仍保留評量或點名紀錄的已取消堂次，明確標示為「已取消（可恢復）」；真正沒有歷史證據的取消堂次仍不可移轉。
+- 恢復流程要求主任填寫原因，並在單一交易內恢復為已上課、同步移轉評量／點名／扣堂台帳及來源／目標合約餘額；留下最小化稽核紀錄。
+
+## 2026-08-25 — fix(course): 堂次轉移先檢查目標時段衝突
+
+<!-- release-notes: staff_update=staff-2026-08-25-transfer-slot-conflict-preflight -->
+
+- 轉移堂次前先檢查目標課程是否已有相同日期／時段；衝突時回傳可理解的日期與處理方向，不再只顯示通用的 `Server Error`。
+- 衝突會在任何來源堂次被修改前拒絕，避免重複堂次或已存在的評量／點名／扣堂資料被誤搬動；請先處理目標課程的重複堂次，再重新操作。
+
 ## 2026-08-23 — feat(billing): 未收款課程合約拆分精靈
 
 <!-- release-notes: staff_update=staff-2026-08-23-split-contract-wizard -->
@@ -1981,3 +2530,140 @@ Fixed：班級行事曆若週次篩選暫時隱藏某課程，已實際存在的
 
 - 新增主任／超級管理員專用的未收款堂數更正流程，可將錯誤購買堂數安全下修並同步正確總費用。
 - 保留已上課與扣堂紀錄，取消超出堂數的未上課排程、重算餘額，並留下稽核事件；一般計費契約鎖定與已收款帳務流程不放寬。
+## 2026-08-24 — feat(ops): 分校健康唯讀看板 V1
+
+<!-- release-notes: staff_update=staff-2026-08-24-branch-health-v1 -->
+
+- 超級管理員可在「分校健康」查看啟用分校的學生、教學、家長、教師與營運訊號，並點入查看來源、期間與下一步。
+- V1 不做總分、排名、介入任務或自動通知；教師流失、capacity、完整續班率與家長客訴尚未接入時，會明確顯示「待接資料」。
+- API 維持唯讀與 super_admin 分校範圍，未修改排課、出缺勤、扣堂、收費或既有主任首頁工作流。
+## 2026-08-25 — fix(accounting): 回報先待對帳並保留入帳備註
+
+<!-- release-notes: staff_update=staff-2026-08-25-payment-report-reconciliation -->
+
+- 現金與匯款回報會先建立「待對帳」資料；主任確認入帳後才更新為已繳費、建立付款與電子收據，重複回報會直接導向待對帳分頁。
+- 同一學生同科目有多筆課程時，帳務列顯示課程編號與日期，降低選錯課程而誤判未繳／已繳的機會。
+- 回報備註會保留到對帳、電子收據與學生編輯頁的最近入帳備註，電子收據恢復提供複製入口；不會覆蓋學生長期備註。
+## 2026-08-25 — fix(billing): 課程列表顯示待對帳
+
+<!-- release-notes: staff_update=staff-2026-08-25-course-list-pending-report -->
+
+- 課程管理與學生課程列表遇到尚未核帳的繳費回報時，會顯示「待對帳」，不再誤顯示「未繳費」或讓主任重複送出回報。
+- 回報仍須由主任在帳務中心確認入帳；確認後才會變成「已繳費」並開立電子收據。
+## 2026-08-25 — improved(billing): 電子收據可複製圖片
+
+<!-- release-notes: staff_update=staff-2026-08-25-receipt-image-copy -->
+
+- 電子收據新增「複製圖片」與「下載圖片」，可直接貼到 LINE 或下載後傳給家長；「複製文字」仍保留給需要文字內容的情境。
+- 若瀏覽器不允許直接寫入圖片剪貼簿，畫面會提示改用「下載圖片」，不會讓主任誤以為已複製成功。
+
+## 2026-08-25 — fix(billing): 課程列表顯示待對帳
+
+<!-- release-notes: staff_update=staff-2026-08-25-course-list-pending-report -->
+
+- 課程管理與學生課程列表遇到尚未核帳的繳費回報時，會顯示「待對帳」，不再誤顯示「未繳費」或讓主任重複送出回報。
+- 回報仍須由主任在帳務中心確認入帳；確認後才會變成「已繳費」並開立電子收據。
+# 2026-08-27 — chore(quality): 前端未使用程式碼新增 baseline ratchet
+
+<!-- release-notes: silent_ship=silent-2026-08-27-eslint-unused-ratchet -->
+
+- 以既有 ESLint 規則建立每檔 baseline，build 會阻擋新增的 `no-unused-vars` 問題，同時允許逐步清理歷史債。
+- 這是工程品質防線，不改變主任、老師、家長的畫面或操作流程。
+# 2026-08-27 — improved(ux): 主任可追蹤老師評量完成率
+
+<!-- release-notes: staff_update=staff-2026-08-27-teacher-assessment-engagement -->
+
+- 完整營運的「近期紀錄與分析」新增老師評量完成率，主任可切換近 7／14／30 天查看已填／應填與待跟進狀態。
+- 樣本不足只顯示資料累積中，不公開競爭排名、不直接發 XP；既有分校權限、代課歸屬與出缺勤排除規則維持不變。
+## 2026-08-28 — improved(ux): 側欄與今日工作頁面減少操作干擾
+
+<!-- release-notes: staff_update=staff-2026-08-28-ops-ui-sweep -->
+
+- 側欄保留所有功能入口，但將進階教學、報表薪資與訊息回報收進可展開區段，主任與老師先看到每日高頻工作。
+- 出缺勤、教學工作台、老師管理與帳務中心統一頁首、摘要、篩選與載入狀態；原有點名、帳務、權限與資料流程不變。
+## 2026-08-28 — fix(attendance,course): 請假安全撤銷與試聽轉正式
+
+<!-- release-notes: staff_update=staff-2026-08-28-leave-trial-conversion -->
+
+- 翟君和等請假堂次改回未上時，統一走「撤銷請假」；禁止先改成已上再改回未上，避免順延與評量／點名資料不同步。
+- 舊資料缺少順延尾堂時，撤銷請假會只復原該堂並提醒做堂數對帳，不會刪除或任意改動其他堂次。
+- 試聽轉正式改為單一操作：保留試聽堂與評量歷史、取消未來試聽排課、建立乾淨的正式堂數課程並記錄來源，避免轉移試聽堂造成超排。
+- 課程列表的衝堂提示補上合約日期區間判斷；日期不重疊的續報不再被誤標衝堂。
+## 2026-08-28 — fix: 出缺勤與學習評量表建立改為同一個一致性邊界
+
+<!-- release-notes: staff_update=staff-2026-08-28-attendance-learning-record-integrity -->
+
+- 已上／遲到狀態若無法建立或恢復有效學習評量表，出勤狀態更新會回滾，不再留下「有上課但沒有評量表」的半完成資料。
+- 新增全系統一致性掃描與受控修復：已上／遲到缺評量會補回，未上／請假／取消的幽靈評量會作廢，並保留修復稽核與備份。
+- 針對 2026-08-28 翟君和 13:00 社會堂次提供固定目標的受控資料修復流程，避免誤修其他堂次。
+
+## 2026-08-28 — fix: 科目數統計摘要不再誤顯示 0
+
+<!-- release-notes: staff_update=staff-2026-08-28-subject-units-summary -->
+
+- 修正科目數統計頁讀取 API 字串型數值時的前端型別錯誤；摘要卡會與下方老師明細使用相同數據正常顯示。
+- 補上非數字／空值的安全轉換與回歸測試，不影響科目數計算公式與權限。
+## 2026-08-29 — improved(ux): 主任總覽檢視切換更清楚
+
+<!-- release-notes: staff_update=staff-2026-08-29-director-view-switcher-a11y -->
+
+- 主任總覽的「今天／完整營運」檢視切換補上明確的分頁與內容區關係，鍵盤與螢幕閱讀器能知道目前正在查看哪個工作區。
+- 保留今日待辦優先、完整營運按需載入與原有導頁、資料、權限行為；本次不改任何營運規則。
+
+## 2026-08-29 — improved(ux): 評量快捷篩選狀態更清楚
+
+<!-- release-notes: staff_update=staff-2026-08-29-learning-filter-chips-a11y -->
+
+- 評量頁的未填、需修改與家長留言快捷篩選改用明確的按鈕與選取狀態，鍵盤與螢幕閱讀器能辨識目前篩選。
+- 保留原有篩選條件、排序、資料、權限與審核流程；本次不改 API 或評量內容。
+## 2026-08-29 — improved(ux): 評量課表檢視控制更清楚
+
+<!-- release-notes: staff_update=staff-2026-08-29-learning-schedule-a11y -->
+
+- 評量頁課表的「今日／本週」切換、週次前後按鈕與填寫操作補上明確的按鈕語意與名稱。
+- 保留原有課表資料、填寫導向、評量內容、權限與 API；本次不改排課或審核規則。
+# 2026-08-29 — improved(ux): 評量檢視與操作按鈕語意更清楚
+
+<!-- release-notes: staff_update=staff-2026-08-29-learning-view-actions-a11y -->
+
+- 評量列表／卡片檢視與內容預覽會明確告知目前選取狀態，鍵盤與螢幕閱讀器能辨識正在查看的模式。
+- 批次審核、單筆操作、篩選、匯出、草稿與彈窗關閉按鈕補上明確按鈕型別，避免在表單情境被誤當成送出。
+- 保留既有評量資料、審核流程、權限、API 與操作行為；本次只補控制項語意。
+# 2026-08-29 — improved(ux): 學習檢測操作按鈕語意更清楚
+
+<!-- release-notes: staff_update=staff-2026-08-29-assessment-actions-a11y -->
+
+- 學習檢測的建立、發布、結果、作答與補強操作補上明確按鈕型別，避免在表單情境被誤當成送出。
+- 建立檢測與查看結果的彈窗補上 dialog 角色與標題關係，進入不同工作階段時提供清楚上下文。
+- 保留原有檢測資料、結果登錄、主任複核、補強追蹤、權限與 API 行為；本次只補控制項語意。
+# 2026-08-29 — improved(ux): Bug 回報補充定位資訊
+
+<!-- release-notes: staff_update=staff-2026-08-29-bug-report-triage-context -->
+
+- 回報問題時可選填發生時間與相關資料編號，讓後續查找特定學生、課程、課堂或發票更快。
+- 描述欄提示「做了什麼、實際看到什麼、原本預期什麼」，並提醒不要填寫密碼；既有頁面、裝置與瀏覽器資訊仍會自動附帶。
+- 欄位為選填，不改權限、資料內容、帳務或排課判斷。
+- 處理人員查看回報詳情時會直接看到這些補充線索；一般回報者不會看到內部處理區塊。
+- 送出成功會顯示回報編號，方便回到 Bug 回報頁查看後續進度。
+
+# 2026-08-29 — improved(ux): 教師首頁提示音狀態更清楚
+
+<!-- release-notes: staff_update=staff-2026-08-29-teacher-home-notification-a11y -->
+
+- 教師首頁的待辦提示音開關會明確回報目前開啟／關閉狀態，今日靜音動作也有清楚名稱。
+- 保留提示音偏好、今日靜音、待辦排序、點名導頁與既有資料流程；本次只改善控制項回饋。
+
+## 2026-08-29 — improved(ux): 老師管理彈窗上下文更清楚
+
+<!-- release-notes: staff_update=staff-2026-08-29-teachers-modal-semantics -->
+
+- 老師管理的新增、編輯與批次新增彈窗補上 dialog 角色與標題關係，操作上下文更清楚。
+- 老師管理彈窗的取消、儲存與批次結果操作按鈕補上明確型別，避免表單情境產生誤送出。
+- 老師管理的搜尋、狀態與科目篩選補上欄位標籤關聯，定位資料更直覺。
+
+## 2026-08-29 — improved(ux): Bug 回報列表支援鍵盤選取
+
+<!-- release-notes: staff_update=staff-2026-08-29-bug-list-keyboard -->
+
+- Bug 回報列表項目改為可用鍵盤聚焦與選取，按 Enter 或 Space 即可開啟詳情。
+- 已選取的回報會向輔助工具清楚標示；滑鼠操作與分診流程不變。

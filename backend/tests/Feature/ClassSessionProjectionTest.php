@@ -111,6 +111,82 @@ class ClassSessionProjectionTest extends TestCase
         $this->assertArrayNotHasKey('last_page', $projection->json());
     }
 
+    public function test_teacher_projection_includes_unmaterialized_count_mode_contract_slots(): void
+    {
+        [$campus, , $courseId] = $this->seedBranchCourse('teacher-count');
+        $course = \App\Models\StudentClass::find($courseId);
+        $course->update([
+            'StartDate' => '2026-06-06',
+            'ScheduleMode' => 'count',
+            'SessionCount' => 8,
+            'week' => 6,
+            'time' => '10:00:00',
+            'SessionDuration' => 120,
+        ]);
+        $teacherToken = $this->createTeacherToken((int) $course->TeacherID, (int) $campus->id);
+
+        // A multi-day range intentionally avoids the same-day write-repair path.
+        // The read-only projection must still show the Saturday contract slot.
+        $response = $this->withHeaders([
+            'Authorization' => "Bearer {$teacherToken}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/class-sessions/projection?start=2026-06-27&end=2026-06-28');
+
+        $response->assertOk();
+        $projected = $response->json("projected.by_class.{$courseId}") ?? [];
+        $this->assertCount(1, $projected);
+        $this->assertSame('2026-06-27', $projected[0]['session_date']);
+        $this->assertSame('10:00', $projected[0]['start_time']);
+        $this->assertSame((int) $campus->id, (int) $projected[0]['branch_id']);
+        $this->assertSame('學生', $projected[0]['student_name']);
+        $this->assertNull($projected[0]['id'] ?? null);
+        $this->assertDatabaseCount('ClassSession', 0);
+    }
+
+    public function test_teacher_projection_isolates_unmaterialized_candidates_by_branch(): void
+    {
+        [$campusA, , $courseA] = $this->seedBranchCourse('teacher-candidate-a');
+        [, , $courseB] = $this->seedBranchCourse('teacher-candidate-b');
+
+        $courseARecord = \App\Models\StudentClass::findOrFail($courseA);
+        $teacherId = (int) $courseARecord->TeacherID;
+        $courseBRecord = \App\Models\StudentClass::findOrFail($courseB);
+
+        $recurringFields = [
+            'StartDate' => '2026-06-06',
+            'ScheduleMode' => 'count',
+            'SessionCount' => 8,
+            'week' => 6,
+            'time' => '10:00:00',
+            'SessionDuration' => 120,
+        ];
+        $courseARecord->update($recurringFields);
+        $courseBRecord->update(array_merge($recurringFields, [
+            'TeacherID' => $teacherId,
+            'by1' => $teacherId,
+        ]));
+
+        // The same teacher has active contracts in both campuses, but this
+        // token is scoped only to campus A. Neither course has a materialized
+        // ClassSession row in the requested range.
+        $teacherToken = $this->createTeacherToken($teacherId, (int) $campusA->id);
+        $response = $this->withHeaders([
+            'Authorization' => "Bearer {$teacherToken}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/class-sessions/projection?start=2026-06-27&end=2026-06-28');
+
+        $response->assertOk();
+        $projectedByClass = $response->json('projected.by_class') ?? [];
+        $this->assertCount(1, $projectedByClass);
+        $this->assertArrayHasKey((string) $courseA, $projectedByClass);
+        $this->assertArrayNotHasKey((string) $courseB, $projectedByClass);
+        $this->assertSame(
+            (int) $campusA->id,
+            (int) ($projectedByClass[(string) $courseA][0]['branch_id'] ?? 0)
+        );
+        $this->assertDatabaseCount('ClassSession', 0);
+    }
+
     public function test_projection_isolates_branches(): void
     {
         [$campusA, $tokenA, $courseA] = $this->seedBranchCourse('branch-a');
@@ -281,5 +357,21 @@ class ClassSessionProjectionTest extends TestCase
         ]);
 
         return (int) $teacher->id;
+    }
+
+    private function createTeacherToken(int $teacherId, int $campusId): string
+    {
+        UserCampus::updateOrCreate(
+            ['CampusID' => $campusId, 'UserID' => $teacherId],
+            ['Admin' => 0, 'Approved' => 1]
+        );
+        $token = bin2hex(random_bytes(16));
+        AuthToken::create([
+            'user_id' => $teacherId,
+            'token' => $token,
+            'expires_at' => now()->addDay(),
+        ]);
+
+        return $token;
     }
 }

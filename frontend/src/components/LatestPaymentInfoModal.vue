@@ -3,7 +3,7 @@
     <div class="modal lpi-modal">
       <div class="lpi-header">
         <h3>最新繳費資訊</h3>
-        <button class="ghost icon-btn" @click="$emit('close')" title="關閉">
+        <button type="button" class="ghost icon-btn" @click="$emit('close')" title="關閉">
           <span class="material-symbols-outlined">close</span>
         </button>
       </div>
@@ -49,6 +49,7 @@
         <div class="lpi-receipt">
           <button
             v-if="receiptCta.kind === 'button'"
+            type="button"
             class="small primary"
             @click="$emit('view-receipt', latest.report_id)"
           >
@@ -60,7 +61,7 @@
       </div>
 
       <div class="actions" style="margin-top: 16px;">
-        <button class="ghost" @click="$emit('close')">關閉</button>
+        <button type="button" class="ghost" @click="$emit('close')">關閉</button>
       </div>
     </div>
   </div>

@@ -840,6 +840,10 @@ class ScheduleGuardrailsTest extends TestCase
             'status' => 'rescheduled', 'type' => 'normal', 'deduction' => 0,
             'branch_id' => 1, 'schedule_date' => '2026-04-23', 'student_course_id' => $scXId,
         ]);
+        DB::table('ClassSession')->insert([
+            'StudentClassID' => $scXId, 'SessionDate' => '2026-04-23',
+            'StartTime' => '13:00', 'EndTime' => '15:00', 'Status' => 'scheduled',
+        ]);
         DB::table('schedules')->insert([
             'student_id' => $studentX->id, 'teacher_id' => $teacherBId,
             'subject' => '數學', 'day_of_week' => 4, 'start_time' => '13:00', 'end_time' => '15:00',

@@ -40,7 +40,8 @@
             @click="$emit('start-edit-note-time')"
           >備註 / 當天時段</button>
         </div>
-        <p class="se-action-hint">要換到別天上課請按「調課」；只是同一天時間微調或加備註請按「備註 / 當天時段」。</p>
+        <p v-if="form.current_status === 'leave'" class="se-action-hint">請假堂次要恢復時，請按「改為未上」取消請假；系統會同步回復順延堂次。請勿先改成「已上」再改回「未上」。</p>
+        <p v-else class="se-action-hint">要換到別天上課請按「調課」；只是同一天時間微調或加備註請按「備註 / 當天時段」。</p>
       </div>
 
       <div v-if="mode === 'retro-leave'" class="session-edit-retro">
@@ -206,6 +207,9 @@ const subjectLabel = computed(() => getSubjectLabel(props.form?.subject));
 const statusLabel = (s) => SESSION_STATUS_LABELS[s] || s || '—';
 const canTransition = (target) => {
   const allowed = SESSION_STATUS_TRANSITIONS[props.form?.current_status] || [];
+  if (props.form?.current_status === 'leave' && ['attended', 'late', 'absent'].includes(target)) {
+    return false;
+  }
   return allowed.includes(target);
 };
 const computedEndTime = computed(() => props.computeEndTime?.(props.form?.new_start, props.form?.duration_hours) || '');

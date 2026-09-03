@@ -5,17 +5,18 @@
 <!-- Pick the HIGHEST class that applies. When unsure, choose higher. -->
 - [ ] **R0** — docs / generated evidence / no production behavior
 - [ ] **R1** — low-risk reversible code (isolated fix, display); tests + rollback
-- [ ] **R2** — domain/billing/auth/cron/deploy/migration/cross-campus — needs documented **self-review checklist**（單人模式免獨立 verifier，見 Founder Decision 2026-08-14）
-- [ ] **R3** — data repair / destructive / privilege / financial / security boundary — **Founder** + execution gate
+- [ ] **R2** — domain/billing/auth/cron/deploy/migration/cross-campus — independent review + rollback
+- [ ] **R3** — data repair / destructive / privilege / financial / security boundary — protected Founder gate
 
 **Risk-Class:** R?  
-**Self-review checklist（R2）/ Independent verifier / approval（R3）：** <!-- R2: 你自己確認了什麼（authz/scoping、migration 可逆性、rollback）；R3: name — not the same implementation context -->  
+**Autonomy-Tier:** T? <!-- R0/T0, R1/T1, R2/T2, R3/T3 -->
+**Review / protected-boundary evidence：** <!-- T2: independent review context; T3: Founder decision packet and exact boundary; otherwise N/A -->
 **Rollback:** <!-- revert SHA / prior deploy / repair --rollback / n/a -->
 
 > **單人 repo Review Gate（#736）**：無第二位強制 reviewer 時，以「自動代理人 + 強制檢查」近似第二雙眼——
 > ①自動 AI review 留言（Bugbot/Copilot review，repo 設定啟用，**merge 前需 resolve 所有 thread**）②高風險檔強制附測試（required check `High-Risk Test Gate`）③下方 self-review checklist。  
-> **R2**：CI 全綠 + 本 checklist 據實填寫即可 merge，單人模式不需另開獨立 verifier（Founder Decision 2026-08-14）。  
-> **R3 禁止**用另一個假身份 rubber-stamp；需不同 context 的獨立核准（Founder Decision 2026-07-18）。
+> **T2/R2**：CI 全綠 + independent review + 本 checklist 據實填寫即可由 Agent merge，無 protected Founder decision 時不需人類橡皮圖章。
+> **T3/R3**：可準備實作與 evidence package；在 protected action 前停止並取得 Founder GO，不得以假身份或 review 取代該 gate。
 
 ## 關聯 Issue（Refs / Closes 規則）
 <!-- 多階段、Epic、仍有一截沒做完 → 只填 Refs，不要寫 Closes，避免 GitHub 整張 issue 被關掉 -->

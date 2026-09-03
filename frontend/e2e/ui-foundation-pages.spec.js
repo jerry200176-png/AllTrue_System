@@ -6,6 +6,7 @@
  * Static HTML harness under e2e/fixtures is design exploration only.
  */
 import { test, expect } from '@playwright/test';
+import { dismissOverlays } from './fixtures/dismissOverlays.js';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -64,6 +65,7 @@ function fakeStudents(count, { longName = false } = {}) {
 
 async function installApiMocks(page, mode, pageName = '') {
   const hang = mode === 'loading';
+  let manualBookingCheckCount = 0;
   let releaseHang;
   const hangPromise = hang
     ? new Promise((resolve) => { releaseHang = resolve; })
@@ -73,6 +75,27 @@ async function installApiMocks(page, mode, pageName = '') {
     const url = new URL(route.request().url());
     const p = url.pathname;
     const method = route.request().method();
+    const requestedPage = Number(url.searchParams.get('page') || 1);
+
+    if (pageName === 'course' && mode === 'booking-race' && method === 'POST' && p.includes('/manual-sessions/check')) {
+      manualBookingCheckCount += 1;
+      if (manualBookingCheckCount === 1) {
+        // Reproduce the stale response that used to overwrite the director's
+        // newer date selection with an old 422 error.
+        await new Promise((resolve) => setTimeout(resolve, 180));
+        return route.fulfill({
+          status: 422,
+          contentType: 'application/json',
+          body: JSON.stringify({ can_add: false, message: '舊日期檢查失敗', conflict_type: 'past_session' }),
+        });
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ can_add: true, message: '可以預約', duration_minutes: 120, available_sessions: 1, conflict_type: 'none' }),
+      });
+    }
 
     if (method !== 'GET') {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
@@ -127,6 +150,58 @@ async function installApiMocks(page, mode, pageName = '') {
       });
     }
 
+    if (pageName === 'tuition' && p.includes('/alerts/tuition')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([{ id: 701, student_name: '測試學生甲', subject: '數學', payment_status: 'unpaid', charge: 12000, paid_amount: 0, outstanding: 12000, schedule_mode: 'count', remaining_sessions: 4, course_start_date: '2026-08-01', course_end_date: '2026-10-31', days_until_settlement: 2 }]),
+      });
+    }
+
+    if (pageName === 'tuition' && p.includes('/accounting/settled-courses')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [{ student_class_id: 701, course_ref: '測試課程 #701', student_name: '測試學生甲', subject: '數學', schedule_mode: 'count', paid_amount: 12000, last_paid_at: '2026-08-20', legacy_paid_without_invoice: false, has_exception: false, overpaid_total: 0 }], summary: { course_count: 1, paid_total: 12000, legacy_count: 0, exception_count: 0, overpaid_total: 0 } }),
+      });
+    }
+
+    if (pageName === 'tuition' && p.includes('/accounting/payments')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [], summary: { total_count: 0, total_amount: 0 } }),
+      });
+    }
+
+    if (pageName === 'teachers' && p.includes('/teachers')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [
+          { id: 7101, username: '測試老師甲', account: 'teacher-a', phone: '0912-345-678', branch_id: 1, branch_ids: [1, 2], status: 'active', employment_type: 'full_time', subject_ids: [1], subject_names: ['數學'], subject_level_scopes: [{ subject_id: 1, level: 'junior' }], rfid_by_branch: { '1': 'TEACHER-A-001', '2': 'TEACHER-A-002' } },
+          { id: 7102, username: '測試老師乙', account: 'teacher-b', phone: '', branch_id: 1, branch_ids: [1], status: 'pending', employment_type: 'part_time', subject_ids: [], subject_names: [], subject_level_scopes: [], rfid: null },
+          { id: 7103, username: '測試老師丙', account: 'teacher-c', phone: '', branch_id: 1, branch_ids: [1], status: 'suspended', employment_type: 'full_time', subject_ids: [], subject_names: [], subject_level_scopes: [], rfid: null },
+        ] }),
+      });
+    }
+
+    if (pageName === 'teachers' && p.includes('/subjects')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([{ id: 1, name: '數學' }]),
+      });
+    }
+
+    if (pageName === 'teachers' && p.includes('/branches')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([{ id: 1, name: '大安分校' }, { id: 2, name: '石牌分校' }]),
+      });
+    }
+
     if (mode === 'dashboard' && p.includes('/director/operations-trust')) {
       return route.fulfill({
         status: 200,
@@ -176,6 +251,35 @@ async function installApiMocks(page, mode, pageName = '') {
       if (mode === 'empty') {
         return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [], total: 0 }) });
       }
+      if (mode === 'booking-race') {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: [{
+              id: 5201,
+              student_id: 2000,
+              student_name: '測試學生甲',
+              subject: '英文',
+              teacher_id: 3000,
+              teacher_name: '測試老師',
+              class_type: 'one_on_three',
+              scheduling_policy: 'manual_occurrence',
+              payment_type: 'session',
+              sessions_purchased: 8,
+              sessions_used: 7,
+              remaining_sessions: 1,
+              status: 'active',
+              day_of_week: 6,
+              start_time: '13:00',
+              end_time: '15:00',
+              duration_hours: 2,
+              branch_id: 1,
+            }],
+            total: 1,
+          }),
+        });
+      }
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -223,20 +327,24 @@ async function installApiMocks(page, mode, pageName = '') {
           }),
         });
       }
-      const cases = mode === 'long' ? [CASE_LONG, CASE_NORMAL] : [CASE_NORMAL, { ...CASE_NORMAL, id: 'case-1003', student_name: '測試學生乙', overdue: true, priority: 'overdue' }];
+      const cases = mode === 'disabled' && requestedPage === 3
+        ? [{ ...CASE_NORMAL, id: 'case-1051', student_name: '測試學生第 51 筆', title: '第 51 筆請假申請' }]
+        : mode === 'long'
+          ? [CASE_LONG, CASE_NORMAL]
+          : [CASE_NORMAL, { ...CASE_NORMAL, id: 'case-1003', student_name: '測試學生乙', overdue: true, priority: 'overdue' }];
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
           cases: {
             data: cases,
-            total: cases.length,
-            current_page: 1,
+            total: mode === 'disabled' ? 51 : cases.length,
+            current_page: mode === 'disabled' ? requestedPage : 1,
             last_page: mode === 'disabled' ? 3 : 1,
             per_page: 20,
-            has_more: mode === 'disabled',
+            has_more: mode === 'disabled' && requestedPage < 3,
           },
-          summary: { cases_unresolved: cases.length, cases_candidate_ready: 1 },
+          summary: { cases_unresolved: mode === 'disabled' ? 51 : cases.length, cases_candidate_ready: 1 },
         }),
       });
     }
@@ -245,7 +353,23 @@ async function installApiMocks(page, mode, pageName = '') {
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ data: [], unread_count: mode === 'dashboard' ? 2 : 0, current_page: 1, last_page: 1, total: 0 }),
+        body: JSON.stringify({
+          data: mode === 'dialog' ? [{
+            id: 'notification-tuition-1',
+            Type: 'tuition',
+            Title: '測試繳費通知',
+            Body: '家長已回報繳費，請登記後等待對帳。',
+            SourceType: 'Invoice',
+            Severity: 'high',
+            read_at: null,
+            ResolvedAt: null,
+            Payload: { student_id: 2000, student_name: '測試學生甲', subject: '數學', charge: 1200 },
+          }] : [],
+          unread_count: mode === 'dashboard' || mode === 'dialog' ? 1 : 0,
+          current_page: 1,
+          last_page: 1,
+          total: mode === 'dialog' ? 1 : 0,
+        }),
       });
     }
 
@@ -277,8 +401,46 @@ async function installApiMocks(page, mode, pageName = '') {
               student_id: 2000,
               subject: 'Math',
               remaining_sessions: 8,
+              sessions_purchased: 12,
+              sessions_used: 4,
               payment_type: 'session',
+              payment_status: 'paid',
+              teacher_name: '測試老師甲',
+              days_of_week: [1],
+              branch_name: '測試分校',
+              room_name: '101教室',
               status: 'active',
+            },
+            {
+              id: 5002,
+              student_id: 2000,
+              subject: 'English',
+              remaining_sessions: 1,
+              sessions_purchased: 8,
+              sessions_used: 7,
+              payment_type: 'session',
+              payment_status: 'paid',
+              teacher_name: '測試老師乙',
+              days_of_week: [2],
+              branch_name: '測試分校',
+              room_name: '202教室',
+              status: 'active',
+            },
+            {
+              id: 5003,
+              student_id: 2000,
+              subject: 'Science',
+              remaining_sessions: 0,
+              sessions_purchased: 8,
+              sessions_used: 8,
+              payment_type: 'session',
+              payment_status: 'paid',
+              teacher_name: '測試老師丙',
+              days_of_week: [3],
+              branch_name: '測試分校',
+              room_name: '303教室',
+              status: 'inactive',
+              closed_reason: 'completed',
             },
           ],
         }),
@@ -386,6 +548,136 @@ test.describe('UI foundation — real Vue page evidence', () => {
     }
   }
 
+  test('inbox tabs expose a linked keyboard workspace', async ({ page }) => {
+    await openPilot(page, {
+      pageName: 'inbox',
+      mode: 'normal',
+      viewport: { width: 390, height: 844 },
+    });
+
+    const casesTab = page.getByRole('tab', { name: '待辦案件' });
+    const opsTab = page.getByRole('tab', { name: '營運通知' });
+    await expect(casesTab).toHaveAttribute('id', 'notifications-tab-cases');
+    await expect(casesTab).toHaveAttribute('aria-controls', 'notifications-panel-cases');
+    await expect(casesTab).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('#notifications-panel-cases')).toHaveAttribute('role', 'tabpanel');
+    await expect(page.locator('#notifications-panel-cases')).toHaveAttribute('aria-labelledby', 'notifications-tab-cases');
+
+    await opsTab.focus();
+    await opsTab.press('Enter');
+    await expect(opsTab).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('#notifications-panel-ops')).toHaveAttribute('role', 'tabpanel');
+    await expect(page.locator('#notifications-panel-ops')).toHaveAttribute('aria-labelledby', 'notifications-tab-ops');
+  });
+
+  test('inbox case pager reaches page 3 and item 51 after overlay dismissal', async ({ page }) => {
+    await openPilot(page, {
+      pageName: 'inbox',
+      mode: 'disabled',
+      viewport: { width: 390, height: 844 },
+    });
+    await dismissOverlays(page);
+
+    const pager = page.getByTestId('case-pager');
+    await expect(pager).toContainText('第 1 / 3 頁（共 51）');
+    const next = pager.getByRole('button', { name: '下一頁', exact: true });
+    await next.click();
+    await expect(pager).toContainText('第 2 / 3 頁（共 51）');
+    await next.click();
+    await expect(pager).toContainText('第 3 / 3 頁（共 51）');
+    await expect(page.getByText('測試學生第 51 筆', { exact: true })).toBeVisible();
+    await expect(next).toBeDisabled();
+  });
+
+  test('inbox tuition report uses the shared modal contract', async ({ page }) => {
+    await openPilot(page, {
+      pageName: 'inbox',
+      mode: 'dialog',
+      viewport: { width: 390, height: 844 },
+    });
+
+    await page.getByRole('tab', { name: '營運通知' }).click();
+    const reportButton = page.getByRole('button', { name: '標記已繳費' }).first();
+    await expect(reportButton).toBeVisible();
+    await reportButton.click();
+
+    const dialog = page.getByRole('dialog', { name: '登記已回報' });
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toHaveAttribute('aria-modal', 'true');
+    await expect(dialog).toBeFocused();
+    await expect(dialog.getByRole('button', { name: '關閉登記已回報視窗' })).toBeVisible();
+
+    await dialog.press('Escape');
+    await expect(dialog).toBeHidden();
+  });
+
+  test('student management labels its add-student workspace as a dialog', async ({ page }) => {
+    await openPilot(page, {
+      pageName: 'students',
+      mode: 'normal',
+      viewport: { width: 390, height: 844 },
+    });
+
+    await page.getByRole('button', { name: '新增學生', exact: true }).first().click();
+    const dialog = page.getByRole('dialog', { name: '新增學生', exact: true });
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toHaveAttribute('aria-modal', 'true');
+    await expect(dialog.getByRole('heading', { name: '新增學生', exact: true })).toBeVisible();
+  });
+
+  for (const vp of [
+    { name: '390', width: 390, height: 844 },
+    { name: '1440', width: 1440, height: 900 },
+  ]) {
+    test(`students course overview selects the next action @${vp.name}`, async ({ page }) => {
+      fs.mkdirSync(outDir, { recursive: true });
+      await openPilot(page, { pageName: 'students', mode: 'normal', viewport: vp });
+
+      const tableWrap = page.locator('.table-scroll-wrap');
+      const initialScrollLeft = await tableWrap.evaluate((el) => el.scrollLeft);
+      const studentRow = page.locator('tr.student-row').first();
+      await expect(studentRow).toHaveAttribute('tabindex', '0');
+      await expect(studentRow).toHaveAttribute('aria-expanded', 'false');
+      await expect(studentRow).toHaveAttribute('aria-controls', /student-course-detail-/);
+      await studentRow.focus();
+      await studentRow.press('Enter');
+      await expect(studentRow).toHaveAttribute('aria-expanded', 'true');
+      const workspace = page.getByTestId('student-course-workspace');
+      await expect(workspace).toBeVisible({ timeout: 10_000 });
+      await expect.poll(() => tableWrap.evaluate((el) => el.scrollLeft)).toBeLessThan(initialScrollLeft + 8);
+      await expect(workspace.getByText('先看需要處理的課程')).toBeVisible();
+      await expect(workspace.getByRole('heading', { name: '查看選定課程的完整資料' })).toBeVisible();
+      await expect(workspace.locator('.student-course-overview__metric')).toHaveCount(3);
+      await expect(workspace.locator('.student-course-overview__metric:nth-child(3) strong')).toHaveText('1');
+
+      const english = workspace.locator('.student-course-picker__item[data-course-id="5002"]');
+      const math = workspace.locator('.student-course-picker__item[data-course-id="5001"]');
+      await expect(english.locator('button')).toHaveAttribute('aria-pressed', 'true');
+      await expect(math.locator('button')).toHaveAttribute('aria-pressed', 'false');
+      await expect(workspace.locator('article.student-course-card[data-course-id="5002"]')).toBeVisible();
+      await expect(workspace.locator('.student-course-card__next-step')).toContainText('先處理課程續報');
+      await expect(workspace.getByRole('button', { name: '續報加購' })).toBeVisible();
+
+      const historyToggle = page.locator('tr.course-detail-row').first().locator('.sl-history-toggle');
+      await expect(historyToggle).toHaveAttribute('aria-expanded', 'false');
+      await historyToggle.click();
+      await expect(historyToggle).toHaveAttribute('aria-expanded', 'true');
+      await expect(page.locator('tr.course-detail-row').first().locator('.sl-history-body')).toBeVisible();
+
+      await math.locator('button').click();
+      await expect(math.locator('button')).toHaveAttribute('aria-pressed', 'true');
+      await expect(english.locator('button')).toHaveAttribute('aria-pressed', 'false');
+      await expect(workspace.locator('article.student-course-card[data-course-id="5001"]')).toBeVisible();
+      await expect(workspace.locator('.student-course-card__next-step')).toContainText('課程資料已齊全');
+      await expect(workspace.getByRole('button', { name: '編輯課程' })).toBeVisible();
+      await expect.poll(() => tableWrap.evaluate((el) => el.scrollLeft)).toBeLessThan(initialScrollLeft + 8);
+
+      await page.locator('.students-page').screenshot({
+        path: path.join(outDir, `vue-students-course-overview-${vp.name}.png`),
+      });
+    });
+  }
+
   for (const vp of [
     { name: '390', width: 390, height: 844 },
     { name: '412', width: 412, height: 915 },
@@ -413,8 +705,15 @@ test.describe('UI foundation — real Vue page evidence', () => {
       expect(layout.hiddenLegacyWorkbench).toBe(false);
       expect(layout.primaryDecisionCount).toBeLessThanOrEqual(7);
       await expect(page.getByRole('tab', { name: '今天', exact: true })).toHaveAttribute('aria-selected', 'true');
+      await expect(page.getByRole('tab', { name: '今天', exact: true })).toHaveAttribute('aria-controls', 'director-workbench-panel-focus');
+      await expect(page.locator('#director-workbench-panel-focus')).toHaveAttribute('role', 'tabpanel');
+      await expect(page.locator('#director-workbench-panel-focus')).toHaveAttribute('aria-labelledby', 'director-workbench-tab-focus');
       if (layout.primaryCtaCount > 0) {
         await expect(page.locator('.director-task__action').first()).toBeVisible();
+        if (vp.width <= 768) {
+          const ctaBox = await page.locator('.director-task__action').first().boundingBox();
+          expect(ctaBox?.height || 0, '手機主任待辦主要操作必須有至少 44px 觸控高度').toBeGreaterThanOrEqual(44);
+        }
       }
       expect(secondaryRequests).toEqual([]);
       fs.mkdirSync(outDir, { recursive: true });
@@ -423,6 +722,9 @@ test.describe('UI foundation — real Vue page evidence', () => {
       const fullView = page.getByRole('tab', { name: '完整營運', exact: true });
       await fullView.click();
       await expect(page.locator('.director-workbench-v2__full')).toBeVisible();
+      await expect(fullView).toHaveAttribute('aria-controls', 'director-workbench-panel-full');
+      await expect(page.locator('#director-workbench-panel-full')).toHaveAttribute('role', 'tabpanel');
+      await expect(page.locator('#director-workbench-panel-full')).toHaveAttribute('aria-labelledby', 'director-workbench-tab-full');
       await expect.poll(() => secondaryRequests.length).toBeGreaterThan(0);
       await expect(page.getByText('近期紀錄與分析', { exact: true })).toBeVisible();
       await page.locator('.director-workbench-v2').screenshot({ path: path.join(outDir, `vue-director-v2-full-${vp.name}.png`) });
@@ -477,6 +779,68 @@ test.describe('UI foundation — real Vue page evidence', () => {
       });
     }
   }
+
+  test('manual booking keeps the latest date after a stale 422 response', async ({ page }) => {
+    await openPilot(page, { pageName: 'course', mode: 'booking-race', viewport: { width: 1440, height: 900 } });
+
+    const addNextButton = page.locator('button.manual-occurrence-action').filter({ hasText: '新增下一堂' }).first();
+    await expect(addNextButton).toBeVisible({ timeout: 10_000 });
+    await addNextButton.click();
+
+    const dateInput = page.locator('.manual-session-modal input[type="date"]');
+    await expect(dateInput).toBeVisible();
+    // Ensure the initial request is in flight before changing the date.
+    await expect.poll(() => page.locator('.manual-session-state').count()).toBeGreaterThan(0);
+
+    const latestDate = await dateInput.inputValue().then((value) => {
+      const date = new Date(`${value}T12:00:00`);
+      date.setDate(date.getDate() + 1);
+      return date.toISOString().slice(0, 10);
+    });
+    await dateInput.fill(latestDate);
+    await dateInput.press('Tab');
+
+    await expect(page.getByText('可以預約', { exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('button', { name: '建立這一堂', exact: true })).toBeEnabled();
+    // Let the deliberately delayed old 422 complete; it must not replace the
+    // result for the date the director currently sees.
+    await page.waitForTimeout(240);
+    await expect(page.getByText('可以預約', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '建立這一堂', exact: true })).toBeEnabled();
+  });
+
+  test('course management keeps disclosure and tab focus relationships explicit', async ({ page }) => {
+    await openPilot(page, { pageName: 'course', mode: 'normal', viewport: { width: 1440, height: 900 } });
+
+    const groupToggle = page.locator('.student-group-toggle').first();
+    await expect(groupToggle).toBeVisible({ timeout: 10_000 });
+    await expect(groupToggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(groupToggle).toHaveAttribute('aria-controls', /student-group-panel-courses/);
+    await expect(page.getByRole('button', { name: '專注 測試學生甲', exact: true })).toBeVisible();
+
+    await groupToggle.press('Space');
+    await expect(groupToggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.locator('[role="tabpanel"]')).toHaveCount(0);
+    await groupToggle.press('Enter');
+    await expect(groupToggle).toHaveAttribute('aria-expanded', 'true');
+
+    const courseTab = page.getByRole('tab', { name: '課程資料', exact: true }).first();
+    const billingTab = page.getByRole('tab', { name: '帳務資料', exact: true }).first();
+    await expect(courseTab).toHaveAttribute('aria-selected', 'true');
+    await expect(courseTab).toHaveAttribute('aria-controls', /student-group-panel-courses/);
+    await expect(courseTab).toHaveAttribute('tabindex', '0');
+    await expect(billingTab).toHaveAttribute('tabindex', '-1');
+    await expect(page.locator('[role="tabpanel"]')).toBeVisible();
+    await courseTab.press('ArrowRight');
+    await expect(billingTab).toHaveAttribute('aria-selected', 'true');
+    await expect(billingTab).toBeFocused();
+    await expect(courseTab).toHaveAttribute('tabindex', '-1');
+    await expect(billingTab).toHaveAttribute('tabindex', '0');
+    await expect(page.locator('[role="tabpanel"]')).toHaveAttribute('aria-labelledby', /student-group-tab-billing/);
+    await billingTab.press('ArrowLeft');
+    await expect(courseTab).toBeFocused();
+    await expect(courseTab).toHaveAttribute('aria-selected', 'true');
+  });
 
   for (const vp of [
     { name: '390', width: 390, height: 844 },
@@ -570,9 +934,10 @@ test.describe('UI foundation — real Vue page evidence', () => {
     test(`director workbench with urgent tasks @${vp.name}`, async ({ page }) => {
       await openPilot(page, { pageName: 'director', mode: 'dashboard', viewport: vp });
       await expect(page.getByText('主任總覽', { exact: true })).toBeVisible({ timeout: 10_000 });
-      // Scoped to the risk-list label: the same text also appears as a task
-      // card <h3> heading, which made the unscoped locator ambiguous.
-      await expect(page.getByLabel('今日營運風險 Top').getByText('家長請假待主任處理')).toBeVisible();
+      const riskDisclosure = page.locator('.director-risk-disclosure');
+      await expect(riskDisclosure.getByText('查看為什麼這些工作排在前面', { exact: true })).toBeVisible();
+      await riskDisclosure.locator('summary').click();
+      await expect(riskDisclosure.locator('.director-top-risks').getByText('家長請假待主任處理', { exact: true })).toBeVisible();
       const ctas = page.locator('.director-task__action');
       expect(await ctas.count()).toBeGreaterThan(0);
       await expect(ctas.first()).toBeVisible();
@@ -621,5 +986,80 @@ test.describe('UI foundation — real Vue page evidence', () => {
 
     await expect(page.locator('#payments-sec .surface-panel__count')).toHaveText('1');
     await expect(page.locator('#payments-sec .director-payment-row')).toHaveCount(1);
+  });
+
+  test('billing top-level tabs show one selected panel', async ({ page }) => {
+    await openPilot(page, { pageName: 'tuition', mode: 'normal', viewport: { width: 1440, height: 900 } });
+
+    const receivables = page.locator('#tuition-accounting-tab-receivables');
+    const settled = page.locator('#tuition-accounting-tab-settled');
+    const payments = page.locator('#tuition-accounting-tab-payments');
+
+    await expect(receivables).toHaveAttribute('aria-controls', 'tuition-accounting-panel-receivables');
+    await expect(page.locator('#tuition-accounting-panel-receivables')).toHaveCount(1);
+    await expect(page.locator('#tuition-accounting-panel-payments')).toHaveCount(0);
+    await expect(page.locator('#tuition-accounting-panel-settled')).toHaveCount(0);
+
+    await settled.click();
+    await expect(page.locator('#tuition-accounting-panel-settled')).toBeVisible();
+    await expect(page.locator('#tuition-accounting-panel-payments')).toHaveCount(0);
+    await expect(page.locator('#tuition-accounting-panel-receivables')).toHaveCount(0);
+
+    await payments.click();
+    await expect(page.locator('#tuition-accounting-panel-payments')).toBeVisible();
+    await expect(page.locator('#tuition-accounting-panel-settled')).toHaveCount(0);
+  });
+
+  test('teacher list tabs keep status workspace and RFID readable', async ({ page }) => {
+    await openPilot(page, { pageName: 'teachers', mode: 'normal', viewport: { width: 390, height: 844 } });
+
+    const active = page.locator('#teachers-tab-active');
+    const pending = page.locator('#teachers-tab-pending');
+    const suspended = page.locator('#teachers-tab-suspended');
+
+    await expect(active).toHaveAttribute('aria-controls', 'teachers-panel-active');
+    await expect(page.locator('#teachers-panel-active')).toBeVisible();
+    await expect(page.locator('#teachers-panel-active')).toContainText('測試老師甲');
+    await expect(page.locator('.status-tag.active')).toContainText('在職');
+    await expect(page.locator('.rfid-tag').first()).toHaveText('TEACHER-A-001');
+    const hasHorizontalOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+    );
+    expect(hasHorizontalOverflow).toBe(false);
+
+    await pending.click();
+    await expect(page.locator('#teachers-panel-pending')).toBeVisible();
+    await expect(page.locator('#teachers-panel-pending')).toContainText('測試老師乙');
+    await expect(page.locator('#teachers-panel-active')).toHaveCount(0);
+    await expect(page.locator('.status-tag.pending')).toContainText('待審核');
+
+    await suspended.click();
+    await expect(page.locator('#teachers-panel-suspended')).toBeVisible();
+    await expect(page.locator('#teachers-panel-suspended')).toContainText('測試老師丙');
+    await expect(page.locator('#teachers-panel-pending')).toHaveCount(0);
+    await expect(page.locator('.status-tag.suspended')).toContainText('停用');
+  });
+
+  test('director attendance keeps the action queue ahead of secondary context', async ({ page }) => {
+    await openPilot(page, { pageName: 'attendance', mode: 'empty', viewport: { width: 1440, height: 900 } });
+
+    const studentTab = page.locator('#attendance-tab-student');
+    const teacherTab = page.locator('#attendance-tab-teacher');
+    await expect(studentTab).toHaveAttribute('aria-selected', 'true');
+    await expect(studentTab).toHaveAttribute('aria-controls', 'attendance-student-panel');
+    await expect(page.locator('#attendance-student-panel')).toHaveAttribute('aria-labelledby', 'attendance-tab-student');
+    await expect(page.locator('#attendance-student-panel')).toHaveAttribute('tabindex', '0');
+    await expect(page.getByText('今日待點名堂次', { exact: true })).toBeVisible();
+    await expect(page.locator('#attendance-student-panel > .att-secondary-summary')).not.toHaveAttribute('open', '');
+
+    await teacherTab.click();
+    await expect(teacherTab).toHaveAttribute('aria-selected', 'true');
+    await expect(teacherTab).toHaveAttribute('aria-controls', 'attendance-teacher-panel');
+    await expect(page.locator('#attendance-teacher-panel')).toHaveAttribute('aria-labelledby', 'attendance-tab-teacher');
+    await expect(page.locator('#attendance-teacher-panel')).toHaveAttribute('tabindex', '0');
+    await expect(page.getByRole('heading', { name: '先處理課表異常', exact: true })).toBeVisible();
+    await expect(page.getByText('課表異常待處理', { exact: true })).toBeVisible();
+    await expect(page.locator('#attendance-teacher-panel > .att-secondary-summary')).toHaveCount(2);
+    await expect(page.locator('#attendance-teacher-panel > .att-secondary-summary').first()).not.toHaveAttribute('open', '');
   });
 });

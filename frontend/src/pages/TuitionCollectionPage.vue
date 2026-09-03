@@ -1,15 +1,42 @@
 <template>
   <div class="tc-page">
-    <div class="tc-header">
-      <div>
-        <h2>帳務中心</h2>
-        <p class="tc-subtitle">未繳待收、待對帳、續課提醒，以及已結清課程彙總與收據流水</p>
-      </div>
-      <button class="tc-refresh-btn" @click="refreshActiveTab()" :disabled="activeTabLoading">
-        <span class="material-symbols-outlined" style="font-size:17px">refresh</span>
-        重新整理
-      </button>
-    </div>
+    <AtPageHeader
+      title="帳務中心"
+      description="處理未繳待收、待對帳、續課提醒與已結清課程。"
+      icon="account_balance"
+      data-guide="tuition-header"
+    >
+      <template #meta><span>先確認對象，再完成回報或入帳</span></template>
+      <template #actions>
+        <AtButton
+          variant="ghost"
+          shape="rect"
+          icon="refresh"
+          :loading="activeTabLoading"
+          @click="refreshActiveTab()"
+        >
+          重新整理
+        </AtButton>
+      </template>
+    </AtPageHeader>
+
+    <details class="tc-process-disclosure">
+      <summary>
+        <span class="material-symbols-outlined" aria-hidden="true">route</span>
+        <span class="tc-process-disclosure__title">帳務處理流程</span>
+        <span class="tc-process-disclosure__hint">先找到對象，再回報，最後確認入帳</span>
+        <span class="material-symbols-outlined" aria-hidden="true">expand_more</span>
+      </summary>
+      <OperationsQuickStart
+        compact
+        eyebrow="帳務處理流程"
+        heading="照順序完成，不用記入口"
+        description="先找到對象，再送出回報，最後由主任確認入帳。"
+        :current-id="billingFlowCurrentId"
+        :steps="billingFlowSteps"
+        @select="selectBillingFlowStep"
+      />
+    </details>
 
     <div class="acct-tabs" role="tablist" aria-label="帳務中心分頁">
       <button
@@ -19,6 +46,8 @@
         class="acct-tab"
         :class="{ active: activeAccountingTab === tab.key }"
         role="tab"
+        :id="`tuition-accounting-tab-${tab.key}`"
+        :aria-controls="`tuition-accounting-panel-${tab.key}`"
         :aria-selected="activeAccountingTab === tab.key"
         @click="activeAccountingTab = tab.key"
       >
@@ -27,7 +56,19 @@
       </button>
     </div>
 
-    <section v-if="activeAccountingTab === 'receivables'">
+    <div v-if="tuitionFocusMessage" class="tc-focus-context" role="status">
+      <span class="material-symbols-outlined" aria-hidden="true">my_location</span>
+      <span>{{ tuitionFocusMessage }}</span>
+      <button type="button" class="tc-focus-context__clear" @click="clearTuitionFocus">清除定位</button>
+    </div>
+
+    <section
+      v-if="activeAccountingTab === 'receivables'"
+      id="tuition-accounting-panel-receivables"
+      role="tabpanel"
+      aria-labelledby="tuition-accounting-tab-receivables"
+      tabindex="0"
+    >
     <!-- Skeleton loading -->
     <div v-if="loading && !rows.length" class="tc-skeleton-area">
       <div class="tc-summary">
@@ -58,34 +99,51 @@
     </div>
 
     <template v-else>
-      <!-- Compact metric strip (Carbon/Fluent ops density) -->
-      <div class="tc-summary tc-summary--strip" v-if="rows.length" aria-label="催繳摘要">
-        <div class="tc-card tc-card--total">
-          <span class="tc-card-num">{{ rows.length }}</span>
-          <span class="tc-card-label">筆提醒</span>
-        </div>
-        <div class="tc-card tc-card--danger">
-          <span class="tc-card-num">{{ statusCounts.unpaid + statusCounts.partial }}</span>
-          <span class="tc-card-label">未繳費</span>
-        </div>
-        <div class="tc-card tc-card--overdue">
-          <span class="tc-card-num">{{ overdueRows.length }}</span>
-          <span class="tc-card-label">逾期 {{ formatCurrency(overdueTotal) }}</span>
-        </div>
-        <div class="tc-card tc-card--warn">
-          <span class="tc-card-num">{{ statusCounts.pending_report }}</span>
-          <span class="tc-card-label">待對帳</span>
-        </div>
-        <div class="tc-card tc-card--outstanding">
-          <span class="tc-card-num">{{ formatCurrency(totalOutstanding) }}</span>
-          <span class="tc-card-label">
-            未結清
-            <span v-if="collectionRate !== null" class="tc-rate" :style="{ color: collectionRateColor(collectionRate) }">
-              收款率 {{ collectionRate }}%
+      <!-- The row-level queue is the primary surface; totals remain available on demand. -->
+      <details class="tc-summary-disclosure" v-if="rows.length">
+        <summary>
+          <span>收款摘要</span>
+          <span class="tc-summary-disclosure__hint">{{ rows.length }} 筆提醒・未結清 {{ formatCurrency(totalOutstanding) }}</span>
+          <span class="material-symbols-outlined" aria-hidden="true">expand_more</span>
+        </summary>
+        <div class="tc-summary tc-summary--strip" aria-label="催繳摘要">
+          <div class="tc-card tc-card--total">
+            <span class="tc-card-num">{{ rows.length }}</span>
+            <span class="tc-card-label">筆提醒</span>
+          </div>
+          <div class="tc-card tc-card--danger">
+            <span class="tc-card-num">{{ statusCounts.unpaid + statusCounts.partial }}</span>
+            <span class="tc-card-label">未繳費</span>
+          </div>
+          <div class="tc-card tc-card--overdue">
+            <span class="tc-card-num">{{ overdueRows.length }}</span>
+            <span class="tc-card-label">逾期 {{ formatCurrency(overdueTotal) }}</span>
+          </div>
+          <div class="tc-card tc-card--warn">
+            <span class="tc-card-num">{{ statusCounts.pending_report + statusCounts.pending_reconciliation }}</span>
+            <span class="tc-card-label">待對帳</span>
+          </div>
+          <div class="tc-card tc-card--outstanding">
+            <span class="tc-card-num">{{ formatCurrency(totalOutstanding) }}</span>
+            <span class="tc-card-label">
+              未結清
+              <span v-if="collectionRate !== null" class="tc-rate" :style="{ color: collectionRateColor(collectionRate) }">
+                收款率 {{ collectionRate }}%
+              </span>
+              <span v-else class="tc-rate">收款率 —</span>
             </span>
-            <span v-else class="tc-rate">收款率 —</span>
-          </span>
+          </div>
         </div>
+      </details>
+
+      <div v-if="rows.length" class="tc-action-queue" role="region" aria-label="主任待處理佇列">
+        <div>
+          <strong>{{ tabCounts.action ? `今天先處理 ${tabCounts.action} 筆` : '今天待處理已清空' }}</strong>
+          <span>{{ tabCounts.action ? '未繳費與待對帳會集中在待處理，已結清／續課提醒留在其他分類。' : '如需查看續課或已結清提醒，請切換其他分類。' }}</span>
+        </div>
+        <button v-if="activeTab !== 'action'" class="tc-queue-link" type="button" @click="activeTab = 'action'">
+          回到待處理
+        </button>
       </div>
 
       <div v-if="!rows.length" class="tc-empty">
@@ -148,7 +206,7 @@
           v-if="selectedRows.length"
           class="tc-batch-bar tc-batch-bar--sticky"
           role="region"
-          :aria-label="batchMode === 'confirm' ? '批次確認入帳' : '今日批次回報'"
+          :aria-label="batchMode === 'confirm' ? '批次確認入帳' : batchMode === 'mixed' ? '混合選取，請分開處理' : '今日批次回報'"
         >
           <span class="tc-batch-count">已選 {{ selectedRows.length }} 筆</span>
           <template v-if="batchMode === 'report'">
@@ -171,17 +229,18 @@
               class="tc-btn tc-btn--confirm"
               type="button"
               :disabled="batchBusy || !batchForm.payment_date"
-              @click="submitBatchReport"
+              @click="openBatchPreview"
             >送出已回報</button>
           </template>
-          <template v-else>
+          <template v-else-if="batchMode === 'confirm'">
             <button
               class="tc-btn tc-btn--confirm"
               type="button"
               :disabled="batchBusy"
-              @click="submitBatchConfirm"
+              @click="openBatchPreview"
             >批次確認入帳</button>
           </template>
+          <span v-else class="tc-batch-help">請分開選取未繳費或待對帳，才能進行批次處理。</span>
           <button class="tc-btn tc-btn--ghost" type="button" :disabled="batchBusy" @click="clearSelection">取消選取</button>
         </div>
 
@@ -207,7 +266,7 @@
                     :indeterminate.prop="someVisibleSelected && !allVisibleSelected"
                     :disabled="!selectableRows.length"
                     @change="toggleSelectAll($event.target.checked)"
-                    :aria-label="batchMode === 'confirm' ? '全選待對帳' : '全選未繳'"
+                    :aria-label="batchMode === 'confirm' ? '全選待對帳' : batchMode === 'mixed' ? '全選待處理' : '全選未繳'"
                   />
                 </th>
                 <th class="tc-th-sort" @click="toggleSort('student_name')">
@@ -238,7 +297,7 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="r in filteredRows" :key="r.id" :class="rowClass(r)">
+              <tr v-for="r in filteredRows" :id="`tuition-row-${r.id}`" :key="r.id" :class="[rowClass(r), { 'tc-row--focused': tuitionFocusRowId === Number(r.id || r.student_class_id) }]">
                 <td class="tc-col-check">
                   <input
                     v-if="isRowSelectable(r)"
@@ -261,7 +320,12 @@
                     @click.stop
                   />
                 </td>
-                <td>{{ r.subject }}</td>
+                <td>
+                  <div>{{ r.subject }}</div>
+                  <span v-if="r.id" class="tc-course-ref">
+                    {{ formatCourseRef(r.id) }}<template v-if="r.course_start_date || r.course_end_date"> · {{ r.course_start_date || '—' }} ~ {{ r.course_end_date || '—' }}</template>
+                  </span>
+                </td>
                 <td class="tc-col-mode">
                   <span class="mode-tag" :class="r.schedule_mode">
                     {{ r.schedule_mode === 'date' ? '月結' : '堂數' }}
@@ -313,9 +377,9 @@
                 </td>
                 <td class="tc-col-actions">
                   <div class="tc-actions">
-                    <button class="tc-btn tc-btn--ledger" @click="openLedgerForClass(r)" title="查看學生帳務對帳">
+                    <button class="tc-btn tc-btn--ledger" @click="openLedgerForClass(r)" title="查看學生繳費明細">
                       <span class="material-symbols-outlined">account_balance</span>
-                      對帳
+                      繳費明細
                     </button>
 
                     <!-- #1100/FD-3: 本期順延與下一期重疊 — director-facing only, never auto-shifts dates -->
@@ -335,6 +399,19 @@
                     </span>
 
                     <template v-if="r.payment_status === 'unpaid' || r.payment_status === 'partial'">
+                      <button class="tc-btn tc-btn--slip" @click="openSlip(r)" title="產生繳費通知單">
+                        <span class="material-symbols-outlined">receipt_long</span>
+                        繳費單
+                      </button>
+                      <button class="tc-btn tc-btn--confirm" @click="openPaymentEntry(r)" title="登記已回報" :disabled="actionLoading === r.id">
+                        <span class="material-symbols-outlined">check_circle</span>
+                        登記已回報
+                      </button>
+                    </template>
+
+                    <!-- settled_pending: closed for scheduling, payment still actionable -->
+                    <template v-if="r.payment_status === 'pending_reconciliation'">
+                      <span class="tc-renew-hint">已結案，尚未完成繳費</span>
                       <button class="tc-btn tc-btn--slip" @click="openSlip(r)" title="產生繳費通知單">
                         <span class="material-symbols-outlined">receipt_long</span>
                         繳費單
@@ -368,17 +445,17 @@
                         <span class="material-symbols-outlined">undo</span>
                         撤銷
                       </button>
-                      <template v-if="r.payment_status === 'renew_needed'">
+                      <template v-if="r.payment_status === 'renew_needed' || r.payment_status === 'monthly_due_soon'">
                         <span
-                          v-if="r.has_newer_course"
+                          v-if="r.payment_status === 'renew_needed' && r.has_newer_course"
                           class="tc-newer-badge"
                           :title="newerCourseBadgeTitle(r)"
                         >{{ newerCourseBadgeLabel(r) }}</span>
-                        <span v-else class="tc-renew-hint">需續課</span>
-                        <button class="tc-btn tc-btn--settle" @click="openSettleDialog(r)" :disabled="settleLoading === r.id" title="確認舊課程已被新課程取代，點此關閉">
+                        <span v-else class="tc-renew-hint">{{ r.payment_status === 'monthly_due_soon' ? '月結本期' : '需續課' }}</span>
+                        <button class="tc-btn tc-btn--settle" @click="openSettleDialog(r)" :disabled="settleLoading === r.id" title="結案且不續報">
                           <span v-if="settleLoading === r.id" class="material-symbols-outlined spin" style="font-size:15px">progress_activity</span>
                           <span v-else class="material-symbols-outlined">task_alt</span>
-                          結案
+                          結案（不續報）
                         </button>
                       </template>
                     </template>
@@ -393,7 +470,14 @@
     </template>
     </section>
 
-    <section v-else class="acct-panel">
+    <section
+      v-else-if="activeAccountingTab === 'payments'"
+      id="tuition-accounting-panel-payments"
+      class="acct-panel"
+      role="tabpanel"
+      aria-labelledby="tuition-accounting-tab-payments"
+      tabindex="0"
+    >
       <div class="acct-filter-card">
         <div class="acct-filter-grid">
           <label>
@@ -567,9 +651,9 @@
                 </td>
                 <td @click.stop>
                   <div class="tc-actions">
-                    <button class="tc-btn tc-btn--ledger" @click="openLedgerForReport(row)" :aria-label="`對帳 ${humanizeDocumentRef(row.receipt_no)}`">
+                    <button class="tc-btn tc-btn--ledger" @click="openLedgerForReport(row)" :aria-label="`查看繳費明細 ${humanizeDocumentRef(row.receipt_no)}`">
                       <span class="material-symbols-outlined">account_balance</span>
-                      對帳
+                      繳費明細
                     </button>
                     <button class="tc-btn tc-btn--receipt" @click="openReceiptByReport(row.report_id)" :aria-label="`查看 ${humanizeDocumentRef(row.receipt_no)}`">
                       <span class="material-symbols-outlined">receipt</span>
@@ -594,7 +678,14 @@
       </template>
     </section>
 
-    <section v-if="activeAccountingTab === 'settled'" class="acct-section">
+    <section
+      v-if="activeAccountingTab === 'settled'"
+      id="tuition-accounting-panel-settled"
+      class="acct-section"
+      role="tabpanel"
+      aria-labelledby="tuition-accounting-tab-settled"
+      tabindex="0"
+    >
       <div class="acct-filter-bar">
         <div class="acct-filters">
           <label>學生<input v-model="accountingFilters.student" type="text" placeholder="搜尋學生姓名" /></label>
@@ -615,13 +706,14 @@
 
       <template v-else>
         <div class="tc-summary">
-          <div class="tc-card tc-card--total"><span class="tc-card-num">{{ settledSummary.course_count || 0 }}</span><span class="tc-card-label">已結清課程</span></div>
+          <div class="tc-card tc-card--total"><span class="tc-card-num">{{ settledSummary.course_count || 0 }}</span><span class="tc-card-label">已結案課程</span></div>
           <div class="tc-card tc-card--success"><span class="tc-card-num">{{ formatCurrency(settledSummary.paid_total || 0) }}</span><span class="tc-card-label">已記入收款</span></div>
+          <div class="tc-card" :class="{ 'tc-card--warn': (settledSummary.pending_reconciliation_count || 0) > 0 }"><span class="tc-card-num">{{ settledSummary.pending_reconciliation_count || 0 }}</span><span class="tc-card-label">結案待對帳</span></div>
           <div class="tc-card" :class="{ 'tc-card--warn': (settledSummary.legacy_count || 0) > 0 }"><span class="tc-card-num">{{ settledSummary.legacy_count || 0 }}</span><span class="tc-card-label">舊制無帳單</span></div>
           <div class="tc-card" :class="{ 'tc-card--warn': (settledSummary.exception_count || 0) > 0 }"><span class="tc-card-num">{{ settledSummary.exception_count || 0 }}</span><span class="tc-card-label">例外待處理</span></div>
           <div class="tc-card tc-card--outstanding"><span class="tc-card-num">{{ formatCurrency(settledSummary.overpaid_total || 0) }}</span><span class="tc-card-label">多收待處理</span></div>
         </div>
-        <p class="tc-summary-note">「已結清課程」依帳單、收款、收據與課程資料彙整；「收據紀錄」是一筆筆收款與更正紀錄，兩邊統計方式不同。</p>
+        <p class="tc-summary-note">「已結案課程」包含已完成收款與仍待對帳的結案課程；「收據紀錄」是一筆筆收款與更正紀錄，兩邊統計方式不同。</p>
 
         <div v-if="settledLoading && !settledRows.length" class="tc-skeleton-area">
           <div class="tc-card tc-card--skeleton"><span class="skel skel-num"></span><span class="skel skel-label"></span></div>
@@ -648,11 +740,12 @@
                 <td>
                   <span v-if="row.legacy_paid_without_invoice" class="acct-chip acct-chip--backfill">舊制無帳單</span>
                   <span v-if="row.has_exception" class="acct-chip acct-chip--prepaid">例外待處理</span>
-                  <span v-if="!row.legacy_paid_without_invoice && !row.has_exception" class="text-light">正常</span>
+                  <span v-if="row.pending_reconciliation" class="acct-chip acct-chip--pending">結案待對帳</span>
+                  <span v-if="!row.legacy_paid_without_invoice && !row.has_exception && !row.pending_reconciliation" class="text-light">正常</span>
                 </td>
                 <td>
                   <div class="tc-actions">
-                    <button class="tc-btn tc-btn--ledger" @click="openLedgerForClass(row)"><span class="material-symbols-outlined">account_balance</span>對帳</button>
+                    <button class="tc-btn tc-btn--ledger" @click="openLedgerForClass(row)" title="查看學生繳費明細"><span class="material-symbols-outlined">account_balance</span>繳費明細</button>
                   </div>
                 </td>
               </tr>
@@ -663,6 +756,65 @@
     </section>
 
     <!-- Modals -->
+    <Transition name="fade">
+      <div v-if="batchPreviewOpen" class="tc-overlay" @click.self="closeBatchPreview">
+        <div
+          class="tc-dialog tc-dialog--batch-preview"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="batch-preview-title"
+          aria-describedby="batch-preview-description"
+        >
+          <div class="tc-dialog-header">
+            <div>
+              <h3 id="batch-preview-title" class="tc-dialog-title" style="margin-bottom:2px">
+                <span class="material-symbols-outlined" style="font-size:22px;color:var(--primary)">fact_check</span>
+                送出前確認
+              </h3>
+              <p id="batch-preview-description" class="tc-dialog-desc">
+                {{ batchPreviewMode === 'confirm' ? '請先核對待對帳資料；確認後才會建立正式入帳與收據。' : '請先核對本批次資料；送出後會先列為待對帳，不會直接變成已繳費。' }}
+              </p>
+            </div>
+            <button class="tc-dialog-close" type="button" aria-label="關閉確認視窗" @click="closeBatchPreview" :disabled="batchBusy">
+              <span class="material-symbols-outlined">close</span>
+            </button>
+          </div>
+
+          <div class="tc-batch-preview-summary" aria-label="批次摘要">
+            <div><strong>{{ batchPreviewRows.length }}</strong><span>筆課程</span></div>
+            <div><strong>{{ formatCurrency(batchPreviewTotal) }}</strong><span>{{ batchPreviewMode === 'confirm' ? '待確認金額' : '回報金額' }}</span></div>
+            <div v-if="batchPreviewMode === 'report'"><strong>{{ batchForm.payment_method === 'transfer' ? '匯款' : '現金' }}</strong><span>付款方式</span></div>
+          </div>
+
+          <div class="tc-batch-preview-list" role="list" aria-label="選取的課程">
+            <div v-for="row in batchPreviewRows" :key="row.id" class="tc-batch-preview-row" role="listitem">
+              <div>
+                <strong>{{ row.student_name }}</strong>
+                <span>{{ row.subject }}<template v-if="row.course_start_date || row.course_end_date"> · {{ row.course_start_date || '—' }} ~ {{ row.course_end_date || '—' }}</template></span>
+              </div>
+              <div class="tc-batch-preview-row__amount">
+                <span class="status-tag" :class="statusClass(row)">{{ statusLabel(row) }}</span>
+                <strong>{{ formatCurrency(row.outstanding ?? row.charge ?? 0) }}</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="tc-batch-preview-note" role="note">
+            <span class="material-symbols-outlined" aria-hidden="true">info</span>
+            <span>{{ batchPreviewMode === 'confirm' ? '只會處理上方待對帳課程；若資料不符，請取消後逐筆檢查。' : '只會處理上方未繳／部分付款課程；取消後可重新選取。' }}</span>
+          </div>
+
+          <div class="tc-dialog-btns">
+            <button class="tc-btn tc-btn--ghost" type="button" @click="closeBatchPreview" :disabled="batchBusy">返回修改</button>
+            <button class="tc-btn tc-btn--confirm" type="button" @click="confirmBatchPreview" :disabled="batchBusy">
+              <span v-if="batchBusy" class="material-symbols-outlined spin" style="font-size:15px">progress_activity</span>
+              {{ batchPreviewMode === 'confirm' ? '確認入帳' : '確認送出回報' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
     <PaymentSlipModal
       :show="slipOpen"
       :invoice-id="slipInvoiceId"
@@ -675,6 +827,7 @@
       :row="entryRow"
       @close="entryOpen = false"
       @confirmed="onEntryConfirmed"
+      @pending="onPendingReportConflict"
     />
 
     <ReceiptModal
@@ -729,7 +882,7 @@
             <span class="material-symbols-outlined" style="font-size:22px;color:var(--primary)">task_alt</span>
             確認結案此課程
           </h3>
-          <p class="tc-dialog-desc">結案後此課程將從催繳名單移除，不再追蹤。</p>
+          <p class="tc-dialog-desc">結案後此課程將從催繳名單移除，不再追蹤；已繳費與已上課紀錄會保留。</p>
           <div class="tc-dialog-info" v-if="settleTarget">
             <div style="margin-bottom:4px"><strong>{{ settleTarget.student_name }}</strong> — {{ settleTarget.subject }}</div>
             <div style="font-size:12px;color:var(--text-light)">{{ settleSummary.primary }}</div>
@@ -737,7 +890,7 @@
           </div>
           <div v-if="settleTargetStillOwesSessions" class="tc-settle-warn-info">
             <span class="material-symbols-outlined" style="font-size:16px;color:var(--ds-warning)">info</span>
-            <span>還有 {{ Number(settleTarget.remaining_sessions) }} 堂未上，請先到課程管理把請假順延的堂次排好，不能直接結案。</span>
+            <span>還有 {{ Number(settleTarget.remaining_sessions) }} 堂未上；確認結案會取消未來排課並放棄這些剩餘額度。若仍要上課，請先取消並改從課程管理排課。</span>
           </div>
           <div v-if="settleTarget?.has_newer_course" class="tc-settle-newer-info">
             <span class="material-symbols-outlined" style="font-size:16px;color:var(--ds-success)">check_circle</span>
@@ -749,7 +902,7 @@
           </div>
           <div class="tc-dialog-btns">
             <button class="tc-btn tc-btn--ghost" @click="settleDialogOpen = false" :disabled="settleLoading">取消</button>
-            <button class="tc-btn tc-btn--primary" @click="confirmSettle" :disabled="settleLoading || settleTargetStillOwesSessions">
+            <button class="tc-btn tc-btn--primary" @click="confirmSettle" :disabled="settleLoading">
               <span v-if="settleLoading" class="material-symbols-outlined spin" style="font-size:15px">progress_activity</span>
               確認結案
             </button>
@@ -834,12 +987,16 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, nextTick } from 'vue';
 import { useToast } from '../composables/useToast';
 import PaymentSlipModal from '../components/PaymentSlipModal.vue';
 import PaymentEntryModal from '../components/PaymentEntryModal.vue';
 import ReceiptModal from '../components/ReceiptModal.vue';
 import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
+import OperationsQuickStart from '../components/OperationsQuickStart.vue';
+import AtButton from '../components/design-system/AtButton.vue';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
+import { adoptionErrorType, trackWorkflowEvent } from '../lib/adoptionTelemetry.js';
 import {
   formatTuitionSettleSummary,
   formatTuitionNewerCourseHint,
@@ -853,12 +1010,16 @@ import {
   ACCOUNTING_CSV_HEADERS,
 } from '../lib/studentClassDisplay.js';
 import { humanizeApiErrorMessage } from '../lib/humanizeApiErrorMessage.js';
+import { resolveTuitionFocusRow } from '../lib/workflowNavigationContext.js';
 
 const props = defineProps({
   branchId: { type: [Number, String], default: null },
+  initialTab: { type: String, default: '' },
+  initialStudentId: { type: [Number, String], default: null },
+  initialCourseId: { type: [Number, String], default: null },
 });
 
-const emit = defineEmits(['navigate']);
+const emit = defineEmits(['navigate', 'clear-initial-tab', 'clear-initial-context']);
 
 const loading = ref(false);
 const error = ref('');
@@ -989,17 +1150,58 @@ const todayYmd = computed(() => formatTodayYmd());
 
 // Tab filter state must be declared before batchMode / isRowSelectable / watch(activeTab)
 // (TDZ: accessing const activeTab before this line crashes the page as blank white).
-const activeTab = ref('all');
+const activeTab = ref('action');
 const TAB_DEFS = [
+  { key: 'action', label: '待處理' },
   { key: 'all', label: '全部' },
   { key: 'unpaid', label: '未繳' },
   { key: 'overdue', label: '逾期' },
   { key: 'pending_report', label: '待對帳' },
+  { key: 'pending_reconciliation', label: '結案待對帳' },
   { key: 'renewal', label: '續課/將到期' },
 ];
 
+const billingFlowCurrentId = computed(() => {
+  if (activeTab.value === 'pending_report') return 'confirm';
+  if (activeTab.value === 'pending_reconciliation') return 'report';
+  if (activeTab.value === 'unpaid' || activeTab.value === 'overdue') return 'report';
+  return 'queue';
+});
+
+const billingFlowSteps = [
+  { id: 'queue', icon: 'playlist_add_check', title: '查看待處理', description: '先依學生與狀態找到課程。', action: '查看待處理' },
+  { id: 'report', icon: 'mark_email_read', title: '登記繳費回報', description: '家長已付款時先登記回報。', action: '查看未繳' },
+  { id: 'confirm', icon: 'verified', title: '確認入帳與收據', description: '核對資料後才建立正式入帳。', action: '查看待對帳' },
+];
+
+const billingWorkflowStarts = new Map();
+function startBillingWorkflow(step) {
+  const startedAt = Date.now();
+  billingWorkflowStarts.set(step, startedAt);
+  void trackWorkflowEvent('billing', 'started', props.branchId, { step }, startedAt);
+  return startedAt;
+}
+function finishBillingWorkflow(step, phase = 'completed', meta = {}) {
+  const startedAt = billingWorkflowStarts.get(step);
+  billingWorkflowStarts.delete(step);
+  void trackWorkflowEvent('billing', phase, props.branchId, { step, ...meta }, startedAt);
+}
+function billingWorkflowError(step, errorOrStatus) {
+  finishBillingWorkflow(step, 'error', { error_type: adoptionErrorType(errorOrStatus) });
+}
+
+function selectBillingFlowStep(stepId) {
+  startBillingWorkflow(stepId);
+  activeAccountingTab.value = 'receivables';
+  if (stepId === 'report') activeTab.value = 'unpaid';
+  else if (stepId === 'confirm') activeTab.value = 'pending_report';
+  else activeTab.value = 'action';
+}
+
 const selectedIds = ref([]);
 const batchBusy = ref(false);
+const batchPreviewOpen = ref(false);
+const batchPreviewMode = ref('report');
 const batchLast5ById = ref({});
 const batchForm = ref({
   payment_date: formatTodayYmd(),
@@ -1012,12 +1214,27 @@ const selectedIdSet = computed(() => new Set(selectedIds.value));
 function isRowSelectable(r) {
   const ps = r?.payment_status;
   if (activeTab.value === 'pending_report') return ps === 'pending_report' && !!r.latest_payment_report_id;
-  return ps === 'unpaid' || ps === 'partial';
+  if (activeTab.value === 'pending_reconciliation') return ps === 'pending_reconciliation';
+  if (activeTab.value === 'action') return ps === 'unpaid' || ps === 'partial' || ps === 'pending_report' || ps === 'pending_reconciliation';
+  return ps === 'unpaid' || ps === 'partial' || ps === 'pending_reconciliation';
 }
 
 const selectableRows = computed(() => filteredRows.value.filter(isRowSelectable));
-const batchMode = computed(() => (activeTab.value === 'pending_report' ? 'confirm' : 'report'));
 const selectedRows = computed(() => filteredRows.value.filter((r) => selectedIdSet.value.has(r.id)));
+const batchMode = computed(() => {
+  if (activeTab.value === 'pending_report') return 'confirm';
+  if (activeTab.value !== 'action') return 'report';
+  const modes = new Set(selectedRows.value.map((r) => r.payment_status === 'pending_report' ? 'confirm' : 'report'));
+  if (modes.size > 1) return 'mixed';
+  return modes.has('confirm') ? 'confirm' : 'report';
+});
+const batchPreviewRows = computed(() => {
+  if (batchPreviewMode.value === 'confirm') {
+    return selectedRows.value.filter((r) => r.payment_status === 'pending_report' && r.latest_payment_report_id);
+  }
+  return selectedRows.value.filter((r) => r.payment_status === 'unpaid' || r.payment_status === 'partial' || r.payment_status === 'pending_reconciliation');
+});
+const batchPreviewTotal = computed(() => batchPreviewRows.value.reduce((total, row) => total + Number(row.outstanding ?? row.charge ?? 0), 0));
 const allVisibleSelected = computed(() => selectableRows.value.length > 0 && selectableRows.value.every((r) => selectedIdSet.value.has(r.id)));
 const someVisibleSelected = computed(() => selectableRows.value.some((r) => selectedIdSet.value.has(r.id)));
 
@@ -1043,21 +1260,67 @@ function clearSelection() {
   selectedIds.value = [];
 }
 
+function openBatchPreview() {
+  const mode = batchMode.value;
+  if (mode === 'mixed') {
+    showToast('請分開選取未繳費或待對帳，才能進行批次處理。', 'warning');
+    billingWorkflowError('report', 'validation');
+    return;
+  }
+  const rows = mode === 'confirm'
+    ? selectedRows.value.filter((r) => r.payment_status === 'pending_report' && r.latest_payment_report_id)
+    : selectedRows.value.filter((r) => r.payment_status === 'unpaid' || r.payment_status === 'partial' || r.payment_status === 'pending_reconciliation');
+  if (!rows.length) {
+    showToast(mode === 'confirm' ? '請先勾選待對帳課程' : '請先勾選未繳課程', 'warning');
+    billingWorkflowError(mode === 'confirm' ? 'confirm' : 'report', 'validation');
+    return;
+  }
+  if (rows.length > 40) {
+    showToast('一次最多 40 筆', 'warning');
+    billingWorkflowError(mode === 'confirm' ? 'confirm' : 'report', 'validation');
+    return;
+  }
+  batchPreviewMode.value = mode;
+  batchPreviewOpen.value = true;
+  if (!billingWorkflowStarts.has(mode)) startBillingWorkflow(mode);
+}
+
+function closeBatchPreview() {
+  if (batchBusy.value) return;
+  if (batchPreviewOpen.value) {
+    const step = batchPreviewMode.value;
+    finishBillingWorkflow(step, 'returned', { result: 'cancelled' });
+    void trackWorkflowEvent('billing', 'returned', props.branchId, { step, target: 'queue' });
+  }
+  batchPreviewOpen.value = false;
+}
+
+function confirmBatchPreview() {
+  if (batchPreviewMode.value === 'confirm') submitBatchConfirm();
+  else submitBatchReport();
+}
+
 watch(activeTab, () => {
   clearSelection();
 });
 
 async function submitBatchReport() {
-  const rows = selectedRows.value.filter((r) => r.payment_status === 'unpaid' || r.payment_status === 'partial');
+  const workflowStep = 'report';
+  if (!batchPreviewOpen.value) return;
+  const rows = selectedRows.value.filter((r) => r.payment_status === 'unpaid' || r.payment_status === 'partial' || r.payment_status === 'pending_reconciliation');
   if (!rows.length) {
     showToast('請先勾選未繳課程', 'warning');
+    billingWorkflowError(workflowStep, 'validation');
     return;
   }
   if (rows.length > 40) {
     showToast('一次最多 40 筆', 'warning');
+    billingWorkflowError(workflowStep, 'validation');
     return;
   }
+  if (!billingWorkflowStarts.has(workflowStep)) startBillingWorkflow(workflowStep);
   batchBusy.value = true;
+  let responseStatus = null;
   try {
     const token = getToken();
     const resp = await fetch('/api/v1/payment-reports/director-record-batch', {
@@ -1074,31 +1337,42 @@ async function submitBatchReport() {
         })),
       }),
     });
+    responseStatus = resp.status;
     const json = await resp.json().catch(() => ({}));
     if (!resp.ok && resp.status !== 207) {
       throw new Error(humanizeApiErrorMessage(json.message || `送出失敗（${resp.status}）`));
     }
     showToast(json.message || '已送出待對帳');
+    batchPreviewOpen.value = false;
     clearSelection();
     loadAlerts();
+    finishBillingWorkflow(workflowStep, 'completed', { result: resp.status === 207 ? 'partial' : 'ok' });
+    void trackWorkflowEvent('billing', 'returned', props.branchId, { step: workflowStep, target: 'queue' });
   } catch (e) {
     showToast(e.message || '批次回報失敗', 'error');
+    billingWorkflowError(workflowStep, responseStatus || e);
   } finally {
     batchBusy.value = false;
   }
 }
 
 async function submitBatchConfirm() {
+  const workflowStep = 'confirm';
+  if (!batchPreviewOpen.value) return;
   const rows = selectedRows.value.filter((r) => r.payment_status === 'pending_report' && r.latest_payment_report_id);
   if (!rows.length) {
     showToast('請先勾選待對帳課程', 'warning');
+    billingWorkflowError(workflowStep, 'validation');
     return;
   }
   if (rows.length > 40) {
     showToast('一次最多 40 筆', 'warning');
+    billingWorkflowError(workflowStep, 'validation');
     return;
   }
+  if (!billingWorkflowStarts.has(workflowStep)) startBillingWorkflow(workflowStep);
   batchBusy.value = true;
+  let responseStatus = null;
   try {
     const token = getToken();
     const resp = await fetch('/api/v1/payment-reports/confirm-batch', {
@@ -1106,15 +1380,20 @@ async function submitBatchConfirm() {
       headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ ids: rows.map((r) => r.latest_payment_report_id) }),
     });
+    responseStatus = resp.status;
     const json = await resp.json().catch(() => ({}));
     if (!resp.ok && resp.status !== 207) {
       throw new Error(humanizeApiErrorMessage(json.message || `確認失敗（${resp.status}）`));
     }
     showToast(json.message || '已確認入帳');
+    batchPreviewOpen.value = false;
     clearSelection();
     loadAlerts();
+    finishBillingWorkflow(workflowStep, 'completed', { result: resp.status === 207 ? 'partial' : 'ok' });
+    void trackWorkflowEvent('billing', 'returned', props.branchId, { step: workflowStep, target: 'queue' });
   } catch (e) {
     showToast(e.message || '批次確認失敗', 'error');
+    billingWorkflowError(workflowStep, responseStatus || e);
   } finally {
     batchBusy.value = false;
   }
@@ -1125,6 +1404,7 @@ const STATUS_CONFIG = {
   unpaid:           { label: '未繳費',        cls: 'st-unpaid' },
   partial:          { label: '部分付款',      cls: 'st-partial' },
   pending_report:   { label: '待對帳',        cls: 'st-pending' },
+  pending_reconciliation: { label: '結案待對帳', cls: 'st-pending' },
   paid:             { label: '已繳費',        cls: 'st-paid' },
   renew_needed:     { label: '續課待處理',    cls: 'st-renew' },
   monthly_due_soon: { label: '月結將到期',    cls: 'st-monthly' },
@@ -1189,6 +1469,45 @@ function refreshActiveTab() {
 // ═══ Alerts ═══
 const rows = ref([]);
 const searchQuery = ref('');
+const tuitionFocusRowId = ref(null);
+const tuitionFocusMessage = ref('');
+const consumedTuitionFocusKey = ref('');
+
+function tuitionFocusKey() {
+  return `${props.initialStudentId || ''}:${props.initialCourseId || ''}`;
+}
+
+function clearTuitionFocus() {
+  tuitionFocusRowId.value = null;
+  tuitionFocusMessage.value = '';
+  consumedTuitionFocusKey.value = tuitionFocusKey();
+  emit('clear-initial-context');
+}
+
+async function applyTuitionFocus() {
+  const key = tuitionFocusKey();
+  if (!key || key === ':' || key === consumedTuitionFocusKey.value || !rows.value.length) return;
+  consumedTuitionFocusKey.value = key;
+  const row = resolveTuitionFocusRow(rows.value, {
+    studentId: props.initialStudentId,
+    courseId: props.initialCourseId,
+  });
+  if (!row) {
+    tuitionFocusRowId.value = null;
+    tuitionFocusMessage.value = '通知對象目前不在這份待處理清單，請切換分類或重新整理。';
+    emit('clear-initial-context');
+    return;
+  }
+  tuitionFocusRowId.value = Number(row.id || row.student_class_id) || null;
+  tuitionFocusMessage.value = `已定位：${row.student_name || '指定學生'}${row.subject ? `／${row.subject}` : ''}`;
+  emit('clear-initial-context');
+  await nextTick();
+  const element = tuitionFocusRowId.value
+    ? document.getElementById(`tuition-row-${tuitionFocusRowId.value}`)
+    : null;
+  element?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+}
+
 const slipOpen = ref(false);
 const slipInvoiceId = ref(null);
 const slipStudentClassId = ref(null);
@@ -1211,24 +1530,26 @@ function openLedgerForReport(row) {
 // ═══ Tab Filter counts / overdue (activeTab + TAB_DEFS declared above batch UI) ═══
 function isOverdue(r) {
   return (r.days_until_settlement != null && r.days_until_settlement < 0) &&
-    ['unpaid', 'partial', 'pending_report'].includes(r.payment_status);
+    ['unpaid', 'partial', 'pending_report', 'pending_reconciliation'].includes(r.payment_status);
 }
 
 const tabCounts = computed(() => {
-  const c = { all: 0, unpaid: 0, overdue: 0, pending_report: 0, renewal: 0 };
+  const c = { action: 0, all: 0, unpaid: 0, overdue: 0, pending_report: 0, pending_reconciliation: 0, renewal: 0 };
   rows.value.forEach(r => {
     c.all++;
     const ps = r.payment_status;
+    if (['unpaid', 'partial', 'pending_report', 'pending_reconciliation'].includes(ps)) c.action++;
     if (isOverdue(r)) c.overdue++;
     if (ps === 'unpaid' || ps === 'partial') c.unpaid++;
     else if (ps === 'pending_report') c.pending_report++;
+    else if (ps === 'pending_reconciliation') c.pending_reconciliation++;
     else if (ps === 'paid' || ps === 'renew_needed' || ps === 'monthly_due_soon') c.renewal++;
   });
   return c;
 });
 
 const statusCounts = computed(() => {
-  const c = { unpaid: 0, partial: 0, pending_report: 0, paid: 0, renew_needed: 0, monthly_due_soon: 0 };
+  const c = { unpaid: 0, partial: 0, pending_report: 0, pending_reconciliation: 0, paid: 0, renew_needed: 0, monthly_due_soon: 0 };
   rows.value.forEach(r => {
     const ps = r.payment_status || (r.paid ? 'paid' : 'unpaid');
     if (c[ps] !== undefined) c[ps]++;
@@ -1236,7 +1557,7 @@ const statusCounts = computed(() => {
   return c;
 });
 
-const OUTSTANDING_STATUSES = ['unpaid', 'partial', 'pending_report'];
+const OUTSTANDING_STATUSES = ['unpaid', 'partial', 'pending_report', 'pending_reconciliation'];
 const totalOutstanding = computed(() => {
   return rows.value
     .filter(r => OUTSTANDING_STATUSES.includes(r.payment_status))
@@ -1285,10 +1606,12 @@ function toggleSort(key) {
 // ═══ Filtered + Sorted Rows (3-layer pipeline) ═══
 const tabFilteredRows = computed(() => {
   const tab = activeTab.value;
+  if (tab === 'action') return rows.value.filter(r => OUTSTANDING_STATUSES.includes(r.payment_status));
   if (tab === 'all') return rows.value;
   if (tab === 'overdue') return rows.value.filter(isOverdue);
   if (tab === 'unpaid') return rows.value.filter(r => r.payment_status === 'unpaid' || r.payment_status === 'partial');
   if (tab === 'pending_report') return rows.value.filter(r => r.payment_status === 'pending_report');
+  if (tab === 'pending_reconciliation') return rows.value.filter(r => r.payment_status === 'pending_reconciliation');
   if (tab === 'renewal') return rows.value.filter(r => ['paid', 'renew_needed', 'monthly_due_soon'].includes(r.payment_status));
   return rows.value;
 });
@@ -1372,7 +1695,7 @@ async function loadAlerts() {
     const json = await resp.json();
     const list = Array.isArray(json) ? json : [];
 
-    const statusPriority = { unpaid: 0, partial: 1, pending_report: 2, monthly_due_soon: 3, renew_needed: 4, paid: 5 };
+    const statusPriority = { unpaid: 0, partial: 1, pending_report: 2, pending_reconciliation: 2, monthly_due_soon: 3, renew_needed: 4, paid: 5 };
     rows.value = list.sort((a, b) => {
       const pa = statusPriority[a.payment_status] ?? 3;
       const pb = statusPriority[b.payment_status] ?? 3;
@@ -1381,6 +1704,7 @@ async function loadAlerts() {
       const db = b.days_until_settlement ?? 999;
       return da - db;
     });
+    await applyTuitionFocus();
   } catch (e) {
     error.value = humanizeApiErrorMessage(e.message, '載入失敗');
   } finally {
@@ -1613,16 +1937,34 @@ function openPaymentEntry(row) {
   entryOpen.value = true;
 }
 
-function onEntryConfirmed(_result) {
+function formatCourseRef(id) {
+  const numericId = Number(id);
+  return Number.isInteger(numericId) && numericId > 0
+    ? `課程 ${String(numericId).padStart(6, '0')}`
+    : '課程';
+}
+
+async function onEntryConfirmed(_result) {
   entryOpen.value = false;
-  showToast('已送出待對帳，請到帳務中心按確認入帳後才會開收據');
-  loadAlerts();
+  activeTab.value = 'pending_report';
+  showToast('已送出待對帳，畫面已切到待對帳；請按確認入帳後才會變成已繳費並開收據');
+  await loadAlerts();
+}
+
+async function onPendingReportConflict(_result) {
+  entryOpen.value = false;
+  activeTab.value = 'pending_report';
+  showToast('這筆已經在待對帳，畫面已切到待對帳；請按確認入帳，不要重複送出', 'warning');
+  await loadAlerts();
 }
 
 // ═══ Confirm / Reject pending reports ═══
 async function confirmReport(row) {
+  const workflowStep = 'confirm';
+  if (!billingWorkflowStarts.has(workflowStep)) startBillingWorkflow(workflowStep);
   if (!row.latest_payment_report_id) {
     showToast('找不到待確認的回報', 'error');
+    billingWorkflowError(workflowStep, 'validation');
     return;
   }
   actionLoading.value = row.id;
@@ -1643,8 +1985,11 @@ async function confirmReport(row) {
       receiptOpen.value = true;
     }
     loadAlerts();
+    finishBillingWorkflow(workflowStep);
+    void trackWorkflowEvent('billing', 'returned', props.branchId, { step: workflowStep, target: 'queue' });
   } catch (e) {
     showToast(e.message || '確認入帳失敗', 'error');
+    billingWorkflowError(workflowStep, e);
   } finally {
     actionLoading.value = null;
   }
@@ -1798,17 +2143,18 @@ function overlapWarningLabel(row) {
 async function confirmSettle() {
   if (!settleTarget.value) return;
   const row = settleTarget.value;
-  if (Number(row.remaining_sessions ?? 0) > 0) {
-    showToast(`還有 ${Number(row.remaining_sessions)} 堂未上，請先排課後再結案`, 'warning');
-    return;
-  }
+  const remaining = Math.max(0, Number(row.remaining_sessions ?? 0));
   settleLoading.value = row.id;
   try {
     const token = getToken();
     const resp = await fetch(`/api/v1/student-classes/${row.id}/pause`, {
       method: 'POST',
       headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'pause', reason: 'settled' }),
+      body: JSON.stringify({
+        action: 'pause',
+        reason: 'settled',
+        ...(remaining > 0 ? { forfeit_remaining: true } : {}),
+      }),
     });
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
@@ -1886,6 +2232,26 @@ watch(() => props.branchId, () => {
   refreshActiveTab();
 }, { flush: 'post' });
 
+watch(() => props.initialTab, (tab) => {
+  if (!tab) return;
+  if (tab === 'pending') {
+    activeAccountingTab.value = 'receivables';
+    activeTab.value = 'pending_report';
+  } else if (tab === 'unpaid') {
+    activeAccountingTab.value = 'receivables';
+    activeTab.value = 'unpaid';
+  } else if (tab === 'renewal') {
+    activeAccountingTab.value = 'receivables';
+    activeTab.value = 'renewal';
+  }
+  emit('clear-initial-tab');
+}, { immediate: true });
+
+watch(() => [props.initialStudentId, props.initialCourseId, rows.value.length], () => {
+  if (!props.initialStudentId && !props.initialCourseId) consumedTuitionFocusKey.value = '';
+  applyTuitionFocus();
+}, { immediate: true });
+
 watch(activeAccountingTab, (tab) => {
   if (tab === 'receivables') {
     if (!rows.value.length) loadAlerts();
@@ -1900,6 +2266,32 @@ loadAlerts();
 </script>
 
 <style scoped>
+.tc-focus-context {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 9px 12px;
+  border: 1px solid color-mix(in srgb, var(--ds-cta) 35%, var(--ds-hairline));
+  border-radius: var(--ds-radius-sm, 6px);
+  background: var(--ds-primary-wash, var(--ds-canvas-soft));
+  color: var(--ds-ink-secondary);
+  font-size: 12px;
+}
+.tc-focus-context .material-symbols-outlined { color: var(--ds-cta); font-size: 18px; }
+.tc-focus-context__clear {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: var(--ds-cta);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.tc-row--focused > td { background: var(--ds-primary-wash, rgba(37, 99, 235, .08)); box-shadow: inset 0 2px 0 var(--ds-cta), inset 0 -2px 0 var(--ds-cta); }
+</style>
+
+<style scoped>
 /* ─── Page ─── */
 .tc-page {
   background: var(--card-bg);
@@ -1907,47 +2299,44 @@ loadAlerts();
   padding: 24px;
   box-shadow: 0 1px 4px rgba(0,0,0,0.06);
 }
-
-/* ─── Header ─── */
-.tc-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 20px;
+.tc-process-disclosure,
+.tc-summary-disclosure {
+  margin-bottom: 16px;
+  border: 1px solid var(--ds-hairline);
+  border-radius: 10px;
+  background: var(--ds-canvas-soft);
 }
-.tc-header h2 {
-  margin: 0;
-  font-size: 20px;
-  letter-spacing: -0.01em;
-}
-.tc-subtitle {
-  color: var(--text-light);
-  font-size: 13px;
-  margin-top: 2px;
-}
-.tc-refresh-btn {
-  display: inline-flex;
+.tc-process-disclosure summary,
+.tc-summary-disclosure summary {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 5px;
-  padding: 7px 14px;
-  border: 1px solid var(--border);
-  background: var(--card-bg);
-  border-radius: 8px;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 13px;
+  color: var(--ds-ink-secondary);
+  font-size: 12px;
+  font-weight: 800;
   cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text);
-  transition: all 0.15s;
-  font-family: inherit;
+  list-style: none;
 }
-.tc-refresh-btn:hover:not(:disabled) {
-  background: var(--bg);
-  border-color: var(--primary-light);
-  color: var(--primary);
-}
-.tc-refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.tc-process-disclosure summary::-webkit-details-marker,
+.tc-summary-disclosure summary::-webkit-details-marker { display: none; }
+.tc-process-disclosure summary > .material-symbols-outlined,
+.tc-summary-disclosure summary > .material-symbols-outlined { color: var(--ds-ink-mute); font-size: 18px; }
+.tc-process-disclosure summary > .material-symbols-outlined:last-child,
+.tc-summary-disclosure summary > .material-symbols-outlined:last-child { transition: transform 160ms ease; }
+.tc-process-disclosure[open] summary > .material-symbols-outlined:last-child,
+.tc-summary-disclosure[open] summary > .material-symbols-outlined:last-child { transform: rotate(180deg); }
+.tc-process-disclosure summary:focus-visible,
+.tc-summary-disclosure summary:focus-visible { outline: 3px solid var(--ds-info-wash); outline-offset: 2px; border-radius: 5px; }
+.tc-process-disclosure__title,
+.tc-summary-disclosure summary > span:first-child { color: var(--ds-ink); }
+.tc-process-disclosure__hint,
+.tc-summary-disclosure__hint { overflow: hidden; color: var(--ds-ink-mute); font-size: 11px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.tc-process-disclosure > .operations-quick-start { margin: 0 12px 12px; }
+.tc-summary-disclosure { margin-top: 4px; margin-bottom: 10px; }
+.tc-summary-disclosure .tc-summary { margin: 0; padding: 0 10px 10px; }
 
 /* ─── Accounting center tabs ─── */
 .acct-tabs {
@@ -2040,6 +2429,10 @@ loadAlerts();
 .acct-chip--backfill {
   background: var(--ds-canvas-soft);
   color: var(--ds-ink-mute);
+}
+.acct-chip--pending {
+  background: var(--ds-warning-wash);
+  color: var(--ds-warning);
 }
 .acct-chip--type {
   background: var(--ds-primary-wash);
@@ -2198,6 +2591,24 @@ loadAlerts();
 }
 .tc-empty p { margin: 0; font-size: 14px; }
 
+.tc-action-queue {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 14px 0 2px;
+  padding: 11px 14px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--primary);
+  border-radius: 8px;
+  background: var(--bg);
+  font-size: 13px;
+}
+.tc-action-queue > div { display: grid; gap: 2px; }
+.tc-action-queue strong { color: var(--text); }
+.tc-action-queue span { color: var(--text-light); font-size: 12px; }
+.tc-queue-link { border: 0; background: transparent; color: var(--primary); font: inherit; font-weight: 700; cursor: pointer; white-space: nowrap; }
+
 .tc-cta-btn {
   padding: 8px 20px;
   border-radius: 8px;
@@ -2266,6 +2677,7 @@ loadAlerts();
   color: var(--text-light);
 }
 .tc-tab--active .tc-tab-badge { background: var(--primary); color: var(--ds-on-primary); }
+.tc-batch-help { color: var(--text-light); font-size: 12px; }
 
 /* ─── Search toolbar ─── */
 .tc-toolbar {
@@ -2457,6 +2869,7 @@ loadAlerts();
 .tc-batch-note { min-width: 160px; flex: 1; }
 
 .tc-col-mode { width: 60px; text-align: center; }
+.tc-course-ref { display: block; margin-top: 2px; color: var(--ds-ink-mute); font-size: 11px; white-space: nowrap; }
 .tc-col-currency { width: 90px; text-align: right; font-variant-numeric: tabular-nums; font-size: 13px; }
 .tc-col-date { white-space: nowrap; }
 .tc-col-actions { width: 1%; white-space: nowrap; }
@@ -2675,6 +3088,61 @@ loadAlerts();
   max-width: 440px;
   box-shadow: 0 20px 60px rgba(0,0,0,0.2);
 }
+.tc-dialog--batch-preview { max-width: 600px; }
+.tc-batch-preview-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 12px;
+}
+.tc-batch-preview-summary > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 12px;
+  border: 1px solid var(--ds-hairline);
+  border-radius: 8px;
+  background: var(--ds-canvas-soft, var(--bg));
+}
+.tc-batch-preview-summary strong { color: var(--ds-ink); font-size: 16px; font-variant-numeric: tabular-nums; }
+.tc-batch-preview-summary span { color: var(--ds-ink-mute); font-size: 11px; }
+.tc-batch-preview-list {
+  display: grid;
+  gap: 1px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 1px;
+  border: 1px solid var(--ds-hairline);
+  border-radius: 8px;
+  background: var(--ds-hairline);
+}
+.tc-batch-preview-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 11px;
+  background: var(--card-bg);
+}
+.tc-batch-preview-row > div:first-child { min-width: 0; }
+.tc-batch-preview-row strong,
+.tc-batch-preview-row span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tc-batch-preview-row > div:first-child span { margin-top: 2px; color: var(--ds-ink-mute); font-size: 11px; }
+.tc-batch-preview-row__amount { display: flex; align-items: center; flex-shrink: 0; gap: 8px; }
+.tc-batch-preview-row__amount > strong { color: var(--ds-ink); font-size: 13px; font-variant-numeric: tabular-nums; }
+.tc-batch-preview-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 9px 11px;
+  border-radius: 8px;
+  background: var(--ds-warning-wash, var(--bg));
+  color: var(--ds-ink-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.tc-batch-preview-note .material-symbols-outlined { flex-shrink: 0; color: var(--ds-warning); font-size: 17px; }
 .tc-dialog-title {
   display: flex;
   align-items: center;
@@ -2764,6 +3232,13 @@ loadAlerts();
 .tc-dialog-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
 .tc-dialog-close { background: none; border: none; cursor: pointer; color: var(--text-light); display: flex; align-items: center; padding: 2px; border-radius: 6px; }
 .tc-dialog-close:hover { color: var(--text); background: var(--ds-canvas-soft); }
+@media (max-width: 560px) {
+  .tc-dialog--batch-preview { padding: 18px; }
+  .tc-batch-preview-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tc-batch-preview-summary > div:last-child { grid-column: 1 / -1; }
+  .tc-batch-preview-row { align-items: flex-start; flex-direction: column; gap: 6px; }
+  .tc-batch-preview-row__amount { width: 100%; justify-content: space-between; }
+}
 .tc-session-summary {
   display: flex;
   align-items: center;
@@ -2867,6 +3342,7 @@ loadAlerts();
   .acct-filter-actions { justify-content: stretch; }
   .acct-filter-actions .tc-btn { flex: 1; justify-content: center; }
   .tc-tabs { overflow-x: auto; white-space: nowrap; }
+  .tc-action-queue { align-items: flex-start; flex-direction: column; }
   .tc-toolbar { flex-direction: column; align-items: stretch; }
   .tc-toolbar-right { margin-left: 0; justify-content: flex-end; }
 }

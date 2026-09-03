@@ -4,11 +4,25 @@ import { nextTick } from 'vue';
 import ReceiptModal from '../ReceiptModal.vue';
 import {
   adaptPaymentReportReceipt,
+  buildReceiptCopyText,
   paymentReportReceiptUrl,
   parsePositiveReportId,
 } from '../../lib/paymentReportReceipt.js';
+import { buildReceiptSvg, receiptImageBlob } from '../../lib/receiptImage.js';
 
 const mockToken = 'test-token';
+
+const VALID_PNG_BYTES = Uint8Array.from([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+  0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+  0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+  0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4,
+  0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41,
+  0x54, 0x78, 0x9c, 0x63, 0x60, 0x00, 0x00, 0x00,
+  0x02, 0x00, 0x01, 0xe2, 0x21, 0xbc, 0x33, 0x00,
+  0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae,
+  0x42, 0x60, 0x82,
+]);
 
 const SAMPLE = {
   receipt_no: 'R-000123',
@@ -22,6 +36,7 @@ const SAMPLE = {
   session_dates: [{ date: '2026/07/03', expected: false }],
   payment_date: '2026/07/13',
   payment_method: 'cash',
+  note: '8/23現金繳費收據號碼:016272',
   amount: 12000,
   confirmed_at: '2026/07/13',
   confirmed_by: '主任A',
@@ -34,6 +49,19 @@ function ok(json) {
 }
 function fail(status, message) {
   return { ok: false, status, json: () => Promise.resolve(message ? { message } : {}) };
+}
+function pngBlob() {
+  return new Blob([VALID_PNG_BYTES], { type: 'image/png' });
+}
+async function pngEvidence(blob) {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  return {
+    validSignature: bytes.slice(0, 8).every((byte, index) => byte === [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a][index]),
+    width: view.getUint32(16),
+    height: view.getUint32(20),
+    bytes: bytes.length,
+  };
 }
 async function tick() {
   await new Promise((r) => setTimeout(r, 30));
@@ -74,6 +102,65 @@ describe('paymentReportReceipt helpers (#1197 closeout)', () => {
     expect(view.content_snapshot.total_amount).toBe(12000);
     expect(view.content_snapshot.license_number).toBeUndefined();
     expect(view.content_snapshot.items[0].description).toBe('英文 · 8 堂 · 堂數制');
+  });
+
+  it('uses monthly settlement count and prints each billed lesson detail', () => {
+    const view = adaptPaymentReportReceipt({
+      ...SAMPLE,
+      schedule_mode: 'date',
+      period_sessions: 4,
+      session_dates: [{
+        date: '2026/07/03', start_time: '18:00', end_time: '20:00',
+        subject: '英文', lesson: 1, expected: false,
+      }],
+    }, 123);
+    expect(view.content_snapshot.items[0].description).toContain('4 堂');
+    const text = buildReceiptCopyText(view.content_snapshot, view.receipt_number);
+    expect(text).toContain('第1堂 2026/07/03 18:00-20:00 · 英文');
+    expect(text).not.toContain('預計');
+  });
+
+  it('builds copy text from the fields visible on the receipt', () => {
+    const view = adaptPaymentReportReceipt(SAMPLE, 123);
+    const text = buildReceiptCopyText(view.content_snapshot, view.receipt_number);
+    expect(text).toContain('電子收據');
+    expect(text).toContain('收據號碼：R-000123');
+    expect(text).toContain('學生姓名：王小明');
+    expect(text).toContain('合計：NT$ 12,000');
+    expect(text).toContain('上課日期：2026/07/03');
+    expect(text).not.toContain('（預計）');
+    expect(text).toContain('收款方式：現金');
+    expect(text).toContain('備註：8/23現金繳費收據號碼:016272');
+  });
+
+  it('renders all eight expected sessions as 預計 in every receipt output', async () => {
+    const eightExpectedSessions = Array.from({ length: 8 }, (_, index) => ({
+      date: `2026/09/${String(index + 3).padStart(2, '0')}`,
+      expected: true,
+    }));
+    const api = {
+      ...SAMPLE,
+      receipt_no: 'R-001622',
+      attended_dates: [],
+      session_dates: eightExpectedSessions,
+    };
+    global.fetch.mockResolvedValueOnce(ok(api));
+
+    const wrapper = mount(ReceiptModal, { props: { show: true, reportId: 1622 } });
+    await tick();
+
+    const renderedText = wrapper.find('.receipt-doc-session-list').text();
+    expect(renderedText.match(/（預計）/g)).toHaveLength(8);
+    expect(renderedText).not.toContain('尚未上');
+
+    const view = adaptPaymentReportReceipt(api, 1622);
+    const copiedText = buildReceiptCopyText(view.content_snapshot, view.receipt_number);
+    expect(copiedText.match(/（預計）/g)).toHaveLength(8);
+    expect(copiedText).not.toContain('尚未上');
+
+    const imageSvg = buildReceiptSvg(view.content_snapshot, view.receipt_number);
+    expect(imageSvg.match(/（預計）/g)).toHaveLength(8);
+    expect(imageSvg).not.toContain('尚未上');
   });
 
   it('receipt line names trial and tutoring', () => {
@@ -122,6 +209,169 @@ describe('ReceiptModal payment-reports contract', () => {
     expect(text).toContain('NT$ 12,000');
     expect(text).toContain('2026/07/13');
     expect(text).toContain('現金');
+  });
+
+  it('copies the receipt text without another API request', async () => {
+    global.fetch.mockResolvedValueOnce(ok(SAMPLE));
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    const wrapper = mount(ReceiptModal, { props: { show: true, reportId: 123 } });
+    await tick();
+
+    await wrapper.find('[data-testid="copy-receipt-text"]').trigger('click');
+    await tick();
+    expect(writeText).toHaveBeenCalledTimes(1);
+    expect(writeText.mock.calls[0][0]).toContain('收據號碼：R-000123');
+    expect(wrapper.text()).toContain('已複製');
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('copies a rendered PNG image for LINE or other image-capable chat apps', async () => {
+    global.fetch.mockResolvedValueOnce(ok(SAMPLE));
+    const write = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { write } });
+    Object.defineProperty(window, 'ClipboardItem', {
+      configurable: true,
+      value: class ClipboardItemMock {
+        constructor(items) { this.items = items; }
+      },
+    });
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:receipt');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+      fillRect: vi.fn(),
+      drawImage: vi.fn(),
+      fillStyle: '#fff',
+    });
+    vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((callback) => {
+      callback(pngBlob());
+    });
+    const imageOnLoad = vi.fn();
+    Object.defineProperty(window, 'Image', {
+      configurable: true,
+      value: class ImageMock {
+        set src(_value) {
+          imageOnLoad();
+          this.onload?.();
+        }
+      },
+    });
+
+    const wrapper = mount(ReceiptModal, { props: { show: true, reportId: 123 } });
+    await tick();
+    await wrapper.find('[data-testid="copy-receipt-image"]').trigger('click');
+    await tick();
+
+    expect(write).toHaveBeenCalledTimes(1);
+    const imageBlob = write.mock.calls[0][0][0].items['image/png'];
+    const evidence = await pngEvidence(imageBlob);
+    expect(imageBlob.type).toBe('image/png');
+    expect(evidence).toMatchObject({ validSignature: true, width: 1, height: 1 });
+    expect(evidence.bytes).toBeGreaterThan(0);
+    expect(wrapper.text()).toContain('已複製圖片');
+  });
+
+  it('uses the same canonical PNG generator for a valid download with Traditional Chinese content', async () => {
+    global.fetch.mockResolvedValueOnce(ok(SAMPLE));
+    const generatedBlobs = [];
+    vi.spyOn(URL, 'createObjectURL').mockImplementation((blob) => {
+      generatedBlobs.push(blob);
+      return `blob:receipt-${generatedBlobs.length}`;
+    });
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+      fillRect: vi.fn(),
+      drawImage: vi.fn(),
+      fillStyle: '#fff',
+    });
+    vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((callback) => callback(pngBlob()));
+    Object.defineProperty(window, 'Image', {
+      configurable: true,
+      value: class ImageMock {
+        set src(_value) { this.onload?.(); }
+      },
+    });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+    const wrapper = mount(ReceiptModal, { props: { show: true, reportId: 123 } });
+    await tick();
+    await wrapper.find('[data-testid="download-receipt-image"]').trigger('click');
+    await tick();
+
+    const downloadedPng = generatedBlobs.at(-1);
+    const evidence = await pngEvidence(downloadedPng);
+    expect(click).toHaveBeenCalled();
+    expect(downloadedPng.type).toBe('image/png');
+    expect(evidence).toMatchObject({ validSignature: true, width: 1, height: 1 });
+    expect(wrapper.text()).toContain('電子收據');
+    expect(wrapper.text()).toContain('王小明');
+  });
+
+  it('reports image generation failure without silently copying text', async () => {
+    global.fetch.mockResolvedValueOnce(ok(SAMPLE));
+    const write = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { write } });
+    Object.defineProperty(window, 'ClipboardItem', { configurable: true, value: class ClipboardItemMock {} });
+    Object.defineProperty(window, 'Image', {
+      configurable: true,
+      value: class ImageMock {
+        set src(_value) { this.onerror?.(new Error('decode failed')); }
+      },
+    });
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:receipt');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+
+    const wrapper = mount(ReceiptModal, { props: { show: true, reportId: 123 } });
+    await tick();
+    await wrapper.find('[data-testid="copy-receipt-image"]').trigger('click');
+    await tick();
+
+    expect(write).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain('複製圖片失敗');
+    expect(wrapper.text()).not.toContain('已複製文字');
+  });
+
+  it('records the generator stages without exposing receipt contents', async () => {
+    global.fetch.mockResolvedValueOnce(ok(SAMPLE));
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:receipt');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+      fillRect: vi.fn(),
+      drawImage: vi.fn(),
+      fillStyle: '#fff',
+    });
+    vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((callback) => callback(pngBlob()));
+    Object.defineProperty(window, 'Image', {
+      configurable: true,
+      value: class ImageMock {
+        set src(_value) { this.onload?.(); }
+      },
+    });
+
+    const wrapper = mount(ReceiptModal, { props: { show: true, reportId: 123 } });
+    await tick();
+    const stages = {};
+    const blob = await receiptImageBlob({
+      source: wrapper.find('.receipt-document').element,
+      snapshot: adaptPaymentReportReceipt(SAMPLE, 123).content_snapshot,
+      receiptNumber: 'R-000123',
+      onStage: (name, value) => { stages[name] = value; },
+    });
+
+    expect(blob.type).toBe('image/png');
+    expect((await pngEvidence(blob)).validSignature).toBe(true);
+    expect(stages).toMatchObject({
+      receiptPrintRefAvailable: true,
+      cloneSuccessful: true,
+      svgStringGenerated: true,
+      svgBlobGenerated: { type: 'image/svg+xml;charset=utf-8' },
+      objectUrlGenerated: true,
+      imageOutcome: 'onload',
+      canvasContextAvailable: true,
+      drawImage: 'SUCCESS',
+      canvasToBlob: 'BLOB',
+      pngBlob: { type: 'image/png' },
+    });
   });
 
   it('classifies 403/404/422 without generic 請求失敗', async () => {

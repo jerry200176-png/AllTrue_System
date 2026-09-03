@@ -49,6 +49,12 @@ jobs:
       - name: Test credential fingerprint audit
         run: python3 scripts/credential-fingerprint-audit.test.py
 
+      - name: Test bug detail dump contract
+        run: python3 scripts/tests/test_bug_detail_dump.py
+
+      - name: Test production identity evidence transport
+        run: python3 scripts/tests/test_production_identity.py
+
       - name: Test bundle budget chunk classification (#1273)
         run: node --test scripts/bundle-budget.test.mjs
 
@@ -174,6 +180,9 @@ jobs:
       - name: Install PHP dependencies
         working-directory: backend
         run: composer install --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Verify generated API route reference
+        run: bash scripts/generate-ref-api-routes.sh --check
 
       - name: Composer audit (security)
         working-directory: backend

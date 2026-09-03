@@ -10,6 +10,7 @@ import {
   humanizeRescheduleFailure,
 } from '../../lib/scheduleDisplay.js';
 import { commitReschedule } from '../../lib/rescheduleApi.js';
+import { buildReschedulePreview } from '../../lib/reschedulePreview.js';
 
 export function findExactRescheduleAnchor(exceptions, courseId, date, startTime) {
   const startHm = String(startTime || '').slice(0, 5);
@@ -31,6 +32,9 @@ export function useCalendarReschedule({
   getToken,
   allStudents,
   getSubjectLabel,
+  courses,
+  sessionDatesByCourseId,
+  exceptions,
 }) {
   const getStudentName = (sid) => {
     const s = allStudents.value.find((x) => x.id === sid);
@@ -55,6 +59,18 @@ export function useCalendarReschedule({
   const computedRescheduleNewEnd = computed(() =>
     computeEndTime(rescheduleForm.value.new_start, rescheduleForm.value.duration_hours),
   );
+  const reschedulePreview = computed(() => buildReschedulePreview({
+    courses: courses?.value || [],
+    currentCourseId: rescheduleForm.value.course_id,
+    studentId: rescheduleForm.value.student_id,
+    teacherId: rescheduleForm.value.teacher_id,
+    targetDate: rescheduleForm.value.new_date,
+    startTime: rescheduleForm.value.new_start,
+    endTime: computedRescheduleNewEnd.value,
+    classType: rescheduleForm.value.class_type,
+    sessionDatesByCourseId: sessionDatesByCourseId?.value || {},
+    exceptions: exceptions?.value || [],
+  }));
 
   const openRescheduleModal = () => {
     const exactDate = modalForm.value.action_date || new Date().toISOString().split('T')[0];
@@ -93,6 +109,11 @@ export function useCalendarReschedule({
       rescheduleError.value = '請先選擇分校';
       return;
     }
+    // The preview only has a partial client-side projection of date-level
+    // occupancy.  In particular, a leave row can arrive after the course
+    // list/session projection or use a shape the preview cannot reconcile.
+    // Keep it as a warning; the atomic API is the authority and will reject a
+    // genuine conflict without changing data.
     const newEnd = computeEndTime(rescheduleForm.value.new_start, rescheduleForm.value.duration_hours);
     rescheduleError.value = '';
     rescheduleSubmitting.value = true;
@@ -145,6 +166,7 @@ export function useCalendarReschedule({
     rescheduleForm,
     rescheduleDisplay,
     computedRescheduleNewEnd,
+    reschedulePreview,
     rescheduleSubmitting,
     rescheduleError,
     onRescheduleNewStartChange,

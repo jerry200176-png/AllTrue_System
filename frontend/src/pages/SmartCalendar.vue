@@ -8,40 +8,64 @@
     </div>
     <!-- Top Bar -->
     <div class="smart-cal-top" data-guide="calendar-header">
-      <div class="smart-cal-header">
-        <div class="smart-cal-heading-copy">
-          <p class="smart-cal-kicker">排課與調課</p>
-          <h1 class="smart-cal-title">{{ isTeacher ? '我的課表' : '班級行事曆 / 課表' }}</h1>
-          <p class="smart-cal-context" aria-live="polite">
-            {{ currentCalendarViewLabel }} · {{ visibleWeekRangeLabel }} · {{ weekCourseCount }} 堂
-          </p>
-        </div>
-        <div class="smart-cal-header-actions">
-          <button type="button" class="calendar-today-btn" @click="focusCalendarToday" aria-label="回到今天的課表">今天</button>
+      <AtPageHeader
+        :title="isTeacher ? '我的課表' : '班級行事曆 / 課表'"
+        description="排課與調課"
+        icon="calendar_month"
+      >
+        <template #meta>
+          <span aria-live="polite">{{ currentCalendarViewLabel }} · {{ visibleWeekRangeLabel }} · {{ weekCourseCount }} 堂</span>
+        </template>
+        <template #actions>
+          <AtButton shape="rect" variant="secondary" @click="focusCalendarToday" aria-label="回到今天的課表">今天</AtButton>
           <div class="view-tabs" role="tablist" aria-label="課表檢視方式">
-            <button type="button" role="tab" :aria-selected="viewMode === 'week'" :class="{ active: viewMode === 'week' }" @click="viewMode = 'week'">課表</button>
-            <button v-if="!isTeacher" type="button" role="tab" :aria-selected="viewMode === 'teacher'" :class="{ active: viewMode === 'teacher' }" @click="viewMode = 'teacher'">老師清單</button>
+            <button id="calendar-tab-week" type="button" role="tab" aria-controls="calendar-panel-week" :aria-selected="viewMode === 'week'" :class="{ active: viewMode === 'week' }" @click="viewMode = 'week'">課表</button>
+            <button v-if="!isTeacher" id="calendar-tab-teacher" type="button" role="tab" aria-controls="calendar-panel-teacher" :aria-selected="viewMode === 'teacher'" :class="{ active: viewMode === 'teacher' }" @click="viewMode = 'teacher'">老師清單</button>
           </div>
-        </div>
-      </div>
+        </template>
+      </AtPageHeader>
+      <details v-if="!isTeacher" class="calendar-process-disclosure">
+        <summary>
+          <span class="material-symbols-outlined" aria-hidden="true">route</span>
+          <span class="calendar-process-disclosure__title">排課處理流程</span>
+          <span class="calendar-process-disclosure__hint">新增排課用快速排課；既有課程先點課卡</span>
+          <span class="material-symbols-outlined" aria-hidden="true">expand_more</span>
+        </summary>
+        <OperationsQuickStart
+          compact
+          eyebrow="排課處理流程"
+          heading="先選工作，再操作課表"
+          description="新增排課請用快速排課；既有課程請先點課卡，再選調課或換代課。"
+          :current-id="calendarWorkflowIntent"
+          :steps="calendarFlowSteps"
+          @select="selectCalendarFlowStep"
+        />
+      </details>
+      <p v-if="!isTeacher && calendarWorkflowHint" class="calendar-workflow-hint" role="status">{{ calendarWorkflowHint }}</p>
+      <p v-if="!isTeacher && calendarFocusMessage" class="calendar-focus-context" role="status">
+        <span class="material-symbols-outlined" aria-hidden="true">my_location</span>
+        <span>{{ calendarFocusMessage }}</span>
+        <button type="button" @click="clearCalendarFocus">清除定位</button>
+      </p>
       <div v-if="viewMode === 'week'" class="smart-cal-toolbar" data-guide="calendar-toolbar">
         <div class="toolbar-row toolbar-row-primary">
           <div class="toolbar-group">
-            <span class="toolbar-label">月份</span>
-            <div class="month-nav">
+            <span id="calendar-month-label" class="toolbar-label">月份</span>
+            <div class="month-nav" role="group" aria-labelledby="calendar-month-label">
               <button type="button" class="icon-btn" @click="prevMonth" title="上一個月" aria-label="上一個月">‹</button>
-              <span class="month-display">{{ displayYear }} / {{ displayMonth }}</span>
+              <span class="month-display" aria-live="polite">{{ displayYear }} / {{ displayMonth }}</span>
               <button type="button" class="icon-btn" @click="nextMonth" title="下一個月" aria-label="下一個月">›</button>
             </div>
           </div>
-          <div class="toolbar-group">
-            <span class="toolbar-label">週次</span>
+          <div class="toolbar-group" role="group" aria-labelledby="calendar-week-label">
+            <span id="calendar-week-label" class="toolbar-label">週次</span>
             <!-- #740 Step 4d：週次導航剝離為 presentational 元件 -->
             <WeekNavBar v-model="displayWeek" :week-options="weekOptions" @prev="prevWeek" @next="nextWeek" />
           </div>
           <div class="toolbar-group">
-            <span class="toolbar-label">跳至日期</span>
+            <label class="toolbar-label" for="calendar-jump-date">跳至日期</label>
             <input
+              id="calendar-jump-date"
               v-model="jumpToDate"
               type="date"
               class="filter-input jump-date-input"
@@ -49,66 +73,75 @@
             />
           </div>
           <div v-if="!isTeacher" class="toolbar-group">
-            <div class="view-sub-toggle">
-              <button type="button" :class="{ active: !isWeekOverview }" @click="isWeekOverview = false">日檢視</button>
-              <button type="button" :class="{ active: isWeekOverview }" @click="isWeekOverview = true">週檢視</button>
+            <div class="view-sub-toggle" role="group" aria-label="日／週檢視">
+              <button type="button" :aria-pressed="!isWeekOverview" :class="{ active: !isWeekOverview }" @click="isWeekOverview = false">日檢視</button>
+              <button type="button" :aria-pressed="isWeekOverview" :class="{ active: isWeekOverview }" @click="isWeekOverview = true">週檢視</button>
             </div>
           </div>
           <div class="toolbar-fill"></div>
         </div>
-        <div v-if="!isTeacher" class="toolbar-row toolbar-row-secondary">
-          <div class="toolbar-secondary-line toolbar-secondary-line--meta">
-            <div class="toolbar-secondary-meta">
-              <span class="week-stat">本日 <b>{{ getDayCourseCount(selectedDow) }}</b> 堂 / 本週 <b>{{ weekCourseCount }}</b> 堂</span>
-              <span class="rc-legend"><span class="rc-tag rc-done">✓</span>已點 <span class="rc-tag rc-missed">!</span>漏點 <span class="rc-tag rc-leave">假</span>請假 <span class="rc-tag rc-eval-missing">評</span>未填評量</span>
-              <span v-if="viewMode === 'day'" class="rc-legend capacity-legend" title="每格右上角顯示：此時段學生人數 / 班型上限">
-                <span class="capacity-legend-label">班型容量</span>
-                <span class="capacity-legend-chip capacity-legend-chip--ok">1/3</span>可加
-                <span class="capacity-legend-chip capacity-legend-chip--warn">2/3</span>剩 1 位
-                <span class="capacity-legend-chip capacity-legend-chip--full">3/3</span>已滿
-              </span>
-            </div>
-          </div>
-          <div class="toolbar-secondary-line toolbar-secondary-line--filters">
-            <div class="toolbar-secondary-mid">
-              <div class="toolbar-filters">
-                <select v-model="roomFilter" class="filter-select toolbar-room-select" title="依教室篩選老師欄">
-                  <option value="">全部教室</option>
-                  <option v-for="r in allRoomOptions" :key="r" :value="r">教室 {{ r }}</option>
-                </select>
-                <input v-model="teacherSearch" type="search" class="filter-input toolbar-search-input" placeholder="搜尋老師…" autocomplete="off" />
-                <input v-model="studentSearch" type="search" class="filter-input toolbar-search-input" placeholder="搜尋學生…" autocomplete="off" />
-                <button
-                  v-if="featureSubstituteV2 && !isTeacher"
-                  type="button"
-                  class="filter-input toolbar-teacher-leave-btn"
-                  title="老師請假一次處理當日多堂代課"
-                  @click="openTeacherLeaveBatch"
-                ><span class="material-symbols-outlined btn-icon">event_busy</span>老師請假</button>
-                <label
-                  v-if="!isWeekOverview && !isTeacher"
-                  class="filter-toggle toolbar-hide-empty-toggle"
-                  title="開啟後只顯示今日有排課的老師欄；此模式下無法點空格快速排課"
-                >
-                  <input type="checkbox" v-model="hideEmptyTeacherColumns" />
-                  <span>只看有課老師</span>
-                </label>
+        <details v-if="!isTeacher" class="calendar-secondary-controls-disclosure">
+          <summary class="calendar-secondary-controls-summary">
+            <span class="material-symbols-outlined" aria-hidden="true">tune</span>
+            <span class="calendar-secondary-controls-summary__title">篩選與更多操作</span>
+            <span class="calendar-secondary-controls-summary__hint">教室、老師、學生與排課工具</span>
+            <span class="calendar-secondary-controls-summary__status">{{ calendarSecondaryControlsSummary }}</span>
+            <span class="material-symbols-outlined calendar-secondary-controls-summary__icon" aria-hidden="true">expand_more</span>
+          </summary>
+          <div class="toolbar-row toolbar-row-secondary">
+            <div class="toolbar-secondary-line toolbar-secondary-line--meta">
+              <div class="toolbar-secondary-meta">
+                <span class="week-stat">本日 <b>{{ getDayCourseCount(selectedDow) }}</b> 堂 / 本週 <b>{{ weekCourseCount }}</b> 堂</span>
+                <span class="rc-legend"><span class="rc-tag rc-done">✓</span>已點 <span class="rc-tag rc-missed">!</span>漏點 <span class="rc-tag rc-leave">假</span>請假 <span class="rc-tag rc-eval-missing">評</span>未填評量</span>
+                <span v-if="viewMode === 'day'" class="rc-legend capacity-legend" title="每格右上角顯示：此時段學生人數 / 班型上限">
+                  <span class="capacity-legend-label">班型容量</span>
+                  <span class="capacity-legend-chip capacity-legend-chip--ok">1/3</span>可加
+                  <span class="capacity-legend-chip capacity-legend-chip--warn">2/3</span>剩 1 位
+                  <span class="capacity-legend-chip capacity-legend-chip--full">3/3</span>已滿
+                </span>
               </div>
-              <!-- #740 Step 4c：老師篩選 chips 剝離為 presentational 元件 -->
-              <WeekTeacherChips
-                v-if="visibleTeachers.length > 1 && !isTeacher"
-                :teachers="teacherChips"
-                :selected-ids="selectedTeacherChipIds"
-                @toggle="toggleTeacherSelection"
-                @clear="clearTeacherSelection"
-              />
             </div>
-            <div class="toolbar-secondary-actions">
-              <button type="button" class="btn-secondary btn-icon-text toolbar-action-btn" @click="showRoomManager = !showRoomManager" title="管理教室"><span class="material-symbols-outlined btn-icon">meeting_room</span><span class="btn-text">教室</span></button>
-              <button type="button" class="btn-primary btn-icon-text toolbar-action-btn" data-guide="calendar-quick-add" @click="openQuickAdd"><span class="material-symbols-outlined btn-icon">add_circle</span><span class="btn-text">快速排課</span></button>
+            <div class="toolbar-secondary-line toolbar-secondary-line--filters">
+              <div class="toolbar-secondary-mid">
+                <div class="toolbar-filters">
+                  <select v-model="roomFilter" class="filter-select toolbar-room-select" title="依教室篩選老師欄" aria-label="依教室篩選">
+                    <option value="">全部教室</option>
+                    <option v-for="r in allRoomOptions" :key="r" :value="r">教室 {{ r }}</option>
+                  </select>
+                  <input v-model="teacherSearch" type="search" class="filter-input toolbar-search-input" placeholder="搜尋老師…" aria-label="搜尋老師" autocomplete="off" />
+                  <input v-model="studentSearch" type="search" class="filter-input toolbar-search-input" placeholder="搜尋學生…" aria-label="搜尋學生" autocomplete="off" />
+                  <button
+                    v-if="featureSubstituteV2 && !isTeacher"
+                    type="button"
+                    class="filter-input toolbar-teacher-leave-btn"
+                    title="老師請假一次處理當日多堂代課"
+                    @click="openTeacherLeaveBatch"
+                  ><span class="material-symbols-outlined btn-icon">event_busy</span>老師請假</button>
+                  <label
+                    v-if="!isWeekOverview && !isTeacher"
+                    class="filter-toggle toolbar-hide-empty-toggle"
+                    title="開啟後只顯示今日有排課的老師欄；此模式下無法點空格快速排課"
+                  >
+                    <input type="checkbox" v-model="hideEmptyTeacherColumns" />
+                    <span>只看有課老師</span>
+                  </label>
+                </div>
+                <!-- #740 Step 4c：老師篩選 chips 剝離為 presentational 元件 -->
+                <WeekTeacherChips
+                  v-if="visibleTeachers.length > 1 && !isTeacher"
+                  :teachers="teacherChips"
+                  :selected-ids="selectedTeacherChipIds"
+                  @toggle="toggleTeacherSelection"
+                  @clear="clearTeacherSelection"
+                />
+              </div>
+              <div class="toolbar-secondary-actions">
+                <button type="button" class="btn-secondary btn-icon-text toolbar-action-btn" @click="showRoomManager = !showRoomManager" title="管理教室"><span class="material-symbols-outlined btn-icon">meeting_room</span><span class="btn-text">教室</span></button>
+                <button type="button" class="btn-primary btn-icon-text toolbar-action-btn" data-guide="calendar-quick-add" @click="openQuickAdd"><span class="material-symbols-outlined btn-icon">add_circle</span><span class="btn-text">快速排課</span></button>
+              </div>
             </div>
           </div>
-        </div>
+        </details>
       </div>
 
       <!-- Room Manager Panel -->
@@ -133,8 +166,8 @@
           </table>
           <p v-else class="room-empty-hint">尚未設定教室，請新增教室以啟用教室容量檢查。</p>
           <div class="room-form">
-            <input v-model="roomForm.name" type="text" placeholder="教室名稱" class="room-input" />
-            <input v-model.number="roomForm.capacity" type="number" min="1" placeholder="容量" class="room-input" style="width: 80px;" />
+            <input v-model="roomForm.name" type="text" placeholder="教室名稱" aria-label="教室名稱" class="room-input" />
+            <input v-model.number="roomForm.capacity" type="number" min="1" placeholder="容量" aria-label="教室容量" class="room-input" style="width: 80px;" />
             <button type="button" class="btn-primary btn-sm" @click="saveRoom">{{ editingRoomId ? '更新' : '新增' }}</button>
             <button v-if="editingRoomId" type="button" class="btn-secondary btn-sm" @click="cancelRoomEdit">取消</button>
           </div>
@@ -143,7 +176,7 @@
     </div>
 
     <!-- ===== VIEW: Teacher Grid (main view) ===== -->
-    <div v-if="viewMode === 'week'" class="week-view">
+    <div v-if="viewMode === 'week'" id="calendar-panel-week" class="week-view" role="tabpanel" aria-labelledby="calendar-tab-week" tabindex="0">
 
       <!-- ── Day View (default) ── -->
       <template v-if="!isWeekOverview">
@@ -194,7 +227,7 @@
                 <div
                   v-for="(course, cIdx) in getCoursesForTeacherAt(teacher.id, h)"
                   :key="course.id"
-                  class="course-block"
+                  :class="['course-block', { 'course-block--focused': focusedCalendarCourseId === Number(course.id) }]"
                   :style="getTeacherCourseBlockStyle(course, teacher.id, h, cIdx)"
                   :draggable="!isTeacher"
                   @click.stop="!isTeacher && onCourseClick(course, selectedDateStr)"
@@ -250,7 +283,7 @@
                 <div
                   v-for="(course, cIdx) in getCoursesForWeekCell(idx + 1, h)"
                   :key="course.id"
-                  class="course-block"
+                  :class="['course-block', { 'course-block--focused': focusedCalendarCourseId === Number(course.id) }]"
                   :style="getWeekCourseBlockStyle(course, idx + 1, h, cIdx)"
                   :draggable="!isTeacher"
                   @click.stop="!isTeacher && onCourseClick(course, getDisplayDateFull(idx + 1))"
@@ -274,12 +307,19 @@
     </div>
 
     <!-- ===== VIEW: Teacher List (director only) ===== -->
-    <div v-if="viewMode === 'teacher' && !isTeacher" class="teacher-view">
+    <div v-if="viewMode === 'teacher' && !isTeacher" id="calendar-panel-teacher" class="teacher-view" role="tabpanel" aria-labelledby="calendar-tab-teacher" tabindex="0">
       <div v-if="teacherGroups.length === 0" class="teacher-empty">
         目前無排課資料，請先在「學生管理」中建立課程。
       </div>
       <div v-for="group in teacherGroups" :key="group.teacher_id" class="teacher-card">
-        <div class="teacher-card-header" @click="group.open = !group.open">
+        <button
+          :id="`teacher-toggle-${group.teacher_id}`"
+          type="button"
+          class="teacher-card-header"
+          :aria-expanded="group.open"
+          :aria-controls="`teacher-courses-${group.teacher_id}`"
+          @click="group.open = !group.open"
+        >
           <div class="teacher-info">
             <div class="teacher-avatar" :style="{ background: getTeacherColor(group.teacher_id) }">
               {{ group.teacher_name.charAt(0) }}
@@ -289,9 +329,9 @@
               <span class="teacher-count">{{ group.courses.length }} 堂</span>
             </div>
           </div>
-          <span class="expand-arrow" :aria-expanded="group.open">{{ group.open ? '▼' : '▶' }}</span>
-        </div>
-        <div v-if="group.open" class="teacher-courses">
+          <span class="expand-arrow" aria-hidden="true">{{ group.open ? '▼' : '▶' }}</span>
+        </button>
+        <div v-if="group.open" :id="`teacher-courses-${group.teacher_id}`" class="teacher-courses" role="region" :aria-labelledby="`teacher-toggle-${group.teacher_id}`">
           <table class="teacher-table">
             <thead>
               <tr>
@@ -390,6 +430,7 @@
       @show-cancel-confirm="cancelState.show = true"
       @dismiss-cancel-confirm="cancelState.show = false"
       @confirm-cancel="doConfirmCancelSession"
+      @restore-session="restoreCancelledSession"
       @delete-exception="deleteException"
       @delete-course="deleteCourse"
       @cancel-makeup="cancelMakeupClass"
@@ -465,6 +506,7 @@
       :subject-label="rescheduleDisplay.subjectLabel"
       :original-slot-label="rescheduleDisplay.originalSlot"
       :new-end-time="computedRescheduleNewEnd"
+      :preview="reschedulePreview"
       :time-options="timeOptions30"
       :error="rescheduleError"
       :submitting="rescheduleSubmitting"
@@ -488,6 +530,8 @@
 
 <script setup>
 import { ref, computed, onMounted, watch, nextTick } from 'vue';
+import AtButton from '../components/design-system/AtButton.vue';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import { supabase } from '../supabase';
 import { SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
@@ -498,7 +542,9 @@ import {
   isRangeWithinFetchedBounds,
 } from '../lib/calendarLoadPerformance';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
+import OperationsQuickStart from '../components/OperationsQuickStart.vue';
 import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
+import { adoptionErrorType, trackWorkflowEvent } from '../lib/adoptionTelemetry.js';
 import SubstituteTeacherPickerModal from '../components/substitute/SubstituteTeacherPickerModal.vue';
 
 import TeacherLeaveBatchModal from '../components/substitute/TeacherLeaveBatchModal.vue';
@@ -548,15 +594,20 @@ import { useCalendarDataLoad } from '../composables/calendar/useCalendarDataLoad
 import { useCalendarLeaveExtra } from '../composables/calendar/useCalendarLeaveExtra.js';
 import { useCalendarSubstitute } from '../composables/calendar/useCalendarSubstitute.js';
 import { useCalendarReschedule } from '../composables/calendar/useCalendarReschedule.js';
+import { courseIdOf, resolveCalendarFocusCourse } from '../lib/workflowNavigationContext.js';
 
 const props = defineProps({
   branchId: [String, Number],
   userRole: String,
   userId: [String, Number],
   initialTeacherId: [String, Number],
+  initialStudentId: [String, Number],
+  initialCourseId: [String, Number],
+  initialDate: String,
   resetWeekToken: [String, Number],
+  initialIntent: String,
 });
-const emit = defineEmits(['clear-initial-teacher']);
+const emit = defineEmits(['clear-initial-teacher', 'clear-initial-intent', 'clear-initial-context']);
 
 const isTeacher = computed(() => props.userRole === 'teacher');
 const currentTeacherId = computed(() => {
@@ -648,6 +699,40 @@ const weekOffset = ref(0); // 上週/下週偏移
 const jumpToDate = ref(formatLocalDate(new Date()));
 // courses / exceptions / loaders → useCalendarDataLoad（#740 Step 7，見 getCalendarDataFetchBoundsYmd 之後）
 const filterTeacherId = ref('');
+const calendarWorkflowIntent = ref('');
+const calendarWorkflowHint = ref('');
+const calendarFlowSteps = [
+  { id: 'create', icon: 'event_available', title: '新增排課', description: '建立學生、老師與固定時段。', action: '快速排課' },
+  { id: 'reschedule', icon: 'event_repeat', title: '調課', description: '點課卡後更換日期與時間。', action: '開始調課' },
+  { id: 'substitute', icon: 'swap_horiz', title: '換代課', description: '點課卡後指定代課老師。', action: '選擇老師' },
+];
+const calendarWorkflowStarts = new Map();
+function startCalendarWorkflow(step) {
+  const startedAt = Date.now();
+  calendarWorkflowStarts.set(step, startedAt);
+  void trackWorkflowEvent('calendar', 'started', props.branchId, { step }, startedAt);
+  return startedAt;
+}
+function finishCalendarWorkflow(step, phase = 'completed', meta = {}) {
+  const startedAt = calendarWorkflowStarts.get(step);
+  calendarWorkflowStarts.delete(step);
+  void trackWorkflowEvent('calendar', phase, props.branchId, { step, ...meta }, startedAt);
+}
+function calendarWorkflowError(step, errorOrStatus) {
+  finishCalendarWorkflow(step, 'error', { error_type: adoptionErrorType(errorOrStatus) });
+}
+function selectCalendarFlowStep(stepId) {
+  startCalendarWorkflow(stepId);
+  calendarWorkflowIntent.value = stepId;
+  if (stepId === 'create') {
+    calendarWorkflowHint.value = '';
+    openQuickAdd();
+  } else if (stepId === 'reschedule') {
+    calendarWorkflowHint.value = '請先在課表點選要調整的課，再選新的日期與時間。';
+  } else if (stepId === 'substitute') {
+    calendarWorkflowHint.value = '請先點選課程，再選換代課老師；如同時換時間，會一起送出。';
+  }
+}
 const showModal = ref(false);
 const editingCourseId = ref(null);
 /** 點擊的那一堂的實際日期（僅編輯單堂時有值），用於限定只能做請假/調課/加課 */
@@ -671,6 +756,41 @@ const selectedDateStr = computed(() => getDisplayDateFull(selectedDow.value));
 const roomFilter = ref('');
 const teacherSearch = ref('');
 const studentSearch = ref('');
+const focusedCalendarCourseId = ref(null);
+const calendarFocusMessage = ref('');
+const consumedCalendarFocusKey = ref('');
+
+function calendarFocusKey() {
+  return `${props.initialStudentId || ''}:${props.initialCourseId || ''}:${props.initialDate || ''}`;
+}
+
+function clearCalendarFocus() {
+  focusedCalendarCourseId.value = null;
+  calendarFocusMessage.value = '';
+  consumedCalendarFocusKey.value = calendarFocusKey();
+  emit('clear-initial-context');
+}
+
+function applyCalendarFocus() {
+  const key = calendarFocusKey();
+  if (!key || key === '::' || key === consumedCalendarFocusKey.value || !courses.value.length) return;
+  consumedCalendarFocusKey.value = key;
+  const course = resolveCalendarFocusCourse(courses.value, {
+    studentId: props.initialStudentId,
+    courseId: props.initialCourseId,
+  });
+  if (!course) {
+    focusedCalendarCourseId.value = null;
+    calendarFocusMessage.value = '通知對象目前不在這份課表，請重新整理或確認分校。';
+    emit('clear-initial-context');
+    return;
+  }
+  focusedCalendarCourseId.value = courseIdOf(course);
+  studentSearch.value = course.student_name || '';
+  if (props.initialDate) jumpToDateWeek(props.initialDate);
+  calendarFocusMessage.value = `已定位：${course.student_name || '指定學生'}${course.subject ? `／${course.subject}` : ''}`;
+  emit('clear-initial-context');
+}
 // 日檢視：是否隱藏「當日無課」的老師欄（純覽模式；開啟後無法點空格快速排課）
 const HIDE_EMPTY_TEACHERS_KEY = 'smart_calendar_hide_empty_teachers';
 const hideEmptyTeacherColumns = ref((() => {
@@ -917,8 +1037,8 @@ const {
 
 const {
   showRescheduleModal, rescheduleForm, rescheduleDisplay, computedRescheduleNewEnd,
-  rescheduleSubmitting, rescheduleError,
-  onRescheduleNewStartChange, openRescheduleModal, submitReschedule,
+  reschedulePreview, rescheduleSubmitting, rescheduleError,
+  onRescheduleNewStartChange, openRescheduleModal, submitReschedule: submitRescheduleCore,
 } = useCalendarReschedule({
   supabase,
   branchId: computed(() => props.branchId),
@@ -929,16 +1049,34 @@ const {
   getToken,
   allStudents,
   courses,
+  sessionDatesByCourseId,
   exceptions,
   getSubjectLabel,
 });
 
+async function submitReschedule() {
+  const workflowStep = 'reschedule';
+  if (!calendarWorkflowStarts.has(workflowStep)) startCalendarWorkflow(workflowStep);
+  try {
+    await submitRescheduleCore();
+    if (rescheduleError.value) {
+      calendarWorkflowError(workflowStep, 'validation');
+    } else if (!showRescheduleModal.value) {
+      finishCalendarWorkflow(workflowStep);
+      void trackWorkflowEvent('calendar', 'returned', props.branchId, { step: workflowStep, target: 'calendar' });
+    }
+  } catch (error) {
+    calendarWorkflowError(workflowStep, error);
+  }
+}
+
 const prevWeek = () => { weekOffset.value -= 1; };
 const nextWeek = () => { weekOffset.value += 1; };
 
-const jumpToDateWeek = () => {
-  const ymd = String(jumpToDate.value || '').slice(0, 10);
+const jumpToDateWeek = (dateValue = jumpToDate.value) => {
+  const ymd = String(dateValue || '').slice(0, 10);
   if (!ymd) return;
+  jumpToDate.value = ymd;
   const target = new Date(ymd + 'T12:00:00');
   if (Number.isNaN(target.getTime())) return;
 
@@ -1506,6 +1644,17 @@ const teacherChips = computed(() => visibleTeachers.value.map(t => ({
   color: getTeacherColor(t.id),
 })));
 const selectedTeacherChipIds = computed(() => weekViewTeacherIds.value.map(String));
+const calendarSecondaryControlsSummary = computed(() => {
+  const activeFilters = [
+    roomFilter.value,
+    teacherSearch.value.trim(),
+    studentSearch.value.trim(),
+    filterTeacherId.value,
+    weekViewTeacherIds.value.length > 0 ? 'teacher-selection' : '',
+    !isWeekOverview.value && hideEmptyTeacherColumns.value ? 'hide-empty' : '',
+  ].filter(Boolean).length;
+  return activeFilters > 0 ? `已啟用 ${activeFilters} 項篩選` : '目前顯示全部老師';
+});
 
 const dayViewTeacherColumns = computed(() => {
   if (isWeekOverview.value) return visibleTeachers.value;
@@ -1859,8 +2008,12 @@ const currentSessionChargeDisplay = computed(() => {
 });
 
 const handleUniversalSchedulerSuccess = async () => {
+  const workflowStep = 'create';
+  if (!calendarWorkflowStarts.has(workflowStep)) startCalendarWorkflow(workflowStep);
   showModal.value = false;
   await loadCourses();
+  finishCalendarWorkflow(workflowStep);
+  void trackWorkflowEvent('calendar', 'returned', props.branchId, { step: workflowStep, target: 'calendar' });
 };
 
 const showDuplicateInterceptModal = ref(false);
@@ -1886,6 +2039,7 @@ async function forceCreateCourse() {
     showDuplicateInterceptModal.value = false;
     return;
   }
+  if (!calendarWorkflowStarts.has('create')) startCalendarWorkflow('create');
   forceSubmitting.value = true;
   try {
     const result = await createUniversalClassSchedule({ ...payload, force: true });
@@ -1895,8 +2049,11 @@ async function forceCreateCourse() {
     const created = Number(result?.created_confirmed_sessions ?? 0) + Number(result?.created_future_sessions ?? 0);
     alert(`已強制建立 ${created} 堂課`);
     await loadCourses();
+    finishCalendarWorkflow('create', 'completed', { result: 'forced' });
+    void trackWorkflowEvent('calendar', 'returned', props.branchId, { step: 'create', target: 'calendar' });
   } catch (err) {
     alert(err?.message || '強制建立失敗，請稍後再試');
+    calendarWorkflowError('create', err);
   } finally {
     forceSubmitting.value = false;
   }
@@ -1904,6 +2061,7 @@ async function forceCreateCourse() {
 
 // --- Modal Actions ---
 const openQuickAdd = () => {
+  if (!calendarWorkflowStarts.has('create')) startCalendarWorkflow('create');
   editingCourseId.value = null;
   conflictWarning.value = '';
   const start = '16:00';
@@ -1950,6 +2108,8 @@ const onCourseClick = (course, fullDateStr) => {
   editingCourseId.value = baseId;
   editingActionDate.value = fullDateStr || '';
   editingException.value = course.is_exception ? course : null;
+  const clickedSession = findSessionRowForCell(course, fullDateStr);
+  sessionRecovery.value = makeSessionRecovery();
   conflictWarning.value = '';
   const start = normalizeTimeTo30(course.start_time || '16:00');
   const baseCourse = courses.value.find(c => c.id === baseId) || course;
@@ -1978,6 +2138,7 @@ const onCourseClick = (course, fullDateStr) => {
   };
   syncRatePer2hFromModel();
   showModal.value = true;
+  void loadSessionRecovery(clickedSession?.id);
   // Load evaluation records for this course
   loadCourseEvalRecords(baseId);
 };
@@ -2157,6 +2318,11 @@ const cancelMakeupClass = async () => {
 // ===== Cancel single session (取消本堂) =====
 
 const cancelState = ref({ show: false, loading: false });
+const makeSessionRecovery = (loading = false) => ({
+  loading, available: false, audit_id: null, previous_status: '',
+  previousStatusLabel: '', reason: '主任誤取消', submitting: false,
+});
+const sessionRecovery = ref(makeSessionRecovery());
 
 const cancelTargetSession = computed(() => {
   if (!editingCourseId.value) return null;
@@ -2185,6 +2351,7 @@ const sessionEditSession = computed(() => ({
   featureSubstituteV2,
   canCancelSession: canCancelSelectedSession.value,
   cancelState: cancelState.value,
+  recovery: sessionRecovery.value,
   editingException: !!editingException.value,
   editingExceptionIsExtra: editingExceptionIsExtra.value,
   evalRecords: courseEvalRecords.value,
@@ -2224,6 +2391,70 @@ const doConfirmCancelSession = async () => {
   } catch (e) {
     cancelState.value.loading = false;
     alert(e.message || '取消失敗，請重試');
+  }
+};
+
+const loadSessionRecovery = async (sessionId) => {
+  sessionRecovery.value = makeSessionRecovery(true);
+  if (!sessionId) {
+    sessionRecovery.value.loading = false;
+    return;
+  }
+  try {
+    const token = await getToken();
+    const res = await fetch('/api/v1/class-sessions/' + sessionId + '/recovery', {
+      headers: token ? { Authorization: 'Bearer ' + token } : {},
+    });
+    const data = await res.json();
+    const labels = {
+      scheduled: '排程中', attended: '已上課', completed: '已完成',
+      late: '遲到', absent: '缺席', leave: '請假',
+    };
+    sessionRecovery.value = {
+      ...sessionRecovery.value,
+      ...data,
+      previousStatusLabel: labels[data.previous_status] || data.previous_status || '',
+      loading: false,
+    };
+  } catch (e) {
+    sessionRecovery.value.loading = false;
+  }
+};
+
+const restoreCancelledSession = async () => {
+  const row = cancelTargetSession.value;
+  const recovery = sessionRecovery.value;
+  if (!row?.id || !recovery.available || recovery.submitting || !recovery.reason?.trim()) return;
+  if (!confirm('確定復原這堂課到取消前狀態？系統會同步評量／點名與堂數。')) return;
+  recovery.submitting = true;
+  try {
+    const token = await getToken();
+    const res = await fetch('/api/v1/class-sessions/' + row.id + '/restore', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + token,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({
+        expected_audit_id: recovery.audit_id,
+        reason: recovery.reason.trim(),
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.message || 'HTTP ' + res.status);
+    const rows = sessionDatesByCourseId.value[String(editingCourseId.value)];
+    const index = Array.isArray(rows)
+      ? rows.findIndex((item) => Number(item.id) === Number(row.id))
+      : -1;
+    if (index >= 0) rows[index] = { ...rows[index], ...(data.session || {}) };
+    sessionRecovery.value = { ...sessionRecovery.value, available: false, submitting: false };
+    showModal.value = false;
+    await loadCourses();
+    alert(data.message || '已復原');
+  } catch (e) {
+    recovery.submitting = false;
+    alert(e.message || '復原失敗，請重新整理後再試');
   }
 };
 
@@ -2330,6 +2561,16 @@ watch(() => props.initialTeacherId, (id) => {
     emit('clear-initial-teacher');
   }
 }, { immediate: true });
+watch(() => props.initialIntent, (intent) => {
+  if (!intent) return;
+  if (intent === 'quick-add') selectCalendarFlowStep('create');
+  else if (intent === 'reschedule') selectCalendarFlowStep('reschedule');
+  emit('clear-initial-intent');
+}, { immediate: true });
+watch(() => [props.initialStudentId, props.initialCourseId, props.initialDate, courses.value.length], () => {
+  if (!props.initialStudentId && !props.initialCourseId && !props.initialDate) consumedCalendarFocusKey.value = '';
+  applyCalendarFocus();
+}, { immediate: true });
 watch(visibleTeachers, (list) => {
   if (!Array.isArray(list) || list.length === 0) {
     weekViewTeacherIds.value = [];
@@ -2356,6 +2597,7 @@ watch(
 watch(showModal, (v) => {
   if (!v) {
     cancelState.value = { show: false, loading: false };
+    sessionRecovery.value = makeSessionRecovery();
   }
 });
 
@@ -2438,6 +2680,33 @@ onMounted(() => {
   max-width: 100%;
   min-width: 0;
 }
+.calendar-process-disclosure {
+  margin: 0 0 16px;
+  border: 1px solid var(--ds-hairline);
+  border-radius: var(--ds-radius-lg, 12px);
+  background: var(--ds-canvas-soft);
+}
+.calendar-process-disclosure summary {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 13px;
+  color: var(--ds-ink-secondary);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  list-style: none;
+}
+.calendar-process-disclosure summary::-webkit-details-marker { display: none; }
+.calendar-process-disclosure summary > .material-symbols-outlined { color: var(--ds-ink-mute); font-size: 18px; }
+.calendar-process-disclosure summary > .material-symbols-outlined:last-child { transition: transform 160ms ease; }
+.calendar-process-disclosure[open] summary > .material-symbols-outlined:last-child { transform: rotate(180deg); }
+.calendar-process-disclosure summary:focus-visible { outline: 3px solid var(--ds-info-wash); outline-offset: 2px; border-radius: 5px; }
+.calendar-process-disclosure__title { color: var(--ds-ink); }
+.calendar-process-disclosure__hint { overflow: hidden; color: var(--ds-ink-mute); font-size: 11px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.calendar-process-disclosure > .operations-quick-start { margin: 0 12px 12px; }
 .smart-cal-header {
   display: flex;
   align-items: flex-end;
@@ -2467,6 +2736,38 @@ onMounted(() => {
   color: var(--text-light, var(--ds-ink-mute));
   font-size: 13px;
   line-height: 1.4;
+}
+.calendar-workflow-hint {
+  margin: -12px 0 16px;
+  padding: 9px 12px;
+  border-left: 3px solid var(--ds-cta);
+  border-radius: 0 var(--ds-radius-sm, 6px) var(--ds-radius-sm, 6px) 0;
+  background: var(--ds-canvas-soft);
+  color: var(--ds-ink-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.calendar-focus-context {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -8px 0 16px;
+  padding: 9px 12px;
+  border: 1px solid color-mix(in srgb, var(--ds-cta) 35%, var(--ds-hairline));
+  border-radius: var(--ds-radius-sm, 6px);
+  background: var(--ds-primary-wash, var(--ds-canvas-soft));
+  color: var(--ds-ink-secondary);
+  font-size: 12px;
+}
+.calendar-focus-context .material-symbols-outlined { color: var(--ds-cta); font-size: 18px; }
+.calendar-focus-context button {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: var(--ds-cta);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
 }
 .smart-cal-header-actions {
   display: flex;
@@ -2530,6 +2831,47 @@ onMounted(() => {
   min-width: 0;
   max-width: 100%;
   overflow-x: hidden;
+}
+.calendar-secondary-controls-disclosure {
+  min-width: 0;
+  max-width: 100%;
+}
+.calendar-secondary-controls-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 4px;
+  color: var(--text-color, var(--ds-ink));
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.calendar-secondary-controls-summary::-webkit-details-marker { display: none; }
+.calendar-secondary-controls-summary:focus-visible {
+  outline: 2px solid var(--primary, var(--ds-ink-mute));
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+.calendar-secondary-controls-summary__title {
+  font-size: 13px;
+  font-weight: 700;
+}
+.calendar-secondary-controls-summary__hint,
+.calendar-secondary-controls-summary__status {
+  font-size: 12px;
+  color: var(--text-light, var(--ds-ink-mute));
+}
+.calendar-secondary-controls-summary__status {
+  margin-left: auto;
+  white-space: nowrap;
+}
+.calendar-secondary-controls-summary__icon {
+  color: var(--text-light, var(--ds-ink-mute));
+  transition: transform 0.2s ease;
+}
+.calendar-secondary-controls-disclosure[open] .calendar-secondary-controls-summary__icon {
+  transform: rotate(180deg);
 }
 .toolbar-row-primary {
   display: flex;
@@ -2850,6 +3192,11 @@ onMounted(() => {
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(0,0,0,0.2);
 }
+.course-block--focused {
+  outline: 3px solid var(--ds-cta);
+  outline-offset: 2px;
+  z-index: 4;
+}
 /* var(--ds-warning) Step 5：.cb-student / .cb-detail / .cb-type 已搬移至 CourseBlockContent.vue */
 .rc-tag {
   position: absolute;
@@ -2992,11 +3339,18 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  width: 100%;
   padding: 16px 20px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
   cursor: pointer;
   transition: background 0.15s;
 }
 .teacher-card-header:hover { background: var(--bg-muted, var(--ds-canvas-soft)); }
+.teacher-card-header:focus-visible { outline: 3px solid var(--ds-info-wash); outline-offset: -3px; }
 .teacher-info { display: flex; align-items: center; gap: 14px; }
 .teacher-avatar {
   width: 44px;
@@ -3135,6 +3489,17 @@ onMounted(() => {
 }
 
 @media (max-width: 600px) {
+  .calendar-secondary-controls-summary {
+    flex-wrap: wrap;
+    gap: 4px 8px;
+  }
+  .calendar-secondary-controls-summary__hint {
+    flex-basis: calc(100% - 32px);
+    margin-left: 32px;
+  }
+  .calendar-secondary-controls-summary__status {
+    margin-left: auto;
+  }
   .toolbar-secondary-line--filters {
     grid-template-columns: 1fr;
   }

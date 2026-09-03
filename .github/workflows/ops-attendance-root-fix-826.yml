@@ -1,0 +1,122 @@
+name: Attendance root-fix 826 (bundle-gated)
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: dry-run (default) | execute
+        required: true
+        default: dry-run
+        type: choice
+        options: [dry-run, execute]
+      confirm_environment:
+        description: Must be PRODUCTION for execute
+        required: true
+        default: ''
+        type: string
+      confirm_phrase:
+        description: For execute, type I_APPROVE_ATTENDANCE_ROOT_FIX_826
+        required: false
+        type: string
+      actor:
+        description: Executor audit label
+        required: true
+        default: 'gha:attendance-root-fix-826'
+        type: string
+      actor_user_id:
+        description: Existing super-admin user id recorded in audit rows
+        required: true
+        default: '4'
+        type: string
+
+concurrency:
+  group: repair-attendance-root-fix-826
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate gates
+        env:
+          MODE: ${{ inputs.mode }}
+          ENV_CONFIRM: ${{ inputs.confirm_environment }}
+          PHRASE: ${{ inputs.confirm_phrase }}
+          ACTOR_ID: ${{ inputs.actor_user_id }}
+        run: |
+          set -euo pipefail
+          test "$(sha256sum docs/incidents/2026-08-26-attendance-root-fix-manifest.json | awk '{print $1}')" = cb3e16b5a1edee2650d87c641a6bcdbb77aecf0f29335590900a3ff55331c189
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          b = json.loads(Path('docs/incidents/2026-08-26-attendance-root-fix-manifest.json').read_text())
+          if b.get('kind') != 'attendance_root_fix_repair_manifest': raise SystemExit('bad manifest kind')
+          if b.get('decision_reference') != 'attendance-root-fix-2026-08-26': raise SystemExit('bad decision reference')
+          ids = b.get('approved_session_ids') or []
+          if ids != [28451, 28448, 16731, 31739, 31740] or len(ids) != len(set(ids)): raise SystemExit('bad allowlist')
+          print('manifest_gate_ok count='+str(len(ids)))
+          PY
+          test "$ACTOR_ID" -gt 0
+          if [ "$MODE" = execute ]; then
+            test "$ENV_CONFIRM" = PRODUCTION
+            test "$PHRASE" = I_APPROVE_ATTENDANCE_ROOT_FIX_826
+          fi
+
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$PI_SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Run gated repair
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          MODE: ${{ inputs.mode }}
+          ACTOR: ${{ inputs.actor }}
+          ACTOR_ID: ${{ inputs.actor_user_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          MANIFEST_B64=$(base64 -w0 docs/incidents/2026-08-26-attendance-root-fix-manifest.json)
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes \
+            "$PI_SSH_USER@$PI_SSH_HOST" \
+            MANIFEST_B64="$MANIFEST_B64" MODE="$MODE" ACTOR="$ACTOR" ACTOR_ID="$ACTOR_ID" 'bash -s' <<'REMOTE' | tee out/repair.log
+          set -euo pipefail
+          cd /home/admin/backend
+          echo "$MANIFEST_B64" | base64 -d > /tmp/attendance-root-fix-826-manifest.json
+          COMMON="--manifest=/tmp/attendance-root-fix-826-manifest.json --actor=$ACTOR --actor-user-id=$ACTOR_ID"
+          php artisan repair:attendance-root-fix-826 --dry-run $COMMON
+          if [ "$MODE" = dry-run ]; then
+            exit 0
+          fi
+          TS=$(date '+%Y-%m-%d_%H%M%S')
+          mkdir -p /home/admin/backups/emergency storage/app/repair-snapshots
+          DB_USER="$(grep '^DB_USERNAME=' .env | cut -d= -f2-)"
+          DB_PASS="$(grep '^DB_PASSWORD=' .env | cut -d= -f2-)"
+          mysqldump -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASS" --single-transaction AllTrue ClassSession LearningRecord StudentSingIn session_deduction_ledger session_corrections schedules schedule_audit_logs | gzip > "/home/admin/backups/emergency/db_pre_attendance_root_fix_826_${TS}.sql.gz"
+          test -s "/home/admin/backups/emergency/db_pre_attendance_root_fix_826_${TS}.sql.gz"
+          export ALLOW_PROD_REPAIR=1
+          php artisan repair:attendance-root-fix-826 --execute --force $COMMON \
+            --snapshot="storage/app/repair-snapshots/attendance-root-fix-826-${TS}.json"
+          unset ALLOW_PROD_REPAIR
+          php artisan repair:attendance-root-fix-826 --dry-run $COMMON
+          REMOTE
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: attendance-root-fix-826-audit
+          path: out/repair.log
+          retention-days: 90

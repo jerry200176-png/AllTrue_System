@@ -1,0 +1,47 @@
+id: TKT-20260830-044315-2DMW
+title: StudentsList native button semantics
+intent: StudentsList native button semantics
+kind: task
+parent_id: INT-20260830-044301-FY1R
+boundary: Only frontend StudentsList native button semantics, its focused accessibility
+  test, and required changelog/release-note evidence. Do not change student/course/payment/identity
+  data, API payloads, authorization, branch isolation, billing semantics, attendance,
+  scheduling, or production data.
+success_condition: Every native action button in StudentsList uses type=button; a
+  regression contract covers the whole template; focused unit test, lint, build, release-note
+  checks, exo check, and CI pass.
+priority: 2
+labels:
+- ux
+scope:
+  allow:
+  - frontend/src/pages/StudentsList.vue
+  - frontend/src/components/__tests__/StudentsListAccessibility.test.js
+  - docs/CHANGELOG.md
+  - docs/RELEASE_NOTES_EXEMPTIONS.yml
+  - frontend/src/lib/changelogDraft.generated.js
+  - .agent-session/manifest.json
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 6
+  max_loc_changed: 240
+checks:
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: done
+spec_ref: null
+notes:
+- Duplicate ticket created by command orchestration; no work performed. Superseded by TKT-20260830-044315-VQFF.
+blockers: []
+created_at: '2026-08-30T04:43:15+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default

@@ -10,6 +10,7 @@ import AtFilterBar from '../AtFilterBar.vue';
 import AtToolbar from '../AtToolbar.vue';
 import AtSection from '../AtSection.vue';
 import AtEmpty from '../AtEmpty.vue';
+import AtDialog from '../AtDialog.vue';
 
 describe('At foundation primitives (pilot-used)', () => {
   it('AtPageHeader renders title, description, meta and actions', () => {
@@ -85,5 +86,25 @@ describe('At foundation primitives (pilot-used)', () => {
     expect(section.text()).toContain('內容');
     const empty = mount(AtEmpty, { props: { title: '目前沒有待辦案件', description: '下一步' } });
     expect(empty.text()).toContain('目前沒有待辦案件');
+  });
+
+  it('AtDialog provides a labelled, keyboard-dismissible overlay and scroll lock', async () => {
+    const wrapper = mount(AtDialog, {
+      props: { open: true, title: '確認操作' },
+      slots: { default: '請確認內容', actions: '<button>取消</button>' },
+      attachTo: document.body,
+    });
+    const dialog = document.body.querySelector('[role="dialog"]');
+    expect(dialog).not.toBeNull();
+    expect(dialog.getAttribute('aria-modal')).toBe('true');
+    expect(dialog.getAttribute('aria-labelledby')).toBe('at-dialog-title');
+    expect(document.body.style.position).toBe('fixed');
+
+    document.body.querySelector('.at-dialog__close').click();
+    await wrapper.vm.$nextTick();
+    expect(wrapper.emitted('close')).toHaveLength(1);
+    await wrapper.setProps({ open: false });
+    expect(document.body.style.position).toBe('');
+    wrapper.unmount();
   });
 });

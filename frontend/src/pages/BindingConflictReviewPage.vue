@@ -103,23 +103,24 @@
     </div>
 
     <!-- 解決衝突確認 -->
-    <Teleport to="body">
-      <div v-if="resolveTarget" class="bcrp-overlay" @click.self="closeResolveDialog">
-        <div class="bcrp-dialog" role="dialog" aria-modal="true">
-          <h3>保留綁定並解除另一側</h3>
-          <p>
-            學生 <strong>{{ resolveTarget.conflict.student_name || `#${resolveTarget.conflict.student_id}` }}</strong>
-            綁定了 {{ bindingSides(resolveTarget.conflict).length }} 個 LINE 帳號。確認保留
-            <strong>{{ resolveTarget.binding.line_user_id_masked || '此帳號' }}</strong>，並解除其他綁定嗎？
-          </p>
-          <div class="bcrp-dialog-actions">
-            <AtButton shape="rect" variant="ghost" :disabled="submitting" @click="closeResolveDialog">取消</AtButton>
-            <AtButton shape="rect" variant="danger" :loading="submitting" @click="confirmResolve">確認保留</AtButton>
-          </div>
-          <p v-if="resolveError" class="bcrp-dialog-error">{{ resolveError }}</p>
-        </div>
-      </div>
-    </Teleport>
+    <AtDialog
+      :open="Boolean(resolveTarget)"
+      title="保留綁定並解除另一側"
+      size="sm"
+      panel-class="bcrp-dialog"
+      @close="closeResolveDialog"
+    >
+      <p>
+        學生 <strong>{{ resolveTarget?.conflict?.student_name || `#${resolveTarget?.conflict?.student_id}` }}</strong>
+        綁定了 {{ resolveTarget ? bindingSides(resolveTarget.conflict).length : 0 }} 個 LINE 帳號。確認保留
+        <strong>{{ resolveTarget?.binding?.line_user_id_masked || '此帳號' }}</strong>，並解除其他綁定嗎？
+      </p>
+      <p v-if="resolveError" class="bcrp-dialog-error">{{ resolveError }}</p>
+      <template #actions>
+        <AtButton shape="rect" variant="ghost" :disabled="submitting" @click="closeResolveDialog">取消</AtButton>
+        <AtButton shape="rect" variant="danger" :loading="submitting" @click="confirmResolve">確認保留</AtButton>
+      </template>
+    </AtDialog>
   </div>
 </template>
 
@@ -129,6 +130,7 @@ import { branches } from '../lib/useBranches';
 import { fetchBindingConflicts, resolveBindingConflict } from '../lib/bindingsApi';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AtButton from '../components/design-system/AtButton.vue';
+import AtDialog from '../components/design-system/AtDialog.vue';
 import AtFilterBar from '../components/design-system/AtFilterBar.vue';
 import AtSkeleton from '../components/design-system/AtSkeleton.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';

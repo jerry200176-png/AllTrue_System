@@ -5,8 +5,10 @@ namespace App\Http\Controllers;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentLineBinding;
+use App\Models\PaymentReport;
 use App\Models\SecurityAuditEvent;
 use App\Models\UserCampus;
+use App\Services\ParentBinding\GuardianSyncService;
 use App\Support\Utf8mb3SearchSanitizer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -42,6 +44,7 @@ class StudentController extends Controller
             'parent_name'   => $s->parent_name ?? '',
             'parent_phone'  => $s->parent_phone ?? '',
             'notes'         => $s->notes ?? '',
+            'latest_payment_note' => (string) ($s->latest_payment_note ?? ''),
             'status'        => $s->status ?? 'active',
             'rfid'          => $s->RFID ?? '',
             'branch_id'     => (int) $s->CampusID,
@@ -57,6 +60,17 @@ class StudentController extends Controller
         $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
 
         $query = Student::query();
+        $query->addSelect([
+            'latest_payment_note' => PaymentReport::query()
+                ->select('note')
+                ->whereColumn('StudentID', 'Student.id')
+                ->where('status', 'confirmed')
+                ->whereNotNull('note')
+                ->where('note', '!=', '')
+                ->orderByDesc('payment_date')
+                ->orderByDesc('id')
+                ->limit(1),
+        ]);
 
         if ($request->filled('campus_id') || $request->filled('branch_id')) {
             $cid = (int) ($request->input('campus_id') ?? $request->input('branch_id'));
@@ -112,6 +126,15 @@ class StudentController extends Controller
         if (!empty($campusIds) && !in_array((int) $student->CampusID, $campusIds, true)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
+
+        $student->setAttribute('latest_payment_note', PaymentReport::query()
+            ->where('StudentID', $student->getKey())
+            ->where('status', 'confirmed')
+            ->whereNotNull('note')
+            ->where('note', '!=', '')
+            ->orderByDesc('payment_date')
+            ->orderByDesc('id')
+            ->value('note'));
 
         return response()->json($this->transformStudent($student));
     }
@@ -184,6 +207,15 @@ class StudentController extends Controller
             'TelegramID'   => '',
         ]);
 
+        try {
+            app(GuardianSyncService::class)->syncPrimaryFromStudent($student);
+        } catch (\Throwable $e) {
+            Log::warning('guardian.dual_write.store_failed', [
+                'student_id' => (int) $student->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
         return response()->json($this->transformStudent($student), 201);
     }
 
@@ -219,6 +251,17 @@ class StudentController extends Controller
         }
 
         $student->save();
+
+        if (isset($input['parent_name']) || isset($input['parent_phone']) || isset($input['phone']) || isset($input['Phone'])) {
+            try {
+                app(GuardianSyncService::class)->syncPrimaryFromStudent($student);
+            } catch (\Throwable $e) {
+                Log::warning('guardian.dual_write.update_failed', [
+                    'student_id' => (int) $student->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
 
         if (isset($input['grade']) || isset($input['GradeID'])) {
             \App\Models\StudentClass::where('StudentID', $student->id)

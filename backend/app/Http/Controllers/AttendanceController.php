@@ -11,8 +11,10 @@ use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
 use App\Services\ClassSessionMaterializationService;
+use App\Services\AttendanceEffectsService;
 use App\Services\CourseLeaveCascadeService;
 use App\Services\LeaveAttendanceService;
+use App\Services\LearningRecordBackfillService;
 use App\Services\LearningRecordResurrectionPolicy;
 use App\Services\SessionDeductionService;
 use App\Services\SubstituteScheduleService;
@@ -31,6 +33,7 @@ class AttendanceController extends Controller
     {
         $query = DB::table('StudentSingIn as si')
             ->leftJoin('StudentClass as sc', 'sc.ID', '=', 'si.StudentClassID')
+            ->leftJoin('ClassSession as cs', 'cs.id', '=', 'si.ClassSessionID')
             ->leftJoin('Student as st', 'st.id', '=', 'si.StudentID')
             ->leftJoin('User as u', 'u.id', '=', 'si.TeacherID')
             ->leftJoin('User as rbu', 'rbu.id', '=', 'si.RecordedByUserID')
@@ -101,6 +104,20 @@ class AttendanceController extends Controller
         if ($request->filled('student_class_id')) {
             $query->where('si.StudentClassID', $request->input('student_class_id'));
         }
+
+        // ClassSession is the authoritative occurrence identity for course
+        // attendance. A cancelled session must not keep an active-looking
+        // StudentSignIn in the operational list (for example after a stale
+        // repair or a concurrent schedule change). Preserve self-study and
+        // legacy ad-hoc rows, which intentionally have no ClassSessionID.
+        $query->where(function ($q) {
+            $q->whereNull('si.ClassSessionID')
+                ->orWhere(function ($withSession) {
+                    $withSession->whereNotNull('cs.id')
+                        ->whereColumn('cs.StudentClassID', 'si.StudentClassID')
+                        ->whereRaw("LOWER(COALESCE(cs.Status, '')) <> ?", ['cancelled']);
+                });
+        });
 
         // Date filtering: single `date` (legacy/single-day) OR `start_date`/`end_date` range.
         // When nothing is provided, default to the last 7 days so admins can see recent
@@ -511,6 +528,14 @@ class AttendanceController extends Controller
                 $status = 'leave';
             }
 
+            // Attendance writes must not revive a leave/cancelled occurrence
+            // through this endpoint.  The only valid recovery path is the
+            // dedicated leave/session recovery flow, which also handles its
+            // tail and evaluation artifacts atomically.
+            if ($status !== 'leave') {
+                AttendanceEffectsService::assertCanRecordAttendance($classSession, $status);
+            }
+
             // ── leave + 既有堂次 → KEEP dates + append tail（同課程管理 POST schedules leave）
             if ($status === 'leave' && !empty($data['ClassSessionID'])) {
                 try {
@@ -770,6 +795,7 @@ class AttendanceController extends Controller
                 }
 
                 $status = $this->resolveSwipeStatus($matchedSession, $swipeAt);
+                AttendanceEffectsService::assertCanRecordAttendance($matchedSession, $status);
 
                 $signIn = StudentSignIn::create([
                     'StudentClassID' => $studentClass->ID,
@@ -807,6 +833,8 @@ class AttendanceController extends Controller
                 return response()->json(['message' => 'Attendance already recorded'], 409);
             }
             throw $e;
+        } catch (\InvalidArgumentException $e) { // @phpstan-ignore catch.neverThrown
+            return response()->json(['message' => $e->getMessage()], 422);
         }
     }
 
@@ -839,6 +867,9 @@ class AttendanceController extends Controller
         $classSession->Status = $sessionStatus;
         $classSession->save();
         LearningRecordResurrectionPolicy::restoreEligibleForSession($classSession);
+        if (AttendanceStatus::requiresLog($status)) {
+            app(LearningRecordBackfillService::class)->ensureRequiredForAttendanceSession($classSession);
+        }
     }
 
     private function activeAttendanceExistsForSessionSlot(ClassSession $classSession): bool

@@ -45,14 +45,59 @@ async function login(page, role, creds) {
 /**
  * 點側欄導航切頁（SPA 用 active ref，無 Vue Router）。點 <button>（label span 為 pointer 容器），
  * 先清覆蓋層；點完斷言該 nav 按鈕進入 active，確保確實切頁而非空點。
+ *
+ * 登入後 /me 可能仍在飛行中；舊版會把 active 拉回角色首頁。這裡對主側欄短重試，
+ * 避免把「點了卻被 profile refresh 蓋掉」誤判成按鈕壞掉。
+ * 「更多功能」面板在 aside 外層，低頻項目必須從 panel 點，不可只在 nav.sidebar-nav 找。
  */
 async function navTo(page, navLabel) {
   await dismissOverlays(page);
-  // 側欄項目是 <button>，可及名稱含 nav-label 文字；可能尾隨 badge 數字故用 substring。
-  const navBtn = page.getByRole('button', { name: navLabel, exact: false }).first();
-  await navBtn.click();
-  await page.waitForLoadState('networkidle').catch(() => {});
-  await expect(navBtn).toHaveClass(/active/, { timeout: 10_000 });
+  const sidebar = page.locator('nav.sidebar-nav');
+  // 側欄低頻項目收在可展開群組／更多功能面板內。
+  const navGroupByLabel = {
+    '科目數統計': '教學工具',
+  };
+  const navGroup = navGroupByLabel[navLabel];
+  let navBtn;
+  let activeTarget;
+  if (navGroup) {
+    const summary = sidebar.locator('summary.nav-group-summary').filter({ hasText: navGroup }).first();
+    if (await summary.count()) {
+      const group = summary.locator('..');
+      if ((await group.getAttribute('open')) === null) await summary.click();
+      navBtn = sidebar.getByRole('button', { name: navLabel, exact: false }).first();
+      activeTarget = navBtn;
+    } else {
+      await sidebar.locator('.sidebar-more-trigger').first().click();
+      const morePanel = page.locator('.sidebar-more-panel');
+      await expect(morePanel).toBeVisible();
+      navBtn = morePanel.getByRole('button', { name: navLabel, exact: false }).first();
+      // More items close the panel after click; active feedback stays on the trigger.
+      activeTarget = sidebar.locator('.sidebar-more-trigger');
+    }
+  } else {
+    navBtn = sidebar.getByRole('button', { name: navLabel, exact: false }).first();
+    activeTarget = navBtn;
+  }
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (navGroup && !(await sidebar.locator('summary.nav-group-summary').filter({ hasText: navGroup }).count())) {
+      const morePanel = page.locator('.sidebar-more-panel');
+      if (!(await morePanel.isVisible().catch(() => false))) {
+        await sidebar.locator('.sidebar-more-trigger').first().click();
+        await expect(morePanel).toBeVisible();
+      }
+    }
+    await navBtn.click({ force: true });
+    await page.waitForLoadState('networkidle').catch(() => {});
+    const activeClass = await activeTarget.getAttribute('class').catch(() => '');
+    const ariaCurrent = await activeTarget.getAttribute('aria-current').catch(() => null);
+    if ((activeClass && /(?:^|\s)active(?:\s|$)/.test(activeClass)) || ariaCurrent === 'page') {
+      return;
+    }
+    await page.waitForTimeout(400);
+  }
+  await expect(activeTarget).toHaveClass(/active/, { timeout: 10_000 });
 }
 
 test.describe('UI smoke — director', () => {
@@ -66,8 +111,8 @@ test.describe('UI smoke — director', () => {
     await dismissOverlays(page);
     await navTo(page, '課程查找');
 
-    // TODO: 可於 CourseManagement 根容器補 data-testid="course-mgmt-page" 讓斷言更穩。
-    await expect(page.getByText('課程管理', { exact: false }).first()).toBeVisible();
+    // 課程查找頁的標題保持與側欄導航一致；不要依賴舊的內部元件名稱。
+    await expect(page.getByRole('heading', { name: '課程查找', exact: true })).toBeVisible();
     // 「帳務資料」tab 只在有學生分組時渲染；smoke 帳號可能無學生，不能硬性要求。
     const billingTab = page.getByRole('tab', { name: '帳務資料' });
     if (await billingTab.count()) {
@@ -151,7 +196,7 @@ test.describe('UI smoke — teacher 關鍵業務路徑', () => {
     await login(page, 'teacher', TEACHER);
     await navTo(page, '科目數統計');
 
-    await expect(page.getByText('科目數', { exact: false }).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('[data-guide="subject-units-header"]')).toBeVisible({ timeout: 15_000 });
     expect(errors, `頁面 JS 錯誤：\n${errors.join('\n')}`).toEqual([]);
   });
 });

@@ -30,16 +30,21 @@ assert.match(
   /fetchClassSessions\(\{ token, start: today, end: today/,
   'today attendance must reuse fetchClassSessions, not a second raw class-sessions contract',
 );
+assert.match(
+  source,
+  /fetchClassSessionsProjection\(\{ token, start: startStr, end: endStr \}\)/,
+  'weekly teacher schedule must use the completeness-safe projection API',
+);
 assert.equal(source.includes('branchId: s.branchId || 0'), false, 'missing branchId must not coerce to 0');
 assert.equal(source.includes('Branch #'), false, 'teacher home must not render Branch #N labels');
 
 for (const field of ['s.date', 's.startTime', 's.studentName', 's.branchId', 's.learningRecordStatus']) {
   assert.equal(source.includes(field), true, `TeacherHomePage must read SessionViewModel field ${field}`);
 }
-
-assert.equal(source.includes('o.branch_id'), false, 'overdue evaluation actions must use SessionViewModel branchId');
-assert.equal(source.includes('o.session_date'), false, 'overdue evaluation actions must use SessionViewModel date');
-assert.match(source, /branchId: o\.branchId[\s\S]*sessionDate: o\.date/);
+assert.equal(source.includes('isProjected: !!s.isProjected'), true,
+  'weekly events must preserve projected-vs-materialized state for safe actions');
+assert.equal(source.includes('!ev.isProjected'), true,
+  'projected weekly slots must not invoke ClassSession-only actions before materialization');
 
 // #236: a reactive week reload must retain the last good projection while the
 // next request is loading, and must not let an older response replace it.
@@ -47,5 +52,9 @@ assert.equal(source.includes('weekSessions.value = [];'), false,
   'week reload must not blank the schedule before the replacement is ready');
 assert.match(source, /const requestSequence = \+\+weekLoadSequence[\s\S]*requestSequence === weekLoadSequence/,
   'week reload must guard against stale async responses');
+assert.equal(source.includes('weekLoadedOnce.value = true'), true,
+  'a successful projection must mark the retained schedule as ready');
+assert.equal(source.includes('weekLoadError && weekLoadedOnce'), true,
+  'a failed refresh must preserve visible schedule data and expose retry state');
 
 console.log('teacher home SessionViewModel contract tests passed');

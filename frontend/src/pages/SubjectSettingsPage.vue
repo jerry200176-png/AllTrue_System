@@ -1,13 +1,17 @@
 <template>
-  <div>
+  <div class="subject-settings-page">
+    <AtPageHeader
+      title="科目管理"
+      description="管理目前分校可選用的科目；共用科目由系統預設。"
+      icon="library_books"
+      data-guide="subject-settings-header"
+    >
+      <template #actions>
+        <AtButton shape="rect" variant="primary" icon="add" @click="openAdd">新增科目</AtButton>
+      </template>
+    </AtPageHeader>
+
     <div class="card">
-      <div class="header-actions">
-        <div>
-          <h2>科目管理</h2>
-          <p class="ref-hint">管理此分校可選用的科目，共用科目由系統預設、各分校均可使用</p>
-        </div>
-        <button class="primary" @click="openAdd">+ 新增科目</button>
-      </div>
 
       <div v-if="loading" class="hint">載入中...</div>
       <table v-else-if="subjects.length" class="subject-table">
@@ -41,10 +45,13 @@
       <div v-else class="empty-text">目前無科目資料</div>
     </div>
 
-    <!-- Add / Edit modal -->
-    <div v-if="showModal" class="modal-overlay" @click.self="showModal = false">
-      <div class="modal">
-        <h3>{{ editingId ? '科目更名' : '新增科目' }}</h3>
+    <!-- Add / Edit dialog -->
+    <AtDialog
+      :open="showModal"
+      :title="editingId ? '科目更名' : '新增科目'"
+      panel-class="subject-dialog"
+      @close="showModal = false"
+    >
         <div class="form-group">
           <label>科目名稱 <span class="required">*</span></label>
           <input
@@ -55,33 +62,38 @@
           />
         </div>
         <p v-if="formError" class="error-text">{{ formError }}</p>
-        <div class="actions">
-          <button class="ghost" @click="showModal = false">取消</button>
-          <button class="primary" :disabled="saving || !formName.trim()" @click="submit">
+        <template #actions>
+          <AtButton shape="rect" variant="ghost" @click="showModal = false">取消</AtButton>
+          <AtButton shape="rect" variant="primary" :loading="saving" :disabled="!formName.trim()" @click="submit">
             {{ saving ? '處理中...' : '儲存' }}
-          </button>
-        </div>
-      </div>
-    </div>
+          </AtButton>
+        </template>
+    </AtDialog>
 
-    <!-- Delete confirm -->
-    <div v-if="deletingSubject" class="modal-overlay" @click.self="deletingSubject = null">
-      <div class="modal">
-        <h3>確認刪除</h3>
+    <!-- Delete confirmation dialog -->
+    <AtDialog
+      :open="Boolean(deletingSubject)"
+      title="確認刪除"
+      size="sm"
+      panel-class="subject-dialog"
+      @close="deletingSubject = null"
+    >
         <p>確定要刪除科目「{{ deletingSubject.label }}」嗎？若有課程使用此科目則無法刪除。</p>
-        <div class="actions">
-          <button class="ghost" @click="deletingSubject = null">取消</button>
-          <button class="primary" style="background:#c62828;" :disabled="saving" @click="doDelete">
+        <template #actions>
+          <AtButton shape="rect" variant="ghost" @click="deletingSubject = null">取消</AtButton>
+          <AtButton shape="rect" variant="danger" :loading="saving" @click="doDelete">
             {{ saving ? '刪除中...' : '刪除' }}
-          </button>
-        </div>
-      </div>
-    </div>
+          </AtButton>
+        </template>
+    </AtDialog>
   </div>
 </template>
 
 <script setup>
 import { ref, watch, onMounted } from 'vue';
+import AtButton from '../components/design-system/AtButton.vue';
+import AtDialog from '../components/design-system/AtDialog.vue';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import { fetchSubjectOptions, createSubject, updateSubject, deleteSubject } from '../lib/subjectsApi';
 
 const props = defineProps({

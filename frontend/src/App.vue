@@ -59,11 +59,18 @@
 
       <nav class="sidebar-nav" data-guide="app-sidebar-nav">
         <template v-if="sidebarNavGroups.length > 0">
-          <details v-for="group in sidebarNavGroups" :key="group.key" class="nav-group" :open="group.defaultOpen !== false">
+          <details
+            v-for="group in sidebarPrimaryGroups"
+            :key="group.key"
+            class="nav-group"
+            :open="isSidebarGroupOpen(group)"
+            @toggle="onSidebarGroupToggle(group.key, $event)"
+          >
             <summary
               class="nav-group-summary"
               v-show="!sidebarCollapsed"
               :aria-controls="`sidebar-group-${group.key}`"
+              :aria-expanded="String(isSidebarGroupOpen(group))"
             >
               <span class="nav-group-title">{{ group.title.replace(/^[A-Z]\s*組：\s*/i, '') }}</span>
               <span class="nav-group-chevron">▾</span>
@@ -90,6 +97,25 @@
               </button>
             </div>
           </details>
+          <button
+            type="button"
+            class="sidebar-more-trigger"
+            id="sidebar-more-trigger"
+            :class="{ active: activeInSidebarMore || showSidebarMore }"
+            :aria-expanded="String(showSidebarMore)"
+            aria-controls="sidebar-more-panel"
+            :aria-label="sidebarCollapsed ? '開啟更多功能' : undefined"
+            @click="toggleSidebarMore"
+          >
+            <span class="material-symbols-outlined nav-icon" aria-hidden="true">apps</span>
+            <span class="nav-label" v-show="!sidebarCollapsed">更多功能</span>
+            <span
+              v-if="sidebarMoreBadgeCount > 0"
+              class="nav-badge"
+              v-show="!sidebarCollapsed"
+            >{{ sidebarMoreBadgeCount > 99 ? '99+' : sidebarMoreBadgeCount }}</span>
+            <span class="sidebar-more-trigger-chevron" v-show="!sidebarCollapsed" aria-hidden="true">›</span>
+          </button>
         </template>
         <template v-else>
           <div class="nav-no-role-hint">無選單（身分未設定）</div>
@@ -131,41 +157,74 @@
           </div>
         </div>
 
-        <!-- 電腦快捷鍵提示（主任限定，側欄展開時顯示） -->
-        <details v-if="!sidebarCollapsed" class="shortcut-hint">
-          <summary class="shortcut-hint__toggle">⌨️ 快捷鍵提示</summary>
-          <ul class="shortcut-hint__list">
-            <li><kbd>Win</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> <span>截圖</span></li>
-            <li><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> <span>更新網頁</span></li>
-            <li><kbd>Ctrl</kbd>+<kbd>C</kbd> <span>複製</span></li>
-            <li><kbd>Ctrl</kbd>+<kbd>V</kbd> <span>貼上</span></li>
-          </ul>
-        </details>
-
-        <!-- 主題切換 -->
-        <div class="theme-switcher" :title="sidebarCollapsed ? '切換顯示模式' : ''">
-          <div class="theme-switcher-label" v-show="!sidebarCollapsed">顯示模式</div>
-          <div class="theme-buttons" :class="{ 'theme-buttons-collapsed': sidebarCollapsed }">
-            <button
-              v-for="opt in themeOptions"
-              :key="opt.value"
-              :class="['theme-btn', { active: themePreference === opt.value }]"
-              :title="opt.label"
-              @click="setTheme(opt.value)"
-            >
-              <span>{{ opt.icon }}</span>
-              <span v-show="!sidebarCollapsed" class="theme-btn-label">{{ opt.label }}</span>
-            </button>
-          </div>
-        </div>
       </div>
     </aside>
+
+    <!-- Desktop low-frequency navigation: keep the daily workspace visible and reveal the rest on demand. -->
+    <div
+      v-if="showSidebarMore"
+      class="sidebar-more-overlay"
+      @click.self="closeSidebarMore()"
+    >
+      <section
+        id="sidebar-more-panel"
+        class="sidebar-more-panel"
+        :style="{ '--sidebar-more-left': sidebarCollapsed ? '64px' : 'var(--sidebar-w)' }"
+        role="dialog"
+        aria-modal="false"
+        aria-labelledby="sidebar-more-title"
+        tabindex="-1"
+        @keydown.esc.prevent="closeSidebarMore()"
+      >
+        <div class="sidebar-more-header">
+          <div>
+            <span class="sidebar-more-kicker">工作工具</span>
+            <h2 id="sidebar-more-title">更多功能</h2>
+          </div>
+          <button
+            type="button"
+            class="sidebar-more-close"
+            aria-label="關閉更多功能"
+            title="關閉"
+            @click="closeSidebarMore()"
+          >
+            <span class="material-symbols-outlined" aria-hidden="true">close</span>
+          </button>
+        </div>
+        <p class="sidebar-more-description">不常用的報表、教學工具與系統設定集中在這裡。</p>
+        <div class="sidebar-more-groups">
+          <div v-for="group in sidebarMoreGroups" :key="group.key" class="sidebar-more-group">
+            <div class="sidebar-more-group-title">{{ group.title }}</div>
+            <div class="sidebar-more-items">
+              <button
+                v-for="item in group.items"
+                :key="item.page"
+                type="button"
+                class="sidebar-more-item"
+                :class="{ active: active === item.page }"
+                :disabled="isNavItemDisabled(item.page)"
+                :aria-current="active === item.page ? 'page' : undefined"
+                @click="setActivePage(item.page)"
+              >
+                <span class="material-symbols-outlined" aria-hidden="true">{{ item.icon }}</span>
+                <span class="sidebar-more-item-label">{{ item.label }}</span>
+                <span
+                  v-if="getItemBadgeCount(item) > 0"
+                  :class="['sidebar-more-item-badge', { 'nav-badge-urgent': isItemBadgeUrgent(item) }]"
+                >{{ getItemBadgeCount(item) > 99 ? '99+' : getItemBadgeCount(item) }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
 
     <!-- Bug Report Launcher (floating button, all staff pages) -->
     <BugReportLauncher
       v-if="session && !isStandaloneParent && (isDirector || isTeacher)"
       :branch-id="currentBranch"
       :current-page-key="active"
+      @open-bugs="setActivePage('bugs')"
     />
 
     <!-- Mobile Bottom Nav (5 tabs + More) -->
@@ -174,9 +233,12 @@
         v-for="tab in mobileTabItems"
         :key="tab.page"
         type="button"
-        :class="['mob-tab', { active: tab.page === 'more' ? showMoreMenu : active === tab.page }]"
+        :id="tab.page === 'more' ? 'mobile-more-trigger' : undefined"
+        :class="['mob-tab', { 'mob-tab-more': tab.page === 'more', active: tab.page === 'more' ? showMoreMenu : active === tab.page }]"
         :aria-current="tab.page !== 'more' && active === tab.page ? 'page' : undefined"
-        @click="tab.page === 'more' ? (showMoreMenu = !showMoreMenu) : (setActivePage(tab.page), showMoreMenu = false)"
+        :aria-expanded="tab.page === 'more' ? String(showMoreMenu) : undefined"
+        :aria-controls="tab.page === 'more' ? 'mobile-more-sheet' : undefined"
+        @click="tab.page === 'more' ? toggleMoreMenu() : (setActivePage(tab.page), closeMoreMenu(false))"
       >
         <span class="material-symbols-outlined mob-tab-icon">{{ tab.icon }}</span>
         <span class="mob-tab-label">{{ tab.label }}</span>
@@ -188,10 +250,24 @@
     </nav>
 
     <!-- More Menu Bottom Sheet -->
-    <div class="more-overlay" v-if="showMoreMenu" @click="showMoreMenu = false"></div>
-    <div class="more-sheet" :class="{ open: showMoreMenu }">
-      <div class="more-sheet-handle" @click="showMoreMenu = false"></div>
-      <div class="more-sheet-title">更多功能</div>
+    <div class="more-overlay" v-if="showMoreMenu" @click="closeMoreMenu()"></div>
+    <section
+      v-if="showMoreMenu"
+      id="mobile-more-sheet"
+      class="more-sheet open"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="mobile-more-title"
+      tabindex="-1"
+      @keydown.esc.prevent="closeMoreMenu()"
+    >
+      <div class="more-sheet-handle" aria-hidden="true"></div>
+      <div class="more-sheet-header">
+        <h2 id="mobile-more-title" class="more-sheet-title">更多功能</h2>
+        <button type="button" class="more-sheet-close" aria-label="關閉更多功能" @click="closeMoreMenu()">
+          <span class="material-symbols-outlined" aria-hidden="true">close</span>
+        </button>
+      </div>
       <div v-for="group in sidebarNavGroups" :key="group.key" class="more-group">
         <div class="more-group-label">{{ group.title }}</div>
         <div class="more-group-items">
@@ -201,7 +277,7 @@
             type="button"
             :class="['more-item', { active: active === item.page }]"
             :aria-current="active === item.page ? 'page' : undefined"
-            @click="setActivePage(item.page); showMoreMenu = false"
+            @click="setActivePage(item.page); closeMoreMenu(false)"
           >
             <span class="material-symbols-outlined">{{ item.icon }}</span>
             <span>{{ item.label }}</span>
@@ -212,7 +288,7 @@
           </button>
         </div>
       </div>
-    </div>
+    </section>
 
     <!-- Main Content -->
     <div class="main-content">
@@ -221,6 +297,17 @@
           class="build-stamp-bar"
           :title="`部署時間 ${buildTimeDisplay}`"
         >建置 {{ buildTimeDisplay }}</span>
+        <button
+          v-if="dashboardReturnContext"
+          type="button"
+          class="dashboard-return-button"
+          :title="dashboardReturnContext.label"
+          :aria-label="dashboardReturnContext.label"
+          @click="returnToDashboard"
+        >
+          <span class="material-symbols-outlined" aria-hidden="true">arrow_back</span>
+          {{ dashboardReturnContext.label }}
+        </button>
         <div class="main-topbar-spacer"></div>
         <AmbientMusicPlayer
           v-if="perfFlags.AMBIENT_MUSIC_ENABLED && (isDirector || isTeacher)"
@@ -255,6 +342,33 @@
               <span class="material-symbols-outlined" aria-hidden="true">logout</span>
               <span>登出系統</span>
             </button>
+            <div class="account-menu-divider" aria-hidden="true"></div>
+            <div class="account-menu-tools">
+              <span class="account-menu-tools-label">顯示模式</span>
+              <div class="theme-buttons">
+                <button
+                  v-for="opt in themeOptions"
+                  :key="opt.value"
+                  type="button"
+                  :class="['theme-btn', { active: themePreference === opt.value }]"
+                  :title="opt.label"
+                  :aria-label="`切換為${opt.label}模式`"
+                  @click="setTheme(opt.value)"
+                >
+                  <span class="material-symbols-outlined theme-btn-icon" aria-hidden="true">{{ opt.icon }}</span>
+                  <span class="theme-btn-label">{{ opt.label }}</span>
+                </button>
+              </div>
+            </div>
+            <details class="account-menu-shortcuts">
+              <summary><span class="material-symbols-outlined" aria-hidden="true">keyboard</span>快捷鍵提示</summary>
+              <ul class="shortcut-hint__list">
+                <li><kbd>Win</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> <span>截圖</span></li>
+                <li><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> <span>更新網頁</span></li>
+                <li><kbd>Ctrl</kbd>+<kbd>C</kbd> <span>複製</span></li>
+                <li><kbd>Ctrl</kbd>+<kbd>V</kbd> <span>貼上</span></li>
+              </ul>
+            </details>
           </div>
         </details>
       </div>
@@ -326,9 +440,9 @@
         @navigate="onNavigateFromNotifications"
         @unread-change="onUnreadChange"
       />
-      <SmartCalendar v-if="!isPasswordChangeLocked && active === 'calendar'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" :initial-teacher-id="initialTeacherIdForNav" :reset-week-token="calendarResetToken" @clear-initial-teacher="initialTeacherIdForNav = null" />
-      <StudentsList v-if="!isPasswordChangeLocked && isDirector && active === 'students'" :branch-id="currentBranch" />
-      <TuitionCollectionPage v-if="!isPasswordChangeLocked && isDirector && active === 'tuition-collect'" :branch-id="currentBranch" />
+      <SmartCalendar v-if="!isPasswordChangeLocked && active === 'calendar'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" :initial-teacher-id="initialTeacherIdForNav" :initial-student-id="calendarInitialStudentId" :initial-course-id="calendarInitialCourseId" :initial-date="calendarInitialDate" :reset-week-token="calendarResetToken" :initial-intent="calendarInitialIntent" @clear-initial-teacher="initialTeacherIdForNav = null" @clear-initial-intent="calendarInitialIntent = ''" @clear-initial-context="clearCalendarNavigationContext" />
+      <StudentsList v-if="!isPasswordChangeLocked && isDirector && active === 'students'" :branch-id="currentBranch" :initial-student-id="studentFocusIdForNav" :initial-course-id="studentFocusCourseIdForNav" :initial-student-intent="studentFocusIntentForNav" @clear-initial-student="clearStudentNavigationContext" />
+      <TuitionCollectionPage v-if="!isPasswordChangeLocked && isDirector && active === 'tuition-collect'" :branch-id="currentBranch" :initial-tab="tuitionInitialTab" :initial-student-id="tuitionInitialStudentId" :initial-course-id="tuitionInitialCourseId" @clear-initial-tab="tuitionInitialTab = ''" @clear-initial-context="clearTuitionNavigationContext" />
       <TuitionReportPage v-if="!isPasswordChangeLocked && isDirector && active === 'tuition-report' && !pinModalActive" :branch-id="currentBranch" />
       <ParttimePayrollPage v-if="!isPasswordChangeLocked && isDirector && active === 'parttime-payroll' && !pinModalActive" :branch-id="currentBranch" :user-role="role" />
       <TeacherEligibilityPage v-if="!isPasswordChangeLocked && isDirector && active === 'teacher-eligibility' && !pinModalActive" :branch-id="currentBranch" :user-role="role" />
@@ -368,6 +482,7 @@
       <BindingHealthDashboard v-if="!isPasswordChangeLocked && isDirector && active === 'binding-health'" :branch-id="currentBranch" :user-role="role" />
       <DirectorAccountsPage v-if="!isPasswordChangeLocked && role === 'super_admin' && active === 'director-accounts'" :token="session?.access_token ?? ''" />
       <BranchManagementPage v-if="!isPasswordChangeLocked && role === 'super_admin' && active === 'branch-management'" :token="session?.access_token ?? ''" />
+      <BranchHealthBoard v-if="!isPasswordChangeLocked && role === 'super_admin' && active === 'branch-health-board'" :token="session?.access_token ?? ''" />
       <NightlyReconcilePanel v-if="!isPasswordChangeLocked && role === 'super_admin' && active === 'nightly-reconcile'" :token="session?.access_token ?? ''" />
       <ChatPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'chat'" :branch-id="currentBranch" :user-id="session?.user?.id" :avatar-url="avatarUrl" :super-admin="role === 'super_admin'" :user-role="role" />
       <BugReportsPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'bugs'" :branch-id="currentBranch" :user-role="role" />
@@ -463,7 +578,7 @@
 </template>
 
 <script setup>
-import { computed, defineAsyncComponent, ref, watch, onMounted, onBeforeUnmount } from 'vue';
+import { computed, defineAsyncComponent, nextTick, ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import { supabase } from './supabase';
 import {
   branches,
@@ -503,6 +618,7 @@ const ParttimePayrollPage   = defineAsyncComponent(() => import('./pages/Parttim
 const TeacherEligibilityPage = defineAsyncComponent(() => import('./pages/TeacherEligibilityPage.vue'));
 const DirectorAccountsPage  = defineAsyncComponent(() => import('./pages/DirectorAccountsPage.vue'));
 const BranchManagementPage  = defineAsyncComponent(() => import('./pages/BranchManagementPage.vue'));
+const BranchHealthBoard     = defineAsyncComponent(() => import('./pages/BranchHealthBoard.vue'));
 const NotificationsCenter   = defineAsyncComponent(() => import('./pages/NotificationsCenter.vue'));
 const ProfileCenterPage     = defineAsyncComponent(() => import('./pages/ProfileCenterPage.vue'));
 const ChatPage              = defineAsyncComponent(() => import('./pages/ChatPage.vue'));
@@ -529,6 +645,9 @@ import {
   PIN_UNLOCK_TTL_MS,
   PIN_IDLE_LOCK_MS,
 } from './lib/pinGate';
+import { getMobileTabItems, getNavigationGroups } from './lib/navigationRegistry';
+import { resolveActiveAfterProfileLoad } from './lib/resolveActiveAfterProfileLoad';
+import { createDashboardReturnContext } from './lib/dashboardReturnContext';
 
 // Detect standalone parent portal access via URL hash, query param, or LIFF context
 const liffParentOverride = ref(false);
@@ -852,6 +971,7 @@ function onWindowResizeGuideFab() {
 }
 
 const active = ref('director');
+const dashboardReturnContext = ref(null);
 const currentBranch = ref(null); // Will be set after branches load
 const learningTargetRecordId = ref(null);
 const learningTargetSession = ref(null);
@@ -863,9 +983,9 @@ const sidebarCollapsed = ref(localStorage.getItem('sidebar_collapsed') === 'true
 // ===== 主題模式（日間 / 夜間 / 系統） =====
 const THEME_KEY = 'app_color_scheme';
 const themeOptions = [
-  { value: 'light',  icon: '☀️', label: '日間' },
-  { value: 'dark',   icon: '🌙', label: '夜間' },
-  { value: 'system', icon: '💻', label: '系統' },
+  { value: 'light',  icon: 'light_mode', label: '日間' },
+  { value: 'dark',   icon: 'dark_mode', label: '夜間' },
+  { value: 'system', icon: 'desktop_windows', label: '系統' },
 ];
 const themePreference = ref(localStorage.getItem(THEME_KEY) || 'system');
 
@@ -898,30 +1018,23 @@ function toggleSidebarCollapsed() {
 
 // Mobile bottom nav: 5 tabs + More
 const showMoreMenu = ref(false);
+const showSidebarMore = ref(false);
 const mobileTabItems = computed(() => {
-  if (isDirector.value) {
-    return [
-      { page: 'director', label: '儀表板', icon: 'dashboard' },
-      { page: 'calendar', label: '行事曆', icon: 'calendar_today' },
-      { page: 'students', label: '學生', icon: 'groups' },
-      { page: 'attendance', label: '出勤', icon: 'fact_check', badgeTypes: ['pending_swipe', 'attendance'] },
-      { page: 'more', label: '更多', icon: 'apps' },
-    ];
-  }
-  if (isTeacher.value) {
-    return [
-      { page: 'teacher-home', label: '工作台', icon: 'space_dashboard' },
-      { page: 'attendance', label: '出勤', icon: 'fact_check' },
-      { page: 'learning', label: '評量', icon: 'assignment', badgeTypes: ['teacher_learning_pending', 'parent_feedback'] },
-      { page: 'chat', label: '聊天', icon: 'forum', badgeTypes: ['chat'] },
-      { page: 'more', label: '更多', icon: 'apps' },
-    ];
-  }
-  return [];
+  return getMobileTabItems(role.value);
 });
 const mobileTabPages = computed(() => new Set(mobileTabItems.value.filter(t => t.page !== 'more').map(t => t.page)));
 const initialTeacherIdForNav = ref(null);
+const studentFocusIdForNav = ref(null);
+const studentFocusCourseIdForNav = ref(null);
+const studentFocusIntentForNav = ref('');
 const calendarResetToken = ref(0);
+const calendarInitialIntent = ref('');
+const calendarInitialStudentId = ref(null);
+const calendarInitialCourseId = ref(null);
+const calendarInitialDate = ref('');
+const tuitionInitialTab = ref('');
+const tuitionInitialStudentId = ref(null);
+const tuitionInitialCourseId = ref(null);
 const unreadNotificationCount = ref(0);
 const urgentNotificationCount = ref(0);
 const inboxNeedsAttentionCount = ref(0);
@@ -1041,19 +1154,66 @@ function onPopStateDeepLink() {
   applyDeepLinkFromUrl();
 }
 
-function onNavigateFromNotifications({ target, recordId, focus, section, workflowId }) {
+function normalizeNavigationId(value) {
+  const id = Number(value);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
+function clearCalendarNavigationContext() {
+  calendarInitialStudentId.value = null;
+  calendarInitialCourseId.value = null;
+  calendarInitialDate.value = '';
+}
+
+function clearTuitionNavigationContext() {
+  tuitionInitialStudentId.value = null;
+  tuitionInitialCourseId.value = null;
+  tuitionInitialTab.value = '';
+}
+
+function onNavigateFromNotifications({ target, recordId, studentId, courseId, date, focus, section, workflowId, intent } = {}) {
   if (isPasswordChangeLocked.value) {
     active.value = 'profile';
     return;
   }
   if (!target) return;
+  dashboardReturnContext.value = createDashboardReturnContext({ fromPage: active.value, target });
   if (target === 'calendar') {
     calendarResetToken.value += 1;
+    calendarInitialIntent.value = intent || '';
+    calendarInitialStudentId.value = normalizeNavigationId(studentId);
+    calendarInitialCourseId.value = normalizeNavigationId(courseId);
+    calendarInitialDate.value = typeof date === 'string' ? date.slice(0, 10) : '';
+  } else {
+    calendarInitialIntent.value = '';
+    clearCalendarNavigationContext();
+  }
+  if (target === 'tuition-collect') {
+    tuitionInitialTab.value = intent || '';
+    tuitionInitialStudentId.value = normalizeNavigationId(studentId);
+    tuitionInitialCourseId.value = normalizeNavigationId(courseId);
+  } else {
+    clearTuitionNavigationContext();
   }
   if (target === 'learning' && recordId) {
     learningTargetRecordId.value = Number(recordId);
   } else {
     learningTargetRecordId.value = null;
+  }
+  if (target === 'students') {
+    const normalizedStudentId = Number(studentId);
+    const normalizedCourseId = Number(courseId);
+    studentFocusIdForNav.value = Number.isSafeInteger(normalizedStudentId) && normalizedStudentId > 0
+      ? normalizedStudentId
+      : null;
+    studentFocusCourseIdForNav.value = Number.isSafeInteger(normalizedCourseId) && normalizedCourseId > 0
+      ? normalizedCourseId
+      : null;
+    studentFocusIntentForNav.value = intent === 'edit' ? 'edit' : '';
+  } else {
+    studentFocusIdForNav.value = null;
+    studentFocusCourseIdForNav.value = null;
+    studentFocusIntentForNav.value = '';
   }
   if (target === 'learning' && focus === 'feedback') {
     learningFeedbackFocusToken.value += 1;
@@ -1088,6 +1248,12 @@ function onNavigateFromCourseManagement(payload) {
     return;
   }
   onNavigateFromNotifications(payload || {});
+}
+
+function clearStudentNavigationContext() {
+  studentFocusIdForNav.value = null;
+  studentFocusCourseIdForNav.value = null;
+  studentFocusIntentForNav.value = '';
 }
 
 let skipTeacherNavSfxOnce = false;
@@ -1126,6 +1292,12 @@ function onNavigateLearningFromTeacherHome(payload = {}) {
 }
 
 function setActivePage(page) {
+  closeSidebarMore(false);
+  closeMoreMenu(false);
+  dashboardReturnContext.value = null;
+  if (page !== 'students') clearStudentNavigationContext();
+  if (page !== 'calendar') clearCalendarNavigationContext();
+  if (page !== 'tuition-collect') clearTuitionNavigationContext();
   const prev = active.value;
   if (isPasswordChangeLocked.value && page !== 'profile') {
     active.value = 'profile';
@@ -1164,6 +1336,10 @@ function setActivePage(page) {
   if (page === 'teacher-home' && isTeacher.value) {
     window.dispatchEvent(new CustomEvent('alltrue-teacher-learning-progress-refresh'));
   }
+}
+
+function returnToDashboard() {
+  setActivePage('director');
 }
 
 function isNavItemDisabled(page) {
@@ -1301,118 +1477,59 @@ const avatarLetter = computed(() => {
 });
 const avatarUrl = computed(() => userProfile.value?.avatar_url || '');
 
-const sidebarNavGroups = computed(() => {
-  if (isDirector.value) {
-    const systemItems = [
-      { page: 'line-integration', label: '家長 LINE 通知', icon: 'chat' },
-      { page: 'binding-management', label: 'LINE 綁定管理', icon: 'link' },
-      { page: 'binding-conflicts', label: '綁定衝突審查', icon: 'gpp_maybe' },
-      { page: 'binding-health', label: '綁定健康度', icon: 'monitor_heart' },
-    ];
-    if (role.value === 'super_admin') {
-      systemItems.push({
-        page: 'director-accounts',
-        label: '主任審核',
-        icon: 'admin_panel_settings',
-        badgeTypes: ['director_pending'],
-      });
-      systemItems.push({
-        page: 'branch-management',
-        label: '分校管理',
-        icon: 'store',
-      });
-      systemItems.push({
-        page: 'nightly-reconcile',
-        label: '夜間堂數對帳',
-        icon: 'receipt_long',
-      });
-    }
-    return [
-      {
-        key: 'overview',
-        title: '今日工作',
-        defaultOpen: true,
-        items: [
-          { page: 'director', label: '今日工作台', icon: 'dashboard' },
-          { page: 'notifications', label: '待處理收件匣', icon: 'inbox' },
-          { page: 'chat', label: '內部訊息', icon: 'forum', badgeTypes: ['chat'] },
-          // GH-943 (in-app 179): moved out of the collapsed「系統設定」group so
-          // 主任 can find Bug 回報 without expanding settings.
-          { page: 'bugs', label: 'Bug 回報', icon: 'bug_report', badgeTypes: ['bugs'] },
-        ],
-      },
-      {
-        key: 'teaching',
-        title: '教學現場',
-        defaultOpen: true,
-        items: [
-          { page: 'calendar', label: '班級行事曆', icon: 'calendar_today' },
-          { page: 'attendance', label: '出缺勤', icon: 'fact_check', badgeTypes: ['pending_swipe', 'attendance'] },
-          { page: 'schedule-discrepancy', label: '課表回報管理', icon: 'flag', badgeTypes: ['schedule_discrepancy'] },
-          { page: 'learning', label: '學習評量', icon: 'assignment', badgeTypes: ['learning_review', 'parent_feedback'] },
-          { page: 'assessments', label: '學習檢測', icon: 'grading' },
-          { page: 'question-banks', label: '題庫管理', icon: 'quiz' },
-          { page: 'duplicate-review', label: '重疊課程審核', icon: 'compare_arrows' },
-        ],
-      },
-      {
-        key: 'students-courses',
-        title: '學生與課程',
-        defaultOpen: true,
-        items: [
-          { page: 'students', label: '學生管理', icon: 'groups' },
-          { page: 'course-mgmt', label: '課程查找', icon: 'menu_book', badgeTypes: ['tuition'] },
-        ],
-      },
-      {
-        key: 'finance',
-        title: '財務與人事',
-        defaultOpen: true,
-        items: [
-          { page: 'tuition-collect', label: '帳務中心', icon: 'payments' },
-          { page: 'tuition-report', label: '當月學收', icon: 'bar_chart' },
-          { page: 'subject-units', label: '科目數統計', icon: 'calculate' },
-          { page: 'parttime-payroll', label: '兼職薪資', icon: 'account_balance_wallet' },
-          { page: 'teacher-eligibility', label: '正職薪資要件', icon: 'rule' },
-          { page: 'teachers', label: '老師管理', icon: 'badge', badgeTypes: ['pending_teachers'] },
-        ],
-      },
-      {
-        key: 'settings',
-        title: '設定與資源',
-        defaultOpen: false,
-        items: [
-          { page: 'classroom', label: '教室管理', icon: 'meeting_room' },
-          { page: 'subject-settings', label: '科目管理', icon: 'library_books' },
-          ...systemItems,
-        ],
-      },
-    ];
-  }
+const sidebarGroupOpen = ref({});
+const sidebarNavGroups = computed(() => getNavigationGroups(role.value));
+const sidebarPrimaryGroups = computed(() => sidebarNavGroups.value.filter(group => group.primary !== false));
+const sidebarMoreGroups = computed(() => sidebarNavGroups.value.filter(group => group.primary === false));
+const activeInSidebarMore = computed(() => sidebarMoreGroups.value.some(
+  group => group.items.some(item => item.page === active.value),
+));
+const sidebarMoreBadgeCount = computed(() => sidebarMoreGroups.value.reduce(
+  (sum, group) => sum + group.items.reduce((groupSum, item) => groupSum + getItemBadgeCount(item), 0),
+  0,
+));
 
-  if (isTeacher.value) {
-    return [
-      {
-        key: 'teaching',
-        title: '今日教學',
-        defaultOpen: true,
-        items: [
-          { page: 'teacher-home', label: '教學工作台', icon: 'space_dashboard' },
-          { page: 'calendar', label: '我的課表', icon: 'calendar_today' },
-          { page: 'attendance', label: '出缺勤', icon: 'fact_check', badgeTypes: ['attendance'] },
-          { page: 'learning', label: '課表與評量', icon: 'assignment', badgeTypes: ['teacher_learning_pending', 'parent_feedback'] },
-          { page: 'assessments', label: '學習檢測', icon: 'grading' },
-          { page: 'question-banks', label: '題庫管理', icon: 'quiz' },
-          { page: 'subject-units', label: '科目數統計', icon: 'calculate' },
-          { page: 'chat', label: '內部聊天', icon: 'forum', badgeTypes: ['chat'] },
-          { page: 'bugs', label: 'Bug 回報', icon: 'bug_report', badgeTypes: ['bugs'] },
-        ],
-      },
-    ];
+function toggleSidebarMore() {
+  if (showSidebarMore.value) {
+    closeSidebarMore();
+    return;
   }
+  showSidebarMore.value = true;
+}
 
-  return [];
-});
+function closeSidebarMore(restoreFocus = true) {
+  const wasOpen = showSidebarMore.value;
+  showSidebarMore.value = false;
+  if (restoreFocus && wasOpen) {
+    nextTick(() => document.querySelector('#sidebar-more-trigger')?.focus());
+  }
+}
+
+function toggleMoreMenu() {
+  if (showMoreMenu.value) {
+    closeMoreMenu();
+    return;
+  }
+  showMoreMenu.value = true;
+}
+
+function closeMoreMenu(restoreFocus = true) {
+  const wasOpen = showMoreMenu.value;
+  showMoreMenu.value = false;
+  if (restoreFocus && wasOpen) {
+    nextTick(() => document.querySelector('#mobile-more-trigger')?.focus());
+  }
+}
+
+function isSidebarGroupOpen(group) {
+  return Object.prototype.hasOwnProperty.call(sidebarGroupOpen.value, group.key)
+    ? sidebarGroupOpen.value[group.key]
+    : group.defaultOpen !== false;
+}
+
+function onSidebarGroupToggle(key, event) {
+  sidebarGroupOpen.value = { ...sidebarGroupOpen.value, [key]: event.target.open };
+}
 
 /** 底欄「更多」：加總未固定在底欄的選項之未讀（含主任收件匣）。 */
 const moreMenuBadgeCount = computed(() => {
@@ -1595,16 +1712,19 @@ const fetchProfile = async (_uid) => {
           localStorage.setItem('alltrue_session', JSON.stringify(session.value));
         }
 
-        if (mustChangePassword) {
-          active.value = 'profile';
-          return;
-        }
-
+        // Profile refresh must not yank the user back to role home after they
+        // already navigated (login → onAuthStateChange /me race). Only seed
+        // bootstrap / role-mismatch landings via resolveActiveAfterProfileLoad.
+        const nextActive = resolveActiveAfterProfileLoad({
+          role: me.role,
+          mustChangePassword,
+          currentActive: active.value,
+        });
+        if (nextActive !== active.value) active.value = nextActive;
+        if (mustChangePassword) return;
         if (me.role === 'teacher') {
-            active.value = 'teacher-home';
             ensureTeacherBranch();
-        } else if (me.role === 'director' || me.role === 'super_admin') {
-            active.value = 'director';
+        } else if (me.role === 'director' || me.role === 'admin' || me.role === 'super_admin') {
             applyDeepLinkFromUrl();
         }
     } catch {
@@ -1674,6 +1794,14 @@ const logout = async () => {
 watch(showMoreMenu, (open) => {
   if (open) lockScroll();
   else unlockScroll();
+  if (open) {
+    nextTick(() => document.querySelector('#mobile-more-sheet')?.focus());
+  }
+});
+
+watch(showSidebarMore, (open) => {
+  if (!open) return;
+  nextTick(() => document.querySelector('#sidebar-more-panel')?.focus());
 });
 
 watch(currentBranch, (value, previous) => {
@@ -1693,6 +1821,7 @@ watch([active, isStandaloneParent], async ([p]) => {
   // #143 防護：切換頁面時強制清除任何殘留的 scroll lock（body position:fixed/overflow:hidden）
   // 與行動版選單，避免某頁洩漏的鎖讓下一頁看起來被灰白遮罩蓋住、無法點選。
   showMoreMenu.value = false;
+  showSidebarMore.value = false;
   forceUnlockScroll();
   if (p !== 'bugs' || !session.value?.access_token || !currentBranch.value) return;
   if (role.value !== 'super_admin') return;
@@ -2465,14 +2594,14 @@ function formatBuildTime(rawIso) {
 }
 
 .nav-group {
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  border-radius: 12px;
-  background: rgba(15, 23, 42, 0.28);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   overflow: hidden;
 }
 
 .nav-group + .nav-group {
-  margin-top: 12px;
+  margin-top: 14px;
 }
 
 .nav-group-summary {
@@ -2480,11 +2609,11 @@ function formatBuildTime(rawIso) {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 10px 12px;
+  padding: 8px 10px 5px;
   list-style: none;
   cursor: pointer;
   user-select: none;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+  border-bottom: 0;
 }
 
 .nav-group-summary::-webkit-details-marker {
@@ -2492,9 +2621,9 @@ function formatBuildTime(rawIso) {
 }
 
 .nav-group-title {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
-  color: #cbd5e1;
+  color: #94a3b8;
   text-transform: uppercase;
   letter-spacing: 0.07em;
 }
@@ -2512,8 +2641,72 @@ function formatBuildTime(rawIso) {
 .nav-group-list {
   display: grid;
   gap: 3px;
-  padding: 6px;
+  padding: 2px 0 0;
 }
+
+.nav-group-summary:focus-visible,
+.sidebar-nav button:focus-visible,
+.sidebar-collapse-btn:focus-visible,
+.branch-btn:focus-visible,
+.theme-btn:focus-visible,
+.account-menu-trigger:focus-visible,
+.account-menu-btn:focus-visible,
+.account-menu-shortcuts summary:focus-visible {
+  outline: 2px solid var(--ds-primary-soft);
+  outline-offset: 2px;
+}
+
+.account-menu-divider {
+  height: 1px;
+  margin: 4px 4px 2px;
+  background: var(--border);
+}
+
+.account-menu-tools {
+  display: grid;
+  gap: 6px;
+  padding: 4px 4px 2px;
+}
+
+.account-menu-tools-label {
+  color: var(--text-light);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.account-menu-tools .theme-buttons {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.account-menu-tools .theme-btn {
+  min-width: 0;
+  padding: 7px 4px;
+}
+
+.theme-btn-icon {
+  font-size: 17px;
+  line-height: 1;
+}
+
+.account-menu-shortcuts {
+  margin: 2px 4px 0;
+  border-top: 0;
+}
+
+.account-menu-shortcuts summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 4px;
+  color: var(--text-light);
+  font-size: 11px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.account-menu-shortcuts summary::-webkit-details-marker { display: none; }
+.account-menu-shortcuts summary .material-symbols-outlined { font-size: 16px; }
+.account-menu-shortcuts[open] summary { color: var(--text); }
 
 .nav-icon {
   width: 22px;
@@ -2560,6 +2753,27 @@ function formatBuildTime(rawIso) {
 
 .main-topbar-spacer {
   flex: 1;
+}
+
+.dashboard-return-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid var(--ds-hairline);
+  border-radius: var(--ds-radius-pill);
+  background: var(--ds-canvas);
+  color: var(--ds-ink);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dashboard-return-button:hover,
+.dashboard-return-button:focus-visible {
+  border-color: var(--ds-primary);
+  color: var(--ds-primary-deep);
 }
 
 .account-menu {
@@ -2918,6 +3132,17 @@ function formatBuildTime(rawIso) {
 
   .main-topbar {
     margin-bottom: 6px;
+  }
+
+  .build-stamp-bar {
+    max-width: 24vw;
+  }
+
+  .dashboard-return-button {
+    max-width: 44vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .account-menu-trigger {

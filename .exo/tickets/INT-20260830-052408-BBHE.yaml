@@ -1,0 +1,45 @@
+id: INT-20260830-052408-BBHE
+title: Core API route golden contracts
+intent: Core API route golden contracts
+kind: intent
+brain_dump: 'Close the actionable test-contract portion of GitHub issue #992: protect
+  the public auth/RFID entry points and the core student-class, class-session, and
+  schedule route registrations plus their access-control middleware against silent
+  drift. Keep this test-only and do not change runtime behavior.'
+boundary: Only add or adjust backend/tests/Feature/RouteRegistrationTest.php and Exo
+  task artifacts. Do not change routes, controllers, middleware implementations, API
+  payloads, auth behavior, billing, scheduling, production data, deploy state, or
+  protected governance decisions.
+success_condition: A focused feature test fails when a selected core route is missing,
+  has the wrong HTTP verb, or loses the required middleware contract; the test passes
+  against the current route table and the diff stays within the declared scope.
+risk: low
+priority: 2
+labels:
+- testing
+scope:
+  allow:
+  - backend/tests/Feature/RouteRegistrationTest.php
+  - .agent-session/manifest.json
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 3
+  max_loc_changed: 140
+checks:
+- vendor/bin/phpunit
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-30T05:24:08+08:00'
+children:
+- TKT-20260830-052415-YIVC
+resource_profile: default

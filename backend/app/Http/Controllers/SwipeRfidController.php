@@ -115,6 +115,12 @@ class SwipeRfidController extends Controller
                 'message' => 'RFID 未綁定學生或老師（已暫存，請於 5 分鐘內綁定）',
                 'campus' => ['TelegramToken' => $campus->TelegramToken ?? null],
             ], 404);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'ok' => false,
+                'error' => 'attendance_not_allowed',
+                'message' => $e->getMessage(),
+            ], 422);
         } catch (\Throwable $e) {
             throw $e;
         }
@@ -285,7 +291,10 @@ class SwipeRfidController extends Controller
     {
         $sessions = ClassSession::with('studentClass')
             ->whereDate('SessionDate', $swipeAt->toDateString())
-            ->where('Status', '!=', 'leave')
+            ->whereNotIn(DB::raw('LOWER(Status)'), array_merge(
+                [\App\Support\SessionStatus::CANCELLED],
+                \App\Support\SessionStatus::leaveFamily()
+            ))
             ->whereHas('studentClass', function ($q) use ($student) {
                 $q->where('StudentID', $student->id)->where('Stop', 0);
             })
@@ -343,6 +352,16 @@ class SwipeRfidController extends Controller
             ->where(function ($q) use ($swipeAt) {
                 $q->whereNull('EndDate')->orWhere('EndDate', '>=', $swipeAt);
             })
+            // A date occurrence is authoritative even when it is leave/cancelled.
+            // Do not fall back to the recurring StudentClass and create a
+            // self-study attendance row for a non-attendance occurrence.
+            ->whereNotIn('ID', ClassSession::query()
+                ->whereDate('SessionDate', $swipeAt->toDateString())
+                ->whereIn('StudentClassID', StudentClass::query()
+                    ->where('StudentID', $student->getKey())
+                    ->select('ID')
+                )
+                ->pluck('StudentClassID'))
             ->get();
 
         $dow = $swipeAt->dayOfWeek;
@@ -397,6 +416,10 @@ class SwipeRfidController extends Controller
             ->whereDate('SessionDate', $today)
             ->whereTime('StartTime', '>=', $signInTime)
             ->whereTime('StartTime', '<=', $signOutTime)
+            ->whereNotIn(DB::raw('LOWER(Status)'), array_merge(
+                [\App\Support\SessionStatus::CANCELLED],
+                \App\Support\SessionStatus::leaveFamily()
+            ))
             ->whereDoesntHave('signIns', fn ($q) => $q->whereNull('VoidedAt'))
             ->get();
 

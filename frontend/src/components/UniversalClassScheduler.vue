@@ -527,6 +527,22 @@
               </label>
             </div>
             <p class="field-note">若上課日期不固定（例如寒暑假課表），可不勾選任何星期，改為直接在下方日曆逐一點選每次上課日期。</p>
+            <TeacherAvailabilityPlanner
+              :teacher-id="form.teacher_id"
+              :teacher="selectedTeacher"
+              :teacher-branch-label="selectedTeacherBranchSummary"
+              :student-id="form.student_id"
+              :branch-id="props.branchId"
+              :class-type="form.class_type"
+              :payment-type="form.payment_type"
+              :start-date="form.course_start_date"
+              :end-date="form.end_date"
+              :days-of-week="selectedDays"
+              :day-time-slots="form.day_time_slots"
+              :duration-hours="form.duration_hours"
+              :fetch-availability="fetchTeacherAvailability"
+              @apply="applyCoordinationCandidate"
+            />
             <div v-if="selectedDays.length > 0" class="weekday-slot-grid">
               <template v-for="day in selectedDays" :key="`day-${day}`">
                 <div
@@ -852,6 +868,8 @@ import { checkTeacherScope, STUDENT_CLASS_MEMO_MAX_LENGTH } from '../lib/constan
 import { calculateCoverage, lessonEquivalent } from '../lib/lessonCoverage';
 import perfFlags from '../lib/perfFlags';
 import { estimateCreateCharge } from '../lib/coursePricing';
+import { fetchTeacherAvailability } from '../lib/substituteApi.js';
+import { getBranchName } from '../lib/useBranches.js';
 import {
   countSessionsForDates,
   expandManualDatesToSessionPlan,
@@ -860,6 +878,7 @@ import {
 } from '../lib/schedulerSessionExpand';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
 import SearchableSelect from './SearchableSelect.vue';
+import TeacherAvailabilityPlanner from './TeacherAvailabilityPlanner.vue';
 
 const weekdayOptions = [
   { value: 1, label: '週一' },
@@ -983,11 +1002,12 @@ function countWeekdayOccurrences(startStr, endStr, isoWeekdays) {
   const start = new Date(startStr + 'T00:00:00');
   const end = new Date(endStr + 'T00:00:00');
   if (end < start) return 0;
-  let count = 0;
+  const openingDow = weekdayOneToSeven(start);
+  let count = isoWeekdays.includes(openingDow) ? 0 : 1;
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
     const jsDay = d.getDay();
     const isoDay = jsDay === 0 ? 7 : jsDay;
-    if (isoWeekdays.includes(isoDay)) count++;
+    if (d.getTime() !== start.getTime() && isoWeekdays.includes(isoDay)) count++;
   }
   return count;
 }
@@ -1006,7 +1026,9 @@ const monthlyPreviewText = computed(() => {
   if (n === 0) return '此期間無符合的課堂日期，請調整';
   const slot = (form.day_time_slots || []).find(Boolean);
   const timeStr = slot?.start_time || form.start_time || '16:00';
-  return `每${dayLabels} ${timeStr}，共 ${n} 堂（${startDate} ～ ${endDate}）`;
+  const openingDow = weekdayOneToSeven(new Date(`${startDate}T12:00:00`));
+  const openingHint = daysArr.includes(openingDow) ? '' : '，含開課日首堂';
+  return `每${dayLabels} ${timeStr}，共 ${n} 堂${openingHint}（${startDate} ～ ${endDate}）`;
 });
 
 function setEndDateQuickSelect(months) {
@@ -1274,13 +1296,33 @@ const teacherOptions = computed(() => (
       || teacher?.LoginName
       || `老師#${id || ''}`
     ).trim();
-    return { value: id, label };
+    const branchSummary = teacherBranchSummary(teacher);
+    return { value: id, label: branchSummary ? `${label} · ${branchSummary}` : label };
   }).filter((teacher) => Number.isFinite(teacher.value) && teacher.value > 0 && teacher.label)
 ));
+
+function teacherBranchIds(teacher) {
+  const ids = Array.isArray(teacher?.branch_ids)
+    ? teacher.branch_ids.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
+    : [];
+  const primary = Number(teacher?.branch_id || 0);
+  return [...new Set([...ids, ...(primary > 0 ? [primary] : [])])];
+}
+
+function teacherBranchSummary(teacher) {
+  return teacherBranchIds(teacher).map((id) => getBranchName(id)).join('、');
+}
 
 const selectedTeacher = computed(() => {
   const tid = Number(form.teacher_id);
   return tid > 0 ? (props.teachers || []).find((t) => Number(t.id) === tid) : null;
+});
+
+// Keep the existing exposed summary for integrations/tests; the shared planner
+// renders the same branch context next to its availability query.
+const selectedTeacherBranchSummary = computed(() => {
+  const summary = teacherBranchSummary(selectedTeacher.value);
+  return summary ? `可服務：${summary}` : '分校資料待確認';
 });
 
 const selectedStudent = computed(() => {
@@ -1316,6 +1358,22 @@ const safePlannedSessions = computed(() => (
 const selectedDays = computed(() => (
   [...new Set((form.days_of_week || []).map((d) => Number(d)).filter((d) => d >= 1 && d <= 7))].sort((a, b) => a - b)
 ));
+
+function applyCoordinationCandidate(candidate) {
+  if (!candidate) return;
+  const [startHour, startMinute] = candidate.start_time.split(':').map(Number);
+  const [endHour, endMinute] = candidate.end_time.split(':').map(Number);
+  const candidateDurationHours = ((endHour * 60 + endMinute) - (startHour * 60 + startMinute)) / 60;
+  form.days_of_week = [Number(candidate.weekday)];
+  form.day_time_slots = [{
+    day: Number(candidate.weekday),
+    start_time: candidate.start_time,
+    duration_hours: candidateDurationHours > 0 ? candidateDurationHours : form.duration_hours,
+    subject: String(form.subject || ''),
+  }];
+  form.start_time = candidate.start_time;
+  currentMonth.value = parseYmdToMonthDate(candidate.date) || currentMonth.value;
+}
 
 // ── RFC 非標準時長扣堂 ────────────────────────────────────────────────────────
 // 只在堂數制、非課程包時提供。未開啟時，以下全部不影響原有流程。
@@ -1631,7 +1689,17 @@ const monthlySystemOccurrences = computed(() => {
   if (!startStr || !endStr || daySet.size === 0 || endStr < startStr) return [];
 
   const entries = [];
+  const openingDow = weekdayOneToSeven(new Date(`${startStr}T12:00:00`));
+  if (
+    !daySet.has(openingDow)
+    && !excludedDateSet.value.has(startStr)
+    && !manualDateSet.value.has(startStr)
+  ) {
+    entries.push(...buildSessionEntriesForDate(startStr));
+  }
+
   const cursor = new Date(`${startStr}T00:00:00`);
+  cursor.setDate(cursor.getDate() + 1);
   const end = new Date(`${endStr}T00:00:00`);
   let guard = 0;
   while (cursor <= end && guard < 731) {
@@ -2612,6 +2680,7 @@ async function submit() {
   font-size: 12px;
   color: var(--text-light);
 }
+
 .warning-text {
   color: var(--ds-warning);
   font-weight: 600;

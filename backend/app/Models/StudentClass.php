@@ -38,6 +38,7 @@ class StudentClass extends Model
         'duration1', 'duration2', 'duration3', 'duration4', 'duration5', 'duration6',
         'rate_unit',
         'PackageID', 'PackageTotalSessions', 'PackageName',
+        'trial_converted_to_id',
     ];
 
     protected $casts = [

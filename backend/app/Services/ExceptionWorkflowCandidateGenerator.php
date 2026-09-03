@@ -7,6 +7,7 @@ use App\Models\ExceptionWorkflow;
 use App\Support\SessionStatus;
 use App\Models\StudentClass;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 
 class ExceptionWorkflowCandidateGenerator
 {
@@ -43,6 +44,11 @@ class ExceptionWorkflowCandidateGenerator
         $teacherId = (int) ($course->TeacherID ?? 0);
         $capacity = $this->capacityForClassType((string) ($course->ClassType ?? 'one_on_one'));
         $occupancy = $this->buildOccupancy($workflow, $teacherId, $start, $end);
+        // Candidate generation is only a recommendation, but it must not offer
+        // a slot that the final ClassSession guard will reject for this student
+        // under another contract. Keep this read-side snapshot aligned with
+        // the write boundary while the confirmation path remains authoritative.
+        $studentBusySlots = $this->buildStudentBusySlots($workflow, $start, $end);
         // Keep the candidate set flexible across the whole window. A simple
         // date-first limit can fill every result with one morning's slots,
         // which makes a multi-day makeup window look artificially narrow.
@@ -58,6 +64,10 @@ class ExceptionWorkflowCandidateGenerator
                 $names = [];
 
                 for ($offset = 0; $offset < $durationSlots; $offset += 1) {
+                    if (!empty($studentBusySlots[$date][$slot + $offset])) {
+                        $available = false;
+                        break;
+                    }
                     $cell = $dayOccupancy[$slot + $offset] ?? ['count' => 0, 'students' => []];
                     $count = (int) ($cell['count'] ?? 0);
                     if ($count >= $capacity) {
@@ -165,6 +175,124 @@ class ExceptionWorkflowCandidateGenerator
         }
 
         return $occupancy;
+    }
+
+    /**
+     * Return 30-minute cells occupied by the same student in another active
+     * contract. This mirrors the materializer's future reservation rule so a
+     * cross-contract collision is removed during preview, not after confirm.
+     *
+     * @return array<string, array<int, true>>
+     */
+    private function buildStudentBusySlots(ExceptionWorkflow $workflow, Carbon $start, Carbon $end): array
+    {
+        $workflow->loadMissing('studentClass');
+        $course = $workflow->relationLoaded('studentClass')
+            ? $workflow->getRelation('studentClass')
+            : null;
+        $studentId = (int) $workflow->getAttribute('student_id');
+        $courseId = (int) $workflow->getAttribute('student_class_id');
+        if ($course instanceof StudentClass) {
+            $studentId = $studentId ?: (int) $course->getAttribute('StudentID');
+            $courseId = $courseId ?: (int) $course->getKey();
+        }
+        $packageId = $course instanceof StudentClass
+            ? (int) $course->getAttribute('PackageID')
+            : 0;
+        if ($studentId <= 0 || $courseId <= 0) {
+            return [];
+        }
+
+        $busy = [];
+        $sessions = ClassSession::query()
+            ->from('ClassSession as cs')
+            ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+            ->where('sc.StudentID', $studentId)
+            ->where('cs.StudentClassID', '!=', $courseId)
+            ->where(function ($query) {
+                $query->where('sc.Stop', 0)
+                    ->orWhereNull('sc.Stop')
+                    ->orWhere(function ($stoppedQuery) {
+                        $stoppedQuery->where('sc.Stop', 1)
+                            ->where('sc.RemainingSessions', '>', 0);
+                    });
+            })
+            ->whereNotIn('cs.Status', SessionStatus::futureReservationExclusionStatuses())
+            ->whereRaw("LOWER(COALESCE(sc.ClassType, '')) <> ?", ['trial'])
+            ->when($packageId > 0, function ($query) use ($packageId) {
+                $query->where(function ($packageQuery) use ($packageId) {
+                    $packageQuery->whereNull('sc.PackageID')
+                        ->orWhere('sc.PackageID', '!=', $packageId);
+                });
+            })
+            ->whereDate('cs.SessionDate', '>=', $start->toDateString())
+            ->whereDate('cs.SessionDate', '<=', $end->toDateString())
+            ->where('cs.id', '!=', (int) $workflow->getAttribute('class_session_id'))
+            ->get(['cs.SessionDate', 'cs.StartTime', 'cs.EndTime']);
+
+        foreach ($sessions as $session) {
+            $this->markBusySlots(
+                $busy,
+                Carbon::parse($session->SessionDate)->toDateString(),
+                (string) $session->StartTime,
+                (string) $session->EndTime,
+            );
+        }
+
+        // A scheduled row can exist before ClassSession materialization. It is
+        // still a reservation and must not be offered as a makeup candidate.
+        $schedules = DB::table('schedules as s')
+            ->leftJoin('StudentClass as sc', 'sc.ID', '=', 's.student_course_id')
+            ->where('s.student_id', $studentId)
+            ->where('s.status', 'scheduled')
+            ->whereNull('s.original_schedule_id')
+            ->where(function ($query) use ($courseId) {
+                $query->whereNull('s.student_course_id')
+                    ->orWhere('s.student_course_id', '!=', $courseId);
+            })
+            ->where(function ($query) {
+                $query->whereNull('sc.ID')
+                    ->orWhere('sc.Stop', 0)
+                    ->orWhereNull('sc.Stop')
+                    ->orWhere(function ($stoppedQuery) {
+                        $stoppedQuery->where('sc.Stop', 1)
+                            ->where('sc.RemainingSessions', '>', 0);
+                    });
+            })
+            ->where(function ($query) {
+                $query->whereNull('sc.ClassType')
+                    ->orWhereRaw("LOWER(sc.ClassType) <> ?", ['trial']);
+            })
+            ->when($packageId > 0, function ($query) use ($packageId) {
+                $query->where(function ($packageQuery) use ($packageId) {
+                    $packageQuery->whereNull('sc.PackageID')
+                        ->orWhere('sc.PackageID', '!=', $packageId);
+                });
+            })
+            ->whereDate('s.schedule_date', '>=', $start->toDateString())
+            ->whereDate('s.schedule_date', '<=', $end->toDateString())
+            ->get(['s.schedule_date', 's.start_time', 's.end_time']);
+
+        foreach ($schedules as $schedule) {
+            $this->markBusySlots(
+                $busy,
+                Carbon::parse($schedule->schedule_date)->toDateString(),
+                (string) $schedule->start_time,
+                (string) $schedule->end_time,
+            );
+        }
+
+        return $busy;
+    }
+
+    /** @param array<string, array<int, true>> $busy */
+    private function markBusySlots(array &$busy, string $date, string $startTime, string $endTime): void
+    {
+        $startSlot = $this->slotIndex($startTime);
+        $endSlot = $this->slotIndex($endTime);
+        for ($slot = $startSlot; $slot < $endSlot; $slot += 1) {
+            $busy[$date][$slot] = true;
+        }
     }
 
     private function durationMinutes(ClassSession $session, StudentClass $course): int

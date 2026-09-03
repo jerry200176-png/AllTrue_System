@@ -23,6 +23,7 @@ use App\Http\Controllers\ParentFeedbackController;
 use App\Http\Controllers\ParentPortalController;
 use App\Http\Controllers\StudentClassController;
 use App\Http\Controllers\StudentController;
+use App\Http\Controllers\StudentGuardianController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\TeacherBranchController;
@@ -52,6 +53,7 @@ use App\Http\Controllers\AccountingController;
 use App\Http\Controllers\AdoptionInsightsController;
 use App\Http\Controllers\SystemTrustController;
 use App\Http\Controllers\DirectorOperationsTrustController;
+use App\Http\Controllers\BranchHealthController;
 use App\Http\Controllers\AdminReconcileController;
 use App\Http\Controllers\AdminDuplicateSessionController;
 use App\Http\Controllers\GitHubIssueController;
@@ -60,6 +62,7 @@ use App\Http\Controllers\TeacherEligibilityController;
 use App\Http\Controllers\TeacherEligibilityInputController;
 use App\Http\Controllers\AssessmentController;
 use App\Http\Controllers\QuestionBankController;
+use App\Http\Controllers\PopOperationController;
 
 
 if (app()->environment('local')) {
@@ -138,7 +141,7 @@ Route::post('/internal/opcache-reset', function (\Illuminate\Http\Request $req) 
         \Illuminate\Support\Facades\DB::purge($connection);
         \Illuminate\Support\Facades\DB::connection($connection)->select('SELECT 1');
     } catch (\Throwable $e) {
-        \Log::error('[internal/opcache-reset] database connection refresh failed: ' . $e->getMessage());
+        \Illuminate\Support\Facades\Log::error('[internal/opcache-reset] database connection refresh failed: ' . $e->getMessage());
 
         return response()->json(['error' => 'Database connection refresh failed'], 503);
     }
@@ -281,6 +284,7 @@ Route::prefix('v1')->group(function () {
     // ── Super Admin: 分校管理 CRUD ───────────────────────────────────────────────
     Route::middleware(['role:super_admin'])->group(function () {
         Route::get('admin/business-digest', [BusinessDigestController::class, 'index']);
+        Route::get('admin/branch-health', [BranchHealthController::class, 'index']);
         Route::get('admin/campuses', [AdminCampusController::class, 'index']);
         Route::post('admin/campuses', [AdminCampusController::class, 'store']);
         Route::put('admin/campuses/{id}', [AdminCampusController::class, 'update'])->whereNumber('id');
@@ -323,6 +327,10 @@ Route::prefix('v1')->group(function () {
         Route::post('students/{student}/bind-card', [StudentController::class, 'bindCard'])->whereNumber('student');
         Route::get('students/{student}/line-bindings', [StudentController::class, 'lineBindings'])->whereNumber('student');
         Route::delete('students/{student}/line-bindings/{binding}', [StudentController::class, 'removeLineBinding'])->whereNumber('student');
+        Route::get('students/{student}/guardians', [StudentGuardianController::class, 'index'])->whereNumber('student');
+        Route::post('students/{student}/guardians', [StudentGuardianController::class, 'store'])->whereNumber('student');
+        Route::put('students/{student}/guardians/{studentGuardian}', [StudentGuardianController::class, 'update'])->whereNumber('student')->whereNumber('studentGuardian');
+        Route::delete('students/{student}/guardians/{studentGuardian}', [StudentGuardianController::class, 'destroy'])->whereNumber('student')->whereNumber('studentGuardian');
 
         Route::post('student-classes/import', [ImportController::class, 'studentClasses']);
         Route::get('student-classes/export', [ExportController::class, 'studentClasses']);
@@ -387,6 +395,7 @@ Route::prefix('v1')->group(function () {
 
         // ── Full-time teacher base salary (正職結算底薪), feeds finance/teacher-eligibility's total_payout ──
         Route::post('finance/teacher-eligibility/salary-profiles', [TeacherEligibilityInputController::class, 'storeSalaryProfile'])->middleware('require_pin');
+        Route::post('finance/teacher-eligibility/salary-profiles/multiplier', [TeacherEligibilityInputController::class, 'storeMultiplierProfile'])->middleware('require_pin');
         Route::post('finance/teacher-eligibility/salary-profiles/{id}/approve', [TeacherEligibilityInputController::class, 'approveSalaryProfile'])->whereNumber('id')->middleware('require_pin');
         Route::post('finance/teacher-eligibility/lock', [TeacherEligibilityController::class, 'lock'])->middleware('require_pin');
         Route::post('finance/teacher-eligibility/reopen', [TeacherEligibilityController::class, 'reopen'])->middleware('require_pin');
@@ -495,8 +504,10 @@ Route::prefix('v1')->group(function () {
     // Cross-campus student identity bridge: explicit two-campus authorization only.
     Route::middleware(['role:director,super_admin', 'require_campus', 'require_password_change'])->group(function () {
         Route::post('student-classes/{studentClass}/billing-correction', [StudentClassController::class, 'billingCorrection']);
+        Route::post('student-classes/{studentClass}/charge-correction', [StudentClassController::class, 'chargeCorrection']);
         Route::post('student-classes/{studentClass}/split-contract/preview', [StudentClassController::class, 'splitContractPreview']);
         Route::post('student-classes/{studentClass}/split-contract', [StudentClassController::class, 'splitContract']);
+        Route::post('student-classes/{studentClass}/recover-transfer-sessions', [StudentClassController::class, 'recoverAndTransferSessions']);
         Route::get('student-identities', [StudentIdentityController::class, 'index']);
         Route::post('student-identities/link', [StudentIdentityController::class, 'link']);
         Route::delete('student-identities/members/{studentId}', [StudentIdentityController::class, 'unlink']);
@@ -536,12 +547,15 @@ Route::prefix('v1')->group(function () {
         Route::get('student-classes', [StudentClassController::class, 'index']);
         Route::post('student-classes', [StudentClassController::class, 'store']);
         Route::get('student-classes/{studentClass}/editability', [StudentClassController::class, 'editability']);
+        Route::get('student-classes/{studentClass}/package-conversion-preview', [\App\Http\Controllers\CoursePackageController::class, 'conversionPreview']);
+        Route::post('student-classes/{studentClass}/convert-to-package', [\App\Http\Controllers\CoursePackageController::class, 'convertToPackage']);
         Route::get('student-classes/{studentClass}', [StudentClassController::class, 'show']);
         Route::put('student-classes/{studentClass}', [StudentClassController::class, 'update']);
         Route::post('student-classes/{studentClass}/confirm-payment', [StudentClassController::class, 'confirmPayment']);
         Route::post('student-classes/{studentClass}/renewal-preview', [StudentClassController::class, 'renewalPreview']);
         Route::post('student-classes/{studentClass}/renewal-confirm', [StudentClassController::class, 'renewalConfirm']);
         Route::post('student-classes/{studentClass}/purchase-batch', [StudentClassController::class, 'purchaseBatch']);
+        Route::post('student-classes/{studentClass}/convert-trial', [StudentClassController::class, 'convertTrial']);
         Route::post('student-classes/{studentClass}/renew-monthly', [StudentClassController::class, 'renewMonthly']);
         Route::get('student-classes/{studentClass}/invoices', [StudentClassController::class, 'invoices']);
         Route::post('student-classes/{studentClass}/add-session', [StudentClassController::class, 'addSession']);
@@ -609,7 +623,9 @@ Route::prefix('v1')->group(function () {
         Route::post('class-sessions/ensure-projected', [ClassSessionController::class, 'ensureProjected'])
             ->middleware('role:director,super_admin');
         Route::get('schedule-audit', [ScheduleAuditController::class, 'index']);
+        Route::get('class-sessions/{id}/recovery', [ClassSessionController::class, 'recovery'])->whereNumber('id');
         Route::patch('class-sessions/{id}', [ClassSessionController::class, 'update']);
+        Route::post('class-sessions/{id}/restore', [ClassSessionController::class, 'restore'])->whereNumber('id');
         // Contract renewal pain point (#1382 prior art) — super_admin only (highest admin tier).
         Route::get('class-sessions/{id}/reassign-contract-targets', [ClassSessionController::class, 'reassignContractTargets'])
             ->whereNumber('id')
@@ -716,6 +732,19 @@ Route::prefix('v1')->group(function () {
 
     Route::middleware(['role:director,super_admin', 'require_campus', 'require_password_change'])->group(function () {
         Route::get('director/operations-trust', [DirectorOperationsTrustController::class, 'show']);
+        // POP control plane: draft/dry-run/approve only; execution remains Pi-local.
+        Route::post('pop/operations/{operationId}/draft', [PopOperationController::class, 'storeDraft'])->where('operationId', '[a-z0-9-]+');
+        Route::post('pop/operations/requests/{requestId}/dry-run', [PopOperationController::class, 'dryRun'])->whereUuid('requestId');
+        Route::post('pop/operations/requests/{requestId}/approvals', [PopOperationController::class, 'approve'])->whereUuid('requestId');
+    });
+
+    // Machine control-plane entrypoints only. A POP machine can submit and
+    // plan a request within its campus; approvals remain human dual approval.
+    Route::middleware(['pop_machine:pop:draft', 'role:pop_machine'])->group(function () {
+        Route::post('pop/machine/operations/{operationId}/draft', [PopOperationController::class, 'storeMachineDraft'])->where('operationId', '[a-z0-9-]+');
+    });
+    Route::middleware(['pop_machine:pop:dry-run', 'role:pop_machine'])->group(function () {
+        Route::post('pop/machine/operations/requests/{requestId}/dry-run', [PopOperationController::class, 'machineDryRun'])->whereUuid('requestId');
     });
 
     Route::middleware(['super_admin', 'require_password_change'])->group(function () {

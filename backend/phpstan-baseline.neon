@@ -549,7 +549,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model\:\:\$ID\.$#'
 			identifier: property.notFound
-			count: 3
+			count: 2
 			path: app/Http/Controllers/AlertController.php
 
 		-
@@ -1135,12 +1135,6 @@ parameters:
 			path: app/Http/Controllers/BugReportController.php
 
 		-
-			message: '#^Call to static method error\(\) on an unknown class Log\.$#'
-			identifier: class.notFound
-			count: 1
-			path: app/Http/Controllers/CampusController.php
-
-		-
 			message: '#^Access to an undefined property App\\Models\\ChatThread\:\:\$CampusID\.$#'
 			identifier: property.notFound
 			count: 2
@@ -1251,7 +1245,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\LearningRecord\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 5
+			count: 4
 			path: app/Http/Controllers/ClassSessionController.php
 
 		-
@@ -1311,7 +1305,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\StudentSignIn\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 3
+			count: 2
 			path: app/Http/Controllers/ClassSessionController.php
 
 		-
@@ -1323,12 +1317,6 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\UserCampus\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 1
-			path: app/Http/Controllers/ClassSessionController.php
-
-		-
-			message: '#^Call to static method channel\(\) on an unknown class Log\.$#'
-			identifier: class.notFound
 			count: 1
 			path: app/Http/Controllers/ClassSessionController.php
 
@@ -3015,9 +3003,8 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\ParentSession\:\:\$StudentID\.$#'
 			identifier: property.notFound
-			count: 9
+			count: 12
 			path: app/Http/Controllers/ParentPortalController.php
-
 		-
 			message: '#^Access to an undefined property App\\Models\\ParentSession\:\:\$id\.$#'
 			identifier: property.notFound
@@ -3117,7 +3104,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\Student\:\:whereIn\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 3
+			count: 2
 			path: app/Http/Controllers/ParentPortalController.php
 
 		-
@@ -3135,9 +3122,8 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\StudentLineBinding\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 6
+			count: 9
 			path: app/Http/Controllers/ParentPortalController.php
-
 		-
 			message: '#^Offset ''count'' on array\{key\: ''feedback'', title\: ''評量待回饋'', count\: int\<1, max\>, cta_target\: ''learning''\}\|array\{key\: ''payment'', title\: ''繳費提醒'', count\: int\<1, max\>, cta_target\: ''billing''\}\|array\{key\: ''today_session'', title\: ''今日有課程'', count\: 1, cta_target\: ''schedule''\} on left side of \?\? always exists and is not nullable\.$#'
 			identifier: nullCoalesce.offset
@@ -3254,12 +3240,6 @@ parameters:
 
 		-
 			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model\:\:\$ScheduleMode\.$#'
-			identifier: property.notFound
-			count: 2
-			path: app/Http/Controllers/PaymentReportController.php
-
-		-
-			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\|\(Illuminate\\Database\\Eloquent\\Collection&iterable\<Illuminate\\Database\\Eloquent\\Builder\>\)\|Illuminate\\Database\\Eloquent\\Model\:\:\$invoice\.$#'
 			identifier: property.notFound
 			count: 1
 			path: app/Http/Controllers/PaymentReportController.php
@@ -4083,7 +4063,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 20
+			count: 21
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
@@ -4173,7 +4153,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 8
+			count: 9
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
@@ -4191,12 +4171,6 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\StudentSignIn\:\:whereIn\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 1
-			path: app/Http/Controllers/StudentClassController.php
-
-		-
-			message: '#^Method App\\Http\\Controllers\\StudentClassController\:\:detectTeacherConflicts\(\) is unused\.$#'
-			identifier: method.unused
 			count: 1
 			path: app/Http/Controllers/StudentClassController.php
 
@@ -4341,9 +4315,8 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\Student\:\:\$id\.$#'
 			identifier: property.notFound
-			count: 8
+			count: 9
 			path: app/Http/Controllers/StudentController.php
-
 		-
 			message: '#^Access to an undefined property App\\Models\\Student\:\:\$notes\.$#'
 			identifier: property.notFound
@@ -4873,12 +4846,6 @@ parameters:
 			path: app/Models/PayrollBranchRule.php
 
 		-
-			message: '#^Call to static method warning\(\) on an unknown class Log\.$#'
-			identifier: class.notFound
-			count: 1
-			path: app/Models/PayrollBranchRule.php
-
-		-
 			message: '#^Access to an undefined property App\\Models\\PayrollTeacherBranchRule\:\:\$base_rates\.$#'
 			identifier: property.notFound
 			count: 1
@@ -5289,7 +5256,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\LearningRecord\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 5
+			count: 4
 			path: app/Services/CourseLeaveCascadeService.php
 
 		-
@@ -5301,7 +5268,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\StudentSignIn\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 3
+			count: 2
 			path: app/Services/CourseLeaveCascadeService.php
 
 		-
@@ -6129,7 +6096,7 @@ parameters:
 		-
 			message: '#^Comparison operation "\<=" between int\<1, max\> and 0 is always false\.$#'
 			identifier: smallerOrEqual.alwaysFalse
-			count: 2
+			count: 1
 			path: app/Services/ManualSessionBookingService.php
 
 		-

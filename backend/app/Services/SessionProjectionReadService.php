@@ -59,8 +59,13 @@ class SessionProjectionReadService
         string $sessionDate,
         string $startTime,
         string $endTime = '',
-        int $branchId = 0
+        int $branchId = 0,
+        ?StudentClass $class = null
     ): array {
+        $student = $class?->getAttribute('student');
+        $teacher = $class?->getAttribute('teacher');
+        $subject = $class?->getAttribute('subjectRecord');
+
         return [
             'kind' => self::KIND_PROJECTED,
             'student_class_id' => $studentClassId,
@@ -69,6 +74,15 @@ class SessionProjectionReadService
             'end_time' => substr($endTime, 0, 5),
             'status' => 'projected',
             'branch_id' => $branchId,
+            // A projection is a complete read model, not only a date/time chip.
+            // Keep the identity fields available to consumers such as the teacher
+            // workbench when the ClassSession row has not been materialized yet.
+            'student_id' => $class?->getAttribute('StudentID') ? (int) $class->getAttribute('StudentID') : null,
+            'student_name' => is_object($student) ? $student->getAttribute('name') : null,
+            'teacher_id' => $class?->getAttribute('TeacherID') ? (int) $class->getAttribute('TeacherID') : null,
+            'teacher_name' => is_object($teacher) ? $teacher->getAttribute('Name') : null,
+            'subject_name' => is_object($subject) ? $subject->getAttribute('Subject_Name') : null,
+            'learning_record_status' => 'missing',
         ];
     }
 
@@ -149,7 +163,7 @@ class SessionProjectionReadService
                 continue;
             }
             $times = $this->resolveSlotTimesForCourseDate($class, $date);
-            $slot = $this->projectedSlot($classId, $date, $times['start'], $times['end'], $branchId);
+            $slot = $this->projectedSlot($classId, $date, $times['start'], $times['end'], $branchId, $class);
             $key = $this->slotKey($slot['session_date'], $slot['start_time']);
             if (isset($materializedSlotSet[$key])) {
                 continue;

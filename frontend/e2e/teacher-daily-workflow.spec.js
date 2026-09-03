@@ -18,6 +18,12 @@ async function installTeacherMocks(page, mode = 'normal') {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
     }
     const path = new URL(request.url()).pathname;
+    const url = new URL(request.url());
+    if (mode === 'overdue-error'
+      && path.endsWith('/class-sessions')
+      && url.searchParams.get('end') !== localToday) {
+      return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: '補填提醒資料暫時無法載入' }) });
+    }
     if (mode === 'error' && path.includes('/class-sessions')) {
       return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: '今日課表暫時無法載入' }) });
     }
@@ -27,7 +33,11 @@ async function installTeacherMocks(page, mode = 'normal') {
         { id: 102, class_session_id: 102, student_id: 402, student_class_id: 202, branch_id: 1, session_date: localToday, start_time: '10:30', end_time: '11:30', student_name: '測試學生乙', subject_name: '英文', status: 'scheduled', learning_record_status: 'missing' },
         { id: 103, class_session_id: 103, student_id: 403, student_class_id: 203, branch_id: 1, session_date: localToday, start_time: '13:00', end_time: '14:00', student_name: '請假學生', subject_name: '自然', status: 'leave_requested', learning_record_status: 'missing' },
       ];
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: rows }) });
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ api_kind: 'projection', completeness: 'full', data: rows, by_class: {} }),
+      });
     }
     if (path.includes('/teacher-attendance/today')) {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'normal', sign_in_dt: `${localToday} 08:40:00`, first_class_start_time: '09:00' }) });
@@ -36,6 +46,9 @@ async function installTeacherMocks(page, mode = 'normal') {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ total: 2, changes_requested_learning_records: 1 }) });
     }
     if (path.includes('/me/awaiting-reply-count')) {
+      if (mode === 'feedback-error') {
+        return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: '家長回覆資料暫時無法載入' }) });
+      }
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ awaiting_reply_count: mode === 'empty' ? 0 : 1 }) });
     }
     if (path.includes('/learning-progress-summary')) {
@@ -66,22 +79,54 @@ test.describe('Teacher daily workflow real Vue page', () => {
     });
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/pilot-mount.html?page=teacher');
+    const companion = page.locator('[data-guide="teacher-home-companion"]');
+    await expect(companion).toBeVisible();
+    await expect(companion.getByRole('heading', { name: '先完成最重要的一件事' })).toBeVisible();
+    await expect(companion.locator('img')).toHaveAttribute('alt', '');
+    const queueLink = companion.getByRole('link', { name: '查看今日任務' });
+    await expect(queueLink).toHaveAttribute('href', '#teacher-work-queue-title');
+    await queueLink.click();
+    await expect(page.locator('#teacher-work-queue-title')).toBeFocused();
     await expect(page.getByRole('heading', { name: '今天要完成' })).toBeVisible();
-    await expect(page.getByRole('button', { name: '修改評量' })).toBeVisible();
+    const priorityDisclosure = page.locator('.th-priority-disclosure');
+    await expect(priorityDisclosure.getByText('查看排序規則')).toBeVisible();
+    await expect(priorityDisclosure.locator('.th-priority-rules')).toBeHidden();
+    await priorityDisclosure.locator('summary').click();
+    await expect(priorityDisclosure.getByRole('heading', { name: '今天的處理順序' })).toBeVisible();
+    await expect(priorityDisclosure.locator('.th-priority-rules__item')).toHaveCount(3);
+    await expect(priorityDisclosure.locator('.th-work-task')).toHaveCount(0);
+    const nextAction = page.locator('[data-guide="teacher-next-action"]');
+    await expect(nextAction).toBeVisible();
+    await expect(nextAction.getByText('現在先做')).toBeVisible();
+    await expect(nextAction.getByRole('heading', { name: '評量需要修改' })).toBeVisible();
+    await expect(nextAction.getByRole('button', { name: '修改評量' })).toBeVisible();
+    await expect(nextAction.locator('.th-next-action__cta')).toHaveClass(/primary/);
+    const secondaryCta = page.locator('.th-work-task__cta').first();
+    await expect(secondaryCta).toBeVisible();
+    await expect(secondaryCta).toHaveClass(/ghost/);
+    await expect(secondaryCta).not.toHaveClass(/primary/);
     await expect(page.getByRole('button', { name: '開始點名' }).first()).toBeVisible();
     await expect(page.locator('.th-work-task').getByText('請假學生')).toHaveCount(0);
+    const clockinCard = page.getByRole('button', { name: /今日打卡狀態/ });
+    await expect(clockinCard).toHaveAttribute('type', 'button');
+    await expect(clockinCard).toHaveAttribute('aria-describedby', 'teacher-clockin-status');
+    await clockinCard.press('Space');
+    await expect.poll(() => page.evaluate(() => window.__pilotLastNavigation)).toBe('attendance');
+    await expect(page.getByRole('button', { name: '上一週' })).toHaveAttribute('aria-label', '上一週');
+    await expect(page.getByRole('button', { name: '下一週' })).toHaveAttribute('aria-label', '下一週');
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
     expect(overflow).toBeTruthy();
     expect(await page.locator('.th-work-task__cta').first().isVisible()).toBeTruthy();
     expect(secondaryRequests).toHaveLength(0);
-    await page.locator('.th-secondary summary').click();
-    await expect.poll(() => secondaryRequests.length).toBeGreaterThan(0);
+    await expect(page.locator('[data-guide="teacher-secondary-actions"]')).toBeVisible();
   });
 
   test('shows a clear empty state without horizontal overflow', async ({ page }) => {
     await installTeacherMocks(page, 'empty');
     await page.setViewportSize({ width: 412, height: 915 });
     await page.goto('/pilot-mount.html?page=teacher&mode=empty');
+    await expect(page.locator('[data-guide="teacher-home-companion"]')).toContainText('今天的課務完成了');
+    await expect(page.locator('[data-guide="teacher-home-companion"]').getByRole('link', { name: '查看今日摘要' })).toBeVisible();
     await expect(page.getByText('今天沒有待完成工作')).toBeVisible();
     await expect(page.getByRole('button', { name: '查看本週課表' })).toBeVisible();
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
@@ -91,7 +136,7 @@ test.describe('Teacher daily workflow real Vue page', () => {
   test('keeps the first attendance action visible on mobile', async ({ page }) => {
     await installTeacherMocks(page);
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto('/pilot-mount.html?page=attendance');
+    await page.goto('/pilot-mount.html?page=attendance&role=teacher');
     await expect(page.getByRole('heading', { name: '先完成今日點名' })).toBeVisible();
     await expect(page.getByRole('button', { name: '開始點名' }).first()).toBeVisible();
     await expect(page.locator('[data-guide="attendance-pending-list"]')).toBeVisible();
@@ -104,6 +149,9 @@ test.describe('Teacher daily workflow real Vue page', () => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto('/pilot-mount.html?page=teacher');
     await expect(page.getByRole('heading', { name: '今天要完成' })).toBeVisible();
+    await expect(page.locator('[data-guide="teacher-next-action"]')).toBeVisible();
+    await expect(page.locator('[data-guide="teacher-next-action"] .th-next-action__cta')).toHaveClass(/primary/);
+    await expect(page.locator('.th-work-task__cta').first()).toHaveClass(/ghost/);
     await expect(page.getByRole('button', { name: '修改評量' })).toBeVisible();
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
     expect(overflow).toBeTruthy();
@@ -115,7 +163,32 @@ test.describe('Teacher daily workflow real Vue page', () => {
     await page.goto('/pilot-mount.html?page=teacher');
     await expect(page.getByRole('heading', { name: '今天要完成' })).toBeVisible();
     await expect(page.getByText('無法載入課表，請稍後重試')).toBeVisible();
+    await expect(page.getByRole('alert')).toContainText('今天的工作清單尚未完整載入');
+    await expect(page.getByText('今天沒有待完成工作')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '重新整理今日任務' })).toBeVisible();
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
     expect(overflow).toBeTruthy();
+  });
+
+  test('keeps actionable work visible when parent reply data fails', async ({ page }) => {
+    await installTeacherMocks(page, 'feedback-error');
+    await page.setViewportSize({ width: 412, height: 915 });
+    await page.goto('/pilot-mount.html?page=teacher');
+    await expect(page.locator('[data-guide="teacher-next-action"]')).toBeVisible();
+    await expect(page.getByRole('button', { name: '修改評量' })).toBeVisible();
+    await expect(page.getByRole('alert')).toContainText('家長回覆資料暫時無法載入');
+    await expect(page.getByText('其他工作仍可繼續處理')).toBeVisible();
+    await expect(page.getByText('今天的工作清單尚未完整載入')).toHaveCount(0);
+  });
+
+  test('keeps current actions visible when overdue learning data fails', async ({ page }) => {
+    await installTeacherMocks(page, 'overdue-error');
+    await page.setViewportSize({ width: 412, height: 915 });
+    await page.goto('/pilot-mount.html?page=teacher');
+    await expect(page.locator('[data-guide="teacher-next-action"]')).toBeVisible();
+    await expect(page.getByRole('button', { name: '修改評量' })).toBeVisible();
+    await expect(page.getByRole('alert')).toContainText('補填提醒資料暫時無法載入');
+    await expect(page.getByText('其他工作仍可繼續處理')).toBeVisible();
+    await expect(page.getByText('今天的工作清單尚未完整載入')).toHaveCount(0);
   });
 });

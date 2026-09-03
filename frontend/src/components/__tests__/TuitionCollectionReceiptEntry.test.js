@@ -38,16 +38,37 @@ describe('TuitionCollectionPage receipt entry paths', () => {
   });
 
   it('declares activeTab before batchMode / isRowSelectable / watch(activeTab) (TDZ)', () => {
-    const decl = source.indexOf("const activeTab = ref('all')");
+    const decl = source.indexOf("const activeTab = ref('action')");
     expect(decl).toBeGreaterThan(-1);
     expect(decl).toBeLessThan(source.indexOf('function isRowSelectable'));
-    expect(decl).toBeLessThan(source.indexOf("activeTab.value === 'pending_report' ? 'confirm'"));
+    expect(decl).toBeLessThan(source.indexOf("if (activeTab.value === 'pending_report') return 'confirm';"));
     expect(decl).toBeLessThan(source.indexOf('watch(activeTab,'));
   });
 
+  it('opens on a mixed-status action queue and prevents mixed batch operations', () => {
+    expect(source).toContain("{ key: 'action', label: '待處理' }");
+    expect(source).toContain('aria-label="主任待處理佇列"');
+    expect(source).toContain("if (activeTab.value === 'action') return ps === 'unpaid' || ps === 'partial' || ps === 'pending_report' || ps === 'pending_reconciliation';");
+    expect(source).toContain("if (modes.size > 1) return 'mixed';");
+    expect(source).toContain('請分開選取未繳費或待對帳，才能進行批次處理。');
+  });
+
   it('admin reported-paid path does not auto-open a receipt', () => {
-    expect(source).toContain('已送出待對帳，請到帳務中心按確認入帳後才會開收據');
+    expect(source).toContain('已送出待對帳，畫面已切到待對帳；請按確認入帳後才會變成已繳費並開收據');
     expect(source).not.toMatch(/if\s*\(result\?\.report_id\)\s*\{[\s\S]*receiptReportId\.value\s*=\s*result\.report_id/);
+  });
+
+  it('moves successful or duplicate reports into the pending-accounting flow', () => {
+    expect(source).toContain('@pending="onPendingReportConflict"');
+    expect(source).toContain("activeTab.value = 'pending_report'");
+    expect(source).toContain('畫面已切到待對帳');
+    expect(source).toContain('請按確認入帳後才會變成已繳費並開收據');
+  });
+
+  it('shows a stable course reference so duplicate subjects cannot be mistaken for one course', () => {
+    expect(source).toContain('formatCourseRef(r.id)');
+    expect(source).toContain('course_start_date || r.course_end_date');
+    expect(source).toContain('function formatCourseRef(id)');
   });
 
   it('batch confirm does not auto-open receipts', () => {
@@ -60,14 +81,35 @@ describe('TuitionCollectionPage receipt entry paths', () => {
     expect(batchConfirm[0]).not.toMatch(/receiptOpen/);
   });
 
+  it('requires a read-only batch preview before either batch endpoint can run', () => {
+    expect(source).toContain('@click="openBatchPreview"');
+    expect(source).toContain('role="dialog"');
+    expect(source).toContain('aria-modal="true"');
+    expect(source).toContain('送出前確認');
+    expect(source).toContain('function confirmBatchPreview()');
+    expect(source).toContain('if (!batchPreviewOpen.value) return;');
+    expect(source).toContain('批次摘要');
+    expect(source).toContain('只會處理上方未繳／部分付款課程');
+    expect(source).toContain('只會處理上方待對帳課程');
+  });
+
   it('class-list receipt lookup opens with match.id (payment report id)', () => {
     expect(source).toContain('async function viewReceiptForClass(row)');
     expect(source).toMatch(/receiptReportId\.value\s*=\s*match\.id/);
   });
 
-  it('blocks settle when remaining sessions are still owed (#1839)', () => {
+  it('requires explicit forfeiture when settling with remaining sessions (#1839)', () => {
     expect(source).toContain('settleTargetStillOwesSessions');
-    expect(source).toContain('還有 ${Number(row.remaining_sessions)} 堂未上，請先排課後再結案');
-    expect(source).toContain(':disabled="settleLoading || settleTargetStillOwesSessions"');
+    expect(source).toContain('確認結案會取消未來排課並放棄這些剩餘額度');
+    expect(source).toContain('forfeit_remaining: true');
+    expect(source).toContain(':disabled="settleLoading"');
+    expect(source).not.toContain('請先排課後再結案');
+  });
+
+  it('offers no-renew settlement for the paid monthly reminder state', () => {
+    expect(source).toContain("r.payment_status === 'renew_needed' || r.payment_status === 'monthly_due_soon'");
+    expect(source).toContain("r.payment_status === 'monthly_due_soon' ? '月結本期' : '需續課'");
+    expect(source).toContain('title="結案且不續報"');
+    expect(source).toContain('結案（不續報）');
   });
 });

@@ -18,16 +18,19 @@ import { findUserFacingCopyIssues } from '../../../scripts/lib/userFacingCopyGat
 assert.strictEqual(allStaffUpdates, staffUpdates);
 assert.ok(notesForRole('director').length >= 1);
 assert.ok(notesForRole('teacher').length > 0);
-assert.strictEqual(notesForRole('super_admin').length, notesForRole('director').length);
-assert.strictEqual(notesForRole('admin').length, notesForRole('director').length);
+assert.ok(notesForRole('super_admin').length >= notesForRole('director').length);
+assert.equal(notesForRole('admin').length, notesForRole('super_admin').length);
 assert.ok(latestReleaseVersionForRole('super_admin'));
 
 const latest = notesForRole('director')[0];
 assert.ok(/^\d+\.\d+\.\d+$/.test(latest.version));
 assert.ok(latest.id && latest.publishedAt && latest.sections?.length);
 assert.ok(['digest', 'major', 'action_required'].includes(latest.importance));
-  assert.strictEqual(latest.publishedAt, '2026-08-24');
+assert.strictEqual(latest.publishedAt, '2026-09-02');
+assert.strictEqual(latest.id, 'staff-2026-09-02-course-rate-unit-consistency');
   for (const id of [
+    'staff-2026-08-27-teacher-assessment-engagement',
+    'staff-2026-08-26-bug-report-image-paste',
     'staff-2026-08-19-receipt-line-clarity',
     'staff-2026-08-19-accounting-receipt-pin-gap',
     'staff-2026-08-17-lr-batch-approve-perf',

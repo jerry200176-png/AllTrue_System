@@ -8,6 +8,7 @@ use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
 use App\Services\ClassSessionMaterializationService;
+use App\Services\AttendanceEffectsService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -124,8 +125,7 @@ class PendingSwipeController extends Controller
                 'Status' => $status,
             ]);
 
-            $session->Status = $status === 'late' ? 'late' : 'attended';
-            $session->save();
+            AttendanceEffectsService::applySessionStatus($session, $status === 'late' ? 'late' : 'present');
 
             $pendingSwipe->delete();
 

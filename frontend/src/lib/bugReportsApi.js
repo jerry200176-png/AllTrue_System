@@ -1,3 +1,5 @@
+import { MAX_BUG_ATTACHMENTS } from './bugReportAttachments';
+
 const API = '/api/v1';
 
 export function getToken() {
@@ -23,8 +25,6 @@ async function json(res) {
   }
   return res.json();
 }
-
-const MAX_BUG_ATTACHMENTS = 5;
 
 /**
  * @param {object} data — branch_id, title, description, severity?, page_key?, url?, client_info?

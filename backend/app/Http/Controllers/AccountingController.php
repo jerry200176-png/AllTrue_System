@@ -34,7 +34,8 @@ class AccountingController extends Controller
         $query = StudentClass::with(['student', 'subjectRecord'])
             ->where(function ($q) {
                 $q->where('Paid', 1)
-                    ->orWhereHas('invoices', fn ($invoice) => $invoice->where('Status', 'paid'));
+                    ->orWhereHas('invoices', fn ($invoice) => $invoice->where('Status', 'paid'))
+                    ->orWhere('closed_reason', 'settled_pending');
             });
 
         $guard = $this->applyStudentClassCampusGuard($request, $query);
@@ -102,6 +103,11 @@ class AccountingController extends Controller
             }
 
             $legacyPaid = $invoices->isEmpty() && (int) ($course->Paid ?? 0) === 1;
+            $pendingReconciliation = (string) ($course->getAttribute('closed_reason') ?? '') === 'settled_pending';
+            if ($pendingReconciliation && $invoices->isEmpty()) {
+                $invoiceTotal = (int) ($course->Charge ?? 0);
+                $outstandingTotal = max(0, $invoiceTotal - $appliedTotal);
+            }
             $latestReport = $reports->first();
             $lastPaidAt = $course->PayDate ? substr((string) $course->PayDate, 0, 10) : null;
             if (!$lastPaidAt && $latestReport?->payment_date) {
@@ -125,6 +131,9 @@ class AccountingController extends Controller
                 'last_paid_at' => $lastPaidAt,
                 'legacy_paid_without_invoice' => $legacyPaid,
                 'has_exception' => $overpaidTotal > 0,
+                'pending_reconciliation' => $pendingReconciliation,
+                'reconciliation_label' => $pendingReconciliation ? '結案待對帳' : null,
+                'closed_reason' => $course->getAttribute('closed_reason'),
             ];
         })->values();
 
@@ -134,6 +143,8 @@ class AccountingController extends Controller
                 'course_count' => $rows->count(),
                 'legacy_count' => $rows->where('legacy_paid_without_invoice', true)->count(),
                 'exception_count' => $rows->where('has_exception', true)->count(),
+                'pending_reconciliation_count' => $rows->where('pending_reconciliation', true)->count(),
+                'pending_reconciliation_total' => (int) $rows->where('pending_reconciliation', true)->sum('outstanding_amount'),
                 'paid_total' => (int) $rows->sum('paid_amount'),
                 'overpaid_total' => (int) $rows->sum('overpaid_amount'),
             ],
@@ -655,6 +666,7 @@ class AccountingController extends Controller
             'payment_id' => $report->payment_id ? (int) $report->payment_id : null,
             'payment_date' => $report->payment_date ? $report->payment_date->toDateString() : null,
             'payment_method' => (string) ($report->payment_method ?? ''),
+            'note' => (string) ($report->note ?? ''),
             'amount' => (int) round((float) $report->reported_amount),
             'status' => (string) $report->status,
             'confirmed_at' => $report->confirmed_at?->toIso8601String(),
@@ -756,6 +768,7 @@ class AccountingController extends Controller
             'contract_start_date' => AccountingCourseClarity::contractStartDate($sc),
             'is_prepaid' => $paymentDate !== null && $firstSessionDate !== null && $paymentDate < $firstSessionDate,
             'payment_method' => $method,
+            'note' => (string) ($report->note ?? ''),
             'cash_amount' => $isConfirmed && $method === 'cash' ? $amount : 0,
             'transfer_amount' => $isConfirmed && $method === 'transfer' ? $amount : 0,
             'total_amount' => $isConfirmed ? $amount : 0,

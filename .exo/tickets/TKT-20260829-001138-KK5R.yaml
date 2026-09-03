@@ -1,0 +1,42 @@
+id: TKT-20260829-001138-KK5R
+title: Implement original learning companion hero
+intent: Implement original learning companion hero
+kind: task
+parent_id: INT-20260829-001131-D2UV
+boundary: No API/auth/billing/attendance/leave/learning-record/scheduling/DB/production-data
+  changes; preserve existing TeacherHome handlers and task state logic.
+success_condition: A compact responsive TeacherHome hero uses the original companion
+  asset, clear task-progress copy and existing queue anchor; semantic and visual tests
+  cover desktop/mobile/empty/loading behavior.
+priority: 2
+labels:
+- uiux
+scope:
+  allow:
+  - frontend/src/pages/TeacherHomePage.vue
+  - frontend/src/assets/alltrue-learning-companion.png
+  - frontend/e2e/teacher-daily-workflow.spec.js
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 4
+  max_loc_changed: 220
+checks:
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: done
+spec_ref: null
+notes:
+- "Completed on main via f29ad8a3 (#2160), with the original companion asset present in frontend/src/assets."
+- "Evidence: teacher workflow/accessibility checks, no-undef lint, and Vite build passed; responsive task and empty/loading behavior remain within the existing page contract."
+blockers: []
+created_at: '2026-08-29T00:11:38+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default

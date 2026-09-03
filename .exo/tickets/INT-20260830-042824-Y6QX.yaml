@@ -1,0 +1,50 @@
+id: INT-20260830-042824-Y6QX
+title: Attendance control semantics UX
+intent: Attendance control semantics UX
+kind: intent
+brain_dump: 'Improve AllTrue core UX autonomously with a bounded AttendancePage interaction
+  semantics fix: make native controls explicit buttons so future form contexts cannot
+  submit unexpectedly, with a focused accessibility regression test and release-note
+  evidence.'
+boundary: Only frontend AttendancePage native button semantics, its focused accessibility
+  test, and required changelog/release-note evidence. Do not change attendance API
+  payloads, status semantics, attendance data, authorization, branch isolation, billing,
+  scheduling, production data, or deployment activation.
+success_condition: All native non-submit controls in AttendancePage use type=button;
+  a regression contract test proves representative controls stay explicit; focused
+  unit test, lint, build, release-note checks, exo check, and CI pass.
+risk: low
+priority: 2
+labels:
+- ux
+scope:
+  allow:
+  - frontend/src/pages/AttendancePage.vue
+  - frontend/src/components/__tests__/AttendancePageAccessibility.test.js
+  - docs/CHANGELOG.md
+  - docs/RELEASE_NOTES_EXEMPTIONS.yml
+  - frontend/src/lib/changelogDraft.generated.js
+  - .agent-session/manifest.json
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 6
+  max_loc_changed: 240
+checks:
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-30T04:28:24+08:00'
+children:
+- TKT-20260830-042831-YTT0
+resource_profile: default

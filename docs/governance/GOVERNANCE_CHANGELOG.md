@@ -1,5 +1,62 @@
 # Governance changelog
 
+## 2026-08-30 — Resolve solo-Founder bootstrap activation contradiction
+
+- Allowed only an explicit manually dispatched `application-deploy` bootstrap
+  run to pass the required-review environment when the sole configured Founder
+  must approve that run; automatic runs and staged high-risk phases remain
+  fail-closed unless self-review prevention is enabled.
+- Preserved required reviewer, no administrator bypass, main-only dispatch,
+  exact-SHA/current-main and successful-CI checks, typed confirmation,
+  health/smoke verification, and rollback behavior. No security or production
+  verification gate was weakened.
+
+## 2026-08-30 — Recover the production side-effect queue
+
+- Rotated the shared GitHub Actions concurrency namespace to
+  `alltrue-production-side-effects-v2` across application deploy, principal
+  rotation, and guarded repair workflows after a stale pending lock stranded
+  the bootstrap activation.
+- Kept the lock non-cancelling and shared across all production side effects;
+  no tests, exact-SHA checks, protected activation gate, health/smoke checks, or
+  rollback behavior were removed.
+
+## 2026-08-30 — Autonomous safe delivery path (implementation pending protected activation)
+
+- Added deterministic `autonomy_gate.py` classification and a base-context
+  `auto-merge-safe.yml` workflow. Same-repository T0/T1 PRs can request
+  server-side squash auto-merge only after exact-SHA revalidation; T2/T3,
+  unknown, workflow, governance, and protected-boundary changes are held.
+- Scoped the production concurrency lock to side-effecting deploy and principal
+  rotation jobs so preflight/classification work cannot occupy the production
+  queue. The protected `production-activation` environment remains on manual
+  and principal-rotation paths.
+- This is a governance capability change and therefore remains subject to the
+  existing 24-hour cool-off and protected review process. No production
+  setting or protected environment was bypassed in this implementation step.
+
+## 2026-08-29 — Provenance gate binds this PR's claim only
+
+- `scripts/check-agent-provenance.sh` and `ci:preflight` no longer treat the
+  inherited `.agent-session/manifest.json` on `main` as the current PR's
+  session. Binding leftover `task_id`/`branch` to every new branch was a false
+  invariant and forced unrelated PRs to rewrite a shared singleton.
+- A changed agent/human session file in the PR diff is still fully validated
+  (schema, secrets, `production_mutation`, branch/`task_id`, `base_sha`
+  ancestor). Worktree path bans remain on `agent-start` / local preflight.
+
+## 2026-08-29 — Founder T0–T3 autonomy convergence
+
+- Reconciled the portable governance overlay and Codex adapter with the
+  risk-based operating model: T0/T1 autonomous after required gates, T2 with
+  independent review, and T3/protected work stopping before protected
+  execution or activation for Founder approval.
+- Removed the obsolete universal human-approval requirement from the product
+  adapter without weakening required checks, rollback evidence, product P0,
+  or the public in-app bug closure path.
+- Clarified that AllTrue remains in active but bounded development; the draft
+  Learning Assessment spinout RFC does not impose a global feature freeze.
+
 ## 2026-08-16 — Constitution/Control Plane scope clarification + cool-off rule (pin stays 0.1.0)
 
 - `CONTROL_PLANE_CONTRACT.md`'s "Supersedes: all other docs" banner now scoped to

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
   buildTeacherTasks,
+  countTeacherTasks,
   TEACHER_LEAVE_STATUSES,
 } from './teacherDailyWorkflow.js';
 
@@ -47,6 +48,9 @@ assert.equal(tasks.filter((task) => task.type === 'learning' && task.id === 'lea
 assert.equal(tasks[0].actionLabel, '修改評量', 'changes requested should be first and actionable');
 assert.equal(tasks.filter((task) => task.type === 'feedback').length, 1);
 assert.equal(tasks.find((task) => task.type === 'attendance').actionLabel, '開始點名');
+assert.equal(countTeacherTasks(tasks), 6, 'aggregate count should include grouped feedback messages');
+assert.equal(countTeacherTasks([{ count: 2 }, { count: 'bad' }, { count: 0 }]), 3);
 
 const empty = buildTeacherTasks(base);
 assert.deepEqual(empty, []);
+assert.equal(countTeacherTasks(empty), 0);

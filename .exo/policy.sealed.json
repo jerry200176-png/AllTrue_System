@@ -1,0 +1,110 @@
+{
+  "budgets": {
+    "max_files_changed": 12,
+    "max_loc_changed": 400
+  },
+  "checks_allowlist": [
+    "npm run test:unit",
+    "npm run lint:no-undef",
+    "npm run build",
+    "vendor/bin/phpunit",
+    "bash scripts/phpunit-isolated.sh"
+  ],
+  "coherence_rules": [],
+  "composed_at": "2026-09-03T17:16:50+08:00",
+  "deny_patterns": [
+    "**/.env",
+    "**/.env.*.local",
+    "**/.env.development",
+    "**/.env.local",
+    "**/.env.production",
+    "**/.env.staging",
+    "**/.env.test",
+    ".git/**",
+    "~/.aws/**",
+    "~/.ssh/**"
+  ],
+  "governance": {
+    "kernel": {
+      "name": "exo-kernel",
+      "version": "0.1.0"
+    },
+    "rules": [
+      {
+        "actions": [
+          "read",
+          "write"
+        ],
+        "id": "RULE-SEC-001",
+        "message": "Blocked by RULE-SEC-001 (Secrets). Use secret injection.",
+        "patterns": [
+          "~/.aws/**",
+          "~/.ssh/**",
+          "**/.env",
+          "**/.env.local",
+          "**/.env.*.local",
+          "**/.env.production",
+          "**/.env.staging",
+          "**/.env.development",
+          "**/.env.test"
+        ],
+        "type": "filesystem_deny"
+      },
+      {
+        "actions": [
+          "read",
+          "write",
+          "delete"
+        ],
+        "id": "RULE-GIT-001",
+        "message": "Blocked by RULE-GIT-001 (.git internals are protected).",
+        "patterns": [
+          ".git/**"
+        ],
+        "type": "filesystem_deny"
+      },
+      {
+        "id": "RULE-LOCK-001",
+        "message": "Blocked by RULE-LOCK-001 (acquire a ticket lock first).",
+        "type": "require_lock"
+      },
+      {
+        "id": "RULE-CHECK-001",
+        "message": "Blocked by RULE-CHECK-001 (checks must pass before done).",
+        "type": "require_checks"
+      },
+      {
+        "governance_requires": [
+          "approval:human"
+        ],
+        "id": "RULE-EVO-001",
+        "message": "Practice is mutable, governance requires explicit human approval.",
+        "practice_requires": [
+          "approval:any(human|trusted_agent)"
+        ],
+        "type": "evolution_gate"
+      },
+      {
+        "id": "RULE-EVO-002",
+        "message": "Patch-first evolution required.",
+        "requires": [
+          "proposal_artifact",
+          "patch_artifact",
+          "review_artifact",
+          "audit_trail"
+        ],
+        "type": "patch_first"
+      }
+    ]
+  },
+  "hooks_hash": "",
+  "integrity_hash": "c0ce3945073f9df836e7408519306998148a438f062faeaa9d04da2f24d0b5e1",
+  "scope_deny_from_features": [],
+  "sources": {
+    "config": "d68138fb1ce852b0d28b4eb2225e099611c3ab254724f1c66c9637078a3ffc4e",
+    "constitution": "f36ea664fa045696a839dcda1d02d893a4ebae3c58fa30e67429a0da5d058516",
+    "features": "",
+    "requirements": ""
+  },
+  "version": "1"
+}

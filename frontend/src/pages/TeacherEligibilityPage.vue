@@ -1,23 +1,22 @@
 <template>
   <div class="eligibility-page">
-    <div class="page-header">
-      <div class="page-header-left">
-        <div class="page-icon"><span class="material-symbols-outlined">payments</span></div>
-        <div class="title-group">
-          <h2>正職薪資要件</h2>
-          <p class="title-sub">115.07 正職結算：本薪＋16段課獎金＋科目數／一對三獎金×教師倍率</p>
-        </div>
+    <AtPageHeader
+      title="正職薪資要件"
+      description="依結算月份檢視本薪、獎金與待人工確認項目。"
+      icon="payments"
+      data-guide="eligibility-header"
+    >
+      <template #meta>
         <span class="privilege-chip">高權限存取區</span>
-      </div>
-      <div class="header-actions">
-        <button class="btn-primary" :disabled="loading || isLocked" @click="loadData">
-          <span class="material-symbols-outlined">refresh</span>{{ isLocked ? '已鎖定' : '重新結算' }}
-        </button>
-        <button class="btn-outline" :disabled="loading || !props.branchId" @click="exportCsv">匯出 Excel</button>
-        <button v-if="!isLocked" class="btn-outline" :disabled="loading || !props.branchId || reviewCount > 0" @click="lockMonth">鎖定本月</button>
-        <button v-else-if="isHq" class="btn-outline" :disabled="loading" @click="reopenMonth">重開結算</button>
-      </div>
-    </div>
+        <span>制度 {{ policyVersion }} · {{ lockLabel }}</span>
+      </template>
+      <template #actions>
+        <AtButton shape="rect" variant="primary" icon="refresh" :loading="loading" :disabled="isLocked" @click="loadData">{{ isLocked ? '已鎖定' : '重新結算' }}</AtButton>
+        <AtButton shape="rect" variant="ghost" icon="download" :disabled="loading || !props.branchId" @click="exportCsv">匯出 Excel</AtButton>
+        <AtButton v-if="!isLocked" shape="rect" variant="secondary" icon="lock" :disabled="loading || !props.branchId || reviewCount > 0" @click="lockMonth">鎖定本月</AtButton>
+        <AtButton v-else-if="isHq" shape="rect" variant="secondary" icon="lock_open" :disabled="loading" @click="reopenMonth">重開結算</AtButton>
+      </template>
+    </AtPageHeader>
 
     <div class="eligibility-card filters">
       <label>結算月份
@@ -51,7 +50,6 @@
           <thead>
             <tr>
               <th>老師姓名</th>
-              <th>固定底薪</th>
               <th>正課科目數</th>
               <th>輔導＋試聽科目數</th>
               <th>核薪總科目數</th>
@@ -62,6 +60,7 @@
               <th>倍率後獎金</th>
               <th>加扣款</th>
               <th>總發放金額</th>
+              <th>每週課段</th>
             </tr>
           </thead>
           <tbody>
@@ -71,28 +70,26 @@
                 <small>老師</small>
                 <span :class="['status', statusClass(teacher.overall_status)]">{{ statusLabel(teacher) }}</span>
               </td>
-              <td class="salary-cell">
-                <template v-if="editingSalaryId === teacher.teacher_id">
-                  <input v-model.number="salaryDraft" type="number" min="0" step="1" class="salary-input" />
-                  <button class="btn-outline small" :disabled="savingSalary" @click="saveSalary(teacher)">存</button>
-                  <button class="btn-outline small" @click="editingSalaryId = null">取消</button>
-                </template>
-                <template v-else>
-                  <span class="money-pos">{{ formatMoney(teacher.settlement?.base_salary) }}</span>
-                  <small v-if="teacher.pending_salary" class="pending-salary">待核准 {{ formatMoney(teacher.pending_salary.base_salary) }}</small>
-                  <button v-if="!isLocked" class="btn-outline small" @click="startEditSalary(teacher)">改</button>
-                  <button v-if="isHq && teacher.pending_salary && !isLocked" class="btn-outline small" :disabled="savingSalary" @click="approveSalary(teacher)">核准底薪</button>
-                </template>
-              </td>
               <td>{{ formatSubjects(teacher.settlement?.regular_subject_count) }}</td>
               <td>{{ formatSubjects(teacher.settlement?.tutoring_trial_subject_count) }}</td>
               <td>{{ formatSubjects(teacher.settlement?.payroll_subject_count) }}</td>
               <td>{{ formatSubjects(teacher.settlement?.one_to_three_count) }}</td>
               <td>{{ formatMoney(teacher.settlement?.subject_count_bonus) }}</td>
               <td>{{ formatMoney(teacher.settlement?.one_to_three_bonus) }}</td>
-              <td>
-                <strong>{{ teacher.settlement?.multiplier_pct ?? 100 }}%</strong>
-                <small v-for="part in visibleMultiplierParts(teacher)" :key="part.key">{{ part.label }} {{ formatPct(part.pct) }}</small>
+              <td class="multiplier-cell">
+                <template v-if="editingMultiplierId === teacher.teacher_id">
+                  <input v-model.number="multiplierDraft" type="number" min="0" max="300" step="0.01" class="multiplier-input" aria-label="手動教師倍率" />
+                  <button class="btn-outline small" :disabled="savingMultiplier" @click="saveMultiplier(teacher)">存</button>
+                  <button class="btn-outline small" @click="editingMultiplierId = null">取消</button>
+                </template>
+                <template v-else>
+                  <strong>{{ formatPct(teacher.settlement?.multiplier_pct) }}</strong>
+                  <small v-if="teacher.settlement?.manual_multiplier_pct != null">手動總倍率</small>
+                  <small v-if="teacher.pending_salary?.manual_multiplier_pct != null">待核准 {{ formatPct(teacher.pending_salary.manual_multiplier_pct) }}</small>
+                  <small v-for="part in visibleMultiplierParts(teacher)" :key="part.key">{{ part.label }} {{ formatPct(part.pct) }}</small>
+                  <button v-if="!isLocked" class="btn-outline small" @click="startEditMultiplier(teacher)">改</button>
+                  <button v-if="isHq && teacher.pending_salary?.manual_multiplier_pct != null && !isLocked" class="btn-outline small" :disabled="savingMultiplier" @click="approveMultiplier(teacher)">核准倍率</button>
+                </template>
               </td>
               <td>
                 <strong>{{ formatMoney(teacher.settlement?.weighted_bonus_amount) }}</strong>
@@ -110,6 +107,17 @@
                 <strong>{{ formatMoney(teacher.settlement?.total_payout) }}</strong>
                 <small v-if="isDraft(teacher)">試算，未可發放</small>
               </td>
+              <td class="weekly-segment-cell">
+                <strong>{{ weeklySegmentsLabel(teacher) }}</strong>
+                <small>{{ weeklyQualificationLabel(teacher) }}</small>
+                <details v-if="weeklyCourseSessions(teacher).length" class="weekly-trace">
+                  <summary>查看構成課程</summary>
+                  <div v-for="session in weeklyCourseSessions(teacher)" :key="session.class_session_id" class="course-trace-row">
+                    <span>{{ session.session_date }} {{ session.start_time }}–{{ session.end_time }}</span>
+                    <span>{{ sessionTypeLabel(session) }} {{ formatSegments(session.segments) }}段</span>
+                  </div>
+                </details>
+              </td>
             </tr>
             <tr v-if="filteredTeachers.length === 0"><td colspan="12" class="empty">查詢期間沒有符合條件的正職老師資料。</td></tr>
           </tbody>
@@ -121,13 +129,38 @@
             <div><strong>{{ teacher.teacher_name }}</strong><small>老師</small></div>
             <span :class="['status', statusClass(teacher.overall_status)]">{{ statusLabel(teacher) }}</span>
           </div>
-          <div class="component-row"><span>固定底薪</span><span class="component-value money-pos">{{ formatMoney(teacher.settlement?.base_salary) }}</span></div>
           <div class="component-row"><span>核薪總科目數</span><span class="component-value">{{ formatSubjects(teacher.settlement?.payroll_subject_count) }}</span></div>
           <div class="component-row"><span>科目數獎金</span><span class="component-value">{{ formatMoney(teacher.settlement?.subject_count_bonus) }}</span></div>
           <div class="component-row"><span>一對三獎金</span><span class="component-value">{{ formatMoney(teacher.settlement?.one_to_three_bonus) }}</span></div>
-          <div class="component-row"><span>教師倍率</span><span class="component-value">{{ teacher.settlement?.multiplier_pct ?? 100 }}%</span></div>
+          <div class="component-row"><span>教師倍率</span><span class="component-value">
+            <template v-if="editingMultiplierId === teacher.teacher_id">
+              <input v-model.number="multiplierDraft" type="number" min="0" max="300" step="0.01" class="multiplier-input" aria-label="手動教師倍率" />
+              <button class="btn-outline small" :disabled="savingMultiplier" @click="saveMultiplier(teacher)">存</button>
+              <button class="btn-outline small" @click="editingMultiplierId = null">取消</button>
+            </template>
+            <template v-else>
+              {{ formatPct(teacher.settlement?.multiplier_pct) }}
+              <small v-if="teacher.pending_salary?.manual_multiplier_pct != null">待核准 {{ formatPct(teacher.pending_salary.manual_multiplier_pct) }}</small>
+              <button v-if="!isLocked" class="btn-outline small" @click="startEditMultiplier(teacher)">改</button>
+              <button v-if="isHq && teacher.pending_salary?.manual_multiplier_pct != null && !isLocked" class="btn-outline small" :disabled="savingMultiplier" @click="approveMultiplier(teacher)">核准倍率</button>
+            </template>
+          </span></div>
           <div class="component-row"><span>倍率後獎金</span><span class="component-value">{{ formatMoney(teacher.settlement?.weighted_bonus_amount) }}</span></div>
           <div class="component-row total-cell"><span>總發放金額</span><strong>{{ formatMoney(teacher.settlement?.total_payout) }}</strong></div>
+          <div class="component-row weekly-segment-row">
+            <span>每週課段</span>
+            <span class="component-value">
+              <strong>{{ weeklySegmentsLabel(teacher) }}</strong>
+              <small>{{ weeklyQualificationLabel(teacher) }}</small>
+            </span>
+          </div>
+          <details v-if="weeklyCourseSessions(teacher).length" class="weekly-trace mobile-weekly-trace">
+            <summary>查看構成課程</summary>
+            <div v-for="session in weeklyCourseSessions(teacher)" :key="session.class_session_id" class="course-trace-row">
+              <span>{{ session.session_date }} {{ session.start_time }}–{{ session.end_time }}</span>
+              <span>{{ sessionTypeLabel(session) }} {{ formatSegments(session.segments) }}段</span>
+            </div>
+          </details>
           <p class="mobile-reason">{{ reasonText(teacher) }}</p>
         </article>
         <div v-if="filteredTeachers.length === 0" class="eligibility-card empty">查詢期間沒有符合條件的正職老師資料。</div>
@@ -147,7 +180,9 @@
 
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue';
-import { fetchTeacherEligibility, saveTeacherSalaryProfile, approveTeacherSalaryProfile, lockFulltimePayroll, reopenFulltimePayroll, exportFulltimePayrollCsv } from '../lib/teacherEligibilityApi.js';
+import AtButton from '../components/design-system/AtButton.vue';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
+import { fetchTeacherEligibility, saveTeacherMultiplierProfile, approveTeacherSalaryProfile, lockFulltimePayroll, reopenFulltimePayroll, exportFulltimePayrollCsv } from '../lib/teacherEligibilityApi.js';
 import TeacherEligibilityInputPanel from '../components/TeacherEligibilityInputPanel.vue';
 import {
   formatMoney,
@@ -173,9 +208,9 @@ const periodWindow = ref({ start: '', end: '' });
 const policyVersion = ref('115.07');
 const branchSubjectTotal = ref(0);
 const lockState = ref({ status: 'draft' });
-const editingSalaryId = ref(null);
-const salaryDraft = ref(0);
-const savingSalary = ref(false);
+const editingMultiplierId = ref(null);
+const multiplierDraft = ref(100);
+const savingMultiplier = ref(false);
 const componentOptions = [
   { key: 'weekly_16_segments', label: '每週16段' },
   { key: 'holiday_16_hours', label: '假日16小時' },
@@ -200,6 +235,38 @@ const deductionCount = computed(() => filteredTeachers.value.filter(t => Number(
 
 function visibleMultiplierParts(teacher) {
   return (teacher.settlement?.multiplier_parts || []).filter((part) => Number(part.pct) !== 0);
+}
+
+function weeklyMetrics(teacher) {
+  return teacher.components?.weekly_16_segments?.metrics || {};
+}
+
+function formatSegments(value) {
+  if (value == null || value === '') return '—';
+  return Number(value).toLocaleString('zh-TW', { maximumFractionDigits: 2 });
+}
+
+function weeklySegmentsLabel(teacher) {
+  const metrics = weeklyMetrics(teacher);
+  return `正課 ${formatSegments(metrics.regular_segments)}｜試聽 ${formatSegments(metrics.trial_segments)}｜總計 ${formatSegments(metrics.total_segments)}`;
+}
+
+function weeklyQualificationLabel(teacher) {
+  const metrics = weeklyMetrics(teacher);
+  if (metrics.meets_16_segments === true) return '已達 16 段';
+  if (metrics.meets_16_segments === false) return '未達 16 段';
+  if (metrics.week_count) return `${metrics.qualifying_weeks || 0}/${metrics.week_count} 週達標`;
+  return teacher.components?.weekly_16_segments?.status === 'review' ? '待確認段數' : '未判定';
+}
+
+function weeklyCourseSessions(teacher) {
+  return weeklyMetrics(teacher).course_sessions || [];
+}
+
+function sessionTypeLabel(session) {
+  if (session.segment_type === 'trial_fixed') return '試聽';
+  if (session.segment_type === 'tutoring_excluded') return '輔導（不計）';
+  return '正課';
 }
 
 function isDraft(teacher) {
@@ -237,42 +304,42 @@ async function reopenMonth() {
   }
 }
 
-function startEditSalary(teacher) {
-  editingSalaryId.value = teacher.teacher_id;
-  salaryDraft.value = Math.round(Number(teacher.settlement?.base_salary ?? 0));
+function startEditMultiplier(teacher) {
+  editingMultiplierId.value = teacher.teacher_id;
+  multiplierDraft.value = Number(teacher.settlement?.manual_multiplier_pct ?? teacher.settlement?.multiplier_pct ?? 100);
 }
 
-async function saveSalary(teacher) {
-  savingSalary.value = true;
+async function saveMultiplier(teacher) {
+  savingMultiplier.value = true;
   try {
-    const saved = await saveTeacherSalaryProfile({
+    const saved = await saveTeacherMultiplierProfile({
       teacher_id: teacher.teacher_id,
       branch_id: props.branchId || null,
-      base_salary: salaryDraft.value,
+      manual_multiplier_pct: multiplierDraft.value,
       effective_from: periodWindow.value.start || `${settlementMonth.value}-01`,
     });
-    editingSalaryId.value = null;
+    editingMultiplierId.value = null;
     await loadData();
     if (saved?.status === 'pending') {
-      error.value = '底薪已送出，待總部核准後才會改結算金額。';
+      error.value = '教師倍率已送出，待總部核准後才會改結算金額。';
     }
   } catch (e) {
-    error.value = humanizeApiErrorMessage(e?.message, '底薪儲存失敗');
+    error.value = humanizeApiErrorMessage(e?.message, '教師倍率儲存失敗');
   } finally {
-    savingSalary.value = false;
+    savingMultiplier.value = false;
   }
 }
 
-async function approveSalary(teacher) {
+async function approveMultiplier(teacher) {
   if (!teacher.pending_salary?.id) return;
-  savingSalary.value = true;
+  savingMultiplier.value = true;
   try {
     await approveTeacherSalaryProfile(teacher.pending_salary.id);
     await loadData();
   } catch (e) {
-    error.value = humanizeApiErrorMessage(e?.message, '底薪核准失敗');
+    error.value = humanizeApiErrorMessage(e?.message, '教師倍率核准失敗');
   } finally {
-    savingSalary.value = false;
+    savingMultiplier.value = false;
   }
 }
 
@@ -336,9 +403,13 @@ onMounted(loadData);
 .summary-grid { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:12px; margin-bottom:18px; }
 .summary-card { padding:16px; background:var(--ds-canvas); border:1px solid var(--border); border-radius:12px; }.summary-card span { color:var(--ds-ink-mute); font-size:13px; }.summary-card strong { display:block; font-size:28px; margin-top:6px; }.summary-card.success strong { color:var(--ds-success); }.summary-card.warning strong { color:var(--ds-warning); }.summary-card.danger strong { color:var(--ds-danger); }
 .table-wrap { overflow:auto; }.table-wrap table { width:100%; border-collapse:collapse; min-width:1280px; }.table-wrap th,.table-wrap td { padding:12px 10px; border-bottom:1px solid var(--border); text-align:left; vertical-align:top; }.table-wrap th { color:var(--ds-ink-mute); font-size:13px; background:var(--ds-canvas-soft); white-space:nowrap; }.table-wrap td small { display:block; margin-top:4px; color:var(--ds-ink-mute); font-size:12px; }.status { display:inline-flex; margin-top:6px; padding:4px 8px; border-radius:999px; font-size:12px; white-space:nowrap; }.status.pass { background:var(--ds-success-wash); color:var(--ds-success); }.status.fail { background:var(--ds-danger-wash); color:var(--ds-danger); }.status.review { background:var(--ds-warning-wash); color:var(--ds-warning); }.status.unknown { background:var(--ds-canvas-soft); color:var(--ds-ink-mute); }.empty,.loading { text-align:center; color:var(--ds-ink-mute); padding:36px; }.error { color:var(--ds-danger); display:flex; align-items:center; gap:12px; }.footnote { color:var(--ds-ink-mute); font-size:13px; margin:12px 4px; }.mobile-list { display:none; }
-.salary-cell { white-space:nowrap; }
-.pending-salary { color: var(--ds-warning); }
-.salary-input { width:90px; padding:6px 8px; border:1px solid var(--border); border-radius:6px; background:var(--ds-canvas); color:inherit; margin-right:4px; }
+.multiplier-cell { min-width:150px; white-space:nowrap; }
+.weekly-segment-cell { min-width: 300px; }
+.weekly-trace { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 6px; }
+.weekly-trace summary { cursor: pointer; color: var(--ds-primary); font-size: 12px; }
+.course-trace-row { display:flex; justify-content:space-between; gap:12px; padding:5px 0; font-size:12px; color:var(--ds-ink-mute); }
+.mobile-weekly-trace { margin: 8px 0 12px; }
+.multiplier-input { width:84px; padding:6px 8px; border:1px solid var(--border); border-radius:6px; background:var(--ds-canvas); color:inherit; margin-right:4px; }
 .money-pos { color:var(--ds-success); font-variant-numeric:tabular-nums; }
 .total-cell strong { font-variant-numeric:tabular-nums; color:var(--ds-primary); }
 .adj-chip { display:inline-flex; margin:0 6px 6px 0; padding:3px 8px; border-radius:999px; font-size:12px; }

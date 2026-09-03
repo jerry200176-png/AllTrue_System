@@ -4,6 +4,3193 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-02-course-rate-unit-consistency",
+    "publishedAt": "2026-09-02",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "課程查找計費單位同步",
+    "summary": "按時計費課程現在會顯示每小時費用並正確計算總額。",
+    "items": [
+      "編輯課程切換按堂／按時計費後，課程查找會同步顯示正確的每堂或每小時單價。",
+      "按時計費總費用會依課程實際總時數計算；按堂課程仍依購買堂數計算。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "編輯課程切換按堂／按時計費後，課程查找會同步顯示正確的每堂或每小時單價。",
+          "按時計費總費用會依課程實際總時數計算；按堂課程仍依購買堂數計算。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-02:course-rate-unit-consistency"
+    ],
+    "date": "2026-09-02",
+    "version": "2026.09.02"
+  },
+  {
+    "id": "staff-2026-09-02-receipt-expected-session-copy",
+    "publishedAt": "2026-09-02",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "電子收據預計堂次文案恢復",
+    "summary": "收據上的未上課堂次現在恢復顯示「（預計）」。",
+    "items": [
+      "電子收據中尚未實際上課且未取消的堂次會顯示「（預計）」；已上課堂次不加狀態字樣。",
+      "收據畫面、複製文字與複製／下載圖片的文案一致；排課、點名與其他後台狀態不受影響。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "電子收據中尚未實際上課且未取消的堂次會顯示「（預計）」；已上課堂次不加狀態字樣。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "收據畫面、複製文字與複製／下載圖片的文案一致；排課、點名與其他後台狀態不受影響。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-02:receipt-expected-session-copy"
+    ],
+    "date": "2026-09-02",
+    "version": "2026.09.02"
+  },
+  {
+    "id": "staff-2026-09-02-fixed-slot-removal-and-teacher-workbench",
+    "publishedAt": "2026-09-02",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "固定時段移除與老師工作台修復",
+    "summary": "移除固定上課日不會再誤判衝堂，老師工作台重整更穩定且課程格可直接開啟詳情。",
+    "items": [
+      "固定課程移除既有時段時，不會把保留的自己課程誤當成新增調課；真正新增到已占用時段仍會阻擋。",
+      "老師工作台重整課表時保留已載入內容，週一至週日標題在手機與桌面捲動時維持可見，每個已建立課程格都可開啟對應詳情。",
+      "admin 與 director 的頁面、權限與既有操作不受影響。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "固定課程移除既有時段時，不會把保留的自己課程誤當成新增調課；真正新增到已占用時段仍會阻擋。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "老師工作台重整課表時保留已載入內容，週一至週日標題在手機與桌面捲動時維持可見，每個已建立課程格都可開啟對應詳情。",
+          "admin 與 director 的頁面、權限與既有操作不受影響。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-02:fixed-slot-removal-and-teacher-workbench"
+    ],
+    "date": "2026-09-02",
+    "version": "2026.09.02"
+  },
+  {
+    "id": "staff-2026-09-01-unpaid-settlement-reconciliation",
+    "publishedAt": "2026-09-01",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "未繳課程可結案並保留待對帳",
+    "summary": "課程需要先停止排課時，不必等付款完成；未完成收款的課程會留在帳務中心待對帳。",
+    "items": [
+      "未繳費課程現在可以結案，結案不會把課程誤標成已繳費。",
+      "未完成收款的結案課程會標示「結案待對帳」，可從帳務中心登記回報、確認入帳；確認後才轉為一般已結算。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "未繳費課程現在可以結案，結案不會把課程誤標成已繳費。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "未完成收款的結案課程會標示「結案待對帳」，可從帳務中心登記回報、確認入帳；確認後才轉為一般已結算。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-01:unpaid-settlement-reconciliation"
+    ],
+    "date": "2026-09-01",
+    "version": "2026.09.01"
+  },
+  {
+    "id": "staff-2026-09-01-history-usage-balance-visibility",
+    "publishedAt": "2026-09-01",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "歷史課程也會顯示堂數待對帳",
+    "summary": "已結案或完課的歷史課程若堂數需要核對，課程卡會直接顯示提醒與原因。",
+    "items": [
+      "歷史課程卡補上「堂數待對帳」醒目標籤，不會因被收進歷史區而看不到異常。",
+      "提醒可直接查看課堂狀態與扣堂紀錄的差異原因；不會自動修改堂數或帳務資料。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "歷史課程卡補上「堂數待對帳」醒目標籤，不會因被收進歷史區而看不到異常。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "提醒可直接查看課堂狀態與扣堂紀錄的差異原因；不會自動修改堂數或帳務資料。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-01:history-usage-balance-visibility"
+    ],
+    "date": "2026-09-01",
+    "version": "2026.09.01"
+  },
+  {
+    "id": "staff-2026-09-01-calendar-reschedule-authority",
+    "publishedAt": "2026-09-01",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "action_required",
+    "title": "行事曆調課不再被畫面誤擋",
+    "summary": "請假資料尚在同步時，調課仍可送出由系統做最後確認；真正衝堂仍會被擋下。",
+    "items": [
+      "行事曆的送出前提示不會再因資料尚未完整載入而直接禁止調課。",
+      "確認後仍由系統做最後衝堂檢查；若確實衝堂，資料不會被變更。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "行事曆的送出前提示不會再因資料尚未完整載入而直接禁止調課。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "確認後仍由系統做最後衝堂檢查；若確實衝堂，資料不會被變更。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-01:calendar-reschedule-authority"
+    ],
+    "date": "2026-09-01",
+    "version": "2026.09.01"
+  },
+  {
+    "id": "staff-2026-09-01-calendar-leave-precedence",
+    "publishedAt": "2026-09-01",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "調課時會正確辨識已請假的時段",
+    "summary": "請假狀態同步中也不會把已空出的老師時段誤判為滿段。",
+    "items": [
+      "行事曆調課現在優先採用當日請假狀態，不會因畫面資料同步時間差而誤擋調課。",
+      "真正仍在上課的學生依然會列入容量檢查，避免誤放行衝堂。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "行事曆調課現在優先採用當日請假狀態，不會因畫面資料同步時間差而誤擋調課。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "真正仍在上課的學生依然會列入容量檢查，避免誤放行衝堂。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-01:calendar-leave-precedence"
+    ],
+    "date": "2026-09-01",
+    "version": "2026.09.01"
+  },
+  {
+    "id": "staff-2026-09-01-bug-detail-target-correctness",
+    "publishedAt": "2026-09-01",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "Bug 詳情證據不再混用其他個案",
+    "summary": "分診用的 Bug 詳情資料會標明目標、適用 probe 與是否達到可判定標準。",
+    "items": [
+      "Bug 詳情 dump 只執行對應 probe；未配置則標示不適用。",
+      "需要目標證據但未配置時，會標示 decision-grade=false。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "Bug 詳情 dump 只執行對應 probe；未配置則標示不適用。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "需要目標證據但未配置時，會標示 decision-grade=false。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-01:bug-detail-target-correctness"
+    ],
+    "date": "2026-09-01",
+    "version": "2026.09.01"
+  },
+  {
+    "id": "staff-2026-09-01-teacher-week-disclosure",
+    "publishedAt": "2026-09-01",
+    "effectiveAt": null,
+    "audiences": [
+      "teacher"
+    ],
+    "audience": [
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "老師首頁先看今天的課表",
+    "summary": "本週課表預設先展開今天，其餘日期需要時再查看。",
+    "items": [
+      "老師首頁的本週課表只會預設展開今天，其他有課日期仍可點開查看。",
+      "跨分校課表、日期切換、課堂內容與評量／回報操作維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "老師首頁的本週課表只會預設展開今天，其他有課日期仍可點開查看。",
+          "跨分校課表、日期切換、課堂內容與評量／回報操作維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-01:teacher-week-disclosure"
+    ],
+    "date": "2026-09-01",
+    "version": "2026.09.01"
+  },
+  {
+    "id": "staff-2026-09-01-scheduling-intersection-helper",
+    "publishedAt": "2026-09-01",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "排課先找可行時段",
+    "summary": "排課可先核對老師未來四次固定日期的空檔與容量。",
+    "items": [
+      "勾選學生可配合的星期與時間窗口，即可查看老師可服務分校與未來四次（至課程結束日）固定日期皆可排的時段。",
+      "點選候選時段會帶入固定排課欄位；若有日期資料取不到，系統不顯示該星期建議，送出時仍由後端再次檢查衝堂與教室容量。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "勾選學生可配合的星期與時間窗口，即可查看老師可服務分校與未來四次（至課程結束日）固定日期皆可排的時段。",
+          "點選候選時段會帶入固定排課欄位；若有日期資料取不到，系統不顯示該星期建議，送出時仍由後端再次檢查衝堂與教室容量。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-01:scheduling-intersection-helper"
+    ],
+    "date": "2026-09-01",
+    "version": "2026.09.01"
+  },
+  {
+    "id": "staff-2026-09-01-course-availability-planner",
+    "publishedAt": "2026-09-01",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "新建與編輯都能找老師空檔",
+    "summary": "編輯既有課程時也能用同一套老師空檔與容量試算。",
+    "items": [
+      "從編輯課程選擇老師、日期、星期與時段後，可直接查詢未來四次固定日期的可用候選。",
+      "條件變更後舊試算會失效並要求重新查詢；套用候選後儲存仍由後端再次檢查衝堂與教室容量。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "從編輯課程選擇老師、日期、星期與時段後，可直接查詢未來四次固定日期的可用候選。",
+          "條件變更後舊試算會失效並要求重新查詢；套用候選後儲存仍由後端再次檢查衝堂與教室容量。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-01:course-availability-planner"
+    ],
+    "date": "2026-09-01",
+    "version": "2026.09.01"
+  },
+  {
+    "id": "staff-2026-09-01-calendar-secondary-controls",
+    "publishedAt": "2026-09-01",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "行事曆工具列更清爽",
+    "summary": "主要日期控制常駐，其他篩選與操作需要時再展開。",
+    "items": [
+      "月份、週次、跳至日期與日／週檢視維持直接可用，其他工具集中到「篩選與更多操作」。",
+      "收合時會顯示目前啟用的篩選數；展開後原有篩選、老師請假、教室管理與快速排課維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "月份、週次、跳至日期與日／週檢視維持直接可用，其他工具集中到「篩選與更多操作」。",
+          "收合時會顯示目前啟用的篩選數；展開後原有篩選、老師請假、教室管理與快速排課維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-01:calendar-secondary-controls"
+    ],
+    "date": "2026-09-01",
+    "version": "2026.09.01"
+  },
+  {
+    "id": "staff-2026-09-01-bug-report-tracking",
+    "publishedAt": "2026-09-01",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "Bug 回報送出後可直接追蹤",
+    "summary": "送出回報後會保留編號，並可直接前往 Bug 回報查看處理進度。",
+    "items": [
+      "Bug 回報成功後會保留回報編號與確認訊息，不會短暫顯示後自動消失。",
+      "可直接點選「查看回報進度」前往 Bug 回報頁；回報狀態與資料內容維持原規則。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "Bug 回報成功後會保留回報編號與確認訊息，不會短暫顯示後自動消失。",
+          "可直接點選「查看回報進度」前往 Bug 回報頁；回報狀態與資料內容維持原規則。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-01:bug-report-tracking"
+    ],
+    "date": "2026-09-01",
+    "version": "2026.09.01"
+  },
+  {
+    "id": "staff-2026-08-31-weekly-16-segments",
+    "publishedAt": "2026-08-31",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "每週16段課達標可直接查看",
+    "summary": "主任可看到每位正職老師的正課、試聽與總段數，並追溯到實際課程。",
+    "items": [
+      "正職薪資要件頁新增每週課段欄位，正課依實際課程時長換算、試聽每堂固定一段、輔導不計入，並標示是否達到十六段。",
+      "可展開查看構成課程的日期、時間、類型與段數；取消、請假、作廢或沒有有效點名的課程不會計入，也不要求先有核准的學習紀錄。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "正職薪資要件頁新增每週課段欄位，正課依實際課程時長換算、試聽每堂固定一段、輔導不計入，並標示是否達到十六段。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "可展開查看構成課程的日期、時間、類型與段數；取消、請假、作廢或沒有有效點名的課程不會計入，也不要求先有核准的學習紀錄。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-31:weekly-16-segments"
+    ],
+    "date": "2026-08-31",
+    "version": "2026.08.31"
+  },
+  {
+    "id": "staff-2026-08-31-usage-balance-visibility",
+    "publishedAt": "2026-08-31",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "課程查找會直接顯示堂數待對帳",
+    "summary": "堂數資料需要人工核對時，課程名稱旁會直接出現醒目提醒，頁面摘要也會統計筆數。",
+    "items": [
+      "課堂狀態與扣堂紀錄不一致時，課程名稱旁會顯示「堂數待對帳」，不必再從上課時段欄或滑過摘要才發現。",
+      "頁面摘要會顯示待對帳課程數與原因提示；不會自動修改堂數、帳務、出勤或扣堂資料。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "課堂狀態與扣堂紀錄不一致時，課程名稱旁會顯示「堂數待對帳」，不必再從上課時段欄或滑過摘要才發現。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "頁面摘要會顯示待對帳課程數與原因提示；不會自動修改堂數、帳務、出勤或扣堂資料。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-31:usage-balance-visibility"
+    ],
+    "date": "2026-08-31",
+    "version": "2026.08.31"
+  },
+  {
+    "id": "staff-2026-08-31-calendar-leave-capacity-preview",
+    "publishedAt": "2026-08-31",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "行事曆調課不再誤判請假時段已滿",
+    "summary": "調課預覽會正確排除已請假或取消的課程，和課程查找看到相同的可用時段。",
+    "items": [
+      "行事曆調課的送出前檢查現在會排除同日期已請假、已調整請假、核准請假與取消的課程，不會再把已空出的老師時段誤判為滿段。",
+      "仍會保留有效課程的老師容量檢查，送出時也會由後端再次確認，避免只因畫面快取而放行衝堂。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "行事曆調課的送出前檢查現在會排除同日期已請假、已調整請假、核准請假與取消的課程，不會再把已空出的老師時段誤判為滿段。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "仍會保留有效課程的老師容量檢查，送出時也會由後端再次確認，避免只因畫面快取而放行衝堂。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-31:calendar-leave-capacity-preview"
+    ],
+    "date": "2026-08-31",
+    "version": "2026.08.31"
+  },
+  {
+    "id": "staff-2026-08-31-monthly-opening-date",
+    "publishedAt": "2026-08-31",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "月結開課日會正確顯示首堂",
+    "summary": "開課日與固定上課星期不同時，月結排課仍會建立開課日首堂，後續固定星期照常排課。",
+    "items": [
+      "月結單科與多科方案現在都會保留開課日首堂，不會因開課日跨星期而整堂消失。",
+      "排課預覽會標示「含開課日首堂」；付款、結算、既有出勤與扣堂歷史不變。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "月結單科與多科方案現在都會保留開課日首堂，不會因開課日跨星期而整堂消失。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "排課預覽會標示「含開課日首堂」；付款、結算、既有出勤與扣堂歷史不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-31:monthly-opening-date"
+    ],
+    "date": "2026-08-31",
+    "version": "2026.08.31"
+  },
+  {
+    "id": "staff-2026-08-31-bug-triage-result-contract",
+    "publishedAt": "2026-08-31",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "Bug 回報分診結果更準確",
+    "summary": "Bug 回報完成分診後，系統會正確記錄處理結果，避免重複操作。",
+    "items": [
+      "Bug 回報分診完成後，公開回覆會被正確記錄為已完成，避免畫面已更新卻被誤判失敗而重複處理。",
+      "不改 Bug 狀態規則、回覆權限或帳務資料；只有真正成功保存的分診結果才會被視為完成。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "Bug 回報分診完成後，公開回覆會被正確記錄為已完成，避免畫面已更新卻被誤判失敗而重複處理。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "不改 Bug 狀態規則、回覆權限或帳務資料；只有真正成功保存的分診結果才會被視為完成。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-31:bug-triage-result-contract"
+    ],
+    "date": "2026-08-31",
+    "version": "2026.08.31"
+  },
+  {
+    "id": "staff-2026-08-30-teacher-home-single-surface",
+    "publishedAt": "2026-08-30",
+    "effectiveAt": null,
+    "audiences": [
+      "teacher"
+    ],
+    "audience": [
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "老師工作台更聚焦下一步",
+    "summary": "今天的待辦集中在一個工作佇列，本週課表直接可見，減少在多個區塊間猜下一步。",
+    "items": [
+      "老師工作台現在以「今天要完成」作為唯一主要待辦入口，舊的隱藏待辦、提示音與重複捷徑不再干擾畫面。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "老師工作台現在以「今天要完成」作為唯一主要待辦入口，舊的隱藏待辦、提示音與重複捷徑不再干擾畫面。"
+        ]
+      }
+    ],
+    "sourceRefs": [],
+    "date": "2026-08-30",
+    "version": "2026.08.30"
+  },
+  {
+    "id": "staff-2026-08-29-cross-contract-makeup-conflict",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "補課候選會先避開跨合約衝堂",
+    "summary": "安排補課前會先檢查同一學生其他合約的已排時段。",
+    "items": [
+      "搜尋補課時段會排除同一學生在其他合約已有的正式堂次，不會先顯示確認後才被擋的時段。",
+      "尚未物化但已預約的排課也會納入檢查；若搜尋後時段被占用，確認時會清楚提示並保留原案件。",
+      "付款、出席、扣堂歷史與合約日期不會因補課衝堂檢查被自動改寫。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "搜尋補課時段會排除同一學生在其他合約已有的正式堂次，不會先顯示確認後才被擋的時段。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "尚未物化但已預約的排課也會納入檢查；若搜尋後時段被占用，確認時會清楚提示並保留原案件。",
+          "付款、出席、扣堂歷史與合約日期不會因補課衝堂檢查被自動改寫。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:cross-contract-makeup-conflict"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-teachers-modal-semantics",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "老師管理彈窗上下文更清楚",
+    "summary": "新增、編輯與批次新增老師時，鍵盤與螢幕閱讀器能辨識目前工作階段。",
+    "items": [
+      "老師管理的新增、編輯與批次新增彈窗清楚標示工作階段與標題，鍵盤與螢幕閱讀器更容易掌握上下文。",
+      "老師管理彈窗的取消、儲存與批次結果操作按鈕補上正確型別，表單操作更不容易被誤判為送出。",
+      "老師管理的搜尋、狀態與科目篩選補上欄位標籤關聯，鍵盤操作時更容易知道目前控制項用途。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "老師管理的新增、編輯與批次新增彈窗清楚標示工作階段與標題，鍵盤與螢幕閱讀器更容易掌握上下文。",
+          "老師管理彈窗的取消、儲存與批次結果操作按鈕補上正確型別，表單操作更不容易被誤判為送出。",
+          "老師管理的搜尋、狀態與科目篩選補上欄位標籤關聯，鍵盤操作時更容易知道目前控制項用途。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:teachers-modal-semantics"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-teachers-list-status",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "老師狀態與識別資訊更清楚",
+    "summary": "老師管理的狀態切換、提醒色與 RFID 識別碼更容易閱讀。",
+    "items": [
+      "「正式老師／待審核／停用」分頁會清楚連到目前內容區，主任切換後能直接聚焦該狀態的老師。",
+      "待審核與停用的數字提醒色，以及老師卡片上的狀態標籤，現在使用一致的語意顏色與文字。",
+      "RFID 識別碼使用穩定的等寬數字呈現；老師資料、帳號、綁定、權限與既有操作行為維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "「正式老師／待審核／停用」分頁會清楚連到目前內容區，主任切換後能直接聚焦該狀態的老師。",
+          "待審核與停用的數字提醒色，以及老師卡片上的狀態標籤，現在使用一致的語意顏色與文字。",
+          "RFID 識別碼使用穩定的等寬數字呈現；老師資料、帳號、綁定、權限與既有操作行為維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:teachers-list-status"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-teacher-secondary-cta",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "teacher"
+    ],
+    "audience": [
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "今天先做的那一件事更清楚",
+    "summary": "今日工作佇列只保留一顆主行動，其餘待辦改為次要按鈕。",
+    "items": [
+      "「現在先做」仍是清楚的主按鈕；「接著處理」改為次要樣式，比較不會搶走視線。",
+      "任務排序、點名／評量導頁、資料與權限維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "「現在先做」仍是清楚的主按鈕；「接著處理」改為次要樣式，比較不會搶走視線。",
+          "任務排序、點名／評量導頁、資料與權限維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:teacher-secondary-cta"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-teacher-queue-focus",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "teacher"
+    ],
+    "audience": [
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "查看今日任務會直接進入工作區",
+    "summary": "老師從工作台捷徑進入今日任務時，焦點會跟著移到「今天要完成」。",
+    "items": [
+      "點「查看今日任務」後會捲到今日工作佇列，鍵盤焦點也會落在工作區標題。",
+      "任務排序、點名／評量內容、導頁、資料與權限維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "點「查看今日任務」後會捲到今日工作佇列，鍵盤焦點也會落在工作區標題。",
+          "任務排序、點名／評量內容、導頁、資料與權限維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:teacher-queue-focus"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-teacher-partial-queue-error",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "teacher"
+    ],
+    "audience": [
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "工作台不會被單一資料失敗卡住",
+    "summary": "家長回覆暫時無法載入時，已載入的點名與評量工作仍可繼續處理。",
+    "items": [
+      "家長回覆資料失敗會顯示部分待辦提示，不會隱藏仍可處理的工作。",
+      "點名／評量等關鍵資料失敗時仍會防止誤判為全部完成。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "家長回覆資料失敗會顯示部分待辦提示，不會隱藏仍可處理的工作。",
+          "點名／評量等關鍵資料失敗時仍會防止誤判為全部完成。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:teacher-partial-queue-error"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-teacher-next-action",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "teacher"
+    ],
+    "audience": [
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "老師工作台先做一件事",
+    "summary": "第一個待辦會清楚標示現在先做，其餘工作保留在接著處理。",
+    "items": [
+      "工作台依照既有期限與影響排序，將第一個待辦獨立標示為「現在先做」，並直接提供對應的行動按鈕。",
+      "其他待辦仍會保留在「接著處理」清單；請假待審堂次不會被誤列為老師要處理的工作。",
+      "手機版主行動會在同一張卡片內完整呈現，原有導頁、權限與資料行為不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "工作台依照既有期限與影響排序，將第一個待辦獨立標示為「現在先做」，並直接提供對應的行動按鈕。",
+          "其他待辦仍會保留在「接著處理」清單；請假待審堂次不會被誤列為老師要處理的工作。",
+          "手機版主行動會在同一張卡片內完整呈現，原有導頁、權限與資料行為不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:teacher-next-action"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-teacher-home-notification-a11y",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "teacher"
+    ],
+    "audience": [
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "待辦提示音狀態更清楚",
+    "summary": "教師可清楚知道待辦提示音是否開啟，也能辨識今日靜音操作。",
+    "items": [
+      "提示音開關會標示目前開啟／關閉狀態，鍵盤與螢幕閱讀器也能取得相同資訊。",
+      "今日靜音按鈕補上明確用途名稱；待辦排序、點名導頁與資料流程不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "提示音開關會標示目前開啟／關閉狀態，鍵盤與螢幕閱讀器也能取得相同資訊。",
+          "今日靜音按鈕補上明確用途名稱；待辦排序、點名導頁與資料流程不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:teacher-home-notification-a11y"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-teacher-card-a11y",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "teacher"
+    ],
+    "audience": [
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "老師工作台的控制項更穩定",
+    "summary": "今日打卡與本週課表的操作更容易用鍵盤、觸控與螢幕閱讀器理解。",
+    "items": [
+      "今日打卡狀態卡片現在是清楚的原生按鈕，會說明目前狀態並保留前往出缺勤管理的行為。",
+      "本週課表的上一週／下一週與課表圖示操作都有明確名稱，不必只依賴圖示或滑鼠提示。",
+      "出缺勤、課表、評量資料、API、權限與既有導頁行為維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "今日打卡狀態卡片現在是清楚的原生按鈕，會說明目前狀態並保留前往出缺勤管理的行為。",
+          "本週課表的上一週／下一週與課表圖示操作都有明確名稱，不必只依賴圖示或滑鼠提示。",
+          "出缺勤、課表、評量資料、API、權限與既有導頁行為維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:teacher-card-a11y"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-students-row-disclosure",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "學生列表展開更容易操作",
+    "summary": "學生資料列可用鍵盤展開，並清楚連到課程工作區。",
+    "items": [
+      "在學生列表將焦點放到資料列後，可以使用 Enter 或 Space 展開／收合課程工作區。",
+      "學生資料列會明確告知目前展開狀態與下方課程工作區的關係，螢幕閱讀器更容易理解。",
+      "勾選、編輯與刪除仍是獨立操作，不會被資料列的鍵盤展開行為誤觸。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "在學生列表將焦點放到資料列後，可以使用 Enter 或 Space 展開／收合課程工作區。",
+          "學生資料列會明確告知目前展開狀態與下方課程工作區的關係，螢幕閱讀器更容易理解。",
+          "勾選、編輯與刪除仍是獨立操作，不會被資料列的鍵盤展開行為誤觸。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:students-row-disclosure"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-students-modal-semantics",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "學生管理視窗更容易辨識",
+    "summary": "新增／編輯學生與課程等視窗現在會清楚告訴鍵盤與螢幕閱讀器目前工作區。",
+    "items": [
+      "學生管理的新增／編輯學生、課程、帳單、加購、年級升級與跨分校身份視窗補上清楚的對話框標題。",
+      "既有資料、操作流程、帳務規則與權限維持不變；本次只改善視窗語意。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "學生管理的新增／編輯學生、課程、帳單、加購、年級升級與跨分校身份視窗補上清楚的對話框標題。",
+          "既有資料、操作流程、帳務規則與權限維持不變；本次只改善視窗語意。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:students-modal-semantics"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-student-course-overview",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "學生課程總覽更容易判斷下一步",
+    "summary": "展開學生後先看到課程摘要，並優先選出需要處理的課程。",
+    "items": [
+      "課程總覽會摘要顯示進行中、需要注意與歷史課程數量，減少在多門課程間反覆尋找。",
+      "課程選擇器會優先帶出需要處理的課程；切換課程時保留既有課程操作與資料行為。",
+      "手機版主要課程工作區維持可讀寬度，學生列表的次要欄位仍可水平查閱。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "課程總覽會摘要顯示進行中、需要注意與歷史課程數量，減少在多門課程間反覆尋找。",
+          "課程選擇器會優先帶出需要處理的課程；切換課程時保留既有課程操作與資料行為。",
+          "手機版主要課程工作區維持可讀寬度，學生列表的次要欄位仍可水平查閱。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:student-course-overview"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-student-course-next-action",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "學生課程下一步更明確",
+    "summary": "課程工作區會清楚說明現在該處理什麼，主行動也會對應目前狀態。",
+    "items": [
+      "「現在先處理」會說明續報、付款待確認、資料待補或一般課程的下一步，不必只靠顏色猜測。",
+      "主行動會依既有課程狀態前往續報加購、繳費資訊或編輯課程，並保留原有操作行為。",
+      "課程資料、付款、排課、權限、API 與手機版可讀布局維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "「現在先處理」會說明續報、付款待確認、資料待補或一般課程的下一步，不必只靠顏色猜測。",
+          "主行動會依既有課程狀態前往續報加購、繳費資訊或編輯課程，並保留原有操作行為。",
+          "課程資料、付款、排課、權限、API 與手機版可讀布局維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:student-course-next-action"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-student-course-disclosure",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "學生課程細節分層更清楚",
+    "summary": "目前課程與歷史課程分開，先處理選定課程再查看舊資料。",
+    "items": [
+      "學生課程頁會明確標示目前課程工作區，選定課程的完整資料與下一步集中在同一區域。",
+      "歷史課程維持在獨立的按需展開區，不會和目前課程混在同一個工作層級。",
+      "歷史區補上鍵盤與螢幕閱讀器需要的展開狀態，原有編輯與刪除操作不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "學生課程頁會明確標示目前課程工作區，選定課程的完整資料與下一步集中在同一區域。",
+          "歷史課程維持在獨立的按需展開區，不會和目前課程混在同一個工作層級。",
+          "歷史區補上鍵盤與螢幕閱讀器需要的展開狀態，原有編輯與刪除操作不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:student-course-disclosure"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-schedule-orphan-prevention",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "調課錯誤更容易處理",
+    "summary": "找不到原堂次時不會留下日曆無法操作的調課目標。",
+    "items": [
+      "跨日調課若缺少原堂次，會在寫入前明確提示，不再留下孤兒排程。",
+      "已有原堂次的合法調課流程維持不變；本次不改既有資料。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "跨日調課若缺少原堂次，會在寫入前明確提示，不再留下孤兒排程。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "已有原堂次的合法調課流程維持不變；本次不改既有資料。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:schedule-orphan-prevention"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-reflow-duplicate-target",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "重整排課遇到重複時段會清楚提示",
+    "summary": "固定排課設定產生相同目標時段時，不會再顯示不明確的伺服器錯誤。",
+    "items": [
+      "系統會在移動堂次前攔截重複的日期／時間目標，並回傳時段衝突提示。",
+      "原子交易與唯一時段防線維持不變，錯誤時不會留下半套重整結果。",
+      "既有堂次、扣堂、評量與排課資料不會因這次防線被自動改寫。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "系統會在移動堂次前攔截重複的日期／時間目標，並回傳時段衝突提示。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "原子交易與唯一時段防線維持不變，錯誤時不會留下半套重整結果。",
+          "既有堂次、扣堂、評量與排課資料不會因這次防線被自動改寫。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:reflow-duplicate-target"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-profile-nav-clobber",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "登入後側欄切頁更穩定",
+    "summary": "登入後立刻點側欄，不會再被系統拉回首頁。",
+    "items": [
+      "個人資料載入完成後，不會把你剛切好的頁面（例如我的課表、課程查找）強制拉回工作台／總覽。",
+      "強制改密與角色首頁冷啟動行為維持不變；權限、分校與各頁業務邏輯也不變。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "個人資料載入完成後，不會把你剛切好的頁面（例如我的課表、課程查找）強制拉回工作台／總覽。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "強制改密與角色首頁冷啟動行為維持不變；權限、分校與各頁業務邏輯也不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:profile-nav-clobber"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-notifications-dialog-a11y",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "主任收件匣工作區更穩定",
+    "summary": "收件匣分頁與核帳登記更容易理解，也更適合鍵盤操作。",
+    "items": [
+      "「待辦案件／營運通知」分頁會清楚連到目前內容區，切換後能直接聚焦正在處理的工作區。",
+      "核帳登記使用一致的對話框操作，支援關閉按鈕、Escape 與初始鍵盤焦點；通知操作不會意外送出表單。",
+      "付款資料、核帳規則、API、權限與既有導頁行為維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "「待辦案件／營運通知」分頁會清楚連到目前內容區，切換後能直接聚焦正在處理的工作區。",
+          "核帳登記使用一致的對話框操作，支援關閉按鈕、Escape 與初始鍵盤焦點；通知操作不會意外送出表單。",
+          "付款資料、核帳規則、API、權限與既有導頁行為維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:notifications-dialog-a11y"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-logging-facade-runtime",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "錯誤處理更穩定",
+    "summary": "分校選擇與工作台的例外處理不會因記錄錯誤而變成第二個系統錯誤。",
+    "items": [
+      "公開分校清單遇到暫時性結構／資料庫問題時，會保留清楚的空清單回應，不再出現額外的伺服器錯誤。",
+      "排課與薪資的例外記錄會正確寫入，方便追查問題並保留原本的安全備援。",
+      "本次不改學生資料、帳務、排課規則、權限或既有成功流程。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "公開分校清單遇到暫時性結構／資料庫問題時，會保留清楚的空清單回應，不再出現額外的伺服器錯誤。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "排課與薪資的例外記錄會正確寫入，方便追查問題並保留原本的安全備援。",
+          "本次不改學生資料、帳務、排課規則、權限或既有成功流程。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:logging-facade-runtime"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-learning-view-actions-a11y",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "評量檢視與操作狀態更清楚",
+    "summary": "切換檢視模式與執行評量操作時，控制項的目前狀態與用途更明確。",
+    "items": [
+      "列表／卡片與內容預覽會標示目前選取狀態，鍵盤與螢幕閱讀器更容易辨識檢視模式。",
+      "批次審核、單筆操作、匯出、草稿與彈窗按鈕補上正確語意；既有資料與權限流程不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "列表／卡片與內容預覽會標示目前選取狀態，鍵盤與螢幕閱讀器更容易辨識檢視模式。",
+          "批次審核、單筆操作、匯出、草稿與彈窗按鈕補上正確語意；既有資料與權限流程不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:learning-view-actions-a11y"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-learning-schedule-a11y",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "評量課表檢視控制更清楚",
+    "summary": "今日／本週、週次切換與填寫操作會以清楚的按鈕語意呈現。",
+    "items": [
+      "評量頁課表的今日／本週切換與週次前後按鈕補上明確名稱，鍵盤與螢幕閱讀器更容易操作。",
+      "原有課表資料、填寫導向、評量內容、權限與 API 維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "評量頁課表的今日／本週切換與週次前後按鈕補上明確名稱，鍵盤與螢幕閱讀器更容易操作。",
+          "原有課表資料、填寫導向、評量內容、權限與 API 維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:learning-schedule-a11y"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-learning-review-tabs-a11y",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "評量審核佇列更容易辨識",
+    "summary": "評量分頁現在會清楚連到目前清單，切換後只聚焦該審核狀態。",
+    "items": [
+      "主任與老師的審核狀態分頁補上清楚的選取狀態，並連到評量清單工作區。",
+      "審核規則、核准同步點名／扣堂、API、權限與批次操作維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "主任與老師的審核狀態分頁補上清楚的選取狀態，並連到評量清單工作區。",
+          "審核規則、核准同步點名／扣堂、API、權限與批次操作維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:learning-review-tabs-a11y"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-learning-filter-chips-a11y",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "評量快捷篩選狀態更清楚",
+    "summary": "未填、需修改與家長留言篩選會清楚說明目前是否選取。",
+    "items": [
+      "評量頁快捷篩選改用明確的按鈕與選取狀態，鍵盤與螢幕閱讀器更容易辨識目前篩選。",
+      "原有篩選條件、排序、資料、權限與審核流程維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "評量頁快捷篩選改用明確的按鈕與選取狀態，鍵盤與螢幕閱讀器更容易辨識目前篩選。",
+          "原有篩選條件、排序、資料、權限與審核流程維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:learning-filter-chips-a11y"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-goto-purchase",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "新增課程可直接加購",
+    "summary": "學生已有課程時，點「去加購」會打開加購堂數。",
+    "items": [
+      "學生管理新增課程後，點「去加購」會打開該課的加購視窗。",
+      "系統對不到課程時會提示重新整理，不再沒有反應。",
+      "課程資料、加購規則、權限與既有課程列「加購」維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "學生管理新增課程後，點「去加購」會打開該課的加購視窗。",
+          "系統對不到課程時會提示重新整理，不再沒有反應。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "課程資料、加購規則、權限與既有課程列「加購」維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:goto-purchase"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-director-view-switcher-a11y",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "主任總覽檢視切換更清楚",
+    "summary": "今天與完整營運兩個工作區的切換關係更容易理解。",
+    "items": [
+      "主任總覽的檢視分頁會清楚連到對應內容區，鍵盤與螢幕閱讀器能辨識目前工作區。",
+      "今日待辦優先、完整營運按需載入與原有導頁、資料、權限行為維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "主任總覽的檢視分頁會清楚連到對應內容區，鍵盤與螢幕閱讀器能辨識目前工作區。",
+          "今日待辦優先、完整營運按需載入與原有導頁、資料、權限行為維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:director-view-switcher-a11y"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-course-tabs-keyboard",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "課程查找分頁更適合鍵盤操作",
+    "summary": "每位學生的課程／帳務分頁可用方向鍵切換，焦點會跟著目前工作區移動。",
+    "items": [
+      "在課程查找展開學生後，可用左右鍵或上下鍵切換「課程資料／帳務資料」，不用逐一 Tab 經過每個選項。",
+      "目前分頁保留單一鍵盤焦點入口，切換後會聚焦新的工作區；課程、帳務資料與權限維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "在課程查找展開學生後，可用左右鍵或上下鍵切換「課程資料／帳務資料」，不用逐一 Tab 經過每個選項。",
+          "目前分頁保留單一鍵盤焦點入口，切換後會聚焦新的工作區；課程、帳務資料與權限維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:course-tabs-keyboard"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-course-management-hierarchy",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "課程查找操作層級更清楚",
+    "summary": "學生群組、課程／帳務分頁與歷史資料的操作關係更明確。",
+    "items": [
+      "學生群組的展開與「專注此學生」改成兩個清楚分開的操作，鍵盤可以直接使用 Enter 或 Space 展開與收合。",
+      "課程資料與帳務資料分頁補上明確的控制關係；切換分頁會自動保留原有資料與操作流程。",
+      "歷史課程維持按需展開，並補上展開狀態與可控制區域，讓螢幕閱讀器能理解目前看到的內容。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "學生群組的展開與「專注此學生」改成兩個清楚分開的操作，鍵盤可以直接使用 Enter 或 Space 展開與收合。",
+          "課程資料與帳務資料分頁補上明確的控制關係；切換分頁會自動保留原有資料與操作流程。",
+          "歷史課程維持按需展開，並補上展開狀態與可控制區域，讓螢幕閱讀器能理解目前看到的內容。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:course-management-hierarchy"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-bug-report-triage-context",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "回報問題時更容易提供線索",
+    "summary": "可補充發生時間與相關資料，幫助更快找到問題。",
+    "items": [
+      "回報視窗可選填發生時間，以及學生、課程、課堂或發票編號等相關資料。",
+      "描述欄提供簡短提示；欄位不會要求密碼，也不改既有操作或資料。",
+      "處理人員查看詳情時會直接看到這些補充線索，送出成功也會顯示回報編號，減少另外查找回報內容的步驟。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "回報視窗可選填發生時間，以及學生、課程、課堂或發票編號等相關資料。",
+          "描述欄提供簡短提示；欄位不會要求密碼，也不改既有操作或資料。",
+          "處理人員查看詳情時會直接看到這些補充線索，送出成功也會顯示回報編號，減少另外查找回報內容的步驟。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:bug-report-triage-context"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-bug-list-keyboard",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "Bug 回報可以用鍵盤快速查看",
+    "summary": "在回報列表中可直接用鍵盤選取問題並開啟詳情。",
+    "items": [
+      "聚焦回報項目後按 Enter 或 Space，即可查看問題詳情。",
+      "目前選取的回報會有清楚的輔助標示；原有滑鼠操作維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "聚焦回報項目後按 Enter 或 Space，即可查看問題詳情。",
+          "目前選取的回報會有清楚的輔助標示；原有滑鼠操作維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:bug-list-keyboard"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-billing-tab-panels",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "帳務分頁只顯示目前工作區",
+    "summary": "帳務中心切換分頁後，畫面會只保留目前要處理的帳務內容。",
+    "items": [
+      "「待處理／已結清課程彙總／收據紀錄」不會再同時顯示彼此的工作區，主任切換後能直接聚焦目前任務。",
+      "三個帳務分頁與內容區補上鍵盤與螢幕閱讀器的控制關係，降低誤判目前工作區的機會。",
+      "付款規則、收據資料、API、權限與既有手機版布局維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "「待處理／已結清課程彙總／收據紀錄」不會再同時顯示彼此的工作區，主任切換後能直接聚焦目前任務。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "三個帳務分頁與內容區補上鍵盤與螢幕閱讀器的控制關係，降低誤判目前工作區的機會。",
+          "付款規則、收據資料、API、權限與既有手機版布局維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:billing-tab-panels"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-attendance-tab-status-a11y",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "出缺勤工作區切換更清楚",
+    "summary": "點名與打卡工作區，以及每堂到班狀態，都更容易用鍵盤與螢幕閱讀器理解。",
+    "items": [
+      "主任的「學生點名／老師打卡」分頁會清楚連到目前內容區，切換後能直接知道正在處理哪一個工作區。",
+      "待點名堂次的到班狀態按鈕會公告目前選取狀態，鍵盤焦點也更明顯，不再只依賴顏色判斷。",
+      "點名資料、扣堂、RFID、API、權限與既有送出行為維持不變；老師仍使用原有學生點名工作區。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "主任的「學生點名／老師打卡」分頁會清楚連到目前內容區，切換後能直接知道正在處理哪一個工作區。",
+          "待點名堂次的到班狀態按鈕會公告目前選取狀態，鍵盤焦點也更明顯，不再只依賴顏色判斷。",
+          "點名資料、扣堂、RFID、API、權限與既有送出行為維持不變；老師仍使用原有學生點名工作區。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:attendance-tab-status-a11y"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-29-assessment-actions-a11y",
+    "publishedAt": "2026-08-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "學習檢測操作更不容易誤觸",
+    "summary": "建立、結果、作答與補強操作的按鈕用途更明確。",
+    "items": [
+      "檢測建立、發布、結果、作答與補強按鈕補上正確語意，表單情境不會因隱含型別誤送出。",
+      "建立檢測與查看結果彈窗會清楚標示工作階段與標題，鍵盤與螢幕閱讀器更容易掌握上下文。",
+      "原有檢測資料、主任複核、補強追蹤、權限與 API 流程維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "檢測建立、發布、結果、作答與補強按鈕補上正確語意，表單情境不會因隱含型別誤送出。",
+          "建立檢測與查看結果彈窗會清楚標示工作階段與標題，鍵盤與螢幕閱讀器更容易掌握上下文。",
+          "原有檢測資料、主任複核、補強追蹤、權限與 API 流程維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-29:assessment-actions-a11y"
+    ],
+    "date": "2026-08-29",
+    "version": "2026.08.29"
+  },
+  {
+    "id": "staff-2026-08-28-schedule-safe-recovery",
+    "publishedAt": "2026-08-28",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "取消課堂可安全復原",
+    "summary": "誤取消單堂課後，可在同一堂次檢視視窗復原上一個狀態。",
+    "items": [
+      "取消堂次重新開啟後，只有系統確認是最近一次主任操作且沒有衝堂時才會顯示復原按鈕。",
+      "復原前請確認日期與時段並填寫原因；系統會同步排課、必要評量／點名與堂數。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "取消堂次重新開啟後，只有系統確認是最近一次主任操作且沒有衝堂時才會顯示復原按鈕。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "復原前請確認日期與時段並填寫原因；系統會同步排課、必要評量／點名與堂數。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-28:schedule-safe-recovery"
+    ],
+    "date": "2026-08-28",
+    "version": "2026.08.28"
+  },
+  {
+    "id": "staff-2026-08-28-leave-trial-conversion",
+    "publishedAt": "2026-08-28",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "請假可安全撤銷，試聽可直接轉正式",
+    "summary": "請假不必再用已上再改回未上的繞路；試聽轉正式也不必手動搬堂次。",
+    "items": [
+      "請假堂次請使用「取消請假」；系統會同步復原該堂與請假紀錄，禁止直接改成已上或未上造成資料不同步。",
+      "試聽確定入班時，請按「轉為正式課程」並選擇正式堂數與開始日；試聽堂與評量會保留，未來試聽排課會取消，不會重複計堂。",
+      "若看到缺少順延尾堂的提示，請依畫面到合約／堂次調整做對帳；系統不會自行刪除其他堂次。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "請假堂次請使用「取消請假」；系統會同步復原該堂與請假紀錄，禁止直接改成已上或未上造成資料不同步。"
+        ]
+      },
+      {
+        "title": "你現在可以",
+        "items": [
+          "試聽確定入班時，請按「轉為正式課程」並選擇正式堂數與開始日；試聽堂與評量會保留，未來試聽排課會取消，不會重複計堂。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "若看到缺少順延尾堂的提示，請依畫面到合約／堂次調整做對帳；系統不會自行刪除其他堂次。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-28:leave-trial-conversion"
+    ],
+    "date": "2026-08-28",
+    "version": "2026.08.28"
+  },
+  {
+    "id": "staff-2026-08-28-ops-ui-sweep",
+    "publishedAt": "2026-08-28",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "major",
+    "title": "側欄與工作頁更清楚",
+    "summary": "常用工作先顯示，低頻功能仍可展開使用。",
+    "items": [
+      "側欄將每日工作、教學現場、學生課程與財務人事分組；進階工具、報表薪資、訊息回報改為需要時再展開。",
+      "出缺勤、教學工作台、老師管理與帳務中心統一頁首與摘要，重新整理時會顯示一致的載入狀態。",
+      "找不到低頻功能時，請展開對應區段；原有功能入口與資料操作沒有刪除。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "側欄將每日工作、教學現場、學生課程與財務人事分組；進階工具、報表薪資、訊息回報改為需要時再展開。",
+          "出缺勤、教學工作台、老師管理與帳務中心統一頁首與摘要，重新整理時會顯示一致的載入狀態。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "找不到低頻功能時，請展開對應區段；原有功能入口與資料操作沒有刪除。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-28:ops-ui-sweep"
+    ],
+    "date": "2026-08-28",
+    "version": "2026.08.28"
+  },
+  {
+    "id": "staff-2026-08-28-attendance-learning-record-integrity",
+    "publishedAt": "2026-08-28",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "major",
+    "title": "出缺勤與學習評量表一致性修正",
+    "summary": "已上／遲到一定會有可填的學習評量表；請假、取消與未上不會再出現幽靈評量表。",
+    "items": [
+      "出缺勤狀態與學習評量表改由同一個後端一致性流程處理，失敗會回滾，不再留下半完成資料。",
+      "系統會掃描並修復已上／遲到缺評量，以及請假／取消／未上的幽靈評量，並保留稽核紀錄。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "出缺勤狀態與學習評量表改由同一個後端一致性流程處理，失敗會回滾，不再留下半完成資料。",
+          "系統會掃描並修復已上／遲到缺評量，以及請假／取消／未上的幽靈評量，並保留稽核紀錄。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-28:attendance-learning-record-integrity"
+    ],
+    "date": "2026-08-28",
+    "version": "2026.08.28"
+  },
+  {
+    "id": "staff-2026-08-28-subject-units-summary",
+    "publishedAt": "2026-08-28",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "科目數統計摘要顯示修正",
+    "summary": "上方摘要卡會正確顯示科目數，不再因資料格式造成顯示異常或載入失敗。",
+    "items": [
+      "科目數統計遇到 API 數字以文字格式回傳時，現在仍會正確轉換並顯示，和下方老師明細保持一致。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "科目數統計遇到 API 數字以文字格式回傳時，現在仍會正確轉換並顯示，和下方老師明細保持一致。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-28:subject-units-summary"
+    ],
+    "date": "2026-08-28",
+    "version": "2026.08.28"
+  },
+  {
+    "id": "staff-2026-08-28-student-course-summary",
+    "publishedAt": "2026-08-28",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "學生課程資訊更清楚",
+    "summary": "一眼看到課程進度與下一步。",
+    "items": [
+      "學生課程會先顯示剩餘堂數、上課安排與下一步操作。",
+      "付款、帳單、結案與刪除等較少使用的操作集中在更多操作。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "學生課程會先顯示剩餘堂數、上課安排與下一步操作。",
+          "付款、帳單、結案與刪除等較少使用的操作集中在更多操作。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-28:student-course-summary"
+    ],
+    "date": "2026-08-28",
+    "version": "2026.08.28"
+  },
+  {
+    "id": "staff-2026-08-28-sidebar-focus",
+    "publishedAt": "2026-08-28",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "側欄功能更清楚",
+    "summary": "常用工作先顯示，其他功能集中在更多功能。",
+    "items": [
+      "每日工作、教學現場、學生與課程、財務人事保留在側欄主畫面，主任與老師可更快找到常用入口。",
+      "報表、進階工具、訊息回報與設定仍可使用，統一收進「更多功能」面板，不刪除原有頁面。",
+      "「更多功能」支援目前頁面提示、待辦徽章、Escape 關閉與鍵盤操作；手機版使用方式不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "每日工作、教學現場、學生與課程、財務人事保留在側欄主畫面，主任與老師可更快找到常用入口。",
+          "報表、進階工具、訊息回報與設定仍可使用，統一收進「更多功能」面板，不刪除原有頁面。",
+          "「更多功能」支援目前頁面提示、待辦徽章、Escape 關閉與鍵盤操作；手機版使用方式不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-28:sidebar-focus"
+    ],
+    "date": "2026-08-28",
+    "version": "2026.08.28"
+  },
+  {
+    "id": "staff-2026-08-28-learning-review-queues",
+    "publishedAt": "2026-08-28",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "評量審核佇列更清楚",
+    "summary": "待核准與需修改分開顯示，主任一眼知道下一步。",
+    "items": [
+      "學習評量頁將「待主任核准」與「老師需修改」拆開，不必在同一個待審清單中判斷兩種工作。",
+      "分頁數字、狀態篩選與空白提示同步對齊；目前工作佇列下方會直接說明該頁要做什麼。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "學習評量頁將「待主任核准」與「老師需修改」拆開，不必在同一個待審清單中判斷兩種工作。",
+          "分頁數字、狀態篩選與空白提示同步對齊；目前工作佇列下方會直接說明該頁要做什麼。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-28:learning-review-queues"
+    ],
+    "date": "2026-08-28",
+    "version": "2026.08.28"
+  },
+  {
+    "id": "staff-2026-08-28-in-app-bug-report",
+    "publishedAt": "2026-08-28",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "in-app 問題回報更穩定",
+    "summary": "回報問題、看處理進度與遇到錯誤時，都能在系統內完成。",
+    "items": [
+      "回報視窗支援 Esc、手機底部抽屜與背景捲動鎖定；截圖貼上、拖曳、選檔與送出方式不變。",
+      "狀態更新、留言、留言可見性與回報者驗收失敗時，會在 Bug 詳情原位置顯示原因，不再跳瀏覽器 alert。",
+      "UI／營運改善清單移到 GitHub Issue、PR 與設計文件追蹤，系統側欄只保留實際業務功能。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "回報視窗支援 Esc、手機底部抽屜與背景捲動鎖定；截圖貼上、拖曳、選檔與送出方式不變。",
+          "UI／營運改善清單移到 GitHub Issue、PR 與設計文件追蹤，系統側欄只保留實際業務功能。"
+        ]
+      },
+      {
+        "title": "我們修好了",
+        "items": [
+          "狀態更新、留言、留言可見性與回報者驗收失敗時，會在 Bug 詳情原位置顯示原因，不再跳瀏覽器 alert。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-28:in-app-bug-report"
+    ],
+    "date": "2026-08-28",
+    "version": "2026.08.28"
+  },
+  {
+    "id": "staff-2026-08-28-attendance-workspace-focus",
+    "publishedAt": "2026-08-28",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "出缺勤先看要處理的工作",
+    "summary": "學生點名與老師打卡分開整理，摘要和完整紀錄需要時再展開。",
+    "items": [
+      "主任在「學生點名」先看到待點名堂次，在「老師打卡」先看到遲到、漏刷與需要補卡的項目。",
+      "到班統計、行政出勤、系統待比對與完整打卡匯出仍可使用，但不再和主要處理工作同時搶畫面。",
+      "需要查完整紀錄或匯出月報時，請展開「查看完整打卡紀錄與匯出」；既有點名、補卡與補登流程不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "主任在「學生點名」先看到待點名堂次，在「老師打卡」先看到遲到、漏刷與需要補卡的項目。",
+          "到班統計、行政出勤、系統待比對與完整打卡匯出仍可使用，但不再和主要處理工作同時搶畫面。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "需要查完整紀錄或匯出月報時，請展開「查看完整打卡紀錄與匯出」；既有點名、補卡與補登流程不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-28:attendance-workspace-focus"
+    ],
+    "date": "2026-08-28",
+    "version": "2026.08.28"
+  },
+  {
+    "id": "staff-2026-08-27-transfer-ledger-reconciliation",
+    "publishedAt": "2026-08-27",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "堂次轉移會同步扣堂",
+    "summary": "已上課堂次轉到新合約後，扣堂台帳與堂數會一起更新。",
+    "items": [
+      "轉移已上課堂次時，點名、評量、扣堂台帳與來源／目標堂數會同步更新。",
+      "若看到既有轉移造成的待對帳，請重新整理後依畫面提示處理，不要自行修改堂數欄位。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "轉移已上課堂次時，點名、評量、扣堂台帳與來源／目標堂數會同步更新。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "若看到既有轉移造成的待對帳，請重新整理後依畫面提示處理，不要自行修改堂數欄位。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-27:transfer-ledger-reconciliation"
+    ],
+    "date": "2026-08-27",
+    "version": "2026.08.27"
+  },
+  {
+    "id": "staff-2026-08-27-session-evaluation-integrity",
+    "publishedAt": "2026-08-27",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "major",
+    "title": "評量與課堂狀態一致",
+    "summary": "取消或請假的堂次不再要求填評量；主任總覽可直接看出哪位老師需要跟進。",
+    "items": [
+      "評量只列入已上課、完成或遲到；取消、請假與停課不留待填評量，夜間對帳只顯示仍有差異的項目。",
+      "主任總覽上方新增教學品質追蹤，直接顯示分校整體填寫率、待填堂數、需要跟進的老師與每位老師的已填／應填數。",
+      "看到「需要跟進」時，請從「前往評量審核」確認未填堂次與內容品質；填寫率是提醒指標，不是公開排名。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "評量只列入已上課、完成或遲到；取消、請假與停課不留待填評量，夜間對帳只顯示仍有差異的項目。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "主任總覽上方新增教學品質追蹤，直接顯示分校整體填寫率、待填堂數、需要跟進的老師與每位老師的已填／應填數。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "看到「需要跟進」時，請從「前往評量審核」確認未填堂次與內容品質；填寫率是提醒指標，不是公開排名。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-27:session-evaluation-integrity"
+    ],
+    "date": "2026-08-27",
+    "version": "2026.08.27"
+  },
+  {
+    "id": "staff-2026-08-27-paid-course-settlement",
+    "publishedAt": "2026-08-27",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "已繳費課程可明確結案",
+    "summary": "已確認收款的堂數制與月結課程，都能直接選擇結案不續報；排月結失敗也會顯示原因。",
+    "items": [
+      "三個入口都可直接「結案（不續報）」，保留付款與已上課紀錄。",
+      "有剩餘堂數會先提示；確認後取消未來排課。月結也可結案。",
+      "若這些堂數是請假順延或仍要上課，請先排完再結案；只有確定不再使用時才確認放棄餘額。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "三個入口都可直接「結案（不續報）」，保留付款與已上課紀錄。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "有剩餘堂數會先提示；確認後取消未來排課。月結也可結案。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "若這些堂數是請假順延或仍要上課，請先排完再結案；只有確定不再使用時才確認放棄餘額。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-27:paid-course-settlement"
+    ],
+    "date": "2026-08-27",
+    "version": "2026.08.27"
+  },
+  {
+    "id": "staff-2026-08-27-course-management-inline-scheduling",
+    "publishedAt": "2026-08-27",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "課程查找可同頁編輯與新增堂次",
+    "summary": "編輯月結結束日與新增今天堂次都留在課程查找，不再在學生管理與課程查找之間來回切換。",
+    "items": [
+      "課程查找的「編輯」會開啟同頁課程編輯視窗；月結課程可直接設定開始日與結束日並儲存。",
+      "月結可同頁設定起訖日與新增日期時間；缺少或逾期會提供設定入口。",
+      "新增下午五點到七點前，請確認課程時長與月結結束日；已過時段或衝堂時請改選時間。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "課程查找的「編輯」會開啟同頁課程編輯視窗；月結課程可直接設定開始日與結束日並儲存。"
+        ]
+      },
+      {
+        "title": "我們修好了",
+        "items": [
+          "月結可同頁設定起訖日與新增日期時間；缺少或逾期會提供設定入口。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "新增下午五點到七點前，請確認課程時長與月結結束日；已過時段或衝堂時請改選時間。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-27:course-management-inline-scheduling"
+    ],
+    "date": "2026-08-27",
+    "version": "2026.08.27"
+  },
+  {
+    "id": "staff-2026-08-27-teacher-assessment-engagement",
+    "publishedAt": "2026-08-27",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "評量完成率可追蹤",
+    "summary": "主任可看待跟進評量，老師不以公開排名比較。",
+    "items": [
+      "完整營運的近期紀錄與分析新增評量完成率，可切換近 7／14／30 天查看已填、應填與待跟進狀態。",
+      "少於五堂會標示資料累積中，不直接判定表現；既有分校權限、代課歸屬與請假排除規則維持不變。",
+      "老師仍請以完整且有用的課後進度回饋為準，填寫率只代表是否有有效進度文字，不等於內容品質分數。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "完整營運的近期紀錄與分析新增評量完成率，可切換近 7／14／30 天查看已填、應填與待跟進狀態。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "少於五堂會標示資料累積中，不直接判定表現；既有分校權限、代課歸屬與請假排除規則維持不變。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "老師仍請以完整且有用的課後進度回饋為準，填寫率只代表是否有有效進度文字，不等於內容品質分數。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-27:teacher-assessment-engagement"
+    ],
+    "date": "2026-08-27",
+    "version": "2026.08.27"
+  },
+  {
+    "id": "staff-2026-08-27-course-payment-slip",
+    "publishedAt": "2026-08-27",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "課程管理直達繳費通知",
+    "summary": "未繳課程可直接開通知單。",
+    "items": [
+      "課程管理的帳務資料與更多選單可直接開啟繳費通知單，預覽後即可複製給家長。",
+      "只對未繳、部分繳與待對帳課程顯示；已繳費課程不顯示，且不改付款或收據流程。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "課程管理的帳務資料與更多選單可直接開啟繳費通知單，預覽後即可複製給家長。"
+        ]
+      },
+      {
+        "title": "我們修好了",
+        "items": [
+          "只對未繳、部分繳與待對帳課程顯示；已繳費課程不顯示，且不改付款或收據流程。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-27:course-payment-slip"
+    ],
+    "date": "2026-08-27",
+    "version": "2026.08.27"
+  },
+  {
+    "id": "staff-2026-08-26-reschedule-preflight",
+    "publishedAt": "2026-08-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "調課前先看衝堂結果",
+    "summary": "選好新日期與時間後，系統會先提示目前課表是否可能衝堂。",
+    "items": [
+      "調課視窗會依目前已載入的老師、日期、時段與班型，先顯示可安排或已達上限的結果，已知衝堂時不能誤按確認。",
+      "這是送出前提示，最後仍以系統送出時的權限、房間與衝堂檢查為準；若其他人同時改課，請依最新訊息重新選擇。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "調課視窗會依目前已載入的老師、日期、時段與班型，先顯示可安排或已達上限的結果，已知衝堂時不能誤按確認。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "這是送出前提示，最後仍以系統送出時的權限、房間與衝堂檢查為準；若其他人同時改課，請依最新訊息重新選擇。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-26:reschedule-preflight"
+    ],
+    "date": "2026-08-26",
+    "version": "2026.08.26"
+  },
+  {
+    "id": "staff-2026-08-26-payment-shortcuts",
+    "publishedAt": "2026-08-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "繳費通知與明細直達",
+    "summary": "主任提醒可直接開通知單與繳費明細。",
+    "items": [
+      "主任總覽每筆繳費提醒可直接開啟繳費通知單、查看繳費明細，並複製通知給家長。",
+      "帳務中心的對帳入口改名為繳費明細，帳單、收款與收據時間線仍沿用原本流程。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "主任總覽每筆繳費提醒可直接開啟繳費通知單、查看繳費明細，並複製通知給家長。",
+          "帳務中心的對帳入口改名為繳費明細，帳單、收款與收據時間線仍沿用原本流程。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-26:payment-shortcuts"
+    ],
+    "date": "2026-08-26",
+    "version": "2026.08.26"
+  },
+  {
+    "id": "staff-2026-08-26-ops-workflow-quick-start",
+    "publishedAt": "2026-08-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "主任常用流程更好找",
+    "summary": "收款核帳、排課與調課可從主任首頁直接開始。",
+    "items": [
+      "主任首頁新增收款與核帳、新增排課、調課／代課三個工作入口，帳務中心與班級行事曆內也會顯示下一步。",
+      "帳務仍要先送出繳費回報，再由主任確認入帳；排課與調課仍會保留原有權限、衝堂與堂次安全檢查。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "主任首頁新增收款與核帳、新增排課、調課／代課三個工作入口，帳務中心與班級行事曆內也會顯示下一步。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "帳務仍要先送出繳費回報，再由主任確認入帳；排課與調課仍會保留原有權限、衝堂與堂次安全檢查。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-26:ops-workflow-quick-start"
+    ],
+    "date": "2026-08-26",
+    "version": "2026.08.26"
+  },
+  {
+    "id": "staff-2026-08-26-navigation-registry",
+    "publishedAt": "2026-08-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "major",
+    "title": "導覽入口統一",
+    "summary": "桌面、手機與更多功能選單現在使用同一份角色導覽。",
+    "items": [
+      "桌面側欄、手機底部導覽與更多功能會依身分顯示相同的頁面入口，減少找不到功能或看到錯誤入口的情況。",
+      "帳務、排課、點名與資料權限仍依原本後端規則；本次只改善導覽與目前位置提示。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "桌面側欄、手機底部導覽與更多功能會依身分顯示相同的頁面入口，減少找不到功能或看到錯誤入口的情況。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "帳務、排課、點名與資料權限仍依原本後端規則；本次只改善導覽與目前位置提示。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-26:navigation-registry"
+    ],
+    "date": "2026-08-26",
+    "version": "2026.08.26"
+  },
+  {
+    "id": "staff-2026-08-26-director-contextual-actions",
+    "publishedAt": "2026-08-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "待辦直接定位帳務與課表",
+    "summary": "從通知中心進入帳務或排課時，會帶入對應學生／課程脈絡。",
+    "items": [
+      "帳務通知會自動定位並高亮對應課程，排課／代課通知會切到通知日期並高亮對應課卡，主任不必再重新搜尋。",
+      "只在目前分校已載入且可驗證的資料中定位；找不到時顯示提示，不跨分校猜測、不自動寫入，付款、堂次與權限規則不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "帳務通知會自動定位並高亮對應課程，排課／代課通知會切到通知日期並高亮對應課卡，主任不必再重新搜尋。"
+        ]
+      },
+      {
+        "title": "我們修好了",
+        "items": [
+          "只在目前分校已載入且可驗證的資料中定位；找不到時顯示提示，不跨分校猜測、不自動寫入，付款、堂次與權限規則不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-26:director-contextual-actions"
+    ],
+    "date": "2026-08-26",
+    "version": "2026.08.26"
+  },
+  {
+    "id": "staff-2026-08-26-dashboard-return-context",
+    "publishedAt": "2026-08-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "待辦處理後可返回主任工作台",
+    "summary": "從主任待辦進入工作頁後，可一鍵回到今日待辦。",
+    "items": [
+      "從今日工作進入帳務、點名、評量或課表處理後，頂端會保留「回到主任今日工作」入口，減少重新找待辦的操作。",
+      "這是暫時的導覽脈絡提示；帳務、排課、點名與權限規則維持原流程。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "從今日工作進入帳務、點名、評量或課表處理後，頂端會保留「回到主任今日工作」入口，減少重新找待辦的操作。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "這是暫時的導覽脈絡提示；帳務、排課、點名與權限規則維持原流程。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-26:dashboard-return-context"
+    ],
+    "date": "2026-08-26",
+    "version": "2026.08.26"
+  },
+  {
+    "id": "staff-2026-08-26-course-payment-summary",
+    "publishedAt": "2026-08-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "課程卡顯示最近繳費備註",
+    "summary": "課程管理可直接看到最近繳費回報內容。",
+    "items": [
+      "課程管理學生課程卡會顯示最近繳費的日期、金額、備註與主任可見的匯款後五碼。",
+      "待對帳資料會標示「待對帳」；付款狀態與收據仍依帳務中心流程處理。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "課程管理學生課程卡會顯示最近繳費的日期、金額、備註與主任可見的匯款後五碼。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "待對帳資料會標示「待對帳」；付款狀態與收據仍依帳務中心流程處理。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-26:course-payment-summary"
+    ],
+    "date": "2026-08-26",
+    "version": "2026.08.26"
+  },
+  {
+    "id": "staff-2026-08-26-bug-report-image-paste",
+    "publishedAt": "2026-08-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "major",
+    "title": "Bug 回報可直接貼圖",
+    "summary": "回報問題可直接貼截圖，不必先另存檔案。",
+    "items": [
+      "Bug 回報視窗現在可直接貼上截圖、拖曳圖片或點擊選檔，加入後會顯示預覽並可逐張移除。",
+      "附件數量與大小有限制；若貼上後格式或大小不符，請改用 JPEG、PNG、GIF 或 WebP 圖片。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "Bug 回報視窗現在可直接貼上截圖、拖曳圖片或點擊選檔，加入後會顯示預覽並可逐張移除。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "附件數量與大小有限制；若貼上後格式或大小不符，請改用 JPEG、PNG、GIF 或 WebP 圖片。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-26:bug-report-image-paste"
+    ],
+    "date": "2026-08-26",
+    "version": "2026.08.26"
+  },
+  {
+    "id": "staff-2026-08-26-billing-batch-preview",
+    "publishedAt": "2026-08-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "批次帳務先看摘要",
+    "summary": "批次回報與確認入帳前，先核對選取資料。",
+    "items": [
+      "批次操作會先顯示筆數、金額、付款方式與逐筆課程摘要，確認後才送出。",
+      "批次回報送出後仍是待對帳；只有確認入帳後才會成為已繳費並開收據。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "批次操作會先顯示筆數、金額、付款方式與逐筆課程摘要，確認後才送出。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "批次回報送出後仍是待對帳；只有確認入帳後才會成為已繳費並開收據。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-26:billing-batch-preview"
+    ],
+    "date": "2026-08-26",
+    "version": "2026.08.26"
+  },
+  {
+    "id": "staff-2026-08-26-billing-action-queue",
+    "publishedAt": "2026-08-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "帳務中心先顯示待處理",
+    "summary": "開啟帳務中心後，會先看到未繳、部分付款與待對帳工作。",
+    "items": [
+      "預設待處理佇列集中主任現在要做的工作；完整提醒、逾期與續課仍可從其他分類查看。",
+      "待處理中請分開勾選未繳費回報或待對帳確認；已回報仍須確認入帳後才算已繳費並開收據。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "預設待處理佇列集中主任現在要做的工作；完整提醒、逾期與續課仍可從其他分類查看。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "待處理中請分開勾選未繳費回報或待對帳確認；已回報仍須確認入帳後才算已繳費並開收據。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-26:billing-action-queue"
+    ],
+    "date": "2026-08-26",
+    "version": "2026.08.26"
+  },
+  {
+    "id": "staff-2026-08-26-attendance-session-trust",
+    "publishedAt": "2026-08-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "major",
+    "title": "出缺勤只顯示有效堂次",
+    "summary": "已取消或對不上堂次的舊點名不會再混進作業清單。",
+    "items": [
+      "出缺勤清單會先確認點名對應的堂次仍有效；已取消堂次或合約不一致的殘留資料不再顯示成今天的有效出勤。",
+      "自修與舊式臨時點名沒有堂次編號時仍照常保留；付款、扣堂與權限規則不變。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "出缺勤清單會先確認點名對應的堂次仍有效；已取消堂次或合約不一致的殘留資料不再顯示成今天的有效出勤。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "自修與舊式臨時點名沒有堂次編號時仍照常保留；付款、扣堂與權限規則不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-26:attendance-session-trust"
+    ],
+    "date": "2026-08-26",
+    "version": "2026.08.26"
+  },
+  {
+    "id": "staff-2026-08-26-ops-workflow-telemetry",
+    "publishedAt": "2026-08-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "報帳與排課流程開始量測",
+    "summary": "系統會用不含個資的方式記錄流程完成與錯誤，作為下一輪簡化依據。",
+    "items": [
+      "帳務回報、確認入帳、新增排課與調課會記錄開始、完成、返回工作區、錯誤類型與耗時。",
+      "只記錄固定流程欄位，不記錄姓名、學號、課程 ID、金額、備註、電話或錯誤原文；紀錄服務異常不會阻塞日常操作。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "帳務回報、確認入帳、新增排課與調課會記錄開始、完成、返回工作區、錯誤類型與耗時。"
+        ]
+      },
+      {
+        "title": "我們修好了",
+        "items": [
+          "只記錄固定流程欄位，不記錄姓名、學號、課程 ID、金額、備註、電話或錯誤原文；紀錄服務異常不會阻塞日常操作。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-26:ops-workflow-telemetry"
+    ],
+    "date": "2026-08-26",
+    "version": "2026.08.26"
+  },
+  {
+    "id": "staff-2026-08-26-course-student-focus",
+    "publishedAt": "2026-08-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "從課程管理直接定位學生",
+    "summary": "從學生群組前往學生管理時，會直接展開同一位學生。",
+    "items": [
+      "在課程管理展開學生群組後選擇新增課程，系統會帶到學生管理並定位該學生，接著即可在學生主檔處理課程。",
+      "定位只會在目前分校已載入的學生清單中生效；一般前往學生管理仍維持完整清單，不改付款、堂數或權限規則。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "在課程管理展開學生群組後選擇新增課程，系統會帶到學生管理並定位該學生，接著即可在學生主檔處理課程。"
+        ]
+      },
+      {
+        "title": "我們修好了",
+        "items": [
+          "定位只會在目前分校已載入的學生清單中生效；一般前往學生管理仍維持完整清單，不改付款、堂數或權限規則。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-26:course-student-focus"
+    ],
+    "date": "2026-08-26",
+    "version": "2026.08.26"
+  },
+  {
+    "id": "staff-2026-08-26-course-edit-master-record",
+    "publishedAt": "2026-08-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "課程編輯集中到學生主檔",
+    "summary": "從課程管理編輯課程時，會直接開啟學生管理中同一門課的編輯表單。",
+    "items": [
+      "課程管理的編輯入口會帶到同一位學生與同一門課，主任不必再重新找學生或判斷要用哪個編輯畫面。",
+      "只有目前分校清單中能驗證的學生與課程才會開啟；付款、堂數、出缺勤、資料與權限規則不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "課程管理的編輯入口會帶到同一位學生與同一門課，主任不必再重新找學生或判斷要用哪個編輯畫面。"
+        ]
+      },
+      {
+        "title": "我們修好了",
+        "items": [
+          "只有目前分校清單中能驗證的學生與課程才會開啟；付款、堂數、出缺勤、資料與權限規則不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-26:course-edit-master-record"
+    ],
+    "date": "2026-08-26",
+    "version": "2026.08.26"
+  },
+  {
+    "id": "staff-2026-08-26-course-create-entry",
+    "publishedAt": "2026-08-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "課程建立回到學生管理",
+    "summary": "建立新課程請從學生管理的學生主檔進入，課程管理專心做查找與分流。",
+    "items": [
+      "課程管理展開學生資料後，新增課程會帶到學生管理；建立、編輯與合約操作集中在同一個學生主檔。",
+      "課程查找、排課、調課與換師複製維持原流程，資料、堂數、付款與權限規則不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "課程管理展開學生資料後，新增課程會帶到學生管理；建立、編輯與合約操作集中在同一個學生主檔。"
+        ]
+      },
+      {
+        "title": "我們修好了",
+        "items": [
+          "課程查找、排課、調課與換師複製維持原流程，資料、堂數、付款與權限規則不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-26:course-create-entry"
+    ],
+    "date": "2026-08-26",
+    "version": "2026.08.26"
+  },
+  {
+    "id": "staff-2026-08-26-course-action-dedup",
+    "publishedAt": "2026-08-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "課程管理排課入口更清楚",
+    "summary": "每列只保留一個主要排課入口，其他課堂操作集中在更多選單。",
+    "items": [
+      "「排課／新增下一堂」不再同時出現在主要操作與更多選單；「補課／補登」仍可從更多選單使用。",
+      "這次只整理畫面入口，既有排課、堂數、付款、資料與權限規則不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "「排課／新增下一堂」不再同時出現在主要操作與更多選單；「補課／補登」仍可從更多選單使用。"
+        ]
+      },
+      {
+        "title": "我們修好了",
+        "items": [
+          "這次只整理畫面入口，既有排課、堂數、付款、資料與權限規則不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-26:course-action-dedup"
+    ],
+    "date": "2026-08-26",
+    "version": "2026.08.26"
+  },
+  {
+    "id": "staff-2026-08-25-transfer-slot-conflict-preflight",
+    "publishedAt": "2026-08-25",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "堂次轉移先檢查衝突",
+    "summary": "相同日期時段會先提示，不再只顯示 Server Error。",
+    "items": [
+      "轉移堂次前會先檢查目標課程是否已有相同日期／時段；有衝突會列出日期，且不會搬動任何來源資料。",
+      "若出現衝突，請先處理目標課程的重複堂次，再選擇沒有相同時段的目標課程重新操作。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "轉移堂次前會先檢查目標課程是否已有相同日期／時段；有衝突會列出日期，且不會搬動任何來源資料。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "若出現衝突，請先處理目標課程的重複堂次，再選擇沒有相同時段的目標課程重新操作。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-25:transfer-slot-conflict-preflight",
+      "github:pull/2042"
+    ],
+    "date": "2026-08-25",
+    "version": "2026.08.25"
+  },
+  {
+    "id": "staff-2026-08-25-cancelled-session-recovery-transfer",
+    "publishedAt": "2026-08-25",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "已取消堂次可受控恢復",
+    "summary": "有評量或點名紀錄的取消堂次可填原因後恢復並移轉。",
+    "items": [
+      "合約／堂次調整會辨識仍有歷史證據的取消堂次；送出原因後同步恢復評量、點名與扣堂資料，沒有證據的取消堂次仍不可移轉。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "合約／堂次調整會辨識仍有歷史證據的取消堂次；送出原因後同步恢復評量、點名與扣堂資料，沒有證據的取消堂次仍不可移轉。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-25:cancelled-session-recovery-transfer",
+      "github:pull/2050"
+    ],
+    "date": "2026-08-25",
+    "version": "2026.08.25"
+  },
+  {
+    "id": "staff-2026-08-25-receipt-image-copy",
+    "publishedAt": "2026-08-25",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "電子收據可複製圖片",
+    "summary": "收據可直接複製圖片貼給家長。",
+    "items": [
+      "電子收據新增「複製圖片」與「下載圖片」，可直接貼到 LINE 或下載後傳給家長；文字複製仍保留。",
+      "若瀏覽器不支援圖片剪貼簿，請按「下載圖片」，再把 PNG 圖檔傳給家長。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "電子收據新增「複製圖片」與「下載圖片」，可直接貼到 LINE 或下載後傳給家長；文字複製仍保留。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "若瀏覽器不支援圖片剪貼簿，請按「下載圖片」，再把 PNG 圖檔傳給家長。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-25:receipt-image-copy",
+      "github:pull/2046"
+    ],
+    "date": "2026-08-25",
+    "version": "2026.08.25"
+  },
+  {
+    "id": "staff-2026-08-25-payment-report-reconciliation",
+    "publishedAt": "2026-08-25",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "帳務回報流程更清楚",
+    "summary": "現金回報先待對帳，課程與備註資訊會一路保留。",
+    "items": [
+      "現金或匯款送出後會先進「待對帳」；確認入帳後才變成已繳費並開立收據，重複送出會直接帶到待對帳。",
+      "同一學生同科目有多筆課程時，帳務列會顯示課程編號與日期，避免把已繳與未繳課程看成同一筆。",
+      "回報備註會自動保留在對帳、電子收據與學生編輯頁的最近入帳備註，不必重複輸入；收據也可直接複製。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "現金或匯款送出後會先進「待對帳」；確認入帳後才變成已繳費並開立收據，重複送出會直接帶到待對帳。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "同一學生同科目有多筆課程時，帳務列會顯示課程編號與日期，避免把已繳與未繳課程看成同一筆。",
+          "回報備註會自動保留在對帳、電子收據與學生編輯頁的最近入帳備註，不必重複輸入；收據也可直接複製。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-25:payment-report-reconciliation",
+      "github:pull/2039"
+    ],
+    "date": "2026-08-25",
+    "version": "2026.08.25"
+  },
+  {
+    "id": "staff-2026-08-25-course-list-pending-report",
+    "publishedAt": "2026-08-25",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "課程列表顯示待對帳",
+    "summary": "已回報未核帳不再誤顯示未繳費。",
+    "items": [
+      "課程管理與學生課程列表會把尚未核帳的回報顯示為「待對帳」，避免主任重複送出。",
+      "主任仍需在帳務中心確認入帳；確認後才會變成「已繳費」並開立電子收據。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "課程管理與學生課程列表會把尚未核帳的回報顯示為「待對帳」，避免主任重複送出。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "主任仍需在帳務中心確認入帳；確認後才會變成「已繳費」並開立電子收據。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-25:course-list-pending-report",
+      "github:pull/2045"
+    ],
+    "date": "2026-08-25",
+    "version": "2026.08.25"
+  },
+  {
     "id": "staff-2026-08-24-course-editability-preflight",
     "publishedAt": "2026-08-24",
     "effectiveAt": null,
@@ -132,6 +3319,44 @@ export const staffUpdates = [
     ],
     "sourceRefs": [
       "changelog:2026-08-24:course-action-hierarchy"
+    ],
+    "date": "2026-08-24",
+    "version": "2026.08.24"
+  },
+  {
+    "id": "staff-2026-08-24-branch-health-v1",
+    "publishedAt": "2026-08-24",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "總部可查看分校健康訊號",
+    "summary": "超級管理員可在「分校健康」看板查看各校目前可驗證的營運訊號與下一步。",
+    "items": [
+      "看板以學生、教學、家長、教師、營運五個維度顯示紅黃綠或待接資料，不用單一總分排名分校。",
+      "點入分校可查看訊號來源、資料期間與建議下一步；本頁只讀，不會自動修改排課、堂數或帳務。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "看板以學生、教學、家長、教師、營運五個維度顯示紅黃綠或待接資料，不用單一總分排名分校。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "點入分校可查看訊號來源、資料期間與建議下一步；本頁只讀，不會自動修改排課、堂數或帳務。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-24:branch-health-v1",
+      "architecture:RFC_BRANCH_HEALTH_V1"
     ],
     "date": "2026-08-24",
     "version": "2026.08.24"

@@ -1,8 +1,8 @@
 # Company Constitution
 
-**Version:** 0.1.0  
+**Version:** 0.1.0
 **Effective:** 2026-07-18  
-**Revised:** 2026-08-15 (Agent is operator; overlay pin stays 0.1.0)  
+**Revised:** 2026-08-29 (Founder T0–T3 autonomy decision; overlay pin remains 0.1.0)
 **Owner:** Founder / CTO Agent  
 **Scope:** AllTrue System + sunrise-cafe (portfolio)  
 **Canonical:** This file is tool-neutral. Cursor Rules / CLAUDE.md / Skills are adapters only.
@@ -40,8 +40,8 @@ If Claude or Cursor text says it “overrides everything,” **Constitution + fl
 - Do not assume permissions (PR merge, deploy, in-app write) without Capability Registry evidence.
 - Do not re-enable sunrise `autonomous-loop` without fixing self-dispatch probes.
 - Do not require Founder approval on every PR — follow [`RISK_BASED_MERGE_POLICY.md`](./RISK_BASED_MERGE_POLICY.md) (R0–R3).
-- Do not re-ban Agent squash-merge after **required** GitHub checks, including R3 with a Repair Manifest. A human click that does not re-run CI is not a control. Machine bans stay: force-push, `--admin`, production SSH / artisan / phpunit, secret print, Gmail trash/delete.
-- Do not execute production data repair without an immutable Repair Manifest + Data Repair Gate (R3).
+- Do not re-ban Agent squash-merge after **required** GitHub checks for T0–T2. T3/protected work stops before the protected action when a Founder decision is required. Machine bans stay: force-push, `--admin`, production SSH / artisan / phpunit, secret print, Gmail trash/delete.
+- Do not execute production data repair without an immutable Repair Manifest + Data Repair Gate (R3) and the Founder approval required by the protected-action boundary.
 
 ## Agent deploy / reply conditions
 

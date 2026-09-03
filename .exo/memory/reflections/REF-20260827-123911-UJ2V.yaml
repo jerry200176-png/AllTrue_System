@@ -1,0 +1,15 @@
+id: REF-20260827-123911-UJ2V
+pattern: "\u524D\u7AEF\u91CD\u69CB\u5F8C\u672A\u4F7F\u7528\u8B8A\u6578\u6C92\u6709\
+  \u9632\u7DDA"
+insight: "\u4EE5\u65E2\u6709\u6A94\u6848\u6578 baseline \u4F5C ratchet\uFF0Cbuild\
+  \ \u53EA\u963B\u64CB\u55AE\u6A94\u65B0\u589E no-unused-vars\uFF1B\u5148\u63A7\u5236\
+  \u65B0\u589E\u50B5\uFF0C\u518D\u9010\u6B65\u63A5 Vue recommended \u8207\u6E05\u511F\
+  \u6B77\u53F2\u50B5\u3002"
+severity: medium
+scope: global
+actor: human
+session_id: ''
+created_at: '2026-08-27T12:39:11+08:00'
+status: active
+tags: []
+hit_count: 6

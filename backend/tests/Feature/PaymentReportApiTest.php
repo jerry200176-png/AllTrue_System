@@ -16,6 +16,7 @@ use App\Models\UserCampus;
 use App\Services\PaymentReportTokenService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class PaymentReportApiTest extends TestCase
@@ -401,9 +402,11 @@ class PaymentReportApiTest extends TestCase
             'payment_date' => '2026-04-28',
             'payment_method' => 'cash',
             'amount' => 3000,
+            'note' => '8/23現金繳費收據號碼:016272',
         ]);
         $record->assertOk();
         $reportId = $record->json('report_id');
+        $this->assertSame('8/23現金繳費收據號碼:016272', (string) PaymentReport::findOrFail($reportId)->note);
 
         $this->withHeaders($headers)
             ->getJson("/api/v1/payment-reports/{$reportId}/receipt")
@@ -413,9 +416,22 @@ class PaymentReportApiTest extends TestCase
             ->putJson("/api/v1/payment-reports/{$reportId}/confirm")
             ->assertOk();
 
+        $this->assertSame(
+            '8/23現金繳費收據號碼:016272',
+            (string) Payment::where('payment_report_id', $reportId)->value('Note')
+        );
+
         $this->withHeaders($headers)
             ->getJson("/api/v1/payment-reports/{$reportId}/receipt")
-            ->assertOk();
+            ->assertOk()
+            ->assertJsonPath('note', '8/23現金繳費收據號碼:016272');
+
+        $students = $this->withHeaders($headers)
+            ->getJson('/api/v1/students?branch_id=1&per_page=all')
+            ->assertOk()
+            ->json();
+        $studentRow = collect($students)->firstWhere('id', $student->id);
+        $this->assertSame('8/23現金繳費收據號碼:016272', $studentRow['latest_payment_note'] ?? null);
     }
 
     public function test_reject_pending_director_record_keeps_course_unpaid(): void
@@ -944,6 +960,22 @@ class PaymentReportApiTest extends TestCase
 
     // ── confirm ────────────────────────────────────────────────────
 
+    public function test_payment_note_column_matches_payment_report_note_capacity(): void
+    {
+        if (\Illuminate\Support\Facades\DB::connection()->getDriverName() !== 'mysql') {
+            $this->markTestSkipped('column type assertion requires MySQL');
+        }
+
+        $row = \Illuminate\Support\Facades\DB::selectOne(
+            'SELECT DATA_TYPE AS data_type
+             FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?',
+            [\Illuminate\Support\Facades\DB::getDatabaseName(), 'Payment', 'Note']
+        );
+
+        $this->assertContains(strtolower((string) ($row->data_type ?? '')), ['text', 'mediumtext', 'longtext']);
+    }
+
     public function test_director_can_confirm_report(): void
     {
         $token = $this->createDirectorToken([1]);
@@ -983,6 +1015,68 @@ class PaymentReportApiTest extends TestCase
 
         $sc->refresh();
         $this->assertEquals(1, $sc->Paid);
+    }
+
+    public function test_confirm_preserves_maximum_length_payment_report_note(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, ['Paid' => 0, 'Charge' => 8800]);
+        $note = str_repeat('付款說明', 125);
+
+        $report = PaymentReport::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'reported_by_name' => $student->name,
+            'payment_date' => Carbon::today(),
+            'payment_method' => 'transfer',
+            'reported_amount' => 8800,
+            'note' => $note,
+            'status' => 'pending',
+            'report_token_hash' => hash('sha256', 'test-confirm-long-note'),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->putJson("/api/v1/payment-reports/{$report->id}/confirm")
+            ->assertOk();
+
+        $this->assertSame($note, (string) Payment::where('payment_report_id', $report->id)->value('Note'));
+        $this->assertSame(1, Payment::where('payment_report_id', $report->id)->count());
+        $this->assertSame('confirmed', (string) $report->fresh()->status);
+    }
+
+    public function test_confirm_retry_does_not_create_a_second_payment(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, ['Paid' => 0, 'Charge' => 8800]);
+        $report = PaymentReport::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'reported_by_name' => $student->name,
+            'payment_date' => Carbon::today(),
+            'payment_method' => 'cash',
+            'reported_amount' => 8800,
+            'status' => 'pending',
+            'report_token_hash' => hash('sha256', 'test-confirm-retry'),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+        $headers = [
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ];
+
+        $this->withHeaders($headers)
+            ->putJson("/api/v1/payment-reports/{$report->id}/confirm")
+            ->assertOk();
+        $this->withHeaders($headers)
+            ->putJson("/api/v1/payment-reports/{$report->id}/confirm")
+            ->assertStatus(422);
+
+        $this->assertSame(1, Payment::where('payment_report_id', $report->id)->count());
     }
 
     public function test_cannot_confirm_already_confirmed(): void
@@ -1105,6 +1199,131 @@ class PaymentReportApiTest extends TestCase
         $this->assertStringStartsWith('R-', $res->json('receipt_no'));
         $this->assertSame('one_on_one', $res->json('class_type'));
         $this->assertSame('一對一', $res->json('class_type_label'));
+    }
+
+    public function test_monthly_confirmation_snapshots_billable_details_and_receipt_is_immutable(): void
+    {
+        Carbon::setTestNow('2026-07-31 12:00:00');
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, [
+            'ScheduleMode' => 'date',
+            'Charge' => 1800,
+            'Rate' => 1650,
+            'rate_unit' => 'session',
+            'SessionCount' => 0,
+            'RemainingSessions' => 0,
+            'monthly_sessions' => 4,
+            'settlement_day' => 31,
+        ]);
+
+        foreach (['2026-07-03', '2026-07-10', '2026-07-17', '2026-07-24'] as $date) {
+            ClassSession::create([
+                'StudentClassID' => $sc->ID,
+                'SessionDate' => $date,
+                'StartTime' => '18:00',
+                'EndTime' => '20:00',
+                'Status' => 'attended',
+            ]);
+        }
+        foreach (['leave', 'cancelled', 'scheduled'] as $status) {
+            ClassSession::create([
+                'StudentClassID' => $sc->ID,
+                'SessionDate' => '2026-07-31',
+                'StartTime' => '18:00',
+                'EndTime' => '20:00',
+                'Status' => $status,
+            ]);
+        }
+        ClassSession::create([
+            'StudentClassID' => $sc->ID,
+            'SessionDate' => '2026-08-07',
+            'StartTime' => '18:00',
+            'EndTime' => '20:00',
+            'Status' => 'scheduled',
+        ]);
+
+        $headers = [
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ];
+        $record = $this->withHeaders($headers)->postJson('/api/v1/payment-reports/director-record', [
+            'student_class_id' => $sc->ID,
+            'payment_date' => '2026-07-31',
+            'payment_method' => 'cash',
+            'amount' => 6600,
+        ]);
+        $record->assertOk();
+
+        $confirm = $this->withHeaders($headers)
+            ->putJson('/api/v1/payment-reports/' . $record->json('report_id') . '/confirm');
+        $confirm->assertOk();
+
+        $invoice = Invoice::findOrFail($confirm->json('invoice_id'));
+        $this->assertSame(6600, (int) $invoice->TotalAmount);
+        $this->assertSame(4, (int) $invoice->billing_snapshot['period_sessions']);
+        $this->assertCount(4, $invoice->billing_snapshot['sessions']);
+
+        $receipt = $this->withHeaders($headers)
+            ->getJson('/api/v1/payment-reports/' . $record->json('report_id') . '/receipt');
+        $receipt->assertOk()
+            ->assertJsonPath('period_sessions', 4)
+            ->assertJsonPath('session_dates.0.date', '2026/07/03')
+            ->assertJsonPath('session_dates.0.start_time', '18:00')
+            ->assertJsonPath('session_dates.0.end_time', '20:00')
+            ->assertJsonPath('session_dates.0.lesson', 1);
+        $this->assertCount(4, $receipt->json('session_dates'));
+
+        DB::table('ClassSession')->where('id', $invoice->billing_snapshot['sessions'][0]['class_session_id'])->update([
+            'SessionDate' => '2026-07-30',
+            'StartTime' => '09:00',
+            'EndTime' => '10:00',
+        ]);
+
+        $receiptAfterEdit = $this->withHeaders($headers)
+            ->getJson('/api/v1/payment-reports/' . $record->json('report_id') . '/receipt');
+        $receiptAfterEdit->assertOk()
+            ->assertJsonPath('session_dates.0.date', '2026/07/03')
+            ->assertJsonPath('session_dates.0.start_time', '18:00')
+            ->assertJsonPath('session_dates.0.end_time', '20:00');
+    }
+
+    public function test_monthly_director_record_rejects_stale_amount_from_old_notification(): void
+    {
+        Carbon::setTestNow('2026-07-31 12:00:00');
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, [
+            'ScheduleMode' => 'date',
+            'Charge' => 1800,
+            'Rate' => 1200,
+            'rate_unit' => 'session',
+            'SessionCount' => 0,
+            'RemainingSessions' => 0,
+        ]);
+        ClassSession::create([
+            'StudentClassID' => $sc->ID,
+            'SessionDate' => '2026-07-24',
+            'StartTime' => '18:00',
+            'EndTime' => '20:00',
+            'Status' => 'attended',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/payment-reports/director-record', [
+            'student_class_id' => $sc->ID,
+            'payment_date' => '2026-07-31',
+            'payment_method' => 'cash',
+            'amount' => 1800,
+        ]);
+
+        $res->assertStatus(422)
+            ->assertJsonPath('code', 'monthly_amount_stale')
+            ->assertJsonPath('expected_amount', 1200)
+            ->assertJsonPath('period_sessions', 1);
+        $this->assertSame(0, PaymentReport::query()->count());
     }
 
     // (#934) 課程計費模式（堂數制/月結）在開立發票後被變更 → 收據應標示「可能已被取代」

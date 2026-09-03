@@ -1,0 +1,111 @@
+name: 翟君和 8/28 13:00 未上修復（受控）
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: dry-run (default) | execute
+        required: true
+        default: dry-run
+        type: choice
+        options: [dry-run, execute]
+      confirm_environment:
+        description: Must be PRODUCTION for execute
+        required: true
+        default: ''
+        type: string
+      confirm_phrase:
+        description: 'For execute: type I_APPROVE_UNATTENDED_29212'
+        required: false
+        type: string
+      actor:
+        description: Executor audit label
+        required: true
+        default: 'gha:unattended-session-29212'
+        type: string
+      actor_user_id:
+        description: Existing super-admin user id recorded in audit rows
+        required: true
+        default: '4'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: repair-unattended-session-29212
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate gates
+        env:
+          MODE: ${{ inputs.mode }}
+          ENV_CONFIRM: ${{ inputs.confirm_environment }}
+          PHRASE: ${{ inputs.confirm_phrase }}
+          ACTOR_ID: ${{ inputs.actor_user_id }}
+        run: |
+          set -euo pipefail
+          test "$ACTOR_ID" -gt 0
+          if [ "$MODE" = execute ]; then
+            test "$ENV_CONFIRM" = PRODUCTION
+            test "$PHRASE" = I_APPROVE_UNATTENDED_29212
+          fi
+
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$PI_SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Run fixed-target repair
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          MODE: ${{ inputs.mode }}
+          ACTOR: ${{ inputs.actor }}
+          ACTOR_ID: ${{ inputs.actor_user_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes \
+            "$PI_SSH_USER@$PI_SSH_HOST" MODE="$MODE" ACTOR="$ACTOR" ACTOR_ID="$ACTOR_ID" 'bash -s' <<'REMOTE' | tee out/repair.log
+          set -euo pipefail
+          cd /home/admin/backend
+          COMMON="--actor=$ACTOR --actor-user-id=$ACTOR_ID"
+          php artisan repair:unattended-session-29212 --dry-run $COMMON
+          if [ "$MODE" = dry-run ]; then
+            echo 'DRY_RUN_ONLY: no production write.'
+            exit 0
+          fi
+          TS=$(date '+%Y-%m-%d_%H%M%S')
+          mkdir -p /home/admin/backups/emergency storage/app/repair-snapshots
+          DB_USER="$(grep '^DB_USERNAME=' .env | cut -d= -f2-)"
+          DB_PASS="$(grep '^DB_PASSWORD=' .env | cut -d= -f2-)"
+          mysqldump -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASS" --single-transaction \
+            AllTrue ClassSession LearningRecord StudentSingIn session_deduction_ledger schedule_audit_logs \
+            | gzip > "/home/admin/backups/emergency/db_pre_unattended_29212_${TS}.sql.gz"
+          test -s "/home/admin/backups/emergency/db_pre_unattended_29212_${TS}.sql.gz"
+          export ALLOW_PROD_REPAIR=1
+          php artisan repair:unattended-session-29212 --execute --force $COMMON \
+            --snapshot="storage/app/repair-snapshots/unattended-session-29212-${TS}.json"
+          unset ALLOW_PROD_REPAIR
+          php artisan repair:unattended-session-29212 --dry-run $COMMON
+          REMOTE
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unattended-session-29212-audit
+          path: out/repair.log
+          retention-days: 90

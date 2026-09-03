@@ -14,6 +14,7 @@ use App\Models\SecurityAuditEvent;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
+use App\Models\SessionDeductionLedger;
 use App\Models\UserCampus;
 use App\Models\CoursePackage;
 use App\Support\SessionStatus;
@@ -28,6 +29,8 @@ use App\Services\ClassSessionContractReflowService;
 use App\Services\FrontendSubjectIdResolver;
 use App\Services\InvoiceAmountReconciliationService;
 use App\Services\SessionDeductionService;
+use App\Services\SessionContractRecoveryService;
+use App\Exceptions\SessionContractRecoveryException;
 use App\Services\ScheduleGuardService;
 use App\Services\ManualSessionBookingService;
 use App\Services\SessionProjectionReadService;
@@ -35,6 +38,7 @@ use App\Services\TeacherScopeService;
 use App\Services\CourseEditabilityService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -180,6 +184,58 @@ class StudentClassController extends Controller
         );
         $paidAtMap = AlertController::lastPaidAtByStudentClassIds($classIds);
         $invoiceAggMap = AlertController::invoiceAggregateByStudentClassIds($classIds);
+        $pendingReportByClassId = !empty($classIds)
+            ? PaymentReport::query()
+                ->whereIn('StudentClassID', $classIds)
+                ->where('status', 'pending')
+                ->orderByDesc('id')
+                ->get(['id', 'StudentClassID'])
+                ->unique('StudentClassID')
+                ->mapWithKeys(fn (PaymentReport $report): array => [
+                    (int) $report->getAttribute('StudentClassID') => (int) $report->getKey(),
+                ])
+                ->all()
+            : [];
+        // Keep the course-management card useful without making the page open a
+        // second billing screen: expose the latest non-rejected payment report as
+        // a read-only summary. Account last-five follows the existing invoices
+        // endpoint privacy rule and is hidden from teachers.
+        $latestPaymentSummaryByClassId = [];
+        if (!empty($classIds)) {
+            $latestReportIds = DB::table('payment_reports')
+                ->whereIn('StudentClassID', $classIds)
+                ->whereIn('status', ['pending', 'confirmed'])
+                ->select('StudentClassID', DB::raw('MAX(id) as latest_id'))
+                ->groupBy('StudentClassID')
+                ->pluck('latest_id');
+            $latestPaymentReports = DB::table('payment_reports')
+                ->whereIn('id', $latestReportIds)
+                ->get([
+                    'id',
+                    'StudentClassID',
+                    'status',
+                    'payment_date',
+                    'reported_amount',
+                    'account_last5',
+                    'note',
+                ]);
+
+            foreach ($latestPaymentReports as $report) {
+                $classId = (int) $report->StudentClassID;
+                if (isset($latestPaymentSummaryByClassId[$classId])) {
+                    continue;
+                }
+
+                $latestPaymentSummaryByClassId[$classId] = [
+                    'report_id' => (int) $report->id,
+                    'status' => (string) $report->status,
+                    'payment_date' => $report->payment_date ? substr((string) $report->payment_date, 0, 10) : null,
+                    'amount' => $report->reported_amount !== null ? (float) $report->reported_amount : null,
+                    'account_last5' => $role === 'teacher' ? null : ($report->account_last5 ?: null),
+                    'note' => trim((string) ($report->note ?? '')),
+                ];
+            }
+        }
 
         $packageIds = $classes->getCollection()
             ->pluck('PackageID')->filter(fn ($id) => $id > 0)->unique()->values()->all();
@@ -241,7 +297,7 @@ class StudentClassController extends Controller
             }
         }
 
-        $classes->getCollection()->transform(function ($class) use ($courseNames, $subjectNames, $teacherNames, $userStatuses, $observedUsedByClass, $usageDiagnosticsByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap, $invoiceAggMap, $packageMap) {
+        $classes->getCollection()->transform(function ($class) use ($courseNames, $subjectNames, $teacherNames, $userStatuses, $observedUsedByClass, $usageDiagnosticsByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap, $invoiceAggMap, $pendingReportByClassId, $latestPaymentSummaryByClassId, $packageMap) {
             $class->subject_name = $courseNames[$class->SubjectID]
                 ?? $subjectNames[$class->SubjectID]
                 ?? null;
@@ -288,6 +344,7 @@ class StudentClassController extends Controller
             $class->subject = $reverseSubjectMap[$subjectNameKey] ?? 'Math';
             $class->class_type = $class->ClassType ?? 'one_on_one';
             $class->rate_per_30min = $class->Rate ?? 0;
+            $class->total_hours = (int) ($class->TotalHours ?? 0);
             $class->duration_hours = $class->SessionDuration ? round($class->SessionDuration / 60, 1) : 2;
             // 固定排課多日（如 一四）：從 week + week1..week6 彙總成 days_of_week（寫入時第一日在 week，其餘在 week1..week6）
             $weekFields = ['week', 'week1', 'week2', 'week3', 'week4', 'week5', 'week6'];
@@ -459,16 +516,25 @@ class StudentClassController extends Controller
             $directPaidAt = $class->PayDate ? substr($class->PayDate, 0, 10) : null;
             $invoicePaidAt = $paidAtMap[(int) $class->ID] ?? null;
             $invoicePaidAmount = (int) (($invoiceAggMap[(int) $class->ID]['paid_amount'] ?? 0));
-            // Display paid = Paid flag OR full invoice cover (R94 / TD-083 B1). Never "any payment".
-            $class->payment_status = StudentClass::isFullyPaid(
-                (int) ($class->Paid ?? 0) === 1,
-                $invoicePaidAmount,
-                $effectiveCharge
-            ) ? 'paid' : 'unpaid';
+            $pendingReportId = $pendingReportByClassId[(int) $class->ID] ?? null;
+            // A pending report must remain distinct from both paid and unpaid (R94 / TD-083 B1).
+            // It takes priority here so course lists do not invite the same report repeatedly.
+            $class->payment_status = $pendingReportId !== null
+                ? 'pending_report'
+                : (StudentClass::isFullyPaid(
+                    (int) ($class->Paid ?? 0) === 1,
+                    $invoicePaidAmount,
+                    $effectiveCharge
+                ) ? 'paid' : 'unpaid');
+            $class->latest_payment_report_id = $pendingReportId;
+            $class->latest_payment_summary = $latestPaymentSummaryByClassId[(int) $class->ID] ?? null;
             $class->paid_at = $directPaidAt;
             $class->last_paid_at = $invoicePaidAt ?? $directPaidAt;
             $class->status = empty($class->Stop) ? 'active' : 'inactive';
             $class->closed_reason = $class->closed_reason ?? null;
+            $class->trial_converted_to_id = $class->trial_converted_to_id
+                ? (int) $class->trial_converted_to_id
+                : null;
             $class->first_class_date = $class->StartDate ? (\Carbon\Carbon::parse($class->StartDate)->toDateString()) : null;
 
             return $class;
@@ -630,7 +696,7 @@ class StudentClassController extends Controller
                         continue;
                     }
                     $status = strtolower((string) ($row->Status ?? ''));
-                    if (in_array($status, ['cancelled', 'leave'], true)) {
+                    if ($status === 'cancelled' || $status === 'leave') {
                         continue;
                     }
                     if (!isset($sessionDatesByClass[$id])) {
@@ -804,6 +870,8 @@ class StudentClassController extends Controller
                     'week6',
                     'time6',
                     'SessionDuration',
+                    'Stop',
+                    'closed_reason',
                     'duration1',
                     'duration2',
                     'duration3',
@@ -857,6 +925,14 @@ class StudentClassController extends Controller
                     && ($class->ScheduleMode ?? '') === 'count'
                     && (int) ($class->SessionCount ?? 0) > 0
                     && (string) ($class->scheduling_policy ?? 'auto_recurrence') !== ManualSessionBookingService::POLICY;
+                $classRangeEnd = $rangeEnd;
+                if (
+                    $class
+                    && ((int) ($class->Stop ?? 0) === 1
+                        || in_array((string) ($class->closed_reason ?? ''), ['settled', 'completed', 'usage_settled'], true))
+                ) {
+                    $classRangeEnd = min($rangeEnd, Carbon::today()->toDateString());
+                }
                 $startDate = $class && $class->StartDate ? Carbon::parse($class->StartDate)->toDateString() : null;
 
                 $weekFields = ['week', 'week1', 'week2', 'week3', 'week4', 'week5', 'week6'];
@@ -883,11 +959,11 @@ class StudentClassController extends Controller
                             continue;
                         }
                         $status = strtolower((string) ($row->Status ?? ''));
-                        if (in_array($status, ['cancelled', 'leave'], true)) {
+                        if ($status === 'cancelled' || $status === 'leave') {
                             continue;
                         }
                         $d = $row->SessionDate ? Carbon::parse($row->SessionDate)->toDateString() : null;
-                        if ($d) {
+                        if ($d && $d <= $classRangeEnd) {
                             $actualSessionSet[$d] = true;
                         }
                     }
@@ -942,7 +1018,7 @@ class StudentClassController extends Controller
                         $sessions,
                         $class,
                         $rangeStart,
-                        $rangeEnd
+                        $classRangeEnd
                     );
                     continue;
                 }
@@ -953,7 +1029,7 @@ class StudentClassController extends Controller
                         continue;
                     }
                     $status = strtolower((string) ($row->Status ?? ''));
-                    if (in_array($status, ['cancelled', 'leave'], true)) {
+                    if ($status === 'cancelled' || $status === 'leave') {
                         continue;
                     }
                     $d = $row->SessionDate ? Carbon::parse($row->SessionDate)->toDateString() : null;
@@ -979,7 +1055,7 @@ class StudentClassController extends Controller
                 if ($class && ($class->ScheduleMode ?? '') === 'date') {
                     $leaveSet = $leaveByClass[$id] ?? [];
                     $scheduledSet = $scheduledByClass[$id] ?? [];
-                    $list = $this->computeMonthlyEffectiveSessionDates($class, $rangeStart, $rangeEnd, $leaveSet, $scheduledSet, $set);
+                    $list = $this->computeMonthlyEffectiveSessionDates($class, $rangeStart, $classRangeEnd, $leaveSet, $scheduledSet, $set);
                     $result[(string) $id] = $this->buildSessionDatesSplit(
                         $projectionReader,
                         $id,
@@ -987,7 +1063,7 @@ class StudentClassController extends Controller
                         $sessions,
                         $class,
                         $rangeStart,
-                        $rangeEnd
+                        $classRangeEnd
                     );
                     continue;
                 }
@@ -1003,7 +1079,7 @@ class StudentClassController extends Controller
                     $sessions,
                     $class,
                     $rangeStart,
-                    $rangeEnd
+                    $classRangeEnd
                 );
             }
         } catch (\Throwable $e) {
@@ -1105,7 +1181,7 @@ class StudentClassController extends Controller
     /**
      * 堂數制：從第一堂日開始，依排課星期與請假/調課/加課，算出恰好 N 堂的有效日期（請假會讓結束日往後推）。
      */
-    private static function computeEffectiveSessionDates(string $startDate, int $n, array $daysOfWeek, array $leaveSet, array $scheduledSet): array
+    public static function computeEffectiveSessionDates(string $startDate, int $n, array $daysOfWeek, array $leaveSet, array $scheduledSet): array
     {
         $list = [];
         $d = Carbon::parse($startDate . ' 12:00:00');
@@ -1470,6 +1546,10 @@ class StudentClassController extends Controller
         // 前端一律透過 PaymentEntryModal 走 /api/v1/payment-reports/director-record，
         // 不應直接用 payment_status=paid 切換狀態，避免 PayDate 空白、帳務無從查核。
         $rawInput = $request->all();
+        // Snapshot the pre-edit fixed-slot contract. Later we must distinguish
+        // a pure removal from a slot that was added or moved: deleting a slot
+        // must not validate a retained locked occurrence as a new booking.
+        $previousScheduleSlots = $this->resolveScheduleSlotsForRebuild($studentClass);
         if (($rawInput['payment_status'] ?? null) === 'paid'
             && (!array_key_exists('paid_at', $rawInput) || empty($rawInput['paid_at']))) {
             return response()->json([
@@ -1511,6 +1591,16 @@ class StudentClassController extends Controller
         }
 
         $mapped = $this->mapFrontendPayload($request);
+        if (array_key_exists('rate_unit', $mapped)) {
+            $rateUnit = strtolower(trim((string) $mapped['rate_unit']));
+            if (!in_array($rateUnit, ['session', 'hour'], true)) {
+                return response()->json([
+                    'message' => 'Invalid rate unit',
+                    'errors' => ['rate_unit' => ['rate_unit 必須是 session 或 hour。']],
+                ], 422);
+            }
+            $mapped['rate_unit'] = $rateUnit;
+        }
         if (array_key_exists('scheduling_policy', $mapped)
             && !in_array($mapped['scheduling_policy'], ['auto_recurrence', ManualSessionBookingService::POLICY], true)
         ) {
@@ -1647,7 +1737,7 @@ class StudentClassController extends Controller
         // 避免老師／主任調漲調降課程費率時，把已經手動微調過的金額一併洗掉。
         // #798：delta 只在課程實際存在單堂時間調整（session_charge）時才保留；
         // 否則視為錯誤存量資料，直接以 費率×數量 重算，讓主任能從 UI 改回正確金額。
-        if (isset($mapped['Rate']) || isset($mapped['SessionCount'])) {
+        if (isset($mapped['Rate']) || isset($mapped['SessionCount']) || array_key_exists('rate_unit', $mapped)) {
             $oldBase = $oldRateUnitSnapshot === 'hour'
                 ? (int) round($oldRateSnapshot * $oldTotalHoursSnapshot)
                 : (int) round($oldRateSnapshot * $oldSessionCountSnapshot);
@@ -1710,7 +1800,8 @@ class StudentClassController extends Controller
                 $updatedCount = $this->syncFutureScheduledSessionTimes(
                     (int) $studentClass->ID,
                     $slots,
-                    $durationMinutes
+                    $durationMinutes,
+                    $previousScheduleSlots
                 );
                 return response()->json(array_merge($studentClass->fresh()->toArray(), [
                     'session_sync' => [
@@ -1728,7 +1819,8 @@ class StudentClassController extends Controller
             $previousStartDate,
             $mapped,
             $scheduleSlotsForRebuild,
-            (bool) $request->boolean('force_rebuild_if_mismatch', false)
+            (bool) $request->boolean('force_rebuild_if_mismatch', false),
+            $previousScheduleSlots
         );
 
         // When the request explicitly carries fixed schedule fields, those
@@ -2099,7 +2191,11 @@ class StudentClassController extends Controller
             ], 422);
         }
 
-        $observedUsed = (int) (SessionDeductionService::batchObservedUsedSessions([$classId])[$classId] ?? 0);
+        $usageDiagnostic = SessionDeductionService::batchExpectedUsedSessionDiagnostics([$classId])[$classId] ?? [];
+        $observedUsed = max(
+            (int) ($usageDiagnostic['expected_used'] ?? 0),
+            (int) ($usageDiagnostic['uncapped_used'] ?? 0)
+        );
         if ($newCount < $observedUsed) {
             $this->auditEditBlocked($studentClass, 'billing_correction_below_observed_usage', 422);
             return response()->json([
@@ -2116,6 +2212,26 @@ class StudentClassController extends Controller
             return response()->json([
                 'message' => '此流程只允許未收款課程減少堂數更正；增加堂數請使用加購／續報。',
                 'code' => 'billing_correction_reduction_only',
+            ], 422);
+        }
+
+        // Reducing a contract must not silently cancel future bookings. The
+        // operator must see exactly which scheduled sessions fall outside the
+        // new entitlement and handle them explicitly before retrying.
+        $affectedScheduledSessions = $this->scheduledSessionsBeyondCount($classId, $newCount);
+        if ($affectedScheduledSessions !== []) {
+            $this->auditEditBlocked($studentClass, 'billing_correction_future_schedule_over_capacity', 422);
+            return response()->json([
+                'message' => "更正後堂數會使未來預排超額；請先處理受影響堂次後再重試。受影響堂次："
+                    . implode('、', array_map(
+                        static fn (array $session): string => '#' . $session['session_id'] . ' ' . $session['session_date'] . ' ' . $session['start_time'],
+                        $affectedScheduledSessions
+                    )),
+                'code' => 'billing_correction_future_schedule_over_capacity',
+                'affected_scheduled_sessions' => $affectedScheduledSessions,
+                'new_session_count' => $newCount,
+                'observed_used_sessions' => $observedUsed,
+                'next_step' => 'handle_affected_scheduled_sessions_then_retry',
             ], 422);
         }
 
@@ -2199,6 +2315,168 @@ class StudentClassController extends Controller
                 'payment_status' => 'unpaid',
                 'reason' => $payload['reason'],
                 'adjusted_invoice_count' => $adjustedInvoiceCount,
+            ];
+        });
+
+        return response()->json($result);
+    }
+
+    /**
+     * Correct the stored charge for an unpaid date-mode course after sessions
+     * already exist. Date-mode billing is based on billable occurrences, so the
+     * count-based billingCorrection() contract cannot safely be reused here.
+     * This endpoint deliberately changes no session, ledger, or entitlement
+     * fields; it only synchronizes the course charge and its unpaid invoices.
+     */
+    public function chargeCorrection(Request $request, StudentClass $studentClass)
+    {
+        if ($accessError = $this->authorizeStudentClassAccess($studentClass)) {
+            return $accessError;
+        }
+
+        $payload = $request->validate([
+            'new_charge' => ['required', 'integer', 'min:0'],
+            'reason' => ['required', 'string', 'max:255'],
+        ]);
+
+        if ((string) ($studentClass->ScheduleMode ?? 'count') !== 'date') {
+            $this->auditEditBlocked($studentClass, 'charge_correction_date_mode_only', 422);
+            return response()->json([
+                'message' => '只有月結（date）課程可以使用費用更正。',
+                'code' => 'charge_correction_date_mode_only',
+            ], 422);
+        }
+
+        if ($studentClass->isPartOfPackage()) {
+            $this->auditEditBlocked($studentClass, 'charge_correction_package_forbidden', 422);
+            return response()->json([
+                'message' => '共用課程包請使用方案調整流程，不可單獨更正課程費用。',
+                'code' => 'charge_correction_package_forbidden',
+            ], 422);
+        }
+
+        if ((int) ($studentClass->Paid ?? 0) === 1) {
+            $this->auditEditBlocked($studentClass, 'charge_correction_paid_locked', 409);
+            return response()->json([
+                'message' => '此課程已標記收款，請先走帳務更正／作廢流程。',
+                'code' => 'charge_correction_paid_locked',
+            ], 409);
+        }
+
+        $classId = (int) $studentClass->getKey();
+        $activePayment = DB::table('Invoice')
+            ->leftJoin('Payment', 'Payment.InvoiceID', '=', 'Invoice.id')
+            ->where('Invoice.StudentClassID', $classId)
+            ->where(function ($q) {
+                $q->whereNull('Invoice.Status')->orWhere('Invoice.Status', '!=', 'void');
+            })
+            ->where(function ($q) {
+                $q->where('Invoice.PaidAmount', '>', 0)
+                    ->orWhere(function ($payment) {
+                        $payment->where('Payment.Amount', '>', 0)
+                            ->where(function ($method) {
+                                $method->whereNull('Payment.Method')->orWhere('Payment.Method', '!=', 'void');
+                            });
+                    });
+            })
+            ->exists();
+        if ($activePayment) {
+            $this->auditEditBlocked($studentClass, 'charge_correction_payment_locked', 409);
+            return response()->json([
+                'message' => '此課程已有有效收款紀錄，請先至帳務流程作廢或更正帳單。',
+                'code' => 'charge_correction_payment_locked',
+            ], 409);
+        }
+
+        if (PaymentReport::query()
+            ->where('StudentClassID', $classId)
+            ->whereIn('status', ['pending', 'confirmed'])
+            ->exists()) {
+            $this->auditEditBlocked($studentClass, 'charge_correction_payment_report_locked', 409);
+            return response()->json([
+                'message' => '此課程已有待處理或已確認的繳費回報，請先完成或作廢該筆回報。',
+                'code' => 'charge_correction_payment_report_locked',
+            ], 409);
+        }
+
+        $newCharge = (int) $payload['new_charge'];
+        $oldCharge = (int) ($studentClass->Charge ?? 0);
+        $reasonHash = hash('sha256', (string) $payload['reason']);
+
+        $result = DB::transaction(function () use ($classId, $newCharge, $oldCharge, $reasonHash, $payload, $studentClass) {
+            $locked = StudentClass::query()->where('ID', $classId)->lockForUpdate()->first();
+            if (!$locked) {
+                abort(404);
+            }
+            if ((int) ($locked->Paid ?? 0) === 1) {
+                abort(response()->json([
+                    'message' => '此課程在處理期間已被標記收款，請重新整理後再操作。',
+                    'code' => 'charge_correction_paid_locked',
+                ], 409));
+            }
+
+            $openInvoices = Invoice::query()
+                ->where('StudentClassID', $classId)
+                ->where(function ($q) {
+                    $q->whereNull('Status')->orWhere('Status', '!=', 'void');
+                })
+                ->lockForUpdate()
+                ->get();
+            foreach ($openInvoices as $invoice) {
+                if ((int) ($invoice->PaidAmount ?? 0) !== 0
+                    || Payment::query()
+                        ->where('InvoiceID', $invoice->id)
+                        ->where('Amount', '>', 0)
+                        ->where(function ($q) {
+                            $q->whereNull('Method')->orWhere('Method', '!=', 'void');
+                        })
+                        ->exists()) {
+                    abort(response()->json([
+                        'message' => '此課程已有有效收款紀錄，請先至帳務流程作廢或更正帳單。',
+                        'code' => 'charge_correction_payment_locked',
+                    ], 409));
+                }
+                $invoice->TotalAmount = $newCharge;
+                $invoice->save();
+                InvoiceItem::query()
+                    ->where('InvoiceID', $invoice->id)
+                    ->where('StudentClassID', $classId)
+                    ->update(['Amount' => $newCharge]);
+            }
+
+            $locked->Charge = $newCharge;
+            $locked->save();
+
+            $actor = request()->attributes->get('auth_user');
+            SecurityAuditEvent::append(
+                'student_class.date_mode_charge_correction',
+                'success',
+                [
+                    'campus_id' => $studentClass->student?->CampusID,
+                    'actor_type' => 'user',
+                    'actor_id' => $actor?->id,
+                    'subject_type' => 'student_class',
+                    'subject_id' => $classId,
+                ],
+                [
+                    'old_charge' => $oldCharge,
+                    'new_charge' => $newCharge,
+                    'reason_hash' => $reasonHash,
+                    'reason_code' => 'unpaid_date_mode_charge_correction',
+                    'outcome' => 'success',
+                ]
+            );
+
+            $fresh = $locked->fresh();
+            return [
+                'student_class_id' => $classId,
+                'old_charge' => $oldCharge,
+                'new_charge' => $newCharge,
+                'used_sessions' => (int) ($fresh->UsedSessions ?? 0),
+                'remaining_sessions' => (int) ($fresh->RemainingSessions ?? 0),
+                'payment_status' => 'unpaid',
+                'reason' => $payload['reason'],
+                'adjusted_invoice_count' => $openInvoices->count(),
             ];
         });
 
@@ -2911,6 +3189,7 @@ class StudentClassController extends Controller
             'sessions' => 'required|integer|min:1|max:500',
             'start_date' => 'required|date',
             'mode' => 'nullable|in:new_purchase',
+            'class_type' => 'nullable|in:one_on_one,one_on_two,one_on_three,tutoring',
         ]);
 
         $mode = (string) ($data['mode'] ?? 'new_purchase');
@@ -2925,8 +3204,9 @@ class StudentClassController extends Controller
 
         $sessions = (int) $data['sessions'];
         $startDate = Carbon::parse($data['start_date'])->toDateString();
+        $newClassType = (string) ($data['class_type'] ?? $studentClass->getAttribute('ClassType') ?: 'one_on_one');
 
-        return DB::transaction(function () use ($studentClass, $sessions, $startDate, $mode) {
+        return DB::transaction(function () use ($studentClass, $sessions, $startDate, $mode, $newClassType) {
             $studentClass = StudentClass::where('ID', $studentClass->ID)
                 ->lockForUpdate()
                 ->firstOrFail();
@@ -3018,7 +3298,7 @@ class StudentClassController extends Controller
                 'SessionCount' => $sessions,
                 'SessionDuration' => $globalDur,
                 'RemainingSessions' => $sessions,
-                'ClassType' => $studentClass->ClassType ?: 'one_on_one',
+                'ClassType' => $newClassType,
                 'UsedSessions' => 0,
             ];
 
@@ -3108,6 +3388,139 @@ class StudentClassController extends Controller
         });
     }
 
+    public function convertTrial(Request $request, StudentClass $studentClass)
+    {
+        if ($auth = $this->authorizeStudentClassAccess($studentClass)) {
+            return $auth;
+        }
+
+        $data = $request->validate([
+            'sessions' => 'required|integer|min:1|max:500',
+            'start_date' => 'required|date',
+            'class_type' => 'nullable|in:one_on_one,one_on_two,one_on_three,tutoring',
+        ]);
+
+        if (strtolower((string) ($studentClass->getAttribute('ClassType') ?? '')) !== 'trial') {
+            return response()->json([
+                'message' => '只有試聽課程可以使用「轉為正式課程」。',
+                'code' => 'not_a_trial_course',
+            ], 422);
+        }
+        if (!empty($studentClass->getAttribute('trial_converted_to_id'))) {
+            return response()->json([
+                'message' => '這筆試聽已轉為正式課程，請直接開啟既有正式課程。',
+                'code' => 'trial_already_converted',
+                'new_course_id' => (int) $studentClass->getAttribute('trial_converted_to_id'),
+            ], 409);
+        }
+        if ((int) ($studentClass->getAttribute('Paid') ?? 0) === 1) {
+            return response()->json([
+                'message' => '試聽課程已有收款紀錄，請先由帳務流程處理後再轉正式。',
+                'code' => 'trial_payment_locked',
+            ], 422);
+        }
+
+        $sessions = (int) $data['sessions'];
+        $startDate = Carbon::parse($data['start_date'])->toDateString();
+        $newClassType = (string) ($data['class_type'] ?? 'one_on_one');
+
+        return DB::transaction(function () use ($request, $studentClass, $sessions, $startDate, $newClassType) {
+            $source = StudentClass::where('ID', $studentClass->getAttribute('ID'))
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if (strtolower((string) ($source->getAttribute('ClassType') ?? '')) !== 'trial') {
+                return response()->json(['message' => '來源課程已不是試聽課程，請重新整理後再試。'], 409);
+            }
+            if (!empty($source->getAttribute('trial_converted_to_id'))) {
+                return response()->json([
+                    'message' => '這筆試聽已轉為正式課程，請直接開啟既有正式課程。',
+                    'code' => 'trial_already_converted',
+                    'new_course_id' => (int) $source->getAttribute('trial_converted_to_id'),
+                ], 409);
+            }
+
+            $slots = $this->resolveScheduleSlotsForRebuild($source);
+            if (empty($slots)) {
+                $isoDow = (int) Carbon::parse($startDate)->dayOfWeekIso;
+                $fallbackTime = $this->normalizeSessionTime($source->getAttribute('time') ?? null, '16:00');
+                $slots = [['weekday' => $isoDow, 'time' => substr($fallbackTime, 0, 5)]];
+            }
+            $duration = max(30, (int) ($source->getAttribute('SessionDuration') ?? 120));
+            $previewSessions = $this->buildSessionsForCount(0, $startDate, $sessions, $slots, $duration);
+            if (count($previewSessions) !== $sessions) {
+                return response()->json([
+                    'message' => '無法依目前固定時段排出完整正式課程，請先補齊試聽課程的星期與時段。',
+                    'code' => 'trial_schedule_incomplete',
+                ], 422);
+            }
+
+            // Remove the source trial from occupancy before checking the new
+            // contract. The transaction rolls this back if another course is
+            // actually occupying one of the proposed slots.
+            $cancelledTrialSessions = $this->cancelFutureScheduledSessions($source, 'trial_conversion');
+            $source->setAttribute('Stop', 1);
+            $source->setAttribute('closed_reason', 'converted_trial');
+            $source->save();
+
+            $studentCampusId = (int) (optional($source->student)->getAttribute('CampusID') ?: 0);
+            $conflicts = $this->detectTeacherConflicts(
+                (int) ($source->getAttribute('TeacherID') ?? 0),
+                $previewSessions,
+                $newClassType,
+                $source->getAttribute('room_id') ? (int) $source->getAttribute('room_id') : null,
+                $studentCampusId
+            );
+            if (!empty($conflicts)) {
+                return response()->json([
+                    'message' => '正式課程的固定時段與其他課程衝堂，試聽紀錄未變更。',
+                    'code' => 'trial_conversion_schedule_conflict',
+                    'conflicts' => $conflicts,
+                ], 409);
+            }
+
+            $originalInput = $request->all();
+            $request->replace([
+                'sessions' => $sessions,
+                'start_date' => $startDate,
+                'mode' => 'new_purchase',
+                'class_type' => $newClassType,
+            ]);
+            try {
+                $response = $this->purchaseBatch($request, $source);
+            } finally {
+                $request->replace($originalInput);
+            }
+
+            if ($response->getStatusCode() >= 400) {
+                return $response;
+            }
+
+            $result = method_exists($response, 'getData') ? $response->getData(true) : [];
+            $newCourseId = (int) ($result['new_course']['id'] ?? 0);
+            if ($newCourseId <= 0) {
+                return response()->json(['message' => '正式課程建立失敗，試聽紀錄未完成轉換。'], 500);
+            }
+
+            $source->setAttribute('trial_converted_to_id', $newCourseId);
+            $source->save();
+
+            return response()->json([
+                'message' => '試聽已保留為歷史紀錄，正式課程已建立；未來試聽排課已取消，不需再轉移堂次。',
+                'source_course' => [
+                    'id' => (int) $source->getAttribute('ID'),
+                    'closed_reason' => $source->getAttribute('closed_reason'),
+                    'cancelled_future_sessions' => $cancelledTrialSessions,
+                    'preserved_attended_sessions' => (int) ClassSession::where('StudentClassID', $source->getAttribute('ID'))
+                        ->whereIn('Status', ['attended', 'completed', 'late', 'absent'])
+                        ->count(),
+                ],
+                'new_course' => $result['new_course'],
+                'next_actions' => ['record_payment', 'open_new_course'],
+            ], 201);
+        });
+    }
+
     /**
      * 課程管理加課／補登（不增加總堂數）。
      * POST /api/v1/student-classes/{studentClass}/add-session
@@ -3177,8 +3590,12 @@ class StudentClassController extends Controller
             $authUserId = is_object($authUser) ? (int) ($authUser->id ?? 0) : 0;
             $hasLearningRecordSessionDeducted = Schema::hasColumn('LearningRecord', 'SessionDeducted');
             $classId = (int) $studentClass->ID;
-            $isSessionMode = ((string) ($studentClass->ScheduleMode ?? 'count') === 'count')
-                || ((int) ($studentClass->SessionCount ?? 0) > 0);
+            // Date-mode monthly contracts are bounded by StartDate/EndDate and
+            // billed from actual attendance. Legacy rows may still carry a
+            // positive SessionCount, but that field must not turn a monthly
+            // contract into a prepaid capacity check (renewMonthly creates
+            // exactly such rows).
+            $isSessionMode = (string) ($studentClass->ScheduleMode ?? 'count') === 'count';
             $sessionCount = max(0, (int) ($studentClass->SessionCount ?? 0));
             $movedFromDate = null;
             $todayYmd = Carbon::now()->toDateString();
@@ -3438,6 +3855,12 @@ class StudentClassController extends Controller
             'has_attendance' => $result['has_attendance'] ?? false,
             'has_approved_learning_record' => $result['has_approved_learning_record'] ?? false,
             'conflict_session_id' => $result['conflict_session_id'] ?? null,
+            // A scheduled occurrence at the requested slot is an idempotent
+            // update target, not a new reservation. Expose it so the director
+            // can understand why this action will not increase the contract.
+            'existing_session_id' => isset($result['_existing_session']) && $result['_existing_session']
+                ? (int) $result['_existing_session']->id
+                : null,
             'suggested_actions' => $result['suggested_actions'] ?? [],
             // R-quickadd-confirm: this slot's end time has already passed —
             // add-session will silently mark it completed + auto-approve the
@@ -3682,7 +4105,8 @@ class StudentClassController extends Controller
             'target_student_class_id' => 'required|integer',
         ]);
 
-        return DB::transaction(function () use ($studentClass, $data) {
+        try {
+            return DB::transaction(function () use ($studentClass, $data) {
             $source = StudentClass::where('ID', $studentClass->ID)->lockForUpdate()->firstOrFail();
             $target = StudentClass::where('ID', $data['target_student_class_id'])->lockForUpdate()->firstOrFail();
 
@@ -3745,6 +4169,96 @@ class StudentClassController extends Controller
                 ], 422);
             }
 
+            // A transfer consumes entitlement in the target contract. Do this
+            // preflight before moving any row so a count-based target cannot
+            // silently become over capacity. Package courses use their shared
+            // package boundary and are intentionally handled by the package
+            // workflow instead of this per-course count check.
+            if (!$target->isPartOfPackage()
+                && strtolower((string) ($target->ScheduleMode ?? 'count')) === 'count') {
+                $targetCommitted = ClassSession::query()
+                    ->where('StudentClassID', (int) $target->ID)
+                    ->where(function ($query) {
+                        $query->whereNull('Status')
+                            ->orWhereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted', 'excused']);
+                    })
+                    ->count();
+                $targetCapacity = max(0, (int) ($target->SessionCount ?? 0));
+                $transferCount = count($foundIds);
+                if ($targetCapacity <= 0 || $targetCommitted + $transferCount > $targetCapacity) {
+                    return response()->json([
+                        'code' => 'target_capacity_exceeded',
+                        'message' => "目標課程可用堂數不足：目前已有 {$targetCommitted} 堂，轉移 {$transferCount} 堂後將超過 {$targetCapacity} 堂上限；未執行任何轉移。",
+                        'target_session_count' => $targetCapacity,
+                        'target_committed_sessions' => $targetCommitted,
+                        'transfer_count' => $transferCount,
+                        'available_sessions' => max(0, $targetCapacity - $targetCommitted),
+                    ], 422);
+                }
+            }
+
+            // The production unique index rejects two active rows in the same
+            // target course/date/start-time slot.  Check before changing any
+            // source row so a normal data conflict is reported as a useful 422
+            // instead of bubbling up as a generic 500 after the first save.
+            $targetSlotConflicts = DB::table('ClassSession')
+                ->where('StudentClassID', $target->ID)
+                ->where(function ($query) {
+                    $query->whereNull('Status')->orWhere('Status', '!=', 'cancelled');
+                })
+                ->where(function ($query) use ($sessions) {
+                    foreach ($sessions as $index => $session) {
+                        $method = $index === 0 ? 'where' : 'orWhere';
+                        $query->{$method}(function ($slot) use ($session) {
+                            $slot->whereDate('SessionDate', $session->SessionDate)
+                                ->where('StartTime', $session->StartTime);
+                        });
+                    }
+                })
+                ->get(['id', 'SessionDate', 'StartTime'])
+                ->map(fn ($row) => [
+                    'session_id' => (int) $row->id,
+                    'date' => substr((string) $row->SessionDate, 0, 10),
+                    'start_time' => substr((string) $row->StartTime, 0, 5),
+                ]);
+
+            if ($targetSlotConflicts->isNotEmpty()) {
+                $dates = $targetSlotConflicts->pluck('date')->unique()->values()->implode('、');
+                return response()->json([
+                    'code' => 'target_slot_conflict',
+                    'message' => "目標課程已有 {$dates} 的同時段堂次，未執行任何轉移。請先處理目標課程的重複堂次，或選擇沒有相同時段的目標課程。",
+                    'conflicts' => $targetSlotConflicts->values()->all(),
+                ], 422);
+            }
+
+            // Preserve the source contract's scheduled commitment without
+            // changing any billing/entitlement fields. Capture the tail
+            // before moving rows: when the selected rows include the current
+            // tail, their historical dates remain the anchor and are never
+            // recreated as future sessions.
+            $sourceTail = ClassSession::query()->where('StudentClassID', (int) $source->getAttribute('ID'))
+                ->orderByDesc('SessionDate')
+                ->orderByDesc('StartTime')
+                ->orderByDesc('id')
+                ->first();
+            $sourceCommitted = ClassSession::query()
+                ->where('StudentClassID', (int) $source->ID)
+                ->where(function ($query) {
+                    $query->whereNull('Status')
+                        ->orWhereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted', 'excused']);
+                })
+                ->count();
+            $sourceCapacity = max(0, (int) ($source->SessionCount ?? 0));
+            $replacementCount = min(
+                count($foundIds),
+                max(0, $sourceCapacity - max(0, $sourceCommitted - count($foundIds)))
+            );
+            $replacementPlan = $this->planSourceScheduleTail(
+                $source,
+                $replacementCount,
+                $sourceTail?->SessionDate
+            );
+
             foreach ($sessions as $session) {
                 $session->StudentClassID = $target->ID;
                 $session->save(); // fires assertCourseIsMutable() against the TARGET course
@@ -3752,14 +4266,189 @@ class StudentClassController extends Controller
 
             LearningRecord::whereIn('ClassSessionID', $foundIds)->update(['StudentClassID' => $target->ID]);
             StudentSignIn::whereIn('ClassSessionID', $foundIds)->update(['StudentClassID' => $target->ID]);
+            // A transfer changes the entitlement owner as well as the display
+            // owner.  Leaving ledger rows on the source makes both courses
+            // report contradictory usage and blocks safe settlement.
+            SessionDeductionLedger::query()->whereIn('class_session_id', $foundIds)->update([
+                'student_class_id' => $target->ID,
+                'updated_at' => now(),
+            ]);
+            SessionDeductionService::recomputeCounters((int) $source->ID);
+            SessionDeductionService::recomputeCounters((int) $target->ID);
+
+            $replenishedIds = [];
+            foreach ($replacementPlan as $replacement) {
+                $upsert = app(ClassSessionMaterializationService::class)->upsertSlot($replacement);
+                if ($upsert['created']) {
+                    $replenishedIds[] = (int) $upsert['session']->id;
+                }
+            }
 
             return response()->json([
-                'message' => "已轉移 " . count($foundIds) . " 堂課程紀錄（含已填評量／點名），計費堂數與金額請照原流程人工對帳。",
+                'message' => "已轉移 " . count($foundIds) . " 堂課程紀錄（含評量／點名／扣堂台帳），兩邊堂數已同步；來源合約補回 " . count($replenishedIds) . " 堂未來排程。",
                 'transferred_session_ids' => $foundIds,
+                'replenished_source_session_ids' => $replenishedIds,
+                'replenished_source_session_count' => count($replenishedIds),
                 'source_course_id' => (int) $source->ID,
                 'target_course_id' => (int) $target->ID,
             ]);
-        });
+            });
+        } catch (QueryException $exception) {
+            // A concurrent writer can create the target slot after the
+            // preflight.  Keep the unique-index guard, but translate that
+            // expected race into the same actionable response.
+            $message = (string) $exception->getMessage();
+            if ((string) $exception->getCode() === '23000'
+                && (str_contains($message, 'uq_class_session_slot') || str_contains($message, 'Duplicate entry'))) {
+                return response()->json([
+                    'code' => 'target_slot_conflict',
+                    'message' => '目標課程剛新增了相同日期／時段的堂次，未執行任何轉移。請重新整理後處理重複堂次，或選擇其他目標課程。',
+                ], 422);
+            }
+
+            throw $exception;
+        }
+    }
+
+    /**
+     * Plan only the replacement tail for a completed session transfer.
+     *
+     * The transfer endpoint moves historical rows but must not reinterpret
+     * SessionCount/RemainingSessions or invoke the broad gap filler. This
+     * planner requires an active count-mode automatic recurrence, uses the
+     * source's explicit fixed schedule fields, and starts strictly after the
+     * last source row that existed before the move.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function planSourceScheduleTail(
+        StudentClass $source,
+        int $replacementCount,
+        mixed $tailDate
+    ): array {
+        if ($replacementCount <= 0
+            || (int) ($source->Stop ?? 0) === 1
+            || strtolower((string) ($source->ScheduleMode ?? 'count')) !== 'count'
+            || (string) ($source->getAttribute('scheduling_policy') ?? 'auto_recurrence') === ManualSessionBookingService::POLICY
+        ) {
+            return [];
+        }
+
+        $slots = $this->resolveScheduleSlotsForRebuild($source);
+        if (empty($slots)) {
+            return [];
+        }
+
+        $anchor = $this->normalizeDateString($tailDate)
+            ?: $this->normalizeDateString($source->getAttribute('StartDate'))
+            ?: Carbon::today()->toDateString();
+        $anchorDate = Carbon::parse($anchor)->startOfDay();
+        $today = Carbon::today()->startOfDay();
+        if ($anchorDate->lt($today)) {
+            $anchorDate = $today;
+        }
+
+        $slotsByWeekday = $this->buildSlotsByWeekdayMap(
+            $slots,
+            max(30, (int) ($source->SessionDuration ?? 120))
+        );
+        if (empty($slotsByWeekday)) {
+            return [];
+        }
+
+        $occupied = [];
+        $existing = ClassSession::query()->where('StudentClassID', (int) $source->getAttribute('ID'))
+            ->get(['SessionDate', 'StartTime']);
+        foreach ($existing as $session) {
+            $date = $this->normalizeDateString($session->SessionDate ?? null);
+            $start = substr((string) ($session->StartTime ?? ''), 0, 5);
+            if ($date && $start !== '') {
+                $occupied[$date . '|' . $start] = true;
+            }
+        }
+
+        $planned = [];
+        $cursor = $anchorDate->copy()->addDay();
+        $guard = 0;
+        while (count($planned) < $replacementCount && $guard < 731) {
+            $guard++;
+            $daySlots = $slotsByWeekday[(int) $cursor->dayOfWeekIso] ?? [];
+            foreach ($daySlots as $slot) {
+                if (count($planned) >= $replacementCount) {
+                    break;
+                }
+
+                $start = Carbon::parse($cursor->toDateString() . ' ' . $slot['time']);
+                $key = $cursor->toDateString() . '|' . $start->format('H:i');
+                if (isset($occupied[$key])) {
+                    continue;
+                }
+
+                $end = $start->copy()->addMinutes((int) $slot['dur']);
+                $planned[] = [
+                    'StudentClassID' => (int) $source->getAttribute('ID'),
+                    'SessionDate' => $cursor->toDateString(),
+                    'StartTime' => $start->format('H:i:s'),
+                    'EndTime' => $end->format('H:i:s'),
+                    'Status' => 'scheduled',
+                    'Note' => '轉移已上堂次後補回來源合約尾端堂次',
+                ];
+                $occupied[$key] = true;
+            }
+            $cursor->addDay();
+        }
+
+        return $planned;
+    }
+
+    /**
+     * Recover and transfer cancelled sessions which still have evaluation or
+     * attendance evidence. Ordinary cancelled sessions remain ineligible.
+     */
+    public function recoverAndTransferSessions(Request $request, StudentClass $studentClass, SessionContractRecoveryService $recovery)
+    {
+        $auth = $this->authorizeStudentClassAccess($studentClass);
+        if ($auth !== null) {
+            return $auth;
+        }
+
+        $data = $request->validate([
+            'session_ids' => 'required|array|min:1|max:100',
+            'session_ids.*' => 'integer',
+            'target_student_class_id' => 'required|integer',
+            'reason' => 'required|string|max:255',
+        ]);
+
+        $target = StudentClass::query()->where('ID', $data['target_student_class_id'])->first();
+        if (!$target instanceof StudentClass) {
+            return response()->json(['message' => '目標課程不存在。'], 422);
+        }
+        if ($authTarget = $this->authorizeStudentClassAccess($target)) {
+            return $authTarget;
+        }
+
+        $sourceClassId = (int) $studentClass->getAttribute('ID');
+        $targetClassId = (int) $target->getAttribute('ID');
+        $actor = $request->attributes->get('auth_user');
+        try {
+            $result = $recovery->recoverAndTransfer(
+                $sourceClassId,
+                $targetClassId,
+                array_values(array_unique(array_map('intval', $data['session_ids']))),
+                trim((string) $data['reason']),
+                $actor?->id ? (int) $actor->id : null
+            );
+        } catch (SessionContractRecoveryException $exception) {
+            return response()->json(array_merge([
+                'message' => $exception->getMessage(),
+            ], $exception->payload()), $exception->status());
+        }
+
+        return response()->json(array_merge([
+            'message' => '已恢復並轉移堂次紀錄；評量、點名與扣堂台帳已同步。',
+            'source_course_id' => $sourceClassId,
+            'target_course_id' => $targetClassId,
+        ], $result));
     }
 
     public function destroy(StudentClass $studentClass)
@@ -4515,7 +5204,7 @@ class StudentClassController extends Controller
             $mappedData['scheduling_policy'] = (string) $input['scheduling_policy'];
         }
         if (isset($input['rate_per_30min'])) $mappedData['Rate'] = $input['rate_per_30min'];
-        if (isset($input['rate_unit'])) $mappedData['rate_unit'] = $input['rate_unit'];
+        if (array_key_exists('rate_unit', $input)) $mappedData['rate_unit'] = $input['rate_unit'];
         if (isset($input['duration_hours'])) $mappedData['SessionDuration'] = (int) round((float) $input['duration_hours'] * 60);
         // RFC non-standard duration D1/D2: the billing standard is its own per-course
         // field, kept separate from SessionDuration (the scheduling default).
@@ -5016,7 +5705,8 @@ class StudentClassController extends Controller
         ?string $previousStartDate,
         array $mapped,
         array $scheduleSlots = [],
-        bool $forceRebuildIfMismatch = false
+        bool $forceRebuildIfMismatch = false,
+        array $previousScheduleSlots = []
     ): array {
         $scheduleFields = [
             'week', 'week1', 'week2', 'week3', 'week4', 'week5', 'week6',
@@ -5050,7 +5740,8 @@ class StudentClassController extends Controller
                 $updatedCount = $this->syncFutureScheduledSessionTimes(
                     $classId,
                     $slots,
-                    $durationMinutes
+                    $durationMinutes,
+                    $previousScheduleSlots
                 );
 
                 return [
@@ -5180,7 +5871,8 @@ class StudentClassController extends Controller
                         $updatedCount = $this->syncFutureScheduledSessionTimes(
                             (int) $studentClass->ID,
                             $slots,
-                            $durationMinutes
+                            $durationMinutes,
+                            $previousScheduleSlots
                         );
                         return [
                             'rebuilt' => false,
@@ -5202,7 +5894,8 @@ class StudentClassController extends Controller
                     $updatedCount = $this->syncFutureScheduledSessionTimes(
                         (int) $studentClass->ID,
                         $slots,
-                        $durationMinutes
+                        $durationMinutes,
+                        $previousScheduleSlots
                     );
                     return [
                         'rebuilt'                => false,
@@ -5377,7 +6070,7 @@ class StudentClassController extends Controller
      * the immediate week when changing weekday (e.g. Sun -> Sat should pick previous day).
      * Never return a date earlier than today.
      */
-    private function snapDateToContractWeekday(string $ymd, array $slotsByWeekday): string
+    private function snapDateToContractWeekday(string $ymd, array $slotsByWeekday, bool $notBeforeAnchor = false): string
     {
         if ($ymd === '' || empty($slotsByWeekday)) {
             return $ymd;
@@ -5387,6 +6080,15 @@ class StudentClassController extends Controller
 
         if (isset($slotsByWeekday[(int) $anchor->dayOfWeekIso]) && $anchor->greaterThanOrEqualTo($today)) {
             return $anchor->toDateString();
+        }
+
+        if ($notBeforeAnchor) {
+            for ($offset = 1; $offset <= 7; $offset++) {
+                $next = $anchor->copy()->addDays($offset);
+                if ($next->greaterThanOrEqualTo($today) && isset($slotsByWeekday[(int) $next->dayOfWeekIso])) {
+                    return $next->toDateString();
+                }
+            }
         }
 
         for ($offset = 1; $offset <= 7; $offset++) {
@@ -5411,14 +6113,27 @@ class StudentClassController extends Controller
      *
      * @param  \Illuminate\Support\Collection<int, ClassSession>  $unlockedSorted
      * @param  array<int, array{weekday:int,time:string,duration_minutes?:int}>  $slots
+     * @param  string|null  $contractStartDate  The course start date, when known.
      */
-    private function remapFutureScheduledSessionsToContract($unlockedSorted, array $slots, int $durationMinutes): int
+    private function remapFutureScheduledSessionsToContract(
+        $unlockedSorted,
+        array $slots,
+        int $durationMinutes,
+        array $skipOccupiedTargetKeys = [],
+        ?string $contractStartDate = null
+    ): int
     {
         $k = $unlockedSorted->count();
         if ($k <= 0) {
             return 0;
         }
-        $anchor = $this->normalizeDateString($unlockedSorted->first()->SessionDate ?? null);
+        $firstSessionDate = $this->normalizeDateString($unlockedSorted->first()->SessionDate ?? null);
+        $anchor = $firstSessionDate;
+        $startDateIsAnchor = false;
+        if ($contractStartDate !== null && $contractStartDate !== '') {
+            $anchor = max($firstSessionDate ?: $contractStartDate, $contractStartDate);
+            $startDateIsAnchor = $firstSessionDate === null || $contractStartDate > $firstSessionDate;
+        }
         if ($anchor === null || $anchor === '') {
             return 0;
         }
@@ -5426,8 +6141,25 @@ class StudentClassController extends Controller
         if (empty($slotsByWeekday)) {
             return 0;
         }
-        $snapped = $this->snapDateToContractWeekday($anchor, $slotsByWeekday);
-        $proposed = $this->buildSessionsForCount(0, $snapped, $k, $slots, $durationMinutes);
+        $snapped = $this->snapDateToContractWeekday($anchor, $slotsByWeekday, $startDateIsAnchor);
+        // A pure removal may compress an unlocked removed-day row onto a
+        // retained locked row (e.g. Wed+Thu -> Wed). That is not a new
+        // booking conflict. Generate enough cadence candidates to skip the
+        // retained occurrence and place the row on the next valid occurrence.
+        $candidateCount = $k + count($skipOccupiedTargetKeys);
+        $candidateSessions = $this->buildSessionsForCount(0, $snapped, $candidateCount, $slots, $durationMinutes);
+        $proposed = [];
+        foreach ($candidateSessions as $candidate) {
+            $date = $this->normalizeDateString($candidate['SessionDate'] ?? null);
+            $start = $this->normalizeSessionTime($candidate['StartTime'] ?? null, '16:00:00');
+            if (!$date || isset($skipOccupiedTargetKeys["{$date}|" . substr($start, 0, 5)])) {
+                continue;
+            }
+            $proposed[] = $candidate;
+            if (count($proposed) >= $k) {
+                break;
+            }
+        }
 
         // Collect only the rows whose slot actually changes.
         $reflowIds = [];
@@ -5483,6 +6215,28 @@ class StudentClassController extends Controller
     }
 
     /**
+     * Return true only when every submitted fixed slot is an unchanged old
+     * slot and at least one old slot was removed. Any added or moved slot must
+     * retain the normal conflict validation path.
+     *
+     * @param  array<int, array{weekday:int,time:string}>  $previousSlots
+     * @param  array<int, array{weekday:int,time:string}>  $newSlots
+     */
+    private function isPureFixedSlotRemoval(array $previousSlots, array $newSlots): bool
+    {
+        if (empty($previousSlots) || empty($newSlots) || count($newSlots) >= count($previousSlots)) {
+            return false;
+        }
+
+        $slotKey = static fn (array $slot): string => (int) ($slot['weekday'] ?? 0)
+            . '|' . substr((string) ($slot['time'] ?? ''), 0, 5);
+        $oldKeys = array_values(array_unique(array_map($slotKey, $previousSlots)));
+        $newKeys = array_values(array_unique(array_map($slotKey, $newSlots)));
+
+        return count(array_diff($newKeys, $oldKeys)) === 0;
+    }
+
+    /**
      * When SessionCount is reduced, cancel scheduled sessions beyond the new limit.
      * Only cancels sessions whose Status is 'scheduled'; attended/late/absent sessions are untouched.
      *
@@ -5510,6 +6264,43 @@ class StudentClassController extends Controller
                 $session->save();
             }
         }
+    }
+
+    /**
+     * Return future scheduled rows that would fall after a reduced count.
+     * This is a read-only preflight; it deliberately does not cancel anything.
+     *
+     * @return array<int, array{session_id:int, session_date:string, start_time:string, end_time:string, status:string}>
+     */
+    private function scheduledSessionsBeyondCount(int $classId, int $newCount): array
+    {
+        $allActive = ClassSession::query()
+            ->where('StudentClassID', $classId)
+            ->where(function ($query) {
+                $query->whereNull('Status')
+                    ->orWhereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted', 'excused']);
+            })
+            ->orderBy('SessionDate')
+            ->orderBy('StartTime')
+            ->orderBy('id')
+            ->get(['id', 'SessionDate', 'StartTime', 'EndTime', 'Status']);
+
+        $today = Carbon::today()->toDateString();
+
+        return $allActive->slice($newCount)
+            ->filter(static function (ClassSession $session) use ($today): bool {
+                return strtolower((string) $session->getAttribute('Status')) === 'scheduled'
+                    && substr((string) $session->getAttribute('SessionDate'), 0, 10) >= $today;
+            })
+            ->map(static fn (ClassSession $session): array => [
+                'session_id' => (int) $session->getKey(),
+                'session_date' => substr((string) $session->getAttribute('SessionDate'), 0, 10),
+                'start_time' => substr((string) $session->getAttribute('StartTime'), 0, 5),
+                'end_time' => substr((string) $session->getAttribute('EndTime'), 0, 5),
+                'status' => (string) $session->getAttribute('Status'),
+            ])
+            ->values()
+            ->all();
     }
 
     /**
@@ -5629,14 +6420,37 @@ class StudentClassController extends Controller
 
         if ($currentCount < $newCount && empty($newSessions)) {
             // No contract gap was found; append after the last row as the legacy extension path.
+            // The first item in buildSessionsForCount is intentionally allowed to be the
+            // supplied start date (that is required for a course's首堂日).  That behaviour
+            // is unsafe here: appendFrom is normally the day after an existing session,
+            // so a Saturday course could otherwise materialize a Sunday/Monday tail.
             $lastSession = ClassSession::where('StudentClassID', $classId)
                 ->orderByDesc('SessionDate')
                 ->orderByDesc('StartTime')
                 ->first();
-            $appendFrom = $lastSession
-                ? Carbon::parse($lastSession->SessionDate)->addDay()->toDateString()
-                : $startFrom;
-            $newSessions = $this->buildSessionsForCount($classId, $appendFrom, $newCount - $currentCount, $slots, $globalDur);
+            $appendFromDate = $lastSession
+                ? Carbon::parse($lastSession->SessionDate)->addDay()->startOfDay()
+                : Carbon::parse($startFrom)->startOfDay();
+            $validWeekdays = array_map(
+                fn (array $slot): int => self::isoWeekday((int) $slot['weekday']),
+                $slots
+            );
+            $appendGuard = 0;
+            while (!in_array((int) $appendFromDate->dayOfWeekIso, $validWeekdays, true)
+                && $appendGuard++ < 14
+            ) {
+                $appendFromDate->addDay();
+            }
+            if ($appendGuard >= 14) {
+                return;
+            }
+            $newSessions = $this->buildSessionsForCount(
+                $classId,
+                $appendFromDate->toDateString(),
+                $newCount - $currentCount,
+                $slots,
+                $globalDur
+            );
         }
 
         $now = Carbon::now();
@@ -5719,7 +6533,12 @@ class StudentClassController extends Controller
      *
      * @param  array<int, array{weekday:int,time:string,duration_minutes?:int}>  $slots
      */
-    private function syncFutureScheduledSessionTimes(int $studentClassId, array $slots, int $durationMinutes): int
+    private function syncFutureScheduledSessionTimes(
+        int $studentClassId,
+        array $slots,
+        int $durationMinutes,
+        array $previousScheduleSlots = []
+    ): int
     {
         if ($studentClassId <= 0 || empty($slots)) {
             return 0;
@@ -5804,7 +6623,38 @@ class StudentClassController extends Controller
         }
 
         if ($needsRemap && $unlocked->isNotEmpty()) {
-            return $this->remapFutureScheduledSessionsToContract($unlocked, $slots, $durationMinutes);
+            $removalOnly = $this->isPureFixedSlotRemoval($previousScheduleSlots, $slots);
+            $lockedTargetKeys = $removalOnly
+                ? $sessions->filter(function ($session) use ($lockedBySessionId, $slotsByWeekday) {
+                    if (!isset($lockedBySessionId[(int) $session->id]) || !empty($session->IsContractException)) {
+                        return false;
+                    }
+                    $date = $this->normalizeDateString($session->SessionDate ?? null);
+                    $start = $session->StartTime ? substr((string) $session->StartTime, 0, 5) : '';
+                    if (!$date || $start === '') {
+                        return false;
+                    }
+                    $weekday = (int) Carbon::parse($date)->dayOfWeekIso;
+                    return collect($slotsByWeekday[$weekday] ?? [])
+                        ->contains(fn ($slot) => substr((string) ($slot['time'] ?? ''), 0, 5) === $start);
+                })->mapWithKeys(function ($session) {
+                    $date = $this->normalizeDateString($session->SessionDate ?? null);
+                    $start = $session->StartTime ? substr((string) $session->StartTime, 0, 5) : '';
+                    return $date && $start ? ["{$date}|{$start}" => true] : [];
+                })->all()
+                : [];
+
+            $contractStartDate = $this->normalizeDateString(
+                DB::table('StudentClass')->where('ID', $studentClassId)->value('StartDate')
+            );
+
+            return $this->remapFutureScheduledSessionsToContract(
+                $unlocked,
+                $slots,
+                $durationMinutes,
+                $lockedTargetKeys,
+                $contractStartDate
+            );
         }
 
         $sessionsByDate = [];
@@ -6493,19 +7343,30 @@ class StudentClassController extends Controller
         string $startDate,
         string $endDate,
         array $slots,
-        int $durationMinutes
+        int $durationMinutes,
+        bool $includeStartDate = false
     ): array {
         $sessions = [];
         $start = Carbon::parse($startDate)->startOfDay();
         $end = Carbon::parse($endDate)->endOfDay();
 
         for ($date = $start->copy(); $date->lte($end); $date->addDay()) {
-            foreach ($slots as $slot) {
+            $matchingSlots = array_values(array_filter($slots, function ($slot) use ($date) {
                 // Slots arrive in two conventions: ISO 1-7 (DB week columns, day_time_slots)
                 // and legacy JS 0-6 (ScheduleSlots param). Both agree on Mon-Sat (1-6);
                 // Sunday is 7 (ISO) or 0 (JS). Comparing raw dayOfWeek (0-6) silently
                 // dropped every ISO-Sunday slot (GitHub #1096: 0-amount monthly invoices).
-                if ((int) $date->dayOfWeekIso === self::isoWeekday($slot['weekday'])) {
+                return (int) $date->dayOfWeekIso === self::isoWeekday($slot['weekday']);
+            }));
+
+            // Monthly courses have an explicit opening date that is the first lesson,
+            // even when recurrence starts on a different fixed weekday. Keep the
+            // default false so date-based imports/rebuilds retain their old contract.
+            if ($includeStartDate && $date->isSameDay($start) && empty($matchingSlots) && !empty($slots)) {
+                $matchingSlots = [$slots[0]];
+            }
+
+            foreach ($matchingSlots as $slot) {
                     $startTime = Carbon::parse($date->toDateString() . ' ' . $slot['time']);
                     $slotDur = !empty($slot['duration_minutes']) ? (int) $slot['duration_minutes'] : $durationMinutes;
                     $endTime = $startTime->copy()->addMinutes($slotDur);
@@ -6520,7 +7381,6 @@ class StudentClassController extends Controller
                         'created_at' => now(),
                         'updated_at' => now(),
                     ];
-                }
             }
         }
 
@@ -6642,6 +7502,9 @@ class StudentClassController extends Controller
         }
 
         $remainingOwed = (int) ($sc->getAttribute('RemainingSessions') ?? 0);
+        $pendingReconciliation = $action === 'pause'
+            && $reason === 'settled'
+            && $this->courseNeedsPaymentReconciliation($sc);
 
         // #1839: count-mode still owes sessions — do not settle/complete and wipe
         // the leave-cascade tail. Pause (no settled/completed reason) stays allowed.
@@ -6666,7 +7529,9 @@ class StudentClassController extends Controller
                 if ($reason === 'completed') {
                     $sc->closed_reason = 'completed';
                 } elseif ($reason === 'settled') {
-                    $sc->closed_reason = 'settled';
+                    $sc->closed_reason = $pendingReconciliation
+                        ? 'settled_pending'
+                        : 'settled';
                     $sc->EndDate = $today;
                 } else {
                     $sc->closed_reason = null;
@@ -6679,13 +7544,17 @@ class StudentClassController extends Controller
 
                 $labels = ['completed' => '已完課', 'settled' => '已結案'];
                 $label = $labels[$reason] ?? '已暫停';
+                $message = $pendingReconciliation
+                    ? "課程{$label}，目前尚未完成繳費，已標記待對帳。"
+                    : ($cancelRemaining
+                        ? "課程{$label}，已取消 {$cancelled} 堂未來排課。"
+                        : "課程{$label}（未取消剩餘排課）。");
                 DB::commit();
                 return response()->json([
-                    'message' => $cancelRemaining
-                        ? "課程{$label}，已取消 {$cancelled} 堂未來排課。"
-                        : "課程{$label}（未取消剩餘排課）。",
+                    'message' => $message,
                     'cancelled_count' => $cancelled,
                     'cancel_remaining' => $cancelRemaining,
+                    'pending_reconciliation' => $pendingReconciliation,
                 ]);
             } else {
                 if ($sc->isUsageSettlementLocked()) {
@@ -6714,10 +7583,35 @@ class StudentClassController extends Controller
         }
     }
 
+    /**
+     * A course may be closed before payment is confirmed, but the history and
+     * accounting queue must retain an explicit reconciliation state.
+     */
+    private function courseNeedsPaymentReconciliation(StudentClass $studentClass): bool
+    {
+        $charge = (int) ($studentClass->Charge ?? 0);
+        if ($charge <= 0 || (int) ($studentClass->Paid ?? 0) === 1) {
+            return false;
+        }
+
+        $paidAmount = (int) Invoice::query()
+            ->where(function ($query) {
+                $query->whereNull('Status')->orWhere('Status', '!=', 'void');
+            })
+            ->where('StudentClassID', $studentClass->getAttribute('ID'))
+            ->sum('PaidAmount');
+
+        return !$studentClass->isFullyPaidWithInvoiceAmount($paidAmount, $charge);
+    }
+
     private function cancelFutureScheduledSessions(StudentClass $studentClass, ?string $reason): int
     {
         $today = Carbon::today()->toDateString();
-        $noteTag = $reason === 'settled' ? '[結案取消]' : '[暫停取消]';
+        $noteTag = match ($reason) {
+            'settled' => '[結案取消]',
+            'trial_conversion' => '[試聽轉正式]',
+            default => '[暫停取消]',
+        };
 
         return ClassSession::where('StudentClassID', $studentClass->getAttribute('ID'))
             ->where('SessionDate', '>=', $today)

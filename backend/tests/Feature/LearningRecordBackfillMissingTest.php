@@ -40,6 +40,10 @@ class LearningRecordBackfillMissingTest extends TestCase
             'StudentClassID' => $scId, 'SessionDate' => '2099-01-01', 'StartTime' => '10:00',
             'EndTime' => '12:00', 'Status' => 'scheduled',
         ]);
+        $absent = DB::table('ClassSession')->insertGetId([
+            'StudentClassID' => $scId, 'SessionDate' => '2020-01-03', 'StartTime' => '10:00',
+            'EndTime' => '12:00', 'Status' => 'absent',
+        ]);
 
         $this->assertSame(0, DB::table('LearningRecord')->where('ClassSessionID', $attended)->count());
 
@@ -59,6 +63,11 @@ class LearningRecordBackfillMissingTest extends TestCase
             0,
             DB::table('LearningRecord')->where('ClassSessionID', $future)->count(),
             'future session must not get a LearningRecord'
+        );
+        $this->assertSame(
+            0,
+            DB::table('LearningRecord')->where('ClassSessionID', $absent)->count(),
+            'absent session must not get an assessment form'
         );
 
         // Idempotent: a second run creates nothing more.

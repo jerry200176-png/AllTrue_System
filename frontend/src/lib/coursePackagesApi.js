@@ -35,6 +35,17 @@ export async function listPackages({ branchId, studentId, activeOnly } = {}) {
   return handleResponse(res);
 }
 
+/**
+ * Read-only safety check before offering a single-course → shared-package
+ * conversion.  A positive result is only a preflight; it never mutates data.
+ */
+export async function previewSingleCoursePackageConversion(studentClassId) {
+  const res = await fetch(`${API_BASE}/student-classes/${studentClassId}/package-conversion-preview`, {
+    headers: authHeaders(),
+  });
+  return handleResponse(res);
+}
+
 export async function getPackage(id) {
   const res = await fetch(`${API_BASE}/course-packages/${id}`, {
     headers: authHeaders(),
@@ -73,6 +84,15 @@ export async function bindCoursesToPackage(id, studentClassIds, dryRun = false) 
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify({ student_class_ids: studentClassIds, dry_run: dryRun }),
+  });
+  return handleResponse(res);
+}
+
+export async function convertSingleCourseToPackage(studentClassId, payload) {
+  const res = await fetch(`${API_BASE}/student-classes/${studentClassId}/convert-to-package`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Idempotency-Key': `course-conversion-${studentClassId}` },
+    body: JSON.stringify(payload),
   });
   return handleResponse(res);
 }

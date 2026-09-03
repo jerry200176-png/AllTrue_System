@@ -155,7 +155,7 @@ class CoursePackageMonthlyScheduleTest extends TestCase
 
         foreach ($membersScheduled as $ms) {
             $this->assertGreaterThan(0, $ms['scheduled_count']);
-            $this->assertNotNull($ms['first_session_date']);
+            $this->assertSame('2026-05-01', $ms['first_session_date']);
             $this->assertTrue((bool) $ms['has_schedule']);
         }
     }

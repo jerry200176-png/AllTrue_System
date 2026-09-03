@@ -12,6 +12,13 @@ vi.mock('../../lib/coursePackagesApi', () => ({
 }));
 
 import perfFlags from '../../lib/perfFlags';
+import {
+  buildScheduleCandidates,
+  mergeRecurringScheduleCandidates,
+  nextOccurrenceDate,
+  nextOccurrenceDates,
+  rankScheduleCandidates,
+} from '../../lib/scheduleCandidateSlots.js';
 import UniversalClassScheduler from '../UniversalClassScheduler.vue';
 
 /**
@@ -63,6 +70,27 @@ describe('UniversalClassScheduler — 依實際時長扣堂', () => {
     expect(vm.occurrenceTarget).toBe(8);
     expect(vm.durationCoverage).toBe(null);
     expect(vm.overageBlocksSubmit).toBe(false);
+
+    wrapper.unmount();
+  });
+
+  it('月結開課日不在固定星期時，仍顯示開課日首堂並保留後續固定星期', async () => {
+    const wrapper = await mountScheduler();
+    const vm = wrapper.vm;
+
+    vm.form.payment_type = 'monthly';
+    vm.form.course_start_date = '2026-05-01';
+    vm.form.end_date = '2026-05-31';
+    vm.form.days_of_week = [4];
+    vm.form.start_time = '18:00';
+    vm.form.duration_hours = 2;
+    await flushPromises();
+
+    expect(vm.monthlySystemOccurrences.map((entry) => entry.ymd)).toEqual([
+      '2026-05-01', '2026-05-07', '2026-05-14', '2026-05-21', '2026-05-28',
+    ]);
+    expect(vm.monthlyPreviewText).toContain('含開課日首堂');
+    expect(vm.monthlyPreviewText).toContain('共 5 堂');
 
     wrapper.unmount();
   });
@@ -178,6 +206,58 @@ describe('UniversalClassScheduler — 依實際時長扣堂', () => {
       expect(vm.perOccurrenceLessonEquivalents).toEqual([{ minutes: 180, lessons: expected }]);
     }
 
+    wrapper.unmount();
+  });
+});
+
+describe('scheduleCandidateSlots', () => {
+  it('calculates the next weekday and ranks free slots before blocked slots', () => {
+    expect(nextOccurrenceDate('2026-09-01', 1)).toBe('2026-09-07');
+    expect(nextOccurrenceDates('2026-09-01', 1, 4)).toEqual([
+      '2026-09-07', '2026-09-14', '2026-09-21', '2026-09-28',
+    ]);
+    const candidates = buildScheduleCandidates({ date: '2026-09-01', weekday: 2, windowStart: '16:00', windowEnd: '18:00', durationMinutes: 60, classType: 'one_on_one', busySlots: [] });
+    expect(rankScheduleCandidates(candidates)[0].status).toBe('available');
+    expect(candidates).toHaveLength(3);
+  });
+
+  it('blocks a recurring candidate when any checked occurrence conflicts', () => {
+    const occurrence = (date, busySlots) => buildScheduleCandidates({
+      date,
+      weekday: 2,
+      windowStart: '16:00',
+      windowEnd: '18:00',
+      durationMinutes: 60,
+      classType: 'one_on_one',
+      busySlots,
+    });
+    const candidates = mergeRecurringScheduleCandidates([
+      occurrence('2026-09-01', []),
+      occurrence('2026-09-08', [{ start_time: '16:00', end_time: '17:00', class_type: 'one_on_one' }]),
+      occurrence('2026-09-15', []),
+      occurrence('2026-09-22', []),
+    ]);
+
+    expect(candidates.find((candidate) => candidate.start_time === '16:00')).toMatchObject({
+      status: 'conflict',
+      occurrenceCount: 3,
+      occurrenceTotal: 4,
+    });
+    expect(candidates.find((candidate) => candidate.start_time === '17:00')).toMatchObject({
+      status: 'available',
+      occurrenceCount: 4,
+      occurrenceTotal: 4,
+    });
+  });
+});
+
+describe('teacher service branches', () => {
+  it('shows existing branch bindings in teacher choices and the coordination badge', async () => {
+    const wrapper = await mountScheduler();
+    wrapper.vm.form.teacher_id = 2;
+    await flushPromises();
+    expect(wrapper.vm.teacherOptions[0].label).toContain('內湖分校');
+    expect(wrapper.vm.selectedTeacherBranchSummary).toBe('可服務：內湖分校');
     wrapper.unmount();
   });
 });

@@ -37,6 +37,24 @@ class ClassSessionUpdateTest extends TestCase
                 ->where('event_type', 'deduct')
                 ->exists()
         );
+
+        $this->assertDatabaseHas('LearningRecord', [
+            'ClassSessionID' => $session->id,
+            'Status' => 'pending',
+            'VoidedAt' => null,
+        ]);
+    }
+
+    public function test_scheduled_to_leave_does_not_create_learning_record(): void
+    {
+        [$token, $courseId, $session] = $this->setupCourseWithSession('scheduled');
+
+        $this->patchSession($token, $session->id, ['status' => 'leave'])
+            ->assertOk();
+
+        $this->assertDatabaseMissing('LearningRecord', [
+            'ClassSessionID' => $session->id,
+        ]);
     }
 
     public function test_scheduled_to_leave_succeeds(): void
@@ -46,6 +64,75 @@ class ClassSessionUpdateTest extends TestCase
         $this->patchSession($token, $session->id, ['status' => 'leave'])
             ->assertOk()
             ->assertJsonPath('session.status', 'leave');
+    }
+
+    public function test_cancelling_session_voids_pending_learning_record(): void
+    {
+        [$token, $courseId, $session] = $this->setupCourseWithSession('scheduled');
+        $recordId = DB::table('LearningRecord')->insertGetId([
+            'StudentClassID' => $courseId,
+            'ClassSessionID' => $session->id,
+            'TeacherID' => 1,
+            'Content' => '',
+            'Subject' => '數學',
+            'SessionDate' => $session->SessionDate,
+            'StartTime' => $session->StartTime,
+            'EndTime' => $session->EndTime,
+            'Status' => 'pending',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->patchSession($token, $session->id, ['status' => 'cancelled'])
+            ->assertOk()
+            ->assertJsonPath('session.status', 'cancelled');
+
+        $this->assertNotNull(DB::table('LearningRecord')->where('id', $recordId)->value('VoidedAt'));
+        $this->assertSame('課堂已取消', DB::table('LearningRecord')->where('id', $recordId)->value('VoidReason'));
+    }
+
+    public function test_repeating_cancelled_status_also_clears_a_stale_learning_record(): void
+    {
+        [$token, $courseId, $session] = $this->setupCourseWithSession('cancelled');
+        $recordId = DB::table('LearningRecord')->insertGetId([
+            'StudentClassID' => $courseId, 'ClassSessionID' => $session->id, 'TeacherID' => 1,
+            'Content' => '', 'Subject' => '數學', 'SessionDate' => $session->SessionDate,
+            'StartTime' => $session->StartTime, 'EndTime' => $session->EndTime,
+            'Status' => 'pending', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $this->patchSession($token, $session->id, ['status' => 'cancelled'])
+            ->assertOk();
+
+        $this->assertNotNull(DB::table('LearningRecord')->where('id', $recordId)->value('VoidedAt'));
+    }
+
+    public function test_director_can_restore_the_last_cancelled_session_with_a_reason(): void
+    {
+        [$token, $courseId, $session] = $this->setupCourseWithSession('scheduled');
+
+        $this->patchSession($token, $session->id, ['status' => 'cancelled'])
+            ->assertOk();
+
+        $recovery = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson("/api/v1/class-sessions/{$session->id}/recovery")
+            ->assertOk()
+            ->assertJsonPath('available', true);
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson("/api/v1/class-sessions/{$session->id}/restore", [
+                'expected_audit_id' => $recovery->json('audit_id'),
+                'reason' => '主任誤取消',
+            ])->assertOk()->assertJsonPath('session.status', 'scheduled');
+
+        $this->assertDatabaseHas('ClassSession', [
+            'id' => $session->id,
+            'Status' => 'scheduled',
+        ]);
+        $this->assertDatabaseHas('schedule_audit_logs', [
+            'session_id' => $session->id,
+            'action_type' => 'update',
+        ]);
     }
 
     public function test_attended_to_leave_adjusted_succeeds(): void
@@ -70,6 +157,93 @@ class ClassSessionUpdateTest extends TestCase
         ]);
 
         $this->assertSame(0, SessionDeductionLedger::netCount($courseId));
+    }
+
+    public function test_attended_to_scheduled_voids_attendance_and_evaluation_as_one_transition(): void
+    {
+        [$token, $courseId, $session] = $this->setupCourseWithSession('attended');
+
+        DB::table('LearningRecord')->insert([
+            'StudentClassID' => $courseId,
+            'ClassSessionID' => $session->id,
+            'TeacherID' => 1,
+            'Content' => '',
+            'Subject' => '數學',
+            'SessionDate' => $session->SessionDate,
+            'StartTime' => $session->StartTime,
+            'EndTime' => $session->EndTime,
+            'Status' => 'pending',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        StudentSignIn::create([
+            'StudentClassID' => $courseId,
+            'StudentID' => (int) DB::table('StudentClass')->where('ID', $courseId)->value('StudentID'),
+            'TeacherID' => 1,
+            'GradeID' => 1,
+            'SubjectID' => 1,
+            'Hours' => 2,
+            'SignInDT' => now()->subHours(2),
+            'SignOutDT' => now(),
+            'MDT' => now(),
+            'ClassSessionID' => $session->id,
+            'Status' => 'present',
+            'CampusID' => 1,
+            'PersonType' => 'student',
+            'SessionDeducted' => 1,
+        ]);
+        SessionDeductionLedger::create([
+            'student_class_id' => $courseId,
+            'class_session_id' => $session->id,
+            'event_type' => 'deduct',
+            'source' => 'attendance',
+        ]);
+
+        $this->patchSession($token, $session->id, [
+            'status' => 'scheduled',
+            'reason' => '主任確認該堂未上課',
+        ])->assertOk()->assertJsonPath('session.status', 'scheduled');
+
+        $this->assertDatabaseHas('ClassSession', ['id' => $session->id, 'Status' => 'scheduled']);
+        $this->assertDatabaseHas('LearningRecord', [
+            'ClassSessionID' => $session->id,
+            'VoidReason' => '主任確認該堂未上課',
+        ]);
+        $this->assertDatabaseHas('StudentSingIn', [
+            'ClassSessionID' => $session->id,
+            'VoidReason' => '主任確認該堂未上課',
+        ]);
+        $this->assertDatabaseHas('session_deduction_ledger', [
+            'student_class_id' => $courseId,
+            'class_session_id' => $session->id,
+            'event_type' => 'reverse',
+            'source' => 'status_adjust',
+        ]);
+        $this->assertSame(0, SessionDeductionLedger::netCount($courseId));
+    }
+
+    public function test_manual_attendance_cannot_revive_a_leave_session(): void
+    {
+        [$token, $courseId, $session] = $this->setupCourseWithSession('scheduled');
+        $studentId = (int) DB::table('StudentClass')->where('ID', $courseId)->value('StudentID');
+
+        $this->patchSession($token, $session->id, ['status' => 'leave'])->assertOk();
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/attendance', [
+            'StudentID' => $studentId,
+            'StudentClassID' => $courseId,
+            'ClassSessionID' => $session->id,
+            'Status' => 'present',
+            'mark_mode' => 'arrival',
+        ])->assertStatus(422);
+
+        $this->assertDatabaseMissing('StudentSingIn', [
+            'StudentID' => $studentId,
+            'ClassSessionID' => $session->id,
+        ]);
     }
 
     public function test_invalid_transition_returns_422(): void

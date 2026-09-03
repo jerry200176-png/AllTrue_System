@@ -259,12 +259,27 @@ class TeacherLearningEngagementApisTest extends TestCase
         $this->assertNotNull($rowA);
         $this->assertSame(2, (int) $rowA['sessions_attended']);
         $this->assertSame(1, (int) $rowA['learning_records_filled']);
+        $this->assertSame(1, (int) $rowA['learning_records_present']);
+        $this->assertSame(1, (int) $rowA['missing_evaluations']);
+        $this->assertSame(0, (int) $rowA['pending_evaluations']);
         $this->assertSame(50, (int) $rowA['fill_rate_pct']);
 
         $rowB = collect($teachers)->firstWhere('teacher_id', $tB->id);
         $this->assertNotNull($rowB);
         $this->assertSame(1, (int) $rowB['sessions_attended']);
         $this->assertSame(0, (int) $rowB['learning_records_filled']);
+        $this->assertSame(0, (int) $rowB['learning_records_present']);
+        $this->assertSame(1, (int) $rowB['missing_evaluations']);
+        $this->assertSame(0, (int) $rowB['pending_evaluations']);
+
+        $res->assertJsonPath('overall.sessions_attended', 3)
+            ->assertJsonPath('overall.learning_records_present', 1)
+            ->assertJsonPath('overall.learning_records_filled', 1)
+            ->assertJsonPath('overall.pending', 2)
+            ->assertJsonPath('overall.missing_evaluations', 2)
+            ->assertJsonPath('overall.pending_evaluations', 0)
+            ->assertJsonPath('overall.fill_rate_pct', 33)
+            ->assertJsonPath('overall.follow_up_teachers', 0);
 
         Carbon::setTestNow();
     }

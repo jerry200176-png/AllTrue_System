@@ -106,10 +106,18 @@ assert.equal(dupStudent, 1);
 
 // #2007/#2006: renewal left the old course open — same teacher/day/time as the new one.
 const renewalOverlap = coursesWithSlotConflicts([
-  { id: 1272, teacher_id: 67, days_of_week: [6], start_time: '13:00', end_time: '15:00' },
-  { id: 2382, teacher_id: 67, days_of_week: [6], start_time: '13:00', end_time: '15:00' },
+  { id: 1272, teacher_id: 67, days_of_week: [6], start_time: '13:00', end_time: '15:00', start_date: '2026-01-01', end_date: '2026-08-15' },
+  { id: 2382, teacher_id: 67, days_of_week: [6], start_time: '13:00', end_time: '15:00', start_date: '2026-08-08', end_date: '2026-12-31' },
 ]);
 assert.deepEqual([...renewalOverlap].sort(), [1272, 2382]);
+
+// Same recurring slot but disjoint contract periods is a normal renewal, not
+// a live overlap. The course list must agree with the date-expanded detail.
+const disjointRenewal = coursesWithSlotConflicts([
+  { id: 10, teacher_id: 67, days_of_week: [6], start_time: '13:00', end_time: '15:00', start_date: '2026-01-01', end_date: '2026-08-01' },
+  { id: 11, teacher_id: 67, days_of_week: [6], start_time: '13:00', end_time: '15:00', start_date: '2026-08-08', end_date: '2026-12-31' },
+]);
+assert.equal(disjointRenewal.size, 0);
 
 // Different teacher, same time → no conflict.
 const differentTeacher = coursesWithSlotConflicts([

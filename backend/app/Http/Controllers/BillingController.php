@@ -9,6 +9,7 @@ use App\Models\InvoiceItem;
 use App\Models\Payment;
 use App\Models\StudentClass;
 use App\Services\InvoiceAmountReconciliationService;
+use App\Services\MonthlyBillingService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -16,7 +17,10 @@ use Illuminate\Support\Facades\Log;
 
 class BillingController extends Controller
 {
-    public function __construct(private InvoiceAmountReconciliationService $invoiceAmounts)
+    public function __construct(
+        private InvoiceAmountReconciliationService $invoiceAmounts,
+        private MonthlyBillingService $monthlyBilling
+    )
     {
     }
 
@@ -418,11 +422,21 @@ class BillingController extends Controller
             $studentClassIds[] = (int) $invoice->StudentClassID;
             $studentClassIds = array_values(array_unique($studentClassIds));
         }
-        $sessions = ClassSession::sessionsForPaymentSlip(
-            $studentClassIds,
-            $projection['period_start'],
-            $projection['period_end']
-        );
+        $monthlyCourse = $invoice->getRelationValue('studentClass');
+        if (! $monthlyCourse instanceof StudentClass) {
+            $monthlyCourse = null;
+        }
+        $sessions = ($monthlyCourse && $monthlyCourse->getAttribute('ScheduleMode') === 'date'
+            && $projection['billing_period'])
+            ? $this->monthlyBilling->billableSessionDetailsForPeriod(
+                $monthlyCourse,
+                $projection['billing_period']
+            )
+            : ClassSession::sessionsForPaymentSlip(
+                $studentClassIds,
+                $projection['period_start'],
+                $projection['period_end']
+            );
 
         $authUser = $request->attributes->get('auth_user');
         Log::info('[InvoiceSlip] generated', [

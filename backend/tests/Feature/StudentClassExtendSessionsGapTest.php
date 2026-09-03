@@ -173,4 +173,65 @@ class StudentClassExtendSessionsGapTest extends TestCase
             ->count();
         $this->assertSame(12, $active);
     }
+
+    public function test_tail_refill_starts_on_next_contract_weekday(): void
+    {
+        $student = Student::create([
+            'name' => '周測試',
+            'CampusID' => 1,
+            'ClassID' => 1,
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+        ]);
+
+        $course = StudentClass::create([
+            'StudentID' => $student->id,
+            'GradeID' => 1,
+            'SubjectID' => 1,
+            'TeacherID' => 99,
+            'by1' => 1,
+            'Period' => 4,
+            'StartDate' => '2026-06-06',
+            'TotalHours' => 10,
+            'Charge' => 0,
+            'Paid' => 0,
+            'Rate' => 500,
+            'MDate' => now(),
+            'Stop' => 0,
+            'ScheduleMode' => 'count',
+            'SessionCount' => 5,
+            'SessionDuration' => 120,
+            'RemainingSessions' => 1,
+            'UsedSessions' => 4,
+            'ClassType' => 'one_on_one',
+            'week' => 6,
+            'time' => '13:00:00',
+        ]);
+
+        foreach ([
+            ['2026-06-06', 'attended'],
+            ['2026-06-13', 'cancelled'],
+            ['2026-06-20', 'attended'],
+            ['2026-06-27', 'attended'],
+            ['2026-07-04', 'cancelled'],
+            // Latest row is outside the original count sequence, forcing the tail fallback.
+            ['2026-08-01', 'attended'],
+        ] as [$date, $status]) {
+            ClassSession::create([
+                'StudentClassID' => $course->ID,
+                'SessionDate' => $date,
+                'StartTime' => '13:00:00',
+                'EndTime' => '15:00:00',
+                'Status' => $status,
+            ]);
+        }
+
+        app(StudentClassController::class)->extendSessionsIfNeeded($course, 5);
+
+        $this->assertSame(1, ClassSession::where('StudentClassID', $course->ID)
+            ->whereDate('SessionDate', '2026-08-08')->count());
+        $this->assertSame(0, ClassSession::where('StudentClassID', $course->ID)
+            ->whereDate('SessionDate', '2026-08-02')->count());
+    }
 }

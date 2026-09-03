@@ -1,0 +1,48 @@
+id: INT-20260828-233910-QOQA
+title: Teacher daily queue clarity
+intent: Teacher daily queue clarity
+kind: intent
+brain_dump: Improve the teacher home first-screen work queue so the optional priority
+  disclosure explains the ordering rules without duplicating non-actionable task rows.
+  Keep the existing task ordering, one CTA per task, leave semantics, APIs, permissions,
+  attendance, learning records, and production data unchanged.
+boundary: Only frontend TeacherHome presentation, tests, and required staff-facing
+  documentation. Do not change API payloads, authorization, branch isolation, attendance,
+  leave, learning-record semantics, scheduling, billing, database, or production data.
+success_condition: The optional disclosure names and explains the current priority
+  ordering; the actionable queue remains the only task list and its existing CTA behavior
+  and responsive tests remain green.
+risk: low
+priority: 2
+labels:
+- ux
+scope:
+  allow:
+  - frontend/src/pages/TeacherHomePage.vue
+  - frontend/e2e/teacher-daily-workflow.spec.js
+  - docs/CHANGELOG.md
+  - docs/STAFF_UPDATES.yml
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 4
+  max_loc_changed: 180
+checks:
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: done
+parent_id: null
+spec_ref: null
+notes:
+- "Completed on main via 3b25af9c (#2191), 9faf67ce (#2194), 08eda99f (#2223), and 3f2bff38 (#2233): the teacher queue has one primary action, explicit priority disclosure, failure-safe actions, and aggregate daily count."
+- "Evidence: teacher workflow/accessibility tests, no-undef lint, and Vite build passed; no API, auth, attendance, leave, scheduling, billing, database, or production-data change was included."
+blockers: []
+created_at: '2026-08-28T23:39:10+08:00'
+children:
+- TKT-20260828-233917-4VHZ
+resource_profile: default

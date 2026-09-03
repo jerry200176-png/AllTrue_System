@@ -17,6 +17,26 @@
 | `guzzlehttp/guzzle` | ^7.12.1 (resolved 7.15.3) | **Already patched** — the CVE this issue's "Immediate" fix targeted is already fixed on `main`. Nothing to do here. |
 | `nunomaduro/collision` | ^5.11 | Tied to PHPUnit/Laravel major — bumps together. |
 
+### Preparation recheck (2026-09-03)
+
+This recheck is read-only and does not change `composer.json`, `composer.lock`,
+`vendor/`, application code, or production:
+
+- `composer prohibits laravel/framework 12.60.0 --tree` confirms the root
+  `^8.75` constraint and the current Sanctum 2 line are incompatible with the
+  target. The resolved framework is still `8.x-dev`.
+- The target framework requires a coordinated dependency migration, including
+  Flysystem 1→3, Monolog 2→3, Carbon 2→3, Symfony 5→7, Egulias 2→3/4, and
+  `voku/portable-ascii` 1→2. These are compatibility blockers, not patch-only
+  updates.
+- `composer update laravel/framework:12.60.0 --with-all-dependencies
+  --dry-run --no-scripts` fails closed because `12.60.0` is not a subset of
+  the current `^8.75` root constraint. No lockfile was written.
+
+The next safe step is a Founder-approved staging branch with Laravel 12
+compatibility tests and rollback evidence. Do not loosen the root constraint
+or activate a production migration from this inventory update.
+
 ## Target version
 
 Per TD-014's own CVE evidence, the fixes land at different framework versions:

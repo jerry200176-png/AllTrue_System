@@ -54,7 +54,7 @@ class TeacherEligibilityPolicy
             $missing = array_merge($missing, $component['missing_fields'] ?? []);
         }
 
-        $positive = ['weekly_16_segments', 'holiday_16_hours', 'weekday_afternoon', 'special_performance'];
+        $positive = ['weekly_16_segments', 'holiday_16_hours', 'weekday_afternoon', 'special_performance', 'admin_allowance'];
         $hasReview = collect($components)->contains(fn ($component) => $component['status'] === self::REVIEW);
         $hasBenefit = collect($positive)->contains(fn ($key) => ($components[$key]['rate'] ?? 0) > 0 || ($components[$key]['amount'] ?? 0) > 0);
 
@@ -73,6 +73,31 @@ class TeacherEligibilityPolicy
 
         $segments = $weekly['segments'] ?? null;
         $workHours = $weekly['work_hours'] ?? null;
+
+        // The weekly-16 vertical slice is intentionally independent from
+        // the older 40-hour/exception payroll gates. Its only qualification
+        // input is the attendance-backed segment total.
+        if (!empty($weekly['segment_rule'])) {
+            if ($segments === null) {
+                return $this->review(['weekly_segments'], '缺少有效出勤課程的每週段數。');
+            }
+
+            $threshold = (float) $this->setting('weekly_segment_threshold', 16);
+            $qualified = (float) $segments >= $threshold;
+
+            return $this->result(
+                $qualified ? self::QUALIFIES : self::NOT_QUALIFIES,
+                $qualified ? '每週有效課程段數達到16段。' : '每週有效課程段數未達16段。',
+                [
+                    'weekly_segments' => round((float) $segments, 2),
+                    'work_hours' => $workHours === null ? null : round((float) $workHours, 2),
+                    'segment_threshold' => $threshold,
+                ],
+                $qualified ? $this->setting('weekly_segment_bonus', 1000) : 0,
+                0
+            );
+        }
+
         $exception = $weekly['exception'] ?? null;
         $exceptionIncomplete = $exception !== null && (
             (array_key_exists('official_event', $exception) && $exception['official_event'] === null)
@@ -382,6 +407,7 @@ class TeacherEligibilityPolicy
         $end = $periodEnd ? Carbon::parse($periodEnd)->endOfDay() : null;
         $pending = 0;
         $amount = 0.0;
+        $itemAmounts = [];
         foreach ($rows as $row) {
             if (($row['status'] ?? 'pending') === 'withdrawn') {
                 continue;
@@ -397,15 +423,21 @@ class TeacherEligibilityPolicy
                 continue;
             }
             $amount += (float) ($row['amount'] ?? 0);
+            $label = trim((string) ($row['reason'] ?? '現金加扣款')) ?: '現金加扣款';
+            $itemAmounts[$label] = ($itemAmounts[$label] ?? 0.0) + (float) ($row['amount'] ?? 0);
         }
         if ($pending > 0) {
             return $this->review(['cash_adjustment_approval'], '有現金加扣款尚未完成主任確認及總部審核。', ['pending_count' => $pending]);
         }
 
+        $items = [];
+        foreach ($itemAmounts as $label => $itemAmount) {
+            $items[] = ['label' => $label, 'amount' => round($itemAmount, 2)];
+        }
         return $this->result(
             self::QUALIFIES,
             $amount != 0.0 ? '已核准現金加扣款，獨立加進總發放金額。' : '查詢期間沒有已核准現金加扣款。',
-            [],
+            ['items' => $items],
             round($amount, 2),
             0
         );

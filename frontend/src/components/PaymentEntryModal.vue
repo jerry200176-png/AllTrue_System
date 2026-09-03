@@ -66,6 +66,11 @@
           <p v-if="isZeroCharge" class="pe-hint">免費課程，金額為 NT$ 0，確認後會標記為已結算。</p>
         </div>
 
+        <div class="pe-workflow-hint" role="note">
+          <span class="material-symbols-outlined" aria-hidden="true">info</span>
+          <span>送出後會進入「待對帳」；現金也不會立刻變成已繳費。請到「待對帳」分頁按「確認入帳」，確認後才會結清並開立收據。</span>
+        </div>
+
         <div class="pe-field">
           <label>備註</label>
           <textarea v-model="form.note" rows="2" placeholder="選填…"></textarea>
@@ -77,7 +82,7 @@
           <button type="button" class="ghost" @click="$emit('close')">取消</button>
           <button type="submit" class="primary" :disabled="submitting">
             <span v-if="submitting" class="material-symbols-outlined spin" style="font-size:16px">progress_activity</span>
-            {{ submitting ? '處理中…' : '送出已回報' }}
+            {{ submitting ? '處理中…' : '送出待對帳回報' }}
           </button>
         </div>
       </form>
@@ -93,7 +98,7 @@ const props = defineProps({
   row: { type: Object, default: null },
 });
 
-const emit = defineEmits(['close', 'confirmed']);
+const emit = defineEmits(['close', 'confirmed', 'pending']);
 
 const today = computed(() => new Date().toISOString().slice(0, 10));
 
@@ -167,6 +172,11 @@ async function submit() {
 
     if (!resp.ok) {
       const data = await resp.json().catch(() => ({}));
+      if (data.code === 'pending_report_exists') {
+        submitError.value = '這筆已經送出過，目前在「待對帳」；請直接到待對帳分頁按「確認入帳」，不要重複送出。';
+        emit('pending', data);
+        return;
+      }
       throw new Error(data.message || `登錄失敗（${resp.status}）`);
     }
 
@@ -229,6 +239,24 @@ async function submit() {
 
 .pe-field {
   margin-bottom: 14px;
+}
+.pe-workflow-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 2px 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--ds-warning);
+  border-radius: 8px;
+  background: var(--ds-warning-wash);
+  color: var(--ds-ink);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.pe-workflow-hint .material-symbols-outlined {
+  flex: 0 0 auto;
+  font-size: 17px;
+  color: var(--ds-warning);
 }
 .pe-field label {
   display: block;

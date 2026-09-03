@@ -1,0 +1,63 @@
+id: INT-20260829-110018-M2ZO
+title: "\u6728\u67F5\u8ACB\u5047\u88DC\u8AB2\u8DE8\u5408\u7D04\u885D\u5802\u5B89\u5168\
+  \u4EA4\u4ED8"
+intent: "\u6728\u67F5\u8ACB\u5047\u88DC\u8AB2\u8DE8\u5408\u7D04\u885D\u5802\u5B89\u5168\
+  \u4EA4\u4ED8"
+kind: intent
+brain_dump: "Founder intent\uFF1A\u91CD\u65B0\u9A57\u8B49\u4E26\u4EA4\u4ED8 AllTrue\
+  \ \u6728\u67F5\u6848\u4F8B\u3002\u820A\u5408\u7D04\u8ACB\u5047\u4FDD\u7559\u88DC\
+  \u8AB2\u6B0A\u5229\uFF0C\u65B0\u5408\u7D04\u5DF2\u6709\u540C\u65E5\u91CD\u758A\u6642\
+  \u6BB5\u3002\u7CFB\u7D71\u8981\u5728\u9810\u89BD\u767C\u73FE\u885D\u7A81\u3001\u63D0\
+  \u4F9B\u5B89\u5168\u9078\u9805\u3001\u9001\u51FA\u518D\u6B21\u9A57\u8B49\u3001\u539F\
+  \u5B50\u5BEB\u5165\u3001\u4FDD\u7559\u5408\u7D04/\u5802\u6B21/\u51FA\u5E2D/\u6263\
+  \u5802/\u6536\u8CBB\u7A3D\u6838 lineage\uFF1B\u4E0D\u5F15\u5165 parallel/trial override\u3002\
+  \u53EA\u88DC\u65E2\u6709 origin/main \u7F3A\u53E3\u3002"
+boundary: "\u4E0D\u76F4\u63A5\u4FEE\u6539 production DB\uFF1B\u4E0D\u57F7\u884C migration/repair/deploy\uFF1B\
+  \u4E0D\u6539\u4ED8\u6B3E\u91D1\u984D\u6216\u65E2\u6709\u51FA\u5E2D\u8207\u6263\u5802\
+  \u6B77\u53F2\uFF1B\u4E0D\u5F15\u5165\u672A\u7D93 Founder \u6279\u51C6\u7684 parallel/trial\
+  \ \u653E\u884C\uFF1B\u4FDD\u7559\u65E2\u6709 cross-contract session guard\u3002"
+success_condition: "\u5728\u9694\u96E2 worktree \u5B8C\u6210\u6700\u5C0F bounded delta\uFF1B\
+  \u885D\u5802\u9810\u89BD\u53EF\u64CD\u4F5C\u3001submit \u6700\u7D42\u91CD\u9A57\u3001\
+  \u5931\u6557\u7121 partial write\uFF1B\u5305\u542B backend/frontend regression tests\u3001\
+  required checks\u3001\u7368\u7ACB review \u8207 runtime evidence\uFF1B\u90E8\u7F72\
+  \u524D\u505C\u5728 Founder GO boundary\u3002"
+risk: high
+priority: 1
+labels:
+- founder-intent
+scope:
+  allow:
+  - '**'
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 12
+  max_loc_changed: 400
+checks:
+- vendor/bin/phpunit
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-29T11:00:18+08:00'
+children:
+- TKT-20260829-110025-OFBO
+- TKT-20260829-111737-D5X8
+- TKT-20260831-221334-MCJX
+- TKT-20260831-215910-8Y43
+- TKT-20260901-043614-NV3J
+- TKT-20260901-045848-UJSJ
+- TKT-20260901-053018-YKSB
+- TKT-20260901-071650-O1TO
+- TKT-20260903-155417-MUVF
+- TKT-20260903-165120-IGVX
+resource_profile: default

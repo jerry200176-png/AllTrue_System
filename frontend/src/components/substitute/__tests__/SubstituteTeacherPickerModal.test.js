@@ -144,4 +144,85 @@ describe('SubstituteTeacherPickerModal drag prefill', () => {
     expect(wrapper.get('.stp-card').classes()).not.toContain('stp-card--conflict');
     expect(wrapper.get('.stp-card').classes()).toContain('stp-card--warn');
   });
+
+  // in-app #247: mirror the production payload for 2026-08-29 13:00–15:00.
+  // One occupied one-on-three slot with two seats remaining must be selectable.
+  it('keeps a one-on-three candidate selectable for the #247 production payload', async () => {
+    const wrapper = mount(SubstituteTeacherPickerModal, {
+      props: {
+        modelValue: false,
+        context: {
+          student_id: 271,
+          student_name: '回歸測試學生',
+          class_type: 'one_on_three',
+          subject_label: '英文',
+          session_date: '2026-08-29',
+          start_time: '13:00',
+          end_time: '15:00',
+          original_teacher_id: 146,
+          original_teacher_name: '原授課老師',
+          session_campus_id: 9,
+        },
+        teachers: [{ id: 30, name: '代課老師', branch_ids: [9, 16, 15] }],
+        branchNameMap: { 9: '分校#9', 16: '分校#16', 15: '分校#15' },
+        fetchAvailability: vi.fn(async () => ({
+          busy_slots: [{
+            start_time: '13:00',
+            end_time: '15:00',
+            campus_id: 9,
+            class_type: 'one_on_three',
+            student_count: 1,
+            remaining_capacity: 2,
+          }],
+        })),
+      },
+    });
+
+    await wrapper.setProps({ modelValue: true });
+    await flushPromises();
+
+    const card = wrapper.get('.stp-card');
+    expect(card.classes()).not.toContain('stp-card--conflict');
+    expect(card.classes()).toContain('stp-card--warn');
+    expect(card.attributes('aria-disabled')).toBe('false');
+
+    await card.trigger('click');
+    expect(wrapper.get('.stp-btn--primary').element.disabled).toBe(false);
+  });
+
+  it('forwards availability context and exposes the diagnostic trace id', async () => {
+    const fetchAvailability = vi.fn(async () => ({
+      busy_slots: [],
+      diagnostic_trace_id: 'trace-247-test',
+    }));
+    const wrapper = mount(SubstituteTeacherPickerModal, {
+      props: {
+        modelValue: false,
+        context: {
+          student_id: 271,
+          class_type: 'one_on_three',
+          session_date: '2026-08-29',
+          start_time: '13:00',
+          end_time: '15:00',
+          original_teacher_id: 146,
+          session_campus_id: 9,
+        },
+        teachers: [{ id: 30, name: '代課老師', branch_ids: [9] }],
+        branchNameMap: { 9: '大安' },
+        fetchAvailability,
+      },
+    });
+
+    await wrapper.setProps({ modelValue: true });
+    await flushPromises();
+
+    expect(fetchAvailability).toHaveBeenCalledWith(30, '2026-08-29', {
+      excludeStudentId: 271,
+      classType: 'one_on_three',
+      startTime: '13:00',
+      endTime: '15:00',
+    });
+    const trace = wrapper.get('[data-availability-trace-id="trace-247-test"]');
+    expect(trace.text()).toContain('trace-247-test');
+  });
 });

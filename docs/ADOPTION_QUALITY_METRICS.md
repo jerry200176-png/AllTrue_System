@@ -16,7 +16,16 @@
 | `director_activation_rate_pct` | distinct director/admin users with at least one core action in 7 days / total director/admin users × 100 | `LearningRecord.ApprovedBy`, `bug_report_status_logs.changed_by` | Core actions: approval or defect workflow action |
 | `activation_funnel.teacher.activation_within_24h_pct` | teacher activated users / teacher opened users × 100 (v1 proxy) | `user_login_activities`, activation aggregates | v1 uses 7-day open/activation proxy for same-day completion trend |
 | `activation_funnel.director.activation_within_24h_pct` | director activated users / director opened users × 100 (v1 proxy) | `user_login_activities`, activation aggregates | used by mission-center adoption review |
-| `system_completion_rate_pct` | `learning_records_filled / attended_sessions × 100` | `LearningRecord`, `ClassSession` | Guard zero denominator |
+| `system_completion_rate_pct` | `learning_records_filled / attended_sessions × 100` | `LearningRecord`, `ClassSession` | `attended_sessions` uses `AttendanceStatus.requiresLogSessionStatuses()`; guard zero denominator |
+| `evaluation_integrity_missing_count` | attended/log-required sessions with no active `LearningRecord` | `ClassSession` left join active `LearningRecord` | System data anomaly; shown as **缺評量表** in the first-screen Director Dashboard quality card |
+| `evaluation_pending_count` | attended/log-required sessions with an active record but no trimmed `Progress` | `ClassSession`, `LearningRecord` | Teacher follow-up; shown separately from missing forms so a director knows whether to repair data or remind a teacher |
+| `evaluation_follow_up_teacher_count` | teachers with at least 5 log-required sessions and fill rate `< 70%` | `ClassSession`, effective teacher, `LearningRecord` | Supportive operational signal, not a public ranking |
+
+The Director Dashboard places these indicators immediately after the overview
+tabs, before the detailed work queues. Each row includes `filled / expected`,
+`missing`, and `pending` counts; the card's next-step link goes to the existing
+Learning Records review page. Cancelled, leave-family, and absent sessions are
+not in the denominator.
 
 ---
 
@@ -39,6 +48,39 @@
 | `p1p0_median_lead_hours` | median of `resolved_at - bug_created_at` hours for severity `high/critical` in window | `bug_reports`, `bug_report_status_logs` | Uses resolved status log timestamp |
 | `trust_contract_backlog` | `workflow_daily.due_total` | adoption workflow aggregations | Represents unresolved cross-workflow pending items |
 | `trust_contract_breached_total` | `workflow_daily.breached_total` | adoption workflow aggregations | SLA warning signal |
+
+### 3.1 Bug queue SLA snapshot
+
+`GET /api/v1/adoption/weekly-metrics?branch_id={id}` also returns the
+PII-free `data.bug_sla` block used by the Director Dashboard's full operations
+view:
+
+| Field | Meaning |
+|---|---|
+| `status_counts` | Current counts for every bug status (`new`, `triaged`, `in_progress`, `resolved`, `closed`) in the branch |
+| `open_backlog.by_status` | Current actionable queue counts by open status |
+| `open_backlog.oldest_age_hours` | Oldest age per open status; `new` uses report time, while `triaged`/`in_progress` use the first `to_status=triaged` log |
+| `open_backlog.missing_triaged_at` | Rows whose triage history is missing; these are not assigned a guessed age |
+| `triage_sla.targets_hours` | P0 = 4h, P1 = 24h, P2 = 168h; `critical`/`high`/`medium` map to P0/P1/P2 and `low` is P3 without a target |
+| `triage_sla.open_breaches` | Open `new` rows whose report-to-triage clock exceeds the applicable target |
+
+This is a read-only current snapshot, not a status transition or automatic
+closure policy. A missing status log remains visible as an evidence gap.
+
+### 3.1.1 Durable weekly artifact
+
+The `Weekly Bug SLA Report` workflow emits `bug-sla-weekly.json` every Monday
+at 09:00 Asia/Taipei and on manual dispatch. The artifact is retained for 90
+days and uses schema `bug-sla-weekly-v1`. It contains the same aggregate
+status, open-backlog aging, missing-triaged-history, and P0/P1/P2 breach
+fields described above, plus `generated_at`, `timezone`, `read_only`,
+`pii_redacted`, and `source` markers.
+
+The production query is SELECT-only and emits no bug IDs, titles, reporter
+identifiers, attachment identifiers, campus identifiers, URLs, or free text.
+The workflow does not assign owners, send reminders, change bug status, close
+stale reports, or modify production data. Those policy and ownership decisions
+remain outside this artifact slice.
 
 ---
 

@@ -1,30 +1,38 @@
 <template>
   <div class="teachers-page">
   <div class="card teachers-card">
-    <div class="header-actions" data-guide="teachers-header">
-      <div class="title-group">
-        <h2>老師管理</h2>
-        <p class="title-sub">管理老師資料、分校配置與登入帳號操作</p>
-      </div>
+    <AtPageHeader
+      title="老師管理"
+      description="管理老師資料、分校配置與登入帳號操作。"
+      icon="groups"
+      data-guide="teachers-header"
+    >
+      <template #meta>
+        <span>共 {{ teachers.length }} 位</span>
+        <span>目前列表 {{ filteredTeachers.length }} 位</span>
+      </template>
+      <template #actions>
+        <AtButton variant="ghost" shape="rect" icon="upload_file" @click="openBulkModal">批次新增老師</AtButton>
+        <AtButton variant="primary" shape="rect" icon="add" @click="showAddModal = true">新增老師</AtButton>
+      </template>
+    </AtPageHeader>
+
+    <div class="teachers-view-tabs" role="tablist" aria-label="老師狀態">
       <div class="tabs">
-          <button :class="{ active: tab === 'active' }" @click="tab = 'active'">正式老師</button>
-          <button :class="{ active: tab === 'pending' }" @click="tab = 'pending'">待審核 <span v-if="pendingCount > 0" class="badge">{{ pendingCount }}</span></button>
-          <button :class="{ active: tab === 'suspended' }" @click="tab = 'suspended'">停用 <span v-if="suspendedCount > 0" class="badge">{{ suspendedCount }}</span></button>
-      </div>
-      <div class="header-btns">
-        <button class="ghost" @click="openBulkModal">批次新增老師</button>
-        <button class="primary" @click="showAddModal = true">+ 新增老師</button>
+        <button id="teachers-tab-active" type="button" role="tab" aria-controls="teachers-panel-active" :aria-selected="tab === 'active'" :class="{ active: tab === 'active' }" @click="tab = 'active'">正式老師</button>
+        <button id="teachers-tab-pending" type="button" role="tab" aria-controls="teachers-panel-pending" :aria-selected="tab === 'pending'" :class="{ active: tab === 'pending' }" @click="tab = 'pending'">待審核 <span v-if="pendingCount > 0" class="badge badge--pending">{{ pendingCount }}</span></button>
+        <button id="teachers-tab-suspended" type="button" role="tab" aria-controls="teachers-panel-suspended" :aria-selected="tab === 'suspended'" :class="{ active: tab === 'suspended' }" @click="tab = 'suspended'">停用 <span v-if="suspendedCount > 0" class="badge badge--suspended">{{ suspendedCount }}</span></button>
       </div>
     </div>
 
-    <div class="filter-row" data-guide="teachers-filters">
+    <AtFilterBar label="老師篩選" data-guide="teachers-filters">
       <div class="filter-item filter-item-search">
-        <label>搜尋（姓名／電話）</label>
-        <input v-model="searchQ" placeholder="輸入姓名或電話..." @input="debouncedLoad" />
+        <label for="teachers-search">搜尋（姓名／電話）</label>
+        <input id="teachers-search" v-model="searchQ" placeholder="輸入姓名或電話..." @input="debouncedLoad" />
       </div>
       <div class="filter-item">
-        <label>狀態</label>
-        <select v-model="filterStatus" @change="loadTeachers">
+        <label for="teachers-status-filter">狀態</label>
+        <select id="teachers-status-filter" v-model="filterStatus" @change="loadTeachers">
           <option value="">全部</option>
           <option value="active">在職</option>
           <option value="pending">待審核</option>
@@ -32,59 +40,62 @@
         </select>
       </div>
       <div class="filter-item">
-        <label>科目</label>
-        <select v-model="filterSubjectId">
+        <label for="teachers-subject-filter">科目</label>
+        <select id="teachers-subject-filter" v-model="filterSubjectId" aria-label="依科目篩選">
           <option value="">全部</option>
           <option v-for="s in subjects" :key="s.id" :value="s.id">{{ s.name }}</option>
         </select>
       </div>
-    </div>
+    </AtFilterBar>
 
-    <div v-if="teachers.length > 0" class="teacher-chips-row" role="group" aria-label="快速篩選老師（可多選）">
-      <span class="teacher-chips-label">老師</span>
-      <div class="teacher-chips-scroll">
-        <button
-          v-for="t in chipTeacherOptions"
-          :key="t.id"
-          type="button"
-          :aria-pressed="selectedTeacherIdSet.has(String(t.id))"
-          :class="['teacher-chip', { active: selectedTeacherIdSet.has(String(t.id)) }]"
-          :style="selectedTeacherIdSet.has(String(t.id)) ? { background: teacherAvatarColor(t.id), borderColor: teacherAvatarColor(t.id), color: 'var(--ds-on-primary)' } : {}"
-          @click="toggleTeacherChip(t.id)"
-        >{{ t.name }}</button>
-      </div>
-      <button v-if="selectedTeacherIds.length > 0" type="button" class="teacher-chip-clear" @click="selectedTeacherIds = []">全清除</button>
-    </div>
+    <details class="teachers-insights-disclosure">
+      <summary>
+        <span class="material-symbols-outlined" aria-hidden="true">tune</span>
+        <span class="teachers-insights-disclosure__title">快速篩選與統計</span>
+        <span class="teachers-insights-disclosure__hint">依老師快速定位，查看目前狀態數量</span>
+        <span class="material-symbols-outlined" aria-hidden="true">expand_more</span>
+      </summary>
+      <div class="teachers-insights-disclosure__body">
+        <div v-if="teachers.length > 0" class="teacher-chips-row" role="group" aria-label="快速篩選老師（可多選）">
+          <span class="teacher-chips-label">老師</span>
+          <div class="teacher-chips-scroll">
+            <button
+              v-for="t in chipTeacherOptions"
+              :key="t.id"
+              type="button"
+              :aria-pressed="selectedTeacherIdSet.has(String(t.id))"
+              :class="['teacher-chip', { active: selectedTeacherIdSet.has(String(t.id)) }]"
+              :style="selectedTeacherIdSet.has(String(t.id)) ? { background: teacherAvatarColor(t.id), borderColor: teacherAvatarColor(t.id), color: 'var(--ds-on-primary)' } : {}"
+              @click="toggleTeacherChip(t.id)"
+            >{{ t.name }}</button>
+          </div>
+          <button v-if="selectedTeacherIds.length > 0" type="button" class="teacher-chip-clear" @click="selectedTeacherIds = []">全清除</button>
+        </div>
 
-    <div class="teacher-summary">
-      <div class="summary-card">
-        <div class="summary-label">全部老師</div>
-        <div class="summary-value">{{ teachers.length }}</div>
+        <div class="teacher-summary" aria-label="老師狀態摘要">
+          <AtMetric label="正式老師" :value="activeTeachersCount" accent="var(--ds-success)" />
+          <AtMetric label="待審核" :value="pendingCount" accent="var(--ds-primary)" />
+          <AtMetric label="停用" :value="suspendedCount" accent="var(--ds-ink-mute)" />
+        </div>
       </div>
-      <div class="summary-card">
-        <div class="summary-label">正式老師</div>
-        <div class="summary-value active">{{ activeTeachersCount }}</div>
-      </div>
-      <div class="summary-card">
-        <div class="summary-label">待審核</div>
-        <div class="summary-value pending">{{ pendingCount }}</div>
-      </div>
-      <div class="summary-card">
-        <div class="summary-label">目前列表</div>
-        <div class="summary-value">{{ filteredTeachers.length }}</div>
-      </div>
-    </div>
+    </details>
 
-    <div v-if="loading" class="hint">Loading...</div>
-    <div v-else-if="filteredTeachers.length === 0" class="empty-state">
-      目前沒有符合條件的老師資料。
-    </div>
-
-    <div
-      v-else
-      class="teacher-card-grid"
-      data-guide="teachers-cards"
+    <section
+      :id="`teachers-panel-${tab}`"
+      role="tabpanel"
+      :aria-labelledby="`teachers-tab-${tab}`"
+      tabindex="0"
     >
+      <AtSkeleton v-if="loading" rows="4" aria-label="老師資料載入中" />
+      <div v-else-if="filteredTeachers.length === 0" class="empty-state">
+        目前沒有符合條件的老師資料。
+      </div>
+
+      <div
+        v-else
+        class="teacher-card-grid"
+        data-guide="teachers-cards"
+      >
       <article
         v-for="teacher in filteredTeachers"
         :key="'tc-' + teacher.id"
@@ -186,13 +197,19 @@
           <button type="button" class="small danger" @click="deleteTeacher(teacher)">刪除</button>
         </footer>
       </article>
-    </div>
+      </div>
+    </section>
 
 
     <!-- Modal -->
     <div v-if="showModal || showAddModal" class="modal-overlay">
-      <div class="modal">
-        <h3>{{ isEditing ? '編輯老師' : '新增老師' }}</h3>
+      <div
+        class="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="teacher-modal-title"
+      >
+        <h3 id="teacher-modal-title">{{ isEditing ? '編輯老師' : '新增老師' }}</h3>
         
         <div class="form-group">
           <label>登入帳號</label>
@@ -322,15 +339,20 @@
         <div v-if="formError" class="form-error">{{ formError }}</div>
 
         <div class="actions">
-          <button @click="closeModal">取消</button>
-          <button class="primary" @click="submitForm">儲存</button>
+          <button type="button" @click="closeModal">取消</button>
+          <button type="button" class="primary" @click="submitForm">儲存</button>
         </div>
       </div>
     </div>
 
     <div v-if="showBulkModal" class="modal-overlay">
-      <div class="modal modal-wide">
-        <h3>批次新增老師</h3>
+      <div
+        class="modal modal-wide"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="teachers-bulk-modal-title"
+      >
+        <h3 id="teachers-bulk-modal-title">批次新增老師</h3>
         <p class="hint">貼上資料或 CSV（建議欄位：帳號、姓名、電話、主分校、可授科目、兼職分校、LINE、狀態）。未填主分校時，會用下方預設主分校。</p>
 
         <div class="bulk-row">
@@ -392,10 +414,10 @@
         <div v-if="bulkResult" class="bulk-result">
           <div class="bulk-result-header">
             <strong>結果：{{ bulkResult.summary?.created || 0 }} 成功 / {{ bulkResult.summary?.failed || 0 }} 失敗</strong>
-            <div class="header-btns">
-              <button class="small" @click="copyBulkCredentials" :disabled="!bulkResult.created?.length">複製帳密</button>
-              <button class="small" @click="downloadBulkCredentialsCsv" :disabled="!bulkResult.created?.length">下載 CSV</button>
-              <button class="small ghost" @click="refillBulkWithFailedRows" :disabled="!bulkResult.failed?.length">僅保留失敗筆</button>
+            <div class="bulk-result-actions">
+              <button type="button" class="small" @click="copyBulkCredentials" :disabled="!bulkResult.created?.length">複製帳密</button>
+              <button type="button" class="small" @click="downloadBulkCredentialsCsv" :disabled="!bulkResult.created?.length">下載 CSV</button>
+              <button type="button" class="small ghost" @click="refillBulkWithFailedRows" :disabled="!bulkResult.failed?.length">僅保留失敗筆</button>
             </div>
           </div>
 
@@ -439,8 +461,8 @@
         </div>
 
         <div class="actions">
-          <button @click="closeBulkModal">關閉</button>
-          <button class="primary" @click="submitBulkTeachers" :disabled="bulkSubmitting">
+          <button type="button" @click="closeBulkModal">關閉</button>
+          <button type="button" class="primary" @click="submitBulkTeachers" :disabled="bulkSubmitting">
             {{ bulkSubmitting ? '送出中...' : '送出批次建立' }}
           </button>
         </div>
@@ -455,6 +477,11 @@ import { ref, onMounted, computed, watch } from 'vue';
 import { supabase } from '../supabase';
 import { branches as BRANCHES, getBranchName as _getBranchName } from '../lib/useBranches';
 import RocRankBadge from '../components/RocRankBadge.vue';
+import AtButton from '../components/design-system/AtButton.vue';
+import AtFilterBar from '../components/design-system/AtFilterBar.vue';
+import AtMetric from '../components/design-system/AtMetric.vue';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
+import AtSkeleton from '../components/design-system/AtSkeleton.vue';
 
 const API_BASE = (import.meta.env.VITE_API_BASE || '/api') + '/v1';
 
@@ -1558,73 +1585,18 @@ watch(showBulkModal, (opened) => {
   border: 1px solid var(--ds-hairline);
 }
 
-.header-actions {
+.teachers-view-tabs {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 18px;
-  gap: 16px;
-}
-
-.title-group h2 {
-  margin: 0;
-  font-size: 24px;
-  line-height: 1.2;
-  font-weight: 700;
-  color: var(--ds-ink);
-}
-
-.title-sub {
-  margin-top: 4px;
-  font-size: 13px;
-  color: var(--ds-ink-mute);
-}
-
-.header-btns {
-  display: flex;
-  gap: 10px;
-  align-items: center;
+  margin-bottom: var(--ds-space-3);
+  border-bottom: 1px solid var(--ds-hairline);
 }
 
 .teacher-summary {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.summary-card {
-  border: 1px solid var(--ds-hairline);
-  border-radius: 12px;
-  background: linear-gradient(180deg, var(--ds-canvas) 0%, var(--ds-canvas-soft) 100%);
-  padding: 12px 14px;
-}
-
-.summary-label {
-  font-size: 12px;
-  color: var(--ds-ink-mute);
-}
-
-.summary-value {
-  font-size: 24px;
-  line-height: 1.25;
-  font-weight: 700;
-  color: var(--ds-ink);
-}
-
-.summary-value.active { color: var(--ds-success); }
-.summary-value.pending { color: var(--ds-primary); }
-
-.filter-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: flex-end;
-  margin-bottom: 12px;
-  padding: 12px;
-  border: 1px solid var(--ds-hairline);
-  border-radius: 12px;
-  background: var(--ds-canvas-soft);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--ds-space-3);
+  margin-bottom: var(--ds-space-4);
 }
 
 .teacher-chips-row {
@@ -1923,21 +1895,41 @@ watch(showBulkModal, (opened) => {
   font-size: 12px;
   font-weight: 600;
 }
-.filter-row label {
-  display: block;
-  font-size: 12px;
-  color: var(--ds-ink-mute);
-  margin-bottom: 6px;
-  font-weight: 600;
+.teachers-card :deep(.at-filter-bar) {
+  margin-bottom: var(--ds-space-3);
 }
-.filter-row input, .filter-row select {
-  padding: 9px 12px;
+.teachers-card :deep(.filter-item-search) {
+  min-width: min(260px, 100%);
+}
+.teachers-insights-disclosure {
+  margin: 0 0 var(--ds-space-3);
   border: 1px solid var(--ds-hairline);
-  border-radius: 10px;
-  min-width: 140px;
-  font-size: 14px;
-  background: var(--ds-canvas);
+  border-radius: var(--ds-radius-lg, 12px);
+  background: var(--ds-canvas-soft);
 }
+.teachers-insights-disclosure summary {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 13px;
+  color: var(--ds-ink-secondary);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  list-style: none;
+}
+.teachers-insights-disclosure summary::-webkit-details-marker { display: none; }
+.teachers-insights-disclosure summary > .material-symbols-outlined { color: var(--ds-ink-mute); font-size: 18px; }
+.teachers-insights-disclosure summary > .material-symbols-outlined:last-child { transition: transform 160ms ease; }
+.teachers-insights-disclosure[open] summary > .material-symbols-outlined:last-child { transform: rotate(180deg); }
+.teachers-insights-disclosure summary:focus-visible { outline: 3px solid var(--ds-info-wash); outline-offset: 2px; border-radius: 5px; }
+.teachers-insights-disclosure__title { color: var(--ds-ink); }
+.teachers-insights-disclosure__hint { overflow: hidden; color: var(--ds-ink-mute); font-size: 11px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.teachers-insights-disclosure__body { display: grid; gap: 12px; padding: 0 13px 13px; }
+.teachers-insights-disclosure .teacher-chips-row { margin: 0; }
+.teachers-insights-disclosure .teacher-summary { margin: 0; }
 
 .tabs {
     display: flex;
@@ -1953,10 +1945,17 @@ watch(showBulkModal, (opened) => {
     color: var(--ds-ink-mute);
 }
 .tabs button.active {
-    border-color: var(--ds-warning);
-    color: var(--ds-warning);
-    background: var(--ds-warning-wash);
+    border-color: var(--ds-primary);
+    color: var(--ds-primary-deep);
+    background: var(--ds-primary-wash);
     font-weight: 700;
+}
+
+.bulk-result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
 }
 
 
@@ -1980,7 +1979,7 @@ watch(showBulkModal, (opened) => {
     font-size: 0.8em;
 }
 .status-tag.active { background: var(--ds-success-wash); color: var(--ds-success); }
-.status-tag.pending { background: var(--ds-warning-wash); color: var(--ds-primary); }
+.status-tag.pending { background: var(--ds-warning-wash); color: var(--ds-warning); }
 .status-tag.suspended { background: var(--ds-danger-wash); color: var(--ds-danger); }
 .status-tag.tpc-parttime { background: var(--ds-canvas-soft); color: var(--ds-ink-mute); margin-left: 4px; }
 
@@ -1997,11 +1996,27 @@ button.small.danger {
 }
 
 .badge {
-    background: var(--ds-danger);
-    color: white;
-    border-radius: 50%;
-    padding: 2px 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    min-height: 20px;
+    padding: 0 6px;
+    border: 1px solid transparent;
+    border-radius: 999px;
     font-size: 0.75em;
+    font-weight: 700;
+    line-height: 1;
+}
+.badge--pending {
+    background: var(--ds-warning-wash);
+    border-color: color-mix(in srgb, var(--ds-warning) 28%, transparent);
+    color: var(--ds-warning);
+}
+.badge--suspended {
+    background: var(--ds-danger-wash);
+    border-color: color-mix(in srgb, var(--ds-danger) 28%, transparent);
+    color: var(--ds-danger);
 }
 
 /* Modal styles reused */
@@ -2125,7 +2140,9 @@ button.small.danger {
 .rfid-tag {
   font-size: 0.8em;
   font-family: monospace;
-  color: var(--primary);
+  color: var(--ds-ink-secondary);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
 }
 
 .chip-checkbox {
@@ -2217,15 +2234,6 @@ button.small.danger {
 @media (max-width: 960px) {
   .teacher-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .header-actions {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .header-btns {
-    width: 100%;
   }
 
   .action-group {

@@ -1,0 +1,49 @@
+id: INT-20260902-205111-JM0T
+title: Issue 2179 target-specific read-only availability probe
+intent: Issue 2179 target-specific read-only availability probe
+kind: intent
+brain_dump: 'Continue AllTrue backlog convergence one issue at a time. Revalidate
+  GitHub #2179 / in-app #247 current state without trusting labels. Add only a bounded
+  read-only production diagnostic for teacher 30, date 2026-08-29, 13:00-15:00, campus
+  9, student 271, one-on-three capacity; fail closed when target evidence is absent
+  or query fails. Do not mutate production data and do not close the issue unless
+  all in-app closure conditions are independently satisfied.'
+boundary: Do not mutate production data; do not run Pi tests/phpunit; do not change
+  application business logic, database schema, auth, capacity semantics, billing,
+  attendance, schedules, or PII-bearing artifact output; no auto-close path.
+success_condition: 'A target-correct allowlisted probe runs successfully and emits
+  aggregate, PII-redacted evidence for the exact #247 scenario; CI checks pass; update
+  the GitHub issue with evidence and exact remaining blocker, without claiming a fix
+  if the historical failure is not reproduced.'
+risk: high
+priority: 1
+labels:
+- bug-2179
+scope:
+  allow:
+  - .github/workflows/bug-detail-dump.yml
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - backend/**
+  - frontend/**
+  - '**/.env*'
+  - database/**
+budgets:
+  max_files_changed: 3
+  max_loc_changed: 220
+checks:
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-02T20:51:11+08:00'
+children: []
+resource_profile: default

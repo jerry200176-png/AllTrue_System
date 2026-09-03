@@ -1,9 +1,11 @@
 <template>
   <div class="bugs-page">
-    <div class="page-header" data-guide="bugs-header">
-      <h2><span class="material-symbols-outlined header-icon">bug_report</span> {{ pageTitle }}</h2>
-      <div class="page-desc">{{ pageDesc }}</div>
-    </div>
+    <AtPageHeader
+      :title="pageTitle"
+      :description="pageDesc"
+      icon="bug_report"
+      data-guide="bugs-header"
+    />
 
     <div v-if="branchId == null" class="card empty-card">
       請先選擇分校後再查看 Bug 回報。
@@ -12,12 +14,28 @@
     <template v-else>
 
       <!-- Super Admin: 頁面層級 Tab（Bug 回報 / 家長回饋）-->
-      <div v-if="isSuperAdmin" class="bugs-page-tabs">
-        <button :class="['bugs-page-tab', { active: pageTab === 'bugs' }]" @click="pageTab = 'bugs'">
+      <div v-if="isSuperAdmin" class="bugs-page-tabs" role="tablist" aria-label="Bug 回報與家長回饋">
+        <button
+          id="bugs-tab"
+          type="button"
+          role="tab"
+          aria-controls="bugs-panel"
+          :aria-selected="pageTab === 'bugs'"
+          :class="['bugs-page-tab', { active: pageTab === 'bugs' }]"
+          @click="pageTab = 'bugs'"
+        >
           <span class="material-symbols-outlined">bug_report</span>
           Bug 回報
         </button>
-        <button :class="['bugs-page-tab', { active: pageTab === 'feedback' }]" @click="switchToFeedbackTab">
+        <button
+          id="feedback-tab"
+          type="button"
+          role="tab"
+          aria-controls="feedback-panel"
+          :aria-selected="pageTab === 'feedback'"
+          :class="['bugs-page-tab', { active: pageTab === 'feedback' }]"
+          @click="switchToFeedbackTab"
+        >
           <span class="material-symbols-outlined">chat</span>
           家長回饋
           <span v-if="pfUnreadCount > 0" class="bugs-page-tab-badge">{{ pfUnreadCount }}</span>
@@ -25,7 +43,14 @@
       </div>
 
       <!-- ═══ 家長回饋 Tab（super_admin only）═══ -->
-      <div v-if="isSuperAdmin && pageTab === 'feedback'" class="card pf-admin-card">
+      <div
+        v-if="isSuperAdmin && pageTab === 'feedback'"
+        id="feedback-panel"
+        class="card pf-admin-card"
+        role="tabpanel"
+        aria-labelledby="feedback-tab"
+        tabindex="0"
+      >
         <!-- 篩選 -->
         <div class="pf-filter-row">
           <select v-model="pfCategoryFilter" class="pf-select">
@@ -90,40 +115,49 @@
         </div>
       </div>
 
-      <!-- Quick filter tabs（Bug 回報，pageTab === 'bugs' 或非 super_admin） -->
-      <div v-if="!isSuperAdmin || pageTab === 'bugs'" class="card quick-filter-card" data-guide="bugs-quick-filter">
-        <div class="quick-tabs">
+      <div
+        v-if="!isSuperAdmin || pageTab === 'bugs'"
+        id="bugs-panel"
+        class="bugs-tab-panel"
+        role="tabpanel"
+        :aria-labelledby="isSuperAdmin ? 'bugs-tab' : undefined"
+        :aria-label="isSuperAdmin ? undefined : 'Bug 回報'"
+        tabindex="0"
+      >
+      <!-- Quick filter buttons（Bug 回報；篩選狀態而非頁面分頁） -->
+      <div class="card quick-filter-card" data-guide="bugs-quick-filter">
+        <div class="quick-tabs" role="group" aria-label="Bug 狀態篩選">
           <!-- Super admin tabs: 待處理 first (their default action queue) -->
           <template v-if="isSuperAdmin">
-            <button class="quick-tab" :class="{ active: quickFilter === 'pending' }" @click="setQuickFilter('pending')">
+            <button type="button" class="quick-tab" :aria-pressed="quickFilter === 'pending'" :class="{ active: quickFilter === 'pending' }" @click="setQuickFilter('pending')">
               <span class="material-symbols-outlined tab-icon">pending_actions</span>
               待處理
             </button>
-            <button class="quick-tab" :class="{ active: quickFilter === 'all' }" @click="setQuickFilter('all')">
+            <button type="button" class="quick-tab" :aria-pressed="quickFilter === 'all'" :class="{ active: quickFilter === 'all' }" @click="setQuickFilter('all')">
               <span class="material-symbols-outlined tab-icon">list</span>
               全部
             </button>
-            <button class="quick-tab" :class="{ active: quickFilter === 'closed' }" @click="setQuickFilter('closed')">
+            <button type="button" class="quick-tab" :aria-pressed="quickFilter === 'closed'" :class="{ active: quickFilter === 'closed' }" @click="setQuickFilter('closed')">
               <span class="material-symbols-outlined tab-icon">check_circle</span>
               已關閉
             </button>
           </template>
           <!-- Reporter tabs: 全部 first (see all progress), then filtering by status -->
           <template v-else>
-            <button class="quick-tab" :class="{ active: quickFilter === 'all' }" @click="setQuickFilter('all')">
+            <button type="button" class="quick-tab" :aria-pressed="quickFilter === 'all'" :class="{ active: quickFilter === 'all' }" @click="setQuickFilter('all')">
               <span class="material-symbols-outlined tab-icon">list</span>
               全部
               <span v-if="unreadCount > 0" class="unread-badge">{{ unreadCount }}</span>
             </button>
-            <button class="quick-tab" :class="{ active: quickFilter === 'pending' }" @click="setQuickFilter('pending')">
+            <button type="button" class="quick-tab" :aria-pressed="quickFilter === 'pending'" :class="{ active: quickFilter === 'pending' }" @click="setQuickFilter('pending')">
               <span class="material-symbols-outlined tab-icon">pending_actions</span>
               處理中
             </button>
-            <button class="quick-tab" :class="{ active: quickFilter === 'resolved' }" @click="setQuickFilter('resolved')">
+            <button type="button" class="quick-tab" :aria-pressed="quickFilter === 'resolved'" :class="{ active: quickFilter === 'resolved' }" @click="setQuickFilter('resolved')">
               <span class="material-symbols-outlined tab-icon">task_alt</span>
               已解決
             </button>
-            <button class="quick-tab" :class="{ active: quickFilter === 'closed' }" @click="setQuickFilter('closed')">
+            <button type="button" class="quick-tab" :aria-pressed="quickFilter === 'closed'" :class="{ active: quickFilter === 'closed' }" @click="setQuickFilter('closed')">
               <span class="material-symbols-outlined tab-icon">check_circle</span>
               已關閉
             </button>
@@ -243,20 +277,22 @@
             共 {{ total }} 筆，第 {{ currentPage }}/{{ lastPage }} 頁
           </div>
           <div class="bug-list">
-            <div
+            <button
               v-for="bug in bugs"
               :key="bug.id"
+              type="button"
               class="bug-item"
               :class="{ active: activeBug?.id === bug.id, unread: isUnread(bug) }"
-              @click="selectBug(bug)"
+              :aria-current="activeBug?.id === bug.id ? 'true' : undefined"
+              @click="selectBug(bug, $event)"
             >
               <span class="severity-dot" :class="bug.severity"></span>
-              <div class="bug-item-info">
-                <div class="bug-title">
+              <span class="bug-item-info">
+                <span class="bug-title">
                   {{ bug.title }}
                   <span v-if="isUnread(bug)" class="unread-dot" title="有新動態"></span>
-                </div>
-                <div class="bug-meta">
+                </span>
+                <span class="bug-meta">
                   <span class="status-tag" :class="bug.status">{{ statusLabel(bug.status) }}</span>
                   <span v-if="isUnread(bug) && !isSuperAdmin" class="new-activity-tag">新動態</span>
                   <span v-if="bug.attachments_count > 0" class="bug-attach-hint" title="含截圖">
@@ -272,9 +308,9 @@
                     <span class="material-symbols-outlined">update</span>
                     {{ formatDate(bug.updated_at) }}
                   </span>
-                </div>
-              </div>
-            </div>
+                </span>
+              </span>
+            </button>
           </div>
 
           <!-- Pagination -->
@@ -304,10 +340,15 @@
       <!-- Bug detail -->
       <div v-if="activeBug" ref="detailCardEl" class="card detail-card">
         <div class="detail-header">
-          <h3>{{ detail?.title || activeBug.title }}</h3>
+          <h3 ref="detailTitleEl" tabindex="-1">{{ detail?.title || activeBug.title }}</h3>
           <button class="btn-close-detail" @click="closeDetail">
             <span class="material-symbols-outlined">close</span>
           </button>
+        </div>
+
+        <div v-if="actionFeedback" class="att-msg bugs-action-feedback" :class="actionFeedback.tone" :role="actionFeedback.tone === 'error' ? 'alert' : 'status'">
+          <span>{{ actionFeedback.text }}</span>
+          <button type="button" class="btn-sm btn-ghost" @click="actionFeedback = null">關閉</button>
         </div>
 
         <div v-if="loadingDetail" class="loading-box">載入詳情...</div>
@@ -360,6 +401,15 @@
           <div class="detail-description">
             <strong>問題描述</strong>
             <p>{{ detail.description }}</p>
+          </div>
+
+          <div v-if="isSuperAdmin && triageContext" class="triage-context-card">
+            <strong>回報補充（僅處理人員可見）</strong>
+            <div v-if="triageContext.occurrenceAt"><b>發生時間：</b>{{ triageContext.occurrenceAt }}<span v-if="triageContext.timeZone">（{{ triageContext.timeZone }}）</span></div>
+            <div v-if="triageContext.relatedReference"><b>相關資料：</b>{{ triageContext.relatedReference }}</div>
+            <div v-if="triageContext.screenSize || triageContext.timeZone">
+              <b>裝置：</b>{{ triageContext.screenSize || '未知尺寸' }}<span v-if="triageContext.timeZone"> · {{ triageContext.timeZone }}</span>
+            </div>
           </div>
 
           <!-- 回覆／留言：移到描述下方、截圖與歷程之上，讓回報者（多為手機）
@@ -449,17 +499,20 @@
           <span class="material-symbols-outlined">arrow_upward</span>
         </button>
       </transition>
+      </div>
     </template>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import {
   fetchBugReports, fetchBugDetail, addBugComment,
   updateBugStatus, updateBugCommentVisibility, reporterVerifyBug,
   getToken,
 } from '../lib/bugReportsApi';
+import { parseBugReportClientInfo } from '../lib/bugReportContext';
 import { getParentFeedbackList, getParentFeedbackUnreadCount, markParentFeedbackRead } from '../api';
 
 const props = defineProps({
@@ -470,6 +523,7 @@ const props = defineProps({
 const bugs = ref([]);
 const activeBug = ref(null);
 const detailCardEl = ref(null);
+const detailTitleEl = ref(null);
 const detail = ref(null);
 const loading = ref(false);
 const loadingDetail = ref(false);
@@ -498,6 +552,7 @@ const deployRunId = ref('');
 const newComment = ref('');
 const commentIsInternal = ref(false);
 const updatingCommentVisibilityIds = ref(new Set());
+const actionFeedback = ref(null);
 
 // ── Unread tracking ──────────────────────────────────────────────────────
 // localStorage key → { [bugId]: ISO timestamp of last view }
@@ -556,9 +611,10 @@ async function doReporterVerify(verdict) {
   try {
     const res = await reporterVerifyBug(detail.value.id, verdict, '', props.branchId);
     detail.value = { ...detail.value, status: res.new_status };
+    actionFeedback.value = { tone: 'success', text: verdict === 'confirmed' ? '已確認問題修復。' : '已重新開啟此問題，開發者會繼續處理。' };
     await loadBugs();
   } catch (e) {
-    alert(e.message || '操作失敗，請重試');
+    actionFeedback.value = { tone: 'error', text: e.message || '操作失敗，請重試。' };
   } finally {
     verifying.value = false;
   }
@@ -634,6 +690,8 @@ const resolutionNote = computed(() => {
     .find(l => terminal.includes(l.to_status));
   return log?.note || '';
 });
+
+const triageContext = computed(() => parseBugReportClientInfo(detail.value?.client_info));
 
 const pageTitle = computed(() => {
   if (isSuperAdmin.value) return 'Bug 回報（處理中心）';
@@ -799,8 +857,11 @@ function closeDetail() {
   detailError.value = '';
 }
 
-async function selectBug(bug) {
+async function selectBug(bug, event = null) {
   if (!bug) return;
+  // Keyboard activation should move the screen-reader cursor into the loaded
+  // detail; mouse users keep their pointer context in the list.
+  const focusDetail = event?.detail === 0;
   activeBug.value = bug;
   loadingDetail.value = true;
   detailError.value = '';
@@ -809,6 +870,7 @@ async function selectBug(bug) {
   productionRevision.value = '';
   deployRunId.value = '';
   newComment.value = '';
+  actionFeedback.value = null;
   // 手機單欄時 detail 排在長列表之後，選取後要滑過整個列表才看到詳情（in-app 166）。
   // 窄螢幕選取後把詳情捲入視野；桌面（list/detail 並排）不干擾。
   if (typeof window !== 'undefined' && window.matchMedia?.('(max-width: 720px)').matches) {
@@ -825,6 +887,10 @@ async function selectBug(bug) {
     detailError.value = bugLoadErrorMessage(e, '無法載入詳情，請稍後再試');
   } finally {
     loadingDetail.value = false;
+    if (focusDetail) {
+      await nextTick();
+      detailTitleEl.value?.focus({ preventScroll: true });
+    }
     window.dispatchEvent(new CustomEvent('alltrue-refresh-badges'));
   }
 }
@@ -837,9 +903,10 @@ async function doUpdateStatus() {
       deploy_run_id: deployRunId.value.trim() || null,
     });
     await selectBug(activeBug.value);
+    actionFeedback.value = { tone: 'success', text: '狀態已更新。' };
     loadBugs();
   } catch (e) {
-    alert('更新失敗：' + e.message);
+    actionFeedback.value = { tone: 'error', text: '更新失敗：' + e.message };
   }
 }
 
@@ -851,7 +918,7 @@ async function doAddComment() {
     commentIsInternal.value = false;
     await selectBug(activeBug.value);
   } catch (e) {
-    alert('留言失敗：' + e.message);
+    actionFeedback.value = { tone: 'error', text: '留言失敗：' + e.message };
   }
 }
 
@@ -867,7 +934,7 @@ async function toggleCommentVisibility(comment) {
     await updateBugCommentVisibility(activeBug.value.id, comment.id, nextValue);
     await selectBug(activeBug.value);
   } catch (e) {
-    alert('更新留言可見性失敗：' + e.message);
+    actionFeedback.value = { tone: 'error', text: '更新留言可見性失敗：' + e.message };
   } finally {
     updatingCommentVisibilityIds.value.delete(comment.id);
   }
@@ -1160,11 +1227,17 @@ function formatDate(iso) {
 .bug-list { display: flex; flex-direction: column; }
 .bug-item {
   display: flex; align-items: flex-start; gap: 10px; padding: 12px;
-  border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.15s;
+  width: 100%; border: 0; border-bottom: 1px solid var(--border);
+  background: transparent; color: inherit; font: inherit; text-align: left;
+  cursor: pointer; transition: background 0.15s;
 }
 .bug-item:last-child { border-bottom: none; }
 .bug-item:hover { background: var(--primary-bg); }
 .bug-item.active { background: var(--primary-bg); }
+.bug-item:focus-visible {
+  outline: 2px solid var(--ds-primary);
+  outline-offset: -2px;
+}
 
 .severity-dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
 .severity-dot.critical { background: var(--danger); }
@@ -1174,6 +1247,7 @@ function formatDate(iso) {
 
 .bug-item.unread { border-left: 3px solid var(--primary); padding-left: 9px; }
 
+.bug-item-info { display: block; flex: 1; min-width: 0; }
 .bug-title { font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 6px; }
 
 /* Unread dot — inline with title */
@@ -1263,6 +1337,13 @@ function formatDate(iso) {
 .detail-card { position: relative; }
 .detail-header { display: flex; justify-content: space-between; align-items: flex-start; }
 .detail-header h3 { margin: 0; font-size: 18px; }
+.bugs-action-feedback {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 12px 0 0;
+}
 .btn-close-detail { background: none; border: none; cursor: pointer; color: var(--text-light); }
 
 /* Resolution banner */
@@ -1311,6 +1392,12 @@ function formatDate(iso) {
 .detail-description { margin: 12px 0; }
 .detail-description strong { display: block; margin-bottom: 4px; }
 .detail-description p { background: var(--ds-canvas); padding: 12px; border-radius: 8px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; }
+.triage-context-card {
+  margin: 12px 0; padding: 10px 12px; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--ds-canvas-soft); font-size: 13px; line-height: 1.6;
+}
+.triage-context-card > strong { display: block; margin-bottom: 4px; }
+.triage-context-card b { font-weight: 600; }
 
 .detail-attachments { margin: 16px 0; }
 .detail-attachments strong { display: block; margin-bottom: 8px; }

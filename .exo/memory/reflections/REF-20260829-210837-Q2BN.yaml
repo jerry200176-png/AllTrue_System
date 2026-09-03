@@ -1,0 +1,13 @@
+id: REF-20260829-210837-Q2BN
+pattern: inline Markdown backticks in gh --body commands
+insight: Use a body file or a subprocess argument array for GitHub comments; shell
+  command substitution can corrupt evidence text even when no production action is
+  intended.
+severity: medium
+scope: global
+actor: human
+session_id: ''
+created_at: '2026-08-29T21:08:37+08:00'
+status: active
+tags: []
+hit_count: 6

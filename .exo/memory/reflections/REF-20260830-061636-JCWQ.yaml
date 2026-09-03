@@ -1,0 +1,15 @@
+id: REF-20260830-061636-JCWQ
+pattern: 'calendar #247 report current payload healthy but historical picker failure
+  not reproducible'
+insight: 'For scheduling UI bugs, preserve the triaged state when read-only availability
+  and booking checks are healthy: pin the exact production tuple as a regression test,
+  keep capacity semantics unchanged, and require a captured failing payload/caller
+  context before a runtime fix.'
+severity: medium
+scope: alltrue
+actor: human
+session_id: ''
+created_at: '2026-08-30T06:16:36+08:00'
+status: active
+tags: []
+hit_count: 0

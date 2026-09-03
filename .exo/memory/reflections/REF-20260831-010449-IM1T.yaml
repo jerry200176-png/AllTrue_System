@@ -1,0 +1,16 @@
+id: REF-20260831-010449-IM1T
+pattern: Styled label hides the student import file input
+insight: Use a visible native button to trigger a visually clipped file input via
+  ref; keep the existing change handler and API, and give the button an explicit accessible
+  name so keyboard users do not depend on a non-focusable label.
+severity: low
+scope: TKT-20260831-010101-YH5H
+actor: agent:codex
+session_id: SES-20260831010106-C37B87B0
+created_at: '2026-08-31T01:04:49+08:00'
+status: active
+tags:
+- accessibility
+- file-upload
+- vue
+hit_count: 0

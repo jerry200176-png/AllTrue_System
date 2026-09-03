@@ -1,0 +1,50 @@
+id: INT-20260831-012034-AH30
+title: Attendance row selection accessibility
+intent: Attendance row selection accessibility
+kind: intent
+brain_dump: 'Issue #2135 UX convergence: AttendancePage''s desktop and mobile pending-session
+  selection checkboxes have no accessible name, so assistive-technology users cannot
+  identify which lesson they are selecting for batch attendance.'
+boundary: Only AttendancePage row-selection checkbox semantics and one focused accessibility
+  regression test; preserve attendance status, deduction, API, permissions, branch
+  isolation, data, and workflow behavior.
+success_condition: Every pending lesson selection checkbox has a clear session-specific
+  accessible name in desktop and mobile markup; existing selection handlers and state
+  remain unchanged; focused and approved checks pass.
+risk: low
+priority: 2
+labels:
+- area:attendance
+- accessibility
+scope:
+  allow:
+  - frontend/src/pages/AttendancePage.vue
+  - frontend/src/components/__tests__/AttendancePageAccessibility.test.js
+  - .agent-session/**
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - backend/**
+  - database/**
+  - .github/**
+budgets:
+  max_files_changed: 2
+  max_loc_changed: 100
+checks:
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-08-31T01:20:34+08:00'
+children:
+- TKT-20260831-012049-ELLK
+resource_profile: default

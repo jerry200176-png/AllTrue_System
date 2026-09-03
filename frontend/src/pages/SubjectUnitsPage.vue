@@ -1,9 +1,13 @@
 <template>
   <div>
     <!-- Month Filter -->
-    <div class="card" style="margin-bottom: 20px;" data-guide="subject-units-header">
-      <div class="header-actions">
-        <h2>📐 科目數統計</h2>
+    <AtPageHeader
+      title="科目數統計"
+      description="查看所選月份與分校的老師授課時數及加權科目數。"
+      icon="calculate"
+      data-guide="subject-units-header"
+    >
+      <template #actions>
         <div class="header-controls">
           <div class="branch-selector">
             <label>分校</label>
@@ -23,8 +27,8 @@
           <button class="ghost small" @click="changeMonth(1)">▶</button>
           </div>
         </div>
-      </div>
-    </div>
+      </template>
+    </AtPageHeader>
 
     <!-- Empty State -->
     <div v-if="!loading && teacherList.length === 0" class="card">
@@ -38,32 +42,47 @@
 
     <!-- Summary Cards -->
     <div v-if="teacherList.length > 0" class="summary-cards" data-guide="subject-units-summary">
-      <div class="summary-card">
-        <div class="summary-label">總上課時數</div>
-        <div class="summary-value">{{ totals.totalHours }}</div>
-        <div class="summary-sub">
-          一對一 {{ totals.oneOnOneHours }}h ｜ 一對二 {{ totals.oneOnTwoHours }}h ｜ 一對三 {{ totals.oneOnThreeHours }}h ｜ 輔導 {{ totals.tutoringHours }}h
-        </div>
-      </div>
-      <div class="summary-card accent">
-      <div class="summary-label">本校總科目數（含輔導）</div>
-        <div class="summary-value">{{ totals.subjectCountWith }}</div>
-        <div class="summary-sub">加權總分: {{ totals.totalUnitsWithTutoring }}</div>
-      </div>
-      <div class="summary-card primary">
-        <div class="summary-label">本校總科目數（不含輔導）</div>
-        <div class="summary-value">{{ totals.subjectCountWithout }}</div>
-        <div class="summary-sub">加權總分: {{ totals.totalUnitsWithoutTutoring }}</div>
-      </div>
+      <AtMetric
+        label="總上課時數"
+        :value="`${totals.totalHours}h`"
+        :delta="`一對一 ${totals.oneOnOneHours}h · 一對二 ${totals.oneOnTwoHours}h · 一對三 ${totals.oneOnThreeHours}h · 輔導 ${totals.tutoringHours}h`"
+      />
+      <AtMetric
+        label="本校總科目數（含輔導）"
+        :value="totals.subjectCountWith"
+        :delta="`加權總分 ${totals.totalUnitsWithTutoring}`"
+        delta-tone="positive"
+      />
+      <AtMetric
+        label="本校總科目數（不含輔導）"
+        :value="totals.subjectCountWithout"
+        :delta="`加權總分 ${totals.totalUnitsWithoutTutoring}`"
+        delta-tone="positive"
+      />
     </div>
 
     <!-- Subject-count calculation (matches GET /api/v1/finance/subject-units) -->
     <div v-if="teacherList.length > 0" class="card calc-guide" data-guide="subject-units-formula">
-      <div class="calc-guide-header" @click="showCalcGuide = !showCalcGuide">
-        <h3>📎 科目數計算方式</h3>
-        <button type="button" class="ghost small">{{ showCalcGuide ? '收合 ▲' : '展開 ▼' }}</button>
+      <div class="calc-guide-header">
+        <h3 id="subject-units-calc-guide-title">
+          <button
+            type="button"
+            class="ghost small calc-guide-toggle"
+            :aria-expanded="showCalcGuide"
+            aria-controls="subject-units-calc-guide-body"
+            @click="showCalcGuide = !showCalcGuide"
+          >
+            <span>📎 科目數計算方式</span>
+            <span aria-hidden="true">{{ showCalcGuide ? '收合 ▲' : '展開 ▼' }}</span>
+          </button>
+        </h3>
       </div>
-      <div v-if="showCalcGuide" class="calc-guide-body">
+      <div
+        v-show="showCalcGuide"
+        id="subject-units-calc-guide-body"
+        class="calc-guide-body"
+        aria-labelledby="subject-units-calc-guide-title"
+      >
         <p class="calc-guide-lead">
           本頁「科目數」與「加權總分」由後端依下列規則計算，與薪資報表口徑一致。
         </p>
@@ -149,12 +168,26 @@
 
     <!-- Level Breakdown -->
     <div v-if="levelBreakdownTotals.length > 0" class="card" style="margin-top: 20px;">
-      <div class="level-breakdown-header" @click="showLevelBreakdown = !showLevelBreakdown">
-        <h3>📊 學段分解（國小/國中/高中）</h3>
-        <button class="ghost small">{{ showLevelBreakdown ? '收合 ▲' : '展開 ▼' }}</button>
+      <div class="level-breakdown-header">
+        <h3 id="subject-units-level-breakdown-title">
+          <button
+            type="button"
+            class="ghost small level-breakdown-toggle"
+            :aria-expanded="showLevelBreakdown"
+            aria-controls="subject-units-level-breakdown-body"
+            @click="showLevelBreakdown = !showLevelBreakdown"
+          >
+            <span>📊 學段分解（國小/國中/高中）</span>
+            <span aria-hidden="true">{{ showLevelBreakdown ? '收合 ▲' : '展開 ▼' }}</span>
+          </button>
+        </h3>
       </div>
 
-      <div v-if="showLevelBreakdown">
+      <div
+        v-show="showLevelBreakdown"
+        id="subject-units-level-breakdown-body"
+        aria-labelledby="subject-units-level-breakdown-title"
+      >
         <div class="level-summary-cards">
           <div v-for="lb in levelBreakdownTotals" :key="'lvl-total-'+lb.level" class="summary-card level-card">
             <div class="summary-label">{{ lb.levelLabel }}</div>
@@ -194,6 +227,9 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import { supabase } from '../supabase';
 import { branches, loadBranches } from '../lib/useBranches';
+import { formatSubjectCount } from '../lib/subjectUnitsDisplay';
+import AtMetric from '../components/design-system/AtMetric.vue';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 
 const props = defineProps({
   branchId: [String, Number],
@@ -328,8 +364,8 @@ const loadData = async () => {
       totalHours: t.total_hours || 0,
       totalUnitsWithTutoring: t.weighted_with_tutoring || 0,
       totalUnitsWithoutTutoring: t.weighted_without_tutoring || 0,
-      subjectCountWith: (t.subject_count_with || 0).toFixed(2),
-      subjectCountWithout: (t.subject_count_without || 0).toFixed(2),
+      subjectCountWith: formatSubjectCount(t.subject_count_with),
+      subjectCountWithout: formatSubjectCount(t.subject_count_without),
     };
   } catch (e) {
     console.error('Failed to load subject units:', e);
@@ -504,10 +540,27 @@ table tfoot td {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  cursor: pointer;
 }
+.calc-guide-header h3,
 .level-breakdown-header h3 {
   margin: 0;
+}
+.calc-guide-header .calc-guide-toggle,
+.level-breakdown-header .level-breakdown-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.calc-guide-toggle:focus-visible,
+.level-breakdown-toggle:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
 }
 
 .level-summary-cards {
@@ -530,7 +583,6 @@ table tfoot td {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  cursor: pointer;
   user-select: none;
 }
 

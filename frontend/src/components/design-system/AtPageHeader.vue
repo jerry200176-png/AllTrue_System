@@ -13,8 +13,9 @@ defineProps({
         <span
           v-if="icon"
           class="material-symbols-outlined at-page-header__icon"
+          :data-icon="icon"
           aria-hidden="true"
-        >{{ icon }}</span>
+        />
         {{ title }}
       </h2>
       <p v-if="description" class="at-page-header__desc">{{ description }}</p>
@@ -53,6 +54,13 @@ defineProps({
 .at-page-header__icon {
   font-size: 22px;
   color: var(--ds-text-secondary);
+}
+
+/* Keep the ligature out of the heading's text content. This preserves the
+   visual icon while leaving accessible names and exact text queries as the
+   actual page title only. */
+.at-page-header__icon::before {
+  content: attr(data-icon);
 }
 
 .at-page-header__desc {

@@ -2,6 +2,65 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-03-multi-guardian-portal-authz
+    changelog_date: "2026-09-03"
+    changelog_title: "feat(parent): Parent Portal multi-guardian dual-read authZ"
+    reason: 僅家長 Portal LINE 登入／切換與 revoke→session 路徑；教職員畫面無新操作。rollback 為關 PERF_MULTI_GUARDIAN；不 cutover parent_phone。
+
+  - id: silent-2026-09-03-multi-guardian-staff-crud
+    changelog_date: "2026-09-03"
+    changelog_title: "feat(parent): 學生管理多家長 CRUD（flag 閘控）"
+    reason: 多家長 CRUD 僅在 PERF_MULTI_GUARDIAN 開啟時可見；預設關閉時 API 404。production flag enable 另需 Founder GO。
+
+  - id: silent-2026-09-03-multi-parent-line-notify
+    changelog_date: "2026-09-03"
+    changelog_title: "fix(parent): 多家長 LINE 綁定通知與偏好一致性"
+    reason: 僅後端家長 LINE 推播 fan-out、偏好 scope 與停止覆寫 legacy LineID；merge 不授權 production migrate。主任畫面與綁定驗證規則不變，家長入口無新操作流程。
+
+  - id: silent-2026-09-03-multi-guardian-foundation
+    changelog_date: "2026-09-03"
+    changelog_title: "feat(parent): 多 Guardian 加法模型與雙寫雙讀（dark launch）"
+    reason: 加法表與 dark-launch flag 預設關閉；merge 不授權 production migrate。教職員畫面僅在 flag 開啟後才出現多家長 CRUD，預設行為與 parent_phone 相容路徑不變。
+
+  - id: silent-2026-08-30-students-button-semantics
+    changelog_date: "2026-08-30"
+    changelog_title: "improved(ux): 學生管理操作按鈕語意更穩定"
+    reason: 僅補上原生按鈕的非送出語意與回歸測試；沒有新增教職員流程或改變學生、課程、帳務與身份資料。
+
+  - id: silent-2026-08-30-attendance-button-semantics
+    changelog_date: "2026-08-30"
+    changelog_title: "improved(ux): 出缺勤操作按鈕語意更穩定"
+    reason: 僅補上原生按鈕的非送出語意與回歸測試；沒有新增教職員流程或改變出缺勤資料與狀態。
+
+  - id: silent-2026-08-30-bug-composer-success-reset
+    changelog_date: "2026-08-30"
+    changelog_title: "fix(ux): Bug 回報視窗不殘留上一筆提交提示"
+    reason: 僅修正回報視窗關閉／重開時的暫態提示清理；沒有新增教職員流程或改變回報資料語意。
+
+  - id: silent-2026-08-27-eslint-unused-ratchet
+    changelog_date: "2026-08-27"
+    changelog_title: "chore(quality): 前端未使用程式碼新增 baseline ratchet"
+    reason: 僅新增前端 ESLint 歷史債 baseline 與 build 防線；不改變主任、老師、家長的畫面、資料或操作流程。
+  - id: silent-2026-08-29-bug-reports-tabs-a11y
+    changelog_date: "2026-08-29"
+    changelog_title: "improved(ux): Bug 回報工作區頁籤更容易辨識"
+    reason: 僅改善 super admin 內部 Bug 回報／家長回饋支援工作區的鍵盤與螢幕閱讀器語意；沒有新增教職員操作流程或改變回報資料語意。
+
+  - id: silent-2026-08-29-entitlement-reason-length
+    changelog_date: "2026-08-29"
+    changelog_title: "fix(ops): 堂次轉移 reason 過長改為明確擋下"
+    reason: 僅修復維運轉移命令的欄位長度預檢；教職員畫面與堂次／帳務語意不變。
+
+  - id: silent-2026-08-26-payment-report-long-note
+    changelog_date: "2026-08-26"
+    changelog_title: "fix(billing): 長備註確認入帳不再失敗"
+    reason: 僅修正帳務核銷的資料欄位承載與交易防重；沒有新增教職員操作流程或改變付款金額／狀態語意。
+
+  - id: silent-2026-08-26-read-side-session-conflict
+    changelog_date: "2026-08-26"
+    changelog_title: "fix(attendance): 待點名列表遇到歷史衝突仍可載入"
+    reason: 僅隔離讀取投影中的歷史資料衝突並保留診斷紀錄；沒有新增教職員操作流程，正常堂次建立與重疊防護規則不變。
+
   - id: silent-2026-08-22-db-credential-rotation-incident
     changelog_date: "2026-08-22"
     changelog_title: "incident(ops): #1387 production DB credential mismatch recovered"

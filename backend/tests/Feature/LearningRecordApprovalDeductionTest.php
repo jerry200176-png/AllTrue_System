@@ -116,16 +116,9 @@ class LearningRecordApprovalDeductionTest extends TestCase
         $this->assertSame(4, (int) $afterAttendance->RemainingSessions);
         $this->assertSame(1, (int) $afterAttendance->UsedSessions);
 
-        $record = LearningRecord::create([
-            'StudentClassID' => $courseId,
-            'ClassSessionID' => $classSession->id,
-            'TeacherID' => $teacherId,
-            'Content' => '待審評量',
-            'Status' => 'pending',
-            'SessionDate' => $classSession->SessionDate,
-            'StartTime' => $classSession->StartTime,
-            'EndTime' => $classSession->EndTime,
-        ]);
+        $record = LearningRecord::query()
+            ->where('ClassSessionID', $classSession->id)
+            ->firstOrFail();
 
         $this->withHeaders([
             'Authorization' => "Bearer {$token}",
@@ -237,6 +230,73 @@ class LearningRecordApprovalDeductionTest extends TestCase
 
         $after = StudentClass::findOrFail($courseId);
         $this->assertSame(5, (int) $after->RemainingSessions, 'orphan LR approve should deduct');
+    }
+
+    public function test_approving_lr_without_start_time_does_not_pick_an_ambiguous_session(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-ambiguous-session-a@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-ambiguous-session-a@example.com');
+        $student = $this->createStudent(1, '歧義堂次核准測試');
+
+        $course = $this->createStudentClassForTest($student->id, $teacherId, [
+            'sessions_purchased' => 6,
+            'remaining_sessions' => 6,
+            'sessions_used' => 0,
+            'first_class_date' => '2026-03-01',
+            'days_of_week' => [1],
+            'start_time' => '14:00',
+        ]);
+        $courseId = (int) $course->ID;
+        $sessionDate = now()->subDay()->toDateString();
+
+        $first = ClassSession::create([
+            'StudentClassID' => $courseId,
+            'SessionDate' => $sessionDate,
+            'StartTime' => '14:00',
+            'EndTime' => '16:00',
+            'Status' => 'scheduled',
+            'Note' => '',
+        ]);
+        $second = ClassSession::create([
+            'StudentClassID' => $courseId,
+            'SessionDate' => $sessionDate,
+            'StartTime' => '16:00',
+            'EndTime' => '18:00',
+            'Status' => 'scheduled',
+            'Note' => '',
+        ]);
+
+        // Legacy/manual records may use 0 for an unbound ClassSessionID.
+        DB::statement('SET FOREIGN_KEY_CHECKS=0');
+        $record = LearningRecord::create([
+            'StudentClassID' => $courseId,
+            'ClassSessionID' => 0,
+            'TeacherID' => $teacherId,
+            'Content' => '缺少開始時間的歧義評量',
+            'Status' => 'pending',
+            'SessionDate' => $sessionDate,
+            'StartTime' => null,
+            'EndTime' => null,
+        ]);
+        DB::statement('SET FOREIGN_KEY_CHECKS=1');
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/learning-records/{$record->id}/approve")
+            ->assertOk();
+
+        $record->refresh();
+        $this->assertSame(0, (int) $record->ClassSessionID, 'ambiguous LR must remain unbound');
+        $this->assertSame(6, (int) StudentClass::findOrFail($courseId)->RemainingSessions);
+        $this->assertDatabaseMissing('StudentSingIn', [
+            'ClassSessionID' => $first->id,
+            'Memo' => 'lr_approve',
+        ]);
+        $this->assertDatabaseMissing('StudentSingIn', [
+            'ClassSessionID' => $second->id,
+            'Memo' => 'lr_approve',
+        ]);
     }
 
     public function test_attendance_after_approval_returns_409(): void
@@ -1100,16 +1160,9 @@ class LearningRecordApprovalDeductionTest extends TestCase
         $afterAttB = StudentClass::findOrFail($courseBId);
         $this->assertSame(5, (int) $afterAttB->RemainingSessions);
 
-        $recordB = LearningRecord::create([
-            'StudentClassID' => $courseBId,
-            'ClassSessionID' => $csB->id,
-            'TeacherID' => $teacherId,
-            'Content' => '先點名再核准',
-            'Status' => 'pending',
-            'SessionDate' => $csB->SessionDate,
-            'StartTime' => '17:00',
-            'EndTime' => '19:00',
-        ]);
+        $recordB = LearningRecord::query()
+            ->where('ClassSessionID', $csB->id)
+            ->firstOrFail();
 
         $this->withHeaders([
             'Authorization' => "Bearer {$token}",

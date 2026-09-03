@@ -21,13 +21,15 @@ use Tests\TestCase;
  * (director decision, non-cascade reason) sitting on a session that happened to be
  * 'leave' would have been silently brought back to life.
  *
- * Both paths now share LearningRecordResurrectionPolicy::isEligibleForResurrect().
+ * Direct leave -> attendance transitions are now rejected. The only supported
+ * path is dedicated undo-leave first, which restores the cascade-owned records
+ * and then allows a normal attendance transition.
  */
 class ClassSessionRestoreVoidedLearningRecordTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_leave_to_attended_resurrects_system_cascade_voided_record(): void
+    public function test_direct_leave_to_attended_is_rejected_and_does_not_resurrect_record(): void
     {
         [$token, $cs, $voidedLr] = $this->seedLeaveScenario('一般請假');
 
@@ -36,15 +38,15 @@ class ClassSessionRestoreVoidedLearningRecordTest extends TestCase
             'Accept' => 'application/json',
         ])->patchJson("/api/v1/class-sessions/{$cs->id}", [
             'status' => 'attended',
-        ])->assertOk();
+        ])->assertStatus(422)->assertJsonPath('code', 'leave_requires_cascade_undo');
 
         $voidedLr->refresh();
-        $this->assertNull($voidedLr->VoidedAt, '系統 cascade（一般請假）作廢的 LR，leave→attended 時應自動復活');
-        $this->assertNull($voidedLr->VoidReason);
-        $this->assertSame('pending', $voidedLr->Status);
+        $this->assertNotNull($voidedLr->VoidedAt, '直接 leave→attended 被拒絕時，不應先復活評量');
+        $this->assertSame('一般請假', $voidedLr->VoidReason);
+        $this->assertSame('leave', strtolower((string) $cs->fresh()->Status));
     }
 
-    public function test_leave_to_attended_does_not_resurrect_manually_voided_record(): void
+    public function test_direct_leave_to_attended_is_rejected_for_manually_voided_record(): void
     {
         [$token, $cs, $voidedLr] = $this->seedLeaveScenario('主任手動作廢');
 
@@ -53,14 +55,30 @@ class ClassSessionRestoreVoidedLearningRecordTest extends TestCase
             'Accept' => 'application/json',
         ])->patchJson("/api/v1/class-sessions/{$cs->id}", [
             'status' => 'attended',
-        ])->assertOk();
+        ])->assertStatus(422)->assertJsonPath('code', 'leave_requires_cascade_undo');
 
         $voidedLr->refresh();
-        $this->assertNotNull(
-            $voidedLr->VoidedAt,
-            '人工作廢（非系統白名單原因）的 LR，不可因 leave→attended 轉換被靜默復活——這是 R55 修復前的實際缺口。'
-        );
+        $this->assertNotNull($voidedLr->VoidedAt, '直接 leave→attended 不應改動人工作廢的評量');
         $this->assertSame('主任手動作廢', $voidedLr->VoidReason);
+    }
+
+    public function test_dedicated_undo_restores_leave_even_when_legacy_tail_is_missing(): void
+    {
+        [$token, $cs, $voidedLr] = $this->seedLeaveScenario('一般請假');
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/schedules/undo-leave-by-session', [
+            'class_session_id' => $cs->id,
+        ])->assertOk()
+            ->assertJsonPath('warning', 'tail_missing');
+
+        $cs->refresh();
+        $voidedLr->refresh();
+        $this->assertSame('scheduled', strtolower((string) $cs->Status));
+        $this->assertNull($voidedLr->VoidedAt);
+        $this->assertNull($voidedLr->VoidReason);
     }
 
     /**
@@ -105,7 +123,7 @@ class ClassSessionRestoreVoidedLearningRecordTest extends TestCase
      * as authoritative and hides the (correctly restored) pending LearningRecord
      * from every eval list/panel, so the teacher can't find anything to fill in.
      */
-    public function test_leave_to_attended_syncs_stale_leave_student_sign_in_status(): void
+    public function test_direct_leave_to_attended_does_not_sync_stale_sign_in(): void
     {
         [$token, $cs, $voidedLr] = $this->seedLeaveScenario('一般請假');
 
@@ -125,16 +143,16 @@ class ClassSessionRestoreVoidedLearningRecordTest extends TestCase
             'Accept' => 'application/json',
         ])->patchJson("/api/v1/class-sessions/{$cs->id}", [
             'status' => 'attended',
-        ])->assertOk();
+        ])->assertStatus(422)->assertJsonPath('code', 'leave_requires_cascade_undo');
 
         $voidedLr->refresh();
-        $this->assertNull($voidedLr->VoidedAt, '評量草稿應照常自動復活');
+        $this->assertNotNull($voidedLr->VoidedAt, '被拒絕的狀態變更不應復活評量草稿');
 
         $signIn->refresh();
         $this->assertSame(
-            'present',
+            'leave',
             $signIn->Status,
-            '殘留的請假簽到記錄必須跟著同步為到班，否則評量會被 scopeExcludeLeaveSessionPendingReview 誤擋'
+            '被拒絕的狀態變更不應偷偷修改請假簽到記錄'
         );
         $this->assertNull($signIn->VoidedAt);
     }

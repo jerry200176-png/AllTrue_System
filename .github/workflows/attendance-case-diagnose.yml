@@ -1,0 +1,117 @@
+name: Attendance Case Diagnose (read-only)
+
+on:
+  push:
+    branches:
+      - 'chore/task-attendance-root-fix-**'
+  workflow_dispatch:
+    inputs:
+      campus_id:
+        description: 'CampusID'
+        required: true
+        type: string
+      date_from:
+        description: 'Date from YYYY-MM-DD'
+        required: true
+        type: string
+      date_to:
+        description: 'Date to YYYY-MM-DD'
+        required: true
+        type: string
+      student_name:
+        description: 'Optional exact student name; blank scans the campus window'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: attendance-case-diagnose
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate inputs
+        env:
+          CAMPUS_ID: ${{ inputs.campus_id || '9' }}
+          DATE_FROM: ${{ inputs.date_from || '2026-08-08' }}
+          DATE_TO: ${{ inputs.date_to || '2026-08-26' }}
+        run: |
+          set -euo pipefail
+          [[ "$CAMPUS_ID" =~ ^[0-9]+$ ]] || { echo 'campus_id must be numeric'; exit 1; }
+          [[ "$DATE_FROM" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || { echo 'date_from must be YYYY-MM-DD'; exit 1; }
+          [[ "$DATE_TO" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || { echo 'date_to must be YYYY-MM-DD'; exit 1; }
+          python3 - "$DATE_FROM" "$DATE_TO" <<'PY'
+          import datetime, sys
+          start, end = (datetime.date.fromisoformat(value) for value in sys.argv[1:])
+          if end < start or (end - start).days > 31:
+              raise SystemExit('date range must be ordered and no longer than 31 days')
+          PY
+
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$PI_SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Run bounded read-only production probe
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          CAMPUS_ID: ${{ inputs.campus_id || '9' }}
+          DATE_FROM: ${{ inputs.date_from || '2026-08-08' }}
+          DATE_TO: ${{ inputs.date_to || '2026-08-26' }}
+          STUDENT_NAME: ${{ inputs.student_name || '' }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          SCRIPT_B64=$(base64 -w0 scripts/diagnose-attendance-case.php)
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes \
+            "$PI_SSH_USER@$PI_SSH_HOST" \
+            SCRIPT_B64="$SCRIPT_B64" CAMPUS_ID="$CAMPUS_ID" DATE_FROM="$DATE_FROM" DATE_TO="$DATE_TO" STUDENT_NAME="$STUDENT_NAME" \
+            'bash -s' <<'REMOTE' | tee out/attendance-case.log
+          set -euo pipefail
+          cd /home/admin/backend
+          echo "$SCRIPT_B64" | base64 -d > /tmp/diagnose-attendance-case.php
+          CAMPUS_ID="$CAMPUS_ID" DATE_FROM="$DATE_FROM" DATE_TO="$DATE_TO" STUDENT_NAME="$STUDENT_NAME" \
+            php artisan tinker --execute='require "/tmp/diagnose-attendance-case.php";'
+          rm -f /tmp/diagnose-attendance-case.php
+          REMOTE
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          text = Path('out/attendance-case.log').read_text(encoding='utf-8', errors='replace')
+          obj = next((json.loads(line) for line in text.splitlines() if line.lstrip().startswith('{')), None)
+          if not obj or not obj.get('ok') or not obj.get('read_only'):
+              raise SystemExit('probe did not return read-only JSON')
+          Path('out/attendance-case.json').write_text(json.dumps(obj, ensure_ascii=False, indent=2), encoding='utf-8')
+          print('parsed bounded read-only attendance case')
+          PY
+
+      - name: Upload evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: attendance-case-diagnose
+          path: out/attendance-case.json
+          retention-days: 14
+
+      - name: Job summary
+        run: |
+          {
+            echo '### Attendance case diagnose (read-only)'
+            echo '```json'
+            cat out/attendance-case.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -67,6 +67,37 @@ by design — it is the price of never letting an AI agent hold Pi SSH
 credentials directly. Do not shortcut it by SSHing manually, guessing at bug
 IDs, or reusing a stale artifact.
 
+## Deployment evidence gate (merge ≠ production)
+
+For a code fix, keep the merge, deployment, and runtime evidence tied to one
+exact commit. A green CI run proves only that the commit can be merged.
+
+1. Record the merge SHA and confirm the `main` CI run succeeded for that same
+   SHA.
+2. Locate the `Deploy to Pi` run triggered by that merge and confirm its
+   `head_sha` is the same SHA. Do not select a run only because it is newest.
+3. If the deploy run is `pending` with `jobs=[]`, the workflow has not been
+   scheduled and **nothing has been deployed**. Do not mark the bug resolved,
+   close it, or tell the reporter that production is updated. Record the run
+   URL, target SHA, and state, then escalate the Actions scheduler/runner
+   blockage to the Founder or maintainer.
+4. Do not respond to this queue state by rerunning, cancelling, dispatching a
+   production workflow, or changing its gate. Protected manual activation, if
+   required, must use the current `main` SHA and the exact confirmation
+   `ACTIVATE_PRODUCTION:<sha>` through the repository's protected procedure.
+5. After a successful deploy, collect read-only health and version evidence:
+
+   ```text
+   gh run view <deploy-run-id> --json status,conclusion,headSha,jobs,url
+   curl --fail https://<production>/api/v1/health
+   curl --fail https://<production>/version.json
+   ```
+
+   The version response's full `build_sha` must equal the merge SHA. If only
+   an abbreviated `hash` is exposed, it must match the SHA prefix and the
+   full deployment manifest must confirm the same revision. A healthy response
+   alone does not prove that the new build is live.
+
 ## The write-back step has no cloud-agent path — plan for a human
 
 `bug-phase-a-triage.yml` (posts the `new`→`triaged` transition + public

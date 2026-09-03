@@ -14,6 +14,7 @@ use App\Services\CourseLeaveCascadeService;
 use App\Services\ExceptionWorkflowService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class ExceptionWorkflowApiTest extends TestCase
@@ -198,6 +199,125 @@ class ExceptionWorkflowApiTest extends TestCase
         $res->assertOk();
         $dates = collect($res->json('data.candidates'))->pluck('candidate_date')->all();
         $this->assertSame(['2026-05-07', '2026-05-08', '2026-05-09'], $dates);
+    }
+
+    public function test_candidate_generation_excludes_same_student_slot_from_another_contract(): void
+    {
+        [$student, $course, $session] = $this->makeStudentCourseSession(1, '跨合約候選學生', '0912000016');
+        $workflow = app(ExceptionWorkflowService::class)->createOrGet([
+            'source_key' => "parent_leave:class_session:{$session->id}",
+            'campus_id' => 1, 'student_id' => $student->id, 'student_class_id' => $course->ID,
+            'class_session_id' => $session->id, 'type' => 'student_leave', 'status' => 'open',
+        ]);
+
+        $otherCourse = StudentClass::create([
+            'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 2, 'TeacherID' => 2,
+            'by1' => 1, 'Period' => 4, 'StartDate' => '2026-05-01', 'EndDate' => '2026-06-30',
+            'TotalHours' => 8, 'Charge' => 8800, 'Paid' => 1, 'Rate' => 1100,
+            'MDate' => now(), 'Stop' => 0, 'ScheduleMode' => 'count', 'SessionCount' => 8,
+            'SessionDuration' => 120, 'RemainingSessions' => 8, 'ClassType' => 'one_on_one',
+            'UsedSessions' => 0,
+        ]);
+        // Bypassing model events represents a legacy/materialized row already
+        // in the database; the preview must still treat it as occupied.
+        DB::table('ClassSession')->insert([
+            'StudentClassID' => $otherCourse->ID, 'SessionDate' => '2026-05-07',
+            'StartTime' => '09:00:00', 'EndTime' => '11:00:00', 'Status' => 'scheduled',
+            'Note' => '', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $token = $this->createDirectorToken([1], 'director-cross-contract-preview@example.com');
+        $res = $this->postJson("/api/v1/exception-workflows/{$workflow->id}/generate-candidates", [
+            'start_date' => '2026-05-07', 'end_date' => '2026-05-07', 'limit' => 3,
+        ], [
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ]);
+
+        $res->assertOk();
+        $starts = collect($res->json('data.candidates'))->pluck('start_time')->all();
+        $this->assertNotContains('09:00', $starts);
+        $this->assertNotContains('09:30', $starts);
+    }
+
+    public function test_candidate_generation_keeps_stopped_contract_with_remaining_sessions_as_occupied(): void
+    {
+        [$student, $course, $session] = $this->makeStudentCourseSession(1, '剩餘堂次衝堂學生', '0912000018');
+        $workflow = app(ExceptionWorkflowService::class)->createOrGet([
+            'source_key' => "parent_leave:class_session:{$session->id}",
+            'campus_id' => 1, 'student_id' => $student->id, 'student_class_id' => $course->ID,
+            'class_session_id' => $session->id, 'type' => 'student_leave', 'status' => 'open',
+        ]);
+
+        $otherCourse = StudentClass::create([
+            'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 2, 'TeacherID' => 2,
+            'by1' => 1, 'Period' => 4, 'StartDate' => '2026-05-01', 'EndDate' => '2026-06-30',
+            'TotalHours' => 8, 'Charge' => 8800, 'Paid' => 1, 'Rate' => 1100,
+            'MDate' => now(), 'Stop' => 1, 'ScheduleMode' => 'count', 'SessionCount' => 8,
+            'SessionDuration' => 120, 'RemainingSessions' => 2, 'ClassType' => 'one_on_one',
+            'UsedSessions' => 6,
+        ]);
+        DB::table('ClassSession')->insert([
+            'StudentClassID' => $otherCourse->ID, 'SessionDate' => '2026-05-07',
+            'StartTime' => '09:00:00', 'EndTime' => '11:00:00', 'Status' => 'scheduled',
+            'Note' => '', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $token = $this->createDirectorToken([1], 'director-stopped-contract-preview@example.com');
+        $res = $this->postJson("/api/v1/exception-workflows/{$workflow->id}/generate-candidates", [
+            'start_date' => '2026-05-07', 'end_date' => '2026-05-07', 'limit' => 3,
+        ], [
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ]);
+
+        $res->assertOk();
+        $starts = collect($res->json('data.candidates'))->pluck('start_time')->all();
+        $this->assertNotContains('09:00', $starts);
+        $this->assertNotContains('09:30', $starts);
+    }
+
+    public function test_confirm_candidate_rolls_back_when_new_cross_contract_conflict_appears(): void
+    {
+        [$student, $course, $session] = $this->makeStudentCourseSession(1, '補課競態學生', '0912000017');
+        $workflow = app(ExceptionWorkflowService::class)->createOrGet([
+            'source_key' => "parent_leave:class_session:{$session->id}",
+            'campus_id' => 1, 'student_id' => $student->id, 'student_class_id' => $course->ID,
+            'class_session_id' => $session->id, 'type' => 'student_leave', 'status' => 'open',
+        ]);
+        $token = $this->createDirectorToken([1], 'director-cross-contract-race@example.com');
+        $generated = $this->postJson("/api/v1/exception-workflows/{$workflow->id}/generate-candidates", [
+            'start_date' => '2026-05-07', 'end_date' => '2026-05-07', 'limit' => 1,
+        ], [
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->assertOk();
+        $candidate = $generated->json('data.candidates.0');
+
+        $otherCourse = StudentClass::create([
+            'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 2, 'TeacherID' => 2,
+            'by1' => 1, 'Period' => 4, 'StartDate' => '2026-05-01', 'EndDate' => '2026-06-30',
+            'TotalHours' => 8, 'Charge' => 8800, 'Paid' => 1, 'Rate' => 1100,
+            'MDate' => now(), 'Stop' => 0, 'ScheduleMode' => 'count', 'SessionCount' => 8,
+            'SessionDuration' => 120, 'RemainingSessions' => 8, 'ClassType' => 'one_on_one',
+            'UsedSessions' => 0,
+        ]);
+        DB::table('ClassSession')->insert([
+            'StudentClassID' => $otherCourse->ID, 'SessionDate' => $candidate['candidate_date'],
+            'StartTime' => $candidate['start_time'], 'EndTime' => $candidate['end_time'],
+            'Status' => 'scheduled', 'Note' => '', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $res = $this->postJson("/api/v1/exception-workflows/{$workflow->id}/confirm-candidate", [
+            'candidate_id' => $candidate['id'],
+        ], [
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ]);
+
+        $res->assertStatus(422)->assertJsonPath('code', 'student_slot_conflict');
+        $this->assertDatabaseHas('exception_workflows', ['id' => $workflow->id, 'status' => 'candidate_ready']);
+        $this->assertDatabaseHas('ClassSession', ['id' => $session->id, 'Status' => 'scheduled']);
+        $this->assertDatabaseMissing('schedules', [
+            'student_course_id' => $course->ID, 'schedule_date' => $candidate['candidate_date'],
+            'start_time' => $candidate['start_time'], 'type' => 'extra',
+        ]);
     }
 
     public function test_makeup_candidates_start_after_original_session_even_when_requested_window_starts_earlier(): void

@@ -1,21 +1,27 @@
 <template>
   <div :class="['lr-page', { 'lr-page--teacher': isTeacher }]">
     <!-- Page Header -->
-    <div class="page-header lr-header enterprise-page-header" data-guide="learning-header">
-      <div>
-        <h2>{{ pageMode === 'parent_messages' ? '家長留言' : (isTeacher ? '我的課表 & 評量' : '學習評量表') }}</h2>
-        <p class="page-desc">{{ pageMode === 'parent_messages' ? (isTeacher ? '查看範圍：我的所有分校' : '查看範圍：目前分校（可改）') : (isTeacher ? '先處理本週未填與需修改的評量；已核准僅供檢視' : '先處理待審與需修改的評量；已核准僅供查閱') }}</p>
-      </div>
-      <div style="display:flex; gap:8px; flex-wrap:wrap;">
-        <button v-if="isTeacher && pageMode !== 'parent_messages'" class="ghost lr-draft-list-btn enterprise-touch-target" @click="openDraftPanel">
-          <span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px">drafts</span>
-          草稿
-          <span v-if="draftList.length > 0" class="lr-draft-badge">{{ draftList.length }}</span>
-        </button>
-        <button v-if="pageMode !== 'parent_messages'" class="ghost enterprise-touch-target" @click="openExportModal">匯出評量圖</button>
-        <button v-if="isTeacher && pageMode !== 'parent_messages'" class="primary enterprise-touch-target" @click="focusTeacherSchedule">從課表填寫</button>
-      </div>
-    </div>
+    <AtPageHeader
+      :title="pageMode === 'parent_messages' ? '家長留言' : (isTeacher ? '我的課表 & 評量' : '學習評量表')"
+      :description="pageMode === 'parent_messages' ? (isTeacher ? '查看範圍：我的所有分校' : '查看範圍：目前分校（可改）') : (isTeacher ? '先處理本週未填與需修改的評量；已核准僅供檢視' : '先處理待審與需修改的評量；已核准僅供查閱')"
+      icon="fact_check"
+      data-guide="learning-header"
+    >
+      <template #actions>
+        <AtButton
+          v-if="isTeacher && pageMode !== 'parent_messages'"
+          variant="ghost"
+          shape="rect"
+          icon="drafts"
+          class="lr-draft-list-btn"
+          @click="openDraftPanel"
+        >
+          草稿<span v-if="draftList.length > 0" class="lr-draft-badge">{{ draftList.length }}</span>
+        </AtButton>
+        <AtButton v-if="pageMode !== 'parent_messages'" variant="ghost" shape="rect" icon="download" @click="openExportModal">匯出評量圖</AtButton>
+        <AtButton v-if="isTeacher && pageMode !== 'parent_messages'" variant="primary" shape="rect" icon="edit_note" @click="focusTeacherSchedule">從課表填寫</AtButton>
+      </template>
+    </AtPageHeader>
 
     <div v-if="isTeacher || isDirectorRole" class="lr-mode-tabs card" role="tablist" aria-label="學習評量與家長留言">
       <button type="button" role="tab" :class="['lr-tab', { active: pageMode === 'records' }]" :aria-selected="pageMode === 'records'" @click="setPageMode('records')">學習評量</button>
@@ -24,17 +30,49 @@
 
     <!-- Teacher quick-filter tabs -->
     <div v-if="isTeacher && pageMode === 'records'" class="lr-review-tabs card" data-guide="learning-teacher-tabs">
-      <div class="lr-tabs-row">
-        <button :class="['lr-tab', { active: teacherFilterTab === 'all' }]" @click="teacherFilterTab = 'all'">
+      <div class="lr-tabs-row" role="tablist" aria-label="老師評量審核狀態">
+        <button
+          id="lr-teacher-tab-all"
+          type="button"
+          role="tab"
+          aria-controls="lr-review-panel"
+          :aria-selected="teacherFilterTab === 'all'"
+          :class="['lr-tab', { active: teacherFilterTab === 'all' }]"
+          @click="teacherFilterTab = 'all'"
+        >
           全部 <span class="lr-tab-count">{{ (records || []).length }}</span>
         </button>
-        <button :class="['lr-tab', { active: teacherFilterTab === 'pending' }]" @click="teacherFilterTab = 'pending'">
+        <button
+          id="lr-teacher-tab-pending"
+          type="button"
+          role="tab"
+          aria-controls="lr-review-panel"
+          :aria-selected="teacherFilterTab === 'pending'"
+          :class="['lr-tab', { active: teacherFilterTab === 'pending' }]"
+          @click="teacherFilterTab = 'pending'"
+        >
           待審核 <span v-if="kpiPendingOnlyCount > 0" class="lr-tab-count">{{ kpiPendingOnlyCount }}</span>
         </button>
-        <button :class="['lr-tab', { active: teacherFilterTab === 'changes_requested' }]" @click="teacherFilterTab = 'changes_requested'">
+        <button
+          id="lr-teacher-tab-changes_requested"
+          type="button"
+          role="tab"
+          aria-controls="lr-review-panel"
+          :aria-selected="teacherFilterTab === 'changes_requested'"
+          :class="['lr-tab', { active: teacherFilterTab === 'changes_requested' }]"
+          @click="teacherFilterTab = 'changes_requested'"
+        >
           需修改 <span v-if="changesRequestedCount > 0" class="lr-tab-count warn">{{ changesRequestedCount }}</span>
         </button>
-        <button :class="['lr-tab', { active: teacherFilterTab === 'approved' }]" @click="teacherFilterTab = 'approved'">
+        <button
+          id="lr-teacher-tab-approved"
+          type="button"
+          role="tab"
+          aria-controls="lr-review-panel"
+          :aria-selected="teacherFilterTab === 'approved'"
+          :class="['lr-tab', { active: teacherFilterTab === 'approved' }]"
+          @click="teacherFilterTab = 'approved'"
+        >
           已核准 <span class="lr-tab-count ok">{{ approvedCount }}</span>
         </button>
       </div>
@@ -43,20 +81,60 @@
 
     <!-- Director review queue tabs -->
     <div v-if="isDirectorRole && pageMode === 'records'" class="lr-review-tabs card" data-guide="learning-director-review-tabs">
-      <div class="lr-tabs-row">
-        <button :class="['lr-tab', { active: reviewTab === 'pending' }]" @click="reviewTab = 'pending'; exitSelectionMode()">
-          待審佇列 <span v-if="serverPendingBadge > 0" class="lr-tab-count warn">{{ serverPendingBadge }}</span>
+      <div class="lr-tabs-row" role="tablist" aria-label="主任評量審核佇列">
+        <button
+          id="lr-review-tab-pending"
+          type="button"
+          role="tab"
+          aria-controls="lr-review-panel"
+          :aria-selected="reviewTab === 'pending'"
+          :class="['lr-tab', { active: reviewTab === 'pending' }]"
+          @click="reviewTab = 'pending'; exitSelectionMode()"
+        >
+          待主任核准 <span v-if="serverPendingBadge > 0" class="lr-tab-count warn">{{ serverPendingBadge }}</span>
         </button>
-        <button :class="['lr-tab', { active: reviewTab === 'changes_requested' }]" @click="reviewTab = 'changes_requested'; exitSelectionMode()">
-          需修改追蹤 <span v-if="serverChangesBadge > 0" class="lr-tab-count warn">{{ serverChangesBadge }}</span>
+        <button
+          id="lr-review-tab-changes_requested"
+          type="button"
+          role="tab"
+          aria-controls="lr-review-panel"
+          :aria-selected="reviewTab === 'changes_requested'"
+          :class="['lr-tab', { active: reviewTab === 'changes_requested' }]"
+          @click="reviewTab = 'changes_requested'; exitSelectionMode()"
+        >
+          老師需修改 <span v-if="serverChangesBadge > 0" class="lr-tab-count warn">{{ serverChangesBadge }}</span>
         </button>
-        <button :class="['lr-tab', { active: reviewTab === 'approved' }]" @click="reviewTab = 'approved'; exitSelectionMode()">
+        <button
+          id="lr-review-tab-approved"
+          type="button"
+          role="tab"
+          aria-controls="lr-review-panel"
+          :aria-selected="reviewTab === 'approved'"
+          :class="['lr-tab', { active: reviewTab === 'approved' }]"
+          @click="reviewTab = 'approved'; exitSelectionMode()"
+        >
           已核准 <span class="lr-tab-count ok">{{ serverApprovedBadge }}</span>
         </button>
-        <button :class="['lr-tab', { active: reviewTab === 'rejected' }]" @click="reviewTab = 'rejected'; exitSelectionMode()">
+        <button
+          id="lr-review-tab-rejected"
+          type="button"
+          role="tab"
+          aria-controls="lr-review-panel"
+          :aria-selected="reviewTab === 'rejected'"
+          :class="['lr-tab', { active: reviewTab === 'rejected' }]"
+          @click="reviewTab = 'rejected'; exitSelectionMode()"
+        >
           已退回
         </button>
-        <button :class="['lr-tab', { active: reviewTab === 'all' }]" @click="reviewTab = 'all'; exitSelectionMode()">
+        <button
+          id="lr-review-tab-all"
+          type="button"
+          role="tab"
+          aria-controls="lr-review-panel"
+          :aria-selected="reviewTab === 'all'"
+          :class="['lr-tab', { active: reviewTab === 'all' }]"
+          @click="reviewTab = 'all'; exitSelectionMode()"
+        >
           全部
         </button>
       </div>
@@ -89,9 +167,10 @@
         >{{ selectionMode ? '取消選取' : '批次操作' }}</button>
       </div>
 
-      <div class="lr-status-explainer" role="note">
-        <span><strong>填寫狀態</strong>：未填／已填</span>
-        <span><strong>審核狀態</strong>：待審／需修改／已核准／已退回</span>
+      <div v-if="isDirectorRole" class="lr-status-explainer" role="note">
+        <strong>{{ directorReviewHint }}</strong>
+        <span>填寫：未填／已填</span>
+        <span>審核：待核准／需修改／已核准／已退回</span>
       </div>
 
       <!-- Selection toolbar: select-all + batch actions, only visible in selection mode.
@@ -105,9 +184,9 @@
           <span class="lr-batch-count">已選 {{ selectedRecordIds.size }} 筆</span>
         </div>
         <div class="lr-batch-bar__actions">
-          <button class="primary xs" :disabled="batchOperating || selectedRecordIds.size === 0" @click="batchApproveSelected">批次核准</button>
-          <button class="ghost xs" :disabled="batchOperating || selectedRecordIds.size === 0" @click="batchRequestChangesSelected">批次需修改</button>
-          <button class="danger xs" :disabled="batchOperating || selectedRecordIds.size === 0" @click="batchRejectSelected">批次退回</button>
+          <button type="button" class="primary xs" :disabled="batchOperating || selectedRecordIds.size === 0" @click="batchApproveSelected">批次核准</button>
+          <button type="button" class="ghost xs" :disabled="batchOperating || selectedRecordIds.size === 0" @click="batchRequestChangesSelected">批次需修改</button>
+          <button type="button" class="danger xs" :disabled="batchOperating || selectedRecordIds.size === 0" @click="batchRejectSelected">批次退回</button>
         </div>
       </div>
     </div>
@@ -118,16 +197,19 @@
           <button
             type="button"
             :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'awaiting_reply' }]"
+            :aria-pressed="feedbackFilter === 'awaiting_reply' ? 'true' : 'false'"
             @click="feedbackFilter = 'awaiting_reply'"
           >尚未回覆</button>
           <button
             type="button"
             :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'unread' }]"
+            :aria-pressed="feedbackFilter === 'unread' ? 'true' : 'false'"
             @click="feedbackFilter = 'unread'"
           >新留言 <span v-if="unreadParentFeedbackCount > 0" class="lr-tab-count warn">{{ unreadParentFeedbackCount }}</span></button>
           <button
             type="button"
             :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'has' }]"
+            :aria-pressed="feedbackFilter === 'has' ? 'true' : 'false'"
             @click="feedbackFilter = 'has'"
           >全部留言</button>
           <span class="lr-feedback-filter-label">{{ isTeacher ? '查看範圍：我的所有分校' : '查看範圍：目前分校' }}</span>
@@ -135,14 +217,18 @@
         <template v-else>
           <button
             v-if="(isTeacher ? weekTotalMissingCount : kpiUnfilledCount) > 0"
+            type="button"
             :class="['lr-feedback-filter-chip', 'lr-unfilled-shortcut', { active: isTeacher ? teacherPriorityFilter === 'unfilled' : onlyUnfilled }]"
+            :aria-pressed="(isTeacher ? teacherPriorityFilter === 'unfilled' : onlyUnfilled) ? 'true' : 'false'"
             @click="toggleUnfilledShortcut()"
           >
             未填 <span class="lr-tab-count warn">{{ isTeacher ? weekTotalMissingCount : kpiUnfilledCount }}</span>
           </button>
           <button
             v-if="unreadParentFeedbackCount > 0"
+            type="button"
             :class="['lr-feedback-filter-chip', 'lr-unread-shortcut', { active: feedbackFilter === 'unread' }]"
+            :aria-pressed="feedbackFilter === 'unread' ? 'true' : 'false'"
             @click="feedbackFilter = feedbackFilter === 'unread' ? 'all' : 'unread'; showMoreFilters = true"
           >
             新留言 <span class="lr-tab-count warn">{{ unreadParentFeedbackCount }}</span>
@@ -164,21 +250,21 @@
       <div v-show="pageMode === 'records' && showMoreFilters" class="lr-filters-panel">
         <div v-if="isTeacher" class="lr-filter-group">
           <span class="lr-feedback-filter-label">優先</span>
-          <button :class="['lr-feedback-filter-chip', { active: teacherPriorityFilter === 'all' }]" @click="teacherPriorityFilter = 'all'">全部</button>
-          <button :class="['lr-feedback-filter-chip', { active: teacherPriorityFilter === 'unfilled' }]" @click="teacherPriorityFilter = 'unfilled'">未填優先</button>
-          <button :class="['lr-feedback-filter-chip', { active: teacherPriorityFilter === 'changes_requested' }]" @click="teacherPriorityFilter = 'changes_requested'">需修改</button>
-          <button :class="['lr-feedback-filter-chip', { active: teacherPriorityFilter === 'overdue' }]" @click="teacherPriorityFilter = 'overdue'">逾期</button>
+          <button type="button" :class="['lr-feedback-filter-chip', { active: teacherPriorityFilter === 'all' }]" :aria-pressed="teacherPriorityFilter === 'all' ? 'true' : 'false'" @click="teacherPriorityFilter = 'all'">全部</button>
+          <button type="button" :class="['lr-feedback-filter-chip', { active: teacherPriorityFilter === 'unfilled' }]" :aria-pressed="teacherPriorityFilter === 'unfilled' ? 'true' : 'false'" @click="teacherPriorityFilter = 'unfilled'">未填優先</button>
+          <button type="button" :class="['lr-feedback-filter-chip', { active: teacherPriorityFilter === 'changes_requested' }]" :aria-pressed="teacherPriorityFilter === 'changes_requested' ? 'true' : 'false'" @click="teacherPriorityFilter = 'changes_requested'">需修改</button>
+          <button type="button" :class="['lr-feedback-filter-chip', { active: teacherPriorityFilter === 'overdue' }]" :aria-pressed="teacherPriorityFilter === 'overdue' ? 'true' : 'false'" @click="teacherPriorityFilter = 'overdue'">逾期</button>
         </div>
         <div class="lr-filter-group">
           <span class="lr-feedback-filter-label">家長留言</span>
-          <button :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'all' }]" @click="feedbackFilter = 'all'">全部</button>
-          <button :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'has' }]" @click="feedbackFilter = 'has'">
+          <button type="button" :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'all' }]" :aria-pressed="feedbackFilter === 'all' ? 'true' : 'false'" @click="feedbackFilter = 'all'">全部</button>
+          <button type="button" :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'has' }]" :aria-pressed="feedbackFilter === 'has' ? 'true' : 'false'" @click="feedbackFilter = 'has'">
             有留言 <span v-if="parentFeedbackCount > 0" class="lr-tab-count">{{ parentFeedbackCount }}</span>
           </button>
-          <button :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'unread' }]" @click="feedbackFilter = 'unread'">
+          <button type="button" :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'unread' }]" :aria-pressed="feedbackFilter === 'unread' ? 'true' : 'false'" @click="feedbackFilter = 'unread'">
             新留言 <span v-if="unreadParentFeedbackCount > 0" class="lr-tab-count warn">{{ unreadParentFeedbackCount }}</span>
           </button>
-          <button :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'awaiting_reply' }]" @click="feedbackFilter = 'awaiting_reply'">尚未回覆</button>
+          <button type="button" :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'awaiting_reply' }]" :aria-pressed="feedbackFilter === 'awaiting_reply' ? 'true' : 'false'" @click="feedbackFilter = 'awaiting_reply'">尚未回覆</button>
         </div>
       </div>
     </div>
@@ -188,21 +274,31 @@
         <h3>老師填寫入口</h3>
         <p>評量與課程綁定，老師登入後可直接從課表點堂次填寫，不需手動輸入學生、老師與時段。</p>
       </div>
-      <button class="primary" @click="switchToTeacherLogin">切換到老師登入</button>
+      <button type="button" class="primary" @click="switchToTeacherLogin">切換到老師登入</button>
     </div>
 
     <!-- ===== TEACHER: Week Schedule Widget ===== -->
     <div v-if="isTeacher && pageMode === 'records'" class="teacher-schedule card" data-guide="learning-teacher-schedule">
       <div class="ts-header">
         <h3>課表</h3>
-        <div class="ts-tabs ts-tabs--ios">
-          <button :class="{ active: scheduleView === 'today' }" @click="scheduleView = 'today'">今日</button>
-          <button :class="{ active: scheduleView === 'week' }" @click="scheduleView = 'week'">本週</button>
+        <div class="ts-tabs ts-tabs--ios" role="group" aria-label="課表檢視">
+          <button
+            type="button"
+            :class="{ active: scheduleView === 'today' }"
+            :aria-pressed="scheduleView === 'today' ? 'true' : 'false'"
+            @click="scheduleView = 'today'"
+          >今日</button>
+          <button
+            type="button"
+            :class="{ active: scheduleView === 'week' }"
+            :aria-pressed="scheduleView === 'week' ? 'true' : 'false'"
+            @click="scheduleView = 'week'"
+          >本週</button>
         </div>
         <div class="ts-nav" v-if="scheduleView === 'week'">
-          <button class="icon-btn" @click="weekOffset--">‹</button>
+          <button type="button" class="icon-btn" aria-label="上一週" @click="weekOffset--">‹</button>
           <span class="ts-week-label">{{ weekLabel }}</span>
-          <button class="icon-btn" @click="weekOffset++">›</button>
+          <button type="button" class="icon-btn" aria-label="下一週" @click="weekOffset++">›</button>
         </div>
       </div>
 
@@ -224,6 +320,7 @@
             </div>
           </div>
           <button
+            type="button"
             class="ts-fill-btn"
             :disabled="(!ev.recordId && ev.fillLocked) || ev.isLeave || ev.isCancelled"
             :title="(ev.isLeave || ev.isCancelled) ? ev.fillLockReason : (!ev.recordId && ev.fillLocked ? ev.fillLockReason : '')"
@@ -254,6 +351,10 @@
           <div
             v-for="ev in day.events"
             :key="ev.key"
+            role="button"
+            tabindex="0"
+            :aria-disabled="(ev.isLeave || ev.isCancelled) ? 'true' : 'false'"
+            :aria-label="`${ev.timeRange} ${ev.studentName} ${ev.subjectName}，${scheduleActionLabel(ev)}`"
             class="ts-event ts-event-sm"
             :class="{
               locked: !ev.recordId && ev.fillLocked && !ev.isLeave && !ev.isCancelled,
@@ -262,6 +363,8 @@
               'ts-event-cancelled': ev.isCancelled,
             }"
             @click="openFromScheduleMaybe(ev)"
+            @keydown.enter.prevent="openFromScheduleMaybe(ev)"
+            @keydown.space.prevent="openFromScheduleMaybe(ev)"
           >
             <div class="ts-time">{{ ev.timeRange }}</div>
             <div class="ts-info">
@@ -283,7 +386,7 @@
       <div class="lr-modal" style="max-width: 600px;">
         <div class="lr-modal-header">
           <h3>一鍵補登</h3>
-          <button class="ghost icon" @click="showBulkModal = false">✕</button>
+          <button type="button" class="ghost icon" @click="showBulkModal = false">✕</button>
         </div>
         <div class="lr-form">
           <p style="color:var(--ds-ink-mute); font-size:13px; margin-bottom:12px;">選擇課程後，系統會先核准歷史堂次評量，並依固定星期自動往未來推算剩餘未排課堂次。</p>
@@ -309,7 +412,7 @@
           <div v-if="bulkDateList.length > 0 && !bulkDatesLoading" style="margin-top:12px;">
             <div style="font-size:13px; font-weight:600; margin-bottom:8px;">
               應上課日期（今日前共 {{ bulkDateList.length }} 堂，已勾選 {{ bulkSelectedDates.length }} 堂）
-              <button class="ghost" style="margin-left:8px; padding:2px 10px; font-size:12px;" @click="toggleSelectAllDates">
+              <button type="button" class="ghost" style="margin-left:8px; padding:2px 10px; font-size:12px;" @click="toggleSelectAllDates">
                 {{ bulkSelectedDates.length === bulkDateList.length ? '取消全選' : '全選' }}
               </button>
             </div>
@@ -323,8 +426,8 @@
           </div>
 
           <div class="lr-form-actions" style="margin-top:16px;">
-            <button class="ghost" @click="showBulkModal = false">取消</button>
-            <button class="primary" :disabled="bulkSelectedDates.length === 0 || bulkSubmitting" @click="submitBulkBackfill">
+            <button type="button" class="ghost" @click="showBulkModal = false">取消</button>
+            <button type="button" class="primary" :disabled="bulkSelectedDates.length === 0 || bulkSubmitting" @click="submitBulkBackfill">
               {{ bulkSubmitting ? '補登中…' : `確認補登 ${bulkSelectedDates.length} 堂` }}
             </button>
           </div>
@@ -334,31 +437,39 @@
 
     <!-- Filters: collapsed by default (expands automatically if a filter is already active) -->
     <div class="card lr-filters" data-guide="learning-filters">
-      <button
-        type="button"
-        class="lr-filters-header lr-filters-header-toggle"
-        :aria-expanded="showAdvancedFilters ? 'true' : 'false'"
-        @click="showAdvancedFilters = !showAdvancedFilters"
-      >
-        <div class="lr-filters-title">
-          <svg class="lr-filters-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
-          </svg>
-          <span>篩選條件</span>
-          <span v-if="activeFilterCount > 0" class="lr-filters-badge" :title="`共 ${activeFilterCount} 個篩選條件已啟用`">{{ activeFilterCount }}</span>
-        </div>
+      <div class="lr-filters-header">
+        <button
+          type="button"
+          class="lr-filters-header-toggle"
+          :aria-expanded="showAdvancedFilters ? 'true' : 'false'"
+          @click="showAdvancedFilters = !showAdvancedFilters"
+        >
+          <div class="lr-filters-title">
+            <svg class="lr-filters-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+            </svg>
+            <span>篩選條件</span>
+            <span v-if="activeFilterCount > 0" class="lr-filters-badge" :title="`共 ${activeFilterCount} 個篩選條件已啟用`">{{ activeFilterCount }}</span>
+          </div>
+        </button>
         <div class="lr-filters-header-right">
-          <span
+          <button
             v-if="hasActiveFilters"
-            role="button"
-            tabindex="0"
+            type="button"
             class="lr-filters-clear-link"
             @click.stop="clearAllFilters"
-            @keyup.enter.stop="clearAllFilters"
-          >清除全部</span>
-          <svg class="lr-more-filters-chev" :class="{ open: showAdvancedFilters }" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          >清除全部</button>
+          <button
+            type="button"
+            class="lr-filters-chevron-toggle"
+            :aria-expanded="showAdvancedFilters ? 'true' : 'false'"
+            aria-label="展開或收合篩選條件"
+            @click="showAdvancedFilters = !showAdvancedFilters"
+          >
+            <svg class="lr-more-filters-chev" :class="{ open: showAdvancedFilters }" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </button>
         </div>
-      </button>
+      </div>
 
       <div v-show="showAdvancedFilters" class="lr-filters-grid">
         <div class="form-group lr-field">
@@ -482,6 +593,7 @@
           type="button"
           v-if="!isNarrowViewport"
           :class="['lr-view-btn', { active: effectiveViewMode === 'table' }]"
+          :aria-pressed="effectiveViewMode === 'table' ? 'true' : 'false'"
           @click="viewMode = 'table'"
         >
           <span class="material-symbols-outlined" aria-hidden="true">view_list</span>
@@ -490,6 +602,7 @@
         <button
           type="button"
           :class="['lr-view-btn', { active: effectiveViewMode === 'card' }]"
+          :aria-pressed="effectiveViewMode === 'card' ? 'true' : 'false'"
           @click="viewMode = 'card'"
         >
           <span class="material-symbols-outlined" aria-hidden="true">grid_view</span>
@@ -508,8 +621,14 @@
         <span v-if="isNarrowViewport" class="lr-mobile-view-hint">手機版自動使用卡片</span>
       </div>
 
-    <div class="card lr-table-card" data-guide="learning-table">
-      <div v-if="recordsPagination.loading && records.length === 0" class="lr-record-skeleton-grid" aria-hidden="true">
+    <div
+      class="card lr-table-card"
+      data-guide="learning-table"
+      :id="pageMode === 'records' ? 'lr-review-panel' : undefined"
+      :role="pageMode === 'records' ? 'tabpanel' : undefined"
+      :tabindex="pageMode === 'records' ? 0 : undefined"
+      :aria-labelledby="pageMode === 'records' ? (isDirectorRole ? `lr-review-tab-${reviewTab}` : `lr-teacher-tab-${teacherFilterTab}`) : undefined"
+    >      <div v-if="recordsPagination.loading && records.length === 0" class="lr-record-skeleton-grid" aria-hidden="true">
         <div v-for="i in 5" :key="i" class="lr-record-skeleton-card">
           <div class="lr-skel-line lr-skel-title"></div>
           <div class="lr-skel-line"></div>
@@ -538,7 +657,7 @@
           </template>
           <template v-else-if="hasActiveFilters">找不到符合條件的評量記錄</template>
           <template v-else-if="isUsingDefaultWindow">近 {{ defaultWindowDays }} 天無評量記錄</template>
-          <template v-else-if="isDirectorRole && reviewTab === 'pending'">目前沒有待審評量</template>
+          <template v-else-if="isDirectorRole && reviewTab === 'pending'">目前沒有待主任核准的評量</template>
           <template v-else>尚無評量資料</template>
         </div>
         <div
@@ -551,8 +670,8 @@
         </div>
         <div v-else-if="hasActiveFilters" class="lr-empty-desc">試著調整日期範圍、科目或清除篩選條件</div>
         <div v-else-if="isUsingDefaultWindow" class="lr-empty-desc">若要查看更早的記錄，請點擊下方按鈕。</div>
-        <button v-if="hasActiveFilters" class="primary lr-empty-cta" @click="clearAllFilters">清除篩選條件</button>
-        <button v-else-if="isUsingDefaultWindow" class="primary lr-empty-cta" @click="clearDefaultWindow">查看全部歷史</button>
+        <button v-if="hasActiveFilters" type="button" class="primary lr-empty-cta" @click="clearAllFilters">清除篩選條件</button>
+        <button v-else-if="isUsingDefaultWindow" type="button" class="primary lr-empty-cta" @click="clearDefaultWindow">查看全部歷史</button>
       </div>
 
       <div v-else-if="effectiveViewMode === 'card'" class="lr-card-view">
@@ -592,6 +711,7 @@
                     :checked="selectedRecordIds.has(record.id)"
                     @click.stop
                     @change="toggleRecordSelection(record.id)"
+                    :aria-label="'選取' + (record.student_name || '未命名學生') + ' ' + record.SessionDate + (record.StartTime ? ' ' + record.StartTime : '') + ' ' + (record.Subject || record.student_class_label || '未分類') + ' 的評量'"
                     title="選取以批次核准"
                   >
                   <div>
@@ -610,14 +730,17 @@
                 <span v-if="record.session_number"> · 第{{ record.session_number }}堂</span>
               </div>
               <div class="lr-record-card__chips">
-                <span
+                <button
                   v-if="record.parent_feedback"
+                  type="button"
                   :class="['lr-parent-feedback-chip', parentFeedbackUnread(record) ? 'unread' : 'read']"
+                  :aria-expanded="feedbackPreviewOpen.has(record.id) ? 'true' : 'false'"
+                  :aria-label="feedbackPreviewOpen.has(record.id) ? '收合家長留言預覽' : (parentFeedbackUnread(record) ? '預覽新家長留言' : '預覽家長留言')"
                   @click.stop="toggleFeedbackPreview(record)"
                   :title="parentFeedbackUnread(record) ? '有新家長留言（點擊預覽）' : '家長留言（點擊預覽）'"
                 >
                   💬 {{ parentFeedbackUnread(record) ? '新留言' : (record.parent_feedback?.awaiting_staff_reply ? '尚未回覆' : '家長留言') }}
-                </span>
+                </button>
                 <span
                   v-if="record.teacher_comment"
                   :class="['lr-teacher-comment-chip', teacherCommentUnread(record) ? 'unread' : 'read']"
@@ -636,11 +759,11 @@
               />
               <LearningRecordPreview v-if="showContentPreview" :record="record" />
               <div class="lr-record-card__actions" @click.stop>
-                <button class="ghost xs" @click="openRecordAction(record)">{{ primaryActionLabel(record) }}</button>
-                <button v-if="isDirectorRole && record.id" class="ghost xs lr-btn-director-note" @click="openDirectorNoteModal(record)">主任評語</button>
-                <button v-if="canApprove(record)" class="primary xs" @click="approveRecord(record)">核准</button>
-                <button v-if="canRequestChanges(record)" class="ghost xs" @click="requestChangesRecord(record)">需修改</button>
-                <button v-if="canReject(record)" class="danger xs" @click="rejectRecord(record)">退回</button>
+                <button type="button" class="ghost xs" @click="openRecordAction(record)">{{ primaryActionLabel(record) }}</button>
+                <button v-if="isDirectorRole && record.id" type="button" class="ghost xs lr-btn-director-note" @click="openDirectorNoteModal(record)">主任評語</button>
+                <button v-if="canApprove(record)" type="button" class="primary xs" @click="approveRecord(record)">核准</button>
+                <button v-if="canRequestChanges(record)" type="button" class="ghost xs" @click="requestChangesRecord(record)">需修改</button>
+                <button v-if="canReject(record)" type="button" class="danger xs" @click="rejectRecord(record)">退回</button>
               </div>
             </article>
           </div>
@@ -730,7 +853,7 @@
                   <thead>
                     <tr>
                       <th v-if="selectionMode && isDirectorRole && (reviewTab === 'pending' || reviewTab === 'changes_requested')" style="width:36px">
-                        <input type="checkbox" :checked="allSelected" @change="toggleSelectAll" title="全選">
+                        <input type="checkbox" :checked="allSelected" @change="toggleSelectAll" :aria-label="allSelected ? '取消全選本頁評量' : '全選本頁評量'" title="全選">
                       </th>
                       <th>日期</th>
                       <th>學生 / 班級</th>
@@ -750,6 +873,7 @@
                           type="checkbox"
                           :checked="selectedRecordIds.has(record.id)"
                           @change="toggleRecordSelection(record.id)"
+                          :aria-label="'選取' + (record.student_name || '未命名學生') + ' ' + record.SessionDate + (record.StartTime ? ' ' + record.StartTime : '') + ' ' + (record.Subject || record.student_class_label || '未分類') + ' 的評量'"
                         >
                       </td>
                       <td>
@@ -763,12 +887,15 @@
                           {{ record.student_class_label || record.Subject }}
                           <span v-if="record.StudentClassID" class="lr-contract-id">#{{ record.StudentClassID }}</span>
                         </div>
-                        <span
+                        <button
                           v-if="record.parent_feedback"
+                          type="button"
                           :class="['lr-parent-feedback-chip', parentFeedbackUnread(record) ? 'unread' : 'read']"
+                          :aria-expanded="feedbackPreviewOpen.has(record.id) ? 'true' : 'false'"
+                          :aria-label="feedbackPreviewOpen.has(record.id) ? '收合家長留言預覽' : (parentFeedbackUnread(record) ? '預覽新家長留言' : '預覽家長留言')"
                           @click.stop="toggleFeedbackPreview(record)"
                           :title="record.parent_feedback.content?.slice(0,60)"
-                        >💬 {{ parentFeedbackUnread(record) ? '新留言' : (record.parent_feedback?.awaiting_staff_reply ? '尚未回覆' : '家長留言') }}</span>
+                        >💬 {{ parentFeedbackUnread(record) ? '新留言' : (record.parent_feedback?.awaiting_staff_reply ? '尚未回覆' : '家長留言') }}</button>
                         <span
                           v-if="record.teacher_comment"
                           :class="['lr-teacher-comment-chip', teacherCommentUnread(record) ? 'unread' : 'read']"
@@ -796,15 +923,15 @@
                       </td>
                       <td class="lr-actions" @click.stop>
                         <div class="lr-actions-inner">
-                          <button class="ghost xs" @click="openRecordAction(record)">{{ primaryActionLabel(record) }}</button>
-                          <button v-if="isDirectorRole && record.id" class="ghost xs lr-btn-director-note" @click="openDirectorNoteModal(record)">主任評語</button>
-                          <button v-if="canChangeTeacher(record)" class="ghost xs" @click="openChangeTeacherModal(record)">換老師</button>
+                          <button type="button" class="ghost xs" @click="openRecordAction(record)">{{ primaryActionLabel(record) }}</button>
+                          <button v-if="isDirectorRole && record.id" type="button" class="ghost xs lr-btn-director-note" @click="openDirectorNoteModal(record)">主任評語</button>
+                          <button v-if="canChangeTeacher(record)" type="button" class="ghost xs" @click="openChangeTeacherModal(record)">換老師</button>
                           <span v-if="showTimeLockHint(record)" class="lr-lock-hint">未開放</span>
-                          <button v-if="canApprove(record)" class="primary xs" @click="approveRecord(record)">核准</button>
-                          <button v-if="canRequestChanges(record)" class="ghost xs" @click="requestChangesRecord(record)">需修改</button>
-                          <button v-if="canReject(record)" class="danger xs" @click="rejectRecord(record)">退回</button>
-                          <button v-if="canRollbackApproval(record)" class="ghost xs" @click="rollbackApproval(record)">退回待審</button>
-                          <button v-if="canDelete(record)" class="danger xs" @click="deleteRecord(record)">刪除</button>
+                          <button v-if="canApprove(record)" type="button" class="primary xs" @click="approveRecord(record)">核准</button>
+                          <button v-if="canRequestChanges(record)" type="button" class="ghost xs" @click="requestChangesRecord(record)">需修改</button>
+                          <button v-if="canReject(record)" type="button" class="danger xs" @click="rejectRecord(record)">退回</button>
+                          <button v-if="canRollbackApproval(record)" type="button" class="ghost xs" @click="rollbackApproval(record)">退回待審</button>
+                          <button v-if="canDelete(record)" type="button" class="danger xs" @click="deleteRecord(record)">刪除</button>
                         </div>
                       </td>
                     </tr>
@@ -869,7 +996,7 @@
       <div class="modal lr-modal" style="max-width: 520px;">
         <div class="lr-modal-header">
           <h3>更換授課老師</h3>
-          <button class="lr-modal-close" @click="closeChangeTeacherModal">&times;</button>
+          <button type="button" class="lr-modal-close" @click="closeChangeTeacherModal">&times;</button>
         </div>
 
         <div class="lr-form">
@@ -928,6 +1055,7 @@
           <div class="lr-modal-header-actions">
             <button
               v-if="isReadOnly"
+              type="button"
               class="lr-download-btn"
               :disabled="downloadingPng"
               @click="downloadSingleRecord"
@@ -936,7 +1064,7 @@
               <span class="material-symbols-outlined">download</span>
               <span class="lr-download-label">{{ downloadingPng ? '下載中…' : '下載圖檔' }}</span>
             </button>
-            <button class="lr-modal-close" @click="closeModal">&times;</button>
+            <button type="button" class="lr-modal-close" @click="closeModal">&times;</button>
           </div>
           <Transition name="lr-toast">
             <div v-if="downloadToast" class="lr-download-toast" :class="{ 'lr-toast-error': downloadToast.includes('失敗') }">
@@ -1247,7 +1375,7 @@
       <div class="lr-modal" style="max-width: 480px;">
         <div class="lr-modal-header">
           <h3>匯出學習評量圖</h3>
-          <button class="ghost icon" @click="showExportModal = false">✕</button>
+          <button type="button" class="ghost icon" @click="showExportModal = false">✕</button>
         </div>
         <div class="lr-form">
           <p style="color:var(--ds-ink-mute); font-size:13px; margin-bottom:16px;">
@@ -1283,9 +1411,10 @@
           </div>
 
           <div class="lr-form-actions" style="margin-top:16px;">
-            <button class="ghost" @click="showExportModal = false">{{ exportForm.status === 'done' ? '關閉' : '取消' }}</button>
+            <button type="button" class="ghost" @click="showExportModal = false">{{ exportForm.status === 'done' ? '關閉' : '取消' }}</button>
             <button
               v-if="exportForm.status !== 'loading'"
+              type="button"
               class="primary"
               :disabled="!exportForm.startDate || !exportForm.endDate"
               @click="executeExport"
@@ -1305,7 +1434,7 @@
             <span class="material-symbols-outlined" style="font-size:20px;vertical-align:-4px;margin-right:4px">drafts</span>
             未完成草稿
           </h3>
-          <button class="lr-modal-close" @click="closeDraftPanel">&times;</button>
+          <button type="button" class="lr-modal-close" @click="closeDraftPanel">&times;</button>
         </div>
         <div class="lr-draft-panel-body">
           <div v-if="draftList.length === 0" class="lr-draft-empty">
@@ -1324,7 +1453,7 @@
                 </div>
                 <div class="lr-draft-item-time">儲存於 {{ formatDraftTime(d.savedAt) }}</div>
               </div>
-              <button class="lr-draft-item-delete" @click.stop="deleteDraftFromList(d)" title="清除此草稿">
+              <button type="button" class="lr-draft-item-delete" @click.stop="deleteDraftFromList(d)" title="清除此草稿">
                 <span class="material-symbols-outlined">delete_outline</span>
               </button>
             </div>
@@ -1371,6 +1500,8 @@ import { ref, onMounted, onBeforeUnmount, reactive, computed, watch, nextTick } 
 import { supabase } from '../supabase';
 import SearchableSelect from '../components/SearchableSelect.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
+import AtButton from '../components/design-system/AtButton.vue';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import FeedbackInlinePreview from '../components/learning-records/FeedbackInlinePreview.vue';
 import LearningRecordPreview from '../components/learning-records/LearningRecordPreview.vue';
 import { formatParentFeedbackTime } from '../lib/parentFeedbackFormat';
@@ -1391,6 +1522,7 @@ import {
 import { resolveLearningRecordsDefaultWindowStart } from '../lib/learningRecordsWindow';
 import { resolveDeepLinkBranchId, shouldLiftDefaultWindowForDate, feedbackFocusState } from '../lib/learningRecordTarget';
 import { compareLearningRecords } from '../lib/learningRecordSort';
+import { deduplicateLearningRecordSessions } from '../lib/learningRecordSessionPolicy';
 import {
   saveDraft as _saveDraftToStorage,
   loadDraft as _loadDraftFromStorage,
@@ -1582,7 +1714,9 @@ const activeFilterCount = computed(() => {
 });
 
 const reviewTab = ref('pending');
-const teacherFilterTab = ref('all');
+// Teachers land on actionable assessment work first; historical/approved rows
+// remain available through the explicit status tabs below.
+const teacherFilterTab = ref('pending');
 const teacherPriorityFilter = ref('all');
 const feedbackFilter = ref('all');
 const pageMode = ref('records'); // 'records' | 'parent_messages'
@@ -1913,8 +2047,8 @@ const rejectedCount = computed(() => (records.value || []).filter(r => r.Status 
 // 載入前以 client 計數 fallback，避免閃爍。
 const serverStatusCounts = ref(null);
 const serverPendingBadge = computed(() => {
-  if (!serverStatusCounts.value) return pendingCount.value;
-  return Number(serverStatusCounts.value.pending || 0) + Number(serverStatusCounts.value.changes_requested || 0);
+  if (!serverStatusCounts.value) return kpiPendingOnlyCount.value;
+  return Number(serverStatusCounts.value.pending || 0);
 });
 const serverChangesBadge = computed(() => {
   if (!serverStatusCounts.value) return changesRequestedCount.value;
@@ -1930,6 +2064,13 @@ const kpiUnfilledCount = computed(() =>
     return r.Status === 'pending' || r.Status === 'changes_requested' || r.Status === 'approved';
   }).length
 );
+const directorReviewHint = computed(() => ({
+  pending: '確認內容後核准；空白評量先請老師補填。',
+  changes_requested: '依主任意見追蹤老師修改，完成後會回到待主任核准。',
+  approved: '這裡只供查閱已完成審核的評量。',
+  rejected: '這裡查看已退回紀錄，必要時再開啟處理。',
+  all: '跨狀態查閱全部評量。',
+}[reviewTab.value] || ''));
 const parentFeedbackUnread = (record) => {
   const fb = record?.parent_feedback;
   return isTeacher.value ? !!fb?.unread_for_teacher : !!fb?.unread_for_director;
@@ -2085,7 +2226,7 @@ const hiddenByTabCount = computed(() => {
   }
   if (isDirectorRole.value) {
     if (reviewTab.value === 'pending') {
-      return all.length - all.filter(r => r.Status === 'pending' || r.Status === 'changes_requested').length;
+      return all.length - all.filter(r => r.Status === 'pending').length;
     }
     if (reviewTab.value === 'changes_requested') {
       return all.length - all.filter(r => r.Status === 'changes_requested').length;
@@ -2112,8 +2253,8 @@ const currentTabLabel = computed(() => {
   }
   if (isDirectorRole.value) {
     return ({
-      pending: '待審佇列',
-      changes_requested: '需修改追蹤',
+      pending: '待主任核准',
+      changes_requested: '老師需修改',
       approved: '已核准',
       rejected: '已退回',
     })[reviewTab.value] || '';
@@ -2134,7 +2275,7 @@ const isStatusInCurrentTab = (status) => {
   if (isDirectorRole.value) {
     const t = reviewTab.value;
     if (t === 'all') return true;
-    if (t === 'pending') return status === 'pending' || status === 'changes_requested';
+    if (t === 'pending') return status === 'pending';
     return t === status;
   }
   return true;
@@ -2747,43 +2888,6 @@ const scheduleStatusLabel = learningSessionStatusLabel;
 // 必須同步更新，避免語意漂移。
 const LEAVE_STATUSES = new Set(['leave', 'leave_adjusted', 'excused']);
 
-const SESSION_STATUS_PRIORITY = {
-  attended: 0, completed: 0, late: 0, absent: 0,
-  scheduled: 1,
-  leave: 2, leave_adjusted: 2, excused: 2,
-  cancelled: 3,
-};
-
-function pickBestSession(candidates) {
-  if (!candidates.length) return null;
-  if (candidates.length === 1) return candidates[0];
-  return candidates.slice().sort((a, b) => {
-    const sa = String(a?.status || a?.Status || '').toLowerCase();
-    const sb = String(b?.status || b?.Status || '').toLowerCase();
-    const pa = SESSION_STATUS_PRIORITY[sa] ?? 2;
-    const pb = SESSION_STATUS_PRIORITY[sb] ?? 2;
-    if (pa !== pb) return pa - pb;
-    return (Number(b.id) || 0) - (Number(a.id) || 0);
-  })[0];
-}
-
-function deduplicateSessionsBySlot(sessions) {
-  const groups = {};
-  for (const s of sessions) {
-    if (s?.isProjected) continue;
-    const id = Number(s?.id || 0);
-    const date = String(s?.date || '').slice(0, 10);
-    const time = normalizeTime(s?.startTime) || '';
-    // Keep different ClassSession IDs even when they share the same slot:
-    // a legitimate reschedule-to-past can produce two lessons on the same date/time.
-    // Grouping only by date|time would hide one and block teacher fill flow.
-    const key = id > 0 ? `id:${id}` : `slot:${date}|${time}`;
-    if (!groups[key]) groups[key] = [];
-    groups[key].push(s);
-  }
-  return Object.values(groups).map((g) => pickBestSession(g));
-}
-
 const recordLookup = computed(() => {
   const map = new Map();
   for (const record of records.value || []) {
@@ -2926,7 +3030,7 @@ const buildEvents = (targetDates) => {
     const classId = Number(sc.id || sc.ID || 0);
     if (!classId) continue;
     const allSessions = sessionDatesByClassId.value[String(classId)] || [];
-    const rawSessions = deduplicateSessionsBySlot(allSessions);
+    const rawSessions = deduplicateLearningRecordSessions(allSessions, normalizeTime);
     for (const rawSession of rawSessions) {
       if (rawSession?.isProjected) continue;
       const dateStr = String(rawSession?.date || '').slice(0, 10);
@@ -3235,10 +3339,10 @@ const _buildRecordsParams = (page = 1, { beforeId = null } = {}) => {
   if (feedbackFilter.value === 'has' || feedbackFilter.value === 'unread' || feedbackFilter.value === 'awaiting_reply') {
     params.set('feedback', feedbackFilter.value);
   }
-  // 主任審核分頁改走伺服器端 status 篩選，讓列表＝該狀態全量（分頁載入），與 badge/總覽一致（#139/#595）。
+  // 主任審核分頁改走伺服器端 status 篩選，讓列表＝該工作佇列全量（分頁載入）。
   if (isDirectorRole.value && !isTeacher.value) {
     const tabStatus = {
-      pending: 'pending,changes_requested',
+      pending: 'pending',
       changes_requested: 'changes_requested',
       approved: 'approved',
       rejected: 'rejected',
@@ -5312,6 +5416,14 @@ watch([reviewTab, resolvedDefaultWindowStart], ([rt, win], [prt, pwin]) => {
   color: var(--ds-canvas);
 }
 
+.ts-tabs button:focus-visible,
+.icon-btn:focus-visible,
+.ts-fill-btn:focus-visible,
+.ts-event[role="button"]:focus-visible {
+  outline: 3px solid var(--ds-focus-ring);
+  outline-offset: 2px;
+}
+
 .ts-nav {
   display: flex;
   align-items: center;
@@ -5664,7 +5776,9 @@ watch([reviewTab, resolvedDefaultWindowStart], ([rt, win], [prt, pwin]) => {
   border-bottom: 1px dashed var(--ds-canvas-soft);
 }
 .lr-filters-header-toggle {
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
   background: none;
   border: none;
   font: inherit;
@@ -5672,6 +5786,7 @@ watch([reviewTab, resolvedDefaultWindowStart], ([rt, win], [prt, pwin]) => {
   text-align: left;
 }
 .lr-filters-header-right {
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -5719,6 +5834,23 @@ watch([reviewTab, resolvedDefaultWindowStart], ([rt, win], [prt, pwin]) => {
   background: var(--ds-canvas-soft);
   color: var(--ds-ink);
   text-decoration: underline;
+}
+.lr-filters-chevron-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 4px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.lr-filters-chevron-toggle:hover {
+  background: var(--ds-canvas-soft);
+  color: var(--ds-ink);
 }
 
 /* Filter fields grid */
@@ -6761,7 +6893,7 @@ select.lr-input {
   color: var(--text-light);
   font-size: 12px;
 }
-.lr-parent-feedback-chip { display:inline-flex; align-items:center; gap:3px; margin-top:4px; padding:3px 10px; border-radius:10px; font-size:12px; cursor:pointer; user-select:none; transition: opacity .15s; }
+.lr-parent-feedback-chip { display:inline-flex; align-items:center; gap:3px; margin-top:4px; padding:3px 10px; border-radius:10px; font:inherit; font-size:12px; cursor:pointer; user-select:none; text-align:left; appearance:none; transition: opacity .15s; }
 .lr-parent-feedback-chip:hover { opacity:.8; }
 .lr-parent-feedback-chip.unread { background:var(--ds-warning-wash); color:var(--ds-danger); font-weight:600; border:1px solid var(--ds-warning-wash); }
 .lr-parent-feedback-chip.read { background:var(--ds-canvas-soft); color:var(--ds-ink-mute); border:1px solid var(--ds-canvas-soft); }

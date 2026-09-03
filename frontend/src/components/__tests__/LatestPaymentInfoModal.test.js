@@ -101,6 +101,17 @@ describe('LatestPaymentInfoModal — student page authoritative payment summary'
     expect(wrapper.emitted('view-receipt')).toEqual([[10]]);
   });
 
+  it('keeps every modal action explicitly non-submitting', async () => {
+    global.fetch.mockResolvedValueOnce(ok(invoicesResponse([
+      payment({ report_id: 10, status: 'confirmed', can_view_receipt: true }),
+    ])));
+    const wrapper = mount(LatestPaymentInfoModal, { props: { show: true, course } });
+    await tick();
+
+    expect(wrapper.findAll('button').map((button) => button.attributes('type')))
+      .toEqual(['button', 'button', 'button']);
+  });
+
   it('does not offer a receipt entry point when no report_id exists (no fabricated receipt)', async () => {
     global.fetch.mockResolvedValueOnce(ok(invoicesResponse([
       payment({ id: 1, note: '舊資料', report_id: null, status: null }),

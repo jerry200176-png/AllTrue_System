@@ -17,6 +17,7 @@ class PaymentReport extends Model
         'payment_method',
         'reported_amount',
         'account_last5',
+        'note',
         'status',
         'confirmed_by',
         'confirmed_at',

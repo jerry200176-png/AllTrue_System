@@ -103,4 +103,30 @@ function materialized(over) {
   assert.equal(vm.branchId, undefined);
 }
 
+// 8. Teacher weekly projection needs identity fields even before ClassSession exists.
+{
+  const { items } = normalizeClassSessionsPayload({
+    data: [],
+    projected: {
+      by_class: {
+        3010: [{
+          kind: 'projected',
+          student_class_id: 3010,
+          session_date: '2026-08-29',
+          start_time: '13:00',
+          end_time: '15:00',
+          branch_id: 16,
+          student_id: 808,
+          student_name: '洪睿淵',
+          subject_name: '數學',
+        }],
+      },
+    },
+  });
+  assert.equal(items.length, 1);
+  assert.equal(items[0].studentName, '洪睿淵');
+  assert.equal(items[0].subjectName, '數學');
+  assert.equal(items[0].isProjected, true);
+}
+
 console.log('classSessionsApi.test.js ✅ all assertions passed');
