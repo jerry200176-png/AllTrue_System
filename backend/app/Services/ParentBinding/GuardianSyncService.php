@@ -187,6 +187,8 @@ final class GuardianSyncService
 
             // PB-04: revoke → immediate ParentSession invalidate for this relationship.
             app(ParentGuardianAccessService::class)->invalidateSessionsForLink($link);
+            // Canonical cutover: strip verified SLB so legacy path cannot re-grant access.
+            app(ParentGuardianAccessService::class)->unverifyLineBindingForLink($link);
 
             if ($wasPrimary) {
                 $next = StudentGuardian::query()
@@ -301,7 +303,16 @@ final class GuardianSyncService
             $guardian = Guardian::query()->where('line_user_id', $lineUserId)->lockForUpdate()->first();
         }
         if (!$guardian && $normalized !== '') {
-            $guardian = Guardian::query()->where('phone_normalized', $normalized)->lockForUpdate()->first();
+            $byPhone = Guardian::query()->where('phone_normalized', $normalized)->lockForUpdate()->first();
+            if ($byPhone) {
+                $existingLine = trim((string) ($byPhone->line_user_id ?? ''));
+                // Never merge two distinct LINE subjects onto one guardian via shared phone.
+                if ($lineUserId && $existingLine !== '' && $existingLine !== $lineUserId) {
+                    $byPhone = null;
+                } else {
+                    $guardian = $byPhone;
+                }
+            }
         }
         if (!$guardian) {
             $guardian = new Guardian();
@@ -315,7 +326,10 @@ final class GuardianSyncService
             $guardian->phone_normalized = $normalized;
         }
         if ($lineUserId) {
-            $guardian->line_user_id = $lineUserId;
+            $existingLine = trim((string) ($guardian->line_user_id ?? ''));
+            if ($existingLine === '' || $existingLine === $lineUserId) {
+                $guardian->line_user_id = $lineUserId;
+            }
         }
         $guardian->save();
 

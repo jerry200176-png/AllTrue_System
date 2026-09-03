@@ -5,7 +5,7 @@
 | Phase / Risk | 2 / T3 |
 | Issue | [#1440](https://github.com/jerry200176-png/AllTrue_System/issues/1440) |
 | Depends / Blocks | PB-00 (hard-block **lifted** Founder GO 2026-09-03) / PB-05,06,07 |
-| Board | **PARTIAL / IN PROGRESS** — identity tables + staff CRUD + portal dual-read authZ (no new ParentIdentity schema) |
+| Board | **SHIPPED / CUTOVER** — `guardians`≈ParentIdentity, `student_guardians`≈GSR; Staff CRUD + Portal canonical authZ under `PERF_MULTI_GUARDIAN`; revoke→session+SLB unverify; `parent_phone` retained as projection |
 
 **Canonical mapping (do not duplicate):** `guardians` ≈ ParentIdentity; `student_guardians` ≈ GSR. SLB remains projection / dual-read fallback. Legacy `parent_phone` retained (no cutover in this slice).
 

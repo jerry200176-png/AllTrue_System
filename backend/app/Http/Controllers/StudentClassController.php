@@ -668,6 +668,26 @@ class StudentClassController extends Controller
                     ->where('SessionDate', '<=', $rangeEnd)
                     ->select('id', 'StudentClassID', 'SessionDate', 'StartTime', 'EndTime', 'Status')
                     ->get();
+                $capacityDiagnostics = SessionDeductionService::batchExpectedUsedSessionDiagnostics(
+                    array_map('intval', $courseIds)
+                );
+                $fullCountCourseIds = [];
+                foreach ($capacityDiagnostics as $courseId => $diagnostic) {
+                    if ($diagnostic['is_session_mode']
+                        && $diagnostic['session_count'] > 0
+                        && $diagnostic['expected_used'] >= $diagnostic['session_count']) {
+                        $fullCountCourseIds[(string) $courseId] = true;
+                    }
+                }
+                // A stale future reservation must not survive as a materialized
+                // chip once the authoritative used count reaches the contract
+                // cap. Keep historical/attended rows for audit and display.
+                $classSessionsBody = $classSessionsBody->filter(function ($row) use ($fullCountCourseIds) {
+                    $id = (string) $row->StudentClassID;
+                    return !isset($fullCountCourseIds[$id])
+                        || Carbon::parse($row->SessionDate)->toDateString() <= Carbon::today()->toDateString()
+                        || !in_array(strtolower((string) $row->Status), ['scheduled', 'rescheduled'], true);
+                })->values();
                 $leaveByClass = [];
                 $scheduledByClass = [];
                 $sessionDatesByClass = [];
@@ -744,6 +764,21 @@ class StudentClassController extends Controller
                         foreach ($sessionDatesByClass[(string) $cid] as $date) {
                             $actualSessionSet[(string) $date] = true;
                         }
+                    }
+
+                    if ($cid !== null && isset($fullCountCourseIds[(string) $cid])) {
+                        $list = array_keys($actualSessionSet);
+                        sort($list);
+                        $result[(string) $cid] = $this->buildSessionDatesSplit(
+                            $projectionReader,
+                            (int) $cid,
+                            $list,
+                            $classSessionsBody,
+                            $bodyClasses->firstWhere('ID', (int) $cid),
+                            $rangeStart,
+                            $rangeEnd
+                        );
+                        continue;
                     }
 
                     if ($cid !== null && $startDate && $n > 0 && !empty($daysOfWeek)) {
@@ -4162,13 +4197,12 @@ class StudentClassController extends Controller
             // workflow instead of this per-course count check.
             if (!$target->isPartOfPackage()
                 && strtolower((string) ($target->ScheduleMode ?? 'count')) === 'count') {
-                $targetCommitted = ClassSession::query()
-                    ->where('StudentClassID', (int) $target->ID)
-                    ->where(function ($query) {
-                        $query->whereNull('Status')
-                            ->orWhereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted', 'excused']);
-                    })
-                    ->count();
+                // Capacity is an entitlement check, so use the same
+                // authoritative used-session calculation as the counters and
+                // billing surfaces. A scheduled ClassSession is only a future
+                // reservation; it must not consume the target's used quota.
+                $targetDiagnostic = SessionDeductionService::batchExpectedUsedSessionDiagnostics([(int) $target->ID])[(int) $target->ID] ?? null;
+                $targetCommitted = (int) ($targetDiagnostic['expected_used'] ?? 0);
                 $targetCapacity = max(0, (int) ($target->SessionCount ?? 0));
                 $transferCount = count($foundIds);
                 if ($targetCapacity <= 0 || $targetCommitted + $transferCount > $targetCapacity) {

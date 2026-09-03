@@ -1,3 +1,27 @@
+## 2026-09-03 — fix(parent): 學生頁家長欄與監護人 SSOT（去重）
+<!-- release-notes: staff_update=staff-2026-09-03-guardian-ssot-ui -->
+- 多監護人開啟時，編輯學生不再顯示重複的「家長姓名／家長手機」欄；改以「家長／監護人」為唯一維護入口，主要聯絡人即主要家長資訊。
+- 新增學生仍可用家長欄位（寫入後 dual-write 成主要監護人）；LINE 綁定與 RFID 不變。不刪除 `parent_phone` 欄位。
+
+## 2026-09-03 — feat(parent): Multi-Guardian canonical Portal cutover
+<!-- release-notes: silent_ship=silent-2026-09-03-multi-guardian-cutover -->
+- Portal LINE 授權在 flag 開啟且 Guardian 存在時僅走 active／read_only `student_guardians`；無 Guardian 列才暫用 SLB 相容。
+- revoke 同步取消 verified SLB；手機登入比對任一 active guardian 手機；多子女切換改共享 guardian。
+- 新增 `guardians:cutover-audit`／`repair_slb`；禁止以共用手機合併不同 LINE 身份。不 drop `parent_phone`。
+
+## 2026-09-03 — release(parent): Multi-Guardian 正式版（Staff CRUD + Portal authZ + cutover）
+<!-- release-notes: staff_update=staff-2026-09-03-multi-guardian-ga -->
+- **正式版**：一位學生可有多位監護人；家長 Portal 以 `guardians` / `student_guardians` 為授權來源（active／read_only）；支援多子女與跨分校切換。
+- Staff 可新增／解除監護人；**revoke 立即失效對應 ParentSession，並取消該 LINE 的 verified SLB**，legacy 路徑不可繞過。
+- `parent_phone` 與 SLB 表保留作投影／相容；flag 關閉可 rollback 且仍可經 SLB／legacy 手機登入。
+- Cutover：deploy 後先 `cutover_audit`，有 orphan 先 `repair_slb`，不可硬切。
+
+## 2026-09-03 — fix(pop): 失敗 dry-run 支援受控重試並保留歷史 attempt
+<!-- release-notes: silent_ship=silent-2026-09-03-pop-dry-run-retry -->
+- 相同 request 的成功 dry-run 維持冪等 replay；失敗 dry-run 在 request、參數、catalog 與 context 未漂移且策略恢復後可追加 retry。
+- 每次 retry 使用 append-only execution attempt identity，不改 caller idempotency key；execute／verify／rollback 的 mutation replay gate 維持不變。
+- 補上 payload／catalog／production context drift fail-closed 與 mutation non-repeat regression tests；本次不執行任何 Huang repair。
+
 ## 2026-09-03 — feat(parent): Parent Portal multi-guardian dual-read authZ
 <!-- release-notes: silent_ship=silent-2026-09-03-multi-guardian-portal-authz -->
 - Parent Portal LINE login／切換學生在 `PERF_MULTI_GUARDIAN` 開啟時改走 `guardians` + `student_guardians`（active／read_only）dual-read；flag 關閉仍僅 verified SLB。
