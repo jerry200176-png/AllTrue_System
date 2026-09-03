@@ -7573,12 +7573,12 @@ button.danger:disabled {
   color: #6b7280;
 }
 .date-chip.scheduled-capacity-full {
-  background: #f3f4f6;
-  border-color: #cbd5e1;
-  color: #64748b;
+  background: var(--ds-canvas-soft);
+  border-color: var(--ds-hairline);
+  color: var(--ds-ink-mute);
 }
 .date-chip.scheduled-capacity-full .chip-date {
-  color: #64748b;
+  color: var(--ds-ink-mute);
 }
 .date-chip.exception {
   background: #eef2ff;
