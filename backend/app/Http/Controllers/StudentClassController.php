@@ -2191,7 +2191,11 @@ class StudentClassController extends Controller
             ], 422);
         }
 
-        $observedUsed = (int) (SessionDeductionService::batchObservedUsedSessions([$classId])[$classId] ?? 0);
+        $usageDiagnostic = SessionDeductionService::batchExpectedUsedSessionDiagnostics([$classId])[$classId] ?? [];
+        $observedUsed = max(
+            (int) ($usageDiagnostic['expected_used'] ?? 0),
+            (int) ($usageDiagnostic['uncapped_used'] ?? 0)
+        );
         if ($newCount < $observedUsed) {
             $this->auditEditBlocked($studentClass, 'billing_correction_below_observed_usage', 422);
             return response()->json([
@@ -2208,6 +2212,26 @@ class StudentClassController extends Controller
             return response()->json([
                 'message' => '此流程只允許未收款課程減少堂數更正；增加堂數請使用加購／續報。',
                 'code' => 'billing_correction_reduction_only',
+            ], 422);
+        }
+
+        // Reducing a contract must not silently cancel future bookings. The
+        // operator must see exactly which scheduled sessions fall outside the
+        // new entitlement and handle them explicitly before retrying.
+        $affectedScheduledSessions = $this->scheduledSessionsBeyondCount($classId, $newCount);
+        if ($affectedScheduledSessions !== []) {
+            $this->auditEditBlocked($studentClass, 'billing_correction_future_schedule_over_capacity', 422);
+            return response()->json([
+                'message' => "更正後堂數會使未來預排超額；請先處理受影響堂次後再重試。受影響堂次："
+                    . implode('、', array_map(
+                        static fn (array $session): string => '#' . $session['session_id'] . ' ' . $session['session_date'] . ' ' . $session['start_time'],
+                        $affectedScheduledSessions
+                    )),
+                'code' => 'billing_correction_future_schedule_over_capacity',
+                'affected_scheduled_sessions' => $affectedScheduledSessions,
+                'new_session_count' => $newCount,
+                'observed_used_sessions' => $observedUsed,
+                'next_step' => 'handle_affected_scheduled_sessions_then_retry',
             ], 422);
         }
 
@@ -4131,6 +4155,34 @@ class StudentClassController extends Controller
                 ], 422);
             }
 
+            // A transfer consumes entitlement in the target contract. Do this
+            // preflight before moving any row so a count-based target cannot
+            // silently become over capacity. Package courses use their shared
+            // package boundary and are intentionally handled by the package
+            // workflow instead of this per-course count check.
+            if (!$target->isPartOfPackage()
+                && strtolower((string) ($target->ScheduleMode ?? 'count')) === 'count') {
+                $targetCommitted = ClassSession::query()
+                    ->where('StudentClassID', (int) $target->ID)
+                    ->where(function ($query) {
+                        $query->whereNull('Status')
+                            ->orWhereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted', 'excused']);
+                    })
+                    ->count();
+                $targetCapacity = max(0, (int) ($target->SessionCount ?? 0));
+                $transferCount = count($foundIds);
+                if ($targetCapacity <= 0 || $targetCommitted + $transferCount > $targetCapacity) {
+                    return response()->json([
+                        'code' => 'target_capacity_exceeded',
+                        'message' => "目標課程可用堂數不足：目前已有 {$targetCommitted} 堂，轉移 {$transferCount} 堂後將超過 {$targetCapacity} 堂上限；未執行任何轉移。",
+                        'target_session_count' => $targetCapacity,
+                        'target_committed_sessions' => $targetCommitted,
+                        'transfer_count' => $transferCount,
+                        'available_sessions' => max(0, $targetCapacity - $targetCommitted),
+                    ], 422);
+                }
+            }
+
             // The production unique index rejects two active rows in the same
             // target course/date/start-time slot.  Check before changing any
             // source row so a normal data conflict is reported as a useful 422
@@ -4175,9 +4227,21 @@ class StudentClassController extends Controller
                 ->orderByDesc('StartTime')
                 ->orderByDesc('id')
                 ->first();
+            $sourceCommitted = ClassSession::query()
+                ->where('StudentClassID', (int) $source->ID)
+                ->where(function ($query) {
+                    $query->whereNull('Status')
+                        ->orWhereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted', 'excused']);
+                })
+                ->count();
+            $sourceCapacity = max(0, (int) ($source->SessionCount ?? 0));
+            $replacementCount = min(
+                count($foundIds),
+                max(0, $sourceCapacity - max(0, $sourceCommitted - count($foundIds)))
+            );
             $replacementPlan = $this->planSourceScheduleTail(
                 $source,
-                count($foundIds),
+                $replacementCount,
                 $sourceTail?->SessionDate
             );
 
@@ -6166,6 +6230,43 @@ class StudentClassController extends Controller
                 $session->save();
             }
         }
+    }
+
+    /**
+     * Return future scheduled rows that would fall after a reduced count.
+     * This is a read-only preflight; it deliberately does not cancel anything.
+     *
+     * @return array<int, array{session_id:int, session_date:string, start_time:string, end_time:string, status:string}>
+     */
+    private function scheduledSessionsBeyondCount(int $classId, int $newCount): array
+    {
+        $allActive = ClassSession::query()
+            ->where('StudentClassID', $classId)
+            ->where(function ($query) {
+                $query->whereNull('Status')
+                    ->orWhereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted', 'excused']);
+            })
+            ->orderBy('SessionDate')
+            ->orderBy('StartTime')
+            ->orderBy('id')
+            ->get(['id', 'SessionDate', 'StartTime', 'EndTime', 'Status']);
+
+        $today = Carbon::today()->toDateString();
+
+        return $allActive->slice($newCount)
+            ->filter(static function (ClassSession $session) use ($today): bool {
+                return strtolower((string) $session->getAttribute('Status')) === 'scheduled'
+                    && substr((string) $session->getAttribute('SessionDate'), 0, 10) >= $today;
+            })
+            ->map(static fn (ClassSession $session): array => [
+                'session_id' => (int) $session->getKey(),
+                'session_date' => substr((string) $session->getAttribute('SessionDate'), 0, 10),
+                'start_time' => substr((string) $session->getAttribute('StartTime'), 0, 5),
+                'end_time' => substr((string) $session->getAttribute('EndTime'), 0, 5),
+                'status' => (string) $session->getAttribute('Status'),
+            ])
+            ->values()
+            ->all();
     }
 
     /**
