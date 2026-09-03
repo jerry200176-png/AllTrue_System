@@ -104,6 +104,22 @@ describe('paymentReportReceipt helpers (#1197 closeout)', () => {
     expect(view.content_snapshot.items[0].description).toBe('英文 · 8 堂 · 堂數制');
   });
 
+  it('uses monthly settlement count and prints each billed lesson detail', () => {
+    const view = adaptPaymentReportReceipt({
+      ...SAMPLE,
+      schedule_mode: 'date',
+      period_sessions: 4,
+      session_dates: [{
+        date: '2026/07/03', start_time: '18:00', end_time: '20:00',
+        subject: '英文', lesson: 1, expected: false,
+      }],
+    }, 123);
+    expect(view.content_snapshot.items[0].description).toContain('4 堂');
+    const text = buildReceiptCopyText(view.content_snapshot, view.receipt_number);
+    expect(text).toContain('第1堂 2026/07/03 18:00-20:00 · 英文');
+    expect(text).not.toContain('預計');
+  });
+
   it('builds copy text from the fields visible on the receipt', () => {
     const view = adaptPaymentReportReceipt(SAMPLE, 123);
     const text = buildReceiptCopyText(view.content_snapshot, view.receipt_number);
