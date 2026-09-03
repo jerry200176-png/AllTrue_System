@@ -6,6 +6,14 @@ last_reviewed: 2026-06-06
 
 # AI／工程師防再犯紀錄（必讀）
 
+### R132. 課程查找 billing unit 必須從編輯 round-trip 到總額計算（2026-09-02）
+
+- **現象**：大安黃品皓課程切換為每小時 750 後，課程查找仍顯示「每堂 750」，總費用也以堂數計算。
+- **根因層級**：F7 繳費金額／狀態雙真相家族的架構設計缺口；`rate_unit` 已存在於 DB，但課程查找編輯 hydration／PUT payload 遺漏，後端只在 Rate／堂數變更時重算，前端又以 `payment_type=session` 蓋掉 hour 單位。
+- **強制規則**：billing cadence 與 price unit 必須分開；`rate_unit` 是 canonical contract，須從 DB → API → 編輯 round-trip → UI label → total fee calculator 全程保留。`hour` 使用實際總課程時數，`session` 使用購買堂數；不得只改文字或 hardcode 個案。
+- **測試必補**：`StudentClassRateUnitUpdateTest` 覆蓋 PUT／DB／index 的 hour 與 session 對照；`coursePricing.test.js` 覆蓋每小時 750 × 16 小時與每堂 750 × 8 堂；課程查找 contract test 鎖定 form payload 與 label helper。
+- **參考**：#509、#798、§R76；Stripe Price 將 unit amount 與 quantity 的語意分離，AllTrue 對應為 `rate_unit` 與計價數量 basis。
+
 ### R131. 新增課程「去加購」必須同時認 `id` 與 `existing_course_id`（2026-08-29）
 
 - **現象**：學生管理 → 新增課程 → 衝突視窗點「去加購」沒有反應，視窗直接關掉。
@@ -1551,3 +1559,17 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **根因層級**：不同重要性的資料來源共用一個 OR 錯誤旗標；可選的回覆摘要失敗被當成整個主要工作佇列失敗。
 - **強制規則**：點名、評量、逾期補填與今日課表等關鍵來源失敗時仍須 fail closed，不能顯示全清；回覆摘要單獨失敗且已有其他待辦時，必須保留可行動項目並顯示部分載入提示；只有在沒有其他可行動項目時才顯示不完整狀態。
 - **測試必補**：real Vue Playwright 必須覆蓋「只有回覆計數失敗」情境，證明主待辦與 CTA 仍可見、部分錯誤可讀，且不誤顯示「今天沒有待完成工作」。
+
+### R133. 移除固定時段不得把保留堂次當成新增衝堂（2026-09-02）
+
+- **現象**：固定課程由週三＋週四編輯為只剩週三時，重整未來堂次可能把週四堂壓到已有的週三堂，衝堂檢查因此阻擋整個儲存。
+- **根因層級**：固定合約同步把「刪除舊時段造成的排程重排」與「新增／移動到新時段」共用同一個目標占用語意；保留的鎖定堂次不是新預約，卻被 reflow 當成外部目標。
+- **強制規則**：先比較編輯前後固定時段。純移除只能跳過保留的鎖定自有目標並把未鎖定堂次放到下一個有效週期；新增或變更到新時段仍必須走完整衝堂檢查，不能用課程 ID 一律放寬。
+- **測試必補**：週三＋週四移除週四可存、保留週三不自撞、真正新增到已占用時段仍回 `SlotOccupiedException`；移除 pure-removal 分支後前兩者必須失敗。
+
+### R134. 老師工作台重整不可用 loading 取代既有課表（2026-09-02）
+
+- **現象**：老師切換週次／分校或背景刷新時，課表先消失成 skeleton，工作佇列也同步閃爍；課表事件雖有資料，導向卻因缺少 `classSessionId`／學生 ID 而無法開啟對應詳情。
+- **根因層級**：非同步重載狀態與「尚未有任何成功資料」共用同一個 render branch，且 SessionViewModel 到工作台 event 的映射漏掉既有導向契約欄位。
+- **強制規則**：第一次載入才顯示 skeleton；後續刷新保留 last-known-good projection，以 busy／可重試狀態呈現更新。課程格必須使用既有 session 導向，不能另造只改文字的 click handler；TeacherHome 變更不得改變 admin／director 的 mount guard。
+- **測試必補**：成功後刷新不顯示 skeleton、失敗保留課表並可重試、課程格帶完整 session target、sticky 標題在手機／桌面規則一致，以及 admin／director mount guard 維持原狀。

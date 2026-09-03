@@ -84,6 +84,75 @@ class AdoptionInsightsApiTest extends TestCase
         ]);
     }
 
+    public function test_weekly_metrics_exposes_pii_free_bug_sla_aging_and_breach_clocks(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-06-10 12:00:00'));
+
+        try {
+            $campus = CampusFactory::new()->create();
+            $token = $this->createDirectorToken([$campus->id], 'adoption-bug-sla@example.com');
+            $base = [
+                'CampusID' => $campus->id,
+                'reporter_user_id' => 1,
+                'title' => '測試回報',
+                'description' => '測試內容',
+                'page_key' => 'test',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
+
+            DB::table('bug_reports')->insert(array_merge($base, [
+                'severity' => 'high',
+                'status' => 'new',
+                'created_at' => '2026-06-08 00:00:00',
+            ]));
+            $triagedId = DB::table('bug_reports')->insertGetId(array_merge($base, [
+                'severity' => 'medium',
+                'status' => 'triaged',
+                'created_at' => '2026-06-05 00:00:00',
+            ]));
+            DB::table('bug_report_status_logs')->insert([
+                'bug_report_id' => $triagedId,
+                'changed_by' => 1,
+                'from_status' => 'new',
+                'to_status' => 'triaged',
+                'created_at' => '2026-06-05 12:00:00',
+            ]);
+            DB::table('bug_reports')->insert(array_merge($base, [
+                'severity' => 'critical',
+                'status' => 'in_progress',
+                'created_at' => '2026-06-01 00:00:00',
+            ]));
+            DB::table('bug_reports')->insert(array_merge($base, [
+                'severity' => 'low',
+                'status' => 'resolved',
+            ]));
+            DB::table('bug_reports')->insert(array_merge($base, [
+                'severity' => 'low',
+                'status' => 'closed',
+            ]));
+
+            $this->withHeaders([
+                'Authorization' => "Bearer {$token}",
+                'Accept' => 'application/json',
+            ])->getJson("/api/v1/adoption/weekly-metrics?branch_id={$campus->id}")
+                ->assertOk()
+                ->assertJsonPath('data.bug_sla.status_counts.new', 1)
+                ->assertJsonPath('data.bug_sla.status_counts.triaged', 1)
+                ->assertJsonPath('data.bug_sla.status_counts.in_progress', 1)
+                ->assertJsonPath('data.bug_sla.status_counts.resolved', 1)
+                ->assertJsonPath('data.bug_sla.status_counts.closed', 1)
+                ->assertJsonPath('data.bug_sla.open_backlog.total', 3)
+                ->assertJsonPath('data.bug_sla.open_backlog.missing_triaged_at', 1)
+                ->assertJsonPath('data.bug_sla.triage_sla.targets_hours.p1', 24)
+                ->assertJsonPath('data.bug_sla.triage_sla.targets_hours.p2', 168)
+                ->assertJsonPath('data.bug_sla.triage_sla.open_breaches.p1', 1)
+                ->assertJsonPath('data.bug_sla.triage_sla.open_breach_total', 1);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     public function test_weekly_metrics_completion_rate_never_exceeds_100_percent(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-06-07 12:00:00'));
@@ -230,4 +299,3 @@ class AdoptionInsightsApiTest extends TestCase
         return $token;
     }
 }
-

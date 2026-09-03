@@ -1,7 +1,34 @@
+## 2026-09-02 — fix(billing): 課程查找同步按堂／按時計費單位
+<!-- release-notes: staff_update=staff-2026-09-02-course-rate-unit-consistency -->
+- 修正課程編輯由按堂切換為按時計費後，`rate_unit` 未完整送回與總費用仍按堂計算的問題。
+- 課程查找現在依最新計費單位顯示「每堂／每小時」與正確總費用；按堂課程計價維持不變。
+- 未新增資料庫欄位、不批次改寫既有付款資料；補上前後端 full-chain regression test。
+
+## 2026-09-02 — fix(schedule): 移除固定時段不再誤判自己衝堂
+<!-- release-notes: staff_update=staff-2026-09-02-fixed-slot-removal-and-teacher-workbench -->
+- 固定課程由週三＋週四移除週四時，不會再把保留的週三既有堂次當成新增調課目標；只有真正新增或變更到新時段才做衝堂檢查。
+- 老師工作台重整課表時保留上次成功資料，課程格可開啟對應課程詳情，週一至週日標題在手機與桌面捲動時維持可見；admin／director 頁面與權限路徑不變。
+- 補上固定時段移除、真正衝堂、老師事件導向與工作台更新狀態回歸測試；production 驗證採唯讀 workflow，不直接修改個案資料。
+
+## 2026-09-02 — fix(billing): 電子收據預計堂次文案恢復
+<!-- release-notes: staff_update=staff-2026-09-02-receipt-expected-session-copy -->
+- 電子收據的未實際上課、未取消堂次恢復顯示「（預計）」；已上課堂次與其他排課／點名狀態不變。
+- 本次只調整收據畫面、複製文字與圖片輸出的文案，不改排課或後台狀態。
+
+## 2026-09-01 — improved(ux): 新建與編輯課程共用老師空檔查詢
+<!-- release-notes: staff_update=staff-2026-09-01-course-availability-planner -->
+- 編輯既有課程時，現在可直接用與新建課程相同的老師空檔／容量試算，並將候選時段套用到固定排課欄位。
+- 更換老師、開課日、固定星期或時段後，舊試算會失效並要求重新查詢；既有後端衝堂、固定課程、recurring、權限與儲存規則不變。
+
 ## 2026-09-01 — improved(ux): 新增排課可先找可行時段
 <!-- release-notes: staff_update=staff-2026-09-01-scheduling-intersection-helper -->
 - 新增課程時可輸入學生可配合的星期／時間窗口，核對已選老師的可服務分校、未來四次（至課程結束日）固定日期空檔與容量，點選候選時段即可套用。
 - 試算沿用既有跨分校可用性資料與後端衝堂檢查；資料不完整時不提供候選，不寫回學生資料，也不改建立課程規則。
+
+## 2026-09-01 — improved(ux): 行事曆次要工具需要時再展開
+<!-- release-notes: staff_update=staff-2026-09-01-calendar-secondary-controls -->
+- 月份、週次、跳至日期與日／週檢視維持直接可用；教室、老師／學生篩選與排課工具收進「篩選與更多操作」，需要時再展開。
+- 展開後原有篩選、老師請假、教室管理與快速排課操作維持不變；收合時會顯示目前啟用的篩選數。
 
 ## 2026-09-01 — fix(calendar): 行事曆調課不再被不完整預判誤擋
 <!-- release-notes: staff_update=staff-2026-09-01-calendar-reschedule-authority -->

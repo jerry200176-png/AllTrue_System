@@ -4,6 +4,116 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-02-course-rate-unit-consistency",
+    "publishedAt": "2026-09-02",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "課程查找計費單位同步",
+    "summary": "按時計費課程現在會顯示每小時費用並正確計算總額。",
+    "items": [
+      "編輯課程切換按堂／按時計費後，課程查找會同步顯示正確的每堂或每小時單價。",
+      "按時計費總費用會依課程實際總時數計算；按堂課程仍依購買堂數計算。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "編輯課程切換按堂／按時計費後，課程查找會同步顯示正確的每堂或每小時單價。",
+          "按時計費總費用會依課程實際總時數計算；按堂課程仍依購買堂數計算。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-02:course-rate-unit-consistency"
+    ],
+    "date": "2026-09-02",
+    "version": "2026.09.02"
+  },
+  {
+    "id": "staff-2026-09-02-receipt-expected-session-copy",
+    "publishedAt": "2026-09-02",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "電子收據預計堂次文案恢復",
+    "summary": "收據上的未上課堂次現在恢復顯示「（預計）」。",
+    "items": [
+      "電子收據中尚未實際上課且未取消的堂次會顯示「（預計）」；已上課堂次不加狀態字樣。",
+      "收據畫面、複製文字與複製／下載圖片的文案一致；排課、點名與其他後台狀態不受影響。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "電子收據中尚未實際上課且未取消的堂次會顯示「（預計）」；已上課堂次不加狀態字樣。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "收據畫面、複製文字與複製／下載圖片的文案一致；排課、點名與其他後台狀態不受影響。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-02:receipt-expected-session-copy"
+    ],
+    "date": "2026-09-02",
+    "version": "2026.09.02"
+  },
+  {
+    "id": "staff-2026-09-02-fixed-slot-removal-and-teacher-workbench",
+    "publishedAt": "2026-09-02",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "固定時段移除與老師工作台修復",
+    "summary": "移除固定上課日不會再誤判衝堂，老師工作台重整更穩定且課程格可直接開啟詳情。",
+    "items": [
+      "固定課程移除既有時段時，不會把保留的自己課程誤當成新增調課；真正新增到已占用時段仍會阻擋。",
+      "老師工作台重整課表時保留已載入內容，週一至週日標題在手機與桌面捲動時維持可見，每個已建立課程格都可開啟對應詳情。",
+      "admin 與 director 的頁面、權限與既有操作不受影響。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "固定課程移除既有時段時，不會把保留的自己課程誤當成新增調課；真正新增到已占用時段仍會阻擋。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "老師工作台重整課表時保留已載入內容，週一至週日標題在手機與桌面捲動時維持可見，每個已建立課程格都可開啟對應詳情。",
+          "admin 與 director 的頁面、權限與既有操作不受影響。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-02:fixed-slot-removal-and-teacher-workbench"
+    ],
+    "date": "2026-09-02",
+    "version": "2026.09.02"
+  },
+  {
     "id": "staff-2026-09-01-unpaid-settlement-reconciliation",
     "publishedAt": "2026-09-01",
     "effectiveAt": null,
@@ -250,6 +360,70 @@ export const staffUpdates = [
     ],
     "sourceRefs": [
       "changelog:2026-09-01:scheduling-intersection-helper"
+    ],
+    "date": "2026-09-01",
+    "version": "2026.09.01"
+  },
+  {
+    "id": "staff-2026-09-01-course-availability-planner",
+    "publishedAt": "2026-09-01",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "新建與編輯都能找老師空檔",
+    "summary": "編輯既有課程時也能用同一套老師空檔與容量試算。",
+    "items": [
+      "從編輯課程選擇老師、日期、星期與時段後，可直接查詢未來四次固定日期的可用候選。",
+      "條件變更後舊試算會失效並要求重新查詢；套用候選後儲存仍由後端再次檢查衝堂與教室容量。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "從編輯課程選擇老師、日期、星期與時段後，可直接查詢未來四次固定日期的可用候選。",
+          "條件變更後舊試算會失效並要求重新查詢；套用候選後儲存仍由後端再次檢查衝堂與教室容量。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-01:course-availability-planner"
+    ],
+    "date": "2026-09-01",
+    "version": "2026.09.01"
+  },
+  {
+    "id": "staff-2026-09-01-calendar-secondary-controls",
+    "publishedAt": "2026-09-01",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "行事曆工具列更清爽",
+    "summary": "主要日期控制常駐，其他篩選與操作需要時再展開。",
+    "items": [
+      "月份、週次、跳至日期與日／週檢視維持直接可用，其他工具集中到「篩選與更多操作」。",
+      "收合時會顯示目前啟用的篩選數；展開後原有篩選、老師請假、教室管理與快速排課維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "月份、週次、跳至日期與日／週檢視維持直接可用，其他工具集中到「篩選與更多操作」。",
+          "收合時會顯示目前啟用的篩選數；展開後原有篩選、老師請假、教室管理與快速排課維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-01:calendar-secondary-controls"
     ],
     "date": "2026-09-01",
     "version": "2026.09.01"

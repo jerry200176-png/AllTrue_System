@@ -96,7 +96,7 @@
                 <div class="receipt-doc-label">上課日期</div>
                 <div class="receipt-doc-session-list">
                   <span v-for="(s, i) in snapshot.session_dates.slice(0, 16)" :key="i">
-                    {{ s.date }}<template v-if="s.expected">（尚未上）</template>
+                    {{ s.date }}<template v-if="s.expected">（預計）</template>
                   </span>
                   <span v-if="snapshot.session_dates.length > 16">…共 {{ snapshot.session_dates.length }} 堂</span>
                 </div>

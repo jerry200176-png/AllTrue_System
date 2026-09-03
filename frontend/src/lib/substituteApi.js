@@ -11,7 +11,7 @@ function token() {
   }
 }
 
-async function call(method, path, payload) {
+async function call(method, path, payload, { withTrace = false } = {}) {
   const t = token();
   if (!t) throw new Error('尚未登入，請重新登入後再試');
   const opts = {
@@ -34,14 +34,26 @@ async function call(method, path, payload) {
     err.payload = json;
     throw err;
   }
-  return json;
+  if (!withTrace) return json;
+  return {
+    ...json,
+    diagnostic_trace_id: res.headers.get('X-Trace-Id') || null,
+  };
 }
 
-export function fetchTeacherAvailability(teacherId, date, { excludeStudentId } = {}) {
+export function fetchTeacherAvailability(teacherId, date, {
+  excludeStudentId,
+  classType,
+  startTime,
+  endTime,
+} = {}) {
   const qs = new URLSearchParams({ date: String(date || '') });
   const sid = Number(excludeStudentId || 0);
   if (sid > 0) qs.set('exclude_student_id', String(sid));
-  return call('GET', `/api/v1/teachers/${encodeURIComponent(teacherId)}/availability?${qs}`);
+  if (classType) qs.set('class_type', String(classType));
+  if (startTime) qs.set('start_time', String(startTime));
+  if (endTime) qs.set('end_time', String(endTime));
+  return call('GET', `/api/v1/teachers/${encodeURIComponent(teacherId)}/availability?${qs}`, undefined, { withTrace: true });
 }
 
 export function undoSubstitute(classSessionId) {

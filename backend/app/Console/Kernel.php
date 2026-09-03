@@ -16,6 +16,20 @@ class Kernel extends ConsoleKernel
         // Pi Health can verify after the overnight cycle.
         SchedulerEvidence::ensureDirectories();
 
+        // POP is the sole production data-operation executor. The Pi's existing
+        // host cron drives this local command; no GitHub runner or SSH hop is used.
+        $schedule->command('pop:execute-approved')
+            ->everyMinute()
+            ->withoutOverlapping(2)
+            ->timezone(SchedulerEvidence::TIMEZONE)
+            ->sendOutputTo(SchedulerEvidence::executorOutputPath())
+            ->onSuccess(static function (): void {
+                SchedulerEvidence::recordExecutorCompletion('succeeded');
+            })
+            ->onFailure(static function (): void {
+                SchedulerEvidence::recordExecutorCompletion('failed');
+            });
+
         $this->scheduleObservedCommand($schedule, 'teacher-signin-close-orphans');
         $this->scheduleObservedCommand($schedule, 'reconcile-nightly');
         $this->scheduleObservedCommand($schedule, 'student-signin-close-orphans');

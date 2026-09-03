@@ -1,8 +1,22 @@
 # POP default policies — Phase 1 (config only, not evaluated in production yet)
-version: 1
+version: 2
 lifecycle: active
 
 rules:
+  - id: founder-explicit-single-repair
+    match:
+      operation_id: course-contract-repair
+      risk: critical
+      blast_radius: single_student_contract
+    require_approvals: [super_admin]
+    founder_explicit: true
+    maintenance_window: "Sat 22:00-02:00"
+    auto_rollback_on_failed_verify: true
+    retries: 0
+    concurrency:
+      key: global
+      max_parallel: 1
+
   - id: critical-dual-approval
     match:
       risk: critical

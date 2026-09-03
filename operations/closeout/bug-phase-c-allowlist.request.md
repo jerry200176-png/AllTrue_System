@@ -1,5 +1,7 @@
 # Request: Phase-C allowlist resolve
 
+# kickoff 2026-09-03T02:31:00Z — Phase C write-back for in-app #250: transfer-session replenishment fix merged as `d21ed8de1a2a80034aee50d214ac68b7944f3251`, Deploy to Pi run `33707145582` succeeded, production manifest/health/post-merge smoke verified, and target-specific read-only evidence run `33707548893` reports exact student match 1, four target classes, zero underfilled automatic recurrence classes. Public reply requests reporter verification; no production billing or historical course data mutation.
+
 # kickoff 2026-08-26T06:34:00Z — Phase C write-back for in-app #242/#243: production revision `9e4a815cd9da8bc0aa2764f9ac3e501608c753c1`, Deploy to Pi run `32938402333` succeeded. #242 read-side HTTP 422 fix is on production; #243 latest payment report summary is on the CourseManagement and StudentsList course cards. Public replies request reporter verification; no production business-data mutation.
 
 # kickoff 2026-08-17T10:47:00Z — Phase C write-back for #238: same-day second-reschedule occupancy fix PR #1886 merged as `2d7ae86a043edbe226765c92476e5883ed06dd49`, Deploy to Pi run `32021552314` succeeded. The fix only changes occupancy filtering (leftover scheduled rows after a same-day move no longer occupy); no production course, quota, receipt, payment, or configuration mutation is authorized or required. Public reply links GitHub issue #1885 and requests reporter verification.

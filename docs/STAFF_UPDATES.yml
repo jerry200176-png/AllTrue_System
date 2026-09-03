@@ -3,6 +3,69 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-02-course-rate-unit-consistency
+    published_at: "2026-09-02"
+    audiences:
+      - director
+    importance: action_required
+    title: 課程查找計費單位同步
+    summary: 按時計費課程現在會顯示每小時費用並正確計算總額。
+    items:
+      - category: fixed
+        text: 編輯課程切換按堂／按時計費後，課程查找會同步顯示正確的每堂或每小時單價。
+      - category: fixed
+        text: 按時計費總費用會依課程實際總時數計算；按堂課程仍依購買堂數計算。
+    source_refs:
+      - "changelog:2026-09-02:course-rate-unit-consistency"
+
+  - id: staff-2026-09-02-fixed-slot-removal-and-teacher-workbench
+    published_at: "2026-09-02"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 固定時段移除與老師工作台修復
+    summary: 移除固定上課日不會再誤判衝堂，老師工作台重整更穩定且課程格可直接開啟詳情。
+    items:
+      - category: fixed
+        text: 固定課程移除既有時段時，不會把保留的自己課程誤當成新增調課；真正新增到已占用時段仍會阻擋。
+      - category: improved
+        text: 老師工作台重整課表時保留已載入內容，週一至週日標題在手機與桌面捲動時維持可見，每個已建立課程格都可開啟對應詳情。
+      - category: improved
+        text: admin 與 director 的頁面、權限與既有操作不受影響。
+    source_refs:
+      - "changelog:2026-09-02:fixed-slot-removal-and-teacher-workbench"
+
+  - id: staff-2026-09-02-receipt-expected-session-copy
+    published_at: "2026-09-02"
+    audiences:
+      - director
+    importance: digest
+    title: 電子收據預計堂次文案恢復
+    summary: 收據上的未上課堂次現在恢復顯示「（預計）」。
+    items:
+      - category: fixed
+        text: 電子收據中尚未實際上課且未取消的堂次會顯示「（預計）」；已上課堂次不加狀態字樣。
+      - category: improved
+        text: 收據畫面、複製文字與複製／下載圖片的文案一致；排課、點名與其他後台狀態不受影響。
+    source_refs:
+      - "changelog:2026-09-02:receipt-expected-session-copy"
+
+  - id: staff-2026-09-01-course-availability-planner
+    published_at: "2026-09-01"
+    audiences:
+      - director
+    importance: digest
+    title: 新建與編輯都能找老師空檔
+    summary: 編輯既有課程時也能用同一套老師空檔與容量試算。
+    items:
+      - category: improved
+        text: 從編輯課程選擇老師、日期、星期與時段後，可直接查詢未來四次固定日期的可用候選。
+      - category: improved
+        text: 條件變更後舊試算會失效並要求重新查詢；套用候選後儲存仍由後端再次檢查衝堂與教室容量。
+    source_refs:
+      - "changelog:2026-09-01:course-availability-planner"
+
   - id: staff-2026-09-01-scheduling-intersection-helper
     published_at: "2026-09-01"
     audiences:
@@ -17,6 +80,21 @@ updates:
         text: 點選候選時段會帶入固定排課欄位；若有日期資料取不到，系統不顯示該星期建議，送出時仍由後端再次檢查衝堂與教室容量。
     source_refs:
       - "changelog:2026-09-01:scheduling-intersection-helper"
+
+  - id: staff-2026-09-01-calendar-secondary-controls
+    published_at: "2026-09-01"
+    audiences:
+      - director
+    importance: digest
+    title: 行事曆工具列更清爽
+    summary: 主要日期控制常駐，其他篩選與操作需要時再展開。
+    items:
+      - category: improved
+        text: 月份、週次、跳至日期與日／週檢視維持直接可用，其他工具集中到「篩選與更多操作」。
+      - category: improved
+        text: 收合時會顯示目前啟用的篩選數；展開後原有篩選、老師請假、教室管理與快速排課維持不變。
+    source_refs:
+      - "changelog:2026-09-01:calendar-secondary-controls"
 
   - id: staff-2026-09-01-calendar-reschedule-authority
     published_at: "2026-09-01"

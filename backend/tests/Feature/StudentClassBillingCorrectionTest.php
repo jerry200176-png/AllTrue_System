@@ -224,6 +224,79 @@ class StudentClassBillingCorrectionTest extends TestCase
         )->assertStatus(409)->assertJsonPath('code', 'billing_correction_payment_report_locked');
     }
 
+    public function test_director_can_correct_unpaid_date_mode_charge_without_touching_entitlement(): void
+    {
+        [$token, $userId] = $this->director();
+        $student = $this->student();
+        $course = $this->course($student->id, [
+            'ScheduleMode' => 'date',
+            'SessionCount' => 0,
+            'RemainingSessions' => 0,
+            'UsedSessions' => 2,
+            'Charge' => 4400,
+            'Rate' => 1100,
+        ]);
+        $invoice = Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $course->ID,
+            'IssueDate' => '2026-08-25',
+            'TotalAmount' => 4400,
+            'PaidAmount' => 0,
+            'Status' => 'unpaid',
+        ]);
+        InvoiceItem::create([
+            'InvoiceID' => $invoice->id,
+            'StudentClassID' => $course->ID,
+            'Description' => '數學 8 月',
+            'Amount' => 4400,
+        ]);
+
+        $this->withToken($token)->postJson(
+            "/api/v1/student-classes/{$course->ID}/charge-correction",
+            ['new_charge' => 6500, 'reason' => '主任確認八月五堂新制費用']
+        )->assertOk()
+            ->assertJsonPath('old_charge', 4400)
+            ->assertJsonPath('new_charge', 6500)
+            ->assertJsonPath('used_sessions', 2)
+            ->assertJsonPath('remaining_sessions', 0)
+            ->assertJsonPath('adjusted_invoice_count', 1)
+            ->assertJsonPath('payment_status', 'unpaid');
+
+        $this->assertDatabaseHas('StudentClass', [
+            'ID' => $course->ID,
+            'Charge' => 6500,
+            'SessionCount' => 0,
+            'UsedSessions' => 2,
+            'RemainingSessions' => 0,
+        ]);
+        $this->assertDatabaseHas('Invoice', ['id' => $invoice->id, 'TotalAmount' => 6500]);
+        $this->assertDatabaseHas('InvoiceItem', ['InvoiceID' => $invoice->id, 'Amount' => 6500]);
+
+        $audit = DB::table('security_audit_events')
+            ->where('event_type', 'student_class.date_mode_charge_correction')
+            ->latest('id')->first();
+        $this->assertNotNull($audit);
+        $this->assertSame(SecurityAuditEvent::ref('user', $userId), $audit->actor_ref);
+        $metadata = json_decode($audit->metadata, true);
+        $this->assertSame(4400, (int) $metadata['old_charge']);
+        $this->assertSame(6500, (int) $metadata['new_charge']);
+        $this->assertSame(hash('sha256', '主任確認八月五堂新制費用'), $metadata['reason_hash']);
+    }
+
+    public function test_charge_correction_rejects_count_mode_courses(): void
+    {
+        [$token] = $this->director();
+        $student = $this->student();
+        $course = $this->course($student->id);
+
+        $this->withToken($token)->postJson(
+            "/api/v1/student-classes/{$course->ID}/charge-correction",
+            ['new_charge' => 7700, 'reason' => '測試']
+        )->assertStatus(422)->assertJsonPath('code', 'charge_correction_date_mode_only');
+
+        $this->assertDatabaseHas('StudentClass', ['ID' => $course->ID, 'Charge' => 8800]);
+    }
+
     /** @return array{0:string,1:int} */
     private function director(): array
     {

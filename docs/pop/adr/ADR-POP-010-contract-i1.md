@@ -43,4 +43,5 @@ INCIDENT stack must remain authoritative for **incident FINAL_ACTION selection**
 - Update `docs/CONTROL_PLANE_CONTRACT.md` (this PR).
 - Sunset `.github/workflows/173-supersede-repair.yml` in Phase 3.
 - INCIDENT FINAL_ACTION may **request** a POP operation; POP does not replace inference/policy.
-- Phase 1: no production execute — contract + catalog + schema only.
+- Phase 2: the contract + catalog + execution tables are live; this change enables
+  only the Founder-approved course repair through the Pi-local POP executor.

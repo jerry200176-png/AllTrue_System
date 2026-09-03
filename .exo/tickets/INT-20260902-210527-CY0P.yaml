@@ -1,0 +1,50 @@
+id: INT-20260902-210527-CY0P
+title: Issue 2280 target-specific read-only billing mapping probe
+intent: Issue 2280 target-specific read-only billing mapping probe
+kind: intent
+brain_dump: 'Continue AllTrue backlog convergence one issue at a time. Revalidate
+  GitHub #2280 / in-app #249 using current production state rather than labels or
+  unrelated fixed cases. Add only a bounded read-only production diagnostic for the
+  exact campus 17 student and English/Mathematics shared-package rows described in
+  the issue, mapping course, package, PaymentReport, Invoice, and Payment relationships
+  into aggregate PII-redacted summaries. Do not infer or mutate billing truth, do
+  not change production data, and do not close the issue.'
+boundary: Do not mutate production data; do not run Pi tests/phpunit; do not change
+  application business logic, database schema, auth, billing semantics, payment status,
+  invoice/payment/report data, or PII-bearing artifact output; no auto-close path.
+success_condition: 'A target-correct allowlisted probe identifies the exact reported
+  student/course/payment mapping or fails closed with a precise query error; output
+  contains only aggregate redacted summaries; CI checks pass; update #2280 with evidence
+  and the exact remaining Founder/accounting decision blocker.'
+risk: high
+priority: 1
+labels:
+- bug-2280
+scope:
+  allow:
+  - .github/workflows/bug-detail-dump.yml
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - backend/**
+  - frontend/**
+  - '**/.env*'
+  - database/**
+budgets:
+  max_files_changed: 3
+  max_loc_changed: 260
+checks:
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-02T21:05:27+08:00'
+children: []
+resource_profile: default
