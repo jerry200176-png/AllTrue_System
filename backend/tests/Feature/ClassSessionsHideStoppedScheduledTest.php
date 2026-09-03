@@ -8,6 +8,7 @@ use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
 use App\Models\UserCampus;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -19,6 +20,12 @@ use Tests\TestCase;
 class ClassSessionsHideStoppedScheduledTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
+    }
 
     public function test_index_hides_stop1_scheduled_but_keeps_attended(): void
     {
@@ -53,6 +60,32 @@ class ClassSessionsHideStoppedScheduledTest extends TestCase
         $res->assertOk();
         $ids = collect($res->json('data'))->pluck('id')->map(fn ($i) => (int) $i)->all();
         $this->assertContains($orphanId, $ids);
+    }
+
+    public function test_history_filter_excludes_future_scheduled_and_rescheduled_rows_only(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-03 09:00:00'));
+        [$token, , $orphanId] = $this->seedStop1Overlap();
+        $courseId = (int) ClassSession::findOrFail($orphanId)->StudentClassID;
+
+        $pastId = (int) ClassSession::create([
+            'StudentClassID' => $courseId, 'SessionDate' => '2026-08-27',
+            'StartTime' => '10:00', 'EndTime' => '11:00', 'Status' => 'rescheduled',
+        ])->id;
+        $futureRescheduledId = (int) ClassSession::create([
+            'StudentClassID' => $courseId, 'SessionDate' => '2026-09-10',
+            'StartTime' => '10:00', 'EndTime' => '11:00', 'Status' => 'rescheduled',
+        ])->id;
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/class-sessions?start=2026-08-01&end=2026-09-30&per_page=100&include_stopped_scheduled=1&exclude_history_future=1');
+
+        $res->assertOk();
+        $ids = collect($res->json('data'))->pluck('id')->map(fn ($i) => (int) $i)->all();
+        $this->assertContains($pastId, $ids);
+        $this->assertNotContains($futureRescheduledId, $ids, 'history must exclude future rescheduled rows on stopped courses');
     }
 
     /**

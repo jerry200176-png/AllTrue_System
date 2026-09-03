@@ -427,6 +427,16 @@ class ClassSessionController extends Controller
             $query->whereRaw("NOT (COALESCE(sc.Stop, 0) = 1 AND LOWER(cs.Status) = 'scheduled')");
         }
 
+        // History screens must not receive future reservations from a stopped
+        // course. Keep the default calendar contract unchanged; callers opt in
+        // when they are reading historical course detail.
+        if ($request->boolean('exclude_history_future')) {
+            $query->whereRaw(
+                "NOT ((COALESCE(sc.Stop, 0) = 1 OR LOWER(COALESCE(sc.closed_reason, '')) IN ('settled', 'completed', 'usage_settled')) AND cs.SessionDate > ? AND LOWER(cs.Status) IN ('scheduled', 'rescheduled'))",
+                [Carbon::today()->toDateString()]
+            );
+        }
+
         return $query;
     }
 

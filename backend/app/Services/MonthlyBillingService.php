@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\ClassSession;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -71,13 +72,7 @@ class MonthlyBillingService
             ];
         }
 
-        $sessions = ClassSession::query()
-            ->where('StudentClassID', (int) $course->getKey())
-            ->whereBetween('SessionDate', [$periodStart, $periodEnd])
-            ->whereIn('Status', self::BILLABLE_STATUSES)
-            ->orderBy('SessionDate')
-            ->orderBy('StartTime')
-            ->get(['SessionDate', 'StartTime', 'EndTime', 'session_charge']);
+        $sessions = $this->billableSessionsForPeriod($course, $billingPeriod);
 
         if ($sessions->isEmpty()) {
             return [
@@ -129,6 +124,62 @@ class MonthlyBillingService
             'period_end' => $periodEnd,
             'source' => 'billable_sessions',
         ];
+    }
+
+    /**
+     * The settlement ledger's dated source. Every monthly billing surface must
+     * use this exact status/date predicate; schedules are intentionally not a
+     * billing source because they include future, leave, and cancelled rows.
+     *
+     * @return Collection<int, ClassSession>
+     */
+    public function billableSessionsForPeriod(Model $course, string $billingPeriod): Collection
+    {
+        try {
+            $anchor = Carbon::createFromFormat('!Y-m', $billingPeriod);
+        } catch (\Throwable) {
+            $anchor = Carbon::today();
+        }
+
+        return ClassSession::query()
+            ->where('StudentClassID', (int) $course->getKey())
+            ->whereBetween('SessionDate', [
+                $anchor->copy()->startOfMonth()->toDateString(),
+                $anchor->copy()->endOfMonth()->toDateString(),
+            ])
+            ->whereIn('Status', self::BILLABLE_STATUSES)
+            ->orderBy('SessionDate')
+            ->orderBy('StartTime')
+            ->orderBy('id')
+            ->get(['id', 'SessionDate', 'StartTime', 'EndTime', 'Status', 'session_charge']);
+    }
+
+    /**
+     * Stable display snapshot fields for notifications and receipts. The
+     * ordinal is based on the same billable collection used for the charge.
+     *
+     * @return list<array{class_session_id:int,date:string,start_time:?string,end_time:?string,subject:string,lesson:int,status:string}>
+     */
+    public function billableSessionDetailsForPeriod(Model $course, string $billingPeriod): array
+    {
+        $subject = method_exists($course, 'displaySubjectName')
+            ? (string) $course->displaySubjectName()
+            : '課程';
+
+        return $this->billableSessionsForPeriod($course, $billingPeriod)
+            ->values()
+            ->map(function (ClassSession $session, int $index) use ($subject): array {
+                return [
+                    'class_session_id' => (int) $session->getKey(),
+                    'date' => Carbon::parse((string) $session->SessionDate)->toDateString(),
+                    'start_time' => $session->StartTime ? substr((string) $session->StartTime, 0, 5) : null,
+                    'end_time' => $session->EndTime ? substr((string) $session->EndTime, 0, 5) : null,
+                    'subject' => $subject ?: '課程',
+                    'lesson' => $index + 1,
+                    'status' => (string) ($session->Status ?? ''),
+                ];
+            })
+            ->all();
     }
 
     private static function minutes(string $time): int

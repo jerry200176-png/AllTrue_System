@@ -72,6 +72,15 @@ class MonthlyBillingSlipTest extends TestCase
                 'Status' => 'attended',
             ]);
         }
+        foreach (['leave', 'cancelled', 'scheduled'] as $status) {
+            ClassSession::create([
+                'StudentClassID' => $course->ID,
+                'SessionDate' => '2026-07-30',
+                'StartTime' => '18:00',
+                'EndTime' => '20:00',
+                'Status' => $status,
+            ]);
+        }
 
         $invoice = Invoice::create([
             'StudentID' => $student->id,
@@ -101,6 +110,10 @@ class MonthlyBillingSlipTest extends TestCase
         $response->assertJsonPath('charge', 7500);
         $response->assertJsonPath('period_sessions', 5);
         $response->assertJsonCount(5, 'sessions');
+        $response->assertJsonPath('billing_period', '2026-07');
+        $response->assertJsonPath('sessions.0.date', '2026-07-01');
+        $response->assertJsonPath('sessions.0.start_time', '18:00');
+        $this->assertSame($response->json('subject'), $response->json('sessions.0.subject'));
 
         $alerts = $this->withHeaders([
             'Authorization' => "Bearer {$token}",
@@ -131,6 +144,8 @@ class MonthlyBillingSlipTest extends TestCase
             ->assertJsonPath('items.0.period_start', '2026-07-01')
             ->assertJsonPath('items.0.period_end', '2026-07-31')
             ->assertJsonCount(5, 'sessions');
+
+        $this->assertSame($response->json('sessions'), $invoiceSlip->json('sessions'));
 
         $item = $invoiceSlip->json('items.0');
         $this->assertStringContainsString('月結費用 2026年7月（5堂）', (string) $item['description']);
