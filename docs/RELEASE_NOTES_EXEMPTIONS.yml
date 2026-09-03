@@ -7,6 +7,11 @@ exemptions:
     changelog_title: "feat(parent): Multi-Guardian canonical Portal cutover"
     reason: 家長 Portal 授權路徑與 revoke/SLB  hardening；教職員公告已由 GA release notes 覆蓋。rollback 為關 PERF_MULTI_GUARDIAN。
 
+  - id: silent-2026-09-03-pop-dry-run-retry
+    changelog_date: "2026-09-03"
+    changelog_title: "fix(pop): 失敗 dry-run 支援受控重試並保留歷史 attempt"
+    reason: 僅修復 POP 內部控制平面失敗 dry-run 的 append-only retry 與 drift fail-closed；不新增主任操作流程、不執行 Huang repair，execute／verify／rollback mutation gate 維持不變。
+
   - id: silent-2026-09-03-multi-guardian-portal-authz
     changelog_date: "2026-09-03"
     changelog_title: "feat(parent): Parent Portal multi-guardian dual-read authZ"
