@@ -1,0 +1,127 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\AuthToken;
+use App\Models\Student;
+use App\Models\StudentGuardian;
+use App\Models\User;
+use App\Models\UserCampus;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
+
+class StudentGuardianStaffApiTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private function directorToken(int $campusId = 1): string
+    {
+        $user = User::create([
+            'LoginName' => 'guardian-staff-' . uniqid() . '@example.test',
+            'Name' => 'Guardian Staff',
+            'PSW' => 'secret',
+            'type' => 'A',
+            'phone' => '0911000000',
+            'MustChangePassword' => false,
+        ]);
+        UserCampus::firstOrCreate([
+            'CampusID' => $campusId,
+            'UserID' => $user->id,
+        ], [
+            'Admin' => 1,
+            'Approved' => 1,
+        ]);
+        $plain = bin2hex(random_bytes(16));
+        AuthToken::create([
+            'user_id' => $user->id,
+            'token' => $plain,
+            'expires_at' => now()->addDay(),
+        ]);
+
+        return $plain;
+    }
+
+    private function student(array $overrides = []): Student
+    {
+        return Student::create(array_merge([
+            'name' => '監護人 CRUD 生',
+            'CampusID' => 1,
+            'ClassID' => 1,
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+            'parent_name' => '王爸',
+            'parent_phone' => '0912345678',
+        ], $overrides));
+    }
+
+    public function test_staff_guardian_api_is_dark_when_flag_off(): void
+    {
+        config(['perfflags.multi_guardian_enabled' => false]);
+        $token = $this->directorToken();
+        $student = $this->student();
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->getJson("/api/v1/students/{$student->id}/guardians")
+            ->assertNotFound();
+    }
+
+    public function test_two_guardians_via_staff_api_with_primary(): void
+    {
+        config(['perfflags.multi_guardian_enabled' => true]);
+        $token = $this->directorToken();
+        $student = $this->student();
+
+        $dad = $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->postJson("/api/v1/students/{$student->id}/guardians", [
+                'display_name' => '爸爸',
+                'phone' => '0912000001',
+                'role' => 'father',
+                'is_primary' => true,
+            ]);
+        $dad->assertCreated();
+
+        $mom = $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->postJson("/api/v1/students/{$student->id}/guardians", [
+                'display_name' => '媽媽',
+                'phone' => '0912000002',
+                'role' => 'mother',
+                'is_primary' => false,
+                'notify_learning_feedback' => false,
+            ]);
+        $mom->assertCreated();
+
+        $list = $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->getJson("/api/v1/students/{$student->id}/guardians");
+        $list->assertOk();
+        $this->assertCount(2, $list->json('guardians'));
+        $this->assertSame(
+            1,
+            StudentGuardian::where('student_id', $student->id)->where('status', '!=', 'revoked')->where('is_primary', true)->count()
+        );
+        $this->assertFalse((bool) StudentGuardian::find((int) $mom->json('id'))->notify_learning_feedback);
+    }
+
+    public function test_revoke_guardian_via_staff_api(): void
+    {
+        config(['perfflags.multi_guardian_enabled' => true]);
+        $token = $this->directorToken();
+        $student = $this->student();
+
+        $created = $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->postJson("/api/v1/students/{$student->id}/guardians", [
+                'display_name' => '其他',
+                'phone' => '0912999000',
+                'role' => 'other',
+                'is_primary' => false,
+            ]);
+        $created->assertCreated();
+        $id = (int) $created->json('id');
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->deleteJson("/api/v1/students/{$student->id}/guardians/{$id}")
+            ->assertOk();
+
+        $this->assertSame(StudentGuardian::STATUS_REVOKED, StudentGuardian::find($id)->status);
+    }
+}

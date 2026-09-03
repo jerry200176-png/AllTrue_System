@@ -2,6 +2,21 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-03-multi-guardian-staff-crud
+    changelog_date: "2026-09-03"
+    changelog_title: "feat(parent): 學生管理多家長 CRUD（flag 閘控）"
+    reason: 多家長 CRUD 僅在 PERF_MULTI_GUARDIAN 開啟時可見；預設關閉時 API 404。production flag enable 另需 Founder GO。
+
+  - id: silent-2026-09-03-multi-parent-line-notify
+    changelog_date: "2026-09-03"
+    changelog_title: "fix(parent): 多家長 LINE 綁定通知與偏好一致性"
+    reason: 僅後端家長 LINE 推播 fan-out、偏好 scope 與停止覆寫 legacy LineID；merge 不授權 production migrate。主任畫面與綁定驗證規則不變，家長入口無新操作流程。
+
+  - id: silent-2026-09-03-multi-guardian-foundation
+    changelog_date: "2026-09-03"
+    changelog_title: "feat(parent): 多 Guardian 加法模型與雙寫雙讀（dark launch）"
+    reason: 加法表與 dark-launch flag 預設關閉；merge 不授權 production migrate。教職員畫面僅在 flag 開啟後才出現多家長 CRUD，預設行為與 parent_phone 相容路徑不變。
+
   - id: silent-2026-08-30-students-button-semantics
     changelog_date: "2026-08-30"
     changelog_title: "improved(ux): 學生管理操作按鈕語意更穩定"

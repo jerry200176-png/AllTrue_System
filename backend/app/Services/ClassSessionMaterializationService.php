@@ -209,6 +209,16 @@ class ClassSessionMaterializationService
             ->where(function ($query) {
                 $query->where('sc.Stop', 0)->orWhereNull('sc.Stop');
             })
+            // Legacy ClassSession rows outside the other contract's effective
+            // period are historical residue and must not block a new slot.
+            ->where(function ($query) use ($sessionDate) {
+                $query->whereNull('sc.StartDate')
+                    ->orWhereDate('sc.StartDate', '<=', $sessionDate);
+            })
+            ->where(function ($query) use ($sessionDate) {
+                $query->whereNull('sc.EndDate')
+                    ->orWhereDate('sc.EndDate', '>=', $sessionDate);
+            })
             ->whereNotIn('cs.Status', $activeStatuses)
             ->whereRaw("LOWER(COALESCE(sc.ClassType, '')) <> ?", ['trial'])
             ->where('cs.StartTime', '<', $endTime)
@@ -230,7 +240,7 @@ class ClassSessionMaterializationService
 
         // A schedule may exist before its ClassSession is materialized. Check it
         // here too, otherwise a later backfill could recreate the overlap.
-        $scheduleConflict = DB::table('schedules as s')
+        $scheduleConflicts = DB::table('schedules as s')
             ->leftJoin('StudentClass as sc', 'sc.ID', '=', 's.student_course_id')
             ->where('s.student_id', $studentId)
             ->whereDate('s.schedule_date', $sessionDate)
@@ -258,10 +268,26 @@ class ClassSessionMaterializationService
                     ->orWhere('sc.Stop', 0)
                     ->orWhereNull('sc.Stop');
             })
+            // Apply the same contract-period boundary to schedule-only rows;
+            // otherwise stale future plans can look like a live conflict.
+            ->where(function ($query) use ($sessionDate) {
+                $query->whereNull('sc.StartDate')
+                    ->orWhereDate('sc.StartDate', '<=', $sessionDate);
+            })
+            ->where(function ($query) use ($sessionDate) {
+                $query->whereNull('sc.EndDate')
+                    ->orWhereDate('sc.EndDate', '>=', $sessionDate);
+            })
             ->where('s.start_time', '<', substr($endTime, 0, 5))
             ->where('s.end_time', '>', substr($startTime, 0, 5))
             ->orderBy('s.id')
-            ->first(['s.id', 's.status']);
+            ->get(['s.id', 's.status', 's.student_course_id', 's.start_time']);
+
+        // Match availability's source-of-truth rule: a scheduled exception
+        // backed only by cancelled/leave ClassSessions is stale and cannot
+        // block materialization. Keep schedule-only makeup rows as busy.
+        $scheduleConflict = app(StaleScheduleExceptionFilter::class)
+            ->rejectStale($scheduleConflicts, $sessionDate)[0] ?? null;
 
         if ($scheduleConflict) {
             throw SlotOccupiedException::fromStudentConflict(
