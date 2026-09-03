@@ -1,3 +1,9 @@
+## 2026-09-03 — feat(parent): Parent Portal multi-guardian dual-read authZ
+<!-- release-notes: silent_ship=silent-2026-09-03-multi-guardian-portal-authz -->
+- Parent Portal LINE login／切換學生在 `PERF_MULTI_GUARDIAN` 開啟時改走 `guardians` + `student_guardians`（active／read_only）dual-read；flag 關閉仍僅 verified SLB。
+- Staff revoke 監護關係後立即失效對應 `ParentSession`；revoked 優先於殘留 SLB。不新建 ParentIdentity 表、不 cutover `parent_phone`。
+- PB-00 對 PB-04 的過期硬阻擋已解除（Founder GO）；rollback = 關 flag。
+
 ## 2026-09-03 — feat(parent): 學生管理多家長 CRUD（flag 閘控）
 <!-- release-notes: silent_ship=silent-2026-09-03-multi-guardian-staff-crud -->
 - 主任可在學生編輯（`PERF_MULTI_GUARDIAN` 開啟時）新增／解除多位監護人並指定主要聯絡人。
