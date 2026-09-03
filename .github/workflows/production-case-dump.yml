@@ -257,11 +257,11 @@ jobs:
                 ->map(fn ($id) => (int)$id)->all()
               : $studentQuery->whereRaw('TRIM(name) = ?', [$targetStudentName])->pluck('id')
                 ->map(fn ($id) => (int)$id)->all();
-            if ($studentIds === [] && $targetStudentClassId === null) {
+            if ($studentIds === [] && $targetStudentClassId === null) {{
               $studentIds = $db::table('Student')->where('CampusID', $campusId)
                 ->where('name', 'like', '%' . $targetStudentName . '%')->pluck('id')
                 ->map(fn ($id) => (int)$id)->all();
-            }
+            }}
             $classes = $db::table('StudentClass as sc')->whereIn('sc.StudentID', $studentIds)
               ->when($targetStudentClassId !== null, fn ($query) => $query->where('sc.ID', $targetStudentClassId))
               ->orderBy('sc.ID')->get(['sc.ID as class_id', 'sc.StudentID as student_id', 'sc.SubjectID as subject_id',
