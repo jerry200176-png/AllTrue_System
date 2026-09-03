@@ -11,6 +11,7 @@ class ParentSession extends Model
     protected $fillable = [
         'StudentID',
         'identity_group_id',
+        'line_user_id',
         'TokenHash',
         'ExpiresAt',
     ];

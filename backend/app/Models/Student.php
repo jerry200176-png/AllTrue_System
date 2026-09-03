@@ -41,4 +41,9 @@ class Student extends Model
     {
         return $this->hasMany(StudentClass::class, 'StudentID', 'id');
     }
+
+    public function studentGuardians()
+    {
+        return $this->hasMany(StudentGuardian::class, 'student_id');
+    }
 }
