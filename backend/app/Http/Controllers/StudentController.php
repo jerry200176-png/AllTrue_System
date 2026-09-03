@@ -8,6 +8,7 @@ use App\Models\StudentLineBinding;
 use App\Models\PaymentReport;
 use App\Models\SecurityAuditEvent;
 use App\Models\UserCampus;
+use App\Services\ParentBinding\GuardianSyncService;
 use App\Support\Utf8mb3SearchSanitizer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -206,6 +207,15 @@ class StudentController extends Controller
             'TelegramID'   => '',
         ]);
 
+        try {
+            app(GuardianSyncService::class)->syncPrimaryFromStudent($student);
+        } catch (\Throwable $e) {
+            Log::warning('guardian.dual_write.store_failed', [
+                'student_id' => (int) $student->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
         return response()->json($this->transformStudent($student), 201);
     }
 
@@ -241,6 +251,17 @@ class StudentController extends Controller
         }
 
         $student->save();
+
+        if (isset($input['parent_name']) || isset($input['parent_phone']) || isset($input['phone']) || isset($input['Phone'])) {
+            try {
+                app(GuardianSyncService::class)->syncPrimaryFromStudent($student);
+            } catch (\Throwable $e) {
+                Log::warning('guardian.dual_write.update_failed', [
+                    'student_id' => (int) $student->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
 
         if (isset($input['grade']) || isset($input['GradeID'])) {
             \App\Models\StudentClass::where('StudentID', $student->id)

@@ -1,3 +1,17 @@
+## 2026-09-03 — fix(parent): 多家長 LINE 綁定通知與偏好一致性
+<!-- release-notes: silent_ship=silent-2026-09-03-multi-parent-line-notify -->
+- 學費催繳改為推播給該學生所有已驗證 LINE bindings，不再只取第一筆。
+- 家長通知偏好改為只更新目前登入的 LINE binding；同學生其他家長偏好不受影響。
+- 若 session 帶 `line_user_id` 但該 binding 已撤銷，偏好更新 fail closed（422），不 fallback 到其他家長。
+- 停止在 LINE 綁定時覆寫 legacy `Student.LineID`（canonical 為 `student_line_bindings`）。
+- **Merge ≠ migrate**：合併至 main 不授權 production migration；`ParentSession.line_user_id` 欄位於 production 僅在 Founder activation GO 後套用。不新增第二家長手機欄、不做 ParentIdentity／GSR 架構擴張。
+
+## 2026-09-03 — feat(parent): 多 Guardian 加法模型與雙寫雙讀（dark launch）
+<!-- release-notes: silent_ship=silent-2026-09-03-multi-guardian-foundation -->
+- 新增 `guardians` / `student_guardians`（Student 1:N），保留 `parent_phone`；dual-write 在表存在時啟用，dual-read 由 `PERF_MULTI_GUARDIAN`（預設關）控制。
+- Dual-write 以 legacy `parent_phone`／`parent_name` 為唯一寫入來源，避免 flag 開啟後讀回 Guardian 舊值造成 stale sync。
+- **Merge ≠ migrate**：合併至 main 不授權 production migration；production migrate／activation 僅在 Founder GO 後執行。不加 `parent_phone_2`、不做 big-bang cutover。
+
 ## 2026-09-02 — fix(billing): 課程查找同步按堂／按時計費單位
 <!-- release-notes: staff_update=staff-2026-09-02-course-rate-unit-consistency -->
 - 修正課程編輯由按堂切換為按時計費後，`rate_unit` 未完整送回與總費用仍按堂計算的問題。
