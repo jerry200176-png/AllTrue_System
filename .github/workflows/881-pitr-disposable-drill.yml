@@ -93,7 +93,7 @@ jobs:
 
           ANCHOR_FILE="$(grep -m1 'CHANGE MASTER TO' "$BASELINE")"
           BINLOG_FILE="$(printf '%s\n' "$ANCHOR_FILE" | sed -n "s/.*MASTER_LOG_FILE='\\([^']*\\)'.*/\\1/p")"
-          BINLOG_POS="$(printf '%s\n' "$ANCHOR_FILE" | sed -n 's/.*MASTER_LOG_POS=\\([0-9]*\\).*/\\1/p')"
+          BINLOG_POS="$(printf '%s\n' "$ANCHOR_FILE" | sed -n 's/.*MASTER_LOG_POS=\([0-9]*\).*/\1/p')"
           [ -n "$BINLOG_FILE" ] || { echo 'Missing binlog file anchor' >&2; exit 1; }
           [ -n "$BINLOG_POS" ] || { echo 'Missing binlog position anchor' >&2; exit 1; }
 
