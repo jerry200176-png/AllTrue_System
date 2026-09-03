@@ -37,6 +37,9 @@ def test_founder_repair_workflow_is_exactly_scoped_and_protected():
     assert 'echo "$TOKEN"' not in text
     assert 'echo "$response"' not in text
     assert "reason_codes=" in text
+    assert "plan_probe=exception" in text
+    assert "database_query_exception" in text
+    assert "PARAMETERS_JSON=\"$PARAMETERS_JSON\" php artisan tinker" in text
     assert "curl -sS" in text and '-o "$output"' in text
 def test_confirmation_and_sha_are_fail_closed():
     text = WORKFLOW.read_text()

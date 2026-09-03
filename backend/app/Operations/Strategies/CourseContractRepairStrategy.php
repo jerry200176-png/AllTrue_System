@@ -201,7 +201,7 @@ final class CourseContractRepairStrategy
     /** @param array<int,int> $classIds */
     private function hasPaymentEvidence(array $classIds): bool
     {
-        return DB::table('PaymentReport')->whereIn('StudentClassID', $classIds)->exists()
+        return DB::table('payment_reports')->whereIn('StudentClassID', $classIds)->exists()
             || DB::table('Invoice')->whereIn('StudentClassID', $classIds)->where('PaidAmount', '>', 0)->exists()
             || DB::table('Payment')->join('Invoice', 'Payment.InvoiceID', '=', 'Invoice.id')->whereIn('Invoice.StudentClassID', $classIds)->where(function ($q) { $q->whereNull('Payment.Method')->orWhere('Payment.Method', '!=', 'void'); })->exists();
     }
@@ -241,7 +241,7 @@ final class CourseContractRepairStrategy
         $ledger = [];
         foreach ($sessionIds as $sessionId) {
             $learningRecords[(string) $sessionId] = DB::table('LearningRecord')->where('ClassSessionID', $sessionId)->get()->map(fn ($row): array => (array) $row)->all();
-            $signIns[(string) $sessionId] = DB::table('StudentSignIn')->where('ClassSessionID', $sessionId)->get()->map(fn ($row): array => (array) $row)->all();
+            $signIns[(string) $sessionId] = DB::table('StudentSingIn')->where('ClassSessionID', $sessionId)->get()->map(fn ($row): array => (array) $row)->all();
             $ledger[(string) $sessionId] = DB::table('session_deduction_ledger')->where('class_session_id', $sessionId)->get()->map(fn ($row): array => (array) $row)->all();
         }
         return [
@@ -294,7 +294,7 @@ final class CourseContractRepairStrategy
 
     private function assertMirrorOwnership(int $sessionId, int $studentClassId, array &$errors): void
     {
-        foreach ([['LearningRecord', 'ClassSessionID', 'StudentClassID', 'learning_record'], ['StudentSignIn', 'ClassSessionID', 'StudentClassID', 'student_sign_in'], ['session_deduction_ledger', 'class_session_id', 'student_class_id', 'ledger']] as [$table, $foreignKey, $ownerKey, $label]) {
+        foreach ([['LearningRecord', 'ClassSessionID', 'StudentClassID', 'learning_record'], ['StudentSingIn', 'ClassSessionID', 'StudentClassID', 'student_sign_in'], ['session_deduction_ledger', 'class_session_id', 'student_class_id', 'ledger']] as [$table, $foreignKey, $ownerKey, $label]) {
             $owners = DB::table($table)->where($foreignKey, $sessionId)->pluck($ownerKey)->map(fn ($id): int => (int) $id)->unique()->values()->all();
             if ($owners !== [] && $owners !== [$studentClassId]) $errors[] = "{$label}_{$sessionId}_drifted";
         }

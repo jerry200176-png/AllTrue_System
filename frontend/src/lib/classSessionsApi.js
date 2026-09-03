@@ -389,6 +389,7 @@ const CHUNK_SIZE = 200;
 async function fetchClassSessionsSingle({
   token, branchId, studentClassId, studentClassIds,
   teacherId, studentId, start, end, perPage = 2000,
+  excludeHistoryFuture = false,
 } = {}) {
   const params = new URLSearchParams();
   if (branchId) params.set('branch_id', String(branchId));
@@ -400,6 +401,7 @@ async function fetchClassSessionsSingle({
   if (studentId) params.set('student_id', String(studentId));
   if (start) params.set('start', String(start));
   if (end) params.set('end', String(end));
+  if (excludeHistoryFuture) params.set('exclude_history_future', '1');
   params.set('per_page', String(perPage));
 
   const res = await fetch(`/api/v1/class-sessions?${params.toString()}`, {
