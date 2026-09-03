@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "7f9ffab1fd4548168ac33686b195f15e",
+  "session_id": "3a50012c34854ea6956d477dee7ca604",
   "project": "alltrue",
-  "task_id": "multi-guardian-staff-crud-20260903b",
+  "task_id": "transfer-contract-integrity-20260903",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "ac88893d1d1e4a326635471df5673a69ae0285fc",
-  "branch": "chore/task-multi-guardian-staff-crud-20260903b",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/multi-guardian-staff-crud-20260903b",
-  "started_at": "2026-09-03T07:30:14Z",
+  "base_sha": "2f5a82ee5e488dd087c23bcdd60756bf0f2b1952",
+  "branch": "chore/task-transfer-contract-integrity-20260903",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/transfer-contract-integrity-20260903",
+  "started_at": "2026-09-03T08:50:45Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": null,
+  "agent_cli": "codex",
   "gateway_version": "0.5.0"
 }
