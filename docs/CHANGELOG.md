@@ -1,3 +1,9 @@
+## 2026-09-03 — feat(parent): Multi-Guardian canonical Portal cutover
+<!-- release-notes: silent_ship=silent-2026-09-03-multi-guardian-cutover -->
+- Portal LINE 授權在 flag 開啟且 Guardian 存在時僅走 active／read_only `student_guardians`；無 Guardian 列才暫用 SLB 相容。
+- revoke 同步取消 verified SLB；手機登入比對任一 active guardian 手機；多子女切換改共享 guardian。
+- 新增 `guardians:cutover-audit`／`repair_slb`；禁止以共用手機合併不同 LINE 身份。不 drop `parent_phone`。
+
 ## 2026-09-03 — release(parent): Multi-Guardian 正式版（Staff CRUD + Portal authZ + cutover）
 <!-- release-notes: staff_update=staff-2026-09-03-multi-guardian-ga -->
 - **正式版**：一位學生可有多位監護人；家長 Portal 以 `guardians` / `student_guardians` 為授權來源（active／read_only）；支援多子女與跨分校切換。
