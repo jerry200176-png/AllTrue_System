@@ -175,6 +175,13 @@ UI「家長手機」欄 → 儲存到 Student.parent_phone
 - **LINE OA 綁定**（2026-06-28）：`LineWebhookController` 的「綁定 姓名 手機」也必須走同一邏輯（`StudentContactPhone`），不可只查 `Phone`
 - 修復：PR #38，2026-04-24；LINE bind 對齊 PR #1037
 
+### R10b. 多家長 LINE：通知 fan-out、偏好 per-binding、勿把 `Student.LineID` 當真相
+
+- **DB**：`student_line_bindings` UNIQUE `(student_id, line_user_id)` → 同一學生可有多位 verified LINE 家長
+- **禁止**：重要推播（學費等）對 bindings `->first()`；通知偏好 `where(student_id)->update` 一次改掉所有家長
+- **正確**：推播遍歷該生 campus 內所有 verified bindings；偏好只改 session 的 `line_user_id` 對應 binding；canonical 是 SLB，綁定時不要覆寫 legacy `Student.LineID`
+- 回歸：`MultiParentLineBindingConsistencyTest`
+
 ### R9. deploy.yml `git pull` 改為 `git fetch + reset --hard`
 
 ```bash
