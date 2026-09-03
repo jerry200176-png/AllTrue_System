@@ -175,13 +175,6 @@ UI「家長手機」欄 → 儲存到 Student.parent_phone
 - **LINE OA 綁定**（2026-06-28）：`LineWebhookController` 的「綁定 姓名 手機」也必須走同一邏輯（`StudentContactPhone`），不可只查 `Phone`
 - 修復：PR #38，2026-04-24；LINE bind 對齊 PR #1037
 
-### R10c. 多 Guardian 加法模型：dual-write 常開、dual-read 靠 flag
-
-- 表：`guardians` + `student_guardians`（additive；不砍 `parent_phone`）
-- dual-write：學生 `parent_*` 變更 → sync primary guardian（表存在即寫）
-- dual-read：`PERF_MULTI_GUARDIAN=true` 才優先讀 primary guardian phone
-- 回歸：`MultiGuardianFoundationTest`
-
 ### R9. deploy.yml `git pull` 改為 `git fetch + reset --hard`
 
 ```bash

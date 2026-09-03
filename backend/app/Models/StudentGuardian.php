@@ -5,6 +5,22 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * @property int|null $id
+ * @property int $student_id
+ * @property int $guardian_id
+ * @property int|null $campus_id
+ * @property string $role
+ * @property bool $is_primary
+ * @property string $status
+ * @property bool $notify_learning_feedback
+ * @property bool $notify_tuition
+ * @property string $source
+ * @property int|null $student_line_binding_id
+ * @property \Illuminate\Support\Carbon|null $revoked_at
+ * @property-read Guardian|null $guardian
+ * @property-read Student|null $student
+ */
 class StudentGuardian extends Model
 {
     public const STATUS_PENDING = 'pending';

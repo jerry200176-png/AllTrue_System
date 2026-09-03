@@ -39,26 +39,27 @@ final class GuardianSyncService
             return null;
         }
 
+        $studentId = (int) $student->getKey();
         $phone = trim((string) StudentContactPhone::forStudent($student));
-        $name = trim((string) ($student->parent_name ?? ''));
+        $name = trim((string) ($student->getAttribute('parent_name') ?? ''));
         $normalized = Guardian::normalizePhone($phone);
 
         if ($normalized === '' && $name === '') {
             return null;
         }
 
-        return DB::transaction(function () use ($student, $phone, $name, $normalized) {
+        return DB::transaction(function () use ($student, $studentId, $phone, $name, $normalized) {
             $guardian = $this->findOrCreateGuardian($name !== '' ? $name : null, $phone, $normalized, null);
 
             /** @var StudentGuardian|null $existingPrimary */
             $existingPrimary = StudentGuardian::query()
-                ->where('student_id', $student->id)
-                ->notRevoked()
+                ->where('student_id', $studentId)
+                ->where('status', '!=', StudentGuardian::STATUS_REVOKED)
                 ->where('is_primary', true)
                 ->lockForUpdate()
                 ->first();
 
-            if ($existingPrimary && (int) $existingPrimary->guardian_id === (int) $guardian->id) {
+            if ($existingPrimary && (int) $existingPrimary->guardian_id === (int) $guardian->getKey()) {
                 $existingPrimary->fill([
                     'campus_id' => (int) ($student->CampusID ?? 0) ?: null,
                     'status' => StudentGuardian::STATUS_ACTIVE,
@@ -69,15 +70,15 @@ final class GuardianSyncService
 
             // Demote other primaries (keep rows; only one primary at a time).
             StudentGuardian::query()
-                ->where('student_id', $student->id)
-                ->notRevoked()
+                ->where('student_id', $studentId)
+                ->where('status', '!=', StudentGuardian::STATUS_REVOKED)
                 ->where('is_primary', true)
                 ->update(['is_primary' => false]);
 
             /** @var StudentGuardian $link */
             $link = StudentGuardian::query()->firstOrNew([
-                'student_id' => $student->id,
-                'guardian_id' => $guardian->id,
+                'student_id' => $studentId,
+                'guardian_id' => $guardian->getKey(),
             ]);
             $link->fill([
                 'campus_id' => (int) ($student->CampusID ?? 0) ?: null,
@@ -92,9 +93,9 @@ final class GuardianSyncService
             $link->save();
 
             Log::info('guardian.dual_write.primary_synced', [
-                'student_id' => (int) $student->id,
-                'guardian_id' => (int) $guardian->id,
-                'student_guardian_id' => (int) $link->id,
+                'student_id' => $studentId,
+                'guardian_id' => (int) $guardian->getKey(),
+                'student_guardian_id' => (int) $link->getKey(),
             ]);
 
             return $link->fresh(['guardian']);
@@ -112,6 +113,7 @@ final class GuardianSyncService
             throw new \RuntimeException('guardian tables unavailable');
         }
 
+        $studentId = (int) $student->getKey();
         $phone = trim((string) ($attrs['phone'] ?? ''));
         $normalized = Guardian::normalizePhone($phone);
         $lineUserId = trim((string) ($attrs['line_user_id'] ?? ''));
@@ -123,27 +125,27 @@ final class GuardianSyncService
             throw new \InvalidArgumentException('guardian requires phone or line_user_id');
         }
 
-        return DB::transaction(function () use ($student, $attrs, $source, $phone, $normalized, $lineUserId, $name) {
+        return DB::transaction(function () use ($student, $studentId, $attrs, $source, $phone, $normalized, $lineUserId, $name) {
             $guardian = $this->findOrCreateGuardian($name, $phone !== '' ? $phone : null, $normalized, $lineUserId);
 
             $makePrimary = (bool) ($attrs['is_primary'] ?? false);
             if ($makePrimary) {
                 StudentGuardian::query()
-                    ->where('student_id', $student->id)
-                    ->notRevoked()
+                    ->where('student_id', $studentId)
+                    ->where('status', '!=', StudentGuardian::STATUS_REVOKED)
                     ->where('is_primary', true)
                     ->update(['is_primary' => false]);
             }
 
             /** @var StudentGuardian $link */
             $link = StudentGuardian::query()->firstOrNew([
-                'student_id' => $student->id,
-                'guardian_id' => $guardian->id,
+                'student_id' => $studentId,
+                'guardian_id' => $guardian->getKey(),
             ]);
             $link->fill([
                 'campus_id' => (int) ($student->CampusID ?? 0) ?: null,
                 'role' => (string) ($attrs['role'] ?? $link->role ?: StudentGuardian::ROLE_GUARDIAN),
-                'is_primary' => $makePrimary || (!$link->exists && !StudentGuardian::query()->where('student_id', $student->id)->notRevoked()->where('is_primary', true)->exists()),
+                'is_primary' => $makePrimary || (!$link->exists && !StudentGuardian::query()->where('student_id', $studentId)->where('status', '!=', StudentGuardian::STATUS_REVOKED)->where('is_primary', true)->exists()),
                 'status' => StudentGuardian::STATUS_ACTIVE,
                 'notify_learning_feedback' => array_key_exists('notify_learning_feedback', $attrs)
                     ? (bool) $attrs['notify_learning_feedback']
@@ -164,38 +166,6 @@ final class GuardianSyncService
         });
     }
 
-    public function revoke(StudentGuardian $link): void
-    {
-        if (!self::dualWriteEnabled()) {
-            return;
-        }
-
-        DB::transaction(function () use ($link) {
-            $wasPrimary = (bool) $link->is_primary;
-            $studentId = (int) $link->student_id;
-            $link->status = StudentGuardian::STATUS_REVOKED;
-            $link->is_primary = false;
-            $link->revoked_at = now();
-            $link->save();
-
-            if ($wasPrimary) {
-                $next = StudentGuardian::query()
-                    ->where('student_id', $studentId)
-                    ->notRevoked()
-                    ->orderByDesc('id')
-                    ->first();
-                if ($next) {
-                    $next->is_primary = true;
-                    $next->save();
-                    $student = Student::query()->find($studentId);
-                    if ($student) {
-                        $this->mirrorPrimaryToLegacyStudent($student, $next->guardian);
-                    }
-                }
-            }
-        });
-    }
-
     /** @return list<StudentGuardian> */
     public function listForStudent(int $studentId): array
     {
@@ -206,7 +176,7 @@ final class GuardianSyncService
         return StudentGuardian::query()
             ->with('guardian')
             ->where('student_id', $studentId)
-            ->notRevoked()
+            ->where('status', '!=', StudentGuardian::STATUS_REVOKED)
             ->orderByDesc('is_primary')
             ->orderBy('id')
             ->get()
@@ -221,12 +191,13 @@ final class GuardianSyncService
 
         $primary = StudentGuardian::query()
             ->with('guardian')
-            ->where('student_id', $student->id)
-            ->notRevoked()
+            ->where('student_id', (int) $student->getKey())
+            ->where('status', '!=', StudentGuardian::STATUS_REVOKED)
             ->where('is_primary', true)
             ->first();
 
-        $phone = trim((string) ($primary?->guardian?->phone ?? ''));
+        $guardian = $primary?->guardian;
+        $phone = trim((string) ($guardian !== null ? ($guardian->phone ?? '') : ''));
         return $phone !== '' ? $phone : null;
     }
 
@@ -264,9 +235,9 @@ final class GuardianSyncService
             return;
         }
         // Keep legacy columns in sync while dual-writing so flag-off rollback stays correct.
-        $student->parent_name = $guardian->display_name;
+        $student->setAttribute('parent_name', $guardian->display_name);
         if (trim((string) ($guardian->phone ?? '')) !== '') {
-            $student->parent_phone = $guardian->phone;
+            $student->setAttribute('parent_phone', $guardian->phone);
         }
         $student->save();
     }
