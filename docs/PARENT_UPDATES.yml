@@ -9,6 +9,14 @@
 # Then commit frontend/src/lib/parentUpdates.generated.js (CI checks drift).
 
 updates:
+  - id: parent-update-2026-09-03-multi-guardian
+    published_at: "2026-09-03"
+    expires_at: "2026-10-03"
+    kind: improvement
+    title: 多位家長可各自登入
+    summary: 同一位學生的爸爸、媽媽或其他監護人可各自用自己的 LINE 或手機進入家長入口，並切換查看其他子女。
+    details: 若校方解除您的監護關係，您將無法再登入該學生資料。課表、請假與學習內容的操作方式不變。
+
   - id: parent-update-2026-08-20-attention-summary
     published_at: "2026-08-20"
     expires_at: "2026-09-19"
