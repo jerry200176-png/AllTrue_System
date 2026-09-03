@@ -4315,9 +4315,8 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\Student\:\:\$id\.$#'
 			identifier: property.notFound
-			count: 8
+			count: 9
 			path: app/Http/Controllers/StudentController.php
-
 		-
 			message: '#^Access to an undefined property App\\Models\\Student\:\:\$notes\.$#'
 			identifier: property.notFound

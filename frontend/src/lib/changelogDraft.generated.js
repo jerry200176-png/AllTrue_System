@@ -8,13 +8,19 @@ export const changelogDraftNotes = [
     "version": "2026.09.03",
     "date": "2026-09-03",
     "title": "2026.09.03 草稿（未發布）",
-    "summary": "多家長 LINE 綁定通知與偏好一致性",
+    "summary": "多 Guardian 加法模型與雙寫雙讀（dark launch）；多家長 LINE 綁定通知與偏好一致性",
     "audience": [
       "teacher",
       "director"
     ],
     "draft": true,
     "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "多 Guardian 加法模型與雙寫雙讀（dark launch）"
+        ]
+      },
       {
         "title": "修正內容",
         "items": [
@@ -23,6 +29,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "多 Guardian 加法模型與雙寫雙讀（dark launch）",
       "多家長 LINE 綁定通知與偏好一致性"
     ]
   },
