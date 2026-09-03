@@ -180,7 +180,7 @@ class SyncGuardiansFromLegacyCommand extends Command
             ->where('status', '!=', StudentGuardian::STATUS_REVOKED)
             ->where('is_primary', true)
             ->groupBy('student_id')
-            ->having('c', '>', 1)
+            ->havingRaw('COUNT(*) > 1')
             ->pluck('student_id')
             ->map(fn ($id) => (int) $id)
             ->all();
