@@ -6,6 +6,13 @@ last_reviewed: 2026-06-06
 
 # AI／工程師防再犯紀錄（必讀）
 
+### R135. POP 失敗 dry-run 必須可在不改 caller key 下受控重試（2026-09-03）
+
+- **現象**：策略暫時失敗的 dry-run 被相同 idempotency key 永久 replay，策略恢復後仍無法重新產生 plan。
+- **根因層級**：request identity 與 execution attempt identity 共用同一個唯一鍵；失敗結果被誤當成成功結果的冪等快取。
+- **強制規則**：成功 dry-run 才能 replay；失敗 dry-run 必須在 request／operation／strategy／參數 hash／catalog version／必要 context 未漂移時，以 append-only attempt identity 受控重試。caller idempotency key 不得改寫；execute／verify／rollback 仍只能 exact replay mutation attempt。
+- **測試必補**：失敗後策略恢復可成功、成功不重跑、payload／catalog／context drift fail closed，以及 execute 不可重複 mutation。
+
 ### R132. 課程查找 billing unit 必須從編輯 round-trip 到總額計算（2026-09-02）
 
 - **現象**：大安黃品皓課程切換為每小時 750 後，課程查找仍顯示「每堂 750」，總費用也以堂數計算。
