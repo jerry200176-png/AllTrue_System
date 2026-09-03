@@ -3299,6 +3299,43 @@ export const staffUpdates = [
     "version": "2026.08.24"
   },
   {
+    "id": "staff-2026-08-24-split-contract-wizard-ui",
+    "publishedAt": "2026-08-24",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "合約拆分精靈可選未使用堂次處理方式",
+    "summary": "選堂次時可選擇未使用堂次要轉入新合約排未來課，或直接放棄只結算已上課堂次。",
+    "items": [
+      "選堂次步驟新增「轉入新合約」與「直接放棄」兩個選項，試算與確認畫面會依所選方式顯示對應金額與堂數。",
+      "未選擇時預設維持原本轉入新合約的行為，不影響既有拆分紀錄。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "選堂次步驟新增「轉入新合約」與「直接放棄」兩個選項，試算與確認畫面會依所選方式顯示對應金額與堂數。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "未選擇時預設維持原本轉入新合約的行為，不影響既有拆分紀錄。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-08-24:split-contract-wizard-ui"
+    ],
+    "date": "2026-08-24",
+    "version": "2026.08.24"
+  },
+  {
     "id": "staff-2026-08-24-course-editability-guidance",
     "publishedAt": "2026-08-24",
     "effectiveAt": null,

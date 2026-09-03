@@ -2527,6 +2527,7 @@ class StudentClassController extends Controller
             'session_ids' => ['required', 'array', 'min:1', 'max:100'],
             'session_ids.*' => ['integer'],
             'start_date' => ['required', 'date'],
+            'carry_forward_unused' => ['sometimes', 'boolean'],
         ]);
         return response()->json($this->splitContractPreviewPayload(
             $this->prepareSplitContractPlan($studentClass, $data)
@@ -2542,6 +2543,7 @@ class StudentClassController extends Controller
             'session_ids.*' => ['integer'],
             'start_date' => ['required', 'date'],
             'reason' => ['required', 'string', 'max:255'],
+            'carry_forward_unused' => ['sometimes', 'boolean'],
         ]);
         return DB::transaction(function () use ($studentClass, $data) {
             $source = StudentClass::query()->where('ID', $studentClass->getAttribute('ID'))
@@ -2564,28 +2566,30 @@ class StudentClassController extends Controller
             $newCourse = $this->createStudentClassRecordResilient(
                 $this->buildSplitContractPayload($source, $plan)
             );
-            $slots = $this->resolveScheduleSlotsForRebuild($source);
-            if (empty($slots)) {
-                $fallbackTime = $this->normalizeSessionTime($source->getAttribute('time'), '16:00');
-                $slots = [[
-                    'weekday' => (int) Carbon::parse($plan['start_date'])->dayOfWeekIso,
-                    'time' => substr($fallbackTime, 0, 5),
-                    'duration_minutes' => max(30, (int) ($source->getAttribute('SessionDuration') ?? 120)),
-                ]];
-            }
-            $futureSessions = $this->buildSessionsForCount(
-                (int) $newCourse->getAttribute('ID'),
-                $plan['start_date'],
-                $plan['future_session_count'],
-                $slots,
-                max(30, (int) ($source->getAttribute('SessionDuration') ?? 120))
-            );
             $lastFutureDate = null;
-            foreach ($futureSessions as $sessionData) {
-                $upsert = app(ClassSessionMaterializationService::class)->upsertSlot($sessionData);
-                $date = $sessionData['SessionDate'] ?? null;
-                if ($date !== null && ($lastFutureDate === null || $date > $lastFutureDate)) {
-                    $lastFutureDate = $date;
+            if ($plan['carry_forward_unused']) {
+                $slots = $this->resolveScheduleSlotsForRebuild($source);
+                if (empty($slots)) {
+                    $fallbackTime = $this->normalizeSessionTime($source->getAttribute('time'), '16:00');
+                    $slots = [[
+                        'weekday' => (int) Carbon::parse($plan['start_date'])->dayOfWeekIso,
+                        'time' => substr($fallbackTime, 0, 5),
+                        'duration_minutes' => max(30, (int) ($source->getAttribute('SessionDuration') ?? 120)),
+                    ]];
+                }
+                $futureSessions = $this->buildSessionsForCount(
+                    (int) $newCourse->getAttribute('ID'),
+                    $plan['start_date'],
+                    $plan['future_session_count'],
+                    $slots,
+                    max(30, (int) ($source->getAttribute('SessionDuration') ?? 120))
+                );
+                foreach ($futureSessions as $sessionData) {
+                    $upsert = app(ClassSessionMaterializationService::class)->upsertSlot($sessionData);
+                    $date = $sessionData['SessionDate'] ?? null;
+                    if ($date !== null && ($lastFutureDate === null || $date > $lastFutureDate)) {
+                        $lastFutureDate = $date;
+                    }
                 }
             }
             $selectedSessions = ClassSession::query()
@@ -2657,8 +2661,12 @@ class StudentClassController extends Controller
                     'new_source_charge' => (int) $source->getAttribute('Charge'),
                     'new_contract_charge' => (int) $newCourse->getAttribute('Charge'),
                     'transferred_session_count' => $plan['selected_session_count'],
+                    'waived_session_count' => $plan['waived_session_count'],
+                    'waived_charge' => $plan['waived_charge'],
                     'reason_hash' => hash('sha256', (string) $data['reason']),
-                    'reason_code' => 'unpaid_contract_split',
+                    'reason_code' => $plan['carry_forward_unused']
+                        ? 'unpaid_contract_split'
+                        : 'unpaid_contract_split_observed_only',
                     'outcome' => 'success',
                 ]
             );
@@ -2672,13 +2680,19 @@ class StudentClassController extends Controller
                     'remaining_sessions' => (int) ($source->getAttribute('RemainingSessions') ?? 0),
                     'transferred_session_count' => $plan['selected_session_count'],
                 ],
+                'settlement' => [
+                    'billable_session_count' => $plan['observed_used_sessions'],
+                    'billable_charge' => (int) $source->getAttribute('Charge') + (int) $newCourse->getAttribute('Charge'),
+                    'waived_session_count' => $plan['waived_session_count'],
+                    'waived_charge' => $plan['waived_charge'],
+                ],
                 'new_course' => [
                     'id' => (int) $newCourse->getAttribute('ID'),
                     'session_count' => (int) $newCourse->getAttribute('SessionCount'),
                     'charge' => (int) $newCourse->getAttribute('Charge'),
                     'remaining_sessions' => (int) ($newCourse->getAttribute('RemainingSessions') ?? 0),
                     'transferred_session_count' => $plan['selected_session_count'],
-                    'future_session_count' => $plan['future_session_count'],
+                    'future_session_count' => $plan['carry_forward_unused'] ? $plan['future_session_count'] : 0,
                 ],
             ], 201);
         });
@@ -5071,10 +5085,20 @@ class StudentClassController extends Controller
         }
         $observedUsed = (int) (SessionDeductionService::batchObservedUsedSessions([$classId])[$classId] ?? 0);
         $oldSessionCount = (int) ($studentClass->getAttribute('SessionCount') ?? 0);
-        $futureSessionCount = $oldSessionCount - $observedUsed;
+        // Two settlement modes, director-selected via `carry_forward_unused`:
+        // - carry_forward (default, matches original shipped behavior): unused
+        //   sessions move into the new contract as future scheduled rows.
+        // - waived (opt-in): this is treated as a pure unpaid settlement — only
+        //   sessions already delivered are billable; unused sessions are waived,
+        //   not carried into a new contract and not materialized as future rows.
+        $carryForwardUnused = (bool) ($data['carry_forward_unused'] ?? true);
+        $futureSessionCount = max(0, $oldSessionCount - $observedUsed);
+        $waivedSessionCount = $futureSessionCount;
         $sourceSessionCount = $observedUsed - count($sessionIds);
-        $newSessionCount = $oldSessionCount - $sourceSessionCount;
-        if ($oldSessionCount <= 0 || $observedUsed <= 0 || $futureSessionCount < 0 || $sourceSessionCount < 1 || $newSessionCount < 1) {
+        $newSessionCount = $carryForwardUnused
+            ? $oldSessionCount - $sourceSessionCount
+            : count($sessionIds);
+        if ($oldSessionCount <= 0 || $observedUsed <= 0 || $sourceSessionCount < 1 || $newSessionCount < 1) {
             abort(response()->json([
                 'message' => '目前使用量無法形成至少 1 堂的舊合約與新合約，請重新檢查選取堂次。',
                 'code' => 'split_contract_invalid_balance',
@@ -5084,6 +5108,7 @@ class StudentClassController extends Controller
         $rate = (float) ($studentClass->getAttribute('Rate') ?? 0);
         $sourceCharge = (int) round($rate * $sourceSessionCount);
         $newCharge = (int) round($rate * $newSessionCount);
+        $waivedCharge = (int) round($rate * $waivedSessionCount);
         return [
             'session_ids' => $sessionIds,
             'selected_session_count' => count($sessionIds),
@@ -5095,7 +5120,10 @@ class StudentClassController extends Controller
             'source_charge' => $sourceCharge,
             'new_session_count' => $newSessionCount,
             'new_charge' => $newCharge,
+            'carry_forward_unused' => $carryForwardUnused,
             'future_session_count' => $futureSessionCount,
+            'waived_session_count' => $carryForwardUnused ? 0 : $waivedSessionCount,
+            'waived_charge' => $carryForwardUnused ? 0 : $waivedCharge,
         ];
     }
     private function splitContractPreviewPayload(array $plan): array
@@ -5111,11 +5139,17 @@ class StudentClassController extends Controller
                 'session_count' => $plan['source_session_count'],
                 'charge' => $plan['source_charge'],
             ],
+            'settlement' => [
+                'billable_session_count' => $plan['observed_used_sessions'],
+                'billable_charge' => $plan['source_charge'] + $plan['new_charge'],
+                'waived_session_count' => $plan['waived_session_count'],
+                'waived_charge' => $plan['waived_charge'],
+            ],
             'new_course' => [
                 'session_count' => $plan['new_session_count'],
                 'charge' => $plan['new_charge'],
                 'transferred_session_count' => $plan['selected_session_count'],
-                'future_session_count' => $plan['future_session_count'],
+                'future_session_count' => $plan['carry_forward_unused'] ? $plan['future_session_count'] : 0,
             ],
         ];
     }

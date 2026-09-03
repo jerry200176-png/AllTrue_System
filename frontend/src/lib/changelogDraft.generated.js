@@ -390,13 +390,19 @@ export const changelogDraftNotes = [
     "version": "2026.08.24",
     "date": "2026-08-24",
     "title": "2026.08.24 草稿（未發布）",
-    "summary": "編輯前預檢與阻擋原因導引；編輯受限時直接導向下一步",
+    "summary": "合約拆分精靈新增「未使用堂次」處理方式選擇；編輯前預檢與阻擋原因導引",
     "audience": [
       "teacher",
       "director"
     ],
     "draft": true,
     "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "合約拆分精靈新增「未使用堂次」處理方式選擇"
+        ]
+      },
       {
         "title": "修正內容",
         "items": [
@@ -412,6 +418,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "合約拆分精靈新增「未使用堂次」處理方式選擇",
       "編輯前預檢與阻擋原因導引",
       "編輯受限時直接導向下一步",
       "收斂主任課程操作入口"

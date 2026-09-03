@@ -1463,6 +1463,21 @@ updates:
       - "changelog:2026-08-23:split-contract-wizard"
       - "github:#1901"
 
+  - id: staff-2026-08-24-split-contract-wizard-ui
+    published_at: "2026-08-24"
+    audiences:
+      - director
+    importance: digest
+    title: 合約拆分精靈可選未使用堂次處理方式
+    summary: 選堂次時可選擇未使用堂次要轉入新合約排未來課，或直接放棄只結算已上課堂次。
+    items:
+      - category: added
+        text: 選堂次步驟新增「轉入新合約」與「直接放棄」兩個選項，試算與確認畫面會依所選方式顯示對應金額與堂數。
+      - category: improved
+        text: 未選擇時預設維持原本轉入新合約的行為，不影響既有拆分紀錄。
+    source_refs:
+      - "changelog:2026-08-24:split-contract-wizard-ui"
+
   - id: staff-2026-08-24-course-editability-guidance
     published_at: "2026-08-24"
     audiences:

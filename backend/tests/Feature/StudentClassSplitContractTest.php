@@ -41,6 +41,28 @@ class StudentClassSplitContractTest extends TestCase
         $this->assertSame($student->id, (int) $source->StudentID);
     }
 
+    public function test_preview_waived_mode_bills_observed_sessions_only(): void
+    {
+        $token = $this->createDirectorToken();
+        [, $source, $sessionIds] = $this->createTenSessionSource();
+
+        $response = $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->postJson("/api/v1/student-classes/{$source->ID}/split-contract/preview", [
+                'session_ids' => array_slice($sessionIds, 0, 3),
+                'start_date' => '2026-09-01',
+                'carry_forward_unused' => false,
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('new_course.session_count', 3)
+            ->assertJsonPath('new_course.charge', 1500)
+            ->assertJsonPath('new_course.future_session_count', 0)
+            ->assertJsonPath('settlement.billable_session_count', 8)
+            ->assertJsonPath('settlement.billable_charge', 4000)
+            ->assertJsonPath('settlement.waived_session_count', 2)
+            ->assertJsonPath('settlement.waived_charge', 1000);
+    }
+
     public function test_split_creates_balanced_new_contract_then_moves_records_and_corrects_source(): void
     {
         $token = $this->createDirectorToken();
@@ -77,6 +99,53 @@ class StudentClassSplitContractTest extends TestCase
         $this->assertSame(2500, (int) $newCourse->Charge);
         $this->assertSame(2, (int) $newCourse->RemainingSessions);
         $this->assertSame(5, DB::table('ClassSession')->where('StudentClassID', $newId)->count());
+        $this->assertSame(5, DB::table('ClassSession')->where('StudentClassID', $source->ID)->count());
+        $this->assertSame($newId, (int) DB::table('LearningRecord')->where('ClassSessionID', $selectedIds[0])->value('StudentClassID'));
+        $this->assertSame($newId, (int) DB::table('StudentSingIn')->where('ClassSessionID', $selectedIds[0])->value('StudentClassID'));
+        $this->assertSame($student->id, (int) $newCourse->StudentID);
+    }
+
+    public function test_split_waived_mode_bills_observed_sessions_only_no_future_rows(): void
+    {
+        $token = $this->createDirectorToken();
+        [$student, $source, $sessionIds] = $this->createTenSessionSource();
+        $selectedIds = array_slice($sessionIds, 0, 3);
+        $this->createLearningRecord((int) $source->ID, $selectedIds[0]);
+        $this->createSignIn((int) $source->ID, $selectedIds[0]);
+
+        $response = $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->postJson("/api/v1/student-classes/{$source->ID}/split-contract", [
+                'session_ids' => $selectedIds,
+                'start_date' => '2026-09-01',
+                'reason' => '主任確認僅結算已上課堂次，放棄未使用堂次',
+                'carry_forward_unused' => false,
+            ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('source_course.session_count', 5)
+            ->assertJsonPath('source_course.charge', 2500)
+            ->assertJsonPath('source_course.remaining_sessions', 0)
+            ->assertJsonPath('new_course.session_count', 3)
+            ->assertJsonPath('new_course.charge', 1500)
+            ->assertJsonPath('new_course.remaining_sessions', 0)
+            ->assertJsonPath('new_course.transferred_session_count', 3)
+            ->assertJsonPath('new_course.future_session_count', 0)
+            ->assertJsonPath('settlement.billable_session_count', 8)
+            ->assertJsonPath('settlement.billable_charge', 4000)
+            ->assertJsonPath('settlement.waived_session_count', 2)
+            ->assertJsonPath('settlement.waived_charge', 1000);
+
+        $newId = (int) $response->json('new_course.id');
+        $source->refresh();
+        $newCourse = StudentClass::find($newId);
+
+        $this->assertSame(5, (int) $source->SessionCount);
+        $this->assertSame(2500, (int) $source->Charge);
+        $this->assertSame(0, (int) $source->RemainingSessions);
+        $this->assertSame(3, (int) $newCourse->SessionCount);
+        $this->assertSame(1500, (int) $newCourse->Charge);
+        $this->assertSame(0, (int) $newCourse->RemainingSessions);
+        $this->assertSame(3, DB::table('ClassSession')->where('StudentClassID', $newId)->count());
         $this->assertSame(5, DB::table('ClassSession')->where('StudentClassID', $source->ID)->count());
         $this->assertSame($newId, (int) DB::table('LearningRecord')->where('ClassSessionID', $selectedIds[0])->value('StudentClassID'));
         $this->assertSame($newId, (int) DB::table('StudentSingIn')->where('ClassSessionID', $selectedIds[0])->value('StudentClassID'));

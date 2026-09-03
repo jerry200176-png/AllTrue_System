@@ -438,6 +438,21 @@
                             <button v-if="c.status !== 'inactive'" class="action-dropdown-item" role="menuitem" @click="requestCoursePause(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">pause_circle</span> 暫停課程</button>
                             <button v-if="c.status === 'inactive'" class="action-dropdown-item action-dropdown-resume" role="menuitem" @click="requestCoursePause(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">play_circle</span> 恢復課程</button>
                             <button v-if="canCloseCourse(c)" class="action-dropdown-item action-dropdown-close" role="menuitem" @click="closeCourseNoRenew(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">check_circle</span> 結案（不續報）</button>
+                            <button
+                              v-if="canSplitContract(c)"
+                              class="action-dropdown-item action-dropdown-correction"
+                              role="menuitem"
+                              title="選擇已上堂次，自動拆分舊合約與新合約的堂數及金額"
+                              @click="openSplitContractWizard(c); closeActionMenu()"
+                            ><span class="material-symbols-outlined action-icon" aria-hidden="true">call_split</span> 合約拆分精靈</button>
+                            <button
+                              v-else-if="isSessionMode(c) && !c.PackageID && c.payment_status !== 'paid'"
+                              class="action-dropdown-item action-dropdown-correction"
+                              role="menuitem"
+                              title="未收款課程的購買堂數與金額更正；不修改已上課紀錄"
+                              @click="openBillingCorrectionModal(c); closeActionMenu()"
+                            ><span class="material-symbols-outlined action-icon" aria-hidden="true">undo</span> 更正未收款堂數</button>
+                            <button v-if="!canSplitContract(c)" class="action-dropdown-item" role="menuitem" title="把已上課、已填評量的堂次搬到另一門課程，不用重填評量" @click="openTransferSessionsModal(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">move_up</span> 轉移堂次紀錄</button>
                             <hr class="action-dropdown-divider" />
                             <p class="action-section-label action-section-label--danger">危險操作</p>
                             <button class="action-dropdown-item action-dropdown-danger" role="menuitem" @click="confirmDeleteTarget = c; closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">delete</span> 刪除課程</button>
@@ -942,6 +957,19 @@
       @submit="submitTransferSessions"
     />
 
+    <SplitContractWizard
+      :show="showSplitContractWizard"
+      :course="splitContractCourse"
+      :sessions="splitContractSessionOptions"
+      :preview="splitContractPreview"
+      :preview-loading="splitContractPreviewLoading"
+      :submitting="splitContractSubmitting"
+      :error-message="splitContractError"
+      @close="!splitContractSubmitting && (showSplitContractWizard = false)"
+      @preview="requestSplitContractPreview"
+      @submit="submitSplitContract"
+    />
+
     <EnrollmentConflictDecisionModal
       :show="showDuplicateInterceptModal"
       :conflicts="duplicateConflicts"
@@ -1397,6 +1425,7 @@ import { nextManualSessionDate } from '../lib/manualSessionDate.js';
 import PurchaseSessionsModal from '../components/course-management/PurchaseSessionsModal.vue';
 import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal.vue';
 import TransferSessionsModal from '../components/course-management/TransferSessionsModal.vue';
+import SplitContractWizard from '../components/course-management/SplitContractWizard.vue';
 import ContractAdjustmentChoiceModal from '../components/course-management/ContractAdjustmentChoiceModal.vue';
 import QuickAddSessionModal from '../components/course-management/QuickAddSessionModal.vue';
 import ManualSessionModal from '../components/course-management/ManualSessionModal.vue';
@@ -2222,6 +2251,13 @@ const transferTargetCourses = ref([]);
 const transferTargetCoursesLoading = ref(false);
 let transferTargetCoursesRequest = 0;
 
+const showSplitContractWizard = ref(false);
+const splitContractCourse = ref(null);
+const splitContractSubmitting = ref(false);
+const splitContractPreviewLoading = ref(false);
+const splitContractPreview = ref(null);
+const splitContractError = ref('');
+
 const showBillingCorrectionModal = ref(false);
 const showContractAdjustmentModal = ref(false);
 const contractAdjustmentCourse = ref(null);
@@ -2238,6 +2274,96 @@ const billingCorrectionExpectedCharge = computed(() => {
   const rate = Number(course?.rate_per_30min ?? course?.Rate ?? course?.rate ?? 0);
   return Math.round(rate * count);
 });
+
+function canSplitContract(course) {
+  return isSessionMode(course)
+    && !course?.PackageID
+    && course?.payment_status !== 'paid'
+    && Number(course?.Paid ?? course?.paid ?? 0) !== 1;
+}
+
+const splitContractSessionOptions = computed(() => {
+  const course = splitContractCourse.value;
+  if (!course) return [];
+  return allSessionUnits(course)
+    .filter((session) => ['completed', 'attended', 'late'].includes(String(session?.status || '').toLowerCase()))
+    .map((session) => ({ id: Number(session.id), date: session.date, status: session.status }));
+});
+
+function openSplitContractWizard(course) {
+  splitContractCourse.value = course;
+  splitContractPreview.value = null;
+  splitContractPreviewLoading.value = false;
+  splitContractError.value = '';
+  showSplitContractWizard.value = true;
+}
+
+async function splitContractRequest(path, body) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) throw new Error('登入狀態已失效，請重新登入。');
+  const res = await fetch(path, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const details = json?.errors ? Object.values(json.errors || {}).flat().join(' ') : '';
+    const error = new Error(details || json?.message || '合約拆分失敗');
+    error.responseBody = json;
+    throw error;
+  }
+  return json;
+}
+
+async function requestSplitContractPreview({ sessionIds, startDate, carryForwardUnused }) {
+  const course = splitContractCourse.value;
+  if (!course?.id || splitContractPreviewLoading.value) return;
+  splitContractError.value = '';
+  splitContractPreview.value = null;
+  splitContractPreviewLoading.value = true;
+  try {
+    splitContractPreview.value = await splitContractRequest(
+      `/api/v1/student-classes/${course.id}/split-contract/preview`,
+      { session_ids: sessionIds, start_date: startDate, carry_forward_unused: carryForwardUnused },
+    );
+  } catch (error) {
+    splitContractError.value = error?.message || '試算失敗，請稍後再試。';
+  } finally {
+    splitContractPreviewLoading.value = false;
+  }
+}
+
+async function submitSplitContract({ sessionIds, startDate, carryForwardUnused, reason }) {
+  const course = splitContractCourse.value;
+  if (!course?.id || splitContractSubmitting.value) return;
+  splitContractError.value = '';
+  splitContractSubmitting.value = true;
+  try {
+    const result = await splitContractRequest(
+      `/api/v1/student-classes/${course.id}/split-contract`,
+      { session_ids: sessionIds, start_date: startDate, carry_forward_unused: carryForwardUnused, reason },
+    );
+    showSplitContractWizard.value = false;
+    await loadCourses();
+    toastRef.value?.show?.({
+      title: '合約拆分完成',
+      description: `舊合約 ${result?.source_course?.session_count ?? '—'} 堂／$${Number(result?.source_course?.charge ?? 0).toLocaleString()}；新合約 ${result?.new_course?.session_count ?? '—'} 堂／$${Number(result?.new_course?.charge ?? 0).toLocaleString()}`,
+      variant: 'success',
+      durationMs: 7000,
+    });
+  } catch (error) {
+    splitContractError.value = error?.message || '拆分失敗，資料未變更。';
+  } finally {
+    splitContractSubmitting.value = false;
+  }
+}
 
 function openBillingCorrectionModal(course) {
   const count = Number(course?.sessions_purchased ?? course?.SessionCount ?? 0);
