@@ -88,24 +88,12 @@ function onSubmit() {
 
 <style scoped>
 .course-modal { width: 100%; max-width: 520px; max-height: 90vh; overflow-y: auto; }
-.modal-title { font-size: 1.2rem; font-weight: 800; color: var(--text); margin: 0 0 4px; }
-.modal-desc { color: var(--text-light); font-size: 13px; margin: 0 0 12px; }
+.modal-title { font-size: 1.2rem; font-weight: 800; color: var(--text); margin: 0 0 4px; } .modal-desc { color: var(--text-light); font-size: 13px; margin: 0 0 12px; }
 .amendment-banner, .amendment-preview { padding: 10px 12px; border-radius: 10px; line-height: 1.5; font-size: 12px; }
-.amendment-banner { display: grid; gap: 3px; margin-bottom: 14px; background: var(--ds-primary-wash); color: var(--ds-primary-deep); }
-.contract-summary, .preview-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
-.contract-summary { color: var(--ds-ink-mute); font-size: 12px; }
-.contract-summary strong { display: block; color: var(--text); font-size: 18px; }
-.form-label { display: block; font-size: 13px; font-weight: 700; color: var(--text); margin: 10px 0 6px; }
-.count-row { display: flex; gap: 8px; }
-.form-input { width: 100%; padding: 8px 10px; border: 1px solid var(--ds-hairline); border-radius: 8px; font-size: 14px; }
-.count-row .form-input { max-width: 150px; }
+.amendment-banner { display: grid; gap: 3px; margin-bottom: 14px; background: var(--ds-primary-wash); color: var(--ds-primary-deep); } .contract-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; color: var(--ds-ink-mute); font-size: 12px; } .contract-summary strong { display: block; color: var(--text); font-size: 18px; }
+.form-label { display: block; font-size: 13px; font-weight: 700; color: var(--text); margin: 10px 0 6px; } .count-row { display: flex; gap: 8px; } .form-input { width: 100%; padding: 8px 10px; border: 1px solid var(--ds-hairline); border-radius: 8px; font-size: 14px; } .count-row .form-input { max-width: 150px; }
 .secondary { border: 1px solid var(--ds-primary); border-radius: 8px; background: var(--ds-canvas); color: var(--ds-primary-deep); padding: 8px 12px; cursor: pointer; }
-.form-hint, .preview-list, .financial-note { color: var(--ds-ink-mute); font-size: 12px; line-height: 1.5; }
-.amendment-preview { margin: 14px 0; background: var(--ds-canvas-soft); border: 1px solid var(--ds-hairline); }
-.preview-line { display: flex; justify-content: center; gap: 12px; font-size: 18px; margin-bottom: 10px; }
-.preview-grid { grid-template-columns: 1fr auto; margin-bottom: 8px; }
-.preview-grid strong { text-align: right; }
-.amendment-error { margin: 10px 0; padding: 8px 10px; border-radius: 8px; background: var(--ds-danger-wash); color: var(--ds-danger); font-size: 13px; }
-.financial-note { margin: 8px 0 0; }
+.form-hint, .preview-list, .financial-note { color: var(--ds-ink-mute); font-size: 12px; line-height: 1.5; } .amendment-preview { margin: 14px 0; background: var(--ds-canvas-soft); border: 1px solid var(--ds-hairline); } .preview-line { display: flex; justify-content: center; gap: 12px; font-size: 18px; margin-bottom: 10px; } .preview-grid { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-bottom: 8px; } .preview-grid strong { text-align: right; }
+.amendment-error { margin: 10px 0; padding: 8px 10px; border-radius: 8px; background: var(--ds-danger-wash); color: var(--ds-danger); font-size: 13px; } .financial-note { margin: 8px 0 0; }
 .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 </style>
