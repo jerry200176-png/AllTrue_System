@@ -275,6 +275,10 @@ class ClassSessionController extends Controller
             $campusIds = [$requestedCampus];
         }
 
+        $attendanceAsOf = Carbon::now();
+        $attendanceAsOfDate = $attendanceAsOf->toDateString();
+        $attendanceAsOfTime = $attendanceAsOf->format('H:i:s');
+
         $query = DB::table('ClassSession as cs')
             ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
             ->join('Student as s', 's.id', '=', 'sc.StudentID')
@@ -320,18 +324,6 @@ class ClassSessionController extends Controller
                 'cs.EndTime',
                 'cs.Status',
                 'cs.IsContractException',
-                DB::raw("CASE
-                    WHEN si.id IS NOT NULL AND LOWER(cs.Status) IN ('scheduled','absent')
-                        AND (cs.SessionDate < CURRENT_DATE OR (cs.SessionDate = CURRENT_DATE AND cs.EndTime <= CURRENT_TIME))
-                        AND LOWER(si.Status) = 'present' THEN 'attended'
-                    WHEN si.id IS NOT NULL AND LOWER(cs.Status) IN ('scheduled','absent')
-                        AND (cs.SessionDate < CURRENT_DATE OR (cs.SessionDate = CURRENT_DATE AND cs.EndTime <= CURRENT_TIME))
-                        AND LOWER(si.Status) = 'late' THEN 'late'
-                    WHEN si.id IS NOT NULL AND LOWER(cs.Status) IN ('scheduled','absent')
-                        AND (cs.SessionDate < CURRENT_DATE OR (cs.SessionDate = CURRENT_DATE AND cs.EndTime <= CURRENT_TIME))
-                        AND LOWER(si.Status) IN ('leave','excused') THEN 'leave'
-                    ELSE cs.Status
-                END AS effective_status"),
                 'cs.Note',
                 'cs.session_charge',
                 'sc.StudentID',
@@ -356,6 +348,25 @@ class ClassSessionController extends Controller
                 DB::raw('EXISTS (SELECT 1 FROM LearningRecord lr_history WHERE lr_history.ClassSessionID = cs.id) as learning_record_history'),
                 DB::raw('EXISTS (SELECT 1 FROM StudentSingIn si_history WHERE si_history.ClassSessionID = cs.id) as attendance_history'),
             ]);
+
+        // Use the application's Taipei clock rather than the DB server clock.
+        // Production DBs may run in UTC; CURRENT_DATE/CURRENT_TIME therefore
+        // made a Taiwan "today" session look like a future reservation. Future
+        // scheduled rows still remain scheduled until their slot has ended.
+        $query->selectRaw(
+            "CASE
+                WHEN si.id IS NOT NULL AND LOWER(cs.Status) IN ('scheduled','absent')
+                    AND (cs.SessionDate < ? OR (cs.SessionDate = ? AND cs.EndTime <= ?))
+                THEN CASE
+                    WHEN LOWER(si.Status) = 'present' THEN 'attended'
+                    WHEN LOWER(si.Status) = 'late' THEN 'late'
+                    WHEN LOWER(si.Status) IN ('leave','excused') THEN 'leave'
+                    ELSE cs.Status
+                END
+                ELSE cs.Status
+            END AS effective_status",
+            [$attendanceAsOfDate, $attendanceAsOfDate, $attendanceAsOfTime]
+        );
 
         if ($role === 'teacher') {
             $query->where(function ($q) use ($teacherId) {
