@@ -108,4 +108,31 @@ class MultiGuardianFoundationTest extends TestCase
         $this->assertSame(1, StudentGuardian::where('student_id', $student->id)->notRevoked()->where('is_primary', true)->count());
         $this->assertCount(2, app(GuardianSyncService::class)->listForStudent((int) $student->id));
     }
+
+    public function test_dual_write_uses_legacy_parent_phone_even_when_flag_on(): void
+    {
+        config(['perfflags.multi_guardian_enabled' => true]);
+        $student = $this->student(['parent_phone' => '0911111111', 'parent_name' => '舊聯絡']);
+        $link = app(GuardianSyncService::class)->syncPrimaryFromStudent($student);
+        $this->assertSame('0911111111', $link->guardian->phone);
+
+        // Stale guardian phone must not poison dual-write after staff edits legacy columns.
+        $link->guardian->phone = '0922222222';
+        $link->guardian->phone_normalized = '0922222222';
+        $link->guardian->display_name = '監護人舊名';
+        $link->guardian->save();
+
+        $student->parent_phone = '0933333333';
+        $student->parent_name = '新聯絡人';
+        $student->save();
+
+        $synced = app(GuardianSyncService::class)->syncPrimaryFromStudent($student->fresh());
+        $this->assertNotNull($synced);
+        $synced->load('guardian');
+        $this->assertSame('0933333333', $synced->guardian->phone);
+        $this->assertSame('新聯絡人', $synced->guardian->display_name);
+        $this->assertSame('0933333333', $student->fresh()->parent_phone);
+        // Dual-read still prefers guardian after successful sync of new legacy values.
+        $this->assertSame('0933333333', StudentContactPhone::forStudent($student->fresh()));
+    }
 }

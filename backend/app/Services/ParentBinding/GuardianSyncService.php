@@ -5,7 +5,6 @@ namespace App\Services\ParentBinding;
 use App\Models\Guardian;
 use App\Models\Student;
 use App\Models\StudentGuardian;
-use App\Support\StudentContactPhone;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -40,7 +39,12 @@ final class GuardianSyncService
         }
 
         $studentId = (int) $student->getKey();
-        $phone = trim((string) StudentContactPhone::forStudent($student));
+        // Dual-write MUST read legacy Student columns only. Never StudentContactPhone
+        // (dual-read): when PERF_MULTI_GUARDIAN is on that resolver prefers guardian
+        // phone and would re-sync stale guardian values after staff edits parent_phone.
+        $parentPhone = trim((string) ($student->getAttribute('parent_phone') ?? ''));
+        $legacyPhone = trim((string) ($student->getAttribute('Phone') ?? ''));
+        $phone = $parentPhone !== '' ? $parentPhone : $legacyPhone;
         $name = trim((string) ($student->getAttribute('parent_name') ?? ''));
         $normalized = Guardian::normalizePhone($phone);
 

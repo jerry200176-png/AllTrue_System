@@ -12,6 +12,9 @@ use Illuminate\Support\Facades\Schema;
  *
  * No backfill, no cutover, no drop of parent_phone / LineID / student_line_bindings.
  * Rollback: drop these two tables only.
+ *
+ * Governance: merge to main ≠ production migration activation. Applying this
+ * migration in production requires an explicit Founder activation GO.
  */
 return new class extends Migration
 {
