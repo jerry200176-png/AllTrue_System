@@ -180,4 +180,35 @@ describe('useCourseSessionsDisplay', () => {
     expect(display.getSessionNumber(course, '2026-08-18', 17)).toBe(6);
     expect(display.getCompletedSessionCount(course)).toBe(5);
   });
+
+  it('renders a scheduled row as gray 預排 after a count course reaches its cap', () => {
+    const course = {
+      id: 4201,
+      ScheduleMode: 'count',
+      payment_type: 'session',
+      sessions_purchased: 8,
+      remaining_sessions: 0,
+    };
+    const display = useCourseSessionsDisplay({
+      sessionsByCourse: ref({
+        4201: [sessionViewModelFromClassSessionsRow({
+          id: 18,
+          student_class_id: 4201,
+          session_date: '2026-09-10',
+          start_time: '18:00',
+          end_time: '20:00',
+          status: 'scheduled',
+        })],
+      }),
+      completedSessionDatesByCourse: ref({}),
+      fetchClassSessionsFn: vi.fn(),
+      supabase: { auth: { getSession: vi.fn() } },
+      branchId: ref(1),
+    });
+
+    expect(display.getSessionState(course, '2026-09-10', 18)).toEqual({
+      label: '預排',
+      className: 'scheduled-capacity-full',
+    });
+  });
 });

@@ -88,6 +88,61 @@ class ClassSessionsHideStoppedScheduledTest extends TestCase
         $this->assertNotContains($futureRescheduledId, $ids, 'history must exclude future rescheduled rows on stopped courses');
     }
 
+    public function test_history_filter_hides_future_reservations_after_count_capacity_is_used(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-03 09:00:00'));
+        [$token, , $orphanId] = $this->seedStop1Overlap();
+        $course = StudentClass::findOrFail((int) ClassSession::findOrFail($orphanId)->StudentClassID);
+        $course->Stop = 0;
+        $course->UsedSessions = 1;
+        $course->RemainingSessions = 7;
+        $course->save();
+
+        foreach (range(1, 7) as $offset) {
+            ClassSession::create([
+                'StudentClassID' => $course->ID,
+                'SessionDate' => Carbon::parse('2026-08-01')->addDays($offset)->toDateString(),
+                'StartTime' => '10:00', 'EndTime' => '11:00', 'Status' => 'attended',
+            ]);
+        }
+        $futureId = (int) ClassSession::create([
+            'StudentClassID' => $course->ID, 'SessionDate' => '2026-09-10',
+            'StartTime' => '10:00', 'EndTime' => '11:00', 'Status' => 'scheduled',
+        ])->id;
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->getJson('/api/v1/class-sessions?start=2026-08-01&end=2026-09-30&per_page=100&exclude_history_future=1');
+
+        $res->assertOk();
+        $ids = collect($res->json('data'))->pluck('id')->map(fn ($i) => (int) $i)->all();
+        $this->assertNotContains($futureId, $ids, 'a full count course must not expose future scheduled reservations');
+    }
+
+    public function test_future_scheduled_sign_in_residue_does_not_promote_the_row_to_attended(): void
+    {
+        [$token, $activeId] = $this->seedStop1Overlap();
+        $course = StudentClass::findOrFail((int) ClassSession::findOrFail($activeId)->StudentClassID);
+        $future = ClassSession::create([
+            'StudentClassID' => $course->ID, 'SessionDate' => '2026-09-10',
+            'StartTime' => '10:00', 'EndTime' => '11:00', 'Status' => 'scheduled',
+        ]);
+        \Illuminate\Support\Facades\DB::table('StudentSingIn')->insert([
+            'StudentClassID' => $course->ID, 'StudentID' => $course->StudentID,
+            'TeacherID' => $course->TeacherID, 'ClassSessionID' => $future->id,
+            'Status' => 'present', 'SessionDeducted' => 1, 'SignInDT' => now(),
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->getJson('/api/v1/class-sessions?start=2026-09-10&end=2026-09-10&per_page=100');
+
+        $res->assertOk();
+        $row = collect($res->json('data'))->firstWhere('id', (int) $future->id);
+        $this->assertNotNull($row);
+        $this->assertSame('scheduled', strtolower((string) $row['status']));
+    }
+
     /**
      * @return array{0:string,1:int,2:int,3:int}
      */
