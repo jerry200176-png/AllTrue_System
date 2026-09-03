@@ -41,5 +41,5 @@ def test_confirmation_and_sha_are_fail_closed():
     text = WORKFLOW.read_text()
     assert "DRY_RUN_HUANG_YIKUI_MATH_20260902" in text
     assert "APPROVE_HUANG_YIKUI_MATH_20260902" in text
-    assert "8dda90fe1723c8fb93bde382e79e791aad5c83e5" in text
+    assert "d21ed8de1a2a80034aee50d214ac68b7944f3251" in text
     assert "Founder gate passed" in text
