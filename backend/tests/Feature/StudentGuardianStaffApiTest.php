@@ -124,4 +124,49 @@ class StudentGuardianStaffApiTest extends TestCase
 
         $this->assertSame(StudentGuardian::STATUS_REVOKED, StudentGuardian::find($id)->status);
     }
+
+    public function test_primary_guardian_mirrors_legacy_parent_fields(): void
+    {
+        config(['perfflags.multi_guardian_enabled' => true]);
+        $token = $this->directorToken();
+        $student = $this->student([
+            'parent_name' => '舊家長',
+            'parent_phone' => '0912111000',
+        ]);
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->postJson("/api/v1/students/{$student->id}/guardians", [
+                'display_name' => '新主要',
+                'phone' => '0912333444',
+                'role' => 'father',
+                'is_primary' => true,
+            ])
+            ->assertCreated();
+
+        $student->refresh();
+        $this->assertSame('新主要', $student->parent_name);
+        $this->assertSame('0912333444', $student->parent_phone);
+    }
+
+    public function test_student_update_without_parent_fields_preserves_legacy_columns(): void
+    {
+        config(['perfflags.multi_guardian_enabled' => true]);
+        $token = $this->directorToken();
+        $student = $this->student([
+            'parent_name' => '保留爸',
+            'parent_phone' => '0912555666',
+        ]);
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->putJson("/api/v1/students/{$student->id}", [
+                'name' => '監護人 CRUD 生改名',
+                'notes' => 'only notes',
+            ])
+            ->assertOk();
+
+        $student->refresh();
+        $this->assertSame('保留爸', $student->parent_name);
+        $this->assertSame('0912555666', $student->parent_phone);
+        $this->assertSame('監護人 CRUD 生改名', $student->name);
+    }
 }
