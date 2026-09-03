@@ -427,6 +427,13 @@ class ClassSessionController extends Controller
             $query->whereRaw("NOT (COALESCE(sc.Stop, 0) = 1 AND LOWER(cs.Status) = 'scheduled')");
         }
 
+        if ($request->boolean('exclude_history_future')) {
+            $query->whereRaw(
+                "NOT ((COALESCE(sc.Stop, 0) = 1 OR LOWER(COALESCE(sc.closed_reason, '')) IN ('settled', 'completed', 'usage_settled')) AND cs.SessionDate > ? AND LOWER(cs.Status) IN ('scheduled', 'rescheduled'))",
+                [Carbon::today()->toDateString()]
+            );
+        }
+
         return $query;
     }
 

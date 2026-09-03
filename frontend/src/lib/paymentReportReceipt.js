@@ -19,8 +19,11 @@ export function buildReceiptItemDescription(api = {}) {
   if (api.subject) parts.push(api.subject);
   const typeKey = String(api.class_type || '').trim();
   if (typeKey) parts.push(classTypeLabel(typeKey) || typeKey);
-  if (api.session_count != null && api.session_count !== '') {
-    parts.push(`${api.session_count} 堂`);
+  const sessionCount = api.schedule_mode === 'date' && api.period_sessions != null
+    ? api.period_sessions
+    : api.session_count;
+  if (sessionCount != null && sessionCount !== '') {
+    parts.push(`${sessionCount} 堂`);
   }
   const mode = api.schedule_mode === 'date'
     ? '月結制'
@@ -118,8 +121,18 @@ export function buildReceiptCopyText(snapshot = {}, receiptNumber = '—') {
 
   const sessionDates = Array.isArray(snapshot.session_dates) ? snapshot.session_dates : [];
   if (sessionDates.length) {
-    lines.push(`上課日期：${sessionDates.slice(0, 16).map((session) => `${session.date || '—'}${session.expected ? '（預計）' : ''}`).join('、')}`);
-    if (sessionDates.length > 16) lines.push(`上課日期：共 ${sessionDates.length} 堂`);
+    lines.push(`上課日期：${sessionDates.slice(0, 16).map((session) => session.date || '—').join('、')}`);
+    lines.push('本次計費課程：');
+    sessionDates.slice(0, 16).forEach((session, index) => {
+      const lesson = session.lesson ? `第${session.lesson}堂 ` : `第${index + 1}堂 `;
+      const time = session.start_time
+        ? ` ${session.start_time}${session.end_time ? `-${session.end_time}` : ''}`
+        : '';
+      const subject = session.subject ? ` · ${session.subject}` : '';
+      const expected = session.expected ? '（預計）' : '';
+      lines.push(`- ${lesson}${session.date || '—'}${time}${subject}${expected}`);
+    });
+    if (sessionDates.length > 16) lines.push(`- 共 ${sessionDates.length} 堂`);
   }
   lines.push(`收款日期：${snapshot.paid_at || '—'}`);
   lines.push(`收款方式：${RECEIPT_METHOD_LABELS[snapshot.method] || snapshot.method || '—'}`);

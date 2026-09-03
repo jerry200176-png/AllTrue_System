@@ -136,6 +136,24 @@ jobs:
           dry_run="$WORK_DIR/dry-run.json"
           dry_status="$(post_machine "/api/v1/pop/machine/operations/requests/$REQUEST_ID/dry-run" '{}' "$dry_run")"
           if [[ "$dry_status" != 200 ]]; then
+            diagnostic="$WORK_DIR/strategy-diagnostic.json"
+            diagnostic_rc=0
+            PARAMETERS_JSON="$PARAMETERS_JSON" php artisan tinker --no-ansi --execute='
+          $parameters = json_decode((string) getenv("PARAMETERS_JSON"), true, 512, JSON_THROW_ON_ERROR)["parameters"];
+          try {
+              $plan = app(\App\Operations\Strategies\CourseContractRepairStrategy::class)->plan($parameters);
+              $errors = array_values(array_filter((array) ($plan["errors"] ?? []), static fn ($error): bool => preg_match("/^[A-Za-z0-9_:-]{1,96}$/", (string) $error) === 1));
+              echo json_encode(["outcome" => "returned", "ok" => (bool) ($plan["ok"] ?? false), "errors" => array_slice($errors, 0, 32)], JSON_THROW_ON_ERROR);
+          } catch (\Throwable $error) {
+              $kind = match (true) {
+                  $error instanceof \Illuminate\Database\QueryException => "database_query_exception",
+                  $error instanceof \TypeError => "type_error",
+                  $error instanceof \ErrorException => "runtime_error",
+                  default => "unexpected_exception",
+              };
+              echo json_encode(["outcome" => "exception", "kind" => $kind], JSON_THROW_ON_ERROR);
+          }
+          ' > "$diagnostic" || diagnostic_rc=$?
             dry_error_summary="$(python3 - "$dry_run" <<'PY'
           import json, re, sys
           try:
@@ -154,7 +172,22 @@ jobs:
           print('reason_codes=' + ','.join(safe_errors[:32]))
           PY
             )"
-            echo "::error::POP dry-run rejected with HTTP $dry_status $dry_error_summary"
+            diagnostic_summary="$(DIAGNOSTIC_RC="$diagnostic_rc" python3 - "$diagnostic" <<'PY'
+          import json, os, re, sys
+          try:
+              body = json.load(open(sys.argv[1]))
+          except (OSError, ValueError):
+              body = {}
+          if body.get('outcome') == 'returned':
+              errors = [str(error) for error in body.get('errors') or [] if re.fullmatch(r'[A-Za-z0-9_:-]{1,96}', str(error))]
+              print('plan_probe=returned ok=%s reason_codes=%s' % (str(bool(body.get('ok'))).lower(), ','.join(errors[:32]) or 'none'))
+          elif body.get('outcome') == 'exception' and body.get('kind') in {'database_query_exception', 'type_error', 'runtime_error', 'unexpected_exception'}:
+              print('plan_probe=exception kind=' + body['kind'])
+          else:
+              print('plan_probe=unavailable exit_code=' + os.environ.get('DIAGNOSTIC_RC', 'unknown'))
+          PY
+            )"
+            echo "::error::POP dry-run rejected with HTTP $dry_status $dry_error_summary $diagnostic_summary"
             exit 1
           fi
           dry_summary="$(python3 - "$dry_run" <<'PY'
