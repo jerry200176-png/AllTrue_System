@@ -28,9 +28,9 @@ class SessionDeductionService
         }
 
         $deducted = StudentSignIn::query()
+            ->active()
             ->leftJoin('ClassSession as sign_in_cs', 'sign_in_cs.id', '=', 'StudentSingIn.ClassSessionID')
             ->whereIn('StudentSingIn.StudentClassID', $ids)
-            ->active()
             ->where('SessionDeducted', true)
             ->where(function ($query) {
                 $query->whereNull('sign_in_cs.id')
@@ -172,7 +172,7 @@ class SessionDeductionService
             ->whereIn('ledger.source', ['attendance', 'retro_leave', 'status_adjust', 'duplicate_session'])
             ->where(function ($query) {
                 $query->whereNull('ledger_cs.id')
-                    ->orWhereIn('ledger_cs.Status', ['completed', 'attended', 'late']);
+                    ->orWhereIn('ledger_cs.Status', ['completed', 'attended', 'late', 'cancelled']);
             })
             ->groupBy('ledger.student_class_id')
             ->selectRaw('ledger.student_class_id')
@@ -366,10 +366,6 @@ class SessionDeductionService
                 ->where('StudentSingIn.StudentClassID', $studentClassId)
                 ->active()
                 ->where('SessionDeducted', true)
-                ->where(function ($query) {
-                    $query->whereNull('sign_in_cs.id')
-                        ->orWhereIn('sign_in_cs.Status', ['completed', 'attended', 'late']);
-                })
                 ->selectRaw('COUNT(DISTINCT COALESCE(NULLIF(StudentSingIn.ClassSessionID, 0), StudentSingIn.id)) as aggregate_count')
                 ->value('aggregate_count');
             $attendanceUsed = max(0, (int) ($attendanceUsed ?? 0));
@@ -398,13 +394,8 @@ class SessionDeductionService
             // (e.g. status transitions that may temporarily not have sign-in rows).
             // Bound approved LRs (ClassSessionID set) do not add used count: 堂數以點名／堂次狀態為準。
             $ledgerUsed = SessionDeductionLedger::query()
-                ->leftJoin('ClassSession as ledger_cs', 'ledger_cs.id', '=', 'session_deduction_ledger.class_session_id')
                 ->where('student_class_id', $studentClassId)
                 ->whereIn('source', ['attendance', 'retro_leave', 'status_adjust', 'duplicate_session'])
-                ->where(function ($query) {
-                    $query->whereNull('ledger_cs.id')
-                        ->orWhereIn('ledger_cs.Status', ['completed', 'attended', 'late']);
-                })
                 ->selectRaw("SUM(CASE WHEN event_type = 'deduct' THEN 1 ELSE 0 END) - SUM(CASE WHEN event_type = 'reverse' THEN 1 ELSE 0 END) as net")
                 ->value('net');
             $ledgerUsed = max(0, (int) ($ledgerUsed ?? 0));
@@ -421,26 +412,16 @@ class SessionDeductionService
                 // 否 → 完全沿用既有 count-based 邏輯（行為 byte-identical），僅補寫衍生分鐘欄。
                 // 是 → 分鐘為權威，RemainingSessions 改為 ROUND_HALF_UP 衍生顯示值。
                 $hasPartial = SessionDeductionLedger::query()
-                    ->leftJoin('ClassSession as ledger_cs', 'ledger_cs.id', '=', 'session_deduction_ledger.class_session_id')
                     ->where('student_class_id', $studentClassId)
                     ->whereIn('source', ['attendance', 'retro_leave', 'status_adjust', 'duplicate_session'])
-                    ->where(function ($query) {
-                        $query->whereNull('ledger_cs.id')
-                            ->orWhereIn('ledger_cs.Status', ['completed', 'attended', 'late']);
-                    })
                     ->whereNotNull('minutes')
                     ->where('minutes', '!=', $perSession)
                     ->exists();
 
                 if ($hasPartial) {
                     $netMinutes = (int) (SessionDeductionLedger::query()
-                        ->leftJoin('ClassSession as ledger_cs', 'ledger_cs.id', '=', 'session_deduction_ledger.class_session_id')
                         ->where('student_class_id', $studentClassId)
                         ->whereIn('source', ['attendance', 'retro_leave', 'status_adjust', 'duplicate_session'])
-                        ->where(function ($query) {
-                            $query->whereNull('ledger_cs.id')
-                                ->orWhereIn('ledger_cs.Status', ['completed', 'attended', 'late']);
-                        })
                         ->selectRaw(
                             "SUM(CASE WHEN event_type = 'deduct' THEN COALESCE(minutes, ?) "
                             . "ELSE -COALESCE(minutes, ?) END) as net",
