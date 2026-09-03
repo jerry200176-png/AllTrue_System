@@ -45,7 +45,7 @@ describe('CourseManagement read-only lens (Phase B first slice)', () => {
   it('deep-link reuses the existing App.vue navigate/tab-switch mechanism, not a new router', () => {
     // 'navigate' is the same emit CourseManagement already uses for 管理科目 (subject-settings),
     // handled by App.vue's onNavigateFromCourseManagement -> active.value = payload.
-    expect(source).toContain("const emit = defineEmits(['clear-initial-teacher', 'navigate']);");
+    expect(source).toContain("const emit = defineEmits(['clear-initial-teacher', 'clear-initial-student', 'navigate']);");
     expect(source).toContain("emit('navigate', 'subject-settings')");
   });
 });

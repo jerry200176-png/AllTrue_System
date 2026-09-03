@@ -7,26 +7,38 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '../..');
 const read = (rel) => readFileSync(resolve(root, rel), 'utf8');
 
-describe('authoritative mutation ownership (slice 2: students billing + LINE)', () => {
-  it('removes students billing mutations and deep-links to tuition-collect', () => {
-    const students = read('pages/StudentsList.vue');
-    expect(students).not.toContain('PaymentEntryModal');
-    expect(students).not.toContain('togglePaymentStatus');
-    expect(students).toContain('goToTuitionBilling');
-    expect(students).toContain('前往帳務中心');
+describe('authoritative mutation ownership (slice 3: course-mgmt + calendar + binding)', () => {
+  it('deep-links course-mgmt billing mutations to tuition-collect', () => {
+    const courseMgmt = read('pages/CourseManagement.vue');
+    expect(courseMgmt).not.toContain('PaymentEntryModal');
+    expect(courseMgmt).toContain('goToTuitionBilling');
+    expect(courseMgmt).toContain('前往帳務中心');
+    expect(courseMgmt).not.toContain('>登記已回報</button>');
+    expect(courseMgmt).not.toContain('submitInvoiceVoid');
+    expect(courseMgmt).not.toContain('closeCourseNoRenew');
   });
 
-  it('removes LINE unbind from students and deep-links to binding-management', () => {
-    const students = read('pages/StudentsList.vue');
-    expect(students).not.toContain('removeLineBinding');
-    expect(students).toContain('goToBindingManagement');
-    expect(students).toContain('前往 LINE 綁定管理');
+  it('routes commercial renew/close to students while keeping trial convert local', () => {
+    const courseMgmt = read('pages/CourseManagement.vue');
+    expect(courseMgmt).toContain('openCommercialPurchaseEntry');
+    expect(courseMgmt).toContain("goToStudentsCommercial(c, 'close')");
+    expect(courseMgmt).toContain('openManualSessionModal');
+    expect(courseMgmt).toContain('/api/v1/student-classes/${course.id}/convert-trial');
   });
 
-  it('deep-links operational quick-add session to course-mgmt', () => {
-    const students = read('pages/StudentsList.vue');
-    expect(students).toContain('goToCourseMgmtOps');
-    expect(students).toContain('補課／補登請至課程管理');
-    expect(students).not.toContain('openQuickAddSession');
+  it('accepts binding-management student-name focus context', () => {
+    const binding = read('pages/BindingManagementPage.vue');
+    expect(binding).toContain('initialStudentName');
+    expect(binding).toContain("emit('clear-initial-student')");
+  });
+
+  it('keeps calendar attendance as deep-link only', () => {
+    const calendar = read('pages/SmartCalendar.vue');
+    const modal = read('components/calendar/modals/CalendarSessionEditModal.vue');
+    const guide = read('lib/pageGuideConfig.js');
+    expect(modal).toContain('goto-attendance');
+    expect(calendar).toContain('goToAttendanceFromSession');
+    expect(calendar).not.toContain('/api/v1/attendance');
+    expect(guide).toContain('出缺勤請至「出缺勤管理」登記');
   });
 });
