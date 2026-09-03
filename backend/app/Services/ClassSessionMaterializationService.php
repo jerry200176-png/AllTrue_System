@@ -230,7 +230,7 @@ class ClassSessionMaterializationService
 
         // A schedule may exist before its ClassSession is materialized. Check it
         // here too, otherwise a later backfill could recreate the overlap.
-        $scheduleConflict = DB::table('schedules as s')
+        $scheduleConflicts = DB::table('schedules as s')
             ->leftJoin('StudentClass as sc', 'sc.ID', '=', 's.student_course_id')
             ->where('s.student_id', $studentId)
             ->whereDate('s.schedule_date', $sessionDate)
@@ -261,7 +261,13 @@ class ClassSessionMaterializationService
             ->where('s.start_time', '<', substr($endTime, 0, 5))
             ->where('s.end_time', '>', substr($startTime, 0, 5))
             ->orderBy('s.id')
-            ->first(['s.id', 's.status']);
+            ->get(['s.id', 's.status', 's.student_course_id', 's.start_time']);
+
+        // Match availability's source-of-truth rule: a scheduled exception
+        // backed only by cancelled/leave ClassSessions is stale and cannot
+        // block materialization. Keep schedule-only makeup rows as busy.
+        $scheduleConflict = app(StaleScheduleExceptionFilter::class)
+            ->rejectStale($scheduleConflicts, $sessionDate)[0] ?? null;
 
         if ($scheduleConflict) {
             throw SlotOccupiedException::fromStudentConflict(
