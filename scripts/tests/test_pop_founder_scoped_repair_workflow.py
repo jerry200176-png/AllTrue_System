@@ -36,6 +36,7 @@ def test_founder_repair_workflow_is_exactly_scoped_and_protected():
     assert "GITHUB_ENV" not in text
     assert 'echo "$TOKEN"' not in text
     assert 'echo "$response"' not in text
+    assert "reason_codes=" in text
     assert "curl -sS" in text and '-o "$output"' in text
 def test_confirmation_and_sha_are_fail_closed():
     text = WORKFLOW.read_text()
