@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.03",
     "date": "2026-09-03",
     "title": "2026.09.03 草稿（未發布）",
-    "summary": "多 Guardian 加法模型與雙寫雙讀（dark launch）；多家長 LINE 綁定通知與偏好一致性",
+    "summary": "學生管理多家長 CRUD（flag 閘控）；多 Guardian 加法模型與雙寫雙讀（dark launch）",
     "audience": [
       "teacher",
       "director"
@@ -18,6 +18,7 @@ export const changelogDraftNotes = [
       {
         "title": "新增內容",
         "items": [
+          "學生管理多家長 CRUD（flag 閘控）",
           "多 Guardian 加法模型與雙寫雙讀（dark launch）"
         ]
       },
@@ -29,6 +30,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "學生管理多家長 CRUD（flag 閘控）",
       "多 Guardian 加法模型與雙寫雙讀（dark launch）",
       "多家長 LINE 綁定通知與偏好一致性"
     ]
