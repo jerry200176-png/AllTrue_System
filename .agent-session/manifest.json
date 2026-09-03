@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "f0ba1b09f81c4b87a256405e0067507e",
+  "session_id": "e0acfd76d14c44a1bb5afd53e2d425e3",
   "project": "alltrue",
-  "task_id": "881-pitr-ci-20260903",
+  "task_id": "student-parent-guardian-ssot-ui-20260903",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "4ab1368c29768ec96c6afed3c9ea9e6d85bb55b8",
-  "branch": "chore/task-881-pitr-ci-20260903",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/881-pitr-ci-20260903",
-  "started_at": "2026-09-03T12:15:35Z",
+  "base_sha": "efd3bd684f172d24f8d928af1909844a416f099d",
+  "branch": "chore/task-student-parent-guardian-ssot-ui-20260903",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/student-parent-guardian-ssot-ui-20260903",
+  "started_at": "2026-09-03T13:04:07Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": "codex",
+  "agent_cli": null,
   "gateway_version": "0.5.0"
 }

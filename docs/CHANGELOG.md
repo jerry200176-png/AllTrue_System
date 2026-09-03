@@ -1,3 +1,8 @@
+## 2026-09-03 — fix(parent): 學生頁家長欄與監護人 SSOT（去重）
+<!-- release-notes: staff_update=staff-2026-09-03-guardian-ssot-ui -->
+- 多監護人開啟時，編輯學生不再顯示重複的「家長姓名／家長手機」欄；改以「家長／監護人」為唯一維護入口，主要聯絡人即主要家長資訊。
+- 新增學生仍可用家長欄位（寫入後 dual-write 成主要監護人）；LINE 綁定與 RFID 不變。不刪除 `parent_phone` 欄位。
+
 ## 2026-09-03 — feat(parent): Multi-Guardian canonical Portal cutover
 <!-- release-notes: silent_ship=silent-2026-09-03-multi-guardian-cutover -->
 - Portal LINE 授權在 flag 開啟且 Guardian 存在時僅走 active／read_only `student_guardians`；無 Guardian 列才暫用 SLB 相容。
