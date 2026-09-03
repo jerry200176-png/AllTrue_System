@@ -3,45 +3,40 @@
   "bootstrap_path": ".exo/cache/sessions/agent-codex.bootstrap.md",
   "concurrent": false,
   "context_window_tokens": null,
-  "git_branch": "chore/task-fix-remove-fixed-slot-conflict-20260902",
-  "git_head_sha": "221ed3dc0e6efaa97d228d98d5cc5d50d3a07a92",
+  "git_branch": "chore/task-contract-session-date-overlap-20260903-final",
+  "git_head_sha": "52086765065d724494b999e5b596a041a3c9b9b3",
   "handoff_from": null,
   "lock": {
-    "created_at": "2026-09-03T02:01:12+08:00",
-    "expires_at": "2026-09-03T10:01:12+08:00",
-    "fencing_token": 2,
-    "heartbeat_at": "2026-09-03T02:01:12+08:00",
-    "lease_expires_at": "2026-09-03T10:01:12+08:00",
+    "created_at": "2026-09-03T15:54:23+08:00",
+    "expires_at": "2026-09-03T19:54:23+08:00",
+    "fencing_token": 3,
+    "heartbeat_at": "2026-09-03T15:54:23+08:00",
+    "lease_expires_at": "2026-09-03T19:54:23+08:00",
     "owner": "agent:codex",
-    "role": "implement",
-    "ticket_id": "TKT-20260903-020040-CO1K",
-    "updated_at": "2026-09-03T02:01:12+08:00",
+    "role": "implementer",
+    "ticket_id": "TKT-20260903-155417-MUVF",
+    "updated_at": "2026-09-03T15:54:23+08:00",
     "workspace": {
       "base": "main",
-      "branch": "codex/TKT-20260903-020040-CO1K"
+      "branch": "codex/TKT-20260903-155417-MUVF"
     }
   },
   "machine_snapshot": {
     "cpu_count": 12,
-    "load_avg_1m": 0.5,
-    "ram_available_gb": 3.4,
+    "load_avg_1m": 2.3,
+    "ram_available_gb": 2.4,
     "ram_total_gb": 4.8
   },
   "mode": "work",
   "model": "gpt-5",
-  "pid": 443376,
+  "pid": 29747,
   "pr_check": null,
-  "role": "implement",
-  "session_id": "SES-20260903020112-8495332B",
+  "role": "implementer",
+  "session_id": "SES-20260903155423-38602524",
   "start_advisories": [
     {
       "detail": {
         "overlapping_patterns": [
-          "frontend/src/**",
-          "frontend/src/lib/**",
-          "frontend/src/components/**",
-          "docs/CHANGELOG.md",
-          "docs/**",
           ".exo/cache/**",
           ".exo/**",
           ".exo/memory/**",
@@ -54,7 +49,7 @@
         "sibling_ticket": "TKT-20260901-045848-UJSJ"
       },
       "kind": "scope_conflict",
-      "message": "human working on TKT-20260901-045848-UJSJ on feat/TKT-20260901-045848-UJSJ \u2014 overlapping scope: frontend/src/**, frontend/src/lib/**, frontend/src/components/**, docs/CHANGELOG.md, docs/**, .exo/cache/**, .exo/**, .exo/memory/**, .exo/locks/**, .exo/tickets/**, .exo/logs/**",
+      "message": "human working on TKT-20260901-045848-UJSJ on feat/TKT-20260901-045848-UJSJ \u2014 overlapping scope: .exo/cache/**, .exo/**, .exo/memory/**, .exo/locks/**, .exo/tickets/**, .exo/logs/**",
       "severity": "warning"
     },
     {
@@ -100,8 +95,6 @@
         "actor": "human",
         "branch": "chore/task-smart-calendar-room-form-a11y-20260831",
         "overlapping_patterns": [
-          "frontend/src/**",
-          "frontend/src/components/**",
           ".exo/cache/**",
           ".exo/**",
           ".exo/memory/**",
@@ -121,8 +114,6 @@
         "actor": "human",
         "branch": "chore/task-learning-record-selection-a11y-20260831",
         "overlapping_patterns": [
-          "frontend/src/**",
-          "frontend/src/components/**",
           ".exo/cache/**",
           ".exo/**",
           ".exo/memory/**",
@@ -142,8 +133,6 @@
         "actor": "human",
         "branch": "chore/task-attendance-checkbox-a11y-20260831",
         "overlapping_patterns": [
-          "frontend/src/**",
-          "frontend/src/components/**",
           ".exo/**",
           ".exo/cache/**",
           ".exo/memory/**",
@@ -163,8 +152,6 @@
         "actor": "agent:codex",
         "branch": "chore/task-students-import-button-a11y-20260831",
         "overlapping_patterns": [
-          "frontend/src/**",
-          "frontend/src/components/**",
           ".exo/**",
           ".exo/cache/**",
           ".exo/memory/**",
@@ -184,8 +171,6 @@
         "actor": "agent:codex",
         "branch": "chore/task-subject-units-disclosure-a11y-20260831",
         "overlapping_patterns": [
-          "frontend/src/**",
-          "frontend/src/components/**",
           ".exo/**",
           ".exo/cache/**",
           ".exo/memory/**",
@@ -205,8 +190,6 @@
         "actor": "human",
         "branch": "chore/task-learning-filters-clear-action-a11y-20260830",
         "overlapping_patterns": [
-          "frontend/src/**",
-          "frontend/src/components/**",
           ".exo/**",
           ".exo/cache/**",
           ".exo/memory/**",
@@ -226,8 +209,6 @@
         "actor": "human",
         "branch": "chore/task-director-makeup-candidate-tabs-a11y-20260830",
         "overlapping_patterns": [
-          "frontend/src/**",
-          "frontend/src/components/**",
           ".exo/**",
           ".exo/cache/**",
           ".exo/memory/**",
@@ -247,8 +228,6 @@
         "actor": "human",
         "branch": "chore/task-learning-feedback-preview-a11y-20260830",
         "overlapping_patterns": [
-          "frontend/src/**",
-          "frontend/src/components/**",
           ".exo/cache/**",
           ".exo/**",
           ".exo/memory/**",
@@ -268,8 +247,6 @@
         "actor": "agent:codex",
         "branch": "chore/task-calendar-teacher-list-a11y-20260830",
         "overlapping_patterns": [
-          "frontend/src/**",
-          "frontend/src/components/**",
           ".exo/cache/**",
           ".exo/**",
           ".exo/memory/**",
@@ -289,8 +266,6 @@
         "actor": "human",
         "branch": "chore/task-attendance-controls-a11y-20260830",
         "overlapping_patterns": [
-          "frontend/src/**",
-          "frontend/src/components/**",
           ".exo/**",
           ".exo/cache/**",
           ".exo/memory/**",
@@ -331,9 +306,6 @@
         "actor": "agent:codex",
         "branch": "chore/task-calendar-247-regression-20260830",
         "overlapping_patterns": [
-          "frontend/src/**",
-          "frontend/src/components/substitute/**",
-          "docs/**",
           ".exo/**",
           ".exo/cache/**",
           ".exo/memory/**",
@@ -353,8 +325,6 @@
         "actor": "agent:codex",
         "branch": "chore/task-teacher-overdue-partial-failure-20260830",
         "overlapping_patterns": [
-          "frontend/src/**",
-          "frontend/**",
           ".exo/**",
           ".exo/cache/**",
           ".exo/memory/**",
@@ -370,10 +340,10 @@
       "severity": "info"
     }
   ],
-  "started_at": "2026-09-03T02:01:12+08:00",
+  "started_at": "2026-09-03T15:54:23+08:00",
   "status": "active",
-  "task": "Complete in-app bugs #250 #247 #249 with production evidence, observability, decision package, and governed deployment",
-  "ticket_id": "TKT-20260903-020040-CO1K",
+  "task": "Deliver contract-period ghost conflict fix",
+  "ticket_id": "TKT-20260903-155417-MUVF",
   "topic_id": "repo:default",
   "vendor": "openai",
   "writing_session": null
