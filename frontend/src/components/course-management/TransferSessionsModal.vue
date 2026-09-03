@@ -2,7 +2,12 @@
   <div v-if="show" class="modal-overlay" @click.self="!submitting && $emit('close')">
     <div class="modal course-modal transfer-sessions-modal">
       <h3 class="modal-title">轉移堂次紀錄</h3>
-      <p class="modal-desc">{{ studentName }} - {{ subjectLabel }}</p>
+      <p class="modal-desc">來源課程／{{ studentName }}／{{ subjectLabel }}</p>
+      <p class="source-course-meta">
+        來源剩餘 {{ sourceCourse?.remaining_sessions ?? sourceCourse?.RemainingSessions ?? '—' }} 堂
+        <span v-if="sourceCourse?.start_date || sourceCourse?.StartDate">／開始 {{ sourceCourse?.start_date || sourceCourse?.StartDate }}</span>
+        <span v-if="sourceCourse?.start_time">／{{ sourceCourse.start_time }}<span v-if="sourceCourse?.end_time">–{{ sourceCourse.end_time }}</span></span>
+      </p>
       <p class="period-hint">
         把已上課、已填評量的堂次搬到另一門課程，評量與點名紀錄會一起跟過去，不用重填。
         <strong>不會</strong>異動任一課程的堂數／金額，帳務對帳仍照原本流程。
@@ -14,13 +19,12 @@
           id="transfer-target-course"
           v-model.trim="targetCourseQuery"
           type="text"
-          inputmode="numeric"
-          placeholder="搜尋學生的其他課程，或輸入課程 ID"
+          placeholder="搜尋學生的其他課程"
           autocomplete="off"
           :disabled="submitting"
           @input="onTargetCourseInput"
         />
-        <span class="hint">先在學生管理建立新一期課程，再從下面點選；不會自動建立課程。</span>
+        <span class="hint">先在學生管理建立新一期課程，再從下面點選；不會自動建立課程，也不能只貼未確認的代碼。</span>
         <div v-if="targetCoursesLoading" class="hint">正在找這位學生的其他課程…</div>
         <div v-else-if="filteredTargetCourses.length > 0" class="target-course-list" role="listbox" aria-label="可選的目標課程">
           <button
@@ -34,15 +38,17 @@
           >
             <span class="target-course-copy">
               <strong>{{ targetCourseTitle(course) }}</strong>
-              <small>{{ targetCourseMeta(course) }}</small>
+            <small>{{ targetCourseMeta(course) }}</small>
             </span>
             <span class="target-course-check material-symbols-outlined" aria-hidden="true">
               {{ String(course.id) === targetCourseId ? 'check_circle' : 'radio_button_unchecked' }}
             </span>
           </button>
         </div>
-        <div v-else class="hint target-course-empty">目前找不到可選課程；確認已建立新課程，或直接貼上課程 ID。</div>
-        <span v-if="targetCourseId" class="selected-target-hint">已選目標課程</span>
+        <div v-else class="hint target-course-empty">目前找不到可選課程；請確認已為同一學生建立同科目的新課程。</div>
+        <div v-if="selectedTargetCourse" class="selected-target-hint">
+          已選目標：<strong>{{ targetCourseTitle(selectedTargetCourse) }}</strong>／{{ targetCourseMeta(selectedTargetCourse) }}
+        </div>
       </div>
 
       <div class="form-group">
@@ -51,7 +57,7 @@
         <div v-else class="session-pick-list">
           <label v-for="s in sessions" :key="s.id" class="session-pick-row">
             <input type="checkbox" :value="s.id" v-model="selectedIds" :disabled="submitting" />
-            <span class="session-pick-date">{{ s.date }}</span>
+            <span class="session-pick-date">{{ s.date }}<span v-if="s.startTime"> {{ s.startTime }}<span v-if="s.endTime">–{{ s.endTime }}</span></span></span>
             <span class="session-pick-status" :class="`st-${s.status}`">{{ statusLabel(s.status) }}</span>
           </label>
         </div>
@@ -94,6 +100,7 @@ const props = defineProps({
   show: Boolean,
   studentName: { type: String, default: '' },
   subject: { type: String, default: '' },
+  sourceCourse: { type: Object, default: null },
   sessions: { type: Array, default: () => [] }, // [{ id, date, status }]
   targetCourses: { type: Array, default: () => [] },
   targetCoursesLoading: { type: Boolean, default: false },
@@ -126,6 +133,7 @@ const filteredTargetCourses = computed(() => {
     return haystack.includes(q);
   }).slice(0, 8);
 });
+const selectedTargetCourse = computed(() => props.targetCourses.find((course) => String(course.id) === targetCourseId.value) || null);
 
 // Reset the form every time the modal opens for a (possibly different) course.
 watch(() => props.show, (isShown) => {
@@ -152,7 +160,10 @@ function targetCourseTitle(course) {
 
 function targetCourseMeta(course) {
   const start = course.start_date ? `開始 ${course.start_date}` : '開始日期未設定';
-  return start;
+  const time = course.start_time ? `／${course.start_time}${course.end_time ? `–${course.end_time}` : ''}` : '';
+  const remaining = `／剩餘 ${course.remaining_sessions ?? course.RemainingSessions ?? '—'} 堂`;
+  const student = course.student_name ? `／學生 ${course.student_name}` : '';
+  return `${student}${start}${time}${remaining}`;
 }
 
 function selectTargetCourse(course) {
@@ -163,8 +174,7 @@ function selectTargetCourse(course) {
 function onTargetCourseInput(event) {
   const value = String(event?.target?.value || '').trim();
   targetCourseQuery.value = value;
-  if (/^\d+$/.test(value)) targetCourseId.value = value;
-  else targetCourseId.value = '';
+  targetCourseId.value = '';
 }
 
 function onSubmit() {

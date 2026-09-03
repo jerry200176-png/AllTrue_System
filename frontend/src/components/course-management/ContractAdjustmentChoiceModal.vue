@@ -15,6 +15,15 @@
           <span class="choice-card__arrow" aria-hidden="true">›</span>
         </button>
 
+        <button type="button" class="choice-card choice-card--amendment" @click="$emit('choose', 'amendment')">
+          <span class="choice-card__icon" aria-hidden="true">⊖</span>
+          <span class="choice-card__copy">
+            <strong>提前結束／調整合約總堂數</strong>
+            <small>例如原本 8 堂、已完成 3 堂，調整為 3 堂；不需要目標課程，未來預排會取消。</small>
+          </span>
+          <span class="choice-card__arrow" aria-hidden="true">›</span>
+        </button>
+
         <button type="button" class="choice-card" @click="$emit('choose', 'transfer')">
           <span class="choice-card__icon" aria-hidden="true">↪</span>
           <span class="choice-card__copy">
@@ -25,7 +34,7 @@
         </button>
       </div>
 
-      <p class="choice-footnote">不確定時，先看兩個選項的說明；不要用「編輯」直接改已發生的扣堂資料。</p>
+      <p class="choice-footnote">提前結束會保留原合約、已上課紀錄與稽核軌跡；帳務不在此流程自動改動。不要用「編輯」直接改已發生的扣堂資料。</p>
 
       <div class="actions">
         <button type="button" class="ghost" @click="$emit('close')">取消</button>
