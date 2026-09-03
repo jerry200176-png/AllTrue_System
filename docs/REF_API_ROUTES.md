@@ -1,13 +1,19 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 442 api/* routes · generated 2026-09-02
+> Source: `php artisan route:list --json` · 447 api/* routes · generated 2026-09-03
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
 > ⚠️ `public` means no auth *middleware* — some public routes carry inline guards
 > (X-Deploy-Secret, LINE channel signature, ParentSession bearer). Verify the route
 > closure/controller before treating a `public` row as exposed (R60 checks belong in CI).
+
+## /api/fix-db (1)
+
+| Method | URI | Action | Auth |
+|--------|-----|--------|------|
+| GET | `api/fix-db` | `Closure` | public |
 
 ## /api/health (1)
 
@@ -712,7 +718,7 @@
 | PUT | `api/v1/student-identities/{groupId}/access` | `StudentIdentityController@access` | role+campus |
 | GET | `api/v1/student-identities/{groupId}/audit` | `StudentIdentityController@audit` | role+campus |
 
-## /api/v1/students (12)
+## /api/v1/students (16)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -726,6 +732,10 @@
 | DELETE | `api/v1/students/{student}` | `StudentController@destroy` | role+campus |
 | GET | `api/v1/students/{student}/active-courses` | `StudentController@activeCourses` | role+campus |
 | POST | `api/v1/students/{student}/bind-card` | `StudentController@bindCard` | role+campus |
+| GET | `api/v1/students/{student}/guardians` | `StudentGuardianController@index` | role+campus |
+| POST | `api/v1/students/{student}/guardians` | `StudentGuardianController@store` | role+campus |
+| PUT | `api/v1/students/{student}/guardians/{studentGuardian}` | `StudentGuardianController@update` | role+campus |
+| DELETE | `api/v1/students/{student}/guardians/{studentGuardian}` | `StudentGuardianController@destroy` | role+campus |
 | GET | `api/v1/students/{student}/line-bindings` | `StudentController@lineBindings` | role+campus |
 | DELETE | `api/v1/students/{student}/line-bindings/{binding}` | `StudentController@removeLineBinding` | role+campus |
 
