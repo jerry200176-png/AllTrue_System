@@ -2369,13 +2369,20 @@ async function loadTransferTargetCourses(sourceCourse) {
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
-    if (!token || !props.branchId || !sourceCourse) return;
+    if (!token || !sourceCourse) return;
     const params = new URLSearchParams({
-      branch_id: String(props.branchId),
       per_page: '100',
       page: '1',
     });
-    if (sourceCourse.student_name) params.set('name', String(sourceCourse.student_name));
+    const studentId = Number(sourceCourse?.student_id ?? sourceCourse?.StudentID);
+    if (Number.isInteger(studentId) && studentId > 0) {
+      // The API applies the caller's campus/teacher scope. Query by the
+      // canonical student identity instead of branch + display name, which
+      // can hide a valid target course when room/campus metadata differs.
+      params.set('student_id', String(studentId));
+    } else if (sourceCourse.student_name) {
+      params.set('name', String(sourceCourse.student_name));
+    }
     const res = await fetch(`/api/v1/student-classes?${params}`, {
       credentials: 'include',
       headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
@@ -2435,7 +2442,12 @@ async function submitTransferSessions({ targetCourseId, sessionIds, reason }) {
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
       const details = json?.errors ? Object.values(json.errors || {}).flat().join(' ') : '';
-      transferSessionsError.value = details || json?.message || '轉移失敗';
+      const conflict = json?.conflict_session_id
+        ? `衝突堂次 #${json.conflict_session_id}`
+        : json?.conflict_schedule_id
+          ? `衝突預排 #${json.conflict_schedule_id}`
+          : '';
+      transferSessionsError.value = [details, json?.message, conflict].filter(Boolean).join(' ') || '轉移失敗';
       return;
     }
     showTransferSessionsModal.value = false;
