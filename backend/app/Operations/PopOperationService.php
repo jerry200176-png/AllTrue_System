@@ -28,7 +28,8 @@ final class PopOperationService
         string $actor,
         ?string $actorRole = null,
         array $actorCampusIds = [],
-        ?int $actorId = null
+        ?int $actorId = null,
+        ?array $context = null
     ): array {
         $entry = $this->catalog->operation($operationId);
         $this->assertActor($actor);
@@ -37,14 +38,15 @@ final class PopOperationService
         $this->assertParameterContract($entry, $normalized);
         $this->assertCampusScope($normalized, $actorRole, $actorCampusIds);
         $hash = hash('sha256', json_encode($normalized, JSON_THROW_ON_ERROR));
+        $contextHash = $this->contextHash($context);
 
-        return DB::transaction(function () use ($entry, $operationId, $normalized, $idempotencyKey, $actor, $actorId, $hash): array {
+        return DB::transaction(function () use ($entry, $operationId, $normalized, $idempotencyKey, $actor, $actorId, $hash, $contextHash): array {
             $existing = DB::table('pop_operation_requests')
                 ->where('idempotency_key', $idempotencyKey)
                 ->lockForUpdate()
                 ->first();
             if ($existing) {
-                $this->assertIdempotencyMatch($existing, $operationId, $hash);
+                $this->assertIdempotencyMatch($existing, $operationId, $hash, $contextHash);
 
                 return (array) $existing;
             }
@@ -57,6 +59,7 @@ final class PopOperationService
                 'catalog_version' => $this->catalog->version(),
                 'parameters' => json_encode($normalized, JSON_THROW_ON_ERROR),
                 'parameters_hash' => $hash,
+                'context_hash' => $contextHash,
                 'idempotency_key' => $idempotencyKey,
                 'status' => 'draft',
                 'actor' => substr($actor, 0, 128),
@@ -69,7 +72,7 @@ final class PopOperationService
             if (!$request) {
                 throw new RuntimeException('POP draft was not persisted; fail closed.');
             }
-            $this->assertIdempotencyMatch($request, $operationId, $hash);
+            $this->assertIdempotencyMatch($request, $operationId, $hash, $contextHash);
             if (!$inserted) {
                 return (array) $request;
             }
@@ -204,14 +207,20 @@ final class PopOperationService
         string $actor,
         ?int $actorId = null,
         ?string $actorRole = null,
-        array $actorCampusIds = []
+        array $actorCampusIds = [],
+        ?array $context = null
     ): array
     {
-        $request = $this->request($requestId);
-        $parameters = json_decode((string) $request->parameters, true, 512, JSON_THROW_ON_ERROR);
-        $this->assertCampusScope($parameters, $actorRole, $actorCampusIds);
+        return DB::transaction(function () use ($requestId, $actor, $actorId, $actorRole, $actorCampusIds, $context): array {
+            $request = DB::table('pop_operation_requests')->where('id', $requestId)->lockForUpdate()->first();
+            if (!$request) {
+                throw new RuntimeException('POP request not found; fail closed.');
+            }
+            $parameters = json_decode((string) $request->parameters, true, 512, JSON_THROW_ON_ERROR);
+            $this->assertCampusScope($parameters, $actorRole, $actorCampusIds);
 
-        return $this->run($requestId, 'dry-run', null, null, $actor, $actorId, $actorRole);
+            return $this->runDryRunLocked($request, $actor, $actorId, $actorRole, $context, $parameters, microtime(true));
+        });
     }
 
     /** @return array<string,mixed> */
@@ -222,30 +231,34 @@ final class PopOperationService
         ?string $commitSha = null,
         string $actor = 'pop-runner',
         ?int $actorId = null,
-        ?string $actorRole = null
+        ?string $actorRole = null,
+        ?array $context = null
     ): array
     {
         $request = $this->request($requestId);
-        $entry = $this->catalog->operation((string) $request->operation_id);
-        if ((int) $request->catalog_version !== $this->catalog->version()) {
-            throw new RuntimeException('POP request catalog version is stale; fail closed.');
-        }
         if (!in_array($phase, ['dry-run', 'execute', 'verify', 'rollback'], true)) {
             throw new RuntimeException('POP phase is invalid; fail closed.');
         }
         $this->assertActor($actor);
-        $parameters = json_decode((string) $request->parameters, true, 512, JSON_THROW_ON_ERROR);
         $startedAt = microtime(true);
 
         if ($phase === 'dry-run') {
-            $existing = $this->existing($request, $phase);
-            if ($existing) {
-                return $existing;
-            }
-            $plan = $this->safePlan($entry, $parameters);
+            return DB::transaction(function () use ($requestId, $actor, $actorId, $actorRole, $context, $startedAt): array {
+                $locked = DB::table('pop_operation_requests')->where('id', $requestId)->lockForUpdate()->first();
+                if (!$locked) {
+                    throw new RuntimeException('POP request not found; fail closed.');
+                }
+                $parameters = json_decode((string) $locked->parameters, true, 512, JSON_THROW_ON_ERROR);
 
-            return $this->recordDryRun($request, $entry, $parameters, $plan, $actor, $this->durationMs($startedAt), $actorId, $actorRole);
+                return $this->runDryRunLocked($locked, $actor, $actorId, $actorRole, $context, $parameters, $startedAt);
+            });
         }
+        $entry = $this->catalog->operation((string) $request->operation_id);
+        if ((int) $request->catalog_version !== $this->catalog->version()) {
+            throw new RuntimeException('POP request catalog version is stale; fail closed.');
+        }
+        $parameters = json_decode((string) $request->parameters, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertRequestIntegrity($request, $entry, $parameters, $context, false);
         if ((string) $entry['lifecycle'] !== 'active') {
             throw new RuntimeException('POP operation is not active; Founder activation is required.');
         }
@@ -422,11 +435,70 @@ final class PopOperationService
         }
     }
 
-    private function assertIdempotencyMatch(object $existing, string $operationId, string $hash): void
+    private function assertIdempotencyMatch(object $existing, string $operationId, string $hash, ?string $contextHash = null): void
     {
         if ((string) $existing->parameters_hash !== $hash || (string) $existing->operation_id !== $operationId) {
             throw new RuntimeException('POP idempotency key is already bound to different parameters.');
         }
+        if ((string) ($existing->context_hash ?? '') !== (string) ($contextHash ?? '')) {
+            throw new RuntimeException('POP idempotency key is already bound to different context.');
+        }
+    }
+
+    /** @param array<string,mixed> $parameters @param array<string,mixed> $entry */
+    private function assertRequestIntegrity(object $request, array $entry, array $parameters, ?array $context, bool $validateContext = true): string
+    {
+        if ((string) ($entry['id'] ?? '') !== (string) $request->operation_id) {
+            throw new RuntimeException('POP request operation identity drifted; fail closed.');
+        }
+        if ((string) ($entry['strategy_class'] ?? '') !== (string) $request->strategy_id) {
+            throw new RuntimeException('POP request strategy identity drifted; fail closed.');
+        }
+        $normalized = self::canonicalParameters($parameters);
+        $parametersHash = hash('sha256', json_encode($normalized, JSON_THROW_ON_ERROR));
+        if (!hash_equals((string) $request->parameters_hash, $parametersHash)) {
+            throw new RuntimeException('POP request parameters hash drifted; fail closed.');
+        }
+        $storedContextHash = (string) ($request->context_hash ?? '');
+        if ($validateContext) {
+            $contextHash = $this->contextHash($context);
+            if ($storedContextHash !== (string) ($contextHash ?? '')) {
+                throw new RuntimeException('POP retry context does not match request; fail closed.');
+            }
+        }
+        $fingerprint = hash('sha256', json_encode([
+            'operation_id' => (string) $request->operation_id,
+            'strategy_id' => (string) $request->strategy_id,
+            'catalog_version' => (int) $request->catalog_version,
+            'parameters_hash' => (string) $request->parameters_hash,
+            'context_hash' => $storedContextHash !== '' ? $storedContextHash : null,
+        ], JSON_THROW_ON_ERROR));
+        $priorFingerprints = DB::table('pop_execution_records')
+            ->where('operation_id', $request->id)
+            ->where('phase', 'dry-run')
+            ->whereNotNull('request_fingerprint')
+            ->pluck('request_fingerprint');
+        foreach ($priorFingerprints as $priorFingerprint) {
+            if (!hash_equals((string) $priorFingerprint, $fingerprint)) {
+                throw new RuntimeException('POP retry request fingerprint drifted; fail closed.');
+            }
+        }
+
+        return $fingerprint;
+    }
+
+    /** @param array<string,mixed> $context */
+    private function contextHash(?array $context): ?string
+    {
+        if ($context === null) {
+            return null;
+        }
+        if (array_key_exists('production_sha', $context)
+            && (!is_string($context['production_sha']) || !preg_match(self::COMMIT_SHA_PATTERN, $context['production_sha']))) {
+            throw new RuntimeException('POP production context SHA is invalid; fail closed.');
+        }
+
+        return hash('sha256', json_encode(self::canonicalParameters($context), JSON_THROW_ON_ERROR));
     }
 
     /** @param array<string,mixed> $entry @return array<int,string> */
@@ -606,6 +678,31 @@ final class PopOperationService
         }
     }
 
+    /** @param array<string,mixed> $parameters @param array<string,mixed> $context */
+    private function runDryRunLocked(
+        object $request,
+        string $actor,
+        ?int $actorId,
+        ?string $actorRole,
+        ?array $context,
+        array $parameters,
+        float $startedAt
+    ): array {
+        $this->assertActor($actor);
+        $entry = $this->catalog->operation((string) $request->operation_id);
+        if ((int) $request->catalog_version !== $this->catalog->version()) {
+            throw new RuntimeException('POP request catalog version is stale; fail closed.');
+        }
+        $requestFingerprint = $this->assertRequestIntegrity($request, $entry, $parameters, $context);
+        $existing = $this->existing($request, 'dry-run');
+        if ($existing) {
+            return $existing;
+        }
+        $plan = $this->safePlan($entry, $parameters);
+
+        return $this->recordDryRun($request, $entry, $parameters, $plan, $actor, $this->durationMs($startedAt), $actorId, $actorRole, $requestFingerprint);
+    }
+
     /** @param array<string,mixed> $entry @param array<string,mixed> $parameters @param array<string,mixed> $plan */
     private function recordDryRun(
         object $request,
@@ -615,13 +712,14 @@ final class PopOperationService
         string $actor,
         int $durationMs,
         ?int $actorId = null,
-        ?string $actorRole = null
+        ?string $actorRole = null,
+        ?string $requestFingerprint = null
     ): array
     {
         return $this->record($request, $entry, $parameters, 'dry-run', [
             'ok' => (bool) ($plan['ok'] ?? false),
             'plan' => $plan,
-        ], $actor, null, null, $durationMs, null, $actorId, $actorRole);
+        ], $actor, null, null, $durationMs, null, $actorId, $actorRole, $requestFingerprint);
     }
 
     /** @param array<string,mixed> $entry @param array<string,mixed> $parameters @param array<string,mixed> $payload */
@@ -637,11 +735,22 @@ final class PopOperationService
         int $durationMs,
         ?string $failureReason = null,
         ?int $actorId = null,
-        ?string $actorRole = null
+        ?string $actorRole = null,
+        ?string $requestFingerprint = null
     ): array {
         $executionId = (string) Str::uuid();
         $correlationId = (string) Str::uuid();
         $result = $this->resultFor($phase, (bool) ($payload['ok'] ?? false), $failureReason);
+        $idempotencyKey = $request->idempotency_key . ':' . $phase;
+        $attemptNo = 1;
+        $attemptKey = $idempotencyKey;
+        if ($phase === 'dry-run') {
+            $attemptNo = ((int) DB::table('pop_execution_records')
+                ->where('operation_id', $request->id)
+                ->where('phase', $phase)
+                ->max('attempt_no')) + 1;
+            $attemptKey = $attemptNo === 1 ? $idempotencyKey : $idempotencyKey . ':attempt:' . $attemptNo;
+        }
         $executionRecord = [
             'schema_version' => '1.0',
             'operation_id' => (string) $request->id,
@@ -663,6 +772,8 @@ final class PopOperationService
             'audit_reference' => 'pop-execution-record:' . $executionId,
             'failure_reason' => $failureReason,
             'correlation_id' => $correlationId,
+            'attempt_no' => $attemptNo,
+            'request_fingerprint' => $requestFingerprint,
             'version_pins' => [
                 'strategy' => (string) $request->strategy_id,
                 'policy' => 'default@' . $this->catalog->policyVersion(),
@@ -677,8 +788,11 @@ final class PopOperationService
             'operation_id' => $request->id,
             'execution_id' => $executionId,
             'phase' => $phase,
+            'attempt_no' => $attemptNo,
             'result' => $result,
-            'idempotency_key' => $request->idempotency_key . ':' . $phase,
+            'idempotency_key' => $idempotencyKey,
+            'attempt_key' => $attemptKey,
+            'request_fingerprint' => $requestFingerprint,
             'correlation_id' => $correlationId,
             'commit_sha' => $commitSha,
             'approval_reference' => $approval?->approval_reference,
@@ -687,7 +801,7 @@ final class PopOperationService
             'actor' => substr($actor, 0, 128),
             'created_at' => now(),
         ]);
-        $stored = $this->findExecutionByIdempotency($request, $phase);
+        $stored = $this->findExecutionByAttemptKey($attemptKey);
         if (!$stored) {
             throw new RuntimeException('POP execution record was not persisted; fail closed.');
         }
@@ -777,15 +891,22 @@ final class PopOperationService
 
     private function existing(object $request, string $phase): ?array
     {
-        $row = $this->findExecutionByIdempotency($request, $phase);
+        $row = $phase === 'dry-run'
+            ? DB::table('pop_execution_records')
+                ->where('operation_id', $request->id)
+                ->where('phase', $phase)
+                ->where('result', 'succeeded')
+                ->orderByDesc('attempt_no')
+                ->first()
+            : $this->findExecutionByAttemptKey($request->idempotency_key . ':' . $phase);
 
         return $row ? json_decode((string) $row->payload, true, 512, JSON_THROW_ON_ERROR) + ['execution_id' => $row->execution_id, 'phase' => $phase] : null;
     }
 
-    private function findExecutionByIdempotency(object $request, string $phase): ?object
+    private function findExecutionByAttemptKey(string $attemptKey): ?object
     {
         return DB::table('pop_execution_records')
-            ->where('idempotency_key', $request->idempotency_key . ':' . $phase)
+            ->where('attempt_key', $attemptKey)
             ->first();
     }
 
@@ -794,6 +915,7 @@ final class PopOperationService
         return DB::table('pop_execution_records')
             ->where('operation_id', $request->id)
             ->where('phase', $phase)
+            ->orderByDesc('attempt_no')
             ->latest('created_at')
             ->first();
     }
