@@ -7,6 +7,8 @@ Purpose: Phase A triage for in-app bug #247 linked to GitHub #2179. Obtain the c
 
 # kickoff 2026-08-31T08:09:30+08:00 — re-trigger the paired queue/detail evidence after restoring the main CI→deploy event chain; target in-app bug #247
 
+# kickoff 2026-09-04T09:41:56Z — Founder-requested full in-app bug triage; refresh paired queue/detail evidence for the current open queue
+
 # kickoff 2026-08-28T04:45:30Z — fresh queue identifies open in-app #245; obtain complete description, attachments, comments, status logs, and reporter history for Phase A triage
 
 # kickoff 2026-07-30T04:48:00Z — retry after fixing StudentClass campus lookup (StudentClass has no CampusID column; campus lives on Student, joined via StudentID — query previously selected the nonexistent `sc.CampusID`)
