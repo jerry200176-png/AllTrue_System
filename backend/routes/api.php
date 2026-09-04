@@ -64,6 +64,7 @@ use App\Http\Controllers\AssessmentController;
 use App\Http\Controllers\QuestionBankController;
 use App\Http\Controllers\PopOperationController;
 use App\Http\Controllers\ContractAmendmentController;
+use App\Http\Controllers\AdmissionInquiryController;
 
 
 if (app()->environment('local')) {
@@ -180,6 +181,8 @@ Route::prefix('v1')->group(function () {
     // ── Public Branch Data (No auth required) ───────────────────────
     Route::get('branches', [CampusController::class, 'listPublic']);
     Route::get('subjects-public', [SubjectController::class, 'indexPublic']);
+    Route::post('admission-inquiries', [AdmissionInquiryController::class, 'store'])
+        ->middleware('throttle:10,1');
 
     // ── Health (public, minimal) ─────────────────────────────────────
     // SEC-F3: Only status+timestamp exposed publicly. Operational metrics
@@ -313,6 +316,15 @@ Route::prefix('v1')->group(function () {
     // ── GitHub Issues (director + super_admin) ──
     Route::middleware(['role:director,super_admin', 'require_password_change'])->group(function () {
         Route::get('github/issues', [GitHubIssueController::class, 'index']);
+    });
+
+    Route::middleware(['role:director,super_admin', 'require_campus', 'require_password_change'])->group(function () {
+        Route::get('admission-inquiries', [AdmissionInquiryController::class, 'index']);
+        Route::get('admission-inquiries/{admissionInquiry}', [AdmissionInquiryController::class, 'show'])->whereNumber('admissionInquiry');
+        Route::post('admission-inquiries/{admissionInquiry}/contact', [AdmissionInquiryController::class, 'contact'])->whereNumber('admissionInquiry');
+        Route::post('admission-inquiries/{admissionInquiry}/trial', [AdmissionInquiryController::class, 'scheduleTrial'])->whereNumber('admissionInquiry');
+        Route::post('admission-inquiries/{admissionInquiry}/trial-result', [AdmissionInquiryController::class, 'recordResult'])->whereNumber('admissionInquiry');
+        Route::post('admission-inquiries/{admissionInquiry}/enroll', [AdmissionInquiryController::class, 'linkEnrollment'])->whereNumber('admissionInquiry');
     });
 
     Route::middleware(['role:director', 'require_campus', 'require_password_change'])->group(function () {
