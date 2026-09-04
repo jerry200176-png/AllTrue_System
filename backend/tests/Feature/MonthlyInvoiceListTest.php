@@ -117,6 +117,13 @@ class MonthlyInvoiceListTest extends TestCase
         $token = $this->createDirectorToken([1], 'dir-invoice-reconcile@test.com');
         $student = $this->createStudent();
         $course = $this->createMonthlyCourse($student->id);
+        // The reconciliation fixture is for July; keep the contract interval
+        // aligned with the sessions so the boundary filter does not treat
+        // them as legacy out-of-contract rows.
+        $course->update([
+            'StartDate' => '2026-07-01',
+            'EndDate' => '2026-07-31',
+        ]);
         $course->update(['Charge' => 6000, 'Rate' => 1500]);
 
         foreach (range(1, 5) as $day) {

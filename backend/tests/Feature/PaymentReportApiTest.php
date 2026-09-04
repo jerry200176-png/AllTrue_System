@@ -1208,6 +1208,8 @@ class PaymentReportApiTest extends TestCase
         $student = $this->createStudent(1);
         $sc = $this->createCountModeClass($student->id, [
             'ScheduleMode' => 'date',
+            'StartDate' => '2026-07-01',
+            'EndDate' => '2026-07-31',
             'Charge' => 1800,
             'Rate' => 1650,
             'rate_unit' => 'session',
@@ -1295,6 +1297,8 @@ class PaymentReportApiTest extends TestCase
         $student = $this->createStudent(1);
         $sc = $this->createCountModeClass($student->id, [
             'ScheduleMode' => 'date',
+            'StartDate' => '2026-07-01',
+            'EndDate' => '2026-07-31',
             'Charge' => 1800,
             'Rate' => 1200,
             'rate_unit' => 'session',
