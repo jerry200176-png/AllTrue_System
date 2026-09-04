@@ -1,3 +1,8 @@
+## 2026-09-05 — ops: Xindian capacity read-only diagnose workflow
+<!-- release-notes: silent_ship=silent-2026-09-05-xindian-capacity-diagnose -->
+- Added a workflow-dispatch, SELECT-only production probe that aggregates 新店 (campus 9) invoice cash, session mix, peak slots, and teacher cross-campus load for capacity modeling.
+- No product UI change and no production data mutation.
+
 ## 2026-09-04 — feat(admissions): finish dark-launch acceptance for 新生問班
 <!-- release-notes: silent_ship=silent-2026-09-04-admissions-funnel-finish -->
 - Closed remaining admissions funnel gaps while keeping `ADMISSIONS_FUNNEL_V1` off: status filter, next-action queue hints, terminal `lost`, submit audit, and fuller API/UI contract tests.

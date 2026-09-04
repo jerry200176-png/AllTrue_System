@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-05-xindian-capacity-diagnose
+    changelog_date: "2026-09-05"
+    changelog_title: "ops: Xindian capacity read-only diagnose workflow"
+    reason: 僅新增新店產能唯讀聚合 diagnose workflow／script；不改教職員產品行為、不寫入 production 資料。
+
   - id: silent-2026-09-04-admissions-funnel-finish
     changelog_date: "2026-09-04"
     changelog_title: "feat(admissions): finish dark-launch acceptance for 新生問班"
