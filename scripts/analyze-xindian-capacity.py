@@ -1,30 +1,33 @@
 #!/usr/bin/env python3
-"""Parse diagnose-xindian-capacity.sh output → demand-capacity model + Founder brief.
+"""Parse diagnose-xindian-capacity.sh TSV output → demand-capacity model + Founder brief.
 
-No fabricated production numbers: missing sections become explicit data_gaps.
+Never fabricates production numbers; missing inputs become data_gaps.
 """
 from __future__ import annotations
 
 import json
 import math
-import re
 import sys
 from collections import defaultdict
 from pathlib import Path
 
 TARGET_REVENUE = 1_000_000
 CAMPUS_ID = 9
-# Assumed peak teaching window hours/week per FTE when preferred availability is unknown.
-# Documented assumption — not observed preference data.
+WEEKS_IN_WINDOW = 13.0  # Jun–Aug ~13 weeks
 ASSUMED_PEAK_HOURS_PER_FTE_WEEK = {
-    "conservative": 12.0,  # ~3 evenings × 4h
+    "conservative": 12.0,
     "base": 16.0,
     "growth": 20.0,
 }
-# Same-day cross-campus travel buffer (minutes). No DB field — assumption.
 TRAVEL_BUFFER_MIN = 60
-# Peak utilization cap before quality/conflict risk (fraction of peak teacher-slots).
 UTIL_CAP = {"conservative": 0.70, "base": 0.80, "growth": 0.90}
+# Explicit scenario knobs for never-xindian transfer pool (NOT claiming they can come —
+# shows residual IF Founder assumes this yield). Default residual uses yield=0.
+TRANSFER_YIELD_ASSUMPTION = {
+    "conservative": 0.00,
+    "base": 0.10,
+    "growth": 0.25,
+}
 
 
 def sections(text: str) -> dict[str, list[str]]:
@@ -40,8 +43,16 @@ def sections(text: str) -> dict[str, list[str]]:
     return out
 
 
-def pipe_rows(lines: list[str]) -> list[list[str]]:
-    return [ln.split("|") for ln in lines if "|" in ln]
+def rows(lines: list[str]) -> list[list[str]]:
+    out: list[list[str]] = []
+    for ln in lines:
+        if "\t" in ln:
+            out.append(ln.split("\t"))
+        elif "|" in ln:
+            out.append(ln.split("|"))
+        elif ln.strip():
+            out.append([ln.strip()])
+    return out
 
 
 def fnum(x: str) -> float:
@@ -52,16 +63,16 @@ def fnum(x: str) -> float:
 
 
 def build(sec: dict[str, list[str]]) -> dict:
-    gaps = []
+    gaps: list[str] = []
     for ln in sec.get("data_gaps_declared", []):
-        gaps.append(ln)
+        gaps.append(ln.split("\t")[0] if "\t" in ln else ln)
 
-    campus = pipe_rows(sec.get("campus_identity", []))
+    campus = rows(sec.get("campus_identity", []))
     if not campus or campus[0][0] != str(CAMPUS_ID):
         gaps.append("campus_identity_mismatch_or_missing")
 
     monthly_cash = {}
-    for r in pipe_rows(sec.get("monthly_invoice_cash", [])):
+    for r in rows(sec.get("monthly_invoice_cash", [])):
         if len(r) >= 3:
             monthly_cash[r[0]] = {
                 "invoices": int(fnum(r[1])),
@@ -69,8 +80,17 @@ def build(sec: dict[str, list[str]]) -> dict:
                 "total_amount": int(fnum(r[3])) if len(r) > 3 else None,
             }
 
+    # Prefer attended-only for teaching load / utilization
+    monthly_attended = {}
+    for r in rows(sec.get("monthly_sessions_attended_only", [])):
+        if len(r) >= 4:
+            monthly_attended[r[0]] = {
+                "sessions": int(fnum(r[1])),
+                "teachers": int(fnum(r[2])),
+                "minutes": int(fnum(r[3])),
+            }
     monthly_sessions = {}
-    for r in pipe_rows(sec.get("monthly_sessions_taught", [])):
+    for r in rows(sec.get("monthly_sessions_taught", [])):
         if len(r) >= 6:
             monthly_sessions[r[0]] = {
                 "sessions": int(fnum(r[1])),
@@ -79,14 +99,20 @@ def build(sec: dict[str, list[str]]) -> dict:
                 "session_charge_sum": int(fnum(r[4])),
                 "minutes": int(fnum(r[5])),
             }
+    if not monthly_attended:
+        gaps.append("attended_only_section_missing_falling_back_to_scheduled_mix")
+        monthly_attended = {
+            k: {"sessions": v["sessions"], "teachers": v["teachers"], "minutes": v["minutes"]}
+            for k, v in monthly_sessions.items()
+        }
 
-    class_type = defaultdict(lambda: defaultdict(int))
-    for r in pipe_rows(sec.get("class_type_mix_sessions", [])):
+    class_type: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    for r in rows(sec.get("class_type_mix_sessions", [])):
         if len(r) >= 3:
             class_type[r[0]][r[1]] += int(fnum(r[2]))
 
     concurrent = {}
-    for r in pipe_rows(sec.get("concurrent_slot_headcount", [])):
+    for r in rows(sec.get("concurrent_slot_headcount", [])):
         if len(r) >= 2:
             concurrent[r[0]] = {
                 "slots": int(fnum(r[1])),
@@ -95,11 +121,11 @@ def build(sec: dict[str, list[str]]) -> dict:
             }
 
     peaks = []
-    for r in pipe_rows(sec.get("peak_demand_weekday_hour", [])):
+    for r in rows(sec.get("peak_demand_weekday_hour", [])):
         if len(r) >= 4:
             peaks.append(
                 {
-                    "dow": int(fnum(r[0])),  # MySQL DAYOFWEEK 1=Sun
+                    "dow": int(fnum(r[0])),
                     "hour": int(fnum(r[1])),
                     "sessions": int(fnum(r[2])),
                     "teachers": int(fnum(r[3])),
@@ -107,7 +133,7 @@ def build(sec: dict[str, list[str]]) -> dict:
             )
 
     subj_peaks = []
-    for r in pipe_rows(sec.get("peak_demand_subject_weekday_hour", [])):
+    for r in rows(sec.get("peak_demand_subject_weekday_hour", [])):
         if len(r) >= 5:
             subj_peaks.append(
                 {
@@ -120,7 +146,7 @@ def build(sec: dict[str, list[str]]) -> dict:
             )
 
     teachers = []
-    for r in pipe_rows(sec.get("teachers_active_at_xindian", [])):
+    for r in rows(sec.get("teachers_active_at_xindian", [])):
         if len(r) >= 5:
             teachers.append(
                 {
@@ -135,7 +161,7 @@ def build(sec: dict[str, list[str]]) -> dict:
             )
 
     cross = []
-    for r in pipe_rows(sec.get("teacher_home_campus_and_cross", [])):
+    for r in rows(sec.get("teacher_home_campus_and_cross", [])):
         if len(r) >= 5:
             cross.append(
                 {
@@ -147,7 +173,7 @@ def build(sec: dict[str, list[str]]) -> dict:
                 }
             )
 
-    same_day = pipe_rows(sec.get("same_day_cross_campus_events", []))
+    same_day = rows(sec.get("same_day_cross_campus_events", []))
     same_day_cross = None
     if same_day and len(same_day[0]) >= 3:
         same_day_cross = {
@@ -156,95 +182,90 @@ def build(sec: dict[str, list[str]]) -> dict:
             "distinct_days": int(fnum(same_day[0][2])),
         }
 
-    rev_proxy = pipe_rows(sec.get("revenue_per_delivered_session_proxy", []))
-    revenue_per_session = None
-    if rev_proxy and len(rev_proxy[0]) >= 3:
-        # Prefer Charge/SessionCount avg when session_charge sparse
-        charge_per = fnum(rev_proxy[0][1])
-        rate = fnum(rev_proxy[0][2])
-        sess_charge = fnum(rev_proxy[0][3])
-        revenue_per_session = charge_per or rate or sess_charge or None
-        if not charge_per and not rate and not sess_charge:
-            gaps.append("revenue_per_session_unobserved")
+    transfer_pool = []
+    for r in rows(sec.get("transfer_pool_other_campus_subject_overlap", [])):
+        if len(r) >= 4:
+            transfer_pool.append(
+                {
+                    "teacher_id": int(fnum(r[0])),
+                    "other_sessions": int(fnum(r[1])),
+                    "home_like_campus": r[2],
+                    "overlapping_subjects": int(fnum(r[3])),
+                }
+            )
+
+    usercampus_n = None
+    uc = rows(sec.get("usercampus_xindian_teacher_count", []))
+    if uc:
+        usercampus_n = int(fnum(uc[0][0]))
+
+    stock = rows(sec.get("active_contracts_stock", []))
+    stock_info = None
+    if stock and len(stock[0]) >= 6:
+        stock_info = {
+            "active_courses": int(fnum(stock[0][0])),
+            "charge_sum": int(fnum(stock[0][1])),
+            "pay_sum": int(fnum(stock[0][2])),
+            "remaining_sessions": int(fnum(stock[0][3])),
+            "session_count_sum": int(fnum(stock[0][4])),
+            "avg_rate": fnum(stock[0][5]),
+        }
+        if stock_info["pay_sum"] == 0:
+            gaps.append("studentclass_pay_stock_is_zero_use_invoice_paidamount_for_cash")
+
+    rev_proxy = rows(sec.get("revenue_per_delivered_session_proxy", []))
+    charge_per_session = None
+    if rev_proxy and len(rev_proxy[0]) >= 2:
+        charge_per_session = fnum(rev_proxy[0][1]) or fnum(rev_proxy[0][2]) or None
 
     if not monthly_cash:
         gaps.append("monthly_invoice_cash_missing")
-    if not monthly_sessions:
+    if not monthly_attended:
         gaps.append("monthly_sessions_missing")
     if not teachers:
         gaps.append("no_active_xindian_teachers_in_window")
 
-    # Calibration
     paid_vals = [v["paid_amount"] for v in monthly_cash.values()]
     avg_paid = sum(paid_vals) / len(paid_vals) if paid_vals else None
-    sess_vals = [v["sessions"] for v in monthly_sessions.values()]
+    sess_vals = [v["sessions"] for v in monthly_attended.values()]
     avg_sessions = sum(sess_vals) / len(sess_vals) if sess_vals else None
-    avg_teachers = (
-        sum(v["teachers"] for v in monthly_sessions.values()) / len(monthly_sessions)
-        if monthly_sessions
+    avg_teachers_m = (
+        sum(v["teachers"] for v in monthly_attended.values()) / len(monthly_attended)
+        if monthly_attended
         else None
     )
     avg_minutes = (
-        sum(v["minutes"] for v in monthly_sessions.values()) / len(monthly_sessions)
-        if monthly_sessions
+        sum(v["minutes"] for v in monthly_attended.values()) / len(monthly_attended)
+        if monthly_attended
         else None
     )
 
-    # Implied revenue/session from cash÷delivered-ish sessions (attended+scheduled proxy).
-    # Prefer attended-only if we had it; probe mixes scheduled — flag assumption.
-    gaps.append("sessions_metric_includes_scheduled_not_only_attended")
-    cash_per_session = None
-    if avg_paid and avg_sessions:
-        cash_per_session = avg_paid / avg_sessions
-
-    rps = revenue_per_session or cash_per_session
+    cash_per_session = (avg_paid / avg_sessions) if (avg_paid and avg_sessions) else None
+    # Prefer contract charge/session for capacity economics; report both.
+    rps = charge_per_session or cash_per_session
+    rps_source = (
+        "avg_studentclass_charge_per_sessioncount"
+        if charge_per_session
+        else "invoice_paid_div_attended_sessions"
+        if cash_per_session
+        else None
+    )
     if rps is None:
         gaps.append("cannot_compute_revenue_per_session")
 
-    # Peak teacher-slot demand: top N weekday-hour cells' teacher counts (avg across months ≈ /3)
-    months_n = max(len(monthly_sessions), 1)
-    peak_cells = sorted(peaks, key=lambda x: -x["sessions"])[:15]
-    # Concurrent teacher demand at a peak cell ≈ teachers field (already distinct teachers in that cell over window)
-    # Convert to monthly peak concurrent approx: sessions/months / typical load — use max teachers in top cell / months? 
-    # Better: max over cells of (sessions/months) as session-slots/month at that hour, demand teachers ≈ ceil(sessions_per_week_at_slot)
-    # Approximate weekly peak concurrent demand from top cell:
+    # Peak concurrent teacher demand (weekly): max over weekday-hour of sessions/weeks
+    # (each session needs one teacher in that hour bucket).
     weekly_peak_teacher_demand = 0.0
-    if peak_cells:
-        top = peak_cells[0]
-        # sessions in 3 months at that dow+hour → weekly ≈ sessions / (weeks in window)
-        weeks = 13.0  # ~3 months
-        weekly_sessions_at_peak = top["sessions"] / weeks
-        # Each session needs 1 teacher; concurrent within hour bucket ≈ weekly_sessions if all same week occurrence
-        # For a single weekday-hour, occurrences per week ≈ sessions/(weeks) 
-        weekly_peak_teacher_demand = weekly_sessions_at_peak  # 1 teacher per session slot
+    peak_cell = None
+    if peaks:
+        peak_cell = max(peaks, key=lambda x: x["sessions"])
+        weekly_peak_teacher_demand = peak_cell["sessions"] / WEEKS_IN_WINDOW
 
-    headcount = len(teachers)
-    # FTE proxy from minutes: 1 FTE ≈ ASSUMED peak hours * 60 * 4.33 weeks
-    def hours_to_fte(hours_per_week: float, minutes_month: float) -> float:
-        if hours_per_week <= 0:
-            return float("nan")
-        return (minutes_month / 60.0) / (hours_per_week * 4.33)
-
-    observed_fte = None
-    if avg_minutes is not None:
-        observed_fte = hours_to_fte(ASSUMED_PEAK_HOURS_PER_FTE_WEEK["base"], avg_minutes)
-
-    # Transfer candidates: teach at Xindian some, but have other campus load OR home != 9
-    transfer_candidates = [
-        c
-        for c in cross
-        if c["other_sessions"] > 0 or (c["home_campus"] not in ("none", str(CAMPUS_ID), "9"))
-    ]
-    # Pure Xindian-capable (active there); transferable FROM elsewhere = other_sessions>0 with xindian already
-    # Residual transfer supply: teachers with other campus primary who already appear at Xindian (proven transferable)
+    headcount_active = len(teachers)
     proven_transfer = [c for c in cross if c["other_sessions"] > 0]
-    # Additional transfer NOT in data: teachers who never taught Xindian — NOT inventing; gap listed
-    gaps.append("no_inventory_of_never_xindian_teachers_with_matching_subjects_availability")
 
-    # Subject×dow×hour gap ranking: demand sessions vs distinct teachers in cell
     gap_rank = []
-    for sp in subj_peaks[:40]:
-        # scarcity = sessions / max(teachers,1) over window — high means overloaded cell
+    for sp in subj_peaks:
         scarcity = sp["sessions"] / max(sp["teachers"], 1)
         gap_rank.append({**sp, "scarcity": round(scarcity, 2)})
     gap_rank.sort(key=lambda x: (-x["scarcity"], -x["sessions"]))
@@ -253,53 +274,65 @@ def build(sec: dict[str, list[str]]) -> dict:
     for name in ("conservative", "base", "growth"):
         util = UTIL_CAP[name]
         hrs = ASSUMED_PEAK_HOURS_PER_FTE_WEEK[name]
-        if rps is None or avg_sessions is None or weekly_peak_teacher_demand <= 0:
+        yield_frac = TRANSFER_YIELD_ASSUMPTION[name]
+        if rps is None or avg_sessions is None or weekly_peak_teacher_demand <= 0 or avg_paid is None:
             scenarios[name] = {"error": "insufficient_calibration"}
             continue
-        # Current max sustainable revenue ≈ current paid * (util / current_util_proxy)
-        # Current util proxy: weekly_peak_teacher_demand / headcount (capped)
-        cur_util = min(1.0, weekly_peak_teacher_demand / max(headcount, 1))
-        # Max sustainable at same mix: scale sessions until peak util hits cap
-        if cur_util <= 0:
-            scale = 1.0
-        else:
-            scale = util / cur_util
-        max_rev = (avg_paid or 0) * scale
-        # Sessions needed for 1M
+
+        # Current peak utilization vs active headcount
+        cur_util = min(1.0, weekly_peak_teacher_demand / max(headcount_active, 1))
+        scale_to_cap = (util / cur_util) if cur_util > 0 else 1.0
+        max_rev = avg_paid * scale_to_cap
+
         sessions_needed = TARGET_REVENUE / rps
-        # Peak demand scales linearly with sessions
-        peak_demand_at_1m = weekly_peak_teacher_demand * (sessions_needed / max(avg_sessions, 1))
-        # Teachers needed at util cap: peak_demand / util
-        teachers_needed_peak = math.ceil(peak_demand_at_1m / util)
-        # FTE from hours: total teaching hours/month at 1M
-        minutes_per_session = (avg_minutes / avg_sessions) if avg_sessions else 120
+        scale_1m = sessions_needed / max(avg_sessions, 1)
+        peak_demand_1m = weekly_peak_teacher_demand * scale_1m
+        teachers_needed_peak = int(math.ceil(peak_demand_1m / util))
+
+        minutes_per_session = (avg_minutes / avg_sessions) if avg_sessions else 120.0
         hours_month_1m = sessions_needed * (minutes_per_session / 60.0)
         fte_needed = hours_month_1m / (hrs * 4.33)
-        # Headcount: max(peak concurrent teachers needed, ceil(fte / part_time_factor))
-        # part_time_factor: observed sessions distribution — use headcount/fte if available
-        pt_factor = 0.65 if name != "growth" else 0.75  # assumption: many part-timers
-        gaps.append(f"part_time_factor_assumed_{name}={pt_factor}")
-        headcount_needed = max(teachers_needed_peak, math.ceil(fte_needed / pt_factor))
-        available = headcount
-        # Transfer: count proven_transfer as already in available; additional transfer unknown
-        hire = max(0, headcount_needed - available)
-        residual_after_unknown_transfer = hire  # cannot reduce without inventing pool
+
+        # Observed part-time factor: active headcount / FTE at current load
+        cur_fte = (avg_minutes / 60.0) / (hrs * 4.33) if avg_minutes else None
+        pt_factor = (
+            min(0.95, max(0.35, headcount_active / cur_fte))
+            if cur_fte and cur_fte > 0
+            else 0.65
+        )
+        headcount_needed = max(teachers_needed_peak, int(math.ceil(fte_needed / pt_factor)))
+
+        available = headcount_active
+        hire_if_no_transfer = max(0, headcount_needed - available)
+        # Transfer yield applies ONLY to never-xindian subject-overlap pool; explicit assumption.
+        assumed_transfer_hires = int(math.floor(len(transfer_pool) * yield_frac))
+        hire_after_assumed_transfer = max(0, hire_if_no_transfer - assumed_transfer_hires)
+
         scenarios[name] = {
             "assumed_peak_hours_per_fte_week": hrs,
             "util_cap": util,
-            "current_util_proxy": round(cur_util, 3),
+            "current_peak_util_proxy": round(cur_util, 3),
             "max_sustainable_monthly_revenue_ntd": int(round(max_rev)),
             "sessions_needed_for_1m": int(round(sessions_needed)),
+            "scale_vs_current_sessions": round(scale_1m, 2),
+            "weekly_peak_teacher_demand_at_1m": round(peak_demand_1m, 2),
             "fte_needed": round(fte_needed, 2),
+            "observed_pt_factor": round(pt_factor, 3),
             "headcount_needed": headcount_needed,
-            "available_headcount_observed": available,
-            "hires_needed_if_no_new_transfers": hire,
-            "proven_cross_campus_teachers": len(proven_transfer),
-            "residual_gap_after_unknown_transfer_pool": residual_after_unknown_transfer,
-            "note": "Cannot shrink hire count using unobserved other-campus free capacity",
+            "available_headcount_active_in_window": available,
+            "hires_needed_if_transfer_yield_0": hire_if_no_transfer,
+            "transfer_yield_assumption": yield_frac,
+            "assumed_transfer_from_never_xindian_pool": assumed_transfer_hires,
+            "hires_needed_after_assumed_transfer_yield": hire_after_assumed_transfer,
+            "proven_already_cross_campus_teachers": len(proven_transfer),
+            "never_xindian_subject_overlap_pool": len(transfer_pool),
+            "note": (
+                "Transfer yield is an explicit Founder scenario knob, not observed free capacity. "
+                "Availability/travel not stored — pool cannot be scheduled-verified."
+            ),
         }
 
-    # Priority hires from gap_rank top subjects/slots
+    dow_map = {1: "日", 2: "一", 3: "二", 4: "三", 5: "四", 6: "五", 7: "六"}
     priority_subjects = []
     seen = set()
     for g in gap_rank:
@@ -308,111 +341,169 @@ def build(sec: dict[str, list[str]]) -> dict:
             seen.add(g["subject"])
         if len(priority_subjects) >= 5:
             break
-
     priority_slots = []
-    dow_map = {1: "日", 2: "一", 3: "二", 4: "三", 5: "四", 6: "五", 7: "六"}
     for g in gap_rank[:8]:
         priority_slots.append(
-            f"{g['subject']} 週{dow_map.get(g['dow'], g['dow'])} {g['hour']:02d}:00 (scarcity={g['scarcity']})"
+            f"{g['subject']} 週{dow_map.get(g['dow'], g['dow'])} {g['hour']:02d}:00 "
+            f"(sessions={g['sessions']}, teachers={g['teachers']}, scarcity={g['scarcity']})"
         )
+
+    # Class-type mix share (window)
+    mix_totals: dict[str, int] = defaultdict(int)
+    for m in class_type.values():
+        for k, v in m.items():
+            mix_totals[k] += v
+    mix_sum = sum(mix_totals.values()) or 1
 
     base = scenarios.get("base") or {}
     founder = {
         "recommended_teacher_headcount": base.get("headcount_needed"),
-        "available_headcount_observed_jun_aug": headcount,
-        "recommended_new_hires": base.get("hires_needed_if_no_new_transfers"),
+        "available_headcount_active_jun_aug": headcount_active,
+        "usercampus_xindian_enrolled": usercampus_n,
+        "recommended_new_hires_base_yield_10pct": base.get(
+            "hires_needed_after_assumed_transfer_yield"
+        ),
+        "recommended_new_hires_if_no_new_transfers": base.get(
+            "hires_needed_if_transfer_yield_0"
+        ),
         "priority_subjects": priority_subjects,
         "priority_slots": priority_slots,
         "estimated_full_load_revenue_ntd": base.get("max_sustainable_monthly_revenue_ntd"),
-        "max_bottleneck": (
-            priority_slots[0] if priority_slots else "insufficient_peak_data"
+        "max_bottleneck": priority_slots[0] if priority_slots else (
+            f"dow={peak_cell['dow']} hour={peak_cell['hour']}" if peak_cell else "unknown"
         ),
         "target_revenue_ntd": TARGET_REVENUE,
         "scenarios": scenarios,
         "calibration": {
             "months": sorted(monthly_cash.keys()),
+            "monthly_paid_ntd": {k: v["paid_amount"] for k, v in monthly_cash.items()},
             "avg_monthly_paid_ntd": int(round(avg_paid)) if avg_paid else None,
-            "avg_monthly_sessions": int(round(avg_sessions)) if avg_sessions else None,
-            "avg_monthly_active_teachers": round(avg_teachers, 2) if avg_teachers else None,
+            "monthly_attended_sessions": {
+                k: v["sessions"] for k, v in monthly_attended.items()
+            },
+            "avg_monthly_attended_sessions": int(round(avg_sessions)) if avg_sessions else None,
+            "avg_monthly_active_teachers": round(avg_teachers_m, 2) if avg_teachers_m else None,
             "revenue_per_session_ntd": int(round(rps)) if rps else None,
-            "revenue_per_session_source": (
-                "studentclass_charge_over_sessioncount_or_rate"
-                if revenue_per_session
-                else "paid_cash_div_sessions"
-                if cash_per_session
-                else None
-            ),
-            "class_type_mix": {m: dict(v) for m, v in class_type.items()},
+            "revenue_per_session_source": rps_source,
+            "cash_per_attended_session_ntd": int(round(cash_per_session))
+            if cash_per_session
+            else None,
+            "class_type_mix_share": {
+                k: round(v / mix_sum, 3) for k, v in sorted(mix_totals.items(), key=lambda x: -x[1])
+            },
             "concurrent_slot_buckets": concurrent,
+            "peak_cell": peak_cell,
+            "weekly_peak_teacher_demand": round(weekly_peak_teacher_demand, 2),
             "same_day_cross_campus": same_day_cross,
             "travel_buffer_min_assumed": TRAVEL_BUFFER_MIN,
-            "observed_fte_proxy_base_hours": round(observed_fte, 2) if observed_fte else None,
+            "active_contracts_stock": stock_info,
+            "one_on_n_note": (
+                "ClassType mix is majority one_on_three/two; concurrent headcount buckets "
+                "confirm real 1v2/1v3plus slots — capacity is teacher-time not student-seat only."
+            ),
         },
         "evidence": {
             "campus_id": CAMPUS_ID,
-            "branches_api": "GET https://daan.lifenet.com.tw/api/v1/branches → id=9 xindian",
+            "campus_name": campus[0][1] if campus else "新店分校",
+            "branches_api": "GET https://daan.lifenet.com.tw/api/v1/branches → id=9 code=xindian",
             "probe_script": "scripts/diagnose-xindian-capacity.sh",
             "workflow": "Xindian capacity diagnose (read-only)",
+            "workflow_run": "33897312980",
             "window": "2026-06-01 .. 2026-08-31",
+            "artifact": "out/xindian-capacity.txt",
         },
         "data_gaps": sorted(set(gaps)),
         "assumptions": [
-            "No teacher preferred-availability table; busy-only API — open capacity inferred from non-busy peak hours assumption",
-            f"Peak hours/FTE/week assumed: {ASSUMED_PEAK_HOURS_PER_FTE_WEEK}",
-            f"Utilization caps: {UTIL_CAP}",
-            f"Travel buffer {TRAVEL_BUFFER_MIN}m assumed; same-day cross-campus events used as stress signal only",
-            "1M scaling assumes same subject×slot mix and class-type mix as Jun–Aug",
-            "Transfer pool limited to teachers already observed teaching at Xindian; others not invented",
-            "Session counts include scheduled+attended family statuses as listed in probe",
+            "No teacher preferred-availability table; open hours inferred only via assumed peak-hours/FTE and util caps",
+            f"Peak hours/FTE/week: {ASSUMED_PEAK_HOURS_PER_FTE_WEEK}",
+            f"Peak util caps: {UTIL_CAP}",
+            f"Travel buffer {TRAVEL_BUFFER_MIN}m assumed; same-day cross-campus used as stress signal only",
+            "1M path assumes same subject×weekday×hour mix and class-type mix as Jun–Aug",
+            f"Never-xindian transfer yield scenario knobs: {TRANSFER_YIELD_ASSUMPTION} (not observed free slots)",
+            "Cash calibration uses Invoice.PaidAmount by billing_period; StudentClass.Pay stock ignored when zero",
+            "Revenue/session prefers StudentClass Charge/SessionCount on attended sessions",
+            "Weekly peak teacher demand = max weekday-hour sessions / 13 weeks",
         ],
         "transferable_teachers_summary": {
-            "proven_cross_campus_count": len(proven_transfer),
-            "sample_teacher_ids": [c["teacher_id"] for c in proven_transfer[:15]],
-            "cannot_quantify_additional_transfer_without_availability": True,
+            "proven_cross_campus_already_teaching_xindian": len(proven_transfer),
+            "proven_sample_ids": [c["teacher_id"] for c in proven_transfer[:20]],
+            "never_xindian_subject_overlap_candidates": len(transfer_pool),
+            "never_xindian_sample_ids": [t["teacher_id"] for t in transfer_pool[:20]],
+            "cannot_verify_slot_fit_without_availability": True,
         },
-        "gap_rank_subject_dow_hour_top": gap_rank[:15],
+        "gap_rank_subject_dow_hour_top": gap_rank[:20],
     }
     return founder
 
 
 def render_markdown(d: dict) -> str:
-    lines = []
-    lines.append("# Founder one-pager — 新店月營收 100 萬教師產能")
-    lines.append("")
-    lines.append(f"- **建議教師總數 (Base headcount)**：{d.get('recommended_teacher_headcount')}")
-    lines.append(f"- **現有人力可用數 (Jun–Aug 有授課)**：{d.get('available_headcount_observed_jun_aug')}")
-    lines.append(f"- **建議新增人數**：{d.get('recommended_new_hires')}")
-    lines.append(f"- **優先招聘科目**：{', '.join(d.get('priority_subjects') or []) or '—'}")
-    lines.append("- **優先招聘可上班時段**：")
+    lines = [
+        "# Founder one-pager — 新店月營收 NT$100 萬教師產能",
+        "",
+        f"- **建議教師總數 (Base headcount)**：{d.get('recommended_teacher_headcount')}",
+        f"- **現有人力可用數 (Jun–Aug 有授課堂次)**：{d.get('available_headcount_active_jun_aug')}"
+        + (f"（UserCampus 登錄 {d.get('usercampus_xindian_enrolled')}，含未在窗內授課）"
+           if d.get("usercampus_xindian_enrolled") is not None
+           else ""),
+        f"- **建議新增人數（主建議：不假設新跨校調度）**：{d.get('recommended_new_hires_if_no_new_transfers')}",
+        f"- **建議新增人數（Base 情景：跨校 never-Xindian pool yield 10%）**：{d.get('recommended_new_hires_base_yield_10pct')} — 未驗證空檔，僅情景",
+        f"- **優先招聘科目**：{', '.join(d.get('priority_subjects') or []) or '—'}",
+        "- **優先招聘可上班時段**：",
+    ]
     for s in d.get("priority_slots") or []:
         lines.append(f"  - {s}")
-    lines.append(f"- **預估滿載營收 (Base max sustainable)**：NT$ {d.get('estimated_full_load_revenue_ntd')}")
-    lines.append(f"- **最大 bottleneck**：{d.get('max_bottleneck')}")
-    lines.append("")
-    lines.append("## Scenarios")
+    lines += [
+        f"- **預估滿載營收 (Base max sustainable @ util cap)**：NT$ {d.get('estimated_full_load_revenue_ntd')}",
+        f"- **最大 bottleneck**：{d.get('max_bottleneck')}",
+        "",
+        "## Scenarios",
+    ]
     for name, sc in (d.get("scenarios") or {}).items():
         lines.append(f"### {name}")
         if sc.get("error"):
             lines.append(f"- error: {sc['error']}")
             continue
-        lines.append(f"- max sustainable monthly revenue: NT$ {sc['max_sustainable_monthly_revenue_ntd']}")
+        lines.append(
+            f"- max sustainable monthly revenue: NT$ {sc['max_sustainable_monthly_revenue_ntd']}"
+        )
         lines.append(f"- FTE needed @1M: {sc['fte_needed']}")
         lines.append(f"- headcount needed: {sc['headcount_needed']}")
-        lines.append(f"- hires if no new transfers: {sc['hires_needed_if_no_new_transfers']}")
-        lines.append(f"- proven cross-campus teachers: {sc['proven_cross_campus_teachers']}")
-        lines.append(f"- residual gap (unobserved transfer pool): {sc['residual_gap_after_unknown_transfer_pool']}")
-    lines.append("")
-    lines.append("## Calibration")
+        lines.append(
+            f"- hires if transfer yield=0: {sc['hires_needed_if_transfer_yield_0']}"
+        )
+        lines.append(
+            f"- transfer yield assumption: {sc['transfer_yield_assumption']} "
+            f"→ assumed transfers {sc['assumed_transfer_from_never_xindian_pool']} "
+            f"→ hires after: {sc['hires_needed_after_assumed_transfer_yield']}"
+        )
+        lines.append(
+            f"- proven cross-campus (already at Xindian): {sc['proven_already_cross_campus_teachers']}"
+        )
+        lines.append(
+            f"- never-xindian subject-overlap pool size: {sc['never_xindian_subject_overlap_pool']}"
+        )
+        lines.append(f"- note: {sc['note']}")
     cal = d.get("calibration") or {}
-    lines.append(f"- months: {cal.get('months')}")
-    lines.append(f"- avg monthly paid: {cal.get('avg_monthly_paid_ntd')}")
-    lines.append(f"- avg monthly sessions: {cal.get('avg_monthly_sessions')}")
-    lines.append(f"- avg active teachers: {cal.get('avg_monthly_active_teachers')}")
-    lines.append(f"- revenue/session: {cal.get('revenue_per_session_ntd')} ({cal.get('revenue_per_session_source')})")
-    lines.append(f"- concurrent buckets: {cal.get('concurrent_slot_buckets')}")
-    lines.append(f"- same-day cross-campus: {cal.get('same_day_cross_campus')}")
-    lines.append("")
-    lines.append("## Evidence")
+    lines += [
+        "",
+        "## Calibration (production read-only)",
+        f"- months: {cal.get('months')}",
+        f"- monthly paid (Invoice): {cal.get('monthly_paid_ntd')}",
+        f"- avg monthly paid: NT$ {cal.get('avg_monthly_paid_ntd')}",
+        f"- monthly attended sessions: {cal.get('monthly_attended_sessions')}",
+        f"- avg attended sessions/mo: {cal.get('avg_monthly_attended_sessions')}",
+        f"- avg active teachers/mo: {cal.get('avg_monthly_active_teachers')}",
+        f"- revenue/session: NT$ {cal.get('revenue_per_session_ntd')} ({cal.get('revenue_per_session_source')})",
+        f"- cash/attended session: NT$ {cal.get('cash_per_attended_session_ntd')}",
+        f"- class_type mix share: {cal.get('class_type_mix_share')}",
+        f"- concurrent buckets: {cal.get('concurrent_slot_buckets')}",
+        f"- peak cell: {cal.get('peak_cell')} → weekly peak teacher demand {cal.get('weekly_peak_teacher_demand')}",
+        f"- same-day cross-campus: {cal.get('same_day_cross_campus')}",
+        f"- active contract stock: {cal.get('active_contracts_stock')}",
+        f"- {cal.get('one_on_n_note')}",
+        "",
+        "## Evidence",
+    ]
     for k, v in (d.get("evidence") or {}).items():
         lines.append(f"- {k}: `{v}`")
     lines.append("")
@@ -423,7 +514,17 @@ def render_markdown(d: dict) -> str:
     lines.append("## Data gaps (not fabricated)")
     for g in d.get("data_gaps") or []:
         lines.append(f"- {g}")
-    lines.append("")
+    xfer = d.get("transferable_teachers_summary") or {}
+    lines += [
+        "",
+        "## Cross-campus transfer",
+        f"- already teaching Xindian + other campuses: {xfer.get('proven_cross_campus_already_teaching_xindian')} "
+        f"(sample IDs {xfer.get('proven_sample_ids')})",
+        f"- never taught Xindian but subject-overlap candidates: {xfer.get('never_xindian_subject_overlap_candidates')} "
+        f"(sample IDs {xfer.get('never_xindian_sample_ids')})",
+        "- cannot confirm free peak slots or travel-feasible windows without preferred availability data",
+        "",
+    ]
     return "\n".join(lines)
 
 
@@ -433,13 +534,13 @@ def main() -> int:
     if "read_only=1" not in text:
         print("ERROR: probe output missing read_only=1", file=sys.stderr)
         return 2
-    sec = sections(text)
-    model = build(sec)
+    model = build(sections(text))
     out_json = path.with_suffix(".model.json")
     out_md = path.with_suffix(".founder.md")
     out_json.write_text(json.dumps(model, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    out_md.write_text(render_markdown(model), encoding="utf-8")
-    print(render_markdown(model))
+    md = render_markdown(model)
+    out_md.write_text(md, encoding="utf-8")
+    print(md)
     print(f"\nWrote {out_json} and {out_md}", file=sys.stderr)
     return 0
 
