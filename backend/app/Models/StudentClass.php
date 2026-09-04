@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\DB;
  * @property string $deduction_basis One of DeductionBasis::all(); always reads as
  *           `fixed_session` when the column is null (see the accessor below).
  * @property \App\Models\Student|null $student
+ * @method static static findOrFail($id, $columns = ['*'])
  */
 class StudentClass extends Model
 {

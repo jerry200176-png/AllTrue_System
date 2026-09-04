@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 /**
  * @property string $name
  * @property int $CampusID
+ * @method static static findOrFail($id, $columns = ['*'])
  */
 class Student extends Model
 {
