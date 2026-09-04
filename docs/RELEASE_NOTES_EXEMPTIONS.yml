@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-04-changelog-tip-order
+    changelog_date: "2026-09-04"
+    changelog_title: "docs(release): restore tip order for today's release notes"
+    reason: 僅把已發布的 shared-package／admissions CHANGELOG 區段從檔案尾端移回 tip，方便教職員版本紀錄檢索；不改產品行為、不新增 staff update。
+
   - id: silent-2026-09-04-ci-npm-audit-reliability
     changelog_date: "2026-09-04"
     changelog_title: "ci: harden npm audit network retries"

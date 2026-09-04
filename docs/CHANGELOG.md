@@ -1,3 +1,8 @@
+## 2026-09-04 — docs(release): restore tip order for today's release notes
+<!-- release-notes: silent_ship=silent-2026-09-04-changelog-tip-order -->
+- Moved the shared-package and admissions funnel CHANGELOG sections from the file footer to the tip so staff release notes stay discoverable.
+- No product behavior or production deployment change.
+
 ## 2026-09-04 — fix(schedule): 多科共用方案分離購買、已用與未來預排堂數
 <!-- release-notes: staff_update=staff-2026-09-04-shared-package-planning-entitlement -->
 - 多科共用方案的未來預排不再獨占或永久扣減 shared entitlement；不同科目可各自建立 recurring schedule。
