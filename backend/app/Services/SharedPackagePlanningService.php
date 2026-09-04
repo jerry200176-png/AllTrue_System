@@ -9,12 +9,7 @@ use App\Models\StudentClass;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 
-/**
- * Read-only projection for shared-package planning.
- *
- * A future scheduled row is a plan only. It does not create a package ledger
- * entry and therefore must not reserve or consume the shared entitlement.
- */
+/** Read-only purchased/consumed/future-plan projection for shared packages. */
 class SharedPackagePlanningService
 {
     public function isSharedPackage(CoursePackage $package): bool
@@ -24,19 +19,11 @@ class SharedPackagePlanningService
         })->limit(2)->count() > 1;
     }
 
-    /**
-     * @return array<string, int|bool|string|null>
-     */
     public function summarize(CoursePackage $package, int $additionalPlanned = 0): array
     {
         return $this->summarizeMany(collect([$package]), [$package->getKey() => max(0, $additionalPlanned)])[(int) $package->getKey()];
     }
 
-    /**
-     * @param  Collection<int, CoursePackage>  $packages
-     * @param  array<int|string, int>  $additionalByPackageId
-     * @return array<int, array<string, int|bool|string|null>>
-     */
     public function summarizeMany(Collection $packages, array $additionalByPackageId = []): array
     {
         if ($packages->isEmpty()) {
@@ -77,9 +64,6 @@ class SharedPackagePlanningService
                     continue;
                 }
 
-                // Group-package members share one physical lesson. Match the
-                // deduction service's package-level slot identity so a lesson
-                // copied to several subjects is still one future plan.
                 $isGroup = in_array($packageClassTypes[$packageId] ?? '', [
                     'one_on_two', 'one_on_three', 'one_on_many', 'tutoring',
                 ], true);

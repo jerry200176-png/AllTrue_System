@@ -169,8 +169,6 @@ class ManualSessionBookingService
         }
 
         if ($isSharedPackage && !$isMonthly) {
-            // A new manual occurrence is a plan, not a package deduction. Show
-            // the projected overage while keeping the shared pool bookable.
             $base = array_merge($base, app(SharedPackagePlanningService::class)->summarize($package, 1));
         }
 

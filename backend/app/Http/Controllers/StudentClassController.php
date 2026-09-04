@@ -4065,7 +4065,6 @@ class StudentClassController extends Controller
                 $isSharedPackage = $package !== null
                     && app(SharedPackagePlanningService::class)->isSharedPackage($package);
                 if ($isSharedPackage) {
-                    // Shared-package future rows are plans, not reservations.
                     $packageHasCapacity = true;
                 } elseif ($package) {
                     $memberIds = StudentClass::query()->where('PackageID', $packageId)->pluck('ID');
