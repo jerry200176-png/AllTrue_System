@@ -1,0 +1,43 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "PR to Production Verify Workflow",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "viewBox": [1240, 840],
+    "views": [
+      { "id": "release-path", "label": "Release path", "focus": ["pr", "ci", "merge", "target", "deploy", "verify"], "note": "Follow the evidence-bound release path from PR through production verification." },
+      { "id": "activation-boundary", "label": "Activation boundary", "focus": ["target", "awaiting", "activation", "deploy", "verify"], "note": "See the fail-closed split between merge and production activation." }
+    ]
+  },
+  "lanes": [{ "id": "contributor", "label": "Contributor" }, { "id": "ci", "label": "CI" }, { "id": "control", "label": "Control plane" }, { "id": "exception", "label": "Protected stop", "variant": "exception" }, { "id": "production", "label": "Production" }],
+  "phases": [{ "id": "change", "label": "Change", "fromCol": 0, "toCol": 2 }, { "id": "gates", "label": "Evidence gates", "fromCol": 3, "toCol": 4, "variant": "emphasis" }, { "id": "verify-phase", "label": "Verify", "fromCol": 5, "toCol": 5 }],
+  "groups": [{ "id": "ci-evidence", "label": "CI evidence", "lane": "ci", "fromCol": 1, "toCol": 2, "variant": "emphasis" }, { "id": "activation-gate", "label": "Protected activation", "lane": "control", "fromCol": 3, "toCol": 4, "variant": "security" }],
+  "mainPath": ["pr", "ci", "merge", "target", "deploy", "verify"],
+  "nodes": [
+    { "id": "pr", "lane": "contributor", "col": 0, "type": "external", "label": "Pull Request", "sublabel": "reviewable diff", "tag": "change", "width": 150 },
+    { "id": "ci", "lane": "ci", "col": 1, "type": "cloud", "label": "CI", "sublabel": "tests + build + audits", "tag": "evidence", "width": 150 },
+    { "id": "merge", "lane": "contributor", "col": 2, "type": "security", "label": "Merge gate", "sublabel": "required checks", "tag": "protected", "width": 150 },
+    { "id": "target", "lane": "control", "col": 3, "type": "backend", "label": "Exact target", "sublabel": "main SHA + CI evidence", "tag": "resolve", "width": 150 },
+    { "id": "deploy", "lane": "production", "col": 4, "type": "cloud", "label": "deploy.yml executor", "sublabel": "application-deploy", "tag": "production", "width": 150 },
+    { "id": "verify", "lane": "production", "col": 5, "type": "backend", "label": "Production verify", "sublabel": "health + version", "tag": "smoke", "width": 150 },
+    { "id": "awaiting", "lane": "exception", "col": 3, "type": "security", "label": "Awaiting activation", "sublabel": "merged, not deployed", "tag": "safe stop", "width": 150 },
+    { "id": "activation", "lane": "control", "col": 4, "type": "security", "label": "Typed activation", "sublabel": "exact SHA confirmation", "tag": "manual gate", "width": 150 }
+  ],
+  "edges": [
+    { "id": "pr-ci", "from": "pr", "to": "ci", "label": "opened / synchronized", "variant": "emphasis", "role": "main" },
+    { "id": "ci-merge", "from": "ci", "to": "merge", "label": "success required", "variant": "emphasis", "role": "main" },
+    { "id": "merge-target", "from": "merge", "to": "target", "label": "main commit", "variant": "default", "role": "main" },
+    { "id": "target-deploy", "from": "target", "to": "deploy", "label": "approved deploy target", "variant": "security", "role": "main" },
+    { "id": "deploy-verify", "from": "deploy", "to": "verify", "label": "health + version evidence", "variant": "emphasis", "role": "main" },
+    { "id": "target-awaiting", "from": "target", "to": "awaiting", "label": "non-deployable / protected", "variant": "security", "role": "branch" },
+    { "id": "awaiting-activation", "from": "awaiting", "to": "activation", "label": "Founder activation boundary", "variant": "security", "role": "branch" },
+    { "id": "activation-deploy", "from": "activation", "to": "deploy", "label": "exact confirmation", "variant": "emphasis", "role": "branch" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "CI evidence", "items": ["CI trigger and changed-area fan-out: .github/workflows/ci.yml:3–119.", "PHPUnit, frontend build, route contracts, audits and coverage are defined in .github/workflows/ci.yml:120–570."] },
+    { "dot": "rose", "title": "Production boundary", "items": ["Control-plane authority: docs/CONTROL_PLANE_CONTRACT.md:32–67 — only POP Executor and deploy.yml may execute production changes.", "Exact-main and successful-CI checks immediately precede the executor: .github/workflows/deploy.yml:664–689."] },
+    { "dot": "amber", "title": "Protected stop", "items": ["Merged awaiting activation records no production SSH, migration, frontend build or data mutation: .github/workflows/deploy.yml:498–523.", "Manual activation requires exact typed SHA confirmation: .github/workflows/deploy.yml:525–609."] }
+  ]
+}
