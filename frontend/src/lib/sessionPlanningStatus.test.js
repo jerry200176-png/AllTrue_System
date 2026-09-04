@@ -67,15 +67,20 @@ assert.equal(canMaterializeProjectedSession({ ScheduleMode: 'unknown', payment_t
   assert.match(s.title, /2 堂請假待補/);
 }
 
-// AC-03 over → danger
+// AC-03 package-level over-plan → warning (member schedule count is not a quota)
 {
   const s = buildSessionPlanningStatus({
-    course: { payment_type: 'session', PackageID: 115, package_total_sessions: 56, package_remaining_sessions: 50 },
+    course: {
+      payment_type: 'session', PackageID: 115, package_total_sessions: 56,
+      package_remaining_sessions: 50, package_future_planned_sessions: 59,
+      package_overage_sessions: 3, package_renewal_message: '請安排續約',
+    },
     effectiveCount: 59, leaveCount: 0, hasAnySessionRows: true,
   });
-  assert.equal(s.code, 'over_quota');
-  assert.equal(s.severity, 'danger');
-  assert.match(s.title, /超排 3/);
+  assert.equal(s.code, 'package_overplanned');
+  assert.equal(s.severity, 'warning');
+  assert.match(s.title, /超過剩餘 3/);
+  assert.match(s.message, /續約/);
 }
 
 // single course partial (non-package may show course remaining)

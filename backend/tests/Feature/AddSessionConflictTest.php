@@ -223,6 +223,48 @@ class AddSessionConflictTest extends TestCase
         $this->assertSame(0, ClassSession::where('StudentClassID', $sibling->ID)->count());
     }
 
+    public function test_shared_package_quick_add_allows_overplanned_sibling_without_blocking(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $package = CoursePackage::create([
+            'student_id' => $student->id, 'campus_id' => 1, 'name' => '共用方案超排提醒',
+            'billing_mode' => 'count', 'total_sessions' => 1, 'remaining_sessions' => 1,
+            'used_sessions' => 0, 'rate' => 500, 'rate_unit' => 'session',
+            'class_type' => 'one_on_one', 'paid' => true, 'stop' => false, 'enabled' => true,
+        ]);
+        $course = $this->createStudentClass($student->id, [
+            'PackageID' => $package->id, 'SessionCount' => 1,
+            'RemainingSessions' => 0, 'UsedSessions' => 1,
+        ]);
+        $sibling = $this->createStudentClass($student->id, [
+            'PackageID' => $package->id, 'SessionCount' => 1,
+            'RemainingSessions' => 0, 'UsedSessions' => 1,
+        ]);
+
+        foreach (range(1, 100) as $days) {
+            ClassSession::create([
+                'StudentClassID' => $sibling->ID,
+                'SessionDate' => Carbon::today()->addDays($days)->toDateString(),
+                'StartTime' => '18:00:00', 'EndTime' => '20:00:00', 'Status' => 'scheduled',
+            ]);
+        }
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->postJson("/api/v1/student-classes/{$course->ID}/add-session/check", [
+            'session_date' => Carbon::today()->addDays(101)->toDateString(), 'start_time' => '10:00',
+        ]);
+
+        $res->assertOk()
+            ->assertJsonPath('can_add', true)
+            ->assertJsonPath('package_planning.purchased_entitlement', 1)
+            ->assertJsonPath('package_planning.actual_consumed', 0)
+            ->assertJsonPath('package_planning.future_planned_sessions', 100)
+            ->assertJsonPath('package_planning.overage_sessions', 100)
+            ->assertJsonPath('package_planning.renewal_warning', true);
+    }
+
     public function test_shared_package_quick_add_ignores_excused_future_occurrences(): void
     {
         $token = $this->createDirectorToken([1]);

@@ -177,10 +177,13 @@ final class PreviewSessionHorizonService
                 'horizon_expected_new' => $expectedNew,
                 'horizon_coverable' => $coveredNew,
                 'horizon_uncovered' => $uncoveredNew,
-                'ensure_would_block' => $uncoveredNew > 0,
-                'ensure_block_reason' => $uncoveredNew > 0
-                    ? CommitmentReasonCodes::BLOCK_POOL_SHORTAGE
-                    : null,
+                // A shared package may be planned beyond its current ledger
+                // balance. Keep the uncovered count as a renewal signal, but
+                // never turn future planning into a write-time capacity gate.
+                'ensure_would_block' => false,
+                'ensure_block_reason' => null,
+                'renewal_warning' => $uncoveredNew > 0,
+                'overage_sessions' => $uncoveredNew,
             ];
         } else {
             $base['pool_projection'] = null;
