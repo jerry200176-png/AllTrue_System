@@ -432,7 +432,7 @@ jobs:
     # npm ci can take ~9 minutes on the hosted runner before the blocking
     # audit/build steps begin; keep the security gate intact while allowing
     # the job enough wall-clock time to finish.
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
@@ -587,12 +587,13 @@ jobs:
           audit_evidence="${RUNNER_TEMP}/npm-audit-degraded.json"
           : > "$audit_log"
 
-          for attempt in 1 2 3; do
-            echo "npm audit attempt ${attempt}/3"
+          max_attempts=5
+          for attempt in $(seq 1 "$max_attempts"); do
+            echo "npm audit attempt ${attempt}/${max_attempts}"
             if timeout --signal=TERM --kill-after=15s 120s npm audit --audit-level=high --omit=dev 2>&1 | tee -a "$audit_log"; then
               exit 0
             fi
-            if [ "$attempt" -lt 3 ]; then
+            if [ "$attempt" -lt "$max_attempts" ]; then
               echo "npm audit attempt ${attempt} failed; retrying"
               sleep $((attempt * 15))
             fi
@@ -611,7 +612,7 @@ jobs:
               printf '  "workflow_run": "%s",\n' "$GITHUB_RUN_ID"
               printf '  "commit": "%s",\n' "$GITHUB_SHA"
               echo '  "endpoint": "https://registry.npmjs.org/-/npm/v1/security/audits/quick",'
-              echo '  "attempts": 3'
+              printf '  "attempts": %s\n' "$max_attempts"
               echo '}'
             } > "$audit_evidence"
             {
@@ -622,11 +623,11 @@ jobs:
               echo '- Vulnerability finding: none observed in the captured output'
               echo '- Recovery action: rerun the required audit after the registry endpoint recovers'
             } >> "$GITHUB_STEP_SUMMARY"
-            echo '::error::npm audit service/network unavailable after 3 bounded attempts; required security gate remains blocking'
+            echo "::error::npm audit service/network unavailable after ${max_attempts} bounded attempts; required security gate remains blocking"
             exit 1
           fi
 
-          echo "npm audit failed after 3 attempts"
+          echo "npm audit failed after ${max_attempts} attempts"
           exit 1
 
       - name: Upload npm audit evidence
