@@ -114,7 +114,7 @@ final class PoolCoveragePlanService
         }
 
         $packagePlanning = app(SharedPackagePlanningService::class)->summarize(
-            CoursePackage::findOrFail($packageId)
+            CoursePackage::query()->findOrFail($packageId)
         );
         $plan = $this->allocator->plan(
             $packageId,

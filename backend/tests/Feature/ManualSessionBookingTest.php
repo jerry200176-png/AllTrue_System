@@ -85,6 +85,11 @@ class ManualSessionBookingTest extends TestCase
         ];
     }
 
+    private function plannedSession(StudentClass $course, int $days, string $status = 'scheduled'): ClassSession
+    {
+        return ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => Carbon::today()->addDays($days)->toDateString(), 'StartTime' => '16:00:00', 'EndTime' => '17:00:00', 'Status' => $status]);
+    }
+
     public function test_manual_booking_is_one_at_a_time_idempotent_and_does_not_deduct(): void
     {
         $date = Carbon::today()->addDays(7)->toDateString();
@@ -233,13 +238,7 @@ class ManualSessionBookingTest extends TestCase
         );
 
         foreach (range(1, 5) as $days) {
-            ClassSession::create([
-                'StudentClassID' => $this->course->ID,
-                'SessionDate' => Carbon::today()->addDays($days)->toDateString(),
-                'StartTime' => '16:00:00',
-                'EndTime' => '17:00:00',
-                'Status' => 'scheduled',
-            ]);
+            $this->plannedSession($this->course, $days);
         }
 
         $this->withHeaders($this->headers())
@@ -278,16 +277,9 @@ class ManualSessionBookingTest extends TestCase
 
         $date = Carbon::today()->addDays(7)->toDateString();
         foreach ([$this->course->ID, $member->ID] as $studentClassId) {
-            ClassSession::create([
-                'StudentClassID' => $studentClassId, 'SessionDate' => $date,
-                'StartTime' => '16:00:00', 'EndTime' => '17:00:00', 'Status' => 'scheduled',
-            ]);
+            ClassSession::create(['StudentClassID' => $studentClassId, 'SessionDate' => $date, 'StartTime' => '16:00:00', 'EndTime' => '17:00:00', 'Status' => 'scheduled']);
         }
-        ClassSession::create([
-            'StudentClassID' => $this->course->ID,
-            'SessionDate' => Carbon::today()->addDays(14)->toDateString(),
-            'StartTime' => '16:00:00', 'EndTime' => '17:00:00', 'Status' => 'leave_requested',
-        ]);
+        $this->plannedSession($this->course, 14, 'leave_requested');
 
         $summary = app(SharedPackagePlanningService::class)->summarize($package);
 
@@ -307,11 +299,7 @@ class ManualSessionBookingTest extends TestCase
         $this->course->PackageID = $package->id;
         $this->course->save();
 
-        ClassSession::create([
-            'StudentClassID' => $this->course->ID,
-            'SessionDate' => Carbon::today()->addDays(7)->toDateString(),
-            'StartTime' => '16:00:00', 'EndTime' => '17:00:00', 'Status' => 'scheduled',
-        ]);
+        $this->plannedSession($this->course, 7);
         PackageSessionLedger::create([
             'package_id' => $package->id, 'student_class_id' => $this->course->ID,
             'delta' => -1, 'reason' => 'attendance_1',
@@ -331,11 +319,7 @@ class ManualSessionBookingTest extends TestCase
         $stopped->PackageID = $package->id;
         $stopped->Stop = 1;
         $stopped->save();
-        ClassSession::create([
-            'StudentClassID' => $stopped->ID,
-            'SessionDate' => Carbon::today()->addDays(21)->toDateString(),
-            'StartTime' => '16:00:00', 'EndTime' => '17:00:00', 'Status' => 'scheduled',
-        ]);
+        $this->plannedSession($stopped, 21);
 
         $summary = app(SharedPackagePlanningService::class)->summarize($package->fresh());
 
