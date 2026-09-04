@@ -26,9 +26,9 @@ class AdmissionInquiryController extends Controller
             'parent_name' => 'required|string|max:64',
             'parent_phone' => 'required|string|max:32',
             'student_name' => 'required|string|max:64',
-            'grade' => 'required|string|max:16',
+            'grade' => 'required|in:P1,P2,P3,P4,P5,P6,J1,J2,J3,H1,H2,H3',
             'school_name' => 'required|string|max:128',
-            'subject' => 'required|string|max:64',
+            'subject' => 'required|in:Chinese,English,Math,Physics,Chemistry,Science,Biology,Social',
             'preferred_slots' => 'present|array|max:7',
             'preferred_slots.*' => 'string|max:64',
             'public_notes' => 'nullable|string|max:500',
@@ -139,6 +139,9 @@ class AdmissionInquiryController extends Controller
         $this->ensureEnabled();
         $this->authorizeInquiry($request, $admissionInquiry);
         $data = $request->validate(['trial_result' => 'required|in:attended,no_show,cancelled,not_suitable']);
+        if ($admissionInquiry->status === AdmissionInquiry::STATUS_TRIAL_COMPLETED && $admissionInquiry->trial_result === $data['trial_result']) {
+            return response()->json(['status' => $admissionInquiry->status, 'trial_result' => $admissionInquiry->trial_result]);
+        }
         abort_unless($admissionInquiry->status === AdmissionInquiry::STATUS_TRIAL_SCHEDULED, 422, '目前狀態不可記錄試聽結果。');
         $admissionInquiry->update(['status' => AdmissionInquiry::STATUS_TRIAL_COMPLETED, 'trial_result' => $data['trial_result'], 'trial_completed_at' => now()]);
         $this->audit($request, $admissionInquiry, 'trial_completed');
@@ -150,6 +153,10 @@ class AdmissionInquiryController extends Controller
         $this->ensureEnabled();
         $this->authorizeInquiry($request, $admissionInquiry);
         $data = $request->validate(['student_class_id' => 'required|integer|exists:StudentClass,ID']);
+        if ($admissionInquiry->status === AdmissionInquiry::STATUS_ENROLLED && (int) $admissionInquiry->enrolled_student_class_id === (int) $data['student_class_id']) {
+            return response()->json(['status' => $admissionInquiry->status, 'student_id' => $admissionInquiry->student_id, 'student_class_id' => $data['student_class_id']]);
+        }
+        abort_unless($admissionInquiry->status === AdmissionInquiry::STATUS_TRIAL_COMPLETED && $admissionInquiry->trial_result === 'attended', 422, '請先記錄已出席的試聽結果。');
         $newCourse = StudentClass::findOrFail($data['student_class_id']);
         abort_unless((int) $newCourse->StudentID === (int) $admissionInquiry->student_id, 422, '報名課程與詢問學生不一致。');
         $trial = StudentClass::findOrFail($admissionInquiry->trial_student_class_id);
