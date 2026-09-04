@@ -1344,9 +1344,16 @@ function startRoleOnboarding({ force = false } = {}) {
   return launchRoleOnboarding({ steps, state, force: true });
 }
 
+function isAutomatedBrowserSession() {
+  return typeof navigator !== 'undefined' && Boolean(navigator.webdriver);
+}
+
 function maybeAutoStartOnboarding() {
   if (onboardingAutoStarted || onboardingLaunchOpen.value || !session.value || isPasswordChangeLocked.value) return;
   if (!isOnboardingRole(role.value) || isStandaloneParent.value) return;
+  // UI Smoke hits production with WebDriver; skip auto launch so overlays do not
+  // block nav/tab clicks (same rationale as release-nudge automated skip).
+  if (isAutomatedBrowserSession()) return;
   nextTick(() => {
     nextTick(() => startRoleOnboarding());
   });
