@@ -1,4 +1,4 @@
-export const ROLE_ONBOARDING_VERSION = '2026-09-04';
+export const ROLE_ONBOARDING_VERSION = '2026-09-04-v1.1';
 
 const ROLE_ONBOARDING_STEPS = {
   director: [
@@ -110,7 +110,7 @@ export function readOnboardingState({ role, userId, storage } = {}) {
     if (!raw) return null;
     const value = JSON.parse(raw);
     if (!value || typeof value !== 'object') return null;
-    if (!['in_progress', 'completed', 'skipped'].includes(value.status)) return null;
+    if (!['in_progress', 'completed', 'skipped', 'deferred'].includes(value.status)) return null;
     return {
       version: String(value.version || ''),
       status: value.status,
@@ -124,7 +124,7 @@ export function readOnboardingState({ role, userId, storage } = {}) {
 
 export function writeOnboardingState({ role, userId, status, stepIndex = 0, version = ROLE_ONBOARDING_VERSION, storage } = {}) {
   const targetStorage = storageFor(storage);
-  if (!targetStorage || !['in_progress', 'completed', 'skipped'].includes(status)) return false;
+  if (!targetStorage || !['in_progress', 'completed', 'skipped', 'deferred'].includes(status)) return false;
   const state = {
     version: String(version),
     status,
@@ -141,7 +141,7 @@ export function writeOnboardingState({ role, userId, status, stepIndex = 0, vers
 
 export function shouldAutoStartOnboarding({ state, firstLogin = false, version = ROLE_ONBOARDING_VERSION } = {}) {
   if (state?.status === 'in_progress' && state.version === version) return true;
-  if (state?.status === 'completed' || state?.status === 'skipped') return false;
+  if (state?.status === 'completed' || state?.status === 'skipped' || state?.status === 'deferred') return false;
   return Boolean(firstLogin);
 }
 

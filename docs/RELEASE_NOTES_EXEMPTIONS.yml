@@ -2,6 +2,16 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-04-ci-npm-audit-reliability
+    changelog_date: "2026-09-04"
+    changelog_title: "ci: harden npm audit network retries"
+    reason: 僅修正 CI 安全稽核的 bounded retry、timeout 與故障證據；不改 AllTrue 產品行為，也沒有 production deploy。
+
+  - id: silent-2026-09-04-admissions-activation-control
+    changelog_date: "2026-09-04"
+    changelog_title: "fix(deploy): explicitly activate admissions flags"
+    reason: 僅補上招生 dark launch 的 protected activation contract 與測試；本次沒有開啟 production flag、執行 migration 或修改 production 資料。
+
   - id: silent-2026-09-04-archify-orientation
     changelog_date: "2026-09-04"
     changelog_title: "docs(architecture): finalize Archify architecture orientation"
