@@ -184,7 +184,7 @@ As a 主任, I want to 開啟既有 trial conversion／enrollment workflow, so t
 - 部署由 `.github/workflows/deploy.yml` 觸發；merge 不代表 production migration 已執行。
 - `admissions_funnel_v1` 預設 off；activation sequence 為 CI → deploy → migration REP/Founder GO → staff-only smoke → bounded public rollout → production verification。
 - Observability：`admission_inquiry.submit`、`state_transition`、`trial_handoff`、`enrollment_link` 只記 outcome/reason code；429、422、500 與 orphan reference 各自可查。
-- 回滾：先關 flag；程式以 revert 回退；若 migration 已啟用，依 REP 的 snapshot／migration rollback procedure，禁止刪除或猜測修復 production data。
+- 回滾：先關閉前端 `VITE_ADMISSIONS_FUNNEL_V1` 與後端 `ADMISSIONS_FUNNEL_V1`；程式以 revert 回退；若 migration 已啟用，依 REP 的 snapshot／migration rollback procedure，禁止刪除或猜測修復 production data。
 - Production activation、PII policy、permission widening、migration execution 均是本 RFC 外的 Founder gate；本 branch 只準備可審查 artifact。
 
 ## 12. 里程碑與優先級

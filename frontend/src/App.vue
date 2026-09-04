@@ -1617,7 +1617,7 @@ const avatarLetter = computed(() => {
 const avatarUrl = computed(() => userProfile.value?.avatar_url || '');
 
 const sidebarGroupOpen = ref({});
-const sidebarNavGroups = computed(() => getNavigationGroups(role.value));
+const sidebarNavGroups = computed(() => getNavigationGroups(role.value, { admissionsEnabled: perfFlags.ADMISSIONS_FUNNEL_V1 }));
 const sidebarPrimaryGroups = computed(() => sidebarNavGroups.value.filter(group => group.primary !== false));
 const sidebarMoreGroups = computed(() => sidebarNavGroups.value.filter(group => group.primary === false));
 const activeInSidebarMore = computed(() => sidebarMoreGroups.value.some(

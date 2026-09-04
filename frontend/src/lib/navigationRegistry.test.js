@@ -18,6 +18,12 @@ describe('navigation registry', () => {
     expect(pages('student')).toEqual([]);
   });
 
+  it('hides the admissions entry when the client rollout flag is off', () => {
+    expect(getNavigationGroups('director', { admissionsEnabled: false })
+      .flatMap(group => group.items.map(item => item.page)))
+      .not.toContain('admission-inquiries');
+  });
+
   it('keeps every pinned mobile page in the same role-scoped registry', () => {
     for (const role of ['director', 'super_admin', 'teacher']) {
       const rolePages = new Set(pages(role));
