@@ -64,4 +64,8 @@ return [
     // Flag off ⇒ Portal/LINE auth falls back to verified SLB + legacy parent_phone.
     // Rollback: PERF_MULTI_GUARDIAN=false (tables retained; login still works).
     'multi_guardian_enabled' => (bool) env('PERF_MULTI_GUARDIAN', false),
+
+    // Admissions funnel V1: public inquiry + director trial handoff.
+    // DARK LAUNCH: tables may exist while both public and staff routes stay off.
+    'admissions_funnel_v1' => (bool) env('ADMISSIONS_FUNNEL_V1', false),
 ];

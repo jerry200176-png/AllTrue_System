@@ -1,0 +1,41 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "收款到電子收據 Workflow",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "viewBox": [1240, 700],
+    "views": [
+      { "id": "happy-path", "label": "正常對帳", "focus": ["entry", "reported", "reconcile", "ledger", "receipt", "view"], "note": "Follow reported payment through reconciliation to receipt view." },
+      { "id": "anomaly-path", "label": "帳務異常", "focus": ["reconcile", "anomaly", "ledger"], "note": "Inspect the explicit anomaly branch before a receipt is trusted." }
+    ]
+  },
+  "lanes": [{ "id": "staff", "label": "主任／前端" }, { "id": "api", "label": "Payment API" }, { "id": "accounting", "label": "Accounting" }, { "id": "exception", "label": "例外", "variant": "exception" }],
+  "phases": [{ "id": "reporting", "label": "回報", "fromCol": 0, "toCol": 1 }, { "id": "settlement", "label": "確認與對帳", "fromCol": 2, "toCol": 3, "variant": "emphasis" }, { "id": "receipt", "label": "收據", "fromCol": 4, "toCol": 5 }],
+  "groups": [{ "id": "ledger-group", "label": "雙層帳務證據", "lane": "accounting", "fromCol": 2, "toCol": 4, "variant": "emphasis" }, { "id": "exception-group", "label": "需人工處理", "lane": "exception", "fromCol": 3, "toCol": 5, "variant": "security" }],
+  "mainPath": ["entry", "reported", "reconcile", "ledger", "receipt", "view"],
+  "nodes": [
+    { "id": "entry", "lane": "staff", "col": 0, "type": "frontend", "label": "收款登錄", "sublabel": "director entry", "tag": "reported", "width": 150 },
+    { "id": "reported", "lane": "api", "col": 1, "type": "backend", "label": "PaymentReport", "sublabel": "reported payment", "tag": "unconfirmed", "width": 150 },
+    { "id": "reconcile", "lane": "accounting", "col": 2, "type": "backend", "label": "對帳確認", "sublabel": "AccountingController", "tag": "confirm", "width": 150 },
+    { "id": "ledger", "lane": "accounting", "col": 3, "type": "database", "label": "Invoice + Payment", "sublabel": "accounting ledger", "tag": "authoritative", "width": 150 },
+    { "id": "receipt", "lane": "api", "col": 4, "type": "backend", "label": "電子收據", "sublabel": "receipt projection", "tag": "issued", "width": 150 },
+    { "id": "view", "lane": "staff", "col": 5, "type": "frontend", "label": "收據檢視", "sublabel": "ReceiptModal", "tag": "read", "width": 150 },
+    { "id": "anomaly", "lane": "exception", "col": 3, "type": "security", "label": "Ledger anomaly", "sublabel": "stop / inspect", "tag": "exception", "width": 150 }
+  ],
+  "edges": [
+    { "id": "entry-report", "from": "entry", "to": "reported", "label": "director-record", "variant": "emphasis", "role": "main" },
+    { "id": "report-reconcile", "from": "reported", "to": "reconcile", "label": "confirm / reject", "variant": "default", "role": "main" },
+    { "id": "reconcile-ledger", "from": "reconcile", "to": "ledger", "label": "persist payment evidence", "variant": "emphasis", "role": "main" },
+    { "id": "ledger-receipt", "from": "ledger", "to": "receipt", "label": "confirmed receipt projection", "variant": "emphasis", "role": "main" },
+    { "id": "receipt-view", "from": "receipt", "to": "view", "label": "GET receipt", "variant": "default", "role": "main" },
+    { "id": "reconcile-anomaly", "from": "reconcile", "to": "anomaly", "label": "missing / mismatched evidence", "variant": "security", "role": "error" },
+    { "id": "anomaly-ledger", "from": "anomaly", "to": "ledger", "label": "manual resolution only", "variant": "security", "role": "branch" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "API evidence", "items": ["Payment report and receipt routes: backend/routes/api.php:445–458.", "Frontend receipt surface: frontend/src/components/ReceiptModal.vue and frontend/src/composables/useReceiptFlow.js."] },
+    { "dot": "emerald", "title": "Accounting evidence", "items": ["Accounting reads and anomaly classification: backend/app/Http/Controllers/AccountingController.php:300–464 and :630–680.", "Receipt shaping and receipt number projection: backend/app/Http/Controllers/AccountingController.php:733–775 and PaymentReportController.php."] },
+    { "dot": "rose", "title": "State distinction", "items": ["The diagram preserves reported versus confirmed payment as separate steps; it does not treat administrative reporting as receipt issuance."] }
+  ]
+}

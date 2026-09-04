@@ -2694,3 +2694,8 @@ Fixed：班級行事曆若週次篩選暫時隱藏某課程，已實際存在的
 
 - Bug 回報列表項目改為可用鍵盤聚焦與選取，按 Enter 或 Space 即可開啟詳情。
 - 已選取的回報會向輔助工具清楚標示；滑鼠操作與分診流程不變。
+## 2026-09-04 — feat(admissions): 新生問班招生閉環 V1
+<!-- release-notes: silent_ship=silent-2026-09-04-admissions-funnel-v1 -->
+- 新增家長公開「問班 → 試聽 → 報名」guided interview，以及主任的新詢問佇列與狀態工作流。
+- 問班資料以加密 PII 與去重 hash 保存；試聽沿用既有排課／老師／課程流程，報名沿用既有 StudentClass 流程，不重複建立正式學生。
+- 本次先以 dark launch 部署，前後端 `ADMISSIONS_FUNNEL_V1` 預設關閉；production 啟用仍需 Founder activation GO。

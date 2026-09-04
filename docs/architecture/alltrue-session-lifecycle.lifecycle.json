@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "排課到 Learning Record 核心生命週期",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "viewBox": [1080, 720],
+    "views": [
+      { "id": "core-path", "label": "核心路徑", "focus": ["scheduled", "materialized", "in_class", "attendance_saved", "learning_record"], "note": "排課、上課、點名與學習紀錄的主路徑。" },
+      { "id": "correction", "label": "修正分支", "focus": ["attendance_saved", "correction", "learning_record", "cancelled"], "note": "只展示有實際來源的調整與取消出口。" }
+    ]
+  },
+  "lanes": [{ "id": "main", "label": "核心教學流程" }, { "id": "exception", "label": "修正與例外" }, { "id": "terminal", "label": "終止" }],
+  "states": [
+    { "id": "scheduled", "type": "start", "label": "已排課", "sublabel": "Schedule", "lane": "main", "col": 0, "step": "01", "tag": "schedule" },
+    { "id": "materialized", "type": "active", "label": "已形成堂次", "sublabel": "ClassSession", "lane": "main", "col": 1, "step": "02", "tag": "projection" },
+    { "id": "in_class", "type": "active", "label": "上課進行", "sublabel": "session in progress", "lane": "main", "col": 2, "step": "03", "tag": "teaching" },
+    { "id": "attendance_saved", "type": "decision", "label": "點名已保存", "sublabel": "Attendance", "lane": "main", "col": 3, "step": "04", "tag": "evidence" },
+    { "id": "learning_record", "type": "success", "label": "Learning Record", "sublabel": "建立／審核", "lane": "main", "col": 4, "step": "05", "tag": "record" },
+    { "id": "correction", "type": "waiting", "label": "點名修正", "sublabel": "director correction", "lane": "exception", "col": 1, "tag": "controlled" },
+    { "id": "cancelled", "type": "failure", "label": "取消／失效", "sublabel": "terminal outcome", "lane": "terminal", "col": 0, "tag": "terminal" }
+  ],
+  "transitions": [
+    { "id": "schedule-to-session", "from": "scheduled", "to": "materialized", "label": "materialize / project", "labelDy": 55, "variant": "emphasis" },
+    { "id": "session-to-class", "from": "materialized", "to": "in_class", "label": "到課時間", "labelDy": -56, "route": "straight", "variant": "default" },
+    { "id": "class-to-attendance", "from": "in_class", "to": "attendance_saved", "label": "mark attendance", "labelDy": 55, "variant": "emphasis" },
+    { "id": "attendance-to-record", "from": "attendance_saved", "to": "learning_record", "label": "write + approve LR", "labelDy": 55, "variant": "emphasis" },
+    { "id": "attendance-correction", "from": "attendance_saved", "to": "correction", "label": "director adjust", "labelDx": -175, "labelDy": 24, "variant": "security" },
+    { "id": "correction-to-attendance", "from": "correction", "to": "attendance_saved", "label": "persist corrected evidence", "labelDx": 170, "labelDy": -24, "variant": "emphasis" },
+    { "id": "session-cancel", "from": "materialized", "to": "cancelled", "label": "cancel / void", "variant": "security" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Route evidence", "items": ["Schedule/session routes: backend/routes/api.php:547–568 and 621–641.", "Attendance routes: backend/routes/api.php:586–600; Learning Record routes: backend/routes/api.php:603–609."] },
+    { "dot": "emerald", "title": "Persistence evidence", "items": ["Attendance side effects and learning-record integrity are coupled in backend/app/Services/AttendanceEffectsService.php and AttendanceLearningRecordIntegrityService.php.", "Session deduction reads attendance, ClassSession, LearningRecord and the ledger; see backend/app/Services/SessionDeductionService.php:143–206."] },
+    { "dot": "rose", "title": "Interpretation", "items": ["The diagram models the core application lifecycle, not a claim that every attendance event automatically approves a Learning Record."] }
+  ]
+}

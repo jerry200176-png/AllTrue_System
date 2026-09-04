@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "AllTrue Runtime Architecture",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "repository": { "url": "https://github.com/jerry200176-png/AllTrue_System.git", "revision": "76d91d8b061315ede9358db035190aee48f27ca2" },
+    "viewBox": [1240, 900],
+    "views": [
+      { "id": "request-path", "label": "Request path", "focus": ["web_ui", "api_client", "laravel_api", "domain_services", "mysql"], "note": "Follow the primary browser-to-persistence path." },
+      { "id": "trust-boundary", "label": "Trust boundary", "focus": ["auth_boundary", "laravel_api", "line_rfid"], "note": "Inspect authenticated application entry points and external inputs." }
+    ]
+  },
+  "layout": { "mode": "grid", "origin": [90, 110], "cols": 4, "gapX": 80, "gapY": 90, "cellW": 230, "cellH": 120 },
+  "components": [
+    { "id": "web_ui", "type": "frontend", "label": "Vue Web UI", "sublabel": "staff + parent surfaces", "row": 0, "col": 0, "sources": [{ "path": "frontend/src/main.js", "line": 2, "end_line": 60, "label": "app bootstrap" }] },
+    { "id": "api_client", "type": "frontend", "label": "API client", "sublabel": "fetch + Supabase", "row": 0, "col": 1, "sources": [{ "path": "frontend/src/api.js", "line": 1, "end_line": 19, "label": "API base + auth" }, { "path": "frontend/src/api.js", "line": 292, "end_line": 375, "label": "domain reads/writes" }] },
+    { "id": "laravel_api", "type": "backend", "label": "Laravel API", "sublabel": "/api/v1 route surface", "row": 0, "col": 2, "sources": [{ "path": "backend/routes/api.php", "line": 162, "end_line": 163, "label": "v1 boundary" }, { "path": "backend/routes/api.php", "line": 318, "end_line": 359, "label": "domain routes" }] },
+    { "id": "mysql", "type": "database", "label": "Operational DB", "sublabel": "sched · sess · bill", "row": 0, "col": 3, "sources": [{ "path": "backend/app/Models/Schedule.php", "line": 1, "end_line": 30, "label": "schedule model" }, { "path": "backend/app/Models/ClassSession.php", "line": 1, "end_line": 70, "label": "session model" }, { "path": "backend/app/Models/PaymentReport.php", "line": 1, "end_line": 70, "label": "payment report" }] },
+    { "id": "auth_boundary", "type": "security", "label": "Auth + campus gate", "sublabel": "Sanctum · role · campus", "row": 1, "col": 1, "sources": [{ "path": "backend/app/Http/Middleware/AttachAuthUser.php", "line": 1, "end_line": 89, "label": "user context" }, { "path": "backend/routes/api.php", "line": 318, "end_line": 319, "label": "role + campus middleware" }] },
+    { "id": "domain_services", "type": "backend", "label": "Domain services", "sublabel": "sched · attend · bill", "row": 1, "col": 2, "sources": [{ "path": "backend/app/Services/AttendanceEffectsService.php", "line": 1, "end_line": 112, "label": "attendance effects" }, { "path": "backend/app/Services/SessionDeductionService.php", "line": 262, "end_line": 353, "label": "ledger events" }] },
+    { "id": "line_rfid", "type": "external", "label": "LINE / RFID inputs", "sublabel": "webhooks + swipe API", "row": 2, "col": 0, "sources": [{ "path": "backend/routes/api.php", "line": 279, "end_line": 280, "label": "RFID swipe" }, { "path": "backend/routes/api.php", "line": 883, "end_line": 890, "label": "authenticated integrations" }] }
+  ],
+  "boundaries": [{ "kind": "region", "label": "AllTrue application runtime", "wraps": ["web_ui", "api_client", "laravel_api", "auth_boundary", "domain_services", "mysql"], "pad": 36 }],
+  "connections": [
+    { "id": "ui-client", "from": "web_ui", "to": "api_client", "label": "user action", "variant": "emphasis" },
+    { "id": "client-api", "from": "api_client", "to": "laravel_api", "label": "HTTP /api/v1", "variant": "emphasis" },
+    { "id": "auth-api", "from": "auth_boundary", "to": "laravel_api", "label": "authenticated context", "variant": "security" },
+    { "id": "api-services", "from": "laravel_api", "to": "domain_services", "label": "controller → service", "labelDy": 24, "variant": "default" },
+    { "id": "services-db", "from": "domain_services", "to": "mysql", "label": "transactional reads/writes", "variant": "default" },
+    { "id": "external-api", "from": "line_rfid", "to": "laravel_api", "label": "webhook / api_key", "labelDy": 47, "variant": "security" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Reading rule", "items": ["This is a code-backed runtime map at revision 76d91d8b0613; it does not claim live infrastructure topology.", "The primary path is Vue UI → API client → Laravel route → domain service → operational database."] },
+    { "dot": "rose", "title": "Safety boundary", "items": ["Production execution is documented as deploy.yml / POP only by docs/CONTROL_PLANE_CONTRACT.md:36–67.", "External LINE/RFID inputs enter named routes; role and campus middleware protect staff domain routes."] }
+  ]
+}

@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 448 api/* routes · generated 2026-09-04
+> Source: `php artisan route:list --json` · 455 api/* routes · generated 2026-09-04
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -61,6 +61,18 @@
 | GET | `api/v1/admin/teachers/duplicates` | `TeacherDuplicateController@index` | role |
 | POST | `api/v1/admin/teachers/merge` | `TeacherDuplicateController@merge` | role |
 | POST | `api/v1/admin/teachers/merge-preview` | `TeacherDuplicateController@preview` | role |
+
+## /api/v1/admission-inquiries (7)
+
+| Method | URI | Action | Auth |
+|--------|-----|--------|------|
+| POST | `api/v1/admission-inquiries` | `AdmissionInquiryController@store` | public |
+| GET | `api/v1/admission-inquiries` | `AdmissionInquiryController@index` | role+campus |
+| GET | `api/v1/admission-inquiries/{admissionInquiry}` | `AdmissionInquiryController@show` | role+campus |
+| POST | `api/v1/admission-inquiries/{admissionInquiry}/contact` | `AdmissionInquiryController@contact` | role+campus |
+| POST | `api/v1/admission-inquiries/{admissionInquiry}/enroll` | `AdmissionInquiryController@linkEnrollment` | role+campus |
+| POST | `api/v1/admission-inquiries/{admissionInquiry}/trial` | `AdmissionInquiryController@scheduleTrial` | role+campus |
+| POST | `api/v1/admission-inquiries/{admissionInquiry}/trial-result` | `AdmissionInquiryController@recordResult` | role+campus |
 
 ## /api/v1/adoption (5)
 

@@ -51,6 +51,9 @@ const flags = {
    * 建課 form goes back to showing no 扣堂方式 選項 and sending no new fields.
    */
   ACTUAL_DURATION_DEDUCTION_ENABLED: true,
+
+  /** Admissions inquiry -> trial -> enrollment funnel. Requires backend activation too. */
+  ADMISSIONS_FUNNEL_V1: import.meta.env.VITE_ADMISSIONS_FUNNEL_V1 === 'true',
 };
 
 export default flags;
