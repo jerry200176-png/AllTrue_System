@@ -12,7 +12,8 @@
 | **Task worktrees** | `/home/jerry/workspace/tasks/alltrue/<task-id>/` | Only official Agent write path |
 | **Launch gateway** | `agent-start alltrue <task-id>` | Must succeed before Agent CLI |
 | **Remote baseline** | `origin/main` | Sole code baseline |
-| **Forbidden legacy** | `/home/jerry/alltrue`, `AllTrue_System-clean`, runner `_work`, backups, `/mnt/c` | Never Agent delivery |
+| **Forbidden legacy** | `/home/jerry/alltrue`, `/home/jerry/workspace/AllTrue_System`, `/home/jerry/workspace/AllTrue_System-clean`, runner `_work`, backups, `/mnt/c` | Never Agent delivery — each tree may carry `AGENT_WRITES_FORBIDDEN` |
+
 
 ## Machine gates
 
