@@ -53,8 +53,8 @@ node "$ARCHIFY_BIN" deliver workflow docs/architecture/alltrue-payment-receipt.w
 `ARCHIFY_BIN` 由執行環境提供；不要把本機 skill 絕對路徑寫入產品
 runtime。HTML 是暫時 review output，不是 repository source of truth。
 
-## Next candidates
+## Scope boundary
 
-下一個值得視覺化的是既有 source／authority 已較完整的 parent identity／
-student onboarding；之後再評估 multi-campus 補課、轉課與通知邊界。這些
-都是候選，不代表本目錄要全面涵蓋所有產品流程。
+本次 pilot 完成後不預設新增圖稿，也不延伸 parent identity／student onboarding。
+只有未來有實際 evidence 顯示某 critical domain 因架構理解不足反覆出錯，才重新
+評估新增或更新圖稿。

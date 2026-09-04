@@ -40,6 +40,19 @@
 | 任何瀏覽器測試 | `.cursor/.local/test-credentials.md` |
 | 任務牽涉長文件／多份 docs | `docs/INDEX.md` 的速讀卡／治理節奏（`docs/AI_DOC_LITERACY.md` 只是索引 stub）|
 
+### Critical-domain architecture orientation
+
+修改 AllTrue critical domain 前，先讀 [`docs/architecture/README.md`](docs/architecture/README.md)
+中與任務相關的 canonical Archify diagram，理解 system boundary、authoritative
+data flow、lifecycle 與 invariants，再以 current code、schema、tests，以及適用時的
+runtime evidence 驗證實作。只讀任務相關的圖；若任務跨 domain 或 ownership 不明，
+才先讀 `alltrue-runtime.architecture.json`。
+
+Diagram 是 orientation，不是高於 code 的真理。若 diagram 與 current implementation
+不一致，必須辨識是 stale docs 或 regression 並調查，不可盲從。Archify 不新增 CI
+gate、不要求每 PR 更新 diagram；除非未來有實際 evidence 顯示某 domain 因架構理解
+不足反覆出錯，否則不擴充圖稿。
+
 ## 公司治理記錄原則
 
 - 新功能 / bug fix 上線：更新 `docs/CHANGELOG.md`，並依 [`docs/GUIDE_STAFF_UPDATES.md`](docs/GUIDE_STAFF_UPDATES.md) 加上 `staff_update` 或 `silent_ship` 決策標記；教職員可感知的變更必須同步 `docs/STAFF_UPDATES.yml`。
