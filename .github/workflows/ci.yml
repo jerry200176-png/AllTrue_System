@@ -571,17 +571,21 @@ jobs:
         # so one hung request cannot consume the whole build job timeout.
         env:
           NPM_CONFIG_REGISTRY: https://registry.npmjs.org
-          NPM_CONFIG_FETCH_RETRIES: 3
+          # Let the outer loop own retries so each network timeout is visible
+          # and bounded instead of multiplying npm's internal retries.
+          NPM_CONFIG_FETCH_RETRIES: 0
           NPM_CONFIG_FETCH_RETRY_FACTOR: 2
           NPM_CONFIG_FETCH_RETRY_MINTIMEOUT: 1000
           NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT: 30000
-          NPM_CONFIG_FETCH_TIMEOUT: 60000
+          NPM_CONFIG_FETCH_TIMEOUT: 30000
         run: |
           for attempt in 1 2 3; do
+            echo "npm audit attempt ${attempt}/3"
             if timeout --signal=TERM --kill-after=15s 120s npm audit --audit-level=high --omit=dev; then
               exit 0
             fi
             if [ "$attempt" -lt 3 ]; then
+              echo "npm audit attempt ${attempt} failed; retrying"
               sleep $((attempt * 15))
             fi
           done
