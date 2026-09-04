@@ -109,8 +109,9 @@ class AdmissionInquiryController extends Controller
             // Serialize the handoff before invoking EnrollmentService. Without the
             // row lock, two retries arriving together can both observe an inquiry
             // without a trial class and create duplicate Student records.
-            $admissionInquiry = AdmissionInquiry::query()
-                ->whereKey($admissionInquiry->getKey())
+            // Prefer Model::whereKey (Eloquent builder) over ::query() so PHPStan
+            // sees lockForUpdate()->firstOrFail() on the Eloquent builder.
+            $admissionInquiry = AdmissionInquiry::whereKey($admissionInquiry->getKey())
                 ->lockForUpdate()
                 ->firstOrFail();
 
