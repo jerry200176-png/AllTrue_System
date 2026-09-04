@@ -25,6 +25,7 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "合約提前結束未繳費可回帳務中心對帳",
           "多科共用方案分離購買、已用與未來預排堂數",
           "月結請假維持合約日期邊界",
           "activate admissions flags"
@@ -40,6 +41,7 @@ export const changelogDraftNotes = [
     "items": [
       "新生問班招生閉環 V1",
       "主任與老師角色新手教學",
+      "合約提前結束未繳費可回帳務中心對帳",
       "多科共用方案分離購買、已用與未來預排堂數",
       "月結請假維持合約日期邊界",
       "activate admissions flags",

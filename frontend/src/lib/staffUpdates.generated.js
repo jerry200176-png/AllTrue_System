@@ -48,6 +48,52 @@ export const staffUpdates = [
     "version": "2026.09.04"
   },
   {
+    "id": "staff-2026-09-04-contract-amended-unpaid-tuition",
+    "publishedAt": "2026-09-04",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "提前結束未繳課程可回帳務中心對帳",
+    "summary": "合約改堂數／提前結束後若還沒繳費，會留在帳務中心待對帳，可登記與入帳。",
+    "items": [
+      "提前結束或改少堂數後仍未繳費的課程，會出現在帳務中心，不會消失。",
+      "請到帳務中心找到該筆「結案待對帳」，先「登記已回報」再「確認入帳」；若先前被退回，可重新登記。",
+      "課程管理會提示尚未完成繳費，並導向帳務中心。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "提前結束或改少堂數後仍未繳費的課程，會出現在帳務中心，不會消失。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "請到帳務中心找到該筆「結案待對帳」，先「登記已回報」再「確認入帳」；若先前被退回，可重新登記。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "課程管理會提示尚未完成繳費，並導向帳務中心。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-04:contract-amended-unpaid-tuition",
+      "github:#2461",
+      "in-app:#251"
+    ],
+    "date": "2026-09-04",
+    "version": "2026.09.04"
+  },
+  {
     "id": "staff-2026-09-04-role-onboarding-v11",
     "publishedAt": "2026-09-04",
     "effectiveAt": null,
