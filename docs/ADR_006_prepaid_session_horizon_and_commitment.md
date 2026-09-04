@@ -7,11 +7,6 @@
 > **Type:** Architecture + product decision package + implementation pointers  
 > **Related:** #1062 Track A（`docs/runbooks/1062-track-a-pcr.md`）、`ADR_005_scheduling_named_command_boundaries.md`、G-010、F4／#1465、`ForwardSessionGenerator`、`ClassSessionMaterializationService`
 
-> **2026-09-04 product amendment:** For multi-subject shared packages, the
-> shared-pool shortage behavior in §10.2 is superseded by §10.5 below. Future
-> plans are non-exclusive projections; they may be materialized as planned
-> `ClassSession` rows without ledger deduction or cross-subject blocking.
-
 ---
 
 ## 0. 本文件完成狀態（強制）
@@ -487,11 +482,6 @@ Founder 批准 **28 天**為 v1 **server-side default**，**不是**永久 domai
 
 ### 10.2 `EnsureSessionHorizon`（行為契約；本包／下一 PR 皆不啟用 production 寫入）
 
-> **Shared package 例外：** 本節原有的 shared-pool shortage gate 已由 §10.5
-> supersede。shared package 的未來預排可物化為 recurring／scheduled，超過
-> ledger 剩餘只回傳 renewal warning；本節的 `BLOCK_POOL_SHORTAGE`、整批
-> no-write 與禁止建立 uncovered session 僅適用 standalone entitlement。
-
 前置：僅 `explicit_commitment` + §6.4 允許條件。
 
 **Standalone entitlement shortage（ES）：**
@@ -535,13 +525,11 @@ Founder 批准 **28 天**為 v1 **server-side default**，**不是**永久 domai
 
 ### 10.5 2026-09-04 多科共用方案堂數模型修正（supersedes shared shortage gate）
 
-本次需求將 shared package 分為 `purchased_entitlement`（購買總堂數）、
-`actual_consumed`（正式扣堂 ledger 淨消耗）與 `future_planned_sessions`（未來預排投影）；
-不新增 quota framework，也不按科目切額度。多科共用同一 entitlement，未來 recurring／
-scheduled 可建立但不寫 ledger、不阻擋其他科；超過 remaining 時回傳 `renewal_warning`、
-超排數及續約／加購文案，允許排課且不得靜默放行。群組方案同一日期＋開始時間只計一個
-實體時段，`leave_requested` 仍算預排意圖；取消、刪除、轉課、減購、單科與既有資料沿用
-原 lifecycle／ledger 規則，本修正不做 production data repair 或 migration。
+本次需求將 shared package 分為 `purchased_entitlement`、`actual_consumed` 與
+`future_planned_sessions`；多科共用 entitlement，未來 recurring／scheduled 可建立但不寫
+ledger、不阻擋其他科，超過 remaining 必須回傳 `renewal_warning` 與續約／加購文案。
+群組同一日期＋開始時間只計一個實體時段，`leave_requested` 仍算預排意圖；其餘沿用既有
+lifecycle／ledger，且不做 production data repair 或 migration。
  
 
 ---
