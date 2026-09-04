@@ -48,6 +48,7 @@ function directorGroups(role) {
       items: [
         { page: 'students', label: '學生管理', icon: 'groups' },
         { page: 'course-mgmt', label: '課程查找', icon: 'menu_book', badgeTypes: ['tuition'] },
+        { page: 'admission-inquiries', label: '新生問班', icon: 'how_to_reg' },
       ],
     },
     {

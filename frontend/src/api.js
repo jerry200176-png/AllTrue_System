@@ -534,6 +534,54 @@ export async function getCampuses() {
   return [];
 }
 
+async function admissionFetch(path, { token = '', method = 'GET', body } = {}) {
+  const res = await fetch(API_BASE + path, {
+    method,
+    headers: {
+      Accept: 'application/json',
+      ...(body ? { 'Content-Type': 'application/json' } : {}),
+      ...(token ? { Authorization: 'Bearer ' + token } : {}),
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.message || '招生資料操作失敗');
+  return data;
+}
+
+export async function getAdmissionBranches() {
+  return admissionFetch('/branches');
+}
+
+export async function submitAdmissionInquiry(payload) {
+  return admissionFetch('/admission-inquiries', { method: 'POST', body: payload });
+}
+
+export async function getAdmissionInquiries(token, branchId) {
+  return admissionFetch('/admission-inquiries?campus_id=' + encodeURIComponent(branchId), { token });
+}
+
+export async function getAdmissionInquiry(token, inquiryId) {
+  return admissionFetch('/admission-inquiries/' + inquiryId, { token });
+}
+
+export async function admissionAction(token, inquiryId, action, payload = {}) {
+  return admissionFetch('/admission-inquiries/' + inquiryId + '/' + action, { token, method: 'POST', body: payload });
+}
+
+export async function getAdmissionTeachers(token, branchId) {
+  const res = await fetch(API_BASE + '/teachers?branch_id=' + encodeURIComponent(branchId), {
+    headers: { Accept: 'application/json', Authorization: 'Bearer ' + token },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.message || '老師資料載入失敗');
+  return Array.isArray(data) ? data : (data?.data || data?.teachers || []);
+}
+
+export async function convertAdmissionTrial(token, trialCourseId, payload) {
+  return admissionFetch('/student-classes/' + trialCourseId + '/convert-trial', { token, method: 'POST', body: payload });
+}
+
 // --- Nightly Reconcile (super_admin only) ---
 export async function getReconcileLatest(token) {
   const res = await fetch('/api/v1/admin/reconcile/latest', {

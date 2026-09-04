@@ -10,7 +10,11 @@
   </Transition>
 
   <!-- Standalone parent portal (accessible without login via #/parent or ?parent=1) -->
-  <div v-if="isStandaloneParent" class="standalone-parent-shell">
+  <div v-if="isStandaloneAdmission" class="standalone-admission-shell">
+    <AdmissionInquiriesPage :standalone="true" />
+  </div>
+
+  <div v-else-if="isStandaloneParent" class="standalone-parent-shell">
     <ParentPortal :standalone="true" />
     <button
       class="global-guide-btn"
@@ -457,6 +461,7 @@
       <TeacherEligibilityPage v-if="!isPasswordChangeLocked && isDirector && active === 'teacher-eligibility' && !pinModalActive" :branch-id="currentBranch" :user-role="role" />
       <TeachersList v-if="!isPasswordChangeLocked && isDirector && active === 'teachers' && !pinModalActive" :branch-id="currentBranch" @navigate-to-schedule="onNavigateToSchedule" />
       <CourseManagement v-if="!isPasswordChangeLocked && isDirector && active === 'course-mgmt'" :branch-id="currentBranch" :initial-teacher-id="initialTeacherIdForNav" :initial-student-id="courseMgmtFocusStudentId" :initial-student-name="courseMgmtFocusStudentName" @clear-initial-teacher="initialTeacherIdForNav = null" @clear-initial-student="clearCourseMgmtNavigationContext" @navigate="onNavigateFromCourseManagement" />
+      <AdmissionInquiriesPage v-if="!isPasswordChangeLocked && isDirector && active === 'admission-inquiries'" :branch-id="currentBranch" :token="session?.access_token ?? ''" />
       <ClassroomManagement v-if="!isPasswordChangeLocked && isDirector && active === 'classroom'" :branch-id="currentBranch" />
       <SubjectSettingsPage v-if="!isPasswordChangeLocked && isDirector && active === 'subject-settings'" :branch-id="currentBranch" :user-role="role" />
       <SubjectUnitsPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'subject-units'" :branch-id="currentBranch" :user-role="role" />
@@ -619,6 +624,7 @@ import logoUrl from './assets/logo.png';
 import Login from './pages/Login.vue';
 import ParentPortal from './pages/ParentPortal.vue';
 
+const AdmissionInquiriesPage = defineAsyncComponent(() => import('./pages/AdmissionInquiriesPage.vue'));
 const StudentsList          = defineAsyncComponent(() => import('./pages/StudentsList.vue'));
 const LearningRecordsPage   = defineAsyncComponent(() => import('./pages/LearningRecordsPage.vue'));
 const AssessmentPage        = defineAsyncComponent(() => import('./pages/AssessmentPage.vue'));
@@ -678,6 +684,11 @@ const isStandaloneParent = computed(() => {
   const hash = window.location.hash;
   const params = new URLSearchParams(window.location.search);
   return hash === '#/parent' || params.get('parent') === '1' || liffParentOverride.value;
+});
+const isStandaloneAdmission = computed(() => {
+  const hash = window.location.hash;
+  const params = new URLSearchParams(window.location.search);
+  return hash === '#/admissions' || params.get('admissions') === '1';
 });
 
 // Auto-detect LIFF environment: only when truly opened inside LINE app via LIFF URL
