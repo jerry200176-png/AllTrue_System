@@ -26,6 +26,7 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "新手教學標註錨點補齊",
           "合約提前結束未繳費可回帳務中心對帳",
           "多科共用方案分離購買、已用與未來預排堂數",
           "月結請假維持合約日期邊界",
@@ -43,11 +44,11 @@ export const changelogDraftNotes = [
       "dark-launch acceptance for 新生問班",
       "新生問班招生閉環 V1",
       "主任與老師角色新手教學",
+      "新手教學標註錨點補齊",
       "合約提前結束未繳費可回帳務中心對帳",
       "多科共用方案分離購買、已用與未來預排堂數",
       "月結請假維持合約日期邊界",
-      "activate admissions flags",
-      "主任與老師新手任務 V1.1"
+      "activate admissions flags"
     ]
   },
   {
