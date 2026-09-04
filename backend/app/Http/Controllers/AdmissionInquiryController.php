@@ -130,7 +130,8 @@ class AdmissionInquiryController extends Controller
                 'status' => AdmissionInquiry::STATUS_TRIAL_SCHEDULED, 'student_id' => $studentId,
                 'trial_student_class_id' => $classId, 'contacted_at' => $admissionInquiry->contacted_at ?: now(), 'trial_scheduled_at' => now(),
             ]);
-            app(GuardianSyncService::class)->syncPrimaryFromStudent(Student::findOrFail($studentId));
+            $student = Student::query()->whereKey($studentId)->firstOrFail();
+            app(GuardianSyncService::class)->syncPrimaryFromStudent($student);
             $this->audit($request, $admissionInquiry, 'trial_scheduled');
             return response()->json(['status' => $admissionInquiry->status, 'student_id' => $studentId, 'student_class_id' => $classId], 201);
         });
@@ -159,13 +160,13 @@ class AdmissionInquiryController extends Controller
             return response()->json(['status' => $admissionInquiry->status, 'student_id' => $admissionInquiry->student_id, 'student_class_id' => $data['student_class_id']]);
         }
         abort_unless($admissionInquiry->status === AdmissionInquiry::STATUS_TRIAL_COMPLETED && $admissionInquiry->trial_result === 'attended', 422, '請先記錄已出席的試聽結果。');
-        $newCourse = StudentClass::findOrFail($data['student_class_id']);
-        abort_unless((int) $newCourse->StudentID === (int) $admissionInquiry->student_id, 422, '報名課程與詢問學生不一致。');
-        $trial = StudentClass::findOrFail($admissionInquiry->trial_student_class_id);
-        abort_unless((int) $trial->trial_converted_to_id === (int) $newCourse->ID, 422, '請先完成既有試聽轉正式流程。');
-        $admissionInquiry->update(['status' => AdmissionInquiry::STATUS_ENROLLED, 'enrolled_student_class_id' => $newCourse->ID, 'enrolled_at' => now()]);
+        $newCourse = StudentClass::query()->whereKey($data['student_class_id'])->firstOrFail();
+        abort_unless((int) $newCourse->getAttribute('StudentID') === (int) $admissionInquiry->student_id, 422, '報名課程與詢問學生不一致。');
+        $trial = StudentClass::query()->whereKey($admissionInquiry->trial_student_class_id)->firstOrFail();
+        abort_unless((int) $trial->getAttribute('trial_converted_to_id') === (int) $newCourse->getAttribute('ID'), 422, '請先完成既有試聽轉正式流程。');
+        $admissionInquiry->update(['status' => AdmissionInquiry::STATUS_ENROLLED, 'enrolled_student_class_id' => $newCourse->getAttribute('ID'), 'enrolled_at' => now()]);
         $this->audit($request, $admissionInquiry, 'enrolled');
-        return response()->json(['status' => $admissionInquiry->status, 'student_id' => $admissionInquiry->student_id, 'student_class_id' => $newCourse->ID]);
+        return response()->json(['status' => $admissionInquiry->status, 'student_id' => $admissionInquiry->student_id, 'student_class_id' => $newCourse->getAttribute('ID')]);
     }
 
     private function scope($query, Request $request): void
