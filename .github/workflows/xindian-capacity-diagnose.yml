@@ -1,0 +1,91 @@
+name: Xindian capacity diagnose (read-only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_read_only:
+        description: "Type READ_ONLY_XINDIAN_CAPACITY to run"
+        required: true
+        type: string
+
+concurrency:
+  group: xindian-capacity-diagnose-readonly
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Guard confirm phrase
+        run: |
+          set -euo pipefail
+          test "${{ inputs.confirm_read_only }}" = "READ_ONLY_XINDIAN_CAPACITY"
+
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          PI_HOST_KEY: ${{ secrets.PI_HOST_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if ssh-keyscan -H "$PI_SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null; then
+            :
+          elif [[ -n "${PI_HOST_KEY:-}" ]]; then
+            printf '%s\n' "$PI_HOST_KEY" > ~/.ssh/known_hosts
+          else
+            echo '::error::no host key'; exit 1
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Run aggregated read-only production probe
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          SCRIPT_B64=$(base64 -w0 scripts/diagnose-xindian-capacity.sh)
+          ssh -i ~/.ssh/deploy_key \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            -o ConnectTimeout=20 \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" SCRIPT_B64="$SCRIPT_B64" 'bash -s' <<'ENDSSH' | tee out/xindian-capacity.txt
+          set -euo pipefail
+          echo "$SCRIPT_B64" | base64 -d > /tmp/diagnose-xindian-capacity.sh
+          chmod +x /tmp/diagnose-xindian-capacity.sh
+          bash /tmp/diagnose-xindian-capacity.sh
+          rm -f /tmp/diagnose-xindian-capacity.sh
+          ENDSSH
+          # Fail closed if probe did not mark read_only
+          grep -q 'read_only=1' out/xindian-capacity.txt
+
+      - name: Upload evidence artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xindian-capacity-diagnose-${{ github.run_id }}
+          path: out/xindian-capacity.txt
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo '### Xindian capacity diagnose (read-only aggregates)'
+            echo 'Campus 9 / last 3 complete months. No student or teacher names.'
+            echo '```text'
+            head -n 200 out/xindian-capacity.txt 2>/dev/null || echo 'No output captured.'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
