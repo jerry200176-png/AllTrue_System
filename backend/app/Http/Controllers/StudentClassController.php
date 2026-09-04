@@ -4054,6 +4054,7 @@ class StudentClassController extends Controller
                 ->first();
 
             $packageHasCapacity = true;
+            $isSharedPackage = false;
             $packageId = $studentClass ? (int) $studentClass->getAttribute('PackageID') : 0;
             $package = null;
             if ($studentClass && $packageId > 0 && !$movableSession) {
@@ -4061,10 +4062,18 @@ class StudentClassController extends Controller
                     ->where('id', $packageId)
                     ->where('student_id', (int) $studentClass->getAttribute('StudentID'))
                     ->first();
-                // Shared-package future rows are plans, not reservations. The
-                // package remains addable even when the projection is over the
-                // ledger-backed remaining balance; the caller receives a warning.
-                $packageHasCapacity = $package !== null;
+                $isSharedPackage = $package !== null
+                    && app(SharedPackagePlanningService::class)->isSharedPackage($package);
+                if ($isSharedPackage) {
+                    // Shared-package future rows are plans, not reservations.
+                    $packageHasCapacity = true;
+                } elseif ($package) {
+                    $memberIds = StudentClass::query()->where('PackageID', $packageId)->pluck('ID');
+                    $reserved = (int) ClassSession::query()->whereIn('StudentClassID', $memberIds)
+                        ->whereDate('SessionDate', '>=', $todayYmd)
+                        ->whereNotIn('Status', SessionStatus::futureReservationExclusionStatuses())->count();
+                    $packageHasCapacity = $reserved < max(0, $package->computeRemainingFromLedger());
+                }
             }
 
             if ($isSessionMode && !$movableSession) {

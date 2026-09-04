@@ -218,6 +218,10 @@ class ManualSessionBookingTest extends TestCase
         ]);
         $this->course->PackageID = $package->id;
         $this->course->save();
+        $member = $this->course->replicate();
+        $member->ID = null;
+        $member->PackageID = $package->id;
+        $member->save();
         $attended = ClassSession::create([
             'StudentClassID' => $this->course->ID,
             'SessionDate' => Carbon::today()->subDay()->toDateString(),

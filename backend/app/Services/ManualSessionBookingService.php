@@ -48,6 +48,7 @@ class ManualSessionBookingService
                 ->where('student_id', $studentId)
                 ->first();
         }
+        $isSharedPackage = $package !== null && app(SharedPackagePlanningService::class)->isSharedPackage($package);
 
         $base = [
             'can_add' => false,
@@ -158,16 +159,16 @@ class ManualSessionBookingService
             }
         }
 
-        $reserved = $isMonthly || $package ? 0 : $this->reservedSessionCount($course, $now->toDateString());
+        $reserved = $isMonthly || $isSharedPackage ? 0 : $this->reservedSessionCount($course, $now->toDateString());
         $remaining = (int) $base['remaining_sessions'];
         $available = $isMonthly ? null : max(0, $remaining - $reserved);
         $base['reserved_sessions'] = $reserved;
         $base['available_sessions'] = $available;
-        if (!$isMonthly && !$package && $available <= 0) {
+        if (!$isMonthly && !$isSharedPackage && $available <= 0) {
             return $this->blocked($base, 'reservation_limit', '剩餘堂數已被既有未來排課占用，請先完成、取消或調整既有堂次');
         }
 
-        if ($package && !$isMonthly) {
+        if ($isSharedPackage && !$isMonthly) {
             // A new manual occurrence is a plan, not a package deduction. Show
             // the projected overage while keeping the shared pool bookable.
             $base = array_merge($base, app(SharedPackagePlanningService::class)->summarize($package, 1));

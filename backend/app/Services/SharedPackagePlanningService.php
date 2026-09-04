@@ -17,6 +17,13 @@ use Illuminate\Support\Collection;
  */
 class SharedPackagePlanningService
 {
+    public function isSharedPackage(CoursePackage $package): bool
+    {
+        return StudentClass::query()->where('PackageID', $package->getKey())->where(static function ($query): void {
+            $query->where('Stop', 0)->orWhereNull('Stop');
+        })->limit(2)->count() > 1;
+    }
+
     /**
      * @return array<string, int|bool|string|null>
      */
