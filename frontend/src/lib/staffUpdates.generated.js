@@ -4,6 +4,45 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-04-role-onboarding",
+    "publishedAt": "2026-09-04",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "major",
+    "title": "主任與老師新手教學",
+    "summary": "首次進入依角色帶你完成常用工作流程。",
+    "items": [
+      "首次進入 AllTrue 時，主任與老師會看到符合角色的四步驟導覽，依序認識摘要、通知、出勤、評量與行事曆。",
+      "可按上一步、下一步、跳過或完成；之後可從帳號選單重新觀看，已完成使用者不會重複打擾。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "首次進入 AllTrue 時，主任與老師會看到符合角色的四步驟導覽，依序認識摘要、通知、出勤、評量與行事曆。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "可按上一步、下一步、跳過或完成；之後可從帳號選單重新觀看，已完成使用者不會重複打擾。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-04:role-onboarding"
+    ],
+    "date": "2026-09-04",
+    "version": "2026.09.04"
+  },
+  {
     "id": "staff-2026-09-03-multi-guardian-ga",
     "publishedAt": "2026-09-03",
     "effectiveAt": null,
