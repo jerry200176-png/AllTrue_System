@@ -432,7 +432,7 @@ jobs:
     # npm ci can take ~9 minutes on the hosted runner before the blocking
     # audit/build steps begin; keep the security gate intact while allowing
     # the job enough wall-clock time to finish.
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
@@ -570,14 +570,72 @@ jobs:
 
       - name: npm audit (security)
         working-directory: frontend
+        # Keep the required audit gate intact while bounding registry stalls
+        # so one hung request cannot consume the whole build job timeout.
+        env:
+          NPM_CONFIG_REGISTRY: https://registry.npmjs.org
+          # Let the outer loop own retries so each network timeout is visible
+          # and bounded instead of multiplying npm's internal retries.
+          NPM_CONFIG_FETCH_RETRIES: 0
+          NPM_CONFIG_FETCH_RETRY_FACTOR: 2
+          NPM_CONFIG_FETCH_RETRY_MINTIMEOUT: 1000
+          NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT: 30000
+          NPM_CONFIG_FETCH_TIMEOUT: 30000
         run: |
-          for attempt in 1 2 3; do
-            if npm audit --audit-level=high --omit=dev; then
+          set -o pipefail
+          audit_log="${RUNNER_TEMP}/npm-audit.log"
+          audit_evidence="${RUNNER_TEMP}/npm-audit-degraded.json"
+          : > "$audit_log"
+
+          max_attempts=5
+          for attempt in $(seq 1 "$max_attempts"); do
+            echo "npm audit attempt ${attempt}/${max_attempts}"
+            if timeout --signal=TERM --kill-after=15s 120s npm audit --audit-level=high --omit=dev 2>&1 | tee -a "$audit_log"; then
               exit 0
             fi
-            if [ "$attempt" -lt 3 ]; then
+            if [ "$attempt" -lt "$max_attempts" ]; then
+              echo "npm audit attempt ${attempt} failed; retrying"
               sleep $((attempt * 15))
             fi
           done
-          echo "npm audit failed after 3 attempts"
+
+          # A registry timeout/5xx is observable infrastructure evidence, not
+          # a security pass. Preserve the required gate as failed and publish
+          # a machine-readable record so a later rerun can verify recovery.
+          if grep -Eiq 'network timeout|ETIMEDOUT|ECONNRESET|ENETUNREACH|EAI_AGAIN|HTTP 5[0-9]{2}' "$audit_log" \
+            && ! grep -Eiq 'HTTP 4[0-9]{2}|Invalid package tree|Severity: (high|critical)|[0-9]+ (high|critical) severity|found [1-9][0-9]* vulnerabilities' "$audit_log"; then
+            {
+              echo '{'
+              echo '  "classification": "AUDIT_SERVICE_UNAVAILABLE",'
+              echo '  "required_gate": "BLOCKED",'
+              echo '  "vulnerability_finding": false,'
+              printf '  "workflow_run": "%s",\n' "$GITHUB_RUN_ID"
+              printf '  "commit": "%s",\n' "$GITHUB_SHA"
+              echo '  "endpoint": "https://registry.npmjs.org/-/npm/v1/security/audits/quick",'
+              printf '  "attempts": %s\n' "$max_attempts"
+              echo '}'
+            } > "$audit_evidence"
+            {
+              echo '### npm audit degraded evidence'
+              echo ''
+              echo '- Classification: `AUDIT_SERVICE_UNAVAILABLE`'
+              echo '- Required gate: `BLOCKED` (this is not a pass)'
+              echo '- Vulnerability finding: none observed in the captured output'
+              echo '- Recovery action: rerun the required audit after the registry endpoint recovers'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::npm audit service/network unavailable after ${max_attempts} bounded attempts; required security gate remains blocking"
+            exit 1
+          fi
+
+          echo "npm audit failed after ${max_attempts} attempts"
           exit 1
+
+      - name: Upload npm audit evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: npm-audit-evidence
+          path: |
+            ${{ runner.temp }}/npm-audit.log
+            ${{ runner.temp }}/npm-audit-degraded.json
+          if-no-files-found: ignore
