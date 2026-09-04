@@ -35,35 +35,51 @@ final class AdmissionInquiryService
         $phoneHash = self::identityHash($campusId, $phone, 'phone');
         $nameHash = self::identityHash($campusId, $name, 'student');
 
-        return DB::transaction(function () use ($data, $campusId, $phone, $phoneHash, $nameHash) {
+        try {
+            return DB::transaction(function () use ($data, $campusId, $phone, $phoneHash, $nameHash) {
+                $inquiry = AdmissionInquiry::query()
+                    ->where('campus_id', $campusId)
+                    ->where('parent_phone_hash', $phoneHash)
+                    ->where('student_name_hash', $nameHash)
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($inquiry) {
+                    return ['inquiry' => $inquiry, 'duplicate' => true];
+                }
+
+                $inquiry = AdmissionInquiry::create([
+                    'campus_id' => $campusId,
+                    'status' => AdmissionInquiry::STATUS_NEW,
+                    'parent_name' => trim((string) $data['parent_name']),
+                    'parent_phone' => $phone,
+                    'parent_phone_hash' => $phoneHash,
+                    'student_name' => trim((string) $data['student_name']),
+                    'student_name_hash' => $nameHash,
+                    'grade' => $data['grade'],
+                    'school_name' => $data['school_name'] ?? null,
+                    'subject' => trim((string) $data['subject']),
+                    'preferred_slots' => $data['preferred_slots'] ?? [],
+                    'public_notes' => $data['public_notes'] ?? null,
+                    'consent_at' => now(),
+                ]);
+
+                return ['inquiry' => $inquiry, 'duplicate' => false];
+            });
+        } catch (\Illuminate\Database\QueryException $exception) {
+            // A unique-key race can happen when two public submissions arrive together.
+            // Treat only that race as an idempotent duplicate; preserve all other failures.
+            if ($exception->getCode() !== '23000') {
+                throw $exception;
+            }
+
             $inquiry = AdmissionInquiry::query()
                 ->where('campus_id', $campusId)
                 ->where('parent_phone_hash', $phoneHash)
                 ->where('student_name_hash', $nameHash)
-                ->lockForUpdate()
-                ->first();
+                ->firstOrFail();
 
-            if ($inquiry) {
-                return ['inquiry' => $inquiry, 'duplicate' => true];
-            }
-
-            $inquiry = AdmissionInquiry::create([
-                'campus_id' => $campusId,
-                'status' => AdmissionInquiry::STATUS_NEW,
-                'parent_name' => trim((string) $data['parent_name']),
-                'parent_phone' => $phone,
-                'parent_phone_hash' => $phoneHash,
-                'student_name' => trim((string) $data['student_name']),
-                'student_name_hash' => $nameHash,
-                'grade' => $data['grade'],
-                'school_name' => $data['school_name'] ?? null,
-                'subject' => trim((string) $data['subject']),
-                'preferred_slots' => $data['preferred_slots'] ?? [],
-                'public_notes' => $data['public_notes'] ?? null,
-                'consent_at' => now(),
-            ]);
-
-            return ['inquiry' => $inquiry, 'duplicate' => false];
-        });
+            return ['inquiry' => $inquiry, 'duplicate' => true];
+        }
     }
 }

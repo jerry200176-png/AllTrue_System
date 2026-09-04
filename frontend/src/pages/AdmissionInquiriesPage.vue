@@ -1,6 +1,11 @@
 <template>
   <main :class="['admission-page', standalone ? 'admission-page-public' : 'admission-page-staff']">
-    <section v-if="standalone" class="admission-public-card">
+    <section v-if="standalone && !clientEnabled" class="admission-public-card admission-disabled" role="status">
+      <div class="admission-kicker">全真一對一</div>
+      <h1>問班入口準備中</h1>
+      <p class="admission-lead">請稍後再試，或直接聯絡附近分校。</p>
+    </section>
+    <section v-if="standalone && clientEnabled" class="admission-public-card">
       <div class="admission-kicker">全真一對一</div>
       <h1>找到適合孩子的學習安排</h1>
       <p class="admission-lead">留下需求，分校主任會與您聯絡安排試聽。</p>
@@ -116,9 +121,11 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue';
 import { admissionAction, convertAdmissionTrial, getAdmissionBranches, getAdmissionInquiry, getAdmissionInquiries, getAdmissionTeachers, submitAdmissionInquiry } from '../api';
+import perfFlags from '../lib/perfFlags';
 
 const props = defineProps({ standalone: { type: Boolean, default: false }, branchId: { type: [Number, String], default: null }, token: { type: String, default: '' } });
 const standalone = computed(() => props.standalone);
+const clientEnabled = perfFlags.ADMISSIONS_FUNNEL_V1;
 const branches = ref([]);
 const inquiries = ref([]);
 const teachers = ref([]);
