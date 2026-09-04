@@ -21,23 +21,10 @@ Production serves four campuses and runs on a Raspberry Pi 5.
 
 ## Architecture
 
-| Layer | Technology |
-|---|---|
-| Frontend | Vue 3, Vite |
-| API | Laravel 8, PHP 8.2 |
-| Database | MySQL |
-| Authentication | Bearer-token sessions |
-| Integrations | LINE, RFID, Sentry |
-| Delivery | GitHub Actions to Raspberry Pi |
-
-```text
-Vue SPA ── HTTPS ── Laravel API ── MySQL
-   │                    │
-   └── LINE / RFID ─────┴── background schedules and operational checks
-```
-
-The protected `main` branch is the code source of truth. Production changes
-run only through the control plane defined in
+Architecture documentation and code-backed diagrams are indexed in
+[`docs/architecture/README.md`](docs/architecture/README.md). The protected
+`main` branch remains the code source of truth; production changes run only
+through the control plane defined in
 [`docs/CONTROL_PLANE_CONTRACT.md`](docs/CONTROL_PLANE_CONTRACT.md).
 
 MemPalace is a non-production, best-effort local system. It has no incident authority, no SLO, and no execution impact on production.
