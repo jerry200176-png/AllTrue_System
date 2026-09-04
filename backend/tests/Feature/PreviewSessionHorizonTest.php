@@ -65,9 +65,8 @@ class PreviewSessionHorizonTest extends TestCase
 
     public function test_shared_pool_projection_without_member_remaining_field(): void
     {
-        $ownerStudent = 98111;
-        DB::table('Student')->insert([
-            'id' => $ownerStudent, 'name' => 'Pkg Owner', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1,
+        $ownerStudent = (int) DB::table('Student')->insertGetId([
+            'name' => 'Pkg Owner', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1,
         ]);
         $pkgId = (int) DB::table('course_packages')->insertGetId([
             'student_id' => $ownerStudent, 'campus_id' => 1, 'name' => 'P1A pool',
@@ -123,9 +122,8 @@ class PreviewSessionHorizonTest extends TestCase
     /** @param array<string,mixed> $over */
     private function course(array $over, int $campusId = 1): int
     {
-        $studentId = 98000 + random_int(1, 8999);
-        DB::table('Student')->insert([
-            'id' => $studentId, 'name' => 'P1A Test', 'CampusID' => $campusId, 'ClassID' => 1, 'enable' => 1,
+        $studentId = (int) DB::table('Student')->insertGetId([
+            'name' => 'P1A Test', 'CampusID' => $campusId, 'ClassID' => 1, 'enable' => 1,
         ]);
         $base = [
             'StudentID' => $studentId, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 1,
