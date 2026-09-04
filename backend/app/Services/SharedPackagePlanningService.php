@@ -37,24 +37,55 @@ class SharedPackagePlanningService
         }
 
         $packageIds = $packages->pluck('id')->map(static fn ($id): int => (int) $id)->filter()->values()->all();
-        $memberIdsByPackage = StudentClass::query()
+        $members = StudentClass::query()
             ->whereIn('PackageID', $packageIds)
-            ->get(['ID', 'PackageID'])
+            ->where(static function ($query): void {
+                $query->where('Stop', 0)->orWhereNull('Stop');
+            })
+            ->get(['ID', 'PackageID']);
+        $memberIdsByPackage = $members
             ->groupBy('PackageID')
             ->map(static fn (Collection $members): array => $members->pluck('ID')->map(static fn ($id): int => (int) $id)->all());
 
         $allMemberIds = $memberIdsByPackage->flatten()->map(static fn ($id): int => (int) $id)->filter()->values()->all();
-        $plannedByMember = [];
+        $plannedByPackage = [];
+        $groupSlotKeys = [];
+        $packageClassTypes = $packages->mapWithKeys(static function (CoursePackage $package): array {
+            return [(int) $package->getKey() => (string) ($package->class_type ?? 'one_on_one')];
+        })->all();
         if ($allMemberIds !== []) {
-            $plannedByMember = ClassSession::query()
+            $plannedRows = ClassSession::query()
                 ->whereIn('StudentClassID', $allMemberIds)
                 ->whereDate('SessionDate', '>=', Carbon::today()->toDateString())
-                ->whereIn('Status', ['scheduled', 'rescheduled'])
-                ->selectRaw('StudentClassID, COUNT(*) as planned_count')
-                ->groupBy('StudentClassID')
-                ->pluck('planned_count', 'StudentClassID')
-                ->map(static fn ($count): int => (int) $count)
-                ->all();
+                ->whereIn('Status', ['scheduled', 'rescheduled', 'leave_requested'])
+                ->get(['StudentClassID', 'SessionDate', 'StartTime']);
+
+            $packageByMember = $members->mapWithKeys(static function (StudentClass $member): array {
+                return [(int) $member->getKey() => (int) $member->getAttribute('PackageID')];
+            })->all();
+            foreach ($plannedRows as $row) {
+                $memberId = (int) $row->StudentClassID;
+                $packageId = (int) ($packageByMember[$memberId] ?? 0);
+                if ($packageId <= 0) {
+                    continue;
+                }
+
+                // Group-package members share one physical lesson. Match the
+                // deduction service's package-level slot identity so a lesson
+                // copied to several subjects is still one future plan.
+                $isGroup = in_array($packageClassTypes[$packageId] ?? '', [
+                    'one_on_two', 'one_on_three', 'one_on_many', 'tutoring',
+                ], true);
+                if ($isGroup) {
+                    $slotKey = $packageId . '|' . substr((string) $row->SessionDate, 0, 10)
+                        . '|' . substr((string) $row->StartTime, 0, 5);
+                    if (isset($groupSlotKeys[$slotKey])) {
+                        continue;
+                    }
+                    $groupSlotKeys[$slotKey] = true;
+                }
+                $plannedByPackage[$packageId] = (int) ($plannedByPackage[$packageId] ?? 0) + 1;
+            }
         }
 
         $ledgerDeltaByPackage = $packageIds === []
@@ -71,12 +102,9 @@ class SharedPackagePlanningService
         foreach ($packages as $package) {
             $packageId = (int) $package->getKey();
             $purchased = max(0, (int) ($package->total_sessions ?? 0));
-            $remaining = max(0, $purchased + (int) ($ledgerDeltaByPackage[$packageId] ?? 0));
-            $memberIds = $memberIdsByPackage->get($packageId, []);
-            $futurePlanned = 0;
-            foreach ($memberIds as $memberId) {
-                $futurePlanned += (int) ($plannedByMember[$memberId] ?? 0);
-            }
+            $netDelta = (int) ($ledgerDeltaByPackage[$packageId] ?? 0);
+            $remaining = max(0, $purchased + $netDelta);
+            $futurePlanned = (int) ($plannedByPackage[$packageId] ?? 0);
             $additional = max(0, (int) ($additionalByPackageId[$packageId] ?? 0));
             $projected = $futurePlanned + $additional;
             $overage = $package->getAttribute('billing_mode') === CoursePackage::BILLING_MODE_SESSION
@@ -85,7 +113,7 @@ class SharedPackagePlanningService
 
             $result[$packageId] = [
                 'purchased_entitlement' => $purchased,
-                'actual_consumed' => max(0, $purchased - $remaining),
+                'actual_consumed' => max(0, -$netDelta),
                 'remaining_sessions' => $remaining,
                 'future_planned_sessions' => $futurePlanned,
                 'projected_future_planned_sessions' => $projected,

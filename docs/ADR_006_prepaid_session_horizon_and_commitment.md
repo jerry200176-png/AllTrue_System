@@ -7,6 +7,11 @@
 > **Type:** Architecture + product decision package + implementation pointers  
 > **Related:** #1062 Track A（`docs/runbooks/1062-track-a-pcr.md`）、`ADR_005_scheduling_named_command_boundaries.md`、G-010、F4／#1465、`ForwardSessionGenerator`、`ClassSessionMaterializationService`
 
+> **2026-09-04 product amendment:** For multi-subject shared packages, the
+> shared-pool shortage behavior in §10.2 is superseded by §10.5 below. Future
+> plans are non-exclusive projections; they may be materialized as planned
+> `ClassSession` rows without ledger deduction or cross-subject blocking.
+
 ---
 
 ## 0. 本文件完成狀態（強制）
@@ -520,7 +525,31 @@ Founder 批准 **28 天**為 v1 **server-side default**，**不是**永久 domai
 
 - Command 輸入／輸出／error／reason codes／ES atomic block 已寫進本 ADR  
 - 與 ADR-005 client 邊界相容  
-- **無** production code／migration／UI 在本決策包 PR 內落地  
+- **無** production code／migration／UI 在本決策包 PR 內落地
+
+### 10.5 2026-09-04 多科共用方案堂數模型修正（supersedes shared shortage gate）
+
+本次產品需求將 shared package 的餘額語意明確拆成三個 read model 欄位，
+不新增 quota framework，也不按科目切分額度：
+
+| 欄位 | 定義 | 是否因未來預排變動 |
+|---|---|---|
+| `purchased_entitlement` | 方案購買的總堂數 | 否 |
+| `actual_consumed` | 已上課／依既有規則正式扣堂後的 ledger 淨消耗 | 否 |
+| `future_planned_sessions` | 尚未正式扣堂的未來預排堂次 | 是，僅作提醒投影 |
+
+- 同一 shared package 的多個科目共用同一 entitlement；任何單一科目大量預排，
+  不得把 shared entitlement 視為已保留而阻擋其他科目。
+- 未來預排可建立 recurring／scheduled 記錄，不建立 package ledger entry；
+  只有既有正式扣堂規則（例如已上課）才消耗 entitlement。
+- `future_planned_sessions > remaining_sessions` 時，允許預排但必須回傳清楚的
+  `renewal_warning`／超排堂數與續約或加購文案；不得靜默放行，也不得把警告變成
+  另一科的排課阻擋。
+- 群組型方案以 package 的實體時段（日期＋開始時間）計一次未來預排，與既有
+  group deduction 的去重規則一致；pending leave 仍屬未來排課意圖，直到取消／
+  核准請假等既有流程改變狀態。
+- 取消、刪除預排、調課／轉課、減少購買堂數、單科方案與既有資料沿用既有
+  lifecycle／ledger 規則；本修正不執行 production data repair，也不新增 migration。
  
 
 ---
