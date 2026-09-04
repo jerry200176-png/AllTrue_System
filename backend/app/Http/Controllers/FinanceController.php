@@ -596,6 +596,7 @@ class FinanceController extends Controller
             ->whereIn('Status', $attendedStatuses)
             ->select('StudentClassID', DB::raw('COUNT(*) as cnt'))
             ->groupBy('StudentClassID');
+        $this->constrainMonthlyContractSessions($sessionCounts);
 
         // FR-002: Remove Stop=0 snapshot filter. INNER JOIN sc_counts already ensures only courses
         // with attended sessions in the selected month appear. Filtering by current Stop flag would
@@ -640,7 +641,9 @@ class FinanceController extends Controller
                 ->whereIn('Status', $attendedStatuses)
                 ->whereIn('StudentClassID', $monthlyMemberIds)
                 ->select('StudentClassID', DB::raw('COUNT(*) as cnt'))
-                ->groupBy('StudentClassID')
+                ->groupBy('StudentClassID');
+            $this->constrainMonthlyContractSessions($memberSessionCounts);
+            $memberSessionCounts = $memberSessionCounts
                 ->pluck('cnt', 'StudentClassID')
                 ->map(fn ($v) => (int) $v)
                 ->toArray();
@@ -775,6 +778,7 @@ class FinanceController extends Controller
             ->whereIn('Status', $attendedStatuses)
             ->select('StudentClassID', DB::raw('COUNT(*) as cnt'))
             ->groupBy('StudentClassID');
+        $this->constrainMonthlyContractSessions($sessionCounts);
 
         // FR-002: Remove Stop=0 snapshot filter — same rationale as branchMonthlyTuition.
         $query = StudentClass::query()
@@ -826,6 +830,32 @@ class FinanceController extends Controller
             }
             fclose($out);
         }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    /**
+     * Exclude legacy monthly ClassSession rows outside the owning course's
+     * StartDate/EndDate interval while preserving count-mode reporting.
+     */
+    private function constrainMonthlyContractSessions($query): void
+    {
+        $query->whereExists(function ($exists) {
+            $exists->select(DB::raw(1))
+                ->from('StudentClass as monthly_boundary_course')
+                ->whereColumn('monthly_boundary_course.ID', 'ClassSession.StudentClassID')
+                ->where(function ($mode) {
+                    $mode->whereNull('monthly_boundary_course.ScheduleMode')
+                        ->orWhere('monthly_boundary_course.ScheduleMode', '<>', 'date')
+                        ->orWhere(function ($monthly) {
+                            $monthly->where(function ($start) {
+                                $start->whereNull('monthly_boundary_course.StartDate')
+                                    ->orWhereRaw('DATE(monthly_boundary_course.StartDate) <= DATE(ClassSession.SessionDate)');
+                            })->where(function ($end) {
+                                $end->whereNull('monthly_boundary_course.EndDate')
+                                    ->orWhereRaw('DATE(monthly_boundary_course.EndDate) >= DATE(ClassSession.SessionDate)');
+                            });
+                        });
+                });
+        });
     }
 
     private function resolveRate(StudentClass $c): float

@@ -126,6 +126,40 @@ export const staffUpdates = [
     "version": "2026.09.04"
   },
   {
+    "id": "staff-2026-09-04-monthly-leave-date-boundary",
+    "publishedAt": "2026-09-04",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "major",
+    "title": "月結請假維持合約日期",
+    "summary": "月結課程請假只減少實際堂次，不會自動延長到下個月。",
+    "items": [
+      "月結課程月底或最後一堂請假時，只會將該堂標記為請假；未來堂次與原合約起訖日維持不變。",
+      "月結帳務只計算合約日期內的實際可計費堂次；調課到合約外日期會被系統阻擋。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "月結課程月底或最後一堂請假時，只會將該堂標記為請假；未來堂次與原合約起訖日維持不變。",
+          "月結帳務只計算合約日期內的實際可計費堂次；調課到合約外日期會被系統阻擋。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-04:monthly-leave-date-boundary"
+    ],
+    "date": "2026-09-04",
+    "version": "2026.09.04"
+  },
+  {
     "id": "staff-2026-09-03-multi-guardian-ga",
     "publishedAt": "2026-09-03",
     "effectiveAt": null,
