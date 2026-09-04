@@ -48,6 +48,45 @@ export const staffUpdates = [
     "version": "2026.09.04"
   },
   {
+    "id": "staff-2026-09-04-role-onboarding-v11",
+    "publishedAt": "2026-09-04",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "major",
+    "title": "主任與老師新手任務 V1.1",
+    "summary": "開始前先看任務清單，稍後可繼續，完成後有清楚回饋。",
+    "items": [
+      "新手導覽開始前會顯示四個關鍵任務與角色插圖，可選擇「開始導覽」或「稍後再看」；中途離開會保留目前進度。",
+      "導覽中會顯示任務清單與完成進度，全部完成後會看到任務完成回饋；帳號選單仍可重新觀看。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "新手導覽開始前會顯示四個關鍵任務與角色插圖，可選擇「開始導覽」或「稍後再看」；中途離開會保留目前進度。"
+        ]
+      },
+      {
+        "title": "你現在可以",
+        "items": [
+          "導覽中會顯示任務清單與完成進度，全部完成後會看到任務完成回饋；帳號選單仍可重新觀看。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-04:role-onboarding-v11"
+    ],
+    "date": "2026-09-04",
+    "version": "2026.09.04"
+  },
+  {
     "id": "staff-2026-09-04-role-onboarding",
     "publishedAt": "2026-09-04",
     "effectiveAt": null,

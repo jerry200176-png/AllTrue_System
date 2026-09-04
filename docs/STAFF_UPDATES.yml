@@ -19,6 +19,21 @@ updates:
         text: 取消、刪除、轉課、減少堂數與單科方案維持原規則。
     source_refs:
       - "changelog:2026-09-04:shared-package-planning-entitlement"
+  - id: staff-2026-09-04-role-onboarding-v11
+    published_at: "2026-09-04"
+    audiences:
+      - director
+      - teacher
+    importance: major
+    title: 主任與老師新手任務 V1.1
+    summary: 開始前先看任務清單，稍後可繼續，完成後有清楚回饋。
+    items:
+      - category: improved
+        text: 新手導覽開始前會顯示四個關鍵任務與角色插圖，可選擇「開始導覽」或「稍後再看」；中途離開會保留目前進度。
+      - category: added
+        text: 導覽中會顯示任務清單與完成進度，全部完成後會看到任務完成回饋；帳號選單仍可重新觀看。
+    source_refs:
+      - "changelog:2026-09-04:role-onboarding-v11"
 
   - id: staff-2026-09-04-role-onboarding
     published_at: "2026-09-04"
