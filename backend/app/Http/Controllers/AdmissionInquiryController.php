@@ -51,6 +51,9 @@ class AdmissionInquiryController extends Controller
         abort_unless($service::enabled(), 404);
         $query = AdmissionInquiry::query()->orderByDesc('created_at');
         $this->scope($query, $request);
+        if ($request->filled('campus_id')) {
+            $query->where('campus_id', (int) $request->query('campus_id'));
+        }
         $perPage = min((int) $request->query('per_page', '50'), 50);
         /** @var \Illuminate\Pagination\LengthAwarePaginator $page */
         $page = $query->paginate($perPage);
