@@ -5,7 +5,7 @@
   "task_id": "onboarding-finish-20260904",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
   "base_sha": "cc2764573b68335b1e83caac40a8e8e4e7c4abae",
-  "branch": "exo/TKT-20260905-000417-BSVU",
+  "branch": "fix/onboarding-finish-20260904",
   "worktree_path": "/home/jerry/workspace/tasks/alltrue/onboarding-finish-20260904",
   "started_at": "2026-09-04T15:59:52Z",
   "production_mutation": false,
