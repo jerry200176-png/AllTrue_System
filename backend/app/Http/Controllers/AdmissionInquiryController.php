@@ -42,7 +42,19 @@ class AdmissionInquiryController extends Controller
         }
         abort_unless($campus->exists(), 422, '此分校目前無法受理問班。');
 
-        $service->submit($data);
+        $result = $service->submit($data);
+        SecurityAuditEvent::append(
+            'admission_inquiry.submit',
+            'success',
+            [
+                'campus_id' => (int) $data['campus_id'],
+                'actor_type' => 'public',
+                'actor_id' => null,
+                'subject_type' => 'admission_inquiry',
+                'subject_id' => $result['inquiry']->id,
+            ],
+            ['reason_code' => $result['duplicate'] ? 'duplicate' : 'created']
+        );
         return response()->json(['message' => '已收到問班需求，主任將與您聯絡。'], 202);
     }
 
@@ -54,6 +66,18 @@ class AdmissionInquiryController extends Controller
         if ($request->filled('campus_id')) {
             $query->where('campus_id', (int) $request->query('campus_id'));
         }
+        if ($request->filled('status')) {
+            $status = (string) $request->query('status');
+            abort_unless(in_array($status, [
+                AdmissionInquiry::STATUS_NEW,
+                AdmissionInquiry::STATUS_CONTACTED,
+                AdmissionInquiry::STATUS_TRIAL_SCHEDULED,
+                AdmissionInquiry::STATUS_TRIAL_COMPLETED,
+                AdmissionInquiry::STATUS_ENROLLED,
+                AdmissionInquiry::STATUS_LOST,
+            ], true), 422, '狀態篩選無效。');
+            $query->where('status', $status);
+        }
         $perPage = min((int) $request->query('per_page', '50'), 50);
         /** @var \Illuminate\Pagination\LengthAwarePaginator $page */
         $page = $query->paginate($perPage);
@@ -63,6 +87,9 @@ class AdmissionInquiryController extends Controller
             'parent_phone' => AdmissionInquiry::maskPhone($i->parent_phone),
             'subject' => $i->subject, 'created_at' => $i->created_at,
             'student_id' => $i->student_id, 'trial_student_class_id' => $i->trial_student_class_id,
+            'trial_result' => $i->trial_result,
+            'next_action' => $i->nextAction(),
+            'last_action_at' => $i->lastActionAt(),
         ]);
         return response()->json($page);
     }
@@ -81,6 +108,8 @@ class AdmissionInquiryController extends Controller
             'trial_result' => $admissionInquiry->trial_result, 'student_id' => $admissionInquiry->student_id,
             'trial_student_class_id' => $admissionInquiry->trial_student_class_id,
             'enrolled_student_class_id' => $admissionInquiry->enrolled_student_class_id,
+            'next_action' => $admissionInquiry->nextAction(),
+            'last_action_at' => $admissionInquiry->lastActionAt(),
             'timestamps' => [
                 'created_at' => $admissionInquiry->created_at, 'contacted_at' => $admissionInquiry->contacted_at,
                 'trial_scheduled_at' => $admissionInquiry->trial_scheduled_at,
@@ -185,6 +214,29 @@ class AdmissionInquiryController extends Controller
         $admissionInquiry->update(['status' => AdmissionInquiry::STATUS_ENROLLED, 'enrolled_student_class_id' => $newCourse->getAttribute('ID'), 'enrolled_at' => now()]);
         $this->audit($request, $admissionInquiry, 'enrolled');
         return response()->json(['status' => $admissionInquiry->status, 'student_id' => $admissionInquiry->student_id, 'student_class_id' => $newCourse->getAttribute('ID')]);
+    }
+
+    public function markLost(Request $request, AdmissionInquiry $admissionInquiry)
+    {
+        $this->ensureEnabled();
+        $this->authorizeInquiry($request, $admissionInquiry);
+        $data = $request->validate(['staff_notes' => 'nullable|string|max:1000']);
+        if ($admissionInquiry->status === AdmissionInquiry::STATUS_LOST) {
+            return response()->json(['status' => $admissionInquiry->status]);
+        }
+        abort_if($admissionInquiry->status === AdmissionInquiry::STATUS_ENROLLED, 422, '已報名的詢問不可標為暫不繼續。');
+        $allowed = in_array($admissionInquiry->status, [
+            AdmissionInquiry::STATUS_NEW,
+            AdmissionInquiry::STATUS_CONTACTED,
+            AdmissionInquiry::STATUS_TRIAL_COMPLETED,
+        ], true);
+        abort_unless($allowed, 422, '目前狀態不可標為暫不繼續。');
+        $admissionInquiry->fill([
+            'status' => AdmissionInquiry::STATUS_LOST,
+            'staff_notes' => $data['staff_notes'] ?? $admissionInquiry->staff_notes,
+        ])->save();
+        $this->audit($request, $admissionInquiry, 'lost');
+        return response()->json(['status' => $admissionInquiry->status]);
     }
 
     private function scope($query, Request $request): void

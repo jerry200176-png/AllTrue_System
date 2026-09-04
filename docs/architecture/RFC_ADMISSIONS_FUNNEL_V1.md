@@ -4,10 +4,11 @@
 
 - 功能：招生詢問（Admission Inquiry）與 guided interview
 - 版本：V1
-- 狀態：Implementation contract / 待 PR CI 與 production activation gate
+- 狀態：Dark-launch complete / **BLOCKED: Founder activation GO**（flag 預設 off；production migrate／flag on 需 GO）
 - 目標角色：公開家長、主任、super admin
 - Risk tier：T3（新 PII、角色權限、schema migration）
 - 依賴 branch：本 branch 與 onboarding worktree 分離；只接受最小 additive architecture
+- Activation artifacts：[`docs/runbooks/admissions-funnel-v1-activation-execution-package.md`](../runbooks/admissions-funnel-v1-activation-execution-package.md) · [`docs/runbooks/admissions-funnel-v1-founder-activation-brief.md`](../runbooks/admissions-funnel-v1-founder-activation-brief.md)
 
 ## 2. 目標與業務背景
 
@@ -58,8 +59,8 @@ V1 的業務結果是：
 | 既有 trial conversion | `StudentClassController@convertTrial`；報名不可重造 Student 或 conversion engine | 已存在 |
 | 既有 auth | `AttachAuthUser`、`role:director,super_admin`、`require_campus` | 已存在 |
 | 既有稽核 | `SecurityAuditEvent`；metadata 不放姓名、電話、訊息內容 | 已存在 |
-| DB | additive `admission_inquiries` migration；merge 不等於 production migrate | 需 REP + Founder activation GO |
-| Feature flag | `admissions_funnel_v1` 預設關閉；公開入口與主任 nav 同步受控 | 需新增 |
+| DB | additive `admission_inquiries` migration；merge 不等於 production migrate | **dark-launch code ready**；production migrate 需 REP + Founder activation GO |
+| Feature flag | `admissions_funnel_v1` 預設關閉；公開入口與主任 nav 同步受控 | **已落地**（預設 off；deploy input `unchanged`/`on`/`off`） |
 
 ## 5. User Stories 與 Acceptance Criteria
 
@@ -223,12 +224,14 @@ As a 主任, I want to 開啟既有 trial conversion／enrollment workflow, so t
 
 ## 14. Definition of Done
 
-- [ ] 家長 guided interview 可送出且 duplicate 不增長 active inquiry：驗證方式：PHPUnit API tests + frontend interaction test，0 failures。
-- [ ] 主任只能管理所屬校區並可完成 contact／trial／result lifecycle：驗證方式：PHPUnit authorization/state tests，cross-campus assertions 全 PASS。
-- [ ] trial handoff 只建立一個 Student 並可安全重試：驗證方式：idempotency feature test，`Student` 與 trial course count 符合預期。
-- [ ] 報名沿用既有 conversion 且無重複 Student：驗證方式：TrialConversion regression + inquiry linkage test，source history preserved。
-- [ ] PII protection 與 STRIDE 無 HIGH：驗證方式：`[REVIEW]` static scan、log/audit assertion、route middleware audit。
-- [ ] mobile／a11y 規格通過：驗證方式：frontend test／bounded browser smoke，無水平 overflow、44px targets、keyboard labels present。
-- [ ] CI 與 build 通過：驗證方式：repository allowlisted test、lint、build commands exit 0。
-- [ ] 文件與 release evidence 齊全：驗證方式：diff 含 CHANGELOG、RFC、REP/runbook；production claims 具 workflow SHA、health 與 targeted API/UI evidence。
-- [ ] production verified：驗證方式：只有在 Founder gate 後執行 deploy/migration/flag rollout，`make production-identity` 與 feature smoke 均 PASS；未授權前標記 BLOCKED，不宣稱完成。
+- [x] 家長 guided interview 可送出且 duplicate 不增長 active inquiry：驗證方式：PHPUnit API tests + frontend interaction test，0 failures。
+- [x] 主任只能管理所屬校區並可完成 contact／trial／result lifecycle：驗證方式：PHPUnit authorization/state tests，cross-campus assertions 全 PASS。
+- [x] trial handoff 只建立一個 Student 並可安全重試：驗證方式：idempotency feature test，`Student` 與 trial course count 符合預期。
+- [x] 報名沿用既有 conversion 且無重複 Student：驗證方式：TrialConversion regression + inquiry linkage test，source history preserved。
+- [x] PII protection 與 STRIDE 無 HIGH：驗證方式：`[REVIEW]` static scan、log/audit assertion、route middleware audit。
+- [x] mobile／a11y 規格通過：驗證方式：frontend test／bounded browser smoke，無水平 overflow、44px targets、keyboard labels present。
+- [x] CI 與 build 通過：驗證方式：repository allowlisted test、lint、build commands exit 0。
+- [x] 文件與 release evidence 齊全：驗證方式：diff 含 CHANGELOG、RFC、REP/runbook；production claims 具 workflow SHA、health 與 targeted API/UI evidence。
+- [ ] production verified：驗證方式：只有在 Founder gate 後執行 deploy/migration/flag rollout，`make production-identity` 與 feature smoke 均 PASS；未授權前標記 **BLOCKED: Founder activation GO**，不宣稱完成。
+
+**Dark-launch note（2026-09-04）**：程式與自動化驗收在 `ADMISSIONS_FUNNEL_V1=false` 下完成；production 啟用見 [`docs/runbooks/admissions-funnel-v1-founder-activation-brief.md`](../runbooks/admissions-funnel-v1-founder-activation-brief.md)。

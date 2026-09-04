@@ -10,13 +10,17 @@ describe('admission inquiry UI contract', () => {
     expect(source).toContain('問班進度');
     expect(source).toContain('已收到問班需求');
     expect(source).toContain('role="alert"');
+    expect(source).toContain('aria-live="assertive"');
   });
 
   it('keeps staff mutations explicit and mobile-safe', () => {
-    for (const action of ['contact', 'trial', 'trial-result', 'enroll']) {
+    for (const action of ['contact', 'trial', 'trial-result', 'enroll', 'lost']) {
       expect(source).toContain("'" + action + "'");
     }
     expect(source).toContain('min-height: 44px');
     expect(source).toContain('prefers-reduced-motion');
+    expect(source).toContain('admission-skeleton');
+    expect(source).toContain('statusFilter');
+    expect(source).toContain('下一步：');
   });
 });

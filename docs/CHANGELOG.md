@@ -1,3 +1,8 @@
+## 2026-09-04 — feat(admissions): finish dark-launch acceptance for 新生問班
+<!-- release-notes: silent_ship=silent-2026-09-04-admissions-funnel-finish -->
+- Closed remaining admissions funnel gaps while keeping `ADMISSIONS_FUNNEL_V1` off: status filter, next-action queue hints, terminal `lost`, submit audit, and fuller API/UI contract tests.
+- Added Founder activation REP + brief; production migrate／flag on remain Founder GO only.
+
 ## 2026-09-04 — fix(ux): 新手教學標註錨點補齊
 <!-- release-notes: silent_ship=silent-2026-09-04-role-onboarding-anchors -->
 - 主任儀表板「今日摘要」與老師工作台「今日待辦」補上 spotlight `data-guide`，避免新手教學第一步無法對準畫面元素。

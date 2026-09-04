@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-04-admissions-funnel-finish
+    changelog_date: "2026-09-04"
+    changelog_title: "feat(admissions): finish dark-launch acceptance for 新生問班"
+    reason: 招生閉環 dark-launch 驗收與 activation 文件補齊；flag 仍關閉，不對教職員發布啟用公告，待 Founder GO 後再 staff update。
+
   - id: silent-2026-09-04-role-onboarding-anchors
     changelog_date: "2026-09-04"
     changelog_title: "fix(ux): 新手教學標註錨點補齊"
