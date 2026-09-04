@@ -1,7 +1,7 @@
 # Risk-Based Merge Policy
 
-**Version:** 1.7.0
-**Effective:** 2026-08-29 (Founder T0–T3 autonomy decision; supersedes the prior solo-mode R2/R3 merge wording)
+**Version:** 1.8.0
+**Effective:** 2026-09-01 (bounded T2 autonomous delivery and pre-merge staff release communication)
 **Owner:** Founder / CTO Agent  
 **Status:** Canonical  
 **Founder Decision:** 2026-07-18 — risk-tiered approvals; **not** universal Founder rubber-stamp  
@@ -18,7 +18,7 @@ Preserve autonomous delivery for low-risk changes while requiring independent re
 |-------|----------|-------------------|
 | **R0 / T0** | Docs, generated evidence, radar run artifacts, INDEX links — **no** production behavior, permissions, workflow execution, dependencies, or data | Required checks and docs/link checks; Agent may merge and close evidence-backed issues. |
 | **R1 / T1** | Display-only UX; isolated bugfix; no migration; no authz/billing/deploy change | Required CI, regression test, review, and rollback statement; Agent may merge and close when evidence is sufficient. |
-| **R2 / T2** | Scheduling domain; billing/sessions/payment; authz; cron/jobs; production-side-effect workflow; dependency major; schema migration; cross-campus data | Required CI, independent review, documented risk/rollback/production-verification plan, and resolved bot/reviewer threads; Agent may merge only when no protected Founder decision is involved. |
+| **R2 / T2** | Reversible scheduling or ordinary application behavior with no migration, billing, identity, permission, security-boundary, destructive-data, webhook/cron, or cross-campus change | Required CI, independent review, documented risk/rollback/production-verification plan, and resolved bot/reviewer threads; Agent may merge and deploy only when no protected Founder decision is involved. |
 | **R3 / T3** | Production data repair; destructive migration; privilege expansion; financial correction; security boundary; backup/restore; mass recalculation; protected product direction | Agent may prepare implementation, tests, dry-run, Repair Manifest, recovery plan, and evidence package. Stop for Founder approval before production activation, mutation/repair, migration/schema cutover, billing/entitlement semantics, identity/authz, destructive action, backup restore, security-sensitive credential change, or major product/brand direction. |
 
 ## How to classify (PR author)
@@ -56,11 +56,12 @@ preflight/classification runs do not occupy that side-effect queue. The deploy
 workflow compares the exact production manifest SHA to current `main` and uses
 `classify_activation_scope`: tests, docs, Exo metadata, and the read-only
 convergence scheduler do not turn an ordinary runtime release into a manual
-activation. T0/T1 deploys do not reference the protected
+activation. T0/T1 and validated non-protected T2 deploys do not reference the protected
 `production-activation` environment; exact-SHA, required CI, preflight,
-health/smoke, rollback, and fail-closed behavior remain mandatory.
+health/smoke, rollback, and fail-closed behavior remain mandatory for T1 and
+validated non-protected T2 deploys.
 
-T2/T3, unknown classifications, production executor changes, security/data
+T3, unknown classifications, production executor changes, security/data
 boundaries, and irreversible operations stay held for risk-appropriate review
 or the protected Founder boundary. The Environment remains attached to that
 protected path, but solo mode removes its unsatisfiable required-reviewer rule;

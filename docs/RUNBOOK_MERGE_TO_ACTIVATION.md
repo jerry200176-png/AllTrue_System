@@ -17,11 +17,11 @@ production-side-effect paths.
 
 ```text
 PR checks → merged on main → main CI success
-                              ├─ exact-SHA runtime range is reversible T0/T1,
+                              ├─ exact-SHA runtime range is reversible T0/T1/T2,
                               │  declaration is valid, and no protected
                               │  production-side-effect path is present
                               │    → automatic deploy + verify
-                              └─ T2/T3, protected executor/security/data path,
+                              └─ T3, protected executor/security/data path,
                                  missing/invalid evidence, or classifier failure
                                    → merged-awaiting-activation
 
@@ -41,7 +41,7 @@ database migration semantics.
 |---|---|---|---|
 | T0/R0 | Required checks and docs gates | No-op for docs-only changes | None |
 | T1/R1 | Required checks, regression test, review, rollback evidence | Yes, with an explicit matching declaration and no protected production side effect | Existing `workflow_run` |
-| T2/R2 | Required checks, independent review, rollback and production evidence | No | `merged-awaiting-activation` → Founder GO |
+| T2/R2 | Required checks, independent review, rollback and production evidence | Yes, only when validated reversible and non-protected | Existing `workflow_run`; otherwise `merged-awaiting-activation` |
 | T3/R3 | Prepared with protected-action evidence; no autonomous protected execution | No | Founder-controlled activation / mutation boundary |
 
 The authoritative classifiers are both in `scripts/governance/autonomy_gate.py`.

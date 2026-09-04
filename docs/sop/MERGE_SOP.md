@@ -10,6 +10,10 @@
 1. Run `make agent-preflight` in a **non-forbidden** worktree.  
 2. Classify **Risk-Class** (R0–R3) and **Autonomy-Tier** (T0–T3); when unsure, pick higher.
 3. Ensure tests match risk (R1+ needs regression coverage for the bug/path).
+4. For every director/teacher-facing feature or UX change, add the user-visible
+   version record before merge: a dated `CHANGELOG.md` entry, a matching
+   `STAFF_UPDATES.yml` item, and PR fields stating what changed, where it is,
+   and how to use it. Presubmit CHECK 4A verifies this fail-closed.
 
 ## Before merge
 
@@ -23,8 +27,10 @@
 ## After required checks (R0–R2 only)
 
 The implementing Agent may squash-merge when the applicable risk gates pass and
-the merge does not cross a T3/protected boundary. Do not wait for a blanket
-human approval.
+the merge does not cross a T3/protected boundary. T2 is eligible for the same
+autonomous production path only when it is a validated, reversible,
+non-protected change; otherwise it remains held. Do not wait for a blanket
+human approval, and do not treat a release note as a post-deploy substitute.
 
 ```bash
 gh pr merge --squash --delete-branch

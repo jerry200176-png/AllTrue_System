@@ -5,11 +5,12 @@
 
 ## 流程
 
-1. merge + deploy + production 驗證後才公告。  
-2. （可選）參考 `changelogDraft.generated.js` 起草。  
-3. 人工核准後寫入 `STAFF_UPDATES.yml`。  
-4. `cd frontend && npm run sync-release-notes && npm run test:release-notes`
-5. commit YAML + generated JS → PR merge 才算發布。
+1. 在 PR merge 前判斷是否為 director/teacher-facing 變更；若是，於同一 PR
+   寫入 `CHANGELOG.md`、`STAFF_UPDATES.yml` 與 PR 的「新增什麼／在哪裡／怎麼用」。
+2. （可選）參考 `changelogDraft.generated.js` 起草；不可把未核准草稿當成公告。
+3. `cd frontend && npm run sync-release-notes && npm run test:release-notes`
+4. Presubmit 會 fail-closed 檢查版本紀錄、staff id、公告來源與 PR 欄位，通過後才可 merge。
+5. merge + deploy + production 驗證後，確認同一份已發布的 staff update 已在產品公告入口可見；這是驗證，不是首次補公告。
 
 ## 不漏公告的強制規則
 
@@ -31,8 +32,9 @@
 
 1. 寫 `CHANGELOG`。
 2. 判斷教職員是否需要知道；需要就寫 `STAFF_UPDATES.yml`，不需要就寫例外清單。
-3. 跑 `npm run sync-release-notes`、`npm run test:release-notes-coverage`。
-4. 確認 generated JS、CI、deploy、production smoke 都以同一個 merge SHA 通過。
+3. director/teacher-facing 變更填妥 PR 的 `Staff release note id`、`What changed`、`Where`、`How to use`。
+4. 跑 `npm run sync-release-notes`、`npm run test:release-notes-coverage`。
+5. 確認 generated JS、CI、deploy、production smoke 都以同一個 merge SHA 通過。
 
 AI 不得把未核准草稿寫進 YAML 並宣稱已發布。
 

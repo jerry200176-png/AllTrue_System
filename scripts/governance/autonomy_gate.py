@@ -40,6 +40,7 @@ _T3_PREFIXES = (
     "backend/routes/api.php",
     "scripts/ops/",
     "scripts/production",
+    "scripts/governance/",
     "governance/",
     "docs/governance/",
     ".cursorrules",
@@ -97,15 +98,15 @@ _T3_MARKERS = (
     "drop table",
     "delete from",
     "production-activation",
+    "webhook",
+    "cron",
+    "cross-campus",
 )
 
 _T2_MARKERS = (
     "schedule",
     "attendance",
     "classsession",
-    "cross-campus",
-    "webhook",
-    "cron",
 )
 
 _ACTIVATION_T3_PREFIXES = tuple(
@@ -113,8 +114,13 @@ _ACTIVATION_T3_PREFIXES = tuple(
     if prefix not in {".github/workflows/", "governance/", "docs/governance/"}
 )
 _ACTIVATION_T3_PATH_TERMS = (
-    "/auth/", "/billing/", "/payment", "/identity", "/credential",
-    "/password", "/secret", "/token", "/permission",
+    "/auth/", "/role/", "/billing/", "/payment/", "/invoice/",
+    "/finance/", "/accounting/", "/salary/", "/tuition/", "/payroll/",
+    "/entitlement/", "/deduction/", "/eligibility/", "/identity/",
+    "/credential/", "/password/", "/secret/", "/token/", "/permission/",
+    "/security/", "/api/key/", "/webhook/", "/cron/", "/cross/campus/",
+    "/repair/", "/restore/", "/reset/", "/delete/", "/destroy/",
+    "/purge/", "/backfill/", "/reconcile/",
 )
 _SAFE_NON_PRODUCTION_WORKFLOWS = {
     ".github/workflows/autonomous-convergence.yml",
@@ -181,7 +187,12 @@ def is_production_activation_sensitive_path(path: str) -> bool:
         return normalized not in _SAFE_NON_PRODUCTION_WORKFLOWS
     if any(normalized.startswith(prefix) for prefix in _ACTIVATION_T3_PREFIXES):
         return True
-    lowered = f"/{normalized.lower()}/"
+    # Normalize common PHP/JS CamelCase names into path-like segments so
+    # MonthlyBillingService, StudentIdentityService, and RequireRole are
+    # protected even when the patch contains no matching English marker.
+    segmented = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "/", normalized)
+    segmented = re.sub(r"[_-]+", "/", segmented).lower()
+    lowered = f"/{segmented}/"
     return any(term in lowered for term in _ACTIVATION_T3_PATH_TERMS)
 
 
@@ -312,8 +323,8 @@ def decide_activation(
     effective = max(TIER_VALUES[declared_tier], TIER_VALUES[machine_tier])
     if protected_activation:
         return {"decision": "awaiting-activation", "effective_tier": f"T{effective}", "reason": "production-side-effect boundary requires protected activation"}
-    if effective in (0, 1):
-        return {"decision": "auto", "effective_tier": f"T{effective}", "reason": f"validated reversible {declared_risk}/{declared_tier} change is auto-deployable"}
+    if effective <= 2:
+        return {"decision": "auto", "effective_tier": f"T{effective}", "reason": f"validated reversible non-protected {declared_risk}/{declared_tier} change is auto-deployable"}
     return {"decision": "awaiting-activation", "effective_tier": f"T{effective}", "reason": f"effective tier T{effective} requires Founder activation"}
 
 
