@@ -1,3 +1,8 @@
+## 2026-09-04 — docs(architecture): finalize Archify architecture orientation
+<!-- release-notes: silent_ship=silent-2026-09-04-archify-orientation -->
+- Added the code-backed Archify architecture index and five canonical diagrams for runtime, entitlement, payment/receipt, release/deploy, and session lifecycle orientation.
+- Updated the agent entry points to require task-relevant architecture reading while treating diagrams as orientation, not a replacement for current code, schema, tests, or runtime evidence. Docs-only; no product behavior or production deployment changed.
+
 ## 2026-09-04 — improved(ux): 主任與老師新手任務 V1.1
 <!-- release-notes: staff_update=staff-2026-09-04-role-onboarding-v11 -->
 - 新手導覽開始前會先顯示任務清單與角色插圖，可選擇「開始導覽」或「稍後再看」；中途離開後可從原步驟繼續。
@@ -8,6 +13,16 @@
 - 月結課程請假只將該堂標記為請假並降低實際可計費堂次，不再以 legacy `SessionCount` 觸發尾堂補回或延長 `EndDate` 到下個月。
 - 月結帳務、分校月收報表與調課入口均以課程 `StartDate`／`EndDate` 為邊界；堂數制與明確的整體停課順延流程維持原規則。
 - 補上月末、最後一堂、多次請假、跨月帳務與月結越界調課回歸測試；本次不需資料庫 migration 或 production 資料修補。
+
+## 2026-09-04 — ci: harden npm audit network retries
+<!-- release-notes: silent_ship=silent-2026-09-04-ci-npm-audit-reliability -->
+- npm audit now uses bounded retries and timeouts; registry unavailability remains a blocking security result and emits machine-readable degraded evidence for recovery.
+- Internal CI control only; no AllTrue product behavior or production deployment changed.
+
+## 2026-09-04 — fix(deploy): explicitly activate admissions flags
+<!-- release-notes: silent_ship=silent-2026-09-04-admissions-activation-control -->
+- Deployment control now makes admissions feature-flag activation explicit and testable instead of inferring activation from a generic deploy.
+- This records the protected activation path only; it does not enable the production flag, run a migration, or mutate production data.
 
 ## 2026-09-04 — feat(ux): 主任與老師角色新手教學
 <!-- release-notes: staff_update=staff-2026-09-04-role-onboarding -->
