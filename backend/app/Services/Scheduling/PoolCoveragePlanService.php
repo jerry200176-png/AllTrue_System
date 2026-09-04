@@ -118,8 +118,13 @@ final class PoolCoveragePlanService
                 'horizon_expected_new' => count($candidates),
                 'horizon_coverable' => $plan['pool']['held_planned'],
                 'horizon_uncovered' => $plan['pool']['uncovered_planned'],
-                'ensure_would_block' => $plan['pool']['ensure_would_block'],
-                'ensure_block_reason' => $plan['pool']['ensure_block_reason'],
+                // Coverage planning reports the renewal gap but does not own
+                // the scheduling gate. Future rows remain creatable for every
+                // subject in the shared package.
+                'ensure_would_block' => false,
+                'ensure_block_reason' => null,
+                'renewal_warning' => $plan['pool']['uncovered_planned'] > 0,
+                'overage_sessions' => $plan['pool']['uncovered_planned'],
             ],
         ];
     }

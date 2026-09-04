@@ -33,6 +33,7 @@ use App\Services\SessionContractRecoveryService;
 use App\Exceptions\SessionContractRecoveryException;
 use App\Services\ScheduleGuardService;
 use App\Services\ManualSessionBookingService;
+use App\Services\SharedPackagePlanningService;
 use App\Services\SessionProjectionReadService;
 use App\Services\TeacherScopeService;
 use App\Services\CourseEditabilityService;
@@ -242,6 +243,7 @@ class StudentClassController extends Controller
         $packageMap = !empty($packageIds)
             ? CoursePackage::whereIn('id', $packageIds)->get()->keyBy('id')
             : collect();
+        $packagePlanningMap = app(SharedPackagePlanningService::class)->summarizeMany($packageMap->values());
 
         // Upcoming scheduled sessions only (for schedule_drift vs contract). Do not
         // merge completed/attended history — one-off substitute weekdays would false-positive.
@@ -297,7 +299,7 @@ class StudentClassController extends Controller
             }
         }
 
-        $classes->getCollection()->transform(function ($class) use ($courseNames, $subjectNames, $teacherNames, $userStatuses, $observedUsedByClass, $usageDiagnosticsByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap, $invoiceAggMap, $pendingReportByClassId, $latestPaymentSummaryByClassId, $packageMap) {
+        $classes->getCollection()->transform(function ($class) use ($courseNames, $subjectNames, $teacherNames, $userStatuses, $observedUsedByClass, $usageDiagnosticsByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap, $invoiceAggMap, $pendingReportByClassId, $latestPaymentSummaryByClassId, $packageMap, $packagePlanningMap) {
             $class->subject_name = $courseNames[$class->SubjectID]
                 ?? $subjectNames[$class->SubjectID]
                 ?? null;
@@ -508,9 +510,16 @@ class StudentClassController extends Controller
 
             if ($class->isPartOfPackage() && isset($packageMap[$class->PackageID])) {
                 $pkg = $packageMap[$class->PackageID];
-                $class->package_remaining_sessions = max(0, (int) $pkg->remaining_sessions);
+                $planning = $packagePlanningMap[(int) $class->PackageID] ?? [];
+                $class->package_remaining_sessions = $planning['remaining_sessions'] ?? max(0, (int) $pkg->remaining_sessions);
                 $class->package_total_sessions     = (int) $pkg->total_sessions;
-                $class->package_used_sessions      = (int) $pkg->used_sessions;
+                $class->package_used_sessions      = $planning['actual_consumed'] ?? (int) $pkg->used_sessions;
+                $class->package_purchased_entitlement = $planning['purchased_entitlement'] ?? (int) $pkg->total_sessions;
+                $class->package_actual_consumed = $planning['actual_consumed'] ?? (int) $pkg->used_sessions;
+                $class->package_future_planned_sessions = $planning['future_planned_sessions'] ?? 0;
+                $class->package_overage_sessions = $planning['overage_sessions'] ?? 0;
+                $class->package_renewal_warning = $planning['renewal_warning'] ?? false;
+                $class->package_renewal_message = $planning['renewal_message'] ?? null;
             }
 
             $directPaidAt = $class->PayDate ? substr($class->PayDate, 0, 10) : null;
@@ -3803,6 +3812,7 @@ class StudentClassController extends Controller
                 'deducted' => $deducted,
                 'moved_from_date' => $movedFromDate,
                 'no_total_increase' => $movedFromDate !== null || !$isSessionMode,
+                'package_planning' => $conflict['_package_planning'] ?? null,
             ], 201);
         });
     }
@@ -3883,6 +3893,7 @@ class StudentClassController extends Controller
                 ? (int) $result['_existing_session']->id
                 : null,
             'suggested_actions' => $result['suggested_actions'] ?? [],
+            'package_planning' => $result['_package_planning'] ?? null,
             // R-quickadd-confirm: this slot's end time has already passed —
             // add-session will silently mark it completed + auto-approve the
             // evaluation when auto_approve stays true. FE must confirm explicitly
@@ -4044,24 +4055,16 @@ class StudentClassController extends Controller
 
             $packageHasCapacity = true;
             $packageId = $studentClass ? (int) $studentClass->getAttribute('PackageID') : 0;
+            $package = null;
             if ($studentClass && $packageId > 0 && !$movableSession) {
                 $package = CoursePackage::query()
                     ->where('id', $packageId)
                     ->where('student_id', (int) $studentClass->getAttribute('StudentID'))
                     ->first();
-                $memberIds = StudentClass::query()
-                    ->where('PackageID', $packageId)
-                    ->where('StudentID', (int) $studentClass->getAttribute('StudentID'))
-                    ->pluck('ID');
-                $reserved = (int) ClassSession::query()
-                    ->whereIn('StudentClassID', $memberIds)
-                    ->whereDate('SessionDate', '>=', $todayYmd)
-                    // #1733/#228/#229: leave-like occurrences do not consume
-                    // shared package future reservation capacity.
-                    ->whereNotIn('Status', SessionStatus::futureReservationExclusionStatuses())
-                    ->count();
-                $remaining = $package ? max(0, (int) $package->computeRemainingFromLedger()) : 0;
-                $packageHasCapacity = $package !== null && $reserved < $remaining;
+                // Shared-package future rows are plans, not reservations. The
+                // package remains addable even when the projection is over the
+                // ledger-backed remaining balance; the caller receives a warning.
+                $packageHasCapacity = $package !== null;
             }
 
             if ($isSessionMode && !$movableSession) {
@@ -4094,10 +4097,27 @@ class StudentClassController extends Controller
             }
         }
 
+        $packagePlanning = null;
+        $packageId = $studentClass ? (int) $studentClass->getAttribute('PackageID') : 0;
+        if ($studentClass && $packageId > 0) {
+            $package = CoursePackage::query()
+                ->where('id', $packageId)
+                ->where('student_id', (int) $studentClass->getAttribute('StudentID'))
+                ->first();
+            if ($package) {
+                $isFuturePlan = $sessionDate > $todayYmd
+                    || ($sessionDate === $todayYmd && $startTime > $nowTime);
+                $additionalPlanned = $isFuturePlan && !$existing && !$movableSession ? 1 : 0;
+                $packagePlanning = app(SharedPackagePlanningService::class)
+                    ->summarize($package, $additionalPlanned);
+            }
+        }
+
         return [
             'conflict_type' => 'none',
             'error_code' => null,
             'message' => '可加課',
+            '_package_planning' => $packagePlanning,
             '_existing_session' => $existing,
             '_movable_session' => $movableSession,
         ];

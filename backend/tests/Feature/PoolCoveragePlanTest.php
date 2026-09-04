@@ -41,11 +41,10 @@ class PoolCoveragePlanTest extends TestCase
         $this->assertTrue($dto['ok']);
         $this->assertTrue($dto['allocation']['meta']['read_only']);
         $this->assertFalse($dto['allocation']['meta']['writes']);
-        $this->assertTrue($dto['pool_projection']['ensure_would_block']);
-        $this->assertSame(
-            CommitmentReasonCodes::BLOCK_POOL_SHORTAGE,
-            $dto['pool_projection']['ensure_block_reason']
-        );
+        $this->assertFalse($dto['pool_projection']['ensure_would_block']);
+        $this->assertTrue($dto['pool_projection']['renewal_warning']);
+        $this->assertGreaterThan(0, $dto['pool_projection']['overage_sessions']);
+        $this->assertNull($dto['pool_projection']['ensure_block_reason']);
         $this->assertArrayNotHasKey('member_pool_remaining', $dto);
         $this->assertSame($before, DB::table('ClassSession')->count());
         $this->assertSame($sc, $dto['members'][0]['student_class_id']);

@@ -139,6 +139,13 @@ class PackageCreateWithScheduleTest extends TestCase
         $pkgId = $json['package_id'];
         $members = StudentClass::where('PackageID', $pkgId)->get();
         $this->assertCount(2, $members);
+        $futurePlanned = ClassSession::whereIn('StudentClassID', $members->pluck('ID'))
+            ->where('Status', 'scheduled')
+            ->whereDate('SessionDate', '>=', now()->toDateString())
+            ->count();
+        $this->assertSame($futurePlanned, $json['package']['future_planned_sessions']);
+        $this->assertSame(max(0, $futurePlanned - 8), $json['package']['overage_sessions']);
+        $this->assertTrue($json['package']['renewal_warning']);
 
         foreach ($members as $m) {
             $count = ClassSession::where('StudentClassID', $m->ID)

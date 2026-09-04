@@ -141,7 +141,7 @@ class EnsureSessionHorizonTest extends TestCase
         $this->assertSame(0, $dto2['ensure']['created_count']);
     }
 
-    public function test_pool_shortage_blocks_whole_command_no_write(): void
+    public function test_shared_pool_shortage_warns_but_does_not_block_planned_sessions(): void
     {
         putenv('FEATURE_ENSURE_SESSION_HORIZON=true');
         $_ENV['FEATURE_ENSURE_SESSION_HORIZON'] = 'true';
@@ -163,9 +163,11 @@ class EnsureSessionHorizonTest extends TestCase
             $sc, null, $this->today, null, EnsureSessionHorizonService::MODE_EXECUTE
         );
 
-        $this->assertSame(CommitmentReasonCodes::BLOCK_POOL_SHORTAGE, $dto['ensure']['primary_reason']);
-        $this->assertTrue($dto['ensure']['blocked']);
-        $this->assertSame($before, DB::table('ClassSession')->count());
+        $this->assertTrue($dto['ensure']['ok']);
+        $this->assertFalse($dto['ensure']['blocked']);
+        $this->assertTrue($dto['preview']['pool_projection']['renewal_warning']);
+        $this->assertGreaterThan(0, $dto['ensure']['created_count']);
+        $this->assertGreaterThan($before, DB::table('ClassSession')->count());
     }
 
     public function test_legacy_not_ensure_eligible(): void

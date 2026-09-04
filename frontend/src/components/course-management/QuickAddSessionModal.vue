@@ -46,6 +46,11 @@
         <p class="existing-session-hint">如果是要完成點名，請在上課後到「出缺勤」處理。</p>
       </div>
 
+      <div v-if="conflict?.package_planning?.renewal_warning" class="conflict-banner package-planning-banner" role="alert">
+        <p class="conflict-msg">共用方案仍可排課，但目前已有未來預排超過剩餘堂數。</p>
+        <p class="package-planning-message">{{ conflict.package_planning.renewal_message }}</p>
+      </div>
+
       <div v-if="showAutoApproveWarning" class="conflict-banner auto-approve-banner">
         <p class="conflict-msg">
           此時段已經過去，送出後這堂會直接標記為「已上課」，評量也會自動核准，不會再進入審核清單。請確認日期／時間沒有選錯。
@@ -112,5 +117,6 @@ function handleSubmit() {
 .conflict-msg { color: var(--ds-primary); font-size: 13px; font-weight: 600; margin: 0 0 6px; line-height: 1.5; }
 .conflict-actions { margin: 0; padding-left: 18px; color: var(--ds-danger); font-size: 12px; line-height: 1.6; }
 .conflict-retry { margin-top: 8px; }
+.package-planning-message { color: var(--ds-warning); font-size: 12px; margin: 0; line-height: 1.5; }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>

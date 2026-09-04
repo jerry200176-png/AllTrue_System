@@ -2027,6 +2027,10 @@ const editPackageInfo = computed(() => {
     name: c.package_name || '共用方案',
     total_sessions: c.package_total_sessions ?? 0,
     remaining_sessions: c.package_remaining_sessions ?? 0,
+    future_planned_sessions: c.package_future_planned_sessions ?? 0,
+    overage_sessions: c.package_overage_sessions ?? 0,
+    renewal_warning: !!c.package_renewal_warning,
+    renewal_message: c.package_renewal_message || null,
   };
 });
 const editContextTitle = computed(() => {

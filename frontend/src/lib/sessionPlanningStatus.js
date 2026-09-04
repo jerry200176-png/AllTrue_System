@@ -55,12 +55,19 @@ export function buildSessionPlanningStatus({
   const poolRemaining = isPackage ? Math.max(0, Number(course?.package_remaining_sessions ?? 0) || 0) : 0;
   const poolUsed = isPackage ? Math.max(0, poolTotal - poolRemaining) : 0;
   const purchased = isPackage ? poolTotal : getCoursePurchasedSessions(course);
+  const packageFuturePlanned = isPackage && Number.isFinite(Number(course?.package_future_planned_sessions))
+    ? Math.max(0, Number(course.package_future_planned_sessions))
+    : null;
+  const packageOverage = isPackage && Number.isFinite(Number(course?.package_overage_sessions))
+    ? Math.max(0, Number(course.package_overage_sessions))
+    : null;
   const effective = Math.max(0, Number(effectiveCount) || 0);
   const leaves = Math.max(0, Number(leaveCount) || 0);
   if (purchased <= 0) return null;
 
   const counts = {
     poolTotal, poolUsed, poolRemaining, courseScheduled: effective, purchased, pendingMakeups: leaves,
+    packageFuturePlanned, packageOverage,
   };
 
   if (!hasAnySessionRows && effective === 0) {
@@ -76,7 +83,21 @@ export function buildSessionPlanningStatus({
     };
   }
 
-  if (effective > purchased) {
+  if (isPackage && packageOverage !== null && packageOverage > 0) {
+    return {
+      code: 'package_overplanned',
+      severity: 'warning',
+      title: `共用方案預排超過剩餘 ${packageOverage} 堂`,
+      message: course?.package_renewal_message || '仍可排課，但請安排續約或加購；未來預排不會鎖住其他科目。',
+      action: 'review_package_renewal',
+      counts: { ...counts, overBy: packageOverage },
+    };
+  }
+
+  // A member course may legitimately have more scheduled rows than the pool
+  // because every subject can plan against the same shared entitlement. Only
+  // the package-level aggregate can establish an over-plan.
+  if (!isPackage && effective > purchased) {
     const overBy = effective - purchased;
     return {
       code: 'over_quota',
@@ -135,6 +156,7 @@ export function planningStatusToLegacyWarning(status) {
     over_quota: 'over',
     pending_makeup: 'under_leave',
     package_partially_scheduled: 'under_other',
+    package_overplanned: 'over',
     course_partially_scheduled: 'under_other',
     empty_schedule: 'under_other',
   };

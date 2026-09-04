@@ -9,6 +9,7 @@ use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
 use App\Models\UserCampus;
+use App\Services\PackageDeductionService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -132,7 +133,7 @@ class ManualSessionBookingTest extends TestCase
         $this->assertSame(3, (int) $this->course->fresh()->RemainingSessions);
     }
 
-    public function test_shared_package_manual_booking_uses_the_pool_across_members(): void
+    public function test_shared_package_manual_booking_does_not_reserve_pool_for_future_plans(): void
     {
         $package = CoursePackage::create([
             'student_id' => $this->student->id,
@@ -184,10 +185,76 @@ class ManualSessionBookingTest extends TestCase
                 'session_date' => Carbon::today()->addDays(21)->toDateString(),
                 'start_time' => '16:00',
             ])
-            ->assertStatus(422)
-            ->assertJsonPath('error_code', 'RESERVATION_LIMIT');
+            ->assertOk()
+            ->assertJsonPath('can_add', true)
+            ->assertJsonPath('remaining_sessions', 3)
+            ->assertJsonPath('future_planned_sessions', 3)
+            ->assertJsonPath('projected_future_planned_sessions', 4)
+            ->assertJsonPath('overage_sessions', 1)
+            ->assertJsonPath('renewal_warning', true);
 
         $this->assertSame(3, (int) $package->fresh()->remaining_sessions);
+    }
+
+    public function test_shared_package_actual_attendance_consumes_pool_but_future_plans_do_not(): void
+    {
+        $package = CoursePackage::create([
+            'student_id' => $this->student->id,
+            'campus_id' => 1,
+            'name' => '共用方案實際扣堂測試',
+            'billing_mode' => 'count',
+            'total_sessions' => 3,
+            'remaining_sessions' => 3,
+            'used_sessions' => 0,
+            'rate' => 500,
+            'rate_unit' => 'session',
+            'class_type' => 'one_on_one',
+            'paid' => true,
+            'stop' => false,
+            'enabled' => true,
+        ]);
+        $this->course->PackageID = $package->id;
+        $this->course->save();
+
+        $attended = ClassSession::create([
+            'StudentClassID' => $this->course->ID,
+            'SessionDate' => Carbon::today()->subDay()->toDateString(),
+            'StartTime' => '16:00:00',
+            'EndTime' => '17:00:00',
+            'Status' => 'attended',
+        ]);
+        PackageDeductionService::deductForSession(
+            $package->id,
+            $this->course->ID,
+            $attended->id,
+            'attended'
+        );
+
+        foreach (range(1, 5) as $days) {
+            ClassSession::create([
+                'StudentClassID' => $this->course->ID,
+                'SessionDate' => Carbon::today()->addDays($days)->toDateString(),
+                'StartTime' => '16:00:00',
+                'EndTime' => '17:00:00',
+                'Status' => 'scheduled',
+            ]);
+        }
+
+        $this->withHeaders($this->headers())
+            ->postJson("/api/v1/student-classes/{$this->course->ID}/manual-sessions/check", [
+                'session_date' => Carbon::today()->addDays(10)->toDateString(),
+                'start_time' => '16:00',
+            ])
+            ->assertOk()
+            ->assertJsonPath('can_add', true)
+            ->assertJsonPath('purchased_entitlement', 3)
+            ->assertJsonPath('actual_consumed', 1)
+            ->assertJsonPath('remaining_sessions', 2)
+            ->assertJsonPath('future_planned_sessions', 5)
+            ->assertJsonPath('overage_sessions', 4);
+
+        $this->assertSame(2, $package->fresh()->computeRemainingFromLedger());
+        $this->assertDatabaseCount('package_session_ledger', 1);
     }
 
     public function test_excused_future_occurrences_do_not_consume_shared_package_capacity(): void
