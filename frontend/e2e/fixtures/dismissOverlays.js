@@ -7,24 +7,17 @@
  * @param {import('@playwright/test').Page} page
  */
 export async function dismissOverlays(page) {
-  for (let attempt = 0; attempt < 6; attempt += 1) {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
     const brand = page.locator('.brand-idle-layer').first();
     if (await brand.isVisible().catch(() => false)) {
       await brand.click({ position: { x: 8, y: 8 } }).catch(() => {});
       await page.locator('.brand-idle-layer').waitFor({ state: 'hidden', timeout: 4000 }).catch(() => {});
     }
 
-    // Scope to the release-nudge layer — "稍後再看" also appears on role-onboarding
-    // previews and must not steal the dismiss click away from the blocking overlay.
-    const nudgeLater = page.locator('.release-nudge-layer').getByRole('button', { name: '稍後再看' });
-    if (await nudgeLater.isVisible().catch(() => false)) {
-      await nudgeLater.click();
+    const later = page.getByRole('button', { name: '稍後再看' });
+    if (await later.isVisible().catch(() => false)) {
+      await later.click();
       await page.locator('.release-nudge-layer').waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {});
-    }
-
-    const onboardingLater = page.locator('.onboarding-launch-layer').getByRole('button', { name: '稍後再看' }).first();
-    if (await onboardingLater.isVisible().catch(() => false)) {
-      await onboardingLater.click().catch(() => {});
     }
 
     const guideClose = page.locator('.guide-tour-close').first();

@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.04",
     "date": "2026-09-04",
     "title": "2026.09.04 草稿（未發布）",
-    "summary": "新生問班招生閉環 V1；主任與老師角色新手教學",
+    "summary": "主任與老師角色新手教學；新生問班招生閉環 V1",
     "audience": [
       "teacher",
       "director"
@@ -18,16 +18,16 @@ export const changelogDraftNotes = [
       {
         "title": "新增內容",
         "items": [
-          "新生問班招生閉環 V1",
-          "主任與老師角色新手教學"
+          "主任與老師角色新手教學",
+          "新生問班招生閉環 V1"
         ]
       },
       {
         "title": "修正內容",
         "items": [
-          "多科共用方案分離購買、已用與未來預排堂數",
           "月結請假維持合約日期邊界",
-          "activate admissions flags"
+          "activate admissions flags",
+          "多科共用方案分離購買、已用與未來預排堂數"
         ]
       },
       {
@@ -38,11 +38,11 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
-      "新生問班招生閉環 V1",
       "主任與老師角色新手教學",
-      "多科共用方案分離購買、已用與未來預排堂數",
+      "新生問班招生閉環 V1",
       "月結請假維持合約日期邊界",
       "activate admissions flags",
+      "多科共用方案分離購買、已用與未來預排堂數",
       "主任與老師新手任務 V1.1"
     ]
   },
