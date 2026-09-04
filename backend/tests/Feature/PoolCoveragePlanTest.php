@@ -35,6 +35,13 @@ class PoolCoveragePlanTest extends TestCase
             'stop' => 0, 'created_at' => now(), 'updated_at' => now(),
         ]);
         $sc = $this->member($pkgId);
+        foreach (range(1, 9) as $i) {
+            DB::table('package_session_ledger')->insert([
+                'package_id' => $pkgId, 'student_class_id' => $sc,
+                'class_session_id' => null, 'delta' => -1, 'reason' => 'test-consumed-' . $i,
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
         $before = DB::table('ClassSession')->count();
 
         $dto = app(PoolCoveragePlanService::class)->planForPackage($pkgId, null, $this->today);
@@ -73,6 +80,32 @@ class PoolCoveragePlanTest extends TestCase
         }
         $this->assertSame($before, DB::table('ClassSession')->count());
         $this->assertStringContainsString('DRY-RUN', Artisan::output());
+    }
+
+    public function test_group_package_pool_plan_deduplicates_same_physical_slot(): void
+    {
+        $owner = 98503;
+        DB::table('Student')->insert([
+            'id' => $owner, 'name' => 'Owner3', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1,
+        ]);
+        $pkgId = (int) DB::table('course_packages')->insertGetId([
+            'student_id' => $owner, 'campus_id' => 1, 'name' => 'P3 group pool',
+            'class_type' => 'one_on_three', 'total_sessions' => 10,
+            'remaining_sessions' => 10, 'used_sessions' => 0,
+            'stop' => 0, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $this->member($pkgId);
+        $this->member($pkgId);
+
+        $dto = app(PoolCoveragePlanService::class)->planForPackage($pkgId, null, $this->today);
+        $allocations = $dto['allocation']['allocations'];
+        $slotKeys = array_values(array_unique(array_map(
+            static fn (array $row): string => $row['date'] . '|' . $row['start_hm'],
+            $allocations
+        )));
+
+        $this->assertCount(count($allocations), $slotKeys);
+        $this->assertSame(count($allocations), $dto['pool_projection']['horizon_expected_new']);
     }
 
     private function member(int $pkgId): int
