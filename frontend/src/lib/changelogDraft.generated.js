@@ -25,6 +25,7 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "activate admissions flags",
           "多科共用方案分離購買、已用與未來預排堂數"
         ]
       },
@@ -38,6 +39,7 @@ export const changelogDraftNotes = [
     "items": [
       "主任與老師角色新手教學",
       "新生問班招生閉環 V1",
+      "activate admissions flags",
       "多科共用方案分離購買、已用與未來預排堂數",
       "主任與老師新手任務 V1.1"
     ]

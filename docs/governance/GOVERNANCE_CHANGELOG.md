@@ -1,5 +1,13 @@
 # Governance changelog
 
+## 2026-09-04 — Retrospective version record for Archify orientation (#2447)
+
+- Recorded the docs-only architecture orientation change delivered by PR #2447,
+  merged at `f6a28f71339f9f6d3908205804f82afb1f908eadb3`.
+- The record covers the five code-backed Archify diagrams, their index, and the
+  task-relevant reading rule in `AGENTS.md`; it does not claim a product release
+  or production deployment.
+
 ## 2026-08-30 — Resolve solo-Founder bootstrap activation contradiction
 
 - Allowed only an explicit manually dispatched `application-deploy` bootstrap
