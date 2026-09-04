@@ -338,6 +338,15 @@
               <span class="material-symbols-outlined" aria-hidden="true">new_releases</span>
               <span>版本更新</span>
             </button>
+            <button
+              v-if="isDirector || isTeacher"
+              type="button"
+              class="account-menu-btn"
+              @click="startRoleOnboarding({ force: true })"
+            >
+              <span class="material-symbols-outlined" aria-hidden="true">school</span>
+              <span>重新觀看新手教學</span>
+            </button>
             <button type="button" class="account-menu-btn account-menu-btn-danger" @click="logout">
               <span class="material-symbols-outlined" aria-hidden="true">logout</span>
               <span>登出系統</span>
@@ -540,19 +549,23 @@
     </div>
   </Transition>
 
-  <div v-if="guideTour.isOpen.value" class="guide-tour-popover-layer" @click.self="guideTour.closeTour">
+  <div v-if="guideTour.isOpen.value" class="guide-tour-popover-layer" @click.self="guideTour.skipTour">
     <div
       ref="guidePopoverRef"
       :class="['guide-tour-popover', `placement-${guideTour.effectivePlacement.value || 'bottom'}`]"
       :style="guideTour.popoverStyle.value"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="guide-tour-title"
+      tabindex="-1"
       @click.stop
     >
       <div class="guide-tour-popover-head">
         <div class="guide-tour-head-title">
           <span v-if="guideTour.currentStep.value?.icon" class="guide-tour-icon material-symbols-outlined" aria-hidden="true">{{ guideTour.currentStep.value.icon }}</span>
-          <strong>{{ guideTour.currentStep.value?.title }}</strong>
+          <strong id="guide-tour-title">{{ guideTour.currentStep.value?.title }}</strong>
         </div>
-        <button type="button" class="guide-tour-close" @click.stop="guideTour.closeTour" aria-label="關閉導覽"><span class="material-symbols-outlined">close</span></button>
+        <button type="button" class="guide-tour-close" @click.stop="guideTour.skipTour" aria-label="關閉導覽"><span class="material-symbols-outlined">close</span></button>
       </div>
       <p class="guide-tour-popover-text">{{ guideTour.currentStep.value?.description }}</p>
       <div class="guide-tour-dots">
@@ -563,6 +576,7 @@
         />
       </div>
       <div class="guide-tour-popover-foot">
+        <button type="button" class="guide-tour-btn" @click="guideTour.skipTour">跳過教學</button>
         <div class="guide-tour-actions">
           <button type="button" class="guide-tour-btn" :disabled="!guideTour.hasPrev.value" @click="guideTour.prevStep">上一步</button>
           <button
@@ -588,6 +602,15 @@ import {
   resolveSavedBranchChoice,
 } from './lib/useBranches';
 import { usePageGuideTour } from './lib/usePageGuideTour';
+import {
+  ROLE_ONBOARDING_VERSION,
+  getRoleOnboardingSteps,
+  isOnboardingRole,
+  onboardingStartIndex,
+  readOnboardingState,
+  shouldAutoStartOnboarding,
+  writeOnboardingState,
+} from './lib/roleOnboarding';
 import { useUpdateChecker } from './composables/useUpdateChecker';
 import { lockScroll, unlockScroll, forceUnlockScroll } from './lib/useScrollLock';
 import logoUrl from './assets/logo.png';
@@ -682,6 +705,14 @@ const userProfile = ref(null);
 const loading = ref(true);
 const guideTour = usePageGuideTour();
 const guidePopoverRef = ref(null);
+const hadAppSessionBeforeLoad = (() => {
+  try {
+    return Boolean(localStorage.getItem('alltrue_session'));
+  } catch {
+    return true;
+  }
+})();
+let onboardingAutoStarted = false;
 const releaseNudgeOpen = ref(false);
 const releaseNudgeVersion = ref('');
 const RELEASE_NOTES_SEEN_KEY = 'alltrue_release_notes_seen';
@@ -1122,6 +1153,65 @@ const { updateAvailable, dismissed: updateDismissed, dismiss: dismissUpdate, rel
 
 function startGuideTour() {
   guideTour.startTour(currentGuidePage.value, { role: role.value });
+}
+
+function onboardingUserId() {
+  return session.value?.user?.id || userProfile.value?.id || '';
+}
+
+function saveRoleOnboardingState(status, stepIndex) {
+  writeOnboardingState({
+    role: role.value,
+    userId: onboardingUserId(),
+    status,
+    stepIndex,
+    version: ROLE_ONBOARDING_VERSION,
+  });
+}
+
+function startRoleOnboarding({ force = false } = {}) {
+  if (
+    !session.value
+    || isStandaloneParent.value
+    || isPasswordChangeLocked.value
+    || !isOnboardingRole(role.value)
+    || guideTour.isOpen.value
+  ) return false;
+
+  const state = readOnboardingState({ role: role.value, userId: onboardingUserId() });
+  if (!force && !shouldAutoStartOnboarding({
+    state,
+    firstLogin: !hadAppSessionBeforeLoad,
+    version: ROLE_ONBOARDING_VERSION,
+  })) return false;
+
+  const steps = getRoleOnboardingSteps(role.value);
+  const initialIndex = force ? 0 : onboardingStartIndex(state, steps.length);
+  if (active.value !== steps[initialIndex]?.page) {
+    setActivePage(steps[initialIndex].page);
+  }
+  const started = guideTour.startOnboarding(steps, {
+    initialIndex,
+    onNavigate: (page) => {
+      if (active.value !== page) setActivePage(page);
+    },
+    onProgress: (index) => saveRoleOnboardingState('in_progress', index),
+    onComplete: (_step, index) => saveRoleOnboardingState('completed', index),
+    onSkip: (_step, index) => saveRoleOnboardingState('skipped', index),
+  });
+  if (started) {
+    onboardingAutoStarted = true;
+    saveRoleOnboardingState('in_progress', guideTour.stepIndex.value);
+  }
+  return started;
+}
+
+function maybeAutoStartOnboarding() {
+  if (onboardingAutoStarted || !session.value || isPasswordChangeLocked.value) return;
+  if (!isOnboardingRole(role.value) || isStandaloneParent.value) return;
+  nextTick(() => {
+    nextTick(() => startRoleOnboarding());
+  });
 }
 
 function onNavigateToSchedule({ teacherId, target }) {
@@ -1855,12 +1945,13 @@ watch(currentBranch, (value, previous) => {
 });
 
 watch([active, isStandaloneParent], async ([p]) => {
-  guideTour.closeTour();
+  const onboardingContinues = guideTour.mode.value === 'onboarding';
+  guideTour.handlePageChange();
   // #143 防護：切換頁面時強制清除任何殘留的 scroll lock（body position:fixed/overflow:hidden）
   // 與行動版選單，避免某頁洩漏的鎖讓下一頁看起來被灰白遮罩蓋住、無法點選。
   showMoreMenu.value = false;
   showSidebarMore.value = false;
-  forceUnlockScroll();
+  if (!onboardingContinues) forceUnlockScroll();
   if (p !== 'bugs' || !session.value?.access_token || !currentBranch.value) return;
   if (role.value !== 'super_admin') return;
   try {
@@ -1883,11 +1974,17 @@ watch(guidePopoverRef, (el) => {
 });
 
 watch([session, role], () => {
+  if (!session.value) {
+    guideTour.closeTour();
+    onboardingAutoStarted = false;
+  }
   refreshUnreadNotifications();
+  maybeAutoStartOnboarding();
 });
 
 watch(isPasswordChangeLocked, (locked) => {
   if (locked) {
+    guideTour.closeTour();
     active.value = 'profile';
   }
 });

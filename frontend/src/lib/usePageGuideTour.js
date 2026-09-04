@@ -13,12 +13,17 @@ const FALLBACK_POPOVER_WIDTH = 320;
 
 export function usePageGuideTour() {
   const isOpen = ref(false);
+  const mode = ref('page');
   const steps = ref([]);
   const stepIndex = ref(0);
   const popoverStyle = ref({});
   const effectivePlacement = ref('bottom');
   const highlightedElement = ref(null);
   const popoverElement = ref(null);
+  let navigateToPage = null;
+  let onProgress = null;
+  let onComplete = null;
+  let onSkip = null;
 
   const currentStep = computed(() => steps.value[stepIndex.value] || null);
   const hasPrev = computed(() => stepIndex.value > 0);
@@ -156,6 +161,7 @@ export function usePageGuideTour() {
       await nextTick();
       const rect = highlightedElement.value.getBoundingClientRect();
       popoverStyle.value = calcPopoverStyle(rect, step.placement || 'bottom');
+      popoverElement.value?.focus?.();
       return;
     }
 
@@ -174,6 +180,11 @@ export function usePageGuideTour() {
     if (typeof document !== 'undefined') {
       document.body.classList.remove(BODY_OPEN_CLASS);
     }
+    mode.value = 'page';
+    navigateToPage = null;
+    onProgress = null;
+    onComplete = null;
+    onSkip = null;
   }
 
   function startTour(pageKey, context = {}) {
@@ -196,6 +207,31 @@ export function usePageGuideTour() {
     return true;
   }
 
+  function startOnboarding(rawSteps, options = {}) {
+    closeTour();
+    const availableSteps = Array.isArray(rawSteps)
+      ? rawSteps.filter((step) => step && step.page)
+      : [];
+    if (!availableSteps.length) return false;
+
+    mode.value = 'onboarding';
+    steps.value = availableSteps;
+    stepIndex.value = Math.min(
+      Math.max(0, Number.isInteger(options.initialIndex) ? options.initialIndex : 0),
+      availableSteps.length - 1,
+    );
+    navigateToPage = typeof options.onNavigate === 'function' ? options.onNavigate : null;
+    onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
+    onComplete = typeof options.onComplete === 'function' ? options.onComplete : null;
+    onSkip = typeof options.onSkip === 'function' ? options.onSkip : null;
+    isOpen.value = true;
+    lockScroll();
+    document.body.classList.add(BODY_OPEN_CLASS);
+    ensureListeners();
+    syncCurrentStep();
+    return true;
+  }
+
   function updatePopoverPosition() {
     if (!isOpen.value) return;
     const step = currentStep.value;
@@ -209,19 +245,42 @@ export function usePageGuideTour() {
     updatePopoverPosition();
   }
 
-  function nextStep() {
+  async function moveToStep(nextIndex) {
+    const next = steps.value[nextIndex];
+    if (mode.value === 'onboarding' && next?.page && navigateToPage) {
+      await navigateToPage(next.page);
+    }
+    stepIndex.value = nextIndex;
+    if (mode.value === 'onboarding') onProgress?.(nextIndex, next);
+    await nextTick();
+    await syncCurrentStep();
+  }
+
+  async function nextStep() {
     if (!hasNext.value) {
+      if (mode.value === 'onboarding') onComplete?.(currentStep.value, stepIndex.value);
       closeTour();
       return;
     }
-    stepIndex.value += 1;
-    syncCurrentStep();
+    await moveToStep(stepIndex.value + 1);
   }
 
-  function prevStep() {
+  async function prevStep() {
     if (!hasPrev.value) return;
-    stepIndex.value -= 1;
-    syncCurrentStep();
+    await moveToStep(stepIndex.value - 1);
+  }
+
+  function skipTour() {
+    if (mode.value === 'onboarding') onSkip?.(currentStep.value, stepIndex.value);
+    closeTour();
+  }
+
+  function handlePageChange() {
+    if (mode.value !== 'onboarding') {
+      closeTour();
+      return;
+    }
+    nextTick(syncCurrentStep);
   }
 
   function hasGuideForPage(pageKey, context = {}) {
@@ -241,6 +300,7 @@ export function usePageGuideTour() {
 
   return {
     isOpen,
+    mode,
     steps,
     stepIndex,
     currentStep,
@@ -251,10 +311,12 @@ export function usePageGuideTour() {
     progressText,
     setPopoverElement,
     startTour,
+    startOnboarding,
     closeTour,
+    skipTour,
+    handlePageChange,
     nextStep,
     prevStep,
     hasGuideForPage,
   };
 }
-
