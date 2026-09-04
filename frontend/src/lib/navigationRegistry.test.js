@@ -9,6 +9,8 @@ describe('navigation registry', () => {
     expect(pages('teacher')).toContain('teacher-home');
     expect(pages('teacher')).not.toContain('tuition-collect');
     expect(pages('director')).toContain('course-mgmt');
+    expect(pages('director')).toContain('admission-inquiries');
+    expect(pages('teacher')).not.toContain('admission-inquiries');
     expect(pages('super_admin')).toEqual(expect.arrayContaining([
       'director-accounts', 'branch-management', 'branch-health-board', 'nightly-reconcile',
     ]));
