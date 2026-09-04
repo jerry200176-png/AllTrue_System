@@ -464,6 +464,7 @@ jobs:
                   "sc.SessionCount as session_count", "sc.RemainingSessions as remaining_sessions",
                   "sc.UsedSessions as used_sessions", "sc.Charge as charge", "sc.Paid as paid",
                   "sc.PayDate as pay_date", "sc.Stop as stop", "sc.ScheduleMode as schedule_mode",
+                  "sc.closed_reason as closed_reason",
                   "sub.Subject_Name as subject_name",
                 ]);
               $classIds251 = $classes251->pluck("class_id")->map(fn ($id) => (int)$id)->filter()->unique()->values()->all();
@@ -535,6 +536,19 @@ jobs:
                 ->sortBy("session_count")->values()->all();
               $probe251["target_contract_8_count"] = $classes251->where("session_count", 8)->count();
               $probe251["target_contract_3_count"] = $classes251->where("session_count", 3)->count();
+              $three251 = $classes251->where("session_count", 3)->values();
+              $probe251["session_count_3_detail"] = [
+                "class_count" => $three251->count(),
+                "stop_1_count" => $three251->where("stop", 1)->count(),
+                "stop_0_count" => $three251->filter(fn ($row) => (int)($row->stop ?? 0) === 0)->count(),
+                "closed_reason_counts" => $three251->groupBy(fn ($row) => (string)($row->closed_reason ?? "") === "" ? "(null)" : (string)$row->closed_reason)->map(fn ($items) => $items->count())->all(),
+                "charge_positive_count" => $three251->filter(fn ($row) => (int)($row->charge ?? 0) > 0)->count(),
+                "charge_zero_count" => $three251->filter(fn ($row) => (int)($row->charge ?? 0) <= 0)->count(),
+                "paid_flag_1_count" => $three251->where("paid", 1)->count(),
+                "schedule_mode_counts" => $three251->groupBy(fn ($row) => (string)($row->schedule_mode ?? ""))->map(fn ($items) => $items->count())->all(),
+                "remaining_sessions_values" => $three251->pluck("remaining_sessions")->map(fn ($v) => (int)$v)->unique()->sort()->values()->all(),
+                "used_sessions_values" => $three251->pluck("used_sessions")->map(fn ($v) => (int)$v)->unique()->sort()->values()->all(),
+              ];
               $probe251["decision_grade"] = count($studentIds251) === 1 && count($classIds251) > 0;
               $probe251["error"] = null;
             }} catch (\\Throwable $e) {{
