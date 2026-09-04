@@ -5,7 +5,7 @@
   "task_id": "INT-20260904-112436-O963",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
   "base_sha": "a2f1be32e12aba5ae20bd6e83eeeffbff7ad2a5a",
-  "branch": "exo/INT-20260904-112436-O963",
+  "branch": "chore/INT-20260904-112436-O963-release-notes-v2",
   "worktree_path": "/home/jerry/workspace/tasks/alltrue/role-onboarding-release-notes-20260904",
   "started_at": "2026-09-04T03:24:43+08:00",
   "production_mutation": false,
