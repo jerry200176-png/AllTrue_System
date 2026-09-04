@@ -579,9 +579,14 @@ jobs:
           NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT: 30000
           NPM_CONFIG_FETCH_TIMEOUT: 30000
         run: |
+          set -o pipefail
+          audit_log="${RUNNER_TEMP}/npm-audit.log"
+          audit_evidence="${RUNNER_TEMP}/npm-audit-degraded.json"
+          : > "$audit_log"
+
           for attempt in 1 2 3; do
             echo "npm audit attempt ${attempt}/3"
-            if timeout --signal=TERM --kill-after=15s 120s npm audit --audit-level=high --omit=dev; then
+            if timeout --signal=TERM --kill-after=15s 120s npm audit --audit-level=high --omit=dev 2>&1 | tee -a "$audit_log"; then
               exit 0
             fi
             if [ "$attempt" -lt 3 ]; then
@@ -589,5 +594,44 @@ jobs:
               sleep $((attempt * 15))
             fi
           done
+
+          # A registry timeout/5xx is observable infrastructure evidence, not
+          # a security pass. Preserve the required gate as failed and publish
+          # a machine-readable record so a later rerun can verify recovery.
+          if grep -Eiq 'network timeout|audit endpoint returned an error|fetch error|ETIMEDOUT|ECONNRESET|ENETUNREACH|EAI_AGAIN|HTTP (408|429|5[0-9]{2})' "$audit_log" \
+            && ! grep -Eiq 'Severity: (high|critical)|[0-9]+ (high|critical) severity|found [1-9][0-9]* vulnerabilities' "$audit_log"; then
+            {
+              echo '{'
+              echo '  "classification": "AUDIT_SERVICE_UNAVAILABLE",'
+              echo '  "required_gate": "BLOCKED",'
+              echo '  "vulnerability_finding": false,'
+              printf '  "workflow_run": "%s",\n' "$GITHUB_RUN_ID"
+              printf '  "commit": "%s",\n' "$GITHUB_SHA"
+              echo '  "endpoint": "https://registry.npmjs.org/-/npm/v1/security/audits/quick",'
+              echo '  "attempts": 3'
+              echo '}'
+            } > "$audit_evidence"
+            {
+              echo '### npm audit degraded evidence'
+              echo ''
+              echo '- Classification: `AUDIT_SERVICE_UNAVAILABLE`'
+              echo '- Required gate: `BLOCKED` (this is not a pass)'
+              echo '- Vulnerability finding: none observed in the captured output'
+              echo '- Recovery action: rerun the required audit after the registry endpoint recovers'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo '::error::npm audit service/network unavailable after 3 bounded attempts; required security gate remains blocking'
+            exit 1
+          fi
+
           echo "npm audit failed after 3 attempts"
           exit 1
+
+      - name: Upload npm audit evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: npm-audit-evidence
+          path: |
+            ${{ runner.temp }}/npm-audit.log
+            ${{ runner.temp }}/npm-audit-degraded.json
+          if-no-files-found: ignore
