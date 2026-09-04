@@ -48,6 +48,8 @@ class RescheduleSessionService
                 throw new RescheduleSessionException('找不到課程', 404, 'course_not_found');
             }
 
+            $this->assertWithinCourseDateBoundary($studentClass, $newDate);
+
             $student = Student::where('id', (int) $studentClass->StudentID)->first();
             if (!$student) {
                 throw new RescheduleSessionException('找不到課程所屬學生', 422, 'student_not_found');
@@ -219,6 +221,25 @@ class RescheduleSessionService
                 'committed' => true,
             ];
         }, 3);
+    }
+
+    private function assertWithinCourseDateBoundary(StudentClass $course, string $newDate): void
+    {
+        if (strtolower((string) ($course->ScheduleMode ?? 'count')) !== 'date') {
+            return;
+        }
+
+        $startDateValue = $course->getAttribute('StartDate');
+        $endDateValue = $course->getAttribute('EndDate');
+        $startDate = $startDateValue ? Carbon::parse($startDateValue)->toDateString() : null;
+        $endDate = $endDateValue ? Carbon::parse($endDateValue)->toDateString() : null;
+        if (($startDate && $newDate < $startDate) || ($endDate && $newDate > $endDate)) {
+            throw new RescheduleSessionException(
+                '月結課程調課日期必須在合約起訖日期內',
+                422,
+                'course_date_boundary'
+            );
+        }
     }
 
     private function findSession(int $classId, ?string $oldDate, ?string $oldStartTime): ?ClassSession
