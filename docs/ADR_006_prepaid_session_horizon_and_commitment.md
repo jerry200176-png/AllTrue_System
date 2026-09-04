@@ -420,7 +420,7 @@ Founder 批准 **28 天**為 v1 **server-side default**，**不是**永久 domai
 | `commitment_conflict` | 合約↔history 或欄位自相矛盾 |
 | `commitment_incomplete` | 固定課語意不足（缺老師／科目／分校／時段等） |
 | `flexible_no_commitment` | 合法 FLP（`INFO_FLEXIBLE_NO_COMMITMENT`） |
-| `shared_pool_shortage` | SPM + ES（Ensure 將 `BLOCK_POOL_SHORTAGE`） |
+| `shared_pool_shortage` | SPM + ES（shared package 以 renewal warning 呈現；不得阻擋其他科目預排） |
 | `conflict_blocked` | SC |
 | `fsg_eligible_active_stranded` | 現行 Track A 會 `plan` 的集合（需再切三類） |
 | `fsg_skipped_*` | 現行 skip reason 映射到 §8.5 |
@@ -487,15 +487,20 @@ Founder 批准 **28 天**為 v1 **server-side default**，**不是**永久 domai
 
 ### 10.2 `EnsureSessionHorizon`（行為契約；本包／下一 PR 皆不啟用 production 寫入）
 
+> **Shared package 例外：** 本節原有的 shared-pool shortage gate 已由 §10.5
+> supersede。shared package 的未來預排可物化為 recurring／scheduled，超過
+> ledger 剩餘只回傳 renewal warning；本節的 `BLOCK_POOL_SHORTAGE`、整批
+> no-write 與禁止建立 uncovered session 僅適用 standalone entitlement。
+
 前置：僅 `explicit_commitment` + §6.4 允許條件。
 
-**Shared-pool entitlement shortage（ES）— Founder 拍板：**
+**Standalone entitlement shortage（ES）：**
 
 | 動作 | 行為 |
 |---|---|
 | Preview | **允許且要求**顯示全部 covered／uncovered 明細 |
-| Ensure | 對該 **pool scope** command **整批 no-write**；回傳 **`BLOCK_POOL_SHORTAGE`** |
-| 禁止 | partial write；把 ES 當成普通 occurrence `SKIP_*`；以單一 member 各自估算池餘額；建立 uncovered scheduled `ClassSession` |
+| Ensure | 對該 **standalone scope** command **整批 no-write**；回傳 **`BLOCK_POOL_SHORTAGE`** |
+| 禁止 | partial write；把 ES 當成普通 occurrence `SKIP_*`；建立 uncovered scheduled `ClassSession` |
 
 **為何不做 covered-prefix（先建前 N 堂）：** Phase 1 尚無 pool-level expansion + deterministic ordering + transaction／locking + hold lifecycle + concurrency tests；兩 member 並行 Ensure 可能搶同一批餘額。Covered-prefix **留到 Phase 3+**。
 
@@ -512,12 +517,13 @@ Founder 批准 **28 天**為 v1 **server-side default**，**不是**永久 domai
 - Service：`App\Services\Scheduling\EnsureSessionHorizonService`
 - Command：`php artisan sessions:ensure-horizon {student_class_id} {--through=} {--as-of=} {--branch_id=} {--execute} {--summary}`
 - Feature flag：`FEATURE_ENSURE_SESSION_HORIZON`（default **false**）；`--execute` 在 **production 硬擋**（`PRODUCTION_EXECUTE_REQUIRES_GO`）
-- Dry-run 為預設；ES → `BLOCK_POOL_SHORTAGE` 整批 no-write；寫入僅經 `ClassSessionMaterializationService::upsertSlot`
+- Dry-run 為預設；standalone ES → `BLOCK_POOL_SHORTAGE` 整批 no-write；shared package
+  依 §10.5 允許預排並提示 renewal warning；寫入僅經 `ClassSessionMaterializationService::upsertSlot`
 
 ### 10.3 UI 文案方向（非實作）
 
 > 未來 28 天預計 8 堂，可由方案覆蓋 6 堂，尚未覆蓋 2 堂。  
-> ［預覽］→ 若 Ensure 將因池不足阻擋，明確告知「無法補齊（方案堂數不足）」，不得默默只建 6 堂。
+> ［預覽］→ shared package 仍可預排，但必須明確告知超排 2 堂並提示續約／加購；standalone entitlement shortage 則回傳阻擋原因。
 
 成員課程：**「本課程已排 N；其中 M 由共用方案覆蓋」**；禁止「本課程剩餘 pool N 堂」。
 
@@ -624,7 +630,7 @@ scheduled 可建立但不寫 ledger、不阻擋其他科；超過 remaining 時�
 |---|---|---|
 | 1 | Commitment 判定 | **批准並修正分類**：合約欄 = authoritative candidate；history = 驗證／legacy signal；衝突 fail closed。三類 = `explicit_commitment`／`legacy_inferred_candidate`／`commitment_conflict`。Legacy **不得**計入「有明確 Commitment 的 MF」，也不得直接 Ensure／rolling。 |
 | 2 | Rolling horizon 28 天 | **批准為 v1 server-side default**（Asia/Taipei today+28 inclusive）；非永久 invariant；不寫入每筆 `StudentClass`；client 可傳 through_date，不得自定 recurrence truth。Phase 0 產出 7／28 天缺口即可。 |
-| 3 | Shared pool ES | **Preview 必須可顯示 uncovered**；**Ensure 不得建立 uncovered session**。ES 時 Ensure 對 pool scope **整批 no-write**，回傳 **`BLOCK_POOL_SHORTAGE`**（command-level，非 occurrence skip）。Covered-prefix 留 Phase 3+。 |
+| 3 | Shared pool ES | **Preview 必須可顯示 uncovered**；shared package **允許建立未來預排／scheduled**，但必須回傳 `renewal_warning`、超排堂數與續約／加購文案；不得阻擋另一科目預排。Standalone shortage 仍依 §10.2 回傳 `BLOCK_POOL_SHORTAGE`。 |
 | 4 | `StudentClass` 載體 | **條件式批准 v1 adapter**，**不批准**永久 SSOT；現不新增欄位。Ensure 僅 `explicit_commitment` + §6.4 條件（**含非 dormant**）。必算 `commitment_snapshot`／`commitment_fingerprint`。觸發新表條件見 §6.5。 |
 
 **實作進度（2026-07-28）：** Phase 0–3A 工具已 merge；Ensure／coverage／migration **production 未啟用**。  
