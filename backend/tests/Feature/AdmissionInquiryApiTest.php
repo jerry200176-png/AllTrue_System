@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Models\UserCampus;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class AdmissionInquiryApiTest extends TestCase
@@ -50,7 +51,15 @@ class AdmissionInquiryApiTest extends TestCase
         $inquiry = AdmissionInquiry::firstOrFail();
         $token = $this->directorToken((int) $campus->id);
         $payload = ['teacher_id' => $teacher->id, 'trial_date' => '2026-09-12', 'start_time' => '23:00', 'duration_minutes' => 30];
+        $trialLockQueries = [];
+        DB::listen(static function ($query) use (&$trialLockQueries): void {
+            $sql = strtolower((string) $query->sql);
+            if (str_contains($sql, 'admission_inquiries') && str_contains($sql, 'for update')) {
+                $trialLockQueries[] = $sql;
+            }
+        });
         $this->withHeaders(['Authorization' => "Bearer {$token}"])->postJson("/api/v1/admission-inquiries/{$inquiry->id}/trial", $payload)->assertCreated();
+        $this->assertNotEmpty($trialLockQueries, 'Trial handoff must lock the inquiry before creating the trial student.');
         $this->assertSame(1, \App\Models\Student::where('name', '陳小安')->count());
         $this->withHeaders(['Authorization' => "Bearer {$token}"])->postJson("/api/v1/admission-inquiries/{$inquiry->id}/trial", $payload)->assertOk();
         $this->assertSame(1, \App\Models\Student::where('name', '陳小安')->count());
