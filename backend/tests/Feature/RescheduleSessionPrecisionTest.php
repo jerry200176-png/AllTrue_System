@@ -213,6 +213,99 @@ class RescheduleSessionPrecisionTest extends TestCase
         ]);
     }
 
+    public function test_schedule_reschedule_target_is_rejected_before_legacy_marker_write(): void
+    {
+        [$token, ] = $this->createDirector();
+        $teacherId = $this->createTeacher(1, 'monthly-schedule-boundary');
+        [$studentId, $courseId] = $this->createCourse($teacherId);
+        $course = StudentClass::findOrFail($courseId);
+        $course->update([
+            'ScheduleMode' => 'date',
+            'StartDate' => '2026-09-01',
+            'EndDate' => '2026-09-30',
+        ]);
+        $source = Schedule::create([
+            'student_id' => $studentId,
+            'teacher_id' => $teacherId,
+            'subject' => 'Math',
+            'day_of_week' => 2,
+            'start_time' => '18:00',
+            'end_time' => '20:00',
+            'class_type' => 'one_on_one',
+            'type' => 'normal',
+            'status' => 'rescheduled',
+            'deduction' => 0,
+            'branch_id' => 1,
+            'schedule_date' => '2026-09-29',
+            'student_course_id' => $courseId,
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/schedules', [
+            'student_id' => $studentId,
+            'teacher_id' => $teacherId,
+            'subject' => 'Math',
+            'day_of_week' => 2,
+            'start_time' => '18:00',
+            'end_time' => '20:00',
+            'duration_hours' => 2,
+            'class_type' => 'one_on_one',
+            'status' => 'scheduled',
+            'type' => 'normal',
+            'deduction' => 1,
+            'branch_id' => 1,
+            'schedule_date' => '2026-10-06',
+            'student_course_id' => $courseId,
+            'original_schedule_id' => $source->id,
+        ])->assertStatus(422)->assertJsonPath('code', 'course_date_boundary');
+
+        $this->assertSame(1, Schedule::where('student_course_id', $courseId)->count());
+        $this->assertDatabaseMissing('schedules', [
+            'student_course_id' => $courseId,
+            'schedule_date' => '2026-10-06',
+        ]);
+    }
+
+    public function test_schedule_update_cannot_move_monthly_row_outside_contract_interval(): void
+    {
+        [$token, ] = $this->createDirector();
+        $teacherId = $this->createTeacher(1, 'monthly-schedule-update-boundary');
+        [$studentId, $courseId] = $this->createCourse($teacherId);
+        $course = StudentClass::findOrFail($courseId);
+        $course->update([
+            'ScheduleMode' => 'date',
+            'StartDate' => '2026-09-01',
+            'EndDate' => '2026-09-30',
+        ]);
+        $schedule = Schedule::create([
+            'student_id' => $studentId,
+            'teacher_id' => $teacherId,
+            'subject' => 'Math',
+            'day_of_week' => 2,
+            'start_time' => '18:00',
+            'end_time' => '20:00',
+            'class_type' => 'one_on_one',
+            'type' => 'normal',
+            'status' => 'scheduled',
+            'deduction' => 1,
+            'branch_id' => 1,
+            'schedule_date' => '2026-09-29',
+            'student_course_id' => $courseId,
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->putJson("/api/v1/schedules/{$schedule->id}", [
+            'schedule_date' => '2026-10-06',
+        ])->assertStatus(422)->assertJsonPath('code', 'course_date_boundary');
+
+        $schedule->refresh();
+        $this->assertSame('2026-09-29', substr((string) $schedule->schedule_date, 0, 10));
+    }
+
     public function test_atomic_mode_commits_schedule_chain_and_session_together(): void
     {
         [$token, $courseId, $session] = $this->seedPlainSession();

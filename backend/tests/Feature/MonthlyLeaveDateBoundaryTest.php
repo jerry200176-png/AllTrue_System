@@ -86,8 +86,8 @@ class MonthlyLeaveDateBoundaryTest extends TestCase
 
     public function test_monthly_billing_ignores_billable_rows_outside_course_interval(): void
     {
-        $course = $this->createMonthlyCourse('2026-09-01', '2026-09-30', 0);
-        $this->createSessions($course, ['2026-09-29', '2026-10-01'])->each(function (ClassSession $session): void {
+        $course = $this->createMonthlyCourse('2026-09-01', '2026-09-28', 0);
+        $this->createSessions($course, ['2026-09-27', '2026-09-29'])->each(function (ClassSession $session): void {
             $session->Status = 'attended';
             $session->save();
         });

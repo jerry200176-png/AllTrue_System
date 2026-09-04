@@ -183,7 +183,10 @@ class ScheduleController extends Controller
             $courseMeta = DB::table('StudentClass as sc')
                 ->join('Student as st', 'st.id', '=', 'sc.StudentID')
                 ->where('sc.ID', $courseId)
-                ->select(['sc.ID', 'sc.TeacherID', 'sc.ClassType', 'sc.room_id', 'st.CampusID'])
+                ->select([
+                    'sc.ID', 'sc.TeacherID', 'sc.ClassType', 'sc.room_id', 'st.CampusID',
+                    'sc.ScheduleMode', 'sc.StartDate', 'sc.EndDate',
+                ])
                 ->first();
 
             if (!$courseMeta) {
@@ -212,6 +215,15 @@ class ScheduleController extends Controller
         }
         if (empty($data['status'])) {
             $data['status'] = 'scheduled';
+        }
+
+        $boundaryResponse = $this->validateDateModeScheduleBoundary(
+            $courseMeta ?? null,
+            $data['schedule_date'] ?? null,
+            (string) ($data['type'] ?? 'normal')
+        );
+        if ($boundaryResponse) {
+            return $boundaryResponse;
         }
 
         // Extract origId early so FR-001/FR-002 guards can use it.
@@ -1089,7 +1101,7 @@ class ScheduleController extends Controller
         if ($courseId > 0) {
             $courseMeta = DB::table('StudentClass')
                 ->where('ID', $courseId)
-                ->select(['ClassType', 'room_id'])
+                ->select(['ClassType', 'room_id', 'ScheduleMode', 'StartDate', 'EndDate'])
                 ->first();
             if ($courseMeta) {
                 if (empty($merged['class_type'])) {
@@ -1099,6 +1111,15 @@ class ScheduleController extends Controller
                     $effectiveRoomId = (int) $courseMeta->room_id;
                 }
             }
+        }
+
+        $boundaryResponse = $this->validateDateModeScheduleBoundary(
+            $courseMeta ?? null,
+            $merged['schedule_date'] ?? null,
+            (string) ($merged['type'] ?? 'normal')
+        );
+        if ($boundaryResponse) {
+            return $boundaryResponse;
         }
 
         if (($merged['status'] ?? 'scheduled') === 'scheduled') {
@@ -1142,6 +1163,40 @@ class ScheduleController extends Controller
         $this->ensureClassSessionForScheduleData($schedule->toArray());
 
         return response()->json($schedule);
+    }
+
+    /**
+     * Keep normal schedule/reschedule writes inside a date-mode course's
+     * contract interval. Explicit extra/makeup rows retain their separate
+     * exception semantics and are not part of recurring monthly generation.
+     *
+     * @param object|null $courseMeta
+     */
+    private function validateDateModeScheduleBoundary(?object $courseMeta, mixed $scheduleDate, string $type): mixed
+    {
+        if (!$courseMeta || !$scheduleDate || strtolower(trim($type)) === 'extra') {
+            return null;
+        }
+        if (strtolower((string) ($courseMeta->ScheduleMode ?? 'count')) !== 'date') {
+            return null;
+        }
+
+        $date = Carbon::parse((string) $scheduleDate)->toDateString();
+        $startDate = $courseMeta->StartDate
+            ? Carbon::parse((string) $courseMeta->StartDate)->toDateString()
+            : null;
+        $endDate = $courseMeta->EndDate
+            ? Carbon::parse((string) $courseMeta->EndDate)->toDateString()
+            : null;
+
+        if (($startDate && $date < $startDate) || ($endDate && $date > $endDate)) {
+            return response()->json([
+                'message' => '月結課程排程日期必須在合約起訖日期內',
+                'code' => 'course_date_boundary',
+            ], 422);
+        }
+
+        return null;
     }
 
     /**
