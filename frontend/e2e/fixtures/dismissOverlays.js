@@ -22,7 +22,7 @@ export async function dismissOverlays(page) {
       await page.locator('.release-nudge-layer').waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {});
     }
 
-    const onboardingLater = page.locator('.guide-tour-layer').getByRole('button', { name: '稍後再看' }).first();
+    const onboardingLater = page.locator('.onboarding-launch-layer').getByRole('button', { name: '稍後再看' }).first();
     if (await onboardingLater.isVisible().catch(() => false)) {
       await onboardingLater.click().catch(() => {});
     }
