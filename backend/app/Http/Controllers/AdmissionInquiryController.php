@@ -105,12 +105,20 @@ class AdmissionInquiryController extends Controller
         $this->ensureEnabled();
         $this->authorizeInquiry($request, $admissionInquiry);
         $data = $request->validate(['teacher_id' => 'required|integer|exists:User,id', 'trial_date' => 'required|date', 'start_time' => 'required|date_format:H:i', 'duration_minutes' => 'required|integer|min:30|max:480']);
-        if ($admissionInquiry->trial_student_class_id) {
-            return response()->json(['status' => $admissionInquiry->status, 'student_id' => $admissionInquiry->student_id, 'student_class_id' => $admissionInquiry->trial_student_class_id]);
-        }
-        abort_unless(in_array($admissionInquiry->status, [AdmissionInquiry::STATUS_NEW, AdmissionInquiry::STATUS_CONTACTED], true), 422, '目前狀態不可安排試聽。');
-
         return DB::transaction(function () use ($request, $data, $admissionInquiry, $enrollmentService) {
+            // Serialize the handoff before invoking EnrollmentService. Without the
+            // row lock, two retries arriving together can both observe an inquiry
+            // without a trial class and create duplicate Student records.
+            $admissionInquiry = AdmissionInquiry::query()
+                ->whereKey($admissionInquiry->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($admissionInquiry->trial_student_class_id) {
+                return response()->json(['status' => $admissionInquiry->status, 'student_id' => $admissionInquiry->student_id, 'student_class_id' => $admissionInquiry->trial_student_class_id]);
+            }
+            abort_unless(in_array($admissionInquiry->status, [AdmissionInquiry::STATUS_NEW, AdmissionInquiry::STATUS_CONTACTED], true), 422, '目前狀態不可安排試聽。');
+
             $trialDate = Carbon::parse($data['trial_date'])->toDateString();
             $enrollmentRequest = $request;
             $payload = [
