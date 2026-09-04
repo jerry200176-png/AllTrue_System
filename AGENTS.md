@@ -10,6 +10,7 @@
 **Launch:** `agent-start alltrue <task-id>` (only official Agent entry).
 **Bare store:** `/home/jerry/workspace/repos/AllTrue_System.git`
 **Tasks:** `/home/jerry/workspace/tasks/alltrue/<task-id>/`
+**Forbidden checkouts:** `/home/jerry/alltrue`, `/home/jerry/workspace/AllTrue_System`, `/home/jerry/workspace/AllTrue_System-clean`
 **Policy:** [`docs/governance/WORKTREE_POLICY.md`](docs/governance/WORKTREE_POLICY.md)
 **Provenance:** commit `.agent-session/manifest.json` (or human-authored.json).
 
