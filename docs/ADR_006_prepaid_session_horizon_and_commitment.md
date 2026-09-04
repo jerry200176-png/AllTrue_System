@@ -525,11 +525,8 @@ Founder 批准 **28 天**為 v1 **server-side default**，**不是**永久 domai
 
 ### 10.5 2026-09-04 多科共用方案堂數模型修正（supersedes shared shortage gate）
 
-本次需求將 shared package 分為 `purchased_entitlement`、`actual_consumed` 與
-`future_planned_sessions`；多科共用 entitlement，未來 recurring／scheduled 可建立但不寫
-ledger、不阻擋其他科，超過 remaining 必須回傳 `renewal_warning` 與續約／加購文案。
-群組同一日期＋開始時間只計一個實體時段，`leave_requested` 仍算預排意圖；其餘沿用既有
-lifecycle／ledger，且不做 production data repair 或 migration。
+本次需求將 shared package 分為 `purchased_entitlement`、`actual_consumed` 與 `future_planned_sessions`；多科共用 entitlement，未來 recurring／scheduled 可建立但不寫 ledger、不阻擋其他科，超過 remaining 必須回傳 `renewal_warning` 與續約／加購文案。
+群組同一日期＋開始時間只計一個實體時段，`leave_requested` 仍算預排意圖；其餘沿用既有 lifecycle／ledger，且不做 production data repair 或 migration。
  
 
 ---
