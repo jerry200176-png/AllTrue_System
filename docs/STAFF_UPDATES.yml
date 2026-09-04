@@ -3,6 +3,22 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-04-role-onboarding
+    published_at: "2026-09-04"
+    audiences:
+      - director
+      - teacher
+    importance: major
+    title: 主任與老師新手教學
+    summary: 首次進入依角色帶你完成常用工作流程。
+    items:
+      - category: added
+        text: 首次進入 AllTrue 時，主任與老師會看到符合角色的四步驟導覽，依序認識摘要、通知、出勤、評量與行事曆。
+      - category: improved
+        text: 可按上一步、下一步、跳過或完成；之後可從帳號選單重新觀看，已完成使用者不會重複打擾。
+    source_refs:
+      - "changelog:2026-09-04:role-onboarding"
+
   - id: staff-2026-09-03-guardian-ssot-ui
     published_at: "2026-09-03"
     audiences:
