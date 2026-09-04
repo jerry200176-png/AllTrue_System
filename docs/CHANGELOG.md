@@ -1,3 +1,8 @@
+## 2026-09-04 — improved(ux): 主任與老師新手任務 V1.1
+<!-- release-notes: staff_update=staff-2026-09-04-role-onboarding-v11 -->
+- 新手導覽開始前會先顯示任務清單與角色插圖，可選擇「開始導覽」或「稍後再看」；中途離開後可從原步驟繼續。
+- 導覽中顯示目前任務進度，完成後提供任務完成回饋與輕量動態效果；既有角色版本與一般頁面導覽不受影響。
+
 ## 2026-09-04 — fix(schedule): 月結請假維持合約日期邊界
 <!-- release-notes: staff_update=staff-2026-09-04-monthly-leave-date-boundary -->
 - 月結課程請假只將該堂標記為請假並降低實際可計費堂次，不再以 legacy `SessionCount` 觸發尾堂補回或延長 `EndDate` 到下個月。

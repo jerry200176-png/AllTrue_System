@@ -416,6 +416,18 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("unexpected-production-sha", policy)
         self.assertIn("provenance-unknown", policy)
 
+    def test_admissions_flag_requires_explicit_manual_mode_and_preserves_auto_value(self):
+        self.assertIn("admissions_funnel_v1:", self.workflow)
+        self.assertIn("default: unchanged", self.workflow)
+        self.assertIn('ADMISSIONS_FLAG_MODE="${{ inputs.admissions_funnel_v1 }}"', self.workflow)
+        self.assertIn('ADMISSIONS_FLAG_MODE" = "on"', self.workflow)
+        self.assertIn('ADMISSIONS_FLAG_MODE" = "off"', self.workflow)
+        self.assertIn("ADMISSIONS_FLAG_VALUE=$(grep -E", self.workflow)
+        self.assertIn("VITE_ADMISSIONS_FUNNEL_V1=%s", self.workflow)
+        self.assertIn("ADMISSIONS_FLAG_CHANGED=1", self.workflow)
+        self.assertIn("admissions flag restored during rollback", self.workflow)
+        self.assertIn('[ "$ADMISSIONS_FLAG_CHANGED" -eq 1 ]', self.workflow)
+
     def test_deploy_failures_are_fail_closed_and_share_rollback(self):
         self.assertIn("rollback_deploy()", self.workflow)
         self.assertIn("abort_deploy()", self.workflow)

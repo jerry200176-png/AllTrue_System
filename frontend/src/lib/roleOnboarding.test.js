@@ -23,6 +23,12 @@ const identity = { role: 'teacher', userId: 'teacher-7', storage };
 assert.equal(getRoleOnboardingSteps('teacher').length, 4);
 assert.equal(getRoleOnboardingSteps('director').length, 4);
 assert.equal(getRoleOnboardingSteps('super_admin')[0].page, 'director');
+for (const role of ['teacher', 'director']) {
+  for (const step of getRoleOnboardingSteps(role)) {
+    assert.ok(step.id && step.title && step.description && step.icon);
+    assert.match(step.target, /^\[data-guide=".+"\]$/);
+  }
+}
 assert.deepEqual(
   getRoleOnboardingSteps('teacher').map(({ page, target }) => [page, target]),
   [
@@ -56,5 +62,9 @@ assert.equal(shouldAutoStartOnboarding({ state: { ...completed, version: 'old' }
 
 assert.equal(writeOnboardingState({ ...identity, status: 'skipped', stepIndex: 1 }), true);
 assert.equal(readOnboardingState(identity).status, 'skipped');
+
+assert.equal(writeOnboardingState({ ...identity, status: 'deferred' }), true);
+assert.equal(readOnboardingState(identity).status, 'deferred');
+assert.equal(shouldAutoStartOnboarding({ state: readOnboardingState(identity), firstLogin: true }), false);
 
 console.log('roleOnboarding tests passed');
