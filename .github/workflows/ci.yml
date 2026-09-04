@@ -445,6 +445,12 @@ jobs:
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 
+      - name: Install pinned npm CLI for security audit
+        run: npm install --global npm@11.19.1 --no-audit --no-fund
+
+      - name: Verify npm CLI
+        run: npm --version
+
       - name: Install dependencies
         working-directory: frontend
         run: npm ci
@@ -611,7 +617,7 @@ jobs:
               echo '  "vulnerability_finding": false,'
               printf '  "workflow_run": "%s",\n' "$GITHUB_RUN_ID"
               printf '  "commit": "%s",\n' "$GITHUB_SHA"
-              echo '  "endpoint": "https://registry.npmjs.org/-/npm/v1/security/audits/quick",'
+              echo '  "endpoint": "https://registry.npmjs.org/-/npm/v1/security/advisories/bulk",'
               printf '  "attempts": %s\n' "$max_attempts"
               echo '}'
             } > "$audit_evidence"
