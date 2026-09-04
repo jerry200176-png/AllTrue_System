@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-04-admissions-funnel-v1
+    changelog_date: "2026-09-04"
+    changelog_title: "feat(admissions): 新生問班招生閉環 V1"
+    reason: 新招生入口與主任工作流先以 dark launch 部署，前後端 ADMISSIONS_FUNNEL_V1 預設關閉；待 Founder activation GO、production migration 與驗收後再發布 staff update。
+
   - id: silent-2026-09-03-multi-guardian-cutover
     changelog_date: "2026-09-03"
     changelog_title: "feat(parent): Multi-Guardian canonical Portal cutover"

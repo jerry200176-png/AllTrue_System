@@ -429,7 +429,10 @@ jobs:
     # backend-only change reports success instead of a skipped required check.
     # The frontend tests remain read-only and do not deploy anything.
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # npm ci can take ~9 minutes on the hosted runner before the blocking
+    # audit/build steps begin; keep the security gate intact while allowing
+    # the job enough wall-clock time to finish.
+    timeout-minutes: 20
 
     steps:
       - name: Checkout

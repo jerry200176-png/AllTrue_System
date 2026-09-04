@@ -29,6 +29,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property \Illuminate\Support\Carbon|null $enrolled_at
  * @property \Illuminate\Support\Carbon $created_at
  * @method static static create(array $attributes = [])
+ * @method static static findOrFail($id, $columns = ['*'])
  */
 class AdmissionInquiry extends Model
 {
