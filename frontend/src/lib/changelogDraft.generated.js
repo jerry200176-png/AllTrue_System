@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.04",
     "date": "2026-09-04",
     "title": "2026.09.04 草稿（未發布）",
-    "summary": "主任與老師角色新手教學；月結請假維持合約日期邊界",
+    "summary": "主任與老師角色新手教學；新生問班招生閉環 V1",
     "audience": [
       "teacher",
       "director"
@@ -18,7 +18,8 @@ export const changelogDraftNotes = [
       {
         "title": "新增內容",
         "items": [
-          "主任與老師角色新手教學"
+          "主任與老師角色新手教學",
+          "新生問班招生閉環 V1"
         ]
       },
       {
@@ -30,6 +31,7 @@ export const changelogDraftNotes = [
     ],
     "items": [
       "主任與老師角色新手教學",
+      "新生問班招生閉環 V1",
       "月結請假維持合約日期邊界"
     ]
   },
