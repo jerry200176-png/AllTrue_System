@@ -4,6 +4,50 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-04-shared-package-planning-entitlement",
+    "publishedAt": "2026-09-04",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "多科共用方案預排與堂數提醒",
+    "summary": "共用預排不佔其他科堂數；超排會提醒續約或加購。",
+    "items": [
+      "預排不先扣堂，也不會阻擋其他科建立 recurring schedule。",
+      "超排仍可排課，系統會顯示超排與續約／加購提醒。",
+      "取消、刪除、轉課、減少堂數與單科方案維持原規則。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "預排不先扣堂，也不會阻擋其他科建立 recurring schedule。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "超排仍可排課，系統會顯示超排與續約／加購提醒。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "取消、刪除、轉課、減少堂數與單科方案維持原規則。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-04:shared-package-planning-entitlement"
+    ],
+    "date": "2026-09-04",
+    "version": "2026.09.04"
+  },
+  {
     "id": "staff-2026-09-04-role-onboarding",
     "publishedAt": "2026-09-04",
     "effectiveAt": null,

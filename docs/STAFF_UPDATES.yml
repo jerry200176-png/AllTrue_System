@@ -3,6 +3,23 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-04-shared-package-planning-entitlement
+    published_at: "2026-09-04"
+    audiences:
+      - director
+    importance: action_required
+    title: 多科共用方案預排與堂數提醒
+    summary: 共用預排不佔其他科堂數；超排會提醒續約或加購。
+    items:
+      - category: fixed
+        text: 預排不先扣堂，也不會阻擋其他科建立 recurring schedule。
+      - category: action_required
+        text: 超排仍可排課，系統會顯示超排與續約／加購提醒。
+      - category: improved
+        text: 取消、刪除、轉課、減少堂數與單科方案維持原規則。
+    source_refs:
+      - "changelog:2026-09-04:shared-package-planning-entitlement"
+
   - id: staff-2026-09-04-role-onboarding
     published_at: "2026-09-04"
     audiences:
