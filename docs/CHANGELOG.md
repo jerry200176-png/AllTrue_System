@@ -1,3 +1,10 @@
+## 2026-09-04 — fix(billing): 合約提前結束未繳費可回帳務中心對帳
+<!-- release-notes: staff_update=staff-2026-09-04-contract-amended-unpaid-tuition -->
+
+- 提前結束／改堂數（`contract_amended`）後若仍未繳費，課程會出現在帳務中心「結案待對帳」，可繼續登記已回報與確認入帳。
+- 已繳費後再提前結束的課程不會進入催繳佇列；既有「結案（不續報）」待對帳流程不變。
+- 課程管理會標示「尚未完成繳費，請至帳務中心對帳」，避免只看到未繳費卻找不到入帳入口（in-app #251）。
+
 ## 2026-09-04 — docs(release): restore tip order for today's release notes
 <!-- release-notes: silent_ship=silent-2026-09-04-changelog-tip-order -->
 - Moved the shared-package and admissions funnel CHANGELOG sections from the file footer to the tip so staff release notes stay discoverable.

@@ -69,6 +69,40 @@ class ContractAmendmentTest extends TestCase
         $this->assertSame('cancelled', ClassSession::find($future->id)->Status);
         $this->assertSame('cancelled', Schedule::find($futureSchedule->id)->status);
         $this->assertSame(1, DB::table('security_audit_events')->where('event_type', 'student_class.contract_amendment')->count());
+
+        // in-app #251: unpaid amended contracts must remain actionable in tuition alerts
+        $alert = $this->withToken($token)->getJson('/api/v1/alerts/tuition?branch_id=1');
+        $alert->assertOk();
+        $match = collect($alert->json())->firstWhere('id', $course->ID);
+        $this->assertNotNull($match, 'unpaid contract_amended course must appear in tuition alerts');
+        $this->assertSame('pending_reconciliation', $match['payment_status'] ?? null);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_paid_contract_amendment_does_not_enter_pending_reconciliation_queue(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-04 10:00:00', 'Asia/Taipei'));
+        [$token] = $this->director();
+        $student = $this->student();
+        $course = $this->course($student->id, ['Charge' => 8800, 'Paid' => 1, 'PayDate' => '2026-09-01']);
+        for ($i = 1; $i <= 3; $i++) {
+            $this->createClassSession($course->ID, "2026-09-0{$i}", 'attended');
+        }
+
+        $this->withToken($token)->postJson(
+            "/api/v1/student-classes/{$course->ID}/contract-amendment",
+            ['new_session_count' => 3, 'reason' => '已繳費提前結束']
+        )->assertOk();
+
+        $course->refresh();
+        $this->assertSame('contract_amended', $course->closed_reason);
+        $this->assertSame(1, (int) $course->Paid);
+
+        $alert = $this->withToken($token)->getJson('/api/v1/alerts/tuition?branch_id=1');
+        $alert->assertOk();
+        $match = collect($alert->json())->firstWhere('id', $course->ID);
+        $this->assertNull($match, 'paid contract_amended course must not enter unpaid reconciliation queue');
         Carbon::setTestNow();
     }
 
