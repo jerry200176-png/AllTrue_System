@@ -62,7 +62,7 @@
 | POST | `api/v1/admin/teachers/merge` | `TeacherDuplicateController@merge` | role |
 | POST | `api/v1/admin/teachers/merge-preview` | `TeacherDuplicateController@preview` | role |
 
-## /api/v1/admission-inquiries (7)
+## /api/v1/admission-inquiries (8)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -71,6 +71,7 @@
 | GET | `api/v1/admission-inquiries/{admissionInquiry}` | `AdmissionInquiryController@show` | role+campus |
 | POST | `api/v1/admission-inquiries/{admissionInquiry}/contact` | `AdmissionInquiryController@contact` | role+campus |
 | POST | `api/v1/admission-inquiries/{admissionInquiry}/enroll` | `AdmissionInquiryController@linkEnrollment` | role+campus |
+| POST | `api/v1/admission-inquiries/{admissionInquiry}/lost` | `AdmissionInquiryController@markLost` | role+campus |
 | POST | `api/v1/admission-inquiries/{admissionInquiry}/trial` | `AdmissionInquiryController@scheduleTrial` | role+campus |
 | POST | `api/v1/admission-inquiries/{admissionInquiry}/trial-result` | `AdmissionInquiryController@recordResult` | role+campus |
 

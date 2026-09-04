@@ -20,6 +20,7 @@
 **Also found, not in scope of the 7 categories above:**
 - `StudentIdentityAuditLog` — ✅ fully wired for cross-campus student-identity linking (`StudentIdentityService::audit()`, `app/Services/StudentIdentityService.php:266`).
 - ~~`SecurityAuditEvent` model exists but no code anywhere calls `::create()`~~ **Correction**: this was wrong — the initial grep only checked `::create()`/`::insert()`/`new SecurityAuditEvent(` and missed the actual call pattern, `SecurityAuditEvent::append(...)`. It's fully wired: `LineWebhookController::263`, `StudentController::500`, `ParentPortalController::304-424` (parent auth failures/success, sibling-switch). Delivered via #1420/PR #1580 (merged 2026-08-01), separate from this issue's scope. No follow-up needed here.
+- `AdmissionInquiryController` — ✅ `SecurityAuditEvent` `admission_inquiry.submit`（public，reason_code created/duplicate）與 `admission_inquiry.state_transition`（contact／trial／result／enroll／lost）；metadata 僅 reason_code，無 raw PII。
 
 ## Critical gaps → follow-up issues
 

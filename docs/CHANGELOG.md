@@ -1,3 +1,8 @@
+## 2026-09-04 — feat(admissions): finish dark-launch acceptance for 新生問班
+<!-- release-notes: silent_ship=silent-2026-09-04-admissions-funnel-finish -->
+- Closed remaining admissions funnel gaps while keeping `ADMISSIONS_FUNNEL_V1` off: status filter, next-action queue hints, terminal `lost`, submit audit, and fuller API/UI contract tests.
+- Added Founder activation REP + brief; production migrate／flag on remain Founder GO only.
+
 ## 2026-09-04 — fix(billing): 合約提前結束未繳費可回帳務中心對帳
 <!-- release-notes: staff_update=staff-2026-09-04-contract-amended-unpaid-tuition -->
 

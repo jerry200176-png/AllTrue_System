@@ -557,8 +557,10 @@ export async function submitAdmissionInquiry(payload) {
   return admissionFetch('/admission-inquiries', { method: 'POST', body: payload });
 }
 
-export async function getAdmissionInquiries(token, branchId) {
-  return admissionFetch('/admission-inquiries?campus_id=' + encodeURIComponent(branchId), { token });
+export async function getAdmissionInquiries(token, branchId, status) {
+  const params = new URLSearchParams({ campus_id: String(branchId) });
+  if (status) params.set('status', status);
+  return admissionFetch('/admission-inquiries?' + params.toString(), { token });
 }
 
 export async function getAdmissionInquiry(token, inquiryId) {

@@ -82,4 +82,26 @@ class AdmissionInquiry extends Model
         }
         return str_repeat('*', max(0, mb_strlen($value) - 4)) . mb_substr($value, -4);
     }
+
+    /** Staff queue CTA hint — never trust client to invent transitions. */
+    public function nextAction(): string
+    {
+        return match ($this->status) {
+            self::STATUS_NEW => 'contact',
+            self::STATUS_CONTACTED => 'schedule_trial',
+            self::STATUS_TRIAL_SCHEDULED => 'record_result',
+            self::STATUS_TRIAL_COMPLETED => $this->trial_result === 'attended' ? 'enroll_or_lost' : 'mark_lost',
+            self::STATUS_ENROLLED, self::STATUS_LOST => 'done',
+            default => 'review',
+        };
+    }
+
+    public function lastActionAt(): ?\Illuminate\Support\Carbon
+    {
+        return $this->enrolled_at
+            ?? $this->trial_completed_at
+            ?? $this->trial_scheduled_at
+            ?? $this->contacted_at
+            ?? $this->created_at;
+    }
 }

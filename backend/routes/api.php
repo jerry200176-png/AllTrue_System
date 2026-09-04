@@ -325,6 +325,7 @@ Route::prefix('v1')->group(function () {
         Route::post('admission-inquiries/{admissionInquiry}/trial', [AdmissionInquiryController::class, 'scheduleTrial'])->whereNumber('admissionInquiry');
         Route::post('admission-inquiries/{admissionInquiry}/trial-result', [AdmissionInquiryController::class, 'recordResult'])->whereNumber('admissionInquiry');
         Route::post('admission-inquiries/{admissionInquiry}/enroll', [AdmissionInquiryController::class, 'linkEnrollment'])->whereNumber('admissionInquiry');
+        Route::post('admission-inquiries/{admissionInquiry}/lost', [AdmissionInquiryController::class, 'markLost'])->whereNumber('admissionInquiry');
     });
 
     Route::middleware(['role:director', 'require_campus', 'require_password_change'])->group(function () {
