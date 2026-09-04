@@ -84,11 +84,10 @@ class PreviewSessionHorizonTest extends TestCase
         $p = app(PreviewSessionHorizonService::class)->preview($sc, null, $this->today)['preview'];
         $this->assertNotNull($p['pool_projection']);
         $this->assertSame(2, $p['pool_projection']['horizon_coverable']);
-        $this->assertTrue($p['pool_projection']['ensure_would_block']);
-        $this->assertSame(
-            CommitmentReasonCodes::BLOCK_POOL_SHORTAGE,
-            $p['pool_projection']['ensure_block_reason']
-        );
+        $this->assertFalse($p['pool_projection']['ensure_would_block']);
+        $this->assertTrue($p['pool_projection']['renewal_warning']);
+        $this->assertGreaterThan(0, $p['pool_projection']['overage_sessions']);
+        $this->assertNull($p['pool_projection']['ensure_block_reason']);
         $this->assertArrayNotHasKey('pool_remaining', $p);
         $this->assertArrayNotHasKey('member_pool_remaining', $p);
     }

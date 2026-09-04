@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "40ab48316fb544a9a291c4211e59fe55",
+  "session_id": "29caaff098a54030a3ab99ff3140b7b9",
   "project": "alltrue",
-  "task_id": "bug-triage-20260904-probe2",
+  "task_id": "shared-package-planned-entitlement-20260904",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "00f26cd62635bab3b63b5f92efa0863d80c0599a",
-  "branch": "chore/task-bug-triage-20260904-probe2",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/bug-triage-20260904-probe2",
-  "started_at": "2026-09-04T10:52:09Z",
+  "base_sha": "1c24e907a8497f72e5c703c715a0719f7963443d",
+  "branch": "chore/task-shared-package-planned-entitlement-20260904",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/shared-package-planned-entitlement-20260904",
+  "started_at": "2026-09-04T08:18:08Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": null,
+  "agent_cli": "codex",
   "gateway_version": "0.5.0"
 }

@@ -2272,7 +2272,10 @@ async function submitPackage() {
       const schedulePart = totalScheduled > 0 ? `，已預排 ${totalScheduled} 堂` : '';
       showPkgToast(`方案「${pkgForm.name}」已建立，每月 ${pkgForm.settlement_day} 日結算，按 $${Number(pkgForm.rate).toLocaleString('zh-TW')} 元/堂計費（含 ${memberCount} 科${schedulePart}）。`);
     } else {
-      showPkgToast(`方案「${pkgForm.name}」已建立，包含 ${memberCount} 個科目，共 ${pkgForm.total_sessions} 堂。`);
+      const planningMessage = result?.planning?.renewal_warning
+        ? `\n⚠️ ${result.planning.renewal_message}`
+        : '';
+      showPkgToast(`方案「${pkgForm.name}」已建立，包含 ${memberCount} 個科目，共 ${pkgForm.total_sessions} 堂。${planningMessage}`);
     }
     emit('success', result);
   } catch (err) {

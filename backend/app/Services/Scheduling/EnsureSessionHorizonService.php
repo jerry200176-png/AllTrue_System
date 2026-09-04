@@ -87,14 +87,6 @@ final class EnsureSessionHorizonService
             return $result;
         }
 
-        // Shared-pool ES: whole-command no-write (Founder).
-        if (!empty($p['pool_projection']['ensure_would_block'])) {
-            $result['ensure']['primary_reason'] = CommitmentReasonCodes::BLOCK_POOL_SHORTAGE;
-            $result['ensure']['blocked'] = true;
-
-            return $result;
-        }
-
         // Standalone entitlement shortage: also block whole command (symmetric fail-closed).
         if (!empty($p['standalone_entitlement'])
             && (int) ($p['standalone_entitlement']['horizon_uncovered'] ?? 0) > 0) {
@@ -107,8 +99,12 @@ final class EnsureSessionHorizonService
 
         $candidates = [];
         foreach ($p['occurrences'] ?? [] as $o) {
-            if (($o['reason_code'] ?? '') === CommitmentReasonCodes::OK_PLAN
-                && ($o['state'] ?? '') === 'planned_covered') {
+            $isCoveredPlan = ($o['reason_code'] ?? '') === CommitmentReasonCodes::OK_PLAN
+                && ($o['state'] ?? '') === 'planned_covered';
+            $isSharedPackageOverplan = !empty($p['package_id'])
+                && ($o['reason_code'] ?? '') === CommitmentReasonCodes::OK_PREVIEW_UNCOVERED
+                && ($o['state'] ?? '') === 'planned_uncovered';
+            if ($isCoveredPlan || $isSharedPackageOverplan) {
                 $candidates[] = $o;
             }
         }

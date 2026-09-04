@@ -13,6 +13,7 @@ use App\Services\EnrollmentService;
 use App\Services\FrontendSubjectIdResolver;
 use App\Services\PackageDeductionService;
 use App\Services\SessionDeductionService;
+use App\Services\SharedPackagePlanningService;
 use App\Models\UserCampus;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -108,14 +109,18 @@ class CoursePackageController extends Controller
             $subjectNameByMember[(int) $m->ID] = $m->displaySubjectName();
         }
 
+        $planningByPackageId = app(SharedPackagePlanningService::class)->summarizeMany($packages);
+
         $result = $packages->map(function (CoursePackage $pkg) use (
             $membersByPackage,
             $scheduledCountMap,
             $nextSessionsMap,
             $teacherNameMap,
-            $subjectNameByMember
+            $subjectNameByMember,
+            $planningByPackageId
         ) {
             $members = $membersByPackage[$pkg->id] ?? collect();
+            $planning = $planningByPackageId[(int) $pkg->getKey()] ?? [];
 
             return [
                 'id'                 => $pkg->id,
@@ -126,8 +131,14 @@ class CoursePackageController extends Controller
                 'name'               => $pkg->name,
                 'billing_mode'       => $pkg->billing_mode,
                 'total_sessions'     => $pkg->total_sessions,
-                'remaining_sessions' => $pkg->remaining_sessions,
-                'used_sessions'      => $pkg->used_sessions,
+                'remaining_sessions' => $planning['remaining_sessions'] ?? $pkg->remaining_sessions,
+                'used_sessions'      => $planning['actual_consumed'] ?? $pkg->used_sessions,
+                'purchased_entitlement' => $planning['purchased_entitlement'] ?? (int) $pkg->getAttribute('total_sessions'),
+                'actual_consumed'    => $planning['actual_consumed'] ?? (int) $pkg->getAttribute('used_sessions'),
+                'future_planned_sessions' => $planning['future_planned_sessions'] ?? 0,
+                'overage_sessions'   => $planning['overage_sessions'] ?? 0,
+                'renewal_warning'    => $planning['renewal_warning'] ?? false,
+                'renewal_message'    => $planning['renewal_message'] ?? null,
                 'rate'               => $pkg->rate,
                 'rate_unit'          => $pkg->rate_unit,
                 'class_type'         => $pkg->class_type,
@@ -184,6 +195,7 @@ class CoursePackageController extends Controller
             ->groupBy('student_class_id')
             ->selectRaw('student_class_id, COUNT(*) as used')
             ->pluck('used', 'student_class_id');
+        $planning = app(SharedPackagePlanningService::class)->summarize($pkg);
 
         $memberDetails = $members->map(function ($m) use ($perSubjectUsed) {
             return [
@@ -203,8 +215,14 @@ class CoursePackageController extends Controller
             'campus_id'          => $pkg->campus_id,
             'name'               => $pkg->name,
             'total_sessions'     => $pkg->total_sessions,
-            'remaining_sessions' => $pkg->remaining_sessions,
-            'used_sessions'      => $pkg->used_sessions,
+            'remaining_sessions' => $planning['remaining_sessions'],
+            'used_sessions'      => $planning['actual_consumed'],
+            'purchased_entitlement' => $planning['purchased_entitlement'],
+            'actual_consumed'    => $planning['actual_consumed'],
+            'future_planned_sessions' => $planning['future_planned_sessions'],
+            'overage_sessions'   => $planning['overage_sessions'],
+            'renewal_warning'    => $planning['renewal_warning'],
+            'renewal_message'    => $planning['renewal_message'],
             'paid'               => $pkg->paid,
             'paid_at'            => $pkg->paid_at,
             'stop'               => $pkg->stop,
@@ -512,6 +530,7 @@ class CoursePackageController extends Controller
             }
 
             $pkg->recomputeCounters();
+            $planning = app(SharedPackagePlanningService::class)->summarize($pkg->fresh());
 
             Log::info('CoursePackage createMultiSubject', [
                 'package_id'       => $pkg->id,
@@ -533,11 +552,18 @@ class CoursePackageController extends Controller
                     'id'                 => $pkg->id,
                     'name'               => $pkg->name,
                     'total_sessions'     => $pkg->total_sessions,
-                    'remaining_sessions' => $pkg->remaining_sessions,
-                    'used_sessions'      => $pkg->used_sessions,
+                    'remaining_sessions' => $planning['remaining_sessions'],
+                    'used_sessions'      => $planning['actual_consumed'],
+                    'purchased_entitlement' => $planning['purchased_entitlement'],
+                    'actual_consumed'    => $planning['actual_consumed'],
+                    'future_planned_sessions' => $planning['future_planned_sessions'],
+                    'overage_sessions'   => $planning['overage_sessions'],
+                    'renewal_warning'    => $planning['renewal_warning'],
+                    'renewal_message'    => $planning['renewal_message'],
                 ],
                 'members'           => $createdMembers,
                 'members_scheduled' => $membersScheduled,
+                'planning'          => $planning,
             ], 201);
         });
     }
@@ -1122,6 +1148,7 @@ class CoursePackageController extends Controller
         $wantTotalChange = array_key_exists('total_sessions', $data)
             && $data['total_sessions'] !== null
             && (int) $data['total_sessions'] !== (int) $pkg->total_sessions;
+        $planning = null;
 
         if ($wantTotalChange && (string) ($pkg->billing_mode ?? 'count') !== 'count') {
             return response()->json(['message' => '月結方案不支援修改總堂數'], 422);
@@ -1244,6 +1271,7 @@ class CoursePackageController extends Controller
             // writing new remaining-session logic.
             PackageDeductionService::fullRecompute($pkg->id);
             $pkg->refresh();
+            $planning = app(SharedPackagePlanningService::class)->summarize($pkg);
 
             Log::info('CoursePackage totalSessions changed', [
                 'package_id'       => $pkg->id,
@@ -1262,6 +1290,7 @@ class CoursePackageController extends Controller
             'package'            => $pkg,
             'cancelled_sessions' => $cancelledSessions,
             'extended_count'     => $extendedCount,
+            'planning'           => $planning ?? app(SharedPackagePlanningService::class)->summarize($pkg),
         ]);
     }
 }
