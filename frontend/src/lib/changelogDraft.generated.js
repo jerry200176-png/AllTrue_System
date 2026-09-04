@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.04",
     "date": "2026-09-04",
     "title": "2026.09.04 草稿（未發布）",
-    "summary": "主任與老師角色新手教學",
+    "summary": "主任與老師角色新手教學；主任與老師新手任務 V1.1",
     "audience": [
       "teacher",
       "director"
@@ -20,10 +20,17 @@ export const changelogDraftNotes = [
         "items": [
           "主任與老師角色新手教學"
         ]
+      },
+      {
+        "title": "其他改善",
+        "items": [
+          "主任與老師新手任務 V1.1"
+        ]
       }
     ],
     "items": [
-      "主任與老師角色新手教學"
+      "主任與老師角色新手教學",
+      "主任與老師新手任務 V1.1"
     ]
   },
   {

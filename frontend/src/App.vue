@@ -549,6 +549,54 @@
     </div>
   </Transition>
 
+  <Transition name="onboarding-launch">
+    <div
+      v-if="onboardingLaunchOpen"
+      class="onboarding-launch-layer"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="onboarding-launch-title"
+      @click.self="deferRoleOnboarding"
+    >
+      <div class="onboarding-launch-card" @click.stop>
+        <div class="onboarding-launch-art" aria-hidden="true">
+          <span class="onboarding-launch-spark onboarding-launch-spark--one">✦</span>
+          <span class="onboarding-launch-spark onboarding-launch-spark--two">✦</span>
+          <img :src="learningCompanionUrl" alt="" />
+        </div>
+        <div class="onboarding-launch-content">
+          <span class="onboarding-launch-kicker">{{ onboardingPromptIsResume ? '接續你的任務' : '主任／老師新手任務' }}</span>
+          <h2 id="onboarding-launch-title">{{ onboardingPromptIsResume ? '要繼續上次的導覽嗎？' : '用 2 分鐘熟悉日常工作' }}</h2>
+          <p>{{ onboardingPromptIsResume ? '你上次停在中途，現在可以從原本的位置繼續。' : '沿著真實工作流程走一遍，熟悉最常用的頁面與下一步。' }}</p>
+          <div class="onboarding-launch-progress" aria-label="新手任務清單">
+            <div class="onboarding-launch-progress-head">
+              <span>任務清單</span>
+              <strong>{{ onboardingPromptSteps.length }} 個關鍵步驟</strong>
+            </div>
+            <ol class="onboarding-launch-checklist">
+              <li
+                v-for="(step, index) in onboardingPromptSteps"
+                :key="step.id"
+                :class="{ 'is-current': index === onboardingPromptStartIndex, 'is-done': index < onboardingPromptStartIndex }"
+              >
+                <span class="onboarding-check-icon material-symbols-outlined" aria-hidden="true">
+                  {{ index < onboardingPromptStartIndex ? 'check_circle' : step.icon }}
+                </span>
+                <span>{{ step.title }}</span>
+              </li>
+            </ol>
+          </div>
+          <div class="onboarding-launch-actions">
+            <button type="button" class="guide-tour-btn" @click="deferRoleOnboarding">稍後再看</button>
+            <button type="button" class="guide-tour-btn guide-tour-btn-primary" @click="beginPendingRoleOnboarding">
+              {{ onboardingPromptIsResume ? '繼續導覽' : '開始導覽' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </Transition>
+
   <div v-if="guideTour.isOpen.value" class="guide-tour-popover-layer" @click.self="guideTour.skipTour">
     <div
       ref="guidePopoverRef"
@@ -568,6 +616,22 @@
         <button type="button" class="guide-tour-close" @click.stop="guideTour.skipTour" aria-label="關閉導覽"><span class="material-symbols-outlined">close</span></button>
       </div>
       <p class="guide-tour-popover-text">{{ guideTour.currentStep.value?.description }}</p>
+      <div v-if="guideTour.mode.value === 'onboarding'" class="guide-tour-checklist">
+        <div class="guide-tour-checklist-head">
+          <span>任務進度</span>
+          <strong>{{ guideTour.progressText.value }}</strong>
+        </div>
+        <ol>
+          <li
+            v-for="(step, index) in guideTour.steps.value"
+            :key="step.id || index"
+            :class="{ 'is-current': index === guideTour.stepIndex.value, 'is-done': index < guideTour.stepIndex.value }"
+          >
+            <span class="material-symbols-outlined" aria-hidden="true">{{ index < guideTour.stepIndex.value ? 'check_circle' : step.icon }}</span>
+            <span>{{ step.title }}</span>
+          </li>
+        </ol>
+      </div>
       <div class="guide-tour-dots">
         <span
           v-for="(_, i) in guideTour.steps.value"
@@ -589,6 +653,19 @@
     </div>
     <AtToast />
   </div>
+
+  <Transition name="onboarding-complete">
+    <div v-if="onboardingCompletionVisible" class="onboarding-complete-layer" role="status" aria-live="polite">
+      <div class="onboarding-complete-card">
+        <div class="onboarding-complete-burst" aria-hidden="true">✓</div>
+        <img :src="learningCompanionUrl" alt="" class="onboarding-complete-art" />
+        <span class="onboarding-launch-kicker">任務完成</span>
+        <h2>{{ roleLabel }}新手教學完成</h2>
+        <p>你已經掌握最常用的工作路線，接下來可以直接開始今天的任務。</p>
+        <button type="button" class="guide-tour-btn guide-tour-btn-primary" @click="dismissOnboardingCompletion">開始工作</button>
+      </div>
+    </div>
+  </Transition>
 </template>
 
 <script setup>
@@ -614,6 +691,7 @@ import {
 import { useUpdateChecker } from './composables/useUpdateChecker';
 import { lockScroll, unlockScroll, forceUnlockScroll } from './lib/useScrollLock';
 import logoUrl from './assets/logo.png';
+import learningCompanionUrl from './assets/alltrue-learning-companion.png';
 
 // Pages — lazy-loaded per route for code splitting (reduces initial bundle size)
 import Login from './pages/Login.vue';
@@ -713,6 +791,15 @@ const hadAppSessionBeforeLoad = (() => {
   }
 })();
 let onboardingAutoStarted = false;
+const onboardingLaunchOpen = ref(false);
+const onboardingPromptSteps = ref([]);
+const onboardingPromptState = ref(null);
+const onboardingCompletionVisible = ref(false);
+const onboardingPromptIsResume = computed(() => onboardingPromptState.value?.status === 'in_progress');
+const onboardingPromptStartIndex = computed(() => onboardingStartIndex(
+  onboardingPromptState.value,
+  onboardingPromptSteps.value.length,
+));
 const releaseNudgeOpen = ref(false);
 const releaseNudgeVersion = ref('');
 const RELEASE_NOTES_SEEN_KEY = 'alltrue_release_notes_seen';
@@ -730,6 +817,7 @@ const brandOverlayAllowed = computed(() =>
   && !isStandaloneParent.value
   && !isPasswordChangeLocked.value
   && !guideTour.isOpen.value
+  && !onboardingLaunchOpen.value
   && !showMoreMenu.value
   && (isDirector.value || isTeacher.value)
 );
@@ -1169,6 +1257,54 @@ function saveRoleOnboardingState(status, stepIndex) {
   });
 }
 
+function clearOnboardingPrompt() {
+  onboardingLaunchOpen.value = false;
+  onboardingPromptSteps.value = [];
+  onboardingPromptState.value = null;
+}
+
+function beginPendingRoleOnboarding() {
+  const steps = onboardingPromptSteps.value;
+  const state = onboardingPromptState.value;
+  clearOnboardingPrompt();
+  return launchRoleOnboarding({ steps, state });
+}
+
+function deferRoleOnboarding() {
+  const state = onboardingPromptState.value;
+  saveRoleOnboardingState('deferred', state?.status === 'in_progress' ? state.stepIndex : 0);
+  onboardingAutoStarted = true;
+  clearOnboardingPrompt();
+}
+
+function dismissOnboardingCompletion() {
+  onboardingCompletionVisible.value = false;
+}
+
+function launchRoleOnboarding({ steps = getRoleOnboardingSteps(role.value), state = null, force = false } = {}) {
+  const initialIndex = force ? 0 : onboardingStartIndex(state, steps.length);
+  if (active.value !== steps[initialIndex]?.page) {
+    setActivePage(steps[initialIndex].page);
+  }
+  const started = guideTour.startOnboarding(steps, {
+    initialIndex,
+    onNavigate: (page) => {
+      if (active.value !== page) setActivePage(page);
+    },
+    onProgress: (index) => saveRoleOnboardingState('in_progress', index),
+    onComplete: (_step, index) => {
+      saveRoleOnboardingState('completed', index);
+      onboardingCompletionVisible.value = true;
+    },
+    onSkip: (_step, index) => saveRoleOnboardingState('skipped', index),
+  });
+  if (started) {
+    onboardingAutoStarted = true;
+    saveRoleOnboardingState('in_progress', guideTour.stepIndex.value);
+  }
+  return started;
+}
+
 function startRoleOnboarding({ force = false } = {}) {
   if (
     !session.value
@@ -1186,28 +1322,19 @@ function startRoleOnboarding({ force = false } = {}) {
   })) return false;
 
   const steps = getRoleOnboardingSteps(role.value);
-  const initialIndex = force ? 0 : onboardingStartIndex(state, steps.length);
-  if (active.value !== steps[initialIndex]?.page) {
-    setActivePage(steps[initialIndex].page);
-  }
-  const started = guideTour.startOnboarding(steps, {
-    initialIndex,
-    onNavigate: (page) => {
-      if (active.value !== page) setActivePage(page);
-    },
-    onProgress: (index) => saveRoleOnboardingState('in_progress', index),
-    onComplete: (_step, index) => saveRoleOnboardingState('completed', index),
-    onSkip: (_step, index) => saveRoleOnboardingState('skipped', index),
-  });
-  if (started) {
+  if (!force) {
+    onboardingPromptSteps.value = steps;
+    onboardingPromptState.value = state;
+    onboardingLaunchOpen.value = true;
     onboardingAutoStarted = true;
-    saveRoleOnboardingState('in_progress', guideTour.stepIndex.value);
+    return true;
   }
-  return started;
+  document.querySelector('.account-menu')?.removeAttribute('open');
+  return launchRoleOnboarding({ steps, state, force: true });
 }
 
 function maybeAutoStartOnboarding() {
-  if (onboardingAutoStarted || !session.value || isPasswordChangeLocked.value) return;
+  if (onboardingAutoStarted || onboardingLaunchOpen.value || !session.value || isPasswordChangeLocked.value) return;
   if (!isOnboardingRole(role.value) || isStandaloneParent.value) return;
   nextTick(() => {
     nextTick(() => startRoleOnboarding());
@@ -1977,6 +2104,8 @@ watch([session, role], () => {
   if (!session.value) {
     guideTour.closeTour();
     onboardingAutoStarted = false;
+    clearOnboardingPrompt();
+    dismissOnboardingCompletion();
   }
   refreshUnreadNotifications();
   maybeAutoStartOnboarding();
@@ -2031,6 +2160,8 @@ onBeforeUnmount(() => {
   systemThemeMq?.removeEventListener('change', onSystemThemeChange);
   window.removeEventListener('popstate', onPopStateDeepLink);
   guideTour.closeTour();
+  clearOnboardingPrompt();
+  dismissOnboardingCompletion();
   _stopBadgePolling();
   document.removeEventListener('visibilitychange', _onVisibilityChangeForPolling);
   window.removeEventListener('resize', onWindowResizeGuideFab);
@@ -3185,6 +3316,291 @@ function formatBuildTime(rawIso) {
   line-height: 1.6;
   color: var(--ds-ink);
   overflow-y: auto;
+}
+
+.onboarding-launch-layer,
+.onboarding-complete-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 2147482990;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: color-mix(in srgb, var(--ds-ink) 58%, transparent);
+}
+
+.onboarding-launch-card {
+  display: grid;
+  grid-template-columns: minmax(190px, 0.75fr) minmax(0, 1.25fr);
+  width: min(760px, 100%);
+  max-height: min(700px, calc(100vh - 40px));
+  overflow: auto;
+  border: 1px solid var(--ds-primary-wash);
+  border-radius: 24px;
+  background: linear-gradient(135deg, var(--ds-canvas), var(--ds-surface-1, var(--ds-canvas)));
+  box-shadow: 0 24px 72px color-mix(in srgb, var(--ds-ink) 32%, transparent);
+}
+
+.onboarding-launch-art {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 300px;
+  overflow: hidden;
+  background: linear-gradient(155deg, var(--ds-primary-wash), var(--ds-canvas));
+}
+
+.onboarding-launch-art::before {
+  content: '';
+  position: absolute;
+  width: 190px;
+  height: 190px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--ds-primary) 16%, transparent);
+  animation: onboarding-orb-pulse 3s ease-in-out infinite;
+}
+
+.onboarding-launch-art img {
+  position: relative;
+  z-index: 1;
+  width: min(72%, 220px);
+  max-height: 270px;
+  object-fit: contain;
+  filter: drop-shadow(0 14px 16px color-mix(in srgb, var(--ds-ink) 20%, transparent));
+  animation: onboarding-companion-float 3.6s ease-in-out infinite;
+}
+
+.onboarding-launch-spark {
+  position: absolute;
+  z-index: 2;
+  color: var(--ds-accent, var(--ds-primary));
+  font-size: 24px;
+  animation: onboarding-sparkle 2.2s ease-in-out infinite;
+}
+
+.onboarding-launch-spark--one { top: 22%; left: 17%; }
+.onboarding-launch-spark--two { right: 15%; bottom: 25%; animation-delay: 0.7s; }
+
+.onboarding-launch-content {
+  padding: 32px 34px 28px;
+}
+
+.onboarding-launch-kicker {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--ds-primary-wash);
+  color: var(--ds-primary-deep, var(--ds-primary));
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.onboarding-launch-content h2,
+.onboarding-complete-card h2 {
+  margin: 12px 0 8px;
+  color: var(--ds-ink);
+  font-size: clamp(22px, 3vw, 30px);
+  line-height: 1.25;
+}
+
+.onboarding-launch-content > p,
+.onboarding-complete-card > p {
+  margin: 0;
+  color: var(--ds-ink-mute);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.onboarding-launch-progress {
+  margin-top: 22px;
+  padding: 14px;
+  border: 1px solid var(--ds-canvas-soft);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--ds-canvas-soft) 45%, transparent);
+}
+
+.onboarding-launch-progress-head,
+.guide-tour-checklist-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--ds-ink-mute);
+  font-size: 11px;
+}
+
+.onboarding-launch-progress-head strong,
+.guide-tour-checklist-head strong {
+  color: var(--ds-primary-deep, var(--ds-primary));
+}
+
+.onboarding-launch-checklist,
+.guide-tour-checklist ol {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.onboarding-launch-checklist li,
+.guide-tour-checklist li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--ds-ink-mute);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.onboarding-launch-checklist li.is-current,
+.guide-tour-checklist li.is-current {
+  color: var(--ds-ink);
+  font-weight: 700;
+}
+
+.onboarding-launch-checklist li.is-done,
+.guide-tour-checklist li.is-done {
+  color: var(--ds-primary-deep, var(--ds-primary));
+}
+
+.onboarding-check-icon,
+.guide-tour-checklist .material-symbols-outlined {
+  flex: 0 0 auto;
+  color: var(--ds-primary);
+  font-size: 17px;
+}
+
+.onboarding-launch-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.guide-tour-checklist {
+  margin: 0 14px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--ds-canvas-soft) 50%, transparent);
+}
+
+.guide-tour-checklist ol { gap: 5px; margin-top: 8px; }
+.guide-tour-checklist li { font-size: 11px; }
+
+.onboarding-complete-layer { z-index: 2147483100; }
+
+.onboarding-complete-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: min(420px, 100%);
+  padding: 30px 28px 26px;
+  overflow: hidden;
+  border: 1px solid var(--ds-primary-wash);
+  border-radius: 24px;
+  background: var(--ds-canvas);
+  box-shadow: 0 24px 72px color-mix(in srgb, var(--ds-ink) 34%, transparent);
+  text-align: center;
+}
+
+.onboarding-complete-card h2 { font-size: 24px; }
+.onboarding-complete-card .guide-tour-btn { margin-top: 20px; }
+
+.onboarding-complete-art {
+  width: 120px;
+  height: 120px;
+  object-fit: contain;
+  animation: onboarding-complete-pop 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.onboarding-complete-burst {
+  position: absolute;
+  top: 20px;
+  right: 24px;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--ds-primary);
+  color: var(--ds-on-primary, white);
+  font-size: 20px;
+  font-weight: 800;
+  animation: onboarding-burst 0.6s 0.15s ease-out both;
+}
+
+.onboarding-launch-enter-active,
+.onboarding-launch-leave-active,
+.onboarding-complete-enter-active,
+.onboarding-complete-leave-active {
+  transition: opacity 0.22s ease;
+}
+
+.onboarding-launch-enter-active .onboarding-launch-card,
+.onboarding-launch-leave-active .onboarding-launch-card,
+.onboarding-complete-enter-active .onboarding-complete-card,
+.onboarding-complete-leave-active .onboarding-complete-card {
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.22s ease;
+}
+
+.onboarding-launch-enter-from,
+.onboarding-launch-leave-to,
+.onboarding-complete-enter-from,
+.onboarding-complete-leave-to { opacity: 0; }
+.onboarding-launch-enter-from .onboarding-launch-card,
+.onboarding-launch-leave-to .onboarding-launch-card,
+.onboarding-complete-enter-from .onboarding-complete-card,
+.onboarding-complete-leave-to .onboarding-complete-card { transform: translateY(14px) scale(0.98); opacity: 0; }
+
+@keyframes onboarding-companion-float {
+  0%, 100% { transform: translateY(2px) rotate(-1deg); }
+  50% { transform: translateY(-8px) rotate(1deg); }
+}
+
+@keyframes onboarding-orb-pulse {
+  0%, 100% { transform: scale(0.92); opacity: 0.7; }
+  50% { transform: scale(1.08); opacity: 1; }
+}
+
+@keyframes onboarding-sparkle {
+  0%, 100% { transform: scale(0.75) rotate(0deg); opacity: 0.45; }
+  50% { transform: scale(1.15) rotate(18deg); opacity: 1; }
+}
+
+@keyframes onboarding-complete-pop {
+  from { transform: scale(0.55) rotate(-8deg); opacity: 0; }
+  to { transform: scale(1) rotate(0); opacity: 1; }
+}
+
+@keyframes onboarding-burst {
+  from { transform: scale(0) rotate(-18deg); }
+  to { transform: scale(1) rotate(0); }
+}
+
+@media (max-width: 640px) {
+  .onboarding-launch-layer,
+  .onboarding-complete-layer { align-items: end; padding: 10px; }
+  .onboarding-launch-card { grid-template-columns: 1fr; max-height: calc(100vh - 20px); border-radius: 20px; }
+  .onboarding-launch-art { min-height: 150px; }
+  .onboarding-launch-art img { width: 110px; max-height: 150px; }
+  .onboarding-launch-content { padding: 22px 20px 20px; }
+  .onboarding-launch-actions { justify-content: stretch; }
+  .onboarding-launch-actions .guide-tour-btn { flex: 1; }
+  .onboarding-complete-card { padding: 26px 20px 22px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .onboarding-launch-art::before,
+  .onboarding-launch-art img,
+  .onboarding-launch-spark,
+  .onboarding-complete-art,
+  .onboarding-complete-burst { animation: none; }
 }
 
 .guide-tour-dots {
