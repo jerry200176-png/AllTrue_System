@@ -1,3 +1,8 @@
+## 2026-09-04 — docs(architecture): finalize Archify architecture orientation
+<!-- release-notes: silent_ship=silent-2026-09-04-archify-orientation -->
+- Added the code-backed Archify architecture index and five canonical diagrams for runtime, entitlement, payment/receipt, release/deploy, and session lifecycle orientation.
+- Updated the agent entry points to require task-relevant architecture reading while treating diagrams as orientation, not a replacement for current code, schema, tests, or runtime evidence. Docs-only; no product behavior or production deployment changed.
+
 ## 2026-09-04 — feat(ux): 主任與老師角色新手教學
 <!-- release-notes: staff_update=staff-2026-09-04-role-onboarding -->
 - 主任與老師首次進入 AllTrue 時，會依角色看到四步驟 spotlight 導覽，帶著完成最常用的摘要、通知、出勤、評量與行事曆工作流程。
