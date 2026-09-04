@@ -4,6 +4,32 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * @property int $id
+ * @property int $campus_id
+ * @property string $status
+ * @property string $parent_name
+ * @property string $parent_phone
+ * @property string $student_name
+ * @property string $grade
+ * @property string|null $school_name
+ * @property string $subject
+ * @property array<int, string>|null $preferred_slots
+ * @property string|null $public_notes
+ * @property string|null $staff_notes
+ * @property string|null $trial_result
+ * @property int|null $student_id
+ * @property int|null $trial_student_class_id
+ * @property int|null $enrolled_student_class_id
+ * @property int|null $assigned_to
+ * @property \Illuminate\Support\Carbon|null $consent_at
+ * @property \Illuminate\Support\Carbon|null $contacted_at
+ * @property \Illuminate\Support\Carbon|null $trial_scheduled_at
+ * @property \Illuminate\Support\Carbon|null $trial_completed_at
+ * @property \Illuminate\Support\Carbon|null $enrolled_at
+ * @property \Illuminate\Support\Carbon $created_at
+ * @method static static create(array $attributes = [])
+ */
 class AdmissionInquiry extends Model
 {
     public const STATUS_NEW = 'new';
