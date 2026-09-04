@@ -508,6 +508,31 @@ jobs:
                 ];
               }}
               $probe251["subject_summaries"] = $classSummaries251;
+              $sessionCountSummaries251 = [];
+              foreach ($classes251->groupBy(fn ($row) => (int)($row->session_count ?? 0)) as $sessionCount251 => $sessionClasses251) {{
+                $sessionClassIds251 = $sessionClasses251->pluck("class_id")->map(fn ($id) => (int)$id)->all();
+                $sessionReports251 = $reports251->whereIn("class_id", $sessionClassIds251)->values();
+                $sessionInvoices251 = $invoices251->whereIn("class_id", $sessionClassIds251)->values();
+                $sessionPayments251 = $payments251->whereIn("class_id", $sessionClassIds251)->values();
+                $activePaymentClassIds251 = $sessionInvoices251->filter(fn ($invoice) => ($invoice->status ?? null) !== "void")
+                  ->pluck("class_id")->map(fn ($id) => (int)$id)->unique()->filter(function ($classId251) use ($sessionPayments251) {{
+                    return $sessionPayments251->where("class_id", $classId251)->contains(fn ($payment251) => $payment251->paid_at !== null);
+                  }})->values();
+                $sessionCountSummaries251[] = [
+                  "session_count" => (int)$sessionCount251,
+                  "class_count" => $sessionClasses251->count(),
+                  "paid_flag_1_count" => $sessionClasses251->where("paid", 1)->count(),
+                  "pay_date_present_count" => $sessionClasses251->filter(fn ($row) => $row->pay_date !== null && (string)$row->pay_date !== "")->count(),
+                  "payment_report_count" => $sessionReports251->count(),
+                  "payment_report_status_counts" => $countBy251($sessionReports251, "status"),
+                  "invoice_count" => $sessionInvoices251->count(),
+                  "invoice_status_counts" => $countBy251($sessionInvoices251, "status"),
+                  "payment_count" => $sessionPayments251->count(),
+                  "active_payment_class_count" => $activePaymentClassIds251->count(),
+                ];
+              }}
+              $probe251["session_count_summaries"] = collect($sessionCountSummaries251)
+                ->sortBy("session_count")->values()->all();
               $probe251["target_contract_8_count"] = $classes251->where("session_count", 8)->count();
               $probe251["target_contract_3_count"] = $classes251->where("session_count", 3)->count();
               $probe251["decision_grade"] = count($studentIds251) === 1 && count($classIds251) > 0;
