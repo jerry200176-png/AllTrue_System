@@ -429,7 +429,7 @@ jobs:
     # backend-only change reports success instead of a skipped required check.
     # The frontend tests remain read-only and do not deploy anything.
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
@@ -567,9 +567,18 @@ jobs:
 
       - name: npm audit (security)
         working-directory: frontend
+        # Keep the required audit gate intact while bounding registry stalls
+        # so one hung request cannot consume the whole build job timeout.
+        env:
+          NPM_CONFIG_REGISTRY: https://registry.npmjs.org
+          NPM_CONFIG_FETCH_RETRIES: 3
+          NPM_CONFIG_FETCH_RETRY_FACTOR: 2
+          NPM_CONFIG_FETCH_RETRY_MINTIMEOUT: 1000
+          NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT: 30000
+          NPM_CONFIG_FETCH_TIMEOUT: 60000
         run: |
           for attempt in 1 2 3; do
-            if npm audit --audit-level=high --omit=dev; then
+            if timeout --signal=TERM --kill-after=15s 120s npm audit --audit-level=high --omit=dev; then
               exit 0
             fi
             if [ "$attempt" -lt 3 ]; then
