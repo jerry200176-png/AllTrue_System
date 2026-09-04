@@ -109,11 +109,17 @@ class AdmissionInquiryController extends Controller
             // Serialize the handoff before invoking EnrollmentService. Without the
             // row lock, two retries arriving together can both observe an inquiry
             // without a trial class and create duplicate Student records.
-            // Row-lock via Eloquent builder (see AdmissionInquiry @method query()).
-            $admissionInquiry = AdmissionInquiry::query()
-                ->whereKey($admissionInquiry->getKey())
+            // Serialize handoff with a table-level row lock (Query\Builder-safe for
+            // PHPStan), then reload the Eloquent model while the txn still holds it.
+            $inquiryId = (int) $admissionInquiry->getKey();
+            $lockedRow = DB::table('admission_inquiries')
+                ->where('id', $inquiryId)
                 ->lockForUpdate()
-                ->firstOrFail();
+                ->first();
+            if ($lockedRow === null) {
+                abort(404);
+            }
+            $admissionInquiry = AdmissionInquiry::findOrFail($inquiryId);
 
             if ($admissionInquiry->trial_student_class_id) {
                 return response()->json(['status' => $admissionInquiry->status, 'student_id' => $admissionInquiry->student_id, 'student_class_id' => $admissionInquiry->trial_student_class_id]);

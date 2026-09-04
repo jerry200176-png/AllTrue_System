@@ -28,7 +28,6 @@ use Illuminate\Database\Eloquent\Model;
  * @property \Illuminate\Support\Carbon|null $trial_completed_at
  * @property \Illuminate\Support\Carbon|null $enrolled_at
  * @property \Illuminate\Support\Carbon $created_at
- * @method static \Illuminate\Database\Eloquent\Builder<static> query()
  * @method static static create(array $attributes = [])
  * @method static static findOrFail($id, $columns = ['*'])
  */
