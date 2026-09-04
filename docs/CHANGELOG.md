@@ -1,3 +1,9 @@
+## 2026-09-04 — fix(schedule): 月結請假維持合約日期邊界
+<!-- release-notes: staff_update=staff-2026-09-04-monthly-leave-date-boundary -->
+- 月結課程請假只將該堂標記為請假並降低實際可計費堂次，不再以 legacy `SessionCount` 觸發尾堂補回或延長 `EndDate` 到下個月。
+- 月結帳務、分校月收報表與調課入口均以課程 `StartDate`／`EndDate` 為邊界；堂數制與明確的整體停課順延流程維持原規則。
+- 補上月末、最後一堂、多次請假、跨月帳務與月結越界調課回歸測試；本次不需資料庫 migration 或 production 資料修補。
+
 ## 2026-09-04 — feat(ux): 主任與老師角色新手教學
 <!-- release-notes: staff_update=staff-2026-09-04-role-onboarding -->
 - 主任與老師首次進入 AllTrue 時，會依角色看到四步驟 spotlight 導覽，帶著完成最常用的摘要、通知、出勤、評量與行事曆工作流程。

@@ -6,6 +6,13 @@ last_reviewed: 2026-06-06
 
 # AI／工程師防再犯紀錄（必讀）
 
+### R136. 月結請假不得以 legacy 堂數補尾延長合約（2026-09-04）
+
+- **現象**：月結課程在月底請假後，下一個月出現自動補堂，且 `StudentClass.EndDate` 被改到跨月；實際月結堂數因此可能被錯誤計費。
+- **根因層級**：F1 狀態收尾與 F3 recurring 生成共用堂數制的 append-tail writer；`ScheduleMode=date` 的 legacy 正 `SessionCount` 讓月結誤入堂數制路徑，讀帳務又只看月份而不看課程合約區間。
+- **強制規則**：`ScheduleMode=date` 的 `StartDate/EndDate` 是自動 recurring 與月結帳務的權威邊界；一般請假只改目標堂狀態，不移動未來堂、不補跨界尾堂、不改 `EndDate`。調課越界必須 fail closed；堂數制與具名的整體停課順延例外分開處理。
+- **測試必補**：月末請假、最後一堂請假、多次請假、跨月 stray `ClassSession` 不得進月結帳務，以及月結調課越界回 422；至少一條測試必須保留 legacy 正 `SessionCount` 以防回歸。
+
 ### R135. POP 失敗 dry-run 必須可在不改 caller key 下受控重試（2026-09-03）
 
 - **現象**：策略暫時失敗的 dry-run 被相同 idempotency key 永久 replay，策略恢復後仍無法重新產生 plan。

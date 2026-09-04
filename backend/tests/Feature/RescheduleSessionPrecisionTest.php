@@ -176,6 +176,43 @@ class RescheduleSessionPrecisionTest extends TestCase
         $this->assertSame(0, Schedule::where('student_course_id', $courseId)->count());
     }
 
+    public function test_monthly_course_cannot_reschedule_a_session_outside_contract_interval(): void
+    {
+        [$token, ] = $this->createDirector();
+        $teacherId = $this->createTeacher(1, 'monthly-boundary');
+        [, $courseId] = $this->createCourse($teacherId);
+        $course = StudentClass::findOrFail($courseId);
+        $course->update([
+            'ScheduleMode' => 'date',
+            'StartDate' => '2026-09-01',
+            'EndDate' => '2026-09-30',
+            'SessionCount' => 5,
+        ]);
+        $session = ClassSession::create([
+            'StudentClassID' => $courseId,
+            'SessionDate' => '2026-09-29',
+            'StartTime' => '18:00',
+            'EndTime' => '20:00',
+            'Status' => 'scheduled',
+        ]);
+
+        $this->postReschedule($token, [
+            'student_class_id' => $courseId,
+            'old_date' => '2026-09-29',
+            'old_start_time' => '18:00',
+            'new_date' => '2026-10-06',
+            'start_time' => '18:00',
+            'end_time' => '20:00',
+        ])->assertStatus(422)->assertJsonPath('code', 'course_date_boundary');
+
+        $session->refresh();
+        $this->assertSame('2026-09-29', substr((string) $session->SessionDate, 0, 10));
+        $this->assertDatabaseMissing('ClassSession', [
+            'StudentClassID' => $courseId,
+            'SessionDate' => '2026-10-06',
+        ]);
+    }
+
     public function test_atomic_mode_commits_schedule_chain_and_session_together(): void
     {
         [$token, $courseId, $session] = $this->seedPlainSession();

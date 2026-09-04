@@ -379,12 +379,12 @@ class ScheduleController extends Controller
                 return DB::transaction(function () use ($data, $courseId, $recordedByUserId) {
                     $schedule = Schedule::create($data);
                     [$rows, $extendedEndDate, $leaveSessionDate] = CourseLeaveCascadeService::applyLeaveCascade((int) $courseId, (string) $data['schedule_date']);
+                    $course = StudentClass::where('ID', $courseId)->first();
 
                     $leaveSession = ClassSession::where('StudentClassID', $courseId)
                         ->whereDate('SessionDate', $leaveSessionDate)
                         ->first();
                     if ($leaveSession) {
-                        $course = StudentClass::where('ID', $courseId)->first();
                         if ($course && !StudentSignIn::where('ClassSessionID', $leaveSession->id)->whereNull('VoidedAt')->exists()) {
                             $campusId = (int) (Student::where('id', (int) $course->StudentID)->value('CampusID') ?? 0);
                             $this->leaveAttendanceService->createClosedForSession(
@@ -398,7 +398,9 @@ class ScheduleController extends Controller
                     }
 
                     return response()->json([
-                        'message' => '請假登記完成：本堂已標記請假，未來既有上課日不變，並於尾端補上堂次',
+                        'message' => $course && strtolower((string) ($course->ScheduleMode ?? 'count')) === 'date'
+                            ? '請假登記完成：本堂已標記請假，月結課程維持原合約日期區間，不補課、不延長到期日'
+                            : '請假登記完成：本堂已標記請假，未來既有上課日不變，並於尾端補上堂次',
                         'policy' => CourseLeaveCascadeService::POLICY_KEEP_FUTURE_DATES_APPEND_TAIL,
                         'schedule' => $schedule,
                         'leave_session_date' => $leaveSessionDate,
@@ -782,7 +784,9 @@ class ScheduleController extends Controller
                 }
 
                 return response()->json([
-                    'message'             => '補請假完成：堂數已沖回、本堂標記請假；未來既有上課日不變，並於尾端補上堂次',
+                        'message'             => strtolower((string) ($course->ScheduleMode ?? 'count')) === 'date'
+                            ? '補請假完成：本堂標記請假，月結課程維持原合約日期區間，不補課、不延長到期日'
+                            : '補請假完成：堂數已沖回、本堂標記請假；未來既有上課日不變，並於尾端補上堂次',
                     'policy'              => CourseLeaveCascadeService::POLICY_KEEP_FUTURE_DATES_APPEND_TAIL,
                     'leave_session_date'  => $sessionDate,
                     'extended_end_date'   => $extendedEndDate,
@@ -911,7 +915,9 @@ class ScheduleController extends Controller
                 );
 
                 return response()->json([
-                    'message'            => '已請假：未來既有上課日不變，並於尾端補上堂次',
+                    'message'            => strtolower((string) ($course->ScheduleMode ?? 'count')) === 'date'
+                        ? '已請假：月結課程維持原合約日期區間，不補課、不延長到期日'
+                        : '已請假：未來既有上課日不變，並於尾端補上堂次',
                     'policy'             => CourseLeaveCascadeService::POLICY_KEEP_FUTURE_DATES_APPEND_TAIL,
                     'leave_session_date' => $leaveSessionDate,
                     'extended_end_date'  => $extendedEndDate,

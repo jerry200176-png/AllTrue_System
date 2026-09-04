@@ -573,7 +573,9 @@ class AttendanceController extends Controller
                     );
 
                     return response()->json([
-                        'message'            => '已請假：未來既有上課日不變，並於尾端補上堂次',
+                        'message'            => strtolower((string) ($studentClass->ScheduleMode ?? 'count')) === 'date'
+                            ? '已請假：月結課程維持原合約日期區間，不補課、不延長到期日'
+                            : '已請假：未來既有上課日不變，並於尾端補上堂次',
                         'policy'             => CourseLeaveCascadeService::POLICY_KEEP_FUTURE_DATES_APPEND_TAIL,
                         'status_label'       => '請假',
                         'person_name'        => $student->name ?? '',
