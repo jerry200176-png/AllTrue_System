@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   ROLE_ONBOARDING_VERSION,
   getRoleOnboardingSteps,
@@ -8,6 +11,18 @@ import {
   shouldAutoStartOnboarding,
   writeOnboardingState,
 } from './roleOnboarding.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const pageSource = (name) => readFileSync(resolve(__dirname, `../pages/${name}`), 'utf8');
+
+const PAGE_FILES = {
+  director: 'DirectorDashboard.vue',
+  notifications: 'NotificationsCenter.vue',
+  calendar: 'SmartCalendar.vue',
+  learning: 'LearningRecordsPage.vue',
+  'teacher-home': 'TeacherHomePage.vue',
+  attendance: 'AttendancePage.vue',
+};
 
 function createStorage() {
   const values = new Map();
@@ -27,6 +42,14 @@ for (const role of ['teacher', 'director']) {
   for (const step of getRoleOnboardingSteps(role)) {
     assert.ok(step.id && step.title && step.description && step.icon);
     assert.match(step.target, /^\[data-guide=".+"\]$/);
+    const guide = step.target.match(/^\[data-guide="(.+)"\]$/)?.[1];
+    const file = PAGE_FILES[step.page];
+    assert.ok(file, `missing page file mapping for ${step.page}`);
+    assert.match(
+      pageSource(file),
+      new RegExp(`data-guide="${guide}"`),
+      `${role} step ${step.id} target ${step.target} must exist in ${file}`,
+    );
   }
 }
 assert.deepEqual(
@@ -36,6 +59,15 @@ assert.deepEqual(
     ['attendance', '[data-guide="attendance-header"]'],
     ['learning', '[data-guide="learning-header"]'],
     ['calendar', '[data-guide="calendar-header"]'],
+  ],
+);
+assert.deepEqual(
+  getRoleOnboardingSteps('director').map(({ page, target }) => [page, target]),
+  [
+    ['director', '[data-guide="director-summary"]'],
+    ['notifications', '[data-guide="notifications-header"]'],
+    ['calendar', '[data-guide="calendar-toolbar"]'],
+    ['learning', '[data-guide="learning-header"]'],
   ],
 );
 

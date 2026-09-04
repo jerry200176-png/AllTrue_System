@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-04-role-onboarding-anchors
+    changelog_date: "2026-09-04"
+    changelog_title: "fix(ux): 新手教學標註錨點補齊"
+    reason: 僅補上既有主任／老師新手教學第一步的 spotlight data-guide 與回歸測試；不新增教職員操作流程，已由 role-onboarding staff update 覆蓋能力說明。
+
   - id: silent-2026-09-04-changelog-tip-order
     changelog_date: "2026-09-04"
     changelog_title: "docs(release): restore tip order for today's release notes"

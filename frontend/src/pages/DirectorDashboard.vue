@@ -156,8 +156,12 @@
             </button>
           </section>
 
-          <aside class="director-workbench-v2__aside" aria-label="今日摘要">
-            <section class="surface-panel surface-panel--summary" aria-labelledby="director-summary-title">
+            <aside class="director-workbench-v2__aside" aria-label="今日摘要">
+            <section
+              class="surface-panel surface-panel--summary"
+              data-guide="director-summary"
+              aria-labelledby="director-summary-title"
+            >
               <header class="surface-panel__header">
                 <div>
                   <h2 id="director-summary-title">今日摘要</h2>
