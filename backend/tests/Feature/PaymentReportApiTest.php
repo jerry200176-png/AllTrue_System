@@ -1201,6 +1201,55 @@ class PaymentReportApiTest extends TestCase
         $this->assertSame('一對一', $res->json('class_type_label'));
     }
 
+    public function test_legacy_monthly_receipt_excludes_attended_sessions_outside_contract_dates(): void
+    {
+        Carbon::setTestNow('2026-09-20 12:00:00');
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, [
+            'ScheduleMode' => 'date',
+            'StartDate' => '2026-09-10',
+            'EndDate' => '2026-09-20',
+            'Charge' => 1800,
+            'Rate' => 900,
+            'SessionCount' => 0,
+            'RemainingSessions' => 0,
+        ]);
+
+        foreach (['2026-09-05', '2026-09-15', '2026-09-25'] as $date) {
+            ClassSession::create([
+                'StudentClassID' => $sc->ID,
+                'SessionDate' => $date,
+                'StartTime' => '16:00:00',
+                'EndTime' => '17:00:00',
+                'Status' => 'attended',
+            ]);
+        }
+
+        $report = PaymentReport::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'reported_by_name' => $student->name,
+            'payment_date' => '2026-09-20',
+            'payment_method' => 'transfer',
+            'reported_amount' => 1800,
+            'status' => 'confirmed',
+            'confirmed_at' => Carbon::now(),
+            'confirmed_by' => 1,
+            'report_token_hash' => hash('sha256', 'test-legacy-monthly-receipt-boundary'),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/payment-reports/{$report->id}/receipt");
+
+        $res->assertOk()
+            ->assertJsonPath('session_dates.0.date', '2026/09/15')
+            ->assertJsonCount(1, 'session_dates');
+    }
+
     public function test_monthly_confirmation_snapshots_billable_details_and_receipt_is_immutable(): void
     {
         Carbon::setTestNow('2026-07-31 12:00:00');
