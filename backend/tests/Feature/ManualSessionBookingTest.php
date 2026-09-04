@@ -5,10 +5,13 @@ namespace Tests\Feature;
 use App\Models\AuthToken;
 use App\Models\ClassSession;
 use App\Models\CoursePackage;
+use App\Models\PackageSessionLedger;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
 use App\Models\UserCampus;
+use App\Services\PackageDeductionService;
+use App\Services\SharedPackagePlanningService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -82,6 +85,11 @@ class ManualSessionBookingTest extends TestCase
         ];
     }
 
+    private function plannedSession(StudentClass $course, int $days, string $status = 'scheduled'): ClassSession
+    {
+        return ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => Carbon::today()->addDays($days)->toDateString(), 'StartTime' => '16:00:00', 'EndTime' => '17:00:00', 'Status' => $status]);
+    }
+
     public function test_manual_booking_is_one_at_a_time_idempotent_and_does_not_deduct(): void
     {
         $date = Carbon::today()->addDays(7)->toDateString();
@@ -132,7 +140,7 @@ class ManualSessionBookingTest extends TestCase
         $this->assertSame(3, (int) $this->course->fresh()->RemainingSessions);
     }
 
-    public function test_shared_package_manual_booking_uses_the_pool_across_members(): void
+    public function test_shared_package_manual_booking_does_not_reserve_pool_for_future_plans(): void
     {
         $package = CoursePackage::create([
             'student_id' => $this->student->id,
@@ -157,7 +165,6 @@ class ManualSessionBookingTest extends TestCase
         $member->save();
         $this->course->PackageID = $package->id;
         $this->course->save();
-
         $firstDate = Carbon::today()->addDays(7)->toDateString();
         $this->withHeaders($this->headers())
             ->postJson("/api/v1/student-classes/{$this->course->ID}/manual-sessions/check", [
@@ -168,7 +175,6 @@ class ManualSessionBookingTest extends TestCase
             ->assertJsonPath('can_add', true)
             ->assertJsonPath('remaining_sessions', 3)
             ->assertJsonPath('available_sessions', 3);
-
         foreach ([7, 14, 21] as $days) {
             ClassSession::create([
                 'StudentClassID' => $member->ID,
@@ -178,16 +184,137 @@ class ManualSessionBookingTest extends TestCase
                 'Status' => 'scheduled',
             ]);
         }
-
         $this->withHeaders($this->headers())
             ->postJson("/api/v1/student-classes/{$this->course->ID}/manual-sessions/check", [
                 'session_date' => Carbon::today()->addDays(21)->toDateString(),
                 'start_time' => '16:00',
             ])
-            ->assertStatus(422)
-            ->assertJsonPath('error_code', 'RESERVATION_LIMIT');
-
+            ->assertOk()
+            ->assertJsonPath('can_add', true)
+            ->assertJsonPath('remaining_sessions', 3)
+            ->assertJsonPath('future_planned_sessions', 3)
+            ->assertJsonPath('projected_future_planned_sessions', 4)
+            ->assertJsonPath('overage_sessions', 1)
+            ->assertJsonPath('renewal_warning', true);
         $this->assertSame(3, (int) $package->fresh()->remaining_sessions);
+    }
+
+    public function test_shared_package_actual_attendance_consumes_pool_but_future_plans_do_not(): void
+    {
+        $package = CoursePackage::create([
+            'student_id' => $this->student->id,
+            'campus_id' => 1,
+            'name' => '共用方案實際扣堂測試',
+            'billing_mode' => 'count',
+            'total_sessions' => 3,
+            'remaining_sessions' => 3,
+            'used_sessions' => 0,
+            'rate' => 500,
+            'rate_unit' => 'session',
+            'class_type' => 'one_on_one',
+            'paid' => true,
+            'stop' => false,
+            'enabled' => true,
+        ]);
+        $this->course->PackageID = $package->id;
+        $this->course->save();
+        $member = $this->course->replicate();
+        $member->ID = null;
+        $member->PackageID = $package->id;
+        $member->save();
+        $attended = ClassSession::create([
+            'StudentClassID' => $this->course->ID,
+            'SessionDate' => Carbon::today()->subDay()->toDateString(),
+            'StartTime' => '16:00:00',
+            'EndTime' => '17:00:00',
+            'Status' => 'attended',
+        ]);
+        PackageDeductionService::deductForSession(
+            $package->id,
+            $this->course->ID,
+            $attended->id,
+            'attended'
+        );
+        foreach (range(1, 5) as $days) {
+            $this->plannedSession($this->course, $days);
+        }
+
+        $this->withHeaders($this->headers())
+            ->postJson("/api/v1/student-classes/{$this->course->ID}/manual-sessions/check", [
+                'session_date' => Carbon::today()->addDays(10)->toDateString(),
+                'start_time' => '16:00',
+            ])
+            ->assertOk()
+            ->assertJsonPath('can_add', true)
+            ->assertJsonPath('purchased_entitlement', 3)
+            ->assertJsonPath('actual_consumed', 1)
+            ->assertJsonPath('remaining_sessions', 2)
+            ->assertJsonPath('future_planned_sessions', 5)
+            ->assertJsonPath('overage_sessions', 4);
+        $this->assertSame(2, $package->fresh()->computeRemainingFromLedger());
+    }
+
+    public function test_shared_package_projection_counts_group_slot_once_and_includes_pending_leave(): void
+    {
+        $package = CoursePackage::create([
+            'student_id' => $this->student->id, 'campus_id' => 1,
+            'name' => '共用群組預排測試', 'billing_mode' => 'count',
+            'total_sessions' => 5, 'remaining_sessions' => 5, 'used_sessions' => 0,
+            'rate' => 500, 'rate_unit' => 'session', 'class_type' => 'one_on_three',
+            'paid' => true, 'stop' => false, 'enabled' => true,
+        ]);
+        $this->course->PackageID = $package->id;
+        $this->course->save();
+        $member = $this->course->replicate();
+        $member->ID = null;
+        $member->PackageID = $package->id;
+        $member->ClassType = 'one_on_three';
+        $member->save();
+        $date = Carbon::today()->addDays(7)->toDateString();
+        foreach ([$this->course->ID, $member->ID] as $studentClassId) {
+            ClassSession::create(['StudentClassID' => $studentClassId, 'SessionDate' => $date, 'StartTime' => '16:00:00', 'EndTime' => '17:00:00', 'Status' => 'scheduled']);
+        }
+        $this->plannedSession($this->course, 14, 'leave_requested');
+        $summary = app(SharedPackagePlanningService::class)->summarize($package);
+        $this->assertSame(2, $summary['future_planned_sessions']);
+        $this->assertFalse($summary['renewal_warning']);
+    }
+
+    public function test_shared_package_projection_ignores_stopped_member_rows_and_keeps_consumed_after_total_reduction(): void
+    {
+        $package = CoursePackage::create([
+            'student_id' => $this->student->id, 'campus_id' => 1,
+            'name' => '共用方案減少堂數測試', 'billing_mode' => 'count',
+            'total_sessions' => 5, 'remaining_sessions' => 5, 'used_sessions' => 0,
+            'rate' => 500, 'rate_unit' => 'session', 'class_type' => 'one_on_one',
+            'paid' => true, 'stop' => false, 'enabled' => true,
+        ]);
+        $this->course->PackageID = $package->id;
+        $this->course->save();
+        $this->plannedSession($this->course, 7);
+        PackageSessionLedger::create([
+            'package_id' => $package->id, 'student_class_id' => $this->course->ID,
+            'delta' => -1, 'reason' => 'attendance_1',
+        ]);
+        PackageSessionLedger::create([
+            'package_id' => $package->id, 'student_class_id' => $this->course->ID,
+            'delta' => -1, 'reason' => 'attendance_2',
+        ]);
+        PackageSessionLedger::create([
+            'package_id' => $package->id, 'student_class_id' => $this->course->ID,
+            'delta' => -1, 'reason' => 'attendance_3',
+        ]);
+        $package->update(['total_sessions' => 2]);
+        $stopped = $this->course->replicate();
+        $stopped->ID = null;
+        $stopped->PackageID = $package->id;
+        $stopped->Stop = 1;
+        $stopped->save();
+        $this->plannedSession($stopped, 21);
+        $summary = app(SharedPackagePlanningService::class)->summarize($package->fresh());
+        $this->assertSame(3, $summary['actual_consumed']);
+        $this->assertSame(0, $summary['remaining_sessions']);
+        $this->assertSame(1, $summary['future_planned_sessions']);
     }
 
     public function test_excused_future_occurrences_do_not_consume_shared_package_capacity(): void
