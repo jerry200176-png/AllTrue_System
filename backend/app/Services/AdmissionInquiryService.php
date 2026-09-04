@@ -73,11 +73,12 @@ final class AdmissionInquiryService
                 throw $exception;
             }
 
-            $inquiry = AdmissionInquiry::query()
+            $identityKey = AdmissionInquiry::query()
                 ->where('campus_id', $campusId)
                 ->where('parent_phone_hash', $phoneHash)
                 ->where('student_name_hash', $nameHash)
-                ->firstOrFail();
+                ->value('id');
+            $inquiry = AdmissionInquiry::findOrFail($identityKey);
 
             return ['inquiry' => $inquiry, 'duplicate' => true];
         }
