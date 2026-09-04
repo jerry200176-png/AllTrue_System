@@ -430,6 +430,93 @@ jobs:
               $probe250["error"] = get_class($e).": ".substr((string)$e->getMessage(), 0, 300);
             }}
           }}
+          $probe251 = [
+            "applicable" => false, "read_only" => true, "decision_grade" => false,
+            "reason" => "Allowlisted only for in-app bug 251",
+          ];
+          if ($bugId === 251) {{
+            // #251-specific production mapping probe. Resolve the exact
+            // reported student within the reported campus, then aggregate the
+            // 8-to-3-session contract shape and payment relationships. This is
+            // read-only and emits no names, contact data, notes, or row IDs.
+            $probe251["applicable"] = true;
+            $probe251["case"] = "contract_session_count_payment_251";
+            $probe251["target_scope"] = ["campus_id" => 11, "session_counts" => [8, 3]];
+            $countBy251 = function ($rows, string $field) {{
+              return $rows->groupBy($field)->map(fn ($items) => $items->count())->all();
+            }};
+            try {{
+              $students251 = $db::table("Student")
+                ->where("CampusID", 11)
+                ->whereRaw("TRIM(name) = ?", ["林習恩"])
+                ->get(["id"]);
+              $studentIds251 = $students251->pluck("id")->map(fn ($id) => (int)$id)->filter()->unique()->values()->all();
+              $probe251["matched_student_count"] = count($studentIds251);
+              if (count($studentIds251) !== 1) {{
+                throw new \\RuntimeException("exact target student match count must be 1");
+              }}
+
+              $classes251 = $db::table("StudentClass as sc")
+                ->leftJoin("Subject as sub", "sub.id", "=", "sc.SubjectID")
+                ->whereIn("sc.StudentID", $studentIds251)
+                ->get([
+                  "sc.ID as class_id", "sc.SubjectID as subject_id", "sc.PackageID as package_id",
+                  "sc.SessionCount as session_count", "sc.RemainingSessions as remaining_sessions",
+                  "sc.UsedSessions as used_sessions", "sc.Charge as charge", "sc.Paid as paid",
+                  "sc.PayDate as pay_date", "sc.Stop as stop", "sc.ScheduleMode as schedule_mode",
+                  "sub.Subject_Name as subject_name",
+                ]);
+              $classIds251 = $classes251->pluck("class_id")->map(fn ($id) => (int)$id)->filter()->unique()->values()->all();
+              $probe251["target_class_count"] = count($classIds251);
+
+              $reports251 = $classIds251 === [] ? collect() : $db::table("payment_reports")
+                ->whereIn("StudentClassID", $classIds251)
+                ->get(["StudentClassID as class_id", "status", "reported_amount", "InvoiceID as invoice_id", "payment_id"]);
+              $invoices251 = $classIds251 === [] ? collect() : $db::table("Invoice")
+                ->whereIn("StudentClassID", $classIds251)
+                ->get(["StudentClassID as class_id", "Status as status", "TotalAmount as total_amount", "PaidAmount as paid_amount"]);
+              $payments251 = $classIds251 === [] ? collect() : $db::table("Payment as p")
+                ->join("Invoice as i", "i.id", "=", "p.InvoiceID")
+                ->whereIn("i.StudentClassID", $classIds251)
+                ->get(["i.StudentClassID as class_id", "p.Amount as amount", "p.PaidAt as paid_at", "p.payment_report_id"]);
+
+              $classSummaries251 = [];
+              foreach ($classes251->groupBy(fn ($row) => trim((string)($row->subject_name ?? "")) ?: "unknown") as $subjectName251 => $subjectClasses251) {{
+                $subjectClassIds251 = $subjectClasses251->pluck("class_id")->map(fn ($id) => (int)$id)->all();
+                $subjectReports251 = $reports251->whereIn("class_id", $subjectClassIds251)->values();
+                $subjectInvoices251 = $invoices251->whereIn("class_id", $subjectClassIds251)->values();
+                $subjectPayments251 = $payments251->whereIn("class_id", $subjectClassIds251)->values();
+                $activePaymentClassIds251 = $subjectInvoices251->filter(fn ($invoice) => ($invoice->status ?? null) !== "void")
+                  ->pluck("class_id")->map(fn ($id) => (int)$id)->unique()->filter(function ($classId251) use ($subjectPayments251) {{
+                    return $subjectPayments251->where("class_id", $classId251)->contains(fn ($payment251) => $payment251->paid_at !== null);
+                  }})->values();
+                $classSummaries251[] = [
+                  "subject" => $subjectName251,
+                  "class_count" => $subjectClasses251->count(),
+                  "session_count_values" => $subjectClasses251->pluck("session_count")->map(fn ($value) => (int)$value)->unique()->sort()->values()->all(),
+                  "session_count_8_count" => $subjectClasses251->where("session_count", 8)->count(),
+                  "session_count_3_count" => $subjectClasses251->where("session_count", 3)->count(),
+                  "paid_flag_1_count" => $subjectClasses251->where("paid", 1)->count(),
+                  "pay_date_present_count" => $subjectClasses251->filter(fn ($row) => $row->pay_date !== null && (string)$row->pay_date !== "")->count(),
+                  "package_id_present_count" => $subjectClasses251->filter(fn ($row) => (int)($row->package_id ?? 0) > 0)->count(),
+                  "payment_report_count" => $subjectReports251->count(),
+                  "payment_report_status_counts" => $countBy251($subjectReports251, "status"),
+                  "invoice_count" => $subjectInvoices251->count(),
+                  "invoice_status_counts" => $countBy251($subjectInvoices251, "status"),
+                  "payment_count" => $subjectPayments251->count(),
+                  "active_payment_class_count" => $activePaymentClassIds251->count(),
+                ];
+              }}
+              $probe251["subject_summaries"] = $classSummaries251;
+              $probe251["target_contract_8_count"] = $classes251->where("session_count", 8)->count();
+              $probe251["target_contract_3_count"] = $classes251->where("session_count", 3)->count();
+              $probe251["decision_grade"] = count($studentIds251) === 1 && count($classIds251) > 0;
+              $probe251["error"] = null;
+            }} catch (\\Throwable $e) {{
+              $probe251["decision_grade"] = false;
+              $probe251["error"] = get_class($e).": ".substr((string)$e->getMessage(), 0, 300);
+            }}
+          }}
           $probe1282 = [
             "applicable" => false, "read_only" => true, "decision_grade" => false,
             "reason" => "No target-correct cross-teacher drag probe is configured",
@@ -634,10 +721,11 @@ jobs:
             201, 202 => $probe1282,
             247 => $probe247,
             250 => $probe250,
+            251 => $probe251,
             249 => $probe249,
             default => null,
           }};
-          $decisionGradeRequired = in_array($bugId, [201, 202, 208, 241, 247, 249, 250], true);
+          $decisionGradeRequired = in_array($bugId, [201, 202, 208, 241, 247, 249, 250, 251], true);
           $decisionGrade = $targetProbe !== null && $targetProbe["applicable"] === true
             && $targetProbe["decision_grade"] === true;
           $decisionGradeReason = $decisionGrade
@@ -675,6 +763,7 @@ jobs:
                 "probe_247_calendar_capacity" => $probe247,
                 "probe_249_shared_subject_payment" => $probe249,
                 "probe_250_transfer_sessions" => $probe250,
+                "probe_251_contract_session_count_payment" => $probe251,
               ],
               "evidence_generated_at" => gmdate("c"),
               "read_only" => true,
