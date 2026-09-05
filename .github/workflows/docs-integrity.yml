@@ -67,6 +67,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0 (SHA pin pilot 2026-07-18)
 
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_HOST || secrets.PI_SSH_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
       - name: Setup Node.js 22
         uses: actions/setup-node@v6
         with:
@@ -98,7 +103,6 @@ jobs:
           set -euo pipefail
           mkdir -p ~/.ssh
           echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
-          printf '%s\n' "$PI_HOST_KEY" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/deploy_key ~/.ssh/known_hosts
           MSG="📄 Docs Integrity Check（每週排程）失敗，需要人工複審或修文件：${RUN_URL}"
           ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=20 -o IdentitiesOnly=yes \

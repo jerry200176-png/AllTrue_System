@@ -31,9 +31,15 @@ jobs:
         uses: actions/checkout@v4
         with:
           sparse-checkout: |
+            .github/actions/production-ssh-trust
             operations/closeout/bug-detail-dump.request.md
           sparse-checkout-cone-mode: false
 
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
       - name: Parse bug id
         id: cfg
         env:
@@ -70,13 +76,6 @@ jobs:
           mkdir -p ~/.ssh
           echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          if ssh-keyscan -H "$PI_SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null; then
-            echo "keyscan ok"
-          elif [[ -n "${PI_HOST_KEY:-}" ]]; then
-            printf '%s\n' "$PI_HOST_KEY" > ~/.ssh/known_hosts
-          else
-            echo "::error::no host key"; exit 1
-          fi
 
       - name: Dump bug + related probe
         env:

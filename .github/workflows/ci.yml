@@ -56,6 +56,9 @@ jobs:
       - name: Test production identity evidence transport
         run: python3 scripts/tests/test_production_identity.py
 
+      - name: Test production SSH host trust contract
+        run: bash scripts/tests/production-ssh-trust.test.sh
+
       - name: Test bundle budget chunk classification (#1273)
         run: node --test scripts/bundle-budget.test.mjs
 

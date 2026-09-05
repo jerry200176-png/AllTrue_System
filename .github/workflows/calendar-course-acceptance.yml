@@ -41,6 +41,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
       - name: Setup SSH for read-only smoke token lookup
         env:
           PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
@@ -51,14 +56,6 @@ jobs:
           mkdir -p ~/.ssh
           echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          if ssh-keyscan -H "$PI_SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null; then
-            :
-          elif [[ -n "${PI_HOST_KEY:-}" ]]; then
-            printf '%s\n' "$PI_HOST_KEY" > ~/.ssh/known_hosts
-          else
-            echo '::error::no Pi host key available'; exit 1
-          fi
-          chmod 600 ~/.ssh/known_hosts
 
       - name: Fetch short-lived director session (read-only)
         env:

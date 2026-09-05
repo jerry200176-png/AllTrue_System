@@ -37,6 +37,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Checkout pinned SSH trust helper
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+          sparse-checkout-cone-mode: false
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
       - name: Validate gate
         env:
           MODE: ${{ inputs.mode }}
@@ -57,7 +68,6 @@ jobs:
           mkdir -p ~/.ssh
           echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
 
       - name: Inspect + (execute only) repair row 10229
         env:

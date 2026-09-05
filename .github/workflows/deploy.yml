@@ -670,6 +670,17 @@ jobs:
       cancel-in-progress: false
 
     steps:
+      - name: Checkout pinned SSH trust helper
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+          sparse-checkout-cone-mode: false
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
       - name: Final exact-main gate before production executor
         env:
           TARGET_SHA: ${{ needs.resolve-target.outputs.target_sha }}
@@ -705,7 +716,6 @@ jobs:
           echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           ssh-keygen -l -f ~/.ssh/deploy_key
-          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
 
       - name: Deploy
         run: |
@@ -1108,6 +1118,17 @@ jobs:
       group: alltrue-production-side-effects-v2
       cancel-in-progress: false
     steps:
+      - name: Checkout pinned SSH trust helper
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+          sparse-checkout-cone-mode: false
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_HOST || secrets.PI_SSH_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
       - name: Final exact-main gate before POP bootstrap
         env:
           TARGET_SHA: ${{ needs.resolve-target.outputs.target_sha }}
@@ -1145,7 +1166,6 @@ jobs:
           test -n "$PI_HOST_KEY"
           mkdir -p ~/.ssh
           echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
-          printf '%s\n' "$PI_HOST_KEY" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/deploy_key ~/.ssh/known_hosts
 
       - name: Generate host-local POP identity and verify authenticated submit boundary
@@ -1240,6 +1260,17 @@ jobs:
     environment:
       name: production-activation
     steps:
+      - name: Checkout pinned SSH trust helper
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+          sparse-checkout-cone-mode: false
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_HOST || secrets.PI_SSH_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
       - name: Require phase-specific typed confirmation
         env:
           PHASE: ${{ inputs.phase }}
@@ -1267,7 +1298,6 @@ jobs:
           test -n "$PI_HOST_KEY"
           mkdir -p ~/.ssh
           echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
-          printf '%s\n' "$PI_HOST_KEY" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/deploy_key ~/.ssh/known_hosts
 
       - name: Create principal by replaying the old principal's exact SHOW GRANTS output
