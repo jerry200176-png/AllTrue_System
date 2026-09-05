@@ -95,12 +95,12 @@ export function useCourseSessionsDisplay({
     }
   }
 
-  async function loadClassSessionsForCourses(courseRows = [], token = '') {
+  async function loadClassSessionsForCourses(courseRows = [], token = '', isCurrent = () => true) {
     const rows = Array.isArray(courseRows) ? courseRows : [];
     const ids = rows.map((c) => Number(c?.id || c?.ID || 0)).filter((id) => id > 0);
     const bid = branchId.value ?? branchId;
     if (!bid || ids.length === 0 || !token) {
-      sessionsByCourse.value = {};
+      if (isCurrent()) sessionsByCourse.value = {};
       return;
     }
     try {
@@ -130,15 +130,15 @@ export function useCourseSessionsDisplay({
         perPage: 2000,
         excludeHistoryFuture: true,
       });
-      sessionsByCourse.value = byClass || {};
+      if (isCurrent()) sessionsByCourse.value = byClass || {};
       return true;
     } catch (_) {
-      sessionsByCourse.value = {};
+      if (isCurrent()) sessionsByCourse.value = {};
       return false;
     }
   }
 
-  async function loadEffectiveSessionDates(courseRows = [], token = '') {
+  async function loadEffectiveSessionDates(courseRows = [], token = '', isCurrent = () => true) {
     const rows = Array.isArray(courseRows) ? courseRows : [];
     const bid = branchId.value ?? branchId;
     if (!bid || rows.length === 0 || !token) return;
@@ -182,7 +182,7 @@ export function useCourseSessionsDisplay({
         rangeEnd: end,
         courses: payloadCourses,
       });
-      sessionsByCourse.value = mergeSessionsByCourse(sessionsByCourse.value, byClass || {});
+      if (isCurrent()) sessionsByCourse.value = mergeSessionsByCourse(sessionsByCourse.value, byClass || {});
     } catch (_) {}
   }
 

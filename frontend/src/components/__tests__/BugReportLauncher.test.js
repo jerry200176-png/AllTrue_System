@@ -204,7 +204,7 @@ describe('bug report attachments', () => {
 
     bodyElement('.success-track-button').click();
     await nextTick();
-    expect(wrapper.emitted('open-bugs')).toEqual([[]]);
+    expect(wrapper.emitted('open-bugs')).toEqual([[1]]);
     expect(document.body.querySelector('.at-dialog-overlay')).toBeNull();
     wrapper.unmount();
   });

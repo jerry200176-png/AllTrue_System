@@ -1301,6 +1301,7 @@
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
+import { isCurrentListRequest } from '../lib/listRefreshState.js';
 import { supabase } from '../supabase';
 import { lockScroll, unlockScroll } from '../lib/useScrollLock';
 import { SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
@@ -1450,6 +1451,7 @@ const goToStudentsCommercial = (course, intent = 'edit') => {
 
 const courses = ref([]);
 const coursesLoading = ref(false);
+let courseLoadRequestId = 0;
 const allStudents = ref([]);
 const teachers = ref([]);
 
@@ -4032,8 +4034,9 @@ const invoicePaymentMethodLabel = (method) => ({
 }[method] || method || '—');
 
 const loadCourses = async (page = 1) => {
+  const requestId = ++courseLoadRequestId;
   if (!props.branchId) {
-    coursesLoading.value = false;
+    if (isCurrentListRequest(requestId, courseLoadRequestId)) coursesLoading.value = false;
     courses.value = [];
     pagination.value = { page: 1, lastPage: 1, total: 0, perPage: 50 };
     completedSessionDatesByCourse.value = {};
@@ -4082,6 +4085,7 @@ const loadCourses = async (page = 1) => {
           sessions_used: c.sessions_used ?? c.UsedSessions ?? null,
           remaining_sessions: c.remaining_sessions ?? c.RemainingSessions ?? null
         }));
+        if (!isCurrentListRequest(requestId, courseLoadRequestId)) return;
         pagination.value = {
           page: Number(json?.current_page ?? page),
           lastPage: Number(json?.last_page ?? 1),
@@ -4091,10 +4095,13 @@ const loadCourses = async (page = 1) => {
         courses.value = result;
         resetExpandedStudentGroups(groupCoursesByStudent(result));
         sessionDataLoadFailed.value = false;
-        const sessionsOk = await loadClassSessionsForCourses(result, token);
+        const isCurrent = () => isCurrentListRequest(requestId, courseLoadRequestId);
+        const sessionsOk = await loadClassSessionsForCourses(result, token, isCurrent);
+        if (!isCurrent()) return;
         if (sessionsOk === false) sessionDataLoadFailed.value = true;
-        await loadEffectiveSessionDates(result, token);
-        coursesLoading.value = false;
+        await loadEffectiveSessionDates(result, token, isCurrent);
+        if (!isCurrent()) return;
+        if (isCurrentListRequest(requestId, courseLoadRequestId)) coursesLoading.value = false;
         return;
       }
     }
@@ -4134,21 +4141,26 @@ const loadCourses = async (page = 1) => {
     result = result.filter(c => (c.teacher_name || '').toLowerCase().includes(q));
   }
 
+  if (!isCurrentListRequest(requestId, courseLoadRequestId)) return;
   pagination.value = { page: 1, lastPage: 1, total: result.length, perPage: pagination.value.perPage };
   courses.value = result;
   resetExpandedStudentGroups(groupCoursesByStudent(result));
+  const isCurrent = () => isCurrentListRequest(requestId, courseLoadRequestId);
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
     sessionDataLoadFailed.value = false;
-    const sessionsOk = await loadClassSessionsForCourses(result, token || '');
+    const sessionsOk = await loadClassSessionsForCourses(result, token || '', isCurrent);
+    if (!isCurrent()) return;
     if (sessionsOk === false) sessionDataLoadFailed.value = true;
-    await loadEffectiveSessionDates(result, token || '');
+    await loadEffectiveSessionDates(result, token || '', isCurrent);
+    if (!isCurrent()) return;
   } catch (_) {
+    if (!isCurrentListRequest(requestId, courseLoadRequestId)) return;
     sessionsByCourse.value = {};
     sessionDataLoadFailed.value = true;
   }
-  coursesLoading.value = false;
+  if (isCurrentListRequest(requestId, courseLoadRequestId)) coursesLoading.value = false;
 };
 
 const {

@@ -518,6 +518,7 @@ import { getParentFeedbackList, getParentFeedbackUnreadCount, markParentFeedback
 const props = defineProps({
   branchId: { type: [Number, String], default: null },
   userRole: { type: String, default: '' },
+  focusBugId: { type: [Number, String], default: null },
 });
 
 const bugs = ref([]);
@@ -589,6 +590,7 @@ const showBackToTop = ref(false);
 const listCardRef = ref(null);
 
 let debounceTimer = null;
+let lastFocusedBugId = null;
 
 const isSuperAdmin = computed(() => props.userRole === 'super_admin');
 
@@ -803,6 +805,18 @@ watch(() => props.branchId, () => {
   loadBugs();
 });
 
+watch(() => props.focusBugId, (nextId) => {
+  if (!nextId) {
+    lastFocusedBugId = null;
+    return;
+  }
+  const requestedBug = bugs.value.find((bug) => String(bug.id) === String(nextId));
+  if (requestedBug && String(nextId) !== lastFocusedBugId) {
+    lastFocusedBugId = String(nextId);
+    selectBug(requestedBug);
+  }
+});
+
 function buildStatusFilter() {
   if (filterStatus.value) return filterStatus.value;
   if (quickFilter.value === 'pending') return 'new,triaged,in_progress';
@@ -842,6 +856,14 @@ async function loadBugs() {
     lastPage.value = data.last_page || 1;
     total.value = data.total || 0;
     window.dispatchEvent(new CustomEvent('alltrue-refresh-badges'));
+    const requestedId = String(props.focusBugId || '');
+    if (requestedId && requestedId !== lastFocusedBugId) {
+      const requestedBug = bugs.value.find((bug) => String(bug.id) === requestedId);
+      if (requestedBug) {
+        lastFocusedBugId = requestedId;
+        await selectBug(requestedBug);
+      }
+    }
   } catch (e) {
     console.error('[Bugs] loadBugs:', e);
     listError.value = bugLoadErrorMessage(e, '無法載入 Bug 列表，請稍後再試');

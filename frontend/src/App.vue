@@ -228,7 +228,7 @@
       v-if="session && !isStandaloneParent && (isDirector || isTeacher)"
       :branch-id="currentBranch"
       :current-page-key="active"
-      @open-bugs="setActivePage('bugs')"
+      @open-bugs="openSubmittedBug"
     />
 
     <!-- Mobile Bottom Nav (5 tabs + More) -->
@@ -499,7 +499,7 @@
       <BranchHealthBoard v-if="!isPasswordChangeLocked && role === 'super_admin' && active === 'branch-health-board'" :token="session?.access_token ?? ''" />
       <NightlyReconcilePanel v-if="!isPasswordChangeLocked && role === 'super_admin' && active === 'nightly-reconcile'" :token="session?.access_token ?? ''" />
       <ChatPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'chat'" :branch-id="currentBranch" :user-id="session?.user?.id" :avatar-url="avatarUrl" :super-admin="role === 'super_admin'" :user-role="role" />
-      <BugReportsPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'bugs'" :branch-id="currentBranch" :user-role="role" />
+      <BugReportsPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'bugs'" :branch-id="currentBranch" :user-role="role" :focus-bug-id="focusBugId" />
       <ScheduleDiscrepancyPage v-if="!isPasswordChangeLocked && isDirector && active === 'schedule-discrepancy'" :branch-id="currentBranch" />
       <DuplicateSessionReviewPage v-if="!isPasswordChangeLocked && isDirector && active === 'duplicate-review'" :branch-id="currentBranch" :user-role="role" />
       <ReleaseNotesPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'release-notes'" :user-role="role" />
@@ -806,6 +806,7 @@ const onboardingLaunchOpen = ref(false);
 const onboardingPromptSteps = ref([]);
 const onboardingPromptState = ref(null);
 const onboardingCompletionVisible = ref(false);
+const focusBugId = ref(null);
 const onboardingPromptIsResume = computed(() => onboardingPromptState.value?.status === 'in_progress');
 const onboardingPromptStartIndex = computed(() => onboardingStartIndex(
   onboardingPromptState.value,
@@ -1563,6 +1564,15 @@ function onNavigateLearningFromTeacherHome(payload = {}) {
   setActivePage('learning');
 }
 
+function openSubmittedBug(bugId) {
+  focusBugId.value = bugId || null;
+  setActivePage('bugs');
+}
+
+function clearBugNavigationContext() {
+  focusBugId.value = null;
+}
+
 function setActivePage(page) {
   closeSidebarMore(false);
   closeMoreMenu(false);
@@ -1571,6 +1581,7 @@ function setActivePage(page) {
   if (page !== 'calendar') clearCalendarNavigationContext();
   if (page !== 'tuition-collect') clearTuitionNavigationContext();
   if (page !== 'course-mgmt') clearCourseMgmtNavigationContext();
+  if (page !== 'bugs') clearBugNavigationContext();
   const prev = active.value;
   if (isPasswordChangeLocked.value && page !== 'profile') {
     active.value = 'profile';
