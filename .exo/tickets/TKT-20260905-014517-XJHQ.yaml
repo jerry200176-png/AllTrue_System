@@ -23,6 +23,7 @@ scope:
   - frontend/src/components/__tests__/AdmissionInquiriesPageContract.test.js
   - frontend/src/lib/changelogDraft.generated.js
   - docs/CHANGELOG.md
+  - docs/RELEASE_NOTES_EXEMPTIONS.yml
   - docs/runbooks/admissions-funnel-v1-activation-execution-package.md
   - docs/runbooks/admissions-funnel-v1-founder-activation-brief.md
   - .exo/cache/**

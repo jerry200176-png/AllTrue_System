@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-05-admissions-ownership-history
+    changelog_date: "2026-09-05"
+    changelog_title: "feat(admissions): 補齊負責人、追蹤與詢問歷程"
+    reason: 新生問班 owner／follow-up／history 先隨 dark-launch code 交付；flag 仍關閉，不執行 production migration 或 activation，待 Founder GO 後再發布 staff update。
+
   - id: silent-2026-09-05-xindian-capacity-diagnose
     changelog_date: "2026-09-05"
     changelog_title: "ops: Xindian capacity read-only diagnose workflow"
