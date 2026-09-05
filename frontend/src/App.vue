@@ -578,7 +578,7 @@
               <span>目前軍階</span>
               <span class="material-symbols-outlined" aria-hidden="true">military_tech</span>
             </div>
-            <EngagementRankStrip :engagement="onboardingPromptEngagement" :reduced-motion="onboardingReducedMotion" />
+            <EngagementRankStrip :engagement="onboardingPromptEngagement" :reduced-motion="onboardingReducedMotion" :overlay-z-index="2147483200" />
             <p>{{ onboardingPromptMission.rankNote }}</p>
           </div>
           <div class="onboarding-launch-progress" aria-label="新手任務清單">
@@ -590,12 +590,13 @@
               <li
                 v-for="(step, index) in onboardingPromptSteps"
                 :key="step.id"
+                :aria-current="index === onboardingPromptStartIndex ? 'step' : undefined"
                 :class="{ 'is-current': index === onboardingPromptStartIndex, 'is-done': index < onboardingPromptStartIndex }"
               >
                 <span class="onboarding-check-icon material-symbols-outlined" aria-hidden="true">
                   {{ index < onboardingPromptStartIndex ? 'check_circle' : step.icon }}
                 </span>
-                <span>{{ step.title }}</span>
+                <span><small>第 {{ index + 1 }} 站</small>{{ step.title }}</span>
               </li>
             </ol>
           </div>
@@ -610,7 +611,16 @@
     </div>
   </Transition>
 
-  <div v-if="guideTour.isOpen.value" class="guide-tour-popover-layer" @click.self="guideTour.skipTour">
+  <aside v-if="guideTour.isOpen.value && guideTour.isPracticing.value" class="onboarding-coach" aria-label="進行中的新手任務">
+    <img :src="learningCompanionUrl" alt="" />
+    <div>
+      <span class="onboarding-launch-kicker">實作中 · {{ guideTour.progressText.value }}</span>
+      <strong>{{ guideTour.currentStep.value?.title }}</strong>
+      <button type="button" class="guide-tour-btn" @click="guideTour.resumeStep">查看提示／繼續任務</button>
+    </div>
+  </aside>
+
+  <div v-if="guideTour.isOpen.value && !guideTour.isPracticing.value" class="guide-tour-popover-layer" @click.self="guideTour.mode.value === 'onboarding' ? guideTour.practiceStep() : guideTour.skipTour()">
     <div
       ref="guidePopoverRef"
       :class="['guide-tour-popover', `placement-${guideTour.effectivePlacement.value || 'bottom'}`]"
@@ -631,6 +641,9 @@
         </div>
         <button type="button" class="guide-tour-close" @click.stop="guideTour.skipTour" aria-label="關閉導覽"><span class="material-symbols-outlined">close</span></button>
       </div>
+      <div v-if="guideTour.mode.value === 'onboarding'" class="guide-tour-trail" :aria-label="`已走過 ${guideTour.stepIndex.value} 個步驟，共 ${guideTour.steps.value.length} 個`">
+        <span v-for="(_, index) in guideTour.steps.value" :key="index" :class="{ 'is-done': index < guideTour.stepIndex.value, 'is-current': index === guideTour.stepIndex.value }" />
+      </div>
       <p class="guide-tour-popover-text" aria-live="polite">{{ guideTour.currentStep.value?.description }}</p>
       <div v-if="guideTour.mode.value === 'onboarding' && guideTour.currentStep.value?.objective" class="guide-tour-objective">
         <span class="material-symbols-outlined" aria-hidden="true">flag</span>
@@ -642,6 +655,9 @@
       <p v-if="guideTour.mode.value === 'onboarding' && guideTour.currentStep.value?.completionPrompt" class="guide-tour-completion-prompt">
         {{ guideTour.currentStep.value.completionPrompt }}
       </p>
+      <button v-if="guideTour.mode.value === 'onboarding'" type="button" class="guide-tour-btn guide-tour-practice" @click="guideTour.practiceStep">
+        開始這一步 · 收起提示
+      </button>
       <div v-if="guideTour.mode.value === 'onboarding'" class="guide-tour-checklist">
         <div class="guide-tour-checklist-head">
           <span>任務進度</span>
@@ -689,7 +705,7 @@
         <h2>{{ roleLabel }}新手教學完成</h2>
         <p>你已經掌握最常用的工作路線，接下來可以直接開始今天的任務。</p>
         <div v-if="onboardingCompletionEngagement" class="onboarding-complete-rank">
-          <EngagementRankStrip :engagement="onboardingCompletionEngagement" :reduced-motion="onboardingReducedMotion" />
+          <EngagementRankStrip :engagement="onboardingCompletionEngagement" :reduced-motion="onboardingReducedMotion" :overlay-z-index="2147483200" />
           <span>{{ onboardingPromptMission.rankNote }}</span>
         </div>
         <button type="button" class="guide-tour-btn guide-tour-btn-primary" @click="dismissOnboardingCompletion">開始工作</button>
@@ -1383,7 +1399,10 @@ function startRoleOnboarding({ force = false } = {}) {
     return true;
   }
   document.querySelector('.account-menu')?.removeAttribute('open');
-  return launchRoleOnboarding({ steps, state, force: true });
+  onboardingPromptSteps.value = steps;
+  onboardingPromptState.value = null;
+  onboardingLaunchOpen.value = true;
+  return true;
 }
 
 function isAutomatedBrowserSession() {
@@ -3290,6 +3309,35 @@ function formatBuildTime(rawIso) {
   pointer-events: auto;
 }
 
+.onboarding-coach {
+  position: fixed;
+  left: 20px;
+  bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: min(320px, calc(100vw - 40px));
+  padding: 12px 16px;
+  border: 1px solid var(--ds-hairline);
+  border-radius: 20px;
+  background: var(--ds-canvas);
+  box-shadow: 0 8px 24px rgba(0, 55, 112, .12);
+}
+.onboarding-coach img { width: 48px; height: 56px; object-fit: contain; }
+.onboarding-coach > div { display: grid; gap: 6px; }
+.onboarding-coach strong { font-size: 13px; color: var(--ds-ink); }
+.onboarding-coach .onboarding-launch-kicker { font-size: 11px; margin: 0; }
+.guide-tour-practice { margin: 0 16px 12px; border-color: var(--ds-primary); flex-shrink: 0; }
+.guide-tour-trail { display: flex; gap: 5px; margin: 0 16px; }
+.guide-tour-trail span { height: 5px; flex: 1; border-radius: 9px; background: var(--ds-hairline); transition: background .2s; }
+.guide-tour-trail .is-done { background: var(--ds-success); }
+.guide-tour-trail .is-current { background: var(--ds-primary); }
+.onboarding-launch-checklist li { position: relative; }
+.onboarding-launch-checklist li:not(:last-child)::after { content: ''; position: absolute; left: 23px; top: 40px; bottom: -10px; width: 2px; background: var(--ds-hairline); }
+.onboarding-launch-checklist li > span:last-child { display: grid; gap: 3px; }
+.onboarding-launch-checklist small { font-size: 10px; color: var(--ds-ink-mute); font-weight: 500; }
+
 .guide-tour-popover {
   position: fixed;
   width: min(360px, calc(100vw - 24px));
@@ -3299,7 +3347,7 @@ function formatBuildTime(rawIso) {
   box-shadow: 0 14px 38px rgba(0, 0, 0, 0.35);
   border: 1px solid var(--ds-primary-wash);
   pointer-events: auto;
-  overflow: hidden;
+  overflow: auto;
   isolation: isolate;
   display: flex;
   flex-direction: column;
@@ -3449,7 +3497,7 @@ function formatBuildTime(rawIso) {
 
 .onboarding-launch-card {
   display: grid;
-  grid-template-columns: minmax(190px, 0.75fr) minmax(0, 1.25fr);
+  grid-template-columns: minmax(240px, 1fr) minmax(0, 1.2fr);
   width: min(760px, 100%);
   max-height: min(700px, calc(100vh - 40px));
   overflow: auto;
@@ -3492,8 +3540,8 @@ function formatBuildTime(rawIso) {
   width: 100%;
   height: 100%;
   max-height: none;
-  object-fit: cover;
-  object-position: 68% center;
+  object-fit: contain;
+  object-position: center;
   filter: none;
   animation: none;
 }
@@ -3775,6 +3823,15 @@ function formatBuildTime(rawIso) {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .onboarding-launch-enter-active,
+  .onboarding-launch-leave-active,
+  .onboarding-complete-enter-active,
+  .onboarding-complete-leave-active,
+  .onboarding-launch-enter-active .onboarding-launch-card,
+  .onboarding-launch-leave-active .onboarding-launch-card,
+  .onboarding-complete-enter-active .onboarding-complete-card,
+  .onboarding-complete-leave-active .onboarding-complete-card,
+  .guide-tour-trail span { transition: none; }
   .onboarding-launch-art::before,
   .onboarding-launch-art img,
   .onboarding-launch-spark,

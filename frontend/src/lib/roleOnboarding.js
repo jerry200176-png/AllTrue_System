@@ -67,7 +67,7 @@ const ROLE_ONBOARDING_MISSIONS = {
       title: '完成出缺勤管理',
       description: '到出缺勤管理查看今天的課堂，依課程逐堂完成點名；導覽不會替你送出出缺勤資料。',
       objective: '完成一堂課的點名，留下真實出缺勤紀錄。',
-      completionPrompt: '請先完成一堂課的點名並確認送出，再繼續。',
+      completionPrompt: '請先完成一堂課的點名並確認送出；沒有待點名課堂時，確認清單即可繼續。',
       placement: 'bottom',
     },
     {
