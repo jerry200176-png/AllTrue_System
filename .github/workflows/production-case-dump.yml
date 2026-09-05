@@ -492,6 +492,69 @@ jobs:
                 && (string) ($row->phone_normalized ?? '') !== ''
                 && (string) $row->phone_normalized !== $displayPhone);
             }})->count();
+            $verifyGuardianRow = function ($row, string $expected) use ($classifier) {{
+              if ($row === null) {{
+                return ['present' => false, 'expected' => $expected, 'verified' => null];
+              }}
+              $student = \App\Models\Student::query()->find((int) $row->student_id);
+              $phone = trim((string) ($row->phone_normalized ?? ''));
+              $classification = $student === null || $phone === ''
+                ? null
+                : $classifier->classifyLineStudentId($student, $phone, (int) $row->campus_id);
+              $authMatch = $student === null || $phone === ''
+                ? null
+                : \App\Support\StudentContactPhone::matchesNormalizedInput($student, $phone);
+              $accepted = ($classification['outcome'] ?? null) === 'success' && $authMatch === true;
+              return [
+                'present' => true,
+                'status' => (string) ($row->status ?? ''),
+                'is_primary' => (bool) ($row->is_primary ?? false),
+                'expected' => $expected,
+                'classifier_outcome' => $classification['outcome'] ?? null,
+                'classifier_reason_code' => $classification['reasonCode'] ?? null,
+                'auth_match' => $authMatch,
+                'verified' => $expected === 'success' ? $accepted : !$accepted,
+              ];
+            }};
+            $guardianRow = function (string $status, ?bool $primary = null) use ($db) {{
+              return $db::table('student_guardians as sg')->join('guardians as g', 'g.id', '=', 'sg.guardian_id')
+                ->join('Student as st', 'st.id', '=', 'sg.student_id')->where('sg.status', $status)
+                ->when($primary !== null, fn ($query) => $query->where('sg.is_primary', $primary))
+                ->whereNotNull('g.phone_normalized')->where('g.phone_normalized', '!=', '')
+                ->orderBy('sg.id')->first(['sg.student_id', 'sg.status', 'sg.is_primary', 'g.phone_normalized', 'st.CampusID as campus_id']);
+            }};
+            $primaryRow = $db::table('student_guardians as sg')->join('guardians as g', 'g.id', '=', 'sg.guardian_id')
+              ->join('Student as st', 'st.id', '=', 'sg.student_id')->whereIn('sg.status', ['active', 'read_only'])
+              ->where('sg.is_primary', true)->whereNotNull('g.phone_normalized')->where('g.phone_normalized', '!=', '')
+              ->orderBy('sg.id')->first(['sg.student_id', 'sg.status', 'sg.is_primary', 'g.phone_normalized', 'st.CampusID as campus_id']);
+            $secondaryRow = $db::table('student_guardians as sg')->join('guardians as g', 'g.id', '=', 'sg.guardian_id')
+              ->join('Student as st', 'st.id', '=', 'sg.student_id')->whereIn('sg.status', ['active', 'read_only'])
+              ->where('sg.is_primary', false)->whereNotNull('g.phone_normalized')->where('g.phone_normalized', '!=', '')
+              ->orderBy('sg.id')->first(['sg.student_id', 'sg.status', 'sg.is_primary', 'g.phone_normalized', 'st.CampusID as campus_id']);
+            $legacyRow = $db::table('Student as st')->where(function ($query) {{
+              $query->whereNotNull('st.parent_phone')->where('st.parent_phone', '!=', '')
+                ->orWhere(function ($nested) {{ $nested->whereNotNull('st.Phone')->where('st.Phone', '!=', ''); }});
+            }})->whereNotExists(function ($query) use ($db) {{
+              $query->select($db::raw(1))->from('student_guardians as sg')->join('guardians as g', 'g.id', '=', 'sg.guardian_id')
+                ->whereColumn('sg.student_id', 'st.id')->whereIn('sg.status', ['active', 'read_only'])
+                ->whereNotNull('g.phone_normalized')->where('g.phone_normalized', '!=', '');
+            }})->orderBy('st.id')->first(['st.id as student_id', 'st.CampusID as campus_id', 'st.parent_phone', 'st.Phone']);
+            $legacyStudent = $legacyRow === null ? null : \App\Models\Student::query()->find((int) $legacyRow->student_id);
+            $legacyPhone = $legacyRow === null ? '' : trim((string) ($legacyRow->parent_phone ?? ''));
+            if ($legacyPhone === '' && $legacyRow !== null) {{
+              $legacyPhone = trim((string) ($legacyRow->Phone ?? ''));
+            }}
+            $legacyNormalized = \App\Models\Guardian::normalizePhone($legacyPhone);
+            $legacyClassification = $legacyStudent === null || $legacyNormalized === ''
+              ? null
+              : $classifier->classifyLineStudentId($legacyStudent, $legacyNormalized, (int) $legacyRow->campus_id);
+            $legacyAuthMatch = $legacyStudent === null || $legacyNormalized === ''
+              ? null
+              : \App\Support\StudentContactPhone::matchesNormalizedInput($legacyStudent, $legacyNormalized);
+            $deniedVerification = [];
+            foreach (['revoked', 'suspended', 'pending'] as $deniedStatus) {{
+              $deniedVerification[$deniedStatus] = $verifyGuardianRow($guardianRow($deniedStatus), 'reject');
+            }}
             $out['campus'] = ['found' => $parentCampus !== null, 'campus_id' => $parentCampusId];
             $out['feature_flags'] = [
               'multi_guardian_enabled' => (bool) config('perfflags.multi_guardian_enabled', false),
@@ -509,6 +572,19 @@ jobs:
                 'students_with_guardian_phone_but_no_primary_or_legacy_phone' => 'active/read_only guardian phone exists, no non-revoked primary guardian phone, Student.parent_phone and Student.Phone are blank',
                 'students_with_non_primary_phone_different_from_display_contact' => 'student has an active/read_only non-primary guardian phone whose normalized value differs from the UI legacy parent_phone-or-Phone display value',
               ],
+            ];
+            $out['production_verification'] = [
+              'primary_active_or_read_only_guardian' => $verifyGuardianRow($primaryRow, 'success'),
+              'secondary_active_or_read_only_guardian' => $verifyGuardianRow($secondaryRow, 'success'),
+              'legacy_fallback' => [
+                'present' => $legacyRow !== null,
+                'expected' => 'success',
+                'classifier_outcome' => $legacyClassification['outcome'] ?? null,
+                'classifier_reason_code' => $legacyClassification['reasonCode'] ?? null,
+                'auth_match' => $legacyAuthMatch,
+                'verified' => $legacyRow === null ? null : (($legacyClassification['outcome'] ?? null) === 'success' && $legacyAuthMatch === true),
+              ],
+              'denied_guardian_statuses' => $deniedVerification,
             ];
           }} else {{
             $parentCampus = $db::table('Campus')->where('name', 'like', '%興隆%')->first(['id', 'name']);
