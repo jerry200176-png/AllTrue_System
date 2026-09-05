@@ -567,15 +567,23 @@
         <div class="onboarding-launch-art" aria-hidden="true">
           <span class="onboarding-launch-spark onboarding-launch-spark--one">✦</span>
           <span class="onboarding-launch-spark onboarding-launch-spark--two">✦</span>
-          <img :src="learningCompanionUrl" alt="" />
+          <img :src="onboardingMissionSceneUrl" alt="" class="onboarding-launch-scene" />
         </div>
         <div class="onboarding-launch-content">
-          <span class="onboarding-launch-kicker">{{ onboardingPromptIsResume ? '接續你的任務' : '主任／老師新手任務' }}</span>
-          <h2 id="onboarding-launch-title">{{ onboardingPromptIsResume ? '要繼續上次的導覽嗎？' : '用 2 分鐘熟悉日常工作' }}</h2>
-          <p>{{ onboardingPromptIsResume ? '你上次停在中途，現在可以從原本的位置繼續。' : '沿著真實工作流程走一遍，熟悉最常用的頁面與下一步。' }}</p>
+          <span class="onboarding-launch-kicker">{{ onboardingPromptIsResume ? '接續你的任務' : onboardingPromptMission.eyebrow }}</span>
+          <h2 id="onboarding-launch-title">{{ onboardingPromptIsResume ? '要繼續上次的任務嗎？' : onboardingPromptMission.title }}</h2>
+          <p>{{ onboardingPromptIsResume ? '你上次停在中途，現在可以從原本的位置繼續。' : onboardingPromptMission.description }}</p>
+          <div v-if="onboardingPromptEngagement" class="onboarding-launch-rank">
+            <div class="onboarding-launch-rank-head">
+              <span>目前軍階</span>
+              <span class="material-symbols-outlined" aria-hidden="true">military_tech</span>
+            </div>
+            <EngagementRankStrip :engagement="onboardingPromptEngagement" :reduced-motion="onboardingReducedMotion" />
+            <p>{{ onboardingPromptMission.rankNote }}</p>
+          </div>
           <div class="onboarding-launch-progress" aria-label="新手任務清單">
             <div class="onboarding-launch-progress-head">
-              <span>任務清單</span>
+              <span>任務路線</span>
               <strong>{{ onboardingPromptSteps.length }} 個關鍵步驟</strong>
             </div>
             <ol class="onboarding-launch-checklist">
@@ -616,11 +624,24 @@
       <div class="guide-tour-popover-head">
         <div class="guide-tour-head-title">
           <span v-if="guideTour.currentStep.value?.icon" class="guide-tour-icon material-symbols-outlined" aria-hidden="true">{{ guideTour.currentStep.value.icon }}</span>
-          <strong id="guide-tour-title">{{ guideTour.currentStep.value?.title }}</strong>
+          <div>
+            <span v-if="guideTour.mode.value === 'onboarding'" class="guide-tour-mission-label">任務 {{ guideTour.stepIndex.value + 1 }} / {{ guideTour.steps.value.length }}</span>
+            <strong id="guide-tour-title">{{ guideTour.currentStep.value?.title }}</strong>
+          </div>
         </div>
         <button type="button" class="guide-tour-close" @click.stop="guideTour.skipTour" aria-label="關閉導覽"><span class="material-symbols-outlined">close</span></button>
       </div>
-      <p class="guide-tour-popover-text">{{ guideTour.currentStep.value?.description }}</p>
+      <p class="guide-tour-popover-text" aria-live="polite">{{ guideTour.currentStep.value?.description }}</p>
+      <div v-if="guideTour.mode.value === 'onboarding' && guideTour.currentStep.value?.objective" class="guide-tour-objective">
+        <span class="material-symbols-outlined" aria-hidden="true">flag</span>
+        <div>
+          <strong>這一步的目標</strong>
+          <span>{{ guideTour.currentStep.value.objective }}</span>
+        </div>
+      </div>
+      <p v-if="guideTour.mode.value === 'onboarding' && guideTour.currentStep.value?.completionPrompt" class="guide-tour-completion-prompt">
+        {{ guideTour.currentStep.value.completionPrompt }}
+      </p>
       <div v-if="guideTour.mode.value === 'onboarding'" class="guide-tour-checklist">
         <div class="guide-tour-checklist-head">
           <span>任務進度</span>
@@ -652,7 +673,7 @@
             type="button"
             class="guide-tour-btn guide-tour-btn-primary"
             @click="guideTour.nextStep"
-          >{{ guideTour.hasNext.value ? '下一步' : '完成' }}</button>
+          >{{ guideTour.hasNext.value ? '我完成了，下一步' : '完成任務' }}</button>
         </div>
       </div>
     </div>
@@ -667,6 +688,10 @@
         <span class="onboarding-launch-kicker">任務完成</span>
         <h2>{{ roleLabel }}新手教學完成</h2>
         <p>你已經掌握最常用的工作路線，接下來可以直接開始今天的任務。</p>
+        <div v-if="onboardingCompletionEngagement" class="onboarding-complete-rank">
+          <EngagementRankStrip :engagement="onboardingCompletionEngagement" :reduced-motion="onboardingReducedMotion" />
+          <span>{{ onboardingPromptMission.rankNote }}</span>
+        </div>
         <button type="button" class="guide-tour-btn guide-tour-btn-primary" @click="dismissOnboardingCompletion">開始工作</button>
       </div>
     </div>
@@ -686,6 +711,7 @@ import {
 import { usePageGuideTour } from './lib/usePageGuideTour';
 import {
   ROLE_ONBOARDING_VERSION,
+  getRoleOnboardingMission,
   getRoleOnboardingSteps,
   isOnboardingRole,
   onboardingStartIndex,
@@ -697,6 +723,8 @@ import { useUpdateChecker } from './composables/useUpdateChecker';
 import { lockScroll, unlockScroll, forceUnlockScroll } from './lib/useScrollLock';
 import logoUrl from './assets/logo.png';
 import learningCompanionUrl from './assets/alltrue-learning-companion.png';
+import teacherMissionSceneUrl from './assets/onboarding/teacher-daily-closeout-scene.png';
+import directorMissionSceneUrl from './assets/onboarding/director-daily-control-scene.png';
 
 // Pages — lazy-loaded per route for code splitting (reduces initial bundle size)
 import Login from './pages/Login.vue';
@@ -736,6 +764,7 @@ const ReleaseNotesPage      = defineAsyncComponent(() => import('./pages/Release
 const NightlyReconcilePanel  = defineAsyncComponent(() => import('./pages/NightlyReconcilePanel.vue'));
 const DuplicateSessionReviewPage = defineAsyncComponent(() => import('./pages/DuplicateSessionReviewPage.vue'));
 import AmbientMusicPlayer from './components/AmbientMusicPlayer.vue';
+import EngagementRankStrip from './components/EngagementRankStrip.vue';
 import BugReportLauncher from './components/BugReportLauncher.vue';
 import PinLockModal from './components/PinLockModal.vue';
 import AtToast from './components/AtToast.vue';
@@ -755,6 +784,7 @@ import {
 import { getMobileTabItems, getNavigationGroups } from './lib/navigationRegistry';
 import { resolveActiveAfterProfileLoad } from './lib/resolveActiveAfterProfileLoad';
 import { createDashboardReturnContext } from './lib/dashboardReturnContext';
+import { isUserEngagementRankDisplayEnabled } from './lib/userEngagementDisplay';
 
 // Detect standalone parent portal access via URL hash, query param, or LIFF context
 const liffParentOverride = ref(false);
@@ -812,6 +842,17 @@ const onboardingPromptStartIndex = computed(() => onboardingStartIndex(
   onboardingPromptState.value,
   onboardingPromptSteps.value.length,
 ));
+const onboardingPromptMission = computed(() => getRoleOnboardingMission(role.value));
+const onboardingMissionSceneUrl = computed(() => (
+  role.value === 'teacher' ? teacherMissionSceneUrl : directorMissionSceneUrl
+));
+const onboardingPromptEngagement = computed(() => (
+  isUserEngagementRankDisplayEnabled() ? userProfile.value?.engagement ?? null : null
+));
+const onboardingCompletionEngagement = computed(() => (
+  onboardingCompletionVisible.value ? onboardingPromptEngagement.value : null
+));
+const onboardingReducedMotion = computed(() => prefersReducedMotion());
 const releaseNudgeOpen = ref(false);
 const releaseNudgeVersion = ref('');
 const RELEASE_NOTES_SEEN_KEY = 'alltrue_release_notes_seen';
@@ -3318,6 +3359,19 @@ function formatBuildTime(rawIso) {
   min-width: 0;
 }
 
+.guide-tour-head-title > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.guide-tour-mission-label {
+  color: var(--ds-primary-deep, var(--ds-primary));
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
 .guide-tour-icon {
   font-size: 18px;
   line-height: 1;
@@ -3345,6 +3399,41 @@ function formatBuildTime(rawIso) {
   line-height: 1.6;
   color: var(--ds-ink);
   overflow-y: auto;
+}
+
+.guide-tour-objective {
+  display: flex;
+  gap: 8px;
+  margin: 0 14px 10px;
+  padding: 10px 11px;
+  border: 1px solid var(--ds-primary-wash);
+  border-radius: 10px;
+  background: var(--ds-primary-wash);
+  color: var(--ds-ink);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.guide-tour-objective > .material-symbols-outlined {
+  flex: 0 0 auto;
+  color: var(--ds-primary-deep, var(--ds-primary));
+  font-size: 17px;
+}
+
+.guide-tour-objective > div {
+  display: grid;
+  gap: 2px;
+}
+
+.guide-tour-objective strong {
+  font-size: 11px;
+}
+
+.guide-tour-completion-prompt {
+  margin: 0 14px 10px;
+  color: var(--ds-ink-mute);
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 .onboarding-launch-layer,
@@ -3399,6 +3488,16 @@ function formatBuildTime(rawIso) {
   animation: onboarding-companion-float 3.6s ease-in-out infinite;
 }
 
+.onboarding-launch-art img.onboarding-launch-scene {
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  object-fit: cover;
+  object-position: 68% center;
+  filter: none;
+  animation: none;
+}
+
 .onboarding-launch-spark {
   position: absolute;
   z-index: 2;
@@ -3441,6 +3540,41 @@ function formatBuildTime(rawIso) {
   color: var(--ds-ink-mute);
   font-size: 14px;
   line-height: 1.7;
+}
+
+.onboarding-launch-rank {
+  display: grid;
+  gap: 7px;
+  margin-top: 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--ds-hairline);
+  border-radius: 14px;
+  background: var(--ds-canvas-soft);
+}
+
+.onboarding-launch-rank-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--ds-ink-mute);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.onboarding-launch-rank-head .material-symbols-outlined {
+  color: var(--ds-primary-deep, var(--ds-primary));
+  font-size: 18px;
+}
+
+.onboarding-launch-rank .ers {
+  gap: 5px 8px;
+}
+
+.onboarding-launch-rank > p {
+  margin: 0;
+  color: var(--ds-ink-mute);
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 .onboarding-launch-progress {
@@ -3548,6 +3682,21 @@ function formatBuildTime(rawIso) {
   animation: onboarding-complete-pop 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+.onboarding-complete-rank {
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  margin-top: 18px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: var(--ds-canvas-soft);
+}
+
+.onboarding-complete-rank > span {
+  color: var(--ds-ink-mute);
+  font-size: 11px;
+}
+
 .onboarding-complete-burst {
   position: absolute;
   top: 20px;
@@ -3618,6 +3767,7 @@ function formatBuildTime(rawIso) {
   .onboarding-launch-card { grid-template-columns: 1fr; max-height: calc(100vh - 20px); border-radius: 20px; }
   .onboarding-launch-art { min-height: 150px; }
   .onboarding-launch-art img { width: 110px; max-height: 150px; }
+  .onboarding-launch-art img.onboarding-launch-scene { width: 100%; height: 100%; max-height: none; }
   .onboarding-launch-content { padding: 22px 20px 20px; }
   .onboarding-launch-actions { justify-content: stretch; }
   .onboarding-launch-actions .guide-tour-btn { flex: 1; }
@@ -3682,9 +3832,9 @@ function formatBuildTime(rawIso) {
 }
 
 .guide-tour-btn-primary {
-  border-color: #ff9800;
-  background: #ff9800;
-  color: #fff;
+  border-color: var(--ds-cta);
+  background: var(--ds-cta);
+  color: var(--ds-on-cta);
 }
 
 @media (max-width: 640px) {

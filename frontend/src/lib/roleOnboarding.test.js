@@ -4,6 +4,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   ROLE_ONBOARDING_VERSION,
+  getRoleOnboardingMission,
   getRoleOnboardingSteps,
   onboardingStartIndex,
   onboardingStorageKey,
@@ -38,6 +39,19 @@ const identity = { role: 'teacher', userId: 'teacher-7', storage };
 assert.equal(getRoleOnboardingSteps('teacher').length, 4);
 assert.equal(getRoleOnboardingSteps('director').length, 4);
 assert.equal(getRoleOnboardingSteps('super_admin')[0].page, 'director');
+assert.deepEqual(
+  [getRoleOnboardingMission('teacher').id, getRoleOnboardingMission('director').id],
+  ['teacher-daily-closeout-v1', 'director-daily-control-v1'],
+);
+for (const role of ['teacher', 'director']) {
+  const mission = getRoleOnboardingMission(role);
+  assert.equal(mission.steps.length, 4);
+  assert.ok(mission.eyebrow && mission.title && mission.description && mission.rankNote);
+  for (const step of mission.steps) {
+    assert.ok(step.objective, `${role} ${step.id} needs an operational objective`);
+    assert.ok(step.completionPrompt, `${role} ${step.id} needs a completion prompt`);
+  }
+}
 for (const role of ['teacher', 'director']) {
   for (const step of getRoleOnboardingSteps(role)) {
     assert.ok(step.id && step.title && step.description && step.icon);
@@ -56,8 +70,8 @@ assert.deepEqual(
   getRoleOnboardingSteps('teacher').map(({ page, target }) => [page, target]),
   [
     ['teacher-home', '[data-guide="teacher-home-today"]'],
-    ['attendance', '[data-guide="attendance-header"]'],
-    ['learning', '[data-guide="learning-header"]'],
+    ['attendance', '[data-guide="attendance-pending-list"]'],
+    ['learning', '[data-guide="learning-table"]'],
     ['calendar', '[data-guide="calendar-header"]'],
   ],
 );
@@ -65,9 +79,9 @@ assert.deepEqual(
   getRoleOnboardingSteps('director').map(({ page, target }) => [page, target]),
   [
     ['director', '[data-guide="director-summary"]'],
-    ['notifications', '[data-guide="notifications-header"]'],
+    ['notifications', '[data-guide="notifications-list"]'],
     ['calendar', '[data-guide="calendar-toolbar"]'],
-    ['learning', '[data-guide="learning-header"]'],
+    ['learning', '[data-guide="learning-table"]'],
   ],
 );
 

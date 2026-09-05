@@ -6,6 +6,7 @@ import { getRoleOnboardingSteps } from '../../lib/roleOnboarding.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pageSource = (name) => readFileSync(resolve(__dirname, `../../pages/${name}`), 'utf8');
+const appSource = readFileSync(resolve(__dirname, '../../App.vue'), 'utf8');
 
 const PAGE_FILES = {
   director: 'DirectorDashboard.vue',
@@ -32,5 +33,15 @@ describe('role onboarding spotlight anchors', () => {
   it('exposes the first-step anchors that V1/V1.1 tours highlight', () => {
     expect(pageSource('DirectorDashboard.vue')).toContain('data-guide="director-summary"');
     expect(pageSource('TeacherHomePage.vue')).toContain('data-guide="teacher-home-today"');
+  });
+
+  it('renders mission objectives, explicit completion copy, and the existing rank strip', () => {
+    expect(appSource).toContain('onboardingPromptMission.eyebrow');
+    expect(appSource).toContain('guide-tour-objective');
+    expect(appSource).toContain('guide-tour-completion-prompt');
+    expect(appSource).toContain('currentStep.value.completionPrompt');
+    expect(appSource).toContain('我完成了，下一步');
+    expect(appSource).toContain('<EngagementRankStrip');
+    expect(appSource).toContain('onboardingPromptMission.rankNote');
   });
 });
