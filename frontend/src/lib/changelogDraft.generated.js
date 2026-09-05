@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.05",
     "date": "2026-09-05",
     "title": "2026.09.05 草稿（未發布）",
-    "summary": "科目數改為日粒度明細；補齊負責人、追蹤與詢問歷程",
+    "summary": "補齊負責人、追蹤與詢問歷程；搜尋更新不閃爍並可直接追蹤 Bug 回報",
     "audience": [
       "teacher",
       "director"
@@ -18,7 +18,6 @@ export const changelogDraftNotes = [
       {
         "title": "新增內容",
         "items": [
-          "科目數改為日粒度明細",
           "補齊負責人、追蹤與詢問歷程"
         ]
       },
@@ -31,7 +30,6 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
-      "科目數改為日粒度明細",
       "補齊負責人、追蹤與詢問歷程",
       "搜尋更新不閃爍並可直接追蹤 Bug 回報",
       "phone binding classifier parity"

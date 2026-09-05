@@ -4,40 +4,6 @@
  */
 export const staffUpdates = [
   {
-    "id": "staff-2026-09-05-subject-units-timeline",
-    "publishedAt": "2026-09-05",
-    "effectiveAt": null,
-    "audiences": [
-      "director",
-      "teacher"
-    ],
-    "audience": [
-      "director",
-      "teacher"
-    ],
-    "importance": "major",
-    "title": "科目數改為每日明細",
-    "summary": "主任可比較授權分校內的老師與每日科目數；老師只看到自己的資料。",
-    "items": [
-      "科目數現在按日期、分校、科目與老師拆開顯示，可直接看出每日變化與跨分校差異。",
-      "正課、輔導／試聽與核薪科目數分開統計；主任看授權範圍，老師只看自己的明細。"
-    ],
-    "sections": [
-      {
-        "title": "操作更順手",
-        "items": [
-          "科目數現在按日期、分校、科目與老師拆開顯示，可直接看出每日變化與跨分校差異。",
-          "正課、輔導／試聽與核薪科目數分開統計；主任看授權範圍，老師只看自己的明細。"
-        ]
-      }
-    ],
-    "sourceRefs": [
-      "changelog:2026-09-05:subject-units-timeline"
-    ],
-    "date": "2026-09-05",
-    "version": "2026.09.05"
-  },
-  {
     "id": "staff-2026-09-05-search-and-bug-tracking",
     "publishedAt": "2026-09-05",
     "effectiveAt": null,

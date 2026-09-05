@@ -36,14 +36,4 @@ describe('SubjectUnitsPage disclosure accessibility', () => {
     expect(header).toContain('aria-controls="subject-units-level-breakdown-body"');
     expect(source).toContain('id="subject-units-level-breakdown-body"');
   });
-
-  it('keeps the daily comparison dimensions and role copy visible in the page contract', () => {
-    expect(source).toContain('/v1/finance/subject-units/timeline');
-    expect(source).toContain('老師 × 日期 × 分校 × 科目');
-    expect(source).toContain('只顯示我的資料');
-    expect(source).toContain('正課');
-    expect(source).toContain('輔導／試聽');
-    expect(source).toContain('核薪');
-    expect(source).toContain('每日核薪科目數');
-  });
 });

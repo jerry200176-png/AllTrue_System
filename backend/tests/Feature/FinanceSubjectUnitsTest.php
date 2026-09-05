@@ -205,7 +205,10 @@ class FinanceSubjectUnitsTest extends TestCase
     }
 
     /**
-     * 老師只能看自己的科目數，不能從舊版彙總端點取得同事姓名或排名。
+     * 老師可看分校「科目數排行」（同儀表競爭力，FR-008）：
+     * - 自己的時數欄位完整可見（is_self=true）
+     * - 他人的時數欄位 redacted（is_self=false，欄位值為 null）
+     * - branch-wide totals 不回傳（隱私保護）
      *
      * 根因修復：routes/api.php 曾將 GET finance/subject-units 登錄在
      * role:director-only 群組中（第 226 行），導致 role:director,teacher 群組
@@ -213,7 +216,7 @@ class FinanceSubjectUnitsTest extends TestCase
      * 老師呼叫時得到 403。已移除重複登錄，保留 role:director,teacher 版本。
      * Ref: Bug #7 / B1 偵查報告 2026-04-22。
      */
-    public function test_teacher_sees_only_own_subject_units(): void
+    public function test_teacher_sees_branch_wide_subject_units(): void
     {
 
         $teacherA = $this->createTeacherWithToken(1, 'teacher-subject-units-self-a@example.com', '老師甲');
@@ -326,17 +329,23 @@ class FinanceSubjectUnitsTest extends TestCase
             ->assertOk();
 
         $teachers = collect($response->json('teachers'));
-        $this->assertCount(1, $teachers);
+        $this->assertCount(2, $teachers);
         $rowA = $teachers->firstWhere('teacher_name', '老師甲');
+        $rowB = $teachers->firstWhere('teacher_name', '老師乙');
         $this->assertNotNull($rowA, '老師甲 should appear in teacher list');
+        $this->assertNotNull($rowB, '老師乙 should appear in teacher list');
 
-        // Caller sees their own hours in full.
+        // FR-008: caller (老師甲) sees their own hours in full.
         $this->assertTrue((bool) ($rowA['is_self'] ?? false), 'Calling teacher row must be marked is_self=true');
         $this->assertSame(2.0, (float) ($rowA['one_on_one_hours'] ?? 0), 'Self one_on_one_hours must not be redacted');
-        $this->assertArrayNotHasKey('rank', $rowA, 'Teacher must not receive a peer ranking side channel');
-        $this->assertSame(1, $response->json('total_teachers'));
+        $this->assertEqualsWithDelta(66.7, (float) ($rowA['share_pct'] ?? 0), 0.2, 'Self share_pct should be ~66.7%');
 
-        // Branch-wide totals are not exposed to the teacher role.
+        // FR-008: other teacher's numeric columns are redacted (null) for privacy.
+        $this->assertFalse((bool) ($rowB['is_self'] ?? true), 'Other teacher row must be marked is_self=false');
+        $this->assertNull($rowB['one_on_two_hours'], 'Other teacher one_on_two_hours must be redacted');
+        $this->assertNull($rowB['share_pct'], 'Other teacher share_pct must be redacted');
+
+        // FR-008: branch-wide totals are not exposed to the teacher role.
         $this->assertNull($response->json('totals'), 'totals must be absent from teacher-role response');
     }
 

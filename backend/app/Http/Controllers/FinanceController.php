@@ -15,7 +15,6 @@ use App\Models\PayrollTeacherBranchRule;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
-use App\Services\SubjectUnitsTimelineService;
 use App\Support\TeacherProfileDirectory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -490,7 +489,7 @@ class FinanceController extends Controller
                 'subject_count_without',
                 'share_pct',
             ];
-            $response['teachers'] = array_values(array_filter(array_map(function ($t) use ($authTeacherId, $redactedFields) {
+            $response['teachers'] = array_map(function ($t) use ($authTeacherId, $redactedFields) {
                 $isSelf = $authTeacherId > 0 && (int) ($t['teacher_id'] ?? 0) === $authTeacherId;
                 $t['is_self'] = $isSelf;
                 if (!$isSelf) {
@@ -503,88 +502,12 @@ class FinanceController extends Controller
                         $t['level_breakdown'] = [];
                     }
                 }
-                if ($isSelf) {
-                    unset($t['rank']);
-                }
                 return $t;
-            }, $response['teachers']), fn ($t) => (bool) $t['is_self']));
-            $response['total_teachers'] = count($response['teachers']);
+            }, $response['teachers']);
             unset($response['totals'], $response['level_breakdown_totals']);
         }
 
         return response()->json($response);
-    }
-
-    /**
-     * GET /api/v1/finance/subject-units/timeline
-     *
-     * Daily subject-unit read model keyed by teacher/date/campus/subject.
-     * This is intentionally separate from the legacy monthly aggregate so
-     * existing payroll consumers keep their response contract while the page
-     * gets a truthful daily comparison surface.
-     */
-    public function subjectUnitsTimeline(Request $request, SubjectUnitsTimelineService $timeline)
-    {
-        $range = $request->validate([
-            'start' => 'nullable|required_with:end|date_format:Y-m-d',
-            'end' => 'nullable|required_with:start|date_format:Y-m-d|after_or_equal:start',
-        ]);
-        if (!isset($range['start'], $range['end'])) {
-            $taipeiNow = \Carbon\Carbon::now('Asia/Taipei');
-            $range['start'] = $taipeiNow->copy()->startOfMonth()->toDateString();
-            $range['end'] = $taipeiNow->copy()->endOfMonth()->toDateString();
-        }
-
-        $role = (string) $request->attributes->get('auth_role');
-        $authorizedCampusIds = array_values(array_map('intval', (array) $request->attributes->get('auth_campus_ids', [])));
-        $requestedBranch = $request->filled('branch_id') ? (int) $request->input('branch_id') : null;
-
-        // An empty campus assignment is never equivalent to global scope.
-        if ($role !== 'super_admin' && $authorizedCampusIds === []) {
-            return response()->json($this->emptySubjectUnitsTimeline($range, $role, []));
-        }
-        if ($requestedBranch !== null && $role !== 'super_admin' && !in_array($requestedBranch, $authorizedCampusIds, true)) {
-            return response()->json(['message' => '您沒有查看此分校資料的權限。'], 403);
-        }
-
-        $campusIds = $requestedBranch !== null ? [$requestedBranch] : $authorizedCampusIds;
-        $teacherId = $role === 'teacher' ? (int) ($request->attributes->get('auth_teacher_id') ?? 0) : null;
-        if ($role === 'teacher' && $teacherId <= 0) {
-            \Illuminate\Support\Facades\Log::warning('[FinanceController::subjectUnitsTimeline] teacher identity missing');
-            return response()->json($this->emptySubjectUnitsTimeline($range, $role, $campusIds));
-        }
-
-        $result = $timeline->build(
-            \Carbon\Carbon::createFromFormat('Y-m-d', $range['start'], 'Asia/Taipei')->startOfDay(),
-            \Carbon\Carbon::createFromFormat('Y-m-d', $range['end'], 'Asia/Taipei')->endOfDay(),
-            $campusIds,
-            $teacherId,
-        );
-
-        return response()->json(array_merge([
-            'period' => ['start' => $range['start'], 'end' => $range['end']],
-            'scope' => [
-                'role' => $role,
-                'branch_id' => $requestedBranch,
-                'campus_ids' => $campusIds,
-                'teacher_id' => $teacherId,
-            ],
-        ], $result));
-    }
-
-    private function emptySubjectUnitsTimeline(array $range, string $role, array $campusIds): array
-    {
-        return [
-            'period' => ['start' => $range['start'], 'end' => $range['end']],
-            'scope' => ['role' => $role, 'branch_id' => null, 'campus_ids' => $campusIds, 'teacher_id' => null],
-            'entries' => [], 'days' => [],
-            'totals' => [
-                'date' => null, 'regular_hours' => 0, 'tutoring_trial_hours' => 0,
-                'regular_weighted' => 0, 'tutoring_trial_weighted' => 0,
-                'regular_subject_count' => 0, 'tutoring_trial_subject_count' => 0,
-                'payroll_subject_count' => 0, 'session_count' => 0,
-            ],
-        ];
     }
 
     /**
