@@ -75,7 +75,7 @@ fi
 echo
 
 echo "Checking remote merged branches..."
-mapfile -t REMOTE_MERGED < <(git branch -r --merged "$BASE_BRANCH" | sed 's/^[ ]*//' | sed 's#^origin/##' | sed 's/^+ //' | grep -v '^HEAD$' || true)
+mapfile -t REMOTE_MERGED < <(git branch -r --merged "$BASE_BRANCH" | sed 's/^[ ]*//' | sed 's#^origin/##' | sed 's/^+ //' | grep -v -E '^HEAD( ->|$)' || true)
 
 REMOTE_DELETE=()
 for b in "${REMOTE_MERGED[@]}"; do
