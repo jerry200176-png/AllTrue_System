@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 458 api/* routes · generated 2026-09-05
+> Source: `php artisan route:list --json` · 459 api/* routes · generated 2026-09-05
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -348,7 +348,7 @@
 | POST | `api/v1/exception-workflows/{id}/reject` | `ExceptionWorkflowController@reject` | role+campus |
 | POST | `api/v1/exception-workflows/{id}/waive` | `ExceptionWorkflowController@waive` | role+campus |
 
-## /api/v1/finance (55)
+## /api/v1/finance (56)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -374,6 +374,7 @@
 | POST | `api/v1/finance/periods/reopen` | `AccountingPeriodController@reopen` | role+campus |
 | GET | `api/v1/finance/revenue` | `FinanceController@revenue` | role+campus |
 | GET | `api/v1/finance/subject-units` | `FinanceController@subjectUnits` | role+campus |
+| GET | `api/v1/finance/subject-units/timeline` | `FinanceController@subjectUnitsTimeline` | role+campus |
 | GET | `api/v1/finance/summary` | `FinanceController@summary` | role+campus |
 | GET | `api/v1/finance/teacher-eligibility` | `TeacherEligibilityController@index` | role+campus+pin |
 | POST | `api/v1/finance/teacher-eligibility/achievements` | `TeacherEligibilityInputController@storeAchievement` | role+campus+pin |

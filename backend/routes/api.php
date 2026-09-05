@@ -614,6 +614,7 @@ Route::prefix('v1')->group(function () {
         Route::get('teacher-attendance', [\App\Http\Controllers\TeacherAttendanceController::class, 'index'])->middleware('role:director,super_admin');
         Route::post('teacher-attendance/{id}/adjust', [\App\Http\Controllers\TeacherAttendanceController::class, 'adjust'])->middleware('role:director,super_admin')->whereNumber('id');
         Route::get('finance/subject-units', [FinanceController::class, 'subjectUnits']);
+        Route::get('finance/subject-units/timeline', [FinanceController::class, 'subjectUnitsTimeline']);
 
         Route::get('learning-records', [LearningRecordController::class, 'index']);
         Route::get('learning-records/latest-approved-summary', [LearningRecordController::class, 'latestApprovedSummary']);
