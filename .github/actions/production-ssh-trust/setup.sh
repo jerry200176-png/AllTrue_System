@@ -16,27 +16,33 @@ fi
 ssh_dir=${HOME}/.ssh
 known_hosts=${ssh_dir}/known_hosts
 config=${ssh_dir}/config
+candidate=${known_hosts}.candidate
 install -d -m 700 "$ssh_dir"
 umask 077
-printf '%s\n' "$host_key" > "$known_hosts"
+trap 'rm -f "$candidate"' EXIT
+printf '%s\n' "$host_key" > "$candidate"
 
 # Validate that the pinned entry actually covers the host before any SSH call.
 # ssh-keygen -F supports both clear-host and hashed-host known_hosts entries.
-if ! ssh-keygen -F "$host" -f "$known_hosts" >/dev/null 2>&1; then
-  echo '::error::PI_HOST_KEY does not contain the configured production host' >&2
+entry_count=$(awk 'NF && $1 !~ /^#/ { count++ } END { print count + 0 }' "$candidate")
+parsed_count=$(ssh-keygen -lf "$candidate" 2>/dev/null | wc -l)
+if [[ "$entry_count" -lt 1 || "$parsed_count" -ne "$entry_count" ]]; then
+  echo '::error::PI_HOST_KEY must contain only parseable pinned known_hosts entries' >&2
   exit 1
 fi
 
-# Multiple pinned algorithms for the same host are valid. Every non-comment
-# entry must parse as a key and must be returned by ssh-keygen -F for this
-# exact host; this rejects a mixed-host secret and malformed pin without ever
-# discovering or accepting a key from the network.
-entry_count=$(awk 'NF && $1 !~ /^#/ { count++ } END { print count + 0 }' "$known_hosts")
-parsed_count=$(ssh-keygen -lf "$known_hosts" 2>/dev/null | wc -l)
-matched_count=$(ssh-keygen -F "$host" -f "$known_hosts" 2>/dev/null | awk '$1 !~ /^#/ { count++ } END { print count + 0 }')
+# Multiple pinned algorithms and host aliases are valid in the authoritative
+# secret. Narrow the runtime file to entries matching this exact target so an
+# unrelated alias is never consulted, while still refusing a missing pin.
+if ! ssh-keygen -F "$host" -f "$candidate" 2>/dev/null \
+  | awk '$1 !~ /^#/ { print }' > "$known_hosts"; then
+  echo '::error::unable to extract the configured production host pin' >&2
+  exit 1
+fi
+matched_count=$(awk 'NF && $1 !~ /^#/ { count++ } END { print count + 0 }' "$known_hosts")
 echo "Pinned production host-key validation: entries=$entry_count parsed=$parsed_count matched=$matched_count"
-if [[ "$entry_count" -lt 1 || "$parsed_count" -ne "$entry_count" || "$matched_count" -ne "$entry_count" ]]; then
-  echo '::error::PI_HOST_KEY must contain only parseable pinned keys for the configured production host' >&2
+if [[ "$matched_count" -lt 1 ]]; then
+  echo '::error::PI_HOST_KEY does not contain the configured production host' >&2
   exit 1
 fi
 

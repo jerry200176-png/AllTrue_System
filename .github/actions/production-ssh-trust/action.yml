@@ -5,7 +5,7 @@ inputs:
     description: Production SSH hostname used by the calling workflow.
     required: true
   host-key:
-    description: One pinned known_hosts entry for the production host.
+    description: Pinned known_hosts entries for the production host.
     required: true
 runs:
   using: composite

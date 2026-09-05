@@ -57,6 +57,8 @@ host='pi.example.test'
 known_hosts_line="$host $(cat "$key.pub")"
 known_hosts_lines="$known_hosts_line
 $host $(cat "$key2.pub")"
+mixed_host_lines="$known_hosts_line
+other.example.test $(cat "$key2.pub")"
 
 HOME="$tmp/home-ok" INPUT_HOST="$host" INPUT_HOST_KEY="$known_hosts_line" \
   GITHUB_OUTPUT="$tmp/output" bash "$setup"
@@ -75,10 +77,14 @@ if HOME="$tmp/home-mismatch" INPUT_HOST='other.example.test' INPUT_HOST_KEY="$kn
   exit 1
 fi
 
-if HOME="$tmp/home-multiline" INPUT_HOST="$host" INPUT_HOST_KEY="$known_hosts_line
-other.example.test $(cat "$key2.pub")" \
+HOME="$tmp/home-aliases" INPUT_HOST="$host" INPUT_HOST_KEY="$mixed_host_lines" \
+  bash "$setup"
+test "$(ssh-keygen -F 'other.example.test' -f "$tmp/home-aliases/.ssh/known_hosts" | wc -l)" -eq 0
+
+if HOME="$tmp/home-malformed" INPUT_HOST="$host" INPUT_HOST_KEY="$known_hosts_line
+other.example.test ssh-ed25519 invalid" \
   bash "$setup" >/dev/null 2>&1; then
-  echo 'mixed-host key set was accepted' >&2
+  echo 'malformed host key was accepted' >&2
   exit 1
 fi
 

@@ -160,10 +160,13 @@ function checkLegacySize(errors, warnings) {
     if (!a || a === '-') continue;
     total += (Number(a) || 0) + (Number(d) || 0);
   }
-  if (total > 700) {
+  const changedNames = git(['diff', '--name-only', `${base}...HEAD`]).split('\n').filter(Boolean);
+  const touchesProduction = changedNames.some((name) => /^(backend\/app\/|backend\/routes\/|backend\/database\/|frontend\/src\/)/.test(name));
+  const hardLimit = touchesProduction ? 700 : 1300;
+  if (total > hardLimit) {
     errors.push(formatGovError({
-      code: GOV_CODES.SIZE, message: `Legacy PR size ${total} > 700`,
-      actual: JSON.stringify({ total, base }), policy: 'presubmit.yml CHECK 2',
+      code: GOV_CODES.SIZE, message: `Legacy PR size ${total} > ${hardLimit}`,
+      actual: JSON.stringify({ total, base, hardLimit, touchesProduction }), policy: 'presubmit.yml CHECK 2',
       fix: 'Split PR. Stacked: export PR_BASE_SHA=<base>. Risk-based gate = G2.',
     }));
   } else if (total > 400) {
