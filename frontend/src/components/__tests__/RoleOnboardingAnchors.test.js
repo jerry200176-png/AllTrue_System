@@ -43,5 +43,7 @@ describe('role onboarding spotlight anchors', () => {
     expect(appSource).toContain('我完成了，下一步');
     expect(appSource).toContain('<EngagementRankStrip');
     expect(appSource).toContain('onboardingPromptMission.rankNote');
+    expect(pageSource('DirectorDashboard.vue')).toContain('<EngagementRankStrip');
+    expect(pageSource('TeacherHomePage.vue')).toContain('<EngagementRankStrip');
   });
 });

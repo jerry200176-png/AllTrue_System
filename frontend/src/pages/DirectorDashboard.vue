@@ -31,6 +31,10 @@
           </div>
         </header>
 
+        <div v-if="engagementVisible && initialEngagement" class="dash-engagement-strip" data-guide="director-engagement-rank">
+          <EngagementRankStrip :engagement="initialEngagement" :reduced-motion="engagementReducedMotion" />
+        </div>
+
         <nav class="director-workbench-v2__nav" role="tablist" aria-label="總覽檢視模式">
           <button
             type="button"
@@ -364,6 +368,7 @@ import { fetchDiscrepancySummary } from '../lib/scheduleDiscrepanciesApi';
 import TodayProgressCard from '../components/TodayProgressCard.vue';
 import RecentSubstitutesCard from '../components/substitute/RecentSubstitutesCard.vue';
 import TeacherAssessmentFillRateCard from '../components/TeacherAssessmentFillRateCard.vue';
+import EngagementRankStrip from '../components/EngagementRankStrip.vue';
 import OperationsQuickStart from '../components/OperationsQuickStart.vue';
 import PaymentSlipModal from '../components/PaymentSlipModal.vue';
 import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
@@ -391,6 +396,7 @@ import {
 } from '../lib/trustDecisionDisplay.js';
 import { buildDirectorDashboardTasks } from '../lib/directorDashboardTasks.js';
 import { runDashboardLoaders } from '../lib/dashboardLoadPlan.js';
+import { isUserEngagementRankDisplayEnabled } from '../lib/userEngagementDisplay';
 
 const props = defineProps({
   branchId: [String, Number],
@@ -400,6 +406,11 @@ const props = defineProps({
   focusSection: { type: String, default: null },
 });
 const emit = defineEmits(['navigate']);
+const engagementVisible = computed(() => isUserEngagementRankDisplayEnabled());
+const engagementReducedMotion = computed(() => (
+  typeof window !== 'undefined'
+  && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
+));
 const workflowFocusError = ref('');
 
 const todaySchedules = ref([]);
