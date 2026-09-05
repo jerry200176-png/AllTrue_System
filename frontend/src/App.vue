@@ -718,7 +718,7 @@ const ClassroomManagement   = defineAsyncComponent(() => import('./pages/Classro
 const SubjectSettingsPage   = defineAsyncComponent(() => import('./pages/SubjectSettingsPage.vue'));
 const TeachersList          = defineAsyncComponent(() => import('./pages/TeachersList.vue'));
 const AttendancePage        = defineAsyncComponent(() => import('./pages/AttendancePage.vue'));
-const SubjectUnitsPage      = defineAsyncComponent(() => import('./pages/SubjectUnitsPage.vue'));
+const SubjectUnitsPage      = defineAsyncComponent(() => import('./pages/SubjectUnitsTimelinePage.vue'));
 const TuitionCollectionPage = defineAsyncComponent(() => import('./pages/TuitionCollectionPage.vue'));
 const TuitionReportPage     = defineAsyncComponent(() => import('./pages/TuitionReportPage.vue'));
 const ParttimePayrollPage   = defineAsyncComponent(() => import('./pages/ParttimePayrollPage.vue'));

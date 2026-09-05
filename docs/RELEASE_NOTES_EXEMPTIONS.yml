@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-05-parent-binding-guardian-phone
+    changelog_date: "2026-09-05"
+    changelog_title: "fix(parent): guardian phone binding classifier parity"
+    reason: 家長 LINE／Portal 綁定的後端 auth classifier 與 PII-safe production evidence；不新增教職員操作流程，沒有 production activation、migration 或資料修復。
+
   - id: silent-2026-09-05-admissions-ownership-history
     changelog_date: "2026-09-05"
     changelog_title: "feat(admissions): 補齊負責人、追蹤與詢問歷程"
