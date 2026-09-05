@@ -9,6 +9,17 @@
 - Bug 回報送出後的「查看回報進度」會直接開啟該筆回報詳情，回報者可立即看到目前狀態與後續確認入口。
 - 不改 API、權限、回報狀態規則或既有資料；無 migration／production data repair。
 
+## 2026-09-05 — fix(parent): guardian phone binding classifier parity
+<!-- release-notes: silent_ship=silent-2026-09-05-parent-binding-guardian-phone -->
+- LINE／Parent Portal 綁定判斷改以 active／read_only 監護人手機集合比對，不再把主要聯絡人顯示欄位誤當成唯一可用手機。
+- 保留 legacy `parent_phone`／`Phone` fallback 與 revoked／suspended／pending 拒絕規則；補上 primary、secondary、legacy、revoked、missing 回歸測試。
+- 本次不執行 migration、feature flag activation、production data repair 或 production mutation。
+
+## 2026-09-05 — feat(admissions): 補齊負責人、追蹤與詢問歷程
+<!-- release-notes: silent_ship=silent-2026-09-05-admissions-ownership-history -->
+- 主任可在同一筆新生問班紀錄認領負責、查看目前狀態／下一步、設定下次追蹤日期與瀏覽處理歷程；既有試聽、評估、成交／未成交流程不變。
+- 以既有 campus scope、SecurityAuditEvent 與 feature flag 控制；本次不開啟 production flag、不執行 migration 或資料修復。
+
 ## 2026-09-05 — ops: Xindian capacity read-only diagnose workflow
 <!-- release-notes: silent_ship=silent-2026-09-05-xindian-capacity-diagnose -->
 - Added a workflow-dispatch, SELECT-only production probe that aggregates 新店 (campus 9) invoice cash, session mix, peak slots, and teacher cross-campus load for capacity modeling.

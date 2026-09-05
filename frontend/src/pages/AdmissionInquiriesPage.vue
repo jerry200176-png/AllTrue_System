@@ -91,6 +91,7 @@
             <span class="admission-status">{{ statusLabel(item.status) }}</span>
             <strong>{{ item.student_name }}</strong>
             <small>{{ item.subject }} · {{ item.parent_phone }}</small>
+            <small>負責：{{ item.owner_name || '尚未認領' }}</small>
             <small class="admission-next">下一步：{{ nextActionLabel(item.next_action) }}</small>
           </button>
         </section>
@@ -98,9 +99,24 @@
           <div class="admission-detail-head"><div><span class="admission-status">{{ statusLabel(detail.status) }}</span><h2>{{ detail.student_name }}</h2><p>{{ detail.grade }} · {{ detail.school_name }} · {{ detail.subject }}</p></div><a class="admission-phone" :href="'tel:' + detail.parent_phone">{{ detail.parent_name }} · {{ detail.parent_phone }}</a></div>
           <dl class="admission-meta">
             <div><dt>方便時段</dt><dd>{{ (detail.preferred_slots || []).join('、') || '未填' }}</dd></div>
+            <div><dt>目前負責</dt><dd>{{ detail.owner_name || '尚未認領' }}</dd></div>
             <div><dt>下一步</dt><dd>{{ nextActionLabel(detail.next_action) }}</dd></div>
+            <div><dt>下次追蹤</dt><dd>{{ detail.follow_up_at ? formatDate(detail.follow_up_at) : '尚未安排' }}</dd></div>
           </dl>
           <p v-if="detail.public_notes" class="admission-note">{{ detail.public_notes }}</p>
+          <div v-if="!detail.owner_id" class="admission-panel admission-owner-panel">
+            <h3>先認領這筆詢問</h3>
+            <p class="admission-hint">認領後你會成為負責主任，後續聯絡與追蹤都會留在這筆紀錄。</p>
+            <button class="admission-button" type="button" :disabled="busy" @click="claimInquiry">由我負責</button>
+          </div>
+          <div v-if="!['enrolled', 'lost'].includes(detail.status)" class="admission-panel">
+            <h3>安排下次追蹤</h3>
+            <div class="admission-mini-form"><input v-model="followUpAt" type="date" aria-label="下次追蹤日期" /><button class="admission-button" type="button" :disabled="busy" @click="saveFollowUp">儲存追蹤</button></div>
+          </div>
+          <section v-if="detail.history?.length" class="admission-history" aria-label="詢問歷程">
+            <h3>處理歷程</h3>
+            <ol><li v-for="event in detail.history" :key="event.occurred_at + event.reason_code"><strong>{{ historyLabel(event) }}</strong><time>{{ formatDateTime(event.occurred_at) }}</time></li></ol>
+          </section>
           <div class="admission-workflow">
             <div v-if="['new', 'contacted'].includes(detail.status)" class="admission-panel">
               <h3>聯絡與安排試聽</h3>
@@ -160,6 +176,7 @@ const loading = ref(false);
 const submitted = ref(false);
 const errorMessage = ref('');
 const contactNote = ref('');
+const followUpAt = ref('');
 const statusFilter = ref('');
 const trialResult = ref('attended');
 const publicForm = ref({ campus_id: '', parent_name: '', parent_phone: '', student_name: '', grade: '', school_name: '', subject: '', preferred_slots: [''], public_notes: '', consent: false });
@@ -169,10 +186,13 @@ const grades = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'J1', 'J2', 'J3', 'H1', 'H2'
 const subjects = ['Chinese', 'English', 'Math', 'Physics', 'Chemistry', 'Science', 'Biology', 'Social'];
 const slots = ['平日下午', '平日晚上', '週六上午', '週六下午', '週日上午'];
 const statusNames = { new: '新詢問', contacted: '已聯絡', trial_scheduled: '已安排試聽', trial_completed: '已完成試聽', enrolled: '已報名', lost: '暫不繼續' };
-const nextActionNames = { contact: '聯絡家長', schedule_trial: '安排試聽', record_result: '記錄試聽結果', enroll: '轉正式報名', enroll_or_lost: '報名或結案', mark_lost: '標為暫不繼續', done: '已完成', review: '檢視' };
+const nextActionNames = { claim: '先認領負責', contact: '聯絡家長', schedule_trial: '安排試聽', record_result: '記錄試聽結果', enroll: '轉正式報名', enroll_or_lost: '報名或結案', mark_lost: '標為暫不繼續', done: '已完成', review: '檢視' };
 const statusLabel = status => statusNames[status] || status;
 const nextActionLabel = action => nextActionNames[action] || action;
 const resultLabel = result => ({ attended: '已出席', no_show: '未到', cancelled: '取消', not_suitable: '不合適' }[result] || result);
+const formatDate = value => String(value).slice(0, 10);
+const formatDateTime = value => value ? new Date(value).toLocaleString('zh-TW', { dateStyle: 'short', timeStyle: 'short' }) : '';
+const historyLabel = event => ({ submit: '收到問班需求', contacted: '已聯絡家長', owner_assigned: '認領負責', trial_scheduled: '已安排試聽', trial_completed: '已記錄試聽結果', enrolled: '已連結正式課程', lost: '已結案', follow_up_saved: '已更新追蹤' }[event.reason_code] || '更新詢問');
 
 async function loadPublic() {
   try { branches.value = await getAdmissionBranches(); } catch (error) { errorMessage.value = error.message; }
@@ -197,8 +217,10 @@ async function loadQueue() {
 }
 async function selectInquiry(id) {
   selectedId.value = id; errorMessage.value = '';
-  try { detail.value = await getAdmissionInquiry(props.token, id); contactNote.value = detail.value.staff_notes || ''; } catch (error) { errorMessage.value = error.message; }
+  try { detail.value = await getAdmissionInquiry(props.token, id); contactNote.value = detail.value.staff_notes || ''; followUpAt.value = detail.value.follow_up_at ? formatDate(detail.value.follow_up_at) : ''; } catch (error) { errorMessage.value = error.message; }
 }
+async function claimInquiry() { await runAction('claim'); }
+async function saveFollowUp() { await runAction('follow-up', { follow_up_at: followUpAt.value || null, staff_notes: contactNote.value }); }
 async function contactInquiry() { await runAction('contact', { staff_notes: contactNote.value }); }
 async function scheduleTrial() { await runAction('trial', { ...trial.value, teacher_id: Number(trial.value.teacher_id), duration_minutes: Number(trial.value.duration_minutes) }); }
 async function recordResult() { await runAction('trial-result', { trial_result: trialResult.value }); }
@@ -249,6 +271,7 @@ input, select, textarea { width: 100%; min-height: 44px; padding: 10px 12px; bor
 .admission-status { display: inline-flex; width: fit-content; padding: 3px 8px; border-radius: 999px; background: var(--ds-info-wash); color: var(--ds-cta); font-size: 11px; font-weight: 700; }
 .admission-detail { padding: clamp(18px, 4vw, 28px); } .admission-detail-head { display: flex; justify-content: space-between; gap: 20px; flex-wrap: wrap; padding-bottom: 20px; border-bottom: 1px solid var(--ds-hairline); } .admission-detail h2 { margin: 10px 0 4px; } .admission-detail p { color: var(--ds-ink-mute); } .admission-phone { color: var(--ds-cta); font-weight: 700; }
 .admission-meta { display: grid; gap: 10px; margin: 18px 0 0; } .admission-meta div { display: grid; gap: 2px; } .admission-meta dt { font-size: 12px; color: var(--ds-ink-mute); } .admission-meta dd { margin: 0; font-weight: 600; }
+.admission-owner-panel { margin-top: 18px; } .admission-history { margin-top: 18px; padding: 18px; border: 1px solid var(--ds-hairline); border-radius: var(--ds-radius-lg); background: var(--ds-surface-0); } .admission-history h3 { margin-bottom: 12px; font-size: 16px; } .admission-history ol { display: grid; gap: 10px; margin: 0; padding-left: 20px; } .admission-history li { display: flex; justify-content: space-between; gap: 12px; color: var(--ds-ink); } .admission-history time { color: var(--ds-ink-mute); font-size: 12px; white-space: nowrap; }
 .admission-note { margin: 18px 0; padding: 12px; background: var(--ds-surface-0); border-radius: var(--ds-radius-md); } .admission-workflow { display: grid; gap: 16px; margin-top: 20px; } .admission-panel { display: grid; gap: 12px; padding: 18px; box-shadow: none; } .admission-panel h3 { font-size: 16px; } .admission-mini-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .admission-empty, .admission-loading { display: grid; justify-items: center; gap: 10px; padding: 64px 24px; text-align: center; color: var(--ds-ink-mute); } .admission-empty.compact { padding: 24px; border: 1px dashed var(--ds-hairline); border-radius: var(--ds-radius-md); } .admission-empty .material-symbols-outlined { font-size: 48px; color: var(--ds-primary); }
 .admission-skeleton { display: grid; gap: 12px; margin-bottom: 20px; } .admission-skeleton-row { height: 64px; border-radius: var(--ds-radius-md); background: linear-gradient(90deg, var(--ds-surface-0), var(--ds-primary-wash), var(--ds-surface-0)); background-size: 200% 100%; animation: admission-shimmer 1.2s ease-in-out infinite; }

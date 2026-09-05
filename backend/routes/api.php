@@ -321,6 +321,8 @@ Route::prefix('v1')->group(function () {
     Route::middleware(['role:director,super_admin', 'require_campus', 'require_password_change'])->group(function () {
         Route::get('admission-inquiries', [AdmissionInquiryController::class, 'index']);
         Route::get('admission-inquiries/{admissionInquiry}', [AdmissionInquiryController::class, 'show'])->whereNumber('admissionInquiry');
+        Route::post('admission-inquiries/{admissionInquiry}/claim', [AdmissionInquiryController::class, 'claim'])->whereNumber('admissionInquiry');
+        Route::post('admission-inquiries/{admissionInquiry}/follow-up', [AdmissionInquiryController::class, 'followUp'])->whereNumber('admissionInquiry');
         Route::post('admission-inquiries/{admissionInquiry}/contact', [AdmissionInquiryController::class, 'contact'])->whereNumber('admissionInquiry');
         Route::post('admission-inquiries/{admissionInquiry}/trial', [AdmissionInquiryController::class, 'scheduleTrial'])->whereNumber('admissionInquiry');
         Route::post('admission-inquiries/{admissionInquiry}/trial-result', [AdmissionInquiryController::class, 'recordResult'])->whereNumber('admissionInquiry');

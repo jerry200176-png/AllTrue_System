@@ -7,6 +7,7 @@ use App\Models\Campus;
 use App\Models\SecurityAuditEvent;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Models\User;
 use App\Services\AdmissionInquiryService;
 use App\Services\EnrollmentService;
 use App\Services\ParentBinding\GuardianSyncService;
@@ -81,6 +82,9 @@ class AdmissionInquiryController extends Controller
         $perPage = min((int) $request->query('per_page', '50'), 50);
         /** @var \Illuminate\Pagination\LengthAwarePaginator $page */
         $page = $query->paginate($perPage);
+        $ownerNames = User::query()
+            ->whereIn('id', $page->getCollection()->pluck('assigned_to')->filter()->map(fn ($id) => (int) $id)->unique()->all())
+            ->pluck('Name', 'id');
         $page->getCollection()->transform(fn (AdmissionInquiry $i) => [
             'id' => $i->id, 'campus_id' => $i->campus_id, 'status' => $i->status,
             'student_name' => AdmissionInquiry::mask($i->student_name),
@@ -88,6 +92,9 @@ class AdmissionInquiryController extends Controller
             'subject' => $i->subject, 'created_at' => $i->created_at,
             'student_id' => $i->student_id, 'trial_student_class_id' => $i->trial_student_class_id,
             'trial_result' => $i->trial_result,
+            'owner_id' => $i->assigned_to,
+            'owner_name' => $ownerNames->get((int) $i->assigned_to),
+            'follow_up_at' => $i->follow_up_at,
             'next_action' => $i->nextAction(),
             'last_action_at' => $i->lastActionAt(),
         ]);
@@ -108,14 +115,59 @@ class AdmissionInquiryController extends Controller
             'trial_result' => $admissionInquiry->trial_result, 'student_id' => $admissionInquiry->student_id,
             'trial_student_class_id' => $admissionInquiry->trial_student_class_id,
             'enrolled_student_class_id' => $admissionInquiry->enrolled_student_class_id,
+            'owner_id' => $admissionInquiry->assigned_to,
+            'owner_name' => $admissionInquiry->assigned_to
+                ? User::query()->whereKey($admissionInquiry->assigned_to)->value('Name')
+                : null,
+            'follow_up_at' => $admissionInquiry->follow_up_at,
             'next_action' => $admissionInquiry->nextAction(),
             'last_action_at' => $admissionInquiry->lastActionAt(),
+            'history' => $this->history($admissionInquiry),
             'timestamps' => [
                 'created_at' => $admissionInquiry->created_at, 'contacted_at' => $admissionInquiry->contacted_at,
                 'trial_scheduled_at' => $admissionInquiry->trial_scheduled_at,
                 'trial_completed_at' => $admissionInquiry->trial_completed_at, 'enrolled_at' => $admissionInquiry->enrolled_at,
             ],
         ]);
+    }
+
+    public function claim(Request $request, AdmissionInquiry $admissionInquiry)
+    {
+        $this->ensureEnabled();
+        $this->authorizeInquiry($request, $admissionInquiry);
+        $actor = $request->attributes->get('auth_user');
+        abort_unless($actor?->id, 422, '目前登入者無法認領詢問。');
+        return DB::transaction(function () use ($request, $admissionInquiry, $actor) {
+            $inquiryId = (int) $admissionInquiry->getKey();
+            DB::table('admission_inquiries')->where('id', $inquiryId)->lockForUpdate()->first();
+            $admissionInquiry = AdmissionInquiry::findOrFail($inquiryId);
+            if ($admissionInquiry->assigned_to && (int) $admissionInquiry->assigned_to !== (int) $actor->id) {
+                abort(409, '此詢問已有其他主任負責。');
+            }
+            if (!$admissionInquiry->assigned_to) {
+                $admissionInquiry->update(['assigned_to' => (int) $actor->id]);
+                $this->audit($request, $admissionInquiry, 'owner_assigned');
+            }
+            return response()->json(['owner_id' => $admissionInquiry->assigned_to, 'owner_name' => $actor->Name ?? null]);
+        });
+    }
+
+    public function followUp(Request $request, AdmissionInquiry $admissionInquiry)
+    {
+        $this->ensureEnabled();
+        $this->authorizeInquiry($request, $admissionInquiry);
+        abort_if(in_array($admissionInquiry->status, [AdmissionInquiry::STATUS_ENROLLED, AdmissionInquiry::STATUS_LOST], true), 422, '已結案的詢問不能安排追蹤。');
+        $data = $request->validate([
+            'follow_up_at' => 'nullable|date',
+            'staff_notes' => 'nullable|string|max:1000',
+        ]);
+        $admissionInquiry->fill([
+            'follow_up_at' => !empty($data['follow_up_at']) ? Carbon::parse($data['follow_up_at'])->startOfDay() : null,
+            'staff_notes' => array_key_exists('staff_notes', $data) ? $data['staff_notes'] : $admissionInquiry->staff_notes,
+            'assigned_to' => $admissionInquiry->assigned_to ?: $request->attributes->get('auth_user')->id,
+        ])->save();
+        $this->audit($request, $admissionInquiry, 'follow_up_saved');
+        return response()->json(['status' => $admissionInquiry->status, 'follow_up_at' => $admissionInquiry->follow_up_at]);
     }
 
     public function contact(Request $request, AdmissionInquiry $admissionInquiry)
@@ -176,6 +228,7 @@ class AdmissionInquiryController extends Controller
             $admissionInquiry->update([
                 'status' => AdmissionInquiry::STATUS_TRIAL_SCHEDULED, 'student_id' => $studentId,
                 'trial_student_class_id' => $classId, 'contacted_at' => $admissionInquiry->contacted_at ?: now(), 'trial_scheduled_at' => now(),
+                'assigned_to' => $admissionInquiry->assigned_to ?: $request->attributes->get('auth_user')->id,
             ]);
             $student = Student::query()->whereKey($studentId)->firstOrFail();
             app(GuardianSyncService::class)->syncPrimaryFromStudent($student);
@@ -193,7 +246,7 @@ class AdmissionInquiryController extends Controller
             return response()->json(['status' => $admissionInquiry->status, 'trial_result' => $admissionInquiry->trial_result]);
         }
         abort_unless($admissionInquiry->status === AdmissionInquiry::STATUS_TRIAL_SCHEDULED, 422, '目前狀態不可記錄試聽結果。');
-        $admissionInquiry->update(['status' => AdmissionInquiry::STATUS_TRIAL_COMPLETED, 'trial_result' => $data['trial_result'], 'trial_completed_at' => now()]);
+        $admissionInquiry->update(['status' => AdmissionInquiry::STATUS_TRIAL_COMPLETED, 'trial_result' => $data['trial_result'], 'trial_completed_at' => now(), 'assigned_to' => $admissionInquiry->assigned_to ?: $request->attributes->get('auth_user')->id]);
         $this->audit($request, $admissionInquiry, 'trial_completed');
         return response()->json(['status' => $admissionInquiry->status, 'trial_result' => $admissionInquiry->trial_result]);
     }
@@ -211,7 +264,7 @@ class AdmissionInquiryController extends Controller
         abort_unless((int) $newCourse->getAttribute('StudentID') === (int) $admissionInquiry->student_id, 422, '報名課程與詢問學生不一致。');
         $trial = StudentClass::query()->whereKey($admissionInquiry->trial_student_class_id)->firstOrFail();
         abort_unless((int) $trial->getAttribute('trial_converted_to_id') === (int) $newCourse->getAttribute('ID'), 422, '請先完成既有試聽轉正式流程。');
-        $admissionInquiry->update(['status' => AdmissionInquiry::STATUS_ENROLLED, 'enrolled_student_class_id' => $newCourse->getAttribute('ID'), 'enrolled_at' => now()]);
+        $admissionInquiry->update(['status' => AdmissionInquiry::STATUS_ENROLLED, 'enrolled_student_class_id' => $newCourse->getAttribute('ID'), 'enrolled_at' => now(), 'assigned_to' => $admissionInquiry->assigned_to ?: $request->attributes->get('auth_user')->id, 'follow_up_at' => null]);
         $this->audit($request, $admissionInquiry, 'enrolled');
         return response()->json(['status' => $admissionInquiry->status, 'student_id' => $admissionInquiry->student_id, 'student_class_id' => $newCourse->getAttribute('ID')]);
     }
@@ -234,6 +287,8 @@ class AdmissionInquiryController extends Controller
         $admissionInquiry->fill([
             'status' => AdmissionInquiry::STATUS_LOST,
             'staff_notes' => $data['staff_notes'] ?? $admissionInquiry->staff_notes,
+            'assigned_to' => $admissionInquiry->assigned_to ?: $request->attributes->get('auth_user')->id,
+            'follow_up_at' => null,
         ])->save();
         $this->audit($request, $admissionInquiry, 'lost');
         return response()->json(['status' => $admissionInquiry->status]);
@@ -266,5 +321,25 @@ class AdmissionInquiryController extends Controller
     {
         $actor = $request->attributes->get('auth_user');
         SecurityAuditEvent::append('admission_inquiry.state_transition', 'success', ['campus_id' => $inquiry->campus_id, 'actor_type' => 'user', 'actor_id' => $actor->id ?? null, 'subject_type' => 'admission_inquiry', 'subject_id' => $inquiry->id], ['reason_code' => $reason]);
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    private function history(AdmissionInquiry $inquiry): array
+    {
+        $subjectRef = SecurityAuditEvent::ref('admission_inquiry', $inquiry->id);
+        return DB::table('security_audit_events')
+            ->where('subject_ref', $subjectRef)
+            ->whereIn('event_type', ['admission_inquiry.submit', 'admission_inquiry.owner_assigned', 'admission_inquiry.state_transition'])
+            ->orderBy('occurred_at')
+            ->get(['event_type', 'outcome', 'metadata', 'occurred_at'])
+            ->map(static function ($event): array {
+                $metadata = json_decode((string) $event->metadata, true);
+                return [
+                    'event_type' => $event->event_type,
+                    'outcome' => $event->outcome,
+                    'reason_code' => is_array($metadata) ? ($metadata['reason_code'] ?? null) : null,
+                    'occurred_at' => $event->occurred_at,
+                ];
+            })->all();
     }
 }
